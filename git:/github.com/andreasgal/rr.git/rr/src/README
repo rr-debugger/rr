@@ -1,0 +1,43 @@
+Installation guide for rr
+=========================
+
+
+
+
+A) Hardware/Software requirements
+---------------------------------
+
+The current version of rr requires a Linux kernel version 2.6.39 and larger.
+To enable PEBS support for the hardware performance counters (HPC) a kernel
+version >= 3.0 is required. Furthermore, rr does not support x86_64. rr was
+developed under Ubuntu 11.04.
+
+rr requires two additional libraries:
+
+(1) libpfm-4.1.0: The library can be downloaded from:
+http://sourceforge.net/projects/perfmon2/files/libpfm4/libpfm-4.1.0.tar.gz/download
+
+(2) libdisasm-dev
+
+
+
+B) Building 
+-----------
+
+A simple make should do it. 
+
+
+
+C) Usage
+--------
+
+Before calling either the recorder or the replayer make sure that address space
+randomization is disabled. You can do this by e.g., with the following command:
+
+sysctl -w kernel.randomize_va_space=0
+
+
+Typing rr --record /path/to/binary invokes the recorder. The recorder
+creates a path in the current directory which containts the trace file(s).
+To replay the application, type rr --replay /path/to/trace.
+
