@@ -1,47 +1,27 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
-#include <err.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <sched.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <termios.h>
-#include <unistd.h>
 
 #include <asm/ldt.h>
-#include <dirent.h>
 #include <linux/futex.h>
 #include <linux/net.h>
-#include <linux/unistd.h>
-#include <linux/types.h>
-#include <linux/ipc.h>
 #include <linux/shm.h>
-#include <linux/soundcard.h>
-#include <sound/sfnt_info.h>
 
-#include <sys/dir.h>
 #include <sys/epoll.h>
-#include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/ptrace.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
-#include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/times.h>
-#include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 
 #include "write_trace.h"
-#include "rec_sched.h"
 #include "rec_process_event.h"
-#include "recorder.h"
 #include "handle_ioctl.h"
 
 #include "../share/ipc.h"
@@ -1151,7 +1131,8 @@ void rec_process_syscall(struct context *ctx)
 		}
 
 		default:
-		errx(1, "unknwon socket call: %d -- baling out\n", call);
+		fprintf(stderr, "unknwon socket call: %d -- baling out\n", call);
+		sys_exit();
 		}
 		break;
 	}
