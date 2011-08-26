@@ -17,6 +17,7 @@
 #include "../share/sys.h"
 #include "../share/util.h"
 
+#define PTRACE_EVENT_NONE			0
 #define GET_EVENT(status)	 		((0xFF0000 & status) >> 16)
 
 /**
@@ -164,7 +165,9 @@ void start_recording()
 		case EXEC_STATE_IN_SYSCALL:
 		{
 
-			int ret = wait_nonblock(ctx);
+			int ret, event;
+
+			ret = wait_nonblock(ctx);
 			if (ret) {
 				/* we received a signal while in the system call and send it right away*/
 				/* we have already sent the signal and process sigreturn */
@@ -180,17 +183,22 @@ void start_recording()
 					ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 				}
 
-				assert(signal_pending(ctx->status) == 0);
-
-				int event = GET_EVENT(ctx->status);
+				event = GET_EVENT(ctx->status);
 
 				switch (event) {
+
+				case PTRACE_EVENT_NONE:
+				{
+					break;
+				}
 
 				case PTRACE_EVENT_CLONE:
 				case PTRACE_EVENT_FORK:
 				{
+					int new_tid;
+
 					/* get new tid, register at the scheduler and setup HPC */
-					int new_tid = sys_ptrace_getmsg(ctx->child_tid);
+					new_tid = sys_ptrace_getmsg(ctx->child_tid);
 
 					/* ensure that clone was successful */
 					if (read_child_eax(ctx->child_tid) == -1) {
@@ -200,17 +208,12 @@ void start_recording()
 
 					/* wait until the new thread is ready */
 					sys_waitpid(new_tid, &ctx->status);
-
 					rec_sched_register_thread(ctx->child_tid, new_tid);
-					sys_ptrace_setup(new_tid);
 
-					/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16);all, since we setup trace like that
-					 * do not execute the additional ptrace for vfork, since vfork blocks the
-					 * parent thread and we will never continue */
+					/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that. */
 					cont_block(ctx);
 					assert(signal_pending(ctx->status) == 0);
 					break;
-
 				}
 
 				case PTRACE_EVENT_EXEC:
@@ -226,6 +229,13 @@ void start_recording()
 					ctx->event = USR_EXIT;
 					record_event(ctx, 1);
 					rec_sched_deregister_thread(&ctx);
+					break;
+				}
+
+				default:
+				{
+					fprintf(stderr, "Unknown ptrace event: %x -- baling out\n", event);
+					sys_exit();
 				}
 
 				} /* end switch */
@@ -234,13 +244,11 @@ void start_recording()
 					rec_process_syscall(ctx);
 					record_event(ctx, 1);
 					ctx->exec_state = EXEC_STATE_START;
-					//---------------------------------------------------------------------
-					ctx->allow_ctx_switch = 0;
+					ctx->allow_ctx_switch = 1;
 				}
-
 			}
 			break;
-		}
+		} /* EXEC_STATE_IN_SYSCALL */
 
 		/*case EXEC_STATE_IN_SYSCALL_SIG:
 		 {
@@ -270,5 +278,5 @@ void start_recording()
 		default:
 		errx(1, "Unknown execution state: %x -- bailing out\n", ctx->exec_state);
 		}
-	}
+	} /* while loop */
 }

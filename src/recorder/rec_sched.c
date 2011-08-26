@@ -88,6 +88,7 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 	ctx->child_mem_fd = sys_open_child_mem(child);
 
 	write_open_inst_dump(ctx);
+	sys_ptrace_setup(child);
 
 
 	init_hpc(ctx);
