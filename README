@@ -36,6 +36,12 @@ sysctl -w kernel.randomize_va_space=0
 
 
 Typing rr --record /path/to/binary invokes the recorder. The recorder
-creates a path in the current directory which containts the trace file(s).
-To replay the application, type rr --replay /path/to/trace.
+creates a path in the current directory which contains the trace file(s).
+To replay the application, type rr --replay /path/to/trace. The checks the 
+replayed execution corresponds to the recorded execution are quite rigorous
+at the moment. This is why the '/path/to/binary' should have the exact length
+as '/path/to/trace'. You can do this easily by creating a symbolic link with
+the appropriate length. Pretty hacky :-)
+ 
+
 
