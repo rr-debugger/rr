@@ -17,10 +17,7 @@
 #include "../share/sys.h"
 #include "../share/util.h"
 
-
-
 #define GET_EVENT(status)	 		((0xFF0000 & status) >> 16)
-
 
 /**
  * Single steps to the next event that must be recorded. This can either be a system call, or reading the time
@@ -32,7 +29,7 @@ void goto_next_event_singlestep(struct context* context)
 
 	while (1) {
 		int inst_size;
-		char* inst =  get_inst(tid, 0, &inst_size);
+		char* inst = get_inst(tid, 0, &inst_size);
 		if ((strncmp(inst, "sysenter", 7) == 0) || (strncmp(inst, "int", 3) == 0)) {
 			record_inst_done(context);
 			free(inst);
@@ -97,71 +94,6 @@ static int needs_finish(struct context* context)
 	return 0;
 }
 
-static void handle_syscall_exit(struct context *ctx)
-{
-	int event = GET_EVENT(ctx->status);
-
-	switch (event) {
-
-	case PTRACE_EVENT_CLONE:
-	case PTRACE_EVENT_FORK:
-	case PTRACE_EVENT_VFORK:
-	{
-		/* get new tid, register at the scheduler and setup HPC */
-		int new_tid = sys_ptrace_getmsg(ctx->child_tid);
-
-		/* ensure that clone was successful */
-		int ret = read_child_eax(ctx->child_tid);
-		if (ret == -1) {
-			printf("error in clone system call -- bailing out\n");
-			sys_exit();
-		}
-
-		/* wait until the new thread is ready */
-		sys_waitpid(new_tid, &ctx->status);
-
-		rec_sched_register_thread(ctx->child_tid, new_tid);
-		sys_ptrace_setup(new_tid);
-
-		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16);all, since we setup trace like that
-		 * do not execute the additional ptrace for vfork, since vfork blocks the
-		 * parent thread and we will never continue */
-		if (event != PTRACE_EVENT_VFORK) {
-			cont_block(ctx);
-			assert(signal_pending(ctx->status) == 0);
-		} else {
-			rec_sched_set_exec_state(new_tid, EXEC_STATE_IN_SYSCALL);
-			record_event(ctx, 0);
-			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
-			return;
-		}
-		break;
-
-	}
-
-	case PTRACE_EVENT_EXEC:
-	{
-		cont_block(ctx);
-		assert(signal_pending(ctx->status) == 0);
-		break;
-	}
-
-	case PTRACE_EVENT_VFORK_DONE:
-	case PTRACE_EVENT_EXIT:
-	{
-		ctx->event = USR_EXIT;
-		record_event(ctx, 1);
-		sched_deregister_thread(ctx);
-		return;
-	}
-
-	} /* end switch */
-
-	rec_process_syscall(ctx);
-	record_event(ctx, 1);
-	ctx->exec_state = EXEC_STATE_START;
-}
-
 void start_recording()
 {
 	struct context *ctx = NULL;
@@ -179,8 +111,6 @@ void start_recording()
 		 * the entry of the system call */
 		debug_print("%d: state %d\n",ctx->child_tid,ctx->exec_state);
 
-
-
 		/* simple state machine to guarantee process in the application */
 		switch (ctx->exec_state) {
 
@@ -197,7 +127,7 @@ void start_recording()
 					/* state might be overwritten if a signal occurs */
 					if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
 						ctx->allow_ctx_switch = 1;
-					} else if(ctx->pending_sig) {
+					} else if (ctx->pending_sig) {
 						ctx->allow_ctx_switch = 0;
 					} else if (ctx->event > 0) {
 						ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
@@ -251,37 +181,91 @@ void start_recording()
 				}
 
 				assert(signal_pending(ctx->status) == 0);
-				handle_syscall_exit(ctx);
-				ctx->allow_ctx_switch = 0;
+
+				int event = GET_EVENT(ctx->status);
+
+				switch (event) {
+
+				case PTRACE_EVENT_CLONE:
+				case PTRACE_EVENT_FORK:
+				{
+					/* get new tid, register at the scheduler and setup HPC */
+					int new_tid = sys_ptrace_getmsg(ctx->child_tid);
+
+					/* ensure that clone was successful */
+					if (read_child_eax(ctx->child_tid) == -1) {
+						fprintf(stderr, "error in clone system call -- bailing out\n");
+						sys_exit();
+					}
+
+					/* wait until the new thread is ready */
+					sys_waitpid(new_tid, &ctx->status);
+
+					rec_sched_register_thread(ctx->child_tid, new_tid);
+					sys_ptrace_setup(new_tid);
+
+					/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16);all, since we setup trace like that
+					 * do not execute the additional ptrace for vfork, since vfork blocks the
+					 * parent thread and we will never continue */
+					cont_block(ctx);
+					assert(signal_pending(ctx->status) == 0);
+					break;
+
+				}
+
+				case PTRACE_EVENT_EXEC:
+				{
+					cont_block(ctx);
+					assert(signal_pending(ctx->status) == 0);
+					break;
+				}
+
+				case PTRACE_EVENT_VFORK_DONE:
+				case PTRACE_EVENT_EXIT:
+				{
+					ctx->event = USR_EXIT;
+					record_event(ctx, 1);
+					rec_sched_deregister_thread(&ctx);
+				}
+
+				} /* end switch */
+
+				if (ctx != NULL) {
+					rec_process_syscall(ctx);
+					record_event(ctx, 1);
+					ctx->exec_state = EXEC_STATE_START;
+					//---------------------------------------------------------------------
+					ctx->allow_ctx_switch = 0;
+				}
 
 			}
 			break;
 		}
 
 		/*case EXEC_STATE_IN_SYSCALL_SIG:
-		{
-			assert(1==0);
-			cont_nonblock(ctx);
-			ctx->exec_state = EXEC_STATE_IN_SYSCALL_SIG_SND;
-			break;
-		}
+		 {
+		 assert(1==0);
+		 cont_nonblock(ctx);
+		 ctx->exec_state = EXEC_STATE_IN_SYSCALL_SIG_SND;
+		 break;
+		 }
 
-		case EXEC_STATE_IN_SYSCALL_SIG_SND:
-		{
-			assert(1==0);
-			int ret = wait_nonblock(ctx);
+		 case EXEC_STATE_IN_SYSCALL_SIG_SND:
+		 {
+		 assert(1==0);
+		 int ret = wait_nonblock(ctx);
 
-			if (ret) {
-				cont_block(ctx);
+		 if (ret) {
+		 cont_block(ctx);
 
-				printf("and now: %ld\n", read_child_orig_eax(ctx->child_tid));
-				ctx->exec_state = EXEC_STATE_START;
-				record_event(ctx, 0);
+		 printf("and now: %ld\n", read_child_orig_eax(ctx->child_tid));
+		 ctx->exec_state = EXEC_STATE_START;
+		 record_event(ctx, 0);
 
-			}
+		 }
 
-			break;
-		}*/
+		 break;
+		 }*/
 
 		default:
 		errx(1, "Unknown execution state: %x -- bailing out\n", ctx->exec_state);

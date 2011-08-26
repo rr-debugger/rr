@@ -10,7 +10,7 @@ int rec_sched_get_num_threads();
 struct context* get_active_thread();
 
 void rec_sched_register_thread(pid_t parent, pid_t child);
-void sched_deregister_thread(struct context* context);
+void rec_sched_deregister_thread(struct context **ctx);
 void rec_sched_set_exec_state(int tid, int state);
 void rec_sched_exit_all();
 

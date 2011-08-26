@@ -161,6 +161,10 @@ void replay()
 	//		break;
 	//	}
 
+		/* print some kind of progress */
+		if (ctx->trace.global_time % 1000 == 0) {
+			fprintf(stderr,".");
+		}
 
 		if (ctx->trace.state == 0) {
 			//	single_step(context);
@@ -177,6 +181,6 @@ void replay()
 			rep_process_signal(ctx);
 		}
 	}
-	fprintf(stderr,"replayer sucessfully finished\n");
+	fprintf(stderr,"\nreplayer sucessfully finished\n");
 	//gdb_disconnect();
 }

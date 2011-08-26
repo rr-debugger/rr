@@ -20,14 +20,14 @@ static int num_active_threads;
  * Retrieves a thread from the pool of active threads in a
  * round-robin fashion.
  */
-struct context* get_active_thread(struct context* context)
+struct context* get_active_thread(struct context *ctx)
 {
 	/* This maintains the order in which the threads are signaled to continue and
 	 * when the the record is actually written
 	 */
-	if (context != 0) {
-		if (context->allow_ctx_switch) {
-			return context;
+	if (ctx != 0) {
+		if (ctx->allow_ctx_switch) {
+			return ctx;
 		}
 	}
 
@@ -101,28 +101,29 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
  * De-regsiter a thread and de-allocate all resources. This function
  * should be called when a thread exits.
  */
-void sched_deregister_thread(struct context* context)
+void rec_sched_deregister_thread(struct context **ctx_ptr)
 {
-	int hash = HASH(context->child_tid);
+	struct context *ctx = *ctx_ptr;
+	int hash = HASH(ctx->child_tid);
 
 	registered_threads[hash] = 0;
 	num_active_threads--;
 	assert(num_active_threads >= 0);
 
 	/* close the inst_dump file */
-	sys_fclose(context->inst_dump);
+	sys_fclose(ctx->inst_dump);
 
 	/* delete all counter data */
-	destry_hpc(context);
+	destry_hpc(ctx);
 
 	/* close file descriptor to child memory */
-	sys_close(context->child_mem_fd);
+	sys_close(ctx->child_mem_fd);
 
 	/* detach the child process*/
-	sys_ptrace_detatch(context->child_tid);
+	sys_ptrace_detatch(ctx->child_tid);
 
 	/* finally, free the memory */
-	sys_free((void**) &context);
+	sys_free((void**) ctx_ptr);
 }
 
 void rec_sched_set_exec_state(int tid, int state)

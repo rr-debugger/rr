@@ -113,14 +113,7 @@ static void start(int option, int argc, char* argv[], char** envp)
 	pid_t pid;
 	int status, fake_argc;
 
-	//check input
-	if (argc < 2) {
-		printf("Please specify a binary you want to record\n");
-		return;
-	}
-
 	if (option == RECORD) {
-		//executable = argv[2];
 		copy_executable(argv[2]);
 		if (access(__executable, X_OK)) {
 			printf("The specified file '%s' does not exist or is not executable\n", __executable);
@@ -166,7 +159,6 @@ static void start(int option, int argc, char* argv[], char** envp)
 			/* perform the action recording */
 			fprintf(stderr, "start recording...\n");
 			start_recording();
-
 			fprintf(stderr, "done recording -- cleaning up\n");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
