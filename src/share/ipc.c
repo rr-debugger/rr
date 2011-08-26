@@ -1,17 +1,7 @@
 #include <assert.h>
-#include <err.h>
-#include <errno.h>
-#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <sys/ptrace.h>
-#include <sys/wait.h>
-#include <sys/user.h>
-#include <sys/syscall.h>
-
-#include "../share/types.h"
 
 #include "sys.h"
 
@@ -229,6 +219,8 @@ void* read_child_data(struct context *ctx, size_t size, uintptr_t addr)
 	size_t bytes_read;
 	void* data = sys_malloc(size);
 
+	/* if pread cannot read all data (for whatever reason) we use ptrace
+	 * primitives to get the rest. */
 	if ((bytes_read = pread64(ctx->child_mem_fd, data, size, addr)) < size) {
 		assert(bytes_read >= 0);
 
@@ -290,7 +282,7 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 		long int word = read_child_data_word(tid, (addr + size) & ~0x3);
 		write_size += READ_SIZE - end_offset;
 		unsigned long buffer_addr = ((unsigned long) write_data + start_offset + size) & ~0x3;
-		memcpy(buffer_addr, &word, READ_SIZE);
+		memcpy((void*)buffer_addr, &word, READ_SIZE);
 	}
 
 	assert(write_size % 4 == 0);

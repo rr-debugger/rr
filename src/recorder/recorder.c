@@ -1,39 +1,21 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <sched.h>
-#include <signal.h>
-#include <stdarg.h>
-#include <stdlib.h>
 #include <string.h>
-#include <error.h>
-#include <sched.h>
-#include <fcntl.h>
-#include <signal.h>
 
-#include <linux/perf_event.h>
-#include <linux/futex.h>
-
-#include <sys/user.h>
-#include <sys/personality.h>
-#include <sys/prctl.h>
 #include <sys/ptrace.h>
 #include <sys/syscall.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <linux/futex.h>
 
 #include "write_trace.h"
 #include "rec_process_event.h"
 #include "rec_sched.h"
-#include "recorder.h"
+#include "handle_signal.h"
 
 #include "../share/hpc.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/util.h"
-#include "../share/trace.h"
 
 
 
