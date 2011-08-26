@@ -20,7 +20,7 @@
 
 char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
 void print_inst(pid_t tid);
-void print_syscall(struct context *ctx, struct trace_entry *trace);
+void print_syscall(struct context *ctx, struct trace *trace);
 void get_eip_info(pid_t tid);
 
 int compare_register_files(char* name1, struct user_regs_struct* reg1, char* name2, struct user_regs_struct* reg2, int print, int stop);

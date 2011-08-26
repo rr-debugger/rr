@@ -23,20 +23,18 @@ void goto_next_event(struct context *ctx);
 long sys_ptrace(int request, pid_t pid, void* addr, void* data);
 void sys_ptrace_setup(pid_t pid);
 void sys_ptrace_singlestep(pid_t pid, int sig);
-void sys_ptrace_syscall(pid_t pid);
 void sys_ptrace_sysemu(pid_t pid, int sig);
 void sys_ptrace_sysemu_singlestep(pid_t pid);
 void sys_ptrace_traceme();
 void sys_ptrace_cont(pid_t pid);
 void sys_ptrace_syscall_sig(pid_t pid, int sig);
-long sys_ptrace_peektext_word(pid_t pid, void* addr);
 unsigned long sys_ptrace_getmsg(pid_t pid);
 void sys_ptrace_getsiginfo(pid_t pid, siginfo_t* sig);
 void sys_ptrace_detatch(pid_t pid);
 
 
-pid_t sys_waitpid(pid_t pid, int* status);
-pid_t sys_waitpid_nonblock(pid_t pid, int* status);
+pid_t sys_waitpid(pid_t pid, int *status);
+pid_t sys_waitpid_nonblock(pid_t pid, int *status);
 void sys_fcntl(int fd, int option, pid_t pid);
 void sys_fcntl_f_setown(int fd, pid_t pid);
 void sys_fcntl_f_setfl_o_async(int fd);

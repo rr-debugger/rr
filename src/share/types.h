@@ -12,7 +12,7 @@
 #define LI_COLUMN_SIZE 		11
 
 
-struct trace_entry
+struct trace
 {
 	/* meta information */
 	uint32_t global_time;
@@ -35,7 +35,7 @@ struct trace_entry
 struct context {
 	pid_t rec_tid; /* thread id recording thread */
 
-	struct trace_entry trace;
+	struct trace trace;
 	struct hpc_context* hpc;
 
 	/* recorder */

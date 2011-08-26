@@ -177,6 +177,6 @@ void replay()
 			rep_process_signal(ctx);
 		}
 	}
-
+	fprintf(stderr,"replayer sucessfully finished\n");
 	//gdb_disconnect();
 }

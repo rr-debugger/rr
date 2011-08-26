@@ -174,7 +174,7 @@ void print_inst(pid_t tid)
 	free(str);
 }
 
-void print_syscall(struct context *ctx, struct trace_entry *trace)
+void print_syscall(struct context *ctx, struct trace *trace)
 {
 
 	int syscall = trace->recorded_regs.orig_eax;

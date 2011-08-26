@@ -63,7 +63,7 @@ static void compensate_branch_count(struct context *ctx)
 
 void rep_process_signal(struct context *ctx)
 {
-	struct trace_entry* trace = &(ctx->trace);
+	struct trace* trace = &(ctx->trace);
 	int tid = ctx->child_tid;
 	int sig = -trace->stop_reason;
 

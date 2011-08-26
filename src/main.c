@@ -20,6 +20,10 @@ static pid_t child;
 #define MAX_ENVP_LEN	1500
 #define MAX_EXEC_LEN    64
 
+#define INVALID			0
+#define RECORD			1
+#define REPLAY			2
+
 static char** __argv;
 static char** __envp;
 static char* __executable;
@@ -104,7 +108,7 @@ static void install_signal_handler()
 /**
  * main replayer method
  */
-static void start(int argc, char* argv[], char** envp)
+static void start(int option, int argc, char* argv[], char** envp)
 {
 	pid_t pid;
 	int status, fake_argc;
@@ -115,7 +119,7 @@ static void start(int argc, char* argv[], char** envp)
 		return;
 	}
 
-	if (strncmp("--record", argv[1], 7) == 0) {
+	if (option == RECORD) {
 		//executable = argv[2];
 		copy_executable(argv[2]);
 		if (access(__executable, X_OK)) {
@@ -160,17 +164,17 @@ static void start(int argc, char* argv[], char** envp)
 			rec_sched_register_thread(0, pid);
 
 			/* perform the action recording */
-			fprintf(stderr,"start recording...\n");
+			fprintf(stderr, "start recording...\n");
 			start_recording();
 
-			fprintf(stderr,"done recording -- cleaning up\n");
+			fprintf(stderr, "done recording -- cleaning up\n");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
 			close_libpfm();
 		}
 
-	/* replayer code comes here */
-	} else if (strncmp("--replay", argv[1], 7) == 0) {
+		/* replayer code comes here */
+	} else if (option == REPLAY) {
 		init_environment(argv[2], &fake_argc, __argv, __envp);
 
 		copy_executable(__argv[0]);
@@ -210,10 +214,7 @@ static void start(int argc, char* argv[], char** envp)
 			read_trace_close();
 			rep_sched_close();
 		}
-	} else {
-		assert(1==0);
 	}
-
 }
 
 /**
@@ -221,6 +222,7 @@ static void start(int argc, char* argv[], char** envp)
  */
 int main(int argc, char* argv[], char** envp)
 {
+	int option = INVALID;
 	/* allocate memory for the arguments that are passed to the
 	 * client application. This is the first thing that has to be
 	 * done to ensure that the pointers that are passed to the client
@@ -230,8 +232,14 @@ int main(int argc, char* argv[], char** envp)
 	alloc_executable();
 
 	//TODO: add parsing/checking of arguments
-	if (argc > 1) {
-		start(argc, argv, envp);
+	if (strncmp("--record", argv[1], 7) == 0) {
+		option = RECORD;
+	} else if (strncmp("--replay", argv[1], 7) == 0) {
+		option = REPLAY;
+	}
+
+	if (option > 0) {
+		start(option, argc, argv, envp);
 	} else {
 		print_usage();
 	}

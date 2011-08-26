@@ -136,7 +136,7 @@ static void set_return_value(struct context* context)
  * which  are  passed  through  to  the appropriate call.
  *
  */
-static void handle_socket(struct context* context, struct trace_entry* trace)
+static void handle_socket(struct context* context, struct trace* trace)
 {
 	int state;
 	pid_t tid;
@@ -275,7 +275,7 @@ static void handle_socket(struct context* context, struct trace_entry* trace)
 void rep_process_syscall(struct context* context)
 {
 	const int tid = context->child_tid;
-	struct trace_entry* trace = &(context->trace);
+	struct trace* trace = &(context->trace);
 	int syscall = trace->recorded_regs.orig_eax;
 	int state = trace->state;
 
@@ -1258,8 +1258,6 @@ void rep_process_syscall(struct context* context)
 			 * that is used afterwards */
 			write_child_ebp(tid, trace->recorded_regs.ebp);
 			validate_args(context);
-
-			printf("clone is done\n");
 		}
 		break;
 	}
@@ -1351,9 +1349,6 @@ void rep_process_syscall(struct context* context)
 			{
 				int orig_shmemid = read_child_ecx(tid);
 				int shmid = shmem_get_key(read_child_ecx(tid));
-
-				int cmd = read_child_edx(tid);
-				printf("command: %d\n", cmd);
 
 				write_child_ecx(tid, shmid);
 				__ptrace_cont(context);

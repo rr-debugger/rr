@@ -128,7 +128,7 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 	sys_free((void**) &buf);
 }
 
-static int parse_raw_data_hdr(struct trace_entry* trace, unsigned long* addr)
+static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 {
 	char* line = sys_malloc(1024);
 	read_line(__syscall_input, line, 1024, "syscall_input");
@@ -153,7 +153,7 @@ static int parse_raw_data_hdr(struct trace_entry* trace, unsigned long* addr)
 	return size;
 }
 
-void* read_raw_data(struct trace_entry* trace, size_t* size_ptr, unsigned long* addr)
+void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 {
 	int size;
 
@@ -198,7 +198,7 @@ pid_t get_recorded_main_thread()
 
 	fpos_t pos;
 	fgetpos(__trace, &pos);
-	struct trace_entry trace;
+	struct trace trace;
 	read_next_trace(&trace);
 
 	pid_t main_thread = trace.tid;
@@ -232,7 +232,7 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
 
 }
 
-void read_next_trace(struct trace_entry* trace)
+void read_next_trace(struct trace* trace)
 {
 	char* line = sys_malloc(1024);
 	read_line(__trace, line, 1024, "trace");
@@ -277,7 +277,7 @@ void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
 	char* line = sys_malloc(1024);
 
 	read_line(__trace, line, 1024, "trace");
-	struct trace_entry trace;
+	struct trace trace;
 	do {
 		read_next_trace(&trace);
 		if ((val == trace.recorded_regs.eax) || (val == trace.recorded_regs.ebx) || (val == trace.recorded_regs.ecx) || (val == trace.recorded_regs.edx) || (val == trace.recorded_regs.esi) || (val

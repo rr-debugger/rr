@@ -44,7 +44,7 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 struct context* rep_sched_get_thread()
 {
 	/* read the next trace entry */
-	struct trace_entry trace;
+	struct trace trace;
 	read_next_trace(&trace);
 
 	/* find and upadte context */
@@ -53,7 +53,7 @@ struct context* rep_sched_get_thread()
 		assert(trace.stop_reason >= 0);
 	}
 
-	memcpy(&(ctx->trace), &trace, sizeof(struct trace_entry));
+	memcpy(&(ctx->trace), &trace, sizeof(struct trace));
 
 	return ctx;
 }
