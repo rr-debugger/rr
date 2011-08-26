@@ -9,6 +9,7 @@
 #include "replayer.h"
 #include "../share/sys.h"
 #include "../share/util.h"
+#include "../share/types.h"
 
 static FILE* __trace;
 static FILE* __raw_data;
@@ -116,7 +117,6 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 		assert (len < 8192);
 		/* overwrite the newline */
 		buf[len - 1] = '\0';
-		char* tmp = sys_malloc(len + 1);
 		strncpy(envp[i], buf,len+1);
 	}
 
@@ -155,7 +155,9 @@ static int parse_raw_data_hdr(struct trace_entry* trace, unsigned long* addr)
 
 void* read_raw_data(struct trace_entry* trace, size_t* size_ptr, unsigned long* addr)
 {
-	int size = parse_raw_data_hdr(trace, addr);
+	int size;
+
+	size = parse_raw_data_hdr(trace, addr);
 	*size_ptr = size;
 
 	if (*addr != 0) {
@@ -232,7 +234,7 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
 
 void read_next_trace(struct trace_entry* trace)
 {
-	const char* line = sys_malloc(1024);
+	char* line = sys_malloc(1024);
 	read_line(__trace, line, 1024, "trace");
 	char* tmp_ptr = (char*) line;
 
@@ -265,14 +267,14 @@ void read_next_trace(struct trace_entry* trace)
 	sys_free((void**) &line);
 }
 
-void find_in_trace(struct rep_thread_context* context, unsigned long cur_time, long int val)
+void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
 {
 	fpos_t pos;
 
 	fgetpos(__trace, &pos);
 	rewind(__trace);
 	/* skip the header */
-	const char* line = sys_malloc(1024);
+	char* line = sys_malloc(1024);
 
 	read_line(__trace, line, 1024, "trace");
 	struct trace_entry trace;

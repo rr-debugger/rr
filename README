@@ -43,5 +43,8 @@ at the moment. This is why the '/path/to/binary' should have the exact length
 as '/path/to/trace'. You can do this easily by creating a symbolic link with
 the appropriate length. Pretty hacky :-)
  
-
+Note that talking to particular kernel drivers (by ioctl(...)) requires the
+rr to have knowledge about what the driver is doing. For example, if you
+record GUI applications that make use a grapphics driver with 3d-support
+rr will fail.
 

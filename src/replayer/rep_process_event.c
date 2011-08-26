@@ -12,7 +12,6 @@
 #include <linux/ipc.h>
 
 #include <sys/socket.h>
-
 #include <sys/mman.h>
 
 #include <drm/radeon_drm.h>
