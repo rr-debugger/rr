@@ -1,6 +1,6 @@
 #ifndef REPLAYER_H_
 #define REPLAYER_H_
 
-int replayer();
+void replay();
 
 #endif /* REPLAYER_H_ */

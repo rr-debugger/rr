@@ -2,11 +2,15 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "share/hpc.h"
 #include "share/sys.h"
+
 #include "recorder/recorder.h"
 #include "recorder/write_trace.h"
+#include "recorder/rec_sched.h"
 #include "replayer/replayer.h"
 #include "replayer/read_trace.h"
+#include "replayer/rep_sched.h"
 
 static pid_t child;
 
@@ -100,7 +104,7 @@ static void install_signal_handler()
 /**
  * main replayer method
  */
-int replayer(int argc, char* argv[], char** envp)
+static void start(int argc, char* argv[], char** envp)
 {
 	pid_t pid;
 	int status, fake_argc;
@@ -108,7 +112,7 @@ int replayer(int argc, char* argv[], char** envp)
 	//check input
 	if (argc < 2) {
 		printf("Please specify a binary you want to record\n");
-		return 0;
+		return;
 	}
 
 	if (strncmp("--record", argv[1], 7) == 0) {
@@ -116,7 +120,7 @@ int replayer(int argc, char* argv[], char** envp)
 		copy_executable(argv[2]);
 		if (access(__executable, X_OK)) {
 			printf("The specified file '%s' does not exist or is not executable\n", __executable);
-			return 0;
+			return;
 		}
 
 		/* create directory for trace files */
@@ -156,23 +160,23 @@ int replayer(int argc, char* argv[], char** envp)
 			rec_sched_register_thread(0, pid);
 
 			/* perform the action recording */
-			record_trace();
+			fprintf(stderr,"start recording...\n");
+			start_recording();
 
-			printf("done recording -- cleaning up\n");
-			//cleaning up stuff
+			fprintf(stderr,"done recording -- cleaning up\n");
+			/* cleanup all initialized data-structures */
 			close_trace_files();
 			close_libpfm();
 		}
 
-		return 0;
-
+	/* replayer code comes here */
 	} else if (strncmp("--replay", argv[1], 7) == 0) {
 		init_environment(argv[2], &fake_argc, __argv, __envp);
 
 		copy_executable(__argv[0]);
 		if (access(__executable, X_OK)) {
 			printf("The specified file '%s' does not exist or is not executable\n", __executable);
-			return 0;
+			return;
 		}
 
 		pid = sys_fork();
@@ -189,7 +193,7 @@ int replayer(int argc, char* argv[], char** envp)
 
 			/* initialize stuff */
 			init_libpfm();
-			init_rep_sched();
+			rep_sched_init();
 			sys_ptrace_setup(pid);
 			/* sets the file pointer to the first trace entry */
 
@@ -204,24 +208,30 @@ int replayer(int argc, char* argv[], char** envp)
 			/* thread wants to exit*/
 			close_libpfm();
 			read_trace_close();
-			close_rep_sched();
+			rep_sched_close();
 		}
-		return 0;
-
 	} else {
 		assert(1==0);
 	}
 
 }
 
+/**
+ * This is where recorder and the repalyer start
+ */
 int main(int argc, char* argv[], char** envp)
 {
+	/* allocate memory for the arguments that are passed to the
+	 * client application. This is the first thing that has to be
+	 * done to ensure that the pointers that are passed to the client
+	 * are the same in the recorder/replayer.*/
 	alloc_argc(argc);
 	alloc_envp(envp);
 	alloc_executable();
 
+	//TODO: add parsing/checking of arguments
 	if (argc > 1) {
-		replayer(argc, argv, envp);
+		start(argc, argv, envp);
 	} else {
 		print_usage();
 	}

@@ -180,7 +180,7 @@ static void handle_syscall_exit(struct context *ctx)
 	ctx->exec_state = EXEC_STATE_START;
 }
 
-void record_trace()
+void start_recording()
 {
 	struct context *ctx = NULL;
 

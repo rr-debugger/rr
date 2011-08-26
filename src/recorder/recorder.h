@@ -4,6 +4,6 @@
 #include <stdio.h>
 #include <sched.h>
 
-int recorder(int argc, char* argv[], char** envp);
+void start_recording();
 
 #endif /* RECORDER_H_ */

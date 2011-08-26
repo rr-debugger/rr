@@ -15,7 +15,7 @@
 static struct context** map;
 static int num_threads;
 
-void init_rep_sched()
+void rep_sched_init()
 {
 	map = sys_malloc(MAX_TID_NUM * sizeof(struct context));
 }
@@ -76,7 +76,7 @@ void rep_sched_deregister_thread(struct context *ctx)
 	sys_free((void**) &ctx);
 }
 
-void close_rep_sched()
+void rep_sched_close()
 {
 	sys_free((void**) &map);
 }
