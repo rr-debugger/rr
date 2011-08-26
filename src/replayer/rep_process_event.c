@@ -1,41 +1,31 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
-#include <err.h>
-#include <poll.h>
-#include <sys/socket.h>
+#include <fcntl.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
-#include <fcntl.h>
 
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/ipc.h>
-#include <linux/soundcard.h>
 
-#include <sys/ioctl.h>
-#include <sys/utsname.h>
+#include <sys/socket.h>
 
-#include <i386-linux-gnu/asm/ldt.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/user.h>
 
-#include <sound/sfnt_info.h>
-
-#include <stdint.h>
-#include <drm/drm.h>
 #include <drm/radeon_drm.h>
 #include <drm/i915_drm.h>
 
 #include "rep_process_event.h"
 #include "rep_sched.h"
+#include "read_trace.h"
+
 #include "../share/ipc.h"
 #include "../share/sys.h"
-#include "../share/trace.h"
 #include "../share/util.h"
-#include "read_trace.h"
+#include "../share/shmem.h"
 
 /*
  * Compares the register file as it appeared in the recording phase
@@ -113,7 +103,7 @@ static void finish_syscall_emu(struct context* context)
 	if (current_syscall != rec_syscall) {
 		printf("stop reason: %x :%d\n", ctx->status,
 		WSTOPSIG(ctx->status));
-		errx(1, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
+		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
 		sys_exit();
 	}
 
@@ -268,7 +258,8 @@ static void handle_socket(struct context* context, struct trace_entry* trace)
 		}
 
 		default:
-		errx(1, "unknwon call in socket: %d -- bailing out\n", call);
+		fprintf(stderr, "unknwon call in socket: %d -- bailing out\n", call);
+		sys_exit();
 		}
 
 		set_return_value(context);
@@ -1506,8 +1497,7 @@ void rep_process_syscall(struct context* context)
 	SYS_EXEC_ARG(rt_sigprocmask,1)
 
 	default:
-	errx(1, " Replayer: unknown system call: %d -- bailing out\n", syscall);
-	fflush(stderr);
+	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out\n", syscall);
 	}
 
 	if (state == STATE_SYSCALL_EXIT) {

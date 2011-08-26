@@ -1,12 +1,19 @@
+#include <stdio.h>
 #include <sys/shm.h>
 
-
+#include "../share/sys.h"
 
 
 #define SHMEM_MAXKEYS		10
 
 static int shmem_keys[SHMEM_MAXKEYS][2];
 
+
+/**
+ * TODO: Replace this with a decent hasmap. It's a simple
+ * list right now, since it will not have a noticeable impact
+ * on performance.
+ */
 void shmem_store_key(int key, int val)
 {
 	int i;
@@ -19,7 +26,7 @@ void shmem_store_key(int key, int val)
 	}
 
 	/* too many keys */
-	printf("too many shared keys -- bailing out\n");
+	fprintf(stderr,"too many shared keys -- bailing out\n");
 	sys_exit();
 }
 
@@ -33,7 +40,7 @@ int shmem_get_key(int key)
 	}
 
 	/* too many keys */
-	printf("shmem key not found -- bailing out\n");
+	fprintf(stderr,"shmem key not found -- bailing out\n");
 	sys_exit();
 
 	return -1;

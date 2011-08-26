@@ -1,8 +1,9 @@
-#ifndef READ_FROM_CHILD_H_
-#define READ_FROM_CHILD_H_
+#ifndef __IPC_H__
+#define __IPC_H__
 
 #include <sys/user.h>
 
+#include "types.h"
 
 void read_child_registers(int child_id, struct user_regs_struct* regs);
 long read_child_code(pid_t pid, void* addr);
@@ -39,4 +40,4 @@ void write_child_ebp(int tid, long int val);
 char* read_child_str(pid_t pid, long int addr);
 void* read_child_data_tid(pid_t tid, size_t size, long int addr);
 
-#endif /* READ_FROM_CHILD_H_ */
+#endif /* __IPC_H__ */

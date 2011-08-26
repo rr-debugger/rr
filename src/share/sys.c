@@ -1,14 +1,9 @@
- #define _GNU_SOURCE
+#define _GNU_SOURCE
 
 #include <assert.h>
-#include <err.h>
 #include <fcntl.h>
-#include <sched.h>
-#include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/personality.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -20,7 +15,7 @@
 #include "sys.h"
 #include "util.h"
 #include "ipc.h"
-
+#include "../recorder/rec_sched.h"
 
 FILE* sys_fopen(const char* path, const char* mode)
 {
@@ -117,7 +112,7 @@ void sys_setup_process()
 	}
 
 	unsigned long  mask = 0x4;
-	if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+	if (sched_setaffinity(0, sizeof(mask), (cpu_set_t*)&mask) == -1) {
 		perror("error setting affinity -- bailing out\n");
 		sys_exit();
 	}
@@ -285,7 +280,8 @@ void* sys_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t off
 {
 	void* tmp = mmap(addr, length, prot, flags, fd, offset);
 	if (tmp == MAP_FAILED) {
-		errx(1, "cannot memory-map file\n");
+		fprintf(stderr, "cannot memory-map file\n");
+		sys_exit();
 	}
 	return tmp;
 }
@@ -316,7 +312,8 @@ void* sys_malloc_zero(int size)
 void sys_free(void** ptr)
 {
 	if (*ptr == NULL) {
-		errx(1, "Failed to free memory of size -- bailing out\n");
+		fprintf(stderr, "Failed to free memory of size -- bailing out\n");
+		sys_exit();
 	}
 	free(*ptr);
 	*ptr = 0;
