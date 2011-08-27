@@ -1490,6 +1490,16 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EXEC_ARG(rt_sigprocmask,1)
 
+	/**
+	 * int sigreturn(unsigned long __unused);
+	 *
+	 * When  the  Linux kernel creates the stack frame for a signal handler, a
+     * call to sigreturn() is inserted into  the  stack  frame  so  that  upon
+     * return from the signal handler, sigreturn() will be called.
+	 *
+	 */
+	SYS_EXEC_ARG(sigreturn,0);
+
 	default:
 	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out\n", syscall);
 	}

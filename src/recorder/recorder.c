@@ -57,7 +57,6 @@ void goto_next_event_singlestep(struct context* context)
 
 static void cont_nonblock(struct context* context)
 {
-	//printf("%d:state: %x  event: %d pending_sig: %d\n", context->tid, context->exec_state, context->event, context->pending_sig);
 	sys_ptrace_syscall_sig(context->child_tid, context->pending_sig);
 	context->pending_sig = 0;
 }
@@ -69,6 +68,7 @@ static int wait_nonblock(struct context* context)
 	if (ret) {
 		context->event = read_child_orig_eax(context->child_tid);
 		handle_signal(context);
+		//printf("%d:state: %x  event: %d pending_sig: %d\n", context->child_tid, context->exec_state, context->event, context->pending_sig);
 	}
 
 	return ret;
@@ -76,8 +76,10 @@ static int wait_nonblock(struct context* context)
 
 void cont_block(struct context *ctx)
 {
+	//printf("cont_block_before:%d:state: %x  event: %d pending_sig: %d\n", ctx->child_tid, ctx->exec_state, ctx->event, ctx->pending_sig); fflush(stdout);
 	goto_next_event(ctx);
 	handle_signal(ctx);
+	//printf("cont_block_after:%d:state: %x  event: %d pending_sig: %d\n", ctx->child_tid, ctx->exec_state, ctx->event, ctx->pending_sig);
 }
 
 static int needs_finish(struct context* context)
@@ -88,11 +90,11 @@ static int needs_finish(struct context* context)
 	if (event == SYS_futex) {
 		int op = read_child_ecx(context->child_tid) & FUTEX_CMD_MASK;
 		if (op == FUTEX_WAKE || op == FUTEX_WAKE_OP || op == FUTEX_WAKE_PRIVATE) {
-			return 1;
+			return 0;
 		}
 	}
 
-	return 0;
+	return 1;
 }
 
 void start_recording()
@@ -118,42 +120,42 @@ void start_recording()
 		case EXEC_STATE_START:
 		{
 			//goto_next_event_singlestep(context);
-			cont_nonblock(ctx);
 
-			while (1) {
+			/* we need to issue a blocking continue here to serialize program execution */
+			cont_block(ctx);
 
-				int ret = wait_nonblock(ctx);
-
-				if (ret) {
-					/* state might be overwritten if a signal occurs */
-					if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
-						ctx->allow_ctx_switch = 1;
-					} else if (ctx->pending_sig) {
-						ctx->allow_ctx_switch = 0;
-					} else if (ctx->event > 0) {
-						ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
-						ctx->allow_ctx_switch = needs_finish(ctx);
-						/* this is a wired state -- no idea why it works */
-					} else if (ctx->event == SYS_restart_syscall) {
-						ctx->exec_state = EXEC_STATE_START;
-						assert(1==0);
-					}
-					record_event(ctx, 0);
-					break;
-				}
+			/* state might be overwritten if a signal occurs */
+			if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
+				ctx->allow_ctx_switch = 1;
+			} else if (ctx->pending_sig) {
+				ctx->allow_ctx_switch = 0;
+				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+			} else if (ctx->event == SYS_sigreturn) {
+				record_event(ctx, 0);
+				printf("son of a bitch\n");
+				cont_block(ctx);
+				ctx->allow_ctx_switch = 1;
+				break;
+			} else if (ctx->event > 0) {
+				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+				ctx->allow_ctx_switch = needs_finish(ctx);
+				/* this is a wired state -- no idea why it works */
+			} else if (ctx->event == SYS_restart_syscall) {
+				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+				ctx->allow_ctx_switch = 1;
+			} else {
+				ctx->allow_ctx_switch = 1;
 			}
-
+			record_event(ctx, 0);
 			break;
 		}
 
 		case EXEC_STATE_ENTRY_SYSCALL:
 		{
-			assert(ctx->pending_sig == 0);
 
 			if (read_child_eax(ctx->child_tid) != -38) {
-				assert(1==0);
-				ctx->exec_state = EXEC_STATE_START;
-				break;
+//				ctx->exec_state = EXEC_STATE_START;
+	//			break;
 			}
 
 			/* continue and execute the system call */
@@ -172,9 +174,7 @@ void start_recording()
 				/* we received a signal while in the system call and send it right away*/
 				/* we have already sent the signal and process sigreturn */
 				if (ctx->event == SYS_sigreturn) {
-					assert(1==0);
-					assert(ctx->pending_sig == 0);
-					ctx->exec_state = EXEC_STATE_IN_SYSCALL_SIG;
+				//	assert(1==0);
 				}
 
 				if (ctx->pending_sig) {
@@ -248,33 +248,7 @@ void start_recording()
 				}
 			}
 			break;
-		} /* EXEC_STATE_IN_SYSCALL */
-
-		/*case EXEC_STATE_IN_SYSCALL_SIG:
-		 {
-		 assert(1==0);
-		 cont_nonblock(ctx);
-		 ctx->exec_state = EXEC_STATE_IN_SYSCALL_SIG_SND;
-		 break;
-		 }
-
-		 case EXEC_STATE_IN_SYSCALL_SIG_SND:
-		 {
-		 assert(1==0);
-		 int ret = wait_nonblock(ctx);
-
-		 if (ret) {
-		 cont_block(ctx);
-
-		 printf("and now: %ld\n", read_child_orig_eax(ctx->child_tid));
-		 ctx->exec_state = EXEC_STATE_START;
-		 record_event(ctx, 0);
-
-		 }
-
-		 break;
-		 }*/
-
+		}
 		default:
 		errx(1, "Unknown execution state: %x -- bailing out\n", ctx->exec_state);
 		}

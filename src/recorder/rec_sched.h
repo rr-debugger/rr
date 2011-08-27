@@ -26,9 +26,6 @@ void rec_sched_exit_all();
 #define EXEC_STATE_START				0x1
 #define EXEC_STATE_ENTRY_SYSCALL		0x2
 #define EXEC_STATE_IN_SYSCALL			0x3
-#define EXEC_STATE_IN_SYSCALL_SIG		0x4
-#define EXEC_STATE_IN_SYSCALL_SIG_SND	0x5
-#define EXEC_STATE_EXIT_SYSCALL			0x6
 
 
 

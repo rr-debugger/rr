@@ -63,6 +63,8 @@ void handle_signal(struct context* context)
 		return;
 	}
 
+//	fprintf(stderr,"got signal: %d\n",sig);
+
 	switch (sig) {
 
 	case SIGALRM:
@@ -87,7 +89,7 @@ void handle_signal(struct context* context)
 	case SIGIO:
 	{
 		/* make sure that the signal came from hpc */
-		if (fcntl(context->hpc->rbc_down.fd,F_GETOWN) == context->child_tid) {
+		if (read_rbc_up(context->hpc) >= MAX_RECORD_INTERVAL) {
 			context->event = USR_SCHED;
 		} else {
 			context->pending_sig = sig;

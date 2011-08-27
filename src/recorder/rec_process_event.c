@@ -43,6 +43,8 @@ void rec_process_syscall(struct context *ctx)
 	/* main processing (recording of I/O) */
 	switch (syscall) {
 
+	SYS_REC0(restart_syscall)
+
 	/**
 	 * int access(const char *pathname, int mode);
 	 *
