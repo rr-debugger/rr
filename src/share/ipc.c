@@ -183,6 +183,15 @@ void write_child_ebp(int tid, long int val)
 	write_child_registers(tid, &regs);
 }
 
+void write_child_esi(int tid, long int val)
+{
+	struct user_regs_struct regs;
+	read_child_registers(tid, &regs);
+	regs.esi = val;
+	write_child_registers(tid, &regs);
+}
+
+
 void write_child_eip(int tid, long int val)
 {
 	struct user_regs_struct regs;
@@ -216,18 +225,18 @@ void* read_child_data_tid(pid_t tid, size_t size, long int addr)
 
 void* read_child_data(struct context *ctx, size_t size, uintptr_t addr)
 {
-	size_t bytes_read;
-	void* data = sys_malloc(size);
+//	size_t bytes_read = -15;
+	void* data = read_child_data_tid(ctx->child_tid, size, addr);
 
 	/* if pread cannot read all data (for whatever reason) we use ptrace
 	 * primitives to get the rest. */
-	if ((bytes_read = pread64(ctx->child_mem_fd, data, size, addr)) < size) {
-		assert(bytes_read >= 0);
-
-		void* rest = read_child_data_tid(ctx->child_tid, size - bytes_read, addr + bytes_read);
-		memcpy(data + bytes_read, rest, size - bytes_read);
-		sys_free((void**) &rest);
-	}
+//	if ((bytes_read = pread64(ctx->child_mem_fd, data, size, addr)) < size) {
+//		assert(bytes_read >= 0);
+//		printf("we are here\n");
+//		void* rest = read_child_data_tid(ctx->child_tid, size - bytes_read, addr + bytes_read);
+//		memcpy(data + bytes_read, rest, size - bytes_read);
+//		sys_free((void**) &rest);
+//	}
 	/* make sure we no not return more than required */
 	return data;
 }
@@ -260,6 +269,7 @@ char* read_child_str(pid_t pid, long int addr)
 		idx += READ_SIZE;
 	}
 	assert(1==0);
+	return 0;
 }
 
 void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)

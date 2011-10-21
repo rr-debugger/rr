@@ -35,7 +35,7 @@ static void validate_args(struct context* context)
 	struct user_regs_struct cur_reg;
 
 	read_child_registers(context->child_tid, &cur_reg);
-	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1,1);
+	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, 1);
 }
 
 /*
@@ -62,8 +62,7 @@ static void goto_next_syscall_emu(struct context* context)
 	current_syscall = read_child_orig_eax(tid);
 
 	if (current_syscall != rec_syscall) {
-		printf("stop reason: %x :%d\n", context->status,
-		WSTOPSIG(context->status));
+		printf("stop reason: %x :%d\n", context->status, WSTOPSIG(context->status));
 		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, context->trace.thread_time);
 		sys_exit();
 	}
@@ -84,7 +83,7 @@ static void finish_syscall_emu(struct context* context)
 /*
  * Proceeds until the next system call, which is being executed.
  */
- void __ptrace_cont(struct context* ctx)
+void __ptrace_cont(struct context* ctx)
 {
 	pid_t my_tid = ctx->child_tid;
 
@@ -100,8 +99,7 @@ static void finish_syscall_emu(struct context* context)
 	int current_syscall = read_child_orig_eax(my_tid);
 
 	if (current_syscall != rec_syscall) {
-		printf("stop reason: %x :%d\n", ctx->status,
-		WSTOPSIG(ctx->status));
+		printf("stop reason: %x :%d\n", ctx->status, WSTOPSIG(ctx->status));
 		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
 		sys_exit();
 	}
@@ -297,14 +295,14 @@ void rep_process_syscall(struct context* context)
 	 * associated with, and owned by the process,  are removed (regardless of the file
 	 *  descriptor that was used to obtain the lock).
 	 */
-	SYS_FD_ARG(close,0)
+	SYS_FD_ARG(close, 0)
 
 	/**
 	 * int dup(int oldfd)
 	 *
 	 * dup() uses the lowest-numbered unused descriptor for the new descriptor.
 	 */
-	SYS_FD_ARG(dup,0)
+	SYS_FD_ARG(dup, 0)
 
 	/**
 	 * int dup2(int oldfd, int newfd)
@@ -312,7 +310,7 @@ void rep_process_syscall(struct context* context)
 	 * dup2()  makes newfd be the copy of oldfd, closing newfd first if necessary, but note the
 	 *  following..
 	 */
-	SYS_FD_ARG(dup2,0)
+	SYS_FD_ARG(dup2, 0)
 
 	/**
 	 * int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
@@ -322,7 +320,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * FIXXME: not quite sure if something is returned!
 	 */
-	SYS_FD_ARG(epoll_ctl,1)
+	SYS_FD_ARG(epoll_ctl, 1)
 
 	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);
@@ -331,7 +329,7 @@ void rep_process_syscall(struct context* context)
 	 * for the file referred to by fd for the byte range starting at offset and
 	 * continuing for len bytes
 	 */
-	SYS_FD_ARG(fallocate,0)
+	SYS_FD_ARG(fallocate, 0)
 
 	/**
 	 * int fdatasync(int fd)
@@ -342,7 +340,7 @@ void rep_process_syscall(struct context* context)
 	 * for a subsequent data read to be handled correctly.  On  the other hand, a change to the file size (st_size, as made by
 	 * say ftruncate(2)), would require a metadata flush
 	 */
-	SYS_FD_ARG(fdatasync,0)
+	SYS_FD_ARG(fdatasync, 0)
 
 	/**
 	 * int ftruncate(int fd, off_t length)
@@ -351,8 +349,8 @@ void rep_process_syscall(struct context* context)
 	 * to be truncated to a size of precisely length bytes.
 	 *
 	 */
-	SYS_FD_ARG(ftruncate64,0)
-	SYS_FD_ARG(ftruncate,0)
+	SYS_FD_ARG(ftruncate64, 0)
+	SYS_FD_ARG(ftruncate, 0)
 
 	/**
 	 * int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
@@ -362,14 +360,14 @@ void rep_process_syscall(struct context* context)
 	 * specifies the size of that buffer.
 	 *
 	 */
-	SYS_FD_ARG(getdents64,1)
-	SYS_FD_ARG(getdents,1)
+	SYS_FD_ARG(getdents64, 1)
+	SYS_FD_ARG(getdents, 1)
 
 	/*
 	 * int open(const char *pathname, int flags)
 	 * int open(const char *pathname, int flags, mode_t mode)
 	 */
-	SYS_FD_ARG(open,0)
+	SYS_FD_ARG(open, 0)
 
 	/**
 	 *  int pipe(int pipefd[2]);
@@ -381,7 +379,7 @@ void rep_process_syscall(struct context* context)
 	 * ten  to the write end of the pipe is buffered by the kernel until it is read
 	 * from the read end of the pipe.  For further details, see pipe(7).
 	 */
-	SYS_FD_ARG(pipe,2)
+	SYS_FD_ARG(pipe, 2)
 
 	/**
 	 * int pipe2(int pipefd[2], int flags)
@@ -389,7 +387,7 @@ void rep_process_syscall(struct context* context)
 	 * If flags is 0, then pipe2() is the same as pipe().  The following values can be bitwise
 	 * ORed in flags to obtain different behavior...
 	 */
-	SYS_FD_ARG(pipe2,2)
+	SYS_FD_ARG(pipe2, 2)
 
 	/**
 	 * int poll(struct pollfd *fds, nfds_t nfds, int timeout)
@@ -399,7 +397,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * Potentially blocking
 	 */
-	SYS_FD_ARG(poll,read_child_ecx(tid))
+	SYS_FD_ARG(poll, read_child_ecx(tid))
 
 	/**
 	 * int fstat(int fd, struct stat *buf)
@@ -408,7 +406,7 @@ void rep_process_syscall(struct context* context)
 	 * by the file descriptor fd.
 	 *
 	 */
-	SYS_FD_ARG(fstat64,1)
+	SYS_FD_ARG(fstat64, 1)
 
 	/**
 	 * int fstatfs(int fd, struct statfs *buf)
@@ -417,7 +415,7 @@ void rep_process_syscall(struct context* context)
 	 * path is the pathname of any file within the get_time(GET_TID(thread_id));mounted file system.  buf is a pointer to a
 	 * statfs structure defined approximately as follows:
 	 */
-	SYS_FD_ARG(fstatfs64,1)
+	SYS_FD_ARG(fstatfs64, 1)
 
 	/**
 	 * int fsync(int fd)
@@ -427,7 +425,7 @@ void rep_process_syscall(struct context* context)
 	 * where that file  resides.   The  call  blocks until  the  device  reports that the transfer has
 	 * completed.  It also flushes metadata information associated with the file (see stat(2))
 	 */
-	SYS_FD_ARG(fsync,0)
+	SYS_FD_ARG(fsync, 0)
 
 	/* int fcntl(int fd, int cmd, ... ( arg ));
 	 *
@@ -437,32 +435,11 @@ void rep_process_syscall(struct context* context)
 	 * type is indicated in parentheses after each cmd name (in most cases, the required type is long,
 	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
 	 */
-	SYS_FD_USER_DEF(fcntl64,0,
-			int cmd = read_child_ecx(tid);
-			switch (cmd) {
-				case F_DUPFD:
-				case F_GETFD:
-				case F_GETFL:
-				case F_SETFL:
-				case F_SETFD:
-				case F_SETOWN:
-				break;
+	SYS_FD_USER_DEF(fcntl64, 0, int cmd = read_child_ecx(tid); switch (cmd) { case F_DUPFD: case F_GETFD: case F_GETFL: case F_SETFL: case F_SETFD: case F_SETOWN: break;
 
-				case F_SETLK:
-				case F_SETLK64:
-				case F_SETLKW64:
-				case F_GETLK:
-				{
-					set_child_data(context);
-					break;
-				}
+	case F_SETLK: case F_SETLK64: case F_SETLKW64: case F_GETLK: { set_child_data(context); break; }
 
-				default:
-				printf("unknown command: %d -- bailing out\n", cmd);
-				sys_exit();
-			}
-			set_return_value(context);
-	)
+	default: printf("unknown command: %d -- bailing out\n", cmd); sys_exit(); } set_return_value(context);)
 
 	/**
 	 * int inotify_rm_watch(int fd, uint32_t wd)
@@ -470,7 +447,7 @@ void rep_process_syscall(struct context* context)
 	 * inotify_rm_watch()  removes the watch associated with the watch descriptor wd from the
 	 * inotify instance associated with the file descriptor fd.
 	 */
-	SYS_FD_ARG(inotify_rm_watch,0)
+	SYS_FD_ARG(inotify_rm_watch, 0)
 
 	/**
 	 * int inotify_add_watch(int fd, const char *pathname, uint32_t mask)
@@ -483,7 +460,7 @@ void rep_process_syscall(struct context* context)
 	 * mask bit-mask argument.  See inotify(7) for a description of  the  bits
 	 * that can be set in mask.
 	 */
-	SYS_FD_ARG(inotify_add_watch,0)
+	SYS_FD_ARG(inotify_add_watch, 0)
 
 	/**
 	 *  int ioctl(int d, int request, ...)
@@ -500,7 +477,7 @@ void rep_process_syscall(struct context* context)
 			goto_next_syscall_emu(context);
 		} else {
 			int request = read_child_ecx(tid);
-			debug_print("request: %x\n",request);
+			debug_print("request: %x\n", request);
 
 			if ((request >> 31) & 0x1) {
 				switch (request) {
@@ -514,14 +491,12 @@ void rep_process_syscall(struct context* context)
 					break;
 				}
 
-
 				case DRM_IOCTL_I915_GEM_PWRITE:
 				{
 					set_child_data(context);
 					set_child_data(context);
 					break;
 				}
-
 
 				case DRM_IOCTL_GET_MAGIC:
 				case DRM_IOCTL_RADEON_INFO:
@@ -554,14 +529,14 @@ void rep_process_syscall(struct context* context)
 	 * end  of  the  file,  depending on whether whence is SEEK_SET, SEEK_CUR, or SEEK_END, respectively.  It returns the
 	 * resulting file position in the argument result.
 	 */
-	SYS_FD_ARG(_llseek,1)
+	SYS_FD_ARG(_llseek, 1)
 
 	/**
 	 * off_t lseek(int fd, off_t offset, int whence)
 	 * The  lseek()  function  repositions the offset of the open file associated with the file
 	 descriptor fd to the argument offset according to the directive whence as follows:
 	 */
-	SYS_FD_ARG(lseek,0)
+	SYS_FD_ARG(lseek, 0)
 
 	/**
 	 * int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
@@ -571,7 +546,7 @@ void rep_process_syscall(struct context* context)
 	 * A file descriptor is considered ready if  it  is possible to perform the corresponding I/O operation
 	 * (e.g., read(2)) without blocking.
 	 */
-	SYS_FD_ARG(_newselect,read_child_ebx(tid) * 3 + 1)
+	SYS_FD_ARG(_newselect, read_child_ebx(tid) * 3 + 1)
 
 	/**
 	 * int socketcall(int call, unsigned long *args)
@@ -592,7 +567,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * read() attempts to read up to count bytes from file descriptor fd into the buffer starting at buf.
 	 */
-	SYS_FD_ARG(read,1)
+	SYS_FD_ARG(read, 1)
 
 	/**
 	 * mode_t umask(mode_t mask);
@@ -611,14 +586,14 @@ void rep_process_syscall(struct context* context)
 	 * returned returns the new data. Note that not all file systems are
 	 * POSIX conforming.
 	 */
-	SYS_FD_ARG(write,0)
+	SYS_FD_ARG(write, 0)
 
 	/**
 	 * ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
 	 * The writev() function writes iovcnt buffers of data described by iov
 	 * to the file associated with the file descriptor fd ("gather output").
 	 */
-	SYS_FD_ARG(writev,0)
+	SYS_FD_ARG(writev, 0)
 
 	/**
 	 * void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t pgoffset);
@@ -699,14 +674,14 @@ void rep_process_syscall(struct context* context)
 	 * If pathname is a symbolic link, it is dereferenced.
 	 *
 	 */
-	SYS_FD_ARG(access,0)
+	SYS_FD_ARG(access, 0)
 
 	/**
 	 * int chmod(const char *path, mode_t mode)
 	 *
 	 * The mode of the file given by path or referenced by fildes is changed
 	 */
-	SYS_FD_ARG(chmod,0)
+	SYS_FD_ARG(chmod, 0)
 
 	/**
 	 * int clock_gettime(clockid_t clk_id, struct timespec *tp);
@@ -726,7 +701,7 @@ void rep_process_syscall(struct context* context)
 	 * argument tp of clock_settime() is not a multiple of res, then it is truncated
 	 * to a multiple of res.
 	 */
-	SYS_FD_ARG(clock_getres,1)
+	SYS_FD_ARG(clock_getres, 1)
 
 	/**
 	 * int epoll_create(int size);
@@ -736,7 +711,7 @@ void rep_process_syscall(struct context* context)
 	 * just a hint to the kernel about how to dimension internal structures.
 	 * When  no  longer  required,  the  file  descriptor returned  by epoll_create() should be closed by using close(2).
 	 */
-	SYS_FD_ARG(epoll_create,0)
+	SYS_FD_ARG(epoll_create, 0)
 
 	/**
 	 * int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
@@ -745,7 +720,7 @@ void rep_process_syscall(struct context* context)
 	 * The memory area pointed to by events will contain the events that will be available for the caller.  Up
 	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
 	 */
-	SYS_FD_ARG(epoll_wait,context->trace.recorded_regs.eax)
+	SYS_FD_ARG(epoll_wait, context->trace.recorded_regs.eax)
 
 	/**
 	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
@@ -793,21 +768,21 @@ void rep_process_syscall(struct context* context)
 	 * that is the current working directory of the calling process.  The pathname is returned as the function result and via the argument buf, if
 	 * present.
 	 */
-	SYS_EMU_ARG(getcwd,1)
+	SYS_EMU_ARG(getcwd, 1)
 
 	/**
 	 * gid_t getegid(void);
 	 *
 	 * getegid() returns the effective group ID of the calling process.
 	 */
-	SYS_EMU_ARG(getegid32,0)
+	SYS_EMU_ARG(getegid32, 0)
 
 	/**
 	 * uid_t geteuid(void);
 	 *
 	 * geteuid() returns the effective user ID of the calling process.
 	 */
-	SYS_EMU_ARG(geteuid32,0)
+	SYS_EMU_ARG(geteuid32, 0)
 
 	/**
 	 * int getgroups(int size, gid_t list[]);			ptrace_cont(context, trace);
@@ -824,21 +799,21 @@ void rep_process_syscall(struct context* context)
 	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
 	 *  in a further call to getgroups().
 	 */
-	SYS_EMU_ARG(getgroups32,read_child_ebx(tid))
+	SYS_EMU_ARG(getgroups32, read_child_ebx(tid))
 
 	/**
 	 * pid_t getpgrp(void)
 	 *
 	 * The POSIX.1 getpgrp() always returns the PGID of the caller
 	 */
-	SYS_EMU_ARG(getpgrp,0)
+	SYS_EMU_ARG(getpgrp, 0)
 
 	/**
 	 * gid_t getgid(void);
 	 *
 	 * getgid() returns the real group ID of the calling process.
 	 */
-	SYS_EMU_ARG(getgid32,0)
+	SYS_EMU_ARG(getgid32, 0)
 
 	/**
 	 * pid_t getpid(void);
@@ -847,21 +822,21 @@ void rep_process_syscall(struct context* context)
 	 * (This is often used by routines that generate unique temporary filenames.)The functions clock_gettime() and clock_settime() retrieve and set the time of the specified clock clk_id.
 	 *
 	 */
-	SYS_EMU_ARG(getpid,0)
+	SYS_EMU_ARG(getpid, 0)
 
 	/**
 	 * pid_t getppid(void);
 	 *
 	 * getppid() returns the process ID of the parent of the calling process.
 	 */
-	SYS_EMU_ARG(getppid,0)
+	SYS_EMU_ARG(getppid, 0)
 
 	/**
 	 * pid_t gettid(void);
 	 *
 	 * gettid()  returns  the caller's thread ID (TID).
 	 */
-	SYS_EMU_ARG(gettid,0)
+	SYS_EMU_ARG(gettid, 0)
 
 	/**
 	 * int gettimeofday(struct timeval *tv, struct timezone *tz);
@@ -870,14 +845,14 @@ void rep_process_syscall(struct context* context)
 	 * well as a timezone.  The tv argument is a struct timeval (as specified in <sys/time.h>):
 	 *
 	 */
-	SYS_EMU_ARG(gettimeofday,2)
+	SYS_EMU_ARG(gettimeofday, 2)
 
 	/**
 	 * uid_t getuid(void);
 	 *
 	 *  getuid() returns the real user ID of the calling process
 	 */
-	SYS_EMU_ARG(getuid32,0)
+	SYS_EMU_ARG(getuid32, 0)
 
 	/* int kill(pid_t pid, int sig)
 	 *
@@ -903,7 +878,7 @@ void rep_process_syscall(struct context* context)
 	 * lstat() is identical to stat(), except that if path is a symbolic link, then
 	 * the link itself is stat-ed, not the file that it refers to.
 	 */
-	SYS_EMU_ARG(lstat64,1)
+	SYS_EMU_ARG(lstat64, 1)
 
 	/**
 	 * int madvise(void *addr, size_t length, int advice);
@@ -916,14 +891,14 @@ void rep_process_syscall(struct context* context)
 	 * is free to ignore the advice.
 	 *
 	 */
-	SYS_EMU_ARG(madvise,0)
+	SYS_EMU_ARG(madvise, 0)
 
 	/**
 	 * int mkdir(const char *pathname, mode_t mode);
 	 *
 	 * mkdir() attempts to create a directory named pathname.
 	 */
-	SYS_EMU_ARG(mkdir,0)
+	SYS_EMU_ARG(mkdir, 0)
 
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
@@ -933,7 +908,7 @@ void rep_process_syscall(struct context* context)
 	 * It will truncate the contents (to a length of bufsiz characters), in case
 	 * the buffer is too small to hold all of the contents.
 	 */
-	SYS_EMU_ARG(readlink,1)
+	SYS_EMU_ARG(readlink, 1)
 
 	/**
 	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
@@ -942,7 +917,7 @@ void rep_process_syscall(struct context* context)
 	 * pointed to by mask.  The cpusetsize argument specifies the
 	 *  size (in bytes) of mask.  If pid is zero, then the mask of the calling process is returned.
 	 */
-	SYS_EMU_ARG(sched_getaffinity,1)
+	SYS_EMU_ARG(sched_getaffinity, 1)
 
 	/**
 	 * int sched_getparam(pid_t pid, struct sched_param *param)
@@ -951,7 +926,7 @@ void rep_process_syscall(struct context* context)
 	 * dentified  by  pid.  If pid is zero, then the parameters of the calling process
 	 * are retrieved.
 	 */
-	SYS_EMU_ARG(sched_getparam,1)
+	SYS_EMU_ARG(sched_getparam, 1)
 
 	/**
 	 *  int sched_get_priority_max(int policy)
@@ -959,7 +934,7 @@ void rep_process_syscall(struct context* context)
 	 * sched_get_priority_max() returns the maximum priority value that can be
 	 * used    with   the   scheduling   algorithm   identified   by   policy.
 	 */
-	SYS_EMU_ARG(sched_get_priority_max,0)
+	SYS_EMU_ARG(sched_get_priority_max, 0)
 
 	/**
 	 * int sched_get_priority_min(int policy)
@@ -967,7 +942,7 @@ void rep_process_syscall(struct context* context)
 	 * sched_get_priority_min() returns the minimum priority value that can be used
 	 * with the scheduling algorithm identified by  policy.
 	 */
-	SYS_EMU_ARG(sched_get_priority_min,0)
+	SYS_EMU_ARG(sched_get_priority_min, 0)
 
 	/**
 	 * int sched_getscheduler(pid_t pid);
@@ -976,7 +951,7 @@ void rep_process_syscall(struct context* context)
 	 * process identified by pid.  If pid equals zero, the policy  of  the  calling
 	 * process will be retrieved.
 	 */
-	SYS_EMU_ARG(sched_getscheduler,0)
+	SYS_EMU_ARG(sched_getscheduler, 0)
 
 	/**
 	 * int sched_setscheduler(pid_t pid, int policy, const struct sched_param *param);
@@ -986,7 +961,7 @@ void rep_process_syscall(struct context* context)
 	 * and parameters of the calling process will be set.  The interpretation of the argument
 	 * param depends on the selected policy.
 	 */
-	SYS_EMU_ARG(sched_setscheduler,0)
+	SYS_EMU_ARG(sched_setscheduler, 0)
 
 	/**
 	 * int sched_yield(void)
@@ -994,7 +969,7 @@ void rep_process_syscall(struct context* context)
 	 * sched_yield() causes the calling thread to relinquish the CPU.  The thread is moved to the end of
 	 * the queue for its static priority and a new thread gets to run.
 	 */
-	SYS_EMU_ARG(sched_yield,0)
+	SYS_EMU_ARG(sched_yield, 0)
 
 	/**
 	 * int setpgid(pid_t pid, pid_t pgid);
@@ -1007,14 +982,14 @@ void rep_process_syscall(struct context* context)
 	 * credentials(7)).  In this case, the  pgid  specifies  an  existing process group to be
 	 * joined and the session ID of that group must match the session ID of the joining process.
 	 */
-	SYS_EMU_ARG(setpgid,0)
+	SYS_EMU_ARG(setpgid, 0)
 
 	/**
 	 *  int stat(const char *path, struct stat *buf);
 	 *
 	 *  stat() stats the file pointed to by path and fills in buf.
 	 */
-	SYS_EMU_ARG(stat64,1)
+	SYS_EMU_ARG(stat64, 1)
 
 	/**
 	 * int statfs(const char *path, struct statfs *buf)
@@ -1027,14 +1002,14 @@ void rep_process_syscall(struct context* context)
 	 * 2 paramaters. However, strace tells another story...
 	 *
 	 */
-	SYS_EMU_ARG(statfs64,1)
+	SYS_EMU_ARG(statfs64, 1)
 
 	/**
 	 * int sysinfo(struct sysinfo *info)
 	 *
 	 * sysinfo() provides a simple way of getting overall system statistics.
 	 */
-	SYS_EMU_ARG(sysinfo,1)
+	SYS_EMU_ARG(sysinfo, 1)
 
 	/* int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
 	 *
@@ -1043,7 +1018,7 @@ void rep_process_syscall(struct context* context)
 	 * performs the analogous task  for  the  process's  group IDs.
 	 * @return:  On success, zero is returned.  On error, -1 is returned, and errno is set appropriately.
 	 */
-	SYS_EMU_ARG(getresgid32,3)
+	SYS_EMU_ARG(getresgid32, 3)
 
 	/**
 	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
@@ -1061,7 +1036,7 @@ void rep_process_syscall(struct context* context)
 	 * inotify_init()  initializes  a  new inotify instance and returns a file
 	 * descriptor associated with a new inotify event queue.
 	 */
-	SYS_EMU_ARG(inotify_init1,0)
+	SYS_EMU_ARG(inotify_init1, 0)
 
 	/**
 	 *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
@@ -1078,28 +1053,28 @@ void rep_process_syscall(struct context* context)
 	 * places the previous soft and hard limits for resource in the rlimit structure
 	 * pointed to by old_limit.
 	 */
-	SYS_EMU_ARG(prlimit64,1)
+	SYS_EMU_ARG(prlimit64, 1)
 
 	/**
 	 * int rmdir(const char *pathname)
 	 *
 	 * rmdir() deletes a directory, which must be empty.
 	 */
-	SYS_EMU_ARG(rmdir,0)
+	SYS_EMU_ARG(rmdir, 0)
 
 	/**
 	 * int rename(const char *oldpath, const char *newpath)
 	 *
 	 * rename() renames a file, moving it between directories if required.
 	 */
-	SYS_EMU_ARG(rename,0)
+	SYS_EMU_ARG(rename, 0)
 
 	/**
 	 * int setregid(gid_t rgid, gid_t egid)
 	 *
 	 * setreuid() sets real and effective user IDs of the calling process
 	 */
-	SYS_EMU_ARG(setregid32,0)
+	SYS_EMU_ARG(setregid32, 0)
 
 	/**
 	 * int statfs(const char *path, struct statfs *buf)
@@ -1107,14 +1082,14 @@ void rep_process_syscall(struct context* context)
 	 * The function statfs() returns information about a mounted file system.  path is the pathname of any file within the mounted
 	 * file system.  buf is a pointer to a statfs structure defined approximately as follows:
 	 */
-	SYS_EMU_ARG(statfs,1)
+	SYS_EMU_ARG(statfs, 1)
 
 	/**
 	 * int symlink(const char *oldpath, const char *newpath)
 	 *
 	 * symlink() creates a symbolic link named newpath which contains the string oldpath.
 	 */
-	SYS_EMU_ARG(symlink,0)
+	SYS_EMU_ARG(symlink, 0)
 
 	/**
 	 * time_t time(time_t *t);
@@ -1123,7 +1098,7 @@ void rep_process_syscall(struct context* context)
 	 *  in seconds. If t is non-NULL, the return value is also stored in the memory pointed
 	 *  to by t.
 	 */
-	SYS_EMU_ARG(time,1)
+	SYS_EMU_ARG(time, 1)
 
 	/**
 	 * clock_t times(struct tms *buf)
@@ -1131,7 +1106,7 @@ void rep_process_syscall(struct context* context)
 	 * times()  stores  the  current  process  times in the struct tms that buf points to.  The
 	 *  struct tms is as defined in <sys/times.h>:
 	 */
-	SYS_EMU_ARG(times,1)
+	SYS_EMU_ARG(times, 1)
 
 	/**
 	 * int uname(struct utsname *buf)
@@ -1139,7 +1114,7 @@ void rep_process_syscall(struct context* context)
 	 * uname() returns system information in the structure pointed to by buf. The utsname
 	 * struct is defined in <sys/utsname.h>:
 	 */
-	SYS_EMU_ARG(uname,1)
+	SYS_EMU_ARG(uname, 1)
 
 	/**
 	 * int getrlimit(int resource, struct rlimit *rlim)
@@ -1148,7 +1123,7 @@ void rep_process_syscall(struct context* context)
 	 * Each resource has an associated soft and hard limit, as defined by the rlimit structure
 	 * (the rlim argument to both getrlimit() and setrlimit()):
 	 */
-	SYS_EMU_ARG(ugetrlimit,1)
+	SYS_EMU_ARG(ugetrlimit, 1)
 
 	/**
 	 * int unlink(const char *path);
@@ -1159,7 +1134,7 @@ void rep_process_syscall(struct context* context)
 	 * pathname pointed to by path and shall decrement the link count of the file referenced by the link.
 	 *
 	 */
-	SYS_EMU_ARG(unlink,0)
+	SYS_EMU_ARG(unlink, 0)
 
 	/**
 	 * int utime(const char *filename, const struct utimbuf *times)
@@ -1174,7 +1149,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * FIXXME: is mod_time set by the kernel?
 	 */
-	SYS_EMU_ARG(utime,0)
+	SYS_EMU_ARG(utime, 0)
 
 	/**
 	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
@@ -1183,7 +1158,7 @@ void rep_process_syscall(struct context* context)
 	 * additionally return resource usage information about the child in the
 	 * structure pointed to by rusage.
 	 */
-	SYS_EMU_ARG(wait4,2)
+	SYS_EMU_ARG(wait4, 2)
 
 	/************************ Executed system calls come here ***************************/
 
@@ -1198,7 +1173,7 @@ void rep_process_syscall(struct context* context)
 	 * brk()  sets  the  end  of  the  data segment to the value specified by addr, when that value is reasonable, the system has
 	 * enough memory, and the process does not exceed its maximum data size (see setrlimit(2)).
 	 */
-	SYS_EXEC_ARG(brk,0)
+	SYS_EXEC_ARG(brk, 0)
 
 	/**
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
@@ -1390,7 +1365,7 @@ void rep_process_syscall(struct context* context)
 	 *  mremap()  expands  (or  shrinks) an existing memory mapping, potentially moving it at the same time
 	 *  (controlled by the flags argument and the available virtual address space).
 	 */
-	SYS_EXEC_ARG(mremap,0)
+	SYS_EXEC_ARG(mremap, 0)
 
 	/**
 	 * int munmap(void *addr, size_t length)
@@ -1400,7 +1375,7 @@ void rep_process_syscall(struct context* context)
 	 * automatically unmapped when the process is terminated.  On the other hand, closing the file descriptor
 	 * does not unmap the region.
 	 */
-	SYS_EXEC_ARG(munmap,0)
+	SYS_EXEC_ARG(munmap, 0)
 
 	/**
 	 * int mprotect(const void *addr, size_t len, int prot)
@@ -1412,7 +1387,7 @@ void rep_process_syscall(struct context* context)
 	 * SIGSEGV signal for the process.
 	 *
 	 */
-	SYS_EXEC_ARG(mprotect,0)
+	SYS_EXEC_ARG(mprotect, 0)
 
 	/**
 	 * long set_robust_list(struct robust_list_head *head, size_t len)
@@ -1424,7 +1399,7 @@ void rep_process_syscall(struct context* context)
 	 * set_robust_list sets the head of the list of robust futexes owned by the current thread to head.
 	 * len is the size of *head.
 	 */
-	SYS_EXEC_ARG(set_robust_list,0)
+	SYS_EXEC_ARG(set_robust_list, 0)
 
 	/**
 	 * int set_thread_area(struct user_desc *u_info)
@@ -1441,7 +1416,7 @@ void rep_process_syscall(struct context* context)
 	 * changed.
 	 *
 	 */
-	SYS_EXEC_ARG(set_thread_area,0)
+	SYS_EXEC_ARG(set_thread_area, 0)
 
 	/**
 	 * long set_tid_address(int *tidptr);
@@ -1456,7 +1431,7 @@ void rep_process_syscall(struct context* context)
 	 * PID at this address.
 	 *
 	 */
-	SYS_EXEC_ARG(set_tid_address,1)
+	SYS_EXEC_ARG(set_tid_address, 1)
 
 	/**
 	 * int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
@@ -1470,7 +1445,7 @@ void rep_process_syscall(struct context* context)
 	 * saved in oldact.
 	 *
 	 */
-	SYS_EXEC_ARG(rt_sigaction,1)
+	SYS_EXEC_ARG(rt_sigaction, 1)
 
 	/**
 	 * int sigaltstack(const stack_t *ss, stack_t *oss)
@@ -1479,7 +1454,7 @@ void rep_process_syscall(struct context* context)
 	 * an existing alternate signal stack.  An alternate signal stack is used during the execution of a signal
 	 * handler if the establishment of that handler (see sigaction(2)) requested it.
 	 */
-	SYS_EXEC_ARG(sigaltstack,0)
+	SYS_EXEC_ARG(sigaltstack, 0)
 
 	/**
 	 *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
@@ -1488,17 +1463,17 @@ void rep_process_syscall(struct context* context)
 	 *  thread.  The signal mask is the set of signals whose delivery is currently
 	 *   blocked for the caller (see also signal(7) for more details).
 	 */
-	SYS_EXEC_ARG(rt_sigprocmask,1)
+	SYS_EXEC_ARG(rt_sigprocmask, 1)
 
 	/**
 	 * int sigreturn(unsigned long __unused);
 	 *
 	 * When  the  Linux kernel creates the stack frame for a signal handler, a
-     * call to sigreturn() is inserted into  the  stack  frame  so  that  upon
-     * return from the signal handler, sigreturn() will be called.
+	 * call to sigreturn() is inserted into  the  stack  frame  so  that  upon
+	 * return from the signal handler, sigreturn() will be called.
 	 *
 	 */
-	SYS_EXEC_ARG(sigreturn,0);
+	SYS_EXEC_ARG(sigreturn, 0);
 
 	default:
 	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out\n", syscall);

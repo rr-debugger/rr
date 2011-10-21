@@ -67,6 +67,7 @@ void print_register_file_tid(pid_t tid)
 	fprintf(stderr, "ebp: %lx\n", regs.ebp);
 	fprintf(stderr, "esp: %lx\n", regs.esp);
 	fprintf(stderr, "eip: %lx\n", regs.eip);
+	fprintf(stderr, "orig_eax %lx\n", regs.orig_eax);
 	fprintf(stderr, "\n");
 }
 
@@ -287,6 +288,7 @@ void print_syscall(struct context *ctx, struct trace *trace)
 
 		default:
 		debug_print("%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
+		break;
 		}
 	}
 

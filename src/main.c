@@ -200,7 +200,7 @@ static void start(int option, int argc, char* argv[], char** envp)
 
 			/* main loop */
 			replay();
-
+			printf("ok\n"); fflush(stdout);
 			/* thread wants to exit*/
 			close_libpfm();
 			read_trace_close();

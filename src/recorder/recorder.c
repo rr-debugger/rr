@@ -46,8 +46,7 @@ void goto_next_event_singlestep(struct context* context)
 		sys_ptrace_singlestep(tid, context->pending_sig);
 		sys_waitpid(tid, &(context->status));
 
-		if (
-		WSTOPSIG(context->status) == SIGSEGV) {
+		if (WSTOPSIG(context->status) == SIGSEGV) {
 			break;
 		}
 	}
@@ -76,10 +75,8 @@ static int wait_nonblock(struct context* context)
 
 void cont_block(struct context *ctx)
 {
-	//printf("cont_block_before:%d:state: %x  event: %d pending_sig: %d\n", ctx->child_tid, ctx->exec_state, ctx->event, ctx->pending_sig); fflush(stdout);
 	goto_next_event(ctx);
 	handle_signal(ctx);
-	//printf("cont_block_after:%d:state: %x  event: %d pending_sig: %d\n", ctx->child_tid, ctx->exec_state, ctx->event, ctx->pending_sig);
 }
 
 static int needs_finish(struct context* context)
@@ -112,7 +109,7 @@ void start_recording()
 
 		/* the child process will either be interrupted by: (1) a signal, or (2) at
 		 * the entry of the system call */
-		debug_print("%d: state %d\n",ctx->child_tid,ctx->exec_state);
+		debug_print("%d: state %d\n", ctx->child_tid, ctx->exec_state);
 
 		/* simple state machine to guarantee process in the application */
 		switch (ctx->exec_state) {
@@ -136,6 +133,7 @@ void start_recording()
 				cont_block(ctx);
 				ctx->allow_ctx_switch = 1;
 				break;
+				/* we are at the entry of a system call */
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 				ctx->allow_ctx_switch = needs_finish(ctx);
@@ -155,7 +153,7 @@ void start_recording()
 
 			if (read_child_eax(ctx->child_tid) != -38) {
 //				ctx->exec_state = EXEC_STATE_START;
-	//			break;
+				//			break;
 			}
 
 			/* continue and execute the system call */
@@ -166,7 +164,6 @@ void start_recording()
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-
 			int ret, event;
 
 			ret = wait_nonblock(ctx);
@@ -174,7 +171,7 @@ void start_recording()
 				/* we received a signal while in the system call and send it right away*/
 				/* we have already sent the signal and process sigreturn */
 				if (ctx->event == SYS_sigreturn) {
-				//	assert(1==0);
+					//	assert(1==0);
 				}
 
 				if (ctx->pending_sig) {
@@ -195,10 +192,8 @@ void start_recording()
 				case PTRACE_EVENT_CLONE:
 				case PTRACE_EVENT_FORK:
 				{
-					int new_tid;
-
 					/* get new tid, register at the scheduler and setup HPC */
-					new_tid = sys_ptrace_getmsg(ctx->child_tid);
+					int new_tid = sys_ptrace_getmsg(ctx->child_tid);
 
 					/* ensure that clone was successful */
 					if (read_child_eax(ctx->child_tid) == -1) {
@@ -251,6 +246,7 @@ void start_recording()
 		}
 		default:
 		errx(1, "Unknown execution state: %x -- bailing out\n", ctx->exec_state);
+			break;
 		}
 	} /* while loop */
 }

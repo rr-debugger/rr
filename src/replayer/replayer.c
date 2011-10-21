@@ -139,9 +139,10 @@ static void check_initial_register_file()
 	write_child_edx(context->child_tid, context->trace.recorded_regs.edx);
 	write_child_ebp(context->child_tid, context->trace.recorded_regs.ebp);
 
+
 	struct user_regs_struct r;
 	read_child_registers(context->child_tid, &r);
-	compare_register_files("init_rec", &(context->trace.recorded_regs), "now", &r, 1, 1);
+	//compare_register_files("init_rec", &(context->trace.recorded_regs), "now", &r, 1, 1);
 
 }
 
@@ -154,12 +155,6 @@ void replay()
 
 	while (rep_sched_get_num_threads()) {
 		ctx = rep_sched_get_thread();
-
-	//	char* command = get_command(context);
-
-	//	if (strncmp(command,"k",1) == 0) {
-	//		break;
-	//	}
 
 		/* print some kind of progress */
 		if (ctx->trace.global_time % 1000 == 0) {
@@ -181,6 +176,6 @@ void replay()
 			rep_process_signal(ctx);
 		}
 	}
-	fprintf(stderr,"\nreplayer sucessfully finished\n");
+	fprintf(stderr,"replayer sucessfully finished\n"); fflush(stdout);
 	//gdb_disconnect();
 }

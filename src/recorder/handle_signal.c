@@ -63,7 +63,7 @@ void handle_signal(struct context* context)
 		return;
 	}
 
-//	fprintf(stderr,"got signal: %d\n",sig);
+	fprintf(stderr,"got signal: %d\n",sig);
 
 	switch (sig) {
 

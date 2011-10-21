@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), context->exec_state);
+	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -1242,13 +1242,14 @@ void rec_process_syscall(struct context *ctx)
 	 * int execve(const char *filename, char *const argv[], char *const envp[]);
 	 *
 	 */
-
 	case SYS_execve:
 	{
-		unsigned long* stack_ptr = (unsigned long*) read_child_esp(tid);
+		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
+		print_register_file_tid(tid);
 
 		/* esp[0] points to argc - iterate over argv pointers*/
-		int* argc = read_child_data(ctx, sizeof(int), (long int) stack_ptr);
+		int* argc = read_child_data(ctx, 100, (long int) (stack_ptr));
+
 		stack_ptr += *argc + 1;
 		sys_free((void**) &argc);
 

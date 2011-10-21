@@ -125,7 +125,7 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 	/* signal the parent that the child is ready */
 	kill(getpid(), SIGSTOP);
 	/* we need to fork another child since we must fake the tid in the replay */
-
+	printf("executable %s\n",executable);
 	if (fork() == 0) {
 		/* start client application */
 		execve(executable, argv, envp);
@@ -154,10 +154,14 @@ void sys_ptrace_syscall(pid_t pid)
 	sys_ptrace(PTRACE_SYSCALL, pid, 0, 0);
 }
 
-
+/**
+ * Detaches the child process from monitoring. This method must only be
+ * invoked, if the thread exits. We do not check errors here, since the
+ * thread could have already exited.
+ */
 void sys_ptrace_detatch(pid_t pid)
 {
-		sys_ptrace(PTRACE_DETACH, pid, 0, 0);
+		ptrace(PTRACE_DETACH, pid, 0, 0);
 }
 
 
