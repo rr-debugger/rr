@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -203,6 +203,17 @@ void rec_process_syscall(struct context *ctx)
 
 		break;
 	}
+
+	/**
+	 * eventfd()  creates  an  "eventfd  object"  that can be used as an event
+     * wait/notify mechanism by userspace applications, and by the  kernel  to
+     * notify  userspace  applications  of  events.   The  object  contains an
+     * unsigned 64-bit integer (uint64_t) counter that is  maintained  by  the
+     * kernel.   This  counter  is initialized with the value specified in the
+     * argument initval.
+	 */
+	SYS_REC0(eventfd2)
+
 
 	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);

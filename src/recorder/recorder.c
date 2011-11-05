@@ -120,29 +120,31 @@ void start_recording()
 
 			/* we need to issue a blocking continue here to serialize program execution */
 			cont_block(ctx);
-
+			ctx->allow_ctx_switch = needs_finish(ctx);
+			printf("event in state %d\n",ctx->event);
 			/* state might be overwritten if a signal occurs */
 			if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
 				ctx->allow_ctx_switch = 1;
 			} else if (ctx->pending_sig) {
 				ctx->allow_ctx_switch = 0;
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+				assert(1==0);
 			} else if (ctx->event == SYS_sigreturn) {
 				record_event(ctx, 0);
 				printf("son of a bitch\n");
+				assert(1==0);
 				cont_block(ctx);
 				ctx->allow_ctx_switch = 1;
 				break;
 				/* we are at the entry of a system call */
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
-				ctx->allow_ctx_switch = needs_finish(ctx);
+
 				/* this is a wired state -- no idea why it works */
 			} else if (ctx->event == SYS_restart_syscall) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 				ctx->allow_ctx_switch = 1;
-			} else {
-				ctx->allow_ctx_switch = 1;
+				assert(1==0);
 			}
 			record_event(ctx, 0);
 			break;
