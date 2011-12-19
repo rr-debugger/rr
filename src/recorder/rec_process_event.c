@@ -702,23 +702,9 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * We also need to record edi, since the return value of the time struct is not defined
 	 */
-	case SYS__newselect:
-	{
-		int i;
-		int nfdes = regs.ebx;
 
-		fd_set *readfds = (fd_set *) regs.ecx;
-		fd_set *writefds = (fd_set *) regs.edx;
-		fd_set *exceptfds = (fd_set *) regs.esi;
-		for (i = 0; i < nfdes; i++) {
-			record_child_data(ctx, syscall, sizeof(fd_set), regs.ecx + ((readfds != 0) ? i * sizeof(fd_set) : 0));
-			record_child_data(ctx, syscall, sizeof(fd_set), regs.edx + ((writefds != 0) ? i * sizeof(fd_set) : 0));
-			record_child_data(ctx, syscall, sizeof(fd_set), regs.esi + ((exceptfds != 0) ? i * sizeof(fd_set) : 0));
-		}
+	SYS_REC4(_newselect,sizeof(fd_set), regs.ecx, sizeof(fd_set), regs.edx, sizeof(fd_set), regs.esi, sizeof(struct timeval), regs.edi)
 
-		record_child_data(ctx, syscall, sizeof(struct timeval), regs.edi);
-		break;
-	}
 
 	/* this class of system calls has a char* as argument 0; we log this argument */
 

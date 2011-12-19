@@ -23,17 +23,14 @@
 #include "rep_process_event.h"
 #include "rep_process_signal.h"
 #include "read_trace.h"
-#include "remote.h"
 
 #include <netinet/in.h>
-
 
 #include "../share/hpc.h"
 #include "../share/trace.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/util.h"
-
 
 #include <perfmon/pfmlib_perf_event.h>
 
@@ -129,27 +126,22 @@ static void single_step(struct context* context)
 	}
 }
 
-
-
 static void check_initial_register_file()
 {
+	printf("check initial register file\n");
 	struct context *context = rep_sched_get_thread();
 
-	write_child_ebx(context->child_tid, context->trace.recorded_regs.ebx);
+	/*write_child_ebx(context->child_tid, context->trace.recorded_regs.ebx);
 	write_child_edx(context->child_tid, context->trace.recorded_regs.edx);
-	write_child_ebp(context->child_tid, context->trace.recorded_regs.ebp);
-
+	write_child_ebp(context->child_tid, context->trace.recorded_regs.ebp);*/
 
 	struct user_regs_struct r;
 	read_child_registers(context->child_tid, &r);
-	//compare_register_files("init_rec", &(context->trace.recorded_regs), "now", &r, 1, 1);
-
 }
 
 void replay()
 {
 	check_initial_register_file();
-	//gdb_connect(1234);
 
 	struct context *ctx = NULL;
 
@@ -158,7 +150,7 @@ void replay()
 
 		/* print some kind of progress */
 		if (ctx->trace.global_time % 1000 == 0) {
-			fprintf(stderr,".");
+			fprintf(stderr, ".");
 		}
 
 		if (ctx->trace.state == 0) {
@@ -176,6 +168,7 @@ void replay()
 			rep_process_signal(ctx);
 		}
 	}
-	fprintf(stderr,"replayer sucessfully finished\n"); fflush(stdout);
-	//gdb_disconnect();
+
+	fprintf(stderr, "replayer sucessfully finished\n");
+	fflush(stdout);
 }

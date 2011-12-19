@@ -546,7 +546,7 @@ void rep_process_syscall(struct context* context)
 	 * A file descriptor is considered ready if  it  is possible to perform the corresponding I/O operation
 	 * (e.g., read(2)) without blocking.
 	 */
-	SYS_FD_ARG(_newselect, read_child_ebx(tid) * 3 + 1)
+	SYS_FD_ARG(_newselect, 4)
 
 	/**
 	 * int socketcall(int call, unsigned long *args)

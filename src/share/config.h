@@ -2,7 +2,7 @@
 #define CONFIG_H_
 
 #include <inttypes.h>
-//#define DEBUG 	1
+#define DEBUG 	1
 
 #define MAX_RECORD_INTERVAL		((uint64_t)12345612345678)
 
