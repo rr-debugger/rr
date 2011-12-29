@@ -123,7 +123,7 @@ void rep_process_signal(struct context *ctx)
 	case SIGIO:
 	case SIGCHLD:
 	{
-		/* synchronous signal (signal received in a system call */
+		/* synchronous signal (signal received in a system call) */
 		if (trace->rbc_up == 0) {
 			ctx->pending_sig = sig;
 			return;

@@ -109,7 +109,7 @@ void start_recording()
 
 		/* the child process will either be interrupted by: (1) a signal, or (2) at
 		 * the entry of the system call */
-		debug_print("%d: state %d\n", ctx->child_tid, ctx->exec_state);
+		//debug_print("%d: state %d\n", ctx->child_tid, ctx->exec_state);
 
 		/* simple state machine to guarantee process in the application */
 		switch (ctx->exec_state) {
@@ -121,20 +121,19 @@ void start_recording()
 			/* we need to issue a blocking continue here to serialize program execution */
 			cont_block(ctx);
 			ctx->allow_ctx_switch = needs_finish(ctx);
-			printf("event in state %d\n",ctx->event);
+			//printf("event in state %d\n",ctx->event);
 			/* state might be overwritten if a signal occurs */
 			if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
 				ctx->allow_ctx_switch = 1;
 			} else if (ctx->pending_sig) {
 				ctx->allow_ctx_switch = 0;
-				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
-				assert(1==0);
+				printf("pending signal %d\n",ctx->pending_sig);
 			} else if (ctx->event == SYS_sigreturn) {
-				record_event(ctx, 0);
-				printf("son of a bitch\n");
-				assert(1==0);
-				cont_block(ctx);
-				ctx->allow_ctx_switch = 1;
+				//record_event(ctx, 0);
+				//printf("son of a bitch\n");
+				//assert(1==0);
+				//cont_block(ctx);
+				//ctx->allow_ctx_switch = 1;
 				break;
 				/* we are at the entry of a system call */
 			} else if (ctx->event > 0) {

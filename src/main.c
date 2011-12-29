@@ -198,9 +198,9 @@ static void start(int option, int argc, char* argv[], char** envp)
 			pid_t rec_main_thread = get_recorded_main_thread();
 			rep_sched_register_thread(pid, rec_main_thread);
 
+			printf("starting to replay   argv %x __argv %x\n",argv,__argv); fflush(stdout);
 			/* main loop */
 			replay();
-			printf("ok\n"); fflush(stdout);
 			/* thread wants to exit*/
 			close_libpfm();
 			read_trace_close();
@@ -235,6 +235,7 @@ int main(int argc, char* argv[], char** envp)
 	} else {
 		print_usage();
 	}
+
 	return 0;
 }
 

@@ -137,6 +137,8 @@ static void check_initial_register_file()
 
 	struct user_regs_struct r;
 	read_child_registers(context->child_tid, &r);
+
+	printf("we do not arrive here!\n"); fflush(stdout);
 }
 
 void replay()
@@ -153,6 +155,8 @@ void replay()
 			fprintf(stderr, ".");
 		}
 
+		printf("global timer %u\n",ctx->trace.global_time);
+
 		if (ctx->trace.state == 0) {
 			//	single_step(context);
 		}
@@ -165,6 +169,7 @@ void replay()
 			rep_process_syscall(ctx);
 			/* stop reason is a signal - use HPC */
 		} else {
+			printf("processing a signal\n");
 			rep_process_signal(ctx);
 		}
 	}

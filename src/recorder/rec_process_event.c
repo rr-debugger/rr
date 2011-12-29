@@ -1452,6 +1452,24 @@ void rec_process_syscall(struct context *ctx)
 	SYS_REC0(setpgid)
 
 	/**
+	 * int setrlimit(int resource, const struct rlimit *rlim)
+	 *
+	 *  getrlimit() and setrlimit() get and set resource limits respectively.  Each resource has an associated soft and hard limit, as
+       defined by the rlimit structure (the rlim argument to both getrlimit() and setrlimit()):
+
+           struct rlimit {
+               rlim_t rlim_cur;  // Soft limit
+               rlim_t rlim_max;  // Hard limit (ceiling for rlim_cur)
+           };
+
+       The soft limit is the value that the kernel enforces for the corresponding resource.  The hard limit acts as a ceiling for the
+       soft  limit:  an  unprivileged  process  may  only set its soft limit to a value in the range from 0 up to the hard limit, and
+       (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
+       arbitrary changes to either limit value.
+	 */
+	SYS_REC1(setrlimit,sizeof(struct rlimit),regs.ecx)
+
+	/**
 	 * mode_t umask(mode_t mask);
 	 * umask()  sets  the  calling  process's file mode creation mask (umask) to mask & 0777
 	 * (i.e., only the file permission bits of mask are used), and returns the previous value of the mask.

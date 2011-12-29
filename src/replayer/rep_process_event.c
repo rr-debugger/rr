@@ -864,7 +864,7 @@ void rep_process_syscall(struct context* context)
 			goto_next_syscall_emu(context);
 		} else {
 			printf("sending sig: %lx  to %lx\n", read_child_ecx(tid), read_child_ebx(tid));
-			assert(1==0);
+			//assert(1==0);
 			set_return_value(context);
 			validate_args(context);
 			finish_syscall_emu(context);
@@ -983,6 +983,28 @@ void rep_process_syscall(struct context* context)
 	 * joined and the session ID of that group must match the session ID of the joining process.
 	 */
 	SYS_EMU_ARG(setpgid, 0)
+
+
+	/**
+	 * int setrlimit(int resource, const struct rlimit *rlim)
+	 *
+	 *  getrlimit() and setrlimit() get and set resource limits respectively.  Each resource has an associated soft and hard limit, as
+       defined by the rlimit structure (the rlim argument to both getrlimit() and setrlimit()):
+
+           struct rlimit {
+               rlim_t rlim_cur;  // Soft limit
+               rlim_t rlim_max;  // Hard limit (ceiling for rlim_cur)
+           };
+
+       The soft limit is the value that the kernel enforces for the corresponding resource.  The hard limit acts as a ceiling for the
+       soft  limit:  an  unprivileged  process  may  only set its soft limit to a value in the range from 0 up to the hard limit, and
+       (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
+       arbitrary changes to either limit value.
+	 */
+	SYS_EMU_ARG(setrlimit,1)
+
+
+
 
 	/**
 	 *  int stat(const char *path, struct stat *buf);
@@ -1159,6 +1181,19 @@ void rep_process_syscall(struct context* context)
 	 * structure pointed to by rusage.
 	 */
 	SYS_EMU_ARG(wait4, 2)
+
+
+	/**
+	 * pid_t waitpid(pid_t pid, int *status, int options);
+	 *
+	 * The waitpid() system call suspends execution of the calling process until
+	 * a child specified by pid argument has changed state.  By default, waitpid()
+	 * waits only for terminated children, but this behavior  is  modifiable  via
+	 * the options argument, as described below....
+	 *
+	 */
+	SYS_EMU_ARG(waitpid, 1)
+
 
 	/************************ Executed system calls come here ***************************/
 
