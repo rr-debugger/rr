@@ -1,9 +1,15 @@
+#define _FILE_OFFSET_BITS 64
+
 #include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ptrace.h>
 
 #include "sys.h"
+#include "util.h"
 
 #define CHECK_ALIGNMENT(addr) assert (((long int)(addr) & 0x3) == 0);
 
@@ -12,22 +18,36 @@ void read_child_registers(pid_t pid, struct user_regs_struct* regs)
 	sys_ptrace(PTRACE_GETREGS, pid, NULL, regs);
 }
 
-long read_child_code(pid_t pid, void* addr)
+static long read_child_data_word(pid_t tid, void *addr)
 {
 	CHECK_ALIGNMENT(addr);
 
-	long tmp;
-	tmp = sys_ptrace(PTRACE_PEEKTEXT, pid, addr, 0);
-	return tmp;
-}
+	/* set errno to 0 to check if the read was successful */errno = 0;
 
-static long read_child_data_word(pid_t pid, long int addr)
-{
-	CHECK_ALIGNMENT(addr);
+	long tmp = ptrace(PTRACE_PEEKDATA, tid, addr, 0);
 
-	long tmp;
-	/* currently no error checking -- what if data-word == -1? */
-	tmp = ptrace(PTRACE_PEEKDATA, pid, addr, 0);
+	if (errno != 0) {
+		perror("error reading word from child -- bailing out");
+		fprintf(stderr, "read failed at addr %p\n", addr);
+		fprintf(stderr, "printing mapped memory region: we read %ld\n", tmp);
+		char path[64];
+		FILE* file;
+		bzero(path, 64);
+		sprintf(path, "/proc/%d/maps", tid);
+		if ((file = fopen(path, "r")) < 0) {
+			perror("error reading child memory maps\n");
+		}
+
+		int c = getc(file);
+		while (c != EOF) {
+			putchar(c);
+			c = getc(file);
+		}
+
+		assert(1==0);
+
+		//sys_exit();
+	}
 	return tmp;
 }
 
@@ -191,7 +211,6 @@ void write_child_esi(int tid, long int val)
 	write_child_registers(tid, &regs);
 }
 
-
 void write_child_eip(int tid, long int val)
 {
 	struct user_regs_struct regs;
@@ -202,15 +221,16 @@ void write_child_eip(int tid, long int val)
 
 #define READ_SIZE (sizeof(long))
 
-void* read_child_data_tid(pid_t tid, size_t size, long int addr)
+void* read_child_data_tid(pid_t tid, size_t size, void *addr)
 {
-	int i, offset, padding = 0;
+
+	int i, padding = 0;
 	long tmp;
 	void* data = sys_malloc(size);
 
-	offset = addr & 0x3;
+	int offset = ((uintptr_t) addr) & 0x3;
 	if (offset) {
-		tmp = read_child_data_word(tid, addr & ~0x3);
+		tmp = read_child_data_word(tid, ((uintptr_t) addr) & ~0x3);
 		padding = READ_SIZE - offset;
 		memcpy(data, ((void*) (&tmp)) + offset, padding);
 	}
@@ -223,22 +243,21 @@ void* read_child_data_tid(pid_t tid, size_t size, long int addr)
 	return data;
 }
 
-void* read_child_data(struct context *ctx, size_t size, uintptr_t addr)
+void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 {
-//	size_t bytes_read = -15;
-	void* data = read_child_data_tid(ctx->child_tid, size, addr);
 
-	/* if pread cannot read all data (for whatever reason) we use ptrace
-	 * primitives to get the rest. */
-//	if ((bytes_read = pread64(ctx->child_mem_fd, data, size, addr)) < size) {
-//		assert(bytes_read >= 0);
-//		printf("we are here\n");
-//		void* rest = read_child_data_tid(ctx->child_tid, size - bytes_read, addr + bytes_read);
-//		memcpy(data + bytes_read, rest, size - bytes_read);
-//		sys_free((void**) &rest);
-//	}
-	/* make sure we no not return more than required */
-	return data;
+	assert (check_if_mapped(ctx, addr, addr + size));
+
+	void *buf = sys_malloc(size);
+	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
+	ssize_t read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
+	if (read_bytes != size) {
+		perror("warning: reading from child process: ");
+		printf("read bytes: %x   size %x    left: %x\n", read_bytes, size, (size - read_bytes));
+	}
+
+	return buf;
+	//return read_child_data_tid(ctx->child_tid, size, addr);
 }
 
 char* read_child_str(pid_t pid, long int addr)
@@ -267,8 +286,7 @@ char* read_child_str(pid_t pid, long int addr)
 		}
 
 		idx += READ_SIZE;
-	}
-	assert(1==0);
+	}assert(1==0);
 	return 0;
 }
 
@@ -292,7 +310,7 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 		long int word = read_child_data_word(tid, (addr + size) & ~0x3);
 		write_size += READ_SIZE - end_offset;
 		unsigned long buffer_addr = ((unsigned long) write_data + start_offset + size) & ~0x3;
-		memcpy((void*)buffer_addr, &word, READ_SIZE);
+		memcpy((void*) buffer_addr, &word, READ_SIZE);
 	}
 
 	assert(write_size % 4 == 0);

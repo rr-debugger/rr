@@ -15,7 +15,6 @@
 #include "../share/sys.h"
 #include "../share/types.h"
 
-
 static char* syscall_str[350] = { "restart_syscall", "exit", "fork", "read", "write", "open", "close", "waitpid", "creat", "link", "unlink", "execve", "chdir", "time", "mknod", "chmod", "lchown",
 		"break", "oldstat", "lseek", "getpid", "mount", "umount", "setuid", "getuid", "stime", "ptrace", "alarm", "oldfstat", "pause", "utime", "stty", "gtty", "access", "nice", "ftime", "sync",
 		"kill", "rename", "mkdir", "rmdir", "dup", "pipe", "times", "prof", "brk", "setgid", "getgid", "signal", "geteuid", "getegid", "acct", "umount2", "lock", "ioctl", "fcntl", "mpx", "setpgid",
@@ -24,10 +23,10 @@ static char* syscall_str[350] = { "restart_syscall", "exit", "fork", "read", "wr
 		"readdir", "mmap", "munmap", "truncate", "ftruncate", "fchmod", "fchown", "getpriority", "setpriority", "profil", "statfs", "fstatfs", "ioperm", "socketcall", "syslog", "setitimer",
 		"getitimer", "stat", "lstat", "fstat", "olduname", "iopl", "vhangup", "idle", "vm86old", "wait4", "swapoff", "sysinfo", "ipc", "fsync", "sigreturn", "clone", "setdomainname", "uname",
 		"modify_ldt", "adjtimex", "mprotect", "sigprocmask", "create_module", "init_module", "delete_module", "get_kernel_syms", "quotactl", "getpgid", "fchdir", "bdflush", "sysfs", "personality",
-		"afs_syscall", "setfsuid", "setfsgid", "_llseek", "getdents", "_newselect", "flock", "msync", "readv", "writev", "getsid", "fdatasync", "_sysctl", "mlock", "munlock", "mlockall",
-		"munlockall", "sched_setparam", "sched_getparam", "sched_setscheduler", "sched_getscheduler", "sched_yield", "sched_get_priority_max", "sched_get_priority_min", "sched_rr_get_interval",
-		"nanosleep", "mremap", "setresuid", "getresuid", "vm86", "query_module", "poll", "nfsservctl", "setresgid", "getresgid", "prctl", "rt_sigreturn", "rt_sigaction", "rt_sigprocmask",
-		"rt_sigpending", "rt_sigtimedwait", "rt_sigqueueinfo", "rt_sigsuspend", "pread64", "pwrite64", "chown", "getcwd", "capget", "capset", "sigaltstack", "sendfile", "getpmsg", /* some people actually want streams */
+		"afs_syscall", "setfsuid", "setfsgid", "_llseek", "getdents", "_newselect", "flock", "msync", "readv", "writev", "getsid", "fdatasync", "_sysctl", "mlock", "munlock", "mlockall", "munlockall",
+		"sched_setparam", "sched_getparam", "sched_setscheduler", "sched_getscheduler", "sched_yield", "sched_get_priority_max", "sched_get_priority_min", "sched_rr_get_interval", "nanosleep",
+		"mremap", "setresuid", "getresuid", "vm86", "query_module", "poll", "nfsservctl", "setresgid", "getresgid", "prctl", "rt_sigreturn", "rt_sigaction", "rt_sigprocmask", "rt_sigpending",
+		"rt_sigtimedwait", "rt_sigqueueinfo", "rt_sigsuspend", "pread64", "pwrite64", "chown", "getcwd", "capget", "capset", "sigaltstack", "sendfile", "getpmsg", /* some people actually want streams */
 		"putpmsg", /* some people actually want streams */
 		"vfork", "ugetrlimit", /* SuS compliant getrlimit */
 		"mmap2", "truncate64", "ftruncate64", "stat64", "lstat64", "fstat64", "lchown32", "getuid32", "getgid32", /* 200 */
@@ -45,12 +44,10 @@ char* syscall_to_str(int syscall)
 
 int signal_pending(int status)
 {
-	int sig =
-	WSTOPSIG(status) & ~0x80;
+	int sig = WSTOPSIG(status) & ~0x80;
 
 	return (sig == SIGTRAP) ? 0 : sig;
 }
-
 
 void print_register_file_tid(pid_t tid)
 {
@@ -167,12 +164,31 @@ char* get_inst(pid_t pid, int eip_offset, int* opcode_size)
 	return buf;
 }
 
-
 void print_inst(pid_t tid)
-{	int size;
-	char* str = get_inst(tid,0,&size);
-	printf("inst: %s\n",str);
+{
+	int size;
+	char* str = get_inst(tid, 0, &size);
+	printf("inst: %s\n", str);
 	free(str);
+}
+
+void print_process_state(pid_t tid)
+{
+	char path[64];
+	FILE* file;
+	printf("child tid: %d\n", tid);
+	fflush(stdout);
+	bzero(path, 64);
+	sprintf(path, "/proc/%d/status", tid);
+	if ((file = fopen(path, "r")) == NULL) {
+		perror("error reading child memory maps\n");
+	}
+
+	int c = getc(file);
+	while (c != EOF) {
+		putchar(c);
+		c = getc(file);
+	}
 }
 
 void print_syscall(struct context *ctx, struct trace *trace)
@@ -233,7 +249,8 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		 loff_t *result, unsigned int whence); */
 		case SYS__llseek:
 		{
-			debug_print("_llseek(unsigned int fd(%lx), unsigned long offset_high(%lx), unsigned long offset_low(%lx), loff_t *result(%lx), unsigned int whence(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi);
+			debug_print("_llseek(unsigned int fd(%lx), unsigned long offset_high(%lx), unsigned long offset_low(%lx), loff_t *result(%lx), unsigned int whence(%lx)",
+					r.ebx, r.ecx, r.edx, r.esi, r.edi);
 			break;
 		}
 
@@ -288,11 +305,11 @@ void print_syscall(struct context *ctx, struct trace *trace)
 
 		default:
 		debug_print("%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
-		break;
+			break;
 		}
 	}
 
-	debug_print("\n",0);
+	debug_print("\n", 0);
 }
 
 int compare_register_files(char* name1, struct user_regs_struct* reg1, char* name2, struct user_regs_struct* reg2, int print, int stop)
@@ -362,7 +379,6 @@ int compare_register_files(char* name1, struct user_regs_struct* reg1, char* nam
 		err = 1;
 	}
 
-
 	if (stop != 0 && err != 0) {
 		fprintf(stderr, "bailing out\n");
 		sys_exit();
@@ -427,6 +443,67 @@ void read_line(FILE* file, char* buf, int size, char* name)
 		exit(-1);
 	}
 }
+
+static FILE* open_mmap(pid_t tid)
+{
+	char path[64];
+	FILE* file;
+	fflush(stdout);
+	bzero(path, 64);
+	sprintf(path, "/proc/%d/maps", tid);
+	if ((file = fopen(path, "r")) == NULL) {
+		perror("error reading child memory maps\n");
+	}
+	return file;
+}
+
+void print_process_mmap(pid_t tid)
+{
+	FILE* file = open_mmap(tid);
+	int c = getc(file);
+	while (c != EOF) {
+		putchar(c);
+		c = getc(file);
+	}
+
+	if (fclose(file) == EOF) {
+		perror("error closing mmap file\n");
+	}
+}
+
+/**
+ * This function checks if the specified memory region (start - end) is
+ * mapped in the child process.
+ * @return 0: if the memory region is not mapped
+ * 		   1: if the memory region is mapped
+ */
+int check_if_mapped(struct context *ctx, void *start, void *end)
+{
+	pid_t tid = ctx->child_tid;
+
+	FILE* file = open_mmap(tid);
+	char buf[256];
+	char tmp[9];
+	bzero(tmp, 9);
+
+
+	while (fgets(buf, 256, file)) {
+		memcpy(tmp, buf, 8);
+		void *mmap_start = (void*) strtoul(tmp, NULL, 16);
+		memcpy(tmp, buf + 9, 8);
+		void *mmap_end = (void*) strtoul(tmp, NULL, 16);
+
+		if (start >= mmap_start && end <= mmap_end) {
+			sys_fclose(file);
+			return 1;
+		}
+	}
+
+
+	sys_fclose(file);
+	return 0;
+}
+
 /**
  * @start_addr: start address of where code should be injected
  * @code_size : given in bytes - must be a multiple of 4!
@@ -434,7 +511,7 @@ void read_line(FILE* file, char* buf, int size, char* name)
 struct current_state_buffer* init_code_injection(pid_t pid, void* start_addr, int code_size)
 {
 	//check if code size is a multiple of 4
-	assert (code_size % 4 == 0);
+	assert(code_size % 4 == 0);
 
 	struct current_state_buffer* buf = sys_malloc(sizeof(struct current_state_buffer));
 	buf->pid = pid;
@@ -448,7 +525,8 @@ struct current_state_buffer* init_code_injection(pid_t pid, void* start_addr, in
 
 	int i = 0;
 	while ((uintptr_t) tmp + i < (uintptr_t) start_addr + code_size) {
-		code_buffer[i] = read_child_code(pid, tmp + i);
+		//TODO: re-implemnt read_code
+		//code_buffer[i] = read_child_code(pid, tmp + i);
 		//	printf("read instruction: %lx\n",code_buffer[i]);
 		i++;
 	}

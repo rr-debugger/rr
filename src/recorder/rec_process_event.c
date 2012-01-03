@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -1388,13 +1388,16 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_mmap2:
 	{
+		print_register_file_tid(tid);
 		/* inspect mmap arguments */
 		long int flags = regs.esi;
-		/* anonymous mappings are fine - the allocated space  is initialized with '0'
-		 * for non-anonymous mappings, we record the content and inject it in the replayer
+		/* Anonymous mappings are fine - the allocated space is initialized with '0'.
+		 * For non-anonymous mappings we record the mapped memory region and inject the
+		 * recorded content in the replayer.
 		 */
 		if (!(flags & MAP_ANONYMOUS)) {
 			record_child_data(ctx, syscall, regs.ecx, regs.eax);
+			/* see which file is mapped */
 		}
 		break;
 	}
@@ -1430,6 +1433,7 @@ void rec_process_syscall(struct context *ctx)
 	 * read() attempts to read up to count bytes from file descriptor fd into the buffer starting at buf.
 	 */
 	SYS_REC1(read, regs.edx, regs.ecx)
+
 
 	/**
 	 * int rename(const char *oldpath, const char *newpath)
