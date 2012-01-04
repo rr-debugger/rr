@@ -47,7 +47,7 @@ struct context* rep_sched_get_thread()
 	struct trace trace;
 	read_next_trace(&trace);
 
-	/* find and upadte context */
+	/* find and update context */
 	struct context *ctx = map[trace.tid];
 	if (ctx->pending_sig != 0) {
 		assert(trace.stop_reason >= 0);

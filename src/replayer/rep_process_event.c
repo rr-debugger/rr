@@ -53,15 +53,14 @@ static void goto_next_syscall_emu(struct context* ctx)
 	sys_waitpid(tid, &ctx->status);
 
 	if (ctx->pending_sig != 0) {
-		printf("we send a signal the status is now %x  and sig %d\n", ctx->status, WSTOPSIG(ctx->status));
+		printf("we send a signal the status is now %x  and status %x\n", ctx->status, WSTOPSIG(ctx->status));
 
 		printf("system call is now: %ld\n", read_child_orig_eax(tid));
 
-		ctx->pending_sig = 0;
-		sys_ptrace_sysemu(tid, ctx->pending_sig);
-		sys_waitpid(tid, &ctx->status);
+		//sys_ptrace_sysemu(tid, ctx->pending_sig);
+		//sys_waitpid(tid, &ctx->status);
 
-		int j;
+/*		int j;
 
 		for (j = 0; j < 5; j++) {
 			printf("and now: %ld\n", read_child_orig_eax(tid));
@@ -70,12 +69,13 @@ static void goto_next_syscall_emu(struct context* ctx)
 			sys_waitpid(tid, &ctx->status);
 		}
 
-		assert(1==0);
+		assert(1==0);*/
 	}
 
 	/* the SIGCHILD part is pretty hacky -- fix that later */
 	if ((ctx->pending_sig != 0 && WSTOPSIG(ctx->status) == ctx->pending_sig) || (WSTOPSIG(ctx->status) == SIGCHLD)) {
 		ctx->pending_sig = 0;
+		assert(1==0);
 		//sys_ptrace_sysemu(tid, context->pending_sig);
 		//sys_waitpid(tid, &context->status);
 	}

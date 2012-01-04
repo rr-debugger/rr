@@ -211,11 +211,6 @@ void sys_ptrace_cont(pid_t pid)
 void goto_next_event(struct context *ctx)
 {
 
-	if (ctx->pending_sig != 0) {
-		fprintf(stderr,"sending the signal %d to process %d\n",ctx->pending_sig,ctx->child_tid);
-	}
-
-
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->pending_sig);
 
 	sys_waitpid(ctx->child_tid, &ctx->status);
@@ -244,7 +239,9 @@ pid_t sys_waitpid(pid_t pid, int *status)
 		perror("");
 		printf("waiting for: %d -- bailing out\n", pid);
 		exit(-1);
-	}assert(ret == pid);
+	}
+
+	assert(ret == pid);
 	return ret;
 }
 

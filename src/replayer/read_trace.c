@@ -265,7 +265,6 @@ void read_next_trace(struct trace* trace)
 		parse_register_file(&(trace->recorded_regs), tmp_ptr);
 	}
 	sys_free((void**) &line);
-	printf("read trace: stop_reason: %d\n",trace->stop_reason);
 }
 
 void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)

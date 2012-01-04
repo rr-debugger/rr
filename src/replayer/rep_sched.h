@@ -7,9 +7,9 @@
 
 void rep_sched_init();
 int rep_sched_get_num_threads();
-struct rep_thread_context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid);
-struct rep_thread_context* rep_sched_get_thread();
-void rep_sched_deregister_thread(struct rep_thread_context* context);
+struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid);
+struct context* rep_sched_get_thread();
+void rep_sched_deregister_thread(struct context* context);
 void rep_sched_close();
 
 

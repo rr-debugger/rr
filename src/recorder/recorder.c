@@ -151,9 +151,8 @@ void start_recording()
 			} else if (ctx->pending_sig) {
 				ctx->allow_ctx_switch = 0;
 				assert(ctx->event != SYS_rt_sigreturn);
+			/* these system calls never return; we remain in the same execution state */
 			} else if (ctx->event == SYS_sigreturn || ctx->event == SYS_rt_sigreturn) {
-				printf("fucking event in start state: %d\n",ctx->event);
-				//assert(1==0);
 				/* we are at the entry of a system call */
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;

@@ -28,6 +28,9 @@ static void compensate_branch_count(struct context *ctx)
 	rbc_now = read_rbc_up(ctx->hpc);
 	rbc_rec = ctx->trace.rbc_up;
 
+
+	printf("rbc_now: %llu   rbc_rec: %llu\n",rbc_now,rbc_rec);
+
 	/* if the skid size was too small, go back to the last checkpoint and
 	 * re-execute the program.
 	 */
@@ -66,6 +69,10 @@ void rep_process_signal(struct context *ctx)
 	struct trace* trace = &(ctx->trace);
 	int tid = ctx->child_tid;
 	int sig = -trace->stop_reason;
+
+	/* if the there is still a signal pending here, two signals in a row must be delivered?\n */
+	assert(ctx->pending_sig == 0);
+
 
 	switch (sig) {
 
@@ -122,6 +129,7 @@ void rep_process_signal(struct context *ctx)
 
 	case SIGIO:
 	case SIGCHLD:
+	case SIGSEGV:
 	{
 		/* synchronous signal (signal received in a system call) */
 		if (trace->rbc_up == 0) {
@@ -129,26 +137,28 @@ void rep_process_signal(struct context *ctx)
 			return;
 		}
 
-		assert(1==0);
+		printf("rbc: %llu\n",trace->rbc_up);
 		// setup and start replay counters
 		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
 		printf("setting replay counters: retired branch count = %llu\n", trace->rbc_up);
+
 		// single-step if the number of instructions to the next event is "small"
 		if (trace->rbc_up <= 100) {
 			compensate_branch_count(ctx);
 		} else {
 			printf("large count\n");
+			assert(1==0);
 			sys_ptrace_cont(tid);
 			sys_waitpid(tid, &ctx->status);
 			// make sure we ere interrupted by ptrace
 			assert(WSTOPSIG(ctx->status) == SIGIO);
 
 			compensate_branch_count(ctx);
-
 		}
 
 		break;
 	}
+
 
 	default:
 	printf("unknown signal %d -- bailing out\n", sig);
