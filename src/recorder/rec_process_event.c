@@ -569,6 +569,7 @@ void rec_process_syscall(struct context *ctx)
 			printf("op: %d unknown futex op\n", op);
 			assert(1==0);
 		}
+
 		}
 		break;
 	}
@@ -1538,9 +1539,11 @@ void rec_process_syscall(struct context *ctx)
 
 	default:
 
-	printf("rec: unknown syscall %ld -- bailing out\n", syscall);
-	printf("stopped at %lx\n", regs.eip);
-	get_eip_info(tid);
+	printf("recorder: unknown syscall %ld -- bailing out\n", syscall);
+	printf("execuction state: %x sig %d\n", ctx->exec_state,signal_pending(ctx->exec_state));
+	print_register_file_tid(tid);
+//	get_eip_info(tid);
 	sys_exit();
+	break;
 	}
 }

@@ -60,14 +60,29 @@ static void cont_nonblock(struct context* context)
 	context->pending_sig = 0;
 }
 
-static int wait_nonblock(struct context* context)
+
+static void check_event(struct context *ctx) {
+	if (ctx->event < 0) {
+		fprintf(stderr,"event: %d\n",ctx->event);
+		fprintf(stderr,"status: %x  signal %x\n",ctx->status,WSTOPSIG(ctx->status));
+		print_register_file_tid(ctx->child_tid);
+		perror("bitch");
+
+		cont_block(ctx);
+
+		print_register_file_tid(ctx->child_tid);
+		//sys_exit();
+	}
+}
+
+static int wait_nonblock(struct context *ctx)
 {
-	int ret = sys_waitpid_nonblock(context->child_tid, &(context->status));
+	int ret = sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
 
 	if (ret) {
-		context->event = read_child_orig_eax(context->child_tid);
-		handle_signal(context);
-		//printf("%d:state: %x  event: %d pending_sig: %d\n", context->child_tid, context->exec_state, context->event, context->pending_sig);
+		ctx->event = read_child_orig_eax(ctx->child_tid);
+		handle_signal(ctx);
+		check_event(ctx);
 	}
 
 	return ret;
@@ -79,16 +94,24 @@ void cont_block(struct context *ctx)
 	handle_signal(ctx);
 }
 
-static int needs_finish(struct context* context)
+static int allow_ctx_switch(struct context *ctx)
 {
-	int event = context->event;
+	int event = ctx->event;
 
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	if (event == SYS_futex) {
-		int op = read_child_ecx(context->child_tid) & FUTEX_CMD_MASK;
-		if (op == FUTEX_WAKE || op == FUTEX_WAKE_OP || op == FUTEX_WAKE_PRIVATE) {
-			return 0;
+		int op = read_child_ecx(ctx->child_tid) & FUTEX_CMD_MASK;
+		printf("op: %x\n",op);
+
+
+		if (op == FUTEX_WAIT) {
+			return 1;
 		}
+
+		if (op == FUTEX_WAKE || op == FUTEX_WAKE_OP || op == FUTEX_WAKE_PRIVATE) {
+			//return 0;
+		}
+		return 0;
 	}
 
 	return 1;
@@ -119,18 +142,18 @@ void start_recording()
 
 			/* we need to issue a blocking continue here to serialize program execution */
 			cont_block(ctx);
-			ctx->allow_ctx_switch = needs_finish(ctx);
+			//printf("%d: state 1: %ld\n",ctx->child_tid,read_child_orig_eax(ctx->child_tid));
+			ctx->allow_ctx_switch = allow_ctx_switch(ctx);
 
 			/* state might be overwritten if a signal occurs */
 			if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
 				ctx->allow_ctx_switch = 1;
 			} else if (ctx->pending_sig) {
 				ctx->allow_ctx_switch = 0;
-				printf("pending signal in start state%d\n", ctx->pending_sig);
-				//assert(ctx->pending_sig != 11);
-			} else if (ctx->event == SYS_sigreturn) {
+				assert(ctx->event != SYS_rt_sigreturn);
+			} else if (ctx->event == SYS_sigreturn || ctx->event == SYS_rt_sigreturn) {
 				printf("fucking event in start state: %d\n",ctx->event);
-//				assert(1==0);
+				//assert(1==0);
 				/* we are at the entry of a system call */
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;

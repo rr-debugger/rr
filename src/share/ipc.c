@@ -22,7 +22,8 @@ static long read_child_data_word(pid_t tid, void *addr)
 {
 	CHECK_ALIGNMENT(addr);
 
-	/* set errno to 0 to check if the read was successful */errno = 0;
+	/* set errno to 0 to check if the read was successful */
+	errno = 0;
 
 	long tmp = ptrace(PTRACE_PEEKDATA, tid, addr, 0);
 
@@ -30,6 +31,7 @@ static long read_child_data_word(pid_t tid, void *addr)
 		perror("error reading word from child -- bailing out");
 		fprintf(stderr, "read failed at addr %p\n", addr);
 		fprintf(stderr, "printing mapped memory region: we read %ld\n", tmp);
+
 		char path[64];
 		FILE* file;
 		bzero(path, 64);
@@ -253,7 +255,11 @@ void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 	ssize_t read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
 	if (read_bytes != size) {
 		perror("warning: reading from child process: ");
-		printf("read bytes: %x   size %x    left: %x\n", read_bytes, size, (size - read_bytes));
+		printf("read bytes: %x   size %x    left: %x @ %x\n", read_bytes, size, (size - read_bytes),addr+read_bytes);
+		print_process_mmap(ctx->child_tid);
+		//int val = read_child_data_tid(ctx->child_tid,4,addr+read_bytes);
+		//printf("val %x\n",val);
+		//assert(1==0);
 	}
 
 	return buf;
