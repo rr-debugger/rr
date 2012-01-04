@@ -171,7 +171,6 @@ void replay()
 			rep_process_syscall(ctx);
 			/* stop reason is a signal - use HPC */
 		} else {
-			printf("processing a signal\n");
 			rep_process_signal(ctx);
 		}
 	}

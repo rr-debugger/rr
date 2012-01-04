@@ -44,15 +44,17 @@ static void validate_args(struct context* context)
 static void goto_next_syscall_emu(struct context* ctx)
 {
 	pid_t tid = ctx->child_tid;
+	int sig_to_send = ctx->pending_sig;
+	ctx->pending_sig = 0;
 
-	if (ctx->pending_sig != 0) {
+	if (sig_to_send != 0) {
 		printf("we got a signal to deliver... %d\n", ctx->pending_sig);
 	}
 
-	sys_ptrace_sysemu(tid, ctx->pending_sig);
+	sys_ptrace_sysemu(tid, sig_to_send);
 	sys_waitpid(tid, &ctx->status);
 
-	if (ctx->pending_sig != 0) {
+	if (sig_to_send != 0) {
 		printf("we send a signal the status is now %x  and status %x\n", ctx->status, WSTOPSIG(ctx->status));
 
 		printf("system call is now: %ld\n", read_child_orig_eax(tid));
@@ -60,21 +62,21 @@ static void goto_next_syscall_emu(struct context* ctx)
 		//sys_ptrace_sysemu(tid, ctx->pending_sig);
 		//sys_waitpid(tid, &ctx->status);
 
-/*		int j;
+		/*		int j;
 
-		for (j = 0; j < 5; j++) {
-			printf("and now: %ld\n", read_child_orig_eax(tid));
+		 for (j = 0; j < 5; j++) {
+		 printf("and now: %ld\n", read_child_orig_eax(tid));
 
-			sys_ptrace_sysemu(tid, ctx->pending_sig);
-			sys_waitpid(tid, &ctx->status);
-		}
+		 sys_ptrace_sysemu(tid, ctx->pending_sig);
+		 sys_waitpid(tid, &ctx->status);
+		 }
 
-		assert(1==0);*/
+		 assert(1==0);*/
 	}
 
 	/* the SIGCHILD part is pretty hacky -- fix that later */
 	if ((ctx->pending_sig != 0 && WSTOPSIG(ctx->status) == ctx->pending_sig) || (WSTOPSIG(ctx->status) == SIGCHLD)) {
-		ctx->pending_sig = 0;
+		//ctx->pending_sig = 0;
 		assert(1==0);
 		//sys_ptrace_sysemu(tid, context->pending_sig);
 		//sys_waitpid(tid, &context->status);
@@ -85,9 +87,15 @@ static void goto_next_syscall_emu(struct context* ctx)
 	int current_syscall = read_child_orig_eax(tid);
 
 	if (current_syscall != rec_syscall) {
-		printf("stop reason: %x :%d\n", ctx->status, WSTOPSIG(ctx->status));
-		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.thread_time);
-		sys_exit();
+		/* we received a signal that did not occur in the recorder -- call the function again */
+		if (signal_pending(ctx->status)) {
+			printf("fuck you!!!\n");
+			goto_next_syscall_emu(ctx);
+		} else {
+			printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
+			printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.thread_time);
+			sys_exit();
+		}
 	}
 
 	ctx->pending_sig = 0;
@@ -106,7 +114,7 @@ static void finish_syscall_emu(struct context* context)
 /*
  * Proceeds until the next system call, which is being executed.
  */
-void __ptrace_cont(struct context* ctx)
+void __ptrace_cont(struct context *ctx)
 {
 	pid_t my_tid = ctx->child_tid;
 
@@ -115,6 +123,7 @@ void __ptrace_cont(struct context* ctx)
 	/* the SIGCHILD part is pretty hacky -- fix that later */
 	if ((ctx->pending_sig != 0 && WSTOPSIG(ctx->status) == ctx->pending_sig) || ctx->pending_sig == SIGCHLD) {
 		goto_next_event(ctx);
+		assert(1==0);
 	}
 
 	/* check if we are synchronized with the trace -- should never fail */
@@ -122,9 +131,11 @@ void __ptrace_cont(struct context* ctx)
 	int current_syscall = read_child_orig_eax(my_tid);
 
 	if (current_syscall != rec_syscall) {
-		printf("stop reason: %x :%d\n", ctx->status, WSTOPSIG(ctx->status));
+		printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
 		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
 		sys_exit();
+		assert(ctx->pending_sig == 0);
+
 	}
 
 	ctx->pending_sig = 0;
