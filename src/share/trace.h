@@ -7,7 +7,6 @@
 #include "../share/types.h"
 
 
-#define STATE_SIGNAL			-1
 #define STATE_SYSCALL_ENTRY		0
 #define STATE_SYSCALL_EXIT		1
 

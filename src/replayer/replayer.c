@@ -157,12 +157,13 @@ void replay()
 
 		printf("global timer %u\n",ctx->trace.global_time);
 
+		/* we can plug in single-stepping here */
 		if (ctx->trace.state == 0) {
 			//	single_step(context);
 		}
+
 		if (ctx->trace.stop_reason == USR_EXIT) {
 			rep_sched_deregister_thread(ctx);
-			//cleanup = 0;
 			/* stop reason is a system call - can be done with ptrace */
 		} else if ((int) (ctx->trace.stop_reason) > 0) {
 			/* proceed to the next event */

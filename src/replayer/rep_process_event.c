@@ -41,33 +41,56 @@ static void validate_args(struct context* context)
 /*
  * Proceeds until the next system call, which is not executed.
  */
-static void goto_next_syscall_emu(struct context* context)
+static void goto_next_syscall_emu(struct context* ctx)
 {
-	int rec_syscall, current_syscall;
-	pid_t tid;
+	pid_t tid = ctx->child_tid;
 
-	tid = context->child_tid;
-	sys_ptrace_sysemu(tid, context->pending_sig);
-	sys_waitpid(tid, &context->status);
+	if (ctx->pending_sig != 0) {
+		printf("we got a signal to deliver... %d\n", ctx->pending_sig);
+	}
+
+	sys_ptrace_sysemu(tid, ctx->pending_sig);
+	sys_waitpid(tid, &ctx->status);
+
+	if (ctx->pending_sig != 0) {
+		printf("we send a signal the status is now %x  and sig %d\n", ctx->status, WSTOPSIG(ctx->status));
+
+		printf("system call is now: %ld\n", read_child_orig_eax(tid));
+
+		ctx->pending_sig = 0;
+		sys_ptrace_sysemu(tid, ctx->pending_sig);
+		sys_waitpid(tid, &ctx->status);
+
+		int j;
+
+		for (j = 0; j < 5; j++) {
+			printf("and now: %ld\n", read_child_orig_eax(tid));
+
+			sys_ptrace_sysemu(tid, ctx->pending_sig);
+			sys_waitpid(tid, &ctx->status);
+		}
+
+		assert(1==0);
+	}
 
 	/* the SIGCHILD part is pretty hacky -- fix that later */
-	if ((context->pending_sig != 0 && WSTOPSIG(context->status) == context->pending_sig) || (WSTOPSIG(context->status) == SIGCHLD)) {
-		context->pending_sig = 0;
-		sys_ptrace_sysemu(tid, context->pending_sig);
-		sys_waitpid(tid, &context->status);
+	if ((ctx->pending_sig != 0 && WSTOPSIG(ctx->status) == ctx->pending_sig) || (WSTOPSIG(ctx->status) == SIGCHLD)) {
+		ctx->pending_sig = 0;
+		//sys_ptrace_sysemu(tid, context->pending_sig);
+		//sys_waitpid(tid, &context->status);
 	}
 
 	/* check if we are synchronized with the trace -- should never fail */
-	rec_syscall = context->trace.recorded_regs.orig_eax;
-	current_syscall = read_child_orig_eax(tid);
+	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
+	int current_syscall = read_child_orig_eax(tid);
 
 	if (current_syscall != rec_syscall) {
-		printf("stop reason: %x :%d\n", context->status, WSTOPSIG(context->status));
-		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, context->trace.thread_time);
+		printf("stop reason: %x :%d\n", ctx->status, WSTOPSIG(ctx->status));
+		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.thread_time);
 		sys_exit();
 	}
 
-	context->pending_sig = 0;
+	ctx->pending_sig = 0;
 }
 
 /**
@@ -273,7 +296,7 @@ static void handle_socket(struct context* context, struct trace* trace)
 void rep_process_syscall(struct context* context)
 {
 	const int tid = context->child_tid;
-	struct trace* trace = &(context->trace);
+	struct trace *trace = &(context->trace);
 	int syscall = trace->recorded_regs.orig_eax;
 	int state = trace->state;
 
@@ -984,27 +1007,23 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(setpgid, 0)
 
-
 	/**
 	 * int setrlimit(int resource, const struct rlimit *rlim)
 	 *
 	 *  getrlimit() and setrlimit() get and set resource limits respectively.  Each resource has an associated soft and hard limit, as
-       defined by the rlimit structure (the rlim argument to both getrlimit() and setrlimit()):
+	 defined by the rlimit structure (the rlim argument to both getrlimit() and setrlimit()):
 
-           struct rlimit {
-               rlim_t rlim_cur;  // Soft limit
-               rlim_t rlim_max;  // Hard limit (ceiling for rlim_cur)
-           };
+	 struct rlimit {
+	 rlim_t rlim_cur;  // Soft limit
+	 rlim_t rlim_max;  // Hard limit (ceiling for rlim_cur)
+	 };
 
-       The soft limit is the value that the kernel enforces for the corresponding resource.  The hard limit acts as a ceiling for the
-       soft  limit:  an  unprivileged  process  may  only set its soft limit to a value in the range from 0 up to the hard limit, and
-       (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
-       arbitrary changes to either limit value.
+	 The soft limit is the value that the kernel enforces for the corresponding resource.  The hard limit acts as a ceiling for the
+	 soft  limit:  an  unprivileged  process  may  only set its soft limit to a value in the range from 0 up to the hard limit, and
+	 (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
+	 arbitrary changes to either limit value.
 	 */
-	SYS_EMU_ARG(setrlimit,1)
-
-
-
+	SYS_EMU_ARG(setrlimit, 1)
 
 	/**
 	 *  int stat(const char *path, struct stat *buf);
@@ -1182,7 +1201,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(wait4, 2)
 
-
 	/**
 	 * pid_t waitpid(pid_t pid, int *status, int options);
 	 *
@@ -1193,7 +1211,6 @@ void rep_process_syscall(struct context* context)
 	 *
 	 */
 	SYS_EMU_ARG(waitpid, 1)
-
 
 	/************************ Executed system calls come here ***************************/
 

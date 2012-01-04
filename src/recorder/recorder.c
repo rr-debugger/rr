@@ -40,7 +40,7 @@ void goto_next_event_singlestep(struct context* context)
 		record_inst(context, inst);
 		free(inst);
 		if (context->pending_sig != 0) {
-			printf("pending sig: %d\n", context->pending_sig);
+			//printf("pending sig: %d\n", context->pending_sig);
 		}
 
 		sys_ptrace_singlestep(tid, context->pending_sig);
@@ -110,7 +110,6 @@ void start_recording()
 		/* the child process will either be interrupted by: (1) a signal, or (2) at
 		 * the entry of the system call */
 		//debug_print("%d: state %d\n", ctx->child_tid, ctx->exec_state);
-
 		/* simple state machine to guarantee process in the application */
 		switch (ctx->exec_state) {
 
@@ -121,20 +120,17 @@ void start_recording()
 			/* we need to issue a blocking continue here to serialize program execution */
 			cont_block(ctx);
 			ctx->allow_ctx_switch = needs_finish(ctx);
-			//printf("event in state %d\n",ctx->event);
+
 			/* state might be overwritten if a signal occurs */
 			if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
 				ctx->allow_ctx_switch = 1;
 			} else if (ctx->pending_sig) {
 				ctx->allow_ctx_switch = 0;
-				printf("pending signal %d\n",ctx->pending_sig);
+				printf("pending signal in start state%d\n", ctx->pending_sig);
+				//assert(ctx->pending_sig != 11);
 			} else if (ctx->event == SYS_sigreturn) {
-				//record_event(ctx, 0);
-				//printf("son of a bitch\n");
-				//assert(1==0);
-				//cont_block(ctx);
-				//ctx->allow_ctx_switch = 1;
-				break;
+				printf("fucking event in start state: %d\n",ctx->event);
+//				assert(1==0);
 				/* we are at the entry of a system call */
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
@@ -145,6 +141,7 @@ void start_recording()
 				ctx->allow_ctx_switch = 1;
 				assert(1==0);
 			}
+
 			record_event(ctx, 0);
 			break;
 		}
@@ -153,10 +150,15 @@ void start_recording()
 		{
 
 			if (read_child_eax(ctx->child_tid) != -38) {
+				assert(1==0);
 //				ctx->exec_state = EXEC_STATE_START;
 				//			break;
 			}
 
+			if (ctx->pending_sig != 0) {
+				printf("pending signal in syscall entry: %d\n",ctx->pending_sig);
+				assert(1==0);
+			}
 			/* continue and execute the system call */
 			cont_nonblock(ctx);
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
@@ -165,14 +167,14 @@ void start_recording()
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-			int ret, event;
-
-			ret = wait_nonblock(ctx);
+			int ret = wait_nonblock(ctx);
 			if (ret) {
+				assert(ctx->pending_sig == 0);
+
 				/* we received a signal while in the system call and send it right away*/
 				/* we have already sent the signal and process sigreturn */
 				if (ctx->event == SYS_sigreturn) {
-					//	assert(1==0);
+					assert(1==0);
 				}
 
 				if (ctx->pending_sig) {
@@ -181,8 +183,10 @@ void start_recording()
 					ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 				}
 
-				event = GET_EVENT(ctx->status);
 
+
+				/* handle events */
+				int event = GET_EVENT(ctx->status);
 				switch (event) {
 
 				case PTRACE_EVENT_NONE:
@@ -236,13 +240,17 @@ void start_recording()
 
 				} /* end switch */
 
+				/* done event handling */
+
+
 				if (ctx != NULL) {
 					rec_process_syscall(ctx);
 					record_event(ctx, 1);
 					ctx->exec_state = EXEC_STATE_START;
 					ctx->allow_ctx_switch = 1;
 				}
-			}
+
+				}
 			break;
 		}
 		default:

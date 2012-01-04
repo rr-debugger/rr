@@ -11,7 +11,6 @@
 #include <asm/ptrace-abi.h>
 #include <sys/wait.h>
 
-
 #include "sys.h"
 #include "util.h"
 #include "ipc.h"
@@ -45,7 +44,6 @@ void sys_close(int fd)
 		sys_exit();
 	}
 }
-
 
 int sys_open_child_mem(pid_t child_tid)
 {
@@ -111,8 +109,8 @@ void sys_setup_process()
 		sys_exit();
 	}
 
-	unsigned long  mask = 0x4;
-	if (sched_setaffinity(0, sizeof(mask), (cpu_set_t*)&mask) == -1) {
+	unsigned long mask = 0x4;
+	if (sched_setaffinity(0, sizeof(mask), (cpu_set_t*) &mask) == -1) {
 		perror("error setting affinity -- bailing out\n");
 		sys_exit();
 	}
@@ -125,7 +123,7 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 	/* signal the parent that the child is ready */
 	kill(getpid(), SIGSTOP);
 	/* we need to fork another child since we must fake the tid in the replay */
-	printf("executable %s\n",executable);
+	printf("executable %s\n", executable);
 	if (fork() == 0) {
 		/* start client application */
 		execve(executable, argv, envp);
@@ -136,14 +134,13 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 	exit(0);
 }
 
-
 /* ptrace stuff comes here */
-long sys_ptrace(int request, pid_t pid, void* addr, void* data)
+long sys_ptrace(int request, pid_t pid, void *addr, void *data)
 {
 	long ret;
 	if ((ret = ptrace(request, pid, addr, data)) == -1) {
 		perror("");
-		printf("ptrace_error: request: %d of tid: %d: addr %p, data %p\n", request, pid,addr,data);
+		printf("ptrace_error: request: %d of tid: %d: addr %p, data %p\n", request, pid, addr, data);
 		sys_exit();
 	}
 	return ret;
@@ -161,27 +158,23 @@ void sys_ptrace_syscall(pid_t pid)
  */
 void sys_ptrace_detatch(pid_t pid)
 {
-		ptrace(PTRACE_DETACH, pid, 0, 0);
+	ptrace(PTRACE_DETACH, pid, 0, 0);
 }
-
 
 void sys_ptrace_syscall_sig(pid_t pid, int sig)
 {
-	sys_ptrace(PTRACE_SYSCALL, pid, 0, (void*)sig);
+	sys_ptrace(PTRACE_SYSCALL, pid, 0, (void*) sig);
 }
-
 
 void sys_ptrace_sysemu(pid_t pid, int sig)
 {
-	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*)sig);
+	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*) sig);
 }
-
 
 void sys_ptrace_sysemu_singlestep(pid_t pid)
 {
 	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, 0);
 }
-
 
 unsigned long sys_ptrace_getmsg(pid_t pid)
 {
@@ -194,15 +187,15 @@ void sys_ptrace_getsiginfo(pid_t pid, siginfo_t* sig)
 	sys_ptrace(PTRACE_GETSIGINFO, pid, 0, sig);
 }
 
-
 void sys_ptrace_setup(pid_t pid)
 {
-	sys_ptrace(PTRACE_SETOPTIONS, pid, 0, (void*)(PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE | PTRACE_O_TRACEEXIT));
+	sys_ptrace(PTRACE_SETOPTIONS, pid, 0,
+			(void*) (PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE | PTRACE_O_TRACEEXIT));
 }
 
 void sys_ptrace_singlestep(pid_t pid, int sig)
 {
-	sys_ptrace(PTRACE_SINGLESTEP, pid, 0, (void*)sig);
+	sys_ptrace(PTRACE_SINGLESTEP, pid, 0, (void*) sig);
 }
 
 void sys_ptrace_traceme()
@@ -215,11 +208,17 @@ void sys_ptrace_cont(pid_t pid)
 	sys_ptrace(PTRACE_CONT, pid, 0, 0);
 }
 
-
 void goto_next_event(struct context *ctx)
 {
-	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*)ctx->pending_sig);
-	sys_waitpid(ctx->child_tid,&ctx->status);
+
+	if (ctx->pending_sig != 0) {
+		fprintf(stderr,"sending the signal %d to process %d\n",ctx->pending_sig,ctx->child_tid);
+	}
+
+
+	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->pending_sig);
+
+	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->pending_sig = signal_pending(ctx->status);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
 }
@@ -245,8 +244,7 @@ pid_t sys_waitpid(pid_t pid, int *status)
 		perror("");
 		printf("waiting for: %d -- bailing out\n", pid);
 		exit(-1);
-	}
-	assert(ret == pid);
+	}assert(ret == pid);
 	return ret;
 }
 
@@ -308,10 +306,9 @@ void* sys_malloc_zero(int size)
 		perror("");
 		sys_exit();
 	}
-	bzero(tmp,size);
+	bzero(tmp, size);
 	return tmp;
 }
-
 
 void sys_free(void** ptr)
 {
@@ -322,8 +319,6 @@ void sys_free(void** ptr)
 	free(*ptr);
 	*ptr = 0;
 }
-
-
 
 void sys_setpgid(pid_t pid, pid_t pgid)
 {

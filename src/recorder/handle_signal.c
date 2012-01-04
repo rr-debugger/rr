@@ -21,10 +21,10 @@ static __inline__ unsigned long long rdtsc(void)
 	return ((unsigned long long) lo) | (((unsigned long long) hi) << 32);
 }
 
-static int handle_rdtsc(struct context* context)
+static int handle_rdtsc(struct context *ctx)
 {
-	pid_t tid = context->child_tid;
-	int sig = signal_pending(context->status);
+	pid_t tid = ctx->child_tid;
+	int sig = signal_pending(ctx->status);
 
 	if (sig <= 0 || sig != SIGSEGV) {
 		return 0;
@@ -41,65 +41,67 @@ static int handle_rdtsc(struct context* context)
 		eax = current_time & 0xffffffff;
 		edx = current_time >> 32;
 
-		//record_timestamp(tid, &eax, &edx);
 		struct user_regs_struct regs;
 		read_child_registers(tid, &regs);
 		regs.eax = eax;
 		regs.edx = edx;
 		regs.eip += size;
 		write_child_registers(tid, &regs);
-		context->event = SIG_SEGV_RDTSC;
+		ctx->event = SIG_SEGV_RDTSC;
+	} else {
+		return 0;
 	}
 	free(inst);
 
 	return 1;
 }
 
-void handle_signal(struct context* context)
+void handle_signal(struct context* ctx)
 {
-	int sig = signal_pending(context->status);
+	int sig = signal_pending(ctx->status);
 
 	if (sig <= 0) {
 		return;
 	}
-
-	fprintf(stderr,"got signal: %d\n",sig);
 
 	switch (sig) {
 
 	case SIGALRM:
 	case SIGCHLD:
 	{
-		context->pending_sig = sig;
-		context->event = -sig;
+		ctx->pending_sig = sig;
+		ctx->event = -sig;
 		break;
 	}
 
 	case SIGSEGV:
 	{
-		if (handle_rdtsc(context)) {
-			context->event = SIG_SEGV_RDTSC;
-			context->pending_sig = 0;
-			break;
+		if (handle_rdtsc(ctx)) {
+			ctx->event = SIG_SEGV_RDTSC;
+			ctx->pending_sig = 0;
 		} else {
-			assert(1==0);
+			ctx->event = -sig;
+			ctx->pending_sig = sig;
 		}
+		break;
 	}
 
 	case SIGIO:
 	{
 		/* make sure that the signal came from hpc */
-		if (read_rbc_up(context->hpc) >= MAX_RECORD_INTERVAL) {
-			context->event = USR_SCHED;
+		if (read_rbc_up(ctx->hpc) >= MAX_RECORD_INTERVAL) {
+			ctx->event = USR_SCHED;
 		} else {
-			context->pending_sig = sig;
-			context->event = -sig;
+			ctx->pending_sig = sig;
+			ctx->event = -sig;
 		}
 		break;
 	}
 
 	default:
-	printf("signal %d not implemented yet -- bailing out\n", sig);
+	fprintf(stderr,"signal %d not implemented yet -- bailing out\n", sig);
+
 	sys_exit();
+    break;
 	}
 }

@@ -27,6 +27,7 @@ struct context* get_active_thread(struct context *ctx)
 	 */
 	if (ctx != 0) {
 		if (!ctx->allow_ctx_switch) {
+			//printf("tid: %d  state: %d  event: %d\n",ctx->child_tid,ctx->exec_state,ctx->event);
 			return ctx;
 		}
 	}
@@ -36,11 +37,13 @@ struct context* get_active_thread(struct context *ctx)
 
 	for (; i < NUM_MAX_THREADS; i++) {
 		if (registered_threads[i] != NULL) {
+		//	printf("tid: %d   state: %d  event: %d\n",registered_threads[i]->child_tid, registered_threads[i]->exec_state,registered_threads[i]->event);
 			return registered_threads[i];
 		}
 	}
 	for (i = 0; i < NUM_MAX_THREADS; i++) {
 		if (registered_threads[i] != NULL) {
+		//	printf("tid: %d   state: %d  event: %d\n",registered_threads[i]->child_tid, registered_threads[i]->exec_state,registered_threads[i]->event);
 			return registered_threads[i];
 		}
 	}
