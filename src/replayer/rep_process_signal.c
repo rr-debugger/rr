@@ -23,7 +23,7 @@
 static void compensate_branch_count(struct context *ctx)
 {
 	uint64_t rbc_now, rbc_rec;
-	uint32_t offset = -1;
+	uint32_t offset = 0;
 
 	rbc_now = read_rbc_up(ctx->hpc);
 	rbc_rec = ctx->trace.rbc_up;
@@ -49,8 +49,20 @@ static void compensate_branch_count(struct context *ctx)
 		if (rbc_now < rbc_rec) {
 			singlestep(ctx);
 		} else if (rbc_now == rbc_rec) {
+			/* the eflags register has two bits that are set when an interrupt is pending:
+			 * bit 8:  TF (trap flag)
+			 * bit 17: VM (virtual 8086 mode)
+			 *
+			 * we enable these two bits in the eflags register to make sure that the register
+			 * files match
+			 *
+			 */
+
+			regs.eflags |= (1<<7);
+			regs.eflags |= (1<<16);
 			if (!compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0)) {
-				printf("yeah, we got it :-) offset: %u: rec was: %llu\n", offset, rbc_rec);
+			//	printf("yeah, we got it :-) offset: %u: rec was: %llu\n", offset, rbc_rec);
+				write_child_registers(ctx->child_tid,&regs);
 				break;
 			}
 			singlestep(ctx);
@@ -143,7 +155,7 @@ void rep_process_signal(struct context *ctx)
 		printf("setting replay counters: retired branch count = %llu\n", trace->rbc_up);
 
 		// single-step if the number of instructions to the next event is "small"
-		if (trace->rbc_up <= 100) {
+		if (trace->rbc_up <= 1000) {
 			compensate_branch_count(ctx);
 		} else {
 			printf("large count\n");

@@ -151,9 +151,19 @@ void start_recording()
 			} else if (ctx->pending_sig) {
 				ctx->allow_ctx_switch = 0;
 				assert(ctx->event != SYS_rt_sigreturn);
-			/* these system calls never return; we remain in the same execution state */
+			/* These system calls never return; we remain in the same execution state */
 			} else if (ctx->event == SYS_sigreturn || ctx->event == SYS_rt_sigreturn) {
+				int orig_event = ctx->event;
 				/* we are at the entry of a system call */
+				record_event(ctx, 0);
+				/* do another step */
+				cont_block(ctx);
+				/* the next event is -1 -- record the same event again (is in fact ignored in the replayer)*/
+				assert(ctx->event == -1);
+				ctx->event = orig_event;
+				record_event(ctx,0);
+				break;
+
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 
@@ -161,6 +171,8 @@ void start_recording()
 			} else if (ctx->event == SYS_restart_syscall) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 				ctx->allow_ctx_switch = 1;
+				assert(1==0);
+			} else {
 				assert(1==0);
 			}
 

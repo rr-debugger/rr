@@ -89,7 +89,6 @@ static void goto_next_syscall_emu(struct context* ctx)
 	if (current_syscall != rec_syscall) {
 		/* we received a signal that did not occur in the recorder -- call the function again */
 		if (signal_pending(ctx->status)) {
-			printf("fuck you!!!\n");
 			goto_next_syscall_emu(ctx);
 		} else {
 			printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
@@ -1518,6 +1517,17 @@ void rep_process_syscall(struct context* context)
 	 * handler if the establishment of that handler (see sigaction(2)) requested it.
 	 */
 	SYS_EXEC_ARG(sigaltstack, 0)
+
+
+	/**
+	 * int sigreturn(unsigned long __unused)
+	 *
+	 * When  the Linux kernel creates the stack frame for a signal handler, a call to sigreturn()
+	 * is inserted into the stack frame so that upon return from the signal handler, sigreturn() will
+	 * be called.
+	 */
+	SYS_EXEC_ARG(rt_sigreturn, 0)
+
 
 	/**
 	 *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);

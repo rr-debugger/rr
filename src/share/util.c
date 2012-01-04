@@ -371,7 +371,7 @@ int compare_register_files(char* name1, struct user_regs_struct* reg1, char* nam
 		err = 1;
 	}
 
-	/* check eip */
+	/* check eflags */
 	if (reg1->eflags != reg2->eflags) {
 		if (print) {
 			fprintf(stderr, "eflags registers do not match: %s: %lx and %s: %lx\n", name1, reg1->eflags, name2, reg2->eflags);
