@@ -21,7 +21,7 @@ static __inline__ unsigned long long rdtsc(void)
 	return ((unsigned long long) lo) | (((unsigned long long) hi) << 32);
 }
 
-static int handle_rdtsc(struct context *ctx)
+static int handle_sigsegv(struct context *ctx)
 {
 	pid_t tid = ctx->child_tid;
 	int sig = signal_pending(ctx->status);
@@ -31,8 +31,10 @@ static int handle_rdtsc(struct context *ctx)
 	}
 
 	int size;
-	char* inst = get_inst(tid, 0, &size);
+	char *inst = get_inst(tid, 0, &size);
 
+	/* if the current instruction is a rdtsc, the segfault was triggered by
+	 * by reading the rdtsc instruction */
 	if (strncmp(inst, "rdtsc", 5) == 0) {
 		long int eax, edx;
 		unsigned long long current_time;
@@ -69,14 +71,15 @@ void handle_signal(struct context* ctx)
 	case SIGALRM:
 	case SIGCHLD:
 	{
-		ctx->pending_sig = sig;
 		ctx->event = -sig;
+		ctx->pending_sig = sig;
 		break;
 	}
 
+
 	case SIGSEGV:
 	{
-		if (handle_rdtsc(ctx)) {
+		if (handle_sigsegv(ctx)) {
 			ctx->event = SIG_SEGV_RDTSC;
 			ctx->pending_sig = 0;
 		} else {
@@ -92,16 +95,16 @@ void handle_signal(struct context* ctx)
 		if (read_rbc_up(ctx->hpc) >= MAX_RECORD_INTERVAL) {
 			ctx->event = USR_SCHED;
 		} else {
-			ctx->pending_sig = sig;
 			ctx->event = -sig;
+			ctx->pending_sig = sig;
 		}
 		break;
 	}
 
 	default:
-	fprintf(stderr,"signal %d not implemented yet -- bailing out\n", sig);
+	fprintf(stderr, "signal %d not implemented yet -- bailing out\n", sig);
 
 	sys_exit();
-    break;
+		break;
 	}
 }

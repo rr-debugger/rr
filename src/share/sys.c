@@ -52,7 +52,7 @@ int sys_open_child_mem(pid_t child_tid)
 	int fd;
 
 	sprintf(path, "/proc/%d/mem", child_tid);
-	if ((fd = open(path, O_RDONLY)) < 0) {
+	if ((fd = open(path, O_RDWR)) < 0) {
 		perror("error reading child memory:open-- bailing out\n");
 		sys_exit();
 	}
@@ -168,7 +168,7 @@ void sys_ptrace_syscall_sig(pid_t pid, int sig)
 
 void sys_ptrace_sysemu(pid_t pid, int sig)
 {
-	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*) sig);
+	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*)sig);
 }
 
 void sys_ptrace_sysemu_singlestep(pid_t pid)
@@ -212,18 +212,17 @@ void goto_next_event(struct context *ctx)
 {
 
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->pending_sig);
-
 	sys_waitpid(ctx->child_tid, &ctx->status);
+
 	ctx->pending_sig = signal_pending(ctx->status);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
 }
 
-void singlestep(struct context *ctx)
+void singlestep(struct context *ctx, int sig)
 {
-	sys_ptrace_singlestep(ctx->child_tid, ctx->pending_sig);
+	sys_ptrace_singlestep(ctx->child_tid, sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->pending_sig = signal_pending(ctx->status);
-
 }
 
 long sys_ptrace_peektext_word(pid_t pid, void* addr)
@@ -292,7 +291,7 @@ void* sys_malloc(int size)
 		perror("");
 		sys_exit();
 	}
-
+	bzero(tmp,size);
 	return tmp;
 }
 

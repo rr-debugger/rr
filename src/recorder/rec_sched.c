@@ -27,7 +27,6 @@ struct context* get_active_thread(struct context *ctx)
 	 */
 	if (ctx != 0) {
 		if (!ctx->allow_ctx_switch) {
-			//printf("tid: %d  state: %d  event: %d\n",ctx->child_tid,ctx->exec_state,ctx->event);
 			return ctx;
 		}
 	}

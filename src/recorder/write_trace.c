@@ -256,15 +256,22 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_pt
  */
 void record_child_data(struct context *ctx, int syscall, size_t len, long int child_ptr)
 {
-	print_header(syscall, child_ptr);
-	fprintf(syscall_header, "%11d\n", len);
+	uintptr_t align_offset = child_ptr & 0xf;
+	uintptr_t aligned_addr = child_ptr & ~0xf;
+	uintptr_t aligned_len = len + align_offset;
+	ssize_t read_bytes;
 
+	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
 	if (child_ptr != 0) {
-		void* buf = read_child_data(ctx, len, child_ptr);
+		void* buf = read_child_data_checked(ctx, aligned_len, aligned_addr, &read_bytes);
 		/* ensure that everything is written */
-		assert(fwrite(buf, 1, len, raw_data) == len);
+		assert(fwrite(buf, 1, read_bytes, raw_data) == read_bytes);
 		sys_free((void**) &buf);
 	}
+
+	print_header(syscall, aligned_addr);
+	fprintf(syscall_header, "%11d\n", read_bytes);
+
 }
 
 

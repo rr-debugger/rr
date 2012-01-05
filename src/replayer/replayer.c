@@ -167,7 +167,6 @@ void replay()
 			/* stop reason is a system call - can be done with ptrace */
 		} else if ((int) (ctx->trace.stop_reason) > 0) {
 			/* proceed to the next event */
-			printf("processing system call\n");
 			rep_process_syscall(ctx);
 			/* stop reason is a signal - use HPC */
 		} else {

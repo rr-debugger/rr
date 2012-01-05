@@ -9,11 +9,14 @@ void read_child_registers(int child_id, struct user_regs_struct* regs);
 long read_child_code(pid_t pid, void* addr);
 long read_child_data_word(pid_t pid, void* addr);
 void* read_child_data(struct context *ctx, size_t size, uintptr_t addr);
+void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr, ssize_t *read_bytes);
+
 
 
 void write_child_code(pid_t pid, void* addr, long code);
 void write_child_registers(int child_id, struct user_regs_struct* regs);
 void write_child_data_n(pid_t tid, size_t size, long int addr, void* data);
+void write_child_data(struct context *ctx, const size_t size, void *addr, void *data);
 
 
 /* access functions to child registers */

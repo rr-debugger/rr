@@ -20,16 +20,14 @@
 /**
  * function goes to the n-th conditional branch
  */
-static void compensate_branch_count(struct context *ctx)
+static void compensate_branch_count(struct context *ctx, int sig)
 {
 	uint64_t rbc_now, rbc_rec;
-	uint32_t offset = 0;
 
 	rbc_now = read_rbc_up(ctx->hpc);
 	rbc_rec = ctx->trace.rbc_up;
 
-
-	printf("rbc_now: %llu   rbc_rec: %llu\n",rbc_now,rbc_rec);
+	printf("rbc_now: %llu   rbc_rec: %llu\n", rbc_now, rbc_rec);
 
 	/* if the skid size was too small, go back to the last checkpoint and
 	 * re-execute the program.
@@ -44,10 +42,10 @@ static void compensate_branch_count(struct context *ctx)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		rbc_now = read_rbc_up(ctx->hpc);
-
+		assert(signal_pending(ctx->status) == 0);
 
 		if (rbc_now < rbc_rec) {
-			singlestep(ctx);
+			singlestep(ctx, 0);
 		} else if (rbc_now == rbc_rec) {
 			/* the eflags register has two bits that are set when an interrupt is pending:
 			 * bit 8:  TF (trap flag)
@@ -57,23 +55,41 @@ static void compensate_branch_count(struct context *ctx)
 			 * files match
 			 *
 			 */
-
-			regs.eflags |= (1<<7);
-			regs.eflags |= (1<<16);
+			regs.eflags |= (1 << 7);
+			regs.eflags |= (1 << 16);
 			if (!compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0)) {
-			//	printf("yeah, we got it :-) offset: %u: rec was: %llu\n", offset, rbc_rec);
-				write_child_registers(ctx->child_tid,&regs);
-				break;
+				/* A SIGSEGV can be triggered by a regular instruction; it is not necessarily sent by
+				 * another process. We check this condition here.
+				 */
+				printf("we found the crappy spot\n");
+				if (sig == SIGSEGV) {
+					printf("pending 1: %d\n", ctx->pending_sig);
+					print_inst(ctx->child_tid);
+					singlestep(ctx, 0);
+					printf("pending 2: %d\n", ctx->pending_sig);
+					print_inst(ctx->child_tid);
+					if (ctx->pending_sig == SIGSEGV) {
+						/* deliver the signal */
+						singlestep(ctx, SIGSEGV);
+						printf("awsome!!\n");
+						printf("pending 3: %d\n", ctx->pending_sig);
+						assert(ctx->pending_sig == 0);
+						break;
+					}
+
+					printf("pending 4: %d\n", ctx->pending_sig);
+					/* set the signal such that it is delivered when the process continues */
+					break;
+				}
+				ctx->pending_sig = sig;
 			}
-			singlestep(ctx);
+			/* check that we do not get unexpected signal in the single-stepping process */
+			singlestep(ctx, 0);
 		} else {
-			fprintf(stderr, "internal error: cannot find correct spot in compensate_branch_count -- bailing out\n");
-			fprintf(stderr, "but we were right at offset: %u\n", offset);
+			fprintf(stderr, "internal error: cannot find correct spot for signal(%d) delivery -- bailing out\n", sig);
 			sys_exit();
 		}
 	}
-
-	printf("time: %u\n",ctx->trace.global_time);
 }
 
 void rep_process_signal(struct context *ctx)
@@ -84,7 +100,6 @@ void rep_process_signal(struct context *ctx)
 
 	/* if the there is still a signal pending here, two signals in a row must be delivered?\n */
 	assert(ctx->pending_sig == 0);
-
 
 	switch (sig) {
 
@@ -129,10 +144,10 @@ void rep_process_signal(struct context *ctx)
 			/* this signal should not be recognized by the application */
 			ctx->pending_sig = 0;
 			stop_hpc_down(ctx);
-			compensate_branch_count(ctx);
+			compensate_branch_count(ctx, sig);
 			stop_hpc(ctx);
 		} else {
-			fprintf(stderr,"internal error: next event should be: %d but it is: %d -- bailing out\n",-USR_SCHED,ctx->event);
+			fprintf(stderr, "internal error: next event should be: %d but it is: %d -- bailing out\n", -USR_SCHED, ctx->event);
 			sys_exit();
 		}
 
@@ -149,14 +164,14 @@ void rep_process_signal(struct context *ctx)
 			return;
 		}
 
-		printf("rbc: %llu\n",trace->rbc_up);
+		printf("rbc: %llu\n", trace->rbc_up);
 		// setup and start replay counters
 		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
 		printf("setting replay counters: retired branch count = %llu\n", trace->rbc_up);
 
 		// single-step if the number of instructions to the next event is "small"
 		if (trace->rbc_up <= 1000) {
-			compensate_branch_count(ctx);
+			compensate_branch_count(ctx, sig);
 		} else {
 			printf("large count\n");
 			assert(1==0);
@@ -165,15 +180,15 @@ void rep_process_signal(struct context *ctx)
 			// make sure we ere interrupted by ptrace
 			assert(WSTOPSIG(ctx->status) == SIGIO);
 
-			compensate_branch_count(ctx);
+			compensate_branch_count(ctx, sig);
 		}
 
 		break;
 	}
 
-
 	default:
 	printf("unknown signal %d -- bailing out\n", sig);
 	sys_exit();
+		break;
 	}
 }

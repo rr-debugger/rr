@@ -48,7 +48,7 @@ static void goto_next_syscall_emu(struct context* ctx)
 	ctx->pending_sig = 0;
 
 	if (sig_to_send != 0) {
-		printf("we got a signal to deliver... %d\n", ctx->pending_sig);
+		printf("we got a signal to deliver... %d\n", sig_to_send);
 	}
 
 	sys_ptrace_sysemu(tid, sig_to_send);
@@ -56,39 +56,21 @@ static void goto_next_syscall_emu(struct context* ctx)
 
 	if (sig_to_send != 0) {
 		printf("we send a signal the status is now %x  and status %x\n", ctx->status, WSTOPSIG(ctx->status));
-
 		printf("system call is now: %ld\n", read_child_orig_eax(tid));
-
-		//sys_ptrace_sysemu(tid, ctx->pending_sig);
-		//sys_waitpid(tid, &ctx->status);
-
-		/*		int j;
-
-		 for (j = 0; j < 5; j++) {
-		 printf("and now: %ld\n", read_child_orig_eax(tid));
-
-		 sys_ptrace_sysemu(tid, ctx->pending_sig);
-		 sys_waitpid(tid, &ctx->status);
-		 }
-
-		 assert(1==0);*/
-	}
-
-	/* the SIGCHILD part is pretty hacky -- fix that later */
-	if ((ctx->pending_sig != 0 && WSTOPSIG(ctx->status) == ctx->pending_sig) || (WSTOPSIG(ctx->status) == SIGCHLD)) {
-		//ctx->pending_sig = 0;
-		assert(1==0);
-		//sys_ptrace_sysemu(tid, context->pending_sig);
-		//sys_waitpid(tid, &context->status);
 	}
 
 	/* check if we are synchronized with the trace -- should never fail */
-	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	int current_syscall = read_child_orig_eax(tid);
+	const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
+	const int current_syscall = read_child_orig_eax(tid);
 
 	if (current_syscall != rec_syscall) {
 		/* we received a signal that did not occur in the recorder -- call the function again */
 		if (signal_pending(ctx->status)) {
+			print_inst(ctx->child_tid);
+			printf("what do we do now: %d\n", signal_pending(ctx->status));
+			fflush(stdout);
+			assert(ctx->pending_sig == 0);
+			assert(1==0);
 			goto_next_syscall_emu(ctx);
 		} else {
 			printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
@@ -96,18 +78,23 @@ static void goto_next_syscall_emu(struct context* ctx)
 			sys_exit();
 		}
 	}
-
-	ctx->pending_sig = 0;
+	assert(ctx->pending_sig == 0);
 }
 
 /**
  *  Step over the system call in oder to use PTRACE_SYSTEM call
  **/
-static void finish_syscall_emu(struct context* context)
+static void finish_syscall_emu(struct context *ctx)
 {
-	sys_ptrace_sysemu_singlestep(context->child_tid);
-	sys_waitpid(context->child_tid, &(context->status));
+	assert(ctx->pending_sig == 0);
+	sys_ptrace_sysemu_singlestep(ctx->child_tid);
+	sys_waitpid(ctx->child_tid, &(ctx->status));
+	ctx->pending_sig = signal_pending(ctx->status);
 
+	if (ctx->pending_sig != 0) {
+		printf("we now have the fucking signal: %d\n",ctx->pending_sig);
+	}
+	assert(ctx->pending_sig == 0);
 }
 
 /*
@@ -115,38 +102,46 @@ static void finish_syscall_emu(struct context* context)
  */
 void __ptrace_cont(struct context *ctx)
 {
+
+	assert(ctx->pending_sig == 0);
 	pid_t my_tid = ctx->child_tid;
-
 	goto_next_event(ctx);
-
-	/* the SIGCHILD part is pretty hacky -- fix that later */
-	if ((ctx->pending_sig != 0 && WSTOPSIG(ctx->status) == ctx->pending_sig) || ctx->pending_sig == SIGCHLD) {
-		goto_next_event(ctx);
-		assert(1==0);
-	}
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
 	int current_syscall = read_child_orig_eax(my_tid);
 
 	if (current_syscall != rec_syscall) {
-		printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
-		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
-		sys_exit();
-		assert(ctx->pending_sig == 0);
 
+		/* we received a signal that did not occur in the recorder -- call the function again */
+		if (signal_pending(ctx->status)) {
+			print_inst(ctx->child_tid);
+			printf("__ptrace_cont: what do we do now: %d\n", signal_pending(ctx->status));
+			fflush(stdout);
+			assert(ctx->pending_sig == 0);
+			ctx->pending_sig = 0;
+			__ptrace_cont(ctx);
+		} else {
+			printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
+			fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
+			sys_exit();
+		}
 	}
 
+	/* we should not have a singal pending here -- if there is one pending nevertheless,
+	 * we do not deliver it to the application. This ensures that the behavior remains the
+	 * same
+	 */
 	ctx->pending_sig = 0;
 }
 
-static void set_child_data(struct context* context)
+static void set_child_data(struct context *ctx)
 {
 	size_t size;
 	unsigned long rec_addr;
-	void* data = read_raw_data(&(context->trace), &size, &rec_addr);
+	void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
 	if (data != NULL) {
-		write_child_data_n(context->child_tid, size, rec_addr, data);
+		write_child_data(ctx, size, rec_addr, data);
 		sys_free((void**) &data);
 	}
 }
@@ -290,6 +285,7 @@ static void handle_socket(struct context* context, struct trace* trace)
 		default:
 		fprintf(stderr, "unknwon call in socket: %d -- bailing out\n", call);
 		sys_exit();
+			break;
 		}
 
 		set_return_value(context);
@@ -772,7 +768,11 @@ void rep_process_syscall(struct context* context)
 	{
 
 		if (state == STATE_SYSCALL_ENTRY) {
+			printf("ass1\n");
+			fflush(stdout);
 			goto_next_syscall_emu(context);
+			printf("ass2\n");
+			fflush(stdout);
 		} else {
 			set_child_data(context);
 
@@ -896,8 +896,6 @@ void rep_process_syscall(struct context* context)
 		if (state == STATE_SYSCALL_ENTRY) {
 			goto_next_syscall_emu(context);
 		} else {
-			printf("sending sig: %lx  to %lx\n", read_child_ecx(tid), read_child_ebx(tid));
-			//assert(1==0);
 			set_return_value(context);
 			validate_args(context);
 			finish_syscall_emu(context);
@@ -1518,7 +1516,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EXEC_ARG(sigaltstack, 0)
 
-
 	/**
 	 * int sigreturn(unsigned long __unused)
 	 *
@@ -1526,8 +1523,18 @@ void rep_process_syscall(struct context* context)
 	 * is inserted into the stack frame so that upon return from the signal handler, sigreturn() will
 	 * be called.
 	 */
-	SYS_EXEC_ARG(rt_sigreturn, 0)
 
+	case SYS_rt_sigreturn:
+	case SYS_sigreturn:
+	{
+		/* go to the system call */
+		__ptrace_cont(context);
+		/* do another step */
+		__ptrace_cont(context);
+		/* the next event is -1 -- how knows why?*/
+		assert(read_child_orig_eax(context->child_tid) == -1);
+		break;
+	}
 
 	/**
 	 *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
@@ -1538,18 +1545,10 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EXEC_ARG(rt_sigprocmask, 1)
 
-	/**
-	 * int sigreturn(unsigned long __unused);
-	 *
-	 * When  the  Linux kernel creates the stack frame for a signal handler, a
-	 * call to sigreturn() is inserted into  the  stack  frame  so  that  upon
-	 * return from the signal handler, sigreturn() will be called.
-	 *
-	 */
-	SYS_EXEC_ARG(sigreturn, 0);
 
 	default:
 	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out\n", syscall);
+	sys_exit();
 	}
 
 	if (state == STATE_SYSCALL_EXIT) {

@@ -1410,7 +1410,6 @@ void rec_process_syscall(struct context *ctx)
 		if (!(flags & MAP_ANONYMOUS)) {
 			assert((flags & MAP_GROWSDOWN) == 0);
 			record_child_data(ctx, syscall, regs.ecx, regs.eax);
-			/* see which file is mapped */
 		}
 		break;
 	}

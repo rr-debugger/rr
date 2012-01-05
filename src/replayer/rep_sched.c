@@ -25,20 +25,22 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	assert (my_tid < MAX_TID_NUM);
 
 	/* allocate data structure and initialize hashmap */
-	struct context *context = sys_malloc(sizeof(struct context));
-	memset(context,0,sizeof(struct context));
+	struct context *ctx = sys_malloc(sizeof(struct context));
+	memset(ctx,0,sizeof(struct context));
 
-	context->child_tid = my_tid;
-	context->rec_tid = rec_tid;
+	ctx->child_tid = my_tid;
+	ctx->rec_tid = rec_tid;
+	ctx->child_mem_fd = sys_open_child_mem(my_tid);
 
-	read_open_inst_dump(context);
+
+	read_open_inst_dump(ctx);
 	num_threads++;
 
 	/* initializer replay counters */
-	init_hpc(context);
+	init_hpc(ctx);
 
-	map[rec_tid] = context;
-	return context;
+	map[rec_tid] = ctx;
+	return ctx;
 }
 
 struct context* rep_sched_get_thread()
@@ -67,6 +69,7 @@ void rep_sched_deregister_thread(struct context *ctx)
 
 	pid_t my_tid = ctx->child_tid;
 	sys_fclose(ctx->inst_dump);
+	sys_close(ctx->child_mem_fd);
 
 	map[my_tid] = NULL;
 	num_threads--;

@@ -22,8 +22,7 @@ static long read_child_data_word(pid_t tid, void *addr)
 {
 	CHECK_ALIGNMENT(addr);
 
-	/* set errno to 0 to check if the read was successful */
-	errno = 0;
+	/* set errno to 0 to check if the read was successful */errno = 0;
 
 	long tmp = ptrace(PTRACE_PEEKDATA, tid, addr, 0);
 
@@ -65,7 +64,7 @@ void write_child_code(pid_t pid, void* addr, long code)
 	sys_ptrace(PTRACE_POKETEXT, pid, addr, (void*) code);
 }
 
-static void write_child_data_word(pid_t pid, void* addr, void* data)
+static void write_child_data_word(pid_t pid, void *addr, void *data)
 {
 	CHECK_ALIGNMENT(addr);
 	sys_ptrace(PTRACE_POKEDATA, pid, addr, data);
@@ -245,25 +244,38 @@ void* read_child_data_tid(pid_t tid, size_t size, void *addr)
 	return data;
 }
 
+void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr, ssize_t *read_bytes)
+{
+	assert(check_if_mapped(ctx, addr, addr + size));
+
+	void *buf = sys_malloc(size);
+	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
+	*read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
+	if (*read_bytes != size) {
+		perror("warning: reading from child process: ");
+	}
+
+	return buf;
+}
+
 void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 {
 
-	assert (check_if_mapped(ctx, addr, addr + size));
+	assert(check_if_mapped(ctx, addr, addr + size));
 
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
 	ssize_t read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
 	if (read_bytes != size) {
 		perror("warning: reading from child process: ");
-		printf("read bytes: %x   size %x    left: %x @ %x\n", read_bytes, size, (size - read_bytes),addr+read_bytes);
-		print_process_mmap(ctx->child_tid);
+		//printf("read bytes: %x   size %x    left: %x @ %x\n", read_bytes, size, (size - read_bytes), addr + read_bytes);
+		//print_process_mmap(ctx->child_tid);
 		//int val = read_child_data_tid(ctx->child_tid,4,addr+read_bytes);
 		//printf("val %x\n",val);
 		//assert(1==0);
 	}
 
 	return buf;
-	//return read_child_data_tid(ctx->child_tid, size, addr);
 }
 
 char* read_child_str(pid_t pid, long int addr)
@@ -298,6 +310,7 @@ char* read_child_str(pid_t pid, long int addr)
 
 void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 {
+
 	int start_offset = addr & 0x3;
 	int end_offset = (addr + size) & 0x3;
 
@@ -306,6 +319,7 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 	void* write_addr = (void*) addr;
 
 	if (start_offset) {
+		assert(1==0);
 		long int word = read_child_data_word(tid, addr & ~0x3);
 		memcpy(write_data, &word, READ_SIZE);
 		write_size += start_offset;
@@ -330,4 +344,16 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 
 	free(write_data);
 }
+
+void write_child_data(struct context *ctx, const size_t size, void *addr, void *data)
+{
+
+	ssize_t written = pwrite(ctx->child_mem_fd, data, size, (off_t) addr);
+	if (written != size) {
+		write_child_data_n(ctx->child_tid, size, addr, data);
+	}
+}
+
+
+
 
