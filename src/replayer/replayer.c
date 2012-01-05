@@ -119,8 +119,7 @@ static void single_step(struct context* context)
 		sys_waitpid(context->child_tid, &status);
 		context->pending_sig = 0;
 
-		if (
-		WSTOPSIG(status) == SIGSEGV) {
+		if (WSTOPSIG(status) == SIGSEGV) {
 			return;
 		}
 	}
@@ -130,15 +129,8 @@ static void check_initial_register_file()
 {
 	printf("check initial register file\n");
 	struct context *context = rep_sched_get_thread();
-
-	/*write_child_ebx(context->child_tid, context->trace.recorded_regs.ebx);
-	write_child_edx(context->child_tid, context->trace.recorded_regs.edx);
-	write_child_ebp(context->child_tid, context->trace.recorded_regs.ebp);*/
-
 	struct user_regs_struct r;
 	read_child_registers(context->child_tid, &r);
-
-	printf("we do not arrive here!\n"); fflush(stdout);
 }
 
 void replay()
@@ -154,9 +146,6 @@ void replay()
 		if (ctx->trace.global_time % 1000 == 0) {
 			fprintf(stderr, ".");
 		}
-
-		printf("global timer %u\n",ctx->trace.global_time);
-
 		/* we can plug in single-stepping here */
 		if (ctx->trace.state == 0) {
 			//	single_step(context);

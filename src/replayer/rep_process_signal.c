@@ -78,9 +78,8 @@ static void compensate_branch_count(struct context *ctx, int sig)
 					}
 
 					printf("pending 4: %d\n", ctx->pending_sig);
-					/* set the signal such that it is delivered when the process continues */
-					break;
 				}
+				/* set the signal such that it is delivered when the process continues */
 				ctx->pending_sig = sig;
 			}
 			/* check that we do not get unexpected signal in the single-stepping process */
@@ -164,14 +163,17 @@ void rep_process_signal(struct context *ctx)
 			return;
 		}
 
-		printf("rbc: %llu\n", trace->rbc_up);
+		printf("rbc: %llu  we will deliver signal: %d\n", trace->rbc_up,sig);
 		// setup and start replay counters
 		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
 		printf("setting replay counters: retired branch count = %llu\n", trace->rbc_up);
 
 		// single-step if the number of instructions to the next event is "small"
 		if (trace->rbc_up <= 1000) {
+
 			compensate_branch_count(ctx, sig);
+			stop_hpc_down(ctx);
+			stop_hpc(ctx);
 		} else {
 			printf("large count\n");
 			assert(1==0);
@@ -180,6 +182,7 @@ void rep_process_signal(struct context *ctx)
 			// make sure we ere interrupted by ptrace
 			assert(WSTOPSIG(ctx->status) == SIGIO);
 
+			//DO NOT FORGET TO STOP HPC!!!
 			compensate_branch_count(ctx, sig);
 		}
 

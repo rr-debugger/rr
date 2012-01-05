@@ -93,7 +93,6 @@ static int allow_ctx_switch(struct context *ctx)
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	if (event == SYS_futex) {
 		int op = read_child_ecx(ctx->child_tid) & FUTEX_CMD_MASK;
-		printf("op: %x\n", op);
 
 		if (op == FUTEX_WAIT) {
 			return 1;
@@ -107,6 +106,8 @@ static int allow_ctx_switch(struct context *ctx)
 
 	return 1;
 }
+
+uintptr_t progress;
 
 void start_recording()
 {
@@ -130,6 +131,12 @@ void start_recording()
 		case EXEC_STATE_START:
 		{
 			//goto_next_event_singlestep(context);
+
+			/* print some kind of progress */
+			if (progress++ % 1000 == 0) {
+				printf(".");
+			}
+
 
 			/* we need to issue a blocking continue here to serialize program execution */
 			cont_block(ctx);
@@ -155,6 +162,7 @@ void start_recording()
 				record_event(ctx, 0);
 				/* do another step */
 				cont_block(ctx);
+				assert(ctx->pending_sig == 0);
 				/* the next event is -1 -- how knows why?*/
 				assert(ctx->event == -1);
 				/* here we can continue normally */

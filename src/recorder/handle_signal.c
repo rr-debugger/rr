@@ -71,6 +71,7 @@ void handle_signal(struct context* ctx)
 	case SIGALRM:
 	case SIGCHLD:
 	{
+		assert(1==0);
 		ctx->event = -sig;
 		ctx->pending_sig = sig;
 		break;
@@ -83,6 +84,7 @@ void handle_signal(struct context* ctx)
 			ctx->event = SIG_SEGV_RDTSC;
 			ctx->pending_sig = 0;
 		} else {
+			printf("we got a SIGSEGV(11)\n");
 			ctx->event = -sig;
 			ctx->pending_sig = sig;
 		}
@@ -91,6 +93,7 @@ void handle_signal(struct context* ctx)
 
 	case SIGIO:
 	{
+		assert(1==0);
 		/* make sure that the signal came from hpc */
 		if (read_rbc_up(ctx->hpc) >= MAX_RECORD_INTERVAL) {
 			ctx->event = USR_SCHED;

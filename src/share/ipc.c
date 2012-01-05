@@ -251,9 +251,6 @@ void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr,
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
 	*read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
-	if (*read_bytes != size) {
-		perror("warning: reading from child process: ");
-	}
 
 	return buf;
 }

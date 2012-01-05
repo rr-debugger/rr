@@ -166,9 +166,9 @@ void sys_ptrace_syscall_sig(pid_t pid, int sig)
 	sys_ptrace(PTRACE_SYSCALL, pid, 0, (void*) sig);
 }
 
-void sys_ptrace_sysemu(pid_t pid, int sig)
+void sys_ptrace_sysemu(pid_t pid)
 {
-	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*)sig);
+	sys_ptrace(PTRACE_SYSEMU, pid, 0, 0);
 }
 
 void sys_ptrace_sysemu_singlestep(pid_t pid)
@@ -237,7 +237,7 @@ pid_t sys_waitpid(pid_t pid, int *status)
 	if ((ret = waitpid(pid, status, __WALL | __WCLONE)) < 0) {
 		perror("");
 		printf("waiting for: %d -- bailing out\n", pid);
-		exit(-1);
+		sys_exit();
 	}
 
 	assert(ret == pid);
