@@ -319,49 +319,49 @@ int compare_register_files(char* name1, struct user_regs_struct* reg1, char* nam
 		if (print) {
 			fprintf(stderr, "eax registers do not match: %s: %lx and %s: %lx\n", name1, reg1->eax, name2, reg2->eax);
 		}
-		err = 1;
+		err |= 0x1;
 	}
 
 	if (reg1->ebx != reg2->ebx) {
 		if (print) {
 			fprintf(stderr, "ebx registers do not match: %s: %lx and %s: %lx\n", name1, reg1->ebx, name2, reg2->ebx);
 		}
-		err = 1;
+		err |= 0x2;
 	}
 	/* check arg2 */
 	if (reg1->ecx != reg2->ecx) {
 		if (print) {
 			fprintf(stderr, "ecx registers do not match: %s: %lx and %s: %lx\n", name1, reg1->ecx, name2, reg2->ecx);
 		}
-		err = 1;
+		err |= 0x4;
 	}
 	/* check arg3 */
 	if (reg1->edx != reg2->edx) {
 		if (print) {
 			fprintf(stderr, "edx registers do not match: %s: %lx and %s: %lx\n", name1, reg1->edx, name2, reg2->edx);
 		}
-		err = 1;
+		err |= 0x8;
 	}
 	/* check arg4 */
 	if (reg1->esi != reg2->esi) {
 		if (print) {
 			fprintf(stderr, "esi registers do not match: %s: %lx and %s: %lx\n", name1, reg1->esi, name2, reg2->esi);
 		}
-		err = 1;
+		err |= 0x10;
 	}
 	/* check arg5 */
 	if (reg1->edi != reg2->edi) {
 		if (print) {
 			fprintf(stderr, "edi registers do not match: %s: %lx and %s: %lx\n", name1, reg1->edi, name2, reg2->edi);
 		}
-		err = 1;
+		err |= 0x20;
 	}
 	/* check arg6 */
 	if (reg1->ebp != reg2->ebp) {
 		if (print) {
 			fprintf(stderr, "ebp registers do not match: %s: %lx and %s: %lx\n", name1, reg1->ebp, name2, reg2->ebp);
 		}
-		err = 1;
+		err |= 0x40;
 	}
 	/* check eip */
 	if (reg1->eip != reg2->eip) {
@@ -376,7 +376,7 @@ int compare_register_files(char* name1, struct user_regs_struct* reg1, char* nam
 		if (print) {
 			fprintf(stderr, "eflags registers do not match: %s: %lx and %s: %lx\n", name1, reg1->eflags, name2, reg2->eflags);
 		}
-		err = 1;
+		err |= 0x80;
 	}
 
 	if (stop != 0 && err != 0) {

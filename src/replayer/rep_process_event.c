@@ -11,6 +11,7 @@
 #include <linux/net.h>
 #include <linux/ipc.h>
 
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/mman.h>
 
@@ -54,6 +55,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 			printf("fucking crap1: raw: %x  WSTSOPSIG %x\n",ctx->status,WSTOPSIG(ctx->status));
 			sys_ptrace_syscall(tid);
 			sys_waitpid(tid, &ctx->status);
+			assert(1==0);
 		}
 		assert(signal_pending(ctx->status) == 0);
 
@@ -509,8 +511,15 @@ void rep_process_syscall(struct context* context)
 			int request = read_child_ecx(tid);
 			debug_print("request: %x\n", request);
 
-			if ((request >> 31) & 0x1) {
+			if (request & _IOC_WRITE) {
 				switch (request) {
+
+				case TCGETS:
+				{
+					set_child_data(context);
+					break;
+				}
+
 
 				case DRM_IOCTL_VERSION:
 				{
@@ -1477,7 +1486,7 @@ void rep_process_syscall(struct context* context)
 	 * changed.
 	 *
 	 */
-	SYS_EXEC_ARG(set_thread_area, 0)
+	SYS_EXEC_ARG(set_thread_area, 1)
 
 	/**
 	 * long set_tid_address(int *tidptr);
@@ -1542,14 +1551,6 @@ void rep_process_syscall(struct context* context)
 		/* the next event is -1 -- how knows why?*/
 		assert(read_child_orig_eax(context->child_tid) == -1);
 		assert(signal_pending(context->status) == 0);
-
-		int i;
-
-		for (i = 0; i < 100; i++) {
-			sys_ptrace_singlestep(tid, 0);
-			sys_waitpid(tid, &context->status);
-			assert(signal_pending(context->status) == 0);
-		}
 
 		printf("wtf is happening\n");
 

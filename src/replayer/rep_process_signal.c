@@ -24,8 +24,8 @@ static void compensate_branch_count(struct context *ctx, int sig)
 {
 	uint64_t rbc_now, rbc_rec;
 
-	rbc_now = read_rbc_up(ctx->hpc);
 	rbc_rec = ctx->trace.rbc_up;
+	rbc_now = read_rbc_up(ctx->hpc);
 
 	printf("rbc_now: %llu   rbc_rec: %llu\n", rbc_now, rbc_rec);
 
@@ -42,7 +42,11 @@ static void compensate_branch_count(struct context *ctx, int sig)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		rbc_now = read_rbc_up(ctx->hpc);
-		assert(signal_pending(ctx->status) == 0);
+		if (signal_pending(ctx->status) != 0) {
+			printf("we got the signal: %d  at %u\n",signal_pending(ctx->status),ctx->trace.global_time);
+			printf("rbc_now: %llu  rbc_rec: %llu\n",rbc_now,rbc_rec);
+		}
+//		assert(signal_pending(ctx->status) == 0);
 
 		if (rbc_now < rbc_rec) {
 			singlestep(ctx, 0);
@@ -55,9 +59,10 @@ static void compensate_branch_count(struct context *ctx, int sig)
 			 * files match
 			 *
 			 */
-			regs.eflags |= (1 << 7);
-			regs.eflags |= (1 << 16);
-			if (!compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0)) {
+		//	regs.eflags |= (1 << 7);
+		//	regs.eflags |= (1 << 16);
+			int check = compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0);
+			if (check == 0 || check == 0x80) {
 				/* A SIGSEGV can be triggered by a regular instruction; it is not necessarily sent by
 				 * another process. We check this condition here.
 				 */
@@ -73,16 +78,19 @@ static void compensate_branch_count(struct context *ctx, int sig)
 						singlestep(ctx, SIGSEGV);
 						printf("awsome!!\n");
 						printf("pending 3: %d\n", ctx->pending_sig);
-						assert(ctx->pending_sig == 0);
-						break;
+					} else {
+						/* deliver the signal */
+						singlestep(ctx, SIGSEGV);
 					}
-
+					assert(ctx->pending_sig == 0);
 					printf("pending 4: %d\n", ctx->pending_sig);
+					break;
 				}
 				/* set the signal such that it is delivered when the process continues */
 				ctx->pending_sig = sig;
 			}
 			/* check that we do not get unexpected signal in the single-stepping process */
+			printf("single-stepping\n");
 			singlestep(ctx, 0);
 		} else {
 			fprintf(stderr, "internal error: cannot find correct spot for signal(%d) delivery -- bailing out\n", sig);
@@ -163,27 +171,31 @@ void rep_process_signal(struct context *ctx)
 			return;
 		}
 
-		printf("rbc: %llu  we will deliver signal: %d\n", trace->rbc_up,sig);
+		printf("rbc: %llu  we will deliver signal: %d\n", trace->rbc_up, sig);
 		// setup and start replay counters
-		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
 		printf("setting replay counters: retired branch count = %llu\n", trace->rbc_up);
+		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
 
-		// single-step if the number of instructions to the next event is "small"
-		if (trace->rbc_up <= 1000) {
-
-			compensate_branch_count(ctx, sig);
+		/* single-step if the number of instructions to the next event is "small" */
+		if (trace->rbc_up <= 10000) {
 			stop_hpc_down(ctx);
+			compensate_branch_count(ctx, sig);
 			stop_hpc(ctx);
 		} else {
 			printf("large count\n");
-			assert(1==0);
-			sys_ptrace_cont(tid);
+			sys_ptrace_syscall(tid);
 			sys_waitpid(tid, &ctx->status);
 			// make sure we ere interrupted by ptrace
 			assert(WSTOPSIG(ctx->status) == SIGIO);
+			/* reset the penig sig, since it did not occur in the original execution */
+			ctx->pending_sig = 0;
+			ctx->status = 0;
 
 			//DO NOT FORGET TO STOP HPC!!!
 			compensate_branch_count(ctx, sig);
+			stop_hpc(ctx);
+			stop_hpc_down(ctx);
+
 		}
 
 		break;

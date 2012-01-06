@@ -71,7 +71,6 @@ void handle_signal(struct context* ctx)
 	case SIGALRM:
 	case SIGCHLD:
 	{
-		assert(1==0);
 		ctx->event = -sig;
 		ctx->pending_sig = sig;
 		break;

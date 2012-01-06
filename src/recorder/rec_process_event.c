@@ -325,8 +325,8 @@ void rec_process_syscall(struct context *ctx)
 	 * specifies the size of that buffer.
 	 *
 	 */
-	SYS_REC1(getdents64, regs.edx, regs.ecx)
-	SYS_REC1(getdents, regs.edx, regs.ecx)
+	SYS_REC1(getdents64, regs.eax, regs.ecx)
+	SYS_REC1(getdents, regs.eax, regs.ecx)
 
 	/**
 	 * gid_t getgid(void);
@@ -456,6 +456,7 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * 			7-0	function #
 	 * */
+
 	case SYS_ioctl:
 	{
 		handle_ioctl_request(ctx, regs.ecx);
@@ -741,14 +742,14 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * Potentially blocking
 	 */
-	case SYS_poll:
+	/*case SYS_poll:
 	{
 		int i;
 		for (i = 0; i < regs.ecx; i++) {
 			record_child_data(ctx, syscall, sizeof(struct pollfd), regs.ebx + (i * sizeof(struct pollfd)));
 		}
 		break;
-	}
+	}*/
 
 	/**
 	 * int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
@@ -758,7 +759,7 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * FIXXME: check if there is some output in the variable parameters
 	 */
-	SYS_REC0(prctl)
+	//SYS_REC0(prctl)
 
 	/**
 	 * ssize_t pread(int fd, void *buf, size_t count, off_t offset);
@@ -766,7 +767,7 @@ void rec_process_syscall(struct context *ctx)
 	 * pread, pwrite - read from or write to a file descriptor at a given off‐
 	 * set
 	 */
-	SYS_REC1(pread64, regs.edx, regs.ecx)
+	SYS_REC1(pread64, regs.eax, regs.ecx)
 
 	/**
 	 *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
@@ -794,11 +795,11 @@ void rec_process_syscall(struct context *ctx)
 	 * type value is either USRQUOTA, for user quotas, or GRPQUOTA, for  group
 	 * quotas.  The subcmd value is described below.
 	 */
-	case SYS_quotactl:
+	/*case SYS_quotactl:
 	{
 		assert(1==0);
 		break;
-	}
+	}*/
 
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
@@ -808,7 +809,7 @@ void rec_process_syscall(struct context *ctx)
 	 * It will truncate the contents (to a length of bufsiz characters), in case
 	 * the buffer is too small to hold all of the contents.
 	 */
-	SYS_REC1(readlink, regs.edx, regs.ecx)
+	SYS_REC1(readlink, regs.eax, regs.ecx)
 
 	/**
 	 * int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
@@ -929,7 +930,7 @@ void rec_process_syscall(struct context *ctx)
 	 * changed.
 	 *
 	 */
-	SYS_REC0(set_thread_area)
+	SYS_REC1(set_thread_area, sizeof(struct user_desc),regs.ebx);
 
 	/**
 	 * long set_tid_address(int *tidptr);
@@ -1442,8 +1443,14 @@ void rec_process_syscall(struct context *ctx)
 	 * ssize_t read(int fd, void *buf, size_t count);
 	 *
 	 * read() attempts to read up to count bytes from file descriptor fd into the buffer starting at buf.
+	 * On success, the number of bytes read is returned (zero indicates end of file), and the file position
+	 * is advanced by this number. It is not an error if this number is smaller than the number of bytes
+	 * requested; this may happen for example because fewer bytes are actually available right now (maybe
+	 * because we were close to end-of-file, or because we are reading from a pipe, or from a terminal),
+	 * or because read() was interrupted by a signal. On error, -1 is returned, and errno is set appropriately.
+	 * In this case it is left unspecified whether the file position (if any) changes.
 	 */
-	SYS_REC1(read, regs.edx, regs.ecx)
+	SYS_REC1(read, regs.eax, regs.ecx)
 
 	/**
 	 * int rename(const char *oldpath, const char *newpath)
