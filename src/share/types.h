@@ -48,7 +48,8 @@ struct context {
 	FILE* inst_dump;
 	pid_t child_tid;
 	int child_mem_fd;
-	int pending_sig;
+	int child_sig;
+	int replay_sig;
 	int status;
 
 

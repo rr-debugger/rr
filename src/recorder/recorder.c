@@ -39,11 +39,11 @@ void goto_next_event_singlestep(struct context* context)
 		}
 		record_inst(context, inst);
 		free(inst);
-		if (context->pending_sig != 0) {
+		if (context->child_sig != 0) {
 			//printf("pending sig: %d\n", context->pending_sig);
 		}
 
-		sys_ptrace_singlestep(tid, context->pending_sig);
+		sys_ptrace_singlestep(tid, context->child_sig);
 		sys_waitpid(tid, &(context->status));
 
 		if (WSTOPSIG(context->status) == SIGSEGV) {
@@ -56,8 +56,8 @@ void goto_next_event_singlestep(struct context* context)
 
 static void cont_nonblock(struct context* ctx)
 {
-	sys_ptrace_syscall_sig(ctx->child_tid, ctx->pending_sig);
-	ctx->pending_sig = 0;
+	sys_ptrace_syscall_sig(ctx->child_tid, ctx->child_sig);
+	ctx->child_sig = 0;
 }
 
 static void check_event(struct context *ctx)
@@ -102,7 +102,11 @@ static int allow_ctx_switch(struct context *ctx)
 		//return 0;
 		//}
 		return 0;
+	} else if (event == SYS_mprotect) {
+		return 0;
 	}
+
+
 
 	return 1;
 }
@@ -151,7 +155,7 @@ void start_recording()
 				 * process/threads gets the signal delivered. We do not change the state here since
 				 * we have not arrived at a new system call.
 				 */
-			} else if (ctx->pending_sig) {
+			} else if (ctx->child_sig) {
 				ctx->allow_ctx_switch = 0;
 
 				/* These system calls never return; we remain in the same execution state */
@@ -162,7 +166,7 @@ void start_recording()
 				record_event(ctx, 0);
 				/* do another step */
 				cont_block(ctx);
-				assert(ctx->pending_sig == 0);
+				assert(ctx->child_sig == 0);
 				/* the next event is -1 -- how knows why?*/
 				assert(ctx->event == -1);
 				/* here we can continue normally */
@@ -197,7 +201,7 @@ void start_recording()
 		{
 			int ret = wait_nonblock(ctx);
 			if (ret) {
-				assert(ctx->pending_sig == 0);
+				assert(ctx->child_sig == 0);
 
 				/* we received a signal while in the system call and send it right away*/
 				/* we have already sent the signal and process sigreturn */

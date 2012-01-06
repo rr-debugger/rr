@@ -44,42 +44,41 @@ static void validate_args(struct context* context)
  */
 static void goto_next_syscall_emu(struct context *ctx)
 {
-	restart: {
-		assert(ctx->pending_sig == 0);
-		pid_t tid = ctx->child_tid;
+	assert(ctx->child_sig == 0);
 
-		sys_ptrace_sysemu(tid);
+	pid_t tid = ctx->child_tid;
+	sys_ptrace_sysemu_sig(tid,ctx->replay_sig);
+	sys_waitpid(tid, &ctx->status);
+	ctx->replay_sig = 0;
+
+	while (signal_pending(ctx->status)) {
+		printf("fucking crap1: raw: %x  WSTSOPSIG %x\n", ctx->status, WSTOPSIG(ctx->status));
+		sys_ptrace_syscall(tid);
 		sys_waitpid(tid, &ctx->status);
-
-		while (signal_pending(ctx->status)) {
-			printf("fucking crap1: raw: %x  WSTSOPSIG %x\n",ctx->status,WSTOPSIG(ctx->status));
-			sys_ptrace_syscall(tid);
-			sys_waitpid(tid, &ctx->status);
-			assert(1==0);
-		}
-		assert(signal_pending(ctx->status) == 0);
-
-		/* check if we are synchronized with the trace -- should never fail */
-		const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-		const int current_syscall = read_child_orig_eax(tid);
-
-		if (current_syscall != rec_syscall) {
-			/* we received a signal that did not occur in the recorder -- call the function again */
-			if (signal_pending(ctx->status)) {
-				print_inst(ctx->child_tid);
-				printf("what do we do now: %d\n", signal_pending(ctx->status));
-				assert(ctx->pending_sig == 0);
-				assert(0);
-				goto restart;
-
-			} else {
-				printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
-				printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.thread_time);
-				sys_exit();
-			}
-		}
-		assert(ctx->pending_sig == 0);
+		assert(1==0);
 	}
+
+	assert(signal_pending(ctx->status) == 0);
+
+	/* check if we are synchronized with the trace -- should never fail */
+	const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
+	const int current_syscall = read_child_orig_eax(tid);
+
+	if (current_syscall != rec_syscall) {
+		/* we received a signal that did not occur in the recorder -- call the function again */
+		if (signal_pending(ctx->status)) {
+			print_inst(ctx->child_tid);
+			printf("what do we do now: %d\n", signal_pending(ctx->status));
+			assert(ctx->child_sig == 0);
+			assert(0);
+
+		} else {
+			printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
+			printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.thread_time);
+			sys_exit();
+		}
+	}
+	assert(ctx->child_sig == 0);
 }
 
 /**
@@ -87,15 +86,15 @@ static void goto_next_syscall_emu(struct context *ctx)
  **/
 static void finish_syscall_emu(struct context *ctx)
 {
-	assert(ctx->pending_sig == 0);
+	assert(ctx->child_sig == 0);
 	sys_ptrace_sysemu_singlestep(ctx->child_tid);
 	sys_waitpid(ctx->child_tid, &(ctx->status));
 	int sig_pending = signal_pending(ctx->status);
 
-	if (ctx->pending_sig != 0) {
+	if (ctx->child_sig != 0) {
 		fprintf(stderr, "WARNING: we have a signal(%d) in 'finish_syscall_emu' -- we do not deliver that signal:\n", sig_pending);
 	}
-	assert(ctx->pending_sig == 0);
+	assert(ctx->child_sig == 0);
 }
 
 /*
@@ -104,7 +103,7 @@ static void finish_syscall_emu(struct context *ctx)
 void __ptrace_cont(struct context *ctx)
 {
 
-	assert(ctx->pending_sig == 0);
+	assert(ctx->child_sig == 0);
 	pid_t my_tid = ctx->child_tid;
 	goto_next_event(ctx);
 
@@ -119,11 +118,11 @@ void __ptrace_cont(struct context *ctx)
 			print_inst(ctx->child_tid);
 			printf("__ptrace_cont: what do we do now: %d\n", signal_pending(ctx->status));
 			fflush(stdout);
-			assert(ctx->pending_sig == 0);
-			ctx->pending_sig = 0;
+			assert(ctx->child_sig == 0);
+			ctx->child_sig = 0;
 			__ptrace_cont(ctx);
 		} else {
-			printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->pending_sig);
+			printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
 			fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
 			sys_exit();
 		}
@@ -133,7 +132,7 @@ void __ptrace_cont(struct context *ctx)
 	 * we do not deliver it to the application. This ensures that the behavior remains the
 	 * same
 	 */
-	ctx->pending_sig = 0;
+	ctx->child_sig = 0;
 }
 
 static void set_child_data(struct context *ctx)
@@ -309,7 +308,7 @@ void rep_process_syscall(struct context* context)
 
 	assert((state == 1) || (state == 0));
 
-	if (context->trace.global_time > 90000) {
+	if (context->trace.global_time > 900000) {
 		print_syscall(context, trace);
 	}
 
@@ -352,8 +351,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * FIXXME: not quite sure if something is returned!
 	 */
-	SYS_FD_ARG(epoll_ctl, 1)
-
+	//SYS_FD_ARG(epoll_ctl, 1)
 	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);
 	 *
@@ -520,7 +518,6 @@ void rep_process_syscall(struct context* context)
 					break;
 				}
 
-
 				case DRM_IOCTL_VERSION:
 				{
 					set_child_data(context);
@@ -585,8 +582,7 @@ void rep_process_syscall(struct context* context)
 	 * A file descriptor is considered ready if  it  is possible to perform the corresponding I/O operation
 	 * (e.g., read(2)) without blocking.
 	 */
-	SYS_FD_ARG(_newselect, 4)
-
+	//SYS_FD_ARG(_newselect, 4)
 	/**
 	 * int socketcall(int call, unsigned long *args)
 	 *
@@ -678,7 +674,7 @@ void rep_process_syscall(struct context* context)
 				/* check if successful */
 				validate_args(context);
 
-				/*inject recorded data */
+				/* inject recorded data */
 				set_child_data(context);
 
 			} else {
@@ -759,8 +755,7 @@ void rep_process_syscall(struct context* context)
 	 * The memory area pointed to by events will contain the events that will be available for the caller.  Up
 	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
 	 */
-	SYS_FD_ARG(epoll_wait, context->trace.recorded_regs.eax)
-
+	//SYS_FD_ARG(epoll_wait, context->trace.recorded_regs.eax)
 	/**
 	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
 	 *
@@ -778,8 +773,8 @@ void rep_process_syscall(struct context* context)
 	{
 
 		if (state == STATE_SYSCALL_ENTRY) {
-			if (context->pending_sig) {
-				printf("holy crap: %d\n", context->pending_sig);
+			if (context->child_sig) {
+				printf("holy crap: %d\n", context->child_sig);
 			}
 
 			goto_next_syscall_emu(context);
@@ -828,7 +823,7 @@ void rep_process_syscall(struct context* context)
 	SYS_EMU_ARG(geteuid32, 0)
 
 	/**
-	 * int getgroups(int size, gid_t list[]);			ptrace_cont(context, trace);
+	 * int getgroups(int size, gid_t list[]);
 	 *
 	 *
 	 * getgroups()  returns  the  supplementary  group IDs of the calling process in list.
@@ -842,8 +837,7 @@ void rep_process_syscall(struct context* context)
 	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
 	 *  in a further call to getgroups().
 	 */
-	SYS_EMU_ARG(getgroups32, read_child_ebx(tid))
-
+	//SYS_EMU_ARG(getgroups32, read_child_ebx(tid))
 	/**
 	 * pid_t getpgrp(void)
 	 *
@@ -920,19 +914,6 @@ void rep_process_syscall(struct context* context)
 	 * the link itself is stat-ed, not the file that it refers to.
 	 */
 	SYS_EMU_ARG(lstat64, 1)
-
-	/**
-	 * int madvise(void *addr, size_t length, int advice);
-	 *
-	 * The  madvise()  system  call  advises  the  kernel  about how to handle paging input/output
-	 * in the address range beginning at address addr and with size length bytes.  It allows an application
-	 * to tell the kernel how it expects to use  some  mapped  or shared  memory areas, so that the kernel
-	 * can choose appropriate read-ahead and caching techniques.  This call does not influence the semantics
-	 * of the application (except in the case of MADV_DONTNEED), but may influence its performance.   The  kernel
-	 * is free to ignore the advice.
-	 *
-	 */
-	SYS_EMU_ARG(madvise, 0)
 
 	/**
 	 * int mkdir(const char *pathname, mode_t mode);
@@ -1026,24 +1007,6 @@ void rep_process_syscall(struct context* context)
 	SYS_EMU_ARG(setpgid, 0)
 
 	/**
-	 * int setrlimit(int resource, const struct rlimit *rlim)
-	 *
-	 *  getrlimit() and setrlimit() get and set resource limits respectively.  Each resource has an associated soft and hard limit, as
-	 defined by the rlimit structure (the rlim argument to both getrlimit() and setrlimit()):
-
-	 struct rlimit {
-	 rlim_t rlim_cur;  // Soft limit
-	 rlim_t rlim_max;  // Hard limit (ceiling for rlim_cur)
-	 };
-
-	 The soft limit is the value that the kernel enforces for the corresponding resource.  The hard limit acts as a ceiling for the
-	 soft  limit:  an  unprivileged  process  may  only set its soft limit to a value in the range from 0 up to the hard limit, and
-	 (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
-	 arbitrary changes to either limit value.
-	 */
-	SYS_EMU_ARG(setrlimit, 1)
-
-	/**
 	 *  int stat(const char *path, struct stat *buf);
 	 *
 	 *  stat() stats the file pointed to by path and fills in buf.
@@ -1096,23 +1059,6 @@ void rep_process_syscall(struct context* context)
 	 * descriptor associated with a new inotify event queue.
 	 */
 	SYS_EMU_ARG(inotify_init1, 0)
-
-	/**
-	 *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
-	 *
-	 * The Linux-specific prlimit() system call combines and extends the
-	 * functionality of setrlimit() and getrlimit().  It can be used to both set and
-	 * get the resource limits of an arbitrary process.
-	 *
-	 * The resource argument has the same meaning as for setrlimit() and getrlimit().
-	 *
-	 * If the new_limit argument is a not NULL, then the rlimit structure to which it
-	 * points is used to set new values for the soft and hard limits for resource.
-	 * If the old_limit argument is a not NULL, then a successful call to prlimit()
-	 * places the previous soft and hard limits for resource in the rlimit structure
-	 * pointed to by old_limit.
-	 */
-	SYS_EMU_ARG(prlimit64, 1)
 
 	/**
 	 * int rmdir(const char *pathname)
@@ -1208,8 +1154,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * FIXXME: is mod_time set by the kernel?
 	 */
-	SYS_EMU_ARG(utime, 0)
-
+	//SYS_EMU_ARG(utime, 0)
 	/**
 	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
 	 *
@@ -1243,7 +1188,7 @@ void rep_process_syscall(struct context* context)
 	 * brk()  sets  the  end  of  the  data segment to the value specified by addr, when that value is reasonable, the system has
 	 * enough memory, and the process does not exceed its maximum data size (see setrlimit(2)).
 	 */
-	SYS_EXEC_ARG(brk, 0)
+	SYS_EXEC_ARG_RET(context,brk, 0)
 
 	/**
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
@@ -1429,14 +1374,26 @@ void rep_process_syscall(struct context* context)
 		break;
 	}
 
+	/**
+	 * int madvise(void *addr, size_t length, int advice);
+	 *
+	 * The  madvise()  system  call  advises  the  kernel  about how to handle paging input/output
+	 * in the address range beginning at address addr and with size length bytes.  It allows an application
+	 * to tell the kernel how it expects to use  some  mapped  or shared  memory areas, so that the kernel
+	 * can choose appropriate read-ahead and caching techniques.  This call does not influence the semantics
+	 * of the application (except in the case of MADV_DONTNEED), but may influence its performance.   The  kernel
+	 * is free to ignore the advice.
+	 *
+	 */
+	SYS_EXEC_ARG_RET(context, madvise, 0)
+
 	/*
 	 * void *mremap(void *old_address, size_t old_size, size_t new_size, int flags, ... ( void *new_address ));
 	 *
 	 *  mremap()  expands  (or  shrinks) an existing memory mapping, potentially moving it at the same time
 	 *  (controlled by the flags argument and the available virtual address space).
 	 */
-	SYS_EXEC_ARG(mremap, 0)
-
+	//SYS_EXEC_ARG(mremap, 0)
 	/**
 	 * int munmap(void *addr, size_t length)
 	 *
@@ -1445,7 +1402,7 @@ void rep_process_syscall(struct context* context)
 	 * automatically unmapped when the process is terminated.  On the other hand, closing the file descriptor
 	 * does not unmap the region.
 	 */
-	SYS_EXEC_ARG(munmap, 0)
+	SYS_EXEC_ARG_RET(context,munmap, 0)
 
 	/**
 	 * int mprotect(const void *addr, size_t len, int prot)
@@ -1457,7 +1414,45 @@ void rep_process_syscall(struct context* context)
 	 * SIGSEGV signal for the process.
 	 *
 	 */
-	SYS_EXEC_ARG(mprotect, 0)
+	SYS_EXEC_ARG_RET(context, mprotect, 0)
+
+	/**
+	 * int setrlimit(int resource, const struct rlimit *rlim)
+	 *
+	 * getrlimit() and setrlimit() get and set resource limits respectively.  Each resource has an associated soft and hard limit, as
+	 * defined by the rlimit structure (the rlim argument to both getrlimit() and setrlimit()):
+	 *
+	 * struct rlimit {
+	 * rlim_t rlim_cur;  // Soft limit
+	 * rlim_t rlim_max;  // Hard limit (ceiling for rlim_cur)
+	 * };
+	 *
+	 * The soft limit is the value that the kernel enforces for the corresponding resource.  The hard limit acts as a ceiling for the
+	 * soft  limit:  an  unprivileged  process  may  only set its soft limit to a value in the range from 0 up to the hard limit, and
+	 * (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
+	 * arbitrary changes to either limit value.
+	 *
+	 * We should execute this system call, since this system call sets a limit on a resource (e.g., the stack size)
+	 * This bahavior must be the same in the replay as in the recording phase.
+	 */
+	SYS_EXEC_ARG_RET(context, setrlimit, 1)
+
+	/**
+	 *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
+	 *
+	 * The Linux-specific prlimit() system call combines and extends the
+	 * functionality of setrlimit() and getrlimit().  It can be used to both set and
+	 * get the resource limits of an arbitrary process.
+	 *
+	 * The resource argument has the same meaning as for setrlimit() and getrlimit().
+	 *
+	 * If the new_limit argument is a not NULL, then the rlimit structure to which it
+	 * points is used to set new values for the soft and hard limits for resource.
+	 * If the old_limit argument is a not NULL, then a successful call to prlimit()
+	 * places the previous soft and hard limits for resource in the rlimit structure
+	 * pointed to by old_limit.
+	 */
+	SYS_EXEC_ARG_RET(context, prlimit64, 1)
 
 	/**
 	 * long set_robust_list(struct robust_list_head *head, size_t len)
@@ -1469,7 +1464,7 @@ void rep_process_syscall(struct context* context)
 	 * set_robust_list sets the head of the list of robust futexes owned by the current thread to head.
 	 * len is the size of *head.
 	 */
-	SYS_EXEC_ARG(set_robust_list, 0)
+	SYS_EXEC_ARG_RET(context, set_robust_list, 0)
 
 	/**
 	 * int set_thread_area(struct user_desc *u_info)
@@ -1486,7 +1481,7 @@ void rep_process_syscall(struct context* context)
 	 * changed.
 	 *
 	 */
-	SYS_EXEC_ARG(set_thread_area, 1)
+	SYS_EXEC_ARG_RET(context, set_thread_area, 1)
 
 	/**
 	 * long set_tid_address(int *tidptr);
@@ -1524,8 +1519,7 @@ void rep_process_syscall(struct context* context)
 	 * an existing alternate signal stack.  An alternate signal stack is used during the execution of a signal
 	 * handler if the establishment of that handler (see sigaction(2)) requested it.
 	 */
-	SYS_EXEC_ARG(sigaltstack, 0)
-
+	//SYS_EXEC_ARG(sigaltstack, 0)
 	/**
 	 * int sigreturn(unsigned long __unused)
 	 *
@@ -1537,7 +1531,6 @@ void rep_process_syscall(struct context* context)
 	case SYS_rt_sigreturn:
 	case SYS_sigreturn:
 	{
-		printf("debug crap 1\n");
 		/* go to the system call */
 		__ptrace_cont(context);
 		printf("debug crap 2:   syscall now %d\n", read_child_orig_eax(tid));
@@ -1564,7 +1557,7 @@ void rep_process_syscall(struct context* context)
 	 *  thread.  The signal mask is the set of signals whose delivery is currently
 	 *   blocked for the caller (see also signal(7) for more details).
 	 */
-	SYS_EXEC_ARG(rt_sigprocmask, 1)
+	SYS_EXEC_ARG_RET(context, rt_sigprocmask, 1)
 
 	default:
 	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out\n", syscall);

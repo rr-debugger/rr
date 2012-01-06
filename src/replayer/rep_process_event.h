@@ -37,6 +37,14 @@ void rep_process_syscall(struct context* context);
 	break; }
 
 
+#define SYS_EXEC_ARG_RET(ctx,syscall,num) \
+	case SYS_##syscall: { \
+		if (state == STATE_SYSCALL_ENTRY) { __ptrace_cont(ctx);}\
+		else {\
+			__ptrace_cont(ctx);\
+			int i; for (i = 0; i < num; i++) {set_child_data(ctx);}\
+			validate_args(ctx);}\
+	break; }
 
 
 

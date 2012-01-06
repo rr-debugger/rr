@@ -316,7 +316,6 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 	void* write_addr = (void*) addr;
 
 	if (start_offset) {
-		assert(1==0);
 		long int word = read_child_data_word(tid, addr & ~0x3);
 		memcpy(write_data, &word, READ_SIZE);
 		write_size += start_offset;

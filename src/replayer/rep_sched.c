@@ -51,7 +51,7 @@ struct context* rep_sched_get_thread()
 
 	/* find and update context */
 	struct context *ctx = map[trace.tid];
-	if (ctx->pending_sig != 0) {
+	if (ctx->child_sig != 0) {
 		assert(trace.stop_reason >= 0);
 	}
 

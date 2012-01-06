@@ -115,9 +115,9 @@ static void single_step(struct context* context)
 		sys_free((void**) &rec_inst);
 		sys_free((void**) &inst);
 
-		sys_ptrace_singlestep(context->child_tid, context->pending_sig);
+		sys_ptrace_singlestep(context->child_tid, context->child_sig);
 		sys_waitpid(context->child_tid, &status);
-		context->pending_sig = 0;
+		context->child_sig = 0;
 
 		if (WSTOPSIG(status) == SIGSEGV) {
 			return;

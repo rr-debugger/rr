@@ -232,7 +232,6 @@ void rec_process_syscall(struct context *ctx)
 	 * type is indicated in parentheses after each cmd name (in most cases, the required type is long,
 	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
 	 */
-	//SYS_REC0(fcntl64)
 	case SYS_fcntl64:
 	{
 		int cmd = regs.ecx;

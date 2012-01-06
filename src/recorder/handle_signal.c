@@ -72,7 +72,7 @@ void handle_signal(struct context* ctx)
 	case SIGCHLD:
 	{
 		ctx->event = -sig;
-		ctx->pending_sig = sig;
+		ctx->child_sig = sig;
 		break;
 	}
 
@@ -81,11 +81,11 @@ void handle_signal(struct context* ctx)
 	{
 		if (handle_sigsegv(ctx)) {
 			ctx->event = SIG_SEGV_RDTSC;
-			ctx->pending_sig = 0;
+			ctx->child_sig = 0;
 		} else {
 			printf("we got a SIGSEGV(11)\n");
 			ctx->event = -sig;
-			ctx->pending_sig = sig;
+			ctx->child_sig = sig;
 		}
 		break;
 	}
@@ -98,7 +98,7 @@ void handle_signal(struct context* ctx)
 			ctx->event = USR_SCHED;
 		} else {
 			ctx->event = -sig;
-			ctx->pending_sig = sig;
+			ctx->child_sig = sig;
 		}
 		break;
 	}

@@ -171,6 +171,12 @@ void sys_ptrace_sysemu(pid_t pid)
 	sys_ptrace(PTRACE_SYSEMU, pid, 0, 0);
 }
 
+void sys_ptrace_sysemu_sig(pid_t pid, int sig)
+{
+	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*)sig);
+}
+
+
 void sys_ptrace_sysemu_singlestep(pid_t pid)
 {
 	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, 0);
@@ -211,10 +217,10 @@ void sys_ptrace_cont(pid_t pid)
 void goto_next_event(struct context *ctx)
 {
 
-	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->pending_sig);
+	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
-	ctx->pending_sig = signal_pending(ctx->status);
+	ctx->child_sig = signal_pending(ctx->status);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
 }
 
@@ -222,7 +228,7 @@ void singlestep(struct context *ctx, int sig)
 {
 	sys_ptrace_singlestep(ctx->child_tid, sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
-	ctx->pending_sig = signal_pending(ctx->status);
+	ctx->child_sig = signal_pending(ctx->status);
 }
 
 long sys_ptrace_peektext_word(pid_t pid, void* addr)

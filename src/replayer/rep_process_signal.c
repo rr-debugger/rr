@@ -46,7 +46,7 @@ static void compensate_branch_count(struct context *ctx, int sig)
 			printf("we got the signal: %d  at %u\n",signal_pending(ctx->status),ctx->trace.global_time);
 			printf("rbc_now: %llu  rbc_rec: %llu\n",rbc_now,rbc_rec);
 		}
-//		assert(signal_pending(ctx->status) == 0);
+		assert(signal_pending(ctx->status) == 0);
 
 		if (rbc_now < rbc_rec) {
 			singlestep(ctx, 0);
@@ -68,26 +68,28 @@ static void compensate_branch_count(struct context *ctx, int sig)
 				 */
 				printf("we found the crappy spot\n");
 				if (sig == SIGSEGV) {
-					printf("pending 1: %d\n", ctx->pending_sig);
+					print_register_file_tid(ctx->child_tid);
+					printf("pending 1: %d\n", ctx->child_sig);
 					print_inst(ctx->child_tid);
 					singlestep(ctx, 0);
-					printf("pending 2: %d\n", ctx->pending_sig);
+					printf("pending 2: %d\n", ctx->child_sig);
 					print_inst(ctx->child_tid);
-					if (ctx->pending_sig == SIGSEGV) {
+					if (ctx->child_sig == SIGSEGV) {
 						/* deliver the signal */
 						singlestep(ctx, SIGSEGV);
 						printf("awsome!!\n");
-						printf("pending 3: %d\n", ctx->pending_sig);
+						printf("pending 3: %d\n", ctx->child_sig);
+						assert(ctx->child_sig == 0);
+						printf("pending 4: %d\n", ctx->child_sig);
+						break;
+
 					} else {
 						/* deliver the signal */
-						singlestep(ctx, SIGSEGV);
+						//singlestep(ctx, SIGSEGV);
 					}
-					assert(ctx->pending_sig == 0);
-					printf("pending 4: %d\n", ctx->pending_sig);
-					break;
 				}
 				/* set the signal such that it is delivered when the process continues */
-				ctx->pending_sig = sig;
+				//ctx->pending_sig = sig;
 			}
 			/* check that we do not get unexpected signal in the single-stepping process */
 			printf("single-stepping\n");
@@ -106,7 +108,7 @@ void rep_process_signal(struct context *ctx)
 	int sig = -trace->stop_reason;
 
 	/* if the there is still a signal pending here, two signals in a row must be delivered?\n */
-	assert(ctx->pending_sig == 0);
+	assert(ctx->child_sig == 0);
 
 	switch (sig) {
 
@@ -134,7 +136,7 @@ void rep_process_signal(struct context *ctx)
 		compare_register_files("rdtsv_now", &regs, "rdsc_rec", &ctx->trace.recorded_regs, 1, 1);
 
 		/* this signal should not be recognized by the application */
-		ctx->pending_sig = 0;
+		ctx->child_sig = 0;
 		break;
 	}
 
@@ -149,7 +151,7 @@ void rep_process_signal(struct context *ctx)
 		/* make sure that the signal came from hpc */
 		if (fcntl(ctx->hpc->rbc_down.fd, F_GETOWN) == ctx->child_tid) {
 			/* this signal should not be recognized by the application */
-			ctx->pending_sig = 0;
+			ctx->child_sig = 0;
 			stop_hpc_down(ctx);
 			compensate_branch_count(ctx, sig);
 			stop_hpc(ctx);
@@ -167,7 +169,7 @@ void rep_process_signal(struct context *ctx)
 	{
 		/* synchronous signal (signal received in a system call) */
 		if (trace->rbc_up == 0) {
-			ctx->pending_sig = sig;
+			ctx->replay_sig = sig;
 			return;
 		}
 
@@ -177,7 +179,7 @@ void rep_process_signal(struct context *ctx)
 		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
 
 		/* single-step if the number of instructions to the next event is "small" */
-		if (trace->rbc_up <= 10000) {
+		if (trace->rbc_up <= 1000) {
 			stop_hpc_down(ctx);
 			compensate_branch_count(ctx, sig);
 			stop_hpc(ctx);
@@ -188,7 +190,7 @@ void rep_process_signal(struct context *ctx)
 			// make sure we ere interrupted by ptrace
 			assert(WSTOPSIG(ctx->status) == SIGIO);
 			/* reset the penig sig, since it did not occur in the original execution */
-			ctx->pending_sig = 0;
+			ctx->child_sig = 0;
 			ctx->status = 0;
 
 			//DO NOT FORGET TO STOP HPC!!!
