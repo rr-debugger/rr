@@ -42,6 +42,7 @@ struct context {
 	int exec_state;
 	int event;
 	int allow_ctx_switch;
+	int blocked;
 
 
 	/* shared */

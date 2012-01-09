@@ -75,6 +75,9 @@ static int wait_nonblock(struct context *ctx)
 		ctx->event = read_child_orig_eax(ctx->child_tid);
 		handle_signal(ctx);
 		check_event(ctx);
+		ctx->blocked = 0;
+	} else {
+		ctx->blocked = 1;
 	}
 
 	return ret;
@@ -91,24 +94,25 @@ static int allow_ctx_switch(struct context *ctx)
 	int event = ctx->event;
 
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
-	if (event == SYS_futex) {
+	switch (event) {
+	case SYS_futex:
+	{
+
 		int op = read_child_ecx(ctx->child_tid) & FUTEX_CMD_MASK;
 
-		if (op == FUTEX_WAIT) {
+		if (op == FUTEX_WAIT || op == FUTEX_WAIT_PRIVATE) {
 			return 1;
 		}
-
-		//if (op == FUTEX_WAKE || op == FUTEX_WAKE_OP || op == FUTEX_WAKE_PRIVATE) {
-		//return 0;
-		//}
-		return 0;
-	} else if (event == SYS_mprotect) {
-		return 0;
+		break;
 	}
 
-
-
+	case SYS_waitpid:
+	case SYS_read:
+	case SYS_poll:
 	return 1;
+	}
+
+	return 0;
 }
 
 uintptr_t progress;
@@ -140,7 +144,6 @@ void start_recording()
 			if (progress++ % 1000 == 0) {
 				printf(".");
 			}
-
 
 			/* we need to issue a blocking continue here to serialize program execution */
 			cont_block(ctx);
@@ -199,6 +202,7 @@ void start_recording()
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
+		//	printf("now we are at: %d\n", ctx->event);
 			int ret = wait_nonblock(ctx);
 			if (ret) {
 				assert(ctx->child_sig == 0);
@@ -275,7 +279,6 @@ void start_recording()
 			}
 			break;
 		}
-
 
 		default:
 		errx(1, "Unknown execution state: %x -- bailing out\n", ctx->exec_state);

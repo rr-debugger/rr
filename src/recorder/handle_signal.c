@@ -83,7 +83,6 @@ void handle_signal(struct context* ctx)
 			ctx->event = SIG_SEGV_RDTSC;
 			ctx->child_sig = 0;
 		} else {
-			printf("we got a SIGSEGV(11)\n");
 			ctx->event = -sig;
 			ctx->child_sig = sig;
 		}

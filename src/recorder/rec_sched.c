@@ -34,15 +34,16 @@ struct context* get_active_thread(struct context *ctx)
 	static int i = -1;
 	i++;
 
+	/* check from current index(i) till the end of the array */
 	for (; i < NUM_MAX_THREADS; i++) {
 		if (registered_threads[i] != NULL) {
-		//	printf("tid: %d   state: %d  event: %d\n",registered_threads[i]->child_tid, registered_threads[i]->exec_state,registered_threads[i]->event);
 			return registered_threads[i];
 		}
 	}
+
+	/* check all threads again */
 	for (i = 0; i < NUM_MAX_THREADS; i++) {
 		if (registered_threads[i] != NULL) {
-		//	printf("tid: %d   state: %d  event: %d\n",registered_threads[i]->child_tid, registered_threads[i]->exec_state,registered_threads[i]->event);
 			return registered_threads[i];
 		}
 	}

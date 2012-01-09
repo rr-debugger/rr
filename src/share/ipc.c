@@ -258,7 +258,7 @@ void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr,
 void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 {
 
-	assert(check_if_mapped(ctx, addr, addr + size));
+	//assert(check_if_mapped(ctx, addr, addr + size));
 
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */

@@ -59,40 +59,31 @@ static void compensate_branch_count(struct context *ctx, int sig)
 			 * files match
 			 *
 			 */
-		//	regs.eflags |= (1 << 7);
-		//	regs.eflags |= (1 << 16);
 			int check = compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0);
 			if (check == 0 || check == 0x80) {
 				/* A SIGSEGV can be triggered by a regular instruction; it is not necessarily sent by
 				 * another process. We check this condition here.
 				 */
-				printf("we found the crappy spot\n");
+				//printf("we found the crappy spot\n");
 				if (sig == SIGSEGV) {
-					print_register_file_tid(ctx->child_tid);
-					printf("pending 1: %d\n", ctx->child_sig);
 					print_inst(ctx->child_tid);
 					singlestep(ctx, 0);
-					printf("pending 2: %d\n", ctx->child_sig);
-					print_inst(ctx->child_tid);
+					//print_inst(ctx->child_tid);
 					if (ctx->child_sig == SIGSEGV) {
 						/* deliver the signal */
 						singlestep(ctx, SIGSEGV);
-						printf("awsome!!\n");
-						printf("pending 3: %d\n", ctx->child_sig);
+						//printf("awsome!!\n");
 						assert(ctx->child_sig == 0);
-						printf("pending 4: %d\n", ctx->child_sig);
 						break;
 
 					} else {
-						/* deliver the signal */
-						//singlestep(ctx, SIGSEGV);
+						assert(1==0);
 					}
 				}
 				/* set the signal such that it is delivered when the process continues */
 				//ctx->pending_sig = sig;
 			}
 			/* check that we do not get unexpected signal in the single-stepping process */
-			printf("single-stepping\n");
 			singlestep(ctx, 0);
 		} else {
 			fprintf(stderr, "internal error: cannot find correct spot for signal(%d) delivery -- bailing out\n", sig);

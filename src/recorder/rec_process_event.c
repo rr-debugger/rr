@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-//	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -741,14 +741,11 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * Potentially blocking
 	 */
-	/*case SYS_poll:
+	case SYS_poll:
 	{
-		int i;
-		for (i = 0; i < regs.ecx; i++) {
-			record_child_data(ctx, syscall, sizeof(struct pollfd), regs.ebx + (i * sizeof(struct pollfd)));
-		}
+		record_child_data(ctx, syscall, sizeof(struct pollfd) * regs.ecx, regs.ebx);
 		break;
-	}*/
+	}
 
 	/**
 	 * int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
@@ -759,7 +756,6 @@ void rec_process_syscall(struct context *ctx)
 	 * FIXXME: check if there is some output in the variable parameters
 	 */
 	//SYS_REC0(prctl)
-
 	/**
 	 * ssize_t pread(int fd, void *buf, size_t count, off_t offset);
 	 *
@@ -795,10 +791,10 @@ void rec_process_syscall(struct context *ctx)
 	 * quotas.  The subcmd value is described below.
 	 */
 	/*case SYS_quotactl:
-	{
-		assert(1==0);
-		break;
-	}*/
+	 {
+	 assert(1==0);
+	 break;
+	 }*/
 
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
@@ -929,7 +925,7 @@ void rec_process_syscall(struct context *ctx)
 	 * changed.
 	 *
 	 */
-	SYS_REC1(set_thread_area, sizeof(struct user_desc),regs.ebx);
+	SYS_REC1(set_thread_area, sizeof(struct user_desc), regs.ebx);
 
 	/**
 	 * long set_tid_address(int *tidptr);
@@ -1237,7 +1233,7 @@ void rec_process_syscall(struct context *ctx)
 	case SYS_execve:
 	{
 		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
-		print_register_file_tid(tid);
+		//print_register_file_tid(tid);
 
 		/* esp[0] points to argc - iterate over argv pointers*/
 		int* argc = read_child_data(ctx, 100, (long int) (stack_ptr));
@@ -1509,6 +1505,15 @@ void rec_process_syscall(struct context *ctx)
 	SYS_REC0(unlink)
 
 	/**
+	 * int utimes(const char *filename, const struct timeval times[2])
+	 *
+	 * The utime() system call changes the access and modification times of the inode specified by
+	 * filename to the actime and modtime fields of times respectively.
+	 *
+	 */
+	SYS_REC1(utimes,2*sizeof(struct timeval),regs.ecx);
+
+	/**
 	 * pid_t vfork(void);
 	 *
 	 * vfork - create a child process and block parent
@@ -1545,10 +1550,10 @@ void rec_process_syscall(struct context *ctx)
 	default:
 
 	printf("recorder: unknown syscall %ld -- bailing out\n", syscall);
-	printf("execuction state: %x sig %d\n", ctx->exec_state,signal_pending(ctx->exec_state));
+	printf("execuction state: %x sig %d\n", ctx->exec_state, signal_pending(ctx->exec_state));
 	print_register_file_tid(tid);
 //	get_eip_info(tid);
 	sys_exit();
-	break;
+		break;
 	}
 }

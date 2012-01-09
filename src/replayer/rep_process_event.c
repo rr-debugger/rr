@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <syscall.h>
 
@@ -12,6 +13,7 @@
 #include <linux/ipc.h>
 
 #include <sys/ioctl.h>
+
 #include <sys/socket.h>
 #include <sys/mman.h>
 
@@ -53,6 +55,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 
 	while (signal_pending(ctx->status)) {
 		printf("fucking crap1: raw: %x  WSTSOPSIG %x\n", ctx->status, WSTOPSIG(ctx->status));
+		printf("time: %u\n",ctx->trace.global_time);
 		sys_ptrace_syscall(tid);
 		sys_waitpid(tid, &ctx->status);
 		assert(1==0);
@@ -308,9 +311,9 @@ void rep_process_syscall(struct context* context)
 
 	assert((state == 1) || (state == 0));
 
-	if (context->trace.global_time > 900000) {
-		print_syscall(context, trace);
-	}
+	//if (context->trace.global_time > 900000) {
+	//	print_syscall(context, trace);
+	//}
 
 	switch (syscall) {
 
@@ -513,10 +516,13 @@ void rep_process_syscall(struct context* context)
 				switch (request) {
 
 				case TCGETS:
+				case FIONREAD:
 				{
 					set_child_data(context);
 					break;
 				}
+
+
 
 				case DRM_IOCTL_VERSION:
 				{
@@ -868,6 +874,17 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(getppid, 0)
 
+
+	/* int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
+	 *
+	 * getresuid()  returns  the  real  UID,  the effective UID, and the saved set-user-ID of
+	 * the calling process, in the arguments ruid, euid, and suid, respectively.  getresgid()
+	 * performs the analogous task  for  the  process's  group IDs.
+	 * @return:  On success, zero is returned.  On error, -1 is returned, and errno is set appropriately.
+	 */
+	SYS_EMU_ARG(getresgid32, 3)
+
+
 	/**
 	 * pid_t gettid(void);
 	 *
@@ -1033,14 +1050,18 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(sysinfo, 1)
 
-	/* int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
+
+	/**
+	 * int utimes(const char *filename, const struct timeval times[2])
 	 *
-	 * getresuid()  returns  the  real  UID,  the effective UID, and the saved set-user-ID of
-	 * the calling process, in the arguments ruid, euid, and suid, respectively.  getresgid()
-	 * performs the analogous task  for  the  process's  group IDs.
-	 * @return:  On success, zero is returned.  On error, -1 is returned, and errno is set appropriately.
+	 * The utime() system call changes the access and modification times of the inode specified by
+	 * filename to the actime and modtime fields of times respectively.
+	 *
 	 */
-	SYS_EMU_ARG(getresgid32, 3)
+	SYS_EMU_ARG(utimes, 1)
+
+
+
 
 	/**
 	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
@@ -1533,19 +1554,15 @@ void rep_process_syscall(struct context* context)
 	{
 		/* go to the system call */
 		__ptrace_cont(context);
-		printf("debug crap 2:   syscall now %d\n", read_child_orig_eax(tid));
 
 		/* do another step; we do that 'unchecled' since we are supposed to get a -1 in orig_eax
 		 * and that -1 is not recorded */
 		sys_ptrace_syscall(tid);
 		sys_waitpid(tid, &context->status);
-		printf("debug crap 3\n");
 
 		/* the next event is -1 -- how knows why?*/
 		assert(read_child_orig_eax(context->child_tid) == -1);
 		assert(signal_pending(context->status) == 0);
-
-		printf("wtf is happening\n");
 
 		break;
 	}

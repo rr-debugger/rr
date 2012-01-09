@@ -15,6 +15,7 @@
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/types.h"
+#include "../share/util.h"
 
 void handle_ioctl_request(struct context *ctx, int request)
 {
@@ -32,6 +33,12 @@ void handle_ioctl_request(struct context *ctx, int request)
 		case TCGETS:
 		{
 			record_child_data(ctx, syscall, sizeof(struct termios), regs.edx);
+			break;
+		}
+
+		case FIONREAD:
+		{
+			record_child_data(ctx, syscall, sizeof(int), regs.edx);
 			break;
 		}
 
@@ -134,6 +141,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 
 		default:
 		fprintf(stderr, "Unknown ioctl request: %x -- bailing out\n", request);
+		print_register_file_tid(ctx->child_tid);
 		sys_exit();
 		}
 	}
