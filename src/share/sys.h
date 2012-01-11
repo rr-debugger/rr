@@ -17,7 +17,6 @@ void sys_exit();
 void sys_setup_process();
 void sys_start_trace(char* executable, char** fake_argv, char** envp);
 
-void singlestep(struct context *ctx, int sig);
 void goto_next_event(struct context *ctx);
 
 long sys_ptrace(int request, pid_t pid, void* addr, void* data);

@@ -44,9 +44,40 @@ char* syscall_to_str(int syscall)
 
 int signal_pending(int status)
 {
-	int sig = WSTOPSIG(status) & ~0x80;
+	if(status == 0x57f) {
+		printf("fuck: %x\n",status);
+		assert(1==0);
+	}
 
-	return (sig == SIGTRAP) ? 0 : sig;
+	if (status == 0) {
+		return 0;
+	}
+
+	/* we got a SIGTRAP from ptrace */
+	if ((WSTOPSIG(status) & ~0x80) == SIGTRAP) {
+		return 0;
+	}
+
+	/* we got a SIGTRAP from ptrace */
+	if ((WSTOPSIG(status) & ~0x80) == SIGSEGV) {
+		return SIGSEGV;
+	}
+
+	if (WSTOPSIG(status) == SIGCHLD) {
+		return SIGCHLD;
+	}
+
+	printf("status: %x    signal: %d   event: %x\n", status, WSTOPSIG(status),GET_PTRACE_EVENT(status));
+	assert(0);
+	return status;
+
+	/*int sig = WSTOPSIG(status) & ~0x80;
+
+	 if (GET_PTRACE_EVENT(status)) {
+	 printf("we got the ptrace event: %x\n",GET_PTRACE_EVENT(status));
+	 }
+
+	 return (sig == SIGTRAP) ? 0 : sig;*/
 }
 
 void print_register_file_tid(pid_t tid)
@@ -64,6 +95,7 @@ void print_register_file_tid(pid_t tid)
 	fprintf(stderr, "ebp: %lx\n", regs.ebp);
 	fprintf(stderr, "esp: %lx\n", regs.esp);
 	fprintf(stderr, "eip: %lx\n", regs.eip);
+	fprintf(stderr, "eflags %lx\n",regs.eflags);
 	fprintf(stderr, "orig_eax %lx\n", regs.orig_eax);
 	fprintf(stderr, "\n");
 }
@@ -486,7 +518,6 @@ int check_if_mapped(struct context *ctx, void *start, void *end)
 	char tmp[9];
 	bzero(tmp, 9);
 
-
 	while (fgets(buf, 256, file)) {
 		memcpy(tmp, buf, 8);
 		void *mmap_start = (void*) strtoul(tmp, NULL, 16);
@@ -498,7 +529,6 @@ int check_if_mapped(struct context *ctx, void *start, void *end)
 			return 1;
 		}
 	}
-
 
 	sys_fclose(file);
 	return 0;

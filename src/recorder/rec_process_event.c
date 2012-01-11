@@ -180,8 +180,7 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * FIXXME: not quite sure if something is returned!
 	 */
-	SYS_REC1(epoll_ctl, sizeof(struct epoll_event), regs.esi)
-
+	//SYS_REC1(epoll_ctl, sizeof(struct epoll_event), regs.esi)
 	/**
 	 * int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
 	 *
@@ -553,12 +552,12 @@ void rec_process_syscall(struct context *ctx)
 		case FUTEX_WAIT:
 		case FUTEX_LOCK_PI:
 		case FUTEX_UNLOCK_PI:
-		case FUTEX_WAIT_REQUEUE_PI:
 			break;
 
 		case FUTEX_CMP_REQUEUE:
 		case FUTEX_WAKE_OP:
 		case FUTEX_CMP_REQUEUE_PI:
+		//case FUTEX_WAIT_REQUEUE_PI:
 		{
 			record_child_data(ctx, syscall, sizeof(int), regs.edi);
 			break;
@@ -991,16 +990,22 @@ void rec_process_syscall(struct context *ctx)
 		case SYS_SENDTO:
 		/* int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen); */
 		case SYS_SETSOCKOPT:
+		/* int shutdown(int socket, int how) */
+		case SYS_SHUTDOWN:
 		{
 			break;
 		}
+
+
+
+
 		/* int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 		case SYS_GETPEERNAME:
 		/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 		case SYS_GETSOCKNAME:
 		{
 
-			long int* addr = read_child_data(ctx, sizeof(void*), base_addr + 2 * sizeof(int));
+			long int *addr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int) + sizeof(struct sockaddr*));
 			socklen_t *addrlen = read_child_data(ctx, sizeof(socklen_t), *addr);
 			record_child_data(ctx, syscall, sizeof(socklen_t), *addr);
 			sys_free((void**) &addr);
@@ -1029,14 +1034,19 @@ void rec_process_syscall(struct context *ctx)
 		/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 		case SYS_RECVMSG:
 		{
-			struct msghdr** ptr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int));
-			struct msghdr* msg = read_child_data(ctx, sizeof(struct msghdr), (long int) *ptr);
+			struct msghdr **ptr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int));
+			struct msghdr *msg = read_child_data(ctx, sizeof(struct msghdr), (long int) *ptr);
+
+			/* record the enture struct */
+			record_child_data(ctx, syscall, sizeof(struct msghdr), (long int) *ptr);
+			record_child_data(ctx, syscall, msg->msg_namelen, (long int) msg->msg_name);
 
 			assert(msg->msg_iovlen == 1);
-			record_child_data(ctx, syscall, sizeof(struct msghdr), (long int) *ptr);
+
 			record_child_data(ctx, syscall, sizeof(struct iovec), (long int) (msg->msg_iov));
 			struct iovec *iov = read_child_data(ctx, sizeof(struct iovec), (long int) msg->msg_iov);
 			record_child_data(ctx, syscall, iov->iov_len, (long int) iov->iov_base);
+
 			record_child_data(ctx, syscall, msg->msg_controllen, (long int) msg->msg_control);
 
 			sys_free((void**) &iov);
@@ -1048,16 +1058,16 @@ void rec_process_syscall(struct context *ctx)
 		/* ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen); */
 		case SYS_RECVFROM:
 		{
-			uintptr_t* buf;
-			size_t* len;
-			socklen_t** addrlen_ptr;
+			uintptr_t *buf;
+			size_t *len;
+			socklen_t **addrlen_ptr;
 			socklen_t *addrlen;
-			struct sockaddr** src_addr_ptr;
+			struct sockaddr **src_addr_ptr;
 
-			buf = read_child_data(ctx, sizeof(void*), base_addr + 4);
+			buf = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int));
 			len = read_child_data(ctx, sizeof(void*), base_addr + 8);
-			src_addr_ptr = read_child_data(ctx, sizeof(struct sockaddr), base_addr + 16);
-			addrlen_ptr = read_child_data(ctx, sizeof(socklen_t), (long int) base_addr + 20);
+			src_addr_ptr = read_child_data(ctx, sizeof(struct sockaddr*), base_addr + 16);
+			addrlen_ptr = read_child_data(ctx, sizeof(socklen_t*), (long int) base_addr + 20);
 			addrlen = read_child_data(ctx, sizeof(socklen_t), (long int) *addrlen_ptr);
 
 			record_child_data(ctx, syscall, *len, *buf);
@@ -1511,7 +1521,7 @@ void rec_process_syscall(struct context *ctx)
 	 * filename to the actime and modtime fields of times respectively.
 	 *
 	 */
-	SYS_REC1(utimes,2*sizeof(struct timeval),regs.ecx);
+	SYS_REC1(utimes, 2*sizeof(struct timeval), regs.ecx);
 
 	/**
 	 * pid_t vfork(void);

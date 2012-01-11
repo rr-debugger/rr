@@ -36,7 +36,6 @@
 static void validate_args(struct context* context)
 {
 	struct user_regs_struct cur_reg;
-
 	read_child_registers(context->child_tid, &cur_reg);
 	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, 1);
 }
@@ -49,55 +48,49 @@ static void goto_next_syscall_emu(struct context *ctx)
 	assert(ctx->child_sig == 0);
 
 	pid_t tid = ctx->child_tid;
-	sys_ptrace_sysemu_sig(tid,ctx->replay_sig);
+	if (ctx->replay_sig != 0) {
+		printf("global time: %u\n",ctx->trace.global_time);
+	}
+	//assert(ctx->replay_sig == 0);
+	sys_ptrace_sysemu_sig(tid, ctx->replay_sig);
 	sys_waitpid(tid, &ctx->status);
 	ctx->replay_sig = 0;
 
-	while (signal_pending(ctx->status)) {
-		printf("fucking crap1: raw: %x  WSTSOPSIG %x\n", ctx->status, WSTOPSIG(ctx->status));
-		printf("time: %u\n",ctx->trace.global_time);
-		sys_ptrace_syscall(tid);
-		sys_waitpid(tid, &ctx->status);
-		assert(1==0);
+	if (ctx->status == 0x57f) {
+		printf("something is wrong!!!\n");
 	}
 
-	assert(signal_pending(ctx->status) == 0);
+	assert(signal_pending(ctx->child_sig) == 0);
 
 	/* check if we are synchronized with the trace -- should never fail */
 	const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	const int current_syscall = read_child_orig_eax(tid);
+	int current_syscall = read_child_orig_eax(tid);
 
 	if (current_syscall != rec_syscall) {
-		/* we received a signal that did not occur in the recorder -- call the function again */
-		if (signal_pending(ctx->status)) {
-			print_inst(ctx->child_tid);
-			printf("what do we do now: %d\n", signal_pending(ctx->status));
-			assert(ctx->child_sig == 0);
-			assert(0);
+		printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
+		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.global_time);
+		printf("ptrace_event: %x\n", GET_PTRACE_EVENT(ctx->status));
+		uint64_t up = read_rbc_down(ctx->hpc);
+		uint64_t down = read_rbc_down(ctx->hpc);
 
-		} else {
-			printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
-			printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.thread_time);
-			sys_exit();
-		}
+		printf("it fucking worked: up %llu  down %llu\n",up,down);
+		sys_exit();
 	}
-	assert(ctx->child_sig == 0);
 }
 
 /**
- *  Step over the system call in oder to use PTRACE_SYSTEM call
+ *  Step over the system call to be able to reuse PTRACE_SYSTEM call
  **/
 static void finish_syscall_emu(struct context *ctx)
 {
 	assert(ctx->child_sig == 0);
 	sys_ptrace_sysemu_singlestep(ctx->child_tid);
 	sys_waitpid(ctx->child_tid, &(ctx->status));
-	int sig_pending = signal_pending(ctx->status);
 
-	if (ctx->child_sig != 0) {
-		fprintf(stderr, "WARNING: we have a signal(%d) in 'finish_syscall_emu' -- we do not deliver that signal:\n", sig_pending);
-	}
-	assert(ctx->child_sig == 0);
+	/* we get a simple SIGTRAP in this case */
+	assert(ctx->status == 0x57f);
+	/* reset the single-step status */
+	ctx->status = 0;
 }
 
 /*
@@ -115,20 +108,9 @@ void __ptrace_cont(struct context *ctx)
 	int current_syscall = read_child_orig_eax(my_tid);
 
 	if (current_syscall != rec_syscall) {
-
-		/* we received a signal that did not occur in the recorder -- call the function again */
-		if (signal_pending(ctx->status)) {
-			print_inst(ctx->child_tid);
-			printf("__ptrace_cont: what do we do now: %d\n", signal_pending(ctx->status));
-			fflush(stdout);
-			assert(ctx->child_sig == 0);
-			ctx->child_sig = 0;
-			__ptrace_cont(ctx);
-		} else {
-			printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
-			fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
-			sys_exit();
-		}
+		printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
+		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
+		sys_exit();
 	}
 
 	/* we should not have a singal pending here -- if there is one pending nevertheless,
@@ -165,18 +147,19 @@ static void set_return_value(struct context* context)
  * which  are  passed  through  to  the appropriate call.
  *
  */
-static void handle_socket(struct context* context, struct trace* trace)
+static void handle_socket(struct context *ctx, struct trace* trace)
 {
 	int state;
 	pid_t tid;
 
 	state = trace->state;
-	tid = context->child_tid;
+	tid = ctx->child_tid;
 	/* sockets are emulated, not executed */
 	if (state == STATE_SYSCALL_ENTRY) {
-		goto_next_syscall_emu(context);
+		goto_next_syscall_emu(ctx);
 	} else {
 		int call = read_child_ebx(tid);
+		printf("socket call: %d\n", call);
 		switch (call) {
 		/* int socket(int domain, int type, int protocol); */
 		case SYS_SOCKET:
@@ -210,8 +193,8 @@ static void handle_socket(struct context* context, struct trace* trace)
 		/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 		case SYS_GETSOCKNAME:
 		{
-			set_child_data(context);
-			set_child_data(context);
+			set_child_data(ctx);
+			set_child_data(ctx);
 
 			break;
 		}
@@ -219,7 +202,7 @@ static void handle_socket(struct context* context, struct trace* trace)
 		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) */
 		case SYS_RECV:
 		{
-			set_child_data(context);
+			set_child_data(ctx);
 			break;
 		}
 
@@ -227,10 +210,11 @@ static void handle_socket(struct context* context, struct trace* trace)
 		case SYS_RECVMSG:
 		{
 			/* write the struct msghdr data structure */
-			set_child_data(context);
-			set_child_data(context);
-			set_child_data(context);
-			set_child_data(context);
+			set_child_data(ctx);
+			set_child_data(ctx);
+			set_child_data(ctx);
+			set_child_data(ctx);
+			set_child_data(ctx);
 			break;
 		}
 
@@ -246,8 +230,8 @@ static void handle_socket(struct context* context, struct trace* trace)
 		case SYS_ACCEPT:
 		{
 			//FIXXME: not quite sure about socket_addr;
-			set_child_data(context);
-			set_child_data(context);
+			set_child_data(ctx);
+			set_child_data(ctx);
 			break;
 		}
 
@@ -261,27 +245,16 @@ static void handle_socket(struct context* context, struct trace* trace)
 		 */
 		case SYS_GETSOCKOPT:
 		{
-			set_child_data(context);
+			set_child_data(ctx);
 			break;
 		}
 
 		/* ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen); */
 		case SYS_RECVFROM:
 		{
-
-			int* len = read_child_data_tid(tid, INT_SIZE, read_child_ecx(tid) + INT_SIZE + PTR_SIZE);
-			sys_free((void**) &len);
-			set_child_data(context);
-
-			struct sockaddr** src_addr_ptr = read_child_data_tid(tid, sizeof(struct sockaddr), read_child_ecx(tid) + 3 * INT_SIZE + PTR_SIZE);
-			socklen_t** addrlen = read_child_data_tid(tid, sizeof(socklen_t), (long int) read_child_ecx(tid) + (3 * INT_SIZE) + PTR_SIZE + sizeof(struct sockaddr*));
-
-			int* flags = read_child_data_tid(tid, INT_SIZE, read_child_ecx(tid) + 2 * INT_SIZE + PTR_SIZE);
-			sys_free((void**) &flags);
-			set_child_data(context);
-			set_child_data(context);
-			sys_free((void**) &addrlen);
-			sys_free((void**) &src_addr_ptr);
+			set_child_data(ctx);
+			set_child_data(ctx);
+			set_child_data(ctx);
 			break;
 		}
 
@@ -291,9 +264,9 @@ static void handle_socket(struct context* context, struct trace* trace)
 			break;
 		}
 
-		set_return_value(context);
-		validate_args(context);
-		finish_syscall_emu(context);
+		set_return_value(ctx);
+		validate_args(ctx);
+		finish_syscall_emu(ctx);
 	}
 }
 
@@ -306,8 +279,9 @@ void rep_process_syscall(struct context* context)
 {
 	const int tid = context->child_tid;
 	struct trace *trace = &(context->trace);
-	int syscall = trace->recorded_regs.orig_eax;
+	int syscall = trace->stop_reason;
 	int state = trace->state;
+	struct context *ctx = context;
 
 	assert((state == 1) || (state == 0));
 
@@ -430,7 +404,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * Potentially blocking
 	 */
-	SYS_FD_ARG(poll, read_child_ecx(tid))
+	SYS_FD_ARG(poll, 1)
 
 	/**
 	 * int fstat(int fd, struct stat *buf)
@@ -521,8 +495,6 @@ void rep_process_syscall(struct context* context)
 					set_child_data(context);
 					break;
 				}
-
-
 
 				case DRM_IOCTL_VERSION:
 				{
@@ -874,7 +846,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(getppid, 0)
 
-
 	/* int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
 	 *
 	 * getresuid()  returns  the  real  UID,  the effective UID, and the saved set-user-ID of
@@ -883,7 +854,6 @@ void rep_process_syscall(struct context* context)
 	 * @return:  On success, zero is returned.  On error, -1 is returned, and errno is set appropriately.
 	 */
 	SYS_EMU_ARG(getresgid32, 3)
-
 
 	/**
 	 * pid_t gettid(void);
@@ -1050,7 +1020,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(sysinfo, 1)
 
-
 	/**
 	 * int utimes(const char *filename, const struct timeval times[2])
 	 *
@@ -1059,9 +1028,6 @@ void rep_process_syscall(struct context* context)
 	 *
 	 */
 	SYS_EMU_ARG(utimes, 1)
-
-
-
 
 	/**
 	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
@@ -1209,7 +1175,7 @@ void rep_process_syscall(struct context* context)
 	 * brk()  sets  the  end  of  the  data segment to the value specified by addr, when that value is reasonable, the system has
 	 * enough memory, and the process does not exceed its maximum data size (see setrlimit(2)).
 	 */
-	SYS_EXEC_ARG_RET(context,brk, 0)
+	SYS_EXEC_ARG_RET(context, brk, 0)
 
 	/**
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
@@ -1423,7 +1389,7 @@ void rep_process_syscall(struct context* context)
 	 * automatically unmapped when the process is terminated.  On the other hand, closing the file descriptor
 	 * does not unmap the region.
 	 */
-	SYS_EXEC_ARG_RET(context,munmap, 0)
+	SYS_EXEC_ARG_RET(context, munmap, 0)
 
 	/**
 	 * int mprotect(const void *addr, size_t len, int prot)
@@ -1554,16 +1520,16 @@ void rep_process_syscall(struct context* context)
 	{
 		/* go to the system call */
 		__ptrace_cont(context);
+		validate_args(ctx);
 
-		/* do another step; we do that 'unchecled' since we are supposed to get a -1 in orig_eax
+		/* do another step; we do that 'unchecked' since we are supposed to get a -1 in orig_eax
 		 * and that -1 is not recorded */
-		sys_ptrace_syscall(tid);
-		sys_waitpid(tid, &context->status);
+		//sys_ptrace_syscall(tid);
+		//sys_waitpid(tid, &context->status);
 
 		/* the next event is -1 -- how knows why?*/
-		assert(read_child_orig_eax(context->child_tid) == -1);
-		assert(signal_pending(context->status) == 0);
-
+		//assert(read_child_orig_eax(context->child_tid) == -1);
+		//assert(ctx->status == 0x857f);
 		break;
 	}
 
@@ -1577,7 +1543,7 @@ void rep_process_syscall(struct context* context)
 	SYS_EXEC_ARG_RET(context, rt_sigprocmask, 1)
 
 	default:
-	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out\n", syscall);
+	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall,ctx->trace.global_time);
 	sys_exit();
 	}
 

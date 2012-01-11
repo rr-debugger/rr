@@ -17,6 +17,20 @@
 
 #define SKID_SIZE 			50
 
+static void singlestep(struct context *ctx, int sig, int expected_val)
+{
+	sys_ptrace_singlestep(ctx->child_tid, sig);
+	sys_waitpid(ctx->child_tid, &ctx->status);
+	/* we get a simple SIGTRAP in this case */
+	if (ctx->status != expected_val) {
+		printf("status %x   expected %x\n", ctx->status, expected_val);
+	}
+
+	assert(ctx->status == expected_val);
+	ctx->status = 0;
+	ctx->child_sig = 0;
+}
+
 /**
  * function goes to the n-th conditional branch
  */
@@ -26,8 +40,6 @@ static void compensate_branch_count(struct context *ctx, int sig)
 
 	rbc_rec = ctx->trace.rbc_up;
 	rbc_now = read_rbc_up(ctx->hpc);
-
-	printf("rbc_now: %llu   rbc_rec: %llu\n", rbc_now, rbc_rec);
 
 	/* if the skid size was too small, go back to the last checkpoint and
 	 * re-execute the program.
@@ -43,14 +55,26 @@ static void compensate_branch_count(struct context *ctx, int sig)
 		read_child_registers(ctx->child_tid, &regs);
 		rbc_now = read_rbc_up(ctx->hpc);
 		if (signal_pending(ctx->status) != 0) {
-			printf("we got the signal: %d  at %u\n",signal_pending(ctx->status),ctx->trace.global_time);
-			printf("rbc_now: %llu  rbc_rec: %llu\n",rbc_now,rbc_rec);
+			assert(1==0);
 		}
+
 		assert(signal_pending(ctx->status) == 0);
 
 		if (rbc_now < rbc_rec) {
-			singlestep(ctx, 0);
+			printf("here!!\n");
+			singlestep(ctx, 0, 0x57f);
 		} else if (rbc_now == rbc_rec) {
+
+			if (sig == SIGSEGV) {
+				printf("we're here\n");
+				/* we should now stop at the instruction that caused the SIGSEGV */
+				sys_ptrace_syscall(ctx->child_tid);
+				sys_waitpid(ctx->child_tid, &ctx->status);
+				printf("but we arrive here!!\n");
+			} else {
+				assert(1==0);
+			}
+
 			/* the eflags register has two bits that are set when an interrupt is pending:
 			 * bit 8:  TF (trap flag)
 			 * bit 17: VM (virtual 8086 mode)
@@ -64,27 +88,22 @@ static void compensate_branch_count(struct context *ctx, int sig)
 				/* A SIGSEGV can be triggered by a regular instruction; it is not necessarily sent by
 				 * another process. We check this condition here.
 				 */
-				//printf("we found the crappy spot\n");
 				if (sig == SIGSEGV) {
-					print_inst(ctx->child_tid);
-					singlestep(ctx, 0);
 					//print_inst(ctx->child_tid);
-					if (ctx->child_sig == SIGSEGV) {
-						/* deliver the signal */
-						singlestep(ctx, SIGSEGV);
-						//printf("awsome!!\n");
-						assert(ctx->child_sig == 0);
-						break;
 
-					} else {
-						assert(1==0);
-					}
+					/* here we ensure that the we get a SIGSEGV at the right spot */
+					printf("aha!!\n");
+					singlestep(ctx, 0, 0xb7f);
+					/* deliver the signal */
+					//singlestep(ctx, SIGSEGV, 0x57f);
+					printf("awsome!!\n");
+					break;
 				}
 				/* set the signal such that it is delivered when the process continues */
 				//ctx->pending_sig = sig;
 			}
 			/* check that we do not get unexpected signal in the single-stepping process */
-			singlestep(ctx, 0);
+			singlestep(ctx, 0, 0x57f);
 		} else {
 			fprintf(stderr, "internal error: cannot find correct spot for signal(%d) delivery -- bailing out\n", sig);
 			sys_exit();
@@ -156,7 +175,6 @@ void rep_process_signal(struct context *ctx)
 
 	case SIGIO:
 	case SIGCHLD:
-	case SIGSEGV:
 	{
 		/* synchronous signal (signal received in a system call) */
 		if (trace->rbc_up == 0) {
@@ -164,13 +182,11 @@ void rep_process_signal(struct context *ctx)
 			return;
 		}
 
-		printf("rbc: %llu  we will deliver signal: %d\n", trace->rbc_up, sig);
 		// setup and start replay counters
-		printf("setting replay counters: retired branch count = %llu\n", trace->rbc_up);
 		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
 
 		/* single-step if the number of instructions to the next event is "small" */
-		if (trace->rbc_up <= 1000) {
+		if (trace->rbc_up <= 10000) {
 			stop_hpc_down(ctx);
 			compensate_branch_count(ctx, sig);
 			stop_hpc(ctx);
@@ -191,6 +207,27 @@ void rep_process_signal(struct context *ctx)
 
 		}
 
+		break;
+	}
+
+	case SIGSEGV:
+	{
+		/* synchronous signal (signal received in a system call) */
+		if (trace->rbc_up == 0) {
+			ctx->replay_sig = sig;
+			return;
+		}
+
+		sys_ptrace_syscall(ctx->child_tid);
+		sys_waitpid(ctx->child_tid, &ctx->status);
+		assert(WSTOPSIG(ctx->status) == SIGSEGV);
+
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		assert(compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 1, 1) == 0);
+
+		/* deliver the signal */
+		singlestep(ctx, SIGSEGV, 0x57f);
 		break;
 	}
 

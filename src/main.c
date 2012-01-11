@@ -186,11 +186,12 @@ static void start(int option, int argc, char* argv[], char** envp)
 			install_signal_handler();
 
 			sys_waitpid(pid, &status);
+			sys_ptrace_setup(pid);
+
 
 			/* initialize stuff */
 			init_libpfm();
 			rep_sched_init();
-			sys_ptrace_setup(pid);
 			/* sets the file pointer to the first trace entry */
 
 			read_trace_init(argv[2]);

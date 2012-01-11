@@ -9,6 +9,9 @@
 #include "../share/config.h"
 
 
+#define GET_PTRACE_EVENT(status)	 		((0xFF0000 & status) >> 16)
+
+
 #ifdef DEBUG
 #define debug_print(format, ...)  fprintf(stderr,format, __VA_ARGS__)
 #else

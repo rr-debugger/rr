@@ -224,12 +224,7 @@ void goto_next_event(struct context *ctx)
 	ctx->event = read_child_orig_eax(ctx->child_tid);
 }
 
-void singlestep(struct context *ctx, int sig)
-{
-	sys_ptrace_singlestep(ctx->child_tid, sig);
-	sys_waitpid(ctx->child_tid, &ctx->status);
-	ctx->child_sig = signal_pending(ctx->status);
-}
+
 
 long sys_ptrace_peektext_word(pid_t pid, void* addr)
 {

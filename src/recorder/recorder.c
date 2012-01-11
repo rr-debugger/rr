@@ -18,7 +18,6 @@
 #include "../share/util.h"
 
 #define PTRACE_EVENT_NONE			0
-#define GET_EVENT(status)	 		((0xFF0000 & status) >> 16)
 
 /**
  * Single steps to the next event that must be recorded. This can either be a system call, or reading the time
@@ -51,11 +50,13 @@ void goto_next_event_singlestep(struct context* context)
 		}
 	}
 
-	assert(GET_EVENT(context->status)==0);
+	assert(GET_PTRACE_EVENT(context->status)==0);
 }
 
 static void cont_nonblock(struct context* ctx)
 {
+	sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
+	assert(WIFEXITED(ctx->status) == 0);
 	sys_ptrace_syscall_sig(ctx->child_tid, ctx->child_sig);
 	ctx->child_sig = 0;
 }
@@ -72,14 +73,11 @@ static int wait_nonblock(struct context *ctx)
 	int ret = sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
 
 	if (ret) {
-		ctx->event = read_child_orig_eax(ctx->child_tid);
+		assert(WIFEXITED(ctx->status) == 0);
 		handle_signal(ctx);
+		ctx->event = read_child_orig_eax(ctx->child_tid);
 		check_event(ctx);
-		ctx->blocked = 0;
-	} else {
-		ctx->blocked = 1;
 	}
-
 	return ret;
 }
 
@@ -92,7 +90,7 @@ void cont_block(struct context *ctx)
 static int allow_ctx_switch(struct context *ctx)
 {
 	int event = ctx->event;
-
+	//printf("event: %d\n",event);
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	switch (event) {
 	case SYS_futex:
@@ -100,16 +98,17 @@ static int allow_ctx_switch(struct context *ctx)
 
 		int op = read_child_ecx(ctx->child_tid) & FUTEX_CMD_MASK;
 
-		if (op == FUTEX_WAIT || op == FUTEX_WAIT_PRIVATE) {
+		if (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET || op == FUTEX_WAIT_PRIVATE || op == FUTEX_WAIT_REQUEUE_PI) {
 			return 1;
 		}
 		break;
 	}
 
-	case SYS_waitpid:
 	case SYS_read:
-	case SYS_poll:
-	return 1;
+	case SYS_waitpid:
+	{
+		return 1;
+	}
 	}
 
 	return 0;
@@ -141,12 +140,19 @@ void start_recording()
 			//goto_next_event_singlestep(context);
 
 			/* print some kind of progress */
-			if (progress++ % 1000 == 0) {
-				printf(".");
+			if (progress++ % 10000 == 0) {
+				printf("."); fflush(stdout);
 			}
 
 			/* we need to issue a blocking continue here to serialize program execution */
+
+			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 			cont_block(ctx);
+			assert(GET_PTRACE_EVENT(ctx->status) == 0);
+
+			if (GET_PTRACE_EVENT(ctx->status)) {
+				assert(1==0);
+			}
 
 			/* state might be overwritten if a signal occurs */
 			if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
@@ -159,19 +165,24 @@ void start_recording()
 				 * we have not arrived at a new system call.
 				 */
 			} else if (ctx->child_sig) {
-				ctx->allow_ctx_switch = 0;
 
 				/* These system calls never return; we remain in the same execution state */
 			} else if (ctx->event == SYS_sigreturn || ctx->event == SYS_rt_sigreturn) {
 				/* we record the sigreturn event here, since we have to do another ptrace_cont to
 				 * fullt process the sigreturn system call.
 				 */
+				int orig_event = ctx->event;
 				record_event(ctx, 0);
 				/* do another step */
 				cont_block(ctx);
+
 				assert(ctx->child_sig == 0);
 				/* the next event is -1 -- how knows why?*/
 				assert(ctx->event == -1);
+				ctx->event = orig_event;
+				record_event(ctx, 0);
+				ctx->allow_ctx_switch = 1;
+
 				/* here we can continue normally */
 				break;
 
@@ -181,6 +192,7 @@ void start_recording()
 
 				/* this is a wired state -- no idea why it works */
 			} else if (ctx->event == SYS_restart_syscall) {
+
 				assert(1==0);
 
 				/* we sould never come here */
@@ -197,12 +209,13 @@ void start_recording()
 			/* continue and execute the system call */
 			cont_nonblock(ctx);
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
+
 			break;
 		}
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-		//	printf("now we are at: %d\n", ctx->event);
+			//	printf("now we are at: %d\n", ctx->event);
 			int ret = wait_nonblock(ctx);
 			if (ret) {
 				assert(ctx->child_sig == 0);
@@ -214,7 +227,7 @@ void start_recording()
 				}
 
 				/* handle events */
-				int event = GET_EVENT(ctx->status);
+				int event = GET_PTRACE_EVENT(ctx->status);
 				switch (event) {
 
 				case PTRACE_EVENT_NONE:
