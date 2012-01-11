@@ -289,7 +289,8 @@ void* sys_malloc(int size)
 {
 	void* tmp;
 	if ((tmp = malloc(size)) == NULL) {
-		perror("");
+		perror("sys_malloc: ");
+		printf("size is: %d\n",size);
 		sys_exit();
 	}
 	bzero(tmp,size);

@@ -106,10 +106,15 @@ static int allow_ctx_switch(struct context *ctx)
 
 	case SYS_read:
 	case SYS_waitpid:
+	case SYS_poll:
+	case SYS_socketcall:
+	case SYS_epoll_wait:
+	case SYS_epoll_pwait:
 	{
 		return 1;
 	}
-	}
+
+	} /* end switch */
 
 	return 0;
 }
@@ -146,8 +151,9 @@ void start_recording()
 
 			/* we need to issue a blocking continue here to serialize program execution */
 
-			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 			cont_block(ctx);
+			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
+
 			assert(GET_PTRACE_EVENT(ctx->status) == 0);
 
 			if (GET_PTRACE_EVENT(ctx->status)) {

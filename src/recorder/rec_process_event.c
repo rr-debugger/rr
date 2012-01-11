@@ -180,7 +180,8 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * FIXXME: not quite sure if something is returned!
 	 */
-	//SYS_REC1(epoll_ctl, sizeof(struct epoll_event), regs.esi)
+	SYS_REC1(epoll_ctl, sizeof(struct epoll_event), regs.esi)
+
 	/**
 	 * int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
 	 *
@@ -996,9 +997,6 @@ void rec_process_syscall(struct context *ctx)
 			break;
 		}
 
-
-
-
 		/* int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 		case SYS_GETPEERNAME:
 		/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
@@ -1455,7 +1453,17 @@ void rec_process_syscall(struct context *ctx)
 	 * or because read() was interrupted by a signal. On error, -1 is returned, and errno is set appropriately.
 	 * In this case it is left unspecified whether the file position (if any) changes.
 	 */
-	SYS_REC1(read, regs.eax, regs.ecx)
+	//SYS_REC1(read, regs.eax, regs.ecx)
+	case SYS_read:
+	{
+		if (regs.eax >= 0) {
+			record_child_data(ctx, syscall, regs.eax, regs.ecx);
+		} else {
+			record_child_data(ctx, syscall, regs.edx, regs.ecx);
+		}
+
+		break;
+	}
 
 	/**
 	 * int rename(const char *oldpath, const char *newpath)

@@ -49,7 +49,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 
 	pid_t tid = ctx->child_tid;
 	if (ctx->replay_sig != 0) {
-		printf("global time: %u\n",ctx->trace.global_time);
+		printf("global time: %u\n", ctx->trace.global_time);
 	}
 	//assert(ctx->replay_sig == 0);
 	sys_ptrace_sysemu_sig(tid, ctx->replay_sig);
@@ -73,7 +73,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 		uint64_t up = read_rbc_down(ctx->hpc);
 		uint64_t down = read_rbc_down(ctx->hpc);
 
-		printf("it fucking worked: up %llu  down %llu\n",up,down);
+		printf("it fucking worked: up %llu  down %llu\n", up, down);
 		sys_exit();
 	}
 }
@@ -181,8 +181,12 @@ static void handle_socket(struct context *ctx, struct trace* trace)
 
 		/* ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen); */
 		case SYS_SENDTO:
+
 		/* int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen); */
 		case SYS_SETSOCKOPT:
+
+		/* int shutdown(int socket, int how) */
+		case SYS_SHUTDOWN:
 		{
 			break;
 		}
@@ -328,7 +332,8 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * FIXXME: not quite sure if something is returned!
 	 */
-	//SYS_FD_ARG(epoll_ctl, 1)
+	SYS_FD_ARG(epoll_ctl, 1)
+
 	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);
 	 *
@@ -1526,7 +1531,6 @@ void rep_process_syscall(struct context* context)
 		 * and that -1 is not recorded */
 		//sys_ptrace_syscall(tid);
 		//sys_waitpid(tid, &context->status);
-
 		/* the next event is -1 -- how knows why?*/
 		//assert(read_child_orig_eax(context->child_tid) == -1);
 		//assert(ctx->status == 0x857f);
@@ -1543,7 +1547,7 @@ void rep_process_syscall(struct context* context)
 	SYS_EXEC_ARG_RET(context, rt_sigprocmask, 1)
 
 	default:
-	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall,ctx->trace.global_time);
+	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall, ctx->trace.global_time);
 	sys_exit();
 	}
 
