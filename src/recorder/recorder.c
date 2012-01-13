@@ -106,6 +106,7 @@ static int allow_ctx_switch(struct context *ctx)
 
 	case SYS_read:
 	case SYS_waitpid:
+	case SYS_wait4:
 	case SYS_poll:
 	case SYS_socketcall:
 	case SYS_epoll_wait:
@@ -173,6 +174,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		{
 			fprintf(stderr, "Unknown ptrace event: %x -- baling out\n", event);
 			sys_exit();
+			break;
 		}
 
 		} /* end switch */
@@ -210,7 +212,7 @@ void start_recording()
 			/* we need to issue a blocking continue here to serialize program execution */
 
 			cont_block(ctx);
-			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
+			printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 
 			assert(GET_PTRACE_EVENT(ctx->status) == 0);
 
