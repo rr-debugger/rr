@@ -11,6 +11,7 @@
 #define UUL_COLUMN_SIZE 	20
 #define LI_COLUMN_SIZE 		11
 
+#define size_t int
 
 struct trace
 {

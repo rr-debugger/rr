@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -796,6 +796,20 @@ void rec_process_syscall(struct context *ctx)
 	 break;
 	 }*/
 
+
+	/**
+	 * ssize_t readahead(int fd, off64_t offset, size_t count);
+	 *
+	 * readahead()  populates the page cache with data from a file so that subsequent reads from that file will not block
+	 * on disk I/O.  The fd argument is a file descriptor identifying the file which is to be read.  The offset argu-
+     * ment specifies the starting point from which data is to be read and count specifies the number of bytes to be read.
+     * I/O is performed in whole pages, so that offset is effectively rounded down to a page boundary and bytes are
+     * read  up  to  the  next page boundary greater than or equal to (offset+count).  readahead() does not read
+     * beyond the end of the file.  readahead() blocks until the specified data has been read.  The current file offset of the
+     * open file referred to by fd is left unchanged.
+	 */
+	SYS_REC0(readahead)
+
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
 	 *
@@ -804,7 +818,7 @@ void rec_process_syscall(struct context *ctx)
 	 * It will truncate the contents (to a length of bufsiz characters), in case
 	 * the buffer is too small to hold all of the contents.
 	 */
-	SYS_REC1(readlink, regs.eax, regs.ecx)
+	SYS_REC1(readlink, regs.edx, regs.ecx)
 
 	/**
 	 * int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
