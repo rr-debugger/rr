@@ -121,6 +121,64 @@ static int allow_ctx_switch(struct context *ctx)
 
 uintptr_t progress;
 
+static void handle_ptrace_event(struct context **ctx_ptr)
+{
+	/* handle events */
+		int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
+		switch (event) {
+
+		case PTRACE_EVENT_NONE:
+		{
+			break;
+		}
+
+		case PTRACE_EVENT_CLONE:
+		case PTRACE_EVENT_FORK:
+		{
+			/* get new tid, register at the scheduler and setup HPC */
+			int new_tid = sys_ptrace_getmsg((*ctx_ptr)->child_tid);
+
+			/* ensure that clone was successful */
+			if (read_child_eax((*ctx_ptr)->child_tid) == -1) {
+				fprintf(stderr, "error in clone system call -- bailing out\n");
+				sys_exit();
+			}
+
+			/* wait until the new thread is ready */
+			sys_waitpid(new_tid, &((*ctx_ptr)->status));
+			rec_sched_register_thread((*ctx_ptr)->child_tid, new_tid);
+
+			/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that. */
+			cont_block((*ctx_ptr));
+			break;
+		}
+
+		case PTRACE_EVENT_EXEC:
+		{
+			cont_block((*ctx_ptr));
+			assert(signal_pending((*ctx_ptr)->status) == 0);
+			break;
+		}
+
+		case PTRACE_EVENT_VFORK_DONE:
+		case PTRACE_EVENT_EXIT:
+		{
+			(*ctx_ptr)->event = USR_EXIT;
+			record_event((*ctx_ptr), 1);
+			rec_sched_deregister_thread(ctx_ptr);
+			break;
+		}
+
+		default:
+		{
+			fprintf(stderr, "Unknown ptrace event: %x -- baling out\n", event);
+			sys_exit();
+		}
+
+		} /* end switch */
+}
+
+
 void start_recording()
 {
 	struct context *ctx = NULL;
@@ -232,61 +290,7 @@ void start_recording()
 					assert(1==0);
 				}
 
-				/* handle events */
-				int event = GET_PTRACE_EVENT(ctx->status);
-				switch (event) {
-
-				case PTRACE_EVENT_NONE:
-				{
-					break;
-				}
-
-				case PTRACE_EVENT_CLONE:
-				case PTRACE_EVENT_FORK:
-				{
-					/* get new tid, register at the scheduler and setup HPC */
-					int new_tid = sys_ptrace_getmsg(ctx->child_tid);
-
-					/* ensure that clone was successful */
-					if (read_child_eax(ctx->child_tid) == -1) {
-						fprintf(stderr, "error in clone system call -- bailing out\n");
-						sys_exit();
-					}
-
-					/* wait until the new thread is ready */
-					sys_waitpid(new_tid, &ctx->status);
-					rec_sched_register_thread(ctx->child_tid, new_tid);
-
-					/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that. */
-					cont_block(ctx);
-					break;
-				}
-
-				case PTRACE_EVENT_EXEC:
-				{
-					cont_block(ctx);
-					assert(signal_pending(ctx->status) == 0);
-					break;
-				}
-
-				case PTRACE_EVENT_VFORK_DONE:
-				case PTRACE_EVENT_EXIT:
-				{
-					ctx->event = USR_EXIT;
-					record_event(ctx, 1);
-					rec_sched_deregister_thread(&ctx);
-					break;
-				}
-
-				default:
-				{
-					fprintf(stderr, "Unknown ptrace event: %x -- baling out\n", event);
-					sys_exit();
-				}
-
-				} /* end switch */
-
-				/* done event handling */
+				handle_ptrace_event(&ctx);
 
 				if (ctx != NULL) {
 					assert(signal_pending(ctx->status) == 0);
