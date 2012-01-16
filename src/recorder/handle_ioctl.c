@@ -5,11 +5,18 @@
 #include <stdint.h>
 
 #include <sys/ioctl.h>
+#include <linux/ioctl.h>
+#include <linux/arcfb.h>
+#include <linux/fb.h>
 
 #include <drm/drm.h>
 #include <drm/radeon_drm.h>
 #include <drm/i915_drm.h>
 
+#include <linux/udf_fs_i.h>
+
+
+#include <linux/soundcard.h>
 #include "recorder.h"
 #include "write_trace.h"
 #include "../share/ipc.h"
@@ -23,7 +30,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 	int syscall = SYS_ioctl;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
-	printf("request: %d  %d\n", _IOC_NR(request), request & _IOC_READ);
+	printf("request: %x\n", _IOC_NR(request));
 
 	/* here writing means: write from OS to the process */
 	if (request & _IOC_WRITE) {
@@ -39,6 +46,15 @@ void handle_ioctl_request(struct context *ctx, int request)
 		case FIONREAD:
 		{
 			record_child_data(ctx, syscall, sizeof(int), regs.edx);
+			break;
+		}
+
+		case 0xc020462b:
+		case 0xc048464d:
+		case 0xc0204637:
+		case 0xc0304627:
+		{
+			record_child_data(ctx, syscall, _IOC_SIZE(request), regs.edx);
 			break;
 		}
 
@@ -140,9 +156,16 @@ void handle_ioctl_request(struct context *ctx, int request)
 		}
 
 		default:
-		fprintf(stderr, "Unknown ioctl request: %x -- bailing out\n", request);
-		print_register_file_tid(ctx->child_tid);
-		sys_exit();
+		{
+			int test = UDF_RELOCATE_BLOCKS;
+			fprintf(stderr, "Unknown ioctl request: %x -- bailing out\n", request);
+			fprintf(stderr, "we're testing: %x\n", test);
+			fprintf(stderr, "type bites: %x\n", _IOC_TYPE(request));
+			fprintf(stderr, "size: %d\n", _IOC_SIZE(request));
+			fprintf(stderr, "addr: %x\n", read_child_edx(ctx->child_tid));
+			print_register_file_tid(ctx->child_tid);
+			sys_exit();
+		}
 		}
 	}
 }

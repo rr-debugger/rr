@@ -3,9 +3,11 @@
 #include <assert.h>
 #include <string.h>
 
+#include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
+#include <linux/net.h>
 
 #include "write_trace.h"
 #include "rec_process_event.h"
@@ -52,6 +54,7 @@ void goto_next_event_singlestep(struct context* context)
 
 	assert(GET_PTRACE_EVENT(context->status)==0);
 }
+
 
 static void cont_nonblock(struct context* ctx)
 {
@@ -104,11 +107,21 @@ static int allow_ctx_switch(struct context *ctx)
 		break;
 	}
 
+	case SYS_socketcall:
+	{
+		int call = read_child_ebx(ctx->child_tid);
+		if (call == SYS_SETSOCKOPT || call == SYS_GETSOCKNAME) {
+			return 0;
+		}
+
+		return 1;
+		break;
+	}
+
 	case SYS_read:
 	case SYS_waitpid:
 	case SYS_wait4:
 	case SYS_poll:
-	case SYS_socketcall:
 	case SYS_epoll_wait:
 	case SYS_epoll_pwait:
 	{
@@ -125,61 +138,60 @@ uintptr_t progress;
 static void handle_ptrace_event(struct context **ctx_ptr)
 {
 	/* handle events */
-		int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
-		switch (event) {
+	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
+	switch (event) {
 
-		case PTRACE_EVENT_NONE:
-		{
-			break;
-		}
+	case PTRACE_EVENT_NONE:
+	{
+		break;
+	}
 
-		case PTRACE_EVENT_CLONE:
-		case PTRACE_EVENT_FORK:
-		{
-			/* get new tid, register at the scheduler and setup HPC */
-			int new_tid = sys_ptrace_getmsg((*ctx_ptr)->child_tid);
+	case PTRACE_EVENT_CLONE:
+	case PTRACE_EVENT_FORK:
+	{
+		/* get new tid, register at the scheduler and setup HPC */
+		int new_tid = sys_ptrace_getmsg((*ctx_ptr)->child_tid);
 
-			/* ensure that clone was successful */
-			if (read_child_eax((*ctx_ptr)->child_tid) == -1) {
-				fprintf(stderr, "error in clone system call -- bailing out\n");
-				sys_exit();
-			}
-
-			/* wait until the new thread is ready */
-			sys_waitpid(new_tid, &((*ctx_ptr)->status));
-			rec_sched_register_thread((*ctx_ptr)->child_tid, new_tid);
-
-			/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that. */
-			cont_block((*ctx_ptr));
-			break;
-		}
-
-		case PTRACE_EVENT_EXEC:
-		{
-			cont_block((*ctx_ptr));
-			assert(signal_pending((*ctx_ptr)->status) == 0);
-			break;
-		}
-
-		case PTRACE_EVENT_VFORK_DONE:
-		case PTRACE_EVENT_EXIT:
-		{
-			(*ctx_ptr)->event = USR_EXIT;
-			record_event((*ctx_ptr), 1);
-			rec_sched_deregister_thread(ctx_ptr);
-			break;
-		}
-
-		default:
-		{
-			fprintf(stderr, "Unknown ptrace event: %x -- baling out\n", event);
+		/* ensure that clone was successful */
+		if (read_child_eax((*ctx_ptr)->child_tid) == -1) {
+			fprintf(stderr, "error in clone system call -- bailing out\n");
 			sys_exit();
-			break;
 		}
 
-		} /* end switch */
-}
+		/* wait until the new thread is ready */
+		sys_waitpid(new_tid, &((*ctx_ptr)->status));
+		rec_sched_register_thread((*ctx_ptr)->child_tid, new_tid);
 
+		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that. */
+		cont_block((*ctx_ptr));
+		break;
+	}
+
+	case PTRACE_EVENT_EXEC:
+	{
+		cont_block((*ctx_ptr));
+		assert(signal_pending((*ctx_ptr)->status) == 0);
+		break;
+	}
+
+	case PTRACE_EVENT_VFORK_DONE:
+	case PTRACE_EVENT_EXIT:
+	{
+		(*ctx_ptr)->event = USR_EXIT;
+		record_event((*ctx_ptr), 1);
+		rec_sched_deregister_thread(ctx_ptr);
+		break;
+	}
+
+	default:
+	{
+		fprintf(stderr, "Unknown ptrace event: %x -- baling out\n", event);
+		sys_exit();
+		break;
+	}
+
+	} /* end switch */
+}
 
 void start_recording()
 {
@@ -189,6 +201,54 @@ void start_recording()
 	ctx = get_active_thread(ctx);
 	ctx->event = -1000;
 	record_event(ctx, 0);
+
+	/* initialize the scratchpad for blocking system calls */
+	struct user_regs_struct orig_regs;
+
+	read_child_registers(ctx->child_tid, &orig_regs);
+	void *code = read_child_data(ctx, 4, read_child_eip(ctx->child_tid));
+
+	/* set up the mmap system call */
+	struct user_regs_struct mmap_call;
+	memcpy(&mmap_call, &orig_regs, sizeof(struct user_regs_struct));
+
+	mmap_call.orig_eax = SYS_mmap2;
+	mmap_call.eax = SYS_mmap2;
+	mmap_call.ebx = 0;
+	mmap_call.ecx = sysconf(_SC_PAGE_SIZE);
+	mmap_call.edx = PROT_READ | PROT_WRITE;
+	mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
+	mmap_call.edi = 0;
+	mmap_call.ebp = 0;
+
+	write_child_registers(ctx->child_tid,&mmap_call);
+
+	/* inject code that executes the additional system call */
+	char syscall[] = {0xcd, 0x80};
+	write_child_data(ctx, 2, mmap_call.eip, syscall);
+
+	print_inst(ctx->child_tid);
+
+	sys_ptrace_syscall(ctx->child_tid);
+	sys_waitpid(ctx->child_tid,&ctx->status);
+
+	print_register_file_tid(ctx->child_tid);
+
+	sys_ptrace_syscall(ctx->child_tid);
+	sys_waitpid(ctx->child_tid,&ctx->status);
+
+	print_register_file_tid(ctx->child_tid);
+
+
+	/* reset to the original state */
+	write_child_registers(ctx->child_tid,&orig_regs);
+	write_child_data(ctx, 2, mmap_call.eip, code);
+
+	print_register_file_tid(ctx->child_tid);
+
+
+	free(code);
+	//return;
 
 	while (rec_sched_get_num_threads() > 0) {
 		/* get a thread that is ready to be executed */
@@ -206,13 +266,14 @@ void start_recording()
 
 			/* print some kind of progress */
 			if (progress++ % 10000 == 0) {
-				printf("."); fflush(stdout);
+				printf(".");
+				fflush(stdout);
 			}
 
 			/* we need to issue a blocking continue here to serialize program execution */
 
 			cont_block(ctx);
-			printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
+			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 
 			assert(GET_PTRACE_EVENT(ctx->status) == 0);
 
