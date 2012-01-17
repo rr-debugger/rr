@@ -43,7 +43,11 @@ struct context {
 	int exec_state;
 	int event;
 	int allow_ctx_switch;
+	void *scratch_ptr;
+	int scratch_size;
 
+	void* recorded_scratch_ptr;
+	int recorded_scratch_size;
 
 	/* shared */
 	FILE* inst_dump;

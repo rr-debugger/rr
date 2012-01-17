@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include <poll.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/syscall.h>
@@ -55,6 +56,47 @@ void goto_next_event_singlestep(struct context* context)
 	assert(GET_PTRACE_EVENT(context->status)==0);
 }
 
+static void init_scratch_memory(struct context *ctx)
+{
+	/* initialize the scratchpad for blocking system calls */
+	struct user_regs_struct orig_regs;
+
+	read_child_registers(ctx->child_tid, &orig_regs);
+	void *code = read_child_data(ctx, 4, read_child_eip(ctx->child_tid));
+
+	/* set up the mmap system call */
+	struct user_regs_struct mmap_call;
+	memcpy(&mmap_call, &orig_regs, sizeof(struct user_regs_struct));
+
+	const int scratch_size = 32 * sysconf(_SC_PAGE_SIZE);
+
+	mmap_call.eax = SYS_mmap2;
+	mmap_call.ebx = 0;
+	mmap_call.ecx = scratch_size;
+	mmap_call.edx = PROT_READ | PROT_WRITE | PROT_EXEC;
+	mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
+	mmap_call.edi = -1;
+	mmap_call.ebp = 0;
+	write_child_registers(ctx->child_tid, &mmap_call);
+
+	/* inject code that executes the additional system call */
+	char syscall[] = { 0xcd, 0x80 };
+	write_child_data(ctx, 2, mmap_call.eip, syscall);
+
+	sys_ptrace_syscall(ctx->child_tid);
+	sys_waitpid(ctx->child_tid, &ctx->status);
+
+	sys_ptrace_syscall(ctx->child_tid);
+	sys_waitpid(ctx->child_tid, &ctx->status);
+
+	ctx->scratch_ptr = (void*) read_child_eax(ctx->child_tid);
+	ctx->scratch_size = scratch_size;
+
+	/* reset to the original state */
+	write_child_registers(ctx->child_tid, &orig_regs);
+	write_child_data(ctx, 2, mmap_call.eip, code);
+	free(code);
+}
 
 static void cont_nonblock(struct context* ctx)
 {
@@ -110,23 +152,70 @@ static int allow_ctx_switch(struct context *ctx)
 	case SYS_socketcall:
 	{
 		int call = read_child_ebx(ctx->child_tid);
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		printf("socket call: %d\n", call);
 		if (call == SYS_SETSOCKOPT || call == SYS_GETSOCKNAME) {
 			return 0;
 		}
 
-		return 1;
-		break;
+		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) */
+		if (call == SYS_RECV) {
+			uintptr_t *buf = read_child_data(ctx, sizeof(void*), regs.ecx + 4);
+			size_t *len = read_child_data(ctx, sizeof(void*), regs.ecx + 8);
+			printf("fucking len: %d\n", *len);
+			assert(*len <= ctx->scratch_size);
+			ctx->recorded_scratch_ptr = *buf;
+			ctx->recorded_scratch_size = *len;
+			write_child_data(ctx, sizeof(void*), regs.ecx + 4, &(ctx->scratch_ptr));
+
+			sys_free((void**) &buf);
+			sys_free((void**) &len);
+			return 1;
+		}
+
+		return 0;
 	}
 
+	/* ssize_t read(int fd, void *buf, size_t count); */
 	case SYS_read:
-	case SYS_waitpid:
-	case SYS_wait4:
-	case SYS_poll:
-	case SYS_epoll_wait:
-	case SYS_epoll_pwait:
 	{
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		assert(regs.edx <= ctx->scratch_size);
+
+		ctx->recorded_scratch_ptr = regs.ecx;
+		ctx->recorded_scratch_size = regs.edx;
+
+		regs.ecx = ctx->scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
 		return 1;
 	}
+
+	case SYS_waitpid:
+	case SYS_wait4:
+	return 1;
+
+	/* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
+	case SYS_poll:
+	{
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		ctx->recorded_scratch_size = sizeof(struct pollfd) * regs.ecx;
+		ctx->recorded_scratch_ptr = (void*)regs.ebx;
+		assert(ctx->recorded_scratch_size <= ctx->scratch_size);
+
+		regs.ebx = (long int)ctx->scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+
+		return 1;
+	}
+
+	/*case SYS_epoll_wait:
+	 case SYS_epoll_pwait:
+	 {
+	 return 1;
+	 }*/
 
 	} /* end switch */
 
@@ -170,6 +259,8 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	case PTRACE_EVENT_EXEC:
 	{
 		cont_block((*ctx_ptr));
+
+		init_scratch_memory(*ctx_ptr);
 		assert(signal_pending((*ctx_ptr)->status) == 0);
 		break;
 	}
@@ -201,59 +292,15 @@ void start_recording()
 	ctx = get_active_thread(ctx);
 	ctx->event = -1000;
 	record_event(ctx, 0);
-
-	/* initialize the scratchpad for blocking system calls */
-	struct user_regs_struct orig_regs;
-
-	read_child_registers(ctx->child_tid, &orig_regs);
-	void *code = read_child_data(ctx, 4, read_child_eip(ctx->child_tid));
-
-	/* set up the mmap system call */
-	struct user_regs_struct mmap_call;
-	memcpy(&mmap_call, &orig_regs, sizeof(struct user_regs_struct));
-
-	mmap_call.orig_eax = SYS_mmap2;
-	mmap_call.eax = SYS_mmap2;
-	mmap_call.ebx = 0;
-	mmap_call.ecx = sysconf(_SC_PAGE_SIZE);
-	mmap_call.edx = PROT_READ | PROT_WRITE;
-	mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
-	mmap_call.edi = 0;
-	mmap_call.ebp = 0;
-
-	write_child_registers(ctx->child_tid,&mmap_call);
-
-	/* inject code that executes the additional system call */
-	char syscall[] = {0xcd, 0x80};
-	write_child_data(ctx, 2, mmap_call.eip, syscall);
-
-	print_inst(ctx->child_tid);
-
-	sys_ptrace_syscall(ctx->child_tid);
-	sys_waitpid(ctx->child_tid,&ctx->status);
-
-	print_register_file_tid(ctx->child_tid);
-
-	sys_ptrace_syscall(ctx->child_tid);
-	sys_waitpid(ctx->child_tid,&ctx->status);
-
-	print_register_file_tid(ctx->child_tid);
-
-
-	/* reset to the original state */
-	write_child_registers(ctx->child_tid,&orig_regs);
-	write_child_data(ctx, 2, mmap_call.eip, code);
-
-	print_register_file_tid(ctx->child_tid);
-
-
-	free(code);
-	//return;
+	init_scratch_memory(ctx);
 
 	while (rec_sched_get_num_threads() > 0) {
 		/* get a thread that is ready to be executed */
 		ctx = get_active_thread(ctx);
 
+		if (ctx->scratch_ptr == NULL) {
+			init_scratch_memory(ctx);
+		}
 		/* the child process will either be interrupted by: (1) a signal, or (2) at
 		 * the entry of the system call */
 
@@ -273,8 +320,9 @@ void start_recording()
 			/* we need to issue a blocking continue here to serialize program execution */
 
 			cont_block(ctx);
-			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
-
+			printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
+			/* we must disallow the context switch here! */
+			ctx->allow_ctx_switch = 0;
 			assert(GET_PTRACE_EVENT(ctx->status) == 0);
 
 			if (GET_PTRACE_EVENT(ctx->status)) {
@@ -315,7 +363,6 @@ void start_recording()
 
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
-				ctx->allow_ctx_switch = allow_ctx_switch(ctx);
 
 				/* this is a wired state -- no idea why it works */
 			} else if (ctx->event == SYS_restart_syscall) {
@@ -334,6 +381,7 @@ void start_recording()
 		case EXEC_STATE_ENTRY_SYSCALL:
 		{
 			/* continue and execute the system call */
+			ctx->allow_ctx_switch = allow_ctx_switch(ctx);
 			cont_nonblock(ctx);
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
 
@@ -342,7 +390,7 @@ void start_recording()
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-			//	printf("now we are at: %d\n", ctx->event);
+			//printf("now we are at: %d\n", ctx->event);
 			int ret = wait_nonblock(ctx);
 			if (ret) {
 				assert(ctx->child_sig == 0);

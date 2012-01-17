@@ -447,11 +447,30 @@ void rep_process_syscall(struct context* context)
 	 * type is indicated in parentheses after each cmd name (in most cases, the required type is long,
 	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
 	 */
-	SYS_FD_USER_DEF(fcntl64, 0, int cmd = read_child_ecx(tid); switch (cmd) { case F_DUPFD: case F_GETFD: case F_GETFL: case F_SETFL: case F_SETFD: case F_SETOWN: break;
+	SYS_FD_USER_DEF(fcntl64, 0,
+			int cmd = read_child_ecx(tid);
+			switch (cmd) {
+				case F_DUPFD:
+				case F_GETFD:
+				case F_GETFL:
+				case F_SETFL:
+				case F_SETFD:
+				case F_SETOWN:
+				break;
 
-	case F_SETLK: case F_SETLK64: case F_SETLKW64: case F_GETLK: { set_child_data(context); break; }
+				case F_SETLK:
+				case F_SETLK64:
+				case F_SETLKW64:
+				case F_GETLK: {
+					set_child_data(context);
+					break;
+				}
 
-	default: printf("unknown command: %d -- bailing out\n", cmd); sys_exit(); } set_return_value(context);)
+				default: printf("unknown command: %d -- bailing out\n", cmd);
+					sys_exit();
+			}
+			set_return_value(context);
+	)
 
 	/**
 	 * int inotify_rm_watch(int fd, uint32_t wd)
@@ -923,6 +942,15 @@ void rep_process_syscall(struct context* context)
 	 * the buffer is too small to hold all of the contents.
 	 */
 	SYS_EMU_ARG(readlink, 1)
+
+
+	/**
+	 * int tgkill(int tgid, int tid, int sig)
+	 * tgkill()  sends  the  signal sig to the thread with the thread ID tid in the thread group tgid.
+	 * (By contrast, kill(2) can only be used to send a  signal to a process (i.e., thread group) as a
+	 *  whole, and the signal will be delivered to an arbitrary thread within that process.)
+	 */
+	SYS_EMU_ARG(tgkill, 0);
 
 	/**
 	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);

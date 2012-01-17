@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -252,6 +252,7 @@ void rec_process_syscall(struct context *ctx)
 		case F_GETLK:
 		case F_SETLK:
 		{
+			record_child_data(ctx, syscall, sizeof(struct flock64), regs.edx);
 			break;
 		}
 
@@ -742,7 +743,13 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_poll:
 	{
+		void *data = read_child_data(ctx, ctx->recorded_scratch_size, (long int)ctx->scratch_ptr);
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, data);
+		regs.ebx = (long int) ctx->recorded_scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+
 		record_child_data(ctx, syscall, sizeof(struct pollfd) * regs.ecx, regs.ebx);
+		sys_free((void**) &data);
 		break;
 	}
 
@@ -795,17 +802,16 @@ void rec_process_syscall(struct context *ctx)
 	 break;
 	 }*/
 
-
 	/**
 	 * ssize_t readahead(int fd, off64_t offset, size_t count);
 	 *
 	 * readahead()  populates the page cache with data from a file so that subsequent reads from that file will not block
 	 * on disk I/O.  The fd argument is a file descriptor identifying the file which is to be read.  The offset argu-
-     * ment specifies the starting point from which data is to be read and count specifies the number of bytes to be read.
-     * I/O is performed in whole pages, so that offset is effectively rounded down to a page boundary and bytes are
-     * read  up  to  the  next page boundary greater than or equal to (offset+count).  readahead() does not read
-     * beyond the end of the file.  readahead() blocks until the specified data has been read.  The current file offset of the
-     * open file referred to by fd is left unchanged.
+	 * ment specifies the starting point from which data is to be read and count specifies the number of bytes to be read.
+	 * I/O is performed in whole pages, so that offset is effectively rounded down to a page boundary and bytes are
+	 * read  up  to  the  next page boundary greater than or equal to (offset+count).  readahead() does not read
+	 * beyond the end of the file.  readahead() blocks until the specified data has been read.  The current file offset of the
+	 * open file referred to by fd is left unchanged.
 	 */
 	SYS_REC0(readahead)
 
@@ -1031,14 +1037,22 @@ void rec_process_syscall(struct context *ctx)
 		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) */
 		case SYS_RECV:
 		{
-			uintptr_t* buf;
-			size_t* len;
+			printf("debug 1\n");
+			void *recorded = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
+			write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded);
+			write_child_data(ctx, sizeof(void*), base_addr + 4, &(ctx->recorded_scratch_ptr));
+			record_child_data(ctx, syscall, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr);
+			printf("debug 2\n");
 
-			buf = read_child_data(ctx, sizeof(void*), base_addr + 4);
-			len = read_child_data(ctx, sizeof(void*), base_addr + 8);
-			record_child_data(ctx, syscall, *len, *buf);
-			sys_free((void**) &len);
-			sys_free((void**) &buf);
+			free(recorded);
+			/*uintptr_t* buf;
+			 size_t* len;
+
+			 buf = read_child_data(ctx, sizeof(void*), base_addr + 4);
+			 len = read_child_data(ctx, sizeof(void*), base_addr + 8);
+			 record_child_data(ctx, syscall, *len, *buf);
+			 sys_free((void**) &len);
+			 sys_free((void**) &buf);*/
 			break;
 		}
 
@@ -1254,7 +1268,6 @@ void rec_process_syscall(struct context *ctx)
 	case SYS_execve:
 	{
 		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
-		//print_register_file_tid(tid);
 
 		/* esp[0] points to argc - iterate over argv pointers*/
 		int* argc = read_child_data(ctx, 100, (long int) (stack_ptr));
@@ -1466,15 +1479,15 @@ void rec_process_syscall(struct context *ctx)
 	 * or because read() was interrupted by a signal. On error, -1 is returned, and errno is set appropriately.
 	 * In this case it is left unspecified whether the file position (if any) changes.
 	 */
-	//SYS_REC1(read, regs.eax, regs.ecx)
 	case SYS_read:
 	{
-		if (regs.eax >= 0) {
-			record_child_data(ctx, syscall, regs.eax, regs.ecx);
-		} else {
-			record_child_data(ctx, syscall, regs.edx, regs.ecx);
-		}
+		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
+		regs.ecx = ctx->recorded_scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+		free(recorded_data);
 
+		record_child_data(ctx, syscall, regs.edx, regs.ecx);
 		break;
 	}
 
