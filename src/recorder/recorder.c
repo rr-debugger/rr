@@ -99,7 +99,7 @@ static void init_scratch_memory(struct context *ctx)
 	free(code);
 }
 
-static void cont_nonblock(struct context* ctx)
+static void cont_nonblock(struct context *ctx)
 {
 	sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
 	assert(WIFEXITED(ctx->status) == 0);
@@ -284,6 +284,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 {
 	/* handle events */
 	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
+	printf("ptrace event: %d\n", event);
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
@@ -315,10 +316,14 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		if (event == PTRACE_EVENT_VFORK) {
 			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
 			(*ctx_ptr)->allow_ctx_switch = 1;
+			record_event((*ctx_ptr), 1);
+			cont_nonblock((*ctx_ptr));
 
 		} else {
 			cont_block((*ctx_ptr));
 		}
+
+		printf("are we here?\n");
 		break;
 	}
 
@@ -331,7 +336,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		break;
 	}
 
-	//case PTRACE_EVENT_VFORK_DONE:
+	case PTRACE_EVENT_VFORK_DONE:
 	case PTRACE_EVENT_EXIT:
 	{
 		(*ctx_ptr)->event = USR_EXIT;
@@ -456,7 +461,7 @@ void start_recording()
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-			printf("now we are at: %d\n", ctx->event);
+			printf("now we are at: %d  status: %x\n", ctx->event, ctx->status);
 			int ret = wait_nonblock(ctx);
 			if (ret) {
 				assert(signal_pending(ctx->status) == 0);
@@ -466,7 +471,6 @@ void start_recording()
 				if (ctx->event == SYS_sigreturn) {
 					assert(1==0);
 				}
-
 				handle_ptrace_event(&ctx);
 
 				if (ctx != NULL) {
@@ -474,14 +478,16 @@ void start_recording()
 					if (sig) {
 						ctx->child_sig = sig;
 					}
-//					assert(signal_pending(ctx->status) == 0);
-					rec_process_syscall(ctx);
-					record_event(ctx, 1);
-
 					if (ctx->event != SYS_vfork) {
+						//					assert(signal_pending(ctx->status) == 0);
+						rec_process_syscall(ctx);
+						record_event(ctx, 1);
 						ctx->exec_state = EXEC_STATE_START;
 						ctx->allow_ctx_switch = 1;
 					}
+
+					printf("damn it!\n");
+					fflush(stdout);
 				}
 			}
 			break;
