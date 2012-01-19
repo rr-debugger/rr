@@ -221,6 +221,12 @@ static int allow_ctx_switch(struct context *ctx)
 		return 1;
 	}
 
+	case SYS_write:
+	{
+		printf("returning 1\n");
+		return 1;
+	}
+
 	/* this is a hack */
 	case SYS_waitpid:
 	case SYS_wait4:
@@ -287,6 +293,8 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK:
+	case PTRACE_EVENT_VFORK:
+
 	{
 		/* get new tid, register at the scheduler and setup HPC */
 		int new_tid = sys_ptrace_getmsg((*ctx_ptr)->child_tid);
@@ -301,8 +309,16 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		sys_waitpid(new_tid, &((*ctx_ptr)->status));
 		rec_sched_register_thread((*ctx_ptr)->child_tid, new_tid);
 
-		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that. */
-		cont_block((*ctx_ptr));
+		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
+		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
+		 * child has finished */
+		if (event == PTRACE_EVENT_VFORK) {
+			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
+			(*ctx_ptr)->allow_ctx_switch = 1;
+
+		} else {
+			cont_block((*ctx_ptr));
+		}
 		break;
 	}
 
@@ -315,7 +331,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		break;
 	}
 
-	case PTRACE_EVENT_VFORK_DONE:
+	//case PTRACE_EVENT_VFORK_DONE:
 	case PTRACE_EVENT_EXIT:
 	{
 		(*ctx_ptr)->event = USR_EXIT;
@@ -369,8 +385,8 @@ void start_recording()
 
 			/* we need to issue a blocking continue here to serialize program execution */
 
-			cont_block(ctx);
 			printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
+			cont_block(ctx);
 			/* we must disallow the context switch here! */
 			ctx->allow_ctx_switch = 0;
 			assert(GET_PTRACE_EVENT(ctx->status) == 0);
@@ -440,10 +456,10 @@ void start_recording()
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-			//printf("now we are at: %d\n", ctx->event);
+			printf("now we are at: %d\n", ctx->event);
 			int ret = wait_nonblock(ctx);
 			if (ret) {
-				assert(ctx->child_sig == 0);
+				assert(signal_pending(ctx->status) == 0);
 
 				/* we received a signal while in the system call and send it right away*/
 				/* we have already sent the signal and process sigreturn */
@@ -454,11 +470,18 @@ void start_recording()
 				handle_ptrace_event(&ctx);
 
 				if (ctx != NULL) {
-					assert(signal_pending(ctx->status) == 0);
+					int sig = signal_pending(ctx->status);
+					if (sig) {
+						ctx->child_sig = sig;
+					}
+//					assert(signal_pending(ctx->status) == 0);
 					rec_process_syscall(ctx);
 					record_event(ctx, 1);
-					ctx->exec_state = EXEC_STATE_START;
-					ctx->allow_ctx_switch = 1;
+
+					if (ctx->event != SYS_vfork) {
+						ctx->exec_state = EXEC_STATE_START;
+						ctx->allow_ctx_switch = 1;
+					}
 				}
 			}
 			break;
