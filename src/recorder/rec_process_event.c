@@ -180,7 +180,33 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 * FIXXME: not quite sure if something is returned!
 	 */
-	SYS_REC1(epoll_ctl, sizeof(struct epoll_event), regs.esi)
+	case SYS_epoll_ctl:
+	{
+		int op = regs.ecx;
+		int x = EPOLL_CTL_ADD;
+		switch (op) {
+
+		case EPOLL_CTL_ADD:
+		case EPOLL_CTL_DEL:
+		{
+			record_child_data(ctx,syscall,sizeof(struct epoll_event), regs.esi);
+
+			struct epoll_event * event = read_child_data(ctx,sizeof(struct epoll_event), regs.esi);
+			printf("events: %d\n",event->events);
+			printf("data: %x\n",event->data.ptr);
+			sys_free((void**)&event);
+			break;
+		}
+		default:
+		{
+			printf("Unknown epoll_ctl event: %x\n -- bailing out", op);
+			assert(1==0);
+		}
+		}
+
+		break;
+	}
+	//SYS_REC1(epoll_ctl, sizeof(struct epoll_event), regs.esi)
 
 	/**
 	 * int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
@@ -191,16 +217,12 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_epoll_wait:
 	{
-		struct epoll_event* events;
-		int i, ret_events;
-
-		events = (struct epoll_event*) regs.ecx;
-		ret_events = regs.eax;
-
-		for (i = 0; i < ret_events; i++) {
-			record_child_data(ctx, syscall, sizeof(struct epoll_event), (long int) (events + i));
-		}
-
+		void *data = (void*) read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, data);
+		regs.ecx = (long int) ctx->recorded_scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+		record_child_data(ctx, syscall, regs.eax * sizeof(struct epoll_event), regs.ecx);
+		sys_free((void**) &data);
 		break;
 	}
 
@@ -246,9 +268,9 @@ void rec_process_syscall(struct context *ctx)
 			break;
 		}
 
-		case F_SETLKW64:
-		case F_SETLK64:
 		case F_GETLK64:
+		case F_SETLK64:
+		case F_SETLKW64:
 		case F_GETLK:
 		case F_SETLK:
 		{
@@ -556,10 +578,15 @@ void rec_process_syscall(struct context *ctx)
 			break;
 
 		case FUTEX_CMP_REQUEUE:
+		assert(1==0);
 		case FUTEX_WAKE_OP:
+		record_child_data(ctx, syscall, sizeof(int), regs.edi);
+			break;
+
 		case FUTEX_CMP_REQUEUE_PI:
 		//case FUTEX_WAIT_REQUEUE_PI:
 		{
+			assert(1==0);
 			record_child_data(ctx, syscall, sizeof(int), regs.edi);
 			break;
 		}
@@ -743,11 +770,10 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_poll:
 	{
-		void *data = read_child_data(ctx, ctx->recorded_scratch_size, (long int)ctx->scratch_ptr);
+		void *data = read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, data);
 		regs.ebx = (long int) ctx->recorded_scratch_ptr;
 		write_child_registers(ctx->child_tid, &regs);
-
 		record_child_data(ctx, syscall, sizeof(struct pollfd) * regs.ecx, regs.ebx);
 		sys_free((void**) &data);
 		break;
@@ -1037,14 +1063,14 @@ void rec_process_syscall(struct context *ctx)
 		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) */
 		case SYS_RECV:
 		{
-			printf("debug 1\n");
-			void *recorded = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
+			//printf("debug 1\n");
+			void *recorded = read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
 			write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded);
-			write_child_data(ctx, sizeof(void*), base_addr + 4, &(ctx->recorded_scratch_ptr));
-			record_child_data(ctx, syscall, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr);
-			printf("debug 2\n");
+			write_child_data(ctx, sizeof(void*), base_addr + 4, (long int) &(ctx->recorded_scratch_ptr));
+			record_child_data(ctx, syscall, ctx->recorded_scratch_size, (long int) ctx->recorded_scratch_ptr);
+			//printf("debug 2\n");
 
-			free(recorded);
+			sys_free((void**) &recorded);
 			/*uintptr_t* buf;
 			 size_t* len;
 
@@ -1267,6 +1293,11 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_execve:
 	{
+		// FIXXME
+		if (regs.ebx != 0) {
+			break;
+		}
+
 		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
 
 		/* esp[0] points to argc - iterate over argv pointers*/
@@ -1275,8 +1306,11 @@ void rec_process_syscall(struct context *ctx)
 		stack_ptr += *argc + 1;
 		sys_free((void**) &argc);
 
+		print_register_file(&regs);
+
 		unsigned long* null_ptr = read_child_data(ctx, sizeof(void*), (long int) stack_ptr);
 		assert(*null_ptr == 0);
+
 		sys_free((void**) &null_ptr);
 
 		/* should now point to envp (pointer to environment strings) */
@@ -1408,6 +1442,17 @@ void rec_process_syscall(struct context *ctx)
 	 */
 
 	SYS_REC1(fstat64, sizeof(struct stat64), regs.ecx)
+
+
+	/**
+	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
+	 *
+	 * The  fstatat()  system  call operates in exactly the same way as stat(2), except for the
+	 * differences described in this manual page....
+	 */
+	SYS_REC1(fstatat64, sizeof(struct stat64), regs.ecx)
+
+
 
 	/**
 	 * pid_t fork(void)
