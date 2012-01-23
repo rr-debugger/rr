@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -285,6 +285,16 @@ void rec_process_syscall(struct context *ctx)
 		break;
 	}
 
+
+	/**
+	 * int fchdir(int fd);
+	 *
+	 * fchdir() is identical to chdir(); the only difference is that the directory is given as an open file descriptor.
+	 */
+	SYS_REC0(fchdir)
+
+
+
 	/**
 	 * int fdatasync(int fd)
 	 *
@@ -386,15 +396,8 @@ void rec_process_syscall(struct context *ctx)
 	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
 	 *  in a further call to getgroups().
 	 */
-	case SYS_getgroups32:
-	{
-		int i;
-		/* record all elements of the list array */
-		for (i = 0; i < regs.ebx; i++) {
-			record_child_data(ctx, syscall, sizeof(gid_t), regs.ecx + i * sizeof(gid_t*));
-		}
-		break;
-	}
+	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), regs.ecx);
+
 
 	/**
 	 * uid_t getuid(void);

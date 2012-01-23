@@ -121,14 +121,13 @@ static void cont_block(struct context *ctx)
 {
 
 	if (ctx->child_sig != 0) {
-		printf("sending signal: %d\n",ctx->child_sig);
+		printf("sending signal: %d\n", ctx->child_sig);
 	}
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
-
 
 	handle_signal(ctx);
 }
@@ -259,6 +258,15 @@ static int allow_ctx_switch(struct context *ctx)
 		return 1;
 	}
 
+	/**************************************************************
+	 * The system calls that come here allow a context switch for
+	 * performance reasons
+	 **************************************************************/
+	case SYS_nanosleep:
+	{
+		return 1;
+	}
+
 	} /* end switch */
 
 	return 0;
@@ -270,7 +278,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 {
 	/* handle events */
 	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
-	printf("ptrace event: %d\n", event);
+	//printf("ptrace event: %d\n", event);
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
@@ -280,7 +288,6 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_VFORK_DONE:
 	{
-
 
 		rec_process_syscall(*ctx_ptr);
 		record_event((*ctx_ptr), 1);
@@ -380,7 +387,7 @@ void start_recording()
 
 			/* we need to issue a blocking continue here to serialize program execution */
 
-			printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
+			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 			cont_block(ctx);
 			/* we must disallow the context switch here! */
 			ctx->allow_ctx_switch = 0;

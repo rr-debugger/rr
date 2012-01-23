@@ -843,7 +843,9 @@ void rep_process_syscall(struct context* context)
 	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
 	 *  in a further call to getgroups().
 	 */
-	//SYS_EMU_ARG(getgroups32, read_child_ebx(tid))
+	SYS_EMU_ARG(getgroups32, 1)
+
+
 	/**
 	 * pid_t getpgrp(void)
 	 *
