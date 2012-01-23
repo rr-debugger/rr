@@ -58,7 +58,7 @@ int signal_pending(int status)
 		return 0;
 	}
 
-	/* we got a SIGTRAP from ptrace */
+	/* we got a SIGSEGV from ptrace */
 	if ((WSTOPSIG(status) & ~0x80) == SIGSEGV) {
 		return SIGSEGV;
 	}
@@ -67,9 +67,8 @@ int signal_pending(int status)
 		return SIGCHLD;
 	}
 
-	printf("status: %x    signal: %d   event: %x\n", status, WSTOPSIG(status),GET_PTRACE_EVENT(status));
-	assert(0);
-	return status;
+	printf("status: %x    signal: %d   event: %x\n", status, (WSTOPSIG(status) & ~0x80),GET_PTRACE_EVENT(status));
+	return (WSTOPSIG(status) & ~0x80);
 
 	/*int sig = WSTOPSIG(status) & ~0x80;
 
@@ -85,7 +84,8 @@ void print_register_file_tid(pid_t tid)
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
-	fprintf(stderr, "Printing register file for: %d\n", tid);
+
+	/*fprintf(stderr, "Printing register file for: %d\n", tid);
 	fprintf(stderr, "eax: %lx\n", regs.eax);
 	fprintf(stderr, "ebx: %lx\n", regs.ebx);
 	fprintf(stderr, "ecx: %lx\n", regs.ecx);
@@ -97,7 +97,22 @@ void print_register_file_tid(pid_t tid)
 	fprintf(stderr, "eip: %lx\n", regs.eip);
 	fprintf(stderr, "eflags %lx\n",regs.eflags);
 	fprintf(stderr, "orig_eax %lx\n", regs.orig_eax);
-	fprintf(stderr, "\n");
+	fprintf(stderr, "\n");*/
+
+
+	printf("Printing register file for: %d\n", tid);
+	printf( "eax: %lx\n", regs.eax);
+	printf("ebx: %lx\n", regs.ebx);
+	printf("ecx: %lx\n", regs.ecx);
+	printf("edx: %lx\n", regs.edx);
+	printf("esi: %lx\n", regs.esi);
+	printf("edi: %lx\n", regs.edi);
+	printf("ebp: %lx\n", regs.ebp);
+	printf("esp: %lx\n", regs.esp);
+	printf("eip: %lx\n", regs.eip);
+	printf("eflags %lx\n",regs.eflags);
+	printf("orig_eax %lx\n", regs.orig_eax);
+	printf("\n");
 }
 
 void print_register_file(struct user_regs_struct* regs)
@@ -413,6 +428,7 @@ int compare_register_files(char* name1, struct user_regs_struct* reg1, char* nam
 
 	if (stop != 0 && err != 0) {
 		fprintf(stderr, "bailing out\n");
+		print_process_mmap(stop);
 		sys_exit();
 	}
 

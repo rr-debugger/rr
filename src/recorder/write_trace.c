@@ -223,6 +223,8 @@ void record_event(struct context *ctx, int entry)
 	} else {
 		fprintf(trace_file, "\n");
 	}
+
+	fflush(trace_file);
 }
 
 static void print_header(int syscall, uint32_t addr)

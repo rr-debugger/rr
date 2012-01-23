@@ -76,7 +76,6 @@ void handle_signal(struct context* ctx)
 		break;
 	}
 
-
 	case SIGSEGV:
 	{
 		if (handle_sigsegv(ctx)) {
@@ -91,14 +90,21 @@ void handle_signal(struct context* ctx)
 
 	case SIGIO:
 	{
-		assert(1==0);
 		/* make sure that the signal came from hpc */
 		if (read_rbc_up(ctx->hpc) >= MAX_RECORD_INTERVAL) {
+			assert(1==0);
 			ctx->event = USR_SCHED;
 		} else {
 			ctx->event = -sig;
 			ctx->child_sig = sig;
 		}
+		break;
+	}
+
+	case 62:
+	{
+		ctx->event = -sig;
+		ctx->child_sig = sig;
 		break;
 	}
 

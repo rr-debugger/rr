@@ -101,17 +101,8 @@ static void init_scratch_memory(struct context *ctx)
 
 static void cont_nonblock(struct context *ctx)
 {
-	sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
-	assert(WIFEXITED(ctx->status) == 0);
 	sys_ptrace_syscall_sig(ctx->child_tid, ctx->child_sig);
 	ctx->child_sig = 0;
-}
-
-static void check_event(struct context *ctx)
-{
-	if (ctx->event < 0) {
-		assert(1==0);
-	}
 }
 
 static int wait_nonblock(struct context *ctx)
@@ -122,20 +113,28 @@ static int wait_nonblock(struct context *ctx)
 		assert(WIFEXITED(ctx->status) == 0);
 		handle_signal(ctx);
 		ctx->event = read_child_orig_eax(ctx->child_tid);
-		check_event(ctx);
 	}
 	return ret;
 }
 
-void cont_block(struct context *ctx)
+static void cont_block(struct context *ctx)
 {
-	goto_next_event(ctx);
+
+	if (ctx->child_sig != 0) {
+		printf("sending signal: %d\n",ctx->child_sig);
+	}
+	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
+	sys_waitpid(ctx->child_tid, &ctx->status);
+
+	ctx->child_sig = signal_pending(ctx->status);
+	ctx->event = read_child_orig_eax(ctx->child_tid);
+
+
 	handle_signal(ctx);
 }
 
 static int allow_ctx_switch(struct context *ctx)
 {
-
 	int event = ctx->event;
 	//printf("event: %d\n",event);
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
@@ -184,17 +183,7 @@ static int allow_ctx_switch(struct context *ctx)
 
 			/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 		} else if (call == SYS_ACCEPT) {
-			/*socklen_t **addrlen_ptr = read_child_data(ctx,sizeof(socklen_t), regs.ecx + 8);
-			 socklen_t *addrlen = read_child_data(ctx,sizeof(socklen_t),*addrlen);
-			 struct sockaddr **addr_ptr = read_child_data(ctx,*addrlen,regs.ecx + 4);
-
-			 ctx->rec
-
-			 write_child_data(ctx,sizeof(void*),regs.ecx + 4, &(ctx->scratch_ptr));
-			 write_child_data(ctx,sizeof(void*),regs.ecx + 8, &(ctx->scratch_ptr + 1000));
-
-
-			 printf("TODO: implement accept\n");*/
+			//TODO: implement accept
 			return 1;
 		}
 
@@ -223,7 +212,6 @@ static int allow_ctx_switch(struct context *ctx)
 
 	case SYS_write:
 	{
-		printf("returning 1\n");
 		return 1;
 	}
 
@@ -273,8 +261,6 @@ static int allow_ctx_switch(struct context *ctx)
 
 	} /* end switch */
 
-	//printf("event: %d\n",ctx->event); fflush(stdout);
-	//assert(1==0);
 	return 0;
 }
 
@@ -292,19 +278,28 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		break;
 	}
 
+	case PTRACE_EVENT_VFORK_DONE:
+	{
+
+
+		rec_process_syscall(*ctx_ptr);
+		record_event((*ctx_ptr), 1);
+		(*ctx_ptr)->exec_state = EXEC_STATE_START;
+		(*ctx_ptr)->allow_ctx_switch = 1;
+		/* issue an additional continue, since the process was stopped by the additional ptrace event */
+		cont_block(*ctx_ptr);
+		break;
+	}
+
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK:
 	case PTRACE_EVENT_VFORK:
-
 	{
 		/* get new tid, register at the scheduler and setup HPC */
 		int new_tid = sys_ptrace_getmsg((*ctx_ptr)->child_tid);
 
 		/* ensure that clone was successful */
-		if (read_child_eax((*ctx_ptr)->child_tid) == -1) {
-			fprintf(stderr, "error in clone system call -- bailing out\n");
-			sys_exit();
-		}
+		assert(read_child_eax((*ctx_ptr)->child_tid) != -1);
 
 		/* wait until the new thread is ready */
 		sys_waitpid(new_tid, &((*ctx_ptr)->status));
@@ -316,27 +311,22 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		if (event == PTRACE_EVENT_VFORK) {
 			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
 			(*ctx_ptr)->allow_ctx_switch = 1;
-			record_event((*ctx_ptr), 1);
+			record_event((*ctx_ptr), 3);
 			cont_nonblock((*ctx_ptr));
-
 		} else {
 			cont_block((*ctx_ptr));
 		}
-
-		printf("are we here?\n");
 		break;
 	}
 
 	case PTRACE_EVENT_EXEC:
 	{
 		cont_block((*ctx_ptr));
-
 		init_scratch_memory(*ctx_ptr);
 		assert(signal_pending((*ctx_ptr)->status) == 0);
 		break;
 	}
 
-	case PTRACE_EVENT_VFORK_DONE:
 	case PTRACE_EVENT_EXIT:
 	{
 		(*ctx_ptr)->event = USR_EXIT;
@@ -455,13 +445,13 @@ void start_recording()
 			ctx->allow_ctx_switch = allow_ctx_switch(ctx);
 			cont_nonblock(ctx);
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
-
 			break;
 		}
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-			printf("now we are at: %d  status: %x\n", ctx->event, ctx->status);
+
+			//printf("now we are at: %d  status: %x\n", ctx->event, ctx->status);
 			int ret = wait_nonblock(ctx);
 			if (ret) {
 				assert(signal_pending(ctx->status) == 0);
@@ -471,23 +461,18 @@ void start_recording()
 				if (ctx->event == SYS_sigreturn) {
 					assert(1==0);
 				}
+
 				handle_ptrace_event(&ctx);
 
-				if (ctx != NULL) {
+				if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
 					int sig = signal_pending(ctx->status);
 					if (sig) {
 						ctx->child_sig = sig;
 					}
-					if (ctx->event != SYS_vfork) {
-						//					assert(signal_pending(ctx->status) == 0);
-						rec_process_syscall(ctx);
-						record_event(ctx, 1);
-						ctx->exec_state = EXEC_STATE_START;
-						ctx->allow_ctx_switch = 1;
-					}
-
-					printf("damn it!\n");
-					fflush(stdout);
+					rec_process_syscall(ctx);
+					record_event(ctx, 1);
+					ctx->exec_state = EXEC_STATE_START;
+					ctx->allow_ctx_switch = 1;
 				}
 			}
 			break;

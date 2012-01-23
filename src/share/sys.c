@@ -158,7 +158,7 @@ void sys_ptrace_syscall(pid_t pid)
  */
 void sys_ptrace_detatch(pid_t pid)
 {
-	ptrace(PTRACE_DETACH, pid, 0, 0);
+	sys_ptrace(PTRACE_DETACH, pid, 0, 0);
 }
 
 void sys_ptrace_syscall_sig(pid_t pid, int sig)
@@ -217,6 +217,9 @@ void sys_ptrace_cont(pid_t pid)
 void goto_next_event(struct context *ctx)
 {
 
+	if (ctx->child_sig != 0) {
+		printf("sending signal: %d\n",ctx->child_sig);
+	}
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 

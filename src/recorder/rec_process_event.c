@@ -1293,8 +1293,18 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_execve:
 	{
+
+		if (regs.ebx != 0) {
+		char *exec = read_child_str(tid,regs.ebx);
+		printf("exec: %s\n",exec);
+		free(exec);
+		}
+		print_register_file(&regs);
+
+
 		// FIXXME
 		if (regs.ebx != 0) {
+
 			break;
 		}
 
@@ -1305,8 +1315,6 @@ void rec_process_syscall(struct context *ctx)
 
 		stack_ptr += *argc + 1;
 		sys_free((void**) &argc);
-
-		print_register_file(&regs);
 
 		unsigned long* null_ptr = read_child_data(ctx, sizeof(void*), (long int) stack_ptr);
 		assert(*null_ptr == 0);
@@ -1496,6 +1504,18 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(mremap)
 
+
+	/**
+	 * int nanosleep(const struct timespec *req, struct timespec *rem)
+	 *
+	 * nanosleep()  suspends  the  execution  of the calling thread until either at least the time specified in *req has
+     * elapsed, or the delivery of a signal that triggers the invocation of a handler in the calling thread or that ter-
+     * minates the process.
+	 */
+	SYS_REC1(nanosleep, sizeof(struct timespec), regs.ecx);
+
+
+
 	/**
 	 * int rmdir(const char *pathname)
 	 *
@@ -1592,6 +1612,17 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 */
 	SYS_REC0(unlink)
+
+
+	/**
+	 * int unlinkat(int dirfd, const char *pathname, int flags)
+	 *
+	 * The unlinkat() system call operates in exactly the same way as either unlink(2) or
+	 * rmdir(2) (depending on whether or not flags includes the AT_REMOVEDIR flag) except for the
+	 * differences described in this manual page.
+	 */
+	SYS_REC0(unlinkat)
+
 
 	/**
 	 * int utimes(const char *filename, const struct timeval times[2])

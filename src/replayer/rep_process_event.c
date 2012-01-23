@@ -37,7 +37,7 @@ static void validate_args(struct context* context)
 {
 	struct user_regs_struct cur_reg;
 	read_child_registers(context->child_tid, &cur_reg);
-	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, 1);
+	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, context->child_tid);
 }
 
 /*
@@ -290,7 +290,7 @@ void rep_process_syscall(struct context* context)
 	assert((state == 1) || (state == 0));
 
 	//if (context->trace.global_time > 900000) {
-	//	print_syscall(context, trace);
+		print_syscall(context, trace);
 	//}
 
 	switch (syscall) {
@@ -696,6 +696,10 @@ void rep_process_syscall(struct context* context)
 
 				validate_args(context);
 			}
+
+			if (read_child_eax(context->child_tid) == 0x69f46000) {
+				printf("BITCH: %d\n",context->trace.global_time);
+			}
 		}
 		break;
 	}
@@ -757,7 +761,7 @@ void rep_process_syscall(struct context* context)
 	 * The memory area pointed to by events will contain the events that will be available for the caller.  Up
 	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
 	 */
-	//SYS_FD_ARG(epoll_wait, context->trace.recorded_regs.eax)
+	SYS_FD_ARG(epoll_wait, 1)
 	/**
 	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
 	 *
