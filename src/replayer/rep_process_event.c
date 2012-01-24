@@ -67,7 +67,13 @@ static void goto_next_syscall_emu(struct context *ctx)
 	int current_syscall = read_child_orig_eax(tid);
 
 	if (current_syscall != rec_syscall) {
-		printf("stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
+		/* this signal is ignored and most likey delivered later */
+		if (WSTOPSIG(ctx->status) == SIGCHLD) {
+			goto_next_syscall_emu(ctx);
+			return;
+		}
+
+		printf("goto_next_syscall_emu: stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
 		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.global_time);
 		printf("ptrace_event: %x\n", GET_PTRACE_EVENT(ctx->status));
 		uint64_t up = read_rbc_down(ctx->hpc);
@@ -88,7 +94,10 @@ static void finish_syscall_emu(struct context *ctx)
 	sys_waitpid(ctx->child_tid, &(ctx->status));
 
 	/* we get a simple SIGTRAP in this case */
-	assert(ctx->status == 0x57f);
+	if (ctx->status != 0x57f) {
+		printf("status is: %x\n", ctx->status);
+	}
+	//assert(ctx->status == 0x57f);
 	/* reset the single-step status */
 	ctx->status = 0;
 }
@@ -102,6 +111,7 @@ void __ptrace_cont(struct context *ctx)
 	assert(ctx->child_sig == 0);
 	pid_t my_tid = ctx->child_tid;
 	goto_next_event(ctx);
+	printf("what?? : %x\n", ctx->status);
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
@@ -113,7 +123,8 @@ void __ptrace_cont(struct context *ctx)
 		sys_exit();
 	}
 
-	/* we should not have a singal pending here -- if there is one pending nevertheless,
+	assert(ctx->child_sig == 0);
+	/* we should not have a signal pending here -- if there is one pending nevertheless,
 	 * we do not deliver it to the application. This ensures that the behavior remains the
 	 * same
 	 */
@@ -290,7 +301,7 @@ void rep_process_syscall(struct context* context)
 	assert((state == 1) || (state == 0));
 
 	//if (context->trace.global_time > 900000) {
-		print_syscall(context, trace);
+	print_syscall(context, trace);
 	//}
 
 	switch (syscall) {
@@ -447,30 +458,11 @@ void rep_process_syscall(struct context* context)
 	 * type is indicated in parentheses after each cmd name (in most cases, the required type is long,
 	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
 	 */
-	SYS_FD_USER_DEF(fcntl64, 0,
-			int cmd = read_child_ecx(tid);
-			switch (cmd) {
-				case F_DUPFD:
-				case F_GETFD:
-				case F_GETFL:
-				case F_SETFL:
-				case F_SETFD:
-				case F_SETOWN:
-				break;
+	SYS_FD_USER_DEF(fcntl64, 0, int cmd = read_child_ecx(tid); switch (cmd) { case F_DUPFD: case F_GETFD: case F_GETFL: case F_SETFL: case F_SETFD: case F_SETOWN: break;
 
-				case F_SETLK:
-				case F_SETLK64:
-				case F_SETLKW64:
-				case F_GETLK: {
-					set_child_data(context);
-					break;
-				}
+	case F_SETLK: case F_SETLK64: case F_SETLKW64: case F_GETLK: { set_child_data(context); break; }
 
-				default: printf("unknown command: %d -- bailing out\n", cmd);
-					sys_exit();
-			}
-			set_return_value(context);
-	)
+	default: printf("unknown command: %d -- bailing out\n", cmd); sys_exit(); } set_return_value(context);)
 
 	/**
 	 * int inotify_rm_watch(int fd, uint32_t wd)
@@ -698,7 +690,7 @@ void rep_process_syscall(struct context* context)
 			}
 
 			if (read_child_eax(context->child_tid) == 0x69f46000) {
-				printf("BITCH: %d\n",context->trace.global_time);
+				printf("BITCH: %d\n", context->trace.global_time);
 			}
 		}
 		break;
@@ -709,21 +701,11 @@ void rep_process_syscall(struct context* context)
 	/***********************************************************************************************/
 
 	/**
-	 * int access(const char *pathname, int mode);
-	 *
-	 * access()  checks  whether  the calling process can access the file pathname.
-	 * If pathname is a symbolic link, it is dereferenced.
-	 *
-	 */
-	SYS_FD_ARG(access, 0)
-
-	/**
 	 * int chmod(const char *path, mode_t mode)
 	 *
 	 * The mode of the file given by path or referenced by fildes is changed
 	 */
-	SYS_FD_ARG(chmod, 0)
-
+	//SYS_FD_ARG(chmod, 0)
 	/**
 	 * int clock_gettime(clockid_t clk_id, struct timespec *tp);
 	 *
@@ -809,7 +791,8 @@ void rep_process_syscall(struct context* context)
 	 * char *getwd(char *buf);
 	 *
 	 * These  functions  return  a  null-terminated  string containing an absolute pathname
-	 * that is the current working directory of the calling process.  The pathname is returned as the function result and via the argument buf, if
+	 * that is the current working directory of the calling process.  The pathname is returned as the function result
+	 * and via the argument buf, if
 	 * present.
 	 */
 	SYS_EMU_ARG(getcwd, 1)
@@ -827,24 +810,6 @@ void rep_process_syscall(struct context* context)
 	 * geteuid() returns the effective user ID of the calling process.
 	 */
 	SYS_EMU_ARG(geteuid32, 0)
-
-	/**
-	 * int getgroups(int size, gid_t list[]);
-	 *
-	 *
-	 * getgroups()  returns  the  supplementary  group IDs of the calling process in list.
-	 * The argument size should be set to the maximum number of items that can be stored in
-	 * the buffer pointed to by list. If the calling process is a member of more than size
-	 * supplementary groups, then an error results.  It is unspecified whether the effective
-	 * group ID of the calling process is included in  the  returned  list. (Thus, an application
-	 * should also call getegid(2) and add or remove the resulting value.)
-
-	 *  If size is zero, list is not modified, but the total number of supplementary group IDs for the process
-	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
-	 *  in a further call to getgroups().
-	 */
-	SYS_EMU_ARG(getgroups32, 1)
-
 
 	/**
 	 * pid_t getpgrp(void)
@@ -937,8 +902,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * mkdir() attempts to create a directory named pathname.
 	 */
-	SYS_EMU_ARG(mkdir, 0)
-
+	//SYS_EMU_ARG(mkdir, 0)
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
 	 *
@@ -948,7 +912,6 @@ void rep_process_syscall(struct context* context)
 	 * the buffer is too small to hold all of the contents.
 	 */
 	SYS_EMU_ARG(readlink, 1)
-
 
 	/**
 	 * int tgkill(int tgid, int tid, int sig)
@@ -1091,15 +1054,13 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * rmdir() deletes a directory, which must be empty.
 	 */
-	SYS_EMU_ARG(rmdir, 0)
-
+	//SYS_EMU_ARG(rmdir, 0)
 	/**
 	 * int rename(const char *oldpath, const char *newpath)
 	 *
 	 * rename() renames a file, moving it between directories if required.
 	 */
-	SYS_EMU_ARG(rename, 0)
-
+	//SYS_EMU_ARG(rename, 0)
 	/**
 	 * int setregid(gid_t rgid, gid_t egid)
 	 *
@@ -1120,8 +1081,7 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * symlink() creates a symbolic link named newpath which contains the string oldpath.
 	 */
-	SYS_EMU_ARG(symlink, 0)
-
+	//SYS_EMU_ARG(symlink, 0)
 	/**
 	 * time_t time(time_t *t);
 	 *
@@ -1165,8 +1125,7 @@ void rep_process_syscall(struct context* context)
 	 * pathname pointed to by path and shall decrement the link count of the file referenced by the link.
 	 *
 	 */
-	SYS_EMU_ARG(unlink, 0)
-
+	//SYS_EMU_ARG(unlink, 0)
 	/**
 	 * int utime(const char *filename, const struct utimbuf *times)
 	 *
@@ -1204,6 +1163,15 @@ void rep_process_syscall(struct context* context)
 	/************************ Executed system calls come here ***************************/
 
 	/**
+	 * int access(const char *pathname, int mode);
+	 *
+	 * access()  checks  whether  the calling process can access the file pathname.
+	 * If pathname is a symbolic link, it is dereferenced.
+	 *
+	 */
+	SYS_EXEC_ARG_RET(context, access, 0)
+
+	/**
 	 * int brk(void *addr)
 	 *
 	 * brk()  and sbrk() change the location of the program break, which defines the end of the process's
@@ -1215,6 +1183,14 @@ void rep_process_syscall(struct context* context)
 	 * enough memory, and the process does not exceed its maximum data size (see setrlimit(2)).
 	 */
 	SYS_EXEC_ARG_RET(context, brk, 0)
+
+	/**
+	 * int chdir(const char *path);
+	 *
+	 * chdir() changes the current working directory of the calling process to the directory
+	 * specified in path.
+	 */
+	SYS_EXEC_ARG_RET(context, chdir, 0)
 
 	/**
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
@@ -1289,11 +1265,42 @@ void rep_process_syscall(struct context* context)
 		if (state == STATE_SYSCALL_ENTRY) {
 			__ptrace_cont(context);
 		} else {
-			__ptrace_cont(context);
+			int event = GET_PTRACE_EVENT(context->status);
+			printf("fucking ptrace event: %d\n", event);
+			//__ptrace_cont(context);
+
+			event = GET_PTRACE_EVENT(context->status);
+			printf("fucking ptrace event: %d\n", event);
+			print_register_file_tid(context->child_tid);
+
+			long int old_ebx = read_child_ebx(context->child_tid);
+			if (old_ebx != 0) {
+				char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
+				printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
+				free(str);
+			}
 
 			/* we need an additional ptrace syscall, since ptrace is setup with PTRACE_O_TRACEEXEC */
 			__ptrace_cont(context);
-			set_child_data(context);
+
+			print_register_file_tid(context->child_tid);
+
+			int check = read_child_ebx(context->child_tid);
+			/* if the execve comes from a vfork system call the  ebx register is not zero. in this case,
+			 * no recorded datya needs to be injected */
+			if (check == 0) {
+				set_child_data(context);
+			} else {
+				char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
+				printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
+				free(str);
+
+				str = read_child_str(context->child_tid, old_ebx);
+				printf("fucking old execve: %s  %x\n", str, old_ebx);
+				free(str);
+
+			}
+
 			set_return_value(context);
 			validate_args(context);
 		}
@@ -1318,6 +1325,29 @@ void rep_process_syscall(struct context* context)
 		__ptrace_cont(context);
 		break;
 	}
+
+	/**
+	 * int getgroups(int size, gid_t list[]);
+	 *
+	 *
+	 * getgroups()  returns  the  supplementary  group IDs of the calling process in list.
+	 * The argument size should be set to the maximum number of items that can be stored in
+	 * the buffer pointed to by list. If the calling process is a member of more than size
+	 * supplementary groups, then an error results.  It is unspecified whether the effective
+	 * group ID of the calling process is included in  the  returned  list. (Thus, an application
+	 * should also call getegid(2) and add or remove the resulting value.)
+
+	 *  If size is zero, list is not modified, but the total number of supplementary group IDs for the process
+	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
+	 *  in a further call to getgroups().
+	 *
+	 *  NOTE: This system call is executed although it should also be possible to completely
+	 *  emulate the system call. However, the call seems to change a register value (ecx) if the
+	 *  register is not zerol This is very strange.
+	 */
+	SYS_EXEC_ARG_RET(context, getgroups32, 1)
+
+
 
 	/**
 	 * int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth);

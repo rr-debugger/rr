@@ -265,6 +265,7 @@ void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 	ssize_t read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
 	if (read_bytes != size) {
 		perror("warning: reading from child process: ");
+		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
 		//printf("read bytes: %x   size %x    left: %x @ %x\n", read_bytes, size, (size - read_bytes), addr + read_bytes);
 		//print_process_mmap(ctx->child_tid);
 		//int val = read_child_data_tid(ctx->child_tid,4,addr+read_bytes);

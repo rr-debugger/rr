@@ -189,12 +189,12 @@ void rec_process_syscall(struct context *ctx)
 		case EPOLL_CTL_ADD:
 		case EPOLL_CTL_DEL:
 		{
-			record_child_data(ctx,syscall,sizeof(struct epoll_event), regs.esi);
+			record_child_data(ctx, syscall, sizeof(struct epoll_event), regs.esi);
 
-			struct epoll_event * event = read_child_data(ctx,sizeof(struct epoll_event), regs.esi);
-			printf("events: %d\n",event->events);
-			printf("data: %x\n",event->data.ptr);
-			sys_free((void**)&event);
+			struct epoll_event * event = read_child_data(ctx, sizeof(struct epoll_event), regs.esi);
+			printf("events: %d\n", event->events);
+			printf("data: %x\n", event->data.ptr);
+			sys_free((void**) &event);
 			break;
 		}
 		default:
@@ -285,15 +285,12 @@ void rec_process_syscall(struct context *ctx)
 		break;
 	}
 
-
 	/**
 	 * int fchdir(int fd);
 	 *
 	 * fchdir() is identical to chdir(); the only difference is that the directory is given as an open file descriptor.
 	 */
 	SYS_REC0(fchdir)
-
-
 
 	/**
 	 * int fdatasync(int fd)
@@ -395,9 +392,12 @@ void rec_process_syscall(struct context *ctx)
 	 *  If size is zero, list is not modified, but the total number of supplementary group IDs for the process
 	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
 	 *  in a further call to getgroups().
+	 *
+	 * The pointer correction seems to be a bug in ptrace/linux kernel. For some wired reason, the
+	 * the value of the ecx register when returning from the systenm call is different from entering
+	 * the system call.
 	 */
-	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), regs.ecx);
-
+	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), regs.ecx /*!= 0 ? regs.ecx : regs.ecx - 0x1000*/);
 
 	/**
 	 * uid_t getuid(void);
@@ -1298,16 +1298,17 @@ void rec_process_syscall(struct context *ctx)
 	{
 
 		if (regs.ebx != 0) {
-		char *exec = read_child_str(tid,regs.ebx);
-		printf("exec: %s\n",exec);
-		free(exec);
+			char *exec = read_child_str(tid, regs.ebx);
+			printf("exec: %s\n", exec);
+			free(exec);
 		}
 		print_register_file(&regs);
 
-
 		// FIXXME
 		if (regs.ebx != 0) {
-
+			char *str = read_child_str(ctx->child_tid,regs.ebx);
+			printf("fuckign string: %s\n",str);
+			free(str);
 			break;
 		}
 
@@ -1454,7 +1455,6 @@ void rec_process_syscall(struct context *ctx)
 
 	SYS_REC1(fstat64, sizeof(struct stat64), regs.ecx)
 
-
 	/**
 	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
 	 *
@@ -1462,8 +1462,6 @@ void rec_process_syscall(struct context *ctx)
 	 * differences described in this manual page....
 	 */
 	SYS_REC1(fstatat64, sizeof(struct stat64), regs.ecx)
-
-
 
 	/**
 	 * pid_t fork(void)
@@ -1507,17 +1505,14 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(mremap)
 
-
 	/**
 	 * int nanosleep(const struct timespec *req, struct timespec *rem)
 	 *
 	 * nanosleep()  suspends  the  execution  of the calling thread until either at least the time specified in *req has
-     * elapsed, or the delivery of a signal that triggers the invocation of a handler in the calling thread or that ter-
-     * minates the process.
+	 * elapsed, or the delivery of a signal that triggers the invocation of a handler in the calling thread or that ter-
+	 * minates the process.
 	 */
 	SYS_REC1(nanosleep, sizeof(struct timespec), regs.ecx);
-
-
 
 	/**
 	 * int rmdir(const char *pathname)
@@ -1616,7 +1611,6 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(unlink)
 
-
 	/**
 	 * int unlinkat(int dirfd, const char *pathname, int flags)
 	 *
@@ -1625,7 +1619,6 @@ void rec_process_syscall(struct context *ctx)
 	 * differences described in this manual page.
 	 */
 	SYS_REC0(unlinkat)
-
 
 	/**
 	 * int utimes(const char *filename, const struct timeval times[2])

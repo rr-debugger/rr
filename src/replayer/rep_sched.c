@@ -40,6 +40,7 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	init_hpc(ctx);
 
 	map[rec_tid] = ctx;
+	printf("ctx status: %d\n",ctx->status);
 	return ctx;
 }
 

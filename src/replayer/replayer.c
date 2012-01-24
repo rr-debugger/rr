@@ -148,7 +148,7 @@ void replay()
 		}
 		//int dummy = 0;
 
-
+		//printf("debug 1: %d\n");
 		/*if (check_if_mapped(ctx,0x741fc250 + 0x14, 0x741fc250 + 0x14 + 0x4)) {
 			long int *tmp1 = read_child_data(ctx,4,0x741fc250 + 0x14);
 				if (*tmp1 == 0x82) {
@@ -206,6 +206,12 @@ void replay()
 			//single_step(ctx);
 		}*/
 
+		if (ctx->child_sig != 0) {
+			printf("child_sig: %d\n",ctx->child_sig);
+			assert(ctx->trace.stop_reason == -ctx->child_sig);
+			ctx->child_sig = 0;
+		}
+
 		if (ctx->trace.stop_reason == USR_EXIT) {
 			rep_sched_deregister_thread(ctx);
 			/* stop reason is a system call - can be done with ptrace */
@@ -215,6 +221,7 @@ void replay()
 			/* stop reason is a signal - use HPC */
 		} else {
 			rep_process_signal(ctx);
+			printf("sending signal: %d\n",ctx->trace.stop_reason);
 		}
 	}
 

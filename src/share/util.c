@@ -81,6 +81,7 @@ int signal_pending(int status)
 
 void print_register_file_tid(pid_t tid)
 {
+	printf("damn it 1\n");
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
@@ -101,7 +102,7 @@ void print_register_file_tid(pid_t tid)
 
 
 	printf("Printing register file for: %d\n", tid);
-	printf( "eax: %lx\n", regs.eax);
+	printf("eax: %lx\n", regs.eax);
 	printf("ebx: %lx\n", regs.ebx);
 	printf("ecx: %lx\n", regs.ecx);
 	printf("edx: %lx\n", regs.edx);

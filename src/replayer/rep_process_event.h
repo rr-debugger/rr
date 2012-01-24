@@ -14,8 +14,10 @@ void rep_process_syscall(struct context* context);
 
 #define SYS_EMU_ARG(syscall,num) \
 	case SYS_##syscall: { \
-		if (state == STATE_SYSCALL_ENTRY) { goto_next_syscall_emu(context);}\
-		else {\
+		if (state == STATE_SYSCALL_ENTRY) { \
+	       goto_next_syscall_emu(context); \
+		   validate_args(context);\
+		} else {\
 			int i; for (i=0;i<(num);i++) {set_child_data(context);}\
 			set_return_value(context); \
 			validate_args(context); \

@@ -125,7 +125,6 @@ static void cont_block(struct context *ctx)
 	}
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
-
 	ctx->child_sig = signal_pending(ctx->status);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
 
@@ -318,7 +317,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		if (event == PTRACE_EVENT_VFORK) {
 			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
 			(*ctx_ptr)->allow_ctx_switch = 1;
-			record_event((*ctx_ptr), 3);
+			record_event((*ctx_ptr), 0);
 			cont_nonblock((*ctx_ptr));
 		} else {
 			cont_block((*ctx_ptr));
@@ -328,7 +327,8 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_EXEC:
 	{
-		cont_block((*ctx_ptr));
+		record_event(*ctx_ptr, 0);
+		cont_block(*ctx_ptr);
 		init_scratch_memory(*ctx_ptr);
 		assert(signal_pending((*ctx_ptr)->status) == 0);
 		break;
@@ -385,10 +385,14 @@ void start_recording()
 				fflush(stdout);
 			}
 
+
+
+
 			/* we need to issue a blocking continue here to serialize program execution */
 
 			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 			cont_block(ctx);
+
 			/* we must disallow the context switch here! */
 			ctx->allow_ctx_switch = 0;
 			assert(GET_PTRACE_EVENT(ctx->status) == 0);
@@ -472,10 +476,7 @@ void start_recording()
 				handle_ptrace_event(&ctx);
 
 				if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
-					int sig = signal_pending(ctx->status);
-					if (sig) {
-						ctx->child_sig = sig;
-					}
+					ctx->child_sig = signal_pending(ctx->status);
 					rec_process_syscall(ctx);
 					record_event(ctx, 1);
 					ctx->exec_state = EXEC_STATE_START;

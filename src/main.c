@@ -199,7 +199,6 @@ static void start(int option, int argc, char* argv[], char** envp)
 			pid_t rec_main_thread = get_recorded_main_thread();
 			rep_sched_register_thread(pid, rec_main_thread);
 
-			printf("starting to replay   argv %x __argv %x\n",argv,__argv); fflush(stdout);
 			/* main loop */
 			replay();
 			/* thread wants to exit*/

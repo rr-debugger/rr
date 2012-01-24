@@ -192,8 +192,10 @@ static void record_performance_data(struct context *ctx)
 	fprintf(trace_file, "%20llu", read_page_faults(ctx->hpc));
 	fprintf(trace_file, "%20llu", read_rbc_up(ctx->hpc));
 }
-static void record_register_file(pid_t tid, FILE* file)
+static void record_register_file(struct context *ctx, FILE* file)
 {
+
+	pid_t tid = ctx->child_tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
@@ -217,7 +219,7 @@ void record_event(struct context *ctx, int entry)
 	/* we record a system call */
 	if (ctx->event != 0) {
 		record_performance_data(ctx);
-		record_register_file(ctx->child_tid, trace_file);
+		record_register_file(ctx, trace_file);
 		/* reset the performance counters */
 		reset_hpc(ctx,MAX_RECORD_INTERVAL);
 	} else {
