@@ -294,6 +294,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		(*ctx_ptr)->allow_ctx_switch = 1;
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		cont_block(*ctx_ptr);
+		record_event((*ctx_ptr), 1);
 		break;
 	}
 

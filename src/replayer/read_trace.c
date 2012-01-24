@@ -232,6 +232,15 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
 
 }
 
+
+void peek_next_trace(struct trace *trace) {
+	char* tmp = sys_malloc(1024);
+	fpos_t pos;
+	fgetpos(__trace, &pos);
+	read_next_trace(trace);
+	fsetpos(__trace, &pos);
+}
+
 void read_next_trace(struct trace* trace)
 {
 	char* line = sys_malloc(1024);

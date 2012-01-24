@@ -38,9 +38,7 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 
 	/* initializer replay counters */
 	init_hpc(ctx);
-
 	map[rec_tid] = ctx;
-	printf("ctx status: %d\n",ctx->status);
 	return ctx;
 }
 
@@ -52,6 +50,7 @@ struct context* rep_sched_get_thread()
 
 	/* find and update context */
 	struct context *ctx = map[trace.tid];
+	assert(ctx != NULL);
 	if (ctx->child_sig != 0) {
 		assert(trace.stop_reason >= 0);
 	}

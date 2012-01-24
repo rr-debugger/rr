@@ -13,7 +13,7 @@
 #include <linux/ipc.h>
 
 #include <sys/ioctl.h>
-
+#include <sys/ptrace.h>
 #include <sys/socket.h>
 #include <sys/mman.h>
 
@@ -67,7 +67,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 	int current_syscall = read_child_orig_eax(tid);
 
 	if (current_syscall != rec_syscall) {
-		/* this signal is ignored and most likey delivered later */
+		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
 		if (WSTOPSIG(ctx->status) == SIGCHLD) {
 			goto_next_syscall_emu(ctx);
 			return;
@@ -107,17 +107,22 @@ static void finish_syscall_emu(struct context *ctx)
  */
 void __ptrace_cont(struct context *ctx)
 {
-
-	assert(ctx->child_sig == 0);
 	pid_t my_tid = ctx->child_tid;
 	goto_next_event(ctx);
-	printf("what?? : %x\n", ctx->status);
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
 	int current_syscall = read_child_orig_eax(my_tid);
 
 	if (current_syscall != rec_syscall) {
+		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
+		if (WSTOPSIG(ctx->status) == SIGCHLD) {
+			__ptrace_cont(ctx);
+			ctx->child_sig = 0;
+			return;
+		}
+
+
 		printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
 		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
 		sys_exit();
@@ -576,7 +581,8 @@ void rep_process_syscall(struct context* context)
 	 * A file descriptor is considered ready if  it  is possible to perform the corresponding I/O operation
 	 * (e.g., read(2)) without blocking.
 	 */
-	//SYS_FD_ARG(_newselect, 4)
+	SYS_FD_ARG(_newselect, 4)
+
 	/**
 	 * int socketcall(int call, unsigned long *args)
 	 *
@@ -705,7 +711,10 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * The mode of the file given by path or referenced by fildes is changed
 	 */
-	//SYS_FD_ARG(chmod, 0)
+	SYS_FD_ARG(chmod, 0)
+
+
+
 	/**
 	 * int clock_gettime(clockid_t clk_id, struct timespec *tp);
 	 *
@@ -744,6 +753,18 @@ void rep_process_syscall(struct context* context)
 	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
 	 */
 	SYS_FD_ARG(epoll_wait, 1)
+
+
+	/**
+	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
+	 *
+	 * The  fstatat()  system  call operates in exactly the same way as stat(2), except for the
+	 * differences described in this manual page....
+	 */
+	SYS_EMU_ARG(fstatat64, 1)
+
+
+
 	/**
 	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
 	 *
@@ -902,7 +923,8 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * mkdir() attempts to create a directory named pathname.
 	 */
-	//SYS_EMU_ARG(mkdir, 0)
+	SYS_EMU_ARG(mkdir, 0)
+
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
 	 *
@@ -993,7 +1015,21 @@ void rep_process_syscall(struct context* context)
 	 * credentials(7)).  In this case, the  pgid  specifies  an  existing process group to be
 	 * joined and the session ID of that group must match the session ID of the joining process.
 	 */
-	SYS_EMU_ARG(setpgid, 0)
+	//SYS_EMU_ARG(setpgid, 0)
+	case SYS_setpgid:
+	{
+		if (state == STATE_SYSCALL_ENTRY) {
+			goto_next_syscall_emu(context);
+			validate_args(context);
+		} else {
+			set_return_value(context);
+			write_child_ebx(context->child_tid, context->trace.recorded_regs.ebx);
+			//write_child_registers(context->child_tid, &(context->trace.recorded_regs));
+			validate_args(context);
+			finish_syscall_emu(context);
+		}
+		break;
+	}
 
 	/**
 	 *  int stat(const char *path, struct stat *buf);
@@ -1021,6 +1057,18 @@ void rep_process_syscall(struct context* context)
 	 * sysinfo() provides a simple way of getting overall system statistics.
 	 */
 	SYS_EMU_ARG(sysinfo, 1)
+
+
+	/**
+	 * int unlinkat(int dirfd, const char *pathname, int flags)
+	 *
+	 * The unlinkat() system call operates in exactly the same way as either unlink(2) or
+	 * rmdir(2) (depending on whether or not flags includes the AT_REMOVEDIR flag) except for the
+	 * differences described in this manual page.
+	 */
+	SYS_EMU_ARG(unlinkat, 0)
+
+
 
 	/**
 	 * int utimes(const char *filename, const struct timeval times[2])
@@ -1125,7 +1173,8 @@ void rep_process_syscall(struct context* context)
 	 * pathname pointed to by path and shall decrement the link count of the file referenced by the link.
 	 *
 	 */
-	//SYS_EMU_ARG(unlink, 0)
+	SYS_EMU_ARG(unlink, 0)
+
 	/**
 	 * int utime(const char *filename, const struct utimbuf *times)
 	 *
@@ -1139,15 +1188,8 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * FIXXME: is mod_time set by the kernel?
 	 */
-	//SYS_EMU_ARG(utime, 0)
-	/**
-	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
-	 *
-	 * The  wait3()  and wait4() system calls are similar to waitpid(2), but
-	 * additionally return resource usage information about the child in the
-	 * structure pointed to by rusage.
-	 */
-	SYS_EMU_ARG(wait4, 2)
+	SYS_EMU_ARG(utime, 0)
+
 
 	/**
 	 * pid_t waitpid(pid_t pid, int *status, int options);
@@ -1190,7 +1232,8 @@ void rep_process_syscall(struct context* context)
 	 * chdir() changes the current working directory of the calling process to the directory
 	 * specified in path.
 	 */
-	SYS_EXEC_ARG_RET(context, chdir, 0)
+	//SYS_EXEC_ARG_RET(context, chdir, 0)
+	SYS_EMU_ARG(chdir, 0);
 
 	/**
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
@@ -1346,8 +1389,6 @@ void rep_process_syscall(struct context* context)
 	 *  register is not zerol This is very strange.
 	 */
 	SYS_EXEC_ARG_RET(context, getgroups32, 1)
-
-
 
 	/**
 	 * int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth);
@@ -1609,6 +1650,42 @@ void rep_process_syscall(struct context* context)
 	 *   blocked for the caller (see also signal(7) for more details).
 	 */
 	SYS_EXEC_ARG_RET(context, rt_sigprocmask, 1)
+
+	case SYS_vfork:
+	{
+		if (state == STATE_SYSCALL_ENTRY) {
+			/* go to the system call */
+			__ptrace_cont(context);
+			if (GET_PTRACE_EVENT(context->status) == PTRACE_EVENT_VFORK) {
+				unsigned long new_tid = sys_ptrace_getmsg(tid);
+				/* wait until the new thread is ready */
+				int status;
+				sys_waitpid(new_tid, &status);
+
+				struct trace next_trace;
+				peek_next_trace(&next_trace);
+				rep_sched_register_thread(new_tid, next_trace.tid);
+			}
+
+			validate_args(ctx);
+		} else {
+			__ptrace_cont(context);
+			set_return_value(context);
+			validate_args(ctx);
+		}
+		break;
+	}
+
+	/**
+	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
+	 *
+	 * The  wait3()  and wait4() system calls are similar to waitpid(2), but
+	 * additionally return resource usage information about the child in the
+	 * structure pointed to by rusage.
+	 */
+	SYS_EXEC_ARG(wait4, 2)
+
+
 
 	default:
 	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall, ctx->trace.global_time);

@@ -52,7 +52,7 @@ static long read_child_data_word(pid_t tid, void *addr)
 	return tmp;
 }
 
-void write_child_registers(pid_t pid, struct user_regs_struct* regs)
+void write_child_registers(pid_t pid, struct user_regs_struct *regs)
 {
 	sys_ptrace(PTRACE_SETREGS, pid, NULL, regs);
 }
