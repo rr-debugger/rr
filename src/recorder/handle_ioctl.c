@@ -30,7 +30,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 	int syscall = SYS_ioctl;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
-	//printf("request: %x\n", _IOC_NR(request));
+	printf("request: %x\n", _IOC_NR(request));
 
 	/* here writing means: write from OS to the process */
 	if (request & _IOC_WRITE) {

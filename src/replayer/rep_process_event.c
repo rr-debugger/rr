@@ -350,6 +350,45 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_FD_ARG(epoll_ctl, 1)
 
+
+	/**
+	 * int fchdir(int fd);
+	 *
+	 * fchdir() is identical to chdir(); the only difference is that the directory is given as an open file descriptor.
+	 */
+	SYS_FD_ARG(fchdir, 0)
+
+
+	/**
+	 * int fstat(int fd, struct stat *buf)
+	 *
+	 * fstat()  is  identical  to  stat(),  except  that  the  file to be stat-ed is specified
+	 * by the file descriptor fd.
+	 *
+	 */
+	SYS_FD_ARG(fstat64, 1)
+
+	/**
+	 * int fstatfs(int fd, struct statfs *buf)
+	 *
+	 * The  function  statfs()  returns  information  about  a mounted file system.
+	 * path is the pathname of any file within the get_time(GET_TID(thread_id));mounted file system.  buf is a pointer to a
+	 * statfs structure defined approximately as follows:
+	 */
+	SYS_FD_ARG(fstatfs64, 1)
+
+	/**
+	 * int fsync(int fd)
+	 *
+	 * fsync()  transfers ("flushes") all modified in-core data of (i.e., modified buffer cache pages for)
+	 * the file referred to by the file descriptor fd to the disk device (or other permanent storage device)
+	 * where that file  resides.   The  call  blocks until  the  device  reports that the transfer has
+	 * completed.  It also flushes metadata information associated with the file (see stat(2))
+	 */
+	SYS_FD_ARG(fsync, 0)
+
+
+
 	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);
 	 *
@@ -427,33 +466,7 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_FD_ARG(poll, 1)
 
-	/**
-	 * int fstat(int fd, struct stat *buf)
-	 *
-	 * fstat()  is  identical  to  stat(),  except  that  the  file to be stat-ed is specified
-	 * by the file descriptor fd.
-	 *
-	 */
-	SYS_FD_ARG(fstat64, 1)
 
-	/**
-	 * int fstatfs(int fd, struct statfs *buf)
-	 *
-	 * The  function  statfs()  returns  information  about  a mounted file system.
-	 * path is the pathname of any file within the get_time(GET_TID(thread_id));mounted file system.  buf is a pointer to a
-	 * statfs structure defined approximately as follows:
-	 */
-	SYS_FD_ARG(fstatfs64, 1)
-
-	/**
-	 * int fsync(int fd)
-	 *
-	 * fsync()  transfers ("flushes") all modified in-core data of (i.e., modified buffer cache pages for)
-	 * the file referred to by the file descriptor fd to the disk device (or other permanent storage device)
-	 * where that file  resides.   The  call  blocks until  the  device  reports that the transfer has
-	 * completed.  It also flushes metadata information associated with the file (see stat(2))
-	 */
-	SYS_FD_ARG(fsync, 0)
 
 	/* int fcntl(int fd, int cmd, ... ( arg ));
 	 *
@@ -924,6 +937,17 @@ void rep_process_syscall(struct context* context)
 	 * mkdir() attempts to create a directory named pathname.
 	 */
 	SYS_EMU_ARG(mkdir, 0)
+
+
+	/**
+	 * int nanosleep(const struct timespec *req, struct timespec *rem)
+	 *
+	 * nanosleep()  suspends  the  execution  of the calling thread until either at least the time specified in *req has
+	 * elapsed, or the delivery of a signal that triggers the invocation of a handler in the calling thread or that ter-
+	 * minates the process.
+	 */
+	SYS_EMU_ARG(nanosleep, 1);
+
 
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
@@ -1630,15 +1654,7 @@ void rep_process_syscall(struct context* context)
 	{
 		/* go to the system call */
 		__ptrace_cont(context);
-		validate_args(ctx);
-
-		/* do another step; we do that 'unchecked' since we are supposed to get a -1 in orig_eax
-		 * and that -1 is not recorded */
-		//sys_ptrace_syscall(tid);
-		//sys_waitpid(tid, &context->status);
-		/* the next event is -1 -- how knows why?*/
-		//assert(read_child_orig_eax(context->child_tid) == -1);
-		//assert(ctx->status == 0x857f);
+	//	validate_args(ctx);
 		break;
 	}
 

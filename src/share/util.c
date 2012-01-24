@@ -248,6 +248,10 @@ void print_syscall(struct context *ctx, struct trace *trace)
 	read_child_registers(ctx->child_tid, &r);
 
 	debug_print("%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
+	if (state == 0) {
+		debug_print(" event: %d",ctx->trace.stop_reason);
+	}
+
 	if (state == 1) {
 		switch (syscall) {
 

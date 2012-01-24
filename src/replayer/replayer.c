@@ -218,11 +218,10 @@ void replay()
 		} else if ((int) (ctx->trace.stop_reason) > 0) {
 			/* proceed to the next event */
 			rep_process_syscall(ctx);
-			printf("after processing syscall\n"); fflush(stdout);
 			/* stop reason is a signal - use HPC */
 		} else {
+			printf("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
 			rep_process_signal(ctx);
-			printf("sending signal: %d\n",ctx->trace.stop_reason);
 		}
 	}
 
