@@ -1126,13 +1126,17 @@ void rep_process_syscall(struct context* context)
 	 *
 	 * rmdir() deletes a directory, which must be empty.
 	 */
-	//SYS_EMU_ARG(rmdir, 0)
+	SYS_EMU_ARG(rmdir, 0)
+
+
 	/**
 	 * int rename(const char *oldpath, const char *newpath)
 	 *
 	 * rename() renames a file, moving it between directories if required.
 	 */
-	//SYS_EMU_ARG(rename, 0)
+	SYS_EMU_ARG(rename, 0)
+
+
 	/**
 	 * int setregid(gid_t rgid, gid_t egid)
 	 *
