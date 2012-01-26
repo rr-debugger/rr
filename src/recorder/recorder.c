@@ -69,7 +69,7 @@ static void init_scratch_memory(struct context *ctx)
 	struct user_regs_struct mmap_call;
 	memcpy(&mmap_call, &orig_regs, sizeof(struct user_regs_struct));
 
-	const int scratch_size = 32 * sysconf(_SC_PAGE_SIZE);
+	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
 
 	mmap_call.eax = SYS_mmap2;
 	mmap_call.ebx = 0;
@@ -124,7 +124,6 @@ static void cont_block(struct context *ctx)
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
-
 	handle_signal(ctx);
 }
 
@@ -134,6 +133,12 @@ static int allow_ctx_switch(struct context *ctx)
 	//printf("event: %d\n",event);
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	switch (event) {
+
+	case USR_SCHED:
+	{
+		return 1;
+	}
+
 	case SYS_futex:
 	{
 		struct user_regs_struct regs;
@@ -195,8 +200,10 @@ static int allow_ctx_switch(struct context *ctx)
 	{
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
-		assert(regs.edx <= ctx->scratch_size);
-
+		if (regs.edx > ctx->scratch_size) {
+			printf("scratch size too small: required: %ld  now: %d\n", regs.edx, ctx->scratch_size);
+			sys_exit();
+		}
 		ctx->recorded_scratch_ptr = regs.ecx;
 		ctx->recorded_scratch_size = regs.edx;
 
@@ -383,19 +390,17 @@ void start_recording()
 				fflush(stdout);
 			}
 
-
-
-
 			/* we need to issue a blocking continue here to serialize program execution */
 
 			//printf("1: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 			cont_block(ctx);
+			//printf("2: tid: %d   event: %d\n", ctx->child_tid, ctx->event);
 
 			/* we must disallow the context switch here! */
 			ctx->allow_ctx_switch = 0;
-			assert(GET_PTRACE_EVENT(ctx->status) == 0);
 
 			if (GET_PTRACE_EVENT(ctx->status)) {
+				printf("status: %x   event: %d\n", ctx->status, GET_PTRACE_EVENT(ctx->status));
 				assert(1==0);
 			}
 

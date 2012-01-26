@@ -84,14 +84,14 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 
 	int hash = HASH(child);
 	assert(registered_threads[hash] == 0);
-	struct context* ctx = sys_malloc_zero(sizeof(struct context));
+	struct context *ctx = sys_malloc_zero(sizeof(struct context));
 
 	ctx->exec_state = EXEC_STATE_START;
 	ctx->status = 0;
 	ctx->child_tid = child;
 	ctx->child_mem_fd = sys_open_child_mem(child);
 
-	write_open_inst_dump(ctx);
+	//write_open_inst_dump(ctx);
 	sys_ptrace_setup(child);
 
 
@@ -116,7 +116,7 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	assert(num_active_threads >= 0);
 
 	/* close the inst_dump file */
-	sys_fclose(ctx->inst_dump);
+	//sys_fclose(ctx->inst_dump);
 
 	/* delete all counter data */
 	destry_hpc(ctx);

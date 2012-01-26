@@ -92,8 +92,8 @@ void handle_signal(struct context* ctx)
 	{
 		/* make sure that the signal came from hpc */
 		if (read_rbc_up(ctx->hpc) >= MAX_RECORD_INTERVAL) {
-			assert(1==0);
 			ctx->event = USR_SCHED;
+			ctx->child_sig = 0;
 		} else {
 			ctx->event = -sig;
 			ctx->child_sig = sig;

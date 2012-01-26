@@ -1298,14 +1298,13 @@ void rec_process_syscall(struct context *ctx)
 	{
 
 		if (regs.ebx != 0) {
-			char *exec = read_child_str(tid, regs.ebx);
+/*			char *exec = read_child_str(tid, regs.ebx);
 			printf("exec: %s\n", exec);
 			free(exec);
 			char *str = sys_malloc_zero(1024);
 			print_cwd(ctx->child_tid, str);
 			printf("the cwd is: %s\n",str);
-			free(str);
-			sleep(3);
+			free(str);*/
 			break;
 		}
 
