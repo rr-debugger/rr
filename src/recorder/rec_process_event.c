@@ -1301,16 +1301,14 @@ void rec_process_syscall(struct context *ctx)
 			char *exec = read_child_str(tid, regs.ebx);
 			printf("exec: %s\n", exec);
 			free(exec);
-		}
-		print_register_file(&regs);
-
-		// FIXXME
-		if (regs.ebx != 0) {
-			char *str = read_child_str(ctx->child_tid,regs.ebx);
-			printf("fuckign string: %s\n",str);
+			char *str = sys_malloc_zero(1024);
+			print_cwd(ctx->child_tid, str);
+			printf("the cwd is: %s\n",str);
 			free(str);
+			sleep(3);
 			break;
 		}
+
 
 		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
 

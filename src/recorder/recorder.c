@@ -120,9 +120,6 @@ static int wait_nonblock(struct context *ctx)
 static void cont_block(struct context *ctx)
 {
 
-	if (ctx->child_sig != 0) {
-		printf("sending signal: %d\n", ctx->child_sig);
-	}
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);

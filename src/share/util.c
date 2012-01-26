@@ -237,7 +237,20 @@ void print_process_state(pid_t tid)
 		putchar(c);
 		c = getc(file);
 	}
+	sys_fclose(file);
 }
+
+
+void print_cwd(pid_t tid, char *str)
+{
+	char path[64];
+	fflush(stdout);
+	bzero(path, 64);
+	sprintf(path, "/proc/%d/cwd", tid);
+	assert(readlink(path, str, 1024) != -1);
+}
+
+
 
 void print_syscall(struct context *ctx, struct trace *trace)
 {

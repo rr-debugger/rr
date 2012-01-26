@@ -1331,6 +1331,10 @@ void rep_process_syscall(struct context* context)
 		} else {
 			int event = GET_PTRACE_EVENT(context->status);
 			printf("fucking ptrace event: %d\n", event);
+			char *str = sys_malloc_zero(1024);
+			print_cwd(context->child_tid, str);
+			printf("cws: %s\n",str);
+			free(str);
 			//__ptrace_cont(context);
 
 			event = GET_PTRACE_EVENT(context->status);
