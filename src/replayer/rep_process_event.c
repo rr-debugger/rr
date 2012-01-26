@@ -89,12 +89,6 @@ static void goto_next_syscall_emu(struct context *ctx)
  **/
 static void finish_syscall_emu(struct context *ctx)
 {
-	sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
-
-	if (ctx->status != 0x57f) {
-		printf("bastardo: %x\n", ctx->status);
-	}
-
 	assert(ctx->child_sig == 0);
 	if (ctx->replay_sig != 0) {
 		printf("fucking replay sig: %d\n", ctx->replay_sig);
@@ -108,7 +102,7 @@ static void finish_syscall_emu(struct context *ctx)
 	}
 	//assert(ctx->status == 0x57f);
 	/* reset the single-step status */
-	ctx->status = 0;
+	//ctx->status = 0;
 }
 
 /*
@@ -118,7 +112,7 @@ void __ptrace_cont(struct context *ctx)
 {
 
 	if (ctx->replay_sig != 0) {
-		printf("sending signal: %d\n",ctx->replay_sig);
+		printf("PTRACE_CONT: sending signal: %d\n",ctx->replay_sig);
 	}
 	sys_ptrace_syscall_sig(ctx->child_tid, ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
