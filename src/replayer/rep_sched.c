@@ -58,15 +58,6 @@ struct context* rep_sched_get_thread()
 	/* read the current trace */
 	memcpy(&(ctx->trace), &trace, sizeof(struct trace));
 
-	/* Prefetch the next trace. If it is a signal, set the replay-sig accordingly */
-	struct trace next_trace;
-	peek_next_trace(&next_trace);
-	if (next_trace.stop_reason == -17) {
-		ctx->replay_sig = 17;
-		/* skip this trace, the signal is already set */
-		read_next_trace(&next_trace);
-	}
-
 	return ctx;
 }
 

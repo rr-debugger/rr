@@ -100,9 +100,7 @@ static void finish_syscall_emu(struct context *ctx)
 	if (ctx->status != 0x57f) {
 		printf("status is: %x\n", ctx->status);
 	}
-	//assert(ctx->status == 0x57f);
-	/* reset the single-step status */
-	//ctx->status = 0;
+	ctx->status = 0;
 }
 
 /*
@@ -114,7 +112,9 @@ void __ptrace_cont(struct context *ctx)
 	if (ctx->replay_sig != 0) {
 		printf("PTRACE_CONT: sending signal: %d\n",ctx->replay_sig);
 	}
-	sys_ptrace_syscall_sig(ctx->child_tid, ctx->child_sig);
+
+
+	sys_ptrace_syscall_sig(ctx->child_tid, ctx->trace.state == 0 ? ctx->replay_sig : 0);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
@@ -145,6 +145,7 @@ void __ptrace_cont(struct context *ctx)
 	 * we do not deliver it to the application. This ensures that the behavior remains the
 	 * same
 	 */
+	ctx->replay_sig = (ctx->trace.state == 0) ? 0 : ctx->replay_sig;
 	ctx->child_sig = 0;
 }
 

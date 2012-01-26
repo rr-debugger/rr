@@ -54,14 +54,8 @@ static void compensate_branch_count(struct context *ctx, int sig)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		rbc_now = read_rbc_up(ctx->hpc);
-		if (signal_pending(ctx->status) != 0) {
-			assert(1==0);
-		}
-
-		assert(signal_pending(ctx->status) == 0);
 
 		if (rbc_now < rbc_rec) {
-			printf("here!!\n");
 			singlestep(ctx, 0, 0x57f);
 		} else if (rbc_now == rbc_rec) {
 
@@ -71,8 +65,6 @@ static void compensate_branch_count(struct context *ctx, int sig)
 				sys_ptrace_syscall(ctx->child_tid);
 				sys_waitpid(ctx->child_tid, &ctx->status);
 				printf("but we arrive here!!\n");
-			} else {
-				assert(1==0);
 			}
 
 			/* the eflags register has two bits that are set when an interrupt is pending:
@@ -92,11 +84,11 @@ static void compensate_branch_count(struct context *ctx, int sig)
 					//print_inst(ctx->child_tid);
 
 					/* here we ensure that the we get a SIGSEGV at the right spot */
-					printf("aha!!\n");
 					singlestep(ctx, 0, 0xb7f);
 					/* deliver the signal */
 					//singlestep(ctx, SIGSEGV, 0x57f);
-					printf("awsome!!\n");
+					break;
+				} else {
 					break;
 				}
 				/* set the signal such that it is delivered when the process continues */
