@@ -52,7 +52,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 		printf("global time: %u\n", ctx->trace.global_time);
 	}
 	//assert(ctx->replay_sig == 0);
-	sys_ptrace_sysemu_sig(tid, ctx->replay_sig);
+	sys_ptrace_sysemu_sig(tid, /*ctx->replay_sig*/0);
 	sys_waitpid(tid, &ctx->status);
 	ctx->replay_sig = 0;
 
@@ -89,10 +89,19 @@ static void goto_next_syscall_emu(struct context *ctx)
  **/
 static void finish_syscall_emu(struct context *ctx)
 {
-	assert(ctx->child_sig == 0);
-	sys_ptrace_sysemu_singlestep(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &(ctx->status));
+	sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
 
+	if (ctx->status != 0x57f) {
+		printf("bastardo: %x\n", ctx->status);
+	}
+
+	assert(ctx->child_sig == 0);
+	if (ctx->replay_sig != 0) {
+		printf("fucking replay sig: %d\n", ctx->replay_sig);
+	}
+	sys_ptrace_sysemu_singlestep(ctx->child_tid, ctx->replay_sig);
+	sys_waitpid(ctx->child_tid, &(ctx->status));
+	ctx->replay_sig = 0;
 	/* we get a simple SIGTRAP in this case */
 	if (ctx->status != 0x57f) {
 		printf("status is: %x\n", ctx->status);
@@ -107,12 +116,22 @@ static void finish_syscall_emu(struct context *ctx)
  */
 void __ptrace_cont(struct context *ctx)
 {
-	pid_t my_tid = ctx->child_tid;
-	goto_next_event(ctx);
+
+	if (ctx->replay_sig != 0) {
+		printf("sending signal: %d\n",ctx->replay_sig);
+	}
+	sys_ptrace_syscall_sig(ctx->child_tid, ctx->child_sig);
+	sys_waitpid(ctx->child_tid, &ctx->status);
+
+	ctx->child_sig = signal_pending(ctx->status);
+	ctx->event = read_child_orig_eax(ctx->child_tid);
+
+
+
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	int current_syscall = read_child_orig_eax(my_tid);
+	int current_syscall = read_child_orig_eax(ctx->child_tid);
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
@@ -121,7 +140,6 @@ void __ptrace_cont(struct context *ctx)
 			ctx->child_sig = 0;
 			return;
 		}
-
 
 		printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
 		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
@@ -350,14 +368,12 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_FD_ARG(epoll_ctl, 1)
 
-
 	/**
 	 * int fchdir(int fd);
 	 *
 	 * fchdir() is identical to chdir(); the only difference is that the directory is given as an open file descriptor.
 	 */
 	SYS_FD_ARG(fchdir, 0)
-
 
 	/**
 	 * int fstat(int fd, struct stat *buf)
@@ -386,8 +402,6 @@ void rep_process_syscall(struct context* context)
 	 * completed.  It also flushes metadata information associated with the file (see stat(2))
 	 */
 	SYS_FD_ARG(fsync, 0)
-
-
 
 	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);
@@ -465,8 +479,6 @@ void rep_process_syscall(struct context* context)
 	 * Potentially blocking
 	 */
 	SYS_FD_ARG(poll, 1)
-
-
 
 	/* int fcntl(int fd, int cmd, ... ( arg ));
 	 *
@@ -726,8 +738,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_FD_ARG(chmod, 0)
 
-
-
 	/**
 	 * int clock_gettime(clockid_t clk_id, struct timespec *tp);
 	 *
@@ -767,7 +777,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_FD_ARG(epoll_wait, 1)
 
-
 	/**
 	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
 	 *
@@ -775,8 +784,6 @@ void rep_process_syscall(struct context* context)
 	 * differences described in this manual page....
 	 */
 	SYS_EMU_ARG(fstatat64, 1)
-
-
 
 	/**
 	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
@@ -938,7 +945,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(mkdir, 0)
 
-
 	/**
 	 * int nanosleep(const struct timespec *req, struct timespec *rem)
 	 *
@@ -947,7 +953,6 @@ void rep_process_syscall(struct context* context)
 	 * minates the process.
 	 */
 	SYS_EMU_ARG(nanosleep, 1);
-
 
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
@@ -1082,7 +1087,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(sysinfo, 1)
 
-
 	/**
 	 * int unlinkat(int dirfd, const char *pathname, int flags)
 	 *
@@ -1091,8 +1095,6 @@ void rep_process_syscall(struct context* context)
 	 * differences described in this manual page.
 	 */
 	SYS_EMU_ARG(unlinkat, 0)
-
-
 
 	/**
 	 * int utimes(const char *filename, const struct timeval times[2])
@@ -1128,14 +1130,12 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(rmdir, 0)
 
-
 	/**
 	 * int rename(const char *oldpath, const char *newpath)
 	 *
 	 * rename() renames a file, moving it between directories if required.
 	 */
 	SYS_EMU_ARG(rename, 0)
-
 
 	/**
 	 * int setregid(gid_t rgid, gid_t egid)
@@ -1217,7 +1217,6 @@ void rep_process_syscall(struct context* context)
 	 * FIXXME: is mod_time set by the kernel?
 	 */
 	SYS_EMU_ARG(utime, 0)
-
 
 	/**
 	 * pid_t waitpid(pid_t pid, int *status, int options);
@@ -1518,7 +1517,8 @@ void rep_process_syscall(struct context* context)
 	 *  mremap()  expands  (or  shrinks) an existing memory mapping, potentially moving it at the same time
 	 *  (controlled by the flags argument and the available virtual address space).
 	 */
-	//SYS_EXEC_ARG(mremap, 0)
+	SYS_EXEC_ARG(mremap, 0)
+
 	/**
 	 * int munmap(void *addr, size_t length)
 	 *
@@ -1658,7 +1658,7 @@ void rep_process_syscall(struct context* context)
 	{
 		/* go to the system call */
 		__ptrace_cont(context);
-	//	validate_args(ctx);
+		//	validate_args(ctx);
 		break;
 	}
 
@@ -1704,8 +1704,6 @@ void rep_process_syscall(struct context* context)
 	 * structure pointed to by rusage.
 	 */
 	SYS_EXEC_ARG(wait4, 2)
-
-
 
 	default:
 	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall, ctx->trace.global_time);

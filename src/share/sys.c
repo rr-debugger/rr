@@ -177,10 +177,12 @@ void sys_ptrace_sysemu_sig(pid_t pid, int sig)
 }
 
 
-void sys_ptrace_sysemu_singlestep(pid_t pid)
+void sys_ptrace_sysemu_singlestep(pid_t pid, int sig)
 {
-	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, 0);
+	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, (void*)sig);
 }
+
+
 
 unsigned long sys_ptrace_getmsg(pid_t pid)
 {
