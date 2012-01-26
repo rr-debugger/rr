@@ -11,6 +11,7 @@
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/ipc.h>
+#include <linux/mman.h>
 
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
@@ -110,18 +111,14 @@ void __ptrace_cont(struct context *ctx)
 {
 
 	if (ctx->replay_sig != 0) {
-		printf("PTRACE_CONT: sending signal: %d\n",ctx->replay_sig);
+		printf("PTRACE_CONT: sending signal: %d\n", ctx->replay_sig);
 	}
-
 
 	sys_ptrace_syscall_sig(ctx->child_tid, ctx->trace.state == 0 ? ctx->replay_sig : 0);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
-
-
-
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
@@ -1254,7 +1251,6 @@ void rep_process_syscall(struct context* context)
 	 * chdir() changes the current working directory of the calling process to the directory
 	 * specified in path.
 	 */
-	//SYS_EXEC_ARG_RET(context, chdir, 0)
 	SYS_EMU_ARG(chdir, 0);
 
 	/**
@@ -1334,7 +1330,7 @@ void rep_process_syscall(struct context* context)
 			printf("fucking ptrace event: %d\n", event);
 			char *str = sys_malloc_zero(1024);
 			print_cwd(context->child_tid, str);
-			printf("cws: %s\n",str);
+			printf("cws: %s\n", str);
 			free(str);
 			//__ptrace_cont(context);
 
@@ -1516,7 +1512,46 @@ void rep_process_syscall(struct context* context)
 	 *  mremap()  expands  (or  shrinks) an existing memory mapping, potentially moving it at the same time
 	 *  (controlled by the flags argument and the available virtual address space).
 	 */
-	SYS_EXEC_ARG(mremap, 0)
+	case SYS_mremap:
+	{
+		if (state == STATE_SYSCALL_ENTRY) {
+			__ptrace_cont(ctx);
+		} else {
+			/* By using a fixed address remapping we can be sure that the mappings
+			 * remain identical in the record and replay/
+			 */
+			struct user_regs_struct orig_regs;
+			read_child_registers(context->child_tid, &orig_regs);
+
+			struct user_regs_struct tmp_regs;
+			memcpy(&tmp_regs,&orig_regs,sizeof(struct user_regs_struct));
+			/* set mapping to fixed and initialize the new address with the
+			 * recorded address
+			 */
+
+			/* is hack is necessary, since mremap does not like the FIXED flag
+			 * if source and destination address are the same */
+			if (orig_regs.ebx != ctx->trace.recorded_regs.eax) {
+				tmp_regs.esi |= MREMAP_FIXED;
+				tmp_regs.edi = ctx->trace.recorded_regs.eax;
+			}
+
+			print_register_file(&tmp_regs);
+			write_child_registers(ctx->child_tid,&tmp_regs);
+
+			__ptrace_cont(ctx);
+			/* obtain the new address and reset to the old register values */
+			read_child_registers(ctx->child_tid,&tmp_regs);
+			printf("after: %d\n",tmp_regs.eax);
+			print_register_file(&tmp_regs);
+
+			orig_regs.eax = tmp_regs.eax;
+			write_child_registers(ctx->child_tid,&orig_regs);
+			validate_args(ctx);
+		}
+
+		break;
+	}
 
 	/**
 	 * int munmap(void *addr, size_t length)
