@@ -236,6 +236,15 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(eventfd2)
 
+
+	/**
+	 * int faccessat(int dirfd, const char *pathname, int mode, int flags)
+	 *
+	 * The  faccessat() system call operates in exactly the same way as access(2), except for the differences
+	 * described in this manual page....
+	 */
+	SYS_REC0(faccessat)
+
 	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);
 	 *
@@ -742,6 +751,17 @@ void rec_process_syscall(struct context *ctx)
 	 * int open(const char *pathname, int flags, mode_t mode)
 	 */
 	SYS_REC0(open)
+
+
+	/**
+	 * int openat(int dirfd, const char *pathname, int flags);
+     * int openat(int dirfd, const char *pathname, int flags, mode_t mode);
+	 *
+	 * The  openat() system call operates in exactly the same way as open(2), except for the
+	 * differences described in this manual page.
+	 */
+	SYS_REC0(openat)
+
 
 	/**
 	 *  int pipe(int pipefd[2]);
@@ -1289,6 +1309,15 @@ void rec_process_syscall(struct context *ctx)
 	 * user ID of the file, or times is NULL and the process has write permission for the file.
 	 */
 	SYS_REC0(utime)
+
+	/**
+	 * int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
+	 *
+	 * utimensat() and futimens() update the timestamps of a file with nanosecond precision.  This
+	 * contrasts with the historical utime(2) and utimes(2), which permit only second and microsecond precision,
+	 * respectively, when setting file timestamps.
+	 */
+	SYS_REC0(utimensat)
 
 	/* signature:
 	 * int execve(const char *filename, char *const argv[], char *const envp[]);

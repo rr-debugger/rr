@@ -142,6 +142,9 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 
 	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
+	if (syscall != trace->stop_reason) {
+		printf("global_time: %lu syscall: %d  stop_reason: %d\n",time, syscall,trace->stop_reason,time);
+	}
 	assert (syscall == trace->stop_reason);
 
 	*addr = str2li(tmp_ptr, LI_COLUMN_SIZE);

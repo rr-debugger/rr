@@ -49,11 +49,11 @@ static void goto_next_syscall_emu(struct context *ctx)
 	assert(ctx->child_sig == 0);
 
 	pid_t tid = ctx->child_tid;
-	if (ctx->replay_sig != 0) {
-		printf("global time: %u\n", ctx->trace.global_time);
-	}
-	//assert(ctx->replay_sig == 0);
-	sys_ptrace_sysemu_sig(tid, /*ctx->replay_sig*/0);
+
+
+//	sys_ptrace_sysemu_sig(tid, /*ctx->replay_sig*/0);
+	sys_ptrace_sysemu_sig(tid, ctx->replay_sig);
+
 	sys_waitpid(tid, &ctx->status);
 	ctx->replay_sig = 0;
 
@@ -70,6 +70,8 @@ static void goto_next_syscall_emu(struct context *ctx)
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
 		if (WSTOPSIG(ctx->status) == SIGCHLD) {
+			printf("do we come here?\n");
+			ctx->replay_sig = SIGCHLD; // remove that if spec does not work anymore
 			goto_next_syscall_emu(ctx);
 			return;
 		}
@@ -137,7 +139,7 @@ void __ptrace_cont(struct context *ctx)
 		sys_exit();
 	}
 
-	assert(ctx->child_sig == 0);
+	//assert(ctx->child_sig == 0);
 	/* we should not have a signal pending here -- if there is one pending nevertheless,
 	 * we do not deliver it to the application. This ensures that the behavior remains the
 	 * same
@@ -768,6 +770,16 @@ void rep_process_syscall(struct context* context)
 	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
 	 */
 	SYS_FD_ARG(epoll_wait, 1)
+
+
+	/**
+	 * int faccessat(int dirfd, const char *pathname, int mode, int flags)
+	 *
+	 * The  faccessat() system call operates in exactly the same way as access(2), except for the differences
+	 * described in this manual page....
+	 */
+	SYS_FD_ARG(faccessat, 0)
+
 
 	/**
 	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
@@ -1541,8 +1553,6 @@ void rep_process_syscall(struct context* context)
 			__ptrace_cont(ctx);
 			/* obtain the new address and reset to the old register values */
 			read_child_registers(ctx->child_tid,&tmp_regs);
-			printf("after: %d\n",tmp_regs.eax);
-			print_register_file(&tmp_regs);
 
 			orig_regs.eax = tmp_regs.eax;
 			write_child_registers(ctx->child_tid,&orig_regs);
