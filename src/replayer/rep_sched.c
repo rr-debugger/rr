@@ -58,6 +58,23 @@ struct context* rep_sched_get_thread()
 	/* read the current trace */
 	memcpy(&(ctx->trace), &trace, sizeof(struct trace));
 
+
+	/* subsequent reschedule-events of the same thread can be combined to a single event */
+	struct trace next_trace;
+	peek_next_trace(&next_trace);
+	uint64_t rbc_up = ctx->trace.rbc_up;
+	//printf("this stop reason: %d    this tid: %d    next_tid: %d\n",ctx->trace.stop_reason, ctx->child_tid, next_trace.tid);
+	while ((ctx->trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
+		rbc_up += next_trace.rbc_up;
+		read_next_trace(&(ctx->trace));
+		peek_next_trace(&next_trace);
+		printf("subsumed\n");
+	}
+
+	if (ctx->trace.stop_reason == USR_SCHED) {
+		ctx->trace.rbc_up = rbc_up;
+	}
+
 	return ctx;
 }
 

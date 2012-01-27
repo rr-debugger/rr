@@ -1536,7 +1536,6 @@ void rep_process_syscall(struct context* context)
 				tmp_regs.edi = ctx->trace.recorded_regs.eax;
 			}
 
-			print_register_file(&tmp_regs);
 			write_child_registers(ctx->child_tid,&tmp_regs);
 
 			__ptrace_cont(ctx);
