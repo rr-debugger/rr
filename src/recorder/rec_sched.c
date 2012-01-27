@@ -125,6 +125,8 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	sys_close(ctx->child_mem_fd);
 
 	sys_ptrace_detatch(ctx->child_tid);
+	/* make sure that the child has exited */
+	waitpid(ctx->child_tid,&ctx->status, __WALL | __WCLONE);
 
 
 	/* finally, free the memory */

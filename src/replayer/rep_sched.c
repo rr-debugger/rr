@@ -82,9 +82,6 @@ void rep_sched_deregister_thread(struct context *ctx)
 {
 	destry_hpc(ctx);
 
-	/* detatch the child process*/
-	sys_ptrace_detatch(ctx->child_tid);
-
 	pid_t my_tid = ctx->child_tid;
 	sys_fclose(ctx->inst_dump);
 	sys_close(ctx->child_mem_fd);
@@ -93,7 +90,11 @@ void rep_sched_deregister_thread(struct context *ctx)
 	num_threads--;
 	assert(num_threads >= 0);
 
+	/* detatch the child process*/
+	sys_ptrace_detatch(ctx->child_tid);
 
+	/* make sure that the child has exited */
+	waitpid(ctx->child_tid,&ctx->status, __WALL | __WCLONE);
 	sys_free((void**) &ctx);
 }
 

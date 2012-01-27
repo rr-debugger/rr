@@ -524,7 +524,7 @@ void rep_process_syscall(struct context* context)
 			goto_next_syscall_emu(context);
 		} else {
 			int request = read_child_ecx(tid);
-			//debug_print("request: %x\n", request);
+			debug_print("request: %x\n", request);
 
 			if (request & _IOC_WRITE) {
 				switch (request) {
@@ -895,6 +895,15 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(getresgid32, 3)
 
+
+	/**
+	 * int getrusage(int who, struct rusage *usage)
+	 *
+	 * getrusage() returns resource usage measures for who, which can be one of the following..
+	 */
+	SYS_EMU_ARG(getrusage, 1)
+
+
 	/**
 	 * pid_t gettid(void);
 	 *
@@ -1234,6 +1243,19 @@ void rep_process_syscall(struct context* context)
 	SYS_EMU_ARG(waitpid, 1)
 
 	/************************ Executed system calls come here ***************************/
+
+
+	/**
+	 * pid_t waitpid(pid_t pid, int *status, int options);
+	 *
+	 * The waitpid() system call suspends execution of the calling process until
+	 * a child specified by pid argument has changed state.  By default, waitpid()
+	 * waits only for terminated children, but this behavior  is  modifiable  via
+	 * the options argument, as described below....
+	 *
+	 */
+	//SYS_EXEC_ARG(waitpid, 1)
+
 
 	/**
 	 * int access(const char *pathname, int mode);
