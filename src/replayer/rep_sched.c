@@ -68,7 +68,7 @@ struct context* rep_sched_get_thread()
 		rbc_up += next_trace.rbc_up;
 		read_next_trace(&(ctx->trace));
 		peek_next_trace(&next_trace);
-		printf("subsumed\n");
+		//printf("subsumed\n");
 	}
 
 	if (ctx->trace.stop_reason == USR_SCHED) {

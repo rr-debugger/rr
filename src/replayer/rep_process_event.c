@@ -316,7 +316,7 @@ void rep_process_syscall(struct context* context)
 	assert((state == 1) || (state == 0));
 
 	//if (context->trace.global_time > 900000) {
-	print_syscall(context, trace);
+	//print_syscall(context, trace);
 	//}
 
 	switch (syscall) {
@@ -522,7 +522,7 @@ void rep_process_syscall(struct context* context)
 			goto_next_syscall_emu(context);
 		} else {
 			int request = read_child_ecx(tid);
-			debug_print("request: %x\n", request);
+			//debug_print("request: %x\n", request);
 
 			if (request & _IOC_WRITE) {
 				switch (request) {
@@ -1326,7 +1326,7 @@ void rep_process_syscall(struct context* context)
 		if (state == STATE_SYSCALL_ENTRY) {
 			__ptrace_cont(context);
 		} else {
-			int event = GET_PTRACE_EVENT(context->status);
+			/*int event = GET_PTRACE_EVENT(context->status);
 			printf("fucking ptrace event: %d\n", event);
 			char *str = sys_malloc_zero(1024);
 			print_cwd(context->child_tid, str);
@@ -1336,19 +1336,19 @@ void rep_process_syscall(struct context* context)
 
 			event = GET_PTRACE_EVENT(context->status);
 			printf("fucking ptrace event: %d\n", event);
-			print_register_file_tid(context->child_tid);
+			print_register_file_tid(context->child_tid);*/
 
-			long int old_ebx = read_child_ebx(context->child_tid);
-			if (old_ebx != 0) {
-				char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
-				printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
-				free(str);
-			}
+			//long int old_ebx = read_child_ebx(context->child_tid);
+			//if (old_ebx != 0) {
+				//char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
+				//printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
+				//free(str);
+			//}
 
 			/* we need an additional ptrace syscall, since ptrace is setup with PTRACE_O_TRACEEXEC */
 			__ptrace_cont(context);
 
-			print_register_file_tid(context->child_tid);
+			//print_register_file_tid(context->child_tid);
 
 			int check = read_child_ebx(context->child_tid);
 			/* if the execve comes from a vfork system call the  ebx register is not zero. in this case,
@@ -1356,13 +1356,13 @@ void rep_process_syscall(struct context* context)
 			if (check == 0) {
 				set_child_data(context);
 			} else {
-				char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
+				/*char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
 				printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
 				free(str);
 
 				str = read_child_str(context->child_tid, old_ebx);
 				printf("fucking old execve: %s  %x\n", str, old_ebx);
-				free(str);
+				free(str);*/
 
 			}
 

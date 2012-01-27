@@ -207,7 +207,7 @@ void replay()
 		}*/
 
 		if (ctx->child_sig != 0) {
-			printf("child_sig: %d\n",ctx->child_sig);
+			//printf("child_sig: %d\n",ctx->child_sig);
 			assert(ctx->trace.stop_reason == -ctx->child_sig);
 			ctx->child_sig = 0;
 		}
@@ -220,7 +220,7 @@ void replay()
 			rep_process_syscall(ctx);
 			/* stop reason is a signal - use HPC */
 		} else {
-			printf("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
+			//printf("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
 			rep_process_signal(ctx);
 		}
 	}
