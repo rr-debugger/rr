@@ -145,6 +145,7 @@ static int allow_ctx_switch(struct context *ctx)
 		read_child_registers(ctx->child_tid, &regs);
 
 		int op = regs.ecx & FUTEX_CMD_MASK;
+		printf("futex op: %x\n",op);
 
 		if (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET || op == FUTEX_WAIT_PRIVATE || op == FUTEX_WAIT_REQUEUE_PI) {
 			return 1;
@@ -431,7 +432,7 @@ void start_recording()
 				assert(ctx->event == -1);
 				ctx->event = orig_event;
 				record_event(ctx, 0);
-				ctx->allow_ctx_switch = 1;
+				ctx->allow_ctx_switch = 0;
 
 				/* here we can continue normally */
 				break;

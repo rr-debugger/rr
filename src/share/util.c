@@ -502,10 +502,12 @@ long int str2li(const char* start, size_t max_size)
 	return val;
 }
 
-void read_line(FILE* file, char* buf, int size, char* name)
+void read_line(FILE* file, char *buf, int size, char *name)
 {
 	if (feof(file) || fgets(buf, size, file) == NULL) {
 		printf("error reading line in file: %s  -- bailing out\n", name);
+		printf("buf: %p  size: %d\n",buf,size);
+		perror("");
 		exit(-1);
 	}
 }
@@ -641,47 +643,3 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 	sys_free((void**) &buf);
 }
 
-void inject_patraceme(pid_t pid)
-{
-	printf("injecting ptrace_me for: %d\n", pid);
-	int status;
-	void* eip = (void*) read_child_eip(pid);
-
-	struct current_state_buffer* ptraceme = init_code_injection(pid, eip, 4);
-
-	//the next instruction should be a ptraceme
-	char code[] = { 0xcd, 0x80, 0xcc, 0 };
-
-	struct user_regs_struct regs;
-	read_child_registers(pid, &regs);
-	regs.eax = SYS_ptrace;
-	regs.orig_eax = SYS_ptrace;
-	regs.ebx = PTRACE_TRACEME;
-	regs.ecx = 0;
-	regs.edx = 0;
-	regs.esi = 0;
-
-	write_child_registers(pid, &regs);
-	inject_code(ptraceme, code);
-
-	sys_ptrace_cont(pid);
-
-	sys_waitpid(pid, &status);
-
-	read_child_registers(pid, &regs);
-	printf("return value: %ld\n", regs.eax);
-
-	siginfo_t sig;
-	ptrace(PTRACE_GETSIGINFO, pid, 0, &sig);
-	printf("desasterous: %d\n", sig.si_signo);
-
-	//	wait(NULL);
-	//	sys_waitpid(pid,&status);
-	printf("here\n");
-	fflush(stdout);
-	//restore the original state
-	restore_original_state(ptraceme);
-
-	//cleanup code
-	cleanup_code_injection(ptraceme);
-}

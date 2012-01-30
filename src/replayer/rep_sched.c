@@ -9,7 +9,6 @@
 #include "../share/sys.h"
 #include "../share/util.h"
 
-
 #define MAX_TID_NUM 100000
 
 static struct context** map;
@@ -22,16 +21,15 @@ void rep_sched_init()
 
 struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 {
-	assert (my_tid < MAX_TID_NUM);
+	assert(my_tid < MAX_TID_NUM);
 
 	/* allocate data structure and initialize hashmap */
 	struct context *ctx = sys_malloc(sizeof(struct context));
-	memset(ctx,0,sizeof(struct context));
+	memset(ctx, 0, sizeof(struct context));
 
 	ctx->child_tid = my_tid;
 	ctx->rec_tid = rec_tid;
 	ctx->child_mem_fd = sys_open_child_mem(my_tid);
-
 
 	read_open_inst_dump(ctx);
 	num_threads++;
@@ -58,22 +56,21 @@ struct context* rep_sched_get_thread()
 	/* read the current trace */
 	memcpy(&(ctx->trace), &trace, sizeof(struct trace));
 
-
 	/* subsequent reschedule-events of the same thread can be combined to a single event */
 	struct trace next_trace;
+	bzero(&next_trace, sizeof(struct trace));
 	peek_next_trace(&next_trace);
 	uint64_t rbc_up = ctx->trace.rbc_up;
 	//printf("this stop reason: %d    this tid: %d    next_tid: %d\n",ctx->trace.stop_reason, ctx->child_tid, next_trace.tid);
-	while ((ctx->trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
-		rbc_up += next_trace.rbc_up;
-		read_next_trace(&(ctx->trace));
-		peek_next_trace(&next_trace);
-		//printf("subsumed\n");
-	}
+	/*while ((ctx->trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
+	 rbc_up += next_trace.rbc_up;
+	 read_next_trace(&(ctx->trace));
+	 peek_next_trace(&next_trace);
+	 }
 
-	if (ctx->trace.stop_reason == USR_SCHED) {
-		ctx->trace.rbc_up = rbc_up;
-	}
+	 if (ctx->trace.stop_reason == USR_SCHED) {
+	 ctx->trace.rbc_up = rbc_up;
+	 }*/
 
 	return ctx;
 }
@@ -92,9 +89,11 @@ void rep_sched_deregister_thread(struct context *ctx)
 
 	/* detatch the child process*/
 	sys_ptrace_detatch(ctx->child_tid);
-
+	printf("A\n");
 	/* make sure that the child has exited */
 	waitpid(ctx->child_tid,&ctx->status, __WALL | __WCLONE);
+	printf("B\n");
+
 	sys_free((void**) &ctx);
 }
 

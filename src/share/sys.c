@@ -158,7 +158,7 @@ void sys_ptrace_syscall(pid_t pid)
  */
 void sys_ptrace_detatch(pid_t pid)
 {
-	sys_ptrace(PTRACE_DETACH, pid, 0, 0);
+	ptrace(PTRACE_DETACH, pid, 0, 0);
 }
 
 void sys_ptrace_syscall_sig(pid_t pid, int sig)
@@ -209,11 +209,6 @@ void sys_ptrace_singlestep(pid_t pid, int sig)
 void sys_ptrace_traceme()
 {
 	sys_ptrace(PTRACE_TRACEME, 0, 0, 0);
-}
-
-void sys_ptrace_cont(pid_t pid)
-{
-	sys_ptrace(PTRACE_CONT, pid, 0, 0);
 }
 
 void goto_next_event(struct context *ctx)

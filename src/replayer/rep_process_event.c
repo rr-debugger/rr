@@ -38,7 +38,9 @@ static void validate_args(struct context* context)
 {
 	struct user_regs_struct cur_reg;
 	read_child_registers(context->child_tid, &cur_reg);
+	//printf("time: %lu\n",context->trace.global_time);
 	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, context->child_tid);
+	//printf("ok\n");
 }
 
 /*
@@ -46,26 +48,14 @@ static void validate_args(struct context* context)
  */
 static void goto_next_syscall_emu(struct context *ctx)
 {
-	assert(ctx->child_sig == 0);
 
-	pid_t tid = ctx->child_tid;
-
-
-//	sys_ptrace_sysemu_sig(tid, /*ctx->replay_sig*/0);
-	sys_ptrace_sysemu_sig(tid, ctx->replay_sig);
-
-	sys_waitpid(tid, &ctx->status);
+	sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
+	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->replay_sig = 0;
-
-	if (ctx->status == 0x57f) {
-		printf("something is wrong!!!\n");
-	}
-
-	assert(signal_pending(ctx->child_sig) == 0);
 
 	/* check if we are synchronized with the trace -- should never fail */
 	const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	int current_syscall = read_child_orig_eax(tid);
+	const int current_syscall = read_child_orig_eax(ctx->child_tid);
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
@@ -79,12 +69,9 @@ static void goto_next_syscall_emu(struct context *ctx)
 		printf("goto_next_syscall_emu: stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
 		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.global_time);
 		printf("ptrace_event: %x\n", GET_PTRACE_EVENT(ctx->status));
-		uint64_t up = read_rbc_down(ctx->hpc);
-		uint64_t down = read_rbc_down(ctx->hpc);
-
-		printf("it fucking worked: up %llu  down %llu\n", up, down);
 		sys_exit();
 	}
+	ctx->replay_sig = 0;
 }
 
 /**
@@ -92,17 +79,16 @@ static void goto_next_syscall_emu(struct context *ctx)
  **/
 static void finish_syscall_emu(struct context *ctx)
 {
-	assert(ctx->child_sig == 0);
+	assert(ctx->replay_sig == 0);
 	if (ctx->replay_sig != 0) {
 		printf("fucking replay sig: %d\n", ctx->replay_sig);
 	}
+	struct user_regs_struct regs;
+	read_child_registers(ctx->child_tid, &regs);
 	sys_ptrace_sysemu_singlestep(ctx->child_tid, ctx->replay_sig);
 	sys_waitpid(ctx->child_tid, &(ctx->status));
+	write_child_registers(ctx->child_tid,&regs);
 	ctx->replay_sig = 0;
-	/* we get a simple SIGTRAP in this case */
-	if (ctx->status != 0x57f) {
-		printf("status is: %x\n", ctx->status);
-	}
 	ctx->status = 0;
 }
 
@@ -115,6 +101,8 @@ void __ptrace_cont(struct context *ctx)
 	if (ctx->replay_sig != 0) {
 		printf("PTRACE_CONT: sending signal: %d\n", ctx->replay_sig);
 	}
+
+
 
 	sys_ptrace_syscall_sig(ctx->child_tid, ctx->trace.state == 0 ? ctx->replay_sig : 0);
 	sys_waitpid(ctx->child_tid, &ctx->status);
@@ -129,6 +117,7 @@ void __ptrace_cont(struct context *ctx)
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
 		if (WSTOPSIG(ctx->status) == SIGCHLD) {
+			printf("fucker\n");
 			__ptrace_cont(ctx);
 			ctx->child_sig = 0;
 			return;
@@ -317,9 +306,7 @@ void rep_process_syscall(struct context* context)
 
 	assert((state == 1) || (state == 0));
 
-	//if (context->trace.global_time > 900000) {
-	//print_syscall(context, trace);
-	//}
+	print_syscall(context, trace);
 
 	switch (syscall) {
 
@@ -443,6 +430,15 @@ void rep_process_syscall(struct context* context)
 	 * int open(const char *pathname, int flags, mode_t mode)
 	 */
 	SYS_FD_ARG(open, 0)
+
+	/**
+	 * int openat(int dirfd, const char *pathname, int flags);
+	 * int openat(int dirfd, const char *pathname, int flags, mode_t mode);
+	 *
+	 * The  openat() system call operates in exactly the same way as open(2), except for the
+	 * differences described in this manual page.
+	 */
+	SYS_FD_ARG(openat, 0)
 
 	/**
 	 *  int pipe(int pipefd[2]);
@@ -771,7 +767,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_FD_ARG(epoll_wait, 1)
 
-
 	/**
 	 * int faccessat(int dirfd, const char *pathname, int mode, int flags)
 	 *
@@ -779,7 +774,6 @@ void rep_process_syscall(struct context* context)
 	 * described in this manual page....
 	 */
 	SYS_FD_ARG(faccessat, 0)
-
 
 	/**
 	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
@@ -895,14 +889,12 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(getresgid32, 3)
 
-
 	/**
 	 * int getrusage(int who, struct rusage *usage)
 	 *
 	 * getrusage() returns resource usage measures for who, which can be one of the following..
 	 */
 	SYS_EMU_ARG(getrusage, 1)
-
 
 	/**
 	 * pid_t gettid(void);
@@ -1240,10 +1232,8 @@ void rep_process_syscall(struct context* context)
 	 * the options argument, as described below....
 	 *
 	 */
-	SYS_EMU_ARG(waitpid, 1)
-
+	//SYS_EMU_ARG(waitpid, 1)
 	/************************ Executed system calls come here ***************************/
-
 
 	/**
 	 * pid_t waitpid(pid_t pid, int *status, int options);
@@ -1254,8 +1244,7 @@ void rep_process_syscall(struct context* context)
 	 * the options argument, as described below....
 	 *
 	 */
-	//SYS_EXEC_ARG(waitpid, 1)
-
+	SYS_EXEC_ARG(waitpid, 1)
 
 	/**
 	 * int access(const char *pathname, int mode);
@@ -1361,24 +1350,23 @@ void rep_process_syscall(struct context* context)
 			__ptrace_cont(context);
 		} else {
 			/*int event = GET_PTRACE_EVENT(context->status);
-			printf("fucking ptrace event: %d\n", event);
-			char *str = sys_malloc_zero(1024);
-			print_cwd(context->child_tid, str);
-			printf("cws: %s\n", str);
-			free(str);
-			//__ptrace_cont(context);
+			 printf("fucking ptrace event: %d\n", event);
+			 char *str = sys_malloc_zero(1024);
+			 print_cwd(context->child_tid, str);
+			 printf("cws: %s\n", str);
+			 free(str);
+			 //__ptrace_cont(context);
 
-			event = GET_PTRACE_EVENT(context->status);
-			printf("fucking ptrace event: %d\n", event);
-			print_register_file_tid(context->child_tid);*/
+			 event = GET_PTRACE_EVENT(context->status);
+			 printf("fucking ptrace event: %d\n", event);
+			 print_register_file_tid(context->child_tid);*/
 
 			//long int old_ebx = read_child_ebx(context->child_tid);
 			//if (old_ebx != 0) {
-				//char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
-				//printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
-				//free(str);
+			//char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
+			//printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
+			//free(str);
 			//}
-
 			/* we need an additional ptrace syscall, since ptrace is setup with PTRACE_O_TRACEEXEC */
 			__ptrace_cont(context);
 
@@ -1391,12 +1379,12 @@ void rep_process_syscall(struct context* context)
 				set_child_data(context);
 			} else {
 				/*char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
-				printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
-				free(str);
+				 printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
+				 free(str);
 
-				str = read_child_str(context->child_tid, old_ebx);
-				printf("fucking old execve: %s  %x\n", str, old_ebx);
-				free(str);*/
+				 str = read_child_str(context->child_tid, old_ebx);
+				 printf("fucking old execve: %s  %x\n", str, old_ebx);
+				 free(str);*/
 
 			}
 
@@ -1420,7 +1408,6 @@ void rep_process_syscall(struct context* context)
 
 	case SYS_exit_group:
 	{
-		assert(state == STATE_SYSCALL_ENTRY);
 		__ptrace_cont(context);
 		break;
 	}
@@ -1558,7 +1545,7 @@ void rep_process_syscall(struct context* context)
 			read_child_registers(context->child_tid, &orig_regs);
 
 			struct user_regs_struct tmp_regs;
-			memcpy(&tmp_regs,&orig_regs,sizeof(struct user_regs_struct));
+			memcpy(&tmp_regs, &orig_regs, sizeof(struct user_regs_struct));
 			/* set mapping to fixed and initialize the new address with the
 			 * recorded address
 			 */
@@ -1570,14 +1557,14 @@ void rep_process_syscall(struct context* context)
 				tmp_regs.edi = ctx->trace.recorded_regs.eax;
 			}
 
-			write_child_registers(ctx->child_tid,&tmp_regs);
+			write_child_registers(ctx->child_tid, &tmp_regs);
 
 			__ptrace_cont(ctx);
 			/* obtain the new address and reset to the old register values */
-			read_child_registers(ctx->child_tid,&tmp_regs);
+			read_child_registers(ctx->child_tid, &tmp_regs);
 
 			orig_regs.eax = tmp_regs.eax;
-			write_child_registers(ctx->child_tid,&orig_regs);
+			write_child_registers(ctx->child_tid, &orig_regs);
 			validate_args(ctx);
 		}
 
@@ -1722,8 +1709,10 @@ void rep_process_syscall(struct context* context)
 	case SYS_sigreturn:
 	{
 		/* go to the system call */
+		assert(context->replay_sig == 0);
+		assert(context->child_sig == 0);
 		__ptrace_cont(context);
-		//	validate_args(ctx);
+		validate_args(ctx);
 		break;
 	}
 

@@ -115,19 +115,18 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	num_active_threads--;
 	assert(num_active_threads >= 0);
 
-	/* close the inst_dump file */
-	//sys_fclose(ctx->inst_dump);
-
 	/* delete all counter data */
 	destry_hpc(ctx);
 
 	/* close file descriptor to child memory */
 	sys_close(ctx->child_mem_fd);
 
+	printf("fucker\n");
+	printf("fucker done...\n");
 	sys_ptrace_detatch(ctx->child_tid);
+
 	/* make sure that the child has exited */
 	waitpid(ctx->child_tid,&ctx->status, __WALL | __WCLONE);
-
 
 	/* finally, free the memory */
 	sys_free((void**) ctx_ptr);

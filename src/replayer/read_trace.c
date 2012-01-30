@@ -15,7 +15,6 @@ static FILE* __trace;
 static FILE* __raw_data;
 static FILE* __syscall_input;
 
-
 static char* trace_path = NULL;
 
 FILE* get_trace_file()
@@ -28,18 +27,17 @@ void read_open_inst_dump(struct context* context)
 	char path[64];
 	char tmp[32];
 	strcpy(path, trace_path);
-	sprintf(tmp, "/inst_dump_%d",context->rec_tid);
+	sprintf(tmp, "/inst_dump_%d", context->rec_tid);
 	strcat(path, tmp);
 	context->inst_dump = sys_fopen(path, "a+");
 }
-
 
 void read_trace_init(const char* __trace_path)
 {
 	/* copy the trace path */
 	assert(trace_path == NULL);
 	trace_path = sys_malloc(strlen(__trace_path) + 1);
-	strcpy(trace_path,__trace_path);
+	strcpy(trace_path, __trace_path);
 
 	char tmp[128], path[256];
 
@@ -59,7 +57,6 @@ void read_trace_init(const char* __trace_path)
 	strcat(path, tmp);
 	__raw_data = (FILE*) sys_fopen(path, "r");
 
-
 	/* skip the first line -- is only meta-information */
 	char* line = sys_malloc(1024);
 	read_line(__trace, line, 1024, "trace");
@@ -70,6 +67,7 @@ void read_trace_init(const char* __trace_path)
 
 void read_trace_close()
 {
+	assert(1==0);
 	sys_fclose(__trace);
 	sys_fclose(__raw_data);
 	sys_fclose(__syscall_input);
@@ -99,8 +97,8 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 		int len = strlen(buf);
 		/* overwrite the newline */
 		buf[len - 1] = '\0';
-		assert (len < 8192);
-		strncpy(argv[i], buf,len+1);
+		assert(len < 8192);
+		strncpy(argv[i], buf, len + 1);
 	}
 
 	/* do not forget write NULL to the last element */
@@ -114,10 +112,10 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 	for (i = 0; i < envc; i++) {
 		read_line(arg_env, buf, 8192, "arg_env");
 		int len = strlen(buf);
-		assert (len < 8192);
+		assert(len < 8192);
 		/* overwrite the newline */
 		buf[len - 1] = '\0';
-		strncpy(envp[i], buf,len+1);
+		strncpy(envp[i], buf, len + 1);
 	}
 
 	/* do not forget write NULL to the last element */
@@ -143,9 +141,8 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (syscall != trace->stop_reason) {
-		printf("global_time: %lu syscall: %d  stop_reason: %d\n",time, syscall,trace->stop_reason,time);
-	}
-	assert (syscall == trace->stop_reason);
+		printf("global_time: %lu syscall: %d  stop_reason: %d\n", time, syscall, trace->stop_reason, time);
+	}assert(syscall == trace->stop_reason);
 
 	*addr = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
@@ -166,7 +163,7 @@ void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 	if (*addr != 0) {
 		void* data = sys_malloc(size);
 		int bytes_read = fread(data, 1, size, __raw_data);
-		assert (bytes_read == size);
+		assert(bytes_read == size);
 		return data;
 	}
 	return NULL;
@@ -235,11 +232,19 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
 
 }
 
-
-void peek_next_trace(struct trace *trace) {
+void peek_next_trace(struct trace *trace)
+{
 	fpos_t pos;
 	fgetpos(__trace, &pos);
-	read_next_trace(trace);
+
+	/* check if read is successful */
+	if (fgets(trace, 1, __trace) != NULL) {
+		fsetpos(__trace, &pos);
+		read_next_trace(trace);
+
+	} else {
+		bzero(trace, sizeof(struct trace));
+	}
 	fsetpos(__trace, &pos);
 }
 
@@ -291,8 +296,8 @@ void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
 	struct trace trace;
 	do {
 		read_next_trace(&trace);
-		if ((val == trace.recorded_regs.eax) || (val == trace.recorded_regs.ebx) || (val == trace.recorded_regs.ecx) || (val == trace.recorded_regs.edx) || (val == trace.recorded_regs.esi) || (val
-				== trace.recorded_regs.edi) || (val == trace.recorded_regs.ebp) || (val == trace.recorded_regs.orig_eax)) {
+		if ((val == trace.recorded_regs.eax) || (val == trace.recorded_regs.ebx) || (val == trace.recorded_regs.ecx) || (val == trace.recorded_regs.edx) || (val == trace.recorded_regs.esi)
+				|| (val == trace.recorded_regs.edi) || (val == trace.recorded_regs.ebp) || (val == trace.recorded_regs.orig_eax)) {
 
 			printf("found val: %lx at time: %u\n", val, trace.global_time);
 		}
@@ -318,7 +323,7 @@ void inst_dump_parse_register_file(struct context* context, struct user_regs_str
 {
 	char* tmp = sys_malloc(1024);
 	read_line(context->inst_dump, tmp, 1024, "inst_dump");
-	parse_register_file(reg,tmp);
+	parse_register_file(reg, tmp);
 	sys_free((void**) &tmp);
 }
 
