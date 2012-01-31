@@ -67,7 +67,6 @@ void read_trace_init(const char* __trace_path)
 
 void read_trace_close()
 {
-	assert(1==0);
 	sys_fclose(__trace);
 	sys_fclose(__raw_data);
 	sys_fclose(__syscall_input);
@@ -232,27 +231,34 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
 
 }
 
-void peek_next_trace(struct trace *trace)
+int peek_next_trace(struct trace *trace)
 {
 	fpos_t pos;
 	fgetpos(__trace, &pos);
-
+	int bytes_read = (int) fgets((char*)trace, sizeof(struct trace), __trace);
 	/* check if read is successful */
-	if (fgets(trace, 1, __trace) != NULL) {
+	if (bytes_read > 0) {
 		fsetpos(__trace, &pos);
 		read_next_trace(trace);
 
-	} else {
-		bzero(trace, sizeof(struct trace));
 	}
+
 	fsetpos(__trace, &pos);
+	return bytes_read;
 }
 
-void read_next_trace(struct trace* trace)
+int read_next_trace(struct trace *trace)
 {
-	char* line = sys_malloc(1024);
-	read_line(__trace, line, 1024, "trace");
-	char* tmp_ptr = (char*) line;
+	assert(!feof(__trace));
+
+	char *line = sys_malloc(1024);
+
+	int bytes_read = (int) fgets(line, 1024, __trace);
+	if (bytes_read <= 0) {
+		return bytes_read;
+	}
+
+	char *tmp_ptr = (char*) line;
 
 	/* read meta information */
 	trace->global_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -281,6 +287,8 @@ void read_next_trace(struct trace* trace)
 		parse_register_file(&(trace->recorded_regs), tmp_ptr);
 	}
 	sys_free((void**) &line);
+
+	return bytes_read;
 }
 
 void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)

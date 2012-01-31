@@ -80,7 +80,7 @@ int rec_sched_get_num_threads()
  */
 void rec_sched_register_thread(pid_t parent, pid_t child)
 {
-	assert (child > 0 && child < MAX_TID);
+	assert(child > 0 && child < MAX_TID);
 
 	int hash = HASH(child);
 	assert(registered_threads[hash] == 0);
@@ -94,9 +94,8 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 	//write_open_inst_dump(ctx);
 	sys_ptrace_setup(child);
 
-
 	init_hpc(ctx);
-	start_hpc(ctx,MAX_RECORD_INTERVAL);
+	start_hpc(ctx, MAX_RECORD_INTERVAL);
 
 	registered_threads[hash] = ctx;
 	num_active_threads++;
@@ -121,12 +120,14 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	/* close file descriptor to child memory */
 	sys_close(ctx->child_mem_fd);
 
-	printf("fucker\n");
-	printf("fucker done...\n");
 	sys_ptrace_detatch(ctx->child_tid);
 
 	/* make sure that the child has exited */
-	waitpid(ctx->child_tid,&ctx->status, __WALL | __WCLONE);
+
+	int ret;
+	do {
+		ret = waitpid(ctx->child_tid, &ctx->status, __WALL | __WCLONE);
+	} while (ret != -1);
 
 	/* finally, free the memory */
 	sys_free((void**) ctx_ptr);

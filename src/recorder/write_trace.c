@@ -175,6 +175,10 @@ void close_trace_files()
 	sys_fclose(syscall_header);
 	sys_fclose(raw_data);
 	sys_fclose(trace_file);
+	fflush(trace_file);
+	fflush(syscall_header);
+	fflush(raw_data);
+
 }
 
 static void print_trace_meta_information(pid_t tid, int stop_reason, pid_t new_tid)
@@ -225,8 +229,6 @@ void record_event(struct context *ctx, int entry)
 	} else {
 		fprintf(trace_file, "\n");
 	}
-
-	fflush(trace_file);
 }
 
 static void print_header(int syscall, uint32_t addr)

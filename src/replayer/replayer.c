@@ -146,6 +146,7 @@ void replay()
 		if (ctx->trace.global_time % 1000 == 0) {
 			fprintf(stderr, ".");
 		}
+
 		//int dummy = 0;
 
 		//printf("debug 1: %d\n");
@@ -159,7 +160,6 @@ void replay()
 				//	}
 
 
-					fprintf(stderr,"fucker!!!!!!!!!!!!!!!   %u\n",ctx->trace.global_time);
 					//assert(1==0);
 				}
 			free(tmp1);
@@ -185,7 +185,6 @@ void replay()
 				if (check_if_mapped(ctx,0x69f92b9c + 0x4, 0x69f92b9c + 0x4 + 0x4)) {
 					long int *tmp4 = read_child_data(ctx,4, 0x69f92b9c + 0x4);
 						if (*tmp4 == 0x82) {
-							fprintf(stderr,"fucker!!!!!!!!!!!!!!! %d  %x\n",ctx->trace.global_time, *tmp4);
 							assert(1==0);
 						}
 					free(tmp4);

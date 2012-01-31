@@ -38,9 +38,7 @@ static void validate_args(struct context* context)
 {
 	struct user_regs_struct cur_reg;
 	read_child_registers(context->child_tid, &cur_reg);
-	//printf("time: %lu\n",context->trace.global_time);
 	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, context->child_tid);
-	//printf("ok\n");
 }
 
 /*
@@ -48,9 +46,18 @@ static void validate_args(struct context* context)
  */
 static void goto_next_syscall_emu(struct context *ctx)
 {
+	if (ctx->replay_sig != 0) {
+		printf("EMU sends sig: %d\n", ctx->replay_sig);
+	}
 
-	sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
-	sys_waitpid(ctx->child_tid, &ctx->status);
+	//if (ctx->trace.global_time == 1246) {
+//		sys_ptrace_sysemu_sig(ctx->child_tid, 0);
+//	} else {
+		sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
+//	}
+
+
+	sys_waitpid(ctx->child_tid, &(ctx->status));
 	ctx->replay_sig = 0;
 
 	/* check if we are synchronized with the trace -- should never fail */
@@ -61,7 +68,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
 		if (WSTOPSIG(ctx->status) == SIGCHLD) {
 			printf("do we come here?\n");
-			ctx->replay_sig = SIGCHLD; // remove that if spec does not work anymore
+			//ctx->replay_sig = SIGCHLD; // remove that if spec does not work anymore
 			goto_next_syscall_emu(ctx);
 			return;
 		}
@@ -72,6 +79,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 		sys_exit();
 	}
 	ctx->replay_sig = 0;
+	ctx->child_sig = 0;
 }
 
 /**
@@ -80,14 +88,13 @@ static void goto_next_syscall_emu(struct context *ctx)
 static void finish_syscall_emu(struct context *ctx)
 {
 	assert(ctx->replay_sig == 0);
-	if (ctx->replay_sig != 0) {
-		printf("fucking replay sig: %d\n", ctx->replay_sig);
-	}
+
 	struct user_regs_struct regs;
 	read_child_registers(ctx->child_tid, &regs);
 	sys_ptrace_sysemu_singlestep(ctx->child_tid, ctx->replay_sig);
 	sys_waitpid(ctx->child_tid, &(ctx->status));
-	write_child_registers(ctx->child_tid,&regs);
+	write_child_registers(ctx->child_tid, &regs);
+
 	ctx->replay_sig = 0;
 	ctx->status = 0;
 }
@@ -102,8 +109,6 @@ void __ptrace_cont(struct context *ctx)
 		printf("PTRACE_CONT: sending signal: %d\n", ctx->replay_sig);
 	}
 
-
-
 	sys_ptrace_syscall_sig(ctx->child_tid, ctx->trace.state == 0 ? ctx->replay_sig : 0);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
@@ -117,7 +122,6 @@ void __ptrace_cont(struct context *ctx)
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
 		if (WSTOPSIG(ctx->status) == SIGCHLD) {
-			printf("fucker\n");
 			__ptrace_cont(ctx);
 			ctx->child_sig = 0;
 			return;
@@ -306,7 +310,7 @@ void rep_process_syscall(struct context* context)
 
 	assert((state == 1) || (state == 0));
 
-	print_syscall(context, trace);
+	//print_syscall(context, trace);
 
 	switch (syscall) {
 
@@ -880,6 +884,17 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(getppid, 0)
 
+	/**
+	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
+	 *
+	 * getresuid() returns the real UID, the effective UID, and the saved set-
+	 * user-ID of the calling process, in the arguments ruid, euid, and  suid,
+	 * respectively.    getresgid()   performs  the  analogous  task  for  the
+	 * process's group IDs.
+	 */
+	SYS_EMU_ARG(getresuid32, 3)
+
+
 	/* int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
 	 *
 	 * getresuid()  returns  the  real  UID,  the effective UID, and the saved set-user-ID of
@@ -1110,15 +1125,16 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(utimes, 1)
 
+
 	/**
-	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
+	 * int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
 	 *
-	 * getresuid() returns the real UID, the effective UID, and the saved set-
-	 * user-ID of the calling process, in the arguments ruid, euid, and  suid,
-	 * respectively.    getresgid()   performs  the  analogous  task  for  the
-	 * process's group IDs.
+	 * utimensat() and futimens() update the timestamps of a file with nanosecond precision.  This
+	 * contrasts with the historical utime(2) and utimes(2), which permit only second and microsecond precision,
+	 * respectively, when setting file timestamps.
 	 */
-	SYS_EMU_ARG(getresuid32, 3)
+	SYS_EMU_ARG(utimensat, 0)
+
 
 	/**
 	 * int inotify_init(void)
@@ -1245,6 +1261,8 @@ void rep_process_syscall(struct context* context)
 	 *
 	 */
 	SYS_EXEC_ARG(waitpid, 1)
+
+
 
 	/**
 	 * int access(const char *pathname, int mode);

@@ -38,7 +38,7 @@ void rec_process_syscall(struct context *ctx)
 	const long int syscall = regs.orig_eax;
 	//print_syscall(context, &(context->trace));
 
-	fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -235,7 +235,6 @@ void rec_process_syscall(struct context *ctx)
 	 * argument initval.
 	 */
 	SYS_REC0(eventfd2)
-
 
 	/**
 	 * int faccessat(int dirfd, const char *pathname, int mode, int flags)
@@ -752,16 +751,14 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(open)
 
-
 	/**
 	 * int openat(int dirfd, const char *pathname, int flags);
-     * int openat(int dirfd, const char *pathname, int flags, mode_t mode);
+	 * int openat(int dirfd, const char *pathname, int flags, mode_t mode);
 	 *
 	 * The  openat() system call operates in exactly the same way as open(2), except for the
 	 * differences described in this manual page.
 	 */
 	SYS_REC0(openat)
-
 
 	/**
 	 *  int pipe(int pipefd[2]);
@@ -1327,16 +1324,15 @@ void rec_process_syscall(struct context *ctx)
 	{
 
 		if (regs.ebx != 0) {
-/*			char *exec = read_child_str(tid, regs.ebx);
-			printf("exec: %s\n", exec);
-			free(exec);
-			char *str = sys_malloc_zero(1024);
-			print_cwd(ctx->child_tid, str);
-			printf("the cwd is: %s\n",str);
-			free(str);*/
+			/*			char *exec = read_child_str(tid, regs.ebx);
+			 printf("exec: %s\n", exec);
+			 free(exec);
+			 char *str = sys_malloc_zero(1024);
+			 print_cwd(ctx->child_tid, str);
+			 printf("the cwd is: %s\n",str);
+			 free(str);*/
 			break;
 		}
-
 
 		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
 
@@ -1487,7 +1483,7 @@ void rec_process_syscall(struct context *ctx)
 	 * The  fstatat()  system  call operates in exactly the same way as stat(2), except for the
 	 * differences described in this manual page....
 	 */
-	SYS_REC1(fstatat64, sizeof(struct stat64), regs.ecx)
+	SYS_REC1(fstatat64, sizeof(struct stat64), regs.edx)
 
 	/**
 	 * pid_t fork(void)
@@ -1538,7 +1534,17 @@ void rec_process_syscall(struct context *ctx)
 	 * elapsed, or the delivery of a signal that triggers the invocation of a handler in the calling thread or that ter-
 	 * minates the process.
 	 */
-	SYS_REC1(nanosleep, sizeof(struct timespec), regs.ecx);
+	case SYS_nanosleep:
+	{
+		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
+		regs.ecx = ctx->recorded_scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+		free(recorded_data);
+
+		record_child_data(ctx, syscall,  sizeof(struct timespec), regs.ecx);
+		break;
+	}
 
 	/**
 	 * int rmdir(const char *pathname)
@@ -1669,7 +1675,18 @@ void rec_process_syscall(struct context *ctx)
 	 * additionally return resource usage information about the child in the
 	 * structure pointed to by rusage.
 	 */
-	SYS_REC2(wait4, sizeof(int), regs.ecx, sizeof(struct rusage), regs.esi)
+	case SYS_wait4:
+	{
+		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
+		regs.ecx = ctx->recorded_scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+		free(recorded_data);
+
+		record_child_data(ctx, syscall, sizeof(int), regs.ecx);
+		record_child_data(ctx,syscall, sizeof(struct rusage), regs.esi);
+		break;
+	}
 
 	/**
 	 * pid_t waitpid(pid_t pid, int *status, int options);
@@ -1680,7 +1697,18 @@ void rec_process_syscall(struct context *ctx)
 	 * the options argument, as described below....
 	 *
 	 */
-	SYS_REC1(waitpid, sizeof(int), regs.ecx)
+
+	case SYS_waitpid:
+	{
+		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
+		regs.ecx = ctx->recorded_scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+		free(recorded_data);
+
+		record_child_data(ctx, syscall, sizeof(int), regs.ecx);
+		break;
+	}
 
 	/**
 	 * ssize_t writev(int fd, const struct iovec *iov, int iovcnt)

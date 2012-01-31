@@ -7,7 +7,8 @@
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp);
 void read_trace_close();
-void read_next_trace(struct trace* trace);
+int read_next_trace(struct trace *trace);
+int peek_next_trace(struct trace *trace);
 void read_trace_init(const char* trace_path);
 void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr);
 pid_t get_recorded_main_thread();

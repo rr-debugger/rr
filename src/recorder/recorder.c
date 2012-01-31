@@ -145,7 +145,7 @@ static int allow_ctx_switch(struct context *ctx)
 		read_child_registers(ctx->child_tid, &regs);
 
 		int op = regs.ecx & FUTEX_CMD_MASK;
-		printf("futex op: %x\n",op);
+		//printf("futex op: %x\n", op);
 
 		if (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET || op == FUTEX_WAIT_PRIVATE || op == FUTEX_WAIT_REQUEUE_PI) {
 			return 1;
@@ -218,10 +218,19 @@ static int allow_ctx_switch(struct context *ctx)
 		return 1;
 	}
 
-	/* this is a hack */
+	/* pid_t waitpid(pid_t pid, int *status, int options); */
 	case SYS_waitpid:
 	case SYS_wait4:
-	return 1;
+	{
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		ctx->recorded_scratch_ptr = (void*)regs.ecx;
+		ctx->recorded_scratch_size = sizeof(int);
+
+		regs.ecx = ctx->scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
+		return 1;
+	}
 
 	/* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
 	case SYS_poll:
@@ -266,10 +275,20 @@ static int allow_ctx_switch(struct context *ctx)
 	 * The system calls that come here allow a context switch for
 	 * performance reasons
 	 **************************************************************/
+	/* int nanosleep(const struct timespec *req, struct timespec *rem); */
 	case SYS_nanosleep:
 	{
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		ctx->recorded_scratch_ptr = (void*)regs.ecx;
+		ctx->recorded_scratch_size = sizeof(struct timespec);
+
+		regs.ecx = ctx->scratch_ptr;
+		write_child_registers(ctx->child_tid, &regs);
 		return 1;
 	}
+
+
 
 	} /* end switch */
 
@@ -495,4 +514,5 @@ void start_recording()
 			break;
 		}
 	} /* while loop */
+
 }
