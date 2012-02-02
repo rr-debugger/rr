@@ -8,9 +8,13 @@
 #include "rec_sched.h"
 #include "write_trace.h"
 
+#include <sys/syscall.h>
+
 #include "../share/hpc.h"
 #include "../share/sys.h"
 #include "../share/config.h"
+
+#define DELAY_COUNTER_MAX 10
 
 /* we could use a linked-list instead */
 static struct context* registered_threads[NUM_MAX_THREADS];
@@ -36,8 +40,19 @@ struct context* get_active_thread(struct context *ctx)
 
 	/* check from current index(i) till the end of the array */
 	for (; i < NUM_MAX_THREADS; i++) {
-		if (registered_threads[i] != NULL) {
-			return registered_threads[i];
+		struct context *ctx = registered_threads[i];
+		if (ctx != NULL) {
+		/*	if ((ctx->exec_state == EXEC_STATE_IN_SYSCALL) && (ctx->event == SYS_futex)) {
+				if (ctx->delay_counter++ > DELAY_COUNTER_MAX) {
+					ctx->delay_counter = 0;
+					return ctx;
+				} else {
+					//printf("delaying counter: %d  max %d\n",ctx->delay_counter, DELAY_COUNTER_MAX);
+				}
+			} else {*/
+				//("returning last event: %d\n",ctx->event);
+				return ctx;
+			//}
 		}
 	}
 
@@ -115,7 +130,7 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	assert(num_active_threads >= 0);
 
 	/* delete all counter data */
-	destry_hpc(ctx);
+	cleanup_hpc(ctx);
 
 	/* close file descriptor to child memory */
 	sys_close(ctx->child_mem_fd);

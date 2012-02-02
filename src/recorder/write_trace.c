@@ -7,6 +7,8 @@
 
 #include "../share/sys.h"
 #include "../share/types.h"
+#include "../share/trace.h"
+
 #include "../share/ipc.h"
 #include "../share/trace.h"
 #include "../share/hpc.h"
@@ -20,7 +22,8 @@ static FILE* trace_file;
 
 static uint32_t thread_time[100000];
 static uint32_t global_time = 0;
-static char* trace_path;
+static uint32_t raw_data_file_counter = 0;
+static char *trace_path;
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
@@ -119,7 +122,7 @@ void record_argv_envp(int __argc, char* argv[], char* envp[])
 
 void open_trace_files(void)
 {
-	char tmp[128], path[64];
+	char tmp[128], path[128];
 
 	strcpy(path, trace_path);
 	strcpy(tmp, "/trace");
@@ -133,7 +136,20 @@ void open_trace_files(void)
 	syscall_header = sys_fopen(path, "a+");
 
 	strcpy(path, trace_path);
-	strcpy(tmp, "/raw_data");
+	sprintf(tmp, "/raw_data_%u",raw_data_file_counter);
+	strcat(path, tmp);
+	raw_data = sys_fopen(path, "a+");
+}
+
+static void use_new_rawdata_file(void)
+{
+	char tmp[128], path[64];
+
+	strcpy(path, trace_path);
+
+	sys_fclose(raw_data);
+	strcpy(path, trace_path);
+	sprintf(tmp, "/raw_data_%u", ++raw_data_file_counter);
 	strcat(path, tmp);
 	raw_data = sys_fopen(path, "a+");
 }
@@ -273,7 +289,18 @@ void record_child_data(struct context *ctx, int syscall, size_t len, long int ch
 			print_register_file_tid(ctx->child_tid);
 			assert(1==0);
 		}
-		assert(fwrite(buf, 1, read_bytes, raw_data) == read_bytes);
+
+		int bytes_written;
+		if ((bytes_written = fwrite(buf, 1, read_bytes, raw_data)) != read_bytes) {
+			struct context safe_ctx;
+			memcpy(&safe_ctx, ctx, sizeof(struct context));
+			ctx->event = USR_NEW_RAWDATA_FILE;
+			record_event(ctx,0);
+			memcpy(ctx,&safe_ctx,sizeof(struct context));
+			use_new_rawdata_file();
+			assert(fwrite(buf, 1, read_bytes, raw_data) == read_bytes);
+		}
+
 		sys_free((void**) &buf);
 	}
 

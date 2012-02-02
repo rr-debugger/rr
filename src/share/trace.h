@@ -14,6 +14,7 @@
 #define SIG_SEGV_RDTSC 			-128
 #define USR_EXIT				-129
 #define USR_SCHED				-130
+#define USR_NEW_RAWDATA_FILE	-131
 
 
 

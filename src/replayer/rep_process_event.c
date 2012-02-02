@@ -429,6 +429,17 @@ void rep_process_syscall(struct context* context)
 	SYS_FD_ARG(getdents64, 1)
 	SYS_FD_ARG(getdents, 1)
 
+
+	/**
+	 * int mkdirat(int dirfd, const char *pathname, mode_t mode);
+	 *
+	 * The mkdirat() system call operates in exactly the same way as mkdir(2), except
+     * for the differences described in this manual page....
+	 *
+	 */
+	SYS_FD_ARG(mkdirat, 0)
+
+
 	/*
 	 * int open(const char *pathname, int flags)
 	 * int open(const char *pathname, int flags, mode_t mode)
@@ -1009,6 +1020,19 @@ void rep_process_syscall(struct context* context)
 	 * are retrieved.
 	 */
 	SYS_EMU_ARG(sched_getparam, 1)
+
+
+	/**
+	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
+	 *
+	 * sched_setaffinity()  sets the CPU affinity mask of the process whose ID
+     * is pid to the value specified by mask.  If pid is zero, then the  call‐
+     * ing  process is used.  The argument cpusetsize is the length (in bytes)
+     * of the data pointed to by mask.  Normally this argument would be speci‐
+     * fied as sizeof(cpu_set_t).
+	 */
+	SYS_EMU_ARG(sched_setaffinity, 0)
+
 
 	/**
 	 *  int sched_get_priority_max(int policy)

@@ -589,7 +589,6 @@ void rec_process_syscall(struct context *ctx)
 			break;
 
 		case FUTEX_CMP_REQUEUE:
-		assert(1==0);
 		case FUTEX_WAKE_OP:
 		record_child_data(ctx, syscall, sizeof(int), regs.edi);
 			break;
@@ -717,6 +716,16 @@ void rec_process_syscall(struct context *ctx)
 	 * mkdir() attempts to create a directory named pathname.
 	 */
 	SYS_REC0(mkdir)
+
+
+	/**
+	 * int mkdirat(int dirfd, const char *pathname, mode_t mode);
+	 *
+	 * The mkdirat() system call operates in exactly the same way as mkdir(2), except
+     * for the differences described in this manual page....
+	 *
+	 */
+	SYS_REC0(mkdirat)
 
 	/**
 	 * int mprotect(const void *addr, size_t len, int prot)
@@ -946,6 +955,17 @@ void rec_process_syscall(struct context *ctx)
 	 * param depends on the selected policy.
 	 */
 	SYS_REC0(sched_setscheduler)
+
+	/**
+	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
+	 *
+	 * sched_setaffinity()  sets the CPU affinity mask of the process whose ID
+     * is pid to the value specified by mask.  If pid is zero, then the  call‐
+     * ing  process is used.  The argument cpusetsize is the length (in bytes)
+     * of the data pointed to by mask.  Normally this argument would be speci‐
+     * fied as sizeof(cpu_set_t).
+	 */
+	SYS_REC0(sched_setaffinity)
 
 	/**
 	 * int sched_yield(void)
@@ -1576,13 +1596,13 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_read:
 	{
-		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
+		void *recorded_data = read_child_data(ctx, regs.eax, ctx->scratch_ptr);
+		write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr, recorded_data);
 		regs.ecx = ctx->recorded_scratch_ptr;
 		write_child_registers(ctx->child_tid, &regs);
 		free(recorded_data);
 
-		record_child_data(ctx, syscall, regs.edx, regs.ecx);
+		record_child_data(ctx, syscall, regs.eax, regs.ecx);
 		break;
 	}
 

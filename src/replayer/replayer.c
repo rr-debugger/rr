@@ -143,67 +143,10 @@ void replay()
 		ctx = rep_sched_get_thread();
 
 		/* print some kind of progress */
-		if (ctx->trace.global_time % 1000 == 0) {
-			fprintf(stderr, ".");
+		if (ctx->trace.global_time % 10000 == 0) {
+			fprintf(stderr, "time: %u\n",ctx->trace.global_time);
 		}
 
-		//int dummy = 0;
-
-		//printf("debug 1: %d\n");
-		/*if (check_if_mapped(ctx,0x741fc250 + 0x14, 0x741fc250 + 0x14 + 0x4)) {
-			long int *tmp1 = read_child_data(ctx,4,0x741fc250 + 0x14);
-				if (*tmp1 == 0x82) {
-
-					//if (*tmp1 == 0x607) {
-				//		int test = 0x605;
-				//		write_child_data(ctx,4,0x741fc250 + 0x14,&test);
-				//	}
-
-
-					//assert(1==0);
-				}
-			free(tmp1);
-		}*/
-
-		/* we can plug in single-stepping here */
-		/*if (ctx->trace.global_time >= 339676 && ctx->trace.state == 0) {
-			while (dummy++ < 100000) {
-				int tmp;
-				char *inst = get_inst(ctx->child_tid,0,&tmp);
-				printf("------------: %d\n",dummy);
-				print_register_file_tid(ctx->child_tid);
-				printf("inst: %s\n",inst);
-				long int val = read_child_ebp(ctx->child_tid);
-				long int *tmp1 = read_child_data(ctx,4,0x741fc250 + 0x14);
-				printf("tmp1: %x\n", *tmp1);
-				fflush(stdout);
-
-
-				int * test = read_child_data(ctx,256,)
-
-
-				if (check_if_mapped(ctx,0x69f92b9c + 0x4, 0x69f92b9c + 0x4 + 0x4)) {
-					long int *tmp4 = read_child_data(ctx,4, 0x69f92b9c + 0x4);
-						if (*tmp4 == 0x82) {
-							assert(1==0);
-						}
-					free(tmp4);
-				}
-
-				if ((strncmp(inst, "sysenter", 7) == 0) || (strncmp(inst, "int", 3) == 0)) {
-					break;
-				}
-
-				sys_ptrace_singlestep(ctx->child_tid, 0);
-				sys_waitpid(ctx->child_tid, &(ctx->status));
-				free(tmp1);
-
-
-				free(inst);
-			}
-
-			//single_step(ctx);
-		}*/
 
 		if (ctx->child_sig != 0) {
 			//printf("child_sig: %d\n",ctx->child_sig);
@@ -214,7 +157,9 @@ void replay()
 		if (ctx->trace.stop_reason == USR_EXIT) {
 			rep_sched_deregister_thread(ctx);
 			/* stop reason is a system call - can be done with ptrace */
-		} else if ((int) (ctx->trace.stop_reason) > 0) {
+		} else if (ctx->trace.stop_reason == USR_NEW_RAWDATA_FILE) {
+			use_next_rawdata_file();
+		} else if((int) (ctx->trace.stop_reason) > 0) {
 			/* proceed to the next event */
 			rep_process_syscall(ctx);
 			/* stop reason is a signal - use HPC */

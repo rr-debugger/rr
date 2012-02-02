@@ -11,9 +11,10 @@
 #include "../share/util.h"
 #include "../share/types.h"
 
-static FILE* __trace;
-static FILE* __raw_data;
-static FILE* __syscall_input;
+static FILE *__trace;
+static FILE *raw_data;
+static FILE *syscall_input;
+static int raw_data_file_counter = 0;
 
 static char* trace_path = NULL;
 
@@ -22,14 +23,14 @@ FILE* get_trace_file()
 	return __trace;
 }
 
-void read_open_inst_dump(struct context* context)
+void read_open_inst_dump(struct context *ctx)
 {
 	char path[64];
 	char tmp[32];
 	strcpy(path, trace_path);
-	sprintf(tmp, "/inst_dump_%d", context->rec_tid);
+	sprintf(tmp, "/inst_dump_%d", ctx->rec_tid);
 	strcat(path, tmp);
-	context->inst_dump = sys_fopen(path, "a+");
+	ctx->inst_dump = sys_fopen(path, "a+");
 }
 
 void read_trace_init(const char* __trace_path)
@@ -42,34 +43,48 @@ void read_trace_init(const char* __trace_path)
 	char tmp[128], path[256];
 
 	strcpy(path, __trace_path);
-	strcpy(tmp, "/trace");
+	strcpy(tmp, "trace");
 	strcat(path, tmp);
-	printf("opening: %s\n", path);
 	__trace = (FILE*) sys_fopen(path, "r");
 
 	strcpy(path, __trace_path);
-	strcpy(tmp, "/syscall_input");
+	strcpy(tmp, "syscall_input");
 	strcat(path, tmp);
-	__syscall_input = (FILE*) sys_fopen(path, "r");
+	syscall_input = (FILE*) sys_fopen(path, "r");
 
 	strcpy(path, __trace_path);
-	strcpy(tmp, "/raw_data");
+	sprintf(tmp, "raw_data_%u", raw_data_file_counter++);
 	strcat(path, tmp);
-	__raw_data = (FILE*) sys_fopen(path, "r");
-
+	raw_data = (FILE*) sys_fopen(path, "r");
+	printf("path: %s\n",path);
 	/* skip the first line -- is only meta-information */
 	char* line = sys_malloc(1024);
 	read_line(__trace, line, 1024, "trace");
 	/* same for syscall_input */
-	read_line(__syscall_input, line, 1024, "syscall_input");
+	read_line(syscall_input, line, 1024, "syscall_input");
 	sys_free((void**) &line);
 }
 
-void read_trace_close()
+
+void use_next_rawdata_file(void)
+{
+	char tmp[128], path[64];
+
+	strcpy(path, trace_path);
+
+	sys_fclose(raw_data);
+	strcpy(path, trace_path);
+	sprintf(tmp, "raw_data_%u", raw_data_file_counter++);
+	strcat(path, tmp);
+	raw_data = sys_fopen(path, "a+");
+}
+
+
+void read_trace_close(void)
 {
 	sys_fclose(__trace);
-	sys_fclose(__raw_data);
-	sys_fclose(__syscall_input);
+	sys_fclose(raw_data);
+	sys_fclose(syscall_input);
 }
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp)
@@ -128,7 +143,7 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 {
 	char* line = sys_malloc(1024);
-	read_line(__syscall_input, line, 1024, "syscall_input");
+	read_line(syscall_input, line, 1024, "syscall_input");
 	char* tmp_ptr = line;
 
 	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -141,7 +156,9 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (syscall != trace->stop_reason) {
 		printf("global_time: %lu syscall: %d  stop_reason: %d\n", time, syscall, trace->stop_reason, time);
-	}assert(syscall == trace->stop_reason);
+	}
+
+	assert(syscall == trace->stop_reason);
 
 	*addr = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
@@ -161,8 +178,13 @@ void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 
 	if (*addr != 0) {
 		void* data = sys_malloc(size);
-		int bytes_read = fread(data, 1, size, __raw_data);
-		assert(bytes_read == size);
+		int bytes_read = fread(data, 1, size, raw_data);
+
+		if (bytes_read != size) {
+			printf("read: %u   required: %u\n",bytes_read,size);
+			perror("");
+			sys_exit();
+		}
 		return data;
 	}
 	return NULL;
@@ -172,7 +194,7 @@ void read_syscall_trace(struct syscall_trace* trace)
 {
 
 	char* line = sys_malloc(1024);
-	read_line(__syscall_input, line, 1024, "syscall_input");
+	read_line(syscall_input, line, 1024, "syscall_input");
 	const char* tmp_ptr = line;
 
 	trace->time = str2li(tmp_ptr, UUL_COLUMN_SIZE);

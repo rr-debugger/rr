@@ -268,6 +268,16 @@ void print_syscall(struct context *ctx, struct trace *trace)
 	if (state == 1) {
 		switch (syscall) {
 
+		/*  int access(const char *pathname, int mode); */
+		case SYS_access:
+		{
+			char *str = read_child_str(ctx->child_tid, r.ebx);
+			debug_print("access(const char *pathname(%s), int mode(%lx))", str, r.ecx);
+			free(str);
+			break;
+		}
+
+
 		/* int clock_gettime(clockid_t clk_id, struct timespec *tp); */
 		case SYS_clock_gettime:
 		{
@@ -336,7 +346,9 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		/* int open(const char *pathname, int flags) */
 		case SYS_open:
 		{
-			debug_print("open(const char *pathname(%s), int flags(%lx))", read_child_str(ctx->child_tid, r.ebx), r.ecx);
+			char *str = read_child_str(ctx->child_tid, r.ebx);
+			debug_print("open(const char *pathname(%s), int flags(%lx))", str, r.ecx);
+			free(str);
 			break;
 		}
 

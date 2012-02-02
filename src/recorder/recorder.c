@@ -203,7 +203,11 @@ static int allow_ctx_switch(struct context *ctx)
 		read_child_registers(ctx->child_tid, &regs);
 		if (regs.edx > ctx->scratch_size) {
 			printf("scratch size too small: required: %ld  now: %d\n", regs.edx, ctx->scratch_size);
-			sys_exit();
+
+			ctx->recorded_scratch_ptr = regs.ecx;
+			ctx->recorded_scratch_size = regs.edx;
+			return 0;
+//			sys_exit();
 		}
 		ctx->recorded_scratch_ptr = regs.ecx;
 		ctx->recorded_scratch_size = regs.edx;
