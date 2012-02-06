@@ -45,7 +45,6 @@ char* syscall_to_str(int syscall)
 int signal_pending(int status)
 {
 	if(status == 0x57f) {
-		printf("fuck: %x\n",status);
 		assert(1==0);
 	}
 
@@ -67,7 +66,6 @@ int signal_pending(int status)
 		return SIGCHLD;
 	}
 
-	printf("status: %x    signal: %d   event: %x\n", status, (WSTOPSIG(status) & ~0x80),GET_PTRACE_EVENT(status));
 	return (WSTOPSIG(status) & ~0x80);
 
 	/*int sig = WSTOPSIG(status) & ~0x80;
@@ -549,6 +547,8 @@ void print_process_mmap(pid_t tid)
 	if (fclose(file) == EOF) {
 		perror("error closing mmap file\n");
 	}
+
+	sleep(10);
 }
 
 /**

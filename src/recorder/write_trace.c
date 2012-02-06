@@ -272,6 +272,20 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_pt
 }
 
 
+static void write_raw_data(struct context *ctx, void *buf, int to_write)
+{
+	int bytes_written;
+	if ((bytes_written = fwrite(buf, 1, to_write, raw_data)) != to_write) {
+		struct context safe_ctx;
+		memcpy(&safe_ctx, ctx, sizeof(struct context));
+		ctx->event = USR_NEW_RAWDATA_FILE;
+		record_event(ctx,0);
+		memcpy(ctx,&safe_ctx,sizeof(struct context));
+		use_new_rawdata_file();
+		assert(fwrite(buf, 1, to_write, raw_data) == to_write);
+	}
+}
+
 /**
  * Writes data into the raw_data file and generates a corresponding entry in
  * syscall_input.
@@ -289,24 +303,20 @@ void record_child_data(struct context *ctx, int syscall, size_t len, long int ch
 			print_register_file_tid(ctx->child_tid);
 			assert(1==0);
 		}
-
-		int bytes_written;
-		if ((bytes_written = fwrite(buf, 1, read_bytes, raw_data)) != read_bytes) {
-			struct context safe_ctx;
-			memcpy(&safe_ctx, ctx, sizeof(struct context));
-			ctx->event = USR_NEW_RAWDATA_FILE;
-			record_event(ctx,0);
-			memcpy(ctx,&safe_ctx,sizeof(struct context));
-			use_new_rawdata_file();
-			assert(fwrite(buf, 1, read_bytes, raw_data) == read_bytes);
-		}
-
+		write_raw_data(ctx,buf,read_bytes);
 		sys_free((void**) &buf);
 	}
 
 	print_header(syscall, child_ptr);
 	fprintf(syscall_header, "%11d\n", read_bytes);
 
+}
+
+void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf)
+{
+	write_raw_data(ctx,buf,len);
+	print_header(syscall, addr);
+	fprintf(syscall_header, "%11d\n", len);
 }
 
 

@@ -151,10 +151,6 @@ static int allow_ctx_switch(struct context *ctx)
 			return 1;
 		}
 
-		if (op == FUTEX_WAKE_OP) {
-			return 0;
-		}
-
 		return 0;
 	}
 
@@ -202,13 +198,13 @@ static int allow_ctx_switch(struct context *ctx)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		if (regs.edx > ctx->scratch_size) {
-			printf("scratch size too small: required: %ld  now: %d\n", regs.edx, ctx->scratch_size);
+			//printf("scratch size too small: required: %ld  now: %d\n", regs.edx, ctx->scratch_size);
 
 			ctx->recorded_scratch_ptr = regs.ecx;
 			ctx->recorded_scratch_size = regs.edx;
 			return 0;
-//			sys_exit();
 		}
+
 		ctx->recorded_scratch_ptr = regs.ecx;
 		ctx->recorded_scratch_size = regs.edx;
 
@@ -228,7 +224,7 @@ static int allow_ctx_switch(struct context *ctx)
 	{
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
-		ctx->recorded_scratch_ptr = (void*)regs.ecx;
+		ctx->recorded_scratch_ptr = (void*) regs.ecx;
 		ctx->recorded_scratch_size = sizeof(int);
 
 		regs.ecx = ctx->scratch_ptr;
@@ -284,7 +280,7 @@ static int allow_ctx_switch(struct context *ctx)
 	{
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
-		ctx->recorded_scratch_ptr = (void*)regs.ecx;
+		ctx->recorded_scratch_ptr = (void*) regs.ecx;
 		ctx->recorded_scratch_size = sizeof(struct timespec);
 
 		regs.ecx = ctx->scratch_ptr;
@@ -292,9 +288,14 @@ static int allow_ctx_switch(struct context *ctx)
 		return 1;
 	}
 
+	case SYS_sched_yield:
+	{
+		return 1;
+	}
 
 
 	} /* end switch */
+
 
 	return 0;
 }

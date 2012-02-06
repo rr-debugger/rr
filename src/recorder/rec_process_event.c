@@ -300,6 +300,14 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(fchdir)
 
+
+	/**
+	 * int fchmod(int fd, mode_t mode);
+	 *
+	 * fchmod() changes the permissions of the file referred to by the open file descriptor fd */
+	SYS_REC0(fchmod)
+
+
 	/**
 	 * int fdatasync(int fd)
 	 *
@@ -1600,9 +1608,12 @@ void rec_process_syscall(struct context *ctx)
 		write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr, recorded_data);
 		regs.ecx = ctx->recorded_scratch_ptr;
 		write_child_registers(ctx->child_tid, &regs);
+
+		record_parent_data(ctx,syscall,regs.eax,regs.ecx,recorded_data);
 		free(recorded_data);
 
-		record_child_data(ctx, syscall, regs.eax, regs.ecx);
+
+//		record_child_data(ctx, syscall, regs.eax, regs.ecx);
 		break;
 	}
 

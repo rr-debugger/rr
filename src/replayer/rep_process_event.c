@@ -1295,7 +1295,7 @@ void rep_process_syscall(struct context* context)
 	 * If pathname is a symbolic link, it is dereferenced.
 	 *
 	 */
-	SYS_EXEC_ARG_RET(context, access, 0)
+	SYS_EXEC_ARG(access, 0)
 
 	/**
 	 * int brk(void *addr)

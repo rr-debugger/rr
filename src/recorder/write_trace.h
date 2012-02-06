@@ -18,7 +18,7 @@ void record_child_data(struct context *ctx, int syscall, size_t len, long int ch
 void record_timestamp(int tid, long int* eax_, long int* edx_);
 void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_ptr);
 void record_child_str(pid_t tid, int syscall, long int child_ptr);
-void record_parent_data(pid_t tid, int syscall, size_t len, void* data);
+void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf);
 void record_event(struct context* context, int new_tid);
 unsigned int get_time(pid_t tid);
 void record_argv_envp(int argc, char* argv[], char* envp[]);

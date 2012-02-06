@@ -15,7 +15,7 @@ void rec_sched_set_exec_state(int tid, int state);
 void rec_sched_exit_all();
 
 #define EMPTY 			0
-#define NUM_MAX_THREADS (0xfff)
+#define NUM_MAX_THREADS (0xffff)
 #define MAX_TID			(0xfffff)
 
 #define HASH(tid)				((tid) & NUM_MAX_THREADS)
