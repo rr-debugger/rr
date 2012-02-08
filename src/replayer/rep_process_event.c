@@ -104,11 +104,6 @@ static void finish_syscall_emu(struct context *ctx)
  */
 void __ptrace_cont(struct context *ctx)
 {
-
-	if (ctx->replay_sig != 0) {
-		printf("PTRACE_CONT: sending signal: %d\n", ctx->replay_sig);
-	}
-
 	sys_ptrace_syscall_sig(ctx->child_tid, ctx->trace.state == 0 ? ctx->replay_sig : 0);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
