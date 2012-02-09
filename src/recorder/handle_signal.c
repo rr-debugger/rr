@@ -101,7 +101,7 @@ void handle_signal(struct context* ctx)
 		break;
 	}
 
-	case 62:
+	case SIGTERM:
 	{
 		ctx->event = -sig;
 		ctx->child_sig = sig;

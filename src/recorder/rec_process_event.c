@@ -300,13 +300,11 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(fchdir)
 
-
 	/**
 	 * int fchmod(int fd, mode_t mode);
 	 *
 	 * fchmod() changes the permissions of the file referred to by the open file descriptor fd */
 	SYS_REC0(fchmod)
-
 
 	/**
 	 * int fdatasync(int fd)
@@ -725,12 +723,11 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(mkdir)
 
-
 	/**
 	 * int mkdirat(int dirfd, const char *pathname, mode_t mode);
 	 *
 	 * The mkdirat() system call operates in exactly the same way as mkdir(2), except
-     * for the differences described in this manual page....
+	 * for the differences described in this manual page....
 	 *
 	 */
 	SYS_REC0(mkdirat)
@@ -968,10 +965,10 @@ void rec_process_syscall(struct context *ctx)
 	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
 	 *
 	 * sched_setaffinity()  sets the CPU affinity mask of the process whose ID
-     * is pid to the value specified by mask.  If pid is zero, then the  call‐
-     * ing  process is used.  The argument cpusetsize is the length (in bytes)
-     * of the data pointed to by mask.  Normally this argument would be speci‐
-     * fied as sizeof(cpu_set_t).
+	 * is pid to the value specified by mask.  If pid is zero, then the  call‐
+	 * ing  process is used.  The argument cpusetsize is the length (in bytes)
+	 * of the data pointed to by mask.  Normally this argument would be speci‐
+	 * fied as sizeof(cpu_set_t).
 	 */
 	SYS_REC0(sched_setaffinity)
 
@@ -1570,7 +1567,7 @@ void rec_process_syscall(struct context *ctx)
 		write_child_registers(ctx->child_tid, &regs);
 		free(recorded_data);
 
-		record_child_data(ctx, syscall,  sizeof(struct timespec), regs.ecx);
+		record_child_data(ctx, syscall, sizeof(struct timespec), regs.ecx);
 		break;
 	}
 
@@ -1604,16 +1601,18 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_read:
 	{
-		void *recorded_data = read_child_data(ctx, regs.eax, ctx->scratch_ptr);
-		write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr, recorded_data);
-		regs.ecx = ctx->recorded_scratch_ptr;
-		write_child_registers(ctx->child_tid, &regs);
+		/* this is a hack; we come here if the scratch size is too small */
+		if (ctx->recorded_scratch_size == -1) {
+			record_child_data(ctx, syscall, regs.eax, regs.ecx);
+		} else {
+			void *recorded_data = read_child_data(ctx, regs.eax, ctx->scratch_ptr);
+			write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr, recorded_data);
+			regs.ecx = ctx->recorded_scratch_ptr;
+			write_child_registers(ctx->child_tid, &regs);
 
-		record_parent_data(ctx,syscall,regs.eax,regs.ecx,recorded_data);
-		free(recorded_data);
-
-
-//		record_child_data(ctx, syscall, regs.eax, regs.ecx);
+			record_parent_data(ctx, syscall, regs.eax, (void*) regs.ecx, recorded_data);
+			sys_free((void**) &recorded_data);
+		}
 		break;
 	}
 
@@ -1715,7 +1714,7 @@ void rec_process_syscall(struct context *ctx)
 		free(recorded_data);
 
 		record_child_data(ctx, syscall, sizeof(int), regs.ecx);
-		record_child_data(ctx,syscall, sizeof(struct rusage), regs.esi);
+		record_child_data(ctx, syscall, sizeof(struct rusage), regs.esi);
 		break;
 	}
 

@@ -165,6 +165,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 			fprintf(stderr, "addr: %x\n", read_child_edx(ctx->child_tid));
 			print_register_file_tid(ctx->child_tid);
 			sys_exit();
+			break;
 		}
 		}
 	}

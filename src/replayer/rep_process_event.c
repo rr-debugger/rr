@@ -356,6 +356,13 @@ void rep_process_syscall(struct context* context)
 	SYS_FD_ARG(fchdir, 0)
 
 	/**
+	 * int fchmod(int fd, mode_t mode);
+	 *
+	 * fchmod() changes the permissions of the file referred to by the open file descriptor fd */
+	SYS_FD_ARG(fchmod, 0)
+
+
+	/**
 	 * int fstat(int fd, struct stat *buf)
 	 *
 	 * fstat()  is  identical  to  stat(),  except  that  the  file to be stat-ed is specified

@@ -20,6 +20,24 @@
 static struct context* registered_threads[NUM_MAX_THREADS];
 static int num_active_threads;
 
+static int check_delay(struct context *ctx)
+{
+	/*if (num_active_threads < 5) {
+		return 1;
+	}
+
+	if (ctx->event == SYS_gettimeofday || ctx->event == SYS_sched_yield) {
+		if (ctx->delay_counter++ < 10) {
+			return 0;
+		} else {
+			ctx->delay_counter = 0;
+			return 1;
+		}
+	}*/
+
+	return 1;
+}
+
 /**
  * Retrieves a thread from the pool of active threads in a
  * round-robin fashion.
@@ -29,6 +47,7 @@ struct context* get_active_thread(struct context *ctx)
 	/* This maintains the order in which the threads are signaled to continue and
 	 * when the the record is actually written
 	 */
+
 	if (ctx != 0) {
 		if (!ctx->allow_ctx_switch) {
 			return ctx;
@@ -42,20 +61,36 @@ struct context* get_active_thread(struct context *ctx)
 	for (; i < NUM_MAX_THREADS; i++) {
 		struct context *ctx = registered_threads[i];
 		if (ctx != NULL) {
+			if (ctx->exec_state == EXEC_STATE_IN_SYSCALL && check_delay(ctx)) {
+				if ((check_delay(ctx)) && (sys_waitpid_nonblock(ctx->child_tid, &(ctx->status)) != 0)) {
+					ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+					return ctx;
+				} else {
+					continue;
+				}
+			}
 			return ctx;
 		}
 	}
 
-	/* check all threads again */
-	for (i = 0; i < NUM_MAX_THREADS; i++) {
-		if (registered_threads[i] != NULL) {
-			return registered_threads[i];
+	while (1) {
+
+		/* check all threads again */
+		for (i = 0; i < NUM_MAX_THREADS; i++) {
+			struct context *ctx = registered_threads[i];
+			if (ctx != NULL) {
+				if (ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
+					if ((check_delay(ctx)) && (sys_waitpid_nonblock(ctx->child_tid, &(ctx->status)) != 0)) {
+						ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+						return ctx;
+					} else {
+						continue;
+					}
+				}
+				return ctx;
+			}
 		}
 	}
-
-	/* we must not come here */
-	assert(1==0);
-	return NULL;
 }
 
 /**
@@ -96,7 +131,7 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 	ctx->child_tid = child;
 	ctx->child_mem_fd = sys_open_child_mem(child);
 
-	//write_open_inst_dump(ctx);
+//write_open_inst_dump(ctx);
 	sys_ptrace_setup(child);
 
 	init_hpc(ctx);

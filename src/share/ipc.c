@@ -257,16 +257,14 @@ void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr,
 
 void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 {
-
-	//assert(check_if_mapped(ctx, addr, addr + size));
-
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
 	ssize_t read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
 	if (read_bytes != size) {
-		printf("demanded: %u  read %u\n",size,read_bytes);
+		printf("reading from: %x demanded: %u  read %u  event: %d\n",addr, size,read_bytes,ctx->event);
 		perror("warning: reading from child process: ");
 		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
+		sleep(5);
 		//printf("read bytes: %x   size %x    left: %x @ %x\n", read_bytes, size, (size - read_bytes), addr + read_bytes);
 		//print_process_mmap(ctx->child_tid);
 		//int val = read_child_data_tid(ctx->child_tid,4,addr+read_bytes);

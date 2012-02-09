@@ -198,10 +198,8 @@ static int allow_ctx_switch(struct context *ctx)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		if (regs.edx > ctx->scratch_size) {
-			//printf("scratch size too small: required: %ld  now: %d\n", regs.edx, ctx->scratch_size);
-
-			ctx->recorded_scratch_ptr = regs.ecx;
-			ctx->recorded_scratch_size = regs.edx;
+			printf("scratch size too small: required: %ld  now: %d\n", regs.edx, ctx->scratch_size);
+			ctx->recorded_scratch_size = -1;
 			return 0;
 		}
 
@@ -293,9 +291,7 @@ static int allow_ctx_switch(struct context *ctx)
 		return 1;
 	}
 
-
 	} /* end switch */
-
 
 	return 0;
 }
@@ -490,27 +486,36 @@ void start_recording()
 		case EXEC_STATE_IN_SYSCALL:
 		{
 
-			//printf("now we are at: %d  status: %x\n", ctx->event, ctx->status);
+			//printf("are we waiting here? %d\n",ctx->event);
 			int ret = wait_nonblock(ctx);
 			if (ret) {
-				assert(signal_pending(ctx->status) == 0);
-
-				/* we received a signal while in the system call and send it right away*/
-				/* we have already sent the signal and process sigreturn */
-				if (ctx->event == SYS_sigreturn) {
-					assert(1==0);
-				}
-
-				handle_ptrace_event(&ctx);
-
-				if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
-					ctx->child_sig = signal_pending(ctx->status);
-					rec_process_syscall(ctx);
-					record_event(ctx, 1);
-					ctx->exec_state = EXEC_STATE_START;
-					ctx->allow_ctx_switch = 1;
-				}
+				ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+				ctx->allow_ctx_switch = 0;
 			}
+			break;
+		}
+
+		case EXEC_STATE_IN_SYSCALL_DONE:
+		{
+			assert(signal_pending(ctx->status) == 0);
+
+			/* we received a signal while in the system call and send it right away*/
+			/* we have already sent the signal and process sigreturn */
+			if (ctx->event == SYS_sigreturn) {
+				assert(1==0);
+			}
+
+			handle_ptrace_event(&ctx);
+
+			if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
+				ctx->child_sig = signal_pending(ctx->status);
+				rec_process_syscall(ctx);
+				record_event(ctx, 1);
+				ctx->exec_state = EXEC_STATE_START;
+				ctx->allow_ctx_switch = 1;
+			}
+
+			//printf("done\n");
 			break;
 		}
 
