@@ -50,56 +50,56 @@ static void compensate_branch_count(struct context *ctx, int sig)
 		assert(rbc_now < rbc_rec);
 	}
 
-	while (1) {
+	int found_spot = 0;
+	rbc_now = read_rbc_up(ctx->hpc);
+
+	while (rbc_now < rbc_rec) {
+		singlestep(ctx, 0, 0x57f);
+		rbc_now = read_rbc_up(ctx->hpc);
+	}
+
+	while (rbc_now == rbc_rec) {
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
-		rbc_now = read_rbc_up(ctx->hpc);
-
-		if (rbc_now < rbc_rec) {
-			singlestep(ctx, 0, 0x57f);
-		} else if (rbc_now == rbc_rec) {
-
-			if (sig == SIGSEGV) {
-				printf("we're here\n");
-				/* we should now stop at the instruction that caused the SIGSEGV */
-				sys_ptrace_syscall(ctx->child_tid);
-				sys_waitpid(ctx->child_tid, &ctx->status);
-				printf("but we arrive here!!\n");
-			}
-
-			/* the eflags register has two bits that are set when an interrupt is pending:
-			 * bit 8:  TF (trap flag)
-			 * bit 17: VM (virtual 8086 mode)
-			 *
-			 * we enable these two bits in the eflags register to make sure that the register
-			 * files match
-			 *
-			 */
-			int check = compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0);
-			if (check == 0 || check == 0x80) {
-				/* A SIGSEGV can be triggered by a regular instruction; it is not necessarily sent by
-				 * another process. We check this condition here.
-				 */
-				if (sig == SIGSEGV) {
-					//print_inst(ctx->child_tid);
-
-					/* here we ensure that the we get a SIGSEGV at the right spot */
-					singlestep(ctx, 0, 0xb7f);
-					/* deliver the signal */
-					//singlestep(ctx, SIGSEGV, 0x57f);
-					break;
-				} else {
-					break;
-				}
-				/* set the signal such that it is delivered when the process continues */
-				//ctx->pending_sig = sig;
-			}
-			/* check that we do not get unexpected signal in the single-stepping process */
-			singlestep(ctx, 0, 0x57f);
-		} else {
-			fprintf(stderr, "internal error: cannot find correct spot for signal(%d) delivery -- bailing out\n", sig);
-			sys_exit();
+		if (sig == SIGSEGV) {
+			/* we should now stop at the instruction that caused the SIGSEGV */
+			sys_ptrace_syscall(ctx->child_tid);
+			sys_waitpid(ctx->child_tid, &ctx->status);
 		}
+
+		/* the eflags register has two bits that are set when an interrupt is pending:
+		 * bit 8:  TF (trap flag)
+		 * bit 17: VM (virtual 8086 mode)
+		 *
+		 * we enable these two bits in the eflags register to make sure that the register
+		 * files match
+		 *
+		 */
+		int check = compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0);
+		if (check == 0 || check == 0x80) {
+			found_spot++;
+			/* A SIGSEGV can be triggered by a regular instruction; it is not necessarily sent by
+			 * another process. We check this condition here.
+			 */
+			if (sig == SIGSEGV) {
+				//print_inst(ctx->child_tid);
+
+				/* here we ensure that the we get a SIGSEGV at the right spot */
+				singlestep(ctx, 0, 0xb7f);
+				/* deliver the signal */
+				break;
+			} else {
+				break;
+			}
+			/* set the signal such that it is delivered when the process continues */
+		}
+		/* check that we do not get unexpected signal in the single-stepping process */
+		singlestep(ctx, 0, 0x57f);
+		rbc_now = read_rbc_up(ctx->hpc);
+	}
+	if (found_spot != 1) {
+		printf("damn it!! %d\n",found_spot);
+		assert(found_spot == 1);
 	}
 }
 
