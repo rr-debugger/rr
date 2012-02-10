@@ -50,13 +50,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 		printf("EMU sends sig: %d\n", ctx->replay_sig);
 	}
 
-	//if (ctx->trace.global_time == 1246) {
-//		sys_ptrace_sysemu_sig(ctx->child_tid, 0);
-//	} else {
-		sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
-//	}
-
-
+	sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
 	sys_waitpid(ctx->child_tid, &(ctx->status));
 	ctx->replay_sig = 0;
 
@@ -361,7 +355,6 @@ void rep_process_syscall(struct context* context)
 	 * fchmod() changes the permissions of the file referred to by the open file descriptor fd */
 	SYS_FD_ARG(fchmod, 0)
 
-
 	/**
 	 * int fstat(int fd, struct stat *buf)
 	 *
@@ -431,16 +424,14 @@ void rep_process_syscall(struct context* context)
 	SYS_FD_ARG(getdents64, 1)
 	SYS_FD_ARG(getdents, 1)
 
-
 	/**
 	 * int mkdirat(int dirfd, const char *pathname, mode_t mode);
 	 *
 	 * The mkdirat() system call operates in exactly the same way as mkdir(2), except
-     * for the differences described in this manual page....
+	 * for the differences described in this manual page....
 	 *
 	 */
 	SYS_FD_ARG(mkdirat, 0)
-
 
 	/*
 	 * int open(const char *pathname, int flags)
@@ -907,7 +898,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(getresuid32, 3)
 
-
 	/* int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
 	 *
 	 * getresuid()  returns  the  real  UID,  the effective UID, and the saved set-user-ID of
@@ -1023,18 +1013,16 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(sched_getparam, 1)
 
-
 	/**
 	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
 	 *
 	 * sched_setaffinity()  sets the CPU affinity mask of the process whose ID
-     * is pid to the value specified by mask.  If pid is zero, then the  call‐
-     * ing  process is used.  The argument cpusetsize is the length (in bytes)
-     * of the data pointed to by mask.  Normally this argument would be speci‐
-     * fied as sizeof(cpu_set_t).
+	 * is pid to the value specified by mask.  If pid is zero, then the  call‐
+	 * ing  process is used.  The argument cpusetsize is the length (in bytes)
+	 * of the data pointed to by mask.  Normally this argument would be speci‐
+	 * fied as sizeof(cpu_set_t).
 	 */
 	SYS_EMU_ARG(sched_setaffinity, 0)
-
 
 	/**
 	 *  int sched_get_priority_max(int policy)
@@ -1151,7 +1139,6 @@ void rep_process_syscall(struct context* context)
 	 */
 	SYS_EMU_ARG(utimes, 1)
 
-
 	/**
 	 * int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
 	 *
@@ -1160,7 +1147,6 @@ void rep_process_syscall(struct context* context)
 	 * respectively, when setting file timestamps.
 	 */
 	SYS_EMU_ARG(utimensat, 0)
-
 
 	/**
 	 * int inotify_init(void)
@@ -1287,8 +1273,6 @@ void rep_process_syscall(struct context* context)
 	 *
 	 */
 	SYS_EXEC_ARG(waitpid, 1)
-
-
 
 	/**
 	 * int access(const char *pathname, int mode);
@@ -1753,6 +1737,10 @@ void rep_process_syscall(struct context* context)
 	case SYS_sigreturn:
 	{
 		/* go to the system call */
+		if (ctx->replay_sig != 0) {
+			printf("global time: %u\n",context->trace.global_time);
+		}
+
 		assert(context->replay_sig == 0);
 		assert(context->child_sig == 0);
 		__ptrace_cont(context);

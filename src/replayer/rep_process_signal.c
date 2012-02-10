@@ -205,7 +205,7 @@ void rep_process_signal(struct context *ctx)
 	case SIGSEGV:
 	{
 		/* synchronous signal (signal received in a system call) */
-		if (trace->rbc_up == 0) {
+		if (trace->rbc_up == 0 && trace->page_faults == 0) {
 			ctx->replay_sig = sig;
 			return;
 		}
