@@ -94,6 +94,17 @@ void handle_signal(struct context* ctx)
 		if (read_rbc_up(ctx->hpc) >= MAX_RECORD_INTERVAL) {
 			ctx->event = USR_SCHED;
 			ctx->child_sig = 0;
+
+			/* go to the next retired conditional branch; this position
+			 * is certainly unambigious */
+			/*uint64_t current_rbc = read_rbc_up(ctx->hpc);
+			uint64_t stop_rbc = current_rbc + 1;
+			do {
+				sys_ptrace_singlestep(ctx->child_tid, 0);
+				sys_waitpid(ctx->child_tid, &(ctx->status));
+				current_rbc = read_rbc_up(ctx->hpc);
+			} while (current_rbc < stop_rbc);*/
+
 		} else {
 			ctx->event = -sig;
 			ctx->child_sig = sig;
