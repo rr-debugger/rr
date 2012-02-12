@@ -76,7 +76,7 @@ void rep_sched_deregister_thread(struct context *ctx)
 	destry_hpc(ctx);
 
 	pid_t my_tid = ctx->child_tid;
-	sys_fclose(ctx->inst_dump);
+	//sys_fclose(ctx->inst_dump);
 	sys_close(ctx->child_mem_fd);
 
 	map[my_tid] = NULL;
