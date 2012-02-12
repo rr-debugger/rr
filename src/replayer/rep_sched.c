@@ -31,7 +31,7 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	ctx->rec_tid = rec_tid;
 	ctx->child_mem_fd = sys_open_child_mem(my_tid);
 
-	read_open_inst_dump(ctx);
+	//read_open_inst_dump(ctx);
 	num_threads++;
 
 	/* initializer replay counters */
