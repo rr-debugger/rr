@@ -44,6 +44,8 @@ static int check_delay(struct context *ctx)
  */
 struct context* get_active_thread(struct context *ctx)
 {
+	static int i = -1;
+
 	/* This maintains the order in which the threads are signaled to continue and
 	 * when the the record is actually written
 	 */
@@ -54,8 +56,7 @@ struct context* get_active_thread(struct context *ctx)
 		}
 	}
 
-	static int i = -1;
-	i++;
+	//i++;
 
 	/* check from current index(i) till the end of the array */
 	for (; i < NUM_MAX_THREADS; i++) {
