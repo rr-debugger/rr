@@ -88,6 +88,7 @@ static void use_new_trace_file(void)
 	sprintf(tmp, "/trace_%u", ++trace_file_counter);
 	strcat(path, tmp);
 	__trace = sys_fopen(path, "a+");
+	assert(1==0);
 }
 
 
@@ -268,16 +269,11 @@ int peek_next_trace(struct trace *trace)
 {
 	fpos_t pos;
 	fgetpos(__trace, &pos);
-	int bytes_read = (int) fgets((char*)trace, sizeof(struct trace), __trace);
+	int bytes_read = read_next_trace(trace);
 	/* check if read is successful */
-	if (bytes_read > 0) {
-		fsetpos(__trace, &pos);
-		read_next_trace(trace);
-	} else if (feof(__trace)) {
+	if (feof(__trace)) {
 		return 0;
 	}
-
-
 
 	fsetpos(__trace, &pos);
 	return bytes_read;

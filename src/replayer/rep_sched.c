@@ -60,7 +60,6 @@ struct context* rep_sched_get_thread()
 
 		ret = peek_next_trace(&next_trace);
 		uint64_t rbc_up = ctx->trace.rbc_up;
-
 		while ((ret > 0) && (next_trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
 			rbc_up += next_trace.rbc_up;
 			read_next_trace(&(ctx->trace));
