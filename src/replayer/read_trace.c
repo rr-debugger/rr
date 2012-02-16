@@ -44,7 +44,7 @@ void read_trace_init(const char* __trace_path)
 	char tmp[128], path[256];
 
 	strcpy(path, __trace_path);
-	strcpy(tmp, "trace");
+	sprintf(tmp, "trace_%u", trace_file_counter++);
 	strcat(path, tmp);
 	__trace = (FILE*) sys_fopen(path, "r");
 
