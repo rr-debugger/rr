@@ -47,7 +47,8 @@ static void compensate_branch_count(struct context *ctx, int sig)
 	if (rbc_now > rbc_rec) {
 		/* checkpointing is not implemented yet - so we fail */
 		fprintf(stderr, "hpc overcounted in asynchronous event, recorded: %llu  now: %llu\n", rbc_rec, rbc_now);
-		assert(rbc_now < rbc_rec);
+		fprintf(stderr,"event: %d, flobal_time %u\n",ctx->trace.stop_reason, ctx->trace.global_time);
+		assert(0);
 	}
 
 	int found_spot = 0;
