@@ -54,20 +54,24 @@ struct context* rep_sched_get_thread()
 	memcpy(&(ctx->trace), &trace, sizeof(struct trace));
 
 	/* subsequent reschedule-events of the same thread can be combined to a single event */
-	struct trace next_trace;
-	ret = peek_next_trace(&next_trace);
-	uint64_t rbc_up = ctx->trace.rbc_up;
+	if (trace.stop_reason == USR_SCHED) {
+		int combined = 0;
+		struct trace next_trace;
 
-	while ((ret > 0) && (ctx->trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
-		rbc_up += next_trace.rbc_up;
-		read_next_trace(&(ctx->trace));
 		ret = peek_next_trace(&next_trace);
-	}
+		uint64_t rbc_up = ctx->trace.rbc_up;
 
-	if (ctx->trace.stop_reason == USR_SCHED) {
-		ctx->trace.rbc_up = rbc_up;
-	}
+		while ((ret > 0) && (next_trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
+			rbc_up += next_trace.rbc_up;
+			read_next_trace(&(ctx->trace));
+			ret = peek_next_trace(&next_trace);
+			combined = 1;
+		}
 
+		if (combined) {
+			ctx->trace.rbc_up = rbc_up;
+		}
+	}
 	return ctx;
 }
 
