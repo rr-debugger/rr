@@ -324,7 +324,7 @@ int read_next_trace(struct trace *trace)
 	sys_free((void**) &line);
 
 
-	if ((trace->global_time % MAX_TRACE_ENTRY_SIZE) == 0) {
+	if (((trace->global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (trace->global_time > 0)) {
 		use_new_trace_file();
 	}
 	return bytes_read;

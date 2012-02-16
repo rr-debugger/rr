@@ -241,7 +241,7 @@ static void record_register_file(struct context *ctx)
 void record_event(struct context *ctx, int entry)
 {
 
-	if ((global_time % MAX_TRACE_ENTRY_SIZE) == 0) {
+	if (((global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (global_time > 0)) {
 		use_new_trace_file();
 	}
 
