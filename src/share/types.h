@@ -45,7 +45,7 @@ struct context {
 	int allow_ctx_switch;
 	void *scratch_ptr;
 	int scratch_size;
-	int delay_counter;
+	int switch_counter;
 
 	void* recorded_scratch_ptr;
 	int recorded_scratch_size;

@@ -16,26 +16,28 @@
 
 #include "write_trace.h"
 
-static FILE* syscall_header;
-static FILE* raw_data;
-static FILE* trace_file;
+static FILE *syscall_header;
+static FILE *raw_data;
+static FILE *trace_file;
+static uint32_t raw_data_file_counter = 0;
+static uint32_t trace_file_counter = 0;
+
 
 static uint32_t thread_time[100000];
 static uint32_t global_time = 0;
-static uint32_t raw_data_file_counter = 0;
 static char *trace_path;
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
 
-void write_open_inst_dump(struct context* context)
+void write_open_inst_dump(struct context *ctx)
 {
 	char path[64];
 	char tmp[32];
 	strcpy(path, trace_path);
-	sprintf(tmp, "/inst_dump_%d",context->child_tid);
+	sprintf(tmp, "/inst_dump_%d",ctx->child_tid);
 	strcat(path, tmp);
-	context->inst_dump = sys_fopen(path, "a+");
+	ctx->inst_dump = sys_fopen(path, "a+");
 }
 
 static unsigned int get_global_time_incr()
@@ -125,9 +127,8 @@ void open_trace_files(void)
 	char tmp[128], path[128];
 
 	strcpy(path, trace_path);
-	strcpy(tmp, "/trace");
+	sprintf(tmp, "/trace_%u",trace_file_counter);
 	strcat(path, tmp);
-
 	trace_file = sys_fopen(path, "a+");
 
 	strcpy(path, trace_path);
@@ -145,14 +146,24 @@ static void use_new_rawdata_file(void)
 {
 	char tmp[128], path[64];
 
-	strcpy(path, trace_path);
-
 	sys_fclose(raw_data);
 	strcpy(path, trace_path);
 	sprintf(tmp, "/raw_data_%u", ++raw_data_file_counter);
 	strcat(path, tmp);
 	raw_data = sys_fopen(path, "a+");
 }
+
+static void use_new_trace_file(void)
+{
+	char tmp[128], path[64];
+
+	sys_fclose(trace_file);
+	strcpy(path, trace_path);
+	sprintf(tmp, "/trace_%u", ++trace_file_counter);
+	strcat(path, tmp);
+	trace_file = sys_fopen(path, "a+");
+}
+
 
 void init_trace_files(void)
 {
@@ -186,7 +197,7 @@ void init_trace_files(void)
 
 }
 
-void close_trace_files()
+void close_trace_files(void)
 {
 	sys_fclose(syscall_header);
 	sys_fclose(raw_data);
@@ -197,49 +208,54 @@ void close_trace_files()
 
 }
 
-static void print_trace_meta_information(pid_t tid, int stop_reason, pid_t new_tid)
-{
-	fprintf(trace_file, "%11d", get_global_time_incr());
-	fprintf(trace_file, "%11u", get_time_incr(tid));
-	fprintf(trace_file, "%11d", tid);
-	fprintf(trace_file, "%11d", stop_reason);
-	fprintf(trace_file, "%11d", new_tid);
-}
-
 static void record_performance_data(struct context *ctx)
 {
 	fprintf(trace_file, "%20llu", read_hw_int(ctx->hpc));
 	fprintf(trace_file, "%20llu", read_page_faults(ctx->hpc));
 	fprintf(trace_file, "%20llu", read_rbc_up(ctx->hpc));
 }
-static void record_register_file(struct context *ctx, FILE* file)
+static void record_register_file(struct context *ctx)
 {
 
 	pid_t tid = ctx->child_tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
-	fprintf(file, "%11lu", regs.eax);
-	fprintf(file, "%11lu", regs.ebx);
-	fprintf(file, "%11lu", regs.ecx);
-	fprintf(file, "%11lu", regs.edx);
-	fprintf(file, "%11lu", regs.esi);
-	fprintf(file, "%11lu", regs.edi);
-	fprintf(file, "%11lu", regs.ebp);
-	fprintf(file, "%11lu", regs.orig_eax);
-	fprintf(file, "%11lu", regs.eip);
-	fprintf(file, "%11lu", regs.eflags);
-	fprintf(file, "\n");
+	fprintf(trace_file, "%11lu", regs.eax);
+	fprintf(trace_file, "%11lu", regs.ebx);
+	fprintf(trace_file, "%11lu", regs.ecx);
+	fprintf(trace_file, "%11lu", regs.edx);
+	fprintf(trace_file, "%11lu", regs.esi);
+	fprintf(trace_file, "%11lu", regs.edi);
+	fprintf(trace_file, "%11lu", regs.ebp);
+	fprintf(trace_file, "%11lu", regs.orig_eax);
+	fprintf(trace_file, "%11lu", regs.eip);
+	fprintf(trace_file, "%11lu", regs.eflags);
+	fprintf(trace_file, "\n");
 }
 
+
+/**
+ * Makes an entry into the event trace file
+ */
 void record_event(struct context *ctx, int entry)
 {
-	print_trace_meta_information(ctx->child_tid, ctx->event, entry);
+
+	if ((global_time % MAX_TRACE_ENTRY_SIZE) == 0) {
+		use_new_trace_file();
+	}
+
+	fprintf(trace_file, "%11d", get_global_time_incr());
+	fprintf(trace_file, "%11u", get_time_incr(ctx->child_tid));
+	fprintf(trace_file, "%11d", ctx->child_tid);
+	fprintf(trace_file, "%11d", ctx->event);
+	fprintf(trace_file, "%11d", entry);
+
 
 	/* we record a system call */
 	if (ctx->event != 0) {
 		record_performance_data(ctx);
-		record_register_file(ctx, trace_file);
+		record_register_file(ctx);
 		/* reset the performance counters */
 		reset_hpc(ctx,MAX_RECORD_INTERVAL);
 	} else {
@@ -332,10 +348,10 @@ void record_child_str(pid_t tid, int syscall, long int child_ptr)
 	sys_free((void**) &buf);
 }
 
-void record_inst(struct context* context, char* inst)
+void record_inst(struct context *ctx, char* inst)
 {
-	fprintf(context->inst_dump, "%d:%-40s\n", context->child_tid, inst);
-	record_register_file(context->child_tid, context->inst_dump);
+	fprintf(ctx->inst_dump, "%d:%-40s\n", ctx->child_tid, inst);
+	record_register_file(ctx);
 }
 
 void record_inst_done(struct context* context)

@@ -20,22 +20,13 @@
 static struct context* registered_threads[NUM_MAX_THREADS];
 static int num_active_threads;
 
-static int check_delay(struct context *ctx)
+static void set_switch_counter(int thread_ptr, int tmp_thread_ptr, struct context *ctx)
 {
-	/*if (num_active_threads < 5) {
-		return 1;
+	if (tmp_thread_ptr == thread_ptr) {
+		ctx->switch_counter--;
+	} else {
+		ctx->switch_counter = MAX_SWITCH_COUNTER;
 	}
-
-	if (ctx->event == SYS_gettimeofday || ctx->event == SYS_sched_yield) {
-		if (ctx->delay_counter++ < 10) {
-			return 0;
-		} else {
-			ctx->delay_counter = 0;
-			return 1;
-		}
-	}*/
-
-	return 1;
 }
 
 /**
@@ -44,7 +35,8 @@ static int check_delay(struct context *ctx)
  */
 struct context* get_active_thread(struct context *ctx)
 {
-	static int i = -1;
+	static int thread_ptr = -1;
+	int tmp_thread_ptr = thread_ptr;
 
 	/* This maintains the order in which the threads are signaled to continue and
 	 * when the the record is actually written
@@ -54,43 +46,37 @@ struct context* get_active_thread(struct context *ctx)
 		if (!ctx->allow_ctx_switch) {
 			return ctx;
 		}
-	}
 
-	//i++;
-
-	/* check from current index(i) till the end of the array */
-	for (; i < NUM_MAX_THREADS; i++) {
-		struct context *ctx = registered_threads[i];
-		if (ctx != NULL) {
-			if (ctx->exec_state == EXEC_STATE_IN_SYSCALL && check_delay(ctx)) {
-				if ((check_delay(ctx)) && (sys_waitpid_nonblock(ctx->child_tid, &(ctx->status)) != 0)) {
-					ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-					return ctx;
-				} else {
-					continue;
-				}
-			}
-			return ctx;
+		/* switch to next thread if the thread reached the maximum number of RBCs */
+		if (ctx->event == USR_SCHED || ctx->switch_counter < 0) {
+			thread_ptr++;
+			ctx->switch_counter = MAX_SWITCH_COUNTER;
 		}
 	}
 
-	while (1) {
+	struct context *return_ctx;
 
+	while (1) {
 		/* check all threads again */
-		for (i = 0; i < NUM_MAX_THREADS; i++) {
-			struct context *ctx = registered_threads[i];
-			if (ctx != NULL) {
-				if (ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
-					if ((check_delay(ctx)) && (sys_waitpid_nonblock(ctx->child_tid, &(ctx->status)) != 0)) {
-						ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-						return ctx;
+		for (; thread_ptr < NUM_MAX_THREADS; thread_ptr++) {
+			return_ctx = registered_threads[thread_ptr];
+			if (return_ctx != NULL) {
+				if (return_ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
+					if (sys_waitpid_nonblock(return_ctx->child_tid, &(return_ctx->status)) != 0) {
+						return_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+						set_switch_counter(thread_ptr, tmp_thread_ptr, return_ctx);
+						return return_ctx;
 					} else {
 						continue;
 					}
 				}
-				return ctx;
+
+				set_switch_counter(thread_ptr, tmp_thread_ptr, return_ctx);
+				return return_ctx;
 			}
 		}
+
+		thread_ptr = 0;
 	}
 
 	return 0;

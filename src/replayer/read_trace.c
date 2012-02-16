@@ -15,6 +15,7 @@ static FILE *__trace;
 static FILE *raw_data;
 static FILE *syscall_input;
 static int raw_data_file_counter = 0;
+static uint32_t trace_file_counter = 0;
 
 static char* trace_path = NULL;
 
@@ -70,13 +71,23 @@ void use_next_rawdata_file(void)
 {
 	char tmp[128], path[64];
 
-	strcpy(path, trace_path);
-
 	sys_fclose(raw_data);
 	strcpy(path, trace_path);
 	sprintf(tmp, "raw_data_%u", raw_data_file_counter++);
 	strcat(path, tmp);
 	raw_data = sys_fopen(path, "a+");
+}
+
+
+static void use_new_trace_file(void)
+{
+	char tmp[128], path[64];
+
+	sys_fclose(__trace);
+	strcpy(path, trace_path);
+	sprintf(tmp, "/trace_%u", ++trace_file_counter);
+	strcat(path, tmp);
+	__trace = sys_fopen(path, "a+");
 }
 
 
@@ -262,8 +273,11 @@ int peek_next_trace(struct trace *trace)
 	if (bytes_read > 0) {
 		fsetpos(__trace, &pos);
 		read_next_trace(trace);
-
+	} else if (feof(__trace)) {
+		assert(0);
 	}
+
+
 
 	fsetpos(__trace, &pos);
 	return bytes_read;
@@ -271,7 +285,6 @@ int peek_next_trace(struct trace *trace)
 
 int read_next_trace(struct trace *trace)
 {
-	assert(!feof(__trace));
 
 	char *line = sys_malloc(1024);
 
@@ -310,6 +323,10 @@ int read_next_trace(struct trace *trace)
 	}
 	sys_free((void**) &line);
 
+
+	if ((trace->global_time % MAX_TRACE_ENTRY_SIZE) == 0) {
+		use_new_trace_file();
+	}
 	return bytes_read;
 }
 

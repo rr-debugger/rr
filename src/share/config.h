@@ -8,5 +8,8 @@
 //streamcluster
 #define MAX_RECORD_INTERVAL		((uint64_t)1000000)
 
+#define MAX_TRACE_ENTRY_SIZE	8000001
+#define MAX_SWITCH_COUNTER 		10
+
 
 #endif /* CONFIG_H_ */
