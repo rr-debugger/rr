@@ -85,7 +85,7 @@ static void use_new_trace_file(void)
 
 	sys_fclose(__trace);
 	strcpy(path, trace_path);
-	sprintf(tmp, "/trace_%u", ++trace_file_counter);
+	sprintf(tmp, "/trace_%u", trace_file_counter++);
 	strcat(path, tmp);
 	__trace = sys_fopen(path, "r");
 }
