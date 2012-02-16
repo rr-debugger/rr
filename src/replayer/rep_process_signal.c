@@ -15,7 +15,7 @@
 #include "../share/ipc.h"
 #include "../share/hpc.h"
 
-#define SKID_SIZE 			50
+#define SKID_SIZE 			55
 
 static void singlestep(struct context *ctx, int sig, int expected_val)
 {
