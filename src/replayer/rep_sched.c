@@ -61,7 +61,7 @@ struct context* rep_sched_get_thread()
 	while ((ret > 0) && (ctx->trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
 		rbc_up += next_trace.rbc_up;
 		read_next_trace(&(ctx->trace));
-		peek_next_trace(&next_trace);
+		ret = peek_next_trace(&next_trace);
 	}
 
 	if (ctx->trace.stop_reason == USR_SCHED) {

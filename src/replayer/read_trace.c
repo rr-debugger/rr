@@ -274,7 +274,7 @@ int peek_next_trace(struct trace *trace)
 		fsetpos(__trace, &pos);
 		read_next_trace(trace);
 	} else if (feof(__trace)) {
-		assert(0);
+		return 0;
 	}
 
 
