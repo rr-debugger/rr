@@ -87,8 +87,7 @@ static void use_new_trace_file(void)
 	strcpy(path, trace_path);
 	sprintf(tmp, "/trace_%u", ++trace_file_counter);
 	strcat(path, tmp);
-	__trace = sys_fopen(path, "a+");
-	assert(1==0);
+	__trace = sys_fopen(path, "r");
 }
 
 
@@ -319,8 +318,11 @@ int read_next_trace(struct trace *trace)
 	}
 	sys_free((void**) &line);
 
+	if (trace->global_time >= 8000000) {
+		printf("sucker %u\n",trace->global_time);
+	}
 
-	if (((trace->global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (trace->global_time > 0)) {
+	if (((trace->global_time % (MAX_TRACE_ENTRY_SIZE - 1)) == 0) && (trace->global_time > 0)) {
 		use_new_trace_file();
 	}
 	return bytes_read;
@@ -349,6 +351,7 @@ void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
 
 	sys_free((void**) &line);
 	fsetpos(__trace, &pos);
+	assert(0);
 }
 
 /**
