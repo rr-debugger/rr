@@ -285,8 +285,10 @@ int read_next_trace(struct trace *trace)
 	char *line = sys_malloc(1024);
 
 	int bytes_read = (int) fgets(line, 1024, __trace);
-	if (bytes_read <= 0) {
-		return bytes_read;
+	if (bytes_read <= 0 && feof(__trace)) {
+		use_new_trace_file();
+		bytes_read = (int) fgets(line, 1024, __trace);
+		assert(bytes_read > 0);
 	}
 
 	char *tmp_ptr = (char*) line;
@@ -319,13 +321,6 @@ int read_next_trace(struct trace *trace)
 	}
 	sys_free((void**) &line);
 
-	if (trace->global_time >= 8000000) {
-		printf("sucker %u\n",trace->global_time);
-	}
-
-	if (feof(__trace)) {
-		use_new_trace_file();
-	}
 	return bytes_read;
 }
 
