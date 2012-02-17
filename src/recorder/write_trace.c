@@ -22,7 +22,6 @@ static FILE *trace_file;
 static uint32_t raw_data_file_counter = 0;
 static uint32_t trace_file_counter = 0;
 
-
 static uint32_t thread_time[100000];
 static uint32_t global_time = 0;
 static char *trace_path;
@@ -35,7 +34,7 @@ void write_open_inst_dump(struct context *ctx)
 	char path[64];
 	char tmp[32];
 	strcpy(path, trace_path);
-	sprintf(tmp, "/inst_dump_%d",ctx->child_tid);
+	sprintf(tmp, "/inst_dump_%d", ctx->child_tid);
 	strcat(path, tmp);
 	ctx->inst_dump = sys_fopen(path, "a+");
 }
@@ -127,7 +126,7 @@ void open_trace_files(void)
 	char tmp[128], path[128];
 
 	strcpy(path, trace_path);
-	sprintf(tmp, "/trace_%u",trace_file_counter);
+	sprintf(tmp, "/trace_%u", trace_file_counter);
 	strcat(path, tmp);
 	trace_file = sys_fopen(path, "a+");
 
@@ -137,7 +136,7 @@ void open_trace_files(void)
 	syscall_header = sys_fopen(path, "a+");
 
 	strcpy(path, trace_path);
-	sprintf(tmp, "/raw_data_%u",raw_data_file_counter);
+	sprintf(tmp, "/raw_data_%u", raw_data_file_counter);
 	strcat(path, tmp);
 	raw_data = sys_fopen(path, "a+");
 }
@@ -163,7 +162,6 @@ static void use_new_trace_file(void)
 	strcat(path, tmp);
 	trace_file = sys_fopen(path, "a+");
 }
-
 
 void init_trace_files(void)
 {
@@ -234,7 +232,6 @@ static void record_register_file(struct context *ctx)
 	fprintf(trace_file, "\n");
 }
 
-
 /**
  * Makes an entry into the event trace file
  */
@@ -251,13 +248,12 @@ void record_event(struct context *ctx, int entry)
 	fprintf(trace_file, "%11d", ctx->event);
 	fprintf(trace_file, "%11d", entry);
 
-
 	/* we record a system call */
 	if (ctx->event != 0) {
 		record_performance_data(ctx);
 		record_register_file(ctx);
 		/* reset the performance counters */
-		reset_hpc(ctx,MAX_RECORD_INTERVAL);
+		reset_hpc(ctx, MAX_RECORD_INTERVAL);
 	} else {
 		fprintf(trace_file, "\n");
 	}
@@ -287,7 +283,6 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_pt
 	}
 }
 
-
 static void write_raw_data(struct context *ctx, void *buf, int to_write)
 {
 	int bytes_written;
@@ -295,8 +290,8 @@ static void write_raw_data(struct context *ctx, void *buf, int to_write)
 		struct context safe_ctx;
 		memcpy(&safe_ctx, ctx, sizeof(struct context));
 		ctx->event = USR_NEW_RAWDATA_FILE;
-		record_event(ctx,0);
-		memcpy(ctx,&safe_ctx,sizeof(struct context));
+		record_event(ctx, 0);
+		memcpy(ctx, &safe_ctx, sizeof(struct context));
 		use_new_rawdata_file();
 		assert(fwrite(buf, 1, to_write, raw_data) == to_write);
 	}
@@ -306,21 +301,30 @@ static void write_raw_data(struct context *ctx, void *buf, int to_write)
  * Writes data into the raw_data file and generates a corresponding entry in
  * syscall_input.
  */
-void record_child_data(struct context *ctx, int syscall, size_t len, long int child_ptr)
+
+#define SMALL_READ_SIZE	4096
+static read_buffer[SMALL_READ_SIZE];
+
+void record_child_data(struct context *ctx, int syscall, size_t size, long int child_ptr)
 {
 	ssize_t read_bytes;
 
 	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
 	if (child_ptr != 0) {
-		void* buf = read_child_data_checked(ctx, len, child_ptr, &read_bytes);
-		/* ensure that everything is written */
-		if (read_bytes != len && read_child_orig_eax(ctx->child_tid) != 192) {
-			printf("bytes_read: %x  len %x   syscall: %d\n",read_bytes,len,read_child_orig_eax(ctx->child_tid));
-			print_register_file_tid(ctx->child_tid);
-			assert(1==0);
+		if (size <= SMALL_READ_SIZE) {
+			read_child_usr(ctx,read_buffer,child_ptr,size);
+			write_raw_data(ctx, read_buffer, size);
+		} else {
+			void* buf = read_child_data_checked(ctx, size, child_ptr, &read_bytes);
+			/* ensure that everything is written */
+			if (read_bytes != size && read_child_orig_eax(ctx->child_tid) != 192) {
+				printf("bytes_read: %x  len %x   syscall: %d\n", read_bytes, size, read_child_orig_eax(ctx->child_tid));
+				print_register_file_tid(ctx->child_tid);
+				assert(1==0);
+			}
+			write_raw_data(ctx, buf, read_bytes);
+			sys_free((void**) &buf);
 		}
-		write_raw_data(ctx,buf,read_bytes);
-		sys_free((void**) &buf);
 	}
 
 	print_header(syscall, child_ptr);
@@ -330,11 +334,10 @@ void record_child_data(struct context *ctx, int syscall, size_t len, long int ch
 
 void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf)
 {
-	write_raw_data(ctx,buf,len);
+	write_raw_data(ctx, buf, len);
 	print_header(syscall, addr);
 	fprintf(syscall_header, "%11d\n", len);
 }
-
 
 void record_child_str(pid_t tid, int syscall, long int child_ptr)
 {
@@ -344,7 +347,7 @@ void record_child_str(pid_t tid, int syscall, long int child_ptr)
 	fprintf(syscall_header, "%11d\n", len);
 	int bytes_written = fwrite(buf, 1, len, raw_data);
 
-	assert (bytes_written == len);
+	assert(bytes_written == len);
 	sys_free((void**) &buf);
 }
 

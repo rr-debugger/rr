@@ -164,15 +164,16 @@ static int allow_ctx_switch(struct context *ctx)
 			return 0;
 		}
 
+		void *sock_ptr = (void*) regs.ecx;
+
 		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) */
 		if (call == SYS_RECV) {
-			uintptr_t *buf = read_child_data(ctx, sizeof(void*), regs.ecx + 4);
-			size_t *len = read_child_data(ctx, sizeof(void*), regs.ecx + 8);
-			printf("fucking len: %d\n", *len);
+			uintptr_t *buf = read_child_data(ctx, PTR_SIZE, regs.ecx + 4);
+			size_t *len = read_child_data(ctx, PTR_SIZE, regs.ecx + 8);
 			assert(*len <= ctx->scratch_size);
-			ctx->recorded_scratch_ptr = *buf;
+			ctx->recorded_scratch_ptr_0 = *buf;
 			ctx->recorded_scratch_size = *len;
-			write_child_data(ctx, sizeof(void*), regs.ecx + 4, &(ctx->scratch_ptr));
+			write_child_data(ctx, sizeof(void*), sock_ptr + 4, &(ctx->scratch_ptr));
 
 			sys_free((void**) &buf);
 			sys_free((void**) &len);
@@ -180,11 +181,21 @@ static int allow_ctx_switch(struct context *ctx)
 
 			/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 		} else if (call == SYS_ACCEPT) {
-			//TODO: implement accept
+			void *addrlen, *addr;
+
+			read_child_usr(ctx,  &addr, sock_ptr + INT_SIZE, PTR_SIZE);
+			read_child_usr(ctx,  &addrlen, sock_ptr + INT_SIZE + PTR_SIZE, PTR_SIZE);
+			ctx->recorded_scratch_ptr_0 = addrlen;
+			ctx->recorded_scratch_ptr_1 = addr;
+			ctx->recorded_scratch_size = 100;
+
+			write_child_data(ctx, PTR_SIZE, addrlen, ctx->scratch_ptr);
+			write_child_data(ctx,PTR_SIZE, addr, ctx->scratch_ptr + sizeof(socklen_t));
+			memcpy_child(ctx,addrlen, sock_ptr + INT_SIZE + PTR_SIZE, sizeof(socklen_t));
 			return 1;
 		}
 
-		return 1;
+		return 0;
 	}
 
 	case SYS__newselect:
@@ -203,7 +214,7 @@ static int allow_ctx_switch(struct context *ctx)
 			return 0;
 		}
 
-		ctx->recorded_scratch_ptr = regs.ecx;
+		ctx->recorded_scratch_ptr_0 = regs.ecx;
 		ctx->recorded_scratch_size = regs.edx;
 
 		regs.ecx = ctx->scratch_ptr;
@@ -222,7 +233,7 @@ static int allow_ctx_switch(struct context *ctx)
 	{
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
-		ctx->recorded_scratch_ptr = (void*) regs.ecx;
+		ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
 		ctx->recorded_scratch_size = sizeof(int);
 
 		regs.ecx = ctx->scratch_ptr;
@@ -236,11 +247,11 @@ static int allow_ctx_switch(struct context *ctx)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		ctx->recorded_scratch_size = sizeof(struct pollfd) * regs.ecx;
-		ctx->recorded_scratch_ptr = (void*) regs.ebx;
+		ctx->recorded_scratch_ptr_0 = (void*) regs.ebx;
 		assert(ctx->recorded_scratch_size <= ctx->scratch_size);
 
 		/* copy the data */
-		void *data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr);
+		void *data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr, data);
 		sys_free((void**) &data);
 
@@ -256,7 +267,7 @@ static int allow_ctx_switch(struct context *ctx)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		ctx->recorded_scratch_size = sizeof(struct epoll_event) * regs.edx;
-		ctx->recorded_scratch_ptr = regs.ecx;
+		ctx->recorded_scratch_ptr_0 = regs.ecx;
 		assert(ctx->recorded_scratch_size <= ctx->scratch_size);
 		regs.ecx = (long int) ctx->scratch_ptr;
 		write_child_registers(ctx->child_tid, &regs);
@@ -278,7 +289,7 @@ static int allow_ctx_switch(struct context *ctx)
 	{
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
-		ctx->recorded_scratch_ptr = (void*) regs.ecx;
+		ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
 		ctx->recorded_scratch_size = sizeof(struct timespec);
 
 		regs.ecx = ctx->scratch_ptr;

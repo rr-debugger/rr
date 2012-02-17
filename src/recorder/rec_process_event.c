@@ -218,8 +218,8 @@ void rec_process_syscall(struct context *ctx)
 	case SYS_epoll_wait:
 	{
 		void *data = (void*) read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, data);
-		regs.ecx = (long int) ctx->recorded_scratch_ptr;
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
+		regs.ecx = (long int) ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 		record_child_data(ctx, syscall, regs.eax * sizeof(struct epoll_event), regs.ecx);
 		sys_free((void**) &data);
@@ -411,7 +411,7 @@ void rec_process_syscall(struct context *ctx)
 	 * the value of the ecx register when returning from the systenm call is different from entering
 	 * the system call.
 	 */
-	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), regs.ecx /*!= 0 ? regs.ecx : regs.ecx - 0x1000*/);
+	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), regs.ecx);
 
 	/**
 	 * uid_t getuid(void);
@@ -464,7 +464,6 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 */
 	SYS_REC2(gettimeofday, sizeof(struct timeval), regs.ebx, sizeof(struct timezone), regs.ecx)
-
 	/**
 	 * int inotify_rm_watch(int fd, uint32_t wd)
 	 *
@@ -805,8 +804,8 @@ void rec_process_syscall(struct context *ctx)
 	case SYS_poll:
 	{
 		void *data = read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, data);
-		regs.ebx = (long int) ctx->recorded_scratch_ptr;
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
+		regs.ebx = (long int) ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 		record_child_data(ctx, syscall, sizeof(struct pollfd) * regs.ecx, regs.ebx);
 		sys_free((void**) &data);
@@ -1110,9 +1109,9 @@ void rec_process_syscall(struct context *ctx)
 		{
 			//printf("debug 1\n");
 			void *recorded = read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
-			write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded);
-			write_child_data(ctx, sizeof(void*), base_addr + 4, (long int) &(ctx->recorded_scratch_ptr));
-			record_child_data(ctx, syscall, ctx->recorded_scratch_size, (long int) ctx->recorded_scratch_ptr);
+			write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded);
+			write_child_data(ctx, sizeof(void*), base_addr + 4, (long int) &(ctx->recorded_scratch_ptr_0));
+			record_child_data(ctx, syscall, ctx->recorded_scratch_size, (long int) ctx->recorded_scratch_ptr_0);
 			//printf("debug 2\n");
 
 			sys_free((void**) &recorded);
@@ -1204,13 +1203,25 @@ void rec_process_syscall(struct context *ctx)
 		 * */
 		case SYS_ACCEPT:
 		{
-			//FIXXME: not quite sure about socket_addr;
-			socklen_t *addrlen = read_child_data(ctx, sizeof(socklen_t), regs.ecx + (sizeof(int) + sizeof(struct sockaddr*)));
-			struct sockaddr **addr_ptr = read_child_data(ctx, sizeof(struct sockaddr*), regs.ecx + sizeof(int));
-			record_child_data(ctx, syscall, sizeof(struct sockaddr), (long int) *addr_ptr);
-			record_child_data(ctx, syscall, sizeof(socklen_t), *addrlen);
-			sys_free((void**) &addr_ptr);
-			sys_free((void**) &addrlen);
+			void *sock_ptr = (void*) regs.ecx;
+			socklen_t addrlen;
+
+			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE + PTR_SIZE, &(ctx->recorded_scratch_ptr_0));
+			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE, &(ctx->recorded_scratch_ptr_1));
+
+			memcpy_child(ctx, ctx->recorded_scratch_ptr_1, ctx->scratch_ptr, sizeof(socklen_t));
+			read_child_usr(ctx, &addrlen, ctx->scratch_ptr, sizeof(socklen_t));
+			record_child_data(ctx, syscall, sizeof(socklen_t), ctx->recorded_scratch_ptr_1);
+
+			memcpy_child(ctx, ctx->recorded_scratch_ptr_0, ctx->scratch_ptr + sizeof(socklen_t), addrlen);
+			record_child_data(ctx, syscall, addrlen, ctx->recorded_scratch_ptr_0);
+
+			/*socklen_t *addrlen = read_child_data(ctx, sizeof(socklen_t), regs.ecx + (INT_SIZE + PTR_SIZE));
+			 struct sockaddr **addr_ptr = read_child_data(ctx, sizeof(struct sockaddr*), regs.ecx + sizeof(int));
+			 record_child_data(ctx, syscall, sizeof(struct sockaddr), (long int) *addr_ptr);
+			 record_child_data(ctx, syscall, sizeof(socklen_t), *addrlen);
+			 sys_free((void**) &addr_ptr);
+			 sys_free((void**) &addrlen);*/
 			break;
 		}
 
@@ -1562,8 +1573,8 @@ void rec_process_syscall(struct context *ctx)
 	case SYS_nanosleep:
 	{
 		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
-		regs.ecx = ctx->recorded_scratch_ptr;
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
+		regs.ecx = ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 		free(recorded_data);
 
@@ -1610,8 +1621,8 @@ void rec_process_syscall(struct context *ctx)
 			record_child_data(ctx, syscall, regs.eax, regs.ecx);
 		} else {
 			void *recorded_data = read_child_data(ctx, regs.eax, ctx->scratch_ptr);
-			write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr, recorded_data);
-			regs.ecx = ctx->recorded_scratch_ptr;
+			write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr_0, recorded_data);
+			regs.ecx = ctx->recorded_scratch_ptr_0;
 			write_child_registers(ctx->child_tid, &regs);
 
 			record_parent_data(ctx, syscall, regs.eax, (void*) regs.ecx, recorded_data);
@@ -1712,8 +1723,8 @@ void rec_process_syscall(struct context *ctx)
 	case SYS_wait4:
 	{
 		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
-		regs.ecx = ctx->recorded_scratch_ptr;
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
+		regs.ecx = ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 		free(recorded_data);
 
@@ -1735,8 +1746,8 @@ void rec_process_syscall(struct context *ctx)
 	case SYS_waitpid:
 	{
 		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr, recorded_data);
-		regs.ecx = ctx->recorded_scratch_ptr;
+		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
+		regs.ecx = ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 		free(recorded_data);
 

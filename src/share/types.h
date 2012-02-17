@@ -47,7 +47,9 @@ struct context {
 	int scratch_size;
 	int switch_counter;
 
-	void* recorded_scratch_ptr;
+	void *recorded_scratch_ptr_0;
+	void *recorded_scratch_ptr_1;
+
 	int recorded_scratch_size;
 
 	/* shared */

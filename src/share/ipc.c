@@ -255,13 +255,17 @@ void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr,
 	return buf;
 }
 
+void read_child_usr(struct context *ctx, void *dest, void *src, size_t size) {
+	assert(pread(ctx->child_mem_fd, dest, size, (uintptr_t)src) == size);
+}
+
 void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 {
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
 	ssize_t read_bytes = pread(ctx->child_mem_fd, buf, size, addr);
 	if (read_bytes != size) {
-		printf("reading from: %x demanded: %u  read %u  event: %d\n",addr, size,read_bytes,ctx->event);
+		printf("reading from: %x demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
 		perror("warning: reading from child process: ");
 		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
 		sleep(5);
@@ -301,8 +305,7 @@ char* read_child_str(pid_t pid, long int addr)
 		}
 
 		idx += READ_SIZE;
-	}
-	assert(1==0);
+	}assert(1==0);
 	return 0;
 }
 
@@ -351,6 +354,10 @@ void write_child_data(struct context *ctx, const size_t size, void *addr, void *
 	}
 }
 
-
-
+void memcpy_child(struct context *ctx, void *dest, void *src, int size)
+{
+	void *tmp = read_child_data(ctx, size, src);
+	write_child_data(ctx, size, dest, tmp);
+	free(tmp);
+}
 
