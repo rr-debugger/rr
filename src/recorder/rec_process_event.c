@@ -1601,6 +1601,10 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_read:
 	{
+		if (regs.eax < 0) {
+			break;
+		}
+
 		/* this is a hack; we come here if the scratch size is too small */
 		if (ctx->recorded_scratch_size == -1) {
 			record_child_data(ctx, syscall, regs.eax, regs.ecx);

@@ -88,6 +88,7 @@ static void use_new_trace_file(void)
 	sprintf(tmp, "/trace_%u", trace_file_counter++);
 	strcat(path, tmp);
 	__trace = sys_fopen(path, "r");
+	printf("opening new trace file: trace_%u\n",trace_file_counter);
 }
 
 
@@ -322,7 +323,7 @@ int read_next_trace(struct trace *trace)
 		printf("sucker %u\n",trace->global_time);
 	}
 
-	if (((trace->global_time % (MAX_TRACE_ENTRY_SIZE - 1)) == 0) && (trace->global_time > 0)) {
+	if (feof(__trace)) {
 		use_new_trace_file();
 	}
 	return bytes_read;
