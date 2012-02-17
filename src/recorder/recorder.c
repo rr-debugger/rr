@@ -123,7 +123,8 @@ static void cont_block(struct context *ctx)
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);
-	ctx->event = read_child_orig_eax(ctx->child_tid);
+	read_child_registers(ctx->child_tid,&(ctx->child_regs));
+	ctx->event = ctx->child_regs.orig_eax;
 	handle_signal(ctx);
 }
 
@@ -141,10 +142,8 @@ static int allow_ctx_switch(struct context *ctx)
 
 	case SYS_futex:
 	{
-		struct user_regs_struct regs;
-		read_child_registers(ctx->child_tid, &regs);
 
-		int op = regs.ecx & FUTEX_CMD_MASK;
+		int op = ctx->child_regs.ecx & FUTEX_CMD_MASK;
 		//printf("futex op: %x\n", op);
 
 		if (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET || op == FUTEX_WAIT_PRIVATE || op == FUTEX_WAIT_REQUEUE_PI) {
@@ -156,7 +155,7 @@ static int allow_ctx_switch(struct context *ctx)
 
 	case SYS_socketcall:
 	{
-		int call = read_child_ebx(ctx->child_tid);
+		int call = ctx->child_regs.ebx;
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 		printf("socket call: %d\n", call);
