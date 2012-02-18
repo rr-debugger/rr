@@ -48,7 +48,7 @@ struct context* get_active_thread(struct context *ctx)
 		}
 
 		/* switch to next thread if the thread reached the maximum number of RBCs */
-		if (ctx->event == USR_SCHED || ctx->switch_counter < 0) {
+		if (ctx->switch_counter < 0) {
 			thread_ptr++;
 			ctx->switch_counter = MAX_SWITCH_COUNTER;
 		}
@@ -66,9 +66,8 @@ struct context* get_active_thread(struct context *ctx)
 						return_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
 						set_switch_counter(thread_ptr, tmp_thread_ptr, return_ctx);
 						return return_ctx;
-					} else {
-						continue;
 					}
+					continue;
 				}
 
 				set_switch_counter(thread_ptr, tmp_thread_ptr, return_ctx);

@@ -53,7 +53,8 @@ struct context {
 	int recorded_scratch_size;
 
 	/* shared */
-	FILE* inst_dump;
+	struct user_regs_struct child_regs;
+	FILE *inst_dump;
 	pid_t child_tid;
 	int child_mem_fd;
 	int child_sig;

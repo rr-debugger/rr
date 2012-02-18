@@ -99,7 +99,7 @@ static void compensate_branch_count(struct context *ctx, int sig)
 		rbc_now = read_rbc_up(ctx->hpc);
 	}
 	if (found_spot != 1) {
-		printf("damn it!! %d\n",found_spot);
+		printf("cannot find signal %d   time: %u\n",sig,ctx->trace.global_time);
 		assert(found_spot == 1);
 	}
 }
