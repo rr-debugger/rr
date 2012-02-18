@@ -113,6 +113,7 @@ void handle_signal(struct context* ctx)
 	}
 
 	case SIGTERM:
+	case 62:
 	{
 		ctx->event = -sig;
 		ctx->child_sig = sig;
