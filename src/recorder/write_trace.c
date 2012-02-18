@@ -314,6 +314,7 @@ void record_child_data(struct context *ctx, int syscall, size_t size, long int c
 		if (size <= SMALL_READ_SIZE) {
 			read_child_usr(ctx,read_buffer,child_ptr,size);
 			write_raw_data(ctx, read_buffer, size);
+			read_bytes = size;
 		} else {
 			void* buf = read_child_data_checked(ctx, size, child_ptr, &read_bytes);
 			/* ensure that everything is written */
