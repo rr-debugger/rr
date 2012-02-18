@@ -1204,24 +1204,18 @@ void rec_process_syscall(struct context *ctx)
 		case SYS_ACCEPT:
 		{
 			void *sock_ptr = (void*) regs.ecx;
+			void *addrlen_ptr = 0;
 			socklen_t addrlen;
 
 			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE + PTR_SIZE, &(ctx->recorded_scratch_ptr_0));
 			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE, &(ctx->recorded_scratch_ptr_1));
-
-			memcpy_child(ctx, ctx->recorded_scratch_ptr_1, ctx->scratch_ptr, sizeof(socklen_t));
+			memcpy_child(ctx,ctx->recorded_scratch_ptr_1,ctx->scratch_ptr,sizeof(socklen_t));
 			read_child_usr(ctx, &addrlen, ctx->scratch_ptr, sizeof(socklen_t));
-			record_child_data(ctx, syscall, sizeof(socklen_t), ctx->recorded_scratch_ptr_1);
 
+			record_child_data(ctx, syscall, sizeof(socklen_t), ctx->recorded_scratch_ptr_1);
 			memcpy_child(ctx, ctx->recorded_scratch_ptr_0, ctx->scratch_ptr + sizeof(socklen_t), addrlen);
 			record_child_data(ctx, syscall, addrlen, ctx->recorded_scratch_ptr_0);
 
-			/*socklen_t *addrlen = read_child_data(ctx, sizeof(socklen_t), regs.ecx + (INT_SIZE + PTR_SIZE));
-			 struct sockaddr **addr_ptr = read_child_data(ctx, sizeof(struct sockaddr*), regs.ecx + sizeof(int));
-			 record_child_data(ctx, syscall, sizeof(struct sockaddr), (long int) *addr_ptr);
-			 record_child_data(ctx, syscall, sizeof(socklen_t), *addrlen);
-			 sys_free((void**) &addr_ptr);
-			 sys_free((void**) &addrlen);*/
 			break;
 		}
 

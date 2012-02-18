@@ -123,7 +123,7 @@ static void cont_block(struct context *ctx)
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);
-	read_child_registers(ctx->child_tid,&(ctx->child_regs));
+	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;
 	handle_signal(ctx);
 }
@@ -180,17 +180,23 @@ static int allow_ctx_switch(struct context *ctx)
 
 			/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 		} else if (call == SYS_ACCEPT) {
-			void *addrlen, *addr;
+			void *addrlen_ptr, *addr, *tmp;
+			socklen_t addrlen;
 
-			read_child_usr(ctx,  &addr, sock_ptr + INT_SIZE, PTR_SIZE);
-			read_child_usr(ctx,  &addrlen, sock_ptr + INT_SIZE + PTR_SIZE, PTR_SIZE);
-			ctx->recorded_scratch_ptr_0 = addrlen;
+			read_child_usr(ctx, &addr, sock_ptr + INT_SIZE, PTR_SIZE);
+			read_child_usr(ctx, &addrlen_ptr, sock_ptr + INT_SIZE + PTR_SIZE, PTR_SIZE);
+			read_child_usr(ctx, &addrlen, addrlen_ptr, sizeof(socklen_t));
+			printf("real size %d\n",addrlen);
+
+			ctx->recorded_scratch_ptr_0 = addrlen_ptr;
 			ctx->recorded_scratch_ptr_1 = addr;
-			ctx->recorded_scratch_size = 100;
+			ctx->recorded_scratch_size = addrlen;
+			tmp = ctx->scratch_ptr;
+			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE + PTR_SIZE, &tmp);
+			tmp = ctx->scratch_ptr + sizeof(socklen_t);
+			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE, &tmp);
+			write_child_data(ctx,sizeof(socklen_t),ctx->scratch_ptr,&addrlen);
 
-			write_child_data(ctx, PTR_SIZE, addrlen, ctx->scratch_ptr);
-			write_child_data(ctx,PTR_SIZE, addr, ctx->scratch_ptr + sizeof(socklen_t));
-			memcpy_child(ctx,addrlen, sock_ptr + INT_SIZE + PTR_SIZE, sizeof(socklen_t));
 			return 1;
 		}
 
