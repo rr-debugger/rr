@@ -192,8 +192,8 @@ void rec_process_syscall(struct context *ctx)
 			record_child_data(ctx, syscall, sizeof(struct epoll_event), regs.esi);
 
 			struct epoll_event * event = read_child_data(ctx, sizeof(struct epoll_event), regs.esi);
-			printf("events: %d\n", event->events);
-			printf("data: %x\n", event->data.ptr);
+			//printf("events: %d\n", event->events);
+			//printf("data: %x\n", event->data.ptr);
 			sys_free((void**) &event);
 			break;
 		}
