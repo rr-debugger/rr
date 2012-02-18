@@ -158,7 +158,7 @@ static int allow_ctx_switch(struct context *ctx)
 		int call = ctx->child_regs.ebx;
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
-		printf("socket call: %d\n", call);
+		//printf("socket call: %d\n", call);
 		if (call == SYS_SETSOCKOPT || call == SYS_GETSOCKNAME) {
 			return 0;
 		}

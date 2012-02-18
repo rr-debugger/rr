@@ -1062,7 +1062,7 @@ void rec_process_syscall(struct context *ctx)
 		int call = regs.ebx;
 		uintptr_t base_addr = regs.ecx;
 
-		debug_print("socket call: %d\n", call);
+		//debug_print("socket call: %d\n", call);
 		switch (call) {
 		/* int socket(int domain, int type, int protocol); */
 		case SYS_SOCKET:
