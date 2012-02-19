@@ -169,7 +169,7 @@ static void handle_socket(struct context *ctx, struct trace* trace)
 		goto_next_syscall_emu(ctx);
 	} else {
 		int call = read_child_ebx(tid);
-		printf("socket call: %d\n", call);
+	//	printf("socket call: %d\n", call);
 		switch (call) {
 		/* int socket(int domain, int type, int protocol); */
 		case SYS_SOCKET:
@@ -528,7 +528,7 @@ void rep_process_syscall(struct context* context)
 			goto_next_syscall_emu(context);
 		} else {
 			int request = read_child_ecx(tid);
-			debug_print("request: %x\n", request);
+			//debug_print("request: %x\n", request);
 
 			if (request & _IOC_WRITE) {
 				switch (request) {
