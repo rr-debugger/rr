@@ -60,7 +60,7 @@ uint64_t read_hw_int(struct hpc_context* counters);
 
 
 #define START_COUNTER(pid,group_fd,name) \
-	name.fd = syscall(336,&(name.attr),pid,-1,group_fd,0); \
+	name.fd = syscall(__NR_perf_event_open, &(name.attr),pid,-1,group_fd,0); \
     if (name.fd < 0) {perror("failed to initialize hpc\n"); fflush(stdout); exit(-1);} \
 	if (ioctl(name.fd,PERF_EVENT_IOC_ENABLE,0) < 0) { \
 		perror("failed to start hpc\n"); \
