@@ -109,7 +109,7 @@ void sys_setup_process()
 		sys_exit();
 	}
 
-	unsigned long mask = 0x4;
+	unsigned long mask = 0x2;
 	if (sched_setaffinity(0, sizeof(mask), (cpu_set_t*) &mask) == -1) {
 		perror("error setting affinity -- bailing out\n");
 		sys_exit();
