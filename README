@@ -34,6 +34,10 @@ randomization is disabled. You can do this by e.g., with the following command:
 
 sysctl -w kernel.randomize_va_space=0
 
+Also, we need to be able to write to /proc/$pid/mem. This can usually be
+achieved with the following command:
+
+sysctl -w kernel.yama.ptrace_scope=0
 
 Typing rr --record /path/to/binary invokes the recorder. The recorder
 creates a path in the current directory which contains the trace file(s).
