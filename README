@@ -12,8 +12,8 @@ developed under Ubuntu 11.04.
 
 rr requires two additional libraries:
 
-(1) libpfm-4.1.0: The library can be downloaded from:
-http://sourceforge.net/projects/perfmon2/files/libpfm4/libpfm-4.1.0.tar.gz/download
+(1) libpfm-4.3.0: The library can be downloaded from:
+http://sourceforge.net/projects/perfmon2/files/libpfm4/libpfm-4.3.0.tar.gz/download
 
 (2) libdisasm-dev
 

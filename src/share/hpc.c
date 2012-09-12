@@ -61,12 +61,12 @@ void init_hpc(struct context *context)
 	/* counts down to the initial value
 	 * the precision level enables PEBS support. precise=0 uses the counter
 	 * with PEBS disabled */
-	libpfm_event_encoding(&(counters->rbc_down.attr), "BR_INST_RETIRED:CONDITIONAL:u:precise=0", 1);
+	libpfm_event_encoding(&(counters->rbc_down.attr), "BR_INST_RETIRED:COND:u:precise=0", 1);
 
 	/* counts up to double check */
-	libpfm_event_encoding(&(counters->rbc_up.attr), "BR_INST_RETIRED:CONDITIONAL:u:precise=0", 1);
+	libpfm_event_encoding(&(counters->rbc_up.attr), "BR_INST_RETIRED:COND:u:precise=0", 1);
 	//libpfm_event_encoding(&(counters->hw_int.attr), "HW_INTERRUPTS:u", 1);
-	libpfm_event_encoding(&(counters->hw_int.attr), "BR_INST_RETIRED:CONDITIONAL:u:precise=0", 1);
+	libpfm_event_encoding(&(counters->hw_int.attr), "BR_INST_RETIRED:COND:u:precise=0", 1);
 	libpfm_event_encoding(&(counters->page_faults.attr), "PERF_COUNT_SW_PAGE_FAULTS:u", 0);
 }
 
