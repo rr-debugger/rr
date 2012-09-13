@@ -54,7 +54,7 @@ static void copy_argv(int argc, char* argv[])
 {
 	int i;
 	for (i = 0; i < argc - 2; i++) {
-		int arglen = strlen(argv[i]);
+		int arglen = strlen(argv[i + 2]);
 		assert(arglen + 1 < MAX_ARGV_LEN);
 		strncpy(__argv[i], argv[i + 2], arglen + 1);
 	}
