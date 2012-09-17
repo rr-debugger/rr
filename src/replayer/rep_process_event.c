@@ -343,6 +343,15 @@ void rep_process_syscall(struct context* context)
 	SYS_FD_ARG(epoll_ctl, 1)
 
 	/**
+	 * int posix_fadvise(int fd, off_t offset, off_t len, int advice);
+	 *
+	 * Programs can use posix_fadvise() to announce an intention to access
+	 * file data in a specific pattern in the future, thus allowing the kernel
+	 * to perform appropriate optimizations.
+	 */
+	SYS_FD_ARG(fadvise64_64, 0)
+
+	/**
 	 * int fchdir(int fd);
 	 *
 	 * fchdir() is identical to chdir(); the only difference is that the directory is given as an open file descriptor.

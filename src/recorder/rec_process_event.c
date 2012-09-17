@@ -1756,6 +1756,15 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(writev)
 
+	/**
+	 * int posix_fadvise(int fd, off_t offset, off_t len, int advice);
+	 *
+	 * Programs can use posix_fadvise() to announce an intention to access
+	 * file data in a specific pattern in the future, thus allowing the kernel
+	 * to perform appropriate optimizations.
+	 */
+	SYS_REC0(fadvise64_64)
+
 	default:
 
 	printf("recorder: unknown syscall %ld -- bailing out\n", syscall);
