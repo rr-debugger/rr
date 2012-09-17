@@ -6,6 +6,13 @@
 
 void rep_process_syscall(struct context* context);
 
+/*
+ * The 'num' parameter in these macros usually corresponds to the
+ * number of buffers that had to be saved in the record phase,
+ * e.g.:
+ * SYS_REC1(stat64, sizeof(struct stat64), regs.ecx)
+ * will need to be replayed with num = 1.
+ */
 
 #define EMU_FD			1
 
@@ -26,6 +33,7 @@ void rep_process_syscall(struct context* context);
 
 
 
+/*********************** All system calls that are executed are handled here *****************************/
 
 
 #define SYS_EXEC_ARG(syscall,num) \

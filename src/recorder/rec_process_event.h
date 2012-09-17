@@ -8,6 +8,11 @@
 void rec_process_syscall(struct context* context);
 void process_thread_start(pid_t pid);
 
+/*
+ * Macros to make the recording of syscalls easier. The suffix
+ * denotes the number of buffers that have to be recorded, which
+ * can usually be inferred from the syscall function signature.
+ */
 
 #define SYS_REC0(syscall) \
 	case SYS_##syscall: { \
