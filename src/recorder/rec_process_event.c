@@ -1765,6 +1765,15 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(fadvise64_64)
 
+	/**
+	 * unsigned int alarm(unsigned int seconds)
+	 *
+	 * The alarm() system call schedules an alarm. The process will get a SIGALRM
+	 * after the requested amount of seconds.
+	 *
+	 */
+	SYS_REC0(alarm)
+
 	default:
 
 	printf("recorder: unknown syscall %ld -- bailing out\n", syscall);

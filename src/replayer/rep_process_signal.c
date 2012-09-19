@@ -166,6 +166,7 @@ void rep_process_signal(struct context *ctx)
 		break;
 	}
 
+	case SIGALRM:
 	case SIGIO:
 	case SIGCHLD:
 	{

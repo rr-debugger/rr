@@ -653,7 +653,7 @@ void rep_process_syscall(struct context* context)
 	 * returned returns the new data. Note that not all file systems are
 	 * POSIX conforming.
 	 */
-	SYS_FD_ARG(write, 0)
+	SYS_FD_OUT_ARG(write,0)
 
 	/**
 	 * ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
@@ -1270,6 +1270,17 @@ void rep_process_syscall(struct context* context)
 	 *
 	 */
 	//SYS_EMU_ARG(waitpid, 1)
+
+	/**
+	 * unsigned int alarm(unsigned int seconds)
+	 *
+	 * The alarm() system call schedules an alarm. The process will get a SIGALRM
+	 * after the requested amount of seconds.
+	 *
+	 */
+	SYS_EMU_ARG(alarm, 0)
+
+
 	/************************ Executed system calls come here ***************************/
 
 	/**

@@ -14,7 +14,7 @@ void rep_process_syscall(struct context* context);
  * will need to be replayed with num = 1.
  */
 
-#define EMU_FD			1
+#define EMU_FD			0
 
 /*********************** All system calls that are emulated are handled here *****************************/
 
@@ -60,7 +60,7 @@ void rep_process_syscall(struct context* context);
 
 
 /*********************** All system calls that include file descriptors are handled here *****************************/
-#ifdef EMU_FD
+
 
 #define SYS_FD_ARG(syscall,num) \
 	SYS_EMU_ARG(syscall,num)
@@ -72,51 +72,45 @@ void rep_process_syscall(struct context* context);
 			finish_syscall_emu(context);}\
 	break; }
 
+#if (EMU_FD) /* all output operations on fd are emulated */
+#define SYS_FD_OUT_ARG(syscall,num)\
+	SYS_FD_ARG(syscall,num)
+#else /* all output operations on fd are executed */
+#define SYS_FD_OUT_ARG(syscall,num)\
+	SYS_EXEC_ARG(syscall,num)
+#endif
 
-
-#else /* all operations on fd are executed */
-
+/*
 #define SYS_FD_ARG0(syscall)\
 	case SYS_##syscall: { \
-		if (state == STATE_SYSCALL_ENTRY) {ptrace_cont(context);}\
-		else {ptrace_cont(context); \
+		if (state == STATE_SYSCALL_ENTRY) {__ptrace_cont(context);}\
+		else {__ptrace_cont(context); \
 		validate_args(context);} \
 	break; }
 #define SYS_FD_REG_ARG1(syscall, reg) \
 	case SYS_##syscall: { \
-		if (state == STATE_SYSCALL_ENTRY) {ptrace_cont(context);}\
-		else {ptrace_cont(context); \
+		if (state == STATE_SYSCALL_ENTRY) {__ptrace_cont(context);}\
+		else {__ptrace_cont(context); \
 		fix_raw_data_ptr(context);\
 		validate_args(context);} \
 	break; }
 #define SYS_FD_ADR_ARG2(syscall, addr1, addr2) \
 	case SYS_##syscall: { \
-		if (state == STATE_SYSCALL_ENTRY) {ptrace_cont(context, trace);}\
-		else {ptrace_cont(context); \
+		if (state == STATE_SYSCALL_ENTRY) {__ptrace_cont(context, trace);}\
+		else {__ptrace_cont(context); \
 		fix_raw_data_ptr(context);\
 		fix_raw_data_ptr(context);\
 		validate_args(context);} \
 	break; }
-
 #define SYS_FD_USER_DEF(syscall,fixes,code) \
 	case SYS_##syscall: { \
-		if (state == STATE_SYSCALL_ENTRY) {ptrace_cont(context);}\
-		else {ptrace_cont(context); \
-		int i__;for(i__=0;i__<fixes;i__++) {\
-		fix_raw_data_ptr(context);}\
+		if (state == STATE_SYSCALL_ENTRY) {__ptrace_cont(context);}\
+		else {code \
+		__ptrace_cont(context); \
+		set_return_value(context); \
 		validate_args(context);} \
 	break; }
-
-#endif
-
-
-
-
-
-
-
-
-
+*/
 
 
 #endif /* REP_PROCESS_EVENT_H_ */

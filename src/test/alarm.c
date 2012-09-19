@@ -23,7 +23,8 @@ int main( int argc, char *argv[] )  {
     alarm(1);  /* timer will pop in 1 second */
 
     for( counter=0; 1 ; counter++ )
-		printf(".");
+		if (counter % 100000 == 0)
+			printf(".");
 
     return( 0 );
 }
