@@ -663,12 +663,15 @@ void rep_process_syscall(struct context* context, int redirect_output)
 				validate_args(context);
 				finish_syscall_emu(context);
 				if (redirect_output) {
-					/* redirect output to stdout */
-					uintptr_t address = (uintptr_t)read_child_ecx(context->child_tid);
-					long int length = read_child_edx(context->child_tid);
-					char buffer[length];
-					read_child_buffer(context->child_tid, address, length, buffer);
-					printf("%s",buffer);
+					/* print output intended for stdout\stderr */
+					long int fd = read_child_ebx(context->child_tid);
+					if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+						uintptr_t address = (uintptr_t)read_child_ecx(context->child_tid);
+						long int length = read_child_edx(context->child_tid);
+						char buffer[length];
+						read_child_buffer(context->child_tid, address, length, buffer);
+						fprintf((fd == STDOUT_FILENO) ? stdout : stderr,"%s",buffer);
+					}
 				}
 			}
 		break;
