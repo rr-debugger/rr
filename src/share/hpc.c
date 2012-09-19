@@ -15,6 +15,7 @@
 #include "../share/sys.h"
 #include <perfmon/pfmlib_perf_event.h>
 
+
 /**
  * libpfm4 specific stuff
  */
@@ -49,6 +50,69 @@ void libpfm_event_encoding(struct perf_event_attr* attr, const char* event_str, 
 	sys_free((void**) &fstr);
 }
 
+
+enum cpuid_requests {
+  CPUID_GETVENDORSTRING,
+  CPUID_GETFEATURES,
+  CPUID_GETTLB,
+  CPUID_GETSERIAL,
+
+  CPUID_INTELEXTENDED=0x80000000,
+  CPUID_INTELFEATURES,
+  CPUID_INTELBRANDSTRING,
+  CPUID_INTELBRANDSTRINGMORE,
+  CPUID_INTELBRANDSTRINGEND,
+};
+
+/** issue a single request to CPUID. Fits 'intel features', for instance
+ *  note that even if only "eax" and "edx" are of interest, other registers
+ *  will be modified by the operation, so we need to tell the compiler about it.
+ */
+static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
+/* this asm returns 1 if CPUID is supported, 0 otherwise (ZF is also set accordingly)
+ * add it later for full compatibility
+
+	pushfd ; get
+	pop eax
+	mov ecx, eax ; save
+	xor eax, 0x200000 ; flip
+	push eax ; set
+	popfd
+	pushfd ; and test
+	pop eax
+	xor eax, ecx ; mask changed bits
+	shr eax, 21 ; move bit 21 to bit 0
+	and eax, 1 ; and mask others
+	push ecx
+	popfd ; restore original flags
+	ret
+
+ */
+  asm volatile("cpuid":"=a"(*a),"=d"(*d):"a"(code):"ecx","ebx");
+}
+
+/*
+ * Find out the cpu model using the cpuid instruction.
+ * full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
+ */
+typedef enum { IntelSandyBridge , IntelIvyBridge } cpu_type;
+cpu_type get_cpu_type(){
+	unsigned int eax,edx;
+	cpuid(CPUID_GETFEATURES,&eax,&edx);
+	switch (eax & 0xF00F0) {
+	case 0x200A0:
+	case 0x200D0:
+		return IntelSandyBridge;
+		break;
+	case 0x300A0:
+		return IntelIvyBridge;
+		break;
+	default:
+		assert(0 && "CPU not supported yet (add cpuid and adjust the event string to add support).");
+		break;
+	}
+}
+
 /**
  * initialize hpc here
  */
@@ -58,15 +122,27 @@ void init_hpc(struct context *context)
 	struct hpc_context* counters = sys_malloc_zero(sizeof(struct hpc_context));
 	context->hpc = counters;
 
-	/* counts down to the initial value
+	/* get the event that counts down to the initial value
 	 * the precision level enables PEBS support. precise=0 uses the counter
 	 * with PEBS disabled */
-	libpfm_event_encoding(&(counters->rbc_down.attr), "BR_INST_RETIRED:COND:u:precise=0", 1);
+	const char * event_str = 0;
+	switch (get_cpu_type()) {
+	case IntelSandyBridge :
+		event_str = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		break;
+	case IntelIvyBridge :
+		event_str = "BR_INST_RETIRED:COND:u:precise=0";
+		break;
+	default:
+		event_str = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		break;
+	}
 
+	libpfm_event_encoding(&(counters->rbc_down.attr), event_str , 1);
 	/* counts up to double check */
-	libpfm_event_encoding(&(counters->rbc_up.attr), "BR_INST_RETIRED:COND:u:precise=0", 1);
+	libpfm_event_encoding(&(counters->rbc_up.attr), event_str, 1);
 	//libpfm_event_encoding(&(counters->hw_int.attr), "HW_INTERRUPTS:u", 1);
-	libpfm_event_encoding(&(counters->hw_int.attr), "BR_INST_RETIRED:COND:u:precise=0", 1);
+	libpfm_event_encoding(&(counters->hw_int.attr), event_str, 1);
 	libpfm_event_encoding(&(counters->page_faults.attr), "PERF_COUNT_SW_PAGE_FAULTS:u", 0);
 }
 
