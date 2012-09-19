@@ -15,7 +15,7 @@
 static pid_t child;
 
 #define MAX_ARGC_LEN	16
-#define MAX_ENVC_LEN	64
+#define MAX_ENVC_LEN	128
 #define MAX_ARGV_LEN	128
 #define MAX_ENVP_LEN	1500
 #define MAX_EXEC_LEN    64
@@ -97,7 +97,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("Please specify either the '--record' or '--replay' option!\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -209,12 +209,47 @@ static void start(int option, int argc, char* argv[], char** envp)
 	}
 }
 
+void check_prerequisites() {
+	FILE *aslr_file = fopen("/proc/sys/kernel/randomize_va_space","r");
+	int aslr_val;
+	fscanf(aslr_file,"%d",&aslr_val);
+	if (aslr_val != 0)
+		assert(0 && "ASLR not disabled, exiting.");
+
+	FILE *ptrace_scope_file = fopen("/proc/sys/kernel/yama/ptrace_scope","r");
+	int ptrace_scope_val;
+	fscanf(ptrace_scope_file,"%d",&ptrace_scope_val);
+	if (ptrace_scope_val != 0)
+		assert(0 && "Can't write to process memory, exiting.");
+}
+
 /**
  * This is where recorder and the repalyer start
  */
 int main(int argc, char* argv[], char** envp)
 {
 	int option = INVALID;
+
+	/* check prerequisites for rr to run */
+	check_prerequisites();
+
+	/* check for sufficient amount of arguments */
+	if (argc < 3) {
+		print_usage();
+		return 0;
+	}
+
+	if (strncmp("--record", argv[1], 7) == 0) {
+		option = RECORD;
+	} else if (strncmp("--replay", argv[1], 7) == 0) {
+		option = REPLAY;
+	}
+
+	if (option == INVALID) {
+		print_usage();
+		return 0;
+	}
+
 	/* allocate memory for the arguments that are passed to the
 	 * client application. This is the first thing that has to be
 	 * done to ensure that the pointers that are passed to the client
@@ -223,19 +258,9 @@ int main(int argc, char* argv[], char** envp)
 	alloc_envp(envp);
 	alloc_executable();
 
-	//TODO: add parsing/checking of arguments
-	if (strncmp("--record", argv[1], 7) == 0) {
-		option = RECORD;
-	} else if (strncmp("--replay", argv[1], 7) == 0) {
-		option = REPLAY;
-	}
-
-	if (option > 0) {
-		start(option, argc, argv, envp);
-	} else {
-		print_usage();
-	}
+	start(option, argc, argv, envp);
 
 	return 0;
+
 }
 

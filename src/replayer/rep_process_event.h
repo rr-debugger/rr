@@ -38,8 +38,10 @@ void rep_process_syscall(struct context* context);
 
 #define SYS_EXEC_ARG(syscall,num) \
 	case SYS_##syscall: { \
-		if (state == STATE_SYSCALL_ENTRY) { __ptrace_cont(context);}\
-		else {\
+		if (state == STATE_SYSCALL_ENTRY) {\
+			__ptrace_cont(context);\
+			validate_args(context);\
+		} else {\
 			__ptrace_cont(context);\
 			int i; for (i = 0; i < num; i++) {set_child_data(context);}\
 			set_return_value(context); \
@@ -72,10 +74,10 @@ void rep_process_syscall(struct context* context);
 			finish_syscall_emu(context);}\
 	break; }
 
-#if (EMU_FD) /* all output operations on fd are emulated */
+#if (EMU_FD) /* selected output operations on fd are emulated */
 #define SYS_FD_OUT_ARG(syscall,num)\
 	SYS_FD_ARG(syscall,num)
-#else /* all output operations on fd are executed */
+#else /* selected output operations on fd are executed */
 #define SYS_FD_OUT_ARG(syscall,num)\
 	SYS_EXEC_ARG(syscall,num)
 #endif
