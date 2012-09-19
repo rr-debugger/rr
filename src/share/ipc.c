@@ -290,6 +290,35 @@ void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 	return buf;
 }
 
+/**
+ * A more conservative way for reading data from the child,
+ * this method doesn't use the memory file descriptor.
+ */
+void read_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char *buffer){
+	const int long_size = sizeof(long);
+	char *laddr;
+    int i, j;
+    union u {
+		long val;
+		char chars[long_size];
+    } data;
+    i = 0;
+    j = length / long_size;
+    laddr = buffer;
+    while(i < j) {
+        data.val = ptrace(PTRACE_PEEKDATA, child_pid, address + i * 4, NULL);
+        memcpy(laddr, data.chars, long_size);
+        ++i;
+        laddr += long_size;
+    }
+    j = length % long_size;
+    if(j != 0) {
+        data.val = ptrace(PTRACE_PEEKDATA, child_pid, address + i * 4, NULL);
+        memcpy(laddr, data.chars, j);
+    }
+    buffer[length] = '\0';
+}
+
 char* read_child_str(pid_t pid, long int addr)
 {
 	char *tmp, *str;

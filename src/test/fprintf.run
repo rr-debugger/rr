@@ -1,0 +1,12 @@
+rr=$1
+gcc fprintf.c
+$rr --record a.out 1> fprintf.out.record
+$rr --replay --redirect_output trace_0/ 1> fprintf.out.replay 2> fprintf.err.replay
+if [[ $(cat fprintf.err.replay | grep "replayer sucessfully finished") == "" || $(diff tmp fprintf.out.replay) != "" ]]; then
+	echo "Test fprintf FAILED"
+else
+	echo "Test fprintf PASSED"
+	# test passed, OK to delete temporaries
+	rm -rf fprintf.out.record fprintf.out.replay fprintf.err.replay	tmp
+fi
+rm -rf a.out trace_0

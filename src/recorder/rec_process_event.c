@@ -24,9 +24,11 @@
 #include "rec_process_event.h"
 #include "handle_ioctl.h"
 
+#include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/util.h"
+
 
 void rec_process_syscall(struct context *ctx)
 {
@@ -53,6 +55,15 @@ void rec_process_syscall(struct context *ctx)
 	 *
 	 */
 	SYS_REC0(access)
+
+	/**
+	 * unsigned int alarm(unsigned int seconds)
+	 *
+	 * The alarm() system call schedules an alarm. The process will get a SIGALRM
+	 * after the requested amount of seconds.
+	 *
+	 */
+	SYS_REC0(alarm)
 
 	/**
 	 * int brk(void *addr)
@@ -245,6 +256,15 @@ void rec_process_syscall(struct context *ctx)
 	SYS_REC0(faccessat)
 
 	/**
+	 * int posix_fadvise(int fd, off_t offset, off_t len, int advice);
+	 *
+	 * Programs can use posix_fadvise() to announce an intention to access
+	 * file data in a specific pattern in the future, thus allowing the kernel
+	 * to perform appropriate optimizations.
+	 */
+	SYS_REC0(fadvise64_64)
+
+	/**
 	 * int fallocate(int fd, int mode, off_t offset, off_t len);
 	 *
 	 * fallocate() allows the caller to directly manipulate the allocated disk space
@@ -349,6 +369,57 @@ void rec_process_syscall(struct context *ctx)
 	 * completed.  It also flushes metadata information associated with the file (see stat(2))
 	 */
 	SYS_REC0(fsync)
+
+	/**
+	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
+	 *
+	 * The  futex()  system call provides a method for a program to wait for a
+	 * value at a given address to change, and a  method  to  wake  up  anyone
+	 * waiting  on a particular address (while the addresses for the same mem‐
+	 * ory in separate processes may not be equal, the kernel maps them inter‐
+	 * nally  so the same memory mapped in different locations will correspond
+	 * for futex() calls).  This system call is typically  used  to  implement
+	 * the  contended  case  of  a  lock  in  shared  memory,  as described in
+	 * futex(7).
+	 *
+	 */
+	case SYS_futex:
+	{
+		record_child_data(ctx, syscall, sizeof(int), regs.ebx);
+		int op = regs.ecx & FUTEX_CMD_MASK;
+
+		switch (op) {
+
+		case FUTEX_WAKE:
+		case FUTEX_WAIT_BITSET:
+		case FUTEX_WAIT:
+		case FUTEX_LOCK_PI:
+		case FUTEX_UNLOCK_PI:
+			break;
+
+		case FUTEX_CMP_REQUEUE:
+		case FUTEX_WAKE_OP:
+		record_child_data(ctx, syscall, sizeof(int), regs.edi);
+			break;
+
+		case FUTEX_CMP_REQUEUE_PI:
+		//case FUTEX_WAIT_REQUEUE_PI:
+		{
+			assert(1==0);
+			record_child_data(ctx, syscall, sizeof(int), regs.edi);
+			break;
+		}
+
+		default:
+		{
+			printf("op: %d unknown futex op\n", op);
+			assert(1==0);
+		}
+
+		}
+		break;
+	}
+
 
 	/**
 	 * char *getwd(char *buf);
@@ -565,56 +636,6 @@ void rec_process_syscall(struct context *ctx)
 	 * the link itself is stat-ed, not the file that it refers to.
 	 */
 	SYS_REC1(lstat64, sizeof(struct stat64), regs.ecx)
-
-	/**
-	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
-	 *
-	 * The  futex()  system call provides a method for a program to wait for a
-	 * value at a given address to change, and a  method  to  wake  up  anyone
-	 * waiting  on a particular address (while the addresses for the same mem‐
-	 * ory in separate processes may not be equal, the kernel maps them inter‐
-	 * nally  so the same memory mapped in different locations will correspond
-	 * for futex() calls).  This system call is typically  used  to  implement
-	 * the  contended  case  of  a  lock  in  shared  memory,  as described in
-	 * futex(7).
-	 *
-	 */
-	case SYS_futex:
-	{
-		record_child_data(ctx, syscall, sizeof(int), regs.ebx);
-		int op = regs.ecx & FUTEX_CMD_MASK;
-
-		switch (op) {
-
-		case FUTEX_WAKE:
-		case FUTEX_WAIT_BITSET:
-		case FUTEX_WAIT:
-		case FUTEX_LOCK_PI:
-		case FUTEX_UNLOCK_PI:
-			break;
-
-		case FUTEX_CMP_REQUEUE:
-		case FUTEX_WAKE_OP:
-		record_child_data(ctx, syscall, sizeof(int), regs.edi);
-			break;
-
-		case FUTEX_CMP_REQUEUE_PI:
-		//case FUTEX_WAIT_REQUEUE_PI:
-		{
-			assert(1==0);
-			record_child_data(ctx, syscall, sizeof(int), regs.edi);
-			break;
-		}
-
-		default:
-		{
-			printf("op: %d unknown futex op\n", op);
-			assert(1==0);
-		}
-
-		}
-		break;
-	}
 
 	/**
 	 * void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
@@ -1062,7 +1083,8 @@ void rec_process_syscall(struct context *ctx)
 		int call = regs.ebx;
 		uintptr_t base_addr = regs.ecx;
 
-		//debug_print("socket call: %d\n", call);
+
+		debug("socket call: %d\n", call);
 		switch (call) {
 		/* int socket(int domain, int type, int protocol); */
 		case SYS_SOCKET:
@@ -1756,23 +1778,6 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	SYS_REC0(writev)
 
-	/**
-	 * int posix_fadvise(int fd, off_t offset, off_t len, int advice);
-	 *
-	 * Programs can use posix_fadvise() to announce an intention to access
-	 * file data in a specific pattern in the future, thus allowing the kernel
-	 * to perform appropriate optimizations.
-	 */
-	SYS_REC0(fadvise64_64)
-
-	/**
-	 * unsigned int alarm(unsigned int seconds)
-	 *
-	 * The alarm() system call schedules an alarm. The process will get a SIGALRM
-	 * after the requested amount of seconds.
-	 *
-	 */
-	SYS_REC0(alarm)
 
 	default:
 

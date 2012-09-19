@@ -423,7 +423,7 @@ void start_recording()
 
 			/* print some kind of progress */
 			if (progress++ % 10000 == 0) {
-				printf(".");
+				fprintf(stderr,".");
 				fflush(stdout);
 			}
 

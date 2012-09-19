@@ -25,6 +25,7 @@
 #include "rep_sched.h"
 #include "read_trace.h"
 
+#include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/util.h"
@@ -47,7 +48,7 @@ static void validate_args(struct context* context)
 static void goto_next_syscall_emu(struct context *ctx)
 {
 	if (ctx->replay_sig != 0) {
-		printf("EMU sends sig: %d\n", ctx->replay_sig);
+		debug("EMU sends sig: %d\n", ctx->replay_sig);
 	}
 
 	sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
@@ -61,15 +62,15 @@ static void goto_next_syscall_emu(struct context *ctx)
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
 		if (WSTOPSIG(ctx->status) == SIGCHLD) {
-			printf("do we come here?\n");
+			debug("do we come here?\n");
 			//ctx->replay_sig = SIGCHLD; // remove that if spec does not work anymore
 			goto_next_syscall_emu(ctx);
 			return;
 		}
 
-		printf("goto_next_syscall_emu: stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
-		printf("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.global_time);
-		printf("ptrace_event: %x\n", GET_PTRACE_EVENT(ctx->status));
+		log_err("goto_next_syscall_emu: stop reason: %x signal: %d pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
+		log_err("Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n", rec_syscall, current_syscall, ctx->trace.global_time);
+		log_err("ptrace_event: %x\n", GET_PTRACE_EVENT(ctx->status));
 		sys_exit();
 	}
 	ctx->replay_sig = 0;
@@ -289,7 +290,7 @@ static void handle_socket(struct context *ctx, struct trace* trace)
  * case, recorded data is injected into the child. Other system calls must be executed. E.g.,
  * mmap or fork cannot be emulated
  */
-void rep_process_syscall(struct context* context)
+void rep_process_syscall(struct context* context, int redirect_output)
 {
 	const int tid = context->child_tid;
 	struct trace *trace = &(context->trace);
@@ -653,7 +654,25 @@ void rep_process_syscall(struct context* context)
 	 * returned returns the new data. Note that not all file systems are
 	 * POSIX conforming.
 	 */
-	SYS_FD_OUT_ARG(write,0)
+	case SYS_write: {
+			if (state == STATE_SYSCALL_ENTRY) {
+		       goto_next_syscall_emu(context);
+			   validate_args(context);
+			} else {
+				set_return_value(context);
+				validate_args(context);
+				finish_syscall_emu(context);
+				if (redirect_output) {
+					/* redirect output to stdout */
+					uintptr_t address = (uintptr_t)read_child_ecx(context->child_tid);
+					long int length = read_child_edx(context->child_tid);
+					char buffer[length];
+					read_child_buffer(context->child_tid, address, length, buffer);
+					printf("%s",buffer);
+				}
+			}
+		break;
+	}
 
 	/**
 	 * ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
@@ -737,6 +756,15 @@ void rep_process_syscall(struct context* context)
 	/***********************************************************************************************/
 	/****************************** All emulated system calls  go here *****************************/
 	/***********************************************************************************************/
+
+	/**
+	 * unsigned int alarm(unsigned int seconds)
+	 *
+	 * The alarm() system call schedules an alarm. The process will get a SIGALRM
+	 * after the requested amount of seconds.
+	 *
+	 */
+	SYS_EMU_ARG(alarm, 0)
 
 	/**
 	 * int chmod(const char *path, mode_t mode)
@@ -1270,15 +1298,6 @@ void rep_process_syscall(struct context* context)
 	 *
 	 */
 	//SYS_EMU_ARG(waitpid, 1)
-
-	/**
-	 * unsigned int alarm(unsigned int seconds)
-	 *
-	 * The alarm() system call schedules an alarm. The process will get a SIGALRM
-	 * after the requested amount of seconds.
-	 *
-	 */
-	SYS_EMU_ARG(alarm, 0)
 
 
 	/************************ Executed system calls come here ***************************/

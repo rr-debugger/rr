@@ -11,6 +11,7 @@
 #include <asm/ptrace-abi.h>
 #include <sys/wait.h>
 
+#include "dbg.h"
 #include "sys.h"
 #include "util.h"
 #include "ipc.h"
@@ -123,7 +124,7 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 	/* signal the parent that the child is ready */
 	kill(getpid(), SIGSTOP);
 	/* we need to fork another child since we must fake the tid in the replay */
-	printf("executable %s\n", executable);
+	debug("executable %s\n", executable);
 	if (fork() == 0) {
 		/* start client application */
 		execve(executable, argv, envp);

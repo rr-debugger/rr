@@ -136,7 +136,7 @@ void rep_process_signal(struct context *ctx)
 		write_child_registers(tid, &regs);
 		sys_free((void**) &inst);
 
-		compare_register_files("rdtsv_now", &regs, "rdsc_rec", &ctx->trace.recorded_regs, 1, 1);
+		compare_register_files("rdtsc_now", &regs, "rdtsc_rec", &ctx->trace.recorded_regs, 1, 1);
 
 		/* this signal should not be recognized by the application */
 		ctx->child_sig = 0;

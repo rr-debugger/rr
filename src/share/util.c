@@ -11,6 +11,7 @@
 
 #include "util.h"
 
+#include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/types.h"
@@ -258,9 +259,9 @@ void print_syscall(struct context *ctx, struct trace *trace)
 	struct user_regs_struct r;
 	read_child_registers(ctx->child_tid, &r);
 
-	debug_print("%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
+	debug("%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
 	if (state == 0) {
-		debug_print(" event: %d",ctx->trace.stop_reason);
+		debug(" event: %d",ctx->trace.stop_reason);
 	}
 
 	if (state == 1) {
@@ -270,7 +271,7 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		case SYS_access:
 		{
 			char *str = read_child_str(ctx->child_tid, r.ebx);
-			debug_print("access(const char *pathname(%s), int mode(%lx))", str, r.ecx);
+			debug("access(const char *pathname(%s), int mode(%lx))", str, r.ecx);
 			free(str);
 			break;
 		}
@@ -279,42 +280,42 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		/* int clock_gettime(clockid_t clk_id, struct timespec *tp); */
 		case SYS_clock_gettime:
 		{
-			debug_print("clock_gettime(clockid_t clk_id(%lx), struct timespec *tp(%lx))", r.ebx, r.ecx);
+			debug("clock_gettime(clockid_t clk_id(%lx), struct timespec *tp(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int close(int fd) */
 		case SYS_close:
 		{
-			debug_print("close(int fd(%lx))", r.ebx);
+			debug("close(int fd(%lx))", r.ebx);
 			break;
 		}
 
 		/* int gettimeofday(struct timeval *tv, struct timezone *tz); */
 		case SYS_gettimeofday:
 		{
-			debug_print("gettimeofday(struct timeval *tv(%lx), struct timezone *tz(%lx))", r.ebx, r.ecx);
+			debug("gettimeofday(struct timeval *tv(%lx), struct timezone *tz(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int fstat(int fd, struct stat *buf) */
 		case SYS_fstat64:
 		{
-			debug_print("fstat64(int fd(%lx), struct stat *buf(%lx))", r.ebx, r.ecx);
+			debug("fstat64(int fd(%lx), struct stat *buf(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 		case SYS_futex:
 		{
-			debug_print("futex(int *uaddr(%lx), int op(%lx), int val(%lx), const struct timespec *timeout(%lx), int *uaddr2(%lx), int val3(%lx))", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
+			debug("futex(int *uaddr(%lx), int op(%lx), int val(%lx), const struct timespec *timeout(%lx), int *uaddr2(%lx), int val3(%lx))", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
 			break;
 		}
 
 		/* int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth); */
 		case SYS_ipc:
 		{
-			debug_print("ipc(unsigned int call(%lx), int first(%lx), int second(%lx), int third(%lx), void *ptr(%lx), long fifth(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
+			debug("ipc(unsigned int call(%lx), int first(%lx), int second(%lx), int third(%lx), void *ptr(%lx), long fifth(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
 			break;
 		}
 
@@ -322,7 +323,7 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		 loff_t *result, unsigned int whence); */
 		case SYS__llseek:
 		{
-			debug_print("_llseek(unsigned int fd(%lx), unsigned long offset_high(%lx), unsigned long offset_low(%lx), loff_t *result(%lx), unsigned int whence(%lx)",
+			debug("_llseek(unsigned int fd(%lx), unsigned long offset_high(%lx), unsigned long offset_low(%lx), loff_t *result(%lx), unsigned int whence(%lx)",
 					r.ebx, r.ecx, r.edx, r.esi, r.edi);
 			break;
 		}
@@ -330,14 +331,14 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		/* void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t pgoffset);*/
 		case SYS_mmap2:
 		{
-			debug_print("mmap2(void* addr(%lx), size_t len(%lx), int prot(%lx), int flags(%lx), int fd(%lx),off_t pgoffset(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
+			debug("mmap2(void* addr(%lx), size_t len(%lx), int prot(%lx), int flags(%lx), int fd(%lx),off_t pgoffset(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
 			break;
 		}
 
 		/* int munmap(void *addr, size_t length) */
 		case SYS_munmap:
 		{
-			debug_print("munmap(void *addr(%lx), size_t length(%lx))", r.ebx, r.ecx);
+			debug("munmap(void *addr(%lx), size_t length(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
@@ -345,7 +346,7 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		case SYS_open:
 		{
 			char *str = read_child_str(ctx->child_tid, r.ebx);
-			debug_print("open(const char *pathname(%s), int flags(%lx))", str, r.ecx);
+			debug("open(const char *pathname(%s), int flags(%lx))", str, r.ecx);
 			free(str);
 			break;
 		}
@@ -353,38 +354,38 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		/* int poll(struct pollfd *fds, nfds_t nfds, int timeout)*/
 		case SYS_poll:
 		{
-			debug_print("poll(struct pollfd *fds(%lx), nfds_t nfds(%lx), int timeout(%lx)", r.ebx, r.ecx, r.edx);
+			debug("poll(struct pollfd *fds(%lx), nfds_t nfds(%lx), int timeout(%lx)", r.ebx, r.ecx, r.edx);
 			break;
 		}
 
 		/* ssize_t read(int fd, void *buf, size_t count); */
 		case SYS_read:
 		{
-			debug_print("read(int fd(%lx), void *buf(%lx), size_t count(%lx)", r.ebx, r.ecx, r.edx);
+			debug("read(int fd(%lx), void *buf(%lx), size_t count(%lx)", r.ebx, r.ecx, r.edx);
 			break;
 		}
 
 		/* int socketcall(int call, unsigned long *args) */
 		case SYS_socketcall:
 		{
-			debug_print("socketcall(int call(%ld), unsigned long *args(%lx))", r.ebx, r.ecx);
+			debug("socketcall(int call(%ld), unsigned long *args(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int stat(const char *path, struct stat *buf); */
 		case SYS_stat64:
 		{
-			debug_print("stat(const char *path(%s), struct stat *buf(%lx))", read_child_str(ctx->child_tid, r.ebx), r.ecx);
+			debug("stat(const char *path(%s), struct stat *buf(%lx))", read_child_str(ctx->child_tid, r.ebx), r.ecx);
 			break;
 		}
 
 		default:
-		debug_print("%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
+		debug("%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
 			break;
 		}
 	}
 
-	debug_print("\n", 0);
+	debug("\n", 0);
 }
 
 int compare_register_files(char* name1, struct user_regs_struct* reg1, char* name2, struct user_regs_struct* reg2, int print, int stop)

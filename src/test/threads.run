@@ -1,0 +1,12 @@
+rr=$1
+gcc threads.c -pthreads
+$rr --record a.out 1> threads.out.record
+$rr --replay --redirect_output trace_0/ 1> threads.out.replay 2> threads.err.replay
+if [[ $(cat threads.err.replay | grep "replayer sucessfully finished") == "" || $(diff threads.out.record threads.out.replay) != "" ]]; then
+	echo "Test threads FAILED"
+else
+	echo "Test threads PASSED"
+	# test passed, OK to delete temporaries
+	rm -rf threads.out.record threads.out.replay threads.err.replay
+fi
+rm -rf a.out trace_0 

@@ -7,6 +7,8 @@
 
 #include "read_trace.h"
 #include "replayer.h"
+
+#include "../share/dbg.h"
 #include "../share/sys.h"
 #include "../share/util.h"
 #include "../share/types.h"
@@ -57,7 +59,7 @@ void read_trace_init(const char* __trace_path)
 	sprintf(tmp, "raw_data_%u", raw_data_file_counter++);
 	strcat(path, tmp);
 	raw_data = (FILE*) sys_fopen(path, "r");
-	printf("path: %s\n",path);
+	debug("path: %s\n",path);
 	/* skip the first line -- is only meta-information */
 	char* line = sys_malloc(1024);
 	read_line(__trace, line, 1024, "trace");

@@ -1,0 +1,12 @@
+rr=$1
+gcc simple.c
+$rr --record a.out 1> simple.out.record
+$rr --replay trace_0/ 1> simple.out.replay 2> simple.err.replay
+if [[ $(cat simple.err.replay | grep "replayer sucessfully finished") == "" || $(diff simple.out.record simple.out.replay) != "" ]]; then
+	echo "Test simple FAILED"
+else
+	echo "Test simple PASSED"
+	# test passed, OK to delete temporaries
+	rm -rf simple.out.record simple.out.replay simple.err.replay
+fi
+rm -rf a.out trace_0 

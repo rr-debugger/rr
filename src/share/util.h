@@ -12,15 +12,6 @@
 #define GET_PTRACE_EVENT(status)	 		((0xFF0000 & status) >> 16)
 
 
-#ifdef DEBUG
-#define debug_print(format, ...)  fprintf(stderr,format, __VA_ARGS__)
-#else
-#define debug_print(format, ...)	;
-#endif
-
-
-
-
 char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
 void print_inst(pid_t tid);
 void print_syscall(struct context *ctx, struct trace *trace);
@@ -45,8 +36,6 @@ struct current_state_buffer {
 };
 
 void inject_code(struct current_state_buffer* buf, char* code);
-
-#define D_PRINTF(debug,str,...) if (debug) printf(str, __VA_ARGS__);
 
 
 #endif /* UTIL_H_ */

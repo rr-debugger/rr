@@ -26,6 +26,7 @@
 
 #include <netinet/in.h>
 
+#include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/trace.h"
 #include "../share/ipc.h"
@@ -127,13 +128,12 @@ static void single_step(struct context* context)
 
 static void check_initial_register_file()
 {
-	printf("check initial register file\n");
 	struct context *context = rep_sched_get_thread();
 	struct user_regs_struct r;
 	read_child_registers(context->child_tid, &r);
 }
 
-void replay()
+void replay(int redirect_output)
 {
 	check_initial_register_file();
 
@@ -161,10 +161,10 @@ void replay()
 			use_next_rawdata_file();
 		} else if((int) (ctx->trace.stop_reason) > 0) {
 			/* proceed to the next event */
-			rep_process_syscall(ctx);
+			rep_process_syscall(ctx,redirect_output);
 			/* stop reason is a signal - use HPC */
 		} else {
-			//printf("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
+			debug("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
 			rep_process_signal(ctx);
 		}
 	}

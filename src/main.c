@@ -24,6 +24,9 @@ static pid_t child;
 #define RECORD			1
 #define REPLAY			2
 
+#define NO_REDIRECT		0
+#define REDIRECT		1
+
 static char** __argv;
 static char** __envp;
 static char* __executable;
@@ -97,7 +100,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -108,7 +111,7 @@ static void install_signal_handler()
 /**
  * main replayer method
  */
-static void start(int option, int argc, char* argv[], char** envp)
+static void start(int option, int argc, char* argv[], char** envp, int redirect_output)
 {
 	pid_t pid;
 	int status, fake_argc;
@@ -200,7 +203,7 @@ static void start(int option, int argc, char* argv[], char** envp)
 			rep_sched_register_thread(pid, rec_main_thread);
 
 			/* main loop */
-			replay();
+			replay(redirect_output);
 			/* thread wants to exit*/
 			close_libpfm();
 			read_trace_close();
@@ -229,6 +232,7 @@ void check_prerequisites() {
 int main(int argc, char* argv[], char** envp)
 {
 	int option = INVALID;
+	int redirect_output = NO_REDIRECT;
 
 	/* check prerequisites for rr to run */
 	check_prerequisites();
@@ -239,15 +243,22 @@ int main(int argc, char* argv[], char** envp)
 		return 0;
 	}
 
-	if (strncmp("--record", argv[1], 7) == 0) {
+	if (strncmp("--record", argv[1], 8) == 0) {
 		option = RECORD;
-	} else if (strncmp("--replay", argv[1], 7) == 0) {
+	} else if (strncmp("--replay", argv[1], 8) == 0) {
 		option = REPLAY;
 	}
 
 	if (option == INVALID) {
 		print_usage();
 		return 0;
+	}
+
+	if  (argc > 3 && strncmp("--redirect_output", argv[2], 17) == 0) {
+		redirect_output = REDIRECT;
+		/* we can now ignore the option string */
+		argv[2] = argv[3];
+		argc--;
 	}
 
 	/* allocate memory for the arguments that are passed to the
@@ -258,7 +269,7 @@ int main(int argc, char* argv[], char** envp)
 	alloc_envp(envp);
 	alloc_executable();
 
-	start(option, argc, argv, envp);
+	start(option, argc, argv, envp, redirect_output);
 
 	return 0;
 
