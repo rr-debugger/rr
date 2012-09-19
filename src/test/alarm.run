@@ -1,12 +1,7 @@
-rr=$1
-gcc alarm.c
-$rr --record a.out 1> alarm.out.record
-$rr --replay --redirect_output trace_0/ 1> alarm.out.replay 2> alarm.err.replay
-if [[ $(cat alarm.err.replay | grep "replayer sucessfully finished") == "" || $(diff alarm.out.record alarm.out.replay) != "" ]]; then
-	echo "Test alarm FAILED"
-else
-	echo "Test alarm PASSED"
-	# test passed, OK to delete temporaries
-	rm -rf alarm.out.record alarm.out.replay alarm.err.replay
-fi
-rm -rf a.out trace_0 
+source util.sh
+get_rr_cmd $# $1
+compile alarm
+record alarm
+replay alarm --redirect_output 
+check alarm
+cleanup 

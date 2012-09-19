@@ -1,12 +1,7 @@
-rr=$1
-gcc hello.c
-$rr --record a.out 1> hello.out.record
-$rr --replay --redirect_output trace_0/ 1> hello.out.replay 2> hello.err.replay
-if [[ $(cat hello.err.replay | grep "replayer sucessfully finished") == "" || $(diff hello.out.record hello.out.replay) != "" ]]; then
-	echo "Test hello FAILED"
-else
-	echo "Test hello PASSED"
-	# test passed, OK to delete temporaries
-	rm -rf hello.out.record hello.out.replay hello.err.replay
-fi
-rm -rf a.out trace_0 
+source util.sh
+get_rr_cmd $# $1
+compile hello
+record hello
+replay hello --redirect_output 
+check hello
+cleanup 
