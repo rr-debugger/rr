@@ -284,7 +284,6 @@ void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 		printf("reading from: %x demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
 		perror("warning: reading from child process: ");
 		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
-		sleep(5);
 	}
 
 	return buf;
