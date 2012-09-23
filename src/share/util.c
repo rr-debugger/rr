@@ -80,44 +80,15 @@ int signal_pending(int status)
 
 void print_register_file_tid(pid_t tid)
 {
-	printf("damn it 1\n");
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
+	print_register_file(&regs);
 
-
-	/*fprintf(stderr, "Printing register file for: %d\n", tid);
-	fprintf(stderr, "eax: %lx\n", regs.eax);
-	fprintf(stderr, "ebx: %lx\n", regs.ebx);
-	fprintf(stderr, "ecx: %lx\n", regs.ecx);
-	fprintf(stderr, "edx: %lx\n", regs.edx);
-	fprintf(stderr, "esi: %lx\n", regs.esi);
-	fprintf(stderr, "edi: %lx\n", regs.edi);
-	fprintf(stderr, "ebp: %lx\n", regs.ebp);
-	fprintf(stderr, "esp: %lx\n", regs.esp);
-	fprintf(stderr, "eip: %lx\n", regs.eip);
-	fprintf(stderr, "eflags %lx\n",regs.eflags);
-	fprintf(stderr, "orig_eax %lx\n", regs.orig_eax);
-	fprintf(stderr, "\n");*/
-
-
-	printf("Printing register file for: %d\n", tid);
-	printf("eax: %lx\n", regs.eax);
-	printf("ebx: %lx\n", regs.ebx);
-	printf("ecx: %lx\n", regs.ecx);
-	printf("edx: %lx\n", regs.edx);
-	printf("esi: %lx\n", regs.esi);
-	printf("edi: %lx\n", regs.edi);
-	printf("ebp: %lx\n", regs.ebp);
-	printf("esp: %lx\n", regs.esp);
-	printf("eip: %lx\n", regs.eip);
-	printf("eflags %lx\n",regs.eflags);
-	printf("orig_eax %lx\n", regs.orig_eax);
-	printf("\n");
 }
 
 void print_register_file(struct user_regs_struct* regs)
 {
-	fprintf(stderr, "Printing register file\n");
+	fprintf(stderr, "Printing register file:\n");
 	fprintf(stderr, "eax: %lx\n", regs->eax);
 	fprintf(stderr, "ebx: %lx\n", regs->ebx);
 	fprintf(stderr, "ecx: %lx\n", regs->ecx);
@@ -125,8 +96,18 @@ void print_register_file(struct user_regs_struct* regs)
 	fprintf(stderr, "esi: %lx\n", regs->esi);
 	fprintf(stderr, "edi: %lx\n", regs->edi);
 	fprintf(stderr, "ebp: %lx\n", regs->ebp);
+	fprintf(stderr, "esp: %lx\n", regs->esp);
 	fprintf(stderr, "eip: %lx\n", regs->eip);
+	fprintf(stderr, "eflags %lx\n",regs->eflags);
+	fprintf(stderr, "orig_eax %lx\n", regs->orig_eax);
+	fprintf(stderr, "xcs: %lx\n", regs->xcs);
+	fprintf(stderr, "xds: %lx\n", regs->xds);
+	fprintf(stderr, "xes: %lx\n", regs->xes);
+	fprintf(stderr, "xfs: %lx\n", regs->xfs);
+	fprintf(stderr, "xgs: %lx\n", regs->xgs);
+	fprintf(stderr, "xss: %lx\n", regs->xss);
 	fprintf(stderr, "\n");
+
 }
 
 static unsigned long str2i(char* str, int base)
@@ -260,11 +241,11 @@ void print_syscall(struct context *ctx, struct trace *trace)
 	read_child_registers(ctx->child_tid, &r);
 
 	debug("%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
-	if (state == 0) {
+	if (state == STATE_SYSCALL_ENTRY) {
 		debug(" event: %d",ctx->trace.stop_reason);
 	}
 
-	if (state == 1) {
+	if (state == STATE_SYSCALL_EXIT) {
 		switch (syscall) {
 
 		/*  int access(const char *pathname, int mode); */
@@ -380,11 +361,13 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		}
 
 		default:
-		debug("%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
+		{
+			debug("%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
 			break;
 		}
-	}
 
+		}
+	}
 	debug("\n", 0);
 }
 
@@ -550,6 +533,36 @@ void print_process_mmap(pid_t tid)
 	}
 
 	sleep(10);
+}
+
+/**
+ * prints a child process memory sections content, according to /proc/pid/maps
+ */
+
+void print_process_memory(pid_t child)
+{
+	const int n = snprintf(NULL, 0, "%lu", child);
+	char buf[n+1];
+	snprintf(buf, n+1, "%lu", child);
+
+	char maps_str[1024] = {0};
+	strcpy(maps_str,"/proc/");
+	strcat(maps_str,buf);
+	strcat(maps_str,"/maps");
+
+	FILE *mapsfile = fopen(maps_str,"r");
+	unsigned int start, end;
+	char flags[32], filename[128];
+	unsigned long file_offset, dev_major, dev_minor, inode;
+	while (fscanf(mapsfile,"%x-%x %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, filename) != EOF) {
+		fprintf(stderr,"\n%x-%x from %s:\n", start, end, filename);
+		const ssize_t length = end - start;
+		char buffer[length];
+		read_child_buffer(child,start,length,buffer);
+		int i;
+		for (i = 0 ; i < length ; i++)
+			fprintf(stderr,"%x\n",buffer[i]);
+	}
 }
 
 /**
