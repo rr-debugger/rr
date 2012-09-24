@@ -11,6 +11,7 @@
 #include "../share/dbg.h"
 #include "../share/sys.h"
 #include "../share/util.h"
+#include "../share/trace.h"
 #include "../share/types.h"
 
 static FILE *__trace;
@@ -101,6 +102,37 @@ void read_trace_close(void)
 	sys_fclose(syscall_input);
 }
 
+void replay_prng_seed(pid_t child)
+{
+	char tmp[128], path[256];
+	int i;
+	assert(path && "path is null, can't open prng_seed file");
+	strcpy(path, trace_path);
+	strcpy(tmp, "/prng_seed");
+	strcat(path, tmp);
+
+	FILE* prng_seed = (FILE*) sys_fopen(path, "r");
+	char seed_buffer[SEED_SIZE];
+
+	/* read the seed from file. the seed is in a %d-per-line format */
+	debug("Reading prng seed:");
+	for (i = 0; i < SEED_SIZE; i++) {
+		char buf[5];
+		int j;
+		for (j = 0 ; (buf[j] = fgetc(prng_seed)) != '\n' ; ++j );
+		buf[j] = '\0';
+		int tmp = atoi(buf);
+		seed_buffer[i] = (char)tmp;
+		debug("%d",(int)seed_buffer[i]);
+	}
+
+	/* write the seed to child memory */
+	write_child_data_n(child,SEED_SIZE,read_prng_seed_address(child),seed_buffer);
+
+	/* clean up */
+	sys_fclose(prng_seed);
+}
+
 void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 {
 	char tmp[128], path[256];
@@ -163,7 +195,7 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (time != trace->global_time) {
-		errx(1, "syscall_header and trace  are out of sync: trace_file %u vs syscall_header %u\n", trace->thread_time, time);
+		errx(1, "syscall_header and trace are out of sync: trace_file %u vs syscall_header %u\n", trace->thread_time, time);
 	}
 
 	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);

@@ -7,7 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ptrace.h>
+#include <elf.h>
 
+#include "dbg.h"
+#include "ipc.h"
 #include "sys.h"
 #include "util.h"
 
@@ -18,7 +21,7 @@ void read_child_registers(pid_t pid, struct user_regs_struct* regs)
 	sys_ptrace(PTRACE_GETREGS, pid, NULL, regs);
 }
 
-static long read_child_data_word(pid_t tid, void *addr)
+long read_child_data_word(pid_t tid, void *addr)
 {
 	CHECK_ALIGNMENT(addr);
 
@@ -318,7 +321,7 @@ void read_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char 
     buffer[length] = '\0';
 }
 
-char* read_child_str(pid_t pid, long int addr)
+char* read_child_str(pid_t pid, void *addr)
 {
 	char *tmp, *str;
 	int i, idx = 0;
@@ -398,5 +401,38 @@ void memcpy_child(struct context *ctx, void *dest, void *src, int size)
 	void *tmp = read_child_data(ctx, size, src);
 	write_child_data(ctx, size, dest, tmp);
 	free(tmp);
+}
+
+/* based on http://articles.manugarg.com/aboutelfauxiliaryvectors.html
+ * find the child auxv, the layout of the stack is: argc | argv | NULL | envp | NULL | auxv
+ * this is only true right after the execve()
+ */
+void* read_prng_seed_address(pid_t child) {
+
+	char ** stack = (char **)read_child_esp(child);
+
+	/* iterate over argc, argv */
+	while(read_child_data_word(child,stack++) != NULL);
+
+	/* iterate over envp */
+	while(read_child_data_word(child,stack++) != NULL);
+
+	Elf32_auxv_t auxv, *auxv_ptr = (Elf32_auxv_t *)stack;
+
+	do {
+		read_child_buffer(child,auxv_ptr,sizeof(Elf32_auxv_t),&auxv);
+		/* auxv.a_type = AT_NULL marks the end of auxv */
+		if( auxv.a_type == AT_RANDOM) {
+				debug("AT_RANDOM is: 0x%x\n", auxv.a_un.a_val);
+				break;
+		}
+		auxv_ptr++;
+	} while (auxv.a_type != AT_NULL);
+
+
+	assert(auxv.a_type == AT_RANDOM && "location of 16 random bytes could not be found.");
+
+	return auxv.a_un.a_val;
+
 }
 

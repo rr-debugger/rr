@@ -6,6 +6,7 @@
 #include "../share/trace.h"
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp);
+void replay_prng_seed(pid_t child);
 void read_trace_close();
 void use_next_rawdata_file(void);
 int read_next_trace(struct trace *trace);

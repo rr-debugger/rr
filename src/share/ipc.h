@@ -41,8 +41,8 @@ void write_child_edx(int tid, long int val);
 void write_child_edi(int tid, long int val);
 void write_child_ebp(int tid, long int val);
 
-
-char* read_child_str(pid_t pid, long int addr);
-void* read_child_data_tid(pid_t tid, size_t size, long int addr);
+char* read_child_str(pid_t pid, void *addr);
+void* read_child_data_tid(pid_t tid, size_t size, void *addr);
+void* read_prng_seed_address(pid_t child);
 
 #endif /* __IPC_H__ */

@@ -10,6 +10,7 @@
 #define STATE_SYSCALL_ENTRY		0
 #define STATE_SYSCALL_EXIT		1
 
+#define SEED_SIZE				16
 
 #define SIG_SEGV_RDTSC 			-128
 #define USR_EXIT				-129

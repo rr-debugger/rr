@@ -22,5 +22,6 @@ void record_parent_data(struct context *ctx, int syscall, int len, void *addr, v
 void record_event(struct context* context, int new_tid);
 unsigned int get_time(pid_t tid);
 void record_argv_envp(int argc, char* argv[], char* envp[]);
+void record_prng_seed(pid_t tid);
 void setup_trace_dir(int version);
 #endif /* RECORD_SC_INPUT_H_ */
