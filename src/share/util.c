@@ -541,9 +541,9 @@ void print_process_mmap(pid_t tid)
 
 void print_process_memory(pid_t child)
 {
-	const int n = snprintf(NULL, 0, "%lu", child);
-	char buf[n+1];
-	snprintf(buf, n+1, "%lu", child);
+	const ssize_t length = snprintf(NULL, 0, "%lu", child) + 1;
+	char buf[length];
+	snprintf(buf, length, "%lu", child);
 
 	char maps_str[1024] = {0};
 	strcpy(maps_str,"/proc/");
@@ -560,8 +560,11 @@ void print_process_memory(pid_t child)
 		char buffer[length];
 		read_child_buffer(child,start,length,buffer);
 		int i;
-		for (i = 0 ; i < length ; i++)
-			fprintf(stderr,"%x\n",buffer[i]);
+		for (i = 0 ; i < length ; i += 4) {
+			unsigned long dword = *((unsigned long *)(buffer + i));
+			fprintf(stderr,"%x | %d %d %d %d | [%x]\n",dword, buffer[i] , buffer[i+1], buffer[i+2], buffer[i+3], start + i);
+		}
+
 	}
 }
 
@@ -669,3 +672,19 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 	sys_free((void**) &buf);
 }
 
+/*
+ * Helper function to print out a child memory right after the execv call
+ * should be called right after the fork, on both parent and child.
+ */
+void read_child_initial_memory_end_exit(pid_t pid, char * executable, char * argv) {
+    if(pid == 0) {
+        ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+        execv(executable, argv);
+    }
+    else {
+        wait(NULL);
+        print_register_file_tid(pid);
+        print_process_memory(pid);
+	    kill(pid,SIGKILL);
+    }
+}

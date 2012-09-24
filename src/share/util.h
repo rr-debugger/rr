@@ -23,6 +23,7 @@ long int str2li(const char* start, size_t max_size);
 void read_line(FILE* file, char* buf, int size, char* name);
 
 void print_register_file_tid(pid_t tid);
+void print_process_memory(pid_t child);
 char* syscall_to_str(int syscall);
 
 int signal_pending(int status);
@@ -36,6 +37,7 @@ struct current_state_buffer {
 };
 
 void inject_code(struct current_state_buffer* buf, char* code);
+void read_child_initial_memory_end_exit(pid_t pid, char * executable, char * argv);
 
 
 #endif /* UTIL_H_ */
