@@ -231,7 +231,10 @@ void print_cwd(pid_t tid, char *str)
 }
 
 
-
+/**
+ * for printing syscall data on *replay* stage (as it uses the trace).
+ * TODO: fix it so it will be suitable for both stages
+ */
 void print_syscall(struct context *ctx, struct trace *trace)
 {
 
@@ -240,9 +243,9 @@ void print_syscall(struct context *ctx, struct trace *trace)
 	struct user_regs_struct r;
 	read_child_registers(ctx->child_tid, &r);
 
-	debug("%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
+	fprintf(stderr,"%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
 	if (state == STATE_SYSCALL_ENTRY) {
-		debug(" event: %d",ctx->trace.stop_reason);
+		fprintf(stderr," event: %d",ctx->trace.stop_reason);
 	}
 
 	if (state == STATE_SYSCALL_EXIT) {
@@ -252,7 +255,7 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		case SYS_access:
 		{
 			char *str = read_child_str(ctx->child_tid, r.ebx);
-			debug("access(const char *pathname(%s), int mode(%lx))", str, r.ecx);
+			fprintf(stderr,"access(const char *pathname(%s), int mode(%lx))", str, r.ecx);
 			free(str);
 			break;
 		}
@@ -261,42 +264,42 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		/* int clock_gettime(clockid_t clk_id, struct timespec *tp); */
 		case SYS_clock_gettime:
 		{
-			debug("clock_gettime(clockid_t clk_id(%lx), struct timespec *tp(%lx))", r.ebx, r.ecx);
+			fprintf(stderr,"clock_gettime(clockid_t clk_id(%lx), struct timespec *tp(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int close(int fd) */
 		case SYS_close:
 		{
-			debug("close(int fd(%lx))", r.ebx);
+			fprintf(stderr,"close(int fd(%lx))", r.ebx);
 			break;
 		}
 
 		/* int gettimeofday(struct timeval *tv, struct timezone *tz); */
 		case SYS_gettimeofday:
 		{
-			debug("gettimeofday(struct timeval *tv(%lx), struct timezone *tz(%lx))", r.ebx, r.ecx);
+			fprintf(stderr,"gettimeofday(struct timeval *tv(%lx), struct timezone *tz(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int fstat(int fd, struct stat *buf) */
 		case SYS_fstat64:
 		{
-			debug("fstat64(int fd(%lx), struct stat *buf(%lx))", r.ebx, r.ecx);
+			fprintf(stderr,"fstat64(int fd(%lx), struct stat *buf(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 		case SYS_futex:
 		{
-			debug("futex(int *uaddr(%lx), int op(%lx), int val(%lx), const struct timespec *timeout(%lx), int *uaddr2(%lx), int val3(%lx))", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
+			fprintf(stderr,"futex(int *uaddr(%lx), int op(%lx), int val(%lx), const struct timespec *timeout(%lx), int *uaddr2(%lx), int val3(%lx))", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
 			break;
 		}
 
 		/* int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth); */
 		case SYS_ipc:
 		{
-			debug("ipc(unsigned int call(%lx), int first(%lx), int second(%lx), int third(%lx), void *ptr(%lx), long fifth(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
+			fprintf(stderr,"ipc(unsigned int call(%lx), int first(%lx), int second(%lx), int third(%lx), void *ptr(%lx), long fifth(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
 			break;
 		}
 
@@ -304,7 +307,7 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		 loff_t *result, unsigned int whence); */
 		case SYS__llseek:
 		{
-			debug("_llseek(unsigned int fd(%lx), unsigned long offset_high(%lx), unsigned long offset_low(%lx), loff_t *result(%lx), unsigned int whence(%lx)",
+			fprintf(stderr,"_llseek(unsigned int fd(%lx), unsigned long offset_high(%lx), unsigned long offset_low(%lx), loff_t *result(%lx), unsigned int whence(%lx)",
 					r.ebx, r.ecx, r.edx, r.esi, r.edi);
 			break;
 		}
@@ -312,14 +315,14 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		/* void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t pgoffset);*/
 		case SYS_mmap2:
 		{
-			debug("mmap2(void* addr(%lx), size_t len(%lx), int prot(%lx), int flags(%lx), int fd(%lx),off_t pgoffset(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
+			fprintf(stderr,"mmap2(void* addr(%lx), size_t len(%lx), int prot(%lx), int flags(%lx), int fd(%lx),off_t pgoffset(%lx)", r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp);
 			break;
 		}
 
 		/* int munmap(void *addr, size_t length) */
 		case SYS_munmap:
 		{
-			debug("munmap(void *addr(%lx), size_t length(%lx))", r.ebx, r.ecx);
+			fprintf(stderr,"munmap(void *addr(%lx), size_t length(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
@@ -327,7 +330,7 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		case SYS_open:
 		{
 			char *str = read_child_str(ctx->child_tid, r.ebx);
-			debug("open(const char *pathname(%s), int flags(%lx))", str, r.ecx);
+			fprintf(stderr,"open(const char *pathname(%s), int flags(%lx))", str, r.ecx);
 			free(str);
 			break;
 		}
@@ -335,40 +338,40 @@ void print_syscall(struct context *ctx, struct trace *trace)
 		/* int poll(struct pollfd *fds, nfds_t nfds, int timeout)*/
 		case SYS_poll:
 		{
-			debug("poll(struct pollfd *fds(%lx), nfds_t nfds(%lx), int timeout(%lx)", r.ebx, r.ecx, r.edx);
+			fprintf(stderr,"poll(struct pollfd *fds(%lx), nfds_t nfds(%lx), int timeout(%lx)", r.ebx, r.ecx, r.edx);
 			break;
 		}
 
 		/* ssize_t read(int fd, void *buf, size_t count); */
 		case SYS_read:
 		{
-			debug("read(int fd(%lx), void *buf(%lx), size_t count(%lx)", r.ebx, r.ecx, r.edx);
+			fprintf(stderr,"read(int fd(%lx), void *buf(%lx), size_t count(%lx)", r.ebx, r.ecx, r.edx);
 			break;
 		}
 
 		/* int socketcall(int call, unsigned long *args) */
 		case SYS_socketcall:
 		{
-			debug("socketcall(int call(%ld), unsigned long *args(%lx))", r.ebx, r.ecx);
+			fprintf(stderr,"socketcall(int call(%ld), unsigned long *args(%lx))", r.ebx, r.ecx);
 			break;
 		}
 
 		/* int stat(const char *path, struct stat *buf); */
 		case SYS_stat64:
 		{
-			debug("stat(const char *path(%s), struct stat *buf(%lx))", read_child_str(ctx->child_tid, r.ebx), r.ecx);
+			fprintf(stderr,"stat(const char *path(%s), struct stat *buf(%lx))", read_child_str(ctx->child_tid, r.ebx), r.ecx);
 			break;
 		}
 
 		default:
 		{
-			debug("%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
+			fprintf(stderr,"%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
 			break;
 		}
 
 		}
 	}
-	debug("\n", 0);
+	fprintf(stderr,"\n", 0);
 }
 
 int compare_register_files(char* name1, struct user_regs_struct* reg1, char* name2, struct user_regs_struct* reg2, int print, int stop)
@@ -541,6 +544,7 @@ void print_process_mmap(pid_t tid)
 
 void print_process_memory(pid_t child)
 {
+	int i;
 	const ssize_t length = snprintf(NULL, 0, "%lu", child) + 1;
 	char buf[length];
 	snprintf(buf, length, "%lu", child);
@@ -550,22 +554,29 @@ void print_process_memory(pid_t child)
 	strcat(maps_str,buf);
 	strcat(maps_str,"/maps");
 
-	FILE *mapsfile = fopen(maps_str,"r");
+	FILE *maps_file = fopen(maps_str,"r");
 	unsigned int start, end;
 	char flags[32], filename[128];
 	unsigned long file_offset, dev_major, dev_minor, inode;
-	while (fscanf(mapsfile,"%x-%x %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, filename) != EOF) {
+
+	fprintf(stderr,"Printing memory for process %d:\n",child);
+	while ( fscanf(maps_file,"%x-%x %31s %Lx %x:%x %Lu", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode) != EOF ) {
+		/* read the remainder of the line into filename (it may be empty)*/
+		while ( (filename[0] = fgetc(maps_file)) != ' ');
+		for (i = 0 ; (filename[i] = fgetc(maps_file)) != '\n' ; ++i);
+		filename[i] = '\0';
 		fprintf(stderr,"\n%x-%x from %s:\n", start, end, filename);
 		const ssize_t length = end - start;
 		char buffer[length];
 		read_child_buffer(child,start,length,buffer);
-		int i;
 		for (i = 0 ; i < length ; i += 4) {
 			unsigned long dword = *((unsigned long *)(buffer + i));
 			fprintf(stderr,"%x | %d %d %d %d | [%x]\n",dword, buffer[i] , buffer[i+1], buffer[i+2], buffer[i+3], start + i);
+			//fprintf(stderr,"%x",dword);
 		}
-
+		rand();
 	}
+	fclose(maps_file);
 }
 
 /**
