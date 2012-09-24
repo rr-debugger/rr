@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "share/dbg.h"
 #include "share/hpc.h"
 #include "share/sys.h"
 
@@ -11,6 +12,7 @@
 #include "replayer/replayer.h"
 #include "replayer/read_trace.h"
 #include "replayer/rep_sched.h"
+
 
 static pid_t child;
 
@@ -116,6 +118,7 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 	pid_t pid;
 	int status, fake_argc;
 
+
 	if (option == RECORD) {
 		copy_executable(argv[2]);
 		if (access(__executable, X_OK)) {
@@ -135,11 +138,12 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 		close_trace_files();
 
 		pid = sys_fork();
-		/* child process */
-		if (pid == 0) {
+
+		//read_child_initial_memory_end_exit(pid,__executable,__argv);
+
+		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
-			/* parent process */
-		} else {
+		} else { /* parent process */
 			child = pid;
 
 			/* make sure that the child process dies when the master process gets interrupted */
@@ -179,11 +183,12 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 		}
 
 		pid = sys_fork();
-		//child process
-		if (pid == 0) {
+
+		//read_child_initial_memory_end_exit(pid,__executable,__argv);
+
+		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
-			/* parent process */
-		} else {
+		} else { /* parent process */
 			child = pid;
 			/* make sure that the child process dies when the master process gets interrupted */
 			install_signal_handler();
