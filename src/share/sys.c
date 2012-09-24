@@ -119,12 +119,15 @@ void sys_setup_process()
 
 void sys_start_trace(char* executable, char** argv, char** envp)
 {
+
 	sys_setup_process();
 	sys_ptrace_traceme();
+
 	/* signal the parent that the child is ready */
 	kill(getpid(), SIGSTOP);
 	/* we need to fork another child since we must fake the tid in the replay */
 	debug("executable %s\n", executable);
+
 	if (fork() == 0) {
 		/* start client application */
 		execve(executable, argv, envp);
@@ -150,6 +153,11 @@ long sys_ptrace(int request, pid_t pid, void *addr, void *data)
 void sys_ptrace_syscall(pid_t pid)
 {
 	sys_ptrace(PTRACE_SYSCALL, pid, 0, 0);
+}
+
+void sys_ptrace_cont(pid_t pid)
+{
+	ptrace(PTRACE_CONT, pid, 0, 0);
 }
 
 /**
