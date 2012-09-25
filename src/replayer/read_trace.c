@@ -11,6 +11,7 @@
 #include "../share/dbg.h"
 #include "../share/sys.h"
 #include "../share/util.h"
+#include "../share/trace.h"
 #include "../share/types.h"
 
 static FILE *__trace;
@@ -24,6 +25,10 @@ static char* trace_path = NULL;
 FILE* get_trace_file()
 {
 	return __trace;
+}
+
+char * get_rep_trace_path() {
+	return trace_path;
 }
 
 void read_open_inst_dump(struct context *ctx)
@@ -59,7 +64,6 @@ void read_trace_init(const char* __trace_path)
 	sprintf(tmp, "raw_data_%u", raw_data_file_counter++);
 	strcat(path, tmp);
 	raw_data = (FILE*) sys_fopen(path, "r");
-	debug("path: %s\n",path);
 	/* skip the first line -- is only meta-information */
 	char* line = sys_malloc(1024);
 	read_line(__trace, line, 1024, "trace");
@@ -163,7 +167,7 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (time != trace->global_time) {
-		errx(1, "syscall_header and trace  are out of sync: trace_file %u vs syscall_header %u\n", trace->thread_time, time);
+		errx(1, "syscall_header and trace are out of sync: trace_file %u vs syscall_header %u\n", trace->thread_time, time);
 	}
 
 	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -186,9 +190,11 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 {
 	int size;
+	static int overall_bytes = 0;
 
 	size = parse_raw_data_hdr(trace, addr);
 	*size_ptr = size;
+	debug("Asking for %d bytes from %p", size, *addr);
 
 	if (*addr != 0) {
 		void* data = sys_malloc(size);
@@ -199,6 +205,9 @@ void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 			perror("");
 			sys_exit();
 		}
+
+		overall_bytes += size;
+		debug("Overall bytes = %d", overall_bytes);
 		return data;
 	}
 	return NULL;

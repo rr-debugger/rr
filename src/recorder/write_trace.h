@@ -4,6 +4,7 @@
 #include "recorder.h"
 #include "../share/types.h"
 
+char* get_rec_trace_path(void);
 void init_trace_files(void);
 void open_trace_files(void);
 void close_trace_files(void);

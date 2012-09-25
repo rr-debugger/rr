@@ -133,11 +133,12 @@ static void check_initial_register_file()
 	read_child_registers(context->child_tid, &r);
 }
 
-void replay(int redirect_output)
+void replay(bool redirect_output, int dump_memory)
 {
 	check_initial_register_file();
 
 	struct context *ctx = NULL;
+	bool validate = FALSE;
 
 	while (rep_sched_get_num_threads()) {
 		ctx = rep_sched_get_thread();
@@ -160,12 +161,16 @@ void replay(int redirect_output)
 		} else if (ctx->trace.stop_reason == USR_NEW_RAWDATA_FILE) {
 			use_next_rawdata_file();
 		} else if((int) (ctx->trace.stop_reason) > 0) {
+			/* start validating the run agains the trace only after the actual process started executing */
+			if (ctx->trace.stop_reason == SYS_execve)
+				validate = TRUE;
 			/* proceed to the next event */
-			rep_process_syscall(ctx,redirect_output);
+			rep_process_syscall(ctx, redirect_output, dump_memory);
+
 			/* stop reason is a signal - use HPC */
 		} else {
-			debug("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
-			rep_process_signal(ctx);
+			//debug("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
+			rep_process_signal(ctx, validate);
 		}
 	}
 

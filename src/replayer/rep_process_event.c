@@ -28,8 +28,11 @@
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
+#include "../share/trace.h"
 #include "../share/util.h"
 #include "../share/shmem.h"
+
+bool validate = FALSE;
 
 /*
  * Compares the register file as it appeared in the recording phase
@@ -37,6 +40,8 @@
  */
 static void validate_args(struct context* context)
 {
+	/* don't validate anything before execve is done as the actual process did not start prior to this point */
+	if (!validate) return;
 	struct user_regs_struct cur_reg;
 	read_child_registers(context->child_tid, &cur_reg);
 	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, context->child_tid);
@@ -117,7 +122,7 @@ void __ptrace_cont(struct context *ctx)
 			return;
 		}
 
-		printf("stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
+		printf(stderr, "stop reason: %x :%d  pending sig: %d\n", ctx->status, WSTOPSIG(ctx->status), ctx->child_sig);
 		fprintf(stderr, "Internal error: syscalls out of sync: rec: %d  now: %d\n", rec_syscall, current_syscall);
 		sys_exit();
 	}
@@ -290,17 +295,19 @@ static void handle_socket(struct context *ctx, struct trace* trace)
  * case, recorded data is injected into the child. Other system calls must be executed. E.g.,
  * mmap or fork cannot be emulated
  */
-void rep_process_syscall(struct context* context, int redirect_output)
+void rep_process_syscall(struct context* context, bool redirect_output, int dump_memory)
 {
 	const int tid = context->child_tid;
 	struct trace *trace = &(context->trace);
 	int syscall = trace->stop_reason;
 	int state = trace->state;
-	struct context *ctx = context;
 
-	assert((state == 1) || (state == 0));
+	assert((state == STATE_SYSCALL_ENTRY) || (state == STATE_SYSCALL_EXIT));
 
-	//print_syscall(context, trace);
+	if (state == STATE_SYSCALL_EXIT) {
+		debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), context->exec_state);
+		do_debug(print_register_file_tid(context->child_tid));
+	}
 
 	switch (syscall) {
 
@@ -1375,7 +1382,7 @@ void rep_process_syscall(struct context* context, int redirect_output)
 
 			rep_sched_register_thread(new_tid, trace->recorded_regs.eax);
 
-			/* FIXXME: what is registers are non-null and contain an invalid address? */
+			/* FIXXME: what if registers are non-null and contain an invalid address? */
 			set_child_data(context);
 			set_child_data(context);
 
@@ -1419,34 +1426,30 @@ void rep_process_syscall(struct context* context, int redirect_output)
 		if (state == STATE_SYSCALL_ENTRY) {
 			__ptrace_cont(context);
 		} else {
-			/*int event = GET_PTRACE_EVENT(context->status);
-			 printf("fucking ptrace event: %d\n", event);
-			 char *str = sys_malloc_zero(1024);
-			 print_cwd(context->child_tid, str);
-			 printf("cws: %s\n", str);
-			 free(str);
-			 //__ptrace_cont(context);
+			validate = TRUE;
 
-			 event = GET_PTRACE_EVENT(context->status);
-			 printf("fucking ptrace event: %d\n", event);
-			 print_register_file_tid(context->child_tid);*/
-
-			//long int old_ebx = read_child_ebx(context->child_tid);
-			//if (old_ebx != 0) {
-			//char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
-			//printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
-			//free(str);
-			//}
 			/* we need an additional ptrace syscall, since ptrace is setup with PTRACE_O_TRACEEXEC */
 			__ptrace_cont(context);
 
-			//print_register_file_tid(context->child_tid);
-
 			int check = read_child_ebx(context->child_tid);
 			/* if the execve comes from a vfork system call the  ebx register is not zero. in this case,
-			 * no recorded datya needs to be injected */
+			 * no recorded data needs to be injected */
 			if (check == 0) {
-				set_child_data(context);
+				size_t size;
+				unsigned long rec_addr;
+				void* data = read_raw_data(&(context->trace), &size, &rec_addr);
+				debug("Setting prng bytes to location %x:",rec_addr);
+				if (data != NULL) {
+					debug("Writing:");
+					int i;
+					for (i = 0 ; i < size ; ++i) {
+						debug("%d",((char*)data)[i]);
+					}
+					write_child_data(context, size, rec_addr, data);
+
+					sys_free((void**) &data);
+				}
+				//set_child_data(context);
 			} else {
 				/*char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
 				 printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
@@ -1606,7 +1609,7 @@ void rep_process_syscall(struct context* context, int redirect_output)
 	case SYS_mremap:
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
-			__ptrace_cont(ctx);
+			__ptrace_cont(context);
 		} else {
 			/* By using a fixed address remapping we can be sure that the mappings
 			 * remain identical in the record and replay/
@@ -1622,20 +1625,20 @@ void rep_process_syscall(struct context* context, int redirect_output)
 
 			/* is hack is necessary, since mremap does not like the FIXED flag
 			 * if source and destination address are the same */
-			if (orig_regs.ebx != ctx->trace.recorded_regs.eax) {
+			if (orig_regs.ebx != context->trace.recorded_regs.eax) {
 				tmp_regs.esi |= MREMAP_FIXED;
-				tmp_regs.edi = ctx->trace.recorded_regs.eax;
+				tmp_regs.edi = context->trace.recorded_regs.eax;
 			}
 
-			write_child_registers(ctx->child_tid, &tmp_regs);
+			write_child_registers(context->child_tid, &tmp_regs);
 
-			__ptrace_cont(ctx);
+			__ptrace_cont(context);
 			/* obtain the new address and reset to the old register values */
-			read_child_registers(ctx->child_tid, &tmp_regs);
+			read_child_registers(context->child_tid, &tmp_regs);
 
 			orig_regs.eax = tmp_regs.eax;
-			write_child_registers(ctx->child_tid, &orig_regs);
-			validate_args(ctx);
+			write_child_registers(context->child_tid, &orig_regs);
+			validate_args(context);
 		}
 
 		break;
@@ -1779,14 +1782,14 @@ void rep_process_syscall(struct context* context, int redirect_output)
 	case SYS_sigreturn:
 	{
 		/* go to the system call */
-		if (ctx->replay_sig != 0) {
+		if (context->replay_sig != 0) {
 			printf("global time: %u\n",context->trace.global_time);
 		}
 
 		assert(context->replay_sig == 0);
 		assert(context->child_sig == 0);
 		__ptrace_cont(context);
-		validate_args(ctx);
+		validate_args(context);
 		break;
 	}
 
@@ -1815,11 +1818,11 @@ void rep_process_syscall(struct context* context, int redirect_output)
 				rep_sched_register_thread(new_tid, next_trace.tid);
 			}
 
-			validate_args(ctx);
+			validate_args(context);
 		} else {
 			__ptrace_cont(context);
 			set_return_value(context);
-			validate_args(ctx);
+			validate_args(context);
 		}
 		break;
 	}
@@ -1834,11 +1837,17 @@ void rep_process_syscall(struct context* context, int redirect_output)
 	SYS_EXEC_ARG(wait4, 2)
 
 	default:
-	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall, ctx->trace.global_time);
-	sys_exit();
+		fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall, context->trace.global_time);
+		sys_exit();
+		break;
 	}
 
 	if (state == STATE_SYSCALL_EXIT) {
+		if (dump_memory == syscall) {
+	        char pid_str[MAX_PATH_LEN];
+	        sprintf(pid_str,"%s/%d_%d",get_rep_trace_path(),context->child_tid,syscall);
+			print_process_memory(context->child_tid,pid_str);
+		}
 		//get_eip_info(tid);
 	}
 

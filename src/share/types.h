@@ -13,6 +13,8 @@
 
 #define size_t int
 
+typedef enum { FALSE = 0, TRUE = 1 } bool;
+
 struct trace
 {
 	/* meta information */

@@ -9,6 +9,7 @@
 #include "../share/types.h"
 #include "../share/trace.h"
 
+#include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/trace.h"
 #include "../share/hpc.h"
@@ -25,9 +26,14 @@ static uint32_t trace_file_counter = 0;
 static uint32_t thread_time[100000];
 static uint32_t global_time = 0;
 static char *trace_path;
+static int overall_bytes = 0;
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
+
+char* get_rec_trace_path() {
+	return trace_path;
+}
 
 void write_open_inst_dump(struct context *ctx)
 {
@@ -274,18 +280,22 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_pt
 {
 	print_header(syscall, child_ptr);
 	fprintf(syscall_header, "%11d\n", len);
-
+	debug("Asking to write %d bytes from %p", len, child_ptr);
 	if (child_ptr != 0) {
 		void* buf = read_child_data_tid(tid, len, child_ptr);
 		/* ensure that everything is written */
-		assert(fwrite(buf, 1, len, raw_data) == len);
+		int bytes_written = fwrite(buf, 1, len, raw_data);
+		assert(bytes_written == len);
+		overall_bytes += len;
 		sys_free((void**) &buf);
 	}
+	debug("Overall bytes = %d", overall_bytes);
 }
 
 static void write_raw_data(struct context *ctx, void *buf, int to_write)
 {
 	int bytes_written;
+	debug("Asking to write %d bytes from %p", to_write, buf);
 	if ((bytes_written = fwrite(buf, 1, to_write, raw_data)) != to_write) {
 		struct context safe_ctx;
 		memcpy(&safe_ctx, ctx, sizeof(struct context));
@@ -295,6 +305,8 @@ static void write_raw_data(struct context *ctx, void *buf, int to_write)
 		use_new_rawdata_file();
 		assert(fwrite(buf, 1, to_write, raw_data) == to_write);
 	}
+	overall_bytes += to_write;
+	debug("Overall bytes = %d", overall_bytes);
 }
 
 /**

@@ -328,8 +328,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_VFORK_DONE:
 	{
-
-		rec_process_syscall(*ctx_ptr);
+		rec_process_syscall(*ctx_ptr,0);
 		record_event((*ctx_ptr), 1);
 		(*ctx_ptr)->exec_state = EXEC_STATE_START;
 		(*ctx_ptr)->allow_ctx_switch = 1;
@@ -394,7 +393,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	} /* end switch */
 }
 
-void start_recording()
+void start_recording(int dump_memory)
 {
 	struct context *ctx = NULL;
 
@@ -525,7 +524,7 @@ void start_recording()
 
 			if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
 				ctx->child_sig = signal_pending(ctx->status);
-				rec_process_syscall(ctx);
+				rec_process_syscall(ctx, dump_memory);
 				record_event(ctx, 1);
 				ctx->exec_state = EXEC_STATE_START;
 				ctx->allow_ctx_switch = 1;

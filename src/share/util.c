@@ -539,10 +539,10 @@ void print_process_mmap(pid_t tid)
 }
 
 /**
- * prints a child process memory sections content, according to /proc/pid/maps
+ * prints a child process memory sections content, according to /proc/pid/maps to the given filename
  */
 
-void print_process_memory(pid_t child)
+void print_process_memory(pid_t child, char * filename)
 {
 	int i;
 	const ssize_t length = snprintf(NULL, 0, "%lu", child) + 1;
@@ -554,24 +554,27 @@ void print_process_memory(pid_t child)
 	strcat(maps_str,buf);
 	strcat(maps_str,"/maps");
 
-	FILE *maps_file = fopen(maps_str,"r");
+	FILE *maps_file = fopen(maps_str,"r"), *out_file = (filename) ? fopen(filename,"w") : stderr;
 	unsigned int start, end;
-	char flags[32], filename[128];
-	unsigned long file_offset, dev_major, dev_minor, inode;
+	char flags[32], binary[128];
+	unsigned int dev_minor, dev_major;
+	unsigned long long file_offset, inode;
 
-	fprintf(stderr,"Printing memory for process %d:\n",child);
+
+	fprintf(out_file,"Printing memory for process %d:\n",child);
 	while ( fscanf(maps_file,"%x-%x %31s %Lx %x:%x %Lu", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode) != EOF ) {
 		/* read the remainder of the line into filename (it may be empty)*/
-		while ( (filename[0] = fgetc(maps_file)) != ' ');
-		for (i = 0 ; (filename[i] = fgetc(maps_file)) != '\n' ; ++i);
-		filename[i] = '\0';
-		fprintf(stderr,"\n%x-%x from %s:\n", start, end, filename);
+		while ( (binary[0] = fgetc(maps_file)) != ' ');
+		for (i = 0 ; (binary[i] = fgetc(maps_file)) != '\n' ; ++i);
+		binary[i] = '\0';
+		fprintf(out_file,"\n%x-%x from %s:\n", start, end, binary);
 		const ssize_t length = end - start;
 		char buffer[length];
 		read_child_buffer(child,start,length,buffer);
 		for (i = 0 ; i < length ; i += 4) {
-			unsigned long dword = *((unsigned long *)(buffer + i));
-			fprintf(stderr,"%x | %d %d %d %d | [%x]\n",dword, buffer[i] , buffer[i+1], buffer[i+2], buffer[i+3], start + i);
+			unsigned int dword = *((unsigned int *)(buffer + i));
+			//fprintf(out_file,"%x | %d %d %d %d | [%x]\n",dword, buffer[i] , buffer[i+1], buffer[i+2], buffer[i+3], start + i);
+			fprintf(out_file,"%8x | [%x]\n",dword, start + i);
 			//fprintf(stderr,"%x",dword);
 		}
 		rand();
@@ -695,7 +698,9 @@ void read_child_initial_memory_end_exit(pid_t pid, char * executable, char * arg
     else {
         wait(NULL);
         print_register_file_tid(pid);
-        print_process_memory(pid);
+        char pid_str[10];
+        sprintf(pid_str,"%d",pid);
+        print_process_memory(pid,pid_str);
 	    kill(pid,SIGKILL);
     }
 }

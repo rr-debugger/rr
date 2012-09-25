@@ -95,7 +95,7 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  * Find out the cpu model using the cpuid instruction.
  * full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
  */
-typedef enum { IntelSandyBridge , IntelIvyBridge } cpu_type;
+typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge } cpu_type;
 cpu_type get_cpu_type(){
 	unsigned int eax,edx;
 	cpuid(CPUID_GETFEATURES,&eax,&edx);
@@ -111,6 +111,7 @@ cpu_type get_cpu_type(){
 		assert(0 && "CPU not supported yet (add cpuid and adjust the event string to add support).");
 		break;
 	}
+	return UnknownArch;
 }
 
 /**

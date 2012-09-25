@@ -8,6 +8,8 @@
 #include <string.h>
 #include <sys/ptrace.h>
 
+#include "dbg.h"
+#include "ipc.h"
 #include "sys.h"
 #include "util.h"
 
@@ -18,7 +20,7 @@ void read_child_registers(pid_t pid, struct user_regs_struct* regs)
 	sys_ptrace(PTRACE_GETREGS, pid, NULL, regs);
 }
 
-static long read_child_data_word(pid_t tid, void *addr)
+long read_child_data_word(pid_t tid, void *addr)
 {
 	CHECK_ALIGNMENT(addr);
 
@@ -222,7 +224,7 @@ void write_child_eip(int tid, long int val)
 
 #define READ_SIZE (sizeof(long))
 
-void* read_child_data_tid(pid_t tid, size_t size, void *addr)
+void* read_child_data_tid(pid_t tid, size_t size, long int addr)
 {
 
 	int i, padding = 0;
@@ -316,6 +318,36 @@ void read_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char 
         memcpy(laddr, data.chars, j);
     }
     buffer[length] = '\0';
+}
+
+/**
+ * A more conservative way for writing data from the child,
+ * this method doesn't use the memory file descriptor.
+ */
+void write_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char *buffer){
+	const int long_size = sizeof(long);
+	char *laddr;
+    int i, j;
+    union u {
+            long val;
+            char chars[long_size];
+    }data;
+    i = 0;
+    j = length / long_size;
+    laddr = buffer;
+    while(i < j) {
+        memcpy(data.chars, laddr, long_size);
+        ptrace(PTRACE_POKEDATA, child_pid,
+        		address + i * 4, data.val);
+        ++i;
+        laddr += long_size;
+    }
+    j = length % long_size;
+    if(j != 0) {
+        memcpy(data.chars, laddr, j);
+        ptrace(PTRACE_POKEDATA, child_pid,
+        		address + i * 4, data.val);
+    }
 }
 
 char* read_child_str(pid_t pid, long int addr)

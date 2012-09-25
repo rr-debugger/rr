@@ -5,7 +5,7 @@
 
 
 
-void rec_process_syscall(struct context* context);
+void rec_process_syscall(struct context *ctx, int dump_memory_for_syscall);
 void process_thread_start(pid_t pid);
 
 /*

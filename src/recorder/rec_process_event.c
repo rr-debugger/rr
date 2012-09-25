@@ -30,7 +30,7 @@
 #include "../share/util.h"
 
 
-void rec_process_syscall(struct context *ctx)
+void rec_process_syscall(struct context *ctx, int dump_memory)
 {
 	pid_t tid = ctx->child_tid;
 
@@ -38,9 +38,11 @@ void rec_process_syscall(struct context *ctx)
 	read_child_registers(tid, &regs);
 
 	const long int syscall = regs.orig_eax;
-	//print_syscall(context, &(context->trace));
 
-	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	//print_register_file_tid(ctx->child_tid);
+	//print_process_memory(ctx->child_tid);
+
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -1514,6 +1516,13 @@ void rec_process_syscall(struct context *ctx)
 		/* AT_RANDOM */
 		unsigned long* rand_addr = read_child_data(ctx, sizeof(unsigned long*), (long int) (stack_ptr + 1));
 		record_child_data(ctx, syscall, 16, (long int) *rand_addr);
+		char buffer[16];
+		do_debug(read_child_buffer(ctx->child_tid,*rand_addr,16,buffer);)
+		debug("Reading seed from location %p:", stack_ptr + 1);
+		int i;
+		for (i = 0 ; i < 16 ; ++i) {
+			debug("%d",buffer[i]);
+		}
 		sys_free((void**) &rand_addr);
 		sys_free((void**) &tmp);
 		break;
@@ -1788,4 +1797,11 @@ void rec_process_syscall(struct context *ctx)
 	sys_exit();
 		break;
 	}
+
+	if (syscall == dump_memory) {
+        char pid_str[MAX_PATH_LEN];
+        sprintf(pid_str,"%s/%d_%d",get_rec_trace_path(),ctx->child_tid,syscall);
+		print_process_memory(ctx->child_tid,pid_str);
+	}
+
 }

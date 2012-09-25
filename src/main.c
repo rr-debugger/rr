@@ -102,7 +102,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_memory=<syscall_num>] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -113,7 +113,7 @@ static void install_signal_handler()
 /**
  * main replayer method
  */
-static void start(int option, int argc, char* argv[], char** envp, int redirect_output)
+static void start(int option, int argc, char* argv[], char** envp, int redirect_output, int dump_memory)
 {
 	pid_t pid;
 	int status, fake_argc;
@@ -165,7 +165,7 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 
 			/* perform the action recording */
 			fprintf(stderr, "start recording...\n");
-			start_recording();
+			start_recording(dump_memory);
 			fprintf(stderr, "done recording -- cleaning up\n");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
@@ -208,7 +208,7 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 			rep_sched_register_thread(pid, rec_main_thread);
 
 			/* main loop */
-			replay(redirect_output);
+			replay(redirect_output, dump_memory);
 			/* thread wants to exit*/
 			close_libpfm();
 			read_trace_close();
@@ -238,6 +238,7 @@ int main(int argc, char* argv[], char** envp)
 {
 	int option = INVALID;
 	int redirect_output = NO_REDIRECT;
+	int dump_memory = 0;
 
 	/* check prerequisites for rr to run */
 	check_prerequisites();
@@ -266,6 +267,13 @@ int main(int argc, char* argv[], char** envp)
 		argc--;
 	}
 
+	if  (argc > 3 && strncmp("--dump_memory=", argv[2], 14) == 0) {
+		sscanf(argv[2],"--dump_memory=%d",&dump_memory);
+		/* we can now ignore the option string */
+		argv[2] = argv[3];
+		argc--;
+	}
+
 	/* allocate memory for the arguments that are passed to the
 	 * client application. This is the first thing that has to be
 	 * done to ensure that the pointers that are passed to the client
@@ -274,7 +282,7 @@ int main(int argc, char* argv[], char** envp)
 	alloc_envp(envp);
 	alloc_executable();
 
-	start(option, argc, argv, envp, redirect_output);
+	start(option, argc, argv, envp, redirect_output, dump_memory);
 
 	return 0;
 

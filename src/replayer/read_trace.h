@@ -12,6 +12,7 @@ int read_next_trace(struct trace *trace);
 int peek_next_trace(struct trace *trace);
 void read_trace_init(const char* trace_path);
 void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr);
+char* get_rep_trace_path();
 pid_t get_recorded_main_thread();
 
 
