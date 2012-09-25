@@ -38,11 +38,9 @@ void rec_process_syscall(struct context *ctx)
 	read_child_registers(tid, &regs);
 
 	const long int syscall = regs.orig_eax;
+	//print_syscall(context, &(context->trace));
 
 	//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
-	//print_register_file_tid(ctx->child_tid);
-	//print_process_memory(ctx->child_tid);
-
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -1376,10 +1374,6 @@ void rec_process_syscall(struct context *ctx)
 	 */
 	case SYS_execve:
 	{
-
-		/* record the process PRNG seed */
-		record_prng_seed(ctx->child_tid);
-		//print_process_memory(ctx->child_tid);
 
 		if (regs.ebx != 0) {
 			/*			char *exec = read_child_str(tid, regs.ebx);

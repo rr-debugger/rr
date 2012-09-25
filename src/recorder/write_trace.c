@@ -9,7 +9,6 @@
 #include "../share/types.h"
 #include "../share/trace.h"
 
-#include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/trace.h"
 #include "../share/hpc.h"
@@ -27,9 +26,8 @@ static uint32_t thread_time[100000];
 static uint32_t global_time = 0;
 static char *trace_path;
 
-#define BUF_SIZE (1024)
-#define LINE_SIZE (50)
-
+#define BUF_SIZE 1024;
+#define LINE_SIZE 50;
 
 void write_open_inst_dump(struct context *ctx)
 {
@@ -123,37 +121,6 @@ void record_argv_envp(int __argc, char* argv[], char* envp[])
 	sys_fclose(arg_env);
 }
 
-#include <elf.h>
-
-/**
- * Records the process PRNG seed to trace_dir/prng_seed
- *
- * Should be used only (exactly) after execve()
- */
-void record_prng_seed(pid_t child)
-{
-
-	char tmp[128], path[64], seed[SEED_SIZE];
-	int i;
-	/* construct path to file */
-	strcpy(path, trace_path);
-	strcpy(tmp, "/prng_seed");
-	strcat(path, tmp);
-
-	FILE* prng_seed = (FILE*) sys_fopen(path, "a+");
-
-	read_child_buffer(child,read_prng_seed_address(child),SEED_SIZE,seed);
-
-	/* write it to file in a char-per-line format*/
-	debug("Writing prng seed:");
-	for (i = 0 ; i < SEED_SIZE ; ++i ) {
-		debug("%d", (int)seed[i]);
-		fprintf(prng_seed, "%d\n", (int)seed[i]);
-	}
-
-	sys_fclose(prng_seed);
-}
-
 void open_trace_files(void)
 {
 	char tmp[128], path[128];
@@ -238,7 +205,6 @@ void close_trace_files(void)
 	fflush(raw_data);
 
 }
-
 
 static void record_performance_data(struct context *ctx)
 {

@@ -298,13 +298,9 @@ void rep_process_syscall(struct context* context, int redirect_output)
 	int state = trace->state;
 	struct context *ctx = context;
 
-	assert((state == STATE_SYSCALL_ENTRY) || (state == STATE_SYSCALL_EXIT));
+	assert((state == 1) || (state == 0));
 
-	if (state == STATE_SYSCALL_EXIT) {
-		//fprintf(stderr, "%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
-		//print_register_file_tid(context->child_tid);
-		//print_process_memory(context->child_tid);
-	}
+	//print_syscall(context, trace);
 
 	switch (syscall) {
 
@@ -1423,11 +1419,24 @@ void rep_process_syscall(struct context* context, int redirect_output)
 		if (state == STATE_SYSCALL_ENTRY) {
 			__ptrace_cont(context);
 		} else {
+			/*int event = GET_PTRACE_EVENT(context->status);
+			 printf("fucking ptrace event: %d\n", event);
+			 char *str = sys_malloc_zero(1024);
+			 print_cwd(context->child_tid, str);
+			 printf("cws: %s\n", str);
+			 free(str);
+			 //__ptrace_cont(context);
 
-			/* this the location when the actual executable gets loaded up, replay the process PRNG seed */
-			replay_prng_seed(context->child_tid);
-			//print_process_memory(context->child_tid);
+			 event = GET_PTRACE_EVENT(context->status);
+			 printf("fucking ptrace event: %d\n", event);
+			 print_register_file_tid(context->child_tid);*/
 
+			//long int old_ebx = read_child_ebx(context->child_tid);
+			//if (old_ebx != 0) {
+			//char *str = read_child_str(context->child_tid, read_child_ebx(context->child_tid));
+			//printf("fucking execve: %s  %x\n", str, read_child_ebx(context->child_tid));
+			//free(str);
+			//}
 			/* we need an additional ptrace syscall, since ptrace is setup with PTRACE_O_TRACEEXEC */
 			__ptrace_cont(context);
 
@@ -1435,7 +1444,7 @@ void rep_process_syscall(struct context* context, int redirect_output)
 
 			int check = read_child_ebx(context->child_tid);
 			/* if the execve comes from a vfork system call the  ebx register is not zero. in this case,
-			 * no recorded data needs to be injected */
+			 * no recorded datya needs to be injected */
 			if (check == 0) {
 				set_child_data(context);
 			} else {
