@@ -1418,7 +1418,7 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 			break;
 		}
 
-		unsigned int* stack_ptr = (unsigned int*) read_process_stat(tid).start_stack;
+		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
 		/* start_stack points to argc - iterate over argv pointers */
 
 		/* FIXME: there are special cases, like when recording gcc, where the esp does not
