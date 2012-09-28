@@ -16,6 +16,7 @@
 #include "rec_sched.h"
 #include "handle_signal.h"
 
+#include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"

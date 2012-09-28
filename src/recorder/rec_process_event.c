@@ -714,6 +714,36 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 	SYS_REC3(getresuid32, sizeof(uid_t), regs.ebx, sizeof(uid_t), regs.ecx, sizeof(uid_t), regs.edx)
 
 	/*
+	 * ssize_t lgetxattr(const char *path, const char *name, void *value, size_t size);
+	 *
+ 	 * getxattr() retrieves the value of the extended attribute identified by name
+ 	 * and associated with the given path in the file system.  The length of the
+ 	 * attribute value is returned.
+ 	 *
+ 	 * lgetxattr() is identical to getxattr(), except in the case of a symbolic link,
+ 	 * where the link itself is interrogated, not the file that it refers to.
+ 	 *
+ 	 * fgetxattr() is identical to getxattr(), only the open file referred to by fd
+ 	 * (as returned by open(2)) is interrogated in place of path.
+ 	 *
+ 	 *
+ 	 * On success, a positive number is returned indicating the size of the extended
+ 	 * attribute value.  On failure, -1 is returned and errno is set appropriately.
+ 	 *
+ 	 * If the named attribute does not exist, or the process has no access to this
+ 	 * attribute, errno is set to ENOATTR.
+ 	 *
+ 	 * If the size of the value buffer is too small to hold the result, errno is set
+ 	 * to ERANGE.
+ 	 *
+ 	 * If extended attributes are not supported by the file system, or are disabled,
+ 	 * errno is set to ENOTSUP.
+ 	 *
+	 */
+	SYS_REC1(lgetxattr, regs.esi, regs.edx)
+
+
+	/*
 	 * int _llseek(unsigned int fd, unsigned long offset_high, unsigned long offset_low,
 	 * loff_t *result, unsigned int whence);
 	 *
@@ -1388,11 +1418,13 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 			break;
 		}
 
-		unsigned int* stack_ptr = (unsigned int*) read_child_esp(tid);
+		unsigned int* stack_ptr = (unsigned int*) read_process_stat(tid).start_stack;
+		/* start_stack points to argc - iterate over argv pointers */
 
-		/* esp[0] points to argc - iterate over argv pointers*/
-		int* argc = read_child_data(ctx, 100, (long int) (stack_ptr));
-
+		/* FIXME: there are special cases, like when recording gcc, where the esp does not
+		 *        point to argc. For example, it may point to &argc.
+		 */
+		int* argc = read_child_data(ctx, sizeof(unsigned long), (long int) (stack_ptr));
 		stack_ptr += *argc + 1;
 		sys_free((void**) &argc);
 
@@ -1401,9 +1433,9 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 
 		sys_free((void**) &null_ptr);
 
-		/* should now point to envp (pointer to environment strings) */
 		stack_ptr++;
 
+		/* should now point to envp (pointer to environment strings) */
 		unsigned long* tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
 
 		while (*tmp != 0) {
@@ -1413,6 +1445,7 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 		}
 		sys_free((void**) &tmp);
 		stack_ptr++;
+
 		/* should now point to ELF Auxiliary Table */
 
 		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);

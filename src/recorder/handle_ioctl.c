@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include <sys/ioctl.h>
+#include <asm-generic/ioctl.h>
 #include <linux/ioctl.h>
 #include <linux/arcfb.h>
 #include <linux/fb.h>
@@ -37,13 +38,15 @@ void handle_ioctl_request(struct context *ctx, int request)
 		int size = _IOC_SIZE(request);
 		switch (request) {
 
-		case TCGETS:
+		case TCGETS: /* Get and Set Terminal Attributes (from: man 4 tty_ioctl) */
 		{
 			record_child_data(ctx, syscall, sizeof(struct termios), regs.edx);
 			break;
 		}
 
-		case FIONREAD:
+
+		case FIONREAD: /* Terminal Buffer count and flushing (from: man 4 tty_ioctl) */
+		case TIOCGPGRP: /* Terminal process group and session ID (from: man 4 tty_ioctl) */
 		{
 			record_child_data(ctx, syscall, sizeof(int), regs.edx);
 			break;
@@ -152,6 +155,15 @@ void handle_ioctl_request(struct context *ctx, int request)
 
 			assert(size == sizeof(struct drm_radeon_gem_get_tiling));
 			record_child_data(ctx, syscall, sizeof(struct drm_radeon_gem_get_tiling), regs.edx);
+			break;
+		}
+
+		case TIOCGWINSZ: /* request for a terminal device */
+		{
+			/* don't care what size asked, record the buffer at the return state */
+			struct winsize* tmp = read_child_data_tid(tid, size, regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct winsize), regs.edx);
+			sys_free((void**) &tmp);
 			break;
 		}
 

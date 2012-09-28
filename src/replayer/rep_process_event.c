@@ -12,6 +12,7 @@
 #include <linux/net.h>
 #include <linux/ipc.h>
 #include <linux/mman.h>
+#include <linux/soundcard.h>
 
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
@@ -306,7 +307,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 
 	if (state == STATE_SYSCALL_EXIT) {
 		debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), context->exec_state);
-		do_debug(print_register_file_tid(context->child_tid));
+		//do_debug(print_register_file_tid(context->child_tid));
 	}
 
 	switch (syscall) {
@@ -545,13 +546,14 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 			goto_next_syscall_emu(context);
 		} else {
 			int request = read_child_ecx(tid);
-			//debug_print("request: %x\n", request);
 
 			if (request & _IOC_WRITE) {
+				int size = _IOC_SIZE(request);
 				switch (request) {
-
 				case TCGETS:
 				case FIONREAD:
+				case TIOCGWINSZ:
+				case TIOCGPGRP:
 				{
 					set_child_data(context);
 					break;
@@ -582,6 +584,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 					set_child_data(context);
 					break;
 				}
+
 				default:
 				fprintf(stderr, "Unknown ioctl request: %x -- bailing out\n", request);
 				print_register_file_tid(tid);
@@ -999,6 +1002,35 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 		}
 		break;
 	}
+
+	/*
+	 * ssize_t lgetxattr(const char *path, const char *name, void *value, size_t size);
+	 *
+	 * getxattr() retrieves the value of the extended attribute identified by name
+	 * and associated with the given path in the file system.  The length of the
+	 * attribute value is returned.
+	 *
+	 * lgetxattr() is identical to getxattr(), except in the case of a symbolic link,
+	 * where the link itself is interrogated, not the file that it refers to.
+	 *
+	 * fgetxattr() is identical to getxattr(), only the open file referred to by fd
+	 * (as returned by open(2)) is interrogated in place of path.
+	 *
+	 *
+	 * On success, a positive number is returned indicating the size of the extended
+	 * attribute value.  On failure, -1 is returned and errno is set appropriately.
+	 *
+	 * If the named attribute does not exist, or the process has no access to this
+	 * attribute, errno is set to ENOATTR.
+	 *
+	 * If the size of the value buffer is too small to hold the result, errno is set
+	 * to ERANGE.
+	 *
+	 * If extended attributes are not supported by the file system, or are disabled,
+	 * errno is set to ENOTSUP.
+	 *
+	 */
+	SYS_EMU_ARG(lgetxattr, 1)
 
 	/**
 	 * int lstat(const char *path, struct stat *buf);
