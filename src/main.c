@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -238,7 +239,7 @@ int main(int argc, char* argv[], char** envp)
 {
 	int option = INVALID;
 	int redirect_output = NO_REDIRECT;
-	int dump_memory = 0;
+	int dump_memory = INT_MIN;
 
 	/* check prerequisites for rr to run */
 	check_prerequisites();
