@@ -95,11 +95,14 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  * Find out the cpu model using the cpuid instruction.
  * full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
  */
-typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge } cpu_type;
+typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge, IntelNehalem } cpu_type;
 cpu_type get_cpu_type(){
 	unsigned int eax,edx;
 	cpuid(CPUID_GETFEATURES,&eax,&edx);
 	switch (eax & 0xF00F0) {
+	case 0x100E0:
+		return IntelNehalem;
+		break;
 	case 0x200A0:
 	case 0x200D0:
 		return IntelSandyBridge;
@@ -128,6 +131,7 @@ void init_hpc(struct context *context)
 	 * with PEBS disabled */
 	const char * event_str = 0;
 	switch (get_cpu_type()) {
+	case IntelNehalem :
 	case IntelSandyBridge :
 		event_str = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		break;
