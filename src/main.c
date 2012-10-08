@@ -219,17 +219,22 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 }
 
 void check_prerequisites() {
-	FILE *aslr_file = fopen("/proc/sys/kernel/randomize_va_space","r");
+	FILE *aslr_file = sys_fopen("/proc/sys/kernel/randomize_va_space","r");
 	int aslr_val;
 	fscanf(aslr_file,"%d",&aslr_val);
 	if (aslr_val != 0)
 		assert(0 && "ASLR not disabled, exiting.");
+	sys_fclose(aslr_file);
 
 	FILE *ptrace_scope_file = fopen("/proc/sys/kernel/yama/ptrace_scope","r");
-	int ptrace_scope_val;
-	fscanf(ptrace_scope_file,"%d",&ptrace_scope_val);
-	if (ptrace_scope_val != 0)
-		assert(0 && "Can't write to process memory, exiting.");
+	/* This file does not necessarily have to exist. */
+	if (ptrace_scope_file != NULL) {
+		int ptrace_scope_val;
+		fscanf(ptrace_scope_file,"%d",&ptrace_scope_val);
+		if (ptrace_scope_val != 0)
+			assert(0 && "Can't write to process memory, exiting.");
+		sys_fclose(ptrace_scope_file);
+	}
 }
 
 /**
