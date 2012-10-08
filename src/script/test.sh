@@ -7,19 +7,19 @@ echo "-----------------------------------------------------"
 
 while [[ $# > 0 ]] ; do
 	case $1 in
-		-dir=*)     dir=$1 ;    shift 1 ;;
-		-rr=*)      rr=$1 ;   	shift 1 ;;
-		*)                      shift 1 ;;
+		-dir=*)     dir=${1#-dir=} ;    shift 1 ;;
+		-rr=*)      rr=${1#-rr=} ;      shift 1 ;;
+		*)                              shift 1 ;;
 	esac
 done
 
 # find the rr command, if not given
-if [$rr == ""]; then
+if [ -z $rr ]; then
 	rr=RecordReplayDebug
 fi
 
 # find the tests dir, if not given
-if [$dir == ""]; then
+if [ -z $dir ]; then
 	dir=../test/
 fi
 
@@ -27,7 +27,7 @@ fi
 cd $dir
 
 # record and replay all tests
-for test in $( ls *.run ); do
+for test in *.run; do
 	source $test $rr
 done
 

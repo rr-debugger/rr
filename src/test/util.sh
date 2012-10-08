@@ -33,7 +33,7 @@ function replay {
 # check test success\failure.
 # $1 is test name
 function check {
-	if [[ $(cat $1.err.replay | grep "replayer sucessfully finished") == "" || $(diff $1.out.record $1.out.replay) != "" ]]; then
+	if [[ $(grep "replayer sucessfully finished" $1.err.replay) == "" || $(diff $1.out.record $1.out.replay) != "" ]]; then
 		echo "Test $1 FAILED"
 	else
 		echo "Test $1 PASSED"
