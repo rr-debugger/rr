@@ -118,6 +118,18 @@ static int wait_nonblock(struct context *ctx)
 	return ret;
 }
 
+static int wait_block_timeout(struct context *ctx, int timeout_us)
+{
+	int ret = sys_waitpid_timeout(ctx->child_tid, &(ctx->status), timeout_us);
+
+	if (ret) {
+		assert(WIFEXITED(ctx->status) == 0);
+		handle_signal(ctx);
+		ctx->event = read_child_orig_eax(ctx->child_tid);
+	}
+	return ret;
+}
+
 static void cont_block(struct context *ctx)
 {
 
@@ -228,9 +240,14 @@ static int allow_ctx_switch(struct context *ctx)
 		return 1;
 	}
 
+	/* Generally, it is faster to wait for a SYS_write to return
+	 * than to do a context switch. However, after waiting for a
+	 * certain amount of time (see config.h), a context switch is
+	 * performed.
+	 */
 	case SYS_write:
 	{
-		return 1;
+		return 0;
 	}
 
 	/* pid_t waitpid(pid_t pid, int *status, int options); */
@@ -502,8 +519,26 @@ void start_recording(int dump_memory)
 		case EXEC_STATE_IN_SYSCALL:
 		{
 
-			//printf("are we waiting here? %d\n",ctx->event);
-			int ret = wait_nonblock(ctx);
+
+			int ret;
+			/*
+			 * Wait for the system call to return in case of a write,
+			 * but only for a certain timeout to prevent livelocks if
+			 * the write system call blocks.
+			 */
+			if (ctx->event == SYS_write) {
+				ret = wait_block_timeout(ctx, MAX_WAIT_TIMEOUT_SYS_WRITE_US);
+				/*
+				 * proceed with a different thread if the system call takes
+				 * too long to finish
+				 * */
+				if (ret <= 0) {
+					ctx->allow_ctx_switch=1;
+				}
+			} else {
+				ret = wait_nonblock(ctx);
+			}
+
 			if (ret) {
 				ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
 				ctx->allow_ctx_switch = 0;

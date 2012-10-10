@@ -9,6 +9,7 @@
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
 #include <asm/ptrace-abi.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 
 #include "dbg.h"
@@ -264,6 +265,37 @@ pid_t sys_waitpid_nonblock(pid_t pid, int* status)
 		exit(-1);
 	}
 
+	return ret;
+}
+
+/*
+ * Returns the time difference t2 - t1 in microseconds.
+ */
+static inline long time_difference(struct timeval *t1, struct timeval *t2) {
+	return (t2->tv_sec - t1->tv_sec) * 1000000 + (t2->tv_usec - t1->tv_usec);
+}
+
+/*
+ * Waits for a child process for a certain time in micro seconds.
+ */
+pid_t sys_waitpid_timeout(pid_t pid, int *status, int timeout_us)
+{
+	struct timeval start_time, curr_time;
+	/* get the start time */
+	gettimeofday(&start_time, NULL);
+
+	long time_diff;
+	pid_t ret = 0;
+	while (ret == 0) {
+		ret = sys_waitpid_nonblock(pid, status);
+
+		gettimeofday(&curr_time, NULL);
+		time_diff = time_difference(&start_time, &curr_time);
+		if (time_diff > timeout_us) {
+			break;
+		}
+
+	}
 	return ret;
 }
 
