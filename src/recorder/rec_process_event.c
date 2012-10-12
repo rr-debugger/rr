@@ -8,6 +8,7 @@
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/shm.h>
+#include <linux/prctl.h>
 
 #include <sys/epoll.h>
 #include <sys/mman.h>
@@ -873,7 +874,29 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 	 *
 	 * FIXXME: check if there is some output in the variable parameters
 	 */
-	//SYS_REC0(prctl)
+	case SYS_prctl:
+	{
+		switch (regs.ebx)
+		{
+			case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
+			case PR_GET_FPEMU:  	/* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
+			case PR_GET_FPEXC:  	/* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
+			case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
+			case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
+			case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
+				record_child_data(ctx, syscall, sizeof(int), regs.ecx);
+				break;
+			case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
+			 	 	 	 	 	 	The buffer should allow space for up to 16 bytes;
+			 	 	 	 	 	 	The returned string will be null-terminated if it is shorter than that. */
+				record_child_data(ctx, syscall, 16, regs.ecx);
+				break;
+			default:
+				break;
+		}
+		break;
+	}
+	
 	/**
 	 * ssize_t pread(int fd, void *buf, size_t count, off_t offset);
 	 *

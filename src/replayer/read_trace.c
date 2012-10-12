@@ -167,7 +167,7 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (time != trace->global_time) {
-		errx(1, "syscall_header and trace are out of sync: trace_file %u vs syscall_header %u\n", trace->thread_time, time);
+		errx(1, "syscall_header and trace are out of sync: trace_file %u vs syscall_header %u\n", trace->global_time, time);
 	}
 
 	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);

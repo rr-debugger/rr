@@ -12,6 +12,7 @@
 #include <linux/net.h>
 #include <linux/ipc.h>
 #include <linux/mman.h>
+#include <linux/prctl.h>
 #include <linux/soundcard.h>
 
 #include <sys/ioctl.h>
@@ -306,7 +307,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	assert((state == STATE_SYSCALL_ENTRY) || (state == STATE_SYSCALL_EXIT));
 
 	if (state == STATE_SYSCALL_EXIT) {
-		debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), context->exec_state);
+		debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->thread_time, context->exec_state);
 		//do_debug(print_register_file_tid(context->child_tid));
 	}
 
@@ -826,6 +827,16 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	SYS_FD_ARG(epoll_wait, 1)
 
 	/**
+	 * eventfd()  creates  an  "eventfd  object"  that can be used as an event
+	 * wait/notify mechanism by userspace applications, and by the  kernel  to
+	 * notify  userspace  applications  of  events.   The  object  contains an
+	 * unsigned 64-bit integer (uint64_t) counter that is  maintained  by  the
+	 * kernel.   This  counter  is initialized with the value specified in the
+	 * argument initval.
+	 */
+	SYS_FD_ARG(eventfd2, 0)
+	
+	/**
 	 * int faccessat(int dirfd, const char *pathname, int mode, int flags)
 	 *
 	 * The  faccessat() system call operates in exactly the same way as access(2), except for the differences
@@ -1055,6 +1066,43 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * minates the process.
 	 */
 	SYS_EMU_ARG(nanosleep, 1);
+
+	/**
+	 * int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
+	 *
+	 *  prctl() is called with a first argument describing what to do (with values defined in <linux/prctl.h>), and
+	 *  further arguments with a significance depending on the first one.
+	 *
+	 * FIXXME: check if there is some output in the variable parameters
+	 */
+	case SYS_prctl:
+	{
+		if (state == STATE_SYSCALL_ENTRY) {
+	       goto_next_syscall_emu(context);
+		   validate_args(context);
+		} else {
+			switch (read_child_ebx(context->child_tid))
+			{
+				case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
+				case PR_GET_FPEMU:  	/* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
+				case PR_GET_FPEXC:  	/* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
+				case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
+				case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
+				case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
+				case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
+				 	 	 	 	 	 	The buffer should allow space for up to 16 bytes;
+				 	 	 	 	 	 	The returned string will be null-terminated if it is shorter than that. */
+					set_child_data(context);
+					break;
+				default:
+					break;
+			}
+			set_return_value(context);
+			validate_args(context);
+			finish_syscall_emu(context);
+		}
+		break;
+	}
 
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
