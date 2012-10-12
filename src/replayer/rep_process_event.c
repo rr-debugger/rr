@@ -646,7 +646,22 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 *
 	 * read() attempts to read up to count bytes from file descriptor fd into the buffer starting at buf.
 	 */
-	SYS_FD_ARG(read, 1)
+	case SYS_read:
+	{
+		if (state == STATE_SYSCALL_ENTRY) {
+	       goto_next_syscall_emu(context);
+		   validate_args(context);
+		} else {
+			if (trace->recorded_regs.eax >= 0) {
+				set_child_data(context);
+			}
+			set_return_value(context);
+			validate_args(context);
+			finish_syscall_emu(context);
+		}
+		break;
+	}
+
 
 	/**
 	 * mode_t umask(mode_t mask);

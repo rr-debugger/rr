@@ -1693,7 +1693,11 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 	 */
 	case SYS_read:
 	{
-		if (regs.eax < 0) {
+		if (regs.eax < 0) { // if no data was read, break
+			if (ctx->recorded_scratch_size != -1) { // but dont forget to correct the ecx if needed
+				regs.ecx = ctx->recorded_scratch_ptr_0;
+				write_child_registers(ctx->child_tid, &regs);
+			}
 			break;
 		}
 
