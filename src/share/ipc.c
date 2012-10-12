@@ -247,16 +247,25 @@ void* read_child_data_tid(pid_t tid, size_t size, long int addr)
 }
 
 static size_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset) {
-
+	errno = 0;
 	size_t read = pread(ctx->child_mem_fd, buf, size, offset);
+
 	// for some reason reading from the child process requires to re-open the fd
 	// who knows why??
 	if (read == 0 && errno == 0) {
 		sys_close(ctx->child_mem_fd);
 		ctx->child_mem_fd = sys_open_child_mem(ctx->child_tid);
+		read = pread(ctx->child_mem_fd, buf, size, offset);
 	}
 
-	return pread(ctx->child_mem_fd, buf, size, offset);
+	if (read < size) { // fill the remainder with zeros
+		memset(buf + read,0,size - read);
+		read = size;
+	}
+
+	assert(read == size);
+
+	return read;
 
 }
 
