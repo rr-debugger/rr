@@ -3,8 +3,9 @@
 
 #include "../share/types.h"
 #include "../share/trace.h"
+#include "../share/util.h"
 
-void rep_process_syscall(struct context* context, bool redirect_output, int dump_memory);
+void rep_process_syscall(struct context* context, struct flags rr_flags);
 
 /*
  * The 'num' parameter in these macros usually corresponds to the

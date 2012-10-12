@@ -87,15 +87,7 @@ void setup_trace_dir(int version)
 void record_argv_envp(int __argc, char* argv[], char* envp[])
 {
 
-	/* -2 because
-	 *  argv[0] = name of RecReplay
-	 *  argv[1] = --record
-	 *  argv[2] = name of executable
-	 *  argv[3] = arg1
-	 *  argv[4] = arg2
-	 *  ...record
-	 */
-	int argc = __argc - 2;
+	int argc = __argc;
 
 	char tmp[128], path[64];
 	int i, j;

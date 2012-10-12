@@ -297,7 +297,7 @@ static void handle_socket(struct context *ctx, struct trace* trace)
  * case, recorded data is injected into the child. Other system calls must be executed. E.g.,
  * mmap or fork cannot be emulated
  */
-void rep_process_syscall(struct context* context, bool redirect_output, int dump_memory)
+void rep_process_syscall(struct context* context,  struct flags rr_flags)
 {
 	const int tid = context->child_tid;
 	struct trace *trace = &(context->trace);
@@ -307,8 +307,10 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	assert((state == STATE_SYSCALL_ENTRY) || (state == STATE_SYSCALL_EXIT));
 
 	if (state == STATE_SYSCALL_EXIT) {
-		debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->thread_time, context->exec_state);
+		debug("%d: entering syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->thread_time, context->exec_state);
 		//do_debug(print_register_file_tid(context->child_tid));
+	} else {
+		debug("%d: exiting syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->thread_time, context->exec_state);
 	}
 
 	switch (syscall) {
@@ -688,7 +690,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 				set_return_value(context);
 				validate_args(context);
 				finish_syscall_emu(context);
-				if (redirect_output) {
+				if (rr_flags.redirect) {
 					/* print output intended for stdout\stderr */
 					long int fd = read_child_ebx(context->child_tid);
 					if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
@@ -1938,7 +1940,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	}
 
 	if (state == STATE_SYSCALL_EXIT) {
-		if (dump_memory == syscall) {
+		if (rr_flags.dump_on == syscall) {
 	        char pid_str[MAX_PATH_LEN];
 	        sprintf(pid_str,"%s/%d_%d",get_rep_trace_path(),context->child_tid,syscall);
 			print_process_memory(context->child_tid,pid_str);

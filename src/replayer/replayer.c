@@ -133,7 +133,7 @@ static void check_initial_register_file()
 	read_child_registers(context->child_tid, &r);
 }
 
-void replay(bool redirect_output, int dump_memory)
+void replay(struct flags rr_flags)
 {
 	check_initial_register_file();
 
@@ -165,7 +165,7 @@ void replay(bool redirect_output, int dump_memory)
 			if (ctx->trace.stop_reason == SYS_execve)
 				validate = TRUE;
 			/* proceed to the next event */
-			rep_process_syscall(ctx, redirect_output, dump_memory);
+			rep_process_syscall(ctx, rr_flags);
 
 			/* stop reason is a signal - use HPC */
 		} else {

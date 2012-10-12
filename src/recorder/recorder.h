@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <sched.h>
 
-void start_recording(int dump_memory);
+#include "../share/util.h"
+
+void start_recording(struct flags rr_flags);
 
 #endif /* RECORDER_H_ */

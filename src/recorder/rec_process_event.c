@@ -31,7 +31,7 @@
 #include "../share/util.h"
 
 
-void rec_process_syscall(struct context *ctx, int dump_memory)
+void rec_process_syscall(struct context *ctx, struct flags rr_flags)
 {
 	pid_t tid = ctx->child_tid;
 
@@ -1858,7 +1858,7 @@ void rec_process_syscall(struct context *ctx, int dump_memory)
 		break;
 	}
 
-	if (syscall == dump_memory) {
+	if (syscall == rr_flags.dump_on) {
         char pid_str[MAX_PATH_LEN];
         sprintf(pid_str,"%s/%d_%d",get_rec_trace_path(),ctx->child_tid,syscall);
 		print_process_memory(ctx->child_tid,pid_str);

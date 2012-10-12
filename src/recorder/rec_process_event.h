@@ -3,9 +3,7 @@
 
 #include "../share/types.h"
 
-
-
-void rec_process_syscall(struct context *ctx, int dump_memory_for_syscall);
+void rec_process_syscall(struct context *ctx, struct flags rr_flags);
 void process_thread_start(pid_t pid);
 
 /*

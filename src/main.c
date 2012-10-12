@@ -6,6 +6,7 @@
 #include "share/dbg.h"
 #include "share/hpc.h"
 #include "share/sys.h"
+#include "share/util.h"
 
 #include "recorder/recorder.h"
 #include "recorder/write_trace.h"
@@ -23,12 +24,7 @@ static pid_t child;
 #define MAX_ENVP_LEN	1500
 #define MAX_EXEC_LEN    64
 
-#define INVALID			0
-#define RECORD			1
-#define REPLAY			2
 
-#define NO_REDIRECT		0
-#define REDIRECT		1
 
 static char** __argv;
 static char** __envp;
@@ -59,10 +55,10 @@ static void alloc_envp(char** envp)
 static void copy_argv(int argc, char* argv[])
 {
 	int i;
-	for (i = 0; i < argc - 2; i++) {
-		int arglen = strlen(argv[i + 2]);
+	for (i = 0; i < argc; i++) {
+		int arglen = strlen(argv[i]);
 		assert(arglen + 1 < MAX_ARGV_LEN);
-		strncpy(__argv[i], argv[i + 2], arglen + 1);
+		strncpy(__argv[i], argv[i], arglen + 1);
 	}
 	__argv[i] = NULL;
 }
@@ -103,7 +99,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_memory=<syscall_num>] executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -114,14 +110,13 @@ static void install_signal_handler()
 /**
  * main replayer method
  */
-static void start(int option, int argc, char* argv[], char** envp, int redirect_output, int dump_memory)
+static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 {
 	pid_t pid;
 	int status, fake_argc;
 
-
-	if (option == RECORD) {
-		copy_executable(argv[2]);
+	if (rr_flags.option == RECORD) {
+		copy_executable(argv[0]);
 		if (access(__executable, X_OK)) {
 			printf("The specified file '%s' does not exist or is not executable\n", __executable);
 			return;
@@ -165,17 +160,17 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 			rec_sched_register_thread(0, pid);
 
 			/* perform the action recording */
-			fprintf(stderr, "start recording...\n");
-			start_recording(dump_memory);
-			fprintf(stderr, "done recording -- cleaning up\n");
+			log_info("Start recording...\n");
+			start_recording(rr_flags);
+			log_info("Done recording -- cleaning up\n");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
 			close_libpfm();
 		}
 
 		/* replayer code comes here */
-	} else if (option == REPLAY) {
-		init_environment(argv[2], &fake_argc, __argv, __envp);
+	} else if (rr_flags.option == REPLAY) {
+		init_environment(argv[0], &fake_argc, __argv, __envp);
 
 		copy_executable(__argv[0]);
 		if (access(__executable, X_OK)) {
@@ -197,19 +192,18 @@ static void start(int option, int argc, char* argv[], char** envp, int redirect_
 			sys_waitpid(pid, &status);
 			sys_ptrace_setup(pid);
 
-
 			/* initialize stuff */
 			init_libpfm();
 			rep_sched_init();
 			/* sets the file pointer to the first trace entry */
 
-			read_trace_init(argv[2]);
+			read_trace_init(argv[0]);
 
 			pid_t rec_main_thread = get_recorded_main_thread();
 			rep_sched_register_thread(pid, rec_main_thread);
 
 			/* main loop */
-			replay(redirect_output, dump_memory);
+			replay(rr_flags);
 			/* thread wants to exit*/
 			close_libpfm();
 			read_trace_close();
@@ -238,13 +232,15 @@ void check_prerequisites() {
 }
 
 /**
- * This is where recorder and the repalyer start
+ * This is where recorder and the replayer start
  */
 int main(int argc, char* argv[], char** envp)
 {
-	int option = INVALID;
-	int redirect_output = NO_REDIRECT;
-	int dump_memory = INT_MIN;
+	struct flags rr_flags;
+	rr_flags.option = INVALID;
+	rr_flags.redirect = FALSE;
+	rr_flags.dump_on = DUMP_ON_NONE;
+	rr_flags.dump_at = DUMP_AT_NONE;
 
 	/* check prerequisites for rr to run */
 	check_prerequisites();
@@ -255,29 +251,40 @@ int main(int argc, char* argv[], char** envp)
 		return 0;
 	}
 
-	if (strncmp("--record", argv[1], 8) == 0) {
-		option = RECORD;
-	} else if (strncmp("--replay", argv[1], 8) == 0) {
-		option = REPLAY;
+	int flag_index = 1;
+
+	// mandatory {record,replay} flag
+	if (flag_index < argc) {
+		if (strncmp("--record", argv[flag_index], sizeof("--record")) == 0) {
+			rr_flags.option = RECORD;
+		} else if (strncmp("--replay", argv[flag_index], sizeof("--replay")) == 0) {
+			rr_flags.option = REPLAY;
+		}
+		flag_index++;
 	}
 
-	if (option == INVALID) {
+	if (rr_flags.option == INVALID) {
 		print_usage();
 		return 0;
 	}
 
-	if  (argc > 3 && strncmp("--redirect_output", argv[2], 17) == 0) {
-		redirect_output = REDIRECT;
-		/* we can now ignore the option string */
-		argv[2] = argv[3];
-		argc--;
+
+	// optional redirect flag
+	if  (flag_index < argc && strncmp("--redirect_output", argv[flag_index], sizeof("--redirect_output")) == 0) {
+		rr_flags.redirect = TRUE;
+		flag_index++;
 	}
 
-	if  (argc > 3 && strncmp("--dump_memory=", argv[2], 14) == 0) {
-		sscanf(argv[2],"--dump_memory=%d",&dump_memory);
-		/* we can now ignore the option string */
-		argv[2] = argv[3];
-		argc--;
+	// optional dump memory on syscall flag
+	if  (flag_index < argc && strncmp("--dump_on=", argv[flag_index], sizeof("--dump_on=") - 1) == 0) {
+		sscanf(argv[flag_index],"--dump_on=%d",&rr_flags.dump_on);
+		flag_index++;
+	}
+
+	// optional dump memory at global time flag
+	if  (flag_index < argc && strncmp("--dump_at=", argv[flag_index], sizeof("--dump_at=") - 1) == 0) {
+		sscanf(argv[flag_index],"--dump_at=%d",&rr_flags.dump_at);
+		flag_index++;
 	}
 
 	/* allocate memory for the arguments that are passed to the
@@ -288,7 +295,7 @@ int main(int argc, char* argv[], char** envp)
 	alloc_envp(envp);
 	alloc_executable();
 
-	start(option, argc, argv, envp, redirect_output, dump_memory);
+	start(rr_flags, argc - flag_index , argv + flag_index, envp);
 
 	return 0;
 

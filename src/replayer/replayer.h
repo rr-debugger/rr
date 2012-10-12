@@ -2,7 +2,8 @@
 #define REPLAYER_H_
 
 #include "../share/types.h"
+#include "../share/util.h"
 
-void replay(bool redirect_output, int dump_memory);
+void replay(struct flags rr_flags);
 
 #endif /* REPLAYER_H_ */

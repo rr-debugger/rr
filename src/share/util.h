@@ -39,5 +39,23 @@ struct current_state_buffer {
 void inject_code(struct current_state_buffer* buf, char* code);
 void read_child_initial_memory_end_exit(pid_t pid, char * executable, char * argv);
 
+/**
+ * command line arguments for rr
+ */
+
+#define INVALID			0
+#define RECORD			1
+#define REPLAY			2
+
+#define DUMP_ON_NONE 	(-777)
+#define DUMP_ON_ALL 	(777)
+#define DUMP_AT_NONE 	(-1)
+
+struct flags {
+	int option;
+	bool redirect;
+	int dump_on;
+	int dump_at;
+};
 
 #endif /* UTIL_H_ */

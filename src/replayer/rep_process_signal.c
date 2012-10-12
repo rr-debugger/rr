@@ -14,6 +14,7 @@
 #include "../share/util.h"
 #include "../share/ipc.h"
 #include "../share/hpc.h"
+#include "../share/dbg.h"
 
 #define SKID_SIZE 			55
 
@@ -112,6 +113,8 @@ void rep_process_signal(struct context *ctx, bool validate)
 
 	/* if the there is still a signal pending here, two signals in a row must be delivered?\n */
 	assert(ctx->child_sig == 0);
+
+	debug("%d: handling signal %d -- time: %d",tid,sig,trace->thread_time);
 
 	switch (sig) {
 
