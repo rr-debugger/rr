@@ -41,7 +41,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
-	debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
+	debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_global_time(), ctx->exec_state);
 	//print_register_file_tid(ctx->child_tid);
 	//print_process_memory(ctx->child_tid);
 
@@ -97,13 +97,15 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 
 		// clear out scratch
 		char * buffer = sys_malloc_zero(ctx->scratch_size);
-		write_child_data_n(tid,ctx->scratch_size,ctx->scratch_ptr,buffer);
+		write_child_data(ctx,ctx->scratch_size,ctx->scratch_ptr,buffer);
 		write_child_data_n(new_tid,ctx->scratch_size,ctx->scratch_ptr,buffer);
 		sys_free(&buffer);
 
-		record_child_data_tid(new_tid, syscall, sizeof(struct user_desc), read_child_edi(new_tid));
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), read_child_edx(new_tid));
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), read_child_esi(new_tid));
+		struct user_regs_struct new_regs;
+		read_child_registers(new_tid,&new_regs);
+		record_child_data_tid(new_tid, syscall, sizeof(struct user_desc), new_regs.edi);
+		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), new_regs.edx);
+		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), new_regs.esi);
 
 		break;
 	}
@@ -1732,6 +1734,17 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		if (!(flags & MAP_ANONYMOUS)) {
 			assert((flags & MAP_GROWSDOWN) == 0);
 			record_child_data(ctx, syscall, regs.ecx, mmap_addr);
+
+			struct mmaped_file file;
+			file.time = get_global_time();
+			file.tid = tid;
+			char * filename = get_mmaped_region_filename(ctx,mmap_addr);
+			strcpy(file.filename,filename);
+			sys_stat(filename,&file.stat);
+			sys_free(&filename);
+			file.start = mmap_addr;
+			file.end = get_mmaped_region_end(ctx,mmap_addr);
+			record_mmapped_file_stats(&file);
 		}
 
 		break;
@@ -1761,7 +1774,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		// zero out the scratch pad for consistency with the replay
 		sys_memset(recorded_data,0,ctx->recorded_scratch_size);
 		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded_data);
-		sys_free(&recorded_data);
+		sys_free((void**)&recorded_data);
 
 		record_child_data(ctx, syscall, sizeof(struct timespec), regs.ecx);
 		break;
@@ -1920,7 +1933,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		// zero out the scratch-pad for consistency with the replay
 		sys_memset(recorded_data,0,ctx->recorded_scratch_size);
 		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded_data);
-		sys_free(recorded_data);
+		sys_free((void**)&recorded_data);
 
 		record_child_data(ctx, syscall, sizeof(int), regs.ecx);
 		record_child_data(ctx, syscall, sizeof(struct rusage), regs.esi);
@@ -1946,7 +1959,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		// zero out the scratch-pad for consistency with the replay
 		sys_memset(recorded_data,0,ctx->recorded_scratch_size);
 		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded_data);
-		sys_free(recorded_data);
+		sys_free((void**)&recorded_data);
 
 		record_child_data(ctx, syscall, sizeof(int), regs.ecx);
 		break;
