@@ -1733,7 +1733,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 */
 		if (!(flags & MAP_ANONYMOUS)) {
 			assert((flags & MAP_GROWSDOWN) == 0);
-			record_child_data(ctx, syscall, regs.ecx, mmap_addr);
+			// from mm/mman.h
+			record_child_data(ctx, syscall, PAGE_ALIGN(regs.ecx), mmap_addr);
 
 			struct mmaped_file file;
 			file.time = get_global_time();
