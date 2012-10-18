@@ -2,8 +2,9 @@
 #define PROCESS_SYSCALL_H_
 
 #include "../share/types.h"
+#include "../share/util.h"
 
-void rec_process_syscall(struct context *ctx, struct flags rr_flags);
+void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags);
 void process_thread_start(pid_t pid);
 
 /*

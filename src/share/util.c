@@ -9,12 +9,12 @@
 #include <sys/syscall.h>
 #include <sys/ptrace.h>
 
+#include "dbg.h"
+#include "ipc.h"
+#include "sys.h"
+#include "types.h"
+#include "trace.h"
 #include "util.h"
-
-#include "../share/dbg.h"
-#include "../share/ipc.h"
-#include "../share/sys.h"
-#include "../share/types.h"
 
 static char* syscall_str[350] = { "restart_syscall", "exit", "fork", "read", "write", "open", "close", "waitpid", "creat", "link", "unlink", "execve", "chdir", "time", "mknod", "chmod", "lchown",
 		"break", "oldstat", "lseek", "getpid", "mount", "umount", "setuid", "getuid", "stime", "ptrace", "alarm", "oldfstat", "pause", "utime", "stty", "gtty", "access", "nice", "ftime", "sync",
@@ -536,52 +536,179 @@ void print_process_mmap(pid_t tid)
 		perror("error closing mmap file\n");
 	}
 
-	sleep(10);
+	//sleep(10);
 }
 
 /**
  * prints a child process memory sections content, according to /proc/pid/maps to the given filename
  */
 
-void print_process_memory(pid_t child, char * filename)
+void print_process_memory(struct context * ctx, char * filename)
 {
 	int i;
-	const ssize_t length = snprintf(NULL, 0, "%lu", child) + 1;
-	char buf[length];
-	snprintf(buf, length, "%lu", child);
+	pid_t tid = ctx->child_tid;
 
-	char maps_str[1024] = {0};
-	strcpy(maps_str,"/proc/");
-	strcat(maps_str,buf);
-	strcat(maps_str,"/maps");
+	// open the maps file
+	char maps_filename[1024] = {0};
+	sprintf(maps_filename,"/proc/%d/maps",tid);
+	FILE *maps_file = fopen(maps_filename,"r");
 
-	FILE *maps_file = fopen(maps_str,"r"), *out_file = (filename) ? fopen(filename,"w") : stderr;
+	// open the output file
+	FILE* *out_file = (filename) ? fopen(filename,"w") : stderr;
+
+	// for each line in the maps file:
+	char line[1024];
 	unsigned int start, end;
 	char flags[32], binary[128];
 	unsigned int dev_minor, dev_major;
 	unsigned long long file_offset, inode;
-
-
-	fprintf(out_file,"Printing memory for process %d:\n",child);
-	while ( fscanf(maps_file,"%x-%x %31s %Lx %x:%x %Lu", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode) != EOF ) {
-		/* read the remainder of the line into filename (it may be empty)*/
-		while ( (binary[0] = fgetc(maps_file)) != ' ');
-		for (i = 0 ; (binary[i] = fgetc(maps_file)) != '\n' ; ++i);
-		binary[i] = '\0';
-		fprintf(out_file,"\n%x-%x from %s:\n", start, end, binary);
-		const ssize_t length = end - start;
-		char buffer[length];
-		read_child_buffer(child,start,length,buffer);
-		for (i = 0 ; i < length ; i += 4) {
+	while ( fgets(line,1024,maps_file) != NULL ) {
+		sscanf(line,"%x-%x %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, binary);
+		const size_t size = end - start;
+		char * buffer = read_child_data(ctx,size,start);
+		fprintf(out_file,"%s\n", line);
+		for (i = 0 ; i < size ; i += 4) {
 			unsigned int dword = *((unsigned int *)(buffer + i));
 			//fprintf(out_file,"%x | %d %d %d %d | [%x]\n",dword, buffer[i] , buffer[i+1], buffer[i+2], buffer[i+3], start + i);
 			fprintf(out_file,"%8x | [%x]\n",dword, start + i);
 			//fprintf(stderr,"%x",dword);
 		}
-		rand();
+		sys_free(&buffer);
+
 	}
+	fclose(out_file);
 	fclose(maps_file);
 }
+
+/**
+ * checksums all regions of memory
+ */
+void checksum_process_memory(struct context * ctx)
+{
+	pid_t tid = ctx->child_tid;
+	int i;
+
+	// open the maps file
+	char maps_filename[1024] = {0};
+	sprintf(maps_filename,"/proc/%d/maps",tid);
+	FILE *maps_file = fopen(maps_filename,"r");
+
+	// open the checksums file
+	char checksums_filename[1024] = {0};
+	sprintf(checksums_filename,"%s/%d_%d",get_trace_path(),get_global_time(),tid);
+	FILE *checksums_file = fopen(checksums_filename,"w");
+
+	// for each line in the maps file:
+	char line[1024];
+	unsigned int start, end;
+	while ( fgets(line,1024,maps_file) != NULL ) {
+		//sscanf(maps_file,"%x-%x %31s %Lx %x:%x %Lu", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode);
+		sscanf(line,"%x-%x", &start, &end);
+		int checksum = 0;
+		const size_t size = end - start;
+		char * buffer = read_child_data(ctx,size,start);
+		assert( size % 4 == 0 );
+		for (i = 0 ; i < size ; i += 4) {
+			unsigned int dword = *((unsigned int *)(buffer + i));
+			checksum += dword;
+		}
+		sys_free(&buffer);
+		fprintf(checksums_file,"%x-%x:%x\n", start, end, checksum);
+		//printf("%x-%x:%x\n", start, end, checksum);
+	}
+	fclose(checksums_file);
+	fclose(maps_file);
+}
+
+void validate_process_memory(struct context * ctx)
+{
+	// open the maps file
+	char maps_filename[1024] = {0};
+	sprintf(maps_filename,"/proc/%d/maps",ctx->child_tid);
+	FILE *maps_file = fopen(maps_filename,"r");
+
+	// open the checksums file
+	char checksums_filename[1024] = {0};
+	sprintf(checksums_filename,"%s/%d_%d",get_trace_path(),ctx->trace.global_time,ctx->rec_tid);
+	FILE *checksums_file = fopen(checksums_filename,"r");
+
+	// for each line in the maps file:
+	char line[1024];
+	unsigned int start, end;
+	while ( fgets(line,1024,maps_file) != NULL ) {
+		//sscanf(maps_file,"%x-%x %31s %Lx %x:%x %Lu", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode);
+		sscanf(line,"%x-%x", &start, &end);
+		int checksum = 0;
+		const size_t size = end - start;
+		char * buffer = read_child_data(ctx,size,start);
+		assert( size % 4 == 0 );
+		int i;
+		for (i = 0 ; i < size ; i += 4) {
+			unsigned int dword = *((unsigned int *)(buffer + i));
+			checksum += dword;
+		}
+		sys_free(&buffer);
+		// verify against the recorded checksum
+		char line[64] = {0}, recorded_line[64] = {0};
+		sprintf(line,"%x-%x:%x\n", start, end, checksum);
+		read_line(checksums_file, recorded_line, 64, checksums_filename);
+		assert(strcmp(line,recorded_line) == 0);
+	}
+	fclose(maps_file);
+	fclose(checksums_file);
+}
+
+void * get_mmaped_region_end(struct context * ctx, void * mmap_start)
+{
+	// open the maps file
+	char maps_filename[1024] = {0};
+	sprintf(maps_filename,"/proc/%d/maps",ctx->child_tid);
+	FILE *maps_file = fopen(maps_filename,"r");
+
+	// for each line in the maps file:
+	char line[1024];
+	void *start, *end;
+	while ( fgets(line,1024,maps_file) != NULL ) {
+		sscanf(line,"%p-%p", &start, &end);
+		if (mmap_start == start)
+			break;
+		end = NULL;
+	}
+	fclose(maps_file);
+	return end;
+
+}
+
+char * get_mmaped_region_filename(struct context * ctx, void * mmap_start)
+{
+	// open the maps file
+	char maps_filename[1024] = {0};
+	sprintf(maps_filename,"/proc/%d/maps",ctx->child_tid);
+	FILE *maps_file = fopen(maps_filename,"r");
+
+	// for each line in the maps file:
+	char line[1024] = {0};
+	void *start, *end;
+	char flags[32], binary[128] = {0}, *result = NULL;
+	unsigned int dev_minor, dev_major;
+	unsigned long long file_offset, inode;
+	while ( fgets(line,1024,maps_file) != NULL ) {
+		sscanf(line,"%x-%x %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, binary);
+		if (mmap_start != start)
+			continue;
+		// found it
+		assert(strlen(binary) > 0);
+		size_t index = 0;
+		while ( isblank(*binary) ) index++; // clear white characters
+		result = sys_malloc_zero(strlen(binary + index) + 1);
+		strcpy(result,binary + index);
+		break;
+	}
+	fclose(maps_file);
+	assert(result && "unable to locate map end for given address");
+	return result;
+}
+
 
 /**
  * This function checks if the specified memory region (start - end) is
@@ -704,4 +831,35 @@ void read_child_initial_memory_end_exit(pid_t pid, char * executable, char * arg
         print_process_memory(pid,pid_str);
 	    kill(pid,SIGKILL);
     }
+}
+
+// returns the eax
+int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * call_regs) {
+	pid_t tid = ctx->child_tid;
+	struct user_regs_struct orig_regs;
+	read_child_registers(tid, &orig_regs);
+	void *code = read_child_data(ctx, 4, orig_regs.eip);
+
+	// set up the system call
+	write_child_registers(tid, call_regs);
+
+	// inject code that executes the additional system call
+	char syscall[] = { 0xcd, 0x80 };
+	write_child_data(ctx, 2, call_regs->eip, syscall);
+
+	sys_ptrace_syscall(tid);
+	sys_waitpid(tid, &ctx->status);
+
+	sys_ptrace_syscall(tid);
+	sys_waitpid(tid, &ctx->status);
+
+	// save the result
+	int result = read_child_eax(tid);
+
+	// reset to the original state
+	write_child_registers(tid, &orig_regs);
+	write_child_data(ctx, 2, call_regs->eip, code);
+	sys_free(&code);
+
+	return result;
 }

@@ -18,6 +18,7 @@ void memcpy_child(struct context *ctx, void *dest, void *src, int size);
 void write_child_code(pid_t pid, void* addr, long code);
 void write_child_registers(int child_id, struct user_regs_struct* regs);
 void write_child_data_n(pid_t tid, size_t size, long int addr, void* data);
+void write_child_data_n2(pid_t tid, size_t size, long int addr, void* data);
 void write_child_data(struct context *ctx, const size_t size, void *addr, void *data);
 
 
@@ -43,6 +44,7 @@ void write_child_ebp(int tid, long int val);
 
 
 char* read_child_str(pid_t pid, long int addr);
+char* read_child_str2(struct context * ctx, long int addr);
 void* read_child_data_tid(pid_t tid, size_t size, long int addr);
 
 #endif /* __IPC_H__ */

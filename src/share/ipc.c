@@ -281,7 +281,9 @@ void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr,
 }
 
 void read_child_usr(struct context *ctx, void *dest, void *src, size_t size) {
-	assert(pread(ctx->child_mem_fd, dest, size, (uintptr_t)src) == size);
+	assert(size >= 0);
+	size_t bytes_read = pread(ctx->child_mem_fd, dest, size, (uintptr_t)src);
+	assert(bytes_read == size);
 }
 
 void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
@@ -290,7 +292,7 @@ void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
 	ssize_t read_bytes = checked_pread(ctx,buf,size,addr);
 	if (read_bytes != size) {
-		free(buf);
+		sys_free(&buf);
 		buf = read_child_data_tid(ctx->child_tid,size,addr);
 		printf("reading from: %x demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
 		perror("warning: reading from child process: ");
@@ -389,11 +391,79 @@ char* read_child_str(pid_t pid, long int addr)
 	return 0;
 }
 
-void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
+char* read_child_str2(struct context * ctx, long int addr)
 {
+	char *str;
+	int i = 0;
+	int buffer_size = 256;
 
+	while (1) {
+
+		str = (char*)read_child_data(ctx,buffer_size,addr);
+		for (; i < buffer_size; i++)
+			if (str[i] == '\0')
+				return str;
+
+		sys_free((void**)&str);
+		buffer_size *= 2;
+
+	};
+
+	return 0;
+}
+
+void write_child_data_n2(pid_t tid, const size_t size, long int addr, void* data)
+{
 	int start_offset = addr & 0x3;
 	int end_offset = (addr + size) & 0x3;
+	int bytes_read = 0;
+
+	if (start_offset) {
+		long dword = read_child_data_word(tid, addr & ~0x3);
+		char * word_ptr = &dword;
+		memcpy(word_ptr + start_offset, data, READ_SIZE - start_offset);
+		write_child_data_word(tid, addr & ~0x3, dword);
+		//long dword2 = read_child_data_word(tid,addr);
+		//assert(dword == dword2);
+		bytes_read += READ_SIZE - start_offset;
+		addr += READ_SIZE - start_offset;
+		data += READ_SIZE - start_offset;
+	}
+
+	CHECK_ALIGNMENT(addr);
+
+	while (bytes_read + READ_SIZE <= size) {
+		long dword = *((long*)data);
+		write_child_data_word(tid, addr, dword);
+		//long dword2 = read_child_data_word(tid,addr);
+		//assert(dword == dword2);
+		bytes_read += READ_SIZE;
+		addr += READ_SIZE;
+		data += READ_SIZE;
+	}
+
+	CHECK_ALIGNMENT(addr);
+
+	if (end_offset) {
+		long int dword = read_child_data_word(tid, addr);
+		char * word_ptr = &dword;
+		memcpy(word_ptr, data, end_offset);
+		write_child_data_word(tid, addr, dword);
+		//long dword2 = read_child_data_word(tid,addr);
+		//assert(dword == dword2);
+		bytes_read += end_offset;
+		addr += end_offset;
+		data += end_offset;
+	}
+
+	assert(bytes_read == size);
+}
+
+void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
+{
+	int start_offset = addr & 0x3;
+	int end_offset = (addr + size) & 0x3;
+	int bytes_read = 0;
 
 	size_t write_size = size;
 	void* write_data = sys_malloc(size + 2 * READ_SIZE);
@@ -427,8 +497,8 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 
 void write_child_data(struct context *ctx, const size_t size, void *addr, void *data)
 {
-
-	ssize_t written = pwrite(ctx->child_mem_fd, data, size, (off_t) addr);
+	assert(size >= 0);
+	size_t written = pwrite(ctx->child_mem_fd, data, size, (off_t) addr);
 	if (written != size) {
 		write_child_data_n(ctx->child_tid, size, addr, data);
 	}

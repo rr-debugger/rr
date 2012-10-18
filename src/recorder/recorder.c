@@ -7,11 +7,11 @@
 #include <sys/epoll.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
+#include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
 #include <linux/net.h>
 
-#include "write_trace.h"
 #include "rec_process_event.h"
 #include "rec_sched.h"
 #include "handle_signal.h"
@@ -19,6 +19,7 @@
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
+#include "../share/trace.h"
 #include "../share/sys.h"
 #include "../share/util.h"
 
@@ -60,17 +61,13 @@ void goto_next_event_singlestep(struct context* context)
 	assert(GET_PTRACE_EVENT(context->status)==0);
 }
 
-static void init_scratch_memory(struct context *ctx)
+static void rec_init_scratch_memory(struct context *ctx)
 {
 	/* initialize the scratchpad for blocking system calls */
-	struct user_regs_struct orig_regs;
-
-	read_child_registers(ctx->child_tid, &orig_regs);
-	void *code = read_child_data(ctx, 4, read_child_eip(ctx->child_tid));
 
 	/* set up the mmap system call */
 	struct user_regs_struct mmap_call;
-	memcpy(&mmap_call, &orig_regs, sizeof(struct user_regs_struct));
+	read_child_registers(ctx->child_tid, &mmap_call);
 
 	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
 
@@ -81,25 +78,19 @@ static void init_scratch_memory(struct context *ctx)
 	mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
 	mmap_call.edi = -1;
 	mmap_call.ebp = 0;
-	write_child_registers(ctx->child_tid, &mmap_call);
 
-	/* inject code that executes the additional system call */
-	char syscall[] = { 0xcd, 0x80 };
-	write_child_data(ctx, 2, mmap_call.eip, syscall);
-
-	sys_ptrace_syscall(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &ctx->status);
-
-	sys_ptrace_syscall(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &ctx->status);
-
-	ctx->scratch_ptr = (void*) read_child_eax(ctx->child_tid);
+	ctx->scratch_ptr = (void*)inject_and_execute_syscall(ctx,&mmap_call);
 	ctx->scratch_size = scratch_size;
 
-	/* reset to the original state */
-	write_child_registers(ctx->child_tid, &orig_regs);
-	write_child_data(ctx, 2, mmap_call.eip, code);
-	free(code);
+	// record this mmap for the replay
+	struct user_regs_struct orig_regs = ctx->child_regs;
+	ctx->child_regs = mmap_call;
+	int event = ctx->event;
+	ctx->event = USR_INIT_SCRATCH_MEM;
+	record_event(ctx,STATE_SYSCALL_EXIT);
+	ctx->event = event;
+	ctx->child_regs = orig_regs;
+
 }
 
 static void cont_nonblock(struct context *ctx)
@@ -134,7 +125,7 @@ static int wait_block_timeout(struct context *ctx, int timeout_us)
 
 static void cont_block(struct context *ctx)
 {
-
+	assert(!WIFEXITED(ctx->status));
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);
@@ -143,9 +134,8 @@ static void cont_block(struct context *ctx)
 	handle_signal(ctx);
 }
 
-static int allow_ctx_switch(struct context *ctx)
+static int allow_ctx_switch(struct context *ctx, int event)
 {
-	int event = ctx->event;
 	//printf("event: %d\n",event);
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	switch (event) {
@@ -286,6 +276,40 @@ static int allow_ctx_switch(struct context *ctx)
 		return 1;
 	}
 
+	/* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5); */
+	case SYS_prctl:
+	{
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		switch (regs.ebx)
+		{
+			case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
+			case PR_GET_FPEMU:  	/* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
+			case PR_GET_FPEXC:  	/* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
+			case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
+			case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
+			case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
+				ctx->recorded_scratch_size = sizeof(int);
+				assert(ctx->recorded_scratch_size <= ctx->scratch_size);
+				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
+				regs.ecx = ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid, &regs);
+				break;
+			case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
+			 	 	 	 	 	 	The buffer should allow space for up to 16 bytes;
+			 	 	 	 	 	 	The returned string will be null-terminated if it is shorter than that. */
+				ctx->recorded_scratch_size = 16;
+				assert(ctx->recorded_scratch_size <= ctx->scratch_size);
+				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
+				regs.ecx = ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid, &regs);
+				break;
+			default:
+				break;
+		}
+		break;
+	}
+
 	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
 	case SYS_epoll_wait:
 	{
@@ -348,13 +372,13 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_VFORK_DONE:
 	{
-		rec_process_syscall(*ctx_ptr,rr_flags_);
-		record_event((*ctx_ptr), 1);
+		rec_process_syscall(*ctx_ptr, (*ctx_ptr)->event, rr_flags_);
+		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
 		(*ctx_ptr)->exec_state = EXEC_STATE_START;
 		(*ctx_ptr)->allow_ctx_switch = 1;
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		cont_block(*ctx_ptr);
-		record_event((*ctx_ptr), 1);
+		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
 		break;
 	}
 
@@ -378,7 +402,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		if (event == PTRACE_EVENT_VFORK) {
 			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
 			(*ctx_ptr)->allow_ctx_switch = 1;
-			record_event((*ctx_ptr), 0);
+			record_event((*ctx_ptr), STATE_SYSCALL_ENTRY);
 			cont_nonblock((*ctx_ptr));
 		} else {
 			cont_block((*ctx_ptr));
@@ -388,9 +412,9 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_EXEC:
 	{
-		record_event(*ctx_ptr, 0);
+		record_event(*ctx_ptr, STATE_SYSCALL_ENTRY);
 		cont_block(*ctx_ptr);
-		init_scratch_memory(*ctx_ptr);
+		rec_init_scratch_memory(*ctx_ptr);
 		assert(signal_pending((*ctx_ptr)->status) == 0);
 		break;
 	}
@@ -398,7 +422,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	case PTRACE_EVENT_EXIT:
 	{
 		(*ctx_ptr)->event = USR_EXIT;
-		record_event((*ctx_ptr), 1);
+		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
 		rec_sched_deregister_thread(ctx_ptr);
 		break;
 	}
@@ -421,16 +445,27 @@ void start_recording(struct flags rr_flags)
 	/* record the initial status of the register file */
 	ctx = get_active_thread(ctx);
 	ctx->event = -1000;
-	record_event(ctx, 0);
-	init_scratch_memory(ctx);
+	record_event(ctx, STATE_SYSCALL_ENTRY);
+	rec_init_scratch_memory(ctx);
 
 	while (rec_sched_get_num_threads() > 0) {
 		/* get a thread that is ready to be executed */
 		ctx = get_active_thread(ctx);
 
+
 		if (ctx->scratch_ptr == NULL) {
-			init_scratch_memory(ctx);
+			rec_init_scratch_memory(ctx);
 		}
+
+
+		if (rr_flags.dump_on == ctx->event ||
+			rr_flags.dump_on == DUMP_ON_ALL ||
+			rr_flags.dump_at == get_global_time()) {
+	        char pid_str[MAX_PATH_LEN];
+			sprintf(pid_str,"%s/%d_%d_rep",get_trace_path(),ctx->child_tid,get_global_time());
+			print_process_memory(ctx->child_tid,pid_str);
+		}
+
 		/* the child process will either be interrupted by: (1) a signal, or (2) at
 		 * the entry of the system call */
 
@@ -479,7 +514,7 @@ void start_recording(struct flags rr_flags)
 				 * fullt process the sigreturn system call.
 				 */
 				int orig_event = ctx->event;
-				record_event(ctx, 0);
+				record_event(ctx, STATE_SYSCALL_ENTRY);
 				/* do another step */
 				cont_block(ctx);
 
@@ -487,7 +522,7 @@ void start_recording(struct flags rr_flags)
 				/* the next event is -1 -- how knows why?*/
 				assert(ctx->event == -1);
 				ctx->event = orig_event;
-				record_event(ctx, 0);
+				record_event(ctx, STATE_SYSCALL_ENTRY);
 				ctx->allow_ctx_switch = 0;
 
 				/* here we can continue normally */
@@ -498,22 +533,54 @@ void start_recording(struct flags rr_flags)
 
 				/* this is a wired state -- no idea why it works */
 			} else if (ctx->event == SYS_restart_syscall) {
+				/* Syscalls like nanosleep(), poll() which can't be
+				 * restarted with their original arguments use the
+				 * ERESTART_RESTARTBLOCK code.
+				 *
+				 * ---------------->
+				 * Kernel will execute restart_syscall() instead,
+				 * which changes arguments before restarting syscall.
+				 * <----------------
+				 *
+				 * SA_RESTART is ignored (assumed not set) similarly
+				 * to ERESTARTNOHAND. (Kernel can't honor SA_RESTART
+				 * since restart data is saved in "restart block"
+				 * in task struct, and if signal handler uses a syscall
+				 * which in turn saves another such restart block,
+				 * old data is lost and restart becomes impossible)
+				 */
+				debug("restarting syscall %d",ctx->last_syscall);
+				/*
+				 * From errno.h:
+				 * These should never be seen by user programs.  To return
+				 * one of ERESTART* codes, signal_pending() MUST be set.
+				 * Note that ptrace can observe these at syscall exit tracing,
+				 * but they will never be left for the debugged user process to see.
+				 */
 
-				assert(1==0);
+				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 
 				/* we sould never come here */
 			} else {
 				assert(1==0);
 			}
 
-			record_event(ctx, 0);
+			record_event(ctx, STATE_SYSCALL_ENTRY);
 			break;
 		}
 
 		case EXEC_STATE_ENTRY_SYSCALL:
 		{
+
+			int syscall = ctx->event;
+			// if we are restarting a syscall, behave as if its the syscall to be restarted
+			if (syscall == SYS_restart_syscall) {
+				syscall = ctx->last_syscall;
+				assert(syscall && "restarting a restart_syscall");
+			}
+
 			/* continue and execute the system call */
-			ctx->allow_ctx_switch = allow_ctx_switch(ctx);
+			ctx->allow_ctx_switch = allow_ctx_switch(ctx,syscall);
 			cont_nonblock(ctx);
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
 			break;
@@ -521,8 +588,6 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-
-
 			int ret;
 			/*
 			 * Wait for the system call to return in case of a write,
@@ -553,18 +618,35 @@ void start_recording(struct flags rr_flags)
 		{
 			assert(signal_pending(ctx->status) == 0);
 
+			struct user_regs_struct regs;
+			read_child_registers(ctx->child_tid,&regs);
+			int syscall = regs.orig_eax;
+			int retval = regs.eax;
+			//assert(regs.eax != ERESTARTNOINTR && regs.eax != ERESTART_RESTARTBLOCK);
+
 			/* we received a signal while in the system call and send it right away*/
 			/* we have already sent the signal and process sigreturn */
 			if (ctx->event == SYS_sigreturn) {
 				assert(1==0);
 			}
 
+			// if the syscall is about to be restarted, save the last syscall performed by it.
+			if (syscall != SYS_restart_syscall &&
+			    (retval == ERESTART_RESTARTBLOCK || retval == ERESTARTNOINTR)) {
+				ctx->last_syscall = syscall;
+			}
+
 			handle_ptrace_event(&ctx);
 
 			if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
 				ctx->child_sig = signal_pending(ctx->status);
-				rec_process_syscall(ctx, rr_flags);
-				record_event(ctx, 1);
+				// a syscall_restart ending is equivalent to the restarted syscall ending
+				if (syscall == SYS_restart_syscall) {
+					debug("restart_syscall exit");
+					syscall = ctx->last_syscall;
+				}
+				rec_process_syscall(ctx, syscall, rr_flags);
+				record_event(ctx, STATE_SYSCALL_EXIT);
 				ctx->exec_state = EXEC_STATE_START;
 				ctx->allow_ctx_switch = 1;
 			}

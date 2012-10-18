@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "replayer.h"
-#include "read_trace.h"
+
 #include "../share/trace.h"
 #include "../share/hpc.h"
 #include "../share/sys.h"

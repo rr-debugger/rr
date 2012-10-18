@@ -6,7 +6,6 @@
 
 #include <sys/fcntl.h>
 
-#include "read_trace.h"
 #include "replayer.h"
 
 #include "../share/sys.h"
@@ -170,9 +169,12 @@ void rep_process_signal(struct context *ctx, bool validate)
 		break;
 	}
 
+	case SIGTERM:
 	case SIGALRM:
 	case SIGIO:
 	case SIGCHLD:
+	case 33: /* SIGRTMIN + 1 */
+	case 62: /* SIGRTMAX - 1 */
 	{
 		/* synchronous signal (signal received in a system call) */
 		if (trace->rbc_up == 0) {

@@ -1,31 +1,874 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/user.h>
+#include <assert.h>
+#include <err.h>
+#include <sched.h>
+#include <stdio.h>
+#include <string.h>
 
+
+#include <sys/user.h>
+#include <sys/syscall.h>
+
+#include "config.h"
+#include "dbg.h"
+#include "hpc.h"
+#include "ipc.h"
 #include "trace.h"
 #include "sys.h"
+#include "util.h"
 
-#include "../share/util.h"
+#define BUF_SIZE 1024;
+#define LINE_SIZE 50;
 
-static FILE* __trace;
+static char* trace_path_ = NULL;
 
-void init_write_trace(const char* path)
+static FILE *syscall_header;
+static FILE *raw_data;
+static FILE *trace_file;
+static FILE *stat_file;
+
+static int raw_data_file_counter = 0;
+static uint32_t trace_file_counter = 0;
+static uint32_t thread_time[100000];
+static uint32_t global_time = 0;
+
+static struct flags rr_flags_ = {0};
+/*
+static struct stat syscall_header_stats;
+static struct stat raw_data_stats;
+static struct stat trace_file_stats;
+static struct stat stat_file_stats;
+*/
+
+static int overall_bytes = 0;
+
+
+char* get_trace_path() {
+	return trace_path_;
+}
+
+void write_open_inst_dump(struct context *ctx)
 {
+	char path[64];
+	char tmp[32];
+	strcpy(path, trace_path_);
+	sprintf(tmp, "/inst_dump_%d", ctx->child_tid);
+	strcat(path, tmp);
+	ctx->inst_dump = sys_fopen(path, "a+");
+}
 
-	char line[1024];
+static unsigned int get_global_time_incr()
+{
+	return global_time++;
+}
 
-	__trace = (FILE*) sys_fopen(path, "r");
+unsigned int get_global_time()
+{
+	return global_time;
+}
 
-	//skip the first line -- is only meta-information
-	if (feof(__trace) || fgets(line, 1024, __trace) == NULL) {
-		perror("failed reading meta-information\n");
-		exit(-1);
+static unsigned int get_time_incr(pid_t tid)
+{
+	return thread_time[tid]++;
+}
+
+unsigned int get_time(pid_t tid)
+{
+	return thread_time[tid];
+}
+
+/**
+ * sets up the directory where all trace files will be stored. If the trace
+ * file already exists, the version number is increased
+ */
+void rec_setup_trace_dir(int version)
+{
+	char ver[32], path[64];
+	/* convert int to char* */
+	sprintf(ver, "_%d", version);
+	strcpy(path, "./trace");
+
+	const char* tmp_path = strcat(path, ver);
+
+	if (mkdir(tmp_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1) {
+		int error = errno;
+		if (error == EEXIST) {
+			rec_setup_trace_dir(version + 1);
+		}
+	} else {
+		trace_path_ = sys_malloc(strlen(tmp_path) + 1);
+		strcpy(trace_path_, tmp_path);
 	}
 }
 
-void close_trace()
+void record_argv_envp(int argc, char* argv[], char* envp[])
 {
-	sys_fclose(__trace);
+
+	char tmp[128], path[64];
+	int i, j;
+	/* construct path to file */
+	strcpy(path, trace_path_);
+	strcpy(tmp, "/arg_env");
+	strcat(path, tmp);
+
+	FILE* arg_env = (FILE*) sys_fopen(path, "a+");
+
+	/* print argc */
+	fprintf(arg_env, "%d\n", argc);
+
+	/* print arguments to file */
+	for (i = 0; i < argc; i++) {
+		fprintf(arg_env, "%s\n", argv[i]);
+	}
+
+	/* figure out the length of envp */
+	i = 0;
+	while (envp[i] != NULL) {
+		i++;
+	}
+	fprintf(arg_env, "%d\n", i);
+
+	for (j = 0; j < i; j++) {
+		fprintf(arg_env, "%s\n", envp[j]);
+	}
+	sys_fclose(arg_env);
+}
+
+void open_trace_files(struct flags rr_flags)
+{
+	rr_flags_ = rr_flags;
+	char tmp[128], path[128];
+
+	strcpy(path, trace_path_);
+	sprintf(tmp, "/trace_%u", trace_file_counter);
+	strcat(path, tmp);
+	trace_file = sys_fopen(path, "a+");
+	//sys_stat(path,&trace_file_stats);
+
+
+	strcpy(path, trace_path_);
+	strcpy(tmp, "/syscall_input");
+	strcat(path, tmp);
+	syscall_header = sys_fopen(path, "a+");
+	//sys_stat(path,&syscall_header_stats);
+
+
+	strcpy(path, trace_path_);
+	sprintf(tmp, "/raw_data_%u", raw_data_file_counter);
+	strcat(path, tmp);
+	raw_data = sys_fopen(path, "a+");
+	//sys_stat(path,&raw_data_stats);
+
+
+	strcpy(path, trace_path_);
+	strcpy(tmp, "/stats");
+	strcat(path, tmp);
+	stat_file = sys_fopen(path, "a+");
+	//sys_stat(path,&stat_file_stats);
+
+}
+/*
+bool is_internal_file(char * pathname) {
+	struct stat stat_buf;
+	if (stat(pathname,&stat_buf) < 0)
+		return FALSE;
+	return is_internal_inode(stat_buf.st_ino);
+}
+
+bool is_internal_inode(ino_t inode) {
+	return ( inode == trace_file_stats.st_ino ||
+			 inode == syscall_header_stats.st_ino ||
+			 inode == raw_data_stats.st_ino ||
+			 inode == stat_file_stats.st_ino);
+}
+*/
+static void use_new_rawdata_file(void)
+{
+	char tmp[128], path[64];
+
+	sys_fclose(raw_data);
+	strcpy(path, trace_path_);
+	sprintf(tmp, "/raw_data_%u", ++raw_data_file_counter);
+	strcat(path, tmp);
+	raw_data = sys_fopen(path, "a+");
+}
+
+static void use_new_trace_file(void)
+{
+	char tmp[128], path[64];
+
+	sys_fclose(trace_file);
+	strcpy(path, trace_path_);
+	sprintf(tmp, "/trace_%u", ++trace_file_counter);
+	strcat(path, tmp);
+	trace_file = sys_fopen(path, "a+");
+}
+
+void rec_init_trace_files(void)
+{
+	/* init trace file */
+	fprintf(trace_file, "%11s", "global_time");
+	fprintf(trace_file, "%11s", "thread_time");
+	fprintf(trace_file, "%11s", "tid");
+	fprintf(trace_file, "%11s", "reason");
+	fprintf(trace_file, "%11s", "entry/exit");
+	fprintf(trace_file, "%20s", "hw_interrupts");
+	fprintf(trace_file, "%20s", "page_faults");
+	fprintf(trace_file, "%20s", "adapted_rbc");
+
+	fprintf(trace_file, "%11s", "eax");
+	fprintf(trace_file, "%11s", "ebx");
+	fprintf(trace_file, "%11s", "ecx");
+	fprintf(trace_file, "%11s", "edx");
+	fprintf(trace_file, "%11s", "esi");
+	fprintf(trace_file, "%11s", "edi");
+	fprintf(trace_file, "%11s", "ebp");
+	fprintf(trace_file, "%11s", "orig_eax");
+	fprintf(trace_file, "%11s", "eip");
+	fprintf(trace_file, "%11s", "eflags");
+	fprintf(trace_file, "\n");
+
+	/* print human readable header */
+	fprintf(syscall_header, "%11s", "time");
+	fprintf(syscall_header, "%11s", "syscall");
+	fprintf(syscall_header, "%11s", "addr");
+	fprintf(syscall_header, "%11s\n", "size");
+
+
+	fprintf(stat_file, "%11s", "time");
+	fprintf(stat_file, "%11s", "tid");
+	fprintf(stat_file, "%11s", "blksize");
+	fprintf(stat_file, "%11s", "blocks");
+	fprintf(stat_file, "%11s", "ctim.sec");
+	fprintf(stat_file, "%11s", "ctim.nsec");
+	fprintf(stat_file, "%11s", "dev");
+	fprintf(stat_file, "%11s", "gid");
+	fprintf(stat_file, "%11s", "ino");
+	fprintf(stat_file, "%11s", "mode");
+	fprintf(stat_file, "%11s", "mtim.sec");
+	fprintf(stat_file, "%11s", "mtim.nsec");
+	fprintf(stat_file, "%11s", "rdev");
+	fprintf(stat_file, "%11s", "size");
+	fprintf(stat_file, "%11s", "uid");
+	fprintf(stat_file, "%11s\n", "filename");
+
+	fflush(stat_file);
+	fflush(trace_file);
+	fflush(syscall_header);
+	fflush(raw_data);
+
+}
+
+void close_trace_files(void)
+{
+	sys_fclose(syscall_header);
+	sys_fclose(raw_data);
+	sys_fclose(trace_file);
+	sys_fclose(stat_file);
+}
+
+static void record_performance_data(struct context *ctx)
+{
+	fprintf(trace_file, "%20llu", read_hw_int(ctx->hpc));
+	fprintf(trace_file, "%20llu", read_page_faults(ctx->hpc));
+	fprintf(trace_file, "%20llu", read_rbc_up(ctx->hpc));
+}
+static void record_register_file(struct context *ctx)
+{
+
+	pid_t tid = ctx->child_tid;
+	struct user_regs_struct regs;
+	read_child_registers(tid, &regs);
+
+	fprintf(trace_file, "%11lu", regs.eax);
+	fprintf(trace_file, "%11lu", regs.ebx);
+	fprintf(trace_file, "%11lu", regs.ecx);
+	fprintf(trace_file, "%11lu", regs.edx);
+	fprintf(trace_file, "%11lu", regs.esi);
+	fprintf(trace_file, "%11lu", regs.edi);
+	fprintf(trace_file, "%11lu", regs.ebp);
+	fprintf(trace_file, "%11lu", regs.orig_eax);
+	fprintf(trace_file, "%11lu", regs.eip);
+	fprintf(trace_file, "%11lu", regs.eflags);
+	fprintf(trace_file, "\n");
+}
+
+/**
+ * Makes an entry into the event trace file
+ */
+void record_event(struct context *ctx, int state)
+{
+
+	if (((global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (global_time > 0)) {
+		use_new_trace_file();
+	}
+
+	// do memory checksum on syscall entry
+	if ((rr_flags_.checksum & state) && ctx)
+		checksum_process_memory(ctx);
+
+	fprintf(trace_file, "%11d", get_global_time_incr());
+	fprintf(trace_file, "%11u", get_time_incr(ctx->child_tid));
+	fprintf(trace_file, "%11d", ctx->child_tid);
+	fprintf(trace_file, "%11d", ctx->event);
+	fprintf(trace_file, "%11d", state);
+
+	/* we record a system call */
+	//if (ctx->event != 0) {
+		record_performance_data(ctx);
+		record_register_file(ctx);
+		/* reset the performance counters */
+		reset_hpc(ctx, MAX_RECORD_INTERVAL);
+	//} else {
+		//fprintf(trace_file, "\n");
+	//}
+}
+
+static void print_header(int syscall, uint32_t addr)
+{
+	fprintf(syscall_header, "%11u", global_time);
+	fprintf(syscall_header, "%11d", syscall);
+	fprintf(syscall_header, "%11u", addr);
+}
+
+/**
+ * Writes data into the raw_data file and generates a corresponding entry in
+ * syscall_input.
+ */
+void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_ptr)
+{
+	assert(len >= 0);
+	print_header(syscall, child_ptr);
+	fprintf(syscall_header, "%11d\n", len);
+	//debug("Asking to write %d bytes from %p", len, child_ptr);
+	if (child_ptr != 0) {
+		void* buf = read_child_data_tid(tid, len, child_ptr);
+		/* ensure that everything is written */
+		int bytes_written = fwrite(buf, 1, len, raw_data);
+		assert(bytes_written == len);
+		overall_bytes += len;
+		sys_free((void**) &buf);
+	}
+	//debug("Overall bytes = %d", overall_bytes);
+}
+
+static void write_raw_data(struct context *ctx, void *buf, int to_write)
+{
+	int bytes_written;
+	assert(to_write >= 0);
+	//debug("Asking to write %d bytes from %p", to_write, buf);
+	if ((bytes_written = fwrite(buf, 1, to_write, raw_data)) != to_write) {
+		struct context safe_ctx;
+		memcpy(&safe_ctx, ctx, sizeof(struct context));
+		ctx->event = USR_NEW_RAWDATA_FILE;
+		record_event(ctx, STATE_SYSCALL_ENTRY);
+		memcpy(ctx, &safe_ctx, sizeof(struct context));
+		use_new_rawdata_file();
+		assert(fwrite(buf, 1, to_write, raw_data) == to_write);
+	}
+	overall_bytes += to_write;
+	//debug("Overall bytes = %d", overall_bytes);
+}
+
+/**
+ * Writes data into the raw_data file and generates a corresponding entry in
+ * syscall_input.
+ */
+
+#define SMALL_READ_SIZE	4096
+static read_buffer[SMALL_READ_SIZE];
+
+void record_child_data(struct context *ctx, int syscall, size_t size, long int child_ptr)
+{
+	size_t read_bytes;
+
+	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
+	if (child_ptr != 0) {
+		if (size <= SMALL_READ_SIZE) {
+			read_child_usr(ctx,read_buffer,child_ptr,size);
+			write_raw_data(ctx, read_buffer, size);
+			read_bytes = size;
+		} else {
+			debug("Asking to record %d bytes from %p",size,child_ptr);
+			void* buf = read_child_data_checked(ctx, size, child_ptr, &read_bytes);
+			debug("Read from child %d bytes", read_bytes);
+			if (read_bytes == -1) {
+				log_warn("Can't read from child %d memory at %p, time = %d",ctx->child_tid,child_ptr, get_global_time());
+				getchar();
+				//buf = sys_malloc(size)
+				//read_child_buffer(ctx->child_tid,child_ptr,size,buf);
+				write_raw_data(ctx, buf, 0);
+				read_bytes = 0;
+			} else {
+				/* ensure that everything is written */
+				if (read_bytes != size /*&& read_child_orig_eax(ctx->child_tid) != 192*/) {
+					printf("bytes_read: %x  len %x   syscall: %ld\n", read_bytes, size, read_child_orig_eax(ctx->child_tid));
+					print_register_file_tid(ctx->child_tid);
+					assert(1==0);
+				}
+				write_raw_data(ctx, buf, read_bytes);
+			}
+			sys_free((void**) &buf);
+		}
+	} else {
+		read_bytes = size = 0;
+	}
+	assert(read_bytes == size);
+	print_header(syscall, child_ptr);
+	fprintf(syscall_header, "%11d\n", read_bytes);
+}
+
+void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf)
+{
+	write_raw_data(ctx, buf, len);
+	print_header(syscall, addr);
+	assert(len >= 0);
+	fprintf(syscall_header, "%11d\n", len);
+}
+
+void record_mmapped_file_stats(struct file *file)
+{
+	fprintf(stat_file, "%11lu", file->time);
+	fprintf(stat_file, "%11lu", file->tid);
+	fprintf(stat_file, "%11lu", file->stat.st_blksize);
+	fprintf(stat_file, "%11lu", file->stat.st_blocks);
+	fprintf(stat_file, "%11lu", file->stat.st_ctim.tv_sec);
+	fprintf(stat_file, "%11lu", file->stat.st_ctim.tv_nsec);
+	fprintf(stat_file, "%11lu", file->stat.st_dev);
+	fprintf(stat_file, "%11lu", file->stat.st_gid);
+	fprintf(stat_file, "%11lu", file->stat.st_ino);
+	fprintf(stat_file, "%11lu", file->stat.st_mode);
+	fprintf(stat_file, "%11lu", file->stat.st_mtim.tv_sec);
+	fprintf(stat_file, "%11lu", file->stat.st_mtim.tv_nsec);
+	fprintf(stat_file, "%11lu", file->stat.st_rdev);
+	fprintf(stat_file, "%11lu", file->stat.st_size);
+	fprintf(stat_file, "%11d", file->stat.st_uid);
+	fprintf(stat_file, "%s\n", file->filename);
+}
+
+void record_child_str(pid_t tid, int syscall, long int child_ptr)
+{
+	print_header(syscall, child_ptr);
+	char* buf = read_child_str(tid, child_ptr);
+	size_t len = strlen(buf) + 1;
+	fprintf(syscall_header, "%11d\n", len);
+	int bytes_written = fwrite(buf, 1, len, raw_data);
+
+	assert(bytes_written == len);
+	sys_free((void**) &buf);
+}
+
+void record_inst(struct context *ctx, char* inst)
+{
+	fprintf(ctx->inst_dump, "%d:%-40s\n", ctx->child_tid, inst);
+	record_register_file(ctx);
+}
+
+void record_inst_done(struct context* context)
+{
+	fprintf(context->inst_dump, "%s\n", "__done__");
+}
+
+
+FILE* get_trace_file()
+{
+	return trace_file;
+}
+
+void read_open_inst_dump(struct context *ctx)
+{
+	char path[64];
+	char tmp[32];
+	strcpy(path, trace_path_);
+	sprintf(tmp, "/inst_dump_%d", ctx->rec_tid);
+	strcat(path, tmp);
+	ctx->inst_dump = sys_fopen(path, "a+");
+}
+
+
+void rep_setup_trace_dir(const char * path) {
+	trace_path_ = path;
+}
+
+void rep_init_trace_files(void)
+{
+	/* skip the first line -- is only meta-information */
+	char* line = sys_malloc(1024);
+	read_line(trace_file, line, 1024, "trace");
+	/* same for syscall_input */
+	read_line(syscall_header, line, 1024, "syscall_input");
+	/* same for timestamps */
+	read_line(stat_file, line, 1024, "stats");
+	sys_free((void**) &line);
+
+}
+
+void use_next_rawdata_file(void)
+{
+	char tmp[128], path[64];
+
+	sys_fclose(raw_data);
+	strcpy(path, trace_path_);
+	sprintf(tmp, "raw_data_%u", raw_data_file_counter++);
+	strcat(path, tmp);
+	raw_data = sys_fopen(path, "a+");
+}
+
+
+void init_environment(char* trace_path, int* argc, char** argv, char** envp)
+{
+	char tmp[128], path[256];
+	int i;
+
+	strcpy(path, trace_path);
+	strcpy(tmp, "/arg_env");
+	strcat(path, tmp);
+
+	FILE* arg_env = (FILE*) sys_fopen(path, "r");
+	char* buf = (char*) sys_malloc(8192);
+
+	/* the first line contains argc */
+	read_line(arg_env, buf, 8192, "arg_env");
+	int tmp_argc = str2li(buf, LI_COLUMN_SIZE);
+
+	*argc = tmp_argc;
+
+	/* followed by argv */
+	for (i = 0; i < tmp_argc; i++) {
+		read_line(arg_env, buf, 8192, "arg_env");
+		int len = strlen(buf);
+		/* overwrite the newline */
+		buf[len - 1] = '\0';
+		assert(len < 8192);
+		strncpy(argv[i], buf, len + 1);
+	}
+
+	/* do not forget write NULL to the last element */
+	argv[i] = NULL;
+
+	/* now, read the number of environment entries */
+	read_line(arg_env, buf, 8192, "arg_env");
+	int envc = str2li(buf, LI_COLUMN_SIZE);
+
+	/* followed by argv */
+	for (i = 0; i < envc; i++) {
+		read_line(arg_env, buf, 8192, "arg_env");
+		int len = strlen(buf);
+		assert(len < 8192);
+		/* overwrite the newline */
+		buf[len - 1] = '\0';
+		strncpy(envp[i], buf, len + 1);
+	}
+
+	/* do not forget write NULL to the last element */
+	envp[i] = NULL;
+
+	/* clean up */
+	sys_fclose(arg_env);
+	sys_free((void**) &buf);
+}
+
+static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
+{
+	char* line = sys_malloc(1024);
+	read_line(syscall_header, line, 1024, "syscall_input");
+	char* tmp_ptr = line;
+
+	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	if (time != trace->global_time) {
+		log_err("syscall_header and trace are out of sync: trace_file %u vs syscall_header %u\n", trace->global_time, time);
+		sys_exit();
+	}
+
+	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	if (trace->stop_reason != SYS_restart_syscall && // restart_syscall is recorded in the syscall input file as the syscall its restarting
+		syscall != trace->stop_reason) {
+		log_err("global_time: %lu syscall: %d  stop_reason: %d\n", time, syscall, trace->stop_reason, time);
+		sys_exit();
+	}
+
+	*addr = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+
+	int size = str2li(tmp_ptr, LI_COLUMN_SIZE);
+
+	sys_free((void**) &line);
+	return size;
+}
+
+void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
+{
+	int size;
+	static int overall_bytes = 0;
+
+	size = parse_raw_data_hdr(trace, addr);
+	*size_ptr = size;
+
+	if (*addr != 0) {
+		void* data = sys_malloc(size);
+		int bytes_read = fread(data, 1, size, raw_data);
+
+		if (bytes_read != size) {
+			printf("read: %u   required: %u\n",bytes_read,size);
+			perror("");
+			sys_exit();
+		}
+
+		overall_bytes += size;
+		return data;
+	}
+	return NULL;
+}
+
+void read_syscall_trace(struct syscall_trace* trace)
+{
+
+	char* line = sys_malloc(1024);
+	read_line(syscall_header, line, 1024, "syscall_input");
+	const char* tmp_ptr = line;
+
+	trace->time = str2li(tmp_ptr, UUL_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	trace->tid = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	trace->syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	trace->data_size = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+
+	sys_free((void**) &line);
+}
+
+/*
+ * Get the main thread if of the recorder. Note that this function must be called
+ * after init_read_trace
+ * @return the tid of the main thread of the recording phase
+ */
+pid_t get_recorded_main_thread()
+{
+
+	fpos_t pos;
+	fgetpos(trace_file, &pos);
+	struct trace trace;
+	read_next_trace(&trace);
+
+	pid_t main_thread = trace.tid;
+	fsetpos(trace_file, &pos);
+
+	return main_thread;
+}
+
+static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
+{
+	regs->eax = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->ebx = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->ecx = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->edx = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->esi = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->edi = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->ebp = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->orig_eax = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->eip = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	regs->eflags = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+
+}
+
+/**
+ * Read next file stat buffer
+ *
+ * Returns file reader tid on success, -1 on failure.
+ *
+ */
+void read_next_mmapped_file_stats(struct file * file) {
+	file->tid = -1;
+	file->time = 0;
+	char line0[1024], *line = line0;
+	if (fgets(line, 1024, stat_file) != NULL) {
+		file->time = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->tid= str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_blksize = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_blocks = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_ctim.tv_sec = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_ctim.tv_nsec = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_dev = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_gid = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_ino = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_mode = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_mtim.tv_sec = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_mtim.tv_nsec = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_rdev = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_size = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->stat.st_uid = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		strcpy(file->filename,line);
+		// get rid of the \n
+		file->filename[strlen(file->filename) - 1] = '\0';
+	}
+}
+
+void peek_next_mmapped_file_stats(struct file * file)
+{
+	fpos_t pos;
+	fgetpos(stat_file, &pos);
+	read_next_mmapped_file_stats(file);
+	fsetpos(trace_file, &pos);
+}
+
+int peek_next_trace(struct trace *trace)
+{
+	fpos_t pos;
+	fgetpos(trace_file, &pos);
+	int bytes_read = read_next_trace(trace);
+	/* check if read is successful */
+	if (feof(trace_file)) {
+		return 0;
+	}
+
+	fsetpos(trace_file, &pos);
+	return bytes_read;
+}
+
+int read_next_trace(struct trace *trace)
+{
+
+	char *line = sys_malloc(1024);
+
+	int bytes_read = (int) fgets(line, 1024, trace_file);
+	if (bytes_read <= 0 && feof(trace_file)) {
+		use_new_trace_file();
+		bytes_read = (int) fgets(line, 1024, trace_file);
+		assert(bytes_read > 0);
+	}
+
+	char *tmp_ptr = (char*) line;
+
+	/* read meta information */
+	trace->global_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	trace->thread_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	trace->tid = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	trace->stop_reason = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	trace->state = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+
+	/* no reason to read doto we do not need anymore */
+	//if (trace->stop_reason != 0) {
+
+		/* read hardware performance counters */
+		trace->hw_interrupts = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
+		tmp_ptr += UUL_COLUMN_SIZE;
+		trace->page_faults = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
+		tmp_ptr += UUL_COLUMN_SIZE;
+		trace->rbc_up = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
+		tmp_ptr += UUL_COLUMN_SIZE;
+
+		//read register file
+		parse_register_file(&(trace->recorded_regs), tmp_ptr);
+	//}
+	sys_free((void**) &line);
+
+	return bytes_read;
+}
+
+void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
+{
+	fpos_t pos;
+
+	fgetpos(trace_file, &pos);
+	rewind(trace_file);
+	/* skip the header */
+	char* line = sys_malloc(1024);
+
+	read_line(trace_file, line, 1024, "trace");
+	struct trace trace;
+	do {
+		read_next_trace(&trace);
+		if ((val == trace.recorded_regs.eax) || (val == trace.recorded_regs.ebx) || (val == trace.recorded_regs.ecx) || (val == trace.recorded_regs.edx) || (val == trace.recorded_regs.esi)
+				|| (val == trace.recorded_regs.edi) || (val == trace.recorded_regs.ebp) || (val == trace.recorded_regs.orig_eax)) {
+
+			printf("found val: %lx at time: %u\n", val, trace.global_time);
+		}
+
+	} while (trace.global_time < cur_time);
+
+	sys_free((void**) &line);
+	fsetpos(trace_file, &pos);
+	assert(0);
+}
+
+/**
+ * Gets the next instruction dump entry and increments the
+ * file pointer.
+ */
+char* read_inst(struct context* context)
+{
+	char* tmp = sys_malloc(50);
+	read_line(context->inst_dump, tmp, 50, "inst_dump");
+	return tmp;
+}
+
+void inst_dump_parse_register_file(struct context* context, struct user_regs_struct* reg)
+{
+	char* tmp = sys_malloc(1024);
+	read_line(context->inst_dump, tmp, 1024, "inst_dump");
+	parse_register_file(reg, tmp);
+	sys_free((void**) &tmp);
+}
+
+/*
+ * Skips the current entry in the instruction dump. As a result the
+ * file pointer points to the beginning of the next entry.
+ */
+void inst_dump_skip_entry(struct context* context)
+{
+	char* tmp = sys_malloc(1024);
+	read_line(context->inst_dump, tmp, 1024, "inst_dump");
+	read_line(context->inst_dump, tmp, 1024, "inst_dump");
+	sys_free((void**) &tmp);
+}
+
+/**
+ * Gets the next instruction dump entry but does NOT increment
+ * the file pointer.
+ */
+char* peek_next_inst(struct context* context)
+{
+	char* tmp = sys_malloc(1024);
+	fpos_t pos;
+	fgetpos(context->inst_dump, &pos);
+	read_line(context->inst_dump, tmp, 1024, "inst_dump");
+	fsetpos(context->inst_dump, &pos);
+	return tmp;
 }
 
 

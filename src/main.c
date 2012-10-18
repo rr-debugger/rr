@@ -9,10 +9,8 @@
 #include "share/util.h"
 
 #include "recorder/recorder.h"
-#include "recorder/write_trace.h"
 #include "recorder/rec_sched.h"
 #include "replayer/replayer.h"
-#include "replayer/read_trace.h"
 #include "replayer/rep_sched.h"
 
 
@@ -22,7 +20,7 @@ static pid_t child;
 #define MAX_ENVC_LEN	128
 #define MAX_ARGV_LEN	128
 #define MAX_ENVP_LEN	1500
-#define MAX_EXEC_LEN    64
+#define MAX_EXEC_LEN    128
 
 
 
@@ -99,7 +97,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum=<entry|exit|all>] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -118,20 +116,14 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 	if (rr_flags.option == RECORD) {
 		copy_executable(argv[0]);
 		if (access(__executable, X_OK)) {
-			printf("The specified file '%s' does not exist or is not executable\n", __executable);
-			return;
+			log_err("The specified file '%s' does not exist or is not executable\n", __executable);
+			sys_exit();
 		}
 
-		/* create directory for trace files */
-		setup_trace_dir(0);
-
-		/* initialize trace files */
-		open_trace_files();
-		init_trace_files();
 		copy_argv(argc, argv);
 		copy_envp(envp);
-		record_argv_envp(argc, __argv, __envp);
-		close_trace_files();
+		/* create directory for trace files */
+		rec_setup_trace_dir(0);
 
 		pid = sys_fork();
 
@@ -140,6 +132,11 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
+			/* initialize trace files */
+			open_trace_files(rr_flags);
+			rec_init_trace_files();
+			record_argv_envp(argc, __argv, __envp);
+
 			child = pid;
 
 			/* make sure that the child process dies when the master process gets interrupted */
@@ -153,8 +150,6 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 
 			/* initialize stuff */
 			init_libpfm();
-			/* initialize the trace file here -- we need to record argc and envp */
-			open_trace_files();
 
 			/* register thread at the scheduler and start the HPC */
 			rec_sched_register_thread(0, pid);
@@ -170,7 +165,7 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 
 		/* replayer code comes here */
 	} else if (rr_flags.option == REPLAY) {
-		init_environment(argv[0], &fake_argc, __argv, __envp);
+		init_environment(argv[0], &argc, __argv, __envp);
 
 		copy_executable(__argv[0]);
 		if (access(__executable, X_OK)) {
@@ -197,7 +192,9 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 			rep_sched_init();
 			/* sets the file pointer to the first trace entry */
 
-			read_trace_init(argv[0]);
+			rep_setup_trace_dir(argv[0]);
+			open_trace_files(rr_flags);
+			rep_init_trace_files();
 
 			pid_t rec_main_thread = get_recorded_main_thread();
 			rep_sched_register_thread(pid, rec_main_thread);
@@ -206,7 +203,7 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 			replay(rr_flags);
 			/* thread wants to exit*/
 			close_libpfm();
-			read_trace_close();
+			close_trace_files();
 			rep_sched_close();
 		}
 	}
@@ -236,9 +233,7 @@ void check_prerequisites() {
  */
 int main(int argc, char* argv[], char** envp)
 {
-	struct flags rr_flags;
-	rr_flags.option = INVALID;
-	rr_flags.redirect = FALSE;
+	struct flags rr_flags = {0};
 	rr_flags.dump_on = DUMP_ON_NONE;
 	rr_flags.dump_at = DUMP_AT_NONE;
 
@@ -284,6 +279,21 @@ int main(int argc, char* argv[], char** envp)
 	// optional dump memory at global time flag
 	if  (flag_index < argc && strncmp("--dump_at=", argv[flag_index], sizeof("--dump_at=") - 1) == 0) {
 		sscanf(argv[flag_index],"--dump_at=%d",&rr_flags.dump_at);
+		flag_index++;
+	}
+
+	// optional checksum memory
+	if  (flag_index < argc && strncmp("--checksum=", argv[flag_index], sizeof("--checksum=") - 1) == 0) {
+		char checksum_point[128];
+		sscanf(argv[flag_index],"--checksum=%s",checksum_point);
+		if (strncmp("entry", checksum_point, sizeof("entry") - 1) == 0) {
+			rr_flags.checksum |= STATE_SYSCALL_ENTRY;
+		} else if (strncmp("exit", checksum_point, sizeof("exit") - 1) == 0) {
+			rr_flags.checksum |= STATE_SYSCALL_EXIT;
+		} else if (strncmp("all", checksum_point, sizeof("all") - 1) == 0) {
+			rr_flags.checksum |= STATE_SYSCALL_EXIT;
+			rr_flags.checksum |= STATE_SYSCALL_ENTRY;
+		}
 		flag_index++;
 	}
 
