@@ -427,7 +427,7 @@ void record_parent_data(struct context *ctx, int syscall, int len, void *addr, v
 	fprintf(syscall_header, "%11d\n", len);
 }
 
-void record_mmapped_file_stats(struct file *file)
+void record_mmapped_file_stats(struct mmapped_file *file)
 {
 	fprintf(stat_file, "%11lu", file->time);
 	fprintf(stat_file, "%11lu", file->tid);
@@ -692,7 +692,7 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
  * Returns file reader tid on success, -1 on failure.
  *
  */
-void read_next_mmapped_file_stats(struct file * file) {
+void read_next_mmapped_file_stats(struct mmapped_file * file) {
 	file->tid = -1;
 	file->time = 0;
 	char line0[1024], *line = line0;
@@ -733,7 +733,7 @@ void read_next_mmapped_file_stats(struct file * file) {
 	}
 }
 
-void peek_next_mmapped_file_stats(struct file * file)
+void peek_next_mmapped_file_stats(struct mmapped_file * file)
 {
 	fpos_t pos;
 	fgetpos(stat_file, &pos);

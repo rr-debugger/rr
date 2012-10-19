@@ -72,11 +72,13 @@ struct context {
 
 };
 
-struct file {
+struct mmapped_file {
 	int time;
 	int tid;
 	char filename[1024];
 	struct stat stat;
+	void *start;
+	void *end;
 };
 
 /**

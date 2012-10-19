@@ -1736,7 +1736,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			// from mm/mman.h
 			record_child_data(ctx, syscall, PAGE_ALIGN(regs.ecx), mmap_addr);
 
-			struct mmaped_file file;
+			struct mmapped_file file;
 			file.time = get_global_time();
 			file.tid = tid;
 			char * filename = get_mmaped_region_filename(ctx,mmap_addr);
