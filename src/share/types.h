@@ -73,12 +73,15 @@ struct context {
 };
 
 struct mmapped_file {
-	int time;
+	int time; // mmap time
 	int tid;
+
 	char filename[1024];
 	struct stat stat;
-	void *start;
-	void *end;
+
+	// mmap region
+	void* start;
+	void* end;
 };
 
 /**

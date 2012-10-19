@@ -59,8 +59,8 @@ void rec_setup_trace_dir(int version);
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp);
 void use_next_rawdata_file(void);
-int read_next_trace(struct trace *trace);
-int peek_next_trace(struct trace *trace);
+void read_next_trace(struct trace *trace);
+void peek_next_trace(struct trace *trace);
 void read_next_mmapped_file_stats(struct mmapped_file *file);
 void peek_next_mmapped_file_stats(struct mmapped_file *file);
 void rep_init_trace_files(void);

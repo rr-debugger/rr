@@ -366,7 +366,6 @@ void* sys_malloc(int size)
 		log_err("sys_malloc: size is: %d\n",size);
 		sys_exit();
 	}
-	bzero(tmp,size);
 	return tmp;
 }
 

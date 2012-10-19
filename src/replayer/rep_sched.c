@@ -44,8 +44,7 @@ struct context* rep_sched_get_thread()
 {
 	/* read the next trace entry */
 	struct trace trace;
-	int ret = read_next_trace(&trace);
-	assert(ret > 0);
+	read_next_trace(&trace);
 	/* find and update context */
 	struct context *ctx = map[trace.tid];
 	assert(ctx != NULL);
@@ -58,12 +57,12 @@ struct context* rep_sched_get_thread()
 		int combined = 0;
 		struct trace next_trace;
 
-		ret = peek_next_trace(&next_trace);
+		peek_next_trace(&next_trace);
 		uint64_t rbc_up = ctx->trace.rbc_up;
-		while ((ret > 0) && (next_trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
+		while ((next_trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
 			rbc_up += next_trace.rbc_up;
 			read_next_trace(&(ctx->trace));
-			ret = peek_next_trace(&next_trace);
+			peek_next_trace(&next_trace);
 			combined = 1;
 		}
 

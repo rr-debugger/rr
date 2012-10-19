@@ -459,7 +459,7 @@ uint64_t str2ull(const char* start, size_t max_size)
 	}
 
 	uint64_t val = 0;
-	while (start[idx] != ' ' && idx <= max_size && start[idx] != '\n') {
+	while (isdigit(start[idx]) && idx <= max_size) {
 		char tmp_char[2];
 		tmp_char[0] = start[idx];
 		tmp_char[1] = '\0';
@@ -486,7 +486,7 @@ long int str2li(const char* start, size_t max_size)
 	}
 
 	long int val = 0;
-	while (start[idx] != ' ' && idx <= max_size && start[idx] != '\n') {
+	while (isdigit(start[idx]) && idx <= max_size) {
 		char tmp_char[2];
 		tmp_char[0] = start[idx];
 		tmp_char[1] = '\0';
@@ -498,6 +498,35 @@ long int str2li(const char* start, size_t max_size)
 
 	val *= sign;
 	return val;
+}
+
+void * str2p(const char* start, size_t max_size)
+{
+	int idx = 0;
+
+	while (start[idx] == ' ') {
+		idx++;
+	}
+
+	assert(start[idx++] == '0');
+	assert(start[idx++] == 'x');
+
+	long int val = 0;
+	while (idx <= max_size) {
+		int tmp = 0;
+		if (isdigit(start[idx])) {
+			tmp = start[idx] - '0';
+		} else if (isalpha(start[idx])) {
+			tmp = 10 + start[idx] - 'a';
+		} else {
+			break;
+		}
+		val *= 16;
+		val += tmp;
+		idx++;
+	}
+
+	return (void*)val;
 }
 
 void read_line(FILE* file, char *buf, int size, char *name)
@@ -600,10 +629,9 @@ void checksum_process_memory(struct context * ctx)
 
 	// for each line in the maps file:
 	char line[1024];
-	unsigned int start, end;
+	void *start, *end;
 	while ( fgets(line,1024,maps_file) != NULL ) {
-		//sscanf(maps_file,"%x-%x %31s %Lx %x:%x %Lu", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode);
-		sscanf(line,"%x-%x", &start, &end);
+		sscanf(line,"%p-%p", &start, &end);
 		int checksum = 0;
 		const size_t size = end - start;
 		char * buffer = read_child_data(ctx,size,start);
@@ -634,25 +662,29 @@ void validate_process_memory(struct context * ctx)
 
 	// for each line in the maps file:
 	char line[1024];
-	unsigned int start, end;
+	void *start, *end;
 	while ( fgets(line,1024,maps_file) != NULL ) {
-		//sscanf(maps_file,"%x-%x %31s %Lx %x:%x %Lu", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode);
-		sscanf(line,"%x-%x", &start, &end);
+		sscanf(line,"%p-%p", &start, &end);
+		// read the recorded region and checksum
+		char recorded[64] = {0};
+		read_line(checksums_file, recorded, 64, checksums_filename);
+		void *rstart, *rend;
+		int rchecksum;
+		sscanf(recorded,"%p-%p:%x\n",&rstart,&rend,&rchecksum);
+
+		assert(start == rstart && end == rend);
+
 		int checksum = 0;
-		const size_t size = end - start;
-		char * buffer = read_child_data(ctx,size,start);
-		assert( size % 4 == 0 );
-		int i;
-		for (i = 0 ; i < size ; i += 4) {
-			unsigned int dword = *((unsigned int *)(buffer + i));
+		void * addr;
+		char * buffer = (char*)read_child_data(ctx,end - start,start);
+		for (addr = rstart ; addr < rend ; addr += 4) {
+			int offset = addr - start;
+			unsigned int dword = *((unsigned int *)(buffer + offset));
 			checksum += dword;
 		}
-		sys_free(&buffer);
-		// verify against the recorded checksum
-		char line[64] = {0}, recorded_line[64] = {0};
-		sprintf(line,"%x-%x:%x\n", start, end, checksum);
-		read_line(checksums_file, recorded_line, 64, checksums_filename);
-		assert(strcmp(line,recorded_line) == 0);
+
+		assert(checksum == rchecksum);
+		sys_free((void**)&buffer);
 	}
 	fclose(maps_file);
 	fclose(checksums_file);

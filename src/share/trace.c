@@ -26,7 +26,7 @@ static char* trace_path_ = NULL;
 static FILE *syscall_header;
 static FILE *raw_data;
 static FILE *trace_file;
-static FILE *stat_file;
+static FILE *mmaps_file;
 
 static int raw_data_file_counter = 0;
 static uint32_t trace_file_counter = 0;
@@ -164,7 +164,7 @@ void open_trace_files(struct flags rr_flags)
 	strcpy(path, trace_path_);
 	strcpy(tmp, "/stats");
 	strcat(path, tmp);
-	stat_file = sys_fopen(path, "a+");
+	mmaps_file = sys_fopen(path, "a+");
 	//sys_stat(path,&stat_file_stats);
 
 }
@@ -236,24 +236,26 @@ void rec_init_trace_files(void)
 	fprintf(syscall_header, "%11s\n", "size");
 
 
-	fprintf(stat_file, "%11s", "time");
-	fprintf(stat_file, "%11s", "tid");
-	fprintf(stat_file, "%11s", "blksize");
-	fprintf(stat_file, "%11s", "blocks");
-	fprintf(stat_file, "%11s", "ctim.sec");
-	fprintf(stat_file, "%11s", "ctim.nsec");
-	fprintf(stat_file, "%11s", "dev");
-	fprintf(stat_file, "%11s", "gid");
-	fprintf(stat_file, "%11s", "ino");
-	fprintf(stat_file, "%11s", "mode");
-	fprintf(stat_file, "%11s", "mtim.sec");
-	fprintf(stat_file, "%11s", "mtim.nsec");
-	fprintf(stat_file, "%11s", "rdev");
-	fprintf(stat_file, "%11s", "size");
-	fprintf(stat_file, "%11s", "uid");
-	fprintf(stat_file, "%11s\n", "filename");
+	fprintf(mmaps_file, "%11s", "time");
+	fprintf(mmaps_file, "%11s", "tid");
+	fprintf(mmaps_file, "%11s", "mmap_start");
+	fprintf(mmaps_file, "%11s", "mmap_end");
+	fprintf(mmaps_file, "%11s", "blksize");
+	fprintf(mmaps_file, "%11s", "blocks");
+	fprintf(mmaps_file, "%11s", "ctim.sec");
+	fprintf(mmaps_file, "%11s", "ctim.nsec");
+	fprintf(mmaps_file, "%11s", "dev");
+	fprintf(mmaps_file, "%11s", "gid");
+	fprintf(mmaps_file, "%11s", "ino");
+	fprintf(mmaps_file, "%11s", "mode");
+	fprintf(mmaps_file, "%11s", "mtim.sec");
+	fprintf(mmaps_file, "%11s", "mtim.nsec");
+	fprintf(mmaps_file, "%11s", "rdev");
+	fprintf(mmaps_file, "%11s", "size");
+	fprintf(mmaps_file, "%11s", "uid");
+	fprintf(mmaps_file, "%11s\n", "filename");
 
-	fflush(stat_file);
+	fflush(mmaps_file);
 	fflush(trace_file);
 	fflush(syscall_header);
 	fflush(raw_data);
@@ -265,7 +267,7 @@ void close_trace_files(void)
 	sys_fclose(syscall_header);
 	sys_fclose(raw_data);
 	sys_fclose(trace_file);
-	sys_fclose(stat_file);
+	sys_fclose(mmaps_file);
 }
 
 static void record_performance_data(struct context *ctx)
@@ -429,22 +431,24 @@ void record_parent_data(struct context *ctx, int syscall, int len, void *addr, v
 
 void record_mmapped_file_stats(struct mmapped_file *file)
 {
-	fprintf(stat_file, "%11lu", file->time);
-	fprintf(stat_file, "%11lu", file->tid);
-	fprintf(stat_file, "%11lu", file->stat.st_blksize);
-	fprintf(stat_file, "%11lu", file->stat.st_blocks);
-	fprintf(stat_file, "%11lu", file->stat.st_ctim.tv_sec);
-	fprintf(stat_file, "%11lu", file->stat.st_ctim.tv_nsec);
-	fprintf(stat_file, "%11lu", file->stat.st_dev);
-	fprintf(stat_file, "%11lu", file->stat.st_gid);
-	fprintf(stat_file, "%11lu", file->stat.st_ino);
-	fprintf(stat_file, "%11lu", file->stat.st_mode);
-	fprintf(stat_file, "%11lu", file->stat.st_mtim.tv_sec);
-	fprintf(stat_file, "%11lu", file->stat.st_mtim.tv_nsec);
-	fprintf(stat_file, "%11lu", file->stat.st_rdev);
-	fprintf(stat_file, "%11lu", file->stat.st_size);
-	fprintf(stat_file, "%11d", file->stat.st_uid);
-	fprintf(stat_file, "%s\n", file->filename);
+	fprintf(mmaps_file, "%11lu", file->time);
+	fprintf(mmaps_file, "%11lu", file->tid);
+	fprintf(mmaps_file, "%11p", file->start);
+	fprintf(mmaps_file, "%11p", file->end);
+	fprintf(mmaps_file, "%11lu", file->stat.st_blksize);
+	fprintf(mmaps_file, "%11lu", file->stat.st_blocks);
+	fprintf(mmaps_file, "%11lu", file->stat.st_ctim.tv_sec);
+	fprintf(mmaps_file, "%11lu", file->stat.st_ctim.tv_nsec);
+	fprintf(mmaps_file, "%11lu", file->stat.st_dev);
+	fprintf(mmaps_file, "%11lu", file->stat.st_gid);
+	fprintf(mmaps_file, "%11lu", file->stat.st_ino);
+	fprintf(mmaps_file, "%11lu", file->stat.st_mode);
+	fprintf(mmaps_file, "%11lu", file->stat.st_mtim.tv_sec);
+	fprintf(mmaps_file, "%11lu", file->stat.st_mtim.tv_nsec);
+	fprintf(mmaps_file, "%11lu", file->stat.st_rdev);
+	fprintf(mmaps_file, "%11lu", file->stat.st_size);
+	fprintf(mmaps_file, "%11d", file->stat.st_uid);
+	fprintf(mmaps_file, "%s\n", file->filename);
 }
 
 void record_child_str(pid_t tid, int syscall, long int child_ptr)
@@ -499,7 +503,7 @@ void rep_init_trace_files(void)
 	/* same for syscall_input */
 	read_line(syscall_header, line, 1024, "syscall_input");
 	/* same for timestamps */
-	read_line(stat_file, line, 1024, "stats");
+	read_line(mmaps_file, line, 1024, "stats");
 	sys_free((void**) &line);
 
 }
@@ -693,13 +697,16 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
  *
  */
 void read_next_mmapped_file_stats(struct mmapped_file * file) {
-	file->tid = -1;
-	file->time = 0;
+	assert(!feof(mmaps_file));
 	char line0[1024], *line = line0;
-	if (fgets(line, 1024, stat_file) != NULL) {
+	if (fgets(line, 1024, mmaps_file) != NULL) {
 		file->time = str2li(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
 		file->tid= str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->start = str2p(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->end= str2p(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
 		file->stat.st_blksize = str2li(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
@@ -736,38 +743,32 @@ void read_next_mmapped_file_stats(struct mmapped_file * file) {
 void peek_next_mmapped_file_stats(struct mmapped_file * file)
 {
 	fpos_t pos;
-	fgetpos(stat_file, &pos);
+	fgetpos(mmaps_file, &pos);
 	read_next_mmapped_file_stats(file);
 	fsetpos(trace_file, &pos);
 }
 
-int peek_next_trace(struct trace *trace)
+void peek_next_trace(struct trace *trace)
 {
 	fpos_t pos;
 	fgetpos(trace_file, &pos);
-	int bytes_read = read_next_trace(trace);
+	read_next_trace(trace);
 	/* check if read is successful */
-	if (feof(trace_file)) {
-		return 0;
-	}
-
+	assert(!feof(trace_file));
 	fsetpos(trace_file, &pos);
-	return bytes_read;
 }
 
-int read_next_trace(struct trace *trace)
+void read_next_trace(struct trace *trace)
 {
 
-	char *line = sys_malloc(1024);
+	char line[1024];
 
-	int bytes_read = (int) fgets(line, 1024, trace_file);
-	if (bytes_read <= 0 && feof(trace_file)) {
+	char * tmp_ptr = fgets(line, 1024, trace_file);
+	if (tmp_ptr != line) {
 		use_new_trace_file();
-		bytes_read = (int) fgets(line, 1024, trace_file);
-		assert(bytes_read > 0);
+		tmp_ptr = fgets(line, 1024, trace_file);
+		assert(tmp_ptr == line);
 	}
-
-	char *tmp_ptr = (char*) line;
 
 	/* read meta information */
 	trace->global_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -795,9 +796,6 @@ int read_next_trace(struct trace *trace)
 		//read register file
 		parse_register_file(&(trace->recorded_regs), tmp_ptr);
 	//}
-	sys_free((void**) &line);
-
-	return bytes_read;
 }
 
 void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
