@@ -12,9 +12,9 @@
  *
  */
 
-//#define DEBUGRR
+//#define DEBUG
 
-#ifdef DEBUGRR
+#ifdef DEBUG
 #define debug(M, ...) fprintf(stderr, "DEBUG %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__);
 #define do_debug(C) C
 #else

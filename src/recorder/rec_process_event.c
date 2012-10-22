@@ -3,10 +3,8 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <sched.h>
 
 #include <asm/ldt.h>
-
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/shm.h>
@@ -14,7 +12,6 @@
 
 #include <sys/epoll.h>
 #include <sys/mman.h>
-#include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
@@ -24,30 +21,34 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 
+#include "write_trace.h"
 #include "rec_process_event.h"
 #include "handle_ioctl.h"
 
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
-#include "../share/trace.h"
 #include "../share/util.h"
 
 
-void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags)
+void rec_process_syscall(struct context *ctx, int dump_memory)
 {
 	pid_t tid = ctx->child_tid;
 
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
-	debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_global_time(), ctx->exec_state);
+	const long int syscall = regs.orig_eax;
+
+	debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_time(tid), ctx->exec_state);
 	//print_register_file_tid(ctx->child_tid);
 	//print_process_memory(ctx->child_tid);
 
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
+
+	SYS_REC0(restart_syscall)
 
 	/**
 	 * int access(const char *pathname, int mode);
@@ -88,24 +89,14 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_clone:
 	{
-		if (regs.eax < 0)
-			break;
+
 		/* record child id here */
 		record_child_data_tid(tid, syscall, sizeof(pid_t), regs.edx);
 		record_child_data_tid(tid, syscall, sizeof(pid_t), regs.esi);
 		pid_t new_tid = regs.eax;
-
-		// clear out scratch
-		char * buffer = sys_malloc_zero(ctx->scratch_size);
-		write_child_data(ctx,ctx->scratch_size,ctx->scratch_ptr,buffer);
-		write_child_data_n(new_tid,ctx->scratch_size,ctx->scratch_ptr,buffer);
-		sys_free(&buffer);
-
-		struct user_regs_struct new_regs;
-		read_child_registers(new_tid,&new_regs);
-		record_child_data_tid(new_tid, syscall, sizeof(struct user_desc), new_regs.edi);
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), new_regs.edx);
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), new_regs.esi);
+		record_child_data_tid(new_tid, syscall, sizeof(struct user_desc), read_child_edi(new_tid));
+		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), read_child_edx(new_tid));
+		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), read_child_esi(new_tid));
 
 		break;
 	}
@@ -240,16 +231,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_epoll_wait:
 	{
-		if (regs.eax < 0) // failure
-			break;
 		void *data = (void*) read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
 		regs.ecx = (long int) ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 		record_child_data(ctx, syscall, regs.eax * sizeof(struct epoll_event), regs.ecx);
-		// zero out the scratch pad for consistency with the replay
-		sys_memset(data,0,ctx->recorded_scratch_size);
-		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,data);
 		sys_free((void**) &data);
 		break;
 	}
@@ -355,17 +341,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC0(fdatasync)
 
 	/**
-	 * void flockfile(FILE * stream)
-	 *
-	 * The flockfile function acquires the internal locking object associated with the stream stream. This
- 	 * ensures that no other thread can explicitly through flockfile/ftrylockfile or implicit through a call of a
- 	 * stream function lock the stream. The thread will block until the lock is acquired. An explicit call to
- 	 * funlockfile has to be used to release the lock.
- 	 *
-	 */
-	SYS_REC0(flock)
-
-	/**
 	 * int fstatfs(int fd, struct statfs *buf)
 	 *
 	 * The  function  statfs()  returns  information  about  a mounted file system.
@@ -430,11 +405,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		record_child_data(ctx, syscall, sizeof(int), regs.edi);
 			break;
 
-		// TODO: why were these disabled?
 		case FUTEX_CMP_REQUEUE_PI:
-		case FUTEX_WAIT_REQUEUE_PI:
+		//case FUTEX_WAIT_REQUEUE_PI:
 		{
-			//assert(1==0);
+			assert(1==0);
 			record_child_data(ctx, syscall, sizeof(int), regs.edi);
 			break;
 		}
@@ -688,7 +662,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * inotify_init()  initializes  a  new inotify instance and returns a file
 	 * descriptor associated with a new inotify event queue.
 	 */
-	SYS_REC0(inotify_init)
 	SYS_REC0(inotify_init1)
 
 	/**
@@ -889,9 +862,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		regs.ebx = (long int) ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 		record_child_data(ctx, syscall, sizeof(struct pollfd) * regs.ecx, regs.ebx);
-		// zero out the scratch pad for consistency with the replay
-		sys_memset(data,0,ctx->recorded_scratch_size);
-		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,data);
 		sys_free((void**) &data);
 		break;
 	}
@@ -902,13 +872,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *  prctl() is called with a first argument describing what to do (with values defined in <linux/prctl.h>), and
 	 *  further arguments with a significance depending on the first one.
 	 *
+	 * FIXXME: check if there is some output in the variable parameters
 	 */
 	case SYS_prctl:
 	{
-		if (regs.eax < 0) // failure
-			break;
-
-		int size = 0;
 		switch (regs.ebx)
 		{
 			case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
@@ -917,29 +884,16 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
 			case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
 			case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
-				size = sizeof(int);
+				record_child_data(ctx, syscall, sizeof(int), regs.ecx);
 				break;
 			case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
 			 	 	 	 	 	 	The buffer should allow space for up to 16 bytes;
 			 	 	 	 	 	 	The returned string will be null-terminated if it is shorter than that. */
-				size = 16;
+				record_child_data(ctx, syscall, 16, regs.ecx);
 				break;
 			default:
 				break;
 		}
-
-		if (size > 0) {
-			void *recorded_data = read_child_data(ctx, size, ctx->scratch_ptr);
-			write_child_data(ctx, size, ctx->recorded_scratch_ptr_0, recorded_data);
-			regs.ecx = ctx->recorded_scratch_ptr_0;
-			write_child_registers(ctx->child_tid, &regs);
-			record_parent_data(ctx, syscall, size, (void*) regs.ecx, recorded_data);
-			// zero out the scratch pad for consistency with the replay
-			sys_memset(recorded_data,0,ctx->recorded_scratch_size);
-			write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded_data);
-			sys_free((void**) &recorded_data);
-		}
-
 		break;
 	}
 	
@@ -977,47 +931,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * type value is either USRQUOTA, for user quotas, or GRPQUOTA, for  group
 	 * quotas.  The subcmd value is described below.
 	 */
-	case SYS_quotactl:
+	/*case SYS_quotactl:
 	 {
-		 int cmd = regs.ebx;
-		 caddr_t addr = regs.esi;
-		 switch (cmd & SUBCMDMASK) {
-		 case Q_GETQUOTA:
-		 // Get disk quota limits and current usage for user or group id. The addr argument is a pointer to a dqblk structure 
-		 	 record_child_data(ctx,SYS_quotactl,sizeof(struct dqblk),addr);
-		 	 break;
-		 case Q_GETINFO:
-		 // Get information (like grace times) about quotafile. The addr argument should be a pointer to a dqinfo structure 
-		 	 record_child_data(ctx,SYS_quotactl,sizeof(struct dqinfo),addr);
-		 	 break;
-		 case Q_GETFMT:
-		 // Get quota format used on the specified file system. The addr argument should be a pointer to a 4-byte buffer 
-		 	 record_child_data(ctx,SYS_quotactl,4,addr);
-		 	 break;
-
-		 /**
-		  * case Q_GETSTATS:
-		  * This operation is obsolete and not supported by recent kernels.
-		  * Get statistics and other generic information about the quota subsystem. The addr argument should be a pointer to a dqstats structure
-		  */
-
-		 case Q_SETQUOTA:
-		 	 assert(0 && "Warning: trying to set disk quota usage, this may interfere with rr recording");
-		 	 break;
-
-		 /**
-		  * XFS file systems
-		  *
-		  * case Q_XGETQUOTA:
-		  * case Q_XGETQSTAT:
-		  */
-
-		 default:
-		 	 break;
-		 }
-
-		 break;
-	 }
+	 assert(1==0);
+	 break;
+	 }*/
 
 	/**
 	 * ssize_t readahead(int fd, off64_t offset, size_t count);
@@ -1151,22 +1069,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC0(setregid32)
 
 	/**
-	 * int setresgid(gid_t rgid, gid_t egid, gid_t sgid);
-	 *
-	 * setresgid() sets the real GID, effective GID, and saved set-group-ID of the calling process.
-	 *
-	 */
-	SYS_REC0(setresgid32)
-
-	/**
-	 * int setresuid(uid_t ruid, uid_t euid, uid_t suid);
-	 *
-	 * setresuid() sets the real user ID, the effective user ID, and the saved set-user-ID of the calling process.
-	 *
-	 */
-	SYS_REC0(setresuid32)
-
-	/**
 	 * pid_t setsid(void);
 	 *
 	 * setsid() creates a new session if the calling process is not a process group leader.
@@ -1287,9 +1189,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded);
 			write_child_data(ctx, sizeof(void*), base_addr + 4, (long int) &(ctx->recorded_scratch_ptr_0));
 			record_child_data(ctx, syscall, ctx->recorded_scratch_size, (long int) ctx->recorded_scratch_ptr_0);
-			// zero out the scratch pad for consistency with the replay
-			sys_memset(recorded,0,ctx->recorded_scratch_size);
-			write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded);
+			//printf("debug 2\n");
+
 			sys_free((void**) &recorded);
 			/*uintptr_t* buf;
 			 size_t* len;
@@ -1391,10 +1292,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			record_child_data(ctx, syscall, sizeof(socklen_t), ctx->recorded_scratch_ptr_1);
 			memcpy_child(ctx, ctx->recorded_scratch_ptr_0, ctx->scratch_ptr + sizeof(socklen_t), addrlen);
 			record_child_data(ctx, syscall, addrlen, ctx->recorded_scratch_ptr_0);
-
-			// zero out the scratch pad for consistency with the replay
-			char data[2*sizeof(socklen_t)];
-			write_child_data(ctx,2*sizeof(socklen_t),ctx->scratch_ptr,data);
 
 			break;
 		}
@@ -1675,7 +1572,13 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		/* AT_RANDOM */
 		unsigned long* rand_addr = read_child_data(ctx, sizeof(unsigned long*), (long int) (stack_ptr + 1));
 		record_child_data(ctx, syscall, 16, (long int) *rand_addr);
-
+		char buffer[16];
+		do_debug(read_child_buffer(ctx->child_tid,*rand_addr,16,buffer);)
+		debug("Reading seed from location %p:", stack_ptr + 1);
+		int i;
+		for (i = 0 ; i < 16 ; ++i) {
+			debug("%d",buffer[i]);
+		}
 		sys_free((void**) &rand_addr);
 		sys_free((void**) &tmp);
 		break;
@@ -1720,11 +1623,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_mmap2:
 	{
-		void * mmap_addr = (void*)regs.eax;
-		assert(mmap_addr != NULL);
-
-		//TODO: if a mmap resulted in retrieving an exising map, do not record the file
-
 		/* inspect mmap arguments */
 		long int flags = regs.esi;
 		/* Anonymous mappings are fine - the allocated space is initialized with '0'.
@@ -1733,21 +1631,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 */
 		if (!(flags & MAP_ANONYMOUS)) {
 			assert((flags & MAP_GROWSDOWN) == 0);
-			// from mm/mman.h
-			record_child_data(ctx, syscall, PAGE_ALIGN(regs.ecx), mmap_addr);
-
-			struct mmapped_file file;
-			file.time = get_global_time();
-			file.tid = tid;
-			char * filename = get_mmaped_region_filename(ctx,mmap_addr);
-			strcpy(file.filename,filename);
-			sys_stat(filename,&file.stat);
-			sys_free(&filename);
-			file.start = mmap_addr;
-			file.end = get_mmaped_region_end(ctx,mmap_addr);
-			record_mmapped_file_stats(&file);
+			record_child_data(ctx, syscall, regs.ecx, regs.eax);
 		}
-
 		break;
 	}
 
@@ -1772,10 +1657,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
 		regs.ecx = ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
-		// zero out the scratch pad for consistency with the replay
-		sys_memset(recorded_data,0,ctx->recorded_scratch_size);
-		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded_data);
-		sys_free((void**)&recorded_data);
+		free(recorded_data);
 
 		record_child_data(ctx, syscall, sizeof(struct timespec), regs.ecx);
 		break;
@@ -1811,11 +1693,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_read:
 	{
-		if (regs.eax <= 0) { // if no data was read, break
-			if (ctx->recorded_scratch_size != -1) { // but dont forget to correct the ecx if needed
-				regs.ecx = ctx->recorded_scratch_ptr_0;
-				write_child_registers(ctx->child_tid, &regs);
-			}
+		if (regs.eax < 0) {
 			break;
 		}
 
@@ -1827,10 +1705,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr_0, recorded_data);
 			regs.ecx = ctx->recorded_scratch_ptr_0;
 			write_child_registers(ctx->child_tid, &regs);
+
 			record_parent_data(ctx, syscall, regs.eax, (void*) regs.ecx, recorded_data);
-			// zero out the scratch pad for consistency with the replay
-			sys_memset(recorded_data,0,regs.eax);
-			write_child_data(ctx,regs.eax,ctx->scratch_ptr,recorded_data);
 			sys_free((void**) &recorded_data);
 		}
 		break;
@@ -1931,10 +1807,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
 		regs.ecx = ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
-		// zero out the scratch-pad for consistency with the replay
-		sys_memset(recorded_data,0,ctx->recorded_scratch_size);
-		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded_data);
-		sys_free((void**)&recorded_data);
+		free(recorded_data);
 
 		record_child_data(ctx, syscall, sizeof(int), regs.ecx);
 		record_child_data(ctx, syscall, sizeof(struct rusage), regs.esi);
@@ -1957,10 +1830,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
 		regs.ecx = ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
-		// zero out the scratch-pad for consistency with the replay
-		sys_memset(recorded_data,0,ctx->recorded_scratch_size);
-		write_child_data(ctx,ctx->recorded_scratch_size,ctx->scratch_ptr,recorded_data);
-		sys_free((void**)&recorded_data);
+		free(recorded_data);
 
 		record_child_data(ctx, syscall, sizeof(int), regs.ecx);
 		break;
@@ -1976,11 +1846,18 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 
 	default:
 
-		printf("recorder: unknown syscall %ld -- bailing out\n", syscall);
-		printf("execuction state: %x sig %d\n", ctx->exec_state, signal_pending(ctx->exec_state));
-		print_register_file_tid(tid);
-		sys_exit();
+	printf("recorder: unknown syscall %ld -- bailing out\n", syscall);
+	printf("execuction state: %x sig %d\n", ctx->exec_state, signal_pending(ctx->exec_state));
+	print_register_file_tid(tid);
+//	get_eip_info(tid);
+	sys_exit();
 		break;
+	}
+
+	if (syscall == dump_memory) {
+        char pid_str[MAX_PATH_LEN];
+        sprintf(pid_str,"%s/%d_%d",get_rec_trace_path(),ctx->child_tid,syscall);
+		print_process_memory(ctx->child_tid,pid_str);
 	}
 
 }

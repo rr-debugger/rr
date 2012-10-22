@@ -23,20 +23,9 @@ FILE* sys_fopen(const char* path, const char* mode)
 	FILE* file = fopen(path, mode);
 
 	if (file == NULL) {
-		log_err("error while opening file: %s -- bailing out!\n", path);
-		sys_exit();
-	}
-
-	return file;
-}
-
-int sys_open(const char* path, int flags, mode_t mode)
-{
-	int file = (mode < 0) ? open(path, flags) : open(path, flags, mode);
-
-	if (file < 0) {
-		log_err("error while opening file: %s -- bailing out!\n", path);
-		sys_exit();
+		printf("error while opening file: %s -- bailing out!\n", path);
+		perror("");
+		exit(0);
 	}
 
 	return file;
@@ -45,31 +34,15 @@ int sys_open(const char* path, int flags, mode_t mode)
 void sys_fclose(FILE* file)
 {
 	if (fclose(file) < 0) {
-		log_err("error while closing file -- bailing out\n");
+		perror("error while closing file -- bailing out\n");
 		sys_exit();
 	}
 }
 
-void sys_fstat(int filedes, struct stat * stat_buf)
+void sys_close(int fd)
 {
-	if (fstat(filedes,stat_buf) < 0) {
-		log_err("error while fstating file (fd = %d) -- bailing out\n",filedes);
-		sys_exit();
-	}
-}
-
-void sys_stat(char * pathname, struct stat * stat_buf)
-{
-	if (stat(pathname,stat_buf) < 0) {
-		log_err("error while stating file -- bailing out\n");
-		sys_exit();
-	}
-}
-
-void sys_close(int filedes)
-{
-	if (close(filedes) < 0) {
-		log_err("error while closing file -- bailing out\n");
+	if (close(fd) < 0) {
+		perror("error while closing file -- bailing out\n");
 		sys_exit();
 	}
 }
@@ -82,7 +55,7 @@ int sys_open_child_mem(pid_t child_tid)
 
 	sprintf(path, "/proc/%d/mem", child_tid);
 	if ((fd = open(path, O_RDWR)) < 0) {
-		log_err("error reading child memory:open-- bailing out\n");
+		perror("error reading child memory:open-- bailing out\n");
 		sys_exit();
 	}
 
@@ -94,7 +67,7 @@ pid_t sys_fork()
 	pid_t pid = fork();
 
 	if (pid == -1) {
-		log_err("error forking process\n");
+		perror("error forking process\n");
 		exit(-1);
 	}
 
@@ -105,15 +78,14 @@ void sys_kill(int pid, int msg)
 {
 	int ret;
 	if ((ret = kill(pid, msg)) < 0) {
-		log_err("error sending signal\n");
+		perror("error sending signal\n");
 	}
 }
 
 void sys_exit()
 {
-	log_err("exiting\n");
+	printf("exiting\n");
 	rec_sched_exit_all();
-	assert(0);
 	exit(-1);
 }
 
@@ -127,11 +99,11 @@ void sys_setup_process()
 	/* disable address space randomization */
 	int orig_pers;
 	if ((orig_pers = personality(0xffffffff)) == -1) {
-		perror("error setting personaity\n");
+		perror("Recorder: error setting personaity\n");
 		sys_exit();
 	}
 	if ((orig_pers = personality(orig_pers | ADDR_NO_RANDOMIZE)) == -1) {
-		perror("error disabling randomization\n");
+		perror("Recorder: error setting personaity\n");
 		sys_exit();
 	}
 	if (prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0) == -1) {
@@ -161,7 +133,7 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 		/* start client application */
 		execve(executable, argv, envp);
 		/* we should never arriver here */
-		assert(0);
+		assert(1);
 	}
 
 	exit(0);
@@ -172,7 +144,8 @@ long sys_ptrace(int request, pid_t pid, void *addr, void *data)
 {
 	long ret;
 	if ((ret = ptrace(request, pid, addr, data)) == -1) {
-		log_err("ptrace_error: request: %d of tid: %d: addr %p, data %p\n", request, pid, addr, data);
+		perror("");
+		printf("ptrace_error: request: %d of tid: %d: addr %p, data %p\n", request, pid, addr, data);
 		sys_exit();
 	}
 	return ret;
@@ -273,7 +246,8 @@ pid_t sys_waitpid(pid_t pid, int *status)
 	pid_t ret;
 
 	if ((ret = waitpid(pid, status, __WALL | __WCLONE)) < 0) {
-		log_err("waiting for: %d -- bailing out\n", pid);
+		perror("");
+		printf("waiting for: %d -- bailing out\n", pid);
 		sys_exit();
 	}
 
@@ -285,9 +259,10 @@ pid_t sys_waitpid_nonblock(pid_t pid, int* status)
 {
 	pid_t ret;
 
-	if ((ret = waitpid(pid, status, __WALL | __WCLONE | WNOHANG | WSTOPPED )) < 0) {
-		log_err("waiting for: %d -- bailing out\n",pid);
-		sys_exit();
+	if ((ret = waitpid(pid, status, __WALL | __WCLONE | WNOHANG | WSTOPPED)) < 0) {
+		perror("");
+		printf("waiting for: %d -- bailing out\n", pid);
+		exit(-1);
 	}
 
 	return ret;
@@ -345,37 +320,21 @@ void* sys_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t off
 {
 	void* tmp = mmap(addr, length, prot, flags, fd, offset);
 	if (tmp == MAP_FAILED) {
-		log_err("cannot memory-map file\n");
+		fprintf(stderr, "cannot memory-map file\n");
 		sys_exit();
 	}
 	return tmp;
-}
-
-void sys_munmap(void* addr, size_t length)
-{
-	if (munmap(addr, length) == -1) {
-		log_err("cannot un-map file\n");
-		sys_exit();
-	}
 }
 
 void* sys_malloc(int size)
 {
 	void* tmp;
 	if ((tmp = malloc(size)) == NULL) {
-		log_err("sys_malloc: size is: %d\n",size);
+		perror("sys_malloc: ");
+		printf("size is: %d\n",size);
 		sys_exit();
 	}
-	return tmp;
-}
-
-void* sys_memset(void * block, int c, size_t size)
-{
-	void* tmp;
-	if ((tmp = memset(block,c,size)) == NULL) {
-		log_err("malloc failed, size is: %d\n",size);
-		sys_exit();
-	}
+	bzero(tmp,size);
 	return tmp;
 }
 
@@ -383,7 +342,7 @@ void* sys_malloc_zero(int size)
 {
 	void* tmp;
 	if ((tmp = malloc(size)) == NULL) {
-		log_err("failed to malloc memory of size %d -- bailing out",size);
+		perror("");
 		sys_exit();
 	}
 	bzero(tmp, size);
@@ -393,7 +352,7 @@ void* sys_malloc_zero(int size)
 void sys_free(void** ptr)
 {
 	if (*ptr == NULL) {
-		log_err("Failed to free memory at %p -- bailing out\n",*ptr);
+		fprintf(stderr, "Failed to free memory of size -- bailing out\n");
 		sys_exit();
 	}
 	free(*ptr);
@@ -403,69 +362,7 @@ void sys_free(void** ptr)
 void sys_setpgid(pid_t pid, pid_t pgid)
 {
 	if (setpgid(pid, pgid) == -1) {
-		log_err("error setting group id of child process");
+		perror("error setting group id of child process");
 	}
 }
-
-int sys_mkdir(const char *path, mode_t mode)
-{
-    struct stat st;
-    int status = 0;
-
-    if (stat(path, &st) != 0)
-    {
-        // Directory does not exist. EEXIST for race condition
-        if (mkdir(path, mode) != 0 && errno != EEXIST)
-            status = -1;
-    }
-    else if (!S_ISDIR(st.st_mode))
-    {
-        errno = ENOTDIR;
-        status = -1;
-    }
-
-    return(status);
-}
-
-/**
-** sys_mkpath - ensure all directories in path exist
-** Algorithm takes the pessimistic view and works top-down to ensure
-** each directory in path exists, rather than optimistically creating
-** the last element and working backwards.
-*/
-int sys_mkpath(const char *path, mode_t mode)
-{
-    char           *pp;
-    char           *sp;
-    int             status;
-    char           *copypath = sys_malloc(strlen(path) + 1);
-
-    strcpy(copypath,path);
-    status = 0;
-    pp = copypath;
-    while (status == 0 && (sp = strchr(pp, '/')) != 0)
-    {
-        if (sp != pp)
-        {
-            /* Neither root nor double slash in path */
-            *sp = '\0';
-            status = sys_mkdir(copypath, mode);
-            *sp = '/';
-        }
-        pp = sp + 1;
-    }
-    /*
-    int filedes;
-
-    if (status == 0)
-        //status = sys_mkdir(path, mode);
-    	//filedes = creat(path, mode);
-    assert(filedes > 0);
-    return filedes;
-    */
-    sys_free(&copypath);
-    assert(status == 0);
-    return status;
-}
-
 

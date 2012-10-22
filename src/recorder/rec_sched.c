@@ -6,11 +6,11 @@
 
 #include "recorder.h"
 #include "rec_sched.h"
+#include "write_trace.h"
 
 #include <sys/syscall.h>
 
 #include "../share/hpc.h"
-#include "../share/trace.h"
 #include "../share/sys.h"
 #include "../share/config.h"
 
@@ -118,7 +118,6 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 	ctx->status = 0;
 	ctx->child_tid = child;
 	ctx->child_mem_fd = sys_open_child_mem(child);
-	//write_open_inst_dump(ctx);
 
 	sys_ptrace_setup(child);
 
@@ -147,8 +146,6 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 
 	/* close file descriptor to child memory */
 	sys_close(ctx->child_mem_fd);
-
-	//sys_fclose(ctx->inst_dump);
 
 	sys_ptrace_detatch(ctx->child_tid);
 

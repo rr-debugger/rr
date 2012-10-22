@@ -6,6 +6,7 @@
 
 #include <sys/fcntl.h>
 
+#include "read_trace.h"
 #include "replayer.h"
 
 #include "../share/sys.h"
@@ -13,7 +14,6 @@
 #include "../share/util.h"
 #include "../share/ipc.h"
 #include "../share/hpc.h"
-#include "../share/dbg.h"
 
 #define SKID_SIZE 			55
 
@@ -113,8 +113,6 @@ void rep_process_signal(struct context *ctx, bool validate)
 	/* if the there is still a signal pending here, two signals in a row must be delivered?\n */
 	assert(ctx->child_sig == 0);
 
-	debug("%d: handling signal %d -- time: %d",tid,sig,trace->thread_time);
-
 	switch (sig) {
 
 	/* set the eax and edx register to the recorded values */
@@ -169,12 +167,9 @@ void rep_process_signal(struct context *ctx, bool validate)
 		break;
 	}
 
-	case SIGTERM:
 	case SIGALRM:
 	case SIGIO:
 	case SIGCHLD:
-	case 33: /* SIGRTMIN + 1 */
-	case 62: /* SIGRTMAX - 1 */
 	{
 		/* synchronous signal (signal received in a system call) */
 		if (trace->rbc_up == 0) {

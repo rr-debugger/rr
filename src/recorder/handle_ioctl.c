@@ -19,10 +19,9 @@
 
 #include <linux/soundcard.h>
 #include "recorder.h"
-
+#include "write_trace.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
-#include "../share/trace.h"
 #include "../share/types.h"
 #include "../share/util.h"
 
@@ -57,17 +56,6 @@ void handle_ioctl_request(struct context *ctx, int request)
 		case 0xc048464d:
 		case 0xc0204637:
 		case 0xc0304627:
-		{
-			record_child_data(ctx, syscall, _IOC_SIZE(request), regs.edx);
-			break;
-		}
-
-		// Firefox ioctls FIXME: find out what these mean.
-		case 0x4010644d:
-		case 0xc0186441:
-		case 0x80086447:
-		case 0xc0306449:
-		case 0xc030644b:
 		{
 			record_child_data(ctx, syscall, _IOC_SIZE(request), regs.edx);
 			break;

@@ -7,7 +7,7 @@
 #include <sys/user.h>
 
 #include "recorder.h"
-
+#include "write_trace.h"
 #include "../share/ipc.h"
 #include "../share/util.h"
 #include "../share/trace.h"
@@ -68,11 +68,8 @@ void handle_signal(struct context* ctx)
 
 	switch (sig) {
 
-	case SIGTERM:
 	case SIGALRM:
 	case SIGCHLD:
-	case 33: /* SIGRTMIN + 1 */
-	case 62: /* SIGRTMAX - 1 */
 	{
 		ctx->event = -sig;
 		ctx->child_sig = sig;
@@ -112,6 +109,14 @@ void handle_signal(struct context* ctx)
 			ctx->event = -sig;
 			ctx->child_sig = sig;
 		}
+		break;
+	}
+
+	case SIGTERM:
+	case 62:
+	{
+		ctx->event = -sig;
+		ctx->child_sig = sig;
 		break;
 	}
 

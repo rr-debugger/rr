@@ -2,13 +2,8 @@
 #define TYPES_H_
 
 #include <stdio.h>
-#include <stdint.h>
 
-#include <sys/stat.h>
-#include <sys/user.h>
-
-#define CHECK_ALIGNMENT(addr) 	assert(((long int)(addr) & 0x3) == 0)
-#define PAGE_ALIGN(length)		((length + PAGE_SIZE - 1) & PAGE_MASK)
+#include "trace.h"
 
 #define PTR_SIZE		(sizeof(void*))
 #define INT_SIZE		(sizeof(int))
@@ -53,7 +48,6 @@ struct context {
 	void *scratch_ptr;
 	int scratch_size;
 	int switch_counter;
-	int last_syscall;
 
 	void *recorded_scratch_ptr_0;
 	void *recorded_scratch_ptr_1;
@@ -72,36 +66,5 @@ struct context {
 
 };
 
-struct mmapped_file {
-	int time; // mmap time
-	int tid;
-
-	char filename[1024];
-	struct stat stat;
-
-	// mmap region
-	void* start;
-	void* end;
-};
-
-/**
- * command line arguments for rr
- */
-
-#define INVALID			0
-#define RECORD			1
-#define REPLAY			2
-
-#define DUMP_ON_NONE 	-1001
-#define DUMP_ON_ALL 	1000
-#define DUMP_AT_NONE 	-1
-
-struct flags {
-	int option;
-	bool redirect;
-	int dump_on;
-	int dump_at;
-	int checksum;
-};
 
 #endif /* TYPES_H_ */

@@ -6,11 +6,12 @@
 #include "share/dbg.h"
 #include "share/hpc.h"
 #include "share/sys.h"
-#include "share/util.h"
 
 #include "recorder/recorder.h"
+#include "recorder/write_trace.h"
 #include "recorder/rec_sched.h"
 #include "replayer/replayer.h"
+#include "replayer/read_trace.h"
 #include "replayer/rep_sched.h"
 
 
@@ -20,9 +21,14 @@ static pid_t child;
 #define MAX_ENVC_LEN	128
 #define MAX_ARGV_LEN	128
 #define MAX_ENVP_LEN	1500
-#define MAX_EXEC_LEN    128
+#define MAX_EXEC_LEN    64
 
+#define INVALID			0
+#define RECORD			1
+#define REPLAY			2
 
+#define NO_REDIRECT		0
+#define REDIRECT		1
 
 static char** __argv;
 static char** __envp;
@@ -53,10 +59,10 @@ static void alloc_envp(char** envp)
 static void copy_argv(int argc, char* argv[])
 {
 	int i;
-	for (i = 0; i < argc; i++) {
-		int arglen = strlen(argv[i]);
+	for (i = 0; i < argc - 2; i++) {
+		int arglen = strlen(argv[i + 2]);
 		assert(arglen + 1 < MAX_ARGV_LEN);
-		strncpy(__argv[i], argv[i], arglen + 1);
+		strncpy(__argv[i], argv[i + 2], arglen + 1);
 	}
 	__argv[i] = NULL;
 }
@@ -97,7 +103,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum=<entry|exit|all>] executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_memory=<syscall_num>] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -108,22 +114,29 @@ static void install_signal_handler()
 /**
  * main replayer method
  */
-static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
+static void start(int option, int argc, char* argv[], char** envp, int redirect_output, int dump_memory)
 {
 	pid_t pid;
 	int status, fake_argc;
 
-	if (rr_flags.option == RECORD) {
-		copy_executable(argv[0]);
+
+	if (option == RECORD) {
+		copy_executable(argv[2]);
 		if (access(__executable, X_OK)) {
-			log_err("The specified file '%s' does not exist or is not executable\n", __executable);
-			sys_exit();
+			printf("The specified file '%s' does not exist or is not executable\n", __executable);
+			return;
 		}
 
+		/* create directory for trace files */
+		setup_trace_dir(0);
+
+		/* initialize trace files */
+		open_trace_files();
+		init_trace_files();
 		copy_argv(argc, argv);
 		copy_envp(envp);
-		/* create directory for trace files */
-		rec_setup_trace_dir(0);
+		record_argv_envp(argc, __argv, __envp);
+		close_trace_files();
 
 		pid = sys_fork();
 
@@ -132,11 +145,6 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
-			/* initialize trace files */
-			open_trace_files(rr_flags);
-			rec_init_trace_files();
-			record_argv_envp(argc, __argv, __envp);
-
 			child = pid;
 
 			/* make sure that the child process dies when the master process gets interrupted */
@@ -150,22 +158,24 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 
 			/* initialize stuff */
 			init_libpfm();
+			/* initialize the trace file here -- we need to record argc and envp */
+			open_trace_files();
 
 			/* register thread at the scheduler and start the HPC */
 			rec_sched_register_thread(0, pid);
 
 			/* perform the action recording */
-			log_info("Start recording...\n");
-			start_recording(rr_flags);
-			log_info("Done recording -- cleaning up\n");
+			fprintf(stderr, "start recording...\n");
+			start_recording(dump_memory);
+			fprintf(stderr, "done recording -- cleaning up\n");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
 			close_libpfm();
 		}
 
 		/* replayer code comes here */
-	} else if (rr_flags.option == REPLAY) {
-		init_environment(argv[0], &argc, __argv, __envp);
+	} else if (option == REPLAY) {
+		init_environment(argv[2], &fake_argc, __argv, __envp);
 
 		copy_executable(__argv[0]);
 		if (access(__executable, X_OK)) {
@@ -187,23 +197,22 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 			sys_waitpid(pid, &status);
 			sys_ptrace_setup(pid);
 
+
 			/* initialize stuff */
 			init_libpfm();
 			rep_sched_init();
 			/* sets the file pointer to the first trace entry */
 
-			rep_setup_trace_dir(argv[0]);
-			open_trace_files(rr_flags);
-			rep_init_trace_files();
+			read_trace_init(argv[2]);
 
 			pid_t rec_main_thread = get_recorded_main_thread();
 			rep_sched_register_thread(pid, rec_main_thread);
 
 			/* main loop */
-			replay(rr_flags);
+			replay(redirect_output, dump_memory);
 			/* thread wants to exit*/
 			close_libpfm();
-			close_trace_files();
+			read_trace_close();
 			rep_sched_close();
 		}
 	}
@@ -229,13 +238,13 @@ void check_prerequisites() {
 }
 
 /**
- * This is where recorder and the replayer start
+ * This is where recorder and the repalyer start
  */
 int main(int argc, char* argv[], char** envp)
 {
-	struct flags rr_flags = {0};
-	rr_flags.dump_on = DUMP_ON_NONE;
-	rr_flags.dump_at = DUMP_AT_NONE;
+	int option = INVALID;
+	int redirect_output = NO_REDIRECT;
+	int dump_memory = INT_MIN;
 
 	/* check prerequisites for rr to run */
 	check_prerequisites();
@@ -246,55 +255,29 @@ int main(int argc, char* argv[], char** envp)
 		return 0;
 	}
 
-	int flag_index = 1;
-
-	// mandatory {record,replay} flag
-	if (flag_index < argc) {
-		if (strncmp("--record", argv[flag_index], sizeof("--record")) == 0) {
-			rr_flags.option = RECORD;
-		} else if (strncmp("--replay", argv[flag_index], sizeof("--replay")) == 0) {
-			rr_flags.option = REPLAY;
-		}
-		flag_index++;
+	if (strncmp("--record", argv[1], 8) == 0) {
+		option = RECORD;
+	} else if (strncmp("--replay", argv[1], 8) == 0) {
+		option = REPLAY;
 	}
 
-	if (rr_flags.option == INVALID) {
+	if (option == INVALID) {
 		print_usage();
 		return 0;
 	}
 
-
-	// optional redirect flag
-	if  (flag_index < argc && strncmp("--redirect_output", argv[flag_index], sizeof("--redirect_output")) == 0) {
-		rr_flags.redirect = TRUE;
-		flag_index++;
+	if  (argc > 3 && strncmp("--redirect_output", argv[2], 17) == 0) {
+		redirect_output = REDIRECT;
+		/* we can now ignore the option string */
+		argv[2] = argv[3];
+		argc--;
 	}
 
-	// optional dump memory on syscall flag
-	if  (flag_index < argc && strncmp("--dump_on=", argv[flag_index], sizeof("--dump_on=") - 1) == 0) {
-		sscanf(argv[flag_index],"--dump_on=%d",&rr_flags.dump_on);
-		flag_index++;
-	}
-
-	// optional dump memory at global time flag
-	if  (flag_index < argc && strncmp("--dump_at=", argv[flag_index], sizeof("--dump_at=") - 1) == 0) {
-		sscanf(argv[flag_index],"--dump_at=%d",&rr_flags.dump_at);
-		flag_index++;
-	}
-
-	// optional checksum memory
-	if  (flag_index < argc && strncmp("--checksum=", argv[flag_index], sizeof("--checksum=") - 1) == 0) {
-		char checksum_point[128];
-		sscanf(argv[flag_index],"--checksum=%s",checksum_point);
-		if (strncmp("entry", checksum_point, sizeof("entry") - 1) == 0) {
-			rr_flags.checksum |= STATE_SYSCALL_ENTRY;
-		} else if (strncmp("exit", checksum_point, sizeof("exit") - 1) == 0) {
-			rr_flags.checksum |= STATE_SYSCALL_EXIT;
-		} else if (strncmp("all", checksum_point, sizeof("all") - 1) == 0) {
-			rr_flags.checksum |= STATE_SYSCALL_EXIT;
-			rr_flags.checksum |= STATE_SYSCALL_ENTRY;
-		}
-		flag_index++;
+	if  (argc > 3 && strncmp("--dump_memory=", argv[2], 14) == 0) {
+		sscanf(argv[2],"--dump_memory=%d",&dump_memory);
+		/* we can now ignore the option string */
+		argv[2] = argv[3];
+		argc--;
 	}
 
 	/* allocate memory for the arguments that are passed to the
@@ -305,7 +288,7 @@ int main(int argc, char* argv[], char** envp)
 	alloc_envp(envp);
 	alloc_executable();
 
-	start(rr_flags, argc - flag_index , argv + flag_index, envp);
+	start(option, argc, argv, envp, redirect_output, dump_memory);
 
 	return 0;
 
