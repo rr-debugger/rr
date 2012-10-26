@@ -1195,6 +1195,12 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	SYS_EMU_ARG(sched_yield, 0)
 
 	/**
+	 * int setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value);
+	 *
+	 */
+	SYS_EMU_ARG(setitimer, 1);
+
+	/**
 	 * int setpgid(pid_t pid, pid_t pgid);
 	 *
 	 * setpgid()  sets the PGID of the process specified by pid to pgid.  If pid is zero, then
