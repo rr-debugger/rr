@@ -6,23 +6,30 @@
 
 #include "recorder.h"
 #include "rec_sched.h"
-#include "write_trace.h"
 
 #include <sys/syscall.h>
 
 #include "../share/hpc.h"
+#include "../share/list.h"
 #include "../share/sys.h"
 #include "../share/config.h"
 
 #define DELAY_COUNTER_MAX 10
 
-/* we could use a linked-list instead */
-static struct context* registered_threads[NUM_MAX_THREADS];
-static int num_active_threads;
+static struct list *registered_threads = NULL;
+static struct list *current_thread_ptr = NULL;
+static int num_active_threads = 0;
+static struct context * last_ctx;
 
-static void set_switch_counter(int thread_ptr, int tmp_thread_ptr, struct context *ctx)
+static void rec_sched_init()
 {
-	if (tmp_thread_ptr == thread_ptr) {
+	current_thread_ptr = registered_threads = list_new();
+}
+
+static void set_switch_counter(struct context *last_ctx, struct context *ctx)
+{
+	assert(ctx != NULL);
+	if (last_ctx == ctx) {
 		ctx->switch_counter--;
 	} else {
 		ctx->switch_counter = MAX_SWITCH_COUNTER;
@@ -35,8 +42,7 @@ static void set_switch_counter(int thread_ptr, int tmp_thread_ptr, struct contex
  */
 struct context* get_active_thread(struct context *ctx)
 {
-	static int thread_ptr = -1;
-	int tmp_thread_ptr = thread_ptr;
+	struct list *tmp_thread_ptr = current_thread_ptr;
 
 	/* This maintains the order in which the threads are signaled to continue and
 	 * when the the record is actually written
@@ -49,33 +55,32 @@ struct context* get_active_thread(struct context *ctx)
 
 		/* switch to next thread if the thread reached the maximum number of RBCs */
 		if (ctx->switch_counter < 0) {
-			thread_ptr++;
+			current_thread_ptr = list_next(current_thread_ptr);
 			ctx->switch_counter = MAX_SWITCH_COUNTER;
 		}
 	}
 
 	struct context *return_ctx;
-
 	while (1) {
-		/* check all threads again */
-		for (; thread_ptr < NUM_MAX_THREADS; thread_ptr++) {
-			return_ctx = registered_threads[thread_ptr];
+		/* check all threads again, do a full circle and wait */
+		for (; !list_end(current_thread_ptr); current_thread_ptr = list_next(current_thread_ptr)) {
+			return_ctx = (struct context *) list_data(current_thread_ptr);
 			if (return_ctx != NULL) {
 				if (return_ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
 					if (sys_waitpid_nonblock(return_ctx->child_tid, &(return_ctx->status)) != 0) {
 						return_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-						set_switch_counter(thread_ptr, tmp_thread_ptr, return_ctx);
+						set_switch_counter(last_ctx, return_ctx);
+						last_ctx = return_ctx;
 						return return_ctx;
 					}
 					continue;
 				}
-
-				set_switch_counter(thread_ptr, tmp_thread_ptr, return_ctx);
+				set_switch_counter(last_ctx, return_ctx);
+				last_ctx = return_ctx;
 				return return_ctx;
 			}
 		}
-
-		thread_ptr = 0;
+		current_thread_ptr = registered_threads;
 	}
 
 	return 0;
@@ -86,14 +91,21 @@ struct context* get_active_thread(struct context *ctx)
  */
 void rec_sched_exit_all()
 {
-	int i;
-	for (i = 0; i < NUM_MAX_THREADS; i++) {
-		if (registered_threads[i] != NULL) {
-			int tid = registered_threads[i]->child_tid;
-			if (tid != EMPTY) {
-				sys_kill(tid, SIGINT);
+	/* workaround if this function is called in replay mode
+	 * TODO: fix this after merging the command line parameter handling
+	 */
+	if (registered_threads) {
+		struct list * thread_ptr = 0;
+		for (thread_ptr = registered_threads; !list_end(thread_ptr); thread_ptr = list_next(thread_ptr)) {
+			struct context *thread = (struct context *) list_data(thread_ptr);
+			if (thread != NULL ) {
+				int tid = thread->child_tid;
+				if (tid != EMPTY) {
+					sys_kill(tid, SIGINT);
+				}
 			}
 		}
+		sys_free((void **)&registered_threads);
 	}
 }
 
@@ -110,8 +122,9 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 {
 	assert(child > 0 && child < MAX_TID);
 
-	int hash = HASH(child);
-	assert(registered_threads[hash] == 0);
+	if (!registered_threads)
+		rec_sched_init();
+
 	struct context *ctx = sys_malloc_zero(sizeof(struct context));
 
 	ctx->exec_state = EXEC_STATE_START;
@@ -124,7 +137,7 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 	init_hpc(ctx);
 	start_hpc(ctx, MAX_RECORD_INTERVAL);
 
-	registered_threads[hash] = ctx;
+	registered_threads = list_push_front(registered_threads, ctx);
 	num_active_threads++;
 }
 
@@ -135,9 +148,17 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 void rec_sched_deregister_thread(struct context **ctx_ptr)
 {
 	struct context *ctx = *ctx_ptr;
-	int hash = HASH(ctx->child_tid);
+	struct list * thread_ptr = 0;
+	for (thread_ptr = registered_threads; !list_end(thread_ptr); thread_ptr = list_next(thread_ptr)) {
+		if (list_data(thread_ptr) == ctx) {
+			/* the round-robin pointer might point to the list element we are removing, correct it */
+			/* this should never happen (?) */
+			assert(current_thread_ptr == thread_ptr);
 
-	registered_threads[hash] = 0;
+			list_remove(thread_ptr);
+			break;
+		}
+	}
 	num_active_threads--;
 	assert(num_active_threads >= 0);
 

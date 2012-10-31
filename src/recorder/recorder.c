@@ -336,7 +336,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 {
 	/* handle events */
 	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
-	//printf("ptrace event: %d\n", event);
+	debug("recording syscall %d, ptrace event: %d, thread: %d", (*ctx_ptr)->event, event, (*ctx_ptr)->child_tid);
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
@@ -398,6 +398,14 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		(*ctx_ptr)->event = USR_EXIT;
 		record_event((*ctx_ptr), 1);
 		rec_sched_deregister_thread(ctx_ptr);
+		/*
+		 * This is a dirty workaround: If a thread issues the exit_group system call, it may happen
+		 * that the thread that gets scheduled after this one is stopped, so rr will let it continue,
+		 * but in fact it is "not  yet  fully  dead, but already refusing ptrace requests".
+		 * TODO: track thread group of threads and handle this case properly by deregistering them
+		 * directly
+		 */
+		usleep(100);
 		break;
 	}
 
