@@ -10,22 +10,25 @@
 
 #include <linux/futex.h>
 #include <linux/net.h>
-#include <linux/ipc.h>
 #include <linux/mman.h>
 #include <linux/prctl.h>
+#include <linux/shm.h>
+#include <linux/sem.h>
 #include <linux/soundcard.h>
 
 #include <sys/ioctl.h>
-#include <sys/ptrace.h>
-#include <sys/socket.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
+#include <sys/ptrace.h>
+#include <sys/quota.h>
+#include <sys/socket.h>
 
 #include <drm/radeon_drm.h>
 #include <drm/i915_drm.h>
 
 #include "rep_process_event.h"
 #include "rep_sched.h"
-#include "read_trace.h"
+#include "replayer.h"
 
 #include "../share/dbg.h"
 #include "../share/ipc.h"
@@ -43,10 +46,12 @@ bool validate = FALSE;
 static void validate_args(struct context* context)
 {
 	/* don't validate anything before execve is done as the actual process did not start prior to this point */
-	if (!validate) return;
+	if (!validate)
+		return;
 	struct user_regs_struct cur_reg;
 	read_child_registers(context->child_tid, &cur_reg);
 	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, context->child_tid);
+	// TODO: add perf counter validations (hw int, page faults, insts)
 }
 
 /*
@@ -54,13 +59,28 @@ static void validate_args(struct context* context)
  */
 static void goto_next_syscall_emu(struct context *ctx)
 {
+	// TODO: signals are now completely emulated, so replay_sig should
+	//		 actually be 0 at all times
+	//assert(ctx->replay_sig == 0);
 	if (ctx->replay_sig != 0) {
 		debug("EMU sends sig: %d\n", ctx->replay_sig);
 	}
 
 	sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
+	ctx->replay_sig = 0; // delivered
 	sys_waitpid(ctx->child_tid, &(ctx->status));
-	ctx->replay_sig = 0;
+
+	int sig = signal_pending(ctx->status);
+
+	// SIGCHLD is pending, do not deliver it, wait for it to appear in the trace
+	// SIGCHLD is the only signal that should ever be generated as all other signals are emulated!
+	if (sig == SIGCHLD) {
+		goto_next_syscall_emu(ctx);
+		return;
+	} else if (sig) {
+		log_err("Replay got unrecorded signal %d", sig);
+		sys_exit();
+	}
 
 	/* check if we are synchronized with the trace -- should never fail */
 	const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
@@ -68,6 +88,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
+		// TODO: this code is now obselete
 		if (WSTOPSIG(ctx->status) == SIGCHLD) {
 			debug("do we come here?\n");
 			//ctx->replay_sig = SIGCHLD; // remove that if spec does not work anymore
@@ -80,7 +101,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 		log_err("ptrace_event: %x\n", GET_PTRACE_EVENT(ctx->status));
 		sys_exit();
 	}
-	ctx->replay_sig = 0;
+	ctx->replay_sig = 0; // TODO: obselete
 	ctx->child_sig = 0;
 }
 
@@ -106,7 +127,12 @@ static void finish_syscall_emu(struct context *ctx)
  */
 void __ptrace_cont(struct context *ctx)
 {
-	sys_ptrace_syscall_sig(ctx->child_tid, ctx->trace.state == 0 ? ctx->replay_sig : 0);
+	// TODO: signals are now completely emulated, so replay_sig should
+	//		 actually be 0 at all times
+	//assert(ctx->replay_sig == 0);
+
+	sys_ptrace_syscall_sig(ctx->child_tid, ctx->replay_sig);
+	ctx->replay_sig = 0; // delivered
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
@@ -133,28 +159,10 @@ void __ptrace_cont(struct context *ctx)
 	/* we should not have a signal pending here -- if there is one pending nevertheless,
 	 * we do not deliver it to the application. This ensures that the behavior remains the
 	 * same
+	 * (this is probably irrelevant with signal emulation)
 	 */
-	ctx->replay_sig = (ctx->trace.state == 0) ? 0 : ctx->replay_sig;
+	ctx->replay_sig = 0;
 	ctx->child_sig = 0;
-}
-
-static void set_child_data(struct context *ctx)
-{
-	size_t size;
-	unsigned long rec_addr;
-	void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
-	if (data != NULL) {
-		write_child_data(ctx, size, rec_addr, data);
-		sys_free((void**) &data);
-	}
-}
-
-static void set_return_value(struct context* context)
-{
-	struct user_regs_struct r;
-	read_child_registers(context->child_tid, &r);
-	r.eax = context->trace.recorded_regs.eax;
-	write_child_registers(context->child_tid, &r);
 }
 
 /**
@@ -175,9 +183,10 @@ static void handle_socket(struct context *ctx, struct trace* trace)
 	/* sockets are emulated, not executed */
 	if (state == STATE_SYSCALL_ENTRY) {
 		goto_next_syscall_emu(ctx);
+		validate_args(ctx);
 	} else {
 		int call = read_child_ebx(tid);
-	//	printf("socket call: %d\n", call);
+		//	printf("socket call: %d\n", call);
 		switch (call) {
 		/* int socket(int domain, int type, int protocol); */
 		case SYS_SOCKET:
@@ -297,18 +306,19 @@ static void handle_socket(struct context *ctx, struct trace* trace)
  * case, recorded data is injected into the child. Other system calls must be executed. E.g.,
  * mmap or fork cannot be emulated
  */
-void rep_process_syscall(struct context* context, bool redirect_output, int dump_memory)
+void rep_process_syscall(struct context* context, int syscall, struct flags rr_flags)
 {
 	const int tid = context->child_tid;
 	struct trace *trace = &(context->trace);
-	int syscall = trace->stop_reason;
 	int state = trace->state;
 
 	assert((state == STATE_SYSCALL_ENTRY) || (state == STATE_SYSCALL_EXIT));
 
-	if (state == STATE_SYSCALL_EXIT) {
-		debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->thread_time, context->exec_state);
+	if (state == STATE_SYSCALL_ENTRY) {
+		debug("%d: entering syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->global_time, context->exec_state);
 		//do_debug(print_register_file_tid(context->child_tid));
+	} else {
+		debug("%d: exiting syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->global_time, context->exec_state);
 	}
 
 	switch (syscall) {
@@ -348,9 +358,8 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * This system call performs control operations on the epoll instance referred to by the file descriptor epfd.
 	 * It requests that the operation op be performed for the target file descriptor, fd.
 	 *
-	 * FIXXME: not quite sure if something is returned!
 	 */
-	SYS_FD_ARG(epoll_ctl, 1)
+	SYS_FD_ARG(epoll_ctl, 0)
 
 	/**
 	 * int posix_fadvise(int fd, off_t offset, off_t len, int advice);
@@ -431,6 +440,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 */
 	SYS_FD_ARG(ftruncate64, 0)
 	SYS_FD_ARG(ftruncate, 0)
+	SYS_FD_ARG(truncate, 0)
 
 	/**
 	 * int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
@@ -495,6 +505,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 *
 	 * Potentially blocking
 	 */
+	//SYS_FD_ARG_CHECKED(poll, 1, trace->recorded_regs.eax > 0)
 	SYS_FD_ARG(poll, 1)
 
 	/* int fcntl(int fd, int cmd, ... ( arg ));
@@ -505,19 +516,38 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * type is indicated in parentheses after each cmd name (in most cases, the required type is long,
 	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
 	 */
-	SYS_FD_USER_DEF(fcntl64, 0, int cmd = read_child_ecx(tid); switch (cmd) { case F_DUPFD: case F_GETFD: case F_GETFL: case F_SETFL: case F_SETFD: case F_SETOWN: break;
-
-	case F_SETLK: case F_SETLK64: case F_SETLKW64: case F_GETLK: { set_child_data(context); break; }
-
-	default: printf("unknown command: %d -- bailing out\n", cmd); sys_exit(); } set_return_value(context);)
-
-	/**
-	 * int inotify_rm_watch(int fd, uint32_t wd)
-	 *
-	 * inotify_rm_watch()  removes the watch associated with the watch descriptor wd from the
-	 * inotify instance associated with the file descriptor fd.
-	 */
-	SYS_FD_ARG(inotify_rm_watch, 0)
+	case SYS_fcntl64:
+	{
+		if (state == 0) {
+			goto_next_syscall_emu(context);
+		} else {
+			int cmd = read_child_ecx(tid);
+			switch (cmd) {
+			case F_DUPFD:
+			case F_GETFD:
+			case F_GETFL:
+			case F_SETFL:
+			case F_SETFD:
+			case F_SETOWN:
+				break;
+			case F_SETLK:
+			case F_SETLK64:
+			case F_SETLKW64:
+			case F_GETLK:
+			case F_GETLK64:
+				set_child_data(context);
+				break;
+			default:
+				log_err("Unknown fcntl64 command: %d", cmd);
+				sys_exit();
+				break;
+			}
+			set_return_value(context);
+			validate_args(context);
+			finish_syscall_emu(context);
+		}
+		break;
+	}
 
 	/**
 	 * int inotify_add_watch(int fd, const char *pathname, uint32_t mask)
@@ -531,6 +561,23 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * that can be set in mask.
 	 */
 	SYS_FD_ARG(inotify_add_watch, 0)
+
+	/**
+	 * int inotify_init(void)
+	 *
+	 * inotify_init()  initializes  a  new inotify instance and returns a file
+	 * descriptor associated with a new inotify event queue.
+	 */
+	SYS_FD_ARG(inotify_init, 0)
+	SYS_FD_ARG(inotify_init1, 0)
+
+	/**
+	 * int inotify_rm_watch(int fd, uint32_t wd)
+	 *
+	 * inotify_rm_watch()  removes the watch associated with the watch descriptor wd from the
+	 * inotify instance associated with the file descriptor fd.
+	 */
+	SYS_FD_ARG(inotify_rm_watch, 0)
 
 	/**
 	 *  int ioctl(int d, int request, ...)
@@ -646,7 +693,20 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 *
 	 * read() attempts to read up to count bytes from file descriptor fd into the buffer starting at buf.
 	 */
-	SYS_FD_ARG(read, 1)
+	SYS_FD_ARG_CHECKED(read, 1, (trace->recorded_regs.eax > 0))
+
+	/**
+	 * ssize_t readahead(int fd, off64_t offset, size_t count);
+	 *
+	 * readahead()  populates the page cache with data from a file so that subsequent reads from that file will not block
+	 * on disk I/O.  The fd argument is a file descriptor identifying the file which is to be read.  The offset argu-
+	 * ment specifies the starting point from which data is to be read and count specifies the number of bytes to be read.
+	 * I/O is performed in whole pages, so that offset is effectively rounded down to a page boundary and bytes are
+	 * read  up  to  the  next page boundary greater than or equal to (offset+count).  readahead() does not read
+	 * beyond the end of the file.  readahead() blocks until the specified data has been read.  The current file offset of the
+	 * open file referred to by fd is left unchanged.
+	 */
+	SYS_FD_ARG(readahead, 0)
 
 	/**
 	 * mode_t umask(mode_t mask);
@@ -665,26 +725,29 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * returned returns the new data. Note that not all file systems are
 	 * POSIX conforming.
 	 */
-	case SYS_write: {
-			if (state == STATE_SYSCALL_ENTRY) {
-		       goto_next_syscall_emu(context);
-			   validate_args(context);
-			} else {
-				set_return_value(context);
-				validate_args(context);
-				finish_syscall_emu(context);
-				if (redirect_output) {
-					/* print output intended for stdout\stderr */
-					long int fd = read_child_ebx(context->child_tid);
-					if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-						uintptr_t address = (uintptr_t)read_child_ecx(context->child_tid);
-						long int length = read_child_edx(context->child_tid);
-						char buffer[length];
-						read_child_buffer(context->child_tid, address, length, buffer);
-						fprintf((fd == STDOUT_FILENO) ? stdout : stderr,"%s",buffer);
-					}
+	case SYS_write:
+	{
+		if (state == STATE_SYSCALL_ENTRY) {
+			goto_next_syscall_emu(context);
+			validate_args(context);
+		} else {
+			set_return_value(context);
+			validate_args(context);
+			finish_syscall_emu(context);
+			if (rr_flags.redirect) {
+				/* print output intended for stdout\stderr */
+				struct user_regs_struct regs;
+				read_child_registers(context->child_tid, &regs);
+				int filedes = regs.ebx;
+				if (filedes == STDOUT_FILENO || filedes == STDERR_FILENO) {
+					size_t size = regs.edx;
+					void *address = (void*) regs.ecx;
+					void *buffer = read_child_data(context, size, address);
+					write(filedes, buffer, size);
+					sys_free(&buffer);
 				}
 			}
+		}
 		break;
 	}
 
@@ -714,18 +777,40 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 
 			read_child_registers(tid, &regs);
 
+			if (trace->recorded_regs.eax == 0) { // failed mapping
+				finish_syscall_emu(context);
+				set_return_value(context);
+				validate_args(context);
+				break;
+			}
+
 			if (!(regs.esi & MAP_ANONYMOUS)) {
+				struct mmapped_file file;
+				read_next_mmapped_file_stats(&file);
+				assert(file.time == trace->global_time);
+
 				struct user_regs_struct orig_regs;
 				memcpy(&orig_regs, &regs, sizeof(struct user_regs_struct));
 
 				/* hint the kernel where to allocate the page */
-				if (regs.ebx == 0) {
-					regs.ebx = context->trace.recorded_regs.eax;
+				regs.ebx = context->trace.recorded_regs.eax;
+
+				// for shared mmaps: verify modification time
+				if (regs.esi & MAP_SHARED) {
+					if (strcmp(file.filename, "/home/user/.cache/dconf/user") != NULL && // not dconf   (proxied)
+							strstr(file.filename, "sqlite") == NULL ) {						 // not sqlite  (private)
+						struct stat st;
+						stat(file.filename, &st);
+						if (file.stat.st_mtim.tv_sec != st.st_mtim.tv_sec || file.stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec) {
+							log_err("Shared file %s timestamp changed", file.filename);
+							sys_exit();
+						}
+					}
 				}
 				/* set anonymous flag */
 				regs.esi |= MAP_ANONYMOUS;
 				regs.esi |= MAP_FIXED;
-				regs.edi = 0;
+				regs.edi = -1;
 				regs.ebp = 0;
 				write_child_registers(tid, &regs);
 
@@ -758,6 +843,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 				write_child_registers(tid, &orig_regs);
 
 				validate_args(context);
+				debug("%d[time=%d]: mmapped anonymous with flags %x to address %p\n",context->child_tid, trace->global_time, orig_regs.esi,orig_regs.eax);
 			}
 
 			if (read_child_eax(context->child_tid) == 0x69f46000) {
@@ -824,6 +910,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * The memory area pointed to by events will contain the events that will be available for the caller.  Up
 	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
 	 */
+	//SYS_FD_ARG_CHECKED(epoll_wait, 1,(trace->recorded_regs.eax >= 0))
 	SYS_FD_ARG(epoll_wait, 1)
 
 	/**
@@ -835,7 +922,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * argument initval.
 	 */
 	SYS_FD_ARG(eventfd2, 0)
-	
+
 	/**
 	 * int faccessat(int dirfd, const char *pathname, int mode, int flags)
 	 *
@@ -878,14 +965,23 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 			set_child_data(context);
 
 			int op = read_child_ecx(tid) & FUTEX_CMD_MASK;
+			switch (op) {
+			case FUTEX_WAKE:
+			case FUTEX_WAIT_BITSET:
+			case FUTEX_WAIT:
+			case FUTEX_UNLOCK_PI:
+				break;
 
-			if (op == FUTEX_WAKE || op == FUTEX_WAIT_BITSET || op == FUTEX_WAIT || op == FUTEX_UNLOCK_PI) {
+			case FUTEX_CMP_REQUEUE:
+			case FUTEX_WAKE_OP:
+			case FUTEX_CMP_REQUEUE_PI:
+			case FUTEX_WAIT_REQUEUE_PI:
+			set_child_data(context);
+				break;
 
-			} else if (op == FUTEX_CMP_REQUEUE || op == FUTEX_WAKE_OP) {
-				set_child_data(context);
-			} else {
-				printf("op: %d futex_wait: %d \n", op, FUTEX_WAIT);
-				assert(1==0);
+			default:
+			log_err("op: %d futex_wait: %d \n", op, FUTEX_WAIT);
+			sys_exit();
 			}
 
 			set_return_value(context);
@@ -1065,7 +1161,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * elapsed, or the delivery of a signal that triggers the invocation of a handler in the calling thread or that ter-
 	 * minates the process.
 	 */
-	SYS_EMU_ARG(nanosleep, 1);
+	SYS_EMU_ARG_CHECKED(nanosleep, 1, trace->recorded_regs.ecx != NULL);
 
 	/**
 	 * int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
@@ -1073,29 +1169,29 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 *  prctl() is called with a first argument describing what to do (with values defined in <linux/prctl.h>), and
 	 *  further arguments with a significance depending on the first one.
 	 *
-	 * FIXXME: check if there is some output in the variable parameters
 	 */
 	case SYS_prctl:
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
-	       goto_next_syscall_emu(context);
-		   validate_args(context);
+			goto_next_syscall_emu(context);
+			validate_args(context);
 		} else {
-			switch (read_child_ebx(context->child_tid))
-			{
-				case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
-				case PR_GET_FPEMU:  	/* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
-				case PR_GET_FPEXC:  	/* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
-				case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
-				case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
-				case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
-				case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
-				 	 	 	 	 	 	The buffer should allow space for up to 16 bytes;
-				 	 	 	 	 	 	The returned string will be null-terminated if it is shorter than that. */
-					set_child_data(context);
+			if (trace->recorded_regs.eax >= 0) {
+				switch (trace->recorded_regs.ebx) {
+				case PR_GET_ENDIAN: /* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
+				case PR_GET_FPEMU: /* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
+				case PR_GET_FPEXC: /* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
+				case PR_GET_PDEATHSIG: /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
+				case PR_GET_TSC: /* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
+				case PR_GET_UNALIGN: /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
+				case PR_GET_NAME: /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
+				 The buffer should allow space for up to 16 bytes;
+				 The returned string will be null-terminated if it is shorter than that. */
+				set_child_data(context);
 					break;
 				default:
 					break;
+				}
 			}
 			set_return_value(context);
 			validate_args(context);
@@ -1282,12 +1378,41 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	SYS_EMU_ARG(utimensat, 0)
 
 	/**
-	 * int inotify_init(void)
+	 * int quotactl(int cmd, const char *special, int id, caddr_t addr);
 	 *
-	 * inotify_init()  initializes  a  new inotify instance and returns a file
-	 * descriptor associated with a new inotify event queue.
+	 * The  quotactl()  call  manipulates disk quotas.  The cmd argument indi‐
+	 * cates a command to be applied to the user or group ID specified in  id.
+	 * To  initialize the cmd argument, use the QCMD(subcmd, type) macro.  The
+	 * type value is either USRQUOTA, for user quotas, or GRPQUOTA, for  group
+	 * quotas.  The subcmd value is described below.
 	 */
-	SYS_EMU_ARG(inotify_init1, 0)
+	case SYS_quotactl:
+	{
+		if (state == STATE_SYSCALL_ENTRY) {
+			goto_next_syscall_emu(context);
+			validate_args(context);
+		} else {
+			int cmd = read_child_ebp(context->child_tid);
+			caddr_t addr = read_child_esi(context->child_tid);
+			;
+			switch (cmd & SUBCMDMASK) {
+			case Q_GETQUOTA:
+			case Q_GETINFO:
+			case Q_GETFMT:
+			set_child_data(context);
+				break;
+
+			default:
+				break;
+			}
+
+			set_return_value(context);
+			validate_args(context);
+			finish_syscall_emu(context);
+		}
+
+		break;
+	}
 
 	/**
 	 * int rmdir(const char *pathname)
@@ -1311,6 +1436,38 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	SYS_EMU_ARG(setregid32, 0)
 
 	/**
+	 * int setresgid(gid_t rgid, gid_t egid, gid_t sgid);
+	 *
+	 * setresgid() sets the real GID, effective GID, and saved set-group-ID of the calling process.
+	 *
+	 */
+	SYS_EMU_ARG(setresgid, 0)
+
+	/**
+	 * int setresgid32(gid_t rgid, gid_t egid, gid_t sgid);
+	 *
+	 * setresgid() sets the real GID, effective GID, and saved set-group-ID of the calling process.
+	 *
+	 */
+	SYS_EMU_ARG(setresgid32, 0)
+
+	/**
+	 * int setresuid(uid_t ruid, uid_t euid, uid_t suid);
+	 *
+	 * setresuid() sets the real user ID, the effective user ID, and the saved set-user-ID of the calling process.
+	 *
+	 */
+	SYS_EMU_ARG(setresuid, 0)
+
+	/**
+	 * int setresuid32(uid_t ruid, uid_t euid, uid_t suid);
+	 *
+	 * setresuid() sets the real user ID, the effective user ID, and the saved set-user-ID of the calling process.
+	 *
+	 */
+	SYS_EMU_ARG(setresuid32, 0)
+
+	/**
 	 * int statfs(const char *path, struct statfs *buf)
 	 *
 	 * The function statfs() returns information about a mounted file system.  path is the pathname of any file within the mounted
@@ -1323,7 +1480,9 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 *
 	 * symlink() creates a symbolic link named newpath which contains the string oldpath.
 	 */
-	//SYS_EMU_ARG(symlink, 0)
+	SYS_EMU_ARG(symlink, 0)
+	// FIXME: Why was this disabled?
+
 	/**
 	 * time_t time(time_t *t);
 	 *
@@ -1393,8 +1552,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * the options argument, as described below....
 	 *
 	 */
-	//SYS_EMU_ARG(waitpid, 1)
-
+	SYS_EMU_ARG(waitpid, 1)
 
 	/************************ Executed system calls come here ***************************/
 
@@ -1407,8 +1565,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * the options argument, as described below....
 	 *
 	 */
-	SYS_EXEC_ARG(waitpid, 1)
-
+	//SYS_EXEC_ARG(waitpid, 1)
 	/**
 	 * int access(const char *pathname, int mode);
 	 *
@@ -1453,7 +1610,27 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	case SYS_clone:
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
+			struct trace next_trace;
+			peek_next_trace(&next_trace);
+			if (next_trace.recorded_regs.eax < 0) { // creation failed, emulate it
+				goto_next_syscall_emu(context);
+				validate_args(context);
+				break;
+			}
+		}
+
+		if (state == STATE_SYSCALL_EXIT) {
+			if (trace->recorded_regs.eax < 0) { // creation failed, emulate it
+				set_return_value(context);
+				validate_args(context);
+				finish_syscall_emu(context);
+				break;
+			}
+		}
+
+		if (state == STATE_SYSCALL_ENTRY) {
 			__ptrace_cont(context);
+			validate_args(context);
 		} else {
 			/* execute the system call */
 			__ptrace_cont(context);
@@ -1475,29 +1652,29 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 			size_t size;
 			unsigned long rec_addr;
 			void* data = read_raw_data(&(context->trace), &size, &rec_addr);
-			if (data != NULL) {
+			if (data != NULL ) {
 				write_child_data_n(new_tid, size, rec_addr, data);
 				sys_free((void**) &data);
 			}
 
 			data = read_raw_data(&(context->trace), &size, &rec_addr);
-			if (data != NULL) {
+			if (data != NULL ) {
 				write_child_data_n(new_tid, size, rec_addr, data);
 				sys_free((void**) &data);
 			}
 
 			data = read_raw_data(&(context->trace), &size, &rec_addr);
-			if (data != NULL) {
+			if (data != NULL ) {
 				write_child_data_n(new_tid, size, rec_addr, data);
 				sys_free((void**) &data);
 			}
-			set_return_value(context);
-
 			/* set the ebp register to the recorded value -- it should not point to data on
 			 * that is used afterwards */
 			write_child_ebp(tid, trace->recorded_regs.ebp);
+			set_return_value(context);
 			validate_args(context);
 		}
+
 		break;
 	}
 
@@ -1511,6 +1688,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 
 		if (state == STATE_SYSCALL_ENTRY) {
 			__ptrace_cont(context);
+			//validate = TRUE;
 		} else {
 			validate = TRUE;
 
@@ -1524,15 +1702,8 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 				size_t size;
 				unsigned long rec_addr;
 				void* data = read_raw_data(&(context->trace), &size, &rec_addr);
-				debug("Setting prng bytes to location %x:",rec_addr);
-				if (data != NULL) {
-					debug("Writing:");
-					int i;
-					for (i = 0 ; i < size ; ++i) {
-						debug("%d",((char*)data)[i]);
-					}
+				if (data != NULL ) {
 					write_child_data(context, size, rec_addr, data);
-
 					sys_free((void**) &data);
 				}
 				//set_child_data(context);
@@ -1603,14 +1774,25 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 */
 	case SYS_ipc:
 	{
-		int call = read_child_ebx(tid);
-
+		int call = trace->recorded_regs.ebx;
+		// TODO: ipc may be completely emulated
 		if (state == STATE_SYSCALL_ENTRY) {
-			if (call == MSGRCV) {
+			switch (call) {
+			case MSGRCV:
+			case SEMGET:
+			case SEMCTL:
+			case SEMOP:
+			{
 				goto_next_syscall_emu(context);
-			} else {
-				__ptrace_cont(context);
+				break;
 			}
+			default:
+			{
+				__ptrace_cont(context);
+				break;
+			}
+			}
+			validate_args(context);
 		} else {
 			switch (call) {
 
@@ -1625,11 +1807,29 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 			/* void *shmat(int shmid, const void *shmaddr, int shmflg) */
 			case SHMAT:
 			{
-				int orig_shmemid = read_child_ecx(tid);
-				int shmid = shmem_get_key(read_child_ecx(tid));
+				struct user_regs_struct regs;
+				read_child_registers(tid, &regs);
+				int orig_shmemid = regs.ecx;
+				int shmid = shmem_get_key(regs.ecx);
 				write_child_ecx(tid, shmid);
+				// demand the mapping to be at the address supplied by the replay
+				size_t size;
+				void *rec_addr;
+				long * map_addr = read_raw_data(trace, &size, &rec_addr);
+				assert(rec_addr == regs.esi);
+				// hint sits at edi
+				write_child_edi(tid, *map_addr);
 				__ptrace_cont(context);
-				write_child_ecx(tid, orig_shmemid);
+				read_child_registers(tid, &regs);
+				regs.ecx = orig_shmemid; // put the key back
+				regs.edi = trace->recorded_regs.edi; // restore the hint
+				write_child_registers(tid, &regs);
+				void *result = read_child_data_word(tid, regs.esi);
+				assert(*map_addr == (long)result);
+				// TODO: remove this once this call is emulated
+				if (*map_addr > 0) // to prevent direct memory access to shared memory with non recorded processes
+					mprotect_child_region(context, *map_addr, PROT_NONE);
+				sys_free(&map_addr);
 				break;
 			}
 
@@ -1663,9 +1863,60 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 				break;
 			}
 
+			case SEMGET:
+			// int semop(int semid, struct sembuf *sops, unsigned nsops);
+			case SEMOP:
+			{
+				set_return_value(context);
+				finish_syscall_emu(context);
+				break;
+			}
+
+			// int semctl(int semid, int semnum, int cmd, union semnum);
+			case SEMCTL:
+			{
+				int cmd = trace->recorded_regs.edx;
+				switch (cmd) {
+				case IPC_SET:
+				case IPC_RMID:
+				case GETNCNT:
+				case GETPID:
+				case GETVAL:
+				case GETZCNT:
+				case SETALL:
+				case SETVAL:
+				{
+					set_return_value(context);
+					finish_syscall_emu(context);
+					break;
+				}
+				case IPC_STAT:
+				case SEM_STAT:
+				case IPC_INFO:
+				case SEM_INFO:
+				case GETALL:
+				{
+					set_child_data(context);
+					set_return_value(context);
+					finish_syscall_emu(context);
+					break;
+				}
+				default:
+				{
+					log_err("Unknown semctl command %d", cmd);
+					sys_exit();
+					break;
+				}
+				}
+				break;
+			}
+
 			default:
-			printf("unknown call in ipc: %d -- bailing out\n", call);
-			sys_exit();
+			{
+				log_err("unknown call in ipc: %d -- bailing out", call);
+				sys_exit();
+				break;
+			}
 			}
 
 			validate_args(context);
@@ -1751,6 +2002,8 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 *
 	 */
 	SYS_EXEC_ARG_RET(context, mprotect, 0)
+	// TODO: emulate this.
+	//SYS_EMU_ARG(mprotect, 0)
 
 	/**
 	 * int setrlimit(int resource, const struct rlimit *rlim)
@@ -1846,7 +2099,8 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * saved in oldact.
 	 *
 	 */
-	SYS_EXEC_ARG(rt_sigaction, 1)
+	//SYS_EXEC_ARG(rt_sigaction, 1)
+	SYS_EMU_ARG(rt_sigaction, 1)
 
 	/**
 	 * int sigaltstack(const stack_t *ss, stack_t *oss)
@@ -1863,21 +2117,32 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 * is inserted into the stack frame so that upon return from the signal handler, sigreturn() will
 	 * be called.
 	 */
-
 	case SYS_rt_sigreturn:
 	case SYS_sigreturn:
 	{
-		/* go to the system call */
-		if (context->replay_sig != 0) {
-			printf("global time: %u\n",context->trace.global_time);
+		if (state == STATE_SYSCALL_ENTRY) {
+			goto_next_syscall_emu(context);
+			validate_args(context);
+		} else {
+			write_child_main_registers(context->child_tid, &trace->recorded_regs);
+			finish_syscall_emu(context);
 		}
-
-		assert(context->replay_sig == 0);
-		assert(context->child_sig == 0);
-		__ptrace_cont(context);
-		validate_args(context);
 		break;
 	}
+	/*
+	 {
+	 // go to the system call
+	 if (context->replay_sig != 0) {
+	 debug("global time: %u\n",context->trace.global_time);
+	 }
+
+	 //assert(context->replay_sig == 0);
+	 //assert(context->child_sig == 0);
+	 __ptrace_cont(context);
+	 validate_args(context);
+	 break;
+	 }
+	 */
 
 	/**
 	 *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
@@ -1886,7 +2151,8 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	 *  thread.  The signal mask is the set of signals whose delivery is currently
 	 *   blocked for the caller (see also signal(7) for more details).
 	 */
-	SYS_EXEC_ARG_RET(context, rt_sigprocmask, 1)
+	//SYS_EXEC_ARG_RET(context, rt_sigprocmask, 1)
+	SYS_EMU_ARG(rt_sigprocmask, 1)
 
 	case SYS_vfork:
 	{
@@ -1923,18 +2189,9 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	SYS_EXEC_ARG(wait4, 2)
 
 	default:
-		fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall, context->trace.global_time);
-		sys_exit();
+	fprintf(stderr, " Replayer: unknown system call: %d -- bailing out global_time %u\n", syscall, context->trace.global_time);
+	sys_exit();
 		break;
-	}
-
-	if (state == STATE_SYSCALL_EXIT) {
-		if (dump_memory == syscall) {
-	        char pid_str[MAX_PATH_LEN];
-	        sprintf(pid_str,"%s/%d_%d",get_rep_trace_path(),context->child_tid,syscall);
-			print_process_memory(context->child_tid,pid_str);
-		}
-		//get_eip_info(tid);
 	}
 
 }

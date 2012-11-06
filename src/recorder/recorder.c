@@ -7,11 +7,11 @@
 #include <sys/epoll.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
+#include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
 #include <linux/net.h>
 
-#include "write_trace.h"
 #include "rec_process_event.h"
 #include "rec_sched.h"
 #include "handle_signal.h"
@@ -19,10 +19,12 @@
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
+#include "../share/trace.h"
 #include "../share/sys.h"
 #include "../share/util.h"
 
 #define PTRACE_EVENT_NONE			0
+static struct flags rr_flags_ = { 0 };
 
 /**
  * Single steps to the next event that must be recorded. This can either be a system call, or reading the time
@@ -44,10 +46,11 @@ void goto_next_event_singlestep(struct context* context)
 		record_inst(context, inst);
 		free(inst);
 		if (context->child_sig != 0) {
-			//printf("pending sig: %d\n", context->pending_sig);
+			debug("pending sig: %d\n", context->child_sig);
 		}
 
 		sys_ptrace_singlestep(tid, context->child_sig);
+		context->child_sig = 0;
 		sys_waitpid(tid, &(context->status));
 
 		if (WSTOPSIG(context->status) == SIGSEGV) {
@@ -58,17 +61,13 @@ void goto_next_event_singlestep(struct context* context)
 	assert(GET_PTRACE_EVENT(context->status)==0);
 }
 
-static void init_scratch_memory(struct context *ctx)
+static void rec_init_scratch_memory(struct context *ctx)
 {
 	/* initialize the scratchpad for blocking system calls */
-	struct user_regs_struct orig_regs;
-
-	read_child_registers(ctx->child_tid, &orig_regs);
-	void *code = read_child_data(ctx, 4, read_child_eip(ctx->child_tid));
 
 	/* set up the mmap system call */
 	struct user_regs_struct mmap_call;
-	memcpy(&mmap_call, &orig_regs, sizeof(struct user_regs_struct));
+	read_child_registers(ctx->child_tid, &mmap_call);
 
 	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
 
@@ -79,25 +78,23 @@ static void init_scratch_memory(struct context *ctx)
 	mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
 	mmap_call.edi = -1;
 	mmap_call.ebp = 0;
-	write_child_registers(ctx->child_tid, &mmap_call);
 
-	/* inject code that executes the additional system call */
-	char syscall[] = { 0xcd, 0x80 };
-	write_child_data(ctx, 2, mmap_call.eip, syscall);
-
-	sys_ptrace_syscall(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &ctx->status);
-
-	sys_ptrace_syscall(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &ctx->status);
-
-	ctx->scratch_ptr = (void*) read_child_eax(ctx->child_tid);
+	ctx->scratch_ptr = (void*)inject_and_execute_syscall(ctx,&mmap_call);
 	ctx->scratch_size = scratch_size;
 
-	/* reset to the original state */
-	write_child_registers(ctx->child_tid, &orig_regs);
-	write_child_data(ctx, 2, mmap_call.eip, code);
-	free(code);
+	// record this mmap for the replay
+	struct user_regs_struct orig_regs;
+	read_child_registers(ctx->child_tid,&orig_regs);
+	int eax = orig_regs.eax;
+	orig_regs.eax = ctx->scratch_ptr;
+	write_child_registers(ctx->child_tid,&orig_regs);
+	int event = ctx->event;
+	ctx->event = USR_INIT_SCRATCH_MEM;
+	record_event(ctx,STATE_SYSCALL_EXIT);
+	ctx->event = event;
+	orig_regs.eax = eax;
+	write_child_registers(ctx->child_tid,&orig_regs);
+
 }
 
 static void cont_nonblock(struct context *ctx)
@@ -141,9 +138,8 @@ static void cont_block(struct context *ctx)
 	handle_signal(ctx);
 }
 
-static int allow_ctx_switch(struct context *ctx)
+static int allow_ctx_switch(struct context *ctx, int event)
 {
-	int event = ctx->event;
 	//printf("event: %d\n",event);
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	switch (event) {
@@ -178,21 +174,59 @@ static int allow_ctx_switch(struct context *ctx)
 
 		void *sock_ptr = (void*) regs.ecx;
 
-		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) */
+		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) :=
+		 * int socketcall(int call, unsigned long *args) {
+		 * 		long a[6];
+		 * 		copy_from_user(a,args);
+		 *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
+		 *  }
+		 *
+		 *  (fropm http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
+		 */
 		if (call == SYS_RECV) {
-			uintptr_t *buf = read_child_data(ctx, PTR_SIZE, regs.ecx + 4);
-			size_t *len = read_child_data(ctx, PTR_SIZE, regs.ecx + 8);
-			assert(*len <= ctx->scratch_size);
-			ctx->recorded_scratch_ptr_0 = *buf;
-			ctx->recorded_scratch_size = *len;
-			write_child_data(ctx, sizeof(void*), sock_ptr + 4, &(ctx->scratch_ptr));
-
-			sys_free((void**) &buf);
-			sys_free((void**) &len);
+			size_t num_args = 4;
+			// reading syscall args
+			unsigned long * args = read_child_data(ctx, num_args * sizeof(long),regs.ecx);
+			// save buffer address (args[1]) and size
+			ctx->recorded_scratch_ptr_1 = (void*)args[1];
+			ctx->recorded_scratch_size = args[2];
+			// setting buffer address to scratch memory +  sizeof the args
+			args[1] = (long)(ctx->scratch_ptr + (num_args * sizeof(long)));
+			// put args on scratch memory (since as we changed it)
+			write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
+			// point ecx to args
+			ctx->recorded_scratch_ptr_0 = regs.ecx;
+			regs.ecx = (long)ctx->scratch_ptr;
+			write_child_registers(ctx->child_tid,&regs);
+			// cleanup
+			sys_free((void**)&args);
 			return 1;
 
-			/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
+			/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen); =
+			 * sys_accept4(a0, (struct sockaddr __user *)a1,(int __user *)a[2], 0);
+			 * */
 		} else if (call == SYS_ACCEPT) {
+			size_t num_args = 3;
+			// reading syscall args
+			unsigned long * args = read_child_data(ctx, num_args * sizeof(long),regs.ecx);
+			// setting addr to scratch memory +  sizeof the args
+			ctx->recorded_scratch_ptr_1 = args[1];
+			args[1] = (long)(ctx->scratch_ptr + (num_args * sizeof(long)));
+			// setting addrlen to addr + addrlen
+			socklen_t *addrlen = read_child_data(ctx,sizeof(socklen_t *),args[2]);
+			ctx->recorded_scratch_size = *addrlen;
+			args[2] = (long)((void*)args[1] + *addrlen);
+			// put args on scratch memory (since we changed it)
+			write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
+			// point ecx to args
+			ctx->recorded_scratch_ptr_0 = regs.ecx;
+			regs.ecx = (long)ctx->scratch_ptr;
+			write_child_registers(ctx->child_tid,&regs);
+			// cleanup
+			sys_free((void**)&addrlen);
+			sys_free((void**)&args);
+			return 1;
+			/*
 			void *addrlen_ptr, *addr, *tmp;
 			socklen_t addrlen;
 
@@ -209,8 +243,8 @@ static int allow_ctx_switch(struct context *ctx)
 			tmp = ctx->scratch_ptr + sizeof(socklen_t);
 			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE, &tmp);
 			write_child_data(ctx,sizeof(socklen_t),ctx->scratch_ptr,&addrlen);
-
 			return 1;
+			*/
 		}
 
 		return 0;
@@ -258,7 +292,7 @@ static int allow_ctx_switch(struct context *ctx)
 		read_child_registers(ctx->child_tid, &regs);
 		ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
 		ctx->recorded_scratch_size = sizeof(int);
-
+		// TODO: put rusage on scratch as well (wait4)
 		regs.ecx = ctx->scratch_ptr;
 		write_child_registers(ctx->child_tid, &regs);
 		return 1;
@@ -269,18 +303,53 @@ static int allow_ctx_switch(struct context *ctx)
 	{
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
+		assert(regs.ecx >= 0); // TODO: replace this with a less destructive if statement
 		ctx->recorded_scratch_size = sizeof(struct pollfd) * regs.ecx;
 		ctx->recorded_scratch_ptr_0 = (void*) regs.ebx;
 		assert(ctx->recorded_scratch_size <= ctx->scratch_size);
 
-		/* copy the data */
-		void *data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0);
+		// copy the data
+		struct pollfd *data = (struct pollfd *)read_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr, data);
 		sys_free((void**) &data);
 
 		regs.ebx = (long int) ctx->scratch_ptr;
 		write_child_registers(ctx->child_tid, &regs);
+		return 1;
+	}
 
+	/* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5); */
+	// TODO: this may be a quick syscall, better not to allow context switching
+	case SYS_prctl:
+	{
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		switch (regs.ebx)
+		{
+			case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
+			case PR_GET_FPEMU:  	/* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
+			case PR_GET_FPEXC:  	/* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
+			case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
+			case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
+			case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
+				ctx->recorded_scratch_size = sizeof(int);
+				assert(ctx->recorded_scratch_size <= ctx->scratch_size);
+				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
+				regs.ecx = ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid, &regs);
+				break;
+			case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
+			 	 	 	 	 	 	The buffer should allow space for up to 16 bytes;
+			 	 	 	 	 	 	The returned string will be null-terminated if it is shorter than that. */
+				ctx->recorded_scratch_size = 16;
+				assert(ctx->recorded_scratch_size <= ctx->scratch_size);
+				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
+				regs.ecx = ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid, &regs);
+				break;
+			default:
+				break;
+		}
 		return 1;
 	}
 
@@ -346,13 +415,13 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_VFORK_DONE:
 	{
-		rec_process_syscall(*ctx_ptr,0);
-		record_event((*ctx_ptr), 1);
+		rec_process_syscall(*ctx_ptr, (*ctx_ptr)->event, rr_flags_);
+		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
 		(*ctx_ptr)->exec_state = EXEC_STATE_START;
 		(*ctx_ptr)->allow_ctx_switch = 1;
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		cont_block(*ctx_ptr);
-		record_event((*ctx_ptr), 1);
+		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
 		break;
 	}
 
@@ -376,7 +445,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		if (event == PTRACE_EVENT_VFORK) {
 			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
 			(*ctx_ptr)->allow_ctx_switch = 1;
-			record_event((*ctx_ptr), 0);
+			record_event((*ctx_ptr), STATE_SYSCALL_ENTRY);
 			cont_nonblock((*ctx_ptr));
 		} else {
 			cont_block((*ctx_ptr));
@@ -386,9 +455,9 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	case PTRACE_EVENT_EXEC:
 	{
-		record_event(*ctx_ptr, 0);
+		record_event(*ctx_ptr, STATE_SYSCALL_ENTRY);
 		cont_block(*ctx_ptr);
-		init_scratch_memory(*ctx_ptr);
+		rec_init_scratch_memory(*ctx_ptr);
 		assert(signal_pending((*ctx_ptr)->status) == 0);
 		break;
 	}
@@ -396,7 +465,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	case PTRACE_EVENT_EXIT:
 	{
 		(*ctx_ptr)->event = USR_EXIT;
-		record_event((*ctx_ptr), 1);
+		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
 		rec_sched_deregister_thread(ctx_ptr);
 		/*
 		 * This is a dirty workaround: If a thread issues the exit_group system call, it may happen
@@ -411,7 +480,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	default:
 	{
-		fprintf(stderr, "Unknown ptrace event: %x -- baling out\n", event);
+		log_err("Unknown ptrace event: %x -- baling out", event);
 		sys_exit();
 		break;
 	}
@@ -419,22 +488,23 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	} /* end switch */
 }
 
-void start_recording(int dump_memory)
+void start_recording(struct flags rr_flags)
 {
+	rr_flags_ = rr_flags;
 	struct context *ctx = NULL;
 
 	/* record the initial status of the register file */
 	ctx = get_active_thread(ctx);
 	ctx->event = -1000;
-	record_event(ctx, 0);
-	init_scratch_memory(ctx);
+	record_event(ctx, STATE_SYSCALL_ENTRY);
+	rec_init_scratch_memory(ctx);
 
 	while (rec_sched_get_num_threads() > 0) {
 		/* get a thread that is ready to be executed */
 		ctx = get_active_thread(ctx);
 
 		if (ctx->scratch_ptr == NULL) {
-			init_scratch_memory(ctx);
+			rec_init_scratch_memory(ctx);
 		}
 		/* the child process will either be interrupted by: (1) a signal, or (2) at
 		 * the entry of the system call */
@@ -462,12 +532,18 @@ void start_recording(int dump_memory)
 			ctx->allow_ctx_switch = 0;
 
 			if (GET_PTRACE_EVENT(ctx->status)) {
-				printf("status: %x   event: %d\n", ctx->status, GET_PTRACE_EVENT(ctx->status));
-				assert(1==0);
+				log_warn("Handling ptrace event: %d", GET_PTRACE_EVENT(ctx->status));
+				record_event(ctx, STATE_SYSCALL_EXIT);
+				handle_ptrace_event(&ctx);
+				break;
+				//assert(1==0);
 			}
 
-			/* state might be overwritten if a signal occurs */
-			if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
+
+			if (ctx->event == SIG_SEGV_MMAP_READ || ctx->event == SIG_SEGV_MMAP_WRITE) {
+
+				// state might be overwritten if a signal occurs
+			} else if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
 				ctx->allow_ctx_switch = 1;
 
 				/* Implements signal handling
@@ -481,10 +557,10 @@ void start_recording(int dump_memory)
 				/* These system calls never return; we remain in the same execution state */
 			} else if (ctx->event == SYS_sigreturn || ctx->event == SYS_rt_sigreturn) {
 				/* we record the sigreturn event here, since we have to do another ptrace_cont to
-				 * fullt process the sigreturn system call.
+				 * fully process the sigreturn system call.
 				 */
 				int orig_event = ctx->event;
-				record_event(ctx, 0);
+				record_event(ctx, STATE_SYSCALL_ENTRY);
 				/* do another step */
 				cont_block(ctx);
 
@@ -492,7 +568,7 @@ void start_recording(int dump_memory)
 				/* the next event is -1 -- how knows why?*/
 				assert(ctx->event == -1);
 				ctx->event = orig_event;
-				record_event(ctx, 0);
+				record_event(ctx, STATE_SYSCALL_EXIT);
 				ctx->allow_ctx_switch = 0;
 
 				/* here we can continue normally */
@@ -503,22 +579,55 @@ void start_recording(int dump_memory)
 
 				/* this is a wired state -- no idea why it works */
 			} else if (ctx->event == SYS_restart_syscall) {
+				/* Syscalls like nanosleep(), poll() which can't be
+				 * restarted with their original arguments use the
+				 * ERESTART_RESTARTBLOCK code.
+				 *
+				 * ---------------->
+				 * Kernel will execute restart_syscall() instead,
+				 * which changes arguments before restarting syscall.
+				 * <----------------
+				 *
+				 * SA_RESTART is ignored (assumed not set) similarly
+				 * to ERESTARTNOHAND. (Kernel can't honor SA_RESTART
+				 * since restart data is saved in "restart block"
+				 * in task struct, and if signal handler uses a syscall
+				 * which in turn saves another such restart block,
+				 * old data is lost and restart becomes impossible)
+				 */
+				debug("restarting syscall %d",ctx->last_syscall);
+				/*
+				 * From errno.h:
+				 * These should never be seen by user programs.  To return
+				 * one of ERESTART* codes, signal_pending() MUST be set.
+				 * Note that ptrace can observe these at syscall exit tracing,
+				 * but they will never be left for the debugged user process to see.
+				 */
 
-				assert(1==0);
+				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+				break;
 
 				/* we sould never come here */
 			} else {
 				assert(1==0);
 			}
 
-			record_event(ctx, 0);
+			record_event(ctx, STATE_SYSCALL_ENTRY);
 			break;
 		}
 
 		case EXEC_STATE_ENTRY_SYSCALL:
 		{
+
+			int syscall = ctx->event;
+			// if we are restarting a syscall, behave as if its the syscall to be restarted
+			if (syscall == SYS_restart_syscall) {
+				syscall = ctx->last_syscall;
+				assert(syscall != SYS_restart_syscall && "restarting a restart_syscall");
+			}
+
 			/* continue and execute the system call */
-			ctx->allow_ctx_switch = allow_ctx_switch(ctx);
+			ctx->allow_ctx_switch = allow_ctx_switch(ctx,syscall);
 			cont_nonblock(ctx);
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
 			break;
@@ -526,15 +635,15 @@ void start_recording(int dump_memory)
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-
-
 			int ret;
 			/*
 			 * Wait for the system call to return in case of a write,
 			 * but only for a certain timeout to prevent livelocks if
 			 * the write system call blocks.
 			 */
-			if (ctx->event == SYS_write) {
+			switch (ctx->event) {
+			case SYS_write:
+			{
 				ret = wait_block_timeout(ctx, MAX_WAIT_TIMEOUT_SYS_WRITE_US);
 				/*
 				 * proceed with a different thread if the system call takes
@@ -543,8 +652,14 @@ void start_recording(int dump_memory)
 				if (ret <= 0) {
 					ctx->allow_ctx_switch=1;
 				}
-			} else {
+				break;
+			}
+			
+			default:
+			{
 				ret = wait_nonblock(ctx);
+				break;
+			}
 			}
 
 			if (ret) {
@@ -558,23 +673,42 @@ void start_recording(int dump_memory)
 		{
 			assert(signal_pending(ctx->status) == 0);
 
+			struct user_regs_struct regs;
+			read_child_registers(ctx->child_tid,&regs);
+			int syscall = regs.orig_eax;
+			int retval = regs.eax;
+
 			/* we received a signal while in the system call and send it right away*/
 			/* we have already sent the signal and process sigreturn */
 			if (ctx->event == SYS_sigreturn) {
 				assert(1==0);
 			}
 
+			// if the syscall is about to be restarted, save the last syscall performed by it.
+			if (syscall != SYS_restart_syscall &&
+			    (retval == ERESTART_RESTARTBLOCK || retval == ERESTARTNOINTR)) {
+				ctx->last_syscall = syscall;
+			}
+
 			handle_ptrace_event(&ctx);
 
 			if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
 				ctx->child_sig = signal_pending(ctx->status);
-				rec_process_syscall(ctx, dump_memory);
-				record_event(ctx, 1);
+				// a syscall_restart ending is equivalent to the restarted syscall ending
+				if (syscall == SYS_restart_syscall) {
+					debug("restart_syscall exit");
+					syscall = ctx->last_syscall;
+					ctx->event = syscall;
+				}
+				// no need to process the syscall in case its restarted
+				// this will be done in the exit from the restart_syscall
+				if (!(retval == ERESTART_RESTARTBLOCK || retval == ERESTARTNOINTR))
+					rec_process_syscall(ctx, syscall, rr_flags);
+				record_event(ctx, STATE_SYSCALL_EXIT);
 				ctx->exec_state = EXEC_STATE_START;
 				ctx->allow_ctx_switch = 1;
 			}
 
-			//printf("done\n");
 			break;
 		}
 

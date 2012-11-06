@@ -4,10 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+
+#include <sys/mman.h>
 #include <sys/user.h>
 
 #include "recorder.h"
-#include "write_trace.h"
+
+#include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/util.h"
 #include "../share/trace.h"
@@ -23,11 +26,12 @@ static __inline__ unsigned long long rdtsc(void)
 
 static int handle_sigsegv(struct context *ctx)
 {
+	int retval = 0;
 	pid_t tid = ctx->child_tid;
 	int sig = signal_pending(ctx->status);
 
 	if (sig <= 0 || sig != SIGSEGV) {
-		return 0;
+		return retval;
 	}
 
 	int size;
@@ -50,12 +54,102 @@ static int handle_sigsegv(struct context *ctx)
 		regs.eip += size;
 		write_child_registers(tid, &regs);
 		ctx->event = SIG_SEGV_RDTSC;
-	} else {
+		retval = 1;
+	}
+
+	sys_free(&inst);
+
+	return retval;
+}
+
+static int handle_mmap_sigsegv(struct context *ctx)
+{
+	pid_t tid = ctx->child_tid;
+	int sig = signal_pending(ctx->status);
+
+	if (sig <= 0 || sig != SIGSEGV) {
 		return 0;
 	}
-	free(inst);
 
-	return 1;
+	// locate the offending address
+	siginfo_t si;
+	sys_ptrace_getsiginfo(ctx->child_tid,&si);
+	void* addr = si.si_addr;
+
+	// check that its indeed in a shared mmaped region we previously protected
+	if (!is_protected_map(ctx,addr)){
+		return 0;
+	}
+
+	// get the type of the instruction
+	int size;
+	bool is_write = is_write_mem_instruction(tid, 0, &size);
+
+	// since emulate_child_inst also advances the eip,
+	// we need to record the event BEFORE the instruction is executed
+	ctx->event = is_write ? SIG_SEGV_MMAP_WRITE : SIG_SEGV_MMAP_READ;
+	emulate_child_inst(ctx,0);
+	/*
+	struct user_regs_struct regs;
+	read_child_registers(tid, &regs);
+	regs.eip += size;
+	write_child_registers(tid, &regs);
+	*/
+
+	/*
+	// unprotect the region and allow the instruction to run
+	mprotect_child_region(ctx, addr, PROT_WRITE);
+	sys_ptrace_singlestep(tid,0);
+
+	if (!is_write) { // we only need to record on reads, writes are fine
+		record_child_data(ctx,SIG_SEGV_MMAP_READ,get_mmaped_region_end(ctx,addr) - addr,addr);
+	}
+
+	// protect the region again
+	mprotect_child_region(ctx, addr, PROT_NONE);
+	 */
+	return ctx->event;
+}
+
+static void record_signal(int sig, struct context* ctx)
+{
+	record_event(ctx, STATE_SYSCALL_ENTRY);
+	reset_hpc(ctx, MAX_RECORD_INTERVAL);
+	assert(read_insts(ctx->hpc) == 0);
+	// enter the sig handler
+	sys_ptrace_singlestep(ctx->child_tid, sig);
+	// wait for the kernel to finish setting up the handler
+	sys_waitpid(ctx->child_tid, &(ctx->status));
+	// 0 instructions means we enetered a handler
+	int insts = read_insts(ctx->hpc);
+	size_t frame_size = 0;
+	if (insts == 0)
+		frame_size = 1024; // TODO: find out actual struct sigframe size. 128 seems to be too small
+	struct user_regs_struct regs;
+	read_child_registers(ctx->child_tid, &regs);
+	/*
+	// this is an attempt to figure out if a signal handler exists and
+	// act according to it, but it does not fully function.
+	struct sigaction* action = get_sig_handler(ctx->child_tid, sig);
+	struct user_regs_struct regs;
+	size_t frame_size = 0;
+	// only if a signal handler is installed
+	if (action) {
+		assert(!(action->sa_flags & SA_RESETHAND));
+		// enter the sig handler
+		sys_ptrace_singlestep(ctx->child_tid, sig);
+		// wait for the kernel to finish setting up the handler
+		sys_waitpid(ctx->child_tid, &(ctx->status));
+		read_child_registers(ctx->child_tid, &regs);
+		// if a sighandler was installed, we should be at its entry point now
+		assert((void*)regs.eip == action->sa_handler);
+		// record the frame
+		frame_size = 1024;
+	} else {
+		read_child_registers(ctx->child_tid, &regs);
+	}
+	*/
+	record_child_data(ctx, -sig, frame_size, regs.esp);
 }
 
 void handle_signal(struct context* ctx)
@@ -66,24 +160,37 @@ void handle_signal(struct context* ctx)
 		return;
 	}
 
+	debug("handling signal %d", sig);
+
 	switch (sig) {
 
 	case SIGALRM:
+	case SIGTERM:
+	case SIGPIPE:
+	case SIGWINCH:
 	case SIGCHLD:
+	case 33: /* SIGRTMIN + 1 */
+	case 62: /* SIGRTMAX - 1 */
 	{
 		ctx->event = -sig;
 		ctx->child_sig = sig;
+		record_signal(sig, ctx);
 		break;
 	}
 
 	case SIGSEGV:
 	{
-		if (handle_sigsegv(ctx)) {
+		int mmap_event = 0;
+		if (handle_sigsegv(ctx)) { // RDTSC
 			ctx->event = SIG_SEGV_RDTSC;
+			ctx->child_sig = 0;
+		} else if ((mmap_event = handle_mmap_sigsegv(ctx)) != 0) { // accessing a shared region
+			ctx->event = mmap_event;
 			ctx->child_sig = 0;
 		} else {
 			ctx->event = -sig;
 			ctx->child_sig = sig;
+			record_signal(sig, ctx);
 		}
 		break;
 	}
@@ -91,7 +198,7 @@ void handle_signal(struct context* ctx)
 	case SIGIO:
 	{
 		/* make sure that the signal came from hpc */
-		if (read_rbc_up(ctx->hpc) >= MAX_RECORD_INTERVAL) {
+		if (read_rbc(ctx->hpc) >= MAX_RECORD_INTERVAL) {
 			ctx->event = USR_SCHED;
 			ctx->child_sig = 0;
 
@@ -108,22 +215,14 @@ void handle_signal(struct context* ctx)
 		} else {
 			ctx->event = -sig;
 			ctx->child_sig = sig;
+			record_signal(sig, ctx);
 		}
 		break;
 	}
 
-	case SIGTERM:
-	case 62:
-	{
-		ctx->event = -sig;
-		ctx->child_sig = sig;
-		break;
-	}
-
 	default:
-	fprintf(stderr, "signal %d not implemented yet -- bailing out\n", sig);
-
-	sys_exit();
+		log_err("signal %d not implemented yet -- bailing out\n", sig);
+		sys_exit();
 		break;
 	}
 }

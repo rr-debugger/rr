@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "replayer.h"
-#include "read_trace.h"
+
 #include "../share/trace.h"
 #include "../share/hpc.h"
 #include "../share/sys.h"
@@ -44,8 +44,7 @@ struct context* rep_sched_get_thread()
 {
 	/* read the next trace entry */
 	struct trace trace;
-	int ret = read_next_trace(&trace);
-	assert(ret > 0);
+	read_next_trace(&trace);
 	/* find and update context */
 	struct context *ctx = map[trace.tid];
 	assert(ctx != NULL);
@@ -58,24 +57,25 @@ struct context* rep_sched_get_thread()
 		int combined = 0;
 		struct trace next_trace;
 
-		ret = peek_next_trace(&next_trace);
-		uint64_t rbc_up = ctx->trace.rbc_up;
-		while ((ret > 0) && (next_trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
-			rbc_up += next_trace.rbc_up;
+		peek_next_trace(&next_trace);
+		uint64_t rbc = ctx->trace.rbc;
+		while ((next_trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
+			rbc += next_trace.rbc;
 			read_next_trace(&(ctx->trace));
-			ret = peek_next_trace(&next_trace);
+			peek_next_trace(&next_trace);
 			combined = 1;
 		}
 
 		if (combined) {
-			ctx->trace.rbc_up = rbc_up;
+			ctx->trace.rbc = rbc;
 		}
 	}
 	return ctx;
 }
 
-void rep_sched_deregister_thread(struct context *ctx)
+void rep_sched_deregister_thread(struct context **ctx_ptr)
 {
+	struct context * ctx = *ctx_ptr;
 	destry_hpc(ctx);
 
 	pid_t my_tid = ctx->child_tid;
@@ -94,12 +94,12 @@ void rep_sched_deregister_thread(struct context *ctx)
 		int event = GET_PTRACE_EVENT(ctx->status);
 		/* Is this a bug in the ptrace impementation? After calling detach, we should not receive
 		 * any ptrace signals. However, we still do in some cases... */
-		if (event == 6) {
+		if (event == 6) { // TODO: magic
 			sys_ptrace_detatch(ctx->child_tid);
 		}
 	} while (ret != -1);
 
-	sys_free((void**) &ctx);
+	sys_free((void**) ctx_ptr);
 }
 
 void rep_sched_close()

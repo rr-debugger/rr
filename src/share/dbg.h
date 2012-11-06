@@ -6,15 +6,15 @@
 #include <string.h>
 
 /**
- * Useful debug macros, define DEBUG to turn on debugging
+ * Useful debug macros, define DEBUGRR to turn on debugging
  *
  * Caution: never define NDEBUG as it turns off assertions!
  *
  */
 
-//#define DEBUG
+//#define DEBUGRR
 
-#ifdef DEBUG
+#ifdef DEBUGRR
 #define debug(M, ...) fprintf(stderr, "DEBUG %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__);
 #define do_debug(C) C
 #else

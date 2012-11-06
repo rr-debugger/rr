@@ -23,8 +23,8 @@ struct hpc_context {
 	pid_t tid;
 	int started;
 
-	hpc_event_t rbc_down;
-	hpc_event_t rbc_up;
+	hpc_event_t inst;
+	hpc_event_t rbc;
 	hpc_event_t page_faults;
 	hpc_event_t hw_int;
 
@@ -43,13 +43,14 @@ void destry_hpc(struct context *ctx);
 void start_hpc(struct context *ctx, uint64_t val);
 void stop_hpc(struct context *ctx);
 void reset_hpc(struct context *ctx, uint64_t val);
-void stop_hpc_down(struct context *ctx);
+void stop_rbc(struct context *ctx);
 int pending_rbc_down(struct hpc_context *counters);
 
 uint64_t read_page_faults(struct hpc_context *counters);
-uint64_t read_rbc_up(struct hpc_context *counters);
+uint64_t read_rbc(struct hpc_context *counters);
 uint64_t read_rbc_down(struct hpc_context *counters);
 uint64_t read_hw_int(struct hpc_context* counters);
+uint64_t read_insts(struct hpc_context *counters);
 
 
 #define STOP_COUNTER(fd) \

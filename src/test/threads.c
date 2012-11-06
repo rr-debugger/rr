@@ -4,11 +4,14 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <pthread.h>
+#include <string.h>
 
 long int counter = 0;
 
 void catcher( int sig ) {
-    printf( "Signal caught, Counter is %ld\n", counter );
+    char buf[1024];
+    sprintf(buf, "Signal caught, Counter is %ld\n", counter );
+    write(1,buf,strlen(buf));
     exit(1);
 }
 
@@ -23,7 +26,7 @@ void * reciever( void * name )  {
     while (1) {
     	counter++;
     	if (counter % 100000 == 0)
-    		printf(".");
+    		write(1,".",1);
     }
 
 }

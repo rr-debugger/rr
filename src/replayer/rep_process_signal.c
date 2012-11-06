@@ -6,7 +6,6 @@
 
 #include <sys/fcntl.h>
 
-#include "read_trace.h"
 #include "replayer.h"
 
 #include "../share/sys.h"
@@ -14,6 +13,7 @@
 #include "../share/util.h"
 #include "../share/ipc.h"
 #include "../share/hpc.h"
+#include "../share/dbg.h"
 
 #define SKID_SIZE 			55
 
@@ -23,7 +23,8 @@ static void singlestep(struct context *ctx, int sig, int expected_val)
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	/* we get a simple SIGTRAP in this case */
 	if (ctx->status != expected_val) {
-		printf("status %x   expected %x\n", ctx->status, expected_val);
+		log_err("status %x   expected %x\n", ctx->status, expected_val);
+		// TODO: exit?
 	}
 
 	assert(ctx->status == expected_val);
@@ -32,14 +33,46 @@ static void singlestep(struct context *ctx, int sig, int expected_val)
 }
 
 /**
- * function goes to the n-th conditional branch
+ * finds the exact instruction on which the signal occured
  */
-static void compensate_branch_count(struct context *ctx, int sig)
+static void compensate_rbc_count(struct context *ctx, int sig)
 {
-	uint64_t rbc_now, rbc_rec;
+	uint64_t rbc_now = read_rbc(ctx->hpc), rbc_rec = ctx->trace.rbc;
 
-	rbc_rec = ctx->trace.rbc_up;
-	rbc_now = read_rbc_up(ctx->hpc);
+	/* TODO: attempt to place a breakpoint instead of single-stepping
+	// put a breakpoint at the desired eip and wait for it
+	char code[] = {0xcc};
+	void * backup = read_child_data(ctx, 1, (void*)ctx->trace.recorded_regs.eip);
+
+	while (read_rbc(ctx->hpc) < rbc_rec) {
+		// put the breakpoint
+		write_child_data(ctx, 1, (void*)ctx->trace.recorded_regs.eip, code);
+
+		// run up to it
+		sys_ptrace_cont(ctx->child_tid);
+		sys_waitpid(ctx->child_tid, &ctx->status);
+
+		// put back the code
+		write_child_data(ctx, 1, (void*)ctx->trace.recorded_regs.eip, backup);
+
+		// if we are not there yet, execute the instruction
+		// TODO: this might mess up the perf counters
+		if (read_rbc(ctx->hpc) < rbc_rec)
+			singlestep(ctx, 0, 0x57f);
+	}
+
+	rbc_now = read_rbc(ctx->hpc);
+	struct user_regs_struct regs;
+	read_child_registers(ctx->child_tid, &regs);
+	int check = compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0);
+
+	// put back the code and finish
+	write_child_data(ctx, 3, (void*)ctx->trace.recorded_regs.eip, backup);
+	write_child_main_registers(ctx->child_tid, &ctx->trace.recorded_regs);
+	sys_free(&backup);
+	return;
+	 */
+	// check that we arrived at the exact instruction count
 
 	/* if the skid size was too small, go back to the last checkpoint and
 	 * re-execute the program.
@@ -52,11 +85,10 @@ static void compensate_branch_count(struct context *ctx, int sig)
 	}
 
 	int found_spot = 0;
-	rbc_now = read_rbc_up(ctx->hpc);
 
 	while (rbc_now < rbc_rec) {
 		singlestep(ctx, 0, 0x57f);
-		rbc_now = read_rbc_up(ctx->hpc);
+		rbc_now = read_rbc(ctx->hpc);
 	}
 
 	while (rbc_now == rbc_rec) {
@@ -86,7 +118,7 @@ static void compensate_branch_count(struct context *ctx, int sig)
 				//print_inst(ctx->child_tid);
 
 				/* here we ensure that the we get a SIGSEGV at the right spot */
-				singlestep(ctx, 0, 0xb7f);
+				//singlestep(ctx, 0, 0xb7f);
 				/* deliver the signal */
 				break;
 			} else {
@@ -95,8 +127,8 @@ static void compensate_branch_count(struct context *ctx, int sig)
 			/* set the signal such that it is delivered when the process continues */
 		}
 		/* check that we do not get unexpected signal in the single-stepping process */
-		singlestep(ctx, 0, 0x57f);
-		rbc_now = read_rbc_up(ctx->hpc);
+		singlestep(ctx, 0, 0x57f); // TODO: MAGIC NUMBER MUCH?
+		rbc_now = read_rbc(ctx->hpc);
 	}
 	if (found_spot != 1) {
 		printf("cannot find signal %d   time: %u\n",sig,ctx->trace.global_time);
@@ -112,6 +144,8 @@ void rep_process_signal(struct context *ctx, bool validate)
 
 	/* if the there is still a signal pending here, two signals in a row must be delivered?\n */
 	assert(ctx->child_sig == 0);
+
+	debug("%d: handling signal %d -- time: %d",tid,sig,trace->thread_time);
 
 	switch (sig) {
 
@@ -144,20 +178,37 @@ void rep_process_signal(struct context *ctx, bool validate)
 		break;
 	}
 
+	case -SIG_SEGV_MMAP_WRITE:
+	{
+		ctx->child_sig = 0;
+		break;
+	}
+
+	case -SIG_SEGV_MMAP_READ:
 	case -USR_SCHED:
 	{
-		assert(trace->rbc_up > 0);
+		// ignore the trace line that comes after the mmap access
+		if (sig == -SIG_SEGV_MMAP_READ && trace->state != STATE_PRE_MMAP_ACCESS) {
+			ctx->child_sig = 0;
+			break;
+		}
+
+		assert(trace->insts > 0);
 
 		/* if the current architecture over-counts the event in question,
-		 * substract the overcount here */
-		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
+		 * subtract the overcount here */
+		reset_hpc(ctx, trace->rbc - SKID_SIZE);
 		goto_next_event(ctx);
 		/* make sure that the signal came from hpc */
-		if (fcntl(ctx->hpc->rbc_down.fd, F_GETOWN) == ctx->child_tid) {
+		if (fcntl(ctx->hpc->rbc.fd, F_GETOWN) == ctx->child_tid) {
 			/* this signal should not be recognized by the application */
 			ctx->child_sig = 0;
-			stop_hpc_down(ctx);
-			compensate_branch_count(ctx, sig);
+			//stop_rbc(ctx);
+			compensate_rbc_count(ctx, sig);
+			if (sig == -SIG_SEGV_MMAP_READ &&
+				trace->state ==	STATE_PRE_MMAP_ACCESS) { // put in the recorded data
+				set_child_data(ctx);
+			}
 			stop_hpc(ctx);
 		} else {
 			fprintf(stderr, "internal error: next event should be: %d but it is: %d -- bailing out\n", -USR_SCHED, ctx->event);
@@ -167,67 +218,84 @@ void rep_process_signal(struct context *ctx, bool validate)
 		break;
 	}
 
+	case SIGTERM:
 	case SIGALRM:
+	case SIGPIPE: // TODO
+	case SIGWINCH:
 	case SIGIO:
 	case SIGCHLD:
+	case 33: /* SIGRTMIN + 1 */
+	case 62: /* SIGRTMAX - 1 */
 	{
-		/* synchronous signal (signal received in a system call) */
-		if (trace->rbc_up == 0) {
+
+		if (trace->rbc == 0) { // synchronous signal (signal received in a system call)
 			ctx->replay_sig = sig;
-			return;
-		}
-
-		// setup and start replay counters
-		reset_hpc(ctx, trace->rbc_up - SKID_SIZE);
-
-		/* single-step if the number of instructions to the next event is "small" */
-		if (trace->rbc_up <= 10000) {
-			stop_hpc_down(ctx);
-			compensate_branch_count(ctx, sig);
-			stop_hpc(ctx);
 		} else {
-			printf("large count\n");
-			sys_ptrace_syscall(tid);
-			sys_waitpid(tid, &ctx->status);
-			// make sure we ere interrupted by ptrace
-			assert(WSTOPSIG(ctx->status) == SIGIO);
-			/* reset the penig sig, since it did not occur in the original execution */
-			ctx->child_sig = 0;
-			ctx->status = 0;
+			// setup and start replay counters
+			reset_hpc(ctx, trace->rbc - SKID_SIZE);
 
-			//DO NOT FORGET TO STOP HPC!!!
-			compensate_branch_count(ctx, sig);
-			stop_hpc(ctx);
-			stop_hpc_down(ctx);
+			// single-step if the number of instructions to the next event is "small"
+			if (trace->rbc <= 10000) {
+				//stop_rbc(ctx);
+				compensate_rbc_count(ctx, sig);
+				stop_hpc(ctx);
+			} else {
+				log_info("large count");
+				sys_ptrace_syscall(tid);
+				sys_waitpid(tid, &ctx->status);
+				// make sure we ere interrupted by ptrace
+				assert(WSTOPSIG(ctx->status) == SIGIO);
+				/* reset the penig sig, since it did not occur in the original execution */
+				ctx->child_sig = 0;
+				ctx->status = 0;
 
+				//DO NOT FORGET TO STOP HPC!!!
+				//stop_rbc(ctx);
+				compensate_rbc_count(ctx, sig);
+				stop_hpc(ctx);
+			}
 		}
+
+		// we are now at the exact point in the child where the signal was recorded,
+		// emulate it using the next trace line (records the state at sighandler entry)
+		ctx = rep_sched_get_thread();
+		if (set_child_data(ctx) > 0) { // only if we indeed entered a handler
+			write_child_main_registers(ctx->child_tid,&trace->recorded_regs);
+		}
+		ctx->replay_sig = 0;
 
 		break;
 	}
 
 	case SIGSEGV:
 	{
-		/* synchronous signal (signal received in a system call) */
-		if (trace->rbc_up == 0 && trace->page_faults == 0) {
+		// synchronous signal (signal received in a system call)
+		if (trace->rbc == 0 && trace->page_faults == 0) {
 			ctx->replay_sig = sig;
-			return;
+		} else {
+			sys_ptrace_syscall(ctx->child_tid);
+			sys_waitpid(ctx->child_tid, &ctx->status);
+			assert(WSTOPSIG(ctx->status) == SIGSEGV);
+
+			struct user_regs_struct regs;
+			read_child_registers(ctx->child_tid, &regs);
+			assert(compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 1, 1) == 0);
+
+			// deliver the signal
+			//singlestep(ctx, SIGSEGV, 0x57f);
 		}
 
-		sys_ptrace_syscall(ctx->child_tid);
-		sys_waitpid(ctx->child_tid, &ctx->status);
-		assert(WSTOPSIG(ctx->status) == SIGSEGV);
-
-		struct user_regs_struct regs;
-		read_child_registers(ctx->child_tid, &regs);
-		assert(compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 1, 1) == 0);
-
-		/* deliver the signal */
-		singlestep(ctx, SIGSEGV, 0x57f);
+		// we are now at the exact point in the child where the signal was recorded,
+		// emulate it using the next trace line (records the state at sighandler entry)
+		ctx = rep_sched_get_thread();
+		write_child_main_registers(ctx->child_tid,&trace->recorded_regs);
+		set_child_data(ctx);
+		ctx->replay_sig = 0;
 		break;
 	}
 
 	default:
-	printf("unknown signal %d -- bailing out\n", sig);
+	log_err("unknown signal %d", sig);
 	sys_exit();
 		break;
 	}

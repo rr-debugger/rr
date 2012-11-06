@@ -3,8 +3,10 @@
 
 #include "../share/types.h"
 #include "../share/trace.h"
+#include "../share/util.h"
 
-void rep_process_syscall(struct context* context, bool redirect_output, int dump_memory);
+void rep_process_syscall(struct context* context, int syscall , struct flags rr_flags);
+//void finish_execve(struct context * context);
 
 /*
  * The 'num' parameter in these macros usually corresponds to the
@@ -29,7 +31,17 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 			finish_syscall_emu(context);} \
 	break; }
 
-
+#define SYS_EMU_ARG_CHECKED(syscall,num,check) \
+	case SYS_##syscall: { \
+		if (state == STATE_SYSCALL_ENTRY) { \
+	       goto_next_syscall_emu(context); \
+		   validate_args(context);\
+		} else {\
+			if (check) { int i; for (i=0;i<(num);i++) {set_child_data(context);}}\
+			set_return_value(context); \
+			validate_args(context); \
+			finish_syscall_emu(context);} \
+	break; }
 
 /*********************** All system calls that are executed are handled here *****************************/
 
@@ -38,6 +50,7 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 	case SYS_##syscall: { \
 		if (state == STATE_SYSCALL_ENTRY) {\
 			__ptrace_cont(context);\
+			validate_args(context);\
 		} else {\
 			__ptrace_cont(context);\
 			int i; for (i = 0; i < num; i++) {set_child_data(context);}\
@@ -64,6 +77,10 @@ void rep_process_syscall(struct context* context, bool redirect_output, int dump
 
 #define SYS_FD_ARG(syscall,num) \
 	SYS_EMU_ARG(syscall,num)
+
+#define SYS_FD_ARG_CHECKED(syscall,num,check) \
+	SYS_EMU_ARG_CHECKED(syscall,num,check)
+
 #define SYS_FD_USER_DEF(syscall,fixes,code) \
 	case SYS_##syscall: { \
 		if (state == STATE_SYSCALL_ENTRY) {\

@@ -20,6 +20,26 @@ void read_child_registers(pid_t pid, struct user_regs_struct* regs)
 	sys_ptrace(PTRACE_GETREGS, pid, NULL, regs);
 }
 
+size_t set_child_data(struct context *ctx)
+{
+	size_t size;
+	unsigned long rec_addr;
+	void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
+	if (data != NULL) {
+		write_child_data(ctx, size, rec_addr, data);
+		sys_free((void**) &data);
+	}
+	return size;
+}
+
+void set_return_value(struct context* context)
+{
+	struct user_regs_struct r;
+	read_child_registers(context->child_tid, &r);
+	r.eax = context->trace.recorded_regs.eax;
+	write_child_registers(context->child_tid, &r);
+}
+
 long read_child_data_word(pid_t tid, void *addr)
 {
 	CHECK_ALIGNMENT(addr);
@@ -52,6 +72,34 @@ long read_child_data_word(pid_t tid, void *addr)
 		//sys_exit();
 	}
 	return tmp;
+}
+
+void write_child_main_registers(pid_t tid, struct user_regs_struct *regs) {
+	struct user_regs_struct regs0;
+	read_child_registers(tid,&regs0);
+	regs0.eax = regs->eax;
+	regs0.ebx = regs->ebx;
+	regs0.ecx = regs->ecx;
+	regs0.edi = regs->edi;
+	regs0.edx = regs->edx;
+	regs0.eflags = regs->eflags;
+	regs0.eip = regs->eip;
+	regs0.esi = regs->esi;
+	regs0.esp = regs->esp;
+	regs0.orig_eax = regs->orig_eax;
+	write_child_registers(tid,&regs0);
+}
+
+void write_child_segment_registers(pid_t tid, struct user_regs_struct *regs) {
+	struct user_regs_struct regs0;
+	read_child_registers(tid,&regs0);
+	regs0.xcs = regs->xcs;
+	regs0.xds = regs->xds;
+	regs0.xes = regs->xes;
+	regs0.xfs = regs->xfs;
+	regs0.xgs = regs->xgs;
+	regs0.xss = regs->xss;
+	write_child_registers(tid,&regs0);
 }
 
 void write_child_registers(pid_t pid, struct user_regs_struct *regs)
@@ -246,17 +294,26 @@ void* read_child_data_tid(pid_t tid, size_t size, long int addr)
 	return data;
 }
 
-static size_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset) {
-
+size_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset) {
+	errno = 0;
 	size_t read = pread(ctx->child_mem_fd, buf, size, offset);
+
 	// for some reason reading from the child process requires to re-open the fd
 	// who knows why??
 	if (read == 0 && errno == 0) {
 		sys_close(ctx->child_mem_fd);
 		ctx->child_mem_fd = sys_open_child_mem(ctx->child_tid);
+		read = pread(ctx->child_mem_fd, buf, size, offset);
 	}
 
-	return pread(ctx->child_mem_fd, buf, size, offset);
+	if (read < size) { // fill the remainder with zeros
+		memset(buf + read,0,size - read);
+		read = size;
+	}
+
+	assert(read == size);
+
+	return read;
 
 }
 
@@ -272,7 +329,9 @@ void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr,
 }
 
 void read_child_usr(struct context *ctx, void *dest, void *src, size_t size) {
-	assert(pread(ctx->child_mem_fd, dest, size, (uintptr_t)src) == size);
+	assert(size >= 0);
+	size_t bytes_read = pread(ctx->child_mem_fd, dest, size, (uintptr_t)src);
+	assert(bytes_read == size);
 }
 
 void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
@@ -281,7 +340,7 @@ void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
 	ssize_t read_bytes = checked_pread(ctx,buf,size,addr);
 	if (read_bytes != size) {
-		free(buf);
+		sys_free(&buf);
 		buf = read_child_data_tid(ctx->child_tid,size,addr);
 		printf("reading from: %x demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
 		perror("warning: reading from child process: ");
@@ -418,7 +477,6 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 
 void write_child_data(struct context *ctx, const size_t size, void *addr, void *data)
 {
-
 	ssize_t written = pwrite(ctx->child_mem_fd, data, size, (off_t) addr);
 	if (written != size) {
 		write_child_data_n(ctx->child_tid, size, addr, data);

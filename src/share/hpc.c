@@ -95,19 +95,23 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  * Find out the cpu model using the cpuid instruction.
  * full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
  */
-typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge, IntelNehalem } cpu_type;
+typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge, IntelNehalem, IntelMerom } cpu_type;
 cpu_type get_cpu_type(){
 	unsigned int eax,edx;
 	cpuid(CPUID_GETFEATURES,&eax,&edx);
-	switch (eax & 0xF00F0) {
-	case 0x100E0:
+	switch (eax & 0xF0FF0) {
+	case 0x006F0:
+		assert(0 && "Merom not completely supported yet (find deterministic events).");
+		return IntelMerom;
+		break;
+	case 0x106E0:
 		return IntelNehalem;
 		break;
-	case 0x200A0:
-	case 0x200D0:
+	case 0x206A0:
+	case 0x206D0:
 		return IntelSandyBridge;
 		break;
-	case 0x300A0:
+	case 0x306A0:
 		return IntelIvyBridge;
 		break;
 	default:
@@ -129,26 +133,41 @@ void init_hpc(struct context *context)
 	/* get the event that counts down to the initial value
 	 * the precision level enables PEBS support. precise=0 uses the counter
 	 * with PEBS disabled */
-	const char * event_str = 0;
+	const char * rbc_event = 0;
+	const char * inst_event = 0;
+	const char * hw_int_event = 0;
+	const char * page_faults_event = "PERF_COUNT_SW_PAGE_FAULTS:u";
 	switch (get_cpu_type()) {
+	case IntelMerom :
+		rbc_event = "BR_INST_RETIRED:u";
+		inst_event = "INST_RETIRED:u";
+		hw_int_event = "HW_INT_RCV:u";
+		break;
 	case IntelNehalem :
 	case IntelSandyBridge :
-		event_str = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		inst_event = "INST_RETIRED:u";
+		hw_int_event = "HW_INTERRUPTS:u";
 		break;
 	case IntelIvyBridge :
-		event_str = "BR_INST_RETIRED:COND:u:precise=0";
+		rbc_event = "BR_INST_RETIRED:COND:u:precise=0";
+		inst_event = "INST_RETIRED:u";
+		hw_int_event = "HW_INTERRUPTS:u";
 		break;
-	default:
-		event_str = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+	default: // best guess
+		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		inst_event = "INST_RETIRED:u";
+		hw_int_event = "HW_INTERRUPTS:u";
 		break;
 	}
 
-	libpfm_event_encoding(&(counters->rbc_down.attr), event_str , 1);
+	libpfm_event_encoding(&(counters->inst.attr), inst_event , 1);
+	libpfm_event_encoding(&(counters->rbc.attr), rbc_event , 1);
 	/* counts up to double check */
-	libpfm_event_encoding(&(counters->rbc_up.attr), event_str, 1);
-	//libpfm_event_encoding(&(counters->hw_int.attr), "HW_INTERRUPTS:u", 1);
-	libpfm_event_encoding(&(counters->hw_int.attr), event_str, 1);
-	libpfm_event_encoding(&(counters->page_faults.attr), "PERF_COUNT_SW_PAGE_FAULTS:u", 0);
+	//libpfm_event_encoding(&(counters->rbc.attr), rbc_event, 1);
+	libpfm_event_encoding(&(counters->hw_int.attr), hw_int_event, 1);
+	//libpfm_event_encoding(&(counters->hw_int.attr), event_str, 1);
+	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event, 0);
 }
 
 static void __start_hpc(struct context* ctx)
@@ -156,27 +175,29 @@ static void __start_hpc(struct context* ctx)
 
 	struct hpc_context *counters = ctx->hpc;
 	pid_t tid = ctx->child_tid;
-	START_COUNTER(tid,-1,counters->hw_int);
-	START_COUNTER(tid,counters->hw_int.fd,counters->rbc_up);
+	// see http://www.eece.maine.edu/~vweaver/projects/perf_events/perf_event_open.html for more information
+	START_COUNTER(tid,-1,counters->hw_int); // group leader.
+	START_COUNTER(tid,counters->hw_int.fd,counters->inst);
+	START_COUNTER(tid,counters->hw_int.fd,counters->rbc);
 	START_COUNTER(tid,counters->hw_int.fd,counters->page_faults);
-	START_COUNTER(tid,counters->hw_int.fd,counters->rbc_down);
+	//START_COUNTER(tid,counters->hw_int.fd,counters->rbc);
 
-	sys_fcntl_f_setown(counters->rbc_down.fd, tid);
-	sys_fcntl_f_setfl_o_async(counters->rbc_down.fd);
+	sys_fcntl_f_setown(counters->rbc.fd, tid);
+	sys_fcntl_f_setfl_o_async(counters->rbc.fd);
 
 	//allocate page(es) for hpm data
 	int pgsz = sysconf(_SC_PAGESIZE);
 	//+1 since the first page is header stuff
 	int map_size = (1 + 1) * pgsz;
 
-	counters->hpc_mmap = sys_mmap(NULL, map_size, PROT_READ, MAP_SHARED, counters->rbc_down.fd, 0);
+	counters->hpc_mmap = sys_mmap(NULL, map_size, PROT_READ, MAP_SHARED, counters->rbc.fd, 0);
 	counters->hpc_map_size = map_size;
 	counters->started = 1;
 }
 
-void stop_hpc_down(struct context* context)
+void stop_rbc(struct context* context)
 {
-	STOP_COUNTER(context->hpc->rbc_down.fd);
+	STOP_COUNTER(context->hpc->rbc.fd);
 }
 
 void stop_hpc(struct context* context)
@@ -184,9 +205,9 @@ void stop_hpc(struct context* context)
 	struct hpc_context* counters = context->hpc;
 
 	STOP_COUNTER(counters->hw_int.fd);
+	STOP_COUNTER(counters->inst.fd);
 	STOP_COUNTER(counters->page_faults.fd);
-	STOP_COUNTER(counters->rbc_up.fd);
-	STOP_COUNTER(counters->rbc_down.fd);
+	STOP_COUNTER(counters->rbc.fd);
 }
 
 void cleanup_hpc(struct context* context)
@@ -202,9 +223,9 @@ void cleanup_hpc(struct context* context)
 	stop_hpc(context);
 
 	sys_close(counters->hw_int.fd);
+	sys_close(counters->inst.fd);
 	sys_close(counters->page_faults.fd);
-	sys_close(counters->rbc_up.fd);
-	sys_close(counters->rbc_down.fd);
+	sys_close(counters->rbc.fd);
 	counters->started = 0;
 }
 
@@ -215,7 +236,7 @@ void cleanup_hpc(struct context* context)
  */
 void start_hpc(struct context *ctx, uint64_t val)
 {
-	ctx->hpc->rbc_down.attr.sample_period = val;
+	ctx->hpc->rbc.attr.sample_period = val;
 	__start_hpc(ctx);
 }
 
@@ -224,7 +245,7 @@ void reset_hpc(struct context *ctx, uint64_t val)
 	if (ctx->hpc->started) {
 		cleanup_hpc(ctx);
 	}
-	ctx->hpc->rbc_down.attr.sample_period = val;
+	ctx->hpc->rbc.attr.sample_period = val;
 	__start_hpc(ctx);
 }
 /**
@@ -251,6 +272,14 @@ uint64_t read_hw_int(struct hpc_context *counters)
 	return tmp;
 }
 
+uint64_t read_insts(struct hpc_context *counters)
+{
+	uint64_t tmp;
+	READ_COUNTER(counters->inst.fd, &tmp, sizeof(uint64_t));
+	return tmp;
+}
+
+
 uint64_t read_page_faults(struct hpc_context *counters)
 {
 	uint64_t tmp;
@@ -258,16 +287,9 @@ uint64_t read_page_faults(struct hpc_context *counters)
 	return tmp;
 }
 
-uint64_t read_rbc_up(struct hpc_context *counters)
+uint64_t read_rbc(struct hpc_context *counters)
 {
 	uint64_t tmp;
-	READ_COUNTER(counters->rbc_up.fd, &tmp, sizeof(uint64_t));
-	return tmp;
-}
-
-uint64_t read_rbc_down(struct hpc_context *counters)
-{
-	uint64_t tmp;
-	READ_COUNTER(counters->rbc_down.fd, &tmp, sizeof(uint64_t));
+	READ_COUNTER(counters->rbc.fd, &tmp, sizeof(uint64_t));
 	return tmp;
 }
