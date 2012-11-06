@@ -143,17 +143,17 @@ void print_register_file(struct user_regs_struct* regs)
 static unsigned long str2i(char* str, int base)
 {
 	char *endptr;
-	unsigned long val = strtoul(str, &endptr, base);
 
 	errno = 0;
+	unsigned long val = strtoul(str, &endptr, base);
 
-	if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN)) || (errno != 0 && val == 0)) {
-		perror("strtol");
+	if ((errno == ERANGE && val == ULONG_MAX) || (errno != 0 && val == 0)) {
+		log_err("strtoul failed");
 		exit(EXIT_FAILURE);
 	}
 
 	if (endptr == str) {
-		fprintf(stderr, "No digits were found\n");
+		log_err("strtoul: No digits were found\n");
 		exit(EXIT_FAILURE);
 	}
 
