@@ -797,13 +797,12 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 
 				// for shared mmaps: verify modification time
 				if (regs.esi & MAP_SHARED) {
-					if (strcmp(file.filename, "/home/user/.cache/dconf/user") != NULL && // not dconf   (proxied)
+					if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && // not dconf   (proxied)
 							strstr(file.filename, "sqlite") == NULL ) {						 // not sqlite  (private)
 						struct stat st;
 						stat(file.filename, &st);
 						if (file.stat.st_mtim.tv_sec != st.st_mtim.tv_sec || file.stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec) {
-							log_err("Shared file %s timestamp changed", file.filename);
-							sys_exit();
+							log_warn("Shared file %s timestamp changed! This may cause divergence in case the file is shared with a non-recorded process.", file.filename);
 						}
 					}
 				}
