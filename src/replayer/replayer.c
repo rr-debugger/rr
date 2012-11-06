@@ -128,9 +128,9 @@ static void single_step(struct context* context)
 }
 
 
+/*
 static void rep_init_scratch_memory(struct context *ctx)
 {
-	/*
 	struct trace ts;
 	peek_next_trace(&ts);
 	if (ts.stop_reason == SYS_execve) {
@@ -161,8 +161,8 @@ static void rep_init_scratch_memory(struct context *ctx)
 		finish_execve(rep_sched_get_thread());
 		validate = TRUE;
 	}
-	*/
 }
+*/
 
 
 static void check_initial_register_file()
