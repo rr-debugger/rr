@@ -144,6 +144,10 @@ void init_hpc(struct context *context)
 		hw_int_event = "HW_INT_RCV:u";
 		break;
 	case IntelNehalem :
+		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		inst_event = "INST_RETIRED:u";
+		hw_int_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		break;
 	case IntelSandyBridge :
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
