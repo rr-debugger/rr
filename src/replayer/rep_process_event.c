@@ -688,6 +688,14 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 		break;
 	}
 
+	/**
+	 * ssize_t pread(int fd, void *buf, size_t count, off_t offset);
+	 *
+	 * pread, pwrite - read from or write to a file descriptor at a given off‐
+	 * set
+	 */
+	SYS_FD_ARG(pread64, 1)
+
 	/*
 	 * ssize_t read(int fd, void *buf, size_t count);
 	 *
