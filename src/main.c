@@ -16,11 +16,11 @@
 
 static pid_t child;
 
-#define MAX_ARGC_LEN	16
+#define MAX_ARGC_LEN	32
 #define MAX_ENVC_LEN	128
-#define MAX_ARGV_LEN	128
-#define MAX_ENVP_LEN	1500
-#define MAX_EXEC_LEN    128
+#define MAX_ARGV_LEN	1024
+#define MAX_ENVP_LEN	2048
+#define MAX_EXEC_LEN    512
 
 
 
