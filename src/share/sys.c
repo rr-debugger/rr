@@ -11,6 +11,7 @@
 #include <asm/ptrace-abi.h>
 #include <sys/time.h>
 #include <sys/wait.h>
+#include <sched.h>
 
 #include "dbg.h"
 #include "sys.h"
