@@ -120,7 +120,7 @@ static void record_signal(int sig, struct context* ctx)
 	sys_ptrace_singlestep(ctx->child_tid, sig);
 	// wait for the kernel to finish setting up the handler
 	sys_waitpid(ctx->child_tid, &(ctx->status));
-	// 0 instructions means we enetered a handler
+	// 0 instructions means we entered a handler
 	int insts = read_insts(ctx->hpc);
 	size_t frame_size = 0;
 	if (insts == 0)

@@ -1,6 +1,7 @@
 #ifndef UTIL_H_
 #define UTIL_H_
 
+#include <errno.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -9,8 +10,9 @@
 #include "types.h"
 #include "../share/config.h"
 
-#define MAX_PATH_LEN 128
-#define GET_PTRACE_EVENT(status)	 		((0xFF0000 & status) >> 16)
+#define MAX_PATH_LEN 					128
+#define GET_PTRACE_EVENT(status)	 	((0xFF0000 & status) >> 16)
+#define FAILED_SYSCALL(eax) 			(-ERANGE <= (int)(eax) && (int)(eax) < 0)
 
 
 char* get_inst(pid_t pid, int eip_offset, int* opcode_size);

@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sched.h>
@@ -1284,7 +1285,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * an existing alternate signal stack.  An alternate signal stack is used during the execution of a signal
 	 * handler if the establishment of that handler (see sigaction(2)) requested it.
 	 */
-	SYS_REC0(sigaltstack)
+	SYS_REC1(sigaltstack, regs.ecx ? sizeof(stack_t) : 0, regs.ecx)
 
 	/**
 	 * int sigreturn(unsigned long __unused)
@@ -1834,8 +1835,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	case SYS_mmap2:
 	{
 		void * mmap_addr = (void*)regs.eax;
-		//assert(mmap_addr != NULL);
-		if (mmap_addr == NULL)
+		//assert((int)mmap_addr >= 0 || (int)mmap_addr < -ERANGE);
+		if (FAILED_SYSCALL(regs.eax))
 			break;
 
 		/* inspect mmap arguments */

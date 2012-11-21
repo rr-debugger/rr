@@ -200,8 +200,6 @@ void replay(struct flags rr_flags)
 		} else if (ctx->trace.stop_reason == USR_EXIT) {
 			rep_sched_deregister_thread(&ctx);
 			/* stop reason is a system call - can be done with ptrace */
-		} else if (ctx->trace.stop_reason == USR_NEW_RAWDATA_FILE) {
-			use_next_rawdata_file();
 		} else if(ctx->trace.stop_reason > 0) {
 
 			if (ctx->trace.state == STATE_SYSCALL_EXIT) {

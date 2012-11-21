@@ -35,7 +35,8 @@ static uint32_t global_time = 0;
 
 static struct flags rr_flags_ = {0};
 
-static int overall_bytes = 0;
+// counts the number of raw bytes written, a new raw_data file is used when MAX_RAW_DATA_SIZE is reached
+static long long overall_raw_bytes = 0;
 
 void flush_trace_files(void) {
 	fflush(syscall_header);
@@ -165,8 +166,8 @@ void open_trace_files(struct flags rr_flags)
 static void use_new_rawdata_file(void)
 {
 	char tmp[128], path[64];
-
 	sys_fclose(raw_data);
+	overall_raw_bytes = 0;
 	strcpy(path, trace_path_);
 	sprintf(tmp, "/raw_data_%u", ++raw_data_file_counter);
 	strcat(path, tmp);
@@ -370,10 +371,14 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_pt
 		/* ensure that everything is written */
 		int bytes_written = fwrite(buf, 1, len, raw_data);
 		assert(bytes_written == len);
-		overall_bytes += len;
+		overall_raw_bytes += len;
 		sys_free((void**) &buf);
 	}
 	//debug("Overall bytes = %d", overall_bytes);
+
+	// new raw data file
+	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
+		use_new_rawdata_file();
 }
 
 static void write_raw_data(struct context *ctx, void *buf, int to_write)
@@ -381,7 +386,10 @@ static void write_raw_data(struct context *ctx, void *buf, int to_write)
 	int bytes_written;
 	assert(to_write >= 0);
 	//debug("Asking to write %d bytes from %p", to_write, buf);
-	if ((bytes_written = fwrite(buf, 1, to_write, raw_data)) != to_write) {
+
+	/*
+	if (overall_bytes % 10000 == 0)
+	{
 		struct context safe_ctx;
 		memcpy(&safe_ctx, ctx, sizeof(struct context));
 		ctx->event = USR_NEW_RAWDATA_FILE;
@@ -390,8 +398,29 @@ static void write_raw_data(struct context *ctx, void *buf, int to_write)
 		use_new_rawdata_file();
 		assert(fwrite(buf, 1, to_write, raw_data) == to_write);
 	}
-	overall_bytes += to_write;
+	*/
+
+	bytes_written = fwrite(buf, 1, to_write, raw_data);
+	assert(bytes_written == to_write);
+
+	/*
+	if ((bytes_written = fwrite(buf, 1, to_write, raw_data)) != to_write) {
+		struct context safe_ctx;
+		memcpy(&safe_ctx, ctx, sizeof(struct context));
+		ctx->event = USR_NEW_RAWDATA_FILE;
+		record_event(ctx, STATE_SYSCALL_ENTRY);
+		memcpy(ctx, &safe_ctx, sizeof(struct context));
+		use_new_rawdata_file();
+		bytes_written = fwrite(buf, 1, to_write, raw_data);
+		assert(bytes_written == to_write);
+	}
+	*/
+	overall_raw_bytes += to_write;
 	//debug("Overall bytes = %d", overall_bytes);
+
+	// new raw data file
+	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
+		use_new_rawdata_file();
 }
 
 /**
@@ -479,9 +508,15 @@ void record_child_str(pid_t tid, int syscall, long int child_ptr)
 	size_t len = strlen(buf) + 1;
 	fprintf(syscall_header, "%11d\n", len);
 	int bytes_written = fwrite(buf, 1, len, raw_data);
+	overall_raw_bytes += len;
 
 	assert(bytes_written == len);
 	sys_free((void**) &buf);
+
+	// new raw data file
+	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
+		use_new_rawdata_file();
+
 }
 
 void record_inst(struct context *ctx, char* inst)
@@ -527,17 +562,6 @@ void rep_init_trace_files(void)
 	read_line(mmaps_file, line, 1024, "stats");
 	sys_free((void**) &line);
 
-}
-
-void use_next_rawdata_file(void)
-{
-	char tmp[128], path[64];
-
-	sys_fclose(raw_data);
-	strcpy(path, trace_path_);
-	sprintf(tmp, "raw_data_%u", raw_data_file_counter++);
-	strcat(path, tmp);
-	raw_data = sys_fopen(path, "a+");
 }
 
 
@@ -627,7 +651,6 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 {
 	int size;
-	static int overall_bytes = 0;
 
 	size = parse_raw_data_hdr(trace, addr);
 	*size_ptr = size;
@@ -636,13 +659,21 @@ void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 		void* data = sys_malloc(size);
 		int bytes_read = fread(data, 1, size, raw_data);
 
+		// new raw data file
+		//if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
+		if (bytes_read == 0 && feof(raw_data)) {
+			use_new_rawdata_file();
+			bytes_read = fread(data, 1, size, raw_data);
+		}
+
 		if (bytes_read != size) {
-			printf("read: %u   required: %u\n",bytes_read,size);
+			printf("read: %u required: %u\n",bytes_read,size);
 			perror("");
 			sys_exit();
 		}
 
-		overall_bytes += size;
+		overall_raw_bytes += size;
+
 		return data;
 	}
 	return NULL;

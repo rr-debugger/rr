@@ -10,7 +10,7 @@
 
 #define STATE_SYSCALL_ENTRY		  0
 #define STATE_SYSCALL_EXIT		  1
-#define STATE_PRE_MMAP_ACCESS		  2
+#define STATE_PRE_MMAP_ACCESS     2
 
 #define SIG_SEGV_MMAP_READ		-126
 #define SIG_SEGV_MMAP_WRITE		-127
@@ -24,6 +24,7 @@
 #define ERESTARTNOINTR 			-513
 #define ERESTART_RESTARTBLOCK	-516
 
+#define MAX_RAW_DATA_SIZE		(1 << 30)
 
 char* get_trace_path(void);
 void open_trace_files(struct flags rr_flags);
@@ -59,7 +60,6 @@ void rec_setup_trace_dir(int version);
  */
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp);
-void use_next_rawdata_file(void);
 void read_next_trace(struct trace *trace);
 void peek_next_trace(struct trace *trace);
 void read_next_mmapped_file_stats(struct mmapped_file *file);

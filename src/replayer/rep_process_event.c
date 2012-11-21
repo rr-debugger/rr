@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -535,11 +536,11 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			case F_SETLKW64:
 			case F_GETLK:
 			case F_GETLK64:
-				set_child_data(context);
+			set_child_data(context);
 				break;
 			default:
-				log_err("Unknown fcntl64 command: %d", cmd);
-				sys_exit();
+			log_err("Unknown fcntl64 command: %d", cmd);
+			sys_exit();
 				break;
 			}
 			set_return_value(context);
@@ -779,82 +780,87 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	case SYS_mmap2:
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
-			__ptrace_cont(context);
+			struct trace next;
+			peek_next_trace(&next);
+			if (FAILED_SYSCALL(next.recorded_regs.eax)) { // failed mapping, emulate
+				goto_next_syscall_emu(context);
+			} else {
+				__ptrace_cont(context);
+			}
+			validate_args(context);
 		} else {
-			struct user_regs_struct regs;
-
-			read_child_registers(tid, &regs);
-
-			if (trace->recorded_regs.eax == 0) { // failed mapping
+			if (FAILED_SYSCALL(trace->recorded_regs.eax)) { // failed mapping, emulate
 				finish_syscall_emu(context);
 				set_return_value(context);
 				validate_args(context);
-				break;
-			}
+			} else {
+				struct user_regs_struct regs;
+				read_child_registers(tid, &regs);
 
-			if (!(regs.esi & MAP_ANONYMOUS)) {
-				struct mmapped_file file;
-				read_next_mmapped_file_stats(&file);
-				assert(file.time == trace->global_time);
+				if (!(regs.esi & MAP_ANONYMOUS)) {
+					struct mmapped_file file;
+					read_next_mmapped_file_stats(&file);
+					assert(file.time == trace->global_time);
 
-				struct user_regs_struct orig_regs;
-				memcpy(&orig_regs, &regs, sizeof(struct user_regs_struct));
+					struct user_regs_struct orig_regs;
+					memcpy(&orig_regs, &regs, sizeof(struct user_regs_struct));
 
-				/* hint the kernel where to allocate the page */
-				regs.ebx = context->trace.recorded_regs.eax;
+					/* hint the kernel where to allocate the page */
+					regs.ebx = context->trace.recorded_regs.eax;
 
-				// for shared mmaps: verify modification time
-				if (regs.esi & MAP_SHARED) {
-					if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && // not dconf   (proxied)
-							strstr(file.filename, "sqlite") == NULL ) {						 // not sqlite  (private)
-						struct stat st;
-						stat(file.filename, &st);
-						if (file.stat.st_mtim.tv_sec != st.st_mtim.tv_sec || file.stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec) {
-							log_warn("Shared file %s timestamp changed! This may cause divergence in case the file is shared with a non-recorded process.", file.filename);
+					// for shared mmaps: verify modification time
+					if (regs.esi & MAP_SHARED) {
+						if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && // not dconf   (proxied)
+								strstr(file.filename, "sqlite") == NULL ) {						 // not sqlite  (private)
+							struct stat st;
+							stat(file.filename, &st);
+							if (file.stat.st_mtim.tv_sec != st.st_mtim.tv_sec || file.stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec) {
+								log_warn("Shared file %s timestamp changed! This may cause divergence in case the file is shared with a non-recorded process.", file.filename);
+							}
 						}
 					}
+					/* set anonymous flag */
+					regs.esi |= MAP_ANONYMOUS;
+					regs.esi |= MAP_FIXED;
+					regs.edi = -1;
+					regs.ebp = 0;
+					write_child_registers(tid, &regs);
+
+					/* execute the mmap */
+					__ptrace_cont(context);
+
+					/* restore original register state */
+					orig_regs.eax = read_child_eax(tid);
+					write_child_registers(tid, &orig_regs);
+
+					/* check if successful */
+					validate_args(context);
+
+					/* inject recorded data */
+					set_child_data(context);
+
+				} else {
+					struct user_regs_struct orig_regs;
+					memcpy(&orig_regs, &regs, sizeof(struct user_regs_struct));
+
+					/* hint the kernel where to allocate the page */
+					regs.ebx = context->trace.recorded_regs.eax;
+					regs.esi |= MAP_FIXED;
+
+					write_child_registers(tid, &regs);
+					__ptrace_cont(context);
+
+					/* restore original register state */
+					orig_regs.eax = read_child_eax(tid);
+					write_child_registers(tid, &orig_regs);
+
+					validate_args(context);
+					debug("%d[time=%d]: mmapped anonymous with flags %x to address %p\n",context->child_tid, trace->global_time, orig_regs.esi,orig_regs.eax);
 				}
-				/* set anonymous flag */
-				regs.esi |= MAP_ANONYMOUS;
-				regs.esi |= MAP_FIXED;
-				regs.edi = -1;
-				regs.ebp = 0;
-				write_child_registers(tid, &regs);
 
-				/* execute the mmap */
-				__ptrace_cont(context);
-
-				/* restore original register state */
-				orig_regs.eax = read_child_eax(tid);
-				write_child_registers(tid, &orig_regs);
-
-				/* check if successful */
-				validate_args(context);
-
-				/* inject recorded data */
-				set_child_data(context);
-
-			} else {
-				struct user_regs_struct orig_regs;
-				memcpy(&orig_regs, &regs, sizeof(struct user_regs_struct));
-
-				/* hint the kernel where to allocate the page */
-				regs.ebx = context->trace.recorded_regs.eax;
-				regs.esi |= MAP_FIXED;
-
-				write_child_registers(tid, &regs);
-				__ptrace_cont(context);
-
-				/* restore original register state */
-				orig_regs.eax = read_child_eax(tid);
-				write_child_registers(tid, &orig_regs);
-
-				validate_args(context);
-				debug("%d[time=%d]: mmapped anonymous with flags %x to address %p\n",context->child_tid, trace->global_time, orig_regs.esi,orig_regs.eax);
-			}
-
-			if (read_child_eax(context->child_tid) == 0x69f46000) {
-				printf("BITCH: %d\n", context->trace.global_time);
+				if (read_child_eax(context->child_tid) == 0x69f46000) {
+					printf("BITCH: %d\n", context->trace.global_time);
+				}
 			}
 		}
 		break;
@@ -2117,6 +2123,8 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	 * handler if the establishment of that handler (see sigaction(2)) requested it.
 	 */
 	//SYS_EXEC_ARG(sigaltstack, 0)
+	SYS_EMU_ARG(sigaltstack, 1)
+
 	/**
 	 * int sigreturn(unsigned long __unused)
 	 *
