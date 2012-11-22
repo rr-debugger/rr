@@ -2,6 +2,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <sched.h>
 
 #include "share/dbg.h"
 #include "share/hpc.h"
@@ -131,6 +132,7 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
+			sys_sched_setaffinity(RR_LOGICAL_CORE_AFFINITY);
 			/* initialize trace files */
 			open_trace_files(rr_flags);
 			rec_init_trace_files();
@@ -179,6 +181,8 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
+			sys_sched_setaffinity(RR_LOGICAL_CORE_AFFINITY);
+
 			child = pid;
 			/* make sure that the child process dies when the master process gets interrupted */
 			install_signal_handler();

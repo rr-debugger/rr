@@ -17,4 +17,12 @@
  */
 #define MAX_WAIT_TIMEOUT_SYS_WRITE_US		800
 
+/*
+ * For performance reasons, rr should run on the same
+ * physical core as the traced child process but on a different
+ * logical core if hyperthreading is available.
+ */
+#define RR_LOGICAL_CORE_AFFINITY	(unsigned long) 0x1
+#define CHILD_LOGICAL_CORE_AFFINITY (unsigned long) 0x2
+
 #endif /* CONFIG_H_ */

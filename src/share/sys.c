@@ -119,6 +119,14 @@ void sys_exit()
 	exit(-1);
 }
 
+void sys_sched_setaffinity(unsigned long mask)
+{
+	if (sched_setaffinity(0, sizeof(mask), (cpu_set_t*) &mask) == -1) {
+		log_err("error setting affinity -- bailing out");
+		sys_exit();
+	}
+}
+
 /**
  * This function configures the process for recording/replay. In particular:
  * (1) address space randomization is disabled
@@ -141,11 +149,8 @@ void sys_setup_process()
 		sys_exit();
 	}
 
-	unsigned long mask = 0x2;
-	if (sched_setaffinity(0, sizeof(mask), (cpu_set_t*) &mask) == -1) {
-		log_err("error setting affinity -- bailing out");
-		sys_exit();
-	}
+	/* Pin the child to the second logical core (which should be the same physical core as rr for performance reasons) */
+	sys_sched_setaffinity(CHILD_LOGICAL_CORE_AFFINITY);
 }
 
 void sys_start_trace(char* executable, char** argv, char** envp)
