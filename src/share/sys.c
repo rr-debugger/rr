@@ -150,7 +150,7 @@ void sys_setup_process()
 	}
 
 	/* Pin the child to the second logical core (which should be the same physical core as rr for performance reasons) */
-	sys_sched_setaffinity(CHILD_LOGICAL_CORE_AFFINITY);
+	sys_sched_setaffinity(CHILD_LOGICAL_CORE_AFFINITY_MASK);
 }
 
 void sys_start_trace(char* executable, char** argv, char** envp)

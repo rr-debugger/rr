@@ -19,10 +19,14 @@
 
 /*
  * For performance reasons, rr should run on the same
- * physical core as the traced child process but on a different
- * logical core if hyperthreading is available.
+ * physical core as the traced child process if hyperthreading is
+ * available (which it is on most modern Intel CPUs). Interestingly,
+ * the performance is best if we let the OS scheduler decide on
+ * which logical core rr runs.
  */
-#define RR_LOGICAL_CORE_AFFINITY	(unsigned long) 0x1
-#define CHILD_LOGICAL_CORE_AFFINITY (unsigned long) 0x2
+#define RR_LOGICAL_CORE_AFFINITY_MASK	(unsigned long) 0x3
+#define CHILD_LOGICAL_CORE_AFFINITY_MASK (unsigned long) 0x1
+/* Adapt this accordingly if the affinity masks above are changed. */
+#define NUM_CORES_NEEDED							2
 
 #endif /* CONFIG_H_ */
