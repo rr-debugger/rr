@@ -27,9 +27,6 @@ struct hpc_context {
 	hpc_event_t rbc;
 	hpc_event_t page_faults;
 	hpc_event_t hw_int;
-
-	size_t hpc_map_size;
-	struct perf_event_mmap_page *hpc_mmap;
 };
 
 

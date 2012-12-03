@@ -189,13 +189,6 @@ static void __start_hpc(struct context* ctx)
 	sys_fcntl_f_setown(counters->rbc.fd, tid);
 	sys_fcntl_f_setfl_o_async(counters->rbc.fd);
 
-	//allocate page(es) for hpm data
-	int pgsz = sysconf(_SC_PAGESIZE);
-	//+1 since the first page is header stuff
-	int map_size = (1 + 1) * pgsz;
-
-	counters->hpc_mmap = sys_mmap(NULL, map_size, PROT_READ, MAP_SHARED, counters->rbc.fd, 0);
-	counters->hpc_map_size = map_size;
 	counters->started = 1;
 }
 
@@ -218,12 +211,6 @@ void cleanup_hpc(struct context* context)
 {
 	struct hpc_context* counters = context->hpc;
 
-	if (munmap(counters->hpc_mmap, counters->hpc_map_size) == -1) {
-		perror("error unmapping hpc_map -- bailing out\n");
-		sys_exit();
-	}
-
-	counters->hpc_mmap = NULL;
 	stop_hpc(context);
 
 	sys_close(counters->hw_int.fd);
@@ -259,10 +246,6 @@ void reset_hpc(struct context *ctx, uint64_t val)
 void destry_hpc(struct context *ctx)
 {
 	struct hpc_context* counters = ctx->hpc;
-	if (counters->hpc_mmap != NULL) {
-		munmap(counters->hpc_mmap, counters->hpc_map_size);
-	}
-
 	sys_free((void**) &counters);
 }
 
