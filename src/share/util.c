@@ -916,7 +916,7 @@ char * get_mmaped_region_filename(struct context * ctx, void * mmap_start)
 	// for each line in the maps file:
 	char line[1024] = {0};
 	void *start, *end;
-	char flags[32], binary[128] = {0}, *result = NULL;
+	char flags[32], binary[512] = {0}, *result = NULL;
 	unsigned int dev_minor, dev_major;
 	unsigned long long file_offset, inode;
 	while ( fgets(line,1024,maps_file) != NULL ) {
