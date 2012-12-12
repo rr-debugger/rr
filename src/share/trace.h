@@ -51,6 +51,7 @@ void record_child_str(pid_t tid, int syscall, long int child_ptr);
 void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf);
 void record_event(struct context *ctx, int state);
 void record_mmapped_file_stats(struct mmapped_file *file);
+unsigned int get_global_time(void);
 unsigned int get_time(pid_t tid);
 void record_argv_envp(int argc, char* argv[], char* envp[]);
 void rec_setup_trace_dir(int version);
