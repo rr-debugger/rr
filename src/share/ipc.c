@@ -25,7 +25,7 @@ size_t set_child_data(struct context *ctx)
 	size_t size;
 	unsigned long rec_addr;
 	void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
-	if (data != NULL) {
+	if (data != NULL && size > 0) {
 		write_child_data(ctx, size, rec_addr, data);
 		sys_free((void**) &data);
 	}
