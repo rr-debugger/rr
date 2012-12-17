@@ -994,12 +994,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		if (size > 0) {
 			regs.ecx = ctx->recorded_scratch_ptr_0;
 			write_child_registers(ctx->child_tid, &regs);
-
-			void *recorded_data = read_child_data(ctx, size, ctx->scratch_ptr);
-			write_child_data(ctx, size, ctx->recorded_scratch_ptr_0, recorded_data);
-			record_parent_data(ctx, syscall, size, (void*) regs.ecx, recorded_data);
-			sys_free((void**) &recorded_data);
 		}
+		record_child_data(ctx,syscall,size,regs.ecx);
 
 		break;
 	}

@@ -1183,35 +1183,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	 *  further arguments with a significance depending on the first one.
 	 *
 	 */
-	case SYS_prctl:
-	{
-		if (state == STATE_SYSCALL_ENTRY) {
-			goto_next_syscall_emu(context);
-			validate_args(context);
-		} else {
-			if (trace->recorded_regs.eax >= 0) {
-				switch (trace->recorded_regs.ebx) {
-				case PR_GET_ENDIAN: /* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
-				case PR_GET_FPEMU: /* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
-				case PR_GET_FPEXC: /* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
-				case PR_GET_PDEATHSIG: /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
-				case PR_GET_TSC: /* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
-				case PR_GET_UNALIGN: /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
-				case PR_GET_NAME: /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
-				 The buffer should allow space for up to 16 bytes;
-				 The returned string will be null-terminated if it is shorter than that. */
-				set_child_data(context);
-					break;
-				default:
-					break;
-				}
-			}
-			set_return_value(context);
-			validate_args(context);
-			finish_syscall_emu(context);
-		}
-		break;
-	}
+	SYS_EMU_ARG(prctl, 1)
 
 	/**
 	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);

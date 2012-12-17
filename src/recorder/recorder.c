@@ -319,7 +319,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 	}
 
 	/* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5); */
-	// TODO: this may be a quick syscall, better not to allow context switching
+	// TODO: this may be a quick syscall, better not to allow context switching -- benchmarking needed
 	case SYS_prctl:
 	{
 		struct user_regs_struct regs;
