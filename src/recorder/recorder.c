@@ -595,7 +595,7 @@ void start_recording(struct flags rr_flags)
 				 * which in turn saves another such restart block,
 				 * old data is lost and restart becomes impossible)
 				 */
-				debug("restarting syscall %d",ctx->last_syscall);
+				log_info("Restarting syscall %d",ctx->last_syscall);
 				/*
 				 * From errno.h:
 				 * These should never be seen by user programs.  To return
@@ -603,10 +603,7 @@ void start_recording(struct flags rr_flags)
 				 * Note that ptrace can observe these at syscall exit tracing,
 				 * but they will never be left for the debugged user process to see.
 				 */
-
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
-				break;
-
 				/* we sould never come here */
 			} else {
 				assert(1==0);

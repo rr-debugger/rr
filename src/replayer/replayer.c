@@ -127,44 +127,6 @@ static void single_step(struct context* context)
 	}
 }
 
-
-/*
-static void rep_init_scratch_memory(struct context *ctx)
-{
-	struct trace ts;
-	peek_next_trace(&ts);
-	if (ts.stop_reason == SYS_execve) {
-		sys_ptrace_syscall(ctx->child_tid);
-		sys_waitpid(ctx->child_tid, &ctx->status);
-	}
-
-	// initialize the scratchpad for blocking system calls
-
-	// set up the mmap system call
-	struct user_regs_struct mmap_call;
-	read_child_registers(ctx->child_tid, &mmap_call);
-
-	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
-
-	mmap_call.eax = SYS_mmap2;
-	mmap_call.ebx = 0;
-	mmap_call.ecx = scratch_size;
-	mmap_call.edx = PROT_READ | PROT_WRITE | PROT_EXEC;
-	mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
-	mmap_call.edi = -1;
-	mmap_call.ebp = 0;
-
-	ctx->scratch_ptr = (void*)inject_and_execute_syscall(ctx,&mmap_call);
-	ctx->scratch_size = scratch_size;
-
-	if (ts.stop_reason == SYS_execve) {
-		finish_execve(rep_sched_get_thread());
-		validate = TRUE;
-	}
-}
-*/
-
-
 static void check_initial_register_file()
 {
 	struct context *context = rep_sched_get_thread();
@@ -195,7 +157,6 @@ void replay(struct flags rr_flags)
 
 		// for checksuming: make a note that this area is scratch and need not be validated.
 		if (ctx->trace.stop_reason == USR_INIT_SCRATCH_MEM) {
-			//rep_init_scratch_memory(ctx);
 			add_scratch(ctx->trace.recorded_regs.eax);
 		} else if (ctx->trace.stop_reason == USR_EXIT) {
 			rep_sched_deregister_thread(&ctx);
@@ -212,7 +173,6 @@ void replay(struct flags rr_flags)
 				// the restart_syscall
 				if ((ctx->trace.recorded_regs.eax == ERESTART_RESTARTBLOCK ||
 					 ctx->trace.recorded_regs.eax == ERESTARTNOINTR) ) {
-					ctx->last_syscall = ctx->trace.stop_reason;
 					continue;
 				}
 			}
@@ -221,11 +181,10 @@ void replay(struct flags rr_flags)
 			rep_process_syscall(ctx, ctx->trace.stop_reason, rr_flags);
 
 		} else if (ctx->trace.stop_reason == SYS_restart_syscall) {
-			if (ctx->trace.state == STATE_SYSCALL_ENTRY)
-				continue;
-
-			rep_process_syscall(ctx, ctx->last_syscall, rr_flags);
-
+			/* the SYS_restared will be replayed by the next entry which is an
+			 * exit entry for the original syscall being restarted - do nothing here.
+			 */
+			continue;
 			/* stop reason is a signal - use HPC */
 		} else {
 			//debug("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
