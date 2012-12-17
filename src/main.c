@@ -28,6 +28,7 @@ static pid_t child;
 static char** __argv;
 static char** __envp;
 static char* __executable;
+struct flags __rr_flags = {0};
 
 static void alloc_argc(int argc)
 {
@@ -123,12 +124,12 @@ static void set_rr_processor_affinity()
 /**
  * main replayer method
  */
-static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
+static void start(int argc, char* argv[], char** envp)
 {
 	pid_t pid;
 	int status;
 
-	if (rr_flags.option == RECORD) {
+	if (__rr_flags.option == RECORD) {
 		copy_executable(argv[0]);
 		if (access(__executable, X_OK)) {
 			log_err("The specified file '%s' does not exist or is not executable\n", __executable);
@@ -147,7 +148,7 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 		} else { /* parent process */
 			set_rr_processor_affinity();
 			/* initialize trace files */
-			open_trace_files(rr_flags);
+			open_trace_files(__rr_flags);
 			rec_init_trace_files();
 			record_argv_envp(argc, __argv, __envp);
 
@@ -170,7 +171,7 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 
 			/* perform the action recording */
 			log_info("Start recording...\n");
-			start_recording(rr_flags);
+			start_recording(__rr_flags);
 			log_info("Done recording -- cleaning up\n");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
@@ -178,7 +179,7 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 		}
 
 		/* replayer code comes here */
-	} else if (rr_flags.option == REPLAY) {
+	} else if (__rr_flags.option == REPLAY) {
 		init_environment(argv[0], &argc, __argv, __envp);
 
 		copy_executable(__argv[0]);
@@ -209,14 +210,14 @@ static void start(struct flags rr_flags, int argc, char* argv[], char** envp)
 			/* sets the file pointer to the first trace entry */
 
 			rep_setup_trace_dir(argv[0]);
-			open_trace_files(rr_flags);
+			open_trace_files(__rr_flags);
 			rep_init_trace_files();
 
 			pid_t rec_main_thread = get_recorded_main_thread();
 			rep_sched_register_thread(pid, rec_main_thread);
 
 			/* main loop */
-			replay(rr_flags);
+			replay(__rr_flags);
 			/* thread wants to exit*/
 			close_libpfm();
 			close_trace_files();
@@ -249,10 +250,9 @@ void check_prerequisites() {
  */
 int main(int argc, char* argv[], char** envp)
 {
-	struct flags rr_flags = {0};
-	rr_flags.dump_on = DUMP_ON_NONE;
-	rr_flags.dump_at = DUMP_AT_NONE;
-	rr_flags.checksum = CHECKSUM_NONE;
+	__rr_flags.dump_on = DUMP_ON_NONE;
+	__rr_flags.dump_at = DUMP_AT_NONE;
+	__rr_flags.checksum = CHECKSUM_NONE;
 
 	/* check prerequisites for rr to run */
 	check_prerequisites();
@@ -268,14 +268,14 @@ int main(int argc, char* argv[], char** envp)
 	// mandatory {record,replay} flag
 	if (flag_index < argc) {
 		if (strncmp("--record", argv[flag_index], sizeof("--record")) == 0) {
-			rr_flags.option = RECORD;
+			__rr_flags.option = RECORD;
 		} else if (strncmp("--replay", argv[flag_index], sizeof("--replay")) == 0) {
-			rr_flags.option = REPLAY;
+			__rr_flags.option = REPLAY;
 		}
 		flag_index++;
 	}
 
-	if (rr_flags.option == INVALID) {
+	if (__rr_flags.option == INVALID) {
 		print_usage();
 		return 0;
 	}
@@ -283,19 +283,19 @@ int main(int argc, char* argv[], char** envp)
 
 	// optional redirect flag
 	if  (flag_index < argc && strncmp("--redirect_output", argv[flag_index], sizeof("--redirect_output")) == 0) {
-		rr_flags.redirect = TRUE;
+		__rr_flags.redirect = TRUE;
 		flag_index++;
 	}
 
 	// optional dump memory on syscall flag
 	if  (flag_index < argc && strncmp("--dump_on=", argv[flag_index], sizeof("--dump_on=") - 1) == 0) {
-		sscanf(argv[flag_index],"--dump_on=%d",&rr_flags.dump_on);
+		sscanf(argv[flag_index],"--dump_on=%d",&__rr_flags.dump_on);
 		flag_index++;
 	}
 
 	// optional dump memory at global time flag
 	if  (flag_index < argc && strncmp("--dump_at=", argv[flag_index], sizeof("--dump_at=") - 1) == 0) {
-		sscanf(argv[flag_index],"--dump_at=%d",&rr_flags.dump_at);
+		sscanf(argv[flag_index],"--dump_at=%d",&__rr_flags.dump_at);
 		flag_index++;
 	}
 
@@ -304,11 +304,11 @@ int main(int argc, char* argv[], char** envp)
 		char checksum_point[128];
 		sscanf(argv[flag_index],"--checksum=%s",checksum_point);
 		if (strncmp("on-syscalls", checksum_point, sizeof("on-syscalls") - 1) == 0) {
-			rr_flags.checksum = CHECKSUM_SYSCALL;
+			__rr_flags.checksum = CHECKSUM_SYSCALL;
 		} else if (strncmp("on-all-events", checksum_point, sizeof("on-all-events") - 1) == 0) {
-			rr_flags.checksum = CHECKSUM_ALL;
+			__rr_flags.checksum = CHECKSUM_ALL;
 		} else {
-			rr_flags.checksum = str2li(checksum_point,LI_COLUMN_SIZE);
+			__rr_flags.checksum = str2li(checksum_point,LI_COLUMN_SIZE);
 		}
 		flag_index++;
 	}
@@ -321,7 +321,7 @@ int main(int argc, char* argv[], char** envp)
 	alloc_envp(envp);
 	alloc_executable();
 
-	start(rr_flags, argc - flag_index , argv + flag_index, envp);
+	start(argc - flag_index , argv + flag_index, envp);
 
 	return 0;
 
