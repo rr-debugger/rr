@@ -43,6 +43,18 @@ Typing rr --record /path/to/binary invokes the recorder. The recorder
 creates a path in the current directory which contains the trace file(s).
 To replay the application, type rr --replay /path/to/trace.  
 
+Debug command line options:
+[--dump_on=<syscall|-signal>] : dump the entire memory to file every time the system call 
+numbered <syscall> is encountered or a signal numbered by <signal> is encountered. The
+negation if signal is required to distingish between syscalls and signals of the same number.
+example: --dump_on=79 : dumps all memory every time gettimeofday is entered. --dump_on=-17: 
+dumps all memory every time  signal SIGCHLD is recieved.
+[--dump_at=<time>] : dump the entire memory at global time <time>
+[--checksum={on-syscalls,on-all-events}|<from-time>] : For record: calculated a checksum 
+of the entire memory either on every event (on-all-events) or on every syscall (on-syscalls) 
+or starting from global time <from-time>. Fore replay: verifies the calculated checksums,
+should be run with same arguments as the record.
+
 Note that talking to particular kernel drivers (by ioctl(...)) requires the
 rr to have knowledge about what the driver is doing. For example, if you
 record GUI applications that make use a grapphics driver with 3d-support
