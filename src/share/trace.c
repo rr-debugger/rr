@@ -280,8 +280,8 @@ static void record_register_file(struct context *ctx)
 	fprintf(trace_file, "%11lu", regs.edi);
 	fprintf(trace_file, "%11lu", regs.ebp);
 	fprintf(trace_file, "%11lu", regs.orig_eax);
-	fprintf(trace_file, "%11p", (void*)regs.esp);
-	fprintf(trace_file, "%11p", (void*)regs.eip);
+	fprintf(trace_file, "%11x", (void*)regs.esp);
+	fprintf(trace_file, "%11x", (void*)regs.eip);
 	fprintf(trace_file, "%11lu", regs.eflags);
 	fprintf(trace_file, "\n");
 }
@@ -301,8 +301,8 @@ static void record_inst_register_file(struct context *ctx)
 	fprintf(ctx->inst_dump, "%11lu", regs.edi);
 	fprintf(ctx->inst_dump, "%11lu", regs.ebp);
 	fprintf(ctx->inst_dump, "%11lu", regs.orig_eax);
-	fprintf(ctx->inst_dump, "%11p", regs.esp);
-	fprintf(ctx->inst_dump, "%11p", regs.eip);
+	fprintf(ctx->inst_dump, "%11x", regs.esp);
+	fprintf(ctx->inst_dump, "%11x", regs.eip);
 	fprintf(ctx->inst_dump, "%11lu", regs.eflags);
 	fprintf(ctx->inst_dump, "\n");
 }
@@ -735,9 +735,9 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
 	tmp_ptr += LI_COLUMN_SIZE;
 	regs->orig_eax = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	regs->esp = str2p(tmp_ptr, LI_COLUMN_SIZE);
+	regs->esp = str2x(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	regs->eip = str2p(tmp_ptr, LI_COLUMN_SIZE);
+	regs->eip = str2x(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	regs->eflags = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
@@ -758,9 +758,9 @@ void read_next_mmapped_file_stats(struct mmapped_file * file) {
 		line += LI_COLUMN_SIZE;
 		file->tid= str2li(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
-		file->start = str2p(line,LI_COLUMN_SIZE);
+		file->start = str2x(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
-		file->end= str2p(line,LI_COLUMN_SIZE);
+		file->end= str2x(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
 		file->stat.st_blksize = str2li(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;

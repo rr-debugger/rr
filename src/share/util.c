@@ -630,16 +630,13 @@ long int str2li(const char* start, size_t max_size)
 	return val;
 }
 
-void * str2p(const char* start, size_t max_size)
+void * str2x(const char* start, size_t max_size)
 {
 	int idx = 0;
 
 	while (start[idx] == ' ') {
 		idx++;
 	}
-
-	assert(start[idx++] == '0');
-	assert(start[idx++] == 'x');
 
 	long int val = 0;
 	while (idx <= max_size) {
