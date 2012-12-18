@@ -16,6 +16,7 @@
 
 #define DELAY_COUNTER_MAX 10
 
+static struct list *tid_to_node[MAX_TID] = {NULL};
 static struct list *registered_threads = NULL;
 static struct list *current_thread_ptr = NULL;
 static int num_active_threads = 0;
@@ -42,8 +43,6 @@ static void set_switch_counter(struct context *last_ctx, struct context *ctx)
  */
 struct context* get_active_thread(struct context *ctx)
 {
-	struct list *tmp_thread_ptr = current_thread_ptr;
-
 	/* This maintains the order in which the threads are signaled to continue and
 	 * when the the record is actually written
 	 */
@@ -102,6 +101,7 @@ void rec_sched_exit_all()
 				int tid = thread->child_tid;
 				if (tid != EMPTY) {
 					sys_kill(tid, SIGINT);
+					tid_to_node[tid] = NULL;
 				}
 			}
 		}
@@ -139,6 +139,8 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 
 	registered_threads = list_push_front(registered_threads, ctx);
 	num_active_threads++;
+
+	tid_to_node[child] = registered_threads;
 }
 
 /**
@@ -148,17 +150,13 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 void rec_sched_deregister_thread(struct context **ctx_ptr)
 {
 	struct context *ctx = *ctx_ptr;
-	struct list * thread_ptr = 0;
-	for (thread_ptr = registered_threads; !list_end(thread_ptr); thread_ptr = list_next(thread_ptr)) {
-		if (list_data(thread_ptr) == ctx) {
-			/* the round-robin pointer might point to the list element we are removing, correct it */
-			/* this should never happen (?) */
-			assert(current_thread_ptr == thread_ptr);
-
-			list_remove(thread_ptr);
-			break;
-		}
+	struct list * node = tid_to_node[ctx->child_tid], *next = list_next(node);
+	if (!list_end(next)) {
+		pid_t next_tid = ((struct context *)list_data(next))->child_tid;
+		tid_to_node[next_tid] = node;
 	}
+	list_remove(node); // this copied node over next and frees next!
+	tid_to_node[ctx->child_tid] = NULL;
 	num_active_threads--;
 	assert(num_active_threads >= 0);
 
