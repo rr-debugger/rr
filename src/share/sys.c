@@ -149,7 +149,7 @@ void sys_setup_process()
 		sys_exit();
 	}
 
-	/* Pin the child to the second logical core (which should be the same physical core as rr for performance reasons) */
+	/* Pin the child to a specific logical core as we serialize the execution anyway */
 	sys_sched_setaffinity(CHILD_LOGICAL_CORE_AFFINITY_MASK);
 }
 

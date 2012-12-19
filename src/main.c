@@ -108,19 +108,6 @@ static void install_signal_handler()
 	signal(SIGINT, sig_child);
 }
 
-/*
- * Setting the CPU affinity of rr itself is an optimization.
- * If it does not work, e.g. because rr is used on a system with
- * only one CPU, we skip this optimization.
- */
-static void set_rr_processor_affinity()
-{
-	long num_processors = sysconf(_SC_NPROCESSORS_ONLN);
-	if (num_processors >= NUM_CORES_NEEDED) {
-		sys_sched_setaffinity(RR_LOGICAL_CORE_AFFINITY_MASK);
-	}
-}
-
 /**
  * main replayer method
  */
@@ -146,7 +133,6 @@ static void start(int argc, char* argv[], char** envp)
 		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
-			set_rr_processor_affinity();
 			/* initialize trace files */
 			open_trace_files(__rr_flags);
 			rec_init_trace_files();
@@ -195,8 +181,6 @@ static void start(int argc, char* argv[], char** envp)
 		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
-			set_rr_processor_affinity();
-
 			child = pid;
 			/* make sure that the child process dies when the master process gets interrupted */
 			install_signal_handler();

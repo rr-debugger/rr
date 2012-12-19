@@ -60,3 +60,18 @@ rr to have knowledge about what the driver is doing. For example, if you
 record GUI applications that make use a grapphics driver with 3d-support
 rr will fail.
 
+Also, it is advised to turn off any CPU frequency scaling capabilities, such as Intel Speed Step. 
+This can be achieved by either turning it off in the BIOS or by disabling it in the 
+kernel, e.g. by setting the CPU governor to 'performance'. If neither of these solutions 
+is feasible, rr and its child processes should be pinned on a certain core, e.g. by 
+running rr with:
+
+taskset 0x1 rr <options>
+
+or, in the case of a CPU that is able to run multiple threads on one core in parallel, such
+as Intel CPUs with Hyperthreading capabilities, it is better to use:
+
+taskset 0x3 rr <options>
+
+Otherwise, due to frequent context switches between rr and the traced process, the different
+cores will often scale down their frequency which can lead to slowdowns of up to 2x.
