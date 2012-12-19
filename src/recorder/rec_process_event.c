@@ -238,9 +238,16 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_epoll_wait:
 	{
+
 		// restore ecx from scratch
-		regs.ecx = (long int) ctx->recorded_scratch_ptr_0;
-		write_child_registers(ctx->child_tid, &regs);
+		if (ctx->recorded_scratch_size != -1) {
+			regs.ecx  = (long int) ctx->recorded_scratch_ptr_0;
+			write_child_registers(ctx->child_tid, &regs);
+		} else {
+			// write a 0 size record (to be compatible with the replay) and break
+			record_child_data(ctx,syscall,0,0);
+			break;
+		}
 
 		void *data = (void*) read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
@@ -952,8 +959,14 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	case SYS_poll:
 	{
 		// restore ebx from scratch
-		regs.ebx = (long int) ctx->recorded_scratch_ptr_0;
-		write_child_registers(ctx->child_tid, &regs);
+		if (ctx->recorded_scratch_size != -1) {
+			regs.ebx = (long int) ctx->recorded_scratch_ptr_0;
+			write_child_registers(ctx->child_tid, &regs);
+		} else {
+			// write a 0 size record (to be compatible with the replay) and break
+			record_child_data(ctx,syscall,0,0);
+			break;
+		}
 
 		void *data = read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
@@ -2044,15 +2057,32 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_wait4:
 	{
-		// restore ecx
-		regs.ecx = ctx->recorded_scratch_ptr_0;
-		write_child_registers(ctx->child_tid, &regs);
-
 		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
-		record_parent_data(ctx, syscall, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
-		// TODO: why isnt rusage saved on the scratch as well?
-		record_child_data(ctx, syscall, sizeof(struct rusage), regs.esi);
+		void *ptr = recorded_data;
+		bool registers_changed = FALSE;
+		/* restore status */
+		if (ctx->recorded_scratch_ptr_0 != (void*)-1) {
+			regs.ecx = ctx->recorded_scratch_ptr_0;
+			registers_changed = TRUE;
+			write_child_data(ctx, sizeof(int), regs.ecx, ptr);
+			record_parent_data(ctx, syscall, sizeof(int), ctx->recorded_scratch_ptr_0, ptr);
+			ptr += sizeof(int);
+		} else { /* if status was null, put in a blank entry */
+			record_child_data(ctx,syscall,0,0);
+		}
+		/* restore rusage */
+		if (ctx->recorded_scratch_ptr_1 != (void*)-1) {
+			regs.esi = ctx->recorded_scratch_ptr_1;
+			registers_changed = TRUE;
+			write_child_data(ctx, sizeof(struct rusage), regs.esi, ptr);
+			record_parent_data(ctx, syscall, sizeof(struct rusage), ctx->recorded_scratch_ptr_1, ptr);
+			ptr += sizeof(struct rusage);
+		} else { /* if rusage was null, put in a blank entry */
+			record_child_data(ctx,syscall,0,0);
+		}
+		if (registers_changed) {
+			write_child_registers(ctx->child_tid, &regs);
+		}
 		sys_free((void**)&recorded_data);
 		break;
 	}
