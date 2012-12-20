@@ -321,6 +321,8 @@ void rec_collect_syscalls(struct context *ctx) {
 					   ctx->syscall_wrapper_cache);
 	fprintf(trace_file, "%11d%11u%11d%11d\n", get_global_time_incr(), get_time_incr(ctx->child_tid), ctx->child_tid, USR_FLUSH);
 	ctx->syscall_wrapper_cache[0] = 0;
+	/* Record the setting of buffer[0] to 0 */
+	record_parent_data(ctx,USR_FLUSH,sizeof(int),ctx->syscall_wrapper_cache_child,ctx->syscall_wrapper_cache);
 }
 
 /**
@@ -328,6 +330,12 @@ void rec_collect_syscalls(struct context *ctx) {
  */
 void record_event(struct context *ctx, int state)
 {
+	/* If the event is in the wrapper, it needs not be recorded as the wrapper code will record it
+	 * Note: There are some events that are wrapped and still get traced, like futex() etc. as they need context switching.
+	 */
+	if (ctx && WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx))
+		return;
+
 	// before anything is performed, check if the seccomp record cache has any entries
 	if (ctx->syscall_wrapper_cache && ctx->syscall_wrapper_cache[0] > 0)
 		rec_collect_syscalls(ctx);
@@ -706,6 +714,38 @@ void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
 		return data;
 	}
 	return NULL;
+}
+
+void rep_child_buffer0(struct context * ctx)
+{
+	if (feof(syscall_header))
+		return;
+	fpos_t pos;
+	fgetpos(syscall_header, &pos);
+
+	char line[1024];
+	if (fgets(line, 1024, syscall_header) == NULL)
+		return;
+	char* tmp_ptr = line;
+
+	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	tmp_ptr += LI_COLUMN_SIZE;
+	if (syscall == USR_FLUSH) {
+		void *addr = str2li(tmp_ptr, LI_COLUMN_SIZE);
+		tmp_ptr += LI_COLUMN_SIZE;
+		int size = str2li(tmp_ptr, LI_COLUMN_SIZE);
+		if (size == sizeof(int)) {
+			int zero;
+			int bytes_read = fread(&zero, 1, size, raw_data);
+			assert(zero == 0 && bytes_read == sizeof(int));
+			assert(addr == ctx->syscall_wrapper_cache_child);
+			write_child_data(ctx,bytes_read,addr,&zero);
+			return;
+		}
+	}
+	fsetpos(syscall_header, &pos);
 }
 
 void read_syscall_trace(struct syscall_trace* trace)

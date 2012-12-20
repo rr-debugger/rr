@@ -53,7 +53,7 @@ static char trace_path_[512] = { '\0' };
  // Do a un-intercepted syscall to make rr flush the buffer
 static void flush_buffer(void){
 	pid_t tid = syscall(SYS_gettid);
-	buffer[0] = 0; // to relieve the replay from doing this
+	assert(buffer[0] == 0);
 }
 
 static void find_library_location(void)
@@ -128,12 +128,12 @@ static void install_syscall_filter(void)
 		 */
 		ALLOW_SYSCALL(restart_syscall),
 		/* List syscalls we wrap in our library */
-		ALLOW_SYSCALL(gettimeofday),
 		ALLOW_SYSCALL(clock_gettime),
+		ALLOW_SYSCALL(gettimeofday),
 		ALLOW_SYSCALL(madvise),
 		ALLOW_SYSCALL(write),
 		ALLOW_SYSCALL(writev),
-		//ALLOW_SYSCALL(stat),
+		ALLOW_SYSCALL(stat),
 		ALLOW_SYSCALL(lstat),
 		ALLOW_SYSCALL(fstat),
 		/* These syscalls require more complex logic to decide whether they are to be traced */
@@ -152,11 +152,11 @@ static void install_syscall_filter(void)
 	};
 
 	if (syscall(SYS_prctl,PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-		assert(0 && "prctl(NO_NEW_PRIVS)");
+		assert(0 && "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available.");
 	}
 
 	if (syscall(SYS_prctl,PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)) {
-		assert(0 && "prctl(SECCOMP)");
+		assert(0 && "prctl(SECCOMP) failed, SECCOMP_FILTER is not available.");
 	}
 	// anything that happens from this point on gets filtered!
 }
@@ -229,12 +229,12 @@ static void init() {
 if (!buffer)																		\
 init();																				\
 int ret;																			\
-int record_size_in_bytes = WRAP_SYSCALLS_RECORD_BASE_SIZE;							\
+int record_size_in_bytes = WRAP_SYSCALLS_RECORD_BASE_SIZE * sizeof(int);			\
 if (buffer[0] + record_size_in_bytes + extra_space > WRAP_SYSCALLS_CACHE_SIZE) {	\
   flush_buffer();																	\
 }																					\
 int * const new_record = (void*)buffer + sizeof(int) + buffer[0];					\
-void * ptr = &new_record[3];														\
+void * ptr = &new_record[WRAP_SYSCALLS_RECORD_BASE_SIZE];							\
 
 #define _syscall0(call,ret) \
 asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call));
@@ -284,6 +284,31 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp) {
 	_syscall_post(clock_gettime)
 }
 
+
+int gettimeofday(struct timeval *tp, struct timezone *tzp) {
+	_syscall_pre((tp ? sizeof(struct timeval) : 0) + (tzp ? sizeof(struct timezone) : 0))
+	// set it up so the syscall writes to the record cache
+	struct timeval *tp2 = NULL;
+	if (tp) {
+		record_size_in_bytes += sizeof(struct timeval);
+		tp2 = ptr;
+		ptr += sizeof(struct timeval);
+	}
+	struct timezone *tzp2 = NULL;
+	if (tzp) {
+		record_size_in_bytes += sizeof(struct timezone);
+		tzp2 = ptr;
+		ptr += sizeof(struct timezone);
+	}
+	_syscall2(gettimeofday,tp2,tzp2,ret)
+	// now in the replay we can simply copy the recorded buffer and allow the wrapper to copy it to the actual parameters
+	if (tp)
+		memcpy(tp, tp2, sizeof(struct timeval));
+	if (tzp)
+		memcpy(tzp, tzp2, sizeof(struct timezone));
+	_syscall_post(gettimeofday)
+}
+
 int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3) {
 	_syscall_pre(sizeof(int))
 	// make room for (uaddr,*uaddr)
@@ -314,20 +339,22 @@ int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uadd
 	_syscall_post(futex)
 }
 
-ssize_t write_(int fd, const void *buf, size_t count) {
-	_syscall_pre(0)
-	_syscall3(write,fd,buf,count,ret)
-	_syscall_post(write)
+int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
+	_syscall_pre((events && maxevents > 0) ? (maxevents * sizeof(struct epoll_event)) : 0)
+	void *events2 = NULL;
+	if (events && maxevents > 0) {
+		events2 = ptr;
+		ptr +=  (maxevents * sizeof(struct epoll_event));
+	}
+	_syscall4(epoll_wait,epfd,events2,maxevents,timeout,ret)
+	if (ret > 0) {
+		record_size_in_bytes += ret * sizeof(struct epoll_event);
+		memcpy(events,events2,ret * sizeof(struct epoll_event));
+	}
+	_syscall_post(epoll_wait)
 }
 
-ssize_t writev_(int fd, const struct iovec *iov, int iovcnt) {
-	_syscall_pre(0)
-	_syscall3(writev,fd,iov,iovcnt,ret)
-	_syscall_post(writev)
-}
-
-
-#define _copy_syscall_args(arg0,arg1,arg2,arg3,arg4,arg5) \
+#define _copy_socketcall_args(arg0,arg1,arg2,arg3,arg4,arg5) \
 long args[6];			\
 args[0] = (long)arg0;	\
 args[1] = (long)arg1;	\
@@ -336,10 +363,10 @@ args[3] = (long)arg3;	\
 args[4] = (long)arg4;	\
 args[5] = (long)arg5;
 
-int accept4_(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
+int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
 	// Stuff gets recorded only if addr is not null
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
-	_copy_syscall_args(sockfd,addr,addrlen,flags, 0, 0)
+	_copy_socketcall_args(sockfd,addr,addrlen,flags, 0, 0)
 	void *addr2 = NULL;
 	socklen_t *addrlen2 = NULL;
 	if (addr) {
@@ -360,57 +387,14 @@ int accept4_(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
 	_syscall_post(socketcall)
 }
 
-int accept_(int socket,struct sockaddr *addr, socklen_t *length_ptr) {
+int accept(int socket,struct sockaddr *addr, socklen_t *length_ptr) {
 	return accept4(socket,addr,length_ptr,0);
 }
 
-
-#define _socketcall_no_output(call,arg0,arg1,arg2,arg3,arg4,arg5) 	\
-	_syscall_pre(0)													\
-	_copy_syscall_args(arg0,arg1,arg2,arg3,arg4,arg5)				\
-	_syscall2(socketcall,call,args,ret) 							\
-	_syscall_post(socketcall)
-
-int socket_(int domain, int type, int protocol) {
-	_socketcall_no_output(SYS_SOCKET,domain,type,protocol,0, 0, 0)
-}
-
-int connect_(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
-	_socketcall_no_output(SYS_CONNECT,sockfd,addr,addrlen,0, 0, 0)
-}
-
-int bind_(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
-	_socketcall_no_output(SYS_BIND,sockfd,addr,addrlen,0, 0, 0)
-}
-
-int listen_(int sockfd, int backlog) {
-	_socketcall_no_output(SYS_LISTEN,sockfd,backlog,0,0, 0, 0)
-}
-
-ssize_t sendmsg_(int sockfd, const struct msghdr *msg, int flags) {
-	_socketcall_no_output(SYS_SENDMSG,sockfd,msg,flags,0, 0, 0)
-}
-
-ssize_t send_(int sockfd, const void *buf, size_t len, int flags) {
-	_socketcall_no_output(SYS_SEND,sockfd,buf, len, flags, 0, 0)
-}
-
-ssize_t sendto_(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen) {
-	_socketcall_no_output(SYS_SENDTO,sockfd,buf, len, flags, dest_addr, addrlen)
-}
-
-int setsockopt_(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
-	_socketcall_no_output(SYS_SETSOCKOPT,sockfd, level, optname, optval, optlen, 0)
-}
-
-int shutdown_(int socket, int how) {
-	_socketcall_no_output(SYS_SHUTDOWN,socket, how, 0, 0, 0, 0)
-}
-
-int getpeername_(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	// Stuff gets recorded only if addr is not null
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
-	_copy_syscall_args(sockfd,addr,addrlen,0, 0, 0)
+	_copy_socketcall_args(sockfd,addr,addrlen,0, 0, 0)
 	void *addr2 = NULL;
 	socklen_t *addrlen2 = NULL;
 	if (addr) {
@@ -433,10 +417,10 @@ int getpeername_(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	_syscall_post(socketcall)
 }
 
-int getsockname_(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	// Stuff gets recorded only if addr is not null
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
-	_copy_syscall_args(sockfd,addr,addrlen,0, 0, 0)
+	_copy_socketcall_args(sockfd,addr,addrlen,0, 0, 0)
 	void *addr2 = NULL;
 	socklen_t *addrlen2 = NULL;
 	if (addr) {
@@ -459,10 +443,10 @@ int getsockname_(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	_syscall_post(socketcall)
 }
 
-int getsockopt_(int sockfd, int level, int optname, void *optval, socklen_t* optlen) {
+int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t* optlen) {
 	// Stuff gets recorded only if optval is not null
 	_syscall_pre(optval ? *optlen + sizeof(socklen_t) : 0)
-	_copy_syscall_args(sockfd,level,optname,optval, optlen, 0)
+	_copy_socketcall_args(sockfd,level,optname,optval, optlen, 0)
 	void *optval2 = NULL;
 	socklen_t *optlen2 = NULL;
 	if (optval && optlen) {
@@ -485,12 +469,13 @@ int getsockopt_(int sockfd, int level, int optname, void *optval, socklen_t* opt
 	_syscall_post(socketcall)
 }
 
-ssize_t recv_(int sockfd, void *buf, size_t len, int flags) {
+
+ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 	// Stuff gets recorded only if buf is not null
-	_syscall_pre(buf ? len : 0)
-	_copy_syscall_args(sockfd,buf,len,flags,0,0)
+	_syscall_pre((buf && len > 0) ? len : 0)
+	_copy_socketcall_args(sockfd,buf,len,flags,0,0)
 	void *buf2 = NULL;
-	if (buf) {
+	if (buf && len > 0) {
 		record_size_in_bytes += len;
 		buf2 = ptr;
 		ptr += len;
@@ -503,52 +488,10 @@ ssize_t recv_(int sockfd, void *buf, size_t len, int flags) {
 	_syscall_post(socketcall)
 }
 
-ssize_t recvmsg_(int sockfd, struct msghdr *msg, int flags) {
-	// Stuff gets recorded only if msg is not null
-	_syscall_pre(msg ? sizeof(struct msghdr)
-					  + (msg->msg_iov ? msg->msg_iovlen * sizeof(struct iovec) : 0)
-					  + (msg->msg_control ? msg->msg_controllen : 0)
-					  : 0)
-	_copy_syscall_args(sockfd,msg,flags, 0, 0, 0)
-	struct msghdr *msg2 = NULL;
-	struct iovec *msg_iov2;        // scatter/gather array
-    void         *msg_control2;    // ancillary data, see below
-	if (msg) {
-		record_size_in_bytes += sizeof(struct msghdr);
-		msg2 = ptr;
-		memcpy(msg2,msg,sizeof(struct msghdr));
-		ptr += sizeof(struct msghdr);
-		args[1] = (long)msg2;
-		if (msg->msg_iov) {
-			record_size_in_bytes += msg->msg_iovlen * sizeof(struct iovec);
-			msg2->msg_iov = msg_iov2 = ptr;
-			memcpy(msg_iov2,msg->msg_iov,msg->msg_iovlen * sizeof(struct iovec));
-			ptr += msg->msg_iovlen * sizeof(struct iovec);
-		}
-		if (msg->msg_control) {
-			record_size_in_bytes += msg->msg_controllen;
-			msg2->msg_control = msg_control2 = ptr;
-			memcpy(msg_control2,msg->msg_control,msg->msg_controllen);
-			ptr += msg->msg_controllen;
-		}
-	}
-	_syscall2(socketcall,SYS_RECVMSG,args,ret)
-	if (msg) {
-		memcpy(msg,msg2,sizeof(struct msghdr));
-		if (msg->msg_iov) {
-			memcpy(msg->msg_iov,msg_iov2,msg->msg_iovlen * sizeof(struct iovec));
-		}
-		if (msg->msg_control) {
-			memcpy(msg->msg_control,msg_control2,msg->msg_controllen);
-		}
-	}
-	_syscall_post(socketcall)
-}
-
-ssize_t recvfrom_(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {
+ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {
 	// Stuff gets recorded only if buf, etc. is not null
 	_syscall_pre((buf ? len : 0) + (src_addr ? *addrlen +  sizeof(socklen_t) : 0))
-	_copy_syscall_args(sockfd,buf,len,flags, src_addr, addrlen)
+	_copy_socketcall_args(sockfd,buf,len,flags, src_addr, addrlen)
 	void *buf2 = NULL;
 	if (buf) {
 		record_size_in_bytes += len;
@@ -580,10 +523,119 @@ ssize_t recvfrom_(int sockfd, void *buf, size_t len, int flags, struct sockaddr 
 	_syscall_post(socketcall)
 }
 
+/* FIXME: write does not work, this has to do with the fact that it runs before stuff gets initialized in the main thread (??) */
+ssize_t write_(int fd, const void *buf, size_t count) {
+	_syscall_pre(0)
+	_syscall3(write,fd,buf,count,ret)
+	_syscall_post(write)
+}
+
+ssize_t writev_(int fd, const struct iovec *iov, int iovcnt) {
+	_syscall_pre(0)
+	_syscall3(writev,fd,iov,iovcnt,ret)
+	_syscall_post(writev)
+}
+
+#define _socketcall_no_output(call,arg0,arg1,arg2,arg3,arg4,arg5) 	\
+	_syscall_pre(0)													\
+	_copy_socketcall_args(arg0,arg1,arg2,arg3,arg4,arg5)				\
+	_syscall2(socketcall,call,args,ret) 							\
+	_syscall_post(socketcall)
+
+
+/* TODO: these behave strangly, maybe libc does domething that we dont? */
+int socket_(int domain, int type, int protocol) {
+	_socketcall_no_output(SYS_SOCKET,domain,type,protocol,0, 0, 0)
+}
+
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+	_socketcall_no_output(SYS_BIND,sockfd,addr,addrlen,0, 0, 0)
+}
+
+int connect_(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+	_socketcall_no_output(SYS_CONNECT,sockfd,addr,addrlen,0, 0, 0)
+}
+
+int listen_(int sockfd, int backlog) {
+	_socketcall_no_output(SYS_LISTEN,sockfd,backlog,0,0, 0, 0)
+}
+
+ssize_t sendmsg_(int sockfd, const struct msghdr *msg, int flags) {
+	_socketcall_no_output(SYS_SENDMSG,sockfd,msg,flags,0, 0, 0)
+}
+
+ssize_t send_(int sockfd, const void *buf, size_t len, int flags) {
+	_socketcall_no_output(SYS_SEND,sockfd,buf, len, flags, 0, 0)
+}
+
+ssize_t sendto_(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen) {
+	_socketcall_no_output(SYS_SENDTO,sockfd,buf, len, flags, dest_addr, addrlen)
+}
+
+int setsockopt_(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
+	_socketcall_no_output(SYS_SETSOCKOPT,sockfd, level, optname, optval, optlen, 0)
+}
+
+int shutdown_(int socket, int how) {
+	_socketcall_no_output(SYS_SHUTDOWN,socket, how, 0, 0, 0, 0)
+}
+
+/* TODO: fix the complex logic here */
+ssize_t recvmsg_(int sockfd, struct msghdr *msg, int flags) {
+	// Stuff gets recorded only if msg is not null
+	_syscall_pre(msg ? (sizeof(struct msghdr)
+						/*+ (msg->msg_name ? msg->msg_namelen : 0)*/
+					    + (msg->msg_iov ? sizeof(struct iovec) + msg->msg_iovlen : 0)
+					    + (msg->msg_control ? msg->msg_controllen : 0) )
+					    : 0)
+	_copy_socketcall_args(sockfd,msg,flags, 0, 0, 0)
+	struct msghdr *msg2 = NULL;
+	void 		  *msg_name2 = NULL;
+	struct iovec  *msg_iov2;        // scatter/gather array
+	void		  *msg_iov_base2;
+    void          *msg_control2;    // ancillary data, see below
+	if (msg) {
+		record_size_in_bytes += sizeof(struct msghdr);
+		msg2 = ptr;
+		memcpy(msg2,msg,sizeof(struct msghdr));
+		ptr += sizeof(struct msghdr);
+		args[1] = (long)msg2;
+		if (msg->msg_iov) {
+			assert(msg->msg_iovlen == 1);
+			record_size_in_bytes += sizeof(struct iovec) + msg->msg_iovlen;
+			msg2->msg_iov = msg_iov2 = ptr;
+			memcpy(msg_iov2,msg->msg_iov,sizeof(struct iovec));
+			ptr += sizeof(struct iovec);
+			msg2->msg_iov->iov_base = msg_iov_base2 = ptr;
+			memcpy(msg_iov_base2,msg->msg_iov->iov_base,msg->msg_iov->iov_len);
+			ptr += msg->msg_iov->iov_len;
+		}
+		if (msg->msg_control) {
+			record_size_in_bytes += msg->msg_controllen;
+			msg2->msg_control = msg_control2 = ptr;
+			memcpy(msg_control2,msg->msg_control,msg->msg_controllen);
+			ptr += msg->msg_controllen;
+		}
+	}
+	_syscall2(socketcall,SYS_RECVMSG,args,ret)
+	if (msg) {
+		if (msg->msg_iov) {
+			msg->msg_iov->iov_len = msg_iov2->iov_len;
+			memcpy(msg->msg_iov->iov_base,msg_iov2->iov_base,msg->msg_iov->iov_len);
+		}
+		if (msg->msg_control) {
+			msg->msg_controllen = msg2->msg_controllen;
+			memcpy(msg->msg_control,msg_control2,msg->msg_controllen);
+		}
+		msg->msg_flags = msg2->msg_flags;
+	}
+	_syscall_post(socketcall)
+}
+
 /* TODO: not working */
 int socketpair_(int domain, int type, int protocol, int sv[2]) {
 	_syscall_pre(sizeof(sv))
-	_copy_syscall_args(domain,type,protocol,sv, 0, 0)
+	_copy_socketcall_args(domain,type,protocol,sv, 0, 0)
 	int * sv2;
 	sv2 = ptr;
 	ptr += sizeof(sv);
@@ -605,47 +657,6 @@ int socketcall_(int call, unsigned long *args){
 	}
 }
 
-
-int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
-	_syscall_pre((events && maxevents > 0) ? (maxevents * sizeof(struct epoll_event)) : 0)
-	void *events2 = NULL;
-	if (events && maxevents > 0) {
-		events2 = ptr;
-		ptr +=  (maxevents * sizeof(struct epoll_event));
-	}
-	_syscall4(epoll_wait,epfd,events2,maxevents,timeout,ret)
-	if (ret > 0) {
-		record_size_in_bytes += ret * sizeof(struct epoll_event);
-		memcpy(events,events2,ret * sizeof(struct epoll_event));
-	}
-	_syscall_post(epoll_wait)
-}
-
-
-int gettimeofday_(struct timeval *tp, struct timezone *tzp) {
-	_syscall_pre((tp ? sizeof(struct timeval) : 0) + (tzp ? sizeof(struct timezone) : 0))
-	// set it up so the syscall writes to the record cache
-	struct timeval *tp2 = NULL;
-	if (tp) {
-		record_size_in_bytes += sizeof(struct timeval);
-		tp2 = ptr;
-		ptr += sizeof(struct timeval);
-	}
-	struct timezone *tzp2 = NULL;
-	if (tzp) {
-		record_size_in_bytes += sizeof(struct timezone);
-		tzp2 = ptr;
-		ptr += sizeof(struct timezone);
-	}
-	_syscall2(gettimeofday,tp2,tzp2,ret)
-	// now in the replay we can simply copy the recorded buffer and allow the wrapper to copy it to the actual parameters
-	if (tp)
-		memcpy(tp, tp2, sizeof(struct timeval));
-	if (tzp)
-		memcpy(tzp, tzp2, sizeof(struct timezone));
-	_syscall_post(epoll_wait)
-}
-
 #define _stat(call,file,buf) 						\
 _syscall_pre( buf ? sizeof(struct stat) : 0 )		\
 struct stat * buf2; 								\
@@ -660,17 +671,17 @@ if (ret == 0) {										\
 }													\
 _syscall_post(call)
 
-int fstat_(int fd, struct stat *buf){
-	_stat(fstat,fd,buf);
+int fstat(int fd, struct stat *buf){
+	_stat(fstat64,fd,buf);
 }
 
-int lstat_(const char *path, struct stat *buf) {
-	_stat(lstat,path,buf);
+int lstat(const char *path, struct stat *buf) {
+	_stat(lstat64,path,buf);
 }
 
 /* FIXME: this causes SIGSEGV */
-int stat_(const char *path, struct stat *buf){
-	_stat(stat,path,buf);
+int stat(const char *path, struct stat *buf){
+	_stat(stat64,path,buf);
 }
 
 /* TODO: causes strange signal IOT */
@@ -696,7 +707,7 @@ ssize_t read_(int fd, void *buf, size_t count) {
 	_syscall_post(read)
 }
 
-/* TODO: causes a signal at the memcpy */
+/* TODO: hangs */
 int poll_(struct pollfd *fds, nfds_t nfds, int timeout) {
 	size_t size = nfds * sizeof(struct pollfd);
 	_syscall_pre(fds ? size : 0)

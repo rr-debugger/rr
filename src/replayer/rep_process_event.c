@@ -105,6 +105,9 @@ static void goto_next_syscall_emu(struct context *ctx)
 	}
 	ctx->replay_sig = 0; // TODO: obselete
 	ctx->child_sig = 0;
+
+	/* We are now at the entry point to a syscall, set the wrapper record buffer size to 0 (if needed)*/
+	rep_child_buffer0(ctx);
 }
 
 /**
@@ -165,6 +168,9 @@ void __ptrace_cont(struct context *ctx)
 	 */
 	ctx->replay_sig = 0;
 	ctx->child_sig = 0;
+
+	/* We are now at the entry point to a syscall, set the wrapper record buffer size to 0 (if needed)*/
+	rep_child_buffer0(ctx);
 }
 
 /**
@@ -365,11 +371,6 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	assert((state == STATE_SYSCALL_ENTRY) || (state == STATE_SYSCALL_EXIT));
 
 	if (state == STATE_SYSCALL_ENTRY) {
-		if (context->syscall_wrapper_cache_child) {
-			/* Replay the setting of buffer[0] to 0 */
-			int zero = 0;
-			write_child_data(context,sizeof(int),context->syscall_wrapper_cache_child,&zero);
-		}
 		debug("%d: entering syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->global_time, context->exec_state);
 
 	} else {

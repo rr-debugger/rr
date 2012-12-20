@@ -48,6 +48,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	//print_register_file_tid(ctx->child_tid);
 	//print_process_memory(ctx->child_tid);
 
+	/* Some wrapped syscalls still get a ptrace event, we mustn't handle them here */
+	if (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx))
+		return;
+
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {

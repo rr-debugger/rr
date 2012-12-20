@@ -707,7 +707,7 @@ void start_recording(struct flags rr_flags)
 				 * which in turn saves another such restart block,
 				 * old data is lost and restart becomes impossible)
 				 */
-				debug("Thread %d: restarting syscall %d (time = %d)",ctx->child_tid,ctx->last_syscall,get_gloabl_time());
+				debug("Thread %d: restarting syscall %d",ctx->child_tid,ctx->last_syscall);
 				/*
 				 * From errno.h:
 				 * These should never be seen by user programs.  To return

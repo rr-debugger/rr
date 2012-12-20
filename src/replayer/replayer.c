@@ -136,11 +136,8 @@ static void single_step(struct context* context)
  * starting the hpc only the at the previous event to the one that requires it, doesn't work,
  * since the previous event may be a wrapped syscall
  */
-static void replay_hpc_sched_event(struct context * ctx) {
-	if (!ctx)
-		return;
-	read_child_registers(ctx->child_tid,&ctx->child_regs);
-	if (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx))
+static void rep_reset_hpc(struct context * ctx) {
+	if (!ctx || ctx->trace.stop_reason == USR_FLUSH)
 		return;
 	reset_hpc(ctx,0);
 }
@@ -213,7 +210,7 @@ void replay(struct flags rr_flags)
 			rep_process_signal(ctx, validate);
 		}
 
-		replay_hpc_sched_event(ctx);
+		rep_reset_hpc(ctx);
 
 		// dump memory as user requested
 		if (ctx &&

@@ -147,12 +147,6 @@ void rep_process_signal(struct context *ctx, bool validate)
 
 	debug("%d: handling signal %d -- time: %d",tid,sig,trace->thread_time);
 
-	if (ctx->syscall_wrapper_cache_child) {
-		/* Replay the setting of buffer[0] to 0 */
-		int zero = 0;
-		write_child_data(ctx,sizeof(int),ctx->syscall_wrapper_cache_child,&zero);
-	}
-
 	switch (sig) {
 
 	/* set the eax and edx register to the recorded values */
@@ -164,7 +158,9 @@ void rep_process_signal(struct context *ctx, bool validate)
 		/* goto the event */
 		goto_next_event(ctx);
 
-		/* make sure we are there */
+		rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
+
+		/* ake sure we are there */
 		assert(WSTOPSIG(ctx->status) == SIGSEGV);
 
 		char* inst = get_inst(tid, 0, &size);
@@ -187,6 +183,7 @@ void rep_process_signal(struct context *ctx, bool validate)
 	case -SIG_SEGV_MMAP_WRITE:
 	{
 		ctx->child_sig = 0;
+		rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
 		break;
 	}
 
@@ -205,16 +202,23 @@ void rep_process_signal(struct context *ctx, bool validate)
 		 * subtract the overcount here */
  		// the seccomp syscalls do not reset the HPC
 		assert(ctx->hpc->rbc.fd);
-		ctx->trace.rbc -= read_rbc(ctx->hpc);
-		reset_hpc(ctx, trace->rbc - SKID_SIZE);
-		goto_next_event(ctx);
-		assert(read_rbc(ctx->hpc) >= trace->rbc - SKID_SIZE);
+		uint64_t rbc_now = read_rbc(ctx->hpc);
+		/* There's no need to set the rbc timer if we are already near the required rcb */
+		while (rbc_now < trace->rbc - SKID_SIZE) {
+			ctx->trace.rbc -= rbc_now;
+			reset_hpc(ctx, trace->rbc - SKID_SIZE);
+			goto_next_event(ctx);
+			rbc_now = read_rbc(ctx->hpc);
+			ctx->child_sig = 0;
+		}
+		assert(rbc_now >= trace->rbc - SKID_SIZE);
 		/* make sure that the signal came from hpc */
 		if (fcntl(ctx->hpc->rbc.fd, F_GETOWN) == ctx->child_tid) {
 			/* this signal should not be recognized by the application */
 			ctx->child_sig = 0;
 			//stop_rbc(ctx);
 			compensate_rbc_count(ctx, sig);
+			rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
 			if (sig == -SIG_SEGV_MMAP_READ &&
 				trace->state ==	STATE_PRE_MMAP_ACCESS) { // put in the recorded data
 				set_child_data(ctx);
@@ -298,8 +302,10 @@ void rep_process_signal(struct context *ctx, bool validate)
 			//singlestep(ctx, SIGSEGV, 0x57f);
 		}
 
-		// we are now at the exact point in the child where the signal was recorded,
-		// emulate it using the next trace line (records the state at sighandler entry)
+		/* We are now at the exact point in the child where the signal was recorded
+		 * emulate it using the next trace line (records the state at sighandler entry)
+		 */
+		rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
 		ctx = rep_sched_get_thread();
 		write_child_main_registers(ctx->child_tid,&trace->recorded_regs);
 		set_child_data(ctx);

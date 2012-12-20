@@ -70,6 +70,7 @@ void rep_init_trace_files(void);
 void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr);
 pid_t get_recorded_main_thread();
 void rep_setup_trace_dir(const char* path);
+void rep_child_buffer0(struct context * ctx);
 
 /*         function declaration for instruction dump                  */
 void read_open_inst_dump(struct context* context);

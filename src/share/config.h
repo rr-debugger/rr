@@ -8,7 +8,7 @@
 #define MAX_RECORD_INTERVAL		((uint64_t)1000000)
 
 #define MAX_TRACE_ENTRY_SIZE	8000001
-#define MAX_SWITCH_COUNTER 		10000
+#define MAX_SWITCH_COUNTER 		10000 /* TODO: The amount of events decreases when the filter is on */
 /*
  * This is the default value for waiting for a write
  * system call to return. The value was determined by

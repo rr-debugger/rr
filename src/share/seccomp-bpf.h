@@ -116,19 +116,18 @@ struct seccomp_data {
 	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL)
 
 
-//#define regoffset(_reg) (offsetof(struct user_regs_struct, _reg))
 /**
  * logic is:
- * if !futex goto trace;
+ * if !futex goto continue;
  * grab the operation for ecx (arg number 1)
  * apply operation mask
  * if (op is blocking) goto trace;
- * goto continue;
+ * allow;
  * trace;
+ * continue filtering;
  */
 #define ALLOW_FUTEX \
 	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_futex, 0, 8), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW), \
 	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, args(1)), \
 	BPF_STMT(BPF_ALU+BPF_AND+BPF_K, FUTEX_CMD_MASK), \
 	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, FUTEX_WAIT, 4, 0), \
@@ -140,11 +139,12 @@ struct seccomp_data {
 
 /**
  * logic is:
- * if !socketcall goto trace;
+ * if !socketcall goto continue;
  * grab the operation from arg0
  * if (op is blocking) goto trace;
- * goto continue;
+ * allow;
  * trace;
+ * continue filtering
  */
 #define ALLOW_SOCKETCALL \
 	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_socketcall, 0, 5), \
