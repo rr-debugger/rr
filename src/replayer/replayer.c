@@ -157,7 +157,9 @@ void replay(struct flags rr_flags)
 
 		// for checksuming: make a note that this area is scratch and need not be validated.
 		if (ctx->trace.stop_reason == USR_INIT_SCRATCH_MEM) {
-			add_scratch(ctx->trace.recorded_regs.eax);
+			struct mmapped_file file;
+			read_next_mmapped_file_stats(&file);
+			add_scratch(ctx->trace.recorded_regs.eax, file.end - file.start);
 		} else if (ctx->trace.stop_reason == USR_EXIT) {
 			rep_sched_deregister_thread(&ctx);
 			/* stop reason is a system call - can be done with ptrace */

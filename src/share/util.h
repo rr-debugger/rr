@@ -26,7 +26,8 @@ int compare_register_files(char* name1, struct user_regs_struct* reg1, char* nam
 uint64_t str2ull(const char* start, size_t max_size);
 long int str2li(const char* start, size_t max_size);
 void read_line(FILE* file, char* buf, int size, char* name);
-void add_scratch(void *scratch_ptr);
+void add_scratch(void *ptr, int size);
+int overall_scratch_size();
 void add_protected_map(struct context *ctx, void *start);
 bool is_protected_map(struct context *ctx, void *start);
 void add_sig_handler(pid_t tid, unsigned int signum, struct sigaction * sa);
@@ -38,6 +39,7 @@ void checksum_process_memory(struct context * ctx);
 void validate_process_memory(struct context * ctx);
 void * get_mmaped_region_end(struct context * ctx, void * mmap_start);
 char * get_mmaped_region_filename(struct context * ctx, void * mmap_start);
+int get_memory_size(struct context * ctx);
 char * syscall_to_str(int syscall);
 
 int signal_pending(int status);

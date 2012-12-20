@@ -89,6 +89,13 @@ static void rec_init_scratch_memory(struct context *ctx)
 	int eax = orig_regs.eax;
 	orig_regs.eax = ctx->scratch_ptr;
 	write_child_registers(ctx->child_tid,&orig_regs);
+	struct mmapped_file file = {0};
+	file.time = get_global_time();
+	file.tid = ctx->child_tid;
+	file.start = ctx->scratch_ptr;
+	file.end = ctx->scratch_ptr + scratch_size;
+	sprintf(file.filename,"scratch for thread %d",ctx->child_tid);
+	record_mmapped_file_stats(&file);
 	int event = ctx->event;
 	ctx->event = USR_INIT_SCRATCH_MEM;
 	record_event(ctx,STATE_SYSCALL_EXIT);

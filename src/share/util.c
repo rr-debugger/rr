@@ -23,6 +23,7 @@
 
 static void* scratch_table[NUM_MAX_THREADS] = {NULL} ;
 static size_t scratch_table_size = 0;
+static size_t scratch_overall_size = 0;
 
 static struct sigaction * sig_handler_table[NUM_MAX_THREADS][_NSIG] = { NULL };
 
@@ -743,6 +744,28 @@ void print_process_memory(struct context * ctx, char * filename)
 
 #define CHUNK_SIZE 		(8 * PAGE_SIZE)
 
+int get_memory_size(struct context * ctx) {
+	pid_t tid = ctx->child_tid;
+	int result = 0;
+
+	// open the maps file
+	FILE *maps_file = open_mmap(tid);
+
+	// for each line in the maps file:
+	char line[1024];
+	void *start, *end;
+	char flags[32], binary[128];
+	unsigned int dev_minor, dev_major;
+	unsigned long long file_offset, inode;
+	while ( fgets(line,1024,maps_file) != NULL ) {
+		sscanf(line,"%x-%x %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, binary);
+		int size = (end - start);
+		result += size;
+	}
+	sys_fclose(maps_file);
+	return result;
+}
+
 /**
  * checksums all regions of memory
  */
@@ -1088,8 +1111,13 @@ int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * c
 	return result;
 }
 
-void add_scratch(void *ptr) {
+void add_scratch(void *ptr, int size) {
 	scratch_table[scratch_table_size++] = ptr;
+	scratch_overall_size += size;
+}
+
+int overall_scratch_size() {
+	return scratch_overall_size;
 }
 
 void add_sig_handler(pid_t tid, unsigned int signum, struct sigaction * sa){
