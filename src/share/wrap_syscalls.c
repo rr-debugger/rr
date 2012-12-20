@@ -269,6 +269,36 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp) {
 	_syscall_post(clock_gettime)
 }
 
+int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3) {
+	_syscall_pre(sizeof(int))
+	// make room for (uaddr,*uaddr)
+	ptr = &new_record[5];
+	record_size_in_bytes += 2 * sizeof(int);
+	int * uaddr2_tmp = NULL;
+	switch (op & FUTEX_CMD_MASK) {
+		case FUTEX_CMP_REQUEUE:
+		case FUTEX_WAKE_OP:
+		case FUTEX_CMP_REQUEUE_PI:
+			if (uaddr2) {
+				record_size_in_bytes += sizeof(int);
+				uaddr2_tmp = ptr;
+				*uaddr2_tmp = *uaddr2;
+				ptr += sizeof(int);
+			}
+			break;
+
+		default:
+			break;
+	}
+	_syscall6(futex,uaddr,op,val,timeout,uaddr2_tmp,val3,ret)
+	// record (uaddr,*uaddr)
+	new_record[3] = (int)uaddr;
+	new_record[4] = *uaddr;
+	if (uaddr2)
+		*uaddr2 = *uaddr2_tmp;
+	_syscall_post(futex)
+}
+
 int gettimeofday_(struct timeval *tp, struct timezone *tzp) {
 	_syscall_pre(sizeof(struct timeval) + sizeof(struct timezone))
 	// set it up so the syscall writes to the record cache
@@ -307,36 +337,6 @@ int epoll_wait_(int epfd, struct epoll_event *events, int maxevents, int timeout
 		memcpy(events,events2,ret * sizeof(struct epoll_event));
 	}
 	_syscall_post(epoll_wait)
-}
-
-int futex_(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3) {
-	_syscall_pre(sizeof(int))
-	// make room for (uaddr,*uaddr)
-	ptr = &new_record[5];
-	record_size_in_bytes += 2 * sizeof(int);
-	int * uaddr2_tmp = NULL;
-	switch (op & FUTEX_CMD_MASK) {
-		case FUTEX_CMP_REQUEUE:
-		case FUTEX_WAKE_OP:
-		case FUTEX_CMP_REQUEUE_PI:
-			if (uaddr2) {
-				record_size_in_bytes += sizeof(int);
-				uaddr2_tmp = ptr;
-				*uaddr2_tmp = *uaddr2;
-				ptr += sizeof(int);
-			}
-			break;
-
-		default:
-			break;
-	}
-	_syscall6(futex,uaddr,op,val,timeout,uaddr2_tmp,val3,ret)
-	// record (uaddr,*uaddr)
-	new_record[3] = (int)uaddr;
-	new_record[4] = *uaddr;
-	if (uaddr2)
-		*uaddr2 = *uaddr2_tmp;
-	_syscall_post(futex)
 }
 
 
