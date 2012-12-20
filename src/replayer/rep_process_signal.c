@@ -147,6 +147,12 @@ void rep_process_signal(struct context *ctx, bool validate)
 
 	debug("%d: handling signal %d -- time: %d",tid,sig,trace->thread_time);
 
+	if (ctx->syscall_wrapper_cache_child) {
+		/* Replay the setting of buffer[0] to 0 */
+		int zero = 0;
+		write_child_data(ctx,sizeof(int),ctx->syscall_wrapper_cache_child,&zero);
+	}
+
 	switch (sig) {
 
 	/* set the eax and edx register to the recorded values */

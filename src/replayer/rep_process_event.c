@@ -349,23 +349,6 @@ void rep_process_flush(struct context* ctx) {
 	}
 	sys_free(&buffer0);
 
-
-	// If the wrapper invoked the flush, we musnt touch buffer[0], as it will interfere
-	// with the logic that invoked the flush
-	struct trace next;
-	peek_next_trace(&next);
-	if (!(next.stop_reason == WRAP_SYSCALLS_FLUSH_EVENT &&
-		WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(next.recorded_regs.eip,ctx))) {
-		// Otherwise, it was flushed by an event, buffer[0] = -record_size
-		// to compenstae for the buffer[0] += record_size that happens after the syscall.
-		// TODO: map syscall_wrapper_cache as shared and do writing faster
-		//ctx->syscall_wrapper_cache[0] = -record_size;
-		record_size = -record_size;
-		debug("Setting buffer %p size to %d",ctx->syscall_wrapper_cache_child,record_size);
-		write_child_data(ctx,sizeof(int),ctx->syscall_wrapper_cache_child,&record_size);
-	}
-
-
 }
 
 /*
@@ -382,8 +365,13 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	assert((state == STATE_SYSCALL_ENTRY) || (state == STATE_SYSCALL_EXIT));
 
 	if (state == STATE_SYSCALL_ENTRY) {
+		if (context->syscall_wrapper_cache_child) {
+			/* Replay the setting of buffer[0] to 0 */
+			int zero = 0;
+			write_child_data(context,sizeof(int),context->syscall_wrapper_cache_child,&zero);
+		}
 		debug("%d: entering syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->global_time, context->exec_state);
-		//do_debug(print_register_file_tid(context->child_tid));
+
 	} else {
 		debug("%d: exiting syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, trace->global_time, context->exec_state);
 	}
