@@ -34,6 +34,7 @@
 #include "../share/sys.h"
 #include "../share/trace.h"
 #include "../share/util.h"
+#include "../share/wrap_syscalls.h"
 
 
 void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags)
@@ -1857,8 +1858,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 */
 		if (!(flags & MAP_ANONYMOUS)) {
 			assert((flags & MAP_GROWSDOWN) == 0);
-			// from mm/mman.h
-			record_child_data(ctx, syscall, PAGE_ALIGN(regs.ecx), mmap_addr);
 
 			struct mmapped_file file;
 			file.time = get_global_time();
@@ -1871,14 +1870,40 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			file.end = get_mmaped_region_end(ctx,mmap_addr);
 			record_mmapped_file_stats(&file);
 
+			int prot = regs.edx;
+			if (strstr(file.filename, WRAP_SYSCALLS_LIB_FILENAME) != NULL && // found the library
+				(prot & PROT_EXEC) ) { // notice: the library get loaded several times, we need the (hopefully one) copy that is executable
+				ctx->syscall_wrapper_start = file.start;
+				ctx->syscall_wrapper_end = file.end;
+			}
+
 			if (flags & MAP_SHARED) {
-				if (strcmp("/home/user/.cache/dconf/user", file.filename) == 0) { // dconf
+				if (strcmp("/home/user/.cache/dconf/user", file.filename) == 0) { // dconf // TODO: hardcoded names are bad :)
 					// protect the page
 					mprotect_child_region(ctx, regs.eax, PROT_NONE);  // we would prefer to set write-only permissions, but write implies read on i386
 					// note that this region is protected for handling the SIGSEGV
 					add_protected_map(ctx,regs.eax);
+				} else if (strstr(file.filename,WRAP_SYSCALLS_CACHE_FILENAME_PREFIX) != NULL) { // record cache
+					ctx->syscall_wrapper_cache_child = file.start;
+					// mmap as shared in rr as well
+					errno = 0;
+					int fd = open(file.filename, O_CREAT | O_RDWR, 0666); // beware of O_TRUNC!
+					assert(fd > 0 && errno == 0);
+					// no need to truncate, the child already did it.
+					int retval;
+					ctx->syscall_wrapper_cache = mmap(NULL, WRAP_SYSCALLS_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
+					assert (ctx->syscall_wrapper_cache != NULL && errno == 0);
+					ctx->syscall_wrapper_cache[0] = 0; // in case it is read before the child has a chance to set it
+					retval = close(fd);
+					assert(retval == 0 && errno == 0);
+					// the file is empty, don't read from it
+					record_child_data(ctx, syscall, 0, mmap_addr);
+					break;
 				}
 			}
+
+			// PAGE_ALIGN needed (from mm/mman.h)
+			record_child_data(ctx, syscall, PAGE_ALIGN(regs.ecx), mmap_addr);
 
 		}
 		break;

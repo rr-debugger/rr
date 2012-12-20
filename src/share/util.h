@@ -14,6 +14,12 @@
 #define GET_PTRACE_EVENT(status)	 	((0xFF0000 & status) >> 16)
 #define FAILED_SYSCALL(eax) 			(-ERANGE <= (int)(eax) && (int)(eax) < 0)
 
+#ifndef PTRACE_EVENT_SECCOMP
+#define PTRACE_O_TRACESECCOMP			0x00000080
+// TODO: find the kernel version and define accordingly
+#define PTRACE_EVENT_SECCOMP			8 // ubuntu 12.04
+//#define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10
+#endif
 
 char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
 bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);

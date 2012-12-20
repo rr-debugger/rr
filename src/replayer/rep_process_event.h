@@ -5,8 +5,8 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 
+void rep_process_flush(struct context* ctx);
 void rep_process_syscall(struct context* context, int syscall , struct flags rr_flags);
-//void finish_execve(struct context * context);
 
 /*
  * The 'num' parameter in these macros usually corresponds to the

@@ -17,6 +17,7 @@
 #include "trace.h"
 #include "sys.h"
 #include "util.h"
+#include "wrap_syscalls.h"
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
@@ -306,12 +307,30 @@ static void record_inst_register_file(struct context *ctx)
 	fprintf(ctx->inst_dump, "%11lu", regs.eflags);
 	fprintf(ctx->inst_dump, "\n");
 }
+/**
+ * collects records from the recorded syscall cache and records them to file.
+ *
+ * the trace file entries are only partial as we ignore most of the data there.
+ *
+ */
+void rec_collect_syscalls(struct context *ctx) {
+	// to be fast, just write it all to disk and figure it our in the replay
+	record_parent_data(ctx,USR_FLUSH,
+					   ctx->syscall_wrapper_cache[0] + sizeof(int), // record buffer[0] for sanity checking
+					   ctx->syscall_wrapper_cache_child,
+					   ctx->syscall_wrapper_cache);
+	fprintf(trace_file, "%11d%11u%11d%11d\n", get_global_time_incr(), get_time_incr(ctx->child_tid), ctx->child_tid, USR_FLUSH);
+	ctx->syscall_wrapper_cache[0] = 0;
+}
 
 /**
  * Makes an entry into the event trace file
  */
 void record_event(struct context *ctx, int state)
 {
+	// before anything is performed, check if the seccomp record cache has any entries
+	if (ctx->syscall_wrapper_cache && ctx->syscall_wrapper_cache[0] > 0)
+		rec_collect_syscalls(ctx);
 
 	if (((global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (global_time > 0)) {
 		use_new_trace_file();
@@ -433,6 +452,13 @@ static read_buffer[SMALL_READ_SIZE];
 
 void record_child_data(struct context *ctx, int syscall, size_t size, long int child_ptr)
 {
+	/* We shouldn't be recording a scratch address */
+	assert(child_ptr != ctx->scratch_ptr);
+
+	// before anything is performed, check if the seccomp record cache has any entries
+	if (ctx && ctx->syscall_wrapper_cache && ctx->syscall_wrapper_cache[0] > 0)
+		rec_collect_syscalls(ctx);
+
 	size_t read_bytes;
 
 	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
@@ -473,6 +499,9 @@ void record_child_data(struct context *ctx, int syscall, size_t size, long int c
 
 void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf)
 {
+	/* We shouldn't be recording a scratch address */
+	assert(addr != ctx->scratch_ptr);
+
 	write_raw_data(ctx, buf, len);
 	print_header(syscall, addr);
 	assert(len >= 0);
@@ -483,8 +512,8 @@ void record_mmapped_file_stats(struct mmapped_file *file)
 {
 	fprintf(mmaps_file, "%11lu", file->time);
 	fprintf(mmaps_file, "%11lu", file->tid);
-	fprintf(mmaps_file, "%11p", file->start);
-	fprintf(mmaps_file, "%11p", file->end);
+	fprintf(mmaps_file, "%11x", file->start);
+	fprintf(mmaps_file, "%11x", file->end);
 	fprintf(mmaps_file, "%11lu", file->stat.st_blksize);
 	fprintf(mmaps_file, "%11lu", file->stat.st_blocks);
 	fprintf(mmaps_file, "%11lu", file->stat.st_ctim.tv_sec);
@@ -836,22 +865,19 @@ void read_next_trace(struct trace *trace)
 	trace->state = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 
-	/* no reason to read doto we do not need anymore */
-	//if (trace->stop_reason != 0) {
+	// TODO: perf counters are only needed for signals
+	/* read hardware performance counters */
+	trace->hw_interrupts = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
+	tmp_ptr += UUL_COLUMN_SIZE;
+	trace->page_faults = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
+	tmp_ptr += UUL_COLUMN_SIZE;
+	trace->rbc = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
+	tmp_ptr += UUL_COLUMN_SIZE;
+	trace->insts = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
+	tmp_ptr += UUL_COLUMN_SIZE;
 
-		/* read hardware performance counters */
-		trace->hw_interrupts = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-		tmp_ptr += UUL_COLUMN_SIZE;
-		trace->page_faults = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-		tmp_ptr += UUL_COLUMN_SIZE;
-		trace->rbc = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-		tmp_ptr += UUL_COLUMN_SIZE;
-		trace->insts = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-		tmp_ptr += UUL_COLUMN_SIZE;
-
-		//read register file
-		parse_register_file(&(trace->recorded_regs), tmp_ptr);
-	//}
+	//read register file
+	parse_register_file(&(trace->recorded_regs), tmp_ptr);
 }
 
 void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)

@@ -37,6 +37,7 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 #include "../share/shmem.h"
+#include "../share/wrap_syscalls.h"
 
 bool validate = FALSE;
 
@@ -300,6 +301,71 @@ static void handle_socket(struct context *ctx, struct trace* trace)
 		validate_args(ctx);
 		finish_syscall_emu(ctx);
 	}
+}
+
+void rep_process_flush(struct context* ctx) {
+	// read the flushed buffer
+	size_t buffer_size;
+	int *rec_addr;
+	int * buffer0 = read_raw_data(&(ctx->trace), &buffer_size, &rec_addr);
+	int * buffer = buffer0;
+	assert(rec_addr == ctx->syscall_wrapper_cache_child);
+	// the recorded size should be the buffer size minus the first cell
+	assert(buffer[0] == buffer_size - sizeof(int));
+	buffer++;
+	int offset = sizeof(int);
+	int record_size;
+	// for each record
+	while (buffer_size > offset) {
+		int syscall = buffer[0];
+		record_size = buffer[1];
+		int ret = buffer[2];
+		// Allow the child to run up to the recorded syscall
+		sys_ptrace_sysemu_sig(ctx->child_tid, 0);
+		sys_waitpid(ctx->child_tid, &(ctx->status));
+		if (signal_pending(ctx->status))
+			log_err("Signal recieved while pushing wrapped syscall content");
+		if (syscall == SYS_futex) // replay *uaddr for futex
+			write_child_data(ctx,sizeof(int),buffer[3],buffer[4]);
+		int * size_ptr = read_child_data(ctx,sizeof(int),ctx->syscall_wrapper_cache_child);
+		assert(*size_ptr == offset - sizeof(int));
+		sys_free(&size_ptr);
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid,&regs);
+		//assert(regs.orig_eax == syscall);
+		// Just push in the portion of the buffer needed, the wrapper code
+		// will copy all that is needed to the child buffers! :)
+		// TODO: map syscall_wrapper_cache as shared and do writing faster
+		//memcpy(ctx->syscall_wrapper_cache + offset, buffer, record_size);
+		debug("Pushing cache buffer: %d bytes at %p",record_size,(void*)ctx->syscall_wrapper_cache_child + offset);
+		write_child_data(ctx,record_size,(void*)ctx->syscall_wrapper_cache_child + offset,buffer);
+		// Set return value
+		write_child_eax(ctx->child_tid,ret);
+		// Make buffer and offset point to the next syscall record
+		buffer = (void*)buffer + record_size;
+		offset += record_size;
+		// Finish the emulation
+		finish_syscall_emu(ctx);
+	}
+	sys_free(&buffer0);
+
+
+	// If the wrapper invoked the flush, we musnt touch buffer[0], as it will interfere
+	// with the logic that invoked the flush
+	struct trace next;
+	peek_next_trace(&next);
+	if (!(next.stop_reason == WRAP_SYSCALLS_FLUSH_EVENT &&
+		WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(next.recorded_regs.eip,ctx))) {
+		// Otherwise, it was flushed by an event, buffer[0] = -record_size
+		// to compenstae for the buffer[0] += record_size that happens after the syscall.
+		// TODO: map syscall_wrapper_cache as shared and do writing faster
+		//ctx->syscall_wrapper_cache[0] = -record_size;
+		record_size = -record_size;
+		debug("Setting buffer %p size to %d",ctx->syscall_wrapper_cache_child,record_size);
+		write_child_data(ctx,sizeof(int),ctx->syscall_wrapper_cache_child,&record_size);
+	}
+
+
 }
 
 /*
@@ -805,13 +871,22 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 					struct user_regs_struct orig_regs;
 					memcpy(&orig_regs, &regs, sizeof(struct user_regs_struct));
 
+					int prot = regs.edx;
+					if (strstr(file.filename, WRAP_SYSCALLS_LIB_FILENAME) != NULL && /* Found the library */
+						(prot & PROT_EXEC) ) { /* Note: the library get loaded several times, we need the (hopefully one) copy that is executable */
+						context->syscall_wrapper_start = file.start;
+						context->syscall_wrapper_end = file.end;
+					}
+
 					/* hint the kernel where to allocate the page */
 					regs.ebx = context->trace.recorded_regs.eax;
 
-					// for shared mmaps: verify modification time
+					/* For shared mmaps: verify modification time */
 					if (regs.esi & MAP_SHARED) {
-						if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && // not dconf   (proxied)
-								strstr(file.filename, "sqlite") == NULL ) {						 // not sqlite  (private)
+						if (strstr(file.filename, WRAP_SYSCALLS_CACHE_FILENAME_PREFIX) != NULL) {   // record cache)
+							context->syscall_wrapper_cache_child = regs.ebx;
+						} else if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && 	// not dconf   (proxied)
+							strstr(file.filename, "sqlite") == NULL) {				  				// not sqlite  (private)
 							struct stat st;
 							stat(file.filename, &st);
 							if (file.stat.st_mtim.tv_sec != st.st_mtim.tv_sec || file.stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec) {

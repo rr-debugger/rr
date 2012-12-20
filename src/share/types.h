@@ -62,6 +62,11 @@ struct context {
 
 	int recorded_scratch_size;
 
+	void * syscall_wrapper_start;
+	void * syscall_wrapper_end;
+	int * syscall_wrapper_cache;
+	int * syscall_wrapper_cache_child; // address of the cache buffer in the child
+
 	/* shared */
 	struct user_regs_struct child_regs;
 	FILE *inst_dump;
@@ -106,6 +111,7 @@ struct mmapped_file {
 struct flags {
 	int option;
 	bool redirect;
+	char *filter_lib_path;
 	int dump_on;	// event
 	int dump_at;	// global time
 	int checksum;

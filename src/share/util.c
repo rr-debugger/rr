@@ -1097,6 +1097,13 @@ int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * c
 	sys_ptrace_syscall(tid);
 	sys_waitpid(tid, &ctx->status);
 
+	if (GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP) {
+		sys_ptrace_syscall(tid);
+		sys_waitpid(tid, &ctx->status);
+	}
+
+	assert(GET_PTRACE_EVENT(ctx->status) == 0);
+
 	sys_ptrace_syscall(tid);
 	sys_waitpid(tid, &ctx->status);
 

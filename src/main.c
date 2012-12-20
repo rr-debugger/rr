@@ -73,6 +73,9 @@ static void copy_envp(char** envp)
 		strncpy(__envp[i], envp[i], arglen + 1);
 		i++;
 	}
+	// LD_PRELOAD the syscall interception lib
+	if (__rr_flags.filter_lib_path)
+		sprintf(__envp[i++],"LD_PRELOAD=%s",__rr_flags.filter_lib_path);
 	__envp[i] = 0;
 }
 
@@ -100,7 +103,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--filter_lib=<path>] [--redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -271,6 +274,13 @@ int main(int argc, char* argv[], char** envp)
 		flag_index++;
 	}
 
+	// optional seccomp filter flag
+	if  (flag_index < argc && strncmp("--filter_lib=", argv[flag_index], sizeof("--filter_lib=") - 1) == 0) {
+		__rr_flags.filter_lib_path = sys_malloc(strlen(argv[flag_index]) - sizeof("--filter_lib=") + 1);
+		sscanf(argv[flag_index],"--filter_lib=%s",__rr_flags.filter_lib_path);
+		flag_index++;
+	}
+
 	// optional dump memory on syscall flag
 	if  (flag_index < argc && strncmp("--dump_on=", argv[flag_index], sizeof("--dump_on=") - 1) == 0) {
 		sscanf(argv[flag_index],"--dump_on=%d",&__rr_flags.dump_on);
@@ -306,6 +316,9 @@ int main(int argc, char* argv[], char** envp)
 	alloc_executable();
 
 	start(argc - flag_index , argv + flag_index, envp);
+
+	if (__rr_flags.filter_lib_path)
+		sys_free(&__rr_flags.filter_lib_path);
 
 	return 0;
 

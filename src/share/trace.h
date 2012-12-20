@@ -19,6 +19,7 @@
 #define USR_SCHED				-130
 #define USR_NEW_RAWDATA_FILE	-131
 #define USR_INIT_SCRATCH_MEM	-132
+#define USR_FLUSH				-133
 
 // Notice: these are defined in errno.h if _kernel_ is defined.
 #define ERESTARTNOINTR 			-513

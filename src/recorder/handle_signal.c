@@ -16,6 +16,7 @@
 #include "../share/trace.h"
 #include "../share/sys.h"
 #include "../share/hpc.h"
+#include "../share/wrap_syscalls.h"
 
 static __inline__ unsigned long long rdtsc(void)
 {
@@ -114,7 +115,7 @@ static int handle_mmap_sigsegv(struct context *ctx)
 static void record_signal(int sig, struct context* ctx)
 {
 	record_event(ctx, STATE_SYSCALL_ENTRY);
-	reset_hpc(ctx, MAX_RECORD_INTERVAL);
+	reset_hpc(ctx, MAX_RECORD_INTERVAL); // TODO: the hpc gets reset in record event.
 	assert(read_insts(ctx->hpc) == 0);
 	// enter the sig handler
 	sys_ptrace_singlestep(ctx->child_tid, sig);
@@ -161,6 +162,15 @@ void handle_signal(struct context* ctx)
 	}
 
 	debug("handling signal %d", sig);
+
+	/* Received a signal in the critical section of recording a wrapped syscall */
+	while (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx)) {
+		/* Delay delivery of the signal until we are out of it */
+		log_info("Got signal %d while in lib, singelestepping, eip = %p",sig,ctx->child_regs.eip);
+		sys_ptrace_singlestep(ctx->child_tid,0);
+		sys_waitpid(ctx->child_tid, &ctx->status);
+		read_child_registers(ctx->child_tid, &(ctx->child_regs));
+	}
 
 	switch (sig) {
 

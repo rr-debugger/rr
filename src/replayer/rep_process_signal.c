@@ -197,8 +197,12 @@ void rep_process_signal(struct context *ctx, bool validate)
 
 		/* if the current architecture over-counts the event in question,
 		 * subtract the overcount here */
+ 		// the seccomp syscalls do not reset the HPC
+		assert(ctx->hpc->rbc.fd);
+		ctx->trace.rbc -= read_rbc(ctx->hpc);
 		reset_hpc(ctx, trace->rbc - SKID_SIZE);
 		goto_next_event(ctx);
+		assert(read_rbc(ctx->hpc) >= trace->rbc - SKID_SIZE);
 		/* make sure that the signal came from hpc */
 		if (fcntl(ctx->hpc->rbc.fd, F_GETOWN) == ctx->child_tid) {
 			/* this signal should not be recognized by the application */
@@ -232,6 +236,9 @@ void rep_process_signal(struct context *ctx, bool validate)
 			ctx->replay_sig = sig;
 		} else {
 			// setup and start replay counters
+			// the seccomp syscalls do not reset the HPC
+			assert(ctx->hpc->rbc.fd);
+			ctx->trace.rbc -= read_rbc(ctx->hpc);
 			reset_hpc(ctx, trace->rbc - SKID_SIZE);
 
 			// single-step if the number of instructions to the next event is "small"

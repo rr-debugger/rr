@@ -4,11 +4,16 @@ Installation guide for rr
 
 A) Hardware/Software requirements
 ---------------------------------
-
-The current version of rr requires a Linux kernel version 2.6.39 and larger.
+rr has two mode of operation: 
+(1) Plain Mode: 
+Requires a Linux kernel version 2.6.39 and higher.
 To enable PEBS support for the hardware performance counters (HPC) a kernel
-version >= 3.0 is required. Furthermore, rr does not support x86_64. rr was
-developed under Ubuntu 11.04.
+version >= 3.0 is required. Was developed under Ubuntu 11.04 & Ubuntu 12.04.
+(2) Filter Mode (--filter_lib):
+Requires kernel version 3.5 to support the seccomp-bpf filter, or Ubuntu 12.04 as 
+it was backported to its 3.2. Developed and tested under Ubuntu 12.04.
+
+Currently rr does not support x86_64.
 
 rr requires two additional libraries:
 
@@ -42,6 +47,12 @@ sysctl -w kernel.yama.ptrace_scope=0
 Typing rr --record /path/to/binary invokes the recorder. The recorder
 creates a path in the current directory which contains the trace file(s).
 To replay the application, type rr --replay /path/to/trace.  
+
+Other command line options:
+[--filter_lib=<path>] : Only for Ubuntu 12.04, this installs a wrapper for several system 
+calls (look at share/wrap_syscalls.c) to speed up their handling and save on the ptrace()
+context switch. The wrapper is compiled as a shared object called 'libwrap_syscalls.so' (as
+part of rr compilation process) and can be found in the rr executable directory.
 
 Debug command line options:
 [--dump_on=<syscall|-signal>] : dump the entire memory to file every time the system call 

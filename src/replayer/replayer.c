@@ -32,6 +32,7 @@
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/util.h"
+#include "../share/wrap_syscalls.h"
 
 #include <perfmon/pfmlib_perf_event.h>
 
@@ -127,6 +128,23 @@ static void single_step(struct context* context)
 	}
 }
 
+
+/**
+ * Every time a non-wrapped event happens, the hpc is reset. when an event that requires hpc occures,
+ * we read the hpc at that point and reset the hpc interval to the required rbc minus the current hpc.
+ * all this happens since the wrapped event do not reset the hpc, therefore the previous techniques of
+ * starting the hpc only the at the previous event to the one that requires it, doesn't work,
+ * since the previous event may be a wrapped syscall
+ */
+static void replay_hpc_sched_event(struct context * ctx) {
+	if (!ctx)
+		return;
+	read_child_registers(ctx->child_tid,&ctx->child_regs);
+	if (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx))
+		return;
+	reset_hpc(ctx,0);
+}
+
 static void check_initial_register_file()
 {
 	struct context *context = rep_sched_get_thread();
@@ -183,15 +201,19 @@ void replay(struct flags rr_flags)
 			rep_process_syscall(ctx, ctx->trace.stop_reason, rr_flags);
 
 		} else if (ctx->trace.stop_reason == SYS_restart_syscall) {
-			/* the SYS_restared will be replayed by the next entry which is an
+			/* the restarted syscall will be replayed by the next entry which is an
 			 * exit entry for the original syscall being restarted - do nothing here.
 			 */
 			continue;
 			/* stop reason is a signal - use HPC */
+		} else if (ctx->trace.stop_reason == USR_FLUSH) {
+			rep_process_flush(ctx);
 		} else {
 			//debug("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
 			rep_process_signal(ctx, validate);
 		}
+
+		replay_hpc_sched_event(ctx);
 
 		// dump memory as user requested
 		if (ctx &&
