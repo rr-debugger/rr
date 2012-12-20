@@ -2,12 +2,12 @@
  * The wrapper for the system calls, which allows interception and recording of system calls that are invoked using the libc wrapper.
  * The filter in install_syscall_filter() will ptrace all syscalls that do no originate from this wrapper, so that rr will handle them.
  *
- * Note: This file must be excluded from the rr build, otherwise it will intercept rr's syscalls!
+ * Note 1: All the internal code of the wrapper uses syscall(...) to perform system calls instead of calling the libc code, to avoid recoursion.
+ * Note 2: This file must be excluded from the rr build, otherwise it will intercept rr's syscalls!
  *
  * TODO: (0) all the wrappers postfixed by "_" haven't been fully tested yet
  * TODO: (1) make the wrappers adhere better to libc (errno, etc)
- * TODO: (2) if any of the syscalls used in init(), flush_buffer(), etc are wrapped, make sure to inline them otherwise we will recourse.
- * TODO: (3) we do a lot of memcpy, using user supplied parameter as length, but the parameter may contain garbage...
+ * TODO: (2) we do a lot of memcpy, using user supplied parameter as length, but the parameter may contain garbage...
  */
 #define _GNU_SOURCE 1
 #include <assert.h>
@@ -23,6 +23,7 @@
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <sys/epoll.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -57,34 +58,41 @@ static void flush_buffer(void){
 
 static void find_library_location(void)
 {
-	// open the maps file
-	pid_t tid = getpid();
+	/* Open the maps file */
+	pid_t tid = syscall(SYS_gettid);
 	char path[64] = {0};
-	FILE* maps_file;
 	sprintf(path, "/proc/%d/maps", tid);
-	if ((maps_file = fopen(path, "r")) == NULL) {
-		perror("Error reading child memory maps\n");
-		exit(1);
+	int maps_file = syscall(SYS_open,path,O_RDONLY);
+	if (maps_file < 0) {
+		assert(0 && "Error reading child memory maps");
 	}
 
-	// for each line in the maps file:
-	char line[1024] = {0};
-	void *start, *end;
-	char flags[32], binary[128] = {0}, *result = NULL;
-	unsigned int dev_minor, dev_major;
-	unsigned long long file_offset, inode;
-	while ( fgets(line,1024,maps_file) != NULL ) {
-		sscanf(line,"%p-%p %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, binary);
-		if (strstr(binary,WRAP_SYSCALLS_LIB_FILENAME) != NULL && // found the library
-			strstr(flags,"x") != NULL ) { // notice: the library get loaded several times, we need the (hopefully one) copy that is executable
-			libstart = start;
-			libend = end;
-			fclose(maps_file);
-			return;
+	/* Read the maps file into memory */
+	char file[4096];
+	int retval = 0;
+	do {
+		syscall(SYS_read,maps_file,file,4096);
+		/* For each line in the maps file: */
+		char * line = file, *line_end;
+		void *start, *end;
+		char flags[32], binary[128] = {0}, *result = NULL;
+		unsigned int dev_minor, dev_major;
+		unsigned long long file_offset, inode;
+		while ((line_end = strchr(line,'\n')) != NULL) {
+			*line_end++ = '\0';
+			sscanf(line,"%p-%p %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, binary);
+			if (strstr(binary,WRAP_SYSCALLS_LIB_FILENAME) != NULL && // found the library
+				strstr(flags,"x") != NULL ) { /* Note: the library get loaded several times, we need the (hopefully one) copy that is executable */
+				libstart = start;
+				libend = end;
+				syscall(SYS_close,maps_file);
+				return;
+			}
+			line = line_end;
 		}
-	}
-	fclose(maps_file);
-	assert(0 && "unable to locate library in maps file");
+	} while (retval >= 0);
+	syscall(SYS_close,maps_file);
+	assert(0 && "Unable to locate library in maps file");
 	return;
 }
 
@@ -96,7 +104,9 @@ static void install_syscall_filter(void)
 {
 	// figure out the library address
 	find_library_location();
-	log_info("Wrapper library found at (%p,%p).",libstart,libend);
+	char msg[128];
+	sprintf(msg, "Wrapper library found at (%p,%p).",libstart,libend);
+	syscall(SYS_write,STDERR_FILENO,msg,strnlen(msg,128));
 	struct sock_filter filter[] = {
 		/* Validate architecture. Rob was right - this is not needed. */
 		/*VALIDATE_ARCHITECTURE,*/
@@ -141,14 +151,12 @@ static void install_syscall_filter(void)
 		.filter = filter,
 	};
 
-	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-		perror("prctl(NO_NEW_PRIVS)");
-		exit(1);
+	if (syscall(SYS_prctl,PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+		assert(0 && "prctl(NO_NEW_PRIVS)");
 	}
 
-	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)) {
-		perror("prctl(SECCOMP)");
-		exit(1);
+	if (syscall(SYS_prctl,PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)) {
+		assert(0 && "prctl(SECCOMP)");
 	}
 	// anything that happens from this point on gets filtered!
 }
@@ -159,8 +167,7 @@ static void find_trace_dir(void)
 	int version = 0;
 	char path[16] = "./trace_0";
 	struct stat sb;
-
-	while (stat(path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
+	while (syscall(SYS_stat64, path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
 		sprintf(path, "./trace_%d",++version);
 	}
 	sprintf(trace_path_, "./trace_%d",version-1);
@@ -175,31 +182,36 @@ static void find_trace_dir(void)
  * Remember: init() will ony be called if the process uses at least one of the library's intercepted functions.
  *
  */
-static void init() {
-	/* Note: the filter is installed only for record. This call will be emulated it in the replay */
-	if (!libend) {
-		find_trace_dir();
-		install_syscall_filter();
-	}
-	// make all subsequent children initialize their own buffer
-	pthread_atfork(NULL,NULL,init);
+
+static void setup_buffer() {
 	pid_t tid = syscall(SYS_gettid); // libc does not supply a wrapper for gettid
 	// open the shared file TODO: open it under the trace directory
 	char filename[32];
 	sprintf(filename,"%s/%s%d", trace_path_, WRAP_SYSCALLS_CACHE_FILENAME_PREFIX, tid);
 	// TODO: replace the following syscalls with assembly in case we want to intercept them as well
 	errno = 0;
-	int fd = open(filename, O_CREAT | O_RDWR, 0666); // beware of O_TRUNC!
+	int fd = syscall(SYS_open,filename, O_CREAT | O_RDWR, 0666); // beware of O_TRUNC!
 	assert(fd > 0 && errno == 0);
 	int retval;
-	retval = ftruncate(fd,WRAP_SYSCALLS_CACHE_SIZE);
+	retval = syscall(SYS_ftruncate,fd,WRAP_SYSCALLS_CACHE_SIZE);
 	assert(retval == 0 && errno == 0);
-	buffer = mmap(NULL, WRAP_SYSCALLS_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
+	buffer = (void*)syscall(SYS_mmap2, NULL, WRAP_SYSCALLS_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
 	assert(buffer != NULL && errno == 0);
-	retval = close(fd);
+	retval = syscall(SYS_close,fd);
 	assert(retval == 0 && errno == 0);
 	// buffer[0] holds the number of bytes written
 	buffer[0] = 0;
+	// make all subsequent children initialize their own buffer
+	pthread_atfork(NULL,NULL,setup_buffer);
+}
+
+static void init() {
+	/* Note: the filter is installed only for record. This call will be emulated it in the replay */
+	if (!libstart) {
+		find_trace_dir();
+		install_syscall_filter();
+	}
+	setup_buffer();
 	// print a message
 	debug("Initialized cache buffer for thread %d at %p",tid,buffer);
 }
@@ -224,6 +236,9 @@ if (buffer[0] + record_size_in_bytes + extra_space > WRAP_SYSCALLS_CACHE_SIZE) {
 int * const new_record = (void*)buffer + sizeof(int) + buffer[0];					\
 void * ptr = &new_record[3];														\
 
+#define _syscall0(call,ret) \
+asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call));
+
 #define _syscall2(call,arg0,arg1,ret) \
 asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call), "b"((long)arg0), "c"((long)arg1));
 
@@ -247,14 +262,14 @@ do { \
 } while (0)
 
 #define _syscall_post(syscall) 			\
-new_record[0] = __NR_##syscall;				\
+new_record[0] = __NR_##syscall;			\
 new_record[1] = record_size_in_bytes;	\
 new_record[2] = ret;					\
 buffer[0] += record_size_in_bytes;		\
 __syscall_return(ret);
 
 int clock_gettime(clockid_t clk_id, struct timespec *tp) {
-	_syscall_pre(sizeof(struct timespec))
+	_syscall_pre(tp ? sizeof(struct timespec) : 0)
 	// set it up so the syscall writes to the record cache
 	struct timespec *tp2 = NULL;
 	if (tp) {
@@ -299,44 +314,16 @@ int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uadd
 	_syscall_post(futex)
 }
 
-int gettimeofday_(struct timeval *tp, struct timezone *tzp) {
-	_syscall_pre(sizeof(struct timeval) + sizeof(struct timezone))
-	// set it up so the syscall writes to the record cache
-	struct timeval *tp2 = NULL;
-	if (tp) {
-		record_size_in_bytes += sizeof(struct timeval);
-		tp2 = ptr;
-		ptr += sizeof(struct timeval);
-	}
-	struct timezone *tzp2 = NULL;
-	if (tzp) {
-		record_size_in_bytes += sizeof(struct timezone);
-		tzp2 = ptr;
-		ptr += sizeof(struct timezone);
-	}
-	_syscall2(gettimeofday,tp2,tzp2,ret)
-	// now in the replay we can simply copy the recorded buffer and allow the wrapper to copy it to the actual parameters
-	if (tp)
-		memcpy(tp, tp2, sizeof(struct timeval));
-	if (tzp)
-		memcpy(tzp, tzp2, sizeof(struct timezone));
-	_syscall_post(epoll_wait)
+ssize_t write_(int fd, const void *buf, size_t count) {
+	_syscall_pre(0)
+	_syscall3(write,fd,buf,count,ret)
+	_syscall_post(write)
 }
 
-
-int epoll_wait_(int epfd, struct epoll_event *events, int maxevents, int timeout) {
-	_syscall_pre(maxevents * sizeof(struct epoll_event))
-	void *events2 = NULL;
-	if (events) {
-		events2 = ptr;
-		ptr +=  (maxevents * sizeof(struct epoll_event));
-	}
-	_syscall4(epoll_wait,epfd,events2,maxevents,timeout,ret)
-	if (ret > 0) {
-		record_size_in_bytes += ret * sizeof(struct epoll_event);
-		memcpy(events,events2,ret * sizeof(struct epoll_event));
-	}
-	_syscall_post(epoll_wait)
+ssize_t writev_(int fd, const struct iovec *iov, int iovcnt) {
+	_syscall_pre(0)
+	_syscall3(writev,fd,iov,iovcnt,ret)
+	_syscall_post(writev)
 }
 
 
@@ -618,16 +605,45 @@ int socketcall_(int call, unsigned long *args){
 	}
 }
 
-ssize_t write_(int fd, const void *buf, size_t count) {
-	_syscall_pre(0)
-	_syscall3(write,fd,buf,count,ret)
-	_syscall_post(write)
+
+int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
+	_syscall_pre((events && maxevents > 0) ? (maxevents * sizeof(struct epoll_event)) : 0)
+	void *events2 = NULL;
+	if (events && maxevents > 0) {
+		events2 = ptr;
+		ptr +=  (maxevents * sizeof(struct epoll_event));
+	}
+	_syscall4(epoll_wait,epfd,events2,maxevents,timeout,ret)
+	if (ret > 0) {
+		record_size_in_bytes += ret * sizeof(struct epoll_event);
+		memcpy(events,events2,ret * sizeof(struct epoll_event));
+	}
+	_syscall_post(epoll_wait)
 }
 
-ssize_t writev_(int fd, const struct iovec *iov, int iovcnt) {
-	_syscall_pre(0)
-	_syscall3(writev,fd,iov,iovcnt,ret)
-	_syscall_post(writev)
+
+int gettimeofday_(struct timeval *tp, struct timezone *tzp) {
+	_syscall_pre((tp ? sizeof(struct timeval) : 0) + (tzp ? sizeof(struct timezone) : 0))
+	// set it up so the syscall writes to the record cache
+	struct timeval *tp2 = NULL;
+	if (tp) {
+		record_size_in_bytes += sizeof(struct timeval);
+		tp2 = ptr;
+		ptr += sizeof(struct timeval);
+	}
+	struct timezone *tzp2 = NULL;
+	if (tzp) {
+		record_size_in_bytes += sizeof(struct timezone);
+		tzp2 = ptr;
+		ptr += sizeof(struct timezone);
+	}
+	_syscall2(gettimeofday,tp2,tzp2,ret)
+	// now in the replay we can simply copy the recorded buffer and allow the wrapper to copy it to the actual parameters
+	if (tp)
+		memcpy(tp, tp2, sizeof(struct timeval));
+	if (tzp)
+		memcpy(tzp, tzp2, sizeof(struct timezone));
+	_syscall_post(epoll_wait)
 }
 
 #define _stat(call,file,buf) 						\
