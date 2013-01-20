@@ -141,11 +141,12 @@ void __ptrace_cont(struct context *ctx)
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
-	ctx->event = read_child_orig_eax(ctx->child_tid);
+	sys_ptrace(PTRACE_GETREGS, ctx->child_tid, NULL, &ctx->child_regs);
+	ctx->event = ctx->child_regs.orig_eax;
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	int current_syscall = read_child_orig_eax(ctx->child_tid);
+	int current_syscall = ctx->child_regs.orig_eax;
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered later, or was already delivered earlier */
@@ -894,7 +895,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 					__ptrace_cont(context);
 
 					/* restore original register state */
-					orig_regs.eax = read_child_eax(tid);
+					orig_regs.eax = context->child_regs.eax;
 					write_child_registers(tid, &orig_regs);
 
 					/* check if successful */
@@ -915,7 +916,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 					__ptrace_cont(context);
 
 					/* restore original register state */
-					orig_regs.eax = read_child_eax(tid);
+					orig_regs.eax = context->child_regs.eax;
 					write_child_registers(tid, &orig_regs);
 
 					validate_args(context);
