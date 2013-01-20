@@ -104,7 +104,6 @@ static void rec_init_scratch_memory(struct context *ctx)
 	ctx->event = event;
 	orig_regs.eax = eax;
 	write_child_registers(ctx->child_tid,&orig_regs);
-
 }
 
 static void cont_nonblock(struct context *ctx)
