@@ -488,7 +488,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 {
 	/* handle events */
 	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
-	debug("Recording syscall %d, ptrace event: %d, thread: %d", (*ctx_ptr)->event, event, (*ctx_ptr)->child_tid);
+	debug("Ptrace event %d: syscall %d, thread: %d", event, (*ctx_ptr)->event, (*ctx_ptr)->child_tid);
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
