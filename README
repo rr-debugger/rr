@@ -2,10 +2,10 @@ Installation guide for rr
 =========================
 
 
-A) Hardware/Software requirements
+A) Hardware/software requirements
 ---------------------------------
 rr has two mode of operation: 
-(1) Plain Mode: 
+(1) Plain Mode:
 Requires a Linux kernel version 2.6.39 and higher.
 To enable PEBS support for the hardware performance counters (HPC) a kernel
 version >= 3.0 is required. Was developed under Ubuntu 11.04 & Ubuntu 12.04.
@@ -13,25 +13,78 @@ version >= 3.0 is required. Was developed under Ubuntu 11.04 & Ubuntu 12.04.
 Requires kernel version 3.5 to support the seccomp-bpf filter, or Ubuntu 12.04 as 
 it was backported to its 3.2. Developed and tested under Ubuntu 12.04.
 
-Currently rr does not support x86_64.
+Currently rr supports only recording and replaying of 32-bit x86 Linux processes.
+It can be built and run as a 32-bit application on an x86_64 system; see below.
 
-rr requires two additional libraries:
+rr can run in a virtual machine that supports virtualization of performance
+counters, such as VMWare Workstation 9. Installing the latest 32-bit
+Ubuntu in a VM is an easy way to get rr working.
 
-(1) libpfm-4.3.0: The library can be downloaded from:
+Building and running rr requires two additional libraries:
+
+(1) libpfm-4.3.0:
 http://sourceforge.net/projects/perfmon2/files/libpfm4/libpfm-4.3.0.tar.gz/download
+On some distributions you can install the package:
+Fedora 18: yum install libpfm
 
-(2) libdisasm-dev
+(2) libdisasm-dev:
+http://sourceforge.net/projects/bastard/files/libdisasm/
+On some distributions you can install the package:
+Ubuntu >= 10.04: apt-get install libdisasm-dev
 
-
-
-B) Building 
+B) Building
 -----------
 
-rr is developed with Eclipse CDT plugin. You can import the project directly into
+rr is developed with the Eclipse CDT plugin. You can import the project directly into
 Eclipse. Eclipse then generates a makefile which you can use to build the project.
 
+C) Building on x86_64 systems
+-----------------------------
 
-C) Usage
+On a 64-bit system, rr expects to find the 32-bit versions of those libraries
+installed under $(HOME)/32bit, so you should download those libraries and build them
+yourself.
+
+To build the 32-bit version of libdisasm-dev, run configure like so:
+./configure --prefix=$HOME/32bit --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32"
+
+To build the 32-bit version of libpfm-4.3.0, edit config.mk and patch it like this:
+@@ -65,8 +65,10 @@
+ endif
+ ifeq (mips,$(findstring mips,$(ARCH)))
+ override ARCH=mips
+ endif
++override ARCH=i386
++OPTIM=-O3 -m32
+ 
+ ifeq (MINGW,$(findstring MINGW,$(SYS)))
+ override SYS=WINDOWS
+ endif
+@@ -100,9 +102,9 @@
+ 
+ #
+ # Where should things (lib, headers, man) go in the end.
+ #
+-PREFIX=/usr/local
++PREFIX=$(HOME)/32bit
+ LIBDIR=$(PREFIX)/lib
+ INCDIR=$(PREFIX)/include
+ MANDIR=$(PREFIX)/share/man
+ DOCDIR=$(PREFIX)/share/doc/libpfm-$(VERSION).$(REVISION).$(AGE)
+@@ -187,8 +189,9 @@
+ LDCONFIG=true
+ else
+ DBG?=-g -Wall -Werror -Wextra -Wno-unused-parameter
+ endif
++LDCONFIG=true
+ 
+ CFLAGS+=$(OPTIM) $(DBG) -I$(SYSINCDIR) -I$(PFMINCDIR)
+ MKDEP=makedepend
+ PFMLIB=$(PFMLIBDIR)/libpfm.a
+
+You will need to run rr with LD_LIBRARY_PATH=$HOME/32bit/lib.
+
+D) Usage
 --------
 
 Before calling either the recorder or the replayer make sure that address space
