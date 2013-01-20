@@ -44,7 +44,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
-	debug("%d: processign syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_global_time(), ctx->exec_state);
+	debug("%d: processing syscall: %s(%ld) -- time: %u  status: %x\n", tid, syscall_to_str(syscall), syscall, get_global_time(), ctx->exec_state);
 	//print_register_file_tid(ctx->child_tid);
 	//print_process_memory(ctx->child_tid);
 

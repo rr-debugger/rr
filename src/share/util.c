@@ -565,8 +565,13 @@ int compare_register_files(char* name1, struct user_regs_struct* reg1, char* nam
 		err = 1;
 	}
 
-	/* check eflags, ignore CPUID bit */
-	long int id_mask = ~(01 << 21);
+	/* check eflags, but:
+	 * -- ignore CPUID bit (why???)
+	 * -- ignore bit 1, since the Linux kernel sometimes reports this as zero
+	 * in some states during system calls. It's always 1 during user-space
+	 * execution so this shouldn't matter.
+	 * */
+	long int id_mask = ~((1 << 21) | (1 << 1));
 	if ((reg1->eflags & id_mask) != (reg2->eflags & id_mask)) {
 		if (print) {
 			fprintf(stderr, "eflags registers do not match: %s: %lx and %s: %lx\n", name1, reg1->eflags, name2, reg2->eflags);

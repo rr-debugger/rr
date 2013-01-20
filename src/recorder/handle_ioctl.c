@@ -181,9 +181,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 
 		default:
 		{
-			int test = UDF_RELOCATE_BLOCKS;
 			fprintf(stderr, "Unknown ioctl request: %x -- bailing out\n", request);
-			fprintf(stderr, "we're testing: %x\n", test);
 			fprintf(stderr, "type bites: %x\n", _IOC_TYPE(request));
 			fprintf(stderr, "size: %d\n", _IOC_SIZE(request));
 			fprintf(stderr, "addr: %x\n", read_child_edx(ctx->child_tid));
