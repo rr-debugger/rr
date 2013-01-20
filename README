@@ -92,8 +92,8 @@ randomization is disabled. You can do this by e.g., with the following command:
 
 sysctl -w kernel.randomize_va_space=0
 
-Also, we need to be able to write to /proc/$pid/mem. This can usually be
-achieved with the following command:
+Also, we need to be able to write to /proc/$pid/mem. On Ubuntu (or any other kernel with
+the ptrace_scope_feature), this requires the following command:
 
 sysctl -w kernel.yama.ptrace_scope=0
 
@@ -102,7 +102,7 @@ creates a path in the current directory which contains the trace file(s).
 To replay the application, type rr --replay /path/to/trace.  
 
 Other command line options:
-[--filter_lib=<path>] : Only for Ubuntu 12.04, this installs a wrapper for several system 
+[--filter_lib=<path>] : Only for kernels >= 3.5; this installs a wrapper for several system 
 calls (look at share/wrap_syscalls.c) to speed up their handling and save on the ptrace()
 context switch. The wrapper is compiled as a shared object called 'libwrap_syscalls.so' (as
 part of rr compilation process) and can be found in the rr executable directory.
@@ -122,7 +122,8 @@ should be run with same arguments as the record.
 Note that talking to particular kernel drivers (by ioctl(...)) requires the
 rr to have knowledge about what the driver is doing. For example, if you
 record GUI applications that make use a grapphics driver with 3d-support
-rr will fail.
+rr will fail. If you're using NVidia binary drivers, removing the
+xorg-x11-drv-nvidia-libs package will avoid this problem.
 
 Also, it is advised to turn off any CPU frequency scaling capabilities, such as Intel Speed Step. 
 This can be achieved by either turning it off in the BIOS or by disabling it in the 
@@ -139,3 +140,4 @@ taskset 0x3 rr <options>
 
 Otherwise, due to frequent context switches between rr and the traced process, the different
 cores will often scale down their frequency which can lead to slowdowns of up to 2x.
+
