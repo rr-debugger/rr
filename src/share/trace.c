@@ -359,11 +359,13 @@ void record_event(struct context *ctx, int state)
 		 && ctx)
 		checksum_process_memory(ctx);
 
-	fprintf(trace_file, "%11d", get_global_time_incr());
-	fprintf(trace_file, "%11u", get_time_incr(ctx->child_tid));
-	fprintf(trace_file, "%11d", ctx->child_tid);
-	fprintf(trace_file, "%11d", ctx->event);
-	fprintf(trace_file, "%11d", state);
+	fprintf(trace_file, "%11d%11u%11d%11d%11d", get_global_time_incr(),
+	        get_time_incr(ctx->child_tid), ctx->child_tid, ctx->event,
+	        state);
+
+	debug("trace: %11d%11u%11d%11d%11d", get_global_time_incr(),
+	      get_time_incr(ctx->child_tid), ctx->child_tid, ctx->event,
+	      state);
 
 	/* we record a system call */
 	//if (ctx->event != 0) {
