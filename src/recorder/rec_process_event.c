@@ -82,6 +82,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	SYS_REC0(brk)
 
+	/**
+	 * splice
+	 */
+	SYS_REC0(splice)
+
 	/** READ NOTE:
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
 	 *

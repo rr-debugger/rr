@@ -180,6 +180,11 @@ static int allow_ctx_switch(struct context *ctx, int event)
 		return 1;
 	}
 
+	case SYS_splice:
+    {
+	    return 1;
+    }
+
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
 	{
