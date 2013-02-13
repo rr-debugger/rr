@@ -90,12 +90,6 @@ struct seccomp_data {
  * continue;
  */
 
-/*
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_socketcall, 0, 1), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_poll, 0, 1), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL), \
- */
 #define EXAMINE_CALLSITE(libstart,libend) \
 	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, inst_ptr), \
 	BPF_JUMP(BPF_JMP+BPF_JGT+BPF_K, libend, 1, 0), \
@@ -119,7 +113,7 @@ struct seccomp_data {
 /**
  * logic is:
  * if !futex goto continue;
- * grab the operation for ecx (arg number 1)
+ * grab the operation from arg1
  * apply operation mask
  * if (op is blocking) goto trace;
  * allow;
@@ -144,7 +138,7 @@ struct seccomp_data {
  * if (op is blocking) goto trace;
  * allow;
  * trace;
- * continue filtering
+ * continue filtering;
  */
 #define ALLOW_SOCKETCALL \
 	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_socketcall, 0, 5), \
