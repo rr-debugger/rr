@@ -2,7 +2,7 @@
  * The wrapper for the system calls, which allows interception and recording of system calls that are invoked using the libc wrapper.
  * The filter in install_syscall_filter() will ptrace all syscalls that do no originate from this wrapper, so that rr will handle them.
  *
- * Note 1: All the internal code of the wrapper uses syscall(...) to perform system calls instead of calling the libc code, to avoid recoursion.
+ * Note 1: All the internal code of the wrapper uses syscall(...) to perform system calls instead of calling the libc code, to avoid recursion.
  * Note 2: This file must be excluded from the rr build, otherwise it will intercept rr's syscalls!
  *
  * TODO: (0) all the wrappers postfixed by "_" haven't been fully tested yet
@@ -35,11 +35,13 @@
 #include "seccomp-bpf.h"
 #include "dbg.h"
 
-// these turn a numerical constant to a string constant, in pre-processing time.
+/**
+ * These turn a numerical constant to a string constant, in pre-processing time.
+ */
 #define STRINGIFY(s) 		#s
 #define CONST_TO_STRING(c) 	STRINGIFY(c)
 
-static __thread int * buffer = NULL; // buffer[0] holds number of written BYTES
+static __thread int * buffer = NULL; /* buffer[0] holds the size in bytes, withholding the 4 bytes used for buffer[0] itself */
 
 static void * libstart = NULL;
 static void * libend = NULL;
@@ -50,7 +52,9 @@ static char trace_path_[512] = { '\0' };
  * Internal wrapper code goes here
  */
 
- // Do a un-intercepted syscall to make rr flush the buffer
+ /**
+  * Do a un-intercepted syscall to make rr flush the buffer
+  */
 static void flush_buffer(void){
 	pid_t tid = syscall(SYS_gettid);
 	assert(buffer[0] == 0);
@@ -81,7 +85,7 @@ static void find_library_location(void)
 		while ((line_end = strchr(line,'\n')) != NULL) {
 			*line_end++ = '\0';
 			sscanf(line,"%p-%p %31s %Lx %x:%x %Lu %s", &start, &end,flags, &file_offset, &dev_major, &dev_minor, &inode, binary);
-			if (strstr(binary,WRAP_SYSCALLS_LIB_FILENAME) != NULL && // found the library
+			if (strstr(binary,WRAP_SYSCALLS_LIB_FILENAME) != NULL && /* found the library */
 				strstr(flags,"x") != NULL ) { /* Note: the library get loaded several times, we need the (hopefully one) copy that is executable */
 				libstart = start;
 				libend = end;
@@ -102,7 +106,7 @@ static void find_library_location(void)
  */
 static void install_syscall_filter(void)
 {
-	// figure out the library address
+	/* figure out the library address */
 	find_library_location();
 	char msg[128];
 	sprintf(msg, "Wrapper library found at (%p,%p).",libstart,libend);
@@ -131,8 +135,6 @@ static void install_syscall_filter(void)
 		ALLOW_SYSCALL(clock_gettime),
 		ALLOW_SYSCALL(gettimeofday),
 		ALLOW_SYSCALL(madvise),
-		ALLOW_SYSCALL(write),
-		ALLOW_SYSCALL(writev),
 		ALLOW_SYSCALL(stat),
 		ALLOW_SYSCALL(lstat),
 		ALLOW_SYSCALL(fstat),
@@ -140,6 +142,8 @@ static void install_syscall_filter(void)
 		ALLOW_SOCKETCALL,
 		ALLOW_FUTEX,
 		/* These syscalls require a ptrace event for scheduling, but we still gain a speedup from wrapping them */
+		TRACE_SYSCALL(write),
+		TRACE_SYSCALL(writev),
 		TRACE_SYSCALL(read),
 		TRACE_SYSCALL(poll),
 		TRACE_SYSCALL(epoll_wait),
@@ -158,10 +162,10 @@ static void install_syscall_filter(void)
 	if (syscall(SYS_prctl,PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)) {
 		assert(0 && "prctl(SECCOMP) failed, SECCOMP_FILTER is not available.");
 	}
-	// anything that happens from this point on gets filtered!
+	/* anything that happens from this point on gets filtered! */
 }
 
-// TODO: this will not work if older trace dirs with higher index exist
+/* TODO: this will not work if older trace dirs with higher index exist */
 static void find_trace_dir(void)
 {
 	int version = 0;
@@ -175,22 +179,20 @@ static void find_trace_dir(void)
 
 /**
  * Initialize the library:
- * 1. Install filter-by-callsite (once for all thread)
+ * 1. Install filter-by-callsite (once for all threads)
  * 2. Make subsequent threads call init()
- * 3. Open and mmap the recording cache, shared with rr (once fopr every thread)
+ * 3. Open and mmap the recording cache, shared with rr (once for every thread)
  *
- * Remember: init() will ony be called if the process uses at least one of the library's intercepted functions.
+ * Remember: init() will only be called if the process uses at least one of the library's intercepted functions.
  *
  */
 
 static void setup_buffer() {
-	pid_t tid = syscall(SYS_gettid); // libc does not supply a wrapper for gettid
-	// open the shared file TODO: open it under the trace directory
+	pid_t tid = syscall(SYS_gettid); /* libc does not supply a wrapper for gettid */
 	char filename[32];
 	sprintf(filename,"%s/%s%d", trace_path_, WRAP_SYSCALLS_CACHE_FILENAME_PREFIX, tid);
-	// TODO: replace the following syscalls with assembly in case we want to intercept them as well
 	errno = 0;
-	int fd = syscall(SYS_open,filename, O_CREAT | O_RDWR, 0666); // beware of O_TRUNC!
+	int fd = syscall(SYS_open,filename, O_CREAT | O_RDWR, 0666); /* O_TRUNC here is bad */
 	assert(fd > 0 && errno == 0);
 	int retval;
 	retval = syscall(SYS_ftruncate,fd,WRAP_SYSCALLS_CACHE_SIZE);
@@ -199,14 +201,14 @@ static void setup_buffer() {
 	assert(buffer != NULL && errno == 0);
 	retval = syscall(SYS_close,fd);
 	assert(retval == 0 && errno == 0);
-	// buffer[0] holds the number of bytes written
+	/* buffer[0] holds the number of bytes written */
 	buffer[0] = 0;
-	// make all subsequent children initialize their own buffer
+	/* make all subsequent children initialize their own buffer */
 	pthread_atfork(NULL,NULL,setup_buffer);
 }
 
 static void init() {
-	/* Note: the filter is installed only for record. This call will be emulated it in the replay */
+	/* Note: the filter is installed only for record. This call will be emulated in the replay */
 	if (!libstart) {
 		find_trace_dir();
 		install_syscall_filter();
@@ -217,10 +219,26 @@ static void init() {
 /**
  * Wrappers start here.
  *
- * Wrappers mode of operation:
- * 1. Intercepts the syscalls and record the result in a record to the cache.
- * 2. The records will be collected by rr in the next ptrace event it receives.
- * 3. If the buffer is full, it will notify rr to flush it out.
+ * How wrappers operate:
+ *
+ * 1. The syscall is intercepted by the wrapper function.
+ * 2. A new record is prepared on the buffer. A record is composed of:
+ * 		[the syscall number]
+ * 		[the overall size in bytes of the record]
+ * 		[the return value]
+ * 		[other syscall output, if such exists]
+ * 	  _syscall_pre(extra_space) is invoked to check if the maximum amount of space
+ * 	  needed for the record exceeds the buffer size, if so a flush is made.
+ * 	  Note: these records will be written AS-IS to the raw file, and a succinct line will be written to the trace file (without register content, etc.)
+ * 3. Then, the syscall wrapper code redirects all potential output for the syscall to the
+ * 	  record (and corrects the overall size of the record while it does so).
+ * 4. The syscall is invoked directly via assembly.
+ * 5. The syscall output, written on the buffer, is copied to the original pointers provided by the user.
+ *    Take notice that this part saves us the injection of the data on replay, as we only need to push the
+ *    data to the buffer and the wrapper code will copy it to the user address for us.
+ * 6. The first 3 parameters of the record are put in (return value and overall size are known now)
+ * 7. buffer[0] is updated.
+ * 8. errno is set.
  */
 
 #define _syscall_pre(extra_space) 													\
@@ -268,7 +286,7 @@ __syscall_return(ret);
 
 int clock_gettime(clockid_t clk_id, struct timespec *tp) {
 	_syscall_pre(tp ? sizeof(struct timespec) : 0)
-	// set it up so the syscall writes to the record cache
+	/* set it up so the syscall writes to the record cache */
 	struct timespec *tp2 = NULL;
 	if (tp) {
 		record_size_in_bytes += sizeof(struct timespec);
@@ -276,7 +294,7 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp) {
 		ptr += sizeof(struct timespec);
 	}
 	_syscall2(clock_gettime,clk_id,tp2,ret)
-	// now in the replay we can simply push the recorded buffer and allow the wrapper to copy it to the actual parameters
+	/* now in the replay we can simply push the recorded buffer and allow the wrapper to copy it to the actual parameters */
 	if (tp)
 		memcpy(tp, tp2, sizeof(struct timespec));
 	_syscall_post(clock_gettime)
@@ -285,7 +303,7 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp) {
 
 int gettimeofday(struct timeval *tp, struct timezone *tzp) {
 	_syscall_pre((tp ? sizeof(struct timeval) : 0) + (tzp ? sizeof(struct timezone) : 0))
-	// set it up so the syscall writes to the record cache
+	/* set it up so the syscall writes to the record cache */
 	struct timeval *tp2 = NULL;
 	if (tp) {
 		record_size_in_bytes += sizeof(struct timeval);
@@ -299,7 +317,7 @@ int gettimeofday(struct timeval *tp, struct timezone *tzp) {
 		ptr += sizeof(struct timezone);
 	}
 	_syscall2(gettimeofday,tp2,tzp2,ret)
-	// now in the replay we can simply copy the recorded buffer and allow the wrapper to copy it to the actual parameters
+	/* now in the replay we can simply copy the recorded buffer and allow the wrapper to copy it to the actual parameters */
 	if (tp)
 		memcpy(tp, tp2, sizeof(struct timeval));
 	if (tzp)
@@ -309,7 +327,7 @@ int gettimeofday(struct timeval *tp, struct timezone *tzp) {
 
 int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3) {
 	_syscall_pre(sizeof(int))
-	// make room for (uaddr,*uaddr)
+	/* make room for (uaddr,*uaddr) */
 	ptr = &new_record[5];
 	record_size_in_bytes += 2 * sizeof(int);
 	int * uaddr2_tmp = NULL;
@@ -329,7 +347,7 @@ int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uadd
 			break;
 	}
 	_syscall6(futex,uaddr,op,val,timeout,uaddr2_tmp,val3,ret)
-	// record (uaddr,*uaddr)
+	/* record (uaddr,*uaddr) */
 	new_record[3] = (int)uaddr;
 	new_record[4] = *uaddr;
 	if (uaddr2)
@@ -356,7 +374,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 volatile long args[6] = { (long)arg0, (long)arg1, (long)arg2, (long)arg3, (long)arg4, (long)arg5 };
 
 int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
-	// Stuff gets recorded only if addr is not null
+	/* stuff gets recorded only if addr is not null */
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,addr,addrlen,flags, 0, 0)
 	void *addr2 = NULL;
@@ -384,7 +402,7 @@ int accept(int socket,struct sockaddr *addr, socklen_t *length_ptr) {
 }
 
 int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
-	// Stuff gets recorded only if addr is not null
+	/* stuff gets recorded only if addr is not null */
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,addr,addrlen,0, 0, 0)
 	void *addr2 = NULL;
@@ -410,7 +428,7 @@ int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 }
 
 int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
-	// Stuff gets recorded only if addr is not null
+	/* stuff gets recorded only if addr is not null */
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,addr,addrlen,0, 0, 0)
 	void *addr2 = NULL;
@@ -436,7 +454,7 @@ int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 }
 
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t* optlen) {
-	// Stuff gets recorded only if optval is not null
+	/* stuff gets recorded only if optval is not null */
 	_syscall_pre(optval ? *optlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,level,optname,optval, optlen, 0)
 	void *optval2 = NULL;
@@ -463,7 +481,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t* optl
 
 
 ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
-	// Stuff gets recorded only if buf is not null
+	/* stuff gets recorded only if buf is not null */
 	_syscall_pre((buf && len > 0) ? len : 0)
 	_copy_socketcall_args(sockfd,buf,len,flags,0,0)
 	void *buf2 = NULL;
@@ -481,7 +499,7 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 }
 
 ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {
-	// Stuff gets recorded only if buf, etc. is not null
+	/* stuff gets recorded only if buf, etc. is not null */
 	_syscall_pre((buf ? len : 0) + (src_addr ? *addrlen +  sizeof(socklen_t) : 0))
 	_copy_socketcall_args(sockfd,buf,len,flags, src_addr, addrlen)
 	void *buf2 = NULL;
@@ -557,9 +575,36 @@ int shutdown(int socket, int how) {
 	_socketcall_no_output(SYS_SHUTDOWN,socket,how,0,0,0,0)
 }
 
+
+#define _stat(call,file,buf) 						\
+_syscall_pre( buf ? sizeof(struct stat) : 0 )		\
+struct stat * buf2; 								\
+if (buf) {											\
+	buf2 = ptr;										\
+	record_size_in_bytes += sizeof(struct stat); 	\
+	ptr += sizeof(struct stat); 					\
+}													\
+_syscall2(call,file,buf2,ret)						\
+if (ret == 0) {										\
+	memcpy(buf,buf2,ret);							\
+}													\
+_syscall_post(call)
+
+int fstat(int fd, struct stat *buf){
+	_stat(fstat64,fd,buf);
+}
+
+int lstat(const char *path, struct stat *buf) {
+	_stat(lstat64,path,buf);
+}
+
+int stat(const char *path, struct stat *buf){
+	_stat(stat64,path,buf);
+}
+
 /* TODO: fix the complex logic here */
 ssize_t recvmsg_(int sockfd, struct msghdr *msg, int flags) {
-	// Stuff gets recorded only if msg is not null
+	/* stuff gets recorded only if msg is not null */
 	_syscall_pre(msg ? (sizeof(struct msghdr)
 						/*+ (msg->msg_name ? msg->msg_namelen : 0)*/
 					    + (msg->msg_iov ? sizeof(struct iovec) + msg->msg_iovlen : 0)
@@ -568,9 +613,9 @@ ssize_t recvmsg_(int sockfd, struct msghdr *msg, int flags) {
 	_copy_socketcall_args(sockfd,msg,flags, 0, 0, 0)
 	struct msghdr *msg2 = NULL;
 	void 		  *msg_name2 = NULL;
-	struct iovec  *msg_iov2;        // scatter/gather array
+	struct iovec  *msg_iov2;        /* scatter/gather array */
 	void		  *msg_iov_base2;
-    void          *msg_control2;    // ancillary data, see below
+    void          *msg_control2;    /* ancillary data, see below */
 	if (msg) {
 		record_size_in_bytes += sizeof(struct msghdr);
 		msg2 = ptr;
@@ -672,31 +717,6 @@ int socketcall(int call, unsigned long *args){
 }
 */
 
-#define _stat(call,file,buf) 						\
-_syscall_pre( buf ? sizeof(struct stat) : 0 )		\
-struct stat * buf2; 								\
-if (buf) {											\
-	buf2 = ptr;										\
-	record_size_in_bytes += sizeof(struct stat); 	\
-	ptr += sizeof(struct stat); 					\
-}													\
-_syscall2(call,file,buf2,ret)						\
-if (ret == 0) {										\
-	memcpy(buf,buf2,ret);							\
-}													\
-_syscall_post(call)
-
-int fstat(int fd, struct stat *buf){
-	_stat(fstat64,fd,buf);
-}
-
-int lstat(const char *path, struct stat *buf) {
-	_stat(lstat64,path,buf);
-}
-
-int stat(const char *path, struct stat *buf){
-	_stat(stat64,path,buf);
-}
 
 /* TODO: causes strange signal IOT */
 int madvise_(void *addr, size_t length, int advice) {
