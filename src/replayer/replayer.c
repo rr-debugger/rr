@@ -96,10 +96,6 @@ static void single_step(struct context* context)
 		inst_dump_parse_register_file(context, &rec_reg);
 		read_child_registers(context->child_tid, &cur_reg);
 
-		if (context->rec_tid == 18024) {
-			compare_register_files("now", &cur_reg, "recorded", &rec_reg, 0, 0);
-		}
-
 		fprintf(stderr, "thread: %d ecx=%lx\n", context->rec_tid, read_child_ecx(context->child_tid));
 		if (strncmp(buf, rec_inst, strlen(buf)) != 0) {
 			fprintf(stderr, "now: %s rec: %s\n", buf, rec_inst);
