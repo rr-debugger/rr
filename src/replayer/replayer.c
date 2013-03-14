@@ -143,6 +143,36 @@ static void check_initial_register_file()
 	struct context *context = rep_sched_get_thread();
 }
 
+static void replay_init_scratch_memory(struct context *ctx, struct mmapped_file *file)
+{
+    /* initialize the scratchpad as the recorder did, but
+     * make it PROT_NONE. The idea is just to reserve the
+     * address space so the replayed process address map
+     * looks like the recorded process, if it were to be
+     * probed by madvise or some other means. But we make
+     * it PROT_NONE so that rogue reads/writes to the
+     * scratch memory are caught.
+     */
+
+    /* set up the mmap system call */
+    struct user_regs_struct orig_regs;
+    read_child_registers(ctx->child_tid, &orig_regs);
+
+    struct user_regs_struct mmap_call = orig_regs;
+
+    mmap_call.eax = SYS_mmap2;
+    mmap_call.ebx = file->start;
+    mmap_call.ecx = file->end - file->start;
+    mmap_call.edx = PROT_NONE;
+    mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
+    mmap_call.edi = -1;
+    mmap_call.ebp = 0;
+
+    inject_and_execute_syscall(ctx,&mmap_call);
+
+    write_child_registers(ctx->child_tid,&orig_regs);
+}
+
 void replay(struct flags rr_flags)
 {
 	check_initial_register_file();
@@ -170,6 +200,7 @@ void replay(struct flags rr_flags)
 		if (ctx->trace.stop_reason == USR_INIT_SCRATCH_MEM) {
 			struct mmapped_file file;
 			read_next_mmapped_file_stats(&file);
+			replay_init_scratch_memory(ctx, &file);
 			add_scratch(ctx->trace.recorded_regs.eax, file.end - file.start);
 		} else if (ctx->trace.stop_reason == USR_EXIT) {
 			rep_sched_deregister_thread(&ctx);
