@@ -633,7 +633,8 @@ void start_recording(struct flags rr_flags)
 			 * entry point of the syscall (using cont_syscall_block()) and then using the same logic as before.
 			 */
 			int ptrace_event = GET_PTRACE_EVENT(ctx->status);
-			if (ptrace_event == PTRACE_EVENT_SECCOMP) {
+			if (ptrace_event == PTRACE_EVENT_SECCOMP ||
+			    ptrace_event == PTRACE_EVENT_SECCOMP_OBSOLETE) {
 				filter_on_ = TRUE;
 				if (ctx->event < 0) { /* Finish handling of the signal first */
 					record_event(ctx,STATE_SYSCALL_ENTRY);
