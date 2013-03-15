@@ -108,7 +108,7 @@ static void compensate_rbc_count(struct context *ctx, int sig)
 		 * files match
 		 *
 		 */
-		int check = compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0);
+		int check = compare_register_files("signal single-stepping now", &regs, "rec", &ctx->trace.recorded_regs, 0, 0);
 		if (check == 0 || check == 0x80) {
 			found_spot++;
 			/* A SIGSEGV can be triggered by a regular instruction; it is not necessarily sent by
@@ -173,7 +173,7 @@ void rep_process_signal(struct context *ctx, bool validate)
 		sys_free((void**) &inst);
 
 		if (validate == TRUE)
-			compare_register_files("rdtsc_now", &regs, "rdtsc_rec", &ctx->trace.recorded_regs, 1, 1);
+			compare_register_files("rdtsc now", &regs, "rec", &ctx->trace.recorded_regs, 1, 1);
 
 		/* this signal should not be recognized by the application */
 		ctx->child_sig = 0;
@@ -296,7 +296,7 @@ void rep_process_signal(struct context *ctx, bool validate)
 
 			struct user_regs_struct regs;
 			read_child_registers(ctx->child_tid, &regs);
-			assert(compare_register_files("now", &regs, "rec", &ctx->trace.recorded_regs, 1, 1) == 0);
+			assert(compare_register_files("segv now", &regs, "rec", &ctx->trace.recorded_regs, 1, 1) == 0);
 
 			// deliver the signal
 			//singlestep(ctx, SIGSEGV, 0x57f);

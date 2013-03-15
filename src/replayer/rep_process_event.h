@@ -23,11 +23,11 @@ void rep_process_syscall(struct context* context, int syscall , struct flags rr_
 	case SYS_##syscall: { \
 		if (state == STATE_SYSCALL_ENTRY) { \
 	       goto_next_syscall_emu(context); \
-		   validate_args(context);\
+		   validate_args(SYS_##syscall, state, context);\
 		} else {\
 			int i; for (i=0;i<(num);i++) {set_child_data(context);}\
 			set_return_value(context); \
-			validate_args(context); \
+			validate_args(SYS_##syscall, state, context); \
 			finish_syscall_emu(context);} \
 	break; }
 
@@ -35,11 +35,11 @@ void rep_process_syscall(struct context* context, int syscall , struct flags rr_
 	case SYS_##syscall: { \
 		if (state == STATE_SYSCALL_ENTRY) { \
 	       goto_next_syscall_emu(context); \
-		   validate_args(context);\
+		   validate_args(SYS_##syscall, state, context);\
 		} else {\
 			if (check) { int i; for (i=0;i<(num);i++) {set_child_data(context);}}\
 			set_return_value(context); \
-			validate_args(context); \
+			validate_args(SYS_##syscall, state, context); \
 			finish_syscall_emu(context);} \
 	break; }
 
@@ -50,12 +50,12 @@ void rep_process_syscall(struct context* context, int syscall , struct flags rr_
 	case SYS_##syscall: { \
 		if (state == STATE_SYSCALL_ENTRY) {\
 			__ptrace_cont(context);\
-			validate_args(context);\
+			validate_args(SYS_##syscall, state, context);\
 		} else {\
 			__ptrace_cont(context);\
 			int i; for (i = 0; i < num; i++) {set_child_data(context);}\
 			set_return_value(context); \
-			validate_args(context);}\
+			validate_args(SYS_##syscall, state, context);}\
 	break; }
 
 
@@ -66,7 +66,7 @@ void rep_process_syscall(struct context* context, int syscall , struct flags rr_
 		} else {\
 			__ptrace_cont(ctx);\
 			int i; for (i = 0; i < num; i++) {set_child_data(ctx);}\
-			validate_args(ctx);}\
+			validate_args(SYS_##syscall, state, ctx);}\
 	break; }
 
 
@@ -86,7 +86,7 @@ void rep_process_syscall(struct context* context, int syscall , struct flags rr_
 		if (state == STATE_SYSCALL_ENTRY) {\
 			goto_next_syscall_emu(context);\
 		} else {code \
-			validate_args(context);\
+			validate_args(syscall, state, context);\
 			finish_syscall_emu(context);}\
 	break; }
 

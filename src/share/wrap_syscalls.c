@@ -35,12 +35,6 @@
 #include "seccomp-bpf.h"
 #include "dbg.h"
 
-/**
- * These turn a numerical constant to a string constant, in pre-processing time.
- */
-#define STRINGIFY(s) 		#s
-#define CONST_TO_STRING(c) 	STRINGIFY(c)
-
 static __thread int * buffer = NULL; /* buffer[0] holds the size in bytes, withholding the 4 bytes used for buffer[0] itself */
 
 static void * libstart = NULL;
