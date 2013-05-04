@@ -31,6 +31,7 @@ static FILE *mmaps_file;
 
 static int raw_data_file_counter = 0;
 static uint32_t trace_file_counter = 0;
+static uint32_t trace_file_lines_counter = 0;
 static uint32_t thread_time[100000];
 static uint32_t global_time = 0;
 
@@ -595,6 +596,7 @@ void rep_init_trace_files(void)
 	/* skip the first line -- is only meta-information */
 	char* line = sys_malloc(1024);
 	read_line(trace_file, line, 1024, "trace");
+	++trace_file_lines_counter;
 	/* same for syscall_input */
 	read_line(syscall_header, line, 1024, "syscall_input");
 	/* same for timestamps */
@@ -779,11 +781,13 @@ pid_t get_recorded_main_thread()
 
 	fpos_t pos;
 	fgetpos(trace_file, &pos);
+	int saved_trace_file_lines_counter = trace_file_lines_counter;
 	struct trace trace;
 	read_next_trace(&trace);
 
 	pid_t main_thread = trace.tid;
 	fsetpos(trace_file, &pos);
+	trace_file_lines_counter = saved_trace_file_lines_counter;
 
 	return main_thread;
 }
@@ -870,22 +874,23 @@ void peek_next_mmapped_file_stats(struct mmapped_file * file)
 	fpos_t pos;
 	fgetpos(mmaps_file, &pos);
 	read_next_mmapped_file_stats(file);
-	fsetpos(trace_file, &pos);
+	fsetpos(mmaps_file, &pos);
 }
 
 void peek_next_trace(struct trace *trace)
 {
 	fpos_t pos;
 	fgetpos(trace_file, &pos);
+	int saved_trace_file_lines_counter = trace_file_lines_counter;
 	read_next_trace(trace);
 	/* check if read is successful */
 	assert(!feof(trace_file));
+	trace_file_lines_counter = saved_trace_file_lines_counter;
 	fsetpos(trace_file, &pos);
 }
 
 void read_next_trace(struct trace *trace)
 {
-
 	char line[1024];
 
 	char * tmp_ptr = fgets(line, 1024, trace_file);
@@ -894,6 +899,7 @@ void read_next_trace(struct trace *trace)
 		tmp_ptr = fgets(line, 1024, trace_file);
 		assert(tmp_ptr == line);
 	}
+	++trace_file_lines_counter;
 
 	/* read meta information */
 	trace->global_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -922,11 +928,17 @@ void read_next_trace(struct trace *trace)
 	parse_register_file(&(trace->recorded_regs), tmp_ptr);
 }
 
+int get_trace_file_lines_counter()
+{
+    return trace_file_lines_counter;
+}
+
 void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
 {
 	fpos_t pos;
 
 	fgetpos(trace_file, &pos);
+	int saved_trace_file_lines_counter = trace_file_lines_counter;
 	rewind(trace_file);
 	/* skip the header */
 	char* line = sys_malloc(1024);
@@ -945,6 +957,7 @@ void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
 
 	sys_free((void**) &line);
 	fsetpos(trace_file, &pos);
+	trace_file_lines_counter = saved_trace_file_lines_counter;
 	assert(0);
 }
 

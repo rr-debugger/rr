@@ -45,14 +45,20 @@ bool validate = FALSE;
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
  */
-static void validate_args(struct context* context)
+static void validate_args(int syscall, int state, struct context* context)
 {
 	/* don't validate anything before execve is done as the actual process did not start prior to this point */
 	if (!validate)
 		return;
 	struct user_regs_struct cur_reg;
 	read_child_registers(context->child_tid, &cur_reg);
-	compare_register_files("now", &cur_reg, "recorded", &(context->trace.recorded_regs), 1, context->child_tid);
+	int err = compare_register_files("syscall now", &cur_reg, "recorded",
+			                         &(context->trace.recorded_regs), 1, 0);
+	if (err) {
+		fprintf(stderr, "[syscall number %d, state %d, trace file line %d]\n",
+				syscall, state, get_trace_file_lines_counter());
+		sys_exit();
+	}
 	// TODO: add perf counter validations (hw int, page faults, insts)
 }
 
@@ -192,7 +198,7 @@ static void handle_socket(struct context *ctx, struct trace* trace)
 	/* sockets are emulated, not executed */
 	if (state == STATE_SYSCALL_ENTRY) {
 		goto_next_syscall_emu(ctx);
-		validate_args(ctx);
+		validate_args(SYS_socketcall, state, ctx);
 	} else {
 		int call = read_child_ebx(tid);
 		//	printf("socket call: %d\n", call);
@@ -305,7 +311,7 @@ static void handle_socket(struct context *ctx, struct trace* trace)
 		}
 
 		set_return_value(ctx);
-		validate_args(ctx);
+		validate_args(SYS_socketcall, state, ctx);
 		finish_syscall_emu(ctx);
 	}
 }
@@ -600,7 +606,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 				break;
 			}
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 			finish_syscall_emu(context);
 		}
 		break;
@@ -698,7 +704,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			}
 
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 			finish_syscall_emu(context);
 		}
 		break;
@@ -794,10 +800,10 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
 			goto_next_syscall_emu(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 			finish_syscall_emu(context);
 			if (rr_flags.redirect) {
 				/* print output intended for stdout\stderr */
@@ -843,12 +849,12 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			} else {
 				__ptrace_cont(context);
 			}
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			if (FAILED_SYSCALL(trace->recorded_regs.eax)) { // failed mapping, emulate
 				finish_syscall_emu(context);
 				set_return_value(context);
-				validate_args(context);
+				validate_args(syscall, state, context);
 			} else {
 				struct user_regs_struct regs;
 				read_child_registers(tid, &regs);
@@ -899,7 +905,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 					write_child_registers(tid, &orig_regs);
 
 					/* check if successful */
-					validate_args(context);
+					validate_args(syscall, state, context);
 
 					/* inject recorded data */
 					set_child_data(context);
@@ -919,7 +925,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 					orig_regs.eax = context->child_regs.eax;
 					write_child_registers(tid, &orig_regs);
 
-					validate_args(context);
+					validate_args(syscall, state, context);
 					debug("%d[time=%d]: mmapped anonymous with flags %x to address %p\n",context->child_tid, trace->global_time, orig_regs.esi,orig_regs.eax);
 				}
 
@@ -1063,7 +1069,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			}
 
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 			finish_syscall_emu(context);
 		}
 		break;
@@ -1182,7 +1188,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			goto_next_syscall_emu(context);
 		} else {
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 			finish_syscall_emu(context);
 		}
 		break;
@@ -1362,12 +1368,12 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
 			goto_next_syscall_emu(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			set_return_value(context);
 			write_child_ebx(context->child_tid, context->trace.recorded_regs.ebx);
 			//write_child_registers(context->child_tid, &(context->trace.recorded_regs));
-			validate_args(context);
+			validate_args(syscall, state, context);
 			finish_syscall_emu(context);
 		}
 		break;
@@ -1440,7 +1446,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
 			goto_next_syscall_emu(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			int cmd = read_child_ebp(context->child_tid);
 			caddr_t addr = read_child_esi(context->child_tid);
@@ -1457,7 +1463,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			}
 
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 			finish_syscall_emu(context);
 		}
 
@@ -1664,7 +1670,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			peek_next_trace(&next_trace);
 			if (next_trace.recorded_regs.eax < 0) { // creation failed, emulate it
 				goto_next_syscall_emu(context);
-				validate_args(context);
+				validate_args(syscall, state, context);
 				break;
 			}
 		}
@@ -1672,7 +1678,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 		if (state == STATE_SYSCALL_EXIT) {
 			if (trace->recorded_regs.eax < 0) { // creation failed, emulate it
 				set_return_value(context);
-				validate_args(context);
+				validate_args(syscall, state, context);
 				finish_syscall_emu(context);
 				break;
 			}
@@ -1680,7 +1686,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 
 		if (state == STATE_SYSCALL_ENTRY) {
 			__ptrace_cont(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			/* execute the system call */
 			__ptrace_cont(context);
@@ -1722,7 +1728,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			 * that is used afterwards */
 			write_child_ebp(tid, trace->recorded_regs.ebp);
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		}
 
 		break;
@@ -1769,7 +1775,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			}
 
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		}
 		break;
 	}
@@ -1842,7 +1848,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 				break;
 			}
 			}
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			switch (call) {
 
@@ -1969,7 +1975,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 			}
 			}
 
-			validate_args(context);
+			validate_args(syscall, state, context);
 		}
 		break;
 	}
@@ -2025,7 +2031,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 
 			orig_regs.eax = tmp_regs.eax;
 			write_child_registers(context->child_tid, &orig_regs);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		}
 
 		break;
@@ -2174,7 +2180,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	{
 		if (state == STATE_SYSCALL_ENTRY) {
 			goto_next_syscall_emu(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			write_child_main_registers(context->child_tid, &trace->recorded_regs);
 			finish_syscall_emu(context);
@@ -2222,11 +2228,11 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 				rep_sched_register_thread(new_tid, next_trace.tid);
 			}
 
-			validate_args(context);
+			validate_args(syscall, state, context);
 		} else {
 			__ptrace_cont(context);
 			set_return_value(context);
-			validate_args(context);
+			validate_args(syscall, state, context);
 		}
 		break;
 	}

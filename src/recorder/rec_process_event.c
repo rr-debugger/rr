@@ -82,6 +82,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	SYS_REC0(brk)
 
+	/**
+	 * splice
+	 */
+	SYS_REC0(splice)
+
 	/** READ NOTE:
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
 	 *
@@ -1897,7 +1902,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 					int retval;
 					ctx->syscall_wrapper_cache = mmap(NULL, WRAP_SYSCALLS_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
 					assert (ctx->syscall_wrapper_cache != NULL && errno == 0);
-					ctx->syscall_wrapper_cache[0] = 0; // in case it is read before the child has a chance to set it
+					// the buffer is initialized to zero.
 					retval = close(fd);
 					assert(retval == 0 && errno == 0);
 					// the file is empty, don't read from it

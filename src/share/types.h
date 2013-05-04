@@ -30,7 +30,6 @@ struct trace
 	int stop_reason;
 	int state;
 
-
 	/* hpc data */
 	uint64_t hw_interrupts;
 	uint64_t page_faults;

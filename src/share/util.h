@@ -16,9 +16,8 @@
 
 #ifndef PTRACE_EVENT_SECCOMP
 #define PTRACE_O_TRACESECCOMP			0x00000080
-// TODO: find the kernel version and define accordingly
-#define PTRACE_EVENT_SECCOMP			8 // ubuntu 12.04
-//#define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10
+#define PTRACE_EVENT_SECCOMP_OBSOLETE	8 // ubuntu 12.04
+#define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
 #endif
 
 char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
