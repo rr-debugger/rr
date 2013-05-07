@@ -1,3 +1,5 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+
 #ifndef REP_PROCESS_EVENT_H_
 #define REP_PROCESS_EVENT_H_
 
