@@ -1,4 +1,10 @@
+.cproject
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
 Debug
+Makefile
 Profile
+obj/
+.project
 .settings/
-
