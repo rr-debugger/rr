@@ -103,7 +103,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--filter_lib=<path>] [--redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--filter_lib=<path>] [--no_redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -237,9 +237,10 @@ void check_prerequisites() {
  */
 int main(int argc, char* argv[], char** envp)
 {
-	__rr_flags.dump_on = DUMP_ON_NONE;
-	__rr_flags.dump_at = DUMP_AT_NONE;
 	__rr_flags.checksum = CHECKSUM_NONE;
+	__rr_flags.dump_at = DUMP_AT_NONE;
+	__rr_flags.dump_on = DUMP_ON_NONE;
+	__rr_flags.redirect = TRUE;
 
 	/* check prerequisites for rr to run */
 	check_prerequisites();
@@ -269,8 +270,8 @@ int main(int argc, char* argv[], char** envp)
 
 
 	// optional redirect flag
-	if  (flag_index < argc && strncmp("--redirect_output", argv[flag_index], sizeof("--redirect_output")) == 0) {
-		__rr_flags.redirect = TRUE;
+	if  (flag_index < argc && strncmp("--no_redirect_output", argv[flag_index], sizeof("--no_redirect_output")) == 0) {
+		__rr_flags.redirect = FALSE;
 		flag_index++;
 	}
 
