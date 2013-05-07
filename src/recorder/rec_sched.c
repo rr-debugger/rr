@@ -1,3 +1,5 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>

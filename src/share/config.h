@@ -1,3 +1,5 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
