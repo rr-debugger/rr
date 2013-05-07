@@ -130,7 +130,7 @@ rr cannot run with address space randomization (for obvious reasons)
 or ptrace hardening, because rr must write to /proc/$pid/mem.  These
 must be disabled before calling either the recorder or the replayer.
 You can do this "permanently" (persistent across reboots) by adding
-these lines to your system's /etc/sysctl.config
+these lines to your system's /etc/sysctl.conf
 
 ###################################################################
 ## Options for rr
