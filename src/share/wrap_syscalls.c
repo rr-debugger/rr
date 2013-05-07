@@ -1,3 +1,5 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+
 /**
  * The wrapper for the system calls, which allows interception and recording of system calls that are invoked using the libc wrapper.
  * The filter in install_syscall_filter() will ptrace all syscalls that do no originate from this wrapper, so that rr will handle them.
