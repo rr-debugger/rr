@@ -1,3 +1,5 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+
 #include <signal.h>
 #include <unistd.h>
 #include <stdio.h>
