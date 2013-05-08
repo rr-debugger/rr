@@ -276,7 +276,7 @@ int main(int argc, char* argv[], char** envp)
 
 	// optional seccomp filter flag
 	if  (flag_index < argc && strncmp("--filter_lib=", argv[flag_index], sizeof("--filter_lib=") - 1) == 0) {
-		__rr_flags.filter_lib_path = sys_malloc(strlen(argv[flag_index]) - sizeof("--filter_lib=") + 1);
+		__rr_flags.filter_lib_path = sys_malloc(strlen(argv[flag_index]) - (sizeof("--filter_lib=") - 1) + 1);
 		sscanf(argv[flag_index],"--filter_lib=%s",__rr_flags.filter_lib_path);
 		flag_index++;
 	}
