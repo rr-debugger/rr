@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Helper to make |./configure && make| do what you expect.
+cmake .
