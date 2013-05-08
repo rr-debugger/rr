@@ -1,3 +1,5 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
