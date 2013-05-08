@@ -42,7 +42,8 @@ function check {
 	fi
 }
 
-# cleanup
+# cleanup.  we intentionally leave .record/.replay files around for
+# developers to reference.
 function cleanup {
 	rm -rf a.out trace_0
 }

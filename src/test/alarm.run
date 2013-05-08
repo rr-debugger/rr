@@ -2,6 +2,6 @@ source util.sh
 get_rr_cmd $# $1
 compile alarm
 record alarm
-replay alarm --redirect_output 
+replay alarm
 check alarm
-cleanup 
+cleanup
