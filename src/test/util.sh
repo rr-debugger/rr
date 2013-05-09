@@ -1,5 +1,5 @@
 # default rr command
-rr="RecordReplayDebug"
+rr="rr"
 
 # check if the user supplied a custom rr command, if so use it, otherwise use default.
 # $1 is number of arguments supplied to the test script
