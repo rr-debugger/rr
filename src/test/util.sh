@@ -20,14 +20,15 @@ function compile {
 # record test. 
 # $1 is test name
 function record {
-	$rr --record a.out 1> $1.out.record
+	LD_DEBUG=all $rr
+	LD_LIBRARY_PATH="/usr/local/lib" $rr --record a.out 1> $1.out.record
 }
 
 # replay test. 
 # $1 is test name 
 # $2 are rr flags
 function replay {
-	$rr --replay $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
+	LD_LIBRARY_PATH="/usr/local/lib" $rr --replay $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
 }
 
 # check test success\failure.
