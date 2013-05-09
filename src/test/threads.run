@@ -2,6 +2,6 @@ source util.sh
 get_rr_cmd $# $1
 compile threads -pthread
 record threads
-replay threads --redirect_output
+replay threads
 check threads
-cleanup 
+cleanup

@@ -2,9 +2,13 @@
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
+CTestTestfile.cmake
 Debug
 Makefile
 Profile
 obj/
 .project
+*.record
+*.replay
 .settings/
+Testing/

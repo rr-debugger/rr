@@ -2,6 +2,6 @@ source util.sh
 get_rr_cmd $# $1
 compile hello
 record hello
-replay hello --redirect_output 
+replay hello
 check hello
-cleanup 
+cleanup
