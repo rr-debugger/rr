@@ -14,7 +14,7 @@ function get_rr_cmd {
 # $1 is test name
 # $2 are compilation flags
 function compile {
-	gcc $1.c $2
+	gcc -m32 $1.c $2
 }
 
 # record test. 
