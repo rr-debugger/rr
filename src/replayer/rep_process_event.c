@@ -1132,6 +1132,15 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	SYS_EMU_ARG(getppid, 0)
 
 	/**
+	 * int getpriority(int which, int who);
+	 *
+	 * The scheduling priority of the process, process group, or
+	 * user, as indicated by which and who is obtained with the
+	 * getpriority() call.
+	 */
+	SYS_EMU_ARG(getpriority, 2)
+
+	/**
 	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
 	 *
 	 * getresuid() returns the real UID, the effective UID, and the saved set-

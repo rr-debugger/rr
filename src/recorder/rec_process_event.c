@@ -549,6 +549,15 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC0(getppid)
 
 	/**
+	 * int getpriority(int which, int who);
+	 *
+	 * The scheduling priority of the process, process group, or
+	 * user, as indicated by which and who is obtained with the
+	 * getpriority() call.
+	 */
+	SYS_REC2(getpriority, sizeof(int), regs.ebx, sizeof(int), regs.ecx)
+
+	/**
 	 * pid_t gettid(void);
 	 *
 	 * gettid()  returns  the caller's thread ID (TID).
