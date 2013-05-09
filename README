@@ -48,8 +48,17 @@ and download libdisasm-0.23.tar.gz.  Then run these commands
  $ ./configure && make
  $ sudo make install
 
-On Ubuntu >= 10.04:
- $ sudo apt-get install libdisasm-dev
+On Ubuntu >= 11.10:
+
+ $ sudo apt-get install cmake gcc g++
+
+plus, on x86 systems:
+
+ $ sudo apt-get install libc-dev libdisasm-dev
+
+or on x86-64 systems:
+
+ $ sudo apt-get install gcc-multilib libc6-dev:i386 libdisasm-dev:i386
 
 Go to
 http://sourceforge.net/projects/perfmon2/files/libpfm4/libpfm-4.3.0.tar.gz/download
@@ -57,8 +66,8 @@ libpfm-4.3.0.tar.gz.  Then run these commands
 
  $ tar zxvf libpfm-4.3.0.tar.gz
  $ cd libpfm-4.3.0
- $ ./configur && make
- $ sudo make install
+ $ make OPTIM="-m32 -O3"
+ $ sudo checkinstall
 
 
 B) Building
