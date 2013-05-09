@@ -99,9 +99,10 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  */
 typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge, IntelNehalem, IntelMerom } cpu_type;
 cpu_type get_cpu_type(){
-	unsigned int eax,edx;
+	unsigned int cpu_type,eax,edx;
 	cpuid(CPUID_GETFEATURES,&eax,&edx);
-	switch (eax & 0xF0FF0) {
+	cpu_type = (eax & 0xF0FF0);
+	switch (cpu_type) {
 	case 0x006F0:
 		assert(0 && "Merom not completely supported yet (find deterministic events).");
 		return IntelMerom;
@@ -117,8 +118,10 @@ cpu_type get_cpu_type(){
 		return IntelIvyBridge;
 		break;
 	default:
-		assert(0 && "CPU not supported yet (add cpuid and adjust the event string to add support).");
-		break;
+		fprintf(stderr,	"CPU 0x%5X not supported yet (add cpuid and adjust the event string to add support).",
+			cpu_type);
+		exit(0);
+		break; /* not reached */
 	}
 	return UnknownArch;
 }
