@@ -20,7 +20,6 @@ function compile {
 # record test. 
 # $1 is test name
 function record {
-	LD_DEBUG=all $rr
 	LD_LIBRARY_PATH="/usr/local/lib" $rr --record a.out 1> $1.out.record
 }
 
