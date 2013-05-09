@@ -54,3 +54,5 @@ add_test(Tests "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR
 set_tests_properties(Tests PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 # Why isn't dumping output on failure default ...
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose)
+
+add_custom_target(setup-travis COMMAND src/script/setup_travis.sh)
