@@ -1,4 +1,4 @@
 language: c
 compiler: gcc
 # NB: this will fail until we sort dependent libraries
-script: ./configure && make && make check
+script: ./configure && make setup-travis && make && make check
