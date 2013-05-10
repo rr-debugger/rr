@@ -1364,6 +1364,11 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	SYS_EMU_ARG(setitimer, 1);
 
 	/**
+	 * int setpriority(int which, int who, int prio);
+	 */
+	SYS_EMU_ARG(setpriority, 0)
+
+	/**
 	 * int setpgid(pid_t pid, pid_t pgid);
 	 *
 	 * setpgid()  sets the PGID of the process specified by pid to pgid.  If pid is zero, then
