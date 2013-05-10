@@ -1,7 +1,7 @@
 source util.sh
 get_rr_cmd $# $1
 compile priority
-record priority
-replay priority
+renice -n 1 $$ && record priority
+renice -n 2 $$ && replay priority
 check priority
 cleanup

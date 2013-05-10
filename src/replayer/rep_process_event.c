@@ -1138,7 +1138,7 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	 * user, as indicated by which and who is obtained with the
 	 * getpriority() call.
 	 */
-	SYS_EMU_ARG(getpriority, 2)
+	SYS_EMU_ARG(getpriority, 0)
 
 	/**
 	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)

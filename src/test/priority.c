@@ -6,15 +6,20 @@
 #include <sys/resource.h>
 
 int main() {
-	int prio;
-	prio = getpriority(PRIO_PROCESS, 0);
-	printf("Current process priority: %d\n", prio);
-	if (prio < 19) {
+	int prio1, prio2;
+
+	prio1 = getpriority(PRIO_PROCESS, 0);
+	printf("Current process priority: %d\n", prio1);
+	if (prio1 < 19) {
 		/* If it's less than 19, we can decrease the
 		 * priority. */
-		++prio;
+		++prio1;
 	}
-	setpriority(PRIO_PROCESS, 0, prio);
-	printf("Now priority is: %d\n", getpriority(PRIO_PROCESS, 0));
+
+	setpriority(PRIO_PROCESS, 0, prio1);
+
+	prio2 = getpriority(PRIO_PROCESS, 0);
+	assert(prio1 == prio2);
+	printf("Now priority is: %d\n", prio2);
 	return 0;
 }
