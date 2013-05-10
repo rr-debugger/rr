@@ -46,18 +46,9 @@ virtual machine.  Disabling network access to the VM is further
 recommended.
 
 rr requires libpfm-4.3.0 and libdisasm-0.23.  Follow the instructions
-below to install the libraries for your distribution.
-
-On Fedora 18:
- sudo yum install libpfm
-
-Go to http://sourceforge.net/projects/bastard/files/libdisasm/0.23/
-and download libdisasm-0.23.tar.gz.  Then run these commands
-
- tar zxvf libdisasm-0.23.tar.gz
- cd libdisasm-0.23
- ./configure && make
- sudo make install
+below to install the libraries for your distribution.  It's easiest to
+set up rr on Ubuntu x86 >= 12.04, so that configuration is
+recommended.
 
 On Ubuntu >= 11.10:
 
@@ -72,6 +63,17 @@ plus, on x86 systems:
 or on x86-64 systems:
 
  sudo apt-get install gcc-multilib libc6-dev:i386 libdisasm-dev:i386
+
+On Fedora 18:
+ sudo yum install libpfm
+
+Go to http://sourceforge.net/projects/bastard/files/libdisasm/0.23/
+and download libdisasm-0.23.tar.gz.  Then run these commands
+
+ tar zxvf libdisasm-0.23.tar.gz
+ cd libdisasm-0.23
+ ./configure && make
+ sudo make install
 
 If you're using a distribution other than Ubuntu and cross compiling
 from x86-64 to x86, see the appendix below.
