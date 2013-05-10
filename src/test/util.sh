@@ -20,7 +20,7 @@ function compile {
 # record test. 
 # $1 is test name
 function record {
-	LD_LIBRARY_PATH="/usr/local/lib" $rr --record a.out 1> $1.out.record
+	LD_LIBRARY_PATH="/usr/local/lib" $rr --record $lib a.out 1> $1.out.record
 }
 
 # replay test. 
@@ -36,7 +36,15 @@ function check {
 	if [[ $(grep "Replayer successfully finished." $1.err.replay) == "" ]]; then
 		echo "Test '$1' FAILED: error during replay"
 	elif [[ $(diff $1.out.record $1.out.replay) != "" ]]; then
-		echo "Test $1 FAILED: output from recording different than replay"
+		echo "Test '$1' FAILED: output from recording different than replay"
+		echo "Output from recording:"
+		echo "--------------------------------------------------"
+		cat $1.out.record
+		echo "--------------------------------------------------"
+		echo "Output from replay:"
+		echo "--------------------------------------------------"
+		cat $1.out.replay
+		echo "--------------------------------------------------"
 	else
 		echo "Test '$1' PASSED"
 		# test passed, OK to delete temporaries

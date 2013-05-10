@@ -1,17 +1,22 @@
 #!/bin/bash
-echo "Usage: test.sh [-dir=test_directory] [-rr=rr_command]"
-echo "Runs rr standard tests."
-echo "Default rr command is 'rr'"
-echo "Default test directory is '../test/'"
-echo "-----------------------------------------------------"
 
 while [[ $# > 0 ]] ; do
 	case $1 in
 		-dir=*)     dir=${1#-dir=} ;    shift 1 ;;
+		-h)         usage=1 ;            shift 1 ;;
+		-lib=*)     lib=${1#-lib=} ;    shift 1 ;;
 		-rr=*)      rr=${1#-rr=} ;      shift 1 ;;
 		*)                              shift 1 ;;
 	esac
 done
+
+if [ -n "$usage" ]; then
+	echo "Usage: test.sh [-dir=test_directory] [-rr=rr_command] [-lib=filter_lib]"
+	echo "Runs rr standard tests."
+	echo "Default rr command is 'rr'"
+	echo "Default test directory is '../test/'"
+	exit 0
+fi
 
 # find the rr command, if not given
 if [ -z $rr ]; then
@@ -23,10 +28,14 @@ if [ -z $dir ]; then
 	dir=../test/
 fi
 
+if [ -n "$lib" ]; then
+	lib="--filter_lib=$lib"
+fi
+
 #move to test directory
 cd $dir
 
 # record and replay all tests
 for test in *.run; do
-	source $test $rr
+	source $test $rr $lib
 done
