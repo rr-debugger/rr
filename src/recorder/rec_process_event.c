@@ -1247,6 +1247,15 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC1(setitimer, sizeof(struct itimerval), regs.edx);
 
 	/**
+	 * int setpriority(int which, int who, int prio);
+	 *
+	 * The scheduling priority of the process, process group, or
+	 * user, as indicated by which and who is set with the
+	 * setpriority() call.
+	 */
+	SYS_REC0(setpriority)
+
+	/**
 	 * int setregid(gid_t rgid, gid_t egid)
 	 *
 	 * setreuid() sets real and effective user IDs of the calling process

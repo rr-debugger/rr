@@ -1,7 +1,0 @@
-source util.sh
-get_rr_cmd $# $1
-compile getpriority
-record getpriority
-replay getpriority
-check getpriority
-cleanup
