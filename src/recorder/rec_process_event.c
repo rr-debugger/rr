@@ -555,7 +555,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * user, as indicated by which and who is obtained with the
 	 * getpriority() call.
 	 */
-	SYS_REC2(getpriority, sizeof(int), regs.ebx, sizeof(int), regs.ecx)
+	SYS_REC0(getpriority)
 
 	/**
 	 * pid_t gettid(void);
