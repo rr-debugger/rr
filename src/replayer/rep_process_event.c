@@ -2254,6 +2254,22 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 	}
 
 	/**
+	 * ssize_t splice(int fd_in, loff_t *off_in, int fd_out,
+	 *                loff_t *off_out, size_t len, unsigned int flags);
+	 *
+	 * splice() moves data between two file descriptors without
+	 * copying between kernel address space and user address
+	 * space.  It transfers up to len bytes of data from the file
+	 * descriptor fd_in to the file descriptor fd_out, where one
+	 * of the descriptors must refer to a pipe.
+	 *
+	 * Technically, the following implementation is unsound for
+	 * programs that splice with stdin/stdout/stderr and have
+	 * output redirected during replay.  But, *crickets*.
+	 */
+	SYS_EMU_ARG(splice, 0)
+
+	/**
 	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
 	 *
 	 * The  wait3()  and wait4() system calls are similar to waitpid(2), but

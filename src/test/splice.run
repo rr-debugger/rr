@@ -1,0 +1,9 @@
+source util.sh
+get_rr_cmd $# $1
+compile splice
+record splice
+replay splice
+check splice
+cleanup
+# Remove junk created by test, in case it fails
+rm -f /tmp/rr-splice-file.txt

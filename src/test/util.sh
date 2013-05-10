@@ -33,10 +33,12 @@ function replay {
 # check test success\failure.
 # $1 is test name
 function check {
-	if [[ $(grep "Replayer successfully finished." $1.err.replay) == "" || $(diff $1.out.record $1.out.replay) != "" ]]; then
-		echo "Test $1 FAILED"
+	if [[ $(grep "Replayer successfully finished." $1.err.replay) == "" ]]; then
+		echo "Test '$1' FAILED: error during replay"
+	elif [[ $(diff $1.out.record $1.out.replay) != "" ]]; then
+		echo "Test $1 FAILED: output from recording different than replay"
 	else
-		echo "Test $1 PASSED"
+		echo "Test '$1' PASSED"
 		# test passed, OK to delete temporaries
 		rm -rf $1.out.record $1.out.replay $1.err.replay
 	fi

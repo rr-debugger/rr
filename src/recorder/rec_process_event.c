@@ -84,11 +84,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	SYS_REC0(brk)
 
-	/**
-	 * splice
-	 */
-	SYS_REC0(splice)
-
 	/** READ NOTE:
 	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
 	 *
@@ -2057,6 +2052,22 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 arbitrary changes to either limit value.
 	 */
 	SYS_REC1(setrlimit, sizeof(struct rlimit), regs.ecx)
+
+	/**
+	 * ssize_t splice(int fd_in, loff_t *off_in, int fd_out,
+	 *                loff_t *off_out, size_t len, unsigned int flags);
+	 *
+	 * splice() moves data between two file descriptors without
+	 * copying between kernel address space and user address
+	 * space.  It transfers up to len bytes of data from the file
+	 * descriptor fd_in to the file descriptor fd_out, where one
+	 * of the descriptors must refer to a pipe.
+	 *
+	 * Technically, the following implementation is unsound for
+	 * programs that splice with stdin/stdout/stderr and have
+	 * output redirected during replay.  But, *crickets*.
+	 */
+	SYS_REC0(splice)
 
 	/**
 	 * mode_t umask(mode_t mask);
