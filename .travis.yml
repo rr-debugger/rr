@@ -3,7 +3,7 @@ compiler: gcc
 # XXX tests are disabled for the moment because the travis VM's CPU
 # type isn't supported, and because there are odd timeouts with no-op
 # tests
-script: ./configure && make setup-travis && make
+script: exit 1 && ./configure && make setup-travis && make
 notifications:
   email:
     - rr-builds@mozilla.org
