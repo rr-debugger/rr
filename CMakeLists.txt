@@ -48,10 +48,18 @@ target_link_libraries(rr
   disasm
 )
 
-# TODO: probably want to manage the tests with the build system to
-# avoid unnecessary rebuilding etc.
-add_test(Tests "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR}/src/test" "-rr=${EXECUTABLE_OUTPUT_PATH}/rr")
-set_tests_properties(Tests PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+# TODO: manage building C test files with the build system
+set(RR_TEST_CMD_COMMON
+  "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR}/src/test" "-rr=${EXECUTABLE_OUTPUT_PATH}/rr")
+
+add_test(Tests ${RR_TEST_CMD_COMMON} -lib=${LIBRARY_OUTPUT_PATH}/librr_wrap_syscalls.so)
+set_tests_properties(Tests
+  PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+
+add_test(TestsNoFilterLib ${RR_TEST_CMD_COMMON})
+set_tests_properties(TestsNoFilterLib
+  PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+
 # Why isn't dumping output on failure default ...
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose)
 
