@@ -1,9 +1,20 @@
+Technical discussion of rr happens in the "rr-dev" mailing list.  Go
+to
+
+https://mail.mozilla.org/listinfo/rr-dev
+
+to subscribe.  The current build and test status of rr is available at
+
+https://travis-ci.org/mozilla/rr
+
+
 Installation guide for rr
 =========================
 
 
 A) Hardware/software requirements
 ---------------------------------
+
 rr has two mode of operation: 
 (1) Plain Mode:
 Requires a Linux kernel version 2.6.39 and higher.
@@ -38,101 +49,61 @@ rr requires libpfm-4.3.0 and libdisasm-0.23.  Follow the instructions
 below to install the libraries for your distribution.
 
 On Fedora 18:
- $ sudo yum install libpfm
+ sudo yum install libpfm
 
 Go to http://sourceforge.net/projects/bastard/files/libdisasm/0.23/
 and download libdisasm-0.23.tar.gz.  Then run these commands
 
- $ tar zxvf libdisasm-0.23.tar.gz
- $ cd libdisasm-0.23
- $ ./configure && make
- $ sudo make install
+ tar zxvf libdisasm-0.23.tar.gz
+ cd libdisasm-0.23
+ ./configure && make
+ sudo make install
 
 On Ubuntu >= 11.10:
 
- $ sudo apt-get install cmake gcc g++
+ sudo apt-get install cmake gcc g++
+ wget http://people.mozilla.org/~gal/libpfm_4.3.0-1_amd64.deb
+ sudo dpkg -i libpfm_4.3.0-1_amd64.deb
 
 plus, on x86 systems:
 
- $ sudo apt-get install libc-dev libdisasm-dev
+ sudo apt-get install libc-dev libdisasm-dev
 
 or on x86-64 systems:
 
- $ sudo apt-get install gcc-multilib libc6-dev:i386 libdisasm-dev:i386
+ sudo apt-get install gcc-multilib libc6-dev:i386 libdisasm-dev:i386
 
-Go to
-http://sourceforge.net/projects/perfmon2/files/libpfm4/libpfm-4.3.0.tar.gz/download
-libpfm-4.3.0.tar.gz.  Then run these commands
-
- $ tar zxvf libpfm-4.3.0.tar.gz
- $ cd libpfm-4.3.0
- $ make OPTIM="-m32 -O3"
- $ sudo checkinstall
+If you're using a distribution other than Ubuntu and cross compiling
+from x86-64 to x86, see the appendix below.
 
 
 B) Building
 -----------
 
-rr is currently developed with the Eclipse CDT plugin. You can import
-the project directly into Eclipse. Eclipse then generates a makefile
-which you can use to build the project.
+rr uses the CMake build system, which is able to generate multiple
+build environments.  So you can choose whichever build driver you
+prefer to use.
 
-By default Eclipse will automatically build the project when files
-change.  You can force Eclipse to rebuild the project by pressing
-Ctrl-B.
+To use Eclipse:
 
+ cmake -G "Eclipse CDT4 - Unix Makefiles"
 
-C) Building on x86_64 systems
------------------------------
+Next, import the project into Eclipse.  By default Eclipse will
+automatically build the project when files change.  You can force
+Eclipse to rebuild the project by pressing Ctrl-B.
 
-On a 64-bit system, rr expects to find the 32-bit versions of those
-libraries installed under $(HOME)/32bit, so you should download those
-libraries and build them yourself.
+To use Makefiles:
 
-To build the 32-bit version of libdisasm-dev, run configure like so:
+ cmake .
 
- $ ./configure --prefix=$HOME/32bit --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32"
+Then the command
 
-To build the 32-bit version of libpfm-4.3.0, edit config.mk and patch
-it like this:
+ make
 
-@@ -65,8 +65,10 @@
- endif
- ifeq (mips,$(findstring mips,$(ARCH)))
- override ARCH=mips
- endif
-+override ARCH=i386
-+OPTIM=-O3 -m32
- 
- ifeq (MINGW,$(findstring MINGW,$(SYS)))
- override SYS=WINDOWS
- endif
-@@ -100,9 +102,9 @@
- 
- #
- # Where should things (lib, headers, man) go in the end.
- #
--PREFIX=/usr/local
-+PREFIX=$(HOME)/32bit
- LIBDIR=$(PREFIX)/lib
- INCDIR=$(PREFIX)/include
- MANDIR=$(PREFIX)/share/man
- DOCDIR=$(PREFIX)/share/doc/libpfm-$(VERSION).$(REVISION).$(AGE)
-@@ -187,8 +189,9 @@
- LDCONFIG=true
- else
- DBG?=-g -Wall -Werror -Wextra -Wno-unused-parameter
- endif
-+LDCONFIG=true
- 
- CFLAGS+=$(OPTIM) $(DBG) -I$(SYSINCDIR) -I$(PFMINCDIR)
- MKDEP=makedepend
- PFMLIB=$(PFMLIBDIR)/libpfm.a
-
-You will need to run rr with LD_LIBRARY_PATH=$HOME/32bit/lib.
+will build the project.
 
 
-D) Usage
+C) Usage
 --------
 
 rr cannot run with address space randomization (for obvious reasons)
@@ -146,44 +117,46 @@ these lines to your system's /etc/sysctl.conf
 kernel.randomize_va_space = 0
 kernel.yama.ptrace_scope = 0
 
-and rebooting.  Alternatively, if you're running rr "one-off" on a
-production machine (not recommended), you can temporarily set up rr by
-running
+and rebooting.  This is only recommended if you're using an isolated
+VM.  Alternatively, if you're running rr "one-off" on a production
+machine (not recommended), you can temporarily configure your kernel
+for rr by running
 
- $ $rr/src/script/setup.sh
+ $rr/src/script/setup.sh
 
-By default in the current build system, Eclipse will create an
-executable called $rr/Debug/RecordReplayDebug.  Running that
-executable in "record" mode creates a path in the current directory
+The build system generates an executable at the location
+$rr/obj/bin/rr.  For convenience, it's recommended to add that
+directory to your $PATH, or create a symbolic link to that location in
+another directory in your $PATH.  For example, if ~/bin is in your
+$PATH
+
+ cd ~/bin
+ ln -s $rr/obj/bin/rr rr
+
+Running rr in "record" mode creates a path in the current directory
 which contains the trace file(s).  It's recommended to run rr from
-within a scratch directly outside the $rr clone.  For example
+within a scratch directory outside the $rr clone.  For example
 
- $ cd $rr/..
- $ mkdir scratch-rr
- $ cd scratch-rr
- $ ln -s ../rr/Debug/RecordReplayDebug rr  # save some typing
+ cd $rr/..
+ mkdir scratch-rr
+ cd scratch-rr
 
 Then To invoke the recorder, run
 
- $ ./rr --record /path/to/binary
+ rr --record /path/to/binary
 
 The trace is saved to the path trace_$n.
 
 To replay an application trace saved to the directory trace_$n, run
 
- $ ./rr --replay trace_$n
-
-NB: rr currently doesn't make a copy of the traced binary(ies) or
-dependent libraries, so these must remain unchanged between recording
-and replay.  Otherwise replay will result in undefined behavior.
+ rr --replay trace_$n
 
 Other command line options:
 [--filter_lib=<path>] : Only for kernels >= 3.5; this installs a
 wrapper for several system calls (look at share/wrap_syscalls.c) to
 speed up their handling and save on the ptrace() context switch. The
-wrapper is compiled as a shared object called 'libwrap_syscalls.so'
-(as part of rr compilation process) and can be found in the rr
-executable directory.
+wrapper is compiled as a shared object called
+'$rr/obj/lib/libwrap_syscalls.so' (as part of rr compilation process).
 
 Debug command line options:
 [--dump_on=<syscall|-signal>] : dump the entire memory to file every
@@ -202,10 +175,11 @@ calculated a checksum of the entire memory either on every event
 global time <from-time>. Fore replay: verifies the calculated
 checksums, should be run with same arguments as the record.
 
-[--redirect_output] : during replay, write to stdout and stderr output
-that was sent to those files during recording.  In theory this could
-affect the integrity of the replay, however this is usually the
-behavior one expects.
+[--no_redirect_output] : by default, rr will write to stdout and
+stderr output that was sent to those files during recording.  In
+theory this could affect the integrity of the replay, however this is
+usually the behavior one expects.  Providing this switch disables
+writing to stdout/stderr during replay.
 
 Note that talking to particular kernel drivers (by ioctl(...))
 requires the rr to have knowledge about what the driver is doing. For
@@ -221,15 +195,48 @@ e.g. by setting the CPU governor to 'performance'. If neither of these
 solutions is feasible, rr and its child processes should be pinned on
 a certain core, e.g. by running rr with:
 
- $ taskset 0x1 rr <options>
+ taskset 0x1 rr <options>
 
 or, in the case of a CPU that is able to run multiple threads on one
 core in parallel, such as Intel CPUs with Hyperthreading capabilities,
 it is better to use:
 
- $ taskset 0x3 rr <options>
+ taskset 0x3 rr <options>
 
 Otherwise, due to frequent context switches between rr and the traced
 process, the different cores will often scale down their frequency
 which can lead to slowdowns of up to 2x.
 
+
+D) Tests
+--------
+
+rr has a suite of tests in $rr/src/test.  To run the tests with
+minimal output,
+
+ make test
+
+or with full output
+
+ make check
+
+Each test consists of a C source file and a ".run" file, which is a
+shell script.
+
+
+Appendix 1: Building on x86_64 systems other than Ubuntu
+--------------------------------------------------------
+
+On a 64-bit system, rr expects to find the 32-bit versions of those
+libraries installed under $(HOME)/32bit, so you should download those
+libraries and build them yourself.
+
+To build the 32-bit version of libdisasm-dev, run configure like so:
+
+ ./configure --prefix=$HOME/32bit --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32"
+
+To build the 32-bit version of libpfm-4.3.0, run
+
+ make OPTIM="-m32 -O3" PREFIX="$HOME/32bit"
+
+You will need to run rr with LD_LIBRARY_PATH=$HOME/32bit/lib.
