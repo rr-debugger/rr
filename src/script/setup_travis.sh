@@ -13,5 +13,4 @@ sudo apt-get update && \
     sudo apt-get install gcc-multilib libc6-dev:i386 libdisasm-dev:i386 && \
     wget http://people.mozilla.org/~gal/libpfm_4.3.0-1_amd64.deb && \
     sudo dpkg -i libpfm_4.3.0-1_amd64.deb && \
-    ls -l /usr/local/lib/libpfm.so.4 && \
     echo ... finished configuring slave
