@@ -6,5 +6,5 @@ compiler: gcc
 script: ./configure && make setup-travis && make
 notifications:
   email:
+    - rr-builds@mozilla.org
     - cjones.bugs@gmail.com
-    - andreas.gal@gmail.com
