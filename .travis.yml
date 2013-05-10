@@ -1,4 +1,6 @@
 language: c
 compiler: gcc
-# NB: this will fail until we sort dependent libraries
-script: ./configure && make setup-travis && make && make check
+# XXX tests are disabled for the moment because the travis VM's CPU
+# type isn't supported, and because there are odd timeouts with no-op
+# tests
+script: ./configure && make setup-travis && make
