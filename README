@@ -53,16 +53,18 @@ recommended.
 On Ubuntu >= 11.10:
 
  sudo apt-get install cmake gcc g++
- wget http://people.mozilla.org/~gal/libpfm_4.3.0-1_amd64.deb
- sudo dpkg -i libpfm_4.3.0-1_amd64.deb
 
 plus, on x86 systems:
 
  sudo apt-get install libc-dev libdisasm-dev
+ wget http://people.mozilla.org/~gal/libpfm_4.3.0-1_i386.deb
+ sudo dpkg -i libpfm_4.3.0-1_i386.deb
 
 or on x86-64 systems:
 
  sudo apt-get install gcc-multilib libc6-dev:i386 libdisasm-dev:i386
+ wget http://people.mozilla.org/~gal/libpfm_4.3.0-1_amd64.deb
+ sudo dpkg -i libpfm_4.3.0-1_amd64.deb
 
 On Fedora 18:
  sudo yum install libpfm
