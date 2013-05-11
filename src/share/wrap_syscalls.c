@@ -280,7 +280,10 @@ new_record[2] = ret;					\
 buffer[0] += record_size_in_bytes;		\
 __syscall_return(ret);
 
-int clock_gettime(clockid_t clk_id, struct timespec *tp) {
+/* TODO: wrapping clock_gettime and gettimeofday prevent firefox from
+ * starting up properly. */
+
+int clock_gettime_(clockid_t clk_id, struct timespec *tp) {
 	_syscall_pre(tp ? sizeof(struct timespec) : 0)
 	/* set it up so the syscall writes to the record cache */
 	struct timespec *tp2 = NULL;
@@ -297,7 +300,7 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp) {
 }
 
 
-int gettimeofday(struct timeval *tp, struct timezone *tzp) {
+int gettimeofday_(struct timeval *tp, struct timezone *tzp) {
 	_syscall_pre((tp ? sizeof(struct timeval) : 0) + (tzp ? sizeof(struct timezone) : 0))
 	/* set it up so the syscall writes to the record cache */
 	struct timeval *tp2 = NULL;
@@ -366,10 +369,13 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 	_syscall_post(epoll_wait)
 }
 
+/* TODO: the the socketcall API wrappers prevent firefox from starting
+ * up properly. */
+
 #define _copy_socketcall_args(arg0,arg1,arg2,arg3,arg4,arg5) \
 volatile long args[6] = { (long)arg0, (long)arg1, (long)arg2, (long)arg3, (long)arg4, (long)arg5 };
 
-int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
+int accept4_(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
 	/* stuff gets recorded only if addr is not null */
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,addr,addrlen,flags, 0, 0)
@@ -393,11 +399,11 @@ int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
 	_syscall_post(socketcall)
 }
 
-int accept(int socket,struct sockaddr *addr, socklen_t *length_ptr) {
+int accept_(int socket,struct sockaddr *addr, socklen_t *length_ptr) {
 	return accept4(socket,addr,length_ptr,0);
 }
 
-int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+int getpeername_(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	/* stuff gets recorded only if addr is not null */
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,addr,addrlen,0, 0, 0)
@@ -423,7 +429,7 @@ int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	_syscall_post(socketcall)
 }
 
-int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+int getsockname_(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	/* stuff gets recorded only if addr is not null */
 	_syscall_pre(addr ? *addrlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,addr,addrlen,0, 0, 0)
@@ -449,7 +455,7 @@ int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
 	_syscall_post(socketcall)
 }
 
-int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t* optlen) {
+int getsockopt_(int sockfd, int level, int optname, void *optval, socklen_t* optlen) {
 	/* stuff gets recorded only if optval is not null */
 	_syscall_pre(optval ? *optlen + sizeof(socklen_t) : 0)
 	_copy_socketcall_args(sockfd,level,optname,optval, optlen, 0)
@@ -476,7 +482,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t* optl
 }
 
 
-ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
+ssize_t recv_(int sockfd, void *buf, size_t len, int flags) {
 	/* stuff gets recorded only if buf is not null */
 	_syscall_pre((buf && len > 0) ? len : 0)
 	_copy_socketcall_args(sockfd,buf,len,flags,0,0)
@@ -494,7 +500,7 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 	_syscall_post(socketcall)
 }
 
-ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {
+ssize_t recvfrom_(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {
 	/* stuff gets recorded only if buf, etc. is not null */
 	_syscall_pre((buf ? len : 0) + (src_addr ? *addrlen +  sizeof(socklen_t) : 0))
 	_copy_socketcall_args(sockfd,buf,len,flags, src_addr, addrlen)
@@ -535,39 +541,39 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *
 	_syscall2(socketcall,call,args,ret) 							\
 	_syscall_post(socketcall)
 
-int socket(int domain, int type, int protocol) {
+int socket_(int domain, int type, int protocol) {
 	_socketcall_no_output(SYS_SOCKET,domain,type,protocol,0,0,0)
 }
 
-int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+int bind_(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 	_socketcall_no_output(SYS_BIND,sockfd,addr,addrlen,0,0,0)
 }
 
-int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+int connect_(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 	_socketcall_no_output(SYS_CONNECT,sockfd,addr,addrlen,0,0,0)
 }
 
-int listen(int sockfd, int backlog) {
+int listen_(int sockfd, int backlog) {
 	_socketcall_no_output(SYS_LISTEN,sockfd,backlog,0,0,0,0)
 }
 
-ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags) {
+ssize_t sendmsg_(int sockfd, const struct msghdr *msg, int flags) {
 	_socketcall_no_output(SYS_SENDMSG,sockfd,msg,flags,0,0,0)
 }
 
-ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
+ssize_t send_(int sockfd, const void *buf, size_t len, int flags) {
 	_socketcall_no_output(SYS_SEND,sockfd,buf,len,flags,0,0)
 }
 
-ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen) {
+ssize_t sendto_(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen) {
 	_socketcall_no_output(SYS_SENDTO,sockfd,buf,len,flags,dest_addr,addrlen)
 }
 
-int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
+int setsockopt_(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
 	_socketcall_no_output(SYS_SETSOCKOPT,sockfd,level,optname,optval,optlen,0)
 }
 
-int shutdown(int socket, int how) {
+int shutdown_(int socket, int how) {
 	_socketcall_no_output(SYS_SHUTDOWN,socket,how,0,0,0,0)
 }
 
