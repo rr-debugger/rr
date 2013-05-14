@@ -1,0 +1,8 @@
+source util.sh
+get_rr_cmd $# $1
+compile link
+record link
+replay link
+check link
+cleanup
+rm -f /tmp/rr-link-file.txt /tmp/rr-link-file.link
