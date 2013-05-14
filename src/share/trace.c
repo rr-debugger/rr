@@ -1,14 +1,12 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <assert.h>
 #include <err.h>
+#include <limits.h>
 #include <sched.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-
-
 #include <sys/user.h>
 #include <sys/syscall.h>
 
@@ -89,10 +87,15 @@ unsigned int get_time(pid_t tid)
  */
 void rec_setup_trace_dir(int version)
 {
-	char ver[32], path[64];
+	char ver[32], path[PATH_MAX];
+	const char* output_dir;
 	/* convert int to char* */
 	sprintf(ver, "_%d", version);
-	strcpy(path, "./trace");
+	if (!(output_dir = getenv("_RR_TRACE_DIR"))) {
+		output_dir = ".";
+	}
+	strcpy(path, output_dir);
+	strcat(path, "/trace");
 
 	const char* tmp_path = strcat(path, ver);
 
@@ -104,6 +107,7 @@ void rec_setup_trace_dir(int version)
 	} else {
 		trace_path_ = sys_malloc(strlen(tmp_path) + 1);
 		strcpy(trace_path_, tmp_path);
+		log_info("Saving trace files to %s", trace_path_);
 	}
 }
 
