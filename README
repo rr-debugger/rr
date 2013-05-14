@@ -77,17 +77,6 @@ and download libdisasm-0.23.tar.gz.  Then run these commands
  ./configure && make
  sudo make install
 
-On Fedora 18:
- sudo yum install libpfm
-
-Go to http://sourceforge.net/projects/bastard/files/libdisasm/0.23/
-and download libdisasm-0.23.tar.gz.  Then run these commands
-
- tar zxvf libdisasm-0.23.tar.gz
- cd libdisasm-0.23
- ./configure && make
- sudo make install
-
 If you're using a distribution other than Ubuntu and cross compiling
 from x86-64 to x86, see the appendix below.
 
