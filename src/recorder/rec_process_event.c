@@ -729,6 +729,14 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	}
 
 	/**
+	 * int link(const char *oldpath, const char *newpath);
+	 *
+	 * link() creates a new link (also known as a hard link) to an
+	 * existing file.
+	 */
+	SYS_REC0(link)
+
+	/**
 	 * off_t lseek(int fd, off_t offset, int whence)
 	 * The  lseek()  function  repositions the offset of the open file associated with the file
 	 descriptor fd to the argument offset according to the directive whence as follows:
