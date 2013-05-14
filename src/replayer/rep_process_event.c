@@ -711,6 +711,15 @@ void rep_process_syscall(struct context* context, int syscall, struct flags rr_f
 		}
 		break;
 	}
+
+	/**
+	 * int link(const char *oldpath, const char *newpath);
+	 *
+	 * link() creates a new link (also known as a hard link) to an
+	 * existing file.
+	 */
+	SYS_EMU_ARG(link, 0)
+
 	/*
 	 * int _llseek(unsigned int fd, unsigned long offset_high, unsigned long offset_low,
 	 * loff_t *result, unsigned int whence);
