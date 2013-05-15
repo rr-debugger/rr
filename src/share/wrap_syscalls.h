@@ -10,7 +10,7 @@
 #ifndef WRAP_SYSCALLS_H_
 #define WRAP_SYSCALLS_H_
 
-#define WRAP_SYSCALLS_LIB_FILENAME				"libwrap_syscalls.so"
+#define WRAP_SYSCALLS_LIB_FILENAME				"librr_wrap_syscalls.so"
 
 #define WRAP_SYSCALLS_CACHE_SIZE				((1 << 20) - sizeof(int)) /* Accounting for buffer[0] which holds size */
 #define WRAP_SYSCALLS_CACHE_FILENAME_PREFIX 	"record_cache_"
