@@ -1104,7 +1104,11 @@ int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * c
 	sys_ptrace_syscall(tid);
 	sys_waitpid(tid, &ctx->status);
 
-	if (GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP) {
+	if (GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP
+	    /* XXX this is a special case for ubuntu 12.04.  revisit
+	     * this check if an event is added with number 8 (just
+	     * after SECCOMP */
+	    || GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
 		sys_ptrace_syscall(tid);
 		sys_waitpid(tid, &ctx->status);
 	}
