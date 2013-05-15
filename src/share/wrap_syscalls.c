@@ -14,6 +14,7 @@
 #define _GNU_SOURCE 1
 #include <assert.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <link.h>
 #include <unistd.h>
 #include <stdarg.h>
@@ -42,7 +43,7 @@ static __thread int * buffer = NULL; /* buffer[0] holds the size in bytes, withh
 static void * libstart = NULL;
 static void * libend = NULL;
 
-static char trace_path_[512] = { '\0' };
+static char trace_path_[PATH_MAX] = { '\0' };
 
 /**
  * Internal wrapper code goes here
@@ -60,11 +61,12 @@ static void find_library_location(void)
 {
 	/* Open the maps file */
 	pid_t tid = syscall(SYS_gettid);
-	char path[64] = {0};
+	char path[PATH_MAX] = {0};
 	sprintf(path, "/proc/%d/maps", tid);
 	int maps_file = syscall(SYS_open,path,O_RDONLY);
 	if (maps_file < 0) {
-		assert(0 && "Error reading child memory maps");
+		/* FIXME for write() */
+		fatal("Error reading child memory maps");
 	}
 
 	/* Read the maps file into memory */
@@ -92,7 +94,8 @@ static void find_library_location(void)
 		}
 	} while (retval >= 0);
 	syscall(SYS_close,maps_file);
-	assert(0 && "Unable to locate library in maps file");
+	/* FIXME for write() */
+	fatal("Unable to locate library in maps file");
 	return;
 }
 
@@ -104,9 +107,8 @@ static void install_syscall_filter(void)
 {
 	/* figure out the library address */
 	find_library_location();
-	char msg[128];
-	sprintf(msg, "Wrapper library found at (%p,%p).",libstart,libend);
-	syscall(SYS_write,STDERR_FILENO,msg,strnlen(msg,128));
+	/* FIXME for write() */
+	log_info("Wrapper library found at (%p,%p).",libstart,libend);
 	struct sock_filter filter[] = {
 		/* Validate architecture. Rob was right - this is not needed. */
 		/*VALIDATE_ARCHITECTURE,*/
@@ -152,11 +154,11 @@ static void install_syscall_filter(void)
 	};
 
 	if (syscall(SYS_prctl,PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-		assert(0 && "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available.");
+		fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available.");
 	}
 
 	if (syscall(SYS_prctl,PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)) {
-		assert(0 && "prctl(SECCOMP) failed, SECCOMP_FILTER is not available.");
+		fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available.");
 	}
 	/* anything that happens from this point on gets filtered! */
 }
@@ -164,13 +166,23 @@ static void install_syscall_filter(void)
 /* TODO: this will not work if older trace dirs with higher index exist */
 static void find_trace_dir(void)
 {
-	int version = 0;
-	char path[16] = "./trace_0";
-	struct stat sb;
-	while (syscall(SYS_stat64, path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-		sprintf(path, "./trace_%d",++version);
+	const char* output_dir;
+	if (!(output_dir = getenv("_RR_TRACE_DIR"))) {
+		output_dir = ".";
 	}
-	sprintf(trace_path_, "./trace_%d",version-1);
+	int version = 0;
+	struct stat64 sb;
+	do {
+		sprintf(trace_path_, "%s/trace_%d", output_dir, version);
+	} while(syscall(SYS_stat64, trace_path_, &sb) == 0
+		&& S_ISDIR(sb.st_mode)
+		&& ++version);
+	if (version == 0) {
+		fatal("trace_dir not found.  Running outside of rr?");
+	}
+	sprintf(trace_path_, "%s/trace_%d", output_dir, version-1);
+	/* FIXME for write() */
+	log_info("Found trace_dir %s", trace_path_);
 }
 
 /**
@@ -237,53 +249,58 @@ static void init() {
  * 8. errno is set.
  */
 
-#define _syscall_pre(extra_space) 													\
-if (!buffer)																		\
-init();																				\
-int ret;																			\
-int record_size_in_bytes = WRAP_SYSCALLS_RECORD_BASE_SIZE * sizeof(int);			\
-if (buffer[0] + record_size_in_bytes + extra_space > WRAP_SYSCALLS_CACHE_SIZE) {	\
-flush_buffer();																		\
-}																					\
-int * const new_record = (void*)buffer + sizeof(int) + buffer[0];					\
-void * ptr = &new_record[WRAP_SYSCALLS_RECORD_BASE_SIZE];							\
+#define _syscall_pre(extra_space)					\
+	if (!buffer)							\
+		init();							\
+	int ret;							\
+	int record_size_in_bytes = (WRAP_SYSCALLS_RECORD_BASE_SIZE *	\
+				    sizeof(int));			\
+	if (buffer[0] + record_size_in_bytes + extra_space >		\
+	    WRAP_SYSCALLS_CACHE_SIZE) {					\
+		flush_buffer();						\
+	}								\
+	int * const new_record = (void*)buffer + sizeof(int) + buffer[0]; \
+	void * ptr = &new_record[WRAP_SYSCALLS_RECORD_BASE_SIZE];
 
-#define _syscall0(call,ret) \
-asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call));
+#define _syscall0(call,ret)						\
+	asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call));
 
-#define _syscall2(call,arg0,arg1,ret) \
-asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call), "b"((long)arg0), "c"((long)arg1));
+#define _syscall2(call,arg0,arg1,ret)					\
+	asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call),	\
+		     "b"((long)arg0), "c"((long)arg1));
 
-#define _syscall3(call,arg0,arg1,arg2,ret) \
-asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call), "b"((long)arg0), "c"((long)arg1), "d"((long)arg2));
+#define _syscall3(call,arg0,arg1,arg2,ret)				\
+	asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call),	\
+		     "b"((long)arg0), "c"((long)arg1), "d"((long)arg2));
 
-#define _syscall4(call,arg0,arg1,arg2,arg3,ret) \
-asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call), "b"((long)arg0), "c"((long)arg1), "d"((long)arg2), "S"((long)arg3));
+#define _syscall4(call,arg0,arg1,arg2,arg3,ret)				\
+	asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_##call),	\
+		     "b"((long)arg0), "c"((long)arg1), "d"((long)arg2), \
+		     "S"((long)arg3));
 
-#define _syscall6(call,arg0,arg1,arg2,arg3,arg4,arg5,ret) \
-asm volatile("mov %6, %%ebp\n\t" \
-		     "int $0x80" : "=a"(ret) : "0"(__NR_##call), "b"((long)arg0), "c"((long)arg1), "d"((long)arg2), "S"((long)arg3), "D"((long)arg4), "g"((long)arg5));
+#define _syscall6(call,arg0,arg1,arg2,arg3,arg4,arg5,ret)		\
+	asm volatile("mov %6, %%ebp\n\t"				\
+		     "int $0x80" : "=a"(ret) : "0"(__NR_##call),	\
+		     "b"((long)arg0), "c"((long)arg1), "d"((long)arg2), \
+		     "S"((long)arg3), "D"((long)arg4), "g"((long)arg5));
 
-#define __syscall_return(res) \
-do { \
-        if ((unsigned long)(res) >= (unsigned long)(-125)) { \
-                errno = -(res); \
-                res = -1; \
-        } \
-        return (res); \
-} while (0)
+#define __syscall_return(res)						\
+	do {								\
+		if ((unsigned long)(res) >= (unsigned long)(-125)) {	\
+			errno = -(res);					\
+			res = -1;					\
+		}							\
+		return (res);						\
+	} while (0)
 
 #define _syscall_post(syscall) 			\
-new_record[0] = __NR_##syscall;			\
-new_record[1] = record_size_in_bytes;	\
-new_record[2] = ret;					\
-buffer[0] += record_size_in_bytes;		\
-__syscall_return(ret);
+	new_record[0] = __NR_##syscall;		\
+	new_record[1] = record_size_in_bytes;	\
+	new_record[2] = ret;			\
+	buffer[0] += record_size_in_bytes;	\
+	__syscall_return(ret);
 
-/* TODO: wrapping clock_gettime and gettimeofday prevent firefox from
- * starting up properly. */
-
-int clock_gettime_(clockid_t clk_id, struct timespec *tp) {
+int clock_gettime(clockid_t clk_id, struct timespec *tp) {
 	_syscall_pre(tp ? sizeof(struct timespec) : 0)
 	/* set it up so the syscall writes to the record cache */
 	struct timespec *tp2 = NULL;
@@ -300,7 +317,7 @@ int clock_gettime_(clockid_t clk_id, struct timespec *tp) {
 }
 
 
-int gettimeofday_(struct timeval *tp, struct timezone *tzp) {
+int gettimeofday(struct timeval *tp, struct timezone *tzp) {
 	_syscall_pre((tp ? sizeof(struct timeval) : 0) + (tzp ? sizeof(struct timezone) : 0))
 	/* set it up so the syscall writes to the record cache */
 	struct timeval *tp2 = NULL;
