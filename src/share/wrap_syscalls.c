@@ -386,8 +386,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 	_syscall_post(epoll_wait)
 }
 
-/* TODO: the the socketcall API wrappers prevent firefox from starting
- * up properly. */
+/* TODO: the socketcall API can block, and we need to handle that better. */
 
 #define _copy_socketcall_args(arg0,arg1,arg2,arg3,arg4,arg5) \
 volatile long args[6] = { (long)arg0, (long)arg1, (long)arg2, (long)arg3, (long)arg4, (long)arg5 };
@@ -609,15 +608,17 @@ if (ret == 0) {										\
 }													\
 _syscall_post(call)
 
-int fstat(int fd, struct stat *buf){
+/* TODO: the stat API can block, and we need to handle that better. */
+
+int fstat_(int fd, struct stat *buf){
 	_stat(fstat64,fd,buf);
 }
 
-int lstat(const char *path, struct stat *buf) {
+int lstat_(const char *path, struct stat *buf) {
 	_stat(lstat64,path,buf);
 }
 
-int stat(const char *path, struct stat *buf){
+int stat_(const char *path, struct stat *buf){
 	_stat(stat64,path,buf);
 }
 
