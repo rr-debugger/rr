@@ -19,7 +19,7 @@
 
 static pid_t child;
 
-#define MAX_ARGC_LEN	32
+#define MAX_ARGC_LEN	64
 #define MAX_ENVC_LEN	128
 #define MAX_ARGV_LEN	1024
 #define MAX_ENVP_LEN	2048
@@ -35,7 +35,7 @@ struct flags __rr_flags = {0};
 static void alloc_argc(int argc)
 {
 	int i;
-	assert(argc -1 < MAX_ARGC_LEN);
+	assert(argc + 1 < MAX_ARGC_LEN);
 	__argv = sys_malloc(MAX_ARGC_LEN * sizeof(char*));
 
 	for (i = 0; i < MAX_ARGC_LEN; i++) {
@@ -47,7 +47,11 @@ static void alloc_argc(int argc)
 static void alloc_envp(char** envp)
 {
 	int i;
-
+#ifndef NDEBUG
+	for (i = 1; envp[i - 1]; ++i);
+	/* the loop above counts the null sentinel */
+	assert(i < MAX_ENVC_LEN);
+#endif
 	__envp = sys_malloc(MAX_ENVC_LEN * sizeof(char*));
 	for (i = 0; i < MAX_ENVC_LEN; i++) {
 		__envp[i] = sys_malloc(MAX_ENVP_LEN);
