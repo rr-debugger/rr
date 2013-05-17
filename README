@@ -32,8 +32,11 @@ processes.  It can be built and run as a 32-bit application on an
 x86_64 system; see below.
 
 rr can run in a virtual machine that supports virtualization of
-performance counters, such as VMWare Workstation 9. Installing the
-latest 32-bit Ubuntu in a VM is an easy way to get rr working.
+performance counters, such as VMWare Workstation 9.  If you use a VM,
+*MAKE SURE VIRTUALIZATION OF PERF COUNTERS IS ENABLED*.  On at least
+VMWare Workstation 9, the default is for counter virtualization to be
+disabled.  Installing the latest 32-bit Ubuntu in a VM is an easy way
+to get rr working.
 
 ===============================================================================
 *********************************** WARNING ***********************************
