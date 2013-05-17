@@ -197,7 +197,7 @@ static void find_trace_dir(void)
 
 static void setup_buffer() {
 	pid_t tid = syscall(SYS_gettid); /* libc does not supply a wrapper for gettid */
-	char filename[32];
+	char filename[PATH_MAX];
 	sprintf(filename,"%s/%s%d", trace_path_, WRAP_SYSCALLS_CACHE_FILENAME_PREFIX, tid);
 	errno = 0;
 	int fd = syscall(SYS_open,filename, O_CREAT | O_RDWR, 0666); /* O_TRUNC here is bad */
