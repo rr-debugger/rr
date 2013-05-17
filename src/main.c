@@ -71,17 +71,40 @@ static void copy_argv(int argc, char* argv[])
 
 static void copy_envp(char** envp)
 {
-	int i = 0;
+	int i = 0, preload_index = -1;
 	while (envp[i] != NULL) {
 		assert (i < MAX_ENVC_LEN);
 		int arglen = strlen(envp[i]);
 		assert(arglen < MAX_ENVP_LEN);
 		strncpy(__envp[i], envp[i], arglen + 1);
+		if (envp[i] == strstr(envp[i], "LD_PRELOAD"))
+			preload_index = i;
 		i++;
 	}
-	// LD_PRELOAD the syscall interception lib
-	if (__rr_flags.filter_lib_path)
-		sprintf(__envp[i++],"LD_PRELOAD=%s",__rr_flags.filter_lib_path);
+	/* LD_PRELOAD the syscall interception lib */
+	if (__rr_flags.filter_lib_path) {
+		/* XXX not strictly safe */
+		char ld_preload[2 * PATH_MAX] = "LD_PRELOAD=";
+		/* our preload lib *must* come first */
+		strcat(ld_preload, __rr_flags.filter_lib_path);
+		if (preload_index >= 0) {
+			const char* old_preload = NULL;
+			old_preload = strchr(envp[preload_index], '=') + 1;
+			assert(old_preload);
+			/* honor old preloads too.  this may cause
+			 * problems, but only in those libs, and
+			 * that's the user's problem. */
+			strcat(ld_preload, ":");
+			/* append old value */
+			strcat(ld_preload, old_preload);
+		} else {
+			/* or if this is a new key/value, "allocate"
+			 * an index for it */
+			preload_index = i++;
+		}
+		strcpy(__envp[preload_index], ld_preload);
+	}
+	assert (i < MAX_ENVC_LEN);
 	__envp[i] = 0;
 }
 
@@ -330,4 +353,3 @@ int main(int argc, char* argv[], char** envp)
 	return 0;
 
 }
-
