@@ -30,6 +30,7 @@ add_executable(rr
   src/recorder/rec_process_event.c
   src/recorder/rec_sched.c
   src/recorder/recorder.c
+  src/replayer/dbg_gdb.c
   src/replayer/rep_process_event.c
   src/replayer/rep_process_signal.c
   src/replayer/rep_sched.c
