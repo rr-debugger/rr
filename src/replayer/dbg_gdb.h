@@ -29,7 +29,7 @@ struct dbg_request {
 	enum { 
 		DREQ_NONE = 0,
 
-		/* None of these requests have arguments. */
+		/* None of these requests have parameters. */
 		DREQ_GET_CURRENT_THREAD,
 		DREQ_GET_OFFSETS,
 		DREQ_GET_REGS,
@@ -44,6 +44,9 @@ struct dbg_request {
 		/* These use params.resume. */
 		DREQ_CONTINUE,
 		DREQ_STEP,
+
+		/* No parameters. */
+		DREQ_INTERRUPT,
 
 		/* TODO */
 		DREQ_GET_THREAD_LIST,
