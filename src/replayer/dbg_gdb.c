@@ -22,6 +22,8 @@
 #include "../share/dbg.h"
 #include "../share/sys.h"
 
+#define INTERRUPT_CHAR '\x03'
+
 /**
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
@@ -48,6 +50,7 @@ int dbg_is_resume_request(const struct dbg_request* req)
 {
 	switch (req->type) {
 	case DREQ_CONTINUE:
+	case DREQ_INTERRUPT:
 	case DREQ_STEP:
 		return TRUE;
 	default:
@@ -240,15 +243,23 @@ static void write_hex_packet(struct dbg_context* dbg, long hex)
 }
 
 /**
- * Consume bytes in the input buffer until start-of-packet ('$') is
- * seen.  Does not block.  Return zero if start-of-packet is seen,
- * nonzero if not.
+ * Consume bytes in the input buffer until start-of-packet ('$') or
+ * the interrupt character is seen.  Does not block.  Return zero if
+ * seen, nonzero if not.
  */
 static int skip_to_packet_start(struct dbg_context* dbg)
 {
-	char* p;
+	char* p = NULL;
+	int i;
 
-	p = memchr(dbg->inbuf, '$', dbg->inlen);
+	/* XXX we want memcspn() here ... */
+	for (i = 0; i < dbg->inlen; ++i) {
+		if (dbg->inbuf[i] == '$' || dbg->inbuf[i] == INTERRUPT_CHAR) {
+			p = &dbg->inbuf[i];
+			break;
+		}
+	}
+
 	if (!p) {
 		/* Discard all read bytes, which we don't care
 		 * about. */
@@ -260,7 +271,7 @@ static int skip_to_packet_start(struct dbg_context* dbg)
 	dbg->inlen -= (p - dbg->inbuf);
 
 	assert(1 <= dbg->inlen);
-	assert('$' == dbg->inbuf[0]);
+	assert('$' == dbg->inbuf[0] || INTERRUPT_CHAR == dbg->inbuf[0]);
 	return 0;
 }
 
@@ -304,6 +315,13 @@ static void read_packet(struct dbg_context* dbg)
 		read_data_once(dbg);
 	}
 
+	if (dbg->inbuf[0] == INTERRUPT_CHAR) {
+		/* Interrupts are kind of an ugly duckling in the gdb
+		 * protocol ... */
+		dbg->packetend = 1;
+		return;
+	}
+
 	/* Read until we see end-of-packet. */
 	for (checkedlen = 0;
 	     !(p = memchr(dbg->inbuf + checkedlen, '#', dbg->inlen));
@@ -316,8 +334,10 @@ static void read_packet(struct dbg_context* dbg)
 	 * not really clear why asking for the packet again might make
 	 * the bug go away. */
 	assert('$' == dbg->inbuf[0] && dbg->packetend < dbg->inlen);
+
 	/* Acknowledge receipt of the packet. */
 	write_data_raw(dbg, "+", 1);
+	write_flush(dbg);
 }
 
 static int query(struct dbg_context* dbg, char* payload)
@@ -413,16 +433,12 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 	args = strchr(payload, ';');
 	if (args) {
 		*args++ = '\0';
-	} else {
-		*strchr(payload, '?') = '\0';
 	}
 	name = payload;
 
 	if (!strcmp("Cont", name)) {
-		/* TODO parse args */
-		if (!args || !strcmp("c", args)) {
-			debug("gdb requests 'continue'");
-			/* XXX does no-args mean 'c'? */
+		debug("gdb requests 'continue' (%s)", args);
+		if (!strcmp("c", args)) {
 			dbg->req.type = DREQ_CONTINUE;
 			dbg->req.target = dbg->resume_thread;
 			memset(&dbg->req.params.resume, 0,
@@ -430,10 +446,19 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			return 1;
 		}
 		fatal("vCont unparsed args %s", args);
+	}
+
+	if (!strcmp("Cont?", name)) {
+		debug("gdb queries which continue commands we support");
+		write_packet(dbg, "vCont;c;C;s;S;t");
 		return 0;
 	}
 
-	log_warn("Unhandled gdb vpacket: v%s", name);
+
+	fatal("Unhandled gdb vpacket: v%s", name);
+
+
+	//log_warn("Unhandled gdb vpacket: v%s", name);
 	write_packet(dbg, "");
 	return 0;
 }
@@ -441,17 +466,31 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 static int process_packet(struct dbg_context* dbg)
 {
 	char request;
-	char* payload;
+	char* payload = NULL;
 	int ret;
 
-	assert('$' == dbg->inbuf[0]
-	       && (((char*)memchr(dbg->inbuf, '#', dbg->inlen) - dbg->inbuf)
-		   == dbg->packetend));
+	assert(INTERRUPT_CHAR == dbg->inbuf[0] ||
+	       ('$' == dbg->inbuf[0]
+		&& (((char*)memchr(dbg->inbuf, '#', dbg->inlen) - dbg->inbuf)
+		   == dbg->packetend)));
 
-	dbg->inbuf[dbg->packetend] = '\0';
-	request = dbg->inbuf[1];
-	payload = &dbg->inbuf[2];
+	if (INTERRUPT_CHAR == dbg->inbuf[0]) {
+		request = INTERRUPT_CHAR;
+	} else {
+		request = dbg->inbuf[1];
+		payload = &dbg->inbuf[2];
+		dbg->inbuf[dbg->packetend] = '\0';
+	}
 	switch(request) {
+	case INTERRUPT_CHAR:
+		debug("gdb requests interrupt");
+		dbg->req.type = DREQ_INTERRUPT;
+		ret = 1;
+		break;
+	case 'D':
+		log_info("gdb is detaching from us, exiting");
+		write_packet(dbg, "OK");
+		exit(0);
 	case 'g':
 		dbg->req.type = DREQ_GET_REGS;
 		dbg->req.target = dbg->query_thread;
@@ -488,10 +527,16 @@ static int process_packet(struct dbg_context* dbg)
 	case 'v':
 		ret = process_vpacket(dbg, payload);
 		break;
+	case 'z':
+		/* TODO remove breakpoint */
+		debug("gdb requests remove breakpoint (%s)", payload);
+		write_packet(dbg, "OK");
+		ret = 0;
+		break;
 	case 'Z':
 		/* TODO set breakpoint */
-		write_packet(dbg, "");
-		debug("gdb requests breakpoint (%s)", payload);
+		debug("gdb requests set breakpoint (%s)", payload);
+		write_packet(dbg, "OK");
 		ret = 0;
 		break;
 	case '?':

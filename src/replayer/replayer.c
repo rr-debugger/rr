@@ -222,6 +222,11 @@ void replay(struct flags rr_flags)
 				/* TODO */
 				dbg_reply_get_stop_reason(dbg);
 				continue;
+			case DREQ_INTERRUPT:
+				/* Tell the debugger we stopped and
+				 * await further instructions. */
+				dbg_notify_stop(dbg);
+				continue;
 			default:
 				break;
 			}
