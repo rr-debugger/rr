@@ -6,13 +6,12 @@
 #include <err.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <netinet/in.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
 #include <sys/mman.h>
 #include <sys/personality.h>
 #include <sys/poll.h>
@@ -21,12 +20,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/user.h>
+#include <unistd.h>
 
+#include "dbg_gdb.h"
 #include "rep_sched.h"
 #include "rep_process_event.h"
 #include "rep_process_signal.h"
-
-#include <netinet/in.h>
 
 #include "../share/dbg.h"
 #include "../share/hpc.h"
@@ -177,13 +176,75 @@ static void replay_init_scratch_memory(struct context *ctx, struct mmapped_file 
 
 void replay(struct flags rr_flags)
 {
-	check_initial_register_file();
-
+	struct dbg_context* dbg = NULL;
 	struct context *ctx = NULL;
 	bool validate = FALSE;
+	struct dbg_request req;
+
+	if (!rr_flags.autopilot) {
+		dbg = dbg_await_client_connection("127.0.0.1");
+	}
+	/* XXX this function is side-effect-y, calling
+	 * rep_sched_get_thread().  What's the invariant we're trying
+	 * to destructively repair here? */
+	check_initial_register_file();
 
 	while (rep_sched_get_num_threads()) {
+		if (dbg) {
+			/* See if the debugger has any new requests for us
+			 * before we resume execution. */
+			req = dbg_get_request(dbg);
+			switch (req.type) {
+			case DREQ_GET_CURRENT_THREAD: {
+				struct dbg_thread_id thread;
+				/* TODO */
+				thread.tid = 1;
+				dbg_reply_get_current_thread(dbg, thread);
+				continue;
+			}
+			case DREQ_GET_MEM:
+				/* get memory per |req.params.mem| */
+				dbg_reply_get_mem(dbg);
+				continue;
+			case DREQ_GET_OFFSETS:
+				/* TODO */
+				dbg_reply_get_offsets(dbg);
+				continue;
+			case DREQ_GET_REGS:
+				/* TODO */
+				dbg_reply_get_regs(dbg);
+				continue;
+			case DREQ_GET_REG:
+				/* TODO */
+				dbg_reply_get_reg(dbg, 0);
+				continue;
+			case DREQ_GET_STOP_REASON:
+				/* TODO */
+				dbg_reply_get_stop_reason(dbg);
+				continue;
+			default:
+				break;
+			}
+		} else {
+			static const struct dbg_request continue_all_tasks = {
+				.type = DREQ_CONTINUE,
+				.target = { .pid = -1, .tid = -1 },
+				.params = { 0 }
+			};
+			req = continue_all_tasks;
+		}
+
+		assert(dbg_is_resume_request(&req));
+
 		ctx = rep_sched_get_thread();
+
+		/* TODO: run until we satisfy req.type or are
+		 * interrupted, then call
+		 *
+		if (dbg) {
+			dbg_notify_stop(dbg, ...);
+		}
+		 */ 
 
 		/* print some kind of progress */
 		if (ctx->trace.global_time % 10000 == 0) {

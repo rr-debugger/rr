@@ -116,6 +116,8 @@ struct flags {
 	int dump_on;	// event
 	int dump_at;	// global time
 	int checksum;
+	/* Nonzero when we're replaying without a controlling debugger. */
+	int autopilot;
 };
 
 #endif /* TYPES_H_ */

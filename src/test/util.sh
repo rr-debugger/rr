@@ -27,7 +27,7 @@ function record {
 # $1 is test name 
 # $2 are rr flags
 function replay {
-	LD_LIBRARY_PATH="/usr/local/lib" $rr --replay $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
+	LD_LIBRARY_PATH="/usr/local/lib" $rr --replay --autopilot $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
 }
 
 # check test success\failure.

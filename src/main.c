@@ -132,7 +132,7 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--filter_lib=<path>] [--no_redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] executable [args].\n");
+	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--filter_lib=<path>] [--autopilot] [--no_redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] executable [args].\n");
 }
 
 static void install_signal_handler()
@@ -297,6 +297,10 @@ int main(int argc, char* argv[], char** envp)
 		return 0;
 	}
 
+	if  (flag_index < argc && strncmp("--autopilot", argv[flag_index], sizeof("--autopilot")) == 0) {
+		__rr_flags.autopilot = TRUE;
+		flag_index++;
+	}
 
 	// optional redirect flag
 	if  (flag_index < argc && strncmp("--no_redirect_output", argv[flag_index], sizeof("--no_redirect_output")) == 0) {
