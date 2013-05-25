@@ -55,6 +55,10 @@ struct context* rep_sched_get_thread()
 	memcpy(&(ctx->trace), &trace, sizeof(struct trace));
 
 	/* subsequent reschedule-events of the same thread can be combined to a single event */
+	/* XXX revisit this optimization ... it makes the lag to
+	 * process debugger requests theoretically unbounded, but
+	 * maybe we don't care in practice, or that lag is worth the
+	 * gain from the optimization. */
 	if (trace.stop_reason == USR_SCHED) {
 		int combined = 0;
 		struct trace next_trace;
@@ -73,6 +77,12 @@ struct context* rep_sched_get_thread()
 		}
 	}
 	return ctx;
+}
+
+struct context* rep_sched_lookup_thread(pid_t rec_tid)
+{
+	assert(0 < rec_tid && rec_tid < MAX_TID_NUM);
+	return map[rec_tid];
 }
 
 void rep_sched_deregister_thread(struct context **ctx_ptr)

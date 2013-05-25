@@ -16,10 +16,10 @@ struct dbg_context;
  *
  * TODO support gdb "multiprocess".
  */
-struct dbg_thread_id {
+typedef struct dbg_threadid {
 	pid_t pid;
 	pid_t tid;
-};
+} dbg_threadid_t;
 
 /**
  * These requests are made by the debugger host and honored in proxy
@@ -34,6 +34,9 @@ struct dbg_request {
 		DREQ_GET_OFFSETS,
 		DREQ_GET_REGS,
 		DREQ_GET_STOP_REASON,
+
+		/* Is |target| alive? */
+		DREQ_GET_IS_THREAD_ALIVE,
 
 		/* Uses params.mem. */
 		DREQ_GET_MEM,
@@ -58,7 +61,7 @@ struct dbg_request {
 		DREQ_DETACH,
 	} type;
 
-	struct dbg_thread_id target;
+	dbg_threadid_t target;
 
 	union {
 		struct {
@@ -110,15 +113,21 @@ struct dbg_request dbg_get_request(struct dbg_context* dbg);
 
 /**
  * Notify the host that a resume request has "finished", i.e., the
- * target has stopped executing for some reason.
+ * target has stopped executing for some reason.  |sig| is the signal
+ * that stopped execution, or 0 if execution stopped otherwise.
  */
-void dbg_notify_stop(struct dbg_context* dbg/*, TODO */);
+void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t which, int sig);
 
 /**
- * Reply to the DREQ_GET_CURRENT_THREAD request.
+ * Tell the host that |thread| is the current thread.
  */
 void dbg_reply_get_current_thread(struct dbg_context* dbg,
-				  struct dbg_thread_id thread);
+				  dbg_threadid_t thread);
+
+/**
+ * |alive| is nonzero if the requested thread is alive, zero if dead.
+ */
+void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive);
 
 /**
  * Reply to the DREQ_GET_MEM request.
