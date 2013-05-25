@@ -40,6 +40,12 @@
 #define SAMPLE_SIZE 		10
 #define NUM_SAMPLE_PAGES 	1
 
+static const struct dbg_request continue_all_tasks = {
+	.type = DREQ_CONTINUE,
+	.target = { .pid = -1, .tid = -1 },
+	.params = { 0 }
+};
+
 static pid_t child;
 
 /**
@@ -174,82 +180,85 @@ static void replay_init_scratch_memory(struct context *ctx, struct mmapped_file 
     write_child_registers(ctx->child_tid,&orig_regs);
 }
 
+static dbg_threadid_t get_threadid(struct context* ctx)
+{
+	dbg_threadid_t thread = { .pid = -1, .tid = ctx->rec_tid };
+	return thread;
+}
+
+/* Reply to debugger requests until the debugger asks us to resume
+ * execution. */
+static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
+						    struct context* ctx)
+{
+	if (!dbg) {
+		return continue_all_tasks;
+	}
+	while (1) {
+		struct dbg_request req = dbg_get_request(dbg);
+		if (dbg_is_resume_request(&req)) {
+			return req;
+		}
+
+		switch (req.type) {
+		case DREQ_GET_CURRENT_THREAD: {
+			dbg_reply_get_current_thread(dbg, get_threadid(ctx));
+			continue;
+		}
+		case DREQ_GET_IS_THREAD_ALIVE:
+			dbg_reply_get_is_thread_alive(
+				dbg, rep_sched_lookup_thread(req.target.tid));
+			continue;
+		case DREQ_GET_MEM:
+			/* get memory per |req.params.mem| */
+			dbg_reply_get_mem(dbg);
+			continue;
+		case DREQ_GET_OFFSETS:
+			/* TODO */
+			dbg_reply_get_offsets(dbg);
+			continue;
+		case DREQ_GET_REGS:
+			/* TODO */
+			dbg_reply_get_regs(dbg);
+			continue;
+		case DREQ_GET_REG:
+			/* TODO */
+			dbg_reply_get_reg(dbg, 0);
+			continue;
+		case DREQ_GET_STOP_REASON:
+			/* TODO */
+			dbg_reply_get_stop_reason(dbg);
+			continue;
+		case DREQ_INTERRUPT:
+			/* Tell the debugger we stopped and
+			 * await further instructions. */
+			dbg_notify_stop(dbg, get_threadid(ctx), 0);
+			continue;
+		default:
+			fatal("Unknown debugger request %d", req.type);
+		}
+	}
+}
+
 void replay(struct flags rr_flags)
 {
 	struct dbg_context* dbg = NULL;
-	struct context *ctx = NULL;
 	bool validate = FALSE;
-	struct dbg_request req;
 
 	if (!rr_flags.autopilot) {
 		dbg = dbg_await_client_connection("127.0.0.1");
 	}
-	/* XXX this function is side-effect-y, calling
-	 * rep_sched_get_thread().  What's the invariant we're trying
-	 * to destructively repair here? */
+
 	check_initial_register_file();
 
 	while (rep_sched_get_num_threads()) {
-		if (dbg) {
-			/* See if the debugger has any new requests for us
-			 * before we resume execution. */
-			req = dbg_get_request(dbg);
-			switch (req.type) {
-			case DREQ_GET_CURRENT_THREAD: {
-				struct dbg_thread_id thread;
-				/* TODO */
-				thread.tid = 1;
-				dbg_reply_get_current_thread(dbg, thread);
-				continue;
-			}
-			case DREQ_GET_MEM:
-				/* get memory per |req.params.mem| */
-				dbg_reply_get_mem(dbg);
-				continue;
-			case DREQ_GET_OFFSETS:
-				/* TODO */
-				dbg_reply_get_offsets(dbg);
-				continue;
-			case DREQ_GET_REGS:
-				/* TODO */
-				dbg_reply_get_regs(dbg);
-				continue;
-			case DREQ_GET_REG:
-				/* TODO */
-				dbg_reply_get_reg(dbg, 0);
-				continue;
-			case DREQ_GET_STOP_REASON:
-				/* TODO */
-				dbg_reply_get_stop_reason(dbg);
-				continue;
-			case DREQ_INTERRUPT:
-				/* Tell the debugger we stopped and
-				 * await further instructions. */
-				dbg_notify_stop(dbg);
-				continue;
-			default:
-				break;
-			}
-		} else {
-			static const struct dbg_request continue_all_tasks = {
-				.type = DREQ_CONTINUE,
-				.target = { .pid = -1, .tid = -1 },
-				.params = { 0 }
-			};
-			req = continue_all_tasks;
-		}
-
-		assert(dbg_is_resume_request(&req));
+		struct context *ctx;
+		struct dbg_request req;
 
 		ctx = rep_sched_get_thread();
 
-		/* TODO: run until we satisfy req.type or are
-		 * interrupted, then call
-		 *
-		if (dbg) {
-			dbg_notify_stop(dbg, ...);
-		}
-		 */ 
+		req = process_debugger_requests(dbg, ctx);
+		assert(dbg_is_resume_request(&req));
 
 		/* print some kind of progress */
 		if (ctx->trace.global_time % 10000 == 0) {

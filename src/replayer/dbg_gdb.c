@@ -30,8 +30,8 @@
  */
 struct dbg_context {
 	struct dbg_request req;	/* current request to be processed */
-	struct dbg_thread_id resume_thread; /* thread to be resumed */
-	struct dbg_thread_id query_thread;  /* thread for get/set */
+	dbg_threadid_t resume_thread; /* thread to be resumed */
+	dbg_threadid_t query_thread;  /* thread for get/set */
 	int serving_symbol_lookups;	    /* nonzero when we can
 					     * request lookups */
 	struct sockaddr_in addr;	    /* server address */
@@ -50,7 +50,6 @@ int dbg_is_resume_request(const struct dbg_request* req)
 {
 	switch (req->type) {
 	case DREQ_CONTINUE:
-	case DREQ_INTERRUPT:
 	case DREQ_STEP:
 		return TRUE;
 	default:
@@ -397,23 +396,35 @@ static int query(struct dbg_context* dbg, char* payload)
 	return 0;
 }
 
-static int set_selected_thread(struct dbg_context* dbg, const char* payload)
+/**
+ * Parse and return a gdb thread-id from |str|.  |endptr| points to
+ * the character just after the last character in the thread-id.  It
+ * may be NULL.
+ */
+static dbg_threadid_t parse_threadid(const char* str, char** endptr)
+{
+	dbg_threadid_t thread;
+	thread.pid = 0;		/* TODO multiprocess */
+	thread.tid = strtol(str, endptr, 16);
+	return thread;
+}
+
+static int set_selected_thread(struct dbg_context* dbg, char* payload)
 {
 	char op;
-	pid_t pid, tid;
+	dbg_threadid_t thread;
 
 	op = *payload++;
-	pid = 0;		/* TODO multiprocess */
-	tid = atoi(payload);
 
-	debug("gdb selecting thread %d:%d for %c", pid, tid, op);
+	thread = parse_threadid(payload, &payload);
+	assert('\0' == *payload);
+
+	debug("gdb selecting thread %d:%d for %c", thread.pid, thread.tid, op);
 
 	if (op == 'c') {
-		dbg->resume_thread.pid = pid;
-		dbg->resume_thread.tid = tid;
+		dbg->resume_thread = thread;
 	} else if (op == 'g') {
-		dbg->query_thread.pid = pid;
-		dbg->query_thread.tid = tid;
+		dbg->query_thread = thread;
 	}
 	write_packet(dbg, "OK");
 	return 0;
@@ -437,7 +448,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 	name = payload;
 
 	if (!strcmp("Cont", name)) {
-		debug("gdb requests 'continue' (%s)", args);
+		debug("gdb requests resume (%s)", args);
 		if (!strcmp("c", args)) {
 			dbg->req.type = DREQ_CONTINUE;
 			dbg->req.target = dbg->resume_thread;
@@ -450,7 +461,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 
 	if (!strcmp("Cont?", name)) {
 		debug("gdb queries which continue commands we support");
-		write_packet(dbg, "vCont;c;C;s;S;t");
+		write_packet(dbg, "vCont;c;C;s;S;t;");
 		return 0;
 	}
 
@@ -523,6 +534,13 @@ static int process_packet(struct dbg_context* dbg)
 		break;
 	case 'q':
 		ret = query(dbg, payload);
+		break;
+	case 'T':
+		dbg->req.type = DREQ_GET_IS_THREAD_ALIVE;
+		dbg->req.target = parse_threadid(payload, &payload);
+		assert('\0' == *payload);
+		debug("gdb wants to know if %d is alive", dbg->req.target.tid);
+		ret = 1;
 		break;
 	case 'v':
 		ret = process_vpacket(dbg, payload);
@@ -598,23 +616,35 @@ struct dbg_request dbg_get_request(struct dbg_context* dbg)
 	}
 }
 
-void dbg_notify_stop(struct dbg_context* dbg/*, TODO */)
+void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
 {
-	assert(dbg_is_resume_request(&dbg->req));
+	char buf[64];
 
-	/* XXX FIXME TODO */
-	write_packet(dbg, "S00");
+	assert(dbg_is_resume_request(&dbg->req)
+	       || dbg->req.type == DREQ_INTERRUPT);
+
+	snprintf(buf, sizeof(buf) - 1, "T%02Xthread:%02X;", sig, thread.tid);
+	write_packet(dbg, buf);
 
 	consume_request(dbg);
 }
 
 void dbg_reply_get_current_thread(struct dbg_context* dbg,
-				  struct dbg_thread_id thread)
+				  dbg_threadid_t thread)
 {
 	assert(DREQ_GET_CURRENT_THREAD == dbg->req.type);
 
 	/* TODO multiprocess */
 	write_hex_packet(dbg, thread.tid);
+
+	consume_request(dbg);
+}
+
+void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive)
+{
+	assert(DREQ_GET_IS_THREAD_ALIVE == dbg->req.type);
+
+	write_packet(dbg, alive ? "OK" : "E01");
 
 	consume_request(dbg);
 }
