@@ -228,7 +228,20 @@ void sys_ptrace_sysemu_singlestep(pid_t pid, int sig)
 	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, (void*)sig);
 }
 
+int sys_ptrace_peekdata(pid_t pid, long addr, long* value)
+{
+	long ret;
 
+	assert(0 == (addr & (sizeof(void*) - 1)));
+
+	errno = 0;
+	ret = ptrace(PTRACE_PEEKDATA, pid, addr, 0);
+	if (-1 == ret && errno) {
+		return -1;
+	}
+	*value = ret;
+	return 0;
+}
 
 unsigned long sys_ptrace_getmsg(pid_t pid)
 {
@@ -407,12 +420,8 @@ void* sys_malloc_zero(int size)
 
 void sys_free(void** ptr)
 {
-	if (*ptr == NULL) {
-		log_err("Failed to free memory at %p -- bailing out",*ptr);
-		sys_exit();
-	}
 	free(*ptr);
-	*ptr = 0;
+	*ptr = NULL;
 }
 
 void sys_setpgid(pid_t pid, pid_t pgid)

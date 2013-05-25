@@ -180,10 +180,48 @@ static void replay_init_scratch_memory(struct context *ctx, struct mmapped_file 
     write_child_registers(ctx->child_tid,&orig_regs);
 }
 
+static long get_reg(struct context* ctx, dbg_register reg)
+{
+	struct user_regs_struct regs;
+	read_child_registers(ctx->child_tid, &regs);
+	switch (reg) {
+	case DREG_EAX: return regs.eax;
+	case DREG_ECX: return regs.ecx;
+	case DREG_EDX: return regs.edx;
+	case DREG_EBX: return regs.ebx;
+	case DREG_ESP: return regs.esp;
+	case DREG_EBP: return regs.ebp;
+	case DREG_ESI: return regs.esi;
+	case DREG_EDI: return regs.edi;
+	case DREG_EIP: return regs.eip;
+	case DREG_EFLAGS: return regs.eflags;
+	case DREG_CS: return regs.xcs;
+	case DREG_SS: return regs.xss;
+	case DREG_DS: return regs.xds;
+	case DREG_ES: return regs.xes;
+	case DREG_FS: return regs.xfs;
+	case DREG_GS: return regs.xgs;
+	case DREG_ORIG_EAX: return regs.orig_eax;
+	default:
+		fatal("Request for unhandled register %d", reg);
+		return 0;
+	}
+}
+
 static dbg_threadid_t get_threadid(struct context* ctx)
 {
 	dbg_threadid_t thread = { .pid = -1, .tid = ctx->rec_tid };
 	return thread;
+}
+
+static byte* read_mem(struct context* ctx, long addr, size_t len)
+{
+	ssize_t nread;
+	byte* buf = read_child_data_checked(ctx, len, addr, &nread);
+	if (nread < 0) {
+		sys_free(&buf);
+	}
+	return buf;
 }
 
 /* Reply to debugger requests until the debugger asks us to resume
@@ -209,10 +247,13 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_is_thread_alive(
 				dbg, rep_sched_lookup_thread(req.target.tid));
 			continue;
-		case DREQ_GET_MEM:
-			/* get memory per |req.params.mem| */
-			dbg_reply_get_mem(dbg);
+		case DREQ_GET_MEM: {
+			byte* mem = read_mem(ctx, req.params.mem.addr,
+					     req.params.mem.len);
+			dbg_reply_get_mem(dbg, mem);
+			sys_free(&mem);
 			continue;
+		}
 		case DREQ_GET_OFFSETS:
 			/* TODO */
 			dbg_reply_get_offsets(dbg);
@@ -223,12 +264,18 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		case DREQ_GET_REG:
 			/* TODO */
-			dbg_reply_get_reg(dbg, 0);
+			dbg_reply_get_reg(dbg, get_reg(ctx, req.params.reg));
 			continue;
 		case DREQ_GET_STOP_REASON:
 			/* TODO */
 			dbg_reply_get_stop_reason(dbg);
 			continue;
+		case DREQ_GET_THREAD_LIST: {
+			/* TODO */
+			dbg_threadid_t list = get_threadid(ctx);
+			dbg_reply_get_thread_list(dbg, &list, 1);
+			continue;
+		}
 		case DREQ_INTERRUPT:
 			/* Tell the debugger we stopped and
 			 * await further instructions. */

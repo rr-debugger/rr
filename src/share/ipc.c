@@ -296,9 +296,12 @@ void* read_child_data_tid(pid_t tid, size_t size, long int addr)
 	return data;
 }
 
-size_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset) {
+ssize_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset) {
 	errno = 0;
-	size_t read = pread(ctx->child_mem_fd, buf, size, offset);
+	ssize_t read = pread(ctx->child_mem_fd, buf, size, offset);
+	if (read < 0) {
+		return read;
+	}
 
 	// for some reason reading from the child process requires to re-open the fd
 	// who knows why??
