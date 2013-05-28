@@ -6,6 +6,10 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+#include "../share/types.h"
+
+typedef char byte;
+
 struct dbg_context;
 
 /**
@@ -22,6 +26,24 @@ typedef struct dbg_threadid {
 } dbg_threadid_t;
 
 /**
+ * This is gdb's view of the register file.  The ordering must be the
+ * same as in the gdb sources.
+ */
+typedef enum {
+	DREG_EAX, DREG_ECX, DREG_EDX, DREG_EBX,
+	DREG_ESP, DREG_EBP, DREG_ESI, DREG_EDI,
+	DREG_EIP, DREG_EFLAGS,
+	DREG_CS, DREG_SS, DREG_DS, DREG_ES, DREG_FS, DREG_GS,
+	DREG_ST0,
+	DREG_MXCSR = 40,
+	DREG_YMM0H,
+	DREG_YMM7H = DREG_YMM0H + 7,
+	DREG_NUM_AVX = DREG_YMM0H + 1,
+	DREG_ORIG_EAX = DREG_NUM_AVX,
+	DREG_NUM_LINUX_I386 = DREG_ORIG_EAX + 1
+} dbg_register;
+
+/**
  * These requests are made by the debugger host and honored in proxy
  * by rr, the target.
  */
@@ -34,6 +56,7 @@ struct dbg_request {
 		DREQ_GET_OFFSETS,
 		DREQ_GET_REGS,
 		DREQ_GET_STOP_REASON,
+		DREQ_GET_THREAD_LIST,
 
 		/* Is |target| alive? */
 		DREQ_GET_IS_THREAD_ALIVE,
@@ -52,8 +75,6 @@ struct dbg_request {
 		DREQ_INTERRUPT,
 
 		/* TODO */
-		DREQ_GET_THREAD_LIST,
-
 		DREQ_REMOVE_BREAKPOINT,
 		DREQ_SET_BREAKPOINT,
 		DREQ_SET_CURRENT_THREAD,
@@ -69,7 +90,7 @@ struct dbg_request {
 			size_t len;
 		} mem;
 
-		long reg;
+		dbg_register reg;
 
 		struct {
 			/* Resume from this address, or 0 to resume from
@@ -130,9 +151,11 @@ void dbg_reply_get_current_thread(struct dbg_context* dbg,
 void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive);
 
 /**
- * Reply to the DREQ_GET_MEM request.
+ * The read memory is at |mem|, or NULL if the address wasn't
+ * readable.  The length of |mem| must be exactly what was requested
+ * in |dbg->req.params.mem.len|.
  */
-void dbg_reply_get_mem(struct dbg_context* dbg/*, TODO */);
+void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem);
 
 /**
  * Reply to the DREQ_GET_OFFSETS request.
@@ -140,19 +163,26 @@ void dbg_reply_get_mem(struct dbg_context* dbg/*, TODO */);
 void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */);
 
 /**
- * Reply to the DREQ_GET_REGS request.
- */
-void dbg_reply_get_regs(struct dbg_context* dbg/*, TODO */);
-
-/**
  * Reply to the DREQ_GET_REG request.
  */
 void dbg_reply_get_reg(struct dbg_context* dbg, long value);
 
 /**
+ * Reply to the DREQ_GET_REGS request.
+ */
+void dbg_reply_get_regs(struct dbg_context* dbg/*, TODO */);
+
+/**
  * Reply to the DREQ_GET_STOP_REASON request.
  */
 void dbg_reply_get_stop_reason(struct dbg_context* dbg/*, TODO */);
+
+/**
+ * |threads| contains the list of live threads, of which there are
+    |len|.
+ */
+void dbg_reply_get_thread_list(struct dbg_context* dbg,
+			       const dbg_threadid_t* threads, size_t len);
 
 /**
  * Destroy a gdb debugging context created by

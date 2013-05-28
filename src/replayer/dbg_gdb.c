@@ -37,11 +37,11 @@ struct dbg_context {
 	struct sockaddr_in addr;	    /* server address */
 	int fd;				    /* client socket fd */
 	/* XXX probably need to dynamically size these */
-	char inbuf[4096];	/* buffered input from gdb */
+	byte inbuf[4096];	/* buffered input from gdb */
 	size_t inlen;		/* length of valid data */
 	size_t insize;		/* total size of buffer */
 	size_t packetend;	/* index of '#' character */
-	char outbuf[4096];	/* buffered output for gdb */
+	byte outbuf[4096];	/* buffered output for gdb */
 	size_t outlen;
 	size_t outsize;
 };
@@ -200,7 +200,7 @@ static void write_flush(struct dbg_context* dbg)
 }
 
 static void write_data_raw(struct dbg_context* dbg,
-			   const char* data, size_t len)
+			   const byte* data, size_t len)
 {
 	assert("Impl dynamic alloc if this fails (or double outbuf size)"
 	       && (dbg->outlen + len) < dbg->insize);
@@ -248,7 +248,7 @@ static void write_hex_packet(struct dbg_context* dbg, long hex)
  */
 static int skip_to_packet_start(struct dbg_context* dbg)
 {
-	char* p = NULL;
+	byte* p = NULL;
 	int i;
 
 	/* XXX we want memcspn() here ... */
@@ -298,7 +298,7 @@ static int sniff_packet(struct dbg_context* dbg)
  */
 static void read_packet(struct dbg_context* dbg)
 {
-	char* p;
+	byte* p;
 	size_t checkedlen;
 
 	/* Read and discard bytes until we see the start of a
@@ -364,10 +364,25 @@ static int query(struct dbg_context* dbg, char* payload)
 		write_packet(dbg, "0");
 		return 0;
 	}
+	if (!strcmp(name, "fThreadInfo")) {
+		debug("gdb asks for thread list");
+		dbg->req.type = DREQ_GET_THREAD_LIST;
+		return 1;
+	}
+	if (!strcmp(name, "sThreadInfo")) {
+		write_packet(dbg, "l"); /* "end of list" */
+		return 0;
+	}
 	if (!strcmp(name, "Offsets")) {
 		debug("gdb asks for section offsets");
 		dbg->req.type = DREQ_GET_OFFSETS;
+		dbg->req.target = dbg->query_thread;
 		return 1;
+	}
+	if ('P' == name[0]) {
+		/* The docs say not to use this packet ... */
+		write_packet(dbg, "");
+		return 0;
 	}
 	if (!strcmp(name, "Supported")) {
 		/* TODO process these */
@@ -381,6 +396,11 @@ static int query(struct dbg_context* dbg, char* payload)
 		write_packet(dbg, "OK");
 		return 0;
 	}
+	if (strstr(name, "ThreadExtraInfo") == name) {
+		/* TODO */
+		write_packet(dbg, "");
+		return 0;
+	}
 	if (!strcmp(name, "TStatus")) {
 		debug("gdb asks for trace status");
 		/* XXX from the docs, it appears that we should reply
@@ -390,6 +410,12 @@ static int query(struct dbg_context* dbg, char* payload)
 		write_packet(dbg, "");
 		return 0;
 	}
+
+
+
+	fatal("Unhandled gdb query: q%s", name);
+
+
 
 	log_warn("Unhandled gdb query: q%s", name);
 	write_packet(dbg, "");
@@ -519,17 +545,17 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->req.params.mem.len = strtol(payload, &payload, 16);
 		assert('\0' == *payload);
 
-		debug("gdb requests memory (addr=%lX, len=%X)",
+		debug("gdb requests memory (addr=0x%lX, len=%u)",
 			  dbg->req.params.mem.addr, dbg->req.params.mem.len);
 
 		ret = 1;
 		break;
 	case 'p':
-		debug("gdb requests register value (%s)", payload);
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
 		dbg->req.params.reg = strtol(payload, &payload, 16);
 		assert('\0' == *payload);
+		debug("gdb requests register value (%d)", dbg->req.params.reg);
 		ret = 1;
 		break;
 	case 'q':
@@ -649,12 +675,31 @@ void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive)
 	consume_request(dbg);
 }
 
-void dbg_reply_get_mem(struct dbg_context* dbg/*, TODO */)
+void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem)
 {
+	char* buf;
+	size_t i, len;
+
 	assert(DREQ_GET_MEM == dbg->req.type);
 
-	/* XXX FIXME TODO */
-	write_packet(dbg, "");
+	if (1) {
+		/* XXX FIXME TODO: we're able to read the first word
+		 * gdb requests, but not the second.  gdb asks twice
+		 * and then closes the connection.  Not clear what's
+		 * up yet. */
+		log_warn("Ignoring memory-read request from gdb");
+		write_packet(dbg, "");
+	} else
+	if (mem) {
+		len = dbg->req.params.mem.len;
+		buf = sys_malloc(2 * len + 1);
+		for (i = 0; i < len; ++i) {
+			snprintf(&buf[2 * i], 3, "%02X", mem[i]);
+		}
+		write_packet(dbg, buf);
+	} else {
+		write_packet(dbg, "");
+	}
 
 	consume_request(dbg);
 }
@@ -669,21 +714,28 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
 	consume_request(dbg);
 }
 
+void dbg_reply_get_reg(struct dbg_context* dbg, long value)
+{
+	char buf[32];
+
+	assert(DREQ_GET_REG == dbg->req.type);
+
+	/* gdb wants the register value in native endianness, so
+	 * swizzle to big-endian so that printf gives us a
+	 * little-endian string.  (Network order is big-endian.) */
+	value = htonl(value);
+	snprintf(buf, sizeof(buf) - 1, "%08lX", value);
+	write_packet(dbg, buf);
+
+	consume_request(dbg);
+}
+
 void dbg_reply_get_regs(struct dbg_context* dbg/*, TODO */)
 {
 	assert(DREQ_GET_REGS == dbg->req.type);
 
 	/* XXX FIXME TODO */
 	write_packet(dbg, "xxxx");
-
-	consume_request(dbg);
-}
-
-void dbg_reply_get_reg(struct dbg_context* dbg, long value)
-{
-	assert(DREQ_GET_REG == dbg->req.type);
-
-	write_hex_packet(dbg, value);
 
 	consume_request(dbg);
 }
@@ -695,6 +747,24 @@ void dbg_reply_get_stop_reason(struct dbg_context* dbg/*, TODO */)
 
 	/* XXX FIXME TODO */
 	write_packet(dbg, "S00");
+
+	consume_request(dbg);
+}
+
+void dbg_reply_get_thread_list(struct dbg_context* dbg,
+			       const dbg_threadid_t* threads, size_t len)
+{
+	assert(DREQ_GET_THREAD_LIST == dbg->req.type);
+
+	if (0 == len) {
+		write_packet(dbg, "l");
+	} else {
+		char buf[64];
+
+		/* TODO */
+		snprintf(buf, sizeof(buf) - 1, "m%02X", threads[0].tid);
+		write_packet(dbg, buf);
+	}
 
 	consume_request(dbg);
 }
