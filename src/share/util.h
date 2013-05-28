@@ -22,6 +22,9 @@
 #define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
 #endif
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
 bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
 void emulate_child_inst(struct context * ctx, int eip_offset);

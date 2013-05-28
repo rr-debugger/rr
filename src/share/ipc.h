@@ -13,7 +13,7 @@ long read_child_data_word(pid_t pid, void* addr);
 void* read_child_data(struct context *ctx, size_t size, uintptr_t addr);
 void read_child_usr(struct context *ctx, void *dest, void *src, size_t size);
 void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr, ssize_t *read_bytes);
-size_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset);
+ssize_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset);
 void memcpy_child(struct context *ctx, void *dest, void *src, int size);
 
 void write_child_code(pid_t pid, void* addr, long code);

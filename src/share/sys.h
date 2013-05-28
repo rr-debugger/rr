@@ -37,6 +37,8 @@ void sys_ptrace_sysemu_singlestep(pid_t pid, int sig);
 void sys_ptrace_traceme();
 void sys_ptrace_cont(pid_t pid);
 void sys_ptrace_syscall_sig(pid_t pid, int sig);
+/* Return zero on success, -1 on error. */
+int sys_ptrace_peekdata(pid_t pid, long addr, long* value);
 unsigned long sys_ptrace_getmsg(pid_t pid);
 void sys_ptrace_getsiginfo(pid_t pid, siginfo_t* sig);
 void sys_ptrace_detatch(pid_t pid);
