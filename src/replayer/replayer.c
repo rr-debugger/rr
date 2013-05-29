@@ -327,8 +327,12 @@ void replay(struct flags rr_flags)
 
 		ctx = rep_sched_get_thread();
 
-		req = process_debugger_requests(dbg, ctx);
-		assert(dbg_is_resume_request(&req));
+		/* Advance the trace until we've exec()'d the
+		 * tracee. */
+		if (validate) {
+			req = process_debugger_requests(dbg, ctx);
+			assert(dbg_is_resume_request(&req));
+		}
 
 		/* print some kind of progress */
 		if (ctx->trace.global_time % 10000 == 0) {
