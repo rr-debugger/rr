@@ -81,25 +81,35 @@ struct dbg_request {
 		/* Is |target| alive? */
 		DREQ_GET_IS_THREAD_ALIVE,
 
-		/* Uses params.mem. */
+		/* These use params.mem. */
 		DREQ_GET_MEM,
+		DREQ_REMOVE_SW_BREAK,
+		DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
+		DREQ_REMOVE_HW_BREAK,
+		DREQ_REMOVE_RD_WATCH,
+		DREQ_REMOVE_WR_WATCH,
+		DREQ_REMOVE_RDWR_WATCH,
+		DREQ_SET_SW_BREAK,
+		DREQ_SET_HW_BREAK,
+		DREQ_SET_RD_WATCH,
+		DREQ_SET_WR_WATCH,
+		DREQ_SET_RDWR_WATCH,
+		DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
 
 		/* Uses params.reg. */
 		DREQ_GET_REG,
 
-		/* These use params.resume. */
+		/* Use params.resume. */
 		DREQ_CONTINUE,
 		DREQ_STEP,
 
 		/* No parameters. */
 		DREQ_INTERRUPT,
 
-		/* TODO */
-		DREQ_REMOVE_BREAKPOINT,
-		DREQ_SET_BREAKPOINT,
-		DREQ_SET_CURRENT_THREAD,
+		/* Use params.mem. */
 
-		DREQ_DETACH,
+		/* TODO */
+		DREQ_SET_CURRENT_THREAD,
 	} type;
 
 	dbg_threadid_t target;
@@ -203,10 +213,16 @@ void dbg_reply_get_stop_reason(struct dbg_context* dbg/*, TODO */);
 
 /**
  * |threads| contains the list of live threads, of which there are
-    |len|.
+ * |len|.
  */
 void dbg_reply_get_thread_list(struct dbg_context* dbg,
 			       const dbg_threadid_t* threads, size_t len);
+
+/**
+ * |code| is 0 if the request was successfully applied, nonzero if
+ * not.
+ */
+void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code);
 
 /**
  * Destroy a gdb debugging context created by

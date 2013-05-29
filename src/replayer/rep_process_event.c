@@ -240,7 +240,8 @@ void rep_process_flush(struct context* ctx) {
 		sys_ptrace_sysemu_sig(ctx->child_tid, 0);
 		sys_waitpid(ctx->child_tid, &(ctx->status));
 		if (signal_pending(ctx->status)) {
-			log_err("Signal recieved while pushing wrapped syscall content");
+			fatal("While pushing wrapped syscall content, received signal %d",
+			      signal_pending(ctx->status));
 		}
 		if (syscall == SYS_futex) {
 			/* replay *uaddr for futex */

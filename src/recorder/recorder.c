@@ -146,6 +146,7 @@ static void cont_block(struct context *ctx)
 	sys_ptrace(PTRACE_CONT, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);
+	assert(ctx->child_sig != SIGTRAP);
 	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;
 	handle_signal(ctx);
@@ -158,6 +159,7 @@ static void cont_syscall_block(struct context *ctx)
 {
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
+	assert(ctx->child_sig != SIGTRAP);
 	ctx->child_sig = signal_pending(ctx->status);
 	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;
@@ -804,6 +806,7 @@ void start_recording(struct flags rr_flags)
 
 			if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
 				ctx->child_sig = signal_pending(ctx->status);
+				assert(ctx->child_sig != SIGTRAP);
 				// a syscall_restart ending is equivalent to the restarted syscall ending
 				if (syscall == SYS_restart_syscall) {
 					debug("restart_syscall exit");

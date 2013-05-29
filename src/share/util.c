@@ -79,37 +79,31 @@ char* syscall_to_str(int syscall)
 
 int signal_pending(int status)
 {
-	if(status == 0x57f) {
-		assert(1==0);
-	}
+	int sig = WSTOPSIG(status);
 
 	if (status == 0) {
 		return 0;
 	}
+	assert(WIFSTOPPED(status));
 
-	/* we got a SIGTRAP from ptrace */
-	if ((WSTOPSIG(status) & ~0x80) == SIGTRAP) {
+	switch (sig) {
+	case (SIGTRAP | 0x80):
+		/* We ask for PTRACE_O_TRACESYSGOOD, so this was a
+		 * trap for a syscall.  Pretend like it wasn't a
+		 * signal. */
 		return 0;
+	case SIGTRAP:
+		/* For a "normal" SIGTRAP, it's a ptrace trap if
+		 * there's a ptrace event.  If so, pretend like we
+		 * didn't get a signal.  Otherwise it was a genuine
+		 * TRAP signal raised by something else (most likely a
+		 * debugger breakpoint). */
+		return GET_PTRACE_EVENT(status) ? 0 : SIGTRAP;
+	default:
+		/* XXX do we really get the high bit set on some
+		 * SEGVs? */
+		return sig & ~0x80;
 	}
-
-	/* we got a SIGSEGV from ptrace */
-	if ((WSTOPSIG(status) & ~0x80) == SIGSEGV) {
-		return SIGSEGV;
-	}
-
-	if (WSTOPSIG(status) == SIGCHLD) {
-		return SIGCHLD;
-	}
-
-	return (WSTOPSIG(status) & ~0x80);
-
-	/*int sig = WSTOPSIG(status) & ~0x80;
-
-	 if (GET_PTRACE_EVENT(status)) {
-	 printf("we got the ptrace event: %x\n",GET_PTRACE_EVENT(status));
-	 }
-
-	 return (sig == SIGTRAP) ? 0 : sig;*/
 }
 
 void print_register_file_tid(pid_t tid)
