@@ -220,12 +220,9 @@ static dbg_threadid_t get_threadid(struct context* ctx)
 
 static byte* read_mem(struct context* ctx, long addr, size_t len)
 {
-	ssize_t nread;
-	byte* buf = read_child_data_checked(ctx, len, addr, &nread);
-	if (nread < 0) {
-		sys_free(&buf);
-	}
-	return buf;
+	/* XXX will gdb ever make request for unreadable memory?  If
+	 * so, we need to use read_child_data_checked() here. */
+	return read_child_data_tid(ctx->child_tid, len, addr);
 }
 
 /* Reply to debugger requests until the debugger asks us to resume
@@ -249,7 +246,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		}
 		case DREQ_GET_IS_THREAD_ALIVE:
 			dbg_reply_get_is_thread_alive(
-				dbg, rep_sched_lookup_thread(req.target.tid));
+				dbg, !!rep_sched_lookup_thread(req.target.tid));
 			continue;
 		case DREQ_GET_MEM: {
 			byte* mem = read_mem(ctx, req.params.mem.addr,
