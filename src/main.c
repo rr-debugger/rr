@@ -193,9 +193,9 @@ static void start(int argc, char* argv[], char** envp)
 			rec_sched_register_thread(0, pid);
 
 			/* perform the action recording */
-			log_info("Start recording...\n");
+			log_info("Start recording...");
 			start_recording(__rr_flags);
-			log_info("Done recording -- cleaning up\n");
+			log_info("Done recording -- cleaning up");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
 			close_libpfm();

@@ -9,6 +9,8 @@ Makefile
 Profile
 obj/
 .project
+*.log
+*.pyc
 *.record
 *.replay
 .settings/
