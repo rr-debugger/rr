@@ -293,7 +293,8 @@ void replay(struct flags rr_flags)
 	bool validate = FALSE;
 
 	if (!rr_flags.autopilot) {
-		dbg = dbg_await_client_connection("127.0.0.1");
+		dbg = dbg_await_client_connection("127.0.0.1",
+						  rr_flags.dbgport);
 	}
 
 	check_initial_register_file();

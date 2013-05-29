@@ -132,7 +132,12 @@ static void sig_child(int sig)
 
 void print_usage()
 {
-	printf("rr: missing/incorrect operands. usage is: rr --{record,replay} [--filter_lib=<path>] [--autopilot] [--no_redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] executable [args].\n");
+	puts(
+"rr: missing/incorrect operands.  Recording syntax is\n"
+"  rr --record [--filter_lib=<path>] <executable> [args]\n"
+"\n"
+"Replaying syntax is\n"
+" rr --replay [--autopilot] [--dbgport=<port>] [--no_redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] <path-to-trace-directory>\n");
 }
 
 static void install_signal_handler()
@@ -267,6 +272,7 @@ void check_prerequisites() {
 int main(int argc, char* argv[], char** envp)
 {
 	__rr_flags.checksum = CHECKSUM_NONE;
+	__rr_flags.dbgport = -1;
 	__rr_flags.dump_at = DUMP_AT_NONE;
 	__rr_flags.dump_on = DUMP_ON_NONE;
 	__rr_flags.redirect = TRUE;
@@ -299,6 +305,11 @@ int main(int argc, char* argv[], char** envp)
 
 	if  (flag_index < argc && strncmp("--autopilot", argv[flag_index], sizeof("--autopilot")) == 0) {
 		__rr_flags.autopilot = TRUE;
+		flag_index++;
+	}
+
+	if  (flag_index < argc && strncmp("--dbgport=", argv[flag_index], sizeof("--dbgport=") - 1) == 0) {
+		sscanf(argv[flag_index],"--dbgport=%d", &__rr_flags.dbgport);
 		flag_index++;
 	}
 
