@@ -69,11 +69,11 @@ static int request_needs_immediate_response(const struct dbg_request* req)
 	}
 }
 
-struct dbg_context* dbg_await_client_connection(const char* address)
+struct dbg_context* dbg_await_client_connection(const char* address, short port)
 {
 	struct dbg_context* dbg;
 	int listen_fd;
-	short port;
+	int autoprobe;
 	struct sockaddr_in client_addr;
 	int ret;
 	socklen_t len;
@@ -86,7 +86,13 @@ struct dbg_context* dbg_await_client_connection(const char* address)
 	listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 	dbg->addr.sin_family = AF_INET;
 	dbg->addr.sin_addr.s_addr = inet_addr(address);
-	for (port = getpid(); ; ++port) {
+	if (port <= 0) {
+		autoprobe = 1;
+		port = getpid();
+	} else {
+		autoprobe = 0;
+	}
+	do {
 		dbg->addr.sin_port = htons(port);
 		ret = bind(listen_fd,
 			   (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
@@ -99,7 +105,7 @@ struct dbg_context* dbg_await_client_connection(const char* address)
 		if (ret == 0 || ret != EADDRINUSE) {
 			break;
 		}
-	}
+	} while (++port, autoprobe);
 	if (ret) {
 		fatal("Couldn't bind to server address");
 	}
