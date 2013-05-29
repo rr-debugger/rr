@@ -548,6 +548,10 @@ static int process_packet(struct dbg_context* dbg)
 	case 'H':
 		ret = set_selected_thread(dbg, payload);
 		break;
+	case 'k':
+		log_info("gdb requests kill, exiting");
+		write_packet(dbg, "OK");
+		exit(0);
 	case 'm':
 		dbg->req.type = DREQ_GET_MEM;
 		dbg->req.target = dbg->query_thread;
