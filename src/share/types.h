@@ -118,6 +118,8 @@ struct flags {
 	int checksum;
 	/* Nonzero when we're replaying without a controlling debugger. */
 	int autopilot;
+	/* IP port to listen on for debug connections. */
+	int dbgport;
 };
 
 #endif /* TYPES_H_ */
