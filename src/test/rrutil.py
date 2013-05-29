@@ -1,6 +1,7 @@
-import pexpect, sys
+import pexpect, signal, sys, time
 
-__all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr', 'ok' ]
+__all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr',
+            'interrupt_gdb', 'ok' ]
 
 # Public API
 def expect_gdb(what):
@@ -8,6 +9,13 @@ def expect_gdb(what):
 
 def expect_rr(what):
     expect(rr, what)
+
+def interrupt_gdb():
+    try:
+        gdb.kill(signal.SIGINT)
+    except Exception, e:
+        failed('interrupting gdb', e)
+    expect_gdb('stopped.')
 
 def send_gdb(what):
     send(gdb, what)
