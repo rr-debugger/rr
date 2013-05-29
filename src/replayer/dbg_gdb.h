@@ -8,7 +8,7 @@
 
 #include "../share/types.h"
 
-typedef char byte;
+typedef unsigned char byte;
 
 struct dbg_context;
 

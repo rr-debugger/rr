@@ -220,31 +220,31 @@ static void write_data_raw(struct dbg_context* dbg,
 	dbg->outlen += len;
 }
 
-static void write_hex(struct dbg_context* dbg, long hex)
+static void write_hex(struct dbg_context* dbg, unsigned long hex)
 {
 	char buf[32];
 	size_t len;
 
 	len = snprintf(buf, sizeof(buf) - 1, "%02lX", hex);
-	write_data_raw(dbg, buf, len);
+	write_data_raw(dbg, (byte*)buf, len);
 }
 
 static void write_packet(struct dbg_context* dbg, const char* data)
 {
-	int checksum;
+	byte checksum;
 	size_t len, i;
 
-	write_data_raw(dbg, "$", 1);
+	write_data_raw(dbg, (byte*)"$", 1);
 	len = strlen(data);
 	for (i = 0, checksum = 0; i < len; ++i) {
 		checksum += data[i];
 	}
-	write_data_raw(dbg, data, len);
-	write_data_raw(dbg, "#", 1);
-	write_hex(dbg, checksum % 256);
+	write_data_raw(dbg, (byte*)data, len);
+	write_data_raw(dbg, (byte*)"#", 1);
+	write_hex(dbg, checksum);
 }
 
-static void write_hex_packet(struct dbg_context* dbg, long hex)
+static void write_hex_packet(struct dbg_context* dbg, unsigned long hex)
 {
 	char buf[32];
 
@@ -346,7 +346,7 @@ static void read_packet(struct dbg_context* dbg)
 	assert('$' == dbg->inbuf[0] && dbg->packetend < dbg->inlen);
 
 	/* Acknowledge receipt of the packet. */
-	write_data_raw(dbg, "+", 1);
+	write_data_raw(dbg, (byte*)"+", 1);
 	write_flush(dbg);
 }
 
@@ -442,7 +442,7 @@ static dbg_threadid_t parse_threadid(const char* str, char** endptr)
 {
 	dbg_threadid_t thread;
 	thread.pid = 0;		/* TODO multiprocess */
-	thread.tid = strtol(str, endptr, 16);
+	thread.tid = strtoul(str, endptr, 16);
 	return thread;
 }
 
@@ -519,14 +519,14 @@ static int process_packet(struct dbg_context* dbg)
 
 	assert(INTERRUPT_CHAR == dbg->inbuf[0] ||
 	       ('$' == dbg->inbuf[0]
-		&& (((char*)memchr(dbg->inbuf, '#', dbg->inlen) - dbg->inbuf)
+		&& (((byte*)memchr(dbg->inbuf, '#', dbg->inlen) - dbg->inbuf)
 		   == dbg->packetend)));
 
 	if (INTERRUPT_CHAR == dbg->inbuf[0]) {
 		request = INTERRUPT_CHAR;
 	} else {
 		request = dbg->inbuf[1];
-		payload = &dbg->inbuf[2];
+		payload = (char*)&dbg->inbuf[2];
 		dbg->inbuf[dbg->packetend] = '\0';
 	}
 	switch(request) {
@@ -555,9 +555,9 @@ static int process_packet(struct dbg_context* dbg)
 	case 'm':
 		dbg->req.type = DREQ_GET_MEM;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.params.mem.addr = strtol(payload, &payload, 16);
+		dbg->req.params.mem.addr = strtoul(payload, &payload, 16);
 		++payload;
-		dbg->req.params.mem.len = strtol(payload, &payload, 16);
+		dbg->req.params.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 
 		debug("gdb requests memory (addr=0x%lX, len=%u)",
@@ -568,7 +568,7 @@ static int process_packet(struct dbg_context* dbg)
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.params.reg = strtol(payload, &payload, 16);
+		dbg->req.params.reg = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 		debug("gdb requests register value (%d)", dbg->req.params.reg);
 		ret = 1;
@@ -697,21 +697,15 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem)
 
 	assert(DREQ_GET_MEM == dbg->req.type);
 
-	if (1) {
-		/* XXX FIXME TODO: we're able to read the first word
-		 * gdb requests, but not the second.  gdb asks twice
-		 * and then closes the connection.  Not clear what's
-		 * up yet. */
-		log_warn("Ignoring memory-read request from gdb");
-		write_packet(dbg, "");
-	} else
 	if (mem) {
 		len = dbg->req.params.mem.len;
 		buf = sys_malloc(2 * len + 1);
 		for (i = 0; i < len; ++i) {
-			snprintf(&buf[2 * i], 3, "%02X", mem[i]);
+			unsigned long b = mem[i];
+			snprintf(&buf[2 * i], 3, "%02lX", b);
 		}
 		write_packet(dbg, buf);
+		sys_free(&buf);
 	} else {
 		write_packet(dbg, "");
 	}
