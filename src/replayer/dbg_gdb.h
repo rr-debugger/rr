@@ -35,6 +35,9 @@ typedef enum {
 	DREG_EIP, DREG_EFLAGS,
 	DREG_CS, DREG_SS, DREG_DS, DREG_ES, DREG_FS, DREG_GS,
 	DREG_ST0,
+	/* Last register we can find in user_regs_struct (except for
+	 * orig_eax). */
+	DREG_NUM_USER_REGS = DREG_GS + 1,
 	DREG_MXCSR = 40,
 	DREG_YMM0H,
 	DREG_YMM7H = DREG_YMM0H + 7,
@@ -42,6 +45,23 @@ typedef enum {
 	DREG_ORIG_EAX = DREG_NUM_AVX,
 	DREG_NUM_LINUX_I386 = DREG_ORIG_EAX + 1
 } dbg_register;
+
+/**
+ * Represents a possibly-undefined register value.  |defined| is
+ * nonzero if |value| is well defined.
+ */
+typedef struct dbg_regvalue {
+	int defined;
+	long value;
+} dbg_regvalue_t;
+
+/**
+ * Represents the register file, indexed by |dbg_register| values
+ * above.
+ */
+struct dbg_regfile {
+	dbg_regvalue_t regs[DREG_NUM_LINUX_I386];
+};
 
 /**
  * These requests are made by the debugger host and honored in proxy
@@ -165,14 +185,16 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem);
 void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */);
 
 /**
- * Reply to the DREQ_GET_REG request.
+ * Send |value| back to the debugger host.  |value| may be undefined.
  */
-void dbg_reply_get_reg(struct dbg_context* dbg, long value);
+void dbg_reply_get_reg(struct dbg_context* dbg, dbg_regvalue_t value);
 
 /**
- * Reply to the DREQ_GET_REGS request.
+ * Send |file| back to the debugger host.  |file| may contain
+ * undefined register values.
  */
-void dbg_reply_get_regs(struct dbg_context* dbg/*, TODO */);
+void dbg_reply_get_regs(struct dbg_context* dbg,
+			const struct dbg_regfile* file);
 
 /**
  * Reply to the DREQ_GET_STOP_REASON request.
