@@ -73,6 +73,7 @@ struct dbg_context* dbg_await_client_connection(const char* address, short port)
 {
 	struct dbg_context* dbg;
 	int listen_fd;
+	int reuseaddr;
 	int autoprobe;
 	struct sockaddr_in client_addr;
 	int ret;
@@ -86,6 +87,10 @@ struct dbg_context* dbg_await_client_connection(const char* address, short port)
 	listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 	dbg->addr.sin_family = AF_INET;
 	dbg->addr.sin_addr.s_addr = inet_addr(address);
+	reuseaddr = 1;
+	setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
+		   &reuseaddr, sizeof(reuseaddr));
+
 	if (port <= 0) {
 		autoprobe = 1;
 		port = getpid();

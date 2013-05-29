@@ -14,7 +14,7 @@ function get_rr_cmd {
 # $1 is test name
 # $2 are compilation flags
 function compile {
-	gcc -m32 $1.c $2
+	gcc -g -m32 $1.c $2
 }
 
 # record test. 
@@ -28,6 +28,17 @@ function record {
 # $2 are rr flags
 function replay {
 	LD_LIBRARY_PATH="/usr/local/lib" $rr --replay --autopilot $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
+}
+
+# debug <test-name> [rr-args]
+# load the "expect" script to drive replay of the recording
+function debug {
+	LD_LIBRARY_PATH="/usr/local/lib" python $1.py $rr --replay --dbgport=1111 $2 trace_0/
+	if [[ $? == 0 ]]; then
+		echo "Test '$1' PASSED"
+	else
+		echo "Test '$1' FAILED"
+	fi
 }
 
 # check test success\failure.
