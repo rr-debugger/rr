@@ -180,30 +180,34 @@ static void replay_init_scratch_memory(struct context *ctx, struct mmapped_file 
     write_child_registers(ctx->child_tid,&orig_regs);
 }
 
-static long get_reg(struct context* ctx, dbg_register reg)
+/**
+ * Return the value of |reg| in |regs|, or set |*defined = 0| and
+ * return an undefined value if |reg| isn't found.
+ */
+static long get_reg(const struct user_regs_struct* regs, dbg_register reg,
+		    int* defined)
 {
-	struct user_regs_struct regs;
-	read_child_registers(ctx->child_tid, &regs);
+	*defined = 1;
 	switch (reg) {
-	case DREG_EAX: return regs.eax;
-	case DREG_ECX: return regs.ecx;
-	case DREG_EDX: return regs.edx;
-	case DREG_EBX: return regs.ebx;
-	case DREG_ESP: return regs.esp;
-	case DREG_EBP: return regs.ebp;
-	case DREG_ESI: return regs.esi;
-	case DREG_EDI: return regs.edi;
-	case DREG_EIP: return regs.eip;
-	case DREG_EFLAGS: return regs.eflags;
-	case DREG_CS: return regs.xcs;
-	case DREG_SS: return regs.xss;
-	case DREG_DS: return regs.xds;
-	case DREG_ES: return regs.xes;
-	case DREG_FS: return regs.xfs;
-	case DREG_GS: return regs.xgs;
-	case DREG_ORIG_EAX: return regs.orig_eax;
+	case DREG_EAX: return regs->eax;
+	case DREG_ECX: return regs->ecx;
+	case DREG_EDX: return regs->edx;
+	case DREG_EBX: return regs->ebx;
+	case DREG_ESP: return regs->esp;
+	case DREG_EBP: return regs->ebp;
+	case DREG_ESI: return regs->esi;
+	case DREG_EDI: return regs->edi;
+	case DREG_EIP: return regs->eip;
+	case DREG_EFLAGS: return regs->eflags;
+	case DREG_CS: return regs->xcs;
+	case DREG_SS: return regs->xss;
+	case DREG_DS: return regs->xds;
+	case DREG_ES: return regs->xes;
+	case DREG_FS: return regs->xfs;
+	case DREG_GS: return regs->xgs;
+	case DREG_ORIG_EAX: return regs->orig_eax;
 	default:
-		fatal("Request for unhandled register %d", reg);
+		*defined = 0;
 		return 0;
 	}
 }
@@ -258,14 +262,35 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			/* TODO */
 			dbg_reply_get_offsets(dbg);
 			continue;
-		case DREQ_GET_REGS:
-			/* TODO */
-			dbg_reply_get_regs(dbg);
+		case DREQ_GET_REGS: {
+			struct user_regs_struct regs;
+			struct dbg_regfile file;
+			int i;
+			dbg_regvalue_t* val;
+
+			read_child_registers(ctx->child_tid, &regs);
+			memset(&file, 0, sizeof(file));
+			for (i = DREG_EAX; i < DREG_NUM_USER_REGS; ++i) {
+				val = &file.regs[i];
+				val->value = get_reg(&regs, i, &val->defined);
+			}
+			val = &file.regs[DREG_ORIG_EAX];
+			val->value = get_reg(&regs, DREG_ORIG_EAX,
+					     &val->defined);
+
+			dbg_reply_get_regs(dbg, &file);
 			continue;
-		case DREQ_GET_REG:
-			/* TODO */
-			dbg_reply_get_reg(dbg, get_reg(ctx, req.params.reg));
+		}
+		case DREQ_GET_REG: {
+			struct user_regs_struct regs;
+			dbg_regvalue_t val;
+
+			read_child_registers(ctx->child_tid, &regs);
+			val.value = get_reg(&regs, req.params.reg,
+					    &val.defined);
+			dbg_reply_get_reg(dbg, val);
 			continue;
+		}
 		case DREQ_GET_STOP_REASON:
 			/* TODO */
 			dbg_reply_get_stop_reason(dbg);

@@ -729,28 +729,49 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
 	consume_request(dbg);
 }
 
-void dbg_reply_get_reg(struct dbg_context* dbg, long value)
+/**
+ * Format |value| into |buf| in the manner gdb expects.  |buf| must
+ * point at a buffer with at least |1 + 2*sizeof(long)| bytes
+ * available.  Exactly that many bytes (including '\0' terminator)
+ * will be written by this function.
+ */
+static void print_reg(dbg_regvalue_t value, char* buf) {
+	if (value.defined) {
+		/* gdb wants the register value in native endianness, so
+		 * swizzle to big-endian so that printf gives us a
+		 * little-endian string.  (Network order is big-endian.) */
+		long v = htonl(value.value);
+		sprintf(buf, "%08lX", v);
+	} else {
+		strcpy(buf, "xxxxxxxx");
+	}
+}
+
+void dbg_reply_get_reg(struct dbg_context* dbg, dbg_regvalue_t value)
 {
 	char buf[32];
 
 	assert(DREQ_GET_REG == dbg->req.type);
 
-	/* gdb wants the register value in native endianness, so
-	 * swizzle to big-endian so that printf gives us a
-	 * little-endian string.  (Network order is big-endian.) */
-	value = htonl(value);
-	snprintf(buf, sizeof(buf) - 1, "%08lX", value);
+	print_reg(value, buf);
 	write_packet(dbg, buf);
 
 	consume_request(dbg);
 }
 
-void dbg_reply_get_regs(struct dbg_context* dbg/*, TODO */)
+void dbg_reply_get_regs(struct dbg_context* dbg,
+			const struct dbg_regfile* file)
 {
+	/* XXX this will be wrong on x64 WINNT */
+	char buf[1 + DREG_NUM_LINUX_I386 * 2 * sizeof(long)];
+	int i;
+
 	assert(DREQ_GET_REGS == dbg->req.type);
 
-	/* XXX FIXME TODO */
-	write_packet(dbg, "xxxx");
+	for (i = 0; i < DREG_NUM_LINUX_I386; ++i) {
+		print_reg(file->regs[i], &buf[i * 2 * sizeof(long)]);
+	}
+	write_packet(dbg, buf);
 
 	consume_request(dbg);
 }
