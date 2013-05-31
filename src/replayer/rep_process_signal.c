@@ -9,6 +9,7 @@
 #include <sys/fcntl.h>
 
 #include "replayer.h"
+#include "rep_sched.h"
 
 #include "../share/sys.h"
 #include "../share/trace.h"
@@ -182,47 +183,9 @@ void rep_process_signal(struct context *ctx, bool validate)
 		break;
 	}
 
-
-	{
-		ctx->child_sig = 0;
-		rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
-		break;
-	}
-
 	case -USR_SCHED:
-	{
 		assert(trace->insts > 0);
-
-		/* if the current architecture over-counts the event in question,
-		 * subtract the overcount here */
- 		// the seccomp syscalls do not reset the HPC
-		assert(ctx->hpc->rbc.fd);
-		uint64_t rbc_now = read_rbc(ctx->hpc);
-		/* There's no need to set the rbc timer if we are already near the required rcb */
-		while (rbc_now < trace->rbc - SKID_SIZE) {
-			ctx->trace.rbc -= rbc_now;
-			reset_hpc(ctx, trace->rbc - SKID_SIZE);
-			goto_next_event(ctx);
-			rbc_now = read_rbc(ctx->hpc);
-			ctx->child_sig = 0;
-		}
-		assert(rbc_now >= trace->rbc - SKID_SIZE);
-		/* make sure that the signal came from hpc */
-		if (fcntl(ctx->hpc->rbc.fd, F_GETOWN) == ctx->child_tid) {
-			/* this signal should not be recognized by the application */
-			ctx->child_sig = 0;
-			//stop_rbc(ctx);
-			compensate_rbc_count(ctx, sig);
-			rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
-			stop_hpc(ctx);
-		} else {
-			fprintf(stderr, "internal error: next event should be: %d but it is: %d -- bailing out\n", -USR_SCHED, ctx->event);
-			sys_exit();
-		}
-
-		break;
-	}
-
+		/* fall through */
 	case SIGTERM:
 	case SIGALRM:
 	case SIGPIPE: // TODO
@@ -232,46 +195,62 @@ void rep_process_signal(struct context *ctx, bool validate)
 	case 33: /* SIGRTMIN + 1 */
 	case 62: /* SIGRTMAX - 1 */
 	{
-
-		if (trace->rbc == 0) { // synchronous signal (signal received in a system call)
+		if (trace->rbc == 0) {
+			/* synchronous signal (signal received in a
+			 * system call) */
+			/* XXX why do we set this? */
 			ctx->replay_sig = sig;
 		} else {
-			// setup and start replay counters
-			// the seccomp syscalls do not reset the HPC
+			/* if the current architecture over-counts the
+			 * event in question, subtract the overcount
+			 * here */
+			/* the seccomp syscalls do not reset the HPC */
 			assert(ctx->hpc->rbc.fd);
-			ctx->trace.rbc -= read_rbc(ctx->hpc);
-			reset_hpc(ctx, trace->rbc - SKID_SIZE);
+			uint64_t rbc_now = read_rbc(ctx->hpc);
+			/* There's no need to set the rbc timer if we
+			 * are already near the required rcb */
+			/* XXX should we only do this if (trace->rbc >
+			 * 10000)? */
+			while (rbc_now < trace->rbc - SKID_SIZE) {
+				ctx->trace.rbc -= rbc_now;
+				reset_hpc(ctx, trace->rbc - SKID_SIZE);
+				goto_next_event(ctx);
 
-			// single-step if the number of instructions to the next event is "small"
-			if (trace->rbc <= 10000) {
-				//stop_rbc(ctx);
-				compensate_rbc_count(ctx, sig);
-				stop_hpc(ctx);
-			} else {
-				log_info("large count");
-				sys_ptrace_syscall(tid);
-				sys_waitpid(tid, &ctx->status);
-				// make sure we ere interrupted by ptrace
-				assert(WSTOPSIG(ctx->status) == SIGIO);
-				/* reset the penig sig, since it did not occur in the original execution */
+				if (fcntl(ctx->hpc->rbc.fd, F_GETOWN)
+				    == ctx->child_tid) {
+					/* this signal should not be
+					 * recognized by the
+					 * application */
+					ctx->child_sig = 0;
+				} else {
+					fatal("internal error: next event should be: %d but it is: %d -- bailing out\n", -USR_SCHED, ctx->event);
+				}
+
+				rbc_now = read_rbc(ctx->hpc);
 				ctx->child_sig = 0;
-				ctx->status = 0;
-
-				//DO NOT FORGET TO STOP HPC!!!
-				//stop_rbc(ctx);
-				compensate_rbc_count(ctx, sig);
-				stop_hpc(ctx);
 			}
+
+			compensate_rbc_count(ctx, sig);
+			/* Set the wrapper record buffer size to 0 (if
+			 * needed) */
+			rep_child_buffer0(ctx);
+			stop_hpc(ctx);
 		}
 
-		// we are now at the exact point in the child where the signal was recorded,
-		// emulate it using the next trace line (records the state at sighandler entry)
-		ctx = rep_sched_get_thread();
-		if (set_child_data(ctx) > 0) { // only if we indeed entered a handler
-			write_child_main_registers(ctx->child_tid,&trace->recorded_regs);
+		if (sig != -USR_SCHED) {
+			/* we are now at the exact point in the child
+			 * where the signal was recorded, emulate it
+			 * using the next trace line (records the
+			 * state at sighandler entry) */
+			ctx = rep_sched_get_thread();
+			/* only if we indeed entered a handler */
+			if (set_child_data(ctx) > 0) {
+				write_child_main_registers(
+					ctx->child_tid,
+					&trace->recorded_regs);
+			}
+			ctx->replay_sig = 0;
 		}
-		ctx->replay_sig = 0;
-
 		break;
 	}
 
