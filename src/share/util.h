@@ -22,8 +22,10 @@
 #define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
 #endif
 
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))
+
+#define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
+#define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
 char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
 bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
