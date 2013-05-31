@@ -23,6 +23,47 @@ function record {
 	LD_LIBRARY_PATH="/usr/local/lib" $rr --record $lib a.out 1> $1.out.record
 }
 
+function delay_kill {
+	sig=$1; delay_secs=$2; proc=$3
+
+	sleep $delay_secs
+
+	pid=""
+	for i in `seq 1 5`; do
+		live=`ps -C $3 -o pid=`
+		num=`echo -e $live | wc -w`
+		if [[ $num == 1 ]]; then
+			pid=$live
+			break
+		fi
+		sleep 0.1
+	done
+
+	if [[ $num > 1 ]]; then
+		echo FAILED: more than one "'$proc'" >&2
+		exit 1
+	elif [[ -z "$pid" ]]; then
+		echo FAILED: process "'$proc'" not located >&2
+		exit 1
+	fi
+
+	kill -s $sig $pid
+	if [[ $? != 0 ]]; then
+		echo FAILED: signal $sig not delivered to "'$proc'" >&2
+		exit 1
+	fi
+
+        echo Successfully delivered signal $sig to "'$proc'"
+}
+
+# record_async_signal <signal> <delay-secs> <test>
+# record $test, delivering $signal to it after $delay-secs
+function record_async_signal {
+	delay_kill $1 $2 a.out &
+	record $3
+        wait
+}
+
 # replay test. 
 # $1 is test name 
 # $2 are rr flags
