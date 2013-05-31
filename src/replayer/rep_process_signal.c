@@ -182,22 +182,15 @@ void rep_process_signal(struct context *ctx, bool validate)
 		break;
 	}
 
-	case -SIG_SEGV_MMAP_WRITE:
+
 	{
 		ctx->child_sig = 0;
 		rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
 		break;
 	}
 
-	case -SIG_SEGV_MMAP_READ:
 	case -USR_SCHED:
 	{
-		// ignore the trace line that comes after the mmap access
-		if (sig == -SIG_SEGV_MMAP_READ && trace->state != STATE_PRE_MMAP_ACCESS) {
-			ctx->child_sig = 0;
-			break;
-		}
-
 		assert(trace->insts > 0);
 
 		/* if the current architecture over-counts the event in question,
@@ -221,10 +214,6 @@ void rep_process_signal(struct context *ctx, bool validate)
 			//stop_rbc(ctx);
 			compensate_rbc_count(ctx, sig);
 			rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
-			if (sig == -SIG_SEGV_MMAP_READ &&
-				trace->state ==	STATE_PRE_MMAP_ACCESS) { // put in the recorded data
-				set_child_data(ctx);
-			}
 			stop_hpc(ctx);
 		} else {
 			fprintf(stderr, "internal error: next event should be: %d but it is: %d -- bailing out\n", -USR_SCHED, ctx->event);
@@ -315,9 +304,13 @@ void rep_process_signal(struct context *ctx, bool validate)
 		break;
 	}
 
+	case -SIG_SEGV_MMAP_READ:
+	case -SIG_SEGV_MMAP_WRITE:
+		fatal("mmap handling is currently disabled");
+		break;
+
 	default:
-	log_err("unknown signal %d", sig);
-	sys_exit();
+		fatal("unknown signal %d", sig);
 		break;
 	}
 }
