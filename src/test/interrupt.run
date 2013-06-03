@@ -1,6 +1,2 @@
 source util.sh
-get_rr_cmd $# $1
-compile interrupt
-record interrupt
-debug interrupt
-cleanup
+debug_test interrupt
