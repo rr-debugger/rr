@@ -6,6 +6,7 @@
 #include <err.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <sched.h>
 #include <signal.h>
@@ -43,101 +44,24 @@
 static const struct dbg_request continue_all_tasks = {
 	.type = DREQ_CONTINUE,
 	.target = { .pid = -1, .tid = -1 },
-	.params = { 0 }
+	.params = { {0} }
 };
 
-static pid_t child;
+static const struct flags* rr_flags;
+
+/* Nonzero after the first exec() has been observed during replay.
+ * After this point, the first recorded binary image has been exec()d
+ * over the initial rr image. */
+static bool validate = FALSE;
 
 /**
- * used to stop child process when the parent process bails out
- */
-static void sig_child(int sig)
-{
-	kill(child, SIGINT);
-	kill(getpid(), SIGQUIT);
-}
-
-static void single_step(struct context* context)
-{
-	// TODO: completely recode this function (if you want to truly use it)
-	int status, inst_size;
-	char buf[50];
-	char* rec_inst, *inst;
-	printf("starting to single-step: time=%u\n", context->trace.global_time);
-	/* compensate the offset in the recorded instruction trace that
-	 * comes from the mandatory additional singlestep (to actually step over
-	 * the system call) in the replayer.
-	 */
-	rec_inst = peek_next_inst(context);
-	inst = get_inst(context->child_tid, 0, &inst_size);
-	sprintf(buf, "%d:%s", context->rec_tid, inst);
-	if (strncmp(buf, rec_inst, strlen(buf)) != 0) {
-		printf("rec: %s  cur: %s\n", rec_inst, inst);
-		sys_free((void**) &rec_inst);
-		sys_free((void**) &inst);
-		inst_dump_skip_entry(context);
-	}
-
-	int print_fileinfo = 1;
-	while (1) {
-		rec_inst = read_inst(context);
-
-		/* check if the trace file is done */
-		if (strncmp(rec_inst, "__done__", 7) == 0) {
-			break;
-		}
-
-		if (print_fileinfo) {
-			get_eip_info(context->child_tid);
-			print_fileinfo = 0;
-		}
-		inst = get_inst(context->child_tid, 0, &inst_size);
-
-		sprintf(buf, "%d:%s", context->rec_tid, inst);
-
-		if ((strncmp(inst, "sysenter", 7) == 0) || (strncmp(inst, "int", 3) == 0)) {
-			sys_free((void**) &inst);
-			break;
-		}
-		struct user_regs_struct rec_reg, cur_reg;
-		inst_dump_parse_register_file(context, &rec_reg);
-		read_child_registers(context->child_tid, &cur_reg);
-
-		fprintf(stderr, "thread: %d ecx=%lx\n", context->rec_tid, read_child_ecx(context->child_tid));
-		if (strncmp(buf, rec_inst, strlen(buf)) != 0) {
-			fprintf(stderr, "now: %s rec: %s\n", buf, rec_inst);
-			fflush(stderr);
-			get_eip_info(context->child_tid);
-			printf("time: %u\n", context->trace.global_time);
-			fflush(stdout);
-			//sys_exit();
-		} else {
-			fprintf(stderr, "ok: %s:\n", buf);
-			if (strncmp(inst, "ret", 3) == 0) {
-				print_fileinfo = 1;
-			}
-		}
-
-		sys_free((void**) &rec_inst);
-		sys_free((void**) &inst);
-
-		sys_ptrace_singlestep(context->child_tid, context->child_sig);
-		sys_waitpid(context->child_tid, &status);
-		context->child_sig = 0;
-
-		if (WSTOPSIG(status) == SIGSEGV) {
-			return;
-		}
-	}
-}
-
-
-/**
- * Every time a non-wrapped event happens, the hpc is reset. when an event that requires hpc occures,
- * we read the hpc at that point and reset the hpc interval to the required rbc minus the current hpc.
- * all this happens since the wrapped event do not reset the hpc, therefore the previous techniques of
- * starting the hpc only the at the previous event to the one that requires it, doesn't work,
- * since the previous event may be a wrapped syscall
+ * Every time a non-wrapped event happens, the hpc is reset. when an
+ * event that requires hpc occures, we read the hpc at that point and
+ * reset the hpc interval to the required rbc minus the current hpc.
+ * all this happens since the wrapped event do not reset the hpc,
+ * therefore the previous techniques of starting the hpc only the at
+ * the previous event to the one that requires it, doesn't work, since
+ * the previous event may be a wrapped syscall
  */
 static void rep_reset_hpc(struct context * ctx) {
 	if (!ctx || ctx->trace.stop_reason == USR_FLUSH)
@@ -147,10 +71,11 @@ static void rep_reset_hpc(struct context * ctx) {
 
 static void check_initial_register_file()
 {
-	struct context *context = rep_sched_get_thread();
+	rep_sched_get_thread();
 }
 
-static void replay_init_scratch_memory(struct context *ctx, struct mmapped_file *file)
+static void replay_init_scratch_memory(struct context *ctx,
+				       struct mmapped_file *file)
 {
     /* initialize the scratchpad as the recorder did, but
      * make it PROT_NONE. The idea is just to reserve the
@@ -168,7 +93,7 @@ static void replay_init_scratch_memory(struct context *ctx, struct mmapped_file 
     struct user_regs_struct mmap_call = orig_regs;
 
     mmap_call.eax = SYS_mmap2;
-    mmap_call.ebx = file->start;
+    mmap_call.ebx = (uintptr_t)file->start;
     mmap_call.ecx = file->end - file->start;
     mmap_call.edx = PROT_NONE;
     mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
@@ -252,7 +177,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			byte* mem = read_mem(ctx, req.params.mem.addr,
 					     req.params.mem.len);
 			dbg_reply_get_mem(dbg, mem);
-			sys_free(&mem);
+			sys_free((void**)&mem);
 			continue;
 		}
 		case DREQ_GET_OFFSETS:
@@ -309,106 +234,116 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	}
 }
 
-void replay(struct flags rr_flags)
+static void replay_one_trace_step(struct dbg_context* dbg, struct context* ctx)
+{
+	struct dbg_request req;
+
+	/* Advance the trace until we've exec()'d the tracee before
+	 * processing debugger requests.  Otherwise the debugger host
+	 * will be confused about the initial executable image,
+	 * rr's. */
+	if (validate) {
+		req = process_debugger_requests(dbg, ctx);
+		assert(dbg_is_resume_request(&req));
+	}
+
+	/* print some kind of progress */
+	if (ctx->trace.global_time % 10000 == 0) {
+		fprintf(stderr, "time: %u\n",ctx->trace.global_time);
+	}
+
+	if (ctx->child_sig != 0) {
+		//printf("child_sig: %d\n",ctx->child_sig);
+		assert(ctx->trace.stop_reason == -ctx->child_sig);
+		ctx->child_sig = 0;
+	}
+
+	if (ctx->trace.stop_reason == USR_INIT_SCRATCH_MEM) {
+		/* for checksumming: make a note that this area is
+		 * scratch and need not be validated. */
+		struct mmapped_file file;
+		read_next_mmapped_file_stats(&file);
+		replay_init_scratch_memory(ctx, &file);
+		add_scratch((void*)ctx->trace.recorded_regs.eax,
+			    file.end - file.start);
+	} else if (ctx->trace.stop_reason == USR_EXIT) {
+		rep_sched_deregister_thread(&ctx);
+	} else if(ctx->trace.stop_reason > 0) {
+		/* stop reason is a system call - can be done with ptrace */
+		if (ctx->trace.state == STATE_SYSCALL_EXIT) {
+			if (ctx->trace.stop_reason == SYS_execve) {
+				validate = TRUE;
+			}
+			/* when a syscall exits with either of these
+			 * errors, it will be restarted by the kernel
+			 * with a restart syscall. The child process
+			 * is oblivious to this, so in the replay we
+			 * need to jump directly to the exit from the
+			 * restart_syscall */
+			if ((ctx->trace.recorded_regs.eax == ERESTART_RESTARTBLOCK
+			     || ctx->trace.recorded_regs.eax == ERESTARTNOINTR) ) {
+				return;
+			}
+		}
+
+		/* proceed to the next event */
+		rep_process_syscall(ctx, ctx->trace.stop_reason,
+				    rr_flags->redirect);
+	} else if (ctx->trace.stop_reason == SYS_restart_syscall) {
+		/* the restarted syscall will be replayed by the next
+		 * entry which is an exit entry for the original
+		 * syscall being restarted - do nothing here. */
+		return;
+	} else if (ctx->trace.stop_reason == USR_FLUSH) {
+		rep_process_flush(ctx);
+	} else {
+		/* stop reason is a signal - use HPC */
+		rep_process_signal(ctx, validate);
+	}
+
+	rep_reset_hpc(ctx);
+
+	/* dump memory as user requested */
+	if (ctx
+	    && (rr_flags->dump_on == ctx->trace.stop_reason
+		|| rr_flags->dump_on == DUMP_ON_ALL
+		|| rr_flags->dump_at == ctx->trace.global_time)) {
+		char pid_str[PATH_MAX];
+		snprintf(pid_str, sizeof(pid_str) - 1, "%s/%d_%d_rep",
+			 get_trace_path(),
+			 ctx->child_tid, ctx->trace.global_time);
+		print_process_memory(ctx, pid_str);
+	}
+
+	/* check memory checksum */
+	if (ctx && validate
+	    && ((rr_flags->checksum == CHECKSUM_ALL)
+		|| (rr_flags->checksum == CHECKSUM_SYSCALL
+		    && ctx->trace.state == STATE_SYSCALL_EXIT)
+		|| (rr_flags->checksum <= ctx->trace.global_time))) {
+		validate_process_memory(ctx);
+	}
+}
+
+void replay(struct flags flags)
 {
 	struct dbg_context* dbg = NULL;
-	bool validate = FALSE;
 
-	if (!rr_flags.autopilot) {
+	rr_flags = &flags;
+
+	if (!rr_flags->autopilot) {
 		dbg = dbg_await_client_connection("127.0.0.1",
-						  rr_flags.dbgport);
+						  rr_flags->dbgport);
 	}
 
 	check_initial_register_file();
 
 	while (rep_sched_get_num_threads()) {
-		struct context *ctx;
-		struct dbg_request req;
-
-		ctx = rep_sched_get_thread();
-
-		/* Advance the trace until we've exec()'d the
-		 * tracee. */
-		if (validate) {
-			req = process_debugger_requests(dbg, ctx);
-			assert(dbg_is_resume_request(&req));
-		}
-
-		/* print some kind of progress */
-		if (ctx->trace.global_time % 10000 == 0) {
-			fprintf(stderr, "time: %u\n",ctx->trace.global_time);
-		}
-
-
-		if (ctx->child_sig != 0) {
-			//printf("child_sig: %d\n",ctx->child_sig);
-			assert(ctx->trace.stop_reason == -ctx->child_sig);
-			ctx->child_sig = 0;
-		}
-
-
-		// for checksuming: make a note that this area is scratch and need not be validated.
-		if (ctx->trace.stop_reason == USR_INIT_SCRATCH_MEM) {
-			struct mmapped_file file;
-			read_next_mmapped_file_stats(&file);
-			replay_init_scratch_memory(ctx, &file);
-			add_scratch(ctx->trace.recorded_regs.eax, file.end - file.start);
-		} else if (ctx->trace.stop_reason == USR_EXIT) {
-			rep_sched_deregister_thread(&ctx);
-			/* stop reason is a system call - can be done with ptrace */
-		} else if(ctx->trace.stop_reason > 0) {
-
-			if (ctx->trace.state == STATE_SYSCALL_EXIT) {
-				if (ctx->trace.stop_reason == SYS_execve) {
-					validate = TRUE;
-				}
-				// when a syscall exits with either of these errors, it will be restarted
-				// by the kernel with a restart syscall. The child process is oblivious
-				// to this, so in the replay we need to jump directly to the exit from
-				// the restart_syscall
-				if ((ctx->trace.recorded_regs.eax == ERESTART_RESTARTBLOCK ||
-					 ctx->trace.recorded_regs.eax == ERESTARTNOINTR) ) {
-					continue;
-				}
-			}
-
-			/* proceed to the next event */
-			rep_process_syscall(ctx, ctx->trace.stop_reason, rr_flags);
-
-		} else if (ctx->trace.stop_reason == SYS_restart_syscall) {
-			/* the restarted syscall will be replayed by the next entry which is an
-			 * exit entry for the original syscall being restarted - do nothing here.
-			 */
-			continue;
-			/* stop reason is a signal - use HPC */
-		} else if (ctx->trace.stop_reason == USR_FLUSH) {
-			rep_process_flush(ctx);
-		} else {
-			//debug("%d: signal event: %d\n",ctx->trace.global_time, ctx->trace.stop_reason);
-			rep_process_signal(ctx, validate);
-		}
-
-		rep_reset_hpc(ctx);
-
-		// dump memory as user requested
-		if (ctx &&
-			(rr_flags.dump_on == ctx->trace.stop_reason ||
-			 rr_flags.dump_on == DUMP_ON_ALL ||
-			 rr_flags.dump_at == ctx->trace.global_time)) {
-			char pid_str[MAX_PATH_LEN];
-			sprintf(pid_str,"%s/%d_%d_rep",get_trace_path(),ctx->child_tid,ctx->trace.global_time);
-			print_process_memory(ctx,pid_str);
-		}
-
-		// check memory checksum
-		if (ctx && validate &&
-			((rr_flags.checksum == CHECKSUM_ALL) ||
-			 (rr_flags.checksum == CHECKSUM_SYSCALL && ctx->trace.state == STATE_SYSCALL_EXIT) ||
-			 (rr_flags.checksum <= ctx->trace.global_time)) )
-			validate_process_memory(ctx);
-
+		replay_one_trace_step(dbg, rep_sched_get_thread());
 	}
 
 	log_info("Replayer successfully finished.");
 	fflush(stdout);
+
+	dbg_destroy_context(&dbg);
 }

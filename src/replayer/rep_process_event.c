@@ -748,8 +748,7 @@ static void process_socketcall(struct context* ctx, int state)
 	exit_syscall_emu(ctx, SYS_socketcall, num_emu_args);
 }
 
-void rep_process_syscall(struct context* ctx, int syscall,
-			 struct flags rr_flags)
+void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 {
 	const struct syscall_def* def = &syscall_table[syscall];
 	pid_t tid = ctx->child_tid;
@@ -1029,7 +1028,7 @@ void rep_process_syscall(struct context* ctx, int syscall,
 			enter_syscall_emu(ctx, syscall);
 		} else {
 			exit_syscall_emu(ctx, syscall, 0);
-			if (rr_flags.redirect) {
+			if (redirect_stdio) {
 				/* print output intended for
 				 * stdout/stderr */
 				struct user_regs_struct regs;
