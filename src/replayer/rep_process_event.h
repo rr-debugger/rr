@@ -8,6 +8,8 @@
 #include "../share/util.h"
 
 void rep_process_flush(struct context* ctx);
-void rep_process_syscall(struct context* context, int syscall , struct flags rr_flags);
+/* |redirect_stdio| is nonzero if output written to stdout/stderr
+ * during recording should be tee'd during replay, zero otherwise. */
+void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio);
 
 #endif /* REP_PROCESS_EVENT_H_ */
