@@ -14,7 +14,7 @@ function get_rr_cmd {
 # $1 is test name
 # $2 are compilation flags
 function compile {
-	gcc -g -m32 $1.c $2
+	gcc -pthread -g -m32 $1.c $2 -lrt
 }
 
 # record test. 
@@ -109,3 +109,25 @@ function check {
 function cleanup {
 	rm -rf a.out trace_0
 }
+
+# Compile $test.c, record it, then replay it (optionally with
+# $rr_flags) and verify record/replay output match.
+function compare_test { test=$1; rr_flags=$2;
+	compile $test
+	record $test
+	replay $test $rr_flags
+	check $test
+	cleanup
+}
+
+# Compile $test.c, record it, then replay the recording using the
+# "expect" script $test.py (optionally with $rr_flags), which is
+# responsible for computing test pass/fail.
+function debug_test { test=$1; rr_flags=$2;
+	compile $test
+	record $test
+	debug $test
+	cleanup
+}
+
+get_rr_cmd $# $1
