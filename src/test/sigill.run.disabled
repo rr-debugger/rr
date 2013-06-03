@@ -1,7 +1,2 @@
 source util.sh
-get_rr_cmd $# $1
-compile sigill
-record sigill
-replay sigill
-check sigill
-cleanup
+compare_test sigill
