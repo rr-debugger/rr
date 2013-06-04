@@ -61,7 +61,30 @@ static void check_initial_register_file()
 	rep_sched_get_thread();
 }
 
-static void replay_init_scratch_memory(struct context *ctx,
+static void debug_memory(struct context* ctx)
+{
+	/* dump memory as user requested */
+	if (rr_flags->dump_on == ctx->trace.stop_reason
+	    || rr_flags->dump_on == DUMP_ON_ALL
+	    || rr_flags->dump_at == ctx->trace.global_time) {
+		char pid_str[PATH_MAX];
+		snprintf(pid_str, sizeof(pid_str) - 1, "%s/%d_%d_rep",
+			 get_trace_path(),
+			 ctx->child_tid, ctx->trace.global_time);
+		print_process_memory(ctx, pid_str);
+	}
+
+	/* check memory checksum */
+	if (validate
+	    && ((rr_flags->checksum == CHECKSUM_ALL)
+		|| (rr_flags->checksum == CHECKSUM_SYSCALL
+		    && ctx->trace.state == STATE_SYSCALL_EXIT)
+		|| (rr_flags->checksum <= ctx->trace.global_time))) {
+		validate_process_memory(ctx);
+	}
+}
+
+static void replay_init_scratch_memory(struct context* ctx,
 				       struct mmapped_file *file)
 {
     /* initialize the scratchpad as the recorder did, but
@@ -221,9 +244,120 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	}
 }
 
+/**
+ * Compares the register file as it appeared in the recording phase
+ * with the current register file.
+ *
+ * XXX should this be a common helper?
+ */
+static void validate_args(int syscall, int state, struct context* ctx)
+{
+	struct user_regs_struct cur_reg;
+
+	/* don't validate anything before execve is done as the actual
+	 * process did not start prior to this point */
+	if (!validate) {
+		return;
+	}
+	read_child_registers(ctx->child_tid, &cur_reg);
+	if (compare_register_files("syscall now", &cur_reg, "recorded",
+				   &ctx->trace.recorded_regs, 1, 0)) {
+		fatal("[syscall number %d, state %d, trace file line %d]\n",
+		      syscall, state, get_trace_file_lines_counter());
+	}
+	/* TODO: add perf counter validations (hw int, page faults, insts) */
+}
+
+/**
+ * Continue until reaching either the "entry" of an emulated syscall,
+ * or the entry or exit of an executed syscall.  |emu| is nonzero when
+ * we're emulating the syscall.
+ */
+static void cont_syscall_boundary(struct context* ctx, int emu)
+{
+	pid_t tid = ctx->child_tid;
+
+	assert(ctx->replay_sig == 0);
+
+	if (emu) {
+		sys_ptrace_sysemu(tid);
+	} else {
+		sys_ptrace_syscall_sig(tid, ctx->replay_sig);
+	}
+	sys_waitpid(tid, &ctx->status);
+
+	ctx->child_sig = signal_pending(ctx->status);
+	if (SIGCHLD == ctx->child_sig) {
+		/* SIGCHLD is pending, do not deliver it, wait for it
+		 * to appear in the trace SIGCHLD is the only signal
+		 * that should ever be generated as all other signals
+		 * are emulated! */
+		return cont_syscall_boundary(ctx, emu);
+	} else if (ctx->child_sig) {
+		fatal("Replay got unrecorded signal %d", ctx->child_sig);
+	}
+
+	assert(ctx->child_sig == 0);
+
+	/* XXX why is this here? */
+	rep_child_buffer0(ctx);
+}
+
+/**
+ *  Step over the system call instruction to "exit" the emulated
+ *  syscall.
+ */
+static void step_exit_syscall_emu(struct context *ctx)
+{
+	pid_t tid = ctx->child_tid;
+	struct user_regs_struct regs;
+
+	assert(ctx->replay_sig == 0);
+
+	read_child_registers(tid, &regs);
+
+	sys_ptrace_sysemu_singlestep(tid, ctx->replay_sig);
+	sys_waitpid(tid, &ctx->status);
+
+	write_child_registers(tid, &regs);
+
+	ctx->replay_sig = 0;
+	ctx->status = 0;
+}
+
+static void enter_syscall(struct context* ctx,
+			 const struct rep_trace_step* step)
+{
+	cont_syscall_boundary(ctx, step->params.syscall.emu);
+	validate_args(step->params.syscall.no, STATE_SYSCALL_ENTRY, ctx);
+}
+
+static void exit_syscall(struct context* ctx,
+			 const struct rep_trace_step* step)
+{
+	int i, emu = step->params.syscall.emu;
+
+	if (!emu) {
+		cont_syscall_boundary(ctx, emu);
+	}
+
+	for (i = 0; i < step->params.syscall.num_emu_args; ++i) {
+		set_child_data(ctx);
+	}
+	if (step->params.syscall.emu_ret) {
+		set_return_value(ctx);
+	}
+	validate_args(step->params.syscall.no, STATE_SYSCALL_EXIT, ctx);
+
+	if (emu) {
+		step_exit_syscall_emu(ctx);
+	}
+}
+
 static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
 {
 	struct dbg_request req;
+	struct rep_trace_step step;
 
 	/* Advance the trace until we've exec()'d the tracee before
 	 * processing debugger requests.  Otherwise the debugger host
@@ -244,6 +378,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
 		ctx->child_sig = 0;
 	}
 
+	/* Ask the trace-interpretation code what to do next in order
+	 * to retire the current frame. */
+	memset(&step, 0, sizeof(step));
 	if (ctx->trace.stop_reason == USR_INIT_SCRATCH_MEM) {
 		/* for checksumming: make a note that this area is
 		 * scratch and need not be validated. */
@@ -252,59 +389,63 @@ static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
 		replay_init_scratch_memory(ctx, &file);
 		add_scratch((void*)ctx->trace.recorded_regs.eax,
 			    file.end - file.start);
+
+		/* TODO */
+		step.action = TSTEP_RETIRE;
 	} else if (ctx->trace.stop_reason == USR_EXIT) {
 		rep_sched_deregister_thread(&ctx);
+		/* Early-return because |ctx| is gone now. */
 		return;
 	} else if (ctx->trace.stop_reason == USR_FLUSH) {
 		rep_process_flush(ctx);
+
+		/* TODO */
+		step.action = TSTEP_RETIRE;
 	} else if (ctx->trace.stop_reason < 0) {
 		/* stop reason is a signal - use HPC */
 		rep_process_signal(ctx, validate);
+
+		/* TODO */
+		step.action = TSTEP_RETIRE;
 	} else {
 		/* XXX not so pretty ... */
 		validate |= (ctx->trace.state == STATE_SYSCALL_EXIT
 			     && ctx->trace.stop_reason == SYS_execve);
 		/* stop reason is a system call - can be done with
 		 * ptrace */
-		rep_process_syscall(ctx, ctx->trace.stop_reason,
-				    rr_flags->redirect);
+		rep_process_syscall(ctx, rr_flags->redirect, &step);
+	}
+
+	/* Advance until |step| has been fulfilled. */
+	switch (step.action) {
+	case TSTEP_RETIRE:
+		break;
+	case TSTEP_ENTER_SYSCALL:
+		enter_syscall(ctx, &step);
+		break;
+	case TSTEP_EXIT_SYSCALL:
+		exit_syscall(ctx, &step);
+		break;
+	default:
+		fatal("Unhandled step type %d", step.action);
 	}
 
 	/* Every time a non-wrapped event happens, the hpc is
-	 * reset. When an event that requires hpc occurs, we read the
-	 * hpc at that point and reset the hpc interval to the
-	 * required rbc minus the current hpc.  All this happens since
-	 * the wrapped event do not reset the hpc,therefore the
-	 * previous techniques of starting the hpc only the at the
-	 * previous event to the one that requires it, doesn't work,
-	 * since the previous event may be a wrapped syscall.
+	 * reset. When an event that requires hpc occurs, we
+	 * read the hpc at that point and reset the hpc
+	 * interval to the required rbc minus the current hpc.
+	 * All this happens since the wrapped event do not
+	 * reset the hpc,therefore the previous techniques of
+	 * starting the hpc only the at the previous event to
+	 * the one that requires it, doesn't work, since the
+	 * previous event may be a wrapped syscall.
 	 *
 	 * XXX clarify
 	 */
 	if (ctx->trace.stop_reason != USR_FLUSH) {
 		reset_hpc(ctx, 0);
 	}
-
-	/* dump memory as user requested */
-	if (ctx
-	    && (rr_flags->dump_on == ctx->trace.stop_reason
-		|| rr_flags->dump_on == DUMP_ON_ALL
-		|| rr_flags->dump_at == ctx->trace.global_time)) {
-		char pid_str[PATH_MAX];
-		snprintf(pid_str, sizeof(pid_str) - 1, "%s/%d_%d_rep",
-			 get_trace_path(),
-			 ctx->child_tid, ctx->trace.global_time);
-		print_process_memory(ctx, pid_str);
-	}
-
-	/* check memory checksum */
-	if (ctx && validate
-	    && ((rr_flags->checksum == CHECKSUM_ALL)
-		|| (rr_flags->checksum == CHECKSUM_SYSCALL
-		    && ctx->trace.state == STATE_SYSCALL_EXIT)
-		|| (rr_flags->checksum <= ctx->trace.global_time))) {
-		validate_process_memory(ctx);
-	}
+	debug_memory(ctx);
 }
 
 void replay(struct flags flags)
