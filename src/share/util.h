@@ -13,8 +13,12 @@
 #include "types.h"
 #include "../share/config.h"
 
-#define GET_PTRACE_EVENT(status)	 	((0xFF0000 & status) >> 16)
-#define FAILED_SYSCALL(eax) 			(-ERANGE <= (int)(eax) && (int)(eax) < 0)
+#define GET_PTRACE_EVENT(status) \
+	((0xFF0000 & status) >> 16)
+#define SYSCALL_FAILED(eax) \
+	(-ERANGE <= (int)(eax) && (int)(eax) < 0)
+#define SYSCALL_WILL_RESTART(eax) \
+	(ERESTART_RESTARTBLOCK == (eax) || ERESTARTNOINTR == (eax))
 
 #ifndef PTRACE_EVENT_SECCOMP
 #define PTRACE_O_TRACESECCOMP			0x00000080
