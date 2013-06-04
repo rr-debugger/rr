@@ -665,7 +665,7 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 	sys_free((void**) &buf);
 }
 
-static int parse_raw_data_hdr(struct trace* trace, void** addr)
+static int parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 {
 	char* line = sys_malloc(1024);
 	read_line(syscall_header, line, 1024, "syscall_input");
@@ -696,7 +696,7 @@ static int parse_raw_data_hdr(struct trace* trace, void** addr)
 	return size;
 }
 
-void* read_raw_data(struct trace* trace, size_t* size_ptr, void** addr)
+void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr)
 {
 	int size;
 
@@ -789,7 +789,7 @@ pid_t get_recorded_main_thread()
 	fpos_t pos;
 	fgetpos(trace_file, &pos);
 	int saved_trace_file_lines_counter = trace_file_lines_counter;
-	struct trace trace;
+	struct trace_frame trace;
 	read_next_trace(&trace);
 
 	pid_t main_thread = trace.tid;
@@ -884,7 +884,7 @@ void peek_next_mmapped_file_stats(struct mmapped_file * file)
 	fsetpos(mmaps_file, &pos);
 }
 
-void peek_next_trace(struct trace *trace)
+void peek_next_trace(struct trace_frame *trace)
 {
 	fpos_t pos;
 	fgetpos(trace_file, &pos);
@@ -896,7 +896,7 @@ void peek_next_trace(struct trace *trace)
 	fsetpos(trace_file, &pos);
 }
 
-void read_next_trace(struct trace *trace)
+void read_next_trace(struct trace_frame *trace)
 {
 	char line[1024];
 
@@ -951,7 +951,7 @@ void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
 	char* line = sys_malloc(1024);
 
 	read_line(trace_file, line, 1024, "trace");
-	struct trace trace;
+	struct trace_frame trace;
 	do {
 		read_next_trace(&trace);
 		if ((val == trace.recorded_regs.eax) || (val == trace.recorded_regs.ebx) || (val == trace.recorded_regs.ecx) || (val == trace.recorded_regs.edx) || (val == trace.recorded_regs.esi)

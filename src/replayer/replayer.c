@@ -2,6 +2,8 @@
 
 #define _GNU_SOURCE
 
+#include "replayer.h"
+
 #include <assert.h>
 #include <err.h>
 #include <fcntl.h>

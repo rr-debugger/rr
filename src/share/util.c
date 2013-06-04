@@ -369,7 +369,7 @@ void print_cwd(pid_t tid, char *str)
  * for printing syscall data on *replay* stage (as it uses the trace).
  * TODO: fix it so it will be suitable for both stages
  */
-void print_syscall(struct context *ctx, struct trace *trace)
+void print_syscall(struct context *ctx, struct trace_frame *trace)
 {
 
 	int syscall = trace->recorded_regs.orig_eax;
