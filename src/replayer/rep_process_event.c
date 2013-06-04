@@ -50,7 +50,7 @@ struct syscall_def {
 	       rep_IRREGULAR
 	} type;
 	/* Not meaningful for rep_IRREGULAR. */
-	int num_emu_args;
+	size_t num_emu_args;
 };
 
 #define SYSCALL_NUM(_name)__NR_##_name
@@ -749,8 +749,10 @@ static void process_socketcall(struct context* ctx, int state)
 	exit_syscall_emu(ctx, SYS_socketcall, num_emu_args);
 }
 
-void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
+void rep_process_syscall(struct context* ctx, int redirect_stdio,
+			 struct rep_trace_step* step)
 {
+	int syscall = ctx->trace.stop_reason;
 	const struct syscall_def* def = &syscall_table[syscall];
 	pid_t tid = ctx->child_tid;
 	struct trace_frame* trace = &(ctx->trace);
@@ -763,6 +765,7 @@ void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 		 * syscall (see below). The child process is oblivious
 		 * to this, so in the replay we need to jump directly
 		 * to the exit from the restart_syscall */
+		step->action = TSTEP_RETIRE;
 		return;
 	}
 
@@ -770,36 +773,31 @@ void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 		/* the restarted syscall will be replayed by the next
 		 * entry which is an exit entry for the original
 		 * syscall being restarted - do nothing here. */
+		step->action = TSTEP_RETIRE;
 		return;
 	}
 
-	assert(syscall < ALEN(syscall_table));
-	assert(rep_UNDEFINED != def->type);
+	assert("Syscallno not in table, but possibly valid"
+	       && syscall < ALEN(syscall_table));
+	assert("Valid but unhandled syscallno"
+	       && rep_UNDEFINED != def->type);
 
-	switch (def->type) {
-	case rep_EMU:
-		if (STATE_SYSCALL_ENTRY == state) {
-			return enter_syscall_emu(ctx, syscall);
-		} else {
-			return exit_syscall_emu(ctx,
-						syscall, def->num_emu_args);
-		}
-	case rep_EXEC:
-	case rep_EXEC_RET_EMU:
-		if (STATE_SYSCALL_ENTRY == state) {
-			return enter_syscall_exec(ctx, syscall);
-		} else {
-			return exit_syscall_exec(
-				ctx, syscall, def->num_emu_args,
-				rep_EXEC_RET_EMU == def->type);
-		}
-	case rep_IRREGULAR:
-		break;
-	default:
-		fatal("Unhandled syscall type %d", def->type);
+	if (rep_IRREGULAR != def->type) {
+		step->params.syscall.no = syscall;
+		step->params.syscall.num_emu_args = def->num_emu_args;
+		step->action = STATE_SYSCALL_ENTRY == state ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		step->params.syscall.emu = rep_EMU == def->type;
+		step->params.syscall.emu_ret =
+			rep_EMU == def->type || rep_EXEC_RET_EMU == def->type;
+		return;
 	}
 
 	assert(rep_IRREGULAR == def->type);
+
+	/* TODO */
+	step->action = TSTEP_RETIRE;
+
 	/* Manual implementations of irregular syscalls. */
 	switch (syscall) {
 

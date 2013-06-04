@@ -3,13 +3,13 @@
 #ifndef REP_PROCESS_EVENT_H_
 #define REP_PROCESS_EVENT_H_
 
-#include "../share/types.h"
-#include "../share/trace.h"
-#include "../share/util.h"
+struct context;
+struct rep_trace_step;
 
 void rep_process_flush(struct context* ctx);
 /* |redirect_stdio| is nonzero if output written to stdout/stderr
  * during recording should be tee'd during replay, zero otherwise. */
-void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio);
+void rep_process_syscall(struct context* ctx, int redirect_stdio,
+			 struct rep_trace_step* step);
 
 #endif /* REP_PROCESS_EVENT_H_ */
