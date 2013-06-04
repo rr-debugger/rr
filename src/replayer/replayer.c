@@ -56,21 +56,6 @@ static const struct flags* rr_flags;
  * over the initial rr image. */
 static bool validate = FALSE;
 
-/**
- * Every time a non-wrapped event happens, the hpc is reset. when an
- * event that requires hpc occures, we read the hpc at that point and
- * reset the hpc interval to the required rbc minus the current hpc.
- * all this happens since the wrapped event do not reset the hpc,
- * therefore the previous techniques of starting the hpc only the at
- * the previous event to the one that requires it, doesn't work, since
- * the previous event may be a wrapped syscall
- */
-static void rep_reset_hpc(struct context * ctx) {
-	if (!ctx || ctx->trace.stop_reason == USR_FLUSH)
-		return;
-	reset_hpc(ctx,0);
-}
-
 static void check_initial_register_file()
 {
 	rep_sched_get_thread();
@@ -236,7 +221,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	}
 }
 
-static void replay_one_trace_step(struct dbg_context* dbg, struct context* ctx)
+static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
 {
 	struct dbg_request req;
 
@@ -255,7 +240,6 @@ static void replay_one_trace_step(struct dbg_context* dbg, struct context* ctx)
 	}
 
 	if (ctx->child_sig != 0) {
-		//printf("child_sig: %d\n",ctx->child_sig);
 		assert(ctx->trace.stop_reason == -ctx->child_sig);
 		ctx->child_sig = 0;
 	}
@@ -270,40 +254,36 @@ static void replay_one_trace_step(struct dbg_context* dbg, struct context* ctx)
 			    file.end - file.start);
 	} else if (ctx->trace.stop_reason == USR_EXIT) {
 		rep_sched_deregister_thread(&ctx);
-	} else if(ctx->trace.stop_reason > 0) {
-		/* stop reason is a system call - can be done with ptrace */
-		if (ctx->trace.state == STATE_SYSCALL_EXIT) {
-			if (ctx->trace.stop_reason == SYS_execve) {
-				validate = TRUE;
-			}
-			/* when a syscall exits with either of these
-			 * errors, it will be restarted by the kernel
-			 * with a restart syscall. The child process
-			 * is oblivious to this, so in the replay we
-			 * need to jump directly to the exit from the
-			 * restart_syscall */
-			if ((ctx->trace.recorded_regs.eax == ERESTART_RESTARTBLOCK
-			     || ctx->trace.recorded_regs.eax == ERESTARTNOINTR) ) {
-				return;
-			}
-		}
-
-		/* proceed to the next event */
-		rep_process_syscall(ctx, ctx->trace.stop_reason,
-				    rr_flags->redirect);
-	} else if (ctx->trace.stop_reason == SYS_restart_syscall) {
-		/* the restarted syscall will be replayed by the next
-		 * entry which is an exit entry for the original
-		 * syscall being restarted - do nothing here. */
 		return;
 	} else if (ctx->trace.stop_reason == USR_FLUSH) {
 		rep_process_flush(ctx);
-	} else {
+	} else if (ctx->trace.stop_reason < 0) {
 		/* stop reason is a signal - use HPC */
 		rep_process_signal(ctx, validate);
+	} else {
+		/* XXX not so pretty ... */
+		validate |= (ctx->trace.state == STATE_SYSCALL_EXIT
+			     && ctx->trace.stop_reason == SYS_execve);
+		/* stop reason is a system call - can be done with
+		 * ptrace */
+		rep_process_syscall(ctx, ctx->trace.stop_reason,
+				    rr_flags->redirect);
 	}
 
-	rep_reset_hpc(ctx);
+	/* Every time a non-wrapped event happens, the hpc is
+	 * reset. When an event that requires hpc occurs, we read the
+	 * hpc at that point and reset the hpc interval to the
+	 * required rbc minus the current hpc.  All this happens since
+	 * the wrapped event do not reset the hpc,therefore the
+	 * previous techniques of starting the hpc only the at the
+	 * previous event to the one that requires it, doesn't work,
+	 * since the previous event may be a wrapped syscall.
+	 *
+	 * XXX clarify
+	 */
+	if (ctx->trace.stop_reason != USR_FLUSH) {
+		reset_hpc(ctx, 0);
+	}
 
 	/* dump memory as user requested */
 	if (ctx
@@ -341,7 +321,7 @@ void replay(struct flags flags)
 	check_initial_register_file();
 
 	while (rep_sched_get_num_threads()) {
-		replay_one_trace_step(dbg, rep_sched_get_thread());
+		replay_one_trace_frame(dbg, rep_sched_get_thread());
 	}
 
 	log_info("Replayer successfully finished.");

@@ -1895,7 +1895,7 @@ SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 	{
 		void* mmap_addr = (void*)regs.eax;
 		//assert((int)mmap_addr >= 0 || (int)mmap_addr < -ERANGE);
-		if (FAILED_SYSCALL(regs.eax))
+		if (SYSCALL_FAILED(regs.eax))
 			break;
 
 		/* inspect mmap arguments */
