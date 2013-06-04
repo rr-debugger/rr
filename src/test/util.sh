@@ -86,7 +86,10 @@ function debug {
 # $1 is test name
 function check {
 	if [[ $(grep "Replayer successfully finished." $1.err.replay) == "" ]]; then
-		echo "Test '$1' FAILED: error during replay"
+		echo "Test '$1' FAILED: error during replay:"
+		echo "--------------------------------------------------"
+		cat $1.err.replay
+		echo "--------------------------------------------------"
 	elif [[ $(diff $1.out.record $1.out.replay) != "" ]]; then
 		echo "Test '$1' FAILED: output from recording different than replay"
 		echo "Output from recording:"

@@ -581,7 +581,7 @@ static void process_mmap2(struct context* ctx,
 	if (state == STATE_SYSCALL_ENTRY) {
 		struct trace_frame next;
 		peek_next_trace(&next);
-		if (FAILED_SYSCALL(next.recorded_regs.eax)) {
+		if (SYSCALL_FAILED(next.recorded_regs.eax)) {
 			/* failed mapping, emulate */
 			enter_syscall_emu(ctx, SYS_mmap2);
 		} else {
@@ -590,7 +590,7 @@ static void process_mmap2(struct context* ctx,
 		return;
 	}
 
-	if (FAILED_SYSCALL(trace->recorded_regs.eax)) {
+	if (SYSCALL_FAILED(trace->recorded_regs.eax)) {
 		/* failed mapping, emulate */
 		exit_syscall_emu(ctx, SYS_mmap2, 0);
 		return;
@@ -755,6 +755,23 @@ void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 	pid_t tid = ctx->child_tid;
 	struct trace_frame* trace = &(ctx->trace);
 	int state = trace->state;
+
+	if (STATE_SYSCALL_EXIT == state
+	    && SYSCALL_WILL_RESTART(trace->recorded_regs.eax)) {
+		/* when a syscall exits with a restart "error", it
+		 * will be restarted by the kernel with a restart
+		 * syscall (see below). The child process is oblivious
+		 * to this, so in the replay we need to jump directly
+		 * to the exit from the restart_syscall */
+		return;
+	}
+
+	if (SYS_restart_syscall == syscall) {
+		/* the restarted syscall will be replayed by the next
+		 * entry which is an exit entry for the original
+		 * syscall being restarted - do nothing here. */
+		return;
+	}
 
 	assert(syscall < ALEN(syscall_table));
 	assert(rep_UNDEFINED != def->type);
