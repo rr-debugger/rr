@@ -91,7 +91,7 @@ static void rec_init_scratch_memory(struct context *ctx)
 	struct user_regs_struct orig_regs;
 	read_child_registers(ctx->child_tid,&orig_regs);
 	int eax = orig_regs.eax;
-	orig_regs.eax = ctx->scratch_ptr;
+	orig_regs.eax = (uintptr_t)ctx->scratch_ptr;
 	write_child_registers(ctx->child_tid,&orig_regs);
 	struct mmapped_file file = {0};
 	file.time = get_global_time();
@@ -224,7 +224,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 				if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
 					size_t num_args = 4;
 					// reading syscall args
-					unsigned long * args = read_child_data(ctx, num_args * sizeof(long),regs.ecx);
+					unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
 					// save buffer address (args[1]) and size
 					ctx->recorded_scratch_ptr_1 = (void*)args[1];
 					ctx->recorded_scratch_size = args[2];
@@ -233,7 +233,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 					// put args on scratch memory (since as we changed it)
 					write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
 					// point ecx to args
-					ctx->recorded_scratch_ptr_0 = regs.ecx;
+					ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
 					regs.ecx = (long)ctx->scratch_ptr;
 					write_child_registers(ctx->child_tid,&regs);
 					// cleanup
@@ -254,18 +254,18 @@ static int allow_ctx_switch(struct context *ctx, int event)
 				if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
 					size_t num_args = 3;
 					// reading syscall args
-					unsigned long * args = read_child_data(ctx, num_args * sizeof(long),regs.ecx);
+					unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
 					// setting addr to scratch memory +  sizeof the args
-					ctx->recorded_scratch_ptr_1 = args[1];
+					ctx->recorded_scratch_ptr_1 = (void*)args[1];
 					args[1] = (long)(ctx->scratch_ptr + (num_args * sizeof(long)));
 					// setting addrlen to addr + addrlen
-					socklen_t *addrlen = read_child_data(ctx,sizeof(socklen_t *),args[2]);
+					socklen_t *addrlen = read_child_data(ctx,sizeof(socklen_t *), (void*)args[2]);
 					ctx->recorded_scratch_size = *addrlen;
 					args[2] = (long)((void*)args[1] + *addrlen);
 					// put args on scratch memory (since we changed it)
 					write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
 					// point ecx to args
-					ctx->recorded_scratch_ptr_0 = regs.ecx;
+					ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
 					regs.ecx = (long)ctx->scratch_ptr;
 					write_child_registers(ctx->child_tid,&regs);
 					// cleanup
@@ -296,13 +296,13 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
 				int size = regs.edx;
 				if (size < 0 || size > ctx->scratch_size) {
-					log_info("Syscall %d called with bad size %d  (scratch size = %d)", size, ctx->scratch_size);
+					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
 					ctx->recorded_scratch_size = -1;
 					return 0;
 				}
-				ctx->recorded_scratch_ptr_0 = regs.ecx;
+				ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
 				ctx->recorded_scratch_size = size;
-				regs.ecx = ctx->scratch_ptr;
+				regs.ecx = (uintptr_t)ctx->scratch_ptr;
 				write_child_registers(ctx->child_tid, &regs);
 			}
 		}
@@ -368,7 +368,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
 				int size = sizeof(struct pollfd) * regs.ecx;
 				if (size < 0 || size > ctx->scratch_size) {
-					log_info("Syscall %d called with bad size %d  (scratch size = %d)", size, ctx->scratch_size);
+					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
 					ctx->recorded_scratch_size = -1;
 					return 0;
 				}
@@ -407,7 +407,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 					case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
 						ctx->recorded_scratch_size = sizeof(int);
 						ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
-						regs.ecx = ctx->scratch_ptr;
+						regs.ecx = (uintptr_t)ctx->scratch_ptr;
 						write_child_registers(ctx->child_tid, &regs);
 						break;
 					case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
@@ -415,7 +415,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 											The returned string will be null-terminated if it is shorter than that. */
 						ctx->recorded_scratch_size = 16;
 						ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
-						regs.ecx = ctx->scratch_ptr;
+						regs.ecx = (uintptr_t)ctx->scratch_ptr;
 						write_child_registers(ctx->child_tid, &regs);
 						break;
 					default:
@@ -436,12 +436,12 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
 				int size = sizeof(struct epoll_event) * regs.edx;
 				if (size < 0 || size > ctx->scratch_size) {
-					log_info("Syscall %d called with bad size %d  (scratch size = %d)", size, ctx->scratch_size);
+					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
 					ctx->recorded_scratch_size = -1;
 					return 0;
 				}
 				ctx->recorded_scratch_size = size;
-				ctx->recorded_scratch_ptr_0 = regs.ecx;
+				ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
 				regs.ecx = (long int) ctx->scratch_ptr;
 				write_child_registers(ctx->child_tid, &regs);
 			}
@@ -469,7 +469,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
 				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
 				ctx->recorded_scratch_size = sizeof(struct timespec);
-				regs.ecx = ctx->scratch_ptr;
+				regs.ecx = (uintptr_t)ctx->scratch_ptr;
 				write_child_registers(ctx->child_tid, &regs);
 			}
 		}

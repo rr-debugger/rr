@@ -106,7 +106,7 @@ struct dbg_request {
 
 	union {
 		struct {
-			long addr;
+			void* addr;
 			size_t len;
 		} mem;
 
@@ -115,7 +115,7 @@ struct dbg_request {
 		struct {
 			/* Resume from this address, or 0 to resume from
 			 * same address. */
-			long addr;
+			void* addr;
 			/* Resume with this signal, or 0 for no signal. */
 			char signum;
 		} resume;

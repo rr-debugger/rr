@@ -213,8 +213,6 @@ static void start(int argc, char* argv[], char** envp)
 
 		pid = sys_fork();
 
-		//read_child_initial_memory_end_exit(pid,__executable,__argv);
-
 		if (pid == 0) { /* child process */
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
@@ -363,7 +361,7 @@ int main(int argc, char* argv[], char** envp)
 	start(argc - flag_index , argv + flag_index, envp);
 
 	if (__rr_flags.filter_lib_path)
-		sys_free(&__rr_flags.filter_lib_path);
+		sys_free((void**)&__rr_flags.filter_lib_path);
 
 	return 0;
 

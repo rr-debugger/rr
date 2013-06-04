@@ -143,7 +143,7 @@ static dbg_threadid_t get_threadid(struct context* ctx)
 	return thread;
 }
 
-static byte* read_mem(struct context* ctx, long addr, size_t len)
+static byte* read_mem(struct context* ctx, void* addr, size_t len)
 {
 	/* XXX will gdb ever make request for unreadable memory?  If
 	 * so, we need to use read_child_data_checked() here. */

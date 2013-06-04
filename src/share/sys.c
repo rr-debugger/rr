@@ -2,6 +2,8 @@
 
 #define _GNU_SOURCE
 
+#include "sys.h"
+
 #include <assert.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -16,10 +18,10 @@
 #include <sched.h>
 
 #include "dbg.h"
-#include "sys.h"
-#include "util.h"
 #include "ipc.h"
 #include "../recorder/rec_sched.h"
+#include "trace.h"
+#include "util.h"
 
 FILE* sys_fopen(const char* path, const char* mode)
 {
@@ -479,9 +481,7 @@ int sys_mkpath(const char *path, mode_t mode)
         pp = sp + 1;
     }
 
-    sys_free(&copypath);
+    sys_free((void**)&copypath);
     assert(status == 0);
     return status;
 }
-
-

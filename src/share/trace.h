@@ -46,12 +46,12 @@ void sc_record_data(pid_t tid, int syscall, size_t len, void* buf);
 void record_inst(struct context* context, char* inst);
 
 void record_inst_done(struct context* context);
-void record_child_data(struct context *ctx, int syscall, size_t len, long int child_ptr);
+void record_child_data(struct context *ctx, int syscall, size_t len, void* child_ptr);
 
 void record_timestamp(int tid, long int* eax_, long int* edx_);
-void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_ptr);
-void record_child_str(pid_t tid, int syscall, long int child_ptr);
-void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf);
+void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr);
+void record_child_str(pid_t tid, int syscall, void* child_ptr);
+void record_parent_data(struct context *ctx, int syscall, size_t len, void *addr, void *buf);
 void record_event(struct context *ctx, int state);
 void record_mmapped_file_stats(struct mmapped_file *file);
 unsigned int get_global_time(void);
@@ -70,7 +70,7 @@ int get_trace_file_lines_counter();
 void read_next_mmapped_file_stats(struct mmapped_file *file);
 void peek_next_mmapped_file_stats(struct mmapped_file *file);
 void rep_init_trace_files(void);
-void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr);
+void* read_raw_data(struct trace* trace, size_t* size_ptr, void** addr);
 pid_t get_recorded_main_thread();
 void rep_setup_trace_dir(const char* path);
 void rep_child_buffer0(struct context * ctx);

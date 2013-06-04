@@ -61,7 +61,7 @@ static int handle_sigsegv(struct context *ctx)
 		retval = 1;
 	}
 
-	sys_free(&inst);
+	sys_free((void**)&inst);
 
 	return retval;
 }
@@ -153,7 +153,7 @@ static void record_signal(int sig, struct context* ctx)
 		read_child_registers(ctx->child_tid, &regs);
 	}
 	*/
-	record_child_data(ctx, -sig, frame_size, regs.esp);
+	record_child_data(ctx, -sig, frame_size, (void*)regs.esp);
 }
 
 void handle_signal(struct context* ctx)
@@ -169,7 +169,7 @@ void handle_signal(struct context* ctx)
 	/* Received a signal in the critical section of recording a wrapped syscall */
 	while (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx)) {
 		/* Delay delivery of the signal until we are out of it */
-		log_info("Got signal %d while in lib, singelestepping, eip = %p",sig,ctx->child_regs.eip);
+		log_info("Got signal %d while in lib, singelestepping, eip = %lx", sig, ctx->child_regs.eip);
 		sys_ptrace_singlestep(ctx->child_tid,0);
 		sys_waitpid(ctx->child_tid, &ctx->status);
 		read_child_registers(ctx->child_tid, &(ctx->child_regs));

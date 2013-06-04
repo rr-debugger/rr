@@ -17,7 +17,7 @@ struct list * list_next(const struct list * node);
 
 struct list * list_push_front(const struct list * head, const void * data);
 
-struct list * list_pop_front(const struct list * head);
+struct list * list_pop_front(struct list * head);
 
 /**
  * Note: This removes the node by copying the next node over it

@@ -100,15 +100,15 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		if (regs.eax < 0)
 			break;
 		/* record child id here */
-		record_child_data_tid(tid, syscall, sizeof(pid_t), regs.edx);
-		record_child_data_tid(tid, syscall, sizeof(pid_t), regs.esi);
+		record_child_data_tid(tid, syscall, sizeof(pid_t), (void*)regs.edx);
+		record_child_data_tid(tid, syscall, sizeof(pid_t), (void*)regs.esi);
 		pid_t new_tid = regs.eax;
 
 		struct user_regs_struct new_regs;
 		read_child_registers(new_tid,&new_regs);
-		record_child_data_tid(new_tid, syscall, sizeof(struct user_desc), new_regs.edi);
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), new_regs.edx);
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), new_regs.esi);
+		record_child_data_tid(new_tid, syscall, sizeof(struct user_desc), (void*)new_regs.edi);
+		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), (void*)new_regs.edx);
+		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), (void*)new_regs.esi);
 
 		break;
 	}
@@ -171,7 +171,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * argument tp of clock_settime() is not a multiple of res, then it is truncated
 	 * to a multiple of res.
 	 */
-	SYS_REC1(clock_getres, sizeof(struct timespec), regs.ecx)
+	SYS_REC1(clock_getres, sizeof(struct timespec), (void*)regs.ecx)
 
 	/**
 	 * int clock_gettime(clockid_t clk_id, struct timespec *tp);
@@ -179,7 +179,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * The functions clock_gettime() and clock_settime() retrieve and set the time of the
 	 * specified clock clk_id.
 	 */
-	SYS_REC1(clock_gettime, sizeof(struct timespec), regs.ecx)
+	SYS_REC1(clock_gettime, sizeof(struct timespec), (void*)regs.ecx)
 
 	/**
 	 * int dup(int oldfd)
@@ -256,7 +256,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			break;
 		}
 
-		void *data = (void*) read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
+		void *data = (void*) read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
 		record_parent_data(ctx, syscall, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
 		sys_free((void**) &data);
@@ -328,7 +328,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case F_GETLK:
 		case F_SETLK:
 		{
-			record_child_data(ctx, syscall, sizeof(struct flock64), regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct flock64), (void*)regs.edx);
 			break;
 		}
 
@@ -385,7 +385,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * 2 paramaters. However, strace tells another story...
 	 *
 	 */
-	SYS_REC1(fstatfs64, sizeof(struct statfs64), regs.edx)
+	SYS_REC1(fstatfs64, sizeof(struct statfs64), (void*)regs.edx)
 
 	/**
 	 * int ftruncate(int fd, off_t length)
@@ -423,7 +423,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_futex:
 	{
-		record_child_data(ctx, syscall, sizeof(int), regs.ebx);
+		record_child_data(ctx, syscall, sizeof(int), (void*)regs.ebx);
 		int op = regs.ecx & FUTEX_CMD_MASK;
 
 		switch (op) {
@@ -439,7 +439,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case FUTEX_WAKE_OP:
 		case FUTEX_CMP_REQUEUE_PI:
 		case FUTEX_WAIT_REQUEUE_PI:
-			record_child_data(ctx, syscall, sizeof(int), regs.edi);
+			record_child_data(ctx, syscall,
+					  sizeof(int), (void*)regs.edi);
 			break;
 
 		default:
@@ -458,7 +459,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * that is the current working directory of the calling process.  The pathname is returned as the function result and via the argument buf, if
 	 * present.
 	 */
-	SYS_REC1_STR(getcwd, regs.ebx)
+	SYS_REC1_STR(getcwd, (void*)regs.ebx)
 
 	/**
 	 * int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
@@ -468,8 +469,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * specifies the size of that buffer.
 	 *
 	 */
-	SYS_REC1(getdents64, regs.eax, regs.ecx)
-	SYS_REC1(getdents, regs.eax, regs.ecx)
+	SYS_REC1(getdents64, regs.eax, (void*)regs.ecx)
+	SYS_REC1(getdents, regs.eax, (void*)regs.ecx)
 
 	/**
 	 * gid_t getgid(void);
@@ -512,7 +513,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * the value of the ecx register when returning from the systenm call is different from entering
 	 * the system call.
 	 */
-	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), regs.ecx);
+	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), (void*)regs.ecx);
 
 	/**
 	 * uid_t getuid(void);
@@ -564,7 +565,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *
 	 * getrusage() returns resource usage measures for who, which can be one of the following..
 	 */
-	SYS_REC1(getrusage, sizeof(struct rusage), regs.ecx)
+	SYS_REC1(getrusage, sizeof(struct rusage), (void*)regs.ecx)
 
 	/**
 	 * int gettimeofday(struct timeval *tv, struct timezone *tz);
@@ -573,7 +574,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * well as a timezone.  The tv argument is a struct timeval (as specified in <sys/time.h>):
 	 *
 	 */
-	SYS_REC2(gettimeofday, sizeof(struct timeval), regs.ebx, sizeof(struct timezone), regs.ecx)
+	SYS_REC2(gettimeofday,
+		 sizeof(struct timeval), (void*)regs.ebx,
+		 sizeof(struct timezone), (void*)regs.ecx)
+
 	/**
 	 * int inotify_rm_watch(int fd, uint32_t wd)
 	 *
@@ -641,7 +645,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SHMAT:
 		{
 			// the kernel copies the returned address to *third
-			record_child_data(ctx,syscall,sizeof(long),regs.esi);
+			record_child_data(ctx, syscall, sizeof(long), (void*)regs.esi);
 			break;
 		}
 
@@ -652,7 +656,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			assert(cmd != IPC_INFO);
 			assert(cmd != SHM_INFO);
 			assert(cmd != SHM_STAT);
-			record_child_data(ctx, syscall, sizeof(struct shmid_ds), regs.esi);
+			record_child_data(ctx, syscall, sizeof(struct shmid_ds), (void*)regs.esi);
 			break;
 		}
 
@@ -686,20 +690,20 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			case IPC_STAT:
 			case SEM_STAT:
 			{
-				record_child_data(ctx,syscall,sizeof(struct semid_ds),regs.esi);
+				record_child_data(ctx, syscall, sizeof(struct semid_ds), (void*)regs.esi);
 				break;
 			}
 
 			case IPC_INFO:
 			case SEM_INFO:
 			{
-				record_child_data(ctx,syscall,sizeof(struct seminfo),regs.esi);
+				record_child_data(ctx, syscall, sizeof(struct seminfo), (void*)regs.esi);
 				break;
 			}
 			case GETALL:
 			{
 				int semnum = regs.ecx;
-				record_child_data(ctx,syscall,semnum * sizeof(unsigned short),regs.esi);
+				record_child_data(ctx, syscall, semnum * sizeof(unsigned short), (void*)regs.esi);
 				break;
 
 			}
@@ -716,7 +720,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
 		case MSGRCV:
 		{
-			record_child_data(ctx, syscall, sizeof(long) + regs.esi, regs.edx);
+			record_child_data(ctx, syscall, sizeof(long) + regs.esi, (void*)regs.edx);
 			break;
 		}
 
@@ -749,7 +753,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * lstat() is identical to stat(), except that if path is a symbolic link, then
 	 * the link itself is stat-ed, not the file that it refers to.
 	 */
-	SYS_REC1(lstat64, sizeof(struct stat64), regs.ecx)
+	SYS_REC1(lstat64, sizeof(struct stat64), (void*)regs.ecx)
 
 	/**
 	 * void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
@@ -814,7 +818,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * performs the analogous task  for  the  process's  group IDs.
 	 * @return:  On success, zero is returned.  On error, -1 is returned, and errno is set appropriately.
 	 */
-	SYS_REC3(getresgid32, sizeof(uid_t), regs.ebx, sizeof(uid_t), regs.ecx, sizeof(uid_t), regs.edx)
+	SYS_REC3(getresgid32,
+		 sizeof(uid_t), (void*)regs.ebx,
+		 sizeof(uid_t), (void*)regs.ecx,
+		 sizeof(uid_t), (void*)regs.edx)
 
 	/**
 	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
@@ -824,7 +831,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * respectively.    getresgid()   performs  the  analogous  task  for  the
 	 * process's group IDs.
 	 */
-	SYS_REC3(getresuid32, sizeof(uid_t), regs.ebx, sizeof(uid_t), regs.ecx, sizeof(uid_t), regs.edx)
+	SYS_REC3(getresuid32,
+		 sizeof(uid_t), (void*)regs.ebx,
+		 sizeof(uid_t), (void*)regs.ecx,
+		 sizeof(uid_t), (void*)regs.edx)
 
 	/*
 	 * ssize_t lgetxattr(const char *path, const char *name, void *value, size_t size);
@@ -853,7 +863,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
  	 * errno is set to ENOTSUP.
  	 *
 	 */
-	SYS_REC1(lgetxattr, regs.esi, regs.edx)
+	SYS_REC1(lgetxattr, regs.esi, (void*)regs.edx)
 
 
 	/*
@@ -866,7 +876,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * resulting file position in the argument result.
 	 */
 
-	SYS_REC1(_llseek, sizeof(loff_t), regs.esi)
+	SYS_REC1(_llseek, sizeof(loff_t), (void*)regs.esi)
 
 	/**
 	 * int madvise(void *addr, size_t length, int advice);
@@ -920,7 +930,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * We also need to record edi, since the return value of the time struct is not defined
 	 */
 
-	SYS_REC4(_newselect, sizeof(fd_set), regs.ecx, sizeof(fd_set), regs.edx, sizeof(fd_set), regs.esi, sizeof(struct timeval), regs.edi)
+	SYS_REC4(_newselect,
+		 sizeof(fd_set), (void*)regs.ecx,
+		 sizeof(fd_set), (void*)regs.edx,
+		 sizeof(fd_set), (void*)regs.esi,
+		 sizeof(struct timeval), (void*)regs.edi)
 
 	/* this class of system calls has a char* as argument 0; we log this argument */
 
@@ -931,7 +945,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	//SYS_REC0(open)
 	case SYS_open:
 	{
-		char *pathname = read_child_str(tid,regs.ebx);
+		char *pathname = read_child_str(tid, (void*)regs.ebx);
 		// TODO: disable this feature in the child completely so the child won't even
 		// 		 attempt opening it.
 		if (strcmp("/dev/dri/card0", pathname) == 0) { // fail the mapping here
@@ -939,7 +953,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			regs.eax = 0;
 			write_child_registers(ctx->child_tid,&regs);
 		}
-		sys_free(&pathname);
+		sys_free((void**)&pathname);
 		break;
 	}
 
@@ -962,7 +976,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * ten  to the write end of the pipe is buffered by the kernel until it is read
 	 * from the read end of the pipe.  For further details, see pipe(7).
 	 */
-	SYS_REC2(pipe, sizeof(int), regs.ebx, sizeof(int), regs.ebx+sizeof(int*))
+	SYS_REC2(pipe,
+		 sizeof(int), (void*)regs.ebx,
+		 sizeof(int), (void*)(regs.ebx+sizeof(int*)))
 
 	/**
 	 * int pipe2(int pipefd[2], int flags)
@@ -970,7 +986,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * If flags is 0, then pipe2() is the same as pipe().  The following values can be bitwise
 	 * ORed in flags to obtain different behavior...
 	 */
-	SYS_REC2(pipe2, sizeof(int), regs.ebx, sizeof(int), regs.ebx+sizeof(int*))
+	SYS_REC2(pipe2,
+		 sizeof(int), (void*)regs.ebx,
+		 sizeof(int), (void*)(regs.ebx+sizeof(int*)))
 
 	/**
 	 * int poll(struct pollfd *fds, nfds_t nfds, int timeout)
@@ -992,9 +1010,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			break;
 		}
 
-		void *data = read_child_data(ctx, ctx->recorded_scratch_size, (long int) ctx->scratch_ptr);
+		void *data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
 		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
-		record_parent_data(ctx, syscall, ctx->recorded_scratch_size, regs.ebx, data);
+		record_parent_data(ctx, syscall, ctx->recorded_scratch_size, (void*)regs.ebx, data);
 		sys_free((void**) &data);
 		break;
 	}
@@ -1029,10 +1047,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		}
 
 		if (size > 0) {
-			regs.ecx = ctx->recorded_scratch_ptr_0;
+			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 			write_child_registers(ctx->child_tid, &regs);
 		}
-		record_child_data(ctx,syscall,size,regs.ecx);
+		record_child_data(ctx, syscall, size, (void*)regs.ecx);
 
 		break;
 	}
@@ -1043,7 +1061,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * pread, pwrite - read from or write to a file descriptor at a given off‐
 	 * set
 	 */
-	SYS_REC1(pread64, regs.eax, regs.ecx)
+	SYS_REC1(pread64, regs.eax, (void*)regs.ecx)
 
 	/**
 	 *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
@@ -1060,7 +1078,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * places the previous soft and hard limits for resource in the rlimit structure
 	 * pointed to by old_limit.
 	 */
-	SYS_REC1(prlimit64, sizeof(struct rlimit64), regs.esi)
+	SYS_REC1(prlimit64, sizeof(struct rlimit64), (void*)regs.esi)
 
 	/**
 	 * int quotactl(int cmd, const char *special, int id, caddr_t addr);
@@ -1074,7 +1092,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	case SYS_quotactl:
 	 {
 		 int cmd = regs.ebx;
-		 caddr_t addr = regs.esi;
+		 void* addr = (void*)regs.esi;
 		 switch (cmd & SUBCMDMASK) {
 		 case Q_GETQUOTA:
 		 // Get disk quota limits and current usage for user or group id. The addr argument is a pointer to a dqblk structure 
@@ -1134,7 +1152,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * It will truncate the contents (to a length of bufsiz characters), in case
 	 * the buffer is too small to hold all of the contents.
 	 */
-	SYS_REC1(readlink, regs.edx, regs.ecx)
+	SYS_REC1(readlink, regs.edx, (void*)regs.ecx)
 
 	/**
 	 * int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
@@ -1148,7 +1166,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * saved in oldact.
 	 *
 	 */
-	SYS_REC1(rt_sigaction, sizeof(struct sigaction), regs.edx)
+	SYS_REC1(rt_sigaction, sizeof(struct sigaction), (void*)regs.edx)
 	/* This is part of the attempt to resolve whether a signal has a sighandler
 	 * installed (for signal emulation).
 	case SYS_rt_sigaction:
@@ -1169,7 +1187,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *  thread.  The signal mask is the set of signals whose delivery is currently
 	 *   blocked for the caller (see also signal(7) for more details).
 	 */
-	SYS_REC1(rt_sigprocmask, sizeof(sigset_t), regs.edx)
+	SYS_REC1(rt_sigprocmask, sizeof(sigset_t), (void*)regs.edx)
 
 	/**
 	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
@@ -1178,7 +1196,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * pointed to by mask.  The cpusetsize argument specifies the
 	 *  size (in bytes) of mask.  If pid is zero, then the mask of the calling process is returned.
 	 */
-	SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), regs.edx)
+SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 
 	/**
 	 * int sched_getparam(pid_t pid, struct sched_param *param)
@@ -1187,7 +1205,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * dentified  by  pid.  If pid is zero, then the parameters of the calling process
 	 * are retrieved.
 	 */
-	SYS_REC1(sched_getparam, sizeof(struct sched_param), regs.ecx)
+	SYS_REC1(sched_getparam, sizeof(struct sched_param), (void*)regs.ecx)
 
 	/**
 	 *  int sched_get_priority_max(int policy)
@@ -1247,7 +1265,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * int setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value);
 	 *
 	 */
-	SYS_REC1(setitimer, sizeof(struct itimerval), regs.edx);
+	SYS_REC1(setitimer, sizeof(struct itimerval), (void*)regs.edx);
 
 	/**
 	 * int setpriority(int which, int who, int prio);
@@ -1303,7 +1321,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * changed.
 	 *
 	 */
-	SYS_REC1(set_thread_area, sizeof(struct user_desc), regs.ebx);
+	SYS_REC1(set_thread_area, sizeof(struct user_desc), (void*)regs.ebx);
 
 	/**
 	 * long set_tid_address(int *tidptr);
@@ -1318,7 +1336,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * PID at this address.
 	 *
 	 */
-	SYS_REC1(set_tid_address, sizeof(int), regs.ebx)
+	SYS_REC1(set_tid_address, sizeof(int), (void*)regs.ebx)
 
 	/**
 	 * int sigaltstack(const stack_t *ss, stack_t *oss)
@@ -1327,7 +1345,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * an existing alternate signal stack.  An alternate signal stack is used during the execution of a signal
 	 * handler if the establishment of that handler (see sigaction(2)) requested it.
 	 */
-	SYS_REC1(sigaltstack, regs.ecx ? sizeof(stack_t) : 0, regs.ecx)
+	SYS_REC1(sigaltstack, regs.ecx ? sizeof(stack_t) : 0, (void*)regs.ecx)
 
 	/**
 	 * int sigreturn(unsigned long __unused)
@@ -1382,7 +1400,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SYS_GETSOCKNAME:
 		{
 
-			long int *addr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int) + sizeof(struct sockaddr*));
+			void** addr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int) + sizeof(struct sockaddr*));
 			socklen_t *addrlen = read_child_data(ctx, sizeof(socklen_t), *addr);
 			record_child_data(ctx, syscall, sizeof(socklen_t), *addr);
 			sys_free((void**) &addr);
@@ -1405,7 +1423,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SYS_RECV:
 		{
 			// restore ecx
-			regs.ecx = ctx->recorded_scratch_ptr_0;
+			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 			write_child_registers(tid,&regs);
 
 			int length = ctx->recorded_scratch_size;//regs.eax;
@@ -1415,11 +1433,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			// copy the buffer back to the original location
 			size_t num_args = 4;
 			void ** buf_addr = (ctx->scratch_ptr + num_args * sizeof(long));
-			void *buf_data = read_child_data(ctx, length, (long int)buf_addr);
+			void *buf_data = read_child_data(ctx, length, buf_addr);
 			write_child_data(ctx, length, ctx->recorded_scratch_ptr_1, buf_data);
 
 			// record the buffer
-			record_parent_data(ctx, syscall, length, (long int) ctx->recorded_scratch_ptr_1,buf_data);
+			record_parent_data(ctx, syscall, length, ctx->recorded_scratch_ptr_1, buf_data);
 
 			// cleanup
 			sys_free((void**) &buf_data);
@@ -1439,19 +1457,19 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SYS_RECVMSG:
 		{
 			struct msghdr **ptr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int));
-			struct msghdr *msg = read_child_data(ctx, sizeof(struct msghdr), (long int) *ptr);
+			struct msghdr *msg = read_child_data(ctx, sizeof(struct msghdr), *ptr);
 
 			/* record the enture struct */
-			record_child_data(ctx, syscall, sizeof(struct msghdr), (long int) *ptr);
-			record_child_data(ctx, syscall, msg->msg_namelen, (long int) msg->msg_name);
+			record_child_data(ctx, syscall, sizeof(struct msghdr), *ptr);
+			record_child_data(ctx, syscall, msg->msg_namelen, msg->msg_name);
 
 			assert(msg->msg_iovlen == 1);
 
-			record_child_data(ctx, syscall, sizeof(struct iovec), (long int) (msg->msg_iov));
-			struct iovec *iov = read_child_data(ctx, sizeof(struct iovec), (long int) msg->msg_iov);
-			record_child_data(ctx, syscall, iov->iov_len, (long int) iov->iov_base);
+			record_child_data(ctx, syscall, sizeof(struct iovec), msg->msg_iov);
+			struct iovec *iov = read_child_data(ctx, sizeof(struct iovec), msg->msg_iov);
+			record_child_data(ctx, syscall, iov->iov_len, iov->iov_base);
 
-			record_child_data(ctx, syscall, msg->msg_controllen, (long int) msg->msg_control);
+			record_child_data(ctx, syscall, msg->msg_controllen, msg->msg_control);
 
 			sys_free((void**) &iov);
 			sys_free((void**) &msg);
@@ -1471,12 +1489,12 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			buf_ptr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int));
 			len_ptr = read_child_data(ctx, sizeof(void*), base_addr + 8);
 			src_addr_ptr = read_child_data(ctx, sizeof(struct sockaddr*), base_addr + 16);
-			addrlen_ptr = read_child_data(ctx, sizeof(socklen_t*), (long int) base_addr + 20);
-			addrlen = read_child_data(ctx, sizeof(socklen_t), (long int) *addrlen_ptr);
+			addrlen_ptr = read_child_data(ctx, sizeof(socklen_t*), base_addr + 20);
+			addrlen = read_child_data(ctx, sizeof(socklen_t), *addrlen_ptr);
 
 			record_child_data(ctx, syscall, *len_ptr, *buf_ptr);
-			record_child_data(ctx, syscall, sizeof(socklen_t), (long int) *addrlen_ptr);
-			record_child_data(ctx, syscall, *addrlen, (long int) *src_addr_ptr);
+			record_child_data(ctx, syscall, sizeof(socklen_t), *addrlen_ptr);
+			record_child_data(ctx, syscall, *addrlen, *src_addr_ptr);
 
 			sys_free((void**) &buf_ptr);
 			sys_free((void**) &len_ptr);
@@ -1491,10 +1509,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 */
 		case SYS_GETSOCKOPT:
 		{
-			socklen_t** len_ptr = read_child_data(ctx, sizeof(socklen_t*), regs.ecx + 3 * sizeof(int) + sizeof(void*));
-			socklen_t* len = read_child_data(ctx, sizeof(socklen_t), (long int) *len_ptr);
-			unsigned long** optval = read_child_data(ctx, sizeof(void*), regs.ecx + 3 * sizeof(int));
-			record_child_data(ctx, syscall, *len, (long int) *optval);
+			socklen_t** len_ptr = read_child_data(ctx, sizeof(socklen_t*), (void*)(regs.ecx + 3 * sizeof(int) + sizeof(void*)));
+			socklen_t* len = read_child_data(ctx, sizeof(socklen_t), *len_ptr);
+			unsigned long** optval = read_child_data(ctx, sizeof(void*), (void*)(regs.ecx + 3 * sizeof(int)));
+			record_child_data(ctx, syscall, *len, *optval);
 			sys_free((void**) &len_ptr);
 			sys_free((void**) &len);
 			sys_free((void**) &optval);
@@ -1513,7 +1531,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SYS_ACCEPT:
 		{
 			// restore ecx
-			regs.ecx = ctx->recorded_scratch_ptr_0;
+			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 			write_child_registers(tid,&regs);
 
 			size_t num_args = 3;
@@ -1521,13 +1539,12 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			// copy the sockaddr back to the original location
 			socklen_t orig_addrlen_value = ctx->recorded_scratch_size;
 			struct sockaddr *scratch_addr = (ctx->scratch_ptr + num_args * sizeof(long));
-			struct sockaddr *addr_result = read_child_data(ctx, orig_addrlen_value, (long int)scratch_addr);
+			struct sockaddr *addr_result = read_child_data(ctx, orig_addrlen_value, scratch_addr);
 			write_child_data(ctx, orig_addrlen_value, ctx->recorded_scratch_ptr_1, addr_result);
 
 			// copy the addrlen back
 			socklen_t *orig_addrlen_ptr = ctx->recorded_scratch_ptr_1 + sizeof(struct sockaddr *);
-			socklen_t *scratch_addrlen = ((void*)scratch_addr + orig_addrlen_value);
-			socklen_t *addrlen_result = read_child_data(ctx, orig_addrlen_value, (long int)scratch_addr);
+			socklen_t *addrlen_result = read_child_data(ctx, orig_addrlen_value, scratch_addr);
 			write_child_data(ctx, sizeof(socklen_t), orig_addrlen_ptr, addrlen_result);
 
 			// record the values
@@ -1561,8 +1578,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 */
 		case SYS_SOCKETPAIR:
 		{
-			unsigned long* addr = read_child_data(ctx, sizeof(int*), (long int) regs.ecx + (3 * sizeof(int)));
-			record_child_data(ctx, syscall, 2 * sizeof(int), *addr);
+			unsigned long* addr = read_child_data(ctx, sizeof(int*), (void*)(regs.ecx + (3 * sizeof(int))));
+			record_child_data(ctx, syscall, 2 * sizeof(int), (void*)*addr);
 			sys_free((void**) &addr);
 			break;
 		}
@@ -1579,7 +1596,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *
 	 *  stat() stats the file pointed to by path and fills in buf.
 	 */
-	SYS_REC1(stat64, sizeof(struct stat64), regs.ecx)
+	SYS_REC1(stat64, sizeof(struct stat64), (void*)regs.ecx)
 
 	/**
 	 * int statfs(const char *path, struct statfs *buf)
@@ -1587,7 +1604,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * The function statfs() returns information about a mounted file system.  path is the pathname of any file within the mounted
 	 * file system.  buf is a pointer to a statfs structure defined approximately as follows:
 	 */
-	SYS_REC1(statfs, sizeof(struct statfs), regs.ecx)
+	SYS_REC1(statfs, sizeof(struct statfs), (void*)regs.ecx)
 
 	/**
 	 * int statfs(const char *path, struct statfs *buf)
@@ -1599,7 +1616,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * FIXXME: we use edx here, although according to man pages this system call has only
 	 * 2 paramaters. However, strace tells another story...
 	 */
-	SYS_REC1(statfs64, sizeof(struct statfs64), regs.edx)
+	SYS_REC1(statfs64, sizeof(struct statfs64), (void*)regs.edx)
 
 	/**
 	 * int symlink(const char *oldpath, const char *newpath)
@@ -1613,7 +1630,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *
 	 * sysinfo() provides a simple way of getting overall system statistics.
 	 */
-	SYS_REC1(sysinfo, sizeof(struct sysinfo), regs.ebx)
+	SYS_REC1(sysinfo, sizeof(struct sysinfo), (void*)regs.ebx)
 
 	/**
 	 * int tgkill(int tgid, int tid, int sig)
@@ -1633,7 +1650,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *  in seconds. If t is non-NULL, the return value is also stored in the memory pointed
 	 *  to by t.
 	 */
-	SYS_REC1(time, sizeof(time_t), regs.ebx)
+	SYS_REC1(time, sizeof(time_t), (void*)regs.ebx)
 
 	/**
 	 * clock_t times(struct tms *buf)
@@ -1641,7 +1658,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * times()  stores  the  current  process  times in the struct tms that buf points to.  The
 	 *  struct tms is as defined in <sys/times.h>:
 	 */
-	SYS_REC1(times, sizeof(struct tms), regs.ebx)
+	SYS_REC1(times, sizeof(struct tms), (void*)regs.ebx)
 
 	/**
 	 * int getrlimit(int resource, struct rlimit *rlim)
@@ -1650,7 +1667,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * Each resource has an associated soft and hard limit, as defined by the rlimit structure
 	 * (the rlim argument to both getrlimit() and setrlimit()):
 	 */
-	SYS_REC1(ugetrlimit, sizeof(struct rlimit), regs.ecx)
+	SYS_REC1(ugetrlimit, sizeof(struct rlimit), (void*)regs.ecx)
 
 	/**
 	 * int uname(struct utsname *buf)
@@ -1658,7 +1675,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * uname() returns system information in the structure pointed to by buf. The utsname
 	 * struct is defined in <sys/utsname.h>:
 	 */
-	SYS_REC1(uname, sizeof(struct utsname), regs.ebx)
+	SYS_REC1(uname, sizeof(struct utsname), (void*)regs.ebx)
 
 	/**
 	 * int utime(const char *filename, const struct utimbuf *times)
@@ -1706,11 +1723,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		/* FIXME: there are special cases, like when recording gcc, where the esp does not
 		 *        point to argc. For example, it may point to &argc.
 		 */
-		int* argc = read_child_data(ctx, sizeof(unsigned long), (long int) (stack_ptr));
+		int* argc = read_child_data(ctx, sizeof(unsigned long), stack_ptr);
 		stack_ptr += *argc + 1;
 		sys_free((void**) &argc);
 
-		unsigned long* null_ptr = read_child_data(ctx, sizeof(void*), (long int) stack_ptr);
+		unsigned long* null_ptr = read_child_data(ctx, sizeof(void*), stack_ptr);
 		assert(*null_ptr == 0);
 
 		sys_free((void**) &null_ptr);
@@ -1718,119 +1735,119 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		stack_ptr++;
 
 		/* should now point to envp (pointer to environment strings) */
-		unsigned long* tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		unsigned long* tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 
 		while (*tmp != 0) {
 			sys_free((void**) &tmp);
 			stack_ptr++;
-			tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+			tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		}
 		sys_free((void**) &tmp);
 		stack_ptr++;
 
 		/* should now point to ELF Auxiliary Table */
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x20);
 		/* AT_SYSINFO */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x21);
 		/* AT_SYSINFO_EHDR */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x10);
 		/* AT_HWCAP */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x6);
 		/* AT_PAGESZ */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x11);
 		/* AT_CLKTCK */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x3);
 		/* AT_PHDR */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x4);
 		/* AT_PHENT */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x5);
 		/* AT_PHNUM */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x7);
 		/* AT_BASE */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x8);
 		/* AT_FLAGS */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x9);
 		/* AT_ENTRY */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0xb);
 		/* AT_UID */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0xc);
 		/* AT_EUID */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0xd);
 		/* AT_GID */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0xe);
 		/* AT_EGID */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x17);
 		/* AT_SECURE */
 		sys_free((void**) &tmp);
 		stack_ptr += 2;
 
-		tmp = read_child_data(ctx, sizeof(unsigned long*), (long int) stack_ptr);
+		tmp = read_child_data(ctx, sizeof(unsigned long*), stack_ptr);
 		assert(*tmp == 0x19);
 		/* AT_RANDOM */
-		unsigned long* rand_addr = read_child_data(ctx, sizeof(unsigned long*), (long int) (stack_ptr + 1));
-		record_child_data(ctx, syscall, 16, (long int) *rand_addr);
+		unsigned long* rand_addr = read_child_data(ctx, sizeof(unsigned long*), (stack_ptr + 1));
+		record_child_data(ctx, syscall, 16, (void*)*rand_addr);
 
 		sys_free((void**) &rand_addr);
 		sys_free((void**) &tmp);
@@ -1845,7 +1862,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *
 	 */
 
-	SYS_REC1(fstat64, sizeof(struct stat64), regs.ecx)
+	SYS_REC1(fstat64, sizeof(struct stat64), (void*)regs.ecx)
 
 	/**
 	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
@@ -1853,7 +1870,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * The  fstatat()  system  call operates in exactly the same way as stat(2), except for the
 	 * differences described in this manual page....
 	 */
-	SYS_REC1(fstatat64, sizeof(struct stat64), regs.edx)
+	SYS_REC1(fstatat64, sizeof(struct stat64), (void*)regs.edx)
 
 	/**
 	 * pid_t fork(void)
@@ -1876,7 +1893,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_mmap2:
 	{
-		void * mmap_addr = (void*)regs.eax;
+		void* mmap_addr = (void*)regs.eax;
 		//assert((int)mmap_addr >= 0 || (int)mmap_addr < -ERANGE);
 		if (FAILED_SYSCALL(regs.eax))
 			break;
@@ -1897,7 +1914,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			char * filename = get_mmaped_region_filename(ctx,mmap_addr);
 			strcpy(file.filename,filename);
 			sys_stat(filename,&file.stat);
-			sys_free(&filename);
+			sys_free((void**)&filename);
 			file.start = mmap_addr;
 			file.end = get_mmaped_region_end(ctx,mmap_addr);
 			record_mmapped_file_stats(&file);
@@ -1912,9 +1929,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			if (flags & MAP_SHARED) {
 				if (strcmp("/home/user/.cache/dconf/user", file.filename) == 0) { // dconf // TODO: hardcoded names are bad :)
 					// protect the page
-					mprotect_child_region(ctx, regs.eax, PROT_NONE);  // we would prefer to set write-only permissions, but write implies read on i386
+					mprotect_child_region(ctx, (void*)regs.eax, PROT_NONE);  // we would prefer to set write-only permissions, but write implies read on i386
 					// note that this region is protected for handling the SIGSEGV
-					add_protected_map(ctx,regs.eax);
+					add_protected_map(ctx, (void*)regs.eax);
 				} else if (strstr(file.filename,WRAP_SYSCALLS_CACHE_FILENAME_PREFIX) != NULL) { // record cache
 					ctx->syscall_wrapper_cache_child = file.start;
 					// mmap as shared in rr as well
@@ -1935,7 +1952,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			}
 
 			// PAGE_ALIGN needed (from mm/mman.h)
-			record_child_data(ctx, syscall, PAGE_ALIGN(regs.ecx), mmap_addr);
+			record_child_data(ctx, syscall,
+					  PAGE_ALIGN(regs.ecx),
+					  mmap_addr);
 
 		}
 		break;
@@ -1959,7 +1978,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	case SYS_nanosleep:
 	{
 		// restore ecx
-		regs.ecx = ctx->recorded_scratch_ptr_0;
+		regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 
 		if (regs.ecx) {// a pointer was supplied
@@ -2003,7 +2022,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	{
 
 		if (ctx->recorded_scratch_size != -1) { // but dont forget to correct the ecx if needed
-			regs.ecx = ctx->recorded_scratch_ptr_0;
+			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 			write_child_registers(ctx->child_tid, &regs);
 		}
 
@@ -2013,7 +2032,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 
 		/* this is a hack; we come here if the scratch size is too small */
 		if (ctx->recorded_scratch_size == -1) {
-			record_child_data(ctx, syscall, regs.eax, regs.ecx);
+			record_child_data(ctx, syscall, regs.eax, (void*)regs.ecx);
 		} else {
 			void *recorded_data = read_child_data(ctx, regs.eax, ctx->scratch_ptr);
 			write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr_0, recorded_data);
@@ -2059,7 +2078,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
 	 arbitrary changes to either limit value.
 	 */
-	SYS_REC1(setrlimit, sizeof(struct rlimit), regs.ecx)
+	SYS_REC1(setrlimit, sizeof(struct rlimit), (void*)regs.ecx)
 
 	/**
 	 * ssize_t splice(int fd_in, loff_t *off_in, int fd_out,
@@ -2112,7 +2131,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * filename to the actime and modtime fields of times respectively.
 	 *
 	 */
-	SYS_REC1(utimes, 2*sizeof(struct timeval), regs.ecx);
+	SYS_REC1(utimes, 2*sizeof(struct timeval), (void*)regs.ecx);
 
 	/**
 	 * pid_t vfork(void);
@@ -2135,9 +2154,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		bool registers_changed = FALSE;
 		/* restore status */
 		if (ctx->recorded_scratch_ptr_0 != (void*)-1) {
-			regs.ecx = ctx->recorded_scratch_ptr_0;
+			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 			registers_changed = TRUE;
-			write_child_data(ctx, sizeof(int), regs.ecx, ptr);
+			write_child_data(ctx, sizeof(int), (void*)regs.ecx, ptr);
 			record_parent_data(ctx, syscall, sizeof(int), ctx->recorded_scratch_ptr_0, ptr);
 			ptr += sizeof(int);
 		} else { /* if status was null, put in a blank entry */
@@ -2145,9 +2164,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		}
 		/* restore rusage */
 		if (ctx->recorded_scratch_ptr_1 != (void*)-1) {
-			regs.esi = ctx->recorded_scratch_ptr_1;
+			regs.esi = (uintptr_t)ctx->recorded_scratch_ptr_1;
 			registers_changed = TRUE;
-			write_child_data(ctx, sizeof(struct rusage), regs.esi, ptr);
+			write_child_data(ctx, sizeof(struct rusage),
+					 (void*)regs.esi, ptr);
 			record_parent_data(ctx, syscall, sizeof(struct rusage), ctx->recorded_scratch_ptr_1, ptr);
 			ptr += sizeof(struct rusage);
 		} else { /* if rusage was null, put in a blank entry */
@@ -2173,7 +2193,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	case SYS_waitpid:
 	{
 		// restore ecx
-		regs.ecx = ctx->recorded_scratch_ptr_0;
+		regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 		write_child_registers(ctx->child_tid, &regs);
 
 		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
@@ -2196,7 +2216,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 
 	default:
 
-		log_err("recorder: unknown syscall %ld -- bailing out", syscall);
+		log_err("recorder: unknown syscall %d -- bailing out", syscall);
 		log_err("execuction state: %x sig %d", ctx->exec_state, signal_pending(ctx->exec_state));
 		print_register_file_tid(tid);
 		sys_exit();

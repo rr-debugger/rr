@@ -28,18 +28,18 @@ void * list_data(const struct list * node) {
 struct list * list_next(const struct list * node) {
 	assert(node && "list error: sentinel gone");
 	if (!node->next) /* reached the sentinel */
-		return node;
+		return (struct list*)node;
 	return node->next;
 }
 
 struct list * list_push_front(const struct list * head, const void * data) {
 	struct list * new = sys_malloc_zero(sizeof(struct list));
-	new->data = data;
-	new->next = head;
+	new->data = (void*)data;
+	new->next = (struct list*)head;
 	return new;
 }
 
-struct list * list_pop_front(const struct list * head) {
+struct list * list_pop_front(struct list * head) {
 	assert(head && "list error: sentinel gone");
 	if (!head->next) /* reached the sentinel */
 		return head;

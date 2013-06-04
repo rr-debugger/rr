@@ -43,7 +43,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 
 		case TCGETS: /* Get and Set Terminal Attributes (from: man 4 tty_ioctl) */
 		{
-			record_child_data(ctx, syscall, sizeof(struct termios), regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct termios), (void*)regs.edx);
 			break;
 		}
 
@@ -51,7 +51,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 		case FIONREAD: /* Terminal Buffer count and flushing (from: man 4 tty_ioctl) */
 		case TIOCGPGRP: /* Terminal process group and session ID (from: man 4 tty_ioctl) */
 		{
-			record_child_data(ctx, syscall, sizeof(int), regs.edx);
+			record_child_data(ctx, syscall, sizeof(int), (void*)regs.edx);
 			break;
 		}
 
@@ -60,7 +60,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 		case 0xc0204637:
 		case 0xc0304627:
 		{
-			record_child_data(ctx, syscall, _IOC_SIZE(request), regs.edx);
+			record_child_data(ctx, syscall, _IOC_SIZE(request), (void*)regs.edx);
 			break;
 		}
 
@@ -71,7 +71,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 		case 0xc0306449:
 		case 0xc030644b:
 		{
-			record_child_data(ctx, syscall, _IOC_SIZE(request), regs.edx);
+			record_child_data(ctx, syscall, _IOC_SIZE(request), (void*)regs.edx);
 			break;
 		}
 
@@ -89,12 +89,12 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_version));
-			struct drm_version *version = read_child_data(ctx, sizeof(struct drm_version), regs.edx);
+			struct drm_version *version = read_child_data(ctx, sizeof(struct drm_version), (void*)regs.edx);
 
-			record_child_data(ctx, syscall, sizeof(struct drm_version), regs.edx);
-			record_child_data(ctx, syscall, version->name_len, (long int) version->name);
-			record_child_data(ctx, syscall, version->date_len, (long int) version->date);
-			record_child_data(ctx, syscall, version->desc_len, (long int) version->desc);
+			record_child_data(ctx, syscall, sizeof(struct drm_version), (void*)regs.edx);
+			record_child_data(ctx, syscall, version->name_len, version->name);
+			record_child_data(ctx, syscall, version->date_len, version->date);
+			record_child_data(ctx, syscall, version->desc_len, version->desc);
 
 			sys_free((void**) &version);
 			break;
@@ -105,7 +105,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_auth));
-			record_child_data(ctx, syscall, sizeof(struct drm_auth), regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct drm_auth), (void*)regs.edx);
 			break;
 		}
 
@@ -114,7 +114,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_radeon_info));
-			record_child_data(ctx, syscall, sizeof(struct drm_radeon_info), regs.esi);
+			record_child_data(ctx, syscall, sizeof(struct drm_radeon_info), (void*)regs.esi);
 			break;
 		}
 
@@ -123,9 +123,9 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_i915_gem_pwrite));
-			struct drm_i915_gem_pwrite* tmp = read_child_data(ctx, size, regs.edx);
-			record_child_data(ctx, syscall, sizeof(struct drm_i915_gem_pwrite), regs.edx);
-			record_child_data(ctx, syscall, tmp->size, (long int) tmp->data_ptr);
+			struct drm_i915_gem_pwrite* tmp = read_child_data(ctx, size, (void*)regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct drm_i915_gem_pwrite), (void*)regs.edx);
+			record_child_data(ctx, syscall, tmp->size, (void*)(uintptr_t)tmp->data_ptr);
 			sys_free((void**) &tmp);
 			break;
 		}
@@ -135,7 +135,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_radeon_gem_create));
-			record_child_data(ctx, syscall, sizeof(struct drm_radeon_gem_create), regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct drm_radeon_gem_create), (void*)regs.edx);
 			break;
 		}
 
@@ -144,9 +144,9 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_i915_gem_mmap));
-			struct drm_i915_gem_mmap* tmp = read_child_data_tid(tid, sizeof(struct drm_i915_gem_mmap), regs.edx);
-			record_child_data(ctx, syscall, sizeof(struct drm_i915_gem_mmap), regs.edx);
-			record_child_data(ctx, syscall, tmp->size, tmp->addr_ptr + tmp->offset);
+			struct drm_i915_gem_mmap* tmp = read_child_data_tid(tid, sizeof(struct drm_i915_gem_mmap), (void*)regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct drm_i915_gem_mmap), (void*)regs.edx);
+			record_child_data(ctx, syscall, tmp->size, (void*)(uintptr_t)(tmp->addr_ptr + tmp->offset));
 			sys_free((void**) &tmp);
 			break;
 		}
@@ -156,9 +156,9 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_gem_open));
-			struct drm_gem_open* tmp = read_child_data_tid(tid, size, regs.edx);
-			record_child_data(ctx, syscall, sizeof(struct drm_gem_open), regs.edx);
-			record_child_data(ctx, syscall, tmp->size, tmp->handle);
+			struct drm_gem_open* tmp = read_child_data_tid(tid, size, (void*)regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct drm_gem_open), (void*)regs.edx);
+			record_child_data(ctx, syscall, tmp->size, (void*)tmp->handle);
 			sys_free((void**) &tmp);
 			break;
 		}
@@ -168,15 +168,15 @@ void handle_ioctl_request(struct context *ctx, int request)
 			assert(1==0);
 
 			assert(size == sizeof(struct drm_radeon_gem_get_tiling));
-			record_child_data(ctx, syscall, sizeof(struct drm_radeon_gem_get_tiling), regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct drm_radeon_gem_get_tiling), (void*)regs.edx);
 			break;
 		}
 
 		case TIOCGWINSZ: /* request for a terminal device */
 		{
 			/* don't care what size asked, record the buffer at the return state */
-			struct winsize* tmp = read_child_data_tid(tid, size, regs.edx);
-			record_child_data(ctx, syscall, sizeof(struct winsize), regs.edx);
+			struct winsize* tmp = read_child_data_tid(tid, size, (void*)regs.edx);
+			record_child_data(ctx, syscall, sizeof(struct winsize), (void*)regs.edx);
 			sys_free((void**) &tmp);
 			break;
 		}
@@ -186,7 +186,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 			fprintf(stderr, "Unknown ioctl request: %x -- bailing out\n", request);
 			fprintf(stderr, "type bites: %x\n", _IOC_TYPE(request));
 			fprintf(stderr, "size: %d\n", _IOC_SIZE(request));
-			fprintf(stderr, "addr: %x\n", read_child_edx(ctx->child_tid));
+			fprintf(stderr, "addr: %lx\n", read_child_edx(ctx->child_tid));
 			print_register_file_tid(ctx->child_tid);
 			sys_exit();
 			break;
