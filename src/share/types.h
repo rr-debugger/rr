@@ -3,6 +3,7 @@
 #ifndef TYPES_H_
 #define TYPES_H_
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdint.h>
 
@@ -18,8 +19,6 @@
 
 #define UUL_COLUMN_SIZE 	20
 #define LI_COLUMN_SIZE 		11
-
-#define size_t int
 
 typedef enum { FALSE = 0, TRUE = 1 } bool;
 

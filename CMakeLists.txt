@@ -13,7 +13,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 set(rr_VERSION_MAJOR 0)
 set(rr_VERSION_MINOR 1)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g3 -Wall -m32")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g3 -Wall -Werror -m32")
 
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" "-pthread"

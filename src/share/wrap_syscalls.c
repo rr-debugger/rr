@@ -53,7 +53,7 @@ static char trace_path_[PATH_MAX] = { '\0' };
   * Do a un-intercepted syscall to make rr flush the buffer
   */
 static void flush_buffer(void){
-	pid_t tid = syscall(SYS_gettid);
+	(void)syscall(SYS_gettid);
 	assert(buffer[0] == 0);
 }
 
@@ -77,7 +77,7 @@ static void find_library_location(void)
 		/* For each line in the maps file: */
 		char * line = file, *line_end;
 		void *start, *end;
-		char flags[32], binary[128] = {0}, *result = NULL;
+		char flags[32], binary[128] = {0};
 		unsigned int dev_minor, dev_major;
 		unsigned long long file_offset, inode;
 		while ((line_end = strchr(line,'\n')) != NULL) {
@@ -552,9 +552,10 @@ ssize_t recvfrom_(int sockfd, void *buf, size_t len, int flags, struct sockaddr 
 }
 
 #define _socketcall_no_output(call,arg0,arg1,arg2,arg3,arg4,arg5) 	\
-	_syscall_pre(0)													\
-	_copy_socketcall_args(arg0,arg1,arg2,arg3,arg4,arg5)			\
-	_syscall2(socketcall,call,args,ret) 							\
+	_syscall_pre(0)							\
+	(void)ptr;							\
+	_copy_socketcall_args(arg0,arg1,arg2,arg3,arg4,arg5)		\
+	_syscall2(socketcall,call,args,ret)				\
 	_syscall_post(socketcall)
 
 int socket_(int domain, int type, int protocol) {
@@ -632,7 +633,6 @@ ssize_t recvmsg_(int sockfd, struct msghdr *msg, int flags) {
 					    : 0)
 	_copy_socketcall_args(sockfd,msg,flags, 0, 0, 0)
 	struct msghdr *msg2 = NULL;
-	void 		  *msg_name2 = NULL;
 	struct iovec  *msg_iov2;        /* scatter/gather array */
 	void		  *msg_iov_base2;
     void          *msg_control2;    /* ancillary data, see below */
@@ -741,6 +741,7 @@ int socketcall(int call, unsigned long *args){
 /* TODO: causes strange signal IOT */
 int madvise_(void *addr, size_t length, int advice) {
 	_syscall_pre(0)
+	(void)ptr;
 	_syscall3(madvise,addr,length,advice,ret)
 	_syscall_post(madvise)
 }
@@ -764,12 +765,14 @@ ssize_t read_(int fd, void *buf, size_t count) {
 /* FIXME: write does not work, this has to do with the fact that it runs before stuff gets initialized in the main thread (??) */
 ssize_t write_(int fd, const void *buf, size_t count) {
 	_syscall_pre(0)
+	(void)ptr;
 	_syscall3(write,fd,buf,count,ret)
 	_syscall_post(write)
 }
 
 ssize_t writev_(int fd, const struct iovec *iov, int iovcnt) {
 	_syscall_pre(0)
+	(void)ptr;
 	_syscall3(writev,fd,iov,iovcnt,ret)
 	_syscall_post(writev)
 }
