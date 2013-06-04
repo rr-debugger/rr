@@ -321,13 +321,14 @@ static void exit_syscall_exec(struct context* ctx, int syscall,
 	validate_args(syscall, STATE_SYSCALL_EXIT, ctx);
 }
 
-static void process_clone(struct context* ctx, struct trace* trace, int state)
+static void process_clone(struct context* ctx,
+			  struct trace_frame* trace, int state)
 {
 	int syscall = SYS_clone;
 	pid_t tid = ctx->child_tid;
 
 	if (state == STATE_SYSCALL_ENTRY) {
-		struct trace next_trace;
+		struct trace_frame next_trace;
 		peek_next_trace(&next_trace);
 		if (next_trace.recorded_regs.eax < 0) {
 			/* creation failed, emulate it */
@@ -436,7 +437,7 @@ static void process_ioctl(struct context* ctx, int state)
 	exit_syscall_emu(ctx, SYS_ioctl, num_emu_args);
 }
 
-void process_ipc(struct context* ctx, struct trace* trace, int state)
+void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 {
 	int tid = ctx->child_tid;
 	int call = trace->recorded_regs.ebx;
@@ -571,13 +572,14 @@ void process_ipc(struct context* ctx, struct trace* trace, int state)
 	}
 }
 
-static void process_mmap2(struct context* ctx, struct trace* trace, int state)
+static void process_mmap2(struct context* ctx,
+			  struct trace_frame* trace, int state)
 {
 	int syscall = SYS_mmap2;
 	int tid = ctx->child_tid;
 
 	if (state == STATE_SYSCALL_ENTRY) {
-		struct trace next;
+		struct trace_frame next;
 		peek_next_trace(&next);
 		if (FAILED_SYSCALL(next.recorded_regs.eax)) {
 			/* failed mapping, emulate */
@@ -751,7 +753,7 @@ void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 {
 	const struct syscall_def* def = &syscall_table[syscall];
 	pid_t tid = ctx->child_tid;
-	struct trace* trace = &(ctx->trace);
+	struct trace_frame* trace = &(ctx->trace);
 	int state = trace->state;
 
 	assert(syscall < ALEN(syscall_table));
@@ -1011,7 +1013,7 @@ void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 				int status;
 				sys_waitpid(new_tid, &status);
 
-				struct trace next_trace;
+				struct trace_frame next_trace;
 				peek_next_trace(&next_trace);
 				rep_sched_register_thread(new_tid,
 							  next_trace.tid);

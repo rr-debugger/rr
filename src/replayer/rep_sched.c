@@ -49,14 +49,14 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 struct context* rep_sched_get_thread()
 {
 	/* read the next trace entry */
-	struct trace trace;
+	struct trace_frame trace;
 	read_next_trace(&trace);
 	/* find and update context */
 	struct context *ctx = map[trace.tid];
 	assert(ctx != NULL);
 
 	/* copy the current trace */
-	memcpy(&(ctx->trace), &trace, sizeof(struct trace));
+	memcpy(&(ctx->trace), &trace, sizeof(struct trace_frame));
 
 	/* subsequent reschedule-events of the same thread can be combined to a single event */
 	/* XXX revisit this optimization ... it makes the lag to
@@ -65,7 +65,7 @@ struct context* rep_sched_get_thread()
 	 * gain from the optimization. */
 	if (trace.stop_reason == USR_SCHED) {
 		int combined = 0;
-		struct trace next_trace;
+		struct trace_frame next_trace;
 
 		peek_next_trace(&next_trace);
 		uint64_t rbc = ctx->trace.rbc;

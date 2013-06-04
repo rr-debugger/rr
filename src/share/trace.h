@@ -64,13 +64,13 @@ void rec_setup_trace_dir(int version);
  */
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp);
-void read_next_trace(struct trace *trace);
-void peek_next_trace(struct trace *trace);
+void read_next_trace(struct trace_frame *trace);
+void peek_next_trace(struct trace_frame *trace);
 int get_trace_file_lines_counter();
 void read_next_mmapped_file_stats(struct mmapped_file *file);
 void peek_next_mmapped_file_stats(struct mmapped_file *file);
 void rep_init_trace_files(void);
-void* read_raw_data(struct trace* trace, size_t* size_ptr, void** addr);
+void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr);
 pid_t get_recorded_main_thread();
 void rep_setup_trace_dir(const char* path);
 void rep_child_buffer0(struct context * ctx);
