@@ -22,7 +22,15 @@
 
 typedef enum { FALSE = 0, TRUE = 1 } bool;
 
-struct trace
+/**
+ * A trace_frame is one "trace event" from a complete trace.  During
+ * recording, a trace_frame is recorded upon each significant event,
+ * for example a context-switch or syscall.  During replay, a
+ * trace_frame represents a "next state" that needs to be transitioned
+ * into, and the information recorded in the frame dictates the nature
+ * of the transition.
+ */
+struct trace_frame
 {
 	/* meta information */
 	uint32_t global_time;
@@ -45,7 +53,7 @@ struct trace
 struct context {
 	pid_t rec_tid; /* thread id recording thread */
 
-	struct trace trace;
+	struct trace_frame trace;
 	struct hpc_context* hpc;
 
 	/* recorder */

@@ -31,7 +31,7 @@ char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
 bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
 void emulate_child_inst(struct context * ctx, int eip_offset);
 void print_inst(pid_t tid);
-void print_syscall(struct context *ctx, struct trace *trace);
+void print_syscall(struct context *ctx, struct trace_frame *trace);
 void get_eip_info(pid_t tid);
 int check_if_mapped(struct context *ctx, void *start, void *end);
 int compare_register_files(char* name1, struct user_regs_struct* reg1, char* name2, struct user_regs_struct* reg2, int print, int stop);

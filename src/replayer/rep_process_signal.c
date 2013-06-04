@@ -141,7 +141,7 @@ static void compensate_rbc_count(struct context *ctx, int sig)
 
 void rep_process_signal(struct context *ctx, bool validate)
 {
-	struct trace* trace = &(ctx->trace);
+	struct trace_frame* trace = &(ctx->trace);
 	int tid = ctx->child_tid;
 	int sig = -trace->stop_reason;
 
