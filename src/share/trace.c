@@ -288,8 +288,8 @@ static void record_register_file(struct context *ctx)
 	fprintf(trace_file, "%11lu", regs.edi);
 	fprintf(trace_file, "%11lu", regs.ebp);
 	fprintf(trace_file, "%11lu", regs.orig_eax);
-	fprintf(trace_file, "%11x", (void*)regs.esp);
-	fprintf(trace_file, "%11x", (void*)regs.eip);
+	fprintf(trace_file, "%11lx", regs.esp);
+	fprintf(trace_file, "%11lx", regs.eip);
 	fprintf(trace_file, "%11lu", regs.eflags);
 	fprintf(trace_file, "\n");
 }
@@ -309,8 +309,8 @@ static void record_inst_register_file(struct context *ctx)
 	fprintf(ctx->inst_dump, "%11lu", regs.edi);
 	fprintf(ctx->inst_dump, "%11lu", regs.ebp);
 	fprintf(ctx->inst_dump, "%11lu", regs.orig_eax);
-	fprintf(ctx->inst_dump, "%11x", regs.esp);
-	fprintf(ctx->inst_dump, "%11x", regs.eip);
+	fprintf(ctx->inst_dump, "%11lx", regs.esp);
+	fprintf(ctx->inst_dump, "%11lx", regs.eip);
 	fprintf(ctx->inst_dump, "%11lu", regs.eflags);
 	fprintf(ctx->inst_dump, "\n");
 }
@@ -354,7 +354,7 @@ void record_event(struct context *ctx, int state)
 	if (rr_flags_.dump_on == ctx->event ||
 		rr_flags_.dump_on == DUMP_ON_ALL ||
 		rr_flags_.dump_at == global_time) {
-        char pid_str[MAX_PATH_LEN];
+        char pid_str[PATH_MAX];
 		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),ctx->child_tid,get_global_time());
 		print_process_memory(ctx,pid_str);
 	}
@@ -385,18 +385,18 @@ void record_event(struct context *ctx, int state)
 	//}
 }
 
-static void print_header(int syscall, uint32_t addr)
+static void print_header(int syscall, void* addr)
 {
 	fprintf(syscall_header, "%11u", global_time);
 	fprintf(syscall_header, "%11d", syscall);
-	fprintf(syscall_header, "%11u", addr);
+	fprintf(syscall_header, "%11u", (uintptr_t)addr);
 }
 
 /**
  * Writes data into the raw_data file and generates a corresponding entry in
  * syscall_input.
  */
-void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_ptr)
+void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr)
 {
 	assert(len >= 0);
 	print_header(syscall, child_ptr);
@@ -417,10 +417,9 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, long int child_pt
 		use_new_rawdata_file();
 }
 
-static void write_raw_data(struct context *ctx, void *buf, int to_write)
+static void write_raw_data(struct context *ctx, void *buf, size_t to_write)
 {
-	int bytes_written;
-	assert(to_write >= 0);
+	size_t bytes_written;
 	//debug("Asking to write %d bytes from %p", to_write, buf);
 
 	/*
@@ -465,9 +464,9 @@ static void write_raw_data(struct context *ctx, void *buf, int to_write)
  */
 
 #define SMALL_READ_SIZE	4096
-static read_buffer[SMALL_READ_SIZE];
+static char read_buffer[SMALL_READ_SIZE];
 
-void record_child_data(struct context *ctx, int syscall, size_t size, long int child_ptr)
+void record_child_data(struct context *ctx, int syscall, size_t size, void* child_ptr)
 {
 	/* We shouldn't be recording a scratch address */
 	assert(child_ptr != ctx->scratch_ptr);
@@ -476,12 +475,12 @@ void record_child_data(struct context *ctx, int syscall, size_t size, long int c
 	if (ctx && ctx->syscall_wrapper_cache && ctx->syscall_wrapper_cache[0] > 0)
 		rec_collect_syscalls(ctx);
 
-	size_t read_bytes;
+	ssize_t read_bytes;
 
 	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
 	if (child_ptr != 0) {
 		if (size <= SMALL_READ_SIZE) {
-			read_child_usr(ctx,read_buffer,child_ptr,size);
+			read_child_usr(ctx, read_buffer, child_ptr, size);
 			write_raw_data(ctx, read_buffer, size);
 			read_bytes = size;
 		} else {
@@ -514,7 +513,7 @@ void record_child_data(struct context *ctx, int syscall, size_t size, long int c
 	fprintf(syscall_header, "%11d\n", read_bytes);
 }
 
-void record_parent_data(struct context *ctx, int syscall, int len, void *addr, void *buf)
+void record_parent_data(struct context *ctx, int syscall, size_t len, void *addr, void *buf)
 {
 	/* We shouldn't be recording a scratch address */
 	assert(addr != ctx->scratch_ptr);
@@ -527,27 +526,27 @@ void record_parent_data(struct context *ctx, int syscall, int len, void *addr, v
 
 void record_mmapped_file_stats(struct mmapped_file *file)
 {
-	fprintf(mmaps_file, "%11lu", file->time);
-	fprintf(mmaps_file, "%11lu", file->tid);
-	fprintf(mmaps_file, "%11x", file->start);
-	fprintf(mmaps_file, "%11x", file->end);
+	fprintf(mmaps_file, "%11d", file->time);
+	fprintf(mmaps_file, "%11d", file->tid);
+	fprintf(mmaps_file, "%11x", (uintptr_t)file->start);
+	fprintf(mmaps_file, "%11x", (uintptr_t)file->end);
 	fprintf(mmaps_file, "%11lu", file->stat.st_blksize);
 	fprintf(mmaps_file, "%11lu", file->stat.st_blocks);
 	fprintf(mmaps_file, "%11lu", file->stat.st_ctim.tv_sec);
 	fprintf(mmaps_file, "%11lu", file->stat.st_ctim.tv_nsec);
-	fprintf(mmaps_file, "%11lu", file->stat.st_dev);
-	fprintf(mmaps_file, "%11lu", file->stat.st_gid);
+	fprintf(mmaps_file, "%11llu", file->stat.st_dev);
+	fprintf(mmaps_file, "%11u", file->stat.st_gid);
 	fprintf(mmaps_file, "%11lu", file->stat.st_ino);
-	fprintf(mmaps_file, "%11lu", file->stat.st_mode);
+	fprintf(mmaps_file, "%11u", file->stat.st_mode);
 	fprintf(mmaps_file, "%11lu", file->stat.st_mtim.tv_sec);
 	fprintf(mmaps_file, "%11lu", file->stat.st_mtim.tv_nsec);
-	fprintf(mmaps_file, "%11lu", file->stat.st_rdev);
+	fprintf(mmaps_file, "%11llu", file->stat.st_rdev);
 	fprintf(mmaps_file, "%11lu", file->stat.st_size);
 	fprintf(mmaps_file, "%11d", file->stat.st_uid);
 	fprintf(mmaps_file, "%s\n", file->filename);
 }
 
-void record_child_str(pid_t tid, int syscall, long int child_ptr)
+void record_child_str(pid_t tid, int syscall, void* child_ptr)
 {
 	print_header(syscall, child_ptr);
 	char* buf = read_child_str(tid, child_ptr);
@@ -594,7 +593,8 @@ void read_open_inst_dump(struct context *ctx)
 
 
 void rep_setup_trace_dir(const char * path) {
-	trace_path_ = path;
+	/* XXX is it really ok to do this? */
+	trace_path_ = (char*)path;
 }
 
 void rep_init_trace_files(void)
@@ -665,7 +665,7 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 	sys_free((void**) &buf);
 }
 
-static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
+static int parse_raw_data_hdr(struct trace* trace, void** addr)
 {
 	char* line = sys_malloc(1024);
 	read_line(syscall_header, line, 1024, "syscall_input");
@@ -682,11 +682,12 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (trace->stop_reason != SYS_restart_syscall && // restart_syscall is recorded in the syscall input file as the syscall its restarting
 		syscall != trace->stop_reason) {
-		log_err("global_time: %lu syscall: %d  stop_reason: %d\n", time, syscall, trace->stop_reason, time);
+		log_err("global_time: %u syscall: %d  stop_reason: %d\n",
+			time, syscall, trace->stop_reason);
 		sys_exit();
 	}
 
-	*addr = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	*addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 
 	int size = str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -695,7 +696,7 @@ static int parse_raw_data_hdr(struct trace* trace, unsigned long* addr)
 	return size;
 }
 
-void* read_raw_data(struct trace* trace, size_t* size_ptr, unsigned long* addr)
+void* read_raw_data(struct trace* trace, size_t* size_ptr, void** addr)
 {
 	int size;
 
@@ -738,12 +739,12 @@ void rep_child_buffer0(struct context * ctx)
 		return;
 	char* tmp_ptr = line;
 
-	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	(void) str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (syscall == USR_FLUSH) {
-		void *addr = str2li(tmp_ptr, LI_COLUMN_SIZE);
+		void *addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
 		tmp_ptr += LI_COLUMN_SIZE;
 		int size = str2li(tmp_ptr, LI_COLUMN_SIZE);
 		if (size == sizeof(int)) {
@@ -816,9 +817,9 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
 	tmp_ptr += LI_COLUMN_SIZE;
 	regs->orig_eax = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	regs->esp = str2x(tmp_ptr, LI_COLUMN_SIZE);
+	regs->esp = (uintptr_t)str2x(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	regs->eip = str2x(tmp_ptr, LI_COLUMN_SIZE);
+	regs->eip = (uintptr_t)str2x(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	regs->eflags = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;

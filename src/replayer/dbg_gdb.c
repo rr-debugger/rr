@@ -555,7 +555,8 @@ static int process_packet(struct dbg_context* dbg)
 	case 'm':
 		dbg->req.type = DREQ_GET_MEM;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.params.mem.addr = strtoul(payload, &payload, 16);
+		dbg->req.params.mem.addr =
+			(void*)strtoul(payload, &payload, 16);
 		++payload;
 		dbg->req.params.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
@@ -705,7 +706,7 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem)
 			snprintf(&buf[2 * i], 3, "%02lX", b);
 		}
 		write_packet(dbg, buf);
-		sys_free(&buf);
+		sys_free((void**)&buf);
 	} else {
 		write_packet(dbg, "");
 	}

@@ -41,6 +41,7 @@ void init_hpc(struct context *ctx);
 void destry_hpc(struct context *ctx);
 void start_hpc(struct context *ctx, uint64_t val);
 void stop_hpc(struct context *ctx);
+void cleanup_hpc(struct context* ctx);
 void reset_hpc(struct context *ctx, uint64_t val);
 void stop_rbc(struct context *ctx);
 int pending_rbc_down(struct hpc_context *counters);

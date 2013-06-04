@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#define _FILE_OFFSET_BITS 64
+#include "ipc.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -11,11 +11,11 @@
 #include <sys/ptrace.h>
 
 #include "dbg.h"
-#include "ipc.h"
 #include "sys.h"
+#include "trace.h"
 #include "util.h"
 
-#define CHECK_ALIGNMENT(addr) assert (((long int)(addr) & 0x3) == 0);
+#define PTR_TO_OFF_T(_p) (off_t)(uintptr_t)(_p)
 
 void read_child_registers(pid_t pid, struct user_regs_struct* regs)
 {
@@ -25,7 +25,7 @@ void read_child_registers(pid_t pid, struct user_regs_struct* regs)
 size_t set_child_data(struct context *ctx)
 {
 	size_t size;
-	unsigned long rec_addr;
+	void* rec_addr;
 	void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
 	if (data != NULL && size > 0) {
 		write_child_data(ctx, size, rec_addr, data);
@@ -274,7 +274,7 @@ void write_child_eip(int tid, long int val)
 
 #define READ_SIZE (sizeof(long))
 
-void* read_child_data_tid(pid_t tid, size_t size, long int addr)
+void* read_child_data_tid(pid_t tid, size_t size, void* addr)
 {
 
 	int i, padding = 0;
@@ -283,20 +283,21 @@ void* read_child_data_tid(pid_t tid, size_t size, long int addr)
 
 	int offset = ((uintptr_t) addr) & 0x3;
 	if (offset) {
-		tmp = read_child_data_word(tid, ((uintptr_t) addr) & ~0x3);
+		tmp = read_child_data_word(tid,
+					   (void*)((uintptr_t)addr & ~0x3));
 		padding = READ_SIZE - offset;
 		memcpy(data, ((void*) (&tmp)) + offset, padding);
 	}
 
 	for (i = padding; i < size; i += READ_SIZE) {
-		tmp = read_child_data_word(tid, addr + i);
+		tmp = read_child_data_word(tid, (void*)(addr + i));
 		memcpy(data + i, &tmp, READ_SIZE);
 	}
 	/* make sure we no not return more than required */
 	return data;
 }
 
-ssize_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset) {
+ssize_t checked_pread(struct context *ctx, void *buf, size_t size, off_t offset) {
 	errno = 0;
 	ssize_t read = pread(ctx->child_mem_fd, buf, size, offset);
 	if (read < 0) {
@@ -322,32 +323,31 @@ ssize_t checked_pread(struct context *ctx, void *buf, size_t size,off_t offset) 
 
 }
 
-void* read_child_data_checked(struct context *ctx, ssize_t size, uintptr_t addr, ssize_t *read_bytes)
+void* read_child_data_checked(struct context *ctx, size_t size, void* addr, ssize_t *read_bytes)
 {
 	//assert(check_if_mapped(ctx, addr, addr + size));
 
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
-	*read_bytes = checked_pread(ctx,buf,size,addr);
+	*read_bytes = checked_pread(ctx, buf, size, PTR_TO_OFF_T(addr));
 
 	return buf;
 }
 
 void read_child_usr(struct context *ctx, void *dest, void *src, size_t size) {
-	assert(size >= 0);
-	size_t bytes_read = pread(ctx->child_mem_fd, dest, size, (uintptr_t)src);
+	ssize_t bytes_read = pread(ctx->child_mem_fd, dest, size, PTR_TO_OFF_T(src));
 	assert(bytes_read == size);
 }
 
-void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
+void* read_child_data(struct context *ctx, size_t size, void* addr)
 {
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
-	ssize_t read_bytes = checked_pread(ctx,buf,size,addr);
+	ssize_t read_bytes = checked_pread(ctx, buf, size, PTR_TO_OFF_T(addr));
 	if (read_bytes != size) {
 		sys_free(&buf);
-		buf = read_child_data_tid(ctx->child_tid,size,addr);
-		printf("reading from: %x demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
+		buf = read_child_data_tid(ctx->child_tid, size, addr);
+		printf("reading from: %p demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
 		perror("warning: reading from child process: ");
 		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
 	}
@@ -359,7 +359,7 @@ void* read_child_data(struct context *ctx, ssize_t size, uintptr_t addr)
  * A more conservative way for reading data from the child,
  * this method doesn't use the memory file descriptor.
  */
-void read_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char *buffer){
+void read_child_buffer(pid_t child_pid, uintptr_t address, size_t length, char *buffer){
 	const int long_size = sizeof(long);
 	char *laddr;
     int i, j;
@@ -388,7 +388,7 @@ void read_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char 
  * A more conservative way for writing data from the child,
  * this method doesn't use the memory file descriptor.
  */
-void write_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char *buffer){
+void write_child_buffer(pid_t child_pid, uintptr_t address, size_t length, char *buffer){
 	const int long_size = sizeof(long);
 	char *laddr;
     int i, j;
@@ -414,7 +414,7 @@ void write_child_buffer(pid_t child_pid, uintptr_t address, ssize_t length, char
     }
 }
 
-char* read_child_str(pid_t pid, long int addr)
+char* read_child_str(pid_t pid, void* addr)
 {
 	char *tmp, *str;
 	int i, idx = 0;
@@ -444,25 +444,26 @@ char* read_child_str(pid_t pid, long int addr)
 	return 0;
 }
 
-void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
+void write_child_data_n(pid_t tid, size_t size, void* addr, void* data)
 {
-
-	int start_offset = addr & 0x3;
-	int end_offset = (addr + size) & 0x3;
+	int start_offset = (uintptr_t)addr & 0x3;
+	int end_offset = ((uintptr_t)addr + size) & 0x3;
 
 	size_t write_size = size;
 	void* write_data = sys_malloc(size + 2 * READ_SIZE);
 	void* write_addr = (void*) addr;
 
 	if (start_offset) {
-		long int word = read_child_data_word(tid, addr & ~0x3);
+		void* aligned_start = (void*)((uintptr_t)addr & ~0x3);
+		long int word = read_child_data_word(tid, aligned_start);
 		memcpy(write_data, &word, READ_SIZE);
 		write_size += start_offset;
-		write_addr = (void*) (addr & ~0x3);
+		write_addr = aligned_start;
 	}
 
 	if (end_offset) {
-		long int word = read_child_data_word(tid, (addr + size) & ~0x3);
+		void* aligned_end = (void*)(((uintptr_t)addr + size) & ~0x3);
+		long int word = read_child_data_word(tid, aligned_end);
 		write_size += READ_SIZE - end_offset;
 		unsigned long buffer_addr = ((unsigned long) write_data + start_offset + size) & ~0x3;
 		memcpy((void*) buffer_addr, &word, READ_SIZE);
@@ -480,9 +481,9 @@ void write_child_data_n(pid_t tid, const size_t size, long int addr, void* data)
 	free(write_data);
 }
 
-void write_child_data(struct context *ctx, const size_t size, void *addr, void *data)
+void write_child_data(struct context *ctx, size_t size, void *addr, void *data)
 {
-	ssize_t written = pwrite(ctx->child_mem_fd, data, size, (off_t) addr);
+	ssize_t written = pwrite(ctx->child_mem_fd, data, size, PTR_TO_OFF_T(addr));
 	if (written != size) {
 		write_child_data_n(ctx->child_tid, size, addr, data);
 	}

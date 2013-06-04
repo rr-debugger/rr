@@ -248,8 +248,7 @@ void rep_process_flush(struct context* ctx) {
 					 (void*)buffer[3], (void*)buffer[4]);
 		}
 		int* size_ptr =	read_child_data(
-			ctx, sizeof(int),
-			(uintptr_t)ctx->syscall_wrapper_cache_child);
+			ctx, sizeof(int), ctx->syscall_wrapper_cache_child);
 		assert(*size_ptr == offset - sizeof(int));
 		sys_free((void**)&size_ptr);
 		struct user_regs_struct regs;
@@ -367,22 +366,22 @@ static void process_clone(struct context* ctx, struct trace* trace, int state)
 		set_child_data(ctx);
 
 		size_t size;
-		unsigned long rec_addr;
+		void* rec_addr;
 		void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
 		if (data != NULL ) {
-			write_child_data_n(new_tid, size, rec_addr, data);
+			write_child_data_n(new_tid, size, (void*)rec_addr, data);
 			sys_free((void**) &data);
 		}
 
 		data = read_raw_data(&(ctx->trace), &size, &rec_addr);
 		if (data != NULL ) {
-			write_child_data_n(new_tid, size, rec_addr, data);
+			write_child_data_n(new_tid, size, (void*)rec_addr, data);
 			sys_free((void**) &data);
 		}
 
 		data = read_raw_data(&(ctx->trace), &size, &rec_addr);
 		if (data != NULL ) {
-			write_child_data_n(new_tid, size, rec_addr, data);
+			write_child_data_n(new_tid, size, (void*)rec_addr, data);
 			sys_free((void**) &data);
 		}
 		/* set the ebp register to the recorded value -- it
@@ -806,7 +805,7 @@ void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 			 * injected */
 			if (check == 0) {
 				size_t size;
-				unsigned long rec_addr;
+				void* rec_addr;
 				void* data = read_raw_data(&(ctx->trace),
 							   &size, &rec_addr);
 				if (data != NULL ) {
@@ -1038,10 +1037,8 @@ void rep_process_syscall(struct context* ctx, int syscall, int redirect_stdio)
 				    || fd == STDERR_FILENO) {
 					size_t len = regs.edx;
 					void* addr = (void*) regs.ecx;
-					void* buf =
-						read_child_data(
-							ctx,
-							len, (uintptr_t)addr);
+					void* buf = read_child_data(ctx,
+								    len, addr);
 					write(fd, buf, len);
 					sys_free(&buf);
 				}
