@@ -33,6 +33,7 @@ static int handle_sigsegv(struct context *ctx)
 	int retval = 0;
 	pid_t tid = ctx->child_tid;
 	int sig = signal_pending(ctx->status);
+	assert(sig != SIGTRAP);
 
 	if (sig <= 0 || sig != SIGSEGV) {
 		return retval;
@@ -70,6 +71,7 @@ static int handle_mmap_sigsegv(struct context *ctx)
 {
 	pid_t tid = ctx->child_tid;
 	int sig = signal_pending(ctx->status);
+	assert(sig != SIGTRAP);
 
 	if (sig <= 0 || sig != SIGSEGV) {
 		return 0;
@@ -159,6 +161,7 @@ static void record_signal(int sig, struct context* ctx)
 void handle_signal(struct context* ctx)
 {
 	int sig = signal_pending(ctx->status);
+	assert(sig != SIGTRAP);
 
 	if (sig <= 0) {
 		return;

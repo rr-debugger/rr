@@ -545,6 +545,14 @@ static int process_packet(struct dbg_context* dbg)
 		debug("gdb requests registers");
 		ret = 1;
 		break;
+	case 'G':
+		/* XXX we can't let gdb spray registers in general,
+		 * because it may cause replay to diverge.  But some
+		 * writes may be OK.  Let's see how far we can get
+		 * with ignoring these requests. */
+		write_packet(dbg, "");
+		ret = 0;
+		break;
 	case 'H':
 		ret = set_selected_thread(dbg, payload);
 		break;
@@ -561,10 +569,16 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->req.params.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 
-		debug("gdb requests memory (addr=0x%lX, len=%u)",
+		debug("gdb requests memory (addr=0x%p, len=%u)",
 			  dbg->req.params.mem.addr, dbg->req.params.mem.len);
 
 		ret = 1;
+		break;
+	case 'M':
+		/* We can't allow the debugger to write arbitrary data
+		 * to memory, or the replay may diverge. */
+		write_packet(dbg, "");
+		ret = 0;
 		break;
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
@@ -573,6 +587,14 @@ static int process_packet(struct dbg_context* dbg)
 		assert('\0' == *payload);
 		debug("gdb requests register value (%d)", dbg->req.params.reg);
 		ret = 1;
+		break;
+	case 'P':
+		/* XXX we can't let gdb spray registers in general,
+		 * because it may cause replay to diverge.  But some
+		 * writes may be OK.  Let's see how far we can get
+		 * with ignoring these requests. */
+		write_packet(dbg, "");
+		ret = 0;
 		break;
 	case 'q':
 		ret = query(dbg, payload);
@@ -587,18 +609,37 @@ static int process_packet(struct dbg_context* dbg)
 	case 'v':
 		ret = process_vpacket(dbg, payload);
 		break;
+	case 'X':
+		/* We can't allow the debugger to write arbitrary data
+		 * to memory, or the replay may diverge. */
+		write_packet(dbg, "");
+		ret = 0;
+		break;
 	case 'z':
-		/* TODO remove breakpoint */
-		debug("gdb requests remove breakpoint (%s)", payload);
-		write_packet(dbg, "OK");
-		ret = 0;
+	case 'Z': {
+		int type = strtol(payload, &payload, 16);
+		assert(',' == *payload++);
+		if (!(0 <= type && type <= 4)) {
+			log_warn("Unknown watch type %d", type);
+			write_packet(dbg, "");
+			ret = 0;
+			break;
+		}
+		dbg->req.type =	type + (request == 'Z' ?
+					DREQ_SET_SW_BREAK :
+					DREQ_REMOVE_SW_BREAK);
+		dbg->req.params.mem.addr =
+			(void*)strtoul(payload, &payload, 16);
+		assert(',' == *payload++);
+		dbg->req.params.mem.len = strtoul(payload, &payload, 16);
+		assert('\0' == *payload);
+
+		debug("gdb requests set breakpoint (addr=%p, len=%u)",
+		      dbg->req.params.mem.addr, dbg->req.params.mem.len);
+
+		ret = 1;
 		break;
-	case 'Z':
-		/* TODO set breakpoint */
-		debug("gdb requests set breakpoint (%s)", payload);
-		write_packet(dbg, "OK");
-		ret = 0;
-		break;
+	}
 	case '?':
 		debug("gdb requests stop reason");
 		dbg->req.type = DREQ_GET_STOP_REASON;
@@ -796,6 +837,16 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 		snprintf(buf, sizeof(buf) - 1, "m%02X", threads[0].tid);
 		write_packet(dbg, buf);
 	}
+
+	consume_request(dbg);
+}
+
+void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code)
+{
+	assert(DREQ_WATCH_FIRST <= dbg->req.type
+	       && dbg->req.type <= DREQ_WATCH_LAST);
+
+	write_packet(dbg, code ? "" : "OK");
 
 	consume_request(dbg);
 }

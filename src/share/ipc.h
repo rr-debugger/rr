@@ -23,8 +23,10 @@ void write_child_code(pid_t pid, void* addr, long code);
 void write_child_registers(pid_t tid, struct user_regs_struct* regs);
 void write_child_main_registers(pid_t tid, struct user_regs_struct *regs);
 void write_child_segment_registers(pid_t tid, struct user_regs_struct *regs);
-void write_child_data_n(pid_t tid, size_t size, void* addr, void* data);
-void write_child_data(struct context *ctx, size_t size, void *addr, void *data);
+void write_child_data_n(pid_t tid, size_t size, void* addr,
+			const void* data);
+void write_child_data(struct context *ctx, size_t size, void *addr,
+		      const void *data);
 size_t set_child_data(struct context *ctx);
 
 
