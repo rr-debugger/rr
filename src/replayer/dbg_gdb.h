@@ -93,17 +93,10 @@ struct dbg_request {
 		/* Uses params.reg. */
 		DREQ_GET_REG,
 
-		/* Use params.resume. */
-		DREQ_CONTINUE,
-		DREQ_STEP,
-
 		/* No parameters. */
+		DREQ_CONTINUE,
 		DREQ_INTERRUPT,
-
-		/* Use params.mem. */
-
-		/* TODO */
-		DREQ_SET_CURRENT_THREAD,
+		DREQ_STEP,
 	} type;
 
 	dbg_threadid_t target;
@@ -115,14 +108,6 @@ struct dbg_request {
 		} mem;
 
 		dbg_register reg;
-
-		struct {
-			/* Resume from this address, or 0 to resume from
-			 * same address. */
-			void* addr;
-			/* Resume with this signal, or 0 for no signal. */
-			char signum;
-		} resume;
 	} params;
 };
 
