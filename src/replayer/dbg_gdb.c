@@ -487,8 +487,6 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			*args++ = '\0';
 		}
 
-		memset(&dbg->req.params.resume, 0,
-		       sizeof(dbg->req.params.resume));
 		switch (cmd) {
 		case 'c':
 			dbg->req.type = DREQ_CONTINUE;
