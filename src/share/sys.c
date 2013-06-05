@@ -141,16 +141,13 @@ void sys_setup_process()
 	/* disable address space randomization */
 	int orig_pers;
 	if ((orig_pers = personality(0xffffffff)) == -1) {
-		log_err("error setting personaity");
-		sys_exit();
+		fatal("error getting personaity");
 	}
-	if ((orig_pers = personality(orig_pers | ADDR_NO_RANDOMIZE)) == -1) {
-		log_err("error disabling randomization");
-		sys_exit();
+	if (-1 == personality(orig_pers | ADDR_NO_RANDOMIZE)) {
+		fatal("error disabling randomization");
 	}
 	if (prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0) == -1) {
-		log_err("error setting up prctl -- bailing out");
-		sys_exit();
+		fatal("error setting up prctl -- bailing out");
 	}
 
 	/* Pin the child to a specific logical core as we serialize the execution anyway */
@@ -165,17 +162,9 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 
 	/* signal the parent that the child is ready */
 	kill(getpid(), SIGSTOP);
-	/* we need to fork another child since we must fake the tid in the replay */
-	debug("executable %s\n", executable);
 
-	if (fork() == 0) {
-		/* start client application */
-		execve(executable, argv, envp);
-		/* we should never arriver here */
-		assert(0);
-	}
-
-	exit(0);
+	execve(executable, argv, envp);
+	fatal("Failed to exec %s", executable);
 }
 
 /* ptrace stuff comes here */
@@ -204,7 +193,7 @@ void sys_ptrace_cont(pid_t pid)
  * invoked, if the thread exits. We do not check errors here, since the
  * thread could have already exited.
  */
-void sys_ptrace_detatch(pid_t pid)
+void sys_ptrace_detach(pid_t pid)
 {
 	ptrace(PTRACE_DETACH, pid, 0, 0);
 }
