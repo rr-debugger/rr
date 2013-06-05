@@ -13,17 +13,11 @@ typedef unsigned char byte;
 struct dbg_context;
 
 /**
- * Descriptor for a target task.  This is following gdb convention; on
- * linux, the tid is sufficient to identify a target.
- *
- * For both fields, -1 means "all", and 0 means "any".
+ * Descriptor for a target task.
  *
  * TODO support gdb "multiprocess".
  */
-typedef struct dbg_threadid {
-	pid_t pid;
-	pid_t tid;
-} dbg_threadid_t;
+typedef pid_t dbg_threadid_t;
 
 /**
  * This is gdb's view of the register file.  The ordering must be the

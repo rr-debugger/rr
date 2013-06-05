@@ -1,0 +1,6 @@
+source util.sh
+get_rr_cmd $# $1
+compile breakpoint
+record breakpoint
+debug breakpoint1
+cleanup
