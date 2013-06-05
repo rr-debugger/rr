@@ -196,9 +196,12 @@ void __ptrace_cont(struct context *ctx)
 			ctx->child_sig = 0;
 			return;
 		}
-		fatal("stop reason: %x :%d  pending sig: %d\n"
+		fatal("\n"
+		      "stop reason: %x :%d  pending sig: %d\n"
+		      "recorded eip: 0x%lx;  current eip: 0x%lx\n"
 		      "Internal error: syscalls out of sync: rec: %d  now: %d\n",
 		      ctx->status, WSTOPSIG(ctx->status), ctx->child_sig,
+		      ctx->trace.recorded_regs.eip, ctx->child_regs.eip,
 		      rec_syscall, current_syscall);
 	}
 

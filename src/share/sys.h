@@ -41,7 +41,7 @@ void sys_ptrace_syscall_sig(pid_t pid, int sig);
 int sys_ptrace_peekdata(pid_t pid, long addr, long* value);
 unsigned long sys_ptrace_getmsg(pid_t pid);
 void sys_ptrace_getsiginfo(pid_t pid, siginfo_t* sig);
-void sys_ptrace_detatch(pid_t pid);
+void sys_ptrace_detach(pid_t pid);
 void sys_ptrace_syscall(pid_t pid);
 
 pid_t sys_waitpid(pid_t pid, int *status);

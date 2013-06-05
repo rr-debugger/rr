@@ -175,7 +175,7 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	/* close file descriptor to child memory */
 	sys_close(ctx->child_mem_fd);
 
-	sys_ptrace_detatch(ctx->child_tid);
+	sys_ptrace_detach(ctx->child_tid);
 
 	/* make sure that the child has exited */
 

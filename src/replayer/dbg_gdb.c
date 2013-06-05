@@ -644,7 +644,8 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->req.params.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 
-		debug("gdb requests set breakpoint (addr=%p, len=%u)",
+		debug("gdb requests %s breakpoint (addr=%p, len=%u)",
+		      'Z' == request ? "set" : "remove",
 		      dbg->req.params.mem.addr, dbg->req.params.mem.len);
 
 		ret = 1;
