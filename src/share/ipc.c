@@ -42,13 +42,13 @@ void set_return_value(struct context* context)
 	write_child_registers(context->child_tid, &r);
 }
 
-long read_child_data_word(pid_t tid, void *addr)
+static long read_child_word(pid_t tid, void *addr, int ptrace_op)
 {
 	CHECK_ALIGNMENT(addr);
 
 	/* set errno to 0 to check if the read was successful */errno = 0;
 
-	long tmp = ptrace(PTRACE_PEEKDATA, tid, addr, 0);
+	long tmp = ptrace(ptrace_op, tid, addr, 0);
 
 	if (errno != 0) {
 		perror("error reading word from child -- bailing out");
@@ -74,6 +74,16 @@ long read_child_data_word(pid_t tid, void *addr)
 		//sys_exit();
 	}
 	return tmp;
+}
+
+long read_child_code(pid_t tid, void *addr)
+{
+	return read_child_word(tid, addr, PTRACE_PEEKTEXT);
+}
+
+long read_child_data_word(pid_t tid, void *addr)
+{
+	return read_child_word(tid, addr, PTRACE_PEEKDATA);
 }
 
 void write_child_main_registers(pid_t tid, struct user_regs_struct *regs) {
@@ -444,7 +454,7 @@ char* read_child_str(pid_t pid, void* addr)
 	return 0;
 }
 
-void write_child_data_n(pid_t tid, size_t size, void* addr, void* data)
+void write_child_data_n(pid_t tid, size_t size, void* addr, const void* data)
 {
 	int start_offset = (uintptr_t)addr & 0x3;
 	int end_offset = ((uintptr_t)addr + size) & 0x3;
@@ -481,7 +491,8 @@ void write_child_data_n(pid_t tid, size_t size, void* addr, void* data)
 	free(write_data);
 }
 
-void write_child_data(struct context *ctx, size_t size, void *addr, void *data)
+void write_child_data(struct context *ctx, size_t size, void *addr,
+		      const void *data)
 {
 	ssize_t written = pwrite(ctx->child_mem_fd, data, size, PTR_TO_OFF_T(addr));
 	if (written != size) {
@@ -495,4 +506,3 @@ void memcpy_child(struct context *ctx, void *dest, void *src, int size)
 	write_child_data(ctx, size, dest, tmp);
 	free(tmp);
 }
-

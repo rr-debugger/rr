@@ -286,6 +286,7 @@ void goto_next_event(struct context *ctx)
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
+	assert(ctx->child_sig != SIGTRAP);
 	ctx->event = read_child_orig_eax(ctx->child_tid);
 }
 

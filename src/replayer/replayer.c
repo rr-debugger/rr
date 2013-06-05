@@ -42,6 +42,8 @@
 
 #define SAMPLE_SIZE 		10
 #define NUM_SAMPLE_PAGES 	1
+/* sigh */
+#define MAX_NUM_BREAKPOINTS     128
 
 static const struct dbg_request continue_all_tasks = {
 	.type = DREQ_CONTINUE,
@@ -49,17 +51,20 @@ static const struct dbg_request continue_all_tasks = {
 	.params = { {0} }
 };
 
+/* FIXME use a real data structure */
+static struct breakpoint {
+	void* addr;
+	byte overwritten_data;
+} breakpoint_table[MAX_NUM_BREAKPOINTS];
+
+static const byte int_3_insn = 0xCC;
+
 static const struct flags* rr_flags;
 
 /* Nonzero after the first exec() has been observed during replay.
  * After this point, the first recorded binary image has been exec()d
  * over the initial rr image. */
 static bool validate = FALSE;
-
-static void check_initial_register_file()
-{
-	rep_sched_get_thread();
-}
 
 static void debug_memory(struct context* ctx)
 {
@@ -160,6 +165,60 @@ static byte* read_mem(struct context* ctx, void* addr, size_t len)
 	return read_child_data_tid(ctx->child_tid, len, addr);
 }
 
+static struct breakpoint* find_breakpoint(void* addr)
+{
+	int i;
+	for (i = 0; i < MAX_NUM_BREAKPOINTS; ++i) {
+		struct breakpoint* bp = &breakpoint_table[i];
+		if (addr == bp->addr) {
+			return bp;
+		}
+	}
+	return NULL;
+}
+
+static void set_sw_breakpoint(struct context *ctx,
+			      const struct dbg_request* req)
+{
+	struct breakpoint* bp;
+	byte* orig_data_ptr;
+
+	assert(sizeof(int_3_insn) == req->params.mem.len);
+
+	bp = find_breakpoint(NULL/* unallocated */);
+	assert(bp && "Sorry, ran out of breakpoints");
+	bp->addr = req->params.mem.addr;
+
+	orig_data_ptr = read_child_data(ctx, 1, bp->addr);
+	bp->overwritten_data = *orig_data_ptr;
+	sys_free((void**)&orig_data_ptr);
+
+#if 0
+	/* TODO: gdb apparently needs stepi to get past an internal
+	 * breakpoint it sets */
+	write_child_data(ctx, sizeof(int_3_insn), bp->addr, &int_3_insn);
+#endif
+}
+
+static void remove_sw_breakpoint(struct context *ctx,
+				 const struct dbg_request* req)
+{
+	struct breakpoint* bp;
+
+	assert(sizeof(int_3_insn) == req->params.mem.len);
+
+	bp = find_breakpoint(req->params.mem.addr);
+	if (!bp) {
+		warn("Couldn't find breakpoint %p to remove",
+		     req->params.mem.addr);
+		return;
+	}
+	write_child_data(ctx, sizeof(bp->overwritten_data), bp->addr,
+			 &bp->overwritten_data);
+
+	memset(bp, 0, sizeof(*bp));
+}
+
 /* Reply to debugger requests until the debugger asks us to resume
  * execution. */
 static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
@@ -194,6 +253,16 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			/* TODO */
 			dbg_reply_get_offsets(dbg);
 			continue;
+		case DREQ_GET_REG: {
+			struct user_regs_struct regs;
+			dbg_regvalue_t val;
+
+			read_child_registers(ctx->child_tid, &regs);
+			val.value = get_reg(&regs, req.params.reg,
+					    &val.defined);
+			dbg_reply_get_reg(dbg, val);
+			continue;
+		}
 		case DREQ_GET_REGS: {
 			struct user_regs_struct regs;
 			struct dbg_regfile file;
@@ -213,16 +282,6 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_regs(dbg, &file);
 			continue;
 		}
-		case DREQ_GET_REG: {
-			struct user_regs_struct regs;
-			dbg_regvalue_t val;
-
-			read_child_registers(ctx->child_tid, &regs);
-			val.value = get_reg(&regs, req.params.reg,
-					    &val.defined);
-			dbg_reply_get_reg(dbg, val);
-			continue;
-		}
 		case DREQ_GET_STOP_REASON:
 			/* TODO */
 			dbg_reply_get_stop_reason(dbg);
@@ -234,9 +293,27 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_INTERRUPT:
-			/* Tell the debugger we stopped and
-			 * await further instructions. */
+			/* Tell the debugger we stopped and await
+			 * further instructions. */
 			dbg_notify_stop(dbg, get_threadid(ctx), 0);
+			continue;
+		case DREQ_SET_SW_BREAK:
+			set_sw_breakpoint(ctx, &req);
+			dbg_reply_watchpoint_request(dbg, 0);
+			continue;
+		case DREQ_REMOVE_SW_BREAK:
+			remove_sw_breakpoint(ctx, &req);
+			dbg_reply_watchpoint_request(dbg, 0);
+			break;
+		case DREQ_REMOVE_HW_BREAK:
+		case DREQ_REMOVE_RD_WATCH:
+		case DREQ_REMOVE_WR_WATCH:
+		case DREQ_REMOVE_RDWR_WATCH:
+		case DREQ_SET_HW_BREAK:
+		case DREQ_SET_RD_WATCH:
+		case DREQ_SET_WR_WATCH:
+		case DREQ_SET_RDWR_WATCH:
+			dbg_reply_watchpoint_request(dbg, -1);
 			continue;
 		default:
 			fatal("Unknown debugger request %d", req.type);
@@ -271,9 +348,11 @@ static void validate_args(int syscall, int state, struct context* ctx)
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when
- * we're emulating the syscall.
+ * we're emulating the syscall.  Return 0 when the next syscall
+ * boundary is reached, or nonzero if advancing to the boundary was
+ * interrupted by an unknown trap.
  */
-static void cont_syscall_boundary(struct context* ctx, int emu)
+static int cont_syscall_boundary(struct context* ctx, int emu)
 {
 	pid_t tid = ctx->child_tid;
 
@@ -286,14 +365,18 @@ static void cont_syscall_boundary(struct context* ctx, int emu)
 	}
 	sys_waitpid(tid, &ctx->status);
 
-	ctx->child_sig = signal_pending(ctx->status);
-	if (SIGCHLD == ctx->child_sig) {
+	switch ((ctx->child_sig = signal_pending(ctx->status))) {
+	case 0:
+		break;
+	case SIGCHLD:
 		/* SIGCHLD is pending, do not deliver it, wait for it
 		 * to appear in the trace SIGCHLD is the only signal
 		 * that should ever be generated as all other signals
 		 * are emulated! */
 		return cont_syscall_boundary(ctx, emu);
-	} else if (ctx->child_sig) {
+	case SIGTRAP:
+		return 1;
+	default:
 		fatal("Replay got unrecorded signal %d", ctx->child_sig);
 	}
 
@@ -301,6 +384,7 @@ static void cont_syscall_boundary(struct context* ctx, int emu)
 
 	/* XXX why is this here? */
 	rep_child_buffer0(ctx);
+	return 0;
 }
 
 /**
@@ -325,20 +409,36 @@ static void step_exit_syscall_emu(struct context *ctx)
 	ctx->status = 0;
 }
 
-static void enter_syscall(struct context* ctx,
+/**
+ * Advance to the next syscall entry (or virtual entry) according to
+ * |step|.  Return 0 if successful, or nonzero if an unhandled trap
+ * occurred.
+ */
+static int enter_syscall(struct context* ctx,
 			 const struct rep_trace_step* step)
 {
-	cont_syscall_boundary(ctx, step->params.syscall.emu);
+	int ret;
+	if ((ret = cont_syscall_boundary(ctx, step->params.syscall.emu))) {
+		return ret;
+	}
 	validate_args(step->params.syscall.no, STATE_SYSCALL_ENTRY, ctx);
+	return ret;
 }
 
-static void exit_syscall(struct context* ctx,
+/**
+ * Advance past the reti (or virtual reti) according to |step|.
+ * Return 0 if successful, or nonzero if an unhandled trap occurred.
+ */
+static int exit_syscall(struct context* ctx,
 			 const struct rep_trace_step* step)
 {
 	int i, emu = step->params.syscall.emu;
 
 	if (!emu) {
-		cont_syscall_boundary(ctx, emu);
+		int ret = cont_syscall_boundary(ctx, emu);
+		if (ret) {
+			return ret;
+		}
 	}
 
 	for (i = 0; i < step->params.syscall.num_emu_args; ++i) {
@@ -350,7 +450,32 @@ static void exit_syscall(struct context* ctx,
 	validate_args(step->params.syscall.no, STATE_SYSCALL_EXIT, ctx);
 
 	if (emu) {
+		/* XXX verify that this can't be interrupted by a
+		 * breakpoint trap */
 		step_exit_syscall_emu(ctx);
+	}
+	return 0;
+}
+
+/**
+ * Try to execute |step|, adjusting for |req| if needed.  Return 0 if
+ * |step| was made, or nonzero if there was a trap or |step| needs
+ * more work.
+ */
+static int try_one_trace_step(struct context* ctx,
+			      const struct rep_trace_step* step,
+			      const struct dbg_request* req)
+{
+	switch (step->action) {
+	case TSTEP_RETIRE:
+		return 0;
+	case TSTEP_ENTER_SYSCALL:
+		return enter_syscall(ctx, step);
+	case TSTEP_EXIT_SYSCALL:
+		return exit_syscall(ctx, step);
+	default:
+		fatal("Unhandled step type %d", step->action);
+		return 0;
 	}
 }
 
@@ -416,18 +541,26 @@ static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
 		rep_process_syscall(ctx, rr_flags->redirect, &step);
 	}
 
+	/* XXX this pattern may not work ... it's simple so let's try
+	 * it though */
+
 	/* Advance until |step| has been fulfilled. */
-	switch (step.action) {
-	case TSTEP_RETIRE:
-		break;
-	case TSTEP_ENTER_SYSCALL:
-		enter_syscall(ctx, &step);
-		break;
-	case TSTEP_EXIT_SYSCALL:
-		exit_syscall(ctx, &step);
-		break;
-	default:
-		fatal("Unhandled step type %d", step.action);
+	while (try_one_trace_step(ctx, &step, &req)) {
+		/* Didn't finish ... let's see what happened. */
+		if (SIGTRAP == ctx->child_sig) {
+			/* Software breakpoint.  Notify the debugger
+			 * and process any new requests that might
+			 * have triggered before resuming. */
+			void* ip = (void*)(read_child_eip(ctx->child_tid) -
+					   sizeof(int_3_insn));
+			assert(find_breakpoint(ip));
+
+			dbg_notify_stop(dbg, get_threadid(ctx),
+					0x05/* required by gdb */);
+
+			req = process_debugger_requests(dbg, ctx);
+			assert(dbg_is_resume_request(&req));
+		}
 	}
 
 	/* Every time a non-wrapped event happens, the hpc is
@@ -446,6 +579,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
 		reset_hpc(ctx, 0);
 	}
 	debug_memory(ctx);
+}
+
+static void check_initial_register_file()
+{
+	rep_sched_get_thread();
 }
 
 void replay(struct flags flags)
