@@ -69,11 +69,13 @@ def set_up():
     global gdb, rr
     try:
         rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, logfile=open('rr.log', 'w'))
+        expect_rr('server listening on :1111')
+
         gdb = pexpect.spawn('gdb a.out', timeout=TIMEOUT_SEC, logfile=open('gdb.log', 'w'))
 
-        expect_gdb('(gdb)')
+        expect_gdb(r'\(gdb\)')
         send_gdb('target remote :1111\n')
-        expect_gdb('(gdb)')
+        expect_gdb(r'\(gdb\)')
     except Exception, e:
         failed('initializing rr and gdb', e)
 
