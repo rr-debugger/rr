@@ -603,6 +603,11 @@ void replay(struct flags flags)
 		replay_one_trace_frame(dbg, rep_sched_get_thread());
 	}
 
+	if (dbg) {
+		/* TODO keep record of the code, if it's useful */
+		dbg_notify_exit_code(dbg, 0);
+	}
+
 	log_info("Replayer successfully finished.");
 	fflush(stdout);
 

@@ -699,6 +699,32 @@ struct dbg_request dbg_get_request(struct dbg_context* dbg)
 	}
 }
 
+void dbg_notify_exit_code(struct dbg_context* dbg, int code)
+{
+	char buf[64];
+
+	assert(dbg_is_resume_request(&dbg->req)
+	       || dbg->req.type == DREQ_INTERRUPT);
+
+	snprintf(buf, sizeof(buf) - 1, "W%02X", code);
+	write_packet(dbg, buf);
+
+	consume_request(dbg);
+}
+
+void dbg_notify_exit_signal(struct dbg_context* dbg, int sig)
+{
+	char buf[64];
+
+	assert(dbg_is_resume_request(&dbg->req)
+	       || dbg->req.type == DREQ_INTERRUPT);
+
+	snprintf(buf, sizeof(buf) - 1, "X%02X", sig);
+	write_packet(dbg, buf);
+
+	consume_request(dbg);
+}
+
 void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
 {
 	char buf[64];
