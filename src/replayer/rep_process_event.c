@@ -783,8 +783,9 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 	assert("Valid but unhandled syscallno"
 	       && rep_UNDEFINED != def->type);
 
+	step->params.syscall.no = syscall;
+
 	if (rep_IRREGULAR != def->type) {
-		step->params.syscall.no = syscall;
 		step->params.syscall.num_emu_args = def->num_emu_args;
 		step->action = STATE_SYSCALL_ENTRY == state ?
 			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
@@ -796,10 +797,48 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 
 	assert(rep_IRREGULAR == def->type);
 
-	/* TODO */
+	/* Manual implementations of irregular syscalls. */
+
+	switch (syscall) {
+
+	case SYS_write:
+		step->params.syscall.num_emu_args = 0;
+		step->params.syscall.emu = 1;
+		step->params.syscall.emu_ret = 1;
+		if (state == STATE_SYSCALL_ENTRY) {
+			step->action = TSTEP_ENTER_SYSCALL;
+		} else {
+			step->action = TSTEP_EXIT_SYSCALL;
+			/* XXX technically this will print the output
+			 * before we reach the interrupt.  That could
+			 * maybe cause issues in the future. */
+			if (redirect_stdio) {
+				/* print output intended for
+				 * stdout/stderr */
+				struct user_regs_struct regs;
+				read_child_registers(ctx->child_tid, &regs);
+				int fd = regs.ebx;
+				if (fd == STDOUT_FILENO
+				    || fd == STDERR_FILENO) {
+					size_t len = regs.edx;
+					void* addr = (void*) regs.ecx;
+					void* buf = read_child_data(ctx,
+								    len, addr);
+					write(fd, buf, len);
+					sys_free(&buf);
+				}
+			}
+		}
+		return;
+
+	default:
+		break;
+	}
+
+	/* TODO: irregular syscalls that don't understand
+	 * trace_step */
 	step->action = TSTEP_RETIRE;
 
-	/* Manual implementations of irregular syscalls. */
 	switch (syscall) {
 
 	case SYS_clone:
@@ -1037,30 +1076,6 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			validate_args(syscall, state, ctx);
 		} else {
 			exit_syscall_exec(ctx, syscall, 0, EMULATE_RETURN);
-		}
-		break;
-
-	case SYS_write:
-		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_emu(ctx, syscall);
-		} else {
-			exit_syscall_emu(ctx, syscall, 0);
-			if (redirect_stdio) {
-				/* print output intended for
-				 * stdout/stderr */
-				struct user_regs_struct regs;
-				read_child_registers(ctx->child_tid, &regs);
-				int fd = regs.ebx;
-				if (fd == STDOUT_FILENO
-				    || fd == STDERR_FILENO) {
-					size_t len = regs.edx;
-					void* addr = (void*) regs.ecx;
-					void* buf = read_child_data(ctx,
-								    len, addr);
-					write(fd, buf, len);
-					sys_free(&buf);
-				}
-			}
 		}
 		break;
 

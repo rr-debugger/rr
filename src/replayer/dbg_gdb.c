@@ -440,10 +440,7 @@ static int query(struct dbg_context* dbg, char* payload)
  */
 static dbg_threadid_t parse_threadid(const char* str, char** endptr)
 {
-	dbg_threadid_t thread;
-	thread.pid = 0;		/* TODO multiprocess */
-	thread.tid = strtoul(str, endptr, 16);
-	return thread;
+	return strtol(str, endptr, 16);
 }
 
 static int set_selected_thread(struct dbg_context* dbg, char* payload)
@@ -456,7 +453,7 @@ static int set_selected_thread(struct dbg_context* dbg, char* payload)
 	thread = parse_threadid(payload, &payload);
 	assert('\0' == *payload);
 
-	debug("gdb selecting thread %d:%d for %c", thread.pid, thread.tid, op);
+	debug("gdb selecting thread %d for %c", thread, op);
 
 	if (op == 'c') {
 		dbg->resume_thread = thread;
@@ -485,15 +482,30 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 	name = payload;
 
 	if (!strcmp("Cont", name)) {
-		debug("gdb requests resume (%s)", args);
-		if (!strcmp("c", args)) {
+		char cmd = *args++;
+		if ('\0' != args[1]) {
+			*args++ = '\0';
+		}
+
+		memset(&dbg->req.params.resume, 0,
+		       sizeof(dbg->req.params.resume));
+		switch (cmd) {
+		case 'c':
 			dbg->req.type = DREQ_CONTINUE;
 			dbg->req.target = dbg->resume_thread;
-			memset(&dbg->req.params.resume, 0,
-			       sizeof(dbg->req.params.resume));
 			return 1;
+		case 's':
+			dbg->req.type = DREQ_STEP;
+			if (args) {
+				dbg->req.target = parse_threadid(args, &args);
+				assert('\0' == *args);
+			} else {
+				dbg->req.target = dbg->resume_thread;
+			}
+			return 1;
+		default:
+			fatal("Unhandled vCont command %c(%s)", cmd, args);
 		}
-		fatal("vCont unparsed args %s", args);
 	}
 
 	if (!strcmp("Cont?", name)) {
@@ -603,7 +615,7 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->req.type = DREQ_GET_IS_THREAD_ALIVE;
 		dbg->req.target = parse_threadid(payload, &payload);
 		assert('\0' == *payload);
-		debug("gdb wants to know if %d is alive", dbg->req.target.tid);
+		debug("gdb wants to know if %d is alive", dbg->req.target);
 		ret = 1;
 		break;
 	case 'v':
@@ -732,7 +744,7 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
 	assert(dbg_is_resume_request(&dbg->req)
 	       || dbg->req.type == DREQ_INTERRUPT);
 
-	snprintf(buf, sizeof(buf) - 1, "T%02Xthread:%02X;", sig, thread.tid);
+	snprintf(buf, sizeof(buf) - 1, "T%02Xthread:%02X;", sig, thread);
 	write_packet(dbg, buf);
 
 	consume_request(dbg);
@@ -744,7 +756,7 @@ void dbg_reply_get_current_thread(struct dbg_context* dbg,
 	assert(DREQ_GET_CURRENT_THREAD == dbg->req.type);
 
 	/* TODO multiprocess */
-	write_hex_packet(dbg, thread.tid);
+	write_hex_packet(dbg, thread);
 
 	consume_request(dbg);
 }
@@ -860,7 +872,7 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 		char buf[64];
 
 		/* TODO */
-		snprintf(buf, sizeof(buf) - 1, "m%02X", threads[0].tid);
+		snprintf(buf, sizeof(buf) - 1, "m%02X", threads[0]);
 		write_packet(dbg, buf);
 	}
 

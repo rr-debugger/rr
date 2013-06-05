@@ -47,7 +47,7 @@
 
 static const struct dbg_request continue_all_tasks = {
 	.type = DREQ_CONTINUE,
-	.target = { .pid = -1, .tid = -1 },
+	.target = -1,
 	.params = { {0} }
 };
 
@@ -154,7 +154,7 @@ static long get_reg(const struct user_regs_struct* regs, dbg_register reg,
 
 static dbg_threadid_t get_threadid(struct context* ctx)
 {
-	dbg_threadid_t thread = { .pid = -1, .tid = ctx->rec_tid };
+	dbg_threadid_t thread = ctx->rec_tid;
 	return thread;
 }
 
@@ -193,11 +193,7 @@ static void set_sw_breakpoint(struct context *ctx,
 	bp->overwritten_data = *orig_data_ptr;
 	sys_free((void**)&orig_data_ptr);
 
-#if 0
-	/* TODO: gdb apparently needs stepi to get past an internal
-	 * breakpoint it sets */
 	write_child_data(ctx, sizeof(int_3_insn), bp->addr, &int_3_insn);
-#endif
 }
 
 static void remove_sw_breakpoint(struct context *ctx,
@@ -217,6 +213,12 @@ static void remove_sw_breakpoint(struct context *ctx,
 			 &bp->overwritten_data);
 
 	memset(bp, 0, sizeof(*bp));
+}
+
+static int eip_is_breakpoint(void* eip)
+{
+	void* ip = (void*)((uintptr_t)eip - sizeof(int_3_insn));
+	return !!find_breakpoint(ip);
 }
 
 /* Reply to debugger requests until the debugger asks us to resume
@@ -240,7 +242,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		}
 		case DREQ_GET_IS_THREAD_ALIVE:
 			dbg_reply_get_is_thread_alive(
-				dbg, !!rep_sched_lookup_thread(req.target.tid));
+				dbg, !!rep_sched_lookup_thread(req.target));
 			continue;
 		case DREQ_GET_MEM: {
 			byte* mem = read_mem(ctx, req.params.mem.addr,
@@ -352,16 +354,24 @@ static void validate_args(int syscall, int state, struct context* ctx)
  * boundary is reached, or nonzero if advancing to the boundary was
  * interrupted by an unknown trap.
  */
-static int cont_syscall_boundary(struct context* ctx, int emu)
+static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
 {
 	pid_t tid = ctx->child_tid;
 
 	assert(ctx->replay_sig == 0);
 
 	if (emu) {
-		sys_ptrace_sysemu(tid);
+		if (stepi) {
+			sys_ptrace_sysemu_singlestep(tid, ctx->replay_sig);
+		} else {
+			sys_ptrace_sysemu(tid);
+		}
 	} else {
-		sys_ptrace_syscall_sig(tid, ctx->replay_sig);
+		if (stepi) {
+			sys_ptrace_singlestep(tid, ctx->replay_sig);
+		} else {
+			sys_ptrace_syscall_sig(tid, ctx->replay_sig);
+		}
 	}
 	sys_waitpid(tid, &ctx->status);
 
@@ -373,7 +383,7 @@ static int cont_syscall_boundary(struct context* ctx, int emu)
 		 * to appear in the trace SIGCHLD is the only signal
 		 * that should ever be generated as all other signals
 		 * are emulated! */
-		return cont_syscall_boundary(ctx, emu);
+		return cont_syscall_boundary(ctx, emu, stepi);
 	case SIGTRAP:
 		return 1;
 	default:
@@ -415,10 +425,12 @@ static void step_exit_syscall_emu(struct context *ctx)
  * occurred.
  */
 static int enter_syscall(struct context* ctx,
-			 const struct rep_trace_step* step)
+			 const struct rep_trace_step* step,
+			 int stepi)
 {
 	int ret;
-	if ((ret = cont_syscall_boundary(ctx, step->params.syscall.emu))) {
+	if ((ret = cont_syscall_boundary(ctx, step->params.syscall.emu,
+					 stepi))) {
 		return ret;
 	}
 	validate_args(step->params.syscall.no, STATE_SYSCALL_ENTRY, ctx);
@@ -430,12 +442,13 @@ static int enter_syscall(struct context* ctx,
  * Return 0 if successful, or nonzero if an unhandled trap occurred.
  */
 static int exit_syscall(struct context* ctx,
-			 const struct rep_trace_step* step)
+			const struct rep_trace_step* step,
+			int stepi)
 {
 	int i, emu = step->params.syscall.emu;
 
 	if (!emu) {
-		int ret = cont_syscall_boundary(ctx, emu);
+		int ret = cont_syscall_boundary(ctx, emu, stepi);
 		if (ret) {
 			return ret;
 		}
@@ -466,20 +479,23 @@ static int try_one_trace_step(struct context* ctx,
 			      const struct rep_trace_step* step,
 			      const struct dbg_request* req)
 {
+	int stepi = (DREQ_STEP == req->type
+		     && get_threadid(ctx) == req->target);
 	switch (step->action) {
 	case TSTEP_RETIRE:
 		return 0;
 	case TSTEP_ENTER_SYSCALL:
-		return enter_syscall(ctx, step);
+		return enter_syscall(ctx, step, stepi);
 	case TSTEP_EXIT_SYSCALL:
-		return exit_syscall(ctx, step);
+		return exit_syscall(ctx, step, stepi);
 	default:
 		fatal("Unhandled step type %d", step->action);
 		return 0;
 	}
 }
 
-static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
+static void replay_one_trace_frame(struct dbg_context* dbg,
+				   struct context* ctx)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
@@ -546,21 +562,21 @@ static void replay_one_trace_frame(struct dbg_context* dbg, struct context* ctx)
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(ctx, &step, &req)) {
-		/* Didn't finish ... let's see what happened. */
-		if (SIGTRAP == ctx->child_sig) {
-			/* Software breakpoint.  Notify the debugger
-			 * and process any new requests that might
-			 * have triggered before resuming. */
-			void* ip = (void*)(read_child_eip(ctx->child_tid) -
-					   sizeof(int_3_insn));
-			assert(find_breakpoint(ip));
+		assert(SIGTRAP == ctx->child_sig && "Unknown trap");
 
-			dbg_notify_stop(dbg, get_threadid(ctx),
-					0x05/* required by gdb */);
+		/* Currently we only understand software breakpoints
+		 * and successful stepi's.  The response in both cases
+		 * is the same, so just make sure we saw an action we
+		 * were expecting.  */
+		assert(eip_is_breakpoint((void*)read_child_eip(ctx->child_tid))
+		       || (DREQ_STEP == req.type
+			   && req.target == get_threadid(ctx)));
 
-			req = process_debugger_requests(dbg, ctx);
-			assert(dbg_is_resume_request(&req));
-		}
+		/* Notify the debugger and process any new requests
+		 * that might have triggered before resuming. */
+		dbg_notify_stop(dbg, get_threadid(ctx),	0x05/*gdb mandate*/);
+		req = process_debugger_requests(dbg, ctx);
+		assert(dbg_is_resume_request(&req));
 	}
 
 	/* Every time a non-wrapped event happens, the hpc is
