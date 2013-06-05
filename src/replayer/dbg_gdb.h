@@ -165,6 +165,16 @@ struct dbg_context* dbg_await_client_connection(const char* addr, short port);
 struct dbg_request dbg_get_request(struct dbg_context* dbg);
 
 /**
+ * Notify the host that this process has exited with |code|.
+ */
+void dbg_notify_exit_code(struct dbg_context* dbg, int code);
+
+/**
+ * Notify the host that this process has exited from |sig|.
+ */
+void dbg_notify_exit_signal(struct dbg_context* dbg, int sig);
+
+/**
  * Notify the host that a resume request has "finished", i.e., the
  * target has stopped executing for some reason.  |sig| is the signal
  * that stopped execution, or 0 if execution stopped otherwise.
