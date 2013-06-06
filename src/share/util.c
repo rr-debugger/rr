@@ -317,6 +317,7 @@ void mprotect_child_region(struct context * ctx, void * addr, int prot) {
 	mprotect_call.ecx = length;
 	mprotect_call.edx = prot;
 	int retval = inject_and_execute_syscall(ctx,&mprotect_call);
+	(void)retval;
 	assert(retval == 0);
 }
 

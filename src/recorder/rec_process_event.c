@@ -653,9 +653,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SHMCTL:
 		{
 			int cmd = regs.edx;
-			assert(cmd != IPC_INFO);
-			assert(cmd != SHM_INFO);
-			assert(cmd != SHM_STAT);
+			(void)cmd;
+			assert(cmd != IPC_INFO && cmd != SHM_INFO
+			       && cmd != SHM_STAT);
 			record_child_data(ctx, syscall, sizeof(struct shmid_ds), (void*)regs.esi);
 			break;
 		}
@@ -1940,6 +1940,7 @@ SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 					assert(fd > 0 && errno == 0);
 					// no need to truncate, the child already did it.
 					int retval;
+					(void)retval;
 					ctx->syscall_wrapper_cache = mmap(NULL, WRAP_SYSCALLS_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
 					assert (ctx->syscall_wrapper_cache != NULL && errno == 0);
 					// the buffer is initialized to zero.

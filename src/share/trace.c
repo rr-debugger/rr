@@ -406,6 +406,7 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr)
 		void* buf = read_child_data_tid(tid, len, child_ptr);
 		/* ensure that everything is written */
 		int bytes_written = fwrite(buf, 1, len, raw_data);
+		(void)bytes_written;
 		assert(bytes_written == len);
 		overall_raw_bytes += len;
 		sys_free((void**) &buf);
@@ -420,6 +421,7 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr)
 static void write_raw_data(struct context *ctx, void *buf, size_t to_write)
 {
 	size_t bytes_written;
+	(void)bytes_written;
 	//debug("Asking to write %d bytes from %p", to_write, buf);
 
 	/*
@@ -553,6 +555,7 @@ void record_child_str(pid_t tid, int syscall, void* child_ptr)
 	size_t len = strlen(buf) + 1;
 	fprintf(syscall_header, "%11d\n", len);
 	int bytes_written = fwrite(buf, 1, len, raw_data);
+	(void)bytes_written;
 	overall_raw_bytes += len;
 
 	assert(bytes_written == len);
