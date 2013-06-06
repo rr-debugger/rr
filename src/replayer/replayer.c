@@ -223,8 +223,10 @@ static int eip_is_breakpoint(void* eip)
 	return !!find_breakpoint(ip);
 }
 
-/* Reply to debugger requests until the debugger asks us to resume
- * execution. */
+/**
+ * Reply to debugger requests until the debugger asks us to resume
+ * execution.
+ */
 static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 						    struct context* ctx)
 {
@@ -520,10 +522,10 @@ static int emulate_synchronous_signal(struct context* ctx, int sig, int stepi)
 		read_child_registers(tid, &regs);
 		regs.eax = trace->recorded_regs.eax;
 		regs.edx = trace->recorded_regs.edx;
-		regs.eip += 2; /* sizeof(rdtsc) */
+		regs.eip += 2/*sizeof(rdtsc)*/;
 		write_child_registers(tid, &regs);
 
-		if (validate == TRUE) {
+		if (validate) {
 			compare_register_files(
 				"rep rdtsc", &regs,
 				"rec", &ctx->trace.recorded_regs, 1, 1);
