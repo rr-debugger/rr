@@ -1,0 +1,6 @@
+source util.sh
+compile segfault
+record segfault
+debug generic_break
+echo "(Test is generic_break of segfault)"
+cleanup

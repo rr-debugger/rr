@@ -185,6 +185,8 @@ void handle_signal(struct context* ctx)
 	case SIGPIPE:
 	case SIGWINCH:
 	case SIGCHLD:
+	case SIGUSR1:
+	case SIGUSR2:
 	case 33: /* SIGRTMIN + 1 */
 	case 62: /* SIGRTMAX - 1 */
 	{
