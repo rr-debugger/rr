@@ -245,22 +245,35 @@ static void start(int argc, char* argv[], char** envp)
 	}
 }
 
-void check_prerequisites() {
-	FILE *aslr_file = sys_fopen("/proc/sys/kernel/randomize_va_space","r");
-	int aslr_val;
-	fscanf(aslr_file,"%d",&aslr_val);
-	if (aslr_val != 0)
-		assert(0 && "ASLR not disabled, exiting.");
-	sys_fclose(aslr_file);
+/**
+ * Open |filename| and scan it as if it contains a single integer
+ * value.  Return the integer on success, or -1 on failure.
+ */
+static int read_int_file(const char* filename)
+{
+	FILE* inf = sys_fopen(filename, "r");
+	int val;
+	if (!inf) {
+		return -1;
+	}
+	if (1 != fscanf(inf, "%d", &val)) {
+		fatal("Failed to scan integer from %s", filename);
+	}
+	fclose(inf);
+	return val;
+}
 
-	FILE *ptrace_scope_file = fopen("/proc/sys/kernel/yama/ptrace_scope","r");
-	/* This file does not necessarily have to exist. */
-	if (ptrace_scope_file != NULL) {
-		int ptrace_scope_val;
-		fscanf(ptrace_scope_file,"%d",&ptrace_scope_val);
-		if (ptrace_scope_val != 0)
-			assert(0 && "Can't write to process memory, exiting.");
-		sys_fclose(ptrace_scope_file);
+void check_prerequisites() {
+	int aslr_val =
+		read_int_file("/proc/sys/kernel/randomize_va_space");
+	int ptrace_scope_val =
+		read_int_file("/proc/sys/kernel/yama/ptrace_scope");
+	if (aslr_val != 0) {
+		fatal("ASLR not disabled; randomize is %d", aslr_val);
+	}
+	if (ptrace_scope_val > 0) {
+		fatal("Can't write to process memory; ptrace_scope is %d",
+		      ptrace_scope_val);
 	}
 }
 

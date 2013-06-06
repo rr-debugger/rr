@@ -407,7 +407,7 @@ static void process_ioctl(struct context* ctx, int state)
 	}
 
 	pid_t tid = ctx->child_tid;
-	int num_emu_args;
+	int num_emu_args = 0;
 	int request = read_child_ecx(tid);
 	if (request & _IOC_WRITE) {
 		switch (request) {
@@ -495,6 +495,7 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 			void* result =
 				(void*)read_child_data_word(tid,
 							    (void*)regs.esi);
+			(void)result;
 			assert(*map_addr == (long)result);
 			/* TODO: remove this once this call is
 			 * emulated */
@@ -827,7 +828,9 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 					void* addr = (void*) regs.ecx;
 					void* buf = read_child_data(ctx,
 								    len, addr);
-					write(fd, buf, len);
+					if (len != write(fd, buf, len)) {
+						fatal("Couldn't write stdio");
+					}
 					sys_free(&buf);
 				}
 			}

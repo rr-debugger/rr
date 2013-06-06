@@ -203,6 +203,7 @@ static void setup_buffer() {
 	int fd = syscall(SYS_open,filename, O_CREAT | O_RDWR, 0666); /* O_TRUNC here is bad */
 	assert(fd > 0 && errno == 0);
 	int retval;
+	(void)retval;
 	retval = syscall(SYS_ftruncate,fd,WRAP_SYSCALLS_CACHE_SIZE);
 	assert(retval == 0 && errno == 0);
 	buffer = (void*)syscall(SYS_mmap2, NULL, WRAP_SYSCALLS_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
@@ -595,19 +596,19 @@ int shutdown_(int socket, int how) {
 }
 
 
-#define _stat(call,file,buf) 						\
-_syscall_pre( buf ? sizeof(struct stat) : 0 )		\
-struct stat * buf2; 								\
-if (buf) {											\
-	buf2 = ptr;										\
-	record_size_in_bytes += sizeof(struct stat); 	\
-	ptr += sizeof(struct stat); 					\
-}													\
-_syscall2(call,file,buf2,ret)						\
-if (ret == 0) {										\
-	memcpy(buf,buf2,ret);							\
-}													\
-_syscall_post(call)
+#define _stat(call,file,buf)				\
+	_syscall_pre( buf ? sizeof(struct stat) : 0 )			\
+	struct stat* buf2 = NULL;					\
+	if (buf) {							\
+		buf2 = ptr;						\
+		record_size_in_bytes += sizeof(struct stat);		\
+		ptr += sizeof(struct stat);				\
+	}								\
+	_syscall2(call,file,buf2,ret)					\
+	if (ret == 0) {							\
+		memcpy(buf,buf2,ret);					\
+	}								\
+	_syscall_post(call)
 
 /* TODO: the stat API can block, and we need to handle that better. */
 
@@ -632,10 +633,10 @@ ssize_t recvmsg_(int sockfd, struct msghdr *msg, int flags) {
 					    + (msg->msg_control ? msg->msg_controllen : 0) )
 					    : 0)
 	_copy_socketcall_args(sockfd,msg,flags, 0, 0, 0)
-	struct msghdr *msg2 = NULL;
-	struct iovec  *msg_iov2;        /* scatter/gather array */
-	void		  *msg_iov_base2;
-    void          *msg_control2;    /* ancillary data, see below */
+	struct msghdr* msg2 = NULL;
+	struct iovec* msg_iov2 = NULL; /* scatter/gather array */
+	void* msg_iov_base2;
+	void* msg_control2 = NULL; /* ancillary data, see below */
 	if (msg) {
 		record_size_in_bytes += sizeof(struct msghdr);
 		msg2 = ptr;

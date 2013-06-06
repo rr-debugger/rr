@@ -68,8 +68,11 @@ uint64_t read_insts(struct hpc_context *counters);
 		sys_exit(); \
 	}
 
-#define READ_COUNTER(fd,tmp,size) \
+#define READ_COUNTER(fd,tmp,size)		 \
+	do {					 \
 		ssize_t ret = read(fd,tmp,size); \
-		assert(ret == size);
+		(void)ret;			 \
+		assert(ret == size);		 \
+	} while(0)
 
 #endif /* COUNTERS_H_ */

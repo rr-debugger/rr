@@ -346,6 +346,7 @@ void* read_child_data_checked(struct context *ctx, size_t size, void* addr, ssiz
 
 void read_child_usr(struct context *ctx, void *dest, void *src, size_t size) {
 	ssize_t bytes_read = pread(ctx->child_mem_fd, dest, size, PTR_TO_OFF_T(src));
+	(void)bytes_read;
 	assert(bytes_read == size);
 }
 

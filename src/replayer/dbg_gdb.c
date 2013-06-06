@@ -71,7 +71,7 @@ int dbg_is_resume_request(const struct dbg_request* req)
 	}
 }
 
-static int request_needs_immediate_response(const struct dbg_request* req)
+inline static int request_needs_immediate_response(const struct dbg_request* req)
 {
 	switch (req->type) {
 	case DREQ_NONE:
