@@ -570,15 +570,24 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(ctx, &step, &req)) {
-		assert(SIGTRAP == ctx->child_sig && "Unknown trap");
+		struct user_regs_struct regs;
 
 		/* Currently we only understand software breakpoints
-		 * and successful stepi's.  The response in both cases
-		 * is the same, so just make sure we saw an action we
-		 * were expecting.  */
-		assert(eip_is_breakpoint((void*)read_child_eip(ctx->child_tid))
-		       || (DREQ_STEP == req.type
-			   && req.target == get_threadid(ctx)));
+		 * and successful stepi's. */
+		assert(SIGTRAP == ctx->child_sig && "Unknown trap");
+
+		read_child_registers(ctx->child_tid, &regs);
+		if (eip_is_breakpoint((void*)regs.eip)) {
+			/* SW breakpoint: $ip is just past the
+			 * breakpoint instruction.  Move $ip back
+			 * right before it. */
+			regs.eip -= sizeof(int_3_insn);
+			write_child_registers(ctx->child_tid, &regs);
+		} else {
+			/* Successful stepi.  Nothing else to do. */
+			assert(DREQ_STEP == req.type
+			       && req.target == get_threadid(ctx));
+		}
 
 		/* Notify the debugger and process any new requests
 		 * that might have triggered before resuming. */
