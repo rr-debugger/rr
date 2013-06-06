@@ -539,6 +539,9 @@ static int process_packet(struct dbg_context* dbg)
 		payload = (char*)&dbg->inbuf[2];
 		dbg->inbuf[dbg->packetend] = '\0';
 	}
+
+	debug("raw request %c(%s)", request, payload);
+
 	switch(request) {
 	case INTERRUPT_CHAR:
 		debug("gdb requests interrupt");
@@ -736,15 +739,25 @@ void dbg_notify_exit_signal(struct dbg_context* dbg, int sig)
 	consume_request(dbg);
 }
 
+static void send_stop_reply_packet(struct dbg_context* dbg,
+				   dbg_threadid_t thread, int sig)
+{
+	if (sig >= 0) {
+		char buf[64];
+		snprintf(buf, sizeof(buf) - 1, "T%02Xthread:%02X;",
+			 sig, thread);
+		write_packet(dbg, buf);
+	} else {
+		write_packet(dbg, "E01");
+	}
+}
+
 void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
 {
-	char buf[64];
-
 	assert(dbg_is_resume_request(&dbg->req)
 	       || dbg->req.type == DREQ_INTERRUPT);
 
-	snprintf(buf, sizeof(buf) - 1, "T%02Xthread:%02X;", sig, thread);
-	write_packet(dbg, buf);
+	send_stop_reply_packet(dbg, thread, sig);
 
 	consume_request(dbg);
 }
@@ -849,13 +862,12 @@ void dbg_reply_get_regs(struct dbg_context* dbg,
 	consume_request(dbg);
 }
 
-void dbg_reply_get_stop_reason(struct dbg_context* dbg/*, TODO */)
+void dbg_reply_get_stop_reason(struct dbg_context* dbg,
+			       dbg_threadid_t which, int sig)
 {
 	assert(DREQ_GET_STOP_REASON == dbg->req.type);
-	debug("Replying with stop reason TODO");
 
-	/* XXX FIXME TODO */
-	write_packet(dbg, "S00");
+	send_stop_reply_packet(dbg, which, sig);
 
 	consume_request(dbg);
 }
