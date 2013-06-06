@@ -27,7 +27,7 @@ def ok():
     clean_up()
 
 # Internal helpers
-TIMEOUT_SEC = 5
+TIMEOUT_SEC = 20
 gdb = None
 rr = None
 
