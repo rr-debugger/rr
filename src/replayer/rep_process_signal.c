@@ -157,6 +157,8 @@ void rep_process_signal(struct context *ctx, bool validate)
 	case SIGWINCH:
 	case SIGIO:
 	case SIGCHLD:
+	case SIGUSR1:
+	case SIGUSR2:
 	case 33: /* SIGRTMIN + 1 */
 	case 62: /* SIGRTMAX - 1 */
 	{

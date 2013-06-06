@@ -1,5 +1,0 @@
-source util.sh
-compile chew_cpu
-record chew_cpu
-debug debug_chew_cpu
-cleanup

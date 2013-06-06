@@ -1,0 +1,6 @@
+source util.sh
+compile chew_cpu
+record chew_cpu
+debug generic_break
+echo "(Test is generic_break of chew_cpu)"
+cleanup

@@ -4,8 +4,8 @@
 
 #define NUM_ITERATIONS (1 << 30)
 
-void halfway_done() {
-	int break_here = 0;
+static void breakpoint() {
+	int break_here = 1;
 }
 
 int spin() {
@@ -19,7 +19,7 @@ int spin() {
 		dummy += i % (1 << 20);
 		dummy += i % (79 * (1 << 20));
 		if (i == NUM_ITERATIONS / 2) {
-			halfway_done();
+			breakpoint();
 		}
 	}
 	return dummy;
