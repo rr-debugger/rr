@@ -20,6 +20,7 @@
 #include "dbg.h"
 #include "ipc.h"
 #include "../recorder/rec_sched.h"
+#include "../replayer/replayer.h" /* for emergency_debug() */
 #include "trace.h"
 #include "util.h"
 
@@ -275,7 +276,10 @@ void goto_next_event(struct context *ctx)
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
-	assert(ctx->child_sig != SIGTRAP);
+	if (ctx->child_sig == SIGTRAP) {
+		log_err("Caught unexpected SIGTRAP while going to next event");
+		emergency_debug(ctx);
+	}
 	ctx->event = read_child_orig_eax(ctx->child_tid);
 }
 

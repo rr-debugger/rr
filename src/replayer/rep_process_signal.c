@@ -142,7 +142,6 @@ static void compensate_rbc_count(struct context *ctx, int sig)
 void rep_process_signal(struct context *ctx, bool validate)
 {
 	struct trace_frame* trace = &(ctx->trace);
-	int tid = ctx->child_tid;
 	int sig = -trace->stop_reason;
 
 	/* if the there is still a signal pending here, two signals in a row must be delivered?\n */
@@ -151,37 +150,6 @@ void rep_process_signal(struct context *ctx, bool validate)
 	debug("%d: handling signal %d -- time: %d",tid,sig,trace->thread_time);
 
 	switch (sig) {
-
-	/* set the eax and edx register to the recorded values */
-	case -SIG_SEGV_RDTSC:
-	{
-		struct user_regs_struct regs;
-		int size;
-
-		/* goto the event */
-		goto_next_event(ctx);
-
-		rep_child_buffer0(ctx); /* Set the wrapper record buffer size to 0 (if needed) */
-
-		/* ake sure we are there */
-		assert(WSTOPSIG(ctx->status) == SIGSEGV);
-
-		char* inst = get_inst(tid, 0, &size);
-		assert(strncmp(inst,"rdtsc",5) == 0);
-		read_child_registers(tid, &regs);
-		regs.eax = trace->recorded_regs.eax;
-		regs.edx = trace->recorded_regs.edx;
-		regs.eip += size;
-		write_child_registers(tid, &regs);
-		sys_free((void**) &inst);
-
-		if (validate == TRUE)
-			compare_register_files("rdtsc now", &regs, "rec", &ctx->trace.recorded_regs, 1, 1);
-
-		/* this signal should not be recognized by the application */
-		ctx->child_sig = 0;
-		break;
-	}
 
 	case -USR_SCHED:
 		assert(trace->insts > 0);

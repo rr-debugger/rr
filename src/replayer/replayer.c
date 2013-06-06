@@ -479,6 +479,64 @@ static int exit_syscall(struct context* ctx,
 }
 
 /**
+ * Advance to the delivery of the sychronous signal |sig| and update
+ * registers to what was recorded.
+ */
+static int emulate_synchronous_signal(struct context* ctx, int sig, int stepi)
+{
+	pid_t tid = ctx->child_tid;
+	struct trace_frame* trace = &ctx->trace;
+
+	assert(ctx->replay_sig == 0);
+
+	if (stepi) {
+		sys_ptrace_singlestep(tid, ctx->replay_sig);
+	} else {
+		sys_ptrace_syscall_sig(tid, ctx->replay_sig);
+	}
+	sys_waitpid(tid, &ctx->status);
+
+	ctx->child_sig = signal_pending(ctx->status);
+	if (SIGTRAP == ctx->child_sig) {
+		return 1;
+	} else if (ctx->child_sig != sig) {
+		log_err("Replay got unrecorded signal %d (expecting %d)",
+			ctx->child_sig, sig);
+		emergency_debug(ctx);
+		return 1;		/* not reached */
+	}
+
+	/* XXX why is this here? */
+	rep_child_buffer0(ctx);
+
+	/* XXX hack: rdtsc only sets eax and edx (return values),
+	 * while the other signals write all registers using the next
+	 * trace line.  Should unify this ... */
+	if (SIG_SEGV_RDTSC == trace->stop_reason) {
+		struct user_regs_struct regs;
+
+		assert(SIGSEGV == ctx->child_sig);
+
+		read_child_registers(tid, &regs);
+		regs.eax = trace->recorded_regs.eax;
+		regs.edx = trace->recorded_regs.edx;
+		regs.eip += 2; /* sizeof(rdtsc) */
+		write_child_registers(tid, &regs);
+
+		if (validate == TRUE) {
+			compare_register_files(
+				"rep rdtsc", &regs,
+				"rec", &ctx->trace.recorded_regs, 1, 1);
+		}
+	} else {
+		fatal("Unhandled synchronous signal %d", sig);
+	}
+
+	ctx->child_sig = 0;
+	return 0;
+}
+
+/**
  * Try to execute |step|, adjusting for |req| if needed.  Return 0 if
  * |step| was made, or nonzero if there was a trap or |step| needs
  * more work.
@@ -496,6 +554,9 @@ static int try_one_trace_step(struct context* ctx,
 		return enter_syscall(ctx, step, stepi);
 	case TSTEP_EXIT_SYSCALL:
 		return exit_syscall(ctx, step, stepi);
+	case TSTEP_SYNCHRONOUS_SIGNAL:
+		return emulate_synchronous_signal(ctx,
+						  step->params.signo, stepi);
 	default:
 		fatal("Unhandled step type %d", step->action);
 		return 0;
@@ -550,6 +611,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 
 		/* TODO */
 		step.action = TSTEP_RETIRE;
+	} else if (ctx->trace.stop_reason == SIG_SEGV_RDTSC) {
+		step.action = TSTEP_SYNCHRONOUS_SIGNAL;
+		step.params.signo = SIGSEGV;
 	} else if (ctx->trace.stop_reason < 0) {
 		/* stop reason is a signal - use HPC */
 		rep_process_signal(ctx, validate);
@@ -588,6 +652,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 			assert(DREQ_STEP == req.type
 			       && req.target == get_threadid(ctx));
 		}
+		/* Don't restart with SIGTRAP anywhere. */
+		ctx->child_sig = 0;
 
 		/* Notify the debugger and process any new requests
 		 * that might have triggered before resuming. */
