@@ -24,6 +24,20 @@
 
 #define INTERRUPT_CHAR '\x03'
 
+/* When debugging an "expect" test failure, it's often useful to see
+ * full debug logging, but unfortunately that scrambles the brains of
+ * pexpect's O(n^2) main loop.  So define this macro to redirect the
+ * verbose stuff and avoid degenerate pexpect behavior. */
+#ifdef REDIRECT_DEBUGLOG
+# undef debug
+# define debug(M, ...)							\
+	do {								\
+		fprintf(out, "DEBUG %s:%d: " M "\n",			\
+			__FILE__, __LINE__, ##__VA_ARGS__);		\
+	} while(0)
+static FILE* out;
+#endif
+
 /**
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
@@ -79,6 +93,10 @@ struct dbg_context* dbg_await_client_connection(const char* address, short port)
 	int ret;
 	socklen_t len;
 	int flags;
+
+#ifdef REDIRECT_DEBUGLOG
+	out = fopen("/tmp/rr.debug.log", "w");
+#endif
 
 	dbg = sys_malloc_zero(sizeof(*dbg));
 	dbg->insize = sizeof(dbg->inbuf);
@@ -494,7 +512,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			dbg->req.type = DREQ_STEP;
 			if (args) {
 				dbg->req.target = parse_threadid(args, &args);
-				assert('\0' == *args);
+				assert('\0' == *args || !strcmp(args, ";c"));
 			} else {
 				dbg->req.target = dbg->resume_thread;
 			}

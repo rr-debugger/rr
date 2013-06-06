@@ -3,7 +3,6 @@ from rrutil import *
 send_gdb('b C\n')
 expect_gdb('Breakpoint 1')
 
-expect_gdb(r'\(gdb\)')
 send_gdb('c\n')
 
 expect_rr('calling C')
