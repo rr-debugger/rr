@@ -40,10 +40,9 @@
 
 #include <perfmon/pfmlib_perf_event.h>
 
-#define SAMPLE_SIZE 		10
-#define NUM_SAMPLE_PAGES 	1
 /* sigh */
-#define MAX_NUM_BREAKPOINTS     128
+#define MAX_NUM_BREAKPOINTS 128
+#define SKID_SIZE 55
 
 static const struct dbg_request continue_all_tasks = {
 	.type = DREQ_CONTINUE,
@@ -481,8 +480,35 @@ static int exit_syscall(struct context* ctx,
 }
 
 /**
+ * Advance |ctx| to the next signal or trap.  If |stepi| is |STEPI|,
+ * then execution resumes by single-stepping.  Otherwise it continues
+ * normally.  The delivered signal is recorded in |ctx->child_sig|.
+ */
+enum { DONT_STEPI = 0, STEPI };
+static void continue_or_step(struct context* ctx, int stepi)
+{
+	pid_t tid = ctx->child_tid;
+
+	assert(ctx->replay_sig == 0);
+
+	if (stepi) {
+		sys_ptrace_singlestep(tid, ctx->replay_sig);
+	} else {
+		sys_ptrace_cont(tid);
+	}
+	sys_waitpid(tid, &ctx->status);
+
+	ctx->child_sig = signal_pending(ctx->status);
+	if (0 == ctx->child_sig) {
+		log_err("Expecting tracee signal or trap, but didn't get one.");
+		emergency_debug(ctx);
+	}
+}
+
+/**
  * Advance to the delivery of the sychronous signal |sig| and update
- * registers to what was recorded.
+ * registers to what was recorded.  Return 0 if successful or 1 if an
+ * unhandled interrupt occurred.
  */
 static int emulate_synchronous_signal(struct context* ctx, int sig, int stepi)
 {
@@ -491,14 +517,7 @@ static int emulate_synchronous_signal(struct context* ctx, int sig, int stepi)
 
 	assert(ctx->replay_sig == 0);
 
-	if (stepi) {
-		sys_ptrace_singlestep(tid, ctx->replay_sig);
-	} else {
-		sys_ptrace_syscall_sig(tid, ctx->replay_sig);
-	}
-	sys_waitpid(tid, &ctx->status);
-
-	ctx->child_sig = signal_pending(ctx->status);
+	continue_or_step(ctx, stepi);
 	if (SIGTRAP == ctx->child_sig) {
 		return 1;
 	} else if (ctx->child_sig != sig) {
@@ -539,6 +558,117 @@ static int emulate_synchronous_signal(struct context* ctx, int sig, int stepi)
 }
 
 /**
+ * Run execution forwards for |ctx| until |ctx->trace.rbc| is reached,
+ * and the $ip reaches the recorded $ip.  Return 0 if successful or 1
+ * if an unhandled interrupt occurred.
+ */
+static int advance_to(struct context* ctx, uint64_t rcb,
+		      const struct user_regs_struct* regs, int stepi)
+{
+	pid_t tid = ctx->child_tid;
+	uint64_t rcb_now;
+
+	assert(ctx->replay_sig == 0);
+	assert(ctx->hpc->rbc.fd > 0);
+
+	/* Step 1: advance to the target rcb (minus a slack region) as
+	 * quickly as possible by programming the hpc. */
+	rcb_now = read_rbc(ctx->hpc);
+
+	debug("Advancing to rcb=%llu, ip=0x%X", rcb, regs->eax);
+
+	/* XXX should we only do this if (rcb > 10000)? */
+	while (rcb_now < rcb - SKID_SIZE) {
+		reset_hpc(ctx, rcb - rcb_now - SKID_SIZE);
+
+		continue_or_step(ctx, stepi);
+		if (SIGTRAP == ctx->child_sig) {
+			return 1;
+		} else if (ctx->child_sig != SIGIO) {
+			log_err("Replay got unrecorded signal %d",
+				ctx->child_sig);
+			emergency_debug(ctx);
+			return 1;		/* not reached */
+		}
+
+		if (fcntl(ctx->hpc->rbc.fd, F_GETOWN) == tid) {
+			/* this signal should not be recognized by the
+			 * application */
+			ctx->child_sig = 0;
+		} else {
+			fatal("Scheduled task %d doesn't own hpc", tid);
+		}
+
+		rcb_now = read_rbc(ctx->hpc);
+		ctx->child_sig = 0;
+	}
+
+	if (rcb_now > rcb) {
+		fatal("Replay diverged: overshot target rcb (target %llu, reached %llu",
+		      rcb, rcb_now);
+	}
+
+	/* Step 2: Slowly single-step our way to the target rcb.
+	 *
+	 * This is apparently needed because hpc interrupts can
+	 * overshoot. */
+	while (rcb_now < rcb) {
+		/* We always single-step here, so we have to check if
+		 * the debugger was requesting single-stepping to know
+		 * if the SIGTRAP was for us. */
+		continue_or_step(ctx, STEPI);
+		if (SIGTRAP == ctx->child_sig && stepi) {
+			return 1;
+		} else if (SIGTRAP != ctx->child_sig) {
+			log_err("Replay got unrecorded signal %d",
+				ctx->child_sig);
+			emergency_debug(ctx);
+			return 1;		/* not reached */
+		}
+		ctx->child_sig = 0;
+
+		rcb_now = read_rbc(ctx->hpc);
+	}
+
+	/* Step 3: Slowly single-step our way to the target $ip.
+	 *
+	 * What we really want to do is set a retired-instruction
+	 * interrupt and do away with all this cruft. */
+	while (1) {
+		struct user_regs_struct cur_regs;
+
+		if (rcb_now > rcb) {
+			fatal("Replay diverged: overshot target $ip");
+		}
+
+		read_child_registers(ctx->child_tid, &cur_regs);
+		if (0 == compare_register_files("rep interrupt", &cur_regs,
+						"rec", regs, 0, 0)) {
+			break;
+		}
+
+		continue_or_step(ctx, STEPI);
+		if (SIGTRAP == ctx->child_sig && stepi) {
+			return 1;
+		} else if (SIGTRAP != ctx->child_sig) {
+			log_err("Replay got unrecorded signal %d",
+				ctx->child_sig);
+			emergency_debug(ctx);
+			return 1;		/* not reached */
+		}
+		ctx->child_sig = 0;
+
+		rcb_now = read_rbc(ctx->hpc);
+	}
+
+	/* XXX why is this here */
+	rep_child_buffer0(ctx);
+
+	stop_hpc(ctx);
+	return 0;
+}
+
+/**
  * Try to execute |step|, adjusting for |req| if needed.  Return 0 if
  * |step| was made, or nonzero if there was a trap or |step| needs
  * more work.
@@ -559,6 +689,9 @@ static int try_one_trace_step(struct context* ctx,
 	case TSTEP_SYNCHRONOUS_SIGNAL:
 		return emulate_synchronous_signal(ctx,
 						  step->params.signo, stepi);
+	case TSTEP_PROGRAM_INTERRUPT:
+		return advance_to(ctx, step->params.target.rcb,
+				  step->params.target.regs, stepi);
 	default:
 		fatal("Unhandled step type %d", step->action);
 		return 0;
@@ -593,7 +726,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	/* Ask the trace-interpretation code what to do next in order
 	 * to retire the current frame. */
 	memset(&step, 0, sizeof(step));
-	if (ctx->trace.stop_reason == USR_INIT_SCRATCH_MEM) {
+
+	switch (ctx->trace.stop_reason) {
+	case USR_INIT_SCRATCH_MEM: {
 		/* for checksumming: make a note that this area is
 		 * scratch and need not be validated. */
 		struct mmapped_file file;
@@ -601,34 +736,43 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		replay_init_scratch_memory(ctx, &file);
 		add_scratch((void*)ctx->trace.recorded_regs.eax,
 			    file.end - file.start);
-
-		/* TODO */
 		step.action = TSTEP_RETIRE;
-	} else if (ctx->trace.stop_reason == USR_EXIT) {
+		break;
+	}
+	case USR_EXIT:
 		rep_sched_deregister_thread(&ctx);
 		/* Early-return because |ctx| is gone now. */
 		return;
-	} else if (ctx->trace.stop_reason == USR_FLUSH) {
+	case USR_FLUSH:
 		rep_process_flush(ctx);
 
 		/* TODO */
 		step.action = TSTEP_RETIRE;
-	} else if (ctx->trace.stop_reason == SIG_SEGV_RDTSC) {
+		break;
+	case USR_SCHED:
+		step.action = TSTEP_PROGRAM_INTERRUPT;
+		step.params.target.rcb = ctx->trace.rbc;
+		step.params.target.regs = &ctx->trace.recorded_regs;
+		break;
+	case SIG_SEGV_RDTSC:
 		step.action = TSTEP_SYNCHRONOUS_SIGNAL;
 		step.params.signo = SIGSEGV;
-	} else if (ctx->trace.stop_reason < 0) {
-		/* stop reason is a signal - use HPC */
-		rep_process_signal(ctx, validate);
+		break;
+	default:
+		if (ctx->trace.stop_reason < 0) {
+			/* stop reason is a signal - use HPC */
+			rep_process_signal(ctx, validate);
 
-		/* TODO */
-		step.action = TSTEP_RETIRE;
-	} else {
-		/* XXX not so pretty ... */
-		validate |= (ctx->trace.state == STATE_SYSCALL_EXIT
-			     && ctx->trace.stop_reason == SYS_execve);
-		/* stop reason is a system call - can be done with
-		 * ptrace */
-		rep_process_syscall(ctx, rr_flags->redirect, &step);
+			/* TODO */
+			step.action = TSTEP_RETIRE;
+		} else {
+			/* XXX not so pretty ... */
+			validate |= (ctx->trace.state == STATE_SYSCALL_EXIT
+				     && ctx->trace.stop_reason == SYS_execve);
+			/* stop reason is a system call - can be done
+			 * with ptrace */
+			rep_process_syscall(ctx, rr_flags->redirect, &step);
+		}
 	}
 
 	/* XXX this pattern may not work ... it's simple so let's try

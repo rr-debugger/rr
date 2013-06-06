@@ -151,9 +151,6 @@ void rep_process_signal(struct context *ctx, bool validate)
 
 	switch (sig) {
 
-	case -USR_SCHED:
-		assert(trace->insts > 0);
-		/* fall through */
 	case SIGTERM:
 	case SIGALRM:
 	case SIGPIPE: // TODO
