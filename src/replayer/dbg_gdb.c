@@ -368,11 +368,9 @@ static int query(struct dbg_context* dbg, char* payload)
 	}
 	if (!strcmp(name, "Attached")) {
 		debug("gdb asks if this is a new or existing process");
-		/* Tell gdb we created a new process on its behalf.
-		 * We could go either way, but there's not much point
-		 * in continuing replay after gdb detaches, so this
-		 * seems to make the most sense. */
-		write_packet(dbg, "0");
+		/* Tell gdb this is an existing process; it might be
+		 * (see emergency_debug()). */
+		write_packet(dbg, "1");
 		return 0;
 	}
 	if (!strcmp(name, "fThreadInfo")) {
