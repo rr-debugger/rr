@@ -1,0 +1,6 @@
+source util.sh
+compile rdtsc
+record rdtsc
+debug generic_break
+echo "(Test is generic_break of rdtsc)"
+cleanup
