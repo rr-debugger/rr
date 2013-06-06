@@ -43,9 +43,8 @@ struct rep_trace_step {
 		 * |params.signo|. */
 		TSTEP_SYNCHRONOUS_SIGNAL,
 
-		/* Advance until |params.interrupt.target_rcb| have
-		 * been retired and then |params.interrupt.target_ip|
-		 * is reached. */
+		/* Advance until |params.target.rcb| have been retired
+		 * and then |params.target.ip| is reached. */
 		TSTEP_PROGRAM_INTERRUPT,
 	} action;
 
@@ -68,9 +67,10 @@ struct rep_trace_step {
 		int signo;
 
 		struct {
-			uint64_t target_rcb;
-			void* target_ip;
-		} slice;
+			uint64_t rcb;
+			/* XXX can be just $ip in "production". */
+			const struct user_regs_struct* regs;
+		} target;
 	} params;
 };
 
