@@ -507,7 +507,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 	fprintf(stderr, "\n");
 }
 
-int compare_register_files(char* name1, struct user_regs_struct* reg1, char* name2, struct user_regs_struct* reg2, int print, int stop)
+int compare_register_files(char* name1, const struct user_regs_struct* reg1, char* name2, const struct user_regs_struct* reg2, int print, int stop)
 {
 	int err = 0;
 	if (reg1->eax != reg2->eax) {
