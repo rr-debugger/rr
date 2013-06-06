@@ -193,7 +193,8 @@ static void set_sw_breakpoint(struct context *ctx,
 	bp->overwritten_data = *orig_data_ptr;
 	sys_free((void**)&orig_data_ptr);
 
-	write_child_data(ctx, sizeof(int_3_insn), bp->addr, &int_3_insn);
+	write_child_data_n(ctx->child_tid,
+			   sizeof(int_3_insn), bp->addr, &int_3_insn);
 }
 
 static void remove_sw_breakpoint(struct context *ctx,
@@ -209,8 +210,9 @@ static void remove_sw_breakpoint(struct context *ctx,
 		     req->params.mem.addr);
 		return;
 	}
-	write_child_data(ctx, sizeof(bp->overwritten_data), bp->addr,
-			 &bp->overwritten_data);
+	write_child_data_n(ctx->child_tid,
+			   sizeof(bp->overwritten_data), bp->addr,
+			   &bp->overwritten_data);
 
 	memset(bp, 0, sizeof(*bp));
 }
@@ -284,10 +286,15 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_regs(dbg, &file);
 			continue;
 		}
-		case DREQ_GET_STOP_REASON:
-			/* TODO */
-			dbg_reply_get_stop_reason(dbg);
+		case DREQ_GET_STOP_REASON: {
+			struct context* t =
+				req.target > 0 ?
+				rep_sched_lookup_thread(req.target) : ctx;
+			dbg_reply_get_stop_reason(dbg,
+						  t ? t->rec_tid : -1,
+						  t ? t->child_sig : -1);
 			continue;
+		}
 		case DREQ_GET_THREAD_LIST: {
 			/* TODO */
 			dbg_threadid_t list = get_threadid(ctx);
@@ -387,7 +394,8 @@ static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
 	case SIGTRAP:
 		return 1;
 	default:
-		fatal("Replay got unrecorded signal %d", ctx->child_sig);
+		log_err("Replay got unrecorded signal %d", ctx->child_sig);
+		emergency_debug(ctx);
 	}
 
 	assert(ctx->child_sig == 0);
@@ -628,4 +636,12 @@ void replay(struct flags flags)
 	fflush(stdout);
 
 	dbg_destroy_context(&dbg);
+}
+
+void emergency_debug(struct context* ctx)
+{
+	struct dbg_context* dbg = dbg_await_client_connection("127.0.0.1",
+							      ctx->child_tid);
+	process_debugger_requests(dbg, ctx);
+	fatal("Can't resume execution from invalid state");
 }

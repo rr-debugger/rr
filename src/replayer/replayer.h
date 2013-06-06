@@ -9,6 +9,21 @@
 void replay(struct flags rr_flags);
 
 /**
+ * Open a temporary debugging connection for |ctx| and service
+ * requests until the user quits or requests execution to resume.  Use
+ * this when a target enters an illegal state and can't continue, for
+ * example
+ *
+ *  if (recorded_state != replay_state) {
+ *	 log_err("Bad state ...");
+ *	 emergency_debug(tid);
+ *  }
+ *
+ * This function does not return.
+ */
+void emergency_debug(struct context* ctx);
+
+/**
  * Describes the next step to be taken in order to replay a trace
  * frame.
  */

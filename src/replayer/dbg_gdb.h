@@ -198,7 +198,8 @@ void dbg_reply_get_regs(struct dbg_context* dbg,
 /**
  * Reply to the DREQ_GET_STOP_REASON request.
  */
-void dbg_reply_get_stop_reason(struct dbg_context* dbg/*, TODO */);
+void dbg_reply_get_stop_reason(struct dbg_context* dbg,
+			       dbg_threadid_t which, int sig);
 
 /**
  * |threads| contains the list of live threads, of which there are
