@@ -3,9 +3,10 @@
 #ifndef TRACE_H_
 #define TRACE_H_
 
+#include <signal.h>		/* for _NSIG */
 #include <stdint.h>
-#include <sys/user.h>
 #include <sys/stat.h>
+#include <sys/user.h>
 
 #include "types.h"
 
@@ -14,14 +15,34 @@
 #define STATE_SYSCALL_EXIT		  1
 #define STATE_PRE_MMAP_ACCESS     2
 
-#define SIG_SEGV_MMAP_READ		-126
-#define SIG_SEGV_MMAP_WRITE		-127
-#define SIG_SEGV_RDTSC 			-128
-#define USR_EXIT				-129
-#define USR_SCHED				-130
-#define USR_NEW_RAWDATA_FILE	-131
-#define USR_INIT_SCRATCH_MEM	-132
-#define USR_FLUSH				-133
+enum {
+	/* "Magic" (rr-generated) pseudo-signals can't be represented
+	 * with a byte, as "real" signals can be.  The last is -0x100
+	 * (-256) and ascend to there. */
+	SIG_SEGV_MMAP_READ = -256,
+	LAST_RR_PSEUDOSIGNAL = SIG_SEGV_MMAP_READ,
+	SIG_SEGV_MMAP_WRITE = -258,
+	SIG_SEGV_RDTSC = -259,
+	USR_EXIT = -260,
+	USR_SCHED = -261,
+	USR_NEW_RAWDATA_FILE = -262,
+	USR_INIT_SCRATCH_MEM = -263,
+	USR_FLUSH = -264,
+	FIRST_RR_PSEUDOSIGNAL = USR_FLUSH,
+
+	/* Deterministic signals are recorded as -(signum | 0x80).  So
+	 * these can occupy the range [-193, -128) or so. */
+	DET_SIGNAL_BIT = 0x80,
+	FIRST_DET_SIGNAL = -(_NSIG | DET_SIGNAL_BIT),
+	LAST_DET_SIGNAL = -(1 | DET_SIGNAL_BIT),
+
+	/* Asynchronously-delivered (nondeterministic) signals are
+	 * recorded as -signum.  They occupy the range [-65, 0) or
+	 * so. */
+	FIRST_ASYNC_SIGNAL = -_NSIG,
+	LAST_ASYNC_SIGNAL = -1,
+};
+
 
 // Notice: these are defined in errno.h if _kernel_ is defined.
 #define ERESTARTNOINTR 			-513
