@@ -334,10 +334,8 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 /**
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
- *
- * XXX should this be a common helper?
  */
-static void validate_args(int syscall, int state, struct context* ctx)
+static void validate_args(int event, int state, struct context* ctx)
 {
 	struct user_regs_struct cur_reg;
 
@@ -347,10 +345,10 @@ static void validate_args(int syscall, int state, struct context* ctx)
 		return;
 	}
 	read_child_registers(ctx->child_tid, &cur_reg);
-	if (compare_register_files("syscall now", &cur_reg, "recorded",
+	if (compare_register_files("replaying", &cur_reg, "recorded",
 				   &ctx->trace.recorded_regs, 1, 0)) {
-		fatal("[syscall number %d, state %d, trace file line %d]\n",
-		      syscall, state, get_trace_file_lines_counter());
+		fatal("[event %d, state %d, trace file line %d]\n",
+		      event, state, get_trace_file_lines_counter());
 	}
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }
@@ -506,16 +504,26 @@ static void continue_or_step(struct context* ctx, int stepi)
 }
 
 /**
- * Advance to the delivery of the sychronous signal |sig| and update
- * registers to what was recorded.  Return 0 if successful or 1 if an
- * unhandled interrupt occurred.
+ * Advance to the delivery of the deterministic signal |sig| and
+ * update registers to what was recorded.  Return 0 if successful or 1
+ * if an unhandled interrupt occurred.
  */
-static int emulate_synchronous_signal(struct context* ctx, int sig, int stepi)
+static int emulate_deterministic_signal(struct context* ctx,
+					int sig, int stepi)
 {
 	pid_t tid = ctx->child_tid;
 	struct trace_frame* trace = &ctx->trace;
+	int is_rdtsc = (SIG_SEGV_RDTSC == trace->stop_reason);
 
 	assert(ctx->replay_sig == 0);
+
+	/* XXX old code had:
+	 *
+		// synchronous signal (signal received in a system call)
+		if (trace->rbc == 0 && trace->page_faults == 0) {
+	 *
+	 * is this still a condition we need to check before
+	 * PTRACE_CONT? */
 
 	continue_or_step(ctx, stepi);
 	if (SIGTRAP == ctx->child_sig) {
@@ -527,33 +535,28 @@ static int emulate_synchronous_signal(struct context* ctx, int sig, int stepi)
 		return 1;		/* not reached */
 	}
 
+	/* We are now at the exact point in the child where the signal
+	 * was recorded, emulate it using the next trace line (records
+	 * the state at sighandler entry).  We don't do this for
+	 * rdtsc, because the program can't handle the signal; it's
+	 * not delivered during recording. */
+	if (!is_rdtsc) {
+		ctx = rep_sched_get_thread();
+	}
+	/* Set the signal-hander frame data, if there was one.  If
+	 * there was, update the registers for the signal-handler too.
+	 * (Or if this was rdtsc.) */
+	if (is_rdtsc ||	set_child_data(ctx)) {
+		write_child_main_registers(tid, &trace->recorded_regs);
+	}
+	ctx->replay_sig = 0;
+	ctx->child_sig = 0;
+
+	validate_args(ctx->trace.stop_reason, -1, ctx);
+
 	/* XXX why is this here? */
 	rep_child_buffer0(ctx);
 
-	/* XXX hack: rdtsc only sets eax and edx (return values),
-	 * while the other signals write all registers using the next
-	 * trace line.  Should unify this ... */
-	if (SIG_SEGV_RDTSC == trace->stop_reason) {
-		struct user_regs_struct regs;
-
-		assert(SIGSEGV == ctx->child_sig);
-
-		read_child_registers(tid, &regs);
-		regs.eax = trace->recorded_regs.eax;
-		regs.edx = trace->recorded_regs.edx;
-		regs.eip += 2/*sizeof(rdtsc)*/;
-		write_child_registers(tid, &regs);
-
-		if (validate) {
-			compare_register_files(
-				"rep rdtsc", &regs,
-				"rec", &ctx->trace.recorded_regs, 1, 1);
-		}
-	} else {
-		fatal("Unhandled synchronous signal %d", sig);
-	}
-
-	ctx->child_sig = 0;
 	return 0;
 }
 
@@ -686,9 +689,9 @@ static int try_one_trace_step(struct context* ctx,
 		return enter_syscall(ctx, step, stepi);
 	case TSTEP_EXIT_SYSCALL:
 		return exit_syscall(ctx, step, stepi);
-	case TSTEP_SYNCHRONOUS_SIGNAL:
-		return emulate_synchronous_signal(ctx,
-						  step->params.signo, stepi);
+	case TSTEP_DETERMINISTIC_SIGNAL:
+		return emulate_deterministic_signal(ctx,
+						    step->params.signo, stepi);
 	case TSTEP_PROGRAM_INTERRUPT:
 		return advance_to(ctx, step->params.target.rcb,
 				  step->params.target.regs, stepi);
@@ -703,6 +706,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
+	int event = ctx->trace.stop_reason;
 
 	/* Advance the trace until we've exec()'d the tracee before
 	 * processing debugger requests.  Otherwise the debugger host
@@ -719,7 +723,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	}
 
 	if (ctx->child_sig != 0) {
-		assert(ctx->trace.stop_reason == -ctx->child_sig);
+		assert(event == -ctx->child_sig
+		       || event == -(ctx->child_sig | DET_SIGNAL_BIT));
 		ctx->child_sig = 0;
 	}
 
@@ -727,7 +732,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	 * to retire the current frame. */
 	memset(&step, 0, sizeof(step));
 
-	switch (ctx->trace.stop_reason) {
+	switch (event) {
 	case USR_INIT_SCRATCH_MEM: {
 		/* for checksumming: make a note that this area is
 		 * scratch and need not be validated. */
@@ -755,11 +760,16 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		step.params.target.regs = &ctx->trace.recorded_regs;
 		break;
 	case SIG_SEGV_RDTSC:
-		step.action = TSTEP_SYNCHRONOUS_SIGNAL;
+		step.action = TSTEP_DETERMINISTIC_SIGNAL;
 		step.params.signo = SIGSEGV;
 		break;
 	default:
-		if (ctx->trace.stop_reason < 0) {
+		/* Pseudosignals are handled above. */
+		assert(event > FIRST_RR_PSEUDOSIGNAL);
+		if (FIRST_DET_SIGNAL <= event && event <= LAST_DET_SIGNAL) {
+			step.action = TSTEP_DETERMINISTIC_SIGNAL;
+			step.params.signo = (-event & ~DET_SIGNAL_BIT);
+		} else if (event < 0) {
 			/* stop reason is a signal - use HPC */
 			rep_process_signal(ctx, validate);
 

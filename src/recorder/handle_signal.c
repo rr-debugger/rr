@@ -1,13 +1,14 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "handle_signal.h"
+
 #include <assert.h>
+#include <fcntl.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
-#include <fcntl.h>
-
 #include <sys/mman.h>
 #include <sys/user.h>
 
@@ -28,7 +29,11 @@ static __inline__ unsigned long long rdtsc(void)
 	return ((unsigned long long) lo) | (((unsigned long long) hi) << 32);
 }
 
-static int handle_sigsegv(struct context *ctx)
+/**
+ * Return nonzero if |ctx| was stopped because of a SIGSEGV resulting
+ * from a rdtsc and |ctx| was updated appropriately, zero otherwise.
+ */
+static int try_handle_rdtsc(struct context *ctx)
 {
 	int retval = 0;
 	pid_t tid = ctx->child_tid;
@@ -67,7 +72,12 @@ static int handle_sigsegv(struct context *ctx)
 	return retval;
 }
 
-static int handle_mmap_sigsegv(struct context *ctx)
+/**
+ * Return nonzero if |ctx| was stopped because of a SIGSEGV resulting
+ * from access of a shared mmap and |ctx| was updated appropriately,
+ * zero otherwise.
+ */
+static int try_handle_shared_mmap_access(struct context *ctx)
 {
 	pid_t tid = ctx->child_tid;
 	int sig = signal_pending(ctx->status);
@@ -117,8 +127,52 @@ static int handle_mmap_sigsegv(struct context *ctx)
 	return ctx->event;
 }
 
+static int is_deterministic_signal(const siginfo_t* si)
+{
+	switch (si->si_signo) {
+		/* These signals may be delivered deterministically;
+		 * we'll check for sure below. */
+	case SIGILL:
+	case SIGTRAP:
+	case SIGBUS:
+	case SIGFPE:
+	case SIGSEGV:
+	case SIGSTKFLT:
+		/* As bits/siginfo.h documents,
+		 *
+		 *   Values for `si_code'.  Positive values are
+		 *   reserved for kernel-generated signals.
+		 *
+		 * So if the signal is maybe-synchronous, and the
+		 * kernel delivered it, then it must have been
+		 * delivered deterministically. */
+		return si->si_code > 0;
+	default:
+		/* All other signals can never be delivered
+		 * deterministically (to the approximation required by
+		 * rr). */
+		return 0;
+	}
+
+}
+
 static void record_signal(int sig, struct context* ctx)
 {
+	siginfo_t si;
+
+	if (sig <= 0) {
+		return;
+	}
+
+	ctx->child_sig = sig;
+
+	sys_ptrace_getsiginfo(ctx->child_tid, &si);
+	if (is_deterministic_signal(&si)) {
+		ctx->event = -(sig | DET_SIGNAL_BIT);
+	} else {
+		ctx->event = -sig;
+	}
+
 	record_event(ctx, STATE_SYSCALL_ENTRY);
 	reset_hpc(ctx, MAX_RECORD_INTERVAL); // TODO: the hpc gets reset in record event.
 	assert(read_insts(ctx->hpc) == 0);
@@ -133,39 +187,12 @@ static void record_signal(int sig, struct context* ctx)
 		frame_size = 1024; // TODO: find out actual struct sigframe size. 128 seems to be too small
 	struct user_regs_struct regs;
 	read_child_registers(ctx->child_tid, &regs);
-	/*
-	// this is an attempt to figure out if a signal handler exists and
-	// act according to it, but it does not fully function.
-	struct sigaction* action = get_sig_handler(ctx->child_tid, sig);
-	struct user_regs_struct regs;
-	size_t frame_size = 0;
-	// only if a signal handler is installed
-	if (action) {
-		assert(!(action->sa_flags & SA_RESETHAND));
-		// enter the sig handler
-		sys_ptrace_singlestep(ctx->child_tid, sig);
-		// wait for the kernel to finish setting up the handler
-		sys_waitpid(ctx->child_tid, &(ctx->status));
-		read_child_registers(ctx->child_tid, &regs);
-		// if a sighandler was installed, we should be at its entry point now
-		assert((void*)regs.eip == action->sa_handler);
-		// record the frame
-		frame_size = 1024;
-	} else {
-		read_child_registers(ctx->child_tid, &regs);
-	}
-	*/
-	record_child_data(ctx, -sig, frame_size, (void*)regs.esp);
+	record_child_data(ctx, ctx->event, frame_size, (void*)regs.esp);
 }
 
 void handle_signal(struct context* ctx)
 {
 	int sig = signal_pending(ctx->status);
-	assert(sig != SIGTRAP);
-
-	if (sig <= 0) {
-		return;
-	}
 
 	debug("handling signal %d", sig);
 
@@ -178,69 +205,33 @@ void handle_signal(struct context* ctx)
 		read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	}
 
+	/* See if this signal occurred because of internal rr usage,
+	 * and update ctx appropriately. */
 	switch (sig) {
-
-	case SIGALRM:
-	case SIGTERM:
-	case SIGPIPE:
-	case SIGWINCH:
-	case SIGCHLD:
-	case SIGUSR1:
-	case SIGUSR2:
-	case 33: /* SIGRTMIN + 1 */
-	case 62: /* SIGRTMAX - 1 */
-	{
-		ctx->event = -sig;
-		ctx->child_sig = sig;
-		record_signal(sig, ctx);
-		break;
-	}
-
-	case SIGSEGV:
-	{
-		int mmap_event = 0;
-		if (handle_sigsegv(ctx)) { // RDTSC
+	case SIGSEGV: {
+		int mmap_event;
+		if (try_handle_rdtsc(ctx)) {
 			ctx->event = SIG_SEGV_RDTSC;
 			ctx->child_sig = 0;
-		} else if ((mmap_event = handle_mmap_sigsegv(ctx)) != 0) { // accessing a shared region
+			return;
+		} else if ((mmap_event = try_handle_shared_mmap_access(ctx))) {
 			ctx->event = mmap_event;
 			ctx->child_sig = 0;
-		} else {
-			ctx->event = -sig;
-			ctx->child_sig = sig;
-			record_signal(sig, ctx);
+			return;
 		}
 		break;
 	}
-
 	case SIGIO:
-	{
-		/* make sure that the signal came from hpc */
 		if (read_rbc(ctx->hpc) >= MAX_RECORD_INTERVAL) {
+			/* HPC interrupt due to exceeding time
+			 * slice. */
 			ctx->event = USR_SCHED;
 			ctx->child_sig = 0;
-
-			/* go to the next retired conditional branch; this position
-			 * is certainly unambigious */
-			/*uint64_t current_rbc = read_rbc_up(ctx->hpc);
-			uint64_t stop_rbc = current_rbc + 1;
-			do {
-				sys_ptrace_singlestep(ctx->child_tid, 0);
-				sys_waitpid(ctx->child_tid, &(ctx->status));
-				current_rbc = read_rbc_up(ctx->hpc);
-			} while (current_rbc < stop_rbc);*/
-
-		} else {
-			ctx->event = -sig;
-			ctx->child_sig = sig;
-			record_signal(sig, ctx);
+			return;
 		}
-		break;
 	}
 
-	default:
-		log_err("signal %d not implemented yet -- bailing out\n", sig);
-		sys_exit();
-		break;
-	}
+	/* This signal was generated by the program or an external
+	 * source, record it normally. */
+	record_signal(sig, ctx);
 }
