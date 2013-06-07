@@ -44,8 +44,10 @@ struct rep_trace_step {
 		TSTEP_DETERMINISTIC_SIGNAL,
 
 		/* Advance until |params.target.rcb| have been retired
-		 * and then |params.target.ip| is reached. */
-		TSTEP_PROGRAM_INTERRUPT,
+		 * and then |params.target.ip| is reached.  Deliver
+		 * |params.target.signo| after that if it's
+		 * nonzero. */
+		TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,
 	} action;
 
 	union {
@@ -70,6 +72,7 @@ struct rep_trace_step {
 			uint64_t rcb;
 			/* XXX can be just $ip in "production". */
 			const struct user_regs_struct* regs;
+			int signo;
 		} target;
 	} params;
 };
