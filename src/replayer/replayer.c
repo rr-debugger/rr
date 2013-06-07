@@ -28,7 +28,6 @@
 #include "dbg_gdb.h"
 #include "rep_sched.h"
 #include "rep_process_event.h"
-#include "rep_process_signal.h"
 
 #include "../share/dbg.h"
 #include "../share/hpc.h"
@@ -503,6 +502,30 @@ static void continue_or_step(struct context* ctx, int stepi)
 	}
 }
 
+static void emulate_signal_delivery(struct context* ctx)
+{
+	pid_t tid = ctx->child_tid;
+	struct trace_frame* trace = &ctx->trace;
+
+	/* We are now at the exact point in the child where the signal
+	 * was recorded, emulate it using the next trace line (records
+	 * the state at sighandler entry).  We don't do this for
+	 * rdtsc, because the program can't handle the signal; it's
+	 * not delivered during recording. */
+	ctx = rep_sched_get_thread();
+
+	/* Set the signal-hander frame data, if there was one.  If
+	 * there was, update the registers for the signal-handler too.
+	 * (Or if this was rdtsc.) */
+	if (set_child_data(ctx)) {
+		write_child_main_registers(tid, &trace->recorded_regs);
+	}
+	ctx->replay_sig = 0;
+	ctx->child_sig = 0;
+
+	validate_args(ctx->trace.stop_reason, -1, ctx);
+}
+
 /**
  * Advance to the delivery of the deterministic signal |sig| and
  * update registers to what was recorded.  Return 0 if successful or 1
@@ -512,8 +535,6 @@ static int emulate_deterministic_signal(struct context* ctx,
 					int sig, int stepi)
 {
 	pid_t tid = ctx->child_tid;
-	struct trace_frame* trace = &ctx->trace;
-	int is_rdtsc = (SIG_SEGV_RDTSC == trace->stop_reason);
 
 	assert(ctx->replay_sig == 0);
 
@@ -535,24 +556,14 @@ static int emulate_deterministic_signal(struct context* ctx,
 		return 1;		/* not reached */
 	}
 
-	/* We are now at the exact point in the child where the signal
-	 * was recorded, emulate it using the next trace line (records
-	 * the state at sighandler entry).  We don't do this for
-	 * rdtsc, because the program can't handle the signal; it's
-	 * not delivered during recording. */
-	if (!is_rdtsc) {
-		ctx = rep_sched_get_thread();
+	if (SIG_SEGV_RDTSC == ctx->trace.stop_reason) {
+		write_child_main_registers(tid, &ctx->trace.recorded_regs);
+		/* We just "delivered" this pseudosignal. */
+		ctx->replay_sig = 0;
+		ctx->child_sig = 0;
+	} else {
+		emulate_signal_delivery(ctx);
 	}
-	/* Set the signal-hander frame data, if there was one.  If
-	 * there was, update the registers for the signal-handler too.
-	 * (Or if this was rdtsc.) */
-	if (is_rdtsc ||	set_child_data(ctx)) {
-		write_child_main_registers(tid, &trace->recorded_regs);
-	}
-	ctx->replay_sig = 0;
-	ctx->child_sig = 0;
-
-	validate_args(ctx->trace.stop_reason, -1, ctx);
 
 	/* XXX why is this here? */
 	rep_child_buffer0(ctx);
@@ -562,11 +573,13 @@ static int emulate_deterministic_signal(struct context* ctx,
 
 /**
  * Run execution forwards for |ctx| until |ctx->trace.rbc| is reached,
- * and the $ip reaches the recorded $ip.  Return 0 if successful or 1
- * if an unhandled interrupt occurred.
+ * and the $ip reaches the recorded $ip.  After that, deliver |sig| if
+ * nonzero.  Return 0 if successful or 1 if an unhandled interrupt
+ * occurred.
  */
-static int advance_to(struct context* ctx, uint64_t rcb,
-		      const struct user_regs_struct* regs, int stepi)
+static int emulate_async_signal(struct context* ctx, uint64_t rcb,
+				const struct user_regs_struct* regs, int sig,
+				int stepi)
 {
 	pid_t tid = ctx->child_tid;
 	uint64_t rcb_now;
@@ -581,7 +594,7 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 	debug("Advancing to rcb=%llu, ip=0x%X", rcb, regs->eax);
 
 	/* XXX should we only do this if (rcb > 10000)? */
-	while (rcb_now < rcb - SKID_SIZE) {
+	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
 		reset_hpc(ctx, rcb - rcb_now - SKID_SIZE);
 
 		continue_or_step(ctx, stepi);
@@ -615,7 +628,7 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 	 *
 	 * This is apparently needed because hpc interrupts can
 	 * overshoot. */
-	while (rcb_now < rcb) {
+	while (rcb > 0 && rcb_now < rcb) {
 		/* We always single-step here, so we have to check if
 		 * the debugger was requesting single-stepping to know
 		 * if the SIGTRAP was for us. */
@@ -633,11 +646,16 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		rcb_now = read_rbc(ctx->hpc);
 	}
 
+	if (rcb_now > rcb) {
+		fatal("Replay diverged: overshot target rcb (target %llu, reached %llu",
+		      rcb, rcb_now);
+	}
+
 	/* Step 3: Slowly single-step our way to the target $ip.
 	 *
 	 * What we really want to do is set a retired-instruction
 	 * interrupt and do away with all this cruft. */
-	while (1) {
+	while (rcb > 0) {
 		struct user_regs_struct cur_regs;
 
 		if (rcb_now > rcb) {
@@ -664,12 +682,17 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		rcb_now = read_rbc(ctx->hpc);
 	}
 
+	if (sig) {
+		emulate_signal_delivery(ctx);
+	}
+
 	/* XXX why is this here */
 	rep_child_buffer0(ctx);
 
 	stop_hpc(ctx);
 	return 0;
 }
+
 
 /**
  * Try to execute |step|, adjusting for |req| if needed.  Return 0 if
@@ -692,9 +715,12 @@ static int try_one_trace_step(struct context* ctx,
 	case TSTEP_DETERMINISTIC_SIGNAL:
 		return emulate_deterministic_signal(ctx,
 						    step->params.signo, stepi);
-	case TSTEP_PROGRAM_INTERRUPT:
-		return advance_to(ctx, step->params.target.rcb,
-				  step->params.target.regs, stepi);
+	case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
+		return emulate_async_signal(ctx,
+					    step->params.target.rcb,
+					    step->params.target.regs,
+					    step->params.target.signo,
+					    stepi);
 	default:
 		fatal("Unhandled step type %d", step->action);
 		return 0;
@@ -755,9 +781,10 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		step.action = TSTEP_RETIRE;
 		break;
 	case USR_SCHED:
-		step.action = TSTEP_PROGRAM_INTERRUPT;
+		step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
 		step.params.target.rcb = ctx->trace.rbc;
 		step.params.target.regs = &ctx->trace.recorded_regs;
+		step.params.target.signo = 0;
 		break;
 	case SIG_SEGV_RDTSC:
 		step.action = TSTEP_DETERMINISTIC_SIGNAL;
@@ -770,17 +797,17 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 			step.action = TSTEP_DETERMINISTIC_SIGNAL;
 			step.params.signo = (-event & ~DET_SIGNAL_BIT);
 		} else if (event < 0) {
-			/* stop reason is a signal - use HPC */
-			rep_process_signal(ctx, validate);
-
-			/* TODO */
-			step.action = TSTEP_RETIRE;
+			assert(FIRST_ASYNC_SIGNAL <= event
+			       && event <= LAST_ASYNC_SIGNAL);
+			step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
+			step.params.target.rcb = ctx->trace.rbc;
+			step.params.target.regs = &ctx->trace.recorded_regs;
+			step.params.target.signo = -event;
 		} else {
+			assert(event > 0);
 			/* XXX not so pretty ... */
 			validate |= (ctx->trace.state == STATE_SYSCALL_EXIT
 				     && ctx->trace.stop_reason == SYS_execve);
-			/* stop reason is a system call - can be done
-			 * with ptrace */
 			rep_process_syscall(ctx, rr_flags->redirect, &step);
 		}
 	}
