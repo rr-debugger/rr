@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
-	puts("running privileged instruction ...");
+	puts("running undefined instruction ...");
 	__asm__ ("ud2");
 	assert("should have terminated!" && 0);
 	return 0;
