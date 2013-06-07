@@ -39,9 +39,9 @@ struct rep_trace_step {
 		TSTEP_ENTER_SYSCALL,
 		TSTEP_EXIT_SYSCALL,
 
-		/* Advance to the synchronous signal
+		/* Advance to the deterministic signal
 		 * |params.signo|. */
-		TSTEP_SYNCHRONOUS_SIGNAL,
+		TSTEP_DETERMINISTIC_SIGNAL,
 
 		/* Advance until |params.target.rcb| have been retired
 		 * and then |params.target.ip| is reached. */

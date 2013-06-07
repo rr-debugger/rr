@@ -3,6 +3,8 @@
 #ifndef __HANDLE_SIGNAL_H__
 #define __HANDLE_SIGNAL_H__
 
+struct context;
+
 void handle_signal(struct context* context);
 
 #endif /* __HANDLE_SIGNAL_H__ */
