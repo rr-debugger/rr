@@ -5,7 +5,7 @@
 #include <unistd.h>
 
 static void sighandler(int sig) {
-printf("caught signal %d, exiting\n", sig);
+	printf("caught signal %d, exiting\n", sig);
 	_exit(0);
 }
 
