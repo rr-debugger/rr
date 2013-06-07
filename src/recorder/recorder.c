@@ -159,7 +159,6 @@ static void cont_syscall_block(struct context *ctx)
 {
 	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
 	sys_waitpid(ctx->child_tid, &ctx->status);
-	assert(ctx->child_sig != SIGTRAP);
 	ctx->child_sig = signal_pending(ctx->status);
 	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;

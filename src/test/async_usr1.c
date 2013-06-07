@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
 		dummy += (dummy + i) % 9735;
 	}
 
-	test_assert("didn't catch segv!" && 0);
+	test_assert("didn't catch usr1!" && 0);
 
 	return 0;
 }
