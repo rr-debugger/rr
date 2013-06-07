@@ -1,0 +1,5 @@
+source util.sh
+compile sigill
+record sigill
+debug signal_stop
+cleanup
