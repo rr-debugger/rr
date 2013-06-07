@@ -30,10 +30,12 @@ void goto_next_event(struct context *ctx);
 
 long sys_ptrace(int request, pid_t pid, void* addr, void* data);
 void sys_ptrace_setup(pid_t pid);
-void sys_ptrace_singlestep(pid_t pid, int sig);
+void sys_ptrace_singlestep(pid_t pid);
+void sys_ptrace_singlestep_sig(pid_t pid, int sig);
 void sys_ptrace_sysemu(pid_t pid);
 void sys_ptrace_sysemu_sig(pid_t pid, int sig);
-void sys_ptrace_sysemu_singlestep(pid_t pid, int sig);
+void sys_ptrace_sysemu_singlestep(pid_t pid);
+void sys_ptrace_sysemu_singlestep_sig(pid_t pid, int sig);
 void sys_ptrace_traceme();
 void sys_ptrace_cont(pid_t pid);
 void sys_ptrace_syscall_sig(pid_t pid, int sig);

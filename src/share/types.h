@@ -81,10 +81,7 @@ struct context {
 	pid_t child_tid;
 	int child_mem_fd;
 	int child_sig;
-	int replay_sig;
 	int status;
-
-
 };
 
 struct mmapped_file {

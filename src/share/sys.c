@@ -214,8 +214,12 @@ void sys_ptrace_sysemu_sig(pid_t pid, int sig)
 	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*)sig);
 }
 
+void sys_ptrace_sysemu_singlestep(pid_t pid)
+{
+	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, 0);
+}
 
-void sys_ptrace_sysemu_singlestep(pid_t pid, int sig)
+void sys_ptrace_sysemu_singlestep_sig(pid_t pid, int sig)
 {
 	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, (void*)sig);
 }
@@ -256,7 +260,12 @@ void sys_ptrace_setup(pid_t pid)
 	}
 }
 
-void sys_ptrace_singlestep(pid_t pid, int sig)
+void sys_ptrace_singlestep(pid_t pid)
+{
+	sys_ptrace(PTRACE_SINGLESTEP, pid, 0, 0);
+}
+
+void sys_ptrace_singlestep_sig(pid_t pid, int sig)
 {
 	sys_ptrace(PTRACE_SINGLESTEP, pid, 0, (void*) sig);
 }

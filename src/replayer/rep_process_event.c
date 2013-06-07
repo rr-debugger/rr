@@ -95,16 +95,7 @@ static void validate_args(int syscall, int state, struct context* ctx)
  */
 static void goto_next_syscall_emu(struct context *ctx)
 {
-	/* TODO: signals are now completely emulated, so replay_sig should
-	 *		 actually be 0 at all times
-	 *assert(ctx->replay_sig == 0);
-	 */
-	if (ctx->replay_sig != 0) {
-		debug("EMU sends sig: %d\n", ctx->replay_sig);
-	}
-
-	sys_ptrace_sysemu_sig(ctx->child_tid, ctx->replay_sig);
-	ctx->replay_sig = 0; /* delivered */
+	sys_ptrace_sysemu(ctx->child_tid);
 	sys_waitpid(ctx->child_tid, &(ctx->status));
 
 	int sig = signal_pending(ctx->status);
@@ -142,7 +133,6 @@ static void goto_next_syscall_emu(struct context *ctx)
 		      rec_syscall, current_syscall, ctx->trace.global_time,
 		      GET_PTRACE_EVENT(ctx->status));
 	}
-	ctx->replay_sig = 0; /* TODO: obselete */
 	ctx->child_sig = 0;
 
 	/* We are now at the entry point to a syscall, set the wrapper
@@ -155,15 +145,12 @@ static void goto_next_syscall_emu(struct context *ctx)
  */
 static void finish_syscall_emu(struct context *ctx)
 {
-	assert(ctx->replay_sig == 0);
-
 	struct user_regs_struct regs;
 	read_child_registers(ctx->child_tid, &regs);
-	sys_ptrace_sysemu_singlestep(ctx->child_tid, ctx->replay_sig);
+	sys_ptrace_sysemu_singlestep(ctx->child_tid);
 	sys_waitpid(ctx->child_tid, &(ctx->status));
 	write_child_registers(ctx->child_tid, &regs);
 
-	ctx->replay_sig = 0;
 	ctx->status = 0;
 }
 
@@ -172,12 +159,7 @@ static void finish_syscall_emu(struct context *ctx)
  */
 void __ptrace_cont(struct context *ctx)
 {
-	/* TODO: signals are now completely emulated, so replay_sig should
-	 *		 actually be 0 at all times
-	 *assert(ctx->replay_sig == 0);
-	 */
-	sys_ptrace_syscall_sig(ctx->child_tid, ctx->replay_sig);
-	ctx->replay_sig = 0; /* delivered */
+	sys_ptrace_syscall(ctx->child_tid);
 	sys_waitpid(ctx->child_tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
@@ -211,7 +193,6 @@ void __ptrace_cont(struct context *ctx)
 	 * application. This ensures that the behavior remains the
 	 * same (this is probably irrelevant with signal emulation)
 	 */
-	ctx->replay_sig = 0;
 	ctx->child_sig = 0;
 
 	/* We are now at the entry point to a syscall, set the wrapper
