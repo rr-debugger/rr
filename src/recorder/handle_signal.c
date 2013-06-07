@@ -177,7 +177,7 @@ static void record_signal(int sig, struct context* ctx)
 	reset_hpc(ctx, MAX_RECORD_INTERVAL); // TODO: the hpc gets reset in record event.
 	assert(read_insts(ctx->hpc) == 0);
 	// enter the sig handler
-	sys_ptrace_singlestep(ctx->child_tid, sig);
+	sys_ptrace_singlestep_sig(ctx->child_tid, sig);
 	// wait for the kernel to finish setting up the handler
 	sys_waitpid(ctx->child_tid, &(ctx->status));
 	// 0 instructions means we entered a handler
@@ -200,7 +200,7 @@ void handle_signal(struct context* ctx)
 	while (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx)) {
 		/* Delay delivery of the signal until we are out of it */
 		log_info("Got signal %d while in lib, singelestepping, eip = %lx", sig, ctx->child_regs.eip);
-		sys_ptrace_singlestep(ctx->child_tid,0);
+		sys_ptrace_singlestep_sig(ctx->child_tid,0);
 		sys_waitpid(ctx->child_tid, &ctx->status);
 		read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	}

@@ -54,7 +54,7 @@ void goto_next_event_singlestep(struct context* context)
 			debug("pending sig: %d\n", context->child_sig);
 		}
 
-		sys_ptrace_singlestep(tid, context->child_sig);
+		sys_ptrace_singlestep_sig(tid, context->child_sig);
 		context->child_sig = 0;
 		sys_waitpid(tid, &(context->status));
 

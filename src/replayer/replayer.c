@@ -363,19 +363,17 @@ static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
 {
 	pid_t tid = ctx->child_tid;
 
-	assert(ctx->replay_sig == 0);
-
 	if (emu) {
 		if (stepi) {
-			sys_ptrace_sysemu_singlestep(tid, ctx->replay_sig);
+			sys_ptrace_sysemu_singlestep(tid);
 		} else {
 			sys_ptrace_sysemu(tid);
 		}
 	} else {
 		if (stepi) {
-			sys_ptrace_singlestep(tid, ctx->replay_sig);
+			sys_ptrace_singlestep(tid);
 		} else {
-			sys_ptrace_syscall_sig(tid, ctx->replay_sig);
+			sys_ptrace_syscall(tid);
 		}
 	}
 	sys_waitpid(tid, &ctx->status);
@@ -412,16 +410,13 @@ static void step_exit_syscall_emu(struct context *ctx)
 	pid_t tid = ctx->child_tid;
 	struct user_regs_struct regs;
 
-	assert(ctx->replay_sig == 0);
-
 	read_child_registers(tid, &regs);
 
-	sys_ptrace_sysemu_singlestep(tid, ctx->replay_sig);
+	sys_ptrace_sysemu_singlestep(tid);
 	sys_waitpid(tid, &ctx->status);
 
 	write_child_registers(tid, &regs);
 
-	ctx->replay_sig = 0;
 	ctx->status = 0;
 }
 
@@ -486,10 +481,8 @@ static void continue_or_step(struct context* ctx, int stepi)
 {
 	pid_t tid = ctx->child_tid;
 
-	assert(ctx->replay_sig == 0);
-
 	if (stepi) {
-		sys_ptrace_singlestep(tid, ctx->replay_sig);
+		sys_ptrace_singlestep(tid);
 	} else {
 		sys_ptrace_cont(tid);
 	}
@@ -520,7 +513,6 @@ static void emulate_signal_delivery(struct context* ctx)
 	if (set_child_data(ctx)) {
 		write_child_main_registers(tid, &trace->recorded_regs);
 	}
-	ctx->replay_sig = 0;
 	ctx->child_sig = 0;
 
 	validate_args(ctx->trace.stop_reason, -1, ctx);
@@ -536,16 +528,6 @@ static int emulate_deterministic_signal(struct context* ctx,
 {
 	pid_t tid = ctx->child_tid;
 
-	assert(ctx->replay_sig == 0);
-
-	/* XXX old code had:
-	 *
-		// synchronous signal (signal received in a system call)
-		if (trace->rbc == 0 && trace->page_faults == 0) {
-	 *
-	 * is this still a condition we need to check before
-	 * PTRACE_CONT? */
-
 	continue_or_step(ctx, stepi);
 	if (SIGTRAP == ctx->child_sig) {
 		return 1;
@@ -559,7 +541,6 @@ static int emulate_deterministic_signal(struct context* ctx,
 	if (SIG_SEGV_RDTSC == ctx->trace.stop_reason) {
 		write_child_main_registers(tid, &ctx->trace.recorded_regs);
 		/* We just "delivered" this pseudosignal. */
-		ctx->replay_sig = 0;
 		ctx->child_sig = 0;
 	} else {
 		emulate_signal_delivery(ctx);
@@ -584,7 +565,6 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	pid_t tid = ctx->child_tid;
 	uint64_t rcb_now;
 
-	assert(ctx->replay_sig == 0);
 	assert(ctx->hpc->rbc.fd > 0);
 
 	/* Step 1: advance to the target rcb (minus a slack region) as
