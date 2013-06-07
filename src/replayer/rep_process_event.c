@@ -105,6 +105,8 @@ static void goto_next_syscall_emu(struct context *ctx)
 	if (sig == SIGCHLD) {
 		goto_next_syscall_emu(ctx);
 		return;
+	} else if (SIGTRAP == sig) {
+		fatal("SIGTRAP while entering syscall ... were you using a debugger? If so, the current syscall needs to be made interruptible");
 	} else if (sig) {
 		fatal("Replay got unrecorded signal %d", sig);
 	}
@@ -785,6 +787,34 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 	/* Manual implementations of irregular syscalls. */
 
 	switch (syscall) {
+	case SYS_futex:
+		step->params.syscall.emu = 1;
+		step->params.syscall.emu_ret = 1;
+		if (state == STATE_SYSCALL_ENTRY) {
+			step->action = TSTEP_ENTER_SYSCALL;
+		} else {
+			int op = read_child_ecx(tid) & FUTEX_CMD_MASK;
+
+			step->action = TSTEP_EXIT_SYSCALL;
+			switch (op) {
+			case FUTEX_WAKE:
+			case FUTEX_WAIT_BITSET:
+			case FUTEX_WAIT:
+			case FUTEX_UNLOCK_PI:
+				step->params.syscall.num_emu_args = 1;
+				break;
+			case FUTEX_CMP_REQUEUE:
+			case FUTEX_WAKE_OP:
+			case FUTEX_CMP_REQUEUE_PI:
+			case FUTEX_WAIT_REQUEUE_PI:
+				step->params.syscall.num_emu_args = 2;
+				break;
+			default:
+				fatal("op: %d futex_wait: %d \n",
+				      op, FUTEX_WAIT);
+			}
+		}
+		return;
 
 	case SYS_write:
 		step->params.syscall.num_emu_args = 0;
@@ -896,35 +926,6 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 				break;
 			default:
 				fatal("Unknown fcntl64 command: %d", cmd);
-			}
-			exit_syscall_emu(ctx, syscall, num_emu_args);
-		}
-		break;
-
-	case SYS_futex:
-		if (state == STATE_SYSCALL_ENTRY) {
-			assert(0 == ctx->child_sig);
-			enter_syscall_emu(ctx, syscall);
-		} else {
-			int num_emu_args;
-			int op = read_child_ecx(tid) & FUTEX_CMD_MASK;
-
-			switch (op) {
-			case FUTEX_WAKE:
-			case FUTEX_WAIT_BITSET:
-			case FUTEX_WAIT:
-			case FUTEX_UNLOCK_PI:
-				num_emu_args = 1;
-				break;
-			case FUTEX_CMP_REQUEUE:
-			case FUTEX_WAKE_OP:
-			case FUTEX_CMP_REQUEUE_PI:
-			case FUTEX_WAIT_REQUEUE_PI:
-				num_emu_args = 2;
-				break;
-			default:
-				fatal("op: %d futex_wait: %d \n",
-				      op, FUTEX_WAIT);
 			}
 			exit_syscall_emu(ctx, syscall, num_emu_args);
 		}

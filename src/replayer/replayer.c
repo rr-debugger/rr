@@ -810,6 +810,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	int event = ctx->trace.stop_reason;
 	int stop_sig = 0;
 
+	debug("replaying event %d for tid %d", event, ctx->child_tid);
+
 	/* Advance the trace until we've exec()'d the tracee before
 	 * processing debugger requests.  Otherwise the debugger host
 	 * will be confused about the initial executable image,
