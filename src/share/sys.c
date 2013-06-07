@@ -303,7 +303,7 @@ pid_t sys_waitpid(pid_t pid, int *status)
 {
 	pid_t ret;
 
-	if ((ret = waitpid(pid, status, __WALL | __WCLONE)) < 0) {
+	if ((ret = waitpid(pid, status, __WALL)) < 0) {
 		log_err("waiting for: %d -- bailing out", pid);
 		sys_exit();
 	}
