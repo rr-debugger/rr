@@ -11,6 +11,8 @@
 #include <sys/types.h>
 #include <sys/user.h>
 
+#include "../external/tree.h"
+
 #define CHECK_ALIGNMENT(addr) 	assert(((long int)(addr) & 0x3) == 0)
 #define PAGE_ALIGN(length)		((length + PAGE_SIZE - 1) & PAGE_MASK)
 
@@ -82,6 +84,8 @@ struct context {
 	int child_mem_fd;
 	int child_sig;
 	int status;
+
+	RB_ENTRY(context) entry;
 };
 
 struct mmapped_file {

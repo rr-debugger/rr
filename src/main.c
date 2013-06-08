@@ -225,7 +225,6 @@ static void start(int argc, char* argv[], char** envp)
 
 			/* initialize stuff */
 			init_libpfm();
-			rep_sched_init();
 			/* sets the file pointer to the first trace entry */
 
 			rep_setup_trace_dir(argv[0]);
@@ -240,7 +239,6 @@ static void start(int argc, char* argv[], char** envp)
 			/* thread wants to exit*/
 			close_libpfm();
 			close_trace_files();
-			rep_sched_close();
 		}
 	}
 }

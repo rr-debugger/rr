@@ -8,11 +8,16 @@ static void breakpoint() {
 	int break_here = 1;
 }
 
+static void hit_barrier() {
+	int break_here = 1;
+}
+
 static void* thread(void* barp) {
 	pthread_barrier_t* bar = barp;
 
 	puts("thread launched");
 	breakpoint();
+	pthread_barrier_wait(bar);
 	pthread_barrier_wait(bar);
 	puts("thread done");
 	return NULL;
@@ -28,6 +33,10 @@ int main(int argc, char *argv[]) {
 	for (i = 0; i < ALEN(threads); ++i) {
 		pthread_create(&threads[i], NULL, thread, &bar);
 	}
+
+	pthread_barrier_wait(&bar);
+
+	hit_barrier();
 
 	pthread_barrier_wait(&bar);
 	puts("main done");
