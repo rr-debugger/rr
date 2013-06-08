@@ -896,11 +896,22 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 	if (0 == len) {
 		write_packet(dbg, "l");
 	} else {
-		char buf[64];
+		size_t maxlen =	1/*m char*/ +
+				(2 * sizeof(pid_t) + 1/*,*/) * len +
+				1/*\0*/;
+		char* str = sys_malloc(maxlen);
+		int i, offset = 0;
 
-		/* TODO */
-		snprintf(buf, sizeof(buf) - 1, "m%02X", threads[0]);
-		write_packet(dbg, buf);
+		str[offset++] = 'm';
+		for (i = 0; i < len; ++i) {
+			offset += snprintf(&str[offset], maxlen - offset,
+					   "%02X,", threads[i]);
+		}
+		/* Overwrite the trailing ',' */
+		str[offset - 1] = '\0';
+
+		write_packet(dbg, str);
+		sys_free((void**)&str);
 	}
 
 	consume_request(dbg);

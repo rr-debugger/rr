@@ -7,16 +7,16 @@
 
 #include "../share/trace.h"
 
-void rep_sched_init();
 int rep_sched_get_num_threads();
 struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid);
 struct context* rep_sched_get_thread();
 struct context* rep_sched_lookup_thread(pid_t rec_tid);
+/**
+ * Return a freshly-allocated array of tids in |tids|, which is of
+ * length |len|.  The caller is reponsible for freeing the returned
+ * array.
+ */
+void rep_sched_enumerate_tasks(pid_t** tids, size_t* len);
 void rep_sched_deregister_thread(struct context** context_ptr);
-void rep_sched_close();
-
-
-struct rep_thread_context* new_replay_context(pid_t tid);
-
 
 #endif /* REP_SCHED_H_ */

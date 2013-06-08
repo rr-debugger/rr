@@ -1,0 +1,5 @@
+source util.sh
+compile barrier
+record barrier
+debug get_thread_list
+cleanup
