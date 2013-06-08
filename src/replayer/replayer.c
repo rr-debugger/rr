@@ -29,6 +29,7 @@
 #include "rep_sched.h"
 #include "rep_process_event.h"
 
+#include "../external/tree.h"
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/trace.h"
@@ -39,8 +40,6 @@
 
 #include <perfmon/pfmlib_perf_event.h>
 
-/* sigh */
-#define MAX_NUM_BREAKPOINTS 128
 #define SKID_SIZE 55
 
 static const struct dbg_request continue_all_tasks = {
@@ -49,11 +48,14 @@ static const struct dbg_request continue_all_tasks = {
 	.params = { {0} }
 };
 
-/* FIXME use a real data structure */
-static struct breakpoint {
+struct breakpoint {
 	void* addr;
 	byte overwritten_data;
-} breakpoint_table[MAX_NUM_BREAKPOINTS];
+	RB_ENTRY(breakpoint) entry;
+};
+
+static RB_HEAD(breakpoint_tree, breakpoint) breakpoints =
+	RB_INITIALIZER(&breakpoints);
 
 static const byte int_3_insn = 0xCC;
 
@@ -63,6 +65,9 @@ static const struct flags* rr_flags;
  * After this point, the first recorded binary image has been exec()d
  * over the initial rr image. */
 static bool validate = FALSE;
+
+#define __unused __attribute__((unused))
+RB_PROTOTYPE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
 
 static void debug_memory(struct context* ctx)
 {
@@ -163,28 +168,30 @@ static byte* read_mem(struct context* ctx, void* addr, size_t len)
 	return read_child_data_tid(ctx->child_tid, len, addr);
 }
 
+static void add_breakpoint(struct breakpoint* bp)
+{
+	RB_INSERT(breakpoint_tree, &breakpoints, bp);
+}
+
 static struct breakpoint* find_breakpoint(void* addr)
 {
-	int i;
-	for (i = 0; i < MAX_NUM_BREAKPOINTS; ++i) {
-		struct breakpoint* bp = &breakpoint_table[i];
-		if (addr == bp->addr) {
-			return bp;
-		}
-	}
-	return NULL;
+	struct breakpoint search = { .addr = addr };
+	return RB_FIND(breakpoint_tree, &breakpoints, &search);
+}
+
+static void remove_breakpoint(struct breakpoint* bp)
+{
+	RB_REMOVE(breakpoint_tree, &breakpoints, bp);
 }
 
 static void set_sw_breakpoint(struct context *ctx,
 			      const struct dbg_request* req)
 {
-	struct breakpoint* bp;
+	struct breakpoint* bp = sys_malloc_zero(sizeof(*bp));
 	byte* orig_data_ptr;
 
 	assert(sizeof(int_3_insn) == req->params.mem.len);
 
-	bp = find_breakpoint(NULL/* unallocated */);
-	assert(bp && "Sorry, ran out of breakpoints");
 	bp->addr = req->params.mem.addr;
 
 	orig_data_ptr = read_child_data(ctx, 1, bp->addr);
@@ -193,16 +200,17 @@ static void set_sw_breakpoint(struct context *ctx,
 
 	write_child_data_n(ctx->child_tid,
 			   sizeof(int_3_insn), bp->addr, &int_3_insn);
+
+	add_breakpoint(bp);
 }
 
 static void remove_sw_breakpoint(struct context *ctx,
 				 const struct dbg_request* req)
 {
-	struct breakpoint* bp;
+	struct breakpoint* bp = find_breakpoint(req->params.mem.addr);
 
 	assert(sizeof(int_3_insn) == req->params.mem.len);
 
-	bp = find_breakpoint(req->params.mem.addr);
 	if (!bp) {
 		warn("Couldn't find breakpoint %p to remove",
 		     req->params.mem.addr);
@@ -212,7 +220,8 @@ static void remove_sw_breakpoint(struct context *ctx,
 			   sizeof(bp->overwritten_data), bp->addr,
 			   &bp->overwritten_data);
 
-	memset(bp, 0, sizeof(*bp));
+	remove_breakpoint(bp);
+	sys_free((void**)&bp);
 }
 
 static int ip_is_breakpoint(void* eip)
@@ -296,9 +305,11 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_GET_THREAD_LIST: {
-			/* TODO */
-			dbg_threadid_t list = get_threadid(ctx);
-			dbg_reply_get_thread_list(dbg, &list, 1);
+			pid_t* tids;
+			size_t len;
+			rep_sched_enumerate_tasks(&tids, &len);
+			dbg_reply_get_thread_list(dbg, tids, len);
+			sys_free((void**)&tids);
 			continue;
 		}
 		case DREQ_INTERRUPT:
@@ -987,3 +998,13 @@ void emergency_debug(struct context* ctx)
 	process_debugger_requests(dbg, ctx);
 	fatal("Can't resume execution from invalid state");
 }
+
+static int
+breakpoint_cmp(void* pa, void* pb)
+{
+	struct breakpoint* a = (struct breakpoint*)pa;
+	struct breakpoint* b = (struct breakpoint*)pb;
+	return (intptr_t)a->addr - (intptr_t)b->addr;
+}
+
+RB_GENERATE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)

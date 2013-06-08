@@ -10,6 +10,7 @@
 
 #include "replayer.h"
 
+#include "../external/tree.h"
 #include "../share/trace.h"
 #include "../share/hpc.h"
 #include "../share/sys.h"
@@ -17,12 +18,27 @@
 
 #define MAX_TID_NUM 100000
 
-static struct context** map;
+static RB_HEAD(context_tree, context) tasks = RB_INITIALIZER(&tasks);
+
+#define __unused __attribute__((unused))
+RB_PROTOTYPE_STATIC(context_tree, context, entry, context_cmp)
+
 static int num_threads;
 
-void rep_sched_init()
+static void add_task(struct context* ctx)
 {
-	map = sys_malloc(MAX_TID_NUM * sizeof(struct context));
+	RB_INSERT(context_tree, &tasks, ctx);
+}
+
+static struct context* find_task(pid_t tid)
+{
+	struct context search = { .rec_tid = tid };
+	return RB_FIND(context_tree, &tasks, &search);
+}
+
+static void remove_task(struct context* ctx)
+{
+	RB_REMOVE(context_tree, &tasks, ctx);
 }
 
 struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
@@ -42,7 +58,7 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 
 	/* initializer replay counters */
 	init_hpc(ctx);
-	map[rec_tid] = ctx;
+	add_task(ctx);
 	return ctx;
 }
 
@@ -52,7 +68,7 @@ struct context* rep_sched_get_thread()
 	struct trace_frame trace;
 	read_next_trace(&trace);
 	/* find and update context */
-	struct context *ctx = map[trace.tid];
+	struct context *ctx = find_task(trace.tid);
 	assert(ctx != NULL);
 
 	/* copy the current trace */
@@ -86,7 +102,22 @@ struct context* rep_sched_get_thread()
 struct context* rep_sched_lookup_thread(pid_t rec_tid)
 {
 	assert(0 < rec_tid && rec_tid < MAX_TID_NUM);
-	return map[rec_tid];
+	return find_task(rec_tid);
+}
+
+void rep_sched_enumerate_tasks(pid_t** tids, size_t* len)
+{
+	pid_t* ts;
+	struct context* ctx;
+	int i;
+
+	*len = num_threads;
+	ts = *tids = sys_malloc(*len * sizeof(pid_t));
+	i = 0;
+	RB_FOREACH(ctx, context_tree, &tasks) {
+		ts[i++] = ctx->rec_tid;
+	}
+	assert(i == num_threads);
 }
 
 void rep_sched_deregister_thread(struct context **ctx_ptr)
@@ -94,11 +125,10 @@ void rep_sched_deregister_thread(struct context **ctx_ptr)
 	struct context * ctx = *ctx_ptr;
 	destry_hpc(ctx);
 
-	pid_t my_tid = ctx->child_tid;
 	//sys_fclose(ctx->inst_dump);
 	sys_close(ctx->child_mem_fd);
 
-	map[my_tid] = NULL;
+	remove_task(ctx);
 	num_threads--;
 	assert(num_threads >= 0);
 
@@ -118,12 +148,17 @@ void rep_sched_deregister_thread(struct context **ctx_ptr)
 	sys_free((void**) ctx_ptr);
 }
 
-void rep_sched_close()
-{
-	sys_free((void**) &map);
-}
-
 int rep_sched_get_num_threads()
 {
 	return num_threads;
 }
+
+static int
+context_cmp(void* pa, void* pb)
+{
+	struct context* a = (struct context*)pa;
+	struct context* b = (struct context*)pb;
+	return a->rec_tid - b->rec_tid;
+}
+
+RB_GENERATE_STATIC(context_tree, context, entry, context_cmp)
