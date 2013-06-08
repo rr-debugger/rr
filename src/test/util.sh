@@ -112,6 +112,9 @@ function check {
 function cleanup {
 	rm -rf a.out trace_0
         killall a.out rr > /dev/null 2>&1 
+        # Clear $?; we don't care if, and in fact we're happy if, we
+        # failed to kill malingerers.
+        ls > /dev/null
 }
 
 # Compile $test.c, record it, then replay it (optionally with
