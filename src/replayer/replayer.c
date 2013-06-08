@@ -242,9 +242,14 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	}
 	while (1) {
 		struct dbg_request req = dbg_get_request(dbg);
+		struct context* target = NULL;
+
 		if (dbg_is_resume_request(&req)) {
 			return req;
 		}
+
+		target = (req.target > 0) ?
+			 rep_sched_lookup_thread(req.target) : ctx;
 
 		switch (req.type) {
 		case DREQ_GET_CURRENT_THREAD: {
@@ -252,11 +257,10 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_GET_IS_THREAD_ALIVE:
-			dbg_reply_get_is_thread_alive(
-				dbg, !!rep_sched_lookup_thread(req.target));
+			dbg_reply_get_is_thread_alive(dbg, !!target);
 			continue;
 		case DREQ_GET_MEM: {
-			byte* mem = read_mem(ctx, req.params.mem.addr,
+			byte* mem = read_mem(target, req.params.mem.addr,
 					     req.params.mem.len);
 			dbg_reply_get_mem(dbg, mem);
 			sys_free((void**)&mem);
@@ -270,7 +274,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			struct user_regs_struct regs;
 			dbg_regvalue_t val;
 
-			read_child_registers(ctx->child_tid, &regs);
+			read_child_registers(target->child_tid, &regs);
 			val.value = get_reg(&regs, req.params.reg,
 					    &val.defined);
 			dbg_reply_get_reg(dbg, val);
@@ -282,7 +286,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			int i;
 			dbg_regvalue_t* val;
 
-			read_child_registers(ctx->child_tid, &regs);
+			read_child_registers(target->child_tid, &regs);
 			memset(&file, 0, sizeof(file));
 			for (i = DREG_EAX; i < DREG_NUM_USER_REGS; ++i) {
 				val = &file.regs[i];
@@ -296,12 +300,8 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_GET_STOP_REASON: {
-			struct context* t =
-				req.target > 0 ?
-				rep_sched_lookup_thread(req.target) : ctx;
-			dbg_reply_get_stop_reason(dbg,
-						  t ? t->rec_tid : -1,
-						  t ? t->child_sig : -1);
+			dbg_reply_get_stop_reason(dbg, target->rec_tid,
+						  target->child_sig);
 			continue;
 		}
 		case DREQ_GET_THREAD_LIST: {
@@ -318,11 +318,11 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_notify_stop(dbg, get_threadid(ctx), 0);
 			continue;
 		case DREQ_SET_SW_BREAK:
-			set_sw_breakpoint(ctx, &req);
+			set_sw_breakpoint(target, &req);
 			dbg_reply_watchpoint_request(dbg, 0);
 			continue;
 		case DREQ_REMOVE_SW_BREAK:
-			remove_sw_breakpoint(ctx, &req);
+			remove_sw_breakpoint(target, &req);
 			dbg_reply_watchpoint_request(dbg, 0);
 			break;
 		case DREQ_REMOVE_HW_BREAK:
