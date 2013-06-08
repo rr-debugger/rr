@@ -898,7 +898,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 			assert(event > 0);
 			/* XXX not so pretty ... */
 			validate |= (ctx->trace.state == STATE_SYSCALL_EXIT
-				     && ctx->trace.stop_reason == SYS_execve);
+				     && event == SYS_execve);
 			rep_process_syscall(ctx, rr_flags->redirect, &step);
 		}
 	}
