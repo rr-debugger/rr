@@ -111,6 +111,7 @@ function check {
 # developers to reference.
 function cleanup {
 	rm -rf a.out trace_0
+        killall a.out rr
 }
 
 # Compile $test.c, record it, then replay it (optionally with
