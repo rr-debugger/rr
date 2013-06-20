@@ -288,6 +288,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * file data in a specific pattern in the future, thus allowing the kernel
 	 * to perform appropriate optimizations.
 	 */
+	SYS_REC0(fadvise64)
 	SYS_REC0(fadvise64_64)
 
 	/**
