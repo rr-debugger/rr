@@ -231,6 +231,7 @@ SYSCALL_DEF(EMU, faccessat, 0)
  * file data in a specific pattern in the future, thus allowing the
  * kernel to perform appropriate optimizations.
  */
+SYSCALL_DEF(EMU, fadvise64, 0)
 SYSCALL_DEF(EMU, fadvise64_64, 0)
 
 /**
