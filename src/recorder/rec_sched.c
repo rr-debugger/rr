@@ -180,4 +180,3 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	/* finally, free the memory */
 	sys_free((void**) ctx_ptr);
 }
-
