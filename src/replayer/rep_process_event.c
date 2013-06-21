@@ -553,28 +553,36 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 }
 
 static void process_mmap2(struct context* ctx,
-			  struct trace_frame* trace, int state)
+			  struct trace_frame* trace, int state,
+			  struct rep_trace_step* step)
 {
 	int syscall = SYS_mmap2;
 	int tid = ctx->child_tid;
 
 	if (state == STATE_SYSCALL_ENTRY) {
 		struct trace_frame next;
+
+		step->action = TSTEP_ENTER_SYSCALL;
+
 		peek_next_trace(&next);
 		if (SYSCALL_FAILED(next.recorded_regs.eax)) {
 			/* failed mapping, emulate */
-			enter_syscall_emu(ctx, SYS_mmap2);
-		} else {
-			enter_syscall_exec(ctx, SYS_mmap2);
+			step->params.syscall.emu = 1;
 		}
 		return;
 	}
 
 	if (SYSCALL_FAILED(trace->recorded_regs.eax)) {
-		/* failed mapping, emulate */
-		exit_syscall_emu(ctx, SYS_mmap2, 0);
+		step->action = TSTEP_EXIT_SYSCALL;
+		step->params.syscall.emu = 1;
+		step->params.syscall.emu_ret = 1;
 		return;
 	}
+
+	/* TODO: is there any interesting debugger interrupt we need
+	 * to honor after syscall entry but before exit?  I.e. is this
+	 * actually a limitation? */
+	step->action = TSTEP_RETIRE;
 
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
@@ -851,6 +859,9 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 	case SYS_ioctl:
 		return process_ioctl(ctx, state, step);
 
+	case SYS_mmap2:
+		return process_mmap2(ctx, trace, state, step);
+
 	case SYS_nanosleep:
 		step->params.syscall.emu = 1;
 		step->params.syscall.emu_ret = 1;
@@ -980,10 +991,6 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 
 	case SYS_ipc:
 		process_ipc(ctx, trace, state);
-		break;
-
-	case SYS_mmap2:
-		process_mmap2(ctx, trace, state);
 		break;
 
 	case SYS_mremap:
