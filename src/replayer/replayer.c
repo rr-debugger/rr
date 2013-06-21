@@ -347,20 +347,13 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  */
 static void validate_args(int event, int state, struct context* ctx)
 {
-	struct user_regs_struct cur_reg;
-
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
 	if (!validate) {
 		return;
 	}
-	read_child_registers(ctx->child_tid, &cur_reg);
-	if (compare_register_files("replaying", &cur_reg, "recorded",
-				   &ctx->trace.recorded_regs, 1, 0)) {
-		fatal("[event %d, state %d, trace file line %d]\n",
-		      event, state, get_trace_file_lines_counter());
-	}
-	/* TODO: add perf counter validations (hw int, page faults, insts) */
+	assert_child_regs_are(ctx->child_tid, &ctx->trace.recorded_regs,
+			      event, state);
 }
 
 /**
@@ -902,9 +895,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 			rep_process_syscall(ctx, rr_flags->redirect, &step);
 		}
 	}
-
-	/* XXX this pattern may not work ... it's simple so let's try
-	 * it though */
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(ctx, &step, &req)) {
