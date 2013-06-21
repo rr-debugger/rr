@@ -48,6 +48,8 @@ struct dbg_context {
 	dbg_threadid_t query_thread;  /* thread for get/set */
 	int serving_symbol_lookups;	    /* nonzero when we can
 					     * request lookups */
+	int no_ack;		/* nonzero when "no-ack mode" is
+				 * enabled */
 	struct sockaddr_in addr;	    /* server address */
 	int fd;				    /* client socket fd */
 	/* XXX probably need to dynamically size these */
@@ -364,8 +366,10 @@ static void read_packet(struct dbg_context* dbg)
 	assert('$' == dbg->inbuf[0] && dbg->packetend < dbg->inlen);
 
 	/* Acknowledge receipt of the packet. */
-	write_data_raw(dbg, (byte*)"+", 1);
-	write_flush(dbg);
+	if (!dbg->no_ack) {
+		write_data_raw(dbg, (byte*)"+", 1);
+		write_flush(dbg);
+	}
 }
 
 static int query(struct dbg_context* dbg, char* payload)
@@ -414,7 +418,7 @@ static int query(struct dbg_context* dbg, char* payload)
 	if (!strcmp(name, "Supported")) {
 		/* TODO process these */
 		debug("gdb supports %s", args);
-		write_packet(dbg, "");
+		write_packet(dbg, "QStartNoAckMode+");
 		return 0;
 	}
 	if (!strcmp(name, "Symbol")) {
@@ -445,6 +449,32 @@ static int query(struct dbg_context* dbg, char* payload)
 
 
 	log_warn("Unhandled gdb query: q%s", name);
+	write_packet(dbg, "");
+	return 0;
+}
+
+static int set(struct dbg_context* dbg, char* payload)
+{
+	const char* name;
+	char* args;
+
+	args = strchr(payload, ':');
+	if (args) {
+		*args++ = '\0';
+	}
+	name = payload;
+
+	if (!strcmp(name, "StartNoAckMode")) {
+		write_packet(dbg, "OK");
+		dbg->no_ack = 1;
+		return 0;
+	}
+
+
+	fatal("Unhandled gdb set: Q%s", name);
+
+
+	log_warn("Unhandled gdb set: Q%s", name);
 	write_packet(dbg, "");
 	return 0;
 }
@@ -627,6 +657,9 @@ static int process_packet(struct dbg_context* dbg)
 		break;
 	case 'q':
 		ret = query(dbg, payload);
+		break;
+	case 'Q':
+		ret = set(dbg, payload);
 		break;
 	case 'T':
 		dbg->req.type = DREQ_GET_IS_THREAD_ALIVE;
