@@ -134,16 +134,6 @@ void rep_sched_deregister_thread(struct context **ctx_ptr)
 
 	/* detatch the child process*/
 	sys_ptrace_detach(ctx->child_tid);
-	int ret;
-	do {
-		ret = waitpid(ctx->child_tid, &(ctx->status), __WALL | __WCLONE);
-		int event = GET_PTRACE_EVENT(ctx->status);
-		/* Is this a bug in the ptrace impementation? After calling detach, we should not receive
-		 * any ptrace signals. However, we still do in some cases... */
-		if (event == 6) { // TODO: magic
-			sys_ptrace_detach(ctx->child_tid);
-		}
-	} while (ret != -1);
 
 	sys_free((void**) ctx_ptr);
 }
