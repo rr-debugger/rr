@@ -243,7 +243,7 @@ static void write_hex(struct dbg_context* dbg, unsigned long hex)
 	char buf[32];
 	size_t len;
 
-	len = snprintf(buf, sizeof(buf) - 1, "%02lX", hex);
+	len = snprintf(buf, sizeof(buf) - 1, "%02lx", hex);
 	write_data_raw(dbg, (byte*)buf, len);
 }
 
@@ -266,7 +266,7 @@ static void write_hex_packet(struct dbg_context* dbg, unsigned long hex)
 {
 	char buf[32];
 
-	snprintf(buf, sizeof(buf) - 1, "%02lX", hex);
+	snprintf(buf, sizeof(buf) - 1, "%02lx", hex);
 	write_packet(dbg, buf);	
 }
 
@@ -736,7 +736,7 @@ void dbg_notify_exit_code(struct dbg_context* dbg, int code)
 	assert(dbg_is_resume_request(&dbg->req)
 	       || dbg->req.type == DREQ_INTERRUPT);
 
-	snprintf(buf, sizeof(buf) - 1, "W%02X", code);
+	snprintf(buf, sizeof(buf) - 1, "W%02x", code);
 	write_packet(dbg, buf);
 
 	consume_request(dbg);
@@ -749,7 +749,7 @@ void dbg_notify_exit_signal(struct dbg_context* dbg, int sig)
 	assert(dbg_is_resume_request(&dbg->req)
 	       || dbg->req.type == DREQ_INTERRUPT);
 
-	snprintf(buf, sizeof(buf) - 1, "X%02X", sig);
+	snprintf(buf, sizeof(buf) - 1, "X%02x", sig);
 	write_packet(dbg, buf);
 
 	consume_request(dbg);
@@ -760,7 +760,7 @@ static void send_stop_reply_packet(struct dbg_context* dbg,
 {
 	if (sig >= 0) {
 		char buf[64];
-		snprintf(buf, sizeof(buf) - 1, "T%02Xthread:%02X;",
+		snprintf(buf, sizeof(buf) - 1, "T%02xthread:%02x;",
 			 sig, thread);
 		write_packet(dbg, buf);
 	} else {
@@ -810,7 +810,7 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem)
 		buf = sys_malloc(2 * len + 1);
 		for (i = 0; i < len; ++i) {
 			unsigned long b = mem[i];
-			snprintf(&buf[2 * i], 3, "%02lX", b);
+			snprintf(&buf[2 * i], 3, "%02lx", b);
 		}
 		write_packet(dbg, buf);
 		sys_free((void**)&buf);
@@ -843,7 +843,7 @@ static void print_reg(dbg_regvalue_t value, char* buf) {
 		 * swizzle to big-endian so that printf gives us a
 		 * little-endian string.  (Network order is big-endian.) */
 		long v = htonl(value.value);
-		sprintf(buf, "%08lX", v);
+		sprintf(buf, "%08lx", v);
 	} else {
 		strcpy(buf, "xxxxxxxx");
 	}
@@ -905,7 +905,7 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 		str[offset++] = 'm';
 		for (i = 0; i < len; ++i) {
 			offset += snprintf(&str[offset], maxlen - offset,
-					   "%02X,", threads[i]);
+					   "%02x,", threads[i]);
 		}
 		/* Overwrite the trailing ',' */
 		str[offset - 1] = '\0';
