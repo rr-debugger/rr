@@ -73,21 +73,13 @@ bool validate = FALSE;
  */
 static void validate_args(int syscall, int state, struct context* ctx)
 {
-	struct user_regs_struct cur_reg;
-
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
 	if (!validate) {
 		return;
 	}
-	read_child_registers(ctx->child_tid, &cur_reg);
-	int err = compare_register_files("syscall now", &cur_reg, "recorded",
-					 &(ctx->trace.recorded_regs), 1, 0);
-	if (err) {
-		fatal("[syscall number %d, state %d, trace file line %d]\n",
-		      syscall, state, get_trace_file_lines_counter());
-	}
-	/* TODO: add perf counter validations (hw int, page faults, insts) */
+	assert_child_regs_are(ctx->child_tid, &ctx->trace.recorded_regs,
+			      syscall, state);
 }
 
 /**

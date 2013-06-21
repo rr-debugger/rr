@@ -581,11 +581,25 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1, cha
 	}
 
 	if (stop != 0 && err != 0) {
-		//print_process_mmap(stop);
 		sys_exit();
 	}
 
 	return err;
+}
+
+void assert_child_regs_are(pid_t tid, const struct user_regs_struct* regs,
+			   int event, int state)
+{
+	struct user_regs_struct cur_regs;
+
+	read_child_registers(tid, &cur_regs);
+	if (compare_register_files("replaying", &cur_regs, "recorded", regs,
+				   1/*print errors*/, 0/*don't exit*/)) {
+		print_process_mmap(tid);
+		fatal("[event %d, state %d, trace file line %d]",
+		      event, state, get_trace_file_lines_counter());
+	}
+	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }
 
 uint64_t str2ull(const char* start, size_t max_size)
@@ -698,8 +712,6 @@ void print_process_mmap(pid_t tid)
 	if (fclose(file) == EOF) {
 		perror("error closing mmap file\n");
 	}
-
-	//sleep(10);
 }
 
 /**
