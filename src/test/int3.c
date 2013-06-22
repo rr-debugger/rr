@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
 
 	breakpoint();
 
-	test_assert("didn'g catch trap!" && 0);
+	test_assert("didn't catch trap!" && 0);
 
 	return 0;
 }
