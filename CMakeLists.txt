@@ -11,9 +11,13 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
 set(rr_VERSION_MAJOR 0)
-set(rr_VERSION_MINOR 1)
+set(rr_VERSION_MINOR 0-prerelease)
+set(rr_VERSION_PATCH 0)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g3 -Wall -Werror -m32")
+# TODO remove this when we can manage pfm and disasm dependencies
+# properly
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
 
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" "-pthread"
@@ -48,6 +52,11 @@ target_link_libraries(rr
   disasm
 )
 
+install(TARGETS rr rr_wrap_syscalls
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib)
+
 # TODO: manage building C test files with the build system
 set(RR_TEST_CMD_COMMON
   "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR}/src/test" "-rr=${EXECUTABLE_OUTPUT_PATH}/rr")
@@ -64,3 +73,33 @@ set_tests_properties(TestsNoFilterLib
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose)
 
 add_custom_target(setup-travis COMMAND src/script/setup_travis.sh)
+
+# Package configuration
+include (InstallRequiredSystemLibraries)
+
+set(CPACK_PACKAGE_NAME "rr")
+set(CPACK_PACKAGE_VERSION_MAJOR "${rr_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${rr_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${rr_VERSION_PATCH}")
+set(CPACK_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+
+set(CPACK_OUTPUT_FILE_PREFIX dist)
+set(CPACK_GENERATOR "TGZ;RPM;DEB")
+set(CPACK_SOURCE_GENERATOR "TGZ")
+
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+  "Lightweight tool for recording and replaying execution of applications (trees of processes and threads)")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README")
+set(CPACK_PACKAGE_VENDOR "Mozilla Foundation")
+
+set(CPACK_RPM_PACKAGE_RELEASE 1)
+set(CPACK_RPM_PACKAGE_GROUP "Development/Debuggers")
+set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
+#set(CPACK_RPM_PACKAGE_REQUIRES "requires: pfm, disasm")
+
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Mozilla Foundation")
+set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+#set(CPACK_DEBIAN_PACKAGE_DEPENDS "pfm, disasm")
+
+include (CPack)
