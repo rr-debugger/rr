@@ -249,7 +249,7 @@ static void start(int argc, char* argv[], char** envp)
  */
 static int read_int_file(const char* filename)
 {
-	FILE* inf = sys_fopen(filename, "r");
+	FILE* inf = fopen(filename, "r");
 	int val;
 	if (!inf) {
 		return -1;
