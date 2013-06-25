@@ -1,2 +1,2 @@
 source util.sh
-compare_test mmap_shared
+compare_test mmap_shared 'done'

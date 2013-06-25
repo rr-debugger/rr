@@ -21,5 +21,6 @@ int main() {
 	prio2 = getpriority(PRIO_PROCESS, 0);
 	assert(prio1 == prio2);
 	printf("Now priority is: %d\n", prio2);
+	puts("EXIT-SUCCESS");
 	return 0;
 }

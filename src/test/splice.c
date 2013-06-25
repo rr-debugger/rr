@@ -1,8 +1,11 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#define _GNU_SOURCE
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #define TOKEN "ABC"
@@ -44,6 +47,8 @@ int main() {
 	/* The test driver will clean up after us if the test failed
 	 * before this. */
 	unlink(token_file);
+
+	puts("EXIT-SUCCESS");
 
 	return 0;
 }

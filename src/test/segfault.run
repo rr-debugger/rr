@@ -1,2 +1,2 @@
 source util.sh
-compare_test segfault
+compare_test segfault 'caught signal 11, exiting'
