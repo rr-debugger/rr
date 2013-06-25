@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 void spin() {
-	int i, dummy;
+	int i;
 
 	puts("spinning");
 	for (i = 1; i < (1 << 30); ++i) {

@@ -42,5 +42,7 @@ int main() {
 		       (double) ts.tv_sec, (long long int) ts.tv_nsec,
 		       (double) tv.tv_sec, (long long int) tv.tv_usec);
 	}
+
+	puts("EXIT-SUCCESS");
 	return 0;
 }

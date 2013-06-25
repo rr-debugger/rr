@@ -1,2 +1,2 @@
 source util.sh
-compare_test sigrt
+compare_test sigrt 'EXIT-SUCCESS'

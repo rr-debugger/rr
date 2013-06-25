@@ -4,5 +4,5 @@ compile async_segv
 # SIGSEGV, wait 0.5s
 record_async_signal 11 0.5 async_segv
 replay async_segv
-check async_segv
+check async_segv 'caught segv, goodbye'
 cleanup

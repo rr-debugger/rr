@@ -6,6 +6,7 @@
 
 static void breakpoint() {
 	int break_here = 1;
+	(void)break_here;
 }
 
 int spin() {

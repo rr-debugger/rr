@@ -1,6 +1,11 @@
 # default rr command
 rr="rr"
 
+function fatal { #...
+    echo "$@" >&2
+    exit 1
+}
+
 # check if the user supplied a custom rr command, if so use it, otherwise use default.
 # $1 is number of arguments supplied to the test script
 # $2 is the rr command (if exists)
@@ -14,7 +19,7 @@ function get_rr_cmd {
 # $1 is test name
 # $2 are compilation flags
 function compile {
-	gcc -pthread -g -m32 $1.c $2 -lrt
+	gcc -pthread -g -m32 -Wall -Werror $1.c $2 -lrt || fatal FAILED: compiling $1.c
 }
 
 # record test. 
@@ -82,28 +87,34 @@ function debug {
 	fi
 }
 
-# check test success\failure.
-# $1 is test name
-function check {
-	if [[ $(grep "Replayer successfully finished." $1.err.replay) == "" ]]; then
-		echo "Test '$1' FAILED: error during replay:"
+# Check that (i) no error during replay; (ii) recorded and replayed
+# output match; (iii) if supplied, the token was found in the output.
+# Otherwise the test fails.
+function check { testname=$1; token=$2;
+	if [[ $(grep "Replayer successfully finished." $testname.err.replay) == "" ]]; then
+		echo "Test '$testname' FAILED: error during replay:"
 		echo "--------------------------------------------------"
-		cat $1.err.replay
+		cat $testname.err.replay
 		echo "--------------------------------------------------"
-	elif [[ $(diff $1.out.record $1.out.replay) != "" ]]; then
-		echo "Test '$1' FAILED: output from recording different than replay"
+	elif [[ $(diff $testname.out.record $testname.out.replay) != "" ]]; then
+		echo "Test '$testname' FAILED: output from recording different than replay"
 		echo "Output from recording:"
 		echo "--------------------------------------------------"
-		cat $1.out.record
+		cat $testname.out.record
 		echo "--------------------------------------------------"
 		echo "Output from replay:"
 		echo "--------------------------------------------------"
-		cat $1.out.replay
+		cat $testname.out.replay
+		echo "--------------------------------------------------"
+	elif [[ "$token" != "" && "$testname.out.record" != $(grep -l "$token" $testname.out.record) ]]; then
+		echo "Test '$testname' FAILED: token '$token' not in output:"
+		echo "--------------------------------------------------"
+		cat $testname.out.record
 		echo "--------------------------------------------------"
 	else
-		echo "Test '$1' PASSED"
+		echo "Test '$testname' PASSED"
 		# test passed, OK to delete temporaries
-		rm -rf $1.out.record $1.out.replay $1.err.replay
+		rm -rf $testname.out.record $testname.out.replay $testname.err.replay
 	fi
 }
 
@@ -119,11 +130,11 @@ function cleanup {
 
 # Compile $test.c, record it, then replay it (optionally with
 # $rr_flags) and verify record/replay output match.
-function compare_test { test=$1; rr_flags=$2;
+function compare_test { test=$1; token=$2; rr_flags=$3;
 	compile $test
 	record $test
 	replay $test $rr_flags
-	check $test
+	check $test $token
 	cleanup
 }
 

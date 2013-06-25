@@ -7,9 +7,13 @@
 
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
 
+static int num_signals_caught;
+
 static void handle_sigrt(int sig) {
 	printf("Caught signal %d\n", sig);
 	fflush(stdout);
+
+	++num_signals_caught;
 }
 
 int main(int argc, char *argv[]) {
@@ -20,5 +24,10 @@ int main(int argc, char *argv[]) {
 		raise(i);
 	}
 
+	printf("caught %d signals; expected %d\n", num_signals_caught,
+	       SIGRTMAX - SIGRTMIN);
+	test_assert(1 + SIGRTMAX - SIGRTMIN == num_signals_caught);
+
+	puts("EXIT-SUCCESS");
 	return 0;
 }
