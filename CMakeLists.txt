@@ -1,6 +1,6 @@
 # *-* Mode: cmake; *-*
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 2.8)
 project(rr)
 
 enable_testing()
@@ -10,8 +10,11 @@ set(PROJECT_BINARY_DIR ${CMAKE_SOURCE_DIR}/obj)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
+# CAREFUL!  "-" is an invalid character in RPM package names, while
+# debian is happy with it.  However, "_" is illegal in debs, while RPM
+# is cool with it.  Sigh.
 set(rr_VERSION_MAJOR 0)
-set(rr_VERSION_MINOR 0-prerelease)
+set(rr_VERSION_MINOR 0prerelease)
 set(rr_VERSION_PATCH 0)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g3 -Wall -Werror -m32")
@@ -86,6 +89,7 @@ set(CPACK_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_OUTPUT_FILE_PREFIX dist)
 set(CPACK_GENERATOR "TGZ;RPM;DEB")
 set(CPACK_SOURCE_GENERATOR "TGZ")
+set(CPACK_BINARY_DIR "${CMAKE_SOURCE_DIR}")
 
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
@@ -93,13 +97,18 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README")
 set(CPACK_PACKAGE_VENDOR "Mozilla Foundation")
 
-set(CPACK_RPM_PACKAGE_RELEASE 1)
-set(CPACK_RPM_PACKAGE_GROUP "Development/Debuggers")
-set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
-#set(CPACK_RPM_PACKAGE_REQUIRES "requires: pfm, disasm")
-
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Mozilla Foundation")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 #set(CPACK_DEBIAN_PACKAGE_DEPENDS "pfm, disasm")
+
+# XXX Cmake 2.8.7 doesn't know how to avoid specifiying /usr,
+# /usr/bin, etc, as files to be installed, but distros are finicky
+# about their specification.  We want to manually filter those paths
+# out of our install list but 2.8.7 also isn't capable of that.
+set(CPACK_RPM_USER_BINARY_SPECFILE "${CMAKE_SOURCE_DIR}/rr.spec")
+set(CPACK_RPM_PACKAGE_RELEASE 1)
+set(CPACK_RPM_PACKAGE_GROUP "Development/Debuggers")
+set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
+#set(CPACK_RPM_PACKAGE_REQUIRES "Requires: pfm, disasm")
 
 include (CPack)
