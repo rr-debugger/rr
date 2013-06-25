@@ -1,2 +1,2 @@
 source util.sh
-compare_test sigtrap
+compare_test sigtrap 'caught SIGTRAP'

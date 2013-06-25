@@ -1,2 +1,2 @@
 source util.sh
-compare_test hello
+compare_test hello 'Hi'

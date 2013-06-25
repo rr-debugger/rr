@@ -1,15 +1,18 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include <pthread.h>
+#include <stdio.h>
 
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
 static void breakpoint() {
 	int break_here = 1;
+	(void)break_here;
 }
 
 static void hit_barrier() {
 	int break_here = 1;
+	(void)break_here;
 }
 
 static void* thread(void* barp) {

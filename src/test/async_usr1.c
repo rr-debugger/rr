@@ -15,6 +15,7 @@ static void handle_segv(int sig) {
 
 static void breakpoint() {
 	int break_here = 1;
+	(void)break_here;
 }
 
 int main(int argc, char *argv[]) {

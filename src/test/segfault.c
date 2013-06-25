@@ -6,11 +6,13 @@
 
 static void sighandler(int sig) {
 	printf("caught signal %d, exiting\n", sig);
+	fflush(stdout);
 	_exit(0);
 }
 
 static void breakpoint() {
 	int break_here = 1;
+	(void)break_here;
 }
 
 int main(int argc, char *argv[]) {

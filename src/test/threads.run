@@ -1,2 +1,2 @@
 source util.sh
-compare_test threads
+compare_test threads EXIT-SUCCESS

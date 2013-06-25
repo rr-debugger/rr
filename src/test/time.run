@@ -1,2 +1,2 @@
 source util.sh
-compare_test time
+compare_test time 'EXIT-SUCCESS'

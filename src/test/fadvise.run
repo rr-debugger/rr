@@ -1,2 +1,2 @@
 source util.sh
-compare_test fadvise
+compare_test fadvise EXIT-SUCCESS

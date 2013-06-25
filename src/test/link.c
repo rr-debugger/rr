@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #define TOKEN "ABC"
@@ -47,5 +48,6 @@ int main() {
 
 	unlink(link_name);
 
+	puts("EXIT-SUCCESS");
 	return 0;
 }

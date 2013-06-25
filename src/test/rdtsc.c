@@ -15,6 +15,7 @@ static uint64_t rdtsc(void) {
 
 static void breakpoint() {
 	int break_here = 1;
+	(void)break_here;
 }
 
 int main(int argc, char *argv[]) {
@@ -32,5 +33,7 @@ int main(int argc, char *argv[]) {
 		printf("%" PRIu64 ",", tsc);
 		last_tsc = tsc;
 	}
+
+	puts("EXIT-SUCCESS");
 	return 0;
 }

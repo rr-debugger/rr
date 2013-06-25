@@ -1,2 +1,2 @@
 source util.sh
-compare_test alarm
+compare_test alarm 'Signal caught'

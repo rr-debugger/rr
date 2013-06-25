@@ -1,4 +1,4 @@
 source util.sh
-compare_test splice
+compare_test splice 'EXIT-SUCCESS'
 # Remove junk created by test, in case it fails
 rm -f /tmp/rr-splice-file.txt
