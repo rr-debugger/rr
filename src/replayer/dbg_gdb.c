@@ -448,12 +448,6 @@ static int query(struct dbg_context* dbg, char* payload)
 		return 0;
 	}
 
-
-
-	fatal("Unhandled gdb query: q%s", name);
-
-
-
 	log_warn("Unhandled gdb query: q%s", name);
 	write_packet(dbg, "");
 	return 0;
@@ -475,10 +469,6 @@ static int set(struct dbg_context* dbg, char* payload)
 		dbg->no_ack = 1;
 		return 0;
 	}
-
-
-	fatal("Unhandled gdb set: Q%s", name);
-
 
 	log_warn("Unhandled gdb set: Q%s", name);
 	write_packet(dbg, "");
@@ -554,7 +544,9 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			}
 			return 1;
 		default:
-			fatal("Unhandled vCont command %c(%s)", cmd, args);
+			log_warn("Unhandled vCont command %c(%s)", cmd, args);
+			write_packet(dbg, "");
+			return 0;
 		}
 	}
 
@@ -564,11 +556,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		return 0;
 	}
 
-
-	fatal("Unhandled gdb vpacket: v%s", name);
-
-
-	//log_warn("Unhandled gdb vpacket: v%s", name);
+	log_warn("Unhandled gdb vpacket: v%s", name);
 	write_packet(dbg, "");
 	return 0;
 }
@@ -716,12 +704,7 @@ static int process_packet(struct dbg_context* dbg)
 		ret = 1;
 		break;
 	default:
-
-
-		fatal("Unhandled gdb request '%c'", dbg->inbuf[1]);
-
-
-		//log_warn("Unhandled gdb request '%c'", dbg->inbuf[1]);
+		log_warn("Unhandled gdb request '%c'", dbg->inbuf[1]);
 		/* Play dumb and hope gdb doesn't /really/ need this
 		 * request ... */
 		write_packet(dbg, "");
