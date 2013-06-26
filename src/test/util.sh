@@ -1,5 +1,6 @@
 # default rr command
 rr="rr"
+lib=""
 
 function fatal { #...
     echo "$@" >&2
@@ -9,9 +10,12 @@ function fatal { #...
 # check if the user supplied a custom rr command, if so use it, otherwise use default.
 # $1 is number of arguments supplied to the test script
 # $2 is the rr command (if exists)
-function get_rr_cmd {
-	if [ "$1" -gt "0" ]; then
-		rr=$2
+function get_rr_cmd { num_args=$1; libarg=$2; rrarg=$3;
+	if [ "$num_args" -gt "0" ]; then
+		lib=$libarg
+	fi
+	if [ "$num_args" -gt "1" ]; then
+		rr=$rrarg
 	fi
 }
 
@@ -25,7 +29,7 @@ function compile {
 # record test. 
 # $1 is test name
 function record {
-	LD_LIBRARY_PATH="/usr/local/lib" $rr --record $lib a.out 1> $1.out.record
+	$rr --record $lib a.out 1> $1.out.record
 }
 
 function delay_kill {
@@ -73,13 +77,13 @@ function record_async_signal {
 # $1 is test name 
 # $2 are rr flags
 function replay {
-	LD_LIBRARY_PATH="/usr/local/lib" $rr --replay --autopilot $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
+	$rr --replay --autopilot $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
 }
 
 # debug <test-name> [rr-args]
 # load the "expect" script to drive replay of the recording
 function debug {
-	LD_LIBRARY_PATH="/usr/local/lib" python $1.py $rr --replay --dbgport=1111 $2 trace_0/
+	python $1.py $rr --replay --dbgport=1111 $2 trace_0/
 	if [[ $? == 0 ]]; then
 		echo "Test '$1' PASSED"
 	else
@@ -151,4 +155,8 @@ function debug_test { test=$1; rr_flags=$2;
 # Try to prevent tests that are interrupted or bail early from
 # affecting this test run.
 cleanup
-get_rr_cmd $# $1
+get_rr_cmd $# $1 $2
+
+libpath=$(realpath ../../obj/lib)
+echo Using rr LD_LIBRARY_PATH "'$libpath'"
+export LD_LIBRARY_PATH="$libpath:/usr/local/lib:${LD_LIBRARY_PATH}"

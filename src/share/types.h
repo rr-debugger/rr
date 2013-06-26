@@ -122,7 +122,8 @@ struct mmapped_file {
 struct flags {
 	int option;
 	bool redirect;
-	char *filter_lib_path;
+	bool use_syscall_buffer;
+	char *syscall_buffer_lib_path;
 	int dump_on;	// event
 	int dump_at;	// global time
 	int checksum;

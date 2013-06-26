@@ -64,11 +64,11 @@ install(TARGETS rr rr_syscall_buffer
 set(RR_TEST_CMD_COMMON
   "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR}/src/test" "-rr=${EXECUTABLE_OUTPUT_PATH}/rr")
 
-add_test(Tests ${RR_TEST_CMD_COMMON} -lib=${LIBRARY_OUTPUT_PATH}/librr_syscall_buffer.so)
+add_test(Tests ${RR_TEST_CMD_COMMON} -lib=y)
 set_tests_properties(Tests
   PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
-add_test(TestsNoFilterLib ${RR_TEST_CMD_COMMON})
+add_test(TestsNoFilterLib ${RR_TEST_CMD_COMMON} -lib=n)
 set_tests_properties(TestsNoFilterLib
   PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
