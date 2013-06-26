@@ -1,5 +1,4 @@
 source util.sh
-get_rr_cmd $# $1
 compile async_usr1
 # SIGUSR1, wait 0.5s
 record_async_signal 10 0.5 async_usr1
