@@ -380,8 +380,8 @@ static void process_ioctl(struct context* ctx, int state,
 	pid_t tid = ctx->child_tid;
 	int request;
 
-	step->params.syscall.emu = 1;
-	step->params.syscall.emu_ret = 1;
+	step->syscall.emu = 1;
+	step->syscall.emu_ret = 1;
 
 	if (state == STATE_SYSCALL_ENTRY) {
 		step->action = TSTEP_ENTER_SYSCALL;
@@ -395,19 +395,19 @@ static void process_ioctl(struct context* ctx, int state,
 		case FIONREAD:
 		case TIOCGWINSZ:
 		case TIOCGPGRP:
-			step->params.syscall.num_emu_args = 1;
+			step->syscall.num_emu_args = 1;
 			break;
 		case DRM_IOCTL_VERSION:
-			step->params.syscall.num_emu_args = 4;
+			step->syscall.num_emu_args = 4;
 			break;
 		case DRM_IOCTL_I915_GEM_PWRITE:
-			step->params.syscall.num_emu_args = 2;
+			step->syscall.num_emu_args = 2;
 			break;
 		case DRM_IOCTL_GET_MAGIC:
 		case DRM_IOCTL_RADEON_INFO:
 		case DRM_IOCTL_RADEON_GEM_CREATE:
 			print_register_file_tid(tid);
-			step->params.syscall.num_emu_args = 1;
+			step->syscall.num_emu_args = 1;
 			break;
 		default:
 			print_register_file_tid(tid);
@@ -567,15 +567,15 @@ static void process_mmap2(struct context* ctx,
 		peek_next_trace(&next);
 		if (SYSCALL_FAILED(next.recorded_regs.eax)) {
 			/* failed mapping, emulate */
-			step->params.syscall.emu = 1;
+			step->syscall.emu = 1;
 		}
 		return;
 	}
 
 	if (SYSCALL_FAILED(trace->recorded_regs.eax)) {
 		step->action = TSTEP_EXIT_SYSCALL;
-		step->params.syscall.emu = 1;
-		step->params.syscall.emu_ret = 1;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
 		return;
 	}
 
@@ -664,8 +664,9 @@ static void process_mmap2(struct context* ctx,
 		write_child_registers(tid, &orig_regs);
 
 		validate_args(syscall, state, ctx);
-		debug("%d[time=%d]: mmapped anonymous with flags %x to address %p\n",
-		      ctx->child_tid, trace->global_time, orig_regs.esi,orig_regs.eax);
+		debug("%d[time=%d]: mmapped anonymous with flags %lx to address %p\n",
+		      ctx->child_tid, trace->global_time,
+		      orig_regs.esi, (void*)orig_regs.eax);
 	}
 }
 
@@ -674,8 +675,8 @@ static void process_socketcall(struct context* ctx, int state,
 {
 	int call;
 
-	step->params.syscall.emu = 1;
-	step->params.syscall.emu_ret = 1;
+	step->syscall.emu = 1;
+	step->syscall.emu_ret = 1;
 
 	if (state == STATE_SYSCALL_ENTRY) {
 		step->action = TSTEP_ENTER_SYSCALL;
@@ -695,19 +696,19 @@ static void process_socketcall(struct context* ctx, int state,
 	case SYS_SENDTO:
 	case SYS_SETSOCKOPT:
 	case SYS_SHUTDOWN:
-		step->params.syscall.num_emu_args = 0;
+		step->syscall.num_emu_args = 0;
 		break;
 	case SYS_GETPEERNAME:
 	case SYS_GETSOCKNAME:
-		step->params.syscall.num_emu_args = 2;
+		step->syscall.num_emu_args = 2;
 		break;
 	case SYS_RECV:
-		step->params.syscall.num_emu_args = 1;
+		step->syscall.num_emu_args = 1;
 		break;
 	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 	case SYS_RECVMSG:
 		/* write the struct msghdr data structure */
-		step->params.syscall.num_emu_args = 5;
+		step->syscall.num_emu_args = 5;
 		break;
 
 	/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
@@ -722,16 +723,16 @@ static void process_socketcall(struct context* ctx, int state,
 	 */
 	case SYS_ACCEPT:
 		/* FIXME: not quite sure about socket_addr */
-		step->params.syscall.num_emu_args = 2;
+		step->syscall.num_emu_args = 2;
 		break;
 
 	case SYS_SOCKETPAIR:
 	case SYS_GETSOCKOPT:
-		step->params.syscall.num_emu_args = 1;
+		step->syscall.num_emu_args = 1;
 		break;
 
 	case SYS_RECVFROM:
-		step->params.syscall.num_emu_args = 3;
+		step->syscall.num_emu_args = 3;
 		break;
 
 	default:
@@ -772,14 +773,14 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 	assert("Valid but unhandled syscallno"
 	       && rep_UNDEFINED != def->type);
 
-	step->params.syscall.no = syscall;
+	step->syscall.no = syscall;
 
 	if (rep_IRREGULAR != def->type) {
-		step->params.syscall.num_emu_args = def->num_emu_args;
+		step->syscall.num_emu_args = def->num_emu_args;
 		step->action = STATE_SYSCALL_ENTRY == state ?
 			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
-		step->params.syscall.emu = rep_EMU == def->type;
-		step->params.syscall.emu_ret =
+		step->syscall.emu = rep_EMU == def->type;
+		step->syscall.emu_ret =
 			rep_EMU == def->type || rep_EXEC_RET_EMU == def->type;
 		return;
 	}
@@ -791,14 +792,14 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 	switch (syscall) {
 	case SYS_exit:
 	case SYS_exit_group:
-		step->params.syscall.emu = 0;
+		step->syscall.emu = 0;
 		assert(state == STATE_SYSCALL_ENTRY);
 		step->action = TSTEP_ENTER_SYSCALL;
 		return;
 
 	case SYS_fcntl64:
-		step->params.syscall.emu = 1;
-		step->params.syscall.emu_ret = 1;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
 		if (state == 0) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
@@ -812,14 +813,14 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			case F_SETFL:
 			case F_SETFD:
 			case F_SETOWN:
-				step->params.syscall.num_emu_args = 0;
+				step->syscall.num_emu_args = 0;
 				break;
 			case F_SETLK:
 			case F_SETLK64:
 			case F_SETLKW64:
 			case F_GETLK:
 			case F_GETLK64:
-				step->params.syscall.num_emu_args = 1;
+				step->syscall.num_emu_args = 1;
 				break;
 			default:
 				fatal("Unknown fcntl64 command: %d", cmd);
@@ -828,8 +829,8 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		return;
 
 	case SYS_futex:
-		step->params.syscall.emu = 1;
-		step->params.syscall.emu_ret = 1;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
@@ -841,13 +842,13 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			case FUTEX_WAIT_BITSET:
 			case FUTEX_WAIT:
 			case FUTEX_UNLOCK_PI:
-				step->params.syscall.num_emu_args = 1;
+				step->syscall.num_emu_args = 1;
 				break;
 			case FUTEX_CMP_REQUEUE:
 			case FUTEX_WAKE_OP:
 			case FUTEX_CMP_REQUEUE_PI:
 			case FUTEX_WAIT_REQUEUE_PI:
-				step->params.syscall.num_emu_args = 2;
+				step->syscall.num_emu_args = 2;
 				break;
 			default:
 				fatal("op: %d futex_wait: %d \n",
@@ -863,20 +864,20 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		return process_mmap2(ctx, trace, state, step);
 
 	case SYS_nanosleep:
-		step->params.syscall.emu = 1;
-		step->params.syscall.emu_ret = 1;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
 		if (STATE_SYSCALL_ENTRY == state) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
 			step->action = TSTEP_EXIT_SYSCALL;
-			step->params.syscall.num_emu_args =
+			step->syscall.num_emu_args =
 				(trace->recorded_regs.ecx != 0) ? 1 : 0;
 		}
 		return;
 
 	case SYS_quotactl:
-		step->params.syscall.emu = 1;
-		step->params.syscall.emu_ret = 1;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
@@ -887,22 +888,22 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			case Q_GETQUOTA:
 			case Q_GETINFO:
 			case Q_GETFMT:
-				step->params.syscall.num_emu_args = 1;
+				step->syscall.num_emu_args = 1;
 				break;
 			default:
-				step->params.syscall.num_emu_args = 0;
+				step->syscall.num_emu_args = 0;
 			}
 		}
 		return;
 
 	case SYS_read:
-		step->params.syscall.emu = 1;
-		step->params.syscall.emu_ret = 1;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
 		if (STATE_SYSCALL_ENTRY == state) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
 			step->action = TSTEP_EXIT_SYSCALL;
-			step->params.syscall.num_emu_args =
+			step->syscall.num_emu_args =
 				(trace->recorded_regs.eax > 0) ? 1 : 0;
 		}
 		return;
@@ -911,9 +912,9 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		return process_socketcall(ctx, state, step);
 
 	case SYS_write:
-		step->params.syscall.num_emu_args = 0;
-		step->params.syscall.emu = 1;
-		step->params.syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 0;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {

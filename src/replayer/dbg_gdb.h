@@ -108,7 +108,7 @@ struct dbg_request {
 		} mem;
 
 		dbg_register reg;
-	} params;
+	};
 };
 
 /**

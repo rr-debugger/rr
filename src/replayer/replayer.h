@@ -74,7 +74,7 @@ struct rep_trace_step {
 			const struct user_regs_struct* regs;
 			int signo;
 		} target;
-	} params;
+	};
 };
 
 #endif /* REPLAYER_H_ */

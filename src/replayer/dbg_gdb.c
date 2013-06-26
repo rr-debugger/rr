@@ -616,14 +616,13 @@ static int process_packet(struct dbg_context* dbg)
 	case 'm':
 		dbg->req.type = DREQ_GET_MEM;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.params.mem.addr =
-			(void*)strtoul(payload, &payload, 16);
+		dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
 		++payload;
-		dbg->req.params.mem.len = strtoul(payload, &payload, 16);
+		dbg->req.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 
 		debug("gdb requests memory (addr=0x%p, len=%u)",
-			  dbg->req.params.mem.addr, dbg->req.params.mem.len);
+			  dbg->req.mem.addr, dbg->req.mem.len);
 
 		ret = 1;
 		break;
@@ -636,9 +635,9 @@ static int process_packet(struct dbg_context* dbg)
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.params.reg = strtoul(payload, &payload, 16);
+		dbg->req.reg = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
-		debug("gdb requests register value (%d)", dbg->req.params.reg);
+		debug("gdb requests register value (%d)", dbg->req.reg);
 		ret = 1;
 		break;
 	case 'P':
@@ -684,15 +683,14 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->req.type =	type + (request == 'Z' ?
 					DREQ_SET_SW_BREAK :
 					DREQ_REMOVE_SW_BREAK);
-		dbg->req.params.mem.addr =
-			(void*)strtoul(payload, &payload, 16);
+		dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
 		assert(',' == *payload++);
-		dbg->req.params.mem.len = strtoul(payload, &payload, 16);
+		dbg->req.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 
 		debug("gdb requests %s breakpoint (addr=%p, len=%u)",
 		      'Z' == request ? "set" : "remove",
-		      dbg->req.params.mem.addr, dbg->req.params.mem.len);
+		      dbg->req.mem.addr, dbg->req.mem.len);
 
 		ret = 1;
 		break;
@@ -828,7 +826,7 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem)
 	assert(DREQ_GET_MEM == dbg->req.type);
 
 	if (mem) {
-		len = dbg->req.params.mem.len;
+		len = dbg->req.mem.len;
 		buf = sys_malloc(2 * len + 1);
 		for (i = 0; i < len; ++i) {
 			unsigned long b = mem[i];
