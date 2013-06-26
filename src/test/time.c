@@ -37,6 +37,7 @@ int main() {
 		test_assert(tv.tv_sec < tv_now.tv_sec
 			    || (tv.tv_sec == tv_now.tv_sec
 				&& tv.tv_usec <= tv_now.tv_usec));
+		tv = tv_now;
 
 		printf("cg: %g %llu, gtod: %g %llu\n",
 		       (double) ts.tv_sec, (long long int) ts.tv_nsec,

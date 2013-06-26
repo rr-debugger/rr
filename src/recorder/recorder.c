@@ -25,7 +25,7 @@
 #include "../share/trace.h"
 #include "../share/sys.h"
 #include "../share/util.h"
-#include "../share/wrap_syscalls.h"
+#include "../share/syscall_buffer.h"
 
 #define PTRACE_EVENT_NONE			0
 static struct flags rr_flags_ = { 0 };
@@ -222,7 +222,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 				struct user_regs_struct regs;
 				read_child_registers(ctx->child_tid, &regs);
 				/* We need to point to scratch memory only if the eip is not in the wrapper lib. */				
-				if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+				if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 					size_t num_args = 4;
 					// reading syscall args
 					unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
@@ -252,7 +252,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 				struct user_regs_struct regs;
 				read_child_registers(ctx->child_tid, &regs);
 				/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-				if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+				if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 					size_t num_args = 3;
 					// reading syscall args
 					unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
@@ -294,7 +294,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			struct user_regs_struct regs;
 			read_child_registers(ctx->child_tid, &regs);
 			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 				int size = regs.edx;
 				if (size < 0 || size > ctx->scratch_size) {
 					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
@@ -329,7 +329,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			struct user_regs_struct regs;
 			read_child_registers(ctx->child_tid, &regs);
 			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 				bool registers_changed = FALSE;
 				void * ptr = ctx->scratch_ptr;
 				ctx->recorded_scratch_size = 0;
@@ -366,7 +366,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			struct user_regs_struct regs;
 			read_child_registers(ctx->child_tid, &regs);
 			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 				int size = sizeof(struct pollfd) * regs.ecx;
 				if (size < 0 || size > ctx->scratch_size) {
 					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
@@ -397,7 +397,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			struct user_regs_struct regs;
 			read_child_registers(ctx->child_tid, &regs);
 			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 				switch (regs.ebx)
 				{
 					case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
@@ -434,7 +434,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			struct user_regs_struct regs;
 			read_child_registers(ctx->child_tid, &regs);
 			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 				int size = sizeof(struct epoll_event) * regs.edx;
 				if (size < 0 || size > ctx->scratch_size) {
 					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
@@ -467,7 +467,7 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			struct user_regs_struct regs;
 			read_child_registers(ctx->child_tid, &regs);
 			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx)) {
+			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
 				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
 				ctx->recorded_scratch_size = sizeof(struct timespec);
 				regs.ecx = (uintptr_t)ctx->scratch_ptr;
@@ -496,7 +496,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 {
 	/* handle events */
 	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
-	debug("Ptrace event %d: syscall %d, thread: %d", event, (*ctx_ptr)->event, (*ctx_ptr)->child_tid);
+	debug("  handle_ptrace_event %d: syscall %d, thread: %d", event, (*ctx_ptr)->event, (*ctx_ptr)->child_tid);
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
@@ -594,6 +594,8 @@ void start_recording(struct flags rr_flags)
 		/* get a thread that is ready to be executed */
 		ctx = get_active_thread(ctx);
 
+		debug("Active task is %d", ctx->child_tid);
+
 		if (ctx->scratch_ptr == NULL) {
 			rec_init_scratch_memory(ctx);
 		}
@@ -605,6 +607,8 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_START:
 		{
+			debug("EXEC_START: pevent: %d, sig: %d, event: %d",
+				 GET_PTRACE_EVENT(ctx->status), ctx->child_sig, ctx->event);
 
 			/* print some kind of progress */
 			if (progress++ % 10000 == 0) {
@@ -616,7 +620,7 @@ void start_recording(struct flags rr_flags)
 
 			/**
 			 * We won't receive PTRACE_EVENT_SECCOMP events until the seccomp filter is installed
-			 * by the wrap_syscall lib in the child, therefore we must record in the traditional way (with PTRACE_SYSCALL)
+			 * by the syscall_buffer lib in the child, therefore we must record in the traditional way (with PTRACE_SYSCALL)
 			 * until it is installed.
 			 */
 			if (filter_on_) {
@@ -624,6 +628,8 @@ void start_recording(struct flags rr_flags)
 			} else {
 				cont_syscall_block(ctx);
 			}
+			debug("  first trap: pevent: %d, sig: %d, event: %d",
+			      GET_PTRACE_EVENT(ctx->status), ctx->child_sig, ctx->event);
 
 			/* we must disallow the context switch here! */
 			ctx->allow_ctx_switch = 0;
@@ -645,6 +651,9 @@ void start_recording(struct flags rr_flags)
 				/* We require an extra continue, to get to the actual syscall */
 				// TODO: What if there's a signal in between?
 				cont_syscall_block(ctx);
+
+				debug("  post-seccomp trap: pevent: %d, sig: %d, event: %d",
+				      GET_PTRACE_EVENT(ctx->status), ctx->child_sig, ctx->event);
 			} else if (ptrace_event == PTRACE_EVENT_CLONE ||
 					   ptrace_event == PTRACE_EVENT_FORK) { /* clone(),fork() are handled differently with seccomp TODO: vfork() */
 				debug("Handling ptrace event: %d", GET_PTRACE_EVENT(ctx->status));
@@ -737,15 +746,28 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_ENTRY_SYSCALL:
 		{
+			debug("EXEC_SYSCALL_ENTRY (pevent: %d, sig: %d, event: %d)",
+			      GET_PTRACE_EVENT(ctx->status),
+			      ctx->child_sig, ctx->event);
+
 			/* continue and execute the system call */
 			ctx->allow_ctx_switch = allow_ctx_switch(ctx,ctx->event);
 			cont_nonblock(ctx);
+
+			debug("  after cont (pevent: %d, sig: %d, event: %d)",
+			      GET_PTRACE_EVENT(ctx->status),
+			      ctx->child_sig, ctx->event);
+
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
 			break;
 		}
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
+			debug("EXEC_IN_SYSCALL (pevent: %d, sig: %d, event: %d)",
+			      GET_PTRACE_EVENT(ctx->status),
+			      ctx->child_sig, ctx->event);
+
 			int ret;
 			/*
 			 * Wait for the system call to return in case of a write,
@@ -773,6 +795,10 @@ void start_recording(struct flags rr_flags)
 			}
 			}
 
+			debug("  after wait (pevent: %d, sig: %d, event: %d)",
+			      GET_PTRACE_EVENT(ctx->status),
+			      ctx->child_sig, ctx->event);
+
 			if (ret) {
 				ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
 				ctx->allow_ctx_switch = 0;
@@ -782,6 +808,10 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_IN_SYSCALL_DONE:
 		{
+			debug("EXEC_SYSCALL_DONE (pevent: %d, sig: %d, event: %d)",
+			      GET_PTRACE_EVENT(ctx->status),
+			      ctx->child_sig, ctx->event);
+
 			assert(signal_pending(ctx->status) == 0);
 
 			struct user_regs_struct regs;
