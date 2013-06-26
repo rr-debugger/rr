@@ -28,8 +28,11 @@ if [ -z $dir ]; then
 	dir=../test/
 fi
 
-if [ -n "$lib" ]; then
-	lib="--filter_lib=$lib"
+if [[ "$lib" == "y" ]]; then
+	lib="-b"                # force-enable
+elif [[ "$lib" == "n" ]]; then
+	lib="-n"                # force-disable
+# else, rr default
 fi
 
 #move to test directory
@@ -37,5 +40,5 @@ cd $dir
 
 # record and replay all tests
 for test in *.run; do
-	source $test $rr $lib
+	bash $test "$lib" $rr
 done

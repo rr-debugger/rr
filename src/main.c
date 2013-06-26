@@ -3,20 +3,22 @@
 #include <assert.h>
 #include <getopt.h>
 #include <limits.h>
+#include <sched.h>
 #include <stdio.h>
 #include <string.h>
-#include <sched.h>
+#include <sys/prctl.h>
 
 #include "share/dbg.h"
 #include "share/hpc.h"
+#include "share/seccomp-bpf.h"
 #include "share/sys.h"
+#include "share/syscall_buffer.h"
 #include "share/util.h"
 
 #include "recorder/recorder.h"
 #include "recorder/rec_sched.h"
 #include "replayer/replayer.h"
 #include "replayer/rep_sched.h"
-
 
 static pid_t child;
 
@@ -83,11 +85,11 @@ static void copy_envp(char** envp)
 		i++;
 	}
 	/* LD_PRELOAD the syscall interception lib */
-	if (__rr_flags.filter_lib_path) {
+	if (__rr_flags.syscall_buffer_lib_path) {
 		/* XXX not strictly safe */
 		char ld_preload[2 * PATH_MAX] = "LD_PRELOAD=";
 		/* our preload lib *must* come first */
-		strcat(ld_preload, __rr_flags.filter_lib_path);
+		strcat(ld_preload, __rr_flags.syscall_buffer_lib_path);
 		if (preload_index >= 0) {
 			const char* old_preload = NULL;
 			old_preload = strchr(envp[preload_index], '=') + 1;
@@ -266,6 +268,17 @@ static void assert_prerequisites() {
 	}
 }
 
+static int is_seccomp_bpf_available() {
+	struct sock_filter noop[] = { ALLOW_PROCESS };
+	struct sock_fprog prog = { .len = (unsigned short)ALEN(noop),
+				   .filter = noop };
+	/* NB: if the SET_NO_NEW_PRIVS succeeds, it will prevent us
+	 * from doing things like recording setuid programs.  Bad
+	 * thing? */
+	return (0 == prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
+		&& 0 == prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog));
+}
+
 static void print_usage()
 {
 	fputs(
@@ -273,37 +286,46 @@ static void print_usage()
 "\n"
 "Syntax for --record\n"
 " rr --record [OPTION]... <exe> [exe-args]...\n"
-"  -l, --filter_lib=LIB       use syscall buffer library LIB\n"
+"  -b, --force-syscall-buffer force the syscall buffer preload library\n"
+"                             to be used, even if that's probably a bad\n"
+"                             idea\n"
+"  -n, --no-syscall-buffer    disable the syscall buffer preload library\n"
+"                             even if it would otherwise be used"
 "\n"
 "Syntax for --replay\n"
 " rr --replay [OPTION]... <trace-dir>\n"
 "  -a, --autopilot            replay without debugger server\n"
-"  -p, --dbgport=PORT         bind the debugger server to PORT\n"
-"  -n, --no_redirect_output   don't replay writes to stdout/stderr\n"
-"  -d, --dump_on=<SYSCALL_NUM|-SIGNAL_NUM>\n"
-"                             dump memory at SYSCALL or SIGNAL during replay\n"
-"  -t, --dump_at=TIME         dump memory at global timepoint TIME\n"
 "  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
 "                             verify checksums either on all syscalls, all\n"
 "                             events, or starting from global timepoint\n"
-"                             FROM_TIME\n",
-stderr);
+"                             FROM_TIME\n"
+"  -d, --dump-on=<SYSCALL_NUM|-SIGNAL_NUM>\n"
+"                             dump memory at SYSCALL or SIGNAL during replay\n"
+"  -p, --dbgport=PORT         bind the debugger server to PORT\n"
+"  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
+
+"  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
+, stderr);
 }
 
 static int parse_record_args(int argc, char** argv, struct flags* flags,
 			     int* argi)
 {
 	struct option opts[] = {
-		{ "filter_lib", required_argument, NULL, 'l' },
+		{ "force-syscall-buffer", no_argument, NULL, 'b' },
+		{ "no-syscall-buffer", no_argument, NULL, 'n' },
 		{ 0 }
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "l:", opts, &i)) {
+		switch (getopt_long(argc, argv, "bn", opts, &i)) {
 		case -1:
 			goto done;
-		case 'l':
-			flags->filter_lib_path = optarg;
+		case 'b':
+			flags->use_syscall_buffer = TRUE;
+			break;
+		case 'n':
+			flags->use_syscall_buffer = FALSE;
 			break;
 		default:
 			return -1;
@@ -320,15 +342,15 @@ static int parse_replay_args(int argc, char** argv, struct flags* flags,
 	struct option opts[] = {
 		{ "autopilot", no_argument, NULL, 'a' },
 		{ "checksum", required_argument, NULL, 'c' },
-		{ "dump_on", required_argument, NULL, 'd' },
-		{ "no_redirect_output", no_argument, NULL, 'n' },
+		{ "dump-on", required_argument, NULL, 'd' },
 		{ "dbgport", required_argument, NULL, 'p' },
-		{ "dump_at", required_argument, NULL, 't' },		
+		{ "no-redirect-output", no_argument, NULL, 'q' },
+		{ "dump-at", required_argument, NULL, 't' },		
 		{ 0 }
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "ac:d:np:t:", opts, &i)) {
+		switch (getopt_long(argc, argv, "ac:d:p:qt:", opts, &i)) {
 		case -1:
 			goto done;
 		case 'a':
@@ -347,11 +369,11 @@ static int parse_replay_args(int argc, char** argv, struct flags* flags,
 		case 'd':
 			flags->dump_on = atoi(optarg);
 			break;
-		case 'n':
-			flags->redirect = FALSE;
-			break;
 		case 'p':
 			flags->dbgport = atoi(optarg);
+			break;
+		case 'q':
+			flags->redirect = FALSE;
 			break;
 		case 't':
 			flags->dump_at = atoi(optarg);
@@ -381,6 +403,9 @@ static int parse_args(int argc, char** argv, struct flags* flags, int* argi)
 	flags->dump_at = DUMP_AT_NONE;
 	flags->dump_on = DUMP_ON_NONE;
 	flags->redirect = TRUE;
+	/* TODO default to disabling the syscall buffer, because it's
+	 * buggy and not well tested at the moment. */
+	flags->use_syscall_buffer = FALSE;
 
 	/* TODO: make these "record" and "replay" to match meta-tools
 	 * like git etc. */
@@ -412,6 +437,18 @@ int main(int argc, char* argv[], char** envp)
 	if (parse_args(argc, argv, &__rr_flags, &argi) || argc <= argi) {
 		print_usage();
 		return 1;
+	}
+
+	if (!__rr_flags.use_syscall_buffer) {
+		log_info("Syscall buffer disabled by flag");
+	} else if (!is_seccomp_bpf_available()) {
+		log_warn("seccomp-bpf not available on this system; syscall buffer disabled");
+	} else {
+		/* We rely on the distribution package or the user to
+		 * set up the LD_LIBRARY_PATH properly so that we can
+		 * LD_PRELOAD the bare library name.  Trying to do
+		 * otherwise is possible, but annoying. */
+		__rr_flags.syscall_buffer_lib_path = SYSCALL_BUFFER_LIB_FILENAME;
 	}
 
 	/* allocate memory for the arguments that are passed to the
