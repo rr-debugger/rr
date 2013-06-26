@@ -1,6 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include <assert.h>
+#include <getopt.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -130,16 +131,6 @@ static void sig_child(int sig)
 	kill(getpid(), SIGQUIT);
 }
 
-void print_usage()
-{
-	puts(
-"rr: missing/incorrect operands.  Recording syntax is\n"
-"  rr --record [--filter_lib=<path>] <executable> [args]\n"
-"\n"
-"Replaying syntax is\n"
-" rr --replay [--autopilot] [--dbgport=<port>] [--no_redirect_output] [--dump_on=<syscall|-signal>] [--dump_at=<time>] [--checksum={on-syscalls,on-all-events}|<from-time>] <path-to-trace-directory>\n");
-}
-
 static void install_signal_handler()
 {
 	signal(SIGINT, sig_child);
@@ -261,7 +252,7 @@ static int read_int_file(const char* filename)
 	return val;
 }
 
-void check_prerequisites() {
+static void assert_prerequisites() {
 	int aslr_val =
 		read_int_file("/proc/sys/kernel/randomize_va_space");
 	int ptrace_scope_val =
@@ -275,90 +266,152 @@ void check_prerequisites() {
 	}
 }
 
+static void print_usage()
+{
+	fputs(
+"Usage: rr (--record|--replay) [OPTION]... [ARG]...\n"
+"\n"
+"Syntax for --record\n"
+" rr --record [OPTION]... <exe> [exe-args]...\n"
+"  -l, --filter_lib=LIB       use syscall buffer library LIB\n"
+"\n"
+"Syntax for --replay\n"
+" rr --replay [OPTION]... <trace-dir>\n"
+"  -a, --autopilot            replay without debugger server\n"
+"  -p, --dbgport=PORT         bind the debugger server to PORT\n"
+"  -n, --no_redirect_output   don't replay writes to stdout/stderr\n"
+"  -d, --dump_on=<SYSCALL_NUM|-SIGNAL_NUM>\n"
+"                             dump memory at SYSCALL or SIGNAL during replay\n"
+"  -t, --dump_at=TIME         dump memory at global timepoint TIME\n"
+"  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
+"                             verify checksums either on all syscalls, all\n"
+"                             events, or starting from global timepoint\n"
+"                             FROM_TIME\n",
+stderr);
+}
+
+static int parse_record_args(int argc, char** argv, struct flags* flags,
+			     int* argi)
+{
+	struct option opts[] = {
+		{ "filter_lib", required_argument, NULL, 'l' },
+		{ 0 }
+	};
+	while (1) {
+		int i = 0;
+		switch (getopt_long(argc, argv, "l:", opts, &i)) {
+		case -1:
+			goto done;
+		case 'l':
+			flags->filter_lib_path = optarg;
+			break;
+		default:
+			return -1;
+		}
+	}
+done:
+	*argi = optind;
+	return 0;
+}
+
+static int parse_replay_args(int argc, char** argv, struct flags* flags,
+			     int* argi)
+{
+	struct option opts[] = {
+		{ "autopilot", no_argument, NULL, 'a' },
+		{ "checksum", required_argument, NULL, 'c' },
+		{ "dump_on", required_argument, NULL, 'd' },
+		{ "no_redirect_output", no_argument, NULL, 'n' },
+		{ "dbgport", required_argument, NULL, 'p' },
+		{ "dump_at", required_argument, NULL, 't' },		
+		{ 0 }
+	};
+	while (1) {
+		int i = 0;
+		switch (getopt_long(argc, argv, "ac:d:np:t:", opts, &i)) {
+		case -1:
+			goto done;
+		case 'a':
+			flags->autopilot = TRUE;
+			break;
+		case 'c':
+			if (!strcmp("on-syscalls", optarg)) {
+				flags->checksum = CHECKSUM_SYSCALL;
+			} else if (!strcmp("on-all-events", optarg)) {
+				flags->checksum = CHECKSUM_ALL;
+			} else {
+				flags->checksum = str2li(optarg,
+							 LI_COLUMN_SIZE);
+			}
+			break;
+		case 'd':
+			flags->dump_on = atoi(optarg);
+			break;
+		case 'n':
+			flags->redirect = FALSE;
+			break;
+		case 'p':
+			flags->dbgport = atoi(optarg);
+			break;
+		case 't':
+			flags->dump_at = atoi(optarg);
+			break;
+		default:
+			return -1;
+		}
+	}
+done:
+	*argi = optind;
+	return 0;
+}
+
+static int parse_args(int argc, char** argv, struct flags* flags, int* argi)
+{
+	const char* cmd = argv[1];
+	int ret;
+	if (argc < 2) {
+		fprintf(stderr, "%s: must specify --record or --replay.",
+			argv[0]);
+		return -1;
+	}
+
+	memset(flags, 0, sizeof(*flags));
+	flags->checksum = CHECKSUM_NONE;
+	flags->dbgport = -1;
+	flags->dump_at = DUMP_AT_NONE;
+	flags->dump_on = DUMP_ON_NONE;
+	flags->redirect = TRUE;
+
+	/* TODO: make these "record" and "replay" to match meta-tools
+	 * like git etc. */
+	if (!strcmp("--record", cmd)) {
+		flags->option = RECORD;
+		ret = parse_record_args(argc - 1, argv + 1, flags, argi);
+	} else if (!strcmp("--replay", cmd)) {
+		flags->option = REPLAY;
+		ret = parse_replay_args(argc - 1, argv + 1, flags, argi);
+	} else {
+		if (strcmp("-h", cmd) && strcmp("--help", cmd)) {
+			fprintf(stderr, "Unknown command '%s'.\n", argv[1]);
+		}
+		return -1;
+	}
+	++*argi;
+	return ret;
+}
+
 /**
  * This is where recorder and the replayer start
  */
 int main(int argc, char* argv[], char** envp)
 {
-	__rr_flags.checksum = CHECKSUM_NONE;
-	__rr_flags.dbgport = -1;
-	__rr_flags.dump_at = DUMP_AT_NONE;
-	__rr_flags.dump_on = DUMP_ON_NONE;
-	__rr_flags.redirect = TRUE;
+	int argi;		/* index of first positional argument */
 
-	/* check prerequisites for rr to run */
-	check_prerequisites();
+	assert_prerequisites();
 
-	/* check for sufficient amount of arguments */
-	if (argc < 3) {
+	if (parse_args(argc, argv, &__rr_flags, &argi) || argc <= argi) {
 		print_usage();
-		return 0;
-	}
-
-	int flag_index = 1;
-
-	// mandatory {record,replay} flag
-	if (flag_index < argc) {
-		if (strncmp("--record", argv[flag_index], sizeof("--record")) == 0) {
-			__rr_flags.option = RECORD;
-		} else if (strncmp("--replay", argv[flag_index], sizeof("--replay")) == 0) {
-			__rr_flags.option = REPLAY;
-		}
-		flag_index++;
-	}
-
-	if (__rr_flags.option == INVALID) {
-		print_usage();
-		return 0;
-	}
-
-	if  (flag_index < argc && strncmp("--autopilot", argv[flag_index], sizeof("--autopilot")) == 0) {
-		__rr_flags.autopilot = TRUE;
-		flag_index++;
-	}
-
-	if  (flag_index < argc && strncmp("--dbgport=", argv[flag_index], sizeof("--dbgport=") - 1) == 0) {
-		sscanf(argv[flag_index],"--dbgport=%d", &__rr_flags.dbgport);
-		flag_index++;
-	}
-
-	// optional redirect flag
-	if  (flag_index < argc && strncmp("--no_redirect_output", argv[flag_index], sizeof("--no_redirect_output")) == 0) {
-		__rr_flags.redirect = FALSE;
-		flag_index++;
-	}
-
-	// optional seccomp filter flag
-	if  (flag_index < argc && strncmp("--filter_lib=", argv[flag_index], sizeof("--filter_lib=") - 1) == 0) {
-		__rr_flags.filter_lib_path = sys_malloc(strlen(argv[flag_index]) - (sizeof("--filter_lib=") - 1) + 1);
-		sscanf(argv[flag_index],"--filter_lib=%s",__rr_flags.filter_lib_path);
-		flag_index++;
-	}
-
-	// optional dump memory on syscall flag
-	if  (flag_index < argc && strncmp("--dump_on=", argv[flag_index], sizeof("--dump_on=") - 1) == 0) {
-		sscanf(argv[flag_index],"--dump_on=%d",&__rr_flags.dump_on);
-		flag_index++;
-	}
-
-	// optional dump memory at global time flag
-	if  (flag_index < argc && strncmp("--dump_at=", argv[flag_index], sizeof("--dump_at=") - 1) == 0) {
-		sscanf(argv[flag_index],"--dump_at=%d",&__rr_flags.dump_at);
-		flag_index++;
-	}
-
-	// optional checksum memory
-	if  (flag_index < argc && strncmp("--checksum=", argv[flag_index], sizeof("--checksum=") - 1) == 0) {
-		char checksum_point[128];
-		sscanf(argv[flag_index],"--checksum=%s",checksum_point);
-		if (strncmp("on-syscalls", checksum_point, sizeof("on-syscalls") - 1) == 0) {
-			__rr_flags.checksum = CHECKSUM_SYSCALL;
-		} else if (strncmp("on-all-events", checksum_point, sizeof("on-all-events") - 1) == 0) {
-			__rr_flags.checksum = CHECKSUM_ALL;
-		} else {
-			__rr_flags.checksum = str2li(checksum_point,LI_COLUMN_SIZE);
-		}
-		flag_index++;
+		return 1;
 	}
 
 	/* allocate memory for the arguments that are passed to the
@@ -369,10 +422,7 @@ int main(int argc, char* argv[], char** envp)
 	alloc_envp(envp);
 	alloc_executable();
 
-	start(argc - flag_index , argv + flag_index, envp);
-
-	if (__rr_flags.filter_lib_path)
-		sys_free((void**)&__rr_flags.filter_lib_path);
+	start(argc - argi , argv + argi, envp);
 
 	return 0;
 
