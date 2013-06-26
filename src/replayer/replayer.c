@@ -45,7 +45,8 @@
 static const struct dbg_request continue_all_tasks = {
 	.type = DREQ_CONTINUE,
 	.target = -1,
-	.params = { {0} }
+	.mem = { 0 },
+	.reg = 0
 };
 
 struct breakpoint {
@@ -189,9 +190,9 @@ static void set_sw_breakpoint(struct context *ctx,
 	struct breakpoint* bp = sys_malloc_zero(sizeof(*bp));
 	byte* orig_data_ptr;
 
-	assert(sizeof(int_3_insn) == req->params.mem.len);
+	assert(sizeof(int_3_insn) == req->mem.len);
 
-	bp->addr = req->params.mem.addr;
+	bp->addr = req->mem.addr;
 
 	orig_data_ptr = read_child_data(ctx, 1, bp->addr);
 	bp->overwritten_data = *orig_data_ptr;
@@ -206,13 +207,12 @@ static void set_sw_breakpoint(struct context *ctx,
 static void remove_sw_breakpoint(struct context *ctx,
 				 const struct dbg_request* req)
 {
-	struct breakpoint* bp = find_breakpoint(req->params.mem.addr);
+	struct breakpoint* bp = find_breakpoint(req->mem.addr);
 
-	assert(sizeof(int_3_insn) == req->params.mem.len);
+	assert(sizeof(int_3_insn) == req->mem.len);
 
 	if (!bp) {
-		warn("Couldn't find breakpoint %p to remove",
-		     req->params.mem.addr);
+		warn("Couldn't find breakpoint %p to remove", req->mem.addr);
 		return;
 	}
 	write_child_data_n(ctx->child_tid,
@@ -259,8 +259,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_is_thread_alive(dbg, !!target);
 			continue;
 		case DREQ_GET_MEM: {
-			byte* mem = read_mem(target, req.params.mem.addr,
-					     req.params.mem.len);
+			byte* mem = read_mem(target, req.mem.addr, req.mem.len);
 			dbg_reply_get_mem(dbg, mem);
 			sys_free((void**)&mem);
 			continue;
@@ -274,8 +273,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_regvalue_t val;
 
 			read_child_registers(target->child_tid, &regs);
-			val.value = get_reg(&regs, req.params.reg,
-					    &val.defined);
+			val.value = get_reg(&regs, req.reg, &val.defined);
 			dbg_reply_get_reg(dbg, val);
 			continue;
 		}
@@ -429,11 +427,10 @@ static int enter_syscall(struct context* ctx,
 			 int stepi)
 {
 	int ret;
-	if ((ret = cont_syscall_boundary(ctx, step->params.syscall.emu,
-					 stepi))) {
+	if ((ret = cont_syscall_boundary(ctx, step->syscall.emu, stepi))) {
 		return ret;
 	}
-	validate_args(step->params.syscall.no, STATE_SYSCALL_ENTRY, ctx);
+	validate_args(step->syscall.no, STATE_SYSCALL_ENTRY, ctx);
 	return ret;
 }
 
@@ -445,7 +442,7 @@ static int exit_syscall(struct context* ctx,
 			const struct rep_trace_step* step,
 			int stepi)
 {
-	int i, emu = step->params.syscall.emu;
+	int i, emu = step->syscall.emu;
 
 	if (!emu) {
 		int ret = cont_syscall_boundary(ctx, emu, stepi);
@@ -454,13 +451,13 @@ static int exit_syscall(struct context* ctx,
 		}
 	}
 
-	for (i = 0; i < step->params.syscall.num_emu_args; ++i) {
+	for (i = 0; i < step->syscall.num_emu_args; ++i) {
 		set_child_data(ctx);
 	}
-	if (step->params.syscall.emu_ret) {
+	if (step->syscall.emu_ret) {
 		set_return_value(ctx);
 	}
-	validate_args(step->params.syscall.no, STATE_SYSCALL_EXIT, ctx);
+	validate_args(step->syscall.no, STATE_SYSCALL_EXIT, ctx);
 
 	if (emu) {
 		/* XXX verify that this can't be interrupted by a
@@ -668,7 +665,7 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	 * quickly as possible by programming the hpc. */
 	rcb_now = read_rbc(ctx->hpc);
 
-	debug("Advancing to rcb=%llu, ip=0x%X", rcb, regs->eax);
+	debug("Advancing to rcb=%llu, ip=%p", rcb, (void*)regs->eax);
 
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
@@ -803,13 +800,12 @@ static int try_one_trace_step(struct context* ctx,
 	case TSTEP_EXIT_SYSCALL:
 		return exit_syscall(ctx, step, stepi);
 	case TSTEP_DETERMINISTIC_SIGNAL:
-		return emulate_deterministic_signal(ctx,
-						    step->params.signo, stepi);
+		return emulate_deterministic_signal(ctx, step->signo, stepi);
 	case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
 		return emulate_async_signal(ctx,
-					    step->params.target.rcb,
-					    step->params.target.regs,
-					    step->params.target.signo,
+					    step->target.rcb,
+					    step->target.regs,
+					    step->target.signo,
 					    stepi);
 	default:
 		fatal("Unhandled step type %d", step->action);
@@ -875,29 +871,29 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		break;
 	case USR_SCHED:
 		step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-		step.params.target.rcb = ctx->trace.rbc;
-		step.params.target.regs = &ctx->trace.recorded_regs;
-		step.params.target.signo = 0;
+		step.target.rcb = ctx->trace.rbc;
+		step.target.regs = &ctx->trace.recorded_regs;
+		step.target.signo = 0;
 		break;
 	case SIG_SEGV_RDTSC:
 		step.action = TSTEP_DETERMINISTIC_SIGNAL;
-		step.params.signo = SIGSEGV;
+		step.signo = SIGSEGV;
 		break;
 	default:
 		/* Pseudosignals are handled above. */
 		assert(event > LAST_RR_PSEUDOSIGNAL);
 		if (FIRST_DET_SIGNAL <= event && event <= LAST_DET_SIGNAL) {
 			step.action = TSTEP_DETERMINISTIC_SIGNAL;
-			step.params.signo = (-event & ~DET_SIGNAL_BIT);
-			stop_sig = step.params.signo;
+			step.signo = (-event & ~DET_SIGNAL_BIT);
+			stop_sig = step.signo;
 		} else if (event < 0) {
 			assert(FIRST_ASYNC_SIGNAL <= event
 			       && event <= LAST_ASYNC_SIGNAL);
 			step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-			step.params.target.rcb = ctx->trace.rbc;
-			step.params.target.regs = &ctx->trace.recorded_regs;
-			step.params.target.signo = -event;
-			stop_sig = step.params.target.signo;
+			step.target.rcb = ctx->trace.rbc;
+			step.target.regs = &ctx->trace.recorded_regs;
+			step.target.signo = -event;
+			stop_sig = step.target.signo;
 		} else {
 			assert(event > 0);
 			/* XXX not so pretty ... */
