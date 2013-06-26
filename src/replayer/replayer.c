@@ -36,7 +36,7 @@
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/util.h"
-#include "../share/wrap_syscalls.h"
+#include "../share/syscall_buffer.h"
 
 #include <perfmon/pfmlib_perf_event.h>
 
@@ -66,7 +66,6 @@ static const struct flags* rr_flags;
  * over the initial rr image. */
 static bool validate = FALSE;
 
-#define __unused __attribute__((unused))
 RB_PROTOTYPE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
 
 static void debug_memory(struct context* ctx)

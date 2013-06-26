@@ -39,7 +39,7 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 #include "../share/shmem.h"
-#include "../share/wrap_syscalls.h"
+#include "../share/syscall_buffer.h"
 
 struct syscall_def {
 	/* See syscall_defs.h for documentation on these values. */
@@ -596,7 +596,7 @@ static void process_mmap2(struct context* ctx,
 		memcpy(&orig_regs, &regs, sizeof(orig_regs));
 
 		int prot = regs.edx;
-		if (strstr(file.filename, WRAP_SYSCALLS_LIB_FILENAME)
+		if (strstr(file.filename, SYSCALL_BUFFER_LIB_FILENAME)
 		    && (prot & PROT_EXEC) ) {
 			/* Note: the library get loaded several times,
 			 * we need the (hopefully one) copy that is
@@ -615,7 +615,7 @@ static void process_mmap2(struct context* ctx,
 		 * modification time */
 		if (regs.esi & MAP_SHARED) {
 			if (strstr(file.filename,
-				   WRAP_SYSCALLS_CACHE_FILENAME_PREFIX)) {
+				   SYSCALL_BUFFER_CACHE_FILENAME_PREFIX)) {
 				/* record cache */
 				ctx->syscall_wrapper_cache_child =
 					(void*)regs.ebx;

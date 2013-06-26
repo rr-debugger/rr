@@ -36,7 +36,7 @@
 #include "../share/sys.h"
 #include "../share/trace.h"
 #include "../share/util.h"
-#include "../share/wrap_syscalls.h"
+#include "../share/syscall_buffer.h"
 
 
 void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags)
@@ -49,11 +49,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x", tid, syscall_to_str(syscall), syscall, get_global_time(), ctx->exec_state);
 	//print_register_file_tid(ctx->child_tid);
 	//print_process_memory(ctx->child_tid);
-
-	/* Some wrapped syscalls still get a ptrace event, we mustn't handle them here */
-	if (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(regs.eip,ctx))
-		return;
-
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -1921,7 +1916,7 @@ SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 			record_mmapped_file_stats(&file);
 
 			int prot = regs.edx;
-			if (strstr(file.filename, WRAP_SYSCALLS_LIB_FILENAME) != NULL && // found the library
+			if (strstr(file.filename, SYSCALL_BUFFER_LIB_FILENAME) != NULL && // found the library
 				(prot & PROT_EXEC) ) { // notice: the library get loaded several times, we need the (hopefully one) copy that is executable
 				ctx->syscall_wrapper_start = file.start;
 				ctx->syscall_wrapper_end = file.end;
@@ -1933,7 +1928,7 @@ SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 					mprotect_child_region(ctx, (void*)regs.eax, PROT_NONE);  // we would prefer to set write-only permissions, but write implies read on i386
 					// note that this region is protected for handling the SIGSEGV
 					add_protected_map(ctx, (void*)regs.eax);
-				} else if (strstr(file.filename,WRAP_SYSCALLS_CACHE_FILENAME_PREFIX) != NULL) { // record cache
+				} else if (strstr(file.filename,SYSCALL_BUFFER_CACHE_FILENAME_PREFIX) != NULL) { // record cache
 					ctx->syscall_wrapper_cache_child = file.start;
 					// mmap as shared in rr as well
 					errno = 0;
@@ -1942,7 +1937,7 @@ SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 					// no need to truncate, the child already did it.
 					int retval;
 					(void)retval;
-					ctx->syscall_wrapper_cache = mmap(NULL, WRAP_SYSCALLS_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
+					ctx->syscall_wrapper_cache = mmap(NULL, SYSCALL_BUFFER_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
 					assert (ctx->syscall_wrapper_cache != NULL && errno == 0);
 					// the buffer is initialized to zero.
 					retval = close(fd);

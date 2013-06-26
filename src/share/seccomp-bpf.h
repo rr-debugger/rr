@@ -71,11 +71,6 @@ struct seccomp_data {
 # define ARCH_NR	0
 #endif
 
-#define VALIDATE_ARCHITECTURE \
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, arch_nr), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, ARCH_NR, 1, 0), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL)
-
 #define EXAMINE_SYSCALL \
 	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, syscall_nr)
 
@@ -92,16 +87,10 @@ struct seccomp_data {
  * continue;
  */
 
-#define EXAMINE_CALLSITE(libstart,libend) \
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, inst_ptr), \
-	BPF_JUMP(BPF_JMP+BPF_JGT+BPF_K, libend, 1, 0), \
-	BPF_JUMP(BPF_JMP+BPF_JGE+BPF_K, libstart, 6, 0), \
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, syscall_nr), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_clone, 0, 1), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_fork, 0, 1), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW), \
-	TRACE_PROCESS
+#define ALLOW_SYSCALLS_FROM_CALLSITE(callsite) \
+ 	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, inst_ptr), \
+	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, callsite, 0, 1), \
+	ALLOW_PROCESS
 
 #define ALLOW_SYSCALL(name) \
 	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_##name, 0, 1), \
@@ -110,28 +99,6 @@ struct seccomp_data {
 #define KILL_SYSCALL(name) \
 	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_##name, 0, 1), \
 	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL)
-
-
-/**
- * logic is:
- * if !futex goto continue;
- * grab the operation from arg1
- * apply operation mask
- * if (op is blocking) goto trace;
- * allow;
- * trace;
- * continue filtering;
- */
-#define ALLOW_FUTEX \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_futex, 0, 8), \
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, args(1)), \
-	BPF_STMT(BPF_ALU+BPF_AND+BPF_K, FUTEX_CMD_MASK), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, FUTEX_WAIT, 4, 0), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, FUTEX_WAIT_BITSET, 3, 0), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, FUTEX_WAIT_PRIVATE, 2, 0), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, FUTEX_WAIT_REQUEUE_PI, 1, 0), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRACE)
 
 /**
  * logic is:

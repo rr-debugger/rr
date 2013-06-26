@@ -404,6 +404,12 @@ static int query(struct dbg_context* dbg, char* payload)
 		write_packet(dbg, "l"); /* "end of list" */
 		return 0;
 	}
+	if (!strcmp(name, "GetTLSAddr")) {
+		debug("gdb asks for TLS addr");
+		/* TODO */
+		write_packet(dbg, "");
+		return 0;
+	}
 	if (!strcmp(name, "Offsets")) {
 		debug("gdb asks for section offsets");
 		dbg->req.type = DREQ_GET_OFFSETS;
