@@ -20,7 +20,6 @@
 
 static RB_HEAD(context_tree, context) tasks = RB_INITIALIZER(&tasks);
 
-#define __unused __attribute__((unused))
 RB_PROTOTYPE_STATIC(context_tree, context, entry, context_cmp)
 
 static int num_threads;

@@ -20,7 +20,7 @@
 #include "../share/trace.h"
 #include "../share/sys.h"
 #include "../share/hpc.h"
-#include "../share/wrap_syscalls.h"
+#include "../share/syscall_buffer.h"
 
 static __inline__ unsigned long long rdtsc(void)
 {
@@ -194,10 +194,11 @@ void handle_signal(struct context* ctx)
 {
 	int sig = signal_pending(ctx->status);
 
-	debug("handling signal %d", sig);
+	debug("handling signal %d (pevent: %d, event: %d)", sig,
+	      GET_PTRACE_EVENT(ctx->status), ctx->event);
 
 	/* Received a signal in the critical section of recording a wrapped syscall */
-	while (WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx)) {
+	while (SYSCALL_BUFFER_CALLSITE_IN_LIB(ctx->child_regs.eip, ctx)) {
 		/* Delay delivery of the signal until we are out of it */
 		log_info("Got signal %d while in lib, singelestepping, eip = %lx", sig, ctx->child_regs.eip);
 		sys_ptrace_singlestep_sig(ctx->child_tid,0);

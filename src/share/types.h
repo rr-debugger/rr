@@ -13,6 +13,8 @@
 
 #include "../external/tree.h"
 
+#define __unused __attribute__((unused))
+
 #define CHECK_ALIGNMENT(addr) 	assert(((long int)(addr) & 0x3) == 0)
 #define PAGE_ALIGN(length)		((length + PAGE_SIZE - 1) & PAGE_MASK)
 

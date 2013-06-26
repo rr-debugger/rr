@@ -17,7 +17,7 @@
 #include "trace.h"
 #include "sys.h"
 #include "util.h"
-#include "wrap_syscalls.h"
+#include "syscall_buffer.h"
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
@@ -327,6 +327,7 @@ void rec_collect_syscalls(struct context *ctx) {
 					   ctx->syscall_wrapper_cache_child,
 					   ctx->syscall_wrapper_cache);
 	fprintf(trace_file, "%11d%11u%11d%11d\n", get_global_time_incr(), get_time_incr(ctx->child_tid), ctx->child_tid, USR_FLUSH);
+	/* Reset buffer size to 0 */
 	ctx->syscall_wrapper_cache[0] = 0;
 	/* Record the setting of buffer[0] to 0 */
 	record_parent_data(ctx,USR_FLUSH,sizeof(int),ctx->syscall_wrapper_cache_child,ctx->syscall_wrapper_cache);
@@ -340,7 +341,7 @@ void record_event(struct context *ctx, int state)
 	/* If the event is in the wrapper, it needs not be recorded as the wrapper code will record it
 	 * Note: There are some events that are wrapped and still get traced, like futex() etc. as they need context switching.
 	 */
-	if (ctx && WRAP_SYSCALLS_CALLSITE_IN_WRAPPER(ctx->child_regs.eip,ctx))
+	if (ctx && SYSCALL_BUFFER_CALLSITE_IN_LIB(ctx->child_regs.eip, ctx))
 		return;
 
 	// before anything is performed, check if the seccomp record cache has any entries

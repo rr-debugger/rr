@@ -26,8 +26,8 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
 string(REGEX REPLACE "-fPIC" "-pthread"
   CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
 
-add_library(rr_wrap_syscalls
-  src/share/wrap_syscalls.c
+add_library(rr_syscall_buffer
+  src/share/syscall_buffer.c
 )
 
 add_executable(rr
@@ -55,7 +55,7 @@ target_link_libraries(rr
   disasm
 )
 
-install(TARGETS rr rr_wrap_syscalls
+install(TARGETS rr rr_syscall_buffer
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
@@ -64,7 +64,7 @@ install(TARGETS rr rr_wrap_syscalls
 set(RR_TEST_CMD_COMMON
   "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR}/src/test" "-rr=${EXECUTABLE_OUTPUT_PATH}/rr")
 
-add_test(Tests ${RR_TEST_CMD_COMMON} -lib=${LIBRARY_OUTPUT_PATH}/librr_wrap_syscalls.so)
+add_test(Tests ${RR_TEST_CMD_COMMON} -lib=${LIBRARY_OUTPUT_PATH}/librr_syscall_buffer.so)
 set_tests_properties(Tests
   PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
