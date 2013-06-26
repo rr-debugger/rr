@@ -148,4 +148,7 @@ function debug_test { test=$1; rr_flags=$2;
 	cleanup
 }
 
+# Try to prevent tests that are interrupted or bail early from
+# affecting this test run.
+cleanup
 get_rr_cmd $# $1
