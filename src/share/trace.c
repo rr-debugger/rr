@@ -51,6 +51,65 @@ char* get_trace_path() {
 	return trace_path_;
 }
 
+const char* statename(int state)
+{
+	switch (state) {
+#define CASE(_id) case _id: return #_id
+	CASE(STATE_SYSCALL_ENTRY);
+	CASE(STATE_SYSCALL_EXIT);
+	CASE(STATE_PRE_MMAP_ACCESS);
+#undef CASE
+
+	default:
+		return "???state";
+	}
+}
+
+static const char* decode_signal_event(int sig)
+{
+	int det;
+	static __thread char buf[] =
+		"SIGREALLYREALLYLONGNAME(asynchronouslydelivered)";
+
+	if (FIRST_RR_PSEUDOSIGNAL <= sig && sig <= LAST_RR_PSEUDOSIGNAL) {
+		switch (sig) {
+#define CASE(_id) case _id: return #_id
+		CASE(SIG_SEGV_MMAP_READ);
+		CASE(SIG_SEGV_MMAP_WRITE);
+		CASE(SIG_SEGV_RDTSC);
+		CASE(USR_EXIT);
+		CASE(USR_SCHED);
+		CASE(USR_NEW_RAWDATA_FILE);
+		CASE(USR_INIT_SCRATCH_MEM);
+		CASE(USR_FLUSH);
+#undef CASE
+		}
+	}
+
+	if (sig < FIRST_DET_SIGNAL) {
+		return "???pseudosignal";
+	}
+
+	sig = -sig;
+	det = sig & DET_SIGNAL_BIT;
+	sig &= ~DET_SIGNAL_BIT;
+
+	snprintf(buf, sizeof(buf) - 1, "%s(%s)",
+		 signalname(sig), det ? "det" : "async");
+	return buf;
+}
+
+const char* strevent(int event)
+{
+	if (0 > event) {
+		return decode_signal_event(event);
+	}
+	if (0 < event) {
+		return syscallname(event);
+	}
+	return "???event";
+}
+
 void write_open_inst_dump(struct context *ctx)
 {
 	char path[64];

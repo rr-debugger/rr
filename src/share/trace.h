@@ -56,6 +56,17 @@ void close_trace_files(void);
 void flush_trace_files(void);
 
 /**
+ * Return the symbolic name of |state|, or "???state" if unknown.
+ */
+const char* statename(int state);
+
+/**
+ * Return a string describing |event|, or some form of "???" if
+ * |event| is unknown.
+ */
+const char* strevent(int event);
+
+/**
  * Recording
  */
 
