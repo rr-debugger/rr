@@ -706,6 +706,7 @@ static int process_packet(struct dbg_context* dbg)
 		/* Play dumb and hope gdb doesn't /really/ need this
 		 * request ... */
 		write_packet(dbg, "");
+		ret = 0;
 	}
 	/* Erase the newly processed packet from the input buffer. */
 	memmove(dbg->inbuf, dbg->inbuf + dbg->packetend,

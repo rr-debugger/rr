@@ -18,9 +18,6 @@ set(rr_VERSION_MINOR 0prerelease)
 set(rr_VERSION_PATCH 0)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g3 -Wall -Werror -m32")
-# TODO remove this when we can manage pfm and disasm dependencies
-# properly
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
 
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" "-pthread"
@@ -50,9 +47,11 @@ add_executable(rr
   src/share/util.c
 )
 
+# TODO remove this when we can manage pfm and disasm dependencies
+# properly
 target_link_libraries(rr
-  pfm
-  disasm
+  libpfm.a
+  libdisasm.a
 )
 
 install(TARGETS rr rr_syscall_buffer
@@ -90,6 +89,7 @@ set(CPACK_OUTPUT_FILE_PREFIX dist)
 set(CPACK_GENERATOR "TGZ;RPM;DEB")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_BINARY_DIR "${CMAKE_SOURCE_DIR}")
+set(CPACK_STRIP_FILES TRUE)
 
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
