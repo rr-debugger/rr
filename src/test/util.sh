@@ -29,7 +29,7 @@ function compile {
 # record test. 
 # $1 is test name
 function record {
-	$rr --record $lib a.out 1> $1.out.record
+	$rr record $lib a.out 1> $1.out.record
 }
 
 function delay_kill {
@@ -77,13 +77,13 @@ function record_async_signal {
 # $1 is test name 
 # $2 are rr flags
 function replay {
-	$rr --replay --autopilot $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
+	$rr replay --autopilot $2 trace_0/ 1> $1.out.replay 2> $1.err.replay
 }
 
 # debug <test-name> [rr-args]
 # load the "expect" script to drive replay of the recording
 function debug {
-	python $1.py $rr --replay --dbgport=1111 $2 trace_0/
+	python $1.py $rr replay --dbgport=1111 $2 trace_0/
 	if [[ $? == 0 ]]; then
 		echo "Test '$1' PASSED"
 	else
