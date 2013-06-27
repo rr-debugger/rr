@@ -282,9 +282,9 @@ static int is_seccomp_bpf_available() {
 static void print_usage()
 {
 	fputs(
-"Usage: rr (--record|--replay) [OPTION]... [ARG]...\n"
+"Usage: rr (record|replay) [OPTION]... [ARG]...\n"
 "\n"
-"Syntax for --record\n"
+"Syntax for `record'\n"
 " rr --record [OPTION]... <exe> [exe-args]...\n"
 "  -b, --force-syscall-buffer force the syscall buffer preload library\n"
 "                             to be used, even if that's probably a bad\n"
@@ -292,8 +292,8 @@ static void print_usage()
 "  -n, --no-syscall-buffer    disable the syscall buffer preload library\n"
 "                             even if it would otherwise be used"
 "\n"
-"Syntax for --replay\n"
-" rr --replay [OPTION]... <trace-dir>\n"
+"Syntax for `replay'\n"
+" rr replay [OPTION]... <trace-dir>\n"
 "  -a, --autopilot            replay without debugger server\n"
 "  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
 "                             verify checksums either on all syscalls, all\n"
@@ -407,12 +407,10 @@ static int parse_args(int argc, char** argv, struct flags* flags, int* argi)
 	 * buggy and not well tested at the moment. */
 	flags->use_syscall_buffer = FALSE;
 
-	/* TODO: make these "record" and "replay" to match meta-tools
-	 * like git etc. */
-	if (!strcmp("--record", cmd)) {
+	if (!strcmp("record", cmd)) {
 		flags->option = RECORD;
 		ret = parse_record_args(argc - 1, argv + 1, flags, argi);
-	} else if (!strcmp("--replay", cmd)) {
+	} else if (!strcmp("replay", cmd)) {
 		flags->option = REPLAY;
 		ret = parse_replay_args(argc - 1, argv + 1, flags, argi);
 	} else {
