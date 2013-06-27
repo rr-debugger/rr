@@ -1,0 +1,6 @@
+source util.sh
+compile args
+record args "-no --force-syscall-buffer=foo hello"
+replay args
+check args 'EXIT-SUCCESS'
+cleanup
