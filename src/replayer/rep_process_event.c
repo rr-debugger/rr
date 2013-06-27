@@ -78,8 +78,7 @@ static void validate_args(int syscall, int state, struct context* ctx)
 	if (!validate) {
 		return;
 	}
-	assert_child_regs_are(ctx->child_tid, &ctx->trace.recorded_regs,
-			      syscall, state);
+	assert_child_regs_are(ctx, &ctx->trace.recorded_regs, syscall, state);
 }
 
 /**

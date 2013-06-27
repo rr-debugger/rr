@@ -349,8 +349,7 @@ static void validate_args(int event, int state, struct context* ctx)
 	if (!validate) {
 		return;
 	}
-	assert_child_regs_are(ctx->child_tid, &ctx->trace.recorded_regs,
-			      event, state);
+	assert_child_regs_are(ctx, &ctx->trace.recorded_regs, event, state);
 }
 
 /**
@@ -491,24 +490,24 @@ static void continue_or_step(struct context* ctx, int stepi)
 	}
 }
 
-static void emulate_signal_delivery(struct context* ctx)
+static void emulate_signal_delivery()
 {
+	/* We are now at the exact point in the child where the signal
+	 * was recorded, emulate it using the next trace line (records
+	 * the state at sighandler entry). */
+	struct context* ctx = rep_sched_get_thread();
 	pid_t tid = ctx->child_tid;
 	struct trace_frame* trace = &ctx->trace;
 
-	/* We are now at the exact point in the child where the signal
-	 * was recorded, emulate it using the next trace line (records
-	 * the state at sighandler entry).  We don't do this for
-	 * rdtsc, because the program can't handle the signal; it's
-	 * not delivered during recording. */
-	ctx = rep_sched_get_thread();
-
-	/* Set the signal-hander frame data, if there was one.  If
-	 * there was, update the registers for the signal-handler too.
-	 * (Or if this was rdtsc.) */
-	if (set_child_data(ctx)) {
-		write_child_main_registers(tid, &trace->recorded_regs);
-	}
+	/* Restore the signal-hander frame data, if there was one. */
+	set_child_data(ctx);
+	/* If there was a signal handler, this will set up the
+	 * callframe.  If there wasn't, then the recorded task
+	 * single-stepped in some random way, but we still need to
+	 * restore the registers we recorded in case execution was
+	 * advanced. */
+	write_child_main_registers(tid, &trace->recorded_regs);
+	/* Delivered the signal. */
 	ctx->child_sig = 0;
 
 	validate_args(ctx->trace.stop_reason, -1, ctx);
@@ -636,7 +635,7 @@ static int emulate_deterministic_signal(struct context* ctx,
 		/* We just "delivered" this pseudosignal. */
 		ctx->child_sig = 0;
 	} else {
-		emulate_signal_delivery(ctx);
+		emulate_signal_delivery();
 	}
 
 	/* XXX why is this here? */
@@ -665,7 +664,8 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	 * quickly as possible by programming the hpc. */
 	rcb_now = read_rbc(ctx->hpc);
 
-	debug("Advancing to rcb=%llu, ip=%p", rcb, (void*)regs->eax);
+	debug("Advancing to rcb=%llu, ip=%p; current rcb=%llu",
+	      rcb, (void*)regs->eip, rcb_now);
 
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
@@ -695,7 +695,7 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	}
 
 	if (rcb_now > rcb) {
-		fatal("Replay diverged: overshot target rcb (target %llu, reached %llu",
+		fatal("Replay diverged: overshot target rcb: target=%llu, reached=%llu",
 		      rcb, rcb_now);
 	}
 
@@ -725,7 +725,7 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	}
 
 	if (rcb_now > rcb) {
-		fatal("Replay diverged: overshot target rcb (target %llu, reached %llu",
+		fatal("Replay diverged: overshot target rcb: target=%llu, reached=%llu",
 		      rcb, rcb_now);
 	}
 
@@ -737,12 +737,16 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 		struct user_regs_struct cur_regs;
 
 		if (rcb_now > rcb) {
-			fatal("Replay diverged: overshot target $ip");
+			fatal("Replay diverged: overshot target $ip: target=%llu, reached=%llu",
+			      rcb, rcb_now);
 		}
 
 		read_child_registers(ctx->child_tid, &cur_regs);
-		if (0 == compare_register_files("rep interrupt", &cur_regs,
-						"rec", regs, 0, 0)) {
+		if (regs->eip == cur_regs.eip) {
+			assert_child_regs_are(ctx, regs,
+					      ctx->trace.stop_reason,
+					      ctx->trace.state);
+
 			if (SIGTRAP == ctx->child_sig
 			    && is_debugger_trap(ctx, sig, ASYNC, AT_TARGET,
 						stepi)) {
@@ -751,6 +755,9 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 			ctx->child_sig = 0;
 			break;
 		}
+
+		debug("Stepping from ip %p to %p",
+		      (void*)cur_regs.eip, (void*)regs->eip);
 
 		if (SIGTRAP == ctx->child_sig
 		    && is_debugger_trap(ctx, ASYNC, sig, NOT_AT_TARGET,
@@ -770,7 +777,7 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	}
 
 	if (sig) {
-		emulate_signal_delivery(ctx);
+		emulate_signal_delivery();
 	}
 
 	/* XXX why is this here */
@@ -991,8 +998,14 @@ void replay(struct flags flags)
 
 void emergency_debug(struct context* ctx)
 {
-	struct dbg_context* dbg = dbg_await_client_connection("127.0.0.1",
-							      ctx->child_tid);
+	struct dbg_context* dbg;
+
+	if (!isatty(STDERR_FILENO)) {
+		errno = 0;
+		fatal("(stderr not a tty, aborting emergency debugging)");
+	}
+
+	dbg = dbg_await_client_connection("127.0.0.1", ctx->child_tid);
 	process_debugger_requests(dbg, ctx);
 	fatal("Can't resume execution from invalid state");
 }

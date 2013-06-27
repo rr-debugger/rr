@@ -3,5 +3,5 @@ compile async_usr1
 # SIGUSR1, wait 0.5s
 record_async_signal 10 0.5 async_usr1
 replay async_usr1
-check async_usr1 'caught usr1, goodbye'
+check async_usr1 'EXIT-SUCCESS'
 cleanup
