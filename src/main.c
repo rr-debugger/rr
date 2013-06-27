@@ -446,16 +446,19 @@ int main(int argc, char* argv[], char** envp)
 		return 1;
 	}
 
-	if (!__rr_flags.use_syscall_buffer) {
-		log_info("Syscall buffer disabled by flag");
-	} else if (!is_seccomp_bpf_available()) {
-		log_warn("seccomp-bpf not available on this system; syscall buffer disabled");
-	} else {
-		/* We rely on the distribution package or the user to
-		 * set up the LD_LIBRARY_PATH properly so that we can
-		 * LD_PRELOAD the bare library name.  Trying to do
-		 * otherwise is possible, but annoying. */
-		__rr_flags.syscall_buffer_lib_path = SYSCALL_BUFFER_LIB_FILENAME;
+	if (RECORD == __rr_flags.option) {
+		if (!__rr_flags.use_syscall_buffer) {
+			log_info("Syscall buffer disabled by flag");
+		} else if (!is_seccomp_bpf_available()) {
+			log_warn("seccomp-bpf not available on this system; syscall buffer disabled");
+		} else {
+			/* We rely on the distribution package or the
+			 * user to set up the LD_LIBRARY_PATH properly
+			 * so that we can LD_PRELOAD the bare library
+			 * name.  Trying to do otherwise is possible,
+			 * but annoying. */
+			__rr_flags.syscall_buffer_lib_path = SYSCALL_BUFFER_LIB_FILENAME;
+		}
 	}
 
 	/* allocate memory for the arguments that are passed to the
