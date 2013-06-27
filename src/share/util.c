@@ -30,27 +30,6 @@ static size_t scratch_overall_size = 0;
 
 static struct sigaction * sig_handler_table[NUM_MAX_THREADS][_NSIG] = { {NULL} };
 
-static char* syscall_str[350] = { "restart_syscall", "exit", "fork", "read", "write", "open", "close", "waitpid", "creat", "link", "unlink", "execve", "chdir", "time", "mknod", "chmod", "lchown",
-		"break", "oldstat", "lseek", "getpid", "mount", "umount", "setuid", "getuid", "stime", "ptrace", "alarm", "oldfstat", "pause", "utime", "stty", "gtty", "access", "nice", "ftime", "sync",
-		"kill", "rename", "mkdir", "rmdir", "dup", "pipe", "times", "prof", "brk", "setgid", "getgid", "signal", "geteuid", "getegid", "acct", "umount2", "lock", "ioctl", "fcntl", "mpx", "setpgid",
-		"ulimit", "oldolduname", "umask", "chroot", "ustat", "dup2", "getppid", "getpgrp", "setsid", "sigaction", "sgetmask", "ssetmask", "setreuid", "setregid", "sigsuspend", "sigpending",
-		"sethostname", "setrlimit", "getrlimit", "getrusage", "gettimeofday", "settimeofday", "getgroups", "setgroups", "select", "symlink", "oldlstat", "readlink", "uselib", "swapon", "reboot",
-		"readdir", "mmap", "munmap", "truncate", "ftruncate", "fchmod", "fchown", "getpriority", "setpriority", "profil", "statfs", "fstatfs", "ioperm", "socketcall", "syslog", "setitimer",
-		"getitimer", "stat", "lstat", "fstat", "olduname", "iopl", "vhangup", "idle", "vm86old", "wait4", "swapoff", "sysinfo", "ipc", "fsync", "sigreturn", "clone", "setdomainname", "uname",
-		"modify_ldt", "adjtimex", "mprotect", "sigprocmask", "create_module", "init_module", "delete_module", "get_kernel_syms", "quotactl", "getpgid", "fchdir", "bdflush", "sysfs", "personality",
-		"afs_syscall", "setfsuid", "setfsgid", "_llseek", "getdents", "_newselect", "flock", "msync", "readv", "writev", "getsid", "fdatasync", "_sysctl", "mlock", "munlock", "mlockall", "munlockall",
-		"sched_setparam", "sched_getparam", "sched_setscheduler", "sched_getscheduler", "sched_yield", "sched_get_priority_max", "sched_get_priority_min", "sched_rr_get_interval", "nanosleep",
-		"mremap", "setresuid", "getresuid", "vm86", "query_module", "poll", "nfsservctl", "setresgid", "getresgid", "prctl", "rt_sigreturn", "rt_sigaction", "rt_sigprocmask", "rt_sigpending",
-		"rt_sigtimedwait", "rt_sigqueueinfo", "rt_sigsuspend", "pread64", "pwrite64", "chown", "getcwd", "capget", "capset", "sigaltstack", "sendfile", "getpmsg", /* some people actually want streams */
-		"putpmsg", /* some people actually want streams */
-		"vfork", "ugetrlimit", /* SuS compliant getrlimit */
-		"mmap2", "truncate64", "ftruncate64", "stat64", "lstat64", "fstat64", "lchown32", "getuid32", "getgid32", /* 200 */
-		"geteuid32", "getegid32", "setreuid32", "setregid32", "getgroups32", "setgroups32", "fchown32", "setresuid32", "getresuid32", "setresgid32", "getresgid32", "chown32", "setuid32", "setgid32",
-		"setfsuid32", "setfsgid32", "pivot_root", "mincore", "madvise", "madvise1", /* delete when C lib stub is removed */
-		"getdents64", "fcntl64", "223 is unused", "gettid", "readahead", "setxattr", "lsetxattr", "fsetxattr", "getxattr", "lgetxattr", "fgetxattr", "listxattr", "llistxattr", "flistxattr",
-		"removexatt", "lremovexattr", "fremovexattr", "tkill", "sendfile64", "futex", "sched_setaffinity", "sched_getaffinity", "set_thread_area", "get_thread_area", "io_setup", "io_destroy",
-		"io_getevents", "io_submit", "io_cancel", "fadvise64" };
-
 static size_t num_shared_maps = 0;
 static void* shared_maps_starts[NUM_MAX_MAPS] = {0};
 static void* shared_maps_ends[NUM_MAX_MAPS] = {0};
@@ -71,10 +50,43 @@ bool is_protected_map(struct context *ctx, void *start){
 	return FALSE;
 }
 
-char* syscall_to_str(int syscall)
+const char* signalname(int sig)
 {
-	assert(syscall < 350);
-	return syscall_str[syscall];
+	/* strsignal() would be nice to use here, but it provides TMI. */
+	if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
+		static __thread char buf[] = "SIGRT00000000";
+		snprintf(buf, sizeof(buf) - 1, "SIGRT%d", sig - SIGRTMIN);
+		return buf;
+	}
+
+	switch (sig) {
+#define CASE(_id) case _id: return #_id
+	CASE(SIGHUP); CASE(SIGINT); CASE(SIGQUIT); CASE(SIGILL);
+	CASE(SIGTRAP); CASE(SIGABRT); /*CASE(SIGIOT);*/ CASE(SIGBUS);
+	CASE(SIGFPE); CASE(SIGKILL); CASE(SIGUSR1); CASE(SIGSEGV);
+	CASE(SIGUSR2); CASE(SIGPIPE); CASE(SIGALRM); CASE(SIGTERM);
+	CASE(SIGSTKFLT); /*CASE(SIGCLD);*/ CASE(SIGCHLD); CASE(SIGCONT);
+	CASE(SIGSTOP); CASE(SIGTSTP); CASE(SIGTTIN); CASE(SIGTTOU);
+	CASE(SIGURG); CASE(SIGXCPU); CASE(SIGXFSZ); CASE(SIGVTALRM);
+	CASE(SIGPROF); CASE(SIGWINCH); /*CASE(SIGPOLL);*/ CASE(SIGIO);
+	CASE(SIGPWR); CASE(SIGSYS);
+#undef CASE
+
+	default:
+		return "???signal";
+	}
+}
+
+const char* syscallname(int syscall)
+{
+	switch (syscall) {
+#define SYSCALL_DEF(_, _name, __) case __NR_## _name: return #_name;
+#include "../replayer/syscall_defs.h"
+#undef SYSCALL_DEF
+
+	default:
+		return "???syscall";
+	}
 }
 
 int signal_pending(int status)
@@ -498,7 +510,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 
 		default:
 		{
-			fprintf(stderr,"%s(%d)/%d -- global_time %u", syscall_to_str(syscall), syscall, state, trace->global_time);
+			fprintf(stderr,"%s(%d)/%d -- global_time %u", syscallname(syscall), syscall, state, trace->global_time);
 			break;
 		}
 

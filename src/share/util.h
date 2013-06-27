@@ -60,7 +60,18 @@ void validate_process_memory(struct context * ctx);
 void * get_mmaped_region_end(struct context * ctx, void * mmap_start);
 char * get_mmaped_region_filename(struct context * ctx, void * mmap_start);
 int get_memory_size(struct context * ctx);
-char * syscall_to_str(int syscall);
+
+/**
+ * Return the symbolic name of |sig|, f.e. "SIGILL", or "???signal" if
+ * unknown.
+ */
+const char* signalname(int sig);
+
+/**
+ * Return the symbolic name of |syscall|, f.e. "read", or "???syscall"
+ * if unknown.
+ */
+const char* syscallname(int syscall);
 
 int signal_pending(int status);
 
