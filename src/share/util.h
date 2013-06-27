@@ -39,7 +39,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace);
 void get_eip_info(pid_t tid);
 int check_if_mapped(struct context *ctx, void *start, void *end);
 int compare_register_files(char* name1, const struct user_regs_struct* reg1, char* name2, const struct user_regs_struct* reg2, int print, int stop);
-void assert_child_regs_are(pid_t tid, const struct user_regs_struct* regs, int event, int state);
+void assert_child_regs_are(struct context* ctx, const struct user_regs_struct* regs, int event, int state);
 uint64_t str2ull(const char* start, size_t max_size);
 long int str2li(const char* start, size_t max_size);
 void * str2x(const char* start, size_t max_size);
