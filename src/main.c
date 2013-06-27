@@ -285,7 +285,7 @@ static void print_usage()
 "Usage: rr (record|replay) [OPTION]... [ARG]...\n"
 "\n"
 "Syntax for `record'\n"
-" rr --record [OPTION]... <exe> [exe-args]...\n"
+" rr record [OPTION]... <exe> [exe-args]...\n"
 "  -b, --force-syscall-buffer force the syscall buffer preload library\n"
 "                             to be used, even if that's probably a bad\n"
 "                             idea\n"
@@ -308,8 +308,7 @@ static void print_usage()
 , stderr);
 }
 
-static int parse_record_args(int argc, char** argv, struct flags* flags,
-			     int* argi)
+static int parse_record_args(int argc, char** argv, struct flags* flags)
 {
 	struct option opts[] = {
 		{ "force-syscall-buffer", no_argument, NULL, 'b' },
@@ -320,7 +319,7 @@ static int parse_record_args(int argc, char** argv, struct flags* flags,
 		int i = 0;
 		switch (getopt_long(argc, argv, "bn", opts, &i)) {
 		case -1:
-			goto done;
+			return 0;
 		case 'b':
 			flags->use_syscall_buffer = TRUE;
 			break;
@@ -331,13 +330,9 @@ static int parse_record_args(int argc, char** argv, struct flags* flags,
 			return -1;
 		}
 	}
-done:
-	*argi = optind;
-	return 0;
 }
 
-static int parse_replay_args(int argc, char** argv, struct flags* flags,
-			     int* argi)
+static int parse_replay_args(int argc, char** argv, struct flags* flags)
 {
 	struct option opts[] = {
 		{ "autopilot", no_argument, NULL, 'a' },
@@ -352,7 +347,7 @@ static int parse_replay_args(int argc, char** argv, struct flags* flags,
 		int i = 0;
 		switch (getopt_long(argc, argv, "ac:d:p:qt:", opts, &i)) {
 		case -1:
-			goto done;
+			return 0;
 		case 'a':
 			flags->autopilot = TRUE;
 			break;
@@ -382,20 +377,12 @@ static int parse_replay_args(int argc, char** argv, struct flags* flags,
 			return -1;
 		}
 	}
-done:
-	*argi = optind;
-	return 0;
 }
 
 static int parse_args(int argc, char** argv, struct flags* flags, int* argi)
 {
 	const char* cmd = argv[1];
-	int ret;
-	if (argc < 2) {
-		fprintf(stderr, "%s: must specify --record or --replay.",
-			argv[0]);
-		return -1;
-	}
+	int i;
 
 	memset(flags, 0, sizeof(*flags));
 	flags->checksum = CHECKSUM_NONE;
@@ -407,20 +394,42 @@ static int parse_args(int argc, char** argv, struct flags* flags, int* argi)
 	 * buggy and not well tested at the moment. */
 	flags->use_syscall_buffer = FALSE;
 
-	if (!strcmp("record", cmd)) {
-		flags->option = RECORD;
-		ret = parse_record_args(argc - 1, argv + 1, flags, argi);
-	} else if (!strcmp("replay", cmd)) {
-		flags->option = REPLAY;
-		ret = parse_replay_args(argc - 1, argv + 1, flags, argi);
-	} else {
-		if (strcmp("-h", cmd) && strcmp("--help", cmd)) {
-			fprintf(stderr, "Unknown command '%s'.\n", argv[1]);
-		}
+	if (argc < 2) {
+		fprintf(stderr, "%s: must specify a command\n", argv[0]);
 		return -1;
 	}
-	++*argi;
-	return ret;
+	if (!strcmp("-h", cmd) || !strcmp("--help", cmd)) {
+		return -1;
+	}
+
+	if (!strcmp("record", cmd)) {
+		flags->option = RECORD;
+	} else if (!strcmp("replay", cmd)) {
+		flags->option = REPLAY;
+	} else {
+		fprintf(stderr, "%s: unknown command `%s`\n", argv[0], cmd);
+		return -1;
+	}
+
+	*argi = -1;
+	for (i = 2; i < argc; ++i) {
+		if ('-' != argv[i][0]) {
+			*argi = i;
+			break;
+		}
+	}
+	if (-1 == *argi) {
+		fprintf(stderr, "%s: no arguments for `%s`\n", argv[0], cmd);
+		return -1;
+	}
+
+	if (RECORD == flags->option) {
+		return parse_record_args(*argi, argv + 1, flags);
+	} else if (REPLAY == flags->option) {
+		return parse_replay_args(*argi, argv + 1, flags);
+	} else {
+		fatal("Not reached");
+	}
 }
 
 /**

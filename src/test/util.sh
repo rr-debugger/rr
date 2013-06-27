@@ -26,10 +26,9 @@ function compile {
 	gcc -pthread -g -m32 -Wall -Werror $1.c $2 -lrt || fatal FAILED: compiling $1.c
 }
 
-# record test. 
-# $1 is test name
-function record {
-	$rr record $lib a.out 1> $1.out.record
+# record test
+function record { testname=$1; testargs=$2;
+	$rr record $lib a.out $testargs 1> $testname.out.record
 }
 
 function delay_kill {
