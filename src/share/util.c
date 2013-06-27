@@ -15,6 +15,7 @@
 #include <sys/ptrace.h>
 
 #include "../recorder/rec_sched.h"
+#include "../replayer/replayer.h"
 
 #include "dbg.h"
 #include "ipc.h"
@@ -587,7 +588,7 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1, cha
 	long int id_mask = ~((1 << 21) | (1 << 1));
 	if ((reg1->eflags & id_mask) != (reg2->eflags & id_mask)) {
 		if (print) {
-			fprintf(stderr, "eflags registers do not match: %s: %lx and %s: %lx\n", name1, reg1->eflags, name2, reg2->eflags);
+			fprintf(stderr, "eflags registers do not match: %s: 0x%lx and %s: 0x%lx\n", name1, reg1->eflags, name2, reg2->eflags);
 		}
 		err |= 0x80;
 	}
@@ -599,17 +600,20 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1, cha
 	return err;
 }
 
-void assert_child_regs_are(pid_t tid, const struct user_regs_struct* regs,
+void assert_child_regs_are(struct context* ctx,
+			   const struct user_regs_struct* regs,
 			   int event, int state)
 {
+	pid_t tid = ctx->child_tid;
 	struct user_regs_struct cur_regs;
 
 	read_child_registers(tid, &cur_regs);
 	if (compare_register_files("replaying", &cur_regs, "recorded", regs,
 				   1/*print errors*/, 0/*don't exit*/)) {
 		print_process_mmap(tid);
-		fatal("[event %d, state %d, trace file line %d]",
+		log_err("[event %d, state %d, trace file line %d]",
 		      event, state, get_trace_file_lines_counter());
+		emergency_debug(ctx);
 	}
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }

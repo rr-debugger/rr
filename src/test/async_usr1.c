@@ -7,10 +7,12 @@
 
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
 
-static void handle_segv(int sig) {
+static sig_atomic_t caught_usr1;
+
+static void handle_usr1(int sig) {
 	test_assert(SIGUSR1 == sig);
-	puts("caught usr1, goodbye");
-	exit(0);
+	caught_usr1 = 1;
+	puts("caught usr1");
 }
 
 static void breakpoint() {
@@ -21,15 +23,15 @@ static void breakpoint() {
 int main(int argc, char *argv[]) {
 	int dummy, i;
 
-	signal(SIGUSR1, handle_segv);
+	signal(SIGUSR1, handle_usr1);
 
 	breakpoint();
 	/* NO SYSCALLS AFTER HERE!  (Up to the assert.) */
-	for (i = 1; i < (1 << 30); ++i) {
+	for (i = 1; !caught_usr1 && i < (1 << 30); ++i) {
 		dummy += (dummy + i) % 9735;
 	}
+	test_assert(caught_usr1);
 
-	test_assert("didn't catch usr1!" && 0);
-
+	puts("EXIT-SUCCESS");
 	return 0;
 }
