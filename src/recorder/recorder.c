@@ -496,7 +496,8 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 {
 	/* handle events */
 	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
-	debug("  handle_ptrace_event %d: syscall %d, thread: %d", event, (*ctx_ptr)->event, (*ctx_ptr)->child_tid);
+	debug("  %d: handle_ptrace_event %d: syscall %s",
+	      (*ctx_ptr)->child_tid, event, syscallname((*ctx_ptr)->event));
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
@@ -571,13 +572,18 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 	default:
 	{
-		log_err("Unknown ptrace event: %x -- baling out", event);
+		log_err("Unknown ptrace event: %x -- bailing out", event);
 		sys_exit();
 		break;
 	}
 
 	} /* end switch */
 }
+
+#define debug_exec_state(_msg, _ctx)			       \
+	debug(_msg ": pevent=%d, sig=%d, event=%s",	       \
+	      GET_PTRACE_EVENT(_ctx->status), _ctx->child_sig, \
+	      strevent(_ctx->event))
 
 void start_recording(struct flags rr_flags)
 {
@@ -607,8 +613,7 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_START:
 		{
-			debug("EXEC_START: pevent: %d, sig: %d, event: %d",
-				 GET_PTRACE_EVENT(ctx->status), ctx->child_sig, ctx->event);
+			debug_exec_state("EXEC_START", ctx);
 
 			/* print some kind of progress */
 			if (progress++ % 10000 == 0) {
@@ -628,8 +633,7 @@ void start_recording(struct flags rr_flags)
 			} else {
 				cont_syscall_block(ctx);
 			}
-			debug("  first trap: pevent: %d, sig: %d, event: %d",
-			      GET_PTRACE_EVENT(ctx->status), ctx->child_sig, ctx->event);
+			debug_exec_state("  first trap", ctx);
 
 			/* we must disallow the context switch here! */
 			ctx->allow_ctx_switch = 0;
@@ -652,8 +656,7 @@ void start_recording(struct flags rr_flags)
 				// TODO: What if there's a signal in between?
 				cont_syscall_block(ctx);
 
-				debug("  post-seccomp trap: pevent: %d, sig: %d, event: %d",
-				      GET_PTRACE_EVENT(ctx->status), ctx->child_sig, ctx->event);
+				debug_exec_state("  post-seccomp trap", ctx);
 			} else if (ptrace_event == PTRACE_EVENT_CLONE ||
 					   ptrace_event == PTRACE_EVENT_FORK) { /* clone(),fork() are handled differently with seccomp TODO: vfork() */
 				debug("Handling ptrace event: %d", GET_PTRACE_EVENT(ctx->status));
@@ -724,7 +727,7 @@ void start_recording(struct flags rr_flags)
 				 * which in turn saves another such restart block,
 				 * old data is lost and restart becomes impossible)
 				 */
-				debug("Thread %d: restarting syscall %d",ctx->child_tid,ctx->last_syscall);
+				debug("Thread %d: restarting syscall %s", ctx->child_tid, syscallname(ctx->last_syscall));
 				/*
 				 * From errno.h:
 				 * These should never be seen by user programs.  To return
@@ -746,17 +749,13 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_ENTRY_SYSCALL:
 		{
-			debug("EXEC_SYSCALL_ENTRY (pevent: %d, sig: %d, event: %d)",
-			      GET_PTRACE_EVENT(ctx->status),
-			      ctx->child_sig, ctx->event);
+			debug_exec_state("EXEC_SYSCALL_ENTRY", ctx);
 
 			/* continue and execute the system call */
 			ctx->allow_ctx_switch = allow_ctx_switch(ctx,ctx->event);
 			cont_nonblock(ctx);
 
-			debug("  after cont (pevent: %d, sig: %d, event: %d)",
-			      GET_PTRACE_EVENT(ctx->status),
-			      ctx->child_sig, ctx->event);
+			debug_exec_state("after cont", ctx);
 
 			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
 			break;
@@ -764,11 +763,10 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_IN_SYSCALL:
 		{
-			debug("EXEC_IN_SYSCALL (pevent: %d, sig: %d, event: %d)",
-			      GET_PTRACE_EVENT(ctx->status),
-			      ctx->child_sig, ctx->event);
-
 			int ret;
+
+			debug_exec_state("EXEC_IN_SYSCALL", ctx);
+
 			/*
 			 * Wait for the system call to return in case of a write,
 			 * but only for a certain timeout to prevent livelocks if
@@ -795,9 +793,7 @@ void start_recording(struct flags rr_flags)
 			}
 			}
 
-			debug("  after wait (pevent: %d, sig: %d, event: %d)",
-			      GET_PTRACE_EVENT(ctx->status),
-			      ctx->child_sig, ctx->event);
+			debug_exec_state("  after wait", ctx);
 
 			if (ret) {
 				ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
@@ -808,9 +804,7 @@ void start_recording(struct flags rr_flags)
 
 		case EXEC_STATE_IN_SYSCALL_DONE:
 		{
-			debug("EXEC_SYSCALL_DONE (pevent: %d, sig: %d, event: %d)",
-			      GET_PTRACE_EVENT(ctx->status),
-			      ctx->child_sig, ctx->event);
+			debug_exec_state("EXEC_SYSCALL_DONE", ctx);
 
 			assert(signal_pending(ctx->status) == 0);
 
