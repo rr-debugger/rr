@@ -3,18 +3,38 @@
 #include "syscall_buffer.h"
 
 /**
- * The wrapper for the system calls, which allows interception and recording of system calls that are invoked using the libc wrapper.
- * The filter in install_syscall_filter() will ptrace all syscalls that do no originate from this wrapper, so that rr will handle them.
+ * Buffer syscalls, so that rr can process the entire buffer with one
+ * trap instead of a trap per call.
  *
- * Note 1: All the internal code of the wrapper uses syscall(...) to perform system calls instead of calling the libc code, to avoid recursion.
- * Note 2: This file must be excluded from the rr build, otherwise it will intercept rr's syscalls!
+ * This file is compiled into a dso that's PRELOADed in recorded
+ * applications.  The dso replaces libc syscall wrappers with our own
+ * implementation that saves nondetermistic outparams in a fixed-size
+ * buffer.  When the buffer is full or the recorded application
+ * invokes an un-buffered syscall or receives a signal, we trap to rr
+ * and it records the state of the buffer.
  *
- * TODO: (0) all the wrappers postfixed by "_" haven't been fully tested yet
- * TODO: (1) make the wrappers adhere better to libc (errno, etc)
- * TODO: (2) we do a lot of memcpy, using user supplied parameter as length, but the parameter may contain garbage...
+ * During replay, rr simply refills the buffer with the recorded data
+ * when it reaches the "flush-buffer" events that were recorded.  Then
+ * rr emulates each buffered syscall, and the code here restores the
+ * client data from the refilled buffer.
+ *
+ * The crux of the implementation here is to selectively ptrace-trap
+ * syscalls.  The normal (un-buffered) syscalls generate a ptrace
+ * trap, and the buffered syscalls trap directly to the kernel.  This
+ * is implemented with a seccomp-bpf which examines the syscall and
+ * decides how to handle it (see seccomp-bpf.h).
+ *
+ * Because this code runs in the tracee's address space and overrides
+ * libc symbols, the code is rather delicate.  The following rules
+ * must be followed
+ *
+ * o No rr headers (other than seccomp-bpf.h) may be included
+ * o All syscalls invoked by this code must be called directly, not
+ *   through libc wrappers (which this file may itself wrap)
  */
+
 #define _GNU_SOURCE 1
-#include <assert.h>
+
 #include <fcntl.h>
 #include <limits.h>
 #include <link.h>
@@ -37,9 +57,8 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#include "dbg.h"
+/* NB: don't include any other local headers here. */
 #include "seccomp-bpf.h"
-#include "types.h"
 
 /* buffer[0] holds the size in bytes, withholding the 4 bytes used for
  * buffer[0] itself */
@@ -50,39 +69,182 @@ static __thread int* buffer = NULL;
  * calls. */
 static __thread int buffer_locked = 0;
 
-static char trace_path_[PATH_MAX] = { '\0' };
+static char trace_path[PATH_MAX] = { '\0' };
+
+/* The following are wrappers for the syscalls invoked by this library
+ * itself.  These syscalls will generate ptrace traps. */
+
+static int traced_clock_gettime(clockid_t clk_id, struct timespec* tp)
+{
+	return syscall(SYS_clock_gettime, clk_id, tp);
+}
+
+static int traced_close(int fd)
+{
+	return syscall(SYS_close, fd);
+}
+
+static void traced__exit(int status)
+{
+	syscall(SYS_exit_group, status);
+}
+
+static int traced_ftruncate(int fd, off_t length)
+{
+	return syscall(SYS_ftruncate, fd, length);
+}
+
+static int traced_futex(int *uaddr, int op, int val,
+		     const struct timespec *timeout, int *uaddr2, int val3)
+{
+	return syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3);
+}
+
+static pid_t traced_getpid()
+{
+	return syscall(SYS_getpid);
+}
+
+static pid_t traced_gettid()
+{
+	return syscall(SYS_gettid);
+}
+
+static int traced_gettimeofday(struct timeval *tv, struct timezone *tz)
+{
+	return syscall(SYS_gettimeofday, tv, tz);
+}
+
+static void* traced_mmap(void *addr, size_t length, int prot, int flags,
+		      int fd, off_t offset)
+{
+	return (void*)syscall(SYS_mmap2, addr, length, prot, flags, fd, offset);
+}
+
+static int traced_open(const char* pathname, int flags, mode_t mode)
+{
+	return syscall(SYS_open, pathname, flags, mode);
+}
+
+static int traced_prctl(int option, unsigned long arg2, unsigned long arg3,
+		     unsigned long arg4, unsigned long arg5)
+{
+	return syscall(SYS_prctl, option, arg2, arg3, arg4, arg4);
+}
+
+static int traced_raise(int sig)
+{
+	return syscall(SYS_kill, traced_getpid(), sig);
+}
+
+static int traced_stat(const char* path, struct stat64* buf)
+{
+	return syscall(SYS_stat64, path, buf);
+}
+
+static ssize_t traced_write(int fd, const void* buf, size_t count)
+{
+	return syscall(SYS_write, fd, buf, count);
+}
+
+/* Helpers for invoking untraced syscalls, which do *not* generate
+ * ptrace traps.
+ *
+ * XXX make a nice assembly helper like libc's |syscall()|? */
+static int untraced_syscall(int syscall, long arg0, long arg1, long arg2,
+			    long arg3, long arg4, long arg5)
+{
+	int ret;
+	__asm__ __volatile__("call _untraced_syscall_entry_point"
+			     : "=a"(ret)
+			     : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2),
+			       "S"(arg3), "D"(arg4), "g"(arg5));
+	return ret;
+}
+#define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)	\
+	untraced_syscall(no, a0, a1, a2, a3, a4, a5)
+#define untraced_syscall5(no, a0, a1, a2, a3, a4)	\
+	untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define untraced_syscall4(no, a0, a1, a2, a3)		\
+	untraced_syscall5(no, a0, a1, a2, a3, 0)
+#define untraced_syscall3(no, a0, a1, a2) untraced_syscall4(no, a0, a1, a2, 0)
+#define untraced_syscall2(no, a0, a1) untraced_syscall3(no, a0, a1, 0)
+#define untraced_syscall1(no, a0) untraced_syscall2(no, a0, 0)
+#define untraced_syscall0(no) untraced_syscall1(no, 0)
 
 /**
  * The seccomp filter is set up so that system calls made through
  * _untraced_syscall_entry_point are always allowed without triggering
  * ptrace. This gives us a convenient way to make non-traced system calls.
  */
-asm (".text\n\t"
-     "_untraced_syscall_entry_point:\n\t"
-     "int $0x80\n\t"
-     "_untraced_syscall_entry_point_ip:\n\t"
-     "ret");
+__asm__(".text\n\t"
+	"_untraced_syscall_entry_point:\n\t"
+	"int $0x80\n\t"
+	"_untraced_syscall_entry_point_ip:\n\t"
+	"ret");
 
-static void* _get_untraced_syscall_entry_point()
+static void* get_untraced_syscall_entry_point()
 {
     void *ret;
-    asm ("call _get_untraced_syscall_entry_point__pic_helper\n\t"
-         "_get_untraced_syscall_entry_point__pic_helper: pop %0\n\t"
-         "addl $(_untraced_syscall_entry_point_ip - _get_untraced_syscall_entry_point__pic_helper),%0" : "=a"(ret));
+    __asm__ __volatile__(
+	    "call _get_untraced_syscall_entry_point__pic_helper\n\t"
+	    "_get_untraced_syscall_entry_point__pic_helper: pop %0\n\t"
+	    "addl $(_untraced_syscall_entry_point_ip - _get_untraced_syscall_entry_point__pic_helper),%0"
+	    : "=a"(ret));
     return ret;
 }
+
+/* We can't use the rr logging helpers because they rely on libc
+ * syscall-invoking functions, so roll our own here.
+ *
+ * XXX just use these for all logging? */
+
+__attribute__((format (printf, 1, 2)))
+static void logmsg(const char* msg, ...)
+{
+  va_list args;
+  char buf[1024];
+  int len;
+
+  va_start(args, msg);
+  len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
+  va_end(args);
+
+  traced_write(STDERR_FILENO, buf, len);
+}
+
+#ifndef NDEBUG
+# define assert(cond)							\
+	do {								\
+		if (!(cond)) {						\
+			logmsg("%s:%d: Assertion " #cond "failed.",	\
+			       __FILE__, __LINE__);			\
+			traced_raise(SIGABRT);				\
+		}							\
+	} while (0)
+#else
+# define assert(cond) ((void)cond))
+#endif
+
+#define fatal(msg, ...)							\
+	do {								\
+		logmsg("[FATAL] (%s:%d: errno: %s) " msg "\n",		\
+		       __FILE__, __LINE__, strerror(errno), ##__VA_ARGS__); \
+		traced__exit(1);					\
+	} while (0)
+
+#define log_info(msg, ...)					\
+	logmsg("[INFO] (%s:%d) " msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+
 
 /**
  * This installs the actual filter which examines the callsite and
  * determines whether it will be ptraced or handled by the
  * intercepting library
  */
-static void install_syscall_filter(void)
+static void install_syscall_filter()
 {
-	void* protected_call_start = _get_untraced_syscall_entry_point();
-	/* FIXME for write() */
-	log_info("Initializing syscall buffer: protected_call_start = %p",
-		protected_call_start);
+	void* protected_call_start = get_untraced_syscall_entry_point();
 	struct sock_filter filter[] = {
 		/* Allow all system calls from our protected_call
 		 * callsite */
@@ -106,11 +268,17 @@ static void install_syscall_filter(void)
 		.filter = filter,
 	};
 
-	if (syscall(SYS_prctl,PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+	log_info("Initializing syscall buffer: protected_call_start = %p",
+		protected_call_start);
+
+	if (traced_prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
 		fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available.");
 	}
 
-	if (syscall(SYS_prctl,PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)) {
+	/* Note: the filter is installed only for record. This call
+	 * will be emulated in the replay */
+	if (traced_prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER,
+			 (uintptr_t)&prog, 0, 0)) {
 		fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available.");
 	}
 	/* anything that happens from this point on gets filtered! */
@@ -120,61 +288,68 @@ static void install_syscall_filter(void)
 static void find_trace_dir(void)
 {
 	const char* output_dir;
+	int version = 0;
+	struct stat64 sb;
+
 	if (!(output_dir = getenv("_RR_TRACE_DIR"))) {
 		output_dir = ".";
 	}
-	int version = 0;
-	struct stat64 sb;
 	do {
-		sprintf(trace_path_, "%s/trace_%d", output_dir, version);
-	} while(syscall(SYS_stat64, trace_path_, &sb) == 0
+		snprintf(trace_path, sizeof(trace_path) - 1, "%s/trace_%d",
+			 output_dir, version);
+	} while(traced_stat(trace_path, &sb) == 0
 		&& S_ISDIR(sb.st_mode)
 		&& ++version);
 	if (version == 0) {
 		fatal("trace_dir not found.  Running outside of rr?");
 	}
-	sprintf(trace_path_, "%s/trace_%d", output_dir, version-1);
-	/* FIXME for write() */
-	log_info("Found trace_dir %s", trace_path_);
+	snprintf(trace_path, sizeof(trace_path) - 1, "%s/trace_%d",
+		 output_dir, version - 1);
+
+	log_info("Found trace_dir %s", trace_path);
+}
+
+static void setup_buffer()
+{
+	pid_t tid = traced_gettid();
+	char filename[PATH_MAX];
+	int fd, retval;
+
+	snprintf(filename, sizeof(filename) - 1, "%s/%s%d",
+		 trace_path, SYSCALL_BUFFER_CACHE_FILENAME_PREFIX, tid);
+	errno = 0;
+	fd = traced_open(filename, O_CREAT | O_RDWR, 0666);
+	assert(fd > 0 && errno == 0);
+
+	retval = traced_ftruncate(fd, SYSCALL_BUFFER_CACHE_SIZE);
+	assert(retval == 0 && errno == 0);
+
+	buffer = traced_mmap(NULL, SYSCALL_BUFFER_CACHE_SIZE, PROT_WRITE,
+			     MAP_SHARED, fd, 0);
+	assert(buffer != NULL && errno == 0);
+
+	retval = traced_close(fd);
+	assert(retval == 0 && errno == 0);
+
+	/* buffer[0] holds the number of bytes written */
+	buffer[0] = 0;
+	/* make all subsequent children initialize their own buffer */
+	pthread_atfork(NULL, NULL, setup_buffer);
 }
 
 /**
  * Initialize the library:
  * 1. Install filter-by-callsite (once for all threads)
  * 2. Make subsequent threads call init()
- * 3. Open and mmap the recording cache, shared with rr (once for every thread)
+ * 3. Open and mmap the recording cache, shared with rr (once for
+ *    every thread)
  *
- * Remember: init() will only be called if the process uses at least one of the library's intercepted functions.
- *
+ * Remember: init() will only be called if the process uses at least
+ * one of the library's intercepted functions.
  */
-
-static void setup_buffer()
-{
-	pid_t tid = syscall(SYS_gettid); /* libc does not supply a wrapper for gettid */
-	char filename[PATH_MAX];
-	sprintf(filename,"%s/%s%d", trace_path_, SYSCALL_BUFFER_CACHE_FILENAME_PREFIX, tid);
-	errno = 0;
-	int fd = syscall(SYS_open,filename, O_CREAT | O_RDWR, 0666); /* O_TRUNC here is bad */
-	assert(fd > 0 && errno == 0);
-	int retval;
-	(void)retval;
-	retval = syscall(SYS_ftruncate,fd,SYSCALL_BUFFER_CACHE_SIZE);
-	assert(retval == 0 && errno == 0);
-	buffer = (void*)syscall(SYS_mmap2, NULL, SYSCALL_BUFFER_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
-	assert(buffer != NULL && errno == 0);
-	retval = syscall(SYS_close,fd);
-	assert(retval == 0 && errno == 0);
-	/* buffer[0] holds the number of bytes written */
-	buffer[0] = 0;
-	/* make all subsequent children initialize their own buffer */
-	pthread_atfork(NULL,NULL,setup_buffer);
-}
-
 static void init()
 {
-	/* Note: the filter is installed only for record. This call
-	 * will be emulated in the replay */
-	if ('\0' == trace_path_[0]) {
+	if ('\0' == trace_path[0]) {
 		find_trace_dir();
 		install_syscall_filter();
 	}
@@ -192,16 +367,23 @@ static void init()
  * 		[the overall size in bytes of the record]
  * 		[the return value]
  * 		[other syscall output, if such exists]
- *    If the buffer runs out of space, we turn this into a non-intercepted system call which
- *    is handled by rr directly, flushing the buffer and aborting these steps.
- * 	  Note: these records will be written AS-IS to the raw file, and a succinct line will be written to the trace file (without register content, etc.)
- * 3. Then, the syscall wrapper code redirects all potential output for the syscall to the
- * 	  record (and corrects the overall size of the record while it does so).
+ *    If the buffer runs out of space, we turn this into a
+ *    non-intercepted system call which is handled by rr directly,
+ *    flushing the buffer and aborting these steps.  Note: these
+ *    records will be written AS-IS to the raw file, and a succinct
+ *    line will be written to the trace file (without register
+ *    content, etc.)
+ * 3. Then, the syscall wrapper code redirects all potential output
+ *    for the syscall to the record (and corrects the overall size of
+ *    the record while it does so).
  * 4. The syscall is invoked directly via assembly.
- * 5. The syscall output, written on the buffer, is copied to the original pointers provided by the user.
- *    Take notice that this part saves us the injection of the data on replay, as we only need to push the
- *    data to the buffer and the wrapper code will copy it to the user address for us.
- * 6. The first 3 parameters of the record are put in (return value and overall size are known now)
+ * 5. The syscall output, written on the buffer, is copied to the
+ *    original pointers provided by the user.  Take notice that this
+ *    part saves us the injection of the data on replay, as we only
+ *    need to push the data to the buffer and the wrapper code will
+ *    copy it to the user address for us.
+ * 6. The first 3 parameters of the record are put in (return value
+ *    and overall size are known now)
  * 7. buffer[0] is updated.
  * 8. errno is set.
  */
@@ -224,11 +406,11 @@ static void init()
  *   if (!can_buffer_syscall(ptr)) {
  *       goto fallback_trace;
  *   }
- *   _untraced_syscall(...);
+ *   untraced_syscall(...);
  *   // save extra data
  *   return commit_syscall(...);
  * fallback_trace:
- *   return _syscall(...);
+ *   return sys_...(...);
  */
 static void* prep_syscall()
 {
@@ -253,8 +435,8 @@ static void* prep_syscall()
 }
 
 /**
- * Returns 1 if it's ok to proceed with buffering this system call.
- * Returns 0 if we should trace the system call.
+ * Return 1 if it's ok to proceed with buffering this system call.
+ * Return 0 if we should trace the system call.
  * This must be checked before proceeding with the buffered system call.
  */
 static int can_buffer_syscall(void *record_end)
@@ -298,6 +480,7 @@ static int commit_syscall(int syscall, void *record_end, int ret)
 {
 	int *new_record = (int*)((char*)(buffer + 1) + buffer[0]);
 	int length = (char*)record_end - (char*)new_record;
+
 	new_record[0] = syscall;
 	new_record[1] = length;
 	new_record[2] = ret;
@@ -309,85 +492,20 @@ static int commit_syscall(int syscall, void *record_end, int ret)
 	return update_errno_ret(ret);
 }
 
-__unused static int _untraced_syscall0(int syscall) {
-	int ret;
-	asm volatile("call _untraced_syscall_entry_point" : "=a"(ret) : "0"(syscall));
-	return ret;
-}
-
-static int _untraced_syscall2(int syscall, long arg0, long arg1) {
-	int ret;
-	asm volatile("call _untraced_syscall_entry_point" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1));
-	return ret;
-}
-
-__unused static int _untraced_syscall3(int syscall, long arg0, long arg1,
-				     long arg2) {
-	int ret;
-	asm volatile("call _untraced_syscall_entry_point" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2));
-	return ret;
-}
-
-__unused static int _untraced_syscall4(int syscall, long arg0, long arg1,
-				     long arg2, long arg3) {
-	int ret;
-	asm volatile("call _untraced_syscall_entry_point" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2), "S"(arg3));
-	return ret;
-}
-
-static int _untraced_syscall6(int syscall, long arg0, long arg1,
-				     long arg2, long arg3, long arg4,
-				     long arg5) {
-	int ret;
-	asm volatile("call _untraced_syscall_entry_point" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2), "S"(arg3), "D"(arg4), "g"(arg5));
-	return ret;
-}
-
-__unused static int _syscall0(int syscall) {
-	int ret;
-	asm volatile("int $0x80" : "=a"(ret) : "0"(syscall));
-	return update_errno_ret(ret);
-}
-
-static int _syscall2(int syscall, long arg0, long arg1) {
-	int ret;
-	asm volatile("int $0x80" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1));
-	return update_errno_ret(ret);
-}
-
-__unused static int _syscall3(int syscall, long arg0, long arg1, long arg2) {
-	int ret;
-	asm volatile("int $0x80" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2));
-	return update_errno_ret(ret);
-}
-
-__unused static int _syscall4(int syscall, long arg0, long arg1, long arg2,
-			    long arg3) {
-	int ret;
-	asm volatile("int $0x80" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2), "S"(arg3));
-	return update_errno_ret(ret);
-}
-
-static int _syscall6(int syscall, long arg0, long arg1, long arg2,
-			    long arg3, long arg4, long arg5) {
-	int ret;
-	asm volatile("int $0x80" : "=a"(ret) : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2), "S"(arg3), "D"(arg4), "g"(arg5));
-	return update_errno_ret(ret);
-}
-
 int clock_gettime(clockid_t clk_id, struct timespec* tp)
 {
 	void* ptr = prep_syscall();
 	struct timespec *tp2 = NULL;
+
 	/* set it up so the syscall writes to the record cache */
 	if (tp) {
 		tp2 = ptr;
 		ptr += sizeof(struct timespec);
 	}
 	if (!can_buffer_syscall(ptr)) {
-		return _syscall2(SYS_clock_gettime, clk_id, (uintptr_t)tp);
+		return traced_clock_gettime(clk_id, tp);
  	}
-	int ret = _untraced_syscall2(SYS_clock_gettime, clk_id, (uintptr_t)tp2);
+	int ret = untraced_syscall2(SYS_clock_gettime, clk_id, (uintptr_t)tp2);
 	/* now in the replay we can simply write the recorded buffer
 	 * and allow the wrapper to copy it to the actual
 	 * parameters */
@@ -402,6 +520,7 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 	void *ptr = prep_syscall();
 	/* set it up so the syscall writes to the record cache */
 	struct timeval *tp2 = NULL;
+
 	if (tp) {
 		tp2 = ptr;
 		ptr += sizeof(struct timeval);
@@ -412,11 +531,10 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 		ptr += sizeof(struct timezone);
 	}
 	if (!can_buffer_syscall(ptr)) {
-		return _syscall2(SYS_gettimeofday,
-				 (uintptr_t)tp, (uintptr_t)tzp);
+		return traced_gettimeofday(tp, tzp);
 	}
-	int ret = _untraced_syscall2(SYS_gettimeofday,
-				     (uintptr_t)tp2, (uintptr_t)tzp2);
+	int ret = untraced_syscall2(SYS_gettimeofday,
+				    (uintptr_t)tp2, (uintptr_t)tzp2);
 	if (tp) {
 		memcpy(tp, tp2, sizeof(struct timeval));
 	}
@@ -432,6 +550,10 @@ int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 	  int* uaddr2, int val3)
 {
 	int* save_uaddr2 = NULL;
+	void* ptr;
+	void** save_uaddr;
+	int* save_uaddr_deref;
+	int ret;
 
 	switch (op & FUTEX_CMD_MASK) {
         case FUTEX_FD:
@@ -469,11 +591,11 @@ int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 
 	/* Allocate space for the record, |uaddr|, |*uaddr|, and
 	 * |*uaddr2| if necessary. */
-	void* ptr = prep_syscall();
+	ptr = prep_syscall();
 	/* XXX why do we save this? */
-	int** save_uaddr = ptr;
+	save_uaddr = ptr;
 	ptr += sizeof(uaddr);
-	int* save_uaddr_deref = ptr;
+	save_uaddr_deref = ptr;
 	ptr += sizeof(*uaddr);
 	if (save_uaddr2) {
 		save_uaddr2 = ptr;
@@ -484,9 +606,9 @@ int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 		goto fallback_trace;
 	}
 
-	int ret = _untraced_syscall6(__NR_futex, (uintptr_t)uaddr, op, val,
-				     (uintptr_t)timeout,
-				     (uintptr_t)save_uaddr2, val3);
+	ret = untraced_syscall6(SYS_futex, (uintptr_t)uaddr, op, val,
+				(uintptr_t)timeout,
+				(uintptr_t)save_uaddr2, val3);
 	*save_uaddr = uaddr;
 	*save_uaddr_deref = *uaddr;
 	if (save_uaddr2) {
@@ -496,9 +618,7 @@ int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 	return commit_syscall(__NR_futex, ptr, ret);
 
 fallback_trace:
-	return _syscall6(__NR_futex, (uintptr_t)uaddr, op, val,
-			 (uintptr_t)timeout, (uintptr_t)uaddr2,
-			 val3);
+	return traced_futex(uaddr, op, val, timeout, uaddr2, val3);
 }
 
 #if 0
