@@ -120,8 +120,7 @@ void sys_exit()
 	log_err("Exiting");
 	rec_sched_exit_all();
 	close_trace_files();
-	assert(0); // for debugging
-	exit(-1);
+	abort();
 }
 
 void sys_sched_setaffinity(unsigned long mask)
