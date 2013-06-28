@@ -1932,7 +1932,7 @@ SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 					ctx->syscall_wrapper_cache_child = file.start;
 					// mmap as shared in rr as well
 					errno = 0;
-					int fd = open(file.filename, O_CREAT | O_RDWR, 0666); // beware of O_TRUNC!
+					int fd = open(file.filename, O_CREAT | O_RDWR, 0640);
 					assert(fd > 0 && errno == 0);
 					// no need to truncate, the child already did it.
 					int retval;

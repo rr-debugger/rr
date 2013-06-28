@@ -60,6 +60,9 @@
 /* NB: don't include any other local headers here. */
 #include "seccomp-bpf.h"
 
+/* Nonzero after we've installed the filter. */
+static int is_seccomp_bpf_installed;
+
 /* buffer[0] holds the size in bytes, withholding the 4 bytes used for
  * buffer[0] itself */
 static __thread int* buffer = NULL;
@@ -69,15 +72,8 @@ static __thread int* buffer = NULL;
  * calls. */
 static __thread int buffer_locked = 0;
 
-static char trace_path[PATH_MAX] = { '\0' };
-
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
-
-static int traced_clock_gettime(clockid_t clk_id, struct timespec* tp)
-{
-	return syscall(SYS_clock_gettime, clk_id, tp);
-}
 
 static int traced_close(int fd)
 {
@@ -94,12 +90,6 @@ static int traced_ftruncate(int fd, off_t length)
 	return syscall(SYS_ftruncate, fd, length);
 }
 
-static int traced_futex(int *uaddr, int op, int val,
-		     const struct timespec *timeout, int *uaddr2, int val3)
-{
-	return syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3);
-}
-
 static pid_t traced_getpid()
 {
 	return syscall(SYS_getpid);
@@ -108,11 +98,6 @@ static pid_t traced_getpid()
 static pid_t traced_gettid()
 {
 	return syscall(SYS_gettid);
-}
-
-static int traced_gettimeofday(struct timeval *tv, struct timezone *tz)
-{
-	return syscall(SYS_gettimeofday, tv, tz);
 }
 
 static void* traced_mmap(void *addr, size_t length, int prot, int flags,
@@ -137,9 +122,9 @@ static int traced_raise(int sig)
 	return syscall(SYS_kill, traced_getpid(), sig);
 }
 
-static int traced_stat(const char* path, struct stat64* buf)
+static int traced_unlink(const char* pathname)
 {
-	return syscall(SYS_stat64, path, buf);
+	return syscall(SYS_unlink, pathname);
 }
 
 static ssize_t traced_write(int fd, const void* buf, size_t count)
@@ -284,57 +269,34 @@ static void install_syscall_filter()
 	/* anything that happens from this point on gets filtered! */
 }
 
-/* TODO: this will not work if older trace dirs with higher index exist */
-static void find_trace_dir(void)
-{
-	const char* output_dir;
-	int version = 0;
-	struct stat64 sb;
-
-	if (!(output_dir = getenv("_RR_TRACE_DIR"))) {
-		output_dir = ".";
-	}
-	do {
-		snprintf(trace_path, sizeof(trace_path) - 1, "%s/trace_%d",
-			 output_dir, version);
-	} while(traced_stat(trace_path, &sb) == 0
-		&& S_ISDIR(sb.st_mode)
-		&& ++version);
-	if (version == 0) {
-		fatal("trace_dir not found.  Running outside of rr?");
-	}
-	snprintf(trace_path, sizeof(trace_path) - 1, "%s/trace_%d",
-		 output_dir, version - 1);
-
-	log_info("Found trace_dir %s", trace_path);
-}
-
 static void setup_buffer()
 {
-	pid_t tid = traced_gettid();
 	char filename[PATH_MAX];
-	int fd, retval;
+	int fd;
 
-	snprintf(filename, sizeof(filename) - 1, "%s/%s%d",
-		 trace_path, SYSCALL_BUFFER_CACHE_FILENAME_PREFIX, tid);
-	errno = 0;
-	fd = traced_open(filename, O_CREAT | O_RDWR, 0666);
-	assert(fd > 0 && errno == 0);
+	assert(!buffer);
 
-	retval = traced_ftruncate(fd, SYSCALL_BUFFER_CACHE_SIZE);
-	assert(retval == 0 && errno == 0);
+	snprintf(filename, sizeof(filename) - 1, "/dev/shm/rr-tracee-%s%d",
+		 SYSCALL_BUFFER_CACHE_FILENAME_PREFIX, traced_gettid());
+	if (0 > (fd = traced_open(filename, O_CREAT | O_RDWR, 0640))) {
+		fatal("Failed to create syscall buffer shmem (%s)", filename);
+	}
 
-	buffer = traced_mmap(NULL, SYSCALL_BUFFER_CACHE_SIZE, PROT_WRITE,
-			     MAP_SHARED, fd, 0);
-	assert(buffer != NULL && errno == 0);
+	if (traced_ftruncate(fd, SYSCALL_BUFFER_CACHE_SIZE)) {
+		fatal("Failed to resize shmem");
+	}
 
-	retval = traced_close(fd);
-	assert(retval == 0 && errno == 0);
+	if ((void*)-1 ==
+	    (buffer = traced_mmap(NULL, SYSCALL_BUFFER_CACHE_SIZE, PROT_WRITE,
+				  MAP_SHARED, fd, 0))) {
+		fatal("Failed to mmap shmem");
+	}
+
+	traced_unlink(filename);
+	traced_close(fd);
 
 	/* buffer[0] holds the number of bytes written */
 	buffer[0] = 0;
-	/* make all subsequent children initialize their own buffer */
-	pthread_atfork(NULL, NULL, setup_buffer);
 }
 
 /**
@@ -349,9 +311,9 @@ static void setup_buffer()
  */
 static void init()
 {
-	if ('\0' == trace_path[0]) {
-		find_trace_dir();
+	if (!is_seccomp_bpf_installed) {
 		install_syscall_filter();
+		is_seccomp_bpf_installed = 1;
 	}
 	setup_buffer();
 }
@@ -503,7 +465,7 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 		ptr += sizeof(struct timespec);
 	}
 	if (!can_buffer_syscall(ptr)) {
-		return traced_clock_gettime(clk_id, tp);
+		return syscall(SYS_clock_gettime, clk_id, tp);
  	}
 	int ret = untraced_syscall2(SYS_clock_gettime, clk_id, (uintptr_t)tp2);
 	/* now in the replay we can simply write the recorded buffer
@@ -531,7 +493,7 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 		ptr += sizeof(struct timezone);
 	}
 	if (!can_buffer_syscall(ptr)) {
-		return traced_gettimeofday(tp, tzp);
+		return syscall(SYS_gettimeofday, tp, tzp);
 	}
 	int ret = untraced_syscall2(SYS_gettimeofday,
 				    (uintptr_t)tp2, (uintptr_t)tzp2);
@@ -618,7 +580,7 @@ int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 	return commit_syscall(__NR_futex, ptr, ret);
 
 fallback_trace:
-	return traced_futex(uaddr, op, val, timeout, uaddr2, val3);
+	return syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3);
 }
 
 #if 0
