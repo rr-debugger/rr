@@ -26,6 +26,8 @@
 
 typedef enum { FALSE = 0, TRUE = 1 } bool;
 
+typedef unsigned char byte;
+
 /**
  * A trace_frame is one "trace event" from a complete trace.  During
  * recording, a trace_frame is recorded upon each significant event,

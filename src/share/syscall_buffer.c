@@ -60,17 +60,44 @@
 /* NB: don't include any other local headers here. */
 #include "seccomp-bpf.h"
 
+typedef unsigned char byte;
+
 /* Nonzero after we've installed the filter. */
 static int is_seccomp_bpf_installed;
 
-/* buffer[0] holds the size in bytes, withholding the 4 bytes used for
- * buffer[0] itself */
-static __thread int* buffer = NULL;
+static __thread byte* buffer = NULL;
 /* This tracks whether the buffer is currently in use for a system
  * call. This is helpful when a signal handler runs during a wrapped
  * system call; we don't want it to use the buffer for its system
  * calls. */
 static __thread int buffer_locked = 0;
+
+/**
+ * Return a pointer to the buffer-size counter, which happens to be
+ * the first int in the mapped region.
+ */
+static int* buffer_size_ptr()
+{
+	return (int*)buffer;
+}
+
+/**
+ * Return a pointer to the byte just after the last valid syscall record in
+ * the buffer.
+ */
+static byte* buffer_last()
+{
+	return buffer + sizeof(int) + *buffer_size_ptr();
+}
+
+/**
+ * Return a pointer to the byte just after the very end of the mapped
+ * region.
+ */
+static byte* buffer_end()
+{
+	return buffer + sizeof(int) + SYSCALL_BUFFER_CACHE_SIZE;
+}
 
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
@@ -184,7 +211,7 @@ static void* get_untraced_syscall_entry_point()
  *
  * XXX just use these for all logging? */
 
-__attribute__((format (printf, 1, 2)))
+__attribute__((format(printf, 1, 2)))
 static void logmsg(const char* msg, ...)
 {
   va_list args;
@@ -295,8 +322,7 @@ static void setup_buffer()
 	traced_unlink(filename);
 	traced_close(fd);
 
-	/* buffer[0] holds the number of bytes written */
-	buffer[0] = 0;
+	*buffer_size_ptr() = 0;
 }
 
 /**
@@ -393,7 +419,9 @@ static void* prep_syscall()
 	 * XXX except for synchronous signals generated in the syscall
 	 * buffer code, while reading/writing user pointers */
 	buffer_locked = 1;
-	return (char*)(buffer + 1) + buffer[0] + SYSCALL_BUFFER_RECORD_BASE_SIZE*sizeof(int);
+	/* "Allocate" space for a new syscall record, not including
+	 * syscall outparam data. */
+	return buffer_last() + sizeof(struct syscall_record);
 }
 
 /**
@@ -401,21 +429,22 @@ static void* prep_syscall()
  * Return 0 if we should trace the system call.
  * This must be checked before proceeding with the buffered system call.
  */
-static int can_buffer_syscall(void *record_end)
+static int can_buffer_syscall(void* record_end)
 {
-	int *new_record = (int*)((char*)(buffer + 1) + buffer[0]);
-	if (record_end < (void*)(new_record + 3)) {
-		// Either a catastrophic buffer overflow or
-		// we failed to lock the buffer. Just bail out.
+	void* record_start = buffer_last();
+	void* stored_end =
+		record_start + stored_record_size(record_end - record_start);
+
+	if (stored_end < record_start + sizeof(struct syscall_record)) {
+		/* Either a catastrophic buffer overflow or
+		 * we failed to lock the buffer. Just bail out. */
 		return 0;
 	}
-	if ((char*)record_end >
-	    (char*)(buffer + 1) + SYSCALL_BUFFER_CACHE_SIZE - SYSCALL_BUFFER_RECORD_BASE_SIZE*sizeof(int)) {
-		// Buffer overflow.
-		// Unlock the buffer and then execute the system call with a trap to rr.
-		// Note that we bail out if there's less than SYSCALL_BUFFER_RECORD_BASE_SIZE
-		// words free in the buffer. That ensures there's space for the
-		// next prep_syscall.
+	if (stored_end > (void*)buffer_end() - sizeof(struct syscall_record)) {
+		/* Buffer overflow.
+		 * Unlock the buffer and then execute the system call
+		 * with a trap to rr.  Note that we reserve enough
+		 * space in the buffer for the next prep_syscall(). */
 		buffer_locked = 0;
 		return 0;
 	}
@@ -424,11 +453,12 @@ static int can_buffer_syscall(void *record_end)
 
 static int update_errno_ret(int ret)
 {
-    if ((unsigned long)ret >= (unsigned long)-125) {
-        errno = -ret;
-        ret = -1;
-    }
-    return ret;
+	/* EHWPOISON is the last known errno as of linux 3.9.5. */
+	if (0 > ret && ret >= -EHWPOISON) {
+		errno = -ret;
+		ret = -1;
+	}
+	return ret;
 }
 
 /**
@@ -438,17 +468,16 @@ static int update_errno_ret(int ret)
  * The result of this function should be returned directly by the
  * wrapper function.
  */
-static int commit_syscall(int syscall, void *record_end, int ret)
+static int commit_syscall(int syscall, void* record_end, int ret)
 {
-	int *new_record = (int*)((char*)(buffer + 1) + buffer[0]);
-	int length = (char*)record_end - (char*)new_record;
+	void* record_start = buffer_last();
+	struct syscall_record* rec = (struct syscall_record*)record_start;
 
-	new_record[0] = syscall;
-	new_record[1] = length;
-	new_record[2] = ret;
+	rec->syscall = syscall;
+	rec->length = record_end - record_start;
+	rec->ret = ret;
 
-	// Round up to a whole number of 32-bit words
-	buffer[0] += (length + sizeof(int) - 1) & ~(sizeof(int) - 1);
+	*buffer_size_ptr() += stored_record_size(rec->length);
 	buffer_locked = 0;
 
 	return update_errno_ret(ret);
