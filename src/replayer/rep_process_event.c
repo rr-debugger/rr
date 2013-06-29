@@ -194,68 +194,55 @@ void __ptrace_cont(struct context *ctx)
 }
 
 void rep_process_flush(struct context* ctx) {
-	// read the flushed buffer
-	size_t buffer_size;
-	int* rec_addr;
-	int* buffer0 = read_raw_data(&(ctx->trace), &buffer_size,
-				     (void*)&rec_addr);
-	int* buffer = buffer0;
-	int offset = sizeof(int);
-	int record_size;
+	pid_t tid = ctx->child_tid;
+	/* Read the recorded syscall buffer. */
+	size_t data_size;
+	void* rec_addr;
+	byte* buf = read_raw_data(&ctx->trace, &data_size, (void*)&rec_addr);
+	void* child_data_addr;
+	byte* data;
+	const struct syscall_record* rec;
+
+	/* Data begins after the counter, and the size doesn't include
+	 * the counter. */
+	child_data_addr = rec_addr + sizeof(int);
+	data = buf + sizeof(int);
+	data_size -= sizeof(int);
 
 	assert(rec_addr == ctx->syscall_wrapper_cache_child);
-	/* the recorded size should be the buffer size minus the first cell */
-	assert(buffer[0] == buffer_size - sizeof(int));
+	assert(*(int*)buf == data_size);
 
-	buffer++;
-	/* for each record */
-	while (buffer_size > offset) {
-		int syscall = buffer[0];
-		record_size = buffer[1];
-		int ret = buffer[2];
+	/* Restore the recorded data to the buffer data area. */
+	write_child_data(ctx, data_size, child_data_addr, data);
+
+	rec = (const struct syscall_record*)data;
+	while (data_size > 0) {
+		size_t stored_rec_size = stored_record_size(rec->length);
+		struct user_regs_struct regs;
+
+		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
+
 		/* Allow the child to run up to the recorded syscall */
-		sys_ptrace_sysemu_sig(ctx->child_tid, 0);
-		sys_waitpid(ctx->child_tid, &(ctx->status));
+		sys_ptrace_sysemu_sig(tid, 0);
+		sys_waitpid(tid, &ctx->status);
 		if (signal_pending(ctx->status)) {
-			fatal("While pushing wrapped syscall content, received signal %d",
+			fatal("Received signal %d while advancing to buffered syscall entry",
 			      signal_pending(ctx->status));
 		}
-		if (syscall == SYS_futex) {
-			/* replay *uaddr for futex */
-			write_child_data(ctx, sizeof(int),
-					 (void*)buffer[3], (void*)buffer[4]);
-		}
-		int* size_ptr =	read_child_data(
-			ctx, sizeof(int), ctx->syscall_wrapper_cache_child);
-		assert(*size_ptr == offset - sizeof(int));
-		sys_free((void**)&size_ptr);
-		struct user_regs_struct regs;
-		read_child_registers(ctx->child_tid,&regs);
-		/*assert(regs.orig_eax == syscall);*/
-		/* Just push in the portion of the buffer needed, the
-		 * wrapper code will copy all that is needed to the
-		 * child buffers! :)
-		 *
-		 * TODO: map syscall_wrapper_cache as shared and do
-		 * writing faster
-		 */
-		 /*memcpy(ctx->syscall_wrapper_cache + offset, buffer, record_size);*/
-		debug("Pushing cache buffer: %d bytes at %p",
-		      record_size,
-		      (void*)ctx->syscall_wrapper_cache_child + offset);
-		write_child_data(
-			ctx, record_size,
-			(void*)ctx->syscall_wrapper_cache_child + offset,
-			buffer);
-		/* Set return value */
-		write_child_eax(ctx->child_tid,ret);
-		/* Make buffer and offset point to the next syscall record */
-		buffer = (void*)buffer + record_size;
-		offset += record_size;
-		/* Finish the emulation */
+
+		read_child_registers(tid, &regs);
+		assert(rec->syscall == regs.orig_eax);
+
+		/* Finish syscall exit, emulating return value. */
+		regs.eax = rec->ret;
+		write_child_registers(tid, &regs);
 		finish_syscall_emu(ctx);
+
+		rec = (const struct syscall_record*)((byte*)rec +
+						     stored_rec_size);
+		data_size -= stored_rec_size;
 	}
-	sys_free((void**)&buffer0);
+	sys_free((void**)&buf);
 }
 
 static void enter_syscall_emu(struct context* ctx, int syscall)
