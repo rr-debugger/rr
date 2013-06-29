@@ -68,24 +68,18 @@ void goto_next_event_singlestep(struct context* context)
 
 static void rec_init_scratch_memory(struct context *ctx)
 {
-	/* initialize the scratchpad for blocking system calls */
-
-	/* set up the mmap system call */
-	struct user_regs_struct mmap_call;
-	read_child_registers(ctx->child_tid, &mmap_call);
-
 	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
+	/* initialize the scratchpad for blocking system calls */
+	struct current_state_buffer state;
 
-	mmap_call.eax = SYS_mmap2;
-	mmap_call.ebx = 0;
-	mmap_call.ecx = scratch_size;
-	mmap_call.edx = PROT_READ | PROT_WRITE | PROT_EXEC;
-	mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
-	mmap_call.edi = -1;
-	mmap_call.ebp = 0;
-
-	ctx->scratch_ptr = (void*)inject_and_execute_syscall(ctx,&mmap_call);
+	prepare_remote_syscalls(ctx, &state);
+	ctx->scratch_ptr = (void*)remote_syscall6(
+		ctx, &state, SYS_mmap2,
+		0, scratch_size,
+		PROT_READ | PROT_WRITE | PROT_EXEC, /* EXEC, really? */
+		MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	ctx->scratch_size = scratch_size;
+	finish_remote_syscalls(ctx, &state);
 
 	// record this mmap for the replay
 	struct user_regs_struct orig_regs;
@@ -138,6 +132,13 @@ static int wait_block_timeout(struct context *ctx, int timeout_us)
 	return ret;
 }
 
+static void canonicalize_event(struct context* ctx)
+{
+	if (ctx->event == RRCALL_map_syscall_buffer) {
+		ctx->event = (-ctx->event | RRCALL_BIT);
+	}
+}
+
 /**
  * Continue the child until it gets a signal or a ptrace event
  */
@@ -149,6 +150,7 @@ static void cont_block(struct context *ctx)
 	assert(ctx->child_sig != SIGTRAP);
 	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;
+	canonicalize_event(ctx);
 	handle_signal(ctx);
 }
 
@@ -162,6 +164,7 @@ static void cont_syscall_block(struct context *ctx)
 	ctx->child_sig = signal_pending(ctx->status);
 	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;
+	canonicalize_event(ctx);
 	handle_signal(ctx);
 }
 
@@ -740,7 +743,7 @@ void start_recording(struct flags rr_flags)
 				break;
 				/* we sould never come here */
 			} else {
-				assert(1==0);
+				fatal("Unhandled event %d", ctx->event);
 			}
 
 			record_event(ctx, STATE_SYSCALL_ENTRY);
@@ -838,8 +841,9 @@ void start_recording(struct flags rr_flags)
 				}
 				// no need to process the syscall in case its restarted
 				// this will be done in the exit from the restart_syscall
-				if (!(retval == ERESTART_RESTARTBLOCK || retval == ERESTARTNOINTR))
+				if (!(retval == ERESTART_RESTARTBLOCK || retval == ERESTARTNOINTR)) {
 					rec_process_syscall(ctx, syscall, rr_flags);
+				}
 				record_event(ctx, STATE_SYSCALL_EXIT);
 				ctx->exec_state = EXEC_STATE_START;
 				ctx->allow_ctx_switch = 1;

@@ -600,12 +600,7 @@ static void process_mmap2(struct context* ctx,
 		/* For shared mmaps: verify
 		 * modification time */
 		if (regs.esi & MAP_SHARED) {
-			if (strstr(file.filename,
-				   SYSCALL_BUFFER_CACHE_FILENAME_PREFIX)) {
-				/* record cache */
-				ctx->syscall_wrapper_cache_child =
-					(void*)regs.ebx;
-			} else if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && 	// not dconf   (proxied)
+			if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && 	// not dconf   (proxied)
 				   strstr(file.filename, "sqlite") == NULL) {				  				// not sqlite  (private)
 				struct stat st;
 				stat(file.filename, &st);
@@ -724,6 +719,44 @@ static void process_socketcall(struct context* ctx, int state,
 	default:
 		fatal("Unknown socketcall: %d\n", call);
 	}
+}
+
+static void process_map_syscall_buffer(struct context* ctx, int exec_state,
+				       struct rep_trace_step* step)
+{
+	void* rec_child_map_addr = (void*)ctx->trace.recorded_regs.eax;
+	void* child_map_addr;
+	struct current_state_buffer state;
+
+	/* This was a phony syscall to begin with. */
+	step->syscall.emu = 1;
+	step->syscall.emu_ret = 1;
+
+	if (STATE_SYSCALL_ENTRY == exec_state) {
+		step->action = TSTEP_ENTER_SYSCALL;
+		return;
+	}
+
+	step->action = TSTEP_RETIRE;
+
+	/* Proceed to syscall exit so we can run our own syscalls. */
+	exit_syscall_emu(ctx, RRCALL_map_syscall_buffer, 0);
+
+	/* TODO: open a real shmem segment and share with child. */
+	prepare_remote_syscalls(ctx, &state);
+	child_map_addr =
+		(void*)remote_syscall6(ctx, &state, SYS_mmap2,
+				       (uintptr_t)rec_child_map_addr,
+				       SYSCALL_BUFFER_CACHE_SIZE,
+				       PROT_READ | PROT_WRITE,
+				       /* NB: magic sauce copied from
+					* the mmap2 processing code */
+				       MAP_SHARED | MAP_ANONYMOUS | MAP_FIXED,
+				       -1, 0);
+	finish_remote_syscalls(ctx, &state);
+
+	assert(child_map_addr == rec_child_map_addr);
+	ctx->syscall_wrapper_cache_child = child_map_addr;
 }
 
 void rep_process_syscall(struct context* ctx, int redirect_stdio,
@@ -928,6 +961,9 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			}
 		}
 		return;
+
+	case SYS_rrcall_map_syscall_buffer:
+		return process_map_syscall_buffer(ctx, state, step);
 
 	default:
 		break;

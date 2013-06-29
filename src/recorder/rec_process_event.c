@@ -38,6 +38,66 @@
 #include "../share/util.h"
 #include "../share/syscall_buffer.h"
 
+static void map_syscall_buffer(struct context* ctx)
+{
+	struct current_state_buffer state;
+	char shmem_filename[PATH_MAX];
+	long child_shmem_filename;
+	int fd, child_fd;
+	void* map_addr;
+	void* child_map_addr;
+
+	/* NB: the tracee can't be interrupted with a signal while
+	 * we're processing the rrcall, because it's masked off all
+	 * signals. */
+
+	/* Arguments to the rrcall. */
+	prepare_remote_syscalls(ctx, &state);
+	child_shmem_filename = state.regs.ebx;
+
+	format_syscallbuf_shmem_filename(ctx->child_tid, shmem_filename,
+					 sizeof(shmem_filename));
+
+	if (0 > (fd = open(shmem_filename, O_CREAT | O_RDWR, 0640))) {
+		fatal("Failed to open shmem file %s", shmem_filename);
+	}
+	child_fd = remote_syscall3(ctx, &state, SYS_open,
+				   child_shmem_filename, O_RDWR, 0640);
+	if (0 > child_fd) {
+		fatal("Failed to open syscall buffer shmem");
+	}
+	/* No need for the fs name anymore. */
+	unlink(shmem_filename);
+
+	if (ftruncate(fd, SYSCALL_BUFFER_CACHE_SIZE)) {
+		fatal("Failed to resize syscall buffer shmem");
+	}
+
+	if ((void*)-1 ==
+	    (map_addr = mmap(NULL, SYSCALL_BUFFER_CACHE_SIZE,
+			     PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0))) {
+		fatal("Failed to mmap shmem region");
+	}
+	child_map_addr = (void*)remote_syscall6(ctx, &state, SYS_mmap2,
+						0, SYSCALL_BUFFER_CACHE_SIZE,
+						PROT_READ | PROT_WRITE,
+						MAP_SHARED, child_fd, 0);
+	if ((void*)-1 == child_map_addr) {
+		fatal("Failed to mmap syscall buffer shmem");
+	}
+
+	ctx->syscall_wrapper_cache_child = child_map_addr;
+	ctx->syscall_wrapper_cache = map_addr;
+	/* No entries to begin with. */
+	ctx->syscall_wrapper_cache[0] = 0;
+
+	close(fd);
+	remote_syscall1(ctx, &state, SYS_close, child_fd);
+
+	/* Return the mapped address to the child. */
+	state.regs.eax = (uintptr_t)child_map_addr;
+	finish_remote_syscalls(ctx, &state);
+}
 
 void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags)
 {
@@ -1929,23 +1989,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 					mprotect_child_region(ctx, (void*)regs.eax, PROT_NONE);  // we would prefer to set write-only permissions, but write implies read on i386
 					// note that this region is protected for handling the SIGSEGV
 					add_protected_map(ctx, (void*)regs.eax);
-				} else if (strstr(file.filename,SYSCALL_BUFFER_CACHE_FILENAME_PREFIX) != NULL) { // record cache
-					ctx->syscall_wrapper_cache_child = file.start;
-					// mmap as shared in rr as well
-					errno = 0;
-					int fd = open(file.filename, O_CREAT | O_RDWR, 0640);
-					assert(fd > 0 && errno == 0);
-					// no need to truncate, the child already did it.
-					int retval;
-					(void)retval;
-					ctx->syscall_wrapper_cache = mmap(NULL, SYSCALL_BUFFER_CACHE_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
-					assert (ctx->syscall_wrapper_cache != NULL && errno == 0);
-					// the buffer is initialized to zero.
-					retval = close(fd);
-					assert(retval == 0 && errno == 0);
-					// the file is empty, don't read from it
-					record_child_data(ctx, syscall, 0, mmap_addr);
-					break;
 				}
 			}
 
@@ -2211,6 +2254,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	SYS_REC0(writev)
 
+	case RRCALL_map_syscall_buffer:
+		ctx->event = (-ctx->event | RRCALL_BIT);
+		map_syscall_buffer(ctx);
+		break;
 
 	default:
 

@@ -88,4 +88,48 @@ void inject_code(struct current_state_buffer* buf, char* code);
 int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * call_regs);
 void mprotect_child_region(struct context * ctx, void * addr, int prot);
 
+/* XXX should this go in ipc.h? */
+
+/**
+ * Prepare |ctx| for a series of remote syscalls.  The caller must
+ * treat the outparam |state| as an immutable token while it wishes to
+ * make syscalls.
+ *
+ * NBBB!  Before preparing for a series of remote syscalls, the caller
+ * *must* ensure the callee will not receive any signals.  This code
+ * does not attempt to deal with signals.
+ */
+void prepare_remote_syscalls(struct context* ctx,
+			     struct current_state_buffer* state);
+/**
+ * Remotely execute in |ctx| the specified syscall with the given
+ * arguments.  The arguments must of course be valid in |ctx|, and no
+ * checking of that is done by this function.  Return the result from
+ * the syscall.
+ */
+long remote_syscall(struct context* ctx, struct current_state_buffer* state,
+		    int syscallno,
+		    long a1, long a2, long a3, long a4, long a5, long a6);
+/**
+ * Undo in |ctx| any preparations that were made for a series of
+ * remote syscalls.
+ */
+void finish_remote_syscalls(struct context* ctx,
+			    struct current_state_buffer* state);
+
+#define remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)	\
+	remote_syscall(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)
+#define remote_syscall5(_c, _s, _no, _a1, _a2, _a3, _a4, _a5)		\
+	remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, 0)
+#define remote_syscall4(_c, _s, _no, _a1, _a2, _a3, _a4)	\
+	remote_syscall5(_c, _s, _no, _a1, _a2, _a3, _a4, 0)
+#define remote_syscall3(_c, _s, _no, _a1, _a2, _a3)	\
+	remote_syscall4(_c, _s, _no, _a1, _a2, _a3, 0)
+#define remote_syscall2(_c, _s, _no, _a1, _a2)		\
+	remote_syscall3(_c, _s, _no, _a1, _a2, 0)
+#define remote_syscall1(_c, _s, _no, _a1)	\
+	remote_syscall2(_c, _s, _no, _a1, 0)
+#define remote_syscall0(_c, _s, _no)		\
+	remote_syscall1(_c, _s, _no, 0)
+
 #endif /* UTIL_H_ */

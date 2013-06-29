@@ -42,6 +42,7 @@
 #include <linux/net.h>
 #include <poll.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -102,19 +103,9 @@ static byte* buffer_end()
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
-static int traced_close(int fd)
-{
-	return syscall(SYS_close, fd);
-}
-
 static void traced__exit(int status)
 {
 	syscall(SYS_exit_group, status);
-}
-
-static int traced_ftruncate(int fd, off_t length)
-{
-	return syscall(SYS_ftruncate, fd, length);
 }
 
 static pid_t traced_getpid()
@@ -125,17 +116,6 @@ static pid_t traced_getpid()
 static pid_t traced_gettid()
 {
 	return syscall(SYS_gettid);
-}
-
-static void* traced_mmap(void *addr, size_t length, int prot, int flags,
-		      int fd, off_t offset)
-{
-	return (void*)syscall(SYS_mmap2, addr, length, prot, flags, fd, offset);
-}
-
-static int traced_open(const char* pathname, int flags, mode_t mode)
-{
-	return syscall(SYS_open, pathname, flags, mode);
 }
 
 static int traced_prctl(int option, unsigned long arg2, unsigned long arg3,
@@ -149,9 +129,12 @@ static int traced_raise(int sig)
 	return syscall(SYS_kill, traced_getpid(), sig);
 }
 
-static int traced_unlink(const char* pathname)
+static int traced_sigprocmask(int how, const sigset_t* set, sigset_t* oldset)
 {
-	return syscall(SYS_unlink, pathname);
+	/* Warning: expecting this to only change the mask of the
+	 * current task is a linux-ism; POSIX leaves the behavior
+	 * undefined. */
+	return syscall(SYS_rt_sigprocmask, set, oldset);
 }
 
 static ssize_t traced_write(int fd, const void* buf, size_t count)
@@ -164,19 +147,17 @@ static ssize_t traced_write(int fd, const void* buf, size_t count)
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
 static int untraced_syscall(int syscall, long arg0, long arg1, long arg2,
-			    long arg3, long arg4, long arg5)
+			    long arg3, long arg4)
 {
 	int ret;
 	__asm__ __volatile__("call _untraced_syscall_entry_point"
 			     : "=a"(ret)
 			     : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2),
-			       "S"(arg3), "D"(arg4), "g"(arg5));
+			       "S"(arg3), "D"(arg4));
 	return ret;
 }
-#define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)	\
-	untraced_syscall(no, a0, a1, a2, a3, a4, a5)
 #define untraced_syscall5(no, a0, a1, a2, a3, a4)	\
-	untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
+	untraced_syscall(no, a0, a1, a2, a3, a4)
 #define untraced_syscall4(no, a0, a1, a2, a3)		\
 	untraced_syscall5(no, a0, a1, a2, a3, 0)
 #define untraced_syscall3(no, a0, a1, a2) untraced_syscall4(no, a0, a1, a2, 0)
@@ -204,6 +185,17 @@ static void* get_untraced_syscall_entry_point()
 	    "addl $(_untraced_syscall_entry_point_ip - _get_untraced_syscall_entry_point__pic_helper),%0"
 	    : "=a"(ret));
     return ret;
+}
+
+/**
+ * Create, open, and map the shmem file |shmem_filename| into the
+ * caller's address space.  Return the mapped region.
+ *
+ * This is a "magic" syscall implemented by rr.
+ */
+static void* rrcall_map_syscall_buffer(const char* shmem_filename)
+{
+	return (void*)syscall(RRCALL_map_syscall_buffer, shmem_filename);
 }
 
 /* We can't use the rr logging helpers because they rely on libc
@@ -296,31 +288,30 @@ static void install_syscall_filter()
 	/* anything that happens from this point on gets filtered! */
 }
 
-static void setup_buffer()
+static void set_up_buffer()
 {
 	char filename[PATH_MAX];
-	int fd;
 
 	assert(!buffer);
 
-	snprintf(filename, sizeof(filename) - 1, "/dev/shm/rr-tracee-%s%d",
-		 SYSCALL_BUFFER_CACHE_FILENAME_PREFIX, traced_gettid());
-	if (0 > (fd = traced_open(filename, O_CREAT | O_RDWR, 0640))) {
-		fatal("Failed to create syscall buffer shmem (%s)", filename);
-	}
+	/* Prepare arguments for rrcall. */
+	format_syscallbuf_shmem_filename(traced_gettid(),
+					 filename, sizeof(filename));
+	{
+		sigset_t mask, oldmask;
+		/* Create a "critical section" that can't be
+		 * interrupted by signals.  rr doesn't want to deal
+		 * with signals while injecting syscalls into us. */
+		sigfillset(&mask);
+		traced_sigprocmask(SIG_BLOCK, &mask, &oldmask);
 
-	if (traced_ftruncate(fd, SYSCALL_BUFFER_CACHE_SIZE)) {
-		fatal("Failed to resize shmem");
-	}
+		/* Trap to rr: let the magic begin!  It will open and map the
+		 * buffer region on our behalf, using injected syscalls. */
+		buffer = rrcall_map_syscall_buffer(filename);
 
-	if ((void*)-1 ==
-	    (buffer = traced_mmap(NULL, SYSCALL_BUFFER_CACHE_SIZE, PROT_WRITE,
-				  MAP_SHARED, fd, 0))) {
-		fatal("Failed to mmap shmem");
+		/* End "critical section". */
+		traced_sigprocmask(SIG_SETMASK, &mask, &oldmask);
 	}
-
-	traced_unlink(filename);
-	traced_close(fd);
 
 	*buffer_size_ptr() = 0;
 }
@@ -341,7 +332,7 @@ static void init()
 		install_syscall_filter();
 		is_seccomp_bpf_installed = 1;
 	}
-	setup_buffer();
+	set_up_buffer();
 }
 
 /**
@@ -535,8 +526,11 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 	return commit_syscall(SYS_gettimeofday, ptr, ret);
 }
 
+#if 0
+
 /* XXX this code is effectively dead at the moment, because glibc
- * directly invokes the futex syscall. */
+ * directly invokes the futex syscall.  Also, we don't have the
+ * helper yet for making a six-argument syscall. */
 int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 	  int* uaddr2, int val3)
 {
@@ -611,8 +605,6 @@ int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 fallback_trace:
 	return syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3);
 }
-
-#if 0
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
 	prep_syscall((events && maxevents > 0) ? (maxevents * sizeof(struct epoll_event)) : 0)

@@ -43,6 +43,14 @@ enum {
 	LAST_ASYNC_SIGNAL = -1,
 };
 
+enum {
+	/* "Magic" syscalls (traps initiated by rr code running in a
+	 * tracee) oare negative numbers to distinguish them from real
+	 * syscalls.  However, to avoid colliding with the signal
+	 * "namespace" in the event encoding, they're recorded as
+	 * (-syscallno | RRCALL_BIT). */
+	RRCALL_BIT = 0x8000
+};
 
 // Notice: these are defined in errno.h if _kernel_ is defined.
 #define ERESTARTNOINTR 			-513
