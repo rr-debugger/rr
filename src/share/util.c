@@ -20,6 +20,7 @@
 #include "dbg.h"
 #include "ipc.h"
 #include "sys.h"
+#include "syscall_buffer.h"
 #include "types.h"
 #include "trace.h"
 
@@ -1178,4 +1179,83 @@ void add_sig_handler(pid_t tid, unsigned int signum, struct sigaction * sa){
 struct sigaction * get_sig_handler(pid_t tid, unsigned int signum){
 	assert(signum < SIGRTMAX + 1);
 	return sig_handler_table[tid][signum];
+}
+
+void prepare_remote_syscalls(struct context* ctx,
+			     struct current_state_buffer* state)
+{
+	pid_t tid = ctx->child_tid;
+	byte syscall_insn[] = { 0xcd, 0x80 };
+
+	/* Save current state of |ctx|. */
+	memset(state, 0, sizeof(*state));
+	state->pid = ctx->child_tid;
+	read_child_registers(tid, &state->regs);
+	state->code_size = sizeof(syscall_insn);
+	state->start_addr = (void*)state->regs.eip;
+	state->code_buffer =
+		read_child_data(ctx, state->code_size, state->start_addr);
+
+	/* Inject phony syscall instruction. */
+	write_child_data(ctx, state->code_size, state->start_addr,
+			 syscall_insn);
+}
+
+long remote_syscall(struct context* ctx, struct current_state_buffer* state,
+		    int syscallno,
+		    long a1, long a2, long a3, long a4, long a5, long a6)
+{
+	pid_t tid = ctx->child_tid;
+	struct user_regs_struct callregs;
+
+	assert(tid == state->pid);
+
+	/* Prepare syscall arguments. */
+	memcpy(&callregs, &state->regs, sizeof(callregs));
+	callregs.eax = syscallno;
+	callregs.ebx = a1;
+	callregs.ecx = a2;
+	callregs.edx = a3;
+	callregs.esi = a4;
+	callregs.edi = a5;
+	callregs.ebp = a6;
+	write_child_registers(tid, &callregs);
+
+	/* Advance to syscall entry. */
+	sys_ptrace_syscall(tid);
+	sys_waitpid(tid, &ctx->status);
+
+	/* Skip past a seccomp trace, if we happened to see one. */
+	if (GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP
+	    /* XXX this is a special case for ubuntu 12.04.  revisit
+	     * this check if an event is added with number 8 (just
+	     * after SECCOMP */
+	    || GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
+		sys_ptrace_syscall(tid);
+		sys_waitpid(tid, &ctx->status);
+	}
+
+	assert(GET_PTRACE_EVENT(ctx->status) == 0);
+
+	/* Advance to syscall exit. */
+	sys_ptrace_syscall(tid);
+	sys_waitpid(tid, &ctx->status);
+
+	return read_child_eax(tid);
+}
+
+void finish_remote_syscalls(struct context* ctx,
+			    struct current_state_buffer* state)
+{
+	pid_t tid = ctx->child_tid;
+
+	assert(tid == state->pid);
+
+	/* Restore stomped instruction. */
+	write_child_data(ctx, state->code_size, state->start_addr,
+			 state->code_buffer);
+	sys_free((void**)&state->code_buffer);
+
+	/* Restore stomped registers. */
+	write_child_registers(tid, &state->regs);
 }

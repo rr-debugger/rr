@@ -1346,9 +1346,17 @@ SYSCALL_DEF(IRREGULAR, write, -1)
 
 /**
  *  ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
-
+ *
  * The writev() function writes iovcnt buffers of data described by
  * iov to the file associated with the file descriptor fd ("gather
  * output").
  */
 SYSCALL_DEF(EMU, writev, 0)
+
+/**
+ *  void* rrcall_map_syscall_buffer(const char* shmem_filename)
+ *
+ * Create, open, and map the shmem file |shmem_filename| into the
+ * caller's address space.  Return the mapped region.
+ */
+SYSCALL_DEF(IRREGULAR, rrcall_map_syscall_buffer, -1)
