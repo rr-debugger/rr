@@ -1183,6 +1183,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *  thread.  The signal mask is the set of signals whose delivery is currently
 	 *   blocked for the caller (see also signal(7) for more details).
 	 */
+	SYS_REC1(sigprocmask, sizeof(sigset_t), (void*)regs.edx)
 	SYS_REC1(rt_sigprocmask, sizeof(sigset_t), (void*)regs.edx)
 
 	/**
@@ -1192,7 +1193,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * pointed to by mask.  The cpusetsize argument specifies the
 	 *  size (in bytes) of mask.  If pid is zero, then the mask of the calling process is returned.
 	 */
-SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
+	SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (void*)regs.edx)
 
 	/**
 	 * int sched_getparam(pid_t pid, struct sched_param *param)
