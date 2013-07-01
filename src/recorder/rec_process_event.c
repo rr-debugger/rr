@@ -1121,6 +1121,17 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC0(openat)
 
 	/**
+	 *  int perf_event_open(struct perf_event_attr *attr,
+	 *                      pid_t pid, int cpu, int group_fd,
+         *                      unsigned long flags);
+	 *
+	 * Given a list of parameters, perf_event_open() returns a
+	 * file descriptor, for use in subsequent system calls
+	 * (read(2), mmap(2), prctl(2), fcntl(2), etc.).
+	 */
+	SYS_REC0(perf_event_open)
+
+	/**
 	 *  int pipe(int pipefd[2]);
 	 *
 	 * pipe()  creates  a  pipe, a unidirectional data channel that can be used for

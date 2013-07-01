@@ -737,6 +737,17 @@ SYSCALL_DEF(EMU, open, 0)
 SYSCALL_DEF(EMU, openat, 0)
 
 /**
+ *  int perf_event_open(struct perf_event_attr *attr,
+ *                      pid_t pid, int cpu, int group_fd,
+ *                      unsigned long flags);
+ *
+ * Given a list of parameters, perf_event_open() returns a file
+ * descriptor, for use in subsequent system calls (read(2), mmap(2),
+ * prctl(2), fcntl(2), etc.).
+ */
+SYSCALL_DEF(EMU, perf_event_open, 0)
+
+/**
  *  int pipe(int pipefd[2]);
  *
  * pipe() creates a pipe, a unidirectional data channel that can be
