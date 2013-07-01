@@ -223,7 +223,7 @@ void rep_process_flush(struct context* ctx) {
 		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
 
 		/* Allow the child to run up to the recorded syscall */
-		sys_ptrace_sysemu_sig(tid, 0);
+		sys_ptrace_sysemu(tid);
 		sys_waitpid(tid, &ctx->status);
 		if (signal_pending(ctx->status)) {
 			fatal("Received signal %d while advancing to buffered syscall entry",
