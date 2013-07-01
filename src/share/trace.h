@@ -45,7 +45,7 @@ enum {
 
 enum {
 	/* "Magic" syscalls (traps initiated by rr code running in a
-	 * tracee) oare negative numbers to distinguish them from real
+	 * tracee) are negative numbers to distinguish them from real
 	 * syscalls.  However, to avoid colliding with the signal
 	 * "namespace" in the event encoding, they're recorded as
 	 * (-syscallno | RRCALL_BIT). */

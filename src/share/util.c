@@ -1202,7 +1202,7 @@ void prepare_remote_syscalls(struct context* ctx,
 }
 
 long remote_syscall(struct context* ctx, struct current_state_buffer* state,
-		    int syscallno,
+		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6)
 {
 	pid_t tid = ctx->child_tid;
@@ -1237,10 +1237,20 @@ long remote_syscall(struct context* ctx, struct current_state_buffer* state,
 
 	assert(GET_PTRACE_EVENT(ctx->status) == 0);
 
-	/* Advance to syscall exit. */
+	/* Start running the syscall. */
 	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &ctx->status);
+	if (WAIT == wait) {
+		return wait_remote_syscall(ctx, state);
+	}
+	return 0;
+}
 
+long wait_remote_syscall(struct context* ctx,
+			 struct current_state_buffer* state)
+{
+	pid_t tid = ctx->child_tid;
+	/* Wait for syscall-exit trap. */
+	sys_waitpid(tid, &ctx->status);
 	return read_child_eax(tid);
 }
 

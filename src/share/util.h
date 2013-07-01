@@ -102,14 +102,26 @@ void mprotect_child_region(struct context * ctx, void * addr, int prot);
 void prepare_remote_syscalls(struct context* ctx,
 			     struct current_state_buffer* state);
 /**
- * Remotely execute in |ctx| the specified syscall with the given
+ * Remotely invoke in |ctx| the specified syscall with the given
  * arguments.  The arguments must of course be valid in |ctx|, and no
- * checking of that is done by this function.  Return the result from
- * the syscall.
+ * checking of that is done by this function.
+ *
+ * If |wait| is |WAIT|, the syscall is finished in |ctx| and the
+ * result is returned.  Otherwise if it's |DONT_WAIT|, the syscall is
+ * initiated but *not* finished in |ctx|, and the return value is
+ * undefined.  Call |wait_remote_syscall()| to finish the syscall and
+ * get the return value.
  */
+enum { WAIT = 1, DONT_WAIT = 0 };
 long remote_syscall(struct context* ctx, struct current_state_buffer* state,
-		    int syscallno,
+		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6);
+/**
+ * Wait for the last |DONT_WAIT| syscall initiated by
+ * |remote_syscall()| to finish, returning the result.
+ */
+long wait_remote_syscall(struct context* ctx,
+			 struct current_state_buffer* state);
 /**
  * Undo in |ctx| any preparations that were made for a series of
  * remote syscalls.
@@ -118,7 +130,7 @@ void finish_remote_syscalls(struct context* ctx,
 			    struct current_state_buffer* state);
 
 #define remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)	\
-	remote_syscall(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)
+	remote_syscall(_c, _s, WAIT, _no, _a1, _a2, _a3, _a4, _a5, _a6)
 #define remote_syscall5(_c, _s, _no, _a1, _a2, _a3, _a4, _a5)		\
 	remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, 0)
 #define remote_syscall4(_c, _s, _no, _a1, _a2, _a3, _a4)	\

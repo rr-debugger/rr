@@ -1,7 +1,9 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include <stdio.h>
+#include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 
 /*
  * syscall_buffer.h
@@ -55,6 +57,15 @@ struct syscall_record {
 } __attribute__((__packed__));
 
 /**
+ * The ABI of the socketcall syscall is a nightmare; the first arg to
+ * the kernel is the sub-operation, and the second argument is a
+ * pointer to the args.  The args depend on the sub-op.
+ */
+struct socketcall_args {
+	long args[3];
+} __attribute__((packed));
+
+/**
  * Return the amount of space that a record of |length| will occupy in
  * the buffer if committed, including padding.
  */
@@ -65,14 +76,16 @@ inline static int stored_record_size(size_t length)
 }
 
 /**
- * Write the shmem filename that |tid| will use into |buf|, which is
- * of size |len|.
+ * Write the socket name that |tid| will use into |buf|, which is of
+ * size |len|.
  */
-inline static void format_syscallbuf_shmem_filename(pid_t tid,
-						    char* buf, size_t len)
+inline static void prepare_syscallbuf_socket_addr(struct sockaddr_un* addr,
+						  pid_t tid)
 {
-	snprintf(buf, len - 1, "/dev/shm/rr-tracee-%s%d",
-		 SYSCALL_BUFFER_CACHE_FILENAME_PREFIX, tid);
+	memset(addr, 0, sizeof(*addr));
+	addr->sun_family = AF_UNIX;
+	snprintf(addr->sun_path, sizeof(addr->sun_path) - 1,
+		 "/tmp/rr-tracee-ctrlsock-%d", tid);
 }
 
 #endif /* SYSCALL_BUFFER_H_ */
