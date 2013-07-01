@@ -188,14 +188,22 @@ static void* get_untraced_syscall_entry_point()
 }
 
 /**
- * Create, open, and map the shmem file |shmem_filename| into the
- * caller's address space.  Return the mapped region.
+ * Do what's necessary to map the shared syscall buffer region in the
+ * caller's address space and return the mapped region.  |addr| is the
+ * address of the control socket the child expects to connect to.
+ * |msg| is a pre-prepared IPC that can be used to share fds; |fdptr|
+ * is a pointer to the control-message data buffer where the fd number
+ * being shared will be stored.  |args_vec| provides the tracer with
+ * preallocated space to make socketcall syscalls.
  *
  * This is a "magic" syscall implemented by rr.
  */
-static void* rrcall_map_syscall_buffer(const char* shmem_filename)
+static void* rrcall_map_syscall_buffer(struct sockaddr_un* addr,
+				       struct msghdr* msg, int* fdptr,
+				       struct socketcall_args* args_vec)
 {
-	return (void*)syscall(RRCALL_map_syscall_buffer, shmem_filename);
+	return (void*)syscall(RRCALL_map_syscall_buffer, addr, msg, fdptr,
+			      args_vec);
 }
 
 /* We can't use the rr logging helpers because they rely on libc
@@ -227,7 +235,7 @@ static void logmsg(const char* msg, ...)
 		}							\
 	} while (0)
 #else
-# define assert(cond) ((void)cond))
+# define assert(cond) ((void)0)
 #endif
 
 #define fatal(msg, ...)							\
@@ -290,13 +298,35 @@ static void install_syscall_filter()
 
 static void set_up_buffer()
 {
-	char filename[PATH_MAX];
+	struct sockaddr_un addr;
+	struct msghdr msg;
+	struct iovec data;
+	int msgbuf;
+	struct cmsghdr* cmsg;
+	int* fdptr;
+	char cmsgbuf[CMSG_SPACE(sizeof(*fdptr))];
+	struct socketcall_args args_vec;
 
 	assert(!buffer);
 
-	/* Prepare arguments for rrcall. */
-	format_syscallbuf_shmem_filename(traced_gettid(),
-					 filename, sizeof(filename));
+	/* Prepare arguments for rrcall.  We do this in the tracee
+	 * just to avoid some hairy IPC to set up the arguments
+	 * remotely from the traceer; this isn't strictly
+	 * necessary. */
+	prepare_syscallbuf_socket_addr(&addr, traced_gettid());
+
+	memset(&msg, 0, sizeof(msg));
+	data.iov_base = &msgbuf;
+	data.iov_len = sizeof(msgbuf);
+	msg.msg_iov = &data;
+	msg.msg_iovlen = 1;
+	msg.msg_control = cmsgbuf;
+	msg.msg_controllen = sizeof(cmsgbuf);
+	cmsg = CMSG_FIRSTHDR(&msg);
+	cmsg->cmsg_len = CMSG_LEN(sizeof(*fdptr));
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type = SCM_RIGHTS;
+	fdptr = (int*)CMSG_DATA(cmsg);
 	{
 		sigset_t mask, oldmask;
 		/* Create a "critical section" that can't be
@@ -305,14 +335,15 @@ static void set_up_buffer()
 		sigfillset(&mask);
 		traced_sigprocmask(SIG_BLOCK, &mask, &oldmask);
 
-		/* Trap to rr: let the magic begin!  It will open and map the
-		 * buffer region on our behalf, using injected syscalls. */
-		buffer = rrcall_map_syscall_buffer(filename);
+		/* Trap to rr: let the magic begin!  It will open and
+		 * map the buffer region on our behalf, using injected
+		 * syscalls. */
+		buffer = rrcall_map_syscall_buffer(&addr, &msg, fdptr,
+						   &args_vec);
 
 		/* End "critical section". */
-		traced_sigprocmask(SIG_SETMASK, &mask, &oldmask);
+		traced_sigprocmask(SIG_SETMASK, &oldmask, NULL);
 	}
-
 	*buffer_size_ptr() = 0;
 }
 
@@ -462,7 +493,7 @@ static int update_errno_ret(int ret)
 static int commit_syscall(int syscall, void* record_end, int ret)
 {
 	void* record_start = buffer_last();
-	struct syscall_record* rec = (struct syscall_record*)record_start;
+	struct syscall_record* rec = record_start;
 
 	rec->syscall = syscall;
 	rec->length = record_end - record_start;
