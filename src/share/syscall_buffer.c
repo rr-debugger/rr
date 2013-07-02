@@ -33,13 +33,12 @@
  *   through libc wrappers (which this file may itself wrap)
  */
 
-#define _GNU_SOURCE 1
-
 #include <fcntl.h>
 #include <limits.h>
 #include <link.h>
 #include <linux/futex.h>
 #include <linux/net.h>
+#include <linux/perf_event.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
@@ -72,6 +71,59 @@ static __thread byte* buffer = NULL;
  * system call; we don't want it to use the buffer for its system
  * calls. */
 static __thread int buffer_locked = 0;
+/* This is used to support the buffering of "may-block" system calls.
+ * The problem that needs to be addressed can be introduced with a
+ * simple example; assume that we're buffering the "read" and "write"
+ * syscalls.
+ *
+ *  o (Tasks W and R set up a synchronous-IO pipe open between them; W
+ *    "owns" the write end of the pipe; R owns the read end; the pipe
+ *    buffer is full)
+ *  o Task W invokes the write syscall on the pipe
+ *  o Since write is a buffered syscall, the seccomp filter traps W
+ *    directly to the kernel; there's no trace event for W delivered
+ *    to rr.
+ *  o The pipe is full, so W is descheduled by the kernel because W
+ *    can't make progress.
+ *  o rr thinks W is still running and doesn't schedule R.
+ *
+ * At this point, progress in the recorded application can only be
+ * made by scheduling R, but no one tells rr to do that.  Oops!
+ *
+ * Thus enter the "desched counter".  It's a perf_event for the "sw
+ * context switches" event (which, more precisely, is "sw deschedule";
+ * it counts schedule-out, not schedule-in).  We program the counter
+ * to deliver SIGIO to this task when there's new counter data
+ * available.  And we set up the "sample period", how many descheds
+ * are triggered before SIGIO is delivered, to be "1".  This means
+ * that when the counter is armed, the next desched (i.e., the next
+ * time the desched counter is bumped up) of this task will deliver
+ * SIGIO to it.  And signal delivery always generates a ptrace trap,
+ * so rr can deduce that this task was descheduled and schedule
+ * another.
+ *
+ * One implementation note is that the tracer always sees *two* SIGIOs
+ * per desched notification.  The current theory of what's happening
+ * is
+ * 
+ *  o child gets descheduled, bumps counter to i and schedules SIGIO
+ *  o SIGIO notification "schedules" child, but it doesn't actually
+ *    run any application code
+ *  o child is being ptraced, so we "deschedule" child to notify
+ *    parent and bump counter to i+1.  (The parent hasn't had a chance
+ *    to clear the counter yet.)
+ *  o another counter signal is generated, but SIGIO is already
+ *    pending so this one is queued
+ *  o parent is notified and sees counter value i+1
+ *  o parent stops delivery of first signal and disarms counter
+ *  o second SIGIO dequeued and delivered, notififying parent (counter
+ *    is disarmed now, so no pseudo-desched possible here)
+ *  o parent notifiedand sees counter value i+1 again
+ *  o parent stops delivery of second SIGIO and we continue on
+ *
+ * So we "work around" this by the tracer expecting two SIGIO
+ * notifications, and silently discarding both. */
+static __thread int desched_counter_fd;
 
 /**
  * Return a pointer to the buffer-size counter, which happens to be
@@ -108,6 +160,18 @@ static void traced__exit(int status)
 	syscall(SYS_exit_group, status);
 }
 
+static int traced_fcntl(int fd, int cmd, ...)
+{
+	va_list ap;
+	void *arg;
+
+	va_start(ap, cmd);
+	arg = va_arg(ap, void*);
+	va_end(ap);
+
+	return syscall(SYS_fcntl64, fd, cmd, arg);
+}
+
 static pid_t traced_getpid()
 {
 	return syscall(SYS_getpid);
@@ -116,6 +180,13 @@ static pid_t traced_getpid()
 static pid_t traced_gettid()
 {
 	return syscall(SYS_gettid);
+}
+
+static int traced_perf_event_open(struct perf_event_attr *attr,
+				  pid_t pid, int cpu, int group_fd,
+				  unsigned long flags)
+{
+    return syscall(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
 }
 
 static int traced_prctl(int option, unsigned long arg2, unsigned long arg3,
@@ -296,6 +367,42 @@ static void install_syscall_filter()
 	/* anything that happens from this point on gets filtered! */
 }
 
+/**
+ * Return a counter that generates a SIGIO targeted at this task every
+ * time the task is descheduled |nr_descheds| times.
+ */
+static int open_desched_event_counter(size_t nr_descheds)
+{
+	struct perf_event_attr attr;
+	int fd;
+	struct f_owner_ex own;
+
+	memset(&attr, 0, sizeof(attr));
+	attr.size = sizeof(attr);
+	attr.type = PERF_TYPE_SOFTWARE;
+	attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
+	attr.disabled = 1;
+	attr.sample_period = nr_descheds;
+
+	fd = traced_perf_event_open(&attr, 0/*self*/, -1/*any cpu*/, -1, 0);
+	if (0 > fd) {
+		fatal("Failed to perf_event_open(cs, period=%u)", nr_descheds);
+	}
+	if (traced_fcntl(fd, F_SETFL, O_ASYNC)) {
+		fatal("Failed to fcntl(O_ASYNC) the desched counter");
+	}
+	own.type = F_OWNER_TID;
+	own.pid = traced_gettid();
+	if (traced_fcntl(fd, F_SETOWN_EX, &own)) {
+		fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
+	}
+	if (traced_fcntl(fd, F_SETSIG, SIGIO)) {
+		fatal("Failed to fcntl(SETSIG, SIGIO) the desched counter");
+	}
+
+	return fd;
+}
+
 static void set_up_buffer()
 {
 	struct sockaddr_un addr;
@@ -303,11 +410,15 @@ static void set_up_buffer()
 	struct iovec data;
 	int msgbuf;
 	struct cmsghdr* cmsg;
-	int* fdptr;
-	char cmsgbuf[CMSG_SPACE(sizeof(*fdptr))];
+	int* msg_fdptr;
+	int* cmsg_fdptr;
+	char cmsgbuf[CMSG_SPACE(sizeof(*cmsg_fdptr))];
 	struct socketcall_args args_vec;
 
 	assert(!buffer);
+
+	/* NB: we want this setup emulated during replay. */
+	desched_counter_fd = open_desched_event_counter(1);
 
 	/* Prepare arguments for rrcall.  We do this in the tracee
 	 * just to avoid some hairy IPC to set up the arguments
@@ -316,17 +427,27 @@ static void set_up_buffer()
 	prepare_syscallbuf_socket_addr(&addr, traced_gettid());
 
 	memset(&msg, 0, sizeof(msg));
-	data.iov_base = &msgbuf;
+	msg_fdptr = &msgbuf;
+	data.iov_base = msg_fdptr;
 	data.iov_len = sizeof(msgbuf);
 	msg.msg_iov = &data;
 	msg.msg_iovlen = 1;
 	msg.msg_control = cmsgbuf;
 	msg.msg_controllen = sizeof(cmsgbuf);
 	cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_len = CMSG_LEN(sizeof(*fdptr));
+	cmsg->cmsg_len = CMSG_LEN(sizeof(*cmsg_fdptr));
 	cmsg->cmsg_level = SOL_SOCKET;
 	cmsg->cmsg_type = SCM_RIGHTS;
-	fdptr = (int*)CMSG_DATA(cmsg);
+	cmsg_fdptr = (int*)CMSG_DATA(cmsg);
+
+	/* Set the "fd parameter" in the message buffer, which we send
+	 * to let the other side know the local fd number we shared to
+	 * it. */
+	*msg_fdptr = desched_counter_fd;
+	/* Set the "fd parameter" in the cmsg buffer, which is the one
+	 * the kernel parses, dups, then sets to the fd number
+	 * allocated in the other process. */
+	*cmsg_fdptr = desched_counter_fd;
 	{
 		sigset_t mask, oldmask;
 		/* Create a "critical section" that can't be
@@ -335,10 +456,12 @@ static void set_up_buffer()
 		sigfillset(&mask);
 		traced_sigprocmask(SIG_BLOCK, &mask, &oldmask);
 
-		/* Trap to rr: let the magic begin!  It will open and
-		 * map the buffer region on our behalf, using injected
-		 * syscalls. */
-		buffer = rrcall_map_syscall_buffer(&addr, &msg, fdptr,
+		/* Trap to rr: let the magic begin!  We've prepared
+		 * the buffer so that it's immediately ready to be
+		 * sendmsg()'d to rr to share the desched counter to
+		 * it (under rr's control).  rr can further use the
+		 * buffer to share more fd's to us. */
+		buffer = rrcall_map_syscall_buffer(&addr, &msg, cmsg_fdptr,
 						   &args_vec);
 
 		/* End "critical section". */
@@ -408,21 +531,42 @@ static void init()
  * will be inconsistent between syscalls.  Usage should look something
  * like
  *
+ *   // If there's something at runtime that should stop buffering the
+ *   // syscall, like an unknown parameter, bail.
  *   if (!try_to_buffer()) {
  *       goto fallback_trace;
  *   }
- *   void* ptr = prep_syscall();
- *   // allocate extra storage
+ *
+ *   // Reserve buffer space for the recorded syscall and any other
+ *   // required internal bookkeeping data.
+ *   void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+ *
+ *   // If the syscall requires recording any extra data, reserve
+ *   // space for it too.
+ *   ptr += sizeof(extra_syscall_data);
+ *
+ *   // If there's not enough space, bail.
  *   if (!can_buffer_syscall(ptr)) {
  *       goto fallback_trace;
  *   }
+ *
+ *   // Since this syscall may block, arm/disarm the desched
+ *   // notification.
+ *   arm_desched_notification();
  *   untraced_syscall(...);
- *   // save extra data
- *   return commit_syscall(...);
+ *   disarm_desched_notification();
+ *
+ *   // Store the extra_syscall_data that space was reserved for
+ *   // above.
+ *
+ *   // Update the buffer.
+ *   return commit_syscall(..., DID_DISARM_DESCHED_EVENT);
+ *
  * fallback_trace:
- *   return sys_...(...);
+ *   return syscall(...);  // traced
  */
-static void* prep_syscall()
+enum { WILL_ARM_DESCHED_EVENT, DID_DISARM_DESCHED_EVENT, NO_DESCHED };
+static void* prep_syscall(int notify_desched)
 {
 	if (!buffer) {
 		init();
@@ -473,6 +617,28 @@ static int can_buffer_syscall(void* record_end)
 	return 1;
 }
 
+inline static void arm_desched_event()
+{
+	/* Don't trace the ioctl; doing so would trigger a flushing
+	 * ptrace trap, which is exactly what this code is trying to
+	 * avoid! :) Although we don't allocate extra space for these
+	 * ioctl's, we do record that we called them; the replayer
+	 * knows how to skip over them. */
+	if (untraced_syscall3(SYS_ioctl, desched_counter_fd,
+			      PERF_EVENT_IOC_ENABLE, 0)) {
+		fatal("Failed to ENABLE counter %d", desched_counter_fd);
+	}
+}
+
+inline static void disarm_desched_event()
+{
+	/* See above. */
+	if (untraced_syscall3(SYS_ioctl, desched_counter_fd,
+			      PERF_EVENT_IOC_DISABLE, 0)) {
+		fatal("Failed to ENABLE counter %d", desched_counter_fd);
+	}
+}
+
 static int update_errno_ret(int ret)
 {
 	/* EHWPOISON is the last known errno as of linux 3.9.5. */
@@ -490,7 +656,8 @@ static int update_errno_ret(int ret)
  * The result of this function should be returned directly by the
  * wrapper function.
  */
-static int commit_syscall(int syscall, void* record_end, int ret)
+static int commit_syscall(int syscall, void* record_end, int ret,
+			  int disarmed_desched)
 {
 	void* record_start = buffer_last();
 	struct syscall_record* rec = record_start;
@@ -498,6 +665,7 @@ static int commit_syscall(int syscall, void* record_end, int ret)
 	rec->syscall = syscall;
 	rec->length = record_end - record_start;
 	rec->ret = ret;
+	rec->desched = NO_DESCHED != disarmed_desched;
 
 	*buffer_size_ptr() += stored_record_size(rec->length);
 	buffer_locked = 0;
@@ -507,7 +675,7 @@ static int commit_syscall(int syscall, void* record_end, int ret)
 
 int clock_gettime(clockid_t clk_id, struct timespec* tp)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(NO_DESCHED);
 	struct timespec *tp2 = NULL;
 
 	/* set it up so the syscall writes to the record cache */
@@ -525,12 +693,12 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 	if (tp) {
 		memcpy(tp, tp2, sizeof(struct timespec));
 	}
-	return commit_syscall(SYS_clock_gettime, ptr, ret);
+	return commit_syscall(SYS_clock_gettime, ptr, ret, NO_DESCHED);
 }
 
 int gettimeofday(struct timeval* tp, struct timezone* tzp)
 {
-	void *ptr = prep_syscall();
+	void *ptr = prep_syscall(NO_DESCHED);
 	/* set it up so the syscall writes to the record cache */
 	struct timeval *tp2 = NULL;
 
@@ -554,10 +722,26 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 	if (tzp) {
 		memcpy(tzp, tzp2, sizeof(struct timezone));
 	}
-	return commit_syscall(SYS_gettimeofday, ptr, ret);
+	return commit_syscall(SYS_gettimeofday, ptr, ret, NO_DESCHED);
 }
 
 #if 0
+
+/* This is useful for testing, but not much else. */
+int sched_yield(void)
+{
+	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_sched_yield);
+	}
+
+	arm_desched_event();
+	int ret = untraced_syscall0(SYS_sched_yield);
+	disarm_desched_event();
+
+	return commit_syscall(SYS_sched_yield, ptr, ret,
+			      DID_DISARM_DESCHED_EVENT);
+}
 
 /* XXX this code is effectively dead at the moment, because glibc
  * directly invokes the futex syscall.  Also, we don't have the
