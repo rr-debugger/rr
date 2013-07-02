@@ -1,5 +1,9 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE 1
+#endif
+
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -50,9 +54,13 @@
 struct syscall_record {
 	int syscall;
 	/* Length of entire record: this struct plus extra recorded
-	 * data stored inline after |ret|, not including padding. */
+	 * data stored inline after the last field, not including
+	 * padding. */
 	size_t length;
-	int ret;
+	long ret;
+	/* Did the tracee arm/disarm the desched notification for this
+	 * syscall? */
+	int desched;
 	/* Extra recorded outparam data starts here. */
 } __attribute__((__packed__));
 

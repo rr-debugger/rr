@@ -193,8 +193,37 @@ void __ptrace_cont(struct context *ctx)
 	rep_child_buffer0(ctx);
 }
 
-void rep_process_flush(struct context* ctx) {
+static void emulate_buffered_syscall(struct context* ctx,
+				     const struct syscall_record* rec)
+{
 	pid_t tid = ctx->child_tid;
+	struct user_regs_struct regs;
+
+	/* Allow the child to run up to the recorded syscall */
+	sys_ptrace_sysemu(tid);
+	sys_waitpid(tid, &ctx->status);
+	if (signal_pending(ctx->status)) {
+		fatal("Received signal %d while advancing to buffered syscall entry",
+		      signal_pending(ctx->status));
+	}
+
+	read_child_registers(tid, &regs);
+
+	assert(rec->syscall == regs.orig_eax);
+
+	/* Finish syscall exit, emulating return value. */
+	regs.eax = rec->ret;
+	write_child_registers(tid, &regs);
+	finish_syscall_emu(ctx);
+}
+
+static void skip_desched_ioctl(struct context* ctx)
+{
+	struct syscall_record rec = { .syscall = SYS_ioctl, .ret = 0 };
+	return emulate_buffered_syscall(ctx, &rec);
+}
+
+void rep_process_flush(struct context* ctx) {
 	/* Read the recorded syscall buffer. */
 	size_t data_size;
 	void* rec_addr;
@@ -218,25 +247,21 @@ void rep_process_flush(struct context* ctx) {
 	rec = (const struct syscall_record*)data;
 	while (data_size > 0) {
 		size_t stored_rec_size = stored_record_size(rec->length);
-		struct user_regs_struct regs;
 
 		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
 
-		/* Allow the child to run up to the recorded syscall */
-		sys_ptrace_sysemu(tid);
-		sys_waitpid(tid, &ctx->status);
-		if (signal_pending(ctx->status)) {
-			fatal("Received signal %d while advancing to buffered syscall entry",
-			      signal_pending(ctx->status));
+		if (rec->desched) {
+			/* Skip past the ioctl that armed the desched
+			 * notification. */
+			skip_desched_ioctl(ctx);
 		}
-
-		read_child_registers(tid, &regs);
-		assert(rec->syscall == regs.orig_eax);
-
-		/* Finish syscall exit, emulating return value. */
-		regs.eax = rec->ret;
-		write_child_registers(tid, &regs);
-		finish_syscall_emu(ctx);
+		/* Emulate the "real" syscall. */
+		emulate_buffered_syscall(ctx, rec);
+		if (rec->desched) {
+			/* And skip past the ioctl that disarmed the
+			 * desched notification. */
+			skip_desched_ioctl(ctx);
+		}
 
 		rec = (const struct syscall_record*)((byte*)rec +
 						     stored_rec_size);
@@ -832,6 +857,8 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			case F_SETFL:
 			case F_SETFD:
 			case F_SETOWN:
+			case F_SETOWN_EX:
+			case F_SETSIG:
 				step->syscall.num_emu_args = 0;
 				break;
 			case F_SETLK:

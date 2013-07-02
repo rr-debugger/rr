@@ -38,8 +38,10 @@
 #include "../share/util.h"
 #include "../share/syscall_buffer.h"
 
-static void
-send_fd(int fd, int socket)
+/**
+ * Share |fd| to the other side of |sock|.
+ */
+static void send_fd(int fd, int sock)
 {
 	struct msghdr msg;
 	struct iovec data;
@@ -62,9 +64,48 @@ send_fd(int fd, int socket)
 	cmsg->cmsg_type = SCM_RIGHTS;
 	*(int*)CMSG_DATA(cmsg) = fd;
 
-	if (0 >= sendmsg(socket, &msg, 0)) {
+	if (0 >= sendmsg(sock, &msg, 0)) {
 		fatal("Failed to send fd");
 	}
+}
+
+/**
+ * Block until receiving an fd the other side of |sock| sent us, then
+ * return the fd (valid in this address space).  Optionally return the
+ * remote fd number that was shared to us in |remote_fdno|.
+ */
+static int recv_fd(int sock, int* remote_fdno)
+{
+	struct msghdr msg;
+	int fd, remote_fd;
+	struct iovec data;
+	struct cmsghdr* cmsg;
+	char cmsgbuf[CMSG_SPACE(sizeof(int))];
+
+	memset(&msg, 0, sizeof(msg));
+
+	data.iov_base = &remote_fd;
+	data.iov_len = sizeof(remote_fd);
+	msg.msg_iov = &data;
+	msg.msg_iovlen = 1;
+
+	msg.msg_control = cmsgbuf;
+	msg.msg_controllen = sizeof(cmsgbuf);
+
+	if (0 >= recvmsg(sock, &msg, 0)) {
+		fatal("Failed to receive fd");
+	}
+
+	cmsg = CMSG_FIRSTHDR(&msg);
+	assert(cmsg->cmsg_level == SOL_SOCKET
+	       && cmsg->cmsg_type == SCM_RIGHTS);
+
+	fd = *(int*)CMSG_DATA(cmsg);
+	if (remote_fdno) {
+		*remote_fdno = remote_fd;
+	}
+
+	return fd;
 }
 
 static void write_socketcall_args(struct context* ctx, void* child_args_vec,
@@ -152,7 +193,26 @@ static void map_syscall_buffer(struct context* ctx)
 	/* Socket name not needed anymore. */
 	unlink(addr.sun_path);
 
-	/* Share the shmem fd with the child. */
+	/* Pull the puppet strings to have the child share its desched
+	 * counter with us.  Similarly to above, we DONT_WAIT on the
+	 * call to finish, since it's likely not defined whether the
+	 * sendmsg() may block on our recvmsg()ing what the tracee
+	 * sent us (in which case we would deadlock with the
+	 * tracee). */
+	write_socketcall_args(ctx, child_args_vec, child_sock, child_msg, 0);
+	remote_syscall(ctx, &state, DONT_WAIT, SYS_socketcall,
+		       SYS_SENDMSG, (uintptr_t)child_args_vec, 0, 0, 0, 0);
+	/* Child may be waiting on our recvmsg(). */
+
+	/* Read the shared fd and finish the child's syscall. */
+	ctx->desched_fd = recv_fd(sock, &ctx->desched_fd_child);
+	if (0 >=  wait_remote_syscall(ctx, &state)) {
+		errno = -child_ret;
+		fatal("Failed to sendmsg() in tracee");
+	}
+
+	/* Share the shmem fd with the child.  It's ok to reuse the
+	 * |child_msg| buffer. */
 	send_fd(shmem_fd, sock);
 	write_socketcall_args(ctx, child_args_vec,
 			      child_sock, child_msg, 0);
@@ -472,6 +532,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case F_SETFL:
 		case F_SETFD:
 		case F_SETOWN:
+		case F_SETOWN_EX:
+		case F_SETSIG:
 		{
 			break;
 		}
