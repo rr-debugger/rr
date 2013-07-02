@@ -1,6 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include <assert.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +24,10 @@ int main() {
 	for (i = 0; i < 100; ++i) {
 		struct timespec ts_now;
 		struct timeval tv_now;
+
+		if (0 == (i + 1) % 10) {
+			sched_yield();
+		}
 
 		clock_gettime(CLOCK_MONOTONIC, &ts_now);
 		test_assert(ts.tv_sec < ts_now.tv_sec

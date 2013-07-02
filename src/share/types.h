@@ -76,10 +76,13 @@ struct context {
 
 	int recorded_scratch_size;
 
-	void * syscall_wrapper_start;
-	void * syscall_wrapper_end;
-	int * syscall_wrapper_cache;
-	int * syscall_wrapper_cache_child; // address of the cache buffer in the child
+	void* syscall_wrapper_start;
+	void* syscall_wrapper_end;
+	int* syscall_wrapper_cache;
+	int* syscall_wrapper_cache_child; // address of the cache buffer in the child
+	/* The child's desched-event counter fd number, and our local
+	 * dup. */
+	int desched_fd, desched_fd_child;
 
 	/* shared */
 	struct user_regs_struct child_regs;
