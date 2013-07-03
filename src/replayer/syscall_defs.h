@@ -1365,9 +1365,21 @@ SYSCALL_DEF(IRREGULAR, write, -1)
 SYSCALL_DEF(EMU, writev, 0)
 
 /**
- *  void* rrcall_map_syscall_buffer(const char* shmem_filename)
+ *  void* rrcall_init_syscall_buffer(void* untraced_syscall_ip,
+ *                                   struct sockaddr_un* addr,
+ *                                   struct msghdr* msg, int* fdptr,
+ *                                   struct socketcall_args* args_vec);
  *
- * Create, open, and map the shmem file |shmem_filename| into the
- * caller's address space.  Return the mapped region.
+ * Do what's necessary to map the shared syscall buffer region in the
+ * caller's address space and return the mapped region.
+ * |untraced_syscall_ip| lets rr know where our untraced syscalls will
+ * originate from.  |addr| is the address of the control socket the
+ * child expects to connect to.  |msg| is a pre-prepared IPC that can
+ * be used to share fds; |fdptr| is a pointer to the control-message
+ * data buffer where the fd number being shared will be stored.
+ * |args_vec| provides the tracer with preallocated space to make
+ * socketcall syscalls.
+ *
+ * This is a "magic" syscall implemented by rr.
  */
-SYSCALL_DEF(IRREGULAR, rrcall_map_syscall_buffer, -1)
+SYSCALL_DEF(IRREGULAR, rrcall_init_syscall_buffer, -1)

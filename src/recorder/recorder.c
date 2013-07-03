@@ -120,21 +120,9 @@ static int wait_nonblock(struct context *ctx)
 	return ret;
 }
 
-static int wait_block_timeout(struct context *ctx, int timeout_us)
-{
-	int ret = sys_waitpid_timeout(ctx->child_tid, &(ctx->status), timeout_us);
-
-	if (ret) {
-		assert(WIFEXITED(ctx->status) == 0);
-		handle_signal(ctx);
-		ctx->event = read_child_orig_eax(ctx->child_tid);
-	}
-	return ret;
-}
-
 static void canonicalize_event(struct context* ctx)
 {
-	if (ctx->event == RRCALL_map_syscall_buffer) {
+	if (ctx->event == RRCALL_init_syscall_buffer) {
 		ctx->event = (-ctx->event | RRCALL_BIT);
 	}
 }
@@ -168,34 +156,68 @@ static void cont_syscall_block(struct context *ctx)
 	handle_signal(ctx);
 }
 
-static int allow_ctx_switch(struct context *ctx, int event)
+static void warn_no_scratch(int event, ssize_t size)
 {
-	/**
-	 * If we are called again due to a restart_syscall, we musn't redirect to scratch again
-	 * as we will lose the original addresses values.
-	 */
+	log_warn("Event %s needed a scratch buffer of size %d, but failed to set it up.  Disabling context switching: deadlock may follow.",
+		 strevent(event), size);
+}
+
+/**
+ * Prepare to enter |event|.  Return nonzero if |ctx| can be
+ * context-switched during |event|, and 0 if not.
+ */
+static int prep_event(struct context* ctx, int event)
+{
+	/* If we are called again due to a restart_syscall, we musn't
+	 * redirect to scratch again as we will lose the original
+	 * addresses values. */
 	bool restart = (event == SYS_restart_syscall);
+	int would_need_scratch;
+	struct user_regs_struct regs;
+
 	if (restart) {
 		event = ctx->last_syscall;
 	}
 
-	switch (event) {
-
-	case USR_SCHED:
-	{
+	/* If the context received a desched notification, then it
+	 * must be switchable to allow execution to make progress, in
+	 * general.  Descheds only happen for buffered syscalls, so we
+	 * know there's no scratch-buffer prep needed. */
+	if (ctx->desched) {
 		return 1;
 	}
 
+	read_child_registers(ctx->child_tid, &regs);
+
+	/* The only way we should reach this code is for a desched'd
+	 * syscall, which we short-circuit returned for above.
+	 * Otherwise, ... */
+	assert(!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs.eip, ctx));
+
+	/* For syscall params that may need scratch memory, they
+	 * *will* need scratch memory if |would_need_scratch| is
+	 * nonzero.  They *don't* need scratch memory if we're
+	 * restarting a syscall, since if that's the case we've
+	 * already set it up. */
+	would_need_scratch = !restart;
+	if (would_need_scratch) {
+		/* If we might need to use scratch space, initialize
+		 * the pointers to sentinel values. */
+		ctx->recorded_scratch_ptr_0 = NULL;
+		ctx->recorded_scratch_ptr_1 = NULL;
+		ctx->recorded_scratch_size = 0;
+	}
+
+	switch (event) {
+	case USR_SCHED:
+		return 1;
+
 	case SYS_splice:
-    {
 	    return 1;
-    }
 
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
-	{
-
-		switch (ctx->child_regs.ecx & FUTEX_CMD_MASK) {
+		switch (regs.ecx & FUTEX_CMD_MASK) {
 		case FUTEX_WAIT:
 		case FUTEX_WAIT_BITSET:
 		case FUTEX_WAIT_PRIVATE:
@@ -203,13 +225,9 @@ static int allow_ctx_switch(struct context *ctx, int event)
 			return 1;
 		default:
 			return 0;
-		}
-		break;
-	}
 
 	case SYS_socketcall:
-	{
-		switch (ctx->child_regs.ebx) {
+		switch (regs.ebx) {
 		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) :=
 		 * int socketcall(int call, unsigned long *args) {
 		 * 		long a[6];
@@ -217,280 +235,223 @@ static int allow_ctx_switch(struct context *ctx, int event)
 		 *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
 		 *  }
 		 *
-		 *  (fropm http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
+		 *  (from http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
 		 */
 		case SYS_RECV:
-		{
-			if (!restart) {
-				struct user_regs_struct regs;
-				read_child_registers(ctx->child_tid, &regs);
-				/* We need to point to scratch memory only if the eip is not in the wrapper lib. */				
-				if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-					size_t num_args = 4;
-					// reading syscall args
-					unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
-					// save buffer address (args[1]) and size
-					ctx->recorded_scratch_ptr_1 = (void*)args[1];
-					ctx->recorded_scratch_size = args[2];
-					// setting buffer address to scratch memory +  sizeof the args
-					args[1] = (long)(ctx->scratch_ptr + (num_args * sizeof(long)));
-					// put args on scratch memory (since as we changed it)
-					write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
-					// point ecx to args
-					ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
-					regs.ecx = (long)ctx->scratch_ptr;
-					write_child_registers(ctx->child_tid,&regs);
-					// cleanup
-					sys_free((void**)&args);
-				}
+			if (would_need_scratch) {
+				size_t num_args = 4;
+				// reading syscall args
+				unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
+				// save buffer address (args[1]) and size
+				ctx->recorded_scratch_ptr_1 = (void*)args[1];
+				ctx->recorded_scratch_size = args[2];
+				// setting buffer address to scratch memory +  sizeof the args
+				args[1] = (long)(ctx->scratch_ptr + (num_args * sizeof(long)));
+				// put args on scratch memory (since as we changed it)
+				write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
+				// point ecx to args
+				ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
+				regs.ecx = (long)ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid,&regs);
+				// cleanup
+				sys_free((void**)&args);
 			}
 			return 1;
-		}
+
 		/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen); =
 		 * sys_accept4(a0, (struct sockaddr __user *)a1,(int __user *)a[2], 0);
 		 * */
 		case SYS_ACCEPT:
-		{
-			if (!restart) {
-				struct user_regs_struct regs;
-				read_child_registers(ctx->child_tid, &regs);
-				/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-				if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-					size_t num_args = 3;
-					// reading syscall args
-					unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
-					// setting addr to scratch memory +  sizeof the args
-					ctx->recorded_scratch_ptr_1 = (void*)args[1];
-					args[1] = (long)(ctx->scratch_ptr + (num_args * sizeof(long)));
-					// setting addrlen to addr + addrlen
-					socklen_t *addrlen = read_child_data(ctx,sizeof(socklen_t *), (void*)args[2]);
-					ctx->recorded_scratch_size = *addrlen;
-					args[2] = (long)((void*)args[1] + *addrlen);
-					// put args on scratch memory (since we changed it)
-					write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
-					// point ecx to args
-					ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
-					regs.ecx = (long)ctx->scratch_ptr;
-					write_child_registers(ctx->child_tid,&regs);
-					// cleanup
-					sys_free((void**)&addrlen);
-					sys_free((void**)&args);
-				}
+			if (would_need_scratch) {
+				size_t num_args = 3;
+				// reading syscall args
+				unsigned long * args = read_child_data(ctx, num_args * sizeof(long), (void*)regs.ecx);
+				// setting addr to scratch memory +  sizeof the args
+				ctx->recorded_scratch_ptr_1 = (void*)args[1];
+				args[1] = (uintptr_t)(ctx->scratch_ptr + (num_args * sizeof(long)));
+				// setting addrlen to addr + addrlen
+				socklen_t *addrlen = read_child_data(ctx,sizeof(socklen_t *), (void*)args[2]);
+				ctx->recorded_scratch_size = *addrlen;
+				args[2] = (uintptr_t)((void*)args[1] + *addrlen);
+				// put args on scratch memory (since we changed it)
+				write_child_data(ctx, num_args * sizeof(long), ctx->scratch_ptr, args);
+				// point ecx to args
+				ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
+				regs.ecx = (uintptr_t)ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid,&regs);
+				// cleanup
+				sys_free((void**)&addrlen);
+				sys_free((void**)&args);
 			}
 			return 1;
-		}
+
+		case SYS_RECVMSG:
+			/* TODO: this can block too, so also needs
+			 * scratch pointers.  Unfortunately the format
+			 * is fiendishly complicated, so this is
+			 * rather nontrivial :(. */
+			warn_no_scratch(event, -1);
 		default:
 			return 0;
 		}
-		break;
 	}
 
 	case SYS__newselect:
-	{
 		return 1;
-	}
 
 	/* ssize_t read(int fd, void *buf, size_t count); */
 	case SYS_read:
-	{
-		if (!restart) {
-			struct user_regs_struct regs;
-			read_child_registers(ctx->child_tid, &regs);
-			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-				int size = regs.edx;
-				if (size < 0 || size > ctx->scratch_size) {
-					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
-					ctx->recorded_scratch_size = -1;
-					return 0;
-				}
-				ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
-				ctx->recorded_scratch_size = size;
-				regs.ecx = (uintptr_t)ctx->scratch_ptr;
-				write_child_registers(ctx->child_tid, &regs);
+		if (would_need_scratch) {
+			int size = regs.edx;
+			if (size < 0 || size > ctx->scratch_size) {
+				warn_no_scratch(event, size);
+				return 0;
 			}
+			ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
+			ctx->recorded_scratch_size = size;
+			regs.ecx = (uintptr_t)ctx->scratch_ptr;
+			write_child_registers(ctx->child_tid, &regs);
 		}
 		return 1;
-	}
 
-	/* Generally, it is faster to wait for a SYS_write to return
-	 * than to do a context switch. However, after waiting for a
-	 * certain amount of time (see config.h), a context switch is
-	 * performed.
-	 */
 	case SYS_write:
-	{
-		return 0;
-	}
+		return 1;
 
 	/* pid_t waitpid(pid_t pid, int *status, int options); */
 	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
 	case SYS_waitpid:
 	case SYS_wait4:
-	{
-		if (!restart) {
-			struct user_regs_struct regs;
-			read_child_registers(ctx->child_tid, &regs);
-			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-				bool registers_changed = FALSE;
-				void * ptr = ctx->scratch_ptr;
-				ctx->recorded_scratch_size = 0;
-				if (regs.ecx) { /* if status is non-null, redirect it to scratch */
-					ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
-					ctx->recorded_scratch_size += sizeof(int);
-					regs.ecx = (int)ptr;
-					registers_changed = TRUE;
-					ptr += sizeof(int);
-				} else {
-					ctx->recorded_scratch_ptr_0 = (void*)-1;
-				}
-				if (event == SYS_wait4 && regs.esi) { /* if rusage is non-null, redirect it to scratch */
-					ctx->recorded_scratch_ptr_1 = (void*)regs.esi;
-					ctx->recorded_scratch_size += sizeof(struct rusage);
-					regs.esi = (int)ptr;
-					registers_changed = TRUE;
-					ptr += sizeof(struct rusage);
-				} else {
-					ctx->recorded_scratch_ptr_1 = (void*)-1;
-				}
-				if (registers_changed) {
-					write_child_registers(ctx->child_tid, &regs);
-				}
+		if (would_need_scratch) {
+			bool registers_changed = FALSE;
+			void* ptr = ctx->scratch_ptr;
+			ctx->recorded_scratch_size = 0;
+			/* |status| param */
+			if (regs.ecx) {
+				ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
+				ctx->recorded_scratch_size += sizeof(int);
+				regs.ecx = (uintptr_t)ptr;
+				registers_changed = TRUE;
+				ptr += sizeof(int);
+			}
+			/* |rusage| param */
+			if (event == SYS_wait4 && regs.esi) {
+				ctx->recorded_scratch_ptr_1 = (void*)regs.esi;
+				ctx->recorded_scratch_size += sizeof(struct rusage);
+				regs.esi = (uintptr_t)ptr;
+				registers_changed = TRUE;
+				ptr += sizeof(struct rusage);
+			}
+			if (registers_changed) {
+				write_child_registers(ctx->child_tid, &regs);
 			}
 		}
 		return 1;
-	}
 
 	/* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
 	case SYS_poll:
-	{
-		if (!restart) {
-			struct user_regs_struct regs;
-			read_child_registers(ctx->child_tid, &regs);
-			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-				int size = sizeof(struct pollfd) * regs.ecx;
-				if (size < 0 || size > ctx->scratch_size) {
-					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
-					ctx->recorded_scratch_size = -1;
-					return 0;
-				}
-				ctx->recorded_scratch_size = size;
-				ctx->recorded_scratch_ptr_0 = (void*) regs.ebx;
-				assert(ctx->recorded_scratch_size <= ctx->scratch_size);
-
-				// copy the data
-				struct pollfd *data = (struct pollfd *)read_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0);
-				write_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr, data);
-				sys_free((void**) &data);
-
-				regs.ebx = (long int) ctx->scratch_ptr;
-				write_child_registers(ctx->child_tid, &regs);
+		if (would_need_scratch) {
+			int size = sizeof(struct pollfd) * regs.ecx;
+			if (size < 0 || size > ctx->scratch_size) {
+				warn_no_scratch(event, size);
+				return 0;
 			}
+			ctx->recorded_scratch_size = size;
+			ctx->recorded_scratch_ptr_0 = (void*) regs.ebx;
+			assert(ctx->recorded_scratch_size <= ctx->scratch_size);
+
+			// copy the data
+			struct pollfd *data = (struct pollfd *)read_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0);
+			write_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr, data);
+			sys_free((void**) &data);
+
+			regs.ebx = (long int) ctx->scratch_ptr;
+			write_child_registers(ctx->child_tid, &regs);
 		}
 		return 1;
-	}
 
 	/* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5); */
-	// TODO: this may be a quick syscall, better not to allow context switching -- benchmarking needed
 	case SYS_prctl:
-	{
-		if (!restart) {
-			struct user_regs_struct regs;
-			read_child_registers(ctx->child_tid, &regs);
-			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-				switch (regs.ebx)
-				{
-					case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
-					case PR_GET_FPEMU:  	/* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
-					case PR_GET_FPEXC:  	/* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
-					case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
-					case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
-					case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
-						ctx->recorded_scratch_size = sizeof(int);
-						ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
-						regs.ecx = (uintptr_t)ctx->scratch_ptr;
-						write_child_registers(ctx->child_tid, &regs);
-						break;
-					case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
-											The buffer should allow space for up to 16 bytes;
-											The returned string will be null-terminated if it is shorter than that. */
-						ctx->recorded_scratch_size = 16;
-						ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
-						regs.ecx = (uintptr_t)ctx->scratch_ptr;
-						write_child_registers(ctx->child_tid, &regs);
-						break;
-					default:
-						break;
-				}
+		if (would_need_scratch) {
+			/* TODO: many of these prctls are not
+			 * blocking. */
+			switch (regs.ebx) {
+			case PR_GET_ENDIAN:
+			case PR_GET_FPEMU:
+			case PR_GET_FPEXC:
+			case PR_GET_PDEATHSIG:
+			case PR_GET_TSC:
+			case PR_GET_UNALIGN:
+				/* For these operations, the outparam
+				 * is an |int*| in the second
+				 * parameter. */
+				ctx->recorded_scratch_size = sizeof(int);
+				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
+				regs.ecx = (uintptr_t)ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid, &regs);
+				break;
+			case PR_GET_NAME:
+				/* Outparam is a |char*| in the second
+				 * parameter.  Thus sayeth the docs:
+				 *   The buffer should allow space for
+				 *   up to 16 bytes; The returned
+				 *   string will be null-terminated if
+				 *   it is shorter than that. */
+				ctx->recorded_scratch_size = 16;
+				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
+				regs.ecx = (uintptr_t)ctx->scratch_ptr;
+				write_child_registers(ctx->child_tid, &regs);
+				break;
+			default:
+				/* TODO: there are many more prctls
+				 * with outparams ... */
+				break;
 			}
 		}
 		return 1;
-	}
 
 	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
 	case SYS_epoll_wait:
-	{
-		if (!restart) {
-			struct user_regs_struct regs;
-			read_child_registers(ctx->child_tid, &regs);
-			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-				int size = sizeof(struct epoll_event) * regs.edx;
-				if (size < 0 || size > ctx->scratch_size) {
-					log_info("Syscall %d called with bad size %d  (scratch size = %d)", event, size, ctx->scratch_size);
-					ctx->recorded_scratch_size = -1;
-					return 0;
-				}
-				ctx->recorded_scratch_size = size;
-				ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
-				regs.ecx = (long int) ctx->scratch_ptr;
-				write_child_registers(ctx->child_tid, &regs);
+		if (would_need_scratch) {
+			int size = sizeof(struct epoll_event) * regs.edx;
+			if (size < 0 || size > ctx->scratch_size) {
+				warn_no_scratch(event, size);
+				return 0;
 			}
+			ctx->recorded_scratch_size = size;
+			ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
+			regs.ecx = (long int) ctx->scratch_ptr;
+			write_child_registers(ctx->child_tid, &regs);
 		}
 		return 1;
-	}
 
 	case SYS_epoll_pwait:
-	{
-		assert(0);
+		fatal("Unhandled event %s", strevent(event));
 		return 1;
-	}
 
-	/**************************************************************
-	 * The system calls that come here allow a context switch for
-	 * performance reasons
-	 **************************************************************/
+	/* The following two syscalls enable context switching not for
+	 * liveness/correctness reasons, but rather because if we
+	 * didn't context-switch away, rr might end up busy-waiting
+	 * needlessly.  In addition, albeit far less likely, the
+	 * client program carefully optimized its own context
+	 * switching and we should take the hint. */
+
 	/* int nanosleep(const struct timespec *req, struct timespec *rem); */
 	case SYS_nanosleep:
-	{
-		if (!restart) {
-			struct user_regs_struct regs;
-			read_child_registers(ctx->child_tid, &regs);
-			/* We need to point to scratch memory only if the eip is not in the wrapper lib. */
-			if (!SYSCALL_BUFFER_CALLSITE_IN_LIB(regs.eip,ctx)) {
-				ctx->recorded_scratch_ptr_0 = (void*) regs.ecx;
-				ctx->recorded_scratch_size = sizeof(struct timespec);
-				regs.ecx = (uintptr_t)ctx->scratch_ptr;
-				write_child_registers(ctx->child_tid, &regs);
-			}
+		if (would_need_scratch && regs.ecx) {
+			ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
+			ctx->recorded_scratch_size = sizeof(struct timespec);
+			regs.ecx = (uintptr_t)ctx->scratch_ptr;
+			write_child_registers(ctx->child_tid, &regs);
 		}
 		return 1;
-	}
 
 	case SYS_sched_yield:
-	{
 		return 1;
-	}
 
 	default:
 		return 0;
 
 	} /* end switch */
-
-	return 0;
 }
 
 uintptr_t progress;
@@ -675,7 +636,12 @@ void start_recording(struct flags rr_flags)
 				break;
 			}
 
-			if (ctx->event == SIG_SEGV_MMAP_READ || ctx->event == SIG_SEGV_MMAP_WRITE) {
+			if (ctx->event == USR_NOOP) {
+				/* We were able to consume this event
+				 * entirely internally.  Don't record
+				 * any trace data or change state. */
+				break;
+			} else if (ctx->event == SIG_SEGV_MMAP_READ || ctx->event == SIG_SEGV_MMAP_WRITE) {
 
 				// state might be overwritten if a signal occurs
 			} else if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
@@ -712,7 +678,7 @@ void start_recording(struct flags rr_flags)
 			} else if (ctx->event > 0) {
 				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
 
-				/* this is a wired state -- no idea why it works */
+				/* this is a weird state -- no idea why it works */
 			} else if (ctx->event == SYS_restart_syscall) {
 				/* Syscalls like nanosleep(), poll() which can't be
 				 * restarted with their original arguments use the
@@ -746,7 +712,29 @@ void start_recording(struct flags rr_flags)
 				fatal("Unhandled event %d", ctx->event);
 			}
 
+			if (ctx->desched) {
+				/* Replay needs to be prepared to see
+				 * the ioctl() that arms the desched
+				 * counter when it's trying to step to
+				 * the entry of |call|. */
+				record_virtual_event(ctx, USR_ARM_DESCHED);
+				ctx->syscallbuf_hdr->abort_commit = 1;
+				record_virtual_event(ctx, USR_SYSCALLBUF_ABORT_COMMIT);
+			}
+
 			record_event(ctx, STATE_SYSCALL_ENTRY);
+			if (ctx->syscallbuf_hdr) {
+				/* We just recorded a signal delivery
+				 * or entry into a syscall, and that
+				 * event must be a happens-after
+				 * barrier for any earlier code that
+				 * depends on the buffer counter.  So
+				 * now it's safe to record resetting
+				 * the counter. */
+				record_virtual_event(ctx,
+						     USR_SYSCALLBUF_RESET);
+			}
+
 			break;
 		}
 
@@ -755,7 +743,7 @@ void start_recording(struct flags rr_flags)
 			debug_exec_state("EXEC_SYSCALL_ENTRY", ctx);
 
 			/* continue and execute the system call */
-			ctx->allow_ctx_switch = allow_ctx_switch(ctx,ctx->event);
+			ctx->allow_ctx_switch = prep_event(ctx, ctx->event);
 			cont_nonblock(ctx);
 
 			debug_exec_state("after cont", ctx);
@@ -770,31 +758,7 @@ void start_recording(struct flags rr_flags)
 
 			debug_exec_state("EXEC_IN_SYSCALL", ctx);
 
-			/*
-			 * Wait for the system call to return in case of a write,
-			 * but only for a certain timeout to prevent livelocks if
-			 * the write system call blocks.
-			 */
-			switch (ctx->event) {
-			case SYS_write:
-			{
-				ret = wait_block_timeout(ctx, MAX_WAIT_TIMEOUT_SYS_WRITE_US);
-				/*
-				 * proceed with a different thread if the system call takes
-				 * too long to finish
-				 * */
-				if (ret <= 0) {
-					ctx->allow_ctx_switch=1;
-				}
-				break;
-			}
-			
-			default:
-			{
-				ret = wait_nonblock(ctx);
-				break;
-			}
-			}
+			ret = wait_nonblock(ctx);
 
 			debug_exec_state("  after wait", ctx);
 
@@ -847,6 +811,22 @@ void start_recording(struct flags rr_flags)
 				record_event(ctx, STATE_SYSCALL_EXIT);
 				ctx->exec_state = EXEC_STATE_START;
 				ctx->allow_ctx_switch = 1;
+				if (ctx->desched) {
+					/* If this syscall was
+					 * interrupted by a desched
+					 * event, then just after the
+					 * finished syscall there will
+					 * be an ioctl() to disarm the
+					 * event that we won't record
+					 * here.  So save a breadcrumb
+					 * so that replay knows to
+					 * expect it and skip over
+					 * it. */
+					ctx->desched = 0;
+					record_virtual_event(
+						ctx,
+						USR_DISARM_DESCHED);
+				}
 			}
 
 			break;
