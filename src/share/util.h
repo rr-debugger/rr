@@ -144,4 +144,19 @@ void finish_remote_syscalls(struct context* ctx,
 #define remote_syscall0(_c, _s, _no)		\
 	remote_syscall1(_c, _s, _no, 0)
 
+/**
+ * Initialize the syscall buffer in |ctx|, i.e., implement
+ * RRCALL_init_syscall_buffer.  |ctx| must be at the point of *exit
+ * from* the rrcall.  Its registers will be updated with the return
+ * value from the rrcall, which is also returned from this call.
+ * |map_hint| suggests where to map the region.
+ *
+ * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
+ *
+ * XXX: this is a weird place to stick this helper
+ */
+enum { SHARE_DESCHED_EVENT_FD = 1, DONT_SHARE_DESCHED_EVENT_FD = 0 };
+void* init_syscall_buffer(struct context* ctx, void* map_hint,
+			  int share_desched_fd);
+
 #endif /* UTIL_H_ */

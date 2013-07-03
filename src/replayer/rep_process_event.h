@@ -6,6 +6,11 @@
 struct context;
 struct rep_trace_step;
 
+/**
+ * Replay up to and emulate the ioctl used to arm/disarm the desched
+ * event.
+ */
+void rep_skip_desched_ioctl(struct context* ctx);
 void rep_process_flush(struct context* ctx);
 /* |redirect_stdio| is nonzero if output written to stdout/stderr
  * during recording should be tee'd during replay, zero otherwise. */

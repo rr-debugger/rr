@@ -65,6 +65,8 @@ static int try_handle_rdtsc(struct context *ctx)
 		write_child_registers(tid, &regs);
 		ctx->event = SIG_SEGV_RDTSC;
 		retval = 1;
+
+		debug("  trapped for rdtsc: returning %llu", current_time);
 	}
 
 	sys_free((void**)&inst);
@@ -140,36 +142,84 @@ read_desched_counter(struct context* ctx)
  */
 static int try_handle_desched_event(struct context* ctx, const siginfo_t* si)
 {
+	pid_t tid = ctx->child_tid;
+	int call = ctx->event;
 	uint64_t nr_descheds;
 	int status;
+	struct user_regs_struct regs;
 
 	assert(SIGIO == si->si_signo);
 
 	if (si->si_code != POLL_IN || si->si_fd != ctx->desched_fd_child) {
-		debug("(SIGIO not for desched: code=%d, fd=%d)",
+		debug("  (SIGIO not for desched: code=%d, fd=%d)",
 		      si->si_code, si->si_fd);
 		return 0;
 	}
 
+	/* TODO: how can signals interrupt us here? */
+
 	/* Clear the pending input. */
 	nr_descheds = read_desched_counter(ctx);
-	debug("(desched #%llu)", nr_descheds);
+	debug("  (desched #%llu during `%s')", nr_descheds, syscallname(call));
 
-	/* Disarm the counter. */
+	/* Disarm the counter to prevent further desched events while
+	 * we're manipulating the tracee and it finishes its
+	 * syscall. */
 	if (ioctl(ctx->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
 		fatal("Failed to disarm desched event");
 	}
 
-	/* For a not-perfectly-understood reason, we see a second,
-	 * redundant SIGIO notification (see syscall_buffer.c).  Step
+	/* For not-perfectly-understood reasons, we see a second,
+	 * redundant SIGIO notificaion (see syscall_buffer.c).  Step
 	 * over the redundant one. */
-	sys_ptrace_singlestep(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &status);
-
+	sys_ptrace_syscall(tid);
+	sys_waitpid(tid, &status);
 	assert(WIFSTOPPED(status) && SIGIO == WSTOPSIG(status)
 	       && read_desched_counter(ctx) == nr_descheds);
 
-	return 1;
+	/* The next event is either a trace of entering the blocking
+	 * syscall, or if the syscall has already finished, then a
+	 * trace of the syscallbuf code entering the
+	 * disarm_desched_event() ioctl. */
+	sys_ptrace_syscall(tid);
+	sys_waitpid(tid, &status);
+	/* (syscall trap event) */
+	assert(WIFSTOPPED(status) && (0x80 | SIGTRAP) == WSTOPSIG(status));
+
+	read_child_registers(tid, &regs);
+	/* XXX extra anal: check that $ip is at the untraced syscall
+	 * entry */
+	if (SYS_ioctl == regs.orig_eax
+	    && regs.ebx == ctx->desched_fd_child
+	    && PERF_EVENT_IOC_DISABLE == regs.ecx) {
+		/* Finish the ioctl().  It won't block, and we don't
+		 * need to record it or any other data for the replay
+		 * to work properly.  The reason we can do this is
+		 * that the replaying code doesn't need any trace data
+		 * to know how to step over these ioctls.  And the
+		 * syscall buffer must not be full (or we wouldn't
+		 * have armed the desched event), so it doesn't need
+		 * flushing.  The next traced event will flush the
+		 * buffer normally. */
+		sys_ptrace_syscall(tid);
+		sys_waitpid(tid, &status);
+
+		debug("  consumed unneeded desched event during `%s'",
+		      syscallname(call));
+		return USR_NOOP;
+	}
+
+	debug("  resuming (and probably switching out) blocked `%s'",
+	      syscallname(call));
+
+	if (SYS_restart_syscall == regs.orig_eax) {
+		/* If we'll be resuming this as a "restart syscall",
+		 * then note that the last started syscall was the one
+		 * interrupted by desched. */
+		ctx->last_syscall = call;
+	}
+	ctx->desched = 1;
+	return call;
 }
 
 static int is_deterministic_signal(const siginfo_t* si)
@@ -231,14 +281,15 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si)
 void handle_signal(struct context* ctx)
 {
 	int sig = signal_pending(ctx->status);
+	int event;
 	siginfo_t si;
 
 	if (sig <= 0) {
 		return;
 	}
 
-	debug("handling signal %d (pevent: %d, event: %d)", sig,
-	      GET_PTRACE_EVENT(ctx->status), ctx->event);
+	debug("handling signal %s (pevent: %d, event: %s)", signalname(sig),
+	      GET_PTRACE_EVENT(ctx->status), strevent(ctx->event));
 
 	sys_ptrace_getsiginfo(ctx->child_tid, &si);
 
@@ -260,15 +311,8 @@ void handle_signal(struct context* ctx)
 		break;
 	}
 	case SIGIO:
-		if (try_handle_desched_event(ctx, &si)) {
-			/* Tracee was descheduled while in a may-block
-			 * buffered syscall.  Treat as if it were a
-			 * time-slice expiry. */
-			/* XXX this is wrong for replay, because we'll
-			 * stop at the first syscall we buffered
-			 * instead of the one we know triggered
-			 * desched. */
-			ctx->event = USR_SCHED;
+		if ((event = try_handle_desched_event(ctx, &si))) {
+			ctx->event = event;
 			ctx->child_sig = 0;
 			return;
 		} else if (read_rbc(ctx->hpc) >= MAX_RECORD_INTERVAL) {

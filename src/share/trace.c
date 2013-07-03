@@ -81,7 +81,12 @@ static const char* decode_signal_event(int sig)
 		CASE(USR_SCHED);
 		CASE(USR_NEW_RAWDATA_FILE);
 		CASE(USR_INIT_SCRATCH_MEM);
-		CASE(USR_FLUSH);
+		CASE(USR_SYSCALLBUF_FLUSH);
+		CASE(USR_SYSCALLBUF_ABORT_COMMIT);
+		CASE(USR_SYSCALLBUF_RESET);
+		CASE(USR_ARM_DESCHED);
+		CASE(USR_DISARM_DESCHED);
+		CASE(USR_NOOP);
 #undef CASE
 		}
 	}
@@ -374,22 +379,27 @@ static void record_inst_register_file(struct context *ctx)
 	fprintf(ctx->inst_dump, "\n");
 }
 /**
- * collects records from the recorded syscall cache and records them to file.
- *
- * the trace file entries are only partial as we ignore most of the data there.
- *
+ * Flush the syscallbuf to the trace, if there are any pending entries.
  */
-void rec_collect_syscalls(struct context *ctx) {
-	// to be fast, just write it all to disk and figure it our in the replay
-	record_parent_data(ctx,USR_FLUSH,
-					   ctx->syscall_wrapper_cache[0] + sizeof(int), // record buffer[0] for sanity checking
-					   ctx->syscall_wrapper_cache_child,
-					   ctx->syscall_wrapper_cache);
-	fprintf(trace_file, "%11d%11u%11d%11d\n", get_global_time_incr(), get_time_incr(ctx->child_tid), ctx->child_tid, USR_FLUSH);
-	/* Reset buffer size to 0 */
-	ctx->syscall_wrapper_cache[0] = 0;
-	/* Record the setting of buffer[0] to 0 */
-	record_parent_data(ctx,USR_FLUSH,sizeof(int),ctx->syscall_wrapper_cache_child,ctx->syscall_wrapper_cache);
+static void maybe_flush_syscallbuf(struct context *ctx)
+{
+	if (!ctx || !ctx->syscallbuf_hdr
+	    || 0 == ctx->syscallbuf_hdr->num_rec_bytes) {
+		/* No context, no syscallbuf, or no records.  Nothing
+		 * to do. */
+		return;
+	}
+	/* Write the entire buffer in one shot without parsing it,
+	 * since replay will take care of that. */
+	record_parent_data(ctx, USR_SYSCALLBUF_FLUSH,
+			   /* Record the header for consistency checking. */
+			   ctx->syscallbuf_hdr->num_rec_bytes + sizeof(*ctx->syscallbuf_hdr),
+			   ctx->syscallbuf_child, ctx->syscallbuf_hdr);
+	record_virtual_event(ctx, USR_SYSCALLBUF_FLUSH);
+
+	/* Reset header. */
+	assert(!ctx->syscallbuf_hdr->abort_commit);
+	memset(ctx->syscallbuf_hdr, 0, sizeof(*ctx->syscallbuf_hdr));
 }
 
 /**
@@ -397,15 +407,8 @@ void rec_collect_syscalls(struct context *ctx) {
  */
 void record_event(struct context *ctx, int state)
 {
-	/* If the event is in the wrapper, it needs not be recorded as the wrapper code will record it
-	 * Note: There are some events that are wrapped and still get traced, like futex() etc. as they need context switching.
-	 */
-	if (ctx && SYSCALL_BUFFER_CALLSITE_IN_LIB(ctx->child_regs.eip, ctx))
-		return;
-
 	// before anything is performed, check if the seccomp record cache has any entries
-	if (ctx->syscall_wrapper_cache && ctx->syscall_wrapper_cache[0] > 0)
-		rec_collect_syscalls(ctx);
+	maybe_flush_syscallbuf(ctx);
 
 	if (((global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (global_time > 0)) {
 		use_new_trace_file();
@@ -443,6 +446,18 @@ void record_event(struct context *ctx, int state)
 	//} else {
 		//fprintf(trace_file, "\n");
 	//}
+}
+
+void record_virtual_event(struct context* ctx, int event)
+{
+	/* Flush the syscall buffer if needed, but only if we're not
+	 * using this helper to record a syscall-buffer flush :). */
+	if (USR_SYSCALLBUF_FLUSH != event) {
+		maybe_flush_syscallbuf(ctx);
+	}
+	fprintf(trace_file, "%11d%11u%11d%11d\n",
+		get_global_time_incr(), get_time_incr(ctx->child_tid),
+		ctx->child_tid, event);
 }
 
 static void print_header(int syscall, void* addr)
@@ -534,8 +549,7 @@ void record_child_data(struct context *ctx, int syscall, size_t size, void* chil
 	assert(child_ptr != ctx->scratch_ptr);
 
 	// before anything is performed, check if the seccomp record cache has any entries
-	if (ctx && ctx->syscall_wrapper_cache && ctx->syscall_wrapper_cache[0] > 0)
-		rec_collect_syscalls(ctx);
+	maybe_flush_syscallbuf(ctx);
 
 	ssize_t read_bytes;
 
@@ -728,7 +742,7 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 	sys_free((void**) &buf);
 }
 
-static int parse_raw_data_hdr(struct trace_frame* trace, void** addr)
+static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 {
 	char* line = sys_malloc(1024);
 	read_line(syscall_header, line, 1024, "syscall_input");
@@ -759,67 +773,55 @@ static int parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 	return size;
 }
 
-void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr)
+/**
+ * Read |num_bytes| from the current rawdata file into |buf|, which
+ * the caller must ensure is sized appropriately.  Skip to next
+ * rawdata file if the current one is at eof.
+ */
+static void read_rawdata(void* buf, size_t num_bytes)
 {
-	int size;
+	size_t bytes_read = fread(buf, 1, num_bytes, raw_data);
 
-	size = parse_raw_data_hdr(trace, addr);
-	*size_ptr = size;
-
-	if (*addr != 0) {
-		void* data = sys_malloc(size);
-		int bytes_read = fread(data, 1, size, raw_data);
-
-		// new raw data file
-		//if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
-		if (bytes_read == 0 && feof(raw_data)) {
-			use_new_rawdata_file();
-			bytes_read = fread(data, 1, size, raw_data);
-		}
-
-		if (bytes_read != size) {
-			printf("read: %u required: %u\n",bytes_read,size);
-			perror("");
-			sys_exit();
-		}
-
-		overall_raw_bytes += size;
-
-		return data;
+	// new raw data file
+	//if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
+	if (bytes_read == 0 && feof(raw_data)) {
+		use_new_rawdata_file();
+		bytes_read = fread(buf, 1, num_bytes, raw_data);
 	}
-	return NULL;
+	if (bytes_read != num_bytes) {
+		fatal("rawdata read of %u requested, but %u read",
+		      num_bytes, bytes_read);
+	}
+	overall_raw_bytes += bytes_read;
 }
 
-void rep_child_buffer0(struct context * ctx)
+void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr)
 {
-	if (feof(syscall_header))
-		return;
-	fpos_t pos;
-	fgetpos(syscall_header, &pos);
+	size_t size = parse_raw_data_hdr(trace, addr);
+	void* data = NULL;
 
-	char line[1024];
-	if (fgets(line, 1024, syscall_header) == NULL)
-		return;
-	char* tmp_ptr = line;
-
-	(void) str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	if (syscall == USR_FLUSH) {
-		void *addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
-		tmp_ptr += LI_COLUMN_SIZE;
-		int size = str2li(tmp_ptr, LI_COLUMN_SIZE);
-		if (size == sizeof(int)) {
-			int zero;
-			int bytes_read = fread(&zero, 1, size, raw_data);
-			assert(zero == 0 && bytes_read == sizeof(int));
-			assert(addr == ctx->syscall_wrapper_cache_child);
-			write_child_data(ctx,bytes_read,addr,&zero);
-			return;
-		}
+	*size_ptr = size;
+	if (!*addr) {
+		return NULL;
 	}
-	fsetpos(syscall_header, &pos);
+
+	data = sys_malloc(size);
+	read_rawdata(data, size);
+	return data;
+}
+
+ssize_t read_raw_data_direct(struct trace_frame* trace,
+			     void* buf, size_t buf_size, void** rec_addr)
+{
+	size_t data_size = parse_raw_data_hdr(trace, rec_addr);
+
+	if (!*rec_addr) {
+		return 0;
+	}
+
+	assert(data_size <= buf_size);
+	read_rawdata(buf, data_size);
+	return data_size;
 }
 
 void read_syscall_trace(struct syscall_trace* trace)

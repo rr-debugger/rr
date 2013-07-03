@@ -126,12 +126,12 @@ static __thread int buffer_locked = 0;
 static __thread int desched_counter_fd;
 
 /**
- * Return a pointer to the buffer-size counter, which happens to be
- * the first int in the mapped region.
+ * Return a pointer to the buffer header, which happens to occupy the
+ * initial bytes in the mapped region.
  */
-static int* buffer_size_ptr()
+static struct syscallbuf_hdr* buffer_hdr()
 {
-	return (int*)buffer;
+	return (struct syscallbuf_hdr*)buffer;
 }
 
 /**
@@ -140,7 +140,7 @@ static int* buffer_size_ptr()
  */
 static byte* buffer_last()
 {
-	return buffer + sizeof(int) + *buffer_size_ptr();
+	return buffer + sizeof(*buffer_hdr()) + buffer_hdr()->num_rec_bytes;
 }
 
 /**
@@ -149,7 +149,7 @@ static byte* buffer_last()
  */
 static byte* buffer_end()
 {
-	return buffer + sizeof(int) + SYSCALL_BUFFER_CACHE_SIZE;
+	return buffer + SYSCALLBUF_BUFFER_SIZE;
 }
 
 /* The following are wrappers for the syscalls invoked by this library
@@ -260,21 +260,24 @@ static void* get_untraced_syscall_entry_point()
 
 /**
  * Do what's necessary to map the shared syscall buffer region in the
- * caller's address space and return the mapped region.  |addr| is the
- * address of the control socket the child expects to connect to.
- * |msg| is a pre-prepared IPC that can be used to share fds; |fdptr|
- * is a pointer to the control-message data buffer where the fd number
- * being shared will be stored.  |args_vec| provides the tracer with
- * preallocated space to make socketcall syscalls.
+ * caller's address space and return the mapped region.
+ * |untraced_syscall_ip| lets rr know where our untraced syscalls will
+ * originate from.  |addr| is the address of the control socket the
+ * child expects to connect to.  |msg| is a pre-prepared IPC that can
+ * be used to share fds; |fdptr| is a pointer to the control-message
+ * data buffer where the fd number being shared will be stored.
+ * |args_vec| provides the tracer with preallocated space to make
+ * socketcall syscalls.
  *
  * This is a "magic" syscall implemented by rr.
  */
-static void* rrcall_map_syscall_buffer(struct sockaddr_un* addr,
-				       struct msghdr* msg, int* fdptr,
-				       struct socketcall_args* args_vec)
+static void* rrcall_init_syscall_buffer(void* untraced_syscall_ip,
+					struct sockaddr_un* addr,
+					struct msghdr* msg, int* fdptr,
+					struct socketcall_args* args_vec)
 {
-	return (void*)syscall(RRCALL_map_syscall_buffer, addr, msg, fdptr,
-			      args_vec);
+	return (void*)syscall(RRCALL_init_syscall_buffer, untraced_syscall_ip,
+			      addr, msg, fdptr, args_vec);
 }
 
 /* We can't use the rr logging helpers because they rely on libc
@@ -461,13 +464,14 @@ static void set_up_buffer()
 		 * sendmsg()'d to rr to share the desched counter to
 		 * it (under rr's control).  rr can further use the
 		 * buffer to share more fd's to us. */
-		buffer = rrcall_map_syscall_buffer(&addr, &msg, cmsg_fdptr,
-						   &args_vec);
+		buffer = rrcall_init_syscall_buffer(
+			get_untraced_syscall_entry_point(),
+			&addr, &msg, cmsg_fdptr, &args_vec);
+		/* rr initializes the buffer header. */
 
 		/* End "critical section". */
 		traced_sigprocmask(SIG_SETMASK, &oldmask, NULL);
 	}
-	*buffer_size_ptr() = 0;
 }
 
 /**
@@ -565,7 +569,7 @@ static void init()
  * fallback_trace:
  *   return syscall(...);  // traced
  */
-enum { WILL_ARM_DESCHED_EVENT, DID_DISARM_DESCHED_EVENT, NO_DESCHED };
+enum { WILL_ARM_DESCHED_EVENT, DISARMED_DESCHED_EVENT, NO_DESCHED };
 static void* prep_syscall(int notify_desched)
 {
 	if (!buffer) {
@@ -587,7 +591,7 @@ static void* prep_syscall(int notify_desched)
 	buffer_locked = 1;
 	/* "Allocate" space for a new syscall record, not including
 	 * syscall outparam data. */
-	return buffer_last() + sizeof(struct syscall_record);
+	return buffer_last() + sizeof(struct syscallbuf_record);
 }
 
 /**
@@ -601,12 +605,12 @@ static int can_buffer_syscall(void* record_end)
 	void* stored_end =
 		record_start + stored_record_size(record_end - record_start);
 
-	if (stored_end < record_start + sizeof(struct syscall_record)) {
+	if (stored_end < record_start + sizeof(struct syscallbuf_record)) {
 		/* Either a catastrophic buffer overflow or
 		 * we failed to lock the buffer. Just bail out. */
 		return 0;
 	}
-	if (stored_end > (void*)buffer_end() - sizeof(struct syscall_record)) {
+	if (stored_end > (void*)buffer_end() - sizeof(struct syscallbuf_record)) {
 		/* Buffer overflow.
 		 * Unlock the buffer and then execute the system call
 		 * with a trap to rr.  Note that we reserve enough
@@ -656,18 +660,26 @@ static int update_errno_ret(int ret)
  * The result of this function should be returned directly by the
  * wrapper function.
  */
-static int commit_syscall(int syscall, void* record_end, int ret,
+static int commit_syscall(int syscallno, void* record_end, int ret,
 			  int disarmed_desched)
 {
 	void* record_start = buffer_last();
-	struct syscall_record* rec = record_start;
+	struct syscallbuf_record* rec = record_start;
+	struct syscallbuf_hdr* hdr = buffer_hdr();
 
-	rec->syscall = syscall;
-	rec->length = record_end - record_start;
-	rec->ret = ret;
-	rec->desched = NO_DESCHED != disarmed_desched;
-
-	*buffer_size_ptr() += stored_record_size(rec->length);
+	if (hdr->abort_commit) {
+		/* We were descheduled in the middle of a may-block
+		 * syscall, and it was recorded as a normal entry/exit
+		 * pair.  So don't record the syscall in the buffer or
+		 * replay will go haywire. */
+		hdr->abort_commit = 0;
+	} else {
+		rec->ret = ret;
+		rec->syscallno = syscallno;
+		rec->desched = NO_DESCHED != disarmed_desched;
+		rec->size = record_end - record_start;
+		hdr->num_rec_bytes += stored_record_size(rec->size);
+	}
 	buffer_locked = 0;
 
 	return update_errno_ret(ret);
@@ -677,8 +689,9 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 {
 	void* ptr = prep_syscall(NO_DESCHED);
 	struct timespec *tp2 = NULL;
+	long ret;
 
-	/* set it up so the syscall writes to the record cache */
+	/* Set it up so the syscall writes to the record cache. */
 	if (tp) {
 		tp2 = ptr;
 		ptr += sizeof(struct timespec);
@@ -686,10 +699,10 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 	if (!can_buffer_syscall(ptr)) {
 		return syscall(SYS_clock_gettime, clk_id, tp);
  	}
-	int ret = untraced_syscall2(SYS_clock_gettime, clk_id, (uintptr_t)tp2);
-	/* now in the replay we can simply write the recorded buffer
-	 * and allow the wrapper to copy it to the actual
-	 * parameters */
+	ret = untraced_syscall2(SYS_clock_gettime, clk_id, (uintptr_t)tp2);
+	/* Now in the replay we can simply refill the recorded buffer
+	 * data, emulate the syscalls, and this code will restore the
+	 * recorded data to the outparams. */
 	if (tp) {
 		memcpy(tp, tp2, sizeof(struct timespec));
 	}
@@ -699,14 +712,14 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 int gettimeofday(struct timeval* tp, struct timezone* tzp)
 {
 	void *ptr = prep_syscall(NO_DESCHED);
-	/* set it up so the syscall writes to the record cache */
 	struct timeval *tp2 = NULL;
+	struct timezone *tzp2 = NULL;
+	long ret;
 
 	if (tp) {
 		tp2 = ptr;
 		ptr += sizeof(struct timeval);
 	}
-	struct timezone *tzp2 = NULL;
 	if (tzp) {
 		tzp2 = ptr;
 		ptr += sizeof(struct timezone);
@@ -714,7 +727,7 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 	if (!can_buffer_syscall(ptr)) {
 		return syscall(SYS_gettimeofday, tp, tzp);
 	}
-	int ret = untraced_syscall2(SYS_gettimeofday,
+	ret = untraced_syscall2(SYS_gettimeofday,
 				    (uintptr_t)tp2, (uintptr_t)tzp2);
 	if (tp) {
 		memcpy(tp, tp2, sizeof(struct timeval));
@@ -726,6 +739,33 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 }
 
 #if 0
+
+/* Since nanosleep (almost) always blocks, it's basically pointless to
+ * wrap it.  Testing only code.*/
+int nanosleep(const struct timespec* req, struct timespec* rem)
+{
+	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	struct timespec* rem2 = NULL;
+	long ret;
+
+	if (rem) {
+		rem2 = ptr;
+		ptr += sizeof(*rem2);
+	}
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_nanosleep, req, rem);
+	}
+
+	arm_desched_event();
+	ret = untraced_syscall2(SYS_nanosleep,
+				(uintptr_t)req, (uintptr_t)rem2);
+	disarm_desched_event();
+
+	if (rem) {
+		memcpy(rem, rem2, sizeof(*rem));
+	}
+	return commit_syscall(SYS_nanosleep, ptr, ret, DISARMED_DESCHED_EVENT);
+}
 
 /* This is useful for testing, but not much else. */
 int sched_yield(void)
@@ -739,8 +779,7 @@ int sched_yield(void)
 	int ret = untraced_syscall0(SYS_sched_yield);
 	disarm_desched_event();
 
-	return commit_syscall(SYS_sched_yield, ptr, ret,
-			      DID_DISARM_DESCHED_EVENT);
+	return commit_syscall(SYS_sched_yield, ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 /* XXX this code is effectively dead at the moment, because glibc

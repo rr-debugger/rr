@@ -392,8 +392,6 @@ static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
 
 	assert(ctx->child_sig == 0);
 
-	/* XXX why is this here? */
-	rep_child_buffer0(ctx);
 	return 0;
 }
 
@@ -638,9 +636,6 @@ static int emulate_deterministic_signal(struct context* ctx,
 		emulate_signal_delivery();
 	}
 
-	/* XXX why is this here? */
-	rep_child_buffer0(ctx);
-
 	return 0;
 }
 
@@ -780,9 +775,6 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 		emulate_signal_delivery();
 	}
 
-	/* XXX why is this here */
-	rep_child_buffer0(ctx);
-
 	stop_hpc(ctx);
 	return 0;
 }
@@ -828,8 +820,14 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	int event = ctx->trace.stop_reason;
 	int stop_sig = 0;
 
-	debug("%d: replaying event %s, state %s", ctx->rec_tid,
+	debug("%d: replaying event %s, state %s",
+	      ctx->rec_tid,
 	      strevent(event), statename(ctx->trace.state));
+	if (ctx->syscallbuf_hdr) {
+		debug("    (syscllbufsz:%u, abrtcmt:%u)",
+		      ctx->syscallbuf_hdr->num_rec_bytes,
+		      ctx->syscallbuf_hdr->abort_commit);
+	}
 
 	/* Advance the trace until we've exec()'d the tracee before
 	 * processing debugger requests.  Otherwise the debugger host
@@ -871,10 +869,25 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		rep_sched_deregister_thread(&ctx);
 		/* Early-return because |ctx| is gone now. */
 		return;
-	case USR_FLUSH:
+	case USR_ARM_DESCHED:
+	case USR_DISARM_DESCHED:
+		rep_skip_desched_ioctl(ctx);
+
+		/* TODO */
+		step.action = TSTEP_RETIRE;
+		break;
+	case USR_SYSCALLBUF_ABORT_COMMIT:
+		ctx->syscallbuf_hdr->abort_commit = 1;
+		step.action = TSTEP_RETIRE;
+		break;
+	case USR_SYSCALLBUF_FLUSH:
 		rep_process_flush(ctx);
 
 		/* TODO */
+		step.action = TSTEP_RETIRE;
+		break;
+	case USR_SYSCALLBUF_RESET:
+		ctx->syscallbuf_hdr->num_rec_bytes = 0;
 		step.action = TSTEP_RETIRE;
 		break;
 	case USR_SCHED:
@@ -957,7 +970,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	 *
 	 * XXX clarify
 	 */
-	if (ctx->trace.stop_reason != USR_FLUSH) {
+	if (ctx->trace.stop_reason != USR_SYSCALLBUF_FLUSH) {
 		reset_hpc(ctx, 0);
 	}
 	debug_memory(ctx);
