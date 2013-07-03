@@ -457,7 +457,7 @@ int main(int argc, char* argv[], char** envp)
 			 * so that we can LD_PRELOAD the bare library
 			 * name.  Trying to do otherwise is possible,
 			 * but annoying. */
-			__rr_flags.syscall_buffer_lib_path = SYSCALL_BUFFER_LIB_FILENAME;
+			__rr_flags.syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
 		}
 	}
 

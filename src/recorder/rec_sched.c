@@ -133,12 +133,12 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 
 	ctx->exec_state = EXEC_STATE_START;
 	ctx->status = 0;
-	ctx->child_tid = child;
+	ctx->rec_tid = ctx->child_tid = child;
 	ctx->child_mem_fd = sys_open_child_mem(child);
 	if (parent) {
-		struct context * parent_ctx = (struct context *)list_data(tid_to_node[parent]);
-		ctx->syscall_wrapper_start = parent_ctx->syscall_wrapper_start;
-		ctx->syscall_wrapper_end = parent_ctx->syscall_wrapper_end;
+		struct context* parent_ctx = (struct context *)list_data(tid_to_node[parent]);
+		ctx->syscallbuf_lib_start = parent_ctx->syscallbuf_lib_start;
+		ctx->syscallbuf_lib_end = parent_ctx->syscallbuf_lib_end;
 	}
 	/* These will be initialized when the syscall buffer is. */
 	ctx->desched_fd = ctx->desched_fd_child = -1;

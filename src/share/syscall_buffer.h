@@ -1,67 +1,89 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#ifndef SYSCALL_BUFFER_H_
+#define SYSCALL_BUFFER_H_
+
 #ifndef _GNU_SOURCE
 # define _GNU_SOURCE 1
 #endif
 
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 
-/*
- * syscall_buffer.h
- *
- *  Created on: Nov 28, 2012
- *      Author: user
- */
+#define SYSCALLBUF_LIB_FILENAME "librr_syscall_buffer.so"
+/* This size counts the header along with record data. */
+#define SYSCALLBUF_BUFFER_SIZE (1 << 20)
 
-#ifndef SYSCALL_BUFFER_H_
-#define SYSCALL_BUFFER_H_
-
-#define SYSCALL_BUFFER_LIB_FILENAME				"librr_syscall_buffer.so"
-
-#define SYSCALL_BUFFER_CACHE_SIZE				((1 << 20) - sizeof(int)) /* Accounting for buffer[0] which holds size */
-#define SYSCALL_BUFFER_CACHE_FILENAME_PREFIX 	"record_cache_"
-
-#define RRCALL_map_syscall_buffer -42
-#define __NR_rrcall_map_syscall_buffer (42 | RRCALL_BIT)
-#define SYS_rrcall_map_syscall_buffer __NR_rrcall_map_syscall_buffer
-
-/* Buffered syscalls need to be added here. Note: be careful of
- * syscalls that originate from wrapper internal code.
- *
- * FIXME/TODO: how do we detect this with syscalls that may or may not
- * be buffered depending on available space? */
-#define SYSCALL_BUFFER_CALLSITE_IN_LIB(_eip, _ctx)			\
-	(((long)(_eip) >= (long)((_ctx)->syscall_wrapper_start)		\
-	  && (long)(_eip) <= (long)((_ctx)->syscall_wrapper_end)) &&	\
-	((_ctx)->event == SYS_clock_gettime				\
-	 || (_ctx)->event == SYS_gettimeofday				\
-	 || (_ctx)->event == SYS_write					\
-	 || (_ctx)->event == SYS_read					\
-	 || (_ctx)->event == SYS_fstat64				\
-	 || (_ctx)->event == SYS_lstat64				\
-	 || (_ctx)->event == SYS_stat64					\
-	 || (_ctx)->event == SYS_epoll_wait				\
-	 || (_ctx)->event == SYS_socketcall				\
-	 || (_ctx)->event == SYS_futex))
+/* "Magic" (rr-implemented) syscall that we use to initialize the
+ * syscallbuf. */
+#define RRCALL_init_syscall_buffer -42
+#define __NR_rrcall_init_syscall_buffer (42 | RRCALL_BIT)
+#define SYS_rrcall_init_syscall_buffer __NR_rrcall_init_syscall_buffer
 
 /**
- * The syscall buffer comprises an array of these (variable-length)
- * records.
+ * True if |_eip| is an $ip within the syscallbuf library.  This *does
+ * not* imply that $ip is at a buffered syscall; use the macro below
+ * for that.
  */
-struct syscall_record {
-	int syscall;
-	/* Length of entire record: this struct plus extra recorded
-	 * data stored inline after the last field, not including
-	 * padding. */
-	size_t length;
+#define SYSCALLBUF_IS_IP_IN_LIB(_eip, _ctx)				\
+	((uintptr_t)(_ctx)->syscallbuf_lib_start <= (uintptr_t)(_eip)	\
+	 && (uintptr_t)(_eip) <= (uintptr_t)(_ctx)->syscallbuf_lib_end)
+
+/**
+ * True when |_eip| is at a buffered syscall, i.e. one initiated by a
+ * libc wrapper in the library.
+ */
+#define SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(_eip, _ctx)			\
+	((uintptr_t)(_eip) == (uintptr_t)(_ctx)->untraced_syscall_ip)	\
+
+/**
+ * The syscall buffer comprises an array of these variable-length
+ * records, along with the header below.
+ */
+struct syscallbuf_record {
+	/* Return value from the syscall.  This can be a memory
+	 * address, so must be reserved a full |long|. */
 	long ret;
+	/* Syscall number.
+	 *
+	 * NB: the x86 linux ABI has 350 syscalls as of 3.9.6 and
+	 * x86-64 defines 313, so this is a pretty safe storage
+	 * allocation.  It would be an earth-shattering event if the
+	 * syscall surface were doubled in a short period of time, and
+	 * even then we would have a comfortable cushion.  Still,
+	 *
+	 * TODO: static_assert this can hold largest syscall num */
+	uint32_t syscallno : 10;
 	/* Did the tracee arm/disarm the desched notification for this
 	 * syscall? */
-	int desched;
+	uint32_t desched : 1;
+	/* Size of entire record in bytes: this struct plus extra
+	 * recorded data stored inline after the last field, not
+	 * including padding.
+	 *
+	 * TODO: static_assert this can repr >= buffer size */
+	uint32_t size : 21;
 	/* Extra recorded outparam data starts here. */
+	unsigned char extra_data[0];
+} __attribute__((__packed__));
+
+/**
+ * This struct summarizes the state of the syscall buffer.  It happens
+ * to be located at the start of the buffer.
+ */
+struct syscallbuf_hdr {
+	/* The number of valid syscallbuf_record bytes in the buffer,
+	 * not counting this header. */
+	uint32_t num_rec_bytes : 31;
+	/* True if the current syscall should not be committed to the
+	 * buffer, for whatever reason; likely interrupted by
+	 * desched. */
+	uint32_t abort_commit : 1;
+
+	struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
 
 /**

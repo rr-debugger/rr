@@ -2,15 +2,15 @@
 
 #define _GNU_SOURCE
 
+/* XXX the drm/ headers are broken, work around them */
+#include <stddef.h>
+#include <stdint.h>
+
 #include <assert.h>
+#include <drm/i915_drm.h>
+#include <drm/radeon_drm.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <syscall.h>
-
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/mman.h>
@@ -18,7 +18,12 @@
 #include <linux/shm.h>
 #include <linux/sem.h>
 #include <linux/soundcard.h>
-
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <syscall.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -26,13 +31,9 @@
 #include <sys/quota.h>
 #include <sys/socket.h>
 
-#include <drm/radeon_drm.h>
-#include <drm/i915_drm.h>
-
 #include "rep_process_event.h"
 #include "rep_sched.h"
 #include "replayer.h"
-
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
@@ -127,10 +128,6 @@ static void goto_next_syscall_emu(struct context *ctx)
 		      GET_PTRACE_EVENT(ctx->status));
 	}
 	ctx->child_sig = 0;
-
-	/* We are now at the entry point to a syscall, set the wrapper
-	 * record buffer size to 0 (if needed)*/
-	rep_child_buffer0(ctx);
 }
 
 /**
@@ -187,14 +184,10 @@ void __ptrace_cont(struct context *ctx)
 	 * same (this is probably irrelevant with signal emulation)
 	 */
 	ctx->child_sig = 0;
-
-	/* We are now at the entry point to a syscall, set the wrapper
-	 * record buffer size to 0 (if needed)*/
-	rep_child_buffer0(ctx);
 }
 
 static void emulate_buffered_syscall(struct context* ctx,
-				     const struct syscall_record* rec)
+				     const struct syscallbuf_record* rec)
 {
 	pid_t tid = ctx->child_tid;
 	struct user_regs_struct regs;
@@ -203,13 +196,18 @@ static void emulate_buffered_syscall(struct context* ctx,
 	sys_ptrace_sysemu(tid);
 	sys_waitpid(tid, &ctx->status);
 	if (signal_pending(ctx->status)) {
-		fatal("Received signal %d while advancing to buffered syscall entry",
-		      signal_pending(ctx->status));
+		log_err("Caught signal %d advancing to emulated syscall entry",
+			signal_pending(ctx->status));
+		emergency_debug(ctx);
 	}
 
 	read_child_registers(tid, &regs);
-
-	assert(rec->syscall == regs.orig_eax);
+	if (rec->syscallno != regs.orig_eax) {
+		log_err("Trying to emulate %s but replayed to entry of %s",
+			syscallname(rec->syscallno),
+			syscallname(regs.orig_eax));
+		emergency_debug(ctx);
+	}
 
 	/* Finish syscall exit, emulating return value. */
 	regs.eax = rec->ret;
@@ -217,57 +215,55 @@ static void emulate_buffered_syscall(struct context* ctx,
 	finish_syscall_emu(ctx);
 }
 
-static void skip_desched_ioctl(struct context* ctx)
+void rep_skip_desched_ioctl(struct context* ctx)
 {
-	struct syscall_record rec = { .syscall = SYS_ioctl, .ret = 0 };
+	struct syscallbuf_record rec = { .syscallno = SYS_ioctl, .ret = 0 };
 	return emulate_buffered_syscall(ctx, &rec);
 }
 
 void rep_process_flush(struct context* ctx) {
-	/* Read the recorded syscall buffer. */
-	size_t data_size;
+	struct syscallbuf_hdr hdr = *ctx->syscallbuf_hdr;
+	/* Read the recorded syscall buffer back into the shared region. */
 	void* rec_addr;
-	byte* buf = read_raw_data(&ctx->trace, &data_size, (void*)&rec_addr);
-	void* child_data_addr;
-	byte* data;
-	const struct syscall_record* rec;
+	ssize_t num_rec_bytes = read_raw_data_direct(&ctx->trace,
+						     ctx->syscallbuf_hdr,
+						     SYSCALLBUF_BUFFER_SIZE,
+						     &rec_addr);
+	const struct syscallbuf_record* rec;
 
-	/* Data begins after the counter, and the size doesn't include
-	 * the counter. */
-	child_data_addr = rec_addr + sizeof(int);
-	data = buf + sizeof(int);
-	data_size -= sizeof(int);
+	/* The stored num_rec_bytes in the header doesn't include the
+	 * header bytes, but the stored trace data does. */
+	num_rec_bytes -= sizeof(sizeof(struct syscallbuf_hdr));
+	assert(rec_addr == ctx->syscallbuf_child);
+	assert(ctx->syscallbuf_hdr->num_rec_bytes == num_rec_bytes);
 
-	assert(rec_addr == ctx->syscall_wrapper_cache_child);
-	assert(*(int*)buf == data_size);
+	/* Start replaying with the header at the state it was when we
+	 * reached this event during recording. */
+	*ctx->syscallbuf_hdr = hdr;
 
-	/* Restore the recorded data to the buffer data area. */
-	write_child_data(ctx, data_size, child_data_addr, data);
-
-	rec = (const struct syscall_record*)data;
-	while (data_size > 0) {
-		size_t stored_rec_size = stored_record_size(rec->length);
+	rec = ctx->syscallbuf_hdr->recs;
+	while (num_rec_bytes > 0) {
+		size_t stored_rec_size = stored_record_size(rec->size);
 
 		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
 
 		if (rec->desched) {
 			/* Skip past the ioctl that armed the desched
 			 * notification. */
-			skip_desched_ioctl(ctx);
+			rep_skip_desched_ioctl(ctx);
 		}
 		/* Emulate the "real" syscall. */
 		emulate_buffered_syscall(ctx, rec);
 		if (rec->desched) {
 			/* And skip past the ioctl that disarmed the
 			 * desched notification. */
-			skip_desched_ioctl(ctx);
+			rep_skip_desched_ioctl(ctx);
 		}
 
-		rec = (const struct syscall_record*)((byte*)rec +
-						     stored_rec_size);
-		data_size -= stored_rec_size;
+		rec = (const struct syscallbuf_record*)((byte*)rec +
+							stored_rec_size);
+		num_rec_bytes -= stored_rec_size;
 	}
-	sys_free((void**)&buf);
 }
 
 static void enter_syscall_emu(struct context* ctx, int syscall)
@@ -607,13 +603,13 @@ static void process_mmap2(struct context* ctx,
 		memcpy(&orig_regs, &regs, sizeof(orig_regs));
 
 		int prot = regs.edx;
-		if (strstr(file.filename, SYSCALL_BUFFER_LIB_FILENAME)
+		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
 		    && (prot & PROT_EXEC) ) {
 			/* Note: the library get loaded several times,
 			 * we need the (hopefully one) copy that is
 			 * executable */
-			ctx->syscall_wrapper_start = file.start;
-			ctx->syscall_wrapper_end = file.end;
+			ctx->syscallbuf_lib_start = file.start;
+			ctx->syscallbuf_lib_end = file.end;
 		}
 
 		/* hint the kernel where to allocate the
@@ -746,12 +742,11 @@ static void process_socketcall(struct context* ctx, int state,
 	}
 }
 
-static void process_map_syscall_buffer(struct context* ctx, int exec_state,
-				       struct rep_trace_step* step)
+static void process_init_syscall_buffer(struct context* ctx, int exec_state,
+					struct rep_trace_step* step)
 {
-	void* rec_child_map_addr = (void*)ctx->trace.recorded_regs.eax;
+	void* rec_child_map_addr;
 	void* child_map_addr;
-	struct current_state_buffer state;
 
 	/* This was a phony syscall to begin with. */
 	step->syscall.emu = 1;
@@ -765,23 +760,16 @@ static void process_map_syscall_buffer(struct context* ctx, int exec_state,
 	step->action = TSTEP_RETIRE;
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
-	exit_syscall_emu(ctx, RRCALL_map_syscall_buffer, 0);
+	exit_syscall_emu(ctx, RRCALL_init_syscall_buffer, 0);
+	rec_child_map_addr = (void*)ctx->trace.recorded_regs.eax;
 
-	/* TODO: open a real shmem segment and share with child. */
-	prepare_remote_syscalls(ctx, &state);
-	child_map_addr =
-		(void*)remote_syscall6(ctx, &state, SYS_mmap2,
-				       (uintptr_t)rec_child_map_addr,
-				       SYSCALL_BUFFER_CACHE_SIZE,
-				       PROT_READ | PROT_WRITE,
-				       /* NB: magic sauce copied from
-					* the mmap2 processing code */
-				       MAP_SHARED | MAP_ANONYMOUS | MAP_FIXED,
-				       -1, 0);
-	finish_remote_syscalls(ctx, &state);
+	/* We don't want the desched event fd during replay, because
+	 * we already know where they were.  (The perf_event fd is
+	 * emulated anyway.) */
+	child_map_addr = init_syscall_buffer(ctx, rec_child_map_addr,
+					     DONT_SHARE_DESCHED_EVENT_FD);
 
 	assert(child_map_addr == rec_child_map_addr);
-	ctx->syscall_wrapper_cache_child = child_map_addr;
 }
 
 void rep_process_syscall(struct context* ctx, int redirect_stdio,
@@ -989,8 +977,8 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		}
 		return;
 
-	case SYS_rrcall_map_syscall_buffer:
-		return process_map_syscall_buffer(ctx, state, step);
+	case SYS_rrcall_init_syscall_buffer:
+		return process_init_syscall_buffer(ctx, state, step);
 
 	default:
 		break;

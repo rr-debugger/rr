@@ -17,24 +17,35 @@
 
 enum {
 	/* "Magic" (rr-generated) pseudo-signals can't be represented
-	 * with a byte, as "real" signals can be.  The last is -0x100
-	 * (-256) and ascend to there. */
-	SIG_SEGV_MMAP_READ = -256,
-	LAST_RR_PSEUDOSIGNAL = SIG_SEGV_MMAP_READ,
-	SIG_SEGV_MMAP_WRITE = -258,
-	SIG_SEGV_RDTSC = -259,
-	USR_EXIT = -260,
-	USR_SCHED = -261,
-	USR_NEW_RAWDATA_FILE = -262,
-	USR_INIT_SCRATCH_MEM = -263,
-	USR_FLUSH = -264,
-	FIRST_RR_PSEUDOSIGNAL = USR_FLUSH,
+	 * with a byte, as "real" signals can be.  The first is -0x400
+	 * (-1024) and ascend from there. */
+	SIG_SEGV_MMAP_READ = -1024,
+	FIRST_RR_PSEUDOSIGNAL = SIG_SEGV_MMAP_READ,
+	SIG_SEGV_MMAP_WRITE,
+	SIG_SEGV_RDTSC,
+	USR_EXIT = -1020,
+	USR_SCHED,
+	USR_NEW_RAWDATA_FILE,
+	USR_INIT_SCRATCH_MEM,
+	USR_SYSCALLBUF_FLUSH = -1015,
+	USR_SYSCALLBUF_ABORT_COMMIT,
+	USR_SYSCALLBUF_RESET,
+	USR_ARM_DESCHED,
+	USR_DISARM_DESCHED,
+	/* TODO: this is actually a pseudo-pseudosignal: it will never
+	 * appear in a trace, but is only used to communicate between
+	 * different parts of the recorder code that should be
+	 * refactored to not have to do that. */
+	USR_NOOP,
+	LAST_RR_PSEUDOSIGNAL = USR_NOOP,
+	/* TODO: static_assert(LAST_RR_PSEUDOSIGNAL < FIRST_DET_SIGNAL); */
 
 	/* Deterministic signals are recorded as -(signum | 0x80).  So
 	 * these can occupy the range [-193, -128) or so. */
 	DET_SIGNAL_BIT = 0x80,
 	FIRST_DET_SIGNAL = -(_NSIG | DET_SIGNAL_BIT),
 	LAST_DET_SIGNAL = -(1 | DET_SIGNAL_BIT),
+	/* TODO: static_assert(LAST_DET_SIGNAL < FIRST_ASYNC_SIGNAL); */
 
 	/* Asynchronously-delivered (nondeterministic) signals are
 	 * recorded as -signum.  They occupy the range [-65, 0) or
@@ -92,7 +103,20 @@ void record_timestamp(int tid, long int* eax_, long int* edx_);
 void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr);
 void record_child_str(pid_t tid, int syscall, void* child_ptr);
 void record_parent_data(struct context *ctx, int syscall, size_t len, void *addr, void *buf);
-void record_event(struct context *ctx, int state);
+/**
+ * Record the current event of |ctx|, in state |state|.  Record the
+ * registers of |ctx| (and other relevant execution state) so that it
+ * can be used or verified during replay.
+ */
+void record_event(struct context* ctx, int state);
+/**
+ * Record the "virtual event" |event| for |ctx|.  This event does not
+ * necessarily correspond to the current execution state of |ctx|; it
+ * needs to be saved to the trace in order for the replay to take an
+ * action to match up to the recording.  So no registers or other
+ * current execution state is saved with the event.
+ */
+void record_virtual_event(struct context* ctx, int event);
 void record_mmapped_file_stats(struct mmapped_file *file);
 unsigned int get_global_time(void);
 unsigned int get_time(pid_t tid);
@@ -111,9 +135,17 @@ void read_next_mmapped_file_stats(struct mmapped_file *file);
 void peek_next_mmapped_file_stats(struct mmapped_file *file);
 void rep_init_trace_files(void);
 void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr);
+/**
+ * Read the next raw-data record from the trace directly into |buf|,
+ * which is of size |buf_size|, without allocating temporary storage.
+ * The number of bytes written into |buf| is returned, or -1 if an
+ * error occurred.  The tracee address from which this data was
+ * recorded is returned in the outparam |rec_addr|.
+ */
+ssize_t read_raw_data_direct(struct trace_frame* trace,
+			     void* buf, size_t buf_size, void** rec_addr);
 pid_t get_recorded_main_thread();
 void rep_setup_trace_dir(const char* path);
-void rep_child_buffer0(struct context * ctx);
 
 /*         function declaration for instruction dump                  */
 void read_open_inst_dump(struct context* context);

@@ -28,6 +28,8 @@ typedef enum { FALSE = 0, TRUE = 1 } bool;
 
 typedef unsigned char byte;
 
+struct syscallbuf_hdr;
+
 /**
  * A trace_frame is one "trace event" from a complete trace.  During
  * recording, a trace_frame is recorded upon each significant event,
@@ -57,8 +59,6 @@ struct trace_frame
 
 
 struct context {
-	pid_t rec_tid; /* thread id recording thread */
-
 	struct trace_frame trace;
 	struct hpc_context* hpc;
 
@@ -66,6 +66,13 @@ struct context {
 	int exec_state;
 	int event;
 	int allow_ctx_switch;
+	/* Nonzero when this context has been interrupted by a desched
+	 * event while making a buffered may-block syscall (and
+	 * remained blocked in the syscall).  When this is the case,
+	 * we have to allow switching out this context to make
+	 * progress, in general.  We also need to record some extra
+	 * trace data to ensure replay doesn't diverge. */
+	int desched;
 	void *scratch_ptr;
 	int scratch_size;
 	int switch_counter;
@@ -76,21 +83,37 @@ struct context {
 
 	int recorded_scratch_size;
 
-	void* syscall_wrapper_start;
-	void* syscall_wrapper_end;
-	int* syscall_wrapper_cache;
-	int* syscall_wrapper_cache_child; // address of the cache buffer in the child
-	/* The child's desched-event counter fd number, and our local
+	/* The child's desched counter event fd number, and our local
 	 * dup. */
 	int desched_fd, desched_fd_child;
 
 	/* shared */
 	struct user_regs_struct child_regs;
 	FILE *inst_dump;
+	/* This is always the "real" tid of the tracee. */
 	pid_t child_tid;
+	/* This is always the recorded tid of the tracee.  During
+	 * recording, it's synonymous with child_tid, and during
+	 * replay it's the tid that was recorded. */
+	pid_t rec_tid;
 	int child_mem_fd;
 	int child_sig;
 	int status;
+
+	/* The instruction pointer from which untraced syscalls will
+	 * originate, used to determine whether a syscall is being
+	 * made by the syscallbuf wrappers or not. */
+	void* untraced_syscall_ip;
+	/* Start and end of the mapping of the syscallbuf code
+	 * section, used to determine whether a tracee's $ip is in the
+	 * lib. */
+	void* syscallbuf_lib_start;
+	void* syscallbuf_lib_end;
+	/* Points at rr's mapping of the (shared) syscall buffer
+	 * itself. */
+	struct syscallbuf_hdr* syscallbuf_hdr;
+	/* Points at the tracee's mapping of the buffer. */
+	void* syscallbuf_child;
 
 	RB_ENTRY(context) entry;
 };
