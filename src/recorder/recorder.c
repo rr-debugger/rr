@@ -156,10 +156,10 @@ static void cont_syscall_block(struct context *ctx)
 	handle_signal(ctx);
 }
 
-static void warn_no_scratch(int event, ssize_t size)
+static void warn_no_scratch(const char* event, ssize_t size)
 {
-	log_warn("Event %s needed a scratch buffer of size %d, but failed to set it up.  Disabling context switching: deadlock may follow.",
-		 strevent(event), size);
+	log_warn("Event `%s' needed a scratch buffer of size %d, but failed to set it up.  Disabling context switching: deadlock may follow.",
+		 event, size);
 }
 
 /**
@@ -205,7 +205,7 @@ static int prep_event(struct context* ctx, int event)
 		 * the pointers to sentinel values. */
 		ctx->recorded_scratch_ptr_0 = NULL;
 		ctx->recorded_scratch_ptr_1 = NULL;
-		ctx->recorded_scratch_size = 0;
+		ctx->recorded_scratch_size = -1;
 	}
 
 	switch (event) {
@@ -213,7 +213,7 @@ static int prep_event(struct context* ctx, int event)
 		return 1;
 
 	case SYS_splice:
-	    return 1;
+		return 1;
 
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
@@ -225,6 +225,7 @@ static int prep_event(struct context* ctx, int event)
 			return 1;
 		default:
 			return 0;
+		}
 
 	case SYS_socketcall:
 		switch (regs.ebx) {
@@ -290,11 +291,10 @@ static int prep_event(struct context* ctx, int event)
 			 * scratch pointers.  Unfortunately the format
 			 * is fiendishly complicated, so this is
 			 * rather nontrivial :(. */
-			warn_no_scratch(event, -1);
+			warn_no_scratch("recvmsg", -1);
 		default:
 			return 0;
 		}
-	}
 
 	case SYS__newselect:
 		return 1;
@@ -304,7 +304,7 @@ static int prep_event(struct context* ctx, int event)
 		if (would_need_scratch) {
 			int size = regs.edx;
 			if (size < 0 || size > ctx->scratch_size) {
-				warn_no_scratch(event, size);
+				warn_no_scratch(strevent(event), size);
 				return 0;
 			}
 			ctx->recorded_scratch_ptr_0 = (void*)regs.ecx;
@@ -352,7 +352,7 @@ static int prep_event(struct context* ctx, int event)
 		if (would_need_scratch) {
 			int size = sizeof(struct pollfd) * regs.ecx;
 			if (size < 0 || size > ctx->scratch_size) {
-				warn_no_scratch(event, size);
+				warn_no_scratch(strevent(event), size);
 				return 0;
 			}
 			ctx->recorded_scratch_size = size;
@@ -414,7 +414,7 @@ static int prep_event(struct context* ctx, int event)
 		if (would_need_scratch) {
 			int size = sizeof(struct epoll_event) * regs.edx;
 			if (size < 0 || size > ctx->scratch_size) {
-				warn_no_scratch(event, size);
+				warn_no_scratch(strevent(event), size);
 				return 0;
 			}
 			ctx->recorded_scratch_size = size;
@@ -432,7 +432,7 @@ static int prep_event(struct context* ctx, int event)
 	 * liveness/correctness reasons, but rather because if we
 	 * didn't context-switch away, rr might end up busy-waiting
 	 * needlessly.  In addition, albeit far less likely, the
-	 * client program carefully optimized its own context
+	 * client program may have carefully optimized its own context
 	 * switching and we should take the hint. */
 
 	/* int nanosleep(const struct timespec *req, struct timespec *rem); */
@@ -450,8 +450,7 @@ static int prep_event(struct context* ctx, int event)
 
 	default:
 		return 0;
-
-	} /* end switch */
+	}
 }
 
 uintptr_t progress;
