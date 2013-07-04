@@ -2171,7 +2171,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		void *ptr = recorded_data;
 		bool registers_changed = FALSE;
 		/* restore status */
-		if (ctx->recorded_scratch_ptr_0 != (void*)-1) {
+		if (ctx->recorded_scratch_ptr_0) {
 			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 			registers_changed = TRUE;
 			write_child_data(ctx, sizeof(int), (void*)regs.ecx, ptr);
@@ -2181,7 +2181,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			record_child_data(ctx,syscall,0,0);
 		}
 		/* restore rusage */
-		if (ctx->recorded_scratch_ptr_1 != (void*)-1) {
+		if (ctx->recorded_scratch_ptr_1) {
 			regs.esi = (uintptr_t)ctx->recorded_scratch_ptr_1;
 			registers_changed = TRUE;
 			write_child_data(ctx, sizeof(struct rusage),
