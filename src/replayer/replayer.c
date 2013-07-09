@@ -483,32 +483,15 @@ static void continue_or_step(struct context* ctx, int stepi)
 
 	ctx->child_sig = signal_pending(ctx->status);
 	if (0 == ctx->child_sig) {
-		log_err("Expecting tracee signal or trap, but didn't get one.");
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+
+		log_err("Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s'",
+			strevent(ctx->trace.stop_reason),
+			get_trace_file_lines_counter(),
+			strevent(regs.orig_eax));
 		emergency_debug(ctx);
 	}
-}
-
-static void emulate_signal_delivery()
-{
-	/* We are now at the exact point in the child where the signal
-	 * was recorded, emulate it using the next trace line (records
-	 * the state at sighandler entry). */
-	struct context* ctx = rep_sched_get_thread();
-	pid_t tid = ctx->child_tid;
-	struct trace_frame* trace = &ctx->trace;
-
-	/* Restore the signal-hander frame data, if there was one. */
-	set_child_data(ctx);
-	/* If there was a signal handler, this will set up the
-	 * callframe.  If there wasn't, then the recorded task
-	 * single-stepped in some random way, but we still need to
-	 * restore the registers we recorded in case execution was
-	 * advanced. */
-	write_child_main_registers(tid, &trace->recorded_regs);
-	/* Delivered the signal. */
-	ctx->child_sig = 0;
-
-	validate_args(ctx->trace.stop_reason, -1, ctx);
 }
 
 /**
@@ -608,46 +591,15 @@ static int is_debugger_trap(struct context* ctx, int target_sig,
 }
 
 /**
- * Advance to the delivery of the deterministic signal |sig| and
- * update registers to what was recorded.  Return 0 if successful or 1
- * if an unhandled interrupt occurred.
- */
-static int emulate_deterministic_signal(struct context* ctx,
-					int sig, int stepi)
-{
-	pid_t tid = ctx->child_tid;
-
-	continue_or_step(ctx, stepi);
-	if (SIGTRAP == ctx->child_sig
-	    && is_debugger_trap(ctx, sig, DETERMINISTIC, UNKNOWN, stepi)) {
-		return 1;
-	} else if (ctx->child_sig != sig) {
-		log_err("Replay got unrecorded signal %d (expecting %d)",
-			ctx->child_sig, sig);
-		emergency_debug(ctx);
-		return 1;		/* not reached */
-	}
-
-	if (SIG_SEGV_RDTSC == ctx->trace.stop_reason) {
-		write_child_main_registers(tid, &ctx->trace.recorded_regs);
-		/* We just "delivered" this pseudosignal. */
-		ctx->child_sig = 0;
-	} else {
-		emulate_signal_delivery();
-	}
-
-	return 0;
-}
-
-/**
  * Run execution forwards for |ctx| until |ctx->trace.rbc| is reached,
- * and the $ip reaches the recorded $ip.  After that, deliver |sig| if
- * nonzero.  Return 0 if successful or 1 if an unhandled interrupt
- * occurred.
+ * and the $ip reaches the recorded $ip.  Return 0 if successful or 1
+ * if an unhandled interrupt occurred.  |sig| is the pending signal to
+ * be delivered; it's only used to distinguish debugger-related traps
+ * from traps related to replaying execution.
  */
-static int emulate_async_signal(struct context* ctx, uint64_t rcb,
-				const struct user_regs_struct* regs, int sig,
-				int stepi)
+static int advance_to(struct context* ctx, uint64_t rcb,
+		      const struct user_regs_struct* regs, int sig,
+		      int stepi)
 {
 	pid_t tid = ctx->child_tid;
 	uint64_t rcb_now;
@@ -658,9 +610,6 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	/* Step 1: advance to the target rcb (minus a slack region) as
 	 * quickly as possible by programming the hpc. */
 	rcb_now = read_rbc(ctx->hpc);
-
-	debug("Advancing to rcb=%llu, ip=%p; current rcb=%llu",
-	      rcb, (void*)regs->eip, rcb_now);
 
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
@@ -728,13 +677,8 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	 *
 	 * What we really want to do is set a retired-instruction
 	 * interrupt and do away with all this cruft. */
-	while (rcb > 0) {
+	while (rcb == rcb_now) {
 		struct user_regs_struct cur_regs;
-
-		if (rcb_now > rcb) {
-			fatal("Replay diverged: overshot target $ip: target=%llu, reached=%llu",
-			      rcb, rcb_now);
-		}
 
 		read_child_registers(ctx->child_tid, &cur_regs);
 		if (regs->eip == cur_regs.eip) {
@@ -771,10 +715,92 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 		rcb_now = read_rbc(ctx->hpc);
 	}
 
-	if (sig) {
+	if (rcb_now > rcb) {
+		fatal("Replay diverged: overshot target $ip: target=%llu, reached=%llu",
+		      rcb, rcb_now);
+	}
+
+	return 0;
+}
+
+static void emulate_signal_delivery()
+{
+	/* We are now at the exact point in the child where the signal
+	 * was recorded, emulate it using the next trace line (records
+	 * the state at sighandler entry). */
+	struct context* ctx = rep_sched_get_thread();
+	pid_t tid = ctx->child_tid;
+	struct trace_frame* trace = &ctx->trace;
+
+	/* Restore the signal-hander frame data, if there was one. */
+	if (!set_child_data(ctx)) {
+		/* No signal handler.  Advance execution to the point
+		 * we recorded. */
+		reset_hpc(ctx, 0);
+		/* TODO what happens if we step on a breakpoint? */
+		advance_to(ctx, ctx->trace.rbc, &trace->recorded_regs,
+			   /*no signal*/0, DONT_STEPI);
+		/* (|advance_to()| just asserted that the registers
+		 * match what was recorded.) */
+	} else {
+		/* Signal handler; we just set up the callframe.
+		 * Continuing execution will run that code. */
+		write_child_main_registers(tid, &trace->recorded_regs);
+	}
+	/* Delivered the signal. */
+	ctx->child_sig = 0;
+
+	validate_args(ctx->trace.stop_reason, -1, ctx);
+}
+
+/**
+ * Advance to the delivery of the deterministic signal |sig| and
+ * update registers to what was recorded.  Return 0 if successful or 1
+ * if an unhandled interrupt occurred.
+ */
+static int emulate_deterministic_signal(struct context* ctx,
+					int sig, int stepi)
+{
+	pid_t tid = ctx->child_tid;
+
+	continue_or_step(ctx, stepi);
+	if (SIGTRAP == ctx->child_sig
+	    && is_debugger_trap(ctx, sig, DETERMINISTIC, UNKNOWN, stepi)) {
+		return 1;
+	} else if (ctx->child_sig != sig) {
+		log_err("Replay got unrecorded signal %d (expecting %d)",
+			ctx->child_sig, sig);
+		emergency_debug(ctx);
+		return 1;		/* not reached */
+	}
+
+	if (SIG_SEGV_RDTSC == ctx->trace.stop_reason) {
+		write_child_main_registers(tid, &ctx->trace.recorded_regs);
+		/* We just "delivered" this pseudosignal. */
+		ctx->child_sig = 0;
+	} else {
 		emulate_signal_delivery();
 	}
 
+	return 0;
+}
+
+/**
+ * Run execution forwards for |ctx| until |ctx->trace.rbc| is reached,
+ * and the $ip reaches the recorded $ip.  After that, deliver |sig| if
+ * nonzero.  Return 0 if successful or 1 if an unhandled interrupt
+ * occurred.
+ */
+static int emulate_async_signal(struct context* ctx, uint64_t rcb,
+				const struct user_regs_struct* regs, int sig,
+				int stepi)
+{
+	if (advance_to(ctx, rcb, regs, 0, stepi)) {
+		return 1;
+	}
+	if (sig) {
+		emulate_signal_delivery();
+	}
 	stop_hpc(ctx);
 	return 0;
 }
