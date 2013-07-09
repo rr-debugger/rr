@@ -270,9 +270,8 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si)
 	sys_waitpid(ctx->child_tid, &(ctx->status));
 	// 0 instructions means we entered a handler
 	int insts = read_insts(ctx->hpc);
-	size_t frame_size = 0;
-	if (insts == 0)
-		frame_size = 1024; // TODO: find out actual struct sigframe size. 128 seems to be too small
+	// TODO: find out actual struct sigframe size. 128 seems to be too small
+	size_t frame_size = (insts == 0) ? 1024 : 0;
 	struct user_regs_struct regs;
 	read_child_registers(ctx->child_tid, &regs);
 	record_child_data(ctx, ctx->event, frame_size, (void*)regs.esp);
