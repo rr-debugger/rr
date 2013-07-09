@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
 	 * test can spuriously pass if it's never sent SIGUSR1. */
 
 	signal(SIGUSR1, SIG_IGN);
-	for (i = 1; i < (1 << 30); ++i) {
+	for (i = 1; i < (1 << 27); ++i) {
 		dummy += (dummy + i) % 9735;
 	}
 
