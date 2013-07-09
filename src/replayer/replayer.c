@@ -681,11 +681,8 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		struct user_regs_struct cur_regs;
 
 		read_child_registers(ctx->child_tid, &cur_regs);
-		if (regs->eip == cur_regs.eip) {
-			assert_child_regs_are(ctx, regs,
-					      ctx->trace.stop_reason,
-					      ctx->trace.state);
-
+		if (0 == compare_register_files("rep interrupt", &cur_regs,
+						"rec", regs, 0, 0)) {
 			if (SIGTRAP == ctx->child_sig
 			    && is_debugger_trap(ctx, sig, ASYNC, AT_TARGET,
 						stepi)) {
