@@ -73,6 +73,12 @@ struct context {
 	 * progress, in general.  We also need to record some extra
 	 * trace data to ensure replay doesn't diverge. */
 	int desched;
+	/* Nonzero after the trace recorder has flushed the
+	 * syscallbuf.  When this happens, the recorder must prepare a
+	 * "reset" of the buffer, to zero the record count, at the
+	 * next available slow (taking |desched| into
+	 * consideration). */
+	int flushed_syscallbuf;
 	void *scratch_ptr;
 	int scratch_size;
 	int switch_counter;

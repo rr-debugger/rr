@@ -140,13 +140,13 @@ read_desched_counter(struct context* ctx)
  * Return nonzero if |ctx| was stopped because of a SIGIO resulting
  * from notification of |ctx| being descheduled, zero otherwise.
  */
-static int try_handle_desched_event(struct context* ctx, const siginfo_t* si)
+static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
+				    const struct user_regs_struct* regs)
 {
 	pid_t tid = ctx->child_tid;
 	int call = ctx->event;
 	uint64_t nr_descheds;
 	int status;
-	struct user_regs_struct regs;
 
 	assert(SIGIO == si->si_signo);
 
@@ -186,12 +186,11 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si)
 	/* (syscall trap event) */
 	assert(WIFSTOPPED(status) && (0x80 | SIGTRAP) == WSTOPSIG(status));
 
-	read_child_registers(tid, &regs);
 	/* XXX extra anal: check that $ip is at the untraced syscall
 	 * entry */
-	if (SYS_ioctl == regs.orig_eax
-	    && regs.ebx == ctx->desched_fd_child
-	    && PERF_EVENT_IOC_DISABLE == regs.ecx) {
+	if (SYS_ioctl == regs->orig_eax
+	    && regs->ebx == ctx->desched_fd_child
+	    && PERF_EVENT_IOC_DISABLE == regs->ecx) {
 		/* Finish the ioctl().  It won't block, and we don't
 		 * need to record it or any other data for the replay
 		 * to work properly.  The reason we can do this is
@@ -212,7 +211,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si)
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));
 
-	if (SYS_restart_syscall == regs.orig_eax) {
+	if (SYS_restart_syscall == regs->orig_eax) {
 		/* If we'll be resuming this as a "restart syscall",
 		 * then note that the last started syscall was the one
 		 * interrupted by desched. */
@@ -279,8 +278,10 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si)
 
 void handle_signal(struct context* ctx)
 {
+	pid_t tid = ctx->child_tid;
 	int sig = signal_pending(ctx->status);
 	int event;
+	struct user_regs_struct regs;
 	siginfo_t si;
 
 	if (sig <= 0) {
@@ -290,7 +291,11 @@ void handle_signal(struct context* ctx)
 	debug("handling signal %s (pevent: %d, event: %s)", signalname(sig),
 	      GET_PTRACE_EVENT(ctx->status), strevent(ctx->event));
 
-	sys_ptrace_getsiginfo(ctx->child_tid, &si);
+	read_child_registers(tid, &regs);
+	sys_ptrace_getsiginfo(tid, &si);
+
+	assert("TODO: handle signals delivered to syscallbuf code"
+	       && !SYSCALLBUF_IS_IP_IN_LIB(regs.eip, ctx));
 
 	/* See if this signal occurred because of internal rr usage,
 	 * and update ctx appropriately. */
@@ -310,7 +315,7 @@ void handle_signal(struct context* ctx)
 		break;
 	}
 	case SIGIO:
-		if ((event = try_handle_desched_event(ctx, &si))) {
+		if ((event = try_handle_desched_event(ctx, &si, &regs))) {
 			ctx->event = event;
 			ctx->child_sig = 0;
 			return;
