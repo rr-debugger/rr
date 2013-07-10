@@ -126,10 +126,10 @@ void write_child_code(pid_t pid, void* addr, long code)
 	sys_ptrace(PTRACE_POKETEXT, pid, addr, (void*) code);
 }
 
-static void write_child_data_word(pid_t pid, void *addr, void *data)
+void write_child_data_word(pid_t pid, void *addr, uintptr_t data)
 {
 	CHECK_ALIGNMENT(addr);
-	sys_ptrace(PTRACE_POKEDATA, pid, addr, data);
+	sys_ptrace(PTRACE_POKEDATA, pid, addr, (void*)data);
 }
 
 long int read_child_syscall(int child_id)
@@ -486,7 +486,7 @@ void write_child_data_n(pid_t tid, size_t size, void* addr, const void* data)
 	int i;
 	for (i = 0; i < write_size; i += READ_SIZE) {
 		uint32_t word = *(uint32_t*) (write_data + i);
-		write_child_data_word(tid, write_addr + i, (void*) word);
+		write_child_data_word(tid, write_addr + i, word);
 	}
 
 	free(write_data);

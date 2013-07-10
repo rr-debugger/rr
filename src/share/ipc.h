@@ -20,6 +20,7 @@ ssize_t checked_pread(struct context *ctx, void *buf, size_t size, off_t offset)
 void memcpy_child(struct context *ctx, void *dest, void *src, int size);
 
 void write_child_code(pid_t pid, void* addr, long code);
+void write_child_data_word(pid_t pid, void *addr, uintptr_t data);
 void write_child_registers(pid_t tid, struct user_regs_struct* regs);
 void write_child_main_registers(pid_t tid, struct user_regs_struct *regs);
 void write_child_segment_registers(pid_t tid, struct user_regs_struct *regs);
