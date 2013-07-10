@@ -202,8 +202,10 @@ static void emulate_buffered_syscall(struct context* ctx,
 	}
 
 	read_child_registers(tid, &regs);
-	if (rec->syscallno != regs.orig_eax) {
-		log_err("Trying to emulate %s but replayed to entry of %s",
+	if (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs.eip, ctx)
+	    || rec->syscallno != regs.orig_eax) {
+		log_err("Bad ip %p, or trying to emulate %s but replayed to entry of %s",
+			(void*)regs.eip,
 			syscallname(rec->syscallno),
 			syscallname(regs.orig_eax));
 		emergency_debug(ctx);
