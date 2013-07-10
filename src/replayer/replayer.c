@@ -496,10 +496,10 @@ static void continue_or_step(struct context* ctx, int stepi)
 		struct user_regs_struct regs;
 		read_child_registers(ctx->child_tid, &regs);
 
-		log_err("Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s'",
+		log_err("Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s' (rcb: %llu)",
 			strevent(ctx->trace.stop_reason),
 			get_trace_file_lines_counter(),
-			strevent(regs.orig_eax));
+			strevent(regs.orig_eax), read_rbc(ctx->hpc));
 		emergency_debug(ctx);
 	}
 }
@@ -990,6 +990,22 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 				     && event == SYS_execve);
 			rep_process_syscall(ctx, rr_flags->redirect, &step);
 		}
+	}
+
+	/* See the comment below about *not* resetting the hpc for
+	 * buffer flushes.  Here, we're processing the *other* event,
+	 * just after the buffer flush, where the rcb matters.  To
+	 * simplify the advance-to-target code that follows (namely,
+	 * making debugger interrupts simpler), pretend like the
+	 * execution in the BUFFER_FLUSH didn't happen by resetting
+	 * the rbc and compensating down the target rcb. */
+	if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
+		uint64_t rcb_now = read_rbc(ctx->hpc);
+
+		assert(step.target.rcb >= rcb_now);
+
+		step.target.rcb -= rcb_now;
+		reset_hpc(ctx, 0);
 	}
 
 	/* Advance until |step| has been fulfilled. */
