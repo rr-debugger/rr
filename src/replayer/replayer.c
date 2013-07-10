@@ -161,11 +161,13 @@ static dbg_threadid_t get_threadid(struct context* ctx)
 	return thread;
 }
 
-static byte* read_mem(struct context* ctx, void* addr, size_t len)
+static byte* read_mem(struct context* ctx, void* addr, size_t len,
+		      size_t* read_len)
 {
-	/* XXX will gdb ever make request for unreadable memory?  If
-	 * so, we need to use read_child_data_checked() here. */
-	return read_child_data_tid(ctx->child_tid, len, addr);
+	ssize_t nread;
+	void* buf = read_child_data_checked(ctx, len, addr, &nread);
+	*read_len = MAX(0, nread);
+	return buf;
 }
 
 static void add_breakpoint(struct breakpoint* bp)
@@ -259,8 +261,10 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_is_thread_alive(dbg, !!target);
 			continue;
 		case DREQ_GET_MEM: {
-			byte* mem = read_mem(target, req.mem.addr, req.mem.len);
-			dbg_reply_get_mem(dbg, mem);
+			size_t len;
+			byte* mem = read_mem(target, req.mem.addr, req.mem.len,
+					     &len);
+			dbg_reply_get_mem(dbg, mem, len);
 			sys_free((void**)&mem);
 			continue;
 		}

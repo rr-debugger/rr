@@ -170,11 +170,10 @@ void dbg_reply_get_current_thread(struct dbg_context* dbg,
 void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive);
 
 /**
- * The read memory is at |mem|, or NULL if the address wasn't
- * readable.  The length of |mem| must be exactly what was requested
- * in |dbg->req.params.mem.len|.
+ * The first |len| bytes of the request were read into |mem|.  |len|
+ * must be less than or equal to the length of the request.
  */
-void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem);
+void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len);
 
 /**
  * Reply to the DREQ_GET_OFFSETS request.

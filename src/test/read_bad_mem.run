@@ -1,0 +1,5 @@
+source util.sh
+compile simple
+record simple
+debug read_bad_mem
+cleanup
