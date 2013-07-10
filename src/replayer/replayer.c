@@ -625,7 +625,15 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		reset_hpc(ctx, rcb - rcb_now - SKID_SIZE);
 
 		continue_or_step(ctx, stepi);
-		if (ctx->child_sig != SIGIO && ctx->child_sig != SIGTRAP) {
+		if (SIGCHLD == ctx->child_sig) {
+			/* Tracees can receive SIGCHLD at pretty much
+			 * any time during replay.  If we recorded
+			 * delivery, we'll manually replay it
+			 * eventually (or already have).  Just ignore
+			 * here. */
+			ctx->child_sig = 0;
+		} else if (ctx->child_sig != SIGIO
+			   && ctx->child_sig != SIGTRAP) {
 			log_err("Replay got unrecorded signal %d",
 				ctx->child_sig);
 			emergency_debug(ctx);
@@ -658,7 +666,10 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 			return 1;
 		}
 		continue_or_step(ctx, STEPI);
-		if (SIGTRAP != ctx->child_sig) {
+		if (SIGCHLD == ctx->child_sig) {
+			/* See above. */
+			ctx->child_sig = 0;
+		} else if (SIGTRAP != ctx->child_sig) {
 			log_err("Replay got unrecorded signal %d",
 				ctx->child_sig);
 			emergency_debug(ctx);
@@ -702,7 +713,10 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 			return 1;
 		}
 		continue_or_step(ctx, STEPI);
-		if (SIGTRAP != ctx->child_sig) {
+		if (SIGCHLD == ctx->child_sig) {
+			/* See above. */
+			ctx->child_sig = 0;
+		} else if (SIGTRAP != ctx->child_sig) {
 			log_err("Replay got unrecorded signal %d",
 				ctx->child_sig);
 			emergency_debug(ctx);
@@ -761,7 +775,10 @@ static int emulate_deterministic_signal(struct context* ctx,
 	pid_t tid = ctx->child_tid;
 
 	continue_or_step(ctx, stepi);
-	if (SIGTRAP == ctx->child_sig
+	if (SIGCHLD == ctx->child_sig) {
+		ctx->child_sig = 0;
+		return emulate_deterministic_signal(ctx, sig, stepi);
+	} else if (SIGTRAP == ctx->child_sig
 	    && is_debugger_trap(ctx, sig, DETERMINISTIC, UNKNOWN, stepi)) {
 		return 1;
 	} else if (ctx->child_sig != sig) {

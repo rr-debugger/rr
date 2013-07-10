@@ -1,0 +1,2 @@
+source util.sh
+compare_test sigchld_interrupt_signal EXIT-SUCCESS
