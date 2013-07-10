@@ -213,6 +213,49 @@ static ssize_t traced_write(int fd, const void* buf, size_t count)
 	return syscall(SYS_write, fd, buf, count);
 }
 
+/* We can't use the rr logging helpers because they rely on libc
+ * syscall-invoking functions, so roll our own here.
+ *
+ * XXX just use these for all logging? */
+
+__attribute__((format(printf, 1, 2)))
+static void logmsg(const char* msg, ...)
+{
+  va_list args;
+  char buf[1024];
+  int len;
+
+  va_start(args, msg);
+  len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
+  va_end(args);
+
+  traced_write(STDERR_FILENO, buf, len);
+}
+
+#ifndef NDEBUG
+# define assert(cond)							\
+	do {								\
+		if (!(cond)) {						\
+			logmsg("%s:%d: Assertion " #cond "failed.",	\
+			       __FILE__, __LINE__);			\
+			traced_raise(SIGABRT);				\
+		}							\
+	} while (0)
+#else
+# define assert(cond) ((void)0)
+#endif
+
+#define fatal(msg, ...)							\
+	do {								\
+		logmsg("[FATAL] (%s:%d: errno: %s) " msg "\n",		\
+		       __FILE__, __LINE__, strerror(errno), ##__VA_ARGS__); \
+		traced__exit(1);					\
+	} while (0)
+
+#define log_info(msg, ...)					\
+	logmsg("[INFO] (%s:%d) " msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+
+
 /* Helpers for invoking untraced syscalls, which do *not* generate
  * ptrace traps.
  *
@@ -279,49 +322,6 @@ static void* rrcall_init_syscall_buffer(void* untraced_syscall_ip,
 	return (void*)syscall(RRCALL_init_syscall_buffer, untraced_syscall_ip,
 			      addr, msg, fdptr, args_vec);
 }
-
-/* We can't use the rr logging helpers because they rely on libc
- * syscall-invoking functions, so roll our own here.
- *
- * XXX just use these for all logging? */
-
-__attribute__((format(printf, 1, 2)))
-static void logmsg(const char* msg, ...)
-{
-  va_list args;
-  char buf[1024];
-  int len;
-
-  va_start(args, msg);
-  len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
-  va_end(args);
-
-  traced_write(STDERR_FILENO, buf, len);
-}
-
-#ifndef NDEBUG
-# define assert(cond)							\
-	do {								\
-		if (!(cond)) {						\
-			logmsg("%s:%d: Assertion " #cond "failed.",	\
-			       __FILE__, __LINE__);			\
-			traced_raise(SIGABRT);				\
-		}							\
-	} while (0)
-#else
-# define assert(cond) ((void)0)
-#endif
-
-#define fatal(msg, ...)							\
-	do {								\
-		logmsg("[FATAL] (%s:%d: errno: %s) " msg "\n",		\
-		       __FILE__, __LINE__, strerror(errno), ##__VA_ARGS__); \
-		traced__exit(1);					\
-	} while (0)
-
-#define log_info(msg, ...)					\
-	logmsg("[INFO] (%s:%d) " msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-
 
 /**
  * This installs the actual filter which examines the callsite and
