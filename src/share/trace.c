@@ -400,6 +400,7 @@ static void maybe_flush_syscallbuf(struct context *ctx)
 	/* Reset header. */
 	assert(!ctx->syscallbuf_hdr->abort_commit);
 	memset(ctx->syscallbuf_hdr, 0, sizeof(*ctx->syscallbuf_hdr));
+	ctx->flushed_syscallbuf = 1;
 }
 
 /**

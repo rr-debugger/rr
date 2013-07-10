@@ -481,7 +481,13 @@ static void continue_or_step(struct context* ctx, int stepi)
 	if (stepi) {
 		sys_ptrace_singlestep(tid);
 	} else {
-		sys_ptrace_cont(tid);
+		/* We continue with PTRACE_SYSCALL for error checking:
+		 * since the next event is supposed to be a signal,
+		 * entering a syscall here means divergence.  There
+		 * shouldn't be any straight-line execution overhead
+		 * for SYSCALL vs. CONT, so the difference in cost
+		 * should be neglible. */
+		sys_ptrace_syscall(tid);
 	}
 	sys_waitpid(tid, &ctx->status);
 
@@ -594,6 +600,45 @@ static int is_debugger_trap(struct context* ctx, int target_sig,
 	return stepi;
 }
 
+static void guard_overshoot(struct context* ctx,
+			    uint64_t target, uint64_t current)
+{
+	if (current <= target) {
+		return;
+	}
+	log_err("Replay diverged: overshot target rcb=%llu, reached=%llu\n"
+		"    replaying trace line %d",
+		target, current,
+		get_trace_file_lines_counter());
+	emergency_debug(ctx);
+	/* not reached */
+}
+
+static void guard_unexpected_signal(struct context* ctx)
+{
+	int event;
+
+	/* "0" normally means "syscall", but continue_or_step() guards
+	 * against unexpected syscalls.  So the caller must have set
+	 * "0" intentionally. */
+	if (0 == ctx->child_sig || SIGTRAP == ctx->child_sig) {
+		return;
+	}
+	if (ctx->child_sig) {
+		event = -ctx->child_sig;
+	} else {
+		struct user_regs_struct regs;
+		read_child_registers(ctx->child_tid, &regs);
+		event = MAX(0, regs.orig_eax);
+	}
+	log_err("Replay got unrecorded event %s while awaiting signal\n"
+		"    replaying trace line %d",
+		strevent(event),
+		get_trace_file_lines_counter());
+	emergency_debug(ctx);
+	/* not reached */
+}
+
 /**
  * Run execution forwards for |ctx| until |ctx->trace.rbc| is reached,
  * and the $ip reaches the recorded $ip.  Return 0 if successful or 1
@@ -615,6 +660,9 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 	 * quickly as possible by programming the hpc. */
 	rcb_now = read_rbc(ctx->hpc);
 
+	debug("Advancing to rcb:%llu/eip:%p from rcb:%llu",
+	      rcb, (void*)regs->eip, rcb_now);
+
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
 		if (SIGTRAP == ctx->child_sig) {
@@ -629,31 +677,23 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		reset_hpc(ctx, rcb - rcb_now - SKID_SIZE);
 
 		continue_or_step(ctx, stepi);
-		if (SIGCHLD == ctx->child_sig) {
+		if (SIGIO == ctx->child_sig || SIGCHLD == ctx->child_sig) {
 			/* Tracees can receive SIGCHLD at pretty much
 			 * any time during replay.  If we recorded
 			 * delivery, we'll manually replay it
 			 * eventually (or already have).  Just ignore
 			 * here. */
 			ctx->child_sig = 0;
-		} else if (ctx->child_sig != SIGIO
-			   && ctx->child_sig != SIGTRAP) {
-			log_err("Replay got unrecorded signal %d",
-				ctx->child_sig);
-			emergency_debug(ctx);
-			return 1;		/* not reached */
 		}
+		guard_unexpected_signal(ctx);
+
 		if (fcntl(ctx->hpc->rbc.fd, F_GETOWN) != tid) {
 			fatal("Scheduled task %d doesn't own hpc; replay divergence", tid);
 		}
 
 		rcb_now = read_rbc(ctx->hpc);
 	}
-
-	if (rcb_now > rcb) {
-		fatal("Replay diverged: overshot target rcb: target=%llu, reached=%llu",
-		      rcb, rcb_now);
-	}
+	guard_overshoot(ctx, rcb, rcb_now);
 
 	/* Step 2: Slowly single-step our way to the target rcb.
 	 *
@@ -673,20 +713,12 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		if (SIGCHLD == ctx->child_sig) {
 			/* See above. */
 			ctx->child_sig = 0;
-		} else if (SIGTRAP != ctx->child_sig) {
-			log_err("Replay got unrecorded signal %d",
-				ctx->child_sig);
-			emergency_debug(ctx);
-			return 1;		/* not reached */
 		}
+		guard_unexpected_signal(ctx);
 
 		rcb_now = read_rbc(ctx->hpc);
 	}
-
-	if (rcb_now > rcb) {
-		fatal("Replay diverged: overshot target rcb: target=%llu, reached=%llu",
-		      rcb, rcb_now);
-	}
+	guard_overshoot(ctx, rcb, rcb_now);
 
 	/* Step 3: Slowly single-step our way to the target $ip.
 	 *
@@ -720,20 +752,12 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		if (SIGCHLD == ctx->child_sig) {
 			/* See above. */
 			ctx->child_sig = 0;
-		} else if (SIGTRAP != ctx->child_sig) {
-			log_err("Replay got unrecorded signal %d",
-				ctx->child_sig);
-			emergency_debug(ctx);
-			return 1;		/* not reached */
 		}
+		guard_unexpected_signal(ctx);
 
 		rcb_now = read_rbc(ctx->hpc);
 	}
-
-	if (rcb_now > rcb) {
-		fatal("Replay diverged: overshot target $ip: target=%llu, reached=%llu",
-		      rcb, rcb_now);
-	}
+	guard_overshoot(ctx, rcb, rcb_now);
 
 	return 0;
 }
@@ -1002,19 +1026,23 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		dbg_notify_stop(dbg, get_threadid(ctx), stop_sig);
 	}
 
-	/* Every time a non-wrapped event happens, the hpc is
-	 * reset. When an event that requires hpc occurs, we
-	 * read the hpc at that point and reset the hpc
-	 * interval to the required rbc minus the current hpc.
-	 * All this happens since the wrapped event do not
-	 * reset the hpc,therefore the previous techniques of
-	 * starting the hpc only the at the previous event to
-	 * the one that requires it, doesn't work, since the
-	 * previous event may be a wrapped syscall.
-	 *
-	 * XXX clarify
-	 */
-	if (ctx->trace.stop_reason != USR_SYSCALLBUF_FLUSH) {
+	/* We flush the syscallbuf in response to detecting *other*
+	 * events, like signal delivery.  Flushing the syscallbuf is a
+	 * sort of side-effect of reaching the other event.  But once
+	 * we've flushed the syscallbuf during replay, we still must
+	 * reach the execution point of the *other* event.  For async
+	 * signals, that requires us to have an "intact" rbc, with the
+	 * same value as it was when the last buffered syscall was
+	 * retired during replay.  We'll be continuing from that rcb
+	 * to reach the rcb we recorded at signal delivery.  So don't
+	 * reset the counter for buffer flushes.  (It doesn't matter
+	 * for non-async-signal types, which are deterministic.) */
+	switch (ctx->trace.stop_reason) {
+	case USR_SYSCALLBUF_ABORT_COMMIT:
+	case USR_SYSCALLBUF_FLUSH:
+	case USR_SYSCALLBUF_RESET:
+		break;
+	default:
 		reset_hpc(ctx, 0);
 	}
 	debug_memory(ctx);
