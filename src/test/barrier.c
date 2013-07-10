@@ -2,6 +2,7 @@
 
 #include <pthread.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
@@ -27,9 +28,13 @@ static void* thread(void* barp) {
 }
 
 int main(int argc, char *argv[]) {
+	struct timeval tv;
 	pthread_barrier_t bar;
 	pthread_t threads[10];
 	int i;
+
+	/* (Kick on the syscallbuf lib.) */
+	gettimeofday(&tv, NULL);
 
 	pthread_barrier_init(&bar, NULL, 1 + ALEN(threads));
 

@@ -26,6 +26,8 @@
 #define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
 #endif
 
+#define STOPSIG_SYSCALL (0x80 | SIGTRAP)
+
 #define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))
 
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
