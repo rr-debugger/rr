@@ -19,6 +19,15 @@ function get_rr_cmd { num_args=$1; libarg=$2; rrarg=$3;
 	fi
 }
 
+# If the test takes too long to run without the syscallbuf enabled,
+# use this to prevent it from running when that's the case.
+function skip_if_no_syscall_buf { testname=$1
+	if [[ "-n" == "$lib" || "" == "$lib" ]]; then
+		echo NOTE: Skipping "'$testname'" because syscallbuf is disabled
+		exit 0
+	fi
+}
+
 # compile test
 # $1 is test name
 # $2 are compilation flags

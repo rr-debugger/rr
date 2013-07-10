@@ -475,6 +475,18 @@ static void set_up_buffer()
 }
 
 /**
+ * After a fork(), the new child will still share the buffer mapping
+ * with its parent.  That's obviously very bad.  Pretend that we don't
+ * know about the old buffer, so that the next time a buffered syscall
+ * is hit, we map a new buffer.
+ */
+static void drop_buffer()
+{
+	buffer = NULL;
+	buffer_locked = 0;
+}
+
+/**
  * Initialize the library:
  * 1. Install filter-by-callsite (once for all threads)
  * 2. Make subsequent threads call init()
@@ -489,6 +501,7 @@ static void init()
 	if (!is_seccomp_bpf_installed) {
 		install_syscall_filter();
 		is_seccomp_bpf_installed = 1;
+		pthread_atfork(NULL, NULL, drop_buffer);
 	}
 	set_up_buffer();
 }
