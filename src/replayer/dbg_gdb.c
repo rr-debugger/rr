@@ -819,15 +819,16 @@ void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive)
 	consume_request(dbg);
 }
 
-void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem)
+void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len)
 {
 	char* buf;
-	size_t i, len;
 
 	assert(DREQ_GET_MEM == dbg->req.type);
+	assert(len <= dbg->req.mem.len);
 
-	if (mem) {
-		len = dbg->req.mem.len;
+	if (len > 0) {
+		size_t i;
+
 		buf = sys_malloc(2 * len + 1);
 		for (i = 0; i < len; ++i) {
 			unsigned long b = mem[i];
