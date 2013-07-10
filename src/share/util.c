@@ -1283,14 +1283,18 @@ void finish_remote_syscalls(struct context* ctx,
 static void send_fd(int fd, int sock)
 {
 	struct msghdr msg;
+	int dummy_fd = 0;
 	struct iovec data;
 	struct cmsghdr* cmsg;
 	char cmsgbuf[CMSG_SPACE(sizeof(int))];
 
 	memset(&msg, 0, sizeof(msg));
 
-	data.iov_base = &fd;
-	data.iov_len = sizeof(fd);
+	/* We must always send the same value to the child so that
+	 * nondeterministic values, like fd numbers in this process,
+	 * don't leak into its address space. */
+	data.iov_base = &dummy_fd;
+	data.iov_len = sizeof(dummy_fd);
 	msg.msg_iov = &data;
 	msg.msg_iovlen = 1;
 
@@ -1472,6 +1476,11 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 
 	/* Get the newly-allocated fd. */
 	child_shmem_fd = read_child_data_word(tid, child_fdptr);
+
+	/* Write zero over the shared fd number, which since it's a
+	 * "real" fd, may not be the same across record/replay owing
+	 * to emulated fds. */
+	write_child_data_word(tid, child_fdptr, 0);
 
 	/* Socket magic is now done. */
 	close(listen_sock);
