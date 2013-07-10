@@ -717,21 +717,19 @@ void start_recording(struct flags rr_flags)
 				 * counter when it's trying to step to
 				 * the entry of |call|. */
 				record_virtual_event(ctx, USR_ARM_DESCHED);
-				ctx->syscallbuf_hdr->abort_commit = 1;
-				record_virtual_event(ctx, USR_SYSCALLBUF_ABORT_COMMIT);
 			}
 
 			record_event(ctx, STATE_SYSCALL_ENTRY);
-			if (ctx->syscallbuf_hdr) {
-				/* We just recorded a signal delivery
-				 * or entry into a syscall, and that
-				 * event must be a happens-after
-				 * barrier for any earlier code that
-				 * depends on the buffer counter.  So
-				 * now it's safe to record resetting
-				 * the counter. */
+
+			if (ctx->flushed_syscallbuf) {
 				record_virtual_event(ctx,
 						     USR_SYSCALLBUF_RESET);
+				ctx->flushed_syscallbuf = 0;
+			}				
+			if (ctx->desched) {
+				ctx->syscallbuf_hdr->abort_commit = 1;
+				record_virtual_event(ctx,
+						     USR_SYSCALLBUF_ABORT_COMMIT);
 			}
 
 			break;
