@@ -31,13 +31,14 @@ static void rec_sched_init()
 	current_thread_ptr = registered_threads = list_new();
 }
 
-static void set_switch_counter(struct context *last_ctx, struct context *ctx)
+static void set_switch_counter(struct context *last_ctx, struct context *ctx,
+			       int max_events)
 {
 	assert(ctx != NULL);
 	if (last_ctx == ctx) {
 		ctx->switch_counter--;
 	} else {
-		ctx->switch_counter = MAX_SWITCH_COUNTER;
+		ctx->switch_counter = max_events;
 	}
 }
 
@@ -45,8 +46,11 @@ static void set_switch_counter(struct context *last_ctx, struct context *ctx)
  * Retrieves a thread from the pool of active threads in a
  * round-robin fashion.
  */
-struct context* get_active_thread(struct context *ctx)
+struct context* get_active_thread(const struct flags* flags,
+				  struct context* ctx)
 {
+	int max_events = flags->max_events;
+
 	/* This maintains the order in which the threads are signaled to continue and
 	 * when the the record is actually written
 	 */
@@ -59,7 +63,7 @@ struct context* get_active_thread(struct context *ctx)
 		/* switch to next thread if the thread reached the maximum number of RBCs */
 		if (ctx->switch_counter < 0) {
 			current_thread_ptr = list_next(current_thread_ptr);
-			ctx->switch_counter = MAX_SWITCH_COUNTER;
+			ctx->switch_counter = max_events;
 		}
 	}
 
@@ -72,13 +76,13 @@ struct context* get_active_thread(struct context *ctx)
 				if (return_ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
 					if (sys_waitpid_nonblock(return_ctx->child_tid, &(return_ctx->status)) != 0) {
 						return_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-						set_switch_counter(last_ctx, return_ctx);
+						set_switch_counter(last_ctx, return_ctx, max_events);
 						last_ctx = return_ctx;
 						return return_ctx;
 					}
 					continue;
 				}
-				set_switch_counter(last_ctx, return_ctx);
+				set_switch_counter(last_ctx, return_ctx, max_events);
 				last_ctx = return_ctx;
 				return return_ctx;
 			}
@@ -122,7 +126,8 @@ int rec_sched_get_num_threads()
  * Registers a new thread to the runtime system. This includes
  * initialization of the hardware performance counters
  */
-void rec_sched_register_thread(pid_t parent, pid_t child)
+void rec_sched_register_thread(const struct flags* flags,
+			       pid_t parent, pid_t child)
 {
 	assert(child > 0 && child < MAX_TID);
 
@@ -146,7 +151,7 @@ void rec_sched_register_thread(pid_t parent, pid_t child)
 	sys_ptrace_setup(child);
 
 	init_hpc(ctx);
-	start_hpc(ctx, MAX_RECORD_INTERVAL);
+	start_hpc(ctx, flags->max_rbc);
 
 	registered_threads = list_push_front(registered_threads, ctx);
 	num_active_threads++;

@@ -154,6 +154,11 @@ struct mmapped_file {
 #define CHECKSUM_ALL			-1
 
 struct flags {
+	/* Max counter value before the scheduler interrupts a tracee. */
+	int max_rbc;
+	/* Max number of trace events before the scheduler
+	 * de-schedules a tracee. */
+	int max_events;
 	int option;
 	bool redirect;
 	bool use_syscall_buffer;

@@ -183,7 +183,7 @@ static void start(int argc, char* argv[], char** envp)
 			init_libpfm();
 
 			/* register thread at the scheduler and start the HPC */
-			rec_sched_register_thread(0, pid);
+			rec_sched_register_thread(&__rr_flags, 0, pid);
 
 			/* perform the action recording */
 			log_info("Start recording...");
@@ -289,6 +289,12 @@ static void print_usage()
 "  -b, --force-syscall-buffer force the syscall buffer preload library\n"
 "                             to be used, even if that's probably a bad\n"
 "                             idea\n"
+"  -c, --num-cpu-ticks=<NUM>  maximum number of 'CPU ticks' (currently \n"
+"                             retired conditional branches) to allow a \n"
+"                             task to run before interrupting it\n"
+"  -e, --num-events=<NUM>     maximum number of events (syscall \n"
+"                             enter/exit, signal, CPU interrupt, ...) \n"
+"                             to allow a task before descheduling it\n"
 "  -n, --no-syscall-buffer    disable the syscall buffer preload library\n"
 "                             even if it would otherwise be used"
 "\n"
@@ -312,16 +318,24 @@ static int parse_record_args(int argc, char** argv, struct flags* flags)
 {
 	struct option opts[] = {
 		{ "force-syscall-buffer", no_argument, NULL, 'b' },
+		{ "num-cpu-ticks", required_argument, NULL, 'c' },
+		{ "num-events", required_argument, NULL, 'e' },
 		{ "no-syscall-buffer", no_argument, NULL, 'n' },
 		{ 0 }
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "bn", opts, &i)) {
+		switch (getopt_long(argc, argv, "c:be:n", opts, &i)) {
 		case -1:
 			return 0;
 		case 'b':
 			flags->use_syscall_buffer = TRUE;
+			break;
+		case 'c':
+			flags->max_rbc = MAX(1, atoi(optarg));
+			break;
+		case 'e':
+			flags->max_events = MAX(1, atoi(optarg));
 			break;
 		case 'n':
 			flags->use_syscall_buffer = FALSE;
@@ -385,6 +399,8 @@ static int parse_args(int argc, char** argv, struct flags* flags, int* argi)
 	int i;
 
 	memset(flags, 0, sizeof(*flags));
+	flags->max_rbc = DEFAULT_MAX_RBC;
+	flags->max_events = DEFAULT_MAX_EVENTS;
 	flags->checksum = CHECKSUM_NONE;
 	flags->dbgport = -1;
 	flags->dump_at = DUMP_AT_NONE;
@@ -447,6 +463,9 @@ int main(int argc, char* argv[], char** envp)
 	}
 
 	if (RECORD == __rr_flags.option) {
+		log_info("Scheduler using max_events=%d, max_rbc=%d",
+			 __rr_flags.max_events, __rr_flags.max_rbc);
+
 		if (!__rr_flags.use_syscall_buffer) {
 			log_info("Syscall buffer disabled by flag");
 		} else if (!is_seccomp_bpf_available()) {

@@ -4,7 +4,8 @@
 #define __HANDLE_SIGNAL_H__
 
 struct context;
+struct flags;
 
-void handle_signal(struct context* context);
+void handle_signal(const struct flags* flags, struct context* context);
 
 #endif /* __HANDLE_SIGNAL_H__ */
