@@ -1,88 +1,112 @@
 <html>
 
 <head>
+  <meta charset="utf-8">
   <title>RR</title>
   <style type="text/css">
 body {
   background-color: aqua;
 }
-
+div {
+  display: inline;
+}
 .huge-text {
   font-size: 72pt;
 }
+span:nth-child(7n+1) { color: red; }
+span:nth-child(7n+2) { color: orange; }
+span:nth-child(7n+3) { color: yellow; }
+span:nth-child(7n+4) { color: green; }
+span:nth-child(7n+5) { color: blue; }
+span:nth-child(7n+6) { color: indigo; }
+span:nth-child(7n+7) { color: violet; }
   </style>
 </head>
 
 <body>
-  <marquee scrollamount="40"><blink><span class="huge-text">
-      <img src="flag.gif"><img src="flag.gif"><img src="flag.gif">
-      <font color="red">W</font><font color="orange">E</font><font color="yellow">L</font><font color="green">C</font><font color="blue">O</font><font color="indigo">M</font><font color="violet">E</font> <font color="red">T</font><font color="orange">O</font> <font color="yellow">R</font><font color="green">R</font>
-      <img src="flag.gif"><img src="flag.gif"><img src="flag.gif">
-      <font color="red">W</font><font color="orange">E</font><font color="yellow">L</font><font color="green">C</font><font color="blue">O</font><font color="indigo">M</font><font color="violet">E</font> <font color="red">T</font><font color="orange">O</font> <font color="yellow">R</font><font color="green">R</font>
-      <img src="flag.gif"><img src="flag.gif"><img src="flag.gif">
-      <font color="red">W</font><font color="orange">E</font><font color="yellow">L</font><font color="green">C</font><font color="blue">O</font><font color="indigo">M</font><font color="violet">E</font> <font color="red">T</font><font color="orange">O</font> <font color="yellow">R</font><font color="green">R</font>
-      <img src="flag.gif"><img src="flag.gif"><img src="flag.gif">
-      <font color="red">W</font><font color="orange">E</font><font color="yellow">L</font><font color="green">C</font><font color="blue">O</font><font color="indigo">M</font><font color="violet">E</font> <font color="red">T</font><font color="orange">O</font> <font color="yellow">R</font><font color="green">R</font>
-      <img src="flag.gif"><img src="flag.gif"><img src="flag.gif">
-      <font color="red">W</font><font color="orange">E</font><font color="yellow">L</font><font color="green">C</font><font color="blue">O</font><font color="indigo">M</font><font color="violet">E</font> <font color="red">T</font><font color="orange">O</font> <font color="yellow">R</font><font color="green">R</font>
-      <img src="flag.gif"><img src="flag.gif"><img src="flag.gif">
-  </span></blink></marquee>
+  <marquee scrollamount="40">
+    <blink>
+      <div class="huge-text"> 
+        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+          <img src="mchammer.gif"><img src="flag.gif"></div>
+        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+          <img src="mchammer.gif"><img src="flag.gif"></div>
+        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+          <img src="mchammer.gif"><img src="flag.gif"></div>
+        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+          <img src="mchammer.gif"><img src="flag.gif"></div>
+        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+          <img src="mchammer.gif"><img src="flag.gif"></div>
+        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+          <img src="mchammer.gif"><img src="flag.gif"></div>
+      </div>
+    </blink>
+  </marquee>
 
   <h1>rr is a lightweight tool for recording and replaying execution
     of applications (trees of processes and threads).</h1>
 
-  <h2>Quick-start guide</h2>
-
-  <p>To install prebuilt binaries on Ubuntu &gt;=12.04,</p>
-  <pre>
+  <section>
+    <h2>Quick-start guide</h2>
+    <p>rr can currently only record and replay x86 binaries. This
+      restriction will be lifted in a future version. rr also requires a
+      relatively recent chip, Merom or so and later. That,
+      unfortunately, may be a permanent restriction.</p>
+    <p>To install prebuilt, cross-compiled x86 binaries on your x86_64
+      Ubuntu &gt;=12.04 system,</p>
+    <pre>
 cd /tmp
-wget http://people.mozilla.com/~roc/rr/rr-0.0prerelease.0-Linux-x86_64.deb
-sudo dpkg -i rr-0.0prerelease.0-Linux-x86_64.deb
-  </pre>
-
-  <p>Or on Fedora &gt;=17</p>
-  <pre>
+wget http://rr-project.org/releases/rr-0.0.0-Linux-x86_64.deb
+sudo dpkg -i rr-0.0.0-Linux-x86_64.deb
+    </pre>
+    <p>And on Fedora &gt;=17</p>
+    <pre>
 cd /tmp
-wget http://people.mozilla.com/~roc/rr/rr-0.0prerelease.0-Linux-x86_64.rpm
-sudo rpm -i rr-0.0prerelease.0-Linux-x86_64.rpm
-  </pre>
+wget http://rr-project.org/releases/rr-0.0.0-Linux-x86_64.rpm
+sudo rpm -i rr-0.0.0-Linux-x86_64.rpm
+    </pre>
+    <p>Once rr is installed,
+      see <a href="https://github.com/mozilla/rr/wiki/Usage">https://github.com/mozilla/rr/wiki/Usage</a>
+      for how to run rr.</p>
+  </section>
 
-  <p>Once rr is installed,
-  see the <a href="https://github.com/mozilla/rr/wiki/Usage">usage
-  instructions</a> to run rr.</p>
-
-  <h2>Communication</h2>
-
-  <p>Technical discussion of rr happens in the "rr-dev" mailing list. Go to
-    <a href="https://mail.mozilla.org/listinfo/rr-dev">https://mail.mozilla.org/listinfo/rr-dev</a>
-    to subscribe.</p>
-  <p>The current build and test status of rr is available
-    at <a href="https://travis-ci.org/mozilla/rr">https://travis-ci.org/mozilla/rr</a>.</p>
-  <p>Some rr folks hang out in #research on irc.mozilla.org.</p>
-
-  <h2>Code</h2>
-
-  <p>To get the sources</p>
-  <pre>
+  <section>
+    <h2>Code</h2>
+    <p>The project is tracked at <a href="https://github.com/mozilla/rr">https://github.com/mozilla/rr</a>.</p>
+    <p>To get the sources</p>
+    <pre>
 git clone git://github.com/mozilla/rr.git
-  </pre>
+    </pre>
+    <p>Go
+      to <a href="https://github.com/mozilla/rr/wiki/Installation">https://github.com/mozilla/rr/wiki/Installation</a>
+      for instructions on how to set up your machine.</p>
+  </section>
 
-  <p>The rr project is tracked at <a href="https://github.com/mozilla/rr">https://github.com/mozilla/rr</a>.</p>
+  <section>
+    <h2>Communication</h2>
+    <p>Technical discussion happens in the "rr-dev" mailing
+      list. Go
+      to <a href="https://mail.mozilla.org/listinfo/rr-dev">https://mail.mozilla.org/listinfo/rr-dev</a>
+      to subscribe.</p>
+    <p>The current build and test status is available
+    at <a href="https://travis-ci.org/mozilla/rr">https://travis-ci.org/mozilla/rr</a>.</p>
+    <p>Some rr folks hang out in #research on irc.mozilla.org.</p>
+  </section>
 
-  <h2>Building from source</h2>
+  <section>
+    <h2>Documentation</h2>
+    <p>Peruse <a href="https://github.com/mozilla/rr/wiki">https://github.com/mozilla/rr/wiki</a>.</p>
+  </section>
 
-  <p>Go
-  to <a href="https://github.com/mozilla/rr/wiki/Installation">https://github.com/mozilla/rr/wiki/Installation</a>
-  for instructions on how to set up your machine for rr.</p>
-
-  <h2>Documentation</h2>
-
-  <p>Peruse <a href="https://github.com/mozilla/rr/wiki">https://github.com/mozilla/rr/wiki</a>.</p>
-
-  <p><i>Last updated Sat Jun 1 16:21</i></p>
-
-  <p><a href="http://www.microsoft.com/ie"><img src="ie.gif"></a></p>
-
+  <section>
+    <p><i>Last updated Wed Jul 10 21:51</i></p>
+    <p><a href="http://www.microsoft.com/ie"><img src="ie.gif"></a></p>
+  </section>
 </body>
 
 </html>
