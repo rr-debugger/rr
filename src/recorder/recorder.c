@@ -114,7 +114,7 @@ static int wait_nonblock(struct context *ctx)
 
 	if (ret) {
 		assert(WIFEXITED(ctx->status) == 0);
-		handle_signal(ctx);
+		handle_signal(&rr_flags_, ctx);
 		ctx->event = read_child_orig_eax(ctx->child_tid);
 	}
 	return ret;
@@ -139,7 +139,7 @@ static void cont_block(struct context *ctx)
 	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;
 	canonicalize_event(ctx);
-	handle_signal(ctx);
+	handle_signal(&rr_flags_, ctx);
 }
 
 /**
@@ -153,7 +153,7 @@ static void cont_syscall_block(struct context *ctx)
 	read_child_registers(ctx->child_tid, &(ctx->child_regs));
 	ctx->event = ctx->child_regs.orig_eax;
 	canonicalize_event(ctx);
-	handle_signal(ctx);
+	handle_signal(&rr_flags_, ctx);
 }
 
 static void warn_no_scratch(const char* event, ssize_t size)
@@ -492,7 +492,8 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 
 		/* wait until the new thread is ready */
 		sys_waitpid(new_tid, &((*ctx_ptr)->status));
-		rec_sched_register_thread((*ctx_ptr)->child_tid, new_tid);
+		rec_sched_register_thread(&rr_flags_,
+					  (*ctx_ptr)->child_tid, new_tid);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
@@ -554,14 +555,14 @@ void start_recording(struct flags rr_flags)
 	struct context *ctx = NULL;
 
 	/* record the initial status of the register file */
-	ctx = get_active_thread(ctx);
+	ctx = get_active_thread(&rr_flags_, ctx);
 	ctx->event = -1000;
 	record_event(ctx, STATE_SYSCALL_ENTRY);
 	rec_init_scratch_memory(ctx);
 
 	while (rec_sched_get_num_threads() > 0) {
 		/* get a thread that is ready to be executed */
-		ctx = get_active_thread(ctx);
+		ctx = get_active_thread(&rr_flags_, ctx);
 
 		debug("Active task is %d", ctx->child_tid);
 

@@ -443,7 +443,7 @@ void record_event(struct context *ctx, int state)
 		record_performance_data(ctx);
 		record_register_file(ctx);
 		/* reset the performance counters */
-		reset_hpc(ctx, MAX_RECORD_INTERVAL);
+		reset_hpc(ctx, rr_flags_.max_rbc);
 	//} else {
 		//fprintf(trace_file, "\n");
 	//}
