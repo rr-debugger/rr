@@ -128,6 +128,34 @@ static int try_handle_shared_mmap_access(struct context *ctx,
 	return ctx->event;
 }
 
+static int is_desched_event_syscall(struct context* ctx,
+				    const struct user_regs_struct* regs)
+{
+	return (SYS_ioctl == regs->orig_eax
+		&& ctx->desched_fd_child == regs->ebx);
+}
+
+static int is_arm_desched_event_syscall(struct context* ctx,
+					const struct user_regs_struct* regs)
+{
+	return (is_desched_event_syscall(ctx, regs)
+		&& PERF_EVENT_IOC_ENABLE == regs->ecx);
+}
+
+static int is_disarm_desched_event_syscall(struct context* ctx,
+					const struct user_regs_struct* regs)
+{
+	return (is_desched_event_syscall(ctx, regs)
+		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
+}
+
+static void disarm_desched_event(struct context* ctx)
+{
+	if (ioctl(ctx->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
+		fatal("Failed to disarm desched event");
+	}
+}
+
 static uint64_t
 read_desched_counter(struct context* ctx)
 {
@@ -165,9 +193,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 	/* Disarm the counter to prevent further desched events while
 	 * we're manipulating the tracee and it finishes its
 	 * syscall. */
-	if (ioctl(ctx->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
-		fatal("Failed to disarm desched event");
-	}
+	disarm_desched_event(ctx);
 
 	/* For not-perfectly-understood reasons, we see a second,
 	 * redundant SIGIO notificaion (see syscall_buffer.c).  Step
@@ -186,11 +212,9 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 	/* (syscall trap event) */
 	assert(WIFSTOPPED(status) && (0x80 | SIGTRAP) == WSTOPSIG(status));
 
-	/* XXX extra anal: check that $ip is at the untraced syscall
-	 * entry */
-	if (SYS_ioctl == regs->orig_eax
-	    && regs->ebx == ctx->desched_fd_child
-	    && PERF_EVENT_IOC_DISABLE == regs->ecx) {
+	assert(SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx));
+
+	if (is_disarm_desched_event_syscall(ctx, regs)) {
 		/* Finish the ioctl().  It won't block, and we don't
 		 * need to record it or any other data for the replay
 		 * to work properly.  The reason we can do this is
@@ -277,13 +301,269 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 	record_child_data(ctx, ctx->event, frame_size, (void*)regs.esp);
 }
 
-void handle_signal(const struct flags* flags, struct context* ctx)
+static int is_trace_trap(const siginfo_t* si)
+{
+	return SIGTRAP == si->si_signo && TRAP_TRACE == si->si_code;
+}
+
+/**
+ * Return nonzero if |si| seems to indicate that single-stepping in
+ * the syscallbuf lib reached a syscall entry.
+ *
+ * What we *really* want to do is check to see if the delivered signal
+ * was |STOPSIG_SYSCALL|, like when we continue with PTRACE_SYSCALL.
+ * But for some reason that's not delivered with PTRACE_SINGLESTEP.
+ * What /does/ seem to be delivered is SIGTRAP/code=BRKPT, as opposed
+ * to SIGTRAP/code=TRACE for stepping normal instructions.
+ */
+static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si)
+{
+	return (STOPSIG_SYSCALL == si->si_signo
+		|| (SIGTRAP == si->si_signo && TRAP_BRKPT == si->si_code));
+}
+
+/**
+ * Take |ctx| to a place where it's OK to deliver a signal.  The
+ * signal information and tracee registers at the happy place are
+ * returned in |si| and |regs|.
+ */
+void go_to_a_happy_place(struct context* ctx,
+			 siginfo_t* si, struct user_regs_struct* regs)
 {
 	pid_t tid = ctx->child_tid;
+	/* If we deliver the signal at the tracee's current execution
+	 * point, it will result in a syscall-buffer-flush event being
+	 * recorded if there are any buffered syscalls.  The
+	 * signal-delivery event will follow.  So the definition of a
+	 * "happy place" to deliver a signal is one in which the
+	 * syscall buffer flush (i.e., executing all the buffered
+	 * syscalls) will be guaranteed to happen before the signal
+	 * delivery during replay.
+	 *
+	 * If the syscallbuf isn't allocated, then there can't be any
+	 * buffered syscalls, so there's no chance of a
+	 * syscall-buffer-flush event being recorded before the signal
+	 * delivery.  So that's a happy place.
+	 *
+	 * If the $ip isn't in the syscall lib and the syscallbuf is
+	 * allocated, then we may have buffered syscalls.  But the $ip
+	 * being outside the lib means one of two things: the tracee
+	 * is either doing something unrelated to the syscall lib, or
+	 * called a wrapper in the syscallbuf lib and the buffer
+	 * overflowed (falling back on a traced syscall).  In either
+	 * case, the buffer-flush event will do what we want, so it's
+	 * a happy place.
+	 *
+	 * So we continue with the $ip in the syscallbuf lib and the
+	 * syscallbuf allocated.  For the purpose of this analysis, we
+	 * can abstract the tracee's execution state as being in one
+	 * of these intervals
+	 *
+	 * --- ... ---
+	 *
+	 *   (Before we allocate the syscallbuf, it's OK to deliver
+	 *   the signal, as discussed above.)
+	 *
+	 * --- allocated syscallbuf ---
+	 *
+	 *   In this interval, no syscalls can be buffered, so there's
+	 *   no possibility of a syscall-buffer-flush event being
+	 *   recorded before the signal delivery.
+	 *
+	 * --- check to see if syscallbuf is locked ---
+	 *
+	 *   Assume there are buffered syscalls.  If the check says
+	 *   "buffer is locked" (meaning we're re-entering the
+	 *   syscallbuf code through a signal handler), then we'll
+	 *   record a buffer-flush event (or already have).  But, this
+	 *   means that during replay, we'll have already finished
+	 *   flushing the buffer at this point in execution.  So the
+	 *   check will say, "buffer is *un*locked".  That will cause
+	 *   replay divergence.  So,
+	 *
+	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
+	 *
+	 * --- lock syscallbuf ---
+	 *
+	 *   The lib locks the buffer just before it allocates a
+	 *   record.  Assume that the buffer is almost full.  During
+	 *   recording, the lib can allocate a record that overflows
+	 *   the buffer.  The tracee will abort the untraced syscall
+	 *   at |can_buffer_syscall()|.  But if we drop a buffer-flush
+	 *   event here, then during replay the buffer will be clear
+	 *   and the overflow check will (most likely) succeed.
+	 *   (Technically, if this was the first record allocated,
+	 *   it's OK.)  So
+	 *
+	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
+	 *
+	 * --- arm-desched ioctl() ---
+	 *
+	 *   If the buffer isn't empty during recording, and is
+	 *   flushed just after this during replay, then the lib will
+	 *   allocate a different pointer for the record.  This
+	 *   diverges so
+	 *
+	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
+	 *
+	 * --- (untraced) syscall ---
+	 *
+	 *   Still not safe for the reason above.  Note, if the tracee
+	 *   falls back on a traced syscall, then its $ip will be
+	 *   outside the syscallbuf lib, and that's a happy place (see
+	 *   above).
+	 *
+	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
+	 *
+	 * --- disarm-desched ioctl() ---
+	 *
+	 *   Still not safe for the reason above.
+	 *
+	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
+	 *
+	 * --- commit syscall record ---
+	 *
+	 *   We just exited all code related to the last syscall in
+	 *   the buffer, so during replay all buffered syscalls must
+	 *   have been retired by now.  So it's OK to deliver the
+	 *   signal.
+	 *
+	 * --- unlock syscallbuf ---
+	 *
+	 *   Still safe for the reasons above.
+	 *
+	 * --- ... ---
+	 *
+	 * The reason the analysis is that pedantic is because our
+	 * next job is to figure out which interval the tracee is in.
+	 * We can observe the following state in the tracee
+	 *  - $ip
+	 *  - buffer locked-ness
+	 *  - buffer record counter
+	 *  - enter/exit syscall
+	 *
+	 * It's not hard to work out what state bits imply which
+	 * interval, and how changes in that state signify moving to
+	 * another interval, and that's what the code below does. */
+	struct syscallbuf_hdr initial_hdr;
+	struct syscallbuf_hdr* hdr = ctx->syscallbuf_hdr;
+	int status = ctx->status;
+
+	debug("Stepping tracee to happy place to deliver signal ...");
+
+	/* NB: we're responsible for setting these, even if we
+	 * early-return. */
+	sys_ptrace_getsiginfo(tid, si);
+	read_child_registers(tid, regs);
+
+	if (!hdr) {
+		/* Witness that we're in the (...,
+		 * allocated-syscallbuf) interval. */
+		debug("  tracee hasn't allocated syscallbuf yet");
+		return;
+	}
+
+	if (SYSCALLBUF_IS_IP_IN_LIB(regs->eip, ctx)
+	    && is_deterministic_signal(si)) {
+		fatal("TODO: support deterministic signals triggered by syscallbuf code");
+	}
+	/* TODO: when we add support for deterministic signals, we
+	 * should sigprocmask-off all tracee signals while we're
+	 * stepping.  If we tried that with the current impl, the
+	 * syscallbuf code segfaulting would lead to an infinite
+	 * single-stepping loop here.. */
+
+	initial_hdr = *hdr;
+	while (1) {
+		siginfo_t tmp_si;
+		int is_syscall;
+
+		if (!SYSCALLBUF_IS_IP_IN_LIB(regs->eip, ctx)) {
+			/* The tracee can't possible affect the
+			 * syscallbuf here, so a flush is safe.. */
+			debug("  tracee outside syscallbuf lib");
+			goto happy_place;
+		}
+		if (initial_hdr.locked && !hdr->locked) {
+			/* Witness that the tracee moved into the safe
+			 * (unlock-syscallbuf, ...)  interval. */
+			debug("  tracee just unlocked syscallbuf");
+			goto happy_place;
+		}
+		/* XXX we /could/ check if the syscall record was just
+		 * commited, since that's a safe interval, but the
+		 * tracee will also unlock the buffer just after that,
+		 * so meh.  Should do this though if it's a perf
+		 * win. */
+
+		/* We've now established that the tracee is in the
+		 * interval (allocated-syscallbuf, unlock-syscallbuf).
+		 * Until we can prove the tracee moved into a safe
+		 * interval within that, keep stepping. */
+		sys_ptrace_singlestep(tid);
+		sys_waitpid(tid, &status);
+
+		assert(WIFSTOPPED(status));
+		sys_ptrace_getsiginfo(tid, &tmp_si);
+		read_child_registers(tid, regs);
+		is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
+
+		if (!is_syscall && !is_trace_trap(&tmp_si)) {
+			fatal("TODO: support multiple pending signals; received %s (code: %d) at $ip:%p",
+			      signalname(tmp_si.si_signo), tmp_si.si_code,
+			      (void*)regs->eip);
+		}
+		if (!is_syscall) {
+			continue;
+		}
+
+		/* TODO more signals can be delivered while we're
+		 * stepping here too.  Sigh.  See comment above about
+		 * masking signals off.  When we mask off signals, we
+		 * won't need to disarm the desched event, but we will
+		 * need to handle spurious desched notifications. */
+		if (is_desched_event_syscall(ctx, regs)) {
+			debug("  stepping over desched-event syscall");
+			/* Finish the syscall. */
+			sys_ptrace_singlestep(tid);
+			sys_waitpid(tid, &status);
+			if (is_arm_desched_event_syscall(ctx, regs)) {
+				/* Disarm the event: we don't need or
+				 * want to hear about descheds while
+				 * we're stepping the tracee through
+				 * the syscall wrapper. */
+				disarm_desched_event(ctx);
+			}
+			/* We don't care about disarm-desched-event
+			 * syscalls; they're irrelevant. */
+		} else {
+			debug("  running wrapped syscall");
+			/* We may have been notified of the signal
+			 * just after arming the event, but just
+			 * before entering the syscall.  So disarm for
+			 * safety. */
+			/* XXX we really should warn about this, but
+			 * it's just too noisy during unit tests.
+			 * Should find a better way to choose mode. */
+			/*log_warn("Disabling context-switching for possibly-blocking syscall (%s); deadlock may follow",
+			  syscallname(regs->orig_eax));*/
+			disarm_desched_event(ctx);
+			/* And (hopefully!) finish the syscall. */
+			sys_ptrace_singlestep(tid);
+			sys_waitpid(tid, &status);
+		}
+	}
+
+happy_place:
+	/* TODO: restore previous tracee signal mask. */
+	(void)0;
+}
+
+void handle_signal(const struct flags* flags, struct context* ctx)
+{
 	int sig = signal_pending(ctx->status);
-	int event;
-	struct user_regs_struct regs;
 	siginfo_t si;
+	struct user_regs_struct regs;
 	uint64_t max_rbc = flags->max_rbc;
 
 	if (sig <= 0) {
@@ -293,14 +573,10 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	debug("handling signal %s (pevent: %d, event: %s)", signalname(sig),
 	      GET_PTRACE_EVENT(ctx->status), strevent(ctx->event));
 
-	read_child_registers(tid, &regs);
-	sys_ptrace_getsiginfo(tid, &si);
+	go_to_a_happy_place(ctx, &si, &regs);
 
-	assert("TODO: handle signals delivered to syscallbuf code"
-	       && !SYSCALLBUF_IS_IP_IN_LIB(regs.eip, ctx));
-
-	/* See if this signal occurred because of internal rr usage,
-	 * and update ctx appropriately. */
+	/* See if this signal occurred because of an rr implementation detail,
+	 * and fudge ctx appropriately. */
 	switch (sig) {
 	case SIGSEGV: {
 		int mmap_event;
@@ -308,8 +584,8 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 			ctx->event = SIG_SEGV_RDTSC;
 			ctx->child_sig = 0;
 			return;
-		} else if ((mmap_event = try_handle_shared_mmap_access(ctx,
-								       &si))) {
+		}
+		if ((mmap_event = try_handle_shared_mmap_access(ctx, &si))) {
 			ctx->event = mmap_event;
 			ctx->child_sig = 0;
 			return;
@@ -317,17 +593,17 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 		break;
 	}
 	case SIGIO:
-		if ((event = try_handle_desched_event(ctx, &si, &regs))) {
-			ctx->event = event;
-			ctx->child_sig = 0;
+		if (try_handle_desched_event(ctx, &si, &regs)) {
 			return;
-		} else if (read_rbc(ctx->hpc) >= max_rbc) {
+		}
+		if (read_rbc(ctx->hpc) >= max_rbc) {
 			/* HPC interrupt due to exceeding time
 			 * slice. */
 			ctx->event = USR_SCHED;
 			ctx->child_sig = 0;
 			return;
 		}
+		break;
 	}
 
 	/* This signal was generated by the program or an external

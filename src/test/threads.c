@@ -1,12 +1,13 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <signal.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 long int counter = 0;
 
@@ -41,7 +42,11 @@ void* sender(void* id) {
 }
 
 int main() {
+	struct timeval tv;
 	pthread_t thread1, thread2;
+
+	/* (Kick on the syscallbuf lib.) */
+	gettimeofday(&tv, NULL);
 
 	/* Create independent threads each of which will execute
 	 * function */

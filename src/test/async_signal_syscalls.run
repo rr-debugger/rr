@@ -1,0 +1,11 @@
+testname=async_signal_syscalls
+source util.sh
+compile $testname
+skip_if_no_syscall_buf $testname
+record $testname
+# Because of issue #184, replay takes longer than practical.  So for
+# now we'll skip it and hope other tests exercise the relevant code
+# well enough.
+#replay $testname
+#check $testname 'EXIT-SUCCESS'
+cleanup
