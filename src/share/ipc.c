@@ -51,16 +51,15 @@ static long read_child_word(pid_t tid, void *addr, int ptrace_op)
 	long tmp = ptrace(ptrace_op, tid, addr, 0);
 
 	if (errno != 0) {
-		perror("error reading word from child -- bailing out");
-		fprintf(stderr, "read failed at addr %p\n", addr);
-		fprintf(stderr, "printing mapped memory region: we read %ld\n", tmp);
+		log_err("Read of word %p from child returned %ld; dumping map",
+			addr, tmp);
 
 		char path[64];
 		FILE* file;
 		bzero(path, 64);
 		sprintf(path, "/proc/%d/maps", tid);
 		if ((file = fopen(path, "r")) < 0) {
-			perror("error reading child memory maps\n");
+			log_err("Error reading child memory maps\n");
 		}
 
 		int c = getc(file);
@@ -69,9 +68,7 @@ static long read_child_word(pid_t tid, void *addr, int ptrace_op)
 			c = getc(file);
 		}
 
-		assert(1==0);
-
-		//sys_exit();
+		fatal("Goodbye");
 	}
 	return tmp;
 }
