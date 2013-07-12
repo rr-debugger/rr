@@ -1,0 +1,16 @@
+# Disabled because this test fails pretty frequently when SIGUSR1 is
+# delivered while rr processes a time-slice interrupt.  The test case
+# is pretty extreme, but let's hope this isn't a common occurrence!
+
+testname=async_signal_syscalls
+source util.sh
+compile $testname
+skip_if_no_syscall_buf $testname
+# SIGUSR1, wait 0.5s
+record_async_signal 10 0.5 $testname
+# Because of issue #184, replay takes longer than practical.  So for
+# now we'll skip it and hope other tests exercise the relevant code
+# well enough.
+#replay $testname
+#check $testname 'EXIT-SUCCESS'
+cleanup

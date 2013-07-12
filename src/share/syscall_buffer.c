@@ -66,11 +66,6 @@ typedef unsigned char byte;
 static int is_seccomp_bpf_installed;
 
 static __thread byte* buffer = NULL;
-/* This tracks whether the buffer is currently in use for a system
- * call. This is helpful when a signal handler runs during a wrapped
- * system call; we don't want it to use the buffer for its system
- * calls. */
-static __thread int buffer_locked = 0;
 /* This is used to support the buffering of "may-block" system calls.
  * The problem that needs to be addressed can be introduced with a
  * simple example; assume that we're buffering the "read" and "write"
@@ -342,6 +337,7 @@ static void install_syscall_filter()
 		 * will be captured by their own ptrace event */
 		ALLOW_SYSCALL(clone),
 		ALLOW_SYSCALL(fork),
+		ALLOW_SYSCALL(vfork),
 		/* There is really no need for us to ptrace
 		 * restart_syscall. In fact, this will cause an error
 		 * in case the restarted syscall is in the wrapper */
@@ -483,7 +479,7 @@ static void set_up_buffer()
 static void drop_buffer()
 {
 	buffer = NULL;
-	buffer_locked = 0;
+	buffer_hdr()->locked = 0;
 }
 
 /**
@@ -588,20 +584,20 @@ static void* prep_syscall(int notify_desched)
 	if (!buffer) {
 		init();
 	}
-	if (buffer_locked) {
+	if (buffer_hdr()->locked) {
 		/* We may be reentering via a signal handler. Return
 		 * an invalid pointer.
 		 */
 		return NULL;
 	}
 	/* We don't need to worry about a race between testing
-	 * buffer_locked and setting it here. rr recording is
-	 * responsible for ensuring signals are not delivered during
+	 * |locked| and setting it here. rr recording is responsible
+	 * for ensuring signals are not delivered during
 	 * syscall_buffer prologue and epilogue code.
 	 *
 	 * XXX except for synchronous signals generated in the syscall
 	 * buffer code, while reading/writing user pointers */
-	buffer_locked = 1;
+	buffer_hdr()->locked = 1;
 	/* "Allocate" space for a new syscall record, not including
 	 * syscall outparam data. */
 	return buffer_last() + sizeof(struct syscallbuf_record);
@@ -628,7 +624,7 @@ static int can_buffer_syscall(void* record_end)
 		 * Unlock the buffer and then execute the system call
 		 * with a trap to rr.  Note that we reserve enough
 		 * space in the buffer for the next prep_syscall(). */
-		buffer_locked = 0;
+		buffer_hdr()->locked = 0;
 		return 0;
 	}
 	return 1;
@@ -693,7 +689,7 @@ static int commit_syscall(int syscallno, void* record_end, int ret,
 		rec->size = record_end - record_start;
 		hdr->num_rec_bytes += stored_record_size(rec->size);
 	}
-	buffer_locked = 0;
+	buffer_hdr()->locked = 0;
 
 	return update_errno_ret(ret);
 }

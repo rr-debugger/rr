@@ -34,7 +34,8 @@
 
 /**
  * True when |_eip| is at a buffered syscall, i.e. one initiated by a
- * libc wrapper in the library.
+ * libc wrapper in the library.  Callers may assume
+ * |SYSCALLBUF_IS_IP_IN_LIB()| is implied by this.
  */
 #define SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(_eip, _ctx)			\
 	((uintptr_t)(_eip) == (uintptr_t)(_ctx)->untraced_syscall_ip)	\
@@ -77,11 +78,16 @@ struct syscallbuf_record {
 struct syscallbuf_hdr {
 	/* The number of valid syscallbuf_record bytes in the buffer,
 	 * not counting this header. */
-	uint32_t num_rec_bytes : 31;
+	uint32_t num_rec_bytes : 30;
 	/* True if the current syscall should not be committed to the
 	 * buffer, for whatever reason; likely interrupted by
 	 * desched. */
 	uint32_t abort_commit : 1;
+	/* This tracks whether the buffer is currently in use for a
+	 * system call. This is helpful when a signal handler runs
+	 * during a wrapped system call; we don't want it to use the
+	 * buffer for its system calls. */
+	uint32_t locked : 1;
 
 	struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
