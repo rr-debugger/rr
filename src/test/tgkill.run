@@ -1,2 +1,2 @@
 source util.sh
-compare_test tgkill
+compare_test tgkill EXIT-SUCCESS

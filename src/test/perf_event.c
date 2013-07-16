@@ -46,5 +46,6 @@ int main(int argc, char *argv[]) {
 		printf("after yield: %llu\n", get_desched());
 	}
 
+	puts("EXIT_SUCCESS");
 	return 0;
 }
