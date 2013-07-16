@@ -143,7 +143,7 @@ static int is_arm_desched_event_syscall(struct context* ctx,
 }
 
 static int is_disarm_desched_event_syscall(struct context* ctx,
-					const struct user_regs_struct* regs)
+					   const struct user_regs_struct* regs)
 {
 	return (is_desched_event_syscall(ctx, regs)
 		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
@@ -166,10 +166,12 @@ read_desched_counter(struct context* ctx)
 
 /**
  * Return nonzero if |ctx| was stopped because of a SIGIO resulting
- * from notification of |ctx| being descheduled, zero otherwise.
+ * from notification of |ctx| being descheduled, zero otherwise.  The
+ * tracee's execution may be advanced, and if so |regs| is updated to
+ * the tracee's latest state.
  */
 static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
-				    const struct user_regs_struct* regs)
+				    struct user_regs_struct* regs)
 {
 	pid_t tid = ctx->child_tid;
 	int call = ctx->event;
@@ -214,6 +216,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 
 	assert(SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx));
 
+	read_child_registers(tid, regs);
 	if (is_disarm_desched_event_syscall(ctx, regs)) {
 		/* Finish the ioctl().  It won't block, and we don't
 		 * need to record it or any other data for the replay
@@ -323,12 +326,12 @@ static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si)
 }
 
 /**
- * Take |ctx| to a place where it's OK to deliver a signal.  The
- * signal information and tracee registers at the happy place are
- * returned in |si| and |regs|.
+ * Take |ctx| to a place where it's OK to deliver a signal.  |si| and
+ * |regs| must be the current state of |ctx|.  The registers at the
+ * happy place will be returned in |regs|.
  */
 void go_to_a_happy_place(struct context* ctx,
-			 siginfo_t* si, struct user_regs_struct* regs)
+			 const siginfo_t* si, struct user_regs_struct* regs)
 {
 	pid_t tid = ctx->child_tid;
 	/* If we deliver the signal at the tracee's current execution
@@ -451,11 +454,6 @@ void go_to_a_happy_place(struct context* ctx,
 
 	debug("Stepping tracee to happy place to deliver signal ...");
 
-	/* NB: we're responsible for setting these, even if we
-	 * early-return. */
-	sys_ptrace_getsiginfo(tid, si);
-	read_child_registers(tid, regs);
-
 	if (!hdr) {
 		/* Witness that we're in the (...,
 		 * allocated-syscallbuf) interval. */
@@ -509,9 +507,10 @@ void go_to_a_happy_place(struct context* ctx,
 		is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
-			fatal("TODO: support multiple pending signals; received %s (code: %d) at $ip:%p",
+			fatal("TODO: support multiple pending signals; received %s (code: %d) at $ip:%p while trying to deliver %s (code: %d)",
 			      signalname(tmp_si.si_signo), tmp_si.si_code,
-			      (void*)regs->eip);
+			      (void*)regs->eip,
+			      signalname(si->si_signo), si->si_code);
 		}
 		if (!is_syscall) {
 			continue;
@@ -561,7 +560,9 @@ happy_place:
 
 void handle_signal(const struct flags* flags, struct context* ctx)
 {
+	pid_t tid = ctx->child_tid;
 	int sig = signal_pending(ctx->status);
+	int event;
 	siginfo_t si;
 	struct user_regs_struct regs;
 	uint64_t max_rbc = flags->max_rbc;
@@ -572,6 +573,16 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 
 	debug("handling signal %s (pevent: %d, event: %s)", signalname(sig),
 	      GET_PTRACE_EVENT(ctx->status), strevent(ctx->event));
+
+	sys_ptrace_getsiginfo(tid, &si);
+	read_child_registers(tid, &regs);
+
+	if (SIGIO == sig
+	    && (event = try_handle_desched_event(ctx, &si, &regs))) {
+		ctx->event = event;
+		ctx->child_sig = 0; 
+		return;
+	}
 
 	go_to_a_happy_place(ctx, &si, &regs);
 
@@ -593,9 +604,8 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 		break;
 	}
 	case SIGIO:
-		if (try_handle_desched_event(ctx, &si, &regs)) {
-			return;
-		}
+		/* TODO: imprecise counters can probably race with
+		 * delivery of a "real" SIGIO */
 		if (read_rbc(ctx->hpc) >= max_rbc) {
 			/* HPC interrupt due to exceeding time
 			 * slice. */

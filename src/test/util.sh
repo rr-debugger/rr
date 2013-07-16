@@ -28,6 +28,15 @@ function skip_if_no_syscall_buf { testname=$1
 	fi
 }
 
+# If the test is causing an unrealistic failure when the syscallbuf is
+# enabled, skip it.  This better be a temporary situation!
+function skip_if_syscall_buf { testname=$1
+	if [[ "-b" == "$lib" ]]; then
+		echo NOTE: Skipping "'$testname'" because syscallbuf is enabled
+		exit 0
+	fi
+}
+
 # compile test
 # $1 is test name
 # $2 are compilation flags

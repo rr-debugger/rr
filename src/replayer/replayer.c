@@ -949,7 +949,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		step.action = TSTEP_RETIRE;
 		break;
 	case USR_SYSCALLBUF_FLUSH:
-		rep_process_flush(ctx);
+		rep_process_flush(ctx, rr_flags->redirect);
 
 		/* TODO */
 		step.action = TSTEP_RETIRE;
