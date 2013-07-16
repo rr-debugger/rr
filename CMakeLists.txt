@@ -1,6 +1,6 @@
 # *-* Mode: cmake; *-*
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.5)
 project(rr)
 
 enable_testing()
@@ -17,10 +17,10 @@ set(rr_VERSION_MAJOR 0)
 set(rr_VERSION_MINOR 1pre)
 set(rr_VERSION_PATCH 0)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g3 -Wall -Werror -m32")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32")
 
 # Disable PIC.
-string(REGEX REPLACE "-fPIC" "-pthread"
+string(REGEX REPLACE "-fPIC" ""
   CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
 
 add_library(rr_syscall_buffer
