@@ -571,7 +571,8 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 		return;
 	}
 
-	debug("handling signal %s (pevent: %d, event: %s)", signalname(sig),
+	debug("%d: handling signal %s (pevent: %d, event: %s)",
+	      ctx->child_tid, signalname(sig),
 	      GET_PTRACE_EVENT(ctx->status), strevent(ctx->event));
 
 	sys_ptrace_getsiginfo(tid, &si);

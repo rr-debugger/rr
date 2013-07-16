@@ -483,7 +483,6 @@ static void set_up_buffer()
 static void drop_buffer()
 {
 	buffer = NULL;
-	buffer_hdr()->locked = 0;
 }
 
 /**
