@@ -723,6 +723,18 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 	return commit_syscall(SYS_clock_gettime, ptr, ret, NO_DESCHED);
 }
 
+int close(int fd)
+{
+	void* ptr = prep_syscall(NO_DESCHED);
+	long ret;
+
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_close, fd);
+ 	}
+	ret = untraced_syscall1(SYS_close, fd);
+	return commit_syscall(SYS_close, ptr, ret, NO_DESCHED);
+}
+
 int creat(const char* pathname, mode_t mode)
 {
 	/* Thus sayeth the man page:
