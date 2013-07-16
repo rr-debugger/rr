@@ -1,5 +1,0 @@
-source util.sh
-compile breakpoint
-record breakpoint
-debug breakpoint1
-cleanup
