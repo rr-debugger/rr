@@ -29,6 +29,6 @@ int spin() {
 int main(int argc, char *argv[]) {
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	printf("done: dummy=%d\n", spin());
+	printf("EXIT-SUCCESS dummy=%d\n", spin());
 	return 0;
 }

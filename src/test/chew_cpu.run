@@ -1,2 +1,2 @@
 source util.sh
-compare_test chew_cpu
+compare_test chew_cpu EXIT-SUCCESS

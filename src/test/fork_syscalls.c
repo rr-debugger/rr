@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -22,16 +24,20 @@ static void syscalls(int num) {
 }
 
 int main() {
+	int child;
+
 	syscalls(10);
 
-	if (0 == fork()) {
+	if (0 == (child = fork())) {
 		syscalls(10);
-		puts("child done");
+		printf("CHILD-EXIT ");
 		exit(0);
 	}
 
 	syscalls(10);
 
-	puts("EXIT-SUCCESS");
+	waitpid(child, NULL, 0);
+
+	puts("PARENT-EXIT");
 	return 0;
 }
