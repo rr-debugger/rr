@@ -1,2 +1,9 @@
+# When the syscallbuf is enabled, this test looks to rr like a long
+# series of CPU chewing, with buffer flushes at each time-slice
+# interrupt.  This makes replay take a pathologically long time
+# because of all the async-signal replaying.  So speed things up by
+# bumping up the timeslice.
+RECORD_ARGS="-c20000000"
+
 source util.sh
 compare_test threads EXIT-SUCCESS

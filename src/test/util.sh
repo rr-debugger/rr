@@ -46,7 +46,7 @@ function compile {
 
 # record test
 function record { testname=$1; testargs=$2;
-	$rr record $lib a.out $testargs 1> $testname.out.record
+	$rr record $lib $RECORD_ARGS a.out $testargs 1> $testname.out.record
 }
 
 function delay_kill {
