@@ -797,6 +797,18 @@ int open(const char* pathname, int flags, ...)
 	return commit_syscall(SYS_open, ptr, ret, NO_DESCHED);
 }
 
+int open64(const char* pathname, int flags, ...)
+{
+	int mode = 0;
+	if (O_CREAT & flags) {
+		va_list mode_arg;
+		va_start(mode_arg, flags);
+		mode = va_arg(mode_arg, int);
+		va_end(mode_arg);
+	}
+	return open(pathname, flags | O_LARGEFILE, mode);
+}
+
 ssize_t read(int fd, void* buf, size_t count)
 {
 	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
