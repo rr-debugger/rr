@@ -152,6 +152,10 @@ function cleanup {
 # Compile $test.c, record it, then replay it (optionally with
 # $rr_flags) and verify record/replay output match.
 function compare_test { test=$1; token=$2; rr_flags=$3;
+	if [[ $token == "" ]]; then
+		echo "FAILED: Test $test didn't pass an exit token" >&2
+		exit 1
+	fi
 	compile $test
 	record $test
 	replay $test $rr_flags
