@@ -11,7 +11,7 @@ struct rep_trace_step;
  * event.
  */
 void rep_skip_desched_ioctl(struct context* ctx);
-void rep_process_flush(struct context* ctx);
+void rep_process_flush(struct context* ctx, int redirect_stdio);
 /* |redirect_stdio| is nonzero if output written to stdout/stderr
  * during recording should be tee'd during replay, zero otherwise. */
 void rep_process_syscall(struct context* ctx, int redirect_stdio,

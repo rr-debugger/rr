@@ -202,10 +202,13 @@ static void emulate_buffered_syscall(struct context* ctx,
 	}
 
 	read_child_registers(tid, &regs);
-	if (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs.eip, ctx)
-	    || rec->syscallno != regs.orig_eax) {
-		log_err("Bad ip %p, or trying to emulate %s but replayed to entry of %s",
-			(void*)regs.eip,
+	if (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs.eip, ctx)) {
+		log_err("Bad ip %p: should have been buffered-syscall ip",
+			(void*)regs.eip);
+		emergency_debug(ctx);
+	}
+	if (rec->syscallno != regs.orig_eax) {
+		log_err("Trying to emulate `%s' but replayed to entry of `%s'",
 			syscallname(rec->syscallno),
 			syscallname(regs.orig_eax));
 		emergency_debug(ctx);
@@ -217,13 +220,49 @@ static void emulate_buffered_syscall(struct context* ctx,
 	finish_syscall_emu(ctx);
 }
 
+/**
+ * |ctx| is at a "write" syscall.  If the recorded write was to STDOUT
+ * or STDERR, then also write the output to the current STDOUT/STDERR
+ * (if the user wishes).
+ *
+ * NB: this doesn't bother to check for writes to the actual
+ * STDOUT/STDERR /files/, just the fd numbers.  We don't record file
+ * information.  That means output written to a dup of STDOUT will not
+ * be replayed by this helper.  This could maybe be a todo.
+ */
+static void maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
+{
+	struct user_regs_struct regs;
+	int fd;
+
+	if (!redirect_stdio) {
+		return;
+	}
+
+	read_child_registers(ctx->child_tid, &regs);
+
+	assert(SYS_write == regs.orig_eax);
+
+	fd = regs.ebx;
+	if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+		size_t len = regs.edx;
+		void* addr = (void*) regs.ecx;
+		void* buf = read_child_data(ctx, len, addr);
+		if (len != write(fd, buf, len)) {
+			fatal("Couldn't write stdio");
+		}
+		sys_free(&buf);
+	}
+}
+
 void rep_skip_desched_ioctl(struct context* ctx)
 {
 	struct syscallbuf_record rec = { .syscallno = SYS_ioctl, .ret = 0 };
 	return emulate_buffered_syscall(ctx, &rec);
 }
 
-void rep_process_flush(struct context* ctx) {
+void rep_process_flush(struct context* ctx, int redirect_stdio)
+{
 	struct syscallbuf_hdr hdr = *ctx->syscallbuf_hdr;
 	/* Read the recorded syscall buffer back into the shared region. */
 	void* rec_addr;
@@ -249,6 +288,10 @@ void rep_process_flush(struct context* ctx) {
 
 		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
 
+		debug("Replaying buffered `%s' which does%s use desched event",
+		      syscallname(rec->syscallno), 
+		      !rec->desched ? " not" : "");
+
 		if (rec->desched) {
 			/* Skip past the ioctl that armed the desched
 			 * notification. */
@@ -256,6 +299,11 @@ void rep_process_flush(struct context* ctx) {
 		}
 		/* Emulate the "real" syscall. */
 		emulate_buffered_syscall(ctx, rec);
+		/* XXX not pretty; should have this
+		 * actually-replay-parts-of-trace logic centralized */
+		if (SYS_write == rec->syscallno) {
+			maybe_replay_stdio_write(ctx, redirect_stdio);
+		}
 		if (rec->desched) {
 			/* And skip past the ioctl that disarmed the
 			 * desched notification. */
@@ -958,24 +1006,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			/* XXX technically this will print the output
 			 * before we reach the interrupt.  That could
 			 * maybe cause issues in the future. */
-			if (redirect_stdio) {
-				/* print output intended for
-				 * stdout/stderr */
-				struct user_regs_struct regs;
-				read_child_registers(ctx->child_tid, &regs);
-				int fd = regs.ebx;
-				if (fd == STDOUT_FILENO
-				    || fd == STDERR_FILENO) {
-					size_t len = regs.edx;
-					void* addr = (void*) regs.ecx;
-					void* buf = read_child_data(ctx,
-								    len, addr);
-					if (len != write(fd, buf, len)) {
-						fatal("Couldn't write stdio");
-					}
-					sys_free(&buf);
-				}
-			}
+			maybe_replay_stdio_write(ctx, redirect_stdio);
 		}
 		return;
 
