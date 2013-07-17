@@ -73,7 +73,7 @@ def set_up():
     global gdb, rr
     try:
         rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, logfile=open('rr.log', 'w'))
-        expect_rr('server listening on :(\d+)$')
+        expect_rr(r'server listening on :(\d+)\)')
         dbgport = int(rr.match.group(1))
 
         gdb = pexpect.spawn('gdb '+ get_exe(), timeout=TIMEOUT_SEC, logfile=open('gdb.log', 'w'))

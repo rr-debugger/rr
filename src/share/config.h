@@ -74,7 +74,4 @@
  */
 #define MAX_WAIT_TIMEOUT_SYS_WRITE_US		800
 
-/* Set the logical core on which the child process will be pinned on */
-#define CHILD_LOGICAL_CORE_AFFINITY_MASK (unsigned long) 0x1
-
 #endif /* CONFIG_H_ */
