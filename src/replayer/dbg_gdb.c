@@ -134,7 +134,7 @@ struct dbg_context* dbg_await_client_connection(const char* address, short port)
 	if (ret) {
 		fatal("Couldn't bind to server address");
 	}
-	log_info("rr debug server listening on %s:%d",
+	log_info("(rr debug server listening on %s:%d)",
 		 !strcmp(address, "127.0.0.1") ? "" : address,
 		 ntohs(dbg->addr.sin_port));
 	/* block until debugging client connects to us */
