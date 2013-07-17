@@ -1,2 +1,2 @@
-source util.sh chew_cpu "$@"
+source `dirname $0`/util.sh chew_cpu "$@"
 compare_test EXIT-SUCCESS

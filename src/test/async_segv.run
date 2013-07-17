@@ -1,4 +1,4 @@
-source util.sh async_segv "$@"
+source `dirname $0`/util.sh async_segv "$@"
 # SIGSEGV, wait 0.5s
 record_async_signal 11 0.5 async_segv
 replay

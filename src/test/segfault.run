@@ -1,2 +1,2 @@
-source util.sh segfault "$@"
+source `dirname $0`/util.sh segfault "$@"
 compare_test 'caught signal 11, exiting'

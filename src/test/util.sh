@@ -80,6 +80,8 @@ workdir=
 # Did the test pass?  If not, then we'll leave the recording and
 # output around for developers to debug.
 passed=n
+# The unique ID allocated to this test directory.
+nonce=
 
 # Set up the environment and working directory.
 if [[ "$TESTNAME" == "" ]]; then
@@ -107,6 +109,11 @@ trap onexit EXIT
 workdir=`mktemp -dt rr-test-$TESTNAME-XXXXXXXXX`
 cd $workdir
 
+# XXX technically the trailing -XXXXXXXXXX isn't unique, since there
+# could be "foo-123456789" and "bar-123456789", but if that happens,
+# buy me a lottery ticket.
+nonce=${workdir#/tmp/rr-test-$TESTNAME-}
+
 echo Using lib arg "'$LIB_ARG'"
 
 ##--------------------------------------------------
@@ -133,14 +140,15 @@ function skip_if_syscall_buf {
 }
 
 function record { exe=$1; exeargs=$2;
-    rr record $LIB_ARG $RECORD_ARGS ${OBJDIR}/bin/$exe $exeargs 1> record.out
+    cp ${OBJDIR}/bin/$exe $exe-$nonce
+    rr record $LIB_ARG $RECORD_ARGS $exe-$nonce $exeargs 1> record.out
 }
 
 #  record_async_signal <signal> <delay-secs> <test>
 #
 # Record $test, delivering $signal to it after $delay-secs.
 function record_async_signal { sig=$1; delay_secs=$2; exe=$3;
-    delay_kill $sig $delay_secs $exe &
+    delay_kill $sig $delay_secs $exe-$nonce &
     record $exe
     wait
 }
@@ -153,7 +161,7 @@ function replay { replayflags=$1
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { exe=$1; expectscript=$2; replayargs=$3
-    python $TESTDIR/$expectscript.py $OBJDIR/bin/$exe rr replay --dbgport=$$ $replayargs trace_0/
+    python $TESTDIR/$expectscript.py $exe-$nonce rr replay --dbgport=$$ $replayargs trace_0/
     if [[ $? == 0 ]]; then
         passed=y
 	echo "Test '$TESTNAME' PASSED"
@@ -209,7 +217,7 @@ function compare_test { token=$1; replayflags=$2;
 }
 
 #  debug_test
-
+#
 # Record the test name passed to |util.sh|, then replay the recording
 # using the "expect" script $test-name.py, which is responsible for
 # computing test pass/fail.

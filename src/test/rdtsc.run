@@ -1,2 +1,2 @@
-source util.sh rdtsc "$@"
+source `dirname $0`/util.sh rdtsc "$@"
 compare_test EXIT-SUCCESS

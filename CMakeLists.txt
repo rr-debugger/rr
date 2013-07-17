@@ -106,23 +106,52 @@ set(BASIC_TESTS
   threads
 )
 
+# A "custom test" is a foo.run driver script only, which does
+# something with one of the basic-test executables above.
+#
+# NB: you must update this variable when adding a new test source
+# file.  The list is not generated automatically.
+#
+# Alphabetical, please.
+set(CUSTOM_TESTS
+#  break_int3
+  break_mmap_private
+  break_rdtsc
+  break_sync_signal
+  break_thread
+  break_time_slice
+#  deliver_async_signal_during_syscalls
+  get_thread_list
+  read_bad_mem
+  sanity
+  signal_stop
+  step1
+)
+
 foreach(test ${BASIC_TESTS})
   add_executable(${test} src/test/${test}.c)
   target_link_libraries(${test} -lrt)
 endforeach(test)
 
-set(RR_TEST_CMD_COMMON
-  "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR}/src/test" "-rr=${EXECUTABLE_OUTPUT_PATH}/rr")
+foreach(test ${BASIC_TESTS} ${CUSTOM_TESTS})
+  add_test(${test}
+    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR})
+  set_tests_properties(${test}
+    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
-add_test(Tests ${RR_TEST_CMD_COMMON} -lib=y)
-set_tests_properties(Tests
-  PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+  add_test(${test}-no-syscallbuf
+    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${PROJECT_BINARY_DIR})
+  set_tests_properties(${test}-no-syscallbuf
+    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+endforeach(test)
 
-add_test(TestsNoFilterLib ${RR_TEST_CMD_COMMON} -lib=n)
-set_tests_properties(TestsNoFilterLib
-  PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+include(ProcessorCount)
+ProcessorCount(N)
+if(NOT N EQUAL 0)
+  set(JFLAG -j${N})
+endif()
 
-add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose)
+add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose ${JFLAG})
 
 ##--------------------------------------------------
 ## Package configuration
