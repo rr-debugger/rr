@@ -9,8 +9,8 @@
 #define TOKEN "ABC"
 #define TOKEN_SIZE sizeof(TOKEN)
 
-static const char token_file[] = "/tmp/rr-link-file.txt";
-static const char link_name[] = "/tmp/rr-link-file.link";
+static const char token_file[] = "rr-link-file.txt";
+static const char link_name[] = "rr-link-file.link";
 
 void verify_token(int fd) {
 	ssize_t len;

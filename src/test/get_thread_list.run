@@ -1,5 +1,3 @@
-source util.sh
-compile barrier
+source util.sh get_thread_list "$@"
 record barrier
-debug get_thread_list
-cleanup
+debug barrier get_thread_list

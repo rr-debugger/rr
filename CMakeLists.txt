@@ -59,7 +59,58 @@ install(TARGETS rr rr_syscall_buffer
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
 
-# TODO: manage building C test files with the build system
+##--------------------------------------------------
+## Testing
+
+# A "basic test" consists of a foo.c source file and a foo.run driver
+# script.  See src/test/util.sh to learn how the .run files work.
+#
+# NB: you must update this variable when adding a new test source
+# file.  The list is not generated automatically.
+#
+# Alphabetical, please.
+set(BASIC_TESTS
+  alarm
+  args
+  async_segv
+  async_signal_syscalls
+  async_usr1
+  barrier
+  breakpoint
+  chew_cpu
+  clock
+  exit_group
+  fadvise
+  fork_syscalls
+  hello
+  ignored_async_usr1
+  int3
+  interrupt
+  io
+  link
+  mmap_private
+#  mmap_shared
+  perf_event
+  priority
+  rdtsc
+  segfault
+  sigchld_interrupt_signal
+  sigill
+  sigprocmask
+  sigrt
+  sigtrap
+  simple
+  splice
+#  step_thread
+  tgkill
+  threads
+)
+
+foreach(test ${BASIC_TESTS})
+  add_executable(${test} src/test/${test}.c)
+  target_link_libraries(${test} -lrt)
+endforeach(test)
+
 set(RR_TEST_CMD_COMMON
   "${CMAKE_SOURCE_DIR}/src/script/test.sh" "-dir=${CMAKE_SOURCE_DIR}/src/test" "-rr=${EXECUTABLE_OUTPUT_PATH}/rr")
 
@@ -71,12 +122,11 @@ add_test(TestsNoFilterLib ${RR_TEST_CMD_COMMON} -lib=n)
 set_tests_properties(TestsNoFilterLib
   PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
-# Why isn't dumping output on failure default ...
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose)
 
-add_custom_target(setup-travis COMMAND src/script/setup_travis.sh)
+##--------------------------------------------------
+## Package configuration
 
-# Package configuration
 include (InstallRequiredSystemLibraries)
 
 set(CPACK_PACKAGE_NAME "rr")
@@ -112,3 +162,8 @@ set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
 #set(CPACK_RPM_PACKAGE_REQUIRES "Requires: pfm, disasm")
 
 include (CPack)
+
+##--------------------------------------------------
+## Misc
+
+add_custom_target(setup-travis COMMAND src/script/setup_travis.sh)

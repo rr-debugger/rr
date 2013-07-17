@@ -1,2 +1,2 @@
-source util.sh
-compare_test rdtsc 'EXIT-SUCCESS'
+source util.sh rdtsc "$@"
+compare_test EXIT-SUCCESS

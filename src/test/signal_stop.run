@@ -1,5 +1,3 @@
-source util.sh
-compile sigill
+source util.sh signal_stop "$@"
 record sigill
-debug signal_stop
-cleanup
+debug sigill signal_stop

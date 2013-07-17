@@ -11,7 +11,7 @@
 #define TOKEN "ABC"
 #define TOKEN_SIZE sizeof(TOKEN)
 
-static const char token_file[] = "/tmp/rr-splice-file.txt";
+static const char token_file[] = "rr-splice-file.txt";
 
 void verify_token(int fd) {
 	ssize_t len;

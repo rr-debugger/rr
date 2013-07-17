@@ -1,2 +1,2 @@
-source util.sh
-compare_test io EXIT-SUCCESS
+source util.sh io "$@"
+compare_test EXIT-SUCCESS

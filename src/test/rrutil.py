@@ -53,10 +53,14 @@ def failed(why, e):
     clean_up()
     sys.exit(1)
 
+def get_exe():
+    '''Return the image to be debugged'''
+    return sys.argv[1]
+
 def get_rr_cmd():
     '''Return the command that should be used to invoke rr, as the tuple
   (executable, array-of-args)'''
-    rrargs = sys.argv[1:]
+    rrargs = sys.argv[2:]
     return (rrargs[0], rrargs[1:])
 
 def send(prog, what):
@@ -69,12 +73,13 @@ def set_up():
     global gdb, rr
     try:
         rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, logfile=open('rr.log', 'w'))
-        expect_rr('server listening on :1111')
+        expect_rr('server listening on :(\d+)$')
+        dbgport = int(rr.match.group(1))
 
-        gdb = pexpect.spawn('gdb a.out', timeout=TIMEOUT_SEC, logfile=open('gdb.log', 'w'))
+        gdb = pexpect.spawn('gdb '+ get_exe(), timeout=TIMEOUT_SEC, logfile=open('gdb.log', 'w'))
 
         expect_gdb(r'\(gdb\)')
-        send_gdb('target remote :1111\n')
+        send_gdb('target remote :'+ str(dbgport) +'\n')
         expect_gdb(r'\(gdb\)')
     except Exception, e:
         failed('initializing rr and gdb', e)

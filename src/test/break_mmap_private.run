@@ -1,5 +1,3 @@
-source util.sh
-compile mmap_private
+source util.sh break_mmap_private "$@"
 record mmap_private
-debug break_mmap_private
-cleanup
+debug mmap_private break_mmap_private

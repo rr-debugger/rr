@@ -1,2 +1,2 @@
-source util.sh
-compare_test int3 'caught SIGTRAP'
+source util.sh int3 "$@"
+compare_test 'caught SIGTRAP'

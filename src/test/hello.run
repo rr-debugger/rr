@@ -1,2 +1,2 @@
-source util.sh
-compare_test hello 'Hi'
+source util.sh hello "$@"
+compare_test 'Hi'

@@ -1,5 +1,3 @@
-source util.sh
-compile simple
+source util.sh read_bad_mem "$@"
 record simple
-debug read_bad_mem
-cleanup
+debug simple read_bad_mem

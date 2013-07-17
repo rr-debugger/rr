@@ -1,6 +1,4 @@
-source util.sh
-compile priority
+source util.sh priority "$@"
 renice -n 1 $$ && record priority
-renice -n 2 $$ && replay priority
-check priority 'EXIT-SUCCESS'
-cleanup
+renice -n 2 $$ && replay
+check 'EXIT-SUCCESS'

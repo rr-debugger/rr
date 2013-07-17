@@ -1,6 +1,3 @@
-source util.sh
-compile chew_cpu
+source util.sh break_time_slice "$@"
 record chew_cpu
-debug generic_break
-echo "(Test is generic_break of chew_cpu)"
-cleanup
+debug chew_cpu generic_break

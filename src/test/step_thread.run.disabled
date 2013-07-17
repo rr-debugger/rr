@@ -1,2 +1,2 @@
-source util.sh
-debug_test step_thread
+source util.sh step_thread "$@"
+debug_test
