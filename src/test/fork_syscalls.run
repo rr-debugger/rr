@@ -1,3 +1,2 @@
-source util.sh
-skip_if_no_syscall_buf fork_syscalls
-compare_test fork_syscalls "CHILD-EXIT PARENT-EXIT"
+source util.sh fork_syscalls "$@"
+compare_test "CHILD-EXIT PARENT-EXIT"

@@ -1,2 +1,2 @@
-source util.sh
-compare_test barrier EXIT-SUCCESS
+source util.sh barrier "$@"
+compare_test EXIT-SUCCESS

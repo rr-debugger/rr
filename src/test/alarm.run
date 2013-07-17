@@ -1,9 +1,8 @@
-testname=alarm
-source util.sh
+source util.sh alarm "$@"
 
 # This test is disabled when the syscallbuf is enabled for the same
 # reason that deliver_async_signal_during_syscalls.run is disabled;
 # see the long comment there for an explanation.
-skip_if_syscall_buf $testname
+skip_if_syscall_buf
 
-compare_test $testname 'Signal caught'
+compare_test 'Signal caught'

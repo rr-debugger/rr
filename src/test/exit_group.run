@@ -1,2 +1,2 @@
-source util.sh
-compare_test exit_group '_exit()ing'
+source util.sh exit_group "$@"
+compare_test '_exit()ing'

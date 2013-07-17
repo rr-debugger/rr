@@ -1,6 +1,3 @@
-source util.sh
-compile barrier
+source util.sh break_thread "$@"
 record barrier
-debug generic_break
-echo "(Test is generic_break of barrier)"
-cleanup
+debug barrier generic_break

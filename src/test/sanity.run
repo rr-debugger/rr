@@ -1,5 +1,3 @@
-source util.sh
-compile hello
+source util.sh sanity "$@"
 record hello
-debug sanity
-cleanup
+debug hello sanity

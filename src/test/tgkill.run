@@ -1,2 +1,2 @@
-source util.sh
-compare_test tgkill EXIT-SUCCESS
+source util.sh tgkill "$@"
+compare_test EXIT-SUCCESS

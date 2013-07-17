@@ -1,2 +1,2 @@
-source util.sh
-compare_test sigchld_interrupt_signal EXIT-SUCCESS
+source util.sh sigchld_interrupt_signal "$@"
+compare_test EXIT-SUCCESS

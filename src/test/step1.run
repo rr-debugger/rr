@@ -1,5 +1,3 @@
-source util.sh
-compile breakpoint
+source util.sh step1 "$@"
 record breakpoint
-debug step1
-cleanup
+debug breakpoint step1
