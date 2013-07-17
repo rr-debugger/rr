@@ -1,2 +1,2 @@
-source util.sh breakpoint "$@"
+source `dirname $0`/util.sh breakpoint "$@"
 debug_test

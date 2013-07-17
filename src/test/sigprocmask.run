@@ -1,2 +1,2 @@
-source util.sh sigprocmask "$@"
+source `dirname $0`/util.sh sigprocmask "$@"
 compare_test EXIT-SUCCESS

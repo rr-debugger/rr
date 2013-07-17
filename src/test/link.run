@@ -1,4 +1,4 @@
-source util.sh link "$@"
+source `dirname $0`/util.sh link "$@"
 # NB: this test creates garbage, but it will be cleaned up along with
 # the other files in the tmp dir.
 compare_test 'EXIT-SUCCESS'

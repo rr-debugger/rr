@@ -1,2 +1,2 @@
-source util.sh sigchld_interrupt_signal "$@"
+source `dirname $0`/util.sh sigchld_interrupt_signal "$@"
 compare_test EXIT-SUCCESS

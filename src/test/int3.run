@@ -1,2 +1,2 @@
-source util.sh int3 "$@"
+source `dirname $0`/util.sh int3 "$@"
 compare_test 'caught SIGTRAP'

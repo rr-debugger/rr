@@ -1,2 +1,2 @@
-source util.sh fadvise "$@"
+source `dirname $0`/util.sh fadvise "$@"
 compare_test EXIT-SUCCESS

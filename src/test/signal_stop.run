@@ -1,3 +1,3 @@
-source util.sh signal_stop "$@"
+source `dirname $0`/util.sh signal_stop "$@"
 record sigill
 debug sigill signal_stop

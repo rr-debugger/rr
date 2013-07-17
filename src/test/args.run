@@ -1,4 +1,4 @@
-source util.sh args "$@"
+source `dirname $0`/util.sh args "$@"
 record args "-no --force-syscall-buffer=foo hello"
 replay
 check 'EXIT-SUCCESS'
