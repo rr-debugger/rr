@@ -1,2 +1,2 @@
-source util.sh barrier "$@"
+source `dirname $0`/util.sh barrier "$@"
 compare_test EXIT-SUCCESS

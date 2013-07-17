@@ -1,2 +1,2 @@
-source util.sh io "$@"
+source `dirname $0`/util.sh io "$@"
 compare_test EXIT-SUCCESS

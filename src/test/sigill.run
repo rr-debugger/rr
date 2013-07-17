@@ -1,2 +1,2 @@
-source util.sh sigill "$@"
+source `dirname $0`/util.sh sigill "$@"
 compare_test 'caught signal 4, exiting'

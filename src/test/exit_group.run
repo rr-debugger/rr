@@ -1,2 +1,2 @@
-source util.sh exit_group "$@"
+source `dirname $0`/util.sh exit_group "$@"
 compare_test '_exit()ing'

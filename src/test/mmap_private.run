@@ -1,2 +1,2 @@
-source util.sh mmap_private "$@"
+source `dirname $0`/util.sh mmap_private "$@"
 compare_test 'done'

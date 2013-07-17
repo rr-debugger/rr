@@ -1,3 +1,3 @@
-source util.sh sanity "$@"
+source `dirname $0`/util.sh sanity "$@"
 record hello
 debug hello sanity

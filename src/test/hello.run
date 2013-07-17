@@ -1,2 +1,2 @@
-source util.sh hello "$@"
+source `dirname $0`/util.sh hello "$@"
 compare_test 'Hi'
