@@ -22,8 +22,6 @@ pid_t sys_fork();
 int sys_open_child_mem(pid_t child_tid);
 void sys_kill(int pid, int msg);
 void sys_exit();
-void sys_sched_setaffinity(unsigned long mask);
-void sys_setup_process();
 void sys_start_trace(char* executable, char** fake_argv, char** envp);
 
 void goto_next_event(struct context *ctx);

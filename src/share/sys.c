@@ -123,41 +123,40 @@ void sys_exit()
 	abort();
 }
 
-void sys_sched_setaffinity(unsigned long mask)
-{
-	if (sched_setaffinity(0, sizeof(mask), (cpu_set_t*) &mask) == -1) {
-		log_err("error setting affinity -- bailing out");
-		sys_exit();
-	}
-}
-
 /**
  * This function configures the process for recording/replay. In particular:
  * (1) address space randomization is disabled
  * (2) rdtsc is disabled
  */
-void sys_setup_process()
+static void set_up_process()
 {
 	/* disable address space randomization */
 	int orig_pers;
-	if ((orig_pers = personality(0xffffffff)) == -1) {
+
+	if (0 > (orig_pers = personality(0xffffffff))) {
 		fatal("error getting personaity");
 	}
-	if (-1 == personality(orig_pers | ADDR_NO_RANDOMIZE)) {
+	if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE)) {
 		fatal("error disabling randomization");
 	}
-	if (prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0) == -1) {
+	if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
 		fatal("error setting up prctl -- bailing out");
 	}
+	/* If rr goes down, there's nothing more useful we can do.
+	 * Time for seppuku.
+	 *
+	 * XXX the tracee can reset or change this ...*/
+	if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
+		fatal("Couldn't set parent-death signal");
+	}
 
-	/* Pin the child to a specific logical core as we serialize the execution anyway */
-	sys_sched_setaffinity(CHILD_LOGICAL_CORE_AFFINITY_MASK);
+	/* XXX is it faster to mask off a CPU affinity when this
+	 * process is the only intensive one in the system? */
 }
 
 void sys_start_trace(char* executable, char** argv, char** envp)
 {
-
-	sys_setup_process();
+	set_up_process();
 	sys_ptrace_traceme();
 
 	/* signal the parent that the child is ready */
