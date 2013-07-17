@@ -1,3 +1,4 @@
-source util.sh
-compare_test link 'EXIT-SUCCESS'
-rm -f /tmp/rr-link-file.txt /tmp/rr-link-file.link
+source util.sh link "$@"
+# NB: this test creates garbage, but it will be cleaned up along with
+# the other files in the tmp dir.
+compare_test 'EXIT-SUCCESS'

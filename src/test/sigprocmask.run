@@ -1,2 +1,2 @@
-source util.sh
-compare_test sigprocmask 'EXIT-SUCCESS'
+source util.sh sigprocmask "$@"
+compare_test EXIT-SUCCESS

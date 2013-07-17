@@ -1,2 +1,2 @@
-source util.sh
-compare_test fadvise EXIT-SUCCESS
+source util.sh fadvise "$@"
+compare_test EXIT-SUCCESS

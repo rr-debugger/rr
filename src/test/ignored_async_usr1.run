@@ -1,7 +1,5 @@
-source util.sh
-compile ignored_async_usr1
+source util.sh ignored_async_usr1 "$@"
 # SIGUSR1, wait 0.5s
 record_async_signal 10 0.5 ignored_async_usr1
-replay ignored_async_usr1
-check ignored_async_usr1 'EXIT-SUCCESS'
-cleanup
+replay
+check 'EXIT-SUCCESS'

@@ -1,7 +1,6 @@
-source util.sh
-compile async_usr1
+testname=async_usr1
+source util.sh $testname "$@"
 # SIGUSR1, wait 0.5s
-record_async_signal 10 0.5 async_usr1
-replay async_usr1
-check async_usr1 'EXIT-SUCCESS'
-cleanup
+record_async_signal 10 0.5 $testname
+replay
+check 'EXIT-SUCCESS'

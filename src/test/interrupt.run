@@ -1,2 +1,2 @@
-source util.sh
-debug_test interrupt
+source util.sh interrupt "$@"
+debug_test

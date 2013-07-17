@@ -2,15 +2,15 @@
 # delivered while rr processes a time-slice interrupt.  The test case
 # is pretty extreme, but let's hope this isn't a common occurrence!
 
-testname=async_signal_syscalls
-source util.sh
-compile $testname
-skip_if_no_syscall_buf $testname
+source util.sh deliver_async_signal_during_syscalls "$@"
+
+# See async_signal_syscalls.run for an explanation.
+skip_if_no_syscall_buf
+
 # SIGUSR1, wait 0.5s
-record_async_signal 10 0.5 $testname
+record_async_signal 10 0.5 async_signal_syscalls
 # Because of issue #184, replay takes longer than practical.  So for
 # now we'll skip it and hope other tests exercise the relevant code
 # well enough.
-#replay $testname
-#check $testname 'EXIT-SUCCESS'
-cleanup
+#replay
+#check 'EXIT-SUCCESS'

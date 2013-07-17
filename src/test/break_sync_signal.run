@@ -1,6 +1,3 @@
-source util.sh
-compile segfault
+source util.sh break_sync_signal "$@"
 record segfault
-debug generic_break
-echo "(Test is generic_break of segfault)"
-cleanup
+debug segfault generic_break

@@ -1,2 +1,2 @@
-source util.sh
-compare_test sigill 'caught signal 4, exiting'
+source util.sh sigill "$@"
+compare_test 'caught signal 4, exiting'

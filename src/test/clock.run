@@ -1,2 +1,2 @@
-source util.sh
-compare_test clock 'EXIT-SUCCESS'
+source util.sh clock "$@"
+compare_test 'EXIT-SUCCESS'
