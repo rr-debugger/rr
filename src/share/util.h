@@ -33,10 +33,10 @@
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
-char* get_inst(pid_t pid, int eip_offset, int* opcode_size);
+char* get_inst(struct context* ctx, int eip_offset, int* opcode_size);
 bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
 void emulate_child_inst(struct context * ctx, int eip_offset);
-void print_inst(pid_t tid);
+void print_inst(struct context* ctx);
 void print_syscall(struct context *ctx, struct trace_frame *trace);
 void get_eip_info(pid_t tid);
 int check_if_mapped(struct context *ctx, void *start, void *end);
