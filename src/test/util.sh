@@ -126,6 +126,7 @@ echo Using lib arg "'$LIB_ARG'"
 function skip_if_no_syscall_buf {
     if [[ "-n" == "$LIB_ARG" || "" == "$LIB_ARG" ]]; then
 	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is disabled
+        passed=y
 	exit 0
     fi
 }
@@ -135,6 +136,7 @@ function skip_if_no_syscall_buf {
 function skip_if_syscall_buf {
     if [[ "-b" == "$LIB_ARG" ]]; then
 	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is enabled
+        passed=y
 	exit 0
     fi
 }

@@ -75,6 +75,7 @@ set(BASIC_TESTS
   async_segv
   async_signal_syscalls
   async_usr1
+  bad_ip
   barrier
   breakpoint
   chew_cpu
