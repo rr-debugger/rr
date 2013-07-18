@@ -744,6 +744,147 @@ int creat(const char* pathname, mode_t mode)
 	return open(pathname, O_CREAT | O_TRUNC | O_WRONLY, mode);
 }
 
+static int fcntl0(int fd, int cmd)
+{
+	/* No zero-arg fcntl's are known to be may-block. */
+	void* ptr = prep_syscall(NO_DESCHED);
+	long ret;
+
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_fcntl64, fd, cmd);
+ 	}
+	ret = untraced_syscall2(SYS_fcntl64, fd, cmd);
+	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
+}
+
+static int fcntl1(int fd, int cmd, int arg)
+{
+	/* No one-int-arg fcntl's are known to be may-block. */
+	void* ptr = prep_syscall(NO_DESCHED);
+	long ret;
+
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_fcntl64, fd, cmd, arg);
+	}
+	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, arg);
+	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
+}
+
+static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
+{
+	/* The OWN_EX fcntl's aren't may-block. */
+	void* ptr = prep_syscall(NO_DESCHED);
+	struct f_owner_ex* owner2 = NULL;
+	long ret;
+
+	if (owner) {
+		owner2 = ptr;
+		ptr += sizeof(*owner2);
+	}
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_fcntl64, fd, cmd, owner);
+	}
+	if (owner2) {
+		memcpy(owner2, owner, sizeof(*owner2));
+	}
+	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, owner2);
+	if (owner2) {
+		memcpy(owner, owner2, sizeof(*owner));
+	}
+	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
+}
+
+static int fcntl_flock(int fd, int cmd, struct flock64* lock)
+{
+	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	struct flock64* lock2 = NULL;
+	long ret;
+
+	if (lock) {
+		lock2 = ptr;
+		ptr += sizeof(*lock2);
+	}
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_fcntl64, fd, cmd, lock);
+	}
+
+	if (lock2) {
+		memcpy(lock2, lock, sizeof(*lock2));
+	}
+
+	arm_desched_event();
+	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, lock2);
+	disarm_desched_event();
+
+	if (lock2) {
+		memcpy(lock, lock2, sizeof(*lock));
+	}
+
+	return commit_syscall(SYS_fcntl64, ptr, ret, DISARMED_DESCHED_EVENT);
+}
+
+int fcntl(int fd, int cmd, ... /* arg */)
+{
+	switch (cmd) {
+	case F_DUPFD:
+	case F_GETFD:
+	case F_GETFL:
+	case F_GETOWN:
+		return fcntl0(fd, cmd);
+
+	case F_SETFL:
+	case F_SETFD:
+	case F_SETOWN:
+	case F_SETSIG:
+	{
+		va_list varg;
+		int arg;
+
+		va_start(varg, cmd);
+		arg = va_arg(varg, int);
+		va_end(varg);
+
+		return fcntl1(fd, cmd, arg);
+	}
+
+	case F_GETOWN_EX:
+	case F_SETOWN_EX:
+	{
+		va_list varg;
+		struct f_owner_ex* owner;
+
+		va_start(varg, cmd);
+		owner = va_arg(varg, struct f_owner_ex*);
+		va_end(varg);
+
+		return fcntl_own_ex(fd, cmd, owner);
+	}
+
+	case F_GETLK64:
+	case F_SETLK64:
+	case F_SETLKW64:
+	case F_GETLK:
+	case F_SETLK:
+	{
+		va_list varg;
+		struct flock64* lock;
+
+		va_start(varg, cmd);
+		lock = va_arg(varg, struct flock64*);
+		va_end(varg);
+
+		return fcntl_flock(fd, cmd, lock);
+	}
+
+	default:
+		/* Unfortunately, we can't fall back on a traced
+		 * fcntl, because we don't know how to interpret the
+		 * args to set them up for the syscall. */
+		fatal("Unhandled fcntl %d", cmd);
+		return -1;	/* not reached */
+	}
+}
+
 int gettimeofday(struct timeval* tp, struct timezone* tzp)
 {
 	void *ptr = prep_syscall(NO_DESCHED);
