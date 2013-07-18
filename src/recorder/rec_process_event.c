@@ -315,23 +315,18 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case F_SETOWN:
 		case F_SETOWN_EX:
 		case F_SETSIG:
-		{
 			break;
-		}
 
 		case F_GETLK64:
 		case F_SETLK64:
 		case F_SETLKW64:
 		case F_GETLK:
 		case F_SETLK:
-		{
 			record_child_data(ctx, syscall, sizeof(struct flock64), (void*)regs.edx);
 			break;
-		}
 
 		default:
-		printf("unknown command: %d -- bailing out\n", cmd);
-		sys_exit();
+			fatal("Unknown fcntl %d", cmd);
 		}
 		break;
 	}
