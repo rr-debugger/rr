@@ -45,7 +45,13 @@ static int try_handle_rdtsc(struct context *ctx)
 	}
 
 	int size;
-	char *inst = get_inst(tid, 0, &size);
+	char *inst = get_inst(ctx, 0, &size);
+	if (!inst) {
+		/* If the segfault was caused by a jump to a bad $ip,
+		 * then we obviously won't be able to read the
+		 * instruction. */
+		return 0;
+	}
 
 	/* if the current instruction is a rdtsc, the segfault was triggered by
 	 * by reading the rdtsc instruction */

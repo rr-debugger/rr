@@ -213,11 +213,18 @@ void get_eip_info(pid_t tid)
 	sys_free((void**) &line);
 }
 
-char* get_inst(pid_t tid, int eip_offset, int* opcode_size)
+char* get_inst(struct context* ctx, int eip_offset, int* opcode_size)
 {
+	pid_t tid = ctx->child_tid;
 	char* buf = NULL;
 	unsigned long eip = read_child_eip(tid);
-	unsigned char* inst = read_child_data_tid(tid, 128, (void*)(eip + eip_offset));
+	ssize_t nr_read_bytes;
+	unsigned char* inst = read_child_data_checked(ctx, 128, (void*)(eip + eip_offset), &nr_read_bytes);
+
+	if (nr_read_bytes <= 0) {
+		sys_free((void**)&inst);
+		return NULL;
+	}
 
 	x86_init(opt_none, 0, 0);
 
@@ -342,10 +349,10 @@ void mprotect_child_region(struct context * ctx, void * addr, int prot) {
 	assert(retval == 0);
 }
 
-void print_inst(pid_t tid)
+void print_inst(struct context* ctx)
 {
 	int size;
-	char* str = get_inst(tid, 0, &size);
+	char* str = get_inst(ctx, 0, &size);
 	printf("inst: %s\n", str);
 	free(str);
 }

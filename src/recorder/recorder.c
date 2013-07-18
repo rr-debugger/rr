@@ -41,7 +41,7 @@ void goto_next_event_singlestep(struct context* context)
 
 	while (1) {
 		int inst_size;
-		char* inst = get_inst(tid, 0, &inst_size);
+		char* inst = get_inst(context, 0, &inst_size);
 		if ((strncmp(inst, "sysenter", 7) == 0) || (strncmp(inst, "int", 3) == 0)) {
 			record_inst_done(context);
 			free(inst);
