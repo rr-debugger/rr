@@ -1094,6 +1094,43 @@ ssize_t read(int fd, void* buf, size_t count)
 	return commit_syscall(SYS_read, ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
+ssize_t readlink(const char* path, char* buf, size_t bufsiz)
+{
+	void* ptr = prep_syscall(NO_DESCHED);
+	char* buf2 = NULL;
+	long ret;
+
+	if (buf && bufsiz > 0) {
+		buf2 = ptr;
+		ptr += bufsiz;
+	}
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_readlink, path, buf, bufsiz);
+	}
+
+	ret = untraced_syscall3(SYS_readlink, path, buf2, bufsiz);
+	if (buf2 && ret > 0) {
+		memcpy(buf, buf2, ret);
+	}
+	return commit_syscall(SYS_readlink, ptr, ret, NO_DESCHED);
+}
+
+time_t time(time_t* t)
+{
+	void* ptr = prep_syscall(NO_DESCHED);
+	long ret;
+
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_time, t);
+	}
+	ret = untraced_syscall1(SYS_time, NULL);
+	if (t) {
+		/* No error is possible here. */
+		*t = ret;
+	}
+	return commit_syscall(SYS_time, ptr, ret, NO_DESCHED);
+}
+
 ssize_t write(int fd, const void* buf, size_t count)
 {
 	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
