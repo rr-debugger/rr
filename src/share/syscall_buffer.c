@@ -765,6 +765,18 @@ static int stat_something(int syscallno, int vers, unsigned long what,
 
 /* Keep syscalls in alphabetical order, please. */
 
+int access(const char* pathname, int mode)
+{
+	void* ptr = prep_syscall(NO_DESCHED);
+	long ret;
+
+	if (!can_buffer_syscall(ptr)) {
+		return syscall(SYS_access, pathname, mode);
+ 	}
+	ret = untraced_syscall2(SYS_access, pathname, mode);
+	return commit_syscall(SYS_access, ptr, ret, NO_DESCHED);
+}
+
 int clock_gettime(clockid_t clk_id, struct timespec* tp)
 {
 	void* ptr = prep_syscall(NO_DESCHED);
