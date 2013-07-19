@@ -64,6 +64,12 @@ char * get_mmaped_region_filename(struct context * ctx, void * mmap_start);
 int get_memory_size(struct context * ctx);
 
 /**
+ * Get the current time from the preferred monotonic clock in units of
+ * seconds, relative to an unspecific point in the past.
+ */
+double now_sec();
+
+/**
  * Return the symbolic name of |sig|, f.e. "SIGILL", or "???signal" if
  * unknown.
  */
