@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "../recorder/rec_sched.h"
@@ -57,6 +58,13 @@ bool is_protected_map(struct context *ctx, void *start){
 		}
 	}
 	return FALSE;
+}
+
+double now_sec()
+{
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
 }
 
 const char* signalname(int sig)
