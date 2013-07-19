@@ -267,14 +267,14 @@ static int untraced_syscall(int syscall, long arg0, long arg1, long arg2,
 }
 #define untraced_syscall5(no, a0, a1, a2, a3, a4)			\
 	untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
-#define untraced_syscall4(no, a0, a1, a2, a3)				\
-	untraced_syscall5(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, 0)
-#define untraced_syscall3(no, a0, a1, a2)				\
-	untraced_syscall4(no, (uintptr_t)a0, a1, (uintptr_t)a2, 0)
-#define untraced_syscall2(no, a0, a1)				\
-	untraced_syscall3(no, (uintptr_t)a0, (uintptr_t)a1, 0)
+#define untraced_syscall4(no, a0, a1, a2, a3)		\
+	untraced_syscall5(no, a0, a1, a2, a3, 0)
+#define untraced_syscall3(no, a0, a1, a2)	\
+	untraced_syscall4(no, a0, a1, a2, 0)
+#define untraced_syscall2(no, a0, a1)		\
+	untraced_syscall3(no, a0, a1, 0)
 #define untraced_syscall1(no, a0)		\
-	untraced_syscall2(no, (uintptr_t)a0, 0)
+	untraced_syscall2(no, a0, 0)
 #define untraced_syscall0(no)			\
 	untraced_syscall1(no, 0)
 
@@ -763,6 +763,53 @@ static int stat_something(int syscallno, int vers, unsigned long what,
 	return commit_syscall(syscallno, ptr, ret, NO_DESCHED);
 }
 
+/**
+ * Make the traced socketcall |call| with the given args.
+ *
+ * NB: this helper *DOES* update errno and massage the return value.
+ */
+int traced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
+{
+	unsigned long args[] = { a0, a1, a2, a3, a4 };
+	return syscall(SYS_socketcall, call, args);
+}
+#define traced_socketcall5(no, a0, a1, a2, a3, a4)			\
+	traced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
+#define traced_socketcall4(no, a0, a1, a2, a3)		\
+	traced_socketcall5(no, a0, a1, a2, a3, 0)
+#define traced_socketcall3(no, a0, a1, a2)	\
+	traced_socketcall4(no, a0, a1, a2, 0)
+#define traced_socketcall2(no, a0, a1)		\
+	traced_socketcall3(no, a0, a1, 0)
+#define traced_socketcall1(no, a0)		\
+	traced_socketcall2(no, a0, 0)
+#define traced_socketcall0(no)			\
+	traced_socketcall1(no, 0)
+
+/**
+ * Make the *un*traced socketcall |call| with the given args.
+ *
+ * NB: this helper *DOES NOT* touch the raw return value from the
+ * kernel.  Callers must update errno themselves.
+ */
+long untraced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
+{
+	unsigned long args[] = { a0, a1, a2, a3, a4 };
+	return untraced_syscall2(SYS_socketcall, call, args);
+}
+#define untraced_socketcall5(no, a0, a1, a2, a3, a4)			\
+	untraced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
+#define untraced_socketcall4(no, a0, a1, a2, a3)	\
+	untraced_socketcall5(no, a0, a1, a2, a3, 0)
+#define untraced_socketcall3(no, a0, a1, a2)	\
+	untraced_socketcall4(no, a0, a1, a2, 0)
+#define untraced_socketcall2(no, a0, a1)	\
+	untraced_socketcall3(no, a0, a1, 0)
+#define untraced_socketcall1(no, a0)		\
+	untraced_socketcall2(no, a0, 0)
+#define untraced_socketcall0(no)		\
+	untraced_socketcall1(no, 0)
+
 /* Keep syscalls in alphabetical order, please. */
 
 int access(const char* pathname, int mode)
@@ -1113,6 +1160,30 @@ ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 		memcpy(buf, buf2, ret);
 	}
 	return commit_syscall(SYS_readlink, ptr, ret, NO_DESCHED);
+}
+
+ssize_t recv(int sockfd, void* buf, size_t len, int flags)
+{
+	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	void* buf2 = NULL;
+	long ret;
+
+	if (buf && len > 0) {
+		buf2 = ptr;
+		ptr += len;
+	}
+	if (!can_buffer_syscall(ptr)) {
+		return traced_socketcall4(SYS_RECV, sockfd, buf, len, flags);
+	}
+
+	arm_desched_event();
+	ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
+	disarm_desched_event();
+
+	if (buf2 && ret > 0) {
+		memcpy(buf, buf2, ret);
+	}
+	return commit_syscall(SYS_socketcall, ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 time_t time(time_t* t)
