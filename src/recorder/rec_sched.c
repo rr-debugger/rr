@@ -25,21 +25,19 @@ static struct list *tid_to_node[MAX_TID] = {NULL};
 static struct list *registered_threads = NULL;
 static struct list *current_thread_ptr = NULL;
 static int num_active_threads = 0;
-static struct context * last_ctx;
 
 static void rec_sched_init()
 {
 	current_thread_ptr = registered_threads = list_new();
 }
 
-static void set_switch_counter(struct context *last_ctx, struct context *ctx,
-			       int max_events)
+static void note_switch(struct context* from, struct context* to,
+			int max_events)
 {
-	assert(ctx != NULL);
-	if (last_ctx == ctx) {
-		ctx->switch_counter--;
+	if (from == to) {
+		to->switch_counter--;
 	} else {
-		ctx->switch_counter = max_events;
+		to->switch_counter = max_events;
 	}
 }
 
@@ -124,7 +122,8 @@ struct context* get_active_thread(const struct flags* flags,
 		}
 		debug("  %d changed state", tid);
 
-		next_ctx = list_data(tid_to_node[tid]);
+		node = tid_to_node[tid];
+		next_ctx = list_data(node);
 
 		assert(next_ctx->exec_state == EXEC_STATE_IN_SYSCALL);
 
@@ -133,9 +132,7 @@ struct context* get_active_thread(const struct flags* flags,
 	}
 
 	current_thread_ptr = node;
-	/* XXX shouldn't the next two statements be reversed? */
-	set_switch_counter(last_ctx, next_ctx, max_events);
-	last_ctx = ctx;
+	note_switch(ctx, next_ctx, max_events);
 	return next_ctx;
 }
 
