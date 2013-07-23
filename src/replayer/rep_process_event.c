@@ -196,8 +196,8 @@ static void emulate_buffered_syscall(struct context* ctx,
 	sys_ptrace_sysemu(tid);
 	sys_waitpid(tid, &ctx->status);
 	if (signal_pending(ctx->status)) {
-		log_err("Caught signal %d advancing to emulated syscall entry",
-			signal_pending(ctx->status));
+		log_err("Caught %s advancing to emulated syscall entry",
+			signalname(signal_pending(ctx->status)));
 		emergency_debug(ctx);
 	}
 
