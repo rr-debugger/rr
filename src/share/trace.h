@@ -110,13 +110,13 @@ void record_parent_data(struct context *ctx, int syscall, size_t len, void *addr
  */
 void record_event(struct context* ctx, int state);
 /**
- * Record the "virtual event" |event| for |ctx|.  This event does not
+ * Record the synthetic event |event| for |ctx|.  This event does not
  * necessarily correspond to the current execution state of |ctx|; it
  * needs to be saved to the trace in order for the replay to take an
  * action to match up to the recording.  So no registers or other
  * current execution state is saved with the event.
  */
-void record_virtual_event(struct context* ctx, int event);
+void record_synthetic_event(struct context* ctx, int event);
 void record_mmapped_file_stats(struct mmapped_file *file);
 unsigned int get_global_time(void);
 unsigned int get_time(pid_t tid);

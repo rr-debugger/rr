@@ -717,20 +717,20 @@ void start_recording(struct flags rr_flags)
 				 * the ioctl() that arms the desched
 				 * counter when it's trying to step to
 				 * the entry of |call|. */
-				record_virtual_event(ctx, USR_ARM_DESCHED);
+				record_synthetic_event(ctx, USR_ARM_DESCHED);
 			}
 
 			record_event(ctx, STATE_SYSCALL_ENTRY);
 
 			if (ctx->flushed_syscallbuf) {
-				record_virtual_event(ctx,
-						     USR_SYSCALLBUF_RESET);
+				record_synthetic_event(ctx,
+						       USR_SYSCALLBUF_RESET);
 				ctx->flushed_syscallbuf = 0;
 			}				
 			if (ctx->desched) {
 				ctx->syscallbuf_hdr->abort_commit = 1;
-				record_virtual_event(ctx,
-						     USR_SYSCALLBUF_ABORT_COMMIT);
+				record_synthetic_event(ctx,
+						       USR_SYSCALLBUF_ABORT_COMMIT);
 			}
 
 			break;
@@ -821,7 +821,7 @@ void start_recording(struct flags rr_flags)
 					 * expect it and skip over
 					 * it. */
 					ctx->desched = 0;
-					record_virtual_event(
+					record_synthetic_event(
 						ctx,
 						USR_DISARM_DESCHED);
 				}
