@@ -395,7 +395,7 @@ static void maybe_flush_syscallbuf(struct context *ctx)
 			   /* Record the header for consistency checking. */
 			   ctx->syscallbuf_hdr->num_rec_bytes + sizeof(*ctx->syscallbuf_hdr),
 			   ctx->syscallbuf_child, ctx->syscallbuf_hdr);
-	record_virtual_event(ctx, USR_SYSCALLBUF_FLUSH);
+	record_synthetic_event(ctx, USR_SYSCALLBUF_FLUSH);
 
 	/* Reset header. */
 	assert(!ctx->syscallbuf_hdr->abort_commit);
@@ -449,7 +449,7 @@ void record_event(struct context *ctx, int state)
 	//}
 }
 
-void record_virtual_event(struct context* ctx, int event)
+void record_synthetic_event(struct context* ctx, int event)
 {
 	/* Flush the syscall buffer if needed, but only if we're not
 	 * using this helper to record a syscall-buffer flush :). */
