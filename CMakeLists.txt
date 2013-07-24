@@ -116,6 +116,7 @@ set(BASIC_TESTS
 #
 # Alphabetical, please.
 set(CUSTOM_TESTS
+  break_clock
 #  break_int3
   break_mmap_private
   break_rdtsc

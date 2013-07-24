@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "rep_process_event.h"
+
 #define _GNU_SOURCE
 
 /* XXX the drm/ headers are broken, work around them */
@@ -31,7 +33,6 @@
 #include <sys/quota.h>
 #include <sys/socket.h>
 
-#include "rep_process_event.h"
 #include "rep_sched.h"
 #include "replayer.h"
 #include "../share/dbg.h"
@@ -186,51 +187,7 @@ void __ptrace_cont(struct context *ctx)
 	ctx->child_sig = 0;
 }
 
-static void emulate_buffered_syscall(struct context* ctx,
-				     const struct syscallbuf_record* rec)
-{
-	pid_t tid = ctx->child_tid;
-	struct user_regs_struct regs;
-
-	/* Allow the child to run up to the recorded syscall */
-	sys_ptrace_sysemu(tid);
-	sys_waitpid(tid, &ctx->status);
-	if (signal_pending(ctx->status)) {
-		log_err("Caught %s advancing to emulated syscall entry",
-			signalname(signal_pending(ctx->status)));
-		emergency_debug(ctx);
-	}
-
-	read_child_registers(tid, &regs);
-	if (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs.eip, ctx)) {
-		log_err("Bad ip %p: should have been buffered-syscall ip",
-			(void*)regs.eip);
-		emergency_debug(ctx);
-	}
-	if (rec->syscallno != regs.orig_eax) {
-		log_err("Trying to emulate `%s' but replayed to entry of `%s'",
-			syscallname(rec->syscallno),
-			syscallname(regs.orig_eax));
-		emergency_debug(ctx);
-	}
-
-	/* Finish syscall exit, emulating return value. */
-	regs.eax = rec->ret;
-	write_child_registers(tid, &regs);
-	finish_syscall_emu(ctx);
-}
-
-/**
- * |ctx| is at a "write" syscall.  If the recorded write was to STDOUT
- * or STDERR, then also write the output to the current STDOUT/STDERR
- * (if the user wishes).
- *
- * NB: this doesn't bother to check for writes to the actual
- * STDOUT/STDERR /files/, just the fd numbers.  We don't record file
- * information.  That means output written to a dup of STDOUT will not
- * be replayed by this helper.  This could maybe be a todo.
- */
-static void maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
+void rep_maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
 {
 	struct user_regs_struct regs;
 	int fd;
@@ -252,67 +209,6 @@ static void maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
 			fatal("Couldn't write stdio");
 		}
 		sys_free(&buf);
-	}
-}
-
-void rep_skip_desched_ioctl(struct context* ctx)
-{
-	struct syscallbuf_record rec = { .syscallno = SYS_ioctl, .ret = 0 };
-	return emulate_buffered_syscall(ctx, &rec);
-}
-
-void rep_process_flush(struct context* ctx, int redirect_stdio)
-{
-	struct syscallbuf_hdr hdr = *ctx->syscallbuf_hdr;
-	/* Read the recorded syscall buffer back into the shared region. */
-	void* rec_addr;
-	ssize_t num_rec_bytes = read_raw_data_direct(&ctx->trace,
-						     ctx->syscallbuf_hdr,
-						     SYSCALLBUF_BUFFER_SIZE,
-						     &rec_addr);
-	const struct syscallbuf_record* rec;
-
-	/* The stored num_rec_bytes in the header doesn't include the
-	 * header bytes, but the stored trace data does. */
-	num_rec_bytes -= sizeof(sizeof(struct syscallbuf_hdr));
-	assert(rec_addr == ctx->syscallbuf_child);
-	assert(ctx->syscallbuf_hdr->num_rec_bytes == num_rec_bytes);
-
-	/* Start replaying with the header at the state it was when we
-	 * reached this event during recording. */
-	*ctx->syscallbuf_hdr = hdr;
-
-	rec = ctx->syscallbuf_hdr->recs;
-	while (num_rec_bytes > 0) {
-		size_t stored_rec_size = stored_record_size(rec->size);
-
-		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
-
-		debug("Replaying buffered `%s' which does%s use desched event",
-		      syscallname(rec->syscallno), 
-		      !rec->desched ? " not" : "");
-
-		if (rec->desched) {
-			/* Skip past the ioctl that armed the desched
-			 * notification. */
-			rep_skip_desched_ioctl(ctx);
-		}
-		/* Emulate the "real" syscall. */
-		emulate_buffered_syscall(ctx, rec);
-		/* XXX not pretty; should have this
-		 * actually-replay-parts-of-trace logic centralized */
-		if (SYS_write == rec->syscallno) {
-			maybe_replay_stdio_write(ctx, redirect_stdio);
-		}
-		if (rec->desched) {
-			/* And skip past the ioctl that disarmed the
-			 * desched notification. */
-			rep_skip_desched_ioctl(ctx);
-		}
-
-		rec = (const struct syscallbuf_record*)((byte*)rec +
-							stored_rec_size);
-		num_rec_bytes -= stored_rec_size;
 	}
 }
 
@@ -1006,7 +902,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			/* XXX technically this will print the output
 			 * before we reach the interrupt.  That could
 			 * maybe cause issues in the future. */
-			maybe_replay_stdio_write(ctx, redirect_stdio);
+			rep_maybe_replay_stdio_write(ctx, redirect_stdio);
 		}
 		return;
 

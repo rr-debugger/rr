@@ -96,6 +96,25 @@ void inject_code(struct current_state_buffer* buf, char* code);
 int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * call_regs);
 void mprotect_child_region(struct context * ctx, void * addr, int prot);
 
+/**
+ * Return nonzero if |ctx|'s current registers |regs| indicate that
+ * |ctx| is at an arm-desched-event or disarm-desched-event syscall.
+ */
+int is_desched_event_syscall(struct context* ctx,
+			     const struct user_regs_struct* regs);
+/**
+ * Return nonzero if |ctx|'s current registers |regs| indicate that
+ * |ctx| is at an arm-desched-event syscall.
+ */
+int is_arm_desched_event_syscall(struct context* ctx,
+				 const struct user_regs_struct* regs);
+/**
+ * Return nonzero if |ctx|'s current registers |regs| indicate that
+ * |ctx| is at a disarm-desched-event syscall.
+ */
+int is_disarm_desched_event_syscall(struct context* ctx,
+				    const struct user_regs_struct* regs);
+
 /* XXX should this go in ipc.h? */
 
 /**

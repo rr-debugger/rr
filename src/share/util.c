@@ -9,6 +9,7 @@
 #include <libdis.h>
 #include <limits.h>
 #include <linux/net.h>
+#include <linux/perf_event.h>
 #include <malloc.h>
 #include <string.h>
 #include <stdlib.h>
@@ -32,7 +33,12 @@
 #include "types.h"
 #include "trace.h"
 
-#define NUM_MAX_MAPS	1024
+/* The tracee doesn't open the desched event fd during replay, so it
+ * can't be shared to this process.  We pretend that the tracee shared
+ * this magic fd number with us and then give it a free pass for fd
+ * checks that include this fd. */
+#define REPLAY_DESCHED_EVENT_FD -123
+#define NUM_MAX_MAPS 1024
 
 static void* scratch_table[NUM_MAX_THREADS] = {NULL} ;
 static size_t scratch_table_size = 0;
@@ -1203,6 +1209,28 @@ struct sigaction * get_sig_handler(pid_t tid, unsigned int signum){
 	return sig_handler_table[tid][signum];
 }
 
+int is_desched_event_syscall(struct context* ctx,
+			     const struct user_regs_struct* regs)
+{
+	return (SYS_ioctl == regs->orig_eax
+		&& (ctx->desched_fd_child == regs->ebx
+		    || ctx->desched_fd_child == REPLAY_DESCHED_EVENT_FD));
+}
+
+int is_arm_desched_event_syscall(struct context* ctx,
+				 const struct user_regs_struct* regs)
+{
+	return (is_desched_event_syscall(ctx, regs)
+		&& PERF_EVENT_IOC_ENABLE == regs->ecx);
+}
+
+int is_disarm_desched_event_syscall(struct context* ctx,
+				    const struct user_regs_struct* regs)
+{
+	return (is_desched_event_syscall(ctx, regs)
+		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
+}
+
 void prepare_remote_syscalls(struct context* ctx,
 			     struct current_state_buffer* state)
 {
@@ -1471,10 +1499,12 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 
 		/* Read the shared fd and finish the child's syscall. */
 		ctx->desched_fd = recv_fd(sock, &ctx->desched_fd_child);
-		if (0 >=  wait_remote_syscall(ctx, &state)) {
+		if (0 >= wait_remote_syscall(ctx, &state)) {
 			errno = -child_ret;
 			fatal("Failed to sendmsg() in tracee");
 		}
+	} else {
+		ctx->desched_fd_child = REPLAY_DESCHED_EVENT_FD;
 	}
 
 	/* Share the shmem fd with the child.  It's ok to reuse the

@@ -363,6 +363,7 @@ static void validate_args(int event, int state, struct context* ctx)
  * boundary is reached, or nonzero if advancing to the boundary was
  * interrupted by an unknown trap.
  */
+enum { EXEC = 0, EMU = 1 };
 static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
 {
 	pid_t tid = ctx->child_tid;
@@ -402,6 +403,8 @@ static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
 /**
  *  Step over the system call instruction to "exit" the emulated
  *  syscall.
+ *
+ * XXX verify that this can't be interrupted by a breakpoint trap
  */
 static void step_exit_syscall_emu(struct context *ctx)
 {
@@ -461,8 +464,6 @@ static int exit_syscall(struct context* ctx,
 	validate_args(step->syscall.no, STATE_SYSCALL_EXIT, ctx);
 
 	if (emu) {
-		/* XXX verify that this can't be interrupted by a
-		 * breakpoint trap */
 		step_exit_syscall_emu(ctx);
 	}
 	return 0;
@@ -847,6 +848,230 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
 	return 0;
 }
 
+/**
+ * Skip over the entry/exit of either an arm-desched-event or
+ * disarm-desched-event ioctl(), as described by |ds|.  Return nonzero
+ * if an unhandled interrupt occurred, zero if the ioctl() was
+ * successfully skipped over.
+ */
+static int skip_desched_ioctl(struct context* ctx,
+			      struct rep_desched_state* ds, int stepi)
+{
+	int ret, is_desched_syscall;
+	struct user_regs_struct regs;
+
+	/* Skip ahead to the syscall entry. */
+	if (DESCHED_ENTER == ds->state
+	    && (ret = cont_syscall_boundary(ctx, EMU, stepi))) {
+		return ret;
+	}
+	ds->state = DESCHED_EXIT;
+
+	read_child_registers(ctx->child_tid, &regs);
+	is_desched_syscall = DESCHED_ARM == ds->type ?
+			     is_arm_desched_event_syscall(ctx, &regs) :
+			     is_disarm_desched_event_syscall(ctx, &regs);
+	if (!is_desched_syscall) {
+		log_err("Failed to reach desched ioctl; at %s(%ld, %ld) instead",
+			syscallname(regs.orig_eax), regs.ebx, regs.ecx);
+		emergency_debug(ctx);
+	}
+
+	/* Emulate a return value of "0".  It's OK for us to hard-code
+	 * that value here, because the syscallbuf lib aborts if a
+	 * desched ioctl returns non-zero (it doesn't know how to
+	 * handle that). */
+	regs.eax = 0;
+	write_child_registers(ctx->child_tid, &regs);
+	step_exit_syscall_emu(ctx);
+	return 0;
+}
+
+/**
+ * Restore the recorded syscallbuf data to the tracee, preparing the
+ * tracee for replaying the records.  Return the number of record
+ * bytes and a pointer to the first record through outparams.
+ */
+static void prepare_syscallbuf_records(struct context* ctx,
+				       size_t* num_rec_bytes,
+				       const struct syscallbuf_record** first_rec)
+{
+	/* Save the current state of the header. */
+	struct syscallbuf_hdr hdr = *ctx->syscallbuf_hdr;
+	/* Read the recorded syscall buffer back into the shared
+	 * region. */
+	void* rec_addr;
+	*num_rec_bytes = read_raw_data_direct(&ctx->trace,
+					      ctx->syscallbuf_hdr,
+					      SYSCALLBUF_BUFFER_SIZE,
+					      &rec_addr);
+
+	/* The stored num_rec_bytes in the header doesn't include the
+	 * header bytes, but the stored trace data does. */
+	*num_rec_bytes -= sizeof(sizeof(struct syscallbuf_hdr));
+	assert(rec_addr == ctx->syscallbuf_child);
+	assert(ctx->syscallbuf_hdr->num_rec_bytes == *num_rec_bytes);
+
+	/* Restore the header state saved above, so that we start
+	 * replaying with the header at the state it was when we
+	 * reached this event during recording. */
+	*ctx->syscallbuf_hdr = hdr;
+
+	*first_rec = ctx->syscallbuf_hdr->recs;		
+}
+
+/**
+ * Bail if |ctx| isn't at the buffered syscall |syscallno|.
+ */
+static void assert_at_buffered_syscall(struct context* ctx,
+				       const struct user_regs_struct* regs,
+				       int syscallno)
+{
+	void* ip = (void*)regs->eip;
+	if (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(ip, ctx)) {
+		log_err("Bad ip %p: should have been buffered-syscall ip", ip);
+		emergency_debug(ctx);
+	}
+	if (regs->orig_eax != syscallno) {
+		log_err("At %s; should have been at %s",
+			syscallname(regs->orig_eax), syscallname(syscallno));
+		emergency_debug(ctx);
+	}
+}
+
+/**
+ * Try to flush one buffered syscall as described by |flush|.  Return
+ * nonzero if an unhandled interrupt occurred, and zero if the syscall
+ * was flushed (in which case |flush->state == DONE|).
+ */
+static int flush_one_syscall(struct context* ctx,
+			     struct rep_flush_state* flush, int stepi)
+{
+	pid_t tid = ctx->child_tid;
+	const struct syscallbuf_record* rec = flush->rec;
+	int ret;
+	struct user_regs_struct regs;
+
+	switch (flush->state) {
+	case FLUSH_START:
+		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
+
+		debug("Replaying buffered `%s' which does%s use desched event",
+		      syscallname(rec->syscallno),
+		      !rec->desched ? " not" : "");
+
+		if (!rec->desched) {
+			flush->state = FLUSH_ENTER;
+		} else {
+			flush->state = FLUSH_ARM;
+			flush->desched.type = DESCHED_ARM;
+			flush->desched.state = DESCHED_ENTER;
+		}
+		return flush_one_syscall(ctx, flush, stepi);
+
+	case FLUSH_ARM:
+		/* Skip past the ioctl that armed the desched
+		 * notification. */
+		debug("  skipping over arm-desched ioctl");
+		if ((ret = skip_desched_ioctl(ctx, &flush->desched, stepi))) {
+			return ret;
+		}
+		flush->state = FLUSH_ENTER;
+		return flush_one_syscall(ctx, flush, stepi);
+
+	case FLUSH_ENTER:
+		debug("  advancing to buffered syscall entry");
+		if ((ret = cont_syscall_boundary(ctx, EMU, stepi))) {
+			return ret;
+		}
+		read_child_registers(tid, &regs);
+		assert_at_buffered_syscall(ctx, &regs, rec->syscallno);
+		flush->state = FLUSH_EXIT;
+		return flush_one_syscall(ctx, flush, stepi);
+
+	case FLUSH_EXIT:
+		debug("  advancing to buffered syscall exit");
+
+		read_child_registers(tid, &regs);
+		assert_at_buffered_syscall(ctx, &regs, rec->syscallno);
+
+		regs.eax = rec->ret;
+		write_child_registers(tid, &regs);
+		step_exit_syscall_emu(ctx);
+
+		/* XXX not pretty; should have this
+		 * actually-replay-parts-of-trace logic centralized */
+		if (SYS_write == rec->syscallno) {
+			rep_maybe_replay_stdio_write(ctx, rr_flags->redirect);
+		}
+
+		if (!rec->desched) {
+			flush->state = FLUSH_DONE;
+			return 0;
+		}
+		flush->state = FLUSH_DISARM;
+		flush->desched.type = DESCHED_DISARM;
+		flush->desched.state = DESCHED_ENTER;
+		return flush_one_syscall(ctx, flush, stepi);
+
+	case FLUSH_DISARM:
+		/* And skip past the ioctl that disarmed the desched
+		 * notification. */
+		debug("  skipping over disarm-desched ioctl");
+		if ((ret = skip_desched_ioctl(ctx, &flush->desched, stepi))) {
+			return ret;
+		}
+		flush->state = FLUSH_DONE;
+		return 0;
+
+	default:
+		fatal("Unknown buffer-flush state %d", flush->state);
+		return 0;	/* unreached */
+	}
+}
+
+/**
+ * Replay all the syscalls recorded in the interval between |ctx|'s
+ * current execution point and the next non-syscallbuf event (the one
+ * that flushed the buffer).  Return 0 if successful or 1 if an
+ * unhandled interrupt occurred.
+ */
+static int flush_syscallbuf(struct context* ctx, struct rep_trace_step* step,
+			    int stepi)
+{
+	struct rep_flush_state* flush = &step->flush;
+
+	if (flush->need_buffer_restore) {
+		prepare_syscallbuf_records(ctx,
+					   &flush->num_rec_bytes_remaining,
+					   &flush->rec);
+		flush->need_buffer_restore = 0;
+
+		debug("Prepared %d bytes of syscall records",
+		      flush->num_rec_bytes_remaining);
+	}
+
+	while (flush->num_rec_bytes_remaining > 0) {
+		int ret;
+		size_t stored_rec_size;
+
+		if ((ret = flush_one_syscall(ctx, flush, stepi))) {
+			return ret;
+		}
+
+		assert(FLUSH_DONE == flush->state);
+
+		stored_rec_size = stored_record_size(flush->rec->size);
+		flush->rec = (const struct syscallbuf_record*)
+			     ((byte*)flush->rec + stored_rec_size);
+		flush->num_rec_bytes_remaining -= stored_rec_size;
+		flush->state = FLUSH_START;
+
+		debug("  %d bytes remain to flush",
+		      flush->num_rec_bytes_remaining);
+	}
+	return 0;
+}
 
 /**
  * Try to execute |step|, adjusting for |req| if needed.  Return 0 if
@@ -854,7 +1079,7 @@ static int emulate_async_signal(struct context* ctx, uint64_t rcb,
  * more work.
  */
 static int try_one_trace_step(struct context* ctx,
-			      const struct rep_trace_step* step,
+			      struct rep_trace_step* step,
 			      const struct dbg_request* req)
 {
 	int stepi = (DREQ_STEP == req->type
@@ -874,6 +1099,10 @@ static int try_one_trace_step(struct context* ctx,
 					    step->target.regs,
 					    step->target.signo,
 					    stepi);
+	case TSTEP_FLUSH_SYSCALLBUF:
+		return flush_syscallbuf(ctx, step, stepi);
+	case TSTEP_DESCHED:
+		return skip_desched_ioctl(ctx, &step->desched, stepi);
 	default:
 		fatal("Unhandled step type %d", step->action);
 		return 0;
@@ -939,20 +1168,19 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		return;
 	case USR_ARM_DESCHED:
 	case USR_DISARM_DESCHED:
-		rep_skip_desched_ioctl(ctx);
-
-		/* TODO */
-		step.action = TSTEP_RETIRE;
+		step.action = TSTEP_DESCHED;
+		step.desched.type = USR_ARM_DESCHED == event ?
+				    DESCHED_ARM : DESCHED_DISARM;
+		step.desched.state = DESCHED_ENTER;
 		break;
 	case USR_SYSCALLBUF_ABORT_COMMIT:
 		ctx->syscallbuf_hdr->abort_commit = 1;
 		step.action = TSTEP_RETIRE;
 		break;
 	case USR_SYSCALLBUF_FLUSH:
-		rep_process_flush(ctx, rr_flags->redirect);
-
-		/* TODO */
-		step.action = TSTEP_RETIRE;
+		step.action = TSTEP_FLUSH_SYSCALLBUF;
+		step.flush.need_buffer_restore = 1;
+		step.flush.num_rec_bytes_remaining = 0;
 		break;
 	case USR_SYSCALLBUF_RESET:
 		ctx->syscallbuf_hdr->num_rec_bytes = 0;
