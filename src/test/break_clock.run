@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh break_clock "$@"
+record clock
+debug clock break_clock
