@@ -134,27 +134,6 @@ static int try_handle_shared_mmap_access(struct context *ctx,
 	return ctx->event;
 }
 
-static int is_desched_event_syscall(struct context* ctx,
-				    const struct user_regs_struct* regs)
-{
-	return (SYS_ioctl == regs->orig_eax
-		&& ctx->desched_fd_child == regs->ebx);
-}
-
-static int is_arm_desched_event_syscall(struct context* ctx,
-					const struct user_regs_struct* regs)
-{
-	return (is_desched_event_syscall(ctx, regs)
-		&& PERF_EVENT_IOC_ENABLE == regs->ecx);
-}
-
-static int is_disarm_desched_event_syscall(struct context* ctx,
-					   const struct user_regs_struct* regs)
-{
-	return (is_desched_event_syscall(ctx, regs)
-		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
-}
-
 static void disarm_desched_event(struct context* ctx)
 {
 	if (ioctl(ctx->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {

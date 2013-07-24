@@ -24,6 +24,41 @@ void replay(struct flags rr_flags);
 void emergency_debug(struct context* ctx);
 
 /**
+ * The state of a (dis)arm-desched-event ioctl that's being processed.
+ */
+struct rep_desched_state {
+	/* Is this an arm or disarm request? */
+	enum { DESCHED_ARM, DESCHED_DISARM } type;
+	/* What's our next step to retire the ioctl? */
+	enum { DESCHED_ENTER, DESCHED_EXIT } state;
+};
+
+/**
+ * The state of a syscallbuf flush that's being processed.  Syscallbuf
+ * flushes are an odd duck among the trace-step types (along with the
+ * desched step above), because they must maintain extra state in
+ * order to know which commands to issue when being resumed after an
+ * interruption.  So the process of flushing the syscallbuf will
+ * mutate this state in between attempts to retire the step.
+ */
+struct rep_flush_state {
+	/* Nonzero when we need to write the syscallbuf data back to
+	 * the child. */
+	int need_buffer_restore;
+	/* After the data is restored, the number of record bytes that
+	 * still need to be flushed. */
+	size_t num_rec_bytes_remaining;
+	/* The record we're currently replaying. */
+	const struct syscallbuf_record* rec;
+	/* The next step to take. */
+	enum { FLUSH_START, FLUSH_ARM, FLUSH_ENTER, FLUSH_EXIT, FLUSH_DISARM,
+	       FLUSH_DONE } state;
+	/* Track the state of retiring desched arm/disarm ioctls, when
+	 * necessary. */
+	struct rep_desched_state desched;
+};
+
+/**
  * Describes the next step to be taken in order to replay a trace
  * frame.
  */
@@ -34,20 +69,26 @@ struct rep_trace_step {
 		/* Frame has been replayed, done. */
 		TSTEP_RETIRE,
 
-		/* Enter/exit a syscall.  |params.syscall| describe
-		 * what should be done at entry/exit. */
+		/* Enter/exit a syscall.  |syscall| describe what
+		 * should be done at entry/exit. */
 		TSTEP_ENTER_SYSCALL,
 		TSTEP_EXIT_SYSCALL,
 
-		/* Advance to the deterministic signal
-		 * |params.signo|. */
+		/* Advance to the deterministic signal |signo|. */
 		TSTEP_DETERMINISTIC_SIGNAL,
 
-		/* Advance until |params.target.rcb| have been retired
-		 * and then |params.target.ip| is reached.  Deliver
-		 * |params.target.signo| after that if it's
-		 * nonzero. */
+		/* Advance until |target.rcb| have been retired and
+		 * then |target.ip| is reached.  Deliver
+		 * |target.signo| after that if it's nonzero. */
 		TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,
+
+		/* Replay the upcoming buffered syscalls.  |flush|
+		 * tracks the replay state.*/
+		TSTEP_FLUSH_SYSCALLBUF,
+
+		/* Emulate arming or disarming the desched event.
+		 * |desched| tracks the replay state. */
+		TSTEP_DESCHED,
 	} action;
 
 	union {
@@ -74,6 +115,10 @@ struct rep_trace_step {
 			const struct user_regs_struct* regs;
 			int signo;
 		} target;
+
+		struct rep_flush_state flush;
+
+		struct rep_desched_state desched;
 	};
 };
 
