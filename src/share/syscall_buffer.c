@@ -358,14 +358,14 @@ static void install_syscall_filter()
 		protected_call_start);
 
 	if (traced_prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-		fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available.");
+		fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your kernel is too old.  Use `record -n` to disable the filter.");
 	}
 
 	/* Note: the filter is installed only for record. This call
 	 * will be emulated in the replay */
 	if (traced_prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER,
 			 (uintptr_t)&prog, 0, 0)) {
-		fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available.");
+		fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your kernel is too old.  Use `record -n` to disable the filter.");
 	}
 	/* anything that happens from this point on gets filtered! */
 }
