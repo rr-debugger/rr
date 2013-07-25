@@ -42,17 +42,25 @@
 
 #define SKID_SIZE 55
 
+typedef enum { TRAP_NONE = 0, TRAP_STEPI,
+	       TRAP_BKPT_INTERNAL, TRAP_BKPT_USER } trap_t;
+
+struct breakpoint {
+	void* addr;
+	/* "Refcounts" of breakpoints set at |addr|.  The breakpoint
+	 * object must be unique since we have to save the overwritten
+	 * data, and we can't enforce the order in which breakpoints
+	 * are set/removed. */
+	int internal_count, user_count;
+	byte overwritten_data;
+	RB_ENTRY(breakpoint) entry;
+};
+
 static const struct dbg_request continue_all_tasks = {
 	.type = DREQ_CONTINUE,
 	.target = -1,
 	.mem = { 0 },
 	.reg = 0
-};
-
-struct breakpoint {
-	void* addr;
-	byte overwritten_data;
-	RB_ENTRY(breakpoint) entry;
 };
 
 static RB_HEAD(breakpoint_tree, breakpoint) breakpoints =
@@ -170,9 +178,35 @@ static byte* read_mem(struct context* ctx, void* addr, size_t len,
 	return buf;
 }
 
+static int* breakpoint_counter(struct breakpoint* bp, trap_t which)
+{
+	int* counter = TRAP_BKPT_USER == which ?
+		       &bp->user_count : &bp->internal_count;
+	assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
+	assert(*counter >= 0);
+	return counter;
+}
+
 static void add_breakpoint(struct breakpoint* bp)
 {
 	RB_INSERT(breakpoint_tree, &breakpoints, bp);
+}
+
+static void erase_breakpoint(struct breakpoint* bp)
+{
+	RB_REMOVE(breakpoint_tree, &breakpoints, bp);
+}
+
+static void ref_breakpoint(struct breakpoint* bp, trap_t which)
+{
+	++*breakpoint_counter(bp, which);
+}
+
+static int unref_breakpoint(struct breakpoint* bp, trap_t which)
+{
+	--*breakpoint_counter(bp, which);
+	assert(bp->internal_count >= 0 && bp->user_count >= 0);
+	return bp->internal_count + bp->user_count;
 }
 
 static struct breakpoint* find_breakpoint(void* addr)
@@ -181,54 +215,76 @@ static struct breakpoint* find_breakpoint(void* addr)
 	return RB_FIND(breakpoint_tree, &breakpoints, &search);
 }
 
-static void remove_breakpoint(struct breakpoint* bp)
+static void set_sw_breakpoint(struct context* ctx, void* ip, trap_t type)
 {
-	RB_REMOVE(breakpoint_tree, &breakpoints, bp);
-}
-
-static void set_sw_breakpoint(struct context *ctx,
-			      const struct dbg_request* req)
-{
-	struct breakpoint* bp = sys_malloc_zero(sizeof(*bp));
-	byte* orig_data_ptr;
-
-	assert(sizeof(int_3_insn) == req->mem.len);
-
-	bp->addr = req->mem.addr;
-
-	orig_data_ptr = read_child_data(ctx, 1, bp->addr);
-	bp->overwritten_data = *orig_data_ptr;
-	sys_free((void**)&orig_data_ptr);
-
-	write_child_data_n(ctx->child_tid,
-			   sizeof(int_3_insn), bp->addr, &int_3_insn);
-
-	add_breakpoint(bp);
-}
-
-static void remove_sw_breakpoint(struct context *ctx,
-				 const struct dbg_request* req)
-{
-	struct breakpoint* bp = find_breakpoint(req->mem.addr);
-
-	assert(sizeof(int_3_insn) == req->mem.len);
-
+	struct breakpoint* bp = find_breakpoint(ip);
 	if (!bp) {
-		warn("Couldn't find breakpoint %p to remove", req->mem.addr);
-		return;
-	}
-	write_child_data_n(ctx->child_tid,
-			   sizeof(bp->overwritten_data), bp->addr,
-			   &bp->overwritten_data);
+		byte* orig_data_ptr;
 
-	remove_breakpoint(bp);
-	sys_free((void**)&bp);
+		bp = sys_malloc_zero(sizeof(*bp));
+		bp->addr = ip;
+
+		orig_data_ptr = read_child_data(ctx, sizeof(int_3_insn),
+						bp->addr);
+		memcpy(&bp->overwritten_data, orig_data_ptr,
+		       sizeof(int_3_insn));
+		sys_free((void**)&orig_data_ptr);
+
+		write_child_data_n(ctx->child_tid,
+				   sizeof(int_3_insn), bp->addr, &int_3_insn);
+		add_breakpoint(bp);
+	}
+	ref_breakpoint(bp, type);
 }
 
-static int ip_is_breakpoint(void* eip)
+static void remove_sw_breakpoint(struct context* ctx, void* ip, trap_t type)
+{
+	struct breakpoint* bp = find_breakpoint(ip);
+	if (bp && 0 == unref_breakpoint(bp, type)) {
+		write_child_data_n(ctx->child_tid,
+				   sizeof(bp->overwritten_data), bp->addr,
+				   &bp->overwritten_data);
+		erase_breakpoint(bp);
+		sys_free((void**)&bp);
+	}
+}
+
+static void remove_internal_sw_breakpoint(struct context* ctx, void* ip)
+{
+	remove_sw_breakpoint(ctx, ip, TRAP_BKPT_INTERNAL);
+}
+
+static void remove_user_sw_breakpoint(struct context* ctx,
+				      const struct dbg_request* req)
+{
+	assert(sizeof(int_3_insn) == req->mem.len);
+	remove_sw_breakpoint(ctx, req->mem.addr, TRAP_BKPT_USER);
+}
+
+static void set_internal_sw_breakpoint(struct context* ctx, void* ip)
+{
+	set_sw_breakpoint(ctx, ip, TRAP_BKPT_INTERNAL);
+}
+
+static void set_user_sw_breakpoint(struct context* ctx,
+				   const struct dbg_request* req)
+{
+	assert(sizeof(int_3_insn) == req->mem.len);
+	set_sw_breakpoint(ctx, req->mem.addr, TRAP_BKPT_USER);
+}
+
+static trap_t ip_breakpoint_type(void* eip)
 {
 	void* ip = (void*)((uintptr_t)eip - sizeof(int_3_insn));
-	return !!find_breakpoint(ip);
+	struct breakpoint* bp = find_breakpoint(ip);
+	/* NB: USER breakpoints need to be processed before INTERNAL
+	 * ones.  We want to give the debugger a chance to dispatch
+	 * commands before we attend to the internal rr business.  So
+	 * if there's a USER "ref" on the breakpoint, treat it as a
+	 * USER breakpoint. */
+	return (!bp ? TRAP_NONE :
+		(0 < *breakpoint_counter(bp, TRAP_BKPT_USER) ?
+		 TRAP_BKPT_USER : TRAP_BKPT_INTERNAL));
 }
 
 /**
@@ -319,11 +375,11 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_notify_stop(dbg, get_threadid(ctx), 0);
 			continue;
 		case DREQ_SET_SW_BREAK:
-			set_sw_breakpoint(target, &req);
+			set_user_sw_breakpoint(target, &req);
 			dbg_reply_watchpoint_request(dbg, 0);
 			continue;
 		case DREQ_REMOVE_SW_BREAK:
-			remove_sw_breakpoint(target, &req);
+			remove_user_sw_breakpoint(target, &req);
 			dbg_reply_watchpoint_request(dbg, 0);
 			break;
 		case DREQ_REMOVE_HW_BREAK:
@@ -525,20 +581,24 @@ static int is_breakpoint_trap(struct context* ctx)
 }
 
 /**
- * Return nonzero if the SIGTRAP generated by the child is intended
- * for the debugger, or zero if it's meant for rr internally.
+ * Return one of the (non-zero) enumerated TRAP_* debugger-trap types
+ * above if the SIGTRAP generated by the child is intended for the
+ * debugger, or zero if it's meant for rr internally.
  *
- * NB: this must only be called while emulating asynchronous signals
- * when in the single-stepping phase of advancing execution.
+ * NB: calling this function while advancing the rbc through hpc
+ * interrupts when emulating asynchronous signal delivery *will*
+ * result in bad results.  Don't call this function from there; it's
+ * not necessary.
  */
 typedef enum { ASYNC, DETERMINISTIC } sigdelivery_t;
 typedef enum { UNKNOWN, NOT_AT_TARGET, AT_TARGET } execstate_t;
-static int is_debugger_trap(struct context* ctx, int target_sig,
-			    sigdelivery_t delivery, execstate_t exec_state,
-			    int stepi)
+static trap_t compute_trap_type(struct context* ctx, int target_sig,
+				sigdelivery_t delivery, execstate_t exec_state,
+				int stepi)
 {
 	struct user_regs_struct regs;
 	void* ip;
+	trap_t trap_type;
 
 	assert(SIGTRAP == ctx->child_sig);
 
@@ -546,12 +606,15 @@ static int is_debugger_trap(struct context* ctx, int target_sig,
 	 * behalf of the debugger.  (The debugger will verify
 	 * that.) */
 	if (SIGTRAP != target_sig
+	    /* Replay of deterministic signals never internally
+	     * single-steps or sets internal breakpoints. */
 	    && (DETERMINISTIC == delivery
-		/* We single-step for async delivery, so the trap was
-		 * only clearly for the debugger if the debugger was
-		 * requesting single-stepping. */
+		/* Replay of async signals will sometimes internally
+		 * single-step when advancing to an execution target,
+		 * so the trap was only clearly for the debugger if
+		 * the debugger was requesting single-stepping. */
 		|| (stepi && NOT_AT_TARGET == exec_state))) {
-		return 1;
+		return stepi ? TRAP_STEPI : TRAP_BKPT_USER;
 	}
 
 	/* We're trying to replay a deterministic SIGTRAP, or we're
@@ -559,20 +622,20 @@ static int is_debugger_trap(struct context* ctx, int target_sig,
 
 	read_child_registers(ctx->child_tid, &regs);
 	ip = (void*)regs.eip;
-	if (ip_is_breakpoint(ip)) {
-		/* No ambiguity, definitely meant for the debugger. */
+	trap_type = ip_breakpoint_type(ip);
+	if (TRAP_BKPT_USER == trap_type || TRAP_BKPT_INTERNAL == trap_type) {
 		assert(is_breakpoint_trap(ctx));
-		return 1;
+		return trap_type;
 	}
 
 	if (is_breakpoint_trap(ctx)) {
-		/* We should only ever see a breakpoint trap for int3
-		 * instructions (that aren't debugger-set breakpoints,
-		 * which we already checked).  These traps must be
-		 * determistic.  These aren't meant for the debugger,
-		 * but we'll notify the debugger anyway. */
+		/* We successfully replayed a recorded deterministic
+		 * SIGTRAP.  (Because it must have been raised by an
+		 * |int3|, but not one we injected.)  Not for the
+		 * debugger, although we'll end up notifying it
+		 * anyway. */
 		assert(DETERMINISTIC == delivery);
-		return 0;
+		return TRAP_NONE;
 	}
 
 	if (DETERMINISTIC == delivery) {
@@ -592,13 +655,29 @@ static int is_debugger_trap(struct context* ctx, int target_sig,
 		 * delivery, prefer delivering the signal to retiring
 		 * a possible debugger single-step; we'll notify the
 		 * debugger anyway. */
-		return 0;
+		return TRAP_NONE;
 	}
 
-	/* Otherwise, we're not at the target and this wasn't a
-	 * breakpoint, so it's for the debugger if the debugger wants
-	 * to single-step. */
-	return stepi;
+	/* Otherwise, we're not at the execution target, so may have
+	 * been internally single-stepping.  We'll notify the debugger
+	 * if it was also requesting single-stepping.  The debugger
+	 * won't care about the rr-internal trap if it wasn't
+	 * requesting single-stepping. */
+	return stepi ? TRAP_STEPI : TRAP_NONE;
+}
+
+/**
+ * Shortcut for callers that don't care about internal breakpoints.
+ * Return nonzero if |ctx|'s trap is for the debugger, zero otherwise.
+ */
+static int is_debugger_trap(struct context* ctx, int target_sig,
+			    sigdelivery_t delivery, execstate_t exec_state,
+			    int stepi)
+{
+	trap_t type = compute_trap_type(ctx, target_sig, delivery, exec_state,
+					stepi);
+	assert(TRAP_BKPT_INTERNAL != type);
+	return TRAP_NONE != type;
 }
 
 static void guard_overshoot(struct context* ctx,
@@ -640,6 +719,16 @@ static void guard_unexpected_signal(struct context* ctx)
 	/* not reached */
 }
 
+static int is_same_execution_point(uint64_t rec_rcb,
+				   const struct user_regs_struct* rec_regs,
+				   uint64_t rep_rcb,
+				   const struct user_regs_struct* rep_regs)
+{
+	return (rep_rcb == rep_rcb
+		&& 0 == compare_register_files("rep interrupt", rep_regs,
+					       "rec", rec_regs, 0, 0));
+}
+
 /**
  * Run execution forwards for |ctx| until |ctx->trace.rbc| is reached,
  * and the $ip reaches the recorded $ip.  Return 0 if successful or 1
@@ -652,6 +741,7 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		      int stepi)
 {
 	pid_t tid = ctx->child_tid;
+	void* ip = (void*)regs->eip;
 	uint64_t rcb_now;
 
 	assert(ctx->hpc->rbc.fd > 0);
@@ -667,10 +757,13 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
 		if (SIGTRAP == ctx->child_sig) {
-			/* We proved we're not at the execution target
-			 * and we're not single-stepping execution, so
-			 * this must have been meant for the debugger.
-			 * (The debugging code will verify that.) */
+			/* We proved we're not at the execution
+			 * target, and we haven't set any internal
+			 * breakpoints, and we're not temporarily
+			 * internally single-stepping, so we must have
+			 * hit a debugger breakpoint or the debugger
+			 * was single-stepping the tracee.  (The
+			 * debugging code will verify that.) */
 			return 1;
 		}
 		ctx->child_sig = 0;
@@ -688,6 +781,9 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		}
 		guard_unexpected_signal(ctx);
 
+		/* TODO this assertion won't catch many spurious
+		 * SIGIOs; should assert that the siginfo says the
+		 * source is io-ready and the fd is the child's fd. */
 		if (fcntl(ctx->hpc->rbc.fd, F_GETOWN) != tid) {
 			fatal("Scheduled task %d doesn't own hpc; replay divergence", tid);
 		}
@@ -696,66 +792,142 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 	}
 	guard_overshoot(ctx, rcb, rcb_now);
 
-	/* Step 2: Slowly single-step our way to the target rcb.
+	/* Step 2: more slowly, find our way to the target rcb and
+	 * execution point.  We set an internal breakpoint on the
+	 * target $ip and then resume execution.  When that *internal*
+	 * breakpoint is hit (i.e., not one incidentally also set on
+	 * that $ip by the debugger), we check again if we're at the
+	 * target rcb and execution point.  If not, we temporarily
+	 * remove the breakpoint, single-step over the insn, and
+	 * repeat.
 	 *
-	 * This is apparently needed because hpc interrupts can
-	 * overshoot. */
-	while (rcb > 0 && rcb_now < rcb) {
-		if (SIGTRAP == ctx->child_sig
-		    && is_debugger_trap(ctx, sig, ASYNC, NOT_AT_TARGET,
-					stepi)) {
-			/* We proved that we're not at the execution
-			 * target, but we're single-stepping now so
-			 * have to check whether this was a debugger
-			 * trap. */
-			return 1;
-		}
-		continue_or_step(ctx, STEPI);
-		if (SIGCHLD == ctx->child_sig) {
-			/* See above. */
-			ctx->child_sig = 0;
-		}
-		guard_unexpected_signal(ctx);
+	 * What we really want to do is set a (precise)
+	 * retired-instruction interrupt and do away with all this
+	 * cruft. */
+	while (rcb_now <= rcb) {
+		/* Invariants here are
+		 *  o rcb_now is up-to-date
+		 *  o rcb_now <= rcb
+		 *
+		 * Possible state of the execution of |ctx|
+		 *  0. at a debugger trap (breakpoint or stepi)
+		 *  1. at an internal breakpoint
+		 *  2. at the execution target
+		 *  3. not at the execution target, but incidentally
+		 *     at the target $ip
+		 *  4. otherwise not at the execution target
+		 *
+		 * Determining whether we're at a debugger trap is
+		 * surprisingly complicated, but we delegate the work
+		 * to |compute_debugger_trap()|.  The rest can be
+		 * straightforwardly computed with rbc value and
+		 * registers. */
+		struct user_regs_struct regs_now;
+		int at_target;
 
-		rcb_now = read_rbc(ctx->hpc);
-	}
-	guard_overshoot(ctx, rcb, rcb_now);
-
-	/* Step 3: Slowly single-step our way to the target $ip.
-	 *
-	 * What we really want to do is set a retired-instruction
-	 * interrupt and do away with all this cruft. */
-	while (rcb == rcb_now) {
-		struct user_regs_struct cur_regs;
-
-		read_child_registers(ctx->child_tid, &cur_regs);
-		if (0 == compare_register_files("rep interrupt", &cur_regs,
-						"rec", regs, 0, 0)) {
-			if (SIGTRAP == ctx->child_sig
-			    && is_debugger_trap(ctx, sig, ASYNC, AT_TARGET,
-						stepi)) {
+		read_child_registers(tid, &regs_now);
+		at_target = is_same_execution_point(rcb, regs,
+						    rcb_now, &regs_now);
+		if (SIGTRAP == ctx->child_sig) {
+			trap_t trap_type = compute_trap_type(
+				ctx, ASYNC, sig,
+				at_target ? AT_TARGET : NOT_AT_TARGET,
+				stepi);
+			switch (trap_type) {
+			case TRAP_BKPT_USER:
+			case TRAP_STEPI:
+				/* Case (0) above: interrupt for the
+				 * debugger. */
+				debug("    trap was debugger interrupt %d",
+				      trap_type);
 				return 1;
+			case TRAP_BKPT_INTERNAL:
+				/* Case (1) above: cover the tracks of
+				 * our internal breakpoint, and go
+				 * check again if we're at the
+				 * target. */
+				debug("    trap was for target $ip");
+				/* (The breakpoint would have trapped
+				 * at the $ip one byte beyond the
+				 * target.) */
+				assert(!at_target);
+
+				ctx->child_sig = 0;
+				regs_now.eip -= sizeof(int_3_insn);
+				write_child_registers(tid, &regs_now);
+				/* We maintain the
+				 * "'rcb_now'-is-up-to-date" invariant
+				 * above here even though we don't
+				 * re-read the rbc, because executing
+				 * the trap instruction couldn't have
+				 * retired a branch. */
+				continue;
+			case TRAP_NONE:
+				/* Otherwise, we must have been forced
+				 * to single-step because the tracee's
+				 * $ip was incidentally the same as
+				 * the target.  Unfortunately, it's
+				 * awkward to assert that here, so we
+				 * don't yet.  TODO. */
+				debug("    (SIGTRAP but no trap)");
+				assert(!stepi);
+				ctx->child_sig = 0;
+				break;
 			}
-			ctx->child_sig = 0;
-			break;
+		}
+		/* We had to keep the internal breakpoint set (if it
+		 * was when we entered the loop) for the checks above.
+		 * But now we're either done (at the target) or about
+		 * to resume execution in one of a variety of ways,
+		 * and it's simpler to start out knowing that the
+		 * breakpoint isn't set. */
+		remove_internal_sw_breakpoint(ctx, ip);
+
+		if (at_target) {
+			/* Case (2) above: done. */
+			return 0;
 		}
 
-		debug("Stepping from ip %p to %p",
-		      (void*)cur_regs.eip, (void*)regs->eip);
+		/* At this point, we've proven that we're not at the
+		 * target execution point, and we've ensured the
+		 * internal breakpoint is unset. */
+		debug("  running from rcb:%llu to target rcb:%llu",
+		      rcb_now, rcb);
 
-		if (SIGTRAP == ctx->child_sig
-		    && is_debugger_trap(ctx, ASYNC, sig, NOT_AT_TARGET,
-					stepi)) {
-			/* See above. */
-			return 1;
+		if (regs->eip != regs_now.eip) {
+			/* Case (4) above: set a breakpoint on the
+			 * target $ip and PTRACE_CONT in an attempt to
+			 * execute as many non-trapped insns as we
+			 * can.  (Unless the debugger is stepping, of
+			 * course.)  Trapping and checking
+			 * are-we-at-target is slow.  It bears
+			 * repeating that the ideal implementation
+			 * would be programming a precise counter
+			 * interrupt (insns-retired best of all), but
+			 * we're forced to be conservative by observed
+			 * imprecise counters.  This should still be
+			 * no slower than single-stepping our way to
+			 * the target execution point. */
+			debug("    breaking on target $ip");
+			set_internal_sw_breakpoint(ctx, ip);
+			continue_or_step(ctx, stepi);
+		} else {
+			/* Case (3) above: we can't put a breakpoint
+			 * on the $ip, because resuming execution
+			 * would just trap and we'd be back where we
+			 * started.  Single-step past it. */
+			debug("    (single-stepping over target $ip)");
+			continue_or_step(ctx, STEPI);
 		}
-		continue_or_step(ctx, STEPI);
+
 		if (SIGCHLD == ctx->child_sig) {
-			/* See above. */
+			/* See the long comment in "Step 1" above. */
 			ctx->child_sig = 0;
 		}
 		guard_unexpected_signal(ctx);
 
+		/* Maintain the "'rcb_now'-is-up-to-date"
+		 * invariant. */
 		rcb_now = read_rbc(ctx->hpc);
 	}
 	guard_overshoot(ctx, rcb, rcb_now);
@@ -808,7 +980,7 @@ static int emulate_deterministic_signal(struct context* ctx,
 		ctx->child_sig = 0;
 		return emulate_deterministic_signal(ctx, sig, stepi);
 	} else if (SIGTRAP == ctx->child_sig
-	    && is_debugger_trap(ctx, sig, DETERMINISTIC, UNKNOWN, stepi)) {
+		   && is_debugger_trap(ctx, sig, DETERMINISTIC, UNKNOWN, stepi)) {
 		return 1;
 	} else if (ctx->child_sig != sig) {
 		log_err("Replay got unrecorded signal %d (expecting %d)",
@@ -1245,7 +1417,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		assert(SIGTRAP == ctx->child_sig && "Unknown trap");
 
 		read_child_registers(ctx->child_tid, &regs);
-		if (ip_is_breakpoint((void*)regs.eip)) {
+		if (TRAP_BKPT_USER == ip_breakpoint_type((void*)regs.eip)) {
 			/* SW breakpoint: $ip is just past the
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
