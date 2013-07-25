@@ -10,7 +10,6 @@
 
 #include "share/dbg.h"
 #include "share/hpc.h"
-#include "share/seccomp-bpf.h"
 #include "share/sys.h"
 #include "share/syscall_buffer.h"
 #include "share/util.h"
@@ -268,17 +267,6 @@ static void assert_prerequisites() {
 	}
 }
 
-static int is_seccomp_bpf_available() {
-	struct sock_filter noop[] = { ALLOW_PROCESS };
-	struct sock_fprog prog = { .len = (unsigned short)ALEN(noop),
-				   .filter = noop };
-	/* NB: if the SET_NO_NEW_PRIVS succeeds, it will prevent us
-	 * from doing things like recording setuid programs.  Bad
-	 * thing? */
-	return (0 == prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
-		&& 0 == prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog));
-}
-
 static void print_usage()
 {
 	fputs(
@@ -406,9 +394,7 @@ static int parse_args(int argc, char** argv, struct flags* flags, int* argi)
 	flags->dump_at = DUMP_AT_NONE;
 	flags->dump_on = DUMP_ON_NONE;
 	flags->redirect = TRUE;
-	/* TODO default to disabling the syscall buffer, because it's
-	 * buggy and not well tested at the moment. */
-	flags->use_syscall_buffer = FALSE;
+	flags->use_syscall_buffer = TRUE;
 
 	if (argc < 2) {
 		fprintf(stderr, "%s: must specify a command\n", argv[0]);
@@ -468,8 +454,6 @@ int main(int argc, char* argv[], char** envp)
 
 		if (!__rr_flags.use_syscall_buffer) {
 			log_info("Syscall buffer disabled by flag");
-		} else if (!is_seccomp_bpf_available()) {
-			log_warn("seccomp-bpf not available on this system; syscall buffer disabled");
 		} else {
 			/* We rely on the distribution package or the
 			 * user to set up the LD_LIBRARY_PATH properly
