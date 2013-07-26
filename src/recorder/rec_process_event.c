@@ -928,22 +928,21 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 sizeof(fd_set), (void*)regs.esi,
 		 sizeof(struct timeval), (void*)regs.edi)
 
-	/* this class of system calls has a char* as argument 0; we log this argument */
-
-	/*
+	/**
 	 * int open(const char *pathname, int flags)
 	 * int open(const char *pathname, int flags, mode_t mode)
 	 */
-	//SYS_REC0(open)
 	case SYS_open:
 	{
 		char *pathname = read_child_str(tid, (void*)regs.ebx);
-		// TODO: disable this feature in the child completely so the child won't even
-		// 		 attempt opening it.
-		if (strcmp("/dev/dri/card0", pathname) == 0) { // fail the mapping here
-			log_warn("Disallowing /dev/dri/card0 access.");
-			regs.eax = 0;
-			write_child_registers(ctx->child_tid,&regs);
+		if (is_blacklisted_filename(pathname)) {
+			/* NB: the file will still be open in the
+			 * process's file table, but let's hope this
+			 * gross hack dies before we have to worry
+			 * about that. */
+			log_warn("Cowardly refusing to open %s", pathname);
+			regs.eax = -ENOENT;
+			write_child_registers(ctx->child_tid, &regs);
 		}
 		sys_free((void**)&pathname);
 		break;

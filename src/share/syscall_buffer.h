@@ -124,4 +124,20 @@ inline static void prepare_syscallbuf_socket_addr(struct sockaddr_un* addr,
 		 "/tmp/rr-tracee-ctrlsock-%d", tid);
 }
 
+/**
+ * Return nonzero if an attempted open() of |filename| should be
+ * blocked.
+ *
+ * The background of this hack is that rr doesn't support DRI/DRM
+ * currently, so we use the blunt stick of refusing to open this
+ * interface file as a way of disabling it entirely.  (In addition to
+ * tickling xorg.conf, which doesn't entirely do the trick.)  It's
+ * known how to fix this particular, so let's not let this hack grow
+ * too much by piling on.
+ */
+inline static int is_blacklisted_filename(const char* filename)
+{
+	return !strcmp("/dev/dri/card0", filename);
+}
+
 #endif /* SYSCALL_BUFFER_H_ */
