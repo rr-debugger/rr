@@ -13,7 +13,6 @@
 
 #include <sys/syscall.h>
 
-#include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/list.h"
 #include "../share/sys.h"
@@ -25,19 +24,21 @@ static struct list *tid_to_node[MAX_TID] = {NULL};
 static struct list *registered_threads = NULL;
 static struct list *current_thread_ptr = NULL;
 static int num_active_threads = 0;
+static struct context * last_ctx;
 
 static void rec_sched_init()
 {
 	current_thread_ptr = registered_threads = list_new();
 }
 
-static void note_switch(struct context* from, struct context* to,
-			int max_events)
+static void set_switch_counter(struct context *last_ctx, struct context *ctx,
+			       int max_events)
 {
-	if (from == to) {
-		to->switch_counter--;
+	assert(ctx != NULL);
+	if (last_ctx == ctx) {
+		ctx->switch_counter--;
 	} else {
-		to->switch_counter = max_events;
+		ctx->switch_counter = max_events;
 	}
 }
 
@@ -48,92 +49,48 @@ static void note_switch(struct context* from, struct context* to,
 struct context* get_active_thread(const struct flags* flags,
 				  struct context* ctx)
 {
-	struct context* next_ctx = NULL;
 	int max_events = flags->max_events;
-	struct list* node = current_thread_ptr;
 
-	debug("Scheduling next task");
+	/* This maintains the order in which the threads are signaled to continue and
+	 * when the the record is actually written
+	 */
 
-	if (ctx && !ctx->allow_ctx_switch) {
-		debug("  (previous task was uninterruptible)");
-		return ctx;
+	if (ctx != 0) {
+		if (!ctx->allow_ctx_switch) {
+			return ctx;
+		}
+
+		/* switch to next thread if the thread reached the maximum number of RBCs */
+		if (ctx->switch_counter < 0) {
+			current_thread_ptr = list_next(current_thread_ptr);
+			ctx->switch_counter = max_events;
+		}
 	}
 
-	/* Prefer switching to the next task if |ctx| exceeded its
-	 * event limit. */
-	if (ctx && ctx->switch_counter < 0) {
-		debug("  previous task exceeded event limit, preferring next");
-		node = current_thread_ptr = list_next(current_thread_ptr);
-		ctx->switch_counter = max_events;
-	}
-
-	/* Go around the task list exactly one time looking for a
-	 * runnable thread. */
-	do {
-		if (list_end(node)) {
-			/* Wrap around the end of the list. */
-			node = registered_threads;
-		}
-		next_ctx = (struct context*)list_data(node);
-		/* XXX when can next_ctx be null? */
-		if (next_ctx
-		    && next_ctx->exec_state != EXEC_STATE_IN_SYSCALL) {
-			/* |next_ctx| is non-null and not blocked on a
-			 * syscall; that's what we're looking for. */
-			debug("  %d isn't blocked, done", next_ctx->child_tid);
-			break;
-		}
-		if (next_ctx) {
-			pid_t tid = next_ctx->child_tid;
-			/* We don't know yet whether |next_ctx| is
-			 * runnable; check quickly.  We do this check
-			 * to preserve scheduler fairness: if we
-			 * skipped this check, we would starve tasks
-			 * that enter syscalls.  */
-			debug("  %d is blocked, checking status ...", tid);
-			if (sys_waitpid_nonblock(tid, &(next_ctx->status))) {
-				debug("  ready!");
-				next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-				break;
+	struct context *return_ctx;
+	while (1) {
+		/* check all threads again, do a full circle and wait */
+		for (; !list_end(current_thread_ptr); current_thread_ptr = list_next(current_thread_ptr)) {
+			return_ctx = (struct context *) list_data(current_thread_ptr);
+			if (return_ctx != NULL) {
+				if (return_ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
+					if (sys_waitpid_nonblock(return_ctx->child_tid, &(return_ctx->status)) != 0) {
+						return_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+						set_switch_counter(last_ctx, return_ctx, max_events);
+						last_ctx = return_ctx;
+						return return_ctx;
+					}
+					continue;
+				}
+				set_switch_counter(last_ctx, return_ctx, max_events);
+				last_ctx = return_ctx;
+				return return_ctx;
 			}
-			/* |next_ctx| isn't ready, try to find another
-			 * thread.*/
-			debug("  still blocked");
-			next_ctx = NULL;
 		}
-		node = list_next(node);
-	} while (node != current_thread_ptr);
-
-	if (!next_ctx) {
-		/* All the tasks are blocked.  Wait for the next one
-		 * to change state. */
-		int status;
-		pid_t tid;
-
-		debug("  all tasks blocked, waiting for runnable (%d total)",
-		      num_active_threads);
-		while (-1 == (tid = waitpid(-1, &status,
-					    __WALL | WSTOPPED | WUNTRACED))) {
-			if (EINTR == errno) {
-				debug("  waitpid() interrupted by EINTR");
-				continue;
-			}
-			fatal("Failed to waitpid()");
-		}
-		debug("  %d changed state", tid);
-
-		node = tid_to_node[tid];
-		next_ctx = list_data(node);
-
-		assert(next_ctx->exec_state == EXEC_STATE_IN_SYSCALL);
-
-		next_ctx->status = status;
-		next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+		current_thread_ptr = registered_threads;
 	}
 
-	current_thread_ptr = node;
-	note_switch(ctx, next_ctx, max_events);
-	return next_ctx;
+	return 0;
 }
 
 /**
