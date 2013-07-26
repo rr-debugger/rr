@@ -1087,9 +1087,20 @@ int open(const char* pathname, int flags, ...)
 	 * allowing descheds here may cause performance issues if the
 	 * open does block for a while.  Err on the side of simplicity
 	 * until we have perf data. */
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr;
 	int mode = 0;
 	long ret;
+
+	if (is_blacklisted_filename(pathname)) {
+		/* Would be nice to log_info() here, but that would
+		 * flush the syscallbuf ...  This special bail-out
+		 * case is deterministic, so no need to save any
+		 * breadcrumbs in the syscallbuf. */
+		errno = ENOENT;
+		return -1;
+	}
+
+	ptr = prep_syscall(NO_DESCHED);
 
 	if (O_CREAT & flags) {
 		va_list mode_arg;
