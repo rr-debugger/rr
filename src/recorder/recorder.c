@@ -10,7 +10,7 @@
 #include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/prctl.h>
- #include <sys/resource.h>
+#include <sys/resource.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
 #include <linux/net.h>
@@ -30,41 +30,6 @@
 #define PTRACE_EVENT_NONE			0
 static struct flags rr_flags_ = { 0 };
 static bool filter_on_ = FALSE;
-
-/**
- * Single steps to the next event that must be recorded. This can either be a system call, or reading the time
- * stamp counter (for now)
- */
-void goto_next_event_singlestep(struct context* context)
-{
-	pid_t tid = context->child_tid;
-
-	while (1) {
-		int inst_size;
-		char* inst = get_inst(context, 0, &inst_size);
-		if ((strncmp(inst, "sysenter", 7) == 0) || (strncmp(inst, "int", 3) == 0)) {
-			record_inst_done(context);
-			free(inst);
-			printf("breaking out\n");
-			break;
-		}
-		record_inst(context, inst);
-		free(inst);
-		if (context->child_sig != 0) {
-			debug("pending sig: %d\n", context->child_sig);
-		}
-
-		sys_ptrace_singlestep_sig(tid, context->child_sig);
-		context->child_sig = 0;
-		sys_waitpid(tid, &(context->status));
-
-		if (WSTOPSIG(context->status) == SIGSEGV) {
-			break;
-		}
-	}
-
-	assert(GET_PTRACE_EVENT(context->status)==0);
-}
 
 static void rec_init_scratch_memory(struct context *ctx)
 {
@@ -592,11 +557,18 @@ void start_recording(struct flags rr_flags)
 			 * by the syscall_buffer lib in the child, therefore we must record in the traditional way (with PTRACE_SYSCALL)
 			 * until it is installed.
 			 */
-			if (filter_on_) {
+			if (ctx->will_restart && filter_on_) {
+				debug("  advancing to restarted %s",
+				      syscallname(ctx->last_syscall));
+			}
+
+			if (!ctx->will_restart && filter_on_) {
 				cont_block(ctx);
 			} else {
 				cont_syscall_block(ctx);
 			}
+			ctx->will_restart = 0;
+
 			debug_exec_state("  first trap", ctx);
 
 			/* we must disallow the context switch here! */
@@ -709,7 +681,8 @@ void start_recording(struct flags rr_flags)
 				break;
 				/* we sould never come here */
 			} else {
-				fatal("Unhandled event %d", ctx->event);
+				fatal("Unhandled event %s (%d)",
+				      strevent(ctx->event), ctx->event);
 			}
 
 			if (ctx->desched) {
@@ -780,14 +753,15 @@ void start_recording(struct flags rr_flags)
 
 			/* we received a signal while in the system call and send it right away*/
 			/* we have already sent the signal and process sigreturn */
-			if (ctx->event == SYS_sigreturn) {
-				assert(1==0);
-			}
+			assert(ctx->event != SYS_sigreturn);
 
 			// if the syscall is about to be restarted, save the last syscall performed by it.
 			if (syscall != SYS_restart_syscall &&
 			    (retval == ERESTART_RESTARTBLOCK || retval == ERESTARTNOINTR)) {
+				log_info("  retval %d, will restart %s",
+					 retval, syscallname(syscall));
 				ctx->last_syscall = syscall;
+				ctx->will_restart = 1;
 			}
 
 			handle_ptrace_event(&ctx);
@@ -797,9 +771,10 @@ void start_recording(struct flags rr_flags)
 				assert(ctx->child_sig != SIGTRAP);
 				// a syscall_restart ending is equivalent to the restarted syscall ending
 				if (syscall == SYS_restart_syscall) {
-					debug("restart_syscall exit");
 					syscall = ctx->last_syscall;
 					ctx->event = syscall;
+					debug("  exiting restarted %s",
+					      syscallname(syscall));
 				}
 				// no need to process the syscall in case its restarted
 				// this will be done in the exit from the restart_syscall

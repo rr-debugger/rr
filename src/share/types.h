@@ -83,6 +83,12 @@ struct context {
 	int scratch_size;
 	int switch_counter;
 	int last_syscall;
+	/* Nonzero when the current syscall (saved to |last_syscall|
+	 * above) will restart.  When this is the case, we have to
+	 * advance to the syscall "entry" point using PTRACE_SYSCALL;
+	 * PTRACE_CONT has been observed to miss the syscall re-entry
+	 * point, for not-well-understand reasons. */
+	int will_restart;
 
 	void *recorded_scratch_ptr_0;
 	void *recorded_scratch_ptr_1;
