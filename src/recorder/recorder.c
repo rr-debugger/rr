@@ -758,8 +758,8 @@ void start_recording(struct flags rr_flags)
 			// if the syscall is about to be restarted, save the last syscall performed by it.
 			if (syscall != SYS_restart_syscall &&
 			    (retval == ERESTART_RESTARTBLOCK || retval == ERESTARTNOINTR)) {
-				log_info("  retval %d, will restart %s",
-					 retval, syscallname(syscall));
+				debug("  retval %d, will restart %s",
+				      retval, syscallname(syscall));
 				ctx->last_syscall = syscall;
 				ctx->will_restart = 1;
 			}
