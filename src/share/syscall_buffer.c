@@ -117,7 +117,7 @@ static struct syscallbuf_hdr* buffer_hdr()
  */
 static byte* buffer_last()
 {
-	return buffer + sizeof(*buffer_hdr()) + buffer_hdr()->num_rec_bytes;
+	return (byte*)next_record(buffer_hdr());
 }
 
 /**
@@ -537,14 +537,14 @@ static void init()
  *
  *   // Reserve buffer space for the recorded syscall and any other
  *   // required internal bookkeeping data.
- *   void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+ *   void* ptr = prep_syscall();
  *
  *   // If the syscall requires recording any extra data, reserve
  *   // space for it too.
  *   ptr += sizeof(extra_syscall_data);
  *
  *   // If there's not enough space, bail.
- *   if (!can_buffer_syscall(ptr)) {
+ *   if (!start_commit_buffered_syscall(SYS_foo, ptr, WILL_ARM_DESCHED_EVENT)) {
  *       goto fallback_trace;
  *   }
  *
@@ -563,8 +563,7 @@ static void init()
  * fallback_trace:
  *   return syscall(...);  // traced
  */
-enum { WILL_ARM_DESCHED_EVENT, DISARMED_DESCHED_EVENT, NO_DESCHED };
-static void* prep_syscall(int notify_desched)
+static void* prep_syscall()
 {
 	if (!buffer) {
 		init();
@@ -593,11 +592,18 @@ static void* prep_syscall(int notify_desched)
  * Return 0 if we should trace the system call.
  * This must be checked before proceeding with the buffered system call.
  */
-static int can_buffer_syscall(void* record_end)
+/* (Negative numbers so as to not be valid syscall numbers, in case
+ * the |int| arguments below are passed in the wrong order.) */
+enum { WILL_ARM_DESCHED_EVENT = -1,
+       DISARMED_DESCHED_EVENT = -2,
+       NO_DESCHED = -3 };
+static int start_commit_buffered_syscall(int syscallno, void* record_end,
+					 int notify_desched)
 {
 	void* record_start = buffer_last();
 	void* stored_end =
 		record_start + stored_record_size(record_end - record_start);
+	struct syscallbuf_record* rec = record_start;
 
 	if (stored_end < record_start + sizeof(struct syscallbuf_record)) {
 		/* Either a catastrophic buffer overflow or
@@ -612,6 +618,16 @@ static int can_buffer_syscall(void* record_end)
 		buffer_hdr()->locked = 0;
 		return 0;
 	}
+	/* Store this breadcrumb so that the tracer can find out what
+	 * syscall we're executing if our registers are in a weird
+	 * state.  If we end up aborting this syscall, no worry, this
+	 * will just be overwritten later.
+	 *
+	 * NBB: this *MUST* be set before the desched event is
+	 * armed. */
+	rec->syscallno = syscallno;
+	rec->desched = NO_DESCHED != notify_desched;
+	rec->size = record_end - record_start;
 	return 1;
 }
 
@@ -650,12 +666,11 @@ static int update_errno_ret(int ret)
 /**
  * Commit the record for a buffered system call.
  * record_end can be adjusted downward from what was passed to
- * can_buffer_syscall, if not all of the initially requested space is needed.
+ * start_commit_buffered_syscall, if not all of the initially requested space is needed.
  * The result of this function should be returned directly by the
  * wrapper function.
  */
-static int commit_syscall(int syscallno, void* record_end, int ret,
-			  int disarmed_desched)
+static int commit_syscall(void* record_end, int ret, int disarmed_desched)
 {
 	void* record_start = buffer_last();
 	struct syscallbuf_record* rec = record_start;
@@ -669,9 +684,12 @@ static int commit_syscall(int syscallno, void* record_end, int ret,
 		hdr->abort_commit = 0;
 	} else {
 		rec->ret = ret;
-		rec->syscallno = syscallno;
-		rec->desched = NO_DESCHED != disarmed_desched;
-		rec->size = record_end - record_start;
+		if (!((rec->desched
+		       && DISARMED_DESCHED_EVENT == disarmed_desched)
+		      || (!rec->desched
+			  && NO_DESCHED == disarmed_desched))) {
+			fatal("Mismatched arm/disarm-desched");
+		}
 		hdr->num_rec_bytes += stored_record_size(rec->size);
 	}
 	buffer_hdr()->locked = 0;
@@ -723,7 +741,7 @@ static int stat_something(int syscallno, int vers, unsigned long what,
 	/* Like open(), not arming the desched event because it's not
 	 * needed for correctness, and there are no data to suggest
 	 * whether it's a good idea perf-wise. */
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	struct stat64* buf2 = NULL;
 	long ret;
 
@@ -735,14 +753,14 @@ static int stat_something(int syscallno, int vers, unsigned long what,
 		buf2 = ptr;
 		ptr += sizeof(*buf2);
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(syscallno, ptr, NO_DESCHED)) {
 		return syscall(syscallno, what, buf);
 	}
 	ret = untraced_syscall2(syscallno, what, buf2);
 	if (buf2) {
 		memcpy(buf, buf2, sizeof(*buf));
 	}
-	return commit_syscall(syscallno, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 /**
@@ -796,19 +814,19 @@ long untraced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
 
 int access(const char* pathname, int mode)
 {
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	long ret;
 
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_access, ptr, NO_DESCHED)) {
 		return syscall(SYS_access, pathname, mode);
  	}
 	ret = untraced_syscall2(SYS_access, pathname, mode);
-	return commit_syscall(SYS_access, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 int clock_gettime(clockid_t clk_id, struct timespec* tp)
 {
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	struct timespec *tp2 = NULL;
 	long ret;
 
@@ -817,7 +835,7 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 		tp2 = ptr;
 		ptr += sizeof(struct timespec);
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_clock_gettime, ptr, NO_DESCHED)) {
 		return syscall(SYS_clock_gettime, clk_id, tp);
  	}
 	ret = untraced_syscall2(SYS_clock_gettime, clk_id, tp2);
@@ -827,19 +845,19 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 	if (tp) {
 		memcpy(tp, tp2, sizeof(struct timespec));
 	}
-	return commit_syscall(SYS_clock_gettime, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 int close(int fd)
 {
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	long ret;
 
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_close, ptr, NO_DESCHED)) {
 		return syscall(SYS_close, fd);
  	}
 	ret = untraced_syscall1(SYS_close, fd);
-	return commit_syscall(SYS_close, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 int creat(const char* pathname, mode_t mode)
@@ -854,33 +872,33 @@ int creat(const char* pathname, mode_t mode)
 static int fcntl0(int fd, int cmd)
 {
 	/* No zero-arg fcntl's are known to be may-block. */
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	long ret;
 
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, NO_DESCHED)) {
 		return syscall(SYS_fcntl64, fd, cmd);
  	}
 	ret = untraced_syscall2(SYS_fcntl64, fd, cmd);
-	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 static int fcntl1(int fd, int cmd, int arg)
 {
 	/* No one-int-arg fcntl's are known to be may-block. */
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	long ret;
 
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, NO_DESCHED)) {
 		return syscall(SYS_fcntl64, fd, cmd, arg);
 	}
 	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, arg);
-	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
 {
 	/* The OWN_EX fcntl's aren't may-block. */
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	struct f_owner_ex* owner2 = NULL;
 	long ret;
 
@@ -888,7 +906,7 @@ static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
 		owner2 = ptr;
 		ptr += sizeof(*owner2);
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, NO_DESCHED)) {
 		return syscall(SYS_fcntl64, fd, cmd, owner);
 	}
 	if (owner2) {
@@ -898,12 +916,12 @@ static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
 	if (owner2) {
 		memcpy(owner, owner2, sizeof(*owner));
 	}
-	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 static int fcntl_flock(int fd, int cmd, struct flock64* lock)
 {
-	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	void* ptr = prep_syscall();
 	struct flock64* lock2 = NULL;
 	long ret;
 
@@ -911,7 +929,8 @@ static int fcntl_flock(int fd, int cmd, struct flock64* lock)
 		lock2 = ptr;
 		ptr += sizeof(*lock2);
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr,
+					   WILL_ARM_DESCHED_EVENT)) {
 		return syscall(SYS_fcntl64, fd, cmd, lock);
 	}
 
@@ -927,7 +946,7 @@ static int fcntl_flock(int fd, int cmd, struct flock64* lock)
 		memcpy(lock, lock2, sizeof(*lock));
 	}
 
-	return commit_syscall(SYS_fcntl64, ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 int fcntl(int fd, int cmd, ... /* arg */)
@@ -1009,7 +1028,7 @@ int __fxstat(int vers, int fd, struct stat* buf)
 
 int gettimeofday(struct timeval* tp, struct timezone* tzp)
 {
-	void *ptr = prep_syscall(NO_DESCHED);
+	void *ptr = prep_syscall();
 	struct timeval *tp2 = NULL;
 	struct timezone *tzp2 = NULL;
 	long ret;
@@ -1022,7 +1041,7 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 		tzp2 = ptr;
 		ptr += sizeof(struct timezone);
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_gettimeofday, ptr, NO_DESCHED)) {
 		return syscall(SYS_gettimeofday, tp, tzp);
 	}
 	ret = untraced_syscall2(SYS_gettimeofday, tp2, tzp2);
@@ -1032,7 +1051,7 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 	if (tzp) {
 		memcpy(tzp, tzp2, sizeof(struct timezone));
 	}
-	return commit_syscall(SYS_gettimeofday, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 int __lxstat64(int vers, const char* path, struct stat64* buf)
@@ -1052,14 +1071,14 @@ int __lxstat(int vers, const char* path, struct stat* buf)
 
 int madvise(void* addr, size_t length, int advice)
 {
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	long ret;
 
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_madvise, ptr, NO_DESCHED)) {
 		return syscall(SYS_madvise, addr, length, advice);
 	}
 	ret = untraced_syscall3(SYS_madvise, addr, length, advice);
-	return commit_syscall(SYS_madvise, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 int open(const char* pathname, int flags, ...)
@@ -1082,7 +1101,7 @@ int open(const char* pathname, int flags, ...)
 		return -1;
 	}
 
-	ptr = prep_syscall(NO_DESCHED);
+	ptr = prep_syscall();
 
 	if (O_CREAT & flags) {
 		va_list mode_arg;
@@ -1090,12 +1109,12 @@ int open(const char* pathname, int flags, ...)
 		mode = va_arg(mode_arg, int);
 		va_end(mode_arg);
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_open, ptr, NO_DESCHED)) {
 		return syscall(SYS_open, pathname, flags, mode);
 	}
 
 	ret = untraced_syscall3(SYS_open, pathname, flags, mode);
-	return commit_syscall(SYS_open, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 int open64(const char* pathname, int flags, ...)
@@ -1112,7 +1131,7 @@ int open64(const char* pathname, int flags, ...)
 
 ssize_t read(int fd, void* buf, size_t count)
 {
-	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	void* ptr = prep_syscall();
 	void* buf2 = NULL;
 	long ret;
 
@@ -1120,7 +1139,8 @@ ssize_t read(int fd, void* buf, size_t count)
 		buf2 = ptr;
 		ptr += count;
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_read, ptr,
+					   WILL_ARM_DESCHED_EVENT)) {
 		return syscall(SYS_read, fd, buf, count);
 	}
 
@@ -1131,12 +1151,12 @@ ssize_t read(int fd, void* buf, size_t count)
 	if (buf2 && ret > 0) {
 		memcpy(buf, buf2, ret);
 	}
-	return commit_syscall(SYS_read, ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 {
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	char* buf2 = NULL;
 	long ret;
 
@@ -1144,7 +1164,7 @@ ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 		buf2 = ptr;
 		ptr += bufsiz;
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_readlink, ptr, NO_DESCHED)) {
 		return syscall(SYS_readlink, path, buf, bufsiz);
 	}
 
@@ -1152,12 +1172,12 @@ ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 	if (buf2 && ret > 0) {
 		memcpy(buf, buf2, ret);
 	}
-	return commit_syscall(SYS_readlink, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 {
-	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	void* ptr = prep_syscall();
 	void* buf2 = NULL;
 	long ret;
 
@@ -1165,7 +1185,8 @@ ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 		buf2 = ptr;
 		ptr += len;
 	}
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_socketcall, ptr,
+					   WILL_ARM_DESCHED_EVENT)) {
 		return traced_socketcall4(SYS_RECV, sockfd, buf, len, flags);
 	}
 
@@ -1176,15 +1197,15 @@ ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 	if (buf2 && ret > 0) {
 		memcpy(buf, buf2, ret);
 	}
-	return commit_syscall(SYS_socketcall, ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 time_t time(time_t* t)
 {
-	void* ptr = prep_syscall(NO_DESCHED);
+	void* ptr = prep_syscall();
 	long ret;
 
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_time, ptr, NO_DESCHED)) {
 		return syscall(SYS_time, t);
 	}
 	ret = untraced_syscall1(SYS_time, NULL);
@@ -1192,15 +1213,16 @@ time_t time(time_t* t)
 		/* No error is possible here. */
 		*t = ret;
 	}
-	return commit_syscall(SYS_time, ptr, ret, NO_DESCHED);
+	return commit_syscall(ptr, ret, NO_DESCHED);
 }
 
 ssize_t write(int fd, const void* buf, size_t count)
 {
-	void* ptr = prep_syscall(WILL_ARM_DESCHED_EVENT);
+	void* ptr = prep_syscall();
 	long ret;
 
-	if (!can_buffer_syscall(ptr)) {
+	if (!start_commit_buffered_syscall(SYS_write, ptr,
+					   WILL_ARM_DESCHED_EVENT)) {
 		return syscall(SYS_write, fd, buf, count);
 	}
 
@@ -1208,7 +1230,7 @@ ssize_t write(int fd, const void* buf, size_t count)
 	ret = untraced_syscall3(SYS_write, fd, buf, count);
 	disarm_desched_event();
 
-	return commit_syscall(SYS_write, ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 int __xstat64(int vers, const char* path, struct stat64* buf)

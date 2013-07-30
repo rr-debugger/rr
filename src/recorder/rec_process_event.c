@@ -1425,13 +1425,13 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 */
 		case SYS_RECV:
 		{
+			int length = ctx->recorded_scratch_size;//regs.eax;
+			if (length <= 0) {
+				break;
+			}
 			// restore ecx
 			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
 			write_child_registers(tid,&regs);
-
-			int length = ctx->recorded_scratch_size;//regs.eax;
-			if (length <= 0)
-				break;
 
 			// copy the buffer back to the original location
 			size_t num_args = 4;

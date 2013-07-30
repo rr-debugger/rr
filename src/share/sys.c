@@ -171,8 +171,8 @@ long sys_ptrace(int request, pid_t pid, void *addr, void *data)
 {
 	long ret;
 	if ((ret = ptrace(request, pid, addr, data)) == -1) {
-		log_err("ptrace_error: request: %d of tid: %d: addr %p, data %p", request, pid, addr, data);
-		sys_exit();
+		fatal("ptrace_error: request: %d of tid: %d: addr %p, data %p",
+		      request, pid, addr, data);
 	}
 	return ret;
 }

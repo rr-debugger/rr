@@ -102,6 +102,17 @@ struct socketcall_args {
 } __attribute__((packed));
 
 /**
+ * Return a pointer to what may be the next syscall record.
+ *
+ * THIS POINTER IS NOT GUARANTEED TO BE VALID!!!  Caveat emptor.
+ */
+inline static struct syscallbuf_record* next_record(struct syscallbuf_hdr* hdr)
+{
+	
+	return (void*)hdr->recs + hdr->num_rec_bytes;
+}
+
+/**
  * Return the amount of space that a record of |length| will occupy in
  * the buffer if committed, including padding.
  */
