@@ -70,6 +70,13 @@ int get_memory_size(struct context * ctx);
 double now_sec();
 
 /**
+ * Sleep for the duration of time specified in |ts|.  Continue
+ * sleeping until |ts| has elapsed, even if a signal is received.  If
+ * an error occurs, -1 is returned and errno is set appropriately.
+ */
+int nanosleep_nointr(const struct timespec* ts);
+
+/**
  * Return the symbolic name of |sig|, f.e. "SIGILL", or "???signal" if
  * unknown.
  */

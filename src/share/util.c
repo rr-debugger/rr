@@ -73,6 +73,22 @@ double now_sec()
 	return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
 }
 
+int nanosleep_nointr(const struct timespec* ts)
+{
+	struct timespec req = *ts;
+	struct timespec rem;
+	int err;
+	do {
+		err = nanosleep(&req, &rem);
+		if (errno == EINTR) {
+			err = 0;
+		}
+		req = rem;
+	} while (err == 0 && req.tv_sec > 0 && req.tv_nsec > 0);
+	return err;
+
+}
+
 const char* signalname(int sig)
 {
 	/* strsignal() would be nice to use here, but it provides TMI. */
