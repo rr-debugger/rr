@@ -1064,6 +1064,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * set
 	 */
 	SYS_REC1(pread64, regs.eax, (void*)regs.ecx)
+	SYS_REC0(pwrite64)
 
 	/**
 	 *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
