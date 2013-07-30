@@ -141,12 +141,30 @@ static void disarm_desched_event(struct context* ctx)
 	}
 }
 
-static uint64_t
-read_desched_counter(struct context* ctx)
+static uint64_t read_desched_counter(struct context* ctx)
 {
 	uint64_t nr_descheds;
 	read(ctx->desched_fd, &nr_descheds, sizeof(nr_descheds));
 	return nr_descheds;
+}
+
+static void advance_syscall_boundary(struct context* ctx,
+				     struct user_regs_struct* regs)
+{
+	pid_t tid = ctx->child_tid;
+	int status;
+
+	sys_ptrace_syscall(tid);
+	sys_waitpid(tid, &status);
+	read_child_registers(tid, regs);
+	if (!(WIFSTOPPED(status) && (STOPSIG_SYSCALL == WSTOPSIG(status)
+				     /* TODO: non-desched SIGIO could
+				      * happen here */
+				     || SIGIO == WSTOPSIG(status)))) {
+		/* TODO: need to handle signals here */
+		fatal("Trying to reach syscall boundary, but saw signal %s instead (status 0x%x)",
+		      signalname(WSTOPSIG(status)), status);
+	}
 }
 
 /**
@@ -158,10 +176,9 @@ read_desched_counter(struct context* ctx)
 static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 				    struct user_regs_struct* regs)
 {
-	pid_t tid = ctx->child_tid;
 	int call = ctx->event;
 	uint64_t nr_descheds;
-	int status;
+	int expecting_extra_sigio = 1;
 
 	assert(SIGIO == si->si_signo);
 
@@ -173,51 +190,119 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 
 	/* TODO: how can signals interrupt us here? */
 
+	/* The desched event just fired.  The tracee can be in any of
+	 * these intervals
+	 *
+	 *  A. [ arm-desched-ioctl succeeds, exit arm ioctl ]
+	 *  B. ( exit arm ioctl, enter buffered syscall ]
+	 *  C. ( enter buffered syscall, exit buffered syscall ]
+	 *  D. ( exit buffered syscall, enter disarm-desched-event ioctl ]
+	 *  E. ( enter disarm ioctl, exit disarm ioctl ]
+	 *  F. ( exit disarm ioctl, ... )
+	 *
+	 * If the tracee has finished its buffered syscall, then the
+	 * desched event can safely be ignored, and the tracee sent
+	 * back along its way.
+	 *
+	 * Otherwise, we want to ensure that the tracee has at least
+	 * entered its buffered syscall.  The desched event is
+	 * one-shot, for all intents and purposes, so if the tracee
+	 * /isn't/ in its buffered syscall, then we can't re-arm the
+	 * desched event to guard against the syscall blocking.  We
+	 * also want to leave the tracee in a consistent state for the
+	 * purposes of replay.
+	 *
+	 * So, we examine the tracee's registers and see what needs to
+	 * be done.
+	 *
+	 * One implementation note is that when the tracer is
+	 * descheduled in interval (C) above, we see *two* SIGIOs.
+	 * The current theory of what's happening is
+	 *
+	 *  o child gets descheduled, bumps counter to i and schedules
+	 *    SIGIO
+	 *  o SIGIO notification "schedules" child, but it doesn't
+	 *    actually run any application code
+	 *  o child is being ptraced, so we "deschedule" child to
+	 *    notify parent and bump counter to i+1.  (The parent
+	 *    hasn't had a chance to clear the counter yet.)
+	 *  o another counter signal is generated, but SIGIO is
+	 *    already pending so this one is queued
+	 *  o parent is notified and sees counter value i+1
+	 *  o parent stops delivery of first signal and disarms
+	 *    counter
+	 *  o second SIGIO dequeued and delivered, notififying parent
+	 *    (counter is disarmed now, so no pseudo-desched possible
+	 *    here)
+	 *  o parent notifiedand sees counter value i+1 again
+	 *  o parent stops delivery of second SIGIO and we continue on
+	 *
+	 * So we "work around" this by the tracer expecting two SIGIO
+	 * notifications, and silently discarding both.*/
+
 	/* Clear the pending input. */
 	nr_descheds = read_desched_counter(ctx);
+	(void)nr_descheds;
 	debug("  (desched #%llu during `%s')", nr_descheds, syscallname(call));
 
-	/* Disarm the counter to prevent further desched events while
-	 * we're manipulating the tracee and it finishes its
-	 * syscall. */
+	/* Prevent further desched notifications from firing while
+	 * we're advancing the tracee.  We're going to leave it in a
+	 * consistent state anyway, so the event is no longer
+	 * useful. */
 	disarm_desched_event(ctx);
 
-	/* For not-perfectly-understood reasons, we see a second,
-	 * redundant SIGIO notificaion (see syscall_buffer.c).  Step
-	 * over the redundant one. */
-	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &status);
-	assert(WIFSTOPPED(status) && SIGIO == WSTOPSIG(status)
-	       && read_desched_counter(ctx) == nr_descheds);
+	while (1) {
+		if (is_disarm_desched_event_syscall(ctx, regs)) {
+			/* Tracee is in interval (D) or (E) above.  It
+			 * doesn't matter which one, because we just
+			 * proved that the tracee has finished its
+			 * buffered syscall.  We can let it go free
+			 * now.  We don't need to record any events
+			 * for replay because this wasn't an actual
+			 * desched-during-buffered-syscall; we can
+			 * pretend this never happened. */
+			debug("  (finished buffered syscall, resuming)");
+			return USR_NOOP;
+		}
+		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
+		    && !is_arm_desched_event_syscall(ctx, regs)) {
+			/* Tracee is in interval (B) or (C).  That's
+			 * the consistent state we want it in. */
+			if (SYS_restart_syscall == regs->orig_eax) {
+				/* If we'll be restarting the syscall,
+				 * the desched must have interrupted
+				 * the tracee after it already entered
+				 * the syscall.  In that case,
+				 * |ctx->event| will have recorded the
+				 * syscall. */
+				assert(call > 0);
+			} else {
+				call = regs->orig_eax;
+			}
+			break;
+		}
+		/* Tracee is either in interval (A) or it's executing
+		 * in userspace between syscalls.  Advance it to a
+		 * safe place.  Since we proved that the tracee isn't
+		 * in its buffered syscall, this call can't block. */
+		advance_syscall_boundary(ctx, regs);
+		expecting_extra_sigio = 0;
+	}
 
-	/* The next event is either a trace of entering the blocking
-	 * syscall, or if the syscall has already finished, then a
-	 * trace of the syscallbuf code entering the
-	 * disarm_desched_event() ioctl. */
-	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &status);
-	/* (syscall trap event) */
-	assert(WIFSTOPPED(status) && (0x80 | SIGTRAP) == WSTOPSIG(status));
-
-	assert(SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx));
-
-	read_child_registers(tid, regs);
-	if (is_disarm_desched_event_syscall(ctx, regs)) {
-		/* Finish the ioctl().  It won't block, and we don't
-		 * need to record it or any other data for the replay
-		 * to work properly.  The reason we can do this is
-		 * that the replaying code doesn't need any trace data
-		 * to know how to step over these ioctls.  And the
-		 * syscall buffer must not be full (or we wouldn't
-		 * have armed the desched event), so it doesn't need
-		 * flushing.  The next traced event will flush the
-		 * buffer normally. */
-		sys_ptrace_syscall(tid);
-		sys_waitpid(tid, &status);
-
-		debug("  consumed unneeded desched event during `%s'",
-		      syscallname(call));
-		return USR_NOOP;
+	if (expecting_extra_sigio) {
+		/* See long comment above; eat the redundant desched,
+		 * if we need to. */
+		debug("  (eating redudant SIGIO)");
+		advance_syscall_boundary(ctx, regs);
+		if (!(SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
+		      && !is_desched_event_syscall(ctx, regs)
+		      && (SYS_restart_syscall == regs->orig_eax
+			  || call == regs->orig_eax))) {
+			fatal("Trying to skip redundant SIGIO after desched event, but reached $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
+			      (void*)regs->eip, ctx->untraced_syscall_ip,
+			      is_desched_event_syscall(ctx, regs) ? "yes" : "no",
+			      syscallname(regs->orig_eax), syscallname(call));
+		}
 	}
 
 	debug("  resuming (and probably switching out) blocked `%s'",
