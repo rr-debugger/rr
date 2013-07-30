@@ -3,6 +3,6 @@
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
-	puts("EXIT_SUCCESS");
+	puts("EXIT-SUCCESS");
 	return 0;
 }

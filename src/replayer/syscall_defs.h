@@ -795,6 +795,7 @@ SYSCALL_DEF(EMU, prctl, 1)
  * offset
  */
 SYSCALL_DEF(EMU, pread64, 1)
+SYSCALL_DEF(EMU, pwrite64, 0)
 
 /**
  *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);

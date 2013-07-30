@@ -94,6 +94,7 @@ set(BASIC_TESTS
 #  mmap_shared
   perf_event
   priority
+  prw
   rdtsc
   segfault
   sigchld_interrupt_signal

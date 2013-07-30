@@ -1,2 +1,2 @@
 source `dirname $0`/util.sh perf_event "$@"
-compare_test EXIT_SUCCESS
+compare_test EXIT-SUCCESS
