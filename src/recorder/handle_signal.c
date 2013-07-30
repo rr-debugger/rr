@@ -289,6 +289,32 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		expecting_extra_sigio = 0;
 	}
 
+	if (call < 0) {
+		/* For reasons not understood the least bit, the
+		 * tracee's orig_eax sometimes has a bizarre negative
+		 * number like -240.  (Maybe it's trapping /right/ at
+		 * the return from the syscall, and orig_eax has been
+		 * stomped?)  Regardless of the source of the weird
+		 * number, we can't recover the syscall info from
+		 * ptrace (at least, cgjones doesn't know how to).  So
+		 * instead, we recover the breadcrumb that the
+		 * syscallbuf code helpfully left us before arming the
+		 * desched event.
+		 *
+		 * It's legal for us to dereference the next_record()
+		 * pointer, because we know the
+		 * |start_commit_buffered_syscall()| check for this
+		 * descheduled syscall must have succeeded, and we
+		 * know it hasn't been committed by definition,
+		 * because we're handling a desched event. */
+		debug("  saw garbage orig_eax: 0x%x, reading breadcrumb",
+		      call);
+		call = next_record(ctx->syscallbuf_hdr)->syscallno;
+		if (call < 0) {
+			fatal("Garbled syscallbuf breadcrumb %d", call);
+		}
+	}
+
 	if (expecting_extra_sigio) {
 		/* See long comment above; eat the redundant desched,
 		 * if we need to. */
@@ -297,7 +323,9 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		if (!(SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
 		      && !is_desched_event_syscall(ctx, regs)
 		      && (SYS_restart_syscall == regs->orig_eax
-			  || call == regs->orig_eax))) {
+			  || call == regs->orig_eax
+			  /* (the weird case above) */
+			  || (regs->orig_eax < 0 && call > 0)))) {
 			fatal("Trying to skip redundant SIGIO after desched event, but reached $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
 			      (void*)regs->eip, ctx->untraced_syscall_ip,
 			      is_desched_event_syscall(ctx, regs) ? "yes" : "no",

@@ -149,6 +149,12 @@ static int prep_event(struct context* ctx, int event)
 	 * general.  Descheds only happen for buffered syscalls, so we
 	 * know there's no scratch-buffer prep needed. */
 	if (ctx->desched) {
+		/* We're not using the scratch_* buffers, so make sure
+		 * rec_process_event() knows not to restore the
+		 * buffers. */
+		ctx->recorded_scratch_ptr_0 = NULL;
+		ctx->recorded_scratch_ptr_1 = NULL;
+		ctx->recorded_scratch_size = -1;
 		return 1;
 	}
 
@@ -750,6 +756,9 @@ void start_recording(struct flags rr_flags)
 			read_child_registers(ctx->child_tid,&regs);
 			int syscall = regs.orig_eax;
 			int retval = regs.eax;
+
+			debug("  orig_eax is %d (%s)",
+			      syscall, syscallname(syscall));
 
 			/* we received a signal while in the system call and send it right away*/
 			/* we have already sent the signal and process sigreturn */
