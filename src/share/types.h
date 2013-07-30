@@ -176,6 +176,9 @@ struct flags {
 	int autopilot;
 	/* IP port to listen on for debug connections. */
 	int dbgport;
+	/* Number of seconds to wait after startup, before starting
+	 * "real work". */
+	int wait_secs;
 };
 
 #endif /* TYPES_H_ */
