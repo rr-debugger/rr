@@ -189,10 +189,14 @@ static int prep_event(struct context* ctx, int event)
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
 		switch (regs.ecx & FUTEX_CMD_MASK) {
+		case FUTEX_LOCK_PI:
+		case FUTEX_LOCK_PI_PRIVATE:
 		case FUTEX_WAIT:
-		case FUTEX_WAIT_BITSET:
 		case FUTEX_WAIT_PRIVATE:
+		case FUTEX_WAIT_BITSET:
+		case FUTEX_WAIT_BITSET_PRIVATE:
 		case FUTEX_WAIT_REQUEUE_PI:
+		case FUTEX_WAIT_REQUEUE_PI_PRIVATE:
 			return 1;
 		default:
 			return 0;
