@@ -16,7 +16,7 @@ void replay(struct flags rr_flags);
  *
  *  if (recorded_state != replay_state) {
  *	 log_err("Bad state ...");
- *	 emergency_debug(tid);
+ *	 emergency_debug(ctx);
  *  }
  *
  * This function does not return.
