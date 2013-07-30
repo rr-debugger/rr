@@ -97,27 +97,9 @@ static __thread byte* buffer = NULL;
  * so rr can deduce that this task was descheduled and schedule
  * another.
  *
- * One implementation note is that the tracer always sees *two* SIGIOs
- * per desched notification.  The current theory of what's happening
- * is
- * 
- *  o child gets descheduled, bumps counter to i and schedules SIGIO
- *  o SIGIO notification "schedules" child, but it doesn't actually
- *    run any application code
- *  o child is being ptraced, so we "deschedule" child to notify
- *    parent and bump counter to i+1.  (The parent hasn't had a chance
- *    to clear the counter yet.)
- *  o another counter signal is generated, but SIGIO is already
- *    pending so this one is queued
- *  o parent is notified and sees counter value i+1
- *  o parent stops delivery of first signal and disarms counter
- *  o second SIGIO dequeued and delivered, notififying parent (counter
- *    is disarmed now, so no pseudo-desched possible here)
- *  o parent notifiedand sees counter value i+1 again
- *  o parent stops delivery of second SIGIO and we continue on
- *
- * So we "work around" this by the tracer expecting two SIGIO
- * notifications, and silently discarding both. */
+ * The description above is sort of an idealized view; there are
+ * numerous implementation details that are documented in
+ * handle_signal.c, where they're dealt with. */
 static __thread int desched_counter_fd;
 
 /**
