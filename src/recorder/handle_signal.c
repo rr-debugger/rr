@@ -14,6 +14,7 @@
 
 #include "recorder.h"
 
+#include "../replayer/replayer.h" /* for emergency_debug() */
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/util.h"
@@ -311,7 +312,8 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		      call);
 		call = next_record(ctx->syscallbuf_hdr)->syscallno;
 		if (call < 0) {
-			fatal("Garbled syscallbuf breadcrumb %d", call);
+			log_err("Garbled syscallbuf breadcrumb %d", call);
+			emergency_debug(ctx);
 		}
 	}
 
@@ -326,10 +328,11 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 			  || call == regs->orig_eax
 			  /* (the weird case above) */
 			  || (regs->orig_eax < 0 && call > 0)))) {
-			fatal("Trying to skip redundant SIGIO after desched event, but reached $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
-			      (void*)regs->eip, ctx->untraced_syscall_ip,
-			      is_desched_event_syscall(ctx, regs) ? "yes" : "no",
-			      syscallname(regs->orig_eax), syscallname(call));
+			log_err("Trying to skip redundant SIGIO after desched event, but reached $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
+				(void*)regs->eip, ctx->untraced_syscall_ip,
+				is_desched_event_syscall(ctx, regs) ? "yes" : "no",
+				syscallname(regs->orig_eax), syscallname(call));
+			emergency_debug(ctx);
 		}
 	}
 
