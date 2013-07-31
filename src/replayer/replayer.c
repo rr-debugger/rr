@@ -404,12 +404,31 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  */
 static void validate_args(int event, int state, struct context* ctx)
 {
+	struct user_regs_struct* rec_regs = &ctx->trace.recorded_regs;
+
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
 	if (!validate) {
 		return;
 	}
-	assert_child_regs_are(ctx, &ctx->trace.recorded_regs, event, state);
+	if ((SYS_pwrite64 == event || SYS_pread64 == event)
+	    && STATE_SYSCALL_EXIT == state) {
+		struct user_regs_struct cur_regs;
+		/* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
+		 * 12.04 has been observed to mutate $esi across
+		 * syscall entry/exit.  (This has been verified
+		 * outside of rr as well; not an rr bug.)  It's not
+		 * clear whether this is a ptrace bug or a kernel bug,
+		 * but either way it's not supposed to happen.  So we
+		 * fudge registers here to cover up that bug. */
+		read_child_registers(ctx->child_tid, &cur_regs);
+		if (cur_regs.esi != rec_regs->esi) {
+			log_warn("Probably saw kernel bug mutating $esi across pread/write64 call: recorded:0x%lx; replaying:0x%lx.  Fudging registers.",
+				 rec_regs->esi, cur_regs.esi);
+			rec_regs->esi = cur_regs.esi;
+		}
+	}
+	assert_child_regs_are(ctx, rec_regs, event, state);
 }
 
 /**
