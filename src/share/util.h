@@ -122,6 +122,17 @@ int is_arm_desched_event_syscall(struct context* ctx,
 int is_disarm_desched_event_syscall(struct context* ctx,
 				    const struct user_regs_struct* regs);
 
+/**
+ * Return nonzero if a mapping of |filename| with metadata |stat|,
+ * using |flags| and |prot|, should almost certainly be copied to
+ * trace; i.e., the file contents are likely to change in the interval
+ * between recording and replay.  Zero is returned /if we think we can
+ * get away/ with not copying the region.  That doesn't mean it's
+ * necessarily safe to skip copying!
+ */
+int should_copy_mmap_region(const char* filename, struct stat* stat,
+			    int prot, int flags);
+
 /* XXX should this go in ipc.h? */
 
 /**
@@ -135,6 +146,41 @@ int is_disarm_desched_event_syscall(struct context* ctx,
  */
 void prepare_remote_syscalls(struct context* ctx,
 			     struct current_state_buffer* state);
+
+/**
+ * Cookie used to restore stomped memory.  Users should treat these as
+ * opaque and immutable.
+ */
+struct restore_mem {
+	/* Address of tmp mem. */
+	void* addr;
+	/* Pointer to saved data. */
+	void* data;
+	/* (We keep this around for error checking.) */
+	void* saved_sp;
+	/* Length of tmp mem. */
+	size_t len;
+};
+/**
+ * Write |str| into |ctx|'s address space in such a way that the write
+ * can be undone.  |ctx| must already have been prepared for remote
+ * syscalls, in |state|.  The address of the tmp string in |ctx|'s
+ * address space is returned.
+ *
+ * The cookie used to restore the stomped memory is returned in |mem|.
+ * When the temporary string is no longer useful, the caller *MUST*
+ * call |pop_tmp_mem()|.
+ */
+void* push_tmp_str(struct context* ctx, struct current_state_buffer* state,
+		   const char* str, struct restore_mem* mem);
+/**
+ * Restore the memory stomped by an earlier |push_tmp_*()|.  Tmp
+ * memory must be popped in the reverse order it was pushed, that is,
+ * LIFO.
+ */
+void pop_tmp_mem(struct context* ctx, struct current_state_buffer* state,
+		 struct restore_mem* mem);
+
 /**
  * Remotely invoke in |ctx| the specified syscall with the given
  * arguments.  The arguments must of course be valid in |ctx|, and no
@@ -164,7 +210,9 @@ void finish_remote_syscalls(struct context* ctx,
 			    struct current_state_buffer* state);
 
 #define remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)	\
-	remote_syscall(_c, _s, WAIT, _no, _a1, _a2, _a3, _a4, _a5, _a6)
+	remote_syscall(_c, _s, WAIT, _no,				\
+		       (uintptr_t)_a1, (uintptr_t)_a2, (uintptr_t)_a3,	\
+		       (uintptr_t)_a4, (uintptr_t)_a5, (uintptr_t)_a6)
 #define remote_syscall5(_c, _s, _no, _a1, _a2, _a3, _a4, _a5)		\
 	remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, 0)
 #define remote_syscall4(_c, _s, _no, _a1, _a2, _a3, _a4)	\

@@ -1063,8 +1063,9 @@ static int skip_desched_ioctl(struct context* ctx,
 			     is_arm_desched_event_syscall(ctx, &regs) :
 			     is_disarm_desched_event_syscall(ctx, &regs);
 	if (!is_desched_syscall) {
-		log_err("Failed to reach desched ioctl; at %s(%ld, %ld) instead",
-			syscallname(regs.orig_eax), regs.ebx, regs.ecx);
+		log_err("Failed to reach desched ioctl; at %s(%ld, %ld) instead (trace line %d)",
+			syscallname(regs.orig_eax), regs.ebx, regs.ecx,
+			get_trace_file_lines_counter());
 		emergency_debug(ctx);
 	}
 

@@ -130,14 +130,20 @@ struct context {
 	RB_ENTRY(context) entry;
 };
 
+/* XXX/pedant more accurately called a "mapped /region/", since we're
+ * not mapping entire files, necessarily. */
 struct mmapped_file {
-	int time; // mmap time
+	/* Global trace time when this region was mapped. */
+	int time;
 	int tid;
+	/* Did we save a copy of the mapped region in the trace
+	 * data? */
+	int copied;
 
 	char filename[1024];
 	struct stat stat;
 
-	// mmap region
+	/* Bounds of mapped region. */
 	void* start;
 	void* end;
 };

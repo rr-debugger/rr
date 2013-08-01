@@ -1247,6 +1247,73 @@ int is_disarm_desched_event_syscall(struct context* ctx,
 		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
 }
 
+int should_copy_mmap_region(const char* filename, struct stat* stat,
+			    int prot, int flags)
+{
+	int can_write_file;
+
+	if ((flags & MAP_PRIVATE) && (prot & PROT_EXEC)) {
+		/* We currently don't record the images that we
+		 * exec(). Since we're being optimistic there (*cough*
+		 * *cough*), we're doing no worse (in theory) by being
+		 * optimistic about the shared libraries too, most of
+		 * which are system libraries. */
+		debug("  (no copy for +x private mapping %s)", filename);
+		return 0;
+	}
+	if (flags & MAP_PRIVATE) {
+		/* It's technically undefined whether processes can
+		 * observe changes to PRIVATE mappings after the mmap2
+		 * call, but in practice they *will* observe changes.
+		 * That means that unless the program is fundamentally
+		 * buggy, it expects the backing file to be consistent
+		 * and unchanged.  So we optimistically assume that
+		 * the file is effectively read-only.  (It doesn't
+		 * matter whether PROT_WRITE was specified, since
+		 * those writes can't propagate to the backing
+		 * file.) */
+		debug("  (no copy for -x private mapping %s)", filename);
+		return 0;
+	}
+
+	/* TODO: using "can the euid of the rr process write this
+	 * file" as an approximation of whether the tracee can write
+	 * the file.  If the tracee is messing around with
+	 * set*[gu]id(), the real answer may be different. */
+	can_write_file = (0 == access(filename, W_OK));
+	if (!can_write_file && 0 == stat->st_uid) {
+		/* Shared mapping owned by root: we assume this was
+		 * meant to be a PRIVATE mapping, but the program
+		 * misspoke.  So we treat it the same way as an
+		 * PRIVATE mapping.
+		 *
+		 * /etc/passwd falls into this class, but the odds of
+		 * it being mutated are probably not higher than
+		 * system libs being updated.
+		 *
+		 * XXX what about the fontconfig cache files?*/
+		assert(!(prot & PROT_WRITE));
+		debug("  (no copy for root-owned ro(?) shared mapping %s)",
+		      filename);
+		return 0;
+	}
+	if (!can_write_file) {
+		/* mmap'ing another user's (non-system) files?  Highly
+		 * irregular ... */
+		fatal("Uhandled mmap %s(prot:%x%s); uid:%d mode:%o",
+		      filename, prot, (flags & MAP_SHARED) ? ";SHARED" : "",
+		      stat->st_uid, stat->st_mode);
+	}
+	/* Shared mapping that we can write.  Should assume that the
+	 * mapping is likely to change. */
+	debug("  copy for writeable SHARED mapping %s", filename);
+	if (PROT_WRITE | prot) {
+		log_warn("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written.",
+			 filename);
+	}
+	return 1;
+}
+
 void prepare_remote_syscalls(struct context* ctx,
 			     struct current_state_buffer* state)
 {
@@ -1265,6 +1332,39 @@ void prepare_remote_syscalls(struct context* ctx,
 	/* Inject phony syscall instruction. */
 	write_child_data(ctx, state->code_size, state->start_addr,
 			 syscall_insn);
+}
+
+void* push_tmp_str(struct context* ctx, struct current_state_buffer* state,
+		   const char* str, struct restore_mem* mem)
+{
+	pid_t tid = ctx->child_tid;
+
+	mem->len = strlen(str) + 1/*null byte*/;
+	mem->saved_sp = (void*)state->regs.esp;
+
+	state->regs.esp -= mem->len;
+	write_child_registers(tid, &state->regs);
+	mem->addr = (void*)state->regs.esp;
+
+	mem->data = read_child_data(ctx, mem->len, mem->addr);
+
+	write_child_data(ctx, mem->len, mem->addr, str);
+
+	return mem->addr;
+}
+
+void pop_tmp_mem(struct context* ctx, struct current_state_buffer* state,
+		 struct restore_mem* mem)
+{
+	pid_t tid = ctx->child_tid;
+
+	assert(mem->saved_sp == (void*)state->regs.esp + mem->len);
+
+	write_child_data(ctx, mem->len, mem->addr, mem->data);
+	sys_free((void**)&mem->data);
+
+	state->regs.esp += mem->len;
+	write_child_registers(tid, &state->regs);
 }
 
 long remote_syscall(struct context* ctx, struct current_state_buffer* state,
