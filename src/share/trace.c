@@ -603,8 +603,10 @@ void record_parent_data(struct context *ctx, int syscall, size_t len, void *addr
 
 void record_mmapped_file_stats(struct mmapped_file *file)
 {
+	/* XXX this could be faster ... */
 	fprintf(mmaps_file, "%11d", file->time);
 	fprintf(mmaps_file, "%11d", file->tid);
+	fprintf(mmaps_file, "%11d", file->copied);
 	fprintf(mmaps_file, "%11x", (uintptr_t)file->start);
 	fprintf(mmaps_file, "%11x", (uintptr_t)file->end);
 	fprintf(mmaps_file, "%11lu", file->stat.st_blksize);
@@ -752,17 +754,16 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (time != trace->global_time) {
-		log_err("syscall_header and trace are out of sync: trace_file %u vs syscall_header %u\n", trace->global_time, time);
-		sys_exit();
+		fatal("syscall_header and trace are out of sync: trace_file %u vs syscall_header %u",
+		      trace->global_time, time);
 	}
 
 	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	if (trace->stop_reason != SYS_restart_syscall && // restart_syscall is recorded in the syscall input file as the syscall its restarting
 		syscall != trace->stop_reason) {
-		log_err("global_time: %u syscall: %d  stop_reason: %d\n",
-			time, syscall, trace->stop_reason);
-		sys_exit();
+		fatal("global_time: %u syscall: %d  stop_reason: %d",
+		      time, syscall, trace->stop_reason);
 	}
 
 	*addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -900,11 +901,15 @@ static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
  */
 void read_next_mmapped_file_stats(struct mmapped_file * file) {
 	assert(!feof(mmaps_file));
+	/* XXX this could be considerably faster, simpler, and
+	 * memory-safer ... */
 	char line0[1024], *line = line0;
 	if (fgets(line, 1024, mmaps_file) != NULL) {
 		file->time = str2li(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
-		file->tid= str2li(line,LI_COLUMN_SIZE);
+		file->tid = str2li(line,LI_COLUMN_SIZE);
+		line += LI_COLUMN_SIZE;
+		file->copied = str2li(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;
 		file->start = str2x(line,LI_COLUMN_SIZE);
 		line += LI_COLUMN_SIZE;

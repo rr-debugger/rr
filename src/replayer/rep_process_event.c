@@ -505,117 +505,168 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 	}
 }
 
+static void* finish_anonymous_mmap(struct context* ctx,
+				   struct current_state_buffer* state,
+				   struct trace_frame* trace,
+				   int prot, int flags)
+{
+	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	/* *Must* map the segment at the recorded address, regardless
+	   of what the recorded tracee passed as the |addr| hint. */
+	void* rec_addr = (void*)rec_regs->eax;
+	size_t length = rec_regs->ecx;
+	/* These are supposed to be (-1, 0) respectively, but use
+	 * whatever the tracee passed to avoid stirring up trouble. */
+	int fd = rec_regs->edi;
+	off_t offset = rec_regs->ebp;
+	return (void*)remote_syscall6(ctx, state, SYS_mmap2,
+				      rec_addr, length, prot,
+				      /* Tell the kernel to take
+				       * |rec_addr| seriously. */
+				      flags | MAP_FIXED,
+				      fd, offset);
+}
+
+static void* finish_copied_mmap(struct context* ctx,
+				struct current_state_buffer* state,
+				struct trace_frame* trace,
+				int prot, int flags,
+				const struct mmapped_file* file)
+{
+	void* mapped_addr = finish_anonymous_mmap(ctx, state, trace, prot,
+						  /* The restored region
+						   * won't be backed by
+						   * file. */
+						  flags | MAP_ANONYMOUS);
+
+	/* XXX any file consistency checks we need to do? */
+
+	/* Restore the map region we copied. */
+	set_child_data(ctx);
+
+	return mapped_addr;
+}
+
+static void* finish_direct_mmap(struct context* ctx,
+				struct current_state_buffer* state,
+				struct trace_frame* trace,
+				int prot, int flags,
+				const struct mmapped_file* file)
+{
+	struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	void* rec_addr = (void*)rec_regs->eax;
+	size_t length = rec_regs->ecx;
+	off_t offset = rec_regs->ebp;
+	struct stat metadata;
+	int fd;
+	void* mapped_addr;
+
+	if (stat(file->filename, &metadata)) {
+		fatal("Failed to stat %s: replay is impossible",
+		      file->filename);
+	}
+	if (metadata.st_ino != file->stat.st_ino
+	    || metadata.st_mode != file->stat.st_mode
+	    || metadata.st_uid != file->stat.st_uid
+	    || metadata.st_gid != file->stat.st_gid
+	    || metadata.st_size != file->stat.st_size
+	    || metadata.st_mtime != file->stat.st_mtime
+	    || metadata.st_ctime != file->stat.st_ctime) {
+		log_warn("Metadata of %s changed: replay divergence likely, but continuing anyway ...",
+			 file->filename);
+	}
+	if (should_copy_mmap_region(file->filename, &metadata, prot, flags)) {
+		log_warn("%s wasn't copied during recording, but now it should be?",
+			 file->filename);
+	}
+	/* Open in the tracee the file that was mapped during
+	 * recording. */
+	{
+		struct restore_mem restore;
+		void* child_str = push_tmp_str(ctx, state, file->filename,
+					       &restore);
+		/* We only need RDWR for shared writeable mappings.
+		 * Private mappings will happily COW from the mapped
+		 * RDONLY file.
+		 *
+		 * TODO: should never map any files writable */
+		int oflags = (MAP_SHARED & flags) && (PROT_WRITE & prot) ?
+			     O_RDWR : O_RDONLY;
+		/* TODO: unclear if O_NOATIME is relevant for mmaps */
+		fd = remote_syscall2(ctx, state, SYS_open, child_str, oflags);
+		if (0 > fd) {
+			fatal("Couldn't open %s to mmap in tracee",
+			      file->filename);
+		}
+		pop_tmp_mem(ctx, state, &restore);
+	}
+	/* And mmap that file. */
+	mapped_addr = (void*)
+		      remote_syscall6(ctx, state, SYS_mmap2,
+				      rec_addr, length,
+				      /* (We let SHARED|WRITEABLE
+				       * mappings go through while
+				       * they're not handled properly,
+				       * but we shouldn't do that.) */
+				      prot, flags,
+				      fd, offset);
+	/* Don't leak the tmp fd.  The mmap doesn't need the fd to
+	 * stay open. */
+	remote_syscall1(ctx, state, SYS_close, fd);
+
+	return mapped_addr;
+}
+
 static void process_mmap2(struct context* ctx,
-			  struct trace_frame* trace, int state,
+			  struct trace_frame* trace, int exec_state,
 			  struct rep_trace_step* step)
 {
-	int syscall = SYS_mmap2;
-	int tid = ctx->child_tid;
+	int prot = trace->recorded_regs.edx;
+	int flags = trace->recorded_regs.esi;
+	struct current_state_buffer state;
+	void* mapped_addr;
 
-	if (state == STATE_SYSCALL_ENTRY) {
-		struct trace_frame next;
-
+	if (STATE_SYSCALL_ENTRY == exec_state) {
+		/* We emulate entry for all types of mmap calls,
+		 * successful and not. */
 		step->action = TSTEP_ENTER_SYSCALL;
-
-		peek_next_trace(&next);
-		if (SYSCALL_FAILED(next.recorded_regs.eax)) {
-			/* failed mapping, emulate */
-			step->syscall.emu = 1;
-		}
+		step->syscall.emu = 1;
 		return;
 	}
-
 	if (SYSCALL_FAILED(trace->recorded_regs.eax)) {
+		/* Failed maps are fully emulated too; nothing
+		 * interesting to do. */
 		step->action = TSTEP_EXIT_SYSCALL;
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
 		return;
 	}
-
-	/* TODO: is there any interesting debugger interrupt we need
-	 * to honor after syscall entry but before exit?  I.e. is this
-	 * actually a limitation? */
-	step->action = TSTEP_RETIRE;
-
-	struct user_regs_struct regs;
-	read_child_registers(tid, &regs);
-
-	if (!(regs.esi & MAP_ANONYMOUS)) {
+	/* Successful mmap calls are much more interesting to process.
+	 * First we advance to the emulated syscall exit. */
+	finish_syscall_emu(ctx);
+	/* Next we hand off actual execution of the mapping to the
+	 * appropriate helper. */
+	prepare_remote_syscalls(ctx, &state);
+	if (flags & MAP_ANONYMOUS) {
+		mapped_addr = finish_anonymous_mmap(ctx, &state, trace,
+						    prot, flags);
+	} else {
 		struct mmapped_file file;
 		read_next_mmapped_file_stats(&file);
 		assert(file.time == trace->global_time);
-
-		struct user_regs_struct orig_regs;
-		memcpy(&orig_regs, &regs, sizeof(orig_regs));
-
-		int prot = regs.edx;
-		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
-		    && (prot & PROT_EXEC) ) {
-			/* Note: the library get loaded several times,
-			 * we need the (hopefully one) copy that is
-			 * executable */
-			ctx->syscallbuf_lib_start = file.start;
-			ctx->syscallbuf_lib_end = file.end;
-		}
-
-		/* hint the kernel where to allocate the
-		 * page */
-		regs.ebx = ctx->trace.recorded_regs.eax;
-
-		/* XXX refactor me, nesting too deep */
-
-		/* For shared mmaps: verify
-		 * modification time */
-		if (regs.esi & MAP_SHARED) {
-			if (strcmp(file.filename, "/home/user/.cache/dconf/user") != 0 && 	// not dconf   (proxied)
-				   strstr(file.filename, "sqlite") == NULL) {				  				// not sqlite  (private)
-				struct stat st;
-				stat(file.filename, &st);
-				if (file.stat.st_mtim.tv_sec != st.st_mtim.tv_sec || file.stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec) {
-					log_warn("Shared file %s timestamp changed! This may cause divergence in case the file is shared with a non-recorded process.", file.filename);
-				}
-			}
-		}
-		/* set anonymous flag */
-		regs.esi |= MAP_ANONYMOUS;
-		regs.esi |= MAP_FIXED;
-		regs.edi = -1;
-		regs.ebp = 0;
-		write_child_registers(tid, &regs);
-
-		/* execute the mmap */
-		__ptrace_cont(ctx);
-
-		/* restore original register state */
-		orig_regs.eax = ctx->child_regs.eax;
-		write_child_registers(tid, &orig_regs);
-
-		/* check if successful */
-		validate_args(syscall, state, ctx);
-
-		/* inject recorded data */
-		set_child_data(ctx);
-
-	} else {
-		struct user_regs_struct orig_regs;
-		memcpy(&orig_regs, &regs, sizeof(struct user_regs_struct));
-
-		/* hint the kernel where to allocate the page */
-		regs.ebx = ctx->trace.recorded_regs.eax;
-		regs.esi |= MAP_FIXED;
-
-		write_child_registers(tid, &regs);
-		__ptrace_cont(ctx);
-
-		/* restore original register state */
-		orig_regs.eax = ctx->child_regs.eax;
-		write_child_registers(tid, &orig_regs);
-
-		validate_args(syscall, state, ctx);
-		debug("%d[time=%d]: mmapped anonymous with flags %lx to address %p\n",
-		      ctx->child_tid, trace->global_time,
-		      orig_regs.esi, (void*)orig_regs.eax);
+		mapped_addr = file.copied ?
+			      finish_copied_mmap(ctx, &state, trace,
+						 prot, flags, &file) :
+			      finish_direct_mmap(ctx, &state, trace,
+						 prot, flags, &file);
 	}
+	/* Finally, we finish by emulating the return value. */
+	state.regs.eax = (uintptr_t)mapped_addr;
+	finish_remote_syscalls(ctx, &state);
+
+	validate_args(SYS_mmap2, exec_state, ctx);
+
+	step->action = TSTEP_RETIRE;
 }
 
 static void process_socketcall(struct context* ctx, int state,

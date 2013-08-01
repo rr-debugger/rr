@@ -45,7 +45,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
-	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x", tid, syscall_to_str(syscall), syscall, get_global_time(), ctx->exec_state);
+	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x",
+	      tid, syscallname(syscall), syscall, get_global_time(),
+	      ctx->exec_state);
 	//print_register_file_tid(ctx->child_tid);
 	//print_process_memory(ctx->child_tid);
 
@@ -1887,64 +1889,65 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC0(fork)
 
 	/**
-	 * void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t pgoffset);
+	 *  void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t pgoffset);
 	 *
-	 * The  mmap2()  system  call operates in exactly the same way as mmap(2),
-	 * except that the final argument specifies the offset into  the  file  in
-	 * 4096-byte  units  (instead  of  bytes,  as  is  done by mmap(2)).  This
-	 * enables applications that use a 32-bit off_t to map large files (up  to
-	 * 2^44 bytes).
+	 * The mmap2() system call operates in exactly the same way as
+	 * mmap(2), except that the final argument specifies the
+	 * offset into the file in 4096-byte units (instead of bytes,
+	 * as is done by mmap(2)).  This enables applications that use
+	 * a 32-bit off_t to map large files (up to 2^44 bytes).
 	 */
 	case SYS_mmap2:
 	{
-		void* mmap_addr = (void*)regs.eax;
-		//assert((int)mmap_addr >= 0 || (int)mmap_addr < -ERANGE);
-		if (SYSCALL_FAILED(regs.eax))
+		void* addr = (void*)regs.eax;
+		size_t size = PAGE_ALIGN(regs.ecx);
+		int prot = regs.edx, flags = regs.esi;
+		struct mmapped_file file;
+		char* filename;
+
+		if (SYSCALL_FAILED(regs.eax)) {
+			/* We purely emulate failed mmaps. */
 			break;
-
-		/* inspect mmap arguments */
-		long int flags = regs.esi;
-
-		/* Anonymous mappings are fine - the allocated space is initialized with '0'.
-		 * For non-anonymous mappings we record the mapped memory region and inject the
-		 * recorded content in the replayer.
-		 */
-		if (!(flags & MAP_ANONYMOUS)) {
-			assert((flags & MAP_GROWSDOWN) == 0);
-
-			struct mmapped_file file;
-			file.time = get_global_time();
-			file.tid = tid;
-			char * filename = get_mmaped_region_filename(ctx,mmap_addr);
-			strcpy(file.filename,filename);
-			sys_stat(filename,&file.stat);
-			sys_free((void**)&filename);
-			file.start = mmap_addr;
-			file.end = get_mmaped_region_end(ctx,mmap_addr);
-			record_mmapped_file_stats(&file);
-
-			int prot = regs.edx;
-			if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
-			    && (prot & PROT_EXEC) ) { // notice: the library get loaded several times, we need the (hopefully one) copy that is executable
-				ctx->syscallbuf_lib_start = file.start;
-				ctx->syscallbuf_lib_end = file.end;
-			}
-
-			if (flags & MAP_SHARED) {
-				if (strcmp("/home/user/.cache/dconf/user", file.filename) == 0) { // dconf // TODO: hardcoded names are bad :)
-					// protect the page
-					mprotect_child_region(ctx, (void*)regs.eax, PROT_NONE);  // we would prefer to set write-only permissions, but write implies read on i386
-					// note that this region is protected for handling the SIGSEGV
-					add_protected_map(ctx, (void*)regs.eax);
-				}
-			}
-
-			// PAGE_ALIGN needed (from mm/mman.h)
-			record_child_data(ctx, syscall,
-					  PAGE_ALIGN(regs.ecx),
-					  mmap_addr);
-
 		}
+		if (flags & MAP_ANONYMOUS) {
+			/* Anonymous mappings are by definition not
+			 * backed by any file-like object, and are
+			 * initialized to zero, so there's no
+			 * nondeterminism to record. */
+			/*assert(!(flags & MAP_UNINITIALIZED));*/
+			break;
+		}
+
+		assert(!(flags & MAP_GROWSDOWN));
+		
+		file.time = get_global_time();
+		file.tid = tid;
+
+		filename = get_mmaped_region_filename(ctx, addr);
+		strcpy(file.filename, filename);
+		sys_free((void**)&filename);
+
+		sys_stat(file.filename, &file.stat);
+
+		file.start = addr;
+		file.end = get_mmaped_region_end(ctx, addr);
+
+		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
+		    && (prot & PROT_EXEC) ) {
+			ctx->syscallbuf_lib_start = file.start;
+			ctx->syscallbuf_lib_end = file.end;
+		}
+
+		file.copied = should_copy_mmap_region(file.filename,
+						      &file.stat,
+						      prot, flags);
+		if (file.copied) {
+			record_child_data(ctx, syscall, size, addr);
+		}
+		/* TODO: fault on accesses to SHARED mappings we think
+		 * might actually be written */
+
+		record_mmapped_file_stats(&file);
 		break;
 	}
 
