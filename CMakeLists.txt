@@ -71,6 +71,7 @@ install(TARGETS rr rr_syscall_buffer
 #
 # Alphabetical, please.
 set(BASIC_TESTS
+  accept
   alarm
   args
   async_segv
@@ -78,6 +79,7 @@ set(BASIC_TESTS
   async_usr1
   bad_ip
   barrier
+  block
   breakpoint
   chew_cpu
   clock

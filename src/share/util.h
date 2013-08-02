@@ -18,7 +18,7 @@
 #define SYSCALL_FAILED(eax) \
 	(-ERANGE <= (int)(eax) && (int)(eax) < 0)
 #define SYSCALL_WILL_RESTART(eax) \
-	(ERESTART_RESTARTBLOCK == (eax) || ERESTARTNOINTR == (eax))
+	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax))
 
 #ifndef PTRACE_EVENT_SECCOMP
 #define PTRACE_O_TRACESECCOMP			0x00000080

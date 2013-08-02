@@ -149,7 +149,7 @@ static uint64_t read_desched_counter(struct context* ctx)
 	return nr_descheds;
 }
 
-static void advance_syscall_boundary(struct context* ctx,
+static int advance_syscall_boundary(struct context* ctx,
 				     struct user_regs_struct* regs)
 {
 	pid_t tid = ctx->child_tid;
@@ -166,6 +166,7 @@ static void advance_syscall_boundary(struct context* ctx,
 		fatal("Trying to reach syscall boundary, but saw signal %s instead (status 0x%x)",
 		      signalname(WSTOPSIG(status)), status);
 	}
+	return WSTOPSIG(status);
 }
 
 /**
@@ -262,13 +263,18 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 			 * for replay because this wasn't an actual
 			 * desched-during-buffered-syscall; we can
 			 * pretend this never happened. */
-			debug("  (finished buffered syscall, resuming)");
+			debug("  (at disarm-desched, so finished buffered syscall; resuming)");
 			return USR_NOOP;
 		}
 		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
 		    && !is_arm_desched_event_syscall(ctx, regs)) {
 			/* Tracee is in interval (B) or (C).  That's
 			 * the consistent state we want it in. */
+			if (ENOSYS != regs->eax && -ERESTARTSYS != regs->eax) {
+				debug("  (finished buffered syscall with ret %ld; resuming)",
+				      regs->eax);
+				return USR_NOOP;
+			}
 			if (SYS_restart_syscall == regs->orig_eax) {
 				/* If we'll be restarting the syscall,
 				 * the desched must have interrupted
@@ -318,22 +324,32 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 	}
 
 	if (expecting_extra_sigio) {
+		int sig;
 		/* See long comment above; eat the redundant desched,
 		 * if we need to. */
 		debug("  (eating redudant SIGIO)");
-		advance_syscall_boundary(ctx, regs);
-		if (!(SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
+		sig = advance_syscall_boundary(ctx, regs);
+		if (!(SIGIO == sig 
+		      && SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
 		      && !is_desched_event_syscall(ctx, regs)
 		      && (SYS_restart_syscall == regs->orig_eax
 			  || call == regs->orig_eax
 			  /* (the weird case above) */
 			  || (regs->orig_eax < 0 && call > 0)))) {
-			log_err("Trying to skip redundant SIGIO after desched event, but reached $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
+			log_err("Trying to skip redundant SIGIO after desched event, but got sig %s at $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
+				signalname(sig),
 				(void*)regs->eip, ctx->untraced_syscall_ip,
 				is_desched_event_syscall(ctx, regs) ? "yes" : "no",
 				syscallname(regs->orig_eax), syscallname(call));
 			emergency_debug(ctx);
 		}
+	}
+
+	if (-ERESTARTSYS == regs->eax) {
+		int sig = advance_syscall_boundary(ctx, regs);
+		assert(STOPSIG_SYSCALL == sig);
+		assert(-ENOSYS == regs->eax);
+		assert(call == regs->orig_eax);
 	}
 
 	debug("  resuming (and probably switching out) blocked `%s'",

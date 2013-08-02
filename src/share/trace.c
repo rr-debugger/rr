@@ -747,30 +747,29 @@ void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 
 static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 {
+	/* XXX rewrite me */
 	char* line = sys_malloc(1024);
+	char* tmp_ptr;
+	int time, syscall, size;
+
 	read_line(syscall_header, line, 1024, "syscall_input");
-	char* tmp_ptr = line;
+	tmp_ptr = line;
 
-	unsigned int time = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	time = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	if (time != trace->global_time) {
-		fatal("syscall_header and trace are out of sync: trace_file %u vs syscall_header %u",
-		      trace->global_time, time);
-	}
-
-	int syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	if (trace->stop_reason != SYS_restart_syscall && // restart_syscall is recorded in the syscall input file as the syscall its restarting
-		syscall != trace->stop_reason) {
-		fatal("global_time: %u syscall: %d  stop_reason: %d",
-		      time, syscall, trace->stop_reason);
-	}
-
 	*addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
+	size = str2li(tmp_ptr, LI_COLUMN_SIZE);
 
-	int size = str2li(tmp_ptr, LI_COLUMN_SIZE);
-
+	if (time != trace->global_time
+	    || (trace->stop_reason != SYS_restart_syscall
+		&& syscall != trace->stop_reason)) {
+		fatal("trace and syscall_input out of sync: trace is at (time=%d, %s), but input is for (time=%d, %s)",
+		      trace->global_time, strevent(trace->stop_reason),
+		      time, strevent(syscall));
+	}
 	sys_free((void**) &line);
 	return size;
 }

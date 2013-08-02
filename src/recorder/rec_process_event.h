@@ -3,10 +3,19 @@
 #ifndef PROCESS_SYSCALL_H_
 #define PROCESS_SYSCALL_H_
 
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
+#endif
+
 #include "../share/types.h"
 #include "../share/util.h"
 
-void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags);
+/**
+ * Prepare |ctx| to enter |syscallno|.  Return nonzero if a
+ * context-switch is allowed for |ctx|, 0 if not.
+ */
+int rec_prepare_syscall(struct context* ctx, int syscallno);
+void rec_process_syscall(struct context* ctx, int syscall, struct flags rr_flags);
 void process_thread_start(pid_t pid);
 
 /*

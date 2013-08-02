@@ -63,9 +63,12 @@ enum {
 	RRCALL_BIT = 0x8000
 };
 
-// Notice: these are defined in errno.h if _kernel_ is defined.
-#define ERESTARTNOINTR 			-513
-#define ERESTART_RESTARTBLOCK	-516
+/* These are defined by the include/linux/errno.h in the kernel tree.
+ * Since userspace doesn't see these errnos in normal operation, that
+ * header apparently isn't distributed with libc. */
+#define ERESTARTSYS 512
+#define ERESTARTNOINTR 513
+#define ERESTART_RESTARTBLOCK 516
 
 #define MAX_RAW_DATA_SIZE		(1 << 30)
 
