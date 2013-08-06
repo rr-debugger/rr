@@ -107,8 +107,7 @@ struct socketcall_args {
  * THIS POINTER IS NOT GUARANTEED TO BE VALID!!!  Caveat emptor.
  */
 inline static struct syscallbuf_record* next_record(struct syscallbuf_hdr* hdr)
-{
-	
+{	
 	return (void*)hdr->recs + hdr->num_rec_bytes;
 }
 

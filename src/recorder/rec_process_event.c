@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "rec_process_event.h"
+
 #define _GNU_SOURCE
 
 #include <assert.h>
@@ -28,9 +30,9 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 
-#include "rec_process_event.h"
 #include "handle_ioctl.h"
 
+#include "../replayer/replayer.h" /* for emergency_debug() */
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
@@ -38,11 +40,597 @@
 #include "../share/util.h"
 #include "../share/syscall_buffer.h"
 
+/**
+ * Erase any scratch pointer initialization done for |ctx| and leave
+ * the state bits ready to be initialized again.
+ */
+static void reset_scratch_pointers(struct context* ctx)
+{
+	memset(ctx->saved_arg_ptr, 0, sizeof(ctx->saved_arg_ptr));
+	ctx->next_saved_arg = 0;
+	ctx->tmp_data_ptr = ctx->scratch_ptr;
+	ctx->tmp_data_num_bytes = -1;
+}
+
+/**
+ * Record a tracee argument pointer that (most likely) was replaced by
+ * a pointer into scratch memory.  |argp| can have any value,
+ * including NULL.  It must be fetched by calling |pop_arg_ptr()|
+ * during processing syscall results, and in reverse order of calls to
+ * |push*()|.
+ */
+static void push_arg_ptr(struct context* ctx, void* argp)
+{
+	assert(ctx->next_saved_arg < ALEN(ctx->saved_arg_ptr));
+	ctx->saved_arg_ptr[ctx->next_saved_arg++] = argp;
+}
+
+/**
+ * Reset scratch state for |ctx|, because scratch can't be used for
+ * |event|.  Log a warning as well.
+ */
+static int abort_scratch(struct context* ctx, const char* event)
+{
+	int num_bytes = ctx->tmp_data_num_bytes;
+
+	assert(ctx->tmp_data_ptr == ctx->scratch_ptr);
+
+	if (0 < num_bytes) {
+		log_warn("`%s' requires scratch buffers, but that's not implemented.  Disabling context switching: deadlock may follow.",
+			 event);
+	} else {
+		log_warn("`%s' needed a scratch buffer of size %d, but only %d was available.  Disabling context switching: deadlock may follow.",
+			 event, num_bytes, ctx->scratch_size);
+	}
+	reset_scratch_pointers(ctx);
+	return 0;		/* don't allow context-switching */
+}
+
+/**
+ * Return nonzero if the scratch state initialized for |ctx| fits
+ * within the allocated region (and didn't overflow), zero otherwise.
+ */
+static int can_use_scratch(struct context* ctx, void* scratch_end)
+{
+	void* scratch_start = ctx->scratch_ptr;
+
+	assert(ctx->tmp_data_ptr == ctx->scratch_ptr);
+
+	ctx->tmp_data_num_bytes = (scratch_end - scratch_start);
+	return (0 <= ctx->tmp_data_num_bytes
+		&& ctx->tmp_data_num_bytes <= ctx->scratch_size);
+}
+
+/**
+ * Initialize any necessary state to execute the socketcall that |ctx|
+ * is stopped at, for example replacing tracee args with pointers into
+ * scratch memory if necessary.
+ */
+int prepare_socketcall(struct context* ctx, int would_need_scratch,
+		       struct user_regs_struct* regs)
+{
+	pid_t tid = ctx->child_tid;
+	void* scratch = would_need_scratch ? ctx->tmp_data_ptr : NULL;
+	long* argsp;
+	void* tmpargsp;
+
+	assert(!ctx->desched);
+
+	/* int socketcall(int call, unsigned long *args) {
+	 * 		long a[6];
+	 * 		copy_from_user(a,args);
+	 *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
+	 *  }
+	 *
+	 *  (from http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
+	 */
+	/* NB: this is a macro to enable it to "infer" the size of
+	 * |_args|.  This of course wouldn't be necessary with C++. */
+#define READ_SOCKETCALL_ARGS(_ctx, _regs, _argsp, _args)		\
+	do {								\
+		long* _tmp;						\
+		*_argsp = (void*)_regs->ecx;				\
+		_tmp = read_child_data(_ctx, sizeof(_args), *_argsp);	\
+		memcpy(_args, _tmp, sizeof(_args));			\
+		sys_free((void**)&_tmp);				\
+	} while(0)
+
+	switch (regs->ebx) {
+	/* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
+	case SYS_RECV: {
+		long args[4];
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+		READ_SOCKETCALL_ARGS(ctx, regs, &argsp, args);
+		/* The socketcall args are passed on the stack and
+		 * pointed at by $ecx.  We need to set up scratch
+		 * buffer space for |buf|, but we also have to
+		 * overwrite that pointer in the socketcall args on
+		 * the stack.  So what we do is copy the socketcall
+		 * args to our scratch space, replace the |buf| arg
+		 * there with a pointer to the scratch region just
+		 * /after/ the socketcall args, and then hand the
+		 * scratch pointer to the kernel. */
+		/* The socketcall arg pointer. */
+		push_arg_ptr(ctx, argsp);
+		regs->ecx = (uintptr_t)(tmpargsp = scratch);
+		scratch += sizeof(args);
+		/* The |buf| pointer. */
+		push_arg_ptr(ctx, (void*)args[1]);
+		args[1] = (uintptr_t)scratch;
+		scratch += args[2]/*len*/;
+		if (!can_use_scratch(ctx, scratch)) {
+			return abort_scratch(ctx, "recv");
+		}
+
+		write_child_data(ctx, sizeof(args), tmpargsp, args);
+		write_child_registers(tid, regs);
+		return 1;
+	}
+
+	/* int accept([int sockfd, struct sockaddr *addr, socklen_t *addrlen]) */
+	/* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags]) */
+	case SYS_ACCEPT:
+	case SYS_ACCEPT4: {
+		long args[4];
+		socklen_t* addrlenp;
+		socklen_t addrlen;
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+		READ_SOCKETCALL_ARGS(ctx, regs, &argsp, args);
+		addrlenp = (void*)args[2];
+		assert(sizeof(long) == sizeof(addrlen));
+		addrlen = read_child_data_word(tid, addrlenp);
+		/* We use the same basic scheme here as for RECV
+		 * above.  For accept() though, there are two
+		 * (in)outparams: |addr| and |addrlen|.  |*addrlen| is
+		 * the total size of |addr|, so we reserve that much
+		 * space for it.  |*addrlen| is set to the size of the
+		 * returned sockaddr, so we reserve space for
+		 * |addrlen| too. */
+		/* The socketcall arg pointer. */
+		push_arg_ptr(ctx, argsp);
+		regs->ecx = (uintptr_t)(tmpargsp = scratch);
+		scratch += sizeof(args);
+		/* The |addrlen| pointer. */
+		push_arg_ptr(ctx, addrlenp);
+		args[2] = (uintptr_t)scratch;
+		scratch += sizeof(*addrlenp);
+		/* The |addr| pointer. */
+		push_arg_ptr(ctx, (void*)args[1]);
+		args[1] = (uintptr_t)scratch;
+		scratch += addrlen;
+
+		if (!can_use_scratch(ctx, scratch)) {
+			return abort_scratch(ctx, "accept");
+		}
+
+		write_child_data(ctx, sizeof(args), tmpargsp, args);
+		write_child_registers(tid, regs);
+		return 1;
+	}
+
+	case SYS_RECVMSG:
+		/* TODO: this can block too, so also needs scratch
+		 * pointers.  Unfortunately the format is fiendishly
+		 * complicated, so setting up scratch is rather
+		 * nontrivial :(. */
+		return abort_scratch(ctx, "recvmsg");
+
+	default:
+		return 0;
+	}
+#undef READ_SOCKETCALL_ARGS
+}
+
+/**
+ * |ctx| was descheduled while in a buffered syscall.  We don't want
+ * to use scratch memory for the call, because the syscallbuf itself
+ * is serving that purpose.  More importantly, we *can't* set up
+ * scratch for |ctx|, because it's already in the syscall.  So this
+ * function sets things up so that the *syscallbuf* memory that |ctx|
+ * is using as ~scratch will be recorded, so that it can be replayed.
+ */
+static int set_up_scratch_for_syscallbuf(struct context* ctx, int syscallno)
+{
+	/* It's legal to reference this memory because |ctx| is in the
+	 * middle of a desched, which means it's successfully
+	 * allocated (but not yet committed) a syscall record. */
+	struct syscallbuf_record* rec = next_record(ctx->syscallbuf_hdr);
+
+	assert(ctx->desched);
+	if (syscallno != rec->syscallno) {
+		log_err("Syscallbuf records syscall %s, but expecting %s",
+			syscallname(rec->syscallno), syscallname(syscallno));
+		emergency_debug(ctx);
+	}
+
+	reset_scratch_pointers(ctx);
+	ctx->tmp_data_ptr = rec->extra_data;
+	/* |size| is the entire record; we just care about the extra
+	 * data here. */
+	ctx->tmp_data_num_bytes = rec->size - sizeof(*rec);
+
+	return 1;
+}
+
+int rec_prepare_syscall(struct context* ctx, int syscallno)
+{
+	pid_t tid = ctx->child_tid;
+	/* If we are called again due to a restart_syscall, we musn't
+	 * redirect to scratch again as we will lose the original
+	 * addresses values. */
+	bool restart = (syscallno == SYS_restart_syscall);
+	struct user_regs_struct regs;
+	int would_need_scratch;
+	void* scratch = NULL;
+
+	if (restart) {
+		syscallno = ctx->last_syscall;
+	}
+
+	if (ctx->desched) {
+		return set_up_scratch_for_syscallbuf(ctx, syscallno);
+	}
+
+	read_child_registers(ctx->child_tid, &regs);
+
+	/* For syscall params that may need scratch memory, they
+	 * *will* need scratch memory if |would_need_scratch| is
+	 * nonzero.  They *don't* need scratch memory if we're
+	 * restarting a syscall, since if that's the case we've
+	 * already set it up. */
+	would_need_scratch = !restart;
+	if (would_need_scratch) {
+		/* Don't stomp scratch pointers that were set up for
+		 * the restarted syscall.
+		 *
+		 * TODO: but, we'll stomp if we reenter through a
+		 * signal handler ... */
+		reset_scratch_pointers(ctx);
+		scratch = ctx->tmp_data_ptr;
+	}
+
+	switch (syscallno) {
+	case SYS_splice:
+		return 1;
+
+	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
+	case SYS_futex:
+		switch (regs.ecx & FUTEX_CMD_MASK) {
+		case FUTEX_LOCK_PI:
+		case FUTEX_LOCK_PI_PRIVATE:
+		case FUTEX_WAIT:
+		case FUTEX_WAIT_PRIVATE:
+		case FUTEX_WAIT_BITSET:
+		case FUTEX_WAIT_BITSET_PRIVATE:
+		case FUTEX_WAIT_REQUEUE_PI:
+		case FUTEX_WAIT_REQUEUE_PI_PRIVATE:
+			return 1;
+		default:
+			return 0;
+		}
+
+	case SYS_socketcall:
+		return prepare_socketcall(ctx, would_need_scratch, &regs);
+
+	case SYS__newselect:
+		return 1;
+
+	/* ssize_t read(int fd, void *buf, size_t count); */
+	case SYS_read: {
+		if (!would_need_scratch) {
+			return 1;
+		}
+		push_arg_ptr(ctx, (void*)regs.ecx);
+		regs.ecx = (uintptr_t)scratch;
+		scratch += regs.edx/*count*/;
+
+		if (!can_use_scratch(ctx, scratch)) {
+			return abort_scratch(ctx, syscallname(syscallno));
+		}
+
+		write_child_registers(tid, &regs);
+		return 1;
+	}
+
+	case SYS_write:
+		return 1;
+
+	/* pid_t waitpid(pid_t pid, int *status, int options); */
+	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
+	case SYS_waitpid:
+	case SYS_wait4: {
+		int* status = (int*)regs.ecx;
+		struct rusage* rusage = (SYS_wait4 == syscallno) ?
+					(struct rusage*)regs.esi : NULL;
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+		push_arg_ptr(ctx, status);
+		if (status) {
+			regs.ecx = (uintptr_t)scratch;
+			scratch += sizeof(*status);
+		}
+		push_arg_ptr(ctx, rusage);
+		if (rusage) {
+			regs.esi = (uintptr_t)scratch;
+			scratch += sizeof(*rusage);
+		}
+
+		if (!can_use_scratch(ctx, scratch)) {
+			return abort_scratch(ctx, syscallname(syscallno));
+		}
+
+		write_child_registers(tid, &regs);
+		return 1;
+	}
+
+	/* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
+	case SYS_poll: {
+		struct pollfd* fds = (struct pollfd*)regs.ebx;
+		struct pollfd* fds2 = scratch;
+		nfds_t nfds = regs.ecx;
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+		/* XXX fds can be NULL, right? */
+		push_arg_ptr(ctx, fds);
+		regs.ebx = (uintptr_t)fds2;
+		scratch += nfds * sizeof(*fds);
+
+		if (!can_use_scratch(ctx, scratch)) {
+			return abort_scratch(ctx, syscallname(syscallno));
+		}
+		/* |fds| is an inout param, so we need to copy over
+		 * the source data. */
+		memcpy_child(ctx, fds2, fds, nfds * sizeof(*fds));
+		write_child_registers(tid, &regs);
+		return 1;
+	}
+
+	/* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5); */
+	case SYS_prctl:
+		/* TODO: many of these prctls are not blocking. */
+		if (!would_need_scratch) {
+			return 1;
+		}
+		switch (regs.ebx) {
+		case PR_GET_ENDIAN:
+		case PR_GET_FPEMU:
+		case PR_GET_FPEXC:
+		case PR_GET_PDEATHSIG:
+		case PR_GET_TSC:
+		case PR_GET_UNALIGN: {
+			int* outparam = (void*)regs.ecx;
+
+			push_arg_ptr(ctx, outparam);
+			regs.ecx = (uintptr_t)scratch;
+			scratch += sizeof(*outparam);
+
+			if (!can_use_scratch(ctx, scratch)) {
+				return abort_scratch(ctx,
+						     syscallname(syscallno));
+			}
+
+			write_child_registers(tid, &regs);
+			return 1;
+		}
+		case PR_GET_NAME: {
+			/* Outparam is a |char*| in the second
+			 * parameter.  Thus sayeth the docs:
+			 *
+			 *   The buffer should allow space for up to
+			 *   16 bytes; The returned string will be
+			 *   null-terminated if it is shorter than
+			 *   that. */
+			char* name = (void*)regs.ecx;
+
+			push_arg_ptr(ctx, name);
+			regs.ecx = (uintptr_t)scratch;
+			scratch += 16;
+
+			if (!can_use_scratch(ctx, scratch)) {
+				return abort_scratch(ctx,
+						     syscallname(syscallno));
+			}
+
+			write_child_registers(tid, &regs);
+			return 1;
+		}
+		default:
+			/* TODO: there are many more prctls with
+			 * outparams ... */
+			return 1;
+		}
+
+	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
+	case SYS_epoll_wait: {
+		struct epoll_event* events = (struct epoll_event*)regs.ecx;
+		int maxevents = regs.edx;
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+		push_arg_ptr(ctx, events);
+		regs.ecx = (uintptr_t)scratch;
+		scratch += maxevents * sizeof(*events);
+
+		if (!can_use_scratch(ctx, scratch)) {
+			return abort_scratch(ctx, syscallname(syscallno));
+		}
+
+		/* (Unlike poll(), the |events| param is a pure
+		 * outparam, no copy-over needed.) */
+		write_child_registers(tid, &regs);
+		return 1;
+	}
+
+	case SYS_epoll_pwait:
+		fatal("Unhandled syscall %s", strevent(syscallno));
+		return 1;
+
+	/* The following two syscalls enable context switching not for
+	 * liveness/correctness reasons, but rather because if we
+	 * didn't context-switch away, rr might end up busy-waiting
+	 * needlessly.  In addition, albeit far less likely, the
+	 * client program may have carefully optimized its own context
+	 * switching and we should take the hint. */
+
+	/* int nanosleep(const struct timespec *req, struct timespec *rem); */
+	case SYS_nanosleep: {
+		struct timespec* rem = (void*)regs.ecx;
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+		push_arg_ptr(ctx, rem);
+		if (rem) {
+       			regs.ecx = (uintptr_t)scratch;
+			scratch += sizeof(*rem);
+		}
+
+		if (!can_use_scratch(ctx, scratch)) {
+			return abort_scratch(ctx, syscallname(syscallno));
+		}
+
+		write_child_registers(ctx->child_tid, &regs);
+		return 1;
+	}
+
+	case SYS_sched_yield:
+		return 1;
+
+	default:
+		return 0;
+	}
+}
+
+/**
+ * Read the scratch data written by the kernel in the syscall and
+ * return an opaque handle to it.  The outparam |iter| can be used to
+ * copy the read memory.
+ *
+ * The returned opaque handle must be passed to
+ * |finish_restoring_scratch()|.
+ */
+static void* start_restoring_scratch(struct context* ctx, void** iter)
+{
+	void* scratch = ctx->tmp_data_ptr;
+	ssize_t num_bytes = ctx->tmp_data_num_bytes;
+
+	assert(num_bytes >= 0);
+
+	*iter = read_child_data(ctx, num_bytes, scratch);
+	return *iter;
+}
+
+/**
+ * Return the replaced tracee argument pointer saved by the matching
+ * call to |push_arg_ptr()|.
+ */
+static void* pop_arg_ptr(struct context* ctx)
+{
+	assert(0 < ctx->next_saved_arg);
+	return ctx->saved_arg_ptr[--ctx->next_saved_arg];
+}
+
+/**
+ * Write |num_bytes| of data from |parent_data_iter| to |child_addr|.
+ * Record the written data so that it can be restored during replay of
+ * |syscallno|.
+ */
+static void restore_and_record_arg_buf(struct context* ctx, int syscallno,
+				       size_t num_bytes, void* child_addr,
+				       void** parent_data_iter)
+{
+	void* parent_data = *parent_data_iter;
+	write_child_data(ctx, num_bytes, child_addr, parent_data);
+	record_parent_data(ctx, syscallno, num_bytes, child_addr, parent_data);
+	*parent_data_iter += num_bytes;
+}
+
+/**
+ * Write a trace data record that when replayed will be a no-op.  This
+ * is used to avoid having special cases in replay code for failed
+ * syscalls, e.g.
+ */
+static void record_noop_data(struct context* ctx, int syscallno)
+{
+	record_parent_data(ctx, syscallno, 0, NULL, NULL);
+}
+
+/**
+ * Finish the sequence of operations begun by the most recent
+ * |start_restoring_scratch()| and check that no mistakes were made.
+ * |*data| must be the opaque handle returned by |start_*()|.
+ *
+ * Don't call this directly; use one of the helpers below.
+ */
+enum { NO_SLACK = 0, ALLOW_SLACK = 1 };
+static void finish_restoring_scratch_slack(struct context* ctx, int syscallno,
+					   void* iter, void** data,
+					   int slack)
+{
+	ssize_t consumed = (iter - *data);
+	ssize_t diff = ctx->tmp_data_num_bytes - consumed;
+
+	assert(ctx->tmp_data_ptr == ctx->scratch_ptr);
+
+	if (!slack && diff) {
+		log_err("Consumed %d bytes of scratch memory, but saved %d",
+			consumed, ctx->tmp_data_num_bytes);
+		emergency_debug(ctx);
+	} else if(slack && diff < 0) {
+		log_err("Over-consumed %d bytes of scratch memory (saved %d)",
+			diff, ctx->tmp_data_num_bytes);
+		emergency_debug(ctx);
+	} else if (slack) {
+		debug("Left %d bytes unconsumed in scratch", diff);
+	}
+
+	if (0 != ctx->next_saved_arg) {
+		log_err("%s-consumed saved arg pointers by %d",
+			ctx->next_saved_arg > 0 ? "Under" : "Over",
+			ctx->next_saved_arg);
+		emergency_debug(ctx);
+	}
+
+	sys_free(data);
+}
+
+/**
+ * Like above, but require that all saved scratch data was consumed.
+ */
+static void finish_restoring_scratch(struct context* ctx, int syscallno,
+				      void* iter, void** data)
+{
+	return finish_restoring_scratch_slack(ctx, syscallno, iter, data,
+					      NO_SLACK);
+}
+
+/**
+ * Like above, but allow some saved scratch data to remain unconsumed,
+ * for example if a buffer wasn't filled entirely.
+ */
+static void finish_restoring_some_scratch(struct context* ctx, int syscallno,
+					  void* iter, void** data)
+{
+	return finish_restoring_scratch_slack(ctx, syscallno, iter, data,
+					      ALLOW_SLACK);
+}
+
 void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags)
 {
 	pid_t tid = ctx->child_tid;
-
 	struct user_regs_struct regs;
+
 	read_child_registers(tid, &regs);
 
 	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x",
@@ -50,6 +638,21 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	      ctx->exec_state);
 	//print_register_file_tid(ctx->child_tid);
 	//print_process_memory(ctx->child_tid);
+
+	if (ctx->desched) {
+		/* It's legal to reference this memory because |ctx|
+		 * is just finishing a desched, which means it's
+		 * successfully allocated (but not yet committed) a
+		 * syscall record. */
+		struct syscallbuf_record* rec =
+			next_record(ctx->syscallbuf_hdr);
+
+		assert(ctx->tmp_data_ptr == rec->extra_data);
+
+		record_child_data(ctx, syscall, ctx->tmp_data_num_bytes,
+				  rec->extra_data);
+		return;
+	}
 
 	/* main processing (recording of I/O) */
 	switch (syscall) {
@@ -202,35 +805,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *
 	 */
 	SYS_REC0(epoll_ctl)
-	/* old code - when we thought something is returned from epoll_ctl
-	case SYS_epoll_ctl:
-	{
-		int op = regs.ecx;
-		int x = EPOLL_CTL_ADD;
-		switch (op) {
-
-		case EPOLL_CTL_MOD:
-		case EPOLL_CTL_ADD:
-		case EPOLL_CTL_DEL:
-		{
-			record_child_data(ctx, syscall, sizeof(struct epoll_event), regs.esi);
-
-			struct epoll_event * event = read_child_data(ctx, sizeof(struct epoll_event), regs.esi);
-			//printf("events: %d\n", event->events);
-			//printf("data: %x\n", event->data.ptr);
-			sys_free((void**) &event);
-			break;
-		}
-		default:
-		{
-			printf("Unknown epoll_ctl event: %x\n -- bailing out", op);
-			assert(1==0);
-		}
-		}
-
-		break;
-	}
-	*/
 
 	/**
 	 * int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
@@ -239,23 +813,19 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * The memory area pointed to by events will contain the events that will be available for the caller.  Up
 	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
 	 */
-	case SYS_epoll_wait:
-	{
-
-		// restore ecx from scratch
-		if (ctx->recorded_scratch_size != -1) {
-			regs.ecx  = (long int) ctx->recorded_scratch_ptr_0;
-			write_child_registers(ctx->child_tid, &regs);
-		} else {
-			// write a 0 size record (to be compatible with the replay) and break
-			record_child_data(ctx,syscall,0,0);
-			break;
+	case SYS_epoll_wait: {
+		void* iter;
+		void* data = start_restoring_scratch(ctx, &iter);
+		struct epoll_event* events = pop_arg_ptr(ctx);
+		int maxevents = regs.edx;
+		if (events) {
+			restore_and_record_arg_buf(ctx, syscall,
+						   maxevents * sizeof(events),
+						   events, &iter);
+			regs.ecx = (uintptr_t)events;
+			write_child_registers(tid, &regs);
 		}
-
-		void *data = (void*) read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
-		record_parent_data(ctx, syscall, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
-		sys_free((void**) &data);
+		finish_restoring_scratch(ctx, syscall, iter, &data);
 		break;
 	}
 
@@ -944,7 +1514,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			 * about that. */
 			log_warn("Cowardly refusing to open %s", pathname);
 			regs.eax = -ENOENT;
-			write_child_registers(ctx->child_tid, &regs);
+			write_child_registers(tid, &regs);
 		}
 		sys_free((void**)&pathname);
 		break;
@@ -1002,22 +1572,18 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *
 	 * Potentially blocking
 	 */
-	case SYS_poll:
-	{
-		// restore ebx from scratch
-		if (ctx->recorded_scratch_size != -1) {
-			regs.ebx = (long int) ctx->recorded_scratch_ptr_0;
-			write_child_registers(ctx->child_tid, &regs);
-		} else {
-			// write a 0 size record (to be compatible with the replay) and break
-			record_child_data(ctx,syscall,0,0);
-			break;
-		}
+	case SYS_poll: {
+		void* iter;
+		void* data = start_restoring_scratch(ctx, &iter);
+		struct pollfd* fds = pop_arg_ptr(ctx);
+		size_t nfds = regs.ecx;
 
-		void *data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, data);
-		record_parent_data(ctx, syscall, ctx->recorded_scratch_size, (void*)regs.ebx, data);
-		sys_free((void**) &data);
+		restore_and_record_arg_buf(ctx, syscall,
+					   nfds * sizeof(*fds),
+					   fds, &iter);
+		regs.ebx = (uintptr_t)fds;
+		write_child_registers(tid, &regs);
+		finish_restoring_scratch(ctx, syscall, iter, &data);
 		break;
 	}
 
@@ -1028,34 +1594,40 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *  further arguments with a significance depending on the first one.
 	 *
 	 */
-	case SYS_prctl:
-	{
-		int size = 0;
-		switch (regs.ebx)
-		{
-			case PR_GET_ENDIAN: 	/* Return the endian-ness of the calling process, in the location pointed to by (int *) arg2 */
-			case PR_GET_FPEMU:  	/* Return floating-point emulation control bits, in the location pointed to by (int *) arg2. */
-			case PR_GET_FPEXC:  	/* Return floating-point exception mode, in the location pointed to by (int *) arg2. */
-			case PR_GET_PDEATHSIG:  /* Return the current value of the parent process death signal, in the location pointed to by (int *) arg2. */
-			case PR_GET_TSC:		/* Return the state of the flag determining whether the timestamp counter can be read, in the location pointed to by (int *) arg2. */
-			case PR_GET_UNALIGN:    /* Return unaligned access control bits, in the location pointed to by (int *) arg2. */
+	case SYS_prctl:	{
+		int size;
+		switch (regs.ebx) {
+			/* See rec_prepare_syscall() for how these
+			 * sizes are determined. */
+			case PR_GET_ENDIAN:
+			case PR_GET_FPEMU:
+			case PR_GET_FPEXC:
+			case PR_GET_PDEATHSIG:
+			case PR_GET_TSC:
+			case PR_GET_UNALIGN:
 				size = sizeof(int);
 				break;
-			case PR_GET_NAME:   /*  Return the process name for the calling process, in the buffer pointed to by (char *) arg2.
-			 	 	 	 	 	 	The buffer should allow space for up to 16 bytes;
-			 	 	 	 	 	 	The returned string will be null-terminated if it is shorter than that. */
+			case PR_GET_NAME:
 				size = 16;
 				break;
 			default:
+				size = 0;
 				break;
 		}
-
 		if (size > 0) {
-			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
-			write_child_registers(ctx->child_tid, &regs);
-		}
-		record_child_data(ctx, syscall, size, (void*)regs.ecx);
+			void* iter;
+			void* data = start_restoring_scratch(ctx, &iter);
+			void* arg = pop_arg_ptr(ctx);
 
+			restore_and_record_arg_buf(ctx, syscall,
+						   size, arg, &iter);
+			regs.ecx = (uintptr_t)arg;
+			write_child_registers(tid, &regs);
+
+			finish_restoring_scratch(ctx, syscall, iter, &data);
+		} else {
+			record_noop_data(ctx, syscall);
+		}
 		break;
 	}
 	
@@ -1426,36 +1998,32 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
 		 *  }
 		 */
-		case SYS_RECV:
-		{
-			int length = ctx->recorded_scratch_size;//regs.eax;
-			if (length <= 0) {
-				break;
+		case SYS_RECV: {
+			long args[4];
+			void* buf = pop_arg_ptr(ctx);
+			void* argsp = pop_arg_ptr(ctx);
+			void* iter;
+			void* data = start_restoring_scratch(ctx, &iter);
+			ssize_t nrecvd = regs.eax;
+			/* We don't need to record the fudging of the
+			 * socketcall arguments, because we won't
+			 * replay that. */
+			memcpy(args, iter, sizeof(args));
+			iter += sizeof(args);
+			/* Restore |buf| contents. */
+			if (0 < nrecvd) {
+				restore_and_record_arg_buf(ctx, syscall,
+							   nrecvd, buf,
+							   &iter);
+			} else {
+				record_noop_data(ctx, syscall);
 			}
-			// restore ecx
-			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
-			write_child_registers(tid,&regs);
+			/* Restore the pointer to the original args. */
+			regs.ecx = (uintptr_t)argsp;
+			write_child_registers(tid, &regs);
 
-			// copy the buffer back to the original location
-			size_t num_args = 4;
-			void ** buf_addr = (ctx->scratch_ptr + num_args * sizeof(long));
-			void *buf_data = read_child_data(ctx, length, buf_addr);
-			write_child_data(ctx, length, ctx->recorded_scratch_ptr_1, buf_data);
-
-			// record the buffer
-			record_parent_data(ctx, syscall, length, ctx->recorded_scratch_ptr_1, buf_data);
-
-			// cleanup
-			sys_free((void**) &buf_data);
-
-			/*uintptr_t* buf;
-			 size_t* len;
-
-			 buf = read_child_data(ctx, sizeof(void*), base_addr + 4);
-			 len = read_child_data(ctx, sizeof(void*), base_addr + 8);
-			 record_child_data(ctx, syscall, *len, *buf);
-			 sys_free((void**) &len);
-			 sys_free((void**) &buf);*/
+			finish_restoring_some_scratch(ctx, syscall, iter,
+						      &data);
 			break;
 		}
 
@@ -1525,7 +2093,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			break;
 		}
 
-		/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+		/**
+		 *  int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+		 *  int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
 		 *
 		 * Note: The returned address is truncated if the buffer provided is too small; in this case,
 		 * addrlen will return a value greater than was supplied to the call.
@@ -1535,46 +2105,30 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 *
 		 * */
 		case SYS_ACCEPT:
-		{
-			// restore ecx
-			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
-			write_child_registers(tid,&regs);
+		case SYS_ACCEPT4: {
+			long args[4];
+			void* addr = pop_arg_ptr(ctx);
+			void* addrlenp = pop_arg_ptr(ctx);
+			void* argsp = pop_arg_ptr(ctx);
+			void* iter;
+			void* data = start_restoring_scratch(ctx, &iter);
+			socklen_t len;
+			/* Consume the scratch args; nothing there is
+			 * interesting to us now. */
+			iter += sizeof(args);
+			/* addrlen */
+			len = *(socklen_t*)iter;
+			restore_and_record_arg_buf(ctx, syscall, sizeof(len),
+						   addrlenp, &iter);
+			/* addr */
+			restore_and_record_arg_buf(ctx, syscall, len,
+						   addr, &iter);
+			/* Restore the pointer to the original args. */
+			regs.ecx = (uintptr_t)argsp;
+			write_child_registers(tid, &regs);
 
-			size_t num_args = 3;
-
-			// copy the sockaddr back to the original location
-			socklen_t orig_addrlen_value = ctx->recorded_scratch_size;
-			struct sockaddr *scratch_addr = (ctx->scratch_ptr + num_args * sizeof(long));
-			struct sockaddr *addr_result = read_child_data(ctx, orig_addrlen_value, scratch_addr);
-			write_child_data(ctx, orig_addrlen_value, ctx->recorded_scratch_ptr_1, addr_result);
-
-			// copy the addrlen back
-			socklen_t *orig_addrlen_ptr = ctx->recorded_scratch_ptr_1 + sizeof(struct sockaddr *);
-			socklen_t *addrlen_result = read_child_data(ctx, orig_addrlen_value, scratch_addr);
-			write_child_data(ctx, sizeof(socklen_t), orig_addrlen_ptr, addrlen_result);
-
-			// record the values
-			record_parent_data(ctx, syscall, orig_addrlen_value, ctx->recorded_scratch_ptr_1, addr_result);
-			record_parent_data(ctx, syscall, sizeof(socklen_t), orig_addrlen_ptr, addrlen_result);
-
-			// cleanup
-			sys_free((void**) &addr_result);
-			sys_free((void**) &addrlen_result);
-
-			/*
-			void *sock_ptr = (void*) regs.ecx;
-			void *addrlen_ptr = 0;
-			socklen_t addrlen;
-
-			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE + PTR_SIZE, &(ctx->recorded_scratch_ptr_0));
-			write_child_data(ctx, PTR_SIZE, sock_ptr + INT_SIZE, &(ctx->recorded_scratch_ptr_1));
-			memcpy_child(ctx,ctx->recorded_scratch_ptr_1,ctx->scratch_ptr,sizeof(socklen_t));
-			read_child_usr(ctx, &addrlen, ctx->scratch_ptr, sizeof(socklen_t));
-
-			record_child_data(ctx, syscall, sizeof(socklen_t), ctx->recorded_scratch_ptr_1);
-			memcpy_child(ctx, ctx->recorded_scratch_ptr_0, ctx->scratch_ptr + sizeof(socklen_t), addrlen);
-			record_child_data(ctx, syscall, addrlen, ctx->recorded_scratch_ptr_0);
-			*/
+			finish_restoring_some_scratch(ctx, syscall, iter,
+						      &data);
 			break;
 		}
 
@@ -1968,41 +2522,18 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_nanosleep:
 	{
-		void* scratch = (void*)regs.ecx;
-		size_t record_size = sizeof(struct timespec);
-		void* recorded_data;
-		void* source_ptr;
+		struct timespec* rem = pop_arg_ptr(ctx);
+		void* iter;
+		void* data = start_restoring_scratch(ctx, &iter);
 
-		if (!scratch) {
-			/* No outparam was passed; nothing to do. */
-			break;
+		if (rem) {
+			restore_and_record_arg_buf(ctx, syscall,
+						   sizeof(*rem), rem, &iter);
+			regs.ecx = (uintptr_t)rem;
+			write_child_registers(tid, &regs);
 		}
 
-		recorded_data = read_child_data(ctx, record_size, scratch);
-		if (ctx->recorded_scratch_ptr_0) {
-			/* We used a pointer into our scratch region.
-			 * Pretend that the written data came from
-			 * there, write it back to the source, and
-			 * restore the source as the param register to
-			 * be recorded. */
-			source_ptr = ctx->recorded_scratch_ptr_0;
-			write_child_data(ctx, record_size, source_ptr,
-					 recorded_data);
-			regs.ecx = (uintptr_t)source_ptr;
-			write_child_registers(ctx->child_tid, &regs);
-		} else {
-			/* We used the syscallbuf as scratch, but to
-			 * us that looks like the source ptr too.
-			 * (The syscallbuf will update the real
-			 * source.) */
-			source_ptr = scratch;
-		}
-		/* Even if we used the syscallbuf as scratch, we'll
-		 * need to restore the data, so record it. */
-		record_parent_data(ctx, syscall, record_size, source_ptr,
-				   recorded_data);
-
-		sys_free((void**)&recorded_data);
+		finish_restoring_scratch(ctx, syscall, iter, &data);
 		break;
 	}
 
@@ -2034,27 +2565,20 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * or because read() was interrupted by a signal. On error, -1 is returned, and errno is set appropriately.
 	 * In this case it is left unspecified whether the file position (if any) changes.
 	 */
-	case SYS_read:
-	{
+	case SYS_read: {
+		void* buf = pop_arg_ptr(ctx);
+		ssize_t nread = regs.eax;
+		void* iter;
+		void* data = start_restoring_scratch(ctx, &iter);
 
-		if (ctx->recorded_scratch_size != -1) { // but dont forget to correct the ecx if needed
-			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
-			write_child_registers(ctx->child_tid, &regs);
+		if (nread > 0) {
+			restore_and_record_arg_buf(ctx, syscall, nread, buf,
+						   &iter);
+			finish_restoring_some_scratch(ctx, syscall, iter,
+						      &data);
 		}
-
-		if (regs.eax <= 0) { // if no data was read, break
-			break;
-		}
-
-		/* this is a hack; we come here if the scratch size is too small */
-		if (ctx->recorded_scratch_size == -1) {
-			record_child_data(ctx, syscall, regs.eax, (void*)regs.ecx);
-		} else {
-			void *recorded_data = read_child_data(ctx, regs.eax, ctx->scratch_ptr);
-			write_child_data(ctx, regs.eax, ctx->recorded_scratch_ptr_0, recorded_data);
-			record_parent_data(ctx, syscall, regs.eax, ctx->recorded_scratch_ptr_0, recorded_data);
-			sys_free((void**) &recorded_data);
-		}
+		regs.ecx = (uintptr_t)buf;
+		write_child_registers(tid, &regs);
 		break;
 	}
 
@@ -2157,46 +2681,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC0(vfork)
 
 	/**
-	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
-	 *
-	 * The  wait3()  and wait4() system calls are similar to waitpid(2), but
-	 * additionally return resource usage information about the child in the
-	 * structure pointed to by rusage.
-	 */
-	case SYS_wait4:
-	{
-		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		void *ptr = recorded_data;
-		bool registers_changed = FALSE;
-		/* restore status */
-		if (ctx->recorded_scratch_ptr_0) {
-			regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
-			registers_changed = TRUE;
-			write_child_data(ctx, sizeof(int), (void*)regs.ecx, ptr);
-			record_parent_data(ctx, syscall, sizeof(int), ctx->recorded_scratch_ptr_0, ptr);
-			ptr += sizeof(int);
-		} else { /* if status was null, put in a blank entry */
-			record_child_data(ctx,syscall,0,0);
-		}
-		/* restore rusage */
-		if (ctx->recorded_scratch_ptr_1) {
-			regs.esi = (uintptr_t)ctx->recorded_scratch_ptr_1;
-			registers_changed = TRUE;
-			write_child_data(ctx, sizeof(struct rusage),
-					 (void*)regs.esi, ptr);
-			record_parent_data(ctx, syscall, sizeof(struct rusage), ctx->recorded_scratch_ptr_1, ptr);
-			ptr += sizeof(struct rusage);
-		} else { /* if rusage was null, put in a blank entry */
-			record_child_data(ctx,syscall,0,0);
-		}
-		if (registers_changed) {
-			write_child_registers(ctx->child_tid, &regs);
-		}
-		sys_free((void**)&recorded_data);
-		break;
-	}
-
-	/**
 	 * pid_t waitpid(pid_t pid, int *status, int options);
 	 *
 	 * The waitpid() system call suspends execution of the calling process until
@@ -2205,21 +2689,39 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 * the options argument, as described below....
 	 *
 	 */
-
+	/**
+	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
+	 *
+	 * The  wait3()  and wait4() system calls are similar to waitpid(2), but
+	 * additionally return resource usage information about the child in the
+	 * structure pointed to by rusage.
+	 */
 	case SYS_waitpid:
-	{
-		// restore ecx
-		regs.ecx = (uintptr_t)ctx->recorded_scratch_ptr_0;
-		write_child_registers(ctx->child_tid, &regs);
+	case SYS_wait4:	{
+		struct rusage* rusage = pop_arg_ptr(ctx);
+		int* status = pop_arg_ptr(ctx);
+		void* iter;
+		void* data = start_restoring_scratch(ctx, &iter);
 
-		void *recorded_data = read_child_data(ctx, ctx->recorded_scratch_size, ctx->scratch_ptr);
-		if (regs.ecx) {
-			write_child_data(ctx, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
+		if (status) {
+			restore_and_record_arg_buf(ctx, syscall,
+						   sizeof(*status), status,
+						   &iter);
+			regs.ecx = (uintptr_t)status;
+		} else {
+			record_noop_data(ctx, syscall);
 		}
-		// TODO: data should not be recorded if ecx is NULL
-		record_parent_data(ctx, syscall, ctx->recorded_scratch_size, ctx->recorded_scratch_ptr_0, recorded_data);
-		sys_free((void**)&recorded_data);
-		break;
+		if (rusage) {
+			restore_and_record_arg_buf(ctx, syscall,
+						   sizeof(*rusage), rusage,
+						   &iter);
+			regs.esi = (uintptr_t)rusage;
+		} else if (SYS_wait4 == syscall) {
+			record_noop_data(ctx, syscall);
+		}
+		write_child_registers(tid, &regs);
+
+		finish_restoring_scratch(ctx, syscall, iter, &data);
 	}
 
 	/**

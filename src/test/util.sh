@@ -27,17 +27,17 @@ function delay_kill { sig=$1; delay_secs=$2; proc=$3
 
     pid=""
     for i in `seq 1 5`; do
-	live=`ps -C $3 -o pid=`
-	num=`echo -e $live | wc -w`
-	if [[ $num == 1 ]]; then
-	    pid=$live
+	live=`ps ax -o 'pid= cmd=' | awk '{print $1 " " $2}' | grep $proc`
+	num=`echo "$live" | wc -l`
+	if [[ "$num" -eq 1 ]]; then
+	    pid=`echo "$live" | awk '{print $1}'`
 	    break
 	fi
 	sleep 0.1
     done
 
-    if [[ $num > 1 ]]; then
-	echo FAILED: more than one "'$proc'" >&2
+    if [[ "$num" -gt 1 ]]; then
+	echo FAILED: "$num" of "'$proc'" >&2
 	exit 1
     elif [[ -z "$pid" ]]; then
 	echo FAILED: process "'$proc'" not located >&2
