@@ -347,6 +347,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 
 	if (-ERESTARTSYS == regs->eax) {
 		int sig = advance_syscall_boundary(ctx, regs);
+		debug("  (restarted ERESTARTSYS syscall)");
 		assert(STOPSIG_SYSCALL == sig);
 		assert(-ENOSYS == regs->eax);
 		assert(call == regs->orig_eax);

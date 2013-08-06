@@ -75,7 +75,7 @@ static int abort_scratch(struct context* ctx, const char* event)
 
 	assert(ctx->tmp_data_ptr == ctx->scratch_ptr);
 
-	if (0 < num_bytes) {
+	if (0 > num_bytes) {
 		log_warn("`%s' requires scratch buffers, but that's not implemented.  Disabling context switching: deadlock may follow.",
 			 event);
 	} else {
@@ -237,12 +237,10 @@ int prepare_socketcall(struct context* ctx, int would_need_scratch,
  */
 static int set_up_scratch_for_syscallbuf(struct context* ctx, int syscallno)
 {
-	/* It's legal to reference this memory because |ctx| is in the
-	 * middle of a desched, which means it's successfully
-	 * allocated (but not yet committed) a syscall record. */
-	struct syscallbuf_record* rec = next_record(ctx->syscallbuf_hdr);
+	const struct syscallbuf_record* rec = ctx->desched_rec;
 
 	assert(ctx->desched);
+
 	if (syscallno != rec->syscallno) {
 		log_err("Syscallbuf records syscall %s, but expecting %s",
 			syscallname(rec->syscallno), syscallname(syscallno));
@@ -250,11 +248,11 @@ static int set_up_scratch_for_syscallbuf(struct context* ctx, int syscallno)
 	}
 
 	reset_scratch_pointers(ctx);
-	ctx->tmp_data_ptr = rec->extra_data;
-	/* |size| is the entire record; we just care about the extra
-	 * data here. */
+	ctx->tmp_data_ptr = ctx->syscallbuf_child +
+			    (rec->extra_data - (byte*)ctx->syscallbuf_hdr);
+	/* |rec->size| is the entire record including extra data; we
+	 * just care about the extra data here. */
 	ctx->tmp_data_num_bytes = rec->size - sizeof(*rec);
-
 	return 1;
 }
 
@@ -640,17 +638,13 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	//print_process_memory(ctx->child_tid);
 
 	if (ctx->desched) {
-		/* It's legal to reference this memory because |ctx|
-		 * is just finishing a desched, which means it's
-		 * successfully allocated (but not yet committed) a
-		 * syscall record. */
-		struct syscallbuf_record* rec =
-			next_record(ctx->syscallbuf_hdr);
+		const struct syscallbuf_record* rec = ctx->desched_rec;
 
-		assert(ctx->tmp_data_ptr == rec->extra_data);
+		assert(ctx->tmp_data_ptr != ctx->scratch_ptr);
 
-		record_child_data(ctx, syscall, ctx->tmp_data_num_bytes,
-				  rec->extra_data);
+		record_parent_data(ctx, syscall,
+				   ctx->tmp_data_num_bytes, ctx->tmp_data_ptr,
+				   (void*)rec->extra_data);
 		return;
 	}
 
@@ -820,7 +814,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		int maxevents = regs.edx;
 		if (events) {
 			restore_and_record_arg_buf(ctx, syscall,
-						   maxevents * sizeof(events),
+						   maxevents * sizeof(*events),
 						   events, &iter);
 			regs.ecx = (uintptr_t)events;
 			write_child_registers(tid, &regs);

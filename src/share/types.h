@@ -29,6 +29,7 @@ typedef enum { FALSE = 0, TRUE = 1 } bool;
 typedef unsigned char byte;
 
 struct syscallbuf_hdr;
+struct syscallbuf_record;
 
 /**
  * A trace_frame is one "trace event" from a complete trace.  During
@@ -73,6 +74,12 @@ struct context {
 	 * progress, in general.  We also need to record some extra
 	 * trace data to ensure replay doesn't diverge. */
 	int desched;
+	/* Record of the syscall that was interrupted by the desched
+	 * notification.  It's legal to reference this memory /while
+	 * the desched is being processed only/, because |ctx| is in
+	 * the middle of a desched, which means it's successfully
+	 * allocated (but not yet committed) a syscall record. */
+	const struct syscallbuf_record* desched_rec;
 	/* Nonzero after the trace recorder has flushed the
 	 * syscallbuf.  When this happens, the recorder must prepare a
 	 * "reset" of the buffer, to zero the record count, at the
