@@ -390,6 +390,13 @@ void start_recording(struct flags rr_flags)
 			}
 
 			if (ctx->desched) {
+				/* Stash away this breadcrumb so that
+				 * we can figure out what syscall the
+				 * tracee was in, and how much
+				 * "scratch" space it carved off the
+				 * syscallbuf, if needed. */
+				ctx->desched_rec =
+					next_record(ctx->syscallbuf_hdr);
 				/* Replay needs to be prepared to see
 				 * the ioctl() that arms the desched
 				 * counter when it's trying to step to
