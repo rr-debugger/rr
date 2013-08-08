@@ -40,7 +40,6 @@ add_executable(rr
   src/replayer/replayer.c
   src/share/hpc.c
   src/share/ipc.c
-  src/share/list.c
   src/share/shmem.c
   src/share/sys.c
   src/share/trace.c

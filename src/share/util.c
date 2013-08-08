@@ -40,15 +40,15 @@
 #define REPLAY_DESCHED_EVENT_FD -123
 #define NUM_MAX_MAPS 1024
 
-static void* scratch_table[NUM_MAX_THREADS] = {NULL} ;
+static void* scratch_table[MAX_TID] = {NULL} ;
 static size_t scratch_table_size = 0;
 static size_t scratch_overall_size = 0;
 
-static struct sigaction * sig_handler_table[NUM_MAX_THREADS][_NSIG] = { {NULL} };
+static struct sigaction * sig_handler_table[MAX_TID][_NSIG] = { {NULL} };
 
 static size_t num_shared_maps = 0;
-static void* shared_maps_starts[NUM_MAX_MAPS] = {0};
-static void* shared_maps_ends[NUM_MAX_MAPS] = {0};
+static void* shared_maps_starts[MAX_TID] = {0};
+static void* shared_maps_ends[MAX_TID] = {0};
 
 void add_protected_map(struct context *ctx, void *start){
 	assert(num_shared_maps < NUM_MAX_MAPS);

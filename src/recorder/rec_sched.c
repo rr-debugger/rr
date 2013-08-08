@@ -1,41 +1,54 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "rec_sched.h"
+
 #include <assert.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <signal.h>
 #include <string.h>
+#include <sys/queue.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
 #include "recorder.h"
-#include "rec_sched.h"
-
-#include <sys/syscall.h>
 
 #include "../share/hpc.h"
-#include "../share/list.h"
 #include "../share/sys.h"
 #include "../share/config.h"
 
-#define DELAY_COUNTER_MAX 10
+struct tasklist_entry {
+	struct context ctx;
+	CIRCLEQ_ENTRY(tasklist_entry) entries;
+};
 
-static struct list *tid_to_node[MAX_TID] = {NULL};
-static struct list *registered_threads = NULL;
-static struct list *current_thread_ptr = NULL;
-static int num_active_threads = 0;
-static struct context * last_ctx;
+CIRCLEQ_HEAD(tasklist, tasklist_entry) head = CIRCLEQ_HEAD_INITIALIZER(head);
 
-static void rec_sched_init()
+static struct tasklist_entry* tid_to_entry[MAX_TID];
+static struct tasklist_entry* current_entry;
+static int num_active_threads;
+
+static struct tasklist_entry* get_entry(pid_t tid)
 {
-	current_thread_ptr = registered_threads = list_new();
+	return tid_to_entry[tid];
 }
 
-static void set_switch_counter(struct context *last_ctx, struct context *ctx,
-			       int max_events)
+static struct context* get_task(pid_t tid)
 {
-	assert(ctx != NULL);
-	if (last_ctx == ctx) {
+	struct tasklist_entry* entry = get_entry(tid);
+	return entry ? &entry->ctx : NULL;
+}
+
+static struct tasklist_entry* next_entry(struct tasklist_entry* elt)
+{
+	return CIRCLEQ_LOOP_NEXT(&head, elt, entries);
+}
+
+static void note_switch(struct context* prev_ctx, struct context* ctx,
+			int max_events)
+{
+	if (prev_ctx == ctx) {
 		ctx->switch_counter--;
 	} else {
 		ctx->switch_counter = max_events;
@@ -46,51 +59,42 @@ static void set_switch_counter(struct context *last_ctx, struct context *ctx,
  * Retrieves a thread from the pool of active threads in a
  * round-robin fashion.
  */
-struct context* get_active_thread(const struct flags* flags,
-				  struct context* ctx)
+struct context* rec_sched_get_active_thread(const struct flags* flags,
+					    struct context* ctx)
 {
 	int max_events = flags->max_events;
 
-	/* This maintains the order in which the threads are signaled to continue and
-	 * when the the record is actually written
-	 */
-
-	if (ctx != 0) {
-		if (!ctx->allow_ctx_switch) {
-			return ctx;
-		}
-
-		/* switch to next thread if the thread reached the maximum number of RBCs */
-		if (ctx->switch_counter < 0) {
-			current_thread_ptr = list_next(current_thread_ptr);
-			ctx->switch_counter = max_events;
-		}
+	if (!current_entry) {
+		current_entry = CIRCLEQ_FIRST(&head);
 	}
 
-	struct context *return_ctx;
-	while (1) {
-		/* check all threads again, do a full circle and wait */
-		for (; !list_end(current_thread_ptr); current_thread_ptr = list_next(current_thread_ptr)) {
-			return_ctx = (struct context *) list_data(current_thread_ptr);
-			if (return_ctx != NULL) {
-				if (return_ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
-					if (sys_waitpid_nonblock(return_ctx->child_tid, &(return_ctx->status)) != 0) {
-						return_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-						set_switch_counter(last_ctx, return_ctx, max_events);
-						last_ctx = return_ctx;
-						return return_ctx;
-					}
-					continue;
-				}
-				set_switch_counter(last_ctx, return_ctx, max_events);
-				last_ctx = return_ctx;
-				return return_ctx;
+	if (ctx && !ctx->allow_ctx_switch) {
+		return ctx;
+	}
+
+	/* Prefer switching to the next task if the current one
+	 * exceeded its event limit. */
+	if (ctx && ctx->switch_counter < 0) {
+		current_entry = next_entry(current_entry);
+		ctx->switch_counter = max_events;
+	}
+
+	for (;; current_entry = next_entry(current_entry)) {
+		struct context* next_ctx = &current_entry->ctx;
+		if (next_ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
+			/* See if |next_ctx| finished its syscall
+			 * yet. */
+			if (0 == sys_waitpid_nonblock(next_ctx->child_tid,
+						      &next_ctx->status)) {
+				/* Nope. */
+				continue;
 			}
+			/* Yep. */
+			next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
 		}
-		current_thread_ptr = registered_threads;
+		note_switch(ctx, next_ctx, max_events);
+		return next_ctx;
 	}
-
-	return 0;
 }
 
 /**
@@ -98,22 +102,12 @@ struct context* get_active_thread(const struct flags* flags,
  */
 void rec_sched_exit_all()
 {
-	/* workaround if this function is called in replay mode
-	 * TODO: fix this after merging the command line parameter handling
-	 */
-	if (registered_threads) {
-		struct list * thread_ptr = 0;
-		for (thread_ptr = registered_threads; !list_end(thread_ptr); thread_ptr = list_next(thread_ptr)) {
-			struct context *thread = (struct context *) list_data(thread_ptr);
-			if (thread != NULL ) {
-				int tid = thread->child_tid;
-				if (tid != EMPTY) {
-					sys_kill(tid, SIGINT);
-					tid_to_node[tid] = NULL;
-				}
-			}
-		}
-		sys_free((void **)&registered_threads);
+	while (!CIRCLEQ_EMPTY(&head)) {
+		struct tasklist_entry* entry = CIRCLEQ_FIRST(&head);
+		struct context* ctx = &entry->ctx;
+
+		sys_kill(ctx->child_tid, SIGINT);
+		rec_sched_deregister_thread(&ctx);
 	}
 }
 
@@ -129,19 +123,17 @@ int rec_sched_get_num_threads()
 void rec_sched_register_thread(const struct flags* flags,
 			       pid_t parent, pid_t child)
 {
+	struct tasklist_entry* entry = sys_malloc_zero(sizeof(*entry));
+	struct context* ctx = &entry->ctx;
+
 	assert(child > 0 && child < MAX_TID);
-
-	if (!registered_threads)
-		rec_sched_init();
-
-	struct context *ctx = sys_malloc_zero(sizeof(struct context));
 
 	ctx->exec_state = EXEC_STATE_START;
 	ctx->status = 0;
 	ctx->rec_tid = ctx->child_tid = child;
 	ctx->child_mem_fd = sys_open_child_mem(child);
 	if (parent) {
-		struct context* parent_ctx = (struct context *)list_data(tid_to_node[parent]);
+		struct context* parent_ctx = get_task(parent);
 		ctx->syscallbuf_lib_start = parent_ctx->syscallbuf_lib_start;
 		ctx->syscallbuf_lib_end = parent_ctx->syscallbuf_lib_end;
 	}
@@ -153,26 +145,32 @@ void rec_sched_register_thread(const struct flags* flags,
 	init_hpc(ctx);
 	start_hpc(ctx, flags->max_rbc);
 
-	registered_threads = list_push_front(registered_threads, ctx);
+	CIRCLEQ_INSERT_TAIL(&head, entry, entries);
 	num_active_threads++;
 
-	tid_to_node[child] = registered_threads;
+	tid_to_entry[child] = entry;
 }
 
 /**
  * De-regsiter a thread and de-allocate all resources. This function
  * should be called when a thread exits.
  */
-void rec_sched_deregister_thread(struct context **ctx_ptr)
+void rec_sched_deregister_thread(struct context** ctx_ptr)
 {
-	struct context *ctx = *ctx_ptr;
-	struct list * node = tid_to_node[ctx->child_tid], *next = list_next(node);
-	if (!list_end(next)) {
-		pid_t next_tid = ((struct context *)list_data(next))->child_tid;
-		tid_to_node[next_tid] = node;
+	struct context* ctx = *ctx_ptr;
+	pid_t tid = ctx->child_tid;
+	struct tasklist_entry* entry = get_entry(tid);
+
+	if (entry == current_entry) {
+		current_entry = next_entry(entry);
+		if (entry == current_entry) {
+			assert(num_active_threads == 1);
+			current_entry = NULL;
+		}
 	}
-	list_remove(node); // this copied node over next and frees next!
-	tid_to_node[ctx->child_tid] = NULL;
+
+	CIRCLEQ_REMOVE(&head, entry, entries);
+	tid_to_entry[tid] = NULL;
 	num_active_threads--;
 	assert(num_active_threads >= 0);
 
@@ -182,8 +180,9 @@ void rec_sched_deregister_thread(struct context **ctx_ptr)
 	sys_close(ctx->child_mem_fd);
 	close(ctx->desched_fd);
 
-	sys_ptrace_detach(ctx->child_tid);
+	sys_ptrace_detach(tid);
 
 	/* finally, free the memory */
-	sys_free((void**) ctx_ptr);
+	sys_free((void**)entry);
+	*ctx_ptr = NULL;
 }
