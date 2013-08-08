@@ -6,21 +6,23 @@
 
 #include <assert.h>
 #include <fcntl.h>
+#include <sched.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/personality.h>
 #include <sys/mman.h>
+#include <sys/personality.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
+/* This header has to be included after sys/ptrace.h. */
 #include <asm/ptrace-abi.h>
 #include <sys/time.h>
 #include <sys/wait.h>
-#include <sched.h>
 
 #include "dbg.h"
 #include "ipc.h"
 #include "../recorder/rec_sched.h"
 #include "../replayer/replayer.h" /* for emergency_debug() */
+#include "task.h"
 #include "trace.h"
 #include "util.h"
 
@@ -80,13 +82,13 @@ void sys_close(int filedes)
 	}
 }
 
-int sys_open_child_mem(pid_t child_tid)
+int sys_open_child_mem(pid_t tid)
 {
 	char path[64];
 	bzero(path, 64);
 	int fd;
 
-	sprintf(path, "/proc/%d/mem", child_tid);
+	sprintf(path, "/proc/%d/mem", tid);
 	if ((fd = open(path, O_RDWR)) < 0) {
 		log_err("error reading child memory:open-- bailing out\n");
 		sys_exit();
@@ -279,18 +281,16 @@ void goto_next_event(struct context *ctx)
 	if (ctx->child_sig != 0) {
 		printf("sending signal: %d\n",ctx->child_sig);
 	}
-	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
-	sys_waitpid(ctx->child_tid, &ctx->status);
+	sys_ptrace(PTRACE_SYSCALL, ctx->tid, 0, (void*) ctx->child_sig);
+	sys_waitpid(ctx->tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
 	if (ctx->child_sig == SIGTRAP) {
 		log_err("Caught unexpected SIGTRAP while going to next event");
 		emergency_debug(ctx);
 	}
-	ctx->event = read_child_orig_eax(ctx->child_tid);
+	ctx->event = read_child_orig_eax(ctx->tid);
 }
-
-
 
 long sys_ptrace_peektext_word(pid_t pid, void* addr)
 {

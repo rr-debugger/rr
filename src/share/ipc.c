@@ -12,6 +12,7 @@
 
 #include "dbg.h"
 #include "sys.h"
+#include "task.h"
 #include "trace.h"
 #include "util.h"
 
@@ -37,9 +38,9 @@ size_t set_child_data(struct context *ctx)
 void set_return_value(struct context* context)
 {
 	struct user_regs_struct r;
-	read_child_registers(context->child_tid, &r);
+	read_child_registers(context->tid, &r);
 	r.eax = context->trace.recorded_regs.eax;
-	write_child_registers(context->child_tid, &r);
+	write_child_registers(context->tid, &r);
 }
 
 static long read_child_word(pid_t tid, void *addr, int ptrace_op)
@@ -315,7 +316,7 @@ ssize_t checked_pread(struct context *ctx, void *buf, size_t size, off_t offset)
 	// who knows why??
 	if (read == 0 && errno == 0) {
 		sys_close(ctx->child_mem_fd);
-		ctx->child_mem_fd = sys_open_child_mem(ctx->child_tid);
+		ctx->child_mem_fd = sys_open_child_mem(ctx->tid);
 		read = pread(ctx->child_mem_fd, buf, size, offset);
 	}
 
@@ -354,7 +355,7 @@ void* read_child_data(struct context *ctx, size_t size, void* addr)
 	ssize_t read_bytes = checked_pread(ctx, buf, size, PTR_TO_OFF_T(addr));
 	if (read_bytes != size) {
 		sys_free(&buf);
-		buf = read_child_data_tid(ctx->child_tid, size, addr);
+		buf = read_child_data_tid(ctx->tid, size, addr);
 		printf("reading from: %p demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
 		perror("warning: reading from child process: ");
 		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
@@ -494,7 +495,7 @@ void write_child_data(struct context *ctx, size_t size, void *addr,
 {
 	ssize_t written = pwrite(ctx->child_mem_fd, data, size, PTR_TO_OFF_T(addr));
 	if (written != size) {
-		write_child_data_n(ctx->child_tid, size, addr, data);
+		write_child_data_n(ctx->tid, size, addr, data);
 	}
 }
 

@@ -11,7 +11,9 @@
 #include <sys/user.h>
 
 #include "types.h"
-#include "../share/config.h"
+
+struct context;
+struct trace_frame;
 
 #define GET_PTRACE_EVENT(status) \
 	((0xFF0000 & status) >> 16)

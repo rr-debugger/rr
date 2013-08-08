@@ -16,12 +16,13 @@
 
 #include "../replayer/replayer.h" /* for emergency_debug() */
 #include "../share/dbg.h"
-#include "../share/ipc.h"
-#include "../share/util.h"
-#include "../share/trace.h"
-#include "../share/sys.h"
 #include "../share/hpc.h"
+#include "../share/ipc.h"
+#include "../share/sys.h"
 #include "../share/syscall_buffer.h"
+#include "../share/task.h"
+#include "../share/trace.h"
+#include "../share/util.h"
 
 static __inline__ unsigned long long rdtsc(void)
 {
@@ -37,7 +38,7 @@ static __inline__ unsigned long long rdtsc(void)
 static int try_handle_rdtsc(struct context *ctx)
 {
 	int retval = 0;
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	int sig = signal_pending(ctx->status);
 	assert(sig != SIGTRAP);
 
@@ -81,60 +82,6 @@ static int try_handle_rdtsc(struct context *ctx)
 	return retval;
 }
 
-/**
- * Return nonzero if |ctx| was stopped because of a SIGSEGV resulting
- * from access of a shared mmap and |ctx| was updated appropriately,
- * zero otherwise.
- */
-static int try_handle_shared_mmap_access(struct context *ctx,
-					 const siginfo_t* si)
-{
-	pid_t tid = ctx->child_tid;
-	int sig = signal_pending(ctx->status);
-	assert(sig != SIGTRAP);
-
-	if (sig <= 0 || sig != SIGSEGV) {
-		return 0;
-	}
-
-	// locate the offending address
-	void* addr = si->si_addr;
-
-	// check that its indeed in a shared mmaped region we previously protected
-	if (!is_protected_map(ctx,addr)){
-		return 0;
-	}
-
-	// get the type of the instruction
-	int size;
-	bool is_write = is_write_mem_instruction(tid, 0, &size);
-
-	// since emulate_child_inst also advances the eip,
-	// we need to record the event BEFORE the instruction is executed
-	ctx->event = is_write ? SIG_SEGV_MMAP_WRITE : SIG_SEGV_MMAP_READ;
-	emulate_child_inst(ctx,0);
-	/*
-	struct user_regs_struct regs;
-	read_child_registers(tid, &regs);
-	regs.eip += size;
-	write_child_registers(tid, &regs);
-	*/
-
-	/*
-	// unprotect the region and allow the instruction to run
-	mprotect_child_region(ctx, addr, PROT_WRITE);
-	sys_ptrace_singlestep(tid,0);
-
-	if (!is_write) { // we only need to record on reads, writes are fine
-		record_child_data(ctx,SIG_SEGV_MMAP_READ,get_mmaped_region_end(ctx,addr) - addr,addr);
-	}
-
-	// protect the region again
-	mprotect_child_region(ctx, addr, PROT_NONE);
-	 */
-	return ctx->event;
-}
-
 static void disarm_desched_event(struct context* ctx)
 {
 	if (ioctl(ctx->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
@@ -152,7 +99,7 @@ static uint64_t read_desched_counter(struct context* ctx)
 static int advance_syscall_boundary(struct context* ctx,
 				     struct user_regs_struct* regs)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	int status;
 
 	sys_ptrace_syscall(tid);
@@ -296,6 +243,11 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		expecting_extra_sigio = 0;
 	}
 
+	/* Stash away this breadcrumb so that we can figure out what
+	 * syscall the tracee was in, and how much "scratch" space it
+	 * carved off the syscallbuf, if needed. */
+	ctx->desched_rec = next_record(ctx->syscallbuf_hdr);
+
 	if (call < 0) {
 		/* For reasons not understood the least bit, the
 		 * tracee's orig_eax sometimes has a bizarre negative
@@ -316,7 +268,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		 * because we're handling a desched event. */
 		debug("  saw garbage orig_eax: 0x%x, reading breadcrumb",
 		      call);
-		call = next_record(ctx->syscallbuf_hdr)->syscallno;
+		call = ctx->desched_rec->syscallno;
 		if (call < 0) {
 			log_err("Garbled syscallbuf breadcrumb %d", call);
 			emergency_debug(ctx);
@@ -362,7 +314,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		 * interrupted by desched. */
 		ctx->last_syscall = call;
 	}
-	ctx->desched = 1;
+
 	return call;
 }
 
@@ -410,15 +362,15 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 	reset_hpc(ctx, max_rbc); // TODO: the hpc gets reset in record event.
 	assert(read_insts(ctx->hpc) == 0);
 	// enter the sig handler
-	sys_ptrace_singlestep_sig(ctx->child_tid, sig);
+	sys_ptrace_singlestep_sig(ctx->tid, sig);
 	// wait for the kernel to finish setting up the handler
-	sys_waitpid(ctx->child_tid, &(ctx->status));
+	sys_waitpid(ctx->tid, &(ctx->status));
 	// 0 instructions means we entered a handler
 	int insts = read_insts(ctx->hpc);
 	// TODO: find out actual struct sigframe size. 128 seems to be too small
 	size_t frame_size = (insts == 0) ? 1024 : 0;
 	struct user_regs_struct regs;
-	read_child_registers(ctx->child_tid, &regs);
+	read_child_registers(ctx->tid, &regs);
 	record_child_data(ctx, ctx->event, frame_size, (void*)regs.esp);
 }
 
@@ -451,7 +403,7 @@ static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si)
 void go_to_a_happy_place(struct context* ctx,
 			 const siginfo_t* si, struct user_regs_struct* regs)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	/* If we deliver the signal at the tracee's current execution
 	 * point, it will result in a syscall-buffer-flush event being
 	 * recorded if there are any buffered syscalls.  The
@@ -678,7 +630,7 @@ happy_place:
 
 void handle_signal(const struct flags* flags, struct context* ctx)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	int sig = signal_pending(ctx->status);
 	int event;
 	siginfo_t si;
@@ -690,7 +642,7 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	}
 
 	debug("%d: handling signal %s (pevent: %d, event: %s)",
-	      ctx->child_tid, signalname(sig),
+	      ctx->tid, signalname(sig),
 	      GET_PTRACE_EVENT(ctx->status), strevent(ctx->event));
 
 	sys_ptrace_getsiginfo(tid, &si);
@@ -699,7 +651,7 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	if (SIGIO == sig
 	    && (event = try_handle_desched_event(ctx, &si, &regs))) {
 		ctx->event = event;
-		ctx->child_sig = 0; 
+		ctx->child_sig = 0;
 		return;
 	}
 
@@ -708,20 +660,14 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	/* See if this signal occurred because of an rr implementation detail,
 	 * and fudge ctx appropriately. */
 	switch (sig) {
-	case SIGSEGV: {
-		int mmap_event;
+	case SIGSEGV:
 		if (try_handle_rdtsc(ctx)) {
 			ctx->event = SIG_SEGV_RDTSC;
 			ctx->child_sig = 0;
 			return;
 		}
-		if ((mmap_event = try_handle_shared_mmap_access(ctx, &si))) {
-			ctx->event = mmap_event;
-			ctx->child_sig = 0;
-			return;
-		}
 		break;
-	}
+
 	case SIGIO:
 		/* TODO: imprecise counters can probably race with
 		 * delivery of a "real" SIGIO */

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/prctl.h>
 
+#include "share/config.h"
 #include "share/dbg.h"
 #include "share/hpc.h"
 #include "share/sys.h"

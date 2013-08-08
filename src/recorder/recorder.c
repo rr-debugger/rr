@@ -25,6 +25,7 @@
 #include "../share/ipc.h"
 #include "../share/trace.h"
 #include "../share/sys.h"
+#include "../share/task.h"
 #include "../share/util.h"
 #include "../share/syscall_buffer.h"
 
@@ -49,39 +50,39 @@ static void rec_init_scratch_memory(struct context *ctx)
 
 	// record this mmap for the replay
 	struct user_regs_struct orig_regs;
-	read_child_registers(ctx->child_tid,&orig_regs);
+	read_child_registers(ctx->tid,&orig_regs);
 	int eax = orig_regs.eax;
 	orig_regs.eax = (uintptr_t)ctx->scratch_ptr;
-	write_child_registers(ctx->child_tid,&orig_regs);
+	write_child_registers(ctx->tid,&orig_regs);
 	struct mmapped_file file = {0};
 	file.time = get_global_time();
-	file.tid = ctx->child_tid;
+	file.tid = ctx->tid;
 	file.start = ctx->scratch_ptr;
 	file.end = ctx->scratch_ptr + scratch_size;
-	sprintf(file.filename,"scratch for thread %d",ctx->child_tid);
+	sprintf(file.filename,"scratch for thread %d",ctx->tid);
 	record_mmapped_file_stats(&file);
 	int event = ctx->event;
 	ctx->event = USR_INIT_SCRATCH_MEM;
 	record_event(ctx,STATE_SYSCALL_EXIT);
 	ctx->event = event;
 	orig_regs.eax = eax;
-	write_child_registers(ctx->child_tid,&orig_regs);
+	write_child_registers(ctx->tid,&orig_regs);
 }
 
 static void cont_nonblock(struct context *ctx)
 {
-	sys_ptrace_syscall_sig(ctx->child_tid, ctx->child_sig);
+	sys_ptrace_syscall_sig(ctx->tid, ctx->child_sig);
 	ctx->child_sig = 0;
 }
 
 static int wait_nonblock(struct context *ctx)
 {
-	int ret = sys_waitpid_nonblock(ctx->child_tid, &(ctx->status));
+	int ret = sys_waitpid_nonblock(ctx->tid, &(ctx->status));
 
 	if (ret) {
 		assert(WIFEXITED(ctx->status) == 0);
 		handle_signal(&rr_flags_, ctx);
-		ctx->event = read_child_orig_eax(ctx->child_tid);
+		ctx->event = read_child_orig_eax(ctx->tid);
 	}
 	return ret;
 }
@@ -98,12 +99,12 @@ static void canonicalize_event(struct context* ctx)
  */
 static void cont_block(struct context *ctx)
 {
-	sys_ptrace(PTRACE_CONT, ctx->child_tid, 0, (void*) ctx->child_sig);
-	sys_waitpid(ctx->child_tid, &ctx->status);
+	sys_ptrace(PTRACE_CONT, ctx->tid, 0, (void*) ctx->child_sig);
+	sys_waitpid(ctx->tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);
 	assert(ctx->child_sig != SIGTRAP);
-	read_child_registers(ctx->child_tid, &(ctx->child_regs));
-	ctx->event = ctx->child_regs.orig_eax;
+	read_child_registers(ctx->tid, &(ctx->regs));
+	ctx->event = ctx->regs.orig_eax;
 	canonicalize_event(ctx);
 	handle_signal(&rr_flags_, ctx);
 }
@@ -113,11 +114,11 @@ static void cont_block(struct context *ctx)
  */
 static void cont_syscall_block(struct context *ctx)
 {
-	sys_ptrace(PTRACE_SYSCALL, ctx->child_tid, 0, (void*) ctx->child_sig);
-	sys_waitpid(ctx->child_tid, &ctx->status);
+	sys_ptrace(PTRACE_SYSCALL, ctx->tid, 0, (void*) ctx->child_sig);
+	sys_waitpid(ctx->tid, &ctx->status);
 	ctx->child_sig = signal_pending(ctx->status);
-	read_child_registers(ctx->child_tid, &(ctx->child_regs));
-	ctx->event = ctx->child_regs.orig_eax;
+	read_child_registers(ctx->tid, &(ctx->regs));
+	ctx->event = ctx->regs.orig_eax;
 	canonicalize_event(ctx);
 	handle_signal(&rr_flags_, ctx);
 }
@@ -129,7 +130,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	/* handle events */
 	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
 	debug("  %d: handle_ptrace_event %d: syscall %s",
-	      (*ctx_ptr)->child_tid, event, syscallname((*ctx_ptr)->event));
+	      (*ctx_ptr)->tid, event, syscallname((*ctx_ptr)->event));
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
@@ -142,7 +143,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		rec_process_syscall(*ctx_ptr, (*ctx_ptr)->event, rr_flags_);
 		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
 		(*ctx_ptr)->exec_state = EXEC_STATE_START;
-		(*ctx_ptr)->allow_ctx_switch = 1;
+		(*ctx_ptr)->switchable = 1;
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		cont_syscall_block(*ctx_ptr);
 		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
@@ -154,22 +155,22 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	case PTRACE_EVENT_VFORK:
 	{
 		/* get new tid, register at the scheduler and setup HPC */
-		int new_tid = sys_ptrace_getmsg((*ctx_ptr)->child_tid);
+		int new_tid = sys_ptrace_getmsg((*ctx_ptr)->tid);
 
 		/* ensure that clone was successful */
-		assert(read_child_eax((*ctx_ptr)->child_tid) != -1);
+		assert(read_child_eax((*ctx_ptr)->tid) != -1);
 
 		/* wait until the new thread is ready */
 		sys_waitpid(new_tid, &((*ctx_ptr)->status));
 		rec_sched_register_thread(&rr_flags_,
-					  (*ctx_ptr)->child_tid, new_tid);
+					  (*ctx_ptr)->tid, new_tid);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
 		 * child has finished */
 		if (event == PTRACE_EVENT_VFORK) {
 			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
-			(*ctx_ptr)->allow_ctx_switch = 1;
+			(*ctx_ptr)->switchable = 1;
 			record_event((*ctx_ptr), STATE_SYSCALL_ENTRY);
 			cont_nonblock((*ctx_ptr));
 		} else {
@@ -233,7 +234,7 @@ void start_recording(struct flags rr_flags)
 		/* get a thread that is ready to be executed */
 		ctx = rec_sched_get_active_thread(&rr_flags_, ctx);
 
-		debug("Active task is %d", ctx->child_tid);
+		debug("Active task is %d", ctx->tid);
 
 		if (ctx->scratch_ptr == NULL) {
 			rec_init_scratch_memory(ctx);
@@ -276,7 +277,7 @@ void start_recording(struct flags rr_flags)
 			debug_exec_state("  first trap", ctx);
 
 			/* we must disallow the context switch here! */
-			ctx->allow_ctx_switch = 0;
+			ctx->switchable = 0;
 
 			/*
 			 * When the seccomp filter is on, instead of capturing syscalls by using PTRACE_SYSCALL, the filter
@@ -321,7 +322,7 @@ void start_recording(struct flags rr_flags)
 
 				// state might be overwritten if a signal occurs
 			} else if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
-				ctx->allow_ctx_switch = 1;
+				ctx->switchable = 1;
 
 				/* Implements signal handling
 				 *
@@ -347,7 +348,7 @@ void start_recording(struct flags rr_flags)
 				assert(ctx->event == -1);
 				ctx->event = orig_event;
 				record_event(ctx, STATE_SYSCALL_EXIT);
-				ctx->allow_ctx_switch = 0;
+				ctx->switchable = 0;
 
 				/* here we can continue normally */
 				break;
@@ -373,7 +374,7 @@ void start_recording(struct flags rr_flags)
 				 * which in turn saves another such restart block,
 				 * old data is lost and restart becomes impossible)
 				 */
-				debug("Thread %d: restarting syscall %s", ctx->child_tid, syscallname(ctx->last_syscall));
+				debug("Thread %d: restarting syscall %s", ctx->tid, syscallname(ctx->last_syscall));
 				/*
 				 * From errno.h:
 				 * These should never be seen by user programs.  To return
@@ -390,14 +391,7 @@ void start_recording(struct flags rr_flags)
 				      strevent(ctx->event), ctx->event);
 			}
 
-			if (ctx->desched) {
-				/* Stash away this breadcrumb so that
-				 * we can figure out what syscall the
-				 * tracee was in, and how much
-				 * "scratch" space it carved off the
-				 * syscallbuf, if needed. */
-				ctx->desched_rec =
-					next_record(ctx->syscallbuf_hdr);
+			if (ctx->desched_rec) {
 				/* Replay needs to be prepared to see
 				 * the ioctl() that arms the desched
 				 * counter when it's trying to step to
@@ -412,7 +406,7 @@ void start_recording(struct flags rr_flags)
 						       USR_SYSCALLBUF_RESET);
 				ctx->flushed_syscallbuf = 0;
 			}				
-			if (ctx->desched) {
+			if (ctx->desched_rec) {
 				ctx->syscallbuf_hdr->abort_commit = 1;
 				record_synthetic_event(ctx,
 						       USR_SYSCALLBUF_ABORT_COMMIT);
@@ -426,7 +420,7 @@ void start_recording(struct flags rr_flags)
 			debug_exec_state("EXEC_SYSCALL_ENTRY", ctx);
 
 			/* continue and execute the system call */
-			ctx->allow_ctx_switch =
+			ctx->switchable =
 				rec_prepare_syscall(ctx, ctx->event);
 			cont_nonblock(ctx);
 
@@ -448,7 +442,7 @@ void start_recording(struct flags rr_flags)
 
 			if (ret) {
 				ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-				ctx->allow_ctx_switch = 0;
+				ctx->switchable = 0;
 			}
 			break;
 		}
@@ -460,7 +454,7 @@ void start_recording(struct flags rr_flags)
 			assert(signal_pending(ctx->status) == 0);
 
 			struct user_regs_struct regs;
-			read_child_registers(ctx->child_tid,&regs);
+			read_child_registers(ctx->tid,&regs);
 			int syscall = regs.orig_eax;
 			int retval = regs.eax;
 			if (0 <= syscall
@@ -507,8 +501,8 @@ void start_recording(struct flags rr_flags)
 				}
 				record_event(ctx, STATE_SYSCALL_EXIT);
 				ctx->exec_state = EXEC_STATE_START;
-				ctx->allow_ctx_switch = 1;
-				if (ctx->desched) {
+				ctx->switchable = 1;
+				if (ctx->desched_rec) {
 					assert(ctx->syscallbuf_hdr->abort_commit);
 					/* If this syscall was
 					 * interrupted by a desched
@@ -520,7 +514,7 @@ void start_recording(struct flags rr_flags)
 					 * so that replay knows to
 					 * expect it and skip over
 					 * it. */
-					ctx->desched = 0;
+					ctx->desched_rec = NULL;
 					record_synthetic_event(
 						ctx,
 						USR_DISARM_DESCHED);

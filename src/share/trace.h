@@ -10,10 +10,11 @@
 
 #include "types.h"
 
-
 #define STATE_SYSCALL_ENTRY		  0
 #define STATE_SYSCALL_EXIT		  1
 #define STATE_PRE_MMAP_ACCESS     2
+
+struct context;
 
 enum {
 	/* "Magic" (rr-generated) pseudo-signals can't be represented
@@ -61,6 +62,51 @@ enum {
 	 * "namespace" in the event encoding, they're recorded as
 	 * (-syscallno | RRCALL_BIT). */
 	RRCALL_BIT = 0x8000
+};
+
+/**
+ * A trace_frame is one "trace event" from a complete trace.  During
+ * recording, a trace_frame is recorded upon each significant event,
+ * for example a context-switch or syscall.  During replay, a
+ * trace_frame represents a "next state" that needs to be transitioned
+ * into, and the information recorded in the frame dictates the nature
+ * of the transition.
+ */
+struct trace_frame
+{
+	/* meta information */
+	uint32_t global_time;
+	uint32_t thread_time;
+	pid_t tid;
+	int stop_reason;
+	int state;
+
+	/* hpc data */
+	uint64_t hw_interrupts;
+	uint64_t page_faults;
+	uint64_t rbc;
+	uint64_t insts;
+
+	/* register values */
+	struct user_regs_struct recorded_regs;
+};
+
+/* XXX/pedant more accurately called a "mapped /region/", since we're
+ * not mapping entire files, necessarily. */
+struct mmapped_file {
+	/* Global trace time when this region was mapped. */
+	int time;
+	int tid;
+	/* Did we save a copy of the mapped region in the trace
+	 * data? */
+	int copied;
+
+	char filename[1024];
+	struct stat stat;
+
+	/* Bounds of mapped region. */
+	void* start;
+	void* end;
 };
 
 /* These are defined by the include/linux/errno.h in the kernel tree.

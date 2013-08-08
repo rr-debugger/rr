@@ -35,6 +35,7 @@
 #include "../share/trace.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
+#include "../share/task.h"
 #include "../share/util.h"
 #include "../share/syscall_buffer.h"
 
@@ -86,7 +87,7 @@ static void debug_memory(struct context* ctx)
 		char pid_str[PATH_MAX];
 		snprintf(pid_str, sizeof(pid_str) - 1, "%s/%d_%d_rep",
 			 get_trace_path(),
-			 ctx->child_tid, ctx->trace.global_time);
+			 ctx->tid, ctx->trace.global_time);
 		print_process_memory(ctx, pid_str);
 	}
 
@@ -114,7 +115,7 @@ static void replay_init_scratch_memory(struct context* ctx,
 
     /* set up the mmap system call */
     struct user_regs_struct orig_regs;
-    read_child_registers(ctx->child_tid, &orig_regs);
+    read_child_registers(ctx->tid, &orig_regs);
 
     struct user_regs_struct mmap_call = orig_regs;
 
@@ -128,7 +129,7 @@ static void replay_init_scratch_memory(struct context* ctx,
 
     inject_and_execute_syscall(ctx,&mmap_call);
 
-    write_child_registers(ctx->child_tid,&orig_regs);
+    write_child_registers(ctx->tid,&orig_regs);
 }
 
 /**
@@ -230,7 +231,7 @@ static void set_sw_breakpoint(struct context* ctx, void* ip, trap_t type)
 		       sizeof(int_3_insn));
 		sys_free((void**)&orig_data_ptr);
 
-		write_child_data_n(ctx->child_tid,
+		write_child_data_n(ctx->tid,
 				   sizeof(int_3_insn), bp->addr, &int_3_insn);
 		add_breakpoint(bp);
 	}
@@ -241,7 +242,7 @@ static void remove_sw_breakpoint(struct context* ctx, void* ip, trap_t type)
 {
 	struct breakpoint* bp = find_breakpoint(ip);
 	if (bp && 0 == unref_breakpoint(bp, type)) {
-		write_child_data_n(ctx->child_tid,
+		write_child_data_n(ctx->tid,
 				   sizeof(bp->overwritten_data), bp->addr,
 				   &bp->overwritten_data);
 		erase_breakpoint(bp);
@@ -332,7 +333,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			struct user_regs_struct regs;
 			dbg_regvalue_t val;
 
-			read_child_registers(target->child_tid, &regs);
+			read_child_registers(target->tid, &regs);
 			val.value = get_reg(&regs, req.reg, &val.defined);
 			dbg_reply_get_reg(dbg, val);
 			continue;
@@ -343,7 +344,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			int i;
 			dbg_regvalue_t* val;
 
-			read_child_registers(target->child_tid, &regs);
+			read_child_registers(target->tid, &regs);
 			memset(&file, 0, sizeof(file));
 			for (i = DREG_EAX; i < DREG_NUM_USER_REGS; ++i) {
 				val = &file.regs[i];
@@ -421,7 +422,7 @@ static void validate_args(int event, int state, struct context* ctx)
 		 * clear whether this is a ptrace bug or a kernel bug,
 		 * but either way it's not supposed to happen.  So we
 		 * fudge registers here to cover up that bug. */
-		read_child_registers(ctx->child_tid, &cur_regs);
+		read_child_registers(ctx->tid, &cur_regs);
 		if (cur_regs.esi != rec_regs->esi) {
 			log_warn("Probably saw kernel bug mutating $esi across pread/write64 call: recorded:0x%lx; replaying:0x%lx.  Fudging registers.",
 				 rec_regs->esi, cur_regs.esi);
@@ -441,7 +442,7 @@ static void validate_args(int event, int state, struct context* ctx)
 enum { EXEC = 0, EMU = 1 };
 static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	if (emu && stepi) {
 		sys_ptrace_sysemu_singlestep(tid);
@@ -483,7 +484,7 @@ static int cont_syscall_boundary(struct context* ctx, int emu, int stepi)
  */
 static void step_exit_syscall_emu(struct context *ctx)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct regs;
 
 	read_child_registers(tid, &regs);
@@ -552,7 +553,7 @@ static int exit_syscall(struct context* ctx,
 enum { DONT_STEPI = 0, STEPI };
 static void continue_or_step(struct context* ctx, int stepi)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	if (stepi) {
 		sys_ptrace_singlestep(tid);
@@ -570,7 +571,7 @@ static void continue_or_step(struct context* ctx, int stepi)
 	ctx->child_sig = signal_pending(ctx->status);
 	if (0 == ctx->child_sig) {
 		struct user_regs_struct regs;
-		read_child_registers(ctx->child_tid, &regs);
+		read_child_registers(ctx->tid, &regs);
 
 		log_err("Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s' (rcb: %llu)",
 			strevent(ctx->trace.stop_reason),
@@ -590,7 +591,7 @@ static int is_breakpoint_trap(struct context* ctx)
 
 	assert(SIGTRAP == ctx->child_sig);
 
-	sys_ptrace_getsiginfo(ctx->child_tid, &si);
+	sys_ptrace_getsiginfo(ctx->tid, &si);
 	assert(SIGTRAP == si.si_signo);
 
 	/* XXX unable to find docs on which of these "should" be
@@ -639,7 +640,7 @@ static trap_t compute_trap_type(struct context* ctx, int target_sig,
 	/* We're trying to replay a deterministic SIGTRAP, or we're
 	 * replaying an async signal. */
 
-	read_child_registers(ctx->child_tid, &regs);
+	read_child_registers(ctx->tid, &regs);
 	ip = (void*)regs.eip;
 	trap_type = ip_breakpoint_type(ip);
 	if (TRAP_BKPT_USER == trap_type || TRAP_BKPT_INTERNAL == trap_type) {
@@ -727,7 +728,7 @@ static void guard_unexpected_signal(struct context* ctx)
 		event = -ctx->child_sig;
 	} else {
 		struct user_regs_struct regs;
-		read_child_registers(ctx->child_tid, &regs);
+		read_child_registers(ctx->tid, &regs);
 		event = MAX(0, regs.orig_eax);
 	}
 	log_err("Replay got unrecorded event %s while awaiting signal\n"
@@ -759,7 +760,7 @@ static int advance_to(struct context* ctx, uint64_t rcb,
 		      const struct user_regs_struct* regs, int sig,
 		      int stepi)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	void* ip = (void*)regs->eip;
 	uint64_t rcb_now;
 
@@ -960,7 +961,7 @@ static void emulate_signal_delivery()
 	 * was recorded, emulate it using the next trace line (records
 	 * the state at sighandler entry). */
 	struct context* ctx = rep_sched_get_thread();
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct trace_frame* trace = &ctx->trace;
 
 	/* Restore the signal-hander frame data, if there was one. */
@@ -992,7 +993,7 @@ static void emulate_signal_delivery()
 static int emulate_deterministic_signal(struct context* ctx,
 					int sig, int stepi)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	continue_or_step(ctx, stepi);
 	if (SIGCHLD == ctx->child_sig) {
@@ -1058,7 +1059,7 @@ static int skip_desched_ioctl(struct context* ctx,
 	}
 	ds->state = DESCHED_EXIT;
 
-	read_child_registers(ctx->child_tid, &regs);
+	read_child_registers(ctx->tid, &regs);
 	is_desched_syscall = DESCHED_ARM == ds->type ?
 			     is_arm_desched_event_syscall(ctx, &regs) :
 			     is_disarm_desched_event_syscall(ctx, &regs);
@@ -1074,7 +1075,7 @@ static int skip_desched_ioctl(struct context* ctx,
 	 * desched ioctl returns non-zero (it doesn't know how to
 	 * handle that). */
 	regs.eax = 0;
-	write_child_registers(ctx->child_tid, &regs);
+	write_child_registers(ctx->tid, &regs);
 	step_exit_syscall_emu(ctx);
 	return 0;
 }
@@ -1141,7 +1142,7 @@ static void assert_at_buffered_syscall(struct context* ctx,
 static int flush_one_syscall(struct context* ctx,
 			     struct rep_flush_state* flush, int stepi)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	const struct syscallbuf_record* rec = flush->rec;
 	int ret;
 	struct user_regs_struct regs;
@@ -1438,13 +1439,13 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		 * and successful stepi's. */
 		assert(SIGTRAP == ctx->child_sig && "Unknown trap");
 
-		read_child_registers(ctx->child_tid, &regs);
+		read_child_registers(ctx->tid, &regs);
 		if (TRAP_BKPT_USER == ip_breakpoint_type((void*)regs.eip)) {
 			/* SW breakpoint: $ip is just past the
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
 			regs.eip -= sizeof(int_3_insn);
-			write_child_registers(ctx->child_tid, &regs);
+			write_child_registers(ctx->tid, &regs);
 		} else {
 			/* Successful stepi.  Nothing else to do. */
 			assert(DREQ_STEP == req.type
@@ -1528,7 +1529,7 @@ void emergency_debug(struct context* ctx)
 		fatal("(stderr not a tty, aborting emergency debugging)");
 	}
 
-	dbg = dbg_await_client_connection("127.0.0.1", ctx->child_tid);
+	dbg = dbg_await_client_connection("127.0.0.1", ctx->tid);
 	process_debugger_requests(dbg, ctx);
 	fatal("Can't resume execution from invalid state");
 }

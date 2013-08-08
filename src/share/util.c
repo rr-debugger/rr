@@ -30,8 +30,9 @@
 #include "ipc.h"
 #include "sys.h"
 #include "syscall_buffer.h"
-#include "types.h"
+#include "task.h"
 #include "trace.h"
+#include "types.h"
 
 /* The tracee doesn't open the desched event fd during replay, so it
  * can't be shared to this process.  We pretend that the tracee shared
@@ -269,7 +270,7 @@ void get_eip_info(pid_t tid)
 
 char* get_inst(struct context* ctx, int eip_offset, int* opcode_size)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	char* buf = NULL;
 	unsigned long eip = read_child_eip(tid);
 	ssize_t nr_read_bytes;
@@ -320,7 +321,7 @@ bool is_write_mem_instruction(pid_t tid, int eip_offset, int* opcode_size)
 
 void emulate_child_inst(struct context * ctx, int eip_offset)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid,&regs);
 	unsigned long eip = read_child_eip(tid);
@@ -391,7 +392,7 @@ void emulate_child_inst(struct context * ctx, int eip_offset)
 
 void mprotect_child_region(struct context * ctx, void * addr, int prot) {
 	struct user_regs_struct mprotect_call;
-	read_child_registers(ctx->child_tid,&mprotect_call);
+	read_child_registers(ctx->tid,&mprotect_call);
 	addr = (void*)((int)addr & PAGE_MASK); // align the address
 	size_t length = get_mmaped_region_end(ctx,addr) - addr;
 	mprotect_call.eax = SYS_mprotect;
@@ -452,7 +453,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 	int syscall = trace->recorded_regs.orig_eax;
 	int state = trace->state;
 	struct user_regs_struct r;
-	read_child_registers(ctx->child_tid, &r);
+	read_child_registers(ctx->tid, &r);
 
 	fprintf(stderr,"%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
 	if (state == STATE_SYSCALL_ENTRY) {
@@ -465,7 +466,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 		/*  int access(const char *pathname, int mode); */
 		case SYS_access:
 		{
-			char *str = read_child_str(ctx->child_tid, (void*)r.ebx);
+			char *str = read_child_str(ctx->tid, (void*)r.ebx);
 			fprintf(stderr,"access(const char *pathname(%s), int mode(%lx))", str, r.ecx);
 			sys_free((void**)str);
 			break;
@@ -540,7 +541,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 		/* int open(const char *pathname, int flags) */
 		case SYS_open:
 		{
-			char *str = read_child_str(ctx->child_tid,
+			char *str = read_child_str(ctx->tid,
 						   (void*)r.ebx);
 			fprintf(stderr,"open(const char *pathname(%s), int flags(%lx))", str, r.ecx);
 			sys_free((void**)&str);
@@ -571,7 +572,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 		/* int stat(const char *path, struct stat *buf); */
 		case SYS_stat64:
 		{
-			char* str = read_child_str(ctx->child_tid,
+			char* str = read_child_str(ctx->tid,
 						   (void*)r.ebx);
 			fprintf(stderr,"stat(const char *path(%s), struct stat *buf(%lx))", str, r.ecx);
 			sys_free((void**)&str);
@@ -673,7 +674,7 @@ void assert_child_regs_are(struct context* ctx,
 			   const struct user_regs_struct* regs,
 			   int event, int state)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct cur_regs;
 
 	read_child_registers(tid, &cur_regs);
@@ -806,7 +807,7 @@ void print_process_mmap(pid_t tid)
 void print_process_memory(struct context * ctx, char * filename)
 {
 	int i;
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	// open the maps file
 	FILE* maps_file = open_mmap(tid);
@@ -854,7 +855,7 @@ void print_process_memory(struct context * ctx, char * filename)
 #define CHUNK_SIZE 		(8 * PAGE_SIZE)
 
 int get_memory_size(struct context * ctx) {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	int result = 0;
 
 	// open the maps file
@@ -885,7 +886,7 @@ int get_memory_size(struct context * ctx) {
  */
 void checksum_process_memory(struct context * ctx)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	int i;
 
 	// open the maps file
@@ -945,7 +946,7 @@ void validate_process_memory(struct context * ctx)
 	// TODO: verify length (minus scratch)
 	/*
 	// open the maps file
-	FILE *maps_file = FILE *maps_file = open_mmap(ctx->child_tid);
+	FILE *maps_file = FILE *maps_file = open_mmap(ctx->tid);
 	 */
 
 	/*
@@ -1017,9 +1018,9 @@ void validate_process_memory(struct context * ctx)
 	if (!(checksum == rchecksum)) {
 		log_warn("Memory differs.");
 		getchar();
-		kill(ctx->child_tid,SIGSTOP);
-		sys_ptrace_detatch(ctx->child_tid);
-		log_info("Attach to %d, range = [%x,%x]",ctx->child_tid, rstart, rend );
+		kill(ctx->tid,SIGSTOP);
+		sys_ptrace_detatch(ctx->tid);
+		log_info("Attach to %d, range = [%x,%x]",ctx->tid, rstart, rend );
 	}
 	fclose(maps_file);
 	*/
@@ -1029,7 +1030,7 @@ void validate_process_memory(struct context * ctx)
 void * get_mmaped_region_end(struct context * ctx, void * mmap_start)
 {
 	// open the maps file
-	FILE *maps_file = open_mmap(ctx->child_tid);
+	FILE *maps_file = open_mmap(ctx->tid);
 
 	// for each line in the maps file:
 	char line[1024];
@@ -1050,7 +1051,7 @@ void * get_mmaped_region_end(struct context * ctx, void * mmap_start)
 char * get_mmaped_region_filename(struct context * ctx, void * mmap_start)
 {
 	// open the maps file
-	FILE *maps_file = open_mmap(ctx->child_tid);
+	FILE *maps_file = open_mmap(ctx->tid);
 
 	// for each line in the maps file:
 	char line[1024] = {0};
@@ -1089,7 +1090,7 @@ char * get_mmaped_region_filename(struct context * ctx, void * mmap_start)
  */
 int check_if_mapped(struct context *ctx, void *start, void *end)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	FILE* file = open_mmap(tid);
 	char buf[256];
@@ -1187,7 +1188,7 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 
 // returns the eax
 int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * call_regs) {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct orig_regs;
 	read_child_registers(tid, &orig_regs);
 	void *code = read_child_data(ctx, 4, (void*)orig_regs.eip);
@@ -1341,12 +1342,12 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 void prepare_remote_syscalls(struct context* ctx,
 			     struct current_state_buffer* state)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	byte syscall_insn[] = { 0xcd, 0x80 };
 
 	/* Save current state of |ctx|. */
 	memset(state, 0, sizeof(*state));
-	state->pid = ctx->child_tid;
+	state->pid = ctx->tid;
 	read_child_registers(tid, &state->regs);
 	state->code_size = sizeof(syscall_insn);
 	state->start_addr = (void*)state->regs.eip;
@@ -1361,7 +1362,7 @@ void prepare_remote_syscalls(struct context* ctx,
 void* push_tmp_str(struct context* ctx, struct current_state_buffer* state,
 		   const char* str, struct restore_mem* mem)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	mem->len = strlen(str) + 1/*null byte*/;
 	mem->saved_sp = (void*)state->regs.esp;
@@ -1380,7 +1381,7 @@ void* push_tmp_str(struct context* ctx, struct current_state_buffer* state,
 void pop_tmp_mem(struct context* ctx, struct current_state_buffer* state,
 		 struct restore_mem* mem)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	assert(mem->saved_sp == (void*)state->regs.esp + mem->len);
 
@@ -1395,7 +1396,7 @@ long remote_syscall(struct context* ctx, struct current_state_buffer* state,
 		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct callregs;
 
 	assert(tid == state->pid);
@@ -1438,7 +1439,7 @@ long remote_syscall(struct context* ctx, struct current_state_buffer* state,
 long wait_remote_syscall(struct context* ctx,
 			 struct current_state_buffer* state)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	/* Wait for syscall-exit trap. */
 	sys_waitpid(tid, &ctx->status);
 	return read_child_eax(tid);
@@ -1447,7 +1448,7 @@ long wait_remote_syscall(struct context* ctx,
 void finish_remote_syscalls(struct context* ctx,
 			    struct current_state_buffer* state)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	assert(tid == state->pid);
 
@@ -1544,7 +1545,7 @@ static void write_socketcall_args(struct context* ctx, void* child_args_vec,
 void* init_syscall_buffer(struct context* ctx, void* map_hint,
 			  int share_desched_fd)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	char shmem_filename[PATH_MAX];
 	struct current_state_buffer state;
 	struct sockaddr_un addr;

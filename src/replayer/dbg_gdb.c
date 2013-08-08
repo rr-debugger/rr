@@ -21,6 +21,7 @@
 
 #include "../share/dbg.h"
 #include "../share/sys.h"
+#include "../share/task.h"
 
 #define INTERRUPT_CHAR '\x03'
 

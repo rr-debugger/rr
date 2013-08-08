@@ -10,6 +10,8 @@
 
 #include "types.h"
 
+struct context;
+
 void read_child_registers(int child_id, struct user_regs_struct* regs);
 long read_child_code(pid_t pid, void* addr);
 long read_child_data_word(pid_t pid, void* addr);

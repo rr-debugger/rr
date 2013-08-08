@@ -14,6 +14,7 @@
 #include "../share/trace.h"
 #include "../share/hpc.h"
 #include "../share/sys.h"
+#include "../share/task.h"
 #include "../share/util.h"
 
 #define MAX_TID_NUM 100000
@@ -48,7 +49,7 @@ struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	struct context *ctx = sys_malloc(sizeof(struct context));
 	memset(ctx, 0, sizeof(struct context));
 
-	ctx->child_tid = my_tid;
+	ctx->tid = my_tid;
 	ctx->rec_tid = rec_tid;
 	ctx->child_mem_fd = sys_open_child_mem(my_tid);
 
@@ -132,7 +133,7 @@ void rep_sched_deregister_thread(struct context **ctx_ptr)
 	assert(num_threads >= 0);
 
 	/* detatch the child process*/
-	sys_ptrace_detach(ctx->child_tid);
+	sys_ptrace_detach(ctx->tid);
 
 	sys_free((void**) ctx_ptr);
 }
