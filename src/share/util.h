@@ -77,6 +77,12 @@ double now_sec();
 int nanosleep_nointr(const struct timespec* ts);
 
 /**
+ * Return the symbolic name of the PTRACE_EVENT_* |event|, or
+ * "???EVENT" if unknown.
+ */
+const char* ptrace_event_name(int event);
+
+/**
  * Return the symbolic name of |sig|, f.e. "SIGILL", or "???signal" if
  * unknown.
  */

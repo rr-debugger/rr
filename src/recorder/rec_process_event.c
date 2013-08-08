@@ -2568,11 +2568,10 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		if (nread > 0) {
 			restore_and_record_arg_buf(ctx, syscall, nread, buf,
 						   &iter);
-			finish_restoring_some_scratch(ctx, syscall, iter,
-						      &data);
 		}
 		regs.ecx = (uintptr_t)buf;
 		write_child_registers(tid, &regs);
+		finish_restoring_some_scratch(ctx, syscall, iter, &data);
 		break;
 	}
 

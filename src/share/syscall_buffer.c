@@ -132,11 +132,6 @@ static byte* buffer_end()
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
-static void traced__exit(int status)
-{
-	syscall(SYS_exit_group, status);
-}
-
 static int traced_fcntl(int fd, int cmd, ...)
 {
 	va_list ap;
@@ -213,7 +208,7 @@ static void logmsg(const char* msg, ...)
 # define assert(cond)							\
 	do {								\
 		if (!(cond)) {						\
-			logmsg("%s:%d: Assertion " #cond "failed.",	\
+			logmsg("%s:%d: Assertion " #cond " failed.",	\
 			       __FILE__, __LINE__);			\
 			traced_raise(SIGABRT);				\
 		}							\
@@ -226,7 +221,7 @@ static void logmsg(const char* msg, ...)
 	do {								\
 		logmsg("[FATAL] (%s:%d: errno: %s) " msg "\n",		\
 		       __FILE__, __LINE__, strerror(errno), ##__VA_ARGS__); \
-		traced__exit(1);					\
+		assert("Bailing because of fatal error" && 0);		\
 	} while (0)
 
 #define log_info(msg, ...)					\
@@ -670,7 +665,8 @@ static int update_errno_ret(int ret)
  * The result of this function should be returned directly by the
  * wrapper function.
  */
-static int commit_syscall(void* record_end, int ret, int disarmed_desched)
+static int commit_syscall(int syscallno, void* record_end, int ret,
+			  int disarmed_desched)
 {
 	void* record_start = buffer_last();
 	struct syscallbuf_record* rec = record_start;
@@ -683,13 +679,18 @@ static int commit_syscall(void* record_end, int ret, int disarmed_desched)
 		 * replay will go haywire. */
 		hdr->abort_commit = 0;
 	} else {
-		rec->ret = ret;
+		if (rec->syscallno != syscallno) {
+			fatal("Record is for %d but trying to commit %d",
+			      rec->syscallno, syscallno);
+		}
 		if (!((rec->desched
 		       && DISARMED_DESCHED_EVENT == disarmed_desched)
 		      || (!rec->desched
 			  && NO_DESCHED == disarmed_desched))) {
-			fatal("Mismatched arm/disarm-desched");
+			fatal("Mismatched arm/disarm-desched for %d",
+			      rec->syscallno);
 		}
+		rec->ret = ret;
 		hdr->num_rec_bytes += stored_record_size(rec->size);
 	}
 	buffer_hdr()->locked = 0;
@@ -760,7 +761,7 @@ static int stat_something(int syscallno, int vers, unsigned long what,
 	if (buf2) {
 		memcpy(buf, buf2, sizeof(*buf));
 	}
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(syscallno, ptr, ret, NO_DESCHED);
 }
 
 /**
@@ -821,7 +822,7 @@ int access(const char* pathname, int mode)
 		return syscall(SYS_access, pathname, mode);
  	}
 	ret = untraced_syscall2(SYS_access, pathname, mode);
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_access, ptr, ret, NO_DESCHED);
 }
 
 int clock_gettime(clockid_t clk_id, struct timespec* tp)
@@ -845,7 +846,7 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 	if (tp) {
 		memcpy(tp, tp2, sizeof(struct timespec));
 	}
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_clock_gettime, ptr, ret, NO_DESCHED);
 }
 
 int close(int fd)
@@ -857,7 +858,7 @@ int close(int fd)
 		return syscall(SYS_close, fd);
  	}
 	ret = untraced_syscall1(SYS_close, fd);
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_close, ptr, ret, NO_DESCHED);
 }
 
 int creat(const char* pathname, mode_t mode)
@@ -879,7 +880,7 @@ static int fcntl0(int fd, int cmd)
 		return syscall(SYS_fcntl64, fd, cmd);
  	}
 	ret = untraced_syscall2(SYS_fcntl64, fd, cmd);
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
 }
 
 static int fcntl1(int fd, int cmd, int arg)
@@ -892,7 +893,7 @@ static int fcntl1(int fd, int cmd, int arg)
 		return syscall(SYS_fcntl64, fd, cmd, arg);
 	}
 	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, arg);
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
 }
 
 static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
@@ -916,7 +917,7 @@ static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
 	if (owner2) {
 		memcpy(owner, owner2, sizeof(*owner));
 	}
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_fcntl64, ptr, ret, NO_DESCHED);
 }
 
 static int fcntl_flock(int fd, int cmd, struct flock64* lock)
@@ -946,7 +947,7 @@ static int fcntl_flock(int fd, int cmd, struct flock64* lock)
 		memcpy(lock, lock2, sizeof(*lock));
 	}
 
-	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(SYS_fcntl64, ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 int fcntl(int fd, int cmd, ... /* arg */)
@@ -1051,7 +1052,7 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 	if (tzp) {
 		memcpy(tzp, tzp2, sizeof(struct timezone));
 	}
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_gettimeofday, ptr, ret, NO_DESCHED);
 }
 
 int __lxstat64(int vers, const char* path, struct stat64* buf)
@@ -1078,7 +1079,7 @@ int madvise(void* addr, size_t length, int advice)
 		return syscall(SYS_madvise, addr, length, advice);
 	}
 	ret = untraced_syscall3(SYS_madvise, addr, length, advice);
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_madvise, ptr, ret, NO_DESCHED);
 }
 
 int open(const char* pathname, int flags, ...)
@@ -1114,7 +1115,7 @@ int open(const char* pathname, int flags, ...)
 	}
 
 	ret = untraced_syscall3(SYS_open, pathname, flags, mode);
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_open, ptr, ret, NO_DESCHED);
 }
 
 int open64(const char* pathname, int flags, ...)
@@ -1151,7 +1152,7 @@ ssize_t read(int fd, void* buf, size_t count)
 	if (buf2 && ret > 0) {
 		memcpy(buf, buf2, ret);
 	}
-	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(SYS_read, ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 ssize_t readlink(const char* path, char* buf, size_t bufsiz)
@@ -1172,7 +1173,7 @@ ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 	if (buf2 && ret > 0) {
 		memcpy(buf, buf2, ret);
 	}
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_readlink, ptr, ret, NO_DESCHED);
 }
 
 ssize_t recv(int sockfd, void* buf, size_t len, int flags)
@@ -1197,7 +1198,7 @@ ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 	if (buf2 && ret > 0) {
 		memcpy(buf, buf2, ret);
 	}
-	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(SYS_socketcall, ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 time_t time(time_t* t)
@@ -1213,7 +1214,7 @@ time_t time(time_t* t)
 		/* No error is possible here. */
 		*t = ret;
 	}
-	return commit_syscall(ptr, ret, NO_DESCHED);
+	return commit_syscall(SYS_time, ptr, ret, NO_DESCHED);
 }
 
 ssize_t write(int fd, const void* buf, size_t count)
@@ -1230,7 +1231,7 @@ ssize_t write(int fd, const void* buf, size_t count)
 	ret = untraced_syscall3(SYS_write, fd, buf, count);
 	disarm_desched_event();
 
-	return commit_syscall(ptr, ret, DISARMED_DESCHED_EVENT);
+	return commit_syscall(SYS_write, ptr, ret, DISARMED_DESCHED_EVENT);
 }
 
 int __xstat64(int vers, const char* path, struct stat64* buf)
