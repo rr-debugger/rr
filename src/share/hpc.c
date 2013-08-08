@@ -1,22 +1,22 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "hpc.h"
+
 #include <assert.h>
 #include <err.h>
-#include <sys/select.h>
-#include <string.h>
+#include <perfmon/pfmlib_perf_event.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/poll.h>
+#include <sys/select.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
-#include <sys/ioctl.h>
-#include <sys/poll.h>
-#include <sys/syscall.h>
-#include <sys/mman.h>
-
-#include "hpc.h"
 #include "../share/sys.h"
-#include <perfmon/pfmlib_perf_event.h>
-
+#include "../share/task.h"
 
 /**
  * libpfm4 specific stuff
@@ -181,9 +181,8 @@ void init_hpc(struct context *context)
 
 static void __start_hpc(struct context* ctx)
 {
-
 	struct hpc_context *counters = ctx->hpc;
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	// see http://www.eece.maine.edu/~vweaver/projects/perf_events/perf_event_open.html for more information
 	START_COUNTER(tid,-1,counters->hw_int); // group leader.
 	START_COUNTER(tid,counters->hw_int.fd,counters->inst);

@@ -27,13 +27,14 @@
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
+#include "../share/task.h"
 #include "../share/trace.h"
 #include "../share/types.h"
 #include "../share/util.h"
 
 void handle_ioctl_request(struct context *ctx, int request)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	int syscall = SYS_ioctl;
 	int type = _IOC_TYPE(request);
 	int nr = _IOC_NR(request);
@@ -143,7 +144,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 		break;	/* not reached */
 
 	default:
-		print_register_file_tid(ctx->child_tid);
+		print_register_file_tid(ctx->tid);
 		fatal("Unknown ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d addr:%p",
 		      request, type, nr, dir, size, (void*)regs.edx);
 	}

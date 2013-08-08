@@ -14,10 +14,11 @@
 
 #include "recorder.h"
 
+#include "../share/config.h"
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/sys.h"
-#include "../share/config.h"
+#include "../share/task.h"
 
 struct tasklist_entry {
 	struct context ctx;
@@ -73,8 +74,8 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 		entry = current_entry = CIRCLEQ_FIRST(&head);
 	}
 
-	if (ctx && !ctx->allow_ctx_switch) {
-		debug("  (%d is un-switchable)", ctx->child_tid);
+	if (ctx && !ctx->switchable) {
+		debug("  (%d is un-switchable)", ctx->tid);
 		/* TODO: if |ctx| is blocked on a syscall, returning
 		 * it now will cause a spin-loop when the recorder
 		 * sees that |ctx|'s state hasn't changed and asks us
@@ -99,7 +100,7 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 		pid_t tid;
 
 		next_ctx = &entry->ctx;
-		tid = next_ctx->child_tid;
+		tid = next_ctx->tid;
 		if (EXEC_STATE_IN_SYSCALL != next_ctx->exec_state) {
 			debug("  %d isn't blocked, done", tid);
 			break;
@@ -156,7 +157,7 @@ void rec_sched_exit_all()
 		struct tasklist_entry* entry = CIRCLEQ_FIRST(&head);
 		struct context* ctx = &entry->ctx;
 
-		sys_kill(ctx->child_tid, SIGINT);
+		sys_kill(ctx->tid, SIGINT);
 		rec_sched_deregister_thread(&ctx);
 	}
 }
@@ -180,7 +181,7 @@ void rec_sched_register_thread(const struct flags* flags,
 
 	ctx->exec_state = EXEC_STATE_START;
 	ctx->status = 0;
-	ctx->rec_tid = ctx->child_tid = child;
+	ctx->rec_tid = ctx->tid = child;
 	ctx->child_mem_fd = sys_open_child_mem(child);
 	if (parent) {
 		struct context* parent_ctx = get_task(parent);
@@ -208,7 +209,7 @@ void rec_sched_register_thread(const struct flags* flags,
 void rec_sched_deregister_thread(struct context** ctx_ptr)
 {
 	struct context* ctx = *ctx_ptr;
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct tasklist_entry* entry = get_entry(tid);
 
 	if (entry == current_entry) {

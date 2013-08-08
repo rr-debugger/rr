@@ -91,9 +91,9 @@ fi
 if [[ "$OBJDIR" == "" ]]; then
     # Default to assuming that the user's working directory is the
     # test/ directory within the rr clone.
-    OBJDIR=`realpath ../../obj`
+    OBJDIR=`realpath ../../../obj`
 fi
-SRCDIR="${OBJDIR}/.."
+SRCDIR="${OBJDIR}/../rr"
 TESTDIR="${SRCDIR}/src/test"
 
 export PATH="${OBJDIR}/bin:${PATH}"

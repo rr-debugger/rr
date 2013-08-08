@@ -11,6 +11,8 @@
 
 #include "types.h"
 
+struct context;
+
 void sys_close(int filedes);
 FILE* sys_fopen(const char* path, const char* mode);
 int sys_open(const char* path, int flags, mode_t mode);

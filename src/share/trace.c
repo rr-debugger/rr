@@ -14,10 +14,11 @@
 #include "dbg.h"
 #include "hpc.h"
 #include "ipc.h"
-#include "trace.h"
 #include "sys.h"
-#include "util.h"
 #include "syscall_buffer.h"
+#include "task.h"
+#include "trace.h"
+#include "util.h"
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
@@ -120,7 +121,7 @@ void write_open_inst_dump(struct context *ctx)
 	char path[64];
 	char tmp[32];
 	strcpy(path, trace_path_);
-	sprintf(tmp, "/inst_dump_%d", ctx->child_tid);
+	sprintf(tmp, "/inst_dump_%d", ctx->tid);
 	strcat(path, tmp);
 	ctx->inst_dump = sys_fopen(path, "a+");
 }
@@ -340,7 +341,7 @@ static void record_performance_data(struct context *ctx)
 static void record_register_file(struct context *ctx)
 {
 
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
@@ -361,7 +362,7 @@ static void record_register_file(struct context *ctx)
 static void record_inst_register_file(struct context *ctx)
 {
 
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
@@ -419,7 +420,7 @@ void record_event(struct context *ctx, int state)
 		rr_flags_.dump_on == DUMP_ON_ALL ||
 		rr_flags_.dump_at == global_time) {
         char pid_str[PATH_MAX];
-		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),ctx->child_tid,get_global_time());
+		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),ctx->tid,get_global_time());
 		print_process_memory(ctx,pid_str);
 	}
 
@@ -431,11 +432,11 @@ void record_event(struct context *ctx, int state)
 		checksum_process_memory(ctx);
 
 	fprintf(trace_file, "%11d%11u%11d%11d%11d", get_global_time_incr(),
-	        get_time_incr(ctx->child_tid), ctx->child_tid, ctx->event,
+	        get_time_incr(ctx->tid), ctx->tid, ctx->event,
 	        state);
 
 	debug("trace: %11d%11u%11d%11d%11d", get_global_time_incr(),
-	      get_time_incr(ctx->child_tid), ctx->child_tid, ctx->event,
+	      get_time_incr(ctx->tid), ctx->tid, ctx->event,
 	      state);
 
 	/* we record a system call */
@@ -457,8 +458,8 @@ void record_synthetic_event(struct context* ctx, int event)
 		maybe_flush_syscallbuf(ctx);
 	}
 	fprintf(trace_file, "%11d%11u%11d%11d\n",
-		get_global_time_incr(), get_time_incr(ctx->child_tid),
-		ctx->child_tid, event);
+		get_global_time_incr(), get_time_incr(ctx->tid),
+		ctx->tid, event);
 }
 
 static void print_header(int syscall, void* addr)
@@ -565,17 +566,17 @@ void record_child_data(struct context *ctx, int syscall, size_t size, void* chil
 			void* buf = read_child_data_checked(ctx, size, child_ptr, &read_bytes);
 			//debug("Read from child %d bytes", read_bytes);
 			if (read_bytes == -1) {
-				log_warn("Can't read from child %d memory at %p, time = %d",ctx->child_tid,child_ptr, get_global_time());
+				log_warn("Can't read from child %d memory at %p, time = %d",ctx->tid,child_ptr, get_global_time());
 				getchar();
 				//buf = sys_malloc(size)
-				//read_child_buffer(ctx->child_tid,child_ptr,size,buf);
+				//read_child_buffer(ctx->tid,child_ptr,size,buf);
 				write_raw_data(ctx, buf, 0);
 				read_bytes = 0;
 			} else {
 				/* ensure that everything is written */
-				if (read_bytes != size /*&& read_child_orig_eax(ctx->child_tid) != 192*/) {
-					log_err("bytes_read: %x  len %x   syscall: %ld\n", read_bytes, size, read_child_orig_eax(ctx->child_tid));
-					print_register_file_tid(ctx->child_tid);
+				if (read_bytes != size /*&& read_child_orig_eax(ctx->tid) != 192*/) {
+					log_err("bytes_read: %x  len %x   syscall: %ld\n", read_bytes, size, read_child_orig_eax(ctx->tid));
+					print_register_file_tid(ctx->tid);
 					assert(1==0);
 				}
 				write_raw_data(ctx, buf, read_bytes);
@@ -646,7 +647,7 @@ void record_child_str(pid_t tid, int syscall, void* child_ptr)
 
 void record_inst(struct context *ctx, char* inst)
 {
-	fprintf(ctx->inst_dump, "%d:%-40s\n", ctx->child_tid, inst);
+	fprintf(ctx->inst_dump, "%d:%-40s\n", ctx->tid, inst);
 	record_inst_register_file(ctx);
 }
 

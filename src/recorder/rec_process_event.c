@@ -4,20 +4,17 @@
 
 #define _GNU_SOURCE
 
+#include <asm/ldt.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <poll.h>
-#include <sched.h>
-
-#include <asm/ldt.h>
-
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/prctl.h>
-
+#include <poll.h>
+#include <sched.h>
 #include <sys/epoll.h>
 #include <sys/mman.h>
 #include <sys/quota.h>
@@ -36,9 +33,10 @@
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
+#include "../share/syscall_buffer.h"
+#include "../share/task.h"
 #include "../share/trace.h"
 #include "../share/util.h"
-#include "../share/syscall_buffer.h"
 
 /**
  * Erase any scratch pointer initialization done for |ctx| and leave
@@ -46,8 +44,7 @@
  */
 static void reset_scratch_pointers(struct context* ctx)
 {
-	memset(ctx->saved_arg_ptr, 0, sizeof(ctx->saved_arg_ptr));
-	ctx->next_saved_arg = 0;
+	FIXEDSTACK_CLEAR(&ctx->saved_args);
 	ctx->tmp_data_ptr = ctx->scratch_ptr;
 	ctx->tmp_data_num_bytes = -1;
 }
@@ -61,8 +58,7 @@ static void reset_scratch_pointers(struct context* ctx)
  */
 static void push_arg_ptr(struct context* ctx, void* argp)
 {
-	assert(ctx->next_saved_arg < ALEN(ctx->saved_arg_ptr));
-	ctx->saved_arg_ptr[ctx->next_saved_arg++] = argp;
+	FIXEDSTACK_PUSH(&ctx->saved_args, argp);
 }
 
 /**
@@ -109,12 +105,12 @@ static int can_use_scratch(struct context* ctx, void* scratch_end)
 int prepare_socketcall(struct context* ctx, int would_need_scratch,
 		       struct user_regs_struct* regs)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	void* scratch = would_need_scratch ? ctx->tmp_data_ptr : NULL;
 	long* argsp;
 	void* tmpargsp;
 
-	assert(!ctx->desched);
+	assert(!ctx->desched_rec);
 
 	/* int socketcall(int call, unsigned long *args) {
 	 * 		long a[6];
@@ -239,7 +235,7 @@ static int set_up_scratch_for_syscallbuf(struct context* ctx, int syscallno)
 {
 	const struct syscallbuf_record* rec = ctx->desched_rec;
 
-	assert(ctx->desched);
+	assert(ctx->desched_rec);
 
 	if (syscallno != rec->syscallno) {
 		log_err("Syscallbuf records syscall %s, but expecting %s",
@@ -258,7 +254,7 @@ static int set_up_scratch_for_syscallbuf(struct context* ctx, int syscallno)
 
 int rec_prepare_syscall(struct context* ctx, int syscallno)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	/* If we are called again due to a restart_syscall, we musn't
 	 * redirect to scratch again as we will lose the original
 	 * addresses values. */
@@ -271,11 +267,11 @@ int rec_prepare_syscall(struct context* ctx, int syscallno)
 		syscallno = ctx->last_syscall;
 	}
 
-	if (ctx->desched) {
+	if (ctx->desched_rec) {
 		return set_up_scratch_for_syscallbuf(ctx, syscallno);
 	}
 
-	read_child_registers(ctx->child_tid, &regs);
+	read_child_registers(ctx->tid, &regs);
 
 	/* For syscall params that may need scratch memory, they
 	 * *will* need scratch memory if |would_need_scratch| is
@@ -498,7 +494,7 @@ int rec_prepare_syscall(struct context* ctx, int syscallno)
 			return abort_scratch(ctx, syscallname(syscallno));
 		}
 
-		write_child_registers(ctx->child_tid, &regs);
+		write_child_registers(ctx->tid, &regs);
 		return 1;
 	}
 
@@ -535,8 +531,7 @@ static void* start_restoring_scratch(struct context* ctx, void** iter)
  */
 static void* pop_arg_ptr(struct context* ctx)
 {
-	assert(0 < ctx->next_saved_arg);
-	return ctx->saved_arg_ptr[--ctx->next_saved_arg];
+	return FIXEDSTACK_POP(&ctx->saved_args);
 }
 
 /**
@@ -593,10 +588,8 @@ static void finish_restoring_scratch_slack(struct context* ctx, int syscallno,
 		debug("Left %d bytes unconsumed in scratch", diff);
 	}
 
-	if (0 != ctx->next_saved_arg) {
-		log_err("%s-consumed saved arg pointers by %d",
-			ctx->next_saved_arg > 0 ? "Under" : "Over",
-			ctx->next_saved_arg);
+	if (!FIXEDSTACK_EMPTY(&ctx->saved_args)) {
+		log_err("Under-consumed saved arg pointers");
 		emergency_debug(ctx);
 	}
 
@@ -626,7 +619,7 @@ static void finish_restoring_some_scratch(struct context* ctx, int syscallno,
 
 void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct user_regs_struct regs;
 
 	read_child_registers(tid, &regs);
@@ -634,10 +627,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x",
 	      tid, syscallname(syscall), syscall, get_global_time(),
 	      ctx->exec_state);
-	//print_register_file_tid(ctx->child_tid);
-	//print_process_memory(ctx->child_tid);
 
-	if (ctx->desched) {
+	if (ctx->desched_rec) {
 		const struct syscallbuf_record* rec = ctx->desched_rec;
 
 		assert(ctx->tmp_data_ptr != ctx->scratch_ptr);
@@ -2193,7 +2184,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_tgkill:
 	{
-		//printf("%d:tgkill: send sig: %d to %d    ret: %ld\n", ctx->child_tid, regs.edx, regs.ecx, regs.eax);
 		break;
 	}
 
@@ -2261,13 +2251,6 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	{
 
 		if (regs.ebx != 0) {
-			/*			char *exec = read_child_str(tid, regs.ebx);
-			 printf("exec: %s\n", exec);
-			 free(exec);
-			 char *str = sys_malloc_zero(1024);
-			 print_cwd(ctx->child_tid, str);
-			 printf("the cwd is: %s\n",str);
-			 free(str);*/
 			break;
 		}
 

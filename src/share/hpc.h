@@ -13,7 +13,7 @@
 #include <sys/ioctl.h>
 #include <linux/perf_event.h>
 
-#include "types.h"
+struct context;
 
 typedef struct _hpc_event
 {
@@ -30,8 +30,6 @@ struct hpc_context {
 	hpc_event_t page_faults;
 	hpc_event_t hw_int;
 };
-
-
 
 void init_libpfm();
 void libpfm_event_encoding(struct perf_event_attr* attr, const char* event_str, int hw_event);

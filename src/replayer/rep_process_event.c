@@ -38,6 +38,7 @@
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
+#include "../share/task.h"
 #include "../share/trace.h"
 #include "../share/util.h"
 #include "../share/shmem.h"
@@ -88,8 +89,8 @@ static void validate_args(int syscall, int state, struct context* ctx)
  */
 static void goto_next_syscall_emu(struct context *ctx)
 {
-	sys_ptrace_sysemu(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &(ctx->status));
+	sys_ptrace_sysemu(ctx->tid);
+	sys_waitpid(ctx->tid, &(ctx->status));
 
 	int sig = signal_pending(ctx->status);
 	/* SIGCHLD is pending, do not deliver it, wait for it to
@@ -107,7 +108,7 @@ static void goto_next_syscall_emu(struct context *ctx)
 	/* check if we are synchronized with the trace -- should never
 	 * fail */
 	const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	const int current_syscall = read_child_orig_eax(ctx->child_tid);
+	const int current_syscall = read_child_orig_eax(ctx->tid);
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered
@@ -137,10 +138,10 @@ static void goto_next_syscall_emu(struct context *ctx)
 static void finish_syscall_emu(struct context *ctx)
 {
 	struct user_regs_struct regs;
-	read_child_registers(ctx->child_tid, &regs);
-	sys_ptrace_sysemu_singlestep(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &(ctx->status));
-	write_child_registers(ctx->child_tid, &regs);
+	read_child_registers(ctx->tid, &regs);
+	sys_ptrace_sysemu_singlestep(ctx->tid);
+	sys_waitpid(ctx->tid, &(ctx->status));
+	write_child_registers(ctx->tid, &regs);
 
 	ctx->status = 0;
 }
@@ -150,16 +151,16 @@ static void finish_syscall_emu(struct context *ctx)
  */
 void __ptrace_cont(struct context *ctx)
 {
-	sys_ptrace_syscall(ctx->child_tid);
-	sys_waitpid(ctx->child_tid, &ctx->status);
+	sys_ptrace_syscall(ctx->tid);
+	sys_waitpid(ctx->tid, &ctx->status);
 
 	ctx->child_sig = signal_pending(ctx->status);
-	sys_ptrace(PTRACE_GETREGS, ctx->child_tid, NULL, &ctx->child_regs);
-	ctx->event = ctx->child_regs.orig_eax;
+	sys_ptrace(PTRACE_GETREGS, ctx->tid, NULL, &ctx->regs);
+	ctx->event = ctx->regs.orig_eax;
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	int current_syscall = ctx->child_regs.orig_eax;
+	int current_syscall = ctx->regs.orig_eax;
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered
@@ -174,7 +175,7 @@ void __ptrace_cont(struct context *ctx)
 		      "recorded eip: 0x%lx;  current eip: 0x%lx\n"
 		      "Internal error: syscalls out of sync: rec: %d  now: %d\n",
 		      ctx->status, WSTOPSIG(ctx->status), ctx->child_sig,
-		      ctx->trace.recorded_regs.eip, ctx->child_regs.eip,
+		      ctx->trace.recorded_regs.eip, ctx->regs.eip,
 		      rec_syscall, current_syscall);
 	}
 
@@ -196,7 +197,7 @@ void rep_maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
 		return;
 	}
 
-	read_child_registers(ctx->child_tid, &regs);
+	read_child_registers(ctx->tid, &regs);
 
 	assert(SYS_write == regs.orig_eax);
 
@@ -257,7 +258,7 @@ static void process_clone(struct context* ctx,
 			  struct trace_frame* trace, int state)
 {
 	int syscall = SYS_clone;
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 
 	if (state == STATE_SYSCALL_ENTRY) {
 		struct trace_frame next_trace;
@@ -330,7 +331,7 @@ static void process_clone(struct context* ctx,
 static void process_ioctl(struct context* ctx, int state,
 			  struct rep_trace_step* step)
 {
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	int request;
 
 	step->syscall.emu = 1;
@@ -371,7 +372,7 @@ static void process_ioctl(struct context* ctx, int state,
 
 void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 {
-	int tid = ctx->child_tid;
+	int tid = ctx->tid;
 	int call = trace->recorded_regs.ebx;
 	/* TODO: ipc may be completely emulated */
 	if (state == STATE_SYSCALL_ENTRY) {
@@ -683,7 +684,7 @@ static void process_socketcall(struct context* ctx, int state,
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	switch ((call = read_child_ebx(ctx->child_tid))) {
+	switch ((call = read_child_ebx(ctx->tid))) {
 		/* FIXME: define a SSOT for socketcall record and
 		 * replay data, a la syscall_defs.h */
 	case SYS_SOCKET:
@@ -774,7 +775,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 {
 	int syscall = ctx->trace.stop_reason;
 	const struct syscall_def* def = &syscall_table[syscall];
-	pid_t tid = ctx->child_tid;
+	pid_t tid = ctx->tid;
 	struct trace_frame* trace = &(ctx->trace);
 	int state = trace->state;
 
@@ -912,7 +913,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
-			int cmd = read_child_ebp(ctx->child_tid);
+			int cmd = read_child_ebp(ctx->tid);
 
 			step->action = TSTEP_EXIT_SYSCALL;
 			switch (cmd & SUBCMDMASK) {
@@ -1020,7 +1021,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			 * in the record and replay/
 			 */
 			struct user_regs_struct orig_regs;
-			read_child_registers(ctx->child_tid, &orig_regs);
+			read_child_registers(ctx->tid, &orig_regs);
 
 			struct user_regs_struct tmp_regs;
 			memcpy(&tmp_regs, &orig_regs, sizeof(tmp_regs));
@@ -1036,15 +1037,15 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 				tmp_regs.edi = ctx->trace.recorded_regs.eax;
 			}
 
-			write_child_registers(ctx->child_tid, &tmp_regs);
+			write_child_registers(ctx->tid, &tmp_regs);
 
 			__ptrace_cont(ctx);
 			/* obtain the new address and reset to the old
 			 * register values */
-			read_child_registers(ctx->child_tid, &tmp_regs);
+			read_child_registers(ctx->tid, &tmp_regs);
 
 			orig_regs.eax = tmp_regs.eax;
-			write_child_registers(ctx->child_tid, &orig_regs);
+			write_child_registers(ctx->tid, &orig_regs);
 			validate_args(syscall, state, ctx);
 		}
 		break;
@@ -1053,7 +1054,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		if (state == STATE_SYSCALL_ENTRY) {
 			enter_syscall_emu(ctx, SYS_setpgid);
 		} else {
-			write_child_ebx(ctx->child_tid,
+			write_child_ebx(ctx->tid,
 					ctx->trace.recorded_regs.ebx);
 			exit_syscall_emu(ctx, SYS_setpgid, 0);
 		}
@@ -1064,7 +1065,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		if (state == STATE_SYSCALL_ENTRY) {
 			enter_syscall_emu(ctx, syscall);
 		} else {
-			write_child_main_registers(ctx->child_tid,
+			write_child_main_registers(ctx->tid,
 						   &trace->recorded_regs);
 			finish_syscall_emu(ctx);
 		}
