@@ -14,6 +14,7 @@
 
 #include "recorder.h"
 
+#include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/sys.h"
 #include "../share/config.h"
@@ -63,38 +64,87 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 					    struct context* ctx)
 {
 	int max_events = flags->max_events;
+	struct tasklist_entry* entry = current_entry;
+	struct context* next_ctx = NULL;
 
-	if (!current_entry) {
-		current_entry = CIRCLEQ_FIRST(&head);
+	debug("Scheduling next task");
+
+	if (!entry) {
+		entry = current_entry = CIRCLEQ_FIRST(&head);
 	}
 
 	if (ctx && !ctx->allow_ctx_switch) {
+		debug("  (%d is un-switchable)", ctx->child_tid);
+		/* TODO: if |ctx| is blocked on a syscall, returning
+		 * it now will cause a spin-loop when the recorder
+		 * sees that |ctx|'s state hasn't changed and asks us
+		 * to schedule another context, from which we'll be
+		 * forced to return |ctx| again because it's not
+		 * switchable.  Then the recorder will ask us to
+		 * schedule another context, and ... */
 		return ctx;
 	}
 
 	/* Prefer switching to the next task if the current one
 	 * exceeded its event limit. */
 	if (ctx && ctx->switch_counter < 0) {
-		current_entry = next_entry(current_entry);
+		debug("  previous task exceeded event limit, preferring next");
+		entry = current_entry = next_entry(entry);
 		ctx->switch_counter = max_events;
 	}
 
-	for (;; current_entry = next_entry(current_entry)) {
-		struct context* next_ctx = &current_entry->ctx;
-		if (next_ctx->exec_state == EXEC_STATE_IN_SYSCALL) {
-			/* See if |next_ctx| finished its syscall
-			 * yet. */
-			if (0 == sys_waitpid_nonblock(next_ctx->child_tid,
-						      &next_ctx->status)) {
-				/* Nope. */
+	/* Go around the task list exactly one time looking for a
+	 * runnable thread. */
+	do {
+		pid_t tid;
+
+		next_ctx = &entry->ctx;
+		tid = next_ctx->child_tid;
+		if (EXEC_STATE_IN_SYSCALL != next_ctx->exec_state) {
+			debug("  %d isn't blocked, done", tid);
+			break;
+		}
+		debug("  %d is blocked, checking status ...", tid);
+		if (0 != sys_waitpid_nonblock(tid, &next_ctx->status)) {
+			next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+			debug("  ready!");
+			break;
+		}
+		debug("  still blocked");
+		next_ctx = NULL;
+		entry = next_entry(entry);
+	} while (entry != current_entry);
+
+	if (!next_ctx) {
+		/* All the tasks are blocked. Wait for the next one to
+		 * change state. */
+		int status;
+		pid_t tid;
+
+		debug("  all tasks blocked, waiting for runnable (%d total)",
+		      num_active_threads);
+		while (-1 == (tid = waitpid(-1, &status,
+					    __WALL | WSTOPPED | WUNTRACED))) {
+			if (EINTR == errno) {
+				debug("  waitpid() interrupted by EINTR");
 				continue;
 			}
-			/* Yep. */
-			next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+			fatal("Failed to waitpid()");
 		}
-		note_switch(ctx, next_ctx, max_events);
-		return next_ctx;
+		debug("  %d changed state", tid);
+
+		entry = get_entry(tid);
+		next_ctx = &entry->ctx;
+
+		assert(EXEC_STATE_IN_SYSCALL == next_ctx->exec_state);
+
+		next_ctx->status = status;
+		next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
 	}
+
+	current_entry = entry;
+	note_switch(ctx, next_ctx, max_events);
+	return next_ctx;
 }
 
 /**
