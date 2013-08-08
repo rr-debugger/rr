@@ -1121,11 +1121,13 @@ static void assert_at_buffered_syscall(struct context* ctx,
 {
 	void* ip = (void*)regs->eip;
 	if (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(ip, ctx)) {
-		log_err("Bad ip %p: should have been buffered-syscall ip", ip);
+		log_err("(trace line %d) Bad ip %p: should have been buffered-syscall ip",
+			get_trace_file_lines_counter(), ip);
 		emergency_debug(ctx);
 	}
 	if (regs->orig_eax != syscallno) {
-		log_err("At %s; should have been at %s",
+		log_err("(trace line %d) At %s; should have been at %s",
+			get_trace_file_lines_counter(),
 			syscallname(regs->orig_eax), syscallname(syscallno));
 		emergency_debug(ctx);
 	}

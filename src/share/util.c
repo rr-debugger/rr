@@ -89,6 +89,30 @@ int nanosleep_nointr(const struct timespec* ts)
 
 }
 
+const char* ptrace_event_name(int event)
+{
+	switch (event) {
+#define CASE(_id) case PTRACE_EVENT_## _id: return #_id
+	CASE(FORK);
+	CASE(VFORK);
+	CASE(CLONE);
+	CASE(EXEC);
+	CASE(VFORK_DONE);
+	CASE(EXIT);
+	/* XXX Ubuntu 12.04 defines a "PTRACE_EVENT_STOP", but that
+	 * has the same value as the newer EVENT_SECCOMP, so we'll
+	 * ignore STOP. */
+#ifdef PTRACE_EVENT_SECCOMP_OBSOLETE
+	CASE(SECCOMP_OBSOLETE);
+#else
+	CASE(SECCOMP);
+#endif
+	default:
+		return "???EVENT";
+#undef CASE
+	}
+}
+
 const char* signalname(int sig)
 {
 	/* strsignal() would be nice to use here, but it provides TMI. */

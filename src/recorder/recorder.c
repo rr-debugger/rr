@@ -336,6 +336,7 @@ void start_recording(struct flags rr_flags)
 				/* we record the sigreturn event here, since we have to do another ptrace_cont to
 				 * fully process the sigreturn system call.
 				 */
+				debug("  sigreturn");
 				int orig_event = ctx->event;
 				record_event(ctx, STATE_SYSCALL_ENTRY);
 				/* do another step */
@@ -508,6 +509,7 @@ void start_recording(struct flags rr_flags)
 				ctx->exec_state = EXEC_STATE_START;
 				ctx->allow_ctx_switch = 1;
 				if (ctx->desched) {
+					assert(ctx->syscallbuf_hdr->abort_commit);
 					/* If this syscall was
 					 * interrupted by a desched
 					 * event, then just after the

@@ -71,6 +71,7 @@ install(TARGETS rr rr_syscall_buffer
 #
 # Alphabetical, please.
 set(BASIC_TESTS
+#  abort_nonmain
   accept
   alarm
   args
@@ -107,6 +108,7 @@ set(BASIC_TESTS
   simple
   splice
 #  step_thread
+#  term_nonmain
   tgkill
   threads
 )
