@@ -117,7 +117,7 @@ struct context {
 
 	/* replay */
 
-	int __replay__event;
+	int child_sig;
 
 	/* shared */
 
@@ -130,7 +130,6 @@ struct context {
 	 * it's the tid that was recorded. */
 	pid_t rec_tid;
 	int child_mem_fd;
-	int child_sig;
 	int status;
 
 	/* The instruction pointer from which untraced syscalls will

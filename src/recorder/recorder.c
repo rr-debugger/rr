@@ -71,8 +71,7 @@ static void rec_init_scratch_memory(struct context *ctx)
 
 static void cont_nonblock(struct context *ctx)
 {
-	sys_ptrace_syscall_sig(ctx->tid, ctx->child_sig);
-	ctx->child_sig = 0;
+	sys_ptrace_syscall(ctx->tid);
 }
 
 static int wait_nonblock(struct context *ctx)
@@ -99,10 +98,9 @@ static void canonicalize_event(struct context* ctx)
  */
 static void cont_block(struct context *ctx)
 {
-	sys_ptrace(PTRACE_CONT, ctx->tid, 0, (void*) ctx->child_sig);
+	sys_ptrace(PTRACE_CONT, ctx->tid, 0, 0);
 	sys_waitpid(ctx->tid, &ctx->status);
-	ctx->child_sig = signal_pending(ctx->status);
-	assert(ctx->child_sig != SIGTRAP);
+	assert(signal_pending(ctx->status) != SIGTRAP);
 	read_child_registers(ctx->tid, &(ctx->regs));
 	ctx->event = ctx->regs.orig_eax;
 	canonicalize_event(ctx);
@@ -114,9 +112,8 @@ static void cont_block(struct context *ctx)
  */
 static void cont_syscall_block(struct context *ctx)
 {
-	sys_ptrace(PTRACE_SYSCALL, ctx->tid, 0, (void*) ctx->child_sig);
+	sys_ptrace(PTRACE_SYSCALL, ctx->tid, 0, 0);
 	sys_waitpid(ctx->tid, &ctx->status);
-	ctx->child_sig = signal_pending(ctx->status);
 	read_child_registers(ctx->tid, &(ctx->regs));
 	ctx->event = ctx->regs.orig_eax;
 	canonicalize_event(ctx);
@@ -296,8 +293,7 @@ static void try_advance_syscall(struct context** ctxp)
 			return;
 		}
 
-		ctx->child_sig = signal_pending(ctx->status);
-		assert(ctx->child_sig != SIGTRAP);
+		assert(signal_pending(ctx->status) != SIGTRAP);
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
 		if (syscall == SYS_restart_syscall) {
@@ -442,7 +438,7 @@ void record(const struct flags* rr_flags)
 		} else if (ctx->event == SIG_SEGV_RDTSC
 			   || ctx->event == USR_SCHED) {
 			ctx->switchable = 1;
-		} else if (ctx->child_sig) {
+		} else if (ctx->event < 0) {
 			/* TODO: finish processing signals in
 			 * handle_signal(). */
 		} else if (ctx->event == SYS_sigreturn
@@ -459,7 +455,8 @@ void record(const struct flags* rr_flags)
 			cont_syscall_block(ctx);
 
 			/* TODO: can signals interrupt a sigreturn? */
-			assert(ctx->child_sig == 0);
+			assert(signal_pending(ctx->status) != SIGTRAP);
+
 			/* orig_eax seems to be -1 here for
 			 * not-understood reasons. */
 			assert(ctx->event == -1);
