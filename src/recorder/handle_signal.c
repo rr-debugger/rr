@@ -37,13 +37,13 @@ static __inline__ unsigned long long rdtsc(void)
  */
 static int try_handle_rdtsc(struct context *ctx)
 {
-	int retval = 0;
+	int handled = 0;
 	pid_t tid = ctx->tid;
 	int sig = signal_pending(ctx->status);
 	assert(sig != SIGTRAP);
 
 	if (sig <= 0 || sig != SIGSEGV) {
-		return retval;
+		return 0;
 	}
 
 	int size;
@@ -71,15 +71,17 @@ static int try_handle_rdtsc(struct context *ctx)
 		regs.edx = edx;
 		regs.eip += size;
 		write_child_registers(tid, &regs);
+
 		ctx->event = SIG_SEGV_RDTSC;
-		retval = 1;
+		record_event(ctx, STATE_SYSCALL_ENTRY);
+		handled = 1;
 
 		debug("  trapped for rdtsc: returning %llu", current_time);
 	}
 
 	sys_free((void**)&inst);
 
-	return retval;
+	return handled;
 }
 
 static void disarm_desched_event(struct context* ctx)
@@ -356,6 +358,8 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 		ctx->event = -sig;
 	}
 
+	/* This event is used by the replayer to advance to the point
+	 * of signal delivery. */
 	record_event(ctx, STATE_SYSCALL_ENTRY);
 	reset_hpc(ctx, max_rbc); // TODO: the hpc gets reset in record event.
 	assert(read_insts(ctx->hpc) == 0);
@@ -370,6 +374,11 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 	struct user_regs_struct regs;
 	read_child_registers(ctx->tid, &regs);
 	record_child_data(ctx, ctx->event, frame_size, (void*)regs.esp);
+
+	/* This event is used to set up the signal handler frame, or
+	 * to record the resulting state of the stepi if there wasn't
+	 * a signal handler. */
+	record_event(ctx, STATE_SYSCALL_ENTRY);
 }
 
 static int is_trace_trap(const siginfo_t* si)
@@ -646,6 +655,10 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	sys_ptrace_getsiginfo(tid, &si);
 	read_child_registers(tid, &regs);
 
+	/* We have to check for a desched event first, because for
+	 * those we *do not* want to (and cannot, most of the time)
+	 * step the tracee out of the syscallbuf code before
+	 * attempting to deliver the signal. */
 	if (SIGIO == sig
 	    && (event = try_handle_desched_event(ctx, &si, &regs))) {
 		ctx->event = event;
@@ -659,7 +672,6 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	switch (sig) {
 	case SIGSEGV:
 		if (try_handle_rdtsc(ctx)) {
-			ctx->event = SIG_SEGV_RDTSC;
 			return;
 		}
 		break;
@@ -671,6 +683,12 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 			/* HPC interrupt due to exceeding time
 			 * slice. */
 			ctx->event = USR_SCHED;
+			/* TODO: only record the SCHED event if it
+			 * actually results in a context switch, since
+			 * this will flush the syscallbuf and can
+			 * cause replay to be pathologically slow in
+			 * certain cases. */
+			record_event(ctx, STATE_SYSCALL_ENTRY);
 			return;
 		}
 		break;
