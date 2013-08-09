@@ -395,11 +395,6 @@ void record(const struct flags* rr_flags)
 		if (ptrace_event == PTRACE_EVENT_SECCOMP
 		    || ptrace_event == PTRACE_EVENT_SECCOMP_OBSOLETE) {
 			filter_on_ = TRUE;
-			if (ctx->event < 0) {
-				/* Finish handling of the signal
-				 * first */
-				record_event(ctx,STATE_SYSCALL_ENTRY);
-			}
 			/* We require an extra continue, to get to the
 			 * actual syscall
 			 *
