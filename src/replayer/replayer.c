@@ -1487,11 +1487,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	debug_memory(ctx);
 }
 
-static void check_initial_register_file()
-{
-	rep_sched_get_thread();
-}
-
 void replay(struct flags flags)
 {
 	struct dbg_context* dbg = NULL;
@@ -1502,8 +1497,6 @@ void replay(struct flags flags)
 		dbg = dbg_await_client_connection("127.0.0.1",
 						  rr_flags->dbgport);
 	}
-
-	check_initial_register_file();
 
 	while (rep_sched_get_num_threads()) {
 		replay_one_trace_frame(dbg, rep_sched_get_thread());
