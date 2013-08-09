@@ -430,17 +430,14 @@ void record(const struct flags* rr_flags)
 			continue;
 		}
 
-		if (ctx->event == USR_NOOP) {
-			/* We were able to consume this event entirely
-			 * internally.  Don't record any trace data or
-			 * change state. */
+		if (ctx->event < 0) {
+			/* handle_signal() took care of recording any
+			 * events related to the (pseudo-)signal. */
+			/* TODO: is there any reason not to enable
+			 * switching after signals are delivered? */
+			ctx->switchable = (ctx->event == SIG_SEGV_RDTSC
+					   || ctx->event == USR_SCHED);
 			continue;
-		} else if (ctx->event == SIG_SEGV_RDTSC
-			   || ctx->event == USR_SCHED) {
-			ctx->switchable = 1;
-		} else if (ctx->event < 0) {
-			/* TODO: finish processing signals in
-			 * handle_signal(). */
 		} else if (ctx->event == SYS_sigreturn
 			   || ctx->event == SYS_rt_sigreturn) {
 			int orig_event = ctx->event;
