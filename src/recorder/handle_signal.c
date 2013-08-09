@@ -350,8 +350,6 @@ static int is_deterministic_signal(const siginfo_t* si)
 static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 			  uint64_t max_rbc)
 {
-	ctx->child_sig = sig;
-
 	if (is_deterministic_signal(si)) {
 		ctx->event = -(sig | DET_SIGNAL_BIT);
 	} else {
@@ -651,7 +649,6 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	if (SIGIO == sig
 	    && (event = try_handle_desched_event(ctx, &si, &regs))) {
 		ctx->event = event;
-		ctx->child_sig = 0;
 		return;
 	}
 
@@ -663,7 +660,6 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	case SIGSEGV:
 		if (try_handle_rdtsc(ctx)) {
 			ctx->event = SIG_SEGV_RDTSC;
-			ctx->child_sig = 0;
 			return;
 		}
 		break;
@@ -675,7 +671,6 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 			/* HPC interrupt due to exceeding time
 			 * slice. */
 			ctx->event = USR_SCHED;
-			ctx->child_sig = 0;
 			return;
 		}
 		break;
