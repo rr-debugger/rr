@@ -3,11 +3,8 @@
 #ifndef RECORDER_H_
 #define RECORDER_H_
 
-#include <stdio.h>
-#include <sched.h>
+struct flags;
 
-#include "../share/util.h"
-
-void start_recording(struct flags rr_flags);
+void record(const struct flags* rr_flags);
 
 #endif /* RECORDER_H_ */

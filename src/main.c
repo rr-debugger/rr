@@ -187,7 +187,7 @@ static void start(int argc, char* argv[], char** envp)
 
 			/* perform the action recording */
 			log_info("Start recording...");
-			start_recording(__rr_flags);
+			record(&__rr_flags);
 			log_info("Done recording -- cleaning up");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
