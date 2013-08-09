@@ -219,13 +219,126 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	      GET_PTRACE_EVENT(_ctx->status), _ctx->child_sig, \
 	      strevent(_ctx->event))
 
-void start_recording(struct flags rr_flags)
+static void try_advance_syscall(struct context** ctxp)
 {
-	rr_flags_ = rr_flags;
+	struct context* ctx = *ctxp;
+
+	switch (ctx->exec_state) {
+	case EXEC_STATE_ENTRY_SYSCALL:
+		debug_exec_state("EXEC_SYSCALL_ENTRY", ctx);
+
+		/* continue and execute the system call */
+		ctx->switchable = rec_prepare_syscall(ctx, ctx->event);
+		cont_nonblock(ctx);
+
+		debug_exec_state("after cont", ctx);
+
+		ctx->exec_state = EXEC_STATE_IN_SYSCALL;
+		return;
+
+	case EXEC_STATE_IN_SYSCALL: {
+		int ret;
+
+		debug_exec_state("EXEC_IN_SYSCALL", ctx);
+
+		ret = wait_nonblock(ctx);
+
+		debug_exec_state("  after wait", ctx);
+
+		if (ret) {
+			ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+			ctx->switchable = 0;
+		}
+		return;
+	}
+
+	case EXEC_STATE_IN_SYSCALL_DONE: {
+		struct user_regs_struct regs;
+		int syscall, retval;
+
+		debug_exec_state("EXEC_SYSCALL_DONE", ctx);
+
+		assert(signal_pending(ctx->status) == 0);
+
+		read_child_registers(ctx->tid,&regs);
+		syscall = regs.orig_eax;
+		retval = regs.eax;
+		if (0 <= syscall
+		    && SYS_clone != syscall
+		    && SYS_exit_group != syscall && SYS_exit != syscall
+		    && -ENOSYS == retval) {
+			log_err("Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
+				syscallname(syscall));
+			emergency_debug(ctx);
+		}
+
+		debug("  orig_eax is %d (%s)", syscall, syscallname(syscall));
+
+		/* we received a signal while in the system call and
+		 * send it right away*/
+		/* we have already sent the signal and process
+		 * sigreturn */
+		assert(ctx->event != SYS_sigreturn);
+
+		/* if the syscall is about to be restarted, save the
+		 * last syscall performed by it. */
+		if (syscall != SYS_restart_syscall
+		    && SYSCALL_WILL_RESTART(retval)) {
+			debug("  retval %d, will restart %s",
+			      retval, syscallname(syscall));
+			ctx->last_syscall = syscall;
+			ctx->will_restart = 1;
+		}
+
+		handle_ptrace_event(ctxp);
+		ctx = *ctxp;
+		if (!ctx || ctx->event == SYS_vfork) {
+			return;
+		}
+
+		ctx->child_sig = signal_pending(ctx->status);
+		assert(ctx->child_sig != SIGTRAP);
+		/* a syscall_restart ending is equivalent to the
+		 * restarted syscall ending */
+		if (syscall == SYS_restart_syscall) {
+			syscall = ctx->last_syscall;
+			ctx->event = syscall;
+			debug("  exiting restarted %s", syscallname(syscall));
+		}
+		/* no need to process the syscall in case its
+		 * restarted this will be done in the exit from the
+		 * restart_syscall */
+		if (!SYSCALL_WILL_RESTART(retval)) {
+			rec_process_syscall(ctx, syscall, rr_flags_);
+		}
+		record_event(ctx, STATE_SYSCALL_EXIT);
+		ctx->exec_state = EXEC_STATE_START;
+		ctx->switchable = 1;
+		if (ctx->desched_rec) {
+			assert(ctx->syscallbuf_hdr->abort_commit);
+			/* If this syscall was interrupted by a
+			 * desched event, then just after the finished
+			 * syscall there will be an ioctl() to disarm
+			 * the event that we won't record here.  So
+			 * save a breadcrumb so that replay knows to
+			 * expect it and skip over it. */
+			ctx->desched_rec = NULL;
+			record_synthetic_event(ctx, USR_DISARM_DESCHED);
+		}
+		return;
+	}
+
+	default:
+		fatal("Unknown exec state %d", ctx->exec_state);
+	}
+}
+
+void record(const struct flags* rr_flags)
+{
+	rr_flags_ = *rr_flags;
 	struct context *ctx = NULL;
 
 	while (rec_sched_get_num_threads() > 0) {
-		/* get a thread that is ready to be executed */
 		ctx = rec_sched_get_active_thread(&rr_flags_, ctx);
 
 		debug("Active task is %d", ctx->tid);
@@ -233,295 +346,188 @@ void start_recording(struct flags rr_flags)
 		if (ctx->scratch_ptr == NULL) {
 			rec_init_scratch_memory(ctx);
 		}
-		/* the child process will either be interrupted by: (1) a signal, or (2) at
-		 * the entry of the system call */
 
-		/* simple state machine to guarantee process in the application */
-		switch (ctx->exec_state) {
+		if (ctx->exec_state > EXEC_STATE_START) {
+			try_advance_syscall(&ctx);
+			continue;
+		}
+		assert(EXEC_STATE_START == ctx->exec_state);
 
-		case EXEC_STATE_START:
-		{
-			debug_exec_state("EXEC_START", ctx);
+		debug_exec_state("EXEC_START", ctx);
 
-			/* print some kind of progress */
-			if (progress++ % 10000 == 0) {
-				fprintf(stderr,".");
-				fflush(stdout);
+		if (progress++ % 10000 == 0) {
+			fprintf(stderr,".");
+			fflush(stdout);
+		}
+
+		if (ctx->will_restart && filter_on_) {
+			debug("  advancing to restarted %s",
+			      syscallname(ctx->last_syscall));
+		}
+
+		if (!ctx->will_restart && filter_on_) {
+			/* When the seccomp filter is on, instead of
+			 * capturing syscalls by using PTRACE_SYSCALL,
+			 * the filter will generate the ptrace
+			 * events. This means we allow the process to
+			 * run using PTRACE_CONT, and rely on the
+			 * seccomp filter to generate the special
+			 * PTRACE_EVENT_SECCOMP event once a syscall
+			 * happens.  This event is handled here by
+			 * simply allowing the process to continue to
+			 * the actual entry point of the syscall
+			 * (using cont_syscall_block()) and then using
+			 * the same logic as before. */
+			cont_block(ctx);
+		} else {
+			/* We won't receive PTRACE_EVENT_SECCOMP
+			 * events until the seccomp filter is
+			 * installed by the syscall_buffer lib in the
+			 * child, therefore we must record in the
+			 * traditional way (with PTRACE_SYSCALL) until
+			 * it is installed. */
+			cont_syscall_block(ctx);
+		}
+		ctx->will_restart = 0;
+
+		debug_exec_state("  first trap", ctx);
+
+		/* we must disallow the context switch here! */
+		ctx->switchable = 0;
+
+		int ptrace_event = GET_PTRACE_EVENT(ctx->status);
+		if (ptrace_event == PTRACE_EVENT_SECCOMP
+		    || ptrace_event == PTRACE_EVENT_SECCOMP_OBSOLETE) {
+			filter_on_ = TRUE;
+			if (ctx->event < 0) {
+				/* Finish handling of the signal
+				 * first */
+				record_event(ctx,STATE_SYSCALL_ENTRY);
 			}
+			/* We require an extra continue, to get to the
+			 * actual syscall
+			 *
+			 * TODO: What if there's a signal in between? */
+			cont_syscall_block(ctx);
 
-			/* we need to issue a blocking continue here to serialize program execution */
-
-			/**
-			 * We won't receive PTRACE_EVENT_SECCOMP events until the seccomp filter is installed
-			 * by the syscall_buffer lib in the child, therefore we must record in the traditional way (with PTRACE_SYSCALL)
-			 * until it is installed.
-			 */
-			if (ctx->will_restart && filter_on_) {
-				debug("  advancing to restarted %s",
-				      syscallname(ctx->last_syscall));
-			}
-
-			if (!ctx->will_restart && filter_on_) {
-				cont_block(ctx);
-			} else {
-				cont_syscall_block(ctx);
-			}
-			ctx->will_restart = 0;
-
-			debug_exec_state("  first trap", ctx);
-
-			/* we must disallow the context switch here! */
-			ctx->switchable = 0;
-
-			/*
-			 * When the seccomp filter is on, instead of capturing syscalls by using PTRACE_SYSCALL, the filter
-			 * will generate the ptrace events. This means we allow the process to run using PTRACE_CONT, and rely on the seccomp
-			 * filter to generate the special PTRACE_EVENT_SECCOMP event once a syscall happens.
-			 * This event is handled here by simply allowing the process to continue to the actual
-			 * entry point of the syscall (using cont_syscall_block()) and then using the same logic as before.
-			 */
-			int ptrace_event = GET_PTRACE_EVENT(ctx->status);
-			if (ptrace_event == PTRACE_EVENT_SECCOMP ||
-			    ptrace_event == PTRACE_EVENT_SECCOMP_OBSOLETE) {
-				filter_on_ = TRUE;
-				if (ctx->event < 0) { /* Finish handling of the signal first */
-					record_event(ctx,STATE_SYSCALL_ENTRY);
-				}
-				/* We require an extra continue, to get to the actual syscall */
-				// TODO: What if there's a signal in between?
-				cont_syscall_block(ctx);
-
-				debug_exec_state("  post-seccomp trap", ctx);
-			} else if (ptrace_event == PTRACE_EVENT_CLONE ||
-					   ptrace_event == PTRACE_EVENT_FORK) { /* clone(),fork() are handled differently with seccomp TODO: vfork() */
-				debug("Handling ptrace event: %d", GET_PTRACE_EVENT(ctx->status));
-				record_event(ctx, STATE_SYSCALL_ENTRY);
-				handle_ptrace_event(&ctx);
-				rec_process_syscall(ctx,SYS_clone,rr_flags);
-				record_event(ctx, STATE_SYSCALL_EXIT);
-				break;
-			} else if (ptrace_event) { // TODO: this should only be the exit event really...
-				debug("Handling ptrace event: %d", GET_PTRACE_EVENT(ctx->status));
-				record_event(ctx, STATE_SYSCALL_EXIT);
-				handle_ptrace_event(&ctx);
-				break;
-			}
-
-			if (ctx->event == USR_NOOP) {
-				/* We were able to consume this event
-				 * entirely internally.  Don't record
-				 * any trace data or change state. */
-				break;
-			} else if (ctx->event == SIG_SEGV_MMAP_READ || ctx->event == SIG_SEGV_MMAP_WRITE) {
-
-				// state might be overwritten if a signal occurs
-			} else if (ctx->event == SIG_SEGV_RDTSC || ctx->event == USR_SCHED) {
-				ctx->switchable = 1;
-
-				/* Implements signal handling
-				 *
-				 * IMPORTANT: context switches must be disallowed to ensure that the correct
-				 * process/threads gets the signal delivered. We do not change the state here since
-				 * we have not arrived at a new system call.
-				 */
-			} else if (ctx->child_sig) {
-
-				/* These system calls never return; we remain in the same execution state */
-			} else if (ctx->event == SYS_sigreturn || ctx->event == SYS_rt_sigreturn) {
-				/* we record the sigreturn event here, since we have to do another ptrace_cont to
-				 * fully process the sigreturn system call.
-				 */
-				debug("  sigreturn");
-				int orig_event = ctx->event;
-				record_event(ctx, STATE_SYSCALL_ENTRY);
-				/* do another step */
-				cont_syscall_block(ctx);
-
-				assert(ctx->child_sig == 0);
-				/* the next event is -1 -- how knows why?*/
-				assert(ctx->event == -1);
-				ctx->event = orig_event;
-				record_event(ctx, STATE_SYSCALL_EXIT);
-				ctx->switchable = 0;
-
-				/* here we can continue normally */
-				break;
-
-			} else if (ctx->event > 0) {
-				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
-
-				/* this is a weird state -- no idea why it works */
-			} else if (ctx->event == SYS_restart_syscall) {
-				/* Syscalls like nanosleep(), poll() which can't be
-				 * restarted with their original arguments use the
-				 * ERESTART_RESTARTBLOCK code.
-				 *
-				 * ---------------->
-				 * Kernel will execute restart_syscall() instead,
-				 * which changes arguments before restarting syscall.
-				 * <----------------
-				 *
-				 * SA_RESTART is ignored (assumed not set) similarly
-				 * to ERESTARTNOHAND. (Kernel can't honor SA_RESTART
-				 * since restart data is saved in "restart block"
-				 * in task struct, and if signal handler uses a syscall
-				 * which in turn saves another such restart block,
-				 * old data is lost and restart becomes impossible)
-				 */
-				debug("Thread %d: restarting syscall %s", ctx->tid, syscallname(ctx->last_syscall));
-				/*
-				 * From errno.h:
-				 * These should never be seen by user programs.  To return
-				 * one of ERESTART* codes, signal_pending() MUST be set.
-				 * Note that ptrace can observe these at syscall exit tracing,
-				 * but they will never be left for the debugged user process to see.
-				 */
-				ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
-				/* We do not record the syscall_restart event as it will not appear in the replay */
-				break;
-				/* we sould never come here */
-			} else {
-				fatal("Unhandled event %s (%d)",
-				      strevent(ctx->event), ctx->event);
-			}
-
-			if (ctx->desched_rec) {
-				/* Replay needs to be prepared to see
-				 * the ioctl() that arms the desched
-				 * counter when it's trying to step to
-				 * the entry of |call|. */
-				record_synthetic_event(ctx, USR_ARM_DESCHED);
-			}
-
+			debug_exec_state("  post-seccomp trap", ctx);
+		} else if (ptrace_event == PTRACE_EVENT_CLONE
+			   || ptrace_event == PTRACE_EVENT_FORK) {
+			/* clone(),fork() are handled differently with
+			 * seccomp
+			 *
+			 * TODO: vfork() */
+			debug("Handling ptrace event: %d",
+			      GET_PTRACE_EVENT(ctx->status));
 			record_event(ctx, STATE_SYSCALL_ENTRY);
-
-			if (ctx->flushed_syscallbuf) {
-				record_synthetic_event(ctx,
-						       USR_SYSCALLBUF_RESET);
-				ctx->flushed_syscallbuf = 0;
-			}				
-			if (ctx->desched_rec) {
-				ctx->syscallbuf_hdr->abort_commit = 1;
-				record_synthetic_event(ctx,
-						       USR_SYSCALLBUF_ABORT_COMMIT);
-			}
-
-			break;
-		}
-
-		case EXEC_STATE_ENTRY_SYSCALL:
-		{
-			debug_exec_state("EXEC_SYSCALL_ENTRY", ctx);
-
-			/* continue and execute the system call */
-			ctx->switchable =
-				rec_prepare_syscall(ctx, ctx->event);
-			cont_nonblock(ctx);
-
-			debug_exec_state("after cont", ctx);
-
-			ctx->exec_state = EXEC_STATE_IN_SYSCALL;
-			break;
-		}
-
-		case EXEC_STATE_IN_SYSCALL:
-		{
-			int ret;
-
-			debug_exec_state("EXEC_IN_SYSCALL", ctx);
-
-			ret = wait_nonblock(ctx);
-
-			debug_exec_state("  after wait", ctx);
-
-			if (ret) {
-				ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
-				ctx->switchable = 0;
-			}
-			break;
-		}
-
-		case EXEC_STATE_IN_SYSCALL_DONE:
-		{
-			debug_exec_state("EXEC_SYSCALL_DONE", ctx);
-
-			assert(signal_pending(ctx->status) == 0);
-
-			struct user_regs_struct regs;
-			read_child_registers(ctx->tid,&regs);
-			int syscall = regs.orig_eax;
-			int retval = regs.eax;
-			if (0 <= syscall
-			    && SYS_clone != syscall
-			    && SYS_exit_group != syscall && SYS_exit != syscall
-			    && -ENOSYS == retval) {
-				log_err("Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
-					syscallname(syscall));
-				emergency_debug(ctx);
-			}
-
-			debug("  orig_eax is %d (%s)",
-			      syscall, syscallname(syscall));
-
-			/* we received a signal while in the system call and send it right away*/
-			/* we have already sent the signal and process sigreturn */
-			assert(ctx->event != SYS_sigreturn);
-
-			// if the syscall is about to be restarted, save the last syscall performed by it.
-			if (syscall != SYS_restart_syscall
-			    && SYSCALL_WILL_RESTART(retval)) {
-				debug("  retval %d, will restart %s",
-				      retval, syscallname(syscall));
-				ctx->last_syscall = syscall;
-				ctx->will_restart = 1;
-			}
-
 			handle_ptrace_event(&ctx);
-
-			if ((ctx != NULL) && (ctx->event != SYS_vfork)) {
-				ctx->child_sig = signal_pending(ctx->status);
-				assert(ctx->child_sig != SIGTRAP);
-				// a syscall_restart ending is equivalent to the restarted syscall ending
-				if (syscall == SYS_restart_syscall) {
-					syscall = ctx->last_syscall;
-					ctx->event = syscall;
-					debug("  exiting restarted %s",
-					      syscallname(syscall));
-				}
-				// no need to process the syscall in case its restarted
-				// this will be done in the exit from the restart_syscall
-				if (!SYSCALL_WILL_RESTART(retval)) {
-					rec_process_syscall(ctx, syscall, rr_flags);
-				}
-				record_event(ctx, STATE_SYSCALL_EXIT);
-				ctx->exec_state = EXEC_STATE_START;
-				ctx->switchable = 1;
-				if (ctx->desched_rec) {
-					assert(ctx->syscallbuf_hdr->abort_commit);
-					/* If this syscall was
-					 * interrupted by a desched
-					 * event, then just after the
-					 * finished syscall there will
-					 * be an ioctl() to disarm the
-					 * event that we won't record
-					 * here.  So save a breadcrumb
-					 * so that replay knows to
-					 * expect it and skip over
-					 * it. */
-					ctx->desched_rec = NULL;
-					record_synthetic_event(
-						ctx,
-						USR_DISARM_DESCHED);
-				}
-			}
-
-			break;
+			rec_process_syscall(ctx,SYS_clone,rr_flags_);
+			record_event(ctx, STATE_SYSCALL_EXIT);
+			continue;
+		} else if (ptrace_event) {
+			/* TODO: this should only be the exit event
+			 * really... */
+			debug("Handling ptrace event: %d",
+			      GET_PTRACE_EVENT(ctx->status));
+			record_event(ctx, STATE_SYSCALL_EXIT);
+			handle_ptrace_event(&ctx);
+			continue;
 		}
 
-		default:
-		errx(1, "Unknown execution state: %x -- bailing out\n", ctx->exec_state);
-			break;
+		if (ctx->event == USR_NOOP) {
+			/* We were able to consume this event entirely
+			 * internally.  Don't record any trace data or
+			 * change state. */
+			continue;
+		} else if (ctx->event == SIG_SEGV_RDTSC
+			   || ctx->event == USR_SCHED) {
+			ctx->switchable = 1;
+		} else if (ctx->child_sig) {
+			/* TODO: finish processing signals in
+			 * handle_signal(). */
+		} else if (ctx->event == SYS_sigreturn
+			   || ctx->event == SYS_rt_sigreturn) {
+			int orig_event = ctx->event;
+			/* These system calls never return; we remain
+			 * in the same execution state */
+			/* we record the sigreturn event here, since
+			 * we have to do another ptrace_cont to fully
+			 * process the sigreturn system call. */
+			debug("  sigreturn");
+			record_event(ctx, STATE_SYSCALL_ENTRY);
+			/* do another step */
+			cont_syscall_block(ctx);
+
+			/* TODO: can signals interrupt a sigreturn? */
+			assert(ctx->child_sig == 0);
+			/* orig_eax seems to be -1 here for
+			 * not-understood reasons. */
+			assert(ctx->event == -1);
+			ctx->event = orig_event;
+			record_event(ctx, STATE_SYSCALL_EXIT);
+			ctx->switchable = 0;
+			continue;
+		} else if (ctx->event > 0) {
+			/* We'll record the syscall-entry event
+			 * below. */
+			ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+		} else if (ctx->event == SYS_restart_syscall) {
+			/* Syscalls like nanosleep(), poll() which
+			 * can't be restarted with their original
+			 * arguments use the ERESTART_RESTARTBLOCK
+			 * code.
+			 *
+			 * ---------------->
+			 * Kernel will execute restart_syscall()
+			 * instead, which changes arguments before
+			 * restarting syscall.
+			 * <----------------
+			 *
+			 * SA_RESTART is ignored (assumed not set)
+			 * similarly to ERESTARTNOHAND. (Kernel can't
+			 * honor SA_RESTART since restart data is
+			 * saved in "restart block" in task struct,
+			 * and if signal handler uses a syscall which
+			 * in turn saves another such restart block,
+			 * old data is lost and restart becomes
+			 * impossible)
+			 */
+			debug("  restarting syscall %s",
+				syscallname(ctx->last_syscall));
+			/* From errno.h:
+			 * These should never be seen by user
+			 * programs.  To return one of ERESTART*
+			 * codes, signal_pending() MUST be set.  Note
+			 * that ptrace can observe these at syscall
+			 * exit tracing, but they will never be left
+			 * for the debugged user process to see. */
+			ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+			/* We do not record the syscall_restart event
+			 * as it will not appear in the replay */
+			continue;
+		} else {
+			fatal("Unhandled event %s (%d)",
+			      strevent(ctx->event), ctx->event);
+		}
+
+		if (ctx->desched_rec) {
+			/* Replay needs to be prepared to see the
+			 * ioctl() that arms the desched counter when
+			 * it's trying to step to the entry of
+			 * |call|. */
+			record_synthetic_event(ctx, USR_ARM_DESCHED);
+		}
+
+		record_event(ctx, STATE_SYSCALL_ENTRY);
+
+		if (ctx->flushed_syscallbuf) {
+			record_synthetic_event(ctx, USR_SYSCALLBUF_RESET);
+			ctx->flushed_syscallbuf = 0;
+		}
+		if (ctx->desched_rec) {
+			ctx->syscallbuf_hdr->abort_commit = 1;
+			record_synthetic_event(ctx,
+					       USR_SYSCALLBUF_ABORT_COMMIT);
 		}
 	} /* while loop */
-
 }
