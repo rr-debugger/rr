@@ -224,12 +224,6 @@ void start_recording(struct flags rr_flags)
 	rr_flags_ = rr_flags;
 	struct context *ctx = NULL;
 
-	/* record the initial status of the register file */
-	ctx = rec_sched_get_active_thread(&rr_flags_, ctx);
-	ctx->event = -1000;
-	record_event(ctx, STATE_SYSCALL_ENTRY);
-	rec_init_scratch_memory(ctx);
-
 	while (rec_sched_get_num_threads() > 0) {
 		/* get a thread that is ready to be executed */
 		ctx = rec_sched_get_active_thread(&rr_flags_, ctx);
