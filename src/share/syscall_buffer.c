@@ -311,18 +311,6 @@ static void install_syscall_filter()
 		/* Allow all system calls from our protected_call
 		 * callsite */
 		ALLOW_SYSCALLS_FROM_CALLSITE((uintptr_t)protected_call_start),
-		/* Grab the system call number. */
-		EXAMINE_SYSCALL,
-		/* Note: if these are traced, we get a SIGSTOP after
-		 * child creation We don't need to trace them as they
-		 * will be captured by their own ptrace event */
-		ALLOW_SYSCALL(clone),
-		ALLOW_SYSCALL(fork),
-		ALLOW_SYSCALL(vfork),
-		/* There is really no need for us to ptrace
-		 * restart_syscall. In fact, this will cause an error
-		 * in case the restarted syscall is in the wrapper */
-		ALLOW_SYSCALL(restart_syscall),
 		/* All the rest are handled in rr */
 		TRACE_PROCESS,
 	};
