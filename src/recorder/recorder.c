@@ -405,27 +405,6 @@ void record(const struct flags* rr_flags)
 			cont_syscall_block(ctx);
 
 			debug_exec_state("  post-seccomp trap", ctx);
-		} else if (ptrace_event == PTRACE_EVENT_CLONE
-			   || ptrace_event == PTRACE_EVENT_FORK) {
-			/* clone(),fork() are handled differently with
-			 * seccomp
-			 *
-			 * TODO: vfork() */
-			debug("Handling ptrace event: %d",
-			      GET_PTRACE_EVENT(ctx->status));
-			record_event(ctx, STATE_SYSCALL_ENTRY);
-			handle_ptrace_event(&ctx);
-			rec_process_syscall(ctx,SYS_clone,rr_flags_);
-			record_event(ctx, STATE_SYSCALL_EXIT);
-			continue;
-		} else if (ptrace_event) {
-			/* TODO: this should only be the exit event
-			 * really... */
-			debug("Handling ptrace event: %d",
-			      GET_PTRACE_EVENT(ctx->status));
-			record_event(ctx, STATE_SYSCALL_EXIT);
-			handle_ptrace_event(&ctx);
-			continue;
 		}
 
 		if (ctx->event < 0) {
