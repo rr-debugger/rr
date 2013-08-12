@@ -77,6 +77,7 @@ set(BASIC_TESTS
   async_signal_syscalls
   async_usr1
   bad_ip
+#  bad_syscall
   barrier
   block
   breakpoint
