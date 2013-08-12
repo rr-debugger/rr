@@ -2753,7 +2753,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	SYS_REC0(writev)
 
 	case RRCALL_init_syscall_buffer:
-		ctx->event = (-ctx->event | RRCALL_BIT);
+		ctx->event = (-syscall | RRCALL_BIT);
 		init_syscall_buffer(ctx, NULL, SHARE_DESCHED_EVENT_FD);
 		break;
 

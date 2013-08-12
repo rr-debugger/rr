@@ -69,6 +69,16 @@ static void rec_init_scratch_memory(struct context *ctx)
 	write_child_registers(ctx->tid,&orig_regs);
 }
 
+static void state_changed(struct context* ctx)
+{
+	read_child_registers(ctx->tid, &ctx->regs);
+	ctx->event = ctx->regs.orig_eax;
+	if (ctx->event == RRCALL_init_syscall_buffer) {
+		ctx->event = (-ctx->event | RRCALL_BIT);
+	}
+	handle_signal(&rr_flags_, ctx);
+}
+
 static void cont_nonblock(struct context *ctx)
 {
 	sys_ptrace_syscall(ctx->tid);
@@ -77,20 +87,18 @@ static void cont_nonblock(struct context *ctx)
 static int wait_nonblock(struct context *ctx)
 {
 	int ret = sys_waitpid_nonblock(ctx->tid, &(ctx->status));
-
 	if (ret) {
 		assert(WIFEXITED(ctx->status) == 0);
-		handle_signal(&rr_flags_, ctx);
-		ctx->event = read_child_orig_eax(ctx->tid);
+		if (signal_pending(ctx->status)) {
+			/* TODO: need state stack to properly handle
+			 * signals, if they indeed are ever delivered
+			 * in this state. */
+			log_warn("Signal %s probably won't be handled correctly",
+				 signalname(signal_pending(ctx->status)));
+		}
+		state_changed(ctx);
 	}
 	return ret;
-}
-
-static void canonicalize_event(struct context* ctx)
-{
-	if (ctx->event == RRCALL_init_syscall_buffer) {
-		ctx->event = (-ctx->event | RRCALL_BIT);
-	}
 }
 
 /**
@@ -101,10 +109,8 @@ static void cont_block(struct context *ctx)
 	sys_ptrace(PTRACE_CONT, ctx->tid, 0, 0);
 	sys_waitpid(ctx->tid, &ctx->status);
 	assert(signal_pending(ctx->status) != SIGTRAP);
-	read_child_registers(ctx->tid, &(ctx->regs));
-	ctx->event = ctx->regs.orig_eax;
-	canonicalize_event(ctx);
-	handle_signal(&rr_flags_, ctx);
+
+	state_changed(ctx);
 }
 
 /**
@@ -114,10 +120,8 @@ static void cont_syscall_block(struct context *ctx)
 {
 	sys_ptrace(PTRACE_SYSCALL, ctx->tid, 0, 0);
 	sys_waitpid(ctx->tid, &ctx->status);
-	read_child_registers(ctx->tid, &(ctx->regs));
-	ctx->event = ctx->regs.orig_eax;
-	canonicalize_event(ctx);
-	handle_signal(&rr_flags_, ctx);
+
+	state_changed(ctx);
 }
 
 uintptr_t progress;
@@ -211,10 +215,9 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	} /* end switch */
 }
 
-#define debug_exec_state(_msg, _ctx)			       \
-	debug(_msg ": pevent=%d, sig=%d, event=%s",	       \
-	      GET_PTRACE_EVENT(_ctx->status), _ctx->child_sig, \
-	      strevent(_ctx->event))
+#define debug_exec_state(_msg, _ctx)					\
+	debug(_msg ": pevent=%d, event=%s",				\
+	      GET_PTRACE_EVENT(_ctx->status), strevent(_ctx->event))
 
 static void try_advance_syscall(struct context** ctxp)
 {
