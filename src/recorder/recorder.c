@@ -101,110 +101,86 @@ static int wait_nonblock(struct context *ctx)
 	return ret;
 }
 
-/**
- * Continue the child until it gets a signal or a ptrace event
- */
-static void cont_block(struct context *ctx)
-{
-	sys_ptrace(PTRACE_CONT, ctx->tid, 0, 0);
-	sys_waitpid(ctx->tid, &ctx->status);
-	assert(signal_pending(ctx->status) != SIGTRAP);
-
-	state_changed(ctx);
-}
-
-/**
- * Continue the child until it gets a signal, a syscall or a ptrace event
- */
-static void cont_syscall_block(struct context *ctx)
-{
-	sys_ptrace(PTRACE_SYSCALL, ctx->tid, 0, 0);
-	sys_waitpid(ctx->tid, &ctx->status);
-
-	state_changed(ctx);
-}
-
 uintptr_t progress;
 
-static void handle_ptrace_event(struct context **ctx_ptr)
+static void handle_ptrace_event(struct context** ctxp)
 {
+	struct context* ctx = *ctxp;
+
 	/* handle events */
-	int event = GET_PTRACE_EVENT((*ctx_ptr)->status);
+	int event = GET_PTRACE_EVENT(ctx->status);
 	debug("  %d: handle_ptrace_event %d: syscall %s",
-	      (*ctx_ptr)->tid, event, syscallname((*ctx_ptr)->event));
+	      ctx->tid, event, syscallname(ctx->event));
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
-	{
 		break;
-	}
 
 	case PTRACE_EVENT_VFORK_DONE:
-	{
-		rec_process_syscall(*ctx_ptr, (*ctx_ptr)->event, rr_flags_);
-		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
-		(*ctx_ptr)->exec_state = RUNNABLE;
-		(*ctx_ptr)->switchable = 1;
+		rec_process_syscall(ctx, ctx->event, rr_flags_);
+		record_event(ctx, STATE_SYSCALL_EXIT);
+		ctx->exec_state = RUNNABLE;
+		ctx->switchable = 1;
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
-		cont_syscall_block(*ctx_ptr);
-		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
+		sys_ptrace_syscall(ctx->tid);
+		sys_waitpid(ctx->tid, &ctx->status);
+		state_changed(ctx);
+
+		record_event(ctx, STATE_SYSCALL_EXIT);
 		break;
-	}
 
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK:
-	case PTRACE_EVENT_VFORK:
-	{
+	case PTRACE_EVENT_VFORK: {
 		/* get new tid, register at the scheduler and setup HPC */
-		int new_tid = sys_ptrace_getmsg((*ctx_ptr)->tid);
+		int new_tid = sys_ptrace_getmsg(ctx->tid);
 
 		/* ensure that clone was successful */
-		assert(read_child_eax((*ctx_ptr)->tid) != -1);
+		assert(read_child_eax(ctx->tid) != -1);
 
 		/* wait until the new thread is ready */
-		sys_waitpid(new_tid, &((*ctx_ptr)->status));
-		rec_sched_register_thread(&rr_flags_,
-					  (*ctx_ptr)->tid, new_tid);
+		sys_waitpid(new_tid, &(ctx->status));
+		rec_sched_register_thread(&rr_flags_, ctx->tid, new_tid);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
 		 * child has finished */
 		if (event == PTRACE_EVENT_VFORK) {
-			(*ctx_ptr)->exec_state = PROCESSING_SYSCALL;
-			(*ctx_ptr)->switchable = 1;
-			record_event((*ctx_ptr), STATE_SYSCALL_ENTRY);
-			cont_nonblock((*ctx_ptr));
+			ctx->exec_state = PROCESSING_SYSCALL;
+			ctx->switchable = 1;
+			record_event(ctx, STATE_SYSCALL_ENTRY);
+			cont_nonblock(ctx);
 		} else {
-			cont_syscall_block((*ctx_ptr));
+			sys_ptrace_syscall(ctx->tid);
+			sys_waitpid(ctx->tid, &ctx->status);
+			state_changed(ctx);
 		}
 		break;
 	}
 
 	case PTRACE_EVENT_EXEC:
-	{
-		record_event(*ctx_ptr, STATE_SYSCALL_ENTRY);
-		cont_syscall_block(*ctx_ptr);
-		rec_init_scratch_memory(*ctx_ptr);
-		assert(signal_pending((*ctx_ptr)->status) == 0);
+		record_event(ctx, STATE_SYSCALL_ENTRY);
+
+		sys_ptrace_syscall(ctx->tid);
+		sys_waitpid(ctx->tid, &ctx->status);
+		state_changed(ctx);
+
+		rec_init_scratch_memory(ctx);
+		assert(signal_pending(ctx->status) == 0);
 		break;
-	}
 
 	case PTRACE_EVENT_EXIT:
-	{
-		(*ctx_ptr)->event = USR_EXIT;
-		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
-		rec_sched_deregister_thread(ctx_ptr);
+		ctx->event = USR_EXIT;
+		record_event(ctx, STATE_SYSCALL_EXIT);
+		rec_sched_deregister_thread(ctxp);
+		ctx = *ctxp;
 		break;
-	}
 
 	default:
-	{
 		log_err("Unknown ptrace event: %x -- bailing out", event);
 		sys_exit();
 		break;
 	}
-
-	} /* end switch */
 }
 
 #define debug_exec_state(_msg, _ctx)					\
@@ -369,7 +345,7 @@ void record(const struct flags* rr_flags)
 			 * the actual entry point of the syscall
 			 * (using cont_syscall_block()) and then using
 			 * the same logic as before. */
-			cont_block(ctx);
+			sys_ptrace_cont(ctx->tid);
 		} else {
 			/* We won't receive PTRACE_EVENT_SECCOMP
 			 * events until the seccomp filter is
@@ -377,9 +353,12 @@ void record(const struct flags* rr_flags)
 			 * child, therefore we must record in the
 			 * traditional way (with PTRACE_SYSCALL) until
 			 * it is installed. */
-			cont_syscall_block(ctx);
+			sys_ptrace_syscall(ctx->tid);
 		}
 		ctx->will_restart = 0;
+
+		sys_waitpid(ctx->tid, &ctx->status);
+		state_changed(ctx);
 
 		debug_exec_state("  first trap", ctx);
 
@@ -393,8 +372,11 @@ void record(const struct flags* rr_flags)
 			/* We require an extra continue, to get to the
 			 * actual syscall
 			 *
-			 * TODO: What if there's a signal in between? */
-			cont_syscall_block(ctx);
+			 * TODO: can we miss a signal in between the
+			 * ptrace-event-stop and the syscall-stop? */
+			sys_ptrace_syscall(ctx->tid);
+			sys_waitpid(ctx->tid, &ctx->status);
+			state_changed(ctx);
 
 			debug_exec_state("  post-seccomp trap", ctx);
 		}
@@ -418,7 +400,9 @@ void record(const struct flags* rr_flags)
 			debug("  sigreturn");
 			record_event(ctx, STATE_SYSCALL_ENTRY);
 			/* do another step */
-			cont_syscall_block(ctx);
+			sys_ptrace_syscall(ctx->tid);
+			sys_waitpid(ctx->tid, &ctx->status);
+			state_changed(ctx);
 
 			/* TODO: can signals interrupt a sigreturn? */
 			assert(signal_pending(ctx->status) != SIGTRAP);
