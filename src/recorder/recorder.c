@@ -187,6 +187,64 @@ static void handle_ptrace_event(struct context** ctxp)
 	debug(_msg ": pevent=%d, event=%s",				\
 	      GET_PTRACE_EVENT(_ctx->status), strevent(_ctx->event))
 
+/**
+ * Resume execution of |ctx| to the next notable event, such as a
+ * syscall.  |ctx->event| may be mutated if a signal is caught.
+ *
+ * (Pass DEFAULT_CONT to the |force_syscall| parameter and ignore it;
+ * it's an implementation detail.)
+ */
+enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
+static void resume_execution(struct context* ctx, int force_cont)
+{
+	int ptrace_event;
+
+	assert(RUNNABLE == ctx->exec_state);
+
+	debug_exec_state("EXEC_START", ctx);
+
+	if (ctx->will_restart && filter_on_) {
+		debug("  PTRACE_SYSCALL to restarted %s",
+		      syscallname(ctx->last_syscall));
+	}
+
+	if (!filter_on_ || FORCE_SYSCALL == force_cont || ctx->will_restart) {
+		/* We won't receive PTRACE_EVENT_SECCOMP events until
+		 * the seccomp filter is installed by the
+		 * syscall_buffer lib in the child, therefore we must
+		 * record in the traditional way (with PTRACE_SYSCALL)
+		 * until it is installed. */
+		sys_ptrace_syscall(ctx->tid);
+	} else {
+		/* When the seccomp filter is on, instead of capturing
+		 * syscalls by using PTRACE_SYSCALL, the filter will
+		 * generate the ptrace events. This means we allow the
+		 * process to run using PTRACE_CONT, and rely on the
+		 * seccomp filter to generate the special
+		 * PTRACE_EVENT_SECCOMP event once a syscall happens.
+		 * This event is handled here by simply allowing the
+		 * process to continue to the actual entry point of
+		 * the syscall (using cont_syscall_block()) and then
+		 * using the same logic as before. */
+		sys_ptrace_cont(ctx->tid);
+	}
+	ctx->will_restart = 0;
+
+	sys_waitpid(ctx->tid, &ctx->status);
+	state_changed(ctx);
+
+	debug_exec_state("  after resume", ctx);
+
+	ptrace_event = GET_PTRACE_EVENT(ctx->status);
+	if (PTRACE_EVENT_SECCOMP == ptrace_event
+	    || PTRACE_EVENT_SECCOMP_OBSOLETE == ptrace_event) {
+		filter_on_ = TRUE;
+		/* See long comments above. */
+		debug("  (skipping past seccomp-bpf trap)");
+		return resume_execution(ctx, FORCE_SYSCALL);
+	}
+}
+
 static void try_advance_syscall(struct context** ctxp)
 {
 	struct context* ctx = *ctxp;
@@ -258,6 +316,9 @@ static void try_advance_syscall(struct context** ctxp)
 			ctx->will_restart = 1;
 		}
 
+		/* TODO: are there any other points where we need to
+		 * handle ptrace events (other than the seccomp-bpf
+		 * traps)? */
 		handle_ptrace_event(ctxp);
 		ctx = *ctxp;
 		if (!ctx || ctx->event == SYS_vfork) {
@@ -318,68 +379,17 @@ void record(const struct flags* rr_flags)
 			try_advance_syscall(&ctx);
 			continue;
 		}
-		assert(RUNNABLE == ctx->exec_state);
-
-		debug_exec_state("EXEC_START", ctx);
 
 		if (progress++ % 10000 == 0) {
 			fprintf(stderr,".");
 			fflush(stdout);
 		}
 
-		if (ctx->will_restart && filter_on_) {
-			debug("  advancing to restarted %s",
-			      syscallname(ctx->last_syscall));
-		}
+		resume_execution(ctx, DEFAULT_CONT);
 
-		if (!ctx->will_restart && filter_on_) {
-			/* When the seccomp filter is on, instead of
-			 * capturing syscalls by using PTRACE_SYSCALL,
-			 * the filter will generate the ptrace
-			 * events. This means we allow the process to
-			 * run using PTRACE_CONT, and rely on the
-			 * seccomp filter to generate the special
-			 * PTRACE_EVENT_SECCOMP event once a syscall
-			 * happens.  This event is handled here by
-			 * simply allowing the process to continue to
-			 * the actual entry point of the syscall
-			 * (using cont_syscall_block()) and then using
-			 * the same logic as before. */
-			sys_ptrace_cont(ctx->tid);
-		} else {
-			/* We won't receive PTRACE_EVENT_SECCOMP
-			 * events until the seccomp filter is
-			 * installed by the syscall_buffer lib in the
-			 * child, therefore we must record in the
-			 * traditional way (with PTRACE_SYSCALL) until
-			 * it is installed. */
-			sys_ptrace_syscall(ctx->tid);
-		}
-		ctx->will_restart = 0;
-
-		sys_waitpid(ctx->tid, &ctx->status);
-		state_changed(ctx);
-
-		debug_exec_state("  first trap", ctx);
-
-		/* we must disallow the context switch here! */
+		/* Have to disable context-switching until we know
+		 * it's safe to allow switching the context. */
 		ctx->switchable = 0;
-
-		int ptrace_event = GET_PTRACE_EVENT(ctx->status);
-		if (ptrace_event == PTRACE_EVENT_SECCOMP
-		    || ptrace_event == PTRACE_EVENT_SECCOMP_OBSOLETE) {
-			filter_on_ = TRUE;
-			/* We require an extra continue, to get to the
-			 * actual syscall
-			 *
-			 * TODO: can we miss a signal in between the
-			 * ptrace-event-stop and the syscall-stop? */
-			sys_ptrace_syscall(ctx->tid);
-			sys_waitpid(ctx->tid, &ctx->status);
-			state_changed(ctx);
-
-			debug_exec_state("  post-seccomp trap", ctx);
-		}
 
 		if (ctx->event < 0) {
 			/* handle_signal() took care of recording any
