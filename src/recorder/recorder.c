@@ -468,5 +468,5 @@ void record(const struct flags* rr_flags)
 
 		resume_execution(ctx, DEFAULT_CONT);
 		runnable_state_changed(ctx);
-	} /* while loop */
+	}
 }

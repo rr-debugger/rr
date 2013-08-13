@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef CONTEXT_H_
-#define CONTEXT_H_
+#ifndef TASK_H_
+#define TASK_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -24,17 +24,42 @@ struct syscallbuf_record;
  * so no distinction is made here.
  */
 struct context {
-	struct trace_frame trace;
-	struct hpc_context* hpc;
+	/* State only used during recording. */
 
-	/* recorder */
+	/* Whether switching away from this context is allowed in its
+	 * current state.  Some operations must be completed
+	 * atomically and aren't switchable. */
+	int switchable;
+	/* Number of times this context has been scheduled in a row,
+	 * which approximately corresponds to the number of events
+	 * it's processed in succession.  The scheduler maintains this
+	 * state and uses it to make scheduling decisions. */
+	int succ_event_counter;
+
+	/* Imagine that task A passes buffer |b| to the read()
+	 * syscall.  Imagine that, after A is switched out for task B,
+	 * task B then writes to |b|.  Then B is switched out for A.
+	 * Since rr doesn't schedule the kernel code, the result is
+	 * nondeterministic.  To avoid that class of replay
+	 * divergence, we "redirect" (in)outparams passed to may-block
+	 * syscalls, to "scratch memory".  The kernel writes to
+	 * scratch deterministically, and when A (in the example
+	 * above) exits its read() syscall, rr copies the scratch data
+	 * back to the original buffers, serializing A and B in the
+	 * example above.
+	 *
+	 * |scratch_ptr| points at the mapped address in the child,
+	 * |size| is the total available space, and |len| is the *
+	 * amount currently in use. */
+	void *scratch_ptr;
+	size_t scratch_size;
+	size_t scratch_len;
 
 	enum {
 		RUNNABLE = 1,
 		ENTERING_SYSCALL, PROCESSING_SYSCALL, EXITING_SYSCALL
 	} exec_state;
 	int event;
-	int switchable;
 	/* Record of the syscall that was interrupted by a desched
 	 * notification.  It's legal to reference this memory /while
 	 * the desched is being processed only/, because |ctx| is in
@@ -47,12 +72,6 @@ struct context {
 	 * next available slow (taking |desched| into
 	 * consideration). */
 	int flushed_syscallbuf;
-
-	void *scratch_ptr;
-	size_t scratch_size;
-	size_t scratch_len;
-
-	int switch_counter;
 
 	int last_syscall;
 	/* Nonzero when the current syscall (saved to |last_syscall|
@@ -118,11 +137,18 @@ struct context {
 	 * dup. */
 	int desched_fd, desched_fd_child;
 
-	/* replay */
+	/* State used only during replay. */
 
 	int child_sig;
 
-	/* shared */
+	/* State used during both recording and replay. */
+
+	struct trace_frame trace;
+	struct hpc_context* hpc;
+
+	/* The most recent status of this task as returned by
+	 * waitpid(). */
+	int status;
 
 	struct user_regs_struct regs;
 	FILE *inst_dump;
@@ -133,7 +159,6 @@ struct context {
 	 * it's the tid that was recorded. */
 	pid_t rec_tid;
 	int child_mem_fd;
-	int status;
 
 	/* The instruction pointer from which untraced syscalls will
 	 * originate, used to determine whether a syscall is being
@@ -152,4 +177,4 @@ struct context {
 	RB_ENTRY(context) entry;
 };
 
-#endif /* CONTEXT_H_ */
+#endif /* TASK_H_ */
