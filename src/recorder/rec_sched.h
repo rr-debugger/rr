@@ -15,8 +15,17 @@ struct context;
 struct flags;
 
 int rec_sched_get_num_threads();
+/**
+ * Given |flags| and the previously-scheduled task |ctx|, return a new
+ * runnable task (which may be |ctx|).
+ *
+ * If the returned task was scheduled because its waitpid status
+ * changed (meaning no tasks ahead of it in run order were runnable),
+ * then set |by_waitpid| to nonzero.
+ */
 struct context* rec_sched_get_active_thread(const struct flags* flags,
-					    struct context* ctx);
+					    struct context* ctx,
+					    int* by_waitpid);
 void rec_sched_register_thread(const struct flags* flags,
 			       pid_t parent, pid_t child);
 void rec_sched_deregister_thread(struct context** ctx);
