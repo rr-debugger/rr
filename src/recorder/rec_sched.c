@@ -79,13 +79,20 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 
 	if (ctx && !ctx->switchable) {
 		debug("  (%d is un-switchable)", ctx->tid);
-		/* TODO: if |ctx| is blocked on a syscall, returning
-		 * it now will cause a spin-loop when the recorder
-		 * sees that |ctx|'s state hasn't changed and asks us
-		 * to schedule another context, from which we'll be
-		 * forced to return |ctx| again because it's not
-		 * switchable.  Then the recorder will ask us to
-		 * schedule another context, and ... */
+		if (PROCESSING_SYSCALL == ctx->exec_state) {
+			debug("  and not runnable; waiting for state change");
+			/* |ctx| is un-switchable, but not runnable in
+			 * this state.  Wait for it to change state
+			 * before "scheduling it", so avoid
+			 * busy-waiting with our client.
+			 *
+			 * TODO: warn about long waits here,
+			 * indicating that the syscall should be made
+			 * switchable if possible. */
+			sys_waitpid(ctx->tid, &ctx->status);
+			*by_waitpid = 1;
+			debug("  new status is %s, ctx->status");
+		}
 		return ctx;
 	}
 
