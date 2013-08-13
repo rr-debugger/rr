@@ -11,11 +11,6 @@
 /* TODO: should check kernel.pid_max at runtime.  */
 #define MAX_TID	(1 << 16)
 
-#define EXEC_STATE_START			0x1
-#define EXEC_STATE_ENTRY_SYSCALL		0x2
-#define EXEC_STATE_IN_SYSCALL			0x3
-#define EXEC_STATE_IN_SYSCALL_DONE		0x4
-
 struct context;
 struct flags;
 

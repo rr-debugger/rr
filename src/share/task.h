@@ -29,7 +29,10 @@ struct context {
 
 	/* recorder */
 
-	int exec_state;
+	enum {
+		RUNNABLE = 1,
+		ENTERING_SYSCALL, PROCESSING_SYSCALL, EXITING_SYSCALL
+	} exec_state;
 	int event;
 	int switchable;
 	/* Record of the syscall that was interrupted by a desched

@@ -143,7 +143,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 	{
 		rec_process_syscall(*ctx_ptr, (*ctx_ptr)->event, rr_flags_);
 		record_event((*ctx_ptr), STATE_SYSCALL_EXIT);
-		(*ctx_ptr)->exec_state = EXEC_STATE_START;
+		(*ctx_ptr)->exec_state = RUNNABLE;
 		(*ctx_ptr)->switchable = 1;
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		cont_syscall_block(*ctx_ptr);
@@ -170,7 +170,7 @@ static void handle_ptrace_event(struct context **ctx_ptr)
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
 		 * child has finished */
 		if (event == PTRACE_EVENT_VFORK) {
-			(*ctx_ptr)->exec_state = EXEC_STATE_IN_SYSCALL;
+			(*ctx_ptr)->exec_state = PROCESSING_SYSCALL;
 			(*ctx_ptr)->switchable = 1;
 			record_event((*ctx_ptr), STATE_SYSCALL_ENTRY);
 			cont_nonblock((*ctx_ptr));
@@ -216,7 +216,7 @@ static void try_advance_syscall(struct context** ctxp)
 	struct context* ctx = *ctxp;
 
 	switch (ctx->exec_state) {
-	case EXEC_STATE_ENTRY_SYSCALL:
+	case ENTERING_SYSCALL:
 		debug_exec_state("EXEC_SYSCALL_ENTRY", ctx);
 
 		/* continue and execute the system call */
@@ -225,10 +225,10 @@ static void try_advance_syscall(struct context** ctxp)
 
 		debug_exec_state("after cont", ctx);
 
-		ctx->exec_state = EXEC_STATE_IN_SYSCALL;
+		ctx->exec_state = PROCESSING_SYSCALL;
 		return;
 
-	case EXEC_STATE_IN_SYSCALL: {
+	case PROCESSING_SYSCALL: {
 		int ret;
 
 		debug_exec_state("EXEC_IN_SYSCALL", ctx);
@@ -238,13 +238,13 @@ static void try_advance_syscall(struct context** ctxp)
 		debug_exec_state("  after wait", ctx);
 
 		if (ret) {
-			ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+			ctx->exec_state = EXITING_SYSCALL;
 			ctx->switchable = 0;
 		}
 		return;
 	}
 
-	case EXEC_STATE_IN_SYSCALL_DONE: {
+	case EXITING_SYSCALL: {
 		struct user_regs_struct regs;
 		int syscall, retval;
 
@@ -303,7 +303,7 @@ static void try_advance_syscall(struct context** ctxp)
 			rec_process_syscall(ctx, syscall, rr_flags_);
 		}
 		record_event(ctx, STATE_SYSCALL_EXIT);
-		ctx->exec_state = EXEC_STATE_START;
+		ctx->exec_state = RUNNABLE;
 		ctx->switchable = 1;
 		if (ctx->desched_rec) {
 			assert(ctx->syscallbuf_hdr->abort_commit);
@@ -338,11 +338,11 @@ void record(const struct flags* rr_flags)
 			rec_init_scratch_memory(ctx);
 		}
 
-		if (ctx->exec_state > EXEC_STATE_START) {
+		if (ctx->exec_state > RUNNABLE) {
 			try_advance_syscall(&ctx);
 			continue;
 		}
-		assert(EXEC_STATE_START == ctx->exec_state);
+		assert(RUNNABLE == ctx->exec_state);
 
 		debug_exec_state("EXEC_START", ctx);
 
@@ -433,7 +433,7 @@ void record(const struct flags* rr_flags)
 		} else if (ctx->event > 0) {
 			/* We'll record the syscall-entry event
 			 * below. */
-			ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+			ctx->exec_state = ENTERING_SYSCALL;
 		} else if (ctx->event == SYS_restart_syscall) {
 			/* Syscalls like nanosleep(), poll() which
 			 * can't be restarted with their original
@@ -464,7 +464,7 @@ void record(const struct flags* rr_flags)
 			 * that ptrace can observe these at syscall
 			 * exit tracing, but they will never be left
 			 * for the debugged user process to see. */
-			ctx->exec_state = EXEC_STATE_ENTRY_SYSCALL;
+			ctx->exec_state = ENTERING_SYSCALL;
 			/* We do not record the syscall_restart event
 			 * as it will not appear in the replay */
 			continue;

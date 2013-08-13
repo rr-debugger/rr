@@ -101,13 +101,13 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 
 		next_ctx = &entry->ctx;
 		tid = next_ctx->tid;
-		if (EXEC_STATE_IN_SYSCALL != next_ctx->exec_state) {
+		if (PROCESSING_SYSCALL != next_ctx->exec_state) {
 			debug("  %d isn't blocked, done", tid);
 			break;
 		}
 		debug("  %d is blocked, checking status ...", tid);
 		if (0 != sys_waitpid_nonblock(tid, &next_ctx->status)) {
-			next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+			next_ctx->exec_state = EXITING_SYSCALL;
 			debug("  ready!");
 			break;
 		}
@@ -137,10 +137,10 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 		entry = get_entry(tid);
 		next_ctx = &entry->ctx;
 
-		assert(EXEC_STATE_IN_SYSCALL == next_ctx->exec_state);
+		assert(PROCESSING_SYSCALL == next_ctx->exec_state);
 
 		next_ctx->status = status;
-		next_ctx->exec_state = EXEC_STATE_IN_SYSCALL_DONE;
+		next_ctx->exec_state = EXITING_SYSCALL;
 	}
 
 	current_entry = entry;
@@ -179,7 +179,7 @@ void rec_sched_register_thread(const struct flags* flags,
 
 	assert(child > 0 && child < MAX_TID);
 
-	ctx->exec_state = EXEC_STATE_START;
+	ctx->exec_state = RUNNABLE;
 	ctx->status = 0;
 	ctx->rec_tid = ctx->tid = child;
 	ctx->child_mem_fd = sys_open_child_mem(child);
