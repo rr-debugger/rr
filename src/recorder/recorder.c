@@ -343,7 +343,6 @@ static void try_advance_syscall(struct context** ctxp)
 		ctx->exec_state = RUNNABLE;
 		ctx->switchable = 1;
 		if (ctx->desched_rec) {
-			assert(ctx->syscallbuf_hdr->abort_commit);
 			/* If this syscall was interrupted by a
 			 * desched event, then just after the finished
 			 * syscall there will be an ioctl() to disarm
@@ -352,6 +351,12 @@ static void try_advance_syscall(struct context** ctxp)
 			 * expect it and skip over it. */
 			ctx->desched_rec = NULL;
 			record_synthetic_event(ctx, USR_DISARM_DESCHED);
+			/* We also need to ensure that the syscallbuf
+			 * doesn't try to commit to the syscallbuf;
+			 * we've already recorded the syscall. */
+			ctx->syscallbuf_hdr->abort_commit = 1;
+			record_synthetic_event(ctx,
+					       USR_SYSCALLBUF_ABORT_COMMIT);
 		}
 		return;
 	}
@@ -398,7 +403,6 @@ void record(const struct flags* rr_flags)
 			 * switching after signals are delivered? */
 			ctx->switchable = (ctx->event == SIG_SEGV_RDTSC
 					   || ctx->event == USR_SCHED);
-			continue;
 		} else if (ctx->event == SYS_sigreturn
 			   || ctx->event == SYS_rt_sigreturn) {
 			int orig_event = ctx->event;
@@ -409,6 +413,7 @@ void record(const struct flags* rr_flags)
 			 * process the sigreturn system call. */
 			debug("  sigreturn");
 			record_event(ctx, STATE_SYSCALL_ENTRY);
+			assert(!ctx->flushed_syscallbuf);
 			/* do another step */
 			sys_ptrace_syscall(ctx->tid);
 			sys_waitpid(ctx->tid, &ctx->status);
@@ -423,10 +428,15 @@ void record(const struct flags* rr_flags)
 			ctx->event = orig_event;
 			record_event(ctx, STATE_SYSCALL_EXIT);
 			ctx->switchable = 0;
-			continue;
 		} else if (ctx->event > 0) {
-			/* We'll record the syscall-entry event
-			 * below. */
+			if (ctx->desched_rec) {
+				/* Replay needs to be prepared to see the
+				 * ioctl() that arms the desched counter when
+				 * it's trying to step to the entry of
+				 * |call|. */
+				record_synthetic_event(ctx, USR_ARM_DESCHED);
+			}
+			record_event(ctx, STATE_SYSCALL_ENTRY);
 			ctx->exec_state = ENTERING_SYSCALL;
 		} else if (ctx->event == SYS_restart_syscall) {
 			/* Syscalls like nanosleep(), poll() which
@@ -467,24 +477,9 @@ void record(const struct flags* rr_flags)
 			      strevent(ctx->event), ctx->event);
 		}
 
-		if (ctx->desched_rec) {
-			/* Replay needs to be prepared to see the
-			 * ioctl() that arms the desched counter when
-			 * it's trying to step to the entry of
-			 * |call|. */
-			record_synthetic_event(ctx, USR_ARM_DESCHED);
-		}
-
-		record_event(ctx, STATE_SYSCALL_ENTRY);
-
 		if (ctx->flushed_syscallbuf) {
 			record_synthetic_event(ctx, USR_SYSCALLBUF_RESET);
 			ctx->flushed_syscallbuf = 0;
-		}
-		if (ctx->desched_rec) {
-			ctx->syscallbuf_hdr->abort_commit = 1;
-			record_synthetic_event(ctx,
-					       USR_SYSCALLBUF_ABORT_COMMIT);
 		}
 	} /* while loop */
 }
