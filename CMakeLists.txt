@@ -41,6 +41,7 @@ add_executable(rr
   src/share/ipc.c
   src/share/shmem.c
   src/share/sys.c
+  src/share/task.c
   src/share/trace.c
   src/share/util.c
 )

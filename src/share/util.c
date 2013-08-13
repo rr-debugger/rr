@@ -377,9 +377,13 @@ void emulate_child_inst(struct context * ctx, int eip_offset)
 		flags0.b.OF = flags.b.OF;
 		regs.eflags = flags0.l;
 		regs.eip += size; // move past the instruction
-		record_child_data(ctx, SIG_SEGV_MMAP_READ, sizeof(long), (void*)regs.eax);
+
+		push_pseudosig(ctx, ESIG_SEGV_MMAP_READ, HAS_EXEC_INFO);
+		record_child_data(ctx, sizeof(long), (void*)regs.eax);
 		//record_parent_data(ctx,SIG_SEGV_MMAP_READ,sizeof(long),regs.eax, &right_op);
-		record_event(ctx,STATE_PRE_MMAP_ACCESS);
+		record_event(ctx);
+		pop_pseudosig(ctx);
+
 		write_child_registers(tid,&regs);
 	} else {
 		log_err("instruction (%s) emulation not supported yet.",inst);

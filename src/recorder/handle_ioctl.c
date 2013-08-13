@@ -72,7 +72,9 @@ void handle_ioctl_request(struct context *ctx, int request)
 	case TIOCGPGRP:
 	/* request for a terminal device */
 	case TIOCGWINSZ:
-		record_child_data(ctx, syscall, size, (void*)regs.edx);
+		push_syscall(ctx, syscall);
+		record_child_data(ctx, size, (void*)regs.edx);
+		pop_syscall(ctx);
 		break;
 
 	/* TODO: what are the 0x46 ioctls? */

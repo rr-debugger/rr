@@ -73,7 +73,10 @@ static int try_handle_rdtsc(struct context *ctx)
 		write_child_registers(tid, &regs);
 
 		ctx->event = SIG_SEGV_RDTSC;
-		record_event(ctx, STATE_SYSCALL_ENTRY);
+		push_pseudosig(ctx, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);
+		record_event(ctx);
+		pop_pseudosig(ctx);
+
 		handled = 1;
 
 		debug("  trapped for rdtsc: returning %llu", current_time);
@@ -352,7 +355,9 @@ static int is_deterministic_signal(const siginfo_t* si)
 static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 			  uint64_t max_rbc)
 {
-	if (is_deterministic_signal(si)) {
+	push_signal(ctx, sig, is_deterministic_signal(si));
+
+	if (ctx->ev->signal.deterministic) {
 		ctx->event = -(sig | DET_SIGNAL_BIT);
 	} else {
 		ctx->event = -sig;
@@ -360,7 +365,7 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 
 	/* This event is used by the replayer to advance to the point
 	 * of signal delivery. */
-	record_event(ctx, STATE_SYSCALL_ENTRY);
+	record_event(ctx);
 	reset_hpc(ctx, max_rbc); // TODO: the hpc gets reset in record event.
 	assert(read_insts(ctx->hpc) == 0);
 	// enter the sig handler
@@ -373,12 +378,14 @@ static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
 	size_t frame_size = (insts == 0) ? 1024 : 0;
 	struct user_regs_struct regs;
 	read_child_registers(ctx->tid, &regs);
-	record_child_data(ctx, ctx->event, frame_size, (void*)regs.esp);
+	record_child_data(ctx, frame_size, (void*)regs.esp);
 
 	/* This event is used to set up the signal handler frame, or
 	 * to record the resulting state of the stepi if there wasn't
 	 * a signal handler. */
-	record_event(ctx, STATE_SYSCALL_ENTRY);
+	record_event(ctx);
+
+	pop_signal(ctx);
 }
 
 static int is_trace_trap(const siginfo_t* si)
@@ -683,12 +690,14 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 			/* HPC interrupt due to exceeding time
 			 * slice. */
 			ctx->event = USR_SCHED;
+			push_pseudosig(ctx, EUSR_SCHED, HAS_EXEC_INFO);
 			/* TODO: only record the SCHED event if it
 			 * actually results in a context switch, since
 			 * this will flush the syscallbuf and can
 			 * cause replay to be pathologically slow in
 			 * certain cases. */
-			record_event(ctx, STATE_SYSCALL_ENTRY);
+			record_event(ctx);
+			pop_pseudosig(ctx);
 			return;
 		}
 		break;

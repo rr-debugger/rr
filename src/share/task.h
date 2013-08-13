@@ -15,6 +15,87 @@ struct syscallbuf_hdr;
 struct syscallbuf_record;
 
 /**
+ * Events are interesting occurrences during tracee execution which
+ * are relevant for replay.  Most events correspond to tracee
+ * execution, but some (a subset of "pseudosigs" save actions that the
+ * *recorder* took on behalf of the tracee.
+ */
+struct event {
+	enum {
+		EV_NONE, EV_PSEUDOSIG, EV_SIGNAL, EV_SYSCALL
+	} type;
+	union {
+		/**
+		 * Pseudosignals comprise three types of events: real,
+		 * deterministic signals raised by tracee execution
+		 * (e.g. tracees executing rdtsc); real signals raised
+		 * because of rr implementation details, not the
+		 * tracee (e.g., time-slice interrupts); and finally,
+		 * "signals" from the recorder to the replayer that
+		 * aren't real signals at all, but rather rr
+		 * implementation details at the level of the tracer.
+		 */
+		struct {
+			/* TODO: un-gnarl these names when we
+			 * eliminate the duplication in trace.h */
+			enum { ESIG_NONE,
+			       ESIG_SEGV_MMAP_READ, ESIG_SEGV_MMAP_WRITE,
+			       ESIG_SEGV_RDTSC,
+			       EUSR_EXIT, EUSR_SCHED, EUSR_NEW_RAWDATA_FILE,
+			       EUSR_INIT_SCRATCH_MEM,
+			       EUSR_SYSCALLBUF_FLUSH,
+			       EUSR_SYSCALLBUF_ABORT_COMMIT,
+			       EUSR_SYSCALLBUF_RESET,
+			       EUSR_ARM_DESCHED,
+			       EUSR_DISARM_DESCHED,
+			} no;
+			/* When replaying a pseudosignal is expected
+			 * to leave the tracee in the same execution
+			 * state as during replay, the event has
+			 * meaningful execution info, and it should be
+			 * recorded for checking.  But some pseudosigs
+			 * aren't recorded in the same tracee state
+			 * they'll be replayed, so the tracee
+			 * exeuction state isn't meaningful. */
+			int has_exec_info;
+		} pseudosig;
+
+		/**
+		 * Syscall events track syscalls through entry into
+		 * the kernel, processing in the kernel, and exit from
+		 * the kernel.
+		 */
+		struct {
+			/* TODO: |RUNNABLE| is a temporary guest in
+			 * this enum while refactorings are in
+			 * progress. */
+			enum { NO_SYSCALL,
+			       RUNNABLE = 1,
+			       ENTERING_SYSCALL, PROCESSING_SYSCALL,
+			       EXITING_SYSCALL } state;
+			/* Syscall number. */
+			int no;
+		} syscall;
+
+		/**
+		 * Signal events track signals through the delivery
+		 * phase, and if the signal finds a sighandler, on to
+		 * the end of the handling face.
+		 */
+		struct {
+			/* Signal number. */
+			int no;
+			/* Nonzero if this signal will be
+			 * deterministically raised as the side effect
+			 * of retiring an instruction during replay,
+			 * for example |load $r 0x0| deterministically
+			 * raises SIGSEGV. */
+			int deterministic;
+		} signal;
+	};
+};
+
+/**
  * A "context" is a task, in the linux usage: the unit of scheduling.
  * (OS people sometimes call this a "thread control block".)  Multiple
  * tasks may share the same address space and file descriptors, in
@@ -25,6 +106,13 @@ struct syscallbuf_record;
  */
 struct context {
 	/* State only used during recording. */
+
+	/* For convenience, the current top of |pending_events| if
+	 * there are any, or NULL.  Never reassign this pointer
+	 * directly; use the push_*()/pop_*() helpers below. */
+	struct event* ev;
+	/* The current stack of events being processed. */
+	FIXEDSTACK_DECL(, struct event, 2) pending_events;
 
 	/* Whether switching away from this context is allowed in its
 	 * current state.  Some operations must be completed
@@ -55,10 +143,7 @@ struct context {
 	size_t scratch_size;
 	size_t scratch_len;
 
-	enum {
-		RUNNABLE = 1,
-		ENTERING_SYSCALL, PROCESSING_SYSCALL, EXITING_SYSCALL
-	} exec_state;
+	int exec_state;
 	int event;
 	/* Record of the syscall that was interrupted by a desched
 	 * notification.  It's legal to reference this memory /while
@@ -176,5 +261,30 @@ struct context {
 
 	RB_ENTRY(context) entry;
 };
+
+/**
+ * Push/pop pseudo-sig events on the pending stack.  |no| is the enum
+ * value of the pseudosig (see above), and |record_exec_info| is true
+ * if the tracee's current state can be replicated during replay and
+ * so should be recorded for consistency-checking purposes.
+ */
+enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
+void push_pseudosig(struct context* ctx, int no, int has_exec_info);
+void pop_pseudosig(struct context* ctx);
+
+/**
+ * Push/pop signal events on the pending stack.  |no| is the signum,
+ * and |deterministic| is nonzero for deterministically-delivered
+ * signals (see handle_signal.c).
+ */
+void push_signal(struct context* ctx, int no, int deterministic);
+void pop_signal(struct context* ctx);
+
+/**
+ * Push/pop syscall events on the pending stack.  |no| is the syscall
+ * number.
+ */
+void push_syscall(struct context* ctx, int no);
+void pop_syscall(struct context* ctx);
 
 #endif /* TASK_H_ */
