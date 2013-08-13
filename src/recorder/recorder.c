@@ -84,23 +84,6 @@ static void cont_nonblock(struct context *ctx)
 	sys_ptrace_syscall(ctx->tid);
 }
 
-static int wait_nonblock(struct context *ctx)
-{
-	int ret = sys_waitpid_nonblock(ctx->tid, &(ctx->status));
-	if (ret) {
-		assert(WIFEXITED(ctx->status) == 0);
-		if (signal_pending(ctx->status)) {
-			/* TODO: need state stack to properly handle
-			 * signals, if they indeed are ever delivered
-			 * in this state. */
-			log_warn("Signal %s probably won't be handled correctly",
-				 signalname(signal_pending(ctx->status)));
-		}
-		status_changed(ctx);
-	}
-	return ret;
-}
-
 uintptr_t progress;
 
 static void handle_ptrace_event(struct context** ctxp)
@@ -245,15 +228,9 @@ static void resume_execution(struct context* ctx, int force_cont)
 	}
 }
 
-static void try_advance_syscall(struct context** ctxp, int by_waitpid)
+static void syscall_state_changed(struct context** ctxp, int by_waitpid)
 {
 	struct context* ctx = *ctxp;
-
-	if (by_waitpid) {
-		assert(ctx->exec_state = PROCESSING_SYSCALL);
-		ctx->exec_state = EXITING_SYSCALL;
-		ctx->switchable = 0;
-	}
 
 	switch (ctx->exec_state) {
 	case ENTERING_SYSCALL:
@@ -268,21 +245,23 @@ static void try_advance_syscall(struct context** ctxp, int by_waitpid)
 		ctx->exec_state = PROCESSING_SYSCALL;
 		return;
 
-	case PROCESSING_SYSCALL: {
-		int ret;
-
+	case PROCESSING_SYSCALL:
 		debug_exec_state("EXEC_IN_SYSCALL", ctx);
 
-		ret = wait_nonblock(ctx);
+		assert(ctx->exec_state = PROCESSING_SYSCALL);
+		assert(by_waitpid);
 
-		debug_exec_state("  after wait", ctx);
-
-		if (ret) {
-			ctx->exec_state = EXITING_SYSCALL;
-			ctx->switchable = 0;
+		if (signal_pending(ctx->status)) {
+			/* TODO: need state stack to properly handle
+			 * signals, if they indeed are ever delivered
+			 * in this state. */
+			log_warn("Signal %s may not be handled correctly",
+				 signalname(signal_pending(ctx->status)));
 		}
+		status_changed(ctx);
+		ctx->exec_state = EXITING_SYSCALL;
+		ctx->switchable = 0;
 		return;
-	}
 
 	case EXITING_SYSCALL: {
 		struct user_regs_struct regs;
@@ -391,7 +370,7 @@ void record(const struct flags* rr_flags)
 
 		assert(!by_waitpid || PROCESSING_SYSCALL == ctx->exec_state);
 		if (ctx->exec_state > RUNNABLE) {
-			try_advance_syscall(&ctx, by_waitpid);
+			syscall_state_changed(&ctx, by_waitpid);
 			continue;
 		}
 

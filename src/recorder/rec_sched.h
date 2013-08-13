@@ -19,9 +19,9 @@ int rec_sched_get_num_threads();
  * Given |flags| and the previously-scheduled task |ctx|, return a new
  * runnable task (which may be |ctx|).
  *
- * If the returned task was scheduled because its waitpid status
- * changed (meaning no tasks ahead of it in run order were runnable),
- * then set |by_waitpid| to nonzero.
+ * The returned task is guaranteed to either have already been
+ * runnable, or have been made runnable by a waitpid status change (in
+ * which case, *by_waitpid will be nonzero.)
  */
 struct context* rec_sched_get_active_thread(const struct flags* flags,
 					    struct context* ctx,
