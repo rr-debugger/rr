@@ -51,9 +51,9 @@ static void note_switch(struct context* prev_ctx, struct context* ctx,
 			int max_events)
 {
 	if (prev_ctx == ctx) {
-		ctx->switch_counter--;
+		ctx->succ_event_counter++;
 	} else {
-		ctx->switch_counter = max_events;
+		ctx->succ_event_counter = 0;
 	}
 }
 
@@ -98,10 +98,10 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 
 	/* Prefer switching to the next task if the current one
 	 * exceeded its event limit. */
-	if (ctx && ctx->switch_counter < 0) {
+	if (ctx && ctx->succ_event_counter > max_events) {
 		debug("  previous task exceeded event limit, preferring next");
 		entry = current_entry = next_entry(entry);
-		ctx->switch_counter = max_events;
+		ctx->succ_event_counter = 0;
 	}
 
 	/* Go around the task list exactly one time looking for a
