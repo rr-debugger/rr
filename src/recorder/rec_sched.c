@@ -62,13 +62,16 @@ static void note_switch(struct context* prev_ctx, struct context* ctx,
  * round-robin fashion.
  */
 struct context* rec_sched_get_active_thread(const struct flags* flags,
-					    struct context* ctx)
+					    struct context* ctx,
+					    int* by_waitpid)
 {
 	int max_events = flags->max_events;
 	struct tasklist_entry* entry = current_entry;
 	struct context* next_ctx = NULL;
 
 	debug("Scheduling next task");
+
+	*by_waitpid = 0;
 
 	if (!entry) {
 		entry = current_entry = CIRCLEQ_FIRST(&head);
@@ -107,7 +110,7 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 		}
 		debug("  %d is blocked, checking status ...", tid);
 		if (0 != sys_waitpid_nonblock(tid, &next_ctx->status)) {
-			next_ctx->exec_state = EXITING_SYSCALL;
+			*by_waitpid = 1;
 			debug("  ready!");
 			break;
 		}
@@ -137,10 +140,8 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 		entry = get_entry(tid);
 		next_ctx = &entry->ctx;
 
-		assert(PROCESSING_SYSCALL == next_ctx->exec_state);
-
 		next_ctx->status = status;
-		next_ctx->exec_state = EXITING_SYSCALL;
+		*by_waitpid = 1;
 	}
 
 	current_entry = entry;

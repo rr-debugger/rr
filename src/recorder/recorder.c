@@ -69,7 +69,7 @@ static void rec_init_scratch_memory(struct context *ctx)
 	write_child_registers(ctx->tid,&orig_regs);
 }
 
-static void state_changed(struct context* ctx)
+static void status_changed(struct context* ctx)
 {
 	read_child_registers(ctx->tid, &ctx->regs);
 	ctx->event = ctx->regs.orig_eax;
@@ -96,7 +96,7 @@ static int wait_nonblock(struct context *ctx)
 			log_warn("Signal %s probably won't be handled correctly",
 				 signalname(signal_pending(ctx->status)));
 		}
-		state_changed(ctx);
+		status_changed(ctx);
 	}
 	return ret;
 }
@@ -124,7 +124,7 @@ static void handle_ptrace_event(struct context** ctxp)
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		sys_ptrace_syscall(ctx->tid);
 		sys_waitpid(ctx->tid, &ctx->status);
-		state_changed(ctx);
+		status_changed(ctx);
 
 		record_event(ctx, STATE_SYSCALL_EXIT);
 		break;
@@ -153,7 +153,7 @@ static void handle_ptrace_event(struct context** ctxp)
 		} else {
 			sys_ptrace_syscall(ctx->tid);
 			sys_waitpid(ctx->tid, &ctx->status);
-			state_changed(ctx);
+			status_changed(ctx);
 		}
 		break;
 	}
@@ -163,7 +163,7 @@ static void handle_ptrace_event(struct context** ctxp)
 
 		sys_ptrace_syscall(ctx->tid);
 		sys_waitpid(ctx->tid, &ctx->status);
-		state_changed(ctx);
+		status_changed(ctx);
 
 		rec_init_scratch_memory(ctx);
 		assert(signal_pending(ctx->status) == 0);
@@ -231,7 +231,7 @@ static void resume_execution(struct context* ctx, int force_cont)
 	ctx->will_restart = 0;
 
 	sys_waitpid(ctx->tid, &ctx->status);
-	state_changed(ctx);
+	status_changed(ctx);
 
 	debug_exec_state("  after resume", ctx);
 
@@ -245,9 +245,15 @@ static void resume_execution(struct context* ctx, int force_cont)
 	}
 }
 
-static void try_advance_syscall(struct context** ctxp)
+static void try_advance_syscall(struct context** ctxp, int by_waitpid)
 {
 	struct context* ctx = *ctxp;
+
+	if (by_waitpid) {
+		assert(ctx->exec_state = PROCESSING_SYSCALL);
+		ctx->exec_state = EXITING_SYSCALL;
+		ctx->switchable = 0;
+	}
 
 	switch (ctx->exec_state) {
 	case ENTERING_SYSCALL:
@@ -372,7 +378,10 @@ void record(const struct flags* rr_flags)
 	struct context *ctx = NULL;
 
 	while (rec_sched_get_num_threads() > 0) {
-		ctx = rec_sched_get_active_thread(&rr_flags_, ctx);
+		int by_waitpid;
+
+		ctx = rec_sched_get_active_thread(&rr_flags_, ctx,
+						  &by_waitpid);
 
 		debug("Active task is %d", ctx->tid);
 
@@ -380,8 +389,9 @@ void record(const struct flags* rr_flags)
 			rec_init_scratch_memory(ctx);
 		}
 
+		assert(!by_waitpid || PROCESSING_SYSCALL == ctx->exec_state);
 		if (ctx->exec_state > RUNNABLE) {
-			try_advance_syscall(&ctx);
+			try_advance_syscall(&ctx, by_waitpid);
 			continue;
 		}
 
@@ -417,7 +427,7 @@ void record(const struct flags* rr_flags)
 			/* do another step */
 			sys_ptrace_syscall(ctx->tid);
 			sys_waitpid(ctx->tid, &ctx->status);
-			state_changed(ctx);
+			status_changed(ctx);
 
 			/* TODO: can signals interrupt a sigreturn? */
 			assert(signal_pending(ctx->status) != SIGTRAP);
