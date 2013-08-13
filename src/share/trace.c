@@ -116,6 +116,65 @@ const char* strevent(int event)
 	return "???event";
 }
 
+/**
+ * Return the encoded event number of |ev| that's suitable for saving
+ * to trace.  |state| is set to the corresponding execution state.
+ */
+static int encode_event(struct event* ev, int* state)
+{
+	switch (ev->type) {
+	case EV_PSEUDOSIG:
+		/* (Arbitrary.) */
+		*state = STATE_SYSCALL_ENTRY;
+		switch (ev->pseudosig.no) {
+			/* TODO: unify these definitions. */
+#define TRANSLATE(_e) case E ##_e: return _e
+			TRANSLATE(SIG_SEGV_MMAP_READ);
+			TRANSLATE(SIG_SEGV_MMAP_WRITE);
+			TRANSLATE(SIG_SEGV_RDTSC);
+			TRANSLATE(USR_EXIT);
+			TRANSLATE(USR_SCHED);
+			TRANSLATE(USR_NEW_RAWDATA_FILE);
+			TRANSLATE(USR_INIT_SCRATCH_MEM);
+			TRANSLATE(USR_SYSCALLBUF_FLUSH);
+			TRANSLATE(USR_SYSCALLBUF_ABORT_COMMIT);
+			TRANSLATE(USR_SYSCALLBUF_RESET);
+			TRANSLATE(USR_ARM_DESCHED);
+			TRANSLATE(USR_DISARM_DESCHED);
+		default:
+			fatal("Unknown pseudosig %d", ev->pseudosig.no);
+#undef TRANSLATE
+		}
+
+	case EV_SIGNAL: {
+		int event = ev->signal.no;
+		/* (Arbitrary.) */
+		*state = STATE_SYSCALL_ENTRY;
+		if (ev->signal.deterministic) {
+			event |= DET_SIGNAL_BIT;
+		}
+		return -event;
+	}
+
+	case EV_SYSCALL: {
+		int event = ev->syscall.no;
+
+		assert(ev->syscall.state != PROCESSING_SYSCALL);
+
+		if (RRCALL_init_syscall_buffer == event) {
+			event = (-event | RRCALL_BIT);
+		}
+		*state = (ev->syscall.state == ENTERING_SYSCALL) ?
+			 STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
+		return event;
+	}
+
+	default:
+		fatal("Unknown event type %d", ev->type);
+		return -(1 << 30); /* not reached */
+	}
+}
+
 void write_open_inst_dump(struct context *ctx)
 {
 	char path[64];
@@ -340,7 +399,6 @@ static void record_performance_data(struct context *ctx)
 
 static void record_register_file(struct context *ctx)
 {
-
 	pid_t tid = ctx->tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
@@ -356,7 +414,6 @@ static void record_register_file(struct context *ctx)
 	fprintf(trace_file, "%11lx", regs.esp);
 	fprintf(trace_file, "%11lx", regs.eip);
 	fprintf(trace_file, "%11lu", regs.eflags);
-	fprintf(trace_file, "\n");
 }
 
 static void record_inst_register_file(struct context *ctx)
@@ -392,11 +449,13 @@ static void maybe_flush_syscallbuf(struct context *ctx)
 	}
 	/* Write the entire buffer in one shot without parsing it,
 	 * since replay will take care of that. */
-	record_parent_data(ctx, USR_SYSCALLBUF_FLUSH,
+	push_pseudosig(ctx, EUSR_SYSCALLBUF_FLUSH, NO_EXEC_INFO);
+	record_parent_data(ctx,
 			   /* Record the header for consistency checking. */
 			   ctx->syscallbuf_hdr->num_rec_bytes + sizeof(*ctx->syscallbuf_hdr),
 			   ctx->syscallbuf_child, ctx->syscallbuf_hdr);
-	record_synthetic_event(ctx, USR_SYSCALLBUF_FLUSH);
+	record_event(ctx);
+	pop_pseudosig(ctx);
 
 	/* Reset header. */
 	assert(!ctx->syscallbuf_hdr->abort_commit);
@@ -407,19 +466,25 @@ static void maybe_flush_syscallbuf(struct context *ctx)
 /**
  * Makes an entry into the event trace file
  */
-void record_event(struct context *ctx, int state)
+void record_event(struct context *ctx)
 {
-	// before anything is performed, check if the seccomp record cache has any entries
-	maybe_flush_syscallbuf(ctx);
+	struct event* ev = ctx->ev;
+	int state;
+	int event = encode_event(ev, &state);
+
+	if (USR_SYSCALLBUF_FLUSH != event) {
+		// before anything is performed, check if the seccomp record cache has any entries
+		maybe_flush_syscallbuf(ctx);
+	}
 
 	if (((global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (global_time > 0)) {
 		use_new_trace_file();
 	}
 
-	if (rr_flags_.dump_on == ctx->event ||
-		rr_flags_.dump_on == DUMP_ON_ALL ||
-		rr_flags_.dump_at == global_time) {
-        char pid_str[PATH_MAX];
+	if (rr_flags_.dump_on == ctx->event
+	    || rr_flags_.dump_on == DUMP_ON_ALL
+	    || rr_flags_.dump_at == global_time) {
+		char pid_str[PATH_MAX];
 		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),ctx->tid,get_global_time());
 		print_process_memory(ctx,pid_str);
 	}
@@ -431,41 +496,27 @@ void record_event(struct context *ctx, int state)
 		 && ctx)
 		checksum_process_memory(ctx);
 
-	fprintf(trace_file, "%11d%11u%11d%11d%11d", get_global_time_incr(),
-	        get_time_incr(ctx->tid), ctx->tid, ctx->event,
-	        state);
+	fprintf(trace_file, "%11d%11u%11d%11d", get_global_time_incr(),
+	        get_time_incr(ctx->tid), ctx->tid, event);
 
-	debug("trace: %11d%11u%11d%11d%11d", get_global_time_incr(),
-	      get_time_incr(ctx->tid), ctx->tid, ctx->event,
+	debug("trace: %11d%11u%11d%11d%11d", get_global_time(),
+	      get_time(ctx->tid), ctx->tid, event,
 	      state);
 
-	/* we record a system call */
-	//if (ctx->event != 0) {
+	if (EV_PSEUDOSIG != ev->type || ev->pseudosig.has_exec_info) {
+		fprintf(trace_file, "%11d", state);
+
 		record_performance_data(ctx);
 		record_register_file(ctx);
-		/* reset the performance counters */
 		reset_hpc(ctx, rr_flags_.max_rbc);
-	//} else {
-		//fprintf(trace_file, "\n");
-	//}
-}
-
-void record_synthetic_event(struct context* ctx, int event)
-{
-	/* Flush the syscall buffer if needed, but only if we're not
-	 * using this helper to record a syscall-buffer flush :). */
-	if (USR_SYSCALLBUF_FLUSH != event) {
-		maybe_flush_syscallbuf(ctx);
 	}
-	fprintf(trace_file, "%11d%11u%11d%11d\n",
-		get_global_time_incr(), get_time_incr(ctx->tid),
-		ctx->tid, event);
+	fprintf(trace_file, "\n");
 }
 
-static void print_header(int syscall, void* addr)
+static void print_header(int syscallno, void* addr)
 {
 	fprintf(syscall_header, "%11u", global_time);
-	fprintf(syscall_header, "%11d", syscall);
+	fprintf(syscall_header, "%11d", syscallno);
 	fprintf(syscall_header, "%11u", (uintptr_t)addr);
 }
 
@@ -545,15 +596,18 @@ static void write_raw_data(struct context *ctx, void *buf, size_t to_write)
 #define SMALL_READ_SIZE	4096
 static char read_buffer[SMALL_READ_SIZE];
 
-void record_child_data(struct context *ctx, int syscall, size_t size, void* child_ptr)
+void record_child_data(struct context *ctx, size_t size, void* child_ptr)
 {
+	int state;
+	int event = encode_event(ctx->ev, &state);
+	ssize_t read_bytes;
+	(void)state;
+
 	/* We shouldn't be recording a scratch address */
 	assert(child_ptr != ctx->scratch_ptr);
 
 	// before anything is performed, check if the seccomp record cache has any entries
 	maybe_flush_syscallbuf(ctx);
-
-	ssize_t read_bytes;
 
 	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
 	if (child_ptr != 0) {
@@ -587,17 +641,21 @@ void record_child_data(struct context *ctx, int syscall, size_t size, void* chil
 		read_bytes = size = 0;
 	}
 	assert(read_bytes == size);
-	print_header(syscall, child_ptr);
+	print_header(event, child_ptr);
 	fprintf(syscall_header, "%11d\n", read_bytes);
 }
 
-void record_parent_data(struct context *ctx, int syscall, size_t len, void *addr, void *buf)
+void record_parent_data(struct context *ctx, size_t len, void *addr, void *buf)
 {
+	int state;
+	int event = encode_event(ctx->ev, &state);
+	(void)state;
+
 	/* We shouldn't be recording a scratch address */
 	assert(addr != ctx->scratch_ptr);
 
 	write_raw_data(ctx, buf, len);
-	print_header(syscall, addr);
+	print_header(event, addr);
 	assert(len >= 0);
 	fprintf(syscall_header, "%11d\n", len);
 }
@@ -626,9 +684,14 @@ void record_mmapped_file_stats(struct mmapped_file *file)
 	fprintf(mmaps_file, "%s\n", file->filename);
 }
 
-void record_child_str(pid_t tid, int syscall, void* child_ptr)
+void record_child_str(struct context* ctx, void* child_ptr)
 {
-	print_header(syscall, child_ptr);
+	pid_t tid = ctx->tid;
+	int state;
+	int event = encode_event(ctx->ev, &state);
+	(void)state;
+
+	print_header(event, child_ptr);
 	char* buf = read_child_str(tid, child_ptr);
 	size_t len = strlen(buf) + 1;
 	fprintf(syscall_header, "%11d\n", len);

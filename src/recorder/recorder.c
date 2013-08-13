@@ -61,10 +61,14 @@ static void rec_init_scratch_memory(struct context *ctx)
 	file.end = ctx->scratch_ptr + scratch_size;
 	sprintf(file.filename,"scratch for thread %d",ctx->tid);
 	record_mmapped_file_stats(&file);
+
 	int event = ctx->event;
 	ctx->event = USR_INIT_SCRATCH_MEM;
-	record_event(ctx,STATE_SYSCALL_EXIT);
+	push_pseudosig(ctx, EUSR_INIT_SCRATCH_MEM, HAS_EXEC_INFO);
+	record_event(ctx);
+	pop_pseudosig(ctx);
 	ctx->event = event;
+
 	orig_regs.eax = eax;
 	write_child_registers(ctx->tid,&orig_regs);
 }
@@ -100,16 +104,21 @@ static void handle_ptrace_event(struct context** ctxp)
 		break;
 
 	case PTRACE_EVENT_VFORK_DONE:
+		push_syscall(ctx, ctx->event);
+		ctx->ev->syscall.state = EXITING_SYSCALL;
 		rec_process_syscall(ctx, ctx->event, rr_flags_);
-		record_event(ctx, STATE_SYSCALL_EXIT);
-		ctx->exec_state = RUNNABLE;
-		ctx->switchable = 1;
+		record_event(ctx);
+
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		sys_ptrace_syscall(ctx->tid);
 		sys_waitpid(ctx->tid, &ctx->status);
 		status_changed(ctx);
 
-		record_event(ctx, STATE_SYSCALL_EXIT);
+		record_event(ctx);
+		pop_syscall(ctx);
+
+		ctx->exec_state = RUNNABLE;
+		ctx->switchable = 1;
 		break;
 
 	case PTRACE_EVENT_CLONE:
@@ -131,7 +140,12 @@ static void handle_ptrace_event(struct context** ctxp)
 		if (event == PTRACE_EVENT_VFORK) {
 			ctx->exec_state = PROCESSING_SYSCALL;
 			ctx->switchable = 1;
-			record_event(ctx, STATE_SYSCALL_ENTRY);
+
+			push_syscall(ctx, ctx->event);
+			ctx->ev->syscall.state = ENTERING_SYSCALL;
+			record_event(ctx);
+			pop_syscall(ctx);
+
 			cont_nonblock(ctx);
 		} else {
 			sys_ptrace_syscall(ctx->tid);
@@ -142,7 +156,10 @@ static void handle_ptrace_event(struct context** ctxp)
 	}
 
 	case PTRACE_EVENT_EXEC:
-		record_event(ctx, STATE_SYSCALL_ENTRY);
+		push_syscall(ctx, ctx->event);
+		ctx->ev->syscall.state = ENTERING_SYSCALL;
+		record_event(ctx);
+		pop_syscall(ctx);
 
 		sys_ptrace_syscall(ctx->tid);
 		sys_waitpid(ctx->tid, &ctx->status);
@@ -154,7 +171,10 @@ static void handle_ptrace_event(struct context** ctxp)
 
 	case PTRACE_EVENT_EXIT:
 		ctx->event = USR_EXIT;
-		record_event(ctx, STATE_SYSCALL_EXIT);
+		push_pseudosig(ctx, EUSR_EXIT, HAS_EXEC_INFO);
+		record_event(ctx);
+		pop_pseudosig(ctx);
+
 		rec_sched_deregister_thread(ctxp);
 		ctx = *ctxp;
 		break;
@@ -318,13 +338,18 @@ static void syscall_state_changed(struct context** ctxp, int by_waitpid)
 			ctx->event = syscall;
 			debug("  exiting restarted %s", syscallname(syscall));
 		}
+
+		push_syscall(ctx, syscall);
+		ctx->ev->syscall.state = EXITING_SYSCALL;
 		/* no need to process the syscall in case its
 		 * restarted this will be done in the exit from the
 		 * restart_syscall */
 		if (!SYSCALL_WILL_RESTART(retval)) {
 			rec_process_syscall(ctx, syscall, rr_flags_);
 		}
-		record_event(ctx, STATE_SYSCALL_EXIT);
+		record_event(ctx);
+		pop_syscall(ctx);
+
 		ctx->exec_state = RUNNABLE;
 		ctx->switchable = 1;
 		if (ctx->desched_rec) {
@@ -335,13 +360,19 @@ static void syscall_state_changed(struct context** ctxp, int by_waitpid)
 			 * save a breadcrumb so that replay knows to
 			 * expect it and skip over it. */
 			ctx->desched_rec = NULL;
-			record_synthetic_event(ctx, USR_DISARM_DESCHED);
+
+			push_pseudosig(ctx, EUSR_DISARM_DESCHED, NO_EXEC_INFO);
+			record_event(ctx);
+			pop_pseudosig(ctx);
+
 			/* We also need to ensure that the syscallbuf
 			 * doesn't try to commit to the syscallbuf;
 			 * we've already recorded the syscall. */
 			ctx->syscallbuf_hdr->abort_commit = 1;
-			record_synthetic_event(ctx,
-					       USR_SYSCALLBUF_ABORT_COMMIT);
+			push_pseudosig(ctx, EUSR_SYSCALLBUF_ABORT_COMMIT,
+				       NO_EXEC_INFO);
+			record_event(ctx);
+			pop_pseudosig(ctx);
 		}
 		return;
 	}
@@ -368,13 +399,16 @@ static void runnable_state_changed(struct context* ctx)
 	} else if (ctx->event == SYS_sigreturn
 		   || ctx->event == SYS_rt_sigreturn) {
 		int orig_event = ctx->event;
+		push_syscall(ctx, ctx->event);
+		ctx->ev->syscall.state = ENTERING_SYSCALL;
+
 		/* These system calls never return; we remain
 		 * in the same execution state */
 		/* we record the sigreturn event here, since we have
 		 * to do another ptrace_cont to fully process the
 		 * sigreturn system call. */
 		debug("  sigreturn");
-		record_event(ctx, STATE_SYSCALL_ENTRY);
+		record_event(ctx);
 		assert(!ctx->flushed_syscallbuf);
 		/* do another step */
 		sys_ptrace_syscall(ctx->tid);
@@ -388,7 +422,10 @@ static void runnable_state_changed(struct context* ctx)
 		 * reasons. */
 		assert(ctx->event == -1);
 		ctx->event = orig_event;
-		record_event(ctx, STATE_SYSCALL_EXIT);
+		ctx->ev->syscall.state = EXITING_SYSCALL;
+		record_event(ctx);
+		pop_syscall(ctx);
+
 		ctx->switchable = 0;
 	} else if (ctx->event > 0) {
 		/* We just entered a syscall. */
@@ -397,9 +434,16 @@ static void runnable_state_changed(struct context* ctx)
 			 * ioctl() that arms the desched counter when
 			 * it's trying to step to the entry of
 			 * |call|. */
-			record_synthetic_event(ctx, USR_ARM_DESCHED);
+			push_pseudosig(ctx, EUSR_ARM_DESCHED, NO_EXEC_INFO);
+			record_event(ctx);
+			pop_pseudosig(ctx);
 		}
-		record_event(ctx, STATE_SYSCALL_ENTRY);
+
+		push_syscall(ctx, ctx->event);
+		ctx->ev->syscall.state = ENTERING_SYSCALL;
+		record_event(ctx);
+		pop_syscall(ctx);
+
 		ctx->exec_state = ENTERING_SYSCALL;
 	} else if (ctx->event == SYS_restart_syscall) {
 		/* Syscalls like nanosleep(), poll() which can't be
@@ -433,8 +477,10 @@ static void runnable_state_changed(struct context* ctx)
 	}
 
 	if (ctx->flushed_syscallbuf) {
-		record_synthetic_event(ctx, USR_SYSCALLBUF_RESET);
+		push_pseudosig(ctx, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
+		record_event(ctx);
 		ctx->flushed_syscallbuf = 0;
+		pop_pseudosig(ctx);
 	}
 }
 

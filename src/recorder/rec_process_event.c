@@ -539,13 +539,13 @@ static void* pop_arg_ptr(struct context* ctx)
  * Record the written data so that it can be restored during replay of
  * |syscallno|.
  */
-static void restore_and_record_arg_buf(struct context* ctx, int syscallno,
+static void restore_and_record_arg_buf(struct context* ctx,
 				       size_t num_bytes, void* child_addr,
 				       void** parent_data_iter)
 {
 	void* parent_data = *parent_data_iter;
 	write_child_data(ctx, num_bytes, child_addr, parent_data);
-	record_parent_data(ctx, syscallno, num_bytes, child_addr, parent_data);
+	record_parent_data(ctx, num_bytes, child_addr, parent_data);
 	*parent_data_iter += num_bytes;
 }
 
@@ -556,7 +556,7 @@ static void restore_and_record_arg_buf(struct context* ctx, int syscallno,
  */
 static void record_noop_data(struct context* ctx, int syscallno)
 {
-	record_parent_data(ctx, syscallno, 0, NULL, NULL);
+	record_parent_data(ctx, 0, NULL, NULL);
 }
 
 /**
@@ -567,7 +567,7 @@ static void record_noop_data(struct context* ctx, int syscallno)
  * Don't call this directly; use one of the helpers below.
  */
 enum { NO_SLACK = 0, ALLOW_SLACK = 1 };
-static void finish_restoring_scratch_slack(struct context* ctx, int syscallno,
+static void finish_restoring_scratch_slack(struct context* ctx,
 					   void* iter, void** data,
 					   int slack)
 {
@@ -599,22 +599,20 @@ static void finish_restoring_scratch_slack(struct context* ctx, int syscallno,
 /**
  * Like above, but require that all saved scratch data was consumed.
  */
-static void finish_restoring_scratch(struct context* ctx, int syscallno,
-				      void* iter, void** data)
+static void finish_restoring_scratch(struct context* ctx,
+				     void* iter, void** data)
 {
-	return finish_restoring_scratch_slack(ctx, syscallno, iter, data,
-					      NO_SLACK);
+	return finish_restoring_scratch_slack(ctx, iter, data, NO_SLACK);
 }
 
 /**
  * Like above, but allow some saved scratch data to remain unconsumed,
  * for example if a buffer wasn't filled entirely.
  */
-static void finish_restoring_some_scratch(struct context* ctx, int syscallno,
+static void finish_restoring_some_scratch(struct context* ctx,
 					  void* iter, void** data)
 {
-	return finish_restoring_scratch_slack(ctx, syscallno, iter, data,
-					      ALLOW_SLACK);
+	return finish_restoring_scratch_slack(ctx, iter, data, ALLOW_SLACK);
 }
 
 void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags)
@@ -633,35 +631,35 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 
 #define SYS_REC1(syscall_,size,addr) \
 	case SYS_##syscall_: { \
-		record_child_data(ctx, syscall, size, addr); \
+		record_child_data(ctx, size, addr); \
 	break; }
 
 
 #define SYS_REC1_STR(syscall_,addr) \
 	case SYS_##syscall_: { \
-		record_child_str(tid, syscall, addr); \
+		record_child_str(ctx, addr); \
 	break; }
 
 
 #define SYS_REC2(syscall_,size1,addr1,size2,addr2) \
 	case SYS_##syscall_: { \
-		record_child_data(ctx, syscall, size1, addr1);\
-		record_child_data(ctx, syscall, size2, addr2); \
+		record_child_data(ctx, size1, addr1);\
+		record_child_data(ctx, size2, addr2); \
 	break; }
 
 #define SYS_REC3(syscall_,size1,addr1,size2,addr2,size3,addr3) \
 	case SYS_##syscall_: { \
-		record_child_data(ctx, syscall, size1, addr1);\
-		record_child_data(ctx, syscall, size2, addr2);\
-		record_child_data(ctx, syscall, size3, addr3);\
+		record_child_data(ctx, size1, addr1);\
+		record_child_data(ctx, size2, addr2);\
+		record_child_data(ctx, size3, addr3);\
 	break; }
 
 #define SYS_REC4(syscall_,size1,addr1,size2,addr2,size3,addr3,size4,addr4) \
 	case SYS_##syscall_: { \
-		record_child_data(ctx, syscall, size1, addr1);\
-		record_child_data(ctx, syscall, size2, addr2);\
-		record_child_data(ctx, syscall, size3, addr3);\
-		record_child_data(ctx, syscall, size4, addr4);\
+		record_child_data(ctx, size1, addr1);\
+		record_child_data(ctx, size2, addr2);\
+		record_child_data(ctx, size3, addr3);\
+		record_child_data(ctx, size4, addr4);\
 		break; }
 
 	pid_t tid = ctx->tid;
@@ -670,7 +668,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	read_child_registers(tid, &regs);
 
 	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x",
-	      tid, syscallname(syscall), syscall, get_global_time(),
+	      tid, syscallname(syscall), get_global_time(),
 	      ctx->exec_state);
 
 	if (ctx->desched_rec) {
@@ -678,7 +676,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 
 		assert(ctx->tmp_data_ptr != ctx->scratch_ptr);
 
-		record_parent_data(ctx, syscall,
+		record_parent_data(ctx,
 				   ctx->tmp_data_num_bytes, ctx->tmp_data_ptr,
 				   (void*)rec->extra_data);
 		return;
@@ -729,15 +727,21 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		if (regs.eax < 0)
 			break;
 		/* record child id here */
-		record_child_data_tid(tid, syscall, sizeof(pid_t), (void*)regs.edx);
-		record_child_data_tid(tid, syscall, sizeof(pid_t), (void*)regs.esi);
+		record_child_data_tid(tid, syscall,
+				      sizeof(pid_t), (void*)regs.edx);
+		record_child_data_tid(tid, syscall,
+				      sizeof(pid_t), (void*)regs.esi);
 		pid_t new_tid = regs.eax;
 
 		struct user_regs_struct new_regs;
-		read_child_registers(new_tid,&new_regs);
-		record_child_data_tid(new_tid, syscall, sizeof(struct user_desc), (void*)new_regs.edi);
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), (void*)new_regs.edx);
-		record_child_data_tid(new_tid, syscall, sizeof(sizeof(pid_t)), (void*)new_regs.esi);
+		read_child_registers(new_tid, &new_regs);
+		record_child_data_tid(new_tid, syscall,
+				      sizeof(struct user_desc),
+				      (void*)new_regs.edi);
+		record_child_data_tid(new_tid, syscall,
+				      sizeof(pid_t), (void*)new_regs.edx);
+		record_child_data_tid(new_tid, syscall,
+				      sizeof(pid_t), (void*)new_regs.esi);
 
 		break;
 	}
@@ -849,13 +853,13 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		struct epoll_event* events = pop_arg_ptr(ctx);
 		int maxevents = regs.edx;
 		if (events) {
-			restore_and_record_arg_buf(ctx, syscall,
+			restore_and_record_arg_buf(ctx,
 						   maxevents * sizeof(*events),
 						   events, &iter);
 			regs.ecx = (uintptr_t)events;
 			write_child_registers(tid, &regs);
 		}
-		finish_restoring_scratch(ctx, syscall, iter, &data);
+		finish_restoring_scratch(ctx, iter, &data);
 		break;
 	}
 
@@ -924,7 +928,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case F_SETLKW64:
 		case F_GETLK:
 		case F_SETLK:
-			record_child_data(ctx, syscall, sizeof(struct flock64), (void*)regs.edx);
+			record_child_data(ctx, sizeof(struct flock64),
+					  (void*)regs.edx);
 			break;
 
 		default:
@@ -1017,7 +1022,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 */
 	case SYS_futex:
 	{
-		record_child_data(ctx, syscall, sizeof(int), (void*)regs.ebx);
+		record_child_data(ctx, sizeof(int), (void*)regs.ebx);
 		int op = regs.ecx & FUTEX_CMD_MASK;
 
 		switch (op) {
@@ -1033,8 +1038,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case FUTEX_WAKE_OP:
 		case FUTEX_CMP_REQUEUE_PI:
 		case FUTEX_WAIT_REQUEUE_PI:
-			record_child_data(ctx, syscall,
-					  sizeof(int), (void*)regs.edi);
+			record_child_data(ctx, sizeof(int), (void*)regs.edi);
 			break;
 
 		default:
@@ -1239,7 +1243,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SHMAT:
 		{
 			// the kernel copies the returned address to *third
-			record_child_data(ctx, syscall, sizeof(long), (void*)regs.esi);
+			record_child_data(ctx, sizeof(long), (void*)regs.esi);
 			break;
 		}
 
@@ -1250,7 +1254,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			(void)cmd;
 			assert(cmd != IPC_INFO && cmd != SHM_INFO
 			       && cmd != SHM_STAT);
-			record_child_data(ctx, syscall, sizeof(struct shmid_ds), (void*)regs.esi);
+			record_child_data(ctx, sizeof(struct shmid_ds),
+					  (void*)regs.esi);
 			break;
 		}
 
@@ -1284,20 +1289,22 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			case IPC_STAT:
 			case SEM_STAT:
 			{
-				record_child_data(ctx, syscall, sizeof(struct semid_ds), (void*)regs.esi);
+				record_child_data(ctx, sizeof(struct semid_ds),
+						  (void*)regs.esi);
 				break;
 			}
 
 			case IPC_INFO:
 			case SEM_INFO:
 			{
-				record_child_data(ctx, syscall, sizeof(struct seminfo), (void*)regs.esi);
+				record_child_data(ctx, sizeof(struct seminfo),
+						  (void*)regs.esi);
 				break;
 			}
 			case GETALL:
 			{
 				int semnum = regs.ecx;
-				record_child_data(ctx, syscall, semnum * sizeof(unsigned short), (void*)regs.esi);
+				record_child_data(ctx, semnum * sizeof(unsigned short), (void*)regs.esi);
 				break;
 
 			}
@@ -1314,7 +1321,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
 		case MSGRCV:
 		{
-			record_child_data(ctx, syscall, sizeof(long) + regs.esi, (void*)regs.edx);
+			record_child_data(ctx, sizeof(long) + regs.esi,
+					  (void*)regs.edx);
 			break;
 		}
 
@@ -1608,12 +1616,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		struct pollfd* fds = pop_arg_ptr(ctx);
 		size_t nfds = regs.ecx;
 
-		restore_and_record_arg_buf(ctx, syscall,
-					   nfds * sizeof(*fds),
-					   fds, &iter);
+		restore_and_record_arg_buf(ctx, nfds * sizeof(*fds), fds,
+					   &iter);
 		regs.ebx = (uintptr_t)fds;
 		write_child_registers(tid, &regs);
-		finish_restoring_scratch(ctx, syscall, iter, &data);
+		finish_restoring_scratch(ctx, iter, &data);
 		break;
 	}
 
@@ -1649,12 +1656,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			void* data = start_restoring_scratch(ctx, &iter);
 			void* arg = pop_arg_ptr(ctx);
 
-			restore_and_record_arg_buf(ctx, syscall,
-						   size, arg, &iter);
+			restore_and_record_arg_buf(ctx, size, arg, &iter);
 			regs.ecx = (uintptr_t)arg;
 			write_child_registers(tid, &regs);
 
-			finish_restoring_scratch(ctx, syscall, iter, &data);
+			finish_restoring_scratch(ctx, iter, &data);
 		} else {
 			record_noop_data(ctx, syscall);
 		}
@@ -1703,15 +1709,15 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		 switch (cmd & SUBCMDMASK) {
 		 case Q_GETQUOTA:
 		 // Get disk quota limits and current usage for user or group id. The addr argument is a pointer to a dqblk structure 
-		 	 record_child_data(ctx,SYS_quotactl,sizeof(struct dqblk),addr);
+		 	 record_child_data(ctx, sizeof(struct dqblk), addr);
 		 	 break;
 		 case Q_GETINFO:
 		 // Get information (like grace times) about quotafile. The addr argument should be a pointer to a dqinfo structure 
-		 	 record_child_data(ctx,SYS_quotactl,sizeof(struct dqinfo),addr);
+		 	 record_child_data(ctx, sizeof(struct dqinfo), addr);
 		 	 break;
 		 case Q_GETFMT:
 		 // Get quota format used on the specified file system. The addr argument should be a pointer to a 4-byte buffer 
-		 	 record_child_data(ctx,SYS_quotactl,4,addr);
+		 	 record_child_data(ctx, 4, addr);
 		 	 break;
 
 		 /**
@@ -1774,19 +1780,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 	 *
 	 */
 	SYS_REC1(rt_sigaction, sizeof(struct sigaction), (void*)regs.edx)
-	/* This is part of the attempt to resolve whether a signal has a sighandler
-	 * installed (for signal emulation).
-	case SYS_rt_sigaction:
-	{
-		if (regs.ecx) {
-			struct sigaction *sa = read_child_data(ctx,sizeof(struct sigaction), regs.ecx);
-			add_sig_handler(tid,regs.ebx,sa);
-			sys_free(&sa);
-		}
-		record_child_data(ctx, syscall, sizeof(struct sigaction), regs.edx);
-		break;
-	}
-	*/
+
 	/**
 	 *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 	 *
@@ -2010,11 +2004,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 
 			void** addr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int) + sizeof(struct sockaddr*));
 			socklen_t *addrlen = read_child_data(ctx, sizeof(socklen_t), *addr);
-			record_child_data(ctx, syscall, sizeof(socklen_t), *addr);
+			record_child_data(ctx, sizeof(socklen_t), *addr);
 			sys_free((void**) &addr);
 
 			addr = read_child_data(ctx, sizeof(void*), base_addr + sizeof(int));
-			record_child_data(ctx, syscall, *addrlen, *addr);
+			record_child_data(ctx, *addrlen, *addr);
 			sys_free((void**) &addr);
 			sys_free((void**) &addrlen);
 			break;
@@ -2042,8 +2036,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			iter += sizeof(args);
 			/* Restore |buf| contents. */
 			if (0 < nrecvd) {
-				restore_and_record_arg_buf(ctx, syscall,
-							   nrecvd, buf,
+				restore_and_record_arg_buf(ctx, nrecvd, buf,
 							   &iter);
 			} else {
 				record_noop_data(ctx, syscall);
@@ -2052,7 +2045,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			regs.ecx = (uintptr_t)argsp;
 			write_child_registers(tid, &regs);
 
-			finish_restoring_some_scratch(ctx, syscall, iter,
+			finish_restoring_some_scratch(ctx, iter,
 						      &data);
 			break;
 		}
@@ -2064,16 +2057,16 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			struct msghdr *msg = read_child_data(ctx, sizeof(struct msghdr), *ptr);
 
 			/* record the enture struct */
-			record_child_data(ctx, syscall, sizeof(struct msghdr), *ptr);
-			record_child_data(ctx, syscall, msg->msg_namelen, msg->msg_name);
+			record_child_data(ctx, sizeof(struct msghdr), *ptr);
+			record_child_data(ctx, msg->msg_namelen, msg->msg_name);
 
 			assert(msg->msg_iovlen == 1);
 
-			record_child_data(ctx, syscall, sizeof(struct iovec), msg->msg_iov);
+			record_child_data(ctx, sizeof(struct iovec), msg->msg_iov);
 			struct iovec *iov = read_child_data(ctx, sizeof(struct iovec), msg->msg_iov);
-			record_child_data(ctx, syscall, iov->iov_len, iov->iov_base);
+			record_child_data(ctx, iov->iov_len, iov->iov_base);
 
-			record_child_data(ctx, syscall, msg->msg_controllen, msg->msg_control);
+			record_child_data(ctx, msg->msg_controllen, msg->msg_control);
 
 			sys_free((void**) &iov);
 			sys_free((void**) &msg);
@@ -2096,9 +2089,9 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			addrlen_ptr = read_child_data(ctx, sizeof(socklen_t*), base_addr + 20);
 			addrlen = read_child_data(ctx, sizeof(socklen_t), *addrlen_ptr);
 
-			record_child_data(ctx, syscall, *len_ptr, *buf_ptr);
-			record_child_data(ctx, syscall, sizeof(socklen_t), *addrlen_ptr);
-			record_child_data(ctx, syscall, *addrlen, *src_addr_ptr);
+			record_child_data(ctx, *len_ptr, *buf_ptr);
+			record_child_data(ctx, sizeof(socklen_t), *addrlen_ptr);
+			record_child_data(ctx, *addrlen, *src_addr_ptr);
 
 			sys_free((void**) &buf_ptr);
 			sys_free((void**) &len_ptr);
@@ -2116,7 +2109,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			socklen_t** len_ptr = read_child_data(ctx, sizeof(socklen_t*), (void*)(regs.ecx + 3 * sizeof(int) + sizeof(void*)));
 			socklen_t* len = read_child_data(ctx, sizeof(socklen_t), *len_ptr);
 			unsigned long** optval = read_child_data(ctx, sizeof(void*), (void*)(regs.ecx + 3 * sizeof(int)));
-			record_child_data(ctx, syscall, *len, *optval);
+			record_child_data(ctx, *len, *optval);
 			sys_free((void**) &len_ptr);
 			sys_free((void**) &len);
 			sys_free((void**) &optval);
@@ -2148,16 +2141,15 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			iter += sizeof(args);
 			/* addrlen */
 			len = *(socklen_t*)iter;
-			restore_and_record_arg_buf(ctx, syscall, sizeof(len),
-						   addrlenp, &iter);
+			restore_and_record_arg_buf(ctx, sizeof(len), addrlenp,
+						   &iter);
 			/* addr */
-			restore_and_record_arg_buf(ctx, syscall, len,
-						   addr, &iter);
+			restore_and_record_arg_buf(ctx, len, addr, &iter);
 			/* Restore the pointer to the original args. */
 			regs.ecx = (uintptr_t)argsp;
 			write_child_registers(tid, &regs);
 
-			finish_restoring_some_scratch(ctx, syscall, iter,
+			finish_restoring_some_scratch(ctx, iter,
 						      &data);
 			break;
 		}
@@ -2169,7 +2161,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		case SYS_SOCKETPAIR:
 		{
 			unsigned long* addr = read_child_data(ctx, sizeof(int*), (void*)(regs.ecx + (3 * sizeof(int))));
-			record_child_data(ctx, syscall, 2 * sizeof(int), (void*)*addr);
+			record_child_data(ctx, 2 * sizeof(int), (void*)*addr);
 			sys_free((void**) &addr);
 			break;
 		}
@@ -2429,7 +2421,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		assert(*tmp == 0x19);
 		/* AT_RANDOM */
 		unsigned long* rand_addr = read_child_data(ctx, sizeof(unsigned long*), (stack_ptr + 1));
-		record_child_data(ctx, syscall, 16, (void*)*rand_addr);
+		record_child_data(ctx, 16, (void*)*rand_addr);
 
 		sys_free((void**) &rand_addr);
 		sys_free((void**) &tmp);
@@ -2518,7 +2510,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 						      &file.stat,
 						      prot, flags);
 		if (file.copied) {
-			record_child_data(ctx, syscall, size, addr);
+			record_child_data(ctx, size, addr);
 		}
 		/* TODO: fault on accesses to SHARED mappings we think
 		 * might actually be written */
@@ -2549,13 +2541,13 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		void* data = start_restoring_scratch(ctx, &iter);
 
 		if (rem) {
-			restore_and_record_arg_buf(ctx, syscall,
-						   sizeof(*rem), rem, &iter);
+			restore_and_record_arg_buf(ctx, sizeof(*rem), rem,
+						   &iter);
 			regs.ecx = (uintptr_t)rem;
 			write_child_registers(tid, &regs);
 		}
 
-		finish_restoring_scratch(ctx, syscall, iter, &data);
+		finish_restoring_scratch(ctx, iter, &data);
 		break;
 	}
 
@@ -2594,12 +2586,11 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		void* data = start_restoring_scratch(ctx, &iter);
 
 		if (nread > 0) {
-			restore_and_record_arg_buf(ctx, syscall, nread, buf,
-						   &iter);
+			restore_and_record_arg_buf(ctx, nread, buf, &iter);
 		}
 		regs.ecx = (uintptr_t)buf;
 		write_child_registers(tid, &regs);
-		finish_restoring_some_scratch(ctx, syscall, iter, &data);
+		finish_restoring_some_scratch(ctx, iter, &data);
 		break;
 	}
 
@@ -2725,7 +2716,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		void* data = start_restoring_scratch(ctx, &iter);
 
 		if (status) {
-			restore_and_record_arg_buf(ctx, syscall,
+			restore_and_record_arg_buf(ctx,
 						   sizeof(*status), status,
 						   &iter);
 			regs.ecx = (uintptr_t)status;
@@ -2733,7 +2724,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 			record_noop_data(ctx, syscall);
 		}
 		if (rusage) {
-			restore_and_record_arg_buf(ctx, syscall,
+			restore_and_record_arg_buf(ctx,
 						   sizeof(*rusage), rusage,
 						   &iter);
 			regs.esi = (uintptr_t)rusage;
@@ -2742,7 +2733,7 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		}
 		write_child_registers(tid, &regs);
 
-		finish_restoring_scratch(ctx, syscall, iter, &data);
+		finish_restoring_scratch(ctx, iter, &data);
 	}
 
 	/**
@@ -2758,12 +2749,8 @@ void rec_process_syscall(struct context *ctx, int syscall, struct flags rr_flags
 		break;
 
 	default:
-
-		log_err("recorder: unknown syscall %d -- bailing out", syscall);
-		log_err("execuction state: %x sig %d", ctx->exec_state, signal_pending(ctx->exec_state));
 		print_register_file_tid(tid);
-		sys_exit();
-		break;
+		fatal("Unknown syscall %s(%d)", syscallname(syscall), syscall);
+		break;		/* not reached */
 	}
-
 }

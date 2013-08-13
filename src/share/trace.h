@@ -24,13 +24,13 @@ enum {
 	FIRST_RR_PSEUDOSIGNAL = SIG_SEGV_MMAP_READ,
 	SIG_SEGV_MMAP_WRITE,
 	SIG_SEGV_RDTSC,
-	USR_EXIT = -1020,
-	USR_SCHED,
+	USR_EXIT,
+	USR_SCHED = -1020,
 	USR_NEW_RAWDATA_FILE,
 	USR_INIT_SCRATCH_MEM,
-	USR_SYSCALLBUF_FLUSH = -1015,
+	USR_SYSCALLBUF_FLUSH,
 	USR_SYSCALLBUF_ABORT_COMMIT,
-	USR_SYSCALLBUF_RESET,
+	USR_SYSCALLBUF_RESET = -1015,
 	USR_ARM_DESCHED,
 	USR_DISARM_DESCHED,
 	/* TODO: this is actually a pseudo-pseudosignal: it will never
@@ -146,26 +146,19 @@ void sc_record_data(pid_t tid, int syscall, size_t len, void* buf);
 void record_inst(struct context* context, char* inst);
 
 void record_inst_done(struct context* context);
-void record_child_data(struct context *ctx, int syscall, size_t len, void* child_ptr);
+void record_child_data(struct context *ctx, size_t len, void* child_ptr);
 
 void record_timestamp(int tid, long int* eax_, long int* edx_);
-void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr);
-void record_child_str(pid_t tid, int syscall, void* child_ptr);
-void record_parent_data(struct context *ctx, int syscall, size_t len, void *addr, void *buf);
+void record_child_data_tid(pid_t tid, int event, size_t len, void* child_ptr);
+void record_child_str(struct context* ctx, void* child_ptr);
+void record_parent_data(struct context *ctx, size_t len, void *addr, void *buf);
 /**
- * Record the current event of |ctx|, in state |state|.  Record the
- * registers of |ctx| (and other relevant execution state) so that it
- * can be used or verified during replay.
+ * Record the current event of |ctx|.  Record the registers of |ctx|
+ * (and other relevant execution state) so that it can be used or
+ * verified during replay, if that state is available and meaningful
+ * at |ctx|'s current execution point.
  */
-void record_event(struct context* ctx, int state);
-/**
- * Record the synthetic event |event| for |ctx|.  This event does not
- * necessarily correspond to the current execution state of |ctx|; it
- * needs to be saved to the trace in order for the replay to take an
- * action to match up to the recording.  So no registers or other
- * current execution state is saved with the event.
- */
-void record_synthetic_event(struct context* ctx, int event);
+void record_event(struct context* ctx);
 void record_mmapped_file_stats(struct mmapped_file *file);
 unsigned int get_global_time(void);
 unsigned int get_time(pid_t tid);
