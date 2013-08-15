@@ -96,8 +96,10 @@ static void handle_ptrace_event(struct context** ctxp)
 
 	/* handle events */
 	int event = GET_PTRACE_EVENT(ctx->status);
-	debug("  %d: handle_ptrace_event %d: syscall %s",
-	      ctx->tid, event, syscallname(ctx->event));
+	if (event != PTRACE_EVENT_NONE) {
+		debug("  %d: handle_ptrace_event %d: syscall %s",
+		      ctx->tid, event, syscallname(ctx->event));
+	}
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
@@ -303,7 +305,8 @@ static void syscall_state_changed(struct context** ctxp, int by_waitpid)
 			emergency_debug(ctx);
 		}
 
-		debug("  orig_eax is %d (%s)", syscall, syscallname(syscall));
+		debug("  orig_eax:%d (%s); eax:%ld",
+		      syscall, syscallname(syscall), regs.eax);
 
 		/* we received a signal while in the system call and
 		 * send it right away*/

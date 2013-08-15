@@ -91,7 +91,7 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 			 * switchable if possible. */
 			sys_waitpid(ctx->tid, &ctx->status);
 			*by_waitpid = 1;
-			debug("  new status is %s, ctx->status");
+			debug("  new status is 0x%x", ctx->status);
 		}
 		return ctx;
 	}
@@ -115,7 +115,8 @@ struct context* rec_sched_get_active_thread(const struct flags* flags,
 			debug("  %d isn't blocked, done", tid);
 			break;
 		}
-		debug("  %d is blocked, checking status ...", tid);
+		debug("  %d is blocked on %s, checking status ...", tid,
+		      strevent(next_ctx->event));
 		if (0 != sys_waitpid_nonblock(tid, &next_ctx->status)) {
 			*by_waitpid = 1;
 			debug("  ready!");

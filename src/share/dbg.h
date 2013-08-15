@@ -18,7 +18,7 @@
 //#define DEBUGRR
 
 #ifdef DEBUGRR
-#define debug(M, ...) fprintf(stderr, "[DEBUG] (%s) " M "\n", __FUNCTION__, ##__VA_ARGS__);
+#define debug(M, ...) fprintf(stderr, "[DEBUG] " M "\n", ##__VA_ARGS__);
 #define do_debug(C) C
 #else
 #define debug(M, ...)
