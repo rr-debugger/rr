@@ -2,32 +2,34 @@
 
 #define _GNU_SOURCE
 
-#include <assert.h>
-#include <string.h>
+#include "recorder.h"
 
+#include <assert.h>
+#include <linux/futex.h>
+#include <linux/net.h>
 #include <poll.h>
+#include <sched.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
-#include <linux/futex.h>
-#include <linux/net.h>
 
+#include "handle_signal.h"
 #include "rec_process_event.h"
 #include "rec_sched.h"
-#include "handle_signal.h"
 
 #include "../replayer/replayer.h" /* for emergency_debug() */
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
-#include "../share/trace.h"
 #include "../share/sys.h"
-#include "../share/task.h"
-#include "../share/util.h"
 #include "../share/syscall_buffer.h"
+#include "../share/task.h"
+#include "../share/trace.h"
+#include "../share/util.h"
 
 #define PTRACE_EVENT_NONE			0
 static struct flags rr_flags_ = { 0 };
@@ -128,13 +130,25 @@ static void handle_ptrace_event(struct task** tp)
 	case PTRACE_EVENT_VFORK: {
 		/* get new tid, register at the scheduler and setup HPC */
 		int new_tid = sys_ptrace_getmsg(t->tid);
+		int share_sighandlers;
 
 		/* ensure that clone was successful */
 		assert(read_child_eax(t->tid) != -1);
 
+		read_child_registers(t->tid, &t->regs);
+		/* The rather misleadingly named CLONE_SIGHAND flag
+		 * actually means *share* the sighandler table.  (The
+		 * flags param is argument 3, which is edx.)  fork and
+		 * vfork must always copy sighandlers, there's no
+		 * option to not copy. */
+		share_sighandlers = (SYS_clone == t->regs.orig_eax) ?
+				    (CLONE_SIGHAND & t->regs.edx) :
+				    COPY_SIGHANDLERS;
+
 		/* wait until the new thread is ready */
 		sys_waitpid(new_tid, &(t->status));
-		rec_sched_register_thread(&rr_flags_, t->tid, new_tid);
+		rec_sched_register_thread(&rr_flags_, t->tid, new_tid,
+					  share_sighandlers);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
@@ -157,7 +171,9 @@ static void handle_ptrace_event(struct task** tp)
 		break;
 	}
 
-	case PTRACE_EVENT_EXEC:
+	case PTRACE_EVENT_EXEC: {
+		struct sighandlers* old_table = t->sighandlers;
+
 		push_syscall(t, t->event);
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
@@ -168,8 +184,12 @@ static void handle_ptrace_event(struct task** tp)
 		status_changed(t);
 
 		rec_init_scratch_memory(t);
+		t->sighandlers = sighandlers_copy(old_table);
+		sighandlers_reset_user_handlers(t->sighandlers);
+		sighandlers_unref(&old_table);
 		assert(signal_pending(t->status) == 0);
 		break;
+	}
 
 	case PTRACE_EVENT_EXIT:
 		t->event = USR_EXIT;

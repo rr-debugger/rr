@@ -3,6 +3,7 @@
 #ifndef TASK_H_
 #define TASK_H_
 
+#include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/user.h>
@@ -13,6 +14,17 @@
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
+
+/* (There are various GNU and BSD extensions that define this, but
+ * it's not worth the bother to sort those out.) */
+typedef void (*sig_handler_t)(int);
+
+/**
+ * A signal-handler table.  The table stores the disposition of all
+ * known signals, and additional metadata.  These tables are created
+ * and manipulated through the sighandlers_() functions below.
+ */
+/*refcounted*/ struct sighandlers;
 
 /**
  * Events are interesting occurrences during tracee execution which
@@ -106,6 +118,17 @@ struct event {
  */
 struct task {
 	/* State only used during recording. */
+
+	/* Points to the signal-hander table of this task.  If this
+	 * task is a non-fork clone child, then the table will be
+	 * shared with all its "thread" siblings.  Any updates made to
+	 * that shared table are immediately visible to all sibling
+	 * threads.
+	 *
+	 * fork and vfork children always get their own copies of the
+	 * table.  And if this task exec()s, the table is copied and
+	 * stripped of user sighandlers (see below). */
+	/*refcounted*/struct sighandlers* sighandlers;
 
 	/* For convenience, the current top of |pending_events| if
 	 * there are any, or NULL.  Never reassign this pointer
@@ -286,5 +309,74 @@ void pop_signal(struct task* t);
  */
 void push_syscall(struct task* t, int no);
 void pop_syscall(struct task* t);
+
+/**
+ * Create and return a new sighandler table with all signals set to
+ * disposition SIG_DFL and resethand = 0.
+ *
+ * The returned table has refcount 1, so the caller must
+ * sighandlers_unref() it to free it.
+ */
+struct sighandlers* sighandlers_new();
+/**
+ * Copy all the sighandlers and metadata from the caller's process
+ * into |table|, overwriting whatever data was already in |table|.
+ * Callers should be sure they know what they're doing before calling
+ * this.
+ */
+void sighandlers_init_from_current_process(struct sighandlers* table);
+/**
+ * Return nonzero if the disposition of |sig| in |table| isn't SIG_IGN
+ * or SIG_DFL, that is, if a user sighandler will be invoked when
+ * |sig| is received.
+ */
+int sighandlers_has_user_handler(const struct sighandlers* table, int sig);
+/**
+ * Return nonzero if |sig| has SA_RESETHAND behavior, as stored by
+ * sighandlers_set_disposition() below.  SA_RESETHAND behavior is
+ * defined as:
+ *
+ *   Restore the signal action to the default [Ed: SIG_DFL] upon entry
+ *   to the signal handler.  This flag is only meaningful when
+ *   establishing a signal handler.
+ */
+int sighandlers_is_resethand(const struct sighandlers* table, int sig);
+/**
+ * Set the disposition and resethand semantics of |sig| in |table|,
+ * overwriting whatever may already be there.
+ */
+enum { NO_RESET = 0, RESET_HANDLER };
+void sighandlers_set_disposition(struct sighandlers* table, int sig,
+				 sig_handler_t disp, int resethand);
+/**
+ * Return an exact copy of |from|, except with refcount 1 (regardless
+ * of what |from|'s refcount is).  That is, return a freshly allocated
+ * copy of |from|.
+ *
+ * The caller must sighandlers_unref() the returned table to free it.
+ */
+struct sighandlers* sighandlers_copy(struct sighandlers* from);
+/**
+ * Add another reference to |table|, so that one more
+ * sighandlers_unref() is required to free it.  |table| is returned
+ * for convenience.
+ */
+struct sighandlers* sighandlers_ref(struct sighandlers* table);
+/**
+ * For each signal in |table| such that sighandlers_has_user_handler()
+ * returns nonzero, reset the disposition of that signal to SIG_DFL,
+ * and clear the resethand flag if it's nonzero.  SIG_IGN signals are
+ * not modified.
+ *
+ * (After an exec() call copies the original sighandler table, this is
+ * the operation required by POSIX to initialize that table copy.)
+ */
+void sighandlers_reset_user_handlers(struct sighandlers* table);
+/**
+ * Remove a reference to |*table|.  If the removed reference was the
+ * last, free the memory pointed at |*table|.  In any case, set
+ * |*table| to NULL before return.
+ */
+void sighandlers_unref(struct sighandlers** table);
 
 #endif /* TASK_H_ */

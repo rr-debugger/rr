@@ -181,7 +181,8 @@ int rec_sched_get_num_threads()
  * initialization of the hardware performance counters
  */
 void rec_sched_register_thread(const struct flags* flags,
-			       pid_t parent, pid_t child)
+			       pid_t parent, pid_t child,
+			       int share_sighandlers)
 {
 	struct tasklist_entry* entry = sys_malloc_zero(sizeof(*entry));
 	struct task* t = &entry->t;
@@ -194,8 +195,26 @@ void rec_sched_register_thread(const struct flags* flags,
 	t->child_mem_fd = sys_open_child_mem(child);
 	if (parent) {
 		struct task* parent_t = get_task(parent);
+		struct sighandlers* parent_handlers = parent_t->sighandlers;
+
 		t->syscallbuf_lib_start = parent_t->syscallbuf_lib_start;
 		t->syscallbuf_lib_end = parent_t->syscallbuf_lib_end;
+		t->sighandlers = share_sighandlers ?
+				 sighandlers_ref(parent_handlers) :
+				 sighandlers_copy(parent_handlers);
+	} else {
+		/* After the first task is forked, we always need to
+		 * know the parent in order to initialize some task
+		 * state. */
+		static int is_first_task = 1;
+		assert(is_first_task);
+		is_first_task = 0;
+		/* The very first task we fork inherits our
+		 * sighandlers (which should all be default at this
+		 * point, but ...).  From there on, new tasks will
+		 * transitively inherit from this first task.  */
+		t->sighandlers = sighandlers_new();
+		sighandlers_init_from_current_process(t->sighandlers);
 	}
 	/* These will be initialized when the syscall buffer is. */
 	t->desched_fd = t->desched_fd_child = -1;
@@ -243,6 +262,7 @@ void rec_sched_deregister_thread(struct task** t_ptr)
 	sys_ptrace_detach(tid);
 
 	/* finally, free the memory */
+	sighandlers_unref(&t->sighandlers);
 	sys_free((void**)entry);
 	*t_ptr = NULL;
 }

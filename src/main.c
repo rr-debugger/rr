@@ -183,7 +183,8 @@ static void start(int argc, char* argv[], char** envp)
 			init_libpfm();
 
 			/* register thread at the scheduler and start the HPC */
-			rec_sched_register_thread(&__rr_flags, 0, pid);
+			rec_sched_register_thread(&__rr_flags, 0, pid,
+						  COPY_SIGHANDLERS);
 
 			/* perform the action recording */
 			log_info("Start recording...");

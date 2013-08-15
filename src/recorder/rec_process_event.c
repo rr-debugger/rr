@@ -1779,7 +1779,30 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 	 * saved in oldact.
 	 *
 	 */
-	SYS_REC1(rt_sigaction, sizeof(struct sigaction), (void*)regs.edx)
+	case SYS_rt_sigaction: {
+		int sig = regs.ebx;
+		void* new_sigaction = (void*)regs.ecx;
+		void* old_sigaction = (void*)regs.edx;
+
+		record_child_data(t, sizeof(struct sigaction), old_sigaction);
+		if (0 == regs.eax && new_sigaction) {
+			/* A new sighandler was installed.  Update t's
+			 * sighandler table. */
+			struct sigaction* sa = read_child_data(t, sizeof(*sa),
+							       new_sigaction);
+			sig_handler_t sh = (sa->sa_flags & SA_SIGINFO) ?
+					   (void*)sa->sa_sigaction :
+					   sa->sa_handler;
+			int resethand = (sa->sa_flags & SA_RESETHAND);
+
+			sighandlers_set_disposition(t->sighandlers, sig,
+						    sh, resethand);
+
+			sys_free((void**)&sa);
+		}
+		break;
+	 }
+	 /* TODO: SYS_signal, SYS_sigaction */
 
 	/**
 	 *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);

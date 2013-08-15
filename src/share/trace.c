@@ -1146,6 +1146,3 @@ char* peek_next_inst(struct task* t)
 	fsetpos(t->inst_dump, &pos);
 	return tmp;
 }
-
-
-
