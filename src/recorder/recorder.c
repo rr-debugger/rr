@@ -362,7 +362,6 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 			debug("  exiting restarted %s", syscallname(syscall));
 		}
 
-		push_syscall(t, syscall);
 		t->ev->syscall.state = EXITING_SYSCALL;
 		/* no need to process the syscall in case its
 		 * restarted this will be done in the exit from the
@@ -465,7 +464,6 @@ static void runnable_state_changed(struct task* t)
 		push_syscall(t, t->event);
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
-		pop_syscall(t);
 
 		t->exec_state = ENTERING_SYSCALL;
 	} else if (t->event == SYS_restart_syscall) {
