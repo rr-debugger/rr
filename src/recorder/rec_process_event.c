@@ -44,9 +44,11 @@
  */
 static void reset_scratch_pointers(struct task* t)
 {
-	FIXEDSTACK_CLEAR(&t->saved_args);
-	t->tmp_data_ptr = t->scratch_ptr;
-	t->tmp_data_num_bytes = -1;
+	assert(t->ev->type == EV_SYSCALL);
+
+	FIXEDSTACK_CLEAR(&t->ev->syscall.saved_args);
+	t->ev->syscall.tmp_data_ptr = t->scratch_ptr;
+	t->ev->syscall.tmp_data_num_bytes = -1;
 }
 
 /**
@@ -58,7 +60,7 @@ static void reset_scratch_pointers(struct task* t)
  */
 static void push_arg_ptr(struct task* t, void* argp)
 {
-	FIXEDSTACK_PUSH(&t->saved_args, argp);
+	FIXEDSTACK_PUSH(&t->ev->syscall.saved_args, argp);
 }
 
 /**
@@ -67,9 +69,9 @@ static void push_arg_ptr(struct task* t, void* argp)
  */
 static int abort_scratch(struct task* t, const char* event)
 {
-	int num_bytes = t->tmp_data_num_bytes;
+	int num_bytes = t->ev->syscall.tmp_data_num_bytes;
 
-	assert(t->tmp_data_ptr == t->scratch_ptr);
+	assert(t->ev->syscall.tmp_data_ptr == t->scratch_ptr);
 
 	if (0 > num_bytes) {
 		log_warn("`%s' requires scratch buffers, but that's not implemented.  Disabling context switching: deadlock may follow.",
@@ -90,11 +92,11 @@ static int can_use_scratch(struct task* t, void* scratch_end)
 {
 	void* scratch_start = t->scratch_ptr;
 
-	assert(t->tmp_data_ptr == t->scratch_ptr);
+	assert(t->ev->syscall.tmp_data_ptr == t->scratch_ptr);
 
-	t->tmp_data_num_bytes = (scratch_end - scratch_start);
-	return (0 <= t->tmp_data_num_bytes
-		&& t->tmp_data_num_bytes <= t->scratch_size);
+	t->ev->syscall.tmp_data_num_bytes = (scratch_end - scratch_start);
+	return (0 <= t->ev->syscall.tmp_data_num_bytes
+		&& t->ev->syscall.tmp_data_num_bytes <= t->scratch_size);
 }
 
 /**
@@ -106,7 +108,8 @@ int prepare_socketcall(struct task* t, int would_need_scratch,
 		       struct user_regs_struct* regs)
 {
 	pid_t tid = t->tid;
-	void* scratch = would_need_scratch ? t->tmp_data_ptr : NULL;
+	void* scratch = would_need_scratch ?
+			t->ev->syscall.tmp_data_ptr : NULL;
 	long* argsp;
 	void* tmpargsp;
 
@@ -244,11 +247,12 @@ static int set_up_scratch_for_syscallbuf(struct task* t, int syscallno)
 	}
 
 	reset_scratch_pointers(t);
-	t->tmp_data_ptr = t->syscallbuf_child +
-			    (rec->extra_data - (byte*)t->syscallbuf_hdr);
+	t->ev->syscall.tmp_data_ptr =
+		t->syscallbuf_child +
+		(rec->extra_data - (byte*)t->syscallbuf_hdr);
 	/* |rec->size| is the entire record including extra data; we
 	 * just care about the extra data here. */
-	t->tmp_data_num_bytes = rec->size - sizeof(*rec);
+	t->ev->syscall.tmp_data_num_bytes = rec->size - sizeof(*rec);
 	return 1;
 }
 
@@ -286,7 +290,7 @@ int rec_prepare_syscall(struct task* t, int syscallno)
 		 * TODO: but, we'll stomp if we reenter through a
 		 * signal handler ... */
 		reset_scratch_pointers(t);
-		scratch = t->tmp_data_ptr;
+		scratch = t->ev->syscall.tmp_data_ptr;
 	}
 
 	switch (syscallno) {
@@ -516,8 +520,8 @@ int rec_prepare_syscall(struct task* t, int syscallno)
  */
 static void* start_restoring_scratch(struct task* t, void** iter)
 {
-	void* scratch = t->tmp_data_ptr;
-	ssize_t num_bytes = t->tmp_data_num_bytes;
+	void* scratch = t->ev->syscall.tmp_data_ptr;
+	ssize_t num_bytes = t->ev->syscall.tmp_data_num_bytes;
 
 	assert(num_bytes >= 0);
 
@@ -531,7 +535,7 @@ static void* start_restoring_scratch(struct task* t, void** iter)
  */
 static void* pop_arg_ptr(struct task* t)
 {
-	return FIXEDSTACK_POP(&t->saved_args);
+	return FIXEDSTACK_POP(&t->ev->syscall.saved_args);
 }
 
 /**
@@ -572,23 +576,23 @@ static void finish_restoring_scratch_slack(struct task* t,
 					   int slack)
 {
 	ssize_t consumed = (iter - *data);
-	ssize_t diff = t->tmp_data_num_bytes - consumed;
+	ssize_t diff = t->ev->syscall.tmp_data_num_bytes - consumed;
 
-	assert(t->tmp_data_ptr == t->scratch_ptr);
+	assert(t->ev->syscall.tmp_data_ptr == t->scratch_ptr);
 
 	if (!slack && diff) {
 		log_err("Consumed %d bytes of scratch memory, but saved %d",
-			consumed, t->tmp_data_num_bytes);
+			consumed, t->ev->syscall.tmp_data_num_bytes);
 		emergency_debug(t);
 	} else if(slack && diff < 0) {
 		log_err("Over-consumed %d bytes of scratch memory (saved %d)",
-			diff, t->tmp_data_num_bytes);
+			diff, t->ev->syscall.tmp_data_num_bytes);
 		emergency_debug(t);
 	} else if (slack) {
 		debug("Left %d bytes unconsumed in scratch", diff);
 	}
 
-	if (!FIXEDSTACK_EMPTY(&t->saved_args)) {
+	if (!FIXEDSTACK_EMPTY(&t->ev->syscall.saved_args)) {
 		log_err("Under-consumed saved arg pointers");
 		emergency_debug(t);
 	}
@@ -674,10 +678,11 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 	if (t->desched_rec) {
 		const struct syscallbuf_record* rec = t->desched_rec;
 
-		assert(t->tmp_data_ptr != t->scratch_ptr);
+		assert(t->ev->syscall.tmp_data_ptr != t->scratch_ptr);
 
 		record_parent_data(t,
-				   t->tmp_data_num_bytes, t->tmp_data_ptr,
+				   t->ev->syscall.tmp_data_num_bytes,
+				   t->ev->syscall.tmp_data_ptr,
 				   (void*)rec->extra_data);
 		return;
 	}
