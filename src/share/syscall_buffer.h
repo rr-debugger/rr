@@ -28,17 +28,17 @@
  * not* imply that $ip is at a buffered syscall; use the macro below
  * for that.
  */
-#define SYSCALLBUF_IS_IP_IN_LIB(_eip, _ctx)				\
-	((uintptr_t)(_ctx)->syscallbuf_lib_start <= (uintptr_t)(_eip)	\
-	 && (uintptr_t)(_eip) <= (uintptr_t)(_ctx)->syscallbuf_lib_end)
+#define SYSCALLBUF_IS_IP_IN_LIB(_eip, _t)				\
+	((uintptr_t)(_t)->syscallbuf_lib_start <= (uintptr_t)(_eip)	\
+	 && (uintptr_t)(_eip) <= (uintptr_t)(_t)->syscallbuf_lib_end)
 
 /**
  * True when |_eip| is at a buffered syscall, i.e. one initiated by a
  * libc wrapper in the library.  Callers may assume
  * |SYSCALLBUF_IS_IP_IN_LIB()| is implied by this.
  */
-#define SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(_eip, _ctx)			\
-	((uintptr_t)(_eip) == (uintptr_t)(_ctx)->untraced_syscall_ip)	\
+#define SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(_eip, _t)			\
+	((uintptr_t)(_eip) == (uintptr_t)(_t)->untraced_syscall_ip)	\
 
 /**
  * The syscall buffer comprises an array of these variable-length

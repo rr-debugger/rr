@@ -51,13 +51,13 @@ static size_t num_shared_maps = 0;
 static void* shared_maps_starts[MAX_TID] = {0};
 static void* shared_maps_ends[MAX_TID] = {0};
 
-void add_protected_map(struct context *ctx, void *start){
+void add_protected_map(struct task *t, void *start){
 	assert(num_shared_maps < NUM_MAX_MAPS);
 	shared_maps_starts[num_shared_maps] = start;
-	shared_maps_ends[num_shared_maps++] = get_mmaped_region_end(ctx,start);
+	shared_maps_ends[num_shared_maps++] = get_mmaped_region_end(t,start);
 }
 
-bool is_protected_map(struct context *ctx, void *start){
+bool is_protected_map(struct task *t, void *start){
 	int i;
 	for (i = 0 ; i < num_shared_maps; ++i) {
 		if (shared_maps_starts[i] <= start && start <  shared_maps_ends[i]) {
@@ -268,13 +268,13 @@ void get_eip_info(pid_t tid)
 	sys_free((void**) &line);
 }
 
-char* get_inst(struct context* ctx, int eip_offset, int* opcode_size)
+char* get_inst(struct task* t, int eip_offset, int* opcode_size)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	char* buf = NULL;
 	unsigned long eip = read_child_eip(tid);
 	ssize_t nr_read_bytes;
-	unsigned char* inst = read_child_data_checked(ctx, 128, (void*)(eip + eip_offset), &nr_read_bytes);
+	unsigned char* inst = read_child_data_checked(t, 128, (void*)(eip + eip_offset), &nr_read_bytes);
 
 	if (nr_read_bytes <= 0) {
 		sys_free((void**)&inst);
@@ -319,9 +319,9 @@ bool is_write_mem_instruction(pid_t tid, int eip_offset, int* opcode_size)
 }
 
 
-void emulate_child_inst(struct context * ctx, int eip_offset)
+void emulate_child_inst(struct task * t, int eip_offset)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid,&regs);
 	unsigned long eip = read_child_eip(tid);
@@ -378,11 +378,11 @@ void emulate_child_inst(struct context * ctx, int eip_offset)
 		regs.eflags = flags0.l;
 		regs.eip += size; // move past the instruction
 
-		push_pseudosig(ctx, ESIG_SEGV_MMAP_READ, HAS_EXEC_INFO);
-		record_child_data(ctx, sizeof(long), (void*)regs.eax);
-		//record_parent_data(ctx,SIG_SEGV_MMAP_READ,sizeof(long),regs.eax, &right_op);
-		record_event(ctx);
-		pop_pseudosig(ctx);
+		push_pseudosig(t, ESIG_SEGV_MMAP_READ, HAS_EXEC_INFO);
+		record_child_data(t, sizeof(long), (void*)regs.eax);
+		//record_parent_data(t,SIG_SEGV_MMAP_READ,sizeof(long),regs.eax, &right_op);
+		record_event(t);
+		pop_pseudosig(t);
 
 		write_child_registers(tid,&regs);
 	} else {
@@ -394,24 +394,24 @@ void emulate_child_inst(struct context * ctx, int eip_offset)
 	x86_cleanup();
 }
 
-void mprotect_child_region(struct context * ctx, void * addr, int prot) {
+void mprotect_child_region(struct task * t, void * addr, int prot) {
 	struct user_regs_struct mprotect_call;
-	read_child_registers(ctx->tid,&mprotect_call);
+	read_child_registers(t->tid,&mprotect_call);
 	addr = (void*)((int)addr & PAGE_MASK); // align the address
-	size_t length = get_mmaped_region_end(ctx,addr) - addr;
+	size_t length = get_mmaped_region_end(t,addr) - addr;
 	mprotect_call.eax = SYS_mprotect;
 	mprotect_call.ebx = (uintptr_t)addr;
 	mprotect_call.ecx = length;
 	mprotect_call.edx = prot;
-	int retval = inject_and_execute_syscall(ctx,&mprotect_call);
+	int retval = inject_and_execute_syscall(t,&mprotect_call);
 	(void)retval;
 	assert(retval == 0);
 }
 
-void print_inst(struct context* ctx)
+void print_inst(struct task* t)
 {
 	int size;
-	char* str = get_inst(ctx, 0, &size);
+	char* str = get_inst(t, 0, &size);
 	printf("inst: %s\n", str);
 	free(str);
 }
@@ -451,17 +451,17 @@ void print_cwd(pid_t tid, char *str)
  * for printing syscall data on *replay* stage (as it uses the trace).
  * TODO: fix it so it will be suitable for both stages
  */
-void print_syscall(struct context *ctx, struct trace_frame *trace)
+void print_syscall(struct task *t, struct trace_frame *trace)
 {
 
 	int syscall = trace->recorded_regs.orig_eax;
 	int state = trace->state;
 	struct user_regs_struct r;
-	read_child_registers(ctx->tid, &r);
+	read_child_registers(t->tid, &r);
 
-	fprintf(stderr,"%u:%d:%d:", trace->global_time, ctx->rec_tid, ctx->trace.state);
+	fprintf(stderr,"%u:%d:%d:", trace->global_time, t->rec_tid, t->trace.state);
 	if (state == STATE_SYSCALL_ENTRY) {
-		fprintf(stderr," event: %d",ctx->trace.stop_reason);
+		fprintf(stderr," event: %d",t->trace.stop_reason);
 	}
 
 	if (state == STATE_SYSCALL_EXIT) {
@@ -470,7 +470,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 		/*  int access(const char *pathname, int mode); */
 		case SYS_access:
 		{
-			char *str = read_child_str(ctx->tid, (void*)r.ebx);
+			char *str = read_child_str(t->tid, (void*)r.ebx);
 			fprintf(stderr,"access(const char *pathname(%s), int mode(%lx))", str, r.ecx);
 			sys_free((void**)str);
 			break;
@@ -545,7 +545,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 		/* int open(const char *pathname, int flags) */
 		case SYS_open:
 		{
-			char *str = read_child_str(ctx->tid,
+			char *str = read_child_str(t->tid,
 						   (void*)r.ebx);
 			fprintf(stderr,"open(const char *pathname(%s), int flags(%lx))", str, r.ecx);
 			sys_free((void**)&str);
@@ -576,7 +576,7 @@ void print_syscall(struct context *ctx, struct trace_frame *trace)
 		/* int stat(const char *path, struct stat *buf); */
 		case SYS_stat64:
 		{
-			char* str = read_child_str(ctx->tid,
+			char* str = read_child_str(t->tid,
 						   (void*)r.ebx);
 			fprintf(stderr,"stat(const char *path(%s), struct stat *buf(%lx))", str, r.ecx);
 			sys_free((void**)&str);
@@ -674,11 +674,11 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1, cha
 	return err;
 }
 
-void assert_child_regs_are(struct context* ctx,
+void assert_child_regs_are(struct task* t,
 			   const struct user_regs_struct* regs,
 			   int event, int state)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	struct user_regs_struct cur_regs;
 
 	read_child_registers(tid, &cur_regs);
@@ -687,7 +687,7 @@ void assert_child_regs_are(struct context* ctx,
 		print_process_mmap(tid);
 		log_err("[%s in state %d, trace file line %d]",
 			strevent(event), state, get_trace_file_lines_counter());
-		emergency_debug(ctx);
+		emergency_debug(t);
 	}
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }
@@ -808,10 +808,10 @@ void print_process_mmap(pid_t tid)
  * prints a child process memory sections content, according to /proc/pid/maps to the given filename
  */
 
-void print_process_memory(struct context * ctx, char * filename)
+void print_process_memory(struct task * t, char * filename)
 {
 	int i;
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 
 	// open the maps file
 	FILE* maps_file = open_mmap(tid);
@@ -841,7 +841,7 @@ void print_process_memory(struct context * ctx, char * filename)
 		if (memcmp(binary + idx, "[stack]", sizeof("[stack]") - 1) != 0)
 			continue;
 		const size_t size = (uintptr_t)end - (uintptr_t)start;
-		char * buffer = read_child_data(ctx, size, start);
+		char * buffer = read_child_data(t, size, start);
 		fprintf(out_file,"%s\n", line);
 		for (i = 0 ; i < size ; i += 4) {
 			unsigned int dword = *((unsigned int *)(buffer + i));
@@ -858,8 +858,8 @@ void print_process_memory(struct context * ctx, char * filename)
 
 #define CHUNK_SIZE 		(8 * PAGE_SIZE)
 
-int get_memory_size(struct context * ctx) {
-	pid_t tid = ctx->tid;
+int get_memory_size(struct task * t) {
+	pid_t tid = t->tid;
 	int result = 0;
 
 	// open the maps file
@@ -888,9 +888,9 @@ int get_memory_size(struct context * ctx) {
 /**
  * checksums all regions of memory
  */
-void checksum_process_memory(struct context * ctx)
+void checksum_process_memory(struct task * t)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	int i;
 
 	// open the maps file
@@ -931,7 +931,7 @@ void checksum_process_memory(struct context * ctx)
 		while (offset < size) {
 			int rest = (size - offset < CHUNK_SIZE) ? size - offset : CHUNK_SIZE;
 			char buffer[CHUNK_SIZE];
-			checked_pread(ctx, buffer, rest, (off_t)start + offset);
+			checked_pread(t, buffer, rest, (off_t)start + offset);
 			for (i = 0 ; i < rest ; i += 4) {
 				unsigned int dword = *((unsigned int *)(buffer + i));
 				checksum += dword;
@@ -945,12 +945,12 @@ void checksum_process_memory(struct context * ctx)
 	sys_fclose(maps_file);
 }
 
-void validate_process_memory(struct context * ctx)
+void validate_process_memory(struct task * t)
 {
 	// TODO: verify length (minus scratch)
 	/*
 	// open the maps file
-	FILE *maps_file = FILE *maps_file = open_mmap(ctx->tid);
+	FILE *maps_file = FILE *maps_file = open_mmap(t->tid);
 	 */
 
 	/*
@@ -961,7 +961,7 @@ void validate_process_memory(struct context * ctx)
 	while ( fgets(line,1024,maps_file) != NULL ) {
 		sscanf(line,"%p-%p", &start, &end);
 
-		void * buffer = read_child_data(ctx,end - start,start);
+		void * buffer = read_child_data(t,end - start,start);
 		size_t offset;
 		for (offset = 0 ; start + offset < end ; offset += 4) {
 			unsigned int dword = *((unsigned int *)(buffer + offset));
@@ -973,7 +973,7 @@ void validate_process_memory(struct context * ctx)
 
 	// open the checksums file
 	char checksums_filename[1024] = {0};
-	sprintf(checksums_filename,"%s/%d_%d",get_trace_path(),ctx->trace.global_time,ctx->rec_tid);
+	sprintf(checksums_filename,"%s/%d_%d",get_trace_path(),t->trace.global_time,t->rec_tid);
 	FILE *checksums_file = fopen(checksums_filename,"r");
 
 	// for each line in the checksums file:
@@ -1005,7 +1005,7 @@ void validate_process_memory(struct context * ctx)
 		while (offset < size) {
 			int rest = (size - offset < CHUNK_SIZE) ? size - offset : CHUNK_SIZE;
 			char buffer[CHUNK_SIZE];
-			checked_pread(ctx, buffer, rest, (off_t)start + offset);
+			checked_pread(t, buffer, rest, (off_t)start + offset);
 			for (i = 0 ; i < rest ; i += 4) {
 				unsigned int dword = *((unsigned int *)(buffer + i));
 				checksum += dword;
@@ -1022,19 +1022,19 @@ void validate_process_memory(struct context * ctx)
 	if (!(checksum == rchecksum)) {
 		log_warn("Memory differs.");
 		getchar();
-		kill(ctx->tid,SIGSTOP);
-		sys_ptrace_detatch(ctx->tid);
-		log_info("Attach to %d, range = [%x,%x]",ctx->tid, rstart, rend );
+		kill(t->tid,SIGSTOP);
+		sys_ptrace_detatch(t->tid);
+		log_info("Attach to %d, range = [%x,%x]",t->tid, rstart, rend );
 	}
 	fclose(maps_file);
 	*/
 	sys_fclose(checksums_file);
 }
 
-void * get_mmaped_region_end(struct context * ctx, void * mmap_start)
+void * get_mmaped_region_end(struct task * t, void * mmap_start)
 {
 	// open the maps file
-	FILE *maps_file = open_mmap(ctx->tid);
+	FILE *maps_file = open_mmap(t->tid);
 
 	// for each line in the maps file:
 	char line[1024];
@@ -1052,10 +1052,10 @@ void * get_mmaped_region_end(struct context * ctx, void * mmap_start)
 
 }
 
-char * get_mmaped_region_filename(struct context * ctx, void * mmap_start)
+char * get_mmaped_region_filename(struct task * t, void * mmap_start)
 {
 	// open the maps file
-	FILE *maps_file = open_mmap(ctx->tid);
+	FILE *maps_file = open_mmap(t->tid);
 
 	// for each line in the maps file:
 	char line[1024] = {0};
@@ -1092,9 +1092,9 @@ char * get_mmaped_region_filename(struct context * ctx, void * mmap_start)
  * @return 0: if the memory region is not mapped
  * 		   1: if the memory region is mapped
  */
-int check_if_mapped(struct context *ctx, void *start, void *end)
+int check_if_mapped(struct task *t, void *start, void *end)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 
 	FILE* file = open_mmap(tid);
 	char buf[256];
@@ -1191,42 +1191,42 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 }
 
 // returns the eax
-int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * call_regs) {
-	pid_t tid = ctx->tid;
+int inject_and_execute_syscall(struct task * t, struct user_regs_struct * call_regs) {
+	pid_t tid = t->tid;
 	struct user_regs_struct orig_regs;
 	read_child_registers(tid, &orig_regs);
-	void *code = read_child_data(ctx, 4, (void*)orig_regs.eip);
+	void *code = read_child_data(t, 4, (void*)orig_regs.eip);
 
 	// set up the system call
 	write_child_registers(tid, call_regs);
 
 	// inject code that executes the additional system call
 	char syscall[] = { 0xcd, 0x80 };
-	write_child_data(ctx, 2, (void*)call_regs->eip, syscall);
+	write_child_data(t, 2, (void*)call_regs->eip, syscall);
 
 	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &ctx->status);
+	sys_waitpid(tid, &t->status);
 
-	if (GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP
+	if (GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP
 	    /* XXX this is a special case for ubuntu 12.04.  revisit
 	     * this check if an event is added with number 8 (just
 	     * after SECCOMP */
-	    || GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
+	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
 		sys_ptrace_syscall(tid);
-		sys_waitpid(tid, &ctx->status);
+		sys_waitpid(tid, &t->status);
 	}
 
-	assert(GET_PTRACE_EVENT(ctx->status) == 0);
+	assert(GET_PTRACE_EVENT(t->status) == 0);
 
 	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &ctx->status);
+	sys_waitpid(tid, &t->status);
 
 	// save the result
 	int result = read_child_eax(tid);
 
 	// reset to the original state
 	write_child_registers(tid, &orig_regs);
-	write_child_data(ctx, 2, (void*)call_regs->eip, code);
+	write_child_data(t, 2, (void*)call_regs->eip, code);
 	sys_free(&code);
 
 	return result;
@@ -1254,25 +1254,25 @@ struct sigaction * get_sig_handler(pid_t tid, unsigned int signum){
 	return sig_handler_table[tid][signum];
 }
 
-int is_desched_event_syscall(struct context* ctx,
+int is_desched_event_syscall(struct task* t,
 			     const struct user_regs_struct* regs)
 {
 	return (SYS_ioctl == regs->orig_eax
-		&& (ctx->desched_fd_child == regs->ebx
-		    || ctx->desched_fd_child == REPLAY_DESCHED_EVENT_FD));
+		&& (t->desched_fd_child == regs->ebx
+		    || t->desched_fd_child == REPLAY_DESCHED_EVENT_FD));
 }
 
-int is_arm_desched_event_syscall(struct context* ctx,
+int is_arm_desched_event_syscall(struct task* t,
 				 const struct user_regs_struct* regs)
 {
-	return (is_desched_event_syscall(ctx, regs)
+	return (is_desched_event_syscall(t, regs)
 		&& PERF_EVENT_IOC_ENABLE == regs->ecx);
 }
 
-int is_disarm_desched_event_syscall(struct context* ctx,
+int is_disarm_desched_event_syscall(struct task* t,
 				    const struct user_regs_struct* regs)
 {
-	return (is_desched_event_syscall(ctx, regs)
+	return (is_desched_event_syscall(t, regs)
 		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
 }
 
@@ -1343,30 +1343,30 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 	return 1;
 }
 
-void prepare_remote_syscalls(struct context* ctx,
+void prepare_remote_syscalls(struct task* t,
 			     struct current_state_buffer* state)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	byte syscall_insn[] = { 0xcd, 0x80 };
 
-	/* Save current state of |ctx|. */
+	/* Save current state of |t|. */
 	memset(state, 0, sizeof(*state));
-	state->pid = ctx->tid;
+	state->pid = t->tid;
 	read_child_registers(tid, &state->regs);
 	state->code_size = sizeof(syscall_insn);
 	state->start_addr = (void*)state->regs.eip;
 	state->code_buffer =
-		read_child_data(ctx, state->code_size, state->start_addr);
+		read_child_data(t, state->code_size, state->start_addr);
 
 	/* Inject phony syscall instruction. */
-	write_child_data(ctx, state->code_size, state->start_addr,
+	write_child_data(t, state->code_size, state->start_addr,
 			 syscall_insn);
 }
 
-void* push_tmp_str(struct context* ctx, struct current_state_buffer* state,
+void* push_tmp_str(struct task* t, struct current_state_buffer* state,
 		   const char* str, struct restore_mem* mem)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 
 	mem->len = strlen(str) + 1/*null byte*/;
 	mem->saved_sp = (void*)state->regs.esp;
@@ -1375,32 +1375,32 @@ void* push_tmp_str(struct context* ctx, struct current_state_buffer* state,
 	write_child_registers(tid, &state->regs);
 	mem->addr = (void*)state->regs.esp;
 
-	mem->data = read_child_data(ctx, mem->len, mem->addr);
+	mem->data = read_child_data(t, mem->len, mem->addr);
 
-	write_child_data(ctx, mem->len, mem->addr, str);
+	write_child_data(t, mem->len, mem->addr, str);
 
 	return mem->addr;
 }
 
-void pop_tmp_mem(struct context* ctx, struct current_state_buffer* state,
+void pop_tmp_mem(struct task* t, struct current_state_buffer* state,
 		 struct restore_mem* mem)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 
 	assert(mem->saved_sp == (void*)state->regs.esp + mem->len);
 
-	write_child_data(ctx, mem->len, mem->addr, mem->data);
+	write_child_data(t, mem->len, mem->addr, mem->data);
 	sys_free((void**)&mem->data);
 
 	state->regs.esp += mem->len;
 	write_child_registers(tid, &state->regs);
 }
 
-long remote_syscall(struct context* ctx, struct current_state_buffer* state,
+long remote_syscall(struct task* t, struct current_state_buffer* state,
 		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	struct user_regs_struct callregs;
 
 	assert(tid == state->pid);
@@ -1418,46 +1418,46 @@ long remote_syscall(struct context* ctx, struct current_state_buffer* state,
 
 	/* Advance to syscall entry. */
 	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &ctx->status);
+	sys_waitpid(tid, &t->status);
 
 	/* Skip past a seccomp trace, if we happened to see one. */
-	if (GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP
+	if (GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP
 	    /* XXX this is a special case for ubuntu 12.04.  revisit
 	     * this check if an event is added with number 8 (just
 	     * after SECCOMP */
-	    || GET_PTRACE_EVENT(ctx->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
+	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
 		sys_ptrace_syscall(tid);
-		sys_waitpid(tid, &ctx->status);
+		sys_waitpid(tid, &t->status);
 	}
 
-	assert(GET_PTRACE_EVENT(ctx->status) == 0);
+	assert(GET_PTRACE_EVENT(t->status) == 0);
 
 	/* Start running the syscall. */
 	sys_ptrace_syscall(tid);
 	if (WAIT == wait) {
-		return wait_remote_syscall(ctx, state);
+		return wait_remote_syscall(t, state);
 	}
 	return 0;
 }
 
-long wait_remote_syscall(struct context* ctx,
+long wait_remote_syscall(struct task* t,
 			 struct current_state_buffer* state)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	/* Wait for syscall-exit trap. */
-	sys_waitpid(tid, &ctx->status);
+	sys_waitpid(tid, &t->status);
 	return read_child_eax(tid);
 }
 
-void finish_remote_syscalls(struct context* ctx,
+void finish_remote_syscalls(struct task* t,
 			    struct current_state_buffer* state)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 
 	assert(tid == state->pid);
 
 	/* Restore stomped instruction. */
-	write_child_data(ctx, state->code_size, state->start_addr,
+	write_child_data(t, state->code_size, state->start_addr,
 			 state->code_buffer);
 	sys_free((void**)&state->code_buffer);
 
@@ -1539,17 +1539,17 @@ static int recv_fd(int sock, int* remote_fdno)
 	return fd;
 }
 
-static void write_socketcall_args(struct context* ctx, void* child_args_vec,
+static void write_socketcall_args(struct task* t, void* child_args_vec,
 				  long arg1, long arg2, long arg3)
 {
 	struct socketcall_args args = { { arg1, arg2, arg3 } };
-	write_child_data(ctx, sizeof(args), child_args_vec, &args);
+	write_child_data(t, sizeof(args), child_args_vec, &args);
 }
 
-void* init_syscall_buffer(struct context* ctx, void* map_hint,
+void* init_syscall_buffer(struct task* t, void* map_hint,
 			  int share_desched_fd)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	char shmem_filename[PATH_MAX];
 	struct current_state_buffer state;
 	struct sockaddr_un addr;
@@ -1567,8 +1567,8 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 	 * signals. */
 
 	/* Arguments to the rrcall. */
-	prepare_remote_syscalls(ctx, &state);
-	ctx->untraced_syscall_ip = (void*)state.regs.ebx;
+	prepare_remote_syscalls(t, &state);
+	t->untraced_syscall_ip = (void*)state.regs.ebx;
 	child_sockaddr = state.regs.ecx;
 	child_msg = state.regs.edx;
 	child_fdptr = (void*)state.regs.esi;
@@ -1578,7 +1578,7 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 		 "/dev/shm/rr-tracee-shmem-%d", tid);
 	/* NB: the sockaddr prepared by the child uses the recorded
 	 * tid, so always must here. */
-	prepare_syscallbuf_socket_addr(&addr, ctx->rec_tid);
+	prepare_syscallbuf_socket_addr(&addr, t->rec_tid);
 
 	/* Create the segment we'll share with the tracee. */
 	if (0 > (shmem_fd = open(shmem_filename, O_CREAT | O_RDWR, 0640))) {
@@ -1602,17 +1602,17 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 
 	/* Initiate tracee connect(), but don't wait for it to
 	 * finish. */
-	write_socketcall_args(ctx, child_args_vec,
+	write_socketcall_args(t, child_args_vec,
 			      AF_UNIX, SOCK_STREAM, 0);
-	child_sock = remote_syscall2(ctx, &state, SYS_socketcall,
+	child_sock = remote_syscall2(t, &state, SYS_socketcall,
 				     SYS_SOCKET, (uintptr_t)child_args_vec);
 	if (0 > child_sock) {
 		errno = -child_sock;
 		fatal("Failed to create child socket");
 	}
-	write_socketcall_args(ctx, child_args_vec,
+	write_socketcall_args(t, child_args_vec,
 			      child_sock, child_sockaddr, sizeof(addr));
-	remote_syscall(ctx, &state, DONT_WAIT, SYS_socketcall,
+	remote_syscall(t, &state, DONT_WAIT, SYS_socketcall,
 		       SYS_CONNECT, (uintptr_t)child_args_vec, 0, 0, 0, 0);
 	/* Now the child is waiting for us to accept it. */
 
@@ -1621,7 +1621,7 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 	 * XXX could be really anal and check credentials of
 	 * connecting endpoint ... */
 	sock = accept(listen_sock, NULL, NULL);
-	if ((child_ret = wait_remote_syscall(ctx, &state))) {
+	if ((child_ret = wait_remote_syscall(t, &state))) {
 		errno = -child_ret;
 		fatal("Failed to connect() in tracee");
 	}
@@ -1635,29 +1635,29 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 		 * not defined whether the sendmsg() may block on our
 		 * recvmsg()ing what the tracee sent us (in which case
 		 * we would deadlock with the tracee). */
-		write_socketcall_args(ctx, child_args_vec,
+		write_socketcall_args(t, child_args_vec,
 				      child_sock, child_msg, 0);
-		remote_syscall(ctx, &state, DONT_WAIT, SYS_socketcall,
+		remote_syscall(t, &state, DONT_WAIT, SYS_socketcall,
 			       SYS_SENDMSG, (uintptr_t)child_args_vec,
 			       0, 0, 0, 0);
 		/* Child may be waiting on our recvmsg(). */
 
 		/* Read the shared fd and finish the child's syscall. */
-		ctx->desched_fd = recv_fd(sock, &ctx->desched_fd_child);
-		if (0 >= wait_remote_syscall(ctx, &state)) {
+		t->desched_fd = recv_fd(sock, &t->desched_fd_child);
+		if (0 >= wait_remote_syscall(t, &state)) {
 			errno = -child_ret;
 			fatal("Failed to sendmsg() in tracee");
 		}
 	} else {
-		ctx->desched_fd_child = REPLAY_DESCHED_EVENT_FD;
+		t->desched_fd_child = REPLAY_DESCHED_EVENT_FD;
 	}
 
 	/* Share the shmem fd with the child.  It's ok to reuse the
 	 * |child_msg| buffer. */
 	send_fd(shmem_fd, sock);
-	write_socketcall_args(ctx, child_args_vec,
+	write_socketcall_args(t, child_args_vec,
 			      child_sock, child_msg, 0);
-	child_ret = remote_syscall2(ctx, &state, SYS_socketcall,
+	child_ret = remote_syscall2(t, &state, SYS_socketcall,
 				    SYS_RECVMSG, (uintptr_t)child_args_vec);
 	if (0 >= child_ret) {
 		errno = -child_ret;
@@ -1675,7 +1675,7 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 	/* Socket magic is now done. */
 	close(listen_sock);
 	close(sock);
-	remote_syscall1(ctx, &state, SYS_close, child_sock);
+	remote_syscall1(t, &state, SYS_close, child_sock);
 
 	/* Map the segment in our address space and in the
 	 * tracee's. */
@@ -1685,23 +1685,23 @@ void* init_syscall_buffer(struct context* ctx, void* map_hint,
 			     shmem_fd, 0))) {
 		fatal("Failed to mmap shmem region");
 	}
-	child_map_addr = (void*)remote_syscall6(ctx, &state, SYS_mmap2,
+	child_map_addr = (void*)remote_syscall6(t, &state, SYS_mmap2,
 						(uintptr_t)map_hint,
 						SYSCALLBUF_BUFFER_SIZE,
 						PROT_READ | PROT_WRITE,
 						MAP_SHARED, child_shmem_fd, 0);
 
-	ctx->syscallbuf_child = child_map_addr;
-	ctx->syscallbuf_hdr = map_addr;
+	t->syscallbuf_child = child_map_addr;
+	t->syscallbuf_hdr = map_addr;
 	/* No entries to begin with. */
-	memset(ctx->syscallbuf_hdr, 0, sizeof(*ctx->syscallbuf_hdr));
+	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
 
 	close(shmem_fd);
-	remote_syscall1(ctx, &state, SYS_close, child_shmem_fd);
+	remote_syscall1(t, &state, SYS_close, child_shmem_fd);
 
 	/* Return the mapped address to the child. */
 	state.regs.eax = (uintptr_t)child_map_addr;
-	finish_remote_syscalls(ctx, &state);
+	finish_remote_syscalls(t, &state);
 
 	return child_map_addr;
 }

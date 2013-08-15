@@ -12,7 +12,7 @@
 
 #include "types.h"
 
-struct context;
+struct task;
 struct trace_frame;
 
 #define GET_PTRACE_EVENT(status) \
@@ -35,35 +35,35 @@ struct trace_frame;
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
-char* get_inst(struct context* ctx, int eip_offset, int* opcode_size);
+char* get_inst(struct task* t, int eip_offset, int* opcode_size);
 bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
-void emulate_child_inst(struct context * ctx, int eip_offset);
-void print_inst(struct context* ctx);
-void print_syscall(struct context *ctx, struct trace_frame *trace);
+void emulate_child_inst(struct task * t, int eip_offset);
+void print_inst(struct task* t);
+void print_syscall(struct task *t, struct trace_frame *trace);
 void get_eip_info(pid_t tid);
-int check_if_mapped(struct context *ctx, void *start, void *end);
+int check_if_mapped(struct task *t, void *start, void *end);
 int compare_register_files(char* name1, const struct user_regs_struct* reg1, char* name2, const struct user_regs_struct* reg2, int print, int stop);
-void assert_child_regs_are(struct context* ctx, const struct user_regs_struct* regs, int event, int state);
+void assert_child_regs_are(struct task* t, const struct user_regs_struct* regs, int event, int state);
 uint64_t str2ull(const char* start, size_t max_size);
 long int str2li(const char* start, size_t max_size);
 void * str2x(const char* start, size_t max_size);
 void read_line(FILE* file, char* buf, int size, char* name);
 void add_scratch(void *ptr, int size);
 int overall_scratch_size();
-void add_protected_map(struct context *ctx, void *start);
-bool is_protected_map(struct context *ctx, void *start);
+void add_protected_map(struct task *t, void *start);
+bool is_protected_map(struct task *t, void *start);
 void add_sig_handler(pid_t tid, unsigned int signum, struct sigaction * sa);
 struct sigaction * get_sig_handler(pid_t tid, unsigned int signum);
 
 void print_register_file_tid(pid_t tid);
 void print_register_file(struct user_regs_struct* regs);
-void print_process_memory(struct context * ctx, char * filename);
+void print_process_memory(struct task * t, char * filename);
 void print_process_mmap(pid_t tid);
-void checksum_process_memory(struct context * ctx);
-void validate_process_memory(struct context * ctx);
-void * get_mmaped_region_end(struct context * ctx, void * mmap_start);
-char * get_mmaped_region_filename(struct context * ctx, void * mmap_start);
-int get_memory_size(struct context * ctx);
+void checksum_process_memory(struct task * t);
+void validate_process_memory(struct task * t);
+void * get_mmaped_region_end(struct task * t, void * mmap_start);
+char * get_mmaped_region_filename(struct task * t, void * mmap_start);
+int get_memory_size(struct task * t);
 
 /**
  * Get the current time from the preferred monotonic clock in units of
@@ -108,26 +108,26 @@ struct current_state_buffer {
 };
 
 void inject_code(struct current_state_buffer* buf, char* code);
-int inject_and_execute_syscall(struct context * ctx, struct user_regs_struct * call_regs);
-void mprotect_child_region(struct context * ctx, void * addr, int prot);
+int inject_and_execute_syscall(struct task * t, struct user_regs_struct * call_regs);
+void mprotect_child_region(struct task * t, void * addr, int prot);
 
 /**
- * Return nonzero if |ctx|'s current registers |regs| indicate that
- * |ctx| is at an arm-desched-event or disarm-desched-event syscall.
+ * Return nonzero if |t|'s current registers |regs| indicate that
+ * |t| is at an arm-desched-event or disarm-desched-event syscall.
  */
-int is_desched_event_syscall(struct context* ctx,
+int is_desched_event_syscall(struct task* t,
 			     const struct user_regs_struct* regs);
 /**
- * Return nonzero if |ctx|'s current registers |regs| indicate that
- * |ctx| is at an arm-desched-event syscall.
+ * Return nonzero if |t|'s current registers |regs| indicate that
+ * |t| is at an arm-desched-event syscall.
  */
-int is_arm_desched_event_syscall(struct context* ctx,
+int is_arm_desched_event_syscall(struct task* t,
 				 const struct user_regs_struct* regs);
 /**
- * Return nonzero if |ctx|'s current registers |regs| indicate that
- * |ctx| is at a disarm-desched-event syscall.
+ * Return nonzero if |t|'s current registers |regs| indicate that
+ * |t| is at a disarm-desched-event syscall.
  */
-int is_disarm_desched_event_syscall(struct context* ctx,
+int is_disarm_desched_event_syscall(struct task* t,
 				    const struct user_regs_struct* regs);
 
 /**
@@ -144,7 +144,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 /* XXX should this go in ipc.h? */
 
 /**
- * Prepare |ctx| for a series of remote syscalls.  The caller must
+ * Prepare |t| for a series of remote syscalls.  The caller must
  * treat the outparam |state| as an immutable token while it wishes to
  * make syscalls.
  *
@@ -152,7 +152,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
  * *must* ensure the callee will not receive any signals.  This code
  * does not attempt to deal with signals.
  */
-void prepare_remote_syscalls(struct context* ctx,
+void prepare_remote_syscalls(struct task* t,
 			     struct current_state_buffer* state);
 
 /**
@@ -170,51 +170,51 @@ struct restore_mem {
 	size_t len;
 };
 /**
- * Write |str| into |ctx|'s address space in such a way that the write
- * can be undone.  |ctx| must already have been prepared for remote
- * syscalls, in |state|.  The address of the tmp string in |ctx|'s
+ * Write |str| into |t|'s address space in such a way that the write
+ * can be undone.  |t| must already have been prepared for remote
+ * syscalls, in |state|.  The address of the tmp string in |t|'s
  * address space is returned.
  *
  * The cookie used to restore the stomped memory is returned in |mem|.
  * When the temporary string is no longer useful, the caller *MUST*
  * call |pop_tmp_mem()|.
  */
-void* push_tmp_str(struct context* ctx, struct current_state_buffer* state,
+void* push_tmp_str(struct task* t, struct current_state_buffer* state,
 		   const char* str, struct restore_mem* mem);
 /**
  * Restore the memory stomped by an earlier |push_tmp_*()|.  Tmp
  * memory must be popped in the reverse order it was pushed, that is,
  * LIFO.
  */
-void pop_tmp_mem(struct context* ctx, struct current_state_buffer* state,
+void pop_tmp_mem(struct task* t, struct current_state_buffer* state,
 		 struct restore_mem* mem);
 
 /**
- * Remotely invoke in |ctx| the specified syscall with the given
- * arguments.  The arguments must of course be valid in |ctx|, and no
+ * Remotely invoke in |t| the specified syscall with the given
+ * arguments.  The arguments must of course be valid in |t|, and no
  * checking of that is done by this function.
  *
- * If |wait| is |WAIT|, the syscall is finished in |ctx| and the
+ * If |wait| is |WAIT|, the syscall is finished in |t| and the
  * result is returned.  Otherwise if it's |DONT_WAIT|, the syscall is
- * initiated but *not* finished in |ctx|, and the return value is
+ * initiated but *not* finished in |t|, and the return value is
  * undefined.  Call |wait_remote_syscall()| to finish the syscall and
  * get the return value.
  */
 enum { WAIT = 1, DONT_WAIT = 0 };
-long remote_syscall(struct context* ctx, struct current_state_buffer* state,
+long remote_syscall(struct task* t, struct current_state_buffer* state,
 		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6);
 /**
  * Wait for the last |DONT_WAIT| syscall initiated by
  * |remote_syscall()| to finish, returning the result.
  */
-long wait_remote_syscall(struct context* ctx,
+long wait_remote_syscall(struct task* t,
 			 struct current_state_buffer* state);
 /**
- * Undo in |ctx| any preparations that were made for a series of
+ * Undo in |t| any preparations that were made for a series of
  * remote syscalls.
  */
-void finish_remote_syscalls(struct context* ctx,
+void finish_remote_syscalls(struct task* t,
 			    struct current_state_buffer* state);
 
 #define remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)	\
@@ -235,8 +235,8 @@ void finish_remote_syscalls(struct context* ctx,
 	remote_syscall1(_c, _s, _no, 0)
 
 /**
- * Initialize the syscall buffer in |ctx|, i.e., implement
- * RRCALL_init_syscall_buffer.  |ctx| must be at the point of *exit
+ * Initialize the syscall buffer in |t|, i.e., implement
+ * RRCALL_init_syscall_buffer.  |t| must be at the point of *exit
  * from* the rrcall.  Its registers will be updated with the return
  * value from the rrcall, which is also returned from this call.
  * |map_hint| suggests where to map the region.
@@ -246,7 +246,7 @@ void finish_remote_syscalls(struct context* ctx,
  * XXX: this is a weird place to stick this helper
  */
 enum { SHARE_DESCHED_EVENT_FD = 1, DONT_SHARE_DESCHED_EVENT_FD = 0 };
-void* init_syscall_buffer(struct context* ctx, void* map_hint,
+void* init_syscall_buffer(struct task* t, void* map_hint,
 			  int share_desched_fd);
 
 #endif /* UTIL_H_ */

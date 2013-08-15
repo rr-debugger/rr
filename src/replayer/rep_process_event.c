@@ -74,30 +74,30 @@ bool validate = FALSE;
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
  */
-static void validate_args(int syscall, int state, struct context* ctx)
+static void validate_args(int syscall, int state, struct task* t)
 {
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
 	if (!validate) {
 		return;
 	}
-	assert_child_regs_are(ctx, &ctx->trace.recorded_regs, syscall, state);
+	assert_child_regs_are(t, &t->trace.recorded_regs, syscall, state);
 }
 
 /**
  * Proceeds until the next system call, which is not executed.
  */
-static void goto_next_syscall_emu(struct context *ctx)
+static void goto_next_syscall_emu(struct task *t)
 {
-	sys_ptrace_sysemu(ctx->tid);
-	sys_waitpid(ctx->tid, &(ctx->status));
+	sys_ptrace_sysemu(t->tid);
+	sys_waitpid(t->tid, &(t->status));
 
-	int sig = signal_pending(ctx->status);
+	int sig = signal_pending(t->status);
 	/* SIGCHLD is pending, do not deliver it, wait for it to
 	 * appear in the trace SIGCHLD is the only signal that should
 	 * ever be generated as all other signals are emulated! */
 	if (sig == SIGCHLD) {
-		goto_next_syscall_emu(ctx);
+		goto_next_syscall_emu(t);
 		return;
 	} else if (SIGTRAP == sig) {
 		fatal("SIGTRAP while entering syscall ... were you using a debugger? If so, the current syscall needs to be made interruptible");
@@ -107,88 +107,88 @@ static void goto_next_syscall_emu(struct context *ctx)
 
 	/* check if we are synchronized with the trace -- should never
 	 * fail */
-	const int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	const int current_syscall = read_child_orig_eax(ctx->tid);
+	const int rec_syscall = t->trace.recorded_regs.orig_eax;
+	const int current_syscall = read_child_orig_eax(t->tid);
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered
 		 * later, or was already delivered earlier */
 		/* TODO: this code is now obselete */
-		if (WSTOPSIG(ctx->status) == SIGCHLD) {
+		if (WSTOPSIG(t->status) == SIGCHLD) {
 			debug("do we come here?\n");
-			/*ctx->replay_sig = SIGCHLD; // remove that if
+			/*t->replay_sig = SIGCHLD; // remove that if
 			 * spec does not work anymore */
-			goto_next_syscall_emu(ctx);
+			goto_next_syscall_emu(t);
 			return;
 		}
 
 		fatal("goto_next_syscall_emu: stop reason: %x signal: %d pending sig: %d\n"
 		      "Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n"
 		      "ptrace_event: %x",
-		      ctx->status, WSTOPSIG(ctx->status), ctx->child_sig,
-		      rec_syscall, current_syscall, ctx->trace.global_time,
-		      GET_PTRACE_EVENT(ctx->status));
+		      t->status, WSTOPSIG(t->status), t->child_sig,
+		      rec_syscall, current_syscall, t->trace.global_time,
+		      GET_PTRACE_EVENT(t->status));
 	}
-	ctx->child_sig = 0;
+	t->child_sig = 0;
 }
 
 /**
  *  Step over the system call to be able to reuse PTRACE_SYSTEM call
  */
-static void finish_syscall_emu(struct context *ctx)
+static void finish_syscall_emu(struct task *t)
 {
 	struct user_regs_struct regs;
-	read_child_registers(ctx->tid, &regs);
-	sys_ptrace_sysemu_singlestep(ctx->tid);
-	sys_waitpid(ctx->tid, &(ctx->status));
-	write_child_registers(ctx->tid, &regs);
+	read_child_registers(t->tid, &regs);
+	sys_ptrace_sysemu_singlestep(t->tid);
+	sys_waitpid(t->tid, &(t->status));
+	write_child_registers(t->tid, &regs);
 
-	ctx->status = 0;
+	t->status = 0;
 }
 
 /**
  * Proceeds until the next system call, which is being executed.
  */
-void __ptrace_cont(struct context *ctx)
+void __ptrace_cont(struct task *t)
 {
-	sys_ptrace_syscall(ctx->tid);
-	sys_waitpid(ctx->tid, &ctx->status);
+	sys_ptrace_syscall(t->tid);
+	sys_waitpid(t->tid, &t->status);
 
-	ctx->child_sig = signal_pending(ctx->status);
-	sys_ptrace(PTRACE_GETREGS, ctx->tid, NULL, &ctx->regs);
-	ctx->event = ctx->regs.orig_eax;
+	t->child_sig = signal_pending(t->status);
+	sys_ptrace(PTRACE_GETREGS, t->tid, NULL, &t->regs);
+	t->event = t->regs.orig_eax;
 
 	/* check if we are synchronized with the trace -- should never fail */
-	int rec_syscall = ctx->trace.recorded_regs.orig_eax;
-	int current_syscall = ctx->regs.orig_eax;
+	int rec_syscall = t->trace.recorded_regs.orig_eax;
+	int current_syscall = t->regs.orig_eax;
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered
 		 * later, or was already delivered earlier */
-		if (WSTOPSIG(ctx->status) == SIGCHLD) {
-			__ptrace_cont(ctx);
-			ctx->child_sig = 0;
+		if (WSTOPSIG(t->status) == SIGCHLD) {
+			__ptrace_cont(t);
+			t->child_sig = 0;
 			return;
 		}
 		fatal("\n"
 		      "stop reason: %x :%d  pending sig: %d\n"
 		      "recorded eip: 0x%lx;  current eip: 0x%lx\n"
 		      "Internal error: syscalls out of sync: rec: %d  now: %d\n",
-		      ctx->status, WSTOPSIG(ctx->status), ctx->child_sig,
-		      ctx->trace.recorded_regs.eip, ctx->regs.eip,
+		      t->status, WSTOPSIG(t->status), t->child_sig,
+		      t->trace.recorded_regs.eip, t->regs.eip,
 		      rec_syscall, current_syscall);
 	}
 
-	/*assert(ctx->child_sig == 0);*/
+	/*assert(t->child_sig == 0);*/
 	/* we should not have a signal pending here -- if there is one
 	 * pending nevertheless, we do not deliver it to the
 	 * application. This ensures that the behavior remains the
 	 * same (this is probably irrelevant with signal emulation)
 	 */
-	ctx->child_sig = 0;
+	t->child_sig = 0;
 }
 
-void rep_maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
+void rep_maybe_replay_stdio_write(struct task* t, int redirect_stdio)
 {
 	struct user_regs_struct regs;
 	int fd;
@@ -197,7 +197,7 @@ void rep_maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
 		return;
 	}
 
-	read_child_registers(ctx->tid, &regs);
+	read_child_registers(t->tid, &regs);
 
 	assert(SYS_write == regs.orig_eax);
 
@@ -205,7 +205,7 @@ void rep_maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
 	if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
 		size_t len = regs.edx;
 		void* addr = (void*) regs.ecx;
-		void* buf = read_child_data(ctx, len, addr);
+		void* buf = read_child_data(t, len, addr);
 		if (len != write(fd, buf, len)) {
 			fatal("Couldn't write stdio");
 		}
@@ -213,59 +213,59 @@ void rep_maybe_replay_stdio_write(struct context* ctx, int redirect_stdio)
 	}
 }
 
-static void enter_syscall_emu(struct context* ctx, int syscall)
+static void enter_syscall_emu(struct task* t, int syscall)
 {
-	goto_next_syscall_emu(ctx);
-	validate_args(syscall, STATE_SYSCALL_ENTRY, ctx);
+	goto_next_syscall_emu(t);
+	validate_args(syscall, STATE_SYSCALL_ENTRY, t);
 }
 
-static void exit_syscall_emu(struct context* ctx,
+static void exit_syscall_emu(struct task* t,
 			     int syscall, int num_emu_args)
 {
 	int i;
 
 	for (i = 0; i < num_emu_args; ++i) {
-		set_child_data(ctx);
+		set_child_data(t);
 	}
-	set_return_value(ctx);
-	validate_args(syscall, STATE_SYSCALL_EXIT, ctx);
-	finish_syscall_emu(ctx);
+	set_return_value(t);
+	validate_args(syscall, STATE_SYSCALL_EXIT, t);
+	finish_syscall_emu(t);
 }
 
-static void enter_syscall_exec(struct context* ctx, int syscall)
+static void enter_syscall_exec(struct task* t, int syscall)
 {
-	__ptrace_cont(ctx);
-	validate_args(syscall, STATE_SYSCALL_ENTRY, ctx);
+	__ptrace_cont(t);
+	validate_args(syscall, STATE_SYSCALL_ENTRY, t);
 }
 
 enum { DONT_EMULATE_RETURN = 0, EMULATE_RETURN = 1 };
-static void exit_syscall_exec(struct context* ctx, int syscall,
+static void exit_syscall_exec(struct task* t, int syscall,
 			      int num_emu_args, int emu_ret)
 {
 	int i;
 
-	__ptrace_cont(ctx);
+	__ptrace_cont(t);
 	for (i = 0; i < num_emu_args; ++i) {
-		set_child_data(ctx);
+		set_child_data(t);
 	}
 	if (emu_ret) {
-		set_return_value(ctx); 
+		set_return_value(t); 
 	}
-	validate_args(syscall, STATE_SYSCALL_EXIT, ctx);
+	validate_args(syscall, STATE_SYSCALL_EXIT, t);
 }
 
-static void process_clone(struct context* ctx,
+static void process_clone(struct task* t,
 			  struct trace_frame* trace, int state)
 {
 	int syscall = SYS_clone;
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 
 	if (state == STATE_SYSCALL_ENTRY) {
 		struct trace_frame next_trace;
 		peek_next_trace(&next_trace);
 		if (next_trace.recorded_regs.eax < 0) {
 			/* creation failed, emulate it */
-			enter_syscall_emu(ctx, SYS_clone);
+			enter_syscall_emu(t, SYS_clone);
 			return;
 		}
 	}
@@ -273,18 +273,18 @@ static void process_clone(struct context* ctx,
 	if (state == STATE_SYSCALL_EXIT) {
 		if (trace->recorded_regs.eax < 0) {
 			/* creation failed, emulate it */
-			exit_syscall_emu(ctx, SYS_clone, 0);
+			exit_syscall_emu(t, SYS_clone, 0);
 			return;
 		}
 	}
 
 	if (state == STATE_SYSCALL_ENTRY) {
-		enter_syscall_exec(ctx, SYS_clone);
+		enter_syscall_exec(t, SYS_clone);
 	} else {
 		/* execute the system call */
-		__ptrace_cont(ctx);
+		__ptrace_cont(t);
 		/* wait for the signal that a new process is created */
-		__ptrace_cont(ctx);
+		__ptrace_cont(t);
 
 		pid_t new_tid = sys_ptrace_getmsg(tid);
 
@@ -296,24 +296,24 @@ static void process_clone(struct context* ctx,
 
 		/* FIXME: what if registers are non-null and contain
 		 * an invalid address? */
-		set_child_data(ctx);
-		set_child_data(ctx);
+		set_child_data(t);
+		set_child_data(t);
 
 		size_t size;
 		void* rec_addr;
-		void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
+		void* data = read_raw_data(&(t->trace), &size, &rec_addr);
 		if (data != NULL ) {
 			write_child_data_n(new_tid, size, (void*)rec_addr, data);
 			sys_free((void**) &data);
 		}
 
-		data = read_raw_data(&(ctx->trace), &size, &rec_addr);
+		data = read_raw_data(&(t->trace), &size, &rec_addr);
 		if (data != NULL ) {
 			write_child_data_n(new_tid, size, (void*)rec_addr, data);
 			sys_free((void**) &data);
 		}
 
-		data = read_raw_data(&(ctx->trace), &size, &rec_addr);
+		data = read_raw_data(&(t->trace), &size, &rec_addr);
 		if (data != NULL ) {
 			write_child_data_n(new_tid, size, (void*)rec_addr, data);
 			sys_free((void**) &data);
@@ -322,16 +322,16 @@ static void process_clone(struct context* ctx,
 		 * should not point to data on that is used
 		 * afterwards */
 		write_child_ebp(tid, trace->recorded_regs.ebp);
-		set_return_value(ctx);
-		validate_args(syscall, state, ctx);
+		set_return_value(t);
+		validate_args(syscall, state, t);
 	}
 
 }
 
-static void process_ioctl(struct context* ctx, int state,
+static void process_ioctl(struct task* t, int state,
 			  struct rep_trace_step* step)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	int request;
 
 	step->syscall.emu = 1;
@@ -370,9 +370,9 @@ static void process_ioctl(struct context* ctx, int state,
 	}
 }
 
-void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
+void process_ipc(struct task* t, struct trace_frame* trace, int state)
 {
-	int tid = ctx->tid;
+	int tid = t->tid;
 	int call = trace->recorded_regs.ebx;
 	/* TODO: ipc may be completely emulated */
 	if (state == STATE_SYSCALL_ENTRY) {
@@ -381,21 +381,21 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 		case SEMGET:
 		case SEMCTL:
 		case SEMOP:
-			enter_syscall_emu(ctx, SYS_ipc);
+			enter_syscall_emu(t, SYS_ipc);
 			break;
 		default:
-			enter_syscall_exec(ctx, SYS_ipc);
+			enter_syscall_exec(t, SYS_ipc);
 			break;
 		}
 	} else {
 		switch (call) {
 		/* int shmget(key_t key, size_t size, int shmflg); */
 		case SHMGET: {
-			__ptrace_cont(ctx);
+			__ptrace_cont(t);
 			shmem_store_key(trace->recorded_regs.eax,
 					read_child_eax(tid));
-			set_return_value(ctx);
-			validate_args(SYS_ipc, state, ctx);
+			set_return_value(t);
+			validate_args(SYS_ipc, state, t);
 			break;
 		}
 		/* void *shmat(int shmid, const void *shmaddr, int shmflg) */
@@ -414,7 +414,7 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 			assert(rec_addr == (void*)regs.esi);
 			/* hint sits at edi */
 			write_child_edi(tid, *map_addr);
-			__ptrace_cont(ctx);
+			__ptrace_cont(t);
 			read_child_registers(tid, &regs);
 			/* put the key back */
 			regs.ecx = orig_shmemid;
@@ -432,12 +432,12 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 				/* to prevent direct memory access to
 				 * shared memory with non recorded
 				 * processes */
-				mprotect_child_region(ctx,
+				mprotect_child_region(t,
 						      (void*)*map_addr,
 						      PROT_NONE);
 			}
 			sys_free((void**)&map_addr);
-			validate_args(SYS_ipc, state, ctx);
+			validate_args(SYS_ipc, state, t);
 			break;
 		}
 
@@ -447,27 +447,27 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 			int shmid = shmem_get_key(read_child_ecx(tid));
 
 			write_child_ecx(tid, shmid);
-			__ptrace_cont(ctx);
+			__ptrace_cont(t);
 			write_child_ecx(tid, orig_shmemid);
-			set_child_data(ctx);
-			validate_args(SYS_ipc, state, ctx);
+			set_child_data(t);
+			validate_args(SYS_ipc, state, t);
 			break;
 		}
 
 		/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
 		case MSGRCV:
-			exit_syscall_emu(ctx, SYS_ipc, 1);
+			exit_syscall_emu(t, SYS_ipc, 1);
 			break;
 
 		/* int shmdt(const void *shmaddr); */
 		case SHMDT:
-			exit_syscall_exec(ctx, SYS_ipc, 0, EMULATE_RETURN);
+			exit_syscall_exec(t, SYS_ipc, 0, EMULATE_RETURN);
 			break;
 
 		case SEMGET:
 		/* int semop(int semid, struct sembuf *sops, unsigned nsops); */
 		case SEMOP:
-			exit_syscall_emu(ctx, SYS_ipc, 0);
+			exit_syscall_emu(t, SYS_ipc, 0);
 			break;
 
 		/* int semctl(int semid, int semnum, int cmd, union semnum); */
@@ -497,7 +497,7 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 				fatal("Unknown semctl command %d", cmd);
 				break;
 			}
-			exit_syscall_emu(ctx, SYS_ipc, num_emu_args);
+			exit_syscall_emu(t, SYS_ipc, num_emu_args);
 		}
 
 		default:
@@ -506,7 +506,7 @@ void process_ipc(struct context* ctx, struct trace_frame* trace, int state)
 	}
 }
 
-static void* finish_anonymous_mmap(struct context* ctx,
+static void* finish_anonymous_mmap(struct task* t,
 				   struct current_state_buffer* state,
 				   struct trace_frame* trace,
 				   int prot, int flags)
@@ -520,7 +520,7 @@ static void* finish_anonymous_mmap(struct context* ctx,
 	 * whatever the tracee passed to avoid stirring up trouble. */
 	int fd = rec_regs->edi;
 	off_t offset = rec_regs->ebp;
-	return (void*)remote_syscall6(ctx, state, SYS_mmap2,
+	return (void*)remote_syscall6(t, state, SYS_mmap2,
 				      rec_addr, length, prot,
 				      /* Tell the kernel to take
 				       * |rec_addr| seriously. */
@@ -528,13 +528,13 @@ static void* finish_anonymous_mmap(struct context* ctx,
 				      fd, offset);
 }
 
-static void* finish_copied_mmap(struct context* ctx,
+static void* finish_copied_mmap(struct task* t,
 				struct current_state_buffer* state,
 				struct trace_frame* trace,
 				int prot, int flags,
 				const struct mmapped_file* file)
 {
-	void* mapped_addr = finish_anonymous_mmap(ctx, state, trace, prot,
+	void* mapped_addr = finish_anonymous_mmap(t, state, trace, prot,
 						  /* The restored region
 						   * won't be backed by
 						   * file. */
@@ -543,12 +543,12 @@ static void* finish_copied_mmap(struct context* ctx,
 	/* XXX any file consistency checks we need to do? */
 
 	/* Restore the map region we copied. */
-	set_child_data(ctx);
+	set_child_data(t);
 
 	return mapped_addr;
 }
 
-static void* finish_direct_mmap(struct context* ctx,
+static void* finish_direct_mmap(struct task* t,
 				struct current_state_buffer* state,
 				struct trace_frame* trace,
 				int prot, int flags,
@@ -584,7 +584,7 @@ static void* finish_direct_mmap(struct context* ctx,
 	 * recording. */
 	{
 		struct restore_mem restore;
-		void* child_str = push_tmp_str(ctx, state, file->filename,
+		void* child_str = push_tmp_str(t, state, file->filename,
 					       &restore);
 		/* We only need RDWR for shared writeable mappings.
 		 * Private mappings will happily COW from the mapped
@@ -594,16 +594,16 @@ static void* finish_direct_mmap(struct context* ctx,
 		int oflags = (MAP_SHARED & flags) && (PROT_WRITE & prot) ?
 			     O_RDWR : O_RDONLY;
 		/* TODO: unclear if O_NOATIME is relevant for mmaps */
-		fd = remote_syscall2(ctx, state, SYS_open, child_str, oflags);
+		fd = remote_syscall2(t, state, SYS_open, child_str, oflags);
 		if (0 > fd) {
 			fatal("Couldn't open %s to mmap in tracee",
 			      file->filename);
 		}
-		pop_tmp_mem(ctx, state, &restore);
+		pop_tmp_mem(t, state, &restore);
 	}
 	/* And mmap that file. */
 	mapped_addr = (void*)
-		      remote_syscall6(ctx, state, SYS_mmap2,
+		      remote_syscall6(t, state, SYS_mmap2,
 				      rec_addr, length,
 				      /* (We let SHARED|WRITEABLE
 				       * mappings go through while
@@ -613,12 +613,12 @@ static void* finish_direct_mmap(struct context* ctx,
 				      fd, offset);
 	/* Don't leak the tmp fd.  The mmap doesn't need the fd to
 	 * stay open. */
-	remote_syscall1(ctx, state, SYS_close, fd);
+	remote_syscall1(t, state, SYS_close, fd);
 
 	return mapped_addr;
 }
 
-static void process_mmap2(struct context* ctx,
+static void process_mmap2(struct task* t,
 			  struct trace_frame* trace, int exec_state,
 			  struct rep_trace_step* step)
 {
@@ -644,33 +644,33 @@ static void process_mmap2(struct context* ctx,
 	}
 	/* Successful mmap calls are much more interesting to process.
 	 * First we advance to the emulated syscall exit. */
-	finish_syscall_emu(ctx);
+	finish_syscall_emu(t);
 	/* Next we hand off actual execution of the mapping to the
 	 * appropriate helper. */
-	prepare_remote_syscalls(ctx, &state);
+	prepare_remote_syscalls(t, &state);
 	if (flags & MAP_ANONYMOUS) {
-		mapped_addr = finish_anonymous_mmap(ctx, &state, trace,
+		mapped_addr = finish_anonymous_mmap(t, &state, trace,
 						    prot, flags);
 	} else {
 		struct mmapped_file file;
 		read_next_mmapped_file_stats(&file);
 		assert(file.time == trace->global_time);
 		mapped_addr = file.copied ?
-			      finish_copied_mmap(ctx, &state, trace,
+			      finish_copied_mmap(t, &state, trace,
 						 prot, flags, &file) :
-			      finish_direct_mmap(ctx, &state, trace,
+			      finish_direct_mmap(t, &state, trace,
 						 prot, flags, &file);
 	}
 	/* Finally, we finish by emulating the return value. */
 	state.regs.eax = (uintptr_t)mapped_addr;
-	finish_remote_syscalls(ctx, &state);
+	finish_remote_syscalls(t, &state);
 
-	validate_args(SYS_mmap2, exec_state, ctx);
+	validate_args(SYS_mmap2, exec_state, t);
 
 	step->action = TSTEP_RETIRE;
 }
 
-static void process_socketcall(struct context* ctx, int state,
+static void process_socketcall(struct task* t, int state,
 			       struct rep_trace_step* step)
 {
 	int call;
@@ -684,7 +684,7 @@ static void process_socketcall(struct context* ctx, int state,
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	switch ((call = read_child_ebx(ctx->tid))) {
+	switch ((call = read_child_ebx(t->tid))) {
 		/* FIXME: define a SSOT for socketcall record and
 		 * replay data, a la syscall_defs.h */
 	case SYS_SOCKET:
@@ -740,7 +740,7 @@ static void process_socketcall(struct context* ctx, int state,
 	}
 }
 
-static void process_init_syscall_buffer(struct context* ctx, int exec_state,
+static void process_init_syscall_buffer(struct task* t, int exec_state,
 					struct rep_trace_step* step)
 {
 	void* rec_child_map_addr;
@@ -758,25 +758,25 @@ static void process_init_syscall_buffer(struct context* ctx, int exec_state,
 	step->action = TSTEP_RETIRE;
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
-	exit_syscall_emu(ctx, RRCALL_init_syscall_buffer, 0);
-	rec_child_map_addr = (void*)ctx->trace.recorded_regs.eax;
+	exit_syscall_emu(t, RRCALL_init_syscall_buffer, 0);
+	rec_child_map_addr = (void*)t->trace.recorded_regs.eax;
 
 	/* We don't want the desched event fd during replay, because
 	 * we already know where they were.  (The perf_event fd is
 	 * emulated anyway.) */
-	child_map_addr = init_syscall_buffer(ctx, rec_child_map_addr,
+	child_map_addr = init_syscall_buffer(t, rec_child_map_addr,
 					     DONT_SHARE_DESCHED_EVENT_FD);
 
 	assert(child_map_addr == rec_child_map_addr);
 }
 
-void rep_process_syscall(struct context* ctx, int redirect_stdio,
+void rep_process_syscall(struct task* t, int redirect_stdio,
 			 struct rep_trace_step* step)
 {
-	int syscall = ctx->trace.stop_reason;
+	int syscall = t->trace.stop_reason;
 	const struct syscall_def* def = &syscall_table[syscall];
-	pid_t tid = ctx->tid;
-	struct trace_frame* trace = &(ctx->trace);
+	pid_t tid = t->tid;
+	struct trace_frame* trace = &(t->trace);
 	int state = trace->state;
 
 	if (STATE_SYSCALL_EXIT == state
@@ -890,10 +890,10 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		return;
 
 	case SYS_ioctl:
-		return process_ioctl(ctx, state, step);
+		return process_ioctl(t, state, step);
 
 	case SYS_mmap2:
-		return process_mmap2(ctx, trace, state, step);
+		return process_mmap2(t, trace, state, step);
 
 	case SYS_nanosleep:
 		step->syscall.emu = 1;
@@ -913,7 +913,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
-			int cmd = read_child_ebp(ctx->tid);
+			int cmd = read_child_ebp(t->tid);
 
 			step->action = TSTEP_EXIT_SYSCALL;
 			switch (cmd & SUBCMDMASK) {
@@ -941,7 +941,7 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 		return;
 
 	case SYS_socketcall:
-		return process_socketcall(ctx, state, step);
+		return process_socketcall(t, state, step);
 
 	case SYS_write:
 		step->syscall.num_emu_args = 0;
@@ -954,12 +954,12 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			/* XXX technically this will print the output
 			 * before we reach the interrupt.  That could
 			 * maybe cause issues in the future. */
-			rep_maybe_replay_stdio_write(ctx, redirect_stdio);
+			rep_maybe_replay_stdio_write(t, redirect_stdio);
 		}
 		return;
 
 	case SYS_rrcall_init_syscall_buffer:
-		return process_init_syscall_buffer(ctx, state, step);
+		return process_init_syscall_buffer(t, state, step);
 
 	default:
 		break;
@@ -972,18 +972,18 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 	switch (syscall) {
 
 	case SYS_clone:
-		process_clone(ctx, trace, state);
+		process_clone(t, trace, state);
 		break;
 
 	case SYS_execve:
 		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_exec(ctx, syscall);
+			enter_syscall_exec(t, syscall);
 		} else {
 			validate = TRUE;
 
 			/* we need an additional ptrace syscall, since
 			 * ptrace is setup with PTRACE_O_TRACEEXEC */
-			__ptrace_cont(ctx);
+			__ptrace_cont(t);
 
 			int check = read_child_ebx(tid);
 			/* if the execve comes from a vfork system
@@ -993,35 +993,35 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			if (check == 0) {
 				size_t size;
 				void* rec_addr;
-				void* data = read_raw_data(&(ctx->trace),
+				void* data = read_raw_data(&(t->trace),
 							   &size, &rec_addr);
 				if (data != NULL ) {
 					write_child_data(
-						ctx, size, (void*)rec_addr,
+						t, size, (void*)rec_addr,
 						data);
 					sys_free((void**) &data);
 				}
 			}
 
-			set_return_value(ctx);
-			validate_args(syscall, state, ctx);
+			set_return_value(t);
+			validate_args(syscall, state, t);
 		}
 		break;
 
 	case SYS_ipc:
-		process_ipc(ctx, trace, state);
+		process_ipc(t, trace, state);
 		break;
 
 	case SYS_mremap:
 		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_exec(ctx, syscall);
+			enter_syscall_exec(t, syscall);
 		} else {
 			/* By using a fixed address remapping we can
 			 * be sure that the mappings remain identical
 			 * in the record and replay/
 			 */
 			struct user_regs_struct orig_regs;
-			read_child_registers(ctx->tid, &orig_regs);
+			read_child_registers(t->tid, &orig_regs);
 
 			struct user_regs_struct tmp_regs;
 			memcpy(&tmp_regs, &orig_regs, sizeof(tmp_regs));
@@ -1032,51 +1032,51 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 			/* is hack is necessary, since mremap does not
 			 * like the FIXED flag if source and
 			 * destination address are the same */
-			if (orig_regs.ebx != ctx->trace.recorded_regs.eax) {
+			if (orig_regs.ebx != t->trace.recorded_regs.eax) {
 				tmp_regs.esi |= MREMAP_FIXED;
-				tmp_regs.edi = ctx->trace.recorded_regs.eax;
+				tmp_regs.edi = t->trace.recorded_regs.eax;
 			}
 
-			write_child_registers(ctx->tid, &tmp_regs);
+			write_child_registers(t->tid, &tmp_regs);
 
-			__ptrace_cont(ctx);
+			__ptrace_cont(t);
 			/* obtain the new address and reset to the old
 			 * register values */
-			read_child_registers(ctx->tid, &tmp_regs);
+			read_child_registers(t->tid, &tmp_regs);
 
 			orig_regs.eax = tmp_regs.eax;
-			write_child_registers(ctx->tid, &orig_regs);
-			validate_args(syscall, state, ctx);
+			write_child_registers(t->tid, &orig_regs);
+			validate_args(syscall, state, t);
 		}
 		break;
 
 	case SYS_setpgid:
 		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_emu(ctx, SYS_setpgid);
+			enter_syscall_emu(t, SYS_setpgid);
 		} else {
-			write_child_ebx(ctx->tid,
-					ctx->trace.recorded_regs.ebx);
-			exit_syscall_emu(ctx, SYS_setpgid, 0);
+			write_child_ebx(t->tid,
+					t->trace.recorded_regs.ebx);
+			exit_syscall_emu(t, SYS_setpgid, 0);
 		}
 		break;
 
 	case SYS_sigreturn:
 	case SYS_rt_sigreturn:
 		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_emu(ctx, syscall);
+			enter_syscall_emu(t, syscall);
 		} else {
-			write_child_main_registers(ctx->tid,
+			write_child_main_registers(t->tid,
 						   &trace->recorded_regs);
-			finish_syscall_emu(ctx);
+			finish_syscall_emu(t);
 		}
 		break;
 
 	case SYS_vfork:
 		if (state == STATE_SYSCALL_ENTRY) {
 			/* go to the system call */
-			__ptrace_cont(ctx);
+			__ptrace_cont(t);
 			if (PTRACE_EVENT_VFORK ==
-			    GET_PTRACE_EVENT(ctx->status)) {
+			    GET_PTRACE_EVENT(t->status)) {
 				unsigned long new_tid = sys_ptrace_getmsg(tid);
 				/* wait until the new thread is ready */
 				int status;
@@ -1087,9 +1087,9 @@ void rep_process_syscall(struct context* ctx, int redirect_stdio,
 				rep_sched_register_thread(new_tid,
 							  next_trace.tid);
 			}
-			validate_args(syscall, state, ctx);
+			validate_args(syscall, state, t);
 		} else {
-			exit_syscall_exec(ctx, syscall, 0, EMULATE_RETURN);
+			exit_syscall_exec(t, syscall, 0, EMULATE_RETURN);
 		}
 		break;
 

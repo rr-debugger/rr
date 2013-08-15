@@ -6,7 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
-static void sighandler(int sig, siginfo_t* si, void* uctxp) {
+static void sighandler(int sig, siginfo_t* si, void* utp) {
 	assert(SIGSEGV == sig && si->si_addr == (void*)0x42);
 
 	puts("caught segfault @0x42");

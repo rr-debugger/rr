@@ -175,14 +175,14 @@ static int encode_event(struct event* ev, int* state)
 	}
 }
 
-void write_open_inst_dump(struct context *ctx)
+void write_open_inst_dump(struct task *t)
 {
 	char path[64];
 	char tmp[32];
 	strcpy(path, trace_path_);
-	sprintf(tmp, "/inst_dump_%d", ctx->tid);
+	sprintf(tmp, "/inst_dump_%d", t->tid);
 	strcat(path, tmp);
-	ctx->inst_dump = sys_fopen(path, "a+");
+	t->inst_dump = sys_fopen(path, "a+");
 }
 
 static unsigned int get_global_time_incr()
@@ -389,17 +389,17 @@ void close_trace_files(void)
 		sys_fclose(mmaps_file);
 }
 
-static void record_performance_data(struct context *ctx)
+static void record_performance_data(struct task *t)
 {
-	fprintf(trace_file, "%20llu", read_hw_int(ctx->hpc));
-	fprintf(trace_file, "%20llu", read_page_faults(ctx->hpc));
-	fprintf(trace_file, "%20llu", read_rbc(ctx->hpc));
-	fprintf(trace_file, "%20llu", read_insts(ctx->hpc));
+	fprintf(trace_file, "%20llu", read_hw_int(t->hpc));
+	fprintf(trace_file, "%20llu", read_page_faults(t->hpc));
+	fprintf(trace_file, "%20llu", read_rbc(t->hpc));
+	fprintf(trace_file, "%20llu", read_insts(t->hpc));
 }
 
-static void record_register_file(struct context *ctx)
+static void record_register_file(struct task *t)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
@@ -416,99 +416,99 @@ static void record_register_file(struct context *ctx)
 	fprintf(trace_file, "%11lu", regs.eflags);
 }
 
-static void record_inst_register_file(struct context *ctx)
+static void record_inst_register_file(struct task *t)
 {
 
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	struct user_regs_struct regs;
 	read_child_registers(tid, &regs);
 
-	fprintf(ctx->inst_dump, "%11lu", regs.eax);
-	fprintf(ctx->inst_dump, "%11lu", regs.ebx);
-	fprintf(ctx->inst_dump, "%11lu", regs.ecx);
-	fprintf(ctx->inst_dump, "%11lu", regs.edx);
-	fprintf(ctx->inst_dump, "%11lu", regs.esi);
-	fprintf(ctx->inst_dump, "%11lu", regs.edi);
-	fprintf(ctx->inst_dump, "%11lu", regs.ebp);
-	fprintf(ctx->inst_dump, "%11lu", regs.orig_eax);
-	fprintf(ctx->inst_dump, "%11lx", regs.esp);
-	fprintf(ctx->inst_dump, "%11lx", regs.eip);
-	fprintf(ctx->inst_dump, "%11lu", regs.eflags);
-	fprintf(ctx->inst_dump, "\n");
+	fprintf(t->inst_dump, "%11lu", regs.eax);
+	fprintf(t->inst_dump, "%11lu", regs.ebx);
+	fprintf(t->inst_dump, "%11lu", regs.ecx);
+	fprintf(t->inst_dump, "%11lu", regs.edx);
+	fprintf(t->inst_dump, "%11lu", regs.esi);
+	fprintf(t->inst_dump, "%11lu", regs.edi);
+	fprintf(t->inst_dump, "%11lu", regs.ebp);
+	fprintf(t->inst_dump, "%11lu", regs.orig_eax);
+	fprintf(t->inst_dump, "%11lx", regs.esp);
+	fprintf(t->inst_dump, "%11lx", regs.eip);
+	fprintf(t->inst_dump, "%11lu", regs.eflags);
+	fprintf(t->inst_dump, "\n");
 }
 /**
  * Flush the syscallbuf to the trace, if there are any pending entries.
  */
-static void maybe_flush_syscallbuf(struct context *ctx)
+static void maybe_flush_syscallbuf(struct task *t)
 {
-	if (!ctx || !ctx->syscallbuf_hdr
-	    || 0 == ctx->syscallbuf_hdr->num_rec_bytes) {
+	if (!t || !t->syscallbuf_hdr
+	    || 0 == t->syscallbuf_hdr->num_rec_bytes) {
 		/* No context, no syscallbuf, or no records.  Nothing
 		 * to do. */
 		return;
 	}
 	/* Write the entire buffer in one shot without parsing it,
 	 * since replay will take care of that. */
-	push_pseudosig(ctx, EUSR_SYSCALLBUF_FLUSH, NO_EXEC_INFO);
-	record_parent_data(ctx,
+	push_pseudosig(t, EUSR_SYSCALLBUF_FLUSH, NO_EXEC_INFO);
+	record_parent_data(t,
 			   /* Record the header for consistency checking. */
-			   ctx->syscallbuf_hdr->num_rec_bytes + sizeof(*ctx->syscallbuf_hdr),
-			   ctx->syscallbuf_child, ctx->syscallbuf_hdr);
-	record_event(ctx);
-	pop_pseudosig(ctx);
+			   t->syscallbuf_hdr->num_rec_bytes + sizeof(*t->syscallbuf_hdr),
+			   t->syscallbuf_child, t->syscallbuf_hdr);
+	record_event(t);
+	pop_pseudosig(t);
 
 	/* Reset header. */
-	assert(!ctx->syscallbuf_hdr->abort_commit);
-	memset(ctx->syscallbuf_hdr, 0, sizeof(*ctx->syscallbuf_hdr));
-	ctx->flushed_syscallbuf = 1;
+	assert(!t->syscallbuf_hdr->abort_commit);
+	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
+	t->flushed_syscallbuf = 1;
 }
 
 /**
  * Makes an entry into the event trace file
  */
-void record_event(struct context *ctx)
+void record_event(struct task *t)
 {
-	struct event* ev = ctx->ev;
+	struct event* ev = t->ev;
 	int state;
 	int event = encode_event(ev, &state);
 
 	if (USR_SYSCALLBUF_FLUSH != event) {
 		// before anything is performed, check if the seccomp record cache has any entries
-		maybe_flush_syscallbuf(ctx);
+		maybe_flush_syscallbuf(t);
 	}
 
 	if (((global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (global_time > 0)) {
 		use_new_trace_file();
 	}
 
-	if (rr_flags_.dump_on == ctx->event
+	if (rr_flags_.dump_on == t->event
 	    || rr_flags_.dump_on == DUMP_ON_ALL
 	    || rr_flags_.dump_at == global_time) {
 		char pid_str[PATH_MAX];
-		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),ctx->tid,get_global_time());
-		print_process_memory(ctx,pid_str);
+		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),t->tid,get_global_time());
+		print_process_memory(t,pid_str);
 	}
 
 	// do memory checksum
 	if (((rr_flags_.checksum == CHECKSUM_ALL) ||
 		 (rr_flags_.checksum == CHECKSUM_SYSCALL && state == STATE_SYSCALL_EXIT) ||
 		 (rr_flags_.checksum <= global_time) )
-		 && ctx)
-		checksum_process_memory(ctx);
+		 && t)
+		checksum_process_memory(t);
 
 	fprintf(trace_file, "%11d%11u%11d%11d", get_global_time_incr(),
-	        get_time_incr(ctx->tid), ctx->tid, event);
+	        get_time_incr(t->tid), t->tid, event);
 
 	debug("trace: %11d%11u%11d%11d%11d", get_global_time(),
-	      get_time(ctx->tid), ctx->tid, event,
+	      get_time(t->tid), t->tid, event,
 	      state);
 
 	if (EV_PSEUDOSIG != ev->type || ev->pseudosig.has_exec_info) {
 		fprintf(trace_file, "%11d", state);
 
-		record_performance_data(ctx);
-		record_register_file(ctx);
-		reset_hpc(ctx, rr_flags_.max_rbc);
+		record_performance_data(t);
+		record_register_file(t);
+		reset_hpc(t, rr_flags_.max_rbc);
 	}
 	fprintf(trace_file, "\n");
 }
@@ -546,7 +546,7 @@ void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr)
 		use_new_rawdata_file();
 }
 
-static void write_raw_data(struct context *ctx, void *buf, size_t to_write)
+static void write_raw_data(struct task *t, void *buf, size_t to_write)
 {
 	size_t bytes_written;
 	(void)bytes_written;
@@ -555,11 +555,11 @@ static void write_raw_data(struct context *ctx, void *buf, size_t to_write)
 	/*
 	if (overall_bytes % 10000 == 0)
 	{
-		struct context safe_ctx;
-		memcpy(&safe_ctx, ctx, sizeof(struct context));
-		ctx->event = USR_NEW_RAWDATA_FILE;
-		record_event(ctx, STATE_SYSCALL_ENTRY);
-		memcpy(ctx, &safe_ctx, sizeof(struct context));
+		struct task safe_t;
+		memcpy(&safe_t, t, sizeof(struct task));
+		t->event = USR_NEW_RAWDATA_FILE;
+		record_event(t, STATE_SYSCALL_ENTRY);
+		memcpy(t, &safe_t, sizeof(struct task));
 		use_new_rawdata_file();
 		assert(fwrite(buf, 1, to_write, raw_data) == to_write);
 	}
@@ -570,11 +570,11 @@ static void write_raw_data(struct context *ctx, void *buf, size_t to_write)
 
 	/*
 	if ((bytes_written = fwrite(buf, 1, to_write, raw_data)) != to_write) {
-		struct context safe_ctx;
-		memcpy(&safe_ctx, ctx, sizeof(struct context));
-		ctx->event = USR_NEW_RAWDATA_FILE;
-		record_event(ctx, STATE_SYSCALL_ENTRY);
-		memcpy(ctx, &safe_ctx, sizeof(struct context));
+		struct task safe_t;
+		memcpy(&safe_t, t, sizeof(struct task));
+		t->event = USR_NEW_RAWDATA_FILE;
+		record_event(t, STATE_SYSCALL_ENTRY);
+		memcpy(t, &safe_t, sizeof(struct task));
 		use_new_rawdata_file();
 		bytes_written = fwrite(buf, 1, to_write, raw_data);
 		assert(bytes_written == to_write);
@@ -596,44 +596,44 @@ static void write_raw_data(struct context *ctx, void *buf, size_t to_write)
 #define SMALL_READ_SIZE	4096
 static char read_buffer[SMALL_READ_SIZE];
 
-void record_child_data(struct context *ctx, size_t size, void* child_ptr)
+void record_child_data(struct task *t, size_t size, void* child_ptr)
 {
 	int state;
-	int event = encode_event(ctx->ev, &state);
+	int event = encode_event(t->ev, &state);
 	ssize_t read_bytes;
 	(void)state;
 
 	/* We shouldn't be recording a scratch address */
-	assert(child_ptr != ctx->scratch_ptr);
+	assert(child_ptr != t->scratch_ptr);
 
 	// before anything is performed, check if the seccomp record cache has any entries
-	maybe_flush_syscallbuf(ctx);
+	maybe_flush_syscallbuf(t);
 
 	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
 	if (child_ptr != 0) {
 		if (size <= SMALL_READ_SIZE) {
-			read_child_usr(ctx, read_buffer, child_ptr, size);
-			write_raw_data(ctx, read_buffer, size);
+			read_child_usr(t, read_buffer, child_ptr, size);
+			write_raw_data(t, read_buffer, size);
 			read_bytes = size;
 		} else {
 			//debug("Asking to record %d bytes from %p",size,child_ptr);
-			void* buf = read_child_data_checked(ctx, size, child_ptr, &read_bytes);
+			void* buf = read_child_data_checked(t, size, child_ptr, &read_bytes);
 			//debug("Read from child %d bytes", read_bytes);
 			if (read_bytes == -1) {
-				log_warn("Can't read from child %d memory at %p, time = %d",ctx->tid,child_ptr, get_global_time());
+				log_warn("Can't read from child %d memory at %p, time = %d",t->tid,child_ptr, get_global_time());
 				getchar();
 				//buf = sys_malloc(size)
-				//read_child_buffer(ctx->tid,child_ptr,size,buf);
-				write_raw_data(ctx, buf, 0);
+				//read_child_buffer(t->tid,child_ptr,size,buf);
+				write_raw_data(t, buf, 0);
 				read_bytes = 0;
 			} else {
 				/* ensure that everything is written */
-				if (read_bytes != size /*&& read_child_orig_eax(ctx->tid) != 192*/) {
-					log_err("bytes_read: %x  len %x   syscall: %ld\n", read_bytes, size, read_child_orig_eax(ctx->tid));
-					print_register_file_tid(ctx->tid);
+				if (read_bytes != size /*&& read_child_orig_eax(t->tid) != 192*/) {
+					log_err("bytes_read: %x  len %x   syscall: %ld\n", read_bytes, size, read_child_orig_eax(t->tid));
+					print_register_file_tid(t->tid);
 					assert(1==0);
 				}
-				write_raw_data(ctx, buf, read_bytes);
+				write_raw_data(t, buf, read_bytes);
 			}
 			sys_free((void**) &buf);
 		}
@@ -645,16 +645,16 @@ void record_child_data(struct context *ctx, size_t size, void* child_ptr)
 	fprintf(syscall_header, "%11d\n", read_bytes);
 }
 
-void record_parent_data(struct context *ctx, size_t len, void *addr, void *buf)
+void record_parent_data(struct task *t, size_t len, void *addr, void *buf)
 {
 	int state;
-	int event = encode_event(ctx->ev, &state);
+	int event = encode_event(t->ev, &state);
 	(void)state;
 
 	/* We shouldn't be recording a scratch address */
-	assert(addr != ctx->scratch_ptr);
+	assert(addr != t->scratch_ptr);
 
-	write_raw_data(ctx, buf, len);
+	write_raw_data(t, buf, len);
 	print_header(event, addr);
 	assert(len >= 0);
 	fprintf(syscall_header, "%11d\n", len);
@@ -684,11 +684,11 @@ void record_mmapped_file_stats(struct mmapped_file *file)
 	fprintf(mmaps_file, "%s\n", file->filename);
 }
 
-void record_child_str(struct context* ctx, void* child_ptr)
+void record_child_str(struct task* t, void* child_ptr)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	int state;
-	int event = encode_event(ctx->ev, &state);
+	int event = encode_event(t->ev, &state);
 	(void)state;
 
 	print_header(event, child_ptr);
@@ -708,15 +708,15 @@ void record_child_str(struct context* ctx, void* child_ptr)
 
 }
 
-void record_inst(struct context *ctx, char* inst)
+void record_inst(struct task *t, char* inst)
 {
-	fprintf(ctx->inst_dump, "%d:%-40s\n", ctx->tid, inst);
-	record_inst_register_file(ctx);
+	fprintf(t->inst_dump, "%d:%-40s\n", t->tid, inst);
+	record_inst_register_file(t);
 }
 
-void record_inst_done(struct context* context)
+void record_inst_done(struct task* t)
 {
-	fprintf(context->inst_dump, "%s\n", "__done__");
+	fprintf(t->inst_dump, "%s\n", "__done__");
 }
 
 
@@ -725,14 +725,14 @@ FILE* get_trace_file()
 	return trace_file;
 }
 
-void read_open_inst_dump(struct context *ctx)
+void read_open_inst_dump(struct task *t)
 {
 	char path[64];
 	char tmp[32];
 	strcpy(path, trace_path_);
-	sprintf(tmp, "/inst_dump_%d", ctx->rec_tid);
+	sprintf(tmp, "/inst_dump_%d", t->rec_tid);
 	strcat(path, tmp);
-	ctx->inst_dump = sys_fopen(path, "a+");
+	t->inst_dump = sys_fopen(path, "a+");
 }
 
 
@@ -1074,7 +1074,7 @@ int get_trace_file_lines_counter()
     return trace_file_lines_counter;
 }
 
-void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
+void find_in_trace(struct task *t, unsigned long cur_time, long int val)
 {
 	fpos_t pos;
 
@@ -1106,17 +1106,17 @@ void find_in_trace(struct context *ctx, unsigned long cur_time, long int val)
  * Gets the next instruction dump entry and increments the
  * file pointer.
  */
-char* read_inst(struct context* context)
+char* read_inst(struct task* t)
 {
 	char* tmp = sys_malloc(50);
-	read_line(context->inst_dump, tmp, 50, "inst_dump");
+	read_line(t->inst_dump, tmp, 50, "inst_dump");
 	return tmp;
 }
 
-void inst_dump_parse_register_file(struct context* context, struct user_regs_struct* reg)
+void inst_dump_parse_register_file(struct task* t, struct user_regs_struct* reg)
 {
 	char* tmp = sys_malloc(1024);
-	read_line(context->inst_dump, tmp, 1024, "inst_dump");
+	read_line(t->inst_dump, tmp, 1024, "inst_dump");
 	parse_register_file(reg, tmp);
 	sys_free((void**) &tmp);
 }
@@ -1125,11 +1125,11 @@ void inst_dump_parse_register_file(struct context* context, struct user_regs_str
  * Skips the current entry in the instruction dump. As a result the
  * file pointer points to the beginning of the next entry.
  */
-void inst_dump_skip_entry(struct context* context)
+void inst_dump_skip_entry(struct task* t)
 {
 	char* tmp = sys_malloc(1024);
-	read_line(context->inst_dump, tmp, 1024, "inst_dump");
-	read_line(context->inst_dump, tmp, 1024, "inst_dump");
+	read_line(t->inst_dump, tmp, 1024, "inst_dump");
+	read_line(t->inst_dump, tmp, 1024, "inst_dump");
 	sys_free((void**) &tmp);
 }
 
@@ -1137,13 +1137,13 @@ void inst_dump_skip_entry(struct context* context)
  * Gets the next instruction dump entry but does NOT increment
  * the file pointer.
  */
-char* peek_next_inst(struct context* context)
+char* peek_next_inst(struct task* t)
 {
 	char* tmp = sys_malloc(1024);
 	fpos_t pos;
-	fgetpos(context->inst_dump, &pos);
-	read_line(context->inst_dump, tmp, 1024, "inst_dump");
-	fsetpos(context->inst_dump, &pos);
+	fgetpos(t->inst_dump, &pos);
+	read_line(t->inst_dump, tmp, 1024, "inst_dump");
+	fsetpos(t->inst_dump, &pos);
 	return tmp;
 }
 

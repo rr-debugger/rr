@@ -23,24 +23,24 @@ void read_child_registers(pid_t pid, struct user_regs_struct* regs)
 	sys_ptrace(PTRACE_GETREGS, pid, NULL, regs);
 }
 
-size_t set_child_data(struct context *ctx)
+size_t set_child_data(struct task *t)
 {
 	size_t size;
 	void* rec_addr;
-	void* data = read_raw_data(&(ctx->trace), &size, &rec_addr);
+	void* data = read_raw_data(&(t->trace), &size, &rec_addr);
 	if (data != NULL && size > 0) {
-		write_child_data(ctx, size, rec_addr, data);
+		write_child_data(t, size, rec_addr, data);
 		sys_free((void**) &data);
 	}
 	return size;
 }
 
-void set_return_value(struct context* context)
+void set_return_value(struct task* t)
 {
 	struct user_regs_struct r;
-	read_child_registers(context->tid, &r);
-	r.eax = context->trace.recorded_regs.eax;
-	write_child_registers(context->tid, &r);
+	read_child_registers(t->tid, &r);
+	r.eax = t->trace.recorded_regs.eax;
+	write_child_registers(t->tid, &r);
 }
 
 static long read_child_word(pid_t tid, void *addr, int ptrace_op)
@@ -305,9 +305,9 @@ void* read_child_data_tid(pid_t tid, size_t size, void* addr)
 	return data;
 }
 
-ssize_t checked_pread(struct context *ctx, void *buf, size_t size, off_t offset) {
+ssize_t checked_pread(struct task *t, void *buf, size_t size, off_t offset) {
 	errno = 0;
-	ssize_t read = pread(ctx->child_mem_fd, buf, size, offset);
+	ssize_t read = pread(t->child_mem_fd, buf, size, offset);
 	if (read < 0) {
 		return read;
 	}
@@ -315,9 +315,9 @@ ssize_t checked_pread(struct context *ctx, void *buf, size_t size, off_t offset)
 	// for some reason reading from the child process requires to re-open the fd
 	// who knows why??
 	if (read == 0 && errno == 0) {
-		sys_close(ctx->child_mem_fd);
-		ctx->child_mem_fd = sys_open_child_mem(ctx->tid);
-		read = pread(ctx->child_mem_fd, buf, size, offset);
+		sys_close(t->child_mem_fd);
+		t->child_mem_fd = sys_open_child_mem(t->tid);
+		read = pread(t->child_mem_fd, buf, size, offset);
 	}
 
 	if (read < size) { // fill the remainder with zeros
@@ -331,32 +331,32 @@ ssize_t checked_pread(struct context *ctx, void *buf, size_t size, off_t offset)
 
 }
 
-void* read_child_data_checked(struct context *ctx, size_t size, void* addr, ssize_t *read_bytes)
+void* read_child_data_checked(struct task *t, size_t size, void* addr, ssize_t *read_bytes)
 {
-	//assert(check_if_mapped(ctx, addr, addr + size));
+	//assert(check_if_mapped(t, addr, addr + size));
 
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
-	*read_bytes = checked_pread(ctx, buf, size, PTR_TO_OFF_T(addr));
+	*read_bytes = checked_pread(t, buf, size, PTR_TO_OFF_T(addr));
 
 	return buf;
 }
 
-void read_child_usr(struct context *ctx, void *dest, void *src, size_t size) {
-	ssize_t bytes_read = pread(ctx->child_mem_fd, dest, size, PTR_TO_OFF_T(src));
+void read_child_usr(struct task *t, void *dest, void *src, size_t size) {
+	ssize_t bytes_read = pread(t->child_mem_fd, dest, size, PTR_TO_OFF_T(src));
 	(void)bytes_read;
 	assert(bytes_read == size);
 }
 
-void* read_child_data(struct context *ctx, size_t size, void* addr)
+void* read_child_data(struct task *t, size_t size, void* addr)
 {
 	void *buf = sys_malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
-	ssize_t read_bytes = checked_pread(ctx, buf, size, PTR_TO_OFF_T(addr));
+	ssize_t read_bytes = checked_pread(t, buf, size, PTR_TO_OFF_T(addr));
 	if (read_bytes != size) {
 		sys_free(&buf);
-		buf = read_child_data_tid(ctx->tid, size, addr);
-		printf("reading from: %p demanded: %u  read %u  event: %d\n", addr, size, read_bytes, ctx->event);
+		buf = read_child_data_tid(t->tid, size, addr);
+		printf("reading from: %p demanded: %u  read %u  event: %d\n", addr, size, read_bytes, t->event);
 		perror("warning: reading from child process: ");
 		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
 	}
@@ -490,18 +490,18 @@ void write_child_data_n(pid_t tid, size_t size, void* addr, const void* data)
 	free(write_data);
 }
 
-void write_child_data(struct context *ctx, size_t size, void *addr,
+void write_child_data(struct task *t, size_t size, void *addr,
 		      const void *data)
 {
-	ssize_t written = pwrite(ctx->child_mem_fd, data, size, PTR_TO_OFF_T(addr));
+	ssize_t written = pwrite(t->child_mem_fd, data, size, PTR_TO_OFF_T(addr));
 	if (written != size) {
-		write_child_data_n(ctx->tid, size, addr, data);
+		write_child_data_n(t->tid, size, addr, data);
 	}
 }
 
-void memcpy_child(struct context *ctx, void *dest, void *src, int size)
+void memcpy_child(struct task *t, void *dest, void *src, int size)
 {
-	void *tmp = read_child_data(ctx, size, src);
-	write_child_data(ctx, size, dest, tmp);
+	void *tmp = read_child_data(t, size, src);
+	write_child_data(t, size, dest, tmp);
 	free(tmp);
 }

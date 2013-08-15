@@ -19,60 +19,60 @@
 
 #define MAX_TID_NUM 100000
 
-static RB_HEAD(context_tree, context) tasks = RB_INITIALIZER(&tasks);
+static RB_HEAD(task_tree, task) tasks = RB_INITIALIZER(&tasks);
 
-RB_PROTOTYPE_STATIC(context_tree, context, entry, context_cmp)
+RB_PROTOTYPE_STATIC(task_tree, task, entry, task_cmp)
 
 static int num_threads;
 
-static void add_task(struct context* ctx)
+static void add_task(struct task* t)
 {
-	RB_INSERT(context_tree, &tasks, ctx);
+	RB_INSERT(task_tree, &tasks, t);
 }
 
-static struct context* find_task(pid_t tid)
+static struct task* find_task(pid_t tid)
 {
-	struct context search = { .rec_tid = tid };
-	return RB_FIND(context_tree, &tasks, &search);
+	struct task search = { .rec_tid = tid };
+	return RB_FIND(task_tree, &tasks, &search);
 }
 
-static void remove_task(struct context* ctx)
+static void remove_task(struct task* t)
 {
-	RB_REMOVE(context_tree, &tasks, ctx);
+	RB_REMOVE(task_tree, &tasks, t);
 }
 
-struct context* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
+struct task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 {
 	assert(my_tid < MAX_TID_NUM);
 
 	/* allocate data structure and initialize hashmap */
-	struct context *ctx = sys_malloc(sizeof(struct context));
-	memset(ctx, 0, sizeof(struct context));
+	struct task *t = sys_malloc(sizeof(struct task));
+	memset(t, 0, sizeof(struct task));
 
-	ctx->tid = my_tid;
-	ctx->rec_tid = rec_tid;
-	ctx->child_mem_fd = sys_open_child_mem(my_tid);
+	t->tid = my_tid;
+	t->rec_tid = rec_tid;
+	t->child_mem_fd = sys_open_child_mem(my_tid);
 
-	//read_open_inst_dump(ctx);
+	//read_open_inst_dump(t);
 	num_threads++;
 
 	/* initializer replay counters */
-	init_hpc(ctx);
-	add_task(ctx);
-	return ctx;
+	init_hpc(t);
+	add_task(t);
+	return t;
 }
 
-struct context* rep_sched_get_thread()
+struct task* rep_sched_get_thread()
 {
 	/* read the next trace entry */
 	struct trace_frame trace;
 	read_next_trace(&trace);
-	/* find and update context */
-	struct context *ctx = find_task(trace.tid);
-	assert(ctx != NULL);
+	/* find and update task */
+	struct task *t = find_task(trace.tid);
+	assert(t != NULL);
 
 	/* copy the current trace */
-	memcpy(&(ctx->trace), &trace, sizeof(struct trace_frame));
+	memcpy(&(t->trace), &trace, sizeof(struct trace_frame));
 
 	/* subsequent reschedule-events of the same thread can be combined to a single event */
 	/* XXX revisit this optimization ... it makes the lag to
@@ -84,22 +84,22 @@ struct context* rep_sched_get_thread()
 		struct trace_frame next_trace;
 
 		peek_next_trace(&next_trace);
-		uint64_t rbc = ctx->trace.rbc;
-		while ((next_trace.stop_reason == USR_SCHED) && (next_trace.tid == ctx->rec_tid)) {
+		uint64_t rbc = t->trace.rbc;
+		while ((next_trace.stop_reason == USR_SCHED) && (next_trace.tid == t->rec_tid)) {
 			rbc += next_trace.rbc;
-			read_next_trace(&(ctx->trace));
+			read_next_trace(&(t->trace));
 			peek_next_trace(&next_trace);
 			combined = 1;
 		}
 
 		if (combined) {
-			ctx->trace.rbc = rbc;
+			t->trace.rbc = rbc;
 		}
 	}
-	return ctx;
+	return t;
 }
 
-struct context* rep_sched_lookup_thread(pid_t rec_tid)
+struct task* rep_sched_lookup_thread(pid_t rec_tid)
 {
 	assert(0 < rec_tid && rec_tid < MAX_TID_NUM);
 	return find_task(rec_tid);
@@ -108,34 +108,34 @@ struct context* rep_sched_lookup_thread(pid_t rec_tid)
 void rep_sched_enumerate_tasks(pid_t** tids, size_t* len)
 {
 	pid_t* ts;
-	struct context* ctx;
+	struct task* t;
 	int i;
 
 	*len = num_threads;
 	ts = *tids = sys_malloc(*len * sizeof(pid_t));
 	i = 0;
-	RB_FOREACH(ctx, context_tree, &tasks) {
-		ts[i++] = ctx->rec_tid;
+	RB_FOREACH(t, task_tree, &tasks) {
+		ts[i++] = t->rec_tid;
 	}
 	assert(i == num_threads);
 }
 
-void rep_sched_deregister_thread(struct context **ctx_ptr)
+void rep_sched_deregister_thread(struct task **t_ptr)
 {
-	struct context * ctx = *ctx_ptr;
-	destry_hpc(ctx);
+	struct task * t = *t_ptr;
+	destry_hpc(t);
 
-	//sys_fclose(ctx->inst_dump);
-	sys_close(ctx->child_mem_fd);
+	//sys_fclose(t->inst_dump);
+	sys_close(t->child_mem_fd);
 
-	remove_task(ctx);
+	remove_task(t);
 	num_threads--;
 	assert(num_threads >= 0);
 
 	/* detatch the child process*/
-	sys_ptrace_detach(ctx->tid);
+	sys_ptrace_detach(t->tid);
 
-	sys_free((void**) ctx_ptr);
+	sys_free((void**) t_ptr);
 }
 
 int rep_sched_get_num_threads()
@@ -144,11 +144,11 @@ int rep_sched_get_num_threads()
 }
 
 static int
-context_cmp(void* pa, void* pb)
+task_cmp(void* pa, void* pb)
 {
-	struct context* a = (struct context*)pa;
-	struct context* b = (struct context*)pb;
+	struct task* a = (struct task*)pa;
+	struct task* b = (struct task*)pb;
 	return a->rec_tid - b->rec_tid;
 }
 
-RB_GENERATE_STATIC(context_tree, context, entry, context_cmp)
+RB_GENERATE_STATIC(task_tree, task, entry, task_cmp)

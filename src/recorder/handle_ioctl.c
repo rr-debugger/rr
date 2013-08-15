@@ -32,9 +32,9 @@
 #include "../share/types.h"
 #include "../share/util.h"
 
-void handle_ioctl_request(struct context *ctx, int request)
+void handle_ioctl_request(struct task *t, int request)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	int syscall = SYS_ioctl;
 	int type = _IOC_TYPE(request);
 	int nr = _IOC_NR(request);
@@ -72,9 +72,9 @@ void handle_ioctl_request(struct context *ctx, int request)
 	case TIOCGPGRP:
 	/* request for a terminal device */
 	case TIOCGWINSZ:
-		push_syscall(ctx, syscall);
-		record_child_data(ctx, size, (void*)regs.edx);
-		pop_syscall(ctx);
+		push_syscall(t, syscall);
+		record_child_data(t, size, (void*)regs.edx);
+		pop_syscall(t);
 		break;
 
 	/* TODO: what are the 0x46 ioctls? */
@@ -146,7 +146,7 @@ void handle_ioctl_request(struct context *ctx, int request)
 		break;	/* not reached */
 
 	default:
-		print_register_file_tid(ctx->tid);
+		print_register_file_tid(t->tid);
 		fatal("Unknown ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d addr:%p",
 		      request, type, nr, dir, size, (void*)regs.edx);
 	}

@@ -14,7 +14,7 @@
 #define STATE_SYSCALL_EXIT		  1
 #define STATE_PRE_MMAP_ACCESS     2
 
-struct context;
+struct task;
 
 enum {
 	/* "Magic" (rr-generated) pseudo-signals can't be represented
@@ -140,25 +140,25 @@ const char* strevent(int event);
 
 void clear_trace_files(void);
 void rec_init_trace_files(void);
-void write_open_inst_dump(struct context* context);
+void write_open_inst_dump(struct task* context);
 void record_input_str(pid_t pid, int syscall, int len);
 void sc_record_data(pid_t tid, int syscall, size_t len, void* buf);
-void record_inst(struct context* context, char* inst);
+void record_inst(struct task* context, char* inst);
 
-void record_inst_done(struct context* context);
-void record_child_data(struct context *ctx, size_t len, void* child_ptr);
+void record_inst_done(struct task* context);
+void record_child_data(struct task *t, size_t len, void* child_ptr);
 
 void record_timestamp(int tid, long int* eax_, long int* edx_);
 void record_child_data_tid(pid_t tid, int event, size_t len, void* child_ptr);
-void record_child_str(struct context* ctx, void* child_ptr);
-void record_parent_data(struct context *ctx, size_t len, void *addr, void *buf);
+void record_child_str(struct task* t, void* child_ptr);
+void record_parent_data(struct task *t, size_t len, void *addr, void *buf);
 /**
- * Record the current event of |ctx|.  Record the registers of |ctx|
+ * Record the current event of |t|.  Record the registers of |t|
  * (and other relevant execution state) so that it can be used or
  * verified during replay, if that state is available and meaningful
- * at |ctx|'s current execution point.
+ * at |t|'s current execution point.
  */
-void record_event(struct context* ctx);
+void record_event(struct task* t);
 void record_mmapped_file_stats(struct mmapped_file *file);
 unsigned int get_global_time(void);
 unsigned int get_time(pid_t tid);
@@ -190,10 +190,10 @@ pid_t get_recorded_main_thread();
 void rep_setup_trace_dir(const char* path);
 
 /*         function declaration for instruction dump                  */
-void read_open_inst_dump(struct context* context);
-char* peek_next_inst(struct context* context);
-char* read_inst(struct context* context);
-void inst_dump_parse_register_file(struct context* context, struct user_regs_struct* reg);
+void read_open_inst_dump(struct task* context);
+char* peek_next_inst(struct task* context);
+char* read_inst(struct task* context);
+void inst_dump_parse_register_file(struct task* context, struct user_regs_struct* reg);
 /* ------------------------------------------------------------------ */
 
 void inst_dump_skip_entry();
