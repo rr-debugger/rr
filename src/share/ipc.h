@@ -10,16 +10,16 @@
 
 #include "types.h"
 
-struct context;
+struct task;
 
 void read_child_registers(int child_id, struct user_regs_struct* regs);
 long read_child_code(pid_t pid, void* addr);
 long read_child_data_word(pid_t pid, void* addr);
-void* read_child_data(struct context *ctx, size_t size, void* addr);
-void read_child_usr(struct context *ctx, void *dest, void *src, size_t size);
-void* read_child_data_checked(struct context *ctx, size_t size, void* addr, ssize_t *read_bytes);
-ssize_t checked_pread(struct context *ctx, void *buf, size_t size, off_t offset);
-void memcpy_child(struct context *ctx, void *dest, void *src, int size);
+void* read_child_data(struct task *t, size_t size, void* addr);
+void read_child_usr(struct task *t, void *dest, void *src, size_t size);
+void* read_child_data_checked(struct task *t, size_t size, void* addr, ssize_t *read_bytes);
+ssize_t checked_pread(struct task *t, void *buf, size_t size, off_t offset);
+void memcpy_child(struct task *t, void *dest, void *src, int size);
 
 void write_child_code(pid_t pid, void* addr, long code);
 void write_child_data_word(pid_t pid, void *addr, uintptr_t data);
@@ -28,9 +28,9 @@ void write_child_main_registers(pid_t tid, struct user_regs_struct *regs);
 void write_child_segment_registers(pid_t tid, struct user_regs_struct *regs);
 void write_child_data_n(pid_t tid, size_t size, void* addr,
 			const void* data);
-void write_child_data(struct context *ctx, size_t size, void *addr,
+void write_child_data(struct task *t, size_t size, void *addr,
 		      const void *data);
-size_t set_child_data(struct context *ctx);
+size_t set_child_data(struct task *t);
 
 
 /* access functions to child registers */
@@ -52,7 +52,7 @@ void write_child_ecx(int tid, long int val);
 void write_child_edx(int tid, long int val);
 void write_child_edi(int tid, long int val);
 void write_child_ebp(int tid, long int val);
-void set_return_value(struct context* context);
+void set_return_value(struct task* context);
 
 
 char* read_child_str(pid_t pid, void* addr);

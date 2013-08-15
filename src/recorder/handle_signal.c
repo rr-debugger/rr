@@ -32,14 +32,14 @@ static __inline__ unsigned long long rdtsc(void)
 }
 
 /**
- * Return nonzero if |ctx| was stopped because of a SIGSEGV resulting
- * from a rdtsc and |ctx| was updated appropriately, zero otherwise.
+ * Return nonzero if |t| was stopped because of a SIGSEGV resulting
+ * from a rdtsc and |t| was updated appropriately, zero otherwise.
  */
-static int try_handle_rdtsc(struct context *ctx)
+static int try_handle_rdtsc(struct task *t)
 {
 	int handled = 0;
-	pid_t tid = ctx->tid;
-	int sig = signal_pending(ctx->status);
+	pid_t tid = t->tid;
+	int sig = signal_pending(t->status);
 	assert(sig != SIGTRAP);
 
 	if (sig <= 0 || sig != SIGSEGV) {
@@ -47,7 +47,7 @@ static int try_handle_rdtsc(struct context *ctx)
 	}
 
 	int size;
-	char *inst = get_inst(ctx, 0, &size);
+	char *inst = get_inst(t, 0, &size);
 	if (!inst) {
 		/* If the segfault was caused by a jump to a bad $ip,
 		 * then we obviously won't be able to read the
@@ -72,10 +72,10 @@ static int try_handle_rdtsc(struct context *ctx)
 		regs.eip += size;
 		write_child_registers(tid, &regs);
 
-		ctx->event = SIG_SEGV_RDTSC;
-		push_pseudosig(ctx, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);
-		record_event(ctx);
-		pop_pseudosig(ctx);
+		t->event = SIG_SEGV_RDTSC;
+		push_pseudosig(t, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);
+		record_event(t);
+		pop_pseudosig(t);
 
 		handled = 1;
 
@@ -87,24 +87,24 @@ static int try_handle_rdtsc(struct context *ctx)
 	return handled;
 }
 
-static void disarm_desched_event(struct context* ctx)
+static void disarm_desched_event(struct task* t)
 {
-	if (ioctl(ctx->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
+	if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
 		fatal("Failed to disarm desched event");
 	}
 }
 
-static uint64_t read_desched_counter(struct context* ctx)
+static uint64_t read_desched_counter(struct task* t)
 {
 	uint64_t nr_descheds;
-	read(ctx->desched_fd, &nr_descheds, sizeof(nr_descheds));
+	read(t->desched_fd, &nr_descheds, sizeof(nr_descheds));
 	return nr_descheds;
 }
 
-static int advance_syscall_boundary(struct context* ctx,
+static int advance_syscall_boundary(struct task* t,
 				     struct user_regs_struct* regs)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	int status;
 
 	sys_ptrace_syscall(tid);
@@ -122,21 +122,21 @@ static int advance_syscall_boundary(struct context* ctx,
 }
 
 /**
- * Return nonzero if |ctx| was stopped because of a SIGIO resulting
- * from notification of |ctx| being descheduled, zero otherwise.  The
+ * Return nonzero if |t| was stopped because of a SIGIO resulting
+ * from notification of |t| being descheduled, zero otherwise.  The
  * tracee's execution may be advanced, and if so |regs| is updated to
  * the tracee's latest state.
  */
-static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
+static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 				    struct user_regs_struct* regs)
 {
-	int call = ctx->event;
+	int call = t->event;
 	uint64_t nr_descheds;
 	int expecting_extra_sigio = 1;
 
 	assert(SIGIO == si->si_signo);
 
-	if (si->si_code != POLL_IN || si->si_fd != ctx->desched_fd_child) {
+	if (si->si_code != POLL_IN || si->si_fd != t->desched_fd_child) {
 		debug("  (SIGIO not for desched: code=%d, fd=%d)",
 		      si->si_code, si->si_fd);
 		return 0;
@@ -195,7 +195,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 	 * notifications, and silently discarding both.*/
 
 	/* Clear the pending input. */
-	nr_descheds = read_desched_counter(ctx);
+	nr_descheds = read_desched_counter(t);
 	(void)nr_descheds;
 	debug("  (desched #%llu during `%s')", nr_descheds, syscallname(call));
 
@@ -203,10 +203,10 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 	 * we're advancing the tracee.  We're going to leave it in a
 	 * consistent state anyway, so the event is no longer
 	 * useful. */
-	disarm_desched_event(ctx);
+	disarm_desched_event(t);
 
 	while (1) {
-		if (is_disarm_desched_event_syscall(ctx, regs)) {
+		if (is_disarm_desched_event_syscall(t, regs)) {
 			/* Tracee is in interval (D) or (E) above.  It
 			 * doesn't matter which one, because we just
 			 * proved that the tracee has finished its
@@ -218,8 +218,8 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 			debug("  (at disarm-desched, so finished buffered syscall; resuming)");
 			return USR_NOOP;
 		}
-		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
-		    && !is_arm_desched_event_syscall(ctx, regs)) {
+		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
+		    && !is_arm_desched_event_syscall(t, regs)) {
 			/* Tracee is in interval (B) or (C).  That's
 			 * the consistent state we want it in. */
 			if (ENOSYS != regs->eax && -ERESTARTSYS != regs->eax) {
@@ -232,7 +232,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 				 * the desched must have interrupted
 				 * the tracee after it already entered
 				 * the syscall.  In that case,
-				 * |ctx->event| will have recorded the
+				 * |t->event| will have recorded the
 				 * syscall. */
 				assert(call > 0);
 			} else {
@@ -244,14 +244,14 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		 * in userspace between syscalls.  Advance it to a
 		 * safe place.  Since we proved that the tracee isn't
 		 * in its buffered syscall, this call can't block. */
-		advance_syscall_boundary(ctx, regs);
+		advance_syscall_boundary(t, regs);
 		expecting_extra_sigio = 0;
 	}
 
 	/* Stash away this breadcrumb so that we can figure out what
 	 * syscall the tracee was in, and how much "scratch" space it
 	 * carved off the syscallbuf, if needed. */
-	ctx->desched_rec = next_record(ctx->syscallbuf_hdr);
+	t->desched_rec = next_record(t->syscallbuf_hdr);
 
 	if (call < 0) {
 		/* For reasons not understood the least bit, the
@@ -273,10 +273,10 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		 * because we're handling a desched event. */
 		debug("  saw garbage orig_eax: 0x%x, reading breadcrumb",
 		      call);
-		call = ctx->desched_rec->syscallno;
+		call = t->desched_rec->syscallno;
 		if (call < 0) {
 			log_err("Garbled syscallbuf breadcrumb %d", call);
-			emergency_debug(ctx);
+			emergency_debug(t);
 		}
 	}
 
@@ -285,25 +285,25 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		/* See long comment above; eat the redundant desched,
 		 * if we need to. */
 		debug("  (eating redudant SIGIO)");
-		sig = advance_syscall_boundary(ctx, regs);
+		sig = advance_syscall_boundary(t, regs);
 		if (!(SIGIO == sig 
-		      && SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, ctx)
-		      && !is_desched_event_syscall(ctx, regs)
+		      && SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
+		      && !is_desched_event_syscall(t, regs)
 		      && (SYS_restart_syscall == regs->orig_eax
 			  || call == regs->orig_eax
 			  /* (the weird case above) */
 			  || (regs->orig_eax < 0 && call > 0)))) {
 			log_err("Trying to skip redundant SIGIO after desched event, but got sig %s at $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
 				signalname(sig),
-				(void*)regs->eip, ctx->untraced_syscall_ip,
-				is_desched_event_syscall(ctx, regs) ? "yes" : "no",
+				(void*)regs->eip, t->untraced_syscall_ip,
+				is_desched_event_syscall(t, regs) ? "yes" : "no",
 				syscallname(regs->orig_eax), syscallname(call));
-			emergency_debug(ctx);
+			emergency_debug(t);
 		}
 	}
 
 	if (-ERESTARTSYS == regs->eax) {
-		int sig = advance_syscall_boundary(ctx, regs);
+		int sig = advance_syscall_boundary(t, regs);
 		debug("  (restarted ERESTARTSYS syscall)");
 		assert(STOPSIG_SYSCALL == sig);
 		assert(-ENOSYS == regs->eax);
@@ -317,7 +317,7 @@ static int try_handle_desched_event(struct context* ctx, const siginfo_t* si,
 		/* If we'll be resuming this as a "restart syscall",
 		 * then note that the last started syscall was the one
 		 * interrupted by desched. */
-		ctx->last_syscall = call;
+		t->last_syscall = call;
 	}
 
 	return call;
@@ -352,40 +352,40 @@ static int is_deterministic_signal(const siginfo_t* si)
 
 }
 
-static void record_signal(int sig, struct context* ctx, const siginfo_t* si,
+static void record_signal(int sig, struct task* t, const siginfo_t* si,
 			  uint64_t max_rbc)
 {
-	push_signal(ctx, sig, is_deterministic_signal(si));
+	push_signal(t, sig, is_deterministic_signal(si));
 
-	if (ctx->ev->signal.deterministic) {
-		ctx->event = -(sig | DET_SIGNAL_BIT);
+	if (t->ev->signal.deterministic) {
+		t->event = -(sig | DET_SIGNAL_BIT);
 	} else {
-		ctx->event = -sig;
+		t->event = -sig;
 	}
 
 	/* This event is used by the replayer to advance to the point
 	 * of signal delivery. */
-	record_event(ctx);
-	reset_hpc(ctx, max_rbc); // TODO: the hpc gets reset in record event.
-	assert(read_insts(ctx->hpc) == 0);
+	record_event(t);
+	reset_hpc(t, max_rbc); // TODO: the hpc gets reset in record event.
+	assert(read_insts(t->hpc) == 0);
 	// enter the sig handler
-	sys_ptrace_singlestep_sig(ctx->tid, sig);
+	sys_ptrace_singlestep_sig(t->tid, sig);
 	// wait for the kernel to finish setting up the handler
-	sys_waitpid(ctx->tid, &(ctx->status));
+	sys_waitpid(t->tid, &(t->status));
 	// 0 instructions means we entered a handler
-	int insts = read_insts(ctx->hpc);
+	int insts = read_insts(t->hpc);
 	// TODO: find out actual struct sigframe size. 128 seems to be too small
 	size_t frame_size = (insts == 0) ? 1024 : 0;
 	struct user_regs_struct regs;
-	read_child_registers(ctx->tid, &regs);
-	record_child_data(ctx, frame_size, (void*)regs.esp);
+	read_child_registers(t->tid, &regs);
+	record_child_data(t, frame_size, (void*)regs.esp);
 
 	/* This event is used to set up the signal handler frame, or
 	 * to record the resulting state of the stepi if there wasn't
 	 * a signal handler. */
-	record_event(ctx);
+	record_event(t);
 
-	pop_signal(ctx);
+	pop_signal(t);
 }
 
 static int is_trace_trap(const siginfo_t* si)
@@ -410,14 +410,14 @@ static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si)
 }
 
 /**
- * Take |ctx| to a place where it's OK to deliver a signal.  |si| and
- * |regs| must be the current state of |ctx|.  The registers at the
+ * Take |t| to a place where it's OK to deliver a signal.  |si| and
+ * |regs| must be the current state of |t|.  The registers at the
  * happy place will be returned in |regs|.
  */
-void go_to_a_happy_place(struct context* ctx,
+void go_to_a_happy_place(struct task* t,
 			 const siginfo_t* si, struct user_regs_struct* regs)
 {
-	pid_t tid = ctx->tid;
+	pid_t tid = t->tid;
 	/* If we deliver the signal at the tracee's current execution
 	 * point, it will result in a syscall-buffer-flush event being
 	 * recorded if there are any buffered syscalls.  The
@@ -533,8 +533,8 @@ void go_to_a_happy_place(struct context* ctx,
 	 * interval, and how changes in that state signify moving to
 	 * another interval, and that's what the code below does. */
 	struct syscallbuf_hdr initial_hdr;
-	struct syscallbuf_hdr* hdr = ctx->syscallbuf_hdr;
-	int status = ctx->status;
+	struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
+	int status = t->status;
 
 	debug("Stepping tracee to happy place to deliver signal ...");
 
@@ -545,7 +545,7 @@ void go_to_a_happy_place(struct context* ctx,
 		return;
 	}
 
-	if (SYSCALLBUF_IS_IP_IN_LIB(regs->eip, ctx)
+	if (SYSCALLBUF_IS_IP_IN_LIB(regs->eip, t)
 	    && is_deterministic_signal(si)) {
 		fatal("TODO: support deterministic signals triggered by syscallbuf code");
 	}
@@ -560,7 +560,7 @@ void go_to_a_happy_place(struct context* ctx,
 		siginfo_t tmp_si;
 		int is_syscall;
 
-		if (!SYSCALLBUF_IS_IP_IN_LIB(regs->eip, ctx)) {
+		if (!SYSCALLBUF_IS_IP_IN_LIB(regs->eip, t)) {
 			/* The tracee can't possible affect the
 			 * syscallbuf here, so a flush is safe.. */
 			debug("  tracee outside syscallbuf lib");
@@ -605,17 +605,17 @@ void go_to_a_happy_place(struct context* ctx,
 		 * masking signals off.  When we mask off signals, we
 		 * won't need to disarm the desched event, but we will
 		 * need to handle spurious desched notifications. */
-		if (is_desched_event_syscall(ctx, regs)) {
+		if (is_desched_event_syscall(t, regs)) {
 			debug("  stepping over desched-event syscall");
 			/* Finish the syscall. */
 			sys_ptrace_singlestep(tid);
 			sys_waitpid(tid, &status);
-			if (is_arm_desched_event_syscall(ctx, regs)) {
+			if (is_arm_desched_event_syscall(t, regs)) {
 				/* Disarm the event: we don't need or
 				 * want to hear about descheds while
 				 * we're stepping the tracee through
 				 * the syscall wrapper. */
-				disarm_desched_event(ctx);
+				disarm_desched_event(t);
 			}
 			/* We don't care about disarm-desched-event
 			 * syscalls; they're irrelevant. */
@@ -630,7 +630,7 @@ void go_to_a_happy_place(struct context* ctx,
 			 * Should find a better way to choose mode. */
 			/*log_warn("Disabling context-switching for possibly-blocking syscall (%s); deadlock may follow",
 			  syscallname(regs->orig_eax));*/
-			disarm_desched_event(ctx);
+			disarm_desched_event(t);
 			/* And (hopefully!) finish the syscall. */
 			sys_ptrace_singlestep(tid);
 			sys_waitpid(tid, &status);
@@ -642,10 +642,10 @@ happy_place:
 	(void)0;
 }
 
-void handle_signal(const struct flags* flags, struct context* ctx)
+void handle_signal(const struct flags* flags, struct task* t)
 {
-	pid_t tid = ctx->tid;
-	int sig = signal_pending(ctx->status);
+	pid_t tid = t->tid;
+	int sig = signal_pending(t->status);
 	int event;
 	siginfo_t si;
 	struct user_regs_struct regs;
@@ -656,8 +656,8 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	}
 
 	debug("%d: handling signal %s (pevent: %d, event: %s)",
-	      ctx->tid, signalname(sig),
-	      GET_PTRACE_EVENT(ctx->status), strevent(ctx->event));
+	      t->tid, signalname(sig),
+	      GET_PTRACE_EVENT(t->status), strevent(t->event));
 
 	sys_ptrace_getsiginfo(tid, &si);
 	read_child_registers(tid, &regs);
@@ -667,18 +667,18 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	 * step the tracee out of the syscallbuf code before
 	 * attempting to deliver the signal. */
 	if (SIGIO == sig
-	    && (event = try_handle_desched_event(ctx, &si, &regs))) {
-		ctx->event = event;
+	    && (event = try_handle_desched_event(t, &si, &regs))) {
+		t->event = event;
 		return;
 	}
 
-	go_to_a_happy_place(ctx, &si, &regs);
+	go_to_a_happy_place(t, &si, &regs);
 
 	/* See if this signal occurred because of an rr implementation detail,
-	 * and fudge ctx appropriately. */
+	 * and fudge t appropriately. */
 	switch (sig) {
 	case SIGSEGV:
-		if (try_handle_rdtsc(ctx)) {
+		if (try_handle_rdtsc(t)) {
 			return;
 		}
 		break;
@@ -686,18 +686,18 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 	case SIGIO:
 		/* TODO: imprecise counters can probably race with
 		 * delivery of a "real" SIGIO */
-		if (read_rbc(ctx->hpc) >= max_rbc) {
+		if (read_rbc(t->hpc) >= max_rbc) {
 			/* HPC interrupt due to exceeding time
 			 * slice. */
-			ctx->event = USR_SCHED;
-			push_pseudosig(ctx, EUSR_SCHED, HAS_EXEC_INFO);
+			t->event = USR_SCHED;
+			push_pseudosig(t, EUSR_SCHED, HAS_EXEC_INFO);
 			/* TODO: only record the SCHED event if it
 			 * actually results in a context switch, since
 			 * this will flush the syscallbuf and can
 			 * cause replay to be pathologically slow in
 			 * certain cases. */
-			record_event(ctx);
-			pop_pseudosig(ctx);
+			record_event(t);
+			pop_pseudosig(t);
 			return;
 		}
 		break;
@@ -705,5 +705,5 @@ void handle_signal(const struct flags* flags, struct context* ctx)
 
 	/* This signal was generated by the program or an external
 	 * source, record it normally. */
-	record_signal(sig, ctx, &si, max_rbc);
+	record_signal(sig, t, &si, max_rbc);
 }

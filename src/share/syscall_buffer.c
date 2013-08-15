@@ -86,7 +86,7 @@ static __thread byte* buffer = NULL;
  * made by scheduling R, but no one tells rr to do that.  Oops!
  *
  * Thus enter the "desched counter".  It's a perf_event for the "sw
- * context switches" event (which, more precisely, is "sw deschedule";
+ * t switches" event (which, more precisely, is "sw deschedule";
  * it counts schedule-out, not schedule-in).  We program the counter
  * to deliver SIGIO to this task when there's new counter data
  * available.  And we set up the "sample period", how many descheds

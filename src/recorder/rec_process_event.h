@@ -11,10 +11,10 @@
 #include "../share/util.h"
 
 /**
- * Prepare |ctx| to enter |syscallno|.  Return nonzero if a
- * context-switch is allowed for |ctx|, 0 if not.
+ * Prepare |t| to enter |syscallno|.  Return nonzero if a
+ * context-switch is allowed for |t|, 0 if not.
  */
-int rec_prepare_syscall(struct context* ctx, int syscallno);
-void rec_process_syscall(struct context* ctx, int syscall, struct flags rr_flags);
+int rec_prepare_syscall(struct task* t, int syscallno);
+void rec_process_syscall(struct task* t, int syscall, struct flags rr_flags);
 
 #endif /* PROCESS_SYSCALL_H_ */

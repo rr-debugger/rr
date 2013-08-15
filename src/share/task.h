@@ -96,15 +96,15 @@ struct event {
 };
 
 /**
- * A "context" is a task, in the linux usage: the unit of scheduling.
- * (OS people sometimes call this a "thread control block".)  Multiple
+ * A "task" is a task in the linux usage: the unit of scheduling.  (OS
+ * people sometimes call this a "thread control block".)  Multiple
  * tasks may share the same address space and file descriptors, in
  * which case they're commonly called "threads".  Or two tasks may
  * have their own address spaces and file descriptors, in which case
  * they're called "processes".  Both look the same to rr (on linux),
  * so no distinction is made here.
  */
-struct context {
+struct task {
 	/* State only used during recording. */
 
 	/* For convenience, the current top of |pending_events| if
@@ -114,7 +114,7 @@ struct context {
 	/* The current stack of events being processed. */
 	FIXEDSTACK_DECL(, struct event, 2) pending_events;
 
-	/* Whether switching away from this context is allowed in its
+	/* Whether switching away from this task is allowed in its
 	 * current state.  Some operations must be completed
 	 * atomically and aren't switchable. */
 	int switchable;
@@ -147,7 +147,7 @@ struct context {
 	int event;
 	/* Record of the syscall that was interrupted by a desched
 	 * notification.  It's legal to reference this memory /while
-	 * the desched is being processed only/, because |ctx| is in
+	 * the desched is being processed only/, because |t| is in
 	 * the middle of a desched, which means it's successfully
 	 * allocated (but not yet committed) a syscall record. */
 	const struct syscallbuf_record* desched_rec;
@@ -259,7 +259,7 @@ struct context {
 	/* Points at the tracee's mapping of the buffer. */
 	void* syscallbuf_child;
 
-	RB_ENTRY(context) entry;
+	RB_ENTRY(task) entry;
 };
 
 /**
@@ -269,22 +269,22 @@ struct context {
  * so should be recorded for consistency-checking purposes.
  */
 enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
-void push_pseudosig(struct context* ctx, int no, int has_exec_info);
-void pop_pseudosig(struct context* ctx);
+void push_pseudosig(struct task* t, int no, int has_exec_info);
+void pop_pseudosig(struct task* t);
 
 /**
  * Push/pop signal events on the pending stack.  |no| is the signum,
  * and |deterministic| is nonzero for deterministically-delivered
  * signals (see handle_signal.c).
  */
-void push_signal(struct context* ctx, int no, int deterministic);
-void pop_signal(struct context* ctx);
+void push_signal(struct task* t, int no, int deterministic);
+void pop_signal(struct task* t);
 
 /**
  * Push/pop syscall events on the pending stack.  |no| is the syscall
  * number.
  */
-void push_syscall(struct context* ctx, int no);
-void pop_syscall(struct context* ctx);
+void push_syscall(struct task* t, int no);
+void pop_syscall(struct task* t);
 
 #endif /* TASK_H_ */

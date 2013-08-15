@@ -13,7 +13,7 @@
 #include <sys/ioctl.h>
 #include <linux/perf_event.h>
 
-struct context;
+struct task;
 
 typedef struct _hpc_event
 {
@@ -35,13 +35,13 @@ void init_libpfm();
 void libpfm_event_encoding(struct perf_event_attr* attr, const char* event_str, int hw_event);
 void close_libpfm();
 
-void init_hpc(struct context *ctx);
-void destry_hpc(struct context *ctx);
-void start_hpc(struct context *ctx, uint64_t val);
-void stop_hpc(struct context *ctx);
-void cleanup_hpc(struct context* ctx);
-void reset_hpc(struct context *ctx, uint64_t val);
-void stop_rbc(struct context *ctx);
+void init_hpc(struct task *t);
+void destry_hpc(struct task *t);
+void start_hpc(struct task *t, uint64_t val);
+void stop_hpc(struct task *t);
+void cleanup_hpc(struct task* t);
+void reset_hpc(struct task *t, uint64_t val);
+void stop_rbc(struct task *t);
 int pending_rbc_down(struct hpc_context *counters);
 
 uint64_t read_page_faults(struct hpc_context *counters);

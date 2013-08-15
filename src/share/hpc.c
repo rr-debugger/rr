@@ -129,11 +129,11 @@ cpu_type get_cpu_type(){
 /**
  * initialize hpc here
  */
-void init_hpc(struct context *context)
+void init_hpc(struct task* t)
 {
 
 	struct hpc_context* counters = sys_malloc_zero(sizeof(struct hpc_context));
-	context->hpc = counters;
+	t->hpc = counters;
 
 	/* get the event that counts down to the initial value
 	 * the precision level enables PEBS support. precise=0 uses the counter
@@ -179,10 +179,10 @@ void init_hpc(struct context *context)
 	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event, 0);
 }
 
-static void __start_hpc(struct context* ctx)
+static void __start_hpc(struct task* t)
 {
-	struct hpc_context *counters = ctx->hpc;
-	pid_t tid = ctx->tid;
+	struct hpc_context *counters = t->hpc;
+	pid_t tid = t->tid;
 	// see http://www.eece.maine.edu/~vweaver/projects/perf_events/perf_event_open.html for more information
 	START_COUNTER(tid,-1,counters->hw_int); // group leader.
 	START_COUNTER(tid,counters->hw_int.fd,counters->inst);
@@ -196,14 +196,14 @@ static void __start_hpc(struct context* ctx)
 	counters->started = 1;
 }
 
-void stop_rbc(struct context* context)
+void stop_rbc(struct task* t)
 {
-	STOP_COUNTER(context->hpc->rbc.fd);
+	STOP_COUNTER(t->hpc->rbc.fd);
 }
 
-void stop_hpc(struct context* context)
+void stop_hpc(struct task* t)
 {
-	struct hpc_context* counters = context->hpc;
+	struct hpc_context* counters = t->hpc;
 
 	STOP_COUNTER(counters->hw_int.fd);
 	STOP_COUNTER(counters->inst.fd);
@@ -211,11 +211,11 @@ void stop_hpc(struct context* context)
 	STOP_COUNTER(counters->rbc.fd);
 }
 
-void cleanup_hpc(struct context* context)
+void cleanup_hpc(struct task* t)
 {
-	struct hpc_context* counters = context->hpc;
+	struct hpc_context* counters = t->hpc;
 
-	stop_hpc(context);
+	stop_hpc(t);
 
 	sys_close(counters->hw_int.fd);
 	sys_close(counters->inst.fd);
@@ -226,30 +226,30 @@ void cleanup_hpc(struct context* context)
 
 /*
  * Starts the hpc.
- * @param ctx: the current execution context
+ * @param t: the current execution context
  * @param reset: the counters are (if enabled) reset
  */
-void start_hpc(struct context *ctx, uint64_t val)
+void start_hpc(struct task *t, uint64_t val)
 {
-	ctx->hpc->rbc.attr.sample_period = val;
-	__start_hpc(ctx);
+	t->hpc->rbc.attr.sample_period = val;
+	__start_hpc(t);
 }
 
-void reset_hpc(struct context *ctx, uint64_t val)
+void reset_hpc(struct task *t, uint64_t val)
 {
-	if (ctx->hpc->started) {
-		cleanup_hpc(ctx);
+	if (t->hpc->started) {
+		cleanup_hpc(t);
 	}
-	ctx->hpc->rbc.attr.sample_period = val;
-	__start_hpc(ctx);
+	t->hpc->rbc.attr.sample_period = val;
+	__start_hpc(t);
 }
 /**
  * Ultimately frees all resources that are used by hpc of the corresponding
- * context. After calling this function, counters cannot be used anymore
+ * t. After calling this function, counters cannot be used anymore
  */
-void destry_hpc(struct context *ctx)
+void destry_hpc(struct task *t)
 {
-	struct hpc_context* counters = ctx->hpc;
+	struct hpc_context* counters = t->hpc;
 	sys_free((void**) &counters);
 }
 

@@ -3,9 +3,9 @@
 #ifndef __HANDLE_SIGNAL_H__
 #define __HANDLE_SIGNAL_H__
 
-struct context;
+struct task;
 struct flags;
 
-void handle_signal(const struct flags* flags, struct context* context);
+void handle_signal(const struct flags* flags, struct task* context);
 
 #endif /* __HANDLE_SIGNAL_H__ */

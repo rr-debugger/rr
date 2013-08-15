@@ -275,21 +275,21 @@ void sys_ptrace_traceme()
 	sys_ptrace(PTRACE_TRACEME, 0, 0, 0);
 }
 
-void goto_next_event(struct context *ctx)
+void goto_next_event(struct task *t)
 {
 
-	if (ctx->child_sig != 0) {
-		printf("sending signal: %d\n",ctx->child_sig);
+	if (t->child_sig != 0) {
+		printf("sending signal: %d\n",t->child_sig);
 	}
-	sys_ptrace(PTRACE_SYSCALL, ctx->tid, 0, (void*) ctx->child_sig);
-	sys_waitpid(ctx->tid, &ctx->status);
+	sys_ptrace(PTRACE_SYSCALL, t->tid, 0, (void*) t->child_sig);
+	sys_waitpid(t->tid, &t->status);
 
-	ctx->child_sig = signal_pending(ctx->status);
-	if (ctx->child_sig == SIGTRAP) {
+	t->child_sig = signal_pending(t->status);
+	if (t->child_sig == SIGTRAP) {
 		log_err("Caught unexpected SIGTRAP while going to next event");
-		emergency_debug(ctx);
+		emergency_debug(t);
 	}
-	ctx->event = read_child_orig_eax(ctx->tid);
+	t->event = read_child_orig_eax(t->tid);
 }
 
 long sys_ptrace_peektext_word(pid_t pid, void* addr)

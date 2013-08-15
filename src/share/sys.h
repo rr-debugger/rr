@@ -11,7 +11,7 @@
 
 #include "types.h"
 
-struct context;
+struct task;
 
 void sys_close(int filedes);
 FILE* sys_fopen(const char* path, const char* mode);
@@ -26,7 +26,7 @@ void sys_kill(int pid, int msg);
 void sys_exit();
 void sys_start_trace(char* executable, char** fake_argv, char** envp);
 
-void goto_next_event(struct context *ctx);
+void goto_next_event(struct task *t);
 
 long sys_ptrace(int request, pid_t pid, void* addr, void* data);
 void sys_ptrace_setup(pid_t pid);
