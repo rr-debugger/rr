@@ -12,8 +12,8 @@
 
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-int sockfds[2];
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static int sockfds[2];
 
 void* reader_thread(void* dontcare) {
 	char token = '!';

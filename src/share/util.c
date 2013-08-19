@@ -594,61 +594,74 @@ void print_syscall(struct task *t, struct trace_frame *trace)
 	fprintf(stderr, "\n");
 }
 
-int compare_register_files(char* name1, const struct user_regs_struct* reg1, char* name2, const struct user_regs_struct* reg2, int print, int stop)
+int compare_register_files(char* name1, const struct user_regs_struct* reg1,
+			   char* name2, const struct user_regs_struct* reg2,
+			   int mismatch_behavior)
 {
+	int print = (mismatch_behavior >= LOG_MISMATCHES);
+	int bail_error = (mismatch_behavior >= BAIL_ON_MISMATCH);
+
 	int err = 0;
 	if (reg1->eax != reg2->eax) {
 		if (print) {
-			fprintf(stderr, "eax registers do not match: %s: %lx and %s: %lx\n", name1, reg1->eax, name2, reg2->eax);
+			log_err("eax registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->eax, name2, reg2->eax);
 		}
 		err |= 0x1;
 	}
 
 	if (reg1->ebx != reg2->ebx) {
 		if (print) {
-			fprintf(stderr, "ebx registers do not match: %s: %lx and %s: %lx\n", name1, reg1->ebx, name2, reg2->ebx);
+			log_err("ebx registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->ebx, name2, reg2->ebx);
 		}
 		err |= 0x2;
 	}
 	/* check arg2 */
 	if (reg1->ecx != reg2->ecx) {
 		if (print) {
-			fprintf(stderr, "ecx registers do not match: %s: %lx and %s: %lx\n", name1, reg1->ecx, name2, reg2->ecx);
+			log_err("ecx registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->ecx, name2, reg2->ecx);
 		}
 		err |= 0x4;
 	}
 	/* check arg3 */
 	if (reg1->edx != reg2->edx) {
 		if (print) {
-			fprintf(stderr, "edx registers do not match: %s: %lx and %s: %lx\n", name1, reg1->edx, name2, reg2->edx);
+			log_err("edx registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->edx, name2, reg2->edx);
 		}
 		err |= 0x8;
 	}
 	/* check arg4 */
 	if (reg1->esi != reg2->esi) {
 		if (print) {
-			fprintf(stderr, "esi registers do not match: %s: %lx and %s: %lx\n", name1, reg1->esi, name2, reg2->esi);
+			log_err("esi registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->esi, name2, reg2->esi);
 		}
 		err |= 0x10;
 	}
 	/* check arg5 */
 	if (reg1->edi != reg2->edi) {
 		if (print) {
-			fprintf(stderr, "edi registers do not match: %s: %lx and %s: %lx\n", name1, reg1->edi, name2, reg2->edi);
+			log_err("edi registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->edi, name2, reg2->edi);
 		}
 		err |= 0x20;
 	}
 	/* check arg6 */
 	if (reg1->ebp != reg2->ebp) {
 		if (print) {
-			fprintf(stderr, "ebp registers do not match: %s: %lx and %s: %lx\n", name1, reg1->ebp, name2, reg2->ebp);
+			log_err("ebp registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->ebp, name2, reg2->ebp);
 		}
 		err |= 0x40;
 	}
 	/* check eip */
 	if (reg1->eip != reg2->eip) {
 		if (print) {
-			fprintf(stderr, "eip registers do not match: %s: %lx and %s: %lx\n", name1, reg1->eip, name2, reg2->eip);
+			log_err("eip registers do not match: %s: %lx and %s: %lx\n",
+				name1, reg1->eip, name2, reg2->eip);
 		}
 		err = 1;
 	}
@@ -662,12 +675,13 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1, cha
 	long int id_mask = ~((1 << 21) | (1 << 1));
 	if ((reg1->eflags & id_mask) != (reg2->eflags & id_mask)) {
 		if (print) {
-			fprintf(stderr, "eflags registers do not match: %s: 0x%lx and %s: 0x%lx\n", name1, reg1->eflags, name2, reg2->eflags);
+			log_err("eflags registers do not match: %s: 0x%lx and %s: 0x%lx\n",
+				name1, reg1->eflags, name2, reg2->eflags);
 		}
 		err |= 0x80;
 	}
 
-	if (stop != 0 && err != 0) {
+	if (bail_error && err) {
 		sys_exit();
 	}
 
@@ -683,7 +697,7 @@ void assert_child_regs_are(struct task* t,
 
 	read_child_registers(tid, &cur_regs);
 	if (compare_register_files("replaying", &cur_regs, "recorded", regs,
-				   1/*print errors*/, 0/*don't exit*/)) {
+				   LOG_MISMATCHES)) {
 		print_process_mmap(tid);
 		log_err("[%s in state %d, trace file line %d]",
 			strevent(event), state, get_trace_file_lines_counter());
@@ -947,30 +961,6 @@ void checksum_process_memory(struct task * t)
 
 void validate_process_memory(struct task * t)
 {
-	// TODO: verify length (minus scratch)
-	/*
-	// open the maps file
-	FILE *maps_file = FILE *maps_file = open_mmap(t->tid);
-	 */
-
-	/*
-	// for each line in the maps file:
-	char line[1024];
-	void *start, *end;
-	int checksum = 0;
-	while ( fgets(line,1024,maps_file) != NULL ) {
-		sscanf(line,"%p-%p", &start, &end);
-
-		void * buffer = read_child_data(t,end - start,start);
-		size_t offset;
-		for (offset = 0 ; start + offset < end ; offset += 4) {
-			unsigned int dword = *((unsigned int *)(buffer + offset));
-			checksum += dword;
-		}
-		sys_free((void**)&buffer);
-	}
-	*/
-
 	// open the checksums file
 	char checksums_filename[1024] = {0};
 	sprintf(checksums_filename,"%s/%d_%d",get_trace_path(),t->trace.global_time,t->rec_tid);
@@ -1018,16 +1008,6 @@ void validate_process_memory(struct task * t)
 		}
 	}
 
-	/*
-	if (!(checksum == rchecksum)) {
-		log_warn("Memory differs.");
-		getchar();
-		kill(t->tid,SIGSTOP);
-		sys_ptrace_detatch(t->tid);
-		log_info("Attach to %d, range = [%x,%x]",t->tid, rstart, rend );
-	}
-	fclose(maps_file);
-	*/
 	sys_fclose(checksums_file);
 }
 

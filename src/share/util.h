@@ -42,7 +42,20 @@ void print_inst(struct task* t);
 void print_syscall(struct task *t, struct trace_frame *trace);
 void get_eip_info(pid_t tid);
 int check_if_mapped(struct task *t, void *start, void *end);
-int compare_register_files(char* name1, const struct user_regs_struct* reg1, char* name2, const struct user_regs_struct* reg2, int print, int stop);
+
+/**
+ * Return nonzero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
+ * indicates that the caller is using this as a general register
+ * compare and nothing special should be done if the register files
+ * mismatch.  Passing LOG_MISMATCHES will log the registers that don't
+ * match.  Passing BAIL_ON_MISMATCH will additionally abort on
+ * mismatch.
+ */
+enum { EXPECT_MISMATCHES = 0, LOG_MISMATCHES, BAIL_ON_MISMATCH };
+int compare_register_files(char* name1, const struct user_regs_struct* reg1,
+			   char* name2, const struct user_regs_struct* reg2,
+			   int mismatch_behavior);
+
 void assert_child_regs_are(struct task* t, const struct user_regs_struct* regs, int event, int state);
 uint64_t str2ull(const char* start, size_t max_size);
 long int str2li(const char* start, size_t max_size);
