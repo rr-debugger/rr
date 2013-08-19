@@ -148,6 +148,8 @@ const char* syscallname(int syscall)
 #include "../replayer/syscall_defs.h"
 #undef SYSCALL_DEF
 
+	case SYS_restart_syscall:
+		return "restart_syscall";
 	default:
 		return "???syscall";
 	}

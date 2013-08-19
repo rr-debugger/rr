@@ -2758,8 +2758,7 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 	 */
 	SYS_REC0(writev)
 
-	case RRCALL_init_syscall_buffer:
-		t->event = (-syscall | RRCALL_BIT);
+	case SYS_rrcall_init_syscall_buffer:
 		init_syscall_buffer(t, NULL, SHARE_DESCHED_EVENT_FD);
 		break;
 

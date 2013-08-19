@@ -110,7 +110,7 @@ const char* strevent(int event)
 	if (0 > event) {
 		return decode_signal_event(event);
 	}
-	if (0 < event) {
+	if (0 <= event) {
 		return syscallname(event);
 	}
 	return "???event";

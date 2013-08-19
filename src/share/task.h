@@ -29,12 +29,20 @@ typedef void (*sig_handler_t)(int);
 /**
  * Events are interesting occurrences during tracee execution which
  * are relevant for replay.  Most events correspond to tracee
- * execution, but some (a subset of "pseudosigs" save actions that the
- * *recorder* took on behalf of the tracee.
+ * execution, but some (a subset of "pseudosigs") save actions that
+ * the *recorder* took on behalf of the tracee.
  */
 struct event {
 	enum {
-		EV_NONE, EV_PSEUDOSIG, EV_SIGNAL, EV_SYSCALL
+		EV_NONE,
+		/* Uses the .syscall struct below. */
+		EV_INTERRUPTED_SYSCALL,
+		/* Uses .pseudosig. */
+		EV_PSEUDOSIG,
+		/* Uses .signal. */
+		EV_SIGNAL,
+		/* Uses .syscall. */
+		EV_SYSCALL
 	} type;
 	union {
 		/**
@@ -71,6 +79,22 @@ struct event {
 			 * exeuction state isn't meaningful. */
 			int has_exec_info;
 		} pseudosig;
+
+		/**
+		 * Signal events track signals through the delivery
+		 * phase, and if the signal finds a sighandler, on to
+		 * the end of the handling face.
+		 */
+		struct {
+			/* Signal number. */
+			int no;
+			/* Nonzero if this signal will be
+			 * deterministically raised as the side effect
+			 * of retiring an instruction during replay,
+			 * for example |load $r 0x0| deterministically
+			 * raises SIGSEGV. */
+			int deterministic;
+		} signal;
 
 		/**
 		 * Syscall events track syscalls through entry into
@@ -155,23 +179,16 @@ struct event {
 			FIXEDSTACK_DECL(, void*, 5) saved_args;
 			void* tmp_data_ptr;
 			int tmp_data_num_bytes;
-		} syscall;
 
-		/**
-		 * Signal events track signals through the delivery
-		 * phase, and if the signal finds a sighandler, on to
-		 * the end of the handling face.
-		 */
-		struct {
-			/* Signal number. */
-			int no;
-			/* Nonzero if this signal will be
-			 * deterministically raised as the side effect
-			 * of retiring an instruction during replay,
-			 * for example |load $r 0x0| deterministically
-			 * raises SIGSEGV. */
-			int deterministic;
-		} signal;
+			/* Nonzero when this syscall was restarted
+			 * after a signal interruption. */
+			int is_restart;
+			/* The original (before scratch is set up)
+			 * arguments to the syscall passed by the
+			 * tracee.  These are used to detect restarted
+			 * syscalls. */
+			struct user_regs_struct regs;
+		} syscall;
 	};
 };
 
@@ -349,6 +366,11 @@ void pop_signal(struct task* t);
  */
 void push_syscall(struct task* t, int no);
 void pop_syscall(struct task* t);
+
+/**
+ * Pop the interrupted syscall event from the top of the stack.
+ */
+void pop_interrupted_syscall(struct task* t);
 
 /**
  * Dump |t|'s stack of pending events to INFO log.

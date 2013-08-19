@@ -81,6 +81,12 @@ void pop_syscall(struct task* t)
 	assert(EV_SYSCALL == type);
 }
 
+void pop_interrupted_syscall(struct task* t)
+{
+	int type = pop_event(t);
+	assert(EV_INTERRUPTED_SYSCALL == type);
+}
+
 void log_pending_events(const struct task* t)
 {
 	ssize_t depth = FIXEDSTACK_DEPTH(&t->pending_events);

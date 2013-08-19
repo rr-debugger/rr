@@ -252,6 +252,9 @@ static void resume_execution(struct task* t, int force_cont)
 		 * using the same logic as before. */
 		sys_ptrace_cont(t->tid);
 	}
+	/* TODO: this is incorrect if the syscall isn't restarted
+	 * right away, for example if a signal handler runs in the
+	 * intervening time. */
 	t->will_restart = 0;
 
 	sys_waitpid(t->tid, &t->status);
@@ -269,6 +272,87 @@ static void resume_execution(struct task* t, int force_cont)
 	}
 }
 
+/**
+ * "Thaw" a frozen interrupted syscall if |t| is restarting it.
+ * Return nonzero if a syscall is indeed restarted.
+ *
+ * If |t| is at the point where an interrupted syscall may or may not
+ * be restarted, and the syscall isn't restarted, then that frozen
+ * interrupted syscall is discarded.
+ */
+static int maybe_restart_syscall(struct task* t)
+{
+	const struct user_regs_struct* old_regs;
+
+	if (SYS_restart_syscall == t->event) {
+		/* This is a special case because SYS_restart_syscall
+		 * *must* restart a syscall.  Otherwise we don't know
+		 * which syscall's exit we're about to record. */
+		assert_exec(t, (t->ev && EV_INTERRUPTED_SYSCALL == t->ev->type
+				&& t->ev->syscall.is_restart
+				/* TODO: this check is a training
+				 * wheel for now, since the
+				 * last_syscall is subsumed by the
+				 * event stack.  Can remove when we're
+				 * confident the event stack is
+				 * working properly. */
+				&& t->last_syscall == t->ev->syscall.no),
+			    "Must have interrupted syscall to advance");
+
+		t->ev->type = EV_SYSCALL;
+		debug("  SYS_restart_syscall'ing %s",
+		      syscallname(t->ev->syscall.no));
+		return 0;
+	}
+
+	if (!t->ev || EV_INTERRUPTED_SYSCALL != t->ev->type) {
+		debug("  (no interrupted syscall to restart)");
+		return 0;
+	}
+
+	/* From here on, we must pop the interrupted syscall whether
+	 * or not we restart it. */
+
+	if (t->ev->syscall.no != t->event) {
+		debug("  (interrupted syscall was %s, this is %s)",
+		      syscallname(t->ev->syscall.no), syscallname(t->event));
+		pop_interrupted_syscall(t);
+		return 0;
+	}
+
+	/* It's possible for the tracee to resume after a sighandler
+	 * with a fresh syscall that happens to be the same as the one
+	 * that was interrupted.  So we check here if the args are the
+	 * same.
+	 *
+	 * Of course, it's possible (but less likely) for the tracee
+	 * to incidentally resume with a fresh syscall that just
+	 * happens to have the same *arguments* too.  But in that
+	 * case, we would usually set up scratch buffers etc the same
+	 * was as for the original interrupted syscall, so we just
+	 * save a step here.
+	 *
+	 * TODO: it's possible for arg structures to be mutated
+	 * between the original call and restarted call in such a way
+	 * that it might change the scratch allocation decisions. */
+	old_regs = &t->ev->syscall.regs;
+	if (old_regs->ebx != t->regs.ebx
+	    || old_regs->ecx != t->regs.ecx
+	    || old_regs->edx != t->regs.edx
+	    || old_regs->esi != t->regs.esi
+	    || old_regs->edi != t->regs.edi
+	    || old_regs->ebp != t->regs.ebp) {
+		debug("  (args for interrupted %s are different than now)",
+		      syscallname(t->ev->syscall.no));
+		pop_interrupted_syscall(t);
+		return 0;
+	}
+
+	debug("  restarting %s", syscallname(t->ev->syscall.no));
+	t->ev->type = EV_SYSCALL;
+	return 1;
+}
+
 static void syscall_state_changed(struct task** tp, int by_waitpid)
 {
 	struct task* t = *tp;
@@ -276,6 +360,19 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 	switch (t->exec_state) {
 	case ENTERING_SYSCALL:
 		debug_exec_state("EXEC_SYSCALL_ENTRY", t);
+
+		if (!t->ev->syscall.is_restart) {
+			/* Save a copy of the arg registers so that we
+			 * can use them to detect later restarted
+			 * syscalls, if this syscall ends up being
+			 * restarted.  We have to save the registers
+			 * in this rather awkward place because we
+			 * need the original registers; the restart
+			 * (if it's not a SYS_restart_syscall restart)
+			 * will use the original registers. */
+			memcpy(&t->ev->syscall.regs, &t->regs,
+			       sizeof(t->ev->syscall.regs));
+		}
 
 		/* continue and execute the system call */
 		t->switchable = rec_prepare_syscall(t, t->event);
@@ -305,41 +402,35 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		return;
 
 	case EXITING_SYSCALL: {
-		struct user_regs_struct regs;
-		int syscall, retval;
+		int syscallno = t->ev->syscall.no;
+		int retval;
 
 		debug_exec_state("EXEC_SYSCALL_DONE", t);
 
 		assert(signal_pending(t->status) == 0);
+		assert(SYS_sigreturn != t->event);
 
-		read_child_registers(t->tid,&regs);
-		syscall = regs.orig_eax;
-		retval = regs.eax;
-		assert_exec(t, (-ENOSYS != retval
-				|| (0 > syscall || SYS_clone == syscall
-				    || SYS_exit_group == syscall 
-				    || SYS_exit == syscall)),
-			    "Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
-			    syscallname(syscall));
-
-		debug("  orig_eax:%d (%s); eax:%ld",
-		      syscall, syscallname(syscall), regs.eax);
-
-		/* we received a signal while in the system call and
-		 * send it right away*/
-		/* we have already sent the signal and process
-		 * sigreturn */
-		assert(t->event != SYS_sigreturn);
-
-		/* if the syscall is about to be restarted, save the
-		 * last syscall performed by it. */
-		if (syscall != SYS_restart_syscall
-		    && SYSCALL_WILL_RESTART(retval)) {
-			debug("  retval %d, will restart %s",
-			      retval, syscallname(syscall));
-			t->last_syscall = syscall;
-			t->will_restart = 1;
+		read_child_registers(t->tid, &t->regs);
+		t->event = t->regs.orig_eax;
+		if (SYS_restart_syscall == t->event) {
+			t->event = syscallno;
 		}
+		retval = t->regs.eax;
+
+		assert_exec(t, (RRCALL_init_syscall_buffer == t->event
+				|| syscallno == t->event),
+			    "Event stack and current event must be in sync.");
+		assert_exec(t, (-ENOSYS != retval
+				|| (0 > syscallno
+				    || RRCALL_init_syscall_buffer == t->event
+				    || SYS_clone == syscallno
+				    || SYS_exit_group == syscallno
+				    || SYS_exit == syscallno)),
+			    "Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
+			    syscallname(syscallno));
+
+		debug("  orig_eax:%ld (%s); eax:%ld",
+		      t->regs.orig_eax, syscallname(syscallno), t->regs.eax);
 
 		/* TODO: are there any other points where we need to
 		 * handle ptrace events (other than the seccomp-bpf
@@ -350,24 +441,44 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 			return;
 		}
 
-		assert(signal_pending(t->status) != SIGTRAP);
+		/* TODO: this old code serves as training wheels for
+		 * the event stack.  Remove when event stack is
+		 * working well. */
+		/* if the syscall is about to be restarted, save the
+		 * last syscall performed by it. */
+		t->will_restart = (syscallno != SYS_restart_syscall
+				   && SYSCALL_WILL_RESTART(retval));
+		if (t->will_restart) {
+			debug("  will restart %s (from retval %d)",
+			      syscallname(syscallno), retval);
+			t->last_syscall = syscallno;
+		}
+
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
-		if (syscall == SYS_restart_syscall) {
-			syscall = t->last_syscall;
-			t->event = syscall;
-			debug("  exiting restarted %s", syscallname(syscall));
+		if (t->ev->syscall.is_restart) {
+			debug("  exiting restarted %s", syscallname(syscallno));
 		}
 
 		t->ev->syscall.state = EXITING_SYSCALL;
 		/* no need to process the syscall in case its
 		 * restarted this will be done in the exit from the
 		 * restart_syscall */
-		if (!SYSCALL_WILL_RESTART(retval)) {
-			rec_process_syscall(t, syscall, rr_flags_);
+		if (!t->will_restart) {
+			rec_process_syscall(t, syscallno, rr_flags_);
 		}
 		record_event(t);
-		pop_syscall(t);
+
+		/* If we're not going to restart this syscall, we're
+		 * done with it.  But if we are, "freeze" it on the
+		 * event stack until the execution point where it
+		 * might be restarted. */
+		if (!t->will_restart) {
+			pop_syscall(t);
+		} else {
+			t->ev->type = EV_INTERRUPTED_SYSCALL;
+			t->ev->syscall.is_restart = 1;
+		}
 
 		t->exec_state = RUNNABLE;
 		t->switchable = 1;
@@ -461,37 +572,20 @@ static void runnable_state_changed(struct task* t)
 			pop_pseudosig(t);
 		}
 
-		push_syscall(t, t->event);
+		if (!maybe_restart_syscall(t)) {
+			push_syscall(t, t->event);
+		}
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
 
 		t->exec_state = ENTERING_SYSCALL;
 	} else if (t->event == SYS_restart_syscall) {
-		/* Syscalls like nanosleep(), poll() which can't be
-		 * restarted with their original arguments use the
-		 * ERESTART_RESTARTBLOCK code.
-		 *
-		 * ---------------->
-		 * Kernel will execute restart_syscall() instead,
-		 * which changes arguments before restarting syscall.
-		 * <----------------
-		 *
-		 * SA_RESTART is ignored (assumed not set) similarly
-		 * to ERESTARTNOHAND. (Kernel can't honor SA_RESTART
-		 * since restart data is saved in "restart block" in
-		 * task struct, and if signal handler uses a syscall
-		 * which in turn saves another such restart block, old
-		 * data is lost and restart becomes impossible) */
-		debug("  restarting syscall %s",
-		      syscallname(t->last_syscall));
-		/* From errno.h:
-		 * These should never be seen by user programs.  To
-		 * return one of ERESTART* codes, signal_pending()
-		 * MUST be set.  Note that ptrace can observe these at
-		 * syscall exit tracing, but they will never be left
-		 * for the debugged user process to see. */
+		/* In this case, the call /must/ restart a syscall, or
+		 * abort. */
+		maybe_restart_syscall(t);
+
+		t->ev->syscall.state = ENTERING_SYSCALL;
 		t->exec_state = ENTERING_SYSCALL;
-		assert(!t->flushed_syscallbuf);
 	} else {
 		fatal("Unhandled event %s (%d)",
 		      strevent(t->event), t->event);
