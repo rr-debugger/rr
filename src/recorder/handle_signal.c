@@ -355,13 +355,10 @@ static int is_deterministic_signal(const siginfo_t* si)
 static void record_signal(int sig, struct task* t, const siginfo_t* si,
 			  uint64_t max_rbc)
 {
-	/* TODO: the sighandler table should be the SSoT once the
-	 * replayer knows how to look ahead and determine whether to
-	 * enter a sighandler.  For the time being, we'll check the
-	 * two answers against each other. */
 	int has_user_handler = sighandlers_has_user_handler(t->sighandlers,
 							    sig);
 	int resethand = sighandlers_is_resethand(t->sighandlers, sig);
+	size_t sigframe_size = 0;
 
 	push_signal(t, sig, is_deterministic_signal(si));
 
@@ -374,40 +371,40 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 	/* This event is used by the replayer to advance to the point
 	 * of signal delivery. */
 	record_event(t);
-	reset_hpc(t, max_rbc); // TODO: the hpc gets reset in record event.
-	assert(read_insts(t->hpc) == 0);
-	// enter the sig handler
-	sys_ptrace_singlestep_sig(t->tid, sig);
-	// wait for the kernel to finish setting up the handler
-	sys_waitpid(t->tid, &(t->status));
-	// 0 instructions means we entered a handler
-	int entered_handler = (0 == read_insts(t->hpc));
-	// TODO: find out actual struct sigframe size. 128 seems to be too small
-	size_t frame_size = entered_handler ? 1024 : 0;
+	reset_hpc(t, max_rbc);
 
-	if (has_user_handler != entered_handler) {
-		log_err("We were%s supposed to have a sighandler for %s, but did%s enter a sigframe",
-			has_user_handler ? "" :"n't",
-			signalname(sig),
-			entered_handler ? "" : "n't");
-		emergency_debug(t);
+	if (has_user_handler) {
+		debug("  %s has user handler", signalname(sig));
+		/* Enter the signal handler. */
+		sys_ptrace_singlestep_sig(t->tid, sig);
+		sys_waitpid(t->tid, &t->status);
+		/* It's been observed that when tasks enter
+		 * sighandlers, the singlestep operation above doesn't
+		 * retire any instructions.  This cross-checks the
+		 * sighandler information we maintain in
+		 * |t->sighandlers|. */
+		assert(0 == read_insts(t->hpc));
+
+		/* TODO: find out actual struct sigframe size. 128
+		 * seems to be too small. */
+		sigframe_size = 1024;
+
+		read_child_registers(t->tid, &t->regs);
+	} else {
+		debug("  no user handler for %s", signalname(sig));
 	}
+
+	/* We record this data regardless to simplify replay. */
+	record_child_data(t, sigframe_size, (void*)t->regs.esp);
 
 	if (resethand) {
 		sighandlers_set_disposition(t->sighandlers, sig,
 					    SIG_DFL, NO_RESET);
-		/* NBB: the tracee must have entered the sighandler at
-		 * this point, or the next action must be to continue
-		 * the tracee into its sighandler. */
 	}
 
-	struct user_regs_struct regs;
-	read_child_registers(t->tid, &regs);
-	record_child_data(t, frame_size, (void*)regs.esp);
-
-	/* This event is used to set up the signal handler frame, or
-	 * to record the resulting state of the stepi if there wasn't
-	 * a signal handler. */
+	/* This event is used by the replayer to set up the signal
+	 * handler frame, or to record the resulting state of the
+	 * stepi if there wasn't a signal handler. */
 	record_event(t);
 
 	pop_signal(t);

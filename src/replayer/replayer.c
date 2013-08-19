@@ -746,7 +746,8 @@ static int is_same_execution_point(uint64_t rec_rcb,
 {
 	return (rep_rcb == rep_rcb
 		&& 0 == compare_register_files("rep interrupt", rep_regs,
-					       "rec", rec_regs, 0, 0));
+					       "rec", rec_regs,
+					       EXPECT_MISMATCHES));
 }
 
 /**
@@ -965,24 +966,15 @@ static void emulate_signal_delivery()
 	struct trace_frame* trace = &t->trace;
 
 	/* Restore the signal-hander frame data, if there was one. */
-	if (!set_child_data(t)) {
-		/* No signal handler.  Advance execution to the point
-		 * we recorded. */
-		reset_hpc(t, 0);
-		/* TODO what happens if we step on a breakpoint? */
-		advance_to(t, t->trace.rbc, &trace->recorded_regs,
-			   /*no signal*/0, DONT_STEPI);
-		/* (|advance_to()| just asserted that the registers
-		 * match what was recorded.) */
-	} else {
-		/* Signal handler; we just set up the callframe.
-		 * Continuing execution will run that code. */
-		write_child_main_registers(tid, &trace->recorded_regs);
-	}
+	set_child_data(t);
+	/* If this signal had a user handler, and we just set up the
+	 * callframe, and we need to restore the $sp for continued
+	 * execution. */
+	write_child_main_registers(tid, &trace->recorded_regs);
 	/* Delivered the signal. */
 	t->child_sig = 0;
 
-	validate_args(t->trace.stop_reason, -1, t);
+	validate_args(trace->stop_reason, -1, t);
 }
 
 /**
