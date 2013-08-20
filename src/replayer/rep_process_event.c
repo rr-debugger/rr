@@ -781,11 +781,17 @@ void rep_process_syscall(struct task* t, int redirect_stdio,
 
 	if (STATE_SYSCALL_EXIT == state
 	    && SYSCALL_WILL_RESTART(trace->recorded_regs.eax)) {
-		/* when a syscall exits with a restart "error", it
+		/* When a syscall exits with a restart "error", it
 		 * will be restarted by the kernel with a restart
 		 * syscall (see below). The child process is oblivious
 		 * to this, so in the replay we need to jump directly
-		 * to the exit from the restart_syscall */
+		 * to the exit from the restart_syscall.
+		 *
+		 * Strictly speaking, we don't need to set the
+		 * -ERESTART* value here, but if we don't the register
+		 * state may mismatch the next replayed event for
+		 * |t|. */
+		set_return_value(t);
 		step->action = TSTEP_RETIRE;
 		return;
 	}

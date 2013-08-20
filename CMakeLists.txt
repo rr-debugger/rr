@@ -91,6 +91,7 @@ set(BASIC_TESTS
   ignored_async_usr1
   int3
   interrupt
+  intr_sleep
   io
   link
   mmap_private
@@ -101,6 +102,7 @@ set(BASIC_TESTS
   rdtsc
   segfault
   sigchld_interrupt_signal
+#  sighandlers
   sigill
   sigprocmask
   sigrt

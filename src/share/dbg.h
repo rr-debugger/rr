@@ -10,6 +10,8 @@
 
 #include "../replayer/replayer.h" /* for emergency_debug() */
 
+#include "task.h"
+
 /**
  * Useful debug macros.  Define DEBUGRR to enable DEBUG-level
  * messages.
@@ -38,6 +40,7 @@
 				#_cond " failed to hold: " _msg "\n",	\
 				__FILE__, __LINE__, __FUNCTION__,	\
 				clean_errno(), ##__VA_ARGS__);		\
+			log_pending_events(_t);				\
 			emergency_debug(_t);				\
 		}							\
 	} while(0)
