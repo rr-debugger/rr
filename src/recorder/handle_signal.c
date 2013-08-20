@@ -14,7 +14,6 @@
 
 #include "recorder.h"
 
-#include "../replayer/replayer.h" /* for emergency_debug() */
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
@@ -274,10 +273,8 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 		debug("  saw garbage orig_eax: 0x%x, reading breadcrumb",
 		      call);
 		call = t->desched_rec->syscallno;
-		if (call < 0) {
-			log_err("Garbled syscallbuf breadcrumb %d", call);
-			emergency_debug(t);
-		}
+		assert_exec(t, 0 <= call, "Garbled syscallbuf breadcrumb %d",
+			    call);
 	}
 
 	if (expecting_extra_sigio) {
@@ -286,20 +283,19 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 		 * if we need to. */
 		debug("  (eating redudant SIGIO)");
 		sig = advance_syscall_boundary(t, regs);
-		if (!(SIGIO == sig 
-		      && SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
-		      && !is_desched_event_syscall(t, regs)
-		      && (SYS_restart_syscall == regs->orig_eax
-			  || call == regs->orig_eax
-			  /* (the weird case above) */
-			  || (regs->orig_eax < 0 && call > 0)))) {
-			log_err("Trying to skip redundant SIGIO after desched event, but got sig %s at $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
-				signalname(sig),
-				(void*)regs->eip, t->untraced_syscall_ip,
-				is_desched_event_syscall(t, regs) ? "yes" : "no",
-				syscallname(regs->orig_eax), syscallname(call));
-			emergency_debug(t);
-		}
+		assert_exec(t,
+			    (SIGIO == sig 
+			     && SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
+			     && !is_desched_event_syscall(t, regs)
+			     && (SYS_restart_syscall == regs->orig_eax
+				 || call == regs->orig_eax
+				 /* (the weird case above) */
+				 || (regs->orig_eax < 0 && call > 0))),
+			    "Trying to skip redundant SIGIO after desched event, but got sig %s at $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
+			    signalname(sig),
+			    (void*)regs->eip, t->untraced_syscall_ip,
+			    is_desched_event_syscall(t, regs) ? "yes" : "no",
+			    syscallname(regs->orig_eax), syscallname(call));
 	}
 
 	if (-ERESTARTSYS == regs->eax) {

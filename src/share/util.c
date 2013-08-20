@@ -693,15 +693,18 @@ void assert_child_regs_are(struct task* t,
 			   int event, int state)
 {
 	pid_t tid = t->tid;
-	struct user_regs_struct cur_regs;
+	int regs_are_equal;
 
-	read_child_registers(tid, &cur_regs);
-	if (compare_register_files("replaying", &cur_regs, "recorded", regs,
-				   LOG_MISMATCHES)) {
+	read_child_registers(tid, &t->regs);
+	regs_are_equal = (0 == compare_register_files("replaying", &t->regs,
+						      "recorded", regs,
+						      LOG_MISMATCHES));
+	if (!regs_are_equal) {
 		print_process_mmap(tid);
-		log_err("[%s in state %d, trace file line %d]",
-			strevent(event), state, get_trace_file_lines_counter());
-		emergency_debug(t);
+		assert_exec(t, regs_are_equal,
+			    "[%s in state %d, trace file line %d]",
+			    strevent(event), state,
+			    get_trace_file_lines_counter());
 	}
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }

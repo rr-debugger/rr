@@ -467,8 +467,8 @@ static int cont_syscall_boundary(struct task* t, int emu, int stepi)
 	case SIGTRAP:
 		return 1;
 	default:
-		log_err("Replay got unrecorded signal %d", t->child_sig);
-		emergency_debug(t);
+		assert_exec(t, 0, "Replay got unrecorded signal %d",
+			    t->child_sig);
 	}
 
 	assert(t->child_sig == 0);
@@ -554,6 +554,7 @@ enum { DONT_STEPI = 0, STEPI };
 static void continue_or_step(struct task* t, int stepi)
 {
 	pid_t tid = t->tid;
+	int child_sig_gt_zero;
 
 	if (stepi) {
 		sys_ptrace_singlestep(tid);
@@ -569,16 +570,19 @@ static void continue_or_step(struct task* t, int stepi)
 	sys_waitpid(tid, &t->status);
 
 	t->child_sig = signal_pending(t->status);
-	if (0 == t->child_sig) {
-		struct user_regs_struct regs;
-		read_child_registers(t->tid, &regs);
 
-		log_err("Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s' (rcb: %llu)",
-			strevent(t->trace.stop_reason),
-			get_trace_file_lines_counter(),
-			strevent(regs.orig_eax), read_rbc(t->hpc));
-		emergency_debug(t);
+	/* TODO: get rid of this if-stmt after we always read
+	 * registers following an execution resume/waitpid. */
+	child_sig_gt_zero = (0 < t->child_sig);
+	if (child_sig_gt_zero) {
+		return;
 	}
+	read_child_registers(t->tid, &t->regs);
+	assert_exec(t, child_sig_gt_zero,
+		    "Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s' (rcb: %llu)",
+		    strevent(t->trace.stop_reason),
+		    get_trace_file_lines_counter(),
+		    strevent(t->regs.orig_eax), read_rbc(t->hpc));
 }
 
 /**
@@ -703,40 +707,33 @@ static int is_debugger_trap(struct task* t, int target_sig,
 static void guard_overshoot(struct task* t,
 			    uint64_t target, uint64_t current)
 {
-	if (current <= target) {
-		return;
-	}
-	log_err("Replay diverged: overshot target rcb=%llu, reached=%llu\n"
-		"    replaying trace line %d",
-		target, current,
-		get_trace_file_lines_counter());
-	emergency_debug(t);
-	/* not reached */
+	assert_exec(t, current <= target,
+		    "Replay diverged: overshot target rcb=%llu, reached=%llu\n"
+		    "    replaying trace line %d",
+		    target, current, get_trace_file_lines_counter());
 }
 
 static void guard_unexpected_signal(struct task* t)
 {
 	int event;
-
+	int child_sig_is_zero_or_sigtrap = (0 == t->child_sig
+					    || SIGTRAP == t->child_sig);
 	/* "0" normally means "syscall", but continue_or_step() guards
 	 * against unexpected syscalls.  So the caller must have set
 	 * "0" intentionally. */
-	if (0 == t->child_sig || SIGTRAP == t->child_sig) {
+	if (child_sig_is_zero_or_sigtrap) {
 		return;
 	}
 	if (t->child_sig) {
 		event = -t->child_sig;
 	} else {
-		struct user_regs_struct regs;
-		read_child_registers(t->tid, &regs);
-		event = MAX(0, regs.orig_eax);
+		read_child_registers(t->tid, &t->regs);
+		event = MAX(0, t->regs.orig_eax);
 	}
-	log_err("Replay got unrecorded event %s while awaiting signal\n"
-		"    replaying trace line %d",
-		strevent(event),
-		get_trace_file_lines_counter());
-	emergency_debug(t);
-	/* not reached */
+	assert_exec(t, child_sig_is_zero_or_sigtrap,
+		    "Replay got unrecorded event %s while awaiting signal\n"
+		    "    replaying trace line %d",
+		    strevent(event), get_trace_file_lines_counter());
 }
 
 static int is_same_execution_point(uint64_t rec_rcb,
@@ -994,12 +991,10 @@ static int emulate_deterministic_signal(struct task* t,
 	} else if (SIGTRAP == t->child_sig
 		   && is_debugger_trap(t, sig, DETERMINISTIC, UNKNOWN, stepi)) {
 		return 1;
-	} else if (t->child_sig != sig) {
-		log_err("Replay got unrecorded signal %d (expecting %d)",
-			t->child_sig, sig);
-		emergency_debug(t);
-		return 1;		/* not reached */
 	}
+	assert_exec(t, t->child_sig == sig,
+		    "Replay got unrecorded signal %d (expecting %d)",
+		    t->child_sig, sig);
 
 	if (SIG_SEGV_RDTSC == t->trace.stop_reason) {
 		write_child_main_registers(tid, &t->trace.recorded_regs);
@@ -1042,7 +1037,6 @@ static int skip_desched_ioctl(struct task* t,
 			      struct rep_desched_state* ds, int stepi)
 {
 	int ret, is_desched_syscall;
-	struct user_regs_struct regs;
 
 	/* Skip ahead to the syscall entry. */
 	if (DESCHED_ENTER == ds->state
@@ -1051,23 +1045,20 @@ static int skip_desched_ioctl(struct task* t,
 	}
 	ds->state = DESCHED_EXIT;
 
-	read_child_registers(t->tid, &regs);
-	is_desched_syscall = DESCHED_ARM == ds->type ?
-			     is_arm_desched_event_syscall(t, &regs) :
-			     is_disarm_desched_event_syscall(t, &regs);
-	if (!is_desched_syscall) {
-		log_err("Failed to reach desched ioctl; at %s(%ld, %ld) instead (trace line %d)",
-			syscallname(regs.orig_eax), regs.ebx, regs.ecx,
-			get_trace_file_lines_counter());
-		emergency_debug(t);
-	}
-
+	read_child_registers(t->tid, &t->regs);
+	is_desched_syscall = (DESCHED_ARM == ds->type ?
+			      is_arm_desched_event_syscall(t, &t->regs) :
+			      is_disarm_desched_event_syscall(t, &t->regs));
+	assert_exec(t, is_desched_syscall,
+		    "Failed to reach desched ioctl; at %s(%ld, %ld) instead (trace line %d)",
+		    syscallname(t->regs.orig_eax), t->regs.ebx, t->regs.ecx,
+		    get_trace_file_lines_counter());
 	/* Emulate a return value of "0".  It's OK for us to hard-code
 	 * that value here, because the syscallbuf lib aborts if a
 	 * desched ioctl returns non-zero (it doesn't know how to
 	 * handle that). */
-	regs.eax = 0;
-	write_child_registers(t->tid, &regs);
+	t->regs.eax = 0;
+	write_child_registers(t->tid, &t->regs);
 	step_exit_syscall_emu(t);
 	return 0;
 }
@@ -1113,17 +1104,14 @@ static void assert_at_buffered_syscall(struct task* t,
 				       int syscallno)
 {
 	void* ip = (void*)regs->eip;
-	if (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(ip, t)) {
-		log_err("(trace line %d) Bad ip %p: should have been buffered-syscall ip",
-			get_trace_file_lines_counter(), ip);
-		emergency_debug(t);
-	}
-	if (regs->orig_eax != syscallno) {
-		log_err("(trace line %d) At %s; should have been at %s",
-			get_trace_file_lines_counter(),
-			syscallname(regs->orig_eax), syscallname(syscallno));
-		emergency_debug(t);
-	}
+
+	assert_exec(t, SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(ip, t),
+		    "(trace line %d) Bad ip %p: should have been buffered-syscall ip",
+		    get_trace_file_lines_counter(), ip);
+	assert_exec(t, regs->orig_eax == syscallno,
+		    "(trace line %d) At %s; should have been at %s",
+		    get_trace_file_lines_counter(),
+		    syscallname(regs->orig_eax), syscallname(syscallno));
 }
 
 /**

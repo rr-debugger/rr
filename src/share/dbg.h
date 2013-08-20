@@ -8,39 +8,61 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../replayer/replayer.h" /* for emergency_debug() */
+
 /**
- * Useful debug macros, define DEBUGRR to turn on debugging
- *
- * Caution: never define NDEBUG as it turns off assertions!
- *
+ * Useful debug macros.  Define DEBUGRR to enable DEBUG-level
+ * messages.
  */
 
-//#define DEBUGRR
-
 #ifdef DEBUGRR
-#define debug(M, ...) fprintf(stderr, "[DEBUG] " M "\n", ##__VA_ARGS__);
-#define do_debug(C) C
+# define debug(M, ...)							\
+	do {								\
+		fprintf(stderr, "[DEBUG] " M "\n", ##__VA_ARGS__);	\
+	} while(0)
 #else
-#define debug(M, ...)
-#define do_debug(C)
+# define debug(M, ...)				\
+	do { } while(0)
 #endif
 
-#define clean_errno() (errno == 0 ? "None" : strerror(errno))
+/**
+ * Assert a condition of the execution state of |_t|.  Print an error
+ * message and enter into an emergency debugging session if the
+ * assertion doesn't hold.
+ */
+#define assert_exec(_t, _cond, _msg, ...)				\
+	do {								\
+		if (!(_cond)) {						\
+			fprintf(stderr,					\
+				"[EMERGENCY] (%s:%d:%s: errno: %s) "	\
+				#_cond " failed to hold: " _msg "\n",	\
+				__FILE__, __LINE__, __FUNCTION__,	\
+				clean_errno(), ##__VA_ARGS__);		\
+			emergency_debug(_t);				\
+		}							\
+	} while(0)
 
-#define fatal(M, ...) do { fprintf(stderr, "[FATAL] (%s:%d:%s: errno: %s) " M "\n", __FILE__, __LINE__, __FUNCTION__, clean_errno(), ##__VA_ARGS__); abort(); } while (0)
+#define clean_errno()				\
+	(errno == 0 ? "None" : strerror(errno))
 
-#define log_err(M, ...) fprintf(stderr, "[ERROR] (%s:%d:%s: errno: %s) " M "\n", __FILE__, __LINE__, __FUNCTION__, clean_errno(), ##__VA_ARGS__)
+#define fatal(M, ...)							\
+	do {								\
+		fprintf(stderr, "[FATAL] (%s:%d:%s: errno: %s) " M "\n", \
+			__FILE__, __LINE__, __FUNCTION__,		\
+			clean_errno(), ##__VA_ARGS__);			\
+		abort();						\
+	} while (0)
 
-#define log_warn(M, ...) fprintf(stderr, "[WARN] (%s: errno: %s) " M "\n", __FUNCTION__, clean_errno(), ##__VA_ARGS__)
+#define log_err(M, ...)						 \
+	fprintf(stderr, "[ERROR] (%s:%d:%s: errno: %s) " M "\n", \
+		__FILE__, __LINE__, __FUNCTION__,		 \
+		clean_errno(), ##__VA_ARGS__)
 
-#define log_info(M, ...) fprintf(stderr, "[INFO] (%s) " M "\n", __FUNCTION__, ##__VA_ARGS__)
+#define log_warn(M, ...)						\
+	fprintf(stderr, "[WARN] (%s: errno: %s) " M "\n",		\
+		__FUNCTION__, clean_errno(), ##__VA_ARGS__)
 
-#define check(A, M, ...) if(!(A)) { log_err(M, ##__VA_ARGS__); errno=0; goto error; }
-
-#define sentinel(M, ...){ log_err(M, ##__VA_ARGS__); errno=0; goto error; }
-
-#define check_mem(A) check((A), "Out of memory.")
-
-#define check_debug(A, M, ...) if(!(A)) { debug(M, ##__VA_ARGS__); errno=0; goto error; }
+#define log_info(M, ...)						\
+	fprintf(stderr, "[INFO] (%s) " M "\n", __FUNCTION__, ##__VA_ARGS__)
 
 #endif

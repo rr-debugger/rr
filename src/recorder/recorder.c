@@ -21,7 +21,6 @@
 #include "rec_process_event.h"
 #include "rec_sched.h"
 
-#include "../replayer/replayer.h" /* for emergency_debug() */
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
@@ -316,14 +315,12 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		read_child_registers(t->tid,&regs);
 		syscall = regs.orig_eax;
 		retval = regs.eax;
-		if (0 <= syscall
-		    && SYS_clone != syscall
-		    && SYS_exit_group != syscall && SYS_exit != syscall
-		    && -ENOSYS == retval) {
-			log_err("Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
-				syscallname(syscall));
-			emergency_debug(t);
-		}
+		assert_exec(t, (-ENOSYS != retval
+				|| (0 > syscall || SYS_clone == syscall
+				    || SYS_exit_group == syscall 
+				    || SYS_exit == syscall)),
+			    "Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
+			    syscallname(syscall));
 
 		debug("  orig_eax:%d (%s); eax:%ld",
 		      syscall, syscallname(syscall), regs.eax);

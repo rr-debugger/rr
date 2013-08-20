@@ -21,7 +21,6 @@
 #include "dbg.h"
 #include "ipc.h"
 #include "../recorder/rec_sched.h"
-#include "../replayer/replayer.h" /* for emergency_debug() */
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -285,10 +284,9 @@ void goto_next_event(struct task *t)
 	sys_waitpid(t->tid, &t->status);
 
 	t->child_sig = signal_pending(t->status);
-	if (t->child_sig == SIGTRAP) {
-		log_err("Caught unexpected SIGTRAP while going to next event");
-		emergency_debug(t);
-	}
+	assert_exec(t, t->child_sig != SIGTRAP,
+		    "Caught unexpected SIGTRAP while going to next event");
+
 	t->event = read_child_orig_eax(t->tid);
 }
 

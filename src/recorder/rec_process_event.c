@@ -29,7 +29,6 @@
 
 #include "handle_ioctl.h"
 
-#include "../replayer/replayer.h" /* for emergency_debug() */
 #include "../share/dbg.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
@@ -239,12 +238,9 @@ static int set_up_scratch_for_syscallbuf(struct task* t, int syscallno)
 	const struct syscallbuf_record* rec = t->desched_rec;
 
 	assert(t->desched_rec);
-
-	if (syscallno != rec->syscallno) {
-		log_err("Syscallbuf records syscall %s, but expecting %s",
-			syscallname(rec->syscallno), syscallname(syscallno));
-		emergency_debug(t);
-	}
+	assert_exec(t, syscallno == rec->syscallno, 
+		    "Syscallbuf records syscall %s, but expecting %s",
+		    syscallname(rec->syscallno), syscallname(syscallno));
 
 	reset_scratch_pointers(t);
 	t->ev->syscall.tmp_data_ptr =
@@ -579,23 +575,14 @@ static void finish_restoring_scratch_slack(struct task* t,
 	ssize_t diff = t->ev->syscall.tmp_data_num_bytes - consumed;
 
 	assert(t->ev->syscall.tmp_data_ptr == t->scratch_ptr);
-
-	if (!slack && diff) {
-		log_err("Consumed %d bytes of scratch memory, but saved %d",
-			consumed, t->ev->syscall.tmp_data_num_bytes);
-		emergency_debug(t);
-	} else if(slack && diff < 0) {
-		log_err("Over-consumed %d bytes of scratch memory (saved %d)",
-			diff, t->ev->syscall.tmp_data_num_bytes);
-		emergency_debug(t);
-	} else if (slack) {
+	assert_exec(t, !diff || (slack && diff > 0),
+		    "Saved %d bytes of scratch memory but consumed %d",
+		    t->ev->syscall.tmp_data_num_bytes, consumed);
+	if (slack) {
 		debug("Left %d bytes unconsumed in scratch", diff);
 	}
-
-	if (!FIXEDSTACK_EMPTY(&t->ev->syscall.saved_args)) {
-		log_err("Under-consumed saved arg pointers");
-		emergency_debug(t);
-	}
+	assert_exec(t, FIXEDSTACK_EMPTY(&t->ev->syscall.saved_args),
+		    "Under-consumed saved arg pointers");
 
 	sys_free(data);
 }
