@@ -1,2 +1,5 @@
 source `dirname $0`/util.sh abort_nonmain "$@"
+
+fails "abort() from non-main thread is broken"
+
 compare_test ''

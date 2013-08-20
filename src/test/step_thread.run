@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh step_thread "$@"
+
+fails "Ordering of threads hitting breakpoints is unreliable."
+
+debug_test

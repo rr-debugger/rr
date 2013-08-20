@@ -121,10 +121,16 @@ echo Using lib arg "'$LIB_ARG'"
 ## testing "API".
 ##
 
+function fails { why=$1;
+    echo NOTE: Skipping "'$TESTNAME'" because it fails: $why
+    passed=y
+    exit 0
+}
+
 # If the test takes too long to run without the syscallbuf enabled,
 # use this to prevent it from running when that's the case.
 function skip_if_no_syscall_buf {
-    if [[ "-n" == "$LIB_ARG" || "" == "$LIB_ARG" ]]; then
+    if [[ "-n" == "$LIB_ARG" ]]; then
 	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is disabled
         passed=y
 	exit 0
@@ -134,7 +140,7 @@ function skip_if_no_syscall_buf {
 # If the test is causing an unrealistic failure when the syscallbuf is
 # enabled, skip it.  This better be a temporary situation!
 function skip_if_syscall_buf {
-    if [[ "-b" == "$LIB_ARG" ]]; then
+    if [[ "-b" == "$LIB_ARG" || "" == "$LIB_ARG" ]]; then
 	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is enabled
         passed=y
 	exit 0

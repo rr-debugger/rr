@@ -1,2 +1,0 @@
-source util.sh step_thread "$@"
-debug_test
