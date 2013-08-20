@@ -448,6 +448,9 @@ static void runnable_state_changed(struct task* t)
 		record_event(t);
 		pop_syscall(t);
 
+		/* We've finished processing this signal now. */
+		pop_signal(t);
+
 		t->switchable = 0;
 	} else if (t->event > 0) {
 		/* We just entered a syscall. */

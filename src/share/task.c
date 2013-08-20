@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "dbg.h"
 #include "util.h"
 
 /**
@@ -78,6 +79,56 @@ void pop_syscall(struct task* t)
 {
 	int type = pop_event(t);
 	assert(EV_SYSCALL == type);
+}
+
+void log_pending_events(const struct task* t)
+{
+	ssize_t depth = FIXEDSTACK_DEPTH(&t->pending_events);
+	int i;
+
+	if (!depth) {
+		log_info("(no pending events)");
+		return;
+	}
+
+	for (i = depth - 1; i >= 0; --i) {
+		log_event(&t->pending_events.elts[i]);
+	}
+}
+
+void log_event(const struct event* ev)
+{
+	const char* name = event_name(ev);
+	switch (ev->type) {
+	case EV_NONE:
+		log_info("%s", name);
+		return;
+	case EV_PSEUDOSIG:
+		log_info("%s: %d", name, ev->pseudosig.no);
+		return;
+	case EV_SYSCALL:
+		log_info("%s: %s", name, syscallname(ev->syscall.no));
+		return;
+	case EV_SIGNAL:
+		log_info("%s: %s", name, signalname(ev->signal.no));
+		return;
+	default:
+		fatal("Unknown event type %d", ev->type);
+	}
+}
+
+const char* event_name(const struct event* ev)
+{
+	switch (ev->type) {
+	case EV_NONE: return "(none)";
+#define CASE(_t) case EV_## _t: return #_t
+		CASE(PSEUDOSIG);
+		CASE(SIGNAL);
+		CASE(SYSCALL);
+#undef CASE
+	default:
+		fatal("Unknown event type %d", ev->type);
+	}
 }
 
 static void assert_valid(const struct sighandlers* t)

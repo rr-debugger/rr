@@ -407,7 +407,13 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 	 * stepi if there wasn't a signal handler. */
 	record_event(t);
 
-	pop_signal(t);
+	if (!has_user_handler) {
+		/* If we're not entering a user handler, we're
+		 * completely done with processing the signal and can
+		 * pop it off the stack.  Otherwise, we'll pop this
+		 * when we see the matching sigreturn(). */
+		pop_signal(t);
+	}
 }
 
 static int is_trace_trap(const siginfo_t* si)
