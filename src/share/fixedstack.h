@@ -38,6 +38,12 @@
 	memset((_var), 0, sizeof(*(_var)))
 
 /**
+ * Number of calls to PUSH() without a corresponding POP().
+ */
+#define FIXEDSTACK_DEPTH(_var)			\
+	((_var)->len)
+
+/**
  * True when there are no elements pushed onto |_var|.  For example
  *
  *  if (!FIXEDSTACK_EMPTY(&mystack)) { ...

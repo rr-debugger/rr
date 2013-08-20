@@ -203,7 +203,7 @@ struct task {
 	 * directly; use the push_*()/pop_*() helpers below. */
 	struct event* ev;
 	/* The current stack of events being processed. */
-	FIXEDSTACK_DECL(, struct event, 2) pending_events;
+	FIXEDSTACK_DECL(, struct event, 16) pending_events;
 
 	/* Whether switching away from this task is allowed in its
 	 * current state.  Some operations must be completed
@@ -349,6 +349,21 @@ void pop_signal(struct task* t);
  */
 void push_syscall(struct task* t, int no);
 void pop_syscall(struct task* t);
+
+/**
+ * Dump |t|'s stack of pending events to INFO log.
+ */
+void log_pending_events(const struct task* t);
+
+/**
+ * Dump info about |ev| to INFO log.
+ */
+void log_event(const struct event* ev);
+
+/**
+ * Return a string naming |ev|'s type.
+ */
+const char* event_name(const struct event* ev);
 
 /**
  * Create and return a new sighandler table with all signals set to

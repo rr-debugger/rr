@@ -44,7 +44,7 @@ void get_eip_info(pid_t tid);
 int check_if_mapped(struct task *t, void *start, void *end);
 
 /**
- * Return nonzero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
+ * Return zero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
  * indicates that the caller is using this as a general register
  * compare and nothing special should be done if the register files
  * mismatch.  Passing LOG_MISMATCHES will log the registers that don't
