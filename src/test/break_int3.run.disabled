@@ -1,6 +1,0 @@
-# This test is disabled because gdb and rr can't agree what should
-# happen when a breakpoint is set on a breakpoint instruction.
-
-source util.sh break_int3 "$@"
-record int3
-debug int3 break_int3

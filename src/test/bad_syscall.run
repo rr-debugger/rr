@@ -1,2 +1,5 @@
 source `dirname $0`/util.sh bad_syscall "$@"
+
+fails "rr can't encode bad syscall numbers yet"
+
 compare_test EXIT-SUCCESS

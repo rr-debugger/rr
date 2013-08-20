@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh mmap_shared "$@"
+
+fails "rr doesn't handle 'anonymous' shared mappings yet"
+
+compare_test 'done'

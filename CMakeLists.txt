@@ -70,7 +70,7 @@ install(TARGETS rr rr_syscall_buffer
 #
 # Alphabetical, please.
 set(BASIC_TESTS
-#  abort_nonmain
+  abort_nonmain
   accept
   alarm
   args
@@ -78,7 +78,7 @@ set(BASIC_TESTS
   async_signal_syscalls
   async_usr1
   bad_ip
-#  bad_syscall
+  bad_syscall
   barrier
   block
   breakpoint
@@ -95,22 +95,21 @@ set(BASIC_TESTS
   io
   link
   mmap_private
-#  mmap_shared
+  mmap_shared
   perf_event
   priority
   prw
   rdtsc
   segfault
   sigchld_interrupt_signal
-#  sighandlers
   sigill
   sigprocmask
   sigrt
   sigtrap
   simple
   splice
-#  step_thread
-#  term_nonmain
+  step_thread
+  term_nonmain
   tgkill
   threads
 )
@@ -124,13 +123,13 @@ set(BASIC_TESTS
 # Alphabetical, please.
 set(CUSTOM_TESTS
   break_clock
-#  break_int3
+  break_int3
   break_mmap_private
   break_rdtsc
   break_sync_signal
   break_thread
   break_time_slice
-#  deliver_async_signal_during_syscalls
+  deliver_async_signal_during_syscalls
   get_thread_list
   read_bad_mem
   sanity

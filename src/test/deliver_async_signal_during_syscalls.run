@@ -1,8 +1,6 @@
-# Disabled because this test fails pretty frequently when SIGUSR1 is
-# delivered while rr processes a time-slice interrupt.  The test case
-# is pretty extreme, but let's hope this isn't a common occurrence!
+source `dirname $0`/util.sh deliver_async_signal_during_syscalls "$@"
 
-source util.sh deliver_async_signal_during_syscalls "$@"
+fails "SIGUSR1 is often delivered while rr processes a time-slice interrupt, and multiple pending signals are NYI"
 
 # See async_signal_syscalls.run for an explanation.
 skip_if_no_syscall_buf
