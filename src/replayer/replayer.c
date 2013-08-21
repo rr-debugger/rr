@@ -69,8 +69,6 @@ static RB_HEAD(breakpoint_tree, breakpoint) breakpoints =
 
 static const byte int_3_insn = 0xCC;
 
-static const struct flags* rr_flags;
-
 /* Nonzero after the first exec() has been observed during replay.
  * After this point, the first recorded binary image has been exec()d
  * over the initial rr image. */
@@ -81,9 +79,9 @@ RB_PROTOTYPE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
 static void debug_memory(struct task* t)
 {
 	/* dump memory as user requested */
-	if (rr_flags->dump_on == t->trace.stop_reason
-	    || rr_flags->dump_on == DUMP_ON_ALL
-	    || rr_flags->dump_at == t->trace.global_time) {
+	if (rr_flags()->dump_on == t->trace.stop_reason
+	    || rr_flags()->dump_on == DUMP_ON_ALL
+	    || rr_flags()->dump_at == t->trace.global_time) {
 		char pid_str[PATH_MAX];
 		snprintf(pid_str, sizeof(pid_str) - 1, "%s/%d_%d_rep",
 			 get_trace_path(),
@@ -93,10 +91,10 @@ static void debug_memory(struct task* t)
 
 	/* check memory checksum */
 	if (validate
-	    && ((rr_flags->checksum == CHECKSUM_ALL)
-		|| (rr_flags->checksum == CHECKSUM_SYSCALL
+	    && ((rr_flags()->checksum == CHECKSUM_ALL)
+		|| (rr_flags()->checksum == CHECKSUM_SYSCALL
 		    && t->trace.state == STATE_SYSCALL_EXIT)
-		|| (rr_flags->checksum <= t->trace.global_time))) {
+		|| (rr_flags()->checksum <= t->trace.global_time))) {
 		validate_process_memory(t);
 	}
 }
@@ -1177,7 +1175,7 @@ static int flush_one_syscall(struct task* t,
 		/* XXX not pretty; should have this
 		 * actually-replay-parts-of-trace logic centralized */
 		if (SYS_write == rec->syscallno) {
-			rep_maybe_replay_stdio_write(t, rr_flags->redirect);
+			rep_maybe_replay_stdio_write(t);
 		}
 
 		if (!rec->desched) {
@@ -1391,7 +1389,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 			/* XXX not so pretty ... */
 			validate |= (t->trace.state == STATE_SYSCALL_EXIT
 				     && event == SYS_execve);
-			rep_process_syscall(t, rr_flags->redirect, &step);
+			rep_process_syscall(t, &step);
 		}
 	}
 
@@ -1471,11 +1469,9 @@ void replay(struct flags flags)
 {
 	struct dbg_context* dbg = NULL;
 
-	rr_flags = &flags;
-
-	if (!rr_flags->autopilot) {
+	if (!rr_flags()->autopilot) {
 		dbg = dbg_await_client_connection("127.0.0.1",
-						  rr_flags->dbgport);
+						  rr_flags()->dbgport);
 	}
 
 	while (rep_sched_get_num_threads()) {

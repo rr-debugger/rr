@@ -8,8 +8,7 @@ struct rep_trace_step;
 
 /* |redirect_stdio| is nonzero if output written to stdout/stderr
  * during recording should be tee'd during replay, zero otherwise. */
-void rep_process_syscall(struct task* t, int redirect_stdio,
-			 struct rep_trace_step* step);
+void rep_process_syscall(struct task* t, struct rep_trace_step* step);
 
 /**
  * |t| is at a "write" syscall.  If the recorded write was to STDOUT
@@ -21,6 +20,6 @@ void rep_process_syscall(struct task* t, int redirect_stdio,
  * information.  That means output written to a dup of STDOUT will not
  * be replayed by this helper.  This could maybe be a todo.
  */
-void rep_maybe_replay_stdio_write(struct task* t, int redirect_stdio);
+void rep_maybe_replay_stdio_write(struct task* t);
 
 #endif /* REP_PROCESS_EVENT_H_ */

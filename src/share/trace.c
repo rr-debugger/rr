@@ -36,8 +36,6 @@ static uint32_t trace_file_lines_counter = 0;
 static uint32_t thread_time[100000];
 static uint32_t global_time = 0;
 
-static struct flags rr_flags_ = {0};
-
 // counts the number of raw bytes written, a new raw_data file is used when MAX_RAW_DATA_SIZE is reached
 static long long overall_raw_bytes = 0;
 
@@ -268,9 +266,8 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	sys_fclose(arg_env);
 }
 
-void open_trace_files(struct flags rr_flags)
+void open_trace_files()
 {
-	rr_flags_ = rr_flags;
 	char tmp[128], path[128];
 
 	strcpy(path, trace_path_);
@@ -481,18 +478,18 @@ void record_event(struct task *t)
 		use_new_trace_file();
 	}
 
-	if (rr_flags_.dump_on == t->event
-	    || rr_flags_.dump_on == DUMP_ON_ALL
-	    || rr_flags_.dump_at == global_time) {
+	if (rr_flags()->dump_on == t->event
+	    || rr_flags()->dump_on == DUMP_ON_ALL
+	    || rr_flags()->dump_at == global_time) {
 		char pid_str[PATH_MAX];
 		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),t->tid,get_global_time());
 		print_process_memory(t,pid_str);
 	}
 
 	// do memory checksum
-	if (((rr_flags_.checksum == CHECKSUM_ALL) ||
-		 (rr_flags_.checksum == CHECKSUM_SYSCALL && state == STATE_SYSCALL_EXIT) ||
-		 (rr_flags_.checksum <= global_time) )
+	if (((rr_flags()->checksum == CHECKSUM_ALL) ||
+		 (rr_flags()->checksum == CHECKSUM_SYSCALL && state == STATE_SYSCALL_EXIT) ||
+		 (rr_flags()->checksum <= global_time) )
 		 && t)
 		checksum_process_memory(t);
 
@@ -508,7 +505,7 @@ void record_event(struct task *t)
 
 		record_performance_data(t);
 		record_register_file(t);
-		reset_hpc(t, rr_flags_.max_rbc);
+		reset_hpc(t, rr_flags()->max_rbc);
 	}
 	fprintf(trace_file, "\n");
 }

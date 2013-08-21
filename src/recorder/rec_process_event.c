@@ -606,7 +606,7 @@ static void finish_restoring_some_scratch(struct task* t,
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
-void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
+void rec_process_syscall(struct task *t, int syscall)
 {
 	/* TODO: extend syscall_defs.h in order to generate code
 	 * automatically for the "regular" syscalls.

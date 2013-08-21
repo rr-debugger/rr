@@ -23,9 +23,7 @@ int rec_sched_get_num_threads();
  * runnable, or have been made runnable by a waitpid status change (in
  * which case, *by_waitpid will be nonzero.)
  */
-struct task* rec_sched_get_active_thread(const struct flags* flags,
-					    struct task* t,
-					    int* by_waitpid);
+struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid);
 /**
  * Register the new OS task |child|, created by |parent|.  |parent|
  * may be 0 for the first registered task, but must be a registered
@@ -34,8 +32,7 @@ struct task* rec_sched_get_active_thread(const struct flags* flags,
  * zero if |child| will get a copy of |parent|'s table.
  */
 enum { COPY_SIGHANDLERS = 0, SHARE_SIGHANDLERS = 1 };
-void rec_sched_register_thread(const struct flags* flags,
-			       pid_t parent, pid_t child,
+void rec_sched_register_thread(pid_t parent, pid_t child,
 			       int share_sighandlers);
 void rec_sched_deregister_thread(struct task** t);
 void rec_sched_exit_all();

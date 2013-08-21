@@ -15,6 +15,6 @@
  * context-switch is allowed for |t|, 0 if not.
  */
 int rec_prepare_syscall(struct task* t, int syscallno);
-void rec_process_syscall(struct task* t, int syscall, struct flags rr_flags);
+void rec_process_syscall(struct task* t, int syscall);
 
 #endif /* PROCESS_SYSCALL_H_ */

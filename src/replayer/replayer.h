@@ -6,7 +6,7 @@
 #include "../share/types.h"
 #include "../share/util.h"
 
-void replay(struct flags rr_flags);
+void replay();
 
 /**
  * Open a temporary debugging connection for |t| and service requests
