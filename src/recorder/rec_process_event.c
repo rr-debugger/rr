@@ -554,7 +554,7 @@ static void restore_and_record_arg_buf(struct task* t,
  * is used to avoid having special cases in replay code for failed
  * syscalls, e.g.
  */
-static void record_noop_data(struct task* t, int syscallno)
+static void record_noop_data(struct task* t)
 {
 	record_parent_data(t, 0, NULL, NULL);
 }
@@ -1654,7 +1654,7 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 
 			finish_restoring_scratch(t, iter, &data);
 		} else {
-			record_noop_data(t, syscall);
+			record_noop_data(t);
 		}
 		break;
 	}
@@ -2054,7 +2054,7 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 				restore_and_record_arg_buf(t, nrecvd, buf,
 							   &iter);
 			} else {
-				record_noop_data(t, syscall);
+				record_noop_data(t);
 			}
 			/* Restore the pointer to the original args. */
 			regs.ecx = (uintptr_t)argsp;
@@ -2556,13 +2556,26 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 		void* data = start_restoring_scratch(t, &iter);
 
 		if (rem) {
-			restore_and_record_arg_buf(t, sizeof(*rem), rem,
-						   &iter);
+			/* If the sleep completes, the kernel doesn't
+			 * write back to the remaining-time
+			 * argument. */
+			if (0 == regs.eax) {
+				record_noop_data(t);
+			} else {
+				/* TODO: where are we supposed to
+				 * write back these args?  We don't
+				 * see an EINTR return from
+				 * nanosleep() when it's interrupted
+				 * by a user-handled signal. */
+				restore_and_record_arg_buf(t, sizeof(*rem),
+							   rem,
+							   &iter);
+			}
 			regs.ecx = (uintptr_t)rem;
 			write_child_registers(tid, &regs);
 		}
 
-		finish_restoring_scratch(t, iter, &data);
+		finish_restoring_some_scratch(t, iter, &data);
 		break;
 	}
 
@@ -2736,7 +2749,7 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 						   &iter);
 			regs.ecx = (uintptr_t)status;
 		} else {
-			record_noop_data(t, syscall);
+			record_noop_data(t);
 		}
 		if (rusage) {
 			restore_and_record_arg_buf(t,
@@ -2744,7 +2757,7 @@ void rec_process_syscall(struct task *t, int syscall, struct flags rr_flags)
 						   &iter);
 			regs.esi = (uintptr_t)rusage;
 		} else if (SYS_wait4 == syscall) {
-			record_noop_data(t, syscall);
+			record_noop_data(t);
 		}
 		write_child_registers(tid, &regs);
 
