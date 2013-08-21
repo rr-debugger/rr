@@ -91,7 +91,12 @@ set(BASIC_TESTS
   ignored_async_usr1
   int3
   interrupt
+  intr_futex_wait_restart
+  intr_poll
+  intr_read_no_restart
+  intr_read_restart
   intr_sleep
+  intr_sleep_no_restart
   io
   link
   mmap_private
