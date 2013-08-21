@@ -13,3 +13,4 @@ record $testname
 #replay
 #check 'EXIT-SUCCESS'
 echo Test "'$testname'" PASSED
+passed=y
