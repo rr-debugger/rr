@@ -1,5 +1,2 @@
 source `dirname $0`/util.sh intr_sleep_no_restart "$@"
-
-fails "rr doesn't see an EINTR exit from nanosleep() so doesn't know when to write back the remaining time."
-
 compare_test EXIT-SUCCESS

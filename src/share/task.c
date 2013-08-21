@@ -21,6 +21,21 @@ struct sighandlers {
 	} handlers[_NSIG];
 };
 
+static const char* event_type_name(int type)
+{
+	switch (type) {
+	case EV_NONE: return "(none)";
+#define CASE(_t) case EV_## _t: return #_t
+		CASE(PSEUDOSIG);
+		CASE(SIGNAL);
+		CASE(SYSCALL);
+		CASE(INTERRUPTED_SYSCALL);
+#undef CASE
+	default:
+		fatal("Unknown event type %d", type);
+	}
+}
+
 /**
  * Push a new event onto |t|'s event stack of type |type|.
  */
@@ -35,12 +50,16 @@ static void push_new_event(struct task* t, int type)
  * Pop the pending-event stack and return the type of the previous top
  * element.
  */
-static int pop_event(struct task* t)
+static void pop_event(struct task* t, int expected_type)
 {
 	int last_top_type = FIXEDSTACK_POP(&t->pending_events).type;
+
 	t->ev = !FIXEDSTACK_EMPTY(&t->pending_events) ?
 		  FIXEDSTACK_TOP(&t->pending_events) : NULL;
-	return last_top_type;
+	assert_exec(t, expected_type == last_top_type,
+		    "Should have popped event %s but popped %s instead",
+		    event_type_name(expected_type),
+		    event_type_name(last_top_type));
 }
 
 void push_pseudosig(struct task* t, int no, int has_exec_info)
@@ -52,8 +71,7 @@ void push_pseudosig(struct task* t, int no, int has_exec_info)
 
 void pop_pseudosig(struct task* t)
 {
-	int type = pop_event(t);
-	assert(EV_PSEUDOSIG == type);
+	pop_event(t, EV_PSEUDOSIG);
 }
 
 void push_signal(struct task* t, int no, int deterministic)
@@ -65,8 +83,7 @@ void push_signal(struct task* t, int no, int deterministic)
 
 void pop_signal(struct task* t)
 {
-	int type = pop_event(t);
-	assert(EV_SIGNAL == type);
+	pop_event(t, EV_SIGNAL);
 }
 
 void push_syscall(struct task* t, int no)
@@ -77,14 +94,12 @@ void push_syscall(struct task* t, int no)
 
 void pop_syscall(struct task* t)
 {
-	int type = pop_event(t);
-	assert(EV_SYSCALL == type);
+	pop_event(t, EV_SYSCALL);
 }
 
 void pop_interrupted_syscall(struct task* t)
 {
-	int type = pop_event(t);
-	assert(EV_INTERRUPTED_SYSCALL == type);
+	pop_event(t, EV_INTERRUPTED_SYSCALL);
 }
 
 void log_pending_events(const struct task* t)
@@ -112,11 +127,12 @@ void log_event(const struct event* ev)
 	case EV_PSEUDOSIG:
 		log_info("%s: %d", name, ev->pseudosig.no);
 		return;
-	case EV_SYSCALL:
-		log_info("%s: %s", name, syscallname(ev->syscall.no));
-		return;
 	case EV_SIGNAL:
 		log_info("%s: %s", name, signalname(ev->signal.no));
+		return;
+	case EV_SYSCALL:
+	case EV_INTERRUPTED_SYSCALL:
+		log_info("%s: %s", name, syscallname(ev->syscall.no));
 		return;
 	default:
 		fatal("Unknown event type %d", ev->type);
@@ -125,16 +141,7 @@ void log_event(const struct event* ev)
 
 const char* event_name(const struct event* ev)
 {
-	switch (ev->type) {
-	case EV_NONE: return "(none)";
-#define CASE(_t) case EV_## _t: return #_t
-		CASE(PSEUDOSIG);
-		CASE(SIGNAL);
-		CASE(SYSCALL);
-#undef CASE
-	default:
-		fatal("Unknown event type %d", ev->type);
-	}
+	return event_type_name(ev->type);
 }
 
 static void assert_valid(const struct sighandlers* t)

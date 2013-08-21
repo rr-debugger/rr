@@ -109,7 +109,7 @@ static void handle_ptrace_event(struct task** tp)
 	case PTRACE_EVENT_VFORK_DONE:
 		push_syscall(t, t->event);
 		t->ev->syscall.state = EXITING_SYSCALL;
-		rec_process_syscall(t, t->event);
+		rec_process_syscall(t);
 		record_event(t);
 
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
@@ -305,7 +305,6 @@ static int maybe_restart_syscall(struct task* t)
 	}
 
 	if (!t->ev || EV_INTERRUPTED_SYSCALL != t->ev->type) {
-		debug("  (no interrupted syscall to restart)");
 		return 0;
 	}
 
@@ -375,7 +374,7 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		}
 
 		/* continue and execute the system call */
-		t->switchable = rec_prepare_syscall(t, t->event);
+		t->switchable = rec_prepare_syscall(t);
 		cont_nonblock(t);
 
 		debug_exec_state("after cont", t);
@@ -442,19 +441,6 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 			return;
 		}
 
-		/* TODO: this old code serves as training wheels for
-		 * the event stack.  Remove when event stack is
-		 * working well. */
-		/* if the syscall is about to be restarted, save the
-		 * last syscall performed by it. */
-		t->will_restart = (syscallno != SYS_restart_syscall
-				   && SYSCALL_WILL_RESTART(retval));
-		if (t->will_restart) {
-			debug("  will restart %s (from retval %d)",
-			      syscallname(syscallno), retval);
-			t->last_syscall = syscallno;
-		}
-
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
 		if (t->ev->syscall.is_restart) {
@@ -462,24 +448,35 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		}
 
 		t->ev->syscall.state = EXITING_SYSCALL;
+		/* TODO: is there any reason a restart_syscall can't
+		 * be interrupted by a signal and itself restarted? */
+		t->will_restart = (syscallno != SYS_restart_syscall
+				   && SYSCALL_WILL_RESTART(retval));
 		/* no need to process the syscall in case its
 		 * restarted this will be done in the exit from the
 		 * restart_syscall */
 		if (!t->will_restart) {
-			rec_process_syscall(t, syscallno);
+			rec_process_syscall(t);
 		} else {
+			debug("  will restart %s (from retval %d)",
+			      syscallname(syscallno), retval);
+
+			rec_prepare_restart_syscall(t);
 			/* If we're going to restart this syscall,
 			 * we've most likely fudged some of the
 			 * argument registers with scratch pointers.
 			 * We don't want to record those fudged
 			 * registers, because scratch doesn't exist in
-			 * replay.  So cover our tracks here.
-			 *
-			 * TODO: which registers set do we restart
-			 * with after declining to deliver a signal to
-			 * a tracee? */
+			 * replay.  So cover our tracks here. */
 			copy_syscall_arg_regs(&t->regs, &t->ev->syscall.regs);
 			write_child_registers(tid, &t->regs);
+
+			/* TODO: this old code serves as training
+			 * wheels for the event stack.  Remove when
+			 * event stack is working well. */
+			/* if the syscall is about to be restarted,
+			 * save the last syscall performed by it. */
+			t->last_syscall = syscallno;
 		}
 		record_event(t);
 
@@ -526,6 +523,37 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 	}
 }
 
+/**
+ * After a SYS_sigreturn "exit" of task |t| with return value |ret|,
+ * check to see if there's an interrupted syscall that /won't/ be
+ * restarted, and if so, pop it off the pending event stack.
+ */
+static void maybe_discard_interrupted_syscall(struct task* t, int ret)
+{
+	int syscallno;
+
+	if (!t->ev || EV_INTERRUPTED_SYSCALL != t->ev->type) {
+		/* We currently don't track syscalls interrupted with
+		 * ERESTARTSYS or ERESTARTNOHAND, so it's possible for
+		 * a sigreturn not to affect the event stack. */
+		debug("  (no interrupted syscall to retire)");
+		return;
+	}
+
+	syscallno = t->ev->syscall.no;
+	if (0 > ret) {
+		/* The sigreturn won't restart the interrupted
+		 * syscall.  Pop it. */
+		debug("  not restarting interrupted %s",
+		      syscallname(syscallno));
+		pop_interrupted_syscall(t);
+	} else if (0 < ret) {
+		assert_exec(t, syscallno == ret,
+			    "Interrupted call was %s, and sigreturn claims to be restarting %s",
+			    syscallname(syscallno), syscallname(ret));
+	}
+}
+
 static void runnable_state_changed(struct task* t)
 {
 	/* Have to disable context-switching until we know it's safe
@@ -543,6 +571,8 @@ static void runnable_state_changed(struct task* t)
 	} else if (t->event == SYS_sigreturn
 		   || t->event == SYS_rt_sigreturn) {
 		int orig_event = t->event;
+		int ret;
+
 		push_syscall(t, t->event);
 		t->ev->syscall.state = ENTERING_SYSCALL;
 
@@ -554,10 +584,11 @@ static void runnable_state_changed(struct task* t)
 		debug("  sigreturn");
 		record_event(t);
 		assert(!t->flushed_syscallbuf);
-		/* do another step */
+		/* "Finish" the sigreturn. */
 		sys_ptrace_syscall(t->tid);
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
+		ret = t->regs.eax;
 
 		/* TODO: can signals interrupt a sigreturn? */
 		assert(signal_pending(t->status) != SIGTRAP);
@@ -572,6 +603,9 @@ static void runnable_state_changed(struct task* t)
 
 		/* We've finished processing this signal now. */
 		pop_signal(t);
+		/* If the sigreturn isn't restarting an interrupted
+		 * syscall we're tracking, go ahead and pop it. */
+		maybe_discard_interrupted_syscall(t, ret);
 
 		t->switchable = 0;
 	} else if (t->event > 0) {
