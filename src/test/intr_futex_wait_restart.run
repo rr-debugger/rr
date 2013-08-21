@@ -1,0 +1,9 @@
+source `dirname $0`/util.sh intr_futex_wait_restart "$@"
+
+# TODO: the signal interrupts a buffered syscall, and rr tries to
+# single-step the tracee to a safe point.  But because the tracee is
+# blocked on the read(), it can't single-step, and rr hangs on the
+# waitpid() following the stuck singlestep.
+skip_if_syscall_buf
+
+compare_test EXIT-SUCCESS

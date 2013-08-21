@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh intr_sleep_no_restart "$@"
+
+fails "rr seems to be writing back remainder time when requested time has completed (it shouldn't do that)."
+
+compare_test EXIT-SUCCESS
