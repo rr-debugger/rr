@@ -48,7 +48,7 @@ static void sighandler(int sig) {
 	++reader_caught_signal;
 
 	PRINT("r: in sighandler level 1 ...\n");
-	intr_sleep(1);
+	intr_sleep(2);
 }
 
 static void sighandler2(int sig) {
@@ -80,7 +80,7 @@ static void* reader_thread(void* dontcare) {
 	pthread_barrier_wait(&barrier);
 
 	puts("r: blocking on sleep, awaiting signal ...");
-	intr_sleep(1);
+	intr_sleep(3);
 
 	return NULL;
 }
