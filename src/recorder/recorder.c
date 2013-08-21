@@ -418,8 +418,9 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		}
 		retval = t->regs.eax;
 
-		assert_exec(t, (RRCALL_init_syscall_buffer == t->event
-				|| syscallno == t->event),
+		assert_exec(t, (syscallno == t->event
+				|| (SYS_rrcall_init_syscall_buffer == syscallno
+				    && RRCALL_init_syscall_buffer == t->event)),
 			    "Event stack and current event must be in sync.");
 		assert_exec(t, (-ENOSYS != retval
 				|| (0 > syscallno
