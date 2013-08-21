@@ -1239,6 +1239,17 @@ struct sigaction * get_sig_handler(pid_t tid, unsigned int signum){
 	return sig_handler_table[tid][signum];
 }
 
+void copy_syscall_arg_regs(struct user_regs_struct* to,
+			   const struct user_regs_struct* from)
+{
+	to->ebx = from->ebx;
+	to->ecx = from->ecx;
+	to->edx = from->edx;
+	to->esi = from->esi;
+	to->edi = from->edi;
+	to->ebp = from->ebp;
+}
+
 int is_desched_event_syscall(struct task* t,
 			     const struct user_regs_struct* regs)
 {

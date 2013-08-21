@@ -125,6 +125,13 @@ int inject_and_execute_syscall(struct task * t, struct user_regs_struct * call_r
 void mprotect_child_region(struct task * t, void * addr, int prot);
 
 /**
+ * Copy the registers used for syscall arguments (not including
+ * syscall number) from |from| to |to|.
+ */
+void copy_syscall_arg_regs(struct user_regs_struct* to,
+			   const struct user_regs_struct* from);
+
+/**
  * Return nonzero if |t|'s current registers |regs| indicate that
  * |t| is at an arm-desched-event or disarm-desched-event syscall.
  */

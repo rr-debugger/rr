@@ -356,6 +356,7 @@ static int maybe_restart_syscall(struct task* t)
 static void syscall_state_changed(struct task** tp, int by_waitpid)
 {
 	struct task* t = *tp;
+	pid_t tid = t->tid;
 
 	switch (t->exec_state) {
 	case ENTERING_SYSCALL:
@@ -410,7 +411,7 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		assert(signal_pending(t->status) == 0);
 		assert(SYS_sigreturn != t->event);
 
-		read_child_registers(t->tid, &t->regs);
+		read_child_registers(tid, &t->regs);
 		t->event = t->regs.orig_eax;
 		if (SYS_restart_syscall == t->event) {
 			t->event = syscallno;
@@ -466,6 +467,19 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		 * restart_syscall */
 		if (!t->will_restart) {
 			rec_process_syscall(t, syscallno, rr_flags_);
+		} else {
+			/* If we're going to restart this syscall,
+			 * we've most likely fudged some of the
+			 * argument registers with scratch pointers.
+			 * We don't want to record those fudged
+			 * registers, because scratch doesn't exist in
+			 * replay.  So cover our tracks here.
+			 *
+			 * TODO: which registers set do we restart
+			 * with after declining to deliver a signal to
+			 * a tracee? */
+			copy_syscall_arg_regs(&t->regs, &t->ev->syscall.regs);
+			write_child_registers(tid, &t->regs);
 		}
 		record_event(t);
 
