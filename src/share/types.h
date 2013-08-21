@@ -48,6 +48,9 @@ struct flags {
 	/* Max number of trace events before the scheduler
 	 * de-schedules a tracee. */
 	int max_events;
+	/* Whenever |ignore_sig| is pending for a tracee, decline to
+	 * deliver it. */
+	int ignore_sig;
 	int option;
 	bool redirect;
 	bool use_syscall_buffer;

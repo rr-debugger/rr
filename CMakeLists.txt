@@ -117,6 +117,7 @@ set(BASIC_TESTS
   term_nonmain
   tgkill
   threads
+  user_ignore_sig
 )
 
 # A "custom test" is a foo.run driver script only, which does

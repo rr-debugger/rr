@@ -289,6 +289,8 @@ static void print_usage()
 "  -e, --num-events=<NUM>     maximum number of events (syscall \n"
 "                             enter/exit, signal, CPU interrupt, ...) \n"
 "                             to allow a task before descheduling it\n"
+"  -i, --ignore-signal=<SIG>  block <SIG> from being delivered to tracees.\n"
+"                             Probably only useful for unit tests.\n"
 "  -n, --no-syscall-buffer    disable the syscall buffer preload library\n"
 "                             even if it would otherwise be used"
 "\n"
@@ -315,6 +317,7 @@ static int parse_record_args(int cmdi, int argc, char** argv,
 {
 	struct option opts[] = {
 		{ "force-syscall-buffer", no_argument, NULL, 'b' },
+		{ "ignore-signal", required_argument, NULL, 'i' },
 		{ "num-cpu-ticks", required_argument, NULL, 'c' },
 		{ "num-events", required_argument, NULL, 'e' },
 		{ "no-syscall-buffer", no_argument, NULL, 'n' },
@@ -323,7 +326,7 @@ static int parse_record_args(int cmdi, int argc, char** argv,
 	optind = cmdi + 1;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+c:be:n", opts, &i)) {
+		switch (getopt_long(argc, argv, "+c:be:i:n", opts, &i)) {
 		case -1:
 			return optind;
 		case 'b':
@@ -334,6 +337,10 @@ static int parse_record_args(int cmdi, int argc, char** argv,
 			break;
 		case 'e':
 			flags->max_events = MAX(1, atoi(optarg));
+			break;
+		case 'i':
+			flags->ignore_sig = MIN(_NSIG - 1,
+						MAX(1, atoi(optarg)));
 			break;
 		case 'n':
 			flags->use_syscall_buffer = FALSE;
