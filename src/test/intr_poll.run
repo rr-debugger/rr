@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh intr_poll "$@"
+
+fails "We record delivery of the signal with the fudged registers, but we replay with non-fudged registers and so never find the right delivery point."
+
+compare_test EXIT-SUCCESS
