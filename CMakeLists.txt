@@ -93,6 +93,7 @@ set(BASIC_TESTS
   interrupt
   intr_futex_wait_restart
   intr_poll
+  intr_ptrace_decline
   intr_read_no_restart
   intr_read_restart
   intr_sleep
