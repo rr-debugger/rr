@@ -252,9 +252,10 @@ static int set_up_scratch_for_syscallbuf(struct task* t, int syscallno)
 	return 1;
 }
 
-int rec_prepare_syscall(struct task* t, int syscallno)
+int rec_prepare_syscall(struct task* t)
 {
 	pid_t tid = t->tid;
+	int syscallno = t->ev->syscall.no;
 	/* If we are called again due to a restart_syscall, we musn't
 	 * redirect to scratch again as we will lose the original
 	 * addresses values. */
@@ -262,10 +263,6 @@ int rec_prepare_syscall(struct task* t, int syscallno)
 	struct user_regs_struct regs;
 	int would_need_scratch;
 	void* scratch = NULL;
-
-	if (restart) {
-		syscallno = t->last_syscall;
-	}
 
 	if (t->desched_rec) {
 		return set_up_scratch_for_syscallbuf(t, syscallno);
@@ -507,6 +504,51 @@ int rec_prepare_syscall(struct task* t, int syscallno)
 }
 
 /**
+ * Write a trace data record that when replayed will be a no-op.  This
+ * is used to avoid having special cases in replay code for failed
+ * syscalls, e.g.
+ */
+static void record_noop_data(struct task* t)
+{
+	record_parent_data(t, 0, NULL, NULL);
+}
+
+void rec_prepare_restart_syscall(struct task* t)
+{
+	int syscallno = t->ev->syscall.no;
+	switch (syscallno) {
+	case SYS_nanosleep: {
+		/* Hopefully uniquely among syscalls, nanosleep()
+		 * requires writing to its remaining-time outparam
+		 * *only if* the syscall fails with -EINTR.  When a
+		 * nanosleep() is interrupted by a signal, we don't
+		 * know a priori whether it's going to be eventually
+		 * restarted or not.  (Not easily, anyway.)  So we
+		 * don't know whether it will eventually return -EINTR
+		 * and would need the outparam written.  To resolve
+		 * that, we do what the kernel does, and update the
+		 * outparam at the -ERESTART_RESTART interruption
+		 * regardless. */
+		struct timespec* rem =
+			*FIXEDSTACK_TOP(&t->ev->syscall.saved_args);
+		struct timespec* rem2 = (void*)t->regs.ecx;
+
+		if (rem) {
+			memcpy_child(t, rem, rem2, sizeof(*rem));
+			record_child_data(t, sizeof(*rem), rem);
+		} else {
+			record_noop_data(t);
+		}
+		/* If the nanosleep does indeed restart, then we'll
+		 * write the outparam twice.  *yawn*. */
+		return;
+	}
+	default:
+		return;
+	}
+}
+
+/**
  * Read the scratch data written by the kernel in the syscall and
  * return an opaque handle to it.  The outparam |iter| can be used to
  * copy the read memory.
@@ -547,16 +589,6 @@ static void restore_and_record_arg_buf(struct task* t,
 	write_child_data(t, num_bytes, child_addr, parent_data);
 	record_parent_data(t, num_bytes, child_addr, parent_data);
 	*parent_data_iter += num_bytes;
-}
-
-/**
- * Write a trace data record that when replayed will be a no-op.  This
- * is used to avoid having special cases in replay code for failed
- * syscalls, e.g.
- */
-static void record_noop_data(struct task* t)
-{
-	record_parent_data(t, 0, NULL, NULL);
 }
 
 /**
@@ -606,7 +638,7 @@ static void finish_restoring_some_scratch(struct task* t,
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
-void rec_process_syscall(struct task *t, int syscall)
+void rec_process_syscall(struct task *t)
 {
 	/* TODO: extend syscall_defs.h in order to generate code
 	 * automatically for the "regular" syscalls.
@@ -654,6 +686,7 @@ void rec_process_syscall(struct task *t, int syscall)
 		break; }
 
 	pid_t tid = t->tid;
+	int syscall = t->ev->syscall.no; /* FIXME: don't shadow syscall() */
 	struct user_regs_struct regs;
 
 	read_child_registers(tid, &regs);

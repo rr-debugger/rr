@@ -770,9 +770,22 @@ static void process_init_syscall_buffer(struct task* t, int exec_state,
 	assert(child_map_addr == rec_child_map_addr);
 }
 
+static void process_restart_syscall(struct task* t, int syscallno)
+{
+	switch (syscallno) {
+	case SYS_nanosleep:
+		/* Write the remaining-time outparam that we were
+		 * forced to during recording. */
+		set_child_data(t);
+
+	default:
+		return;
+	}
+}
+
 void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 {
-	int syscall = t->trace.stop_reason;
+	int syscall = t->trace.stop_reason; /* FIXME: don't shadow syscall() */
 	const struct syscall_def* def = &syscall_table[syscall];
 	pid_t tid = t->tid;
 	struct trace_frame* trace = &(t->trace);
@@ -791,6 +804,7 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 		 * state may mismatch the next replayed event for
 		 * |t|. */
 		set_return_value(t);
+		process_restart_syscall(t, syscall);
 		step->action = TSTEP_RETIRE;
 		return;
 	}

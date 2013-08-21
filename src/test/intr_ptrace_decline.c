@@ -27,12 +27,19 @@ static int sockfds[2];
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
-static void fin_sleep(int secs) {
+static void fin_intr_sleep(int secs) {
 	struct timespec req = { .tv_sec = secs };
 	struct timespec rem = { .tv_sec = -1, .tv_nsec = -1 };
 
 	test_assert(0 == nanosleep(&req, &rem));
-	test_assert(-1 == rem.tv_sec && -1 == rem.tv_nsec);
+	/* We would normally assert that the outparam wasn't touched
+	 * for this successful sleep, but ptrace-declined signals are
+	 * an odd case, the only way a nanosleep can restart.  The
+	 * kernel has been observed to write back the outparam at
+	 * interrupt time, so we track that semantics here.
+	 *
+	 *  test_assert(-1 == rem.tv_sec && -1 == rem.tv_nsec);
+	 */
 }
 
 static void fin_poll(int secs) {
@@ -68,7 +75,7 @@ static void* reader_thread(void* dontcare) {
 	pthread_barrier_wait(&barrier);
 
 	puts("r: blocking on sleep, awaiting signal ...");
-	fin_sleep(1);
+	fin_intr_sleep(1);
 
 	puts("r: blocking on poll, awaiting signal ...");
 	fin_poll(1);
