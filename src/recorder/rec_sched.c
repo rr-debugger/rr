@@ -61,11 +61,9 @@ static void note_switch(struct task* prev_t, struct task* t,
  * Retrieves a thread from the pool of active threads in a
  * round-robin fashion.
  */
-struct task* rec_sched_get_active_thread(const struct flags* flags,
-					    struct task* t,
-					    int* by_waitpid)
+struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 {
-	int max_events = flags->max_events;
+	int max_events = rr_flags()->max_events;
 	struct tasklist_entry* entry = current_entry;
 	struct task* next_t = NULL;
 
@@ -180,8 +178,7 @@ int rec_sched_get_num_threads()
  * Registers a new thread to the runtime system. This includes
  * initialization of the hardware performance counters
  */
-void rec_sched_register_thread(const struct flags* flags,
-			       pid_t parent, pid_t child,
+void rec_sched_register_thread(pid_t parent, pid_t child,
 			       int share_sighandlers)
 {
 	struct tasklist_entry* entry = sys_malloc_zero(sizeof(*entry));
@@ -222,7 +219,7 @@ void rec_sched_register_thread(const struct flags* flags,
 	sys_ptrace_setup(child);
 
 	init_hpc(t);
-	start_hpc(t, flags->max_rbc);
+	start_hpc(t, rr_flags()->max_rbc);
 
 	CIRCLEQ_INSERT_TAIL(&head, entry, entries);
 	num_active_threads++;

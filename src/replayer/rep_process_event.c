@@ -188,12 +188,12 @@ void __ptrace_cont(struct task *t)
 	t->child_sig = 0;
 }
 
-void rep_maybe_replay_stdio_write(struct task* t, int redirect_stdio)
+void rep_maybe_replay_stdio_write(struct task* t)
 {
 	struct user_regs_struct regs;
 	int fd;
 
-	if (!redirect_stdio) {
+	if (!rr_flags()->redirect) {
 		return;
 	}
 
@@ -770,8 +770,7 @@ static void process_init_syscall_buffer(struct task* t, int exec_state,
 	assert(child_map_addr == rec_child_map_addr);
 }
 
-void rep_process_syscall(struct task* t, int redirect_stdio,
-			 struct rep_trace_step* step)
+void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 {
 	int syscall = t->trace.stop_reason;
 	const struct syscall_def* def = &syscall_table[syscall];
@@ -960,7 +959,7 @@ void rep_process_syscall(struct task* t, int redirect_stdio,
 			/* XXX technically this will print the output
 			 * before we reach the interrupt.  That could
 			 * maybe cause issues in the future. */
-			rep_maybe_replay_stdio_write(t, redirect_stdio);
+			rep_maybe_replay_stdio_write(t);
 		}
 		return;
 

@@ -6,6 +6,6 @@
 struct task;
 struct flags;
 
-void handle_signal(const struct flags* flags, struct task* context);
+void handle_signal(struct task* context);
 
 #endif /* __HANDLE_SIGNAL_H__ */

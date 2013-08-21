@@ -28,12 +28,9 @@ static pid_t child;
 #define MAX_ENVP_LEN	2048
 #define MAX_EXEC_LEN    512
 
-
-
 static char** __argv;
 static char** __envp;
 static char* __executable;
-struct flags __rr_flags = {0};
 
 static void alloc_argc(int argc)
 {
@@ -85,11 +82,11 @@ static void copy_envp(char** envp)
 		i++;
 	}
 	/* LD_PRELOAD the syscall interception lib */
-	if (__rr_flags.syscall_buffer_lib_path) {
+	if (rr_flags()->syscall_buffer_lib_path) {
 		/* XXX not strictly safe */
 		char ld_preload[2 * PATH_MAX] = "LD_PRELOAD=";
 		/* our preload lib *must* come first */
-		strcat(ld_preload, __rr_flags.syscall_buffer_lib_path);
+		strcat(ld_preload, rr_flags()->syscall_buffer_lib_path);
 		if (preload_index >= 0) {
 			const char* old_preload = NULL;
 			old_preload = strchr(envp[preload_index], '=') + 1;
@@ -146,7 +143,7 @@ static void start(int argc, char* argv[], char** envp)
 	pid_t pid;
 	int status;
 
-	if (__rr_flags.option == RECORD) {
+	if (rr_flags()->option == RECORD) {
 		copy_executable(argv[0]);
 		if (access(__executable, X_OK)) {
 			log_err("The specified file '%s' does not exist or is not executable\n", __executable);
@@ -164,7 +161,7 @@ static void start(int argc, char* argv[], char** envp)
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
 			/* initialize trace files */
-			open_trace_files(__rr_flags);
+			open_trace_files();
 			rec_init_trace_files();
 			record_argv_envp(argc, __argv, __envp);
 
@@ -183,12 +180,11 @@ static void start(int argc, char* argv[], char** envp)
 			init_libpfm();
 
 			/* register thread at the scheduler and start the HPC */
-			rec_sched_register_thread(&__rr_flags, 0, pid,
-						  COPY_SIGHANDLERS);
+			rec_sched_register_thread(0, pid, COPY_SIGHANDLERS);
 
 			/* perform the action recording */
 			log_info("Start recording...");
-			record(&__rr_flags);
+			record();
 			log_info("Done recording -- cleaning up");
 			/* cleanup all initialized data-structures */
 			close_trace_files();
@@ -196,7 +192,7 @@ static void start(int argc, char* argv[], char** envp)
 		}
 
 		/* replayer code comes here */
-	} else if (__rr_flags.option == REPLAY) {
+	} else if (rr_flags()->option == REPLAY) {
 		init_environment(argv[0], &argc, __argv, __envp);
 
 		copy_executable(__argv[0]);
@@ -222,14 +218,14 @@ static void start(int argc, char* argv[], char** envp)
 			/* sets the file pointer to the first trace entry */
 
 			rep_setup_trace_dir(argv[0]);
-			open_trace_files(__rr_flags);
+			open_trace_files();
 			rep_init_trace_files();
 
 			pid_t rec_main_thread = get_recorded_main_thread();
 			rep_sched_register_thread(pid, rec_main_thread);
 
 			/* main loop */
-			replay(__rr_flags);
+			replay();
 			/* thread wants to exit*/
 			close_libpfm();
 			close_trace_files();
@@ -469,15 +465,16 @@ int main(int argc, char* argv[], char** envp)
 {
 	int argi;		/* index of first positional argument */
 	int wait_secs;
+	struct flags* flags = rr_flags_for_init();
 
 	assert_prerequisites();
 
-	if (0 > (argi = parse_args(argc, argv, &__rr_flags)) || argc <= argi) {
+	if (0 > (argi = parse_args(argc, argv, flags)) || argc <= argi) {
 		print_usage();
 		return 1;
 	}
 
-	wait_secs = __rr_flags.wait_secs;
+	wait_secs = flags->wait_secs;
 	if (wait_secs > 0) {
 		struct timespec ts =  { .tv_sec = wait_secs, .tv_nsec = 0 };
 		log_info("Waiting %d seconds before continuing ...",
@@ -488,11 +485,11 @@ int main(int argc, char* argv[], char** envp)
 		log_info("... continuing.");
 	}
 
-	if (RECORD == __rr_flags.option) {
+	if (RECORD == flags->option) {
 		log_info("Scheduler using max_events=%d, max_rbc=%d",
-			 __rr_flags.max_events, __rr_flags.max_rbc);
+			 flags->max_events, flags->max_rbc);
 
-		if (!__rr_flags.use_syscall_buffer) {
+		if (!flags->use_syscall_buffer) {
 			log_info("Syscall buffer disabled by flag");
 		} else {
 			/* We rely on the distribution package or the
@@ -500,7 +497,7 @@ int main(int argc, char* argv[], char** envp)
 			 * so that we can LD_PRELOAD the bare library
 			 * name.  Trying to do otherwise is possible,
 			 * but annoying. */
-			__rr_flags.syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
+			flags->syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
 		}
 	}
 

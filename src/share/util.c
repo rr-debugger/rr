@@ -41,6 +41,8 @@
 #define REPLAY_DESCHED_EVENT_FD -123
 #define NUM_MAX_MAPS 1024
 
+struct flags flags = { 0 };
+
 static void* scratch_table[MAX_TID] = {NULL} ;
 static size_t scratch_table_size = 0;
 static size_t scratch_overall_size = 0;
@@ -50,6 +52,22 @@ static struct sigaction * sig_handler_table[MAX_TID][_NSIG] = { {NULL} };
 static size_t num_shared_maps = 0;
 static void* shared_maps_starts[MAX_TID] = {0};
 static void* shared_maps_ends[MAX_TID] = {0};
+
+const struct flags* rr_flags()
+{
+	return &flags;
+}
+
+struct flags* rr_flags_for_init()
+{
+	static int initialized;
+	if (!initialized) {
+		initialized = 1;
+		return &flags;
+	}
+	fatal("Multiple initialization of flags.");
+	return NULL;		/* not reached */
+}
 
 void add_protected_map(struct task *t, void *start){
 	assert(num_shared_maps < NUM_MAX_MAPS);

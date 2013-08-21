@@ -31,7 +31,7 @@
 #include "../share/util.h"
 
 #define PTRACE_EVENT_NONE			0
-static struct flags rr_flags_ = { 0 };
+
 static bool filter_on_ = FALSE;
 
 static void rec_init_scratch_memory(struct task *t)
@@ -81,7 +81,7 @@ static void status_changed(struct task* t)
 	if (t->event == RRCALL_init_syscall_buffer) {
 		t->event = (-t->event | RRCALL_BIT);
 	}
-	handle_signal(&rr_flags_, t);
+	handle_signal(t);
 }
 
 static void cont_nonblock(struct task *t)
@@ -109,7 +109,7 @@ static void handle_ptrace_event(struct task** tp)
 	case PTRACE_EVENT_VFORK_DONE:
 		push_syscall(t, t->event);
 		t->ev->syscall.state = EXITING_SYSCALL;
-		rec_process_syscall(t, t->event, rr_flags_);
+		rec_process_syscall(t, t->event);
 		record_event(t);
 
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
@@ -145,9 +145,8 @@ static void handle_ptrace_event(struct task** tp)
 				    COPY_SIGHANDLERS;
 
 		/* wait until the new thread is ready */
-		sys_waitpid(new_tid, &(t->status));
-		rec_sched_register_thread(&rr_flags_, t->tid, new_tid,
-					  share_sighandlers);
+		sys_waitpid(new_tid, &t->status);
+		rec_sched_register_thread(t->tid, new_tid, share_sighandlers);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
@@ -467,7 +466,7 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		 * restarted this will be done in the exit from the
 		 * restart_syscall */
 		if (!t->will_restart) {
-			rec_process_syscall(t, syscallno, rr_flags_);
+			rec_process_syscall(t, syscallno);
 		} else {
 			/* If we're going to restart this syscall,
 			 * we've most likely fudged some of the
@@ -614,16 +613,14 @@ static void runnable_state_changed(struct task* t)
 	}
 }
 
-void record(const struct flags* rr_flags)
+void record()
 {
-	rr_flags_ = *rr_flags;
 	struct task *t = NULL;
 
 	while (rec_sched_get_num_threads() > 0) {
 		int by_waitpid;
 
-		t = rec_sched_get_active_thread(&rr_flags_, t,
-						  &by_waitpid);
+		t = rec_sched_get_active_thread(t, &by_waitpid);
 
 		debug("Active task is %d", t->tid);
 

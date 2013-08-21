@@ -35,6 +35,16 @@ struct trace_frame;
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
+/**
+ * Get the flags passed to rr.
+ */
+const struct flags* rr_flags();
+/**
+ * Exactly once, fetch a mutable reference to the structure that
+ * |rr_flags()| will return, for the purposes of initialization.
+ */
+struct flags* rr_flags_for_init();
+
 char* get_inst(struct task* t, int eip_offset, int* opcode_size);
 bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
 void emulate_child_inst(struct task * t, int eip_offset);

@@ -119,7 +119,7 @@ struct mmapped_file {
 #define MAX_RAW_DATA_SIZE		(1 << 30)
 
 char* get_trace_path(void);
-void open_trace_files(struct flags rr_flags);
+void open_trace_files(void);
 void close_trace_files(void);
 void flush_trace_files(void);
 
