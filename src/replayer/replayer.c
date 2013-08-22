@@ -936,8 +936,20 @@ static int advance_to(struct task* t, uint64_t rcb,
 			continue_or_step(t, STEPI);
 		}
 
-		if (SIGCHLD == t->child_sig) {
-			/* See the long comment in "Step 1" above. */
+		if (SIGIO == t->child_sig || SIGCHLD == t->child_sig) {
+			/* See the long comment in "Step 1" above.
+			 *
+			 * We don't usually expect a SIGIO during this
+			 * phase, but it's possible for a SIGCHLD to
+			 * interrupt the previous step just as the
+			 * tracee enters the slack region, i.e., where
+			 * an rbc SIGIO was just about to fire.
+			 * (There's not really a non-racy way to
+			 * disable the rbc interrupt, and we need to
+			 * keep the counter running for overshoot
+			 * checking anyway.)  So this is the most
+			 * convenient way to squelch that "spurious"
+			 * signal. */
 			t->child_sig = 0;
 		}
 		guard_unexpected_signal(t);
