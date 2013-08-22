@@ -1,11 +1,9 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <inttypes.h>
 #include <stdint.h>
-#include <stdio.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static uint64_t rdtsc(void) {
 	uint32_t hi, lo;
@@ -30,10 +28,10 @@ int main(int argc, char *argv[]) {
 		 * replay must be rdtsc */
 		tsc = rdtsc();
 		test_assert(last_tsc < tsc);
-		printf("%" PRIu64 ",", tsc);
+		atomic_printf("%" PRIu64 ",", tsc);
 		last_tsc = tsc;
 	}
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

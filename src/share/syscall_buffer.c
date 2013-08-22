@@ -193,15 +193,15 @@ static ssize_t traced_write(int fd, const void* buf, size_t count)
 __attribute__((format(printf, 1, 2)))
 static void logmsg(const char* msg, ...)
 {
-  va_list args;
-  char buf[1024];
-  int len;
+	va_list args;
+	char buf[1024];
+	int len;
 
-  va_start(args, msg);
-  len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
-  va_end(args);
+	va_start(args, msg);
+	len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
+	va_end(args);
 
-  traced_write(STDERR_FILENO, buf, len);
+	traced_write(STDERR_FILENO, buf, len);
 }
 
 #ifndef NDEBUG

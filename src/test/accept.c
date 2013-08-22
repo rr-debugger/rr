@@ -1,13 +1,10 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <stdio.h>
+#include "rrutil.h"
+
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static void client(const struct sockaddr_un* addr) {
 	int clientfd;
@@ -44,7 +41,7 @@ static void server() {
 
 	unlink(addr.sun_path);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 }
 
 int main(int argc, char *argv[]) {

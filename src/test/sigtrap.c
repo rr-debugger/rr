@@ -1,21 +1,18 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <stdio.h>
+#include "rrutil.h"
+
 #include <signal.h>
-#include <unistd.h>
 
 static void handle_sigtrap(int sig) {
-	puts("caught SIGTRAP!");
-	fflush(stdout);
+	atomic_puts("caught SIGTRAP!");
 	_exit(0);
 }
 
 int main(int argc, char *argv[]) {
 	signal(SIGTRAP, handle_sigtrap);
 
-	puts("raising SIGTRAP ...");
-	fflush(stdout);
+	atomic_puts("raising SIGTRAP ...");
 
 	raise(SIGTRAP);
 

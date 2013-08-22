@@ -2,11 +2,11 @@
 
 #define _GNU_SOURCE
 
+#include "rrutil.h"
+
 #include <fcntl.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #define TOKEN "ABC"
 #define TOKEN_SIZE sizeof(TOKEN)
@@ -19,10 +19,10 @@ void verify_token(int fd) {
 
 	len = read(fd, buf, sizeof(buf));
 	if (len != TOKEN_SIZE || strcmp(buf, TOKEN)) {
-		puts("Internal error: FAILED: splice wrote the wrong data");
+		atomic_puts("Internal error: FAILED: splice wrote the wrong data");
 		exit(1);
 	}
-	puts("Got expected token " TOKEN);
+	atomic_puts("Got expected token " TOKEN);
 }
 
 int main() {
@@ -48,7 +48,7 @@ int main() {
 	 * before this. */
 	unlink(token_file);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }

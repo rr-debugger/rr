@@ -1,14 +1,11 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <fcntl.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/types.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static void breakpoint() {
 	int break_here = 1;
@@ -44,11 +41,11 @@ int main(int argc, char *argv[]) {
 		magic = rpage[i] * 31 + 3;
 		wpage[i] = magic;
 
-		assert(rpage[i] != magic && wpage[i] == magic);
-		printf("%d:%d,", rpage[i], wpage[i]);
+		test_assert(rpage[i] != magic && wpage[i] == magic);
+		atomic_printf("%d:%d,", rpage[i], wpage[i]);
 	}
 
-	puts(" done");
+	atomic_puts(" done");
 
 	return 0;
 }

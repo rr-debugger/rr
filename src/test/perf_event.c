@@ -1,15 +1,12 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <linux/perf_event.h>
 #include <sched.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <sys/syscall.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static int counter_fd;
 
@@ -40,12 +37,12 @@ int main(int argc, char *argv[]) {
 		sys_perf_event_open(&attr, 0/*self*/, -1/*any cpu*/, -1, 0);
 	test_assert(0 <= counter_fd);
 
-	printf("num descheds: %llu\n", get_desched());
+	atomic_printf("num descheds: %llu\n", get_desched());
 	for (i = 0; i < 5; ++i) {
 		sched_yield();
-		printf("after yield: %llu\n", get_desched());
+		atomic_printf("after yield: %llu\n", get_desched());
 	}
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

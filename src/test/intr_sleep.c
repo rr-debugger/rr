@@ -1,14 +1,11 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <errno.h>
 #include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static int interrupted_sleep() {
 	struct timespec ts = { .tv_sec = 2 };
@@ -31,15 +28,15 @@ int main(int argc, char *argv[]) {
 
 	signal(SIGALRM, SIG_IGN);
 	err = interrupted_sleep();
-	printf("No sighandler; sleep exits with errno %d\n", err);
+	atomic_printf("No sighandler; sleep exits with errno %d\n", err);
 	test_assert(0 == err);
 
 	signal(SIGALRM, handle_signal);
 	err = interrupted_sleep();
-	printf("With sighandler; sleep exits with errno %d\n", err);
+	atomic_printf("With sighandler; sleep exits with errno %d\n", err);
 	test_assert(1 == caught_signal);
 	test_assert(EINTR == err);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 1;
 }

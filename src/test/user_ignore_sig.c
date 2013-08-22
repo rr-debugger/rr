@@ -1,11 +1,9 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "rrutil.h"
 
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
+#include <signal.h>
+#include <stdlib.h>
 
 static void handle_usr1(int sig) {
 	test_assert("Shouldn't have caught SIGUSR1" && 0);
@@ -19,6 +17,6 @@ int main(int argc, char *argv[]) {
 	signal(SIGUSR1, handle_usr1);
 	raise(SIGUSR1);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

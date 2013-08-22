@@ -1,12 +1,9 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <stdio.h>
+#include "rrutil.h"
+
 #include <stdlib.h>
 #include <sys/mman.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static int create_segment(size_t num_bytes) {
 	char filename[] = "/dev/shm/rr-test-XXXXXX";
@@ -30,10 +27,10 @@ int main(int argc, char *argv[]) {
 	for (i = 0; i < num_bytes / sizeof(int); ++i) {
 		wpage[i] = i;
 		test_assert(rpage[i] == i);
-		printf("%d,", rpage[i]);
+		atomic_printf("%d,", rpage[i]);
 	}
 
-	puts(" done");
+	atomic_puts(" done");
 
 	return 0;
 }

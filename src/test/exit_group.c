@@ -1,8 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <pthread.h>
-#include <stdio.h>
-#include <unistd.h>
+#include "rrutil.h"
+
 
 pthread_barrier_t bar;
 
@@ -22,8 +21,7 @@ int main(int argc, char *argv[]) {
 
 	pthread_barrier_wait(&bar);
 
-	puts("_exit()ing");
-	fflush(stdout);
+	atomic_puts("_exit()ing");
 
 	_exit(0);
 	return 0;		/* not reached */

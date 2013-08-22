@@ -1,18 +1,15 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <sys/syscall.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static int signals_unblocked;
 
 static void handle_usr1(int sig) {
-	puts("Caught usr1");
+	atomic_puts("Caught usr1");
 	test_assert(signals_unblocked);
 }
 
@@ -36,6 +33,6 @@ int main(int argc, char *argv[]) {
 	signals_unblocked = 1;
 	syscall(SYS_sigprocmask, SIG_SETMASK, &oldmask, NULL);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

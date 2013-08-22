@@ -1,12 +1,11 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "rrutil.h"
+
 #include <signal.h>
-#include <stdio.h>
-#include <unistd.h>
 
 static void sighandler(int sig) {
-	printf("caught signal %d, exiting\n", sig);
-	fflush(stdout);
+	atomic_printf("caught signal %d, exiting\n", sig);
 	_exit(0);
 }
 

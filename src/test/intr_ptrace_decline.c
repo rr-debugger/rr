@@ -1,20 +1,16 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <errno.h>
 #include <poll.h>
-#include <pthread.h>
 #include <signal.h>
-#include <stdio.h>
 #include <string.h>
 #include <syscall.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static const char start_token = '!';
 static const char sentinel_token = ' ';
@@ -74,18 +70,18 @@ static void* reader_thread(void* dontcare) {
 
 	pthread_barrier_wait(&barrier);
 
-	puts("r: blocking on sleep, awaiting signal ...");
+	atomic_puts("r: blocking on sleep, awaiting signal ...");
 	fin_intr_sleep(1);
 
-	puts("r: blocking on poll, awaiting signal ...");
+	atomic_puts("r: blocking on poll, awaiting signal ...");
 	fin_poll(1);
 
-	puts("r: blocking on futex, awaiting signal ...");
+	atomic_puts("r: blocking on futex, awaiting signal ...");
 	cond_wait(1);
 
-	puts("r: blocking on read, awaiting signal ...");
+	atomic_puts("r: blocking on read, awaiting signal ...");
 	test_assert(1 == read(readsock, &c, sizeof(c)));
-	printf("r: ... read '%c'\n", c);
+	atomic_printf("r: ... read '%c'\n", c);
 	test_assert(c == token);
 
 	return NULL;
@@ -96,7 +92,6 @@ int main(int argc, char *argv[]) {
 	struct timeval ts;
 	int i;
 
-	setvbuf(stdout, NULL, _IONBF, 0);
 
 	/* (Kick on the syscallbuf if it's enabled.) */
 	gettimeofday(&ts, NULL);
@@ -108,23 +103,23 @@ int main(int argc, char *argv[]) {
 
 	pthread_barrier_wait(&barrier);
 
-	puts("M: sleeping ...");
+	atomic_puts("M: sleeping ...");
 	usleep(500000);
 	for (i = 0; i < 4; ++i) {
-		puts("M: killing reader ...");
+		atomic_puts("M: killing reader ...");
 		pthread_kill(reader, SIGUSR1);
-		puts("M: sleeping ...");
+		atomic_puts("M: sleeping ...");
 		sleep(1);
 	}
-	printf("M: finishing original reader by writing '%c' to socket ...\n",
+	atomic_printf("M: finishing original reader by writing '%c' to socket ...\n",
 		token);
 	write(sockfds[0], &token, sizeof(token));
 	++token;
 
-	puts("M:   ... done");
+	atomic_puts("M:   ... done");
 
 	pthread_join(reader, NULL);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

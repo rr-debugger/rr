@@ -1,13 +1,11 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <stdio.h>
+#include "rrutil.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static void breakpoint() {
 	int break_here = 1;
@@ -20,7 +18,7 @@ int main() {
 	int i;
 
 	clock_getres(CLOCK_MONOTONIC, &ts);
-	printf("Clock resolution is >= %g us\n", ((double) ts.tv_nsec) / 1.0e3);
+	atomic_printf("Clock resolution is >= %g us\n", ((double) ts.tv_nsec) / 1.0e3);
 
 	memset(&ts, 0, sizeof(ts));
 	memset(&tv, 0, sizeof(tv));
@@ -49,12 +47,12 @@ int main() {
 				&& tv.tv_usec <= tv_now.tv_usec));
 		tv = tv_now;
 
-		printf("cg: %g %llu, gtod: %g %llu\n",
+		atomic_printf("cg: %g %llu, gtod: %g %llu\n",
 		       (double) ts.tv_sec, (long long int) ts.tv_nsec,
 		       (double) tv.tv_sec, (long long int) tv.tv_usec);
 	}
 	breakpoint();
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

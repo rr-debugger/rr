@@ -1,17 +1,14 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "rrutil.h"
 
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
+#include <signal.h>
+#include <stdlib.h>
 
 static int num_signals_caught;
 
 static void handle_sigrt(int sig) {
-	printf("Caught signal %d\n", sig);
-	fflush(stdout);
+	atomic_printf("Caught signal %d\n", sig);
 
 	++num_signals_caught;
 }
@@ -24,10 +21,10 @@ int main(int argc, char *argv[]) {
 		raise(i);
 	}
 
-	printf("caught %d signals; expected %d\n", num_signals_caught,
+	atomic_printf("caught %d signals; expected %d\n", num_signals_caught,
 	       SIGRTMAX - SIGRTMIN);
 	test_assert(1 + SIGRTMAX - SIGRTMIN == num_signals_caught);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

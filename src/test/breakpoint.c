@@ -1,29 +1,27 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <stdio.h>
+#include "rrutil.h"
 
 static void C() {
-	puts("in C");
+	atomic_puts("in C");
 }
 
 static void B() {
-	puts("calling C");
+	atomic_puts("calling C");
 	C();
-	puts("finished C");
+	atomic_puts("finished C");
 }
 
 static void A() {
-	puts("calling B");
+	atomic_puts("calling B");
 	B();
-	puts("finished B");
+	atomic_puts("finished B");
 }
 
 int main() {
-	setvbuf(stdout, NULL, _IONBF, 0);
 
-	puts("calling A");
+	atomic_puts("calling A");
 	A();
-	puts("finished A");
-	fflush(stdout);
+	atomic_puts("finished A");
 	return 0;
 }

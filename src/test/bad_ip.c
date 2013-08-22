@@ -1,16 +1,14 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <signal.h>
-#include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 static void sighandler(int sig, siginfo_t* si, void* utp) {
-	assert(SIGSEGV == sig && si->si_addr == (void*)0x42);
+	test_assert(SIGSEGV == sig && si->si_addr == (void*)0x42);
 
-	puts("caught segfault @0x42");
-	fflush(stdout);
+	atomic_puts("caught segfault @0x42");
 	_exit(0);
 }
 

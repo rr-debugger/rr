@@ -1,20 +1,16 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
+#include "rrutil.h"
+
 #include <errno.h>
 #include <poll.h>
-#include <pthread.h>
 #include <signal.h>
-#include <stdio.h>
 #include <string.h>
 #include <syscall.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static pthread_t reader;
 static pthread_barrier_t barrier;
@@ -41,13 +37,11 @@ static void fin_sleep(int secs) {
 	test_assert(-1 == rem.tv_sec && -1 == rem.tv_nsec);
 }
 
-#define PRINT(_msg) write(STDOUT_FILENO, _msg, sizeof(_msg) - 1)
-
 static void sighandler(int sig) {
 	test_assert(sys_gettid() == reader_tid);
 	++reader_caught_signal;
 
-	PRINT("r: in sighandler level 1 ...\n");
+	atomic_puts("r: in sighandler level 1 ...");
 	intr_sleep(2);
 }
 
@@ -55,11 +49,9 @@ static void sighandler2(int sig) {
 	test_assert(sys_gettid() == reader_tid);
 	++reader_caught_signal;
 
-	PRINT("r: in sighandler level 2 ...\n");
+	atomic_puts("r: in sighandler level 2 ...");
 	fin_sleep(1);
 }
-
-#undef PRINT
 
 static void* reader_thread(void* dontcare) {
 	struct sigaction act;
@@ -79,7 +71,7 @@ static void* reader_thread(void* dontcare) {
 
 	pthread_barrier_wait(&barrier);
 
-	puts("r: blocking on sleep, awaiting signal ...");
+	atomic_puts("r: blocking on sleep, awaiting signal ...");
 	intr_sleep(3);
 
 	return NULL;
@@ -88,7 +80,6 @@ static void* reader_thread(void* dontcare) {
 int main(int argc, char *argv[]) {
 	struct timeval ts;
 
-	setvbuf(stdout, NULL, _IONBF, 0);
 
 	/* (Kick on the syscallbuf if it's enabled.) */
 	gettimeofday(&ts, NULL);
@@ -100,21 +91,21 @@ int main(int argc, char *argv[]) {
 
 	/* Force a blocked read() that's interrupted by a SIGUSR1,
 	 * which then itself blocks on read() and succeeds. */
-	puts("M: sleeping ...");
+	atomic_puts("M: sleeping ...");
 	usleep(500000);
 
-	puts("M: killing reader ...");
+	atomic_puts("M: killing reader ...");
 	pthread_kill(reader, SIGUSR1);
-	puts("M:   (quick nap)");
+	atomic_puts("M:   (quick nap)");
 	usleep(100000);
 
-	puts("M: killing reader again ...");
+	atomic_puts("M: killing reader again ...");
 	pthread_kill(reader, SIGUSR2);
 
-	puts("M:   ... done");
+	atomic_puts("M:   ... done");
 
 	pthread_join(reader, NULL);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }
