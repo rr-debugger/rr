@@ -365,7 +365,7 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 		return;
 	}
 
-	push_signal(t, sig, is_deterministic_signal(si));
+	push_pending_signal(t, sig, is_deterministic_signal(si));
 
 	if (t->ev->signal.deterministic) {
 		t->event = -(sig | DET_SIGNAL_BIT);
@@ -378,16 +378,20 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 	record_event(t);
 	reset_hpc(t, max_rbc);
 
+	t->ev->type = EV_SIGNAL_DELIVERY;
 	if (has_user_handler) {
 		debug("  %s has user handler", signalname(sig));
-		/* Enter the signal handler. */
+		/* Deliver the signal immediately when there's a user
+		 * handler: we need to record the sigframe that the
+		 * kernel sets up. */
 		sys_ptrace_singlestep_sig(t->tid, sig);
 		sys_waitpid(t->tid, &t->status);
 		/* It's been observed that when tasks enter
 		 * sighandlers, the singlestep operation above doesn't
-		 * retire any instructions.  This cross-checks the
-		 * sighandler information we maintain in
-		 * |t->sighandlers|. */
+		 * retire any instructions; and indeed, if an
+		 * instruction could be retired, this code wouldn't
+		 * work.  This also cross-checks the sighandler
+		 * information we maintain in |t->sighandlers|. */
 		assert(0 == read_insts(t->hpc));
 
 		/* TODO: find out actual struct sigframe size. 128
@@ -395,6 +399,8 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 		sigframe_size = 1024;
 
 		read_child_registers(t->tid, &t->regs);
+
+		t->ev->type = EV_SIGNAL_HANDLER;
 	} else {
 		debug("  no user handler for %s", signalname(sig));
 	}
@@ -413,11 +419,10 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 	record_event(t);
 
 	if (!has_user_handler) {
-		/* If we're not entering a user handler, we're
-		 * completely done with processing the signal and can
-		 * pop it off the stack.  Otherwise, we'll pop this
-		 * when we see the matching sigreturn(). */
-		pop_signal(t);
+		/* TODO: need to deliver the signal even if there's no
+		 * signal handler, because it might be a terminating
+		 * or core-dumping signal. */
+		pop_signal_delivery(t);
 	}
 }
 

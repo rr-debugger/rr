@@ -28,8 +28,10 @@ static const char* event_type_name(int type)
 #define CASE(_t) case EV_## _t: return #_t
 		CASE(PSEUDOSIG);
 		CASE(SIGNAL);
+		CASE(SIGNAL_DELIVERY);
+		CASE(SIGNAL_HANDLER);
 		CASE(SYSCALL);
-		CASE(INTERRUPTED_SYSCALL);
+		CASE(SYSCALL_INTERRUPTION);
 #undef CASE
 	default:
 		fatal("Unknown event type %d", type);
@@ -74,16 +76,21 @@ void pop_pseudosig(struct task* t)
 	pop_event(t, EV_PSEUDOSIG);
 }
 
-void push_signal(struct task* t, int no, int deterministic)
+void push_pending_signal(struct task* t, int no, int deterministic)
 {
 	push_new_event(t, EV_SIGNAL);
 	t->ev->signal.no = no;
 	t->ev->signal.deterministic = deterministic;
 }
 
-void pop_signal(struct task* t)
+void pop_signal_delivery(struct task* t)
 {
-	pop_event(t, EV_SIGNAL);
+	pop_event(t, EV_SIGNAL_DELIVERY);
+}
+
+void pop_signal_handler(struct task* t)
+{
+	pop_event(t, EV_SIGNAL_HANDLER);
 }
 
 void push_syscall(struct task* t, int no)
@@ -97,9 +104,9 @@ void pop_syscall(struct task* t)
 	pop_event(t, EV_SYSCALL);
 }
 
-void pop_interrupted_syscall(struct task* t)
+void pop_syscall_interruption(struct task* t)
 {
-	pop_event(t, EV_INTERRUPTED_SYSCALL);
+	pop_event(t, EV_SYSCALL_INTERRUPTION);
 }
 
 void log_pending_events(const struct task* t)
@@ -128,10 +135,12 @@ void log_event(const struct event* ev)
 		log_info("%s: %d", name, ev->pseudosig.no);
 		return;
 	case EV_SIGNAL:
+	case EV_SIGNAL_DELIVERY:
+	case EV_SIGNAL_HANDLER:
 		log_info("%s: %s", name, signalname(ev->signal.no));
 		return;
 	case EV_SYSCALL:
-	case EV_INTERRUPTED_SYSCALL:
+	case EV_SYSCALL_INTERRUPTION:
 		log_info("%s: %s", name, syscallname(ev->syscall.no));
 		return;
 	default:
