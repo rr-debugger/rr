@@ -21,6 +21,12 @@ struct sighandlers {
 	} handlers[_NSIG];
 };
 
+int task_may_be_blocked(struct task* t)
+{
+	return (t->ev && EV_SYSCALL == t->ev->type
+		&& PROCESSING_SYSCALL == t->ev->syscall.state);
+}
+
 static const char* event_type_name(int type)
 {
 	switch (type) {

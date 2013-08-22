@@ -122,7 +122,6 @@ static void handle_ptrace_event(struct task** tp)
 		record_event(t);
 		pop_syscall(t);
 
-		t->exec_state = RUNNABLE;
 		t->switchable = 1;
 		break;
 
@@ -154,7 +153,6 @@ static void handle_ptrace_event(struct task** tp)
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
 		 * child has finished */
 		if (event == PTRACE_EVENT_VFORK) {
-			t->exec_state = PROCESSING_SYSCALL;
 			t->switchable = 1;
 
 			push_syscall(t, t->event);
@@ -224,7 +222,7 @@ static void resume_execution(struct task* t, int force_cont)
 {
 	int ptrace_event;
 
-	assert(RUNNABLE == t->exec_state);
+	assert(!task_may_be_blocked(t));
 
 	debug_exec_state("EXEC_START", t);
 
@@ -358,7 +356,7 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 	struct task* t = *tp;
 	pid_t tid = t->tid;
 
-	switch (t->exec_state) {
+	switch (t->ev->syscall.state) {
 	case ENTERING_SYSCALL:
 		debug_exec_state("EXEC_SYSCALL_ENTRY", t);
 
@@ -378,27 +376,23 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		/* continue and execute the system call */
 		t->switchable = rec_prepare_syscall(t);
 		cont_nonblock(t);
-
 		debug_exec_state("after cont", t);
 
-		t->exec_state = PROCESSING_SYSCALL;
+		t->ev->syscall.state = PROCESSING_SYSCALL;
 		return;
 
 	case PROCESSING_SYSCALL:
 		debug_exec_state("EXEC_IN_SYSCALL", t);
 
-		assert(t->exec_state = PROCESSING_SYSCALL);
 		assert(by_waitpid);
+		/* Linux kicks tasks out of syscalls before delivering
+		 * signals. */
+		assert_exec(t, !signal_pending(t->status),
+			    "Signal %s pending while %d in syscall???",
+			    signalname(signal_pending(t->status)), t->tid);
 
-		if (signal_pending(t->status)) {
-			/* TODO: need state stack to properly handle
-			 * signals, if they indeed are ever delivered
-			 * in this state. */
-			log_warn("Signal %s may not be handled correctly",
-				 signalname(signal_pending(t->status)));
-		}
 		status_changed(t);
-		t->exec_state = EXITING_SYSCALL;
+		t->ev->syscall.state = EXITING_SYSCALL;
 		t->switchable = 0;
 		return;
 
@@ -449,7 +443,6 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 			debug("  exiting restarted %s", syscallname(syscallno));
 		}
 
-		t->ev->syscall.state = EXITING_SYSCALL;
 		/* TODO: is there any reason a restart_syscall can't
 		 * be interrupted by a signal and itself restarted? */
 		t->will_restart = (syscallno != SYS_restart_syscall
@@ -493,7 +486,6 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 			t->ev->syscall.is_restart = 1;
 		}
 
-		t->exec_state = RUNNABLE;
 		t->switchable = 1;
 		if (t->desched_rec) {
 			/* If this syscall was interrupted by a
@@ -521,7 +513,7 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 	}
 
 	default:
-		fatal("Unknown exec state %d", t->exec_state);
+		fatal("Unknown exec state %d", t->ev->syscall.state);
 	}
 }
 
@@ -637,15 +629,12 @@ static void runnable_state_changed(struct task* t)
 		}
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
-
-		t->exec_state = ENTERING_SYSCALL;
 	} else if (t->event == SYS_restart_syscall) {
 		/* In this case, the call /must/ restart a syscall, or
 		 * abort. */
 		maybe_restart_syscall(t);
 
 		t->ev->syscall.state = ENTERING_SYSCALL;
-		t->exec_state = ENTERING_SYSCALL;
 	} else {
 		fatal("Unhandled event %s (%d)",
 		      strevent(t->event), t->event);
@@ -674,8 +663,8 @@ void record()
 			rec_init_scratch_memory(t);
 		}
 
-		assert(!by_waitpid || PROCESSING_SYSCALL == t->exec_state);
-		if (t->exec_state > RUNNABLE) {
+		assert(!by_waitpid || task_may_be_blocked(t));
+		if (t->ev && EV_SYSCALL == t->ev->type) {
 			syscall_state_changed(&t, by_waitpid);
 			continue;
 		}
