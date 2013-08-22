@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "ProcessSyscallRec"
+
 #include "rec_process_event.h"
 
 #define _GNU_SOURCE
@@ -692,7 +694,7 @@ void rec_process_syscall(struct task *t)
 	read_child_registers(tid, &regs);
 
 	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x",
-	      tid, syscallname(syscall), get_global_time(),
+	      tid, syscallname(syscall), syscall, get_global_time(),
 	      t->exec_state);
 
 	if (t->desched_rec) {
