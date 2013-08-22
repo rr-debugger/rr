@@ -1,6 +1,2 @@
 source `dirname $0`/util.sh sigrt "$@"
-
-# TODO: a sigreturn can flush the syscallbuf
-skip_if_syscall_buf
-
 compare_test EXIT-SUCCESS

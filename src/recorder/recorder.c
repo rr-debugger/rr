@@ -582,8 +582,18 @@ static void runnable_state_changed(struct task* t)
 		 * to do another ptrace_cont to fully process the
 		 * sigreturn system call. */
 		debug("  sigreturn");
+		/* Recording the sigreturn here may flush the
+		 * syscallbuf.  That's OK: if the signal interrupted
+		 * an in-progress buffered syscall, then we made sure
+		 * we stepped the tracee to a happy place before
+		 * delivering the signal, so the syscallbuf was locked
+		 * on entry if it needed to be.  In that case, the
+		 * sighandler wouldn't have used the syscallbuf.  And
+		 * if the syscallbuf was unlocked, then that means the
+		 * tracee didn't need to lock it, so it's OK for the
+		 * sighandler to use it. */
 		record_event(t);
-		assert(!t->flushed_syscallbuf);
+
 		/* "Finish" the sigreturn. */
 		sys_ptrace_syscall(t->tid);
 		sys_waitpid(t->tid, &t->status);
