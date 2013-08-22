@@ -276,7 +276,6 @@ struct task {
 	void *scratch_ptr;
 	size_t scratch_size;
 
-	int exec_state;
 	int event;
 	/* Record of the syscall that was interrupted by a desched
 	 * notification.  It's legal to reference this memory /while
@@ -342,6 +341,15 @@ struct task {
 
 	RB_ENTRY(task) entry;
 };
+
+/**
+ * Return nonzero if |t| may not be immediately runnable, i.e.,
+ * resuming execution and then |waitpid()|'ing may block for an
+ * unbounded amount of time.  When the task is in this state, the
+ * tracer must await a |waitpid()| notification that the task is no
+ * longer possibly-blocked before resuming its execution.
+ */
+int task_may_be_blocked(struct task* t);
 
 /**
  * Push/pop pseudo-sig events on the pending stack.  |no| is the enum

@@ -79,7 +79,7 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 
 	if (t && !t->switchable) {
 		debug("  (%d is un-switchable)", t->tid);
-		if (PROCESSING_SYSCALL == t->exec_state) {
+		if (task_may_be_blocked(t)) {
 			debug("  and not runnable; waiting for state change");
 			/* |t| is un-switchable, but not runnable in
 			 * this state.  Wait for it to change state
@@ -111,7 +111,7 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 
 		next_t = &entry->t;
 		tid = next_t->tid;
-		if (PROCESSING_SYSCALL != next_t->exec_state) {
+		if (!task_may_be_blocked(next_t)) {
 			debug("  %d isn't blocked, done", tid);
 			break;
 		}
@@ -148,6 +148,7 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 		entry = get_entry(tid);
 		next_t = &entry->t;
 
+		assert(task_may_be_blocked(next_t));
 		next_t->status = status;
 		*by_waitpid = 1;
 	}
@@ -188,7 +189,6 @@ void rec_sched_register_thread(pid_t parent, pid_t child,
 
 	assert(child > 0 && child < MAX_TID);
 
-	t->exec_state = RUNNABLE;
 	t->status = 0;
 	t->rec_tid = t->tid = child;
 	t->child_mem_fd = sys_open_child_mem(child);
