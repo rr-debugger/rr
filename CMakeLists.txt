@@ -103,6 +103,7 @@ set(BASIC_TESTS
   mmap_private
   mmap_shared
   perf_event
+  prctl
   priority
   prw
   rdtsc
