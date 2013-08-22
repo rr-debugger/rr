@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "gdb"
+
 /**
  * Much of this implementation is based on the documentation at
  *
@@ -212,7 +214,7 @@ static void write_flush(struct dbg_context* dbg)
 {
 	ssize_t write_index = 0;
 
-#ifdef DEBUGRR
+#ifdef DEBUGTAG
 	dbg->outbuf[dbg->outlen] = '\0';
 	debug("write_flush: '%s'", dbg->outbuf);
 #endif

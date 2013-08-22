@@ -13,14 +13,18 @@
 #include "task.h"
 
 /**
- * Useful debug macros.  Define DEBUGRR to enable DEBUG-level
- * messages.
+ * Useful debug macros.  Define DEBUGTAG with a "module name" to
+ * enable DEBUG-level messages.  For example,
+ *
+ *  #define DEBUGTAG "Sched"
+ *  ...
+ *  #include "dbg.h"
  */
 
-#ifdef DEBUGRR
+#ifdef DEBUGTAG
 # define debug(M, ...)							\
 	do {								\
-		fprintf(stderr, "[DEBUG] " M "\n", ##__VA_ARGS__);	\
+		fprintf(stderr, "[" DEBUGTAG "] " M "\n", ##__VA_ARGS__); \
 	} while(0)
 #else
 # define debug(M, ...)				\

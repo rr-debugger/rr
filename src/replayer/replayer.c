@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "Replayer"
+
 #define _GNU_SOURCE
 
 #include "replayer.h"
