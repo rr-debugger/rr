@@ -1,7 +1,8 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "rrutil.h"
+
 #include <signal.h>
-#include <stdio.h>
 
 int main(int argc, char *argv[]) {
 	int dummy, i;
@@ -15,6 +16,6 @@ int main(int argc, char *argv[]) {
 		dummy += (dummy + i) % 9735;
 	}
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

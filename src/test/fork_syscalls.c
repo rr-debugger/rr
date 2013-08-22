@@ -1,16 +1,13 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <stdio.h>
+#include "rrutil.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
-#include <unistd.h>
-
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 static void syscalls(int num) {
 	struct timespec ts;
@@ -30,7 +27,7 @@ int main() {
 
 	if (0 == (child = fork())) {
 		syscalls(10);
-		printf("CHILD-EXIT ");
+		atomic_printf("CHILD-EXIT ");
 		exit(0);
 	}
 
@@ -38,6 +35,6 @@ int main() {
 
 	waitpid(child, NULL, 0);
 
-	puts("PARENT-EXIT");
+	atomic_puts("PARENT-EXIT");
 	return 0;
 }

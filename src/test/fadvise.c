@@ -1,9 +1,9 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "rrutil.h"
+
 #include <fcntl.h>
-#include <stdio.h>
-#include <sys/syscall.h>
-#include <unistd.h>
+#include <syscall.h>
 
 int main(int argc, char *argv[]) {
 	/* There's not a (simple) way to meaningfully test fadvise,
@@ -13,6 +13,6 @@ int main(int argc, char *argv[]) {
 	syscall(SYS_fadvise64, -1, 0, 0, POSIX_FADV_NORMAL);
 	syscall(SYS_fadvise64_64, -1, POSIX_FADV_NORMAL, 0, 0);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

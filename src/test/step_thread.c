@@ -1,19 +1,19 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <pthread.h>
-#include <stdio.h>
+#include "rrutil.h"
+
 
 pthread_barrier_t bar;
 
 /* NB: these must *not* be macros so that debugger step-next works as
  * expected per the program source. */
 void A() {
-	puts("entered A");
+	atomic_puts("entered A");
 	pthread_barrier_wait(&bar);
 	pthread_barrier_wait(&bar);
 }
 void B() {
-	puts("entered B");
+	atomic_puts("entered B");
 	pthread_barrier_wait(&bar);
 	pthread_barrier_wait(&bar);
 }
@@ -28,12 +28,12 @@ void* threadB(void* unused) {
 }
 
 void C() {
-	puts("entered C");
+	atomic_puts("entered C");
 	pthread_barrier_wait(&bar);
 }
 
 void hit_barrier() {
-	puts("hit barrier");
+	atomic_puts("hit barrier");
 }
 
 int main() {

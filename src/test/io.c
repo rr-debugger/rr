@@ -1,7 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <stdio.h>
-#include <unistd.h>
+#include "rrutil.h"
 
 int main(int argc, char *argv[]) {
 	char buf[32];
@@ -9,6 +8,6 @@ int main(int argc, char *argv[]) {
 
 	read(garbage_fd, buf, sizeof(buf));
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

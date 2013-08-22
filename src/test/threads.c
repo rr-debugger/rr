@@ -1,20 +1,18 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#include "rrutil.h"
+
 #include <errno.h>
-#include <pthread.h>
 #include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#include <unistd.h>
 
 long int counter = 0;
 
 void catcher(int sig) {
-	printf("Signal caught, Counter is %ld\n", counter);
-	puts("EXIT-SUCCESS");
-	fflush(stdout);
+	atomic_printf("Signal caught, Counter is %ld\n", counter);
+	atomic_puts("EXIT-SUCCESS");
 	_exit(0);
 }
 

@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <stdio.h>
+#include "rrutil.h"
 
 #define NUM_ITERATIONS (1 << 30)
 
@@ -12,7 +12,7 @@ static void breakpoint() {
 int spin() {
 	int i, dummy = 0;
 
-	puts("spinning");
+	atomic_puts("spinning");
 	/* NO SYSCALLS AFTER HERE: the point of this test is to hit
 	 * hpc interrupts to exercise the nonvoluntary interrupt
 	 * scheduler. */
@@ -27,8 +27,7 @@ int spin() {
 }
 
 int main(int argc, char *argv[]) {
-	setvbuf(stdout, NULL, _IONBF, 0);
 
-	printf("EXIT-SUCCESS dummy=%d\n", spin());
+	atomic_printf("EXIT-SUCCESS dummy=%d\n", spin());
 	return 0;
 }

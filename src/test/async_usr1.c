@@ -1,18 +1,16 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#include <assert.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "rrutil.h"
 
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
+#include <signal.h>
+#include <stdlib.h>
 
 static sig_atomic_t caught_usr1;
 
 static void handle_usr1(int sig) {
 	test_assert(SIGUSR1 == sig);
 	caught_usr1 = 1;
-	puts("caught usr1");
+	atomic_puts("caught usr1");
 }
 
 static void breakpoint() {
@@ -32,6 +30,6 @@ int main(int argc, char *argv[]) {
 	}
 	test_assert(caught_usr1);
 
-	puts("EXIT-SUCCESS");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

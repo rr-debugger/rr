@@ -5,24 +5,19 @@ static void breakpoint() {
 	 * Tests rely on that. */
 }
 
-#include <assert.h>
-#include <stdio.h>
-#include <signal.h>
-#include <unistd.h>
+#include "rrutil.h"
 
-#define test_assert(cond)  assert("FAILED if not: " && (cond))
+#include <signal.h>
 
 static void handle_sigtrap(int sig) {
-	puts("caught SIGTRAP!");
-	fflush(stdout);
+	atomic_puts("caught SIGTRAP!");
 	_exit(0);
 }
 
 int main(int argc, char *argv[]) {
 	signal(SIGTRAP, handle_sigtrap);
 
-	puts("raising SIGTRAP ...");
-	fflush(stdout);
+	atomic_puts("raising SIGTRAP ...");
 
 	breakpoint();
 
