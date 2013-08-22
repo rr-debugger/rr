@@ -144,7 +144,9 @@ static int encode_event(struct event* ev, int* state)
 #undef TRANSLATE
 		}
 
-	case EV_SIGNAL: {
+	case EV_SIGNAL:
+	case EV_SIGNAL_DELIVERY:
+	case EV_SIGNAL_HANDLER: {
 		int event = ev->signal.no;
 		/* (Arbitrary.) */
 		*state = STATE_SYSCALL_ENTRY;

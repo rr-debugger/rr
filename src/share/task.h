@@ -35,14 +35,15 @@ typedef void (*sig_handler_t)(int);
 struct event {
 	enum {
 		EV_NONE,
-		/* Uses the .syscall struct below. */
-		EV_INTERRUPTED_SYSCALL,
-		/* Uses .pseudosig. */
+		/* Uses the .pseudosig struct below. */
 		EV_PSEUDOSIG,
-		/* Uses .signal. */
+		/* Use .signal. */
 		EV_SIGNAL,
-		/* Uses .syscall. */
-		EV_SYSCALL
+		EV_SIGNAL_DELIVERY,
+		EV_SIGNAL_HANDLER,
+		/* Use .syscall. */
+		EV_SYSCALL,
+		EV_SYSCALL_INTERRUPTION,
 	} type;
 	union {
 		/**
@@ -357,8 +358,9 @@ void pop_pseudosig(struct task* t);
  * and |deterministic| is nonzero for deterministically-delivered
  * signals (see handle_signal.c).
  */
-void push_signal(struct task* t, int no, int deterministic);
-void pop_signal(struct task* t);
+void push_pending_signal(struct task* t, int no, int deterministic);
+void pop_signal_delivery(struct task* t);
+void pop_signal_handler(struct task* t);
 
 /**
  * Push/pop syscall events on the pending stack.  |no| is the syscall
@@ -368,9 +370,9 @@ void push_syscall(struct task* t, int no);
 void pop_syscall(struct task* t);
 
 /**
- * Pop the interrupted syscall event from the top of the stack.
+ * Pop the syscall interruption event from the top of the stack.
  */
-void pop_interrupted_syscall(struct task* t);
+void pop_syscall_interruption(struct task* t);
 
 /**
  * Dump |t|'s stack of pending events to INFO log.
