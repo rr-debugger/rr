@@ -409,6 +409,15 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		assert(signal_pending(t->status) == 0);
 		assert(SYS_sigreturn != t->event);
 
+		/* TODO: are there any other points where we need to
+		 * handle ptrace events (other than the seccomp-bpf
+		 * traps)? */
+		handle_ptrace_event(tp);
+		t = *tp;
+		if (!t || t->event == SYS_vfork) {
+			return;
+		}
+
 		read_child_registers(tid, &t->regs);
 		t->event = t->regs.orig_eax;
 		if (SYS_restart_syscall == t->event) {
@@ -431,15 +440,6 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 
 		debug("  orig_eax:%ld (%s); eax:%ld",
 		      t->regs.orig_eax, syscallname(syscallno), t->regs.eax);
-
-		/* TODO: are there any other points where we need to
-		 * handle ptrace events (other than the seccomp-bpf
-		 * traps)? */
-		handle_ptrace_event(tp);
-		t = *tp;
-		if (!t || t->event == SYS_vfork) {
-			return;
-		}
 
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
