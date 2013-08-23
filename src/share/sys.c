@@ -188,6 +188,11 @@ void sys_ptrace_cont(pid_t pid)
 	ptrace(PTRACE_CONT, pid, 0, 0);
 }
 
+void sys_ptrace_cont_sig(pid_t pid, int sig)
+{
+	ptrace(PTRACE_CONT, pid, 0, (void*)sig);
+}
+
 /**
  * Detaches the child process from monitoring. This method must only be
  * invoked, if the thread exits. We do not check errors here, since the
@@ -200,7 +205,7 @@ void sys_ptrace_detach(pid_t pid)
 
 void sys_ptrace_syscall_sig(pid_t pid, int sig)
 {
-	sys_ptrace(PTRACE_SYSCALL, pid, 0, (void*) sig);
+	sys_ptrace(PTRACE_SYSCALL, pid, 0, (void*)sig);
 }
 
 void sys_ptrace_sysemu(pid_t pid)

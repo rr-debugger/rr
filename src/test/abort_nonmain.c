@@ -3,11 +3,13 @@
 #include "rrutil.h"
 
 #include <signal.h>
+#include <stdlib.h>
 #include <sys/types.h>
 
 static void* kill_thread(void* dontcare) {
-	kill(getpid(), SIGABRT);
-	atomic_puts("FAILED: kill() didn't work");
+	atomic_puts("killing ...");
+	abort();
+	atomic_puts("FAILED: abort() didn't work");
 	return NULL;		/* not reached */
 }
 

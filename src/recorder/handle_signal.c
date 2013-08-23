@@ -385,6 +385,8 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 		 * handler: we need to record the sigframe that the
 		 * kernel sets up. */
 		sys_ptrace_singlestep_sig(t->tid, sig);
+		t->ev->signal.delivered = 1;
+
 		sys_waitpid(t->tid, &t->status);
 		/* It's been observed that when tasks enter
 		 * sighandlers, the singlestep operation above doesn't
@@ -418,12 +420,9 @@ static void record_signal(int sig, struct task* t, const siginfo_t* si,
 	 * stepi if there wasn't a signal handler. */
 	record_event(t);
 
-	if (!has_user_handler) {
-		/* TODO: need to deliver the signal even if there's no
-		 * signal handler, because it might be a terminating
-		 * or core-dumping signal. */
-		pop_signal_delivery(t);
-	}
+	/* We need to deliver the signal in the next continue
+	 * request. */
+	t->switchable = 0;
 }
 
 static int is_trace_trap(const siginfo_t* si)
