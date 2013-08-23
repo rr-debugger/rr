@@ -108,6 +108,12 @@ int nanosleep_nointr(const struct timespec* ts)
 
 }
 
+int is_ptrace_seccomp_event(int event)
+{
+	return (PTRACE_EVENT_SECCOMP_OBSOLETE == event ||
+		PTRACE_EVENT_SECCOMP == event);
+}
+
 const char* ptrace_event_name(int event)
 {
 	switch (event) {

@@ -235,6 +235,10 @@ struct task {
 	 * it's processed in succession.  The scheduler maintains this
 	 * state and uses it to make scheduling decisions. */
 	int succ_event_counter;
+	/* Nonzero when any assumptions made about the status of this
+	 * process have been invalidated, and must be re-established
+	 * with a waitpid() call. */
+	int unstable;
 
 	/* Imagine that task A passes buffer |b| to the read()
 	 * syscall.  Imagine that, after A is switched out for task B,

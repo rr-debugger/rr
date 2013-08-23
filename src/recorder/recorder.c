@@ -207,8 +207,8 @@ static void handle_ptrace_event(struct task** tp)
 }
 
 #define debug_exec_state(_msg, _t)					\
-	debug(_msg ": pevent=%d, event=%s",				\
-	      GET_PTRACE_EVENT(_t->status), strevent(_t->event))
+	debug(_msg ": status=0x%x pevent=%d, event=%s",			\
+	      (_t)->status, GET_PTRACE_EVENT(_t->status), strevent(_t->event))
 
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
 static void task_continue(struct task* t, int force_cont, int sig)
@@ -269,8 +269,7 @@ static void resume_execution(struct task* t, int force_cont)
 	debug_exec_state("  after resume", t);
 
 	ptrace_event = GET_PTRACE_EVENT(t->status);
-	if (PTRACE_EVENT_SECCOMP == ptrace_event
-	    || PTRACE_EVENT_SECCOMP_OBSOLETE == ptrace_event) {
+	if (is_ptrace_seccomp_event(ptrace_event)) {
 		filter_on_ = TRUE;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
@@ -358,9 +357,8 @@ static int maybe_restart_syscall(struct task* t)
 	return 1;
 }
 
-static void syscall_state_changed(struct task** tp, int by_waitpid)
+static void syscall_state_changed(struct task* t, int by_waitpid)
 {
-	struct task* t = *tp;
 	pid_t tid = t->tid;
 
 	switch (t->ev->syscall.state) {
@@ -411,15 +409,6 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 
 		assert(signal_pending(t->status) == 0);
 		assert(SYS_sigreturn != t->event);
-
-		/* TODO: are there any other points where we need to
-		 * handle ptrace events (other than the seccomp-bpf
-		 * traps)? */
-		handle_ptrace_event(tp);
-		t = *tp;
-		if (!t) {
-			return;
-		}
 
 		read_child_registers(tid, &t->regs);
 		t->event = t->regs.orig_eax;
@@ -655,19 +644,88 @@ static void runnable_state_changed(struct task* t)
 	}
 }
 
-static void signal_state_changed(struct task** tp, int by_waitpid)
+enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
+static int default_action(int sig)
 {
-	struct task* t = *tp;
+	if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
+		return TERMINATE;
+	}
+	switch (sig) {
+		/* TODO: SSoT for signal defs/semantics. */
+#define CASE(_sig, _act) case SIG## _sig: return _act
+	CASE(HUP, TERMINATE);
+	CASE(INT, TERMINATE);
+	CASE(QUIT, DUMP_CORE);
+	CASE(ILL, DUMP_CORE);
+	CASE(ABRT, DUMP_CORE);
+	CASE(FPE, DUMP_CORE);
+	CASE(KILL, TERMINATE);
+	CASE(SEGV, DUMP_CORE);
+	CASE(PIPE, TERMINATE);
+	CASE(ALRM, TERMINATE);
+	CASE(TERM, TERMINATE);
+	CASE(USR1, TERMINATE);
+	CASE(USR2, TERMINATE);
+	CASE(CHLD, IGNORE);
+	CASE(CONT, CONTINUE);
+	CASE(STOP, STOP);
+	CASE(TSTP, STOP);
+	CASE(TTIN, STOP);
+	CASE(TTOU, STOP);
+	CASE(BUS, DUMP_CORE);
+	/*CASE(POLL, TERMINATE);*/
+	CASE(PROF, TERMINATE);
+	CASE(SYS, DUMP_CORE);
+	CASE(TRAP, DUMP_CORE);
+	CASE(URG, IGNORE);
+	CASE(VTALRM, TERMINATE);
+	CASE(XCPU, DUMP_CORE);
+	CASE(XFSZ, DUMP_CORE);
+	/*CASE(IOT, DUMP_CORE);*/
+	/*CASE(EMT, TERMINATE);*/
+	CASE(STKFLT, TERMINATE);
+	CASE(IO, TERMINATE);
+	CASE(PWR, TERMINATE);
+	/*CASE(LOST, TERMINATE);*/
+	CASE(WINCH, IGNORE);
+	default:
+		fatal("Unknown signal %d", sig);
+#undef CASE
+	}
+}
+
+/**
+ * Return nonzero if |sig| may cause the status of other tasks to
+ * change unpredictably beyond rr's observation.
+ */
+static int possibly_destabilizing_signal(int sig)
+{
+	/* XXX: this heuristic is based only on the fact that it works
+	 * with SIGABRT and SIGTERM.  Deeper answers are almost
+	 * certainly available in the kernel source. */
+	return DUMP_CORE == default_action(sig);
+}
+
+/**
+ * |t| is delivering a signal, and its state changed.  |by_waitpid| is
+ * nonzero if the status change was observed by a waitpid() call.
+ *
+ * Delivering the signal to |t| may cause scheduling invariants about
+ * the status of *other* threads to become temporarily invalid.  In
+ * this case, this function returns nonzero.
+ */
+static int signal_state_changed(struct task* t, int by_waitpid)
+{
 	int ptrace_event;
 
 	assert(EV_SIGNAL_DELIVERY == t->ev->type);
 
 	if (!t->ev->signal.delivered) {
-		task_continue(t, DEFAULT_CONT, t->ev->signal.no);
+		int sig = t->ev->signal.no;
+
+		task_continue(t, DEFAULT_CONT, sig);
 		t->ev->signal.delivered = 1;
-		/* TODO: we should assert this here, right? */
-		t->switchable = 1;
-		return;
+		return t->switchable = possibly_destabilizing_signal(sig);
 	}
 
 	/* The tracee's waitpid status has changed, so we're finished
@@ -677,8 +735,7 @@ static void signal_state_changed(struct task** tp, int by_waitpid)
 	status_changed(t);
 
 	ptrace_event = GET_PTRACE_EVENT(t->status);
-	if (PTRACE_EVENT_SECCOMP == ptrace_event
-	    || PTRACE_EVENT_SECCOMP_OBSOLETE == ptrace_event) {
+	if (is_ptrace_seccomp_event(ptrace_event)) {
 		filter_on_ = TRUE;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
@@ -686,6 +743,7 @@ static void signal_state_changed(struct task** tp, int by_waitpid)
 	}
 
 	runnable_state_changed(t);
+	return 0;
 }
 
 void record()
@@ -694,6 +752,7 @@ void record()
 
 	while (rec_sched_get_num_threads() > 0) {
 		int by_waitpid;
+		int ptrace_event;
 
 		t = rec_sched_get_active_thread(t, &by_waitpid);
 
@@ -703,13 +762,28 @@ void record()
 			rec_init_scratch_memory(t);
 		}
 
-		assert(!by_waitpid || task_may_be_blocked(t));
+		ptrace_event = GET_PTRACE_EVENT(t->status);
+		assert_exec(t, (!by_waitpid || task_may_be_blocked(t) ||
+				ptrace_event),
+			    "%d unexpectedly runnable (0x%x) by waitpid",
+			    t->tid, t->status);
+		if (ptrace_event && !is_ptrace_seccomp_event(ptrace_event)) {
+			handle_ptrace_event(&t);
+			if (!t) {
+				continue;
+			}
+		}
 		if (t->ev && EV_SYSCALL == t->ev->type) {
-			syscall_state_changed(&t, by_waitpid);
+			syscall_state_changed(t, by_waitpid);
 			continue;
 		}
 		if (t->ev && EV_SIGNAL_DELIVERY == t->ev->type) {
-			signal_state_changed(&t, by_waitpid);
+			int unstable = signal_state_changed(t, by_waitpid);
+			if (unstable) {
+				rec_sched_set_tasks_unstable();
+			} else {
+				rec_sched_set_tasks_stable();
+			}
 			continue;
 		}
 
