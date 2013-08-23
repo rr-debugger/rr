@@ -111,6 +111,12 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 
 		next_t = &entry->t;
 		tid = next_t->tid;
+
+		if (next_t->unstable) {
+			debug("  %d is unstable, going to waitpid(-1)", tid);
+			next_t = NULL;
+			break;
+		}
 		if (!task_may_be_blocked(next_t)) {
 			debug("  %d isn't blocked, done", tid);
 			break;
@@ -119,13 +125,11 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 		      strevent(next_t->event));
 		if (0 != sys_waitpid_nonblock(tid, &next_t->status)) {
 			*by_waitpid = 1;
-			debug("  ready!");
+			debug("  ready with status 0x%x", next_t->status);
 			break;
 		}
 		debug("  still blocked");
-		next_t = NULL;
-		entry = next_entry(entry);
-	} while (entry != current_entry);
+	} while (next_t = NULL, current_entry != (entry = next_entry(entry)));
 
 	if (!next_t) {
 		/* All the tasks are blocked. Wait for the next one to
@@ -133,7 +137,7 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 		int status;
 		pid_t tid;
 
-		debug("  all tasks blocked, waiting for runnable (%d total)",
+		debug("  all tasks blocked or some unstable, waiting for runnable (%d total)",
 		      num_active_threads);
 		while (-1 == (tid = waitpid(-1, &status,
 					    __WALL | WSTOPPED | WUNTRACED))) {
@@ -148,14 +152,35 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 		entry = get_entry(tid);
 		next_t = &entry->t;
 
-		assert(task_may_be_blocked(next_t));
+		assert(next_t->unstable || task_may_be_blocked(next_t));
 		next_t->status = status;
+		next_t->unstable = 0;
 		*by_waitpid = 1;
 	}
 
 	current_entry = entry;
 	note_switch(t, next_t, max_events);
 	return next_t;
+}
+
+static void set_instability(int unstable)
+{
+	struct tasklist_entry* entry;
+	CIRCLEQ_FOREACH(entry, &head, entries) {
+		entry->t.unstable = unstable;
+	}
+}
+
+void rec_sched_set_tasks_unstable()
+{
+	debug("Marking all tasks unstable");
+	set_instability(1);
+}
+
+void rec_sched_set_tasks_stable()
+{
+	debug("Marking all tasks stable");
+	set_instability(0);
 }
 
 /**

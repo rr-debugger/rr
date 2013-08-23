@@ -24,6 +24,25 @@ int rec_sched_get_num_threads();
  * which case, *by_waitpid will be nonzero.)
  */
 struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid);
+
+/**
+ * An invariant of rr scheduling is that all process status changes
+ * happen as a result of rr resuming the execution of a task.  This is
+ * required to keep tracees in known states, preventing events from
+ * happening "behind rr's back".  However, sometimes this is
+ * unavoidable; one case is delivering some kinds of death signals.
+ * When that situation occurs, notify the scheduler by calling this
+ * function: the effect is that the scheduler will always use
+ * |waitpid(-1)| to schedule tasks, thereby assuming nothing about
+ * tasks' statuses.
+ *
+ * When stability returns, call |rec_set_tasks_stable()|.
+ *
+ * TODO: this can fail with multiple task groups.
+ */
+void rec_sched_set_tasks_unstable();
+void rec_sched_set_tasks_stable();
+
 /**
  * Register the new OS task |child|, created by |parent|.  |parent|
  * may be 0 for the first registered task, but must be a registered

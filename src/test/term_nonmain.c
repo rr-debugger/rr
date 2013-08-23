@@ -6,6 +6,7 @@
 #include <sys/types.h>
 
 static void* kill_thread(void* dontcare) {
+	atomic_puts("killing...");
 	kill(getpid(), SIGTERM);
 	atomic_puts("FAILED: kill() didn't work");
 	return NULL;		/* not reached */
