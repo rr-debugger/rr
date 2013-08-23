@@ -95,6 +95,9 @@ struct event {
 			 * for example |load $r 0x0| deterministically
 			 * raises SIGSEGV. */
 			int deterministic;
+			/* Nonzero when this signal has been delivered
+			 * by a ptrace() request. */
+			int delivered;
 		} signal;
 
 		/**

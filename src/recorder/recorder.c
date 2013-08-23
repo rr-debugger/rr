@@ -100,8 +100,8 @@ static void handle_ptrace_event(struct task** tp)
 	/* handle events */
 	int event = GET_PTRACE_EVENT(t->status);
 	if (event != PTRACE_EVENT_NONE) {
-		debug("  %d: handle_ptrace_event %d: syscall %s",
-		      t->tid, event, syscallname(t->event));
+		debug("  %d: handle_ptrace_event %d: event %s",
+		      t->tid, event, strevent(t->event));
 	}
 	switch (event) {
 
@@ -210,22 +210,12 @@ static void handle_ptrace_event(struct task** tp)
 	debug(_msg ": pevent=%d, event=%s",				\
 	      GET_PTRACE_EVENT(_t->status), strevent(_t->event))
 
-/**
- * Resume execution of |t| to the next notable event, such as a
- * syscall.  |t->event| may be mutated if a signal is caught.
- *
- * (Pass DEFAULT_CONT to the |force_syscall| parameter and ignore it;
- * it's an implementation detail.)
- */
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
-static void resume_execution(struct task* t, int force_cont)
+static void task_continue(struct task* t, int force_cont, int sig)
 {
-	int ptrace_event;
-
-	assert(!task_may_be_blocked(t));
-
-	debug_exec_state("EXEC_START", t);
-
+	if (sig) {
+		debug("  delivering %s to %d", signalname(sig), t->tid);
+	}
 	if (t->will_restart && filter_on_) {
 		debug("  PTRACE_SYSCALL to restarted %s",
 		      syscallname(t->last_syscall));
@@ -237,7 +227,7 @@ static void resume_execution(struct task* t, int force_cont)
 		 * syscall_buffer lib in the child, therefore we must
 		 * record in the traditional way (with PTRACE_SYSCALL)
 		 * until it is installed. */
-		sys_ptrace_syscall(t->tid);
+		sys_ptrace_syscall_sig(t->tid, sig);
 	} else {
 		/* When the seccomp filter is on, instead of capturing
 		 * syscalls by using PTRACE_SYSCALL, the filter will
@@ -249,13 +239,30 @@ static void resume_execution(struct task* t, int force_cont)
 		 * process to continue to the actual entry point of
 		 * the syscall (using cont_syscall_block()) and then
 		 * using the same logic as before. */
-		sys_ptrace_cont(t->tid);
+		sys_ptrace_cont_sig(t->tid, sig);
 	}
 	/* TODO: this is incorrect if the syscall isn't restarted
 	 * right away, for example if a signal handler runs in the
 	 * intervening time. */
 	t->will_restart = 0;
+}
 
+/**
+ * Resume execution of |t| to the next notable event, such as a
+ * syscall.  |t->event| may be mutated if a signal is caught.
+ *
+ * (Pass DEFAULT_CONT to the |force_syscall| parameter and ignore it;
+ * it's an implementation detail.)
+ */
+static void resume_execution(struct task* t, int force_cont)
+{
+	int ptrace_event;
+
+	assert(!task_may_be_blocked(t));
+
+	debug_exec_state("EXEC_START", t);
+
+	task_continue(t, force_cont, /*no sig*/0);
 	sys_waitpid(t->tid, &t->status);
 	status_changed(t);
 
@@ -410,7 +417,7 @@ static void syscall_state_changed(struct task** tp, int by_waitpid)
 		 * traps)? */
 		handle_ptrace_event(tp);
 		t = *tp;
-		if (!t || t->event == SYS_vfork) {
+		if (!t) {
 			return;
 		}
 
@@ -648,6 +655,39 @@ static void runnable_state_changed(struct task* t)
 	}
 }
 
+static void signal_state_changed(struct task** tp, int by_waitpid)
+{
+	struct task* t = *tp;
+	int ptrace_event;
+
+	assert(EV_SIGNAL_DELIVERY == t->ev->type);
+
+	if (!t->ev->signal.delivered) {
+		task_continue(t, DEFAULT_CONT, t->ev->signal.no);
+		t->ev->signal.delivered = 1;
+		/* TODO: we should assert this here, right? */
+		t->switchable = 1;
+		return;
+	}
+
+	/* The tracee's waitpid status has changed, so we're finished
+	 * delivering the signal. */
+	pop_signal_delivery(t);
+
+	status_changed(t);
+
+	ptrace_event = GET_PTRACE_EVENT(t->status);
+	if (PTRACE_EVENT_SECCOMP == ptrace_event
+	    || PTRACE_EVENT_SECCOMP_OBSOLETE == ptrace_event) {
+		filter_on_ = TRUE;
+		/* See long comments above. */
+		debug("  (skipping past seccomp-bpf trap)");
+		resume_execution(t, FORCE_SYSCALL);
+	}
+
+	runnable_state_changed(t);
+}
+
 void record()
 {
 	struct task *t = NULL;
@@ -666,6 +706,10 @@ void record()
 		assert(!by_waitpid || task_may_be_blocked(t));
 		if (t->ev && EV_SYSCALL == t->ev->type) {
 			syscall_state_changed(&t, by_waitpid);
+			continue;
+		}
+		if (t->ev && EV_SIGNAL_DELIVERY == t->ev->type) {
+			signal_state_changed(&t, by_waitpid);
 			continue;
 		}
 
