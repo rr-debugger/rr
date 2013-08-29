@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+
+<meta charset="utf-8">
+<title>rr</title>
+
+<section>
+  <h1>How rr works</h1>
+  <footer>mozilla research</footer>
+</section>
+
+<section>
+  <p>Low overhead recording and replay of applications (trees of
+    processes and threads).</p>
+  <p>Record nondeterministic inputs, replay deterministically.</p>
+</section>
+
+<!-----------------------------------------------------------------------------
+-- Why?
+-->
+<section>
+  <h2>Why?</h2>
+</section>
+
+<section>
+  <p>Offline debugging: record intermittent test failures "at scale"
+  online, debug the recordings offline at leisure.</p>
+</section>
+
+<section>
+  <p>Deterministic debugging: record nondeterministic failure once,
+  replay deterministically forever.</p>
+</section>
+
+<section>
+  <p>Omniscient debugging: step backwards in time; issue queries over
+  program state changes.</p>
+</section>
+
+<!-----------------------------------------------------------------------------
+-- Overview
+-->
+<section>
+  <h2>Overview</h2>
+</section>
+
+<section>
+  <p><code>rr record prog --args</code><br />
+    &rarr;<em>saves recording to <code>trace/</code></em></p>
+  <p><code>rr replay trace/</code><br />
+    &rarr;<em>debugger socket drives replay</em></p>
+</section>
+
+<section>
+  <p>Most of an application's execution is deterministic.</p>
+  <p>rr records the <em>nondeterministic</em> parts.</p>
+</section>
+
+<section>
+  <h3>Examples of nondeterministic inputs</h3>
+  <ul>
+    <li><code>clock_gettime(...<span class="highlight">&now</span>);</code></li>
+    <li><code>read(fd, <span class="highlight">buf</span>,
+        4096);</code></li>
+    <li><code>__asm__("<span class="highlight">rdtsc</span>")</code></li>
+    <li><code>ioctl(<span class="highlight">...</span>)</code></li>
+    <li>UNIX signals...</li>
+  </ul>
+</section>
+
+<section>
+  <p>Then during replay, emulate system calls and <code>rdtsc</code>
+  by writing the saved nondeterministic data back to the tracee.</p>
+</section>
+
+<section>
+  <p>Shared-memory multitasking is a nondeterministic "input".</p>
+  <p>... but modern hardware can't record it efficiently.  So rr
+  doesn't record truly parallel executions.</p>
+</section>
+
+<section>
+  <h3>Scheduling tasks</h3>
+  <p>Can switch tasks at syscalls.  Must preempt straight-line code
+  too; <em>and replay the preemptions deterministically</em>.</p>
+</section>
+
+<section>
+  <h3>Hardware performance counters (HPCs)</h3>
+  <p>Recent chips count instructions-retired, branches-retired,
+  ..., and can be programmed to interrupt after a count
+  of <i>x</i>.</p>
+</section>
+
+<section>
+  <p>Simulate task preemption with HPC interrupts.</p>
+  <p>Idea: program insns-retired counter to interrupt
+  after <i>k</i> <sup>&#10033;</sup>.  That <i>k</i> approximates
+  a <em>time slice</em>.</p>
+</section>
+
+<section>
+  <h3>Replaying preemption</h3>
+  <p>Record the insn-retired counter value <i>v</i> to the trace file.
+  During replay, program the interrupt for <i>v</i>.  Voilà.</p>
+</section>
+
+<section>
+  <p>UNIX signals are recorded and replayed like task preemptions.</p>
+  <p>Record counter value <i>v</i> and signum.  Replay by interrupting
+  after <i>v</i> and "delivering" signum.
+</section>
+
+<!-----------------------------------------------------------------------------
+-- System requirements
+-->
+<section>
+  <h2>System requirements</h2>
+</section>
+
+<section>
+  <h3>Basic requirements</h3>
+  <ul>
+    <li>x86 userspace (x86-64 kernel OK)</li>
+    <li>linux with "precise event-based sampling" (PEBS; perf events)
+      support: &gt;= 3.0</li>
+    <li>(<i>optional</i>) linux with seccomp-bpf support: &gt;=
+      3.5</li>
+  </ul>
+</section>
+
+<section>
+  <p>rr touches low-level details of machine architecture, by
+    necessity; f.e. kernel syscall ABI.</p>
+  <p>Supporting more ISAs is "just work"; expect x86-64 soon.</p>
+</section>
+
+<section>
+  <p>Precise HPC events identify points in execution.</p>
+  <p>Precise replay of signals and preemption requires interrupting
+  tracees at these events.</p>
+</section>
+
+<section>
+  <h3><sup>&#10033;</sup>Performance counters are messier in reality</h3>
+  <ul>
+    <li>Insns-retired counter is imprecise.  <em>Use precise
+      retired-branch counter instead</em>.</li>
+    <li>Counter interrupts can overshoot.  <em>Subtract a "skid
+      region"</em>.</li>
+    <li>(<em>So replay point is technically indeterminate.  But
+      doesn't seem to be a problem in practice, yet</em>.)</li>
+  </ul>
+</section>
+
+<section>
+  <p>seccomp-bpf enables rr to <em>selectively trace</em>
+  syscalls.</p>
+  <p>Trace traps are slow; only trap to rr for syscalls that can't be
+  handled in the tracee.</p>
+</section>
+
+<section>
+  <h3>Buffer syscalls; flush buffer as "super event"</h3>
+  <p class="highlight">TODO DIAGRAM</p>
+</section>
+
+<section>
+  <p>seccomp-bpf support is <em>technically</em> optional...</p>
+  <p>... but rr can record over 100x faster with syscall buffering
+  enabled.</p>
+</section>
+
+<section>
+  <h3>No ASLR or ptrace hardening</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<!-----------------------------------------------------------------------------
+-- Recorder implementation
+-->
+<section>
+  <h2>Recorder implementation</h2>
+</section>
+
+<section>
+  <p>Tasks are controlled through the ptrace API.
+  <p>HPCs are controlled through the perf event API.</p>
+</section>
+
+<section>
+  <p>The first traced task is forked from rr.  After
+  that, <code>clone()</code> and <code>fork()</code>from tracees
+  add new tasks.</p>
+  <p>And tasks die at <code>exit()</code>.</p>
+</section>
+
+<section>
+  <h3>Simplified recorder loop</h3>
+  <!-- TODO use incremental list?  ol seems to be broken. -->
+  <pre>
+    while live_task():
+        task t = <span class="highlight">schedule()</span>
+        if not <span class="highlight">status_changed(t)</span>:
+            <span class="highlight">resume_execution(t)</span>
+        <span class="highlight">handle_event(t)</span>
+    </pre>
+    <footer>src/recorder/recorder.c</footer>
+</section>
+
+<section>
+  <h3>Scheduling a task</h3>
+  <pre>
+    task <span class="highlight">schedule()</span>:
+        for each task t, round-robin:
+            if is_runnable(t)
+               or <span class="highlight">status_changed(t)</span>:
+                return t
+        tid = waitpid(ANY_CHILD_TASK)
+        return task_map[tid]
+  </pre>
+  <footer>src/recorder/rec_sched.c</footer>
+</section>
+
+<section>
+  <h3>Tasks changing status</h3>
+  <pre>
+    bool <span class="highlight">status_changed(task t)</span>:
+        # Non-blocking
+        return waitpid(t.tid, WNOHANG)
+
+    <em># Deceptively simple: includes
+    # syscalls, signals, ptrace
+    # events ...</em>
+  </pre>
+  <footer>src/recorder/rec_sched.c</footer>
+</section>
+
+<section>
+  <h3>Resuming task execution</h3>
+  <p><em>Invariant</em>: At most one task is running userspace code.
+  All other tasks are either idle or awaiting completion of a
+  syscall.<sup>&#8224;</sup></p>
+</section>
+
+<section>
+  <h3>Multiple running tasks are nondeterministic</h3>
+  <p class="highlight">TODO EXAMPLE RACE, SYSCALL DIVERGENCE</p>
+</section>
+
+<section>
+  <h3>Resuming a task, simplified</h3>
+    <pre>
+    void <span class="highlight">resume_execution(task t)</span>:
+        ptrace(PTRACE_SYSCALL, t.tid)
+        waitpid(t.tid)  # Blocking
+
+    <em># Again, deceptively simple: traps
+    # for syscalls, signals, ptrace
+    # events ...</em>
+  </pre>
+  <footer>src/recorder/recorder.c</footer>
+</section>
+
+<section>
+  <p>Most recorder work is done
+  for <code><span class="highlight">handle_event(task
+  t)</span></code>.</p>
+  <p>But before looking at it, a few digressions ...</p>
+</section>
+
+<section>
+  <h3>Generating time-slice interrupts</h3>
+  <ul>
+    <li><code>perf_event_open()</code> fd for
+      retired-conditional-branches; details are microarch
+      specific</li>
+    <li>Set event "sample period" to <i>k</i></li>
+    <li>Make event fd O_ASYNC and set tracee task as owner</li>
+    <li>&rarr; <em>tracee sent SIGIO at rbc ≈ <i>k</i></em></li>
+  </ul>
+</section>
+
+<section>
+  <h3>Trapping tracees at rdtsc</h3>
+  <ul>
+    <li><code>prctl(PR_SET_TSC, PR_TSC_SIGSEGV)</code> &rarr; tracees
+      executing rdtsc trap to SIGSEGV</li>
+    <li>rr examines which instruction triggered SIGSEGV</li>
+    <li>if rdtsc, value is recorded and insn is emulated</li>
+  </ul>
+</section>
+
+<section>
+  <p>Tracees generate ptrace events by executing fork, clone, exit,
+    and some other syscalls.</p>
+  <p>ptrace events exist for linux reasons that aren't
+  interesting.</p>
+</section>
+
+<section>
+  <p>(rr tracees can share memory mappings with other processes.</p>
+  <p>Nondeterministic input that must be recorded, but for now, assume
+  "don't do that".)</p>
+</section>
+
+<section>
+  <h3>Tracee events seen
+    by <code><span class="highlight">handle_event()</span></code></h3>
+  <ul>
+    <li>"Pseudo"-signal delivered by implementation of rdtsc or
+      time-slice interrupts</li>
+    <li>Other, "real", signals</li>
+    <li>ptrace events</li>
+    <li>Syscall entry and exit</li>
+  </ul>
+</section>
+
+<section>
+  <h3><span class="highlight">handle_event()</span> structure</h3>
+  <p><span class="todo">TODO</span></p>
+  <footer>src/recorder/*.c
+</section>
+
+<section>
+  <h3>Non-nestable events</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <p>Some syscalls must be executed atomically; can't switch task
+  until syscall finishes.</p>
+  <p><span class="todo">TODO</span> mmap example</p>
+</section>
+
+<section>
+  <p>On the other hand, some syscalls <em>require</em> switching the
+  task; syscall can't finish until the task switches.</p>
+  <p><span class="todo">TODO</span> waitpid example</p>
+</section>
+
+<section>
+  <h3>Scratch buffers for blocking syscalls</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>POSIX signals 101</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Linux signals 202</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Recording signal delivery</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Finishing signal handlers</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Delivering unhandled signals</h3>
+  <p><span class="todo">TODO</span></p>
+  <p><sup>&#8224;</sup>This breaks the rr scheduling invariant.</p>
+</section>
+
+
+<!-----------------------------------------------------------------------------
+-- Syscall buffer
+-->
+<section>
+  <h2>Syscall buffer</h2>
+</section>
+
+<section>
+  <p>ptrace traps are expensive.  Do as much work in tracee process as
+    possible.</p>
+  <p>Use seccomp-bpf to selectively trap syscalls.
+</section>
+
+<section>
+  <p><code>LD_PRELOAD</code> a lib that wraps libc functions.</p>
+  <p>Wrapper functions record kernel return value and outparam data to
+  the <em>syscall buffer</em>.</p>
+</section>
+
+<section>
+  <p>Upside: works "out of the box"; no recompilation necessary.</p>
+  <p>Downside: Exposes rr to glibc internals.  And rr can't wrap
+  syscalls made by glibc itself.</p>
+</section>
+
+<section>
+  <p><em>Untraced</em> syscalls are recorded to syscallbuf by tracee.
+  <em>Traced</em> events recorded by the rr process "flush" the
+  tracee's syscallbuf.</p>
+  <p>Lib falls back on traced syscalls.</p>
+</section>
+
+<section>
+  <h3>Simplified example of wrapper function</h3>
+  <pre>
+int close(int fd)
+{
+   long ret;
+   if (!start_buffer_syscall(SYS_close))
+     /* Fall back on traced syscall. */
+     return syscall(SYS_close, fd);
+   /* Buffer this close() call. */
+   ret = untraced_syscall1(SYS_close, fd);
+   return commit_syscall(SYS_close, ret);
+}
+  </pre>
+</section>
+
+<section>
+  <h3>How untraced syscalls are made</h3>
+  <ul>
+    <li>Create single "untraced" kernel entry point
+      <pre>
+asm("_untraced_syscall:\n\t"
+    "int $0x80");
+      </pre></li>
+    <li>Install filter that passes calls
+    from <code>_untraced_syscall</code>, traps to rr otherwise.</li>
+    </ul>
+</section>
+
+<section>
+  <h3>resume_execution changes for PTRACE_SECCOMP events</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Syscallbuf wrappers of blocking syscalls</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>perf events to the rescue: "descheduled" event</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Handling "desched notifications"</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<!-----------------------------------------------------------------------------
+-- Saved traces
+-->
+<section>
+  <h2>Saved traces</h2>
+</section>
+
+<section>
+  <h3>Trace directory contents</h3>
+  <ul>
+    <li><span class="todo">TODO</span></li>
+    <li><code>arg_env</code></li>
+    <li><code>trace</code></li>
+    <li><code>mmaps</code></li>
+    <li><code>raw_data</code></li>
+    <li><code>syscall_input</code></li>
+  </ul>
+</section>
+
+<!-----------------------------------------------------------------------------
+-- Replayer implementation
+-->
+<section>
+  <h2>Replayer implementation</h2>
+</section>
+
+<section>
+  <p>Emulate most syscalls using trace data.</p>
+  <p>Actually execute a small number.</p>
+</section>
+
+<section>
+  <h3>Built around PTRACE_SYSEMU</h3>
+  <p><span class="todo">TODO</span> show difference from
+  PTRACE_SYSCALL</p>
+</section>
+
+<section>
+  <h3>Main loop overview</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Replaying time-slice interrupts, in theory</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Replaying time-slice interrupts, in practice</h3>
+  <ul>
+    <li><span class="todo">TODO</span>Compare register files to
+    approximate exact execution point</li>
+    <li><span class="todo">TODO</span>Set a breakpoint on target
+    $ip to avoid single-stepping</li>
+  </ul>
+</section>
+
+<section>
+  <h3>Delivering signals</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Replaying buffered syscalls</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<!-----------------------------------------------------------------------------
+-- Debugger interface
+-->
+<section>
+  <h2>Debugger interface</h2>
+</section>
+
+<section>
+  <p><code>(gdb) set i 10</code> can cause replay divergence.</p>
+  <p>So you're not allowed to do it.</p>
+</section>
+
+<section>
+  <h3>Light wrapper around gdb protocol</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Replayer core passes through to ptrace requests of tracee</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>SIGTRAP, SIGTRAP, SIGTRAP; breakpoints, int3, stepi</h3>
+  <p><span class="todo">TODO</span>distinguishing causes of
+  traps</p>
+</section>
+
+<!-----------------------------------------------------------------------------
+-- Future work
+-->
+<section>
+  <h2>Future work</h2>
+</section>
+
+<section>
+  <h3>Roadmap for near future</h3>
+  <p><span class="todo">TODO</span></p>
+  <ul>
+    <li>0.1</li>
+    <li>0.2</li>
+    <li>0.3</li>
+    <li>1.0</li>
+  </ul>
+</section>
+
+<section>
+  <h3>Checkpointing</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Omniscient debugging</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Exploratory scheduling; targeted recording</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Copy traces across machines</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Record shared memory mappings</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Record ptrace API</h3>
+  <p><span class="todo">TODO</span></p>
+</section>
+
+<section>
+  <h3>Port, port, port</h3>
+  <p><span class="todo">TODO</span></p>
+  <ul>
+    <li>ARM</li>
+    <li>GPU drivers (NVIDIA, ATI, ...)</li>
+    <li>Windows NT kernel</li>
+    <li>Darwin kernel</li>
+  </ul>
+</section>
+
+<section>
+  <h3>Thanks from the rr team!</h3>
+  <ul>
+    <li><a href="http://rr-project.org/">rr-project.org</a></li>
+    <li><a href="https://github.com/mozilla/rr">github.com/mozilla/rr</a></li>
+    <li><a href="https://mail.mozilla.org/listinfo/rr-dev">mail.mozilla.org/listinfo/rr-dev</a></li>
+    <li>#research on irc.mozilla.org</li>
+  </ul>
+</section>
+
+<style>
+.highlight {
+  color: red;
+  background-color: yellow;
+  font-weight: bold;
+}
+.todo {
+  color: aqua;
+  background-color: purple;
+  font-weight: bold;
+}
+</style>
+
+<!-- Maybe a font from http://www.google.com/webfonts ? -->
+<link href='http://fonts.googleapis.com/css?family=Oswald' rel='stylesheet'>
+
+<style>
+  html, .view body { background-color: black; counter-reset: slideidx; }
+  body, .view section { background-color: white; border-radius: 12px }
+  /* A section is a slide. It's size is 800x600, and this will never change */
+  section, .view head > title {
+      /* The font from Google */
+      font-family: 'Oswald', arial, serif;
+      font-size: 30px;
+  }
+
+  .view section:after {
+    counter-increment: slideidx;
+    content: counter(slideidx, decimal-leading-zero);
+    position: absolute; bottom: -80px; right: 100px;
+    color: white;
+  }
+
+  .view head > title {
+    color: white;
+    text-align: center;
+    margin: 1em 0 1em 0;
+  }
+
+  h1, h2 {
+    margin-top: 200px;
+    text-align: center;
+    font-size: 80px;
+  }
+  h3 {
+    margin: 100px 0 50px 100px;
+  }
+
+  ul {
+      margin: 50px 200px;
+  }
+  li > ul {
+      margin: 15px 50px;
+  }
+
+  p {
+    margin: 75px;
+    font-size: 50px;
+  }
+
+  blockquote {
+    height: 100%;
+    background-color: black;
+    color: white;
+    font-size: 60px;
+    padding: 50px;
+  }
+  blockquote:before {
+    content: open-quote;
+  }
+  blockquote:after {
+    content: close-quote;
+  }
+
+  /* Figures are displayed full-page, with the caption
+     on top of the image/video */
+  figure {
+    background-color: black;
+    width: 100%;
+    height: 100%;
+  }
+  figure > * {
+    position: absolute;
+  }
+  figure > img, figure > video {
+    width: 100%; height: 100%;
+  }
+  figcaption {
+    margin: 70px;
+    font-size: 50px;
+  }
+
+  footer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    padding: 40px;
+    text-align: right;
+    background-color: #F3F4F8;
+    border-top: 1px solid #CCC;
+  }
+
+  /* Transition effect */
+  /* Feel free to change the transition effect for original
+     animations. See here:
+     https://developer.mozilla.org/en/CSS/CSS_transitions
+     How to use CSS3 Transitions: */
+  section {
+    -moz-transition: left 400ms linear 0s;
+    -webkit-transition: left 400ms linear 0s;
+    -ms-transition: left 400ms linear 0s;
+    transition: left 400ms linear 0s;
+  }
+  .view section {
+    -moz-transition: none;
+    -webkit-transition: none;
+    -ms-transition: none;
+    transition: none;
+  }
+
+  .view section[aria-selected] {
+    border: 5px red solid;
+  }
+
+  /* Before */
+  section { left: -150%; }
+  /* Now */
+  section[aria-selected] { left: 0; }
+  /* After */
+  section[aria-selected] ~ section { left: +150%; }
+
+  /* Incremental elements */
+
+  /* By default, visible */
+  .incremental > * { opacity: 1; }
+
+  /* The current item */
+  .incremental > *[aria-selected] { opacity: 1; }
+
+  /* The items to-be-selected */
+  .incremental > *[aria-selected] ~ * { opacity: 0; }
+
+  /* The progressbar, at the bottom of the slides, show the global
+     progress of the presentation. */
+  #progress-bar {
+    height: 2px;
+    background: #AAA;
+  }
+</style>
+
+<!-- {{{{ dzslides core
+#
+#
+#     __  __  __       .  __   ___  __
+#    |  \  / /__` |    | |  \ |__  /__`
+#    |__/ /_ .__/ |___ | |__/ |___ .__/ core :€
+#
+#
+# The following block of code is not supposed to be edited.
+# But if you want to change the behavior of these slides,
+# feel free to hack it!
+#
+-->
+
+<div id="progress-bar"></div>
+
+<!-- Default Style -->
+<style>
+  * { margin: 0; padding: 0; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; box-sizing: border-box; }
+  [role="note"] { display: none; }
+  body {
+    width: 800px; height: 600px;
+    margin-left: -400px; margin-top: -300px;
+    position: absolute; top: 50%; left: 50%;
+    overflow: hidden;
+    display: none;
+  }
+  .view body {
+    position: static;
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    display: inline-block;
+    overflow: visible; overflow-x: hidden;
+    /* undo Dz.onresize */
+    transform: none !important;
+    -moz-transform: none !important;
+    -webkit-transform: none !important;
+    -o-transform: none !important;
+    -ms-transform: none !important;
+  }
+  .view head, .view head > title { display: block }
+  section {
+    position: absolute;
+    pointer-events: none;
+    width: 100%; height: 100%;
+  }
+  .view section {
+    pointer-events: auto;
+    position: static;
+    width: 800px; height: 600px;
+    margin: -150px -200px;
+    float: left;
+
+    transform: scale(.4);
+    -moz-transform: scale(.4);
+    -webkit-transform: scale(.4);
+    -o-transform: scale(.4);
+    -ms-transform: scale(.4);
+  }
+  .view section > * { pointer-events: none; }
+  section[aria-selected] { pointer-events: auto; }
+  html { overflow: hidden; }
+  html.view { overflow: visible; }
+  body.loaded { display: block; }
+  .incremental {visibility: hidden; }
+  .incremental[active] {visibility: visible; }
+  #progress-bar{
+    bottom: 0;
+    position: absolute;
+    -moz-transition: width 400ms linear 0s;
+    -webkit-transition: width 400ms linear 0s;
+    -ms-transition: width 400ms linear 0s;
+    transition: width 400ms linear 0s;
+  }
+  .view #progress-bar {
+    display: none;
+  }
+</style>
+
+<script>
+  var Dz = {
+    remoteWindows: [],
+    idx: -1,
+    step: 0,
+    html: null,
+    slides: null,
+    progressBar : null,
+    params: {
+      autoplay: "1"
+    }
+  };
+
+  Dz.init = function() {
+    document.body.className = "loaded";
+    this.slides = Array.prototype.slice.call($$("body > section"));
+    this.progressBar = $("#progress-bar");
+    this.html = document.body.parentNode;
+    this.setupParams();
+    this.onhashchange();
+    this.setupTouchEvents();
+    this.onresize();
+    this.setupView();
+  }
+
+  Dz.setupParams = function() {
+    var p = window.location.search.substr(1).split('&');
+    p.forEach(function(e, i, a) {
+      var keyVal = e.split('=');
+      Dz.params[keyVal[0]] = decodeURIComponent(keyVal[1]);
+    });
+  // Specific params handling
+    if (!+this.params.autoplay)
+      $$.forEach($$("video"), function(v){ v.controls = true });
+  }
+
+  Dz.onkeydown = function(aEvent) {
+    // Don't intercept keyboard shortcuts
+    if (aEvent.altKey
+      || aEvent.ctrlKey
+      || aEvent.metaKey
+      || aEvent.shiftKey) {
+      return;
+    }
+    if ( aEvent.keyCode == 37 // left arrow
+      || aEvent.keyCode == 38 // up arrow
+      || aEvent.keyCode == 33 // page up
+    ) {
+      aEvent.preventDefault();
+      this.back();
+    }
+    if ( aEvent.keyCode == 39 // right arrow
+      || aEvent.keyCode == 40 // down arrow
+      || aEvent.keyCode == 34 // page down
+    ) {
+      aEvent.preventDefault();
+      this.forward();
+    }
+    if (aEvent.keyCode == 35) { // end
+      aEvent.preventDefault();
+      this.goEnd();
+    }
+    if (aEvent.keyCode == 36) { // home
+      aEvent.preventDefault();
+      this.goStart();
+    }
+    if (aEvent.keyCode == 32) { // space
+      aEvent.preventDefault();
+      this.toggleContent();
+    }
+    if (aEvent.keyCode == 70) { // f
+      aEvent.preventDefault();
+      this.goFullscreen();
+    }
+    if (aEvent.keyCode == 79) { // o
+      aEvent.preventDefault();
+      this.toggleView();
+    }
+  }
+
+  /* Touch Events */
+
+  Dz.setupTouchEvents = function() {
+    var orgX, newX;
+    var tracking = false;
+
+    var db = document.body;
+    db.addEventListener("touchstart", start.bind(this), false);
+    db.addEventListener("touchmove", move.bind(this), false);
+
+    function start(aEvent) {
+      aEvent.preventDefault();
+      tracking = true;
+      orgX = aEvent.changedTouches[0].pageX;
+    }
+
+    function move(aEvent) {
+      if (!tracking) return;
+      newX = aEvent.changedTouches[0].pageX;
+      if (orgX - newX > 100) {
+        tracking = false;
+        this.forward();
+      } else {
+        if (orgX - newX < -100) {
+          tracking = false;
+          this.back();
+        }
+      }
+    }
+  }
+
+  Dz.setupView = function() {
+    document.body.addEventListener("click", function ( e ) {
+      if (!Dz.html.classList.contains("view")) return;
+      if (!e.target || e.target.nodeName != "SECTION") return;
+
+      Dz.html.classList.remove("view");
+      Dz.setCursor(Dz.slides.indexOf(e.target) + 1);
+    }, false);
+  }
+
+  /* Adapt the size of the slides to the window */
+
+  Dz.onresize = function() {
+    var db = document.body;
+    var sx = db.clientWidth / window.innerWidth;
+    var sy = db.clientHeight / window.innerHeight;
+    var transform = "scale(" + (1/Math.max(sx, sy)) + ")";
+
+    db.style.MozTransform = transform;
+    db.style.WebkitTransform = transform;
+    db.style.OTransform = transform;
+    db.style.msTransform = transform;
+    db.style.transform = transform;
+  }
+
+
+  Dz.getNotes = function(aIdx) {
+    var s = $("section:nth-of-type(" + aIdx + ")");
+    var d = s.$("[role='note']");
+    return d ? d.innerHTML : "";
+  }
+
+  Dz.onmessage = function(aEvent) {
+    var argv = aEvent.data.split(" "), argc = argv.length;
+    argv.forEach(function(e, i, a) { a[i] = decodeURIComponent(e) });
+    var win = aEvent.source;
+    if (argv[0] === "REGISTER" && argc === 1) {
+      this.remoteWindows.push(win);
+      this.postMsg(win, "REGISTERED", document.title, this.slides.length);
+      this.postMsg(win, "CURSOR", this.idx + "." + this.step);
+      return;
+    }
+    if (argv[0] === "BACK" && argc === 1)
+      this.back();
+    if (argv[0] === "FORWARD" && argc === 1)
+      this.forward();
+    if (argv[0] === "START" && argc === 1)
+      this.goStart();
+    if (argv[0] === "END" && argc === 1)
+      this.goEnd();
+    if (argv[0] === "TOGGLE_CONTENT" && argc === 1)
+      this.toggleContent();
+    if (argv[0] === "SET_CURSOR" && argc === 2)
+      window.location.hash = "#" + argv[1];
+    if (argv[0] === "GET_CURSOR" && argc === 1)
+      this.postMsg(win, "CURSOR", this.idx + "." + this.step);
+    if (argv[0] === "GET_NOTES" && argc === 1)
+      this.postMsg(win, "NOTES", this.getNotes(this.idx));
+  }
+
+  Dz.toggleContent = function() {
+    // If a Video is present in this new slide, play it.
+    // If a Video is present in the previous slide, stop it.
+    var s = $("section[aria-selected]");
+    if (s) {
+      var video = s.$("video");
+      if (video) {
+        if (video.ended || video.paused) {
+          video.play();
+        } else {
+          video.pause();
+        }
+      }
+    }
+  }
+
+  Dz.setCursor = function(aIdx, aStep) {
+    // If the user change the slide number in the URL bar, jump
+    // to this slide.
+    aStep = (aStep != 0 && typeof aStep !== "undefined") ? "." + aStep : ".0";
+    window.location.hash = "#" + aIdx + aStep;
+  }
+
+  Dz.onhashchange = function() {
+    var cursor = window.location.hash.split("#"),
+        newidx = 1,
+        newstep = 0;
+    if (cursor.length == 2) {
+      newidx = ~~cursor[1].split(".")[0];
+      newstep = ~~cursor[1].split(".")[1];
+      if (newstep > Dz.slides[newidx - 1].$$('.incremental > *').length) {
+        newstep = 0;
+        newidx++;
+      }
+    }
+    this.setProgress(newidx, newstep);
+    if (newidx != this.idx) {
+      this.setSlide(newidx);
+    }
+    if (newstep != this.step) {
+      this.setIncremental(newstep);
+    }
+    for (var i = 0; i < this.remoteWindows.length; i++) {
+      this.postMsg(this.remoteWindows[i], "CURSOR", this.idx + "." + this.step);
+    }
+  }
+
+  Dz.back = function() {
+    if (this.idx == 1 && this.step == 0) {
+      return;
+    }
+    if (this.step == 0) {
+      this.setCursor(this.idx - 1,
+                     this.slides[this.idx - 2].$$('.incremental > *').length);
+    } else {
+      this.setCursor(this.idx, this.step - 1);
+    }
+  }
+
+  Dz.forward = function() {
+    if (this.idx >= this.slides.length &&
+        this.step >= this.slides[this.idx - 1].$$('.incremental > *').length) {
+        return;
+    }
+    if (this.step >= this.slides[this.idx - 1].$$('.incremental > *').length) {
+      this.setCursor(this.idx + 1, 0);
+    } else {
+      this.setCursor(this.idx, this.step + 1);
+    }
+  }
+
+  Dz.goStart = function() {
+    this.setCursor(1, 0);
+  }
+
+  Dz.goEnd = function() {
+    var lastIdx = this.slides.length;
+    var lastStep = this.slides[lastIdx - 1].$$('.incremental > *').length;
+    this.setCursor(lastIdx, lastStep);
+  }
+
+  Dz.toggleView = function() {
+    this.html.classList.toggle("view");
+
+    if (this.html.classList.contains("view")) {
+      $("section[aria-selected]").scrollIntoView(true);
+    }
+  }
+
+  Dz.setSlide = function(aIdx) {
+    this.idx = aIdx;
+    var old = $("section[aria-selected]");
+    var next = $("section:nth-of-type("+ this.idx +")");
+    if (old) {
+      old.removeAttribute("aria-selected");
+      var video = old.$("video");
+      if (video) {
+        video.pause();
+      }
+    }
+    if (next) {
+      next.setAttribute("aria-selected", "true");
+      if (this.html.classList.contains("view")) {
+        next.scrollIntoView();
+      }
+      var video = next.$("video");
+      if (video && !!+this.params.autoplay) {
+        video.play();
+      }
+    } else {
+      // That should not happen
+      this.idx = -1;
+      // console.warn("Slide doesn't exist.");
+    }
+  }
+
+  Dz.setIncremental = function(aStep) {
+    this.step = aStep;
+    var old = this.slides[this.idx - 1].$('.incremental > *[aria-selected]');
+    if (old) {
+      old.removeAttribute('aria-selected');
+    }
+    var incrementals = $$('.incremental');
+    if (this.step <= 0) {
+      $$.forEach(incrementals, function(aNode) {
+        aNode.removeAttribute('active');
+      });
+      return;
+    }
+    var next = this.slides[this.idx - 1].$$('.incremental > *')[this.step - 1];
+    if (next) {
+      next.setAttribute('aria-selected', true);
+      next.parentNode.setAttribute('active', true);
+      var found = false;
+      $$.forEach(incrementals, function(aNode) {
+        if (aNode != next.parentNode)
+          if (found)
+            aNode.removeAttribute('active');
+          else
+            aNode.setAttribute('active', true);
+        else
+          found = true;
+      });
+    } else {
+      setCursor(this.idx, 0);
+    }
+    return next;
+  }
+
+  Dz.goFullscreen = function() {
+    var html = $('html'),
+        requestFullscreen = html.requestFullscreen || html.requestFullScreen || html.mozRequestFullScreen || html.webkitRequestFullScreen;
+    if (requestFullscreen) {
+      requestFullscreen.apply(html);
+    }
+  }
+  
+  Dz.setProgress = function(aIdx, aStep) {
+    var slide = $("section:nth-of-type("+ aIdx +")");
+    if (!slide)
+      return;
+    var steps = slide.$$('.incremental > *').length + 1,
+        slideSize = 100 / (this.slides.length - 1),
+        stepSize = slideSize / steps;
+    this.progressBar.style.width = ((aIdx - 1) * slideSize + aStep * stepSize) + '%';
+  }
+  
+  Dz.postMsg = function(aWin, aMsg) { // [arg0, [arg1...]]
+    aMsg = [aMsg];
+    for (var i = 2; i < arguments.length; i++)
+      aMsg.push(encodeURIComponent(arguments[i]));
+    aWin.postMessage(aMsg.join(" "), "*");
+  }
+  
+  function init() {
+    Dz.init();
+    window.onkeydown = Dz.onkeydown.bind(Dz);
+    window.onresize = Dz.onresize.bind(Dz);
+    window.onhashchange = Dz.onhashchange.bind(Dz);
+    window.onmessage = Dz.onmessage.bind(Dz);
+  }
+
+  window.onload = init;
+</script>
+
+
+<script> // Helpers
+  if (!Function.prototype.bind) {
+    Function.prototype.bind = function (oThis) {
+
+      // closest thing possible to the ECMAScript 5 internal IsCallable
+      // function 
+      if (typeof this !== "function")
+      throw new TypeError(
+        "Function.prototype.bind - what is trying to be fBound is not callable"
+      );
+
+      var aArgs = Array.prototype.slice.call(arguments, 1),
+          fToBind = this,
+          fNOP = function () {},
+          fBound = function () {
+            return fToBind.apply( this instanceof fNOP ? this : oThis || window,
+                   aArgs.concat(Array.prototype.slice.call(arguments)));
+          };
+
+      fNOP.prototype = this.prototype;
+      fBound.prototype = new fNOP();
+
+      return fBound;
+    };
+  }
+
+  var $ = (HTMLElement.prototype.$ = function(aQuery) {
+    return this.querySelector(aQuery);
+  }).bind(document);
+
+  var $$ = (HTMLElement.prototype.$$ = function(aQuery) {
+    return this.querySelectorAll(aQuery);
+  }).bind(document);
+
+  $$.forEach = function(nodeList, fun) {
+    Array.prototype.forEach.call(nodeList, fun);
+  }
+
+</script>
+<!-- vim: set fdm=marker: }}} -->
