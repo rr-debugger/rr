@@ -1,6 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Sched"
+//#define MONITOR_UNSWITCHABLE_WAITS
 
 #include "rec_sched.h"
 
@@ -84,12 +85,21 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 			/* |t| is un-switchable, but not runnable in
 			 * this state.  Wait for it to change state
 			 * before "scheduling it", so avoid
-			 * busy-waiting with our client.
-			 *
-			 * TODO: warn about long waits here,
-			 * indicating that the syscall should be made
-			 * switchable if possible. */
+			 * busy-waiting with our client. */
+#ifdef MONITOR_UNSWITCHABLE_WAITS
+			double start = now_sec(), wait_duration;
+#endif
+
 			sys_waitpid(t->tid, &t->status);
+
+#ifdef MONITOR_UNSWITCHABLE_WAITS
+			wait_duration = now_sec() - start;
+			if (wait_duration >= 0.010) {
+				warn("Waiting for unswitchable %s took %g ms",
+				     strevent(t->event),
+				     1000.0 * wait_duration);
+			}
+#endif
 			*by_waitpid = 1;
 			debug("  new status is 0x%x", t->status);
 		}
