@@ -161,7 +161,7 @@
 
 <section>
   <h3>Buffer syscalls; flush buffer as "super event"</h3>
-  <p class="highlight">TODO DIAGRAM</p>
+  <p class="todo">TODO DIAGRAM</p>
 </section>
 
 <section>
@@ -172,7 +172,7 @@
 
 <section>
   <h3>No ASLR or ptrace hardening</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -317,55 +317,55 @@
 
 <section>
   <h3><span class="highlight">handle_event()</span> structure</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
   <footer>src/recorder/*.c
 </section>
 
 <section>
   <h3>Non-nestable events</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <p>Some syscalls must be executed atomically; can't switch task
   until syscall finishes.</p>
-  <p><span class="todo">TODO</span> mmap example</p>
+  <p class="todo">TODO mmap example</p>
 </section>
 
 <section>
-  <p>On the other hand, some syscalls <em>require</em> switching the
-  task; syscall can't finish until the task switches.</p>
-  <p><span class="todo">TODO</span> waitpid example</p>
+  <p>On the other hand, some syscalls <em>require</em> switching;
+  syscall can't finish until the task switches.</p>
+  <p class="todo">TODO waitpid example</p>
 </section>
 
 <section>
   <h3>Scratch buffers for blocking syscalls</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>POSIX signals 101</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Linux signals 202</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Recording signal delivery</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Finishing signal handlers</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Delivering unhandled signals</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
   <p><sup>&#8224;</sup>This breaks the rr scheduling invariant.</p>
 </section>
 
@@ -433,22 +433,22 @@ asm("_untraced_syscall:\n\t"
 
 <section>
   <h3>resume_execution changes for PTRACE_SECCOMP events</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Syscallbuf wrappers of blocking syscalls</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>perf events to the rescue: "descheduled" event</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Handling "desched notifications"</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -461,7 +461,7 @@ asm("_untraced_syscall:\n\t"
 <section>
   <h3>Trace directory contents</h3>
   <ul>
-    <li><span class="todo">TODO</span></li>
+    <li class="todo">TODO</li>
     <li><code>arg_env</code></li>
     <li><code>trace</code></li>
     <li><code>mmaps</code></li>
@@ -484,18 +484,18 @@ asm("_untraced_syscall:\n\t"
 
 <section>
   <h3>Built around PTRACE_SYSEMU</h3>
-  <p><span class="todo">TODO</span> show difference from
+  <p class="todo">TODO</span> show difference from
   PTRACE_SYSCALL</p>
 </section>
 
 <section>
   <h3>Main loop overview</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Replaying time-slice interrupts, in theory</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
@@ -510,12 +510,12 @@ asm("_untraced_syscall:\n\t"
 
 <section>
   <h3>Delivering signals</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Replaying buffered syscalls</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -532,17 +532,17 @@ asm("_untraced_syscall:\n\t"
 
 <section>
   <h3>Light wrapper around gdb protocol</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Replayer core passes through to ptrace requests of tracee</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>SIGTRAP, SIGTRAP, SIGTRAP; breakpoints, int3, stepi</h3>
-  <p><span class="todo">TODO</span>distinguishing causes of
+  <p class="todo">TODO</span>distinguishing causes of
   traps</p>
 </section>
 
@@ -555,7 +555,7 @@ asm("_untraced_syscall:\n\t"
 
 <section>
   <h3>Roadmap for near future</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
   <ul>
     <li>0.1</li>
     <li>0.2</li>
@@ -566,37 +566,37 @@ asm("_untraced_syscall:\n\t"
 
 <section>
   <h3>Checkpointing</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Omniscient debugging</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Exploratory scheduling; targeted recording</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Copy traces across machines</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Record shared memory mappings</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Record ptrace API</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
 </section>
 
 <section>
   <h3>Port, port, port</h3>
-  <p><span class="todo">TODO</span></p>
+  <p class="todo">TODO</p>
   <ul>
     <li>ARM</li>
     <li>GPU drivers (NVIDIA, ATI, ...)</li>
