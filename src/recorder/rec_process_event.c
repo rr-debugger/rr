@@ -693,9 +693,8 @@ void rec_process_syscall(struct task *t)
 
 	read_child_registers(tid, &regs);
 
-	debug("%d: processing syscall: %s(%d) -- time: %u  status: %x",
-	      tid, syscallname(syscall), syscall, get_global_time(),
-	      t->exec_state);
+	debug("%d: processing syscall: %s(%d) -- time: %u",
+	      tid, syscallname(syscall), syscall, get_global_time());
 
 	if (t->desched_rec) {
 		const struct syscallbuf_record* rec = t->desched_rec;

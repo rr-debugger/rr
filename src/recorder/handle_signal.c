@@ -131,9 +131,8 @@ static int advance_syscall_boundary(struct task* t,
 static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 				    struct user_regs_struct* regs)
 {
-	int call = t->event;
+	int call, sig;
 	uint64_t nr_descheds;
-	int expecting_extra_sigio = 1;
 
 	assert(SIGIO == si->si_signo);
 
@@ -145,30 +144,27 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 
 	/* TODO: how can signals interrupt us here? */
 
-	/* The desched event just fired.  The tracee can be in any of
-	 * these intervals
+	/* The desched event just fired.  That implies that the
+	 * arm-desched ioctl went into effect, and that the
+	 * disarm-desched syscall didn't take effect.  Since a signal
+	 * is pending for the tracee, then if the tracee was in a
+	 * syscall, linux has exited it with an -ERESTART* error code.
+	 * That means the tracee is about to (re-)enter either
 	 *
-	 *  A. [ arm-desched-ioctl succeeds, exit arm ioctl ]
-	 *  B. ( exit arm ioctl, enter buffered syscall ]
-	 *  C. ( enter buffered syscall, exit buffered syscall ]
-	 *  D. ( exit buffered syscall, enter disarm-desched-event ioctl ]
-	 *  E. ( enter disarm ioctl, exit disarm ioctl ]
-	 *  F. ( exit disarm ioctl, ... )
+	 *  1. buffered syscall
+	 *  2. disarm-desched ioctl syscall
 	 *
-	 * If the tracee has finished its buffered syscall, then the
-	 * desched event can safely be ignored, and the tracee sent
-	 * back along its way.
+	 * We can figure out which one by simply issuing a
+	 * ptrace(SYSCALL) and examining the tracee's registers.
 	 *
-	 * Otherwise, we want to ensure that the tracee has at least
-	 * entered its buffered syscall.  The desched event is
-	 * one-shot, for all intents and purposes, so if the tracee
-	 * /isn't/ in its buffered syscall, then we can't re-arm the
-	 * desched event to guard against the syscall blocking.  We
-	 * also want to leave the tracee in a consistent state for the
-	 * purposes of replay.
+	 * If the tracee enters the disarm-desched ioctl, it's going
+	 * to commit a record of the buffered syscall to the
+	 * syscallbuf, and we can safely send the tracee back on its
+	 * way, ignoring the desched completely.
 	 *
-	 * So, we examine the tracee's registers and see what needs to
-	 * be done.
+	 * If it enters the buffered syscall, then the desched event
+	 * has served its purpose and we need to prepare the tracee to
+	 * be context-switched.
 	 *
 	 * One implementation note is that when the tracer is
 	 * descheduled in interval (C) above, we see *two* SIGIOs.
@@ -206,107 +202,29 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 * useful. */
 	disarm_desched_event(t);
 
-	while (1) {
-		if (is_disarm_desched_event_syscall(t, regs)) {
-			/* Tracee is in interval (D) or (E) above.  It
-			 * doesn't matter which one, because we just
-			 * proved that the tracee has finished its
-			 * buffered syscall.  We can let it go free
-			 * now.  We don't need to record any events
-			 * for replay because this wasn't an actual
-			 * desched-during-buffered-syscall; we can
-			 * pretend this never happened. */
-			debug("  (at disarm-desched, so finished buffered syscall; resuming)");
-			return USR_NOOP;
-		}
-		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
-		    && !is_arm_desched_event_syscall(t, regs)) {
-			/* Tracee is in interval (B) or (C).  That's
-			 * the consistent state we want it in. */
-			if (ENOSYS != regs->eax && -ERESTARTSYS != regs->eax) {
-				debug("  (finished buffered syscall with ret %ld; resuming)",
-				      regs->eax);
-				return USR_NOOP;
-			}
-			if (SYS_restart_syscall == regs->orig_eax) {
-				/* If we'll be restarting the syscall,
-				 * the desched must have interrupted
-				 * the tracee after it already entered
-				 * the syscall.  In that case,
-				 * |t->event| will have recorded the
-				 * syscall. */
-				assert(call > 0);
-			} else {
-				call = regs->orig_eax;
-			}
-			break;
-		}
-		/* Tracee is either in interval (A) or it's executing
-		 * in userspace between syscalls.  Advance it to a
-		 * safe place.  Since we proved that the tracee isn't
-		 * in its buffered syscall, this call can't block. */
-		advance_syscall_boundary(t, regs);
-		expecting_extra_sigio = 0;
+	/* Decline to deliver the SIGIO to the tracee, and eat the
+	 * extraneous SIGIO. */
+	sig = advance_syscall_boundary(t, regs);
+	assert_exec(t, SIGIO == sig,
+		    "Trying to skip redundant SIGIO after desched event, but got sig %s at $ip %p (untraced entry %p); desched? %s; syscall %s",
+		    signalname(sig),
+		    (void*)regs->eip, t->untraced_syscall_ip,
+		    is_desched_event_syscall(t, regs) ? "yes" : "no",
+		    syscallname(regs->orig_eax));
+
+	/* Continue the tracee to its next syscall entry. */
+	advance_syscall_boundary(t, regs);
+	if (is_disarm_desched_event_syscall(t, regs)) {
+		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
+		return USR_NOOP;
 	}
 
-	/* Stash away this breadcrumb so that we can figure out what
-	 * syscall the tracee was in, and how much "scratch" space it
-	 * carved off the syscallbuf, if needed. */
+	/* The tracee is (re-)entering the buffered syscall.  Stash
+	 * away this breadcrumb so that we can figure out what syscall
+	 * the tracee was in, and how much "scratch" space it carved
+	 * off the syscallbuf, if needed. */
 	t->desched_rec = next_record(t->syscallbuf_hdr);
-
-	if (call < 0) {
-		/* For reasons not understood the least bit, the
-		 * tracee's orig_eax sometimes has a bizarre negative
-		 * number like -240.  (Maybe it's trapping /right/ at
-		 * the return from the syscall, and orig_eax has been
-		 * stomped?)  Regardless of the source of the weird
-		 * number, we can't recover the syscall info from
-		 * ptrace (at least, cgjones doesn't know how to).  So
-		 * instead, we recover the breadcrumb that the
-		 * syscallbuf code helpfully left us before arming the
-		 * desched event.
-		 *
-		 * It's legal for us to dereference the next_record()
-		 * pointer, because we know the
-		 * |start_commit_buffered_syscall()| check for this
-		 * descheduled syscall must have succeeded, and we
-		 * know it hasn't been committed by definition,
-		 * because we're handling a desched event. */
-		debug("  saw garbage orig_eax: 0x%x, reading breadcrumb",
-		      call);
-		call = t->desched_rec->syscallno;
-		assert_exec(t, 0 <= call, "Garbled syscallbuf breadcrumb %d",
-			    call);
-	}
-
-	if (expecting_extra_sigio) {
-		int sig;
-		/* See long comment above; eat the redundant desched,
-		 * if we need to. */
-		debug("  (eating redudant SIGIO)");
-		sig = advance_syscall_boundary(t, regs);
-		assert_exec(t,
-			    (SIGIO == sig 
-			     && SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
-			     && !is_desched_event_syscall(t, regs)
-			     && (SYS_restart_syscall == regs->orig_eax
-				 || call == regs->orig_eax
-				 /* (the weird case above) */
-				 || (regs->orig_eax < 0 && call > 0))),
-			    "Trying to skip redundant SIGIO after desched event, but got sig %s at $ip %p (untraced entry %p); desched? %s; syscall %s; prev syscall %s",
-			    signalname(sig),
-			    (void*)regs->eip, t->untraced_syscall_ip,
-			    is_desched_event_syscall(t, regs) ? "yes" : "no",
-			    syscallname(regs->orig_eax), syscallname(call));
-	}
-
-	if (-ERESTARTSYS == regs->eax) {
-		int sig = advance_syscall_boundary(t, regs);
-		debug("  (restarted ERESTARTSYS syscall)");
-		assert(STOPSIG_SYSCALL == sig);
-		assert(-ENOSYS == regs->eax);
-		assert(call == regs->orig_eax);
-	}
+	call = t->desched_rec->syscallno;
 
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));
