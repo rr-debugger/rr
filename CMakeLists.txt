@@ -116,6 +116,7 @@ set(BASIC_TESTS
   simple
   splice
   step_thread
+  switch_read
   term_nonmain
   tgkill
   threads
