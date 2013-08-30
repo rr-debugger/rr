@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh switch_read "$@"
+compare_test EXIT-SUCCESS
