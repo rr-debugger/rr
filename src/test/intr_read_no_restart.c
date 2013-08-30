@@ -86,7 +86,6 @@ int main(int argc, char *argv[]) {
 	char token = start_token;
 	struct timeval ts;
 
-
 	/* (Kick on the syscallbuf if it's enabled.) */
 	gettimeofday(&ts, NULL);
 
