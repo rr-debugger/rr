@@ -229,13 +229,6 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));
 
-	if (SYS_restart_syscall == regs->orig_eax) {
-		/* If we'll be resuming this as a "restart syscall",
-		 * then note that the last started syscall was the one
-		 * interrupted by desched. */
-		t->last_syscall = call;
-	}
-
 	return call;
 }
 
