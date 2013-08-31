@@ -297,12 +297,11 @@ struct task {
 	 * consideration). */
 	int flushed_syscallbuf;
 
-	int last_syscall;
-	/* Nonzero when the current syscall (saved to |last_syscall|
-	 * above) will restart.  When this is the case, we have to
-	 * advance to the syscall "entry" point using PTRACE_SYSCALL;
-	 * PTRACE_CONT has been observed to miss the syscall re-entry
-	 * point, for not-well-understand reasons. */
+	/* Nonzero when the current syscall may restart.  When this is
+	 * the case, we have to advance to the syscall "entry" point
+	 * using PTRACE_SYSCALL; PTRACE_CONT has been observed to miss
+	 * the syscall re-entry point, for not-well-understand
+	 * reasons. */
 	int will_restart;
 
 	/* The child's desched counter event fd number, and our local

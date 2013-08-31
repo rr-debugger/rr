@@ -218,7 +218,7 @@ static void task_continue(struct task* t, int force_cont, int sig)
 	}
 	if (t->will_restart && filter_on_) {
 		debug("  PTRACE_SYSCALL to restarted %s",
-		      syscallname(t->last_syscall));
+		      syscallname(t->ev->syscall.no));
 	}
 
 	if (!filter_on_ || FORCE_SYSCALL == force_cont || t->will_restart) {
@@ -294,14 +294,7 @@ static int maybe_restart_syscall(struct task* t)
 		 * *must* restart a syscall.  Otherwise we don't know
 		 * which syscall's exit we're about to record. */
 		assert_exec(t, (t->ev && EV_SYSCALL_INTERRUPTION == t->ev->type
-				&& t->ev->syscall.is_restart
-				/* TODO: this check is a training
-				 * wheel for now, since the
-				 * last_syscall is subsumed by the
-				 * event stack.  Can remove when we're
-				 * confident the event stack is
-				 * working properly. */
-				&& t->last_syscall == t->ev->syscall.no),
+				&& t->ev->syscall.is_restart),
 			    "Must have interrupted syscall to advance");
 
 		t->ev->type = EV_SYSCALL;
@@ -461,13 +454,6 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 			 * replay.  So cover our tracks here. */
 			copy_syscall_arg_regs(&t->regs, &t->ev->syscall.regs);
 			write_child_registers(tid, &t->regs);
-
-			/* TODO: this old code serves as training
-			 * wheels for the event stack.  Remove when
-			 * event stack is working well. */
-			/* if the syscall is about to be restarted,
-			 * save the last syscall performed by it. */
-			t->last_syscall = syscallno;
 		}
 		record_event(t);
 
