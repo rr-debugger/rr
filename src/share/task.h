@@ -106,11 +106,7 @@ struct event {
 		 * the kernel.
 		 */
 		struct {
-			/* TODO: |RUNNABLE| is a temporary guest in
-			 * this enum while refactorings are in
-			 * progress. */
 			enum { NO_SYSCALL,
-			       RUNNABLE = 1,
 			       ENTERING_SYSCALL, PROCESSING_SYSCALL,
 			       EXITING_SYSCALL } state;
 			/* Syscall number. */
