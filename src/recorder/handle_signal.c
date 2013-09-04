@@ -223,8 +223,13 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 * away this breadcrumb so that we can figure out what syscall
 	 * the tracee was in, and how much "scratch" space it carved
 	 * off the syscallbuf, if needed. */
-	t->desched_rec = next_record(t->syscallbuf_hdr);
+	push_desched(t, next_record(t->syscallbuf_hdr));
 	call = t->desched_rec->syscallno;
+	/* Replay needs to be prepared to see the ioctl() that arms
+	 * the desched counter when it's trying to step to the entry
+	 * of |call|.  We'll record the syscall entry when the main
+	 * recorder code sees the tracee's syscall event. */
+	record_event(t);
 
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));

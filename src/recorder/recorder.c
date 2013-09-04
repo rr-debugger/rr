@@ -276,6 +276,40 @@ static void resume_execution(struct task* t, int force_cont)
 }
 
 /**
+ * |t| is at a desched event and some relevant aspect of its state
+ * changed.  (For now, just when the desched'd syscall is exited.)
+ */
+static void desched_state_changed(struct task* t)
+{
+	assert_exec(t, IN_SYSCALL == t->ev->desched.state, "");
+
+	/* If this syscall was interrupted by a desched event, then
+	 * just after the finished syscall there will be an ioctl() to
+	 * disarm the event.  We record that here. */
+	t->ev->desched.state = DISARMING_DESCHED_EVENT;
+
+	/* TODO: send this through main loop. */
+	sys_ptrace_syscall(t->tid);
+	sys_waitpid(t->tid, &t->status);
+	read_child_registers(t->tid, &t->regs);
+	assert_exec(t, (0 == signal_pending(t->status)
+			&& is_disarm_desched_event_syscall(t, &t->regs)),
+		    "TODO handle signals and ptrace events here.");
+
+	t->ev->desched.state = DISARMED_DESCHED_EVENT;
+	record_event(t);
+	pop_desched(t);
+
+	/* We also need to ensure that the syscallbuf doesn't try to
+	 * commit to the syscallbuf; we've already recorded the
+	 * syscall. */
+	t->syscallbuf_hdr->abort_commit = 1;
+	push_pseudosig(t, EUSR_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO);
+	record_event(t);
+	pop_pseudosig(t);
+}
+
+/**
  * "Thaw" a frozen interrupted syscall if |t| is restarting it.
  * Return nonzero if a syscall is indeed restarted.
  *
@@ -468,28 +502,6 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 		}
 
 		t->switchable = 1;
-		if (t->desched_rec) {
-			/* If this syscall was interrupted by a
-			 * desched event, then just after the finished
-			 * syscall there will be an ioctl() to disarm
-			 * the event that we won't record here.  So
-			 * save a breadcrumb so that replay knows to
-			 * expect it and skip over it. */
-			t->desched_rec = NULL;
-
-			push_pseudosig(t, EUSR_DISARM_DESCHED, NO_EXEC_INFO);
-			record_event(t);
-			pop_pseudosig(t);
-
-			/* We also need to ensure that the syscallbuf
-			 * doesn't try to commit to the syscallbuf;
-			 * we've already recorded the syscall. */
-			t->syscallbuf_hdr->abort_commit = 1;
-			push_pseudosig(t, EUSR_SYSCALLBUF_ABORT_COMMIT,
-				       NO_EXEC_INFO);
-			record_event(t);
-			pop_pseudosig(t);
-		}
 		return;
 	}
 
@@ -595,19 +607,11 @@ static void runnable_state_changed(struct task* t)
 		t->switchable = 0;
 	} else if (t->event > 0) {
 		/* We just entered a syscall. */
-		if (t->desched_rec) {
-			/* Replay needs to be prepared to see the
-			 * ioctl() that arms the desched counter when
-			 * it's trying to step to the entry of
-			 * |call|. */
-			push_pseudosig(t, EUSR_ARM_DESCHED, NO_EXEC_INFO);
-			record_event(t);
-			pop_pseudosig(t);
-		}
-
 		if (!maybe_restart_syscall(t)) {
 			push_syscall(t, t->event);
 		}
+		assert_exec(t, EV_SYSCALL == t->ev->type,
+			    "Should be at syscall event.");
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
 	} else if (t->event == SYS_restart_syscall) {
@@ -758,11 +762,14 @@ void record()
 				continue;
 			}
 		}
-		if (EV_SYSCALL == t->ev->type) {
+		switch (t->ev->type) {
+		case EV_DESCHED:
+			desched_state_changed(t);
+			continue;
+		case EV_SYSCALL:
 			syscall_state_changed(t, by_waitpid);
 			continue;
-		}
-		if (EV_SIGNAL_DELIVERY == t->ev->type) {
+		case EV_SIGNAL_DELIVERY: {
 			int unstable = signal_state_changed(t, by_waitpid);
 			if (unstable) {
 				rec_sched_set_tasks_unstable();
@@ -770,6 +777,11 @@ void record()
 				rec_sched_set_tasks_stable();
 			}
 			continue;
+		}
+		default:
+			/* No special handling needed; continue on
+			 * below. */
+			break;
 		}
 
 		if (progress++ % 10000 == 0) {

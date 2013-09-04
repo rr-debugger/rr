@@ -35,7 +35,9 @@ typedef void (*sig_handler_t)(int);
 struct event {
 	enum {
 		EV_NONE,
-		/* Uses the .pseudosig struct below. */
+		/* Uses the .desched struct below. */
+		EV_DESCHED,
+		/* Uses .pseudosig. */
 		EV_PSEUDOSIG,
 		/* Use .signal. */
 		EV_SIGNAL,
@@ -46,6 +48,30 @@ struct event {
 		EV_SYSCALL_INTERRUPTION,
 	} type;
 	union {
+		/**
+		 * Desched events track the fact that a tracee's
+		 * desched-event notification fired during a may-block
+		 * buffered syscall, which rr interprets as the
+		 * syscall actually blocking (for a potentially
+		 * unbounded amount of time).  After the syscall
+		 * exits, rr advances the tracee to where the desched
+		 * is "disarmed" by the tracee.
+		 */
+		struct {
+			enum { IN_SYSCALL,
+			       DISARMING_DESCHED_EVENT,
+			       DISARMED_DESCHED_EVENT
+			} state;
+			/* Record of the syscall that was interrupted
+			 * by a desched notification.  It's legal to
+			 * reference this memory /while the desched is
+			 * being processed only/, because |t| is in
+			 * the middle of a desched, which means it's
+			 * successfully allocated (but not yet
+			 * committed) this syscall record. */
+			const struct syscallbuf_record* rec;
+		} desched;
+
 		/**
 		 * Pseudosignals comprise three types of events: real,
 		 * deterministic signals raised by tracee execution
@@ -67,8 +93,6 @@ struct event {
 			       EUSR_SYSCALLBUF_FLUSH,
 			       EUSR_SYSCALLBUF_ABORT_COMMIT,
 			       EUSR_SYSCALLBUF_RESET,
-			       EUSR_ARM_DESCHED,
-			       EUSR_DISARM_DESCHED,
 			} no;
 			/* When replaying a pseudosignal is expected
 			 * to leave the tracee in the same execution
@@ -283,11 +307,10 @@ struct task {
 	size_t scratch_size;
 
 	int event;
-	/* Record of the syscall that was interrupted by a desched
-	 * notification.  It's legal to reference this memory /while
-	 * the desched is being processed only/, because |t| is in
-	 * the middle of a desched, which means it's successfully
-	 * allocated (but not yet committed) a syscall record. */
+	/* Shortcut pointer to the single |pending_event->desched.rec|
+	 * when there's one desched event on the stack, and NULL
+	 * otherwise.  Exists just so that clients don't need to dig
+	 * around in the event stack to find this record. */
 	const struct syscallbuf_record* desched_rec;
 	/* Nonzero after the trace recorder has flushed the
 	 * syscallbuf.  When this happens, the recorder must prepare a
@@ -353,6 +376,12 @@ int task_may_be_blocked(struct task* t);
  * favor of a |task_init()| pseudo-constructor that initializes state
  * shared across record and replay.) */
 void push_placeholder_event(struct task* t);
+
+/**
+ * Push/pop event tracking descheduling of |rec|.
+ */
+void push_desched(struct task* t, const struct syscallbuf_record* rec);
+void pop_desched(struct task* t);
 
 /**
  * Push/pop pseudo-sig events on the pending stack.  |no| is the enum
