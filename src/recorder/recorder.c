@@ -213,15 +213,17 @@ static void handle_ptrace_event(struct task** tp)
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
 static void task_continue(struct task* t, int force_cont, int sig)
 {
+	int may_restart = (EV_SYSCALL_INTERRUPTION == t->ev->type);
+
 	if (sig) {
 		debug("  delivering %s to %d", signalname(sig), t->tid);
 	}
-	if (t->will_restart && filter_on_) {
-		debug("  PTRACE_SYSCALL to restarted %s",
+	if (may_restart && filter_on_) {
+		debug("  PTRACE_SYSCALL to possibly-restarted %s",
 		      syscallname(t->ev->syscall.no));
 	}
 
-	if (!filter_on_ || FORCE_SYSCALL == force_cont || t->will_restart) {
+	if (!filter_on_ || FORCE_SYSCALL == force_cont || may_restart) {
 		/* We won't receive PTRACE_EVENT_SECCOMP events until
 		 * the seccomp filter is installed by the
 		 * syscall_buffer lib in the child, therefore we must
@@ -241,10 +243,6 @@ static void task_continue(struct task* t, int force_cont, int sig)
 		 * using the same logic as before. */
 		sys_ptrace_cont_sig(t->tid, sig);
 	}
-	/* TODO: this is incorrect if the syscall isn't restarted
-	 * right away, for example if a signal handler runs in the
-	 * intervening time. */
-	t->will_restart = 0;
 }
 
 /**
@@ -396,6 +394,7 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 
 	case EXITING_SYSCALL: {
 		int syscallno = t->ev->syscall.no;
+		int may_restart;
 		int retval;
 
 		debug_exec_state("EXEC_SYSCALL_DONE", t);
@@ -434,24 +433,24 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 
 		/* TODO: is there any reason a restart_syscall can't
 		 * be interrupted by a signal and itself restarted? */
-		t->will_restart = (syscallno != SYS_restart_syscall
-				   && SYSCALL_WILL_RESTART(retval));
+		may_restart = (syscallno != SYS_restart_syscall
+			       && SYSCALL_MAY_RESTART(retval));
 		/* no need to process the syscall in case its
 		 * restarted this will be done in the exit from the
 		 * restart_syscall */
-		if (!t->will_restart) {
+		if (!may_restart) {
 			rec_process_syscall(t);
 		} else {
 			debug("  will restart %s (from retval %d)",
 			      syscallname(syscallno), retval);
 
 			rec_prepare_restart_syscall(t);
-			/* If we're going to restart this syscall,
-			 * we've most likely fudged some of the
-			 * argument registers with scratch pointers.
-			 * We don't want to record those fudged
-			 * registers, because scratch doesn't exist in
-			 * replay.  So cover our tracks here. */
+			/* If we may restart this syscall, we've most
+			 * likely fudged some of the argument
+			 * registers with scratch pointers.  We don't
+			 * want to record those fudged registers,
+			 * because scratch doesn't exist in replay.
+			 * So cover our tracks here. */
 			copy_syscall_arg_regs(&t->regs, &t->ev->syscall.regs);
 			write_child_registers(tid, &t->regs);
 		}
@@ -461,7 +460,7 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 		 * done with it.  But if we are, "freeze" it on the
 		 * event stack until the execution point where it
 		 * might be restarted. */
-		if (!t->will_restart) {
+		if (!may_restart) {
 			pop_syscall(t);
 		} else {
 			t->ev->type = EV_SYSCALL_INTERRUPTION;
