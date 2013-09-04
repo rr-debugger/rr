@@ -293,7 +293,7 @@ static int maybe_restart_syscall(struct task* t)
 		/* This is a special case because SYS_restart_syscall
 		 * *must* restart a syscall.  Otherwise we don't know
 		 * which syscall's exit we're about to record. */
-		assert_exec(t, (t->ev && EV_SYSCALL_INTERRUPTION == t->ev->type
+		assert_exec(t, (EV_SYSCALL_INTERRUPTION == t->ev->type
 				&& t->ev->syscall.is_restart),
 			    "Must have interrupted syscall to advance");
 
@@ -759,11 +759,11 @@ void record()
 				continue;
 			}
 		}
-		if (t->ev && EV_SYSCALL == t->ev->type) {
+		if (EV_SYSCALL == t->ev->type) {
 			syscall_state_changed(t, by_waitpid);
 			continue;
 		}
-		if (t->ev && EV_SIGNAL_DELIVERY == t->ev->type) {
+		if (EV_SIGNAL_DELIVERY == t->ev->type) {
 			int unstable = signal_state_changed(t, by_waitpid);
 			if (unstable) {
 				rec_sched_set_tasks_unstable();
