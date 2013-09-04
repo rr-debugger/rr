@@ -794,12 +794,12 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 	int state = trace->state;
 
 	if (STATE_SYSCALL_EXIT == state
-	    && SYSCALL_WILL_RESTART(trace->recorded_regs.eax)) {
-		/* When a syscall exits with a restart "error", it
-		 * will be restarted by the kernel with a restart
-		 * syscall (see below). The child process is oblivious
-		 * to this, so in the replay we need to jump directly
-		 * to the exit from the restart_syscall.
+	    && SYSCALL_MAY_RESTART(trace->recorded_regs.eax)) {
+		/* When a syscall exits with a restart "error", it may
+		 * be restarted by the kernel with a restart syscall
+		 * (see below). The child process is oblivious to
+		 * this, so in the replay we need to jump directly to
+		 * the exit from the restart_syscall.
 		 *
 		 * Strictly speaking, we don't need to set the
 		 * -ERESTART* value here, but if we don't the register

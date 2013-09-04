@@ -19,7 +19,7 @@ struct trace_frame;
 	((0xFF0000 & status) >> 16)
 #define SYSCALL_FAILED(eax) \
 	(-ERANGE <= (int)(eax) && (int)(eax) < 0)
-#define SYSCALL_WILL_RESTART(eax) \
+#define SYSCALL_MAY_RESTART(eax) \
 	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax))
 
 #ifndef PTRACE_EVENT_SECCOMP
