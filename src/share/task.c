@@ -78,6 +78,23 @@ void push_placeholder_event(struct task* t)
 	push_new_event(t, EV_NONE);
 }
 
+void push_desched(struct task* t, const struct syscallbuf_record* rec)
+{
+	assert_exec(t, !t->desched_rec, "Must have zero or one desched");
+
+	push_new_event(t, EV_DESCHED);
+	t->ev->desched.state = IN_SYSCALL;
+	t->ev->desched.rec = t->desched_rec = rec;
+}
+
+void pop_desched(struct task* t)
+{
+	assert_exec(t, t->desched_rec, "Must have desched_rec to pop");
+
+	pop_event(t, EV_DESCHED);
+	t->desched_rec = NULL;
+}
+
 void push_pseudosig(struct task* t, int no, int has_exec_info)
 {
 	push_new_event(t, EV_PSEUDOSIG);

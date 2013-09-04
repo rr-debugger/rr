@@ -118,9 +118,19 @@ const char* strevent(int event)
  * Return the encoded event number of |ev| that's suitable for saving
  * to trace.  |state| is set to the corresponding execution state.
  */
-static int encode_event(struct event* ev, int* state)
+static int encode_event(const struct event* ev, int* state)
 {
 	switch (ev->type) {
+	case EV_DESCHED:
+		switch (ev->desched.state) {
+		case IN_SYSCALL:
+			return USR_ARM_DESCHED;
+		case DISARMED_DESCHED_EVENT:
+			return USR_DISARM_DESCHED;
+		default:
+			fatal("Unhandled desched state %d", ev->desched.state);
+		}
+
 	case EV_PSEUDOSIG:
 		/* (Arbitrary.) */
 		*state = STATE_SYSCALL_ENTRY;
@@ -137,8 +147,6 @@ static int encode_event(struct event* ev, int* state)
 			TRANSLATE(USR_SYSCALLBUF_FLUSH);
 			TRANSLATE(USR_SYSCALLBUF_ABORT_COMMIT);
 			TRANSLATE(USR_SYSCALLBUF_RESET);
-			TRANSLATE(USR_ARM_DESCHED);
-			TRANSLATE(USR_DISARM_DESCHED);
 		default:
 			fatal("Unknown pseudosig %d", ev->pseudosig.no);
 #undef TRANSLATE
@@ -463,6 +471,29 @@ static void maybe_flush_syscallbuf(struct task *t)
 }
 
 /**
+ * Return nonzero if a tracee at |ev| has meaningful execution info
+ * (registers etc.)  that rr should record.  "Meaningful" means that
+ * the same state will be seen when reaching this event during replay.
+ */
+int has_exec_info(const struct event* ev)
+{
+	switch (ev->type) {
+	case EV_DESCHED: {
+		int dontcare;
+		/* By the time the tracee is in the buffered syscall,
+		 * it's by definition already armed the desched event.
+		 * So we're recording that event ex post facto, and
+		 * there's no meaningful execution information. */
+		return USR_ARM_DESCHED != encode_event(ev, &dontcare);
+	}
+	case EV_PSEUDOSIG:
+		return ev->pseudosig.has_exec_info;
+	default:
+		return 1;
+	}
+}
+
+/**
  * Makes an entry into the event trace file
  */
 void record_event(struct task *t)
@@ -502,7 +533,7 @@ void record_event(struct task *t)
 	      get_time(t->tid), t->tid, event,
 	      state);
 
-	if (EV_PSEUDOSIG != ev->type || ev->pseudosig.has_exec_info) {
+	if (has_exec_info(ev)) {
 		fprintf(trace_file, "%11d", state);
 
 		record_performance_data(t);
