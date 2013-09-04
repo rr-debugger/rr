@@ -216,8 +216,11 @@ struct task {
 	/*refcounted*/struct sighandlers* sighandlers;
 
 	/* For convenience, the current top of |pending_events| if
-	 * there are any, or NULL.  Never reassign this pointer
-	 * directly; use the push_*()/pop_*() helpers below. */
+	 * there are any.  If there aren't any pending, the top of the
+	 * stack will be a placeholder event of type EV_NONE.
+	 *
+	 * Never reassign this pointer directly; use the
+	 * push_*()/pop_*() helpers below. */
 	struct event* ev;
 	/* The current stack of events being processed. */
 	FIXEDSTACK_DECL(, struct event, 16) pending_events;
@@ -352,6 +355,11 @@ struct task {
  * longer possibly-blocked before resuming its execution.
  */
 int task_may_be_blocked(struct task* t);
+
+/* (This function is an implementation detail that should go away in
+ * favor of a |task_init()| pseudo-constructor that initializes state
+ * shared across record and replay.) */
+void push_placeholder_event(struct task* t);
 
 /**
  * Push/pop pseudo-sig events on the pending stack.  |no| is the enum

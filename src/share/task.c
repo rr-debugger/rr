@@ -65,12 +65,17 @@ static void pop_event(struct task* t, int expected_type)
 {
 	int last_top_type = FIXEDSTACK_POP(&t->pending_events).type;
 
-	t->ev = !FIXEDSTACK_EMPTY(&t->pending_events) ?
-		  FIXEDSTACK_TOP(&t->pending_events) : NULL;
+	t->ev = FIXEDSTACK_TOP(&t->pending_events);
 	assert_exec(t, expected_type == last_top_type,
 		    "Should have popped event %s but popped %s instead",
 		    event_type_name(expected_type),
 		    event_type_name(last_top_type));
+}
+
+void push_placeholder_event(struct task* t)
+{
+	assert(FIXEDSTACK_EMPTY(&t->pending_events));
+	push_new_event(t, EV_NONE);
 }
 
 void push_pseudosig(struct task* t, int no, int has_exec_info)
@@ -123,12 +128,15 @@ void log_pending_events(const struct task* t)
 	ssize_t depth = FIXEDSTACK_DEPTH(&t->pending_events);
 	int i;
 
-	if (!depth) {
+	assert(depth > 0);
+	if (1 == depth) {
 		log_info("(no pending events)");
 		return;
 	}
 
-	for (i = depth - 1; i >= 0; --i) {
+	/* The event at depth 0 is the placeholder event, which isn't
+	 * useful to log.  Skip it. */
+	for (i = depth - 1; i >= 1; --i) {
 		log_event(&t->pending_events.elts[i]);
 	}
 }

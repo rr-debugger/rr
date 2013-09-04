@@ -227,6 +227,7 @@ void rec_sched_register_thread(pid_t parent, pid_t child,
 	t->status = 0;
 	t->rec_tid = t->tid = child;
 	t->child_mem_fd = sys_open_child_mem(child);
+	push_placeholder_event(t);
 	if (parent) {
 		struct task* parent_t = get_task(parent);
 		struct sighandlers* parent_handlers = parent_t->sighandlers;
@@ -284,10 +285,10 @@ void rec_sched_deregister_thread(struct task** t_ptr)
 
 	/* We expect tasks to usually exit by a call to exit() or
 	 * exit_group(), so it's not helpful to warn about that. */
-	if (FIXEDSTACK_DEPTH(&t->pending_events) > 1
-	    || (t->ev && !(t->ev->type == EV_SYSCALL
-			   && (SYS_exit == t->ev->syscall.no
-			       || SYS_exit_group == t->ev->syscall.no)))) {
+	if (FIXEDSTACK_DEPTH(&t->pending_events) > 2
+	    || !(t->ev->type == EV_SYSCALL
+		 && (SYS_exit == t->ev->syscall.no
+		     || SYS_exit_group == t->ev->syscall.no))) {
 		log_warn("%d still has pending events.  From top down:",
 			 t->tid);
 		log_pending_events(t);

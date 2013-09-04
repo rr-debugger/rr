@@ -52,6 +52,7 @@ struct task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	t->tid = my_tid;
 	t->rec_tid = rec_tid;
 	t->child_mem_fd = sys_open_child_mem(my_tid);
+	push_placeholder_event(t);
 
 	//read_open_inst_dump(t);
 	num_threads++;
