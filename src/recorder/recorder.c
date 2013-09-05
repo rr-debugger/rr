@@ -34,8 +34,6 @@
 
 #define PTRACE_EVENT_NONE			0
 
-static bool filter_on_ = FALSE;
-
 static void rec_init_scratch_memory(struct task *t)
 {
 	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
@@ -218,12 +216,13 @@ static void task_continue(struct task* t, int force_cont, int sig)
 	if (sig) {
 		debug("  delivering %s to %d", signalname(sig), t->tid);
 	}
-	if (may_restart && filter_on_) {
+	if (may_restart && t->seccomp_bpf_enabled) {
 		debug("  PTRACE_SYSCALL to possibly-restarted %s",
 		      syscallname(t->ev->syscall.no));
 	}
 
-	if (!filter_on_ || FORCE_SYSCALL == force_cont || may_restart) {
+	if (!t->seccomp_bpf_enabled
+	    || FORCE_SYSCALL == force_cont || may_restart) {
 		/* We won't receive PTRACE_EVENT_SECCOMP events until
 		 * the seccomp filter is installed by the
 		 * syscall_buffer lib in the child, therefore we must
@@ -268,7 +267,7 @@ static void resume_execution(struct task* t, int force_cont)
 
 	ptrace_event = GET_PTRACE_EVENT(t->status);
 	if (is_ptrace_seccomp_event(ptrace_event)) {
-		filter_on_ = TRUE;
+		t->seccomp_bpf_enabled = TRUE;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
 		return resume_execution(t, FORCE_SYSCALL);
@@ -701,7 +700,7 @@ static int signal_state_changed(struct task* t, int by_waitpid)
 
 	ptrace_event = GET_PTRACE_EVENT(t->status);
 	if (is_ptrace_seccomp_event(ptrace_event)) {
-		filter_on_ = TRUE;
+		t->seccomp_bpf_enabled = TRUE;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
 		resume_execution(t, FORCE_SYSCALL);

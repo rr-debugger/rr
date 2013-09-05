@@ -331,6 +331,16 @@ struct task {
 	/* The child's desched counter event fd number, and our local
 	 * dup. */
 	int desched_fd, desched_fd_child;
+	/* True when the tracee has started using the syscallbuf, and
+	 * the tracer will start receiving PTRACE_SECCOMP events for
+	 * traced syscalls.  We don't make any attempt to guess at the
+	 * OS's process/thread semantics; this flag goes on the first
+	 * time rr sees a PTRACE_SECCOMP event from the task.
+	 *
+	 * NB: there must always be at least one traced syscall before
+	 * any untraced ones; that's the magic "rrcall" the tracee
+	 * uses to initialize its syscallbuf. */
+	int seccomp_bpf_enabled;
 
 	/* State used only during replay. */
 
