@@ -20,7 +20,8 @@ struct trace_frame;
 #define SYSCALL_FAILED(eax) \
 	(-ERANGE <= (int)(eax) && (int)(eax) < 0)
 #define SYSCALL_MAY_RESTART(eax) \
-	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax))
+	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax)	\
+	 || -ERESTARTSYS == (eax))
 
 #ifndef PTRACE_EVENT_SECCOMP
 #define PTRACE_O_TRACESECCOMP			0x00000080
@@ -165,6 +166,13 @@ int is_arm_desched_event_syscall(struct task* t,
  */
 int is_disarm_desched_event_syscall(struct task* t,
 				    const struct user_regs_struct* regs);
+
+/**
+ * Return nonzero if |syscallno| and |regs| look like the interrupted
+ * syscall at the top of |t|'s event stack, if there is one.
+ */
+int is_syscall_restart(struct task* t, int syscallno,
+		       const struct user_regs_struct* regs);
 
 /**
  * Return nonzero if a mapping of |filename| with metadata |stat|,

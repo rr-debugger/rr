@@ -243,6 +243,12 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 * we've unblocked the reset. */
 	t->delay_syscallbuf_flush = 1;
 
+	/* The descheduled syscall was interrupted by a signal, like
+	 * all other may-restart syscalls, with the exception that
+	 * this one has already been restarted (which we'll detect
+	 * back in the main loop). */
+	push_syscall_interruption(t, call, regs);
+
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));
 

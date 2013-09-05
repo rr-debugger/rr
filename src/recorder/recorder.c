@@ -341,73 +341,24 @@ static void desched_state_changed(struct task* t)
  * "Thaw" a frozen interrupted syscall if |t| is restarting it.
  * Return nonzero if a syscall is indeed restarted.
  *
- * If |t| is at the point where an interrupted syscall may or may not
- * be restarted, and the syscall isn't restarted, then that frozen
- * interrupted syscall is discarded.
+ * A postcondition of this function is that |t->ev| is no longer a
+ * syscall interruption, whether or whether not a syscall was
+ * restarted.
  */
 static int maybe_restart_syscall(struct task* t)
 {
-	const struct user_regs_struct* old_regs;
-
 	if (SYS_restart_syscall == t->event) {
-		/* This is a special case because SYS_restart_syscall
-		 * *must* restart a syscall.  Otherwise we don't know
-		 * which syscall's exit we're about to record. */
-		assert_exec(t, (EV_SYSCALL_INTERRUPTION == t->ev->type
-				&& t->ev->syscall.is_restart),
-			    "Must have interrupted syscall to advance");
-
-		t->ev->type = EV_SYSCALL;
 		debug("  SYS_restart_syscall'ing %s",
 		      syscallname(t->ev->syscall.no));
-		return 0;
 	}
-
-	if (!t->ev || EV_SYSCALL_INTERRUPTION != t->ev->type) {
-		return 0;
+	if (is_syscall_restart(t, t->event, &t->regs)) {
+		t->ev->type = EV_SYSCALL;
+		return 1;
 	}
-
-	/* From here on, we must pop the interrupted syscall whether
-	 * or not we restart it. */
-
-	if (t->ev->syscall.no != t->event) {
-		debug("  (interrupted syscall was %s, this is %s)",
-		      syscallname(t->ev->syscall.no), syscallname(t->event));
+	if (EV_SYSCALL_INTERRUPTION == t->ev->type) {
 		pop_syscall_interruption(t);
-		return 0;
 	}
-
-	/* It's possible for the tracee to resume after a sighandler
-	 * with a fresh syscall that happens to be the same as the one
-	 * that was interrupted.  So we check here if the args are the
-	 * same.
-	 *
-	 * Of course, it's possible (but less likely) for the tracee
-	 * to incidentally resume with a fresh syscall that just
-	 * happens to have the same *arguments* too.  But in that
-	 * case, we would usually set up scratch buffers etc the same
-	 * was as for the original interrupted syscall, so we just
-	 * save a step here.
-	 *
-	 * TODO: it's possible for arg structures to be mutated
-	 * between the original call and restarted call in such a way
-	 * that it might change the scratch allocation decisions. */
-	old_regs = &t->ev->syscall.regs;
-	if (old_regs->ebx != t->regs.ebx
-	    || old_regs->ecx != t->regs.ecx
-	    || old_regs->edx != t->regs.edx
-	    || old_regs->esi != t->regs.esi
-	    || old_regs->edi != t->regs.edi
-	    || old_regs->ebp != t->regs.ebp) {
-		debug("  (args for interrupted %s are different than now)",
-		      syscallname(t->ev->syscall.no));
-		pop_syscall_interruption(t);
-		return 0;
-	}
-
-	debug("  restarting %s", syscallname(t->ev->syscall.no));
-	t->ev->type = EV_SYSCALL;
-	return 1;
+	return 0;
 }
 
 static void syscall_state_changed(struct task* t, int by_waitpid)
@@ -503,7 +454,7 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 		if (!may_restart) {
 			rec_process_syscall(t);
 		} else {
-			debug("  will restart %s (from retval %d)",
+			debug("  may restart %s (from retval %d)",
 			      syscallname(syscallno), retval);
 
 			rec_prepare_restart_syscall(t);
@@ -633,7 +584,7 @@ static void runnable_state_changed(struct task* t)
 		maybe_discard_syscall_interruption(t, ret);
 
 		t->switchable = 0;
-	} else if (t->event > 0) {
+	} else if (t->event >= 0) {
 		/* We just entered a syscall. */
 		if (!maybe_restart_syscall(t)) {
 			push_syscall(t, t->event);
@@ -642,12 +593,6 @@ static void runnable_state_changed(struct task* t)
 			    "Should be at syscall event.");
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
-	} else if (t->event == SYS_restart_syscall) {
-		/* In this case, the call /must/ restart a syscall, or
-		 * abort. */
-		maybe_restart_syscall(t);
-
-		t->ev->syscall.state = ENTERING_SYSCALL;
 	} else {
 		fatal("Unhandled event %s (%d)",
 		      strevent(t->event), t->event);

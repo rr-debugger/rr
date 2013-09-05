@@ -22,20 +22,6 @@ struct sighandlers {
 	} handlers[_NSIG];
 };
 
-int task_may_be_blocked(struct task* t)
-{
-	return (t->ev
-		&& ((EV_SYSCALL == t->ev->type
-		     && PROCESSING_SYSCALL == t->ev->syscall.state)
-		    || (EV_SIGNAL_DELIVERY == t->ev->type
-			&& t->ev->signal.delivered)));
-}
-
-const struct syscallbuf_record* task_desched_rec(const struct task* t)
-{
-	return (EV_DESCHED == t->ev->type) ? t->ev->desched.rec : NULL;
-}
-
 static const char* event_type_name(int type)
 {
 	switch (type) {
@@ -52,6 +38,31 @@ static const char* event_type_name(int type)
 	default:
 		fatal("Unknown event type %d", type);
 	}
+}
+
+static int is_syscall_event(int type) {
+	switch (type) {
+	case EV_SYSCALL:
+	case EV_SYSCALL_INTERRUPTION:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+int task_may_be_blocked(struct task* t)
+{
+	return (t->ev
+		&& ((EV_SYSCALL == t->ev->type
+		     && PROCESSING_SYSCALL == t->ev->syscall.state)
+		    || (EV_SIGNAL_DELIVERY == t->ev->type
+			&& t->ev->signal.delivered)));
+}
+
+const struct syscallbuf_record* task_desched_rec(const struct task* t)
+{
+	return (is_syscall_event(t->ev->type) ? t->ev->syscall.desched_rec :
+		(EV_DESCHED == t->ev->type) ? t->ev->desched.rec : NULL);
 }
 
 /**
@@ -139,6 +150,21 @@ void push_syscall(struct task* t, int no)
 void pop_syscall(struct task* t)
 {
 	pop_event(t, EV_SYSCALL);
+}
+
+void push_syscall_interruption(struct task* t, int no,
+			       const struct user_regs_struct* args)
+{
+	const struct syscallbuf_record* rec = task_desched_rec(t);
+
+	assert_exec(t, rec || REPLAY == rr_flags()->option,
+		    "Must be interrupting desched during recording");
+
+	push_new_event(t, EV_SYSCALL_INTERRUPTION);
+	t->ev->syscall.state = EXITING_SYSCALL;
+	t->ev->syscall.no = no;
+	t->ev->syscall.desched_rec = rec;
+	memcpy(&t->ev->syscall.regs, args, sizeof(t->ev->syscall.regs));
 }
 
 void pop_syscall_interruption(struct task* t)

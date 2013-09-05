@@ -212,6 +212,9 @@ struct event {
 			 * tracee.  These are used to detect restarted
 			 * syscalls. */
 			struct user_regs_struct regs;
+			/* If this is a descheduled buffered syscall,
+			 * points at the record for that syscall. */
+			const struct syscallbuf_record* desched_rec;
 		} syscall;
 	};
 };
@@ -424,8 +427,18 @@ void push_syscall(struct task* t, int no);
 void pop_syscall(struct task* t);
 
 /**
- * Pop the syscall interruption event from the top of the stack.
+ * Push/pop syscall interruption events.
+ *
+ * During recording, only descheduled buffered syscalls /push/ syscall
+ * interruptions; all others are detected at exit time and transformed
+ * into syscall interruptions from the original, normal syscalls.
+ *
+ * During replay, we push interruptions to know when we need to
+ * emulate syscall entry, since the kernel won't have set things up
+ * for the tracee to restart on its own.
  */
+void push_syscall_interruption(struct task* t, int no,
+			       const struct user_regs_struct* args);
 void pop_syscall_interruption(struct task* t);
 
 /**
