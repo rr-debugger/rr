@@ -318,6 +318,17 @@ struct task {
 	 * next available slow (taking |desched| into
 	 * consideration). */
 	int flushed_syscallbuf;
+	/* This bit is set when code wants to prevent the syscall
+	 * record buffer from being reset when it normally would be.
+	 * Currently, the desched'd syscall code uses this. */
+	int delay_syscallbuf_reset;
+	/* This bit is set when code wants the syscallbuf to be
+	 * "synthetically empty": even if the record counter is
+	 * nonzero, it should not be flushed.  Currently, the
+	 * desched'd syscall code uses this along with
+	 * |delay_syscallbuf_reset| above to keep the syscallbuf
+	 * intact during possibly many "reentrant" events. */
+	int delay_syscallbuf_flush;
 
 	/* The child's desched counter event fd number, and our local
 	 * dup. */

@@ -194,7 +194,7 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	/* Clear the pending input. */
 	nr_descheds = read_desched_counter(t);
 	(void)nr_descheds;
-	debug("  (desched #%llu during `%s')", nr_descheds, syscallname(call));
+	debug("  (desched #%llu)", nr_descheds);
 
 	/* Prevent further desched notifications from firing while
 	 * we're advancing the tracee.  We're going to leave it in a
@@ -219,6 +219,12 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 		return USR_NOOP;
 	}
 
+	/* This prevents the syscallbuf record counter from being
+	 * reset until we've finished guiding the tracee through this
+	 * interrupted call.  We use the record counter for
+	 * assertions. */
+	t->delay_syscallbuf_reset = 1;
+
 	/* The tracee is (re-)entering the buffered syscall.  Stash
 	 * away this breadcrumb so that we can figure out what syscall
 	 * the tracee was in, and how much "scratch" space it carved
@@ -230,6 +236,12 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 * of |call|.  We'll record the syscall entry when the main
 	 * recorder code sees the tracee's syscall event. */
 	record_event(t);
+
+	/* Because we set the |delay_syscallbuf_reset| flag and the
+	 * record counter will stay intact for a bit, we need to also
+	 * prevent later events from flushing the syscallbuf until
+	 * we've unblocked the reset. */
+	t->delay_syscallbuf_flush = 1;
 
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));
@@ -380,111 +392,30 @@ void go_to_a_happy_place(struct task* t,
 	 * syscalls) will be guaranteed to happen before the signal
 	 * delivery during replay.
 	 *
-	 * If the syscallbuf isn't allocated, then there can't be any
-	 * buffered syscalls, so there's no chance of a
-	 * syscall-buffer-flush event being recorded before the signal
-	 * delivery.  So that's a happy place.
+	 * Naively delivering the signal (and thereby flushing the
+	 * buffer) can cause the syscallbuf code to be reentered while
+	 * it's in the middle of processing a syscall, and that would
+	 * cause all sorts of things to go haywire, both during
+	 * recording and replay.  That's why the
+	 * |syscallbuf_hdr.locked| field exists: it establishes a
+	 * critical section of syscallbuf code that cannot be
+	 * reentered.  So those critical sections are not happy
+	 * places.
 	 *
-	 * If the $ip isn't in the syscall lib and the syscallbuf is
-	 * allocated, then we may have buffered syscalls.  But the $ip
-	 * being outside the lib means one of two things: the tracee
-	 * is either doing something unrelated to the syscall lib, or
-	 * called a wrapper in the syscallbuf lib and the buffer
-	 * overflowed (falling back on a traced syscall).  In either
-	 * case, the buffer-flush event will do what we want, so it's
-	 * a happy place.
+	 * By definition, anywhere outside those critical sections is
+	 * a happy place.  That includes the interval while the
+	 * syscallbuf isn't enabled.
 	 *
-	 * So we continue with the $ip in the syscallbuf lib and the
-	 * syscallbuf allocated.  For the purpose of this analysis, we
-	 * can abstract the tracee's execution state as being in one
-	 * of these intervals
+	 * The only exception is descheduled syscalls.  They're an
+	 * exception because rr is already forced to bend over
+	 * backwards to abort their commits to the syscallbuf and
+	 * otherwise handle the desched signal interrupting the
+	 * syscall.  Note, the syscallbuf will stay locked while any
+	 * code invoked by the signal runs, so there are no reentrancy
+	 * problems.
 	 *
-	 * --- ... ---
-	 *
-	 *   (Before we allocate the syscallbuf, it's OK to deliver
-	 *   the signal, as discussed above.)
-	 *
-	 * --- allocated syscallbuf ---
-	 *
-	 *   In this interval, no syscalls can be buffered, so there's
-	 *   no possibility of a syscall-buffer-flush event being
-	 *   recorded before the signal delivery.
-	 *
-	 * --- check to see if syscallbuf is locked ---
-	 *
-	 *   Assume there are buffered syscalls.  If the check says
-	 *   "buffer is locked" (meaning we're re-entering the
-	 *   syscallbuf code through a signal handler), then we'll
-	 *   record a buffer-flush event (or already have).  But, this
-	 *   means that during replay, we'll have already finished
-	 *   flushing the buffer at this point in execution.  So the
-	 *   check will say, "buffer is *un*locked".  That will cause
-	 *   replay divergence.  So,
-	 *
-	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
-	 *
-	 * --- lock syscallbuf ---
-	 *
-	 *   The lib locks the buffer just before it allocates a
-	 *   record.  Assume that the buffer is almost full.  During
-	 *   recording, the lib can allocate a record that overflows
-	 *   the buffer.  The tracee will abort the untraced syscall
-	 *   at |can_buffer_syscall()|.  But if we drop a buffer-flush
-	 *   event here, then during replay the buffer will be clear
-	 *   and the overflow check will (most likely) succeed.
-	 *   (Technically, if this was the first record allocated,
-	 *   it's OK.)  So
-	 *
-	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
-	 *
-	 * --- arm-desched ioctl() ---
-	 *
-	 *   If the buffer isn't empty during recording, and is
-	 *   flushed just after this during replay, then the lib will
-	 *   allocate a different pointer for the record.  This
-	 *   diverges so
-	 *
-	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
-	 *
-	 * --- (untraced) syscall ---
-	 *
-	 *   Still not safe for the reason above.  Note, if the tracee
-	 *   falls back on a traced syscall, then its $ip will be
-	 *   outside the syscallbuf lib, and that's a happy place (see
-	 *   above).
-	 *
-	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
-	 *
-	 * --- disarm-desched ioctl() ---
-	 *
-	 *   Still not safe for the reason above.
-	 *
-	 *   ***** NOT SAFE TO DELIVER SIGNAL HERE *****
-	 *
-	 * --- commit syscall record ---
-	 *
-	 *   We just exited all code related to the last syscall in
-	 *   the buffer, so during replay all buffered syscalls must
-	 *   have been retired by now.  So it's OK to deliver the
-	 *   signal.
-	 *
-	 * --- unlock syscallbuf ---
-	 *
-	 *   Still safe for the reasons above.
-	 *
-	 * --- ... ---
-	 *
-	 * The reason the analysis is that pedantic is because our
-	 * next job is to figure out which interval the tracee is in.
-	 * We can observe the following state in the tracee
-	 *  - $ip
-	 *  - buffer locked-ness
-	 *  - buffer record counter
-	 *  - enter/exit syscall
-	 *
-	 * It's not hard to work out what state bits imply which
-	 * interval, and how changes in that state signify moving to
-	 * another interval, and that's what the code below does. */
+	 * The code below determines if the tracee is in a happy place
+	 * per above, and if not, steps it until it finds one. */
 	struct syscallbuf_hdr initial_hdr;
 	struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
 	int status = t->status;
@@ -492,8 +423,8 @@ void go_to_a_happy_place(struct task* t,
 	debug("Stepping tracee to happy place to deliver signal ...");
 
 	if (!hdr) {
-		/* Witness that we're in the (...,
-		 * allocated-syscallbuf) interval. */
+		/* Can't be in critical section because the lock
+		 * doesn't exist yet! */
 		debug("  tracee hasn't allocated syscallbuf yet");
 		return;
 	}
@@ -514,27 +445,33 @@ void go_to_a_happy_place(struct task* t,
 		int is_syscall;
 
 		if (!SYSCALLBUF_IS_IP_IN_LIB(regs->eip, t)) {
-			/* The tracee can't possible affect the
-			 * syscallbuf here, so a flush is safe.. */
+			/* The tracee is outside the syscallbuf code,
+			 * so in most cases can't possibly affect
+			 * syscallbuf critical sections.  The
+			 * exception is signal handlers "re-entering"
+			 * desched'd syscalls, which are OK per
+			 * above.. */
 			debug("  tracee outside syscallbuf lib");
 			goto happy_place;
 		}
+		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
+		    && t->desched_rec) {
+			debug("  tracee interrupted by desched");
+			goto happy_place;
+		}
 		if (initial_hdr.locked && !hdr->locked) {
-			/* Witness that the tracee moved into the safe
-			 * (unlock-syscallbuf, ...)  interval. */
+			/* Tracee just stepped out of a critical
+			 * section and into a happy place.. */
 			debug("  tracee just unlocked syscallbuf");
 			goto happy_place;
 		}
-		/* XXX we /could/ check if the syscall record was just
-		 * commited, since that's a safe interval, but the
-		 * tracee will also unlock the buffer just after that,
-		 * so meh.  Should do this though if it's a perf
-		 * win. */
 
-		/* We've now established that the tracee is in the
-		 * interval (allocated-syscallbuf, unlock-syscallbuf).
-		 * Until we can prove the tracee moved into a safe
-		 * interval within that, keep stepping. */
+		/* Move the tracee closer to a happy place.  NB: an
+		 * invariant of the syscallbuf is that all untraced
+		 * syscalls must be made from within a transaction
+		 * (critical section), so there's no chance here of
+		 * "skipping over" a syscall we should have
+		 * recorded. */
 		sys_ptrace_singlestep(tid);
 		sys_waitpid(tid, &status);
 

@@ -163,31 +163,17 @@ void __ptrace_cont(struct task *t)
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = t->trace.recorded_regs.orig_eax;
 	int current_syscall = t->regs.orig_eax;
-
-	if (current_syscall != rec_syscall) {
-		/* this signal is ignored and most likey delivered
-		 * later, or was already delivered earlier */
-		if (WSTOPSIG(t->status) == SIGCHLD) {
-			__ptrace_cont(t);
-			t->child_sig = 0;
-			return;
-		}
-		fatal("\n"
-		      "stop reason: %x :%d  pending sig: %d\n"
-		      "recorded eip: 0x%lx;  current eip: 0x%lx\n"
-		      "Internal error: syscalls out of sync: rec: %d  now: %d\n",
-		      t->status, WSTOPSIG(t->status), t->child_sig,
-		      t->trace.recorded_regs.eip, t->regs.eip,
-		      rec_syscall, current_syscall);
+	if (current_syscall != rec_syscall && WSTOPSIG(t->status) == SIGCHLD) {
+		/* SIGCHLD can be delivered pretty much at any time
+		 * during replay, and we need to ignore it since
+		 * replayed signals are only emulated. */
+		__ptrace_cont(t);
+		t->child_sig = 0;
+		return;
 	}
-
-	/*assert(t->child_sig == 0);*/
-	/* we should not have a signal pending here -- if there is one
-	 * pending nevertheless, we do not deliver it to the
-	 * application. This ensures that the behavior remains the
-	 * same (this is probably irrelevant with signal emulation)
-	 */
-	t->child_sig = 0;
+	assert_exec(t, current_syscall == rec_syscall,
+		    "Should be at %s, but instead at %s\n",
+		    syscallname(rec_syscall), syscallname(current_syscall));
 }
 
 void rep_maybe_replay_stdio_write(struct task* t)

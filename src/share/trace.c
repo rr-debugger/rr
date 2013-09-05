@@ -449,7 +449,8 @@ static void record_inst_register_file(struct task *t)
 static void maybe_flush_syscallbuf(struct task *t)
 {
 	if (!t || !t->syscallbuf_hdr
-	    || 0 == t->syscallbuf_hdr->num_rec_bytes) {
+	    || 0 == t->syscallbuf_hdr->num_rec_bytes 
+	    || t->delay_syscallbuf_flush) {
 		/* No context, no syscallbuf, or no records.  Nothing
 		 * to do. */
 		return;
@@ -466,7 +467,9 @@ static void maybe_flush_syscallbuf(struct task *t)
 
 	/* Reset header. */
 	assert(!t->syscallbuf_hdr->abort_commit);
-	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
+	if (!t->delay_syscallbuf_reset) {
+		t->syscallbuf_hdr->num_rec_bytes = 0;
+	}
 	t->flushed_syscallbuf = 1;
 }
 

@@ -277,36 +277,64 @@ static void resume_execution(struct task* t, int force_cont)
 
 /**
  * |t| is at a desched event and some relevant aspect of its state
- * changed.  (For now, just when the desched'd syscall is exited.)
+ * changed.  (For now, changes except the original desched'd syscall
+ * being restarted.)
  */
 static void desched_state_changed(struct task* t)
 {
-	assert_exec(t, IN_SYSCALL == t->ev->desched.state, "");
+	switch (t->ev->desched.state) {
+	case IN_SYSCALL:
+		/* We need to ensure that the syscallbuf code doesn't
+		 * try to commit the current record; we've already
+		 * recorded that syscall.  The following event sets
+		 * the abort-commit bit. */
+		push_pseudosig(t, EUSR_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO);
+		t->syscallbuf_hdr->abort_commit = 1;
+		record_event(t);
+		pop_pseudosig(t);
 
-	/* If this syscall was interrupted by a desched event, then
-	 * just after the finished syscall there will be an ioctl() to
-	 * disarm the event.  We record that here. */
-	t->ev->desched.state = DISARMING_DESCHED_EVENT;
+		t->ev->desched.state = DISARMING_DESCHED_EVENT;
+		/* fall through */
+	case DISARMING_DESCHED_EVENT:
+		/* TODO: send this through main loop. */
+		sys_ptrace_syscall(t->tid);
+		sys_waitpid(t->tid, &t->status);
+		status_changed(t);
 
-	/* TODO: send this through main loop. */
-	sys_ptrace_syscall(t->tid);
-	sys_waitpid(t->tid, &t->status);
-	read_child_registers(t->tid, &t->regs);
-	assert_exec(t, (0 == signal_pending(t->status)
-			&& is_disarm_desched_event_syscall(t, &t->regs)),
-		    "TODO handle signals and ptrace events here.");
+		if (EV_DESCHED != t->ev->type) {
+			/* Something else happened that needs to be
+			 * processed first.  Most likely a signal
+			 * interrupted us. */
+			return;
+		}
 
-	t->ev->desched.state = DISARMED_DESCHED_EVENT;
-	record_event(t);
-	pop_desched(t);
+		read_child_registers(t->tid, &t->regs);
+		assert_exec(t, (0 == signal_pending(t->status)
+				&& is_disarm_desched_event_syscall(t,
+								   &t->regs)),
+			    "TODO %s pending or restarted %s",
+			    signalname(signal_pending(t->status)),
+			    syscallname(t->regs.orig_eax));
 
-	/* We also need to ensure that the syscallbuf doesn't try to
-	 * commit to the syscallbuf; we've already recorded the
-	 * syscall. */
-	t->syscallbuf_hdr->abort_commit = 1;
-	push_pseudosig(t, EUSR_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO);
-	record_event(t);
-	pop_pseudosig(t);
+		t->ev->desched.state = DISARMED_DESCHED_EVENT;
+		record_event(t);
+		pop_desched(t);
+
+		/* The tracee has just finished sanity-checking the
+		 * aborted record, and won't touch the syscallbuf
+		 * during this (aborted) transaction again.  So now is
+		 * a good time for us to reset the record counter. */
+		push_pseudosig(t, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
+		t->syscallbuf_hdr->num_rec_bytes = 0;
+		t->delay_syscallbuf_reset = 0;
+		t->delay_syscallbuf_flush = 0;
+		record_event(t);
+		pop_pseudosig(t);
+		return;
+
+	default:
+		fatal("Unhandled desched state");
+	}
 }
 
 /**
@@ -625,12 +653,15 @@ static void runnable_state_changed(struct task* t)
 		      strevent(t->event), t->event);
 	}
 
-	if (t->flushed_syscallbuf) {
+	if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
 		push_pseudosig(t, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
 		record_event(t);
-		t->flushed_syscallbuf = 0;
 		pop_pseudosig(t);
 	}
+	/* Any code that sets |delay_syscallbuf_reset| is responsible
+	 * for recording its own SYSCALLBUF_RESET event at a
+	 * convenient time. */
+	t->flushed_syscallbuf = 0;
 }
 
 enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
