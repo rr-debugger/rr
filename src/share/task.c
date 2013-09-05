@@ -31,6 +31,11 @@ int task_may_be_blocked(struct task* t)
 			&& t->ev->signal.delivered)));
 }
 
+const struct syscallbuf_record* task_desched_rec(const struct task* t)
+{
+	return (EV_DESCHED == t->ev->type) ? t->ev->desched.rec : NULL;
+}
+
 static const char* event_type_name(int type)
 {
 	switch (type) {
@@ -57,10 +62,6 @@ static void push_new_event(struct task* t, int type)
 	struct event ev = { .type = type };
 	FIXEDSTACK_PUSH(&t->pending_events, ev);
 	t->ev = FIXEDSTACK_TOP(&t->pending_events);
-	/* XXX this feels a little greasy ... */
-	if (EV_DESCHED != t->ev->type) {
-		t->desched_rec = NULL;
-	}
 }
 
 /**
@@ -76,10 +77,6 @@ static void pop_event(struct task* t, int expected_type)
 		    "Should have popped event %s but popped %s instead",
 		    event_type_name(expected_type),
 		    event_type_name(last_top_type));
-	/* XXX this feels a little greasy ... */
-	if (EV_DESCHED == t->ev->type) {
-		t->desched_rec = t->ev->desched.rec;
-	}
 }
 
 void push_placeholder_event(struct task* t)
@@ -90,16 +87,16 @@ void push_placeholder_event(struct task* t)
 
 void push_desched(struct task* t, const struct syscallbuf_record* rec)
 {
-	assert_exec(t, !t->desched_rec, "Must have zero or one desched");
+	assert_exec(t, !task_desched_rec(t), "Must have zero or one desched");
 
 	push_new_event(t, EV_DESCHED);
 	t->ev->desched.state = IN_SYSCALL;
-	t->ev->desched.rec = t->desched_rec = rec;
+	t->ev->desched.rec = rec;
 }
 
 void pop_desched(struct task* t)
 {
-	assert_exec(t, t->desched_rec, "Must have desched_rec to pop");
+	assert_exec(t, task_desched_rec(t), "Must have desched_rec to pop");
 
 	pop_event(t, EV_DESCHED);
 }

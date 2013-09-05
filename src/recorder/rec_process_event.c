@@ -114,7 +114,7 @@ int prepare_socketcall(struct task* t, int would_need_scratch,
 	long* argsp;
 	void* tmpargsp;
 
-	assert(!t->desched_rec);
+	assert(!task_desched_rec(t));
 
 	/* int socketcall(int call, unsigned long *args) {
 	 * 		long a[6];
@@ -237,9 +237,9 @@ int prepare_socketcall(struct task* t, int would_need_scratch,
  */
 static int set_up_scratch_for_syscallbuf(struct task* t, int syscallno)
 {
-	const struct syscallbuf_record* rec = t->desched_rec;
+	const struct syscallbuf_record* rec = task_desched_rec(t);
 
-	assert(t->desched_rec);
+	assert(task_desched_rec(t));
 	assert_exec(t, syscallno == rec->syscallno, 
 		    "Syscallbuf records syscall %s, but expecting %s",
 		    syscallname(rec->syscallno), syscallname(syscallno));
@@ -266,7 +266,7 @@ int rec_prepare_syscall(struct task* t)
 	int would_need_scratch;
 	void* scratch = NULL;
 
-	if (t->desched_rec) {
+	if (task_desched_rec(t)) {
 		return set_up_scratch_for_syscallbuf(t, syscallno);
 	}
 
@@ -696,8 +696,8 @@ void rec_process_syscall(struct task *t)
 	debug("%d: processing syscall: %s(%d) -- time: %u",
 	      tid, syscallname(syscall), syscall, get_global_time());
 
-	if (t->desched_rec) {
-		const struct syscallbuf_record* rec = t->desched_rec;
+	if (task_desched_rec(t)) {
+		const struct syscallbuf_record* rec = task_desched_rec(t);
 
 		assert(t->ev->syscall.tmp_data_ptr != t->scratch_ptr);
 
