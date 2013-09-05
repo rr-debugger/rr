@@ -778,32 +778,49 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 	pid_t tid = t->tid;
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->state;
+	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
 
 	if (STATE_SYSCALL_EXIT == state
-	    && SYSCALL_MAY_RESTART(trace->recorded_regs.eax)) {
-		/* When a syscall exits with a restart "error", it may
-		 * be restarted by the kernel with a restart syscall
-		 * (see below). The child process is oblivious to
-		 * this, so in the replay we need to jump directly to
-		 * the exit from the restart_syscall.
+	    && SYSCALL_MAY_RESTART(rec_regs->eax)) {
+		/* During recording, when a syscall exits with a
+		 * restart "error", the kernel may use some black
+		 * magic to restart that syscall without intervention
+		 * from userspace.  rr can observe that magic with
+		 * ptrace, but there's no way to directly replicate it
+		 * with a syscall exit/re-enter pair of commands.
 		 *
-		 * Strictly speaking, we don't need to set the
-		 * -ERESTART* value here, but if we don't the register
-		 * state may mismatch the next replayed event for
-		 * |t|. */
+		 * So instead we leave the syscall return "hanging".
+		 * If it's restarted, we'll skip advancing to the
+		 * restart entry below and just emulate exit by
+		 * setting the kernel outparams. */
 		set_return_value(t);
 		process_restart_syscall(t, syscall);
+		/* Use this record to recognize the syscall if it
+		 * indeed restarts. */
+		push_syscall_interruption(t, rec_regs->orig_eax, rec_regs);
 		step->action = TSTEP_RETIRE;
+		debug("  %s interrupted, may restart", syscallname(syscall));
 		return;
 	}
 
-	if (SYS_restart_syscall == syscall) {
-		/* the restarted syscall will be replayed by the next
-		 * entry which is an exit entry for the original
-		 * syscall being restarted - do nothing here. */
-		step->action = TSTEP_RETIRE;
-		return;
+	if (EV_SYSCALL_INTERRUPTION == t->ev->type) {
+		int restarting;
+
+		assert_exec(t, STATE_SYSCALL_ENTRY == state,
+			    "Syscall interruptions can only be seen at syscall (re-)entry");
+
+		restarting = is_syscall_restart(t, syscall, rec_regs);
+		pop_syscall_interruption(t);
+		if (restarting) {
+			/* This "emulates" the restart by just
+			 * continuing on from the interrupted
+			 * syscall. */
+			step->action = TSTEP_RETIRE;
+			return;
+		}
 	}
+	assert_exec(t, SYS_restart_syscall != syscall,
+		    "restart_syscall must have interruption record");
 
 	assert("Syscallno not in table, but possibly valid"
 	       && syscall < ALEN(syscall_table));

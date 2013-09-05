@@ -1304,8 +1304,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	int event = t->trace.stop_reason;
 	int stop_sig = 0;
 
-	debug("%d: replaying event %s, state %s",
-	      t->rec_tid,
+	debug("[line %d] %d: replaying %s; state %s",
+	      get_trace_file_lines_counter(), t->rec_tid,
 	      strevent(event), statename(t->trace.state));
 	if (t->syscallbuf_hdr) {
 		debug("    (syscllbufsz:%u, abrtcmt:%u)",

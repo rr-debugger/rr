@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "Util"
+
 #include "util.h"
 
 #include <assert.h>
@@ -1294,6 +1296,57 @@ int is_disarm_desched_event_syscall(struct task* t,
 {
 	return (is_desched_event_syscall(t, regs)
 		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
+}
+
+int is_syscall_restart(struct task* t, int syscallno,
+		       const struct user_regs_struct* regs)
+{
+	int must_restart = (SYS_restart_syscall == syscallno);
+	int is_restart = 0;
+	const struct user_regs_struct* old_regs;
+
+	if (EV_SYSCALL_INTERRUPTION != t->ev->type) {
+		goto done;
+	}
+	/* It's possible for the tracee to resume after a sighandler
+	 * with a fresh syscall that happens to be the same as the one
+	 * that was interrupted.  So we check here if the args are the
+	 * same.
+	 *
+	 * Of course, it's possible (but less likely) for the tracee
+	 * to incidentally resume with a fresh syscall that just
+	 * happens to have the same *arguments* too.  But in that
+	 * case, we would usually set up scratch buffers etc the same
+	 * was as for the original interrupted syscall, so we just
+	 * save a step here.
+	 *
+	 * TODO: it's possible for arg structures to be mutated
+	 * between the original call and restarted call in such a way
+	 * that it might change the scratch allocation decisions. */
+	if (SYS_restart_syscall == syscallno) {
+		syscallno = t->ev->syscall.no;
+		debug("  (SYS_restart_syscall)");
+	}
+	old_regs = &t->ev->syscall.regs;
+	is_restart = (t->ev->syscall.no == syscallno
+		      && old_regs->ebx == t->regs.ebx
+		      && old_regs->ecx == t->regs.ecx
+		      && old_regs->edx == t->regs.edx
+		      && old_regs->esi == t->regs.esi
+		      && old_regs->edi == t->regs.edi
+		      && old_regs->ebp == t->regs.ebp);
+	if (!is_restart) {
+		debug("  interrupted %s != %s or args differ",
+		      syscallname(t->ev->syscall.no), syscallname(syscallno));
+	}
+
+done:
+	assert_exec(t, !must_restart || is_restart,
+		    "Must restart %s but won't", syscallname(syscallno));
+	if (is_restart) {
+		debug("  restart of %s", syscallname(syscallno));
+	}
+	return is_restart;
 }
 
 int should_copy_mmap_region(const char* filename, struct stat* stat,
