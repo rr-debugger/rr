@@ -307,11 +307,6 @@ struct task {
 	size_t scratch_size;
 
 	int event;
-	/* Shortcut pointer to the single |pending_event->desched.rec|
-	 * when there's one desched event on the stack, and NULL
-	 * otherwise.  Exists just so that clients don't need to dig
-	 * around in the event stack to find this record. */
-	const struct syscallbuf_record* desched_rec;
 	/* Nonzero after the trace recorder has flushed the
 	 * syscallbuf.  When this happens, the recorder must prepare a
 	 * "reset" of the buffer, to zero the record count, at the
@@ -382,6 +377,14 @@ struct task {
  * longer possibly-blocked before resuming its execution.
  */
 int task_may_be_blocked(struct task* t);
+
+/**
+ * Shortcut to the single |pending_event->desched.rec| when there's
+ * one desched event on the stack, and NULL otherwise.  Exists just so
+ * that clients don't need to dig around in the event stack to find
+ * this record.
+ */
+const struct syscallbuf_record* task_desched_rec(const struct task* t);
 
 /* (This function is an implementation detail that should go away in
  * favor of a |task_init()| pseudo-constructor that initializes state
