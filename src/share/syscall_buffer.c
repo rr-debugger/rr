@@ -657,8 +657,9 @@ static int commit_syscall(int syscallno, void* record_end, int ret)
 	struct syscallbuf_record* rec = record_start;
 	struct syscallbuf_hdr* hdr = buffer_hdr();
 
-	if (rec->desched) {
-		disarm_desched_event();
+	if (rec->syscallno != syscallno) {
+		fatal("Record is for %d but trying to commit %d",
+		      rec->syscallno, syscallno);
 	}
 
 	if (hdr->abort_commit) {
@@ -668,13 +669,19 @@ static int commit_syscall(int syscallno, void* record_end, int ret)
 		 * replay will go haywire. */
 		hdr->abort_commit = 0;
 	} else {
-		if (rec->syscallno != syscallno) {
-			fatal("Record is for %d but trying to commit %d",
-			      rec->syscallno, syscallno);
-		}
 		rec->ret = ret;
 		hdr->num_rec_bytes += stored_record_size(rec->size);
 	}
+
+	if (rec->desched) {
+		disarm_desched_event();
+	}
+	/* NBB: for may-block syscalls that are descheduled, the
+	 * tracer uses the previous ioctl() as a stable point to reset
+	 * the record counter.  Therefore nothing from here on in the
+	 * current txn must touch the record counter (at least, must
+	 * not assume it's unchanged). */
+
 	buffer_hdr()->locked = 0;
 
 	return update_errno_ret(ret);

@@ -54,6 +54,7 @@ static void sighandler2(int sig) {
 
 static void* reader_thread(void* dontcare) {
 	struct sigaction act;
+	struct timeval ts;
 	int readsock = sockfds[1];
 	char c = sentinel_token;
 	int flags = 0;
@@ -71,6 +72,9 @@ static void* reader_thread(void* dontcare) {
 	sigaction(SIGUSR2, &act, NULL);
 
 	pthread_barrier_wait(&barrier);
+
+	/* (Put another record in the syscallbuf.) */
+	gettimeofday(&ts, NULL);
 
 	atomic_puts("r: blocking on read, awaiting signal ...");
 
