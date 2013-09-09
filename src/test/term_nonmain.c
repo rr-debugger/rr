@@ -5,10 +5,26 @@
 #include <signal.h>
 #include <sys/types.h>
 
+static void waittermsig(int sig, const char* waiter)
+{
+	struct timespec ts = { .tv_sec = 1 };
+	sigset_t set;
+	siginfo_t si;
+
+	sigemptyset(&set);
+	sigaddset(&set, sig);
+	sigtimedwait(&set, &si, &ts);
+
+	atomic_printf("FAILED: %s: signal %d either not caught or didn't terminate process within 1 second",
+		      waiter, sig);
+}
+
 static void* kill_thread(void* dontcare) {
+	const int termsig = SIGTERM;
+
 	atomic_puts("killing...");
-	kill(getpid(), SIGTERM);
-	atomic_puts("FAILED: kill() didn't work");
+	kill(getpid(), termsig);
+	waittermsig(termsig, "kill_thread");
 	return NULL;		/* not reached */
 }
 
