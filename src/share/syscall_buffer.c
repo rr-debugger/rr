@@ -208,7 +208,7 @@ static void logmsg(const char* msg, ...)
 # define assert(cond)							\
 	do {								\
 		if (!(cond)) {						\
-			logmsg("%s:%d: Assertion " #cond " failed.",	\
+			logmsg("%s:%d: Assertion `" #cond "' failed.\n", \
 			       __FILE__, __LINE__);			\
 			traced_raise(SIGABRT);				\
 		}							\
@@ -585,7 +585,7 @@ static void disarm_desched_event()
 	/* See above. */
 	if (untraced_syscall3(SYS_ioctl, desched_counter_fd,
 			      PERF_EVENT_IOC_DISABLE, 0)) {
-		fatal("Failed to ENABLE counter %d", desched_counter_fd);
+		fatal("Failed to DISABLE counter %d", desched_counter_fd);
 	}
 }
 
