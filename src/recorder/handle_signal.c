@@ -33,6 +33,38 @@ static __inline__ unsigned long long rdtsc(void)
 }
 
 /**
+ * Return nonzero if |si| was triggered by a time-slice interrupt,
+ * near as we can tell.
+ */
+static int is_time_slice_interrupt(struct task* t, const siginfo_t* si)
+{
+	/* TODO: this check isn't great, but should be OK for now.
+	 * What we'd /really/ like to do is program the interrupt so
+	 * that the rbc fd is set in the siginfo; it's not clear why
+	 * that doesn't happen currently.  We (hope we can) get away
+	 * with this lesser impl because any "real" tracee-generated
+	 * SIGIO must either be triggered by real async IO or
+	 * userspace activity, in which case |code != SI_KERNEL|, or
+	 * if there's some way for the tracee to generate an SI_KERNEL
+	 * SIGIO, we cross our fingers and hope that |fd| is filled in
+	 * to something meaningful.
+	 *
+	 * This implementation will of course fall over if rr tries to
+	 * record itself.
+	 *
+	 * NB: we can't check that the rcb is >= the programmed
+	 * target, because this SIGIO may have become pending before
+	 * we reset the HPC counters.  There be a way to handle that
+	 * more elegantly, but bridge will be crossed in due time. */
+	int is_kernel_generated_sigio = (SIGIO == si->si_signo
+					 && SI_KERNEL == si->si_code);
+	assert_exec(t, !is_kernel_generated_sigio || 0 == si->si_fd,
+		    "%d somehow generated SI_KERNEL SIGIO with fd %d",
+		    t->tid, si->si_fd);
+	return is_kernel_generated_sigio;
+}
+
+/**
  * Return nonzero if |t| was stopped because of a SIGSEGV resulting
  * from a rdtsc and |t| was updated appropriately, zero otherwise.
  */
@@ -580,11 +612,7 @@ void handle_signal(struct task* t)
 		break;
 
 	case SIGIO:
-		/* TODO: imprecise counters can probably race with
-		 * delivery of a "real" SIGIO */
-		if (read_rbc(t->hpc) >= max_rbc) {
-			/* HPC interrupt due to exceeding time
-			 * slice. */
+		if (is_time_slice_interrupt(t, &si)) {
 			t->event = USR_SCHED;
 			push_pseudosig(t, EUSR_SCHED, HAS_EXEC_INFO);
 			/* TODO: only record the SCHED event if it
