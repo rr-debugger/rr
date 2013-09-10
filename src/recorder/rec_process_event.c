@@ -781,21 +781,6 @@ void rec_process_syscall(struct task *t)
 	SYS_REC0(dup2)
 
 	/**
-	 * void exit(int status)
-	 * The exit() function causes normal process termination and the value of status & 0377 is
-	 * returned to the parent (see wait(2)).
-	 */
-	SYS_REC0(exit)
-
-	/**
-	 * void exit_group(int status);
-	 *
-	 *  This system call is equivalent to exit(2) except that it terminates not only the calling thread,
-	 *  but all threads in the calling process's thread group.
-	 */
-	SYS_REC0(exit_group)
-
-	/**
 	 * int close(int fd)
 	 *
 	 * close()  closes  a file descriptor, so that it no longer refers to any file
