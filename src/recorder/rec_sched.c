@@ -173,26 +173,6 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 	return next_t;
 }
 
-static void set_instability(int unstable)
-{
-	struct tasklist_entry* entry;
-	CIRCLEQ_FOREACH(entry, &head, entries) {
-		entry->t.unstable = unstable;
-	}
-}
-
-void rec_sched_set_tasks_unstable()
-{
-	debug("Marking all tasks unstable");
-	set_instability(1);
-}
-
-void rec_sched_set_tasks_stable()
-{
-	debug("Marking all tasks stable");
-	set_instability(0);
-}
-
 /**
  * Sends a SIGINT to all processes/threads.
  */
@@ -216,8 +196,7 @@ int rec_sched_get_num_threads()
  * Registers a new thread to the runtime system. This includes
  * initialization of the hardware performance counters
  */
-void rec_sched_register_thread(pid_t parent, pid_t child,
-			       int share_sighandlers)
+void rec_sched_register_thread(pid_t parent, pid_t child, int flags)
 {
 	struct tasklist_entry* entry = sys_malloc_zero(sizeof(*entry));
 	struct task* t = &entry->t;
@@ -234,7 +213,11 @@ void rec_sched_register_thread(pid_t parent, pid_t child,
 
 		t->syscallbuf_lib_start = parent_t->syscallbuf_lib_start;
 		t->syscallbuf_lib_end = parent_t->syscallbuf_lib_end;
-		t->sighandlers = share_sighandlers ?
+		t->task_group =
+			(SHARE_TASK_GROUP & flags) ?
+			task_group_add_and_ref(parent_t->task_group, t) :
+			task_group_new_and_add(t);
+		t->sighandlers = (SHARE_SIGHANDLERS & flags) ?
 				 sighandlers_ref(parent_handlers) :
 				 sighandlers_copy(parent_handlers);
 	} else {
@@ -244,6 +227,7 @@ void rec_sched_register_thread(pid_t parent, pid_t child,
 		static int is_first_task = 1;
 		assert(is_first_task);
 		is_first_task = 0;
+		t->task_group = task_group_new_and_add(t);
 		/* The very first task we fork inherits our
 		 * sighandlers (which should all be default at this
 		 * point, but ...).  From there on, new tasks will
@@ -293,6 +277,8 @@ void rec_sched_deregister_thread(struct task** t_ptr)
 			 t->tid);
 		log_pending_events(t);
 	}
+
+	task_group_remove_and_unref(t);
 
 	CIRCLEQ_REMOVE(&head, entry, entries);
 	tid_to_entry[tid] = NULL;
