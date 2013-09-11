@@ -1348,6 +1348,22 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		t->unstable = 1;
 		/* fall through */
 	case USR_EXIT:
+		/* If the task was killed by a terminating signal,
+		 * then it may have ended abruptly in a syscall or at
+		 * some other random execution point.  That's bad for
+		 * replay, because we detach from the task after we
+		 * replay its "exit".  Since we emulate signal
+		 * delivery, the task may happily carry on with
+		 * (non-emulated!) execution after we detach.  That
+		 * execution might include things like |rm -rf ~|.
+		 *
+		 * To ensure that the task really dies, we send it a
+		 * terminating signal here.  One would like to use
+		 * SIGKILL, but for not-understood reasons that causes
+		 * shutdown hangs when joining the exited tracee.
+		 * Other terminating signals have not been observed to
+		 * hang, so that's what's used here.. */
+		syscall(SYS_tkill, t->tid, SIGABRT);
 		rep_sched_deregister_thread(&t);
 		/* Early-return because |t| is gone now. */
 		return;

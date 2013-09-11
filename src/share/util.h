@@ -128,6 +128,11 @@ const char* syscallname(int syscall);
 
 int signal_pending(int status);
 
+/**
+ * Detach |t| from rr and try hard to ensure any operations related to
+ * it have completed by the time this function returns.
+ */
+void detach_and_reap(struct task* t);
 
 struct current_state_buffer {
 	pid_t pid;

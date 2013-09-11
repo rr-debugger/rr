@@ -290,7 +290,7 @@ void rec_sched_deregister_thread(struct task** t_ptr)
 	sys_close(t->child_mem_fd);
 	close(t->desched_fd);
 
-	sys_ptrace_detach(tid);
+	detach_and_reap(t);
 
 	/* finally, free the memory */
 	sighandlers_unref(&t->sighandlers);

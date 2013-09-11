@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -208,6 +209,54 @@ int signal_pending(int status)
 		 * SEGVs? */
 		return sig & ~0x80;
 	}
+}
+
+void detach_and_reap(struct task* t)
+{
+	sys_ptrace_detach(t->tid);
+	if (t->unstable) {
+		log_warn("%d is unstable; not blocking on its termination",
+			 t->tid);
+		goto sleep_hack;
+	}
+
+	debug("Joining with exiting %d ...", t->tid);
+	while (1) {
+		int err = waitpid(t->tid, &t->status, __WALL);
+		if (-1 == err && ECHILD == errno) {
+			debug(" ... ECHILD");
+			break;
+		} else if (-1 == err) {
+			assert_exec(t, EINTR == errno,
+				    "waitpid(%d) returned -1, errno %d",
+				    t->tid, errno);
+		}
+		if (err == t->tid && (WIFEXITED(t->status) || 
+				      WIFSIGNALED(t->status))) {
+			debug(" ... exited with status 0x%x", t->status);
+			break;
+		} else if (err == t->tid) {
+			assert_exec(t, (PTRACE_EVENT_EXIT ==
+					GET_PTRACE_EVENT(t->status)),
+				    "waitpid(%d) return status %d",
+				    t->tid, t->status);
+		}
+	}
+
+sleep_hack:
+	/* clone()'d tasks can have a pid_t* |ctid| argument that's
+	 * written with the new task's pid.  That pointer can also be
+	 * used as a futex: when the task dies, the original ctid
+	 * value is cleared and a FUTEX_WAKE is done on the
+	 * address. So pthread_join() is basically a standard futex
+	 * wait loop.
+	 *
+	 * That means that the kernel writes shared memory behind rr's
+	 * back, which can diverge replay.  The "real fix" for this is
+	 * for rr to track access to shared memory, like the |ctid|
+	 * location.  But until then, we (attempt to) let "time"
+	 * resolve this memory race with the sleep() hack below. */
+	usleep(100);
 }
 
 void print_register_file_tid(pid_t tid)
