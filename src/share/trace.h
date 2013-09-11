@@ -33,6 +33,10 @@ enum {
 	USR_SYSCALLBUF_RESET = -1015,
 	USR_ARM_DESCHED,
 	USR_DISARM_DESCHED,
+	/* Like USR_EXIT, but recorded when the task is in an
+	 * "unstable" state in which we're not sure we can
+	 * synchronously wait for it to "really finish". */
+	USR_UNSTABLE_EXIT,
 	/* TODO: this is actually a pseudo-pseudosignal: it will never
 	 * appear in a trace, but is only used to communicate between
 	 * different parts of the recorder code that should be

@@ -1349,6 +1349,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		step.action = TSTEP_RETIRE;
 		break;
 	}
+	case USR_UNSTABLE_EXIT:
+		t->unstable = 1;
+		/* fall through */
 	case USR_EXIT:
 		rep_sched_deregister_thread(&t);
 		/* Early-return because |t| is gone now. */

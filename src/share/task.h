@@ -100,6 +100,7 @@ struct event {
 			       EUSR_SYSCALLBUF_FLUSH,
 			       EUSR_SYSCALLBUF_ABORT_COMMIT,
 			       EUSR_SYSCALLBUF_RESET,
+			       EUSR_UNSTABLE_EXIT,
 			} no;
 			/* When replaying a pseudosignal is expected
 			 * to leave the tracee in the same execution

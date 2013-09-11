@@ -164,7 +164,6 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 
 		assert(next_t->unstable || task_may_be_blocked(next_t));
 		next_t->status = status;
-		next_t->unstable = 0;
 		*by_waitpid = 1;
 	}
 
