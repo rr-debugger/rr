@@ -15,7 +15,7 @@ static void waittermsig(int sig, const char* waiter)
 	sigaddset(&set, sig);
 	sigtimedwait(&set, &si, &ts);
 
-	atomic_printf("FAILED: %s: signal %d either not caught or didn't terminate process within 1 second",
+	atomic_printf("FAILED: %s: signal %d either not caught or didn't terminate process within 1 second\n",
 		      waiter, sig);
 }
 

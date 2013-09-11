@@ -133,8 +133,7 @@ void rep_sched_deregister_thread(struct task **t_ptr)
 	num_threads--;
 	assert(num_threads >= 0);
 
-	/* detatch the child process*/
-	sys_ptrace_detach(t->tid);
+	detach_and_reap(t);
 
 	sys_free((void**) t_ptr);
 }

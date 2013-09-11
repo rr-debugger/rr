@@ -189,6 +189,13 @@ static void handle_ptrace_event(struct task** tp)
 	}
 
 	case PTRACE_EVENT_EXIT:
+		if (EV_SYSCALL == t->ev->type
+		    && SYS_exit_group == t->ev->syscall.no
+		    && rec_sched_get_num_threads() > 1) {
+			log_warn("exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race");
+			task_group_destabilize(t->task_group);
+		}
+
 		t->event = t->unstable ? USR_UNSTABLE_EXIT : USR_EXIT;
 		push_pseudosig(t,
 			       t->unstable ? EUSR_UNSTABLE_EXIT : EUSR_EXIT,
@@ -750,6 +757,7 @@ void record()
 		case EV_SIGNAL_DELIVERY: {
 			int unstable = signal_state_changed(t, by_waitpid);
 			if (unstable) {
+				log_warn("Delivered core-dumping signal; may misrecord CLONE_CHILD_CLEARTID memory race");
 				task_group_destabilize(t->task_group);
 			}
 			continue;
