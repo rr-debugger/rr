@@ -127,13 +127,6 @@ static void disarm_desched_event(struct task* t)
 	}
 }
 
-static uint64_t read_desched_counter(struct task* t)
-{
-	uint64_t nr_descheds;
-	read(t->desched_fd, &nr_descheds, sizeof(nr_descheds));
-	return nr_descheds;
-}
-
 static int advance_syscall_boundary(struct task* t,
 				     struct user_regs_struct* regs)
 {
@@ -164,7 +157,6 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 				    struct user_regs_struct* regs)
 {
 	int call, sig;
-	uint64_t nr_descheds;
 
 	assert(SIGIO == si->si_signo);
 
@@ -198,9 +190,10 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 * has served its purpose and we need to prepare the tracee to
 	 * be context-switched.
 	 *
-	 * One implementation note is that when the tracer is
-	 * descheduled in interval (C) above, we see *two* SIGIOs.
-	 * The current theory of what's happening is
+	 * An annoyance of the desched signal is that when the tracer
+	 * is descheduled in interval (C) above, we see normally (see
+	 * below) see *two* SIGIOs.  The current theory of what's
+	 * happening is
 	 *
 	 *  o child gets descheduled, bumps counter to i and schedules
 	 *    SIGIO
@@ -221,31 +214,29 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 *  o parent stops delivery of second SIGIO and we continue on
 	 *
 	 * So we "work around" this by the tracer expecting two SIGIO
-	 * notifications, and silently discarding both.*/
+	 * notifications, and silently discarding both.
+	 *
+	 * One really fun edge case is that sometimes the desched
+	 * signal will interrupt the arm-desched syscall itself.
+	 * Continuing to the next syscall boundary seems to restart
+	 * the arm-desched syscall, and advancing to the boundary
+	 * again exits it and we start receiving desched signals
+	 * again.
+	 *
+	 * That may be a kernel bug, but we handle it by just
+	 * continuing until we we continue past the arm-desched
+	 * syscall *and* stop seeing SIGIOs. */
+	do {
+		/* Prevent further desched notifications from firing
+		 * while we're advancing the tracee.  We're going to
+		 * leave it in a consistent state anyway, so the event
+		 * is no longer useful.  We have to do this in each
+		 * loop iteration because a restarted arm-desched
+		 * syscall may have re-armed the event. */
+		disarm_desched_event(t);
+		sig = advance_syscall_boundary(t, regs);
+	} while (SIGIO == sig || is_arm_desched_event_syscall(t, regs));
 
-	/* Clear the pending input. */
-	nr_descheds = read_desched_counter(t);
-	(void)nr_descheds;
-	debug("  (desched #%llu)", nr_descheds);
-
-	/* Prevent further desched notifications from firing while
-	 * we're advancing the tracee.  We're going to leave it in a
-	 * consistent state anyway, so the event is no longer
-	 * useful. */
-	disarm_desched_event(t);
-
-	/* Decline to deliver the SIGIO to the tracee, and eat the
-	 * extraneous SIGIO. */
-	sig = advance_syscall_boundary(t, regs);
-	assert_exec(t, SIGIO == sig,
-		    "Trying to skip redundant SIGIO after desched event, but got sig %s at $ip %p (untraced entry %p); desched? %s; syscall %s",
-		    signalname(sig),
-		    (void*)regs->eip, t->untraced_syscall_ip,
-		    is_desched_event_syscall(t, regs) ? "yes" : "no",
-		    syscallname(regs->orig_eax));
-
-	/* Continue the tracee to its next syscall entry. */
-	advance_syscall_boundary(t, regs);
 	if (is_disarm_desched_event_syscall(t, regs)) {
 		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
 		return USR_NOOP;
