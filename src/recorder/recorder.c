@@ -191,8 +191,10 @@ static void handle_ptrace_event(struct task** tp)
 	}
 
 	case PTRACE_EVENT_EXIT:
-		t->event = USR_EXIT;
-		push_pseudosig(t, EUSR_EXIT, HAS_EXEC_INFO);
+		t->event = t->unstable ? USR_UNSTABLE_EXIT : USR_EXIT;
+		push_pseudosig(t,
+			       t->unstable ? EUSR_UNSTABLE_EXIT : EUSR_EXIT,
+			       HAS_EXEC_INFO);
 		record_event(t);
 		pop_pseudosig(t);
 
