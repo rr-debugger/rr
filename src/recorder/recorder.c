@@ -89,8 +89,6 @@ static void cont_nonblock(struct task *t)
 	sys_ptrace_syscall(t->tid);
 }
 
-uintptr_t progress;
-
 static void handle_ptrace_event(struct task** tp)
 {
 	struct task* t = *tp;
@@ -760,11 +758,6 @@ void record()
 			/* No special handling needed; continue on
 			 * below. */
 			break;
-		}
-
-		if (progress++ % 10000 == 0) {
-			fprintf(stderr,".");
-			fflush(stdout);
 		}
 
 		resume_execution(t, DEFAULT_CONT);
