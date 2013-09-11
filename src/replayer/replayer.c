@@ -1322,11 +1322,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		assert(dbg_is_resume_request(&req));
 	}
 
-	/* print some kind of progress */
-	if (t->trace.global_time % 10000 == 0) {
-		fprintf(stderr, "time: %u\n",t->trace.global_time);
-	}
-
 	if (t->child_sig != 0) {
 		assert(event == -t->child_sig
 		       || event == -(t->child_sig | DET_SIGNAL_BIT));
