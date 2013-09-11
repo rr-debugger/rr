@@ -26,33 +26,19 @@ int rec_sched_get_num_threads();
 struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid);
 
 /**
- * An invariant of rr scheduling is that all process status changes
- * happen as a result of rr resuming the execution of a task.  This is
- * required to keep tracees in known states, preventing events from
- * happening "behind rr's back".  However, sometimes this is
- * unavoidable; one case is delivering some kinds of death signals.
- * When that situation occurs, notify the scheduler by calling this
- * function: the effect is that the scheduler will always use
- * |waitpid(-1)| to schedule tasks, thereby assuming nothing about
- * tasks' statuses.
- *
- * When stability returns, call |rec_set_tasks_stable()|.
- *
- * TODO: this can fail with multiple task groups.
- */
-void rec_sched_set_tasks_unstable();
-void rec_sched_set_tasks_stable();
-
-/**
  * Register the new OS task |child|, created by |parent|.  |parent|
  * may be 0 for the first registered task, but must be a registered
- * task for all subsequent calls.  |share_sighandlers| is nonzero if
- * |parent| and |child| will share the same sighandlers table, and
- * zero if |child| will get a copy of |parent|'s table.
+ * task for all subsequent calls.  |flags| is a bitset determining
+ * which resources |parent| and |child| will share.
+ *
+ * If |flags & SHARE_SIGHANDLERS|, the child will get a reference to
+ * the parent's sighandlers table.  Otherwise it gets a copy.
+ *
+ * If |flags & SHARE_TASK_GROUP|, the child will join the parent's
+ * task group.  Otherwise it becomes its own new thread group.
  */
-enum { COPY_SIGHANDLERS = 0, SHARE_SIGHANDLERS = 1 };
-void rec_sched_register_thread(pid_t parent, pid_t child,
-			       int share_sighandlers);
+enum { DEFAULT_COPY = 0, SHARE_SIGHANDLERS = 0x1, SHARE_TASK_GROUP = 0x2 };
+void rec_sched_register_thread(pid_t parent, pid_t child, int flags);
 void rec_sched_deregister_thread(struct task** t);
 void rec_sched_exit_all();
 

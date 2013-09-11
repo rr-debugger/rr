@@ -128,24 +128,27 @@ static void handle_ptrace_event(struct task** tp)
 	case PTRACE_EVENT_VFORK: {
 		/* get new tid, register at the scheduler and setup HPC */
 		int new_tid = sys_ptrace_getmsg(t->tid);
-		int share_sighandlers;
+		int clone_flags, flags = 0;
 
 		/* ensure that clone was successful */
 		assert(read_child_eax(t->tid) != -1);
 
 		read_child_registers(t->tid, &t->regs);
+		/* fork and vfork can never share these resources,
+		 * only copy, so the flags here aren't meaningful for
+		 * them, only clone. */
+		clone_flags = (SYS_clone == t->regs.orig_eax) ?
+			      t->regs.edx : 0;
 		/* The rather misleadingly named CLONE_SIGHAND flag
-		 * actually means *share* the sighandler table.  (The
-		 * flags param is argument 3, which is edx.)  fork and
-		 * vfork must always copy sighandlers, there's no
-		 * option to not copy. */
-		share_sighandlers = (SYS_clone == t->regs.orig_eax) ?
-				    (CLONE_SIGHAND & t->regs.edx) :
-				    COPY_SIGHANDLERS;
+		 * actually means *share* the sighandler table. */
+		flags |= (CLONE_SIGHAND & clone_flags) ? SHARE_SIGHANDLERS : 0;
+		/* Among other things, CLONE_THREAD puts the new task
+		 * in its creator's thread group. */
+		flags |= (CLONE_THREAD & clone_flags) ? SHARE_TASK_GROUP : 0;
 
 		/* wait until the new thread is ready */
 		sys_waitpid(new_tid, &t->status);
-		rec_sched_register_thread(t->tid, new_tid, share_sighandlers);
+		rec_sched_register_thread(t->tid, new_tid, flags);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
 		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
@@ -747,9 +750,7 @@ void record()
 		case EV_SIGNAL_DELIVERY: {
 			int unstable = signal_state_changed(t, by_waitpid);
 			if (unstable) {
-				rec_sched_set_tasks_unstable();
-			} else {
-				rec_sched_set_tasks_stable();
+				task_group_destabilize(t->task_group);
 			}
 			continue;
 		}

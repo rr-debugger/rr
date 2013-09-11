@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/queue.h>
 #include <sys/user.h>
 
 #include "../external/tree.h"
@@ -18,6 +19,12 @@ struct syscallbuf_record;
 /* (There are various GNU and BSD extensions that define this, but
  * it's not worth the bother to sort those out.) */
 typedef void (*sig_handler_t)(int);
+
+/**
+ * A task group, which consists of a task-group ID (tgid) and a list
+ * of tasks.  Manipulated through |task_group_()| functions below.
+ */
+/*refcounted*/ struct task_group;
 
 /**
  * A signal-handler table.  The table stores the disposition of all
@@ -231,6 +238,9 @@ struct event {
 struct task {
 	/* State only used during recording. */
 
+	/* The task group this belongs to. */
+	/*refcounted*/struct task_group* task_group;
+
 	/* Points to the signal-hander table of this task.  If this
 	 * task is a non-fork clone child, then the table will be
 	 * shared with all its "thread" siblings.  Any updates made to
@@ -379,7 +389,11 @@ struct task {
 	/* Points at the tracee's mapping of the buffer. */
 	void* syscallbuf_child;
 
+	/* (Don't worry about these fields; they're implementation
+	 * details for various data structures that tasks belong
+	 * to.) */
 	RB_ENTRY(task) entry;
+	TAILQ_ENTRY(task) tgentry;
 };
 
 /**
@@ -465,6 +479,48 @@ void log_event(const struct event* ev);
  * Return a string naming |ev|'s type.
  */
 const char* event_name(const struct event* ev);
+
+/**
+ * Return a new task group consisting of |t|, with |tgid == t->tid|.
+ * |task_group_unref()| must be called to free the returned group.
+ */
+struct task_group* task_group_new_and_add(struct task* t);
+
+/**
+ * Add |t| to |tg| and add a reference to |tg|, so that
+ * |task_group_unref()| must be called one more time to free |tg|.
+ */
+struct task_group* task_group_add_and_ref(struct task_group* tg,
+					  struct task* t);
+
+/**
+ * An invariant of rr scheduling is that all process status changes
+ * happen as a result of rr resuming the execution of a task.  This is
+ * required to keep tracees in known states, preventing events from
+ * happening "behind rr's back".  However, sometimes this seems to be
+ * unavoidable; one case is delivering some kinds of death signals.
+ * When that situation occurs, notify the scheduler by calling this
+ * function: the effect is that the scheduler will always use
+ * |waitpid()| to schedule destabilized tasks, thereby assuming
+ * nothing about the destabilized tasks' statuses.
+ *
+ * Currently, instability is a one-way street; it's only been needed
+ * for death signals and exit_group() so far.  This helper (obviously)
+ * only acts at the task-group granularity, since it's not yet known
+ * how |killpg()| appears to ptracers.
+ */
+void task_group_destabilize(struct task_group* tg);
+
+/**
+ * Return the |tgid| of |tg|.
+ */
+pid_t task_group_get_tgid(const struct task_group* tg);
+
+/**
+ * Remove |t| from its thread group and release |t|'s reference to the
+ * thread group, which may result in the thread group being deleted.
+ */
+void task_group_remove_and_unref(struct task* t);
 
 /**
  * Create and return a new sighandler table with all signals set to

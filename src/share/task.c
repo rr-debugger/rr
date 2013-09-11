@@ -25,9 +25,21 @@ struct refcounted {
 };
 
 /**
+ * Tracks a group of tasks with an associated ID, set from the
+ * original "thread group leader", the child of |fork()| which became
+ * the ancestor of all other threads in the group.  Each constituent
+ * task must own a reference to this.
+ */
+struct task_group {
+	struct refcounted _;
+	pid_t tgid;
+	TAILQ_HEAD(task_group_list, task) tasks;
+};
+
+/**
  * Stores the table of signal dispositions and metadata for an
- * arbitrary set of tasks.  Each of those task must own one one of the
- * |refcount|s while they still refer to this.
+ * arbitrary set of tasks.  Each of those tasks must own one one of
+ * the |refcount|s while they still refer to this.
  */
 struct sighandlers {
 	struct refcounted _;
@@ -57,11 +69,12 @@ static void refcounted_assert_valid(const void* p)
  * Add a reference to |p|, so that |refcounted_unref()| must be called
  * one more time to free |p|.
  */
-static void refcounted_ref(void* p)
+static void* refcounted_ref(void* p)
 {
 	struct refcounted* r = p;
 	refcounted_assert_valid(r);
 	++r->refcount;
+	return r;
 }
 
 /**
@@ -281,6 +294,54 @@ const char* event_name(const struct event* ev)
 	return event_type_name(ev->type);
 }
 
+struct task_group* task_group_new_and_add(struct task* t)
+{
+	struct task_group* tg = calloc(1, sizeof(*tg));
+
+	refcounted_init(tg);
+
+	tg->tgid = t->tid;
+	TAILQ_INIT(&tg->tasks);
+	TAILQ_INSERT_TAIL(&tg->tasks, t, tgentry);
+
+	return tg;
+}
+
+struct task_group* task_group_add_and_ref(struct task_group* tg,
+					  struct task* t)
+{
+	refcounted_assert_valid(tg);
+	TAILQ_INSERT_TAIL(&tg->tasks, t, tgentry);
+	return refcounted_ref(tg);
+}
+
+void task_group_destabilize(struct task_group* tg)
+{
+	struct task* t;
+	TAILQ_FOREACH(t, &tg->tasks, tgentry) {
+		t->unstable = 1;
+	}
+}
+
+pid_t task_group_get_tgid(const struct task_group* tg)
+{
+	refcounted_assert_valid(tg);
+	return tg->tgid;
+}
+
+void task_group_remove_and_unref(struct task* t)
+{
+	struct task_group* to_free;
+
+	TAILQ_REMOVE(&t->task_group->tasks, t, tgentry);
+
+	to_free = refcounted_unref((void**)&t->task_group);
+	if (to_free) {
+		assert(TAILQ_EMPTY(&to_free->tasks));
+		free(to_free);
+	}
+}
+
 static void assert_table_has_sig(const struct sighandlers* t, int sig)
 {
 	refcounted_assert_valid(t);
@@ -363,8 +424,7 @@ struct sighandlers* sighandlers_copy(struct sighandlers* from)
 
 struct sighandlers* sighandlers_ref(struct sighandlers* table)
 {
-	refcounted_ref(table);
-	return table;
+	return refcounted_ref(table);
 }
 
 void sighandlers_reset_user_handlers(struct sighandlers* table)
