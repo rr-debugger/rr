@@ -10,17 +10,75 @@
 #include "util.h"
 
 /**
+ * "Mix-in" for heap structs to enable them to be refcounted using the
+ * |refcounted_()| helpers below.  Your struct must have a |struct
+ * refcounted| field inline, first, as follows.  The field name
+ * doesn't matter.
+ *
+ *   struct foo {
+ *     struct refcounted _;
+ *     ...
+ *   };
+ */
+struct refcounted {
+	int refcount;
+};
+
+/**
  * Stores the table of signal dispositions and metadata for an
  * arbitrary set of tasks.  Each of those task must own one one of the
  * |refcount|s while they still refer to this.
  */
 struct sighandlers {
-	int refcount;
+	struct refcounted _;
 	struct {
 		sig_handler_t handler;
 		int resethand;
 	} handlers[_NSIG];
 };
+
+/**
+ * Initializes the first reference to the struct.
+ * |refcounted_unref()| must be called to release that reference.
+ */
+static void refcounted_init(void* p)
+{
+	struct refcounted* r = p;
+	r->refcount = 1;
+}
+
+static void refcounted_assert_valid(const void* p)
+{
+	const struct refcounted* r = p;
+	assert(r->refcount > 0);
+}
+
+/**
+ * Add a reference to |p|, so that |refcounted_unref()| must be called
+ * one more time to free |p|.
+ */
+static void refcounted_ref(void* p)
+{
+	struct refcounted* r = p;
+	refcounted_assert_valid(r);
+	++r->refcount;
+}
+
+/**
+ * Remove a reference to |*pp| and return |*pp| if the released
+ * reference was the last and |*pp| needs to be freed; NULL otherwise.
+ * It's OK to pass a NULL pointer or pointer to NULL.
+ */
+static void* refcounted_unref(void** pp)
+{
+	struct refcounted* r;
+	if (!pp || !(r = *pp)) {
+		return NULL;
+	}
+	*pp = NULL;
+	refcounted_assert_valid(r);
+	return (0 == --r->refcount) ? r : NULL;
+}
 
 static const char* event_type_name(int type)
 {
@@ -223,14 +281,9 @@ const char* event_name(const struct event* ev)
 	return event_type_name(ev->type);
 }
 
-static void assert_valid(const struct sighandlers* t)
-{
-	assert(t->refcount > 0);
-}
-
 static void assert_table_has_sig(const struct sighandlers* t, int sig)
 {
-	assert_valid(t);
+	refcounted_assert_valid(t);
 	assert(0 < sig && sig < ALEN(t->handlers));
 }
 
@@ -246,12 +299,10 @@ static int is_user_handler(sig_handler_t sh)
 struct sighandlers* sighandlers_new()
 {
 	struct sighandlers* t = calloc(1, sizeof(*t));
-
 	/* We assume this in order to skip explicitly initializing the
 	 * table.  TODO: static assert */
 	assert(NULL == SIG_DFL);
-
-	t->refcount = 1;
+	refcounted_init(t);
 	return t;
 }
 
@@ -305,15 +356,14 @@ struct sighandlers* sighandlers_copy(struct sighandlers* from)
 	struct sighandlers* copy = sighandlers_new();
 
 	memcpy(copy, from, sizeof(*copy));
-	copy->refcount = 1;
+	refcounted_init(copy);
 
 	return copy;
 }
 
 struct sighandlers* sighandlers_ref(struct sighandlers* table)
 {
-	assert_valid(table);
-	++table->refcount;
+	refcounted_ref(table);
 	return table;
 }
 
@@ -335,17 +385,8 @@ void sighandlers_reset_user_handlers(struct sighandlers* table)
 
 void sighandlers_unref(struct sighandlers** table)
 {
-	struct sighandlers* t;
-
-	if (!table || !*table) {
-		return;
-	}
-
-	t = *table;
-	*table = NULL;
-	assert_valid(t);
-
-	if (0 == --t->refcount) {
-		free(t);
+	struct sighandlers* to_free = refcounted_unref((void**)table);
+	if (to_free) {
+		free(to_free);
 	}
 }
