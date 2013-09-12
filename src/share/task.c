@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "Task"
+
 #include "task.h"
 
 #include <stdlib.h>
@@ -298,6 +300,8 @@ struct task_group* task_group_new_and_add(struct task* t)
 {
 	struct task_group* tg = calloc(1, sizeof(*tg));
 
+	debug("creating new task group for %d", t->tid);
+
 	refcounted_init(tg);
 
 	tg->tgid = t->tid;
@@ -310,6 +314,8 @@ struct task_group* task_group_new_and_add(struct task* t)
 struct task_group* task_group_add_and_ref(struct task_group* tg,
 					  struct task* t)
 {
+	debug("adding %d to task group %d", t->tid, tg->tgid);
+
 	refcounted_assert_valid(tg);
 	TAILQ_INSERT_TAIL(&tg->tasks, t, tgentry);
 	return refcounted_ref(tg);
@@ -332,6 +338,8 @@ pid_t task_group_get_tgid(const struct task_group* tg)
 void task_group_remove_and_unref(struct task* t)
 {
 	struct task_group* to_free;
+
+	debug("removing %d from task group %d", t->tid, t->task_group->tgid);
 
 	TAILQ_REMOVE(&t->task_group->tasks, t, tgentry);
 
