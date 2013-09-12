@@ -85,17 +85,17 @@ static __thread byte* buffer = NULL;
  * At this point, progress in the recorded application can only be
  * made by scheduling R, but no one tells rr to do that.  Oops!
  *
- * Thus enter the "desched counter".  It's a perf_event for the "sw
- * t switches" event (which, more precisely, is "sw deschedule";
- * it counts schedule-out, not schedule-in).  We program the counter
- * to deliver SIGIO to this task when there's new counter data
+ * Thus enter the "desched counter".  It's a perf_event for the "sw t
+ * switches" event (which, more precisely, is "sw deschedule"; it
+ * counts schedule-out, not schedule-in).  We program the counter to
+ * deliver a signal to this task when there's new counter data
  * available.  And we set up the "sample period", how many descheds
- * are triggered before SIGIO is delivered, to be "1".  This means
- * that when the counter is armed, the next desched (i.e., the next
- * time the desched counter is bumped up) of this task will deliver
- * SIGIO to it.  And signal delivery always generates a ptrace trap,
- * so rr can deduce that this task was descheduled and schedule
- * another.
+ * are triggered before the signal is delivered, to be "1".  This
+ * means that when the counter is armed, the next desched (i.e., the
+ * next time the desched counter is bumped up) of this task will
+ * deliver the signal to it.  And signal delivery always generates a
+ * ptrace trap, so rr can deduce that this task was descheduled and
+ * schedule another.
  *
  * The description above is sort of an idealized view; there are
  * numerous implementation details that are documented in
@@ -336,8 +336,8 @@ static void install_syscall_filter()
 }
 
 /**
- * Return a counter that generates a SIGIO targeted at this task every
- * time the task is descheduled |nr_descheds| times.
+ * Return a counter that generates a signal targeted at this task
+ * every time the task is descheduled |nr_descheds| times.
  */
 static int open_desched_event_counter(size_t nr_descheds)
 {
