@@ -136,7 +136,7 @@ static void handle_ptrace_event(struct task** tp)
 		 * only copy, so the flags here aren't meaningful for
 		 * them, only clone. */
 		clone_flags = (SYS_clone == t->regs.orig_eax) ?
-			      t->regs.edx : 0;
+			      t->regs.ebx : 0;
 		/* The rather misleadingly named CLONE_SIGHAND flag
 		 * actually means *share* the sighandler table. */
 		flags |= (CLONE_SIGHAND & clone_flags) ? SHARE_SIGHANDLERS : 0;
