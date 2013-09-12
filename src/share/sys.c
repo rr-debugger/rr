@@ -332,21 +332,11 @@ static inline long time_difference(struct timeval *t1, struct timeval *t2) {
 	return (t2->tv_sec - t1->tv_sec) * 1000000 + (t2->tv_usec - t1->tv_usec);
 }
 
-void sys_fcntl(int fd, int option, pid_t pid)
+void sys_fcntl(int fd, int cmd, long arg1)
 {
-	if (fcntl(fd, option, pid) < 0) {
-		perror("error when calling fcntl\n");
-		exit(-1);
+	if (fcntl(fd, cmd, arg1) < 0) {
+		fatal("fcntl(%d, %ld) failed", cmd, arg1);
 	}
-}
-void sys_fcntl_f_setown(int fd, pid_t pid)
-{
-	sys_fcntl(fd, F_SETOWN, pid);
-}
-
-void sys_fcntl_f_setfl_o_async(int fd)
-{
-	sys_fcntl(fd, F_SETFL, O_ASYNC);
 }
 
 void* sys_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)

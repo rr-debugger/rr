@@ -789,7 +789,8 @@ static int advance_to(struct task* t, uint64_t rcb,
 		reset_hpc(t, rcb - rcb_now - SKID_SIZE);
 
 		continue_or_step(t, stepi);
-		if (SIGIO == t->child_sig || SIGCHLD == t->child_sig) {
+		if (HPC_TIME_SLICE_SIGNAL == t->child_sig
+		    || SIGCHLD == t->child_sig) {
 			/* Tracees can receive SIGCHLD at pretty much
 			 * any time during replay.  If we recorded
 			 * delivery, we'll manually replay it
@@ -800,7 +801,7 @@ static int advance_to(struct task* t, uint64_t rcb,
 		guard_unexpected_signal(t);
 
 		/* TODO this assertion won't catch many spurious
-		 * SIGIOs; should assert that the siginfo says the
+		 * signals; should assert that the siginfo says the
 		 * source is io-ready and the fd is the child's fd. */
 		if (fcntl(t->hpc->rbc.fd, F_GETOWN) != tid) {
 			fatal("Scheduled task %d doesn't own hpc; replay divergence", tid);
@@ -938,17 +939,18 @@ static int advance_to(struct task* t, uint64_t rcb,
 			continue_or_step(t, STEPI);
 		}
 
-		if (SIGIO == t->child_sig || SIGCHLD == t->child_sig) {
+		if (HPC_TIME_SLICE_SIGNAL == t->child_sig
+		    || SIGCHLD == t->child_sig) {
 			/* See the long comment in "Step 1" above.
 			 *
-			 * We don't usually expect a SIGIO during this
-			 * phase, but it's possible for a SIGCHLD to
-			 * interrupt the previous step just as the
-			 * tracee enters the slack region, i.e., where
-			 * an rbc SIGIO was just about to fire.
-			 * (There's not really a non-racy way to
-			 * disable the rbc interrupt, and we need to
-			 * keep the counter running for overshoot
+			 * We don't usually expect a time-slice signal
+			 * during this phase, but it's possible for a
+			 * SIGCHLD to interrupt the previous step just
+			 * as the tracee enters the slack region,
+			 * i.e., where an rbc signal was just about to
+			 * fire.  (There's not really a non-racy way
+			 * to disable the rbc interrupt, and we need
+			 * to keep the counter running for overshoot
 			 * checking anyway.)  So this is the most
 			 * convenient way to squelch that "spurious"
 			 * signal. */

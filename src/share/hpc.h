@@ -1,17 +1,25 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef COUNTERS_H_
-#define COUNTERS_H_
+#ifndef HPC_H_
+#define HPC_H_
+
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE 1
+#endif
 
 #include <assert.h>
-#include <stdio.h>
+#include <err.h>
+#include <linux/perf_event.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <err.h>
-
+#include <stdio.h>
 #include <sys/ioctl.h>
-#include <linux/perf_event.h>
+#include <unistd.h>
+
+/* This choice is fairly arbitrary; linux doesn't use SIGSTKFLT so we
+ * hope that tracees don't either. */
+#define HPC_TIME_SLICE_SIGNAL SIGSTKFLT
 
 struct task;
 
@@ -73,4 +81,4 @@ uint64_t read_insts(struct hpc_context *counters);
 		assert(ret == size);		 \
 	} while(0)
 
-#endif /* COUNTERS_H_ */
+#endif /* HPC_H_ */

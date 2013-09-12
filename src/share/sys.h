@@ -49,9 +49,7 @@ void sys_ptrace_syscall(pid_t pid);
 
 pid_t sys_waitpid(pid_t pid, int *status);
 pid_t sys_waitpid_nonblock(pid_t pid, int *status);
-void sys_fcntl(int filedes, int option, pid_t pid);
-void sys_fcntl_f_setown(int filedes, pid_t pid);
-void sys_fcntl_f_setfl_o_async(int filedes);
+void sys_fcntl(int fd, int cmd, long arg1);
 
 void* sys_mmap(void* addr, size_t length, int prot, int flags, int filedes, off_t offset);
 void sys_munmap(void* addr, size_t length);

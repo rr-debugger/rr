@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <err.h>
+#include <fcntl.h>
 #include <perfmon/pfmlib_perf_event.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -190,8 +191,9 @@ static void __start_hpc(struct task* t)
 	START_COUNTER(tid,counters->hw_int.fd,counters->page_faults);
 	//START_COUNTER(tid,counters->hw_int.fd,counters->rbc);
 
-	sys_fcntl_f_setown(counters->rbc.fd, tid);
-	sys_fcntl_f_setfl_o_async(counters->rbc.fd);
+	sys_fcntl(counters->rbc.fd, F_SETOWN, tid);
+	sys_fcntl(counters->rbc.fd, F_SETFL, O_ASYNC);
+	sys_fcntl(counters->rbc.fd, F_SETSIG, HPC_TIME_SLICE_SIGNAL);
 
 	counters->started = 1;
 }
