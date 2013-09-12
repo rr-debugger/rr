@@ -7,11 +7,16 @@
 # define _GNU_SOURCE 1
 #endif
 
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
+
+/* This is pretty arbitrary; SIGSYS is unused by linux, and hopefully
+ * normal applications don't use it either. */
+#define SYSCALLBUF_DESCHED_SIGNAL SIGSYS
 
 #define SYSCALLBUF_LIB_FILENAME "librr_syscall_buffer.so"
 /* This size counts the header along with record data. */
