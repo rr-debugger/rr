@@ -364,8 +364,9 @@ static int open_desched_event_counter(size_t nr_descheds)
 	if (traced_fcntl(fd, F_SETOWN_EX, &own)) {
 		fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
 	}
-	if (traced_fcntl(fd, F_SETSIG, SIGIO)) {
-		fatal("Failed to fcntl(SETSIG, SIGIO) the desched counter");
+	if (traced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
+		fatal("Failed to fcntl(SETSIG, %d) the desched counter",
+		      SYSCALLBUF_DESCHED_SIGNAL);
 	}
 
 	return fd;

@@ -132,39 +132,37 @@ static int advance_syscall_boundary(struct task* t,
 {
 	pid_t tid = t->tid;
 	int status;
+	int sig;
 
 	sys_ptrace_syscall(tid);
 	sys_waitpid(tid, &status);
 	read_child_registers(tid, regs);
-	if (!(WIFSTOPPED(status) && (STOPSIG_SYSCALL == WSTOPSIG(status)
-				     /* TODO: non-desched SIGIO could
-				      * happen here */
-				     || SIGIO == WSTOPSIG(status)))) {
-		/* TODO: need to handle signals here */
-		fatal("Trying to reach syscall boundary, but saw signal %s instead (status 0x%x)",
-		      signalname(WSTOPSIG(status)), status);
-	}
-	return WSTOPSIG(status);
+	sig = WSTOPSIG(status);
+
+	assert_exec(t, (WIFSTOPPED(status)
+			&& (STOPSIG_SYSCALL == sig
+			    || SYSCALLBUF_DESCHED_SIGNAL == sig)),
+		    /* TODO: need to handle signals here */
+		    "Trying to reach syscall boundary, but saw signal %s instead (status 0x%x)",
+		    signalname(sig), status);
+	return sig;
 }
 
 /**
- * Return nonzero if |t| was stopped because of a SIGIO resulting
- * from notification of |t| being descheduled, zero otherwise.  The
- * tracee's execution may be advanced, and if so |regs| is updated to
- * the tracee's latest state.
+ * Return the event needing to be processed after this desched of |t|.
+ * The tracee's execution may be advanced, and if so |regs| is updated
+ * to the tracee's latest state.
  */
-static int try_handle_desched_event(struct task* t, const siginfo_t* si,
-				    struct user_regs_struct* regs)
+static int handle_desched_event(struct task* t, const siginfo_t* si,
+				struct user_regs_struct* regs)
 {
 	int call, sig;
 
-	assert(SIGIO == si->si_signo);
-
-	if (si->si_code != POLL_IN || si->si_fd != t->desched_fd_child) {
-		debug("  (SIGIO not for desched: code=%d, fd=%d)",
-		      si->si_code, si->si_fd);
-		return 0;
-	}
+	assert_exec(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo
+			&& si->si_code == POLL_IN
+			&& si->si_fd == t->desched_fd_child),
+		    "Tracee is using SIGSYS??? (code=%d, fd=%d)",
+		    si->si_code, si->si_fd);
 
 	/* TODO: how can signals interrupt us here? */
 
@@ -192,28 +190,28 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 *
 	 * An annoyance of the desched signal is that when the tracer
 	 * is descheduled in interval (C) above, we see normally (see
-	 * below) see *two* SIGIOs.  The current theory of what's
+	 * below) see *two* signals.  The current theory of what's
 	 * happening is
 	 *
 	 *  o child gets descheduled, bumps counter to i and schedules
-	 *    SIGIO
-	 *  o SIGIO notification "schedules" child, but it doesn't
+	 *    signal
+	 *  o signal notification "schedules" child, but it doesn't
 	 *    actually run any application code
 	 *  o child is being ptraced, so we "deschedule" child to
 	 *    notify parent and bump counter to i+1.  (The parent
 	 *    hasn't had a chance to clear the counter yet.)
-	 *  o another counter signal is generated, but SIGIO is
+	 *  o another counter signal is generated, but signal is
 	 *    already pending so this one is queued
 	 *  o parent is notified and sees counter value i+1
 	 *  o parent stops delivery of first signal and disarms
 	 *    counter
-	 *  o second SIGIO dequeued and delivered, notififying parent
+	 *  o second signal dequeued and delivered, notififying parent
 	 *    (counter is disarmed now, so no pseudo-desched possible
 	 *    here)
 	 *  o parent notifiedand sees counter value i+1 again
-	 *  o parent stops delivery of second SIGIO and we continue on
+	 *  o parent stops delivery of second signal and we continue on
 	 *
-	 * So we "work around" this by the tracer expecting two SIGIO
+	 * So we "work around" this by the tracer expecting two signal
 	 * notifications, and silently discarding both.
 	 *
 	 * One really fun edge case is that sometimes the desched
@@ -225,7 +223,7 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 	 *
 	 * That may be a kernel bug, but we handle it by just
 	 * continuing until we we continue past the arm-desched
-	 * syscall *and* stop seeing SIGIOs. */
+	 * syscall *and* stop seeing signals. */
 	do {
 		/* Prevent further desched notifications from firing
 		 * while we're advancing the tracee.  We're going to
@@ -235,7 +233,8 @@ static int try_handle_desched_event(struct task* t, const siginfo_t* si,
 		 * syscall may have re-armed the event. */
 		disarm_desched_event(t);
 		sig = advance_syscall_boundary(t, regs);
-	} while (SIGIO == sig || is_arm_desched_event_syscall(t, regs));
+	} while (SYSCALLBUF_DESCHED_SIGNAL == sig
+		 || is_arm_desched_event_syscall(t, regs));
 
 	if (is_disarm_desched_event_syscall(t, regs)) {
 		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
@@ -565,7 +564,6 @@ void handle_signal(struct task* t)
 {
 	pid_t tid = t->tid;
 	int sig = signal_pending(t->status);
-	int event;
 	siginfo_t si;
 	struct user_regs_struct regs;
 	uint64_t max_rbc = rr_flags()->max_rbc;
@@ -585,9 +583,8 @@ void handle_signal(struct task* t)
 	 * those we *do not* want to (and cannot, most of the time)
 	 * step the tracee out of the syscallbuf code before
 	 * attempting to deliver the signal. */
-	if (SIGIO == sig
-	    && (event = try_handle_desched_event(t, &si, &regs))) {
-		t->event = event;
+	if (SYSCALLBUF_DESCHED_SIGNAL == sig) {
+		t->event = handle_desched_event(t, &si, &regs);
 		return;
 	}
 
