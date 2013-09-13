@@ -14,7 +14,7 @@ void catcher(int signum , siginfo_t *siginfo_ptr, void *ucontext_ptr) {
 
 int main(int argc, char **argv) {
     struct sigaction sact;
-    int counter = 0;
+    int counter;
 
     sigemptyset(&sact.sa_mask);
     sact.sa_flags = 0;
@@ -23,11 +23,11 @@ int main(int argc, char **argv) {
 
     alarm(1);  /* timer will pop in 1 second */
 
-    for (counter=0; counter >= 0 && !stop; counter++)
+    for (counter = 0; counter >= 0 && !stop; counter++)
 	    if (counter % 100000 == 0)
 		    write(STDOUT_FILENO, ".", 1);
 
-    atomic_printf("\nSignal caught, Counter is %d\n", counter );
+    atomic_printf("\nSignal caught, Counter is %d\n", counter);
 
     return 0;
 }
