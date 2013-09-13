@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh tcgets "$@"
+compare_test EXIT-SUCCESS

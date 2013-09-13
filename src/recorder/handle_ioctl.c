@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "ioctl"
+
 #include "handle_ioctl.h"
 
 #include <stddef.h>		/* broken DRM headers need these */
@@ -45,7 +47,20 @@ void handle_ioctl_request(struct task *t, int request)
 	debug("handling ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d",
 	      request, type, nr, dir, size);
 
-	/* (here "WRITE" means: write from OS to the process) */
+	read_child_registers(tid, &regs);
+
+	/* Some ioctl()s are irregular and don't follow the _IOC()
+	 * conventions.  Special case them here. */
+	switch (request) {
+	case TCGETS:
+		push_syscall(t, syscall);
+		record_child_data(t, sizeof(struct termios), (void*)regs.edx);
+		pop_syscall(t);
+		return;
+	}
+
+	/* In ioctl language, "_IOC_WRITE" means "outparam".  Both
+	 * READ and WRITE can be set for inout params. */
 	if (!(_IOC_WRITE & dir)) {
 		/* If the kernel isn't going to write any data back to
 		 * us, we hope and pray that the result of the ioctl
@@ -54,29 +69,11 @@ void handle_ioctl_request(struct task *t, int request)
 		return;
 	}
 
-	read_child_registers(tid, &regs);
-
-	switch (request) {
-
 	/* The following are thought to be "regular" ioctls, the
 	 * processing of which is only known to (observably) write to
 	 * the bytes in the structure passed to the kernel.  So all we
 	 * need is to record |size| bytes.*/
-	/* Terminal Buffer count and flushing (from: man 4
-	 * tty_ioctl) */
-	case FIONREAD:
-	/* Get and Set Terminal Attributes (from: man 4 tty_ioctl) */
-	case TCGETS:
-	/* Terminal process group and session ID (from: man 4
-	 * tty_ioctl) */
-	case TIOCGPGRP:
-	/* request for a terminal device */
-	case TIOCGWINSZ:
-		push_syscall(t, syscall);
-		record_child_data(t, size, (void*)regs.edx);
-		pop_syscall(t);
-		break;
-
+	switch (request) {
 	/* TODO: what are the 0x46 ioctls? */
 	case 0xc020462b:
 	case 0xc048464d:
