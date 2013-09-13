@@ -117,6 +117,7 @@ set(BASIC_TESTS
   splice
   step_thread
   switch_read
+  tcgets
   term_nonmain
   tgkill
   threads

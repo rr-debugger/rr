@@ -321,6 +321,7 @@ static void process_ioctl(struct task* t, int state,
 {
 	pid_t tid = t->tid;
 	int request;
+	int dir;
 
 	step->syscall.emu = 1;
 	step->syscall.emu_ret = 1;
@@ -331,30 +332,28 @@ static void process_ioctl(struct task* t, int state,
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	if ((request = read_child_ecx(tid)) & _IOC_WRITE) {
-		switch (request) {
-		case TCGETS:
-		case FIONREAD:
-		case TIOCGWINSZ:
-		case TIOCGPGRP:
-			step->syscall.num_emu_args = 1;
-			break;
-		case DRM_IOCTL_VERSION:
-			step->syscall.num_emu_args = 4;
-			break;
-		case DRM_IOCTL_I915_GEM_PWRITE:
-			step->syscall.num_emu_args = 2;
-			break;
-		case DRM_IOCTL_GET_MAGIC:
-		case DRM_IOCTL_RADEON_INFO:
-		case DRM_IOCTL_RADEON_GEM_CREATE:
-			print_register_file_tid(tid);
-			step->syscall.num_emu_args = 1;
-			break;
-		default:
-			print_register_file_tid(tid);
-			fatal("Unknown ioctl: %x", request);
-		}
+	request = read_child_ecx(tid);
+	dir = _IOC_DIR(request);
+
+	debug("Processing ioctl 0x%x: dir 0x%x", request, dir);
+
+	/* Process special-cased ioctls first. */
+	switch (request) {
+	case TCGETS:
+		step->syscall.num_emu_args = 1;
+		return;
+	}
+	/* Now on to the "regular" ioctls. */
+
+	if (!(_IOC_WRITE & dir)) {
+		/* Deterministic ioctl(), no data to restore to the
+		 * tracee. */
+		return;
+	}
+
+	switch (request) {
+	default:
+		fatal("Unknown ioctl 0x%x", request);
 	}
 }
 
