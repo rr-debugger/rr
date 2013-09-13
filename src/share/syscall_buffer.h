@@ -83,7 +83,7 @@ struct syscallbuf_record {
 struct syscallbuf_hdr {
 	/* The number of valid syscallbuf_record bytes in the buffer,
 	 * not counting this header. */
-	uint32_t num_rec_bytes : 30;
+	uint32_t num_rec_bytes : 29;
 	/* True if the current syscall should not be committed to the
 	 * buffer, for whatever reason; likely interrupted by
 	 * desched. */
@@ -93,9 +93,15 @@ struct syscallbuf_hdr {
 	 * during a wrapped system call; we don't want it to use the
 	 * buffer for its system calls. */
 	uint32_t locked : 1;
+	/* Nonzero when rr needs to worry about the desched signal.
+	 * When it's zero, the desched signal can safely be
+	 * discarded. */
+	uint32_t desched_signal_may_be_relevant : 1;
 
 	struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
+/* TODO: static_assert(sizeof(uint32_t) ==
+ *                     sizeof(struct syscallbuf_hdr)) */
 
 /**
  * The ABI of the socketcall syscall is a nightmare; the first arg to

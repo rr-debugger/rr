@@ -630,6 +630,29 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
 	rec->desched = MAY_BLOCK == blockness;
 	rec->size = record_end - record_start;
 	if (rec->desched) {
+		/* NB: the ordering of the next two statements is
+		 * important.
+		 *
+		 * We set this flag to notify rr that it should pay
+		 * attention to desched signals pending for this task.
+		 * We have to set it *before* we arm the notification
+		 * because we can't set the flag atomically with
+		 * arming the event (too bad there's no ioctl() for
+		 * querying the event enabled-ness state).  That's
+		 * important because if the notification is armed,
+		 * then rr must be confident that when it disarms the
+		 * event, the tracee is at an execution point that
+		 * *must not* need the desched event.
+		 *
+		 * If we were to set the flag non-atomically after the
+		 * event was armed, then if a desched signal was
+		 * delivered right at the instruction that set the
+		 * flag, rr wouldn't know that it needed to advance
+		 * the tracee to the untraced syscall entry point.
+		 * (And if rr didn't do /that/, then the syscall might
+		 * block without rr knowing it, and the recording
+		 * session would deadlock.) */
+		buffer_hdr()->desched_signal_may_be_relevant = 1;
 		arm_desched_event();
 	}
 	return 1;
@@ -657,6 +680,26 @@ static int commit_syscall(int syscallno, void* record_end, int ret)
 	void* record_start = buffer_last();
 	struct syscallbuf_record* rec = record_start;
 	struct syscallbuf_hdr* hdr = buffer_hdr();
+
+	/* NB: the ordering of this statement with the
+	 * |disarm_desched_event()| call below is important.
+	 *
+	 * We clear this flag to notify rr that the may-block syscall
+	 * has finished, so there's no danger of blocking anymore.
+	 * (And thus the desched signal is no longer relevant.)  We
+	 * have to clear this *before* disarming the event, because if
+	 * rr sees the flag set, it has to PTRACE_SYSCALL this task to
+	 * ensure it reaches an execution point where the desched
+	 * signal is no longer relevant.  We have to use the ioctl()
+	 * that disarms the event as a safe "backstop" that can be hit
+	 * by the PTRACE_SYSCALL.
+	 *
+	 * If we were to clear the flag *after* disarming the event,
+	 * and the signal arrived at the instruction that cleared the
+	 * flag, and rr issued the PTRACE_SYSCALL, then this tracee
+	 * could fly off to any unknown execution point, including an
+	 * iloop.  So the recording session could livelock. */
+	hdr->desched_signal_may_be_relevant = 0;
 
 	if (rec->syscallno != syscallno) {
 		fatal("Record is for %d but trying to commit %d",
