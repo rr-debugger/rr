@@ -1088,10 +1088,10 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 	case SYS_rt_sigreturn:
 		if (state == STATE_SYSCALL_ENTRY) {
 			enter_syscall_emu(t, syscall);
+			finish_syscall_emu(t);
 		} else {
 			write_child_main_registers(t->tid,
 						   &trace->recorded_regs);
-			finish_syscall_emu(t);
 		}
 		break;
 

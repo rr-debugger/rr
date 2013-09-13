@@ -769,9 +769,6 @@ static int advance_to(struct task* t, uint64_t rcb,
 	 * quickly as possible by programming the hpc. */
 	rcb_now = read_rbc(t->hpc);
 
-	debug("Advancing to rcb:%llu/eip:%p from rcb:%llu",
-	      rcb, (void*)regs->eip, rcb_now);
-
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
 		if (SIGTRAP == t->child_sig) {
@@ -786,6 +783,8 @@ static int advance_to(struct task* t, uint64_t rcb,
 		}
 		t->child_sig = 0;
 
+		debug("  programming interrupt for %llu rcbs",
+		      rcb - rcb_now - SKID_SIZE);
 		reset_hpc(t, rcb - rcb_now - SKID_SIZE);
 
 		continue_or_step(t, stepi);
@@ -845,8 +844,9 @@ static int advance_to(struct task* t, uint64_t rcb,
 		int at_target;
 
 		read_child_registers(tid, &regs_now);
-		at_target = is_same_execution_point(rcb, regs,
-						    rcb_now, &regs_now);
+		at_target = (rcb_now == rcb &&
+			     is_same_execution_point(rcb, regs,
+						     rcb_now, &regs_now));
 		if (SIGTRAP == t->child_sig) {
 			trap_t trap_type = compute_trap_type(
 				t, ASYNC, sig,
@@ -874,12 +874,11 @@ static int advance_to(struct task* t, uint64_t rcb,
 				t->child_sig = 0;
 				regs_now.eip -= sizeof(int_3_insn);
 				write_child_registers(tid, &regs_now);
-				/* We maintain the
-				 * "'rcb_now'-is-up-to-date" invariant
-				 * above here even though we don't
-				 * re-read the rbc, because executing
-				 * the trap instruction couldn't have
-				 * retired a branch. */
+				/* We just backed up the $ip, but
+				 * rewound it over an |int $3|
+				 * instruction, which couldn't have
+				 * retired a branch.  So we don't need
+				 * to adjust |rcb_now|. */
 				continue;
 			case TRAP_NONE:
 				/* Otherwise, we must have been forced
