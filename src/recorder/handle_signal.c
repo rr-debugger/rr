@@ -151,6 +151,22 @@ static int handle_desched_event(struct task* t, const siginfo_t* si,
 		    "Tracee is using SIGSYS??? (code=%d, fd=%d)",
 		    si->si_code, si->si_fd);
 
+	/* If the tracee isn't in the critical section where a desched
+	 * event is relevant, we can ignore it.  See the long comments
+	 * in syscall_buffer.c.
+	 *
+	 * It's OK if the tracee is in the critical section for a
+	 * may-block syscall B, but this signal was delivered by an
+	 * event programmed by a previous may-block syscall A. */
+	if (!t->syscallbuf_hdr->desched_signal_may_be_relevant) {
+		debug("  (not entering may-block syscall; resuming)");
+		/* We have to disarm the event just in case the tracee
+		 * has cleared the relevancy flag, but not yet
+		 * disarmed the event itself. */
+		disarm_desched_event(t);
+		return USR_NOOP;
+	}
+
 	/* TODO: how can signals interrupt us here? */
 
 	/* The desched event just fired.  That implies that the
@@ -274,7 +290,6 @@ static int is_deterministic_signal(const siginfo_t* si)
 	case SIGBUS:
 	case SIGFPE:
 	case SIGSEGV:
-	case SIGSTKFLT:
 		/* As bits/siginfo.h documents,
 		 *
 		 *   Values for `si_code'.  Positive values are
