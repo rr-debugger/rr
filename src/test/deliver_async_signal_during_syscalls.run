@@ -1,6 +1,5 @@
-source `dirname $0`/util.sh deliver_async_signal_during_syscalls "$@"
-
-fails "SIGUSR1 is often delivered while rr processes a time-slice interrupt, and multiple pending signals are NYI"
+testname=deliver_async_signal_during_syscalls
+source `dirname $0`/util.sh $testname "$@"
 
 # See async_signal_syscalls.run for an explanation.
 skip_if_no_syscall_buf
@@ -12,3 +11,5 @@ record_async_signal 10 0.5 async_signal_syscalls
 # well enough.
 #replay
 #check 'EXIT-SUCCESS'
+echo Test "'$testname'" PASSED
+passed=y
