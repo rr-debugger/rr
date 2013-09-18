@@ -137,7 +137,8 @@ static void set_up_process()
 	if (0 > (orig_pers = personality(0xffffffff))) {
 		fatal("error getting personaity");
 	}
-	if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE)) {
+	if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE |
+			    ADDR_COMPAT_LAYOUT)) {
 		fatal("error disabling randomization");
 	}
 	if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
