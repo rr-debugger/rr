@@ -116,9 +116,6 @@ void handle_ioctl_request(struct task *t, int request)
 	 * disable the whole lot for now until rr can handle that
 	 * behavior (by recording access to shmem segments). */
 	case DRM_IOCTL_VERSION:
-	case DRM_IOCTL_NOUVEAU_GETPARAM:
-	case DRM_IOCTL_NOUVEAU_CHANNEL_ALLOC:
-	case DRM_IOCTL_NOUVEAU_CHANNEL_FREE:
 	case DRM_IOCTL_NOUVEAU_GEM_NEW:
 	case DRM_IOCTL_NOUVEAU_GEM_PUSHBUF:
 		fatal("Intentionally unhandled DRM(0x64) ioctl nr 0x%x", nr);

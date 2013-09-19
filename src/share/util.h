@@ -23,12 +23,6 @@ struct trace_frame;
 	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax)	\
 	 || -ERESTARTSYS == (eax))
 
-#ifndef PTRACE_EVENT_SECCOMP
-#define PTRACE_O_TRACESECCOMP			0x00000080
-#define PTRACE_EVENT_SECCOMP_OBSOLETE	8 // ubuntu 12.04
-#define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
-#endif
-
 #define STOPSIG_SYSCALL (0x80 | SIGTRAP)
 
 #define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))

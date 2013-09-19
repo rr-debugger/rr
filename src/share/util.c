@@ -37,6 +37,12 @@
 #include "trace.h"
 #include "types.h"
 
+#ifndef PTRACE_EVENT_SECCOMP
+#define PTRACE_O_TRACESECCOMP			0x00000080
+#define PTRACE_EVENT_SECCOMP_OBSOLETE	8 // ubuntu 12.04
+#define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
+#endif
+
 /* The tracee doesn't open the desched event fd during replay, so it
  * can't be shared to this process.  We pretend that the tracee shared
  * this magic fd number with us and then give it a free pass for fd
