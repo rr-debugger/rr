@@ -23,9 +23,15 @@
 #define SYSCALLBUF_BUFFER_SIZE (1 << 20)
 
 /* "Magic" (rr-implemented) syscall that we use to initialize the
- * syscallbuf. */
-#define RRCALL_init_syscall_buffer -42
-#define __NR_rrcall_init_syscall_buffer (42 | RRCALL_BIT)
+ * syscallbuf.
+ *
+ * NB: magic syscalls must be positive, because with at least linux
+ * 3.8.0 / eglibc 2.17, rr only gets a trap for the *entry* of invalid
+ * syscalls, not the exit.  rr can't handle that yet. */
+/* TODO: static_assert(LAST_SYSCALL < FIRST_RRCALL) */
+#define FIRST_RRCALL 400
+
+#define __NR_rrcall_init_syscall_buffer 442
 #define SYS_rrcall_init_syscall_buffer __NR_rrcall_init_syscall_buffer
 
 /**

@@ -78,9 +78,6 @@ static void status_changed(struct task* t)
 {
 	read_child_registers(t->tid, &t->regs);
 	t->event = t->regs.orig_eax;
-	if (t->event == RRCALL_init_syscall_buffer) {
-		t->event = (-t->event | RRCALL_BIT);
-	}
 	handle_signal(t);
 }
 
@@ -431,13 +428,11 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 		}
 		retval = t->regs.eax;
 
-		assert_exec(t, (syscallno == t->event
-				|| (SYS_rrcall_init_syscall_buffer == syscallno
-				    && RRCALL_init_syscall_buffer == t->event)),
+		assert_exec(t, syscallno == t->event,
 			    "Event stack and current event must be in sync.");
 		assert_exec(t, (-ENOSYS != retval
 				|| (0 > syscallno
-				    || RRCALL_init_syscall_buffer == t->event
+				    || SYS_rrcall_init_syscall_buffer == t->event
 				    || SYS_clone == syscallno
 				    || SYS_exit_group == syscallno
 				    || SYS_exit == syscallno)),

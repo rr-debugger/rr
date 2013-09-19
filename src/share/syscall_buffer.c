@@ -295,8 +295,8 @@ static void* rrcall_init_syscall_buffer(void* untraced_syscall_ip,
 					struct msghdr* msg, int* fdptr,
 					struct socketcall_args* args_vec)
 {
-	return (void*)syscall(RRCALL_init_syscall_buffer, untraced_syscall_ip,
-			      addr, msg, fdptr, args_vec);
+	return (void*)syscall(SYS_rrcall_init_syscall_buffer,
+			      untraced_syscall_ip, addr, msg, fdptr, args_vec);
 }
 
 /**
