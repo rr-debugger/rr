@@ -743,17 +743,46 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1,
 		err = 1;
 	}
 
-	/* check eflags, but:
-	 * -- ignore CPUID bit (why???)
-	 * -- ignore bit 1, since the Linux kernel sometimes reports this as zero
-	 * in some states during system calls. It's always 1 during user-space
-	 * execution so this shouldn't matter.
-	 * */
-	long int id_mask = ~((1 << 21) | (1 << 1));
-	if ((reg1->eflags & id_mask) != (reg2->eflags & id_mask)) {
+	/* The following are eflags that have been observed to be
+	 * nondeterministic in practice.  We need to mask them off in
+	 * this comparison to prevent replay from diverging. */
+	enum {
+		/* The linux kernel has been observed to report this
+		 * as zero in some states during system calls. It
+		 * always seems to be 1 during user-space execution so
+		 * we should be able to ignore it. */
+		RESERVED_FLAG_1 = 1 << 1,
+		/* According to www.logix.cz/michal/doc/i386/chp04-01.htm
+		 *
+		 *   The RF flag temporarily disables debug exceptions
+		 *   so that an instruction can be restarted after a
+		 *   debug exception without immediately causing
+		 *   another debug exception. Refer to Chapter 12 for
+		 *   details.
+		 *
+		 * Chapter 12 isn't particularly clear on the point,
+		 * but the flag appears to be set by |int3|
+		 * exceptions.
+		 *
+		 * This divergence has been observed when continuing a
+		 * tracee to an execution target by setting an |int3|
+		 * breakpoint, which isn't used during recording.  No
+		 * single-stepping was used during the recording
+		 * either.
+		 */
+		RESUME_FLAG = 1 << 16,
+		/* It's no longer known why this bit is ignored. */
+		CPUID_ENABLED_FLAG = 1 << 21,
+	};
+	/* check the deterministic eflags */
+	const long det_mask =
+		~(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
+	long eflags1 = (reg1->eflags & det_mask);
+	long eflags2 = (reg2->eflags & det_mask);
+	if (eflags1 != eflags2) {
 		if (print) {
-			log_err("eflags registers do not match: %s: 0x%lx and %s: 0x%lx\n",
-				name1, reg1->eflags, name2, reg2->eflags);
+			log_err("deterministic eflags do not match: %s: 0x%lx and %s: 0x%lx\n",
+				name1, eflags1, name2, eflags2);
 		}
 		err |= 0x80;
 	}

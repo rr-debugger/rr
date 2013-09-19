@@ -16,15 +16,23 @@ static void handle_usr1(int sig) {
 	atomic_puts("caught usr1");
 }
 
-int main() {
+int main(int argc, char** argv) {
 	struct timespec ts;
 	struct timeval tv;
+	int num_its;
 	int i;
+
+	test_assert(argc == 2);
+	num_its = atoi(argv[1]);
+	test_assert(num_its > 0);
+
+	atomic_printf("Running %d iterations", num_its);
 
 	signal(SIGUSR1, handle_usr1);
 
-	/* XXX arbitrarily chosen to take ~3s on a fast machine */
-	for (i = 0; i < 1 << 17; ++i) {
+	/* Driver scripts choose the number of iterations based on
+	 * their needs. */
+	for (i = 0; i < 1 << num_its; ++i) {
 		/* The odds of the signal being caught in the library
 		 * implementing these syscalls is very high.  But even
 		 * if it's not caught there, this test will pass. */

@@ -155,9 +155,9 @@ function record { exe=$1; exeargs=$2;
 #  record_async_signal <signal> <delay-secs> <test>
 #
 # Record $test, delivering $signal to it after $delay-secs.
-function record_async_signal { sig=$1; delay_secs=$2; exe=$3;
+function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
     delay_kill $sig $delay_secs $exe-$nonce &
-    record $exe
+    record $exe $exeargs
     wait
 }
 
