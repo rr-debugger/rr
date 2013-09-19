@@ -8,12 +8,17 @@
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <sys/ptrace.h>
 #include <sys/user.h>
 
 #include "types.h"
 
 struct task;
 struct trace_frame;
+
+#ifndef PTRACE_O_TRACESECCOMP
+# define PTRACE_O_TRACESECCOMP      0x00000080 
+#endif
 
 #define GET_PTRACE_EVENT(status) \
 	((0xFF0000 & status) >> 16)
