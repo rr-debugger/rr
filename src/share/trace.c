@@ -170,9 +170,6 @@ static int encode_event(const struct event* ev, int* state)
 
 		assert(ev->syscall.state != PROCESSING_SYSCALL);
 
-		if (RRCALL_init_syscall_buffer == event) {
-			event = (-event | RRCALL_BIT);
-		}
 		*state = (ev->syscall.state == ENTERING_SYSCALL) ?
 			 STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
 		return event;

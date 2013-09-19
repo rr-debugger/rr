@@ -745,7 +745,7 @@ static void process_init_syscall_buffer(struct task* t, int exec_state,
 	step->action = TSTEP_RETIRE;
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
-	exit_syscall_emu(t, RRCALL_init_syscall_buffer, 0);
+	exit_syscall_emu(t, SYS_rrcall_init_syscall_buffer, 0);
 	rec_child_map_addr = (void*)t->trace.recorded_regs.eax;
 
 	/* We don't want the desched event fd during replay, because

@@ -1718,6 +1718,8 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	int shmem_fd, child_shmem_fd;
 	void* map_addr;
 	void* child_map_addr;
+	void* tmp;
+	int zero = 0;
 
 	/* NB: the tracee can't be interrupted with a signal while
 	 * we're processing the rrcall, because it's masked off all
@@ -1822,12 +1824,14 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	}
 
 	/* Get the newly-allocated fd. */
-	child_shmem_fd = read_child_data_word(tid, child_fdptr);
+	tmp = read_child_data(t, sizeof(child_shmem_fd), (void*)child_fdptr);
+	child_shmem_fd = *(int*)tmp;
+	sys_free(&tmp);
 
 	/* Write zero over the shared fd number, which since it's a
 	 * "real" fd, may not be the same across record/replay owing
 	 * to emulated fds. */
-	write_child_data_word(tid, child_fdptr, 0);
+	write_child_data(t, sizeof(zero), child_fdptr, &zero);
 
 	/* Socket magic is now done. */
 	close(listen_sock);
