@@ -13,6 +13,8 @@
 
 #include "types.h"
 
+struct msghdr;
+struct mmsghdr;
 struct task;
 struct trace_frame;
 
@@ -156,12 +158,16 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
  * Record all the data needed to restore the |struct msghdr| pointed
  * at in |t|'s address space by |child_msghdr_ptr|.
  */
-void record_struct_msghdr(struct task* t, void* child_msghdr_ptr);
+void record_struct_msghdr(struct task* t, struct msghdr* child_msghdr);
+/** */
+void record_struct_mmsghdr(struct task* t, struct mmsghdr* child_mmsghdr);
 /**
  * Restore the recorded msghdr pointed at in |t|'s address space by
  * |child_msghdr_ptr|.
  */
-void restore_struct_msghdr(struct task* t, void* child_msghdr_ptr);
+void restore_struct_msghdr(struct task* t, struct msghdr* child_msghdr);
+/** */
+void restore_struct_mmsghdr(struct task* t, struct mmsghdr* child_mmsghdr);
 
 /**
  * Return nonzero if |t|'s current registers |regs| indicate that

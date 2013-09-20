@@ -866,6 +866,19 @@ SYSCALL_DEF(EMU, readahead, 0)
 SYSCALL_DEF(EMU, readlink, 1)
 
 /**
+ *  int recvmmsg(int sockfd, struct mmsghdr *msgvec,
+ *               unsigned int vlen, unsigned int flags,
+ *               struct timespec *timeout);
+ *
+ * The recvmmsg() system call is an extension of recvmsg(2) that
+ * allows the caller to receive multiple messages from a socket using
+ * a single system call.  (This has performance benefits for some
+ * applications.)  A further extension over recvmsg(2) is support for
+ * a timeout on the receive operation.
+ */
+SYSCALL_DEF(IRREGULAR, recvmmsg, -1)
+
+/**
  *  int rename(const char *oldpath, const char *newpath)
  *
  * rename() renames a file, moving it between directories if required.
@@ -953,6 +966,17 @@ SYSCALL_DEF(EMU, sched_setscheduler, 0)
  * a new thread gets to run.
  */
 SYSCALL_DEF(EMU, sched_yield, 0)
+
+/**
+ *  int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
+ *               unsigned int flags);
+ *
+ * The sendmmsg() system call is an extension of sendmsg(2) that
+ * allows the caller to transmit multiple messages on a socket using a
+ * single system call.  (This has performance benefits for some
+ * applications.)
+ */
+SYSCALL_DEF(IRREGULAR, sendmmsg, -1)
 
 /**
  *  int setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value);

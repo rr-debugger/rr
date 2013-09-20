@@ -59,26 +59,19 @@ void* reader_thread(void* dontcare) {
 
 		atomic_puts("r: recmsg'ing socket ...");
 
-
 		pthread_barrier_wait(&cheater_barrier);
-
-
 		test_assert(0 < recvmsg(readsock, &mmsg.msg_hdr, 0));
 		atomic_printf("r:   ... recvmsg'd 0x%x\n", magic);
 		test_assert(msg_magic == magic);
 
-#if 0
 		magic = ~msg_magic;
 		atomic_puts("r: recmmsg'ing socket ...");
 
-
 		pthread_barrier_wait(&cheater_barrier);
-
-
 		test_assert(1 == recvmmsg(readsock, &mmsg, 1, 0, NULL));
-		atomic_printf("r:   ... recvmmsg'd 0x%x\n", magic);
+		atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n",
+			      magic, mmsg.msg_len);
 		test_assert(msg_magic == magic);
-#endif
 	}
 	{
 		struct pollfd pfd;
@@ -175,22 +168,16 @@ int main(int argc, char *argv[]) {
 			      msg_magic);
 		sendmsg(sockfds[0], &mmsg.msg_hdr, 0);
 		atomic_puts("M:   ... done");
-
-
 		pthread_barrier_wait(&cheater_barrier);
 
-#if 0
 		/* Force a wait on recvmmsg() */
 		atomic_puts("M: sleeping again ...");
 		usleep(500000);
 		atomic_printf("M: sendmmsg'ing 0x%x to socket ...\n",
 			      msg_magic);
 		sendmmsg(sockfds[0], &mmsg, 1, 0);
-		atomic_puts("M:   ... done");
-
-
+		atomic_printf("M:   ... sent %u bytes\n", mmsg.msg_len);
 		pthread_barrier_wait(&cheater_barrier);
-#endif
 	}
 	/* Force a wait on poll() */
 	atomic_puts("M: sleeping again ...");

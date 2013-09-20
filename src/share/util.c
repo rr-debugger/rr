@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#define _GNU_SOURCE
+
 //#define DEBUGTAG "Util"
 
 #include "util.h"
@@ -1360,15 +1362,14 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
 	to->ebp = from->ebp;
 }
 
-void record_struct_msghdr(struct task* t, void* child_msghdr_ptr)
+void record_struct_msghdr(struct task* t, struct msghdr* child_msghdr)
 {
-	struct msghdr* msg = read_child_data(t,
-					     sizeof(*msg), child_msghdr_ptr);
+	struct msghdr* msg = read_child_data(t, sizeof(*msg), child_msghdr);
 	struct iovec* iov;
 
 	/* Record the entire struct, because some of the direct fields
 	 * are written as inoutparams. */
-	record_child_data(t, sizeof(struct msghdr), child_msghdr_ptr);
+	record_child_data(t, sizeof(*child_msghdr), child_msghdr);
 	record_child_data(t, msg->msg_namelen, msg->msg_name);
 
 	assert("TODO: record more than 1 iov" && msg->msg_iovlen == 1);
@@ -1383,7 +1384,18 @@ void record_struct_msghdr(struct task* t, void* child_msghdr_ptr)
 	sys_free((void**) &msg);
 }
 
-void restore_struct_msghdr(struct task* t, void* child_msghdr_ptr)
+void record_struct_mmsghdr(struct task* t, struct mmsghdr* child_mmsghdr)
+{
+	/* struct mmsghdr has an inline struct msghdr as its first
+	 * field, so it's OK to make this "cast". */
+	record_struct_msghdr(t, (void*)child_mmsghdr);
+	/* We additionally have to record the outparam number of
+	 * received bytes. */
+	record_child_data(t, sizeof(child_mmsghdr->msg_len),
+			  &child_mmsghdr->msg_len);
+}
+
+void restore_struct_msghdr(struct task* t, struct msghdr* child_msghdr)
 {
 	/* TODO: with above, generalize for arbitrary msghdr. */
 	const int num_emu_args = 5;
@@ -1392,6 +1404,12 @@ void restore_struct_msghdr(struct task* t, void* child_msghdr_ptr)
 	for (i = 0; i < num_emu_args; ++i) {
 		set_child_data(t);
 	}
+}
+
+void restore_struct_mmsghdr(struct task* t, struct mmsghdr* child_mmsghdr)
+{
+	restore_struct_msghdr(t, (void*)child_mmsghdr);
+	set_child_data(t);
 }
 
 int is_desched_event_syscall(struct task* t,

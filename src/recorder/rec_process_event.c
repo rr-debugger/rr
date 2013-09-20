@@ -2096,12 +2096,8 @@ void rec_process_syscall(struct task *t)
 		/* ssize_t recvmsg(int sockfd, struct msghdr *msg,
 		 *                 int flags); */
 		case SYS_RECVMSG: {
-			struct args {
-				int fd;
-				struct msghdr* msg;
-			};
-			struct args* args = read_child_data(t, sizeof(*args),
-							    base_addr);
+			struct recvmsg_args* args =
+				read_child_data(t, sizeof(*args), base_addr);
 			record_struct_msghdr(t, args->msg);
 
 			sys_free((void**) &args);
@@ -2642,11 +2638,56 @@ void rec_process_syscall(struct task *t)
 	}
 
 	/**
+	 *  int recvmmsg(int sockfd, struct mmsghdr *msgvec,
+	 *               unsigned int vlen, unsigned int flags,
+	 *               struct timespec *timeout);
+	 *
+	 * The recvmmsg() system call is an extension of recvmsg(2)
+	 * that allows the caller to receive multiple messages from a
+	 * socket using a single system call.  (This has performance
+	 * benefits for some applications.)  A further extension over
+	 * recvmsg(2) is support for a timeout on the receive
+	 * operation.
+	 */
+	case SYS_recvmmsg: {
+		struct mmsghdr* msg = (void*)regs.ecx;
+		ssize_t nmmsgs = regs.eax;
+		int i;
+
+		for (i = 0; i < nmmsgs; ++i, ++msg) {
+			record_struct_mmsghdr(t, msg);
+		}
+		break;
+	}
+
+	/**
 	 * int rename(const char *oldpath, const char *newpath)
 	 *
 	 * rename() renames a file, moving it between directories if required.
 	 */
 	SYS_REC0(rename)
+
+	/**
+	 *  int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
+	 *               unsigned int flags);
+	 *
+	 * The sendmmsg() system call is an extension of sendmsg(2)
+	 * that allows the caller to transmit multiple messages on a
+	 * socket using a single system call.  (This has performance
+	 * benefits for some applications.)
+	 */
+	case SYS_sendmmsg: {
+		struct mmsghdr* msg = (void*)regs.ecx;
+		ssize_t nmmsgs = regs.eax;
+		int i;
+
+		/* Record the outparam msg_len fields. */
+		for (i = 0; i < nmmsgs; ++i, ++msg) {
+			record_child_data(t, sizeof(msg->msg_len),
+					  &msg->msg_len);
+		}
+		break;
+	}
 
 	/**
 	 * int setpgid(pid_t pid, pid_t pgid);

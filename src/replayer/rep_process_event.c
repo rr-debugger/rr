@@ -732,26 +732,25 @@ static int process_socketcall(struct task* t, int state,
 	}
 }
 
-static void process_irregular_socketcall_exit(struct task* t)
+static void process_irregular_socketcall_exit(struct task* t,
+					      const struct user_regs_struct* rec_regs)
 {
 	int call;
 	void * base_addr;
 
-	read_child_registers(t->tid, &t->regs);
-	call = t->regs.ebx;
-	base_addr = (void*)t->regs.ecx;
+	call = rec_regs->ebx;
+	base_addr = (void*)rec_regs->ecx;
 
 	switch (call) {
 	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 	case SYS_RECVMSG: {
-		struct msghdr** ptr =
-			read_child_data(t, sizeof(void*),
-					base_addr + /*fd*/sizeof(int));
+		struct recvmsg_args* args =
+			read_child_data(t, sizeof(*args), base_addr);
 		
-		restore_struct_msghdr(t, *ptr);
+		restore_struct_msghdr(t, args->msg);
 		exit_syscall_emu_ret(t, SYS_socketcall);
 
-		sys_free((void**) &ptr);
+		sys_free((void**) &args);
 		return;
 	}
 	default:
@@ -1106,7 +1105,35 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 			write_child_registers(t->tid, &orig_regs);
 			validate_args(syscall, state, t);
 		}
-		break;
+
+	case SYS_recvmmsg: {
+		struct mmsghdr* msg = (void*)rec_regs->ecx;
+		ssize_t nmmsgs = rec_regs->eax;
+		int i;
+
+		if (state == STATE_SYSCALL_ENTRY) {
+			return enter_syscall_emu(t, syscall);
+		}
+
+		for (i = 0; i < nmmsgs; ++i, ++msg) {
+			restore_struct_mmsghdr(t, msg);
+		}
+		return exit_syscall_emu_ret(t, syscall);
+	}
+
+	case SYS_sendmmsg: {
+		ssize_t nmmsgs = rec_regs->eax;
+		int i;
+
+		if (state == STATE_SYSCALL_ENTRY) {
+			return enter_syscall_emu(t, syscall);
+		}
+
+		for (i = 0; i < nmmsgs; ++i) {
+			set_child_data(t);
+		}
+		return exit_syscall_emu_ret(t, syscall);
+	}
 
 	case SYS_setpgid:
 		if (state == STATE_SYSCALL_ENTRY) {
@@ -1131,7 +1158,7 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 
 	case SYS_socketcall:
 		assert(STATE_SYSCALL_EXIT == state);
-		return process_irregular_socketcall_exit(t);
+		return process_irregular_socketcall_exit(t, rec_regs);
 
 	case SYS_vfork:
 		if (state == STATE_SYSCALL_ENTRY) {
