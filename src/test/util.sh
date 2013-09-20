@@ -114,8 +114,6 @@ cd $workdir
 # buy me a lottery ticket.
 nonce=${workdir#/tmp/rr-test-$TESTNAME-}
 
-echo Using lib arg "'$LIB_ARG'"
-
 ##--------------------------------------------------
 ## Now we come to the helpers available to test runners.  This is the
 ## testing "API".

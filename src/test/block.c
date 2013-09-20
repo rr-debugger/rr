@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+#define _GNU_SOURCE
+
 #include "rrutil.h"
 
 #include <poll.h>
@@ -10,6 +12,14 @@
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int sockfds[2];
+
+static const int msg_magic = 0x1337beef;
+/* TODO: rr doesn't know how to create scratch space for struct msghdr
+ * yet, so it's forced to make the {send, recv}(m?)msg() functions
+ * non-context-switchable.  This test would obviously deadlock in that
+ * situation, so we help rr along by hiding the send->recv
+ * synchronization behind a barrier, for now. */
+static pthread_barrier_t cheater_barrier;
 
 void* reader_thread(void* dontcare) {
 	char token = '!';
@@ -37,6 +47,39 @@ void* reader_thread(void* dontcare) {
 	atomic_printf("r:   ... recv'd '%c'\n", c);
 	test_assert(c == token);
 	++token;
+	{
+		struct mmsghdr mmsg = {{ 0 }};
+		struct iovec data = { 0 };
+		int magic = ~msg_magic;
+
+		data.iov_base = &magic;
+		data.iov_len = sizeof(magic);
+		mmsg.msg_hdr.msg_iov = &data;
+		mmsg.msg_hdr.msg_iovlen = 1;
+
+		atomic_puts("r: recmsg'ing socket ...");
+
+
+		pthread_barrier_wait(&cheater_barrier);
+
+
+		test_assert(0 < recvmsg(readsock, &mmsg.msg_hdr, 0));
+		atomic_printf("r:   ... recvmsg'd 0x%x\n", magic);
+		test_assert(msg_magic == magic);
+
+#if 0
+		magic = ~msg_magic;
+		atomic_puts("r: recmmsg'ing socket ...");
+
+
+		pthread_barrier_wait(&cheater_barrier);
+
+
+		test_assert(1 == recvmmsg(readsock, &mmsg, 1, 0, NULL));
+		atomic_printf("r:   ... recvmmsg'd 0x%x\n", magic);
+		test_assert(msg_magic == magic);
+#endif
+	}
 	{
 		struct pollfd pfd;
 
@@ -84,10 +127,10 @@ int main(int argc, char *argv[]) {
 	struct timeval ts;
 	pthread_t reader;
 
-
 	gettimeofday(&ts, NULL);
 
 	socketpair(AF_LOCAL, SOCK_STREAM, 0, sockfds);
+	pthread_barrier_init(&cheater_barrier, NULL, 2);
 
 	pthread_mutex_lock(&lock);
 
@@ -115,7 +158,40 @@ int main(int argc, char *argv[]) {
 	send(sockfds[0], &token, sizeof(token), 0);
 	++token;
 	atomic_puts("M:   ... done");
+	{
+		struct mmsghdr mmsg = {{ 0 }};
+		struct iovec data = { 0 };
+		int magic = msg_magic;
 
+		data.iov_base = &magic;
+		data.iov_len = sizeof(magic);
+		mmsg.msg_hdr.msg_iov = &data;
+		mmsg.msg_hdr.msg_iovlen = 1;
+
+		/* Force a wait on recvmsg() */
+		atomic_puts("M: sleeping again ...");
+		usleep(500000);
+		atomic_printf("M: sendmsg'ing 0x%x to socket ...\n",
+			      msg_magic);
+		sendmsg(sockfds[0], &mmsg.msg_hdr, 0);
+		atomic_puts("M:   ... done");
+
+
+		pthread_barrier_wait(&cheater_barrier);
+
+#if 0
+		/* Force a wait on recvmmsg() */
+		atomic_puts("M: sleeping again ...");
+		usleep(500000);
+		atomic_printf("M: sendmmsg'ing 0x%x to socket ...\n",
+			      msg_magic);
+		sendmmsg(sockfds[0], &mmsg, 1, 0);
+		atomic_puts("M:   ... done");
+
+
+		pthread_barrier_wait(&cheater_barrier);
+#endif
+	}
 	/* Force a wait on poll() */
 	atomic_puts("M: sleeping again ...");
 	usleep(500000);
