@@ -579,7 +579,7 @@ static void continue_or_step(struct task* t, int stepi)
 	}
 	read_child_registers(t->tid, &t->regs);
 	assert_exec(t, child_sig_gt_zero,
-		    "Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s' (rcb: %llu)",
+		    "Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s' (rcb: %" PRIu64 ")",
 		    strevent(t->trace.stop_reason),
 		    get_trace_file_lines_counter(),
 		    strevent(t->regs.orig_eax), read_rbc(t->hpc));
@@ -708,7 +708,7 @@ static void guard_overshoot(struct task* t,
 			    uint64_t target, uint64_t current)
 {
 	assert_exec(t, current <= target,
-		    "Replay diverged: overshot target rcb=%llu, reached=%llu\n"
+		    "Replay diverged: overshot target rcb=%" PRIu64 ", reached=%" PRIu64 "\n"
 		    "    replaying trace line %d",
 		    target, current, get_trace_file_lines_counter());
 }
@@ -754,13 +754,13 @@ static int is_same_execution_point(uint64_t rec_rcb,
  * be delivered; it's only used to distinguish debugger-related traps
  * from traps related to replaying execution.
  */
-static int advance_to(struct task* t, uint64_t rcb,
+static int advance_to(struct task* t, int64_t rcb,
 		      const struct user_regs_struct* regs, int sig,
 		      int stepi)
 {
 	pid_t tid = t->tid;
 	void* ip = (void*)regs->eip;
-	uint64_t rcb_now;
+	int64_t rcb_now;
 
 	assert(t->hpc->rbc.fd > 0);
 	assert(t->child_sig == 0);
@@ -770,7 +770,7 @@ static int advance_to(struct task* t, uint64_t rcb,
 	rcb_now = read_rbc(t->hpc);
 
 	/* XXX should we only do this if (rcb > 10000)? */
-	while (rcb > SKID_SIZE && rcb_now < rcb - SKID_SIZE) {
+	while (rcb - rcb_now - SKID_SIZE > SKID_SIZE) {
 		if (SIGTRAP == t->child_sig) {
 			/* We proved we're not at the execution
 			 * target, and we haven't set any internal
@@ -783,7 +783,7 @@ static int advance_to(struct task* t, uint64_t rcb,
 		}
 		t->child_sig = 0;
 
-		debug("  programming interrupt for %llu rcbs",
+		debug("  programming interrupt for %" PRId64 " rcbs",
 		      rcb - rcb_now - SKID_SIZE);
 		reset_hpc(t, rcb - rcb_now - SKID_SIZE);
 
@@ -909,7 +909,7 @@ static int advance_to(struct task* t, uint64_t rcb,
 		/* At this point, we've proven that we're not at the
 		 * target execution point, and we've ensured the
 		 * internal breakpoint is unset. */
-		debug("  running from rcb:%llu to target rcb:%llu",
+		debug("  running from rcb:%" PRId64 " to target rcb:%" PRId64,
 		      rcb_now, rcb);
 
 		if (regs->eip != regs_now.eip) {
