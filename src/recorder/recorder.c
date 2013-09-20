@@ -34,6 +34,13 @@
 
 #define PTRACE_EVENT_NONE			0
 
+/* Nonzero when it's safe to deliver signals, namely, when the initial
+ * tracee has exec()'d the tracee image.  Before then, the address
+ * space layout will not be the same during replay as recording, so
+ * replay won't be able to find the right execution point to deliver
+ * the signal. */
+static int can_deliver_signals;
+
 static void rec_init_scratch_memory(struct task *t)
 {
 	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
@@ -78,7 +85,12 @@ static void status_changed(struct task* t)
 {
 	read_child_registers(t->tid, &t->regs);
 	t->event = t->regs.orig_eax;
-	handle_signal(t);
+	/* If the initial tracee isn't prepared to handle signals yet,
+	 * then us ignoring the ptrace notification here will have the
+	 * side effect of declining to deliver the signal. */
+	if (can_deliver_signals) {
+		handle_signal(t);
+	}
 }
 
 static void cont_nonblock(struct task *t)
@@ -167,6 +179,11 @@ static void handle_ptrace_event(struct task** tp)
 
 	case PTRACE_EVENT_EXEC: {
 		struct sighandlers* old_table = t->sighandlers;
+
+		/* The initial tracee, if it's still around, is now
+		 * for sure not running in the initial rr address
+		 * space, so we can unblock signals. */
+		can_deliver_signals = 1;
 
 		push_syscall(t, t->event);
 		t->ev->syscall.state = ENTERING_SYSCALL;

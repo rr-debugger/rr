@@ -132,6 +132,8 @@ set(BASIC_TESTS
 #
 # Alphabetical, please.
 set(CUSTOM_TESTS
+  async_signal_syscalls_100
+  async_signal_syscalls_1000
   break_clock
   break_int3
   break_mmap_private

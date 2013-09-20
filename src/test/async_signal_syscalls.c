@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
 	num_its = atoi(argv[1]);
 	test_assert(num_its > 0);
 
-	atomic_printf("Running %d iterations", num_its);
+	atomic_printf("Running 2^%d iterations\n", num_its);
 
 	signal(SIGUSR1, handle_usr1);
 
