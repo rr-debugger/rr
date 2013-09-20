@@ -533,6 +533,10 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		}
 
 		switch (cmd) {
+		case 'C':
+			log_warn("Ignoring request to deliver signal (%s)",
+				 args);
+			/* fall through */
 		case 'c':
 			dbg->req.type = DREQ_CONTINUE;
 			dbg->req.target = dbg->resume_thread;
@@ -779,13 +783,64 @@ void dbg_notify_exit_signal(struct dbg_context* dbg, int sig)
 	consume_request(dbg);
 }
 
+/**
+ * Translate linux-x86 |sig| to gdb's internal numbering.  Translation
+ * made according to gdb/include/gdb/signals.def.
+ */
+static int to_gdb_signum(int sig)
+{
+	if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
+		/* GDB_SIGNAL_REALTIME_34 is numbered 46, hence this
+		 * offset. */
+		return sig + 12;
+	}
+	switch (sig) {
+	case 0: return 0;
+	case SIGHUP: return 1;
+	case SIGINT: return 2;
+	case SIGQUIT: return 3;
+	case SIGILL: return 4;
+	case SIGTRAP: return 5;
+	case SIGABRT/*case SIGIOT*/: return 6;
+	case SIGBUS: return 10;
+	case SIGFPE: return 8;
+	case SIGKILL: return 9;
+	case SIGUSR1: return 30;
+	case SIGSEGV: return 11;
+	case SIGUSR2: return 31;
+	case SIGPIPE: return 13;
+	case SIGALRM: return 14;
+	case SIGTERM: return 15;
+		/* gdb hasn't heard of SIGSTKFLT, so this is
+		 * arbitrarily made up.  SIGDANGER just sounds cool.*/
+	case SIGSTKFLT: return 38/*GDB_SIGNAL_DANGER*/;
+	/*case SIGCLD*/case SIGCHLD: return 20;
+	case SIGCONT: return 19;
+	case SIGSTOP: return 17;
+	case SIGTSTP: return 18;
+	case SIGTTIN: return 21;
+	case SIGTTOU: return 22;
+	case SIGURG: return 16;
+	case SIGXCPU: return 24;
+	case SIGXFSZ: return 25;
+	case SIGVTALRM: return 26;
+	case SIGPROF: return 27;
+	case SIGWINCH: return 28;
+	/*case SIGPOLL*/case SIGIO: return 23;
+	case SIGPWR: return 32;
+	case SIGSYS: return 12;
+	default:
+		fatal("Unknown signal %d", sig);
+	}
+}
+
 static void send_stop_reply_packet(struct dbg_context* dbg,
 				   dbg_threadid_t thread, int sig)
 {
 	if (sig >= 0) {
 		char buf[64];
 		snprintf(buf, sizeof(buf) - 1, "T%02xthread:%02x;",
-			 sig, thread);
+			 to_gdb_signum(sig), thread);
 		write_packet(dbg, buf);
 	} else {
 		write_packet(dbg, "E01");

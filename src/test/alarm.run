@@ -1,8 +1,7 @@
 source `dirname $0`/util.sh alarm "$@"
 
-# This test is disabled when the syscallbuf is enabled for the same
-# reason that deliver_async_signal_during_syscalls.run is disabled;
-# see the long comment there for an explanation.
+# TODO: this test is disabled because SIG_TIMESLICE and SIG_DESCHED
+# interfere with each other.
 skip_if_syscall_buf
 
 compare_test 'Signal caught'

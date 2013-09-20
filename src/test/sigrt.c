@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	atomic_printf("caught %d signals; expected %d\n", num_signals_caught,
-	       SIGRTMAX - SIGRTMIN);
+	       1 + SIGRTMAX - SIGRTMIN);
 	test_assert(1 + SIGRTMAX - SIGRTMIN == num_signals_caught);
 
 	atomic_puts("EXIT-SUCCESS");
