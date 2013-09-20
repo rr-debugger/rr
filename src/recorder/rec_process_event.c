@@ -2093,17 +2093,18 @@ void rec_process_syscall(struct task *t)
 			break;
 		}
 
-		/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
-		case SYS_RECVMSG:
-		{
-			struct msghdr** ptr =
-				read_child_data(t, sizeof(void*),
-						base_addr +
-						/*fd*/sizeof(int));
+		/* ssize_t recvmsg(int sockfd, struct msghdr *msg,
+		 *                 int flags); */
+		case SYS_RECVMSG: {
+			struct args {
+				int fd;
+				struct msghdr* msg;
+			};
+			struct args* args = read_child_data(t, sizeof(*args),
+							    base_addr);
+			record_struct_msghdr(t, args->msg);
 
-			record_struct_msghdr(t, *ptr);
-
-			sys_free((void**) &ptr);
+			sys_free((void**) &args);
 			break;
 		}
 
