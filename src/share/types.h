@@ -70,4 +70,13 @@ struct flags {
 	int verbose;
 };
 
+struct msghdr;
+/**
+ * These arguments are pushed on the stack for the recvmsg socketcall.
+ */
+struct recvmsg_args {
+	int fd;
+	struct msghdr* msg;
+};
+
 #endif /* TYPES_H_ */
