@@ -11,6 +11,7 @@
 #include "../replayer/replayer.h" /* for emergency_debug() */
 
 #include "task.h"
+#include "util.h"
 
 /**
  * Useful debug macros.  Define DEBUGTAG with a "module name" to
@@ -30,6 +31,15 @@
 # define debug(M, ...)				\
 	do { } while(0)
 #endif
+
+inline static int should_log()
+{
+#ifdef DEBUGTAG
+	return 1;
+#else
+	return rr_flags()->verbose;
+#endif
+}
 
 /**
  * Assert a condition of the execution state of |_t|.  Print an error
@@ -67,10 +77,19 @@
 		clean_errno(), ##__VA_ARGS__)
 
 #define log_warn(M, ...)						\
-	fprintf(stderr, "[WARN] (%s: errno: %s) " M "\n",		\
-		__FUNCTION__, clean_errno(), ##__VA_ARGS__)
+	do {								\
+		if (should_log()) {					\
+			fprintf(stderr, "[WARN] (%s: errno: %s) " M "\n", \
+				__FUNCTION__, clean_errno(), ##__VA_ARGS__); \
+		}							\
+	} while (0)
 
 #define log_info(M, ...)						\
-	fprintf(stderr, "[INFO] (%s) " M "\n", __FUNCTION__, ##__VA_ARGS__)
+	do {								\
+		if (should_log()) {					\
+			fprintf(stderr, "[INFO] (%s) " M "\n",		\
+				__FUNCTION__, ##__VA_ARGS__);		\
+		}							\
+	} while (0)
 
-#endif
+#endif /* DEBUG_H */

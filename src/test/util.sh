@@ -183,7 +183,7 @@ function debug { exe=$1; expectscript=$2; replayargs=$3
 # Otherwise the test fails.
 function check { token=$1;
     # The test failed until we prove otherwise below.
-    if [[ $(grep "Replayer successfully finished." replay.err) == "" ]]; then
+    if [[ $(cat replay.err) != "" ]]; then
 	echo "Test '$TESTNAME' FAILED: error during replay:"
 	echo "--------------------------------------------------"
 	cat replay.err
