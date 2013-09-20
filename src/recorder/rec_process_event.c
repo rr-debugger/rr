@@ -2012,7 +2012,7 @@ void rec_process_syscall(struct task *t)
 	case SYS_socketcall:
 	{
 		int call = regs.ebx;
-		void * base_addr = (void*)regs.ecx;
+		void* base_addr = (void*)regs.ecx;
 
 
 		debug("socket call: %d\n", call);
@@ -2096,23 +2096,13 @@ void rec_process_syscall(struct task *t)
 		/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 		case SYS_RECVMSG:
 		{
-			struct msghdr **ptr = read_child_data(t, sizeof(void*), base_addr + sizeof(int));
-			struct msghdr *msg = read_child_data(t, sizeof(struct msghdr), *ptr);
+			struct msghdr** ptr =
+				read_child_data(t, sizeof(void*),
+						base_addr +
+						/*fd*/sizeof(int));
 
-			/* record the enture struct */
-			record_child_data(t, sizeof(struct msghdr), *ptr);
-			record_child_data(t, msg->msg_namelen, msg->msg_name);
+			record_struct_msghdr(t, *ptr);
 
-			assert(msg->msg_iovlen == 1);
-
-			record_child_data(t, sizeof(struct iovec), msg->msg_iov);
-			struct iovec *iov = read_child_data(t, sizeof(struct iovec), msg->msg_iov);
-			record_child_data(t, iov->iov_len, iov->iov_base);
-
-			record_child_data(t, msg->msg_controllen, msg->msg_control);
-
-			sys_free((void**) &iov);
-			sys_free((void**) &msg);
 			sys_free((void**) &ptr);
 			break;
 		}

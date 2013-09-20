@@ -207,6 +207,13 @@ static void enter_syscall_emu(struct task* t, int syscall)
 	validate_args(syscall, STATE_SYSCALL_ENTRY, t);
 }
 
+static void exit_syscall_emu_ret(struct task* t, int syscall)
+{
+	set_return_value(t);
+	validate_args(syscall, STATE_SYSCALL_EXIT, t);
+	finish_syscall_emu(t);
+}
+
 static void exit_syscall_emu(struct task* t,
 			     int syscall, int num_emu_args)
 {
@@ -215,9 +222,7 @@ static void exit_syscall_emu(struct task* t,
 	for (i = 0; i < num_emu_args; ++i) {
 		set_child_data(t);
 	}
-	set_return_value(t);
-	validate_args(syscall, STATE_SYSCALL_EXIT, t);
-	finish_syscall_emu(t);
+	exit_syscall_emu_ret(t, syscall);
 }
 
 static void enter_syscall_exec(struct task* t, int syscall)
@@ -657,8 +662,13 @@ static void process_mmap2(struct task* t,
 	step->action = TSTEP_RETIRE;
 }
 
-static void process_socketcall(struct task* t, int state,
-			       struct rep_trace_step* step)
+/**
+ * Return nonzero if this socketcall was "regular" and |step| was
+ * updated appropriately, or zero if this was an irregular socketcall
+ * that needs to be processed specially.
+ */
+static int process_socketcall(struct task* t, int state,
+			      struct rep_trace_step* step)
 {
 	int call;
 
@@ -667,7 +677,7 @@ static void process_socketcall(struct task* t, int state,
 
 	if (state == STATE_SYSCALL_ENTRY) {
 		step->action = TSTEP_ENTER_SYSCALL;
-		return;
+		return 1;
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
@@ -684,19 +694,14 @@ static void process_socketcall(struct task* t, int state,
 	case SYS_SETSOCKOPT:
 	case SYS_SHUTDOWN:
 		step->syscall.num_emu_args = 0;
-		break;
+		return 1;
 	case SYS_GETPEERNAME:
 	case SYS_GETSOCKNAME:
 		step->syscall.num_emu_args = 2;
-		break;
+		return 1;
 	case SYS_RECV:
 		step->syscall.num_emu_args = 1;
-		break;
-	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
-	case SYS_RECVMSG:
-		/* write the struct msghdr data structure */
-		step->syscall.num_emu_args = 5;
-		break;
+		return 1;
 
 	/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 	 *
@@ -711,19 +716,46 @@ static void process_socketcall(struct task* t, int state,
 	case SYS_ACCEPT:
 		/* FIXME: not quite sure about socket_addr */
 		step->syscall.num_emu_args = 2;
-		break;
+		return 1;
 
 	case SYS_SOCKETPAIR:
 	case SYS_GETSOCKOPT:
 		step->syscall.num_emu_args = 1;
-		break;
+		return 1;
 
 	case SYS_RECVFROM:
 		step->syscall.num_emu_args = 3;
-		break;
+		return 1;
 
 	default:
-		fatal("Unknown socketcall: %d\n", call);
+		return 0;
+	}
+}
+
+static void process_irregular_socketcall_exit(struct task* t)
+{
+	int call;
+	void * base_addr;
+
+	read_child_registers(t->tid, &t->regs);
+	call = t->regs.ebx;
+	base_addr = (void*)t->regs.ecx;
+
+	switch (call) {
+	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
+	case SYS_RECVMSG: {
+		struct msghdr** ptr =
+			read_child_data(t, sizeof(void*),
+					base_addr + /*fd*/sizeof(int));
+		
+		restore_struct_msghdr(t, *ptr);
+		exit_syscall_emu_ret(t, SYS_socketcall);
+
+		sys_free((void**) &ptr);
+		return;
+	}
+	default:
+		fatal("Unknown socketcall %d\n", call);
 	}
 }
 
@@ -964,7 +996,10 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 		return;
 
 	case SYS_socketcall:
-		return process_socketcall(t, state, step);
+		if (process_socketcall(t, state, step)) {
+			return;
+		}
+		break;
 
 	case SYS_write:
 		step->syscall.num_emu_args = 0;
@@ -1093,6 +1128,10 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 						   &trace->recorded_regs);
 		}
 		break;
+
+	case SYS_socketcall:
+		assert(STATE_SYSCALL_EXIT == state);
+		return process_irregular_socketcall_exit(t);
 
 	case SYS_vfork:
 		if (state == STATE_SYSCALL_ENTRY) {
