@@ -130,6 +130,14 @@ SYSCALL_DEF(IRREGULAR, clone, -1)
 SYSCALL_DEF(EMU, close, 0)
 
 /**
+ *  int creat(const char *pathname, mode_t mode);
+ *
+ * creat() is equivalent to open() with flags equal to
+ * O_CREAT|O_WRONLY|O_TRUNC.
+ */
+SYSCALL_DEF(EMU, creat, 0)
+
+/**
  *  int dup(int oldfd)
  *
  * dup() uses the lowest-numbered unused descriptor for the new

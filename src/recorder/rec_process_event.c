@@ -773,6 +773,14 @@ void rec_process_syscall(struct task *t)
 	}
 
 	/**
+	 *  int creat(const char *pathname, mode_t mode);
+	 *
+	 * creat() is equivalent to open() with flags equal to
+	 * O_CREAT|O_WRONLY|O_TRUNC.
+	 */
+	SYS_REC0(creat)
+
+	/**
 	 * int dup2(int oldfd, int newfd)
 	 *
 	 * dup2()  makes newfd be the copy of oldfd, closing newfd first if necessary, but note the

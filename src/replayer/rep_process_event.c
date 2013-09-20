@@ -821,10 +821,10 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 	assert_exec(t, SYS_restart_syscall != syscall,
 		    "restart_syscall must have interruption record");
 
-	assert("Syscallno not in table, but possibly valid"
-	       && syscall < ALEN(syscall_table));
-	assert("Valid but unhandled syscallno"
-	       && rep_UNDEFINED != def->type);
+	assert_exec(t, syscall < ALEN(syscall_table),
+		    "%d not in syscall table, but possibly valid", syscall);
+	assert_exec(t, rep_UNDEFINED != def->type,
+		    "Valid but unhandled syscallno %d", syscall);
 
 	step->syscall.no = syscall;
 
