@@ -65,6 +65,9 @@ struct flags {
 	/* Number of seconds to wait after startup, before starting
 	 * "real work". */
 	int wait_secs;
+	/* Nonzero when not-absolutely-urgently-critical messages will
+	 * be logged. */
+	int verbose;
 };
 
 #endif /* TYPES_H_ */

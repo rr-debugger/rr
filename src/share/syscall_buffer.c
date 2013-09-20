@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "Syscallbuf"
+
 #include "syscall_buffer.h"
 
 /**
@@ -224,8 +226,12 @@ static void logmsg(const char* msg, ...)
 		assert("Bailing because of fatal error" && 0);		\
 	} while (0)
 
-#define log_info(msg, ...)					\
+#ifdef DEBUGTAG
+# define log_info(msg, ...)						\
 	logmsg("[INFO] (%s:%d) " msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+# define log_info(msg, ...) ((void)0)
+#endif
 
 
 /* Helpers for invoking untraced syscalls, which do *not* generate

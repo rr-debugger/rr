@@ -271,6 +271,8 @@ static void print_usage()
 "Usage: rr [OPTION] (record|replay) [OPTION]... [ARG]...\n"
 "\n"
 "Common options\n"
+"  -v, --verbose              log messages that may not be urgently \n"
+"                             critical to the user\n"
 "  -w, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
 "                             before initiating recording or replaying\n"
 "\n"
@@ -399,14 +401,18 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 static int parse_common_args(int argc, char** argv, struct flags* flags)
 {
 	struct option opts[] = {
+		{ "verbose", no_argument, NULL, 'v' },
 		{ "wait-secs", required_argument, NULL, 'w' },
 		{ 0 }
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+w:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+vw:", opts, &i)) {
 		case -1:
 			return optind;
+		case 'v':
+			flags->verbose = 1;
+			break;
 		case 'w':
 			flags->wait_secs = atoi(optarg);
 			break;
