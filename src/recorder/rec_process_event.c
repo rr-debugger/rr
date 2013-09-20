@@ -995,6 +995,7 @@ void rec_process_syscall(struct task *t)
 	 * 2 paramaters. However, strace tells another story...
 	 *
 	 */
+	SYS_REC1(fstatfs, sizeof(struct statfs), (void*)regs.ecx)
 	SYS_REC1(fstatfs64, sizeof(struct statfs64), (void*)regs.edx)
 
 	/**
