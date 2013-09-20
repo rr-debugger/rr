@@ -115,6 +115,7 @@ set(BASIC_TESTS
   sigtrap
   simple
   splice
+  statfs
   step_thread
   switch_read
   tcgets

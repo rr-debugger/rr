@@ -297,6 +297,7 @@ SYSCALL_DEF(EMU, fstatat64, 1)
  * get_time(GET_TID(thread_id));mounted file system.  buf is a pointer
  * to a statfs structure defined approximately as follows:
  */
+SYSCALL_DEF(EMU, fstatfs, 1)
 SYSCALL_DEF(EMU, fstatfs64, 1)
 
 /**
