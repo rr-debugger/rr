@@ -1360,6 +1360,40 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
 	to->ebp = from->ebp;
 }
 
+void record_struct_msghdr(struct task* t, void* child_msghdr_ptr)
+{
+	struct msghdr* msg = read_child_data(t,
+					     sizeof(*msg), child_msghdr_ptr);
+	struct iovec* iov;
+
+	/* Record the entire struct, because some of the direct fields
+	 * are written as inoutparams. */
+	record_child_data(t, sizeof(struct msghdr), child_msghdr_ptr);
+	record_child_data(t, msg->msg_namelen, msg->msg_name);
+
+	assert("TODO: record more than 1 iov" && msg->msg_iovlen == 1);
+
+	record_child_data(t, sizeof(struct iovec), msg->msg_iov);
+	iov = read_child_data(t, sizeof(struct iovec), msg->msg_iov);
+	record_child_data(t, iov->iov_len, iov->iov_base);
+
+	record_child_data(t, msg->msg_controllen, msg->msg_control);
+
+	sys_free((void**) &iov);
+	sys_free((void**) &msg);
+}
+
+void restore_struct_msghdr(struct task* t, void* child_msghdr_ptr)
+{
+	/* TODO: with above, generalize for arbitrary msghdr. */
+	const int num_emu_args = 5;
+	int i;
+
+	for (i = 0; i < num_emu_args; ++i) {
+		set_child_data(t);
+	}
+}
+
 int is_desched_event_syscall(struct task* t,
 			     const struct user_regs_struct* regs)
 {

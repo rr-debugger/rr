@@ -153,6 +153,17 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
 			   const struct user_regs_struct* from);
 
 /**
+ * Record all the data needed to restore the |struct msghdr| pointed
+ * at in |t|'s address space by |child_msghdr_ptr|.
+ */
+void record_struct_msghdr(struct task* t, void* child_msghdr_ptr);
+/**
+ * Restore the recorded msghdr pointed at in |t|'s address space by
+ * |child_msghdr_ptr|.
+ */
+void restore_struct_msghdr(struct task* t, void* child_msghdr_ptr);
+
+/**
  * Return nonzero if |t|'s current registers |regs| indicate that
  * |t| is at an arm-desched-event or disarm-desched-event syscall.
  */
