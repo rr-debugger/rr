@@ -70,8 +70,10 @@ struct dbg_request {
 		DREQ_GET_STOP_REASON,
 		DREQ_GET_THREAD_LIST,
 
-		/* Is |target| alive? */
+		/* These use params.target. */
 		DREQ_GET_IS_THREAD_ALIVE,
+		DREQ_SET_CONTINUE_THREAD,
+		DREQ_SET_QUERY_THREAD,
 
 		/* These use params.mem. */
 		DREQ_GET_MEM,
@@ -168,6 +170,11 @@ void dbg_reply_get_current_thread(struct dbg_context* dbg,
  * |alive| is nonzero if the requested thread is alive, zero if dead.
  */
 void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive);
+
+/**
+ * |ok| is nonzero if req->target can be selected, zero otherwise.
+ */
+void dbg_reply_select_thread(struct dbg_context* dbg, int ok);
 
 /**
  * The first |len| bytes of the request were read into |mem|.  |len|
