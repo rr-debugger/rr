@@ -144,6 +144,7 @@ set(CUSTOM_TESTS
   break_thread
   break_time_slice
   cont_signal
+  dead_thread_target
   deliver_async_signal_during_syscalls
   get_thread_list
   read_bad_mem
