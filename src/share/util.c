@@ -1535,10 +1535,18 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		      filename);
 		return 0;
 	}
+	if (!(0222 & stat->st_mode)) {
+		/* We couldn't write the file because it's read only.
+		 * But it's not a root-owned file (therefore not a
+		 * system file), so it's likely that it could be
+		 * temporary.  Copy it. */
+		debug("  (copy for read-only, non-system file)");
+		return 1;
+	}
 	if (!can_write_file) {
 		/* mmap'ing another user's (non-system) files?  Highly
 		 * irregular ... */
-		fatal("Uhandled mmap %s(prot:%x%s); uid:%d mode:%o",
+		fatal("Unhandled mmap %s(prot:%x%s); uid:%d mode:%o",
 		      filename, prot, (flags & MAP_SHARED) ? ";SHARED" : "",
 		      stat->st_uid, stat->st_mode);
 	}
