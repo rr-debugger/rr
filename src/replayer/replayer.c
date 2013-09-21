@@ -317,6 +317,10 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		case DREQ_GET_IS_THREAD_ALIVE:
 			dbg_reply_get_is_thread_alive(dbg, !!target);
 			continue;
+		case DREQ_SET_CONTINUE_THREAD:
+		case DREQ_SET_QUERY_THREAD:
+			dbg_reply_select_thread(dbg, !!target);
+			continue;
 		case DREQ_GET_MEM: {
 			size_t len;
 			byte* mem = read_mem(target, req.mem.addr, req.mem.len,

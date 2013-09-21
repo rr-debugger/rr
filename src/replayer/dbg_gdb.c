@@ -488,27 +488,6 @@ static dbg_threadid_t parse_threadid(const char* str, char** endptr)
 	return strtol(str, endptr, 16);
 }
 
-static int set_selected_thread(struct dbg_context* dbg, char* payload)
-{
-	char op;
-	dbg_threadid_t thread;
-
-	op = *payload++;
-
-	thread = parse_threadid(payload, &payload);
-	assert('\0' == *payload);
-
-	debug("gdb selecting thread %d for %c", thread, op);
-
-	if (op == 'c') {
-		dbg->resume_thread = thread;
-	} else if (op == 'g') {
-		dbg->query_thread = thread;
-	}
-	write_packet(dbg, "OK");
-	return 0;
-}
-
 static void consume_request(struct dbg_context* dbg)
 {
 	memset(&dbg->req, 0, sizeof(dbg->req));
@@ -614,7 +593,17 @@ static int process_packet(struct dbg_context* dbg)
 		ret = 0;
 		break;
 	case 'H':
-		ret = set_selected_thread(dbg, payload);
+		if ('c' == *payload++) {
+			dbg->req.type = DREQ_SET_CONTINUE_THREAD;
+		} else {
+			dbg->req.type = DREQ_SET_QUERY_THREAD;
+		}
+		dbg->req.target = parse_threadid(payload, &payload);
+		assert('\0' == *payload);
+
+		debug("gdb selecting %d", dbg->req.target);
+
+		ret = 1;
 		break;
 	case 'k':
 		log_info("gdb requests kill, exiting");
@@ -873,6 +862,21 @@ void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive)
 	assert(DREQ_GET_IS_THREAD_ALIVE == dbg->req.type);
 
 	write_packet(dbg, alive ? "OK" : "E01");
+
+	consume_request(dbg);
+}
+
+void dbg_reply_select_thread(struct dbg_context* dbg, int ok)
+{
+	assert(DREQ_SET_CONTINUE_THREAD == dbg->req.type
+	       || DREQ_SET_QUERY_THREAD == dbg->req.type);
+
+	if (ok && DREQ_SET_CONTINUE_THREAD == dbg->req.type) {
+		dbg->resume_thread = dbg->req.target;
+	} else if (ok && DREQ_SET_QUERY_THREAD == dbg->req.type) {
+		dbg->query_thread = dbg->req.target;
+	}
+	write_packet(dbg, ok ? "OK" : "E01");
 
 	consume_request(dbg);
 }
