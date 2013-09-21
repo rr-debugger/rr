@@ -101,6 +101,7 @@ set(BASIC_TESTS
   io
   link
   mmap_private
+  mmap_ro
   mmap_shared
   perf_event
   prctl
