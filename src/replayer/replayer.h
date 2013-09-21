@@ -106,7 +106,7 @@ struct rep_trace_step {
 		int signo;
 
 		struct {
-			uint64_t rcb;
+			int64_t rcb;
 			/* XXX can be just $ip in "production". */
 			const struct user_regs_struct* regs;
 			int signo;

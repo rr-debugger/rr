@@ -705,12 +705,12 @@ static int is_debugger_trap(struct task* t, int target_sig,
 }
 
 static void guard_overshoot(struct task* t,
-			    uint64_t target, uint64_t current)
+			    int64_t target, int64_t remaining)
 {
-	assert_exec(t, current <= target,
-		    "Replay diverged: overshot target rcb=%" PRIu64 ", reached=%" PRIu64 "\n"
+	assert_exec(t, remaining >= 0,
+		    "Replay diverged: overshot target rcb=%" PRId64 " by %" PRId64 "\n"
 		    "    replaying trace line %d",
-		    target, current, get_trace_file_lines_counter());
+		    target, -remaining, get_trace_file_lines_counter());
 }
 
 static void guard_unexpected_signal(struct task* t)
@@ -736,41 +736,44 @@ static void guard_unexpected_signal(struct task* t)
 		    strevent(event), get_trace_file_lines_counter());
 }
 
-static int is_same_execution_point(uint64_t rec_rcb,
-				   const struct user_regs_struct* rec_regs,
-				   uint64_t rep_rcb,
+static int is_same_execution_point(const struct user_regs_struct* rec_regs,
+				   int64_t rcbs_left,
 				   const struct user_regs_struct* rep_regs)
 {
-	return (rep_rcb == rep_rcb
+	return (0 == rcbs_left
 		&& 0 == compare_register_files("rep interrupt", rep_regs,
 					       "rec", rec_regs,
 					       EXPECT_MISMATCHES));
 }
 
 /**
- * Run execution forwards for |t| until |t->trace.rbc| is reached,
- * and the $ip reaches the recorded $ip.  Return 0 if successful or 1
- * if an unhandled interrupt occurred.  |sig| is the pending signal to
- * be delivered; it's only used to distinguish debugger-related traps
- * from traps related to replaying execution.
+ * Run execution forwards for |t| until |*rcb| is reached, and the $ip
+ * reaches the recorded $ip.  Return 0 if successful or 1 if an
+ * unhandled interrupt occurred.  |sig| is the pending signal to be
+ * delivered; it's only used to distinguish debugger-related traps
+ * from traps related to replaying execution.  |rcb| is an inout param
+ * that will be decremented by branches retired during this attempted
+ * step.
  */
-static int advance_to(struct task* t, int64_t rcb,
-		      const struct user_regs_struct* regs, int sig,
-		      int stepi)
+static int advance_to(struct task* t, const struct user_regs_struct* regs,
+		      int sig, int stepi, int64_t* rcb)
 {
 	pid_t tid = t->tid;
 	void* ip = (void*)regs->eip;
-	int64_t rcb_now;
+	int64_t rcbs_left;
 
 	assert(t->hpc->rbc.fd > 0);
 	assert(t->child_sig == 0);
 
 	/* Step 1: advance to the target rcb (minus a slack region) as
 	 * quickly as possible by programming the hpc. */
-	rcb_now = read_rbc(t->hpc);
+	rcbs_left = *rcb - read_rbc(t->hpc);
+
+	debug("advancing %" PRId64 " rcbs to reach %" PRId64 "/%p",
+	      rcbs_left, *rcb, ip);
 
 	/* XXX should we only do this if (rcb > 10000)? */
-	while (rcb - rcb_now - SKID_SIZE > SKID_SIZE) {
+	while (rcbs_left - SKID_SIZE > SKID_SIZE) {
 		if (SIGTRAP == t->child_sig) {
 			/* We proved we're not at the execution
 			 * target, and we haven't set any internal
@@ -784,8 +787,9 @@ static int advance_to(struct task* t, int64_t rcb,
 		t->child_sig = 0;
 
 		debug("  programming interrupt for %" PRId64 " rcbs",
-		      rcb - rcb_now - SKID_SIZE);
-		reset_hpc(t, rcb - rcb_now - SKID_SIZE);
+		      rcbs_left - SKID_SIZE);
+		*rcb -= read_rbc(t->hpc);
+		reset_hpc(t, rcbs_left - SKID_SIZE);
 
 		continue_or_step(t, stepi);
 		if (HPC_TIME_SLICE_SIGNAL == t->child_sig
@@ -806,9 +810,9 @@ static int advance_to(struct task* t, int64_t rcb,
 			fatal("Scheduled task %d doesn't own hpc; replay divergence", tid);
 		}
 
-		rcb_now = read_rbc(t->hpc);
+		rcbs_left = *rcb - read_rbc(t->hpc);
 	}
-	guard_overshoot(t, rcb, rcb_now);
+	guard_overshoot(t, *rcb, rcbs_left);
 
 	/* Step 2: more slowly, find our way to the target rcb and
 	 * execution point.  We set an internal breakpoint on the
@@ -822,10 +826,10 @@ static int advance_to(struct task* t, int64_t rcb,
 	 * What we really want to do is set a (precise)
 	 * retired-instruction interrupt and do away with all this
 	 * cruft. */
-	while (rcb_now <= rcb) {
+	while (rcbs_left >= 0) {
 		/* Invariants here are
-		 *  o rcb_now is up-to-date
-		 *  o rcb_now <= rcb
+		 *  o rcbs_left is up-to-date
+		 *  o rcbs_left >= 0
 		 *
 		 * Possible state of the execution of |t|
 		 *  0. at a debugger trap (breakpoint or stepi)
@@ -844,9 +848,8 @@ static int advance_to(struct task* t, int64_t rcb,
 		int at_target;
 
 		read_child_registers(tid, &regs_now);
-		at_target = (rcb_now == rcb &&
-			     is_same_execution_point(rcb, regs,
-						     rcb_now, &regs_now));
+		at_target = is_same_execution_point(regs,
+						    rcbs_left, &regs_now);
 		if (SIGTRAP == t->child_sig) {
 			trap_t trap_type = compute_trap_type(
 				t, ASYNC, sig,
@@ -909,8 +912,8 @@ static int advance_to(struct task* t, int64_t rcb,
 		/* At this point, we've proven that we're not at the
 		 * target execution point, and we've ensured the
 		 * internal breakpoint is unset. */
-		debug("  running from rcb:%" PRId64 " to target rcb:%" PRId64,
-		      rcb_now, rcb);
+		debug("  retiring %" PRId64 " branches to reach %" PRId64,
+		      rcbs_left, *rcb);
 
 		if (regs->eip != regs_now.eip) {
 			/* Case (4) above: set a breakpoint on the
@@ -957,11 +960,11 @@ static int advance_to(struct task* t, int64_t rcb,
 		}
 		guard_unexpected_signal(t);
 
-		/* Maintain the "'rcb_now'-is-up-to-date"
+		/* Maintain the "'rcbs_left'-is-up-to-date"
 		 * invariant. */
-		rcb_now = read_rbc(t->hpc);
+		rcbs_left = *rcb - read_rbc(t->hpc);
 	}
-	guard_overshoot(t, rcb, rcb_now);
+	guard_overshoot(t, *rcb, rcbs_left);
 
 	return 0;
 }
@@ -1026,11 +1029,11 @@ static int emulate_deterministic_signal(struct task* t,
  * nonzero.  Return 0 if successful or 1 if an unhandled interrupt
  * occurred.
  */
-static int emulate_async_signal(struct task* t, uint64_t rcb,
+static int emulate_async_signal(struct task* t,
 				const struct user_regs_struct* regs, int sig,
-				int stepi)
+				int stepi, int64_t* rcb)
 {
-	if (advance_to(t, rcb, regs, 0, stepi)) {
+	if (advance_to(t, regs, 0, stepi, rcb)) {
 		return 1;
 	}
 	if (sig) {
@@ -1283,10 +1286,10 @@ static int try_one_trace_step(struct task* t,
 		return emulate_deterministic_signal(t, step->signo, stepi);
 	case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
 		return emulate_async_signal(t,
-					    step->target.rcb,
 					    step->target.regs,
 					    step->target.signo,
-					    stepi);
+					    stepi,
+					    &step->target.rcb);
 	case TSTEP_FLUSH_SYSCALLBUF:
 		return flush_syscallbuf(t, step, stepi);
 	case TSTEP_DESCHED:
@@ -1448,12 +1451,14 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 
 		read_child_registers(t->tid, &regs);
 		if (TRAP_BKPT_USER == ip_breakpoint_type((void*)regs.eip)) {
+			debug("  hit debugger breakpoint");
 			/* SW breakpoint: $ip is just past the
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
 			regs.eip -= sizeof(int_3_insn);
 			write_child_registers(t->tid, &regs);
 		} else {
+			debug("  finished debugger stepi");
 			/* Successful stepi.  Nothing else to do. */
 			assert(DREQ_STEP == req.type
 			       && req.target == get_threadid(t));
