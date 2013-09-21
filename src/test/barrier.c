@@ -16,6 +16,11 @@ static void hit_barrier() {
 	(void)break_here;
 }
 
+static void joined_threads() {
+	int break_here = 1;
+	(void)break_here;
+}
+
 static void* thread(void* barp) {
 	pthread_barrier_t* bar = barp;
 
@@ -52,6 +57,8 @@ int main(int argc, char *argv[]) {
 	for (i = 0; i < ALEN(threads); ++i) {
 		pthread_join(threads[i], NULL);
 	}
+
+	joined_threads();
 
 	atomic_puts("EXIT-SUCCESS");
 	return 0;
