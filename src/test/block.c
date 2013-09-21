@@ -88,6 +88,20 @@ void* reader_thread(void* dontcare) {
 		++token;
 	}
 	{
+		struct pollfd pfd;
+
+		atomic_puts("r: polling socket ...");
+		pfd.fd = readsock;
+		pfd.events = POLLIN;
+		gettimeofday(&ts, NULL);
+		ppoll(&pfd, 1, NULL, NULL);
+		atomic_puts("r:   ... done, doing nonblocking read ...");
+		test_assert(1 == read(readsock, &c, sizeof(c)));
+		atomic_printf("r:   ... read '%c'\n", c);
+		test_assert(c == token);
+		++token;
+	}
+	{
 		int epfd;
 		struct epoll_event ev;
 
@@ -180,6 +194,14 @@ int main(int argc, char *argv[]) {
 		pthread_barrier_wait(&cheater_barrier);
 	}
 	/* Force a wait on poll() */
+	atomic_puts("M: sleeping again ...");
+	usleep(500000);
+	atomic_printf("M: writing '%c' to socket ...\n", token);
+	write(sockfds[0], &token, sizeof(token));
+	++token;
+	atomic_puts("M:   ... done");
+
+	/* Force a wait on ppoll() */
 	atomic_puts("M: sleeping again ...");
 	usleep(500000);
 	atomic_printf("M: writing '%c' to socket ...\n", token);

@@ -365,7 +365,11 @@ int rec_prepare_syscall(struct task* t)
 	}
 
 	/* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
-	case SYS_poll: {
+	/* int ppoll(struct pollfd *fds, nfds_t nfds,
+	 *           const struct timespec *timeout_ts,
+	 *           const sigset_t *sigmask); */
+	case SYS_poll:
+	case SYS_ppoll: {
 		struct pollfd* fds = (struct pollfd*)regs.ebx;
 		struct pollfd* fds2 = scratch;
 		nfds_t nfds = regs.ecx;
@@ -1624,13 +1628,22 @@ void rec_process_syscall(struct task *t)
 
 	/**
 	 * int poll(struct pollfd *fds, nfds_t nfds, int timeout)
+	 * int ppoll(struct pollfd *fds, nfds_t nfds,
+	 *           const struct timespec *timeout_ts,
+	 *           const sigset_t *sigmask);
 	 *
-	 * poll() performs a similar task to select(2): it waits for one of a set of file descriptors to
-	 * become ready to perform I/O.
+	 * poll() performs a similar task to select(2): it waits for
+	 * one of a set of file descriptors to become ready to perform
+	 * I/O.
 	 *
-	 * Potentially blocking
+	 * The relationship between poll() and ppoll() is analogous to
+	 * the relationship between select(2) and pselect(2): like
+	 * pselect(2), ppoll() allows an application to safely wait
+	 * until either a file descriptor becomes ready or until a
+	 * signal is caught.
 	 */
-	case SYS_poll: {
+	case SYS_poll:
+	case SYS_ppoll: {
 		void* iter;
 		void* data = start_restoring_scratch(t, &iter);
 		struct pollfd* fds = pop_arg_ptr(t);

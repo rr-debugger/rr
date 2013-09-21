@@ -779,13 +779,22 @@ SYSCALL_DEF(EMU, pipe2, 2)
 
 /**
  *  int poll(struct pollfd *fds, nfds_t nfds, int timeout)
+ *  int ppoll(struct pollfd *fds, nfds_t nfds,
+ *            const struct timespec *timeout_ts,
+ *            const sigset_t *sigmask);
  *
  * poll() performs a similar task to select(2): it waits for one of a
  * set of file descriptors to become ready to perform I/O.
  *
+ * The relationship between poll() and ppoll() is analogous to the
+ * relationship between select(2) and pselect(2): like pselect(2),
+ * ppoll() allows an application to safely wait until either a file
+ * descriptor becomes ready or until a signal is caught.
+ *
  * XXX is this irregular?  CHECKED: (trace->recorded_regs.eax > 0)
  */
 SYSCALL_DEF(EMU, poll, 1)
+SYSCALL_DEF(EMU, ppoll, 1)
 
 /**
  *  int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
