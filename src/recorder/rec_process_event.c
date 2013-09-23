@@ -644,6 +644,193 @@ static void finish_restoring_some_scratch(struct task* t,
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
+static void process_socketcall(struct task* t,
+			       struct user_regs_struct* call_regs,
+			       int call, void* base_addr)
+{
+	pid_t tid = t->tid;
+	struct user_regs_struct regs;
+
+	debug("socket call: %d\n", call);
+
+	/* TODO: use t->regs exclusively */
+	memcpy(&regs, call_regs, sizeof(regs));
+
+	switch (call) {
+	/* int socket(int domain, int type, int protocol); */
+	case SYS_SOCKET:
+	/* int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen); */
+	case SYS_CONNECT:
+	/* int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen); */
+	case SYS_BIND:
+	/* int listen(int sockfd, int backlog) */
+	case SYS_LISTEN:
+	/* ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags) */
+	case SYS_SENDMSG:
+	/* ssize_t send(int sockfd, const void *buf, size_t len, int flags) */
+	case SYS_SEND:
+	/* ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen); */
+	case SYS_SENDTO:
+	/* int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen); */
+	case SYS_SETSOCKOPT:
+	/* int shutdown(int socket, int how) */
+	case SYS_SHUTDOWN:
+		return;
+
+	/* int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
+	case SYS_GETPEERNAME:
+	/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
+	case SYS_GETSOCKNAME: {
+		void** addr = read_child_data(t, sizeof(void*), base_addr + sizeof(int) + sizeof(struct sockaddr*));
+		socklen_t *addrlen = read_child_data(t, sizeof(socklen_t), *addr);
+		record_child_data(t, sizeof(socklen_t), *addr);
+		sys_free((void**) &addr);
+
+		addr = read_child_data(t, sizeof(void*), base_addr + sizeof(int));
+		record_child_data(t, *addrlen, *addr);
+		sys_free((void**) &addr);
+		sys_free((void**) &addrlen);
+		return;
+	}
+
+	/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) 
+	 * implemented by:
+	 * int socketcall(int call, unsigned long *args) {
+	 * 		long a[6];
+	 * 		copy_from_user(a,args);
+	 *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
+	 *  }
+	 */
+	case SYS_RECV: {
+		long args[4];
+		void* buf = pop_arg_ptr(t);
+		void* argsp = pop_arg_ptr(t);
+		void* iter;
+		void* data = start_restoring_scratch(t, &iter);
+		ssize_t nrecvd = regs.eax;
+		/* We don't need to record the fudging of the
+		 * socketcall arguments, because we won't replay
+		 * that. */
+		memcpy(args, iter, sizeof(args));
+		iter += sizeof(args);
+		/* Restore |buf| contents. */
+		if (0 < nrecvd) {
+			restore_and_record_arg_buf(t, nrecvd, buf, &iter);
+		} else {
+			record_noop_data(t);
+		}
+		/* Restore the pointer to the original args. */
+		regs.ecx = (uintptr_t)argsp;
+		write_child_registers(tid, &regs);
+
+		finish_restoring_some_scratch(t, iter,
+					      &data);
+		return;
+	}
+
+	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
+	case SYS_RECVMSG: {
+		struct recvmsg_args* args =
+			read_child_data(t, sizeof(*args), base_addr);
+		record_struct_msghdr(t, args->msg);
+
+		sys_free((void**) &args);
+		return;
+	}
+
+	/* ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen); */
+	case SYS_RECVFROM: {
+		void **buf_ptr;
+		size_t *len_ptr;
+		socklen_t **addrlen_ptr;
+		socklen_t *addrlen;
+		struct sockaddr **src_addr_ptr;
+
+		buf_ptr = read_child_data(t, sizeof(void*), base_addr + sizeof(int));
+		len_ptr = read_child_data(t, sizeof(void*), base_addr + 8);
+		src_addr_ptr = read_child_data(t, sizeof(struct sockaddr*), base_addr + 16);
+		addrlen_ptr = read_child_data(t, sizeof(socklen_t*), base_addr + 20);
+		addrlen = read_child_data(t, sizeof(socklen_t), *addrlen_ptr);
+
+		record_child_data(t, *len_ptr, *buf_ptr);
+		record_child_data(t, sizeof(socklen_t), *addrlen_ptr);
+		record_child_data(t, *addrlen, *src_addr_ptr);
+
+		sys_free((void**) &buf_ptr);
+		sys_free((void**) &len_ptr);
+		sys_free((void**) &addrlen_ptr);
+		sys_free((void**) &addrlen);
+		sys_free((void**) &src_addr_ptr);
+		return;
+	}
+
+	/*
+	 *  int getsockopt(int sockfd, int level, int optname, const void *optval, socklen_t* optlen);
+	 */
+	case SYS_GETSOCKOPT: {
+		socklen_t** len_ptr = read_child_data(t, sizeof(socklen_t*), (void*)(regs.ecx + 3 * sizeof(int) + sizeof(void*)));
+		socklen_t* len = read_child_data(t, sizeof(socklen_t), *len_ptr);
+		unsigned long** optval = read_child_data(t, sizeof(void*), (void*)(regs.ecx + 3 * sizeof(int)));
+		record_child_data(t, *len, *optval);
+		sys_free((void**) &len_ptr);
+		sys_free((void**) &len);
+		sys_free((void**) &optval);
+		return;
+	}
+
+	/*
+	 *  int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+	 *  int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
+	 *
+	 * Note: The returned address is truncated if the buffer
+	 * provided is too small; in this case, addrlen will return a
+	 * value greater than was supplied to the call.
+	 *
+	 * For now we record the size of bytes that is returned by the
+	 * system call. We check in the replayer, if the buffer was
+	 * actually too small and throw an error there.
+	 */
+	case SYS_ACCEPT:
+	case SYS_ACCEPT4: {
+		long args[4];
+		void* addr = pop_arg_ptr(t);
+		void* addrlenp = pop_arg_ptr(t);
+		void* argsp = pop_arg_ptr(t);
+		void* iter;
+		void* data = start_restoring_scratch(t, &iter);
+		socklen_t len;
+		/* Consume the scratch args; nothing there is
+		 * interesting to us now. */
+		iter += sizeof(args);
+		/* addrlen */
+		len = *(socklen_t*)iter;
+		restore_and_record_arg_buf(t, sizeof(len), addrlenp, &iter);
+		/* addr */
+		restore_and_record_arg_buf(t, len, addr, &iter);
+		/* Restore the pointer to the original args. */
+		regs.ecx = (uintptr_t)argsp;
+		write_child_registers(tid, &regs);
+
+		finish_restoring_some_scratch(t, iter, &data);
+		return;
+	}
+
+	/* int socketpair(int domain, int type, int protocol, int sv[2]);
+	 *
+	 * values returned in sv
+	 */
+	case SYS_SOCKETPAIR: {
+		unsigned long* addr = read_child_data(t, sizeof(int*), (void*)(regs.ecx + (3 * sizeof(int))));
+		record_child_data(t, 2 * sizeof(int), (void*)*addr);
+		sys_free((void**) &addr);
+		return;
+	}
+
+	default:
+		fatal("Unknown socketcall %d", call);
+	}
+}
+
 void rec_process_syscall(struct task *t)
 {
 	/* TODO: extend syscall_defs.h in order to generate code
@@ -2023,198 +2210,8 @@ void rec_process_syscall(struct task *t)
 	 *
 	 */
 	case SYS_socketcall:
-	{
-		int call = regs.ebx;
-		void* base_addr = (void*)regs.ecx;
-
-
-		debug("socket call: %d\n", call);
-		switch (call) {
-		/* int socket(int domain, int type, int protocol); */
-		case SYS_SOCKET:
-		/* int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen); */
-		case SYS_CONNECT:
-		/* int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen); */
-		case SYS_BIND:
-		/* int listen(int sockfd, int backlog) */
-		case SYS_LISTEN:
-		/* ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags) */
-		case SYS_SENDMSG:
-		/* ssize_t send(int sockfd, const void *buf, size_t len, int flags) */
-		case SYS_SEND:
-		/* ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen); */
-		case SYS_SENDTO:
-		/* int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen); */
-		case SYS_SETSOCKOPT:
-		/* int shutdown(int socket, int how) */
-		case SYS_SHUTDOWN:
-		{
-			break;
-		}
-
-		/* int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
-		case SYS_GETPEERNAME:
-		/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
-		case SYS_GETSOCKNAME:
-		{
-
-			void** addr = read_child_data(t, sizeof(void*), base_addr + sizeof(int) + sizeof(struct sockaddr*));
-			socklen_t *addrlen = read_child_data(t, sizeof(socklen_t), *addr);
-			record_child_data(t, sizeof(socklen_t), *addr);
-			sys_free((void**) &addr);
-
-			addr = read_child_data(t, sizeof(void*), base_addr + sizeof(int));
-			record_child_data(t, *addrlen, *addr);
-			sys_free((void**) &addr);
-			sys_free((void**) &addrlen);
-			break;
-		}
-
-		/* ssize_t recv(int sockfd, void *buf, size_t len, int flags) 
-		 * implemented by:
-		 * int socketcall(int call, unsigned long *args) {
-		 * 		long a[6];
-		 * 		copy_from_user(a,args);
-		 *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
-		 *  }
-		 */
-		case SYS_RECV: {
-			long args[4];
-			void* buf = pop_arg_ptr(t);
-			void* argsp = pop_arg_ptr(t);
-			void* iter;
-			void* data = start_restoring_scratch(t, &iter);
-			ssize_t nrecvd = regs.eax;
-			/* We don't need to record the fudging of the
-			 * socketcall arguments, because we won't
-			 * replay that. */
-			memcpy(args, iter, sizeof(args));
-			iter += sizeof(args);
-			/* Restore |buf| contents. */
-			if (0 < nrecvd) {
-				restore_and_record_arg_buf(t, nrecvd, buf,
-							   &iter);
-			} else {
-				record_noop_data(t);
-			}
-			/* Restore the pointer to the original args. */
-			regs.ecx = (uintptr_t)argsp;
-			write_child_registers(tid, &regs);
-
-			finish_restoring_some_scratch(t, iter,
-						      &data);
-			break;
-		}
-
-		/* ssize_t recvmsg(int sockfd, struct msghdr *msg,
-		 *                 int flags); */
-		case SYS_RECVMSG: {
-			struct recvmsg_args* args =
-				read_child_data(t, sizeof(*args), base_addr);
-			record_struct_msghdr(t, args->msg);
-
-			sys_free((void**) &args);
-			break;
-		}
-
-		/* ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen); */
-		case SYS_RECVFROM:
-		{
-			void **buf_ptr;
-			size_t *len_ptr;
-			socklen_t **addrlen_ptr;
-			socklen_t *addrlen;
-			struct sockaddr **src_addr_ptr;
-
-			buf_ptr = read_child_data(t, sizeof(void*), base_addr + sizeof(int));
-			len_ptr = read_child_data(t, sizeof(void*), base_addr + 8);
-			src_addr_ptr = read_child_data(t, sizeof(struct sockaddr*), base_addr + 16);
-			addrlen_ptr = read_child_data(t, sizeof(socklen_t*), base_addr + 20);
-			addrlen = read_child_data(t, sizeof(socklen_t), *addrlen_ptr);
-
-			record_child_data(t, *len_ptr, *buf_ptr);
-			record_child_data(t, sizeof(socklen_t), *addrlen_ptr);
-			record_child_data(t, *addrlen, *src_addr_ptr);
-
-			sys_free((void**) &buf_ptr);
-			sys_free((void**) &len_ptr);
-			sys_free((void**) &addrlen_ptr);
-			sys_free((void**) &addrlen);
-			sys_free((void**) &src_addr_ptr);
-			break;
-		}
-
-		/**
-		 *  int getsockopt(int sockfd, int level, int optname, const void *optval, socklen_t* optlen);
-		 */
-		case SYS_GETSOCKOPT:
-		{
-			socklen_t** len_ptr = read_child_data(t, sizeof(socklen_t*), (void*)(regs.ecx + 3 * sizeof(int) + sizeof(void*)));
-			socklen_t* len = read_child_data(t, sizeof(socklen_t), *len_ptr);
-			unsigned long** optval = read_child_data(t, sizeof(void*), (void*)(regs.ecx + 3 * sizeof(int)));
-			record_child_data(t, *len, *optval);
-			sys_free((void**) &len_ptr);
-			sys_free((void**) &len);
-			sys_free((void**) &optval);
-			break;
-		}
-
-		/**
-		 *  int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
-		 *  int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
-		 *
-		 * Note: The returned address is truncated if the buffer provided is too small; in this case,
-		 * addrlen will return a value greater than was supplied to the call.
-		 *
-		 * For now we record the size of bytes that is returned by the system call. We check in the
-		 * replayer, if the buffer was actually too small and throw an error there.
-		 *
-		 * */
-		case SYS_ACCEPT:
-		case SYS_ACCEPT4: {
-			long args[4];
-			void* addr = pop_arg_ptr(t);
-			void* addrlenp = pop_arg_ptr(t);
-			void* argsp = pop_arg_ptr(t);
-			void* iter;
-			void* data = start_restoring_scratch(t, &iter);
-			socklen_t len;
-			/* Consume the scratch args; nothing there is
-			 * interesting to us now. */
-			iter += sizeof(args);
-			/* addrlen */
-			len = *(socklen_t*)iter;
-			restore_and_record_arg_buf(t, sizeof(len), addrlenp,
-						   &iter);
-			/* addr */
-			restore_and_record_arg_buf(t, len, addr, &iter);
-			/* Restore the pointer to the original args. */
-			regs.ecx = (uintptr_t)argsp;
-			write_child_registers(tid, &regs);
-
-			finish_restoring_some_scratch(t, iter,
-						      &data);
-			break;
-		}
-
-		/* int socketpair(int domain, int type, int protocol, int sv[2]);
-		 *
-		 * values returned in sv
-		 */
-		case SYS_SOCKETPAIR:
-		{
-			unsigned long* addr = read_child_data(t, sizeof(int*), (void*)(regs.ecx + (3 * sizeof(int))));
-			record_child_data(t, 2 * sizeof(int), (void*)*addr);
-			sys_free((void**) &addr);
-			break;
-		}
-
-		default:
-		fprintf(stderr, "unknwon socket call: %d -- baling out\n", call);
-		sys_exit();
-		}
-		break;
-	}
+		return process_socketcall(t, &regs,
+					  regs.ebx, (void*)regs.ecx);
 
 	/**
 	 *  int stat(const char *path, struct stat *buf);
