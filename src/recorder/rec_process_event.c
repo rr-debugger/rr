@@ -2538,8 +2538,9 @@ void rec_process_syscall(struct task *t)
 		strcpy(file.filename, filename);
 		sys_free((void**)&filename);
 
-		sys_stat(file.filename, &file.stat);
-
+		if (stat(file.filename, &file.stat)) {
+			fatal("Sorry, mmap()'ing anonymous shmem regions is NYI.");
+		}
 		file.start = addr;
 		file.end = get_mmaped_region_end(t, addr);
 

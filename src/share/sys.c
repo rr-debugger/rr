@@ -57,22 +57,6 @@ void sys_fclose(FILE* file)
 	}
 }
 
-void sys_fstat(int filedes, struct stat * stat_buf)
-{
-	if (fstat(filedes,stat_buf) < 0) {
-		log_err("error while fstating file (fd = %d) -- bailing out\n",filedes);
-		sys_exit();
-	}
-}
-
-void sys_stat(char * pathname, struct stat * stat_buf)
-{
-	if (stat(pathname,stat_buf) < 0) {
-		log_err("error while stating file -- bailing out\n");
-		sys_exit();
-	}
-}
-
 void sys_close(int filedes)
 {
 	if (close(filedes) < 0) {
