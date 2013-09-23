@@ -18,8 +18,6 @@ FILE* sys_fopen(const char* path, const char* mode);
 int sys_open(const char* path, int flags, mode_t mode);
 int sys_mkpath(const char *path, mode_t mode);
 void sys_fclose(FILE* file);
-void sys_fstat(int filedes, struct stat * stat_buf);
-void sys_stat(char * pathname, struct stat * stat_buf);
 pid_t sys_fork();
 int sys_open_child_mem(pid_t child_tid);
 void sys_kill(int pid, int msg);
