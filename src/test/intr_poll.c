@@ -2,10 +2,6 @@
 
 #include "rrutil.h"
 
-#include <errno.h>
-#include <poll.h>
-#include <signal.h>
-#include <stdlib.h>
 
 static int pipefds[2];
 static int poll_pipe(int timeout_ms) {

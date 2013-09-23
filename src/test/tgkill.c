@@ -2,9 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <sys/syscall.h>
-#include <sys/types.h>
 
 static int num_signals_caught;
 

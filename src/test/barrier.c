@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-#include <sys/time.h>
 
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 

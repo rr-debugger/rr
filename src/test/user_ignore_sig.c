@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <stdlib.h>
 
 static void handle_usr1(int sig) {
 	test_assert("Shouldn't have caught SIGUSR1" && 0);

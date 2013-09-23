@@ -4,11 +4,6 @@
 
 #include "rrutil.h"
 
-#include <poll.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int sockfds[2];

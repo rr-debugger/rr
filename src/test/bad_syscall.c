@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <errno.h>
-#include <syscall.h>
 
 int main(int argc, char *argv[]) {
 	int ret = syscall(-10);

@@ -2,10 +2,6 @@
 
 #include "rrutil.h"
 
-#include <fcntl.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 int main(int argc, char *argv[]) {
 	int fd = open("prw.txt", O_CREAT | O_RDWR, 0600);

@@ -2,9 +2,6 @@
 
 #include "rrutil.h"
 
-#include <errno.h>
-#include <signal.h>
-#include <string.h>
 
 int caught_sig = 0;
 

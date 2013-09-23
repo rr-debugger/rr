@@ -2,9 +2,6 @@
 
 #include "rrutil.h"
 
-#include <fcntl.h>
-#include <inttypes.h>
-#include <sys/vfs.h>
 
 #define DUMMY_FILENAME "foo.txt"
 

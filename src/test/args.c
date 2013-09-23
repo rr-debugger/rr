@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-#include <string.h>
 
 int main(int argc, char *argv[]) {
 	test_assert(6 == argc);

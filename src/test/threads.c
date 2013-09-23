@@ -2,11 +2,6 @@
 
 #include "rrutil.h"
 
-#include <errno.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
 
 long int counter = 0;
 

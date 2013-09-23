@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
 
 static void sighandler(int sig) {
 	atomic_printf("caught signal %d, exiting\n", sig);

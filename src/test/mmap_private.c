@@ -2,10 +2,6 @@
 
 #include "rrutil.h"
 
-#include <fcntl.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/types.h>
 
 static void breakpoint() {
 	int break_here = 1;

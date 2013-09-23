@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <sys/ioctl.h>
-#include <termios.h>
 
 int main(int argc, char *argv[]) {
 	struct termios tc = { 0 };

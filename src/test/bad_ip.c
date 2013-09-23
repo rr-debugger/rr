@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <string.h>
 
 static void sighandler(int sig, siginfo_t* si, void* utp) {
 	test_assert(SIGSEGV == sig && si->si_addr == (void*)0x42);

@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <inttypes.h>
-#include <stdint.h>
 
 static uint64_t rdtsc(void) {
 	uint32_t hi, lo;

@@ -2,12 +2,6 @@
 
 #include "rrutil.h"
 
-#include <linux/perf_event.h>
-#include <sched.h>
-#include <stdint.h>
-#include <string.h>
-#include <sys/syscall.h>
-
 static int counter_fd;
 
 static int sys_perf_event_open(struct perf_event_attr *attr,

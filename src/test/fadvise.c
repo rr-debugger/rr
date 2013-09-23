@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <fcntl.h>
-#include <syscall.h>
 
 int main(int argc, char *argv[]) {
 	/* There's not a (simple) way to meaningfully test fadvise,

@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <stdlib.h>
 
 static sig_atomic_t caught_usr1;
 

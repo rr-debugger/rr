@@ -2,15 +2,6 @@
 
 #include "rrutil.h"
 
-#include <errno.h>
-#include <poll.h>
-#include <signal.h>
-#include <string.h>
-#include <syscall.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
 
 static pthread_t reader;
 static pthread_barrier_t barrier;

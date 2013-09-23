@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <stdlib.h>
 
 static void handle_segv(int sig) {
 	test_assert(SIGSEGV == sig);

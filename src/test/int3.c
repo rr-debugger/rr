@@ -7,7 +7,6 @@ static void breakpoint() {
 
 #include "rrutil.h"
 
-#include <signal.h>
 
 static void handle_sigtrap(int sig) {
 	atomic_puts("caught SIGTRAP!");

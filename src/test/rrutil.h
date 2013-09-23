@@ -4,9 +4,34 @@
 #define RRUTIL_H
 
 #include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <linux/perf_event.h>
+#include <poll.h>
 #include <pthread.h>
+#include <sched.h>
+#include <signal.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <syscall.h>
+#include <sys/epoll.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/vfs.h>
+#include <sys/wait.h>
+#include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
