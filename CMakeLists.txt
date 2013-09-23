@@ -80,6 +80,7 @@ set(BASIC_TESTS
   bad_ip
   bad_syscall
   barrier
+  big_buffers
   block
   breakpoint
   chew_cpu

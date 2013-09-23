@@ -989,8 +989,7 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
 			step->action = TSTEP_EXIT_SYSCALL;
-			step->syscall.num_emu_args =
-				(trace->recorded_regs.eax > 0) ? 1 : 0;
+			step->syscall.num_emu_args = 1;
 		}
 		return;
 

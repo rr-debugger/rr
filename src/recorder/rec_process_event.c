@@ -40,6 +40,28 @@
 #include "../share/util.h"
 
 /**
+ *   static void read_socketcall_args(struct task* t,
+ *                                    const struct user_regs_struct* regs,
+ *                                    long** argsp, long[n] args);
+ *
+ * Read the socketcall args pushed by |t| as part of the syscall in
+ * |regs| into the |args| outparam.  Also store the address of the
+ * socketcall args into |*argsp|.
+ *
+ * NB: this is a macro to enable it to "infer" the size of |args|.
+ * This of course wouldn't be necessary with C++.
+ */
+#define READ_SOCKETCALL_ARGS(_t, _regs, _argsp, _args)			\
+	do {								\
+		long* _tmp;						\
+		*_argsp = (void*)(_regs)->ecx;				\
+		_tmp = read_child_data(_t, sizeof(_args), *_argsp);	\
+		memcpy(_args, _tmp, sizeof(_args));			\
+		sys_free((void**)&_tmp);				\
+	} while(0)
+
+
+/**
  * Erase any scratch pointer initialization done for |t| and leave
  * the state bits ready to be initialized again.
  */
@@ -124,17 +146,6 @@ int prepare_socketcall(struct task* t, int would_need_scratch,
 	 *
 	 *  (from http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
 	 */
-	/* NB: this is a macro to enable it to "infer" the size of
-	 * |_args|.  This of course wouldn't be necessary with C++. */
-#define READ_SOCKETCALL_ARGS(_t, _regs, _argsp, _args)		\
-	do {								\
-		long* _tmp;						\
-		*_argsp = (void*)_regs->ecx;				\
-		_tmp = read_child_data(_t, sizeof(_args), *_argsp);	\
-		memcpy(_args, _tmp, sizeof(_args));			\
-		sys_free((void**)&_tmp);				\
-	} while(0)
-
 	switch (regs->ebx) {
 	/* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
 	case SYS_RECV: {
@@ -214,6 +225,10 @@ int prepare_socketcall(struct task* t, int would_need_scratch,
 		return 1;
 	}
 
+	case SYS_RECVFROM:
+		/* TODO: this can block, needs scratch. */
+		return abort_scratch(t, "recvfrom");
+
 	case SYS_RECVMSG:
 		/* TODO: this can block too, so also needs scratch
 		 * pointers.  Unfortunately the format is fiendishly
@@ -224,7 +239,6 @@ int prepare_socketcall(struct task* t, int would_need_scratch,
 	default:
 		return 0;
 	}
-#undef READ_SOCKETCALL_ARGS
 }
 
 /**
@@ -574,6 +588,15 @@ static void* start_restoring_scratch(struct task* t, void** iter)
 }
 
 /**
+ * Return nonzero if tracee pointers were saved while preparing for
+ * the syscall |t->ev|.
+ */
+static int has_saved_arg_ptrs(struct task* t)
+{
+	return !FIXEDSTACK_EMPTY(&t->ev->syscall.saved_args);
+}
+
+/**
  * Return the replaced tracee argument pointer saved by the matching
  * call to |push_arg_ptr()|.
  */
@@ -703,28 +726,46 @@ static void process_socketcall(struct task* t,
 	 */
 	case SYS_RECV: {
 		long args[4];
-		void* buf = pop_arg_ptr(t);
-		void* argsp = pop_arg_ptr(t);
+		void* buf;
+		void* argsp;
 		void* iter;
-		void* data = start_restoring_scratch(t, &iter);
-		ssize_t nrecvd = regs.eax;
-		/* We don't need to record the fudging of the
-		 * socketcall arguments, because we won't replay
-		 * that. */
-		memcpy(args, iter, sizeof(args));
-		iter += sizeof(args);
+		void* data = NULL;
+		ssize_t nrecvd;
+
+		nrecvd = regs.eax;
+		if (has_saved_arg_ptrs(t)) {
+			buf = pop_arg_ptr(t);
+			argsp = pop_arg_ptr(t);
+			data = start_restoring_scratch(t, &iter);
+			/* We don't need to record the fudging of the
+			 * socketcall arguments, because we won't
+			 * replay that. */
+			memcpy(args, iter, sizeof(args));
+			iter += sizeof(args);
+		} else {
+			long* argsp;
+			READ_SOCKETCALL_ARGS(t, &regs, &argsp, args);
+			buf = (void*)args[1];
+		}
+
 		/* Restore |buf| contents. */
 		if (0 < nrecvd) {
-			restore_and_record_arg_buf(t, nrecvd, buf, &iter);
+			if (data) {
+				restore_and_record_arg_buf(t, nrecvd, buf,
+							   &iter);
+			} else {
+				record_child_data(t, nrecvd, buf);
+			}
 		} else {
 			record_noop_data(t);
 		}
-		/* Restore the pointer to the original args. */
-		regs.ecx = (uintptr_t)argsp;
-		write_child_registers(tid, &regs);
 
-		finish_restoring_some_scratch(t, iter,
-					      &data);
+		if (data) {
+			/* Restore the pointer to the original args. */
+			regs.ecx = (uintptr_t)argsp;
+			write_child_registers(tid, &regs);
+			finish_restoring_some_scratch(t, iter, &data);
+		}
 		return;
 	}
 
@@ -740,27 +781,41 @@ static void process_socketcall(struct task* t,
 
 	/* ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen); */
 	case SYS_RECVFROM: {
-		void **buf_ptr;
-		size_t *len_ptr;
-		socklen_t **addrlen_ptr;
-		socklen_t *addrlen;
-		struct sockaddr **src_addr_ptr;
+		struct recvfrom_args {
+			long fd;
+			void* buf;
+			long len;
+			long flags;
+			struct sockaddr* src_addr;
+			socklen_t* addrlen;
+		};
+		struct recvfrom_args* child_args;
+		int recvdlen = regs.eax;
 
-		buf_ptr = read_child_data(t, sizeof(void*), base_addr + sizeof(int));
-		len_ptr = read_child_data(t, sizeof(void*), base_addr + 8);
-		src_addr_ptr = read_child_data(t, sizeof(struct sockaddr*), base_addr + 16);
-		addrlen_ptr = read_child_data(t, sizeof(socklen_t*), base_addr + 20);
-		addrlen = read_child_data(t, sizeof(socklen_t), *addrlen_ptr);
+		child_args = read_child_data(t, sizeof(*child_args),
+					     base_addr);
 
-		record_child_data(t, *len_ptr, *buf_ptr);
-		record_child_data(t, sizeof(socklen_t), *addrlen_ptr);
-		record_child_data(t, *addrlen, *src_addr_ptr);
+		if (recvdlen > 0) {
+			record_child_data(t, child_args->len,
+					  child_args->buf);
+		} else {
+			record_noop_data(t);
+		}
+		if (child_args->src_addr && child_args->addrlen) {
+			long len =
+				read_child_data_word(t->tid,
+						     child_args->addrlen);
 
-		sys_free((void**) &buf_ptr);
-		sys_free((void**) &len_ptr);
-		sys_free((void**) &addrlen_ptr);
-		sys_free((void**) &addrlen);
-		sys_free((void**) &src_addr_ptr);
+			record_child_data(t, sizeof(child_args->addrlen),
+					  child_args->addrlen);
+			record_child_data(t, len,
+					  child_args->src_addr);
+		} else {
+			record_noop_data(t);
+			record_noop_data(t);
+		}
+
+		sys_free((void**)&child_args);
 		return;
 	}
 
@@ -2634,17 +2689,35 @@ void rec_process_syscall(struct task *t)
 	 * In this case it is left unspecified whether the file position (if any) changes.
 	 */
 	case SYS_read: {
-		void* buf = pop_arg_ptr(t);
-		ssize_t nread = regs.eax;
+		void* buf;
+		ssize_t nread;
 		void* iter;
-		void* data = start_restoring_scratch(t, &iter);
+		void* data = NULL;
+
+		nread = regs.eax;
+		if (has_saved_arg_ptrs(t)) {
+			buf = pop_arg_ptr(t);
+			data = start_restoring_scratch(t, &iter);
+		} else {
+			buf = (void*)regs.ecx;
+		}
 
 		if (nread > 0) {
-			restore_and_record_arg_buf(t, nread, buf, &iter);
+			if (data) {
+				restore_and_record_arg_buf(t, nread, buf,
+							   &iter);
+			} else {
+				record_child_data(t, nread, buf);
+			}
+		} else {
+			record_noop_data(t);
 		}
-		regs.ecx = (uintptr_t)buf;
-		write_child_registers(tid, &regs);
-		finish_restoring_some_scratch(t, iter, &data);
+
+		if (data) {
+			regs.ecx = (uintptr_t)buf;
+			write_child_registers(tid, &regs);
+			finish_restoring_some_scratch(t, iter, &data);
+		}
 		break;
 	}
 
