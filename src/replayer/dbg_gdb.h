@@ -119,16 +119,17 @@ int dbg_is_resume_request(const struct dbg_request* req);
 
 /**
  * Wait for exactly one gdb host to connect to this remote target on
- * IP address |addr|, port |port|.  If port is less than or equal to
- * 0, a port will be chosen automatically.
+ * IP address |addr|, port |port|.  If |probe| is nonzero, a unique
+ * port based on |start_port| will be searched for.  Otherwise, if
+ * |port| is already bound, this function will fail.
  *
  * This function is infallible: either it will return a valid
  * debugging context, or it won't return.
- * 
- * TODO currently, calling this function more than once results in
- * undefined behavior.
  */
-struct dbg_context* dbg_await_client_connection(const char* addr, short port);
+enum { DONT_PROBE = 0, PROBE_PORT };
+struct dbg_context* dbg_await_client_connection(const char* addr,
+						unsigned short port,
+						int probe);
 
 /**
  * Return the current request made by the debugger host, that needs to

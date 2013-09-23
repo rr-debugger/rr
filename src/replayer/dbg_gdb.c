@@ -88,12 +88,13 @@ inline static int request_needs_immediate_response(const struct dbg_request* req
 	}
 }
 
-struct dbg_context* dbg_await_client_connection(const char* address, short port)
+struct dbg_context* dbg_await_client_connection(const char* address,
+						unsigned short port,
+						int probe)
 {
 	struct dbg_context* dbg;
 	int listen_fd;
 	int reuseaddr;
-	int autoprobe;
 	struct sockaddr_in client_addr;
 	int ret;
 	socklen_t len;
@@ -114,26 +115,22 @@ struct dbg_context* dbg_await_client_connection(const char* address, short port)
 	setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
 		   &reuseaddr, sizeof(reuseaddr));
 
-	if (port <= 0) {
-		autoprobe = 1;
-		port = getpid();
-	} else {
-		autoprobe = 0;
-	}
 	do {
 		dbg->addr.sin_port = htons(port);
 		ret = bind(listen_fd,
 			   (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
-		if (ret == EADDRINUSE) {
+		if (ret && EADDRINUSE == errno) {
 			continue;
-		} else if (ret != 0) {
+		}
+		if (ret != 0) {
 			break;
 		}
+
 		ret = listen(listen_fd, 1/*backlogged connection*/);
-		if (ret == 0 || ret != EADDRINUSE) {
+		if (ret == 0 || EADDRINUSE != errno) {
 			break;
 		}
-	} while (++port, autoprobe);
+	} while (++port, probe);
 	if (ret) {
 		fatal("Couldn't bind to server address");
 	}
