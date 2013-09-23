@@ -1508,8 +1508,17 @@ void replay(struct flags flags)
 	struct dbg_context* dbg = NULL;
 
 	if (!rr_flags()->autopilot) {
-		dbg = dbg_await_client_connection("127.0.0.1",
-						  rr_flags()->dbgport);
+		unsigned short port = (rr_flags()->dbgport > 0) ?
+				      rr_flags()->dbgport : getpid();
+		/* Don't probe if the user specified a port.
+		 * Explicitly selecting a port is usually done by
+		 * scripts, which would presumably break if a
+		 * different port were to be selected by rr (otherwise
+		 * why would they specify a port in the first place).
+		 * So fail with a clearer error message. */
+		int probe = (rr_flags()->dbgport > 0) ?
+			    DONT_PROBE : PROBE_PORT;
+		dbg = dbg_await_client_connection("127.0.0.1", port, probe);
 	}
 
 	while (rep_sched_get_num_threads()) {
@@ -1536,7 +1545,7 @@ void emergency_debug(struct task* t)
 		fatal("(stderr not a tty, aborting emergency debugging)");
 	}
 
-	dbg = dbg_await_client_connection("127.0.0.1", t->tid);
+	dbg = dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT);
 	process_debugger_requests(dbg, t);
 	fatal("Can't resume execution from invalid state");
 }
