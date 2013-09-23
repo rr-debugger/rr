@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <stdlib.h>
-#include <sys/mman.h>
 
 static int create_segment(size_t num_bytes) {
 	char filename[] = "/dev/shm/rr-test-XXXXXX";

@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <string.h>
-#include <sys/prctl.h>
 
 int main(int argc, char *argv[]) {
 	char setname[16] = "prctl-test";

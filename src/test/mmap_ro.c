@@ -2,11 +2,6 @@
 
 #include "rrutil.h"
 
-#include <fcntl.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 #define DUMMY_FILE "dummy.txt"
 

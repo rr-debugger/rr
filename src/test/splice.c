@@ -4,9 +4,6 @@
 
 #include "rrutil.h"
 
-#include <fcntl.h>
-#include <stdlib.h>
-#include <string.h>
 
 #define TOKEN "ABC"
 #define TOKEN_SIZE sizeof(TOKEN)

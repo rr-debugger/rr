@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <sys/time.h>
-#include <sys/resource.h>
 
 int main() {
 	int prio1, prio2;

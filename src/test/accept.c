@@ -2,9 +2,6 @@
 
 #include "rrutil.h"
 
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/un.h>
 
 static void client(const struct sockaddr_un* addr) {
 	int clientfd;

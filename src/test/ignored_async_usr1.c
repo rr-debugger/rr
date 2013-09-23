@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
 
 int main(int argc, char *argv[]) {
 	int dummy, i;

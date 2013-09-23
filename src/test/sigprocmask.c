@@ -2,10 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <stdlib.h>
-#include <sys/syscall.h>
-
 static int signals_unblocked;
 
 static void handle_usr1(int sig) {

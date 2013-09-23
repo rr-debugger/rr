@@ -2,9 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <stdlib.h>
-#include <sys/types.h>
 
 static void* kill_thread(void* dontcare) {
 	atomic_puts("killing ...");

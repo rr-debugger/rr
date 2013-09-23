@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <stdlib.h>
 
 static int num_signals_caught;
 

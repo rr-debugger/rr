@@ -2,15 +2,6 @@
 
 #include "rrutil.h"
 
-#include <errno.h>
-#include <poll.h>
-#include <signal.h>
-#include <string.h>
-#include <syscall.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
 
 static const char start_token = '!';
 static const char sentinel_token = ' ';

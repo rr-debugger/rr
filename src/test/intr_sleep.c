@@ -2,10 +2,6 @@
 
 #include "rrutil.h"
 
-#include <errno.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <time.h>
 
 static int interrupted_sleep() {
 	struct timespec ts = { .tv_sec = 2 };

@@ -2,8 +2,6 @@
 
 #include "rrutil.h"
 
-#include <signal.h>
-#include <sys/types.h>
 
 static void waittermsig(int sig, const char* waiter)
 {
