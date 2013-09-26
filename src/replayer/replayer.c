@@ -306,14 +306,39 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			return req;
 		}
 
-		target = (req.target > 0) ?
-			 rep_sched_lookup_thread(req.target) : t;
-
+		/* These requests don't require a target task. */
 		switch (req.type) {
-		case DREQ_GET_CURRENT_THREAD: {
+		case DREQ_GET_CURRENT_THREAD:
 			dbg_reply_get_current_thread(dbg, get_threadid(t));
 			continue;
+		case DREQ_GET_OFFSETS:
+			/* TODO */
+			dbg_reply_get_offsets(dbg);
+			continue;
+		case DREQ_GET_THREAD_LIST: {
+			pid_t* tids;
+			size_t len;
+			rep_sched_enumerate_tasks(&tids, &len);
+			dbg_reply_get_thread_list(dbg, tids, len);
+			sys_free((void**)&tids);
+			continue;
 		}
+		case DREQ_INTERRUPT:
+			/* Tell the debugger we stopped and await
+			 * further instructions. */
+			dbg_notify_stop(dbg, get_threadid(t), 0);
+			continue;
+		default:
+			/* fall through to next switch stmt */
+			break;
+		}
+
+		target = (req.target > 0) ?
+			 rep_sched_lookup_thread(req.target) : t;
+		/* These requests query or manipulate which task is
+		 * the target, so it's OK if the task doesn't
+		 * exist. */
+		switch (req.type) {
 		case DREQ_GET_IS_THREAD_ALIVE:
 			dbg_reply_get_is_thread_alive(dbg, !!target);
 			continue;
@@ -321,6 +346,15 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		case DREQ_SET_QUERY_THREAD:
 			dbg_reply_select_thread(dbg, !!target);
 			continue;
+		default:
+			/* fall through to next switch stmt */
+			break;
+		}
+
+		/* These requests require a valid target task.  We
+		 * trust gdb to use the information provided above to
+		 * only query valid tasks. */
+		switch (req.type) {
 		case DREQ_GET_MEM: {
 			size_t len;
 			byte* mem = read_mem(target, req.mem.addr, req.mem.len,
@@ -329,10 +363,6 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			sys_free((void**)&mem);
 			continue;
 		}
-		case DREQ_GET_OFFSETS:
-			/* TODO */
-			dbg_reply_get_offsets(dbg);
-			continue;
 		case DREQ_GET_REG: {
 			struct user_regs_struct regs;
 			dbg_regvalue_t val;
@@ -366,19 +396,6 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 						  target->child_sig);
 			continue;
 		}
-		case DREQ_GET_THREAD_LIST: {
-			pid_t* tids;
-			size_t len;
-			rep_sched_enumerate_tasks(&tids, &len);
-			dbg_reply_get_thread_list(dbg, tids, len);
-			sys_free((void**)&tids);
-			continue;
-		}
-		case DREQ_INTERRUPT:
-			/* Tell the debugger we stopped and await
-			 * further instructions. */
-			dbg_notify_stop(dbg, get_threadid(t), 0);
-			continue;
 		case DREQ_SET_SW_BREAK:
 			set_user_sw_breakpoint(target, &req);
 			dbg_reply_watchpoint_request(dbg, 0);
