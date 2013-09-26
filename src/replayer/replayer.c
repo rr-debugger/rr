@@ -761,10 +761,18 @@ static int is_same_execution_point(const struct user_regs_struct* rec_regs,
 				   int64_t rcbs_left,
 				   const struct user_regs_struct* rep_regs)
 {
-	return (0 == rcbs_left
-		&& 0 == compare_register_files("rep interrupt", rep_regs,
-					       "rec", rec_regs,
-					       EXPECT_MISMATCHES));
+	if (0 != rcbs_left) {
+		debug("  not same execution point: %"PRId64" rcbs left",
+		      rcbs_left);
+		return 0;
+	}
+	if (compare_register_files("rep interrupt", rep_regs, "rec", rec_regs,
+				   EXPECT_MISMATCHES)) {
+		debug("  not same execution point: regs differ");
+		return 0;
+	}
+	debug("  same execution point");
+	return 1;
 }
 
 /**
@@ -911,7 +919,7 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 				 * the target.  Unfortunately, it's
 				 * awkward to assert that here, so we
 				 * don't yet.  TODO. */
-				debug("    (SIGTRAP but no trap)");
+				debug("    (SIGTRAP; stepi'd target $ip)");
 				assert(!stepi);
 				t->child_sig = 0;
 				break;
@@ -933,9 +941,6 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 		/* At this point, we've proven that we're not at the
 		 * target execution point, and we've ensured the
 		 * internal breakpoint is unset. */
-		debug("  retiring %" PRId64 " branches to reach %" PRId64,
-		      rcbs_left, *rcb);
-
 		if (regs->eip != regs_now.eip) {
 			/* Case (4) above: set a breakpoint on the
 			 * target $ip and PTRACE_CONT in an attempt to

@@ -47,7 +47,6 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <syscall.h>
 #include <sys/epoll.h>
 #include <sys/file.h>
@@ -61,6 +60,11 @@
 
 /* NB: don't include any other local headers here. */
 #include "seccomp-bpf.h"
+
+#ifdef memcpy
+# undef memcpy
+#endif
+#define memcpy you_must_use_local_memcpy
 
 typedef unsigned char byte;
 
@@ -129,6 +133,20 @@ static byte* buffer_last()
 static byte* buffer_end()
 {
 	return buffer + SYSCALLBUF_BUFFER_SIZE;
+}
+
+/**
+ * Same as libc memcpy(), but usable within syscallbuf transaction
+ * critical sections.
+ */
+static void* local_memcpy(void* dest, const void* source, size_t n)
+{
+	char* dst = dest;
+	const char* src = source;
+
+	while (n--) *dst++ = *src++;
+
+	return dest;
 }
 
 /* The following are wrappers for the syscalls invoked by this library
@@ -480,6 +498,11 @@ static void init()
 /**
  * Wrappers start here.
  *
+ * !!! NBB !!!: from here on, all code that executes within the
+ * critical sections of transactions *MUST KEEP $ip IN THE SYSCALLBUF
+ * CODE*.  That means no calls into libc, even for innocent-looking
+ * functions like |memcpy()|.
+ *
  * How wrappers operate:
  *
  * 1. The syscall is intercepted by the wrapper function.
@@ -798,7 +821,7 @@ static int stat_something(int syscallno, int vers, unsigned long what,
 	}
 	ret = untraced_syscall2(syscallno, what, buf2);
 	if (buf2) {
-		memcpy(buf, buf2, sizeof(*buf));
+		local_memcpy(buf, buf2, sizeof(*buf));
 	}
 	return commit_syscall(syscallno, ptr, ret);
 }
@@ -883,7 +906,7 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 	 * data, emulate the syscalls, and this code will restore the
 	 * recorded data to the outparams. */
 	if (tp) {
-		memcpy(tp, tp2, sizeof(struct timespec));
+		local_memcpy(tp, tp2, sizeof(struct timespec));
 	}
 	return commit_syscall(SYS_clock_gettime, ptr, ret);
 }
@@ -950,11 +973,11 @@ static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
 		return syscall(SYS_fcntl64, fd, cmd, owner);
 	}
 	if (owner2) {
-		memcpy(owner2, owner, sizeof(*owner2));
+		local_memcpy(owner2, owner, sizeof(*owner2));
 	}
 	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, owner2);
 	if (owner2) {
-		memcpy(owner, owner2, sizeof(*owner));
+		local_memcpy(owner, owner2, sizeof(*owner));
 	}
 	return commit_syscall(SYS_fcntl64, ptr, ret);
 }
@@ -974,13 +997,13 @@ static int fcntl_flock(int fd, int cmd, struct flock64* lock)
 	}
 
 	if (lock2) {
-		memcpy(lock2, lock, sizeof(*lock2));
+		local_memcpy(lock2, lock, sizeof(*lock2));
 	}
 
 	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, lock2);
 
 	if (lock2) {
-		memcpy(lock, lock2, sizeof(*lock));
+		local_memcpy(lock, lock2, sizeof(*lock));
 	}
 
 	return commit_syscall(SYS_fcntl64, ptr, ret);
@@ -1083,10 +1106,10 @@ int gettimeofday(struct timeval* tp, struct timezone* tzp)
 	}
 	ret = untraced_syscall2(SYS_gettimeofday, tp2, tzp2);
 	if (tp) {
-		memcpy(tp, tp2, sizeof(struct timeval));
+		local_memcpy(tp, tp2, sizeof(struct timeval));
 	}
 	if (tzp) {
-		memcpy(tzp, tzp2, sizeof(struct timezone));
+		local_memcpy(tzp, tzp2, sizeof(struct timezone));
 	}
 	return commit_syscall(SYS_gettimeofday, ptr, ret);
 }
@@ -1129,6 +1152,8 @@ int open(const char* pathname, int flags, ...)
 	int mode = 0;
 	long ret;
 
+	/* The strcmp() done here is OK because we're not in the
+	 * critical section yet. */
 	if (is_blacklisted_filename(pathname)) {
 		/* Would be nice to log_info() here, but that would
 		 * flush the syscallbuf ...  This special bail-out
@@ -1183,7 +1208,7 @@ ssize_t read(int fd, void* buf, size_t count)
 	ret = untraced_syscall3(SYS_read, fd, buf2, count);
 
 	if (buf2 && ret > 0) {
-		memcpy(buf, buf2, ret);
+		local_memcpy(buf, buf2, ret);
 	}
 	return commit_syscall(SYS_read, ptr, ret);
 }
@@ -1204,7 +1229,7 @@ ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 
 	ret = untraced_syscall3(SYS_readlink, path, buf2, bufsiz);
 	if (buf2 && ret > 0) {
-		memcpy(buf, buf2, ret);
+		local_memcpy(buf, buf2, ret);
 	}
 	return commit_syscall(SYS_readlink, ptr, ret);
 }
@@ -1226,7 +1251,7 @@ ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 	ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
 
 	if (buf2 && ret > 0) {
-		memcpy(buf, buf2, ret);
+		local_memcpy(buf, buf2, ret);
 	}
 	return commit_syscall(SYS_socketcall, ptr, ret);
 }

@@ -520,6 +520,7 @@ static int go_to_a_happy_place(struct task* t,
 		 * (critical section), so there's no chance here of
 		 * "skipping over" a syscall we should have
 		 * recorded. */
+		debug("  stepi out of syscallbuf ...");
 		sys_ptrace_singlestep(tid);
 		sys_waitpid(tid, &status);
 

@@ -222,8 +222,7 @@ static void handle_ptrace_event(struct task** tp)
 		break;
 
 	default:
-		log_err("Unknown ptrace event: %x -- bailing out", event);
-		sys_exit();
+		fatal("Unknown ptrace event %d", event);
 		break;
 	}
 }
