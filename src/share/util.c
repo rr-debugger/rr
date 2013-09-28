@@ -679,78 +679,44 @@ void print_syscall(struct task *t, struct trace_frame *trace)
 	fprintf(stderr, "\n");
 }
 
+static void maybe_print_reg_mismatch(int print, const char* regname,
+				     const char* label1, long val1,
+				     const char* label2, long val2)
+{
+	if (print) {
+		log_err("%s 0x%lx != 0x%lx (%s vs. %s)",
+			regname, val1, val2, label1, label2);
+	}
+}
+
 int compare_register_files(char* name1, const struct user_regs_struct* reg1,
 			   char* name2, const struct user_regs_struct* reg2,
 			   int mismatch_behavior)
 {
 	int print = (mismatch_behavior >= LOG_MISMATCHES);
 	int bail_error = (mismatch_behavior >= BAIL_ON_MISMATCH);
-
+	/* TODO: do any callers use this? */
+	int errbit = 0;
 	int err = 0;
-	if (reg1->eax != reg2->eax) {
-		if (print) {
-			log_err("eax registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->eax, name2, reg2->eax);
-		}
-		err |= 0x1;
-	}
 
-	if (reg1->ebx != reg2->ebx) {
-		if (print) {
-			log_err("ebx registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->ebx, name2, reg2->ebx);
-		}
-		err |= 0x2;
-	}
-	/* check arg2 */
-	if (reg1->ecx != reg2->ecx) {
-		if (print) {
-			log_err("ecx registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->ecx, name2, reg2->ecx);
-		}
-		err |= 0x4;
-	}
-	/* check arg3 */
-	if (reg1->edx != reg2->edx) {
-		if (print) {
-			log_err("edx registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->edx, name2, reg2->edx);
-		}
-		err |= 0x8;
-	}
-	/* check arg4 */
-	if (reg1->esi != reg2->esi) {
-		if (print) {
-			log_err("esi registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->esi, name2, reg2->esi);
-		}
-		err |= 0x10;
-	}
-	/* check arg5 */
-	if (reg1->edi != reg2->edi) {
-		if (print) {
-			log_err("edi registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->edi, name2, reg2->edi);
-		}
-		err |= 0x20;
-	}
-	/* check arg6 */
-	if (reg1->ebp != reg2->ebp) {
-		if (print) {
-			log_err("ebp registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->ebp, name2, reg2->ebp);
-		}
-		err |= 0x40;
-	}
-	/* check eip */
-	if (reg1->eip != reg2->eip) {
-		if (print) {
-			log_err("eip registers do not match: %s: %lx and %s: %lx\n",
-				name1, reg1->eip, name2, reg2->eip);
-		}
-		err = 1;
-	}
+#define REGCMP(_reg, _bit)						\
+	do {								\
+		if (reg1-> _reg != reg2-> _reg) {			\
+			maybe_print_reg_mismatch(print, #_reg,		\
+						 name1, reg1-> _reg,	\
+						 name2, reg2-> _reg);	\
+			err |= (1 << (_bit));				\
+		}							\
+	} while (0)
 
+	REGCMP(eax, ++errbit);
+	REGCMP(ebx, ++errbit);
+	REGCMP(ecx, ++errbit);
+	REGCMP(edx, ++errbit);
+	REGCMP(esi, ++errbit);
+	REGCMP(edi, ++errbit);
+	REGCMP(ebp, ++errbit);
+	REGCMP(eip, ++errbit);
 	/* The following are eflags that have been observed to be
 	 * nondeterministic in practice.  We need to mask them off in
 	 * this comparison to prevent replay from diverging. */
@@ -788,15 +754,13 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1,
 	long eflags1 = (reg1->eflags & det_mask);
 	long eflags2 = (reg2->eflags & det_mask);
 	if (eflags1 != eflags2) {
-		if (print) {
-			log_err("deterministic eflags do not match: %s: 0x%lx and %s: 0x%lx\n",
-				name1, eflags1, name2, eflags2);
-		}
-		err |= 0x80;
+		maybe_print_reg_mismatch(print, "deterministic eflags",
+					 name1, eflags1, name2, eflags2);
+		err |= (1 << ++errbit);
 	}
 
 	if (bail_error && err) {
-		sys_exit();
+		fatal("Fatal register mismatch");
 	}
 
 	return err;
