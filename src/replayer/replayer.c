@@ -725,11 +725,22 @@ static int is_debugger_trap(struct task* t, int target_sig,
 }
 
 static void guard_overshoot(struct task* t,
-			    int64_t target, int64_t remaining)
+			    const struct user_regs_struct* target_regs,
+			    int64_t target_rcb, int64_t remaining_rcbs)
 {
-	assert_exec(t, remaining >= 0,
-		    "Replay diverged: overshot target rcb=%"PRId64" by %"PRId64"\n",
-		    target, -remaining);
+	int remaining_rcbs_gt_0 = remaining_rcbs >= 0;
+	if (!remaining_rcbs_gt_0) {
+		log_err("Replay diverged.  Dumping register comparison.");
+		read_child_registers(t->tid, &t->regs);
+		compare_register_files("rep overshoot", &t->regs,
+				       "rec", target_regs, LOG_MISMATCHES);
+		/* Unset this breakpoint, if it was set, so that the
+		 * debugger displays the original insn.*/
+		remove_internal_sw_breakpoint(t, (void*)target_regs->eip);
+		assert_exec(t, remaining_rcbs_gt_0,
+			    "overshot target rcb=%"PRId64" by %"PRId64,
+			    target_rcb, -remaining_rcbs);
+	}
 }
 
 static void guard_unexpected_signal(struct task* t)
@@ -758,14 +769,22 @@ static int is_same_execution_point(const struct user_regs_struct* rec_regs,
 				   int64_t rcbs_left,
 				   const struct user_regs_struct* rep_regs)
 {
+	int behavior =
+#ifdef DEBUGTAG
+				   LOG_MISMATCHES
+#else
+				   EXPECT_MISMATCHES
+#endif
+		;
 	if (0 != rcbs_left) {
-		debug("  not same execution point: %"PRId64" rcbs left",
-		      rcbs_left);
+		debug("  not same execution point: %"PRId64" rcbs left (@%p)",
+		      rcbs_left, (void*)rec_regs->eip);
 		return 0;
 	}
 	if (compare_register_files("rep interrupt", rep_regs, "rec", rec_regs,
-				   EXPECT_MISMATCHES)) {
-		debug("  not same execution point: regs differ");
+				   behavior)) {
+		debug("  not same execution point: regs differ (@%p)",
+		      (void*)rec_regs->eip);
 		return 0;
 	}
 	debug("  same execution point");
@@ -838,7 +857,7 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 
 		rcbs_left = *rcb - read_rbc(t->hpc);
 	}
-	guard_overshoot(t, *rcb, rcbs_left);
+	guard_overshoot(t, regs, *rcb, rcbs_left);
 
 	/* Step 2: more slowly, find our way to the target rcb and
 	 * execution point.  We set an internal breakpoint on the
@@ -987,7 +1006,7 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 		 * invariant. */
 		rcbs_left = *rcb - read_rbc(t->hpc);
 	}
-	guard_overshoot(t, *rcb, rcbs_left);
+	guard_overshoot(t, regs, *rcb, rcbs_left);
 
 	return 0;
 }
