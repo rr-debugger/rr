@@ -1,0 +1,6 @@
+testname=tiocinq
+source `dirname $0`/util.sh $testname "$@"
+
+echo "hello" | (record $testname)
+replay $replayflags
+check EXIT-SUCCESS

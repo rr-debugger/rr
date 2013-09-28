@@ -124,6 +124,7 @@ set(BASIC_TESTS
   term_nonmain
   tgkill
   threads
+  tiocinq
   user_ignore_sig
 )
 

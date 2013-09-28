@@ -816,9 +816,7 @@ void assert_child_regs_are(struct task* t,
 	if (!regs_are_equal) {
 		print_process_mmap(tid);
 		assert_exec(t, regs_are_equal,
-			    "[%s in state %d, trace file line %d]",
-			    strevent(event), state,
-			    get_trace_file_lines_counter());
+			    "[%s in state %d]", strevent(event), state);
 	}
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }

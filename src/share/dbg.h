@@ -51,10 +51,13 @@ inline static int should_log()
 		if (!(_cond)) {						\
 			fprintf(stderr,					\
 				"[EMERGENCY] (%s:%d:%s: errno: %s) "	\
-				"Assertion `"#_cond "' "		\
-				"failed to hold: " _msg "\n",		\
+				"(task %d at trace line %d)\n"		\
+				"Assertion `"#_cond "' failed to hold: "\
+				_msg "\n",				\
 				__FILE__, __LINE__, __FUNCTION__,	\
-				clean_errno(), ##__VA_ARGS__);		\
+				clean_errno(),				\
+				t->tid, get_trace_file_lines_counter(),	\
+				##__VA_ARGS__);				\
 			log_pending_events(_t);				\
 			emergency_debug(_t);				\
 		}							\
@@ -65,9 +68,13 @@ inline static int should_log()
 
 #define fatal(M, ...)							\
 	do {								\
-		fprintf(stderr, "[FATAL] (%s:%d:%s: errno: %s) " M "\n", \
+		fprintf(stderr, "[FATAL] (%s:%d:%s: errno: %s) "	\
+			"(trace line %d)\n"				\
+			M "\n",						\
 			__FILE__, __LINE__, __FUNCTION__,		\
-			clean_errno(), ##__VA_ARGS__);			\
+			clean_errno(),					\
+			get_trace_file_lines_counter(),			\
+			##__VA_ARGS__);					\
 		abort();						\
 	} while (0)
 
