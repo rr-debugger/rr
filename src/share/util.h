@@ -30,6 +30,11 @@ struct trace_frame;
 	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax)	\
 	 || -ERESTARTSYS == (eax))
 
+/* For linux x86, as of 3.11.
+ *
+ * TODO: better system for this ...  */
+#define MAX_SYSCALLNO 350
+
 #define STOPSIG_SYSCALL (0x80 | SIGTRAP)
 
 #define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))

@@ -345,6 +345,7 @@ static void process_ioctl(struct task* t, int state,
 	/* Process special-cased ioctls first. */
 	switch (request) {
 	case TCGETS:
+	case TIOCINQ:
 		step->syscall.num_emu_args = 1;
 		return;
 	}

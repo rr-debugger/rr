@@ -600,9 +600,8 @@ static void continue_or_step(struct task* t, int stepi)
 	}
 	read_child_registers(t->tid, &t->regs);
 	assert_exec(t, child_sig_gt_zero,
-		    "Replaying `%s' (line %d): expecting tracee signal or trap, but instead at `%s' (rcb: %" PRIu64 ")",
+		    "Replaying `%s': expecting tracee signal or trap, but instead at `%s' (rcb: %" PRIu64 ")",
 		    strevent(t->trace.stop_reason),
-		    get_trace_file_lines_counter(),
 		    strevent(t->regs.orig_eax), read_rbc(t->hpc));
 }
 
@@ -729,9 +728,8 @@ static void guard_overshoot(struct task* t,
 			    int64_t target, int64_t remaining)
 {
 	assert_exec(t, remaining >= 0,
-		    "Replay diverged: overshot target rcb=%" PRId64 " by %" PRId64 "\n"
-		    "    replaying trace line %d",
-		    target, -remaining, get_trace_file_lines_counter());
+		    "Replay diverged: overshot target rcb=%"PRId64" by %"PRId64"\n",
+		    target, -remaining);
 }
 
 static void guard_unexpected_signal(struct task* t)
@@ -752,9 +750,8 @@ static void guard_unexpected_signal(struct task* t)
 		event = MAX(0, t->regs.orig_eax);
 	}
 	assert_exec(t, child_sig_is_zero_or_sigtrap,
-		    "Replay got unrecorded event %s while awaiting signal\n"
-		    "    replaying trace line %d",
-		    strevent(event), get_trace_file_lines_counter());
+		    "Replay got unrecorded event %s while awaiting signal\n",
+		    strevent(event));
 }
 
 static int is_same_execution_point(const struct user_regs_struct* rec_regs,
@@ -1092,9 +1089,8 @@ static int skip_desched_ioctl(struct task* t,
 			      is_arm_desched_event_syscall(t, &t->regs) :
 			      is_disarm_desched_event_syscall(t, &t->regs));
 	assert_exec(t, is_desched_syscall,
-		    "Failed to reach desched ioctl; at %s(%ld, %ld) instead (trace line %d)",
-		    syscallname(t->regs.orig_eax), t->regs.ebx, t->regs.ecx,
-		    get_trace_file_lines_counter());
+		    "Failed to reach desched ioctl; at %s(%ld, %ld) instead",
+		    syscallname(t->regs.orig_eax), t->regs.ebx, t->regs.ecx);
 	/* Emulate a return value of "0".  It's OK for us to hard-code
 	 * that value here, because the syscallbuf lib aborts if a
 	 * desched ioctl returns non-zero (it doesn't know how to
@@ -1151,9 +1147,9 @@ static void assert_at_buffered_syscall(struct task* t,
 		    "(trace line %d) Bad ip %p: should have been buffered-syscall ip",
 		    get_trace_file_lines_counter(), ip);
 	assert_exec(t, regs->orig_eax == syscallno,
-		    "(trace line %d) At %s; should have been at %s",
-		    get_trace_file_lines_counter(),
-		    syscallname(regs->orig_eax), syscallname(syscallno));
+		    "At %s; should have been at %s(%d)",
+		    syscallname(regs->orig_eax),
+		    syscallname(syscallno), syscallno);
 }
 
 /**
@@ -1166,16 +1162,23 @@ static int flush_one_syscall(struct task* t,
 {
 	pid_t tid = t->tid;
 	const struct syscallbuf_record* rec = flush->rec;
+	int call = rec->syscallno;
 	int ret;
 	struct user_regs_struct regs;
 
 	switch (flush->state) {
 	case FLUSH_START:
-		assert(0 == ((uintptr_t)rec & (sizeof(int) - 1)));
+		assert_exec(t, 0 == ((uintptr_t)rec & (sizeof(int) - 1)),
+			    "Record must be int-aligned, but instead is %p",
+			    rec);
+		assert_exec(t, MAX_SYSCALLNO >= call,
+			    "Replaying unknown syscall %d", call);
+		assert_exec(t, 0 == rec->desched || 1 == rec->desched,
+			    "Record is corrupted: rec->desched is %d",
+			    rec->desched);
 
-		debug("Replaying buffered `%s' which does%s use desched event",
-		      syscallname(rec->syscallno),
-		      !rec->desched ? " not" : "");
+		debug("Replaying buffered `%s' (ret:%ld) which does%s use desched event",
+		      syscallname(call), rec->ret, !rec->desched ? " not" : "");
 
 		if (!rec->desched) {
 			flush->state = FLUSH_ENTER;
@@ -1202,7 +1205,7 @@ static int flush_one_syscall(struct task* t,
 			return ret;
 		}
 		read_child_registers(tid, &regs);
-		assert_at_buffered_syscall(t, &regs, rec->syscallno);
+		assert_at_buffered_syscall(t, &regs, call);
 		flush->state = FLUSH_EXIT;
 		return flush_one_syscall(t, flush, stepi);
 
@@ -1210,7 +1213,7 @@ static int flush_one_syscall(struct task* t,
 		debug("  advancing to buffered syscall exit");
 
 		read_child_registers(tid, &regs);
-		assert_at_buffered_syscall(t, &regs, rec->syscallno);
+		assert_at_buffered_syscall(t, &regs, call);
 
 		regs.eax = rec->ret;
 		write_child_registers(tid, &regs);
@@ -1218,7 +1221,7 @@ static int flush_one_syscall(struct task* t,
 
 		/* XXX not pretty; should have this
 		 * actually-replay-parts-of-trace logic centralized */
-		if (SYS_write == rec->syscallno) {
+		if (SYS_write == call) {
 			rep_maybe_replay_stdio_write(t);
 		}
 

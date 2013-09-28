@@ -49,12 +49,20 @@ void handle_ioctl_request(struct task *t, int request)
 
 	read_child_registers(tid, &regs);
 
+	assert_exec(t, !is_desched_event_syscall(t, &regs),
+		    "Failed to skip past desched ioctl()");
+
 	/* Some ioctl()s are irregular and don't follow the _IOC()
 	 * conventions.  Special case them here. */
 	switch (request) {
 	case TCGETS:
 		push_syscall(t, syscall);
 		record_child_data(t, sizeof(struct termios), (void*)regs.edx);
+		pop_syscall(t);
+		return;
+	case TIOCINQ:
+		push_syscall(t, syscall);
+		record_child_data(t, sizeof(int), (void*)regs.edx);
 		pop_syscall(t);
 		return;
 	}
