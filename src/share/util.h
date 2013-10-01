@@ -96,7 +96,6 @@ long int str2li(const char* start, size_t max_size);
 void * str2x(const char* start, size_t max_size);
 void read_line(FILE* file, char* buf, int size, char* name);
 void add_scratch(void *ptr, int size);
-int overall_scratch_size();
 void add_protected_map(struct task *t, void *start);
 bool is_protected_map(struct task *t, void *start);
 void add_sig_handler(pid_t tid, unsigned int signum, struct sigaction * sa);
