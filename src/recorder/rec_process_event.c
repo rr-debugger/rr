@@ -2566,7 +2566,8 @@ void rec_process_syscall(struct task *t)
 		size_t size = PAGE_ALIGN(regs.ecx);
 		int prot = regs.edx, flags = regs.esi;
 		struct mmapped_file file;
-		char* filename;
+		int found_region;
+		struct mapped_segment_info info;
 
 		if (SYSCALL_FAILED(regs.eax)) {
 			/* We purely emulate failed mmaps. */
@@ -2586,15 +2587,16 @@ void rec_process_syscall(struct task *t)
 		file.time = get_global_time();
 		file.tid = tid;
 
-		filename = get_mmaped_region_filename(t, addr);
-		strcpy(file.filename, filename);
-		sys_free((void**)&filename);
+		found_region = find_segment_containing(t, addr, &info);
+		assert_exec(t, found_region, "Didn't find segment %p", addr);
+		strcpy(file.filename, info.name);
 
 		if (stat(file.filename, &file.stat)) {
-			fatal("Sorry, mmap()'ing anonymous shmem regions is NYI.");
+			fatal("Sorry, mmap()'ing anonymous shmem regions (%p) is NYI.",
+			      addr);
 		}
-		file.start = addr;
-		file.end = get_mmaped_region_end(t, addr);
+		file.start = info.start_addr;
+		file.end = info.end_addr;
 
 		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
 		    && (prot & PROT_EXEC) ) {

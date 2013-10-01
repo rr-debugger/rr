@@ -80,6 +80,14 @@ struct flags* rr_flags_for_init()
 	return NULL;		/* not reached */
 }
 
+static void* get_mmaped_region_end(struct task* t, void* start)
+{
+	struct mapped_segment_info info;
+	int found_info = find_segment_containing(t, start, &info);
+	assert_exec(t, found_info, "Didn't find segment containing %p", start);
+	return info.end_addr;
+}
+
 void add_protected_map(struct task *t, void *start){
 	assert(num_shared_maps < NUM_MAX_MAPS);
 	shared_maps_starts[num_shared_maps] = start;
@@ -307,59 +315,146 @@ void print_register_file(struct user_regs_struct* regs)
 
 }
 
-static unsigned long str2i(char* str, int base)
+/**
+ * Remove leading blank characters from |str| in-place.  |str| must be
+ * a valid string.
+ */
+static void trim_leading_blanks(char* str)
 {
-	char *endptr;
-
-	errno = 0;
-	unsigned long val = strtoul(str, &endptr, base);
-
-	if ((errno == ERANGE && val == ULONG_MAX) || (errno != 0 && val == 0)) {
-		log_err("strtoul failed");
-		exit(EXIT_FAILURE);
-	}
-
-	if (endptr == str) {
-		log_err("strtoul: No digits were found\n");
-		exit(EXIT_FAILURE);
-	}
-
-	return val;
+	char* trimmed = str;
+	while (isblank(*trimmed)) ++trimmed;
+	memmove(str, trimmed, strlen(trimmed) + 1/*\0 byte*/);
 }
 
-void get_eip_info(pid_t tid)
+/**
+ * The following helpers are used to iterate over a tracee's memory
+ * maps.  Clients call |iterate_memory_map()|, passing an iterator
+ * function that's invoked for each mapping until either the iterator
+ * stops iteration by not returning CONTINUE_ITERATING, or until the
+ * last mapping has been iterated over.
+ *
+ * For each map, a |struct map_iterator_data| object is provided which
+ * contains segment info, the size of the mapping, and the raw
+ * /proc/maps line the data was parsed from.
+ *
+ * Additionally, if clients pass the ITERATE_READ_MEMORY flag, the
+ * contents of each segment are read and passed through the |mem|
+ * field in the |struct map_iterator_data|.
+ *
+ * Any pointers passed transitively to the iterator function are
+ * *owned by |iterate_memory_map()||*.  Iterator functions must copy
+ * the data they wish to save beyond the scope of the iterator
+ * function invocation.
+ */
+enum { CONTINUE_ITERATING, STOP_ITERATING };
+struct map_iterator_data {
+	struct mapped_segment_info info;
+	void* mem;
+	ssize_t len;
+	const char* raw_map_line;
+};
+typedef int (*memory_map_iterator_t)(void* it_data, struct task* t,
+				     const struct map_iterator_data* data;
+);
+
+enum { ITERATE_DEFAULT, ITERATE_READ_MEMORY };
+static void iterate_memory_map(struct task* t,
+			       memory_map_iterator_t it, void* it_data,
+			       int flags)
 {
-	unsigned long eip = read_child_eip(tid);
-	char buf[100];
-	sprintf(buf, "/proc/%d/maps", tid);
-	FILE* maps = sys_fopen(buf, "r");
+	FILE* maps_file;
+	char line[PATH_MAX];
+	{
+		char maps_path[PATH_MAX];
+		snprintf(maps_path, sizeof(maps_path) - 1, "/proc/%d/maps",
+			t->tid);
+		assert_exec(t, (maps_file = fopen(maps_path, "r")),
+			    "Failed to open %s", maps_path);
+	}
+	while (fgets(line, sizeof(line), maps_file)) {
+		struct map_iterator_data data;
+		int nparsed;
+		int next_action;
 
-	char* line = sys_malloc(512);
+		memset(&data, 0, sizeof(data));
+		data.len = -1;
+		data.raw_map_line = line;
 
-	unsigned long start, end;
+		nparsed = sscanf(line, "%p-%p %31s %Lx %x:%x %Lu %s",
+				 &data.info.start_addr, &data.info.end_addr,
+				 data.info.flags,
+				 &data.info.file_offset,
+				 &data.info.dev_major, &data.info.dev_minor,
+				 &data.info.inode, data.info.name);
+		trim_leading_blanks(data.info.name);
 
-	do {
-		read_line(maps, line, 512, "maps");
+		assert_exec(t,
+			    (8/*number of info fields*/ == nparsed
+			     || 7/*num fields if name is blank*/ == nparsed),
+			    "Only parsed %d fields of segment info from\n"
+			    "%s",
+			    nparsed, data.raw_map_line);
 
-		char addr[9];
+		data.len = ((intptr_t)data.info.end_addr -
+			    (intptr_t)data.info.start_addr);
+		if (ITERATE_READ_MEMORY & flags) {
+			data.mem = read_child_data(t, data.len,
+						   data.info.start_addr);
+		}
 
-		memcpy(addr, line, 8);
-		addr[8] = '\0';
-		start = str2i(addr, 16);
+		next_action = it(it_data, t, &data);
+		sys_free(&data.mem);
 
-		memcpy(addr, line + 9, 8);
-		addr[8] = '\0';
+		if (STOP_ITERATING == next_action) {
+			break;
+		}
+	}
+	fclose(maps_file);
+}
 
-		end = str2i(addr, 16);
-	} while (!((eip >= start) && (eip <= end)));
+static int print_process_mmap_iterator(void* unused, struct task* t,
+				       const struct map_iterator_data* data)
+{
+	fputs(data->raw_map_line, stdout);
+	return CONTINUE_ITERATING;
+}
 
-	char* tmp = sys_malloc(128);
-	memcpy(tmp, line + 49, 128);
-	fprintf(stderr, "file: %s", line);
-	fprintf(stderr, "offset: %lx\n", eip - start);
-	sys_free((void**) &tmp);
-	sys_fclose(maps);
-	sys_free((void**) &line);
+/**
+ * Echo the /proc/maps file to stdout, line by line.
+ */
+static void print_process_mmap(struct task* t)
+{
+	return iterate_memory_map(t, print_process_mmap_iterator, NULL,
+				  ITERATE_DEFAULT);
+}
+
+/**
+ * Return nonzero if |addr| falls within |info|'s segment.
+ */
+static int addr_in_segment(void* addr, const struct mapped_segment_info* info)
+{
+	return info->start_addr <= addr && addr < info->end_addr;
+}
+
+static int find_segment_iterator(void* it_data, struct task* t,
+				 const struct map_iterator_data* data)
+{
+	struct mapped_segment_info* info = it_data;
+	void* search_addr = info->start_addr;
+	if (addr_in_segment(search_addr, &data->info)) {
+		memcpy(info, &data->info, sizeof(*info));
+		return STOP_ITERATING;
+	}
+	return CONTINUE_ITERATING;
+}
+
+int find_segment_containing(struct task* t, void* search_addr,
+			    struct mapped_segment_info* info)
+{
+	memset(info, 0, sizeof(*info));
+	info->start_addr = search_addr;
+	iterate_memory_map(t, find_segment_iterator, info, ITERATE_DEFAULT);
+	return addr_in_segment(search_addr, info);
 }
 
 char* get_inst(struct task* t, int eip_offset, int* opcode_size)
@@ -519,7 +614,7 @@ void print_process_state(pid_t tid)
 	bzero(path, 64);
 	sprintf(path, "/proc/%d/status", tid);
 	if ((file = fopen(path, "r")) == NULL) {
-		perror("error reading child memory maps\n");
+		perror("error reading child memory status\n");
 	}
 
 	int c = getc(file);
@@ -787,7 +882,7 @@ void assert_child_regs_are(struct task* t,
 						      "recorded", regs,
 						      LOG_MISMATCHES));
 	if (!regs_are_equal) {
-		print_process_mmap(tid);
+		print_process_mmap(t);
 		assert_exec(t, regs_are_equal,
 			    "[%s in state %d]", strevent(event), state);
 	}
@@ -879,6 +974,7 @@ void read_line(FILE* file, char *buf, int size, char *name)
 	}
 }
 
+/* TODO: remove me */
 static FILE* open_mmap(pid_t tid)
 {
 	char path[64];
@@ -892,117 +988,59 @@ static FILE* open_mmap(pid_t tid)
 	return file;
 }
 
-void print_process_mmap(pid_t tid)
-{
-	FILE* file = open_mmap(tid);
-	int c = getc(file);
-	while (c != EOF) {
-		putchar(c);
-		c = getc(file);
-	}
-
-	if (fclose(file) == EOF) {
-		perror("error closing mmap file\n");
-	}
-}
-
 int should_dump_memory(struct task* t, int event, int state, int global_time)
 {
 	const struct flags* flags = rr_flags();
-	return (flags->dump_on == t->event || flags->dump_on == DUMP_ON_ALL
+	return (flags->dump_on == event || flags->dump_on == DUMP_ON_ALL
 		|| flags->dump_at == global_time);
 }
 
-void dump_process_memory(struct task * t, const char* tag)
+static int dump_process_memory_iterator(void* it_data, struct task* t,
+					const struct map_iterator_data* data)
 {
+	FILE* dump_file = it_data;
+	const unsigned* buf = data->mem;
+	void* start_addr = data->info.start_addr;
 	int i;
-	pid_t tid = t->tid;
+
+	fprintf(dump_file,"%s\n", data->raw_map_line);
+	for (i = 0 ; i < data->len; i += sizeof(*buf)) {
+		unsigned word = buf[i];
+		fprintf(dump_file,"%8x | [%p]\n", word, start_addr + i);
+	}
+
+	return CONTINUE_ITERATING;
+}
+
+void dump_process_memory(struct task* t, const char* tag)
+{
 	char filename[PATH_MAX];
+	FILE* dump_file;
 
-	snprintf(filename, sizeof(filename) - 1,
-		 "%s/%d_%d_%s", get_trace_path(), tid, get_global_time(), tag);
+	snprintf(filename, sizeof(filename) - 1, "%s/%d_%d_%s",
+		 get_trace_path(), t->rec_tid, get_global_time(), tag);
+	dump_file = fopen(filename,"w");
 
-	// open the maps file
-	FILE* maps_file = open_mmap(tid);
-
-	// open the output file
-	FILE* out_file = fopen(filename,"w");
-
-	// flush all files in case we partially record
+	/* flush all files in case we partially record
+	 * TODO: what does that mean? */
 	flush_trace_files();
 
-	// for each line in the maps file:
-	char line[1024];
-	void* start;
-	void* end;
-	char flags[32], binary[128];
-	unsigned int dev_minor, dev_major;
-	unsigned long long file_offset, inode;
-	while ( fgets(line,1024,maps_file) != NULL ) {
-		sscanf(line, "%p-%p %31s %Lx %x:%x %Lu %s",
-		       &start, &end,
-		       flags,
-		       &file_offset,
-		       &dev_major, &dev_minor,
-		       &inode, binary);
-		int idx = 0;
-		while (isblank(binary[idx])) idx++;
-		if (memcmp(binary + idx, "[stack]", sizeof("[stack]") - 1) != 0)
-			continue;
-		const size_t size = (uintptr_t)end - (uintptr_t)start;
-		char * buffer = read_child_data(t, size, start);
-		fprintf(out_file,"%s\n", line);
-		for (i = 0 ; i < size ; i += 4) {
-			unsigned int dword = *((unsigned int *)(buffer + i));
-			//fprintf(out_file,"%x | %d %d %d %d | [%x]\n",dword, buffer[i] , buffer[i+1], buffer[i+2], buffer[i+3], start + i);
-			fprintf(out_file,"%8x | [%x]\n", dword, (uintptr_t)start + i);
-			//fprintf(stderr,"%x",dword);
-		}
-		sys_free((void**)&buffer);
-
-	}
-	fclose(out_file);
-	fclose(maps_file);
+	iterate_memory_map(t, dump_process_memory_iterator, dump_file,
+			   ITERATE_READ_MEMORY);
+	fclose(dump_file);
 }
 
 #define CHUNK_SIZE 		(8 * PAGE_SIZE)
-
-int get_memory_size(struct task * t) {
-	pid_t tid = t->tid;
-	int result = 0;
-
-	// open the maps file
-	FILE *maps_file = open_mmap(tid);
-
-	// for each line in the maps file:
-	char line[1024];
-	void *start, *end;
-	char flags[32], binary[128];
-	unsigned int dev_minor, dev_major;
-	unsigned long long file_offset, inode;
-	while ( fgets(line,1024,maps_file) != NULL ) {
-		sscanf(line,"%p-%p %31s %Lx %x:%x %Lu %s",
-		       &start, &end,
-		       flags,
-		       &file_offset,
-		       &dev_major, &dev_minor,
-		       &inode, binary);
-		int size = (end - start);
-		result += size;
-	}
-	sys_fclose(maps_file);
-	return result;
-}
 
 int should_checksum(struct task* t, int event, int state, int global_time)
 {
 	int checksum = rr_flags()->checksum;
 	return CHECKSUM_NONE != checksum
 		&& (CHECKSUM_ALL == checksum
-		|| (CHECKSUM_SYSCALL == checksum
-		    && state == STATE_SYSCALL_EXIT)
-		/* |checksum| is a global time point. */
-		|| checksum <= global_time);
+		    || (CHECKSUM_SYSCALL == checksum
+			&& state == STATE_SYSCALL_EXIT)
+		    /* |checksum| is a global time point. */
+		    || checksum <= global_time);
 }
 
 void checksum_process_memory(struct task* t)
@@ -1116,92 +1154,6 @@ void validate_process_memory(struct task* t)
 	}
 
 	sys_fclose(checksums_file);
-}
-
-void* get_mmaped_region_end(struct task* t, void* mmap_start)
-{
-	// open the maps file
-	FILE *maps_file = open_mmap(t->tid);
-
-	// for each line in the maps file:
-	char line[1024];
-	void *start, *end, *result = NULL;
-	while ( fgets(line,1024,maps_file) != NULL ) {
-		sscanf(line,"%p-%p", &start, &end);
-		if (start <= mmap_start && mmap_start < end) {
-			result = end;
-			break;
-		}
-
-	}
-	sys_fclose(maps_file);
-	return result;
-
-}
-
-char * get_mmaped_region_filename(struct task * t, void * mmap_start)
-{
-	// open the maps file
-	FILE *maps_file = open_mmap(t->tid);
-
-	// for each line in the maps file:
-	char line[1024] = {0};
-	void *start, *end;
-	char flags[32], binary[512] = {0}, *result = NULL;
-	unsigned int dev_minor, dev_major;
-	unsigned long long file_offset, inode;
-	while ( fgets(line,1024,maps_file) != NULL ) {
-		sscanf(line,"%p-%p %31s %Lx %x:%x %Lu %s",
-		       &start, &end,
-		       flags,
-		       &file_offset,
-		       &dev_major, &dev_minor,
-		       &inode, binary);
-		if (start <= mmap_start && mmap_start < end) {
-			// found it
-			assert(strlen(binary) > 0);
-			size_t index = 0;
-			while ( isblank(*binary) ) index++; // clear white characters
-			result = sys_malloc_zero(strlen(binary + index) + 1);
-			strcpy(result,binary + index);
-			break;
-		}
-	}
-	sys_fclose(maps_file);
-	assert(result && "unable to locate map end for given address");
-	return result;
-}
-
-
-/**
- * This function checks if the specified memory region (start - end) is
- * mapped in the child process.
- * @return 0: if the memory region is not mapped
- * 		   1: if the memory region is mapped
- */
-int check_if_mapped(struct task *t, void *start, void *end)
-{
-	pid_t tid = t->tid;
-
-	FILE* file = open_mmap(tid);
-	char buf[256];
-	char tmp[9];
-	bzero(tmp, 9);
-
-	while (fgets(buf, 256, file)) {
-		memcpy(tmp, buf, 8);
-		void *mmap_start = (void*) strtoul(tmp, NULL, 16);
-		memcpy(tmp, buf + 9, 8);
-		void *mmap_end = (void*) strtoul(tmp, NULL, 16);
-
-		if (start >= mmap_start && end <= mmap_end) {
-			sys_fclose(file);
-			return 1;
-		}
-	}
-
-	sys_fclose(file);
-	return 0;
 }
 
 /**
