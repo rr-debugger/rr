@@ -43,6 +43,25 @@ struct trace_frame;
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
 /**
+ * Collecion of data describing a mapped memory segment, as parsed
+ * from /proc/[tid]/maps on linux.
+ */
+struct mapped_segment_info {
+	/* Name of the segment, which isn't necessarily an fs entry
+	 * anywhere. */
+	char name[PATH_MAX];	/* technically PATH_MAX + "deleted",
+				 * but let's not go * there. */
+	void* start_addr;
+	void* end_addr;
+	char flags[32];
+	int64_t file_offset;
+	int64_t inode;
+	/* You should probably not be using these. */
+	int dev_major;
+	int dev_minor;
+};
+
+/**
  * Get the flags passed to rr.
  */
 const struct flags* rr_flags();
@@ -57,8 +76,6 @@ bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
 void emulate_child_inst(struct task * t, int eip_offset);
 void print_inst(struct task* t);
 void print_syscall(struct task *t, struct trace_frame *trace);
-void get_eip_info(pid_t tid);
-int check_if_mapped(struct task *t, void *start, void *end);
 
 /**
  * Return zero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
@@ -99,8 +116,6 @@ int should_dump_memory(struct task* t, int event, int state, int global_time);
  */ 
 void dump_process_memory(struct task* t, const char* tag);
 
-void print_process_mmap(pid_t tid);
-
 /**
  * Return nonzero if the user has requested |t|'s memory be
  * checksummed at |event| at |global_time|.
@@ -118,9 +133,13 @@ void checksum_process_memory(struct task* t);
  */
 void validate_process_memory(struct task* t);
 
-void* get_mmaped_region_end(struct task* t, void* mmap_start);
-char* get_mmaped_region_filename(struct task* t, void* mmap_start);
-int get_memory_size(struct task* t);
+/**
+ * Search for the segment containing |search_addr|, and if found copy
+ * out the segment info to |info| and return nonzero.  Return zero if
+ * not found.
+ */
+int find_segment_containing(struct task* t, void* search_addr,
+			    struct mapped_segment_info* info);
 
 /**
  * Get the current time from the preferred monotonic clock in units of
