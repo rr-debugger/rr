@@ -1163,8 +1163,7 @@ static void assert_at_buffered_syscall(struct task* t,
 	void* ip = (void*)regs->eip;
 
 	assert_exec(t, SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(ip, t),
-		    "(trace line %d) Bad ip %p: should have been buffered-syscall ip",
-		    get_trace_file_lines_counter(), ip);
+		    "Bad ip %p: should have been buffered-syscall ip", ip);
 	assert_exec(t, regs->orig_eax == syscallno,
 		    "At %s; should have been at %s(%d)",
 		    syscallname(regs->orig_eax),
@@ -1357,7 +1356,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	int stop_sig = 0;
 
 	debug("[line %d] %d: replaying %s; state %s",
-	      get_trace_file_lines_counter(), t->rec_tid,
+	      get_global_time(), t->rec_tid,
 	      strevent(event), statename(t->trace.state));
 	if (t->syscallbuf_hdr) {
 		debug("    (syscllbufsz:%u, abrtcmt:%u)",

@@ -155,6 +155,19 @@ void record_parent_data(struct task *t, size_t len, void *addr, void *buf);
  */
 void record_event(struct task* t);
 void record_mmapped_file_stats(struct mmapped_file *file);
+/**
+ * Return the current global time.  This is approximately the number
+ * of events that have been recorded or replayed.  It is exactly the
+ * line number within the first trace file (trace_dir/trace_0) of the
+ * event that was just recorded or is being replayed.
+ *
+ * Beware: if there are multiple trace files, this value doesn't
+ * directly identify a unique file:line, by itself.
+ *
+ * TODO: we should either stop creating multiple files, or use an
+ * interface like |const char* get_trace_file_coord()| that would
+ * return a string like "trace_0:457293".
+ */
 unsigned int get_global_time(void);
 unsigned int get_time(pid_t tid);
 void record_argv_envp(int argc, char* argv[], char* envp[]);
@@ -167,7 +180,6 @@ void rec_setup_trace_dir(int version);
 void init_environment(char* trace_path, int* argc, char** argv, char** envp);
 void read_next_trace(struct trace_frame *trace);
 void peek_next_trace(struct trace_frame *trace);
-int get_trace_file_lines_counter();
 void read_next_mmapped_file_stats(struct mmapped_file *file);
 void peek_next_mmapped_file_stats(struct mmapped_file *file);
 void rep_init_trace_files(void);

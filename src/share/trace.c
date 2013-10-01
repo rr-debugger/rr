@@ -34,7 +34,12 @@ static int raw_data_file_counter = 0;
 static uint32_t trace_file_counter = 0;
 static uint32_t trace_file_lines_counter = 0;
 static uint32_t thread_time[100000];
-static uint32_t global_time = 0;
+/* Global time starts at "2" so that an event at time i is situated at
+ * line i within the first trace file.  The 2 comes from: line numbers
+ * starting at "1" by convention, and the trace including a one-line
+ * header.  We use the |trace_file_lines_counter| above to ensure that
+ * these stay in sync.*/
+static uint32_t global_time = 2;
 
 // counts the number of raw bytes written, a new raw_data file is used when MAX_RAW_DATA_SIZE is reached
 static long long overall_raw_bytes = 0;
@@ -1071,7 +1076,6 @@ void read_next_trace(struct trace_frame *trace)
 		tmp_ptr = fgets(line, 1024, trace_file);
 		assert(tmp_ptr == line);
 	}
-	++trace_file_lines_counter;
 
 	/* read meta information */
 	trace->global_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
@@ -1098,11 +1102,9 @@ void read_next_trace(struct trace_frame *trace)
 
 	//read register file
 	parse_register_file(&(trace->recorded_regs), tmp_ptr);
-}
 
-int get_trace_file_lines_counter()
-{
-    return trace_file_lines_counter;
+	assert((global_time = trace->global_time) ==
+	       ++trace_file_lines_counter);
 }
 
 void find_in_trace(struct task *t, unsigned long cur_time, long int val)
