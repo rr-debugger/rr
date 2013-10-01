@@ -1000,12 +1000,19 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 	int i;
 
 	fprintf(dump_file,"%s\n", data->raw_map_line);
-	for (i = 0 ; i < data->len; i += sizeof(*buf)) {
+	for (i = 0 ; i < data->len / sizeof(*buf); i += 1) {
 		unsigned word = buf[i];
-		fprintf(dump_file,"%8x | [%p]\n", word, start_addr + i);
+		fprintf(dump_file,"0x%08x | [%p]\n", word, start_addr + i);
 	}
 
 	return CONTINUE_ITERATING;
+}
+
+static void format_dump_filename(struct task* t, const char* tag,
+				 char* filename, size_t filename_size)
+{
+	snprintf(filename, filename_size - 1, "%s/%d_%d_%s",
+		 get_trace_path(), t->rec_tid, get_global_time(), tag);
 }
 
 void dump_process_memory(struct task* t, const char* tag)
@@ -1013,8 +1020,7 @@ void dump_process_memory(struct task* t, const char* tag)
 	char filename[PATH_MAX];
 	FILE* dump_file;
 
-	snprintf(filename, sizeof(filename) - 1, "%s/%d_%d_%s",
-		 get_trace_path(), t->rec_tid, get_global_time(), tag);
+	format_dump_filename(t, tag, filename, sizeof(filename));
 	dump_file = fopen(filename,"w");
 
 	/* flush all files in case we partially record
@@ -1088,13 +1094,47 @@ static int checksum_iterator(void* it_data, struct task* t,
 			return CONTINUE_ITERATING;
 		}
 
-		assert_exec(t, checksum == rec_checksum,
-			    "Divergence in memory contents after '%s':\n"
-			    "%s"
-			    "    record checksum:0x%x; replay checksum:0x%x",
-			    strevent(t->trace.stop_reason),
-			    data->raw_map_line,
-			    rec_checksum, checksum);
+	 	if (checksum != rec_checksum) {
+			char cur_dump[PATH_MAX];
+			char rec_dump[PATH_MAX];
+
+			dump_process_memory(t, "checksum_error");
+
+			/* TODO: if the right recorder memory dump is
+			 * present, automatically compare them, taking
+			 * the oddball not-mapped-during-replay
+			 * region(s) into account.  And if not
+			 * present, tell the user how to make one in a
+			 * future run. */
+			format_dump_filename(t, "checksum_error",
+					     cur_dump, sizeof(cur_dump));
+			format_dump_filename(t, "rec",
+					     rec_dump, sizeof(rec_dump));
+
+			assert_exec(t, checksum == rec_checksum,
+"Divergence in memory contents after '%s':\n"
+"\n"
+"%s"
+"    (recorded checksum:0x%x; replaying checksum:0x%x)\n"
+"\n"
+"Dumped current memory contents to %s. If you've created a memory dump for\n"
+"the '%s' event (line %d) during recording by using, for example with\n"
+"the args\n"
+"\n"
+"$ rr --dump-at=%d record ...\n"
+"\n"
+"then you can use the following to determine which memory cells differ:\n"
+"\n"
+"$ diff -u %s %s > mem-diverge.diff\n"
+				    , strevent(t->trace.stop_reason),
+				    data->raw_map_line,
+				    rec_checksum, checksum,
+				    cur_dump,
+				    strevent(t->trace.stop_reason),
+				    get_global_time(),
+				    get_global_time(),
+				    rec_dump, cur_dump);
+		}
 	}
 	return CONTINUE_ITERATING;
 }
