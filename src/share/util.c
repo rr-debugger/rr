@@ -119,6 +119,15 @@ int nanosleep_nointr(const struct timespec* ts)
 
 }
 
+int probably_not_interactive()
+{
+	/* Eminently tunable heuristic, but this is guaranteed to be
+	 * true during rr unit tests, where we care most about this
+	 * check (to a first degree).  A failing test shouldn't
+	 * hang. */
+	return !isatty(STDERR_FILENO);
+}
+
 int is_ptrace_seccomp_event(int event)
 {
 	return (PTRACE_EVENT_SECCOMP_OBSOLETE == event ||
@@ -897,20 +906,27 @@ void print_process_mmap(pid_t tid)
 	}
 }
 
-/**
- * prints a child process memory sections content, according to /proc/pid/maps to the given filename
- */
+int should_dump_memory(struct task* t, int event, int state, int global_time)
+{
+	const struct flags* flags = rr_flags();
+	return (flags->dump_on == t->event || flags->dump_on == DUMP_ON_ALL
+		|| flags->dump_at == global_time);
+}
 
-void print_process_memory(struct task * t, char * filename)
+void dump_process_memory(struct task * t, const char* tag)
 {
 	int i;
 	pid_t tid = t->tid;
+	char filename[PATH_MAX];
+
+	snprintf(filename, sizeof(filename) - 1,
+		 "%s/%d_%d_%s", get_trace_path(), tid, get_global_time(), tag);
 
 	// open the maps file
 	FILE* maps_file = open_mmap(tid);
 
 	// open the output file
-	FILE* out_file = (filename) ? fopen(filename,"w") : stderr;
+	FILE* out_file = fopen(filename,"w");
 
 	// flush all files in case we partially record
 	flush_trace_files();
@@ -978,10 +994,17 @@ int get_memory_size(struct task * t) {
 	return result;
 }
 
-/**
- * checksums all regions of memory
- */
-void checksum_process_memory(struct task * t)
+int should_checksum(struct task* t, int event, int state, int global_time)
+{
+	int checksum = rr_flags()->checksum;
+	return (CHECKSUM_ALL == checksum
+		|| (CHECKSUM_SYSCALL == checksum
+		    && state == STATE_SYSCALL_EXIT)
+		/* |checksum| is a global time point. */
+		|| checksum <= global_time);
+}
+
+void checksum_process_memory(struct task* t)
 {
 	pid_t tid = t->tid;
 	int i;
@@ -1038,7 +1061,7 @@ void checksum_process_memory(struct task * t)
 	sys_fclose(maps_file);
 }
 
-void validate_process_memory(struct task * t)
+void validate_process_memory(struct task* t)
 {
 	// open the checksums file
 	char checksums_filename[1024] = {0};
@@ -1081,16 +1104,20 @@ void validate_process_memory(struct task * t)
 			}
 			offset += CHUNK_SIZE;
 		}
-		if (!(checksum == rchecksum)) {
-			log_warn("Memory differs on %p", start);
-			getchar();
-		}
+
+		assert_exec(t, checksum == rchecksum,
+			    "Divergence in in memory contents after '%s':\n"
+			    "%s"
+			    "    record checksum:0x%x; replay checksum:0x%x",
+			    strevent(t->trace.stop_reason),
+			    line,
+			    rchecksum, checksum);
 	}
 
 	sys_fclose(checksums_file);
 }
 
-void * get_mmaped_region_end(struct task * t, void * mmap_start)
+void* get_mmaped_region_end(struct task* t, void* mmap_start)
 {
 	// open the maps file
 	FILE *maps_file = open_mmap(t->tid);

@@ -80,23 +80,17 @@ RB_PROTOTYPE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
 
 static void debug_memory(struct task* t)
 {
-	/* dump memory as user requested */
-	if (rr_flags()->dump_on == t->trace.stop_reason
-	    || rr_flags()->dump_on == DUMP_ON_ALL
-	    || rr_flags()->dump_at == t->trace.global_time) {
-		char pid_str[PATH_MAX];
-		snprintf(pid_str, sizeof(pid_str) - 1, "%s/%d_%d_rep",
-			 get_trace_path(),
-			 t->tid, t->trace.global_time);
-		print_process_memory(t, pid_str);
-	}
+	const struct trace_frame* trace = &t->trace;
+	int event = trace->stop_reason;
+	int state = trace->state;
+	int global_time = trace->global_time;
 
-	/* check memory checksum */
-	if (validate
-	    && ((rr_flags()->checksum == CHECKSUM_ALL)
-		|| (rr_flags()->checksum == CHECKSUM_SYSCALL
-		    && t->trace.state == STATE_SYSCALL_EXIT)
-		|| (rr_flags()->checksum <= t->trace.global_time))) {
+	if (should_dump_memory(t, event, state, global_time)) {
+		dump_process_memory(t, "rec");
+	}
+	if (validate && should_checksum(t, event, state, global_time)) {
+		/* Validate the checksum we computed during the
+		 * recording phase. */
 		validate_process_memory(t);
 	}
 }
@@ -1583,9 +1577,9 @@ void emergency_debug(struct task* t)
 {
 	struct dbg_context* dbg;
 
-	if (!isatty(STDERR_FILENO)) {
+	if (probably_not_interactive()) {
 		errno = 0;
-		fatal("(stderr not a tty, aborting emergency debugging)");
+		fatal("(session doesn't look interactive, aborting emergency debugging)");
 	}
 
 	dbg = dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT);
