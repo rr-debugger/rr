@@ -52,11 +52,10 @@ inline static int should_log()
 			fprintf(stderr,					\
 				"[EMERGENCY] (%s:%d:%s: errno: %s) "	\
 				"(task %d at trace line %d)\n"		\
-				" -> Assertion `"#_cond "' failed to hold: "\
+				" -> Assertion `"#_cond "' failed to hold: " \
 				_msg "\n",				\
 				__FILE__, __LINE__, __FUNCTION__,	\
-				clean_errno(),				\
-				t->tid, get_trace_file_lines_counter(),	\
+				clean_errno(), t->tid, get_global_time(), \
 				##__VA_ARGS__);				\
 			log_pending_events(_t);				\
 			emergency_debug(_t);				\
@@ -72,9 +71,7 @@ inline static int should_log()
 			"(trace line %d)\n"				\
 			" -> " M "\n",					\
 			__FILE__, __LINE__, __FUNCTION__,		\
-			clean_errno(),					\
-			get_trace_file_lines_counter(),			\
-			##__VA_ARGS__);					\
+			clean_errno(), get_global_time(), ##__VA_ARGS__); \
 		abort();						\
 	} while (0)
 
