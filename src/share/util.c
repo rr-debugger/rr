@@ -997,7 +997,8 @@ int get_memory_size(struct task * t) {
 int should_checksum(struct task* t, int event, int state, int global_time)
 {
 	int checksum = rr_flags()->checksum;
-	return (CHECKSUM_ALL == checksum
+	return CHECKSUM_NONE != checksum
+		&& (CHECKSUM_ALL == checksum
 		|| (CHECKSUM_SYSCALL == checksum
 		    && state == STATE_SYSCALL_EXIT)
 		/* |checksum| is a global time point. */
