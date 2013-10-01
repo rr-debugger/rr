@@ -1,5 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "Trace"
+
 #include <assert.h>
 #include <err.h>
 #include <limits.h>
@@ -517,20 +519,12 @@ void record_event(struct task *t)
 		use_new_trace_file();
 	}
 
-	if (rr_flags()->dump_on == t->event
-	    || rr_flags()->dump_on == DUMP_ON_ALL
-	    || rr_flags()->dump_at == global_time) {
-		char pid_str[PATH_MAX];
-		sprintf(pid_str,"%s/%d_%d_rec",get_trace_path(),t->tid,get_global_time());
-		print_process_memory(t,pid_str);
-	}
-
-	// do memory checksum
-	if (((rr_flags()->checksum == CHECKSUM_ALL) ||
-		 (rr_flags()->checksum == CHECKSUM_SYSCALL && state == STATE_SYSCALL_EXIT) ||
-		 (rr_flags()->checksum <= global_time) )
-		 && t)
+	if (should_dump_memory(t, event, state, global_time)) {
+		dump_process_memory(t, "rec");
+	}		
+	if (should_checksum(t, event, state, global_time)) {
 		checksum_process_memory(t);
+	}
 
 	fprintf(trace_file, "%11d%11u%11d%11d", get_global_time_incr(),
 	        get_time_incr(t->tid), t->tid, event);

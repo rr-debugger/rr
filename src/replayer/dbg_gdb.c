@@ -119,7 +119,7 @@ struct dbg_context* dbg_await_client_connection(const char* address,
 		dbg->addr.sin_port = htons(port);
 		ret = bind(listen_fd,
 			   (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
-		if (ret && EADDRINUSE == errno) {
+		if (ret && (EADDRINUSE == errno || EPERM == errno)) {
 			continue;
 		}
 		if (ret != 0) {
@@ -132,7 +132,7 @@ struct dbg_context* dbg_await_client_connection(const char* address,
 		}
 	} while (++port, probe);
 	if (ret) {
-		fatal("Couldn't bind to server address");
+		fatal("Couldn't bind to port %d", port);
 	}
 	fprintf(stderr, "(rr debug server listening on %s:%d)\n",
 		!strcmp(address, "127.0.0.1") ? "" : address,

@@ -271,6 +271,19 @@ static void print_usage()
 "Usage: rr [OPTION] (record|replay) [OPTION]... [ARG]...\n"
 "\n"
 "Common options\n"
+"  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
+"                             compute and store (during recording) or\n"
+"                             read and verify (during replay) checksums\n"
+"                             of each of a tracee's memory mappings either\n"
+"                             at the end of all syscalls (`on-syscalls'),\n"
+"                             at all events (`on-all-events'), or \n"
+"                             starting from a global timepoint FROM_TIME\n"
+"  -d, --dump-on=<SYSCALL_NUM|-SIGNAL_NUM>\n"
+"                             dump memory at SYSCALL or SIGNAL to the\n"
+"                             file `[trace_dir]/[tid].[time]_{rec,rep}':\n"
+"                             `_rec' for dumps during recording, `_rep'\n"
+"                             for dumps during replay\n"
+"  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
 "  -v, --verbose              log messages that may not be urgently \n"
 "                             critical to the user\n"
 "  -w, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
@@ -295,16 +308,8 @@ static void print_usage()
 "Syntax for `replay'\n"
 " rr replay [OPTION]... <trace-dir>\n"
 "  -a, --autopilot            replay without debugger server\n"
-"  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
-"                             verify checksums either on all syscalls, all\n"
-"                             events, or starting from global timepoint\n"
-"                             FROM_TIME\n"
-"  -d, --dump-on=<SYSCALL_NUM|-SIGNAL_NUM>\n"
-"                             dump memory at SYSCALL or SIGNAL during replay\n"
 "  -p, --dbgport=PORT         bind the debugger server to PORT\n"
 "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
-
-"  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
 "\n"
 "A command line like `rr (-h|--help|help)...' will print this message.\n"
 , stderr);
@@ -354,22 +359,46 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 {
 	struct option opts[] = {
 		{ "autopilot", no_argument, NULL, 'a' },
-		{ "checksum", required_argument, NULL, 'c' },
-		{ "dump-on", required_argument, NULL, 'd' },
 		{ "dbgport", required_argument, NULL, 'p' },
 		{ "no-redirect-output", no_argument, NULL, 'q' },
-		{ "dump-at", required_argument, NULL, 't' },		
 		{ 0 }
 	};
 	optind = cmdi + 1;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+ac:d:p:qt:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+ap:q", opts, &i)) {
 		case -1:
 			return optind;
 		case 'a':
 			flags->autopilot = TRUE;
 			break;
+		case 'p':
+			flags->dbgport = atoi(optarg);
+			break;
+		case 'q':
+			flags->redirect = FALSE;
+			break;
+		default:
+			return -1;
+		}
+	}
+}
+
+static int parse_common_args(int argc, char** argv, struct flags* flags)
+{
+	struct option opts[] = {
+		{ "checksum", required_argument, NULL, 'c' },
+		{ "dump-at", required_argument, NULL, 't' },
+		{ "dump-on", required_argument, NULL, 'd' },
+		{ "verbose", no_argument, NULL, 'v' },
+		{ "wait-secs", required_argument, NULL, 'w' },
+		{ 0 }
+	};
+	while (1) {
+		int i = 0;
+		switch (getopt_long(argc, argv, "+c:d:t:vw:", opts, &i)) {
+		case -1:
+			return optind;
 		case 'c':
 			if (!strcmp("on-syscalls", optarg)) {
 				flags->checksum = CHECKSUM_SYSCALL;
@@ -383,38 +412,14 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		case 'd':
 			flags->dump_on = atoi(optarg);
 			break;
-		case 'p':
-			flags->dbgport = atoi(optarg);
-			break;
-		case 'q':
-			flags->redirect = FALSE;
-			break;
-		case 't':
-			flags->dump_at = atoi(optarg);
-			break;
-		default:
-			return -1;
-		}
-	}
-}
-
-static int parse_common_args(int argc, char** argv, struct flags* flags)
-{
-	struct option opts[] = {
-		{ "verbose", no_argument, NULL, 'v' },
-		{ "wait-secs", required_argument, NULL, 'w' },
-		{ 0 }
-	};
-	while (1) {
-		int i = 0;
-		switch (getopt_long(argc, argv, "+vw:", opts, &i)) {
-		case -1:
-			return optind;
 		case 'v':
 			flags->verbose = 1;
 			break;
 		case 'w':
 			flags->wait_secs = atoi(optarg);
+			break;
+		case 't':
+			flags->dump_at = atoi(optarg);
 			break;
 		default:
 			return -1;

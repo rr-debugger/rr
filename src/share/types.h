@@ -33,8 +33,8 @@ typedef unsigned char byte;
 #define RECORD			1
 #define REPLAY			2
 
-#define DUMP_ON_NONE 	-1001
-#define DUMP_ON_ALL 	1000
+#define DUMP_ON_ALL 	10000
+#define DUMP_ON_NONE 	-DUMP_ON_ALL
 
 #define DUMP_AT_NONE 	-1
 
