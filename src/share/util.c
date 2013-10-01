@@ -104,6 +104,17 @@ bool is_protected_map(struct task *t, void *start){
 	return FALSE;
 }
 
+static int is_start_of_scratch_region(void* start_addr)
+{
+	int i;
+	for (i = 0 ; i < scratch_table_size; ++i) {
+		if (scratch_table[i] == start_addr) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 double now_sec()
 {
 	struct timespec tp;
@@ -354,8 +365,7 @@ struct map_iterator_data {
 	const char* raw_map_line;
 };
 typedef int (*memory_map_iterator_t)(void* it_data, struct task* t,
-				     const struct map_iterator_data* data;
-);
+				     const struct map_iterator_data* data);
 
 enum { ITERATE_DEFAULT, ITERATE_READ_MEMORY };
 static void iterate_memory_map(struct task* t,
@@ -974,20 +984,6 @@ void read_line(FILE* file, char *buf, int size, char *name)
 	}
 }
 
-/* TODO: remove me */
-static FILE* open_mmap(pid_t tid)
-{
-	char path[64];
-	FILE* file;
-	fflush(stdout);
-	bzero(path, 64);
-	sprintf(path, "/proc/%d/maps", tid);
-	if ((file = fopen(path, "r")) == NULL) {
-		perror("error reading child memory maps\n");
-	}
-	return file;
-}
-
 int should_dump_memory(struct task* t, int event, int state, int global_time)
 {
 	const struct flags* flags = rr_flags();
@@ -1030,7 +1026,99 @@ void dump_process_memory(struct task* t, const char* tag)
 	fclose(dump_file);
 }
 
-#define CHUNK_SIZE 		(8 * PAGE_SIZE)
+/**
+ * This helper does the heavy lifting of storing or validating
+ * checksums.  The iterator data determines which behavior the helper
+ * function takes on, and to/from which file it writes/read.
+ */
+struct checksum_iterator_data {
+	enum { STORE_CHECKSUMS, VALIDATE_CHECKSUMS } mode;
+	FILE* checksums_file;
+};
+static int checksum_iterator(void* it_data, struct task* t,
+			     const struct map_iterator_data* data)
+{
+	struct checksum_iterator_data* c = it_data;
+	unsigned* buf = data->mem;
+	unsigned checksum = 0;
+	int i;
+
+	for (i = 0; i < data->len / sizeof(*buf); ++i) {
+		checksum += buf[i];
+	}
+
+	if (STORE_CHECKSUMS == c->mode) {
+		fprintf(c->checksums_file,"(%x) %s",
+			checksum, data->raw_map_line);
+	} else {
+		long saved_offset = ftell(c->checksums_file);
+		char line[1024];
+		unsigned rec_checksum;
+		void* rec_start_addr;
+		void* rec_end_addr;
+		int nparsed;
+
+		fgets(line, sizeof(line), c->checksums_file);
+		nparsed = sscanf(line, "(%x) %p-%p", &rec_checksum,
+				 &rec_start_addr, &rec_end_addr);
+		assert_exec(t, 3 == nparsed, "Only parsed %d items", nparsed);
+
+		if (rec_start_addr < data->info.start_addr) {
+			/* It's been observed that at a particular
+			 * event, the data segment of the [vdso] is
+			 * mapped and checksummed during recording,
+			 * but not mapped during replay.  This is not
+			 * at all understood at the moment. */
+			log_warn("Skipping verification of recorded segment because it doesn't seem to be mapped in replay.");
+			fseek(c->checksums_file, saved_offset, SEEK_SET);
+			return CONTINUE_ITERATING;
+		}
+		assert_exec(t, (rec_start_addr == data->info.start_addr
+				&& rec_end_addr == data->info.end_addr),
+			    "Segment changed to %p-%p??",
+			    data->info.start_addr, data->info.end_addr);
+
+		if (is_start_of_scratch_region(rec_start_addr)) {
+			/* Replay doesn't touch scratch regions, so
+			 * their contents are allowed to diverge.
+			 * Tracees can't observe those segments unless
+			 * they do something sneaky (or disastrously
+			 * buggy). */
+			debug("Not validating scratch starting at %p", start);
+			return CONTINUE_ITERATING;
+		}
+
+		assert_exec(t, checksum == rec_checksum,
+			    "Divergence in memory contents after '%s':\n"
+			    "%s"
+			    "    record checksum:0x%x; replay checksum:0x%x",
+			    strevent(t->trace.stop_reason),
+			    data->raw_map_line,
+			    rec_checksum, checksum);
+	}
+	return CONTINUE_ITERATING;
+}
+
+/**
+ * Either create and store checksums for each segment mapped in |t|'s
+ * address space, or validate an existing computed checksum.  Behavior
+ * is selected by |mode|.
+ */
+static void iterate_checksums(struct task* t, int mode)
+{
+	struct checksum_iterator_data c = { 0 };
+	char filename[PATH_MAX];
+	const char* fmode = (STORE_CHECKSUMS == mode) ? "w" : "r";
+
+	c.mode = mode;
+	snprintf(filename, sizeof(filename) - 1, "%s/%d_%d",
+		 get_trace_path(), get_global_time(), t->rec_tid);
+	c.checksums_file = fopen(filename, fmode);
+
+	iterate_memory_map(t, checksum_iterator, &c, ITERATE_READ_MEMORY);
+
+	fclose(c.checksums_file);
+}
 
 int should_checksum(struct task* t, int event, int state, int global_time)
 {
@@ -1045,115 +1133,16 @@ int should_checksum(struct task* t, int event, int state, int global_time)
 
 void checksum_process_memory(struct task* t)
 {
-	pid_t tid = t->tid;
-	int i;
-
-	// open the maps file
-	FILE *maps_file = open_mmap(tid);
-
-	// flush all files in case we start replaying while still recording
+	/* flush all files in case we start replaying while still
+	 * recording */
 	flush_trace_files();
 
-	// open the checksums file
-	char checksums_filename[1024];
-	sprintf(checksums_filename,"%s/%d_%d",get_trace_path(),get_global_time(),tid);
-	FILE *checksums_file = fopen(checksums_filename,"w");
-
-	// for each line in the maps file:
-	char line[1024];
-	void *start, *end;
-	char flags[32], binary[128];
-	unsigned int dev_minor, dev_major;
-	unsigned long long file_offset, inode;
-	while ( fgets(line,1024,maps_file) != NULL ) {
-		sscanf(line,"%p-%p %31s %Lx %x:%x %Lu %s",
-		       &start, &end,
-		       flags,
-		       &file_offset,
-		       &dev_major, &dev_minor,
-		       &inode, binary);
-		/*
-		i = 0;
-		while (isblank(binary[i])) i++;
-		bool dev_zero = FALSE;
-		if (memcmp(binary + i, "/dev/zero", sizeof("/dev/zero") - 1) == 0) {
-			dev_zero = TRUE;
-		}
-		*/
-		int checksum = 0;
-		// read a chunk at a time
-		size_t size = end - start, offset = 0;
-		while (offset < size) {
-			int rest = (size - offset < CHUNK_SIZE) ? size - offset : CHUNK_SIZE;
-			char buffer[CHUNK_SIZE];
-			checked_pread(t, buffer, rest, (off_t)start + offset);
-			for (i = 0 ; i < rest ; i += 4) {
-				unsigned int dword = *((unsigned int *)(buffer + i));
-				checksum += dword;
-			}
-			offset += CHUNK_SIZE;
-		}
-		fprintf(checksums_file,"(%x) %s", checksum, line);
-		//printf("%x-%x:%x\n", start, end, checksum);
-	}
-	sys_fclose(checksums_file);
-	sys_fclose(maps_file);
+	iterate_checksums(t, STORE_CHECKSUMS);
 }
 
 void validate_process_memory(struct task* t)
 {
-	// open the checksums file
-	char checksums_filename[1024] = {0};
-	sprintf(checksums_filename,"%s/%d_%d",get_trace_path(),t->trace.global_time,t->rec_tid);
-	FILE *checksums_file = fopen(checksums_filename,"r");
-
-	// for each line in the checksums file:
-	char line[1024];
-	void *start, *end;
-	int i;
-	bool scratch;
-	while ( fgets(line,1024,checksums_file) != NULL ) {
-		int checksum = 0, rchecksum = 0;
-		sscanf(line,"(%x) %p-%p", &rchecksum, &start, &end);
-
-		// check to see if its a scratch memory
-		for (i = 0 ; i < scratch_table_size; ++i) {
-			if (scratch_table[i] == start) {
-				scratch = TRUE;
-				break;
-			}
-		}
-
-		// skip scratch regions
-		if (scratch) {
-			debug("Skipping scratch %p",start);
-			scratch = FALSE;
-			continue;
-		}
-
-		// read a chunk at a time
-		size_t size = end - start, offset = 0;
-		while (offset < size) {
-			int rest = (size - offset < CHUNK_SIZE) ? size - offset : CHUNK_SIZE;
-			char buffer[CHUNK_SIZE];
-			checked_pread(t, buffer, rest, (off_t)start + offset);
-			for (i = 0 ; i < rest ; i += 4) {
-				unsigned int dword = *((unsigned int *)(buffer + i));
-				checksum += dword;
-			}
-			offset += CHUNK_SIZE;
-		}
-
-		assert_exec(t, checksum == rchecksum,
-			    "Divergence in in memory contents after '%s':\n"
-			    "%s"
-			    "    record checksum:0x%x; replay checksum:0x%x",
-			    strevent(t->trace.stop_reason),
-			    line,
-			    rchecksum, checksum);
-	}
-
-	sys_fclose(checksums_file);
+	iterate_checksums(t, VALIDATE_CHECKSUMS);
 }
 
 /**
@@ -1274,10 +1263,6 @@ int inject_and_execute_syscall(struct task * t, struct user_regs_struct * call_r
 void add_scratch(void *ptr, int size) {
 	scratch_table[scratch_table_size++] = ptr;
 	scratch_overall_size += size;
-}
-
-int overall_scratch_size() {
-	return scratch_overall_size;
 }
 
 void add_sig_handler(pid_t tid, unsigned int signum, struct sigaction * sa){

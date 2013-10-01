@@ -119,7 +119,7 @@ struct dbg_context* dbg_await_client_connection(const char* address,
 		dbg->addr.sin_port = htons(port);
 		ret = bind(listen_fd,
 			   (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
-		if (ret && (EADDRINUSE == errno || EPERM == errno)) {
+		if (ret && (EADDRINUSE == errno || EACCES == errno)) {
 			continue;
 		}
 		if (ret != 0) {
