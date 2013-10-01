@@ -928,6 +928,7 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 			case FUTEX_WAKE:
 			case FUTEX_WAIT_BITSET:
 			case FUTEX_WAIT:
+			case FUTEX_LOCK_PI:
 			case FUTEX_UNLOCK_PI:
 				step->syscall.num_emu_args = 1;
 				break;
@@ -938,8 +939,7 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 				step->syscall.num_emu_args = 2;
 				break;
 			default:
-				fatal("op: %d futex_wait: %d \n",
-				      op, FUTEX_WAIT);
+				fatal("Unknown futex op %d", op);
 			}
 		}
 		return;
