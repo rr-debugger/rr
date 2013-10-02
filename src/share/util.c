@@ -1090,7 +1090,8 @@ static int checksum_iterator(void* it_data, struct task* t,
 			 * Tracees can't observe those segments unless
 			 * they do something sneaky (or disastrously
 			 * buggy). */
-			debug("Not validating scratch starting at %p", start);
+			debug("Not validating scratch starting at %p",
+			      rec_start_addr);
 			return CONTINUE_ITERATING;
 		}
 
@@ -1455,9 +1456,10 @@ done:
 int should_copy_mmap_region(const char* filename, struct stat* stat,
 			    int prot, int flags)
 {
+	int private_mapping = (flags & MAP_PRIVATE);
 	int can_write_file;
 
-	if ((flags & MAP_PRIVATE) && (prot & PROT_EXEC)) {
+	if (private_mapping && (prot & PROT_EXEC)) {
 		/* We currently don't record the images that we
 		 * exec(). Since we're being optimistic there (*cough*
 		 * *cough*), we're doing no worse (in theory) by being
@@ -1466,18 +1468,13 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		debug("  (no copy for +x private mapping %s)", filename);
 		return 0;
 	}
-	if (flags & MAP_PRIVATE) {
-		/* It's technically undefined whether processes can
-		 * observe changes to PRIVATE mappings after the mmap2
-		 * call, but in practice they *will* observe changes.
-		 * That means that unless the program is fundamentally
-		 * buggy, it expects the backing file to be consistent
-		 * and unchanged.  So we optimistically assume that
-		 * the file is effectively read-only.  (It doesn't
-		 * matter whether PROT_WRITE was specified, since
-		 * those writes can't propagate to the backing
-		 * file.) */
-		debug("  (no copy for -x private mapping %s)", filename);
+	if (private_mapping && (0111 & stat->st_mode)) {
+		/* A private mapping of an executable file usually
+		 * indicates mapping data sections of object files.
+		 * Since we're already assuming those change very
+		 * infrequently, we can avoid copying the data
+		 * sections too. */
+		debug("  (no copy for private mapping of +x %s)", filename);
 		return 0;
 	}
 
@@ -1486,28 +1483,42 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 	 * the file.  If the tracee is messing around with
 	 * set*[gu]id(), the real answer may be different. */
 	can_write_file = (0 == access(filename, W_OK));
+
 	if (!can_write_file && 0 == stat->st_uid) {
-		/* Shared mapping owned by root: we assume this was
-		 * meant to be a PRIVATE mapping, but the program
-		 * misspoke.  So we treat it the same way as an
-		 * PRIVATE mapping.
-		 *
-		 * /etc/passwd falls into this class, but the odds of
-		 * it being mutated are probably not higher than
-		 * system libs being updated.
-		 *
-		 * XXX what about the fontconfig cache files?*/
 		assert(!(prot & PROT_WRITE));
-		debug("  (no copy for root-owned ro(?) shared mapping %s)",
-		      filename);
+		/* Mapping a file owned by root: we don't care if this
+		 * was a PRIVATE or SHARED mapping, because unless the
+		 * program is disastrously buggy or unlucky, the
+		 * mapping is effectively PRIVATE.  Bad luck can come
+		 * from this program running during a system update,
+		 * or a user being added, which is probably less
+		 * frequent than even system updates.
+		 *
+		 * XXX what about the fontconfig cache files? */
+		debug("  (no copy for root-owned %s)", filename);
 		return 0;
+	}
+	if (private_mapping) {
+		/* Some programs (at least Firefox) have been observed
+		 * to use cache files that are expected to be
+		 * consistent and unchanged during the bulk of
+		 * execution, but may be destroyed or mutated at
+		 * shutdown in preparation for the next session.  We
+		 * don't otherwise know what to do with private
+		 * mappings, so err on the safe side.
+		 *
+		 * TODO: could get into dirty heuristics here like
+		 * trying to match "cache" in the filename ...	 */
+		debug("  copying private mapping of non-system -x %s",
+		      filename);
+		return 1;
 	}
 	if (!(0222 & stat->st_mode)) {
 		/* We couldn't write the file because it's read only.
 		 * But it's not a root-owned file (therefore not a
 		 * system file), so it's likely that it could be
 		 * temporary.  Copy it. */
-		debug("  (copy for read-only, non-system file)");
+		debug("  copying read-only, non-system file");
 		return 1;
 	}
 	if (!can_write_file) {
@@ -1519,9 +1530,9 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 	}
 	/* Shared mapping that we can write.  Should assume that the
 	 * mapping is likely to change. */
-	debug("  copy for writeable SHARED mapping %s", filename);
+	debug("  copying writeable SHARED mapping %s", filename);
 	if (PROT_WRITE | prot) {
-		log_warn("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written.",
+		log_warn("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written by programs outside the rr tracee tree.",
 			 filename);
 	}
 	return 1;
