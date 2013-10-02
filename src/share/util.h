@@ -133,6 +133,11 @@ void checksum_process_memory(struct task* t);
 void validate_process_memory(struct task* t);
 
 /**
+ * Cat the /proc/[t->tid]/maps file to stdout, line by line.
+ */
+void print_process_mmap(struct task* t);
+
+/**
  * Search for the segment containing |search_addr|, and if found copy
  * out the segment info to |info| and return nonzero.  Return zero if
  * not found.

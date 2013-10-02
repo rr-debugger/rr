@@ -401,12 +401,16 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			return optind;
 		case 'c':
 			if (!strcmp("on-syscalls", optarg)) {
+				log_info("checksumming on syscall exit");
 				flags->checksum = CHECKSUM_SYSCALL;
 			} else if (!strcmp("on-all-events", optarg)) {
+				log_info("checksumming on all events");
 				flags->checksum = CHECKSUM_ALL;
 			} else {
 				flags->checksum = str2li(optarg,
 							 LI_COLUMN_SIZE);
+				log_info("checksumming on at event %d",
+					 flags->checksum);
 			}
 			break;
 		case 'd':

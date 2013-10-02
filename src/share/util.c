@@ -360,8 +360,14 @@ static void trim_leading_blanks(char* str)
 enum { CONTINUE_ITERATING, STOP_ITERATING };
 struct map_iterator_data {
 	struct mapped_segment_info info;
+	/* The nominal size of the data segment. */
+	ssize_t size_bytes;
+	/* Pointer to data read from the segment if requested,
+	 * otherwise NULL. */
 	void* mem;
-	ssize_t len;
+	/* Length of data read from segment.  May be less than nominal
+	 * segment length if an error occurs. */
+	ssize_t mem_len;
 	const char* raw_map_line;
 };
 typedef int (*memory_map_iterator_t)(void* it_data, struct task* t,
@@ -387,7 +393,7 @@ static void iterate_memory_map(struct task* t,
 		int next_action;
 
 		memset(&data, 0, sizeof(data));
-		data.len = -1;
+		data.size_bytes = -1;
 		data.raw_map_line = line;
 
 		nparsed = sscanf(line, "%p-%p %31s %Lx %x:%x %Lu %s",
@@ -405,11 +411,15 @@ static void iterate_memory_map(struct task* t,
 			    "%s",
 			    nparsed, data.raw_map_line);
 
-		data.len = ((intptr_t)data.info.end_addr -
-			    (intptr_t)data.info.start_addr);
+		data.size_bytes = ((intptr_t)data.info.end_addr -
+				   (intptr_t)data.info.start_addr);
 		if (ITERATE_READ_MEMORY & flags) {
-			data.mem = read_child_data(t, data.len,
-						   data.info.start_addr);
+			data.mem =
+				read_child_data_checked(t, data.size_bytes,
+							data.info.start_addr,
+							&data.mem_len);
+			/* TODO: expose read errors, somehow. */
+			data.mem_len = MAX(0, data.mem_len);
 		}
 
 		next_action = it(it_data, t, &data);
@@ -429,10 +439,7 @@ static int print_process_mmap_iterator(void* unused, struct task* t,
 	return CONTINUE_ITERATING;
 }
 
-/**
- * Echo the /proc/maps file to stdout, line by line.
- */
-static void print_process_mmap(struct task* t)
+void print_process_mmap(struct task* t)
 {
 	return iterate_memory_map(t, print_process_mmap_iterator, NULL,
 				  ITERATE_DEFAULT);
@@ -1000,7 +1007,7 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 	int i;
 
 	fprintf(dump_file,"%s\n", data->raw_map_line);
-	for (i = 0 ; i < data->len / sizeof(*buf); i += 1) {
+	for (i = 0 ; i < data->mem_len / sizeof(*buf); i += 1) {
 		unsigned word = buf[i];
 		fprintf(dump_file,"0x%08x | [%p]\n", word, start_addr + i);
 	}
@@ -1049,7 +1056,7 @@ static int checksum_iterator(void* it_data, struct task* t,
 	unsigned checksum = 0;
 	int i;
 
-	for (i = 0; i < data->len / sizeof(*buf); ++i) {
+	for (i = 0; i < data->mem_len / sizeof(*buf); ++i) {
 		checksum += buf[i];
 	}
 
@@ -1075,7 +1082,7 @@ static int checksum_iterator(void* it_data, struct task* t,
 			 * mapped and checksummed during recording,
 			 * but not mapped during replay.  This is not
 			 * at all understood at the moment. */
-			log_warn("Skipping verification of recorded segment because it doesn't seem to be mapped in replay.");
+			//log_warn("Skipping verification of recorded segment because it doesn't seem to be mapped in replay.");
 			fseek(c->checksums_file, saved_offset, SEEK_SET);
 			return CONTINUE_ITERATING;
 		}
@@ -1164,12 +1171,17 @@ static void iterate_checksums(struct task* t, int mode)
 int should_checksum(struct task* t, int event, int state, int global_time)
 {
 	int checksum = rr_flags()->checksum;
-	return CHECKSUM_NONE != checksum
-		&& (CHECKSUM_ALL == checksum
-		    || (CHECKSUM_SYSCALL == checksum
-			&& state == STATE_SYSCALL_EXIT)
-		    /* |checksum| is a global time point. */
-		    || checksum <= global_time);
+	if (CHECKSUM_NONE == checksum) {
+		return 0;
+	}
+	if (CHECKSUM_ALL == checksum) {
+		return 1;
+	}
+	if (CHECKSUM_SYSCALL == checksum) {
+		return event >= 0 && state == STATE_SYSCALL_EXIT;
+	}
+	/* |checksum| is a global time point. */
+	return checksum <= global_time;
 }
 
 void checksum_process_memory(struct task* t)

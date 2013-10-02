@@ -54,7 +54,8 @@ static long read_child_word(pid_t tid, void *addr, int ptrace_op)
 	if (errno != 0) {
 		log_err("Read of word %p from child returned %ld; dumping map",
 			addr, tmp);
-
+		/* TODO: fix this function to take a |task*| param,
+		 * and use |print_process_mmap()|here.*/
 		char path[64];
 		FILE* file;
 		bzero(path, 64);
