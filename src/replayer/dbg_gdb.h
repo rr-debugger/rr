@@ -132,6 +132,14 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 						int probe);
 
 /**
+ * Call this when the target of |req| is needed to fulfill the
+ * request, but the target is dead.  This situation is a symptom of a
+ * gdb or rr bug.
+ */
+void dbg_notify_no_such_thread(struct dbg_context* dbg,
+			       const struct dbg_request* req);
+
+/**
  * Return the current request made by the debugger host, that needs to
  * be satisfied.  This function will block until either there's a
  * debugger host request that needs a response, or until a request is
