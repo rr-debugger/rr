@@ -1,0 +1,3 @@
+testname=syscallbuf_timeslice
+source `dirname $0`/util.sh $testname "$@"
+compare_test 'EXIT-SUCCESS'
