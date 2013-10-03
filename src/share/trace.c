@@ -1053,9 +1053,11 @@ void peek_next_trace(struct trace_frame *trace)
 	fpos_t pos;
 	fgetpos(trace_file, &pos);
 	int saved_trace_file_lines_counter = trace_file_lines_counter;
+	uint32_t saved_global_time = global_time;
 	read_next_trace(trace);
 	/* check if read is successful */
 	assert(!feof(trace_file));
+	global_time = saved_global_time;
 	trace_file_lines_counter = saved_trace_file_lines_counter;
 	fsetpos(trace_file, &pos);
 }

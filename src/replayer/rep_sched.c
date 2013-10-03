@@ -97,6 +97,7 @@ struct task* rep_sched_get_thread()
 			t->trace.rbc = rbc;
 		}
 	}
+	assert(get_global_time() == t->trace.global_time);
 	return t;
 }
 
