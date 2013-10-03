@@ -120,6 +120,7 @@ set(BASIC_TESTS
   statfs
   step_thread
   switch_read
+  syscallbuf_timeslice
   tcgets
   term_nonmain
   tgkill
@@ -153,6 +154,7 @@ set(CUSTOM_TESTS
   sanity
   signal_stop
   step1
+  syscallbuf_timeslice_250
 )
 
 foreach(test ${BASIC_TESTS})

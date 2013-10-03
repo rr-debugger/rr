@@ -1,0 +1,8 @@
+testname=syscallbuf_timeslice
+timeslice=250
+RECORD_ARGS="-c$timeslice"
+
+source `dirname $0`/util.sh ${testname}_${timeslice} "$@"
+record $testname
+replay
+check 'EXIT-SUCCESS'

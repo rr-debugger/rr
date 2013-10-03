@@ -319,23 +319,46 @@ static void desched_state_changed(struct task* t)
 		/* fall through */
 	case DISARMING_DESCHED_EVENT:
 		/* TODO: send this through main loop. */
-		sys_ptrace_syscall(t->tid);
-		sys_waitpid(t->tid, &t->status);
-		status_changed(t);
+		/* TODO: mask off signals and avoid this loop. */
+		do {
+			sys_ptrace_syscall(t->tid);
+			sys_waitpid(t->tid, &t->status);
+			/* We can safely ignore SIG_TIMESLICE while
+			 * trying to reach the disarm-desched ioctl:
+			 * once we reach it, the desched'd syscall
+			 * will be "done" and the tracee will be at a
+			 * preemption point.  In fact, we *want* to
+			 * ignore this signal.  Syscalls like read()
+			 * can have large buffers passed to them, and
+			 * we have to copy-out the buffered out data
+			 * to the user's buffer.  This happens in the
+			 * interval where we're reaching the
+			 * disarm-desched ioctl, so that code is
+			 * susceptible to receiving SIG_TIMESLICE.  If
+			 * it does, we'll try to stepi the tracee to a
+			 * safe point ... through a practically
+			 * unbounded memcpy(), which can be very
+			 * expensive. */
+			if (HPC_TIME_SLICE_SIGNAL == signal_pending(t->status)) {
+				read_child_registers(t->tid, &t->regs);
+				continue;
+			}
 
-		if (EV_DESCHED != t->ev->type) {
-			/* Something else happened that needs to be
-			 * processed first.  Most likely a signal
-			 * interrupted us. */
-			return;
-		}
-
-		read_child_registers(t->tid, &t->regs);
-		assert_exec(t, (0 == signal_pending(t->status)
-				&& is_disarm_desched_event_syscall(t,
-								   &t->regs)),
-			    "TODO %s pending or restarted %s",
-			    signalname(signal_pending(t->status)),
+			status_changed(t);
+			if (EV_DESCHED != t->ev->type) {
+				/* Something else happened that needs to be
+				 * processed first.  Most likely a signal
+				 * interrupted us. */
+				return;
+			}
+		} while (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(t->regs.eip, t));
+		assert_exec(t,
+			    (0 == signal_pending(t->status)
+			     || HPC_TIME_SLICE_SIGNAL == signal_pending(t->status)),
+			    "TODO: %s pending",
+			    signalname(signal_pending(t->status)));
+		assert_exec(t, is_disarm_desched_event_syscall(t, &t->regs),
+			    "Didn't reach desched ioctl; at %s?",
 			    syscallname(t->regs.orig_eax));
 
 		t->ev->desched.state = DISARMED_DESCHED_EVENT;
