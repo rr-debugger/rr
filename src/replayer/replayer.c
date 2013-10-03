@@ -1009,14 +1009,21 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 	return 0;
 }
 
-static void emulate_signal_delivery()
+static void emulate_signal_delivery(struct task* oldtask)
 {
 	/* We are now at the exact point in the child where the signal
 	 * was recorded, emulate it using the next trace line (records
 	 * the state at sighandler entry). */
-	struct task* t = rep_sched_get_thread();
-	pid_t tid = t->tid;
-	struct trace_frame* trace = &t->trace;
+	struct task* t;
+	pid_t tid;
+	struct trace_frame* trace;
+
+	reset_hpc(oldtask, 0);
+
+	t = rep_sched_get_thread();
+	assert_exec(oldtask, t == oldtask, "emulate_signal_delivery changed task");
+	tid = t->tid;
+	trace = &t->trace;
 
 	/* Restore the signal-hander frame data, if there was one. */
 	set_child_data(t);
@@ -1028,6 +1035,14 @@ static void emulate_signal_delivery()
 	t->child_sig = 0;
 
 	validate_args(trace->stop_reason, -1, t);
+}
+
+static void assert_at_recorded_rcb(struct task* t)
+{
+	assert_exec(t, !t->hpc->started || read_rbc(t->hpc) == t->trace.rbc,
+		    "rbc mismatch for event in synchronous signal delivery; expected %"PRId64", got %"PRId64,
+		    t->trace.rbc, read_rbc(t->hpc));
+
 }
 
 /**
@@ -1051,13 +1066,14 @@ static int emulate_deterministic_signal(struct task* t,
 	assert_exec(t, t->child_sig == sig,
 		    "Replay got unrecorded signal %d (expecting %d)",
 		    t->child_sig, sig);
+	assert_at_recorded_rcb(t);
 
 	if (SIG_SEGV_RDTSC == t->trace.stop_reason) {
 		write_child_main_registers(tid, &t->trace.recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
 	} else {
-		emulate_signal_delivery();
+		emulate_signal_delivery(t);
 	}
 
 	return 0;
@@ -1077,7 +1093,7 @@ static int emulate_async_signal(struct task* t,
 		return 1;
 	}
 	if (sig) {
-		emulate_signal_delivery();
+		emulate_signal_delivery(t);
 	}
 	stop_hpc(t);
 	return 0;
@@ -1537,8 +1553,20 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	case USR_SYSCALLBUF_ABORT_COMMIT:
 	case USR_SYSCALLBUF_FLUSH:
 	case USR_SYSCALLBUF_RESET:
+	case USR_ARM_DESCHED:
+		/* ARM_DESCHED events are like the SYSCALLBUF_* events
+		 * in that they weren't actually observed during
+		 * recording, only inferred, so we don't have any
+		 * reference to assert against during replay. */
 		break;
 	default:
+		/* We won't necessarily reach the same rcb when
+		 * replaying an async signal, due to debugger
+		 * interrupts and other implementation details.  This
+		 * is checked in |advance_to()| anyway. */
+		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action) {
+			assert_at_recorded_rcb(t);
+		}
 		reset_hpc(t, 0);
 	}
 	debug_memory(t);

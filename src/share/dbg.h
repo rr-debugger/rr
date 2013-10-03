@@ -55,7 +55,7 @@ inline static int should_log()
 				" -> Assertion `"#_cond "' failed to hold: " \
 				_msg "\n",				\
 				__FILE__, __LINE__, __FUNCTION__,	\
-				clean_errno(), t->tid, get_global_time(), \
+				clean_errno(), _t->tid, get_global_time(), \
 				##__VA_ARGS__);				\
 			log_pending_events(_t);				\
 			emergency_debug(_t);				\
