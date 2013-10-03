@@ -346,8 +346,12 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		}
 
 		/* These requests require a valid target task.  We
-		 * trust gdb to use the information provided above to
-		 * only query valid tasks. */
+		 * don't trust the debugger to use the information
+		 * provided above to only query valid tasks. */
+		if (!target) {
+			dbg_notify_no_such_thread(dbg, &req);
+			continue;
+		}
 		switch (req.type) {
 		case DREQ_GET_MEM: {
 			size_t len;

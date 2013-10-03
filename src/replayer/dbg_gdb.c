@@ -713,6 +713,24 @@ static int process_packet(struct dbg_context* dbg)
 	return ret;
 }
 
+void dbg_notify_no_such_thread(struct dbg_context* dbg,
+			       const struct dbg_request* req)
+{
+	assert(!memcmp(&dbg->req, req, sizeof(dbg->req)));
+
+	/* '10' is the errno ECHILD.  We use it as a magic code to
+	 * notify the user that the thread that was the target of this
+	 * request has died, and either gdb didn't notice that, or rr
+	 * didn't notify gdb.  Either way, the user should restart
+	 * their debugging session. */
+	log_err(
+"Targeted thread no longer exists; this is the result of either a gdb or\n"
+"rr bug.  Please restart your debugging session and avoid doing whatever\n"
+"triggered this bug.");
+	write_packet(dbg, "E10");
+	consume_request(dbg);
+}
+
 struct dbg_request dbg_get_request(struct dbg_context* dbg)
 {
 	/* Can't ask for the next request until you've satisfied the
