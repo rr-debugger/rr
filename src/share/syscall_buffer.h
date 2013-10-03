@@ -164,7 +164,8 @@ inline static void prepare_syscallbuf_socket_addr(struct sockaddr_un* addr,
  */
 inline static int is_blacklisted_filename(const char* filename)
 {
-	return !strcmp("/dev/dri/card0", filename);
+	return (!strcmp("/dev/dri/card0", filename)
+		|| !strcmp("/dev/nvidiactl", filename));
 }
 
 #endif /* SYSCALL_BUFFER_H_ */

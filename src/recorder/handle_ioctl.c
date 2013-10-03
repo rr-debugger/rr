@@ -149,7 +149,8 @@ void handle_ioctl_request(struct task *t, int request)
 
 	default:
 		print_register_file_tid(t->tid);
-		fatal("Unknown ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d addr:%p",
-		      request, type, nr, dir, size, (void*)regs.edx);
+		assert_exec(t, 0,
+			    "Unknown ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d addr:%p",
+			    request, type, nr, dir, size, (void*)regs.edx);
 	}
 }
