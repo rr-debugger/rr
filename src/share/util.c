@@ -800,13 +800,16 @@ void print_syscall(struct task *t, struct trace_frame *trace)
 	fprintf(stderr, "\n");
 }
 
-static void maybe_print_reg_mismatch(int print, const char* regname,
+static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 				     const char* label1, long val1,
 				     const char* label2, long val2)
 {
-	if (print) {
+	if (mismatch_behavior >= BAIL_ON_MISMATCH) {
 		log_err("%s 0x%lx != 0x%lx (%s vs. %s)",
 			regname, val1, val2, label1, label2);
+	} else if (mismatch_behavior >= LOG_MISMATCHES) {
+		log_info("%s 0x%lx != 0x%lx (%s vs. %s)",
+			 regname, val1, val2, label1, label2);
 	}
 }
 
@@ -814,20 +817,19 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1,
 			   char* name2, const struct user_regs_struct* reg2,
 			   int mismatch_behavior)
 {
-	int print = (mismatch_behavior >= LOG_MISMATCHES);
 	int bail_error = (mismatch_behavior >= BAIL_ON_MISMATCH);
 	/* TODO: do any callers use this? */
 	int errbit = 0;
 	int err = 0;
 
-#define REGCMP(_reg, _bit)						\
-	do {								\
-		if (reg1-> _reg != reg2-> _reg) {			\
-			maybe_print_reg_mismatch(print, #_reg,		\
-						 name1, reg1-> _reg,	\
-						 name2, reg2-> _reg);	\
-			err |= (1 << (_bit));				\
-		}							\
+#define REGCMP(_reg, _bit)						   \
+	do {								   \
+		if (reg1-> _reg != reg2-> _reg) {			   \
+			maybe_print_reg_mismatch(mismatch_behavior, #_reg, \
+						 name1, reg1-> _reg,	   \
+						 name2, reg2-> _reg);	   \
+			err |= (1 << (_bit));				   \
+		}							   \
 	} while (0)
 
 	REGCMP(eax, ++errbit);
@@ -875,7 +877,7 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1,
 	long eflags1 = (reg1->eflags & det_mask);
 	long eflags2 = (reg2->eflags & det_mask);
 	if (eflags1 != eflags2) {
-		maybe_print_reg_mismatch(print, "deterministic eflags",
+		maybe_print_reg_mismatch(mismatch_behavior, "deterministic eflags",
 					 name1, eflags1, name2, eflags2);
 		err |= (1 << ++errbit);
 	}
