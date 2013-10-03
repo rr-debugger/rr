@@ -1810,7 +1810,7 @@ void rec_process_syscall(struct task *t)
 	 */
 	case SYS_open:
 	{
-		char *pathname = read_child_str(tid, (void*)regs.ebx);
+		char* pathname = read_child_str(tid, (void*)regs.ebx);
 		if (is_blacklisted_filename(pathname)) {
 			/* NB: the file will still be open in the
 			 * process's file table, but let's hope this
