@@ -728,13 +728,21 @@ static void guard_overshoot(struct task* t,
 {
 	int remaining_rcbs_gt_0 = remaining_rcbs >= 0;
 	if (!remaining_rcbs_gt_0) {
+		long target_ip = target_regs->eip;
+
 		log_err("Replay diverged.  Dumping register comparison.");
 		read_child_registers(t->tid, &t->regs);
+		/* Cover up the internal breakpoint that we may have
+		 * set, and restore the tracee's $ip to what it would
+		 * have been had it not hit the breakpoint (if it did
+		 * hit the breakpoint).*/
+		remove_internal_sw_breakpoint(t, (void*)target_ip);
+		if (t->regs.eip == target_ip + sizeof(int_3_insn)) {
+			t->regs.eip -= sizeof(int_3_insn);
+			write_child_registers(t->tid, &t->regs);
+		}
 		compare_register_files("rep overshoot", &t->regs,
 				       "rec", target_regs, LOG_MISMATCHES);
-		/* Unset this breakpoint, if it was set, so that the
-		 * debugger displays the original insn.*/
-		remove_internal_sw_breakpoint(t, (void*)target_regs->eip);
 		assert_exec(t, remaining_rcbs_gt_0,
 			    "overshot target rcb=%"PRId64" by %"PRId64,
 			    target_rcb, -remaining_rcbs);
