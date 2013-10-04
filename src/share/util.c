@@ -52,6 +52,11 @@
 #define REPLAY_DESCHED_EVENT_FD -123
 #define NUM_MAX_MAPS 1024
 
+/* The syscallbuf shared with tracees is created with this prefix
+ * followed by the tracee tid, then immediately unlinked and shared
+ * anonymously. */
+#define SYSCALLBUF_SHMEM_FILENAME_PREFIX "/dev/shm/rr-tracee-shmem-"
+
 struct flags flags = { 0 };
 
 static void* scratch_table[MAX_TID] = {NULL} ;
@@ -1044,7 +1049,8 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 	fprintf(dump_file,"%s\n", data->raw_map_line);
 	for (i = 0 ; i < data->mem_len / sizeof(*buf); i += 1) {
 		unsigned word = buf[i];
-		fprintf(dump_file,"0x%08x | [%p]\n", word, start_addr + i);
+		fprintf(dump_file,"0x%08x | [%p]\n", word,
+			start_addr + i * sizeof(*buf));
 	}
 
 	return CONTINUE_ITERATING;
@@ -1129,14 +1135,36 @@ static int checksum_iterator(void* it_data, struct task* t,
 {
 	struct checksum_iterator_data* c = it_data;
 	unsigned* buf = data->mem;
+	ssize_t valid_mem_len = data->mem_len;
 	unsigned checksum = 0;
 	int i;
+
+	if (data->info.name ==
+	    strstr(data->info.name, SYSCALLBUF_SHMEM_FILENAME_PREFIX)) {
+		/* The syscallbuf consists of a region that's written
+		 * determinsitically wrt the trace events, and a
+		 * region that's nondeterministic, like trace scratch
+		 * buffers.  The deterinistic region comprises
+		 * committed syscallbuf records, and possibly the one
+		 * pending record metadata.  The nondeterministic
+		 * region starts at the "extra data" for the possibly
+		 * one pending record.
+		 *
+		 * So here, we set things up so that we only checksum
+		 * the deterministic region. */
+		void* child_hdr = data->info.start_addr;
+		struct syscallbuf_hdr* hdr = read_child_data(t, sizeof(*hdr),
+							     child_hdr);
+		valid_mem_len = sizeof(*hdr) + hdr->num_rec_bytes +
+				sizeof(struct syscallbuf_record);
+		sys_free((void**)&hdr);
+	}
 
 	/* If this segment was filtered, then data->mem_len will be 0
 	 * to indicate nothing was read.  And data->mem will be NULL
 	 * to double-check that.  In that case, the checksum will just
 	 * be 0. */
-	for (i = 0; i < data->mem_len / sizeof(*buf); ++i) {
+	for (i = 0; i < valid_mem_len / sizeof(*buf); ++i) {
 		checksum += buf[i];
 	}
 
@@ -1793,7 +1821,7 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	child_args_vec = (void*)state.regs.edi;
 
 	snprintf(shmem_filename, sizeof(shmem_filename) - 1,
-		 "/dev/shm/rr-tracee-shmem-%d", tid);
+		 SYSCALLBUF_SHMEM_FILENAME_PREFIX "%d", tid);
 	/* NB: the sockaddr prepared by the child uses the recorded
 	 * tid, so always must here. */
 	prepare_syscallbuf_socket_addr(&addr, t->rec_tid);
