@@ -370,9 +370,23 @@ static void record_signal(struct task* t, const siginfo_t* si,
 		 * information we maintain in |t->sighandlers|. */
 		assert(0 == read_insts(t->hpc));
 
-		/* TODO: find out actual struct sigframe size. 128
-		 * seems to be too small. */
-		sigframe_size = 1024;
+		/* It's somewhat difficult engineering-wise to compute
+		 * the sigframe size at compile time, and it can vary
+		 * across kernel versions.  So this size is an
+		 * overestimate of the real size(s).  The estimate was
+		 * made by comparing $sp before and after entering the
+		 * sighandler, for a sighandler that used the main
+		 * task stack.  On linux 3.11.2, that computed size
+		 * was 1736 bytes, which is an upper bound on the
+		 * sigframe size.  We don't want to mess with this
+		 * code much, so we overapproximate the
+		 * overapproximation and round off to 2048.
+		 *
+		 * If this size becomes too small in the future, and
+		 * unit tests that use sighandlers are run with
+		 * checksumming enabled, then they can catch errors
+		 * here. */
+		sigframe_size = 2048;
 
 		read_child_registers(t->tid, &t->regs);
 

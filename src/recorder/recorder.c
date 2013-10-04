@@ -522,6 +522,24 @@ static void maybe_discard_syscall_interruption(struct task* t, int ret)
 	}
 }
 
+/**
+ * If the syscallbuf has just been flushed, and resetting hasn't been
+ * overridden with a delay request, then record the reset event for
+ * replay.
+ */
+static void maybe_reset_syscallbuf(struct task* t)
+{
+	if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
+		push_pseudosig(t, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
+		record_event(t);
+		pop_pseudosig(t);
+	}
+	/* Any code that sets |delay_syscallbuf_reset| is responsible
+	 * for recording its own SYSCALLBUF_RESET event at a
+	 * convenient time. */
+	t->flushed_syscallbuf = 0;
+}
+
 static void runnable_state_changed(struct task* t)
 {
 	/* Have to disable context-switching until we know it's safe
@@ -561,6 +579,7 @@ static void runnable_state_changed(struct task* t)
 		 * tracee didn't need to lock it, so it's OK for the
 		 * sighandler to use it. */
 		record_event(t);
+		maybe_reset_syscallbuf(t);
 
 		/* "Finish" the sigreturn. */
 		sys_ptrace_syscall(t->tid);
@@ -600,15 +619,7 @@ static void runnable_state_changed(struct task* t)
 		      strevent(t->event), t->event);
 	}
 
-	if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
-		push_pseudosig(t, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
-		record_event(t);
-		pop_pseudosig(t);
-	}
-	/* Any code that sets |delay_syscallbuf_reset| is responsible
-	 * for recording its own SYSCALLBUF_RESET event at a
-	 * convenient time. */
-	t->flushed_syscallbuf = 0;
+	maybe_reset_syscallbuf(t);
 }
 
 enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
