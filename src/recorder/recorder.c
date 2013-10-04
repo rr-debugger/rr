@@ -41,46 +41,6 @@
  * the signal. */
 static int can_deliver_signals;
 
-static void rec_init_scratch_memory(struct task *t)
-{
-	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
-	/* initialize the scratchpad for blocking system calls */
-	struct current_state_buffer state;
-
-	prepare_remote_syscalls(t, &state);
-	t->scratch_ptr = (void*)remote_syscall6(
-		t, &state, SYS_mmap2,
-		0, scratch_size,
-		PROT_READ | PROT_WRITE | PROT_EXEC, /* EXEC, really? */
-		MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	t->scratch_size = scratch_size;
-	finish_remote_syscalls(t, &state);
-
-	// record this mmap for the replay
-	struct user_regs_struct orig_regs;
-	read_child_registers(t->tid,&orig_regs);
-	int eax = orig_regs.eax;
-	orig_regs.eax = (uintptr_t)t->scratch_ptr;
-	write_child_registers(t->tid,&orig_regs);
-	struct mmapped_file file = {0};
-	file.time = get_global_time();
-	file.tid = t->tid;
-	file.start = t->scratch_ptr;
-	file.end = t->scratch_ptr + scratch_size;
-	sprintf(file.filename,"scratch for thread %d",t->tid);
-	record_mmapped_file_stats(&file);
-
-	int event = t->event;
-	t->event = USR_INIT_SCRATCH_MEM;
-	push_pseudosig(t, EUSR_INIT_SCRATCH_MEM, HAS_EXEC_INFO);
-	record_event(t);
-	pop_pseudosig(t);
-	t->event = event;
-
-	orig_regs.eax = eax;
-	write_child_registers(t->tid,&orig_regs);
-}
-
 static void status_changed(struct task* t)
 {
 	read_child_registers(t->tid, &t->regs);
@@ -194,7 +154,6 @@ static void handle_ptrace_event(struct task** tp)
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 
-		rec_init_scratch_memory(t);
 		t->sighandlers = sighandlers_copy(old_table);
 		sighandlers_reset_user_handlers(t->sighandlers);
 		sighandlers_unref(&old_table);
@@ -765,10 +724,6 @@ void record()
 		t = rec_sched_get_active_thread(t, &by_waitpid);
 
 		debug("Active task is %d", t->tid);
-
-		if (t->scratch_ptr == NULL) {
-			rec_init_scratch_memory(t);
-		}
 
 		ptrace_event = GET_PTRACE_EVENT(t->status);
 		assert_exec(t, (!by_waitpid || task_may_be_blocked(t) ||

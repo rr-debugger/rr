@@ -30,6 +30,7 @@
 #include <sys/vfs.h>
 
 #include "handle_ioctl.h"
+#include "rec_sched.h"
 
 #include "../share/dbg.h"
 #include "../share/ipc.h"
@@ -568,6 +569,45 @@ void rec_prepare_restart_syscall(struct task* t)
 	}
 }
 
+static void init_scratch_memory(struct task *t)
+{
+	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
+	/* initialize the scratchpad for blocking system calls */
+	struct current_state_buffer state;
+
+	prepare_remote_syscalls(t, &state);
+	t->scratch_ptr = (void*)remote_syscall6(
+		t, &state, SYS_mmap2,
+		0, scratch_size,
+		/* The PROT_EXEC looks scary, and it is, but it's to
+		 * prevent this region from being coalesced with
+		 * another anonymous segment mapped just after this
+		 * one.  If we named this segment, we could remove
+		 * this hack. */
+		PROT_READ | PROT_WRITE | PROT_EXEC,
+		MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	t->scratch_size = scratch_size;
+	finish_remote_syscalls(t, &state);
+
+	// record this mmap for the replay
+	struct user_regs_struct orig_regs;
+	read_child_registers(t->tid,&orig_regs);
+	int eax = orig_regs.eax;
+	orig_regs.eax = (uintptr_t)t->scratch_ptr;
+	write_child_registers(t->tid,&orig_regs);
+
+	struct mmapped_file file = {0};
+	file.time = get_global_time();
+	file.tid = t->tid;
+	file.start = t->scratch_ptr;
+	file.end = t->scratch_ptr + scratch_size;
+	sprintf(file.filename,"scratch for thread %d",t->tid);
+	record_mmapped_file_stats(&file);
+
+	orig_regs.eax = eax;
+	write_child_registers(t->tid,&orig_regs);
+}
+
 /**
  * Read the scratch data written by the kernel in the syscall and
  * return an opaque handle to it.  The outparam |iter| can be used to
@@ -996,6 +1036,8 @@ void rec_process_syscall(struct task *t)
 	 */
 	case SYS_clone:
 	{
+		struct task* new_task;
+
 		if (regs.eax < 0)
 			break;
 		/* record child id here */
@@ -1014,6 +1056,9 @@ void rec_process_syscall(struct task *t)
 				      sizeof(pid_t), (void*)new_regs.edx);
 		record_child_data_tid(new_tid, syscall,
 				      sizeof(pid_t), (void*)new_regs.esi);
+
+		new_task = rec_sched_lookup_thread(new_tid);
+		init_scratch_memory(new_task);
 
 		break;
 	}
@@ -2517,6 +2562,8 @@ void rec_process_syscall(struct task *t)
 		/* AT_RANDOM */
 		unsigned long* rand_addr = read_child_data(t, sizeof(unsigned long*), (stack_ptr + 1));
 		record_child_data(t, 16, (void*)*rand_addr);
+
+		init_scratch_memory(t);
 
 		sys_free((void**) &rand_addr);
 		sys_free((void**) &tmp);

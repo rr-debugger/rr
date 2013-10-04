@@ -70,7 +70,7 @@ static struct syscall_def syscall_table[] = {
 #undef SYSCALL_DEF
 #undef SYSCALL_NUM
 
-bool validate = FALSE;
+extern bool validate;
 
 /**
  * Compares the register file as it appeared in the recording phase
@@ -247,6 +247,34 @@ static void exit_syscall_exec(struct task* t, int syscall,
 	validate_args(syscall, STATE_SYSCALL_EXIT, t);
 }
 
+static void init_scratch_memory(struct task* t)
+{
+	/* Initialize the scratchpad as the recorder did, but make it
+	 * PROT_NONE. The idea is just to reserve the address space so
+	 * the replayed process address map looks like the recorded
+	 * process, if it were to be probed by madvise or some other
+	 * means. But we make it PROT_NONE so that rogue reads/writes
+	 * to the scratch memory are caught. */
+	struct mmapped_file file;
+	struct current_state_buffer state;
+
+	read_next_mmapped_file_stats(&file);
+
+	prepare_remote_syscalls(t, &state);
+	void* map_addr = (void*)remote_syscall6(
+		t, &state, SYS_mmap2,
+		file.start, file.end - file.start,
+		PROT_NONE,
+		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+	finish_remote_syscalls(t, &state);
+
+	assert_exec(t, file.start == map_addr,
+		    "scratch mapped @%p during recording, but @%p in replay",
+		    file.start, map_addr);
+
+	add_scratch(file.start, file.end - file.start);
+}
+
 static void process_clone(struct task* t,
 			  struct trace_frame* trace, int state)
 {
@@ -279,13 +307,15 @@ static void process_clone(struct task* t,
 		/* wait for the signal that a new process is created */
 		__ptrace_cont(t);
 
+		int rec_tid = trace->recorded_regs.eax;
 		pid_t new_tid = sys_ptrace_getmsg(tid);
+		struct task* new_task;
 
 		/* wait until the new thread is ready */
 		int status;
 		sys_waitpid(new_tid, &status);
 
-		rep_sched_register_thread(new_tid, trace->recorded_regs.eax);
+		new_task = rep_sched_register_thread(new_tid, rec_tid);
 
 		/* FIXME: what if registers are non-null and contain
 		 * an invalid address? */
@@ -311,12 +341,15 @@ static void process_clone(struct task* t,
 			write_child_data_n(new_tid, size, (void*)rec_addr, data);
 			sys_free((void**) &data);
 		}
+
 		/* set the ebp register to the recorded value -- it
 		 * should not point to data on that is used
 		 * afterwards */
 		write_child_ebp(tid, trace->recorded_regs.ebp);
 		set_return_value(t);
 		validate_args(syscall, state, t);
+
+		init_scratch_memory(new_task);
 	}
 
 }
@@ -422,9 +455,11 @@ void process_ipc(struct task* t, struct trace_frame* trace, int state)
 			/* TODO: remove this once this call is
 			 * emulated */
 			if (*map_addr > 0) {
-				/* to prevent direct memory access to
-				 * shared memory with non recorded
-				 * processes */
+				/* TODO: record access to shmem
+				 * segments that may be shared with
+				 * processes outside the rr tracee
+				 * tree. */
+				log_warn("Attached SysV shmem region (%p) that may be shared with outside processes.  Marking PROT_NONE so that SIGSEGV will be raised if the segment is accessed.", (void*)*map_addr);
 				mprotect_child_region(t,
 						      (void*)*map_addr,
 						      PROT_NONE);
@@ -1060,6 +1095,8 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 					sys_free((void**) &data);
 				}
 			}
+
+			init_scratch_memory(t);
 
 			set_return_value(t);
 			validate_args(syscall, state, t);

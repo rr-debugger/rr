@@ -624,18 +624,20 @@ void emulate_child_inst(struct task * t, int eip_offset)
 	x86_cleanup();
 }
 
-void mprotect_child_region(struct task * t, void * addr, int prot) {
-	struct user_regs_struct mprotect_call;
-	read_child_registers(t->tid,&mprotect_call);
-	addr = (void*)((int)addr & PAGE_MASK); // align the address
-	size_t length = get_mmaped_region_end(t,addr) - addr;
-	mprotect_call.eax = SYS_mprotect;
-	mprotect_call.ebx = (uintptr_t)addr;
-	mprotect_call.ecx = length;
-	mprotect_call.edx = prot;
-	int retval = inject_and_execute_syscall(t,&mprotect_call);
-	(void)retval;
-	assert(retval == 0);
+void mprotect_child_region(struct task* t, void* addr, int prot)
+{
+	struct current_state_buffer state;
+	size_t length;
+	long ret;
+
+	/* Page-align the address. */
+	addr = (void*)((int)addr & PAGE_MASK);
+	length = get_mmaped_region_end(t, addr) - addr;
+
+	prepare_remote_syscalls(t, &state);
+	ret = remote_syscall3(t, &state, SYS_mprotect, addr, length, prot);
+	assert(ret == 0);
+	finish_remote_syscalls(t, &state);
 }
 
 void print_inst(struct task* t)
@@ -1094,7 +1096,6 @@ static int checksum_iterator(void* it_data, struct task* t,
 		fprintf(c->checksums_file,"(%x) %s",
 			checksum, data->raw_map_line);
 	} else {
-		long saved_offset = ftell(c->checksums_file);
 		char line[1024];
 		unsigned rec_checksum;
 		void* rec_start_addr;
@@ -1106,19 +1107,10 @@ static int checksum_iterator(void* it_data, struct task* t,
 				 &rec_start_addr, &rec_end_addr);
 		assert_exec(t, 3 == nparsed, "Only parsed %d items", nparsed);
 
-		if (rec_start_addr < data->info.start_addr) {
-			/* It's been observed that at a particular
-			 * event, the data segment of the [vdso] is
-			 * mapped and checksummed during recording,
-			 * but not mapped during replay.  This is not
-			 * at all understood at the moment. */
-			//log_warn("Skipping verification of recorded segment because it doesn't seem to be mapped in replay.");
-			fseek(c->checksums_file, saved_offset, SEEK_SET);
-			return CONTINUE_ITERATING;
-		}
 		assert_exec(t, (rec_start_addr == data->info.start_addr
 				&& rec_end_addr == data->info.end_addr),
-			    "Segment changed to %p-%p??",
+			    "Segment %p-%p changed to %p-%p??",
+			    rec_start_addr, rec_end_addr,
 			    data->info.start_addr, data->info.end_addr);
 
 		if (is_start_of_scratch_region(rec_start_addr)) {
@@ -1287,27 +1279,6 @@ struct current_state_buffer* init_code_injection(pid_t pid, void* start_addr, in
 	return buf;
 }
 
-void inject_code(struct current_state_buffer* buf, char* code)
-{
-	int i;
-	long data;
-
-	char tmp_code[buf->code_size]; //inject_patraceme(current_tid);
-	//ptrace(PTRACE_SETOPTIONS, current_tid, 0, PTRACE_O_TRACEEXIT | PTRACE_O_TRACECLONE | PTRACE_O_TRACESYSGOOD);
-
-	memset(tmp_code, 0, buf->code_size);
-	unsigned long original_start = buf->regs.eip;
-	//assure alignment
-	int offset = original_start & 0x3;
-	memcpy(tmp_code + offset, code, 4);
-
-	for (i = 0; i < buf->code_size / 4; i++) {
-		memcpy(&data, tmp_code + i * 4, sizeof(long));
-		write_child_code(buf->pid, buf->start_addr + i, data);
-	}
-
-}
-
 void restore_original_state(struct current_state_buffer* buf)
 {
 	//restoring the original state involves two steps:
@@ -1325,48 +1296,6 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 {
 	sys_free((void**) &buf->code_buffer);
 	sys_free((void**) &buf);
-}
-
-// returns the eax
-int inject_and_execute_syscall(struct task * t, struct user_regs_struct * call_regs) {
-	pid_t tid = t->tid;
-	struct user_regs_struct orig_regs;
-	read_child_registers(tid, &orig_regs);
-	void *code = read_child_data(t, 4, (void*)orig_regs.eip);
-
-	// set up the system call
-	write_child_registers(tid, call_regs);
-
-	// inject code that executes the additional system call
-	char syscall[] = { 0xcd, 0x80 };
-	write_child_data(t, 2, (void*)call_regs->eip, syscall);
-
-	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &t->status);
-
-	if (GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP
-	    /* XXX this is a special case for ubuntu 12.04.  revisit
-	     * this check if an event is added with number 8 (just
-	     * after SECCOMP */
-	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
-		sys_ptrace_syscall(tid);
-		sys_waitpid(tid, &t->status);
-	}
-
-	assert(GET_PTRACE_EVENT(t->status) == 0);
-
-	sys_ptrace_syscall(tid);
-	sys_waitpid(tid, &t->status);
-
-	// save the result
-	int result = read_child_eax(tid);
-
-	// reset to the original state
-	write_child_registers(tid, &orig_regs);
-	write_child_data(t, 2, (void*)call_regs->eip, code);
-	sys_free(&code);
-
-	return result;
 }
 
 void add_scratch(void *ptr, int size) {
@@ -1696,24 +1625,35 @@ long remote_syscall(struct task* t, struct current_state_buffer* state,
 		sys_ptrace_syscall(tid);
 		sys_waitpid(tid, &t->status);
 	}
-
 	assert(GET_PTRACE_EVENT(t->status) == 0);
+
+	read_child_registers(t->tid, &callregs);
+	assert_exec(t, callregs.orig_eax == syscallno,
+		    "Should be entering %s, but instead at %s",
+		    syscallname(syscallno), syscallname(callregs.orig_eax));
 
 	/* Start running the syscall. */
 	sys_ptrace_syscall(tid);
 	if (WAIT == wait) {
-		return wait_remote_syscall(t, state);
+		return wait_remote_syscall(t, state, syscallno);
 	}
 	return 0;
 }
 
-long wait_remote_syscall(struct task* t,
-			 struct current_state_buffer* state)
+long wait_remote_syscall(struct task* t, struct current_state_buffer* state,
+			 int syscallno)
 {
 	pid_t tid = t->tid;
+	struct user_regs_struct regs;
 	/* Wait for syscall-exit trap. */
 	sys_waitpid(tid, &t->status);
-	return read_child_eax(tid);
+
+	read_child_registers(t->tid, &regs);
+	assert_exec(t, regs.orig_eax == syscallno,
+		    "Should be entering %s, but instead at %s",
+		    syscallname(syscallno), syscallname(regs.orig_eax));
+
+	return regs.eax;
 }
 
 void finish_remote_syscalls(struct task* t,
@@ -1890,7 +1830,7 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	 * XXX could be really anal and check credentials of
 	 * connecting endpoint ... */
 	sock = accept(listen_sock, NULL, NULL);
-	if ((child_ret = wait_remote_syscall(t, &state))) {
+	if ((child_ret = wait_remote_syscall(t, &state, SYS_socketcall))) {
 		errno = -child_ret;
 		fatal("Failed to connect() in tracee");
 	}
@@ -1913,7 +1853,7 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 
 		/* Read the shared fd and finish the child's syscall. */
 		t->desched_fd = recv_fd(sock, &t->desched_fd_child);
-		if (0 >= wait_remote_syscall(t, &state)) {
+		if (0 >= wait_remote_syscall(t, &state, SYS_socketcall)) {
 			errno = -child_ret;
 			fatal("Failed to sendmsg() in tracee");
 		}

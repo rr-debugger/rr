@@ -74,7 +74,7 @@ static const byte int_3_insn = 0xCC;
 /* Nonzero after the first exec() has been observed during replay.
  * After this point, the first recorded binary image has been exec()d
  * over the initial rr image. */
-static bool validate = FALSE;
+bool validate = FALSE;
 
 RB_PROTOTYPE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
 
@@ -93,37 +93,6 @@ static void debug_memory(struct task* t)
 		 * recording phase. */
 		validate_process_memory(t);
 	}
-}
-
-static void replay_init_scratch_memory(struct task* t,
-				       struct mmapped_file *file)
-{
-    /* initialize the scratchpad as the recorder did, but
-     * make it PROT_NONE. The idea is just to reserve the
-     * address space so the replayed process address map
-     * looks like the recorded process, if it were to be
-     * probed by madvise or some other means. But we make
-     * it PROT_NONE so that rogue reads/writes to the
-     * scratch memory are caught.
-     */
-
-    /* set up the mmap system call */
-    struct user_regs_struct orig_regs;
-    read_child_registers(t->tid, &orig_regs);
-
-    struct user_regs_struct mmap_call = orig_regs;
-
-    mmap_call.eax = SYS_mmap2;
-    mmap_call.ebx = (uintptr_t)file->start;
-    mmap_call.ecx = file->end - file->start;
-    mmap_call.edx = PROT_NONE;
-    mmap_call.esi = MAP_PRIVATE | MAP_ANONYMOUS;
-    mmap_call.edi = -1;
-    mmap_call.ebp = 0;
-
-    inject_and_execute_syscall(t,&mmap_call);
-
-    write_child_registers(t->tid,&orig_regs);
 }
 
 /**
@@ -1406,17 +1375,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	memset(&step, 0, sizeof(step));
 
 	switch (event) {
-	case USR_INIT_SCRATCH_MEM: {
-		/* for checksumming: make a note that this area is
-		 * scratch and need not be validated. */
-		struct mmapped_file file;
-		read_next_mmapped_file_stats(&file);
-		replay_init_scratch_memory(t, &file);
-		add_scratch((void*)t->trace.recorded_regs.eax,
-			    file.end - file.start);
-		step.action = TSTEP_RETIRE;
-		break;
-	}
 	case USR_UNSTABLE_EXIT:
 		t->unstable = 1;
 		/* fall through */
@@ -1487,9 +1445,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 			stop_sig = step.target.signo;
 		} else {
 			assert(event > 0);
-			/* XXX not so pretty ... */
-			validate |= (t->trace.state == STATE_SYSCALL_EXIT
-				     && event == SYS_execve);
 			rep_process_syscall(t, &step);
 		}
 	}
