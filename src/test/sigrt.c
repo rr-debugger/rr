@@ -2,6 +2,10 @@
 
 #include "rrutil.h"
 
+static void breakpoint() {
+	int break_here = 1;
+	(void)break_here;
+}
 
 static int num_signals_caught;
 
@@ -15,6 +19,7 @@ int main(int argc, char *argv[]) {
 	int i;
 
 	for (i = SIGRTMIN; i <= SIGRTMAX; ++i) {
+		breakpoint();
 		signal(i, handle_sigrt);
 		raise(i);
 	}

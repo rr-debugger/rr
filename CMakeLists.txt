@@ -154,6 +154,7 @@ set(CUSTOM_TESTS
   sanity
   signal_stop
   step1
+  step_signal
   syscallbuf_timeslice_250
 )
 
