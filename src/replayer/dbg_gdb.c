@@ -517,6 +517,14 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			dbg->req.type = DREQ_CONTINUE;
 			dbg->req.target = dbg->resume_thread;
 			return 1;
+		case 'S':
+			log_warn("Ignoring request to deliver signal (%s)",
+				 args);
+			args = strchr(args, ':');
+			if (args) {
+				++args;
+			}
+			/* fall through */
 		case 's':
 			dbg->req.type = DREQ_STEP;
 			if (args) {

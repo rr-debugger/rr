@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh dead_thread_target "$@"
+record sigrt
+debug sigrt step_signal
