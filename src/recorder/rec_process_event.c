@@ -603,6 +603,7 @@ static void init_scratch_memory(struct task *t)
 	file.end = t->scratch_ptr + scratch_size;
 	sprintf(file.filename,"scratch for thread %d",t->tid);
 	record_mmapped_file_stats(&file);
+	add_scratch(file.start, file.end - file.start);
 
 	orig_regs.eax = eax;
 	write_child_registers(t->tid,&orig_regs);

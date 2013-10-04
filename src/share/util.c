@@ -1034,6 +1034,13 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 	void* start_addr = data->info.start_addr;
 	int i;
 
+	if (is_start_of_scratch_region(start_addr)) {
+		/* Scratch regions will diverge between
+		 * recording/replay, so including them in memory dumps
+		 * makes comparing record/replay dumps very noisy. */
+		return CONTINUE_ITERATING;
+	}
+
 	fprintf(dump_file,"%s\n", data->raw_map_line);
 	for (i = 0 ; i < data->mem_len / sizeof(*buf); i += 1) {
 		unsigned word = buf[i];
@@ -1065,6 +1072,47 @@ void dump_process_memory(struct task* t, const char* tag)
 	iterate_memory_map(t, dump_process_memory_iterator, dump_file,
 			   kAlwaysReadSegment, NULL);
 	fclose(dump_file);
+}
+
+static void notify_checksum_error(struct task* t,
+				  unsigned checksum, unsigned rec_checksum,
+				  const struct map_iterator_data* data)
+{
+	int event = t->trace.stop_reason;
+	char cur_dump[PATH_MAX];
+	char rec_dump[PATH_MAX];
+
+	dump_process_memory(t, "checksum_error");
+
+	/* TODO: if the right recorder memory dump is present,
+	 * automatically compare them, taking the oddball
+	 * not-mapped-during-replay region(s) into account.  And if
+	 * not present, tell the user how to make one in a future
+	 * run. */
+	format_dump_filename(t, "checksum_error", cur_dump, sizeof(cur_dump));
+	format_dump_filename(t, "rec", rec_dump, sizeof(rec_dump));
+
+	assert_exec(t, checksum == rec_checksum,
+"Divergence in contents of memory segment after '%s':\n"
+"\n"
+"%s"
+"    (recorded checksum:0x%x; replaying checksum:0x%x)\n"
+"\n"
+"Dumped current memory contents to %s. If you've created a memory dump for\n"
+"the '%s' event (line %d) during recording by using, for example with\n"
+"the args\n"
+"\n"
+"$ rr --dump-at=%d record ...\n"
+"\n"
+"then you can use the following to determine which memory cells differ:\n"
+"\n"
+"$ diff -u %s %s > mem-diverge.diff\n"
+		    , strevent(event),
+		    data->raw_map_line,
+		    rec_checksum, checksum,
+		    cur_dump, strevent(event),  get_global_time(),
+		    get_global_time(),
+		    rec_dump, cur_dump);
 }
 
 /**
@@ -1123,47 +1171,8 @@ static int checksum_iterator(void* it_data, struct task* t,
 			      rec_start_addr);
 			return CONTINUE_ITERATING;
 		}
-
 	 	if (checksum != rec_checksum) {
-			char cur_dump[PATH_MAX];
-			char rec_dump[PATH_MAX];
-
-			dump_process_memory(t, "checksum_error");
-
-			/* TODO: if the right recorder memory dump is
-			 * present, automatically compare them, taking
-			 * the oddball not-mapped-during-replay
-			 * region(s) into account.  And if not
-			 * present, tell the user how to make one in a
-			 * future run. */
-			format_dump_filename(t, "checksum_error",
-					     cur_dump, sizeof(cur_dump));
-			format_dump_filename(t, "rec",
-					     rec_dump, sizeof(rec_dump));
-
-			assert_exec(t, checksum == rec_checksum,
-"Divergence in memory contents after '%s':\n"
-"\n"
-"%s"
-"    (recorded checksum:0x%x; replaying checksum:0x%x)\n"
-"\n"
-"Dumped current memory contents to %s. If you've created a memory dump for\n"
-"the '%s' event (line %d) during recording by using, for example with\n"
-"the args\n"
-"\n"
-"$ rr --dump-at=%d record ...\n"
-"\n"
-"then you can use the following to determine which memory cells differ:\n"
-"\n"
-"$ diff -u %s %s > mem-diverge.diff\n"
-				    , strevent(t->trace.stop_reason),
-				    data->raw_map_line,
-				    rec_checksum, checksum,
-				    cur_dump,
-				    strevent(t->trace.stop_reason),
-				    get_global_time(),
-				    get_global_time(),
-				    rec_dump, cur_dump);
+			notify_checksum_error(t, checksum, rec_checksum, data);
 		}
 	}
 	return CONTINUE_ITERATING;
@@ -1878,9 +1887,10 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	child_shmem_fd = *(int*)tmp;
 	sys_free(&tmp);
 
-	/* Write zero over the shared fd number, which since it's a
-	 * "real" fd, may not be the same across record/replay owing
-	 * to emulated fds. */
+	/* Zero out the child buffers we use here.  They contain
+	 * "real" fds, which in general will not be the same across
+	 * record/replay. */
+	write_socketcall_args(t, child_args_vec, 0, 0, 0);
 	write_child_data(t, sizeof(zero), child_fdptr, &zero);
 
 	/* Socket magic is now done. */
