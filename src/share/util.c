@@ -373,10 +373,28 @@ struct map_iterator_data {
 typedef int (*memory_map_iterator_t)(void* it_data, struct task* t,
 				     const struct map_iterator_data* data);
 
-enum { ITERATE_DEFAULT, ITERATE_READ_MEMORY };
+typedef int (*read_segment_filter_t)(void* filt_data, struct task* t,
+				     const struct mapped_segment_info* info);
+static const read_segment_filter_t kNeverReadSegment = (void*)0;
+static const read_segment_filter_t kAlwaysReadSegment = (void*)1;
+
+static int caller_wants_segment_read(struct task* t,
+				     const struct mapped_segment_info* info,
+				     read_segment_filter_t filt,
+				     void* filt_data)
+{
+	if (kNeverReadSegment == filt) {
+		return 0;
+	}
+	if (kAlwaysReadSegment == filt) {
+		return 1;
+	}
+	return filt(filt_data, t, info);
+}
+
 static void iterate_memory_map(struct task* t,
 			       memory_map_iterator_t it, void* it_data,
-			       int flags)
+			       read_segment_filter_t filt, void* filt_data)
 {
 	FILE* maps_file;
 	char line[PATH_MAX];
@@ -389,17 +407,16 @@ static void iterate_memory_map(struct task* t,
 	}
 	while (fgets(line, sizeof(line), maps_file)) {
 		struct map_iterator_data data;
+		char flags[32];
 		int nparsed;
 		int next_action;
 
 		memset(&data, 0, sizeof(data));
-		data.size_bytes = -1;
 		data.raw_map_line = line;
 
 		nparsed = sscanf(line, "%p-%p %31s %Lx %x:%x %Lu %s",
 				 &data.info.start_addr, &data.info.end_addr,
-				 data.info.flags,
-				 &data.info.file_offset,
+				 flags, &data.info.file_offset,
 				 &data.info.dev_major, &data.info.dev_minor,
 				 &data.info.inode, data.info.name);
 		trim_leading_blanks(data.info.name);
@@ -411,9 +428,15 @@ static void iterate_memory_map(struct task* t,
 			    "%s",
 			    nparsed, data.raw_map_line);
 
+		data.info.prot |= strchr(flags, 'r') ? PROT_READ : 0;
+		data.info.prot |= strchr(flags, 'w') ? PROT_WRITE : 0;
+		data.info.prot |= strchr(flags, 'x') ? PROT_EXEC : 0;
+		data.info.flags |= strchr(flags, 'p') ? MAP_PRIVATE : 0;
+		data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
 		data.size_bytes = ((intptr_t)data.info.end_addr -
 				   (intptr_t)data.info.start_addr);
-		if (ITERATE_READ_MEMORY & flags) {
+		if (caller_wants_segment_read(t, &data.info,
+					      filt, filt_data)) {
 			data.mem =
 				read_child_data_checked(t, data.size_bytes,
 							data.info.start_addr,
@@ -442,7 +465,7 @@ static int print_process_mmap_iterator(void* unused, struct task* t,
 void print_process_mmap(struct task* t)
 {
 	return iterate_memory_map(t, print_process_mmap_iterator, NULL,
-				  ITERATE_DEFAULT);
+				  kNeverReadSegment, NULL);
 }
 
 /**
@@ -470,7 +493,8 @@ int find_segment_containing(struct task* t, void* search_addr,
 {
 	memset(info, 0, sizeof(*info));
 	info->start_addr = search_addr;
-	iterate_memory_map(t, find_segment_iterator, info, ITERATE_DEFAULT);
+	iterate_memory_map(t, find_segment_iterator, info,
+			   kNeverReadSegment, NULL);
 	return addr_in_segment(search_addr, info);
 }
 
@@ -1037,7 +1061,7 @@ void dump_process_memory(struct task* t, const char* tag)
 	flush_trace_files();
 
 	iterate_memory_map(t, dump_process_memory_iterator, dump_file,
-			   ITERATE_READ_MEMORY);
+			   kAlwaysReadSegment, NULL);
 	fclose(dump_file);
 }
 
@@ -1058,6 +1082,10 @@ static int checksum_iterator(void* it_data, struct task* t,
 	unsigned checksum = 0;
 	int i;
 
+	/* If this segment was filtered, then data->mem_len will be 0
+	 * to indicate nothing was read.  And data->mem will be NULL
+	 * to double-check that.  In that case, the checksum will just
+	 * be 0. */
 	for (i = 0; i < data->mem_len / sizeof(*buf); ++i) {
 		checksum += buf[i];
 	}
@@ -1149,6 +1177,31 @@ static int checksum_iterator(void* it_data, struct task* t,
 	return CONTINUE_ITERATING;
 }
 
+static int checksum_segment_filter(void* filt_data, struct task* t,
+				   const struct mapped_segment_info* info)
+{
+	struct stat st;
+	int may_diverge;
+
+	if (stat(info->name, &st)) {
+		/* If there's no persistent resource backing this
+		 * mapping, we should expect it to change. */
+		debug("CHECKSUMMING unlinked '%s'", info->name);
+		return 1;
+	}
+	/* If we're pretty sure the backing resource is effectively
+	 * immutable, skip checksumming, it's a waste of time.  Except
+	 * if the mapping is mutable, for example the rw data segment
+	 * of a system library, then it's interesting. */
+	may_diverge = (should_copy_mmap_region(info->name, &st,
+					       info->prot, info->flags,
+					       DONT_WARN_SHARED_WRITEABLE)
+		       || (PROT_WRITE & info->prot));
+	debug("%s '%s'",
+	      may_diverge ? "CHECKSUMMING" : "  skipping", info->name);
+	return may_diverge;
+}
+
 /**
  * Either create and store checksums for each segment mapped in |t|'s
  * address space, or validate an existing computed checksum.  Behavior
@@ -1165,7 +1218,8 @@ static void iterate_checksums(struct task* t, int mode)
 		 get_trace_path(), get_global_time(), t->rec_tid);
 	c.checksums_file = fopen(filename, fmode);
 
-	iterate_memory_map(t, checksum_iterator, &c, ITERATE_READ_MEMORY);
+	iterate_memory_map(t, checksum_iterator, &c,
+			   checksum_segment_filter, NULL);
 
 	fclose(c.checksums_file);
 }
@@ -1468,7 +1522,8 @@ done:
 }
 
 int should_copy_mmap_region(const char* filename, struct stat* stat,
-			    int prot, int flags)
+			    int prot, int flags,
+			    int warn_shared_writeable)
 {
 	int private_mapping = (flags & MAP_PRIVATE);
 	int can_write_file;
@@ -1546,6 +1601,9 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 	 * mapping is likely to change. */
 	debug("  copying writeable SHARED mapping %s", filename);
 	if (PROT_WRITE | prot) {
+#ifndef DEBUGTAG
+		if (warn_shared_writeable)
+#endif
 		log_warn("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written by programs outside the rr tracee tree.",
 			 filename);
 	}

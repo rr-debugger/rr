@@ -532,12 +532,12 @@ static int go_to_a_happy_place(struct task* t,
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
 			if (HPC_TIME_SLICE_SIGNAL == tmp_si.si_signo) {
-				log_info("Ignoring SIG_TIMESLICE");
+				debug("  ignoring SIG_TIMESLICE");
 				continue;
 			}
 			if (HPC_TIME_SLICE_SIGNAL == si->si_signo) {
 				memcpy(si, &tmp_si, sizeof(*si));
-				log_info("Upgraded delivery of SIG_TIMESLICE to %s",
+				debug("  upgraded delivery of SIG_TIMESLICE to %s",
 					 signalname(si->si_signo));
 				handle_siginfo_regs(t, si, regs);
 				return -1;
