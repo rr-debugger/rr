@@ -569,7 +569,8 @@ static void* finish_direct_mmap(struct task* t,
 		log_warn("Metadata of %s changed: replay divergence likely, but continuing anyway ...",
 			 file->filename);
 	}
-	if (should_copy_mmap_region(file->filename, &metadata, prot, flags)) {
+	if (should_copy_mmap_region(file->filename, &metadata, prot, flags,
+				    WARN_DEFAULT)) {
 		log_warn("%s wasn't copied during recording, but now it should be?",
 			 file->filename);
 	}

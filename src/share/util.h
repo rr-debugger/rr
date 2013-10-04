@@ -50,10 +50,11 @@ struct mapped_segment_info {
 	/* Name of the segment, which isn't necessarily an fs entry
 	 * anywhere. */
 	char name[PATH_MAX];	/* technically PATH_MAX + "deleted",
-				 * but let's not go * there. */
+				 * but let's not go there. */
 	void* start_addr;
 	void* end_addr;
-	char flags[32];
+	int prot;
+	int flags;
 	int64_t file_offset;
 	int64_t inode;
 	/* You should probably not be using these. */
@@ -265,8 +266,10 @@ int is_syscall_restart(struct task* t, int syscallno,
  * get away/ with not copying the region.  That doesn't mean it's
  * necessarily safe to skip copying!
  */
+enum { DONT_WARN_SHARED_WRITEABLE = 0, WARN_DEFAULT };
 int should_copy_mmap_region(const char* filename, struct stat* stat,
-			    int prot, int flags);
+			    int prot, int flags,
+			    int warn_shared_writeable);
 
 /* XXX should this go in ipc.h? */
 

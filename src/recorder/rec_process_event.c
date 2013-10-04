@@ -2606,7 +2606,8 @@ void rec_process_syscall(struct task *t)
 
 		file.copied = should_copy_mmap_region(file.filename,
 						      &file.stat,
-						      prot, flags);
+						      prot, flags,
+						      WARN_DEFAULT);
 		if (file.copied) {
 			record_child_data(t, size, addr);
 		}
