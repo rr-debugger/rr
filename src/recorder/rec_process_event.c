@@ -304,8 +304,35 @@ int rec_prepare_syscall(struct task* t)
 	}
 
 	switch (syscallno) {
-	case SYS_splice:
+	case SYS_splice: {
+		loff_t* off_in = (void*)regs.ecx;
+		loff_t* off_out = (void*)regs.esi;
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+
+		push_arg_ptr(t, off_in);
+		if (off_in) {
+			loff_t* off_in2 = scratch;
+			scratch += sizeof(*off_in2);
+			memcpy_child(t, off_in2, off_in, sizeof(*off_in2));
+       			regs.ecx = (uintptr_t)off_in2;
+		}
+		push_arg_ptr(t, off_out);
+		if (off_out) {
+			loff_t* off_out2 = scratch;
+			scratch += sizeof(*off_out2);
+			memcpy_child(t, off_out2, off_out, sizeof(*off_out2));
+       			regs.esi = (uintptr_t)off_out2;
+		}
+		if (!can_use_scratch(t, scratch)) {
+			return abort_scratch(t, syscallname(syscallno));
+		}
+
+		write_child_registers(t->tid, &regs);
 		return 1;
+	}
 
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
@@ -1354,8 +1381,7 @@ void rec_process_syscall(struct task *t)
 			break;
 
 		default:
-			log_err("Unknown futex op %d", op);
-			sys_exit();
+			fatal("Unknown futex op %d", op);
 		}
 
 		break;
@@ -1622,8 +1648,7 @@ void rec_process_syscall(struct task *t)
 			}
 			default:
 			{
-				log_err("Unknown semctl command %d",cmd);
-				sys_exit();
+				fatal("Unknown semctl command %d",cmd);
 				break;
 			}
 			}
@@ -1639,8 +1664,7 @@ void rec_process_syscall(struct task *t)
 		}
 
 		default:
-		log_err("Unknown call in IPC: %d -- bailing out", call);
-		sys_exit();
+			fatal("Unknown IPC call %d", call);
 		}
 
 		break;
@@ -2869,7 +2893,31 @@ void rec_process_syscall(struct task *t)
 	 * programs that splice with stdin/stdout/stderr and have
 	 * output redirected during replay.  But, *crickets*.
 	 */
-	SYS_REC0(splice)
+	case SYS_splice: {
+		loff_t* off_out = pop_arg_ptr(t);
+		loff_t* off_in = pop_arg_ptr(t);
+		void* iter;
+		void* data = start_restoring_scratch(t, &iter);
+
+		if (off_in) {
+			restore_and_record_arg_buf(t, sizeof(*off_in),
+						   off_in, &iter);
+			regs.ecx = (uintptr_t)off_in;
+		} else {
+			record_noop_data(t);
+		}
+		if (off_out) {
+			restore_and_record_arg_buf(t, sizeof(*off_out),
+						   off_out, &iter);
+			regs.esi = (uintptr_t)off_out;
+		} else {
+			record_noop_data(t);
+		}
+
+		write_child_registers(tid, &regs);
+		finish_restoring_scratch(t, iter, &data);
+		break;
+	}
 
 	/**
 	 * mode_t umask(mode_t mask);

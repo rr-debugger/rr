@@ -1186,11 +1186,15 @@ SYSCALL_DEF(IRREGULAR, socketcall, -1)
  * descriptor fd_out, where one of the descriptors must refer to a
  * pipe.
  *
+ * NB: the documentation doesn't mention it explicitly, but the |off|
+ * params are actually inout params, and are updated with the new file
+ * offset on return.
+ *
  * NOTE: Technically, the following implementation is unsound for
  * programs that splice with stdin/stdout/stderr and have output
  * redirected during replay.  But, *crickets*.
  */
-SYSCALL_DEF(EMU, splice, 0)
+SYSCALL_DEF(EMU, splice, 2)
 
 /**
  * int stat(const char *path, struct stat *buf);
