@@ -206,8 +206,6 @@ struct current_state_buffer {
 	long* start_addr;
 };
 
-void inject_code(struct current_state_buffer* buf, char* code);
-int inject_and_execute_syscall(struct task * t, struct user_regs_struct * call_regs);
 void mprotect_child_region(struct task * t, void * addr, int prot);
 
 /**
@@ -335,11 +333,11 @@ long remote_syscall(struct task* t, struct current_state_buffer* state,
 		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6);
 /**
- * Wait for the last |DONT_WAIT| syscall initiated by
+ * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
  * |remote_syscall()| to finish, returning the result.
  */
-long wait_remote_syscall(struct task* t,
-			 struct current_state_buffer* state);
+long wait_remote_syscall(struct task* t, struct current_state_buffer* state,
+			 int syscallno);
 /**
  * Undo in |t| any preparations that were made for a series of
  * remote syscalls.
@@ -349,8 +347,8 @@ void finish_remote_syscalls(struct task* t,
 
 #define remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)	\
 	remote_syscall(_c, _s, WAIT, _no,				\
-		       (uintptr_t)_a1, (uintptr_t)_a2, (uintptr_t)_a3,	\
-		       (uintptr_t)_a4, (uintptr_t)_a5, (uintptr_t)_a6)
+		       (uintptr_t)(_a1), (uintptr_t)(_a2), (uintptr_t)(_a3), \
+		       (uintptr_t)(_a4), (uintptr_t)(_a5), (uintptr_t)(_a6))
 #define remote_syscall5(_c, _s, _no, _a1, _a2, _a3, _a4, _a5)		\
 	remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, 0)
 #define remote_syscall4(_c, _s, _no, _a1, _a2, _a3, _a4)	\

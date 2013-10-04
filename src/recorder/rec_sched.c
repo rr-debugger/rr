@@ -172,6 +172,11 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 	return next_t;
 }
 
+struct task* rec_sched_lookup_thread(pid_t tid)
+{
+	return get_task(tid);
+}
+
 /**
  * Sends a SIGINT to all processes/threads.
  */

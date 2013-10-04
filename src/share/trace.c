@@ -86,7 +86,6 @@ static const char* decode_signal_event(int sig)
 		CASE(USR_EXIT);
 		CASE(USR_SCHED);
 		CASE(USR_NEW_RAWDATA_FILE);
-		CASE(USR_INIT_SCRATCH_MEM);
 		CASE(USR_SYSCALLBUF_FLUSH);
 		CASE(USR_SYSCALLBUF_ABORT_COMMIT);
 		CASE(USR_SYSCALLBUF_RESET);
@@ -150,7 +149,6 @@ static int encode_event(const struct event* ev, int* state)
 			TRANSLATE(USR_EXIT);
 			TRANSLATE(USR_SCHED);
 			TRANSLATE(USR_NEW_RAWDATA_FILE);
-			TRANSLATE(USR_INIT_SCRATCH_MEM);
 			TRANSLATE(USR_SYSCALLBUF_FLUSH);
 			TRANSLATE(USR_SYSCALLBUF_ABORT_COMMIT);
 			TRANSLATE(USR_SYSCALLBUF_RESET);
@@ -634,7 +632,7 @@ void record_child_data(struct task *t, size_t size, void* child_ptr)
 	(void)state;
 
 	/* We shouldn't be recording a scratch address */
-	assert(child_ptr != t->scratch_ptr);
+	assert(!child_ptr || child_ptr != t->scratch_ptr);
 
 	// before anything is performed, check if the seccomp record cache has any entries
 	maybe_flush_syscallbuf(t);

@@ -26,6 +26,11 @@ int rec_sched_get_num_threads();
 struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid);
 
 /**
+ * Return the task registered as |tid|, or NULL if not found.
+ */
+struct task* rec_sched_lookup_thread(pid_t tid);
+
+/**
  * Register the new OS task |child|, created by |parent|.  |parent|
  * may be 0 for the first registered task, but must be a registered
  * task for all subsequent calls.  |flags| is a bitset determining

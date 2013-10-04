@@ -27,11 +27,10 @@ enum {
 	USR_EXIT,
 	USR_SCHED = -1020,
 	USR_NEW_RAWDATA_FILE,
-	USR_INIT_SCRATCH_MEM,
 	USR_SYSCALLBUF_FLUSH,
 	USR_SYSCALLBUF_ABORT_COMMIT,
-	USR_SYSCALLBUF_RESET = -1015,
-	USR_ARM_DESCHED,
+	USR_SYSCALLBUF_RESET,
+	USR_ARM_DESCHED = -1015,
 	USR_DISARM_DESCHED,
 	/* Like USR_EXIT, but recorded when the task is in an
 	 * "unstable" state in which we're not sure we can
