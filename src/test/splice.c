@@ -26,18 +26,26 @@ int main() {
 	int pipefds[2];
 	int filefd;
 	loff_t off;
+	ssize_t nmoved;
 
 	filefd = open(token_file, O_RDWR | O_CREAT | O_TRUNC, 0600);
 	pipe2(pipefds, 0/*no flags*/);
 	write(pipefds[1], TOKEN, TOKEN_SIZE);
 
-	splice(pipefds[0], NULL, filefd, NULL, TOKEN_SIZE, 0/*no flags*/);
+	off = 0;
+	nmoved = splice(pipefds[0], NULL, filefd, &off, TOKEN_SIZE,
+			0/*no flags*/);
+	atomic_printf("spliced %d bytes from %d to %d; off changed from 0 to %"PRId64"\n",
+		      nmoved, pipefds[0], filefd, off);
 
 	lseek(filefd, 0, SEEK_SET);
 	verify_token(filefd);
 
 	off = 0;
-	splice(filefd, &off, pipefds[1], NULL, TOKEN_SIZE, 0/*no flags*/);
+	nmoved = splice(filefd, &off, pipefds[1], NULL, TOKEN_SIZE,
+			0/*no flags*/);
+	atomic_printf("spliced %d bytes from %d to %d; off changed from 0 to %"PRId64"\n",
+		      nmoved, filefd, pipefds[1], off);
 
 	verify_token(pipefds[0]);
 
