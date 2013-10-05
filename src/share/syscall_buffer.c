@@ -1051,6 +1051,7 @@ int fcntl(int fd, int cmd, ... /* arg */)
 	case F_SETLKW64:
 	case F_GETLK:
 	case F_SETLK:
+	case F_SETLKW:
 	{
 		va_list varg;
 		struct flock64* lock;
