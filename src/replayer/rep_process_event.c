@@ -940,6 +940,7 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 				break;
 			case F_SETLK:
 			case F_SETLK64:
+			case F_SETLKW:
 			case F_SETLKW64:
 			case F_GETLK:
 			case F_GETLK64:

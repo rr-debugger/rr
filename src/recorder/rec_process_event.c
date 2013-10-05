@@ -1266,6 +1266,7 @@ void rec_process_syscall(struct task *t)
 		case F_SETLKW64:
 		case F_GETLK:
 		case F_SETLK:
+		case F_SETLKW:
 			record_child_data(t, sizeof(struct flock64),
 					  (void*)regs.edx);
 			break;
