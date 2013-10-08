@@ -1142,13 +1142,14 @@ static int checksum_iterator(void* it_data, struct task* t,
 	if (data->info.name ==
 	    strstr(data->info.name, SYSCALLBUF_SHMEM_FILENAME_PREFIX)) {
 		/* The syscallbuf consists of a region that's written
-		 * determinsitically wrt the trace events, and a
-		 * region that's nondeterministic, like trace scratch
-		 * buffers.  The deterinistic region comprises
-		 * committed syscallbuf records, and possibly the one
-		 * pending record metadata.  The nondeterministic
-		 * region starts at the "extra data" for the possibly
-		 * one pending record.
+		 * deterministically wrt the trace events, and a
+		 * region that's written nondeterministically in the
+		 * same way as trace scratch buffers.  The
+		 * deterministic region comprises committed syscallbuf
+		 * records, and possibly the one pending record
+		 * metadata.  The nondeterministic region starts at
+		 * the "extra data" for the possibly one pending
+		 * record.
 		 *
 		 * So here, we set things up so that we only checksum
 		 * the deterministic region. */
