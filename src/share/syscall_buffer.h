@@ -18,9 +18,12 @@
  * normal applications don't use it either. */
 #define SYSCALLBUF_DESCHED_SIGNAL SIGSYS
 
-#define SYSCALLBUF_LIB_FILENAME "librr_syscall_buffer.so"
+#define SYSCALLBUF_LIB_FILENAME "librrpreload.so"
 /* This size counts the header along with record data. */
 #define SYSCALLBUF_BUFFER_SIZE (1 << 20)
+
+/* Set this env var to enable syscall buffering. */
+#define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
 /* "Magic" (rr-implemented) syscall that we use to initialize the
  * syscallbuf.

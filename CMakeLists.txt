@@ -22,7 +22,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32")
 string(REGEX REPLACE "-fPIC" ""
   CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
 
-add_library(rr_syscall_buffer
+add_library(rrpreload
   src/share/syscall_buffer.c
 )
 
@@ -54,7 +54,7 @@ target_link_libraries(rr
   libdisasm.a
 )
 
-install(TARGETS rr rr_syscall_buffer
+install(TARGETS rr rrpreload
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)

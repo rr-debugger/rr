@@ -20,6 +20,8 @@
 #include "replayer/replayer.h"
 #include "replayer/rep_sched.h"
 
+extern char** environ;
+
 static pid_t child;
 
 #define MAX_ARGC_LEN	64
@@ -146,8 +148,7 @@ static void start(int argc, char* argv[], char** envp)
 	if (rr_flags()->option == RECORD) {
 		copy_executable(argv[0]);
 		if (access(__executable, X_OK)) {
-			log_err("The specified file '%s' does not exist or is not executable\n", __executable);
-			sys_exit();
+			fatal("The specified file '%s' does not exist or is not executable\n", __executable);
 		}
 
 		copy_argv(argc, argv);
@@ -473,10 +474,7 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	return -1;
 }
 
-/**
- * This is where recorder and the replayer start
- */
-int main(int argc, char* argv[], char** envp)
+int main(int argc, char* argv[])
 {
 	int argi;		/* index of first positional argument */
 	int wait_secs;
@@ -504,16 +502,20 @@ int main(int argc, char* argv[], char** envp)
 		log_info("Scheduler using max_events=%d, max_rbc=%d",
 			 flags->max_events, flags->max_rbc);
 
-		if (!flags->use_syscall_buffer) {
-			log_info("Syscall buffer disabled by flag");
+		/* We always preload the syscallbuf library.  Whether
+		 * or not syscalls are actually buffered is controlled
+		 * by this env var. */
+		if (flags->use_syscall_buffer) {
+			setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
 		} else {
-			/* We rely on the distribution package or the
-			 * user to set up the LD_LIBRARY_PATH properly
-			 * so that we can LD_PRELOAD the bare library
-			 * name.  Trying to do otherwise is possible,
-			 * but annoying. */
-			flags->syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
+			log_info("Syscall buffer disabled by flag");
+			unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
 		}
+		/* We rely on the distribution package or the user to
+		 * set up the LD_LIBRARY_PATH properly so that we can
+		 * LD_PRELOAD the bare library name.  Trying to do
+		 * otherwise is possible, but annoying. */
+		flags->syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
 	}
 
 	/* allocate memory for the arguments that are passed to the
@@ -521,10 +523,10 @@ int main(int argc, char* argv[], char** envp)
 	 * done to ensure that the pointers that are passed to the client
 	 * are the same in the recorder/replayer.*/
 	alloc_argc(argc);
-	alloc_envp(envp);
+	alloc_envp(environ);
 	alloc_executable();
 
-	start(argc - argi , argv + argi, envp);
+	start(argc - argi , argv + argi, environ);
 
 	return 0;
 

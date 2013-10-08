@@ -68,10 +68,14 @@
 
 typedef unsigned char byte;
 
-/* Nonzero after we've installed the filter. */
-static int is_seccomp_bpf_installed;
+/* Nonzero when syscall buffering is enabled. */
+static int buffer_enabled;
 
-static __thread byte* buffer = NULL;
+/* When buffering is enabled, this points at the thread's mapped
+ * buffer segment.  At the start of the segment is an object of type
+ * |struct syscallbuf_hdr|, so |buffer| is also a pointer to the
+ * buffer header.*/
+static __thread byte* buffer;
 /* This is used to support the buffering of "may-block" system calls.
  * The problem that needs to be addressed can be introduced with a
  * simple example; assume that we're buffering the "read" and "write"
@@ -476,23 +480,29 @@ static void drop_buffer()
 }
 
 /**
- * Initialize the library:
- * 1. Install filter-by-callsite (once for all threads)
- * 2. Make subsequent threads call init()
- * 3. Open and mmap the recording cache, shared with rr (once for
- *    every thread)
- *
- * Remember: init() will only be called if the process uses at least
- * one of the library's intercepted functions.
+ * Initialize process-global buffering state, if enabled.
  */
-static void init()
+static pthread_once_t init_process_once = PTHREAD_ONCE_INIT;
+static void init_process()
 {
-	if (!is_seccomp_bpf_installed) {
+	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
+	if (buffer_enabled) {
 		install_syscall_filter();
-		is_seccomp_bpf_installed = 1;
 		pthread_atfork(NULL, NULL, drop_buffer);
+	} else {
+		log_info("Syscall buffering is disabled");
 	}
-	set_up_buffer();
+}
+
+/**
+ * Initialize thread-local buffering state, if enabled.
+ */
+static void ensure_thread_init()
+{
+	pthread_once(&init_process_once, init_process);
+	if (buffer_enabled && !buffer) {
+		set_up_buffer();
+	}
 }
 
 /**
@@ -575,8 +585,9 @@ static void init()
  */
 static void* prep_syscall()
 {
-	if (!buffer) {
-		init();
+	ensure_thread_init();
+	if (!buffer_enabled) {
+		return NULL;
 	}
 	if (buffer_hdr()->locked) {
 		/* We may be reentering via a signal handler. Return
@@ -630,10 +641,17 @@ enum { MAY_BLOCK = -1, WONT_BLOCK = -2 };
 static int start_commit_buffered_syscall(int syscallno, void* record_end,
 					 int blockness)
 {
-	void* record_start = buffer_last();
-	void* stored_end =
+	void* record_start;
+	void* stored_end;
+	struct syscallbuf_record* rec;
+
+	if (!buffer_enabled) {
+		return 0;
+	}
+	record_start = buffer_last();
+	stored_end =
 		record_start + stored_record_size(record_end - record_start);
-	struct syscallbuf_record* rec = record_start;
+	rec = record_start;
 
 	if (stored_end < record_start + sizeof(struct syscallbuf_record)) {
 		/* Either a catastrophic buffer overflow or
