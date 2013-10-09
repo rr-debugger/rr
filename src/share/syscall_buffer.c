@@ -201,7 +201,7 @@ static int traced_sigprocmask(int how, const sigset_t* set, sigset_t* oldset)
 	/* Warning: expecting this to only change the mask of the
 	 * current task is a linux-ism; POSIX leaves the behavior
 	 * undefined. */
-	return syscall(SYS_rt_sigprocmask, set, oldset);
+	return syscall(SYS_rt_sigprocmask, how, set, oldset);
 }
 
 static ssize_t traced_write(int fd, const void* buf, size_t count)
@@ -319,12 +319,21 @@ static void* get_untraced_syscall_entry_point()
  * This is a "magic" syscall implemented by rr.
  */
 static void* rrcall_init_syscall_buffer(void* untraced_syscall_ip,
-					struct sockaddr_un* addr,
+					struct sockaddr_un* sockaddr,
 					struct msghdr* msg, int* fdptr,
 					struct socketcall_args* args_vec)
 {
-	return (void*)syscall(SYS_rrcall_init_syscall_buffer,
-			      untraced_syscall_ip, addr, msg, fdptr, args_vec);
+	struct rrcall_init_syscall_buffer_params args;
+
+	args.untraced_syscall_ip = untraced_syscall_ip;
+	args.sockaddr = sockaddr;
+	args.msg = msg;
+	args.fdptr = fdptr;
+	args.args_vec = args_vec;
+
+	syscall(SYS_rrcall_init_syscall_buffer, &args);
+
+	return args.syscallbuf_ptr;
 }
 
 /**
