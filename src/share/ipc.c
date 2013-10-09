@@ -345,8 +345,9 @@ void* read_child_data_checked(struct task *t, size_t size, void* addr, ssize_t *
 
 void read_child_usr(struct task *t, void *dest, void *src, size_t size) {
 	ssize_t bytes_read = pread(t->child_mem_fd, dest, size, PTR_TO_OFF_T(src));
-	(void)bytes_read;
-	assert(bytes_read == size);
+	assert_exec(t, bytes_read == size,
+		    "Reading %p: expected %d bytes, but got %d",
+		    src, size, bytes_read);
 }
 
 void* read_child_data(struct task *t, size_t size, void* addr)

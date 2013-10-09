@@ -1797,11 +1797,10 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	pid_t tid = t->tid;
 	char shmem_filename[PATH_MAX];
 	struct current_state_buffer state;
+	void* child_args;
+	struct rrcall_init_syscall_buffer_params* args;
 	struct sockaddr_un addr;
 	long child_ret;
-	long child_sockaddr, child_msg;
-	void* child_fdptr;
-	void* child_args_vec;
 	int listen_sock, sock, child_sock;
 	int shmem_fd, child_shmem_fd;
 	void* map_addr;
@@ -1813,14 +1812,12 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	 * we're processing the rrcall, because it's masked off all
 	 * signals. */
 
-	/* Arguments to the rrcall. */
 	prepare_remote_syscalls(t, &state);
-	t->untraced_syscall_ip = (void*)state.regs.ebx;
-	child_sockaddr = state.regs.ecx;
-	child_msg = state.regs.edx;
-	child_fdptr = (void*)state.regs.esi;
-	child_args_vec = (void*)state.regs.edi;
+	/* Arguments to the rrcall. */
+	child_args = (void*)state.regs.ebx;
+	args = read_child_data(t, sizeof(*args), child_args);
 
+	t->untraced_syscall_ip = args->untraced_syscall_ip;
 	snprintf(shmem_filename, sizeof(shmem_filename) - 1,
 		 SYSCALLBUF_SHMEM_FILENAME_PREFIX "%d", tid);
 	/* NB: the sockaddr prepared by the child uses the recorded
@@ -1849,18 +1846,18 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 
 	/* Initiate tracee connect(), but don't wait for it to
 	 * finish. */
-	write_socketcall_args(t, child_args_vec,
-			      AF_UNIX, SOCK_STREAM, 0);
+	write_socketcall_args(t, args->args_vec, AF_UNIX, SOCK_STREAM, 0);
 	child_sock = remote_syscall2(t, &state, SYS_socketcall,
-				     SYS_SOCKET, (uintptr_t)child_args_vec);
+				     SYS_SOCKET, args->args_vec);
 	if (0 > child_sock) {
 		errno = -child_sock;
 		fatal("Failed to create child socket");
 	}
-	write_socketcall_args(t, child_args_vec,
-			      child_sock, child_sockaddr, sizeof(addr));
+	write_socketcall_args(t, args->args_vec, child_sock,
+			      (uintptr_t)args->sockaddr,
+			      sizeof(*args->sockaddr));
 	remote_syscall(t, &state, DONT_WAIT, SYS_socketcall,
-		       SYS_CONNECT, (uintptr_t)child_args_vec, 0, 0, 0, 0);
+		       SYS_CONNECT, (uintptr_t)args->args_vec, 0, 0, 0, 0);
 	/* Now the child is waiting for us to accept it. */
 
 	/* Accept the child's connection and finish its syscall.
@@ -1882,10 +1879,10 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 		 * not defined whether the sendmsg() may block on our
 		 * recvmsg()ing what the tracee sent us (in which case
 		 * we would deadlock with the tracee). */
-		write_socketcall_args(t, child_args_vec,
-				      child_sock, child_msg, 0);
+		write_socketcall_args(t, args->args_vec, child_sock,
+				      (uintptr_t)args->msg, 0);
 		remote_syscall(t, &state, DONT_WAIT, SYS_socketcall,
-			       SYS_SENDMSG, (uintptr_t)child_args_vec,
+			       SYS_SENDMSG, (uintptr_t)args->args_vec,
 			       0, 0, 0, 0);
 		/* Child may be waiting on our recvmsg(). */
 
@@ -1902,25 +1899,25 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	/* Share the shmem fd with the child.  It's ok to reuse the
 	 * |child_msg| buffer. */
 	send_fd(shmem_fd, sock);
-	write_socketcall_args(t, child_args_vec,
-			      child_sock, child_msg, 0);
+	write_socketcall_args(t, args->args_vec, child_sock,
+			      (uintptr_t)args->msg, 0);
 	child_ret = remote_syscall2(t, &state, SYS_socketcall,
-				    SYS_RECVMSG, (uintptr_t)child_args_vec);
+				    SYS_RECVMSG, args->args_vec);
 	if (0 >= child_ret) {
 		errno = -child_ret;
 		fatal("Failed to recvmsg() shared fd in tracee");
 	}
 
 	/* Get the newly-allocated fd. */
-	tmp = read_child_data(t, sizeof(child_shmem_fd), (void*)child_fdptr);
+	tmp = read_child_data(t, sizeof(child_shmem_fd), args->fdptr);
 	child_shmem_fd = *(int*)tmp;
 	sys_free(&tmp);
 
 	/* Zero out the child buffers we use here.  They contain
 	 * "real" fds, which in general will not be the same across
 	 * record/replay. */
-	write_socketcall_args(t, child_args_vec, 0, 0, 0);
-	write_child_data(t, sizeof(zero), child_fdptr, &zero);
+	write_socketcall_args(t, args->args_vec, 0, 0, 0);
+	write_child_data(t, sizeof(zero), args->fdptr, &zero);
 
 	/* Socket magic is now done. */
 	close(listen_sock);
@@ -1935,13 +1932,13 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 			     shmem_fd, 0))) {
 		fatal("Failed to mmap shmem region");
 	}
+	args->num_syscallbuf_bytes = SYSCALLBUF_BUFFER_SIZE;
 	child_map_addr = (void*)remote_syscall6(t, &state, SYS_mmap2,
-						(uintptr_t)map_hint,
-						SYSCALLBUF_BUFFER_SIZE,
+						map_hint,
+						args->num_syscallbuf_bytes,
 						PROT_READ | PROT_WRITE,
 						MAP_SHARED, child_shmem_fd, 0);
-
-	t->syscallbuf_child = child_map_addr;
+	t->syscallbuf_child = args->syscallbuf_ptr = child_map_addr;
 	t->syscallbuf_hdr = map_addr;
 	/* No entries to begin with. */
 	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
@@ -1950,6 +1947,13 @@ void* init_syscall_buffer(struct task* t, void* map_hint,
 	remote_syscall1(t, &state, SYS_close, child_shmem_fd);
 
 	/* Return the mapped address to the child. */
+	write_child_data(t, sizeof(*args), child_args, args);
+	sys_free((void**)&args);
+
+	/* The tracee doesn't need this addr returned, because it's
+	 * already written to the inout |args| param, but we stash it
+	 * away in the return value slot so that we can easily check
+	 * that we map the segment at the same addr during replay. */
 	state.regs.eax = (uintptr_t)child_map_addr;
 	finish_remote_syscalls(t, &state);
 

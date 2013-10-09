@@ -822,7 +822,9 @@ static void process_init_syscall_buffer(struct task* t, int exec_state,
 	child_map_addr = init_syscall_buffer(t, rec_child_map_addr,
 					     DONT_SHARE_DESCHED_EVENT_FD);
 
-	assert(child_map_addr == rec_child_map_addr);
+	assert_exec(t, child_map_addr == rec_child_map_addr,
+		    "Should have mapped syscallbuf at %p, but it's at %p",
+		    rec_child_map_addr, child_map_addr);
 }
 
 static void process_restart_syscall(struct task* t, int syscallno)

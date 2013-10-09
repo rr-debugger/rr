@@ -25,18 +25,6 @@
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
-/* "Magic" (rr-implemented) syscall that we use to initialize the
- * syscallbuf.
- *
- * NB: magic syscalls must be positive, because with at least linux
- * 3.8.0 / eglibc 2.17, rr only gets a trap for the *entry* of invalid
- * syscalls, not the exit.  rr can't handle that yet. */
-/* TODO: static_assert(LAST_SYSCALL < FIRST_RRCALL) */
-#define FIRST_RRCALL 400
-
-#define __NR_rrcall_init_syscall_buffer 442
-#define SYS_rrcall_init_syscall_buffer __NR_rrcall_init_syscall_buffer
-
 /**
  * True if |_eip| is an $ip within the syscallbuf library.  This *does
  * not* imply that $ip is at a buffered syscall; use the macro below
@@ -53,6 +41,48 @@
  */
 #define SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(_eip, _t)			\
 	((uintptr_t)(_eip) == (uintptr_t)(_t)->untraced_syscall_ip)	\
+
+/* "Magic" (rr-implemented) syscall that we use to initialize the
+ * syscallbuf.
+ *
+ * NB: magic syscalls must be positive, because with at least linux
+ * 3.8.0 / eglibc 2.17, rr only gets a trap for the *entry* of invalid
+ * syscalls, not the exit.  rr can't handle that yet. */
+/* TODO: static_assert(LAST_SYSCALL < FIRST_RRCALL) */
+#define FIRST_RRCALL 400
+
+#define __NR_rrcall_init_syscall_buffer 442
+#define SYS_rrcall_init_syscall_buffer __NR_rrcall_init_syscall_buffer
+
+/**
+ * Packs up the inout parameters passed to
+ * |rrcall_init_syscall_buffer()|.  We use this struct because there
+ * are too many params to pass through registers on at least x86.
+ * (It's also a little cleaner.)
+ */
+struct rrcall_init_syscall_buffer_params {
+	/* "In" params. */
+	/* Lets rr know where our untraced syscalls will originate
+	 * from. */
+	void* untraced_syscall_ip;
+	/* Address of the control socket the child expects to connect
+	 * to. */
+	struct sockaddr_un* sockaddr;
+	/* Pre-prepared IPC that can be used to share fds; |fdptr| is
+	 * a pointer to the control-message data buffer where the fd
+	 * number being shared will be stored. */
+	struct msghdr* msg;
+	int* fdptr;
+	/* Preallocated space the tracer can use to make socketcall
+	 * syscalls. */
+	struct socketcall_args* args_vec;
+
+	/* "Out" params. */
+	/* Returned pointer to and size of the shared syscallbuf
+	 * segment. */
+	void* syscallbuf_ptr;
+	size_t num_syscallbuf_bytes;
+};
 
 /**
  * The syscall buffer comprises an array of these variable-length
