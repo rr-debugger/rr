@@ -89,6 +89,13 @@ static int buffer_enabled;
 /* Key for per-thread |task_cleanup_data| object. */
 static pthread_key_t task_cleanup_data_key;
 
+/* During thread/process initialization, we have to call into libdl in
+ * order to resolve the pthread_create symbol.  But libdl can and does
+ * call libc functions that we wrap here.  The initialization code
+ * obviously doesn't nest, so we use this helper variable as a
+ * re-entry guard.  It's nonzero after |ensure_thread_init()| is
+ * called the first time. */
+static __thread int called_ensure_thread_init;
 /* When buffering is enabled, this points at the thread's mapped
  * buffer segment.  At the start of the segment is an object of type
  * |struct syscallbuf_hdr|, so |buffer| is also a pointer to the
@@ -589,10 +596,13 @@ static void init_process()
  */
 static void ensure_thread_init()
 {
-	pthread_once(&init_process_once, init_process);
-	if (!pthread_getspecific(task_cleanup_data_key)) {
-		set_up_buffer();
+	if (called_ensure_thread_init) {
+		return;
 	}
+	called_ensure_thread_init = 1;
+	pthread_once(&init_process_once, init_process);
+	assert(!pthread_getspecific(task_cleanup_data_key));
+	set_up_buffer();
 }
 
 __attribute__((constructor))
