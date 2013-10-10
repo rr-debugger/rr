@@ -16,8 +16,9 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "../share/sys.h"
-#include "../share/task.h"
+#include "dbg.h"
+#include "sys.h"
+#include "task.h"
 
 /**
  * libpfm4 specific stuff
@@ -180,15 +181,34 @@ void init_hpc(struct task* t)
 	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event, 0);
 }
 
+static void start_counter(struct task* t, int group_fd, hpc_event_t* counter)
+{
+	counter->fd = syscall(__NR_perf_event_open, &counter->attr, t->tid,
+			      -1, group_fd, 0);
+	if (0 > counter->fd) {
+		fatal("Failed to initialize counter");
+	}
+	if (ioctl(counter->fd, PERF_EVENT_IOC_ENABLE, 0)) {
+		fatal("Failed to start counter");
+	}
+}
+
+static void stop_counter(struct task* t, const hpc_event_t* counter)
+{
+	if (ioctl(counter->fd, PERF_EVENT_IOC_DISABLE, 0)) {
+		fatal("Failed to stop counter");
+	}
+}
+
 static void __start_hpc(struct task* t)
 {
 	struct hpc_context *counters = t->hpc;
 	pid_t tid = t->tid;
 	// see http://www.eece.maine.edu/~vweaver/projects/perf_events/perf_event_open.html for more information
-	START_COUNTER(tid,-1,counters->hw_int); // group leader.
-	START_COUNTER(tid,counters->hw_int.fd,counters->inst);
-	START_COUNTER(tid,counters->hw_int.fd,counters->rbc);
-	START_COUNTER(tid,counters->hw_int.fd,counters->page_faults);
+	start_counter(t, -1, &counters->hw_int); // group leader.
+	start_counter(t, counters->hw_int.fd, &counters->inst);
+	start_counter(t, counters->hw_int.fd, &counters->rbc);
+	start_counter(t, counters->hw_int.fd, &counters->page_faults);
 	//START_COUNTER(tid,counters->hw_int.fd,counters->rbc);
 
 	sys_fcntl(counters->rbc.fd, F_SETOWN, tid);
@@ -200,17 +220,17 @@ static void __start_hpc(struct task* t)
 
 void stop_rbc(struct task* t)
 {
-	STOP_COUNTER(t->hpc->rbc.fd);
+	stop_counter(t, &t->hpc->rbc);
 }
 
 void stop_hpc(struct task* t)
 {
 	struct hpc_context* counters = t->hpc;
 
-	STOP_COUNTER(counters->hw_int.fd);
-	STOP_COUNTER(counters->inst.fd);
-	STOP_COUNTER(counters->page_faults.fd);
-	STOP_COUNTER(counters->rbc.fd);
+	stop_counter(t, &counters->hw_int);
+	stop_counter(t, &counters->inst);
+	stop_counter(t, &counters->page_faults);
+	stop_counter(t, &counters->rbc);
 }
 
 void cleanup_hpc(struct task* t)
@@ -249,11 +269,18 @@ void reset_hpc(struct task *t, uint64_t val)
  * Ultimately frees all resources that are used by hpc of the corresponding
  * t. After calling this function, counters cannot be used anymore
  */
-void destry_hpc(struct task *t)
+void destroy_hpc(struct task *t)
 {
 	struct hpc_context* counters = t->hpc;
 	sys_free((void**) &counters);
 }
+
+#define READ_COUNTER(fd,tmp,size)		 \
+	do {					 \
+		ssize_t ret = read(fd,tmp,size); \
+		(void)ret;			 \
+		assert(ret == size);		 \
+	} while(0)
 
 /**
  * Counter access functions
