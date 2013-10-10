@@ -734,7 +734,7 @@ void record()
 
 		t = rec_sched_get_active_thread(t, &by_waitpid);
 
-		debug("Active task is %d", t->tid);
+		debug("line %d: Active task is %d", get_global_time(), t->tid);
 
 		ptrace_event = GET_PTRACE_EVENT(t->status);
 		assert_exec(t, (!by_waitpid || task_may_be_blocked(t) ||
