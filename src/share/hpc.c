@@ -233,7 +233,7 @@ void stop_hpc(struct task* t)
 	stop_counter(t, &counters->rbc);
 }
 
-void cleanup_hpc(struct task* t)
+static void cleanup_hpc(struct task* t)
 {
 	struct hpc_context* counters = t->hpc;
 
@@ -272,6 +272,7 @@ void reset_hpc(struct task *t, uint64_t val)
 void destroy_hpc(struct task *t)
 {
 	struct hpc_context* counters = t->hpc;
+	cleanup_hpc(t);
 	sys_free((void**) &counters);
 }
 

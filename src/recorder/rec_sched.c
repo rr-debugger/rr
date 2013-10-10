@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/queue.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -289,11 +290,11 @@ void rec_sched_deregister_thread(struct task** t_ptr)
 	num_active_threads--;
 	assert(num_active_threads >= 0);
 
-	/* delete all counter data */
-	cleanup_hpc(t);
+	destroy_hpc(t);
 
 	sys_close(t->child_mem_fd);
 	close(t->desched_fd);
+	munmap(t->syscallbuf_hdr, t->num_syscallbuf_bytes);
 
 	detach_and_reap(t);
 

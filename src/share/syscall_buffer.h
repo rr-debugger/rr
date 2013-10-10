@@ -51,17 +51,20 @@
 /* TODO: static_assert(LAST_SYSCALL < FIRST_RRCALL) */
 #define FIRST_RRCALL 400
 
-#define __NR_rrcall_init_syscall_buffer 442
-#define SYS_rrcall_init_syscall_buffer __NR_rrcall_init_syscall_buffer
+#define __NR_rrcall_init_buffers 442
+#define SYS_rrcall_init_buffers __NR_rrcall_init_buffers
 
 /**
- * Packs up the inout parameters passed to
- * |rrcall_init_syscall_buffer()|.  We use this struct because there
- * are too many params to pass through registers on at least x86.
- * (It's also a little cleaner.)
+ * Packs up the inout parameters passed to |rrcall_init_buffers()|.
+ * We use this struct because there are too many params to pass
+ * through registers on at least x86.  (It's also a little cleaner.)
  */
-struct rrcall_init_syscall_buffer_params {
+struct rrcall_init_buffers_params {
 	/* "In" params. */
+	/* The syscallbuf lib's idea of whether buffering is enabled.
+	 * We let the syscallbuf code decide in order to more simply
+	 * replay the same decision that was recorded. */
+	int syscallbuf_enabled;
 	/* Lets rr know where our untraced syscalls will originate
 	 * from. */
 	void* untraced_syscall_ip;
@@ -78,6 +81,12 @@ struct rrcall_init_syscall_buffer_params {
 	struct socketcall_args* args_vec;
 
 	/* "Out" params. */
+	/* Returned pointer to and size of the scratch segment.  For
+	 * the purposes of this code, it doesn't matter what the
+	 * scratch region is, all we need to know about it is that it
+	 * must be unmapped at thread exit time. */
+	void* scratch_ptr;
+	size_t num_scratch_bytes;
 	/* Returned pointer to and size of the shared syscallbuf
 	 * segment. */
 	void* syscallbuf_ptr;

@@ -122,12 +122,12 @@ void rep_sched_enumerate_tasks(pid_t** tids, size_t* len)
 	assert(i == num_threads);
 }
 
-void rep_sched_deregister_thread(struct task **t_ptr)
+void rep_sched_deregister_thread(struct task** t_ptr)
 {
-	struct task * t = *t_ptr;
+	struct task* t = *t_ptr;
+
 	destroy_hpc(t);
 
-	//sys_fclose(t->inst_dump);
 	sys_close(t->child_mem_fd);
 
 	remove_task(t);
@@ -136,7 +136,7 @@ void rep_sched_deregister_thread(struct task **t_ptr)
 
 	detach_and_reap(t);
 
-	sys_free((void**) t_ptr);
+	sys_free((void**)t_ptr);
 }
 
 int rep_sched_get_num_threads()

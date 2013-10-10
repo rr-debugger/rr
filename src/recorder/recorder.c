@@ -430,7 +430,7 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 			    "Event stack and current event must be in sync.");
 		assert_exec(t, (-ENOSYS != retval
 				|| (0 > syscallno
-				    || SYS_rrcall_init_syscall_buffer == t->event
+				    || SYS_rrcall_init_buffers == t->event
 				    || SYS_clone == syscallno
 				    || SYS_exit_group == syscallno
 				    || SYS_exit == syscallno)),
