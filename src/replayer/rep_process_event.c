@@ -257,18 +257,22 @@ static void init_scratch_memory(struct task* t)
 	 * to the scratch memory are caught. */
 	struct mmapped_file file;
 	struct current_state_buffer state;
+	void* map_addr;
 
 	read_next_mmapped_file_stats(&file);
 
 	prepare_remote_syscalls(t, &state);
-	void* map_addr = (void*)remote_syscall6(
+
+	t->scratch_ptr = file.start;
+	t->scratch_size = file.end - file.start;
+	map_addr = (void*)remote_syscall6(
 		t, &state, SYS_mmap2,
-		file.start, file.end - file.start,
+		t->scratch_ptr, t->scratch_size,
 		PROT_NONE,
 		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 	finish_remote_syscalls(t, &state);
 
-	assert_exec(t, file.start == map_addr,
+	assert_exec(t, t->scratch_ptr == map_addr,
 		    "scratch mapped @%p during recording, but @%p in replay",
 		    file.start, map_addr);
 
@@ -795,8 +799,8 @@ static void process_irregular_socketcall_exit(struct task* t,
 	}
 }
 
-static void process_init_syscall_buffer(struct task* t, int exec_state,
-					struct rep_trace_step* step)
+static void process_init_buffers(struct task* t, int exec_state,
+				 struct rep_trace_step* step)
 {
 	void* rec_child_map_addr;
 	void* child_map_addr;
@@ -813,14 +817,14 @@ static void process_init_syscall_buffer(struct task* t, int exec_state,
 	step->action = TSTEP_RETIRE;
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
-	exit_syscall_emu(t, SYS_rrcall_init_syscall_buffer, 0);
+	exit_syscall_emu(t, SYS_rrcall_init_buffers, 0);
 	rec_child_map_addr = (void*)t->trace.recorded_regs.eax;
 
 	/* We don't want the desched event fd during replay, because
 	 * we already know where they were.  (The perf_event fd is
 	 * emulated anyway.) */
-	child_map_addr = init_syscall_buffer(t, rec_child_map_addr,
-					     DONT_SHARE_DESCHED_EVENT_FD);
+	child_map_addr = init_buffers(t, rec_child_map_addr,
+				      DONT_SHARE_DESCHED_EVENT_FD);
 
 	assert_exec(t, child_map_addr == rec_child_map_addr,
 		    "Should have mapped syscallbuf at %p, but it's at %p",
@@ -1054,8 +1058,8 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 		}
 		return;
 
-	case SYS_rrcall_init_syscall_buffer:
-		return process_init_syscall_buffer(t, state, step);
+	case SYS_rrcall_init_buffers:
+		return process_init_buffers(t, state, step);
 
 	default:
 		break;

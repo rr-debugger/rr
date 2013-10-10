@@ -54,6 +54,10 @@ target_link_libraries(rr
   libdisasm.a
 )
 
+target_link_libraries(rrpreload
+  -ldl
+)
+
 install(TARGETS rr rrpreload
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
@@ -124,6 +128,7 @@ set(BASIC_TESTS
   tcgets
   term_nonmain
   tgkill
+  thread_cleanup
   threads
   tiocinq
   user_ignore_sig

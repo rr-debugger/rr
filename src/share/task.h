@@ -386,6 +386,7 @@ struct task {
 	void* syscallbuf_lib_end;
 	/* Points at rr's mapping of the (shared) syscall buffer. */
 	struct syscallbuf_hdr* syscallbuf_hdr;
+	size_t num_syscallbuf_bytes;
 	/* Points at the tracee's mapping of the buffer. */
 	void* syscallbuf_child;
 

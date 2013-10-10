@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh thread_cleanup "$@"
+compare_test EXIT-SUCCESS

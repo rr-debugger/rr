@@ -66,10 +66,28 @@
 #endif
 #define memcpy you_must_use_local_memcpy
 
+/**
+ * Tracks per-task state that may need to be cleaned up on task exit.
+ * 
+ * Cleanup must be done in the tracee because the rr process doesn't
+ * know that threads are going to exit until it's too late to clean up
+ * their state.
+ */
+struct task_cleanup_data {
+	void* scratch_ptr;
+	size_t num_scratch_bytes;
+	void* syscallbuf_ptr;
+	size_t num_syscallbuf_bytes;
+	int desched_counter_fd;
+};
+
 typedef unsigned char byte;
 
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
+
+/* Key for per-thread |task_cleanup_data| object. */
+static pthread_key_t task_cleanup_data_key;
 
 /* When buffering is enabled, this points at the thread's mapped
  * buffer segment.  At the start of the segment is an object of type
@@ -111,6 +129,13 @@ static __thread byte* buffer;
  * numerous implementation details that are documented in
  * handle_signal.c, where they're dealt with. */
 static __thread int desched_counter_fd;
+
+/* Points at the libc/pthread pthread_create().  We wrap
+ * pthread_create, so need to retain this pointer to call out to the
+ * libc version. */
+static int (*real_pthread_create)(pthread_t* thread,
+				  const pthread_attr_t* attr,
+				  void* (*start_routine) (void*), void* arg);
 
 /**
  * Return a pointer to the buffer header, which happens to occupy the
@@ -156,6 +181,11 @@ static void* local_memcpy(void* dest, const void* source, size_t n)
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
+static int traced_close(int fd)
+{
+	return syscall(SYS_close, fd);
+}
+
 static int traced_fcntl(int fd, int cmd, ...)
 {
 	va_list ap;
@@ -176,6 +206,11 @@ static pid_t traced_getpid()
 static pid_t traced_gettid()
 {
 	return syscall(SYS_gettid);
+}
+
+static int traced_munmap(void* addr, size_t length)
+{
+	return syscall(SYS_munmap, addr, length);
 }
 
 static int traced_perf_event_open(struct perf_event_attr *attr,
@@ -306,8 +341,7 @@ static void* get_untraced_syscall_entry_point()
 }
 
 /**
- * Do what's necessary to map the shared syscall buffer region in the
- * caller's address space and return the mapped region.
+ * Do what's necessary to set up buffers for the caller.
  * |untraced_syscall_ip| lets rr know where our untraced syscalls will
  * originate from.  |addr| is the address of the control socket the
  * child expects to connect to.  |msg| is a pre-prepared IPC that can
@@ -316,24 +350,35 @@ static void* get_untraced_syscall_entry_point()
  * |args_vec| provides the tracer with preallocated space to make
  * socketcall syscalls.
  *
+ * Pointers to the scratch buffer and syscallbuf, if enabled, and
+ * their sizes are returned through the outparams.
+ *
  * This is a "magic" syscall implemented by rr.
  */
-static void* rrcall_init_syscall_buffer(void* untraced_syscall_ip,
-					struct sockaddr_un* sockaddr,
-					struct msghdr* msg, int* fdptr,
-					struct socketcall_args* args_vec)
+static void rrcall_init_buffers(void* untraced_syscall_ip,
+				struct sockaddr_un* sockaddr,
+				struct msghdr* msg, int* fdptr,
+				struct socketcall_args* args_vec,
+				void** scratch_ptr,
+				size_t* num_scratch_bytes,
+				void** syscallbuf_ptr,
+				size_t* num_syscallbuf_bytes)
 {
-	struct rrcall_init_syscall_buffer_params args;
+	struct rrcall_init_buffers_params args;
 
+	args.syscallbuf_enabled = buffer_enabled;
 	args.untraced_syscall_ip = untraced_syscall_ip;
 	args.sockaddr = sockaddr;
 	args.msg = msg;
 	args.fdptr = fdptr;
 	args.args_vec = args_vec;
 
-	syscall(SYS_rrcall_init_syscall_buffer, &args);
+	syscall(SYS_rrcall_init_buffers, &args);
 
-	return args.syscallbuf_ptr;
+	*scratch_ptr = args.scratch_ptr;
+	*num_scratch_bytes = args.num_scratch_bytes;
+	*syscallbuf_ptr = args.syscallbuf_ptr;
+	*num_syscallbuf_bytes = args.num_syscallbuf_bytes;
 }
 
 /**
@@ -370,6 +415,21 @@ static void install_syscall_filter()
 		fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your kernel is too old.  Use `record -n` to disable the filter.");
 	}
 	/* anything that happens from this point on gets filtered! */
+}
+
+/**
+ * Unmap and close per-thread resources.  Runs at thread exit.
+ */
+static void clean_up_task(void* data)
+{
+	struct task_cleanup_data* cleanup = data;
+
+	traced_munmap(cleanup->scratch_ptr, cleanup->num_scratch_bytes);
+	if (cleanup->syscallbuf_ptr) {
+		traced_munmap(cleanup->syscallbuf_ptr,
+			      cleanup->num_syscallbuf_bytes);
+		traced_close(cleanup->desched_counter_fd);
+	}
 }
 
 /**
@@ -411,6 +471,7 @@ static int open_desched_event_counter(size_t nr_descheds)
 
 static void set_up_buffer()
 {
+	struct task_cleanup_data* cleanup = malloc(sizeof(*cleanup));
 	struct sockaddr_un addr;
 	struct msghdr msg;
 	struct iovec data;
@@ -423,12 +484,18 @@ static void set_up_buffer()
 
 	assert(!buffer);
 
+	memset(cleanup, 0, sizeof(*cleanup));
+	pthread_setspecific(task_cleanup_data_key, cleanup);
+
 	/* NB: we want this setup emulated during replay. */
-	desched_counter_fd = open_desched_event_counter(1);
+	if (buffer_enabled) {
+		cleanup->desched_counter_fd = desched_counter_fd =
+					      open_desched_event_counter(1);
+	}
 
 	/* Prepare arguments for rrcall.  We do this in the tracee
 	 * just to avoid some hairy IPC to set up the arguments
-	 * remotely from the traceer; this isn't strictly
+	 * remotely from the tracer; this isn't strictly
 	 * necessary. */
 	prepare_syscallbuf_socket_addr(&addr, traced_gettid());
 
@@ -467,9 +534,13 @@ static void set_up_buffer()
 		 * sendmsg()'d to rr to share the desched counter to
 		 * it (under rr's control).  rr can further use the
 		 * buffer to share more fd's to us. */
-		buffer = rrcall_init_syscall_buffer(
-			get_untraced_syscall_entry_point(),
-			&addr, &msg, cmsg_fdptr, &args_vec);
+		rrcall_init_buffers(get_untraced_syscall_entry_point(),
+				    &addr, &msg, cmsg_fdptr, &args_vec,
+				    &cleanup->scratch_ptr,
+				    &cleanup->num_scratch_bytes,
+				    &cleanup->syscallbuf_ptr,
+				    &cleanup->num_syscallbuf_bytes);
+		buffer = cleanup->syscallbuf_ptr;
 		/* rr initializes the buffer header. */
 
 		/* End "critical section". */
@@ -486,6 +557,7 @@ static void set_up_buffer()
 static void drop_buffer()
 {
 	buffer = NULL;
+	pthread_setspecific(task_cleanup_data_key, NULL);
 }
 
 /**
@@ -494,6 +566,8 @@ static void drop_buffer()
 static pthread_once_t init_process_once = PTHREAD_ONCE_INIT;
 static void init_process()
 {
+	int ret;
+
 	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 	if (buffer_enabled) {
 		install_syscall_filter();
@@ -501,6 +575,13 @@ static void init_process()
 	} else {
 		log_info("Syscall buffering is disabled");
 	}
+
+	if ((ret = pthread_key_create(&task_cleanup_data_key,
+				      clean_up_task))) {
+		fatal("pthread_key_create() failed with code %d", ret);
+	}
+
+	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
 }
 
 /**
@@ -509,9 +590,59 @@ static void init_process()
 static void ensure_thread_init()
 {
 	pthread_once(&init_process_once, init_process);
-	if (buffer_enabled && !buffer) {
+	if (!pthread_getspecific(task_cleanup_data_key)) {
 		set_up_buffer();
 	}
+}
+
+__attribute__((constructor))
+static void init_process_static()
+{
+	ensure_thread_init();
+}
+
+/**
+ * In a thread newly created by |pthread_create()|, first initialize
+ * thread-local internal rr data, then trampoline into the user's
+ * thread function.
+ */
+struct thread_func_data {
+	void* (*start_routine) (void*);
+	void* arg;
+};
+static void* thread_trampoline(void* arg)
+{
+	struct thread_func_data* data = arg;
+	void* ret;
+
+	ensure_thread_init();
+
+	ret = data->start_routine(data->arg);
+
+	free(data);
+	return ret;
+}
+
+/**
+ * Interpose |pthread_create()| so that we can use a custom trampoline
+ * function (see above) that initializes rr thread-local data for new
+ * threads.
+ *
+ * This is a wrapper of |pthread_create()|, but not like the ones
+ * below: we don't wrap |pthread_create()| in order to buffer its
+ * syscalls, rather in order to initialize rr thread data.
+ */
+int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
+                          void* (*start_routine) (void*), void* arg)
+{
+	struct thread_func_data* data;
+
+	ensure_thread_init();
+
+	data = malloc(sizeof(*data));
+	data->start_routine = start_routine;
+	data->arg = arg;
+	return real_pthread_create(thread, attr, thread_trampoline, data);
 }
 
 /**
@@ -595,7 +726,7 @@ static void ensure_thread_init()
 static void* prep_syscall()
 {
 	ensure_thread_init();
-	if (!buffer_enabled) {
+	if (!buffer) {
 		return NULL;
 	}
 	if (buffer_hdr()->locked) {
@@ -654,7 +785,7 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
 	void* stored_end;
 	struct syscallbuf_record* rec;
 
-	if (!buffer_enabled) {
+	if (!buffer) {
 		return 0;
 	}
 	record_start = buffer_last();
