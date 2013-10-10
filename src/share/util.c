@@ -130,17 +130,14 @@ double now_sec()
 int nanosleep_nointr(const struct timespec* ts)
 {
 	struct timespec req = *ts;
-	struct timespec rem;
-	int err;
-	do {
-		err = nanosleep(&req, &rem);
-		if (errno == EINTR) {
-			err = 0;
+	while (1) {
+		struct timespec rem;
+		int err = nanosleep(&req, &rem);
+		if (0 == err || EINTR != errno) {
+			return err;
 		}
 		req = rem;
-	} while (err == 0 && req.tv_sec > 0 && req.tv_nsec > 0);
-	return err;
-
+	}
 }
 
 int probably_not_interactive()
@@ -297,7 +294,17 @@ sleep_hack:
 	 * for rr to track access to shared memory, like the |ctid|
 	 * location.  But until then, we (attempt to) let "time"
 	 * resolve this memory race with the sleep() hack below. */
-	usleep(100);
+	{
+		/* Why 4ms?  Because
+		 *
+		 * $ for i in $(seq 10); do (cd $rr/src/test/ && bash thread_cleanup.run) & done
+		 *
+		 * has been observed to fail when we sleep 3ms, but
+		 * not when we sleep 4ms.  Yep, this hack is that
+		 * horrible! */
+		struct timespec ts = { .tv_nsec = 4000000LL };
+		nanosleep_nointr(&ts);
+	}
 }
 
 void print_register_file_tid(pid_t tid)
