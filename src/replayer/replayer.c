@@ -1019,7 +1019,6 @@ static void assert_at_recorded_rcb(struct task* t)
 	assert_exec(t, !t->hpc->started || read_rbc(t->hpc) == t->trace.rbc,
 		    "rbc mismatch for event in synchronous signal delivery; expected %"PRId64", got %"PRId64,
 		    t->trace.rbc, read_rbc(t->hpc));
-
 }
 
 /**

@@ -67,6 +67,21 @@
 #define memcpy you_must_use_local_memcpy
 
 /**
+ * Copy |_rhs| to |_lhs|.  If the copy overflows, set errno to
+ * EOVERFLOW and return -1.
+ *
+ * WARNING: this macro affects control flow, use with great care.
+ */
+#define COPY_CHECK_OVERFLOW(_lhs, _rhs)					\
+	do {								\
+		_lhs = _rhs;						\
+		if (sizeof(_lhs) != sizeof(_rhs) && (_lhs) != (_rhs)) {	\
+			errno = EOVERFLOW;				\
+			return -1;					\
+		}							\
+	} while(0)
+
+/**
  * Tracks per-task state that may need to be cleaned up on task exit.
  * 
  * Cleanup must be done in the tracee because the rr process doesn't
@@ -564,6 +579,7 @@ static void set_up_buffer()
 static void drop_buffer()
 {
 	buffer = NULL;
+	called_ensure_thread_init = 0;
 	pthread_setspecific(task_cleanup_data_key, NULL);
 }
 
@@ -935,14 +951,6 @@ static int commit_syscall(int syscallno, void* record_end, int ret)
  */
 static int copy_to_stat(const struct stat64* in, struct stat* out)
 {
-#define COPY_CHECK_OVERFLOW(_lhs, _rhs)					\
-	do {								\
-		_lhs = _rhs;						\
-		if (sizeof(_lhs) != sizeof(_rhs) && _lhs != _rhs) {	\
-			errno = EOVERFLOW;				\
-			return -1;					\
-		}							\
-	} while(0)
 	/* XXX this is /really/ reaching deep into libc innards, but
 	 * we don't have a choice ... */
 	out->st_dev = in->st_dev;
@@ -962,7 +970,6 @@ static int copy_to_stat(const struct stat64* in, struct stat* out)
 	out->st_ctime = in->st_ctime;
 	out->__unused4 = 0;
 	out->__unused5 = 0;
-#undef COPY_CHECK_OVERFLOW
 	return 0;
 }
 
@@ -1152,29 +1159,14 @@ static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
 
 static int fcntl_flock(int fd, int cmd, struct flock64* lock)
 {
-	void* ptr = prep_syscall();
-	struct flock64* lock2 = NULL;
-	long ret;
-
-	if (lock) {
-		lock2 = ptr;
-		ptr += sizeof(*lock2);
-	}
-	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, MAY_BLOCK)) {
-		return syscall(SYS_fcntl64, fd, cmd, lock);
-	}
-
-	if (lock2) {
-		local_memcpy(lock2, lock, sizeof(*lock2));
-	}
-
-	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, lock2);
-
-	if (lock2) {
-		local_memcpy(lock, lock2, sizeof(*lock));
-	}
-
-	return commit_syscall(SYS_fcntl64, ptr, ret);
+	/* Quite unfortunately, the flock ABI uses the l_type field as
+	 * an inout param.  To buffer that field, we'd have to copy-in
+	 * the value passed by the user, then store the value returned
+	 * by the kernel.  But during replay, that would write data to
+	 * the syscallbuf without any way to recover the stored
+	 * outparam data.  Because of that, we have to always trace
+	 * flock operations. */
+	return syscall(SYS_fcntl64, fd, cmd, lock);
 }
 
 int fcntl(int fd, int cmd, ... /* arg */)
@@ -1189,8 +1181,7 @@ int fcntl(int fd, int cmd, ... /* arg */)
 	case F_SETFL:
 	case F_SETFD:
 	case F_SETOWN:
-	case F_SETSIG:
-	{
+	case F_SETSIG: {
 		va_list varg;
 		int arg;
 
@@ -1200,10 +1191,8 @@ int fcntl(int fd, int cmd, ... /* arg */)
 
 		return fcntl1(fd, cmd, arg);
 	}
-
 	case F_GETOWN_EX:
-	case F_SETOWN_EX:
-	{
+	case F_SETOWN_EX: {
 		va_list varg;
 		struct f_owner_ex* owner;
 
@@ -1213,14 +1202,43 @@ int fcntl(int fd, int cmd, ... /* arg */)
 
 		return fcntl_own_ex(fd, cmd, owner);
 	}
-
-	case F_GETLK64:
-	case F_SETLK64:
-	case F_SETLKW64:
 	case F_GETLK:
 	case F_SETLK:
-	case F_SETLKW:
-	{
+	case F_SETLKW: {
+		va_list varg;
+		int cmd64;
+		struct flock* lock;
+		struct flock64 lock64;
+		int ret;
+
+		switch (cmd) {
+		case F_GETLK: cmd64 = F_GETLK64; break;
+		case F_SETLK: cmd64 = F_SETLK64; break;
+		case F_SETLKW: cmd64 = F_SETLKW64; break;
+		}
+
+		va_start(varg, cmd);
+		lock = va_arg(varg, struct flock*);
+		va_end(varg);
+
+		lock64.l_type = lock->l_type;
+		lock64.l_whence = lock->l_whence;
+		COPY_CHECK_OVERFLOW(lock64.l_start, lock->l_start);
+		COPY_CHECK_OVERFLOW(lock64.l_len, lock->l_len);
+		lock64.l_pid = lock->l_pid;
+
+		ret = fcntl_flock(fd, cmd64, &lock64);
+
+		lock->l_type = lock64.l_type;
+		lock->l_whence = lock64.l_whence;
+		COPY_CHECK_OVERFLOW(lock->l_start, lock64.l_start);
+		COPY_CHECK_OVERFLOW(lock->l_len, lock64.l_len);
+		lock->l_pid = lock64.l_pid;
+		return ret;
+	}
+	case F_GETLK64:
+	case F_SETLK64:
+	case F_SETLKW64: {
 		va_list varg;
 		struct flock64* lock;
 
@@ -1230,7 +1248,6 @@ int fcntl(int fd, int cmd, ... /* arg */)
 
 		return fcntl_flock(fd, cmd, lock);
 	}
-
 	default:
 		/* Unfortunately, we can't fall back on a traced
 		 * fcntl, because we don't know how to interpret the
