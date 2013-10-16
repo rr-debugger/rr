@@ -1041,6 +1041,7 @@ int should_dump_memory(struct task* t, int event, int state, int global_time)
 #if defined(FIRST_INTERESTING_EVENT)
 	int is_syscall_exit = event >= 0 && state == STATE_SYSCALL_EXIT;
 	if (is_syscall_exit
+	    && RECORD == flags->option
 	    && FIRST_INTERESTING_EVENT <= global_time
 	    && global_time <= LAST_INTERESTING_EVENT) {
 		return 1;
@@ -1061,6 +1062,10 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 	void* start_addr = data->info.start_addr;
 	int i;
 
+	if (!buf) {
+		/* This segment was filtered by debugging code. */
+		return CONTINUE_ITERATING;
+	}
 	if (is_start_of_scratch_region(start_addr)) {
 		/* Scratch regions will diverge between
 		 * recording/replay, so including them in memory dumps
@@ -1076,6 +1081,19 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 	}
 
 	return CONTINUE_ITERATING;
+}
+
+static int dump_process_memory_segment_filter(
+	void* filt_data, struct task* t,
+	const struct mapped_segment_info* info)
+{
+	/* For debugging purposes, add segment filtering here, for
+	 * example
+	if (!strstr(info->name, "[stack]")) {
+		return 0;
+	}
+	*/
+	return 1;
 }
 
 static void format_dump_filename(struct task* t, const char* tag,
@@ -1098,7 +1116,7 @@ void dump_process_memory(struct task* t, const char* tag)
 	flush_trace_files();
 
 	iterate_memory_map(t, dump_process_memory_iterator, dump_file,
-			   kAlwaysReadSegment, NULL);
+			   dump_process_memory_segment_filter, NULL);
 	fclose(dump_file);
 }
 
@@ -1279,9 +1297,9 @@ static void iterate_checksums(struct task* t, int mode)
 int should_checksum(struct task* t, int event, int state, int global_time)
 {
 	int checksum = rr_flags()->checksum;
+	int is_syscall_exit = (event >= 0 && state == STATE_SYSCALL_EXIT);
 
 #if defined(FIRST_INTERESTING_EVENT)
-	int is_syscall_exit = (event >= 0 && state == STATE_SYSCALL_EXIT);
 	if (is_syscall_exit
 	    && FIRST_INTERESTING_EVENT <= global_time
 	    && global_time <= LAST_INTERESTING_EVENT) {
@@ -1298,7 +1316,7 @@ int should_checksum(struct task* t, int event, int state, int global_time)
 		return 1;
 	}
 	if (CHECKSUM_SYSCALL == checksum) {
-		return event >= 0 && state == STATE_SYSCALL_EXIT;
+		return is_syscall_exit;
 	}
 	/* |checksum| is a global time point. */
 	return checksum <= global_time;
