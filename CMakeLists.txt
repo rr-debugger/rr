@@ -131,6 +131,7 @@ set(BASIC_TESTS
   thread_cleanup
   threads
   tiocinq
+  uname
   user_ignore_sig
 )
 

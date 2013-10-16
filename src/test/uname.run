@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh uname "$@"
+compare_test EXIT-SUCCESS

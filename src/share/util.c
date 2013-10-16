@@ -4,6 +4,9 @@
 
 //#define DEBUGTAG "Util"
 
+//#define FIRST_INTERESTING_EVENT 10700
+//#define LAST_INTERESTING_EVENT 10900
+
 #include "util.h"
 
 #include <assert.h>
@@ -1034,6 +1037,18 @@ void read_line(FILE* file, char *buf, int size, char *name)
 int should_dump_memory(struct task* t, int event, int state, int global_time)
 {
 	const struct flags* flags = rr_flags();
+
+#if defined(FIRST_INTERESTING_EVENT)
+	int is_syscall_exit = event >= 0 && state == STATE_SYSCALL_EXIT;
+	if (is_syscall_exit
+	    && FIRST_INTERESTING_EVENT <= global_time
+	    && global_time <= LAST_INTERESTING_EVENT) {
+		return 1;
+	}
+	if (global_time > LAST_INTERESTING_EVENT) {
+		return 0;
+	}
+#endif
 	return (flags->dump_on == event || flags->dump_on == DUMP_ON_ALL
 		|| flags->dump_at == global_time);
 }
@@ -1119,7 +1134,7 @@ static void notify_checksum_error(struct task* t,
 "\n"
 "then you can use the following to determine which memory cells differ:\n"
 "\n"
-"$ diff -u %s %s > mem-diverge.diff\n"
+"$ lcmp %s %s > mem-diverge.diff\n"
 		    , strevent(event),
 		    data->raw_map_line,
 		    rec_checksum, checksum,
@@ -1264,6 +1279,18 @@ static void iterate_checksums(struct task* t, int mode)
 int should_checksum(struct task* t, int event, int state, int global_time)
 {
 	int checksum = rr_flags()->checksum;
+
+#if defined(FIRST_INTERESTING_EVENT)
+	int is_syscall_exit = (event >= 0 && state == STATE_SYSCALL_EXIT);
+	if (is_syscall_exit
+	    && FIRST_INTERESTING_EVENT <= global_time
+	    && global_time <= LAST_INTERESTING_EVENT) {
+		return 1;
+	}
+	if (global_time > LAST_INTERESTING_EVENT) {
+		return 0;
+	}
+#endif
 	if (CHECKSUM_NONE == checksum) {
 		return 0;
 	}
