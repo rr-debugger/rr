@@ -91,6 +91,7 @@ set(BASIC_TESTS
   clock
   exit_group
   fadvise
+  flock
   fork_syscalls
   hello
   ignored_async_usr1
