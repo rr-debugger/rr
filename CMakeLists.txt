@@ -129,7 +129,7 @@ set(BASIC_TESTS
   tcgets
   term_nonmain
   tgkill
-  thread_cleanup
+  thread_stress
   threads
   tiocinq
   uname
