@@ -68,6 +68,9 @@ struct flags {
 	/* Nonzero when not-absolutely-urgently-critical messages will
 	 * be logged. */
 	int verbose;
+	/* Nonzero when tracee processes in record and replay are
+	 * allowed to run on any logical CPU. */
+	int cpu_unbound;
 };
 
 struct msghdr;

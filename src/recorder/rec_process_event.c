@@ -304,6 +304,10 @@ int rec_prepare_syscall(struct task* t)
 	}
 
 	switch (syscallno) {
+	case SYS_sched_setaffinity:
+		assert_exec(t, "NYI" && SYS_sched_setaffinity != syscallno,
+			    "TODO: fudge the CPU mask argument to 0x1");
+		return 0;	/* not reached */
 	case SYS_splice: {
 		loff_t* off_in = (void*)regs.ecx;
 		loff_t* off_out = (void*)regs.esi;

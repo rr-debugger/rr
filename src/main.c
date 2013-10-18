@@ -285,6 +285,10 @@ static void print_usage()
 "                             `_rec' for dumps during recording, `_rep'\n"
 "                             for dumps during replay\n"
 "  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
+"  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
+"                             Default is to bind to CPU 0.  This option\n"
+"                             can cause replay divergence: use with\n"
+"                             caution.\n"
 "  -v, --verbose              log messages that may not be urgently \n"
 "                             critical to the user\n"
 "  -w, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
@@ -389,6 +393,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 {
 	struct option opts[] = {
 		{ "checksum", required_argument, NULL, 'c' },
+		{ "cpu-unbound", no_argument, NULL, 'u' },
 		{ "dump-at", required_argument, NULL, 't' },
 		{ "dump-on", required_argument, NULL, 'd' },
 		{ "verbose", no_argument, NULL, 'v' },
@@ -397,7 +402,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+c:d:t:vw:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+c:d:t:uvw:", opts, &i)) {
 		case -1:
 			return optind;
 		case 'c':
@@ -417,14 +422,17 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 		case 'd':
 			flags->dump_on = atoi(optarg);
 			break;
+		case 't':
+			flags->dump_at = atoi(optarg);
+			break;
+		case 'u':
+			flags->cpu_unbound = 1;
+			break;
 		case 'v':
 			flags->verbose = 1;
 			break;
 		case 'w':
 			flags->wait_secs = atoi(optarg);
-			break;
-		case 't':
-			flags->dump_at = atoi(optarg);
 			break;
 		default:
 			return -1;
