@@ -147,7 +147,7 @@ function skip_if_syscall_buf {
 
 function record { exe=$1; exeargs=$2;
     cp ${OBJDIR}/bin/$exe $exe-$nonce
-    rr record $LIB_ARG $RECORD_ARGS $exe-$nonce $exeargs 1> record.out
+    rr -u record $LIB_ARG $RECORD_ARGS $exe-$nonce $exeargs 1> record.out
 }
 
 #  record_async_signal <signal> <delay-secs> <test>
@@ -160,14 +160,14 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 }
 
 function replay { replayflags=$1
-    rr replay -a $replayflags trace_0/ 1> replay.out 2> replay.err
+    rr -u replay -a $replayflags trace_0/ 1> replay.out 2> replay.err
 }
 
 #  debug <exe> <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { exe=$1; expectscript=$2; replayargs=$3
-    python $TESTDIR/$expectscript.py $exe-$nonce rr replay --dbgport=$$ $replayargs trace_0/
+    python $TESTDIR/$expectscript.py $exe-$nonce rr -u replay --dbgport=$$ $replayargs trace_0/
     if [[ $? == 0 ]]; then
         passed=y
 	echo "Test '$TESTNAME' PASSED"

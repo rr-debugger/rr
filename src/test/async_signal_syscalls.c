@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 static sig_atomic_t caught_usr1;
 
 static void handle_usr1(int sig) {

@@ -109,15 +109,36 @@ void sys_exit()
 }
 
 /**
- * This function configures the process for recording/replay. In particular:
- * (1) address space randomization is disabled
- * (2) rdtsc is disabled
+ * Prepare this process and its ancestors for recording/replay by
+ * preventing direct access to sources of nondeterminism, and ensuring
+ * that rr bugs don't adversely affect the underlying system.
  */
 static void set_up_process()
 {
-	/* disable address space randomization */
 	int orig_pers;
 
+	if (!rr_flags()->cpu_unbound) {
+		cpu_set_t mask;
+		/* Bind tracee tasks to exactly one logical CPU, the
+		 * same across record/replay.  This prevents tracees
+		 * from observing nondeterminism through issuing
+		 * 'cpuid' instructions that reveal which HW thread
+		 * they're running on. */
+		CPU_ZERO(&mask);
+		CPU_SET(0, &mask);
+		if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
+			fatal("Couldn't bind to CPU 0");
+		}
+	}
+
+	/* TODO tracees can probably undo some of the setup below
+	 * ... */
+
+	/* Disable address space layout randomization, for obvious
+	 * reasons, and ensure that the layout is otherwise well-known
+	 * ("COMPAT").  For not-understood reasons, "COMPAT" layouts
+	 * have been observed in certain recording situations but not
+	 * in replay, which causes divergence. */
 	if (0 > (orig_pers = personality(0xffffffff))) {
 		fatal("error getting personaity");
 	}
@@ -125,13 +146,14 @@ static void set_up_process()
 			    ADDR_COMPAT_LAYOUT)) {
 		fatal("error disabling randomization");
 	}
+	/* Trap to the rr process if a 'rdtsc' instruction is issued.
+	 * That allows rr to record the tsc and replay it
+	 * deterministically. */
 	if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
 		fatal("error setting up prctl -- bailing out");
 	}
-	/* If rr goes down, there's nothing more useful we can do.
-	 * Time for seppuku.
-	 *
-	 * XXX the tracee can reset or change this ...*/
+	/* If the rr process dies, prevent runaway tracee processes
+	 * from dragging down the underlying system. */
 	if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
 		fatal("Couldn't set parent-death signal");
 	}
