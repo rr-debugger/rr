@@ -54,25 +54,33 @@ span:nth-child(7n+7) { color: violet; }
   <section>
     <h2>Quick-start guide</h2>
     <p>rr can currently only record and replay x86 binaries. This
-      restriction will be lifted in a future version. rr also requires a
-      relatively recent chip, Merom or so and later. That,
-      unfortunately, may be a permanent restriction.</p>
-    <p>To install prebuilt, cross-compiled x86 binaries on your x86_64
-      Ubuntu &gt;=12.04 system,</p>
+      restriction will be lifted in a future version.  The "official"
+      rr system configuration is
+      <ul>
+        <li>Fedora 19 x86 OS (linux 3.11 kernel)</li>
+        <li>running in a guest VM on top of VMWare 9</li>
+        <li>on an Intel Ivy Bridge series CPU</li>
+      </ul>
+      No guarantees are made about rr behavior on other
+      configurations. That said, rr is known to work in other
+      setups. In the future, more configurations will be officially
+      supported.
+    </p>
+    <p>To install prebuilt binaries on your x86 Fedora 19 system,</p>
     <pre>
 cd /tmp
-wget http://rr-project.org/releases/rr-0.0.0-Linux-x86_64.deb
-sudo dpkg -i rr-0.0.0-Linux-x86_64.deb
+wget http://rr-project.org/releases/rr-0.1pre.0-Linux-x86.rpm
+sudo rpm -i rr-0.1pre.0-Linux-x86.rpm
     </pre>
-    <p>And on Fedora &gt;=17</p>
+    <p>Or on x86 Ubuntu &gt;=12.04</p>
     <pre>
 cd /tmp
-wget http://rr-project.org/releases/rr-0.0.0-Linux-x86_64.rpm
-sudo rpm -i rr-0.0.0-Linux-x86_64.rpm
+wget http://rr-project.org/releases/rr-0.1pre.0-Linux-x86.deb
+sudo dpkg -i rr-0.1pre.0-Linux-x86.deb
     </pre>
     <p>Once rr is installed,
-      see <a href="https://github.com/mozilla/rr/wiki/Usage">https://github.com/mozilla/rr/wiki/Usage</a>
-      for how to run rr.</p>
+      visit <a href="https://github.com/mozilla/rr/wiki/Usage">https://github.com/mozilla/rr/wiki/Usage</a>
+      to learn how to use rr.</p>
   </section>
 
   <section>
@@ -100,11 +108,13 @@ git clone git://github.com/mozilla/rr.git
 
   <section>
     <h2>Documentation</h2>
+    <p>Work-in-progress presentation about the technical details of
+    rr: <a href="http://rr-project.org/rr.html">http://rr-project.org/rr.html</a>.</p>
     <p>Peruse <a href="https://github.com/mozilla/rr/wiki">https://github.com/mozilla/rr/wiki</a>.</p>
   </section>
 
   <section>
-    <p><i>Last updated Wed Jul 10 21:51</i></p>
+    <p><i>Last updated Fri Oct 18 17:19</i></p>
     <p><a href="http://www.microsoft.com/ie"><img src="ie.gif"></a></p>
   </section>
 </body>
