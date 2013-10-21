@@ -81,6 +81,7 @@ set(BASIC_TESTS
   async_segv
   async_signal_syscalls
   async_usr1
+  at_threadexit
   bad_ip
   bad_syscall
   barrier
