@@ -110,6 +110,7 @@ set(BASIC_TESTS
   mmap_private
   mmap_ro
   mmap_shared
+  mmap_tmpfs
   perf_event
   prctl
   priority
