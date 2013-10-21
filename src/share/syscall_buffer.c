@@ -451,6 +451,7 @@ static void clean_up_task(void* data)
 		traced_munmap(cleanup->syscallbuf_ptr,
 			      cleanup->num_syscallbuf_bytes);
 		traced_close(cleanup->desched_counter_fd);
+		buffer = NULL;
 	}
 }
 
