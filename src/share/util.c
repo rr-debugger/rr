@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <libdis.h>
 #include <limits.h>
+#include <linux/magic.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
 #include <malloc.h>
@@ -27,6 +28,7 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/vfs.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -1540,6 +1542,13 @@ done:
 	return is_restart;
 }
 
+static int is_tmp_file(const char* path)
+{
+	struct statfs sfs;
+	statfs(path, &sfs);
+	return TMPFS_MAGIC == sfs.f_type;
+}
+
 int should_copy_mmap_region(const char* filename, struct stat* stat,
 			    int prot, int flags,
 			    int warn_shared_writeable)
@@ -1547,6 +1556,10 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 	int private_mapping = (flags & MAP_PRIVATE);
 	int can_write_file;
 
+	if (is_tmp_file(filename)) {
+		debug("  copying file on tmpfs");
+		return 1;
+	}
 	if (private_mapping && (prot & PROT_EXEC)) {
 		/* We currently don't record the images that we
 		 * exec(). Since we're being optimistic there (*cough*
