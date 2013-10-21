@@ -1547,6 +1547,12 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 	int private_mapping = (flags & MAP_PRIVATE);
 	int can_write_file;
 
+	if (strncmp(filename, "/tmp/", 5) == 0) {
+		/* Files under /tmp are assumed to be temporary. In which case
+		 * we'd better copy them. */
+		return 1;
+        }
+
 	if (private_mapping && (prot & PROT_EXEC)) {
 		/* We currently don't record the images that we
 		 * exec(). Since we're being optimistic there (*cough*
