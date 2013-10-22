@@ -204,6 +204,8 @@ static void __start_hpc(struct task* t)
 {
 	struct hpc_context *counters = t->hpc;
 	pid_t tid = t->tid;
+	struct f_owner_ex own;
+
 	// see http://www.eece.maine.edu/~vweaver/projects/perf_events/perf_event_open.html for more information
 	start_counter(t, -1, &counters->hw_int); // group leader.
 	start_counter(t, counters->hw_int.fd, &counters->inst);
@@ -211,7 +213,11 @@ static void __start_hpc(struct task* t)
 	start_counter(t, counters->hw_int.fd, &counters->page_faults);
 	//START_COUNTER(tid,counters->hw_int.fd,counters->rbc);
 
-	sys_fcntl(counters->rbc.fd, F_SETOWN, tid);
+	own.type = F_OWNER_TID;
+	own.pid = tid;
+	if (fcntl(counters->rbc.fd, F_SETOWN_EX, &own)) {
+		fatal("Failed to SETOWN_EX rbc event fd");
+	}
 	sys_fcntl(counters->rbc.fd, F_SETFL, O_ASYNC);
 	sys_fcntl(counters->rbc.fd, F_SETSIG, HPC_TIME_SLICE_SIGNAL);
 
