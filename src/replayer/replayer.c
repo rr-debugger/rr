@@ -1631,6 +1631,8 @@ void emergency_debug(struct task* t)
 {
 	struct dbg_context* dbg;
 
+	flush_trace_files();
+
 	if (probably_not_interactive()) {
 		errno = 0;
 		fatal("(session doesn't look interactive, aborting emergency debugging)");
