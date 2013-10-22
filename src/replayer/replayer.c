@@ -1073,11 +1073,11 @@ static void emulate_signal_delivery(struct task* oldtask)
 	validate_args(trace->stop_reason, -1, t);
 }
 
-static void assert_at_recorded_rcb(struct task* t)
+static void assert_at_recorded_rcb(struct task* t, int event)
 {
 	assert_exec(t, !t->hpc->started || read_rbc(t->hpc) == t->trace.rbc,
-		    "rbc mismatch for event in synchronous signal delivery; expected %"PRId64", got %"PRId64,
-		    t->trace.rbc, read_rbc(t->hpc));
+		    "rbc mismatch for '%s'; expected %"PRId64", got %"PRId64,
+		    strevent(event), t->trace.rbc, read_rbc(t->hpc));
 }
 
 /**
@@ -1089,6 +1089,7 @@ static int emulate_deterministic_signal(struct task* t,
 					int sig, int stepi)
 {
 	pid_t tid = t->tid;
+	int event = t->trace.stop_reason;
 
 	continue_or_step(t, stepi);
 	if (SIGCHLD == t->child_sig) {
@@ -1101,9 +1102,9 @@ static int emulate_deterministic_signal(struct task* t,
 	assert_exec(t, t->child_sig == sig,
 		    "Replay got unrecorded signal %d (expecting %d)",
 		    t->child_sig, sig);
-	assert_at_recorded_rcb(t);
+	assert_at_recorded_rcb(t, event);
 
-	if (SIG_SEGV_RDTSC == t->trace.stop_reason) {
+	if (SIG_SEGV_RDTSC == event) {
 		write_child_main_registers(tid, &t->trace.recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
@@ -1586,7 +1587,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		 * interrupts and other implementation details.  This
 		 * is checked in |advance_to()| anyway. */
 		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action) {
-			assert_at_recorded_rcb(t);
+			assert_at_recorded_rcb(t, event);
 		}
 		reset_hpc(t, 0);
 	}
