@@ -170,7 +170,7 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 	/* signal the parent that the child is ready */
 	kill(getpid(), SIGSTOP);
 
-	execve(executable, argv, envp);
+	execvpe(executable, argv, envp);
 	fatal("Failed to exec %s", executable);
 }
 

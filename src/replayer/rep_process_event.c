@@ -1075,41 +1075,57 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 		process_clone(t, trace, state);
 		break;
 
-	case SYS_execve:
+	case SYS_execve: {
+		int check;
+
 		if (state == STATE_SYSCALL_ENTRY) {
 			enter_syscall_exec(t, syscall);
-		} else {
-			validate = TRUE;
-
-			/* we need an additional ptrace syscall, since
-			 * ptrace is setup with PTRACE_O_TRACEEXEC */
-			__ptrace_cont(t);
-
-			int check = read_child_ebx(tid);
-			/* if the execve comes from a vfork system
-			 * call the ebx register is not zero. in this
-			 * case, no recorded data needs to be
-			 * injected */
-			if (check == 0) {
-				size_t size;
-				void* rec_addr;
-				void* data = read_raw_data(&(t->trace),
-							   &size, &rec_addr);
-				if (data != NULL ) {
-					write_child_data(
-						t, size, (void*)rec_addr,
-						data);
-					sys_free((void**) &data);
-				}
-			}
-
-			init_scratch_memory(t);
-
-			set_return_value(t);
-			validate_args(syscall, state, t);
+			break;
 		}
-		break;
+		if (0 > rec_regs->eax) {
+			/* Failed exec(). */
+			exit_syscall_exec(t, syscall, 0, DONT_EMULATE_RETURN);
+			read_child_registers(tid, &t->regs);
+			assert_exec(t, rec_regs->eax == t->regs.eax,
+				    "Recorded exec() return %ld, but replayed %ld",
+				    rec_regs->eax, t->regs.eax);
+			break;
+		}
 
+		/* we need an additional ptrace syscall, since ptrace
+		 * is setup with PTRACE_O_TRACEEXEC */
+		__ptrace_cont(t);
+		read_child_registers(tid, &t->regs);
+
+		/* We just saw a successful exec(), so from now on we
+		 * know that the address space layout for the replay
+		 * tasks will (should!) be the same as for the
+		 * recorded tasks.  So we can start validating
+		 * registers at events. */
+		validate = TRUE;
+
+		check = t->regs.ebx;
+		/* if the execve comes from a vfork system call the
+		 * ebx register is not zero. in this case, no recorded
+		 * data needs to be injected */
+		if (check == 0) {
+			size_t size;
+			void* rec_addr;
+			void* data = read_raw_data(&(t->trace),
+						   &size, &rec_addr);
+			if (data != NULL ) {
+				write_child_data(t, size, (void*)rec_addr,
+						 data);
+				sys_free((void**) &data);
+			}
+		}
+
+		init_scratch_memory(t);
+
+		set_return_value(t);
+		validate_args(syscall, state, t);
+		break;
+	}
 	case SYS_ipc:
 		process_ipc(t, trace, state);
 		break;

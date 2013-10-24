@@ -147,10 +147,6 @@ static void start(int argc, char* argv[], char** envp)
 
 	if (rr_flags()->option == RECORD) {
 		copy_executable(argv[0]);
-		if (access(__executable, X_OK)) {
-			fatal("The specified file '%s' does not exist or is not executable\n", __executable);
-		}
-
 		copy_argv(argc, argv);
 		copy_envp(envp);
 		/* create directory for trace files */
@@ -195,16 +191,29 @@ static void start(int argc, char* argv[], char** envp)
 		/* replayer code comes here */
 	} else if (rr_flags()->option == REPLAY) {
 		init_environment(argv[0], &argc, __argv, __envp);
-
 		copy_executable(__argv[0]);
-		if (access(__executable, X_OK)) {
-			printf("The specified file '%s' does not exist or is not executable\n", __executable);
-			return;
-		}
 
 		pid = sys_fork();
 
 		if (pid == 0) { /* child process */
+			/* When we execvpe() the tracee, we must
+			 * ensure that $PATH is the same as in
+			 * recording so that libc searches paths in
+			 * the same order.  So copy that over now.
+			 *
+			 * And because we use execvpe(), the exec'd
+			 * tracee will start with a fresh environment
+			 * guaranteed to be the same as in replay, so
+			 * we don't have to worry about any mutation
+			 * here affecting post-exec execution. */
+			char** e;
+			for (e = __envp; *e; ++e) {
+				const char* kv = *e;
+				if (!strncmp(kv, "PATH=",
+					     sizeof("PATH=") - 1)) {
+					putenv(strdup(kv));
+				}
+			}
 			sys_start_trace(__executable, __argv, __envp);
 		} else { /* parent process */
 			child = pid;

@@ -1075,6 +1075,9 @@ static void emulate_signal_delivery(struct task* oldtask)
 
 static void assert_at_recorded_rcb(struct task* t, int event)
 {
+	if (!validate) {
+		return;
+	}
 	assert_exec(t, !t->hpc->started || read_rbc(t->hpc) == t->trace.rbc,
 		    "rbc mismatch for '%s'; expected %"PRId64", got %"PRId64,
 		    strevent(event), t->trace.rbc, read_rbc(t->hpc));
@@ -1571,7 +1574,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	 * to reach the rcb we recorded at signal delivery.  So don't
 	 * reset the counter for buffer flushes.  (It doesn't matter
 	 * for non-async-signal types, which are deterministic.) */
-	switch (t->trace.stop_reason) {
+	switch (event) {
 	case USR_SYSCALLBUF_ABORT_COMMIT:
 	case USR_SYSCALLBUF_FLUSH:
 	case USR_SYSCALLBUF_RESET:
