@@ -1,0 +1,7 @@
+# Ensure that the test records some USR_SCHED interrupt events.
+
+source `dirname $0`/util.sh execp "$@"
+
+just_record ls -la
+replay
+check '..'

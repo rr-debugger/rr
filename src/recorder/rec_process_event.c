@@ -1517,6 +1517,33 @@ void rec_process_syscall(struct task *t)
 		 sizeof(struct timezone), (void*)regs.ecx)
 
 	/**
+	 *  ssize_t getxattr(const char *path, const char *name,
+	 *                   void *value, size_t size);
+	 *  ssize_t lgetxattr(const char *path, const char *name,
+	 *                    void *value, size_t size);
+	 *  ssize_t fgetxattr(int fd, const char *name,
+	 *                    void *value, size_t size);
+	 *
+	 * getxattr() retrieves the value of the extended attribute
+	 * identified by name and associated with the given path in
+	 * the file system. The length of the attribute value is
+	 * returned.
+	 */
+	case SYS_getxattr:
+	case SYS_lgetxattr:
+	case SYS_fgetxattr: {
+		ssize_t len = regs.eax;
+		void* value = (void*)regs.edx;
+
+		if (len > 0) {
+			record_child_data(t, len, value);
+		} else {
+			record_noop_data(t);
+		}
+		break;
+	}
+
+	/**
 	 * int inotify_rm_watch(int fd, uint32_t wd)
 	 *
 	 * inotify_rm_watch()  removes the watch associated with the watch descriptor wd from the
@@ -1775,36 +1802,6 @@ void rec_process_syscall(struct task *t)
 		 sizeof(uid_t), (void*)regs.ebx,
 		 sizeof(uid_t), (void*)regs.ecx,
 		 sizeof(uid_t), (void*)regs.edx)
-
-	/*
-	 * ssize_t lgetxattr(const char *path, const char *name, void *value, size_t size);
-	 *
- 	 * getxattr() retrieves the value of the extended attribute identified by name
- 	 * and associated with the given path in the file system.  The length of the
- 	 * attribute value is returned.
- 	 *
- 	 * lgetxattr() is identical to getxattr(), except in the case of a symbolic link,
- 	 * where the link itself is interrogated, not the file that it refers to.
- 	 *
- 	 * fgetxattr() is identical to getxattr(), only the open file referred to by fd
- 	 * (as returned by open(2)) is interrogated in place of path.
- 	 *
- 	 *
- 	 * On success, a positive number is returned indicating the size of the extended
- 	 * attribute value.  On failure, -1 is returned and errno is set appropriately.
- 	 *
- 	 * If the named attribute does not exist, or the process has no access to this
- 	 * attribute, errno is set to ENOATTR.
- 	 *
- 	 * If the size of the value buffer is too small to hold the result, errno is set
- 	 * to ERANGE.
- 	 *
- 	 * If extended attributes are not supported by the file system, or are disabled,
- 	 * errno is set to ENOTSUP.
- 	 *
-	 */
-	SYS_REC1(lgetxattr, regs.esi, (void*)regs.edx)
-
 
 	/*
 	 * int _llseek(unsigned int fd, unsigned long offset_high, unsigned long offset_low,

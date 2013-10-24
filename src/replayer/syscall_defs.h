@@ -512,6 +512,22 @@ SYSCALL_DEF(EMU, gettimeofday, 2)
 SYSCALL_DEF(EMU, getuid32, 0)
 
 /**
+ *  ssize_t getxattr(const char *path, const char *name,
+ *                   void *value, size_t size);
+ *  ssize_t lgetxattr(const char *path, const char *name,
+ *                    void *value, size_t size);
+ *  ssize_t fgetxattr(int fd, const char *name,
+ *                    void *value, size_t size);
+ *
+ * getxattr() retrieves the value of the extended attribute identified
+ * by name and associated with the given path in the file system. The
+ * length of the attribute value is returned.
+ */
+SYSCALL_DEF(EMU, getxattr, 1)
+SYSCALL_DEF(EMU, lgetxattr, 1)
+SYSCALL_DEF(EMU, fgetxattr, 1)
+
+/**
  *  int inotify_add_watch(int fd, const char *pathname, uint32_t mask)
  *
  * inotify_add_watch() adds a new watch, or modifies an existing
@@ -570,22 +586,6 @@ SYSCALL_DEF(IRREGULAR, ipc, -1)
  * process group or process.
  */
 SYSCALL_DEF(EMU, kill, 0)
-
-/**
- *  ssize_t lgetxattr(const char *path, const char *name, void *value, size_t size);
- *
- * getxattr() retrieves the value of the extended attribute identified
- * by name and associated with the given path in the file system.  The
- * length of the attribute value is returned.
- *
- * lgetxattr() is identical to getxattr(), except in the case of a
- * symbolic link, where the link itself is interrogated, not the file
- * that it refers to.
- *
- * fgetxattr() is identical to getxattr(), only the open file referred
- * to by fd (as returned by open(2)) is interrogated in place of path.
- */
-SYSCALL_DEF(EMU, lgetxattr, 1)
 
 /**
  *  int link(const char *oldpath, const char *newpath);

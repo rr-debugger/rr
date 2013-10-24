@@ -145,9 +145,13 @@ function skip_if_syscall_buf {
     fi
 }
 
+function just_record { exe=$1; exeargs=$2;
+    rr -u record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
+}
+
 function record { exe=$1; exeargs=$2;
     cp ${OBJDIR}/bin/$exe $exe-$nonce
-    rr -u record $LIB_ARG $RECORD_ARGS $exe-$nonce $exeargs 1> record.out
+    just_record ./$exe-$nonce "$exeargs"
 }
 
 #  record_async_signal <signal> <delay-secs> <test>

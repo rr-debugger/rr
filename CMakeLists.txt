@@ -158,6 +158,7 @@ set(CUSTOM_TESTS
   cont_signal
   dead_thread_target
   deliver_async_signal_during_syscalls
+  execp
   get_thread_list
   read_bad_mem
   sanity
