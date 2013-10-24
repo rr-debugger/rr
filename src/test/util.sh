@@ -71,6 +71,12 @@ function usage {
     echo Usage: "util.sh TESTNAME [LIB_ARG] [OBJDIR]"
 }
 
+# Don't bind record/replay tracees to the same logical CPU.  When we
+# do that, the tests take impractically long to run.
+#
+# TODO: find a way to run faster with CPU binding
+GLOBAL_OPTIONS=-u
+
 TESTNAME=$1
 LIB_ARG=$2
 OBJDIR=$3
@@ -146,7 +152,7 @@ function skip_if_syscall_buf {
 }
 
 function just_record { exe=$1; exeargs=$2;
-    rr -u record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
+    rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
 }
 
 function record { exe=$1; exeargs=$2;
@@ -164,7 +170,7 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 }
 
 function replay { replayflags=$1
-    rr -u replay -a $replayflags trace_0/ 1> replay.out 2> replay.err
+    rr $GLOBAL_OPTIONS replay -a $replayflags trace_0/ 1> replay.out 2> replay.err
 }
 
 #  debug <exe> <expect-script-name> [replay-args]

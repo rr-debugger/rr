@@ -813,9 +813,13 @@ static int is_same_execution_point(const struct user_regs_struct* rec_regs,
 	if (0 != rcbs_left) {
 		debug("  not same execution point: %"PRId64" rcbs left (@%p)",
 		      rcbs_left, (void*)rec_regs->eip);
+#ifdef DEBUGTAG
+		compare_register_files("(rep)", rep_regs,
+				       "(rec)", rec_regs, LOG_MISMATCHES);
+#endif
 		return 0;
 	}
-	if (compare_register_files("rep interrupt", rep_regs, "rec", rec_regs,
+	if (compare_register_files("rep", rep_regs, "rec", rec_regs,
 				   behavior)) {
 		debug("  not same execution point: regs differ (@%p)",
 		      (void*)rec_regs->eip);
