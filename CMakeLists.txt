@@ -90,6 +90,7 @@ set(BASIC_TESTS
   breakpoint
   chew_cpu
   clock
+  condvar_stress
   exit_group
   fadvise
   flock
