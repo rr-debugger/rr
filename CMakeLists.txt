@@ -16,7 +16,7 @@ set(rr_VERSION_MAJOR 0)
 set(rr_VERSION_MINOR 1pre)
 set(rr_VERSION_PATCH 0)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict-prototypes")
 
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" ""

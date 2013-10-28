@@ -2,23 +2,23 @@
 
 #include "rrutil.h"
 
-static void C() {
+static void C(void) {
 	atomic_puts("in C");
 }
 
-static void B() {
+static void B(void) {
 	atomic_puts("calling C");
 	C();
 	atomic_puts("finished C");
 }
 
-static void A() {
+static void A(void) {
 	atomic_puts("calling B");
 	B();
 	atomic_puts("finished B");
 }
 
-int main() {
+int main(void) {
 
 	atomic_puts("calling A");
 	A();

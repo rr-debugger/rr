@@ -74,12 +74,12 @@ static size_t num_shared_maps = 0;
 static void* shared_maps_starts[MAX_TID] = {0};
 static void* shared_maps_ends[MAX_TID] = {0};
 
-const struct flags* rr_flags()
+const struct flags* rr_flags(void)
 {
 	return &flags;
 }
 
-struct flags* rr_flags_for_init()
+struct flags* rr_flags_for_init(void)
 {
 	static int initialized;
 	if (!initialized) {
@@ -125,7 +125,7 @@ static int is_start_of_scratch_region(void* start_addr)
 	return 0;
 }
 
-double now_sec()
+double now_sec(void)
 {
 	struct timespec tp;
 	clock_gettime(CLOCK_MONOTONIC, &tp);
@@ -145,7 +145,7 @@ int nanosleep_nointr(const struct timespec* ts)
 	}
 }
 
-int probably_not_interactive()
+int probably_not_interactive(void)
 {
 	/* Eminently tunable heuristic, but this is guaranteed to be
 	 * true during rr unit tests, where we care most about this

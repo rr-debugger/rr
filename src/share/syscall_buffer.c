@@ -163,7 +163,7 @@ static int (*real_pthread_create)(pthread_t* thread,
  * Return a pointer to the buffer header, which happens to occupy the
  * initial bytes in the mapped region.
  */
-static struct syscallbuf_hdr* buffer_hdr()
+static struct syscallbuf_hdr* buffer_hdr(void)
 {
 	return (struct syscallbuf_hdr*)buffer;
 }
@@ -172,7 +172,7 @@ static struct syscallbuf_hdr* buffer_hdr()
  * Return a pointer to the byte just after the last valid syscall record in
  * the buffer.
  */
-static byte* buffer_last()
+static byte* buffer_last(void)
 {
 	return (byte*)next_record(buffer_hdr());
 }
@@ -181,7 +181,7 @@ static byte* buffer_last()
  * Return a pointer to the byte just after the very end of the mapped
  * region.
  */
-static byte* buffer_end()
+static byte* buffer_end(void)
 {
 	return buffer + SYSCALLBUF_BUFFER_SIZE;
 }
@@ -220,12 +220,12 @@ static int traced_fcntl(int fd, int cmd, ...)
 	return syscall(SYS_fcntl64, fd, cmd, arg);
 }
 
-static pid_t traced_getpid()
+static pid_t traced_getpid(void)
 {
 	return syscall(SYS_getpid);
 }
 
-static pid_t traced_gettid()
+static pid_t traced_gettid(void)
 {
 	return syscall(SYS_gettid);
 }
@@ -351,7 +351,7 @@ __asm__(".text\n\t"
 	"_untraced_syscall_entry_point_ip:\n\t"
 	"ret");
 
-static void* get_untraced_syscall_entry_point()
+static void* get_untraced_syscall_entry_point(void)
 {
     void *ret;
     __asm__ __volatile__(
@@ -408,7 +408,7 @@ static void rrcall_init_buffers(void* untraced_syscall_ip,
  * determines whether it will be ptraced or handled by the
  * intercepting library
  */
-static void install_syscall_filter()
+static void install_syscall_filter(void)
 {
 	void* protected_call_start = get_untraced_syscall_entry_point();
 	struct sock_filter filter[] = {
@@ -492,7 +492,7 @@ static int open_desched_event_counter(size_t nr_descheds)
 	return fd;
 }
 
-static void set_up_buffer()
+static void set_up_buffer(void)
 {
 	struct task_cleanup_data* cleanup = malloc(sizeof(*cleanup));
 	struct sockaddr_un addr;
@@ -577,7 +577,7 @@ static void set_up_buffer()
  * know about the old buffer, so that the next time a buffered syscall
  * is hit, we map a new buffer.
  */
-static void drop_buffer()
+static void drop_buffer(void)
 {
 	buffer = NULL;
 	called_ensure_thread_init = 0;
@@ -588,7 +588,7 @@ static void drop_buffer()
  * Initialize process-global buffering state, if enabled.
  */
 static pthread_once_t init_process_once = PTHREAD_ONCE_INIT;
-static void init_process()
+static void init_process(void)
 {
 	int ret;
 
@@ -611,7 +611,7 @@ static void init_process()
 /**
  * Initialize thread-local buffering state, if enabled.
  */
-static void ensure_thread_init()
+static void ensure_thread_init(void)
 {
 	if (called_ensure_thread_init) {
 		return;
@@ -623,7 +623,7 @@ static void ensure_thread_init()
 }
 
 __attribute__((constructor))
-static void init_process_static()
+static void init_process_static(void)
 {
 	ensure_thread_init();
 }
@@ -750,7 +750,7 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
  * fallback_trace:
  *   return syscall(...);  // traced
  */
-static void* prep_syscall()
+static void* prep_syscall(void)
 {
 	ensure_thread_init();
 	if (!buffer) {
@@ -775,7 +775,7 @@ static void* prep_syscall()
 	return buffer_last() + sizeof(struct syscallbuf_record);
 }
 
-static void arm_desched_event()
+static void arm_desched_event(void)
 {
 	/* Don't trace the ioctl; doing so would trigger a flushing
 	 * ptrace trap, which is exactly what this code is trying to
@@ -788,7 +788,7 @@ static void arm_desched_event()
 	}
 }
 
-static void disarm_desched_event()
+static void disarm_desched_event(void)
 {
 	/* See above. */
 	if (untraced_syscall3(SYS_ioctl, desched_counter_fd,

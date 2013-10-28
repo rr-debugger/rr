@@ -10,7 +10,7 @@ static void sighandler(int sig, siginfo_t* si, void* utp) {
 	_exit(0);
 }
 
-int main() {
+int main(void) {
 	struct sigaction act;
 
 	memset(&act, 0, sizeof(act));

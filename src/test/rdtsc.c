@@ -9,7 +9,7 @@ static uint64_t rdtsc(void) {
 	return (uint64_t)hi << 32 | (uint64_t)lo;
 }
 
-static void breakpoint() {
+static void breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }

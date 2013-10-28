@@ -11,7 +11,7 @@ static void handle_usr1(int sig) {
 	atomic_puts("caught usr1");
 }
 
-static void breakpoint() {
+static void breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }

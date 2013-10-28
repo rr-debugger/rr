@@ -5,6 +5,6 @@
 
 struct flags;
 
-void record();
+void record(void);
 
 #endif /* RECORDER_H_ */

@@ -530,7 +530,7 @@ void task_group_remove_and_unref(struct task* t);
  * The returned table has refcount 1, so the caller must
  * sighandlers_unref() it to free it.
  */
-struct sighandlers* sighandlers_new();
+struct sighandlers* sighandlers_new(void);
 /**
  * Copy all the sighandlers and metadata from the caller's process
  * into |table|, overwriting whatever data was already in |table|.

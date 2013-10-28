@@ -8,7 +8,7 @@ static pthread_barrier_t barrier;
 static pid_t reader_tid;
 static int reader_caught_signal;
 
-static pid_t sys_gettid() {
+static pid_t sys_gettid(void) {
 	return syscall(SYS_gettid);
 }
 

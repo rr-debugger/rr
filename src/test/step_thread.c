@@ -7,12 +7,12 @@ pthread_barrier_t bar;
 
 /* NB: these must *not* be macros so that debugger step-next works as
  * expected per the program source. */
-void A() {
+void A(void) {
 	atomic_puts("entered A");
 	pthread_barrier_wait(&bar);
 	pthread_barrier_wait(&bar);
 }
-void B() {
+void B(void) {
 	atomic_puts("entered B");
 	pthread_barrier_wait(&bar);
 	pthread_barrier_wait(&bar);
@@ -27,16 +27,16 @@ void* threadB(void* unused) {
 	return NULL;
 }
 
-void C() {
+void C(void) {
 	atomic_puts("entered C");
 	pthread_barrier_wait(&bar);
 }
 
-void hit_barrier() {
+void hit_barrier(void) {
 	atomic_puts("hit barrier");
 }
 
-int main() {
+int main(void) {
 	pthread_t a, b;
 
 	pthread_barrier_init(&bar, NULL, 3);

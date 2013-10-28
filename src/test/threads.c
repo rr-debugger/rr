@@ -34,7 +34,7 @@ void* sender(void* id) {
 	return NULL;
 }
 
-int main() {
+int main(void) {
 	struct timeval tv;
 	pthread_t thread1, thread2;
 

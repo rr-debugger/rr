@@ -1601,7 +1601,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	debug_memory(t);
 }
 
-void replay(struct flags flags)
+void replay(void)
 {
 	struct dbg_context* dbg = NULL;
 

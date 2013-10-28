@@ -8,7 +8,7 @@ static void sighandler(int sig) {
 	_exit(0);
 }
 
-static void breakpoint() {
+static void breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }

@@ -16,7 +16,7 @@ static int sockfds[2];
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
-static pid_t sys_gettid() {
+static pid_t sys_gettid(void) {
 	return syscall(SYS_gettid);
 }
 

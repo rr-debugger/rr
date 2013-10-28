@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main() {
+int main(void) {
 	atomic_puts("Hi");
 	return 0;
 }

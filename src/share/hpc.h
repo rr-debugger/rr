@@ -39,9 +39,9 @@ struct hpc_context {
 	hpc_event_t hw_int;
 };
 
-void init_libpfm();
+void init_libpfm(void);
 void libpfm_event_encoding(struct perf_event_attr* attr, const char* event_str, int hw_event);
-void close_libpfm();
+void close_libpfm(void);
 
 void init_hpc(struct task *t);
 void destroy_hpc(struct task *t);

@@ -113,7 +113,7 @@ void sys_exit()
  * preventing direct access to sources of nondeterminism, and ensuring
  * that rr bugs don't adversely affect the underlying system.
  */
-static void set_up_process()
+static void set_up_process(void)
 {
 	int orig_pers;
 

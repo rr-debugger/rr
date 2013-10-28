@@ -1,5 +1,5 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
-static void breakpoint() {
+static void breakpoint(void) {
 	__asm__ ("int $3");
 	/* NB: the above instruction *must* be at line 3 in this file.
 	 * Tests rely on that. */

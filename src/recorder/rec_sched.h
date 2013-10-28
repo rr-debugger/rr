@@ -14,7 +14,7 @@
 struct task;
 struct flags;
 
-int rec_sched_get_num_threads();
+int rec_sched_get_num_threads(void);
 /**
  * Given |flags| and the previously-scheduled task |t|, return a new
  * runnable task (which may be |t|).
@@ -45,6 +45,6 @@ struct task* rec_sched_lookup_thread(pid_t tid);
 enum { DEFAULT_COPY = 0, SHARE_SIGHANDLERS = 0x1, SHARE_TASK_GROUP = 0x2 };
 void rec_sched_register_thread(pid_t parent, pid_t child, int flags);
 void rec_sched_deregister_thread(struct task** t);
-void rec_sched_exit_all();
+void rec_sched_exit_all(void);
 
 #endif /* REC_SCHED_H_ */

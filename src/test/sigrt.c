@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-static void breakpoint() {
+static void breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }

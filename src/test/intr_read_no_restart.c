@@ -13,7 +13,7 @@ static int reader_caught_signal;
 
 static int sockfds[2];
 
-static pid_t sys_gettid() {
+static pid_t sys_gettid(void) {
 	return syscall(SYS_gettid);
 }
 

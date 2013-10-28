@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-void spin() {
+void spin(void) {
 	int i;
 
 	atomic_puts("spinning");

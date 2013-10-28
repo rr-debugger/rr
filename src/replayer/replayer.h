@@ -6,7 +6,7 @@
 #include "../share/types.h"
 #include "../share/util.h"
 
-void replay();
+void replay(void);
 
 /**
  * Open a temporary debugging connection for |t| and service requests

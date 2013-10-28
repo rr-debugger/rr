@@ -34,7 +34,7 @@ static int same_statfs_det(const struct statfs* s1, const struct statfs* s2) {
 		&& s1->f_frsize == s2->f_frsize);
 }
 
-int main() {
+int main(void) {
 	int fd;
 	struct statfs sfs1 = { 0 }, sfs2 = { 1 };
 
