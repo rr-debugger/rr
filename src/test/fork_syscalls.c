@@ -14,7 +14,7 @@ static void syscalls(int num) {
 	}
 }
 
-int main() {
+int main(void) {
 	int child;
 
 	syscalls(10);

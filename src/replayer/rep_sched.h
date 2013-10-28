@@ -7,9 +7,9 @@
 
 #include "../share/trace.h"
 
-int rep_sched_get_num_threads();
+int rep_sched_get_num_threads(void);
 struct task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid);
-struct task* rep_sched_get_thread();
+struct task* rep_sched_get_thread(void);
 struct task* rep_sched_lookup_thread(pid_t rec_tid);
 /**
  * Return a freshly-allocated array of tids in |tids|, which is of

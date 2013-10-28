@@ -11,7 +11,7 @@ static void client(const struct sockaddr_un* addr) {
 				 sizeof(*addr)));
 }
 
-static void server() {
+static void server(void) {
 	struct sockaddr_un addr;
 	int listenfd;
 	int servefd;

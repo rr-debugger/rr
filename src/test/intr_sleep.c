@@ -3,7 +3,7 @@
 #include "rrutil.h"
 
 
-static int interrupted_sleep() {
+static int interrupted_sleep(void) {
 	struct timespec ts = { .tv_sec = 2 };
 
 	alarm(1);

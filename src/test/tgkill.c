@@ -5,7 +5,7 @@
 
 static int num_signals_caught;
 
-static pid_t gettid() {
+static pid_t gettid(void) {
 	return syscall(SYS_gettid);
 }
 

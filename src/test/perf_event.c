@@ -10,7 +10,7 @@ static int sys_perf_event_open(struct perf_event_attr *attr,
 	return syscall(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
 }
 
-static uint64_t get_desched() {
+static uint64_t get_desched(void) {
 	uint64_t nr_desched;
 
 	test_assert(sizeof(nr_desched) ==

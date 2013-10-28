@@ -100,7 +100,7 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  * full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
  */
 typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge, IntelNehalem, IntelMerom } cpu_type;
-cpu_type get_cpu_type(){
+cpu_type get_cpu_type(void){
 	unsigned int cpu_type,eax,edx;
 	cpuid(CPUID_GETFEATURES,&eax,&edx);
 	cpu_type = (eax & 0xF0FF0);

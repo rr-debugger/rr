@@ -21,7 +21,7 @@ void verify_token(int fd) {
 	atomic_puts("Got expected token " TOKEN);
 }
 
-int main() {
+int main(void) {
 	int fd;
 
 	fd = open(token_file, O_RDWR | O_CREAT | O_TRUNC, 0600);

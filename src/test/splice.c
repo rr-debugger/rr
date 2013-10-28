@@ -22,7 +22,7 @@ void verify_token(int fd) {
 	atomic_puts("Got expected token " TOKEN);
 }
 
-int main() {
+int main(void) {
 	int pipefds[2];
 	int filefd;
 	loff_t off;

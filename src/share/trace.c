@@ -196,12 +196,12 @@ void write_open_inst_dump(struct task *t)
 	t->inst_dump = sys_fopen(path, "a+");
 }
 
-static unsigned int get_global_time_incr()
+static unsigned int get_global_time_incr(void)
 {
 	return global_time++;
 }
 
-unsigned int get_global_time()
+unsigned int get_global_time(void)
 {
 	return global_time;
 }
@@ -279,7 +279,7 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	sys_fclose(arg_env);
 }
 
-void open_trace_files()
+void open_trace_files(void)
 {
 	char tmp[128], path[128];
 
@@ -748,7 +748,7 @@ void record_inst_done(struct task* t)
 }
 
 
-FILE* get_trace_file()
+FILE* get_trace_file(void)
 {
 	return trace_file;
 }
@@ -941,7 +941,7 @@ void read_syscall_trace(struct syscall_trace* trace)
  * after init_read_trace
  * @return the tid of the main thread of the recording phase
  */
-pid_t get_recorded_main_thread()
+pid_t get_recorded_main_thread(void)
 {
 
 	fpos_t pos;

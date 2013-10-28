@@ -5,17 +5,17 @@
 
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
-static void breakpoint() {
+static void breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }
 
-static void hit_barrier() {
+static void hit_barrier(void) {
 	int break_here = 1;
 	(void)break_here;
 }
 
-static void joined_threads() {
+static void joined_threads(void) {
 	int break_here = 1;
 	(void)break_here;
 }

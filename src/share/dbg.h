@@ -32,7 +32,7 @@
 	do { } while(0)
 #endif
 
-inline static int should_log()
+inline static int should_log(void)
 {
 #ifdef DEBUGTAG
 	return 1;

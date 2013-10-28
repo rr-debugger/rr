@@ -3,7 +3,7 @@
 #include "rrutil.h"
 
 
-int main() {
+int main(void) {
 	int prio1, prio2;
 
 	prio1 = getpriority(PRIO_PROCESS, 0);

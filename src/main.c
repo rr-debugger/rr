@@ -110,7 +110,7 @@ static void copy_envp(char** envp)
 	__envp[i] = 0;
 }
 
-static void alloc_executable()
+static void alloc_executable(void)
 {
 	__executable = sys_malloc(MAX_EXEC_LEN);
 }
@@ -132,7 +132,7 @@ static void sig_child(int sig)
 	kill(getpid(), SIGQUIT);
 }
 
-static void install_signal_handler()
+static void install_signal_handler(void)
 {
 	signal(SIGINT, sig_child);
 }
@@ -261,7 +261,7 @@ static int read_int_file(const char* filename)
 	return val;
 }
 
-static void assert_prerequisites() {
+static void assert_prerequisites(void) {
 	int aslr_val =
 		read_int_file("/proc/sys/kernel/randomize_va_space");
 	int ptrace_scope_val =
@@ -275,7 +275,7 @@ static void assert_prerequisites() {
 	}
 }
 
-static void print_usage()
+static void print_usage(void)
 {
 	fputs(
 "Usage: rr [OPTION] (record|replay) [OPTION]... [ARG]...\n"

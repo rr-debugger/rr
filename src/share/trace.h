@@ -192,7 +192,7 @@ void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr);
  */
 ssize_t read_raw_data_direct(struct trace_frame* trace,
 			     void* buf, size_t buf_size, void** rec_addr);
-pid_t get_recorded_main_thread();
+pid_t get_recorded_main_thread(void);
 void rep_setup_trace_dir(const char* path);
 
 /*         function declaration for instruction dump                  */
@@ -202,7 +202,7 @@ char* read_inst(struct task* context);
 void inst_dump_parse_register_file(struct task* context, struct user_regs_struct* reg);
 /* ------------------------------------------------------------------ */
 
-void inst_dump_skip_entry();
+void inst_dump_skip_entry(struct task* t);
 
 struct syscall_trace
 {
