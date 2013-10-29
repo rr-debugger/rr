@@ -578,42 +578,14 @@ static void write_raw_data(struct task *t, void *buf, size_t to_write)
 {
 	size_t bytes_written;
 	(void)bytes_written;
-	//debug("Asking to write %d bytes from %p", to_write, buf);
-
-	/*
-	if (overall_bytes % 10000 == 0)
-	{
-		struct task safe_t;
-		memcpy(&safe_t, t, sizeof(struct task));
-		t->event = USR_NEW_RAWDATA_FILE;
-		record_event(t, STATE_SYSCALL_ENTRY);
-		memcpy(t, &safe_t, sizeof(struct task));
-		use_new_rawdata_file();
-		assert(fwrite(buf, 1, to_write, raw_data) == to_write);
-	}
-	*/
 
 	bytes_written = fwrite(buf, 1, to_write, raw_data);
 	assert(bytes_written == to_write);
-
-	/*
-	if ((bytes_written = fwrite(buf, 1, to_write, raw_data)) != to_write) {
-		struct task safe_t;
-		memcpy(&safe_t, t, sizeof(struct task));
-		t->event = USR_NEW_RAWDATA_FILE;
-		record_event(t, STATE_SYSCALL_ENTRY);
-		memcpy(t, &safe_t, sizeof(struct task));
-		use_new_rawdata_file();
-		bytes_written = fwrite(buf, 1, to_write, raw_data);
-		assert(bytes_written == to_write);
-	}
-	*/
 	overall_raw_bytes += to_write;
-	//debug("Overall bytes = %d", overall_bytes);
 
-	// new raw data file
-	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
+	if (overall_raw_bytes > MAX_RAW_DATA_SIZE) {
 		use_new_rawdata_file();
+	}
 }
 
 /**
@@ -622,53 +594,40 @@ static void write_raw_data(struct task *t, void *buf, size_t to_write)
  */
 
 #define SMALL_READ_SIZE	4096
-static char read_buffer[SMALL_READ_SIZE];
 
 void record_child_data(struct task *t, size_t size, void* child_ptr)
 {
 	int state;
 	int event = encode_event(t->ev, &state);
+	void* buf;
 	ssize_t read_bytes;
-	(void)state;
 
 	/* We shouldn't be recording a scratch address */
-	assert(!child_ptr || child_ptr != t->scratch_ptr);
+	assert_exec(t, !child_ptr || child_ptr != t->scratch_ptr, "");
 
-	// before anything is performed, check if the seccomp record cache has any entries
 	maybe_flush_syscallbuf(t);
 
-	/* ensure world-alignment and size of loads -- that's more efficient in the replayer */
-	if (child_ptr != 0) {
-		if (size <= SMALL_READ_SIZE) {
-			read_child_usr(t, read_buffer, child_ptr, size);
-			write_raw_data(t, read_buffer, size);
-			read_bytes = size;
-		} else {
-			//debug("Asking to record %d bytes from %p",size,child_ptr);
-			void* buf = read_child_data_checked(t, size, child_ptr, &read_bytes);
-			//debug("Read from child %d bytes", read_bytes);
-			if (read_bytes == -1) {
-				log_warn("Can't read from child %d memory at %p, time = %d",t->tid,child_ptr, get_global_time());
-				getchar();
-				//buf = sys_malloc(size)
-				//read_child_buffer(t->tid,child_ptr,size,buf);
-				write_raw_data(t, buf, 0);
-				read_bytes = 0;
-			} else {
-				/* ensure that everything is written */
-				if (read_bytes != size /*&& read_child_orig_eax(t->tid) != 192*/) {
-					log_err("bytes_read: %x  len %x   syscall: %ld\n", read_bytes, size, read_child_orig_eax(t->tid));
-					print_register_file_tid(t->tid);
-					assert(1==0);
-				}
-				write_raw_data(t, buf, read_bytes);
-			}
-			sys_free((void**) &buf);
-		}
-	} else {
-		read_bytes = size = 0;
+	if (!child_ptr) {
+		read_bytes = 0;
+		goto record_read;
 	}
-	assert(read_bytes == size);
+	if (size <= SMALL_READ_SIZE) {
+		char read_buffer[SMALL_READ_SIZE];
+
+		read_child_usr(t, read_buffer, child_ptr, size);
+		write_raw_data(t, read_buffer, size);
+		read_bytes = size;
+		goto record_read;
+	}
+
+	buf = read_child_data_checked(t, size, child_ptr, &read_bytes);
+	assert_exec(t, read_bytes == size, "Failed to read %d bytes at %p",
+		    size, child_ptr);
+
+	write_raw_data(t, buf, read_bytes);
+	sys_free((void**)&buf);
+
+record_read:
 	print_header(event, child_ptr);
 	fprintf(syscall_header, "%11d\n", read_bytes);
 }
