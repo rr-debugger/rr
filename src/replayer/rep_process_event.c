@@ -408,9 +408,11 @@ void process_ipc(struct task* t, struct trace_frame* trace, int state)
 	/* TODO: ipc may be completely emulated */
 	if (state == STATE_SYSCALL_ENTRY) {
 		switch (call) {
+		case MSGGET:
 		case MSGRCV:
-		case SEMGET:
+		case MSGSND:
 		case SEMCTL:
+		case SEMGET:
 		case SEMOP:
 			enter_syscall_emu(t, SYS_ipc);
 			return;
@@ -421,6 +423,8 @@ void process_ipc(struct task* t, struct trace_frame* trace, int state)
 	}
 
 	switch (call) {
+	case MSGGET:
+	case MSGSND:
 	case SEMGET:
 	/* int semop(int semid, struct sembuf *sops, unsigned nsops); */
 	case SEMOP:
