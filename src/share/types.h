@@ -71,6 +71,8 @@ struct flags {
 	/* Nonzero when tracee processes in record and replay are
 	 * allowed to run on any logical CPU. */
 	int cpu_unbound;
+	/* Always allow emergency debugging. */
+	int force_enable_debugger;
 };
 
 struct msghdr;
