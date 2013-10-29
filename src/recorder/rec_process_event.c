@@ -739,6 +739,99 @@ static void finish_restoring_some_scratch(struct task* t,
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
+static void process_ipc(struct task* t,
+			struct user_regs_struct* call_regs, int call)
+{
+	struct user_regs_struct regs;
+
+	debug("ipc call: %d\n", call);
+
+	/* TODO: use t->regs exclusively */
+	memcpy(&regs, call_regs, sizeof(regs));
+
+	switch (call) {
+	/* int semget(key_t key, int nsems, int semflg); */
+	case SEMGET:
+	/* int semop(int semid, struct sembuf *sops, unsigned nsops); */
+	case SEMOP:
+	/* int shmdt(const void *shmaddr); */
+	case SHMDT:
+	/* int shmget(key_t key, size_t size, int shmflg); */
+	case SHMGET:
+		return;
+
+	/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
+	case MSGRCV:
+		record_child_data(t, sizeof(long) + regs.esi, (void*)regs.edx);
+		return;
+
+	/**
+	 *  int semctl(int semid, int semnum, int cmd, union semnum);
+	 *
+	 *  semnum is optional and determined by cmd
+	 
+	 * union semun {
+               int              val;    // Value for SETVAL
+               struct semid_ds *buf;    // Buffer for IPC_STAT, IPC_SET
+               unsigned short  *array;  // Array for GETALL, SETALL
+               struct seminfo  *__buf;  // Buffer for IPC_INFO (Linux-specific)
+           };
+	*/
+	case SEMCTL: {
+		int cmd = regs.edx;
+		switch (cmd) {
+		case IPC_SET:
+		case IPC_RMID:
+		case GETNCNT:
+		case GETPID:
+		case GETVAL:
+		case GETZCNT:
+		case SETALL:
+		case SETVAL:
+			return;
+
+		case IPC_STAT:
+		case SEM_STAT:
+			record_child_data(t, sizeof(struct semid_ds),
+					  (void*)regs.esi);
+			return;
+
+		case IPC_INFO:
+		case SEM_INFO:
+			record_child_data(t, sizeof(struct seminfo),
+					  (void*)regs.esi);
+			return;
+
+		case GETALL: {
+			int semnum = regs.ecx;
+			record_child_data(t, semnum * sizeof(unsigned short),
+					  (void*)regs.esi);
+			return;
+		}
+		default:
+			fatal("Unknown semctl command %d", cmd);
+			return;
+		}
+	}
+	/* void *shmat(int shmid, const void *shmaddr, int shmflg); */
+	case SHMAT:
+		// the kernel copies the returned address to *third
+		record_child_data(t, sizeof(long), (void*)regs.esi);
+		return;
+
+	/* int shmctl(int shmid, int cmd, struct shmid_ds *buf); */
+	case SHMCTL: {
+		int cmd = regs.edx;
+		(void)cmd;
+		assert(cmd != IPC_INFO && cmd != SHM_INFO && cmd != SHM_STAT);
+		record_child_data(t, sizeof(struct shmid_ds), (void*)regs.esi);
+		return;
+	}
+	default:
+		fatal("Unknown IPC call %d", call);
+	}
+}
+
 static void process_socketcall(struct task* t,
 			       struct user_regs_struct* call_regs,
 			       int call, void* base_addr)
@@ -1572,12 +1665,9 @@ void rec_process_syscall(struct task *t)
 	 *
 	 * 			7-0	function #
 	 * */
-
 	case SYS_ioctl:
-	{
 		handle_ioctl_request(t, regs.ecx);
 		break;
-	}
 
 	/**
 	 * int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth);
@@ -1589,115 +1679,7 @@ void rec_process_syscall(struct task *t)
 	 *
 	 */
 	case SYS_ipc:
-	{
-		int call = regs.ebx;
-
-		switch (call) {
-
-		/* int shmget(key_t key, size_t size, int shmflg); */
-		case SHMGET:
-		// int semget(key_t key, int nsems, int semflg);
-		case SEMGET:
-		// int semop(int semid, struct sembuf *sops, unsigned nsops);
-		case SEMOP:
-		/* int shmdt(const void *shmaddr); */
-		case SHMDT:
-		{
-			break;
-		}
-
-		/* void *shmat(int shmid, const void *shmaddr, int shmflg); */
-		case SHMAT:
-		{
-			// the kernel copies the returned address to *third
-			record_child_data(t, sizeof(long), (void*)regs.esi);
-			break;
-		}
-
-		/* int shmctl(int shmid, int cmd, struct shmid_ds *buf); */
-		case SHMCTL:
-		{
-			int cmd = regs.edx;
-			(void)cmd;
-			assert(cmd != IPC_INFO && cmd != SHM_INFO
-			       && cmd != SHM_STAT);
-			record_child_data(t, sizeof(struct shmid_ds),
-					  (void*)regs.esi);
-			break;
-		}
-
-		/**
-		 *  int semctl(int semid, int semnum, int cmd, union semnum);
-		 *
-		 *  semnum is optional and determined by cmd
-
-		 * union semun {
-               int              val;    // Value for SETVAL
-               struct semid_ds *buf;    // Buffer for IPC_STAT, IPC_SET
-               unsigned short  *array;  // Array for GETALL, SETALL
-               struct seminfo  *__buf;  // Buffer for IPC_INFO (Linux-specific)
-           };
-		 */
-		case SEMCTL:
-		{
-			int cmd = regs.edx;
-			switch (cmd) {
-			case IPC_SET:
-			case IPC_RMID:
-			case GETNCNT:
-			case GETPID:
-			case GETVAL:
-			case GETZCNT:
-			case SETALL:
-			case SETVAL:
-			{
-				break;
-			}
-			case IPC_STAT:
-			case SEM_STAT:
-			{
-				record_child_data(t, sizeof(struct semid_ds),
-						  (void*)regs.esi);
-				break;
-			}
-
-			case IPC_INFO:
-			case SEM_INFO:
-			{
-				record_child_data(t, sizeof(struct seminfo),
-						  (void*)regs.esi);
-				break;
-			}
-			case GETALL:
-			{
-				int semnum = regs.ecx;
-				record_child_data(t, semnum * sizeof(unsigned short), (void*)regs.esi);
-				break;
-
-			}
-			default:
-			{
-				fatal("Unknown semctl command %d",cmd);
-				break;
-			}
-			}
-			break;
-		}
-
-		/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
-		case MSGRCV:
-		{
-			record_child_data(t, sizeof(long) + regs.esi,
-					  (void*)regs.edx);
-			break;
-		}
-
-		default:
-			fatal("Unknown IPC call %d", call);
-		}
-
-		break;
-	}
+		return process_ipc(t, &regs, regs.ebx);
 
 	/**
 	 * int link(const char *oldpath, const char *newpath);

@@ -404,6 +404,7 @@ void process_ipc(struct task* t, struct trace_frame* trace, int state)
 {
 	int tid = t->tid;
 	int call = trace->recorded_regs.ebx;
+
 	/* TODO: ipc may be completely emulated */
 	if (state == STATE_SYSCALL_ENTRY) {
 		switch (call) {
@@ -412,129 +413,119 @@ void process_ipc(struct task* t, struct trace_frame* trace, int state)
 		case SEMCTL:
 		case SEMOP:
 			enter_syscall_emu(t, SYS_ipc);
-			break;
+			return;
 		default:
 			enter_syscall_exec(t, SYS_ipc);
-			break;
+			return;
 		}
-	} else {
-		switch (call) {
-		/* int shmget(key_t key, size_t size, int shmflg); */
-		case SHMGET: {
-			__ptrace_cont(t);
-			shmem_store_key(trace->recorded_regs.eax,
-					read_child_eax(tid));
-			set_return_value(t);
-			validate_args(SYS_ipc, state, t);
+	}
+
+	switch (call) {
+	case SEMGET:
+	/* int semop(int semid, struct sembuf *sops, unsigned nsops); */
+	case SEMOP:
+		exit_syscall_emu(t, SYS_ipc, 0);
+		return;
+
+	/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
+	case MSGRCV:
+		exit_syscall_emu(t, SYS_ipc, 1);
+		return;
+
+	/* int semctl(int semid, int semnum, int cmd, union semnum); */
+	case SEMCTL: {
+		int cmd = trace->recorded_regs.edx;
+		int num_emu_args;
+
+		switch (cmd) {
+		case IPC_SET:
+		case IPC_RMID:
+		case GETNCNT:
+		case GETPID:
+		case GETVAL:
+		case GETZCNT:
+		case SETALL:
+		case SETVAL:
+			num_emu_args = 0;
 			break;
-		}
-		/* void *shmat(int shmid, const void *shmaddr, int shmflg) */
-		case SHMAT: {
-			struct user_regs_struct regs;
-			read_child_registers(tid, &regs);
-			int orig_shmemid = regs.ecx;
-			int shmid = shmem_get_key(regs.ecx);
-			write_child_ecx(tid, shmid);
-			/* demand the mapping to be at the
-			 * address supplied by the replay */
-			size_t size;
-			void* rec_addr;
-			long* map_addr =
-				read_raw_data(trace, &size, (void*)&rec_addr);
-			assert(rec_addr == (void*)regs.esi);
-			/* hint sits at edi */
-			write_child_edi(tid, *map_addr);
-			__ptrace_cont(t);
-			read_child_registers(tid, &regs);
-			/* put the key back */
-			regs.ecx = orig_shmemid;
-			/* restore the hint */
-			regs.edi = trace->recorded_regs.edi;
-			write_child_registers(tid, &regs);
-			void* result =
-				(void*)read_child_data_word(tid,
-							    (void*)regs.esi);
-			(void)result;
-			assert(*map_addr == (long)result);
-			/* TODO: remove this once this call is
-			 * emulated */
-			if (*map_addr > 0) {
-				/* TODO: record access to shmem
-				 * segments that may be shared with
-				 * processes outside the rr tracee
-				 * tree. */
-				log_warn("Attached SysV shmem region (%p) that may be shared with outside processes.  Marking PROT_NONE so that SIGSEGV will be raised if the segment is accessed.", (void*)*map_addr);
-				mprotect_child_region(t,
-						      (void*)*map_addr,
-						      PROT_NONE);
-			}
-			sys_free((void**)&map_addr);
-			validate_args(SYS_ipc, state, t);
+		case IPC_STAT:
+		case SEM_STAT:
+		case IPC_INFO:
+		case SEM_INFO:
+		case GETALL:
+			num_emu_args = 1;
 			break;
-		}
-
-		/* int shmctl(int shmid, int cmd, struct shmid_ds *buf); */
-		case SHMCTL: {
-			int orig_shmemid = read_child_ecx(tid);
-			int shmid = shmem_get_key(read_child_ecx(tid));
-
-			write_child_ecx(tid, shmid);
-			__ptrace_cont(t);
-			write_child_ecx(tid, orig_shmemid);
-			set_child_data(t);
-			validate_args(SYS_ipc, state, t);
-			break;
-		}
-
-		/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
-		case MSGRCV:
-			exit_syscall_emu(t, SYS_ipc, 1);
-			break;
-
-		/* int shmdt(const void *shmaddr); */
-		case SHMDT:
-			exit_syscall_exec(t, SYS_ipc, 0, EMULATE_RETURN);
-			break;
-
-		case SEMGET:
-		/* int semop(int semid, struct sembuf *sops, unsigned nsops); */
-		case SEMOP:
-			exit_syscall_emu(t, SYS_ipc, 0);
-			break;
-
-		/* int semctl(int semid, int semnum, int cmd, union semnum); */
-		case SEMCTL: {
-			int cmd = trace->recorded_regs.edx;
-			int num_emu_args;
-
-			switch (cmd) {
-			case IPC_SET:
-			case IPC_RMID:
-			case GETNCNT:
-			case GETPID:
-			case GETVAL:
-			case GETZCNT:
-			case SETALL:
-			case SETVAL:
-				num_emu_args = 0;
-				break;
-			case IPC_STAT:
-			case SEM_STAT:
-			case IPC_INFO:
-			case SEM_INFO:
-			case GETALL:
-				num_emu_args = 1;
-				break;
-			default:
-				fatal("Unknown semctl command %d", cmd);
-				break;
-			}
-			exit_syscall_emu(t, SYS_ipc, num_emu_args);
-		}
-
 		default:
-			fatal("Unknown ipc call: %d", call);
+			fatal("Unknown semctl command %d", cmd);
 		}
+		exit_syscall_emu(t, SYS_ipc, num_emu_args);
+		return;
+	}
+	/* void *shmat(int shmid, const void *shmaddr, int shmflg) */
+	case SHMAT: {
+		struct user_regs_struct regs;
+		read_child_registers(tid, &regs);
+		int orig_shmemid = regs.ecx;
+		int shmid = shmem_get_key(regs.ecx);
+		write_child_ecx(tid, shmid);
+		/* demand the mapping to be at the address supplied by
+		 * the replay */
+		size_t size;
+		void* rec_addr;
+		long* map_addr = read_raw_data(trace, &size, (void*)&rec_addr);
+		assert(rec_addr == (void*)regs.esi);
+		/* hint sits at edi */
+		write_child_edi(tid, *map_addr);
+		__ptrace_cont(t);
+		read_child_registers(tid, &regs);
+		/* put the key back */
+		regs.ecx = orig_shmemid;
+		/* restore the hint */
+		regs.edi = trace->recorded_regs.edi;
+		write_child_registers(tid, &regs);
+		void* result = (void*)read_child_data_word(tid,
+							   (void*)regs.esi);
+		(void)result;
+		assert(*map_addr == (long)result);
+		/* TODO: remove this once this call is emulated */
+		if (*map_addr > 0) {
+			/* TODO: record access to shmem segments that
+			 * may be shared with processes outside the rr
+			 * tracee tree. */
+			log_warn("Attached SysV shmem region (%p) that may be shared with outside processes.  Marking PROT_NONE so that SIGSEGV will be raised if the segment is accessed.", (void*)*map_addr);
+			mprotect_child_region(t, (void*)*map_addr, PROT_NONE);
+		}
+		sys_free((void**)&map_addr);
+		validate_args(SYS_ipc, state, t);
+		return;
+	}
+	/* int shmctl(int shmid, int cmd, struct shmid_ds *buf); */
+	case SHMCTL: {
+		int orig_shmemid = read_child_ecx(tid);
+		int shmid = shmem_get_key(read_child_ecx(tid));
+
+		write_child_ecx(tid, shmid);
+		__ptrace_cont(t);
+		write_child_ecx(tid, orig_shmemid);
+		set_child_data(t);
+		validate_args(SYS_ipc, state, t);
+		return;
+	}
+	/* int shmdt(const void *shmaddr); */
+	case SHMDT:
+		exit_syscall_exec(t, SYS_ipc, 0, EMULATE_RETURN);
+		return;
+
+	/* int shmget(key_t key, size_t size, int shmflg); */
+	case SHMGET: {
+		__ptrace_cont(t);
+		shmem_store_key(trace->recorded_regs.eax, read_child_eax(tid));
+		set_return_value(t);
+		validate_args(SYS_ipc, state, t);
+		return;
+	}
+	default:
+		fatal("Unknown ipc call: %d", call);
 	}
 }
 
