@@ -750,6 +750,10 @@ static void process_ipc(struct task* t,
 	memcpy(&regs, call_regs, sizeof(regs));
 
 	switch (call) {
+	/* int msgget(key_t key, int msgflg); */
+	case MSGGET:
+	/* int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg); */
+	case MSGSND:
 	/* int semget(key_t key, int nsems, int semflg); */
 	case SEMGET:
 	/* int semop(int semid, struct sembuf *sops, unsigned nsops); */
@@ -761,10 +765,20 @@ static void process_ipc(struct task* t,
 		return;
 
 	/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
-	case MSGRCV:
-		record_child_data(t, sizeof(long) + regs.esi, (void*)regs.edx);
-		return;
+	case MSGRCV: {
+		size_t msgsize = regs.edx;
+		struct {
+			void* msgbuf;
+			long msgtype;
+		}* kludge;
+		void* child_kludge = (void*)regs.edi;
 
+		kludge = read_child_data(t, sizeof(*kludge), child_kludge);
+		record_child_data(t, msgsize, kludge->msgbuf);
+
+		sys_free((void**)&kludge);
+		return;
+	}
 	/**
 	 *  int semctl(int semid, int semnum, int cmd, union semnum);
 	 *
