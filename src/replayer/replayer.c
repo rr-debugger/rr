@@ -1640,7 +1640,8 @@ void emergency_debug(struct task* t)
 
 	flush_trace_files();
 
-	if (probably_not_interactive()) {
+	if (probably_not_interactive()
+	    && !rr_flags()->force_enable_debugger) {
 		errno = 0;
 		fatal("(session doesn't look interactive, aborting emergency debugging)");
 	}

@@ -293,6 +293,10 @@ static void print_usage(void)
 "                             file `[trace_dir]/[tid].[time]_{rec,rep}':\n"
 "                             `_rec' for dumps during recording, `_rep'\n"
 "                             for dumps during replay\n"
+"  -f, --force-enable-debugger\n"
+"                             always allow emergency debugging, even\n"
+"                             when it doesn't seem like a good idea, for\n"
+"                             example if stderr isn't a tty.\n"
 "  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
 "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
 "                             Default is to bind to CPU 0.  This option\n"
@@ -405,13 +409,14 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 		{ "cpu-unbound", no_argument, NULL, 'u' },
 		{ "dump-at", required_argument, NULL, 't' },
 		{ "dump-on", required_argument, NULL, 'd' },
+		{ "force-enable-debugger", no_argument, NULL, 'f' },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "wait-secs", required_argument, NULL, 'w' },
 		{ 0 }
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+c:d:t:uvw:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+c:d:ft:uvw:", opts, &i)) {
 		case -1:
 			return optind;
 		case 'c':
@@ -430,6 +435,9 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			break;
 		case 'd':
 			flags->dump_on = atoi(optarg);
+			break;
+		case 'f':
+			flags->force_enable_debugger = 1;
 			break;
 		case 't':
 			flags->dump_at = atoi(optarg);
