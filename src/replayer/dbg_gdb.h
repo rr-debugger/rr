@@ -71,6 +71,7 @@ struct dbg_request {
 		DREQ_GET_THREAD_LIST,
 
 		/* These use params.target. */
+		DREQ_GET_AUXV,
 		DREQ_GET_IS_THREAD_ALIVE,
 		DREQ_SET_CONTINUE_THREAD,
 		DREQ_SET_QUERY_THREAD,
@@ -109,6 +110,15 @@ struct dbg_request {
 
 		dbg_register reg;
 	};
+};
+
+/**
+ * An item in a process's auxiliary vector, for example { AT_SYSINFO,
+ * 0xb7fff414 }.
+ */
+struct dbg_auxv_pair {
+	long key;
+	long value;
 };
 
 /**
@@ -174,6 +184,13 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t which, int sig);
  */
 void dbg_reply_get_current_thread(struct dbg_context* dbg,
 				  dbg_threadid_t thread);
+
+/**
+ * Reply with the target thread's |auxv| containing |len| pairs, or
+ * |len| <= 0 if there was an error reading the auxiliary vector.
+ */
+void dbg_reply_get_auxv(struct dbg_context* dbg,
+			const struct dbg_auxv_pair* auxv, ssize_t len);
 
 /**
  * |alive| is nonzero if the requested thread is alive, zero if dead.

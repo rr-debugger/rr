@@ -249,19 +249,56 @@ static void write_hex(struct dbg_context* dbg, unsigned long hex)
 	write_data_raw(dbg, (byte*)buf, len);
 }
 
-static void write_packet(struct dbg_context* dbg, const char* data)
+static void write_packet_bytes(struct dbg_context* dbg,
+			       const byte* data, size_t num_bytes)
 {
 	byte checksum;
-	size_t len, i;
+	size_t i;
 
 	write_data_raw(dbg, (byte*)"$", 1);
-	len = strlen(data);
-	for (i = 0, checksum = 0; i < len; ++i) {
+	for (i = 0, checksum = 0; i < num_bytes; ++i) {
 		checksum += data[i];
 	}
-	write_data_raw(dbg, (byte*)data, len);
+	write_data_raw(dbg, (byte*)data, num_bytes);
 	write_data_raw(dbg, (byte*)"#", 1);
 	write_hex(dbg, checksum);
+}
+
+static void write_packet(struct dbg_context* dbg, const char* data)
+{
+	return write_packet_bytes(dbg, (const byte*)data, strlen(data));
+}
+
+static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
+				const byte* data, size_t num_bytes)
+{
+	size_t pfx_num_chars = strlen(pfx);
+	byte buf[2 * num_bytes + pfx_num_chars];
+	ssize_t buf_num_bytes = 0;
+	int i;
+
+	strncpy((char*)buf, pfx, sizeof(buf) - 1);
+	buf_num_bytes += pfx_num_chars;
+
+	for (i = 0; i < num_bytes; ++i) {
+		byte b = data[i];
+
+		if (buf_num_bytes + 2 > sizeof(buf)) {
+			break;
+		}
+		switch (b) {
+		case '#': case '$': case '}': case '*':
+			buf[buf_num_bytes++] = '}';
+			buf[buf_num_bytes++] = b ^ 0x20;
+			break;
+		default:
+			buf[buf_num_bytes++] = b;
+			break;
+		}
+	}
+
+	debug(" ***** NOTE: writing binary data, upcoming debug output may be truncated");
+	return write_packet_bytes(dbg, buf, buf_num_bytes);
 }
 
 static void write_hex_packet(struct dbg_context* dbg, unsigned long hex)
@@ -372,6 +409,23 @@ static void read_packet(struct dbg_context* dbg)
 	}
 }
 
+static int xfer(struct dbg_context* dbg, const char* name, char* args)
+{
+	debug("gdb asks us to transfer %s(%s)", name, args);
+
+	if (!strcmp(name, "auxv")) {
+		assert(!strncmp(args, "read::",	sizeof("read::") - 1));
+
+		dbg->req.type = DREQ_GET_AUXV;
+		dbg->req.target = dbg->query_thread;
+		return 1;
+	}
+
+	log_warn("Unhandled gdb xfer request: %s(%s)", name, args);
+	write_packet(dbg, "");
+	return 0;
+}
+
 static int query(struct dbg_context* dbg, char* payload)
 {
 	const char* name;
@@ -422,9 +476,15 @@ static int query(struct dbg_context* dbg, char* payload)
 		return 0;
 	}
 	if (!strcmp(name, "Supported")) {
+		char supported[1024];
+
 		/* TODO process these */
 		debug("gdb supports %s", args);
-		write_packet(dbg, "QStartNoAckMode+");
+
+		snprintf(supported, sizeof(supported) - 1,
+			 "PacketSize=%x;QStartNoAckMode+;qXfer:auxv:read+",
+			 sizeof(dbg->outbuf));
+		write_packet(dbg, supported);
 		return 0;
 	}
 	if (!strcmp(name, "Symbol")) {
@@ -446,6 +506,14 @@ static int query(struct dbg_context* dbg, char* payload)
 		 * what it's talking about. */
 		write_packet(dbg, "");
 		return 0;
+	}
+	if (!strcmp(name, "Xfer")) {
+		name = args;
+		args = strchr(args, ':');
+		if (args) {
+			*args++ = '\0';
+		}
+		return xfer(dbg, name, args);
 	}
 
 	log_warn("Unhandled gdb query: q%s", name);
@@ -876,6 +944,21 @@ void dbg_reply_get_current_thread(struct dbg_context* dbg,
 
 	/* TODO multiprocess */
 	write_hex_packet(dbg, thread);
+
+	consume_request(dbg);
+}
+
+void dbg_reply_get_auxv(struct dbg_context* dbg,
+			const struct dbg_auxv_pair* auxv, ssize_t len)
+{
+	assert(DREQ_GET_AUXV == dbg->req.type);
+
+	if (len > 0) {
+		write_binary_packet(dbg, "l",
+				    (byte*)auxv, len * sizeof(auxv[0]));
+	} else {
+		write_packet(dbg, "E01");
+	}
 
 	consume_request(dbg);
 }

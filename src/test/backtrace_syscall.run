@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh backtrace_syscall "$@"
+record simple
+debug simple backtrace_syscall
