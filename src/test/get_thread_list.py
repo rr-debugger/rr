@@ -12,7 +12,7 @@ expect_gdb('Breakpoint 1, hit_barrier')
 send_gdb('info threads\n')
 for i in xrange(NUM_THREADS + 1, 1, -1):
     # The threads are at the vdso, hence the '??' top frame.
-    expect_gdb(str(i) + r'\s+Thread[^?]+\?\? \(\)')
+    expect_gdb(str(i) + r'\s+Thread[^_]+__kernel_vsyscall \(\)')
 
 expect_gdb(r'1\s+Thread[^h]+hit_barrier \(\)')
 

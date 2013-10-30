@@ -381,6 +381,32 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		switch (req.type) {
+		case DREQ_GET_AUXV: {
+			pid_t tid = req.target > 0 ? req.target : t->tid;
+			char filename[] = "/proc/01234567890/auxv";
+			int fd;
+			struct dbg_auxv_pair auxv[4096];
+			ssize_t len;
+
+			snprintf(filename, sizeof(filename) - 1,
+				 "/proc/%d/auxv", tid);
+			fd = open(filename, O_RDONLY);
+			if (0 > fd) {
+				dbg_reply_get_auxv(dbg, NULL, -1);
+				continue;
+			}
+
+			len = read(fd, auxv, sizeof(auxv));
+			if (0 > len) {
+				dbg_reply_get_auxv(dbg, NULL, -1);
+				continue;
+			}
+
+			assert(0 == len % sizeof(auxv[0]));
+			len /= sizeof(auxv[0]);
+			dbg_reply_get_auxv(dbg, auxv, len);
+			continue;
+		}
 		case DREQ_GET_MEM: {
 			size_t len;
 			byte* mem = read_mem(target, req.mem.addr, req.mem.len,
