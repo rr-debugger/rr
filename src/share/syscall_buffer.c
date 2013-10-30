@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-//#define DEBUGTAG "Syscallbuf"
+//#define DEBUGTAG "rrpreload"
 
 #include "syscall_buffer.h"
 
@@ -306,10 +306,10 @@ static void logmsg(const char* msg, ...)
 	} while (0)
 
 #ifdef DEBUGTAG
-# define log_info(msg, ...)						\
+# define debug(msg, ...)						\
 	logmsg("[INFO] (%s:%d) " msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #else
-# define log_info(msg, ...) ((void)0)
+# define debug(msg, ...) ((void)0)
 #endif
 
 
@@ -423,8 +423,8 @@ static void install_syscall_filter(void)
 		.filter = filter,
 	};
 
-	log_info("Initializing syscall buffer: protected_call_start = %p",
-		protected_call_start);
+	debug("Initializing syscall buffer: protected_call_start = %p",
+	      protected_call_start);
 
 	if (traced_prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
 		fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your kernel is too old.  Use `record -n` to disable the filter.");
@@ -597,7 +597,7 @@ static void init_process(void)
 		install_syscall_filter();
 		pthread_atfork(NULL, NULL, drop_buffer);
 	} else {
-		log_info("Syscall buffering is disabled");
+		debug("Syscall buffering is disabled");
 	}
 
 	if ((ret = pthread_key_create(&task_cleanup_data_key,
@@ -611,9 +611,18 @@ static void init_process(void)
 /**
  * Initialize thread-local buffering state, if enabled.
  */
-static void ensure_thread_init(void)
+enum { NO_SIGNAL_SAFETY, ASYNC_SIGNAL_SAFE };
+static void ensure_thread_init(int signal_safety)
 {
 	if (called_ensure_thread_init) {
+		return;
+	}
+	if (ASYNC_SIGNAL_SAFE == signal_safety) {
+		/* Our initialization can end up calling malloc() and
+		 * other potentially non-async-signal-safe functions,
+		 * so we can't init from a context in which
+		 * async-signal-safety needs to be preserved. */
+		debug("(refusing to init from async-signal-safe context)");
 		return;
 	}
 	called_ensure_thread_init = 1;
@@ -625,7 +634,7 @@ static void ensure_thread_init(void)
 __attribute__((constructor))
 static void init_process_static(void)
 {
-	ensure_thread_init();
+	ensure_thread_init(NO_SIGNAL_SAFETY);
 }
 
 /**
@@ -642,7 +651,7 @@ static void* thread_trampoline(void* arg)
 	struct thread_func_data* data = arg;
 	void* ret;
 
-	ensure_thread_init();
+	ensure_thread_init(NO_SIGNAL_SAFETY);
 
 	ret = data->start_routine(data->arg);
 
@@ -664,7 +673,7 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 {
 	struct thread_func_data* data;
 
-	ensure_thread_init();
+	ensure_thread_init(NO_SIGNAL_SAFETY);
 
 	data = malloc(sizeof(*data));
 	data->start_routine = start_routine;
@@ -726,8 +735,10 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
  *   }
  *
  *   // Reserve buffer space for the recorded syscall and any other
- *   // required internal bookkeeping data.
- *   void* ptr = prep_syscall();
+ *   // required internal bookkeeping data.  If the wrapper is for
+ *   // an async-signal-safe libc function, pass ASYNC_SIGNAL_SAFE.
+ *   // Otherwise pass NO_SIGNAL_SAFETY.
+ *   void* ptr = prep_syscall(ASYNC_SIGNAL_SAFETY);
  *
  *   // If the syscall requires recording any extra data, reserve
  *   // space for it too.
@@ -750,9 +761,9 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
  * fallback_trace:
  *   return syscall(...);  // traced
  */
-static void* prep_syscall(void)
+static void* prep_syscall(int signal_safety)
 {
-	ensure_thread_init();
+	ensure_thread_init(signal_safety);
 	if (!buffer) {
 		return NULL;
 	}
@@ -980,7 +991,7 @@ static int stat_something(int syscallno, int vers, unsigned long what,
 	/* Like open(), not arming the desched event because it's not
 	 * needed for correctness, and there are no data to suggest
 	 * whether it's a good idea perf-wise. */
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	struct stat64* buf2 = NULL;
 	long ret;
 
@@ -1053,7 +1064,7 @@ long untraced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
 
 int access(const char* pathname, int mode)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	long ret;
 
 	if (!start_commit_buffered_syscall(SYS_access, ptr, WONT_BLOCK)) {
@@ -1065,7 +1076,7 @@ int access(const char* pathname, int mode)
 
 int clock_gettime(clockid_t clk_id, struct timespec* tp)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	struct timespec *tp2 = NULL;
 	long ret;
 
@@ -1089,7 +1100,7 @@ int clock_gettime(clockid_t clk_id, struct timespec* tp)
 
 int close(int fd)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	long ret;
 
 	if (!start_commit_buffered_syscall(SYS_close, ptr, WONT_BLOCK)) {
@@ -1111,7 +1122,7 @@ int creat(const char* pathname, mode_t mode)
 static int fcntl0(int fd, int cmd)
 {
 	/* No zero-arg fcntl's are known to be may-block. */
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	long ret;
 
 	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, WONT_BLOCK)) {
@@ -1124,7 +1135,7 @@ static int fcntl0(int fd, int cmd)
 static int fcntl1(int fd, int cmd, int arg)
 {
 	/* No one-int-arg fcntl's are known to be may-block. */
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	long ret;
 
 	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, WONT_BLOCK)) {
@@ -1137,7 +1148,7 @@ static int fcntl1(int fd, int cmd, int arg)
 static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
 {
 	/* The OWN_EX fcntl's aren't may-block. */
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	struct f_owner_ex* owner2 = NULL;
 	long ret;
 
@@ -1275,7 +1286,10 @@ int __fxstat(int vers, int fd, struct stat* buf)
 
 int gettimeofday(struct timeval* tp, struct timezone* tzp)
 {
-	void *ptr = prep_syscall();
+	/* XXX it seems odd that clock_gettime() is spec'd to be
+	 * async-signal-safe while gettimeofday() isn't, but that's
+	 * what the docs say! */
+	void *ptr = prep_syscall(NO_SIGNAL_SAFETY);
 	struct timeval *tp2 = NULL;
 	struct timezone *tzp2 = NULL;
 	long ret;
@@ -1318,7 +1332,7 @@ int __lxstat(int vers, const char* path, struct stat* buf)
 
 int madvise(void* addr, size_t length, int advice)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(NO_SIGNAL_SAFETY);
 	long ret;
 
 	if (!start_commit_buffered_syscall(SYS_madvise, ptr, WONT_BLOCK)) {
@@ -1342,15 +1356,15 @@ int open(const char* pathname, int flags, ...)
 	/* The strcmp() done here is OK because we're not in the
 	 * critical section yet. */
 	if (is_blacklisted_filename(pathname)) {
-		/* Would be nice to log_info() here, but that would
-		 * flush the syscallbuf ...  This special bail-out
-		 * case is deterministic, so no need to save any
-		 * breadcrumbs in the syscallbuf. */
+		/* Would be nice to debug() here, but that would flush
+		 * the syscallbuf ...  This special bail-out case is
+		 * deterministic, so no need to save any breadcrumbs
+		 * in the syscallbuf. */
 		errno = ENOENT;
 		return -1;
 	}
 
-	ptr = prep_syscall();
+	ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 
 	if (O_CREAT & flags) {
 		va_list mode_arg;
@@ -1380,7 +1394,7 @@ int open64(const char* pathname, int flags, ...)
 
 ssize_t read(int fd, void* buf, size_t count)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	void* buf2 = NULL;
 	long ret;
 
@@ -1402,7 +1416,7 @@ ssize_t read(int fd, void* buf, size_t count)
 
 ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	char* buf2 = NULL;
 	long ret;
 
@@ -1423,7 +1437,7 @@ ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 
 ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	void* buf2 = NULL;
 	long ret;
 
@@ -1445,7 +1459,7 @@ ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 
 time_t time(time_t* t)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	long ret;
 
 	if (!start_commit_buffered_syscall(SYS_time, ptr, WONT_BLOCK)) {
@@ -1461,7 +1475,7 @@ time_t time(time_t* t)
 
 ssize_t write(int fd, const void* buf, size_t count)
 {
-	void* ptr = prep_syscall();
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	long ret;
 
 	if (!start_commit_buffered_syscall(SYS_write, ptr, MAY_BLOCK)) {
