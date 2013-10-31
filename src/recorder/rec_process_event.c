@@ -304,6 +304,9 @@ int rec_prepare_syscall(struct task* t)
 	}
 
 	switch (syscallno) {
+	case SYS_ptrace:
+		fatal("Ptrace not yet implemented.  We need to go deeper.");
+
 	case SYS_sched_setaffinity:
 		assert_exec(t, "NYI" && SYS_sched_setaffinity != syscallno,
 			    "TODO: fudge the CPU mask argument to 0x1");
