@@ -2,6 +2,8 @@
 
 source `dirname $0`/util.sh execp "$@"
 
-just_record ls -la
+exe=simple
+cp ${OBJDIR}/bin/$exe $exe-$nonce
+PATH=".:${PATH}" just_record $exe-$nonce
 replay
-check '..'
+check 'EXIT-SUCCESS'
