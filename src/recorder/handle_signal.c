@@ -254,6 +254,14 @@ static int handle_desched_event(struct task* t, const siginfo_t* si,
 		 || HPC_TIME_SLICE_SIGNAL == sig
 		 || is_arm_desched_event_syscall(t, regs));
 
+	/* This code can be entered through various different paths.
+	 * Ensure they all end up with the most up-to-date register
+	 * contents on exit.
+	 *
+	 * TODO: centralize the PTRACE_CONT/et al. code and make it
+	 * responsible for keeping registers up to date. */
+	memcpy(&t->regs, regs, sizeof(t->regs));
+
 	if (is_disarm_desched_event_syscall(t, regs)) {
 		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
 		return USR_NOOP;

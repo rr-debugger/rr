@@ -279,6 +279,29 @@ static void init_scratch_memory(struct task* t)
 	add_scratch(file.start, file.end - file.start);
 }
 
+/**
+ * If scratch data was incidentally recorded for the current desched'd
+ * but write-only syscall, then do a no-op restore of that saved data
+ * to keep the trace in sync.
+ *
+ * Syscalls like |write()| that may-block and are wrapped in the
+ * preload library can be desched'd.  When this happens, we save the
+ * syscall record's "extra data" as if it were normal scratch space,
+ * since it's used that way in effect.  But syscalls like |write()|
+ * that don't actually use scratch space don't ever try to restore
+ * saved scratch memory during replay.  So, this helper can be used
+ * for that class of syscalls.
+ */
+static void maybe_noop_restore_syscallbuf_scratch(struct task* t)
+{
+	read_child_registers(t->tid, &t->regs);
+	if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(t->regs.eip, t)) {
+		debug("  noop-restoring scratch for write-only desched'd %s",
+		      syscallname(t->regs.orig_eax));
+		set_child_data(t);
+	}
+}
+
 static void process_clone(struct task* t,
 			  struct trace_frame* trace, int state)
 {
@@ -1044,13 +1067,18 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 		step->syscall.emu_ret = 1;
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
-		} else {
-			step->action = TSTEP_EXIT_SYSCALL;
-			/* XXX technically this will print the output
-			 * before we reach the interrupt.  That could
-			 * maybe cause issues in the future. */
-			rep_maybe_replay_stdio_write(t);
+			return;
 		}
+
+		step->action = TSTEP_EXIT_SYSCALL;
+		/* XXX technically this will print the output before
+		 * we reach the interrupt.  That could maybe cause
+		 * issues in the future. */
+		rep_maybe_replay_stdio_write(t);
+		/* write() can be desched'd, but it doesn't use
+		 * scratch, so we might have saved 0 bytes of scratch
+		 * after a desched. */
+		maybe_noop_restore_syscallbuf_scratch(t);
 		return;
 
 	case SYS_rrcall_init_buffers:
