@@ -856,7 +856,8 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 	}
 }
 
-int compare_register_files(char* name1, const struct user_regs_struct* reg1,
+int compare_register_files(struct task* t,
+			   char* name1, const struct user_regs_struct* reg1,
 			   char* name2, const struct user_regs_struct* reg2,
 			   int mismatch_behavior)
 {
@@ -925,9 +926,7 @@ int compare_register_files(char* name1, const struct user_regs_struct* reg1,
 		err |= (1 << ++errbit);
 	}
 
-	if (bail_error && err) {
-		fatal("Fatal register mismatch");
-	}
+	assert_exec(t, !bail_error || !err, "Fatal register mismatch");
 
 	return err;
 }
@@ -940,7 +939,7 @@ void assert_child_regs_are(struct task* t,
 	int regs_are_equal;
 
 	read_child_registers(tid, &t->regs);
-	regs_are_equal = (0 == compare_register_files("replaying", &t->regs,
+	regs_are_equal = (0 == compare_register_files(t, "replaying", &t->regs,
 						      "recorded", regs,
 						      LOG_MISMATCHES));
 	if (!regs_are_equal) {
@@ -1522,12 +1521,12 @@ int is_syscall_restart(struct task* t, int syscallno,
 	}
 	old_regs = &t->ev->syscall.regs;
 	is_restart = (t->ev->syscall.no == syscallno
-		      && old_regs->ebx == t->regs.ebx
-		      && old_regs->ecx == t->regs.ecx
-		      && old_regs->edx == t->regs.edx
-		      && old_regs->esi == t->regs.esi
-		      && old_regs->edi == t->regs.edi
-		      && old_regs->ebp == t->regs.ebp);
+		      && old_regs->ebx == regs->ebx
+		      && old_regs->ecx == regs->ecx
+		      && old_regs->edx == regs->edx
+		      && old_regs->esi == regs->esi
+		      && old_regs->edi == regs->edi
+		      && old_regs->ebp == regs->ebp);
 	if (!is_restart) {
 		debug("  interrupted %s != %s or args differ",
 		      syscallname(t->ev->syscall.no), syscallname(syscallno));

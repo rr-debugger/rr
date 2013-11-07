@@ -93,4 +93,11 @@ inline static int atomic_puts(const char* str) {
 #define printf(...) USE_atomic_printf_INSTEAD
 #define puts(...) USE_atomic_puts_INSTEAD
 
+/**
+ * Return the calling task's id.
+ */
+inline static pid_t sys_gettid(void) {
+	return syscall(SYS_gettid);
+}
+
 #endif /* RRUTIL_H */

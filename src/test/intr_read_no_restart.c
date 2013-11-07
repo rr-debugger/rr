@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 static const char start_token = '!';
 static const char sentinel_token = ' ';
 
@@ -12,10 +11,6 @@ static pid_t reader_tid;
 static int reader_caught_signal;
 
 static int sockfds[2];
-
-static pid_t sys_gettid(void) {
-	return syscall(SYS_gettid);
-}
 
 static void sighandler(int sig) {
 	char c = sentinel_token;

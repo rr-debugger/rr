@@ -87,7 +87,8 @@ void print_syscall(struct task *t, struct trace_frame *trace);
  * mismatch.
  */
 enum { EXPECT_MISMATCHES = 0, LOG_MISMATCHES, BAIL_ON_MISMATCH };
-int compare_register_files(char* name1, const struct user_regs_struct* reg1,
+int compare_register_files(struct task* t,
+			   char* name1, const struct user_regs_struct* reg1,
 			   char* name2, const struct user_regs_struct* reg2,
 			   int mismatch_behavior);
 

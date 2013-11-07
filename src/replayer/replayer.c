@@ -795,7 +795,7 @@ static void guard_overshoot(struct task* t,
 			t->regs.eip -= sizeof(int_3_insn);
 			write_child_registers(t->tid, &t->regs);
 		}
-		compare_register_files("rep overshoot", &t->regs,
+		compare_register_files(t, "rep overshoot", &t->regs,
 				       "rec", target_regs, LOG_MISMATCHES);
 		assert_exec(t, remaining_rcbs_gt_0,
 			    "overshot target rcb=%"PRId64" by %"PRId64,
@@ -825,7 +825,8 @@ static void guard_unexpected_signal(struct task* t)
 		    strevent(event));
 }
 
-static int is_same_execution_point(const struct user_regs_struct* rec_regs,
+static int is_same_execution_point(struct task* t,
+				   const struct user_regs_struct* rec_regs,
 				   int64_t rcbs_left,
 				   const struct user_regs_struct* rep_regs)
 {
@@ -840,12 +841,12 @@ static int is_same_execution_point(const struct user_regs_struct* rec_regs,
 		debug("  not same execution point: %"PRId64" rcbs left (@%p)",
 		      rcbs_left, (void*)rec_regs->eip);
 #ifdef DEBUGTAG
-		compare_register_files("(rep)", rep_regs,
+		compare_register_files(t, "(rep)", rep_regs,
 				       "(rec)", rec_regs, LOG_MISMATCHES);
 #endif
 		return 0;
 	}
-	if (compare_register_files("rep", rep_regs, "rec", rec_regs,
+	if (compare_register_files(t, "rep", rep_regs, "rec", rec_regs,
 				   behavior)) {
 		debug("  not same execution point: regs differ (@%p)",
 		      (void*)rec_regs->eip);
@@ -957,7 +958,7 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 		int at_target;
 
 		read_child_registers(tid, &regs_now);
-		at_target = is_same_execution_point(regs,
+		at_target = is_same_execution_point(t, regs,
 						    rcbs_left, &regs_now);
 		if (SIGTRAP == t->child_sig) {
 			trap_t trap_type = compute_trap_type(
