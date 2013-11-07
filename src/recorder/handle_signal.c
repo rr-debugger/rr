@@ -552,7 +552,7 @@ static int go_to_a_happy_place(struct task* t,
 			if (HPC_TIME_SLICE_SIGNAL == si->si_signo) {
 				memcpy(si, &tmp_si, sizeof(*si));
 				debug("  upgraded delivery of SIG_TIMESLICE to %s",
-					 signalname(si->si_signo));
+				      signalname(si->si_signo));
 				handle_siginfo_regs(t, si, regs);
 				return -1;
 			}

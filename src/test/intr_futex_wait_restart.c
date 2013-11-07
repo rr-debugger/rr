@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 static const char start_token = '!';
 static const char sentinel_token = ' ';
 
@@ -15,10 +14,6 @@ static int sockfds[2];
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-
-static pid_t sys_gettid(void) {
-	return syscall(SYS_gettid);
-}
 
 static void cond_wait(int secs) {
 	struct timespec ts;
