@@ -1447,6 +1447,7 @@ void rec_process_syscall(struct task *t)
 	SYS_REC0(ftruncate64)
 	SYS_REC0(ftruncate)
 	SYS_REC0(truncate)
+	SYS_REC0(truncate64)
 
 	/**
 	 * int fsync(int fd)

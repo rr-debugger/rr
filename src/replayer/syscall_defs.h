@@ -345,6 +345,7 @@ SYSCALL_DEF(EMU, fdatasync, 0)
 SYSCALL_DEF(EMU, ftruncate64, 0)
 SYSCALL_DEF(EMU, ftruncate, 0)
 SYSCALL_DEF(EMU, truncate, 0)
+SYSCALL_DEF(EMU, truncate64, 0)
 
 /**
  *  int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
