@@ -472,7 +472,7 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	flags->dump_at = DUMP_AT_NONE;
 	flags->dump_on = DUMP_ON_NONE;
 	flags->redirect = TRUE;
-	flags->use_syscall_buffer = TRUE;
+	flags->use_syscall_buffer = FALSE;
 
 	if (0 > (cmdi = parse_common_args(argc, argv, flags))) {
 		return -1;

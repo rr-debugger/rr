@@ -154,8 +154,12 @@ static void push_new_event(struct task* t, int type)
  */
 static void pop_event(struct task* t, int expected_type)
 {
-	int last_top_type = FIXEDSTACK_POP(&t->pending_events).type;
+	int last_top_type;
 
+	assert_exec(t, FIXEDSTACK_DEPTH(&t->pending_events) > 1,
+		    "Attempting to pop sentinel event");
+
+	last_top_type = FIXEDSTACK_POP(&t->pending_events).type;
 	t->ev = FIXEDSTACK_TOP(&t->pending_events);
 	assert_exec(t, expected_type == last_top_type,
 		    "Should have popped event %s but popped %s instead",
