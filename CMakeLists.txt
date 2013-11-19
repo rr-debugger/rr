@@ -135,6 +135,7 @@ set(BASIC_TESTS
   thread_stress
   threads
   tiocinq
+  truncate
   uname
   user_ignore_sig
 )
