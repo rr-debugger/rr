@@ -35,6 +35,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <rr/rr.h>
+
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 #if (defined(__linux__) && (defined(__i386__) || defined(__x86_64__)) \
@@ -98,6 +100,16 @@ inline static int atomic_puts(const char* str) {
  */
 inline static pid_t sys_gettid(void) {
 	return syscall(SYS_gettid);
+}
+
+/**
+ * Ensure that |len| bytes of |buf| are the same across recording and
+ * replay.
+ */
+inline static void check_data(void* buf, size_t len)
+{
+	int nwritten = syscall(SYS_write, RR_MAGIC_SAVE_DATA_FD, buf, len);
+	test_assert(len == nwritten);
 }
 
 #endif /* RRUTIL_H */

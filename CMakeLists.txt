@@ -22,6 +22,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict
 string(REGEX REPLACE "-fPIC" ""
   CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
 
+include_directories("${PROJECT_SOURCE_DIR}/include")
+
 add_library(rrpreload
   src/share/syscall_buffer.c
 )
@@ -117,6 +119,7 @@ set(BASIC_TESTS
   priority
   prw
   rdtsc
+  save_data_fd
   segfault
   sigchld_interrupt_signal
   sigill

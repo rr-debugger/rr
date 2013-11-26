@@ -35,6 +35,8 @@
 #include <sys/quota.h>
 #include <sys/socket.h>
 
+#include <rr/rr.h>
+
 #include "rep_sched.h"
 #include "replayer.h"
 #include "../share/dbg.h"
@@ -862,6 +864,40 @@ static void process_restart_syscall(struct task* t, int syscallno)
 	}
 }
 
+/**
+ * If the tracee saved data in this syscall to the magic save-data fd,
+ * read and check the replay buffer against the one saved during
+ * recording.
+ */
+static void maybe_verify_tracee_saved_data(struct task* t,
+					   const struct user_regs_struct* rec_regs)
+{
+	int fd = rec_regs->ebx;
+	void* addr = (void*)rec_regs->ecx;
+	size_t len = rec_regs->edx;
+	void* buf;
+	void* rec_addr;
+	size_t rec_len;
+	void* rec_buf;
+
+	if (RR_MAGIC_SAVE_DATA_FD != fd) {
+		return;
+	}
+
+	rec_buf = read_raw_data(&t->trace, &rec_len,
+				      &rec_addr);
+	buf = read_child_data(t, len, addr);
+
+	assert_exec(t, addr == rec_addr && len == rec_len,
+		    "Recorded write(%p, %d) replayed as write(%p, %d)",
+		    rec_addr, rec_len, addr, len);
+	assert_exec(t, !memcmp(rec_buf, buf, len),
+		    "Buffer saved to RR_MAGIC_SAVE_DATA_FD has diverged!");
+
+	sys_free((void**)&rec_buf);
+	sys_free((void**)&buf);
+}
+
 void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 {
 	int syscall = t->trace.stop_reason; /* FIXME: don't shadow syscall() */
@@ -1079,6 +1115,8 @@ void rep_process_syscall(struct task* t, struct rep_trace_step* step)
 		 * scratch, so we might have saved 0 bytes of scratch
 		 * after a desched. */
 		maybe_noop_restore_syscallbuf_scratch(t);
+
+		maybe_verify_tracee_saved_data(t, rec_regs);
 		return;
 
 	case SYS_rrcall_init_buffers:

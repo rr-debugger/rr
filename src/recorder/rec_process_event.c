@@ -29,6 +29,8 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 
+#include <rr/rr.h>
+
 #include "handle_ioctl.h"
 #include "rec_sched.h"
 
@@ -2749,7 +2751,19 @@ void rec_process_syscall(struct task *t)
 	 * proved to occur after a write() has returned returns the new data. Note that not all file
 	 *  systems are POSIX conforming.
 	 */
-	SYS_REC0(write)
+	case SYS_write: {
+		int fd = regs.ebx;
+
+		if (RR_MAGIC_SAVE_DATA_FD == fd) {
+			void* buf = (void*)regs.ecx;
+			size_t len = regs.edx;
+
+			record_child_data(t, len, buf);
+			regs.eax = len;
+			write_child_registers(tid, &regs);
+		}
+		break;
+	}
 
 	/*
 	 * ssize_t read(int fd, void *buf, size_t count);
