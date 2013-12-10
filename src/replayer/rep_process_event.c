@@ -864,6 +864,47 @@ static void process_restart_syscall(struct task* t, int syscallno)
 	}
 }
 
+static void dump_path_data(struct task* t, const char* tag,
+			   char* filename, size_t filename_size,
+			   const void* buf, size_t buf_len, const void* addr)
+{
+	format_dump_filename(t, tag, filename, filename_size);
+	dump_binary_data(filename, tag, buf, buf_len, addr);
+}
+
+static void
+notify_save_data_error(struct task* t, const void* addr,
+		       const void* rec_buf, size_t rec_buf_len,
+		       const void* rep_buf, size_t rep_buf_len)
+{
+	char rec_dump[PATH_MAX];
+	char rep_dump[PATH_MAX];
+
+	dump_path_data(t, "rec_save_data", rec_dump, sizeof(rec_dump),
+		       rec_buf, rec_buf_len, addr);
+	dump_path_data(t, "rep_save_data", rep_dump, sizeof(rep_dump),
+		       rep_buf, rep_buf_len, addr);
+
+	assert_exec(t,
+		    rec_buf_len == rep_buf_len && !memcmp(rec_buf, rep_buf,
+							  rec_buf_len),
+"Divergence in contents of 'tracee-save buffer'.  Recording executed\n"
+"\n"
+"  write(%d, %p, %u)\n"
+"\n"
+"and replay executed\n"
+"\n"
+"  write(%d, %p, %u)\n"
+"\n"
+"The contents of the tracee-save buffers have been dumped to disk.\n"
+"Compare them by using the following command\n"
+"\n"
+"$ diff -u %s %s >save-data-diverge.diff\n"
+		    , RR_MAGIC_SAVE_DATA_FD, addr, rec_buf_len,
+		    RR_MAGIC_SAVE_DATA_FD, addr, rep_buf_len,
+		    rec_dump, rep_dump);
+}
+
 /**
  * If the tracee saved data in this syscall to the magic save-data fd,
  * read and check the replay buffer against the one saved during
@@ -884,15 +925,17 @@ static void maybe_verify_tracee_saved_data(struct task* t,
 		return;
 	}
 
-	rec_buf = read_raw_data(&t->trace, &rec_len,
-				      &rec_addr);
-	buf = read_child_data(t, len, addr);
+	rec_buf = read_raw_data(&t->trace, &rec_len, &rec_addr);
+	/* If the data address changed, something disastrous happened
+	 * and the buffers aren't comparable.  Just bail. */
+	assert_exec(t, addr == rec_addr,
+		    "Recorded write(%p) being replayed as write(%p)",
+		    rec_addr, addr);
 
-	assert_exec(t, addr == rec_addr && len == rec_len,
-		    "Recorded write(%p, %d) replayed as write(%p, %d)",
-		    rec_addr, rec_len, addr, len);
-	assert_exec(t, !memcmp(rec_buf, buf, len),
-		    "Buffer saved to RR_MAGIC_SAVE_DATA_FD has diverged!");
+	buf = read_child_data(t, len, addr);
+	if (len != rec_len || memcmp(rec_buf, buf, len)) {
+		notify_save_data_error(t, addr, rec_buf, rec_len, buf, len);
+	}
 
 	sys_free((void**)&rec_buf);
 	sys_free((void**)&buf);
