@@ -1035,6 +1035,44 @@ void read_line(FILE* file, char *buf, int size, char *name)
 	}
 }
 
+/**
+ * Dump |buf_len| words in |buf| to |out|, starting with a line
+ * containing |label|.  See |dump_binary_data()| for a description of
+ * the remaining parameters.
+ */
+static void dump_binary_chunk(FILE* out, const char* label,
+			      const uint32_t* buf, size_t buf_len,
+			      const char* start_addr)
+{
+	int i;
+
+	fprintf(out,"%s\n", label);
+	for (i = 0 ; i < buf_len; i += 1) {
+		uint32_t word = buf[i];
+		fprintf(out, "0x%08x | [%p]\n", word,
+			start_addr + i * sizeof(*buf));
+	}
+}
+
+void dump_binary_data(const char* filename, const char* label,
+		      const uint32_t* buf, size_t buf_len,
+		      const char* start_addr)
+{
+	FILE* out = fopen(filename, "w");
+	if (!out) {
+		return;
+	}
+	dump_binary_chunk(out, label, buf, buf_len, start_addr);
+	fclose(out);
+}
+
+void format_dump_filename(struct task* t, const char* tag,
+			  char* filename, size_t filename_size)
+{
+	snprintf(filename, filename_size - 1, "%s/%d_%d_%s",
+		 get_trace_path(), t->rec_tid, get_global_time(), tag);
+}
+
 int should_dump_memory(struct task* t, int event, int state, int global_time)
 {
 	const struct flags* flags = rr_flags();
@@ -1061,7 +1099,6 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 	FILE* dump_file = it_data;
 	const unsigned* buf = data->mem;
 	void* start_addr = data->info.start_addr;
-	int i;
 
 	if (!buf) {
 		/* This segment was filtered by debugging code. */
@@ -1074,12 +1111,8 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 		return CONTINUE_ITERATING;
 	}
 
-	fprintf(dump_file,"%s\n", data->raw_map_line);
-	for (i = 0 ; i < data->mem_len / sizeof(*buf); i += 1) {
-		unsigned word = buf[i];
-		fprintf(dump_file,"0x%08x | [%p]\n", word,
-			start_addr + i * sizeof(*buf));
-	}
+	dump_binary_chunk(dump_file, data->raw_map_line,
+			  buf, data->mem_len / sizeof(*buf), start_addr);
 
 	return CONTINUE_ITERATING;
 }
@@ -1095,13 +1128,6 @@ static int dump_process_memory_segment_filter(
 	}
 	*/
 	return 1;
-}
-
-static void format_dump_filename(struct task* t, const char* tag,
-				 char* filename, size_t filename_size)
-{
-	snprintf(filename, filename_size - 1, "%s/%d_%d_%s",
-		 get_trace_path(), t->rec_tid, get_global_time(), tag);
 }
 
 void dump_process_memory(struct task* t, const char* tag)

@@ -107,6 +107,29 @@ void print_register_file_tid(pid_t tid);
 void print_register_file(struct user_regs_struct* regs);
 
 /**
+ * Create a file named |filename| and dump |buf_len| words in |buf| to
+ * that file, starting with a line containing |label|.  |start_addr|
+ * is the client address at which |buf| resides, if meaningful.
+ * |start_addr| is used to compute the output lines of words, which
+ * look like "0xValue | [0xAddr]".
+ */
+void dump_binary_data(const char* filename, const char* label,
+		      const uint32_t* buf, size_t buf_len,
+		      const char* start_addr);
+
+/**
+ * Format a suitable filename within the trace directory for dumping
+ * information about |t| at the current global time, to a file that
+ * contains |tag|.  The constructed filename is returned through
+ * |filename|.  For example, a filename for a task with tid 12345 at
+ * time 111, for a file tagged "foo", would be something like
+ * "trace_0/12345_111_foo".  The returned name is not guaranteed to be
+ * unique, caveat emptor.
+ */
+void format_dump_filename(struct task* t, const char* tag,
+			  char* filename, size_t filename_size);
+
+/**
  * Return nonzero if the user requested memory be dumped for |t| at
  * |event| at |global_time|.
  */
