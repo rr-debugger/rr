@@ -2,6 +2,12 @@
 
 //#define DEBUGTAG "Replayer"
 
+#ifdef DEBUGTAG
+# define USE_BREAKPOINT_TARGET 0
+#else
+# define USE_BREAKPOINT_TARGET 1
+#endif
+
 #define _GNU_SOURCE
 
 #include "replayer.h"
@@ -1022,7 +1028,7 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 		/* At this point, we've proven that we're not at the
 		 * target execution point, and we've ensured the
 		 * internal breakpoint is unset. */
-		if (regs->eip != regs_now.eip) {
+		if (USE_BREAKPOINT_TARGET && regs->eip != regs_now.eip) {
 			/* Case (4) above: set a breakpoint on the
 			 * target $ip and PTRACE_CONT in an attempt to
 			 * execute as many non-trapped insns as we
@@ -1106,10 +1112,12 @@ static void emulate_signal_delivery(struct task* oldtask)
 
 static void assert_at_recorded_rcb(struct task* t, int event)
 {
+	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
+
 	if (!validate) {
 		return;
 	}
-	assert_exec(t, !t->hpc->started || read_rbc(t->hpc) == t->trace.rbc,
+	assert_exec(t, !t->hpc->started || rbc_now == t->trace.rbc,
 		    "rbc mismatch for '%s'; expected %"PRId64", got %"PRId64,
 		    strevent(event), t->trace.rbc, read_rbc(t->hpc));
 }

@@ -257,13 +257,13 @@ static void cleanup_hpc(struct task* t)
  * @param t: the current execution context
  * @param reset: the counters are (if enabled) reset
  */
-void start_hpc(struct task *t, uint64_t val)
+void start_hpc(struct task *t, int64_t val)
 {
 	t->hpc->rbc.attr.sample_period = val;
 	__start_hpc(t);
 }
 
-void reset_hpc(struct task *t, uint64_t val)
+void reset_hpc(struct task *t, int64_t val)
 {
 	if (t->hpc->started) {
 		cleanup_hpc(t);
@@ -292,31 +292,31 @@ void destroy_hpc(struct task *t)
 /**
  * Counter access functions
  */
-uint64_t read_hw_int(struct hpc_context *counters)
+int64_t read_hw_int(struct hpc_context *counters)
 {
-	uint64_t tmp;
-	READ_COUNTER(counters->hw_int.fd, &tmp, sizeof(uint64_t));
+	int64_t tmp;
+	READ_COUNTER(counters->hw_int.fd, &tmp, sizeof(int64_t));
 	return tmp;
 }
 
-uint64_t read_insts(struct hpc_context *counters)
+int64_t read_insts(struct hpc_context *counters)
 {
-	uint64_t tmp;
-	READ_COUNTER(counters->inst.fd, &tmp, sizeof(uint64_t));
+	int64_t tmp;
+	READ_COUNTER(counters->inst.fd, &tmp, sizeof(int64_t));
 	return tmp;
 }
 
 
-uint64_t read_page_faults(struct hpc_context *counters)
+int64_t read_page_faults(struct hpc_context *counters)
 {
-	uint64_t tmp;
-	READ_COUNTER(counters->page_faults.fd, &tmp, sizeof(uint64_t));
+	int64_t tmp;
+	READ_COUNTER(counters->page_faults.fd, &tmp, sizeof(int64_t));
 	return tmp;
 }
 
-uint64_t read_rbc(struct hpc_context *counters)
+int64_t read_rbc(struct hpc_context *counters)
 {
-	uint64_t tmp;
-	READ_COUNTER(counters->rbc.fd, &tmp, sizeof(uint64_t));
+	int64_t tmp;
+	READ_COUNTER(counters->rbc.fd, &tmp, sizeof(int64_t));
 	return tmp;
 }

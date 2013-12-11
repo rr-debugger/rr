@@ -928,6 +928,11 @@ int compare_register_files(struct task* t,
 
 	assert_exec(t, !bail_error || !err, "Fatal register mismatch");
 
+	if (!err && mismatch_behavior == LOG_MISMATCHES) {
+		log_info("(register files are the same for %s and %s)",
+			 name1, name2);
+	}
+
 	return err;
 }
 
@@ -935,18 +940,9 @@ void assert_child_regs_are(struct task* t,
 			   const struct user_regs_struct* regs,
 			   int event, int state)
 {
-	pid_t tid = t->tid;
-	int regs_are_equal;
-
-	read_child_registers(tid, &t->regs);
-	regs_are_equal = (0 == compare_register_files(t, "replaying", &t->regs,
-						      "recorded", regs,
-						      LOG_MISMATCHES));
-	if (!regs_are_equal) {
-		print_process_mmap(t);
-		assert_exec(t, regs_are_equal,
-			    "[%s in state %d]", strevent(event), state);
-	}
+	read_child_registers(t->tid, &t->regs);
+	compare_register_files(t, "replaying", &t->regs, "recorded", regs,
+			       BAIL_ON_MISMATCH);
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }
 
