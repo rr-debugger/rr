@@ -45,16 +45,16 @@ void close_libpfm(void);
 
 void init_hpc(struct task *t);
 void destroy_hpc(struct task *t);
-void start_hpc(struct task *t, uint64_t val);
+void start_hpc(struct task *t, int64_t val);
 void stop_hpc(struct task *t);
-void reset_hpc(struct task *t, uint64_t val);
+void reset_hpc(struct task *t, int64_t val);
 void stop_rbc(struct task *t);
 int pending_rbc_down(struct hpc_context *counters);
 
-uint64_t read_page_faults(struct hpc_context *counters);
-uint64_t read_rbc(struct hpc_context *counters);
-uint64_t read_rbc_down(struct hpc_context *counters);
-uint64_t read_hw_int(struct hpc_context* counters);
-uint64_t read_insts(struct hpc_context *counters);
+int64_t read_page_faults(struct hpc_context *counters);
+int64_t read_rbc(struct hpc_context *counters);
+int64_t read_rbc_down(struct hpc_context *counters);
+int64_t read_hw_int(struct hpc_context* counters);
+int64_t read_insts(struct hpc_context *counters);
 
 #endif /* HPC_H_ */

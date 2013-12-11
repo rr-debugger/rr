@@ -76,10 +76,10 @@ struct trace_frame
 	int state;
 
 	/* hpc data */
-	uint64_t hw_interrupts;
-	uint64_t page_faults;
-	uint64_t rbc;
-	uint64_t insts;
+	int64_t hw_interrupts;
+	int64_t page_faults;
+	int64_t rbc;
+	int64_t insts;
 
 	/* register values */
 	struct user_regs_struct recorded_regs;
