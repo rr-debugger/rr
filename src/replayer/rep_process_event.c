@@ -869,7 +869,7 @@ static void dump_path_data(struct task* t, const char* tag,
 			   const void* buf, size_t buf_len, const void* addr)
 {
 	format_dump_filename(t, tag, filename, filename_size);
-	dump_binary_data(filename, tag, buf, buf_len, addr);
+	dump_binary_data(filename, tag, buf, buf_len / 4, addr);
 }
 
 static void

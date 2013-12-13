@@ -1112,12 +1112,14 @@ static void emulate_signal_delivery(struct task* oldtask)
 
 static void assert_at_recorded_rcb(struct task* t, int event)
 {
+	static const int64_t rbc_slack = 0;
 	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
 
 	if (!validate) {
 		return;
 	}
-	assert_exec(t, !t->hpc->started || rbc_now == t->trace.rbc,
+	assert_exec(t, (!t->hpc->started
+			|| llabs(rbc_now - t->trace.rbc) <= rbc_slack),
 		    "rbc mismatch for '%s'; expected %"PRId64", got %"PRId64,
 		    strevent(event), t->trace.rbc, read_rbc(t->hpc));
 }
