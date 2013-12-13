@@ -2758,6 +2758,8 @@ void rec_process_syscall(struct task *t)
 			void* buf = (void*)regs.ecx;
 			size_t len = regs.edx;
 
+			assert_exec(t, buf, "Can't save a null buffer");
+
 			record_child_data(t, len, buf);
 			regs.eax = len;
 			write_child_registers(tid, &regs);
