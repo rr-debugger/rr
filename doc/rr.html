@@ -615,6 +615,212 @@ asm("_untraced_syscall:\n\t"
   </ul>
 </section>
 
+<section>
+  <h2>rr for RnR people</h2>
+</section>
+
+<section>
+  <p>Release 0.1 available today at</p>
+  <p><a href="http://rr-project.org/">rr-project.org</a></p>
+</section>
+
+<section>
+  <h3>Use cases</h3>
+  <ul>
+    <li>Run on modern, commodity hardware and software: <code>yum
+    install rr; rr record</code>&hellip;</li>
+    <li>Aspire to general tool, focus on Firefox initially</li>
+    <li>Record nondeterministic test failures at scale (e.g., Firefox
+    build/test infra), debug offline</li>
+    <li>"Super-debugger" for local development</li>
+    <li>Search execution space to actively find bugs</li>
+  </ul>
+</section>
+
+<section>
+  <h3>Design concerns</h3>
+  <ul>
+    <li>Commodity HW &rarr; only record single HW thread (for
+      now!)</li>
+    <li>Commodity SW &rarr; stick to higher-level userspace APIs
+      (e.g., ptrace, PEBS)</li>
+    <li>Record tests at scale &rarr; record perf must be "economical",
+      but not mission-critical</li>
+    <li>"Super-debugger" &rarr; the usual, plus reverse-break,
+      reverse-continue, &hellip;; pretty fast replay</li>
+    <li>Search exe space &rarr; flexible scheduling and
+      checkpointing</li>
+</section>
+
+<section>
+  <h3>rr recorder overview</h3>
+  <ul>
+    <li>Record "applications" consisting of linux tasks</li>
+    <li>Schedule CPU slices by programming precise counter interrupt
+      (retired branches, RBC) for <i>k</i></li>
+    <li>Time slice is special case of signal: time-slice recorded as
+      <i>(0, rec-RBC)</i>, signals <i>(signum, rec-RBC)</i></li>
+    <li>Record kernel-created signal stack</li>
+    <li>Syscall "outparams" and <code>rdtsc</code> generate trace
+      traps; results saved to log</li>
+    <li><i>Plus a "faster" mode we'll cover later</i></li>
+</section>
+
+<section>
+  <h3>Trade-off: scheduling from userspace</h3>
+  <ul>
+    <li>While it's great to fully control scheduling ...</li>
+    <li>... we have to approximate timeslices; can be unfair</li>
+    <li>... interactive programs don't "feel" native; rr has its own
+      heuristics</li>
+    <li>... can be slower</li>
+    <li>Future work is to have the option of both</li>
+  </ul>
+</section>
+
+<section>
+  <h3>Headache: kernel writes racing with userspace</h3>
+  <ul>
+    <li>rr doesn't (can't efficiently) record reads/writes of memory
+      shared outside of tracee application.</li>
+    <li>But there are still hazards with the kernel:</li>
+    <li>... kernel-write/task-read hazard on syscall outparam buffers
+      &rarr; rr replaces user buffers with scratch and serializes
+      writes</li>
+    <li>... kernel-write/task-read on random futexes,
+      e.g. CLONE_CHILD_CLEARTID &rarr; no good solution yet;
+      usleep&hellip;</li>
+  </ul>
+</section>
+
+<section>
+  <h3>rr replayer overview</h3>
+  <ul>
+    <li>Replay signal/time-slice <i>(signum, rec-RBC)</i> by
+      programming interrupt for <i>rec-RBC</i></li>
+    <li>Emulate signals by restoring signal stack and regs</li>
+    <li>Emulate syscalls by restoring outparams where possible</li>
+    <li>Execute non-emulatable clone/mmap/et al. as required</li>
+    <li>Serve debugger requests (maybe covered later)</li>
+</section>
+
+<section>
+  <h3>Replayer headache: slack in counter interrupts</h3>
+  <ul>
+    <li>Interrupt programmed for <i>RBC = k</i> may actually fire at
+      up to <i>RBC = k + slack</i></li>
+    <li>(Slack empirically seen to be >= 70 branches)</li>
+    <li>So we program interrupt for <i>RBC = k - slack</i> and then
+      advance by breakpoint+stepi</li>
+    <li>"At target" when <i>rec-RBC == rep-RBC</i> and <i>[rec-regs]
+        == [rep-regs]</i></li>
+    <li>Replay target therefore technically indeterminate</li>
+  </ul>
+</section>
+
+<section>
+  <h3>Recorder "fast mode": syscall buffering</h3>
+  <ul>
+    <li>ptrace traps are not that fast</li>
+    <li><em>Idea</em>: avoid them when possible by buffering log data
+      in tracee task</li>
+    <li>Implementation: LD_PRELOAD a helper library that interposes
+      common libc helpers (read, write, gettimeofday, etc.)</li>
+    <li>Interposed helper makes fast untraced syscall, saves outparams
+      in task-local buffer</li>
+    <li>Flush buffer at traced event (including buffer overflow)</li>
+</section>
+
+<section>
+  <h3>Headache: can't buffer many libc syscalls</h3>
+  <ul>
+    <li>Syscallbuf can only interpose public libc functions</li>
+    <li>libc makes many internal syscalls that can't be buffered</li>
+    <li>Wild idea: hook into kernel vdso syscall code</li>
+</section>
+
+<section>
+  <h3>Headache: buffering syscalls that may block</h3>
+  <ul>
+    <li>read/write/&hellip; may block if buffer empty/full/&hellip;</li>
+    <li>But, <em>untraced</em> syscall from wrapper means no trap to
+      rr for scheduling arbitration</li>
+    <li>If another tracee is blocked too, then may deadlock</li>
+    <li>Solution: libc wrapper programs perf_event interrupt triggered
+      by next context-switch of task</li>
+    <li>If the syscall blocks, task is switched out, and rr tracer
+      gets interrupt (SIGIO from perf_event)</li>
+  </ul>
+</section>
+
+<section>
+  <h3><em>Very</em> preliminary performance numbers (1/2)</h3>
+  <ul>
+    <li>Firefox running jquery testsuite (record / replay)
+      <ul>
+        <li>syscallbuf: 1.3x slower / 1.1x <em>faster</em></li>
+        <li>without: 1.9x slower / 1.3x slower</li>
+        <li>(trace sizes: 118MB / 172MB resp.<sup>&#10033;</sup>)</li>
+      </ul>
+    </li>
+    <li>Purely syscall bound program (2<sup>20</sup>
+      gettimeofday)
+      <ul>
+        <li>syscallbuf: record 3.9x slower</li>
+        <li>without: record 680x (!!) slower</li>
+        <li>(cf. <code>strace &gt;/dev/null</code>: 63x slower)</li>
+        <li>(trace sizes: 17MB / 590MB resp.<sup>&#10033;</sup>)</li>
+      </ul>
+    </li>
+  </ul>
+</section>
+
+<section>
+  <h3><em>Very</em> preliminary performance numbers (2/2)</h3>
+  <ul>
+    <li>Purely CPU bound program, no synchronization (syscallbuf makes
+      no difference)
+      <ul>
+        <li>default timeslice: record 1.3x slower</li>
+        <li>"large" timeslice (rbc=5e6): record &lt;= 1.02x slower</li>
+        <li>(trace sizes: 2.2MB / 200KB resp.<sup>&#10033;</sup>)</li>
+      </ul>
+    </li>
+    <li><sup>&#10033;</sup> traces currently uncompressed and include
+      inefficiently-stored debug information; will be much
+      smaller</li>
+  </ul>
+</section>
+
+<section>
+  <h3>Fun debugging tricks</h3>
+  <ul>
+    <li>Save register / RBC info at all events, verify in replay</li>
+    <li>Generate memory checksums at selected events, verify in
+      replay</li>
+    <li>LLVM pass to add "execution path logging" (Bell-Larus): poor
+      man's log of retired branches.  Save to "magic fd" in recording,
+      verify in replay.</li>
+    <li>Hack replayer itself to efficiently log arbitrary info at
+      arbitrary points</li>
+  </ul>
+</section>
+
+<section>
+  <h3>But syscallbuf bugs remain</h3>
+  <ul>
+    <li>At entry to <code>write</code>: overshot recorded rcb by
+      1</li>
+    <li>At target rbc/$ip: $edx has differing bits in in low 2
+      bytes</li>
+    <li>At target [regs], rbc off by +/-2
+    <li>At entry to <code>futex</code>: undershot recorded rcb by
+      2</li>
+    <li>Relative frequencies vary depending on system load</li>
+  </ul>
+  <p>and much future work!</p>
+</sections>
+
 <style>
 .highlight {
   color: red;
@@ -660,11 +866,11 @@ asm("_untraced_syscall:\n\t"
     font-size: 80px;
   }
   h3 {
-    margin: 100px 0 50px 100px;
+    margin: 50px 0 25px 50px;
   }
 
   ul {
-      margin: 50px 200px;
+      margin: 25px 100px;
   }
   li > ul {
       margin: 15px 50px;
