@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <err.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <sched.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include <string.h>
 #include <sys/user.h>
 #include <sys/syscall.h>
+#include <unistd.h>
 
 #include "config.h"
 #include "dbg.h"
@@ -25,35 +27,45 @@
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
 
-static char* trace_path_ = NULL;
+static char trace_path_[PATH_MAX];
 
 static FILE *syscall_header;
 static FILE *raw_data;
-static FILE *trace_file;
+static int trace_file_fd = -1;
 static FILE *mmaps_file;
 
 static int raw_data_file_counter = 0;
 static uint32_t trace_file_counter = 0;
-static uint32_t trace_file_lines_counter = 0;
-static uint32_t thread_time[100000];
-/* Global time starts at "2" so that an event at time i is situated at
- * line i within the first trace file.  The 2 comes from: line numbers
- * starting at "1" by convention, and the trace including a one-line
- * header.  We use the |trace_file_lines_counter| above to ensure that
- * these stay in sync.*/
-static uint32_t global_time = 2;
+/* Global time starts at "1" so that conditions like |global_time %
+ * interval| don't have to consider the trivial case |global_time ==
+ * 0|. */
+static uint32_t global_time = 1;
+static int read_first_trace_frame = 0;
 
 // counts the number of raw bytes written, a new raw_data file is used when MAX_RAW_DATA_SIZE is reached
 static long long overall_raw_bytes = 0;
 
-void flush_trace_files(void) {
+static ssize_t sizeof_trace_frame_event_info(void)
+{
+	return offsetof(struct trace_frame, end_event_info) -
+		offsetof(struct trace_frame, begin_event_info);
+}
+
+static ssize_t sizeof_trace_frame_exec_info(void)
+{
+	return offsetof(struct trace_frame, end_exec_info) -
+		offsetof(struct trace_frame, begin_exec_info);
+}
+
+void flush_trace_files(void)
+{
 	fflush(syscall_header);
 	fflush(raw_data);
-	fflush(trace_file);
 	fflush(mmaps_file);
 }
 
-char* get_trace_path() {
+const char* get_trace_path()
+{
 	return trace_path_;
 }
 
@@ -120,12 +132,38 @@ const char* strevent(int event)
 	return "???event";
 }
 
+void dump_trace_frame(FILE* out, const struct trace_frame* f)
+{
+	const struct user_regs_struct* r = &f->recorded_regs;
+
+	fprintf(out,
+"{\n  global_time:%u, event:`%s' (state:%d), tid:%d, thread_time:%u",
+		f->global_time, strevent(f->stop_reason), f->state,
+		f->tid, f->thread_time);
+	if (!f->has_exec_info) {
+		fprintf(out, "\n}");
+		return;
+	}
+
+	fprintf(out,
+"\n  hw_ints:%lld, faults:%lld, rbc:%lld, insns:%lld"
+"\n  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx"
+"\n  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld\n}\n",
+		f->hw_interrupts, f->page_faults, f->rbc, f->insts,
+		r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
+		r->eip, r->esp, r->eflags, r->orig_eax);
+}
+
 /**
  * Return the encoded event number of |ev| that's suitable for saving
- * to trace.  |state| is set to the corresponding execution state.
+ * to trace.  |state| is set to the corresponding execution state and
+ * may be null.
  */
 static int encode_event(const struct event* ev, int* state)
 {
+	int dummy;
+
+	state = state ? state : &dummy;
 	switch (ev->type) {
 	case EV_DESCHED:
 		switch (ev->desched.state) {
@@ -186,64 +224,32 @@ static int encode_event(const struct event* ev, int* state)
 	}
 }
 
-void write_open_inst_dump(struct task *t)
-{
-	char path[64];
-	char tmp[32];
-	strcpy(path, trace_path_);
-	sprintf(tmp, "/inst_dump_%d", t->tid);
-	strcat(path, tmp);
-	t->inst_dump = sys_fopen(path, "a+");
-}
-
-static unsigned int get_global_time_incr(void)
-{
-	return global_time++;
-}
-
 unsigned int get_global_time(void)
 {
 	return global_time;
 }
 
-static unsigned int get_time_incr(pid_t tid)
+void rec_setup_trace_dir()
 {
-	return thread_time[tid]++;
-}
-
-unsigned int get_time(pid_t tid)
-{
-	return thread_time[tid];
-}
-
-/**
- * sets up the directory where all trace files will be stored. If the trace
- * file already exists, the version number is increased
- */
-void rec_setup_trace_dir(int version)
-{
-	char ver[32], path[PATH_MAX];
+	int nonce = 0;
 	const char* output_dir;
-	/* convert int to char* */
-	sprintf(ver, "_%d", version);
+	int ret;
+
 	if (!(output_dir = getenv("_RR_TRACE_DIR"))) {
 		output_dir = ".";
 	}
-	strcpy(path, output_dir);
-	strcat(path, "/trace");
+	/* Find a unique trace directory name. */
+	do {
+		snprintf(trace_path_, sizeof(trace_path_) - 1,
+			 "%s/trace_%d", output_dir, nonce++);
+		ret = mkdir(trace_path_,
+			    S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	} while (ret && EEXIST == errno);
 
-	const char* tmp_path = strcat(path, ver);
-
-	if (mkdir(tmp_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1) {
-		int error = errno;
-		if (error == EEXIST) {
-			rec_setup_trace_dir(version + 1);
-		}
-	} else {
-		trace_path_ = sys_malloc(strlen(tmp_path) + 1);
-		strcpy(trace_path_, tmp_path);
-		log_info("Saving trace files to %s", trace_path_);
+	if (ret) {
+		fatal("Unable to create trace directory `%s'", trace_path_);
 	}
+	log_info("Saving trace files to %s", trace_path_);
 }
 
 void record_argv_envp(int argc, char* argv[], char* envp[])
@@ -279,86 +285,66 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	sys_fclose(arg_env);
 }
 
-void open_trace_files(void)
-{
-	char tmp[128], path[128];
-
-	strcpy(path, trace_path_);
-	sprintf(tmp, "/trace_%u", trace_file_counter);
-	strcat(path, tmp);
-	trace_file = sys_fopen(path, "a+");
-
-	strcpy(path, trace_path_);
-	strcpy(tmp, "/syscall_input");
-	strcat(path, tmp);
-	syscall_header = sys_fopen(path, "a+");
-
-	strcpy(path, trace_path_);
-	sprintf(tmp, "/raw_data_%u", raw_data_file_counter);
-	strcat(path, tmp);
-	raw_data = sys_fopen(path, "a+");
-
-	strcpy(path, trace_path_);
-	strcpy(tmp, "/mmaps");
-	strcat(path, tmp);
-	mmaps_file = sys_fopen(path, "a+");
-
-}
-
 static void use_new_rawdata_file(void)
 {
-	char tmp[128], path[64];
-	sys_fclose(raw_data);
+	char path[PATH_MAX];
+
+	if (raw_data) {
+		sys_fclose(raw_data);
+	}
 	overall_raw_bytes = 0;
-	strcpy(path, trace_path_);
-	sprintf(tmp, "/raw_data_%u", ++raw_data_file_counter);
-	strcat(path, tmp);
+
+	snprintf(path, sizeof(path) - 1,
+		 "%s/raw_data_%u", trace_path_, raw_data_file_counter++);
 	raw_data = sys_fopen(path, "a+");
 }
 
 static void use_new_trace_file(void)
 {
-	char tmp[128], path[64];
+	char path[PATH_MAX];
 
-	sys_fclose(trace_file);
-	strcpy(path, trace_path_);
-	sprintf(tmp, "/trace_%u", ++trace_file_counter);
-	strcat(path, tmp);
-	trace_file = sys_fopen(path, "a+");
+	close(trace_file_fd);
+
+	snprintf(path, sizeof(path) - 1,
+		 "%s/trace_%u", trace_path_, trace_file_counter++);
+	trace_file_fd = open(path, O_APPEND | O_CLOEXEC | O_CREAT | O_RDWR,
+			     0600);
+	if (0 > trace_file_fd) {
+		fatal("Failed to open trace file `%s'", path);
+	}
+}
+
+static void ensure_current_trace_file(void)
+{
+	/* Global time starts at "1", so we won't switch to a new log
+	 * on the first event. */
+	if (global_time % MAX_TRACE_ENTRY_SIZE == 0) {
+		use_new_trace_file();
+	}
+}
+
+void open_trace_files(void)
+{
+	char path[PATH_MAX];
+
+	use_new_trace_file();
+
+	snprintf(path, sizeof(path) - 1, "%s/syscall_input", trace_path_);
+	syscall_header = sys_fopen(path, "a+");
+
+	use_new_rawdata_file();
+
+	snprintf(path, sizeof(path) - 1, "%s/mmaps", trace_path_);
+	mmaps_file = sys_fopen(path, "a+");
 }
 
 void rec_init_trace_files(void)
 {
-	/* init trace file */
-	fprintf(trace_file, "%11s", "global_time");
-	fprintf(trace_file, "%11s", "thread_time");
-	fprintf(trace_file, "%11s", "tid");
-	fprintf(trace_file, "%11s", "reason");
-	fprintf(trace_file, "%11s", "entry/exit");
-	fprintf(trace_file, "%20s", "hw_interrupts");
-	fprintf(trace_file, "%20s", "page_faults");
-	fprintf(trace_file, "%20s", "adapted_rbc");
-	fprintf(trace_file, "%20s", "instructions");
-
-	fprintf(trace_file, "%11s", "eax");
-	fprintf(trace_file, "%11s", "ebx");
-	fprintf(trace_file, "%11s", "ecx");
-	fprintf(trace_file, "%11s", "edx");
-	fprintf(trace_file, "%11s", "esi");
-	fprintf(trace_file, "%11s", "edi");
-	fprintf(trace_file, "%11s", "ebp");
-	fprintf(trace_file, "%11s", "orig_eax");
-	fprintf(trace_file, "%11s", "esp");
-	fprintf(trace_file, "%11s", "eip");
-	fprintf(trace_file, "%11s", "eflags");
-	fprintf(trace_file, "\n");
-
 	/* print human readable header */
 	fprintf(syscall_header, "%11s", "time");
 	fprintf(syscall_header, "%11s", "syscall");
 	fprintf(syscall_header, "%11s", "addr");
 	fprintf(syscall_header, "%11s\n", "size");
-
 
 	fprintf(mmaps_file, "%11s", "time");
 	fprintf(mmaps_file, "%11s", "tid");
@@ -380,72 +366,21 @@ void rec_init_trace_files(void)
 	fprintf(mmaps_file, "%11s\n", "filename");
 
 	fflush(mmaps_file);
-	fflush(trace_file);
 	fflush(syscall_header);
 	fflush(raw_data);
-
 }
 
 void close_trace_files(void)
 {
-	// the files might not have been open at all
+	close(trace_file_fd);
 	if (syscall_header)
 		sys_fclose(syscall_header);
 	if (raw_data)
 		sys_fclose(raw_data);
-	if (trace_file)
-		sys_fclose(trace_file);
 	if (mmaps_file)
 		sys_fclose(mmaps_file);
 }
 
-static void record_performance_data(struct task *t)
-{
-	fprintf(trace_file, "%20llu", read_hw_int(t->hpc));
-	fprintf(trace_file, "%20llu", read_page_faults(t->hpc));
-	fprintf(trace_file, "%20llu", read_rbc(t->hpc));
-	fprintf(trace_file, "%20llu", read_insts(t->hpc));
-}
-
-static void record_register_file(struct task *t)
-{
-	pid_t tid = t->tid;
-	struct user_regs_struct regs;
-	read_child_registers(tid, &regs);
-
-	fprintf(trace_file, "%11lu", regs.eax);
-	fprintf(trace_file, "%11lu", regs.ebx);
-	fprintf(trace_file, "%11lu", regs.ecx);
-	fprintf(trace_file, "%11lu", regs.edx);
-	fprintf(trace_file, "%11lu", regs.esi);
-	fprintf(trace_file, "%11lu", regs.edi);
-	fprintf(trace_file, "%11lu", regs.ebp);
-	fprintf(trace_file, "%11lu", regs.orig_eax);
-	fprintf(trace_file, "%11lx", regs.esp);
-	fprintf(trace_file, "%11lx", regs.eip);
-	fprintf(trace_file, "%11lu", regs.eflags);
-}
-
-static void record_inst_register_file(struct task *t)
-{
-
-	pid_t tid = t->tid;
-	struct user_regs_struct regs;
-	read_child_registers(tid, &regs);
-
-	fprintf(t->inst_dump, "%11lu", regs.eax);
-	fprintf(t->inst_dump, "%11lu", regs.ebx);
-	fprintf(t->inst_dump, "%11lu", regs.ecx);
-	fprintf(t->inst_dump, "%11lu", regs.edx);
-	fprintf(t->inst_dump, "%11lu", regs.esi);
-	fprintf(t->inst_dump, "%11lu", regs.edi);
-	fprintf(t->inst_dump, "%11lu", regs.ebp);
-	fprintf(t->inst_dump, "%11lu", regs.orig_eax);
-	fprintf(t->inst_dump, "%11lx", regs.esp);
-	fprintf(t->inst_dump, "%11lx", regs.eip);
-	fprintf(t->inst_dump, "%11lu", regs.eflags);
-	fprintf(t->inst_dump, "\n");
-}
 /**
  * Flush the syscallbuf to the trace, if there are any pending entries.
  */
@@ -481,7 +416,7 @@ static void maybe_flush_syscallbuf(struct task *t)
  * (registers etc.)  that rr should record.  "Meaningful" means that
  * the same state will be seen when reaching this event during replay.
  */
-int has_exec_info(const struct event* ev)
+static int has_exec_info(const struct event* ev)
 {
 	switch (ev->type) {
 	case EV_DESCHED: {
@@ -500,45 +435,84 @@ int has_exec_info(const struct event* ev)
 }
 
 /**
- * Makes an entry into the event trace file
+ * Translate |t|'s event |ev| into a trace frame that can be saved to
+ * the log.
  */
+static void encode_trace_frame(struct task* t, const struct event* ev,
+			       struct trace_frame* frame)
+{
+	int state;
+
+	memset(frame, 0, sizeof(*frame));
+
+	frame->global_time = global_time++;
+	frame->thread_time = t->thread_time++;
+	frame->tid = t->tid;
+	frame->stop_reason = encode_event(ev, &state);
+	frame->state = state;
+	frame->has_exec_info = has_exec_info(ev);
+	if (frame->has_exec_info) {
+		frame->hw_interrupts = read_hw_int(t->hpc);
+		frame->page_faults = read_page_faults(t->hpc);
+		frame->rbc = read_rbc(t->hpc);
+		frame->insts = read_insts(t->hpc);
+		read_child_registers(t->tid, &frame->recorded_regs);
+	}
+}
+
+/**
+ * Write |frame| to the log.  Succeed or don't return.
+ */
+static void write_trace_frame(const struct trace_frame* frame)
+{
+	void* begin_data = &frame->begin_event_info;
+	size_t nbytes = sizeof_trace_frame_event_info();
+	ssize_t nwritten;
+
+	ensure_current_trace_file();
+
+	/* TODO: only store exec info for non-async-sig events when
+	 * debugging assertions are enabled. */
+	if (frame->has_exec_info) {
+		nbytes += sizeof_trace_frame_exec_info();
+	}
+	nwritten = write(trace_file_fd, begin_data, nbytes);
+	if (nwritten != nbytes) {
+		fatal("Tried to save %d bytes to the trace, but only wrote %d",
+		      nbytes, nwritten);
+	}
+}
+
 void record_event(struct task *t)
 {
-	struct event* ev = t->ev;
-	int state;
-	int event = encode_event(ev, &state);
+	struct trace_frame frame;
 
-	if (USR_SYSCALLBUF_FLUSH != event) {
-		// before anything is performed, check if the seccomp record cache has any entries
+	/* If there's buffered syscall data, we need to record a flush
+	 * event before recording |frame|, so that they're replayed in
+	 * the correct order. */
+	if (USR_SYSCALLBUF_FLUSH != encode_event(t->ev, NULL)) {
 		maybe_flush_syscallbuf(t);
 	}
 
-	if (((global_time % MAX_TRACE_ENTRY_SIZE) == 0) && (global_time > 0)) {
-		use_new_trace_file();
-	}
+	/* NB: we must encode the frame *after* flushing the
+	 * syscallbuf, because encoding the frame has side effects on
+	 * the global and thread clocks. */
+	encode_trace_frame(t, t->ev, &frame);
 
-	if (should_dump_memory(t, event, state, global_time)) {
+	if (should_dump_memory(t, frame.stop_reason, frame.state,
+			       frame.global_time)) {
 		dump_process_memory(t, "rec");
 	}		
-	if (should_checksum(t, event, state, global_time)) {
+	if (should_checksum(t, frame.stop_reason, frame.state,
+			    frame.global_time)) {
 		checksum_process_memory(t);
 	}
 
-	fprintf(trace_file, "%11d%11u%11d%11d", get_global_time_incr(),
-	        get_time_incr(t->tid), t->tid, event);
+	write_trace_frame(&frame);
 
-	debug("trace: %11d%11u%11d%11d%11d", get_global_time(),
-	      get_time(t->tid), t->tid, event,
-	      state);
-
-	if (has_exec_info(ev)) {
-		fprintf(trace_file, "%11d", state);
-
-		record_performance_data(t);
-		record_register_file(t);
+	if (frame.has_exec_info) {
 		reset_hpc(t, rr_flags()->max_rbc);
 	}
-	fprintf(trace_file, "\n");
 }
 
 static void print_header(int syscallno, void* addr)
@@ -695,53 +669,19 @@ void record_child_str(struct task* t, void* child_ptr)
 
 }
 
-void record_inst(struct task *t, char* inst)
+void rep_setup_trace_dir(const char* path)
 {
-	fprintf(t->inst_dump, "%d:%-40s\n", t->tid, inst);
-	record_inst_register_file(t);
-}
-
-void record_inst_done(struct task* t)
-{
-	fprintf(t->inst_dump, "%s\n", "__done__");
-}
-
-
-FILE* get_trace_file(void)
-{
-	return trace_file;
-}
-
-void read_open_inst_dump(struct task *t)
-{
-	char path[64];
-	char tmp[32];
-	strcpy(path, trace_path_);
-	sprintf(tmp, "/inst_dump_%d", t->rec_tid);
-	strcat(path, tmp);
-	t->inst_dump = sys_fopen(path, "a+");
-}
-
-
-void rep_setup_trace_dir(const char * path) {
-	/* XXX is it really ok to do this? */
-	trace_path_ = (char*)path;
+	strncpy(trace_path_, path, sizeof(trace_path_) - 1);
 }
 
 void rep_init_trace_files(void)
 {
-	/* skip the first line -- is only meta-information */
-	char* line = sys_malloc(1024);
-	read_line(trace_file, line, 1024, "trace");
-	++trace_file_lines_counter;
-	/* same for syscall_input */
+	char line[1024];
+
+	/* The first line of these files is a header, which we eat. */
 	read_line(syscall_header, line, 1024, "syscall_input");
-	/* same for timestamps */
 	read_line(mmaps_file, line, 1024, "stats");
-	sys_free((void**) &line);
-
 }
-
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp)
 {
@@ -876,71 +816,14 @@ ssize_t read_raw_data_direct(struct trace_frame* trace,
 	return data_size;
 }
 
-void read_syscall_trace(struct syscall_trace* trace)
-{
-
-	char* line = sys_malloc(1024);
-	read_line(syscall_header, line, 1024, "syscall_input");
-	const char* tmp_ptr = line;
-
-	trace->time = str2li(tmp_ptr, UUL_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	trace->tid = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	trace->syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	trace->data_size = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-
-	sys_free((void**) &line);
-}
-
-/*
- * Get the main thread if of the recorder. Note that this function must be called
- * after init_read_trace
- * @return the tid of the main thread of the recording phase
- */
 pid_t get_recorded_main_thread(void)
 {
+	struct trace_frame frame;
 
-	fpos_t pos;
-	fgetpos(trace_file, &pos);
-	int saved_trace_file_lines_counter = trace_file_lines_counter;
-	struct trace_frame trace;
-	read_next_trace(&trace);
+	assert(1 == get_global_time());
 
-	pid_t main_thread = trace.tid;
-	fsetpos(trace_file, &pos);
-	trace_file_lines_counter = saved_trace_file_lines_counter;
-
-	return main_thread;
-}
-
-static void parse_register_file(struct user_regs_struct* regs, char* tmp_ptr)
-{
-	regs->eax = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->ebx = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->ecx = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->edx = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->esi = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->edi = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->ebp = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->orig_eax = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->esp = (uintptr_t)str2x(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->eip = (uintptr_t)str2x(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	regs->eflags = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-
+	peek_next_trace(&frame);
+	return frame.tid;
 }
 
 /**
@@ -997,7 +880,7 @@ void read_next_mmapped_file_stats(struct mmapped_file * file) {
 	}
 }
 
-void peek_next_mmapped_file_stats(struct mmapped_file * file)
+void peek_next_mmapped_file_stats(struct mmapped_file* file)
 {
 	fpos_t pos;
 	fgetpos(mmaps_file, &pos);
@@ -1005,130 +888,52 @@ void peek_next_mmapped_file_stats(struct mmapped_file * file)
 	fsetpos(mmaps_file, &pos);
 }
 
-void peek_next_trace(struct trace_frame *trace)
+void peek_next_trace(struct trace_frame* trace)
 {
-	fpos_t pos;
-	fgetpos(trace_file, &pos);
-	int saved_trace_file_lines_counter = trace_file_lines_counter;
+	/* FIXME if peeking causes the trace file to roll over, then
+	 * things will go haywire. */
+	off_t pos = lseek(trace_file_fd, 0, SEEK_CUR);
 	uint32_t saved_global_time = global_time;
+	int saved_read_first_trace_frame = read_first_trace_frame;
+
 	read_next_trace(trace);
-	/* check if read is successful */
-	assert(!feof(trace_file));
+
+	read_first_trace_frame = saved_read_first_trace_frame;
 	global_time = saved_global_time;
-	trace_file_lines_counter = saved_trace_file_lines_counter;
-	fsetpos(trace_file, &pos);
+	lseek(trace_file_fd, pos, SEEK_SET);
 }
 
-void read_next_trace(struct trace_frame *trace)
+void read_next_trace(struct trace_frame* frame)
 {
-	char line[1024];
+	ssize_t nread;
 
-	char * tmp_ptr = fgets(line, 1024, trace_file);
-	if (tmp_ptr != line) {
-		use_new_trace_file();
-		tmp_ptr = fgets(line, 1024, trace_file);
-		assert(tmp_ptr == line);
+	memset(frame, 0, sizeof(*frame));
+
+	/* This is the global time for the *next* frame, the one we're
+	 * about to read.  For the first frame, the global time is
+	 * already correct. */
+	global_time += read_first_trace_frame ? 1 : 0;
+	read_first_trace_frame = 1;
+
+	ensure_current_trace_file();
+
+	/* Read the common event info first, to see if we also have
+	 * exec info to read. */
+	nread = read(trace_file_fd, &frame->begin_event_info,
+		     sizeof_trace_frame_event_info());
+	if (sizeof_trace_frame_event_info() != nread) {
+		fatal("Should have read %d bytes of event info, but only read %d",
+		      sizeof_trace_frame_event_info(), nread);
 	}
 
-	/* read meta information */
-	trace->global_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	trace->thread_time = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	trace->tid = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	trace->stop_reason = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-	trace->state = str2li(tmp_ptr, LI_COLUMN_SIZE);
-	tmp_ptr += LI_COLUMN_SIZE;
-
-	// TODO: perf counters are only needed for signals
-	/* read hardware performance counters */
-	trace->hw_interrupts = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-	tmp_ptr += UUL_COLUMN_SIZE;
-	trace->page_faults = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-	tmp_ptr += UUL_COLUMN_SIZE;
-	trace->rbc = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-	tmp_ptr += UUL_COLUMN_SIZE;
-	trace->insts = str2ull(tmp_ptr, UUL_COLUMN_SIZE);
-	tmp_ptr += UUL_COLUMN_SIZE;
-
-	//read register file
-	parse_register_file(&(trace->recorded_regs), tmp_ptr);
-
-	assert((global_time = trace->global_time) ==
-	       ++trace_file_lines_counter);
-}
-
-void find_in_trace(struct task *t, unsigned long cur_time, long int val)
-{
-	fpos_t pos;
-
-	fgetpos(trace_file, &pos);
-	int saved_trace_file_lines_counter = trace_file_lines_counter;
-	rewind(trace_file);
-	/* skip the header */
-	char* line = sys_malloc(1024);
-
-	read_line(trace_file, line, 1024, "trace");
-	struct trace_frame trace;
-	do {
-		read_next_trace(&trace);
-		if ((val == trace.recorded_regs.eax) || (val == trace.recorded_regs.ebx) || (val == trace.recorded_regs.ecx) || (val == trace.recorded_regs.edx) || (val == trace.recorded_regs.esi)
-				|| (val == trace.recorded_regs.edi) || (val == trace.recorded_regs.ebp) || (val == trace.recorded_regs.orig_eax)) {
-
-			printf("found val: %lx at time: %u\n", val, trace.global_time);
+	if (frame->has_exec_info) {
+		nread = read(trace_file_fd, &frame->begin_exec_info,
+			     sizeof_trace_frame_exec_info());
+		if (sizeof_trace_frame_exec_info() != nread) {
+			fatal("Should have read %d bytes of exec info, but only read %d",
+			      sizeof_trace_frame_exec_info(), nread);
 		}
+	}
 
-	} while (trace.global_time < cur_time);
-
-	sys_free((void**) &line);
-	fsetpos(trace_file, &pos);
-	trace_file_lines_counter = saved_trace_file_lines_counter;
-	assert(0);
-}
-
-/**
- * Gets the next instruction dump entry and increments the
- * file pointer.
- */
-char* read_inst(struct task* t)
-{
-	char* tmp = sys_malloc(50);
-	read_line(t->inst_dump, tmp, 50, "inst_dump");
-	return tmp;
-}
-
-void inst_dump_parse_register_file(struct task* t, struct user_regs_struct* reg)
-{
-	char* tmp = sys_malloc(1024);
-	read_line(t->inst_dump, tmp, 1024, "inst_dump");
-	parse_register_file(reg, tmp);
-	sys_free((void**) &tmp);
-}
-
-/*
- * Skips the current entry in the instruction dump. As a result the
- * file pointer points to the beginning of the next entry.
- */
-void inst_dump_skip_entry(struct task* t)
-{
-	char* tmp = sys_malloc(1024);
-	read_line(t->inst_dump, tmp, 1024, "inst_dump");
-	read_line(t->inst_dump, tmp, 1024, "inst_dump");
-	sys_free((void**) &tmp);
-}
-
-/**
- * Gets the next instruction dump entry but does NOT increment
- * the file pointer.
- */
-char* peek_next_inst(struct task* t)
-{
-	char* tmp = sys_malloc(1024);
-	fpos_t pos;
-	fgetpos(t->inst_dump, &pos);
-	read_line(t->inst_dump, tmp, 1024, "inst_dump");
-	fsetpos(t->inst_dump, &pos);
-	return tmp;
+	assert(global_time == frame->global_time);
 }

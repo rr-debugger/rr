@@ -238,6 +238,10 @@ struct event {
 struct task {
 	/* State only used during recording. */
 
+	/* The running count of events that have been recorded for
+	 * this task.  Starts at "1" to match with "global_time". */
+	int thread_time;
+
 	/* The task group this belongs to. */
 	/*refcounted*/struct task_group* task_group;
 
