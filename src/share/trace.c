@@ -903,7 +903,7 @@ void peek_next_trace(struct trace_frame* trace)
 	lseek(trace_file_fd, pos, SEEK_SET);
 }
 
-void read_next_trace(struct trace_frame* frame)
+int try_read_next_trace(struct trace_frame *frame)
 {
 	ssize_t nread;
 
@@ -922,18 +922,23 @@ void read_next_trace(struct trace_frame* frame)
 	nread = read(trace_file_fd, &frame->begin_event_info,
 		     sizeof_trace_frame_event_info());
 	if (sizeof_trace_frame_event_info() != nread) {
-		fatal("Should have read %d bytes of event info, but only read %d",
-		      sizeof_trace_frame_event_info(), nread);
+		return 0;
 	}
 
 	if (frame->has_exec_info) {
 		nread = read(trace_file_fd, &frame->begin_exec_info,
 			     sizeof_trace_frame_exec_info());
 		if (sizeof_trace_frame_exec_info() != nread) {
-			fatal("Should have read %d bytes of exec info, but only read %d",
-			      sizeof_trace_frame_exec_info(), nread);
+			return 0;
 		}
 	}
 
 	assert(global_time == frame->global_time);
+	return 1;
+}
+
+void read_next_trace(struct trace_frame* frame)
+{
+	int read_ok = try_read_next_trace(frame);
+	assert(read_ok);
 }

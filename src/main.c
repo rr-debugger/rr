@@ -137,108 +137,161 @@ static void install_signal_handler(void)
 	signal(SIGINT, sig_child);
 }
 
-/**
- * main replayer method
- */
-static void start(int argc, char* argv[], char** envp)
+static void start_recording(int argc, char* argv[], char** envp)
 {
 	pid_t pid;
 	int status;
 
-	if (rr_flags()->option == RECORD) {
-		copy_executable(argv[0]);
-		copy_argv(argc, argv);
-		copy_envp(envp);
-		rec_setup_trace_dir();
+	copy_executable(argv[0]);
+	copy_argv(argc, argv);
+	copy_envp(envp);
+	rec_setup_trace_dir();
 
-		pid = sys_fork();
+	pid = sys_fork();
+	if (pid == 0) { /* child process */
+		return sys_start_trace(__executable, __argv, __envp);
+		/* not reached */
+	}
 
-		if (pid == 0) { /* child process */
-			sys_start_trace(__executable, __argv, __envp);
-		} else { /* parent process */
-			/* initialize trace files */
-			open_trace_files();
-			rec_init_trace_files();
-			record_argv_envp(argc, __argv, __envp);
+	open_trace_files();
+	rec_init_trace_files();
+	record_argv_envp(argc, __argv, __envp);
 
-			child = pid;
+	child = pid;
 
-			/* make sure that the child process dies when the master process gets interrupted */
-			install_signal_handler();
+	/* Make sure that the child process dies when the master
+	 * process gets interrupted */
+	install_signal_handler();
 
-			/* sync with the child process */
-			sys_waitpid(pid, &status);
+	/* sync with the child process */
+	sys_waitpid(pid, &status);
 
-			/* configure the child process to get a message upon a thread start, fork(), etc. */
-			sys_ptrace_setup(pid);
+	/* Configure the child process to get a message upon a thread
+	 * start, fork(), etc. */
+	sys_ptrace_setup(pid);
 
-			/* initialize stuff */
-			init_libpfm();
+	init_libpfm();
 
-			/* register thread at the scheduler and start the HPC */
-			rec_sched_register_thread(0, pid, DEFAULT_COPY);
+	rec_sched_register_thread(0, pid, DEFAULT_COPY);
 
-			/* perform the action recording */
-			log_info("Start recording...");
-			record();
-			log_info("Done recording -- cleaning up");
-			/* cleanup all initialized data-structures */
-			close_trace_files();
-			close_libpfm();
-		}
+	log_info("Start recording...");
+	record();
+	log_info("Done recording -- cleaning up");
 
-		/* replayer code comes here */
-	} else if (rr_flags()->option == REPLAY) {
-		init_environment(argv[0], &argc, __argv, __envp);
-		copy_executable(__argv[0]);
+	close_trace_files();
+	close_libpfm();
+}
 
-		pid = sys_fork();
+static void start_replaying(int argc, char* argv[], char** envp)
+{
+	pid_t pid;
+	int status;
 
-		if (pid == 0) { /* child process */
-			/* When we execvpe() the tracee, we must
-			 * ensure that $PATH is the same as in
-			 * recording so that libc searches paths in
-			 * the same order.  So copy that over now.
-			 *
-			 * And because we use execvpe(), the exec'd
-			 * tracee will start with a fresh environment
-			 * guaranteed to be the same as in replay, so
-			 * we don't have to worry about any mutation
-			 * here affecting post-exec execution. */
-			char** e;
-			for (e = __envp; *e; ++e) {
-				const char* kv = *e;
-				if (!strncmp(kv, "PATH=",
-					     sizeof("PATH=") - 1)) {
-					putenv(strdup(kv));
-				}
+	init_environment(argv[0], &argc, __argv, __envp);
+	copy_executable(__argv[0]);
+
+	pid = sys_fork();
+	if (pid == 0) { /* child process */
+		/* When we execvpe() the tracee, we must ensure that
+		 * $PATH is the same as in recording so that libc
+		 * searches paths in the same order.  So copy that
+		 * over now.
+		 *
+		 * And because we use execvpe(), the exec'd tracee
+		 * will start with a fresh environment guaranteed to
+		 * be the same as in replay, so we don't have to worry
+		 * about any mutation here affecting post-exec
+		 * execution. */
+		char** e;
+		for (e = __envp; *e; ++e) {
+			const char* kv = *e;
+			if (!strncmp(kv, "PATH=", sizeof("PATH=") - 1)) {
+				putenv(strdup(kv));
 			}
-			sys_start_trace(__executable, __argv, __envp);
-		} else { /* parent process */
-			child = pid;
-			/* make sure that the child process dies when the master process gets interrupted */
-			install_signal_handler();
-
-			sys_waitpid(pid, &status);
-			sys_ptrace_setup(pid);
-
-			/* initialize stuff */
-			init_libpfm();
-			/* sets the file pointer to the first trace entry */
-
-			rep_setup_trace_dir(argv[0]);
-			open_trace_files();
-			rep_init_trace_files();
-
-			pid_t rec_main_thread = get_recorded_main_thread();
-			rep_sched_register_thread(pid, rec_main_thread);
-
-			/* main loop */
-			replay();
-			/* thread wants to exit*/
-			close_libpfm();
-			close_trace_files();
 		}
+		return sys_start_trace(__executable, __argv, __envp);
+		/* not reached */
+	}
+
+	child = pid;
+	/* Make sure that the child process dies when the master
+	 * process gets interrupted. */
+	install_signal_handler();
+
+	sys_waitpid(pid, &status);
+	sys_ptrace_setup(pid);
+
+	init_libpfm();
+
+	rep_setup_trace_dir(argv[0]);
+	open_trace_files();
+	rep_init_trace_files();
+
+	pid_t rec_main_thread = get_recorded_main_thread();
+	rep_sched_register_thread(pid, rec_main_thread);
+
+	/* main loop */
+	replay();
+	/* thread wants to exit*/
+	close_libpfm();
+	close_trace_files();
+}
+
+static void dump_events_matching(const char* spec)
+{
+	uint32_t start = 0, end = UINT32_MAX;
+
+	if (spec) {
+		if (2 > sscanf(spec, "%u-%u", &start, &end)) {
+			start = end = atoi(spec);
+		}
+	}
+
+	while (1) {
+		struct trace_frame frame;
+
+		if (!try_read_next_trace(&frame)
+		    || frame.global_time > end) {
+			return;
+		}
+		if (frame.global_time < start) {
+			continue;
+		}
+
+		dump_trace_frame(stdout, &frame);
+	}
+}
+
+static void start_dumping(int argc, char* argv[], char** envp)
+{
+	int i;
+
+	rep_setup_trace_dir(argv[0]);
+	open_trace_files();
+	rep_init_trace_files();
+
+	if (1 == argc) {
+		/* No specs => dump all events. */
+		return dump_events_matching(NULL /*all events*/);
+	}
+
+	for (i = 1; i < argc; ++i) {
+		dump_events_matching(argv[i]);
+	}
+}
+
+static void start(int argc, char* argv[], char** envp)
+{
+
+	switch (rr_flags()->option) {
+	case RECORD:
+		return start_recording(argc, argv, envp);
+	case REPLAY:
+		return start_replaying(argc, argv, envp);
+	case DUMP_EVENTS:
+		return start_dumping(argc, argv, envp);
+	default:
+		fatal("Uknown option %d", rr_flags()->option);
 	}
 }
 
@@ -277,7 +330,7 @@ static void assert_prerequisites(void) {
 static void print_usage(void)
 {
 	fputs(
-"Usage: rr [OPTION] (record|replay) [OPTION]... [ARG]...\n"
+"Usage: rr [OPTION] (record|replay|dump) [OPTION]... [ARG]...\n"
 "\n"
 "Common options\n"
 "  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
@@ -320,13 +373,18 @@ static void print_usage(void)
 "  -i, --ignore-signal=<SIG>  block <SIG> from being delivered to tracees.\n"
 "                             Probably only useful for unit tests.\n"
 "  -n, --no-syscall-buffer    disable the syscall buffer preload library\n"
-"                             even if it would otherwise be used"
+"                             even if it would otherwise be used\n"
 "\n"
 "Syntax for `replay'\n"
 " rr replay [OPTION]... <trace-dir>\n"
 "  -a, --autopilot            replay without debugger server\n"
 "  -p, --dbgport=PORT         bind the debugger server to PORT\n"
 "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
+"\n"
+"Syntax for `dump`\n"
+" rr dump <trace_dir> <event-spec>...\n"
+"  Event specs can be either an event number like `127', or a range\n"
+"  like `1000-5000'.  By default, all events are dumped.\n"
 "\n"
 "A command line like `rr (-h|--help|help)...' will print this message.\n"
 , stderr);
@@ -395,6 +453,23 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		case 'q':
 			flags->redirect = FALSE;
 			break;
+		default:
+			return -1;
+		}
+	}
+}
+
+static int parse_dump_args(int cmdi, int argc, char** argv,
+			   struct flags* flags)
+{
+	/* No named options for now. */
+	struct option opts[] = { { 0 } };
+	optind = cmdi + 1;
+	while (1) {
+		int i = 0;
+		switch (getopt_long(argc, argv, "", opts, &i)) {
+		case -1:
+			return optind;
 		default:
 			return -1;
 		}
@@ -489,6 +564,10 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	if (!strcmp("replay", cmd)) {
 		flags->option = REPLAY;
 		return parse_replay_args(cmdi, argc, argv, flags);
+	}
+	if (!strcmp("dump", cmd)) {
+		flags->option = DUMP_EVENTS;
+		return parse_dump_args(cmdi, argc, argv, flags);
 	}
 	if (!strcmp("help", cmd) || !strcmp("-h", cmd)
 	    || !strcmp("--help", cmd)) {
