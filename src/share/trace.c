@@ -141,7 +141,7 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 		f->global_time, strevent(f->stop_reason), f->state,
 		f->tid, f->thread_time);
 	if (!f->has_exec_info) {
-		fprintf(out, "\n}");
+		fprintf(out, "\n}\n");
 		return;
 	}
 
