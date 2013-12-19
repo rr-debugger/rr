@@ -237,28 +237,34 @@ static void start_replaying(int argc, char* argv[], char** envp)
 	close_trace_files();
 }
 
-static void dump_events_matching(const char* spec)
+/**
+ * Dump all events from the current to trace that match |spec| to
+ * |out|.  |spec| has the following syntax: /\d+(-\d+)?/, expressing
+ * either a single event number of a range, and may be null to
+ * indicate "dump all events".
+ *
+ * This function is side-effect-y, in that the trace file isn't
+ * rewound in between matching each spec.  Therefore specs should be
+ * constructed so as to match properly on a serial linear scan; that
+ * is, they should comprise disjoint and monotonically increasing
+ * event sets.  No attempt is made to enforce this or normalize specs.
+ */
+static void dump_events_matching(FILE* out, const char* spec)
 {
 	uint32_t start = 0, end = UINT32_MAX;
+	struct trace_frame frame;
 
-	if (spec) {
-		if (2 > sscanf(spec, "%u-%u", &start, &end)) {
-			start = end = atoi(spec);
-		}
+	/* Try to parse the "range" syntax '[start]-[end]'. */
+	if (spec && 2 > sscanf(spec, "%u-%u", &start, &end)) {
+		/* Fall back on assuming the spec is a single event
+		 * number, however it parses out with atoi(). */
+		start = end = atoi(spec);
 	}
 
-	while (1) {
-		struct trace_frame frame;
-
-		if (!try_read_next_trace(&frame)
-		    || frame.global_time > end) {
-			return;
+	while (try_read_next_trace(&frame) && frame.global_time <= end) {
+		if (start <= frame.global_time) {
+			dump_trace_frame(out, &frame);
 		}
-		if (frame.global_time < start) {
-			continue;
-		}
-
-		dump_trace_frame(stdout, &frame);
 	}
 }
 
@@ -272,11 +278,11 @@ static void start_dumping(int argc, char* argv[], char** envp)
 
 	if (1 == argc) {
 		/* No specs => dump all events. */
-		return dump_events_matching(NULL /*all events*/);
+		return dump_events_matching(stdout, NULL /*all events*/);
 	}
 
 	for (i = 1; i < argc; ++i) {
-		dump_events_matching(argv[i]);
+		dump_events_matching(stdout, argv[i]);
 	}
 }
 
