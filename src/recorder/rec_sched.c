@@ -208,7 +208,7 @@ void rec_sched_register_thread(pid_t parent, pid_t child, int flags)
 
 	assert(child > 0 && child < MAX_TID);
 
-	t->status = 0;
+	t->thread_time = 1;
 	t->rec_tid = t->tid = child;
 	t->child_mem_fd = sys_open_child_mem(child);
 	push_placeholder_event(t);

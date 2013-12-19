@@ -149,8 +149,7 @@ static void start(int argc, char* argv[], char** envp)
 		copy_executable(argv[0]);
 		copy_argv(argc, argv);
 		copy_envp(envp);
-		/* create directory for trace files */
-		rec_setup_trace_dir(0);
+		rec_setup_trace_dir();
 
 		pid = sys_fork();
 
