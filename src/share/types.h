@@ -32,6 +32,7 @@ typedef unsigned char byte;
 #define INVALID			0
 #define RECORD			1
 #define REPLAY			2
+#define DUMP_EVENTS		3
 
 #define DUMP_ON_ALL 	10000
 #define DUMP_ON_NONE 	-DUMP_ON_ALL

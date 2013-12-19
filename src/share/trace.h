@@ -191,7 +191,14 @@ void rec_setup_trace_dir(void);
  */
 
 void init_environment(char* trace_path, int* argc, char** argv, char** envp);
-void read_next_trace(struct trace_frame *trace);
+/**
+ * Read and return the next trace frame.  Succeed or don't return.
+ */
+void read_next_trace(struct trace_frame* frame);
+/**
+ * Return nonzero if the next trace frame was read, zero if not.
+ */
+int try_read_next_trace(struct trace_frame* frame);
 void peek_next_trace(struct trace_frame *trace);
 void read_next_mmapped_file_stats(struct mmapped_file *file);
 void peek_next_mmapped_file_stats(struct mmapped_file *file);
