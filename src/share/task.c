@@ -98,15 +98,15 @@ static void* refcounted_unref(void** pp)
 static const char* event_type_name(int type)
 {
 	switch (type) {
-	case EV_NONE: return "(none)";
+	case EV_SENTINEL: return "(none)";
 #define CASE(_t) case EV_## _t: return #_t
-		CASE(DESCHED);
-		CASE(PSEUDOSIG);
-		CASE(SIGNAL);
-		CASE(SIGNAL_DELIVERY);
-		CASE(SIGNAL_HANDLER);
-		CASE(SYSCALL);
-		CASE(SYSCALL_INTERRUPTION);
+	CASE(DESCHED);
+	CASE(PSEUDOSIG);
+	CASE(SIGNAL);
+	CASE(SIGNAL_DELIVERY);
+	CASE(SIGNAL_HANDLER);
+	CASE(SYSCALL);
+	CASE(SYSCALL_INTERRUPTION);
 #undef CASE
 	default:
 		fatal("Unknown event type %d", type);
@@ -170,7 +170,7 @@ static void pop_event(struct task* t, int expected_type)
 void push_placeholder_event(struct task* t)
 {
 	assert(FIXEDSTACK_EMPTY(&t->pending_events));
-	push_new_event(t, EV_NONE);
+	push_new_event(t, EV_SENTINEL);
 }
 
 void push_desched(struct task* t, const struct syscallbuf_record* rec)
@@ -271,7 +271,7 @@ void log_event(const struct event* ev)
 {
 	const char* name = event_name(ev);
 	switch (ev->type) {
-	case EV_NONE:
+	case EV_SENTINEL:
 		log_info("%s", name);
 		return;
 	case EV_DESCHED:

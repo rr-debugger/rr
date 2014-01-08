@@ -41,7 +41,7 @@ typedef void (*sig_handler_t)(int);
  */
 struct event {
 	enum {
-		EV_NONE,
+		EV_SENTINEL,
 		/* Uses the .desched struct below. */
 		EV_DESCHED,
 		/* Uses .pseudosig. */
@@ -258,7 +258,7 @@ struct task {
 
 	/* For convenience, the current top of |pending_events| if
 	 * there are any.  If there aren't any pending, the top of the
-	 * stack will be a placeholder event of type EV_NONE.
+	 * stack will be a placeholder event of type EV_SENTINEL.
 	 *
 	 * Never reassign this pointer directly; use the
 	 * push_*()/pop_*() helpers below. */
