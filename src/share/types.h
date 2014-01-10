@@ -74,6 +74,9 @@ struct flags {
 	int cpu_unbound;
 	/* Always allow emergency debugging. */
 	int force_enable_debugger;
+	/* Mark the trace global time along with tracee writes to
+	 * stdio. */
+	int mark_stdio;
 };
 
 struct msghdr;

@@ -383,6 +383,7 @@ int rec_prepare_syscall(struct task* t)
 	}
 
 	case SYS_write:
+		maybe_mark_stdio_write(t, regs.ebx);
 		return 1;
 
 	/* pid_t waitpid(pid_t pid, int *status, int options); */

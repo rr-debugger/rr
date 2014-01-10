@@ -355,6 +355,9 @@ static void print_usage(void)
 "                             always allow emergency debugging, even\n"
 "                             when it doesn't seem like a good idea, for\n"
 "                             example if stderr isn't a tty.\n"
+"  -m, --mark-stdio           mark stdio writes with [rr.<EVENT-NO>],\n"
+"                             where EVENT-NO is the global trace time at\n"
+"                             which the write occures.\n"
 "  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
 "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
 "                             Default is to bind to CPU 0.  This option\n"
@@ -490,13 +493,14 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 		{ "dump-at", required_argument, NULL, 't' },
 		{ "dump-on", required_argument, NULL, 'd' },
 		{ "force-enable-debugger", no_argument, NULL, 'f' },
+		{ "mark-stdio", no_argument, NULL, 'm' },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "wait-secs", required_argument, NULL, 'w' },
 		{ 0 }
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+c:d:ft:uvw:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+c:d:fmt:uvw:", opts, &i)) {
 		case -1:
 			return optind;
 		case 'c':
@@ -518,6 +522,9 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			break;
 		case 'f':
 			flags->force_enable_debugger = 1;
+			break;
+		case 'm':
+			flags->mark_stdio = 1;
 			break;
 		case 't':
 			flags->dump_at = atoi(optarg);
