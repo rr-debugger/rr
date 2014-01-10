@@ -154,6 +154,22 @@ int probably_not_interactive(void)
 	return !isatty(STDERR_FILENO);
 }
 
+void maybe_mark_stdio_write(struct task* t, int fd)
+{
+	char buf[256];
+	ssize_t len;
+
+	if (!rr_flags()->mark_stdio || !(STDOUT_FILENO == fd
+					 || STDERR_FILENO == fd)) {
+		return;
+	}
+	snprintf(buf, sizeof(buf) - 1, "[rr.%d]", get_global_time());
+	len = strlen(buf);
+	if (write(fd, buf, len) != len) {
+		fatal("Couldn't write to %d", fd);
+	}
+}
+
 int is_ptrace_seccomp_event(int event)
 {
 	return (PTRACE_EVENT_SECCOMP_OBSOLETE == event ||

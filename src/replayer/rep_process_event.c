@@ -196,6 +196,8 @@ void rep_maybe_replay_stdio_write(struct task* t)
 		size_t len = regs.edx;
 		void* addr = (void*) regs.ecx;
 		void* buf = read_child_data(t, len, addr);
+
+		maybe_mark_stdio_write(t, fd);
 		if (len != write(fd, buf, len)) {
 			fatal("Couldn't write stdio");
 		}
