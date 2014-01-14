@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef UTIL_H_
 #define UTIL_H_
@@ -51,8 +51,8 @@ struct mapped_segment_info {
 	 * anywhere. */
 	char name[PATH_MAX];	/* technically PATH_MAX + "deleted",
 				 * but let's not go there. */
-	void* start_addr;
-	void* end_addr;
+	byte* start_addr;
+	byte* end_addr;
 	int prot;
 	int flags;
 	int64_t file_offset;
@@ -73,10 +73,7 @@ const struct flags* rr_flags(void);
 struct flags* rr_flags_for_init(void);
 
 char* get_inst(struct task* t, int eip_offset, int* opcode_size);
-bool is_write_mem_instruction(pid_t pid, int eip_offset, int* opcode_size);
-void emulate_child_inst(struct task * t, int eip_offset);
 void print_inst(struct task* t);
-void print_syscall(struct task *t, struct trace_frame *trace);
 
 /**
  * Return zero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
@@ -88,22 +85,20 @@ void print_syscall(struct task *t, struct trace_frame *trace);
  */
 enum { EXPECT_MISMATCHES = 0, LOG_MISMATCHES, BAIL_ON_MISMATCH };
 int compare_register_files(struct task* t,
-			   char* name1, const struct user_regs_struct* reg1,
-			   char* name2, const struct user_regs_struct* reg2,
+			   const char* name1,
+			   const struct user_regs_struct* reg1,
+			   const char* name2,
+			   const struct user_regs_struct* reg2,
 			   int mismatch_behavior);
 
 void assert_child_regs_are(struct task* t, const struct user_regs_struct* regs, int event, int state);
 uint64_t str2ull(const char* start, size_t max_size);
 long int str2li(const char* start, size_t max_size);
-void * str2x(const char* start, size_t max_size);
-void read_line(FILE* file, char* buf, int size, char* name);
+byte* str2x(const char* start, size_t max_size);
+void read_line(FILE* file, char* buf, int size, const char* name);
 void add_scratch(void *ptr, int size);
-void add_protected_map(struct task *t, void *start);
-bool is_protected_map(struct task *t, void *start);
-void add_sig_handler(pid_t tid, unsigned int signum, struct sigaction * sa);
-struct sigaction * get_sig_handler(pid_t tid, unsigned int signum);
 
-void print_register_file_tid(pid_t tid);
+void print_register_file_tid(struct task* t);
 void print_register_file(struct user_regs_struct* regs);
 
 /**
@@ -115,7 +110,7 @@ void print_register_file(struct user_regs_struct* regs);
  */
 void dump_binary_data(const char* filename, const char* label,
 		      const uint32_t* buf, size_t buf_len,
-		      const char* start_addr);
+		      const byte* start_addr);
 
 /**
  * Format a suitable filename within the trace directory for dumping
@@ -167,7 +162,7 @@ void print_process_mmap(struct task* t);
  * out the segment info to |info| and return nonzero.  Return zero if
  * not found.
  */
-int find_segment_containing(struct task* t, void* search_addr,
+int find_segment_containing(struct task* t, byte* search_addr,
 			    struct mapped_segment_info* info);
 
 /**
@@ -233,11 +228,11 @@ struct current_state_buffer {
 	pid_t pid;
 	struct user_regs_struct regs;
 	int code_size;
-	long* code_buffer;
-	long* start_addr;
+	byte* code_buffer;
+	byte* start_addr;
 };
 
-void mprotect_child_region(struct task * t, void * addr, int prot);
+void mprotect_child_region(struct task* t, byte* addr, int prot);
 
 /**
  * Copy the registers used for syscall arguments (not including
@@ -320,11 +315,11 @@ void prepare_remote_syscalls(struct task* t,
  */
 struct restore_mem {
 	/* Address of tmp mem. */
-	void* addr;
+	byte* addr;
 	/* Pointer to saved data. */
-	void* data;
+	byte* data;
 	/* (We keep this around for error checking.) */
-	void* saved_sp;
+	byte* saved_sp;
 	/* Length of tmp mem. */
 	size_t len;
 };

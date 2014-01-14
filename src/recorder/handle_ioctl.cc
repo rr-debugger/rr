@@ -1,17 +1,19 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "ioctl"
 
 #include "handle_ioctl.h"
 
-#include <stddef.h>		/* broken DRM headers need these */
+#include <stddef.h>		// broken DRM headers need these
 #include <stdint.h>
-
-#include <assert.h>
+#define virtual BROKEN_DRM_virtual // and this
 #include <drm/drm.h>
+#undef virtual
 #include <drm/i915_drm.h>
 #include <drm/nouveau_drm.h>
 #include <drm/radeon_drm.h>
+
+#include <assert.h>
 #include <linux/arcfb.h>
 #include <linux/fb.h>
 #include <linux/ioctl.h>
@@ -36,7 +38,6 @@
 
 void handle_ioctl_request(struct task *t, int request)
 {
-	pid_t tid = t->tid;
 	int syscall = SYS_ioctl;
 	int type = _IOC_TYPE(request);
 	int nr = _IOC_NR(request);
@@ -47,7 +48,7 @@ void handle_ioctl_request(struct task *t, int request)
 	debug("handling ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d",
 	      request, type, nr, dir, size);
 
-	read_child_registers(tid, &regs);
+	read_child_registers(t, &regs);
 
 	assert_exec(t, !is_desched_event_syscall(t, &regs),
 		    "Failed to skip past desched ioctl()");
@@ -57,12 +58,12 @@ void handle_ioctl_request(struct task *t, int request)
 	switch (request) {
 	case TCGETS:
 		push_syscall(t, syscall);
-		record_child_data(t, sizeof(struct termios), (void*)regs.edx);
+		record_child_data(t, sizeof(struct termios), (byte*)regs.edx);
 		pop_syscall(t);
 		return;
 	case TIOCINQ:
 		push_syscall(t, syscall);
-		record_child_data(t, sizeof(int), (void*)regs.edx);
+		record_child_data(t, sizeof(int), (byte*)regs.edx);
 		pop_syscall(t);
 		return;
 	}
@@ -148,7 +149,7 @@ void handle_ioctl_request(struct task *t, int request)
 		break;	/* not reached */
 
 	default:
-		print_register_file_tid(t->tid);
+		print_register_file_tid(t);
 		assert_exec(t, 0,
 			    "Unknown ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d addr:%p",
 			    request, type, nr, dir, size, (void*)regs.edx);

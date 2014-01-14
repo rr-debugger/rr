@@ -1,8 +1,6 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Recorder"
-
-#define _GNU_SOURCE
 
 #include "recorder.h"
 
@@ -23,11 +21,11 @@
 #include "rec_process_event.h"
 #include "rec_sched.h"
 
+#include "../preload/syscall_buffer.h"
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
-#include "../share/syscall_buffer.h"
 #include "../share/task.h"
 #include "../share/trace.h"
 #include "../share/util.h"
@@ -43,7 +41,7 @@ static int can_deliver_signals;
 
 static void status_changed(struct task* t)
 {
-	read_child_registers(t->tid, &t->regs);
+	read_child_registers(t, &t->regs);
 	t->event = t->regs.orig_eax;
 	/* If the initial tracee isn't prepared to handle signals yet,
 	 * then us ignoring the ptrace notification here will have the
@@ -55,7 +53,7 @@ static void status_changed(struct task* t)
 
 static void cont_nonblock(struct task *t)
 {
-	sys_ptrace_syscall(t->tid);
+	sys_ptrace_syscall(t);
 }
 
 static void handle_ptrace_event(struct task** tp)
@@ -80,7 +78,7 @@ static void handle_ptrace_event(struct task** tp)
 		record_event(t);
 
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
-		sys_ptrace_syscall(t->tid);
+		sys_ptrace_syscall(t);
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 
@@ -94,13 +92,10 @@ static void handle_ptrace_event(struct task** tp)
 	case PTRACE_EVENT_FORK:
 	case PTRACE_EVENT_VFORK: {
 		/* get new tid, register at the scheduler and setup HPC */
-		int new_tid = sys_ptrace_getmsg(t->tid);
+		int new_tid = sys_ptrace_getmsg(t);
 		int clone_flags, flags = 0;
 
-		/* ensure that clone was successful */
-		assert(read_child_eax(t->tid) != -1);
-
-		read_child_registers(t->tid, &t->regs);
+		read_child_registers(t, &t->regs);
 		/* fork and vfork can never share these resources,
 		 * only copy, so the flags here aren't meaningful for
 		 * them, only clone. */
@@ -130,7 +125,7 @@ static void handle_ptrace_event(struct task** tp)
 
 			cont_nonblock(t);
 		} else {
-			sys_ptrace_syscall(t->tid);
+			sys_ptrace_syscall(t);
 			sys_waitpid(t->tid, &t->status);
 			status_changed(t);
 		}
@@ -150,7 +145,7 @@ static void handle_ptrace_event(struct task** tp)
 		record_event(t);
 		pop_syscall(t);
 
-		sys_ptrace_syscall(t->tid);
+		sys_ptrace_syscall(t);
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 
@@ -210,7 +205,7 @@ static void task_continue(struct task* t, int force_cont, int sig)
 		 * syscall_buffer lib in the child, therefore we must
 		 * record in the traditional way (with PTRACE_SYSCALL)
 		 * until it is installed. */
-		sys_ptrace_syscall_sig(t->tid, sig);
+		sys_ptrace_syscall_sig(t, sig);
 	} else {
 		/* When the seccomp filter is on, instead of capturing
 		 * syscalls by using PTRACE_SYSCALL, the filter will
@@ -249,7 +244,7 @@ static void resume_execution(struct task* t, int force_cont)
 
 	ptrace_event = GET_PTRACE_EVENT(t->status);
 	if (is_ptrace_seccomp_event(ptrace_event)) {
-		t->seccomp_bpf_enabled = TRUE;
+		t->seccomp_bpf_enabled = true;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
 		return resume_execution(t, FORCE_SYSCALL);
@@ -280,7 +275,7 @@ static void desched_state_changed(struct task* t)
 		/* TODO: send this through main loop. */
 		/* TODO: mask off signals and avoid this loop. */
 		do {
-			sys_ptrace_syscall(t->tid);
+			sys_ptrace_syscall(t);
 			sys_waitpid(t->tid, &t->status);
 			/* We can safely ignore SIG_TIMESLICE while
 			 * trying to reach the disarm-desched ioctl:
@@ -299,7 +294,7 @@ static void desched_state_changed(struct task* t)
 			 * unbounded memcpy(), which can be very
 			 * expensive. */
 			if (HPC_TIME_SLICE_SIGNAL == signal_pending(t->status)) {
-				read_child_registers(t->tid, &t->regs);
+				read_child_registers(t, &t->regs);
 				continue;
 			}
 
@@ -367,8 +362,6 @@ static int maybe_restart_syscall(struct task* t)
 
 static void syscall_state_changed(struct task* t, int by_waitpid)
 {
-	pid_t tid = t->tid;
-
 	switch (t->ev->syscall.state) {
 	case ENTERING_SYSCALL:
 		debug_exec_state("EXEC_SYSCALL_ENTRY", t);
@@ -419,7 +412,7 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 		assert(signal_pending(t->status) == 0);
 		assert(SYS_sigreturn != t->event);
 
-		read_child_registers(tid, &t->regs);
+		read_child_registers(t, &t->regs);
 		t->event = t->regs.orig_eax;
 		if (SYS_restart_syscall == t->event) {
 			t->event = syscallno;
@@ -467,7 +460,7 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
 			 * because scratch doesn't exist in replay.
 			 * So cover our tracks here. */
 			copy_syscall_arg_regs(&t->regs, &t->ev->syscall.regs);
-			write_child_registers(tid, &t->regs);
+			write_child_registers(t, &t->regs);
 		}
 		record_event(t);
 
@@ -582,7 +575,7 @@ static void runnable_state_changed(struct task* t)
 		maybe_reset_syscallbuf(t);
 
 		/* "Finish" the sigreturn. */
-		sys_ptrace_syscall(t->tid);
+		sys_ptrace_syscall(t);
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 		ret = t->regs.eax;
@@ -714,7 +707,7 @@ static int signal_state_changed(struct task* t, int by_waitpid)
 
 	ptrace_event = GET_PTRACE_EVENT(t->status);
 	if (is_ptrace_seccomp_event(ptrace_event)) {
-		t->seccomp_bpf_enabled = TRUE;
+		t->seccomp_bpf_enabled = true;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
 		resume_execution(t, FORCE_SYSCALL);

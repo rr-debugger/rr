@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef DBG_GDB_H_
 #define DBG_GDB_H_
@@ -21,7 +21,7 @@ typedef pid_t dbg_threadid_t;
  * This is gdb's view of the register file.  The ordering must be the
  * same as in the gdb sources.
  */
-typedef enum {
+enum DbgRegister {
 	DREG_EAX, DREG_ECX, DREG_EDX, DREG_EBX,
 	DREG_ESP, DREG_EBP, DREG_ESI, DREG_EDI,
 	DREG_EIP, DREG_EFLAGS,
@@ -36,7 +36,7 @@ typedef enum {
 	DREG_NUM_AVX = DREG_YMM0H + 1,
 	DREG_ORIG_EAX = DREG_NUM_AVX,
 	DREG_NUM_LINUX_I386 = DREG_ORIG_EAX + 1
-} dbg_register;
+};
 
 /**
  * Represents a possibly-undefined register value.  |defined| is
@@ -48,11 +48,51 @@ typedef struct dbg_regvalue {
 } dbg_regvalue_t;
 
 /**
- * Represents the register file, indexed by |dbg_register| values
+ * Represents the register file, indexed by |DbgRegister| values
  * above.
  */
 struct dbg_regfile {
 	dbg_regvalue_t regs[DREG_NUM_LINUX_I386];
+};
+
+enum DbgRequestType{ 
+	DREQ_NONE = 0,
+
+	/* None of these requests have parameters. */
+	DREQ_GET_CURRENT_THREAD,
+	DREQ_GET_OFFSETS,
+	DREQ_GET_REGS,
+	DREQ_GET_STOP_REASON,
+	DREQ_GET_THREAD_LIST,
+
+	/* These use params.target. */
+	DREQ_GET_AUXV,
+	DREQ_GET_IS_THREAD_ALIVE,
+	DREQ_SET_CONTINUE_THREAD,
+	DREQ_SET_QUERY_THREAD,
+
+	/* These use params.mem. */
+	DREQ_GET_MEM,
+	DREQ_REMOVE_SW_BREAK,
+	DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
+	DREQ_REMOVE_HW_BREAK,
+	DREQ_REMOVE_RD_WATCH,
+	DREQ_REMOVE_WR_WATCH,
+	DREQ_REMOVE_RDWR_WATCH,
+	DREQ_SET_SW_BREAK,
+	DREQ_SET_HW_BREAK,
+	DREQ_SET_RD_WATCH,
+	DREQ_SET_WR_WATCH,
+	DREQ_SET_RDWR_WATCH,
+	DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
+
+	/* Uses params.reg. */
+	DREQ_GET_REG,
+
+	/* No parameters. */
+	DREQ_CONTINUE,
+	DREQ_INTERRUPT,
+	DREQ_STEP,
 };
 
 /**
@@ -60,55 +100,17 @@ struct dbg_regfile {
  * by rr, the target.
  */
 struct dbg_request {
-	enum { 
-		DREQ_NONE = 0,
-
-		/* None of these requests have parameters. */
-		DREQ_GET_CURRENT_THREAD,
-		DREQ_GET_OFFSETS,
-		DREQ_GET_REGS,
-		DREQ_GET_STOP_REASON,
-		DREQ_GET_THREAD_LIST,
-
-		/* These use params.target. */
-		DREQ_GET_AUXV,
-		DREQ_GET_IS_THREAD_ALIVE,
-		DREQ_SET_CONTINUE_THREAD,
-		DREQ_SET_QUERY_THREAD,
-
-		/* These use params.mem. */
-		DREQ_GET_MEM,
-		DREQ_REMOVE_SW_BREAK,
-		DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
-		DREQ_REMOVE_HW_BREAK,
-		DREQ_REMOVE_RD_WATCH,
-		DREQ_REMOVE_WR_WATCH,
-		DREQ_REMOVE_RDWR_WATCH,
-		DREQ_SET_SW_BREAK,
-		DREQ_SET_HW_BREAK,
-		DREQ_SET_RD_WATCH,
-		DREQ_SET_WR_WATCH,
-		DREQ_SET_RDWR_WATCH,
-		DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
-
-		/* Uses params.reg. */
-		DREQ_GET_REG,
-
-		/* No parameters. */
-		DREQ_CONTINUE,
-		DREQ_INTERRUPT,
-		DREQ_STEP,
-	} type;
+	DbgRequestType type;
 
 	dbg_threadid_t target;
 
 	union {
 		struct {
-			void* addr;
+			byte* addr;
 			size_t len;
 		} mem;
 
-		dbg_register reg;
+		DbgRegister reg;
 	};
 };
 
@@ -125,7 +127,7 @@ struct dbg_auxv_pair {
  * Return nonzero if |req| requires that program execution be resumed
  * in some way.
  */
-int dbg_is_resume_request(const struct dbg_request* req);
+bool dbg_is_resume_request(const struct dbg_request* req);
 
 /**
  * Wait for exactly one gdb host to connect to this remote target on
@@ -236,7 +238,7 @@ void dbg_reply_get_stop_reason(struct dbg_context* dbg,
  * |len|.
  */
 void dbg_reply_get_thread_list(struct dbg_context* dbg,
-			       const dbg_threadid_t* threads, size_t len);
+			       const dbg_threadid_t* threads, ssize_t len);
 
 /**
  * |code| is 0 if the request was successfully applied, nonzero if

@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include "hpc.h"
 
@@ -51,7 +51,7 @@ void libpfm_event_encoding(struct perf_event_attr* attr, const char* event_str, 
 	if (hw_event && attr->type != PERF_TYPE_RAW) {
 		errx(1, "error: %s is not a raw hardware event\n", event_str);
 	}
-	sys_free((void**) &fstr);
+	free(fstr);
 }
 
 
@@ -134,7 +134,8 @@ cpu_type get_cpu_type(void){
 void init_hpc(struct task* t)
 {
 
-	struct hpc_context* counters = sys_malloc_zero(sizeof(struct hpc_context));
+	struct hpc_context* counters =
+		(struct hpc_context*)calloc(1, sizeof(*counters));
 	t->hpc = counters;
 
 	/* get the event that counts down to the initial value
@@ -279,7 +280,7 @@ void destroy_hpc(struct task *t)
 {
 	struct hpc_context* counters = t->hpc;
 	cleanup_hpc(t);
-	sys_free((void**) &counters);
+	free(counters);
 }
 
 #define READ_COUNTER(fd,tmp,size)		 \

@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Sched"
 //#define MONITOR_UNSWITCHABLE_WAITS
@@ -29,7 +29,10 @@ struct tasklist_entry {
 	CIRCLEQ_ENTRY(tasklist_entry) entries;
 };
 
-CIRCLEQ_HEAD(tasklist, tasklist_entry) head = CIRCLEQ_HEAD_INITIALIZER(head);
+#define void tasklist_entry
+CIRCLEQ_HEAD(tasklist, tasklist_entry) head =
+	CIRCLEQ_HEAD_INITIALIZER(head);
+#undef void
 
 static struct tasklist_entry* tid_to_entry[MAX_TID];
 static struct tasklist_entry* current_entry;
@@ -201,16 +204,17 @@ int rec_sched_get_num_threads()
  * Registers a new thread to the runtime system. This includes
  * initialization of the hardware performance counters
  */
-void rec_sched_register_thread(pid_t parent, pid_t child, int flags)
+struct task* rec_sched_register_thread(pid_t parent, pid_t child, int flags)
 {
-	struct tasklist_entry* entry = sys_malloc_zero(sizeof(*entry));
+	struct tasklist_entry* entry =
+		(struct tasklist_entry*)calloc(1, sizeof(*entry));
 	struct task* t = &entry->t;
 
 	assert(child > 0 && child < MAX_TID);
 
 	t->thread_time = 1;
 	t->rec_tid = t->tid = child;
-	t->child_mem_fd = sys_open_child_mem(child);
+	t->child_mem_fd = sys_open_child_mem(t);
 	push_placeholder_event(t);
 	if (parent) {
 		struct task* parent_t = get_task(parent);
@@ -243,15 +247,19 @@ void rec_sched_register_thread(pid_t parent, pid_t child, int flags)
 	/* These will be initialized when the syscall buffer is. */
 	t->desched_fd = t->desched_fd_child = -1;
 
-	sys_ptrace_setup(child);
+	sys_ptrace_setup(t);
 
 	init_hpc(t);
 	start_hpc(t, rr_flags()->max_rbc);
 
+#define void tasklist_entry
 	CIRCLEQ_INSERT_TAIL(&head, entry, entries);
+#undef void
 	num_active_threads++;
 
 	tid_to_entry[child] = entry;
+
+	return t;
 }
 
 /**
@@ -300,6 +308,6 @@ void rec_sched_deregister_thread(struct task** t_ptr)
 
 	/* finally, free the memory */
 	sighandlers_unref(&t->sighandlers);
-	sys_free((void**)&entry);
+	free(entry);
 	*t_ptr = NULL;
 }

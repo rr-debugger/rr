@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "gdb"
 
@@ -57,34 +57,34 @@ struct dbg_context {
 	int fd;				    /* client socket fd */
 	/* XXX probably need to dynamically size these */
 	byte inbuf[4096];	/* buffered input from gdb */
-	size_t inlen;		/* length of valid data */
-	size_t insize;		/* total size of buffer */
-	size_t packetend;	/* index of '#' character */
+	ssize_t inlen;		/* length of valid data */
+	ssize_t insize;		/* total size of buffer */
+	ssize_t packetend;	/* index of '#' character */
 	byte outbuf[4096];	/* buffered output for gdb */
-	size_t outlen;
-	size_t outsize;
+	ssize_t outlen;
+	ssize_t outsize;
 };
 
-int dbg_is_resume_request(const struct dbg_request* req)
+bool dbg_is_resume_request(const struct dbg_request* req)
 {
 	switch (req->type) {
 	case DREQ_CONTINUE:
 	case DREQ_STEP:
-		return TRUE;
+		return true;
 	default:
-		return FALSE;
+		return false;
 	}
 }
 
-inline static int request_needs_immediate_response(const struct dbg_request* req)
+inline static bool request_needs_immediate_response(const struct dbg_request* req)
 {
 	switch (req->type) {
 	case DREQ_NONE:
 	case DREQ_CONTINUE:
 	case DREQ_STEP:
-		return FALSE;
+		return false;
 	default:
-		return TRUE;
+		return true;
 	}
 }
 
@@ -104,7 +104,7 @@ struct dbg_context* dbg_await_client_connection(const char* address,
 	out = fopen("/tmp/rr.debug.log", "w");
 #endif
 
-	dbg = sys_malloc_zero(sizeof(*dbg));
+	dbg = (struct dbg_context*)calloc(1, sizeof(*dbg));
 	dbg->insize = sizeof(dbg->inbuf);
 	dbg->outsize = sizeof(dbg->outbuf);
 
@@ -231,7 +231,7 @@ static void write_flush(struct dbg_context* dbg)
 }
 
 static void write_data_raw(struct dbg_context* dbg,
-			   const byte* data, size_t len)
+			   const byte* data, ssize_t len)
 {
 	assert("Impl dynamic alloc if this fails (or double outbuf size)"
 	       && (dbg->outlen + len) < dbg->insize);
@@ -270,9 +270,9 @@ static void write_packet(struct dbg_context* dbg, const char* data)
 }
 
 static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
-				const byte* data, size_t num_bytes)
+				const byte* data, ssize_t num_bytes)
 {
-	size_t pfx_num_chars = strlen(pfx);
+	ssize_t pfx_num_chars = strlen(pfx);
 	byte buf[2 * num_bytes + pfx_num_chars];
 	ssize_t buf_num_bytes = 0;
 	int i;
@@ -283,7 +283,7 @@ static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
 	for (i = 0; i < num_bytes; ++i) {
 		byte b = data[i];
 
-		if (buf_num_bytes + 2 > sizeof(buf)) {
+		if (buf_num_bytes + 2 > ssize_t(sizeof(buf))) {
 			break;
 		}
 		switch (b) {
@@ -391,7 +391,7 @@ static void read_packet(struct dbg_context* dbg)
 
 	/* Read until we see end-of-packet. */
 	for (checkedlen = 0;
-	     !(p = memchr(dbg->inbuf + checkedlen, '#', dbg->inlen));
+	     !(p = (byte*)memchr(dbg->inbuf + checkedlen, '#', dbg->inlen));
 	     checkedlen = dbg->inlen) {
 		read_data_once(dbg);
 	}
@@ -685,7 +685,7 @@ static int process_packet(struct dbg_context* dbg)
 	case 'm':
 		dbg->req.type = DREQ_GET_MEM;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
+		dbg->req.mem.addr = (byte*)strtoul(payload, &payload, 16);
 		++payload;
 		dbg->req.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
@@ -704,7 +704,7 @@ static int process_packet(struct dbg_context* dbg)
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.reg = strtoul(payload, &payload, 16);
+		dbg->req.reg = DbgRegister(strtoul(payload, &payload, 16));
 		assert('\0' == *payload);
 		debug("gdb requests register value (%d)", dbg->req.reg);
 		ret = 1;
@@ -749,10 +749,10 @@ static int process_packet(struct dbg_context* dbg)
 			ret = 0;
 			break;
 		}
-		dbg->req.type =	type + (request == 'Z' ?
-					DREQ_SET_SW_BREAK :
-					DREQ_REMOVE_SW_BREAK);
-		dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
+		dbg->req.type =	DbgRequestType(type + (request == 'Z' ?
+						       DREQ_SET_SW_BREAK :
+						       DREQ_REMOVE_SW_BREAK));
+		dbg->req.mem.addr = (byte*)strtoul(payload, &payload, 16);
 		assert(',' == *payload++);
 		dbg->req.mem.len = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
@@ -997,13 +997,13 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len)
 	if (len > 0) {
 		size_t i;
 
-		buf = sys_malloc(2 * len + 1);
+		buf = (char*)malloc(2 * len + 1);
 		for (i = 0; i < len; ++i) {
 			unsigned long b = mem[i];
 			snprintf(&buf[2 * i], 3, "%02lx", b);
 		}
 		write_packet(dbg, buf);
-		sys_free((void**)&buf);
+		free(buf);
 	} else {
 		write_packet(dbg, "");
 	}
@@ -1079,21 +1079,21 @@ void dbg_reply_get_stop_reason(struct dbg_context* dbg,
 }
 
 void dbg_reply_get_thread_list(struct dbg_context* dbg,
-			       const dbg_threadid_t* threads, size_t len)
+			       const dbg_threadid_t* threads, ssize_t len)
 {
 	assert(DREQ_GET_THREAD_LIST == dbg->req.type);
 
 	if (0 == len) {
 		write_packet(dbg, "l");
 	} else {
-		size_t maxlen =	1/*m char*/ +
-				(2 * sizeof(pid_t) + 1/*,*/) * len +
-				1/*\0*/;
-		char* str = sys_malloc(maxlen);
-		int i, offset = 0;
+		ssize_t maxlen = 1/*m char*/ +
+				 (2 * sizeof(pid_t) + 1/*,*/) * len +
+				 1/*\0*/;
+		char* str = (char*)malloc(maxlen);
+		int offset = 0;
 
 		str[offset++] = 'm';
-		for (i = 0; i < len; ++i) {
+		for (int i = 0; i < len; ++i) {
 			offset += snprintf(&str[offset], maxlen - offset,
 					   "%02x,", threads[i]);
 		}
@@ -1101,7 +1101,7 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 		str[offset - 1] = '\0';
 
 		write_packet(dbg, str);
-		sys_free((void**)&str);
+		free(str);
 	}
 
 	consume_request(dbg);
@@ -1125,5 +1125,6 @@ void dbg_destroy_context(struct dbg_context** dbg)
 	}
 	*dbg = NULL;
 	close(d->fd);
-	sys_free((void**)&d);
+	free(d);
+	*dbg = NULL;
 }

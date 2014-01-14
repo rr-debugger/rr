@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef TRACE_H_
 #define TRACE_H_
@@ -8,6 +8,9 @@
 #include <sys/stat.h>
 #include <sys/user.h>
 
+#include <string>
+#include <vector>
+
 #include "types.h"
 
 #define STATE_SYSCALL_ENTRY		  0
@@ -15,6 +18,8 @@
 #define STATE_PRE_MMAP_ACCESS     2
 
 struct task;
+
+typedef std::vector<char*> CharpVector;
 
 enum {
 	/* "Magic" (rr-generated) pseudo-signals can't be represented
@@ -97,7 +102,7 @@ struct trace_frame {
  * not mapping entire files, necessarily. */
 struct mmapped_file {
 	/* Global trace time when this region was mapped. */
-	int time;
+	uint32_t time;
 	int tid;
 	/* Did we save a copy of the mapped region in the trace
 	 * data? */
@@ -107,8 +112,8 @@ struct mmapped_file {
 	struct stat stat;
 
 	/* Bounds of mapped region. */
-	void* start;
-	void* end;
+	byte* start;
+	byte* end;
 };
 
 /* These are defined by the include/linux/errno.h in the kernel tree.
@@ -151,11 +156,8 @@ void rec_init_trace_files(void);
 void record_input_str(pid_t pid, int syscall, int len);
 void sc_record_data(pid_t tid, int syscall, size_t len, void* buf);
 
-void record_child_data(struct task *t, size_t len, void* child_ptr);
-
-void record_timestamp(int tid, long int* eax_, long int* edx_);
-void record_child_data_tid(pid_t tid, int event, size_t len, void* child_ptr);
-void record_child_str(struct task* t, void* child_ptr);
+void record_child_data(struct task *t, size_t len, byte* child_ptr);
+void record_child_str(struct task* t, byte* child_ptr);
 void record_parent_data(struct task *t, size_t len, void *addr, void *buf);
 /**
  * Record the current event of |t|.  Record the registers of |t|
@@ -190,7 +192,10 @@ void rec_setup_trace_dir(void);
  * Replaying
  */
 
-void init_environment(char* trace_path, int* argc, char** argv, char** envp);
+/** */
+void load_recorded_env(const char* trace_path,
+		       int* argc, std::string* exec_image,
+		       CharpVector* argv, CharpVector* envp);
 /**
  * Read and return the next trace frame.  Succeed or don't return.
  */
@@ -203,7 +208,7 @@ void peek_next_trace(struct trace_frame *trace);
 void read_next_mmapped_file_stats(struct mmapped_file *file);
 void peek_next_mmapped_file_stats(struct mmapped_file *file);
 void rep_init_trace_files(void);
-void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr);
+void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr);
 /**
  * Read the next raw-data record from the trace directly into |buf|,
  * which is of size |buf_size|, without allocating temporary storage.
@@ -212,7 +217,7 @@ void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr);
  * recorded is returned in the outparam |rec_addr|.
  */
 ssize_t read_raw_data_direct(struct trace_frame* trace,
-			     void* buf, size_t buf_size, void** rec_addr);
+			     void* buf, size_t buf_size, byte** rec_addr);
 /**
  * Return the tid of the first thread seen during recording.  Must be
  * called after |init_trace_files()|, and before any calls to

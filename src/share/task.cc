@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Task"
 
@@ -8,8 +8,9 @@
 #include <string.h>
 
 #include "dbg.h"
-#include "syscall_buffer.h"
 #include "util.h"
+
+#include "../preload/syscall_buffer.h"
 
 /**
  * "Mix-in" for heap structs to enable them to be refcounted using the
@@ -57,13 +58,13 @@ struct sighandlers {
  */
 static void refcounted_init(void* p)
 {
-	struct refcounted* r = p;
+	struct refcounted* r = (struct refcounted*)p;
 	r->refcount = 1;
 }
 
 static void refcounted_assert_valid(const void* p)
 {
-	const struct refcounted* r = p;
+	const struct refcounted* r = (struct refcounted*)p;
 	assert(r->refcount > 0);
 }
 
@@ -73,7 +74,7 @@ static void refcounted_assert_valid(const void* p)
  */
 static void* refcounted_ref(void* p)
 {
-	struct refcounted* r = p;
+	struct refcounted* r = (struct refcounted*)p;
 	refcounted_assert_valid(r);
 	++r->refcount;
 	return r;
@@ -87,7 +88,7 @@ static void* refcounted_ref(void* p)
 static void* refcounted_unref(void** pp)
 {
 	struct refcounted* r;
-	if (!pp || !(r = *pp)) {
+	if (!pp || !(r = (struct refcounted*)*pp)) {
 		return NULL;
 	}
 	*pp = NULL;
@@ -141,9 +142,9 @@ const struct syscallbuf_record* task_desched_rec(const struct task* t)
 /**
  * Push a new event onto |t|'s event stack of type |type|.
  */
-static void push_new_event(struct task* t, int type)
+static void push_new_event(struct task* t, EventType type)
 {
-	struct event ev = { .type = type };
+	struct event ev = { .type = EventType(type) };
 	FIXEDSTACK_PUSH(&t->pending_events, ev);
 	t->ev = FIXEDSTACK_TOP(&t->pending_events);
 }
@@ -189,7 +190,7 @@ void pop_desched(struct task* t)
 	pop_event(t, EV_DESCHED);
 }
 
-void push_pseudosig(struct task* t, int no, int has_exec_info)
+void push_pseudosig(struct task* t, PseudosigType no, int has_exec_info)
 {
 	push_new_event(t, EV_PSEUDOSIG);
 	t->ev->pseudosig.no = no;
@@ -302,7 +303,7 @@ const char* event_name(const struct event* ev)
 
 struct task_group* task_group_new_and_add(struct task* t)
 {
-	struct task_group* tg = calloc(1, sizeof(*tg));
+	struct task_group* tg = (struct task_group*)calloc(1, sizeof(*tg));
 
 	debug("creating new task group for %d", t->tid);
 
@@ -322,7 +323,7 @@ struct task_group* task_group_add_and_ref(struct task_group* tg,
 
 	refcounted_assert_valid(tg);
 	TAILQ_INSERT_TAIL(&tg->tasks, t, tgentry);
-	return refcounted_ref(tg);
+	return (struct task_group*)refcounted_ref(tg);
 }
 
 void task_group_destabilize(struct task_group* tg)
@@ -347,7 +348,7 @@ void task_group_remove_and_unref(struct task* t)
 
 	TAILQ_REMOVE(&t->task_group->tasks, t, tgentry);
 
-	to_free = refcounted_unref((void**)&t->task_group);
+	to_free = (struct task_group*)refcounted_unref((void**)&t->task_group);
 	if (to_free) {
 		assert(TAILQ_EMPTY(&to_free->tasks));
 		free(to_free);
@@ -357,7 +358,7 @@ void task_group_remove_and_unref(struct task* t)
 static void assert_table_has_sig(const struct sighandlers* t, int sig)
 {
 	refcounted_assert_valid(t);
-	assert(0 < sig && sig < ALEN(t->handlers));
+	assert(0 < sig && sig < ssize_t(ALEN(t->handlers)));
 }
 
 static int is_user_handler(sig_handler_t sh)
@@ -371,7 +372,7 @@ static int is_user_handler(sig_handler_t sh)
 
 struct sighandlers* sighandlers_new()
 {
-	struct sighandlers* t = calloc(1, sizeof(*t));
+	struct sighandlers* t = (struct sighandlers*)calloc(1, sizeof(*t));
 	/* We assume this in order to skip explicitly initializing the
 	 * table.  TODO: static assert */
 	assert(NULL == SIG_DFL);
@@ -382,7 +383,7 @@ struct sighandlers* sighandlers_new()
 void sighandlers_init_from_current_process(struct sighandlers* table)
 {
 	int i;
-	for (i = 0; i < ALEN(table->handlers); ++i) {
+	for (i = 0; i < ssize_t(ALEN(table->handlers)); ++i) {
 		struct sigaction act;
 
 		if (-1 == sigaction(i, NULL, &act)) {
@@ -394,7 +395,7 @@ void sighandlers_init_from_current_process(struct sighandlers* table)
 			continue;
 		}
 		table->handlers[i].handler = (SA_SIGINFO & act.sa_flags) ?
-					     (void*)act.sa_sigaction :
+					     (sig_handler_t)act.sa_sigaction :
 					     act.sa_handler;
 		table->handlers[i].resethand = (act.sa_flags & SA_RESETHAND);
 	}
@@ -436,14 +437,12 @@ struct sighandlers* sighandlers_copy(struct sighandlers* from)
 
 struct sighandlers* sighandlers_ref(struct sighandlers* table)
 {
-	return refcounted_ref(table);
+	return (struct sighandlers*)refcounted_ref(table);
 }
 
 void sighandlers_reset_user_handlers(struct sighandlers* table)
 {
-	int i;
-
-	for (i = 0; i < ALEN(table->handlers); ++i) {
+	for (int i = 0; i < ssize_t(ALEN(table->handlers)); ++i) {
 		sig_handler_t oh = table->handlers[i].handler;
 		/* If the handler was a user handler, reset to
 		 * default.  If it was SIG_IGN or SIG_DFL, leave it
@@ -457,7 +456,8 @@ void sighandlers_reset_user_handlers(struct sighandlers* table)
 
 void sighandlers_unref(struct sighandlers** table)
 {
-	struct sighandlers* to_free = refcounted_unref((void**)table);
+	struct sighandlers* to_free =
+		(struct sighandlers*)refcounted_unref((void**)table);
 	if (to_free) {
 		free(to_free);
 	}
