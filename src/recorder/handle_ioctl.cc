@@ -36,7 +36,7 @@
 #include "../share/types.h"
 #include "../share/util.h"
 
-void handle_ioctl_request(struct task *t, int request)
+void handle_ioctl_request(Task *t, int request)
 {
 	int syscall = SYS_ioctl;
 	int type = _IOC_TYPE(request);

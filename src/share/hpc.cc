@@ -131,7 +131,7 @@ cpu_type get_cpu_type(void){
 /**
  * initialize hpc here
  */
-void init_hpc(struct task* t)
+void init_hpc(Task* t)
 {
 
 	struct hpc_context* counters =
@@ -182,7 +182,7 @@ void init_hpc(struct task* t)
 	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event, 0);
 }
 
-static void start_counter(struct task* t, int group_fd, hpc_event_t* counter)
+static void start_counter(Task* t, int group_fd, hpc_event_t* counter)
 {
 	counter->fd = syscall(__NR_perf_event_open, &counter->attr, t->tid,
 			      -1, group_fd, 0);
@@ -194,14 +194,14 @@ static void start_counter(struct task* t, int group_fd, hpc_event_t* counter)
 	}
 }
 
-static void stop_counter(struct task* t, const hpc_event_t* counter)
+static void stop_counter(Task* t, const hpc_event_t* counter)
 {
 	if (ioctl(counter->fd, PERF_EVENT_IOC_DISABLE, 0)) {
 		fatal("Failed to stop counter");
 	}
 }
 
-static void __start_hpc(struct task* t)
+static void __start_hpc(Task* t)
 {
 	struct hpc_context *counters = t->hpc;
 	pid_t tid = t->tid;
@@ -225,12 +225,12 @@ static void __start_hpc(struct task* t)
 	counters->started = 1;
 }
 
-void stop_rbc(struct task* t)
+void stop_rbc(Task* t)
 {
 	stop_counter(t, &t->hpc->rbc);
 }
 
-void stop_hpc(struct task* t)
+void stop_hpc(Task* t)
 {
 	struct hpc_context* counters = t->hpc;
 
@@ -240,7 +240,7 @@ void stop_hpc(struct task* t)
 	stop_counter(t, &counters->rbc);
 }
 
-static void cleanup_hpc(struct task* t)
+static void cleanup_hpc(Task* t)
 {
 	struct hpc_context* counters = t->hpc;
 
@@ -258,13 +258,13 @@ static void cleanup_hpc(struct task* t)
  * @param t: the current execution context
  * @param reset: the counters are (if enabled) reset
  */
-void start_hpc(struct task *t, int64_t val)
+void start_hpc(Task *t, int64_t val)
 {
 	t->hpc->rbc.attr.sample_period = val;
 	__start_hpc(t);
 }
 
-void reset_hpc(struct task *t, int64_t val)
+void reset_hpc(Task *t, int64_t val)
 {
 	if (t->hpc->started) {
 		cleanup_hpc(t);
@@ -276,7 +276,7 @@ void reset_hpc(struct task *t, int64_t val)
  * Ultimately frees all resources that are used by hpc of the corresponding
  * t. After calling this function, counters cannot be used anymore
  */
-void destroy_hpc(struct task *t)
+void destroy_hpc(Task *t)
 {
 	struct hpc_context* counters = t->hpc;
 	cleanup_hpc(t);

@@ -17,7 +17,7 @@
 #define STATE_SYSCALL_EXIT		  1
 #define STATE_PRE_MMAP_ACCESS     2
 
-struct task;
+class Task;
 
 typedef std::vector<char*> CharpVector;
 
@@ -156,16 +156,16 @@ void rec_init_trace_files(void);
 void record_input_str(pid_t pid, int syscall, int len);
 void sc_record_data(pid_t tid, int syscall, size_t len, void* buf);
 
-void record_child_data(struct task *t, size_t len, byte* child_ptr);
-void record_child_str(struct task* t, byte* child_ptr);
-void record_parent_data(struct task *t, size_t len, void *addr, void *buf);
+void record_child_data(Task *t, size_t len, byte* child_ptr);
+void record_child_str(Task* t, byte* child_ptr);
+void record_parent_data(Task *t, size_t len, void *addr, void *buf);
 /**
  * Record the current event of |t|.  Record the registers of |t|
  * (and other relevant execution state) so that it can be used or
  * verified during replay, if that state is available and meaningful
  * at |t|'s current execution point.
  */
-void record_event(struct task* t);
+void record_event(Task* t);
 void record_mmapped_file_stats(struct mmapped_file *file);
 /**
  * Return the current global time.  This is approximately the number

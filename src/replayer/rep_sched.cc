@@ -8,53 +8,52 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <map>
+
 #include "replayer.h"
 
-#include "../external/tree.h"
-#include "../share/trace.h"
+#include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/sys.h"
 #include "../share/task.h"
+#include "../share/trace.h"
 #include "../share/util.h"
 
 #define MAX_TID_NUM 100000
 
-static RB_HEAD(task_tree, task) tasks = RB_INITIALIZER(&tasks);
+using namespace std;
 
-RB_PROTOTYPE_STATIC(task_tree, task, entry, task_cmp)
+typedef map<pid_t, Task*> TaskMap;
+static TaskMap tasks;
 
-static int num_threads;
-
-static void add_task(struct task* t)
+static void add_task(Task* t)
 {
-	RB_INSERT(task_tree, &tasks, t);
+	tasks[t->rec_tid] = t;
 }
 
-static struct task* find_task(pid_t tid)
+static Task* find_task(pid_t tid)
 {
-	struct task search;
-	search.rec_tid = tid;
-	return RB_FIND(task_tree, &tasks, &search);
+	TaskMap::const_iterator it = tasks.find(tid);
+	return tasks.end() != it ? it->second : NULL;
 }
 
-static void remove_task(struct task* t)
+static void remove_task(Task* t)
 {
-	RB_REMOVE(task_tree, &tasks, t);
+	assert(find_task(t->rec_tid));
+	tasks.erase(t->rec_tid);
 }
 
-struct task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
+Task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 {
 	assert(my_tid < MAX_TID_NUM);
 
 	/* allocate data structure and initialize hashmap */
-	struct task* t = (struct task*)calloc(1, sizeof(struct task));
+	Task* t = (Task*)calloc(1, sizeof(Task));
 
 	t->tid = my_tid;
 	t->rec_tid = rec_tid;
 	push_placeholder_event(t);
 	t->child_mem_fd = sys_open_child_mem(t);
-
-	num_threads++;
 
 	/* initializer replay counters */
 	init_hpc(t);
@@ -62,13 +61,13 @@ struct task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	return t;
 }
 
-struct task* rep_sched_get_thread()
+Task* rep_sched_get_thread()
 {
 	/* read the next trace entry */
 	struct trace_frame trace;
 	read_next_trace(&trace);
 	/* find and update task */
-	struct task *t = find_task(trace.tid);
+	Task *t = find_task(trace.tid);
 	assert(t != NULL);
 
 	/* copy the current trace */
@@ -100,7 +99,7 @@ struct task* rep_sched_get_thread()
 	return t;
 }
 
-struct task* rep_sched_lookup_thread(pid_t rec_tid)
+Task* rep_sched_lookup_thread(pid_t rec_tid)
 {
 	assert(0 < rec_tid && rec_tid < MAX_TID_NUM);
 	return find_task(rec_tid);
@@ -109,29 +108,27 @@ struct task* rep_sched_lookup_thread(pid_t rec_tid)
 void rep_sched_enumerate_tasks(pid_t** tids, size_t* len)
 {
 	pid_t* ts;
-	struct task* t;
-	int i;
 
-	*len = num_threads;
+	*len = tasks.size();
 	ts = *tids = (pid_t*)malloc(*len * sizeof(pid_t));
-	i = 0;
-	RB_FOREACH(t, task_tree, &tasks) {
+	int i = 0;
+	for (TaskMap::const_iterator it = tasks.begin(); it != tasks.end();
+	     ++it) {
+		Task* t = it->second;
 		ts[i++] = t->rec_tid;
 	}
-	assert(i == num_threads);
+	assert(size_t(i) == tasks.size());
 }
 
-void rep_sched_deregister_thread(struct task** t_ptr)
+void rep_sched_deregister_thread(Task** t_ptr)
 {
-	struct task* t = *t_ptr;
+	Task* t = *t_ptr;
 
 	destroy_hpc(t);
 
 	sys_close(t->child_mem_fd);
 
 	remove_task(t);
-	num_threads--;
-	assert(num_threads >= 0);
 
 	detach_and_reap(t);
 
@@ -141,15 +138,5 @@ void rep_sched_deregister_thread(struct task** t_ptr)
 
 int rep_sched_get_num_threads()
 {
-	return num_threads;
+	return tasks.size();
 }
-
-static int
-task_cmp(void* pa, void* pb)
-{
-	struct task* a = (struct task*)pa;
-	struct task* b = (struct task*)pb;
-	return a->rec_tid - b->rec_tid;
-}
-
-RB_GENERATE_STATIC(task_tree, task, entry, task_cmp)

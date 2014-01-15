@@ -7,10 +7,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <set>
+
 #include "dbg.h"
 #include "util.h"
 
 #include "../preload/syscall_buffer.h"
+
+using namespace std;
 
 /**
  * "Mix-in" for heap structs to enable them to be refcounted using the
@@ -33,10 +37,11 @@ struct refcounted {
  * the ancestor of all other threads in the group.  Each constituent
  * task must own a reference to this.
  */
+typedef set<Task*> TaskSet;
 struct task_group {
 	struct refcounted _;
 	pid_t tgid;
-	TAILQ_HEAD(task_group_list, task) tasks;
+	TaskSet tasks;
 };
 
 /**
@@ -124,7 +129,7 @@ static int is_syscall_event(int type) {
 	}
 }
 
-int task_may_be_blocked(struct task* t)
+int task_may_be_blocked(Task* t)
 {
 	return (t->ev
 		&& ((EV_SYSCALL == t->ev->type
@@ -133,7 +138,7 @@ int task_may_be_blocked(struct task* t)
 			&& t->ev->signal.delivered)));
 }
 
-const struct syscallbuf_record* task_desched_rec(const struct task* t)
+const struct syscallbuf_record* task_desched_rec(const Task* t)
 {
 	return (is_syscall_event(t->ev->type) ? t->ev->syscall.desched_rec :
 		(EV_DESCHED == t->ev->type) ? t->ev->desched.rec : NULL);
@@ -142,7 +147,7 @@ const struct syscallbuf_record* task_desched_rec(const struct task* t)
 /**
  * Push a new event onto |t|'s event stack of type |type|.
  */
-static void push_new_event(struct task* t, EventType type)
+static void push_new_event(Task* t, EventType type)
 {
 	struct event ev = { .type = EventType(type) };
 	FIXEDSTACK_PUSH(&t->pending_events, ev);
@@ -153,7 +158,7 @@ static void push_new_event(struct task* t, EventType type)
  * Pop the pending-event stack and return the type of the previous top
  * element.
  */
-static void pop_event(struct task* t, int expected_type)
+static void pop_event(Task* t, int expected_type)
 {
 	int last_top_type;
 
@@ -168,13 +173,13 @@ static void pop_event(struct task* t, int expected_type)
 		    event_type_name(last_top_type));
 }
 
-void push_placeholder_event(struct task* t)
+void push_placeholder_event(Task* t)
 {
 	assert(FIXEDSTACK_EMPTY(&t->pending_events));
 	push_new_event(t, EV_SENTINEL);
 }
 
-void push_desched(struct task* t, const struct syscallbuf_record* rec)
+void push_desched(Task* t, const struct syscallbuf_record* rec)
 {
 	assert_exec(t, !task_desched_rec(t), "Must have zero or one desched");
 
@@ -183,54 +188,54 @@ void push_desched(struct task* t, const struct syscallbuf_record* rec)
 	t->ev->desched.rec = rec;
 }
 
-void pop_desched(struct task* t)
+void pop_desched(Task* t)
 {
 	assert_exec(t, task_desched_rec(t), "Must have desched_rec to pop");
 
 	pop_event(t, EV_DESCHED);
 }
 
-void push_pseudosig(struct task* t, PseudosigType no, int has_exec_info)
+void push_pseudosig(Task* t, PseudosigType no, int has_exec_info)
 {
 	push_new_event(t, EV_PSEUDOSIG);
 	t->ev->pseudosig.no = no;
 	t->ev->pseudosig.has_exec_info = has_exec_info;
 }
 
-void pop_pseudosig(struct task* t)
+void pop_pseudosig(Task* t)
 {
 	pop_event(t, EV_PSEUDOSIG);
 }
 
-void push_pending_signal(struct task* t, int no, int deterministic)
+void push_pending_signal(Task* t, int no, int deterministic)
 {
 	push_new_event(t, EV_SIGNAL);
 	t->ev->signal.no = no;
 	t->ev->signal.deterministic = deterministic;
 }
 
-void pop_signal_delivery(struct task* t)
+void pop_signal_delivery(Task* t)
 {
 	pop_event(t, EV_SIGNAL_DELIVERY);
 }
 
-void pop_signal_handler(struct task* t)
+void pop_signal_handler(Task* t)
 {
 	pop_event(t, EV_SIGNAL_HANDLER);
 }
 
-void push_syscall(struct task* t, int no)
+void push_syscall(Task* t, int no)
 {
 	push_new_event(t, EV_SYSCALL);
 	t->ev->syscall.no = no;
 }
 
-void pop_syscall(struct task* t)
+void pop_syscall(Task* t)
 {
 	pop_event(t, EV_SYSCALL);
 }
 
-void push_syscall_interruption(struct task* t, int no,
+void push_syscall_interruption(Task* t, int no,
 			       const struct user_regs_struct* args)
 {
 	const struct syscallbuf_record* rec = task_desched_rec(t);
@@ -245,12 +250,12 @@ void push_syscall_interruption(struct task* t, int no,
 	memcpy(&t->ev->syscall.regs, args, sizeof(t->ev->syscall.regs));
 }
 
-void pop_syscall_interruption(struct task* t)
+void pop_syscall_interruption(Task* t)
 {
 	pop_event(t, EV_SYSCALL_INTERRUPTION);
 }
 
-void log_pending_events(const struct task* t)
+void log_pending_events(const Task* t)
 {
 	ssize_t depth = FIXEDSTACK_DEPTH(&t->pending_events);
 	int i;
@@ -301,36 +306,35 @@ const char* event_name(const struct event* ev)
 	return event_type_name(ev->type);
 }
 
-struct task_group* task_group_new_and_add(struct task* t)
+struct task_group* task_group_new_and_add(Task* t)
 {
-	struct task_group* tg = (struct task_group*)calloc(1, sizeof(*tg));
+	struct task_group* tg = new task_group();
 
 	debug("creating new task group for %d", t->tid);
 
 	refcounted_init(tg);
 
 	tg->tgid = t->tid;
-	TAILQ_INIT(&tg->tasks);
-	TAILQ_INSERT_TAIL(&tg->tasks, t, tgentry);
+	tg->tasks.insert(t);
 
 	return tg;
 }
 
 struct task_group* task_group_add_and_ref(struct task_group* tg,
-					  struct task* t)
+					  Task* t)
 {
 	debug("adding %d to task group %d", t->tid, tg->tgid);
 
 	refcounted_assert_valid(tg);
-	TAILQ_INSERT_TAIL(&tg->tasks, t, tgentry);
+	tg->tasks.insert(t);
 	return (struct task_group*)refcounted_ref(tg);
 }
 
 void task_group_destabilize(struct task_group* tg)
 {
-	struct task* t;
-	TAILQ_FOREACH(t, &tg->tasks, tgentry) {
-		t->unstable = 1;
+	for (TaskSet::iterator it = tg->tasks.begin();
+	     it != tg->tasks.end(); ++it) {
+		(*it)->unstable = 1;
 	}
 }
 
@@ -340,18 +344,18 @@ pid_t task_group_get_tgid(const struct task_group* tg)
 	return tg->tgid;
 }
 
-void task_group_remove_and_unref(struct task* t)
+void task_group_remove_and_unref(Task* t)
 {
 	struct task_group* to_free;
 
 	debug("removing %d from task group %d", t->tid, t->task_group->tgid);
 
-	TAILQ_REMOVE(&t->task_group->tasks, t, tgentry);
+	t->task_group->tasks.erase(t);
 
 	to_free = (struct task_group*)refcounted_unref((void**)&t->task_group);
 	if (to_free) {
-		assert(TAILQ_EMPTY(&to_free->tasks));
-		free(to_free);
+		assert(to_free->tasks.empty());
+		delete to_free;
 	}
 }
 

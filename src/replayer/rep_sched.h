@@ -8,15 +8,15 @@
 #include "../share/trace.h"
 
 int rep_sched_get_num_threads(void);
-struct task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid);
-struct task* rep_sched_get_thread(void);
-struct task* rep_sched_lookup_thread(pid_t rec_tid);
+Task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid);
+Task* rep_sched_get_thread(void);
+Task* rep_sched_lookup_thread(pid_t rec_tid);
 /**
  * Return a freshly-allocated array of tids in |tids|, which is of
  * length |len|.  The caller is reponsible for freeing the returned
  * array.
  */
 void rep_sched_enumerate_tasks(pid_t** tids, size_t* len);
-void rep_sched_deregister_thread(struct task** context_ptr);
+void rep_sched_deregister_thread(Task** context_ptr);
 
 #endif /* REP_SCHED_H_ */

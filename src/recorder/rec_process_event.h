@@ -10,16 +10,16 @@
  * Prepare |t| to enter its current syscall event.  Return nonzero if
  * a context-switch is allowed for |t|, 0 if not.
  */
-int rec_prepare_syscall(struct task* t);
+int rec_prepare_syscall(Task* t);
 /**
  * Prepare |t| for its current syscall event to be interrupted and
  * possibly restarted.
  */
-void rec_prepare_restart_syscall(struct task* t);
+void rec_prepare_restart_syscall(Task* t);
 /**
  * Restore any argument registers fudged for |t|'s current syscall and
  * store any nondeterministic outparam data.
  */
-void rec_process_syscall(struct task* t);
+void rec_process_syscall(Task* t);
 
 #endif /* PROCESS_SYSCALL_H_ */
