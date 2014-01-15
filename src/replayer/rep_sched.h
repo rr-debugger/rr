@@ -7,7 +7,6 @@
 
 #include "../share/trace.h"
 
-int rep_sched_get_num_threads(void);
 Task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid);
 Task* rep_sched_get_thread(void);
 Task* rep_sched_lookup_thread(pid_t rec_tid);
