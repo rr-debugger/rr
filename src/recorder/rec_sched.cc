@@ -25,7 +25,12 @@
 #include "../share/task.h"
 
 struct tasklist_entry {
+	tasklist_entry(pid_t tid) : t(tid) {
+		memset(&entries, 0, sizeof(entries));
+	}
+
 	Task t;
+	// TODO: nuke this
 	CIRCLEQ_ENTRY(tasklist_entry) entries;
 };
 
@@ -204,10 +209,10 @@ int rec_sched_get_num_threads()
  * Registers a new thread to the runtime system. This includes
  * initialization of the hardware performance counters
  */
-Task* rec_sched_register_thread(pid_t parent, pid_t child, int flags)
+Task* rec_sched_register_thread(pid_t parent_tid, pid_t child, int flags)
 {
-	struct tasklist_entry* entry =
-		(struct tasklist_entry*)calloc(1, sizeof(*entry));
+	Task* parent = get_task(parent_tid);
+	tasklist_entry* entry = new tasklist_entry(child);
 	Task* t = &entry->t;
 
 	assert(child > 0 && child < MAX_TID);
@@ -217,14 +222,13 @@ Task* rec_sched_register_thread(pid_t parent, pid_t child, int flags)
 	t->child_mem_fd = sys_open_child_mem(t);
 	push_placeholder_event(t);
 	if (parent) {
-		Task* parent_t = get_task(parent);
-		struct sighandlers* parent_handlers = parent_t->sighandlers;
+		struct sighandlers* parent_handlers = parent->sighandlers;
 
-		t->syscallbuf_lib_start = parent_t->syscallbuf_lib_start;
-		t->syscallbuf_lib_end = parent_t->syscallbuf_lib_end;
+		t->syscallbuf_lib_start = parent->syscallbuf_lib_start;
+		t->syscallbuf_lib_end = parent->syscallbuf_lib_end;
 		t->task_group =
 			(SHARE_TASK_GROUP & flags) ?
-			task_group_add_and_ref(parent_t->task_group, t) :
+			task_group_add_and_ref(parent->task_group, t) :
 			task_group_new_and_add(t);
 		t->sighandlers = (SHARE_SIGHANDLERS & flags) ?
 				 sighandlers_ref(parent_handlers) :
@@ -308,6 +312,6 @@ void rec_sched_deregister_thread(Task** t_ptr)
 
 	/* finally, free the memory */
 	sighandlers_unref(&t->sighandlers);
-	free(entry);
+	delete entry;
 	*t_ptr = NULL;
 }

@@ -129,6 +129,15 @@ static int is_syscall_event(int type) {
 	}
 }
 
+Task::Task(pid_t _tid, pid_t _rec_tid)
+{
+	// TODO: properly C++-ify me
+	memset(this, 0, sizeof(*this));
+
+	tid = _tid;
+	rec_tid = _rec_tid > 0 ? _rec_tid : tid;
+}
+
 int task_may_be_blocked(Task* t)
 {
 	return (t->ev
