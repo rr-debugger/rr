@@ -240,6 +240,8 @@ struct event {
  */
 class Task {
 public:
+	Task(pid_t tid, pid_t rec_tid = -1);
+
 	/* State only used during recording. */
 
 	/* The running count of events that have been recorded for

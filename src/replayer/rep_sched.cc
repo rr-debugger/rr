@@ -48,7 +48,7 @@ Task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	assert(my_tid < MAX_TID_NUM);
 
 	/* allocate data structure and initialize hashmap */
-	Task* t = (Task*)calloc(1, sizeof(Task));
+	Task* t = new Task(my_tid, rec_tid);
 
 	t->tid = my_tid;
 	t->rec_tid = rec_tid;
@@ -132,7 +132,7 @@ void rep_sched_deregister_thread(Task** t_ptr)
 
 	detach_and_reap(t);
 
-	free(t);
+	delete t;
 	*t_ptr = NULL;
 }
 
