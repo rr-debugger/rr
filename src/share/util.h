@@ -96,7 +96,6 @@ uint64_t str2ull(const char* start, size_t max_size);
 long int str2li(const char* start, size_t max_size);
 byte* str2x(const char* start, size_t max_size);
 void read_line(FILE* file, char* buf, int size, const char* name);
-void add_scratch(void *ptr, int size);
 
 void print_register_file_tid(Task* t);
 void print_register_file(struct user_regs_struct* regs);

@@ -62,10 +62,6 @@
 
 struct flags flags = { 0 };
 
-static void* scratch_table[MAX_TID] = {NULL} ;
-static size_t scratch_table_size = 0;
-static size_t scratch_overall_size = 0;
-
 const struct flags* rr_flags(void)
 {
 	return &flags;
@@ -90,15 +86,16 @@ static byte* get_mmaped_region_end(Task* t, byte* start)
 	return info.end_addr;
 }
 
-static int is_start_of_scratch_region(void* start_addr)
+static bool is_start_of_scratch_region(void* start_addr)
 {
-	int i;
-	for (i = 0 ; i < ssize_t(scratch_table_size); ++i) {
-		if (scratch_table[i] == start_addr) {
-			return 1;
+	for (Task::Map::const_iterator it = Task::begin(); it != Task::end();
+	     ++it) {
+		Task* t = it->second;
+		if (start_addr == t->scratch_ptr) {
+			return true;
 		}
 	}
-	return 0;
+	return false;
 }
 
 double now_sec(void)
@@ -1130,11 +1127,6 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 {
 	free(buf->code_buffer);
 	free(buf);
-}
-
-void add_scratch(void *ptr, int size) {
-	scratch_table[scratch_table_size++] = ptr;
-	scratch_overall_size += size;
 }
 
 void copy_syscall_arg_regs(struct user_regs_struct* to,

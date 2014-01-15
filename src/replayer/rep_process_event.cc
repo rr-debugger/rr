@@ -288,8 +288,6 @@ static void init_scratch_memory(Task* t)
 	assert_exec(t, t->scratch_ptr == map_addr,
 		    "scratch mapped @%p during recording, but @%p in replay",
 		    file.start, map_addr);
-
-	add_scratch(file.start, file.end - file.start);
 }
 
 /**
