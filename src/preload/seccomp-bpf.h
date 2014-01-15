@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 /*
  * seccomp example for x86 (32-bit and 64-bit) with BPF macros

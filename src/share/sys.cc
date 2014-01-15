@@ -1,6 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
-
-#define _GNU_SOURCE
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include "sys.h"
 
@@ -65,17 +63,14 @@ void sys_close(int filedes)
 	}
 }
 
-int sys_open_child_mem(pid_t tid)
+int sys_open_child_mem(struct task* t)
 {
-	char path[64];
-	bzero(path, 64);
+	char path[PATH_MAX];
 	int fd;
 
-	sprintf(path, "/proc/%d/mem", tid);
-	if ((fd = open(path, O_RDWR)) < 0) {
-		log_err("error reading child memory:open-- bailing out\n");
-		sys_exit();
-	}
+	snprintf(path, sizeof(path) - 1, "/proc/%d/mem", t->tid);
+	fd = open(path, O_RDWR);
+	assert_exec(t, fd >= 0, "Failed to open %s", path);
 
 	return fd;
 }
@@ -162,7 +157,7 @@ static void set_up_process(void)
 	 * process is the only intensive one in the system? */
 }
 
-void sys_start_trace(char* executable, char** argv, char** envp)
+void sys_start_trace(const char* executable, char** argv, char** envp)
 {
 	set_up_process();
 	sys_ptrace_traceme();
@@ -175,19 +170,18 @@ void sys_start_trace(char* executable, char** argv, char** envp)
 }
 
 /* ptrace stuff comes here */
-long sys_ptrace(int request, pid_t pid, void *addr, void *data)
+void sys_ptrace(struct task* t, int request, void *addr, void *data)
 {
-	long ret;
-	if ((ret = ptrace(request, pid, addr, data)) == -1) {
-		fatal("ptrace_error: request: %d of tid: %d: addr %p, data %p",
-		      request, pid, addr, data);
-	}
-	return ret;
+	pid_t tid = t->tid;
+	long ret = ptrace(__ptrace_request(request), tid, addr, data);
+	assert_exec(t, 0 == ret,
+		    "ptrace_error: request: %d of tid: %d: addr %p, data %p",
+		    request, tid, addr, data);
 }
 
-void sys_ptrace_syscall(pid_t pid)
+void sys_ptrace_syscall(struct task* t)
 {
-	sys_ptrace(PTRACE_SYSCALL, pid, 0, 0);
+	sys_ptrace(t, PTRACE_SYSCALL, 0, 0);
 }
 
 void sys_ptrace_cont(pid_t pid)
@@ -210,29 +204,19 @@ void sys_ptrace_detach(pid_t pid)
 	ptrace(PTRACE_DETACH, pid, 0, 0);
 }
 
-void sys_ptrace_syscall_sig(pid_t pid, int sig)
+void sys_ptrace_syscall_sig(struct task* t, int sig)
 {
-	sys_ptrace(PTRACE_SYSCALL, pid, 0, (void*)sig);
+	sys_ptrace(t, PTRACE_SYSCALL, 0, (void*)sig);
 }
 
-void sys_ptrace_sysemu(pid_t pid)
+void sys_ptrace_sysemu(struct task* t)
 {
-	sys_ptrace(PTRACE_SYSEMU, pid, 0, 0);
+	sys_ptrace(t, PTRACE_SYSEMU, 0, 0);
 }
 
-void sys_ptrace_sysemu_sig(pid_t pid, int sig)
+void sys_ptrace_sysemu_singlestep(struct task* t)
 {
-	sys_ptrace(PTRACE_SYSEMU, pid, 0, (void*)sig);
-}
-
-void sys_ptrace_sysemu_singlestep(pid_t pid)
-{
-	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, 0);
-}
-
-void sys_ptrace_sysemu_singlestep_sig(pid_t pid, int sig)
-{
-	sys_ptrace(PTRACE_SYSEMU_SINGLESTEP, pid, 0, (void*)sig);
+	sys_ptrace(t, PTRACE_SYSEMU_SINGLESTEP, 0, 0);
 }
 
 int sys_ptrace_peekdata(pid_t pid, long addr, long* value)
@@ -250,40 +234,39 @@ int sys_ptrace_peekdata(pid_t pid, long addr, long* value)
 	return 0;
 }
 
-unsigned long sys_ptrace_getmsg(pid_t pid)
+unsigned long sys_ptrace_getmsg(struct task* t)
 {
 	unsigned long tmp;
-	sys_ptrace(PTRACE_GETEVENTMSG, pid, 0, &tmp);
+	sys_ptrace(t, PTRACE_GETEVENTMSG, 0, &tmp);
 	return tmp;
 }
-void sys_ptrace_getsiginfo(pid_t pid, siginfo_t* sig)
+void sys_ptrace_getsiginfo(struct task* t, siginfo_t* sig)
 {
-	sys_ptrace(PTRACE_GETSIGINFO, pid, 0, sig);
+	sys_ptrace(t, PTRACE_GETSIGINFO, 0, sig);
 }
 
-void sys_ptrace_setup(pid_t pid)
+void sys_ptrace_setup(struct task* t)
 {
 	int flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE | PTRACE_O_TRACEEXIT;
-	/* First try with seccomp */
-	if (ptrace(PTRACE_SETOPTIONS, pid, 0, (void*) (PTRACE_O_TRACESECCOMP | flags)) == -1) {
+	if (ptrace(PTRACE_SETOPTIONS, t->tid, 0, (void*) (PTRACE_O_TRACESECCOMP | flags)) == -1) {
 		/* No seccomp on the system, try without (this has to succeed) */
-		sys_ptrace(PTRACE_SETOPTIONS, pid, 0, (void*) flags);
+		sys_ptrace(t, PTRACE_SETOPTIONS, 0, (void*) flags);
 	}
 }
 
-void sys_ptrace_singlestep(pid_t pid)
+void sys_ptrace_singlestep(struct task* t)
 {
-	sys_ptrace(PTRACE_SINGLESTEP, pid, 0, 0);
+	sys_ptrace(t, PTRACE_SINGLESTEP, 0, 0);
 }
 
-void sys_ptrace_singlestep_sig(pid_t pid, int sig)
+void sys_ptrace_singlestep_sig(struct task* t, int sig)
 {
-	sys_ptrace(PTRACE_SINGLESTEP, pid, 0, (void*) sig);
+	sys_ptrace(t, PTRACE_SINGLESTEP, 0, (void*) sig);
 }
 
 void sys_ptrace_traceme()
 {
-	sys_ptrace(PTRACE_TRACEME, 0, 0, 0);
+	ptrace(PTRACE_TRACEME, 0, 0, 0);
 }
 
 void goto_next_event(struct task *t)
@@ -292,19 +275,14 @@ void goto_next_event(struct task *t)
 	if (t->child_sig != 0) {
 		printf("sending signal: %d\n",t->child_sig);
 	}
-	sys_ptrace(PTRACE_SYSCALL, t->tid, 0, (void*) t->child_sig);
+	sys_ptrace(t, PTRACE_SYSCALL, 0, (void*) t->child_sig);
 	sys_waitpid(t->tid, &t->status);
 
 	t->child_sig = signal_pending(t->status);
 	assert_exec(t, t->child_sig != SIGTRAP,
 		    "Caught unexpected SIGTRAP while going to next event");
 
-	t->event = read_child_orig_eax(t->tid);
-}
-
-long sys_ptrace_peektext_word(pid_t pid, void* addr)
-{
-	return sys_ptrace(PTRACE_PEEKTEXT, pid, addr, 0);
+	t->event = read_child_orig_eax(t);
 }
 
 pid_t sys_waitpid(pid_t pid, int *status)
@@ -364,18 +342,6 @@ void sys_munmap(void* addr, size_t length)
 	}
 }
 
-void* sys_malloc(int size)
-{
-	void* tmp;
-	errno = 0;
-	if ((tmp = malloc(size)) == NULL) {
-		log_err("sys_malloc: size is: %d\n",size);
-		sys_exit();
-	}
-	assert(errno == 0);
-	return tmp;
-}
-
 void* sys_memset(void * block, int c, size_t size)
 {
 	void* tmp;
@@ -384,23 +350,6 @@ void* sys_memset(void * block, int c, size_t size)
 		sys_exit();
 	}
 	return tmp;
-}
-
-void* sys_malloc_zero(int size)
-{
-	void* tmp;
-	if ((tmp = malloc(size)) == NULL) {
-		log_err("failed to malloc memory of size %d -- bailing out",size);
-		sys_exit();
-	}
-	bzero(tmp, size);
-	return tmp;
-}
-
-void sys_free(void** ptr)
-{
-	free(*ptr);
-	*ptr = NULL;
 }
 
 void sys_setpgid(pid_t pid, pid_t pgid)
@@ -441,7 +390,7 @@ int sys_mkpath(const char *path, mode_t mode)
     char           *pp;
     char           *sp;
     int             status;
-    char           *copypath = sys_malloc(strlen(path) + 1);
+    char           *copypath = (char*)malloc(strlen(path) + 1);
 
     strcpy(copypath,path);
     status = 0;
@@ -458,7 +407,7 @@ int sys_mkpath(const char *path, mode_t mode)
         pp = sp + 1;
     }
 
-    sys_free((void**)&copypath);
+    free(copypath);
     assert(status == 0);
     return status;
 }

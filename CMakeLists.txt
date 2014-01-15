@@ -17,6 +17,7 @@ set(rr_VERSION_MINOR 2pre)
 set(rr_VERSION_PATCH 0)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict-prototypes")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32")
 
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" ""
@@ -25,27 +26,27 @@ string(REGEX REPLACE "-fPIC" ""
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
 add_library(rrpreload
-  src/share/syscall_buffer.c
+  src/preload/preload.c
 )
 
 add_executable(rr
-  src/main.c
-  src/recorder/handle_ioctl.c
-  src/recorder/handle_signal.c
-  src/recorder/rec_process_event.c
-  src/recorder/rec_sched.c
-  src/recorder/recorder.c
-  src/replayer/dbg_gdb.c
-  src/replayer/rep_process_event.c
-  src/replayer/rep_sched.c
-  src/replayer/replayer.c
-  src/share/hpc.c
-  src/share/ipc.c
-  src/share/shmem.c
-  src/share/sys.c
-  src/share/task.c
-  src/share/trace.c
-  src/share/util.c
+  src/main.cc
+  src/recorder/handle_ioctl.cc
+  src/recorder/handle_signal.cc
+  src/recorder/rec_process_event.cc
+  src/recorder/rec_sched.cc
+  src/recorder/recorder.cc
+  src/replayer/dbg_gdb.cc
+  src/replayer/rep_process_event.cc
+  src/replayer/rep_sched.cc
+  src/replayer/replayer.cc
+  src/share/hpc.cc
+  src/share/ipc.cc
+  src/share/shmem.cc
+  src/share/sys.cc
+  src/share/task.cc
+  src/share/trace.cc
+  src/share/util.cc
 )
 
 # TODO remove this when we can manage pfm and disasm dependencies

@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 /* XXX unify me with recorder definitions, to make this the SSOT for
  * syscall info */
@@ -1422,3 +1422,5 @@ SYSCALL_DEF(EMU, writev, 0)
  * This is a "magic" syscall implemented by rr.
  */
 SYSCALL_DEF(IRREGULAR, rrcall_init_buffers, -1)
+
+#define MAX_NR_SYSCALLS 512

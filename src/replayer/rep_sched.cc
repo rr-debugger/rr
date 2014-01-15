@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include "rep_sched.h"
 
@@ -32,7 +32,8 @@ static void add_task(struct task* t)
 
 static struct task* find_task(pid_t tid)
 {
-	struct task search = { .rec_tid = tid };
+	struct task search;
+	search.rec_tid = tid;
 	return RB_FIND(task_tree, &tasks, &search);
 }
 
@@ -46,13 +47,12 @@ struct task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 	assert(my_tid < MAX_TID_NUM);
 
 	/* allocate data structure and initialize hashmap */
-	struct task *t = sys_malloc(sizeof(struct task));
-	memset(t, 0, sizeof(struct task));
+	struct task* t = (struct task*)calloc(1, sizeof(struct task));
 
 	t->tid = my_tid;
 	t->rec_tid = rec_tid;
-	t->child_mem_fd = sys_open_child_mem(my_tid);
 	push_placeholder_event(t);
+	t->child_mem_fd = sys_open_child_mem(t);
 
 	num_threads++;
 
@@ -113,7 +113,7 @@ void rep_sched_enumerate_tasks(pid_t** tids, size_t* len)
 	int i;
 
 	*len = num_threads;
-	ts = *tids = sys_malloc(*len * sizeof(pid_t));
+	ts = *tids = (pid_t*)malloc(*len * sizeof(pid_t));
 	i = 0;
 	RB_FOREACH(t, task_tree, &tasks) {
 		ts[i++] = t->rec_tid;
@@ -135,7 +135,8 @@ void rep_sched_deregister_thread(struct task** t_ptr)
 
 	detach_and_reap(t);
 
-	sys_free((void**)t_ptr);
+	free(t);
+	*t_ptr = NULL;
 }
 
 int rep_sched_get_num_threads()

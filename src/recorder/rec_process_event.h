@@ -1,11 +1,7 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef PROCESS_SYSCALL_H_
 #define PROCESS_SYSCALL_H_
-
-#ifndef _GNU_SOURCE
-# define _GNU_SOURCE
-#endif
 
 #include "../share/types.h"
 #include "../share/util.h"

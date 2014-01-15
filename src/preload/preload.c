@@ -96,8 +96,6 @@ struct task_cleanup_data {
 	int desched_counter_fd;
 };
 
-typedef unsigned char byte;
-
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
 

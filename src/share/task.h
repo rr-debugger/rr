@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef TASK_H_
 #define TASK_H_
@@ -33,6 +33,36 @@ typedef void (*sig_handler_t)(int);
  */
 /*refcounted*/ struct sighandlers;
 
+enum PseudosigType {
+	ESIG_NONE,
+	ESIG_SEGV_MMAP_READ, ESIG_SEGV_MMAP_WRITE, ESIG_SEGV_RDTSC,
+	EUSR_EXIT, EUSR_SCHED, EUSR_NEW_RAWDATA_FILE,
+	EUSR_SYSCALLBUF_FLUSH, EUSR_SYSCALLBUF_ABORT_COMMIT,
+	EUSR_SYSCALLBUF_RESET,
+	EUSR_UNSTABLE_EXIT,
+};
+
+enum EventType {
+	EV_SENTINEL,
+	/* Uses the .desched struct below. */
+	EV_DESCHED,
+	/* Uses .pseudosig. */
+	EV_PSEUDOSIG,
+	/* Use .signal. */
+	EV_SIGNAL,
+	EV_SIGNAL_DELIVERY,
+	EV_SIGNAL_HANDLER,
+	/* Use .syscall. */
+	EV_SYSCALL,
+	EV_SYSCALL_INTERRUPTION,
+};
+
+enum DeschedState { IN_SYSCALL,
+		    DISARMING_DESCHED_EVENT, DISARMED_DESCHED_EVENT };
+
+enum SyscallState { NO_SYSCALL,
+		    ENTERING_SYSCALL, PROCESSING_SYSCALL, EXITING_SYSCALL };
+
 /**
  * Events are interesting occurrences during tracee execution which
  * are relevant for replay.  Most events correspond to tracee
@@ -40,20 +70,7 @@ typedef void (*sig_handler_t)(int);
  * the *recorder* took on behalf of the tracee.
  */
 struct event {
-	enum {
-		EV_SENTINEL,
-		/* Uses the .desched struct below. */
-		EV_DESCHED,
-		/* Uses .pseudosig. */
-		EV_PSEUDOSIG,
-		/* Use .signal. */
-		EV_SIGNAL,
-		EV_SIGNAL_DELIVERY,
-		EV_SIGNAL_HANDLER,
-		/* Use .syscall. */
-		EV_SYSCALL,
-		EV_SYSCALL_INTERRUPTION,
-	} type;
+	EventType type;
 	union {
 		/**
 		 * Desched events track the fact that a tracee's
@@ -65,10 +82,7 @@ struct event {
 		 * is "disarmed" by the tracee.
 		 */
 		struct {
-			enum { IN_SYSCALL,
-			       DISARMING_DESCHED_EVENT,
-			       DISARMED_DESCHED_EVENT
-			} state;
+			DeschedState state;
 			/* Record of the syscall that was interrupted
 			 * by a desched notification.  It's legal to
 			 * reference this memory /while the desched is
@@ -92,15 +106,7 @@ struct event {
 		struct {
 			/* TODO: un-gnarl these names when we
 			 * eliminate the duplication in trace.h */
-			enum { ESIG_NONE,
-			       ESIG_SEGV_MMAP_READ, ESIG_SEGV_MMAP_WRITE,
-			       ESIG_SEGV_RDTSC,
-			       EUSR_EXIT, EUSR_SCHED, EUSR_NEW_RAWDATA_FILE,
-			       EUSR_SYSCALLBUF_FLUSH,
-			       EUSR_SYSCALLBUF_ABORT_COMMIT,
-			       EUSR_SYSCALLBUF_RESET,
-			       EUSR_UNSTABLE_EXIT,
-			} no;
+			PseudosigType no;
 			/* When replaying a pseudosignal is expected
 			 * to leave the tracee in the same execution
 			 * state as during replay, the event has
@@ -137,9 +143,7 @@ struct event {
 		 * the kernel.
 		 */
 		struct {
-			enum { NO_SYSCALL,
-			       ENTERING_SYSCALL, PROCESSING_SYSCALL,
-			       EXITING_SYSCALL } state;
+			SyscallState state;
 			/* Syscall number. */
 			int no;
 			/* When tasks enter syscalls that may block
@@ -208,8 +212,8 @@ struct event {
 			 * buffers.  The syscallbuf code will do that
 			 * itself.) */
 			FIXEDSTACK_DECL(, void*, 5) saved_args;
-			void* tmp_data_ptr;
-			int tmp_data_num_bytes;
+			byte* tmp_data_ptr;
+			ssize_t tmp_data_num_bytes;
 
 			/* Nonzero when this syscall was restarted
 			 * after a signal interruption. */
@@ -320,8 +324,8 @@ struct task {
 	 *
 	 * |scratch_ptr| points at the mapped address in the child,
 	 * and |size| is the total available space. */
-	void *scratch_ptr;
-	size_t scratch_size;
+	byte* scratch_ptr;
+	ssize_t scratch_size;
 
 	int event;
 	/* Nonzero after the trace recorder has flushed the
@@ -382,17 +386,17 @@ struct task {
 	/* The instruction pointer from which untraced syscalls will
 	 * originate, used to determine whether a syscall is being
 	 * made by the syscallbuf wrappers or not. */
-	void* untraced_syscall_ip;
+	byte* untraced_syscall_ip;
 	/* Start and end of the mapping of the syscallbuf code
 	 * section, used to determine whether a tracee's $ip is in the
 	 * lib. */
-	void* syscallbuf_lib_start;
-	void* syscallbuf_lib_end;
+	byte* syscallbuf_lib_start;
+	byte* syscallbuf_lib_end;
 	/* Points at rr's mapping of the (shared) syscall buffer. */
 	struct syscallbuf_hdr* syscallbuf_hdr;
 	size_t num_syscallbuf_bytes;
 	/* Points at the tracee's mapping of the buffer. */
-	void* syscallbuf_child;
+	byte* syscallbuf_child;
 
 	/* (Don't worry about these fields; they're implementation
 	 * details for various data structures that tasks belong
@@ -436,7 +440,7 @@ void pop_desched(struct task* t);
  * so should be recorded for consistency-checking purposes.
  */
 enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
-void push_pseudosig(struct task* t, int no, int has_exec_info);
+void push_pseudosig(struct task* t, PseudosigType no, int has_exec_info);
 void pop_pseudosig(struct task* t);
 
 /**

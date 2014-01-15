@@ -1,11 +1,11 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef FIXEDSTACK_H_
 #define FIXEDSTACK_H_
 
 #include <assert.h>
 
-#define FIXEDSTACK_ALEN(_arr) (sizeof(_arr) / sizeof(_arr[0]))
+#define FIXEDSTACK_ALEN(_arr) ssize_t(sizeof(_arr) / sizeof(_arr[0]))
 
 /**
  * Declare a stack named |_name| of fixed size |_nelts|, with elements
@@ -16,7 +16,7 @@
 #define FIXEDSTACK_DECL(_name, _type, _nelts)	\
 	struct _name {				\
 		_type elts[_nelts];		\
-		int len;			\
+		ssize_t len;			\
 	}
 
 /**

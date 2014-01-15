@@ -1,124 +1,76 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include <assert.h>
 #include <getopt.h>
-#include <limits.h>
 #include <sched.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/prctl.h>
 
-#include "share/config.h"
-#include "share/dbg.h"
-#include "share/hpc.h"
-#include "share/sys.h"
-#include "share/syscall_buffer.h"
-#include "share/util.h"
+#include <limits>
 
+#include "preload/syscall_buffer.h"
 #include "recorder/recorder.h"
 #include "recorder/rec_sched.h"
 #include "replayer/replayer.h"
 #include "replayer/rep_sched.h"
+#include "share/config.h"
+#include "share/dbg.h"
+#include "share/hpc.h"
+#include "share/sys.h"
+#include "share/util.h"
+
+using namespace std;
 
 extern char** environ;
 
 static pid_t child;
 
-#define MAX_ARGC_LEN	64
-#define MAX_ENVC_LEN	128
-#define MAX_ARGV_LEN	1024
-#define MAX_ENVP_LEN	2048
-#define MAX_EXEC_LEN    512
-
-static char** __argv;
-static char** __envp;
-static char* __executable;
-
-static void alloc_argc(int argc)
-{
-	int i;
-	assert(argc + 1 < MAX_ARGC_LEN);
-	__argv = sys_malloc(MAX_ARGC_LEN * sizeof(char*));
-
-	for (i = 0; i < MAX_ARGC_LEN; i++) {
-		__argv[i] = sys_malloc(MAX_ARGV_LEN);
-	}
-
-}
-
-static void alloc_envp(char** envp)
-{
-	int i;
-#ifndef NDEBUG
-	for (i = 1; envp[i - 1]; ++i);
-	/* the loop above counts the null sentinel */
-	assert(i < MAX_ENVC_LEN);
-#endif
-	__envp = sys_malloc(MAX_ENVC_LEN * sizeof(char*));
-	for (i = 0; i < MAX_ENVC_LEN; i++) {
-		__envp[i] = sys_malloc(MAX_ENVP_LEN);
-	}
-}
+static string exe_image;
+// NB: we currently intentionally leak the constituent strings in
+// these arrays.
+static CharpVector arg_v;
+static CharpVector env_p;
 
 static void copy_argv(int argc, char* argv[])
 {
-	int i;
-	for (i = 0; i < argc; i++) {
-		int arglen = strlen(argv[i]);
-		assert(arglen + 1 < MAX_ARGV_LEN);
-		strncpy(__argv[i], argv[i], arglen + 1);
+	for (int i = 0; i < argc; ++i) {
+		arg_v.push_back(strdup(argv[i]));
 	}
-	__argv[i] = NULL;
+	arg_v.push_back(NULL);
 }
 
 static void copy_envp(char** envp)
 {
 	int i = 0, preload_index = -1;
-	while (envp[i] != NULL) {
-		assert (i < MAX_ENVC_LEN);
-		int arglen = strlen(envp[i]);
-		assert(arglen < MAX_ENVP_LEN);
-		strncpy(__envp[i], envp[i], arglen + 1);
-		if (envp[i] == strstr(envp[i], "LD_PRELOAD"))
+	for (i = 0; envp[i]; ++i) {
+		env_p.push_back(strdup(envp[i]));
+		if (envp[i] == strstr(envp[i], "LD_PRELOAD=")) {
 			preload_index = i;
-		i++;
+		}
 	}
-	/* LD_PRELOAD the syscall interception lib */
+	// LD_PRELOAD the syscall interception lib
 	if (rr_flags()->syscall_buffer_lib_path) {
-		/* XXX not strictly safe */
-		char ld_preload[2 * PATH_MAX] = "LD_PRELOAD=";
-		/* our preload lib *must* come first */
-		strcat(ld_preload, rr_flags()->syscall_buffer_lib_path);
+		string ld_preload = "LD_PRELOAD=";
+		// Our preload lib *must* come first
+		ld_preload += rr_flags()->syscall_buffer_lib_path;
 		if (preload_index >= 0) {
-			const char* old_preload = NULL;
-			old_preload = strchr(envp[preload_index], '=') + 1;
+			const char* old_preload =
+				strchr(envp[preload_index], '=') + 1;
 			assert(old_preload);
-			/* honor old preloads too.  this may cause
-			 * problems, but only in those libs, and
-			 * that's the user's problem. */
-			strcat(ld_preload, ":");
-			/* append old value */
-			strcat(ld_preload, old_preload);
+			// Honor old preloads too.  this may cause
+			// problems, but only in those libs, and
+			// that's the user's problem.
+			ld_preload += ":";
+			ld_preload += old_preload;
 		} else {
-			/* or if this is a new key/value, "allocate"
+			/* Or if this is a new key/value, "allocate"
 			 * an index for it */
 			preload_index = i++;
 		}
-		strcpy(__envp[preload_index], ld_preload);
+		env_p.push_back(strdup(ld_preload.c_str()));
 	}
-	assert (i < MAX_ENVC_LEN);
-	__envp[i] = 0;
-}
-
-static void alloc_executable(void)
-{
-	__executable = sys_malloc(MAX_EXEC_LEN);
-}
-
-static void copy_executable(char* exec)
-{
-	assert (strlen(exec) < MAX_EXEC_LEN);
-	strcpy(__executable, exec);
+	env_p.push_back(NULL);
 }
 
 /**
@@ -142,20 +94,21 @@ static void start_recording(int argc, char* argv[], char** envp)
 	pid_t pid;
 	int status;
 
-	copy_executable(argv[0]);
+	exe_image = argv[0];
 	copy_argv(argc, argv);
 	copy_envp(envp);
 	rec_setup_trace_dir();
 
 	pid = sys_fork();
 	if (pid == 0) { /* child process */
-		return sys_start_trace(__executable, __argv, __envp);
+		return sys_start_trace(exe_image.c_str(),
+				       arg_v.data(), env_p.data());
 		/* not reached */
 	}
 
 	open_trace_files();
 	rec_init_trace_files();
-	record_argv_envp(argc, __argv, __envp);
+	record_argv_envp(argc, arg_v.data(), env_p.data());
 
 	child = pid;
 
@@ -166,13 +119,13 @@ static void start_recording(int argc, char* argv[], char** envp)
 	/* sync with the child process */
 	sys_waitpid(pid, &status);
 
-	/* Configure the child process to get a message upon a thread
-	 * start, fork(), etc. */
-	sys_ptrace_setup(pid);
-
 	init_libpfm();
 
-	rec_sched_register_thread(0, pid, DEFAULT_COPY);
+	struct task* t = rec_sched_register_thread(0, pid, DEFAULT_COPY);
+
+	/* Configure the child process to get a message upon a thread
+	 * start, fork(), etc. */
+	sys_ptrace_setup(t);
 
 	log_info("Start recording...");
 	record();
@@ -187,8 +140,7 @@ static void start_replaying(int argc, char* argv[], char** envp)
 	pid_t pid;
 	int status;
 
-	init_environment(argv[0], &argc, __argv, __envp);
-	copy_executable(__argv[0]);
+	load_recorded_env(argv[0], &argc, &exe_image, &arg_v, &env_p);
 
 	pid = sys_fork();
 	if (pid == 0) { /* child process */
@@ -202,14 +154,15 @@ static void start_replaying(int argc, char* argv[], char** envp)
 		 * be the same as in replay, so we don't have to worry
 		 * about any mutation here affecting post-exec
 		 * execution. */
-		char** e;
-		for (e = __envp; *e; ++e) {
-			const char* kv = *e;
-			if (!strncmp(kv, "PATH=", sizeof("PATH=") - 1)) {
-				putenv(strdup(kv));
+		for (CharpVector::const_iterator it = env_p.begin();
+		     *it && it != env_p.end(); ++it) {
+			if (!strncmp(*it, "PATH=", sizeof("PATH=") - 1)) {
+				// NB: intentionally leaking this string.
+				putenv(strdup(*it));
 			}
 		}
-		return sys_start_trace(__executable, __argv, __envp);
+		return sys_start_trace(exe_image.c_str(),
+				       arg_v.data(), env_p.data());
 		/* not reached */
 	}
 
@@ -219,7 +172,6 @@ static void start_replaying(int argc, char* argv[], char** envp)
 	install_signal_handler();
 
 	sys_waitpid(pid, &status);
-	sys_ptrace_setup(pid);
 
 	init_libpfm();
 
@@ -228,7 +180,9 @@ static void start_replaying(int argc, char* argv[], char** envp)
 	rep_init_trace_files();
 
 	pid_t rec_main_thread = get_recorded_main_thread();
-	rep_sched_register_thread(pid, rec_main_thread);
+	struct task* t = rep_sched_register_thread(pid, rec_main_thread);
+
+	sys_ptrace_setup(t);
 
 	/* main loop */
 	replay();
@@ -251,7 +205,7 @@ static void start_replaying(int argc, char* argv[], char** envp)
  */
 static void dump_events_matching(FILE* out, const char* spec)
 {
-	uint32_t start = 0, end = UINT32_MAX;
+	uint32_t start = 0, end = numeric_limits<uint32_t>::max();
 	struct trace_frame frame;
 
 	/* Try to parse the "range" syntax '[start]-[end]'. */
@@ -417,7 +371,7 @@ static int parse_record_args(int cmdi, int argc, char** argv,
 		case -1:
 			return optind;
 		case 'b':
-			flags->use_syscall_buffer = TRUE;
+			flags->use_syscall_buffer = true;
 			break;
 		case 'c':
 			flags->max_rbc = MAX(1, atoi(optarg));
@@ -430,7 +384,7 @@ static int parse_record_args(int cmdi, int argc, char** argv,
 						MAX(1, atoi(optarg)));
 			break;
 		case 'n':
-			flags->use_syscall_buffer = FALSE;
+			flags->use_syscall_buffer = false;
 			break;
 		default:
 			return -1;
@@ -454,13 +408,13 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		case -1:
 			return optind;
 		case 'a':
-			flags->autopilot = TRUE;
+			flags->autopilot = true;
 			break;
 		case 'p':
 			flags->dbgport = atoi(optarg);
 			break;
 		case 'q':
-			flags->redirect = FALSE;
+			flags->redirect = false;
 			break;
 		default:
 			return -1;
@@ -558,8 +512,8 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	flags->dbgport = -1;
 	flags->dump_at = DUMP_AT_NONE;
 	flags->dump_on = DUMP_ON_NONE;
-	flags->redirect = TRUE;
-	flags->use_syscall_buffer = FALSE;
+	flags->redirect = true;
+	flags->use_syscall_buffer = false;
 
 	if (0 > (cmdi = parse_common_args(argc, argv, flags))) {
 		return -1;
@@ -633,14 +587,6 @@ int main(int argc, char* argv[])
 		 * otherwise is possible, but annoying. */
 		flags->syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
 	}
-
-	/* allocate memory for the arguments that are passed to the
-	 * client application. This is the first thing that has to be
-	 * done to ensure that the pointers that are passed to the client
-	 * are the same in the recorder/replayer.*/
-	alloc_argc(argc);
-	alloc_envp(environ);
-	alloc_executable();
 
 	start(argc - argi , argv + argi, environ);
 

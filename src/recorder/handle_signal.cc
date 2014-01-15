@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Signal"
 
@@ -16,11 +16,11 @@
 
 #include "recorder.h"
 
+#include "../preload/syscall_buffer.h"
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
-#include "../share/syscall_buffer.h"
 #include "../share/task.h"
 #include "../share/trace.h"
 #include "../share/util.h"
@@ -61,7 +61,6 @@ static void assert_is_time_slice_interrupt(struct task* t, const siginfo_t* si)
 static int try_handle_rdtsc(struct task *t)
 {
 	int handled = 0;
-	pid_t tid = t->tid;
 	int sig = signal_pending(t->status);
 	assert(sig != SIGTRAP);
 
@@ -89,11 +88,11 @@ static int try_handle_rdtsc(struct task *t)
 		edx = current_time >> 32;
 
 		struct user_regs_struct regs;
-		read_child_registers(tid, &regs);
+		read_child_registers(t, &regs);
 		regs.eax = eax;
 		regs.edx = edx;
 		regs.eip += size;
-		write_child_registers(tid, &regs);
+		write_child_registers(t, &regs);
 
 		t->event = SIG_SEGV_RDTSC;
 		push_pseudosig(t, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);
@@ -105,7 +104,7 @@ static int try_handle_rdtsc(struct task *t)
 		debug("  trapped for rdtsc: returning %llu", current_time);
 	}
 
-	sys_free((void**)&inst);
+	free(inst);
 
 	return handled;
 }
@@ -124,9 +123,9 @@ static int advance_syscall_boundary(struct task* t,
 	int status;
 	int sig;
 
-	sys_ptrace_syscall(tid);
+	sys_ptrace_syscall(t);
 	sys_waitpid(tid, &status);
-	read_child_registers(tid, regs);
+	read_child_registers(t, regs);
 	sig = WSTOPSIG(status);
 
 	assert_exec(t, (WIFSTOPPED(status)
@@ -366,7 +365,7 @@ static void record_signal(struct task* t, const siginfo_t* si,
 		/* Deliver the signal immediately when there's a user
 		 * handler: we need to record the sigframe that the
 		 * kernel sets up. */
-		sys_ptrace_singlestep_sig(t->tid, sig);
+		sys_ptrace_singlestep_sig(t, sig);
 		t->ev->signal.delivered = 1;
 
 		sys_waitpid(t->tid, &t->status);
@@ -396,7 +395,7 @@ static void record_signal(struct task* t, const siginfo_t* si,
 		 * here. */
 		sigframe_size = 2048;
 
-		read_child_registers(t->tid, &t->regs);
+		read_child_registers(t, &t->regs);
 
 		t->ev->type = EV_SIGNAL_HANDLER;
 	} else {
@@ -404,7 +403,7 @@ static void record_signal(struct task* t, const siginfo_t* si,
 	}
 
 	/* We record this data regardless to simplify replay. */
-	record_child_data(t, sigframe_size, (void*)t->regs.esp);
+	record_child_data(t, sigframe_size, (byte*)t->regs.esp);
 
 	if (resethand) {
 		sighandlers_set_disposition(t->sighandlers, sig,
@@ -544,12 +543,12 @@ static int go_to_a_happy_place(struct task* t,
 		 * recorded. */
 		debug("  stepi out of syscallbuf from %p ...",
 		      (void*)regs->eip);
-		sys_ptrace_singlestep(tid);
+		sys_ptrace_singlestep(t);
 		sys_waitpid(tid, &status);
 
 		assert(WIFSTOPPED(status));
-		sys_ptrace_getsiginfo(tid, &tmp_si);
-		read_child_registers(tid, regs);
+		sys_ptrace_getsiginfo(t, &tmp_si);
+		read_child_registers(t, regs);
 		is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
@@ -582,7 +581,7 @@ static int go_to_a_happy_place(struct task* t,
 		if (is_desched_event_syscall(t, regs)) {
 			debug("  stepping over desched-event syscall");
 			/* Finish the syscall. */
-			sys_ptrace_singlestep(tid);
+			sys_ptrace_singlestep(t);
 			sys_waitpid(tid, &status);
 			if (is_arm_desched_event_syscall(t, regs)) {
 				/* Disarm the event: we don't need or
@@ -606,7 +605,7 @@ static int go_to_a_happy_place(struct task* t,
 			  syscallname(regs->orig_eax));*/
 			disarm_desched_event(t);
 			/* And (hopefully!) finish the syscall. */
-			sys_ptrace_singlestep(tid);
+			sys_ptrace_singlestep(t);
 			sys_waitpid(tid, &status);
 		}
 	}
@@ -670,7 +669,6 @@ static void handle_siginfo_regs(struct task* t, siginfo_t* si,
 
 void handle_signal(struct task* t)
 {
-	pid_t tid = t->tid;
 	siginfo_t si;
 	struct user_regs_struct regs;
 
@@ -678,7 +676,7 @@ void handle_signal(struct task* t)
 		return;
 	}
 
-	sys_ptrace_getsiginfo(tid, &si);
-	read_child_registers(tid, &regs);
+	sys_ptrace_getsiginfo(t, &si);
+	read_child_registers(t, &regs);
 	return handle_siginfo_regs(t, &si, &regs);
 }

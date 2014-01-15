@@ -3,6 +3,10 @@
 #ifndef SYSCALL_BUFFER_H_
 #define SYSCALL_BUFFER_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef _GNU_SOURCE
 # define _GNU_SOURCE 1
 #endif
@@ -54,6 +58,8 @@
 #define __NR_rrcall_init_buffers 442
 #define SYS_rrcall_init_buffers __NR_rrcall_init_buffers
 
+typedef unsigned char byte;
+
 /**
  * Packs up the inout parameters passed to |rrcall_init_buffers()|.
  * We use this struct because there are too many params to pass
@@ -67,7 +73,7 @@ struct rrcall_init_buffers_params {
 	int syscallbuf_enabled;
 	/* Lets rr know where our untraced syscalls will originate
 	 * from. */
-	void* untraced_syscall_ip;
+	byte* untraced_syscall_ip;
 	/* Address of the control socket the child expects to connect
 	 * to. */
 	struct sockaddr_un* sockaddr;
@@ -85,11 +91,11 @@ struct rrcall_init_buffers_params {
 	 * the purposes of this code, it doesn't matter what the
 	 * scratch region is, all we need to know about it is that it
 	 * must be unmapped at thread exit time. */
-	void* scratch_ptr;
+	byte* scratch_ptr;
 	size_t num_scratch_bytes;
 	/* Returned pointer to and size of the shared syscallbuf
 	 * segment. */
-	void* syscallbuf_ptr;
+	byte* syscallbuf_ptr;
 	size_t num_syscallbuf_bytes;
 };
 
@@ -166,8 +172,9 @@ struct socketcall_args {
  * THIS POINTER IS NOT GUARANTEED TO BE VALID!!!  Caveat emptor.
  */
 inline static struct syscallbuf_record* next_record(struct syscallbuf_hdr* hdr)
-{	
-	return (void*)hdr->recs + hdr->num_rec_bytes;
+{
+	uintptr_t next = (uintptr_t)hdr->recs + hdr->num_rec_bytes;
+	return (struct syscallbuf_record*)next;
 }
 
 /**
@@ -210,5 +217,9 @@ inline static int is_blacklisted_filename(const char* filename)
 		|| !strcmp("/dev/nvidiactl", filename)
 		|| !strcmp("/usr/share/alsa/alsa.conf", filename));
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSCALL_BUFFER_H_ */

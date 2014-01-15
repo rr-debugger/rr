@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef REPLAYER_H_
 #define REPLAYER_H_
@@ -22,11 +22,13 @@ void emergency_debug(struct task* t);
 /**
  * The state of a (dis)arm-desched-event ioctl that's being processed.
  */
+enum RepDeschedType { DESCHED_ARM, DESCHED_DISARM };
+enum RepDeschedState { DESCHED_ENTER, DESCHED_EXIT };
 struct rep_desched_state {
 	/* Is this an arm or disarm request? */
-	enum { DESCHED_ARM, DESCHED_DISARM } type;
+	RepDeschedType type;
 	/* What's our next step to retire the ioctl? */
-	enum { DESCHED_ENTER, DESCHED_EXIT } state;
+	RepDeschedState state;
 };
 
 /**
@@ -37,6 +39,8 @@ struct rep_desched_state {
  * interruption.  So the process of flushing the syscallbuf will
  * mutate this state in between attempts to retire the step.
  */
+enum RepFlushState { FLUSH_START, FLUSH_ARM, FLUSH_ENTER, FLUSH_EXIT,
+		     FLUSH_DISARM, FLUSH_DONE };
 struct rep_flush_state {
 	/* Nonzero when we need to write the syscallbuf data back to
 	 * the child. */
@@ -47,8 +51,7 @@ struct rep_flush_state {
 	/* The record we're currently replaying. */
 	const struct syscallbuf_record* rec;
 	/* The next step to take. */
-	enum { FLUSH_START, FLUSH_ARM, FLUSH_ENTER, FLUSH_EXIT, FLUSH_DISARM,
-	       FLUSH_DONE } state;
+	RepFlushState state;
 	/* Track the state of retiring desched arm/disarm ioctls, when
 	 * necessary. */
 	struct rep_desched_state desched;
@@ -58,34 +61,35 @@ struct rep_flush_state {
  * Describes the next step to be taken in order to replay a trace
  * frame.
  */
+enum RepTraceStepType {
+	TSTEP_UNKNOWN,
+
+	/* Frame has been replayed, done. */
+	TSTEP_RETIRE,
+
+	/* Enter/exit a syscall.  |syscall| describe what should be
+	 * done at entry/exit. */
+	TSTEP_ENTER_SYSCALL,
+	TSTEP_EXIT_SYSCALL,
+
+	/* Advance to the deterministic signal |signo|. */
+	TSTEP_DETERMINISTIC_SIGNAL,
+
+	/* Advance until |target.rcb| have been retired and then
+	 * |target.ip| is reached.  Deliver |target.signo| after that
+	 * if it's nonzero. */
+	TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,
+
+	/* Replay the upcoming buffered syscalls.  |flush| tracks the
+	 * replay state.*/
+	TSTEP_FLUSH_SYSCALLBUF,
+
+	/* Emulate arming or disarming the desched event.  |desched|
+	 * tracks the replay state. */
+	TSTEP_DESCHED,
+};
 struct rep_trace_step {
-	enum {
-		TSTEP_UNKNOWN,
-
-		/* Frame has been replayed, done. */
-		TSTEP_RETIRE,
-
-		/* Enter/exit a syscall.  |syscall| describe what
-		 * should be done at entry/exit. */
-		TSTEP_ENTER_SYSCALL,
-		TSTEP_EXIT_SYSCALL,
-
-		/* Advance to the deterministic signal |signo|. */
-		TSTEP_DETERMINISTIC_SIGNAL,
-
-		/* Advance until |target.rcb| have been retired and
-		 * then |target.ip| is reached.  Deliver
-		 * |target.signo| after that if it's nonzero. */
-		TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,
-
-		/* Replay the upcoming buffered syscalls.  |flush|
-		 * tracks the replay state.*/
-		TSTEP_FLUSH_SYSCALLBUF,
-
-		/* Emulate arming or disarming the desched event.
-		 * |desched| tracks the replay state. */
-		TSTEP_DESCHED,
-	} action;
+	RepTraceStepType action;
 
 	union {
 		struct {
@@ -97,7 +101,7 @@ struct rep_trace_step {
 			int emu;
 			/* The number of outparam arguments that are
 			 * set from what was recorded. */
-			size_t num_emu_args;
+			ssize_t num_emu_args;
 			/* Nonzero if the return from the syscall
 			 * should be emulated.  |emu| implies this. */
 			int emu_ret;

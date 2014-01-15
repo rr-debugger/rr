@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef __IPC_H__
 #define __IPC_H__
@@ -12,50 +12,45 @@
 
 struct task;
 
-void read_child_registers(int child_id, struct user_regs_struct* regs);
-long read_child_code(pid_t pid, void* addr);
-long read_child_data_word(pid_t pid, void* addr);
-void* read_child_data(struct task *t, size_t size, void* addr);
+void read_child_registers(struct task* t, struct user_regs_struct* regs);
+long read_child_code(pid_t pid, byte* addr);
+long read_child_data_word(struct task* t, byte* addr);
+void* read_child_data(struct task *t, size_t size, byte* addr);
 void read_child_usr(struct task *t, void *dest, void *src, size_t size);
-void* read_child_data_checked(struct task *t, size_t size, void* addr, ssize_t *read_bytes);
-ssize_t checked_pread(struct task *t, void *buf, size_t size, off_t offset);
-void memcpy_child(struct task *t, void *dest, void *src, int size);
+void* read_child_data_checked(struct task *t, size_t size, byte* addr, ssize_t *read_bytes);
+ssize_t checked_pread(struct task* t, byte* buf, size_t size, off_t offset);
+void memcpy_child(struct task* t, void* dest, void* src, int size);
 
-void write_child_code(pid_t pid, void* addr, long code);
-void write_child_data_word(pid_t pid, void *addr, uintptr_t data);
-void write_child_registers(pid_t tid, struct user_regs_struct* regs);
-void write_child_main_registers(pid_t tid, struct user_regs_struct *regs);
-void write_child_segment_registers(pid_t tid, struct user_regs_struct *regs);
-void write_child_data_n(pid_t tid, size_t size, void* addr,
-			const void* data);
-void write_child_data(struct task *t, size_t size, void *addr,
-		      const void *data);
-size_t set_child_data(struct task *t);
+void write_child_code(struct task* t, void* addr, long code);
+void write_child_registers(struct task* t, struct user_regs_struct* regs);
+void write_child_data_n(struct task* t, ssize_t size, byte* addr,
+			const byte* data);
+void write_child_data(struct task* t, ssize_t size, byte* addr,
+		      const byte* data);
+size_t set_child_data(struct task* t);
 
-
-/* access functions to child registers */
-long int read_child_eax(pid_t child_id);
-long int read_child_ebx(pid_t child_id);
-long int read_child_ecx(pid_t child_id);
-long int read_child_edx(pid_t child_id);
-long int read_child_esi(pid_t child_id);
-long int read_child_edi(pid_t child_id);
-long int read_child_ebp(pid_t child_id);
-long int read_child_esp(pid_t child_id);
-long int read_child_eip(pid_t child_id);
-long int read_child_orig_eax(pid_t child_id);
+// XXX rewrite me
+long int read_child_eax(struct task* t);
+long int read_child_ebx(struct task* t);
+long int read_child_ecx(struct task* t);
+long int read_child_edx(struct task* t);
+long int read_child_esi(struct task* t);
+long int read_child_edi(struct task* t);
+long int read_child_ebp(struct task* t);
+long int read_child_esp(struct task* t);
+long int read_child_eip(struct task* t);
+long int read_child_orig_eax(struct task* t);
 
 
-void write_child_eax(int tid, long int val);
-void write_child_ebx(int tid, long int val);
-void write_child_ecx(int tid, long int val);
-void write_child_edx(int tid, long int val);
-void write_child_edi(int tid, long int val);
-void write_child_ebp(int tid, long int val);
+void write_child_eax(struct task* t, long int val);
+void write_child_ebx(struct task* t, long int val);
+void write_child_ecx(struct task* t, long int val);
+void write_child_edx(struct task* t, long int val);
+void write_child_edi(struct task* t, long int val);
+void write_child_ebp(struct task* t, long int val);
 void set_return_value(struct task* context);
 
 
-char* read_child_str(pid_t pid, void* addr);
-void* read_child_data_tid(pid_t tid, size_t size, void* addr);
+char* read_child_str(struct task* t, byte* addr);
 
 #endif /* __IPC_H__ */

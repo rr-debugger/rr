@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #ifndef TYPES_H_
 #define TYPES_H_
@@ -20,8 +20,6 @@
 
 #define UUL_COLUMN_SIZE 	20
 #define LI_COLUMN_SIZE 		11
-
-typedef enum { FALSE = 0, TRUE = 1 } bool;
 
 typedef unsigned char byte;
 
@@ -55,28 +53,28 @@ struct flags {
 	int option;
 	bool redirect;
 	bool use_syscall_buffer;
-	char *syscall_buffer_lib_path;
+	const char* syscall_buffer_lib_path;
 	int dump_on;	// event
 	int dump_at;	// global time
 	int checksum;
-	/* Nonzero when we're replaying without a controlling debugger. */
-	int autopilot;
+	/* True when we're replaying without a controlling debugger. */
+	bool autopilot;
 	/* IP port to listen on for debug connections. */
 	int dbgport;
 	/* Number of seconds to wait after startup, before starting
 	 * "real work". */
 	int wait_secs;
-	/* Nonzero when not-absolutely-urgently-critical messages will
-	 * be logged. */
-	int verbose;
-	/* Nonzero when tracee processes in record and replay are
-	 * allowed to run on any logical CPU. */
-	int cpu_unbound;
+	/* True when not-absolutely-urgently-critical messages will be
+	 * logged. */
+	bool verbose;
+	/* True when tracee processes in record and replay are allowed
+	 * to run on any logical CPU. */
+	bool cpu_unbound;
 	/* Always allow emergency debugging. */
-	int force_enable_debugger;
+	bool force_enable_debugger;
 	/* Mark the trace global time along with tracee writes to
 	 * stdio. */
-	int mark_stdio;
+	bool mark_stdio;
 };
 
 struct msghdr;

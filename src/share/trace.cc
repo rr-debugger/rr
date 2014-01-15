@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Trace"
 
@@ -19,13 +19,16 @@
 #include "hpc.h"
 #include "ipc.h"
 #include "sys.h"
-#include "syscall_buffer.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
 
+#include "../preload/syscall_buffer.h"
+
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
+
+using namespace std;
 
 static char trace_path_[PATH_MAX];
 
@@ -456,7 +459,7 @@ static void encode_trace_frame(struct task* t, const struct event* ev,
 		frame->page_faults = read_page_faults(t->hpc);
 		frame->rbc = read_rbc(t->hpc);
 		frame->insts = read_insts(t->hpc);
-		read_child_registers(t->tid, &frame->recorded_regs);
+		read_child_registers(t, &frame->recorded_regs);
 	}
 }
 
@@ -465,8 +468,8 @@ static void encode_trace_frame(struct task* t, const struct event* ev,
  */
 static void write_trace_frame(const struct trace_frame* frame)
 {
-	void* begin_data = &frame->begin_event_info;
-	size_t nbytes = sizeof_trace_frame_event_info();
+	void* begin_data = (void*)&frame->begin_event_info;
+	ssize_t nbytes = sizeof_trace_frame_event_info();
 	ssize_t nwritten;
 
 	ensure_current_trace_file();
@@ -522,32 +525,6 @@ static void print_header(int syscallno, void* addr)
 	fprintf(syscall_header, "%11u", (uintptr_t)addr);
 }
 
-/**
- * Writes data into the raw_data file and generates a corresponding entry in
- * syscall_input.
- */
-void record_child_data_tid(pid_t tid, int syscall, size_t len, void* child_ptr)
-{
-	assert(len >= 0);
-	print_header(syscall, child_ptr);
-	fprintf(syscall_header, "%11d\n", len);
-	//debug("Asking to write %d bytes from %p", len, child_ptr);
-	if (child_ptr != 0) {
-		void* buf = read_child_data_tid(tid, len, child_ptr);
-		/* ensure that everything is written */
-		int bytes_written = fwrite(buf, 1, len, raw_data);
-		(void)bytes_written;
-		assert(bytes_written == len);
-		overall_raw_bytes += len;
-		sys_free((void**) &buf);
-	}
-	//debug("Overall bytes = %d", overall_bytes);
-
-	// new raw data file
-	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
-		use_new_rawdata_file();
-}
-
 static void write_raw_data(struct task *t, void *buf, size_t to_write)
 {
 	size_t bytes_written;
@@ -569,7 +546,7 @@ static void write_raw_data(struct task *t, void *buf, size_t to_write)
 
 #define SMALL_READ_SIZE	4096
 
-void record_child_data(struct task *t, size_t size, void* child_ptr)
+void record_child_data(struct task *t, size_t size, byte* child_ptr)
 {
 	int state;
 	int event = encode_event(t->ev, &state);
@@ -595,11 +572,11 @@ void record_child_data(struct task *t, size_t size, void* child_ptr)
 	}
 
 	buf = read_child_data_checked(t, size, child_ptr, &read_bytes);
-	assert_exec(t, read_bytes == size, "Failed to read %d bytes at %p",
-		    size, child_ptr);
+	assert_exec(t, read_bytes == ssize_t(size),
+		    "Failed to read %d bytes at %p", size, child_ptr);
 
 	write_raw_data(t, buf, read_bytes);
-	sys_free((void**)&buf);
+	free(buf);
 
 record_read:
 	print_header(event, child_ptr);
@@ -623,7 +600,7 @@ void record_parent_data(struct task *t, size_t len, void *addr, void *buf)
 
 void record_mmapped_file_stats(struct mmapped_file *file)
 {
-	/* XXX this could be faster ... */
+	// XXX rewrite me
 	fprintf(mmaps_file, "%11d", file->time);
 	fprintf(mmaps_file, "%11d", file->tid);
 	fprintf(mmaps_file, "%11d", file->copied);
@@ -645,23 +622,22 @@ void record_mmapped_file_stats(struct mmapped_file *file)
 	fprintf(mmaps_file, "%s\n", file->filename);
 }
 
-void record_child_str(struct task* t, void* child_ptr)
+void record_child_str(struct task* t, byte* child_ptr)
 {
-	pid_t tid = t->tid;
 	int state;
 	int event = encode_event(t->ev, &state);
 	(void)state;
 
 	print_header(event, child_ptr);
-	char* buf = read_child_str(tid, child_ptr);
+	char* buf = read_child_str(t, child_ptr);
 	size_t len = strlen(buf) + 1;
 	fprintf(syscall_header, "%11d\n", len);
-	int bytes_written = fwrite(buf, 1, len, raw_data);
+	size_t bytes_written = fwrite(buf, 1, len, raw_data);
 	(void)bytes_written;
 	overall_raw_bytes += len;
 
 	assert(bytes_written == len);
-	sys_free((void**) &buf);
+	free(buf);
 
 	// new raw data file
 	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
@@ -683,65 +659,62 @@ void rep_init_trace_files(void)
 	read_line(mmaps_file, line, 1024, "stats");
 }
 
-void init_environment(char* trace_path, int* argc, char** argv, char** envp)
+void load_recorded_env(const char* trace_path,
+		       int* argc, string* exe_image,
+		       CharpVector* argv, CharpVector* envp)
 {
-	char tmp[128], path[256];
-	int i;
+	string arg_env_path = trace_path;
+	arg_env_path += "/arg_env";
 
-	strcpy(path, trace_path);
-	strcpy(tmp, "/arg_env");
-	strcat(path, tmp);
-
-	FILE* arg_env = (FILE*) sys_fopen(path, "r");
-	char* buf = (char*) sys_malloc(8192);
+	FILE* arg_env = sys_fopen(arg_env_path.c_str(), "r");
+	char buf[8192];
 
 	/* the first line contains argc */
-	read_line(arg_env, buf, 8192, "arg_env");
-	int tmp_argc = str2li(buf, LI_COLUMN_SIZE);
-
-	*argc = tmp_argc;
+	read_line(arg_env, buf, sizeof(buf), "arg_env");
+	*argc = str2li(buf, LI_COLUMN_SIZE);
 
 	/* followed by argv */
-	for (i = 0; i < tmp_argc; i++) {
-		read_line(arg_env, buf, 8192, "arg_env");
+	for (int i = 0; i < *argc; ++i) {
+		read_line(arg_env, buf, sizeof(buf), "arg_env");
 		int len = strlen(buf);
+		assert(len < 8192);
 		/* overwrite the newline */
 		buf[len - 1] = '\0';
-		assert(len < 8192);
-		strncpy(argv[i], buf, len + 1);
+		argv->push_back(strdup(buf));
 	}
 
 	/* do not forget write NULL to the last element */
-	argv[i] = NULL;
+	argv->push_back(NULL);
+	*exe_image = argv->at(0);
 
 	/* now, read the number of environment entries */
-	read_line(arg_env, buf, 8192, "arg_env");
+	read_line(arg_env, buf, sizeof(buf), "arg_env");
 	int envc = str2li(buf, LI_COLUMN_SIZE);
 
 	/* followed by argv */
-	for (i = 0; i < envc; i++) {
-		read_line(arg_env, buf, 8192, "arg_env");
+	for (int i = 0; i < envc; i++) {
+		read_line(arg_env, buf, sizeof(buf), "arg_env");
 		int len = strlen(buf);
 		assert(len < 8192);
 		/* overwrite the newline */
 		buf[len - 1] = '\0';
-		strncpy(envp[i], buf, len + 1);
+		envp->push_back(strdup(buf));
 	}
 
 	/* do not forget write NULL to the last element */
-	envp[i] = NULL;
+	envp->push_back(NULL);
 
 	/* clean up */
 	sys_fclose(arg_env);
-	sys_free((void**) &buf);
 }
 
-static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
+static size_t parse_raw_data_hdr(struct trace_frame* trace, byte** addr)
 {
 	/* XXX rewrite me */
-	char* line = sys_malloc(1024);
+	char line[1024];
 	char* tmp_ptr;
-	int time, syscall, size;
+	uint32_t time;
+	int syscall, size;
 
 	read_line(syscall_header, line, 1024, "syscall_input");
 	tmp_ptr = line;
@@ -750,7 +723,7 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 	tmp_ptr += LI_COLUMN_SIZE;
 	syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	*addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
+	*addr = (byte*)str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	size = str2li(tmp_ptr, LI_COLUMN_SIZE);
 
@@ -761,7 +734,6 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 		      trace->global_time, strevent(trace->stop_reason),
 		      time, strevent(syscall));
 	}
-	sys_free((void**) &line);
 	return size;
 }
 
@@ -787,7 +759,7 @@ static void read_rawdata(void* buf, size_t num_bytes)
 	overall_raw_bytes += bytes_read;
 }
 
-void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr)
+void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr)
 {
 	size_t size = parse_raw_data_hdr(trace, addr);
 	void* data = NULL;
@@ -797,13 +769,13 @@ void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr)
 		return NULL;
 	}
 
-	data = sys_malloc(size);
+	data = malloc(size);
 	read_rawdata(data, size);
 	return data;
 }
 
 ssize_t read_raw_data_direct(struct trace_frame* trace,
-			     void* buf, size_t buf_size, void** rec_addr)
+			     void* buf, size_t buf_size, byte** rec_addr)
 {
 	size_t data_size = parse_raw_data_hdr(trace, rec_addr);
 
@@ -837,47 +809,48 @@ void read_next_mmapped_file_stats(struct mmapped_file * file) {
 	/* XXX this could be considerably faster, simpler, and
 	 * memory-safer ... */
 	char line0[1024], *line = line0;
-	if (fgets(line, 1024, mmaps_file) != NULL) {
-		file->time = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->tid = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->copied = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->start = str2x(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->end= str2x(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_blksize = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_blocks = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_ctim.tv_sec = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_ctim.tv_nsec = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_dev = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_gid = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_ino = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_mode = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_mtim.tv_sec = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_mtim.tv_nsec = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_rdev = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_size = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		file->stat.st_uid = str2li(line,LI_COLUMN_SIZE);
-		line += LI_COLUMN_SIZE;
-		strcpy(file->filename,line);
-		// get rid of the \n
-		file->filename[strlen(file->filename) - 1] = '\0';
-	}
+	line = fgets(line, 1024, mmaps_file);
+	assert(line);
+
+	file->time = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->tid = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->copied = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->start = str2x(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->end = str2x(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_blksize = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_blocks = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_ctim.tv_sec = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_ctim.tv_nsec = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_dev = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_gid = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_ino = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_mode = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_mtim.tv_sec = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_mtim.tv_nsec = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_rdev = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_size = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	file->stat.st_uid = str2li(line,LI_COLUMN_SIZE);
+	line += LI_COLUMN_SIZE;
+	strcpy(file->filename,line);
+	// get rid of the \n
+	file->filename[strlen(file->filename) - 1] = '\0';
 }
 
 void peek_next_mmapped_file_stats(struct mmapped_file* file)
