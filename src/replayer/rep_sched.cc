@@ -8,8 +8,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <map>
-
 #include "replayer.h"
 
 #include "../share/dbg.h"
@@ -20,28 +18,6 @@
 #include "../share/util.h"
 
 #define MAX_TID_NUM 100000
-
-using namespace std;
-
-typedef map<pid_t, Task*> TaskMap;
-static TaskMap tasks;
-
-static void add_task(Task* t)
-{
-	tasks[t->rec_tid] = t;
-}
-
-static Task* find_task(pid_t tid)
-{
-	TaskMap::const_iterator it = tasks.find(tid);
-	return tasks.end() != it ? it->second : NULL;
-}
-
-static void remove_task(Task* t)
-{
-	assert(find_task(t->rec_tid));
-	tasks.erase(t->rec_tid);
-}
 
 Task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 {
@@ -57,7 +33,6 @@ Task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 
 	/* initializer replay counters */
 	init_hpc(t);
-	add_task(t);
 	return t;
 }
 
@@ -67,7 +42,7 @@ Task* rep_sched_get_thread()
 	struct trace_frame trace;
 	read_next_trace(&trace);
 	/* find and update task */
-	Task *t = find_task(trace.tid);
+	Task *t = Task::find(trace.tid);
 	assert(t != NULL);
 
 	/* copy the current trace */
@@ -102,22 +77,22 @@ Task* rep_sched_get_thread()
 Task* rep_sched_lookup_thread(pid_t rec_tid)
 {
 	assert(0 < rec_tid && rec_tid < MAX_TID_NUM);
-	return find_task(rec_tid);
+	return Task::find(rec_tid);
 }
 
 void rep_sched_enumerate_tasks(pid_t** tids, size_t* len)
 {
 	pid_t* ts;
 
-	*len = tasks.size();
+	*len = Task::count();
 	ts = *tids = (pid_t*)malloc(*len * sizeof(pid_t));
 	int i = 0;
-	for (TaskMap::const_iterator it = tasks.begin(); it != tasks.end();
+	for (Task::Map::const_iterator it = Task::begin(); it != Task::end();
 	     ++it) {
 		Task* t = it->second;
 		ts[i++] = t->rec_tid;
 	}
-	assert(size_t(i) == tasks.size());
+	assert(i == Task::count());
 }
 
 void rep_sched_deregister_thread(Task** t_ptr)
@@ -128,15 +103,8 @@ void rep_sched_deregister_thread(Task** t_ptr)
 
 	sys_close(t->child_mem_fd);
 
-	remove_task(t);
-
 	detach_and_reap(t);
 
 	delete t;
 	*t_ptr = NULL;
-}
-
-int rep_sched_get_num_threads()
-{
-	return tasks.size();
 }

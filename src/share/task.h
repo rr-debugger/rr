@@ -9,6 +9,8 @@
 #include <sys/queue.h>
 #include <sys/user.h>
 
+#include <map>
+
 #include "fixedstack.h"
 #include "trace.h"
 
@@ -240,7 +242,25 @@ struct event {
  */
 class Task {
 public:
+	typedef std::map<pid_t, Task*> Map;
+
 	Task(pid_t tid, pid_t rec_tid = -1);
+	~Task();
+
+	/** Return an iterator at the beginning of the task map. */
+	static Task::Map::const_iterator begin();
+
+	/** Return the number of extant tasks. */
+	static ssize_t count();
+
+	/** Return an iterator at the end of the task map. */
+	static Task::Map::const_iterator end();
+
+	/**
+	 * Return the task created with |rec_tid|, or NULL if no such
+	 * task exists.  O(log n).
+	 */
+	static Task* find(pid_t rec_tid);
 
 	/* State only used during recording. */
 

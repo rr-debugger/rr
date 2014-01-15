@@ -57,6 +57,8 @@ struct sighandlers {
 	} handlers[_NSIG];
 };
 
+static Task::Map tasks;
+
 /**
  * Initializes the first reference to the struct.
  * |refcounted_unref()| must be called to release that reference.
@@ -136,6 +138,41 @@ Task::Task(pid_t _tid, pid_t _rec_tid)
 
 	tid = _tid;
 	rec_tid = _rec_tid > 0 ? _rec_tid : tid;
+
+	tasks[rec_tid] = this;
+}
+
+Task::~Task()
+{
+	assert(this == Task::find(rec_tid));
+	tasks.erase(rec_tid);
+}
+
+/*static*/
+Task::Map::const_iterator
+Task::begin()
+{
+	return tasks.begin();
+}
+
+/*static*/ ssize_t
+Task::count()
+{
+	return tasks.size();
+}
+
+/*static*/
+Task::Map::const_iterator
+Task::end()
+{
+	return tasks.end();
+}
+
+/*static*/Task*
+Task::find(pid_t rec_tid)
+{
+	Task::Map::const_iterator it = tasks.find(rec_tid);
+	return tasks.end() != it ? it->second : NULL;
 }
 
 int task_may_be_blocked(Task* t)
