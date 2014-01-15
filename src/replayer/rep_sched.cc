@@ -17,12 +17,8 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 
-#define MAX_TID_NUM 100000
-
 Task* rep_sched_register_thread(pid_t my_tid, pid_t rec_tid)
 {
-	assert(my_tid < MAX_TID_NUM);
-
 	/* allocate data structure and initialize hashmap */
 	Task* t = new Task(my_tid, rec_tid);
 
@@ -72,12 +68,6 @@ Task* rep_sched_get_thread()
 	}
 	assert(get_global_time() == t->trace.global_time);
 	return t;
-}
-
-Task* rep_sched_lookup_thread(pid_t rec_tid)
-{
-	assert(0 < rec_tid && rec_tid < MAX_TID_NUM);
-	return Task::find(rec_tid);
 }
 
 void rep_sched_enumerate_tasks(pid_t** tids, size_t* len)

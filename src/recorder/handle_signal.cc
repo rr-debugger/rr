@@ -277,7 +277,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si,
 	 * the tracee was in, and how much "scratch" space it carved
 	 * off the syscallbuf, if needed. */
 	push_desched(t, next_record(t->syscallbuf_hdr));
-	call = task_desched_rec(t)->syscallno;
+	call = t->desched_rec()->syscallno;
 	/* Replay needs to be prepared to see the ioctl() that arms
 	 * the desched counter when it's trying to step to the entry
 	 * of |call|.  We'll record the syscall entry when the main
@@ -524,7 +524,7 @@ static int go_to_a_happy_place(Task* t,
 			goto happy_place;
 		}
 		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
-		    && task_desched_rec(t)) {
+		    && t->desched_rec()) {
 			debug("  tracee interrupted by desched");
 			goto happy_place;
 		}

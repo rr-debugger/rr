@@ -357,8 +357,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			break;
 		}
 
-		target = (req.target > 0) ?
-			 rep_sched_lookup_thread(req.target) : t;
+		target = (req.target > 0) ? Task::find(req.target) : t;
 		/* These requests query or manipulate which task is
 		 * the target, so it's OK if the task doesn't
 		 * exist. */

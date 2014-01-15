@@ -159,7 +159,7 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_EXIT:
 		if (EV_SYSCALL == t->ev->type
 		    && SYS_exit_group == t->ev->syscall.no
-		    && rec_sched_get_num_threads() > 1) {
+		    && Task::count() > 1) {
 			log_warn("exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race");
 			task_group_destabilize(t->task_group);
 		}
@@ -232,7 +232,7 @@ static void resume_execution(Task* t, int force_cont)
 {
 	int ptrace_event;
 
-	assert(!task_may_be_blocked(t));
+	assert(!t->may_be_blocked());
 
 	debug_exec_state("EXEC_START", t);
 
@@ -721,7 +721,7 @@ void record()
 {
 	Task *t = NULL;
 
-	while (rec_sched_get_num_threads() > 0) {
+	while (Task::count() > 0) {
 		int by_waitpid;
 		int ptrace_event;
 
@@ -730,7 +730,7 @@ void record()
 		debug("line %d: Active task is %d", get_global_time(), t->tid);
 
 		ptrace_event = GET_PTRACE_EVENT(t->status);
-		assert_exec(t, (!by_waitpid || task_may_be_blocked(t) ||
+		assert_exec(t, (!by_waitpid || t->may_be_blocked() ||
 				ptrace_event),
 			    "%d unexpectedly runnable (0x%x) by waitpid",
 			    t->tid, t->status);

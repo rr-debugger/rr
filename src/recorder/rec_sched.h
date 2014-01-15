@@ -14,7 +14,6 @@
 class Task;
 struct flags;
 
-int rec_sched_get_num_threads(void);
 /**
  * Given |flags| and the previously-scheduled task |t|, return a new
  * runnable task (which may be |t|).
@@ -24,11 +23,6 @@ int rec_sched_get_num_threads(void);
  * which case, *by_waitpid will be nonzero.)
  */
 Task* rec_sched_get_active_thread(Task* t, int* by_waitpid);
-
-/**
- * Return the task registered as |tid|, or NULL if not found.
- */
-Task* rec_sched_lookup_thread(pid_t tid);
 
 /**
  * Register the new OS task |child|, created by |parent|.  |parent|

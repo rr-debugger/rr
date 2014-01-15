@@ -148,6 +148,33 @@ Task::~Task()
 	tasks.erase(rec_tid);
 }
 
+const struct syscallbuf_record*
+Task::desched_rec() const
+{
+	return (is_syscall_event(ev->type) ? ev->syscall.desched_rec :
+		(EV_DESCHED == ev->type) ? ev->desched.rec : NULL);
+}
+
+bool
+Task::may_be_blocked() const
+{
+	return (ev && ((EV_SYSCALL == ev->type
+			&& PROCESSING_SYSCALL == ev->syscall.state)
+		       || (EV_SIGNAL_DELIVERY == ev->type
+			   && ev->signal.delivered)));
+}
+
+Task*
+Task::next_roundrobin() const
+{
+	// XXX if this ever shows up on profiles, we can make Task
+	// into an invasive doubly-linked list.
+	Map::const_iterator it = tasks.find(rec_tid);
+	assert(this == it->second);
+	it = ++it == tasks.end() ? tasks.begin() : it;
+	return it->second;
+}
+
 /*static*/
 Task::Map::const_iterator
 Task::begin()
@@ -173,21 +200,6 @@ Task::find(pid_t rec_tid)
 {
 	Task::Map::const_iterator it = tasks.find(rec_tid);
 	return tasks.end() != it ? it->second : NULL;
-}
-
-int task_may_be_blocked(Task* t)
-{
-	return (t->ev
-		&& ((EV_SYSCALL == t->ev->type
-		     && PROCESSING_SYSCALL == t->ev->syscall.state)
-		    || (EV_SIGNAL_DELIVERY == t->ev->type
-			&& t->ev->signal.delivered)));
-}
-
-const struct syscallbuf_record* task_desched_rec(const Task* t)
-{
-	return (is_syscall_event(t->ev->type) ? t->ev->syscall.desched_rec :
-		(EV_DESCHED == t->ev->type) ? t->ev->desched.rec : NULL);
 }
 
 /**
@@ -227,7 +239,7 @@ void push_placeholder_event(Task* t)
 
 void push_desched(Task* t, const struct syscallbuf_record* rec)
 {
-	assert_exec(t, !task_desched_rec(t), "Must have zero or one desched");
+	assert_exec(t, !t->desched_rec(), "Must have zero or one desched");
 
 	push_new_event(t, EV_DESCHED);
 	t->ev->desched.state = IN_SYSCALL;
@@ -236,7 +248,7 @@ void push_desched(Task* t, const struct syscallbuf_record* rec)
 
 void pop_desched(Task* t)
 {
-	assert_exec(t, task_desched_rec(t), "Must have desched_rec to pop");
+	assert_exec(t, t->desched_rec(), "Must have desched_rec to pop");
 
 	pop_event(t, EV_DESCHED);
 }
@@ -284,7 +296,7 @@ void pop_syscall(Task* t)
 void push_syscall_interruption(Task* t, int no,
 			       const struct user_regs_struct* args)
 {
-	const struct syscallbuf_record* rec = task_desched_rec(t);
+	const struct syscallbuf_record* rec = t->desched_rec();
 
 	assert_exec(t, rec || REPLAY == rr_flags()->option,
 		    "Must be interrupting desched during recording");

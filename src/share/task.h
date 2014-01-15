@@ -247,6 +247,32 @@ public:
 	Task(pid_t tid, pid_t rec_tid = -1);
 	~Task();
 
+	/**
+	 * Shortcut to the single |pending_event->desched.rec| when
+	 * there's one desched event on the stack, and NULL otherwise.
+	 * Exists just so that clients don't need to dig around in the
+	 * event stack to find this record.
+	 */
+	const struct syscallbuf_record* desched_rec() const;
+
+	/**
+	 * Return nonzero if |t| may not be immediately runnable,
+	 * i.e., resuming execution and then |waitpid()|'ing may block
+	 * for an unbounded amount of time.  When the task is in this
+	 * state, the tracer must await a |waitpid()| notification
+	 * that the task is no longer possibly-blocked before resuming
+	 * its execution.
+	 */
+	bool may_be_blocked() const;
+
+	/**
+	 * Return the "next" task after this, in round-robin order by
+	 * recorded pid.  The order of tasks returned by a sequence of
+	 * |next_rounrobin()| calls is suitable for round-robin
+	 * scheduling, in the steady state.
+	 */
+	Task* next_roundrobin() const;
+
 	/** Return an iterator at the beginning of the task map. */
 	static Task::Map::const_iterator begin();
 
@@ -258,7 +284,7 @@ public:
 
 	/**
 	 * Return the task created with |rec_tid|, or NULL if no such
-	 * task exists.  O(log n).
+	 * task exists.
 	 */
 	static Task* find(pid_t rec_tid);
 
@@ -420,23 +446,6 @@ public:
 	/* Points at the tracee's mapping of the buffer. */
 	byte* syscallbuf_child;
 };
-
-/**
- * Return nonzero if |t| may not be immediately runnable, i.e.,
- * resuming execution and then |waitpid()|'ing may block for an
- * unbounded amount of time.  When the task is in this state, the
- * tracer must await a |waitpid()| notification that the task is no
- * longer possibly-blocked before resuming its execution.
- */
-int task_may_be_blocked(Task* t);
-
-/**
- * Shortcut to the single |pending_event->desched.rec| when there's
- * one desched event on the stack, and NULL otherwise.  Exists just so
- * that clients don't need to dig around in the event stack to find
- * this record.
- */
-const struct syscallbuf_record* task_desched_rec(const Task* t);
 
 /* (This function is an implementation detail that should go away in
  * favor of a |task_init()| pseudo-constructor that initializes state
