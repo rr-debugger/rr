@@ -39,7 +39,7 @@
  * the signal. */
 static int can_deliver_signals;
 
-static void status_changed(struct task* t)
+static void status_changed(Task* t)
 {
 	read_child_registers(t, &t->regs);
 	t->event = t->regs.orig_eax;
@@ -51,14 +51,14 @@ static void status_changed(struct task* t)
 	}
 }
 
-static void cont_nonblock(struct task *t)
+static void cont_nonblock(Task *t)
 {
 	sys_ptrace_syscall(t);
 }
 
-static void handle_ptrace_event(struct task** tp)
+static void handle_ptrace_event(Task** tp)
 {
-	struct task* t = *tp;
+	Task* t = *tp;
 
 	/* handle events */
 	int event = GET_PTRACE_EVENT(t->status);
@@ -186,7 +186,7 @@ static void handle_ptrace_event(struct task** tp)
 	      (_t)->status, GET_PTRACE_EVENT(_t->status), strevent(_t->event))
 
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
-static void task_continue(struct task* t, int force_cont, int sig)
+static void task_continue(Task* t, int force_cont, int sig)
 {
 	int may_restart = (EV_SYSCALL_INTERRUPTION == t->ev->type);
 
@@ -228,7 +228,7 @@ static void task_continue(struct task* t, int force_cont, int sig)
  * (Pass DEFAULT_CONT to the |force_syscall| parameter and ignore it;
  * it's an implementation detail.)
  */
-static void resume_execution(struct task* t, int force_cont)
+static void resume_execution(Task* t, int force_cont)
 {
 	int ptrace_event;
 
@@ -256,7 +256,7 @@ static void resume_execution(struct task* t, int force_cont)
  * changed.  (For now, changes except the original desched'd syscall
  * being restarted.)
  */
-static void desched_state_changed(struct task* t)
+static void desched_state_changed(Task* t)
 {
 	switch (t->ev->desched.state) {
 	case IN_SYSCALL:
@@ -344,7 +344,7 @@ static void desched_state_changed(struct task* t)
  * syscall interruption, whether or whether not a syscall was
  * restarted.
  */
-static int maybe_restart_syscall(struct task* t)
+static int maybe_restart_syscall(Task* t)
 {
 	if (SYS_restart_syscall == t->event) {
 		debug("  SYS_restart_syscall'ing %s",
@@ -360,7 +360,7 @@ static int maybe_restart_syscall(struct task* t)
 	return 0;
 }
 
-static void syscall_state_changed(struct task* t, int by_waitpid)
+static void syscall_state_changed(Task* t, int by_waitpid)
 {
 	switch (t->ev->syscall.state) {
 	case ENTERING_SYSCALL:
@@ -489,7 +489,7 @@ static void syscall_state_changed(struct task* t, int by_waitpid)
  * check to see if there's an interrupted syscall that /won't/ be
  * restarted, and if so, pop it off the pending event stack.
  */
-static void maybe_discard_syscall_interruption(struct task* t, int ret)
+static void maybe_discard_syscall_interruption(Task* t, int ret)
 {
 	int syscallno;
 
@@ -520,7 +520,7 @@ static void maybe_discard_syscall_interruption(struct task* t, int ret)
  * overridden with a delay request, then record the reset event for
  * replay.
  */
-static void maybe_reset_syscallbuf(struct task* t)
+static void maybe_reset_syscallbuf(Task* t)
 {
 	if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
 		push_pseudosig(t, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
@@ -533,7 +533,7 @@ static void maybe_reset_syscallbuf(struct task* t)
 	t->flushed_syscallbuf = 0;
 }
 
-static void runnable_state_changed(struct task* t)
+static void runnable_state_changed(Task* t)
 {
 	/* Have to disable context-switching until we know it's safe
 	 * to allow switching the context. */
@@ -685,7 +685,7 @@ static int possibly_destabilizing_signal(int sig)
  * the status of *other* threads to become temporarily invalid.  In
  * this case, this function returns nonzero.
  */
-static int signal_state_changed(struct task* t, int by_waitpid)
+static int signal_state_changed(Task* t, int by_waitpid)
 {
 	int ptrace_event;
 
@@ -719,7 +719,7 @@ static int signal_state_changed(struct task* t, int by_waitpid)
 
 void record()
 {
-	struct task *t = NULL;
+	Task *t = NULL;
 
 	while (rec_sched_get_num_threads() > 0) {
 		int by_waitpid;

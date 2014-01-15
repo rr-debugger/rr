@@ -11,7 +11,7 @@
 /* TODO: should check kernel.pid_max at runtime.  */
 #define MAX_TID	(1 << 16)
 
-struct task;
+class Task;
 struct flags;
 
 int rec_sched_get_num_threads(void);
@@ -23,12 +23,12 @@ int rec_sched_get_num_threads(void);
  * runnable, or have been made runnable by a waitpid status change (in
  * which case, *by_waitpid will be nonzero.)
  */
-struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid);
+Task* rec_sched_get_active_thread(Task* t, int* by_waitpid);
 
 /**
  * Return the task registered as |tid|, or NULL if not found.
  */
-struct task* rec_sched_lookup_thread(pid_t tid);
+Task* rec_sched_lookup_thread(pid_t tid);
 
 /**
  * Register the new OS task |child|, created by |parent|.  |parent|
@@ -43,8 +43,8 @@ struct task* rec_sched_lookup_thread(pid_t tid);
  * task group.  Otherwise it becomes its own new thread group.
  */
 enum { DEFAULT_COPY = 0, SHARE_SIGHANDLERS = 0x1, SHARE_TASK_GROUP = 0x2 };
-struct task* rec_sched_register_thread(pid_t parent, pid_t child, int flags);
-void rec_sched_deregister_thread(struct task** t);
+Task* rec_sched_register_thread(pid_t parent, pid_t child, int flags);
+void rec_sched_deregister_thread(Task** t);
 void rec_sched_exit_all(void);
 
 #endif /* REC_SCHED_H_ */

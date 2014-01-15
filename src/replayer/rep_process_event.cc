@@ -87,7 +87,7 @@ extern bool validate;
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
  */
-static void validate_args(int syscall, int state, struct task* t)
+static void validate_args(int syscall, int state, Task* t)
 {
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
@@ -100,7 +100,7 @@ static void validate_args(int syscall, int state, struct task* t)
 /**
  * Proceeds until the next system call, which is not executed.
  */
-static void goto_next_syscall_emu(struct task *t)
+static void goto_next_syscall_emu(Task *t)
 {
 	sys_ptrace_sysemu(t);
 	sys_waitpid(t->tid, &(t->status));
@@ -148,7 +148,7 @@ static void goto_next_syscall_emu(struct task *t)
 /**
  *  Step over the system call to be able to reuse PTRACE_SYSTEM call
  */
-static void finish_syscall_emu(struct task *t)
+static void finish_syscall_emu(Task *t)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -162,7 +162,7 @@ static void finish_syscall_emu(struct task *t)
 /**
  * Proceeds until the next system call, which is being executed.
  */
-void __ptrace_cont(struct task *t)
+void __ptrace_cont(Task *t)
 {
 	sys_ptrace_syscall(t);
 	sys_waitpid(t->tid, &t->status);
@@ -187,7 +187,7 @@ void __ptrace_cont(struct task *t)
 		    syscallname(rec_syscall), syscallname(current_syscall));
 }
 
-void rep_maybe_replay_stdio_write(struct task* t)
+void rep_maybe_replay_stdio_write(Task* t)
 {
 	struct user_regs_struct regs;
 	int fd;
@@ -214,20 +214,20 @@ void rep_maybe_replay_stdio_write(struct task* t)
 	}
 }
 
-static void enter_syscall_emu(struct task* t, int syscall)
+static void enter_syscall_emu(Task* t, int syscall)
 {
 	goto_next_syscall_emu(t);
 	validate_args(syscall, STATE_SYSCALL_ENTRY, t);
 }
 
-static void exit_syscall_emu_ret(struct task* t, int syscall)
+static void exit_syscall_emu_ret(Task* t, int syscall)
 {
 	set_return_value(t);
 	validate_args(syscall, STATE_SYSCALL_EXIT, t);
 	finish_syscall_emu(t);
 }
 
-static void exit_syscall_emu(struct task* t,
+static void exit_syscall_emu(Task* t,
 			     int syscall, int num_emu_args)
 {
 	int i;
@@ -238,14 +238,14 @@ static void exit_syscall_emu(struct task* t,
 	exit_syscall_emu_ret(t, syscall);
 }
 
-static void enter_syscall_exec(struct task* t, int syscall)
+static void enter_syscall_exec(Task* t, int syscall)
 {
 	__ptrace_cont(t);
 	validate_args(syscall, STATE_SYSCALL_ENTRY, t);
 }
 
 enum { DONT_EMULATE_RETURN = 0, EMULATE_RETURN = 1 };
-static void exit_syscall_exec(struct task* t, int syscall,
+static void exit_syscall_exec(Task* t, int syscall,
 			      int num_emu_args, int emu_ret)
 {
 	int i;
@@ -260,7 +260,7 @@ static void exit_syscall_exec(struct task* t, int syscall,
 	validate_args(syscall, STATE_SYSCALL_EXIT, t);
 }
 
-static void init_scratch_memory(struct task* t)
+static void init_scratch_memory(Task* t)
 {
 	/* Initialize the scratchpad as the recorder did, but make it
 	 * PROT_NONE. The idea is just to reserve the address space so
@@ -305,7 +305,7 @@ static void init_scratch_memory(struct task* t)
  * saved scratch memory during replay.  So, this helper can be used
  * for that class of syscalls.
  */
-static void maybe_noop_restore_syscallbuf_scratch(struct task* t)
+static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 {
 	read_child_registers(t, &t->regs);
 	if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(t->regs.eip, t)) {
@@ -315,7 +315,7 @@ static void maybe_noop_restore_syscallbuf_scratch(struct task* t)
 	}
 }
 
-static void process_clone(struct task* t,
+static void process_clone(Task* t,
 			  struct trace_frame* trace, int state)
 {
 	int syscall = SYS_clone;
@@ -348,7 +348,7 @@ static void process_clone(struct task* t,
 
 		int rec_tid = trace->recorded_regs.eax;
 		pid_t new_tid = sys_ptrace_getmsg(t);
-		struct task* new_task;
+		Task* new_task;
 
 		/* wait until the new thread is ready */
 		int status;
@@ -393,7 +393,7 @@ static void process_clone(struct task* t,
 
 }
 
-static void process_ioctl(struct task* t, int state,
+static void process_ioctl(Task* t, int state,
 			  struct rep_trace_step* step)
 {
 	int request;
@@ -434,7 +434,7 @@ static void process_ioctl(struct task* t, int state,
 	}
 }
 
-void process_ipc(struct task* t, struct trace_frame* trace, int state)
+void process_ipc(Task* t, struct trace_frame* trace, int state)
 {
 	int call = trace->recorded_regs.ebx;
 
@@ -565,7 +565,7 @@ void process_ipc(struct task* t, struct trace_frame* trace, int state)
 	}
 }
 
-static void* finish_anonymous_mmap(struct task* t,
+static void* finish_anonymous_mmap(Task* t,
 				   struct current_state_buffer* state,
 				   struct trace_frame* trace,
 				   int prot, int flags)
@@ -587,7 +587,7 @@ static void* finish_anonymous_mmap(struct task* t,
 				      fd, offset);
 }
 
-static void* finish_copied_mmap(struct task* t,
+static void* finish_copied_mmap(Task* t,
 				struct current_state_buffer* state,
 				struct trace_frame* trace,
 				int prot, int flags,
@@ -607,7 +607,7 @@ static void* finish_copied_mmap(struct task* t,
 	return mapped_addr;
 }
 
-static void* finish_direct_mmap(struct task* t,
+static void* finish_direct_mmap(Task* t,
 				struct current_state_buffer* state,
 				struct trace_frame* trace,
 				int prot, int flags,
@@ -678,7 +678,7 @@ static void* finish_direct_mmap(struct task* t,
 	return mapped_addr;
 }
 
-static void process_mmap2(struct task* t,
+static void process_mmap2(Task* t,
 			  struct trace_frame* trace, int exec_state,
 			  struct rep_trace_step* step)
 {
@@ -738,7 +738,7 @@ static void process_mmap2(struct task* t,
  * updated appropriately, or zero if this was an irregular socketcall
  * that needs to be processed specially.
  */
-static int process_socketcall(struct task* t, int state,
+static int process_socketcall(Task* t, int state,
 			      struct rep_trace_step* step)
 {
 	int call;
@@ -803,7 +803,7 @@ static int process_socketcall(struct task* t, int state,
 	}
 }
 
-static void process_irregular_socketcall_exit(struct task* t,
+static void process_irregular_socketcall_exit(Task* t,
 					      const struct user_regs_struct* rec_regs)
 {
 	int call;
@@ -830,7 +830,7 @@ static void process_irregular_socketcall_exit(struct task* t,
 	}
 }
 
-static void process_init_buffers(struct task* t, int exec_state,
+static void process_init_buffers(Task* t, int exec_state,
 				 struct rep_trace_step* step)
 {
 	void* rec_child_map_addr;
@@ -862,7 +862,7 @@ static void process_init_buffers(struct task* t, int exec_state,
 		    rec_child_map_addr, child_map_addr);
 }
 
-static void process_restart_syscall(struct task* t, int syscallno)
+static void process_restart_syscall(Task* t, int syscallno)
 {
 	switch (syscallno) {
 	case SYS_nanosleep:
@@ -875,7 +875,7 @@ static void process_restart_syscall(struct task* t, int syscallno)
 	}
 }
 
-static void dump_path_data(struct task* t, const char* tag,
+static void dump_path_data(Task* t, const char* tag,
 			   char* filename, size_t filename_size,
 			   const void* buf, size_t buf_len, const void* addr)
 {
@@ -886,7 +886,7 @@ static void dump_path_data(struct task* t, const char* tag,
 }
 
 static void
-notify_save_data_error(struct task* t, const void* addr,
+notify_save_data_error(Task* t, const void* addr,
 		       const void* rec_buf, size_t rec_buf_len,
 		       const void* rep_buf, size_t rep_buf_len)
 {
@@ -923,7 +923,7 @@ notify_save_data_error(struct task* t, const void* addr,
  * read and check the replay buffer against the one saved during
  * recording.
  */
-static void maybe_verify_tracee_saved_data(struct task* t,
+static void maybe_verify_tracee_saved_data(Task* t,
 					   const struct user_regs_struct* rec_regs)
 {
 	int fd = rec_regs->ebx;
@@ -954,7 +954,7 @@ static void maybe_verify_tracee_saved_data(struct task* t,
 	free(buf);
 }
 
-void rep_process_syscall(struct task* t, struct rep_trace_step* step)
+void rep_process_syscall(Task* t, struct rep_trace_step* step)
 {
 	int syscall = t->trace.stop_reason; /* FIXME: don't shadow syscall() */
 	const struct syscall_def* def = &syscall_table[syscall];

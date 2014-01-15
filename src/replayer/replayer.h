@@ -17,7 +17,7 @@ void replay(void);
  *
  * This function does not return.
  */
-void emergency_debug(struct task* t);
+void emergency_debug(Task* t);
 
 /**
  * The state of a (dis)arm-desched-event ioctl that's being processed.

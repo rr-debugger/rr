@@ -63,7 +63,7 @@ void sys_close(int filedes)
 	}
 }
 
-int sys_open_child_mem(struct task* t)
+int sys_open_child_mem(Task* t)
 {
 	char path[PATH_MAX];
 	int fd;
@@ -170,7 +170,7 @@ void sys_start_trace(const char* executable, char** argv, char** envp)
 }
 
 /* ptrace stuff comes here */
-void sys_ptrace(struct task* t, int request, void *addr, void *data)
+void sys_ptrace(Task* t, int request, void *addr, void *data)
 {
 	pid_t tid = t->tid;
 	long ret = ptrace(__ptrace_request(request), tid, addr, data);
@@ -179,7 +179,7 @@ void sys_ptrace(struct task* t, int request, void *addr, void *data)
 		    request, tid, addr, data);
 }
 
-void sys_ptrace_syscall(struct task* t)
+void sys_ptrace_syscall(Task* t)
 {
 	sys_ptrace(t, PTRACE_SYSCALL, 0, 0);
 }
@@ -204,17 +204,17 @@ void sys_ptrace_detach(pid_t pid)
 	ptrace(PTRACE_DETACH, pid, 0, 0);
 }
 
-void sys_ptrace_syscall_sig(struct task* t, int sig)
+void sys_ptrace_syscall_sig(Task* t, int sig)
 {
 	sys_ptrace(t, PTRACE_SYSCALL, 0, (void*)sig);
 }
 
-void sys_ptrace_sysemu(struct task* t)
+void sys_ptrace_sysemu(Task* t)
 {
 	sys_ptrace(t, PTRACE_SYSEMU, 0, 0);
 }
 
-void sys_ptrace_sysemu_singlestep(struct task* t)
+void sys_ptrace_sysemu_singlestep(Task* t)
 {
 	sys_ptrace(t, PTRACE_SYSEMU_SINGLESTEP, 0, 0);
 }
@@ -234,18 +234,18 @@ int sys_ptrace_peekdata(pid_t pid, long addr, long* value)
 	return 0;
 }
 
-unsigned long sys_ptrace_getmsg(struct task* t)
+unsigned long sys_ptrace_getmsg(Task* t)
 {
 	unsigned long tmp;
 	sys_ptrace(t, PTRACE_GETEVENTMSG, 0, &tmp);
 	return tmp;
 }
-void sys_ptrace_getsiginfo(struct task* t, siginfo_t* sig)
+void sys_ptrace_getsiginfo(Task* t, siginfo_t* sig)
 {
 	sys_ptrace(t, PTRACE_GETSIGINFO, 0, sig);
 }
 
-void sys_ptrace_setup(struct task* t)
+void sys_ptrace_setup(Task* t)
 {
 	int flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE | PTRACE_O_TRACEEXIT;
 	if (ptrace(PTRACE_SETOPTIONS, t->tid, 0, (void*) (PTRACE_O_TRACESECCOMP | flags)) == -1) {
@@ -254,12 +254,12 @@ void sys_ptrace_setup(struct task* t)
 	}
 }
 
-void sys_ptrace_singlestep(struct task* t)
+void sys_ptrace_singlestep(Task* t)
 {
 	sys_ptrace(t, PTRACE_SINGLESTEP, 0, 0);
 }
 
-void sys_ptrace_singlestep_sig(struct task* t, int sig)
+void sys_ptrace_singlestep_sig(Task* t, int sig)
 {
 	sys_ptrace(t, PTRACE_SINGLESTEP, 0, (void*) sig);
 }
@@ -269,7 +269,7 @@ void sys_ptrace_traceme()
 	ptrace(PTRACE_TRACEME, 0, 0, 0);
 }
 
-void goto_next_event(struct task *t)
+void goto_next_event(Task *t)
 {
 
 	if (t->child_sig != 0) {

@@ -25,7 +25,7 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 
-static void handle_siginfo_regs(struct task* t, siginfo_t* si,
+static void handle_siginfo_regs(Task* t, siginfo_t* si,
 				struct user_regs_struct* regs);
 
 static __inline__ unsigned long long rdtsc(void)
@@ -38,7 +38,7 @@ static __inline__ unsigned long long rdtsc(void)
 /**
  * Doesn't return if |si| wasn't triggered by a time-slice interrupt.
  */
-static void assert_is_time_slice_interrupt(struct task* t, const siginfo_t* si)
+static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si)
 {
 	/* This implementation will of course fall over if rr tries to
 	 * record itself.
@@ -58,7 +58,7 @@ static void assert_is_time_slice_interrupt(struct task* t, const siginfo_t* si)
  * Return nonzero if |t| was stopped because of a SIGSEGV resulting
  * from a rdtsc and |t| was updated appropriately, zero otherwise.
  */
-static int try_handle_rdtsc(struct task *t)
+static int try_handle_rdtsc(Task *t)
 {
 	int handled = 0;
 	int sig = signal_pending(t->status);
@@ -109,14 +109,14 @@ static int try_handle_rdtsc(struct task *t)
 	return handled;
 }
 
-static void disarm_desched_event(struct task* t)
+static void disarm_desched_event(Task* t)
 {
 	if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
 		fatal("Failed to disarm desched event");
 	}
 }
 
-static int advance_syscall_boundary(struct task* t,
+static int advance_syscall_boundary(Task* t,
 				     struct user_regs_struct* regs)
 {
 	pid_t tid = t->tid;
@@ -143,7 +143,7 @@ static int advance_syscall_boundary(struct task* t,
  * The tracee's execution may be advanced, and if so |regs| is updated
  * to the tracee's latest state.
  */
-static int handle_desched_event(struct task* t, const siginfo_t* si,
+static int handle_desched_event(Task* t, const siginfo_t* si,
 				struct user_regs_struct* regs)
 {
 	int call, sig;
@@ -330,7 +330,7 @@ static int is_deterministic_signal(const siginfo_t* si)
 
 }
 
-static void record_signal(struct task* t, const siginfo_t* si,
+static void record_signal(Task* t, const siginfo_t* si,
 			  uint64_t max_rbc)
 {
 	int sig = si->si_signo;
@@ -448,7 +448,7 @@ static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si)
  * completed successfully, or -1 if it was interrupted by another
  * signal.
  */
-static int go_to_a_happy_place(struct task* t,
+static int go_to_a_happy_place(Task* t,
 			       siginfo_t* si, struct user_regs_struct* regs)
 {
 	pid_t tid = t->tid;
@@ -615,7 +615,7 @@ happy_place:
 	return 0;
 }
 
-static void handle_siginfo_regs(struct task* t, siginfo_t* si,
+static void handle_siginfo_regs(Task* t, siginfo_t* si,
 				struct user_regs_struct* regs)
 {
 	uint64_t max_rbc = rr_flags()->max_rbc;
@@ -667,7 +667,7 @@ static void handle_siginfo_regs(struct task* t, siginfo_t* si,
 	record_signal(t, si, max_rbc);
 }
 
-void handle_signal(struct task* t)
+void handle_signal(Task* t)
 {
 	siginfo_t si;
 	struct user_regs_struct regs;

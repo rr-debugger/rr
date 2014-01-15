@@ -82,7 +82,7 @@ struct flags* rr_flags_for_init(void)
 	return NULL;		/* not reached */
 }
 
-static byte* get_mmaped_region_end(struct task* t, byte* start)
+static byte* get_mmaped_region_end(Task* t, byte* start)
 {
 	struct mapped_segment_info info;
 	int found_info = find_segment_containing(t, start, &info);
@@ -130,7 +130,7 @@ int probably_not_interactive(void)
 	return !isatty(STDERR_FILENO);
 }
 
-void maybe_mark_stdio_write(struct task* t, int fd)
+void maybe_mark_stdio_write(Task* t, int fd)
 {
 	char buf[256];
 	ssize_t len;
@@ -246,7 +246,7 @@ int signal_pending(int status)
 	}
 }
 
-void detach_and_reap(struct task* t)
+void detach_and_reap(Task* t)
 {
 	sys_ptrace_detach(t->tid);
 	if (t->unstable) {
@@ -306,7 +306,7 @@ sleep_hack:
 	}
 }
 
-void print_register_file_tid(struct task* t)
+void print_register_file_tid(Task* t)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -381,17 +381,17 @@ struct map_iterator_data {
 	ssize_t mem_len;
 	const char* raw_map_line;
 };
-typedef int (*memory_map_iterator_t)(void* it_data, struct task* t,
+typedef int (*memory_map_iterator_t)(void* it_data, Task* t,
 				     const struct map_iterator_data* data);
 
-typedef int (*read_segment_filter_t)(void* filt_data, struct task* t,
+typedef int (*read_segment_filter_t)(void* filt_data, Task* t,
 				     const struct mapped_segment_info* info);
 static const read_segment_filter_t kNeverReadSegment =
 	(read_segment_filter_t)0;
 static const read_segment_filter_t kAlwaysReadSegment =
 	(read_segment_filter_t)1;
 
-static int caller_wants_segment_read(struct task* t,
+static int caller_wants_segment_read(Task* t,
 				     const struct mapped_segment_info* info,
 				     read_segment_filter_t filt,
 				     void* filt_data)
@@ -405,7 +405,7 @@ static int caller_wants_segment_read(struct task* t,
 	return filt(filt_data, t, info);
 }
 
-static void iterate_memory_map(struct task* t,
+static void iterate_memory_map(Task* t,
 			       memory_map_iterator_t it, void* it_data,
 			       read_segment_filter_t filt, void* filt_data)
 {
@@ -469,14 +469,14 @@ static void iterate_memory_map(struct task* t,
 	fclose(maps_file);
 }
 
-static int print_process_mmap_iterator(void* unused, struct task* t,
+static int print_process_mmap_iterator(void* unused, Task* t,
 				       const struct map_iterator_data* data)
 {
 	fputs(data->raw_map_line, stdout);
 	return CONTINUE_ITERATING;
 }
 
-void print_process_mmap(struct task* t)
+void print_process_mmap(Task* t)
 {
 	return iterate_memory_map(t, print_process_mmap_iterator, NULL,
 				  kNeverReadSegment, NULL);
@@ -490,7 +490,7 @@ static int addr_in_segment(void* addr, const struct mapped_segment_info* info)
 	return info->start_addr <= addr && addr < info->end_addr;
 }
 
-static int find_segment_iterator(void* it_data, struct task* t,
+static int find_segment_iterator(void* it_data, Task* t,
 				 const struct map_iterator_data* data)
 {
 	struct mapped_segment_info* info =
@@ -503,7 +503,7 @@ static int find_segment_iterator(void* it_data, struct task* t,
 	return CONTINUE_ITERATING;
 }
 
-int find_segment_containing(struct task* t, byte* search_addr,
+int find_segment_containing(Task* t, byte* search_addr,
 			    struct mapped_segment_info* info)
 {
 	memset(info, 0, sizeof(*info));
@@ -513,7 +513,7 @@ int find_segment_containing(struct task* t, byte* search_addr,
 	return addr_in_segment(search_addr, info);
 }
 
-char* get_inst(struct task* t, int eip_offset, int* opcode_size)
+char* get_inst(Task* t, int eip_offset, int* opcode_size)
 {
 	char* buf = NULL;
 	unsigned long eip = read_child_eip(t);
@@ -548,7 +548,7 @@ char* get_inst(struct task* t, int eip_offset, int* opcode_size)
 	return buf;
 }
 
-void mprotect_child_region(struct task* t, byte* addr, int prot)
+void mprotect_child_region(Task* t, byte* addr, int prot)
 {
 	struct current_state_buffer state;
 	size_t length;
@@ -564,7 +564,7 @@ void mprotect_child_region(struct task* t, byte* addr, int prot)
 	finish_remote_syscalls(t, &state);
 }
 
-void print_inst(struct task* t)
+void print_inst(Task* t)
 {
 	int size;
 	char* str = get_inst(t, 0, &size);
@@ -616,7 +616,7 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 	}
 }
 
-int compare_register_files(struct task* t,
+int compare_register_files(Task* t,
 			   const char* name1,
 			   const struct user_regs_struct* reg1,
 			   const char* name2,
@@ -698,7 +698,7 @@ int compare_register_files(struct task* t,
 	return err;
 }
 
-void assert_child_regs_are(struct task* t,
+void assert_child_regs_are(Task* t,
 			   const struct user_regs_struct* regs,
 			   int event, int state)
 {
@@ -824,14 +824,14 @@ void dump_binary_data(const char* filename, const char* label,
 	fclose(out);
 }
 
-void format_dump_filename(struct task* t, const char* tag,
+void format_dump_filename(Task* t, const char* tag,
 			  char* filename, size_t filename_size)
 {
 	snprintf(filename, filename_size - 1, "%s/%d_%d_%s",
 		 get_trace_path(), t->rec_tid, get_global_time(), tag);
 }
 
-int should_dump_memory(struct task* t, int event, int state, int global_time)
+int should_dump_memory(Task* t, int event, int state, int global_time)
 {
 	const struct flags* flags = rr_flags();
 
@@ -851,7 +851,7 @@ int should_dump_memory(struct task* t, int event, int state, int global_time)
 		|| flags->dump_at == global_time);
 }
 
-static int dump_process_memory_iterator(void* it_data, struct task* t,
+static int dump_process_memory_iterator(void* it_data, Task* t,
 					const struct map_iterator_data* data)
 {
 	FILE* dump_file = (FILE*)it_data;
@@ -876,7 +876,7 @@ static int dump_process_memory_iterator(void* it_data, struct task* t,
 }
 
 static int dump_process_memory_segment_filter(
-	void* filt_data, struct task* t,
+	void* filt_data, Task* t,
 	const struct mapped_segment_info* info)
 {
 	/* For debugging purposes, add segment filtering here, for
@@ -888,7 +888,7 @@ static int dump_process_memory_segment_filter(
 	return 1;
 }
 
-void dump_process_memory(struct task* t, const char* tag)
+void dump_process_memory(Task* t, const char* tag)
 {
 	char filename[PATH_MAX];
 	FILE* dump_file;
@@ -905,7 +905,7 @@ void dump_process_memory(struct task* t, const char* tag)
 	fclose(dump_file);
 }
 
-static void notify_checksum_error(struct task* t,
+static void notify_checksum_error(Task* t,
 				  unsigned checksum, unsigned rec_checksum,
 				  const struct map_iterator_data* data)
 {
@@ -956,7 +956,7 @@ struct checksum_iterator_data {
 		ChecksumMode mode;
 	FILE* checksums_file;
 };
-static int checksum_iterator(void* it_data, struct task* t,
+static int checksum_iterator(void* it_data, Task* t,
 			     const struct map_iterator_data* data)
 {
 	struct checksum_iterator_data* c =
@@ -1036,7 +1036,7 @@ static int checksum_iterator(void* it_data, struct task* t,
 	return CONTINUE_ITERATING;
 }
 
-static int checksum_segment_filter(void* filt_data, struct task* t,
+static int checksum_segment_filter(void* filt_data, Task* t,
 				   const struct mapped_segment_info* info)
 {
 	struct stat st;
@@ -1066,7 +1066,7 @@ static int checksum_segment_filter(void* filt_data, struct task* t,
  * address space, or validate an existing computed checksum.  Behavior
  * is selected by |mode|.
  */
-static void iterate_checksums(struct task* t, ChecksumMode mode)
+static void iterate_checksums(Task* t, ChecksumMode mode)
 {
 	struct checksum_iterator_data c;
 	memset(&c, sizeof(c), 0);
@@ -1084,7 +1084,7 @@ static void iterate_checksums(struct task* t, ChecksumMode mode)
 	fclose(c.checksums_file);
 }
 
-int should_checksum(struct task* t, int event, int state, int global_time)
+int should_checksum(Task* t, int event, int state, int global_time)
 {
 	int checksum = rr_flags()->checksum;
 	int is_syscall_exit = (event >= 0 && state == STATE_SYSCALL_EXIT);
@@ -1112,7 +1112,7 @@ int should_checksum(struct task* t, int event, int state, int global_time)
 	return checksum <= global_time;
 }
 
-void checksum_process_memory(struct task* t)
+void checksum_process_memory(Task* t)
 {
 	/* flush all files in case we start replaying while still
 	 * recording */
@@ -1121,7 +1121,7 @@ void checksum_process_memory(struct task* t)
 	iterate_checksums(t, STORE_CHECKSUMS);
 }
 
-void validate_process_memory(struct task* t)
+void validate_process_memory(Task* t)
 {
 	iterate_checksums(t, VALIDATE_CHECKSUMS);
 }
@@ -1148,7 +1148,7 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
 	to->ebp = from->ebp;
 }
 
-void record_struct_msghdr(struct task* t, struct msghdr* child_msghdr)
+void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 {
 	struct msghdr* msg =
 		(struct msghdr*)read_child_data(t, sizeof(*msg),
@@ -1172,7 +1172,7 @@ void record_struct_msghdr(struct task* t, struct msghdr* child_msghdr)
 	free(msg);
 }
 
-void record_struct_mmsghdr(struct task* t, struct mmsghdr* child_mmsghdr)
+void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 {
 	/* struct mmsghdr has an inline struct msghdr as its first
 	 * field, so it's OK to make this "cast". */
@@ -1183,7 +1183,7 @@ void record_struct_mmsghdr(struct task* t, struct mmsghdr* child_mmsghdr)
 			  (byte*)&child_mmsghdr->msg_len);
 }
 
-void restore_struct_msghdr(struct task* t, struct msghdr* child_msghdr)
+void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 {
 	/* TODO: with above, generalize for arbitrary msghdr. */
 	const int num_emu_args = 5;
@@ -1194,13 +1194,13 @@ void restore_struct_msghdr(struct task* t, struct msghdr* child_msghdr)
 	}
 }
 
-void restore_struct_mmsghdr(struct task* t, struct mmsghdr* child_mmsghdr)
+void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 {
 	restore_struct_msghdr(t, (struct msghdr*)child_mmsghdr);
 	set_child_data(t);
 }
 
-int is_desched_event_syscall(struct task* t,
+int is_desched_event_syscall(Task* t,
 			     const struct user_regs_struct* regs)
 {
 	return (SYS_ioctl == regs->orig_eax
@@ -1208,21 +1208,21 @@ int is_desched_event_syscall(struct task* t,
 		    || t->desched_fd_child == REPLAY_DESCHED_EVENT_FD));
 }
 
-int is_arm_desched_event_syscall(struct task* t,
+int is_arm_desched_event_syscall(Task* t,
 				 const struct user_regs_struct* regs)
 {
 	return (is_desched_event_syscall(t, regs)
 		&& PERF_EVENT_IOC_ENABLE == regs->ecx);
 }
 
-int is_disarm_desched_event_syscall(struct task* t,
+int is_disarm_desched_event_syscall(Task* t,
 				    const struct user_regs_struct* regs)
 {
 	return (is_desched_event_syscall(t, regs)
 		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
 }
 
-int is_syscall_restart(struct task* t, int syscallno,
+int is_syscall_restart(Task* t, int syscallno,
 		       const struct user_regs_struct* regs)
 {
 	int must_restart = (SYS_restart_syscall == syscallno);
@@ -1373,7 +1373,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 	return 1;
 }
 
-void prepare_remote_syscalls(struct task* t,
+void prepare_remote_syscalls(Task* t,
 			     struct current_state_buffer* state)
 {
 	byte syscall_insn[] = { 0xcd, 0x80 };
@@ -1392,7 +1392,7 @@ void prepare_remote_syscalls(struct task* t,
 			 syscall_insn);
 }
 
-void* push_tmp_str(struct task* t, struct current_state_buffer* state,
+void* push_tmp_str(Task* t, struct current_state_buffer* state,
 		   const char* str, struct restore_mem* mem)
 {
 	mem->len = strlen(str) + 1/*null byte*/;
@@ -1409,7 +1409,7 @@ void* push_tmp_str(struct task* t, struct current_state_buffer* state,
 	return mem->addr;
 }
 
-void pop_tmp_mem(struct task* t, struct current_state_buffer* state,
+void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 		 struct restore_mem* mem)
 {
 	assert(mem->saved_sp == (byte*)state->regs.esp + mem->len);
@@ -1421,7 +1421,7 @@ void pop_tmp_mem(struct task* t, struct current_state_buffer* state,
 	write_child_registers(t, &state->regs);
 }
 
-long remote_syscall(struct task* t, struct current_state_buffer* state,
+long remote_syscall(Task* t, struct current_state_buffer* state,
 		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6)
 {
@@ -1469,7 +1469,7 @@ long remote_syscall(struct task* t, struct current_state_buffer* state,
 	return 0;
 }
 
-long wait_remote_syscall(struct task* t, struct current_state_buffer* state,
+long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 			 int syscallno)
 {
 	pid_t tid = t->tid;
@@ -1485,7 +1485,7 @@ long wait_remote_syscall(struct task* t, struct current_state_buffer* state,
 	return regs.eax;
 }
 
-void finish_remote_syscalls(struct task* t,
+void finish_remote_syscalls(Task* t,
 			    struct current_state_buffer* state)
 {
 	pid_t tid = t->tid;
@@ -1575,7 +1575,7 @@ static int recv_fd(int sock, int* remote_fdno)
 	return fd;
 }
 
-static void write_socketcall_args(struct task* t,
+static void write_socketcall_args(Task* t,
 				  struct socketcall_args* child_args_vec,
 				  long arg1, long arg2, long arg3)
 {
@@ -1583,7 +1583,7 @@ static void write_socketcall_args(struct task* t,
 	write_child_data(t, sizeof(args), (byte*)child_args_vec, (byte*)&args);
 }
 
-void* init_syscall_buffer(struct task* t, struct current_state_buffer* state,
+void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 			  struct rrcall_init_buffers_params* args,
 			  void* map_hint, int share_desched_fd)
 {
@@ -1731,7 +1731,7 @@ void* init_syscall_buffer(struct task* t, struct current_state_buffer* state,
 	return child_map_addr;
 }
 
-void* init_buffers(struct task* t, void* map_hint, int share_desched_fd)
+void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 {
 	struct current_state_buffer state;
 	byte* child_args;

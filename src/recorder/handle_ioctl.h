@@ -3,8 +3,8 @@
 #ifndef HANDLE_IOCTL_H_
 #define HANDLE_IOCTL_H_
 
-struct task;
+class Task;
 
-void handle_ioctl_request(struct task* t, int request);
+void handle_ioctl_request(Task* t, int request);
 
 #endif /* HANDLE_IOCTL_H_ */

@@ -25,7 +25,7 @@
 #include "../share/task.h"
 
 struct tasklist_entry {
-	struct task t;
+	Task t;
 	CIRCLEQ_ENTRY(tasklist_entry) entries;
 };
 
@@ -43,7 +43,7 @@ static struct tasklist_entry* get_entry(pid_t tid)
 	return tid_to_entry[tid];
 }
 
-static struct task* get_task(pid_t tid)
+static Task* get_task(pid_t tid)
 {
 	struct tasklist_entry* entry = get_entry(tid);
 	return entry ? &entry->t : NULL;
@@ -54,7 +54,7 @@ static struct tasklist_entry* next_entry(struct tasklist_entry* elt)
 	return CIRCLEQ_LOOP_NEXT(&head, elt, entries);
 }
 
-static void note_switch(struct task* prev_t, struct task* t,
+static void note_switch(Task* prev_t, Task* t,
 			int max_events)
 {
 	if (prev_t == t) {
@@ -68,11 +68,11 @@ static void note_switch(struct task* prev_t, struct task* t,
  * Retrieves a thread from the pool of active threads in a
  * round-robin fashion.
  */
-struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
+Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 {
 	int max_events = rr_flags()->max_events;
 	struct tasklist_entry* entry = current_entry;
-	struct task* next_t = NULL;
+	Task* next_t = NULL;
 
 	debug("Scheduling next task");
 
@@ -176,7 +176,7 @@ struct task* rec_sched_get_active_thread(struct task* t, int* by_waitpid)
 	return next_t;
 }
 
-struct task* rec_sched_lookup_thread(pid_t tid)
+Task* rec_sched_lookup_thread(pid_t tid)
 {
 	return get_task(tid);
 }
@@ -188,7 +188,7 @@ void rec_sched_exit_all()
 {
 	while (!CIRCLEQ_EMPTY(&head)) {
 		struct tasklist_entry* entry = CIRCLEQ_FIRST(&head);
-		struct task* t = &entry->t;
+		Task* t = &entry->t;
 
 		sys_kill(t->tid, SIGINT);
 		rec_sched_deregister_thread(&t);
@@ -204,11 +204,11 @@ int rec_sched_get_num_threads()
  * Registers a new thread to the runtime system. This includes
  * initialization of the hardware performance counters
  */
-struct task* rec_sched_register_thread(pid_t parent, pid_t child, int flags)
+Task* rec_sched_register_thread(pid_t parent, pid_t child, int flags)
 {
 	struct tasklist_entry* entry =
 		(struct tasklist_entry*)calloc(1, sizeof(*entry));
-	struct task* t = &entry->t;
+	Task* t = &entry->t;
 
 	assert(child > 0 && child < MAX_TID);
 
@@ -217,7 +217,7 @@ struct task* rec_sched_register_thread(pid_t parent, pid_t child, int flags)
 	t->child_mem_fd = sys_open_child_mem(t);
 	push_placeholder_event(t);
 	if (parent) {
-		struct task* parent_t = get_task(parent);
+		Task* parent_t = get_task(parent);
 		struct sighandlers* parent_handlers = parent_t->sighandlers;
 
 		t->syscallbuf_lib_start = parent_t->syscallbuf_lib_start;
@@ -266,9 +266,9 @@ struct task* rec_sched_register_thread(pid_t parent, pid_t child, int flags)
  * De-regsiter a thread and de-allocate all resources. This function
  * should be called when a thread exits.
  */
-void rec_sched_deregister_thread(struct task** t_ptr)
+void rec_sched_deregister_thread(Task** t_ptr)
 {
-	struct task* t = *t_ptr;
+	Task* t = *t_ptr;
 	pid_t tid = t->tid;
 	struct tasklist_entry* entry = get_entry(tid);
 

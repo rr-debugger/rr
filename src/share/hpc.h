@@ -21,7 +21,7 @@
  * hope that tracees don't either. */
 #define HPC_TIME_SLICE_SIGNAL SIGSTKFLT
 
-struct task;
+class Task;
 
 typedef struct _hpc_event
 {
@@ -43,12 +43,12 @@ void init_libpfm(void);
 void libpfm_event_encoding(struct perf_event_attr* attr, const char* event_str, int hw_event);
 void close_libpfm(void);
 
-void init_hpc(struct task *t);
-void destroy_hpc(struct task *t);
-void start_hpc(struct task *t, int64_t val);
-void stop_hpc(struct task *t);
-void reset_hpc(struct task *t, int64_t val);
-void stop_rbc(struct task *t);
+void init_hpc(Task *t);
+void destroy_hpc(Task *t);
+void start_hpc(Task *t, int64_t val);
+void stop_hpc(Task *t);
+void reset_hpc(Task *t, int64_t val);
+void stop_rbc(Task *t);
 int pending_rbc_down(struct hpc_context *counters);
 
 int64_t read_page_faults(struct hpc_context *counters);

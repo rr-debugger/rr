@@ -51,7 +51,7 @@ using namespace std;
  * socketcall args into |*argsp|.
  */
 template<size_t N>
-void read_socketcall_args(struct task* t, const struct user_regs_struct* regs,
+void read_socketcall_args(Task* t, const struct user_regs_struct* regs,
 			  long** argsp, long (&args)[N])
 {
 	*argsp = reinterpret_cast<long*>(regs->ecx);
@@ -64,7 +64,7 @@ void read_socketcall_args(struct task* t, const struct user_regs_struct* regs,
  * Erase any scratch pointer initialization done for |t| and leave
  * the state bits ready to be initialized again.
  */
-static void reset_scratch_pointers(struct task* t)
+static void reset_scratch_pointers(Task* t)
 {
 	assert(t->ev->type == EV_SYSCALL);
 
@@ -80,7 +80,7 @@ static void reset_scratch_pointers(struct task* t)
  * during processing syscall results, and in reverse order of calls to
  * |push*()|.
  */
-static void push_arg_ptr(struct task* t, void* argp)
+static void push_arg_ptr(Task* t, void* argp)
 {
 	FIXEDSTACK_PUSH(&t->ev->syscall.saved_args, argp);
 }
@@ -89,7 +89,7 @@ static void push_arg_ptr(struct task* t, void* argp)
  * Reset scratch state for |t|, because scratch can't be used for
  * |event|.  Log a warning as well.
  */
-static int abort_scratch(struct task* t, const char* event)
+static int abort_scratch(Task* t, const char* event)
 {
 	int num_bytes = t->ev->syscall.tmp_data_num_bytes;
 
@@ -110,7 +110,7 @@ static int abort_scratch(struct task* t, const char* event)
  * Return nonzero if the scratch state initialized for |t| fits
  * within the allocated region (and didn't overflow), zero otherwise.
  */
-static int can_use_scratch(struct task* t, byte* scratch_end)
+static int can_use_scratch(Task* t, byte* scratch_end)
 {
 	byte* scratch_start = t->scratch_ptr;
 
@@ -126,7 +126,7 @@ static int can_use_scratch(struct task* t, byte* scratch_end)
  * is stopped at, for example replacing tracee args with pointers into
  * scratch memory if necessary.
  */
-int prepare_socketcall(struct task* t, int would_need_scratch,
+int prepare_socketcall(Task* t, int would_need_scratch,
 		       struct user_regs_struct* regs)
 {
 	byte* scratch = would_need_scratch ?
@@ -247,7 +247,7 @@ int prepare_socketcall(struct task* t, int would_need_scratch,
  * function sets things up so that the *syscallbuf* memory that |t|
  * is using as ~scratch will be recorded, so that it can be replayed.
  */
-static int set_up_scratch_for_syscallbuf(struct task* t, int syscallno)
+static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 {
 	const struct syscallbuf_record* rec = task_desched_rec(t);
 
@@ -266,7 +266,7 @@ static int set_up_scratch_for_syscallbuf(struct task* t, int syscallno)
 	return 1;
 }
 
-int rec_prepare_syscall(struct task* t)
+int rec_prepare_syscall(Task* t)
 {
 	int syscallno = t->ev->syscall.no;
 	/* If we are called again due to a restart_syscall, we musn't
@@ -560,12 +560,12 @@ int rec_prepare_syscall(struct task* t)
  * is used to avoid having special cases in replay code for failed
  * syscalls, e.g.
  */
-static void record_noop_data(struct task* t)
+static void record_noop_data(Task* t)
 {
 	record_parent_data(t, 0, NULL, NULL);
 }
 
-void rec_prepare_restart_syscall(struct task* t)
+void rec_prepare_restart_syscall(Task* t)
 {
 	int syscallno = t->ev->syscall.no;
 	switch (syscallno) {
@@ -600,7 +600,7 @@ void rec_prepare_restart_syscall(struct task* t)
 	}
 }
 
-static void init_scratch_memory(struct task *t)
+static void init_scratch_memory(Task *t)
 {
 	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
 	/* initialize the scratchpad for blocking system calls */
@@ -648,7 +648,7 @@ static void init_scratch_memory(struct task *t)
  * The returned opaque handle must be passed to
  * |finish_restoring_scratch()|.
  */
-static byte* start_restoring_scratch(struct task* t, byte** iter)
+static byte* start_restoring_scratch(Task* t, byte** iter)
 {
 	byte* scratch = t->ev->syscall.tmp_data_ptr;
 	ssize_t num_bytes = t->ev->syscall.tmp_data_num_bytes;
@@ -663,7 +663,7 @@ static byte* start_restoring_scratch(struct task* t, byte** iter)
  * Return nonzero if tracee pointers were saved while preparing for
  * the syscall |t->ev|.
  */
-static int has_saved_arg_ptrs(struct task* t)
+static int has_saved_arg_ptrs(Task* t)
 {
 	return !FIXEDSTACK_EMPTY(&t->ev->syscall.saved_args);
 }
@@ -673,7 +673,7 @@ static int has_saved_arg_ptrs(struct task* t)
  * call to |push_arg_ptr()|.
  */
 template<typename T>
-static T* pop_arg_ptr(struct task* t)
+static T* pop_arg_ptr(Task* t)
 {
 	void* arg = FIXEDSTACK_POP(&t->ev->syscall.saved_args);
 	return static_cast<T*>(arg);
@@ -684,7 +684,7 @@ static T* pop_arg_ptr(struct task* t)
  * Record the written data so that it can be restored during replay of
  * |syscallno|.
  */
-static void restore_and_record_arg_buf(struct task* t,
+static void restore_and_record_arg_buf(Task* t,
 				       size_t num_bytes, byte* child_addr,
 				       byte** parent_data_iter)
 {
@@ -695,7 +695,7 @@ static void restore_and_record_arg_buf(struct task* t,
 }
 
 template<typename T>
-static void restore_and_record_arg(struct task* t,  T* child_arg,
+static void restore_and_record_arg(Task* t,  T* child_arg,
 				   byte** parent_data_iter)
 {
 	return restore_and_record_arg_buf(t,
@@ -711,7 +711,7 @@ static void restore_and_record_arg(struct task* t,  T* child_arg,
  * Don't call this directly; use one of the helpers below.
  */
 enum { NO_SLACK = 0, ALLOW_SLACK = 1 };
-static void finish_restoring_scratch_slack(struct task* t,
+static void finish_restoring_scratch_slack(Task* t,
 					   byte* iter, byte** datap,
 					   int slack)
 {
@@ -735,7 +735,7 @@ static void finish_restoring_scratch_slack(struct task* t,
 /**
  * Like above, but require that all saved scratch data was consumed.
  */
-static void finish_restoring_scratch(struct task* t,
+static void finish_restoring_scratch(Task* t,
 				     byte* iter, byte** data)
 {
 	return finish_restoring_scratch_slack(t, iter, data, NO_SLACK);
@@ -745,13 +745,13 @@ static void finish_restoring_scratch(struct task* t,
  * Like above, but allow some saved scratch data to remain unconsumed,
  * for example if a buffer wasn't filled entirely.
  */
-static void finish_restoring_some_scratch(struct task* t,
+static void finish_restoring_some_scratch(Task* t,
 					  byte* iter, byte** data)
 {
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
-static void process_execve(struct task* t,
+static void process_execve(Task* t,
 			   const struct user_regs_struct *regsp)
 {
 	struct user_regs_struct regs(*regsp);
@@ -821,7 +821,7 @@ static void process_execve(struct task* t,
 	init_scratch_memory(t);
 }
 
-static void process_ipc(struct task* t,
+static void process_ipc(Task* t,
 			struct user_regs_struct* call_regs, int call)
 {
 	struct user_regs_struct regs;
@@ -930,7 +930,7 @@ static void process_ipc(struct task* t,
 	}
 }
 
-static void process_socketcall(struct task* t,
+static void process_socketcall(Task* t,
 			       struct user_regs_struct* call_regs,
 			       int call, byte* base_addr)
 {
@@ -1158,7 +1158,7 @@ static void process_socketcall(struct task* t,
 	}
 }
 
-void rec_process_syscall(struct task *t)
+void rec_process_syscall(Task *t)
 {
 	/* TODO: extend syscall_defs.h in order to generate code
 	 * automatically for the "regular" syscalls.
@@ -1268,7 +1268,7 @@ void rec_process_syscall(struct task *t)
 	 */
 	case SYS_clone:	{
 		pid_t new_tid = regs.eax;
-		struct task* new_task = rec_sched_lookup_thread(new_tid);
+		Task* new_task = rec_sched_lookup_thread(new_tid);
 
 		if (regs.eax < 0)
 			break;

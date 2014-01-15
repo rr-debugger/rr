@@ -18,12 +18,12 @@
 
 #define PTR_TO_OFF_T(_p) (off_t)(uintptr_t)(_p)
 
-void read_child_registers(struct task* t, struct user_regs_struct* regs)
+void read_child_registers(Task* t, struct user_regs_struct* regs)
 {
 	sys_ptrace(t, PTRACE_GETREGS, NULL, regs);
 }
 
-size_t set_child_data(struct task *t)
+size_t set_child_data(Task *t)
 {
 	size_t size;
 	byte* rec_addr;
@@ -35,7 +35,7 @@ size_t set_child_data(struct task *t)
 	return size;
 }
 
-void set_return_value(struct task* t)
+void set_return_value(Task* t)
 {
 	struct user_regs_struct r;
 	read_child_registers(t, &r);
@@ -80,24 +80,24 @@ long read_child_code(pid_t tid, byte* addr)
 	return read_child_word(tid, addr, PTRACE_PEEKTEXT);
 }
 
-long read_child_data_word(struct task* t, byte* addr)
+long read_child_data_word(Task* t, byte* addr)
 {
 	return read_child_word(t->tid, addr, PTRACE_PEEKDATA);
 }
 
-void write_child_registers(struct task* t, struct user_regs_struct *regs)
+void write_child_registers(Task* t, struct user_regs_struct *regs)
 {
 	sys_ptrace(t, PTRACE_SETREGS, NULL, regs);
 }
 
-void write_child_code(struct task* t, void* addr, long code)
+void write_child_code(Task* t, void* addr, long code)
 {
 	CHECK_ALIGNMENT(addr);
 
 	sys_ptrace(t, PTRACE_POKETEXT, addr, (void*) code);
 }
 
-static void write_child_data_word(struct task* t, void *addr, uintptr_t data)
+static void write_child_data_word(Task* t, void *addr, uintptr_t data)
 {
 	CHECK_ALIGNMENT(addr);
 	sys_ptrace(t, PTRACE_POKEDATA, addr, (void*)data);
@@ -105,56 +105,56 @@ static void write_child_data_word(struct task* t, void *addr, uintptr_t data)
 
  /* Rad child registers */
 
-long int read_child_eip(struct task* t)
+long int read_child_eip(Task* t)
 {
 	struct user_regs_struct regs;
 	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
 	return regs.eip;
 }
 
-long int read_child_orig_eax(struct task* t)
+long int read_child_orig_eax(Task* t)
 {
 	struct user_regs_struct regs;
 	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
 	return regs.orig_eax;
 }
 
-long int read_child_eax(struct task* t)
+long int read_child_eax(Task* t)
 {
 	struct user_regs_struct regs;
 	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
 	return regs.eax;
 }
 
-long int read_child_ebx(struct task* t)
+long int read_child_ebx(Task* t)
 {
 	struct user_regs_struct regs;
 	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
 	return regs.ebx;
 }
 
-long int read_child_ecx(struct task* t)
+long int read_child_ecx(Task* t)
 {
 	struct user_regs_struct regs;
 	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
 	return regs.ecx;
 }
 
-long int read_child_edx(struct task* t)
+long int read_child_edx(Task* t)
 {
 	struct user_regs_struct regs;
 	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
 	return regs.edx;
 }
 
-long int read_child_ebp(struct task* t)
+long int read_child_ebp(Task* t)
 {
 	struct user_regs_struct regs;
 	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
 	return regs.ebp;
 }
 
-void write_child_eax(struct task* t, long int val)
+void write_child_eax(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -162,7 +162,7 @@ void write_child_eax(struct task* t, long int val)
 	write_child_registers(t, &regs);
 }
 
-void write_child_ebx(struct task* t, long int val)
+void write_child_ebx(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -170,7 +170,7 @@ void write_child_ebx(struct task* t, long int val)
 	write_child_registers(t, &regs);
 }
 
-void write_child_ecx(struct task* t, long int val)
+void write_child_ecx(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -178,7 +178,7 @@ void write_child_ecx(struct task* t, long int val)
 	write_child_registers(t, &regs);
 }
 
-void write_child_edx(struct task* t, long int val)
+void write_child_edx(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -186,7 +186,7 @@ void write_child_edx(struct task* t, long int val)
 	write_child_registers(t, &regs);
 }
 
-void write_child_edi(struct task* t, long int val)
+void write_child_edi(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -194,7 +194,7 @@ void write_child_edi(struct task* t, long int val)
 	write_child_registers(t, &regs);
 }
 
-void write_child_ebp(struct task* t, long int val)
+void write_child_ebp(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -202,7 +202,7 @@ void write_child_ebp(struct task* t, long int val)
 	write_child_registers(t, &regs);
 }
 
-void write_child_esi(struct task* t, long int val)
+void write_child_esi(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -210,7 +210,7 @@ void write_child_esi(struct task* t, long int val)
 	write_child_registers(t, &regs);
 }
 
-void write_child_eip(struct task* t, long int val)
+void write_child_eip(Task* t, long int val)
 {
 	struct user_regs_struct regs;
 	read_child_registers(t, &regs);
@@ -220,7 +220,7 @@ void write_child_eip(struct task* t, long int val)
 
 #define READ_SIZE (sizeof(long))
 
-static void* read_child_data_ptrace(struct task* t, size_t size, byte* addr)
+static void* read_child_data_ptrace(Task* t, size_t size, byte* addr)
 {
 
 	int i, padding = 0;
@@ -243,7 +243,7 @@ static void* read_child_data_ptrace(struct task* t, size_t size, byte* addr)
 	return data;
 }
 
-ssize_t checked_pread(struct task* t, byte* buf, size_t size, off_t offset) {
+ssize_t checked_pread(Task* t, byte* buf, size_t size, off_t offset) {
 	errno = 0;
 	ssize_t read = pread(t->child_mem_fd, buf, size, offset);
 	if (read < 0) {
@@ -269,7 +269,7 @@ ssize_t checked_pread(struct task* t, byte* buf, size_t size, off_t offset) {
 
 }
 
-void* read_child_data_checked(struct task *t, size_t size, byte* addr, ssize_t *read_bytes)
+void* read_child_data_checked(Task *t, size_t size, byte* addr, ssize_t *read_bytes)
 {
 	//assert(check_if_mapped(t, addr, addr + size));
 
@@ -280,14 +280,14 @@ void* read_child_data_checked(struct task *t, size_t size, byte* addr, ssize_t *
 	return buf;
 }
 
-void read_child_usr(struct task *t, void *dest, void *src, size_t size) {
+void read_child_usr(Task *t, void *dest, void *src, size_t size) {
 	ssize_t bytes_read = pread(t->child_mem_fd, dest, size, PTR_TO_OFF_T(src));
 	assert_exec(t, bytes_read == ssize_t(size),
 		    "Reading %p: expected %d bytes, but got %d",
 		    src, size, bytes_read);
 }
 
-void* read_child_data(struct task *t, size_t size, byte* addr)
+void* read_child_data(Task *t, size_t size, byte* addr)
 {
 	byte* buf = (byte*)malloc(size);
 	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
@@ -362,7 +362,7 @@ void write_child_buffer(pid_t child_pid, uintptr_t address, size_t length, char 
     }
 }
 
-char* read_child_str(struct task* t, byte* addr)
+char* read_child_str(Task* t, byte* addr)
 {
 	char *tmp, *str;
 	int idx = 0;
@@ -392,7 +392,7 @@ char* read_child_str(struct task* t, byte* addr)
 	return 0;
 }
 
-void write_child_data_n(struct task* t, ssize_t size, byte* addr, const byte* data)
+void write_child_data_n(Task* t, ssize_t size, byte* addr, const byte* data)
 {
 	int start_offset = (uintptr_t)addr & 0x3;
 	int end_offset = ((uintptr_t)addr + size) & 0x3;
@@ -428,7 +428,7 @@ void write_child_data_n(struct task* t, ssize_t size, byte* addr, const byte* da
 	free(write_data);
 }
 
-void write_child_data(struct task* t, ssize_t size, byte* addr,
+void write_child_data(Task* t, ssize_t size, byte* addr,
 		      const byte* data)
 {
 	ssize_t written = pwrite(t->child_mem_fd, data, size, PTR_TO_OFF_T(addr));
@@ -437,7 +437,7 @@ void write_child_data(struct task* t, ssize_t size, byte* addr,
 	}
 }
 
-void memcpy_child(struct task* t, void* dest, void* src, int size)
+void memcpy_child(Task* t, void* dest, void* src, int size)
 {
 	void *tmp = read_child_data(t, size, (byte*)src);
 	write_child_data(t, size, (byte*)dest, (byte*)tmp);

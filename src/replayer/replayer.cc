@@ -110,7 +110,7 @@ bool validate = false;
 
 RB_PROTOTYPE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
 
-static void debug_memory(struct task* t)
+static void debug_memory(Task* t)
 {
 	const struct trace_frame* trace = &t->trace;
 	int event = trace->stop_reason;
@@ -159,13 +159,13 @@ static long get_reg(const struct user_regs_struct* regs, DbgRegister reg,
 	}
 }
 
-static dbg_threadid_t get_threadid(struct task* t)
+static dbg_threadid_t get_threadid(Task* t)
 {
 	dbg_threadid_t thread = t->rec_tid;
 	return thread;
 }
 
-static byte* read_mem(struct task* t, byte* addr, size_t len,
+static byte* read_mem(Task* t, byte* addr, size_t len,
 		      size_t* read_len)
 {
 	ssize_t nread;
@@ -212,7 +212,7 @@ static struct breakpoint* find_breakpoint(byte* addr)
 	return RB_FIND(breakpoint_tree, &breakpoints, &search);
 }
 
-static void set_sw_breakpoint(struct task* t, byte* ip, trap_t type)
+static void set_sw_breakpoint(Task* t, byte* ip, trap_t type)
 {
 	struct breakpoint* bp = find_breakpoint(ip);
 	if (!bp) {
@@ -234,7 +234,7 @@ static void set_sw_breakpoint(struct task* t, byte* ip, trap_t type)
 	ref_breakpoint(bp, type);
 }
 
-static void clean_up_breakpoint(struct task* t, struct breakpoint** bpp)
+static void clean_up_breakpoint(Task* t, struct breakpoint** bpp)
 {
 	struct breakpoint* bp = *bpp;
 
@@ -246,7 +246,7 @@ static void clean_up_breakpoint(struct task* t, struct breakpoint** bpp)
 	bp = *bpp;
 }
 
-static void remove_sw_breakpoint(struct task* t, byte* ip, trap_t type)
+static void remove_sw_breakpoint(Task* t, byte* ip, trap_t type)
 {
 	struct breakpoint* bp = find_breakpoint(ip);
 	if (bp && 0 == unref_breakpoint(bp, type)) {
@@ -254,24 +254,24 @@ static void remove_sw_breakpoint(struct task* t, byte* ip, trap_t type)
 	}
 }
 
-static void remove_internal_sw_breakpoint(struct task* t, byte* ip)
+static void remove_internal_sw_breakpoint(Task* t, byte* ip)
 {
 	remove_sw_breakpoint(t, ip, TRAP_BKPT_INTERNAL);
 }
 
-static void remove_user_sw_breakpoint(struct task* t,
+static void remove_user_sw_breakpoint(Task* t,
 				      const struct dbg_request* req)
 {
 	assert(sizeof(int_3_insn) == req->mem.len);
 	remove_sw_breakpoint(t, req->mem.addr, TRAP_BKPT_USER);
 }
 
-static void set_internal_sw_breakpoint(struct task* t, byte* ip)
+static void set_internal_sw_breakpoint(Task* t, byte* ip)
 {
 	set_sw_breakpoint(t, ip, TRAP_BKPT_INTERNAL);
 }
 
-static void set_user_sw_breakpoint(struct task* t,
+static void set_user_sw_breakpoint(Task* t,
 				   const struct dbg_request* req)
 {
 	assert(sizeof(int_3_insn) == req->mem.len);
@@ -299,7 +299,7 @@ static trap_t ip_breakpoint_type(byte* eip)
  * refcounts, and assumes that all breakpoints were set in |t|'s
  * address space.  Use with caution.
  */
-static void remove_all_sw_breakpoints(struct task* t)
+static void remove_all_sw_breakpoints(Task* t)
 {
 	struct breakpoint* bp;
 	struct breakpoint* tmp;
@@ -313,7 +313,7 @@ static void remove_all_sw_breakpoints(struct task* t)
  * execution.
  */
 static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
-						    struct task* t)
+						    Task* t)
 {
 	if (!dbg) {
 		struct dbg_request continue_all_tasks;
@@ -324,7 +324,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	}
 	while (1) {
 		struct dbg_request req = dbg_get_request(dbg);
-		struct task* target = NULL;
+		Task* target = NULL;
 
 		if (dbg_is_resume_request(&req)) {
 			return req;
@@ -477,7 +477,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
  */
-static void validate_args(int event, int state, struct task* t)
+static void validate_args(int event, int state, Task* t)
 {
 	struct user_regs_struct* rec_regs = &t->trace.recorded_regs;
 
@@ -514,7 +514,7 @@ static void validate_args(int event, int state, struct task* t)
  * interrupted by an unknown trap.
  */
 enum { EXEC = 0, EMU = 1 };
-static int cont_syscall_boundary(struct task* t, int emu, int stepi)
+static int cont_syscall_boundary(Task* t, int emu, int stepi)
 {
 	pid_t tid = t->tid;
 
@@ -556,7 +556,7 @@ static int cont_syscall_boundary(struct task* t, int emu, int stepi)
  *
  * XXX verify that this can't be interrupted by a breakpoint trap
  */
-static void step_exit_syscall_emu(struct task *t)
+static void step_exit_syscall_emu(Task *t)
 {
 	struct user_regs_struct regs;
 
@@ -575,7 +575,7 @@ static void step_exit_syscall_emu(struct task *t)
  * |step|.  Return 0 if successful, or nonzero if an unhandled trap
  * occurred.
  */
-static int enter_syscall(struct task* t,
+static int enter_syscall(Task* t,
 			 const struct rep_trace_step* step,
 			 int stepi)
 {
@@ -591,7 +591,7 @@ static int enter_syscall(struct task* t,
  * Advance past the reti (or virtual reti) according to |step|.
  * Return 0 if successful, or nonzero if an unhandled trap occurred.
  */
-static int exit_syscall(struct task* t,
+static int exit_syscall(Task* t,
 			const struct rep_trace_step* step,
 			int stepi)
 {
@@ -624,7 +624,7 @@ static int exit_syscall(struct task* t,
  * normally.  The delivered signal is recorded in |t->child_sig|.
  */
 enum { DONT_STEPI = 0, STEPI };
-static void continue_or_step(struct task* t, int stepi)
+static void continue_or_step(Task* t, int stepi)
 {
 	pid_t tid = t->tid;
 	int child_sig_gt_zero;
@@ -661,7 +661,7 @@ static void continue_or_step(struct task* t, int stepi)
  * Return nonzero if |t| was stopped for a breakpoint trap (int3),
  * as opposed to a trace trap.  Return zero in the latter case.
  */
-static int is_breakpoint_trap(struct task* t)
+static int is_breakpoint_trap(Task* t)
 {
 	siginfo_t si;
 
@@ -688,7 +688,7 @@ static int is_breakpoint_trap(struct task* t)
  */
 enum SigDeliveryType { ASYNC, DETERMINISTIC };
 enum ExecStateType { UNKNOWN, NOT_AT_TARGET, AT_TARGET };
-static trap_t compute_trap_type(struct task* t, int target_sig,
+static trap_t compute_trap_type(Task* t, int target_sig,
 				SigDeliveryType delivery,
 				ExecStateType exec_state,
 				int stepi)
@@ -767,7 +767,7 @@ static trap_t compute_trap_type(struct task* t, int target_sig,
  * Shortcut for callers that don't care about internal breakpoints.
  * Return nonzero if |t|'s trap is for the debugger, zero otherwise.
  */
-static int is_debugger_trap(struct task* t, int target_sig,
+static int is_debugger_trap(Task* t, int target_sig,
 			    SigDeliveryType delivery, ExecStateType exec_state,
 			    int stepi)
 {
@@ -777,7 +777,7 @@ static int is_debugger_trap(struct task* t, int target_sig,
 	return TRAP_NONE != type;
 }
 
-static void guard_overshoot(struct task* t,
+static void guard_overshoot(Task* t,
 			    const struct user_regs_struct* target_regs,
 			    int64_t target_rcb, int64_t remaining_rcbs)
 {
@@ -804,7 +804,7 @@ static void guard_overshoot(struct task* t,
 	}
 }
 
-static void guard_unexpected_signal(struct task* t)
+static void guard_unexpected_signal(Task* t)
 {
 	int event;
 	int child_sig_is_zero_or_sigtrap = (0 == t->child_sig
@@ -826,7 +826,7 @@ static void guard_unexpected_signal(struct task* t)
 		    strevent(event));
 }
 
-static int is_same_execution_point(struct task* t,
+static int is_same_execution_point(Task* t,
 				   const struct user_regs_struct* rec_regs,
 				   int64_t rcbs_left,
 				   const struct user_regs_struct* rep_regs)
@@ -866,7 +866,7 @@ static int is_same_execution_point(struct task* t,
  * that will be decremented by branches retired during this attempted
  * step.
  */
-static int advance_to(struct task* t, const struct user_regs_struct* regs,
+static int advance_to(Task* t, const struct user_regs_struct* regs,
 		      int sig, int stepi, int64_t* rcb)
 {
 	pid_t tid = t->tid;
@@ -1077,12 +1077,12 @@ static int advance_to(struct task* t, const struct user_regs_struct* regs,
 	return 0;
 }
 
-static void emulate_signal_delivery(struct task* oldtask)
+static void emulate_signal_delivery(Task* oldtask)
 {
 	/* We are now at the exact point in the child where the signal
 	 * was recorded, emulate it using the next trace line (records
 	 * the state at sighandler entry). */
-	struct task* t;
+	Task* t;
 	struct trace_frame* trace;
 
 	reset_hpc(oldtask, 0);
@@ -1103,7 +1103,7 @@ static void emulate_signal_delivery(struct task* oldtask)
 	validate_args(trace->stop_reason, -1, t);
 }
 
-static void assert_at_recorded_rcb(struct task* t, int event)
+static void assert_at_recorded_rcb(Task* t, int event)
 {
 	static const int64_t rbc_slack = 0;
 	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
@@ -1122,7 +1122,7 @@ static void assert_at_recorded_rcb(struct task* t, int event)
  * update registers to what was recorded.  Return 0 if successful or 1
  * if an unhandled interrupt occurred.
  */
-static int emulate_deterministic_signal(struct task* t,
+static int emulate_deterministic_signal(Task* t,
 					int sig, int stepi)
 {
 	int event = t->trace.stop_reason;
@@ -1157,7 +1157,7 @@ static int emulate_deterministic_signal(struct task* t,
  * nonzero.  Return 0 if successful or 1 if an unhandled interrupt
  * occurred.
  */
-static int emulate_async_signal(struct task* t,
+static int emulate_async_signal(Task* t,
 				const struct user_regs_struct* regs, int sig,
 				int stepi, int64_t* rcb)
 {
@@ -1177,7 +1177,7 @@ static int emulate_async_signal(struct task* t,
  * if an unhandled interrupt occurred, zero if the ioctl() was
  * successfully skipped over.
  */
-static int skip_desched_ioctl(struct task* t,
+static int skip_desched_ioctl(Task* t,
 			      struct rep_desched_state* ds, int stepi)
 {
 	int ret, is_desched_syscall;
@@ -1211,7 +1211,7 @@ static int skip_desched_ioctl(struct task* t,
  * tracee for replaying the records.  Return the number of record
  * bytes and a pointer to the first record through outparams.
  */
-static void prepare_syscallbuf_records(struct task* t,
+static void prepare_syscallbuf_records(Task* t,
 				       size_t* num_rec_bytes,
 				       const struct syscallbuf_record** first_rec)
 {
@@ -1242,7 +1242,7 @@ static void prepare_syscallbuf_records(struct task* t,
 /**
  * Bail if |t| isn't at the buffered syscall |syscallno|.
  */
-static void assert_at_buffered_syscall(struct task* t,
+static void assert_at_buffered_syscall(Task* t,
 				       const struct user_regs_struct* regs,
 				       int syscallno)
 {
@@ -1261,7 +1261,7 @@ static void assert_at_buffered_syscall(struct task* t,
  * nonzero if an unhandled interrupt occurred, and zero if the syscall
  * was flushed (in which case |flush->state == DONE|).
  */
-static int flush_one_syscall(struct task* t,
+static int flush_one_syscall(Task* t,
 			     struct rep_flush_state* flush, int stepi)
 {
 	const struct syscallbuf_record* rec = flush->rec;
@@ -1359,7 +1359,7 @@ static int flush_one_syscall(struct task* t,
  * that flushed the buffer).  Return 0 if successful or 1 if an
  * unhandled interrupt occurred.
  */
-static int flush_syscallbuf(struct task* t, struct rep_trace_step* step,
+static int flush_syscallbuf(Task* t, struct rep_trace_step* step,
 			    int stepi)
 {
 	struct rep_flush_state* flush = &step->flush;
@@ -1401,7 +1401,7 @@ static int flush_syscallbuf(struct task* t, struct rep_trace_step* step,
  * |step| was made, or nonzero if there was a trap or |step| needs
  * more work.
  */
-static int try_one_trace_step(struct task* t,
+static int try_one_trace_step(Task* t,
 			      struct rep_trace_step* step,
 			      const struct dbg_request* req)
 {
@@ -1433,7 +1433,7 @@ static int try_one_trace_step(struct task* t,
 }
 
 static void replay_one_trace_frame(struct dbg_context* dbg,
-				   struct task* t)
+				   Task* t)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
@@ -1662,7 +1662,7 @@ void replay(void)
 	dbg_destroy_context(&dbg);
 }
 
-void emergency_debug(struct task* t)
+void emergency_debug(Task* t)
 {
 	struct dbg_context* dbg;
 

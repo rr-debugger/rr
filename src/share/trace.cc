@@ -387,7 +387,7 @@ void close_trace_files(void)
 /**
  * Flush the syscallbuf to the trace, if there are any pending entries.
  */
-static void maybe_flush_syscallbuf(struct task *t)
+static void maybe_flush_syscallbuf(Task *t)
 {
 	if (!t || !t->syscallbuf_hdr
 	    || 0 == t->syscallbuf_hdr->num_rec_bytes 
@@ -441,7 +441,7 @@ static int has_exec_info(const struct event* ev)
  * Translate |t|'s event |ev| into a trace frame that can be saved to
  * the log.
  */
-static void encode_trace_frame(struct task* t, const struct event* ev,
+static void encode_trace_frame(Task* t, const struct event* ev,
 			       struct trace_frame* frame)
 {
 	int state;
@@ -486,7 +486,7 @@ static void write_trace_frame(const struct trace_frame* frame)
 	}
 }
 
-void record_event(struct task *t)
+void record_event(Task *t)
 {
 	struct trace_frame frame;
 
@@ -525,7 +525,7 @@ static void print_header(int syscallno, void* addr)
 	fprintf(syscall_header, "%11u", (uintptr_t)addr);
 }
 
-static void write_raw_data(struct task *t, void *buf, size_t to_write)
+static void write_raw_data(Task *t, void *buf, size_t to_write)
 {
 	size_t bytes_written;
 	(void)bytes_written;
@@ -546,7 +546,7 @@ static void write_raw_data(struct task *t, void *buf, size_t to_write)
 
 #define SMALL_READ_SIZE	4096
 
-void record_child_data(struct task *t, size_t size, byte* child_ptr)
+void record_child_data(Task *t, size_t size, byte* child_ptr)
 {
 	int state;
 	int event = encode_event(t->ev, &state);
@@ -583,7 +583,7 @@ record_read:
 	fprintf(syscall_header, "%11d\n", read_bytes);
 }
 
-void record_parent_data(struct task *t, size_t len, void *addr, void *buf)
+void record_parent_data(Task *t, size_t len, void *addr, void *buf)
 {
 	int state;
 	int event = encode_event(t->ev, &state);
@@ -622,7 +622,7 @@ void record_mmapped_file_stats(struct mmapped_file *file)
 	fprintf(mmaps_file, "%s\n", file->filename);
 }
 
-void record_child_str(struct task* t, byte* child_ptr)
+void record_child_str(Task* t, byte* child_ptr)
 {
 	int state;
 	int event = encode_event(t->ev, &state);

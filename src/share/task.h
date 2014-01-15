@@ -9,7 +9,6 @@
 #include <sys/queue.h>
 #include <sys/user.h>
 
-#include "../external/tree.h"
 #include "fixedstack.h"
 #include "trace.h"
 
@@ -239,7 +238,8 @@ struct event {
  * they're called "processes".  Both look the same to rr (on linux),
  * so no distinction is made here.
  */
-struct task {
+class Task {
+public:
 	/* State only used during recording. */
 
 	/* The running count of events that have been recorded for
@@ -397,12 +397,6 @@ struct task {
 	size_t num_syscallbuf_bytes;
 	/* Points at the tracee's mapping of the buffer. */
 	byte* syscallbuf_child;
-
-	/* (Don't worry about these fields; they're implementation
-	 * details for various data structures that tasks belong
-	 * to.) */
-	RB_ENTRY(task) entry;
-	TAILQ_ENTRY(task) tgentry;
 };
 
 /**
@@ -412,7 +406,7 @@ struct task {
  * tracer must await a |waitpid()| notification that the task is no
  * longer possibly-blocked before resuming its execution.
  */
-int task_may_be_blocked(struct task* t);
+int task_may_be_blocked(Task* t);
 
 /**
  * Shortcut to the single |pending_event->desched.rec| when there's
@@ -420,18 +414,18 @@ int task_may_be_blocked(struct task* t);
  * that clients don't need to dig around in the event stack to find
  * this record.
  */
-const struct syscallbuf_record* task_desched_rec(const struct task* t);
+const struct syscallbuf_record* task_desched_rec(const Task* t);
 
 /* (This function is an implementation detail that should go away in
  * favor of a |task_init()| pseudo-constructor that initializes state
  * shared across record and replay.) */
-void push_placeholder_event(struct task* t);
+void push_placeholder_event(Task* t);
 
 /**
  * Push/pop event tracking descheduling of |rec|.
  */
-void push_desched(struct task* t, const struct syscallbuf_record* rec);
-void pop_desched(struct task* t);
+void push_desched(Task* t, const struct syscallbuf_record* rec);
+void pop_desched(Task* t);
 
 /**
  * Push/pop pseudo-sig events on the pending stack.  |no| is the enum
@@ -440,24 +434,24 @@ void pop_desched(struct task* t);
  * so should be recorded for consistency-checking purposes.
  */
 enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
-void push_pseudosig(struct task* t, PseudosigType no, int has_exec_info);
-void pop_pseudosig(struct task* t);
+void push_pseudosig(Task* t, PseudosigType no, int has_exec_info);
+void pop_pseudosig(Task* t);
 
 /**
  * Push/pop signal events on the pending stack.  |no| is the signum,
  * and |deterministic| is nonzero for deterministically-delivered
  * signals (see handle_signal.c).
  */
-void push_pending_signal(struct task* t, int no, int deterministic);
-void pop_signal_delivery(struct task* t);
-void pop_signal_handler(struct task* t);
+void push_pending_signal(Task* t, int no, int deterministic);
+void pop_signal_delivery(Task* t);
+void pop_signal_handler(Task* t);
 
 /**
  * Push/pop syscall events on the pending stack.  |no| is the syscall
  * number.
  */
-void push_syscall(struct task* t, int no);
-void pop_syscall(struct task* t);
+void push_syscall(Task* t, int no);
+void pop_syscall(Task* t);
 
 /**
  * Push/pop syscall interruption events.
@@ -470,14 +464,14 @@ void pop_syscall(struct task* t);
  * emulate syscall entry, since the kernel won't have set things up
  * for the tracee to restart on its own.
  */
-void push_syscall_interruption(struct task* t, int no,
+void push_syscall_interruption(Task* t, int no,
 			       const struct user_regs_struct* args);
-void pop_syscall_interruption(struct task* t);
+void pop_syscall_interruption(Task* t);
 
 /**
  * Dump |t|'s stack of pending events to INFO log.
  */
-void log_pending_events(const struct task* t);
+void log_pending_events(const Task* t);
 
 /**
  * Dump info about |ev| to INFO log.
@@ -493,14 +487,14 @@ const char* event_name(const struct event* ev);
  * Return a new task group consisting of |t|, with |tgid == t->tid|.
  * |task_group_unref()| must be called to free the returned group.
  */
-struct task_group* task_group_new_and_add(struct task* t);
+struct task_group* task_group_new_and_add(Task* t);
 
 /**
  * Add |t| to |tg| and add a reference to |tg|, so that
  * |task_group_unref()| must be called one more time to free |tg|.
  */
 struct task_group* task_group_add_and_ref(struct task_group* tg,
-					  struct task* t);
+					  Task* t);
 
 /**
  * An invariant of rr scheduling is that all process status changes
@@ -529,7 +523,7 @@ pid_t task_group_get_tgid(const struct task_group* tg);
  * Remove |t| from its thread group and release |t|'s reference to the
  * thread group, which may result in the thread group being deleted.
  */
-void task_group_remove_and_unref(struct task* t);
+void task_group_remove_and_unref(Task* t);
 
 /**
  * Create and return a new sighandler table with all signals set to
