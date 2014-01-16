@@ -50,8 +50,10 @@ struct Sighandler {
 	bool resethand;
 };
 struct Sighandlers {
-	shared_ptr<Sighandlers> clone() const {
-		shared_ptr<Sighandlers> s(new Sighandlers());
+	typedef shared_ptr<Sighandlers> shr_ptr;
+
+	shr_ptr clone() const {
+		shr_ptr s(new Sighandlers());
 		// NB: depends on the fact that Sighandler is for all
 		// intents and purposes a POD type, though not
 		// technically.
@@ -109,8 +111,8 @@ struct Sighandlers {
 		assert(0 < sig && sig < ssize_t(ALEN(handlers)));
 	}
 
-	static shared_ptr<Sighandlers> create() {
-		return shared_ptr<Sighandlers>(new Sighandlers());
+	static shr_ptr create() {
+		return shr_ptr(new Sighandlers());
 	}
 
 	Sighandler handlers[_NSIG];
@@ -129,6 +131,7 @@ private:
  */
 struct TaskGroup {
 	typedef set<Task*> TaskSet;
+	typedef shared_ptr<TaskGroup> shr_ptr;
 
 	void add(Task* t) {
 		debug("adding %d to task group %d", t->tid, tgid);
@@ -147,8 +150,8 @@ struct TaskGroup {
 		}
 	}
 
-	static shared_ptr<TaskGroup> create(Task* t) {
-		shared_ptr<TaskGroup> tg(new TaskGroup(t->tid));
+	static shr_ptr create(Task* t) {
+		shr_ptr tg(new TaskGroup(t->tid));
 		tg->add(t);
 		return tg;
 	}
@@ -321,6 +324,7 @@ Task::clone(int flags, pid_t new_tid, pid_t new_rec_tid)
 		auto tg = TaskGroup::create(t);
 		t->task_group.swap(tg);
 	}
+	t->as = (CLONE_SHARE_VM & flags) ? as : as->clone();
 	return t;
 }
 
@@ -362,6 +366,9 @@ Task::post_exec()
 {
 	sighandlers = sighandlers->clone();
 	sighandlers->reset_user_handlers();
+	// TODO: create address space from post-exec /proc/maps
+	auto a = AddressSpace::create();
+	as.swap(a);
 }
 
 void
@@ -419,6 +426,8 @@ Task::create(pid_t tid, pid_t rec_tid)
 	t->sighandlers.swap(sh);
 	auto tg = TaskGroup::create(t);
 	t->task_group.swap(tg);
+	auto a = AddressSpace::create();
+	t->as.swap(a);
 	return t;
 }
 

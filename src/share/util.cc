@@ -86,6 +86,9 @@ static byte* get_mmaped_region_end(Task* t, byte* start)
 	return info.end_addr;
 }
 
+// FIXME this function assumes that there's only one address space.
+// Should instead only look at the address space of the task in
+// question.
 static bool is_start_of_scratch_region(void* start_addr)
 {
 	for (Task::Map::const_iterator it = Task::begin(); it != Task::end();

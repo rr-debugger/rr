@@ -25,6 +25,29 @@ struct syscallbuf_record;
  * it's not worth the bother to sort those out.) */
 typedef void (*sig_handler_t)(int);
 
+/**
+ * Models the address space for a set of tasks.  This includes the set
+ * of mapped pages, and the resources those mappings refer to.
+ */
+class AddressSpace {
+public:
+	typedef std::shared_ptr<AddressSpace> shr_ptr;
+
+	shr_ptr clone() {
+		return shr_ptr(new AddressSpace());
+	}
+
+	static shr_ptr create() {
+		return shr_ptr(new AddressSpace());
+	}
+
+private:
+	AddressSpace() { }
+
+	AddressSpace(const AddressSpace&);
+	AddressSpace operator=(const AddressSpace&);
+};
+
 enum PseudosigType {
 	ESIG_NONE,
 	ESIG_SEGV_MMAP_READ, ESIG_SEGV_MMAP_WRITE, ESIG_SEGV_RDTSC,
@@ -341,6 +364,12 @@ public:
 	 */
 	pid_t tgid() const;
 
+	/**
+	 * Return the virtual memory mapping (address space) of this
+	 * task.
+	 */
+	AddressSpace::shr_ptr vm() { return as; }
+
 	/** Return an iterator at the beginning of the task map. */
 	static Task::Map::const_iterator begin();
 
@@ -369,20 +398,6 @@ public:
 	/* The running count of events that have been recorded for
 	 * this task.  Starts at "1" to match with "global_time". */
 	int thread_time;
-
-	/* The task group this belongs to. */
-	std::shared_ptr<TaskGroup> task_group;
-
-	/* Points to the signal-hander table of this task.  If this
-	 * task is a non-fork clone child, then the table will be
-	 * shared with all its "thread" siblings.  Any updates made to
-	 * that shared table are immediately visible to all sibling
-	 * threads.
-	 *
-	 * fork and vfork children always get their own copies of the
-	 * table.  And if this task exec()s, the table is copied and
-	 * stripped of user sighandlers (see below). */
-	std::shared_ptr<Sighandlers> sighandlers;
 
 	/* For convenience, the current top of |pending_events| if
 	 * there are any.  If there aren't any pending, the top of the
@@ -524,6 +539,21 @@ public:
 
 private:
 	Task(pid_t tid, pid_t rec_tid = -1);
+
+	/* Points to the signal-hander table of this task.  If this
+	 * task is a non-fork clone child, then the table will be
+	 * shared with all its "thread" siblings.  Any updates made to
+	 * that shared table are immediately visible to all sibling
+	 * threads.
+	 *
+	 * fork and vfork children always get their own copies of the
+	 * table.  And if this task exec()s, the table is copied and
+	 * stripped of user sighandlers (see below). */
+	std::shared_ptr<Sighandlers> sighandlers;
+	/* The task group this belongs to. */
+	std::shared_ptr<TaskGroup> task_group;
+	/* The address space of this task. */
+	std::shared_ptr<AddressSpace> as;
 
 	Task(Task&);
 	Task operator=(Task&);
