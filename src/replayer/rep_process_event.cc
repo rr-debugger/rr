@@ -594,6 +594,8 @@ static void* finish_copied_mmap(Task* t,
 				int prot, int flags,
 				const struct mmapped_file* file)
 {
+	debug("  finishing copied mmap of %s", file->filename);
+
 	void* mapped_addr = finish_anonymous_mmap(t, state, trace, prot,
 						  /* The restored region
 						   * won't be backed by
