@@ -8,6 +8,8 @@
 #include <string.h>
 #include <syscall.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include <set>
 
@@ -20,19 +22,103 @@
 
 using namespace std;
 
+static Task::Map tasks;
+
 /**
- * "Mix-in" for heap structs to enable them to be refcounted using the
- * |refcounted_()| helpers below.  Your struct must have a |struct
- * refcounted| field inline, first, as follows.  The field name
- * doesn't matter.
- *
- *   struct foo {
- *     struct refcounted _;
- *     ...
- *   };
+ * Stores the table of signal dispositions and metadata for an
+ * arbitrary set of tasks.  Each of those tasks must own one one of
+ * the |refcount|s while they still refer to this.
  */
-struct refcounted {
-	int refcount;
+struct Sighandler {
+	Sighandler() : handler(SIG_DFL), resethand(false) { }
+	Sighandler(const struct sigaction& sa) :
+		handler((SA_SIGINFO & sa.sa_flags) ?
+			(sig_handler_t)sa.sa_sigaction :
+			sa.sa_handler),
+		resethand(sa.sa_flags & SA_RESETHAND)
+	{ }
+
+	bool is_default() const {
+		return SIG_DFL == handler && !resethand;
+	}
+	bool is_user_handler() const {
+		static_assert((void*)1 == SIG_IGN, "SIG_IGN should be 0x1");
+		return (uintptr_t)handler & ~(uintptr_t)SIG_IGN;
+	}
+
+	sig_handler_t handler;
+	bool resethand;
+};
+struct Sighandlers {
+	shared_ptr<Sighandlers> clone() const {
+		shared_ptr<Sighandlers> s(new Sighandlers());
+		// NB: depends on the fact that Sighandler is for all
+		// intents and purposes a POD type, though not
+		// technically.
+		memcpy(s->handlers, handlers, sizeof(handlers));
+		return s;
+	}
+
+	Sighandler& get(int sig) {
+		assert_valid(sig);
+		return handlers[sig];
+	}
+	const Sighandler& get(int sig) const {
+		assert_valid(sig);
+		return handlers[sig];
+	}
+
+	void init_from_current_process() {
+		for (int i = 0; i < ssize_t(ALEN(handlers)); ++i) {
+			Sighandler& h = handlers[i];
+			struct sigaction act;
+			if (-1 == sigaction(i, NULL, &act)) {
+				/* EINVAL means we're querying an
+				 * unused signal number. */
+				assert(EINVAL == errno);
+				assert(h.is_default());
+				continue;
+			}
+			h = Sighandler(act);
+		}
+	}
+
+	/**
+	 * For each signal in |table| such that is_user_handler() is
+	 * true, reset the disposition of that signal to SIG_DFL, and
+	 * clear the resethand flag if it's set.  SIG_IGN signals are
+	 * not modified.
+	 *
+	 * (After an exec() call copies the original sighandler table,
+	 * this is the operation required by POSIX to initialize that
+	 * table copy.)
+	 */
+	void reset_user_handlers() {
+		for (int i = 0; i < ssize_t(ALEN(handlers)); ++i) {
+			Sighandler& h = handlers[i];
+			// If the handler was a user handler, reset to
+			// default.  If it was SIG_IGN or SIG_DFL,
+			// leave it alone.
+			if (h.is_user_handler()) {
+				handlers[i] = Sighandler();
+			}
+		}
+	}
+
+	static void assert_valid(int sig) {
+		assert(0 < sig && sig < ssize_t(ALEN(handlers)));
+	}
+
+	static shared_ptr<Sighandlers> create() {
+		return shared_ptr<Sighandlers>(new Sighandlers());
+	}
+
+	Sighandler handlers[_NSIG];
+
+private:
+	Sighandlers() { }
+	Sighandlers(const Sighandlers&);
+	Sighandlers operator=(const Sighandlers&);
 };
 
 /**
@@ -41,71 +127,42 @@ struct refcounted {
  * the ancestor of all other threads in the group.  Each constituent
  * task must own a reference to this.
  */
-typedef set<Task*> TaskSet;
-struct task_group {
-	struct refcounted _;
-	pid_t tgid;
-	TaskSet tasks;
-};
+struct TaskGroup {
+	typedef set<Task*> TaskSet;
 
-/**
- * Stores the table of signal dispositions and metadata for an
- * arbitrary set of tasks.  Each of those tasks must own one one of
- * the |refcount|s while they still refer to this.
- */
-struct sighandlers {
-	struct refcounted _;
-	struct {
-		sig_handler_t handler;
-		int resethand;
-	} handlers[_NSIG];
-};
-
-static Task::Map tasks;
-
-/**
- * Initializes the first reference to the struct.
- * |refcounted_unref()| must be called to release that reference.
- */
-static void refcounted_init(void* p)
-{
-	struct refcounted* r = (struct refcounted*)p;
-	r->refcount = 1;
-}
-
-static void refcounted_assert_valid(const void* p)
-{
-	const struct refcounted* r = (struct refcounted*)p;
-	assert(r->refcount > 0);
-}
-
-/**
- * Add a reference to |p|, so that |refcounted_unref()| must be called
- * one more time to free |p|.
- */
-static void* refcounted_ref(void* p)
-{
-	struct refcounted* r = (struct refcounted*)p;
-	refcounted_assert_valid(r);
-	++r->refcount;
-	return r;
-}
-
-/**
- * Remove a reference to |*pp| and return |*pp| if the released
- * reference was the last and |*pp| needs to be freed; NULL otherwise.
- * It's OK to pass a NULL pointer or pointer to NULL.
- */
-static void* refcounted_unref(void** pp)
-{
-	struct refcounted* r;
-	if (!pp || !(r = (struct refcounted*)*pp)) {
-		return NULL;
+	void add(Task* t) {
+		debug("adding %d to task group %d", t->tid, tgid);
+		tasks.insert(t);
 	}
-	*pp = NULL;
-	refcounted_assert_valid(r);
-	return (0 == --r->refcount) ? r : NULL;
-}
+	void remove(Task* t) {
+		debug("removing %d from task group %d", t->tid, tgid);
+		tasks.erase(t);
+	}
+	void destabilize() {
+		debug("destabilizing task group %d", tgid);
+		for (auto it = tasks.begin(); it != tasks.end(); ++it) {
+			Task* t = *it;
+			t->unstable = 1;
+			debug("  destabilized task %d", t->tid);
+		}
+	}
+
+	static shared_ptr<TaskGroup> create(Task* t) {
+		shared_ptr<TaskGroup> tg(new TaskGroup(t->tid));
+		tg->add(t);
+		return tg;
+	}
+
+	TaskSet tasks;
+	pid_t tgid;
+
+private:
+	TaskGroup(pid_t tgid) : tgid(tgid) {
+		debug("creating new task group %d", tgid);
+	}
+	TaskGroup(const TaskGroup&);
+	TaskGroup operator=(const TaskGroup&);
+};
 
 static const char* event_type_name(int type)
 {
@@ -135,6 +192,68 @@ static int is_syscall_event(int type) {
 	}
 }
 
+/**
+ * Detach |t| from rr and try hard to ensure any operations related to
+ * it have completed by the time this function returns.
+ */
+static void detach_and_reap(Task* t)
+{
+	sys_ptrace_detach(t->tid);
+	if (t->unstable) {
+		log_warn("%d is unstable; not blocking on its termination",
+			 t->tid);
+		goto sleep_hack;
+	}
+
+	debug("Joining with exiting %d ...", t->tid);
+	while (1) {
+		int err = waitpid(t->tid, &t->status, __WALL);
+		if (-1 == err && ECHILD == errno) {
+			debug(" ... ECHILD");
+			break;
+		} else if (-1 == err) {
+			assert_exec(t, EINTR == errno,
+				    "waitpid(%d) returned -1, errno %d",
+				    t->tid, errno);
+		}
+		if (err == t->tid && (WIFEXITED(t->status) || 
+				      WIFSIGNALED(t->status))) {
+			debug(" ... exited with status 0x%x", t->status);
+			break;
+		} else if (err == t->tid) {
+			assert_exec(t, (PTRACE_EVENT_EXIT ==
+					GET_PTRACE_EVENT(t->status)),
+				    "waitpid(%d) return status %d",
+				    t->tid, t->status);
+		}
+	}
+
+sleep_hack:
+	/* clone()'d tasks can have a pid_t* |ctid| argument that's
+	 * written with the new task's pid.  That pointer can also be
+	 * used as a futex: when the task dies, the original ctid
+	 * value is cleared and a FUTEX_WAKE is done on the
+	 * address. So pthread_join() is basically a standard futex
+	 * wait loop.
+	 *
+	 * That means that the kernel writes shared memory behind rr's
+	 * back, which can diverge replay.  The "real fix" for this is
+	 * for rr to track access to shared memory, like the |ctid|
+	 * location.  But until then, we (attempt to) let "time"
+	 * resolve this memory race with the sleep() hack below.
+	 *
+	 * Why 4ms?  Because
+	 *
+	 * $ for i in $(seq 10); do (cd $rr/src/test/ && bash thread_cleanup.run) & done
+	 *
+	 * has been observed to fail when we sleep 3ms, but not when
+	 * we sleep 4ms.  Yep, this hack is that horrible! */
+	struct timespec ts;
+	memset(&ts, 0, sizeof(ts));
+	ts.tv_nsec = 4000000LL;
+	nanosleep_nointr(&ts);
+}
+
 Task::Task(pid_t _tid, pid_t _rec_tid)
 {
 	// TODO: properly C++-ify me
@@ -156,6 +275,8 @@ Task::Task(pid_t _tid, pid_t _rec_tid)
 
 Task::~Task()
 {
+	debug("task %d (rec:%d) is dying ...", tid, rec_tid);
+
 	assert(this == Task::find(rec_tid));
 	// We expect tasks to usually exit by a call to exit() or
 	// exit_group(), so it's not helpful to warn about that.
@@ -168,8 +289,7 @@ Task::~Task()
 	}
 
 	tasks.erase(rec_tid);
-	task_group_remove_and_unref(this);
-	sighandlers_unref(&sighandlers);
+	task_group->remove(this);
 
 	destroy_hpc(this);
 	close(child_mem_fd);
@@ -177,6 +297,8 @@ Task::~Task()
 	munmap(syscallbuf_hdr, num_syscallbuf_bytes);
 
 	detach_and_reap(this);
+
+	debug("  dead");
 }
 
 Task*
@@ -186,12 +308,19 @@ Task::clone(int flags, pid_t new_tid, pid_t new_rec_tid)
 
 	t->syscallbuf_lib_start = syscallbuf_lib_start;
 	t->syscallbuf_lib_end = syscallbuf_lib_end;
-	t->task_group = (CLONE_SHARE_TASK_GROUP & flags) ?
-			task_group_add_and_ref(task_group, t) :
-			task_group_new_and_add(t);
-	t->sighandlers = (CLONE_SHARE_SIGHANDLERS & flags) ?
-			 sighandlers_ref(sighandlers) :
-			 sighandlers_copy(sighandlers);
+	if (CLONE_SHARE_SIGHANDLERS & flags) {
+		t->sighandlers = sighandlers;
+	} else {
+		auto sh = Sighandlers::create();
+		t->sighandlers.swap(sh);
+	}
+	if (CLONE_SHARE_TASK_GROUP & flags) {
+		t->task_group = task_group;
+		task_group->add(t);
+	} else {
+		auto tg = TaskGroup::create(t);
+		t->task_group.swap(tg);
+	}
 	return t;
 }
 
@@ -200,6 +329,12 @@ Task::desched_rec() const
 {
 	return (is_syscall_event(ev->type) ? ev->syscall.desched_rec :
 		(EV_DESCHED == ev->type) ? ev->desched.rec : NULL);
+}
+
+void
+Task::destabilize_task_group()
+{
+	task_group->destabilize();
 }
 
 bool
@@ -216,10 +351,44 @@ Task::next_roundrobin() const
 {
 	// XXX if this ever shows up on profiles, we can make Task
 	// into an invasive doubly-linked list.
-	Map::const_iterator it = tasks.find(rec_tid);
+	auto it = tasks.find(rec_tid);
 	assert(this == it->second);
 	it = ++it == tasks.end() ? tasks.begin() : it;
 	return it->second;
+}
+
+void
+Task::post_exec()
+{
+	sighandlers = sighandlers->clone();
+	sighandlers->reset_user_handlers();
+}
+
+void
+Task::set_signal_disposition(int sig, const struct sigaction& sa)
+{
+	sighandlers->get(sig) = Sighandler(sa);
+}
+
+void
+Task::signal_delivered(int sig)
+{
+	Sighandler& h = sighandlers->get(sig);
+	if (h.resethand) {
+		h = Sighandler();
+	}
+}
+
+bool
+Task::signal_has_user_handler(int sig) const
+{
+	return sighandlers->get(sig).is_user_handler();
+}
+
+pid_t
+Task::tgid() const
+{
+	return task_group->tgid;
 }
 
 /*static*/
@@ -241,13 +410,15 @@ Task::create(pid_t tid, pid_t rec_tid)
 	assert(Task::count() == 0);
 
 	Task* t = new Task(tid, rec_tid);
-	t->task_group = task_group_new_and_add(t);
 	// The very first task we fork inherits the signal
 	// dispositions of the current OS process (which should all be
 	// default at this point, but ...).  From there on, new tasks
 	// will transitively inherit from this first task.
-	t->sighandlers = sighandlers_new();
-	sighandlers_init_from_current_process(t->sighandlers);
+	auto sh = Sighandlers::create();
+	sh->init_from_current_process();
+	t->sighandlers.swap(sh);
+	auto tg = TaskGroup::create(t);
+	t->task_group.swap(tg);
 	return t;
 }
 
@@ -261,7 +432,7 @@ Task::end()
 /*static*/Task*
 Task::find(pid_t rec_tid)
 {
-	Task::Map::const_iterator it = tasks.find(rec_tid);
+	auto it = tasks.find(rec_tid);
 	return tasks.end() != it ? it->second : NULL;
 }
 
@@ -425,165 +596,4 @@ void log_event(const struct event* ev)
 const char* event_name(const struct event* ev)
 {
 	return event_type_name(ev->type);
-}
-
-struct task_group* task_group_new_and_add(Task* t)
-{
-	struct task_group* tg = new task_group();
-
-	debug("creating new task group for %d", t->tid);
-
-	refcounted_init(tg);
-
-	tg->tgid = t->tid;
-	tg->tasks.insert(t);
-
-	return tg;
-}
-
-struct task_group* task_group_add_and_ref(struct task_group* tg,
-					  Task* t)
-{
-	debug("adding %d to task group %d", t->tid, tg->tgid);
-
-	refcounted_assert_valid(tg);
-	tg->tasks.insert(t);
-	return (struct task_group*)refcounted_ref(tg);
-}
-
-void task_group_destabilize(struct task_group* tg)
-{
-	for (TaskSet::iterator it = tg->tasks.begin();
-	     it != tg->tasks.end(); ++it) {
-		(*it)->unstable = 1;
-	}
-}
-
-pid_t task_group_get_tgid(const struct task_group* tg)
-{
-	refcounted_assert_valid(tg);
-	return tg->tgid;
-}
-
-void task_group_remove_and_unref(Task* t)
-{
-	struct task_group* to_free;
-
-	debug("removing %d from task group %d", t->tid, t->task_group->tgid);
-
-	t->task_group->tasks.erase(t);
-
-	to_free = (struct task_group*)refcounted_unref((void**)&t->task_group);
-	if (to_free) {
-		assert(to_free->tasks.empty());
-		delete to_free;
-	}
-}
-
-static void assert_table_has_sig(const struct sighandlers* t, int sig)
-{
-	refcounted_assert_valid(t);
-	assert(0 < sig && sig < ssize_t(ALEN(t->handlers)));
-}
-
-static int is_user_handler(sig_handler_t sh)
-{
-	/* We assume this in order to make the check below simpler.
-	 * TODO: static assert */
-	assert((void*)1 == SIG_IGN);
-
-	return !!((uintptr_t)sh & ~(uintptr_t)SIG_IGN);
-}
-
-struct sighandlers* sighandlers_new()
-{
-	struct sighandlers* t = (struct sighandlers*)calloc(1, sizeof(*t));
-	/* We assume this in order to skip explicitly initializing the
-	 * table.  TODO: static assert */
-	assert(NULL == SIG_DFL);
-	refcounted_init(t);
-	return t;
-}
-
-void sighandlers_init_from_current_process(struct sighandlers* table)
-{
-	int i;
-	for (i = 0; i < ssize_t(ALEN(table->handlers)); ++i) {
-		struct sigaction act;
-
-		if (-1 == sigaction(i, NULL, &act)) {
-			/* EINVAL means we're querying an unused
-			 * signal number. */
-			assert(EINVAL == errno);
-			assert(SIG_DFL == table->handlers[i].handler);
-			assert(!table->handlers[i].resethand);
-			continue;
-		}
-		table->handlers[i].handler = (SA_SIGINFO & act.sa_flags) ?
-					     (sig_handler_t)act.sa_sigaction :
-					     act.sa_handler;
-		table->handlers[i].resethand = (act.sa_flags & SA_RESETHAND);
-	}
-}
-
-int sighandlers_has_user_handler(const struct sighandlers* table, int sig)
-{
-	assert_table_has_sig(table, sig);
-	return is_user_handler(table->handlers[sig].handler);
-}
-
-int sighandlers_is_resethand(const struct sighandlers* table, int sig)
-{
-	assert_table_has_sig(table, sig);
-	return !!table->handlers[sig].resethand;
-}
-
-void sighandlers_set_disposition(struct sighandlers* table, int sig,
-				 sig_handler_t disp, int resethand)
-{
-	assert_table_has_sig(table, sig);
-	table->handlers[sig].handler = disp;
-	/* The sigaction() spec says to only honor SA_RESETHAND if
-	 * it's set for a user signal handler.  So ignore it if it's
-	 * specified for SIG_IGN.  (It would have no effect for
-	 * SIG_DFL.) */
-	table->handlers[sig].resethand = is_user_handler(disp) ? resethand : 0;
-}
-
-struct sighandlers* sighandlers_copy(struct sighandlers* from)
-{
-	struct sighandlers* copy = sighandlers_new();
-
-	memcpy(copy, from, sizeof(*copy));
-	refcounted_init(copy);
-
-	return copy;
-}
-
-struct sighandlers* sighandlers_ref(struct sighandlers* table)
-{
-	return (struct sighandlers*)refcounted_ref(table);
-}
-
-void sighandlers_reset_user_handlers(struct sighandlers* table)
-{
-	for (int i = 0; i < ssize_t(ALEN(table->handlers)); ++i) {
-		sig_handler_t oh = table->handlers[i].handler;
-		/* If the handler was a user handler, reset to
-		 * default.  If it was SIG_IGN or SIG_DFL, leave it
-		 * alone. */
-		if (is_user_handler(oh)) {
-			table->handlers[i].handler = SIG_DFL;
-			table->handlers[i].resethand = 0;
-		}
-	}
-}
-
-void sighandlers_unref(struct sighandlers** table)
-{
-	struct sighandlers* to_free =
-		(struct sighandlers*)refcounted_unref((void**)table);
-	if (to_free) {
-		free(to_free);
-	}
 }

@@ -334,9 +334,6 @@ static void record_signal(Task* t, const siginfo_t* si,
 			  uint64_t max_rbc)
 {
 	int sig = si->si_signo;
-	int has_user_handler = sighandlers_has_user_handler(t->sighandlers,
-							    sig);
-	int resethand = sighandlers_is_resethand(t->sighandlers, sig);
 	size_t sigframe_size = 0;
 
 	if (sig == rr_flags()->ignore_sig) {
@@ -360,7 +357,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 	reset_hpc(t, max_rbc);
 
 	t->ev->type = EV_SIGNAL_DELIVERY;
-	if (has_user_handler) {
+	if (t->signal_has_user_handler(sig)) {
 		debug("  %s has user handler", signalname(sig));
 		/* Deliver the signal immediately when there's a user
 		 * handler: we need to record the sigframe that the
@@ -405,10 +402,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 	/* We record this data regardless to simplify replay. */
 	record_child_data(t, sigframe_size, (byte*)t->regs.esp);
 
-	if (resethand) {
-		sighandlers_set_disposition(t->sighandlers, sig,
-					    SIG_DFL, NO_RESET);
-	}
+	t->signal_delivered(sig);
 
 	/* This event is used by the replayer to set up the signal
 	 * handler frame, or to record the resulting state of the

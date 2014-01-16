@@ -10,9 +10,13 @@
 #include <sys/user.h>
 
 #include <map>
+#include <memory>
 
 #include "fixedstack.h"
 #include "trace.h"
+
+struct Sighandlers;
+struct TaskGroup;
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
@@ -20,19 +24,6 @@ struct syscallbuf_record;
 /* (There are various GNU and BSD extensions that define this, but
  * it's not worth the bother to sort those out.) */
 typedef void (*sig_handler_t)(int);
-
-/**
- * A task group, which consists of a task-group ID (tgid) and a list
- * of tasks.  Manipulated through |task_group_()| functions below.
- */
-/*refcounted*/ struct task_group;
-
-/**
- * A signal-handler table.  The table stores the disposition of all
- * known signals, and additional metadata.  These tables are created
- * and manipulated through the sighandlers_() functions below.
- */
-/*refcounted*/ struct sighandlers;
 
 enum PseudosigType {
 	ESIG_NONE,
@@ -283,6 +274,26 @@ public:
 	const struct syscallbuf_record* desched_rec() const;
 
 	/**
+	 * An invariant of rr scheduling is that all process status
+	 * changes happen as a result of rr resuming the execution of
+	 * a task.  This is required to keep tracees in known states,
+	 * preventing events from happening "behind rr's back".
+	 * However, sometimes this seems to be unavoidable; one case
+	 * is delivering some kinds of death signals.  When that
+	 * situation occurs, notify the scheduler by calling this
+	 * function: the effect is that the scheduler will always use
+	 * |waitpid()| to schedule destabilized tasks, thereby
+	 * assuming nothing about the destabilized tasks' statuses.
+	 *
+	 * Currently, instability is a one-way street; it's only been
+	 * needed for death signals and exit_group() so far.  This
+	 * helper (obviously) only acts at the task-group granularity,
+	 * since it's not yet known how |killpg()| appears to
+	 * ptracers.
+	 */
+	void destabilize_task_group();
+
+	/**
 	 * Return nonzero if |t| may not be immediately runnable,
 	 * i.e., resuming execution and then |waitpid()|'ing may block
 	 * for an unbounded amount of time.  When the task is in this
@@ -299,6 +310,36 @@ public:
 	 * scheduling, in the steady state.
 	 */
 	Task* next_roundrobin() const;
+
+	/**
+	 * Call this after an execve() syscall finishes.  Emulate
+	 * resource updates induced by the exec.
+	 */
+	void post_exec();
+
+	/**
+	 * Set the disposition and resethand semantics of |sig| to
+	 * |sa|, overwriting whatever may already be there.
+	 */
+	void set_signal_disposition(int sig, const struct sigaction& sa);
+
+	/**
+	 * Call this after |sig| is delivered to this task.  Emulate
+	 * sighandler updates induced by the signal delivery.
+	 */
+	void signal_delivered(int sig);
+
+	/**
+	 * Return nonzero if the disposition of |sig| in |table| isn't SIG_IGN
+	 * or SIG_DFL, that is, if a user sighandler will be invoked when
+	 * |sig| is received.
+	 */
+	bool signal_has_user_handler(int sig) const;
+
+	/**
+	 * Return the id of this task's thread group.
+	 */
+	pid_t tgid() const;
 
 	/** Return an iterator at the beginning of the task map. */
 	static Task::Map::const_iterator begin();
@@ -330,7 +371,7 @@ public:
 	int thread_time;
 
 	/* The task group this belongs to. */
-	/*refcounted*/struct task_group* task_group;
+	std::shared_ptr<TaskGroup> task_group;
 
 	/* Points to the signal-hander table of this task.  If this
 	 * task is a non-fork clone child, then the table will be
@@ -341,7 +382,7 @@ public:
 	 * fork and vfork children always get their own copies of the
 	 * table.  And if this task exec()s, the table is copied and
 	 * stripped of user sighandlers (see below). */
-	/*refcounted*/struct sighandlers* sighandlers;
+	std::shared_ptr<Sighandlers> sighandlers;
 
 	/* For convenience, the current top of |pending_events| if
 	 * there are any.  If there aren't any pending, the top of the
@@ -554,116 +595,5 @@ void log_event(const struct event* ev);
  * Return a string naming |ev|'s type.
  */
 const char* event_name(const struct event* ev);
-
-/**
- * Return a new task group consisting of |t|, with |tgid == t->tid|.
- * |task_group_unref()| must be called to free the returned group.
- */
-struct task_group* task_group_new_and_add(Task* t);
-
-/**
- * Add |t| to |tg| and add a reference to |tg|, so that
- * |task_group_unref()| must be called one more time to free |tg|.
- */
-struct task_group* task_group_add_and_ref(struct task_group* tg,
-					  Task* t);
-
-/**
- * An invariant of rr scheduling is that all process status changes
- * happen as a result of rr resuming the execution of a task.  This is
- * required to keep tracees in known states, preventing events from
- * happening "behind rr's back".  However, sometimes this seems to be
- * unavoidable; one case is delivering some kinds of death signals.
- * When that situation occurs, notify the scheduler by calling this
- * function: the effect is that the scheduler will always use
- * |waitpid()| to schedule destabilized tasks, thereby assuming
- * nothing about the destabilized tasks' statuses.
- *
- * Currently, instability is a one-way street; it's only been needed
- * for death signals and exit_group() so far.  This helper (obviously)
- * only acts at the task-group granularity, since it's not yet known
- * how |killpg()| appears to ptracers.
- */
-void task_group_destabilize(struct task_group* tg);
-
-/**
- * Return the |tgid| of |tg|.
- */
-pid_t task_group_get_tgid(const struct task_group* tg);
-
-/**
- * Remove |t| from its thread group and release |t|'s reference to the
- * thread group, which may result in the thread group being deleted.
- */
-void task_group_remove_and_unref(Task* t);
-
-/**
- * Create and return a new sighandler table with all signals set to
- * disposition SIG_DFL and resethand = 0.
- *
- * The returned table has refcount 1, so the caller must
- * sighandlers_unref() it to free it.
- */
-struct sighandlers* sighandlers_new(void);
-/**
- * Copy all the sighandlers and metadata from the caller's process
- * into |table|, overwriting whatever data was already in |table|.
- * Callers should be sure they know what they're doing before calling
- * this.
- */
-void sighandlers_init_from_current_process(struct sighandlers* table);
-/**
- * Return nonzero if the disposition of |sig| in |table| isn't SIG_IGN
- * or SIG_DFL, that is, if a user sighandler will be invoked when
- * |sig| is received.
- */
-int sighandlers_has_user_handler(const struct sighandlers* table, int sig);
-/**
- * Return nonzero if |sig| has SA_RESETHAND behavior, as stored by
- * sighandlers_set_disposition() below.  SA_RESETHAND behavior is
- * defined as:
- *
- *   Restore the signal action to the default [Ed: SIG_DFL] upon entry
- *   to the signal handler.  This flag is only meaningful when
- *   establishing a signal handler.
- */
-int sighandlers_is_resethand(const struct sighandlers* table, int sig);
-/**
- * Set the disposition and resethand semantics of |sig| in |table|,
- * overwriting whatever may already be there.
- */
-enum { NO_RESET = 0, RESET_HANDLER };
-void sighandlers_set_disposition(struct sighandlers* table, int sig,
-				 sig_handler_t disp, int resethand);
-/**
- * Return an exact copy of |from|, except with refcount 1 (regardless
- * of what |from|'s refcount is).  That is, return a freshly allocated
- * copy of |from|.
- *
- * The caller must sighandlers_unref() the returned table to free it.
- */
-struct sighandlers* sighandlers_copy(struct sighandlers* from);
-/**
- * Add another reference to |table|, so that one more
- * sighandlers_unref() is required to free it.  |table| is returned
- * for convenience.
- */
-struct sighandlers* sighandlers_ref(struct sighandlers* table);
-/**
- * For each signal in |table| such that sighandlers_has_user_handler()
- * returns nonzero, reset the disposition of that signal to SIG_DFL,
- * and clear the resethand flag if it's nonzero.  SIG_IGN signals are
- * not modified.
- *
- * (After an exec() call copies the original sighandler table, this is
- * the operation required by POSIX to initialize that table copy.)
- */
-void sighandlers_reset_user_handlers(struct sighandlers* table);
-/**
- * Remove a reference to |*table|.  If the removed reference was the
- * last, free the memory pointed at |*table|.  In any case, set
- * |*table| to NULL before return.
- */
-void sighandlers_unref(struct sighandlers** table);
 
 #endif /* TASK_H_ */

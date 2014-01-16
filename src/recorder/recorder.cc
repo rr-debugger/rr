@@ -128,8 +128,6 @@ static void handle_ptrace_event(Task** tp)
 	}
 
 	case PTRACE_EVENT_EXEC: {
-		struct sighandlers* old_table = t->sighandlers;
-
 		/* The initial tracee, if it's still around, is now
 		 * for sure not running in the initial rr address
 		 * space, so we can unblock signals. */
@@ -144,9 +142,7 @@ static void handle_ptrace_event(Task** tp)
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 
-		t->sighandlers = sighandlers_copy(old_table);
-		sighandlers_reset_user_handlers(t->sighandlers);
-		sighandlers_unref(&old_table);
+		t->post_exec();
 		assert(signal_pending(t->status) == 0);
 		break;
 	}
@@ -156,7 +152,7 @@ static void handle_ptrace_event(Task** tp)
 		    && SYS_exit_group == t->ev->syscall.no
 		    && Task::count() > 1) {
 			log_warn("exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race");
-			task_group_destabilize(t->task_group);
+			t->destabilize_task_group();
 		}
 
 		t->event = t->unstable ? USR_UNSTABLE_EXIT : USR_EXIT;
@@ -746,7 +742,7 @@ void record()
 			int unstable = signal_state_changed(t, by_waitpid);
 			if (unstable) {
 				log_warn("Delivered core-dumping signal; may misrecord CLONE_CHILD_CLEARTID memory race");
-				task_group_destabilize(t->task_group);
+				t->destabilize_task_group();
 			}
 			continue;
 		}

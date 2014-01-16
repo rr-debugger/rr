@@ -2222,14 +2222,7 @@ void rec_process_syscall(Task *t)
 			struct sigaction* sa = (struct sigaction*)
 					       read_child_data(t, sizeof(*sa),
 							       new_sigaction);
-			sig_handler_t sh = (sa->sa_flags & SA_SIGINFO) ?
-					   (sig_handler_t)sa->sa_sigaction :
-					   sa->sa_handler;
-			int resethand = (sa->sa_flags & SA_RESETHAND);
-
-			sighandlers_set_disposition(t->sighandlers, sig,
-						    sh, resethand);
-
+			t->set_signal_disposition(sig, *sa);
 			free(sa);
 		}
 		break;
