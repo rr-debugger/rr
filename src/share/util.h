@@ -218,6 +218,12 @@ const char* syscallname(int syscall);
 int signal_pending(int status);
 
 /**
+ * Convert the flags passed to the clone() syscall, |flags_arg|, into
+ * the format understood by Task::clone().
+ */
+int clone_flags_to_task_flags(int flags_arg);
+
+/**
  * Detach |t| from rr and try hard to ensure any operations related to
  * it have completed by the time this function returns.
  */
@@ -245,14 +251,14 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
  * at in |t|'s address space by |child_msghdr_ptr|.
  */
 void record_struct_msghdr(Task* t, struct msghdr* child_msghdr);
-/** */
+/** Like record_struct_msghdr(), but records mmsghdr. */
 void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
 /**
  * Restore the recorded msghdr pointed at in |t|'s address space by
  * |child_msghdr_ptr|.
  */
 void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr);
-/** */
+/** Like restore_struct_msghdr(), but for mmsghdr. */
 void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
 
 /**

@@ -34,7 +34,6 @@
 #include <map>
 
 #include "dbg_gdb.h"
-#include "rep_sched.h"
 #include "rep_process_event.h"
 
 #include "../preload/syscall_buffer.h"
@@ -342,11 +341,14 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_offsets(dbg);
 			continue;
 		case DREQ_GET_THREAD_LIST: {
-			pid_t* tids;
-			size_t len;
-			rep_sched_enumerate_tasks(&tids, &len);
-			dbg_reply_get_thread_list(dbg, tids, len);
-			free(tids);
+			size_t len = Task::count();
+			vector<pid_t> tids;
+			for (Task::Map::const_iterator it = Task::begin();
+			     it != Task::end(); ++it) {
+				Task* t = it->second;
+				tids.push_back(t->rec_tid);
+			}
+			dbg_reply_get_thread_list(dbg, tids.data(), len);
 			continue;
 		}
 		case DREQ_INTERRUPT:
@@ -472,6 +474,45 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			fatal("Unknown debugger request %d", req.type);
 		}
 	}
+}
+
+/**
+ * Return the task that was recorded running the next event in the
+ * trace, and should be replayed now.
+ */
+static Task* schedule_task()
+{
+	struct trace_frame trace;
+	read_next_trace(&trace);
+
+	Task *t = Task::find(trace.tid);
+	assert(t != NULL);
+
+	memcpy(&(t->trace), &trace, sizeof(struct trace_frame));
+
+	// Subsequent reschedule-events of the same thread can be
+	// combined to a single event.  This meliorization is a
+	// tremendous win.
+	if (trace.stop_reason == USR_SCHED) {
+		bool combined = false;
+		struct trace_frame next_trace;
+
+		peek_next_trace(&next_trace);
+		int64_t rbc = t->trace.rbc;
+		while ((next_trace.stop_reason == USR_SCHED)
+		       && (next_trace.tid == t->rec_tid)) {
+			rbc += next_trace.rbc;
+			read_next_trace(&(t->trace));
+			peek_next_trace(&next_trace);
+			combined = true;
+		}
+
+		if (combined) {
+			t->trace.rbc = rbc;
+		}
+	}
+	assert(get_global_time() == t->trace.global_time);
+	return t;
 }
 
 /**
@@ -1088,7 +1129,7 @@ static void emulate_signal_delivery(Task* oldtask)
 
 	reset_hpc(oldtask, 0);
 
-	t = rep_sched_get_thread();
+	t = schedule_task();
 	assert_exec(oldtask, t == oldtask, "emulate_signal_delivery changed task");
 	trace = &t->trace;
 
@@ -1490,7 +1531,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		 * Other terminating signals have not been observed to
 		 * hang, so that's what's used here.. */
 		syscall(SYS_tkill, t->tid, SIGABRT);
-		rep_sched_deregister_thread(&t);
+		delete t;
 		/* Early-return because |t| is gone now. */
 		return;
 	case USR_ARM_DESCHED:
@@ -1649,7 +1690,7 @@ void replay(void)
 	}
 
 	while (Task::count()) {
-		replay_one_trace_frame(dbg, rep_sched_get_thread());
+		replay_one_trace_frame(dbg, schedule_task());
 	}
 
 	if (dbg) {

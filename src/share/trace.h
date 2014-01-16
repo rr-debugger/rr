@@ -192,7 +192,10 @@ void rec_setup_trace_dir(void);
  * Replaying
  */
 
-/** */
+/**
+ * Return the exe image path, arg vector, and environment variables
+ * that were recorded, in |exec_image|, |argv|, |envp| respectively.
+ */
 void load_recorded_env(const char* trace_path,
 		       int* argc, std::string* exec_image,
 		       CharpVector* argv, CharpVector* envp);

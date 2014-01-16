@@ -243,6 +243,20 @@ int signal_pending(int status)
 	}
 }
 
+int clone_flags_to_task_flags(int flags_arg)
+{
+	int flags = CLONE_SHARE_NOTHING;
+	// The rather misleadingly named CLONE_SIGHAND flag actually
+	// means *share* the sighandler table.
+	flags |= (CLONE_SIGHAND & flags_arg) ? CLONE_SHARE_SIGHANDLERS : 0;
+	// Among other things, CLONE_THREAD puts the new task
+	// in its creator's thread group.
+	flags |= (CLONE_THREAD & flags_arg) ? CLONE_SHARE_TASK_GROUP : 0;
+	// Child will share parent's address space.
+	flags |= (CLONE_VM & flags_arg) ? CLONE_SHARE_VM : 0;
+	return flags;
+}
+
 void detach_and_reap(Task* t)
 {
 	sys_ptrace_detach(t->tid);

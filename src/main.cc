@@ -13,7 +13,6 @@
 #include "recorder/recorder.h"
 #include "recorder/rec_sched.h"
 #include "replayer/replayer.h"
-#include "replayer/rep_sched.h"
 #include "share/config.h"
 #include "share/dbg.h"
 #include "share/hpc.h"
@@ -121,7 +120,8 @@ static void start_recording(int argc, char* argv[], char** envp)
 
 	init_libpfm();
 
-	Task* t = rec_sched_register_thread(0, pid, DEFAULT_COPY);
+	Task* t = Task::create(pid);
+	start_hpc(t, rr_flags()->max_rbc);
 
 	/* Configure the child process to get a message upon a thread
 	 * start, fork(), etc. */
@@ -180,7 +180,7 @@ static void start_replaying(int argc, char* argv[], char** envp)
 	rep_init_trace_files();
 
 	pid_t rec_main_thread = get_recorded_main_thread();
-	Task* t = rep_sched_register_thread(pid, rec_main_thread);
+	Task* t = Task::create(pid, rec_main_thread);
 
 	sys_ptrace_setup(t);
 
