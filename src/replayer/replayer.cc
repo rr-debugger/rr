@@ -881,7 +881,7 @@ static int is_same_execution_point(Task* t,
 #endif
 		;
 	if (0 != rcbs_left) {
-		debug("  not same execution point: %"PRId64" rcbs left (@%p)",
+		debug("  not same execution point: %lld rcbs left (@%p)",
 		      rcbs_left, (void*)rec_regs->eip);
 #ifdef DEBUGTAG
 		compare_register_files(t, "(rep)", rep_regs,

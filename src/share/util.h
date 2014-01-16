@@ -223,12 +223,6 @@ int signal_pending(int status);
  */
 int clone_flags_to_task_flags(int flags_arg);
 
-/**
- * Detach |t| from rr and try hard to ensure any operations related to
- * it have completed by the time this function returns.
- */
-void detach_and_reap(Task* t);
-
 struct current_state_buffer {
 	pid_t pid;
 	struct user_regs_struct regs;
