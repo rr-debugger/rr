@@ -19,7 +19,6 @@
 
 #include "../share/config.h"
 #include "../share/dbg.h"
-#include "../share/hpc.h"
 #include "../share/sys.h"
 #include "../share/task.h"
 
@@ -163,59 +162,6 @@ void rec_sched_exit_all()
 }
 
 /**
- * Registers a new thread to the runtime system. This includes
- * initialization of the hardware performance counters
- */
-Task* rec_sched_register_thread(pid_t parent_tid, pid_t child, int flags)
-{
-	Task* t = new Task(child);
-	Task* parent = Task::find(parent_tid);
-
-	assert(child > 0 && child < MAX_TID);
-
-	t->thread_time = 1;
-	t->rec_tid = t->tid = child;
-	t->child_mem_fd = sys_open_child_mem(t);
-	push_placeholder_event(t);
-	if (parent) {
-		struct sighandlers* parent_handlers = parent->sighandlers;
-
-		t->syscallbuf_lib_start = parent->syscallbuf_lib_start;
-		t->syscallbuf_lib_end = parent->syscallbuf_lib_end;
-		t->task_group =
-			(SHARE_TASK_GROUP & flags) ?
-			task_group_add_and_ref(parent->task_group, t) :
-			task_group_new_and_add(t);
-		t->sighandlers = (SHARE_SIGHANDLERS & flags) ?
-				 sighandlers_ref(parent_handlers) :
-				 sighandlers_copy(parent_handlers);
-	} else {
-		/* After the first task is forked, we always need to
-		 * know the parent in order to initialize some task
-		 * state. */
-		static int is_first_task = 1;
-		assert(is_first_task);
-		is_first_task = 0;
-		t->task_group = task_group_new_and_add(t);
-		/* The very first task we fork inherits our
-		 * sighandlers (which should all be default at this
-		 * point, but ...).  From there on, new tasks will
-		 * transitively inherit from this first task.  */
-		t->sighandlers = sighandlers_new();
-		sighandlers_init_from_current_process(t->sighandlers);
-	}
-	/* These will be initialized when the syscall buffer is. */
-	t->desched_fd = t->desched_fd_child = -1;
-
-	sys_ptrace_setup(t);
-
-	init_hpc(t);
-	start_hpc(t, rr_flags()->max_rbc);
-
-	return t;
-}
-
-/**
  * De-regsiter a thread and de-allocate all resources. This function
  * should be called when a thread exits.
  */
@@ -232,30 +178,6 @@ void rec_sched_deregister_thread(Task** t_ptr)
 			current = NULL;
 		}
 	}
-
-	/* We expect tasks to usually exit by a call to exit() or
-	 * exit_group(), so it's not helpful to warn about that. */
-	if (FIXEDSTACK_DEPTH(&t->pending_events) > 2
-	    || !(t->ev->type == EV_SYSCALL
-		 && (SYS_exit == t->ev->syscall.no
-		     || SYS_exit_group == t->ev->syscall.no))) {
-		log_warn("%d still has pending events.  From top down:",
-			 t->tid);
-		log_pending_events(t);
-	}
-
-	task_group_remove_and_unref(t);
-
-	destroy_hpc(t);
-
-	sys_close(t->child_mem_fd);
-	close(t->desched_fd);
-	munmap(t->syscallbuf_hdr, t->num_syscallbuf_bytes);
-
-	detach_and_reap(t);
-
-	/* finally, free the memory */
-	sighandlers_unref(&t->sighandlers);
 	delete t;
 	*t_ptr = NULL;
 }

@@ -231,6 +231,24 @@ struct event {
 	};
 };
 
+enum CloneFlags {
+	/**
+	 * The child gets a semantic copy of all parent resources (and
+	 * becomes a new task group).  This is the semantics of the
+	 * fork() syscall.
+	 */
+	CLONE_SHARE_NOTHING = 0,
+	/**
+	 * Child will share the table of signal dispositions with its
+	 * parent.
+	 */
+	CLONE_SHARE_SIGHANDLERS = 1 << 0,
+	/** Child will join its parent's task group. */
+	CLONE_SHARE_TASK_GROUP = 1 << 1,
+	/** Child will share its parent's address space. */
+	CLONE_SHARE_VM = 1 << 2,
+};
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -244,8 +262,17 @@ class Task {
 public:
 	typedef std::map<pid_t, Task*> Map;
 
-	Task(pid_t tid, pid_t rec_tid = -1);
 	~Task();
+
+	/**
+	 * Return a new Task cloned from this.  |flags| are a set of
+	 * CloneFlags (see above) that determine which resources are
+	 * shared or copied to the new child.  |new_tid| is the tid
+	 * assigned to the new task by the kernel.  |new_rec_tid| is
+	 * only relevant to replay, and is the pid that was assigned
+	 * to the task during recording.
+	 */
+	Task* clone(int flags, pid_t new_tid, pid_t new_rec_tid = -1);
 
 	/**
 	 * Shortcut to the single |pending_event->desched.rec| when
@@ -278,6 +305,14 @@ public:
 
 	/** Return the number of extant tasks. */
 	static ssize_t count();
+
+	/**
+	 * Create and return the first tracee task.  It's hard-baked
+	 * into rr that the first tracee is fork()ed, so create()
+	 * "clones" the new task using fork() semantics.  |tid| and
+	 * |rec_tid| are as for Task::clone().
+	 */
+	static Task* create(pid_t tid, pid_t rec_tid = -1);
 
 	/** Return an iterator at the end of the task map. */
 	static Task::Map::const_iterator end();
@@ -445,6 +480,12 @@ public:
 	size_t num_syscallbuf_bytes;
 	/* Points at the tracee's mapping of the buffer. */
 	byte* syscallbuf_child;
+
+private:
+	Task(pid_t tid, pid_t rec_tid = -1);
+
+	Task(Task&);
+	Task operator=(Task&);
 };
 
 /* (This function is an implementation detail that should go away in

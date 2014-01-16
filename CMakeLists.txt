@@ -38,7 +38,6 @@ add_executable(rr
   src/recorder/recorder.cc
   src/replayer/dbg_gdb.cc
   src/replayer/rep_process_event.cc
-  src/replayer/rep_sched.cc
   src/replayer/replayer.cc
   src/share/hpc.cc
   src/share/ipc.cc

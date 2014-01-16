@@ -6,10 +6,14 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <syscall.h>
+#include <sys/mman.h>
 
 #include <set>
 
 #include "dbg.h"
+#include "hpc.h"
+#include "sys.h"
 #include "util.h"
 
 #include "../preload/syscall_buffer.h"
@@ -138,6 +142,14 @@ Task::Task(pid_t _tid, pid_t _rec_tid)
 
 	tid = _tid;
 	rec_tid = _rec_tid > 0 ? _rec_tid : tid;
+	thread_time = 1;
+	child_mem_fd = sys_open_child_mem(this);
+	// These will be initialized when the syscall buffer is.
+	desched_fd = desched_fd_child = -1;
+
+	push_placeholder_event(this);
+
+	init_hpc(this);
 
 	tasks[rec_tid] = this;
 }
@@ -145,7 +157,42 @@ Task::Task(pid_t _tid, pid_t _rec_tid)
 Task::~Task()
 {
 	assert(this == Task::find(rec_tid));
+	// We expect tasks to usually exit by a call to exit() or
+	// exit_group(), so it's not helpful to warn about that.
+	if (FIXEDSTACK_DEPTH(&pending_events) > 2
+	    || !(ev->type == EV_SYSCALL
+		 && (SYS_exit == ev->syscall.no
+		     || SYS_exit_group == ev->syscall.no))) {
+		log_warn("%d still has pending events.  From top down:", tid);
+		log_pending_events(this);
+	}
+
 	tasks.erase(rec_tid);
+	task_group_remove_and_unref(this);
+	sighandlers_unref(&sighandlers);
+
+	destroy_hpc(this);
+	close(child_mem_fd);
+	close(desched_fd);
+	munmap(syscallbuf_hdr, num_syscallbuf_bytes);
+
+	detach_and_reap(this);
+}
+
+Task*
+Task::clone(int flags, pid_t new_tid, pid_t new_rec_tid)
+{
+	Task* t = new Task(new_tid, new_rec_tid);
+
+	t->syscallbuf_lib_start = syscallbuf_lib_start;
+	t->syscallbuf_lib_end = syscallbuf_lib_end;
+	t->task_group = (CLONE_SHARE_TASK_GROUP & flags) ?
+			task_group_add_and_ref(task_group, t) :
+			task_group_new_and_add(t);
+	t->sighandlers = (CLONE_SHARE_SIGHANDLERS & flags) ?
+			 sighandlers_ref(sighandlers) :
+			 sighandlers_copy(sighandlers);
+	return t;
 }
 
 const struct syscallbuf_record*
@@ -186,6 +233,22 @@ Task::begin()
 Task::count()
 {
 	return tasks.size();
+}
+
+/*static*/ Task*
+Task::create(pid_t tid, pid_t rec_tid)
+{
+	assert(Task::count() == 0);
+
+	Task* t = new Task(tid, rec_tid);
+	t->task_group = task_group_new_and_add(t);
+	// The very first task we fork inherits the signal
+	// dispositions of the current OS process (which should all be
+	// default at this point, but ...).  From there on, new tasks
+	// will transitively inherit from this first task.
+	t->sighandlers = sighandlers_new();
+	sighandlers_init_from_current_process(t->sighandlers);
+	return t;
 }
 
 /*static*/

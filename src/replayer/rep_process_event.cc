@@ -29,7 +29,6 @@
 
 #include <rr/rr.h>
 
-#include "rep_sched.h"
 #include "replayer.h"
 
 #include "../preload/syscall_buffer.h"
@@ -346,13 +345,17 @@ static void process_clone(Task* t,
 
 		int rec_tid = trace->recorded_regs.eax;
 		pid_t new_tid = sys_ptrace_getmsg(t);
-		Task* new_task;
 
 		/* wait until the new thread is ready */
 		int status;
 		sys_waitpid(new_tid, &status);
 
-		new_task = rep_sched_register_thread(new_tid, rec_tid);
+		read_child_registers(t, &t->regs);
+		int flags_arg = (SYS_clone == t->regs.orig_eax) ?
+				t->regs.ebx : 0;
+
+		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
+					  new_tid, rec_tid);
 
 		/* FIXME: what if registers are non-null and contain
 		 * an invalid address? */
@@ -1345,8 +1348,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 				struct trace_frame next_trace;
 				peek_next_trace(&next_trace);
-				rep_sched_register_thread(new_tid,
-							  next_trace.tid);
+				t->clone(CLONE_SHARE_NOTHING,
+					 new_tid, next_trace.tid);
 			}
 			validate_args(syscall, state, t);
 		} else {
