@@ -3,6 +3,8 @@
 #ifndef RRUTIL_H
 #define RRUTIL_H
 
+#define _GNU_SOURCE
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -36,6 +38,8 @@
 #include <unistd.h>
 
 #include <rr/rr.h>
+
+typedef unsigned char byte;
 
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
 

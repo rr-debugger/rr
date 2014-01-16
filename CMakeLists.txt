@@ -114,6 +114,8 @@ set(BASIC_TESTS
   mmap_ro
   mmap_shared
   mmap_tmpfs
+  mmap_write
+  mremap
   perf_event
   prctl
   priority
