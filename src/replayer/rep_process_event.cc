@@ -72,10 +72,10 @@ static struct syscall_def syscall_table[MAX_NR_SYSCALLS];
 __attribute__((constructor))
 static void init_syscall_table()
 {
-	// TODO static_assert
-	assert(ALEN(syscall_defs) <= MAX_NR_SYSCALLS);
+	static_assert(ALEN(syscall_defs) <= MAX_NR_SYSCALLS, "");
 	for (size_t i = 0; i < ALEN(syscall_defs); ++i) {
 		const struct syscall_def& def = syscall_defs[i];
+		assert(def.no < MAX_NR_SYSCALLS);
 		syscall_table[def.no] = def;
 	}
 }

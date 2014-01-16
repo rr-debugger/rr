@@ -42,7 +42,7 @@ struct Sighandler {
 		return SIG_DFL == handler && !resethand;
 	}
 	bool is_user_handler() const {
-		static_assert((void*)1 == SIG_IGN, "SIG_IGN should be 0x1");
+		static_assert((void*)1 == SIG_IGN, "");
 		return (uintptr_t)handler & ~(uintptr_t)SIG_IGN;
 	}
 
