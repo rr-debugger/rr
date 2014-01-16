@@ -4,12 +4,14 @@
 #define UTIL_H_
 
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
+#include <unistd.h>
 
 #include "types.h"
 
@@ -60,6 +62,22 @@ struct mapped_segment_info {
 	/* You should probably not be using these. */
 	int dev_major;
 	int dev_minor;
+};
+
+/**
+ * RAII helper to open a file and then close the fd when the helper
+ * goes out of scope.
+ */
+class AutoOpen {
+public:
+	AutoOpen(const char* pathname, int flags, mode_t mode = 0)
+		: fd(open(pathname, flags, mode)) { }
+	~AutoOpen() { close(fd); }
+
+	operator int() { return get(); }
+	int get() { return fd; }
+private:
+	int fd;
 };
 
 /**
@@ -290,9 +308,9 @@ int is_syscall_restart(Task* t, int syscallno,
  * necessarily safe to skip copying!
  */
 enum { DONT_WARN_SHARED_WRITEABLE = 0, WARN_DEFAULT };
-int should_copy_mmap_region(const char* filename, struct stat* stat,
-			    int prot, int flags,
-			    int warn_shared_writeable);
+bool should_copy_mmap_region(const char* filename, const struct stat* stat,
+			     int prot, int flags,
+			     int warn_shared_writeable);
 
 /* XXX should this go in ipc.h? */
 
