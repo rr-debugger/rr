@@ -109,7 +109,7 @@ struct mmapped_file {
 	 * data? */
 	int copied;
 
-	char filename[1024];
+	char filename[PATH_MAX];
 	struct stat stat;
 
 	/* Bounds of mapped region. */

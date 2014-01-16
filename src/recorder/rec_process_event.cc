@@ -2570,38 +2570,44 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_mmap2:
 	{
+		if (SYSCALL_FAILED(regs.eax)) {
+			// We purely emulate failed mmaps.
+			break;
+		}
+
 		byte* addr = (byte*)regs.eax;
 		size_t size = PAGE_ALIGN(regs.ecx);
-		int prot = regs.edx, flags = regs.esi;
-		struct mmapped_file file;
-		int found_region;
-		struct mapped_segment_info info;
-
-		if (SYSCALL_FAILED(regs.eax)) {
-			/* We purely emulate failed mmaps. */
-			break;
-		}
+		int prot = regs.edx, flags = regs.esi, fd = regs.edi;
 		if (flags & MAP_ANONYMOUS) {
-			/* Anonymous mappings are by definition not
-			 * backed by any file-like object, and are
-			 * initialized to zero, so there's no
-			 * nondeterminism to record. */
-			/*assert(!(flags & MAP_UNINITIALIZED));*/
+			// Anonymous mappings are by definition not
+			// backed by any file-like object, and are
+			// initialized to zero, so there's no
+			// nondeterminism to record.
+			//assert(!(flags & MAP_UNINITIALIZED));
 			break;
 		}
 
+		assert_exec(t, fd >= 0, "Valid fd required for file mapping");
 		assert(!(flags & MAP_GROWSDOWN));
-		
-		file.time = get_global_time();
-		file.tid = tid;
 
-		found_region = find_segment_containing(t, addr, &info);
+		char path[PATH_MAX];
+		snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", t->tid, fd);
+		AutoOpen backing_fd(path, O_RDONLY);
+		assert_exec(t, backing_fd >= 0, "Failed to open %s", path);
+
+		struct mmapped_file file;
+		// TODO: save a reflink copy of the resource to the
+		// trace directory as |fs/[st_dev].[st_inode]|.  Then
+		// we wouldn't have to care about looking up a name
+		// for the resource.
+		struct mapped_segment_info info;
+		bool found_region = find_segment_containing(t, addr, &info);
 		assert_exec(t, found_region, "Didn't find segment %p", addr);
 		strcpy(file.filename, info.name);
-
-		if (stat(file.filename, &file.stat)) {
-			fatal("Sorry, mmap()'ing anonymous shmem regions (%p) is NYI.",
-			      addr);
+		file.time = get_global_time();
+		file.tid = tid;
+		if (fstat(backing_fd, &file.stat)) {
+			fatal("Failed to fstat %s", path);
 		}
 		file.start = info.start_addr;
 		file.end = info.end_addr;
@@ -2619,8 +2625,6 @@ void rec_process_syscall(Task *t)
 		if (file.copied) {
 			record_child_data(t, size, addr);
 		}
-		/* TODO: fault on accesses to SHARED mappings we think
-		 * might actually be written */
 		record_mmapped_file_stats(&file);
 		break;
 	}

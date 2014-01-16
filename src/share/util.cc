@@ -1222,23 +1222,34 @@ done:
 	return is_restart;
 }
 
-static int is_tmp_file(const char* path)
+static bool has_fs_name(const char* path)
+{
+	struct stat dummy;
+	return 0 == stat(path, &dummy);
+}
+
+static bool is_tmp_file(const char* path)
 {
 	struct statfs sfs;
 	statfs(path, &sfs);
 	return TMPFS_MAGIC == sfs.f_type;
 }
 
-int should_copy_mmap_region(const char* filename, struct stat* stat,
-			    int prot, int flags,
-			    int warn_shared_writeable)
+bool should_copy_mmap_region(const char* filename, const struct stat* stat,
+			     int prot, int flags,
+			     int warn_shared_writeable)
 {
-	int private_mapping = (flags & MAP_PRIVATE);
-	int can_write_file;
+	bool private_mapping = (flags & MAP_PRIVATE);
 
+	// TODO: handle mmap'd files that are unlinked during
+	// recording.
+	if (!has_fs_name(filename)) {
+		debug("  copying unlinked file");
+		return true;
+	}
 	if (is_tmp_file(filename)) {
 		debug("  copying file on tmpfs");
-		return 1;
+		return true;
 	}
 	if (private_mapping && (prot & PROT_EXEC)) {
 		/* We currently don't record the images that we
@@ -1247,7 +1258,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		 * optimistic about the shared libraries too, most of
 		 * which are system libraries. */
 		debug("  (no copy for +x private mapping %s)", filename);
-		return 0;
+		return false;
 	}
 	if (private_mapping && (0111 & stat->st_mode)) {
 		/* A private mapping of an executable file usually
@@ -1256,14 +1267,14 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		 * infrequently, we can avoid copying the data
 		 * sections too. */
 		debug("  (no copy for private mapping of +x %s)", filename);
-		return 0;
+		return false;
 	}
 
-	/* TODO: using "can the euid of the rr process write this
-	 * file" as an approximation of whether the tracee can write
-	 * the file.  If the tracee is messing around with
-	 * set*[gu]id(), the real answer may be different. */
-	can_write_file = (0 == access(filename, W_OK));
+	// TODO: using "can the euid of the rr process write this
+	// file" as an approximation of whether the tracee can write
+	// the file.  If the tracee is messing around with
+	// set*[gu]id(), the real answer may be different.
+	bool can_write_file = (0 == access(filename, W_OK));
 
 	if (!can_write_file && 0 == stat->st_uid) {
 		assert(!(prot & PROT_WRITE));
@@ -1277,7 +1288,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		 *
 		 * XXX what about the fontconfig cache files? */
 		debug("  (no copy for root-owned %s)", filename);
-		return 0;
+		return false;
 	}
 	if (private_mapping) {
 		/* Some programs (at least Firefox) have been observed
@@ -1292,7 +1303,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		 * trying to match "cache" in the filename ...	 */
 		debug("  copying private mapping of non-system -x %s",
 		      filename);
-		return 1;
+		return true;
 	}
 	if (!(0222 & stat->st_mode)) {
 		/* We couldn't write the file because it's read only.
@@ -1300,7 +1311,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		 * system file), so it's likely that it could be
 		 * temporary.  Copy it. */
 		debug("  copying read-only, non-system file");
-		return 1;
+		return true;
 	}
 	if (!can_write_file) {
 		/* mmap'ing another user's (non-system) files?  Highly
@@ -1319,7 +1330,7 @@ int should_copy_mmap_region(const char* filename, struct stat* stat,
 		log_warn("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written by programs outside the rr tracee tree.",
 			 filename);
 	}
-	return 1;
+	return true;
 }
 
 void prepare_remote_syscalls(Task* t,

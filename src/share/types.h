@@ -3,6 +3,7 @@
 #ifndef TYPES_H_
 #define TYPES_H_
 
+#include <linux/limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdint.h>
