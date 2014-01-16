@@ -47,14 +47,12 @@ enum {
 	 * refactored to not have to do that. */
 	USR_NOOP,
 	LAST_RR_PSEUDOSIGNAL = USR_NOOP,
-	/* TODO: static_assert(LAST_RR_PSEUDOSIGNAL < FIRST_DET_SIGNAL); */
 
 	/* Deterministic signals are recorded as -(signum | 0x80).  So
 	 * these can occupy the range [-193, -128) or so. */
 	DET_SIGNAL_BIT = 0x80,
 	FIRST_DET_SIGNAL = -(_NSIG | DET_SIGNAL_BIT),
 	LAST_DET_SIGNAL = -(1 | DET_SIGNAL_BIT),
-	/* TODO: static_assert(LAST_DET_SIGNAL < FIRST_ASYNC_SIGNAL); */
 
 	/* Asynchronously-delivered (nondeterministic) signals are
 	 * recorded as -signum.  They occupy the range [-65, 0) or
@@ -62,6 +60,9 @@ enum {
 	FIRST_ASYNC_SIGNAL = -_NSIG,
 	LAST_ASYNC_SIGNAL = -1,
 };
+
+static_assert(LAST_RR_PSEUDOSIGNAL < FIRST_DET_SIGNAL, "");
+static_assert(LAST_DET_SIGNAL < FIRST_ASYNC_SIGNAL, "");
 
 /* Use this helper to declare a struct member that doesn't occupy
  * space, but the address of which can be taken.  Useful for
