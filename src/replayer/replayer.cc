@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Replayer"
 
@@ -31,11 +31,12 @@
 #include <sys/user.h>
 #include <unistd.h>
 
+#include <map>
+
 #include "dbg_gdb.h"
 #include "rep_sched.h"
 #include "rep_process_event.h"
 
-#include "../external/tree.h"
 #include "../preload/syscall_buffer.h"
 #include "../share/dbg.h"
 #include "../share/hpc.h"
@@ -84,10 +85,33 @@
  */
 #define SKID_SIZE 70
 
-typedef enum { TRAP_NONE = 0, TRAP_STEPI,
-	       TRAP_BKPT_INTERNAL, TRAP_BKPT_USER } trap_t;
+using namespace std;
 
-struct breakpoint {
+enum TrapType { TRAP_NONE = 0, TRAP_STEPI,
+		TRAP_BKPT_INTERNAL, TRAP_BKPT_USER };
+
+struct Breakpoint {
+	Breakpoint(Task* t, byte* addr);
+	~Breakpoint();
+
+	void destroy(Task* t);
+
+	void ref(TrapType which) {
+		++*counter(which);
+	}
+	void unref(Task* t, TrapType which);
+
+	TrapType type() {
+		// NB: USER breakpoints need to be processed before
+		// INTERNAL ones.  We want to give the debugger a
+		// chance to dispatch commands before we attend to the
+		// internal rr business.  So if there's a USER "ref"
+		// on the breakpoint, treat it as a USER breakpoint.
+		return user_count > 0 ? TRAP_BKPT_USER : TRAP_BKPT_INTERNAL;
+	}
+
+	static Breakpoint* find(byte* addr);
+
 	byte* addr;
 	/* "Refcounts" of breakpoints set at |addr|.  The breakpoint
 	 * object must be unique since we have to save the overwritten
@@ -95,11 +119,18 @@ struct breakpoint {
 	 * are set/removed. */
 	int internal_count, user_count;
 	byte overwritten_data;
-	RB_ENTRY(breakpoint) entry;
+private:
+	int* counter(TrapType which) {
+		assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
+		int* p = TRAP_BKPT_USER == which ?
+			 &user_count : &internal_count;
+		assert(*p >= 0);
+		return p;
+	}
 };
 
-static RB_HEAD(breakpoint_tree, breakpoint) breakpoints =
-	RB_INITIALIZER(&breakpoints);
+typedef map<void*, Breakpoint*> BreakpointMap;
+static BreakpointMap breakpoints;
 
 static const byte int_3_insn = 0xCC;
 
@@ -108,7 +139,48 @@ static const byte int_3_insn = 0xCC;
  * over the initial rr image. */
 bool validate = false;
 
-RB_PROTOTYPE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
+Breakpoint::Breakpoint(Task* t, byte* addr)
+	: addr(addr), internal_count(0), user_count(0)
+{
+	byte* orig_data_ptr =
+		(byte*)read_child_data(t, sizeof(int_3_insn), addr);
+	memcpy(&overwritten_data, orig_data_ptr, sizeof(int_3_insn));
+	free(orig_data_ptr);
+
+	write_child_data_n(t, sizeof(int_3_insn), addr, &int_3_insn);
+
+	breakpoints[addr] = this;
+}
+
+Breakpoint::~Breakpoint()
+{
+	breakpoints.erase(addr);
+}
+
+void
+Breakpoint::destroy(Task* t)
+{
+	write_child_data_n(t, sizeof(overwritten_data), addr,
+			   &overwritten_data);
+	delete this;
+}
+
+void
+Breakpoint::unref(Task* t, TrapType which)
+{
+	--*counter(which);
+	assert(internal_count >= 0 && user_count >= 0);
+	if (0 == internal_count + user_count) {
+		destroy(t);
+	}
+}
+
+/*static*/Breakpoint*
+Breakpoint::find(byte* addr)
+{
+	BreakpointMap::const_iterator it = breakpoints.find(addr);
+	return it != breakpoints.end() ? it->second : NULL;
+}
 
 static void debug_memory(Task* t)
 {
@@ -174,83 +246,19 @@ static byte* read_mem(Task* t, byte* addr, size_t len,
 	return buf;
 }
 
-static int* breakpoint_counter(struct breakpoint* bp, trap_t which)
+static void set_sw_breakpoint(Task* t, byte* ip, TrapType type)
 {
-	int* counter = TRAP_BKPT_USER == which ?
-		       &bp->user_count : &bp->internal_count;
-	assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
-	assert(*counter >= 0);
-	return counter;
-}
-
-static void add_breakpoint(struct breakpoint* bp)
-{
-	RB_INSERT(breakpoint_tree, &breakpoints, bp);
-}
-
-static void erase_breakpoint(struct breakpoint* bp)
-{
-	RB_REMOVE(breakpoint_tree, &breakpoints, bp);
-}
-
-static void ref_breakpoint(struct breakpoint* bp, trap_t which)
-{
-	++*breakpoint_counter(bp, which);
-}
-
-static int unref_breakpoint(struct breakpoint* bp, trap_t which)
-{
-	--*breakpoint_counter(bp, which);
-	assert(bp->internal_count >= 0 && bp->user_count >= 0);
-	return bp->internal_count + bp->user_count;
-}
-
-static struct breakpoint* find_breakpoint(byte* addr)
-{
-	struct breakpoint search;
-	search.addr = addr;
-	return RB_FIND(breakpoint_tree, &breakpoints, &search);
-}
-
-static void set_sw_breakpoint(Task* t, byte* ip, trap_t type)
-{
-	struct breakpoint* bp = find_breakpoint(ip);
+	Breakpoint* bp = Breakpoint::find(ip);
 	if (!bp) {
-		byte* orig_data_ptr;
-
-		bp = (struct breakpoint*)calloc(1, sizeof(*bp));
-		bp->addr = ip;
-
-		orig_data_ptr = (byte*)read_child_data(t, sizeof(int_3_insn),
-						       bp->addr);
-		memcpy(&bp->overwritten_data, orig_data_ptr,
-		       sizeof(int_3_insn));
-		free(orig_data_ptr);
-
-		write_child_data_n(t,
-				   sizeof(int_3_insn), bp->addr, &int_3_insn);
-		add_breakpoint(bp);
+		bp = new Breakpoint(t, ip);
 	}
-	ref_breakpoint(bp, type);
+	bp->ref(type);
 }
 
-static void clean_up_breakpoint(Task* t, struct breakpoint** bpp)
+static void remove_sw_breakpoint(Task* t, byte* ip, TrapType type)
 {
-	struct breakpoint* bp = *bpp;
-
-	write_child_data_n(t,
-			   sizeof(bp->overwritten_data), bp->addr,
-			   &bp->overwritten_data);
-	erase_breakpoint(bp);
-	free(bp);
-	bp = *bpp;
-}
-
-static void remove_sw_breakpoint(Task* t, byte* ip, trap_t type)
-{
-	struct breakpoint* bp = find_breakpoint(ip);
-	if (bp && 0 == unref_breakpoint(bp, type)) {
-		clean_up_breakpoint(t, &bp);
+	if (Breakpoint* bp = Breakpoint::find(ip)) {
+		bp->unref(t, type);
 	}
 }
 
@@ -278,18 +286,13 @@ static void set_user_sw_breakpoint(Task* t,
 	set_sw_breakpoint(t, req->mem.addr, TRAP_BKPT_USER);
 }
 
-static trap_t ip_breakpoint_type(byte* eip)
+static TrapType ip_breakpoint_type(byte* eip)
 {
 	byte* ip = (byte*)((uintptr_t)eip - sizeof(int_3_insn));
-	struct breakpoint* bp = find_breakpoint(ip);
-	/* NB: USER breakpoints need to be processed before INTERNAL
-	 * ones.  We want to give the debugger a chance to dispatch
-	 * commands before we attend to the internal rr business.  So
-	 * if there's a USER "ref" on the breakpoint, treat it as a
-	 * USER breakpoint. */
-	return (!bp ? TRAP_NONE :
-		(0 < *breakpoint_counter(bp, TRAP_BKPT_USER) ?
-		 TRAP_BKPT_USER : TRAP_BKPT_INTERNAL));
+	if (Breakpoint* bp = Breakpoint::find(ip)) {
+		return bp->type();
+	}
+	return TRAP_NONE;
 }
 
 /**
@@ -301,10 +304,9 @@ static trap_t ip_breakpoint_type(byte* eip)
  */
 static void remove_all_sw_breakpoints(Task* t)
 {
-	struct breakpoint* bp;
-	struct breakpoint* tmp;
-	RB_FOREACH_SAFE(bp, breakpoint_tree, &breakpoints, tmp) {
-		clean_up_breakpoint(t, &bp);
+	while (!breakpoints.empty()) {
+		Breakpoint* bp = breakpoints.begin()->second;
+		bp->destroy(t);
 	}
 }
 
@@ -687,14 +689,14 @@ static int is_breakpoint_trap(Task* t)
  */
 enum SigDeliveryType { ASYNC, DETERMINISTIC };
 enum ExecStateType { UNKNOWN, NOT_AT_TARGET, AT_TARGET };
-static trap_t compute_trap_type(Task* t, int target_sig,
+static TrapType compute_trap_type(Task* t, int target_sig,
 				SigDeliveryType delivery,
 				ExecStateType exec_state,
 				int stepi)
 {
 	struct user_regs_struct regs;
 	byte* ip;
-	trap_t trap_type;
+	TrapType trap_type;
 
 	assert(SIGTRAP == t->child_sig);
 
@@ -770,8 +772,8 @@ static int is_debugger_trap(Task* t, int target_sig,
 			    SigDeliveryType delivery, ExecStateType exec_state,
 			    int stepi)
 {
-	trap_t type = compute_trap_type(t, target_sig, delivery, exec_state,
-					stepi);
+	TrapType type = compute_trap_type(t, target_sig, delivery, exec_state,
+					  stepi);
 	assert(TRAP_BKPT_INTERNAL != type);
 	return TRAP_NONE != type;
 }
@@ -961,7 +963,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 		at_target = is_same_execution_point(t, regs,
 						    rcbs_left, &regs_now);
 		if (SIGTRAP == t->child_sig) {
-			trap_t trap_type = compute_trap_type(
+			TrapType trap_type = compute_trap_type(
 				t, sig, ASYNC,
 				at_target ? AT_TARGET : NOT_AT_TARGET,
 				stepi);
@@ -1683,13 +1685,3 @@ void emergency_debug(Task* t)
 	process_debugger_requests(dbg, t);
 	fatal("Can't resume execution from invalid state");
 }
-
-static int
-breakpoint_cmp(void* pa, void* pb)
-{
-	struct breakpoint* a = (struct breakpoint*)pa;
-	struct breakpoint* b = (struct breakpoint*)pb;
-	return (intptr_t)a->addr - (intptr_t)b->addr;
-}
-
-RB_GENERATE_STATIC(breakpoint_tree, breakpoint, entry, breakpoint_cmp)
