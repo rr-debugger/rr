@@ -27,6 +27,11 @@
 #include <sys/quota.h>
 #include <sys/socket.h>
 
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
+
 #include <rr/rr.h>
 
 #include "replayer.h"
@@ -39,6 +44,8 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 #include "../share/shmem.h"
+
+using namespace std;
 
 enum SyscallDefType {
 	rep_UNDEFINED,	/* NB: this symbol must have the value 0 */
@@ -79,6 +86,233 @@ static void init_syscall_table()
 		syscall_table[def.no] = def;
 	}
 }
+
+static void replace_char(string& s, char c, char replacement)
+{
+	size_t i;
+	while (string::npos != (i = s.find(c))) {
+		s[i] = replacement;
+	}
+}
+
+/**
+ * Implement an "emulated file system" consisting of files that were
+ * mmap'd shared during recording.  These files require special
+ * treatment because (i) they were most likely modified during
+ * recording, so (ii) the original file contents only exist as
+ * snapshots in the trace, but (iii) all mappings of the file must
+ * point at the same underling resource, so that modifications are
+ * seen by all mappees.
+ *
+ * The rr EmuFs creates "emulated files" in shared memory during
+ * replay.  Each efile is uniquely identified at a given event in the
+ * trace by |(edev, einode)| (i.e., the recorded device ID and inode).
+ * "What about inode recycling", you're probably thinking to yourself.
+ * This scheme can cope with inode recycling, given a very important
+ * assumption discussed below.
+ *
+ * Why is inode recycling not a problem?  Assume that an mmap'd file
+ * F_0 at trace time t_0 has the same (device, inode) ID as a
+ * different file F_1 at trace time t_1.  By definition, if the inode
+ * ID was recycled in [t_0, t_1), then all references to F_0 must have
+ * been dropped in that inverval.  A corollary of that is that all
+ * memory mappings of F_0 must have been fully unmapped in the
+ * interval.  As per the first long comment in |gc()| below, an
+ * emulated file can only be "live" during replay if some tracee still
+ * has a mapping of it.  Tracees' mappings of emulated files is a
+ * subset of the ways they can create references to real files during
+ * recording.  Therefore the event during replay that drops the last
+ * reference to the emulated F_0 must be a tracee unmapping of F_0.
+ *
+ * So as long as we GC emulated F_0 at the event of its fatal
+ * unmapping, the lifetimes of emulated F_0 and emulated F_1 must be
+ * disjoint.  And F_0 being GC'd at that point is the important
+ * assumption mentioned above.
+ */
+namespace EmuFs {
+
+struct FileKey {
+	FileKey(const struct stat& est)
+		: edevice(est.st_dev), einode(est.st_ino) { }
+	FileKey(dev_t edev, ino_t eino)
+		: edevice(edev), einode(eino) { }
+
+	bool operator=(const FileKey& o) const {
+		return edevice == o.edevice && einode == o.einode;
+	}
+	bool operator<(const FileKey& o) const {
+		return edevice < o.edevice || einode < o.einode;
+	}
+
+	dev_t edevice;
+	ino_t einode;
+};
+
+struct File {
+	typedef shared_ptr<File> shr_ptr;
+
+	~File() { debug("    EmuFs::~File(einode:%ld)", est.st_ino); }
+
+	/**
+	 * Ensure that the emulated file is sized to match a later
+	 * stat() of it, |st|.
+	 */
+	void update(const struct stat& st) {
+		assert(est.st_dev == st.st_dev && est.st_ino == st.st_ino);
+		if (est.st_size != st.st_size) {
+			resize_shmem_segment(fd, st.st_size);
+		}
+		est = st;
+	}
+
+	/**
+	 * Create a new emulated file for |orig_path| that will
+	 * emulate the recorded attributes |est|.
+	 */
+	static shr_ptr create(const char* orig_path, const struct stat& est) {
+		// Sanitize the mapped file path so that we can use it
+		// in a leaf name.
+		string tag(orig_path);
+		replace_char(tag, '/', '\\');
+
+		stringstream name;
+		name << "rr-emufs-dev-" << est.st_dev
+		     << "-inode-" << est.st_ino
+		     << "-" << tag;
+		shr_ptr f(new File(create_shmem_segment(name.str().c_str(),
+							est.st_size),
+				   est));
+		debug("created emulated file for %s as %s",
+		      orig_path, name.str().c_str());
+		return f;
+	}
+
+	struct stat est;
+	AutoOpen fd;
+	bool marked;
+
+private:
+	File(int fd, const struct stat& est)
+		: est(est), fd(fd), marked(false) { }
+
+	File(const File&) = delete;
+	File operator=(const File&) = delete;
+};
+
+typedef map<FileKey, File::shr_ptr> FileMap;
+static FileMap emufs;
+
+static int mark_used_vfiles_iterator(void* unused, Task* t,
+				     const struct map_iterator_data* data)
+{
+	dev_t device;
+	ino_t inode;
+	char esc_path[PATH_MAX];
+	if (3 == sscanf(data->info.name,
+			SHMEM_FS "/rr-emufs-dev-%lld-inode-%ld-%s",
+			&device, &inode, esc_path)) {
+		FileKey k(device, inode);
+		assert(emufs.find(k) != emufs.end());
+		emufs[k]->marked = true;
+		debug("  marked %s (einode:%ld)", esc_path, inode);
+	}
+	return CONTINUE_ITERATING;
+}
+
+void gc()
+{
+	// XXX this implementation is unnecessarily slow.  But before
+	// throwing it away for something different, give it another
+	// shot once rr is caching local mmaps for all address spaces,
+	// which obviates the need for the yuck slow maps parsing
+	// here.
+	debug("Beginning emufs gc of %d files", emufs.size());
+
+	// Mark in-use files by iterating through the mmaps of all
+	// tracee address spaces.
+	//
+	// We inject these maps into the tracee and are careful to
+	// close the injected fd after we finish the mmap.  That means
+	// that the only way tracees can hold a reference to the
+	// underlying inode is through a memory mapping.  So to
+	// determine if a file is in use, we only have to find a
+	// recognizable filename in some tracee's memory map.
+	//
+	// We check *all* tracee file tables because tracees can share
+	// fds with each other in many ways, and we don't attempt to
+	// track any of that.
+	//
+	// TODO: assuming AddressSpace == FileTable, but technically
+	// they're different things: two tracees could share an
+	// address space but have different file tables.
+	auto sas = AddressSpace::set();
+	for (auto it = sas.begin(); it != sas.end(); ++it) {
+		AddressSpace* as = *it;
+		Task* t = *as->task_set().begin();
+		iterate_memory_map(t, mark_used_vfiles_iterator, nullptr,
+				   kNeverReadSegment, nullptr);
+	}
+
+	// Sweep all the virtual files that weren't marked.  It might
+	// be possible that a later task will mmap the same underlying
+	// file that we're about to destroy.  That's perfectly fine;
+	// we'll just create it anew, and restore its addressible
+	// contents from the snapshot saved to the trace.  Since there
+	// are no live references to the file in the interim, tracees
+	// can't observe the destroy/recreate operation.
+	vector<FileKey> garbage;
+	for (auto it = emufs.begin(); it != emufs.end(); ++it) {
+		if (!it->second->marked) {
+			garbage.push_back(it->first);
+		}
+		it->second->marked = false;
+	}
+	for (auto it = garbage.begin(); it != garbage.end(); ++it) {
+		debug("  emufs gc reclaiming einode:%ld", it->einode);
+		emufs.erase(*it);
+	}
+}
+
+/**
+ * RAII helper that schedules an EmuFs GC when the exit of a given
+ * syscall may have dropped the last reference to an emulated file.
+ */
+struct AutoGc {
+	AutoGc(int syscallno, int state)
+		: is_gc_point(emufs.size() > 0
+			      && STATE_SYSCALL_EXIT == state
+			      && (SYS_close == syscallno
+				  || SYS_munmap == syscallno)) {
+		if (is_gc_point) {
+			debug("emufs gc required because of syscall `%s'",
+			      syscallname(syscallno));
+		}
+	}
+	~AutoGc() {
+		if (is_gc_point) {
+			gc();
+		}
+	}
+	bool is_gc_point;
+};
+
+/**
+ * Return an fd that refers to an emulated file representing the
+ * recorded file underlying |mf|.
+ */
+static int get_or_create(const struct mmapped_file& mf)
+{
+	auto it = emufs.find(mf.stat);
+	if (it != emufs.end()) {
+		it->second->update(mf.stat);
+		return it->second->fd;
+	}
+	auto vf = File::create(mf.filename, mf.stat);
+	emufs[mf.stat] = vf;
+	return vf->fd;
+}
+
+} // namepsace Emufs
 
 extern bool validate;
 
@@ -134,12 +368,10 @@ static void goto_next_syscall_emu(Task *t)
 			return;
 		}
 
-		fatal("goto_next_syscall_emu: stop reason: %x signal: %d pending sig: %d\n"
-		      "Internal error: syscalls out of sync: rec: %d  now: %d  time: %u\n"
-		      "ptrace_event: %x",
-		      t->status, WSTOPSIG(t->status), t->child_sig,
-		      rec_syscall, current_syscall, t->trace.global_time,
-		      GET_PTRACE_EVENT(t->status));
+		assert_exec(t, current_syscall == rec_syscall,
+			    "Should be at `%s', instead at `%s'",
+			    syscallname(rec_syscall),
+			    syscallname(current_syscall));
 	}
 	t->child_sig = 0;
 }
@@ -588,42 +820,29 @@ static void* finish_anonymous_mmap(Task* t,
 				      fd, offset);
 }
 
-static void* finish_copied_mmap(Task* t,
-				struct current_state_buffer* state,
-				struct trace_frame* trace,
-				int prot, int flags,
-				const struct mmapped_file* file)
+static void* finish_private_mmap(Task* t,
+				 struct current_state_buffer* state,
+				 struct trace_frame* trace,
+				 int prot, int flags,
+				 const struct mmapped_file* file)
 {
-	debug("  finishing copied mmap of %s", file->filename);
+	debug("  finishing private mmap of %s", file->filename);
 
 	void* mapped_addr = finish_anonymous_mmap(t, state, trace, prot,
 						  /* The restored region
 						   * won't be backed by
 						   * file. */
 						  flags | MAP_ANONYMOUS);
-
-	/* XXX any file consistency checks we need to do? */
-
 	/* Restore the map region we copied. */
 	set_child_data(t);
 
 	return mapped_addr;
 }
 
-static void* finish_direct_mmap(Task* t,
-				struct current_state_buffer* state,
-				struct trace_frame* trace,
-				int prot, int flags,
-				const struct mmapped_file* file)
+static void verify_backing_file(const struct mmapped_file* file,
+				int prot, int flags)
 {
-	struct user_regs_struct* rec_regs = &trace->recorded_regs;
-	void* rec_addr = (void*)rec_regs->eax;
-	size_t length = rec_regs->ecx;
-	off_t offset = rec_regs->ebp;
 	struct stat metadata;
-	int fd;
-	void* mapped_addr;
-
 	if (stat(file->filename, &metadata)) {
 		fatal("Failed to stat %s: replay is impossible",
 		      file->filename);
@@ -635,14 +854,39 @@ static void* finish_direct_mmap(Task* t,
 	    || metadata.st_size != file->stat.st_size
 	    || metadata.st_mtime != file->stat.st_mtime
 	    || metadata.st_ctime != file->stat.st_ctime) {
-		log_warn("Metadata of %s changed: replay divergence likely, but continuing anyway ...",
+		log_err("Metadata of %s changed: replay divergence likely, but continuing anyway ...",
 			 file->filename);
 	}
 	if (should_copy_mmap_region(file->filename, &metadata, prot, flags,
 				    WARN_DEFAULT)) {
-		log_warn("%s wasn't copied during recording, but now it should be?",
-			 file->filename);
+		log_err("%s wasn't copied during recording, but now it should be?",
+			file->filename);
 	}
+
+}
+
+enum { DONT_VERIFY = 0, VERIFY_BACKING_FILE };
+static void* finish_direct_mmap(Task* t,
+				struct current_state_buffer* state,
+				struct trace_frame* trace,
+				int prot, int flags,
+				const struct mmapped_file* file,
+				int verify = VERIFY_BACKING_FILE)
+{
+	struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	void* rec_addr = (void*)rec_regs->eax;
+	size_t length = rec_regs->ecx;
+	off_t offset = rec_regs->ebp;
+	int fd;
+	void* mapped_addr;
+
+	debug("directly mmap'ing %d bytes of %s at offset 0x%lx",
+	      length, file->filename, offset);
+
+	if (verify) {
+		verify_backing_file(file, prot, flags);
+	}
+
 	/* Open in the tracee the file that was mapped during
 	 * recording. */
 	{
@@ -677,6 +921,53 @@ static void* finish_direct_mmap(Task* t,
 	/* Don't leak the tmp fd.  The mmap doesn't need the fd to
 	 * stay open. */
 	remote_syscall1(t, state, SYS_close, fd);
+
+	return mapped_addr;
+}
+
+static void* finish_shared_mmap(Task* t,
+				struct current_state_buffer* state,
+				struct trace_frame* trace,
+				int prot, int flags,
+				const struct mmapped_file* file)
+{
+	const struct user_regs_struct& rec_regs = trace->recorded_regs;
+	size_t rec_num_bytes = rec_regs.ecx;
+	off_t rec_offset = rec_regs.ebp;
+
+	// Ensure there's a virtual file for the file that was mapped
+	// during recording.
+	int emufs_fd = EmuFs::get_or_create(*file);
+	// Re-use the direct_map() machinery to map the virtual file.
+	//
+	// NB: the tracee will map the procfs link to our fd; there's
+	// no "real" name for the file anywhere, to ensure that when
+	// we exit/crash the kernel will clean up for us.
+	struct mmapped_file vfile = *file;
+	snprintf(vfile.filename, sizeof(vfile.filename) - 1,
+		 "/proc/%d/fd/%d", getpid(), emufs_fd);
+	void* mapped_addr = finish_direct_mmap(t, state, trace, prot, flags,
+					       &vfile, DONT_VERIFY);
+	// Write back the snapshot of the segment that we recorded.
+	// We have to write directly to the underlying file, because
+	// the tracee may have mapped its segment read-only.
+	// 
+	// TODO: this is a poor man's shared segment synchronization.
+	// For full generality, we also need to emulate direct file
+	// modifications through write/splice/etc.
+	byte* rec_addr;
+	size_t num_bytes;
+	byte* data = (byte*)read_raw_data(&(t->trace), &num_bytes, &rec_addr);
+	assert(data && rec_addr == mapped_addr && rec_num_bytes == num_bytes);
+
+	if (ssize_t(num_bytes) !=
+	    pwrite(emufs_fd, data, num_bytes, rec_offset)) {
+		fatal("Failed to write %d bytes at 0x%lx to %s",
+		      num_bytes, rec_offset, vfile.filename);
+	}
+	free(data);
+	debug("  restored %d bytes at 0x%lx to %s",
+	      num_bytes, rec_offset, vfile.filename);
 
 	return mapped_addr;
 }
@@ -721,11 +1012,16 @@ static void process_mmap2(Task* t,
 		assert_exec(t, file.time == trace->global_time,
 			    "mmap time %u should equal %u",
 			    file.time, trace->global_time);
-		mapped_addr = file.copied ?
-			      finish_copied_mmap(t, &state, trace,
-						 prot, flags, &file) :
-			      finish_direct_mmap(t, &state, trace,
-						 prot, flags, &file);
+		if (!file.copied) {
+			mapped_addr = finish_direct_mmap(t, &state, trace,
+							 prot, flags, &file);
+		} else if (!(MAP_SHARED & flags)) {
+			mapped_addr = finish_private_mmap(t, &state, trace,
+							  prot, flags, &file);
+		} else {
+			mapped_addr = finish_shared_mmap(t, &state, trace,
+							 prot, flags, &file);
+		}
 	}
 	/* Finally, we finish by emulating the return value. */
 	state.regs.eax = (uintptr_t)mapped_addr;
@@ -964,6 +1260,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->state;
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	EmuFs::AutoGc maybe_gc(syscall, state);
 
 	if (STATE_SYSCALL_EXIT == state
 	    && SYSCALL_MAY_RESTART(rec_regs->eax)) {

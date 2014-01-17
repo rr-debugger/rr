@@ -32,6 +32,8 @@ struct trace_frame;
 	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax)	\
 	 || -ERESTARTSYS == (eax))
 
+#define SHMEM_FS "/dev/shm"
+
 /* For linux x86, as of 3.11.
  *
  * TODO: better system for this ...  */
@@ -70,6 +72,7 @@ struct mapped_segment_info {
  */
 class AutoOpen {
 public:
+	AutoOpen(int fd) : fd(fd) { }
 	AutoOpen(const char* pathname, int flags, mode_t mode = 0)
 		: fd(open(pathname, flags, mode)) { }
 	~AutoOpen() { close(fd); }
@@ -181,6 +184,53 @@ void print_process_mmap(Task* t);
  */
 int find_segment_containing(Task* t, byte* search_addr,
 			    struct mapped_segment_info* info);
+
+/**
+ * The following helpers are used to iterate over a tracee's memory
+ * maps.  Clients call |iterate_memory_map()|, passing an iterator
+ * function that's invoked for each mapping until either the iterator
+ * stops iteration by not returning CONTINUE_ITERATING, or until the
+ * last mapping has been iterated over.
+ *
+ * For each map, a |struct map_iterator_data| object is provided which
+ * contains segment info, the size of the mapping, and the raw
+ * /proc/maps line the data was parsed from.
+ *
+ * Additionally, if clients pass the ITERATE_READ_MEMORY flag, the
+ * contents of each segment are read and passed through the |mem|
+ * field in the |struct map_iterator_data|.
+ *
+ * Any pointers passed transitively to the iterator function are
+ * *owned by |iterate_memory_map()||*.  Iterator functions must copy
+ * the data they wish to save beyond the scope of the iterator
+ * function invocation.
+ */
+enum { CONTINUE_ITERATING, STOP_ITERATING };
+struct map_iterator_data {
+	struct mapped_segment_info info;
+	/* The nominal size of the data segment. */
+	ssize_t size_bytes;
+	/* Pointer to data read from the segment if requested,
+	 * otherwise NULL. */
+	byte* mem;
+	/* Length of data read from segment.  May be less than nominal
+	 * segment length if an error occurs. */
+	ssize_t mem_len;
+	const char* raw_map_line;
+};
+typedef int (*memory_map_iterator_t)(void* it_data, Task* t,
+				     const struct map_iterator_data* data);
+
+typedef int (*read_segment_filter_t)(void* filt_data, Task* t,
+				     const struct mapped_segment_info* info);
+static const read_segment_filter_t kNeverReadSegment =
+	(read_segment_filter_t)0;
+static const read_segment_filter_t kAlwaysReadSegment =
+	(read_segment_filter_t)1;
+
+void iterate_memory_map(Task* t,
+			memory_map_iterator_t it, void* it_data,
+			read_segment_filter_t filt, void* filt_data);
 
 /**
  * Get the current time from the preferred monotonic clock in units of
@@ -312,7 +362,17 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 			     int prot, int flags,
 			     int warn_shared_writeable);
 
-/* XXX should this go in ipc.h? */
+/**
+ * Return an fd referring to a new shmem segment with descriptive
+ * |name| of size |num_bytes|.
+ */
+int create_shmem_segment(const char* name, size_t num_bytes);
+
+/**
+ * Ensure that the shmem segment referred to by |fd| has exactly the
+ * size |num_bytes|.
+ */
+void resize_shmem_segment(int fd, size_t num_bytes);
 
 /**
  * Prepare |t| for a series of remote syscalls.  The caller must

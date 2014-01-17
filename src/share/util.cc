@@ -58,7 +58,8 @@
 /* The syscallbuf shared with tracees is created with this prefix
  * followed by the tracee tid, then immediately unlinked and shared
  * anonymously. */
-#define SYSCALLBUF_SHMEM_FILENAME_PREFIX "/dev/shm/rr-tracee-shmem-"
+#define SYSCALLBUF_SHMEM_NAME_PREFIX "rr-tracee-shmem-"
+#define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
 
 struct flags flags = { 0 };
 
@@ -302,49 +303,6 @@ static void trim_leading_blanks(char* str)
 	memmove(str, trimmed, strlen(trimmed) + 1/*\0 byte*/);
 }
 
-/**
- * The following helpers are used to iterate over a tracee's memory
- * maps.  Clients call |iterate_memory_map()|, passing an iterator
- * function that's invoked for each mapping until either the iterator
- * stops iteration by not returning CONTINUE_ITERATING, or until the
- * last mapping has been iterated over.
- *
- * For each map, a |struct map_iterator_data| object is provided which
- * contains segment info, the size of the mapping, and the raw
- * /proc/maps line the data was parsed from.
- *
- * Additionally, if clients pass the ITERATE_READ_MEMORY flag, the
- * contents of each segment are read and passed through the |mem|
- * field in the |struct map_iterator_data|.
- *
- * Any pointers passed transitively to the iterator function are
- * *owned by |iterate_memory_map()||*.  Iterator functions must copy
- * the data they wish to save beyond the scope of the iterator
- * function invocation.
- */
-enum { CONTINUE_ITERATING, STOP_ITERATING };
-struct map_iterator_data {
-	struct mapped_segment_info info;
-	/* The nominal size of the data segment. */
-	ssize_t size_bytes;
-	/* Pointer to data read from the segment if requested,
-	 * otherwise NULL. */
-	byte* mem;
-	/* Length of data read from segment.  May be less than nominal
-	 * segment length if an error occurs. */
-	ssize_t mem_len;
-	const char* raw_map_line;
-};
-typedef int (*memory_map_iterator_t)(void* it_data, Task* t,
-				     const struct map_iterator_data* data);
-
-typedef int (*read_segment_filter_t)(void* filt_data, Task* t,
-				     const struct mapped_segment_info* info);
-static const read_segment_filter_t kNeverReadSegment =
-	(read_segment_filter_t)0;
-static const read_segment_filter_t kAlwaysReadSegment =
-	(read_segment_filter_t)1;
-
 static int caller_wants_segment_read(Task* t,
 				     const struct mapped_segment_info* info,
 				     read_segment_filter_t filt,
@@ -359,9 +317,9 @@ static int caller_wants_segment_read(Task* t,
 	return filt(filt_data, t, info);
 }
 
-static void iterate_memory_map(Task* t,
-			       memory_map_iterator_t it, void* it_data,
-			       read_segment_filter_t filt, void* filt_data)
+void iterate_memory_map(Task* t,
+			memory_map_iterator_t it, void* it_data,
+			read_segment_filter_t filt, void* filt_data)
 {
 	FILE* maps_file;
 	char line[PATH_MAX];
@@ -921,7 +879,7 @@ static int checksum_iterator(void* it_data, Task* t,
 	int i;
 
 	if (data->info.name ==
-	    strstr(data->info.name, SYSCALLBUF_SHMEM_FILENAME_PREFIX)) {
+	    strstr(data->info.name, SYSCALLBUF_SHMEM_PATH_PREFIX)) {
 		/* The syscallbuf consists of a region that's written
 		 * deterministically wrt the trace events, and a
 		 * region that's written nondeterministically in the
@@ -1333,6 +1291,31 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 	return true;
 }
 
+int create_shmem_segment(const char* name, size_t num_bytes)
+{
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path) - 1, "%s/%s", SHMEM_FS, name);
+
+	int fd = open(path, O_CREAT | O_EXCL | O_RDWR, 0600);
+	if (0 > fd) {
+		fatal("Failed to create shmem segment %s", path);
+	}
+	/* Remove the fs name so that we don't have to worry about
+	 * cleaning up this segment in error conditions. */
+	unlink(path);
+	resize_shmem_segment(fd, num_bytes);
+
+	debug("created shmem segment %s", path);
+	return fd;
+}
+
+void resize_shmem_segment(int fd, size_t num_bytes)
+{
+	if (ftruncate(fd, num_bytes)) {
+		fatal("Failed to resize shmem to %d", num_bytes);
+	}
+}
+
 void prepare_remote_syscalls(Task* t,
 			     struct current_state_buffer* state)
 {
@@ -1548,7 +1531,7 @@ void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 			  void* map_hint, int share_desched_fd)
 {
 	pid_t tid = t->tid;
-	char shmem_filename[PATH_MAX];
+	char shmem_name[PATH_MAX];
 	struct sockaddr_un addr;
 	long child_ret;
 	int listen_sock, sock, child_sock;
@@ -1559,22 +1542,14 @@ void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	int zero = 0;
 
 	t->untraced_syscall_ip = args->untraced_syscall_ip;
-	snprintf(shmem_filename, sizeof(shmem_filename) - 1,
-		 SYSCALLBUF_SHMEM_FILENAME_PREFIX "%d", tid);
+	snprintf(shmem_name, sizeof(shmem_name) - 1,
+		 SYSCALLBUF_SHMEM_NAME_PREFIX "%d", tid);
 	/* NB: the sockaddr prepared by the child uses the recorded
 	 * tid, so always must here. */
 	prepare_syscallbuf_socket_addr(&addr, t->rec_tid);
 
 	/* Create the segment we'll share with the tracee. */
-	if (0 > (shmem_fd = open(shmem_filename, O_CREAT | O_RDWR, 0640))) {
-		fatal("Failed to open shmem file %s", shmem_filename);
-	}
-	/* Remove the fs name; we're about to "anonymously" share our
-	 * fd to the tracee. */
-	unlink(shmem_filename);
-	if (ftruncate(shmem_fd, SYSCALLBUF_BUFFER_SIZE)) {
-		fatal("Failed to resize syscall buffer shmem");
-	}
+	shmem_fd = create_shmem_segment(shmem_name, SYSCALLBUF_BUFFER_SIZE);
 
 	/* Bind the server socket, but don't start listening yet. */
 	listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);

@@ -22,4 +22,13 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step);
  */
 void rep_maybe_replay_stdio_write(Task* t);
 
+namespace EmuFs {
+/**
+ * Collect emulated files that aren't referenced by tracees.  Call
+ * this only when a tracee (possibly shared) file table has been
+ * destroyed.  All other gc triggers are handled internally.
+ */
+void gc();
+}
+
 #endif /* REP_PROCESS_EVENT_H_ */

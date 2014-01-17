@@ -1514,7 +1514,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	case USR_UNSTABLE_EXIT:
 		t->unstable = 1;
 		/* fall through */
-	case USR_EXIT:
+	case USR_EXIT: {
 		/* If the task was killed by a terminating signal,
 		 * then it may have ended abruptly in a syscall or at
 		 * some other random execution point.  That's bad for
@@ -1531,9 +1531,15 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		 * Other terminating signals have not been observed to
 		 * hang, so that's what's used here.. */
 		syscall(SYS_tkill, t->tid, SIGABRT);
+		// TODO dissociate address space from file table
+		bool file_table_dying = (1 == t->vm()->task_set().size());
 		delete t;
 		/* Early-return because |t| is gone now. */
+		if (file_table_dying) {
+			EmuFs::gc();
+		}
 		return;
+	}
 	case USR_ARM_DESCHED:
 	case USR_DISARM_DESCHED:
 		step.action = TSTEP_DESCHED;

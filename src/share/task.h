@@ -11,11 +11,13 @@
 
 #include <map>
 #include <memory>
+#include <set>
 
 #include "fixedstack.h"
 #include "trace.h"
 
 struct Sighandlers;
+class Task;
 struct TaskGroup;
 
 struct syscallbuf_hdr;
@@ -25,24 +27,45 @@ struct syscallbuf_record;
  * it's not worth the bother to sort those out.) */
 typedef void (*sig_handler_t)(int);
 
+class HasTaskSet {
+public:
+	typedef std::set<Task*> TaskSet;
+
+	const TaskSet& task_set() { return tasks; }
+
+	void insert_task(Task* t);
+	void erase_task(Task* t);
+protected:
+	TaskSet tasks;
+};
+
 /**
  * Models the address space for a set of tasks.  This includes the set
  * of mapped pages, and the resources those mappings refer to.
  */
-class AddressSpace {
+class AddressSpace : public HasTaskSet {
 public:
 	typedef std::shared_ptr<AddressSpace> shr_ptr;
+	typedef std::set<AddressSpace*> Set;
+
+	~AddressSpace() { sas.erase(this); }
 
 	shr_ptr clone() {
 		return shr_ptr(new AddressSpace());
 	}
 
-	static shr_ptr create() {
-		return shr_ptr(new AddressSpace());
+	static const Set& set() { return sas; }
+
+	static shr_ptr create(Task* t) {
+		shr_ptr as(new AddressSpace());
+		as->insert_task(t);
+		return as;
 	}
 
 private:
-	AddressSpace() { }
+	AddressSpace() { sas.insert(this); }
+
+	static Set sas;
 
 	AddressSpace(const AddressSpace&);
 	AddressSpace operator=(const AddressSpace&);
@@ -317,6 +340,13 @@ public:
 	void destabilize_task_group();
 
 	/**
+	 * Stat |fd| in the context of this task's fd table, returning
+	 * the result in |buf|.  Return true on success, false on
+	 * error.
+	 */
+	bool fdstat(int fd, struct stat* buf);
+
+	/**
 	 * Return nonzero if |t| may not be immediately runnable,
 	 * i.e., resuming execution and then |waitpid()|'ing may block
 	 * for an unbounded amount of time.  When the task is in this
@@ -555,8 +585,8 @@ private:
 	/* The address space of this task. */
 	std::shared_ptr<AddressSpace> as;
 
-	Task(Task&);
-	Task operator=(Task&);
+	Task(Task&) = delete;
+	Task operator=(Task&) = delete;
 };
 
 /* (This function is an implementation detail that should go away in
