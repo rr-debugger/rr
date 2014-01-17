@@ -70,12 +70,12 @@ struct mapped_segment_info {
  * RAII helper to open a file and then close the fd when the helper
  * goes out of scope.
  */
-class AutoOpen {
+class ScopedOpen {
 public:
-	AutoOpen(int fd) : fd(fd) { }
-	AutoOpen(const char* pathname, int flags, mode_t mode = 0)
-		: fd(open(pathname, flags, mode)) { }
-	~AutoOpen() { close(fd); }
+	ScopedOpen(int fd) : fd(fd) { }
+	ScopedOpen(const char* pathname, int flags, mode_t mode = 0)
+	    : fd(open(pathname, flags, mode)) { }
+	~ScopedOpen() { close(fd); }
 
 	operator int() { return get(); }
 	int get() { return fd; }

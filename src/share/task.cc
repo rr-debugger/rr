@@ -357,7 +357,7 @@ Task::fdstat(int fd, struct stat* buf)
 {
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
-	AutoOpen backing_fd(path, O_RDONLY);
+	ScopedOpen backing_fd(path, O_RDONLY);
 	return backing_fd >= 0 && 0 == fstat(backing_fd, buf);
 }
 

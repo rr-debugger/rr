@@ -188,7 +188,7 @@ struct File {
 	}
 
 	struct stat est;
-	AutoOpen fd;
+	ScopedOpen fd;
 	bool marked;
 
 private:
@@ -202,19 +202,30 @@ private:
 typedef map<FileKey, File::shr_ptr> FileMap;
 static FileMap emufs;
 
-static int mark_used_vfiles_iterator(void* unused, Task* t,
+static int mark_used_vfiles_iterator(void* nr_markedp, Task* t,
 				     const struct map_iterator_data* data)
 {
+	size_t* nr_marked_files = static_cast<size_t*>(nr_markedp);
 	dev_t device;
 	ino_t inode;
 	char esc_path[PATH_MAX];
+
+	debug("  examining %s ...", data->info.name);
 	if (3 == sscanf(data->info.name,
 			SHMEM_FS "/rr-emufs-dev-%lld-inode-%ld-%s",
 			&device, &inode, esc_path)) {
 		FileKey k(device, inode);
 		assert(emufs.find(k) != emufs.end());
-		emufs[k]->marked = true;
-		debug("  marked %s (einode:%ld)", esc_path, inode);
+		auto ef = emufs[k];
+		if (!ef->marked) {
+			emufs[k]->marked = true;
+			++*nr_marked_files;
+			debug("    marked %s (einode:%ld)", esc_path, inode);
+			if (emufs.size() == *nr_marked_files) {
+				debug("  (marked all files, bailing)");
+				return STOP_ITERATING;
+			}
+		}
 	}
 	return CONTINUE_ITERATING;
 }
@@ -245,12 +256,17 @@ void gc()
 	// TODO: assuming AddressSpace == FileTable, but technically
 	// they're different things: two tracees could share an
 	// address space but have different file tables.
+	size_t nr_marked_files = 0;
 	auto sas = AddressSpace::set();
 	for (auto it = sas.begin(); it != sas.end(); ++it) {
 		AddressSpace* as = *it;
 		Task* t = *as->task_set().begin();
-		iterate_memory_map(t, mark_used_vfiles_iterator, nullptr,
+		iterate_memory_map(t,
+				   mark_used_vfiles_iterator, &nr_marked_files,
 				   kNeverReadSegment, nullptr);
+		if (emufs.size() == nr_marked_files) {
+			break;
+		}
 	}
 
 	// Sweep all the virtual files that weren't marked.  It might
