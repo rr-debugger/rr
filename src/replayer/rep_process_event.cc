@@ -1545,43 +1545,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		process_ipc(t, trace, state);
 		break;
 
-	case SYS_mremap:
-		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_exec(t, syscall);
-		} else {
-			/* By using a fixed address remapping we can
-			 * be sure that the mappings remain identical
-			 * in the record and replay/
-			 */
-			struct user_regs_struct orig_regs;
-			read_child_registers(t, &orig_regs);
-
-			struct user_regs_struct tmp_regs;
-			memcpy(&tmp_regs, &orig_regs, sizeof(tmp_regs));
-			/* set mapping to fixed and initialize the new
-			 * address with the recorded address
-			 */
-
-			/* is hack is necessary, since mremap does not
-			 * like the FIXED flag if source and
-			 * destination address are the same */
-			if (orig_regs.ebx != t->trace.recorded_regs.eax) {
-				tmp_regs.esi |= MREMAP_FIXED;
-				tmp_regs.edi = t->trace.recorded_regs.eax;
-			}
-
-			write_child_registers(t, &tmp_regs);
-
-			__ptrace_cont(t);
-			/* obtain the new address and reset to the old
-			 * register values */
-			read_child_registers(t, &tmp_regs);
-
-			orig_regs.eax = tmp_regs.eax;
-			write_child_registers(t, &orig_regs);
-			validate_args(syscall, state, t);
-		}
-
 	case SYS_recvmmsg: {
 		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->ecx;
 		ssize_t nmmsgs = rec_regs->eax;

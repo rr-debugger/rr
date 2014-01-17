@@ -1,5 +1,2 @@
 source `dirname $0`/util.sh mremap "$@"
-
-fails "Multiple SHARED mappings of the same underlying resource are replayed as multiple anonymous mappings."
-
 compare_test 'done'

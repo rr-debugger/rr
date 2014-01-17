@@ -688,7 +688,7 @@ SYSCALL_DEF(EXEC, mprotect, 0)
  * potentially moving it at the same time (controlled by the flags
  * argument and the available virtual address space).
  */
-SYSCALL_DEF(IRREGULAR, mremap, -1)
+SYSCALL_DEF(EXEC, mremap, 0)
 
 /**
  *  int munmap(void *addr, size_t length)
