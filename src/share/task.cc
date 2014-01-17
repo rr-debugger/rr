@@ -288,10 +288,11 @@ Task::~Task()
 	assert(this == Task::find(rec_tid));
 	// We expect tasks to usually exit by a call to exit() or
 	// exit_group(), so it's not helpful to warn about that.
-	if (FIXEDSTACK_DEPTH(&pending_events) > 2
-	    || !(ev->type == EV_SYSCALL
-		 && (SYS_exit == ev->syscall.no
-		     || SYS_exit_group == ev->syscall.no))) {
+	if (EV_SENTINEL != ev->type
+	    && (FIXEDSTACK_DEPTH(&pending_events) > 2
+		|| !(ev->type == EV_SYSCALL
+		     && (SYS_exit == ev->syscall.no
+			 || SYS_exit_group == ev->syscall.no)))) {
 		log_warn("%d still has pending events.  From top down:", tid);
 		log_pending_events(this);
 	}
