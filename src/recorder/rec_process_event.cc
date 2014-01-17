@@ -2590,11 +2590,6 @@ void rec_process_syscall(Task *t)
 		assert_exec(t, fd >= 0, "Valid fd required for file mapping");
 		assert(!(flags & MAP_GROWSDOWN));
 
-		char path[PATH_MAX];
-		snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", t->tid, fd);
-		AutoOpen backing_fd(path, O_RDONLY);
-		assert_exec(t, backing_fd >= 0, "Failed to open %s", path);
-
 		struct mmapped_file file;
 		// TODO: save a reflink copy of the resource to the
 		// trace directory as |fs/[st_dev].[st_inode]|.  Then
@@ -2606,8 +2601,8 @@ void rec_process_syscall(Task *t)
 		strcpy(file.filename, info.name);
 		file.time = get_global_time();
 		file.tid = tid;
-		if (fstat(backing_fd, &file.stat)) {
-			fatal("Failed to fstat %s", path);
+		if (!t->fdstat(fd, &file.stat)) {
+			fatal("Failed to fstat %d", fd);
 		}
 		file.start = info.start_addr;
 		file.end = info.end_addr;

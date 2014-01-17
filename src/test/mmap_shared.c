@@ -22,6 +22,8 @@ int main(int argc, char *argv[]) {
 	test_assert(wpage != (void*)-1 && rpage != (void*)-1
 		    && rpage != wpage);
 
+	close(128);
+
 	for (i = 0; i < num_bytes / sizeof(int); ++i) {
 		wpage[i] = i;
 		test_assert(rpage[i] == i);

@@ -24,6 +24,21 @@ using namespace std;
 
 static Task::Map tasks;
 
+/*static*/ AddressSpace::Set AddressSpace::sas;
+
+void
+HasTaskSet::insert_task(Task* t)
+{
+	debug("adding %d to task set %p", t->tid, this);
+	tasks.insert(t);
+}
+
+void
+HasTaskSet::erase_task(Task* t) {
+	debug("removing %d from task group %p", t->tid, this);
+	tasks.erase(t);
+}
+
 /**
  * Stores the table of signal dispositions and metadata for an
  * arbitrary set of tasks.  Each of those tasks must own one one of
@@ -129,21 +144,12 @@ private:
  * the ancestor of all other threads in the group.  Each constituent
  * task must own a reference to this.
  */
-struct TaskGroup {
-	typedef set<Task*> TaskSet;
+struct TaskGroup : public HasTaskSet {
 	typedef shared_ptr<TaskGroup> shr_ptr;
 
-	void add(Task* t) {
-		debug("adding %d to task group %d", t->tid, tgid);
-		tasks.insert(t);
-	}
-	void remove(Task* t) {
-		debug("removing %d from task group %d", t->tid, tgid);
-		tasks.erase(t);
-	}
 	void destabilize() {
 		debug("destabilizing task group %d", tgid);
-		for (auto it = tasks.begin(); it != tasks.end(); ++it) {
+		for (auto it = task_set().begin(); it != task_set().end(); ++it) {
 			Task* t = *it;
 			t->unstable = 1;
 			debug("  destabilized task %d", t->tid);
@@ -152,11 +158,10 @@ struct TaskGroup {
 
 	static shr_ptr create(Task* t) {
 		shr_ptr tg(new TaskGroup(t->tid));
-		tg->add(t);
+		tg->insert_task(t);
 		return tg;
 	}
 
-	TaskSet tasks;
 	pid_t tgid;
 
 private:
@@ -292,7 +297,8 @@ Task::~Task()
 	}
 
 	tasks.erase(rec_tid);
-	task_group->remove(this);
+	task_group->erase_task(this);
+	as->erase_task(this);
 
 	destroy_hpc(this);
 	close(child_mem_fd);
@@ -319,12 +325,17 @@ Task::clone(int flags, pid_t new_tid, pid_t new_rec_tid)
 	}
 	if (CLONE_SHARE_TASK_GROUP & flags) {
 		t->task_group = task_group;
-		task_group->add(t);
+		task_group->insert_task(t);
 	} else {
 		auto tg = TaskGroup::create(t);
 		t->task_group.swap(tg);
 	}
-	t->as = (CLONE_SHARE_VM & flags) ? as : as->clone();
+	if (CLONE_SHARE_VM & flags) {
+		t->as = as;
+	} else {
+		t->as = as->clone();
+	}
+	t->as->insert_task(t);
 	return t;
 }
 
@@ -339,6 +350,15 @@ void
 Task::destabilize_task_group()
 {
 	task_group->destabilize();
+}
+
+bool
+Task::fdstat(int fd, struct stat* buf)
+{
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
+	AutoOpen backing_fd(path, O_RDONLY);
+	return backing_fd >= 0 && 0 == fstat(backing_fd, buf);
 }
 
 bool
@@ -367,7 +387,7 @@ Task::post_exec()
 	sighandlers = sighandlers->clone();
 	sighandlers->reset_user_handlers();
 	// TODO: create address space from post-exec /proc/maps
-	auto a = AddressSpace::create();
+	auto a = AddressSpace::create(this);
 	as.swap(a);
 }
 
@@ -426,8 +446,8 @@ Task::create(pid_t tid, pid_t rec_tid)
 	t->sighandlers.swap(sh);
 	auto tg = TaskGroup::create(t);
 	t->task_group.swap(tg);
-	auto a = AddressSpace::create();
-	t->as.swap(a);
+	auto as = AddressSpace::create(t);
+	t->as.swap(as);
 	return t;
 }
 
