@@ -32,6 +32,7 @@
 #include <unistd.h>
 
 #include "dbg.h"
+#include "hpc.h"
 #include "ipc.h"
 #include "sys.h"
 #include "task.h"
@@ -600,7 +601,11 @@ int compare_register_files(Task* t,
 		err |= (1 << ++errbit);
 	}
 
-	assert_exec(t, !bail_error || !err, "Fatal register mismatch");
+	assert_exec(t, !bail_error || !err,
+		    "Fatal register mismatch\n"
+		    "    (rbc/rec:%lld/%lld; irc/rec:%lld/%lld)",
+		    read_rbc(t->hpc), t->trace.rbc,
+		    read_insts(t->hpc), t->trace.insts);
 
 	if (!err && mismatch_behavior == LOG_MISMATCHES) {
 		log_info("(register files are the same for %s and %s)",
