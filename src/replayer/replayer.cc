@@ -1639,6 +1639,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		assert(dbg_is_resume_request(&req));
 	}
 
+	if (STATE_SYSCALL_EXIT == t->trace.state
+	    && rr_flags()->check_cached_mmaps) {
+		t->vm()->verify(t);
+	}
+
 	if (dbg && stop_sig) {
 		dbg_notify_stop(dbg, get_threadid(t), stop_sig);
 	}

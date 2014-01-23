@@ -34,6 +34,12 @@ struct trace_frame;
 
 #define SHMEM_FS "/dev/shm"
 
+/* The syscallbuf shared with tracees is created with this prefix
+ * followed by the tracee tid, then immediately unlinked and shared
+ * anonymously. */
+#define SYSCALLBUF_SHMEM_NAME_PREFIX "rr-tracee-shmem-"
+#define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
+
 /* For linux x86, as of 3.11.
  *
  * TODO: better system for this ...  */
@@ -61,7 +67,6 @@ struct mapped_segment_info {
 	int flags;
 	int64_t file_offset;
 	int64_t inode;
-	/* You should probably not be using these. */
 	int dev_major;
 	int dev_minor;
 };
@@ -302,6 +307,22 @@ struct current_state_buffer {
 void mprotect_child_region(Task* t, byte* addr, int prot);
 
 /**
+ * Return |sz| rounded up to the nearest multiple of the system
+ * |page_size()|.
+ */
+size_t ceil_page_size(size_t sz);
+
+/**
+ * Return true if the pointer or size is a multiple of the system
+ * |page_size()|.
+ */
+bool is_page_aligned(const byte* addr);
+bool is_page_aligned(size_t sz);
+
+/** Return the system page size. */
+size_t page_size();
+
+/**
  * Copy the registers used for syscall arguments (not including
  * syscall number) from |from| to |to|.
  */
@@ -464,6 +485,16 @@ void finish_remote_syscalls(Task* t,
 	remote_syscall2(_c, _s, _no, _a1, 0)
 #define remote_syscall0(_c, _s, _no)		\
 	remote_syscall1(_c, _s, _no, 0)
+
+/**
+ * Format into |path| the path name at which syscallbuf shmem for
+ * tracee |tid| will be allocated (briefly, until unlinked).
+ */
+template<size_t N>
+void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N])
+{
+	snprintf(path, N - 1, SYSCALLBUF_SHMEM_NAME_PREFIX "%d", tid);
+}
 
 /**
  * Initialize tracee buffers in |t|, i.e., implement

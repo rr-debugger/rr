@@ -97,6 +97,7 @@ static void handle_ptrace_event(Task** tp)
 		sys_waitpid(new_tid, &t->status);
 
 		read_child_registers(t, &t->regs);
+		const byte* stack = (const byte*)t->regs.ecx;
 		// fork and vfork can never share these resources,
 		// only copy, so the flags here aren't meaningful for
 		// them, only clone.
@@ -104,7 +105,7 @@ static void handle_ptrace_event(Task** tp)
 				t->regs.ebx : 0;
 
 		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
-					  new_tid);
+					  stack, new_tid);
 		start_hpc(new_task, rr_flags()->max_rbc);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
@@ -142,7 +143,6 @@ static void handle_ptrace_event(Task** tp)
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 
-		t->post_exec();
 		assert(signal_pending(t->status) == 0);
 		break;
 	}
@@ -439,6 +439,9 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		 * restart_syscall */
 		if (!may_restart) {
 			rec_process_syscall(t);
+			if (rr_flags()->check_cached_mmaps) {
+				t->vm()->verify(t);
+			}
 		} else {
 			debug("  may restart %s (from retval %d)",
 			      syscallname(syscallno), retval);

@@ -602,21 +602,24 @@ void rec_prepare_restart_syscall(Task* t)
 
 static void init_scratch_memory(Task *t)
 {
-	const int scratch_size = 512 * sysconf(_SC_PAGE_SIZE);
+	const int scratch_size = 512 * page_size();
 	/* initialize the scratchpad for blocking system calls */
 	struct current_state_buffer state;
-
 	prepare_remote_syscalls(t, &state);
-	t->scratch_ptr = (byte*)remote_syscall6(
-		t, &state, SYS_mmap2,
-		0, scratch_size,
-		/* The PROT_EXEC looks scary, and it is, but it's to
-		 * prevent this region from being coalesced with
-		 * another anonymous segment mapped just after this
-		 * one.  If we named this segment, we could remove
-		 * this hack. */
-		PROT_READ | PROT_WRITE | PROT_EXEC,
-		MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+	size_t sz = scratch_size;
+	// The PROT_EXEC looks scary, and it is, but it's to prevent
+	// this region from being coalesced with another anonymous
+	// segment mapped just after this one.  If we named this
+	// segment, we could remove this hack.
+	int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
+	int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+	int fd = -1;
+	off_t offset = 0;
+
+	t->scratch_ptr = (byte*)remote_syscall6(t, &state, SYS_mmap2,
+						0, sz, prot, flags,
+						fd, offset);
 	t->scratch_size = scratch_size;
 	finish_remote_syscalls(t, &state);
 
@@ -637,6 +640,9 @@ static void init_scratch_memory(Task *t)
 
 	orig_regs.eax = eax;
 	write_child_registers(t, &orig_regs);
+
+	t->vm()->map(t->scratch_ptr, sz, prot, flags, offset,
+		     MappableResource::scratch(t->rec_tid));
 }
 
 /**
@@ -818,6 +824,8 @@ static void process_execve(Task* t,
 	record_child_data(t, 16, rand_addr);
 
 	init_scratch_memory(t);
+
+	t->post_exec();
 }
 
 static void process_ipc(Task* t,
@@ -1212,6 +1220,8 @@ void rec_process_syscall(Task *t)
 
 	debug("%d: processing syscall: %s(%d) -- time: %u",
 	      tid, syscallname(syscall), syscall, get_global_time());
+
+	t->maybe_update_vm(syscall, STATE_SYSCALL_EXIT, regs);
 
 	if (const struct syscallbuf_record* rec = t->desched_rec()) {
 		assert(t->ev->syscall.tmp_data_ptr != t->scratch_ptr);
@@ -2577,14 +2587,17 @@ void rec_process_syscall(Task *t)
 		}
 
 		byte* addr = (byte*)regs.eax;
-		size_t size = PAGE_ALIGN(regs.ecx);
+		size_t size = ceil_page_size(regs.ecx);
 		int prot = regs.edx, flags = regs.esi, fd = regs.edi;
+		off_t offset = page_size() * regs.ebp;
 		if (flags & MAP_ANONYMOUS) {
 			// Anonymous mappings are by definition not
 			// backed by any file-like object, and are
 			// initialized to zero, so there's no
 			// nondeterminism to record.
 			//assert(!(flags & MAP_UNINITIALIZED));
+			t->vm()->map(addr, size, prot, flags, 0,
+				     MappableResource::anonymous());
 			break;
 		}
 
@@ -2622,6 +2635,10 @@ void rec_process_syscall(Task *t)
 			record_child_data(t, size, addr);
 		}
 		record_mmapped_file_stats(&file);
+
+		t->vm()->map(addr, size, prot, flags, offset,
+			     MappableResource(FileId(file.stat),
+					      file.filename));
 		break;
 	}
 

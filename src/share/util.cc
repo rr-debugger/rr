@@ -56,12 +56,6 @@
 #define REPLAY_DESCHED_EVENT_FD -123
 #define NUM_MAX_MAPS 1024
 
-/* The syscallbuf shared with tracees is created with this prefix
- * followed by the tracee tid, then immediately unlinked and shared
- * anonymously. */
-#define SYSCALLBUF_SHMEM_NAME_PREFIX "rr-tracee-shmem-"
-#define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
-
 struct flags flags = { 0 };
 
 const struct flags* rr_flags(void)
@@ -385,7 +379,7 @@ void iterate_memory_map(Task* t,
 static int print_process_mmap_iterator(void* unused, Task* t,
 				       const struct map_iterator_data* data)
 {
-	fputs(data->raw_map_line, stdout);
+	fputs(data->raw_map_line, stderr);
 	return CONTINUE_ITERATING;
 }
 
@@ -475,6 +469,27 @@ void mprotect_child_region(Task* t, byte* addr, int prot)
 	ret = remote_syscall3(t, &state, SYS_mprotect, addr, length, prot);
 	assert(ret == 0);
 	finish_remote_syscalls(t, &state);
+}
+
+bool is_page_aligned(const byte* addr)
+{
+	return is_page_aligned(reinterpret_cast<size_t>(addr));
+}
+
+bool is_page_aligned(size_t sz)
+{
+	return 0 == (sz % page_size());
+}
+
+size_t page_size()
+{
+	return sysconf(_SC_PAGE_SIZE);
+}
+
+size_t ceil_page_size(size_t sz)
+{
+	size_t page_mask = ~(page_size() - 1);
+	return (sz + page_size() - 1) & page_mask;
 }
 
 void print_inst(Task* t)
@@ -1531,9 +1546,9 @@ static void write_socketcall_args(Task* t,
 	write_child_data(t, sizeof(args), (byte*)child_args_vec, (byte*)&args);
 }
 
-void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
-			  struct rrcall_init_buffers_params* args,
-			  void* map_hint, int share_desched_fd)
+static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
+				 struct rrcall_init_buffers_params* args,
+				 void* map_hint, int share_desched_fd)
 {
 	pid_t tid = t->tid;
 	char shmem_name[PATH_MAX];
@@ -1547,8 +1562,7 @@ void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	int zero = 0;
 
 	t->untraced_syscall_ip = args->untraced_syscall_ip;
-	snprintf(shmem_name, sizeof(shmem_name) - 1,
-		 SYSCALLBUF_SHMEM_NAME_PREFIX "%d", tid);
+	format_syscallbuf_shmem_path(tid, shmem_name);
 	/* NB: the sockaddr prepared by the child uses the recorded
 	 * tid, so always must here. */
 	prepare_syscallbuf_socket_addr(&addr, t->rec_tid);
@@ -1655,11 +1669,14 @@ void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	}
 	t->num_syscallbuf_bytes = args->num_syscallbuf_bytes
 				= SYSCALLBUF_BUFFER_SIZE;
+	int prot = PROT_READ | PROT_WRITE;
+	int flags = MAP_SHARED;
+	off_t offset = 0;
 	child_map_addr = (byte*)remote_syscall6(t, state, SYS_mmap2,
 						map_hint,
 						args->num_syscallbuf_bytes,
-						PROT_READ | PROT_WRITE,
-						MAP_SHARED, child_shmem_fd, 0);
+						prot, flags, child_shmem_fd,
+						offset);
 	t->syscallbuf_child = args->syscallbuf_ptr = child_map_addr;
 	t->syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
 	/* No entries to begin with. */
@@ -1667,6 +1684,10 @@ void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 
 	close(shmem_fd);
 	remote_syscall1(t, state, SYS_close, child_shmem_fd);
+
+	t->vm()->map((const byte*)child_map_addr, args->num_syscallbuf_bytes,
+		     prot, flags, offset,
+		     MappableResource::syscallbuf(t->rec_tid));
 
 	return child_map_addr;
 }

@@ -14,7 +14,6 @@
 #define __unused __attribute__((unused))
 
 #define CHECK_ALIGNMENT(addr) 	assert(((long int)(addr) & 0x3) == 0)
-#define PAGE_ALIGN(length)		((length + PAGE_SIZE - 1) & PAGE_MASK)
 
 #define PTR_SIZE		(sizeof(void*))
 #define INT_SIZE		(sizeof(int))
@@ -76,6 +75,8 @@ struct flags {
 	/* Mark the trace global time along with tracee writes to
 	 * stdio. */
 	bool mark_stdio;
+	// Check that cached mmaps match /proc/maps after each event.
+	bool check_cached_mmaps;
 };
 
 struct msghdr;
