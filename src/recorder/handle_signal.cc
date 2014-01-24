@@ -358,7 +358,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 
 	t->ev->type = EV_SIGNAL_DELIVERY;
 	if (t->signal_has_user_handler(sig)) {
-		debug("  %s has user handler", signalname(sig));
+		debug("  %d: %s has user handler", t->tid, signalname(sig));
 		/* Deliver the signal immediately when there's a user
 		 * handler: we need to record the sigframe that the
 		 * kernel sets up. */
@@ -396,7 +396,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 
 		t->ev->type = EV_SIGNAL_HANDLER;
 	} else {
-		debug("  no user handler for %s", signalname(sig));
+		debug("  %d: no user handler for %s", t->tid, signalname(sig));
 	}
 
 	/* We record this data regardless to simplify replay. */

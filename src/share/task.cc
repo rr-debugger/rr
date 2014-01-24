@@ -46,12 +46,9 @@ HasTaskSet::erase_task(Task* t) {
  */
 struct Sighandler {
 	Sighandler() : handler(SIG_DFL), resethand(false) { }
-	Sighandler(const struct sigaction& sa) :
-		handler((SA_SIGINFO & sa.sa_flags) ?
-			(sig_handler_t)sa.sa_sigaction :
-			sa.sa_handler),
-		resethand(sa.sa_flags & SA_RESETHAND)
-	{ }
+	Sighandler(const struct kernel_sigaction& sa)
+		: handler(sa.k_sa_handler)
+		, resethand(sa.sa_flags & SA_RESETHAND)	{ }
 
 	bool is_default() const {
 		return SIG_DFL == handler && !resethand;
@@ -96,7 +93,12 @@ struct Sighandlers {
 				assert(h.is_default());
 				continue;
 			}
-			h = Sighandler(act);
+			struct kernel_sigaction ka;
+			ka.k_sa_handler = act.sa_handler;
+			ka.sa_flags = act.sa_flags;
+			ka.sa_restorer = act.sa_restorer;
+			ka.sa_mask = act.sa_mask;
+			h = Sighandler(ka);
 		}
 	}
 
@@ -393,7 +395,7 @@ Task::post_exec()
 }
 
 void
-Task::set_signal_disposition(int sig, const struct sigaction& sa)
+Task::set_signal_disposition(int sig, const struct kernel_sigaction& sa)
 {
 	sighandlers->get(sig) = Sighandler(sa);
 }

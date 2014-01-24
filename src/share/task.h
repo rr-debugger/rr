@@ -27,6 +27,17 @@ struct syscallbuf_record;
  * it's not worth the bother to sort those out.) */
 typedef void (*sig_handler_t)(int);
 
+/**
+ * The kernel SYS_sigaction ABI is different from the libc API; this
+ * is the kernel layout.  We see these at SYS_sigaction traps.
+ */
+struct kernel_sigaction {
+	sig_handler_t k_sa_handler;
+	unsigned long sa_flags;
+	void (*sa_restorer) (void);
+	sigset_t sa_mask;
+};
+
 class HasTaskSet {
 public:
 	typedef std::set<Task*> TaskSet;
@@ -374,7 +385,8 @@ public:
 	 * Set the disposition and resethand semantics of |sig| to
 	 * |sa|, overwriting whatever may already be there.
 	 */
-	void set_signal_disposition(int sig, const struct sigaction& sa);
+	void set_signal_disposition(int sig,
+				    const struct kernel_sigaction& sa);
 
 	/**
 	 * Call this after |sig| is delivered to this task.  Emulate
