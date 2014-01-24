@@ -338,8 +338,8 @@ static void desched_state_changed(Task* t)
 static int maybe_restart_syscall(Task* t)
 {
 	if (SYS_restart_syscall == t->event) {
-		debug("  SYS_restart_syscall'ing %s",
-		      syscallname(t->ev->syscall.no));
+		debug("  %d: SYS_restart_syscall'ing %s",
+		      t->tid, syscallname(t->ev->syscall.no));
 	}
 	if (is_syscall_restart(t, t->event, &t->regs)) {
 		t->ev->type = EV_SYSCALL;
