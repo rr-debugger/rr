@@ -137,11 +137,9 @@ struct FileKey {
 	FileKey(dev_t edev, ino_t eino)
 		: edevice(edev), einode(eino) { }
 
-	bool operator=(const FileKey& o) const {
-		return edevice == o.edevice && einode == o.einode;
-	}
 	bool operator<(const FileKey& o) const {
-		return edevice < o.edevice || einode < o.einode;
+		return (edevice != o.edevice ?
+			edevice < o.edevice : einode < o.einode);
 	}
 
 	dev_t edevice;
@@ -261,6 +259,7 @@ void gc()
 	for (auto it = sas.begin(); it != sas.end(); ++it) {
 		AddressSpace* as = *it;
 		Task* t = *as->task_set().begin();
+		debug("  iterating /proc/%d/maps ...", t->tid);
 		iterate_memory_map(t,
 				   mark_used_vfiles_iterator, &nr_marked_files,
 				   kNeverReadSegment, nullptr);

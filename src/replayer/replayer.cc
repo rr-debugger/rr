@@ -922,7 +922,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 	 * quickly as possible by programming the hpc. */
 	rcbs_left = *rcb - read_rbc(t->hpc);
 
-	debug("advancing %" PRId64 " rcbs to reach %" PRId64 "/%p",
+	debug("advancing %lld rcbs to reach %lld/%p",
 	      rcbs_left, *rcb, ip);
 
 	/* XXX should we only do this if (rcb > 10000)? */
@@ -939,7 +939,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 		}
 		t->child_sig = 0;
 
-		debug("  programming interrupt for %" PRId64 " rcbs",
+		debug("  programming interrupt for %lld rcbs",
 		      rcbs_left - SKID_SIZE);
 		*rcb -= read_rbc(t->hpc);
 		reset_hpc(t, rcbs_left - SKID_SIZE);
