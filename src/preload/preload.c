@@ -1328,18 +1328,6 @@ int __lxstat(int vers, const char* path, struct stat* buf)
 	return ret;
 }
 
-int madvise(void* addr, size_t length, int advice)
-{
-	void* ptr = prep_syscall(NO_SIGNAL_SAFETY);
-	long ret;
-
-	if (!start_commit_buffered_syscall(SYS_madvise, ptr, WONT_BLOCK)) {
-		return syscall(SYS_madvise, addr, length, advice);
-	}
-	ret = untraced_syscall3(SYS_madvise, addr, length, advice);
-	return commit_syscall(SYS_madvise, ptr, ret);
-}
-
 int open(const char* pathname, int flags, ...)
 {
 	/* NB: not arming the desched event is technically correct,
