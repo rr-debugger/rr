@@ -110,6 +110,7 @@ set(BASIC_TESTS
   intr_sleep_no_restart
   io
   link
+  madvise
   mmap_private
   mmap_ro
   mmap_shared
