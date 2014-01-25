@@ -947,7 +947,7 @@ static void* finish_shared_mmap(Task* t,
 				const struct mmapped_file* file)
 {
 	const struct user_regs_struct& rec_regs = trace->recorded_regs;
-	size_t rec_num_bytes = rec_regs.ecx;
+	size_t rec_num_bytes = PAGE_ALIGN(rec_regs.ecx);
 	off_t rec_offset = rec_regs.ebp;
 
 	// Ensure there's a virtual file for the file that was mapped
