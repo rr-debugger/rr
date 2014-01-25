@@ -11,7 +11,7 @@ sudo ./src/script/setup.sh
 
 sudo apt-get update && \
     sudo apt-get install linux-libc-dev linux-libc-dev:i386 && \
-    sudo apt-get install g++:i386 libc6-dev:i386 && \
+    sudo apt-get install gcc:i386 cpp:i386 g++:i386 libc6-dev:i386 && \
     sudo apt-get install libdisasm-dev:i386 rpm && \
     wget http://people.mozilla.org/~gal/libpfm_4.3.0-1_amd64.deb && \
     sudo dpkg -i libpfm_4.3.0-1_amd64.deb && \
