@@ -4,15 +4,6 @@
 
 #include "handle_ioctl.h"
 
-#include <stddef.h>		// broken DRM headers need these
-#include <stdint.h>
-#define virtual BROKEN_DRM_virtual // and this
-#include <drm/drm.h>
-#undef virtual
-#include <drm/i915_drm.h>
-#include <drm/nouveau_drm.h>
-#include <drm/radeon_drm.h>
-
 #include <assert.h>
 #include <linux/arcfb.h>
 #include <linux/fb.h>
@@ -29,6 +20,7 @@
 #include "recorder.h"
 
 #include "../share/dbg.h"
+#include "../share/drm.h"
 #include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/task.h"
