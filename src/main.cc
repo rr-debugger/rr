@@ -559,7 +559,9 @@ int main(int argc, char* argv[])
 
 	wait_secs = flags->wait_secs;
 	if (wait_secs > 0) {
-		struct timespec ts =  { .tv_sec = wait_secs, .tv_nsec = 0 };
+		struct timespec ts;
+		ts.tv_sec = wait_secs;
+		ts.tv_nsec = 0;
 		log_info("Waiting %d seconds before continuing ...",
 			 wait_secs);
 		if (nanosleep_nointr(&ts)) {
