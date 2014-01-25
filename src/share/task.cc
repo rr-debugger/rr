@@ -473,7 +473,10 @@ Task::find(pid_t rec_tid)
  */
 static void push_new_event(Task* t, EventType type)
 {
-	struct event ev = { .type = EventType(type) };
+	struct event ev;
+	memset(&ev, 0, sizeof(ev));
+	ev.type = EventType(type);
+
 	FIXEDSTACK_PUSH(&t->pending_events, ev);
 	t->ev = FIXEDSTACK_TOP(&t->pending_events);
 }

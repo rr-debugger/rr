@@ -24,7 +24,7 @@
  *
  *  FIXEDSTACK_DECL(foostack, void*, 5) mystack = FIXEDSTACK_INITIALIZER;
  */
-#define FIXEDSTACK_INITIALIZER { .elts = { 0 }, .len = 0 }
+#define FIXEDSTACK_INITIALIZER { { 0 } }
 
 /**
  * "Remove" all the elements from the stack.  The caller is
