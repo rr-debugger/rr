@@ -309,6 +309,7 @@ static void print_usage(void)
 "                             always allow emergency debugging, even\n"
 "                             when it doesn't seem like a good idea, for\n"
 "                             example if stderr isn't a tty.\n"
+"  -k, --check-cached-mmaps   verify that cached task mmaps match /proc/maps\n"
 "  -m, --mark-stdio           mark stdio writes with [rr.<EVENT-NO>],\n"
 "                             where EVENT-NO is the global trace time at\n"
 "                             which the write occures.\n"
@@ -443,6 +444,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 {
 	struct option opts[] = {
 		{ "checksum", required_argument, NULL, 'c' },
+		{ "check-cached-mmaps", no_argument, NULL, 'k' },
 		{ "cpu-unbound", no_argument, NULL, 'u' },
 		{ "dump-at", required_argument, NULL, 't' },
 		{ "dump-on", required_argument, NULL, 'd' },
@@ -454,7 +456,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+c:d:fmt:uvw:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+c:d:fkmt:uvw:", opts, &i)) {
 		case -1:
 			return optind;
 		case 'c':
@@ -475,19 +477,22 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			flags->dump_on = atoi(optarg);
 			break;
 		case 'f':
-			flags->force_enable_debugger = 1;
+			flags->force_enable_debugger = true;
+			break;
+		case 'k':
+			flags->check_cached_mmaps = true;
 			break;
 		case 'm':
-			flags->mark_stdio = 1;
+			flags->mark_stdio = true;
 			break;
 		case 't':
 			flags->dump_at = atoi(optarg);
 			break;
 		case 'u':
-			flags->cpu_unbound = 1;
+			flags->cpu_unbound = true;
 			break;
 		case 'v':
-			flags->verbose = 1;
+			flags->verbose = true;
 			break;
 		case 'w':
 			flags->wait_secs = atoi(optarg);

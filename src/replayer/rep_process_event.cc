@@ -131,21 +131,6 @@ static void replace_char(string& s, char c, char replacement)
  */
 namespace EmuFs {
 
-struct FileKey {
-	FileKey(const struct stat& est)
-		: edevice(est.st_dev), einode(est.st_ino) { }
-	FileKey(dev_t edev, ino_t eino)
-		: edevice(edev), einode(eino) { }
-
-	bool operator<(const FileKey& o) const {
-		return (edevice != o.edevice ?
-			edevice < o.edevice : einode < o.einode);
-	}
-
-	dev_t edevice;
-	ino_t einode;
-};
-
 struct File {
 	typedef shared_ptr<File> shr_ptr;
 
@@ -197,7 +182,7 @@ private:
 	File operator=(const File&) = delete;
 };
 
-typedef map<FileKey, File::shr_ptr> FileMap;
+typedef map<FileId, File::shr_ptr> FileMap;
 static FileMap emufs;
 
 static int mark_used_vfiles_iterator(void* nr_markedp, Task* t,
@@ -212,7 +197,7 @@ static int mark_used_vfiles_iterator(void* nr_markedp, Task* t,
 	if (3 == sscanf(data->info.name,
 			SHMEM_FS "/rr-emufs-dev-%lld-inode-%ld-%s",
 			&device, &inode, esc_path)) {
-		FileKey k(device, inode);
+		FileId k(device, inode);
 		assert(emufs.find(k) != emufs.end());
 		auto ef = emufs[k];
 		if (!ef->marked) {
@@ -275,7 +260,7 @@ void gc()
 	// contents from the snapshot saved to the trace.  Since there
 	// are no live references to the file in the interim, tracees
 	// can't observe the destroy/recreate operation.
-	vector<FileKey> garbage;
+	vector<FileId> garbage;
 	for (auto it = emufs.begin(); it != emufs.end(); ++it) {
 		if (!it->second->marked) {
 			garbage.push_back(it->first);
@@ -516,7 +501,7 @@ static void init_scratch_memory(Task* t)
 	 * to the scratch memory are caught. */
 	struct mmapped_file file;
 	struct current_state_buffer state;
-	void* map_addr;
+	const byte* map_addr;
 
 	read_next_mmapped_file_stats(&file);
 
@@ -524,16 +509,24 @@ static void init_scratch_memory(Task* t)
 
 	t->scratch_ptr = file.start;
 	t->scratch_size = file.end - file.start;
-	map_addr = (void*)remote_syscall6(
+
+	size_t sz = t->scratch_size;
+	int prot = PROT_NONE;
+	int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
+	int fd = -1;
+	off_t offset = 0;
+
+	map_addr = (const byte*)remote_syscall6(
 		t, &state, SYS_mmap2,
-		t->scratch_ptr, t->scratch_size,
-		PROT_NONE,
-		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+		t->scratch_ptr, sz, prot, flags, fd, offset);
 	finish_remote_syscalls(t, &state);
 
 	assert_exec(t, t->scratch_ptr == map_addr,
-		    "scratch mapped @%p during recording, but @%p in replay",
+		    "scratch mapped %p during recording, but %p in replay",
 		    file.start, map_addr);
+
+	t->vm()->map(map_addr, sz, prot, flags, offset,
+		     MappableResource::scratch(t->rec_tid));
 }
 
 /**
@@ -598,11 +591,12 @@ static void process_clone(Task* t,
 		sys_waitpid(new_tid, &status);
 
 		read_child_registers(t, &t->regs);
+		const byte* stack = (const byte*)t->regs.ecx;
 		int flags_arg = (SYS_clone == t->regs.orig_eax) ?
 				t->regs.ebx : 0;
 
 		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
-					  new_tid, rec_tid);
+					  stack, new_tid, rec_tid);
 
 		/* FIXME: what if registers are non-null and contain
 		 * an invalid address? */
@@ -813,10 +807,18 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 	}
 }
 
+/**
+ * Pass NOTE_TASK_MAP to update |t|'s cached mmap data.  If the data
+ * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
+ * it manually.
+ */
+enum { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
+
 static void* finish_anonymous_mmap(Task* t,
 				   struct current_state_buffer* state,
 				   struct trace_frame* trace,
-				   int prot, int flags)
+				   int prot, int flags,
+				   int note_task_map=NOTE_TASK_MAP)
 {
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
 	/* *Must* map the segment at the recorded address, regardless
@@ -827,6 +829,12 @@ static void* finish_anonymous_mmap(Task* t,
 	 * whatever the tracee passed to avoid stirring up trouble. */
 	int fd = rec_regs->edi;
 	off_t offset = rec_regs->ebp;
+
+	if (note_task_map) {
+		t->vm()->map((const byte*)rec_addr, length, prot, flags,
+			     offset, MappableResource::anonymous());
+	}
+
 	return (void*)remote_syscall6(t, state, SYS_mmap2,
 				      rec_addr, length, prot,
 				      /* Tell the kernel to take
@@ -843,13 +851,20 @@ static void* finish_private_mmap(Task* t,
 {
 	debug("  finishing private mmap of %s", file->filename);
 
+	const struct user_regs_struct& rec_regs = trace->recorded_regs;
+	size_t num_bytes = rec_regs.ecx;
+	off_t offset = rec_regs.ebp;
 	void* mapped_addr = finish_anonymous_mmap(t, state, trace, prot,
 						  /* The restored region
 						   * won't be backed by
 						   * file. */
-						  flags | MAP_ANONYMOUS);
+						  flags | MAP_ANONYMOUS,
+						  DONT_NOTE_TASK_MAP);
 	/* Restore the map region we copied. */
 	set_child_data(t);
+
+	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags, offset,
+		     MappableResource(FileId(file->stat), file->filename));
 
 	return mapped_addr;
 }
@@ -886,7 +901,8 @@ static void* finish_direct_mmap(Task* t,
 				struct trace_frame* trace,
 				int prot, int flags,
 				const struct mmapped_file* file,
-				int verify = VERIFY_BACKING_FILE)
+				int verify = VERIFY_BACKING_FILE,
+				int note_task_map=NOTE_TASK_MAP)
 {
 	struct user_regs_struct* rec_regs = &trace->recorded_regs;
 	void* rec_addr = (void*)rec_regs->eax;
@@ -937,6 +953,13 @@ static void* finish_direct_mmap(Task* t,
 	 * stay open. */
 	remote_syscall1(t, state, SYS_close, fd);
 
+	if (note_task_map) {
+		t->vm()->map((const byte*)mapped_addr, length, prot, flags,
+			     offset,
+			     MappableResource(FileId(file->stat),
+					      file->filename));
+	}
+
 	return mapped_addr;
 }
 
@@ -947,7 +970,7 @@ static void* finish_shared_mmap(Task* t,
 				const struct mmapped_file* file)
 {
 	const struct user_regs_struct& rec_regs = trace->recorded_regs;
-	size_t rec_num_bytes = PAGE_ALIGN(rec_regs.ecx);
+	size_t rec_num_bytes = ceil_page_size(rec_regs.ecx);
 	off_t rec_offset = rec_regs.ebp;
 
 	// Ensure there's a virtual file for the file that was mapped
@@ -962,7 +985,8 @@ static void* finish_shared_mmap(Task* t,
 	snprintf(vfile.filename, sizeof(vfile.filename) - 1,
 		 "/proc/%d/fd/%d", getpid(), emufs_fd);
 	void* mapped_addr = finish_direct_mmap(t, state, trace, prot, flags,
-					       &vfile, DONT_VERIFY);
+					       &vfile, DONT_VERIFY,
+					       DONT_NOTE_TASK_MAP);
 	// Write back the snapshot of the segment that we recorded.
 	// We have to write directly to the underlying file, because
 	// the tracee may have mapped its segment read-only.
@@ -983,6 +1007,10 @@ static void* finish_shared_mmap(Task* t,
 	free(data);
 	debug("  restored %d bytes at 0x%lx to %s",
 	      num_bytes, rec_offset, vfile.filename);
+
+	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags,
+		     rec_offset,
+		     MappableResource(FileId(file->stat), file->filename));
 
 	return mapped_addr;
 }
@@ -1326,6 +1354,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 	step->syscall.no = syscall;
 
+	t->maybe_update_vm(syscall, state, *rec_regs);
+
 	if (rep_IRREGULAR != def->type) {
 		step->syscall.num_emu_args = def->num_emu_args;
 		step->action = STATE_SYSCALL_ENTRY == state ?
@@ -1552,6 +1582,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 		init_scratch_memory(t);
 
+		t->post_exec();
+
 		set_return_value(t);
 		validate_args(syscall, state, t);
 		break;
@@ -1626,6 +1658,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 				struct trace_frame next_trace;
 				peek_next_trace(&next_trace);
 				t->clone(CLONE_SHARE_NOTHING,
+					 (const byte*)next_trace.recorded_regs.ecx,
 					 new_tid, next_trace.tid);
 			}
 			validate_args(syscall, state, t);

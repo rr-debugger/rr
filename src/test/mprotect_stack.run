@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh mprotect_stack "$@"
+compare_test 'done'

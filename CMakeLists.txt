@@ -111,12 +111,16 @@ set(BASIC_TESTS
   io
   link
   madvise
+  map_fixed
+  mmap_discontinuous
   mmap_private
   mmap_ro
   mmap_shared
   mmap_shared_subpage
   mmap_tmpfs
   mmap_write
+  mprotect
+  mprotect_stack
   mremap
   perf_event
   prctl

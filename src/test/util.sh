@@ -75,7 +75,7 @@ function usage {
 # do that, the tests take impractically long to run.
 #
 # TODO: find a way to run faster with CPU binding
-GLOBAL_OPTIONS=-u
+GLOBAL_OPTIONS="-u --check-cached-mmaps"
 
 TESTNAME=$1
 LIB_ARG=$2

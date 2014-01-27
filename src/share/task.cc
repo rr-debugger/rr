@@ -4,10 +4,10 @@
 
 #include "task.h"
 
+#include <linux/kdev_t.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
-#include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -26,6 +26,30 @@ static Task::Map tasks;
 
 /*static*/ AddressSpace::Set AddressSpace::sas;
 
+dev_t
+FileId::dev_major() const { return is_real_device() ? MAJOR(device) : 0; }
+
+dev_t
+FileId::dev_minor() const { return is_real_device() ? MINOR(device) : 0; }
+
+ino_t
+FileId::disp_inode() const { return is_real_device() ? inode : 0; } 
+
+const char*
+FileId::special_name() const {
+	switch (psdev) {
+	case PSEUDODEVICE_ANONYMOUS: return "";
+	case PSEUDODEVICE_HEAP: return "(heap)";
+	case PSEUDODEVICE_NONE: return "";
+	case PSEUDODEVICE_SCRATCH: return "";
+	case PSEUDODEVICE_STACK: return "(stack)";
+	case PSEUDODEVICE_SYSCALLBUF: return "(syscallbuf)";
+	case PSEUDODEVICE_VDSO: return "(vdso)";
+	}
+	fatal("Not reached");
+	return nullptr;
+}
+
 void
 HasTaskSet::insert_task(Task* t)
 {
@@ -38,6 +62,350 @@ HasTaskSet::erase_task(Task* t) {
 	debug("removing %d from task group %p", t->tid, this);
 	tasks.erase(t);
 }
+
+void
+AddressSpace::brk(const byte* addr)
+{
+	debug("[%d] brk(%p)", get_global_time(), addr);
+
+	assert(heap.start <= addr);
+	if (addr == heap.end) {
+		return;
+	}
+
+	update_heap(heap.start, addr);
+	map(heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
+	    MappableResource::heap());
+}
+
+AddressSpace::shr_ptr
+AddressSpace::clone()
+{
+	return shr_ptr(new AddressSpace(*this));
+}
+
+void
+AddressSpace::dump() const
+{
+	fprintf(stderr, "  (heap: %p-%p)\n", heap.start, heap.end);
+	for (auto it = mem.begin(); it != mem.end(); ++it) {
+		const Mapping& m = it->first;
+		const MappableResource& r = it->second;
+		fprintf(stderr,
+			"%08lx-%08lx %c%c%c%c %08lx %02llx:%02llx %-10ld %s %s (f:0x%x d:0x%llx i:%ld)\n",
+			reinterpret_cast<long>(m.start),
+			reinterpret_cast<long>(m.end),
+			(PROT_READ & m.prot) ? 'r' : '-',
+			(PROT_WRITE & m.prot) ? 'w' : '-',
+			(PROT_EXEC & m.prot) ? 'x' : '-',
+			(MAP_SHARED & m.flags) ? 's' : 'p',
+			m.offset,
+			r.id.dev_major(), r.id.dev_minor(), r.id.disp_inode(),
+			r.fsname.c_str(), r.id.special_name(),
+			m.flags, r.id.device, r.id.inode);
+	}
+}
+
+void
+AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
+		  off_t offset, const MappableResource& res)
+{
+	debug("[%d] mmap(%p, %u, 0x%x, 0x%x)", get_global_time(),
+	      addr, num_bytes, prot, flags);
+
+	Mapping m(addr, num_bytes, prot, flags, offset);
+	if (mem.end() != mem.find(m)) {
+		// The mmap() man page doesn't specifically describe
+		// what should happen if an existing map is
+		// "overwritten" by a new map (of the same resource).
+		// In testing, the behavior seems to be as if the
+		// overlapping region is unmapped and then remapped
+		// per the arguments to the second call.
+		unmap(addr, num_bytes);
+	}
+
+	map_and_coalesce(m, res);
+}
+
+typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
+MappingResourcePair
+AddressSpace::mapping_of(const byte* addr, size_t num_bytes)
+{
+	auto it = mem.find(Mapping(addr, num_bytes));
+	assert(it != mem.end());
+	// TODO callers assume [addr, addr + num_bytes] doesn't cross
+	// resource boundaries
+	assert(it->first.has_subset(Mapping(addr, num_bytes)));
+	return *it;
+}
+
+/**
+ * Return the offset of |m| into |r| updated by |delta|, unless |r| is
+ * a pseudo-device that doesn't have offsets, in which case the
+ * updated offset 0 is returned.
+ */
+static off_t adjust_offset(const MappableResource& r, const Mapping& m,
+			   off_t delta)
+{
+	return r.id.is_real_device() ? m.offset + delta : 0;
+}
+
+void
+AddressSpace::protect(const byte* addr, size_t num_bytes, int prot)
+{
+	debug("[%d] mprotect(%p, %u, 0x%x)", get_global_time(),
+	      addr, num_bytes, prot);
+
+	auto mr = mapping_of(addr, num_bytes);
+	Mapping m = mr.first;
+	MappableResource r = mr.second;
+
+	unmap(addr, num_bytes);
+
+	map_and_coalesce(Mapping(addr, num_bytes, prot, m.flags,
+				 adjust_offset(r, m, addr - m.start)),
+			 r);
+}
+
+void
+AddressSpace::remap(const byte* old_addr, size_t old_num_bytes,
+		    const byte* new_addr, size_t new_num_bytes)
+{
+	debug("[%d] mremap(%p, %u, %p, %u)", get_global_time(),
+	      old_addr, old_num_bytes, new_addr, new_num_bytes);
+
+	auto mr = mapping_of(old_addr, old_num_bytes);
+	const Mapping& m = mr.first;
+	const MappableResource& r = mr.second;
+
+	unmap(old_addr, old_num_bytes);
+	if (0 == new_num_bytes) {
+		return;
+	}
+
+	map_and_coalesce(Mapping(new_addr, new_num_bytes, m.prot, m.flags,
+				 adjust_offset(r, m, (old_addr - m.start))),
+			 r);
+}
+
+void
+AddressSpace::unmap(const byte* addr, ssize_t num_bytes)
+{
+	debug("[%d] munmap(%p, %u)", get_global_time(), addr, num_bytes);
+	do {
+		Mapping u(addr, num_bytes);
+		auto it = mem.find(u);
+		assert(it != mem.end());
+
+		Mapping m = it->first;
+		MappableResource r = it->second;
+
+		mem.erase(m);
+
+		if (m.start < u.start) {
+			mem[Mapping(m.start, u.start - m.start, m.prot,
+				    m.flags, m.offset)] = r;
+		}
+		if (u.end < m.end) {
+			mem[Mapping(u.end, m.end - u.end, m.prot, m.flags,
+				    adjust_offset(r, m, u.start - m.start))]
+				= r;
+		}
+
+		addr = m.end;
+		num_bytes -= m.num_bytes();
+	} while (num_bytes > 0);
+}
+
+const int checkable_flags_mask = (MAP_PRIVATE | MAP_SHARED);
+
+struct VerifyAddressSpace {
+	typedef AddressSpace::MemoryMap::const_iterator const_iterator;
+
+	VerifyAddressSpace(const AddressSpace* as)
+		: as(as), it(as->mem.begin()) { }
+
+	const AddressSpace* as;
+	const_iterator it;
+};
+
+static int assert_segment(void* pvas, Task* t,
+			  const struct map_iterator_data* data)
+{
+	VerifyAddressSpace* vas = static_cast<VerifyAddressSpace*>(pvas);
+	const Mapping& m = vas->it->first;
+	const struct mapped_segment_info& info = data->info;
+	int m_flags = m.flags & checkable_flags_mask;
+	assert(info.flags == (info.flags & checkable_flags_mask));
+	bool same_mapping = (m.start == info.start_addr
+			     && m.end == info.end_addr
+			     && m.prot == info.prot
+			     && m_flags == info.flags);
+	// TODO: "fuzzy matching" to handle differing merge heuristics
+	if (!same_mapping) {
+		log_err("cached mmap:");
+		vas->as->dump();
+		log_err("/proc/%d/mmaps:", t->tid);
+		print_process_mmap(t);
+
+		assert_exec(t, same_mapping,
+			    "Cached mapping '%p-%p 0x%x f:0x%x (0x%x)' should be '%p-%p 0x%x f:0x%x'",
+			    m.start, m.end, m.prot, m_flags, m.flags,
+			    info.start_addr, info.end_addr,
+			    info.prot, info.flags);
+	}
+
+	++vas->it;
+	return CONTINUE_ITERATING;
+}
+
+void
+AddressSpace::verify(Task* t) const
+{
+	assert(task_set().end() != task_set().find(t));
+
+	VerifyAddressSpace vas(this);
+	iterate_memory_map(t, assert_segment, &vas, kNeverReadSegment, NULL);
+}
+
+/*static*/ AddressSpace::shr_ptr
+AddressSpace::create(Task* t)
+{
+	shr_ptr as(new AddressSpace());
+	as->insert_task(t);
+	iterate_memory_map(t, populate_address_space, as.get(),
+			   kNeverReadSegment, NULL);
+	return as;
+}
+
+static bool is_adjacent_mapping(const MappingResourcePair& v1,
+				const MappingResourcePair& v2)
+{
+	const Mapping& m1 = v1.first;
+	const Mapping& m2 = v2.first;
+	if (m1.end != m2.start) {
+		debug("    (not adjacent in memory)");
+		return false;
+	}
+	if ((m1.flags & ~MAP_STACK) != (m2.flags & ~MAP_STACK)
+	    || m1.prot != m2.prot) {
+		debug("    (flags or prot differ)");
+		return false;
+	}
+	const MappableResource& r1 = v1.second;
+	const MappableResource& r2 = v2.second;
+	if ((MAP_STACK & m1.flags) && (r1.is_stack() || r2.is_stack())) {
+		debug("    adjacent stacks");
+		return true;
+	}
+	if (r1.is_scratch() && r2.is_scratch()) {
+		// XXX it's annoying to lose the task<->scratch
+		// bijection by coalescing in this case, but the
+		// kernel doesn't know to avoid merging these.  When
+		// scratch memory is mapped from shmem, we can drop
+		// this special case and get back the bijection.
+		debug("    adjacent scratch");
+		return true;
+	}
+	if (r1 != r2) {
+		debug("    (not the same resource)");
+		return false;
+	}
+	if (r1.id.is_real_device() && (off_t(m1.offset + m1.num_bytes()) !=
+				       m2.offset)) {
+		debug("    (offsets into real device aren't adjacent)");
+		return false;
+	}
+	debug("    adjacent!");
+	return true;
+}
+
+void
+AddressSpace::map_and_coalesce(const Mapping& m, const MappableResource& r)
+{
+	debug("  mapping %p-%p (prot:0x%d flags:0x%x)",
+	      m.start, m.end, m.prot, m.flags);
+
+	auto ins = mem.insert(MemoryMap::value_type(m, r));
+	assert(ins.second);	// key didn't already exist
+
+	auto first_kv = ins.first;
+	while (mem.begin() != first_kv) {
+		auto next = first_kv;
+		if (!is_adjacent_mapping(*--first_kv, *next)) {
+			first_kv = next;
+			break;
+		}
+	}
+	auto last_kv = ins.first;
+	while (true) {
+		auto prev = last_kv;
+		if (mem.end() == ++last_kv
+		    || !is_adjacent_mapping(*prev, *last_kv)) {
+			last_kv = prev;
+			break;
+		}
+	}
+	assert(last_kv != mem.end());
+	if (first_kv == last_kv) {
+		debug("  no mappings to coalesce");
+		return;
+	}
+
+	Mapping c(first_kv->first.start, last_kv->first.end, m.prot, m.flags,
+		  first_kv->first.offset);
+	debug("  coalescing %p-%p", c.start, c.end);
+
+	mem.erase(first_kv, ++last_kv);
+
+	ins = mem.insert(MemoryMap::value_type(c, r));
+	assert(ins.second);	// key didn't already exist
+}
+
+/*static*/ int
+AddressSpace::populate_address_space(void* asp, Task* t,
+				     const struct map_iterator_data* data)
+{
+	AddressSpace* as = static_cast<AddressSpace*>(asp);
+	const struct mapped_segment_info& info = data->info;
+
+	if (!as->heap.start) {
+		// Assume that the first (initialized) heap page in
+		// the tracee is this segment.  It may be the start of
+		// the kernel [heap] allocations adjusted by brk().
+		assert(info.prot & PROT_EXEC);
+		as->update_heap(info.end_addr, info.end_addr);
+		debug("  guessing heap starts at %p (end of text segment)",
+		      as->heap.start);
+	}
+	if (as->heap.end == info.start_addr) {
+		assert(as->heap.start == as->heap.end);
+		assert(!(info.prot & PROT_EXEC));
+		as->update_heap(info.end_addr, info.end_addr);
+		debug("  updating start-of-heap guess to %p (end of mapped-data segment)",
+		      as->heap.start);
+	}
+
+	FileId id;
+	if (!strcmp("[heap]", info.name)) {
+		id.psdev = PSEUDODEVICE_HEAP;
+		as->update_heap(info.start_addr, info.end_addr);
+	} else if (!strcmp("[stack]", info.name)) {
+		id.psdev = PSEUDODEVICE_STACK;
+	} else if (!strcmp("[vdso]", info.name)) {
+		id.psdev = PSEUDODEVICE_VDSO;
+	} else {
+		id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode);
+	}
+
+	as->map(info.start_addr, info.end_addr - info.start_addr,
+		info.prot, info.flags, info.file_offset,
+		MappableResource(id, info.name));
+
+	return CONTINUE_ITERATING;
+}
+
+/*static*/ ino_t MappableResource::nr_anonymous_maps;
 
 /**
  * Stores the table of signal dispositions and metadata for an
@@ -314,7 +682,7 @@ Task::~Task()
 }
 
 Task*
-Task::clone(int flags, pid_t new_tid, pid_t new_rec_tid)
+Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
 {
 	Task* t = new Task(new_tid, new_rec_tid);
 
@@ -338,6 +706,17 @@ Task::clone(int flags, pid_t new_tid, pid_t new_rec_tid)
 	} else {
 		t->as = as->clone();
 	}
+	if (stack) {
+		const Mapping& m =
+			t->as->mapping_of(stack - page_size(), page_size()).first;
+		debug("mapping stack for %d at [%p, %p)", new_tid, m.start, m.end);
+		t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
+			   MappableResource::stack(new_tid));
+	} else {
+		assert_exec(this, CLONE_SHARE_NOTHING == flags,
+			    "No explicit stack for fork()-clone");
+	}
+
 	t->as->insert_task(t);
 	return t;
 }
@@ -371,6 +750,53 @@ Task::may_be_blocked() const
 			&& PROCESSING_SYSCALL == ev->syscall.state)
 		       || (EV_SIGNAL_DELIVERY == ev->type
 			   && ev->signal.delivered)));
+}
+
+void
+Task::maybe_update_vm(int syscallno, int state,
+		      const struct user_regs_struct& regs)
+{
+	if (STATE_SYSCALL_EXIT != state || SYSCALL_FAILED(regs.eax)) {
+		return;
+	}
+	switch (syscallno) {
+	case SYS_brk: {
+		byte* addr = reinterpret_cast<byte*>(regs.ebx);
+		if (!addr) {
+			// A brk() update of NULL is observed with
+			// libc, which apparently is its means of
+			// finding out the initial brk().  We can
+			// ignore that for the purposes of updating
+			// our address space.
+			return;
+		}
+		return vm()->brk(addr);
+	}
+	case SYS_mmap2: {
+		debug("(mmap2 will receive / has received direct processing)");
+		return;
+	}
+	case SYS_mprotect: {
+		//int mprotect(void *addr, size_t len, int prot);
+		byte* addr = reinterpret_cast<byte*>(regs.ebx);
+		size_t num_bytes = regs.ecx;
+		int prot = regs.edx;
+		return vm()->protect(addr, num_bytes, prot);
+	}
+	case SYS_mremap: {
+		byte* old_addr = reinterpret_cast<byte*>(regs.ebx);
+		size_t old_num_bytes = regs.ecx;
+		byte* new_addr = reinterpret_cast<byte*>(regs.eax);
+		size_t new_num_bytes = regs.edx;
+		return vm()->remap(old_addr, old_num_bytes,
+				   new_addr, new_num_bytes);
+	}
+	case SYS_munmap: {
+		byte* addr = reinterpret_cast<byte*>(regs.ebx);
+		size_t num_bytes = regs.ecx;
+		return vm()->unmap(addr, num_bytes);
+	}
+	}
 }
 
 Task*

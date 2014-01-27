@@ -3,9 +3,14 @@
 #ifndef TASK_H_
 #define TASK_H_
 
+// Define linux-specific flags in mman.h.
+#define __USE_MISC 1
+
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+#include <sys/mman.h>
 #include <sys/queue.h>
 #include <sys/user.h>
 
@@ -15,6 +20,7 @@
 
 #include "fixedstack.h"
 #include "trace.h"
+#include "util.h"
 
 struct Sighandlers;
 class Task;
@@ -38,11 +44,83 @@ struct kernel_sigaction {
 	sigset_t sa_mask;
 };
 
+/**
+ * PseudoDevices aren't real disk devices, but they differentiate
+ * memory mappings when we're trying to decide whether adjacent
+ * FileId::NO_DEVICE mappings should be coalesced.
+ */
+enum PseudoDevice {
+	PSEUDODEVICE_NONE = 0,
+	PSEUDODEVICE_ANONYMOUS,
+	PSEUDODEVICE_HEAP,
+	PSEUDODEVICE_SCRATCH,
+	PSEUDODEVICE_STACK,
+	PSEUDODEVICE_SYSCALLBUF,
+	PSEUDODEVICE_VDSO,
+};
+
+/**
+ * FileIds uniquely identify a file at a point in time (when the file
+ * is stat'd).
+ */
+struct FileId {
+	static const dev_t NO_DEVICE = 0;
+	static const ino_t NO_INODE = 0;
+
+	FileId() : device(NO_DEVICE), inode(NO_INODE)
+		 , psdev(PSEUDODEVICE_NONE) { }
+	FileId(const struct stat& st)
+		: device(st.st_dev), inode(st.st_ino)
+		, psdev(PSEUDODEVICE_NONE) { }
+	FileId(dev_t dev, ino_t ino, PseudoDevice psdev = PSEUDODEVICE_NONE)
+		: device(dev), inode(ino), psdev(psdev) { }
+
+	/**
+	 * Return the major/minor ID for the device underlying this
+	 * file.  If |is_real_device()| is false, return 0
+	 * (NO_DEVICE).
+	 */
+	dev_t dev_major() const;
+	dev_t dev_minor() const;
+	/**
+	 * Return a displayabale "real" inode.  If |is_real_device()|
+	 * is false, return 0 (NO_INODE).
+	 */
+	ino_t disp_inode() const;
+	/**
+	 * Return true if this file is/was backed by an external
+	 * device, as opposed to a transient RAM mapping.
+	 */
+	bool is_real_device() const { return device > NO_DEVICE; }
+	const char* special_name() const;
+
+	/**
+	 * Return true iff |this| and |o| are the same "real device"
+	 * (i.e., same device and inode), or |this| and |o| are
+	 * ANONYMOUS pseudo-devices.  Results are undefined for other
+	 * pseudo-devices.
+	 */
+	bool operator==(const FileId& o) const {
+		return psdev == o.psdev
+			&& (psdev == PSEUDODEVICE_ANONYMOUS
+			    || (device == o.device && inode == o.inode));
+	}
+	bool operator<(const FileId& o) const {
+		assert(is_real_device());
+		return (device != o.device ?
+			device < o.device : inode < o.inode);
+	}
+
+	dev_t device;
+	ino_t inode;
+	PseudoDevice psdev;
+};
+
 class HasTaskSet {
 public:
 	typedef std::set<Task*> TaskSet;
 
-	const TaskSet& task_set() { return tasks; }
+	const TaskSet& task_set() const { return tasks; }
 
 	void insert_task(Task* t);
 	void erase_task(Task* t);
@@ -51,35 +129,288 @@ protected:
 };
 
 /**
+ * Describe the mapping of a MappableResource.  This includes the
+ * offset of the mapping, its protection flags, the offest within the
+ * resource, and more.
+ */
+struct Mapping {
+	/**
+	 * These are the flags we track internally to distinguish
+	 * between adjacent segments.  For example, the kernel
+	 * considers a NORESERVE anonynmous mapping that's adjacent to
+	 * a non-NORESERVE mapping distinct, even if all other
+	 * metadata are the same.  See |is_adjacent_mapping()| in
+	 * task.cc.
+	 */
+	static const int map_flags_mask =
+		(MAP_ANONYMOUS | MAP_NORESERVE | MAP_PRIVATE |
+		 MAP_SHARED | MAP_STACK);
+
+	Mapping() : start(nullptr), end(nullptr), prot(0), flags(0), offset(0)
+	{ }
+	Mapping(const byte* addr, size_t num_bytes)
+		: start(addr), end(addr + ceil_page_size(num_bytes))
+		, prot(0), flags(0), offset(0) {
+		assert_valid();
+	}
+	Mapping(const byte* addr, size_t num_bytes, int prot, int flags,
+		off_t offset)
+		: start(addr), end(addr + ceil_page_size(num_bytes))
+		, prot(prot)
+		, flags(flags & map_flags_mask)
+		, offset(offset) {
+		assert_valid();
+	}
+	Mapping(const byte* start, const byte* end, int prot, int flags,
+		off_t offset)
+		: start(start), end(end), prot(prot)
+		, flags(flags & map_flags_mask)
+		, offset(offset) {
+		assert_valid();
+	}
+
+	Mapping(const Mapping& o)
+		: start(o.start), end(o.end), prot(o.prot), flags(o.flags)
+		, offset(o.offset) {
+		assert_valid();
+	}
+	Mapping operator=(const Mapping& o) {
+		memcpy(this, &o, sizeof(*this));
+		assert_valid();
+		return *this;
+	}
+
+	void assert_valid() const {
+		assert(end >= start);
+		assert(num_bytes() % page_size() == 0);
+		assert(!(flags & ~map_flags_mask));
+	}
+
+	/**
+	 * Return true iff |o| is an address range fully contained by
+	 * this.
+	 */
+	bool has_subset(const Mapping& o) const {
+		return start <= o.start && o.end <= end;
+	}
+
+	/**
+	 * Return true iff |o| and this map at least one shared byte.
+	 */
+	bool intersects(const Mapping& o) const {
+		return (start == o.start && o.end == end)
+			|| (start <= o.start && o.start < end)
+			|| (start < o.end && o.end <= end);
+	}
+
+	size_t num_bytes() const { return end - start; }
+
+	bool operator==(const Mapping& o) const {
+		return start == o.start && end == o.end;
+	}
+
+	const byte* const start;
+	const byte* const end;
+	const int prot;
+	const int flags;
+	const off_t offset;
+};
+
+/**
+ * Compare |a| and |b| so that "subset" lookups will succeed.  What
+ * does that mean?  If |a| and |b| overlap (intersect), then this
+ * comparator considers them equivalent.  That means that if |a|
+ * represents one byte within a mapping |b|, then |a| and |b| will be
+ * considered equivalent.
+ *
+ * If |a| and |b| don't overlap, return true if |a|'s start addres is
+ * less than |b|'s/
+ */
+struct MappingComparator {
+	bool operator()(const Mapping& a, const Mapping& b) {
+		return a.intersects(b) ? false : a.start < b.start;
+	}
+};
+
+/**
+ * A resource that can be mapped into RAM.  |Mapping| represents a
+ * mapping into RAM of a MappableResource.
+ */
+struct MappableResource {
+	MappableResource() : id(FileId()) { }
+	MappableResource(const FileId& id) : id(id) { }
+	MappableResource(const FileId& id, const char* fsname)
+		: id(id), fsname(fsname) { }
+
+	bool operator==(const MappableResource& o) const {
+		return id == o.id;
+	}
+	bool operator!=(const MappableResource& o) const {
+		return !(id == o.id);
+	}
+	bool is_scratch() const {
+		return PSEUDODEVICE_SCRATCH == id.psdev;
+	}
+	bool is_stack() const {
+		return PSEUDODEVICE_STACK == id.psdev;
+	}
+
+	static MappableResource anonymous() {
+		return FileId(FileId::NO_DEVICE, nr_anonymous_maps++,
+			      PSEUDODEVICE_ANONYMOUS);
+	}
+	static MappableResource heap() {
+		return MappableResource(
+			FileId(FileId::NO_DEVICE, FileId::NO_INODE,
+			       PSEUDODEVICE_HEAP),
+			"[heap]");
+	}
+	static MappableResource scratch(pid_t tid) {
+		return MappableResource(FileId(FileId::NO_DEVICE, tid,
+					       PSEUDODEVICE_SCRATCH),
+					"[scratch]");
+	}
+	static MappableResource stack(pid_t tid) {
+		return MappableResource(FileId(FileId::NO_DEVICE, tid,
+					       PSEUDODEVICE_STACK),
+					"[stack]");
+	}
+	static MappableResource syscallbuf(pid_t tid) {
+		char path[PATH_MAX];
+		format_syscallbuf_shmem_path(tid, path);
+		return MappableResource(FileId(FileId::NO_DEVICE, tid,
+					       PSEUDODEVICE_SYSCALLBUF),
+					path);
+	}
+
+	FileId id;
+	/**
+	 * Some name that this file may have on its underlying file
+	 * system.  Not used for anything other than labelling mapped
+	 * segments.
+	 */
+	std::string fsname;
+
+	static ino_t nr_anonymous_maps;
+};
+
+/**
  * Models the address space for a set of tasks.  This includes the set
  * of mapped pages, and the resources those mappings refer to.
  */
 class AddressSpace : public HasTaskSet {
+	friend struct VerifyAddressSpace;
+
 public:
+	typedef std::map<Mapping, MappableResource,
+			 MappingComparator> MemoryMap;
 	typedef std::shared_ptr<AddressSpace> shr_ptr;
 	typedef std::set<AddressSpace*> Set;
 
 	~AddressSpace() { sas.erase(this); }
 
-	shr_ptr clone() {
-		return shr_ptr(new AddressSpace());
-	}
+	/**
+	 * Change the program data break of this address space to
+	 * |addr|.
+	 */
+	void brk(const byte* addr);
+
+	/**
+	 * Return a copy of this address space with the same mappings.
+	 * If any mapping is changed, only the |clone()|d copy is
+	 * updated, not its origin (i.e. copy-on-write semantics).
+	 */
+	shr_ptr clone();
+
+	/**
+	 * Dump a representation of |this| to stderr in a format
+	 * similar to /proc/[tid]/maps.
+	 *
+	 * XXX/ostream-ify me.
+	 */
+	void dump() const;
+
+	/**
+	 * Map |num_bytes| into this address space at |addr|, with
+	 * |prot| protection and |flags|.  The pages are (possibly
+	 * initially) backed starting at |offset| of |res|.
+	 */
+	void map(const byte* addr, size_t num_bytes, int prot, int flags,
+		 off_t offset, const MappableResource& res);
+
+	/**
+	 * Return the mapping and mapped resource that underly [addr,
+	 * addr + num_bytes).  There must be exactly one such mapping.
+	 */
+	MemoryMap::value_type mapping_of(const byte* addr, size_t num_bytes);
+
+	/**
+	 * Change the protection bits of [addr, addr + num_bytes) to
+	 * |prot|.
+	 */
+	void protect(const byte* addr, size_t num_bytes, int prot);
+
+	/**
+	 * Move the mapping [old_addr, old_addr + old_num_bytes) to
+	 * [new_addr, old_addr + new_num_bytes), preserving metadata.
+	 */
+	void remap(const byte* old_addr, size_t old_num_bytes,
+		   const byte* new_addr, size_t new_num_bytes);
+
+	/**
+	 * Make [addr, addr + num_bytes) inaccesible within this
+	 * address space.
+	 */
+	void unmap(const byte* addr, ssize_t num_bytes);
+
+	/**
+	 * Verify that this cached address space matches what the
+	 * kernel thinks it should be.
+	 */
+	void verify(Task* t) const;
 
 	static const Set& set() { return sas; }
 
-	static shr_ptr create(Task* t) {
-		shr_ptr as(new AddressSpace());
-		as->insert_task(t);
-		return as;
-	}
+	/**
+	 * Create and return a new address space that's a copy of the
+	 * current address space.
+	 */
+	static shr_ptr create(Task* t);
 
 private:
-	AddressSpace() { sas.insert(this); }
+	AddressSpace() {
+		sas.insert(this);
+	}
+	AddressSpace(const AddressSpace& o) : heap(o.heap), mem(o.mem) {
+		sas.insert(this);
+	}
+
+	/**
+	 * Map |m| of |r| into this address space, and coalesce any
+	 * mappings of |r| that are adjacent to |m|.
+	 */
+	void map_and_coalesce(const Mapping& m, const MappableResource& r);
+
+	/** Set the dynamic heap segment to |[start, end)| */
+	void update_heap(const byte* start, const byte* end) {
+		heap = Mapping(start, end - start, PROT_READ | PROT_WRITE,
+			       MAP_ANONYMOUS | MAP_PRIVATE, 0);
+	}
+
+	/**
+	 * Track the special process-global heap in order to support
+	 * adjustments by brk().
+	 */
+	Mapping heap;
+	/** All segments mapped into this address space. */
+	MemoryMap mem;
+
+	static int populate_address_space(void* asp, Task* t,
+					  const struct map_iterator_data* data);
 
 	static Set sas;
 
-	AddressSpace(const AddressSpace&);
-	AddressSpace operator=(const AddressSpace&);
+	AddressSpace operator=(const AddressSpace&) = delete;
 };
 
 enum PseudosigType {
@@ -320,7 +651,8 @@ public:
 	 * only relevant to replay, and is the pid that was assigned
 	 * to the task during recording.
 	 */
-	Task* clone(int flags, pid_t new_tid, pid_t new_rec_tid = -1);
+	Task* clone(int flags, const byte* stack, pid_t new_tid,
+		    pid_t new_rec_tid = -1);
 
 	/**
 	 * Shortcut to the single |pending_event->desched.rec| when
@@ -366,6 +698,15 @@ public:
 	 * its execution.
 	 */
 	bool may_be_blocked() const;
+
+	/**
+	 * If |syscallno| at |state| changes our VM mapping, then
+	 * update the cache for that change.  The exception is mmap()
+	 * calls: they're complicated enough to be handled separately.
+	 * Client code should call |t->vm()->map(...)| directly.
+	 */
+	void maybe_update_vm(int syscallno, int state,
+			     const struct user_regs_struct& regs);
 
 	/**
 	 * Return the "next" task after this, in round-robin order by
