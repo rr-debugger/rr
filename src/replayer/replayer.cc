@@ -1576,7 +1576,15 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		step.signo = SIGSEGV;
 		break;
 	case USR_TRACE_TERMINATION:
-		log_info("Trace terminated early at this point during recording.  Exiting.");
+		log_info("Trace terminated early at this point during recording.");
+		if (dbg) {
+			dbg_notify_stop(dbg, get_threadid(t), 0x05);
+			log_info("Processing last round of debugger requests.");
+			process_debugger_requests(dbg, t);
+		} else {
+			Task::dump_all();
+		}
+		log_info("Exiting.");
 		exit(0);
 		break;
 	default:
