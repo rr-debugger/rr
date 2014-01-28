@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <list>
 
 #include "fixedstack.h"
 #include "trace.h"
@@ -662,6 +663,9 @@ enum CloneFlags {
 class Task {
 public:
 	typedef std::map<pid_t, Task*> Map;
+	/** For each priority, the list of tasks with that priority.
+	    These lists are never empty. */
+	typedef std::map<int, std::list<Task*> > MapByPriority;
 
 	~Task();
 
@@ -757,6 +761,12 @@ public:
 	void dump(FILE* out = NULL) const;
 
 	/**
+	 * Sets the priority to 'value', updating the map-by-priority.
+	 * Small priority values mean higher priority.
+	 */
+	void set_priority(int value);
+
+	/**
 	 * Stat |fd| in the context of this task's fd table, returning
 	 * the result in |buf|.  The name of the referent file is
 	 * returned in |buf|, of max size |buf_num_bytes|.  Return
@@ -782,14 +792,6 @@ public:
 	 */
 	void maybe_update_vm(int syscallno, int state,
 			     const struct user_regs_struct& regs);
-
-	/**
-	 * Return the "next" task after this, in round-robin order by
-	 * recorded pid.  The order of tasks returned by a sequence of
-	 * |next_rounrobin()| calls is suitable for round-robin
-	 * scheduling, in the steady state.
-	 */
-	Task* next_roundrobin() const;
 
 	/**
 	 * Call this after an |execve()| syscall finishes.  Emulate
@@ -829,10 +831,16 @@ public:
 	AddressSpace::shr_ptr vm() { return as; }
 
 	/** Return an iterator at the beginning of the task map. */
-	static Task::Map::const_iterator begin();
+	static Map::const_iterator begin();
+
+	/** Return an iterator at the end of the task map. */
+	static Map::const_iterator end();
 
 	/** Return the number of extant tasks. */
 	static ssize_t count();
+
+	/** Get tasks organized by priority. */
+	static const MapByPriority& get_map_by_priority();
 
 	/**
 	 * Create and return the first tracee task.  It's hard-baked
@@ -844,9 +852,6 @@ public:
 
 	/** Call |Task::dump(out)| for all live tasks. */
 	static void dump_all(FILE* out = NULL);
-
-	/** Return an iterator at the end of the task map. */
-	static Task::Map::const_iterator end();
 
 	/**
 	 * Return the task created with |rec_tid|, or NULL if no such
@@ -883,6 +888,12 @@ public:
 	 * process have been invalidated, and must be re-established
 	 * with a waitpid() call. */
 	int unstable;
+
+	/* Task 'nice' value set by setpriority(2).
+	   We use this to drive scheduling decisions. rr's scheduler is
+	   deliberately simple and unfair; a task never runs as long as there's
+	   another runnable task with a lower nice value. */
+	int priority;
 
 	/* Imagine that task A passes buffer |b| to the read()
 	 * syscall.  Imagine that, after A is switched out for task B,
@@ -999,7 +1010,7 @@ public:
 	byte* syscallbuf_child;
 
 private:
-	Task(pid_t tid, pid_t rec_tid = -1);
+	Task(pid_t tid, pid_t rec_tid, int priority);
 
 	/* The address space of this task. */
 	std::shared_ptr<AddressSpace> as;
