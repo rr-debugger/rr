@@ -2353,7 +2353,24 @@ void rec_process_syscall(Task *t)
 	 * user, as indicated by which and who is set with the
 	 * setpriority() call.
 	 */
-	SYS_REC0(setpriority)
+	case SYS_setpriority:
+	{
+		// The syscall might have failed due to insufficient
+		// permissions (e.g. while trying to decrease the nice value
+		// while not root).
+		// We'll choose to honor the new value anyway since we'd like
+		// to be able to test configurations where a child thread
+		// has a lower nice value than its parent, which requires
+		// lowering the child's nice value.
+		if (regs.ebx == PRIO_PROCESS) {
+			Task *target = regs.ecx ? Task::find(regs.ecx) : t;
+			if (target) {
+				debug("Setting nice value for tid %d to %ld", tid, regs.edx);
+				target->set_priority(regs.edx);
+			}
+		}
+		break;
+	}
 
 	/**
 	 * int setregid(gid_t rgid, gid_t egid)
