@@ -341,6 +341,11 @@ public:
 	}
 
 	/**
+	 * Return the path this address space was exec()'d with.
+	 */
+	const std::string& exe_image() const { return exe; }
+
+	/**
 	 * Map |num_bytes| into this address space at |addr|, with
 	 * |prot| protection and |flags|.  The pages are (possibly
 	 * initially) backed starting at |offset| of |res|.
@@ -383,7 +388,7 @@ public:
 
 	/**
 	 * Create and return a new address space that's a copy of the
-	 * current address space.
+	 * current address space of |t|.
 	 */
 	static shr_ptr create(Task* t);
 
@@ -391,7 +396,8 @@ private:
 	AddressSpace() {
 		sas.insert(this);
 	}
-	AddressSpace(const AddressSpace& o) : heap(o.heap), mem(o.mem) {
+	AddressSpace(const AddressSpace& o)
+		: exe(o.exe), heap(o.heap), mem(o.mem) {
 		sas.insert(this);
 	}
 
@@ -407,6 +413,11 @@ private:
 			       MAP_ANONYMOUS | MAP_PRIVATE, 0);
 	}
 
+	/**
+	 * Path of the executable image this address space was
+	 * exec()'d with.
+	 */
+	std::string exe;
 	/**
 	 * Track the special process-global heap in order to support
 	 * adjustments by brk().
@@ -781,7 +792,7 @@ public:
 	Task* next_roundrobin() const;
 
 	/**
-	 * Call this after an execve() syscall finishes.  Emulate
+	 * Call this after an |execve()| syscall finishes.  Emulate
 	 * resource updates induced by the exec.
 	 */
 	void post_exec();
@@ -990,6 +1001,8 @@ public:
 private:
 	Task(pid_t tid, pid_t rec_tid = -1);
 
+	/* The address space of this task. */
+	std::shared_ptr<AddressSpace> as;
 	/* Points to the signal-hander table of this task.  If this
 	 * task is a non-fork clone child, then the table will be
 	 * shared with all its "thread" siblings.  Any updates made to
@@ -1002,8 +1015,6 @@ private:
 	std::shared_ptr<Sighandlers> sighandlers;
 	/* The task group this belongs to. */
 	std::shared_ptr<TaskGroup> task_group;
-	/* The address space of this task. */
-	std::shared_ptr<AddressSpace> as;
 
 	Task(Task&) = delete;
 	Task operator=(Task&) = delete;

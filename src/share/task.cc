@@ -370,10 +370,18 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	const struct mapped_segment_info& info = data->info;
 
 	if (!as->heap.start) {
-		// Assume that the first (initialized) heap page in
-		// the tracee is this segment.  It may be the start of
-		// the kernel [heap] allocations adjusted by brk().
+		// We assume that the first mapped segment is the
+		// program text segment.  It's possible, but not
+		// probably, that the end of this segment is the
+		// beginning of the dynamic heap segment.  We'll
+		// determine that for sure in subsequent iterations.
+		//
+		// TODO: handle arbitrarily positioned text segments
 		assert(info.prot & PROT_EXEC);
+		assert(!as->exe.length());
+
+		as->exe = info.name;
+
 		as->update_heap(info.end_addr, info.end_addr);
 		debug("  guessing heap starts at %p (end of text segment)",
 		      as->heap.start);
@@ -643,6 +651,11 @@ Task::Task(pid_t _tid, pid_t _rec_tid)
 	child_mem_fd = sys_open_child_mem(this);
 	// These will be initialized when the syscall buffer is.
 	desched_fd = desched_fd_child = -1;
+	if (RECORD != rr_flags()->option) {
+		// This flag isn't meaningful outside recording.
+		// Suppress output related to it outside recording.
+		switchable = 1;
+	}
 
 	push_placeholder_event(this);
 
@@ -738,11 +751,16 @@ void
 Task::dump(FILE* out) const
 {
 	out = out ? out : LOG_FILE;
-	fprintf(out, "Task<%p>(tid:%d rec_tid:%d status:0x%x%s%s)\n",
+	fprintf(out, "  Task<%p>(tid:%d rec_tid:%d status:0x%x%s%s)\n",
 		this, tid, rec_tid, status,
 		switchable ? "" : " UNSWITCHABLE",
 		unstable ? " UNSTABLE" : "");
-	log_pending_events(this);
+	if (RECORD == rr_flags()->option) {
+		// TODO pending events are currently only meaningful
+		// during recording.  We should change that
+		// eventually, to have more informative output.
+		log_pending_events(this);
+	}
 }
 
 bool
@@ -834,7 +852,6 @@ Task::post_exec()
 {
 	sighandlers = sighandlers->clone();
 	sighandlers->reset_user_handlers();
-	// TODO: create address space from post-exec /proc/maps
 	auto a = AddressSpace::create(this);
 	as.swap(a);
 }
@@ -901,8 +918,21 @@ Task::create(pid_t tid, pid_t rec_tid)
 /*static*/ void
 Task::dump_all(FILE* out)
 {
-	for (auto it = begin(); it != end(); ++it) {
-		it->second->dump(out);
+	out = out ? out : LOG_FILE;
+
+	auto sas = AddressSpace::set();
+	for (auto ait = sas.begin(); ait != sas.end(); ++ait) {
+		const AddressSpace* as = *ait;
+		auto ts = as->task_set();
+		Task* t = *ts.begin();
+		// XXX assuming that address space == task group,
+		// which is almost certainly what the kernel enforces
+		// too.
+		fprintf(out, "\nTask group %d, image '%s':\n",
+			t->tgid(), as->exe_image().c_str());
+		for (auto tsit = ts.begin(); tsit != ts.end(); ++tsit) {
+			(*tsit)->dump(out);
+		}
 	}
 }
 
