@@ -1,0 +1,32 @@
+source `dirname $0`/util.sh term_trace_syscall "$@"
+
+EXE=nanosleep
+SYNC_TOKEN=sleeping
+WAIT_SECS=1
+
+record $EXE 10000 &             # sleep "forever"
+
+until [[ -f record.out ]]; do
+    sleep 0.1
+done
+
+echo "Waiting for token '$SYNC_TOKEN' from tracee ..."
+grep -m1 $SYNC_TOKEN record.out
+
+echo "  done.  Waiting for $WAIT_SECS seconds ..."
+sleep $WAIT_SECS
+
+rrpid=$(parent_pid_of $(pidof $EXE-$nonce))
+
+echo "  done.  Delivering SIGTERM to $rrpid ..."
+kill -TERM $rrpid
+
+echo "  done."
+
+if [[ "record.out" == $(grep -l "EXIT-SUCCESS" record.out) ]]; then
+   	echo "Test '$TESTNAME' FAILED: error during recording: tracer not interrupted in time."
+fi
+
+echo "Replaying ..."
+replay
+check ""

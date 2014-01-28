@@ -12,6 +12,8 @@ class Task;
  * The returned task is guaranteed to either have already been
  * runnable, or have been made runnable by a waitpid status change (in
  * which case, *by_waitpid will be nonzero.)
+ *
+ * Return nullptr if an interrupt occurred while waiting on a tracee.
  */
 Task* rec_sched_get_active_thread(Task* t, int* by_waitpid);
 

@@ -43,7 +43,11 @@ void sys_ptrace_getsiginfo(Task* t, siginfo_t* sig);
 void sys_ptrace_detach(pid_t pid);
 void sys_ptrace_syscall(Task* t);
 
-pid_t sys_waitpid(pid_t pid, int *status);
+/**
+ * Block until the status of |pid| changes.  Write the new status into
+ * |*status|.  Return true if successful, false if interrupted.
+ */
+bool sys_waitpid(pid_t pid, int *status);
 pid_t sys_waitpid_nonblock(pid_t pid, int *status);
 void sys_fcntl(int fd, int cmd, long arg1);
 

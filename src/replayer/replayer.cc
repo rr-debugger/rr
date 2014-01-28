@@ -1575,6 +1575,10 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		step.action = TSTEP_DETERMINISTIC_SIGNAL;
 		step.signo = SIGSEGV;
 		break;
+	case USR_TRACE_TERMINATION:
+		log_info("Trace terminated early at this point during recording.  Exiting.");
+		exit(0);
+		break;
 	default:
 		/* Pseudosignals are handled above. */
 		assert(event > LAST_RR_PSEUDOSIGNAL);

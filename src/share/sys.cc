@@ -285,17 +285,16 @@ void goto_next_event(Task *t)
 	t->event = read_child_orig_eax(t);
 }
 
-pid_t sys_waitpid(pid_t pid, int *status)
+bool sys_waitpid(pid_t pid, int *status)
 {
-	pid_t ret;
-
-	if ((ret = waitpid(pid, status, __WALL)) < 0) {
-		log_err("waiting for: %d -- bailing out", pid);
-		sys_exit();
+	pid_t ret = waitpid(pid, status, __WALL);
+	if (0 > ret && EINTR == errno) {
+		return false;
+	} else if (0 > ret) {
+		fatal("Failed to waitpid(%d)", pid);
 	}
-
 	assert(ret == pid);
-	return ret;
+	return true;
 }
 
 pid_t sys_waitpid_nonblock(pid_t pid, int* status)
