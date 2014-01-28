@@ -20,12 +20,26 @@
  *  #define DEBUGTAG "Sched"
  *  ...
  *  #include "dbg.h"
+ *
+ * Also, optionally define LOG_FILE to send output to a non-default
+ * file.  This can be useful with highly verbose output, or if the
+ * tracee itself is logging data that you don't want interleaved with
+ * rr spew.  This is orthogonal to DEBUGTAG.
+ *
+ *  static FILE* locallog = fopen("/tmp/rr-sched.log", "w");
+ *  #define LOG_FILE locallog
+ *  ...
+ *  #include "dbg.h"
  */
+
+#ifndef LOG_FILE
+# define LOG_FILE stderr
+#endif
 
 #ifdef DEBUGTAG
 # define debug(M, ...)							\
 	do {								\
-		fprintf(stderr, "[" DEBUGTAG "] " M "\n", ##__VA_ARGS__); \
+		fprintf(LOG_FILE, "[" DEBUGTAG "] " M "\n", ##__VA_ARGS__); \
 	} while(0)
 #else
 # define debug(M, ...)				\
@@ -49,7 +63,7 @@ inline static int should_log(void)
 #define assert_exec(_t, _cond, _msg, ...)				\
 	do {								\
 		if (!(_cond)) {						\
-			fprintf(stderr,					\
+			fprintf(LOG_FILE,				\
 				"[EMERGENCY] (%s:%d:%s: errno: %s) "	\
 				"(task %d (rec:%d) at trace line %d)\n"	\
 				" -> Assertion `"#_cond "' failed to hold: " \
@@ -67,7 +81,7 @@ inline static int should_log(void)
 
 #define fatal(M, ...)							\
 	do {								\
-		fprintf(stderr, "[FATAL] (%s:%d:%s: errno: %s) "	\
+		fprintf(LOG_FILE, "[FATAL] (%s:%d:%s: errno: %s) "	\
 			"(trace line %d)\n"				\
 			" -> " M "\n",					\
 			__FILE__, __LINE__, __FUNCTION__,		\
@@ -76,7 +90,7 @@ inline static int should_log(void)
 	} while (0)
 
 #define log_err(M, ...)						 \
-	fprintf(stderr, "[ERROR] (%s:%d:%s: errno: %s) \n"	 \
+	fprintf(LOG_FILE, "[ERROR] (%s:%d:%s: errno: %s) \n"	 \
 		" -> " M "\n",					 \
 		__FILE__, __LINE__, __FUNCTION__,		 \
 		clean_errno(), ##__VA_ARGS__)
@@ -84,7 +98,7 @@ inline static int should_log(void)
 #define log_warn(M, ...)						\
 	do {								\
 		if (should_log()) {					\
-			fprintf(stderr, "[WARN] (%s: errno: %s) " M "\n", \
+			fprintf(LOG_FILE, "[WARN] (%s: errno: %s) " M "\n", \
 				__FUNCTION__, clean_errno(), ##__VA_ARGS__); \
 		}							\
 	} while (0)
@@ -92,7 +106,7 @@ inline static int should_log(void)
 #define log_info(M, ...)						\
 	do {								\
 		if (should_log()) {					\
-			fprintf(stderr, "[INFO] (%s) " M "\n",		\
+			fprintf(LOG_FILE, "[INFO] (%s) " M "\n",	\
 				__FUNCTION__, ##__VA_ARGS__);		\
 		}							\
 	} while (0)
