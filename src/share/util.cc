@@ -74,6 +74,42 @@ struct flags* rr_flags_for_init(void)
 	return NULL;		/* not reached */
 }
 
+/**
+ * Return nonzero if |addr| falls within |info|'s segment.
+ */
+static int addr_in_segment(void* addr, const struct mapped_segment_info* info)
+{
+	return info->start_addr <= addr && addr < info->end_addr;
+}
+
+static int find_segment_iterator(void* it_data, Task* t,
+				 const struct map_iterator_data* data)
+{
+	struct mapped_segment_info* info =
+		(struct mapped_segment_info*)it_data;
+	void* search_addr = info->start_addr;
+	if (addr_in_segment(search_addr, &data->info)) {
+		memcpy(info, &data->info, sizeof(*info));
+		return STOP_ITERATING;
+	}
+	return CONTINUE_ITERATING;
+}
+
+/**
+ * Search for the segment containing |search_addr|, and if found copy
+ * out the segment info to |info| and return nonzero.  Return zero if
+ * not found.
+ */
+static int find_segment_containing(Task* t, byte* search_addr,
+			    struct mapped_segment_info* info)
+{
+	memset(info, 0, sizeof(*info));
+	info->start_addr = search_addr;
+	iterate_memory_map(t, find_segment_iterator, info,
+			   kNeverReadSegment, NULL);
+	return addr_in_segment(search_addr, info);
+}
+
 static byte* get_mmaped_region_end(Task* t, byte* start)
 {
 	struct mapped_segment_info info;
@@ -387,37 +423,6 @@ void print_process_mmap(Task* t)
 {
 	return iterate_memory_map(t, print_process_mmap_iterator, NULL,
 				  kNeverReadSegment, NULL);
-}
-
-/**
- * Return nonzero if |addr| falls within |info|'s segment.
- */
-static int addr_in_segment(void* addr, const struct mapped_segment_info* info)
-{
-	return info->start_addr <= addr && addr < info->end_addr;
-}
-
-static int find_segment_iterator(void* it_data, Task* t,
-				 const struct map_iterator_data* data)
-{
-	struct mapped_segment_info* info =
-		(struct mapped_segment_info*)it_data;
-	void* search_addr = info->start_addr;
-	if (addr_in_segment(search_addr, &data->info)) {
-		memcpy(info, &data->info, sizeof(*info));
-		return STOP_ITERATING;
-	}
-	return CONTINUE_ITERATING;
-}
-
-int find_segment_containing(Task* t, byte* search_addr,
-			    struct mapped_segment_info* info)
-{
-	memset(info, 0, sizeof(*info));
-	info->start_addr = search_addr;
-	iterate_memory_map(t, find_segment_iterator, info,
-			   kNeverReadSegment, NULL);
-	return addr_in_segment(search_addr, info);
 }
 
 char* get_inst(Task* t, int eip_offset, int* opcode_size)
