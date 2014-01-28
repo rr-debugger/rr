@@ -739,6 +739,12 @@ public:
 	void destabilize_task_group();
 
 	/**
+	 * Dump attributes of this process, including pending events,
+	 * to |out|, which defaults to LOG_FILE.
+	 */
+	void dump(FILE* out = NULL) const;
+
+	/**
 	 * Stat |fd| in the context of this task's fd table, returning
 	 * the result in |buf|.  The name of the referent file is
 	 * returned in |buf|, of max size |buf_num_bytes|.  Return
@@ -823,6 +829,9 @@ public:
 	 * |rec_tid| are as for Task::clone().
 	 */
 	static Task* create(pid_t tid, pid_t rec_tid = -1);
+
+	/** Call |Task::dump(out)| for all live tasks. */
+	static void dump_all(FILE* out = NULL);
 
 	/** Return an iterator at the end of the task map. */
 	static Task::Map::const_iterator end();
