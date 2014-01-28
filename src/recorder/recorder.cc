@@ -219,7 +219,7 @@ static void task_continue(Task* t, int force_cont, int sig)
  * (Pass DEFAULT_CONT to the |force_syscall| parameter and ignore it;
  * it's an implementation detail.)
  */
-static void resume_execution(Task* t, int force_cont)
+static bool resume_execution(Task* t, int force_cont)
 {
 	int ptrace_event;
 
@@ -228,7 +228,10 @@ static void resume_execution(Task* t, int force_cont)
 	debug_exec_state("EXEC_START", t);
 
 	task_continue(t, force_cont, /*no sig*/0);
-	sys_waitpid(t->tid, &t->status);
+	if (!sys_waitpid(t->tid, &t->status)) {
+		debug("  waitpid() interrupted");
+		return false;
+	}
 	status_changed(t);
 
 	debug_exec_state("  after resume", t);
@@ -240,6 +243,7 @@ static void resume_execution(Task* t, int force_cont)
 		debug("  (skipping past seccomp-bpf trap)");
 		return resume_execution(t, FORCE_SYSCALL);
 	}
+	return true;
 }
 
 /**
@@ -711,15 +715,75 @@ static int signal_state_changed(Task* t, int by_waitpid)
 	return 0;
 }
 
+static bool term_request;
+
+/**
+ * A terminating signal was received.  Set the |term_request| bit to
+ * terminate the trace at the next convenient point.
+ *
+ * If there's already a term request pending, then assume rr is wedged
+ * and abort().
+ */
+static void handle_termsig(int sig)
+{
+	if (term_request) {
+		fatal("Received termsig while an earlier one was pending.  We're probably wedged.");
+	}
+	log_info("Received termsig %s, requesting shutdown ...\n",
+		 signalname(sig));
+	term_request = true;
+}
+
+static void install_termsig_handlers(void)
+{
+	int termsigs[] = { SIGINT, SIGTERM };
+	for (size_t i = 0; i < ALEN(termsigs); ++i) {
+		struct sigaction sa = { 0 };
+		sa.sa_handler = handle_termsig;
+		sigaction(termsigs[i], &sa, NULL);
+	}
+}
+
+/**
+ * If |term_request| is set, then record a trace-termination event,
+ * sync the trace files, and shut down.  The |t| argument isn't
+ * meaningful, it just allows this to give task context to the
+ * trace-termination event, for simplicity.
+ */
+static void maybe_process_term_request(Task* t)
+{
+	if (!term_request) {
+		return;
+	}
+
+	log_info("Processing termination request ...");
+	log_info("  recording TRACE_TERMINATION event ...");
+	push_pseudosig(t, EUSR_TRACE_TERMINATION, NO_EXEC_INFO);
+	record_event(t);
+	pop_pseudosig(t);
+
+	log_info("  exiting, goodbye.");
+	flush_trace_files();
+	exit(0);
+}
+
 void record()
 {
-	Task *t = NULL;
+	Task *t = nullptr;
+
+	install_termsig_handlers();
 
 	while (Task::count() > 0) {
 		int by_waitpid;
 		int ptrace_event;
 
-		t = rec_sched_get_active_thread(t, &by_waitpid);
+		maybe_process_term_request(t);
+
+		Task* next = rec_sched_get_active_thread(t, &by_waitpid);
+		if (!next) {
+			maybe_process_term_request(t);
+		}
+		t = next;
 
 		debug("line %d: Active task is %d", get_global_time(), t->tid);
 
@@ -755,7 +819,9 @@ void record()
 			break;
 		}
 
-		resume_execution(t, DEFAULT_CONT);
+		if (!resume_execution(t, DEFAULT_CONT)) {
+			maybe_process_term_request(t);
+		}
 		runnable_state_changed(t);
 	}
 }

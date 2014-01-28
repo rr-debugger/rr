@@ -67,6 +67,10 @@ function onexit {
     fi
 }
 
+function parent_pid_of { pid=$1
+    ps -p $pid -o ppid=
+}
+
 function usage {
     echo Usage: "util.sh TESTNAME [LIB_ARG] [OBJDIR]"
 }

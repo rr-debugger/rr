@@ -34,10 +34,6 @@ static void note_switch(Task* prev_t, Task* t, int max_events)
 	}
 }
 
-/**
- * Retrieves a thread from the pool of active threads in a
- * round-robin fashion.
- */
 Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 {
 	int max_events = rr_flags()->max_events;
@@ -64,9 +60,11 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 #ifdef MONITOR_UNSWITCHABLE_WAITS
 			double start = now_sec(), wait_duration;
 #endif
-
-			sys_waitpid(t->tid, &t->status);
-
+			if (!sys_waitpid(t->tid, &t->status)) {
+				debug("  waitpid(%d) interrupted by EINTR",
+				      t->tid);
+				return nullptr;
+			}
 #ifdef MONITOR_UNSWITCHABLE_WAITS
 			wait_duration = now_sec() - start;
 			if (wait_duration >= 0.010) {
@@ -129,8 +127,8 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 		while (-1 == (tid = waitpid(-1, &status,
 					    __WALL | WSTOPPED | WUNTRACED))) {
 			if (EINTR == errno) {
-				debug("  waitpid() interrupted by EINTR");
-				continue;
+				debug("  waitpid(-1) interrupted by EINTR");
+				return nullptr;
 			}
 			fatal("Failed to waitpid()");
 		}

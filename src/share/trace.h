@@ -41,6 +41,11 @@ enum {
 	 * "unstable" state in which we're not sure we can
 	 * synchronously wait for it to "really finish". */
 	USR_UNSTABLE_EXIT,
+	/* The trace was terminated before all tasks exited, most
+	 * likely because the recorder was sent a terminating signal.
+	 * There are no more trace frames coming, so the best thing to
+	 * do is probably to shut down. */
+	USR_TRACE_TERMINATION,
 	/* TODO: this is actually a pseudo-pseudosignal: it will never
 	 * appear in a trace, but is only used to communicate between
 	 * different parts of the recorder code that should be

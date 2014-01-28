@@ -72,22 +72,6 @@ static void copy_envp(char** envp)
 	env_p.push_back(NULL);
 }
 
-/**
- * used to stop child process when the parent process bails out
- */
-static void sig_child(int sig)
-{
-	log_info("Got signal %d\n", sig);
-	flush_trace_files();
-	kill(child, SIGQUIT);
-	kill(getpid(), SIGQUIT);
-}
-
-static void install_signal_handler(void)
-{
-	signal(SIGINT, sig_child);
-}
-
 static void start_recording(int argc, char* argv[], char** envp)
 {
 	pid_t pid;
@@ -110,10 +94,6 @@ static void start_recording(int argc, char* argv[], char** envp)
 	record_argv_envp(argc, arg_v.data(), env_p.data());
 
 	child = pid;
-
-	/* Make sure that the child process dies when the master
-	 * process gets interrupted */
-	install_signal_handler();
 
 	/* sync with the child process */
 	sys_waitpid(pid, &status);
@@ -167,9 +147,6 @@ static void start_replaying(int argc, char* argv[], char** envp)
 	}
 
 	child = pid;
-	/* Make sure that the child process dies when the master
-	 * process gets interrupted. */
-	install_signal_handler();
 
 	sys_waitpid(pid, &status);
 

@@ -122,6 +122,7 @@ set(BASIC_TESTS
   mprotect
   mprotect_stack
   mremap
+  nanosleep
   perf_event
   prctl
   priority
@@ -179,6 +180,8 @@ set(CUSTOM_TESTS
   step1
   step_signal
   syscallbuf_timeslice_250
+  term_trace_cpu
+  term_trace_syscall
 )
 
 foreach(test ${BASIC_TESTS})
