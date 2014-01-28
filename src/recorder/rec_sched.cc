@@ -23,8 +23,6 @@
 #include "../share/sys.h"
 #include "../share/task.h"
 
-using namespace std;
-
 /**
  * The currently scheduled task. This may be NULL if the last scheduled task
  * has been destroyed.
