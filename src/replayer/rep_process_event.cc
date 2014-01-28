@@ -185,32 +185,28 @@ private:
 typedef map<FileId, File::shr_ptr> FileMap;
 static FileMap emufs;
 
-static int mark_used_vfiles_iterator(void* nr_markedp, Task* t,
-				     const struct map_iterator_data* data)
+static void mark_used_vfiles(Task* t, const AddressSpace& as,
+			     size_t* nr_marked_files)
 {
-	size_t* nr_marked_files = static_cast<size_t*>(nr_markedp);
-	dev_t device;
-	ino_t inode;
-	char esc_path[PATH_MAX];
+	for (auto it = as.begin(); it != as.end(); ++it) {
+		const MappableResource& r = it->second;
+		debug("  examining %s ...", r.fsname.c_str());
 
-	debug("  examining %s ...", data->info.name);
-	if (3 == sscanf(data->info.name,
-			SHMEM_FS "/rr-emufs-dev-%lld-inode-%ld-%s",
-			&device, &inode, esc_path)) {
-		FileId k(device, inode);
-		assert(emufs.find(k) != emufs.end());
-		auto ef = emufs[k];
+		auto id_ef = emufs.find(r.id);
+		if (id_ef == emufs.end()) {
+			continue;
+		}
+		auto ef = id_ef->second;
 		if (!ef->marked) {
-			emufs[k]->marked = true;
+			ef->marked = true;
+			debug("    marked einode:%ld", r.id.inode);
 			++*nr_marked_files;
-			debug("    marked %s (einode:%ld)", esc_path, inode);
 			if (emufs.size() == *nr_marked_files) {
 				debug("  (marked all files, bailing)");
-				return STOP_ITERATING;
+				return;
 			}
 		}
 	}
-	return CONTINUE_ITERATING;
 }
 
 void gc()
@@ -245,9 +241,8 @@ void gc()
 		AddressSpace* as = *it;
 		Task* t = *as->task_set().begin();
 		debug("  iterating /proc/%d/maps ...", t->tid);
-		iterate_memory_map(t,
-				   mark_used_vfiles_iterator, &nr_marked_files,
-				   kNeverReadSegment, nullptr);
+
+		mark_used_vfiles(t, *as, &nr_marked_files);
 		if (emufs.size() == nr_marked_files) {
 			break;
 		}
@@ -268,33 +263,27 @@ void gc()
 		it->second->marked = false;
 	}
 	for (auto it = garbage.begin(); it != garbage.end(); ++it) {
-		debug("  emufs gc reclaiming einode:%ld", it->einode);
+		debug("  emufs gc reclaiming einode:%ld", it->inode);
 		emufs.erase(*it);
 	}
 }
 
-/**
- * RAII helper that schedules an EmuFs GC when the exit of a given
- * syscall may have dropped the last reference to an emulated file.
- */
-struct AutoGc {
-	AutoGc(int syscallno, int state)
-		: is_gc_point(emufs.size() > 0
-			      && STATE_SYSCALL_EXIT == state
-			      && (SYS_close == syscallno
-				  || SYS_munmap == syscallno)) {
-		if (is_gc_point) {
-			debug("emufs gc required because of syscall `%s'",
-			      syscallname(syscallno));
-		}
+AutoGc::AutoGc(int syscallno, int state)
+	: is_gc_point(emufs.size() > 0
+		      && STATE_SYSCALL_EXIT == state
+		      && (SYS_close == syscallno
+			  || SYS_munmap == syscallno)) {
+	if (is_gc_point) {
+		debug("emufs gc required because of syscall `%s'",
+		      syscallname(syscallno));
 	}
-	~AutoGc() {
-		if (is_gc_point) {
-			gc();
-		}
+}
+
+AutoGc::~AutoGc() {
+	if (is_gc_point) {
+		gc();
 	}
-	bool is_gc_point;
-};
+}
 
 /**
  * Return an fd that refers to an emulated file representing the

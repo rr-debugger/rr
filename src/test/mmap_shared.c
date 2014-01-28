@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 static int create_segment(size_t num_bytes) {
 	char filename[] = "/dev/shm/rr-test-XXXXXX";
 	int fd = mkstemp(filename);
@@ -16,6 +15,10 @@ int main(int argc, char *argv[]) {
 	size_t num_bytes = sysconf(_SC_PAGESIZE);
 	int fd = create_segment(num_bytes);
 	int* wpage = mmap(NULL, num_bytes, PROT_WRITE, MAP_SHARED, fd, 0);
+
+	close(128);
+	munmap(NULL, 0);
+
 	int* rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);
 	int i;
 

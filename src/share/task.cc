@@ -735,12 +735,20 @@ Task::destabilize_task_group()
 }
 
 bool
-Task::fdstat(int fd, struct stat* buf)
+Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes)
 {
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
 	ScopedOpen backing_fd(path, O_RDONLY);
-	return backing_fd >= 0 && 0 == fstat(backing_fd, buf);
+	if (0 > backing_fd) {
+		return false;
+	}
+	ssize_t nbytes = readlink(path, buf, buf_num_bytes);
+	if (0 > nbytes) {
+		return false;
+	}
+	buf[nbytes] = '\0';
+	return 0 == fstat(backing_fd, st);
 }
 
 bool

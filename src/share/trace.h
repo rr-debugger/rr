@@ -155,7 +155,6 @@ void dump_trace_frame(FILE* out, const struct trace_frame* frame);
 void clear_trace_files(void);
 void rec_init_trace_files(void);
 void record_input_str(pid_t pid, int syscall, int len);
-void sc_record_data(pid_t tid, int syscall, size_t len, void* buf);
 
 void record_child_data(Task *t, size_t len, byte* child_ptr);
 void record_child_str(Task* t, byte* child_ptr);

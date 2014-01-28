@@ -2609,17 +2609,14 @@ void rec_process_syscall(Task *t)
 		// trace directory as |fs/[st_dev].[st_inode]|.  Then
 		// we wouldn't have to care about looking up a name
 		// for the resource.
-		struct mapped_segment_info info;
-		bool found_region = find_segment_containing(t, addr, &info);
-		assert_exec(t, found_region, "Didn't find segment %p", addr);
-		strcpy(file.filename, info.name);
 		file.time = get_global_time();
 		file.tid = tid;
-		if (!t->fdstat(fd, &file.stat)) {
-			fatal("Failed to fstat %d", fd);
+		if (!t->fdstat(fd, &file.stat,
+			       file.filename, sizeof(file.filename))) {
+			fatal("Failed to fdstat %d", fd);
 		}
-		file.start = info.start_addr;
-		file.end = info.end_addr;
+		file.start = addr;
+		file.end = addr + size;
 
 		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
 		    && (prot & PROT_EXEC) ) {

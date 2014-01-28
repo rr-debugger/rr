@@ -183,14 +183,6 @@ void validate_process_memory(Task* t);
 void print_process_mmap(Task* t);
 
 /**
- * Search for the segment containing |search_addr|, and if found copy
- * out the segment info to |info| and return nonzero.  Return zero if
- * not found.
- */
-int find_segment_containing(Task* t, byte* search_addr,
-			    struct mapped_segment_info* info);
-
-/**
  * The following helpers are used to iterate over a tracee's memory
  * maps.  Clients call |iterate_memory_map()|, passing an iterator
  * function that's invoked for each mapping until either the iterator

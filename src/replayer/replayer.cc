@@ -1354,8 +1354,10 @@ static int flush_one_syscall(Task* t,
 		flush->state = FLUSH_EXIT;
 		return flush_one_syscall(t, flush, stepi);
 
-	case FLUSH_EXIT:
+	case FLUSH_EXIT: {
 		debug("  advancing to buffered syscall exit");
+
+		EmuFs::AutoGc gc(call);
 
 		read_child_registers(t, &regs);
 		assert_at_buffered_syscall(t, &regs, call);
@@ -1378,7 +1380,7 @@ static int flush_one_syscall(Task* t,
 		flush->desched.type = DESCHED_DISARM;
 		flush->desched.state = DESCHED_ENTER;
 		return flush_one_syscall(t, flush, stepi);
-
+	}
 	case FLUSH_DISARM:
 		/* And skip past the ioctl that disarmed the desched
 		 * notification. */

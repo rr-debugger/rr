@@ -88,27 +88,27 @@ struct FileId {
 	 */
 	ino_t disp_inode() const;
 	/**
+	 * Return true iff |this| and |o| are the same "real device"
+	 * (i.e., same device and inode), or |this| and |o| are
+	 * ANONYMOUS pseudo-devices.  Results are undefined for other
+	 * pseudo-devices.
+	 */
+	bool equivalent_to(const FileId& o) const {
+		return psdev == o.psdev
+			&& (psdev == PSEUDODEVICE_ANONYMOUS
+			    || (device == o.device && inode == o.inode));
+	}
+	/**
 	 * Return true if this file is/was backed by an external
 	 * device, as opposed to a transient RAM mapping.
 	 */
 	bool is_real_device() const { return device > NO_DEVICE; }
 	const char* special_name() const;
 
-	/**
-	 * Return true iff |this| and |o| are the same "real device"
-	 * (i.e., same device and inode), or |this| and |o| are
-	 * ANONYMOUS pseudo-devices.  Results are undefined for other
-	 * pseudo-devices.
-	 */
-	bool operator==(const FileId& o) const {
-		return psdev == o.psdev
-			&& (psdev == PSEUDODEVICE_ANONYMOUS
-			    || (device == o.device && inode == o.inode));
-	}
 	bool operator<(const FileId& o) const {
-		assert(is_real_device());
-		return (device != o.device ?
-			device < o.device : inode < o.inode);
+		return psdev != o.psdev ? psdev < o.psdev :
+			device != o.device ? device < o.device :
+			inode < o.inode;
 	}
 
 	dev_t device;
@@ -243,10 +243,10 @@ struct MappableResource {
 		: id(id), fsname(fsname) { }
 
 	bool operator==(const MappableResource& o) const {
-		return id == o.id;
+		return id.equivalent_to(o.id);
 	}
 	bool operator!=(const MappableResource& o) const {
-		return !(id == o.id);
+		return !(*this == o);
 	}
 	bool is_scratch() const {
 		return PSEUDODEVICE_SCRATCH == id.psdev;
@@ -309,6 +309,11 @@ public:
 
 	~AddressSpace() { sas.erase(this); }
 
+	/** Return an iterator at the beginning of the memory map. */
+	MemoryMap::const_iterator begin() const {
+		return mem.begin();
+	}
+
 	/**
 	 * Change the program data break of this address space to
 	 * |addr|.
@@ -329,6 +334,11 @@ public:
 	 * XXX/ostream-ify me.
 	 */
 	void dump() const;
+
+	/** Return an iterator at the end of the memory map. */
+	MemoryMap::const_iterator end() const {
+		return mem.end();
+	}
 
 	/**
 	 * Map |num_bytes| into this address space at |addr|, with
@@ -684,10 +694,11 @@ public:
 
 	/**
 	 * Stat |fd| in the context of this task's fd table, returning
-	 * the result in |buf|.  Return true on success, false on
-	 * error.
+	 * the result in |buf|.  The name of the referent file is
+	 * returned in |buf|, of max size |buf_num_bytes|.  Return
+	 * true on success, false on error.
 	 */
-	bool fdstat(int fd, struct stat* buf);
+	bool fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes);
 
 	/**
 	 * Return nonzero if |t| may not be immediately runnable,
