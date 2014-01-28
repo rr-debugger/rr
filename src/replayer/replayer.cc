@@ -1449,6 +1449,9 @@ static int try_one_trace_step(Task* t,
 			      struct rep_trace_step* step,
 			      const struct dbg_request* req)
 {
+	if (DREQ_DETACH == req->type) {
+		return 0;
+	}
 	int stepi = (DREQ_STEP == req->type
 		     && get_threadid(t) == req->target);
 	switch (step->action) {
@@ -1641,6 +1644,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 		assert(dbg_is_resume_request(&req));
 	}
 
+	if (DREQ_DETACH == req.type) {
+		log_info("debugger detached from us, exiting");
+		exit(0);
+	}
+
 	if (STATE_SYSCALL_EXIT == t->trace.state
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
@@ -1719,23 +1727,30 @@ void replay(void)
 
 void emergency_debug(Task* t)
 {
-	struct dbg_context* dbg;
-
-	flush_trace_files();
-
 	if (probably_not_interactive()
 	    && !rr_flags()->force_enable_debugger) {
 		errno = 0;
 		fatal("(session doesn't look interactive, aborting emergency debugging)");
 	}
 
-	/* See the comment in |guard_overshoot()| explaining why we do
-	 * this.  Unlike in that context though, we don't know if |t|
-	 * overshot an internal breakpoint.  If it did, cover that
-	 * breakpoint up. */
+	start_debug_server(t);
+	fatal("Can't resume execution from invalid state");
+}
+
+void start_debug_server(Task* t)
+{
+	flush_trace_files();
+
+	// See the comment in |guard_overshoot()| explaining why we do
+	// this.  Unlike in that context though, we don't know if |t|
+	// overshot an internal breakpoint.  If it did, cover that
+	// breakpoint up.
 	remove_all_sw_breakpoints(t);
 
-	dbg = dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT);
+	struct dbg_context* dbg =
+		dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT);
+
 	process_debugger_requests(dbg, t);
-	fatal("Can't resume execution from invalid state");
+
+	dbg_destroy_context(&dbg);
 }

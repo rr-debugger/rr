@@ -70,6 +70,7 @@ bool dbg_is_resume_request(const struct dbg_request* req)
 	switch (req->type) {
 	case DREQ_CONTINUE:
 	case DREQ_STEP:
+	case DREQ_DETACH:
 		return true;
 	default:
 		return false;
@@ -648,9 +649,10 @@ static int process_packet(struct dbg_context* dbg)
 		ret = 1;
 		break;
 	case 'D':
-		log_info("gdb is detaching from us, exiting");
-		write_packet(dbg, "OK");
-		exit(0);
+		log_info("gdb is detaching from us");
+		dbg->req.type = DREQ_DETACH;
+		ret = 1;
+		break;
 	case 'g':
 		dbg->req.type = DREQ_GET_REGS;
 		dbg->req.target = dbg->query_thread;

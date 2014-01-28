@@ -93,6 +93,9 @@ enum DbgRequestType{
 	DREQ_CONTINUE,
 	DREQ_INTERRUPT,
 	DREQ_STEP,
+
+	/* gdb host detaching from stub.  No parameters. */
+	DREQ_DETACH,
 };
 
 /**
