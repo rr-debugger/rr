@@ -734,6 +734,17 @@ Task::destabilize_task_group()
 	task_group->destabilize();
 }
 
+void
+Task::dump(FILE* out) const
+{
+	out = out ? out : LOG_FILE;
+	fprintf(out, "Task<%p>(tid:%d rec_tid:%d status:0x%x%s%s)\n",
+		this, tid, rec_tid, status,
+		switchable ? "" : " UNSWITCHABLE",
+		unstable ? " UNSTABLE" : "");
+	log_pending_events(this);
+}
+
 bool
 Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes)
 {
@@ -855,8 +866,7 @@ Task::tgid() const
 	return task_group->tgid;
 }
 
-/*static*/
-Task::Map::const_iterator
+/*static*/ Task::Map::const_iterator
 Task::begin()
 {
 	return tasks.begin();
@@ -888,8 +898,15 @@ Task::create(pid_t tid, pid_t rec_tid)
 	return t;
 }
 
-/*static*/
-Task::Map::const_iterator
+/*static*/ void
+Task::dump_all(FILE* out)
+{
+	for (auto it = begin(); it != end(); ++it) {
+		it->second->dump(out);
+	}
+}
+
+/*static*/ Task::Map::const_iterator
 Task::end()
 {
 	return tasks.end();
