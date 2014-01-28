@@ -134,7 +134,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 			}
 			fatal("Failed to waitpid()");
 		}
-		debug("  %d changed state", tid);
+		debug("  %d changed status to 0x%x", tid, status);
 
 		next = Task::find(tid);
 

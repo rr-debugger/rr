@@ -3,8 +3,6 @@
 #ifndef REC_SCHED_H_
 #define REC_SCHED_H_
 
-#include <sys/types.h>
-
 class Task;
 
 /**
