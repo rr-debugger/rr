@@ -853,7 +853,12 @@ static void* finish_private_mmap(Task* t,
 	set_child_data(t);
 
 	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags, offset,
-		     MappableResource(FileId(file->stat), file->filename));
+		     // Intentionally drop the stat() information
+		     // saved to trace so as to match /proc/maps's
+		     // device/inode info for this anonymous mapping.
+		     // Preserve the mapping name though, so
+		     // AddressSpace::dump() shows something useful.
+		     MappableResource(FileId(), file->filename));
 
 	return mapped_addr;
 }

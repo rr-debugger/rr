@@ -2,14 +2,19 @@
 
 #include "rrutil.h"
 
+#define DEV_RANDOM "/dev/urandom"
+
 int main(int argc, char** argv) {
-	int fd = open("/dev/random", O_RDONLY);
+	int fd = open(DEV_RANDOM, O_RDONLY);
 	char buf[128];
+	ssize_t nread;
 
 	test_assert(0 <= fd);
-	test_assert(sizeof(buf) == read(fd, buf, sizeof(buf)));
 
-	atomic_printf("Read %d random bytes\n", sizeof(buf));
+	nread = read(fd, buf, sizeof(buf));
+	atomic_printf("Read %d random bytes (expected %d)\n",
+		      nread, sizeof(buf));
+	test_assert(nread == sizeof(buf));
 
 	check_data(buf, sizeof(buf));
 
