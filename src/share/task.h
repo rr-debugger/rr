@@ -809,6 +809,12 @@ public:
 			     const struct user_regs_struct& regs);
 
 	/**
+	 * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or
+	 * /proc/tid/comm would say that the task's name is.
+	 */
+	const std::string& name() const { return prname; }
+
+	/**
 	 * Return the "next" task after this, in round-robin order by
 	 * recorded pid.  The order of tasks returned by a sequence of
 	 * |next_rounrobin()| calls is suitable for round-robin
@@ -846,6 +852,14 @@ public:
 	 * Return the id of this task's thread group.
 	 */
 	pid_t tgid() const;
+
+	/**
+	 * Call this after the tracee successfully makes a
+	 * |prctl(PR_SET_NAME)| call to change the task name to the
+	 * string pointed at in the tracee's address space by
+	 * |child_addr|.
+	 */
+	void update_prname(byte* child_addr);
 
 	/**
 	 * Return the virtual memory mapping (address space) of this
@@ -891,6 +905,7 @@ public:
 	 *
 	 * Never reassign this pointer directly; use the
 	 * push_*()/pop_*() helpers below. */
+	/* TODO: make me a helper method */
 	struct event* ev;
 	/* The current stack of events being processed. */
 	FIXEDSTACK_DECL(, struct event, 16) pending_events;
@@ -999,7 +1014,6 @@ public:
 	int status;
 
 	struct user_regs_struct regs;
-	FILE *inst_dump;
 	/* This is always the "real" tid of the tracee. */
 	pid_t tid;
 	/* This is always the recorded tid of the tracee.  During
@@ -1028,6 +1042,8 @@ private:
 
 	/* The address space of this task. */
 	std::shared_ptr<AddressSpace> as;
+	/* Task's OS name */
+	std::string prname;
 	/* Points to the signal-hander table of this task.  If this
 	 * task is a non-fork clone child, then the table will be
 	 * shared with all its "thread" siblings.  Any updates made to

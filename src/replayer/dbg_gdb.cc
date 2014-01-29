@@ -310,6 +310,23 @@ static void write_hex_packet(struct dbg_context* dbg, unsigned long hex)
 	write_packet(dbg, buf);	
 }
 
+static void write_hex_bytes_packet(struct dbg_context* dbg,
+				   const byte* bytes, size_t len)
+{
+	if (0 == len) {
+		write_packet(dbg, "");
+		return;
+	}
+
+	char* buf = (char*)malloc(2 * len + 1);
+	for (size_t i = 0; i < len; ++i) {
+		unsigned long b = bytes[i];
+		snprintf(&buf[2 * i], 3, "%02lx", b);
+	}
+	write_packet(dbg, buf);
+	free(buf);
+}
+
 /**
  * Consume bytes in the input buffer until start-of-packet ('$') or
  * the interrupt character is seen.  Does not block.  Return zero if
@@ -410,6 +427,16 @@ static void read_packet(struct dbg_context* dbg)
 	}
 }
 
+/**
+ * Parse and return a gdb thread-id from |str|.  |endptr| points to
+ * the character just after the last character in the thread-id.  It
+ * may be NULL.
+ */
+static dbg_threadid_t parse_threadid(const char* str, char** endptr)
+{
+	return strtol(str, endptr, 16);
+}
+
 static int xfer(struct dbg_context* dbg, const char* name, char* args)
 {
 	debug("gdb asks us to transfer %s(%s)", name, args);
@@ -495,9 +522,16 @@ static int query(struct dbg_context* dbg, char* payload)
 		return 0;
 	}
 	if (strstr(name, "ThreadExtraInfo") == name) {
-		/* TODO */
-		write_packet(dbg, "");
-		return 0;
+		// ThreadExtraInfo is a special snowflake that
+		// delimits its args with ','.
+		assert(!args);
+		args = payload;
+		args = 1 + strchr(args, ','/*sic*/);
+
+		dbg->req.type = DREQ_GET_THREAD_EXTRA_INFO;
+		dbg->req.target = parse_threadid(args, &args);
+		assert('\0' == *args);
+		return 1;
 	}
 	if (!strcmp(name, "TStatus")) {
 		debug("gdb asks for trace status");
@@ -542,16 +576,6 @@ static int set(struct dbg_context* dbg, char* payload)
 	log_warn("Unhandled gdb set: Q%s", name);
 	write_packet(dbg, "");
 	return 0;
-}
-
-/**
- * Parse and return a gdb thread-id from |str|.  |endptr| points to
- * the character just after the last character in the thread-id.  It
- * may be NULL.
- */
-static dbg_threadid_t parse_threadid(const char* str, char** endptr)
-{
-	return strtol(str, endptr, 16);
 }
 
 static void consume_request(struct dbg_context* dbg)
@@ -974,6 +998,19 @@ void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive)
 	consume_request(dbg);
 }
 
+void dbg_reply_get_thread_extra_info(struct dbg_context* dbg,
+				     const char* info)
+{
+	assert(DREQ_GET_THREAD_EXTRA_INFO == dbg->req.type);
+
+	debug("thread extra info: '%s'", info);
+	// XXX docs don't say whether we should send the null
+	// terminator.  See what happens.
+	write_hex_bytes_packet(dbg, (const byte*)info, 1 + strlen(info));
+
+	consume_request(dbg);
+}
+
 void dbg_reply_select_thread(struct dbg_context* dbg, int ok)
 {
 	assert(DREQ_SET_CONTINUE_THREAD == dbg->req.type
@@ -991,24 +1028,10 @@ void dbg_reply_select_thread(struct dbg_context* dbg, int ok)
 
 void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len)
 {
-	char* buf;
-
 	assert(DREQ_GET_MEM == dbg->req.type);
 	assert(len <= dbg->req.mem.len);
 
-	if (len > 0) {
-		size_t i;
-
-		buf = (char*)malloc(2 * len + 1);
-		for (i = 0; i < len; ++i) {
-			unsigned long b = mem[i];
-			snprintf(&buf[2 * i], 3, "%02lx", b);
-		}
-		write_packet(dbg, buf);
-		free(buf);
-	} else {
-		write_packet(dbg, "");
-	}
+	write_hex_bytes_packet(dbg, mem, len);
 
 	consume_request(dbg);
 }

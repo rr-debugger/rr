@@ -2077,20 +2077,36 @@ void rec_process_syscall(Task *t)
 		switch (regs.ebx) {
 			/* See rec_prepare_syscall() for how these
 			 * sizes are determined. */
-			case PR_GET_ENDIAN:
-			case PR_GET_FPEMU:
-			case PR_GET_FPEXC:
-			case PR_GET_PDEATHSIG:
-			case PR_GET_TSC:
-			case PR_GET_UNALIGN:
-				size = sizeof(int);
-				break;
-			case PR_GET_NAME:
-				size = 16;
-				break;
-			default:
-				size = 0;
-				break;
+		case PR_GET_ENDIAN:
+		case PR_GET_FPEMU:
+		case PR_GET_FPEXC:
+		case PR_GET_PDEATHSIG:
+		case PR_GET_TSC:
+		case PR_GET_UNALIGN:
+			size = sizeof(int);
+			break;
+		case PR_GET_NAME: {
+			size = 16;
+			byte* addr = (byte*)regs.ecx;
+			char* name = (char*)read_child_data(t, size, addr);
+			name[size - 1] = '\0';
+			assert_exec(t, t->name() == name,
+				    "Kernel says prname is'%s', but rr thinks it's '%s'",
+				    name, t->name().c_str());
+			free(name);
+			break;
+		}
+		case PR_SET_NAME: {
+			byte* addr = (byte*)regs.ecx;
+			t->update_prname(addr);
+			// The string value being set is
+			// deterministic.
+			size = 0;
+			break;
+		}
+		default:
+			size = 0;
+			break;
 		}
 		if (size > 0) {
 			byte* iter;

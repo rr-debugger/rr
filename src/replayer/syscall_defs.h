@@ -805,7 +805,7 @@ SYSCALL_DEF(EMU, ppoll, 1)
  * significance depending on the first one.
  *
  */
-SYSCALL_DEF(EMU, prctl, 1)
+SYSCALL_DEF(IRREGULAR, prctl, -1)
 
 /**
  *  ssize_t pread(int fd, void *buf, size_t count, off_t offset);
