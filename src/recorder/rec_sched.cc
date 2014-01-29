@@ -14,6 +14,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <algorithm>
 
 #include "recorder.h"
 
@@ -22,7 +23,12 @@
 #include "../share/sys.h"
 #include "../share/task.h"
 
-// The currently scheduled task.
+using namespace std;
+
+/**
+ * The currently scheduled task. This may be NULL if the last scheduled task
+ * has been destroyed.
+ */
 static Task* current;
 
 static void note_switch(Task* prev_t, Task* t, int max_events)
@@ -34,6 +40,73 @@ static void note_switch(Task* prev_t, Task* t, int max_events)
 	}
 }
 
+static Task*
+get_next_task_with_same_priority(Task* t)
+{
+	const Task::MapByPriority& map = Task::get_map_by_priority();
+	auto map_it = map.find(t->priority);
+	auto task_list = map_it->second;
+	auto it = find(task_list.begin(), task_list.end(), t);
+	assert(it != task_list.end());
+	++it;
+	if (it == task_list.end()) {
+		it = task_list.begin();
+	}
+	return *it;
+}
+
+static Task*
+find_next_runnable_task(int* by_waitpid)
+{
+	*by_waitpid = 0;
+
+	const Task::MapByPriority& map = Task::get_map_by_priority();
+	for (auto outer_iterator = map.begin(); outer_iterator != map.end();
+	     ++outer_iterator) {
+	        const list<Task*>& task_list = outer_iterator->second;
+	        int priority = outer_iterator->first;
+	        list<Task*>::const_iterator begin;
+	        if (current && priority == current->priority) {
+			begin = find(task_list.begin(), task_list.end(), current);
+	        } else {
+			// Just iterate through all of them
+			begin = task_list.begin();
+	        }
+
+		auto inner_iterator = begin;
+		do {
+			Task* next = *inner_iterator;
+			pid_t tid = next->tid;
+
+			if (next->unstable) {
+				debug("  %d is unstable, going to waitpid(-1)", tid);
+				return NULL;
+			}
+
+			if (!next->may_be_blocked()) {
+				debug("  %d isn't blocked", tid);
+				return next;
+			}
+
+			debug("  %d is blocked on %s, checking status ...", tid,
+			      strevent(next->event));
+			if (0 != sys_waitpid_nonblock(tid, &next->status)) {
+				*by_waitpid = 1;
+				debug("  ready with status 0x%x", next->status);
+				return next;
+			}
+			debug("  still blocked");
+
+			++inner_iterator;
+			if (inner_iterator == task_list.end()) {
+				inner_iterator = task_list.begin();
+			}
+		} while (inner_iterator != begin);
+	}
+
+	return NULL;
+}
+
 Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 {
 	int max_events = rr_flags()->max_events;
@@ -43,17 +116,15 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 	*by_waitpid = 0;
 
 	if (!current) {
-		// This is the first scheduling request, so there
-		// should only be one task.
-		current = Task::begin()->second;
-		assert(!t && 1 == Task::count());
+		current = t;
 	}
+	assert(!t || t == current);
 
-	if (t && !t->switchable) {
-		debug("  (%d is un-switchable)", t->tid);
-		if (t->may_be_blocked()) {
+	if (current && !current->switchable) {
+		debug("  (%d is un-switchable)", current->tid);
+		if (current->may_be_blocked()) {
 			debug("  and not runnable; waiting for state change");
-			/* |t| is un-switchable, but not runnable in
+			/* |current| is un-switchable, but not runnable in
 			 * this state.  Wait for it to change state
 			 * before "scheduling it", so avoid
 			 * busy-waiting with our client. */
@@ -69,54 +140,29 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 			wait_duration = now_sec() - start;
 			if (wait_duration >= 0.010) {
 				warn("Waiting for unswitchable %s took %g ms",
-				     strevent(t->event),
+				     strevent(current->event),
 				     1000.0 * wait_duration);
 			}
 #endif
 			*by_waitpid = 1;
-			debug("  new status is 0x%x", t->status);
+			debug("  new status is 0x%x", current->status);
 		}
-		return t;
+		return current;
 	}
 
 	/* Prefer switching to the next task if the current one
 	 * exceeded its event limit. */
-	if (t && t->succ_event_counter > max_events) {
+	if (current && current->succ_event_counter > max_events) {
 		debug("  previous task exceeded event limit, preferring next");
-		current = current->next_roundrobin();
-		t->succ_event_counter = 0;
+		current->succ_event_counter = 0;
+		current = get_next_task_with_same_priority(current);
 	}
 
-	// Go around the task list exactly one time looking for a
-	// runnable thread.
-	Task* next = NULL;
-	// This helper is used to iterate over the list of tasks in
-	// round-robin order.  XXX could C++-ify into real iterator...
-	Task* it = current;
-	do {
-		next = it;
-		pid_t tid = next->tid;
+	Task* next = find_next_runnable_task(by_waitpid);
 
-		if (next->unstable) {
-			debug("  %d is unstable, going to waitpid(-1)", tid);
-			next = NULL;
-			break;
-		}
-		if (!next->may_be_blocked()) {
-			debug("  %d isn't blocked, done", tid);
-			break;
-		}
-		debug("  %d is blocked on %s, checking status ...", tid,
-		      strevent(next->event));
-		if (0 != sys_waitpid_nonblock(tid, &next->status)) {
-			*by_waitpid = 1;
-			debug("  ready with status 0x%x", next->status);
-			break;
-		}
-		debug("  still blocked");
-	} while (next = NULL, current != (it = it->next_roundrobin()));
-
-	if (!next) {
+	if (next) {
+		debug("  selecting task %d", next->tid);
+	} else {
 		// All the tasks are blocked. Wait for the next one to
 		// change state.
 		int status;
@@ -141,9 +187,9 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 		*by_waitpid = 1;
 	}
 
+	note_switch(current, next, max_events);
 	current = next;
-	note_switch(t, next, max_events);
-	return next;
+	return current;
 }
 
 /**
@@ -168,11 +214,8 @@ void rec_sched_deregister_thread(Task** t_ptr)
 	Task* t = *t_ptr;
 
 	if (t == current) {
-		current = t->next_roundrobin();
+		current = get_next_task_with_same_priority(t);
 		if (t == current) {
-			// We're destroying the last task and shutting
-			// down.
-			assert(Task::count() == 1);
 			current = NULL;
 		}
 	}

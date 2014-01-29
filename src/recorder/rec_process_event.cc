@@ -303,10 +303,6 @@ int rec_prepare_syscall(Task* t)
 	case SYS_ptrace:
 		fatal("Ptrace not yet implemented.  We need to go deeper.");
 
-	case SYS_sched_setaffinity:
-		assert_exec(t, "NYI" && SYS_sched_setaffinity != syscallno,
-			    "TODO: fudge the CPU mask argument to 0x1");
-		return 0;	/* not reached */
 	case SYS_splice: {
 		loff_t* off_in = (loff_t*)regs.ecx;
 		loff_t* off_out = (loff_t*)regs.esi;
@@ -2312,7 +2308,29 @@ void rec_process_syscall(Task *t)
 	 * of the data pointed to by mask.  Normally this argument would be speci‐
 	 * fied as sizeof(cpu_set_t).
 	 */
-	SYS_REC0(sched_setaffinity)
+	case SYS_sched_setaffinity:
+	{
+		if (SYSCALL_FAILED(regs.eax)) {
+			// Nothing to do
+			break;
+		}
+
+		Task *target = regs.ebx ? Task::find(regs.ebx) : t;
+		if (target) {
+			// The only sched_setaffinity call we allow on an
+			// rr-managed task is one that sets affinity to CPU 0.
+			assert_exec(t, regs.ecx == sizeof(cpu_set_t),
+				    "Invalid sched_setaffinity parameters");
+			cpu_set_t* cpus = (cpu_set_t*)
+				read_child_data(target, sizeof(cpu_set_t),
+				                (byte*)regs.edx);
+			assert_exec(t, cpus && CPU_COUNT(cpus) == 1 &&
+			            CPU_ISSET(0, cpus),
+			            "Invalid affinity setting");
+			free(cpus);
+		}
+		break;
+	}
 
 	/**
 	 * int sched_yield(void)
@@ -2335,7 +2353,24 @@ void rec_process_syscall(Task *t)
 	 * user, as indicated by which and who is set with the
 	 * setpriority() call.
 	 */
-	SYS_REC0(setpriority)
+	case SYS_setpriority:
+	{
+		// The syscall might have failed due to insufficient
+		// permissions (e.g. while trying to decrease the nice value
+		// while not root).
+		// We'll choose to honor the new value anyway since we'd like
+		// to be able to test configurations where a child thread
+		// has a lower nice value than its parent, which requires
+		// lowering the child's nice value.
+		if (regs.ebx == PRIO_PROCESS) {
+			Task *target = regs.ecx ? Task::find(regs.ecx) : t;
+			if (target) {
+				debug("Setting nice value for tid %d to %ld", tid, regs.edx);
+				target->set_priority(regs.edx);
+			}
+		}
+		break;
+	}
 
 	/**
 	 * int setregid(gid_t rgid, gid_t egid)

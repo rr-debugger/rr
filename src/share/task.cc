@@ -23,6 +23,7 @@
 using namespace std;
 
 static Task::Map tasks;
+static Task::MapByPriority tasks_by_priority;
 
 /*static*/ AddressSpace::Set AddressSpace::sas;
 
@@ -784,7 +785,7 @@ sleep_hack:
 	nanosleep_nointr(&ts);
 }
 
-Task::Task(pid_t _tid, pid_t _rec_tid)
+Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 {
 	// TODO: properly C++-ify me
 	memset(this, 0, sizeof(*this));
@@ -800,12 +801,24 @@ Task::Task(pid_t _tid, pid_t _rec_tid)
 		// Suppress output related to it outside recording.
 		switchable = 1;
 	}
+	priority = _priority;
+	tasks_by_priority[_priority].push_back(this);
 
 	push_placeholder_event(this);
 
 	init_hpc(this);
 
 	tasks[rec_tid] = this;
+}
+
+static void
+remove_task_from_map_by_priority(Task* t)
+{
+	list<Task*>& list = tasks_by_priority[t->priority];
+	list.remove(t);
+	if (list.empty()) {
+		tasks_by_priority.erase(t->priority);
+	}
 }
 
 Task::~Task()
@@ -827,6 +840,7 @@ Task::~Task()
 	tasks.erase(rec_tid);
 	task_group->erase_task(this);
 	as->erase_task(this);
+	remove_task_from_map_by_priority(this);
 
 	destroy_hpc(this);
 	close(child_mem_fd);
@@ -841,7 +855,7 @@ Task::~Task()
 Task*
 Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
 {
-	Task* t = new Task(new_tid, new_rec_tid);
+	Task* t = new Task(new_tid, new_rec_tid, priority);
 
 	t->syscallbuf_lib_start = syscallbuf_lib_start;
 	t->syscallbuf_lib_end = syscallbuf_lib_end;
@@ -905,6 +919,23 @@ Task::dump(FILE* out) const
 		// eventually, to have more informative output.
 		log_pending_events(this);
 	}
+}
+
+Task::set_priority(int value)
+{
+	if (priority == value) {
+		// don't mess with task order
+		return;
+	}
+	remove_task_from_map_by_priority(this);
+	priority = value;
+	tasks_by_priority[priority].push_back(this);
+}
+
+const Task::MapByPriority&
+Task::get_map_by_priority()
+{
+	return tasks_by_priority;
 }
 
 bool
@@ -980,17 +1011,6 @@ Task::maybe_update_vm(int syscallno, int state,
 	}
 }
 
-Task*
-Task::next_roundrobin() const
-{
-	// XXX if this ever shows up on profiles, we can make Task
-	// into an invasive doubly-linked list.
-	auto it = tasks.find(rec_tid);
-	assert(this == it->second);
-	it = ++it == tasks.end() ? tasks.begin() : it;
-	return it->second;
-}
-
 void
 Task::post_exec()
 {
@@ -1044,7 +1064,7 @@ Task::create(pid_t tid, pid_t rec_tid)
 {
 	assert(Task::count() == 0);
 
-	Task* t = new Task(tid, rec_tid);
+	Task* t = new Task(tid, rec_tid, 0);
 	// The very first task we fork inherits the signal
 	// dispositions of the current OS process (which should all be
 	// default at this point, but ...).  From there on, new tasks
