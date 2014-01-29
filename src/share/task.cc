@@ -15,6 +15,7 @@
 
 #include "dbg.h"
 #include "hpc.h"
+#include "ipc.h"
 #include "sys.h"
 #include "util.h"
 
@@ -785,16 +786,22 @@ sleep_hack:
 }
 
 Task::Task(pid_t _tid, pid_t _rec_tid)
+	: thread_time(1), ev(nullptr), pending_events()
+	, switchable(), succ_event_counter(), unstable()
+	, scratch_ptr(), scratch_size()
+	, event(), flushed_syscallbuf()
+	, delay_syscallbuf_reset(), delay_syscallbuf_flush()
+	  // These will be initialized when the syscall buffer is.
+	, desched_fd(-1), desched_fd_child(-1)
+	, seccomp_bpf_enabled()
+	, child_sig()
+	, trace(), hpc(), status(), regs()
+	, tid(_tid), rec_tid(_rec_tid > 0 ? _rec_tid : _tid)
+	, child_mem_fd(sys_open_child_mem(this))
+	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
+	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
+	, prname("???")
 {
-	// TODO: properly C++-ify me
-	memset(this, 0, sizeof(*this));
-
-	tid = _tid;
-	rec_tid = _rec_tid > 0 ? _rec_tid : tid;
-	thread_time = 1;
-	child_mem_fd = sys_open_child_mem(this);
-	// These will be initialized when the syscall buffer is.
-	desched_fd = desched_fd_child = -1;
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.
 		// Suppress output related to it outside recording.
@@ -873,6 +880,9 @@ Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
 		assert_exec(this, CLONE_SHARE_NOTHING == flags,
 			    "No explicit stack for fork()-clone");
 	}
+	// Clone children, both thread and fork, inherit the parent
+	// prname.
+	t->prname = prname;
 
 	t->as->insert_task(t);
 	return t;
@@ -895,10 +905,11 @@ void
 Task::dump(FILE* out) const
 {
 	out = out ? out : LOG_FILE;
-	fprintf(out, "  Task<%p>(tid:%d rec_tid:%d status:0x%x%s%s)\n",
-		this, tid, rec_tid, status,
+	fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s%s)<%p>\n",
+		prname.c_str(), tid, rec_tid, status,
 		switchable ? "" : " UNSWITCHABLE",
-		unstable ? " UNSTABLE" : "");
+		unstable ? " UNSTABLE" : "",
+		this);
 	if (RECORD == rr_flags()->option) {
 		// TODO pending events are currently only meaningful
 		// during recording.  We should change that
@@ -991,6 +1002,14 @@ Task::next_roundrobin() const
 	return it->second;
 }
 
+static string prname_from_exe_image(const string& e)
+{
+	size_t last_slash = e.rfind('/');
+	string basename =
+		(last_slash != e.npos) ? e.substr(last_slash + 1) : e;
+	return basename.substr(0, 15);
+}
+
 void
 Task::post_exec()
 {
@@ -998,6 +1017,7 @@ Task::post_exec()
 	sighandlers->reset_user_handlers();
 	auto a = AddressSpace::create(this);
 	as.swap(a);
+	prname = prname_from_exe_image(as->exe_image());
 }
 
 void
@@ -1025,6 +1045,15 @@ pid_t
 Task::tgid() const
 {
 	return task_group->tgid;
+}
+
+void
+Task::update_prname(byte* child_addr)
+{
+	char* name = (char*)read_child_data(this, 16, child_addr);
+	name[15] = '\0';
+	prname = name;
+	free(name);
 }
 
 /*static*/ Task::Map::const_iterator

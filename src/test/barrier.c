@@ -20,13 +20,29 @@ static void joined_threads(void) {
 	(void)break_here;
 }
 
-static void* thread(void* barp) {
-	pthread_barrier_t* bar = barp;
+static void set_thread_name(int id) {
+	char name_buf[16];
+	snprintf(name_buf, sizeof(name_buf), "BP-THREAD-%d", id);
+	prctl(PR_SET_NAME, name_buf);
+}
+
+struct thread_data {
+	int threadno;
+	pthread_barrier_t* bar;
+};
+
+static void* thread(void* datap) {
+	struct thread_data* data = datap;
+	pthread_barrier_t* bar = data->bar;
+
+	set_thread_name(data->threadno);
 
 	atomic_puts("thread launched");
 	breakpoint();
 	pthread_barrier_wait(bar);
 	pthread_barrier_wait(bar);
+
+	free(data);
 	atomic_puts("thread done");
 	return NULL;
 }
@@ -42,8 +58,13 @@ int main(int argc, char *argv[]) {
 
 	pthread_barrier_init(&bar, NULL, 1 + ALEN(threads));
 
+	set_thread_name(1);
+
 	for (i = 0; i < ALEN(threads); ++i) {
-		pthread_create(&threads[i], NULL, thread, &bar);
+		struct thread_data* data = calloc(1, sizeof(*data));
+		data->threadno = i + 2;
+		data->bar = &bar;
+		pthread_create(&threads[i], NULL, thread, data);
 	}
 
 	pthread_barrier_wait(&bar);

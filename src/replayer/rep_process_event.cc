@@ -1453,6 +1453,22 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		return;
 
+	case SYS_prctl:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 1;
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		step->action = TSTEP_EXIT_SYSCALL;
+		step->syscall.num_emu_args = 1;
+		if (PR_SET_NAME == trace->recorded_regs.ebx) {
+			byte* addr = (byte*)trace->recorded_regs.ecx;
+			t->update_prname(addr);
+		}
+		return;
+
 	case SYS_quotactl:
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;

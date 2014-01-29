@@ -125,6 +125,7 @@ set(BASIC_TESTS
   nanosleep
   perf_event
   prctl
+  prctl_name
   priority
   prw
   rdtsc

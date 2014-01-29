@@ -68,6 +68,7 @@ enum DbgRequestType{
 	/* These use params.target. */
 	DREQ_GET_AUXV,
 	DREQ_GET_IS_THREAD_ALIVE,
+	DREQ_GET_THREAD_EXTRA_INFO,
 	DREQ_SET_CONTINUE_THREAD,
 	DREQ_SET_QUERY_THREAD,
 
@@ -201,6 +202,13 @@ void dbg_reply_get_auxv(struct dbg_context* dbg,
  * |alive| is nonzero if the requested thread is alive, zero if dead.
  */
 void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive);
+
+/**
+ * |info| is a string containing data about the request target that
+ * might be relevant to the debugger user.
+ */
+void dbg_reply_get_thread_extra_info(struct dbg_context* dbg,
+				     const char* info);
 
 /**
  * |ok| is nonzero if req->target can be selected, zero otherwise.
