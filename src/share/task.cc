@@ -63,6 +63,21 @@ HasTaskSet::erase_task(Task* t) {
 	tasks.erase(t);
 }
 
+FileId::FileId(dev_t dev_major, dev_t dev_minor, ino_t ino, PseudoDevice psdev)
+	: device(MKDEV(dev_major, dev_minor)), inode(ino), psdev(psdev) { }
+
+/*static*/ MappableResource
+MappableResource::syscallbuf(pid_t tid, int fd)
+ {
+	 char path[PATH_MAX];
+	 format_syscallbuf_shmem_path(tid, path);
+	 struct stat st;
+	 if (fstat(fd, &st)) {
+		 fatal("Failed to fstat(%d) (%s)", fd, path);
+	 }
+	 return MappableResource(FileId(st), path);
+ }
+
 void
 AddressSpace::brk(const byte* addr)
 {
@@ -217,46 +232,208 @@ AddressSpace::unmap(const byte* addr, ssize_t num_bytes)
 	} while (num_bytes > 0);
 }
 
-const int checkable_flags_mask = (MAP_PRIVATE | MAP_SHARED);
+/**
+ * Return true iff |left| and |right| are located adjacently in memory
+ * with the same metadata, and map adjacent locations of the same
+ * underlying (real) device.
+ */
+static bool is_adjacent_mapping(const MappingResourcePair& left,
+				const MappingResourcePair& right)
+{
+	const Mapping& mleft = left.first;
+	const Mapping& mright = right.first;
+	if (mleft.end != mright.start) {
+		debug("    (not adjacent in memory)");
+		return false;
+	}
+	if (mleft.flags != mright.flags || mleft.prot != mright.prot) {
+		debug("    (flags or prot differ)");
+		return false;
+	}
+	const MappableResource& rleft = left.second;
+	const MappableResource& rright = right.second;
+	if (rleft != rright) {
+		debug("    (not the same resource)");
+		return false;
+	}
+	if (rleft.id.is_real_device()
+	    && off_t(mleft.offset + mleft.num_bytes()) != mright.offset) {
+		debug("    (offsets into real device aren't adjacent)");
+		return false;
+	}
+	debug("    adjacent!");
+	return true;
+}
 
+/**
+ * If (*left_m, left_r), (right_m, right_r) are adjacent (see
+ * |is_adjacent_mapping()|), write a merged segment descriptor to
+ * |*left_m| and return true.  Otherwise return false.
+ */
+static bool try_merge_adjacent(Mapping* left_m,
+			       const MappableResource& left_r,
+			       const Mapping& right_m,
+			       const MappableResource& right_r)
+{
+	if (is_adjacent_mapping(MappingResourcePair(*left_m, left_r),
+				MappingResourcePair(right_m, right_r))) {
+		*left_m = Mapping(left_m->start, right_m.end,
+				  right_m.prot, right_m.flags,
+				  right_m.offset);
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Iterate over /proc/maps segments for a task and verify that the
+ * task's cached mapping matches the kernel's (given a lenient fuzz
+ * factor).
+ */
 struct VerifyAddressSpace {
 	typedef AddressSpace::MemoryMap::const_iterator const_iterator;
 
 	VerifyAddressSpace(const AddressSpace* as)
-		: as(as), it(as->mem.begin()) { }
+		: as(as), it(as->mem.begin()), phase(NO_PHASE) { }
 
+	/**
+	 * |km| and |m| are the same mapping of the same resource, or
+	 * don't return.
+	 */
+	void assert_segments_match(Task* t);
+
+	/* Current kernel Mapping we're merging and trying to
+	 * match. */
+	Mapping km;
+	/* Current cached Mapping we've merged and are trying to
+	 * match. */
+	Mapping m;
+	/* The resource that |km| and |m| map. */
+	MappableResource r;
 	const AddressSpace* as;
+	/* Iterator over mappings in |as|. */
 	const_iterator it;
+	/* Which mapping-checking phase we're in.  See below. */
+	enum {
+		NO_PHASE, MERGING_CACHED, INITING_KERNEL, MERGING_KERNEL
+	} phase;
 };
 
-static int assert_segment(void* pvas, Task* t,
-			  const struct map_iterator_data* data)
+void
+VerifyAddressSpace::assert_segments_match(Task* t)
 {
-	VerifyAddressSpace* vas = static_cast<VerifyAddressSpace*>(pvas);
-	const Mapping& m = vas->it->first;
-	const struct mapped_segment_info& info = data->info;
-	int m_flags = m.flags & checkable_flags_mask;
-	assert(info.flags == (info.flags & checkable_flags_mask));
-	bool same_mapping = (m.start == info.start_addr
-			     && m.end == info.end_addr
-			     && m.prot == info.prot
-			     && m_flags == info.flags);
-	// TODO: "fuzzy matching" to handle differing merge heuristics
+	assert(MERGING_KERNEL == phase);
+	bool same_mapping = (m.start == km.start && m.end == km.end
+			     && m.prot == km.prot
+			     && m.flags == km.flags);
 	if (!same_mapping) {
 		log_err("cached mmap:");
-		vas->as->dump();
+		as->dump();
 		log_err("/proc/%d/mmaps:", t->tid);
 		print_process_mmap(t);
 
 		assert_exec(t, same_mapping,
-			    "Cached mapping '%p-%p 0x%x f:0x%x (0x%x)' should be '%p-%p 0x%x f:0x%x'",
-			    m.start, m.end, m.prot, m_flags, m.flags,
-			    info.start_addr, info.end_addr,
-			    info.prot, info.flags);
+			    "\nCached mapping '%p-%p 0x%x f:0x%x'\n"
+			    "    should be '%p-%p 0x%x f:0x%x'",
+			    m.start, m.end, m.prot, m.flags,
+			    km.start, km.end, km.prot, km.flags);
+	}
+}
+
+/**
+ * Iterate over the segments that are parsed from
+ * |/proc/[t->tid]/maps| and ensure that they match up with the cached
+ * segments for |t|.
+ *
+ * This implementation does the following
+ *  1. Merge as many adjacent cached mappings as it can.
+ *  2. Merge as many adjacent /proc/maps mappings as it can.
+ *  3. Ensure that the two merged mappings are the same.
+ *  4. Move on to the next mapping region, goto 1.
+ *
+ * There are two subtleties of this implementation.  The first is that
+ * the kernel and rr have (only very slightly! argh) different
+ * heuristics for merging adjacent memory mappings.  That means we
+ * can't simply iterate through /proc/maps and assert that a cached
+ * mapping corresponds to it, though we sure would like to.  Instead,
+ * we reduce the rr mappings to the lowest common denonminator that
+ * can be parsed from /proc/maps, and assume that adjacent mappings
+ * should be merged if they're equal per common lax criteria (i.e.,
+ * not honoring either rr or kernel criteria).  That means that the
+ * mapped segments that this helper compares may look nothing like the
+ * segments you would see in a /proc/maps dump or |as->dump()|.
+ *
+ * The second subtlety is that rr's /proc/maps iterator uses a C-style
+ * callback iterator, whereas the cached map iterator uses a C++
+ * iterator in a loop.  That means we have to do a bit of fancy
+ * footwork to make the two styles iterate over the same mappings.
+ * Since C++ iterators are more flexible, we do the C++ iteration
+ * first, and then force a state machine to make the matchin required
+ * C-iterator calls.
+ *
+ * TODO: replace iterate_memory_map()
+ */
+/*static*/ int
+AddressSpace::check_segment_iterator(void* pvas, Task* t,
+				     const struct map_iterator_data* data)
+{
+	VerifyAddressSpace* vas = static_cast<VerifyAddressSpace*>(pvas);
+	const AddressSpace* as = vas->as;
+	const struct mapped_segment_info& info = data->info;
+
+	debug("examining /proc/maps segment '%p-%p 0x%x f:0x%x'",
+	      info.start_addr, info.end_addr, info.prot, info.flags);
+
+	// Merge adjacent cached mappings.
+	if (vas->NO_PHASE == vas->phase) {
+		assert(vas->it != as->mem.end());
+
+		vas->phase = vas->MERGING_CACHED;
+		// Start of next segment range to match.
+		vas->m = vas->it->first.to_kernel();
+		vas->r = vas->it->second.to_kernel();
+		do {
+			++vas->it;
+		} while (vas->it != as->mem.end()
+			 && try_merge_adjacent(&vas->m, vas->r,
+					       vas->it->first.to_kernel(),
+					       vas->it->second.to_kernel()));
+		vas->phase = vas->INITING_KERNEL;
 	}
 
-	++vas->it;
-	return CONTINUE_ITERATING;
+	// Merge adjacent kernel mappings.
+	assert(info.flags == (info.flags & Mapping::checkable_flags_mask));
+	Mapping km(info.start_addr, info.end_addr, info.prot, info.flags,
+		   info.file_offset);
+	MappableResource kr(FileId(info.dev_major, info.dev_minor,
+				   info.inode), info.name);
+
+	if (vas->INITING_KERNEL == vas->phase) {
+		assert(kr == vas->r ||
+		       // XXX not-so-pretty hack.  If the mapped file
+		       // lives in our replayer's emulated fs, then it
+		       // will have a real system device/inode
+		       // descriptor.  We /could/ initialize the
+		       // MappableResource with that descriptor, but
+		       // we rely on quick access to the recorded
+		       // (i.e. emulated in replay) device/inode for
+		       // gc.  So this suffices for now.
+		       string::npos != kr.fsname.find(SHMEM_FS "/rr-emufs"));
+		vas->km = km;
+		vas->phase = vas->MERGING_KERNEL;
+		return CONTINUE_ITERATING;
+	}
+	if (vas->MERGING_KERNEL == vas->phase
+	    && try_merge_adjacent(&vas->km, vas->r, km, kr)) {
+		return CONTINUE_ITERATING;
+	}
+
+	// Merged as much as we can ... now the mappings must be
+	// equal.
+	vas->assert_segments_match(t);
+
+	vas->phase = vas->NO_PHASE;
+	return check_segment_iterator(pvas, t, data);
 }
 
 void
@@ -265,7 +442,11 @@ AddressSpace::verify(Task* t) const
 	assert(task_set().end() != task_set().find(t));
 
 	VerifyAddressSpace vas(this);
-	iterate_memory_map(t, assert_segment, &vas, kNeverReadSegment, NULL);
+	iterate_memory_map(t, check_segment_iterator, &vas,
+			   kNeverReadSegment, NULL);
+
+	assert(vas.MERGING_KERNEL == vas.phase);
+	vas.assert_segments_match(t);
 }
 
 /*static*/ AddressSpace::shr_ptr
@@ -276,48 +457,6 @@ AddressSpace::create(Task* t)
 	iterate_memory_map(t, populate_address_space, as.get(),
 			   kNeverReadSegment, NULL);
 	return as;
-}
-
-static bool is_adjacent_mapping(const MappingResourcePair& v1,
-				const MappingResourcePair& v2)
-{
-	const Mapping& m1 = v1.first;
-	const Mapping& m2 = v2.first;
-	if (m1.end != m2.start) {
-		debug("    (not adjacent in memory)");
-		return false;
-	}
-	if ((m1.flags & ~MAP_STACK) != (m2.flags & ~MAP_STACK)
-	    || m1.prot != m2.prot) {
-		debug("    (flags or prot differ)");
-		return false;
-	}
-	const MappableResource& r1 = v1.second;
-	const MappableResource& r2 = v2.second;
-	if ((MAP_STACK & m1.flags) && (r1.is_stack() || r2.is_stack())) {
-		debug("    adjacent stacks");
-		return true;
-	}
-	if (r1.is_scratch() && r2.is_scratch()) {
-		// XXX it's annoying to lose the task<->scratch
-		// bijection by coalescing in this case, but the
-		// kernel doesn't know to avoid merging these.  When
-		// scratch memory is mapped from shmem, we can drop
-		// this special case and get back the bijection.
-		debug("    adjacent scratch");
-		return true;
-	}
-	if (r1 != r2) {
-		debug("    (not the same resource)");
-		return false;
-	}
-	if (r1.id.is_real_device() && (off_t(m1.offset + m1.num_bytes()) !=
-				       m2.offset)) {
-		debug("    (offsets into real device aren't adjacent)");
-		return false;
-	}
-	debug("    adjacent!");
-	return true;
 }
 
 void
@@ -386,6 +525,11 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 		debug("  guessing heap starts at %p (end of text segment)",
 		      as->heap.start);
 	}
+
+	bool is_dynamic_heap = !strcmp("[heap]", info.name);
+	// This segment is adjacent to our previous guess at the start
+	// of the dynamic heap, but it's still not an explicit heap
+	// segment.  Update the guess.
 	if (as->heap.end == info.start_addr) {
 		assert(as->heap.start == as->heap.end);
 		assert(!(info.prot & PROT_EXEC));
@@ -395,9 +539,9 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	}
 
 	FileId id;
-	if (!strcmp("[heap]", info.name)) {
+	if (is_dynamic_heap) {
 		id.psdev = PSEUDODEVICE_HEAP;
-		as->update_heap(info.start_addr, info.end_addr);
+		as->update_heap(as->heap.start, info.end_addr);
 	} else if (!strcmp("[stack]", info.name)) {
 		id.psdev = PSEUDODEVICE_STACK;
 	} else if (!strcmp("[vdso]", info.name)) {

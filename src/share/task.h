@@ -74,6 +74,8 @@ struct FileId {
 		, psdev(PSEUDODEVICE_NONE) { }
 	FileId(dev_t dev, ino_t ino, PseudoDevice psdev = PSEUDODEVICE_NONE)
 		: device(dev), inode(ino), psdev(psdev) { }
+	FileId(dev_t dev_major, dev_t dev_minor, ino_t ino,
+	       PseudoDevice psdev = PSEUDODEVICE_NONE);
 
 	/**
 	 * Return the major/minor ID for the device underlying this
@@ -145,6 +147,7 @@ struct Mapping {
 	static const int map_flags_mask =
 		(MAP_ANONYMOUS | MAP_NORESERVE | MAP_PRIVATE |
 		 MAP_SHARED | MAP_STACK);
+	static const int checkable_flags_mask = (MAP_PRIVATE | MAP_SHARED);
 
 	Mapping() : start(nullptr), end(nullptr), prot(0), flags(0), offset(0)
 	{ }
@@ -205,8 +208,14 @@ struct Mapping {
 
 	size_t num_bytes() const { return end - start; }
 
-	bool operator==(const Mapping& o) const {
-		return start == o.start && end == o.end;
+	/**
+	 * Return the lowest-common-denominator interpretation of this
+	 * mapping, namely, the one that can be parsed out of
+	 * /proc/maps.
+	 */
+	Mapping to_kernel() const {
+		return Mapping(start, end, prot, flags & checkable_flags_mask,
+			       offset);
 	}
 
 	const byte* const start;
@@ -255,6 +264,16 @@ struct MappableResource {
 		return PSEUDODEVICE_STACK == id.psdev;
 	}
 
+	/**
+	 * Return a representation of this resource that would be
+	 * parsed from /proc/maps if this were mapped.
+	 */
+	MappableResource to_kernel() const {
+		return MappableResource(FileId(id.dev_major(), id.dev_minor(),
+					       id.disp_inode()),
+					fsname.c_str());
+	}
+
 	static MappableResource anonymous() {
 		return FileId(FileId::NO_DEVICE, nr_anonymous_maps++,
 			      PSEUDODEVICE_ANONYMOUS);
@@ -275,13 +294,7 @@ struct MappableResource {
 					       PSEUDODEVICE_STACK),
 					"[stack]");
 	}
-	static MappableResource syscallbuf(pid_t tid) {
-		char path[PATH_MAX];
-		format_syscallbuf_shmem_path(tid, path);
-		return MappableResource(FileId(FileId::NO_DEVICE, tid,
-					       PSEUDODEVICE_SYSCALLBUF),
-					path);
-	}
+	static MappableResource syscallbuf(pid_t tid, int fd);
 
 	FileId id;
 	/**
@@ -426,6 +439,18 @@ private:
 	/** All segments mapped into this address space. */
 	MemoryMap mem;
 
+	/**
+	 * Ensure that the cached mapping of |t| matches /proc/maps,
+	 * using adjancent-map-merging heuristics that are as lenient
+	 * as possible given the data available from /proc/maps.
+	 */
+	static int check_segment_iterator(void* vasp, Task* t,
+					  const struct map_iterator_data* data);
+
+	/**
+	 * After an exec, populate the new address space of |t| with
+	 * the existing mappings we find in /proc/maps.
+	 */
 	static int populate_address_space(void* asp, Task* t,
 					  const struct map_iterator_data* data);
 

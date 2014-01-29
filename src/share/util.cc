@@ -1687,12 +1687,12 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	/* No entries to begin with. */
 	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
 
-	close(shmem_fd);
-	remote_syscall1(t, state, SYS_close, child_shmem_fd);
-
 	t->vm()->map((const byte*)child_map_addr, args->num_syscallbuf_bytes,
 		     prot, flags, offset,
-		     MappableResource::syscallbuf(t->rec_tid));
+		     MappableResource::syscallbuf(t->rec_tid, shmem_fd));
+
+	close(shmem_fd);
+	remote_syscall1(t, state, SYS_close, child_shmem_fd);
 
 	return child_map_addr;
 }
