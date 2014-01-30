@@ -401,6 +401,21 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, long* sync_val)
 		return 1;
 	}
 
+	case SYS_clone: {
+		unsigned long flags = regs.ebx;
+		push_arg_ptr(t, (void*)(uintptr_t)flags);
+		if (flags & CLONE_UNTRACED) {
+			// We can't let tracees clone untraced tasks,
+			// because they can create nondeterminism that
+			// we can't replay.  So unset the UNTRACED bit
+			// and then cover our tracks on exit from
+			// clone().
+			regs.ebx = flags & ~CLONE_UNTRACED;
+			write_child_registers(t, &regs);
+		}
+		return 0;
+	}
+
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
 		switch (regs.ecx & FUTEX_CMD_MASK) {
@@ -1338,6 +1353,12 @@ void rec_process_syscall(Task *t)
 	case SYS_clone:	{
 		pid_t new_tid = regs.eax;
 		Task* new_task = Task::find(new_tid);
+		unsigned long flags = (uintptr_t)pop_arg_ptr<void>(t);
+
+		if (flags & CLONE_UNTRACED) {
+			regs.ebx = flags;
+			write_child_registers(t, &regs);
+		}
 
 		if (regs.eax < 0)
 			break;
