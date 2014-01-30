@@ -1,7 +1,0 @@
-rr is a lightweight tool for recording and replaying execution of applications (trees of processes and threads).  For more information about the project, including instructions on how to install, run, and build rr, please visit
-
-http://rr-project.org
-
-Or use this link to bypass the entry page and go directly to the build instructions
-
-https://github.com/mozilla/rr/wiki/Installation
