@@ -1,0 +1,5 @@
+# Switch threads very eagerly on recorded events.
+RECORD_ARGS="-e1"
+
+source `dirname $0`/util.sh mutex_pi_stress "$@"
+compare_test EXIT-SUCCESS

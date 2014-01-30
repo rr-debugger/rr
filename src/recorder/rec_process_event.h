@@ -9,8 +9,13 @@
 /**
  * Prepare |t| to enter its current syscall event.  Return nonzero if
  * a context-switch is allowed for |t|, 0 if not.
+ *
+ * Set |*kernel_sync_addr| to non-NULL to force waiting on that memory
+ * cell in the child's address space to become |sync_val|.  This is an
+ * overly general mechanism that's used for FUTEX_LOCK_PI.  If you're
+ * not FUTEX_LOCK_PI, you probably shouldn't be using this.
  */
-int rec_prepare_syscall(Task* t);
+int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, long* sync_val);
 /**
  * Prepare |t| for its current syscall event to be interrupted and
  * possibly restarted.

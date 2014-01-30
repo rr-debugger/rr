@@ -358,7 +358,7 @@ static int maybe_restart_syscall(Task* t)
 static void syscall_state_changed(Task* t, int by_waitpid)
 {
 	switch (t->ev->syscall.state) {
-	case ENTERING_SYSCALL:
+	case ENTERING_SYSCALL: {
 		debug_exec_state("EXEC_SYSCALL_ENTRY", t);
 
 		if (!t->ev->syscall.is_restart) {
@@ -374,14 +374,36 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			       sizeof(t->ev->syscall.regs));
 		}
 
-		/* continue and execute the system call */
-		t->switchable = rec_prepare_syscall(t);
+		byte* sync_addr = nullptr;
+		long sync_val;
+		t->switchable = rec_prepare_syscall(t, &sync_addr, &sync_val);
+
+		// Resume the syscall execution in the kernel context.
 		cont_nonblock(t);
 		debug_exec_state("after cont", t);
 
+		if (sync_addr) {
+			// Wait for *sync_addr == sync_val.  This
+			// implementation isn't pretty, but it's
+			// pretty much the best we can do with
+			// available kernel tools.
+			//
+			// In practice, in the mutex_pi_stress test,
+			// this loop runs ~0-5 iterations, which means
+			// there's not too much busy-waiting.  (The
+			// /elapsed time/ of the loop is wildly
+			// variable, O(1us) - O(1s), because it
+			// depends on kernel scheduling decisions.)
+			while (sync_val != t->read_word(sync_addr)) {
+				// Try to give our scheduling slot to
+				// the kernel thread that's going to
+				// write sync_addr.
+				sched_yield();
+			}
+		}
 		t->ev->syscall.state = PROCESSING_SYSCALL;
 		return;
-
+	}
 	case PROCESSING_SYSCALL:
 		debug_exec_state("EXEC_IN_SYSCALL", t);
 

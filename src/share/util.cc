@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <libdis.h>
 #include <limits.h>
+#include <linux/futex.h>
 #include <linux/magic.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -1203,6 +1204,20 @@ done:
 		debug("  restart of %s", syscallname(syscallno));
 	}
 	return is_restart;
+}
+
+bool is_now_contended_pi_futex(Task* t, byte* futex, long* next_val)
+{
+	long val = t->read_word(futex);
+	long owner_tid = (val & FUTEX_TID_MASK);
+	bool now_contended = (owner_tid != 0 && owner_tid != t->rec_tid
+			      && !(val & FUTEX_WAITERS));
+	if (now_contended) {
+		debug("[%d] %d: futex %p is %ld, so WAITERS bit will be set",
+		      get_global_time(), t->tid, futex, val);
+		*next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
+	}
+	return now_contended;
 }
 
 static bool has_fs_name(const char* path)

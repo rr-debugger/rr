@@ -624,8 +624,52 @@ static void process_clone(Task* t,
 
 }
 
-static void process_ioctl(Task* t, int state,
-			  struct rep_trace_step* step)
+static void process_futex(Task* t, int state, struct rep_trace_step* step,
+			  const struct user_regs_struct* regs)
+{
+	int op = regs->ecx & FUTEX_CMD_MASK;
+	byte* futex = (byte*)regs->ebx;
+
+	step->syscall.emu = 1;
+	step->syscall.emu_ret = 1;
+
+	if (state == STATE_SYSCALL_ENTRY) {
+		if (FUTEX_LOCK_PI == op) {
+			long next_val;
+			if (is_now_contended_pi_futex(t, futex, &next_val)) {
+				// During recording, we waited for the
+				// kernel to update the futex, but
+				// since we emulate SYS_futex in
+				// replay, we need to set it ourselves
+				// here.
+				t->write_word(futex, next_val);
+			}
+		}
+		step->action = TSTEP_ENTER_SYSCALL;
+		return;
+	}
+
+	step->action = TSTEP_EXIT_SYSCALL;
+	switch (op) {
+	case FUTEX_LOCK_PI:
+	case FUTEX_WAKE:
+	case FUTEX_WAIT_BITSET:
+	case FUTEX_WAIT:
+	case FUTEX_UNLOCK_PI:
+		step->syscall.num_emu_args = 1;
+		return;
+	case FUTEX_CMP_REQUEUE:
+	case FUTEX_WAKE_OP:
+	case FUTEX_CMP_REQUEUE_PI:
+	case FUTEX_WAIT_REQUEUE_PI:
+		step->syscall.num_emu_args = 2;
+		return;
+	default:
+		fatal("Unknown futex op %d", op);
+	}
+}
+
+static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 {
 	int request;
 	int dir;
@@ -1407,33 +1451,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return;
 
 	case SYS_futex:
-		step->syscall.emu = 1;
-		step->syscall.emu_ret = 1;
-		if (state == STATE_SYSCALL_ENTRY) {
-			step->action = TSTEP_ENTER_SYSCALL;
-		} else {
-			int op = read_child_ecx(t) & FUTEX_CMD_MASK;
-
-			step->action = TSTEP_EXIT_SYSCALL;
-			switch (op) {
-			case FUTEX_WAKE:
-			case FUTEX_WAIT_BITSET:
-			case FUTEX_WAIT:
-			case FUTEX_LOCK_PI:
-			case FUTEX_UNLOCK_PI:
-				step->syscall.num_emu_args = 1;
-				break;
-			case FUTEX_CMP_REQUEUE:
-			case FUTEX_WAKE_OP:
-			case FUTEX_CMP_REQUEUE_PI:
-			case FUTEX_WAIT_REQUEUE_PI:
-				step->syscall.num_emu_args = 2;
-				break;
-			default:
-				fatal("Unknown futex op %d", op);
-			}
-		}
-		return;
+		return process_futex(t, state, step, rec_regs);
 
 	case SYS_ioctl:
 		return process_ioctl(t, state, step);
