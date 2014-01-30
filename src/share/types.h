@@ -57,8 +57,6 @@ struct flags {
 	int dump_on;	// event
 	int dump_at;	// global time
 	int checksum;
-	/* True when we're replaying without a controlling debugger. */
-	bool autopilot;
 	/* IP port to listen on for debug connections. */
 	int dbgport;
 	/* Number of seconds to wait after startup, before starting
@@ -77,6 +75,8 @@ struct flags {
 	bool mark_stdio;
 	// Check that cached mmaps match /proc/maps after each event.
 	bool check_cached_mmaps;
+	// Start a debug server after reaching this event.
+	uint32_t goto_event;
 };
 
 struct msghdr;

@@ -319,6 +319,8 @@ static void print_usage(void)
 "Syntax for `replay'\n"
 " rr replay [OPTION]... <trace-dir>\n"
 "  -a, --autopilot            replay without debugger server\n"
+"  -g, --goto=<EVENT-NUM>     start a debug server on reaching <EVENT-NUM>\n"
+"                             in the trace.  See -m above.\n"
 "  -p, --dbgport=PORT         bind the debugger server to PORT\n"
 "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
 "\n"
@@ -374,19 +376,23 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 			     struct flags* flags)
 {
 	struct option opts[] = {
-		{ "autopilot", no_argument, NULL, 'a' },
 		{ "dbgport", required_argument, NULL, 'p' },
+		{ "goto", required_argument, NULL, 'g' },
 		{ "no-redirect-output", no_argument, NULL, 'q' },
 		{ 0 }
 	};
 	optind = cmdi + 1;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+ap:q", opts, &i)) {
+		switch (getopt_long(argc, argv, "+ag:p:q", opts, &i)) {
 		case -1:
 			return optind;
 		case 'a':
-			flags->autopilot = true;
+			flags->goto_event = numeric_limits<decltype(
+				flags->goto_event)>::max();
+			break;
+		case 'g':
+			flags->goto_event = atoi(optarg);
 			break;
 		case 'p':
 			flags->dbgport = atoi(optarg);
