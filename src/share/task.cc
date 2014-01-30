@@ -24,6 +24,7 @@
 using namespace std;
 
 static Task::Map tasks;
+static Task::PrioritySet tasks_by_priority;
 
 /*static*/ AddressSpace::Set AddressSpace::sas;
 
@@ -785,9 +786,10 @@ sleep_hack:
 	nanosleep_nointr(&ts);
 }
 
-Task::Task(pid_t _tid, pid_t _rec_tid)
+Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	: thread_time(1), ev(nullptr), pending_events()
 	, switchable(), succ_event_counter(), unstable()
+	, priority(_priority)
 	, scratch_ptr(), scratch_size()
 	, event(), flushed_syscallbuf()
 	, delay_syscallbuf_reset(), delay_syscallbuf_flush()
@@ -807,6 +809,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid)
 		// Suppress output related to it outside recording.
 		switchable = 1;
 	}
+	tasks_by_priority.insert(std::make_pair(priority, this));
 
 	push_placeholder_event(this);
 
@@ -832,6 +835,7 @@ Task::~Task()
 	}
 
 	tasks.erase(rec_tid);
+	tasks_by_priority.erase(std::make_pair(priority, this));
 	task_group->erase_task(this);
 	as->erase_task(this);
 
@@ -848,7 +852,7 @@ Task::~Task()
 Task*
 Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
 {
-	Task* t = new Task(new_tid, new_rec_tid);
+	Task* t = new Task(new_tid, new_rec_tid, priority);
 
 	t->syscallbuf_lib_start = syscallbuf_lib_start;
 	t->syscallbuf_lib_end = syscallbuf_lib_end;
@@ -936,6 +940,24 @@ Task::dump(FILE* out) const
 	}
 }
 
+void
+Task::set_priority(int value)
+{
+	if (priority == value) {
+		// don't mess with task order
+		return;
+	}
+	tasks_by_priority.erase(std::make_pair(priority, this));
+	priority = value;
+	tasks_by_priority.insert(std::make_pair(priority, this));
+}
+
+const Task::PrioritySet&
+Task::get_priority_set()
+{
+	return tasks_by_priority;
+}
+
 bool
 Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes)
 {
@@ -1007,17 +1029,6 @@ Task::maybe_update_vm(int syscallno, int state,
 		return vm()->unmap(addr, num_bytes);
 	}
 	}
-}
-
-Task*
-Task::next_roundrobin() const
-{
-	// XXX if this ever shows up on profiles, we can make Task
-	// into an invasive doubly-linked list.
-	auto it = tasks.find(rec_tid);
-	assert(this == it->second);
-	it = ++it == tasks.end() ? tasks.begin() : it;
-	return it->second;
 }
 
 static string prname_from_exe_image(const string& e)
@@ -1113,7 +1124,7 @@ Task::create(pid_t tid, pid_t rec_tid)
 {
 	assert(Task::count() == 0);
 
-	Task* t = new Task(tid, rec_tid);
+	Task* t = new Task(tid, rec_tid, 0);
 	// The very first task we fork inherits the signal
 	// dispositions of the current OS process (which should all be
 	// default at this point, but ...).  From there on, new tasks
