@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh crash "$@"
+
+record crash
+replay
+check ''

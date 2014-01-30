@@ -1103,6 +1103,7 @@ void pop_pseudosig(Task* t);
  * and |deterministic| is nonzero for deterministically-delivered
  * signals (see handle_signal.c).
  */
+enum { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
 void push_pending_signal(Task* t, int no, int deterministic);
 void pop_signal_delivery(Task* t);
 void pop_signal_handler(Task* t);
