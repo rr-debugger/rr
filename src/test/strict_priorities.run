@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh strict_priorities "$@"
+compare_test EXIT-SUCCESS
