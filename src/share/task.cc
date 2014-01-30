@@ -1020,6 +1020,18 @@ Task::post_exec()
 	prname = prname_from_exe_image(as->exe_image());
 }
 
+long
+Task::read_word(byte* child_addr)
+{
+	off_t offset = reinterpret_cast<off_t>(child_addr);
+	long v;
+	ssize_t nread = pread(child_mem_fd, &v, sizeof(v), offset);
+	assert_exec(this, sizeof(v) == nread,
+		    "Expected to read %d bytes at %p, but only read %d",
+		    sizeof(v), child_addr, nread);
+	return v;
+}
+
 void
 Task::set_signal_disposition(int sig, const struct kernel_sigaction& sa)
 {
@@ -1054,6 +1066,16 @@ Task::update_prname(byte* child_addr)
 	name[15] = '\0';
 	prname = name;
 	free(name);
+}
+
+void
+Task::write_word(byte* child_addr, long word)
+{
+	off_t offset = reinterpret_cast<off_t>(child_addr);
+	ssize_t nwritten = pwrite(child_mem_fd, &word, sizeof(word), offset);
+	assert_exec(this, sizeof(word) == nwritten,
+		    "Expected to write %d bytes at %p, but only wrote %d",
+		    sizeof(word), child_addr, nwritten);
 }
 
 /*static*/ Task::Map::const_iterator

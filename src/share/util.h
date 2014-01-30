@@ -363,6 +363,15 @@ int is_syscall_restart(Task* t, int syscallno,
 		       const struct user_regs_struct* regs);
 
 /**
+ * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
+ * will transition the futex into the contended state.  (This results
+ * in the kernel atomically setting the FUTEX_WAITERS bit on the futex
+ * value.)  The new value of the futex after the kernel updates it is
+ * returned in |next_val|.
+ */
+bool is_now_contended_pi_futex(Task* t, byte* futex, long* next_val);
+
+/**
  * Return nonzero if a mapping of |filename| with metadata |stat|,
  * using |flags| and |prot|, should almost certainly be copied to
  * trace; i.e., the file contents are likely to change in the interval

@@ -266,7 +266,75 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 	return 1;
 }
 
-int rec_prepare_syscall(Task* t)
+/**
+ * Prepare |futex| for a FUTEX_LOCK_PI call by |t|.  See
+ * |rec_process_syscall()| for a description of |kernel_sync_addr| and
+ * |sync_val|.
+ *
+ * The key to this scheme is us proving that syncing on the
+ * FUTEX_WAITERS write to the futex (i) isn't racy; (ii) is
+ * deterministically replayable.  The sequence of relevant events is
+ *
+ *  1. Thread A acquires futex f.
+ *  2. Thread B tries to fast-path acquire f in userspace and fails.
+ *  3. Thread B invokes syscall(SYS_futex, f, FUTEX_LOCK_PI) and
+ *     ptrace-traps to rr.
+ *  4. rr resumes execution of the futex syscall.
+ *  5. Eventually, the kernel does a compare-and-swap on the futex
+ *     value to try to acquire it on B's behalf.  If it fails, then
+ *     the futex transitions into a "contended" state and the kernel
+ *     does some bookkeeping that's not relevant here.
+ *  6. The kernel atomically sets the FUTEX_WAITERS bit on the futex.
+ *
+ * There are no data hazards between (1)-(4), because they merely
+ * consist of memory operations and syscall entry.  The problem begins
+ * at (4)-(5).
+ *
+ * Between (4)-(5), the kernel would read and write the futex value
+ * behind rr's back.  That means there are write/write and read/write
+ * hazards going both directions that rr can't record and replay
+ * deterministically.
+ *
+ * rr can detect that these data hazards will arise at the ptrace-trap
+ * in (3) by examining the value of f (not B's tid and doesn't have
+ * the FUTEX_WAITERS bit set).  But is even /that check/ racy?  No; if
+ * the mutex is already acquired by tracee A, then we know A won't run
+ * concurrently.  We also know that no other tracees are running
+ * /userspace/ code concurrently.  Can the kernel mutate f behind rr's
+ * back though?
+ *
+ * No.  First, rr executes FUTEX_UNLOCK_PI atomically, so it can't be
+ * running.  Second, another FUTEX_LOCK_PI call can't race with this,
+ * because (i) this is the first time rr has detected that the futex
+ * will be contended; (ii) the initial acquisition by A must have been
+ * made in userspace.  (And, as mentioned above, A"s acquisition can't
+ * race with this.)
+ *
+ * So the check isn't racy.  Now, let's have rr wait until it sees f
+ * updated with the FUTEX_WAITERS bit by the kernel in (6).  Waiting
+ * for the FUTEX_WAITERS bit is inherently racy of course, but it's
+ * atomic and sequentially consistent wrt tracee execution.  When rr
+ * detects the FUTEX_WAITERS bit, the kernel will no longer attempt to
+ * modify f.  So can rr replay this bit-set deterministically?
+ *
+ * Yes, by another version of the argument above.  No other tracees
+ * can be racing with the bit-set.  And no other kernel operations can
+ * be racing with it either (nothing new has happened with f since
+ * (4), remember).
+ *
+ * So rr (i) waits for the kernel's bit-set in recording and (ii) sets
+ * the bit itself at (3) during replay, and this is deterministic.
+ */
+static bool prep_futex_lock_pi(Task* t, byte* futex,
+			      byte** kernel_sync_addr, long* sync_val)
+{
+	if (is_now_contended_pi_futex(t, futex, sync_val)) {
+		*kernel_sync_addr = futex;
+	}
+	return true;
+}
+
+int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, long* sync_val)
 {
 	int syscallno = t->ev->syscall.no;
 	/* If we are called again due to a restart_syscall, we musn't
@@ -341,13 +409,11 @@ int rec_prepare_syscall(Task* t)
 	case SYS_futex:
 		switch (regs.ecx & FUTEX_CMD_MASK) {
 		case FUTEX_LOCK_PI:
-		case FUTEX_LOCK_PI_PRIVATE:
+			return prep_futex_lock_pi(t, (byte*)regs.ebx,
+						  kernel_sync_addr, sync_val);
 		case FUTEX_WAIT:
-		case FUTEX_WAIT_PRIVATE:
 		case FUTEX_WAIT_BITSET:
-		case FUTEX_WAIT_BITSET_PRIVATE:
 		case FUTEX_WAIT_REQUEUE_PI:
-		case FUTEX_WAIT_REQUEUE_PI_PRIVATE:
 			return 1;
 		default:
 			return 0;

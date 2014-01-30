@@ -122,6 +122,7 @@ set(BASIC_TESTS
   mprotect
   mprotect_stack
   mremap
+  mutex_pi_stress
   nanosleep
   perf_event
   prctl

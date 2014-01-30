@@ -829,6 +829,14 @@ public:
 	void post_exec();
 
 	/**
+	 * Return the word at |child_addr| in this address space.
+	 *
+	 * NB: doesn't use the ptrace API, so safe to use even when
+	 * the tracee isn't at a trace-stop.
+	 */
+	long read_word(byte* child_addr);
+
+	/**
 	 * Set the disposition and resethand semantics of |sig| to
 	 * |sa|, overwriting whatever may already be there.
 	 */
@@ -866,6 +874,14 @@ public:
 	 * task.
 	 */
 	AddressSpace::shr_ptr vm() { return as; }
+
+	/**
+	 * Write |word| to |child_addr| in this address space.
+	 *
+	 * NB: doesn't use the ptrace API, so safe to use even when
+	 * the tracee isn't at a trace-stop.
+	 */
+	void write_word(byte* child_addr, long word);
 
 	/** Return an iterator at the beginning of the task map. */
 	static Task::Map::const_iterator begin();
