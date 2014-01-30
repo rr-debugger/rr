@@ -1483,8 +1483,7 @@ static int try_one_trace_step(Task* t,
 	}
 }
 
-static void replay_one_trace_frame(struct dbg_context* dbg,
-				   Task* t)
+static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
@@ -1706,25 +1705,45 @@ static void replay_one_trace_frame(struct dbg_context* dbg,
 	debug_memory(t);
 }
 
+/**
+ * Return the previous debugger |dbg| if there was one.  Otherwise if
+ * the trace has reached the event at which the user wanted a debugger
+ * started, then create one and return it.  Otherwise return nullptr.
+ */
+struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
+{
+	if (dbg) {
+		return dbg;
+	}
+	uint32_t goto_event = rr_flags()->goto_event;
+	if (get_global_time() < goto_event) {
+		return nullptr;
+	}
+	assert(!dbg);
+
+	if (goto_event) {
+		fprintf(stderr,	"\a\n"
+			"--------------------------------------------------\n"
+			" ---> Reached selected event %u.\n", goto_event);
+	}
+
+	unsigned short port = (rr_flags()->dbgport > 0) ?
+			      rr_flags()->dbgport : getpid();
+	// Don't probe if the user specified a port.  Explicitly
+	// selecting a port is usually done by scripts, which would
+	// presumably break if a different port were to be selected by
+	// rr (otherwise why would they specify a port in the first
+	// place).  So fail with a clearer error message.
+	int probe = (rr_flags()->dbgport > 0) ? DONT_PROBE : PROBE_PORT;
+	return dbg_await_client_connection("127.0.0.1", port, probe);
+}
+
 void replay(void)
 {
 	struct dbg_context* dbg = NULL;
 
-	if (!rr_flags()->autopilot) {
-		unsigned short port = (rr_flags()->dbgport > 0) ?
-				      rr_flags()->dbgport : getpid();
-		/* Don't probe if the user specified a port.
-		 * Explicitly selecting a port is usually done by
-		 * scripts, which would presumably break if a
-		 * different port were to be selected by rr (otherwise
-		 * why would they specify a port in the first place).
-		 * So fail with a clearer error message. */
-		int probe = (rr_flags()->dbgport > 0) ?
-			    DONT_PROBE : PROBE_PORT;
-		dbg = dbg_await_client_connection("127.0.0.1", port, probe);
-	}
-
 	while (Task::count()) {
+		dbg = maybe_create_debugger(dbg);
 		replay_one_trace_frame(dbg, schedule_task());
 	}
 

@@ -27,20 +27,6 @@
 
 #define INTERRUPT_CHAR '\x03'
 
-/* When debugging an "expect" test failure, it's often useful to see
- * full debug logging, but unfortunately that scrambles the brains of
- * pexpect's O(n^2) main loop.  So define this macro to redirect the
- * verbose stuff and avoid degenerate pexpect behavior. */
-#ifdef REDIRECT_DEBUGLOG
-# undef debug
-# define debug(M, ...)							\
-	do {								\
-		fprintf(out, "DEBUG %s:%d: " M "\n",			\
-			__FILE__, __LINE__, ##__VA_ARGS__);		\
-	} while(0)
-static FILE* out;
-#endif
-
 /**
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
