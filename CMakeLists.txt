@@ -144,6 +144,7 @@ set(BASIC_TESTS
   splice
   statfs
   step_thread
+  strict_priorities
   switch_read
   syscallbuf_timeslice
   tcgets
