@@ -372,6 +372,12 @@ int is_syscall_restart(Task* t, int syscallno,
 bool is_now_contended_pi_futex(Task* t, byte* futex, long* next_val);
 
 /**
+ * Return true if |sig| may cause the status of other tasks to change
+ * unpredictably beyond rr's observation.
+ */
+bool possibly_destabilizing_signal(int sig);
+
+/**
  * Return nonzero if a mapping of |filename| with metadata |stat|,
  * using |flags| and |prot|, should almost certainly be copied to
  * trace; i.e., the file contents are likely to change in the interval

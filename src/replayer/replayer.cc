@@ -1123,7 +1123,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 	return 0;
 }
 
-static void emulate_signal_delivery(Task* oldtask)
+static void emulate_signal_delivery(Task* oldtask, int sig)
 {
 	/* We are now at the exact point in the child where the signal
 	 * was recorded, emulate it using the next trace line (records
@@ -1138,7 +1138,16 @@ static void emulate_signal_delivery(Task* oldtask)
 	trace = &t->trace;
 
 	/* Restore the signal-hander frame data, if there was one. */
-	set_child_data(t);
+	bool restored_sighandler_frame = 0 < set_child_data(t);
+	if (!restored_sighandler_frame
+	    && possibly_destabilizing_signal(sig)) {
+		push_pending_signal(t, sig, DETERMINISTIC_SIG);
+		t->ev->type = EV_SIGNAL_DELIVERY;
+
+		t->destabilize_task_group();
+
+		pop_signal_delivery(t);
+	}
 	/* If this signal had a user handler, and we just set up the
 	 * callframe, and we need to restore the $sp for continued
 	 * execution. */
@@ -1168,8 +1177,7 @@ static void assert_at_recorded_rcb(Task* t, int event)
  * update registers to what was recorded.  Return 0 if successful or 1
  * if an unhandled interrupt occurred.
  */
-static int emulate_deterministic_signal(Task* t,
-					int sig, int stepi)
+static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 {
 	int event = t->trace.stop_reason;
 
@@ -1191,7 +1199,7 @@ static int emulate_deterministic_signal(Task* t,
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
 	} else {
-		emulate_signal_delivery(t);
+		emulate_signal_delivery(t, sig);
 	}
 
 	return 0;
@@ -1211,7 +1219,7 @@ static int emulate_async_signal(Task* t,
 		return 1;
 	}
 	if (sig) {
-		emulate_signal_delivery(t);
+		emulate_signal_delivery(t, sig);
 	}
 	stop_hpc(t);
 	return 0;

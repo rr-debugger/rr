@@ -94,6 +94,7 @@ set(BASIC_TESTS
   clock
   clone
   condvar_stress
+  crash
   exit_group
   fadvise
   flock

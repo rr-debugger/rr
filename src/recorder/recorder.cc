@@ -635,68 +635,6 @@ static void runnable_state_changed(Task* t)
 	maybe_reset_syscallbuf(t);
 }
 
-enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
-static int default_action(int sig)
-{
-	if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
-		return TERMINATE;
-	}
-	switch (sig) {
-		/* TODO: SSoT for signal defs/semantics. */
-#define CASE(_sig, _act) case SIG## _sig: return _act
-	CASE(HUP, TERMINATE);
-	CASE(INT, TERMINATE);
-	CASE(QUIT, DUMP_CORE);
-	CASE(ILL, DUMP_CORE);
-	CASE(ABRT, DUMP_CORE);
-	CASE(FPE, DUMP_CORE);
-	CASE(KILL, TERMINATE);
-	CASE(SEGV, DUMP_CORE);
-	CASE(PIPE, TERMINATE);
-	CASE(ALRM, TERMINATE);
-	CASE(TERM, TERMINATE);
-	CASE(USR1, TERMINATE);
-	CASE(USR2, TERMINATE);
-	CASE(CHLD, IGNORE);
-	CASE(CONT, CONTINUE);
-	CASE(STOP, STOP);
-	CASE(TSTP, STOP);
-	CASE(TTIN, STOP);
-	CASE(TTOU, STOP);
-	CASE(BUS, DUMP_CORE);
-	/*CASE(POLL, TERMINATE);*/
-	CASE(PROF, TERMINATE);
-	CASE(SYS, DUMP_CORE);
-	CASE(TRAP, DUMP_CORE);
-	CASE(URG, IGNORE);
-	CASE(VTALRM, TERMINATE);
-	CASE(XCPU, DUMP_CORE);
-	CASE(XFSZ, DUMP_CORE);
-	/*CASE(IOT, DUMP_CORE);*/
-	/*CASE(EMT, TERMINATE);*/
-	CASE(STKFLT, TERMINATE);
-	CASE(IO, TERMINATE);
-	CASE(PWR, TERMINATE);
-	/*CASE(LOST, TERMINATE);*/
-	CASE(WINCH, IGNORE);
-	default:
-		fatal("Unknown signal %d", sig);
-#undef CASE
-	}
-}
-
-/**
- * Return nonzero if |sig| may cause the status of other tasks to
- * change unpredictably beyond rr's observation.
- */
-static int possibly_destabilizing_signal(int sig)
-{
-	/* XXX: this heuristic is based only on the fact that it works
-	 * with SIGABRT and SIGTERM.  Deeper answers are almost
-	 * certainly available in the kernel source. */
-	return DUMP_CORE == default_action(sig);
-}
-
 /**
  * |t| is delivering a signal, and its state changed.  |by_waitpid| is
  * nonzero if the status change was observed by a waitpid() call.

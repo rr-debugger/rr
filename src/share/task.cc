@@ -680,7 +680,7 @@ struct TaskGroup : public HasTaskSet {
 	}
 
 	static shr_ptr create(Task* t) {
-		shr_ptr tg(new TaskGroup(t->tid));
+		shr_ptr tg(new TaskGroup(t->rec_tid));
 		tg->insert_task(t);
 		return tg;
 	}
@@ -895,9 +895,27 @@ Task::desched_rec() const
 		(EV_DESCHED == ev->type) ? ev->desched.rec : NULL);
 }
 
+/**
+ * In recording, Task is notified of a destabilizing signal event
+ * *after* it's been recorded, at the next trace-event-time.  In
+ * replay though we're notified at the occurrence of the signal.  So
+ * to display the same event time in logging across record/replay,
+ * apply this offset.
+ */
+static int signal_delivery_event_offset()
+{
+	return RECORD == rr_flags()->option ? -1 : 0;
+}
+
 void
 Task::destabilize_task_group()
 {
+	if (EV_SIGNAL_DELIVERY == ev->type) {
+		printf("[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
+		       get_global_time() + signal_delivery_event_offset(),
+		       rec_tid, tgid(), signalname(ev->signal.no));
+	}
+
 	task_group->destabilize();
 }
 
