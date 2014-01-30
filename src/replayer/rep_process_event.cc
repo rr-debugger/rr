@@ -541,87 +541,98 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 	}
 }
 
+/**
+ * Return true iff the syscall represented by |frame| (either entry to
+ * or exit from) failed.
+ */
+static bool is_failed_syscall(const struct trace_frame* frame)
+{
+	struct trace_frame next_frame;
+	if (STATE_SYSCALL_ENTRY == frame->state) {
+		peek_next_trace(&next_frame);
+		frame = &next_frame;
+	}
+	return SYSCALL_FAILED(frame->recorded_regs.eax);
+}
+
 static void process_clone(Task* t,
 			  struct trace_frame* trace, int state)
 {
-	int syscall = SYS_clone;
-
-	if (state == STATE_SYSCALL_ENTRY) {
-		struct trace_frame next_trace;
-		peek_next_trace(&next_trace);
-		if (next_trace.recorded_regs.eax < 0) {
-			/* creation failed, emulate it */
-			enter_syscall_emu(t, SYS_clone);
-			return;
-		}
-	}
-
-	if (state == STATE_SYSCALL_EXIT) {
-		if (trace->recorded_regs.eax < 0) {
-			/* creation failed, emulate it */
+	int syscallno = SYS_clone;
+	if (is_failed_syscall(trace)) {
+		/* creation failed, emulate it */
+		return (state == STATE_SYSCALL_ENTRY) ?
+			enter_syscall_emu(t, SYS_clone) :
 			exit_syscall_emu(t, SYS_clone, 0);
-			return;
-		}
 	}
-
 	if (state == STATE_SYSCALL_ENTRY) {
-		enter_syscall_exec(t, SYS_clone);
-	} else {
-		/* execute the system call */
-		__ptrace_cont(t);
-		/* wait for the signal that a new process is created */
-		__ptrace_cont(t);
-
-		int rec_tid = trace->recorded_regs.eax;
-		pid_t new_tid = sys_ptrace_getmsg(t);
-
-		/* wait until the new thread is ready */
-		int status;
-		sys_waitpid(new_tid, &status);
-
-		read_child_registers(t, &t->regs);
-		const byte* stack = (const byte*)t->regs.ecx;
-		int flags_arg = (SYS_clone == t->regs.orig_eax) ?
-				t->regs.ebx : 0;
-
-		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
-					  stack, new_tid, rec_tid);
-
-		/* FIXME: what if registers are non-null and contain
-		 * an invalid address? */
-		set_child_data(t);
-		set_child_data(t);
-
-		size_t size;
-		byte* rec_addr;
-		byte* data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
-		if (data != NULL ) {
-			write_child_data_n(new_task, size, rec_addr, data);
-			free(data);
-		}
-
-		data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
-		if (data != NULL ) {
-			write_child_data_n(new_task, size, rec_addr, data);
-			free(data);
-		}
-
-		data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
-		if (data != NULL ) {
-			write_child_data_n(new_task, size, rec_addr, data);
-			free(data);
-		}
-
-		/* set the ebp register to the recorded value -- it
-		 * should not point to data on that is used
-		 * afterwards */
-		write_child_ebp(t, trace->recorded_regs.ebp);
-		set_return_value(t);
-		validate_args(syscall, state, t);
-
-		init_scratch_memory(new_task);
+		return enter_syscall_exec(t, SYS_clone);
 	}
 
+	struct user_regs_struct rec_regs = trace->recorded_regs;
+	unsigned long flags = rec_regs.ebx;
+
+	if (flags & CLONE_UNTRACED) {
+		// See related comment in rec_process_event.c.
+		rec_regs.ebx = flags & ~CLONE_UNTRACED;
+		write_child_registers(t, &rec_regs);
+	}
+
+	/* execute the system call */
+	__ptrace_cont(t);
+	/* wait for the signal that a new process is created */
+	__ptrace_cont(t);
+
+	int rec_tid = rec_regs.eax;
+	pid_t new_tid = sys_ptrace_getmsg(t);
+
+	/* wait until the new thread is ready */
+	int status;
+	sys_waitpid(new_tid, &status);
+
+	read_child_registers(t, &t->regs);
+	const byte* stack = (const byte*)t->regs.ecx;
+	int flags_arg = (SYS_clone == t->regs.orig_eax) ? t->regs.ebx : 0;
+
+	Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
+				  stack, new_tid, rec_tid);
+
+	/* FIXME: what if registers are non-null and contain an
+	 * invalid address? */
+	set_child_data(t);
+	set_child_data(t);
+
+	size_t size;
+	byte* rec_addr;
+	byte* data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
+	if (data != NULL ) {
+		write_child_data_n(new_task, size, rec_addr, data);
+		free(data);
+	}
+
+	data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
+	if (data != NULL ) {
+		write_child_data_n(new_task, size, rec_addr, data);
+		free(data);
+	}
+
+	data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
+	if (data != NULL ) {
+		write_child_data_n(new_task, size, rec_addr, data);
+		free(data);
+	}
+
+	/* set the ebp register to the recorded value -- it should not
+	 * point to data on that is used afterwards */
+	t->regs.ebp = rec_regs.ebp;
+	// Restore the saved flags, to hide the fact that we may have
+	// masked out CLONE_UNTRACED.
+	t->regs.ebx = flags;
+	write_child_registers(t, &t->regs);
+	set_return_value(t);
+	validate_args(syscallno, state, t);
+
+	init_scratch_memory(new_task);
 }
 
 static void process_futex(Task* t, int state, struct rep_trace_step* step,
