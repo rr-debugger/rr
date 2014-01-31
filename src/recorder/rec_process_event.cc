@@ -843,6 +843,8 @@ static void process_execve(Task* t,
 		return;
 	}
 
+	t->post_exec();
+
 	long* stack_ptr = (long*)regs.esp;
 
 	/* start_stack points to argc - iterate over argv pointers */
@@ -901,8 +903,6 @@ static void process_execve(Task* t,
 	record_child_data(t, 16, rand_addr);
 
 	init_scratch_memory(t);
-
-	t->post_exec();
 }
 
 static void process_ipc(Task* t,
