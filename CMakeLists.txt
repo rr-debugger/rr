@@ -235,7 +235,7 @@ set(CPACK_STRIP_FILES TRUE)
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
   "Lightweight tool for recording and replaying execution of applications (trees of processes and threads)")
-set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
 set(CPACK_PACKAGE_VENDOR "Mozilla Foundation")
 
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Mozilla Foundation")
