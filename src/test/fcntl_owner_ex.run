@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh fcntl_owner_ex "$@"
+
+fails "syscalbuffer mis-replays syscalls with inoutparams."
+
+compare_test EXIT-SUCCESS

@@ -97,6 +97,7 @@ set(BASIC_TESTS
   crash
   exit_group
   fadvise
+  fcntl_owner_ex
   flock
   fork_syscalls
   hello

@@ -2,9 +2,6 @@
 
 #include "rrutil.h"
 
-#define _GNU_SOURCE
-#include <sched.h>
-
 int main(void) {
 	cpu_set_t cpus;
 
