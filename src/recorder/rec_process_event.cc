@@ -1563,6 +1563,11 @@ void rec_process_syscall(Task *t)
 					  (byte*)regs.edx);
 			break;
 
+		case F_GETOWN_EX:
+			record_child_data(t, sizeof(struct f_owner_ex),
+					  (byte*)regs.edx);
+			break;
+
 		default:
 			fatal("Unknown fcntl %d", cmd);
 		}

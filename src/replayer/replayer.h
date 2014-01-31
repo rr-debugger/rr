@@ -59,8 +59,11 @@ struct rep_flush_state {
 	/* After the data is restored, the number of record bytes that
 	 * still need to be flushed. */
 	size_t num_rec_bytes_remaining;
-	/* The record we're currently replaying. */
-	const struct syscallbuf_record* rec;
+	/* The syscallbuf record that was saved to trace.  This is
+	 * what we'll use to restore |child_rec| below. */
+	const struct syscallbuf_record* rec_rec;
+	/* Pointer to the tracee's next syscallbuf record to replay. */
+	struct syscallbuf_record* child_rec;
 	/* The next step to take. */
 	RepFlushState state;
 	/* Track the state of retiring desched arm/disarm ioctls, when
