@@ -32,6 +32,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <limits>
+
 #include "dbg.h"
 #include "hpc.h"
 #include "ipc.h"
@@ -49,6 +51,8 @@
 #define PTRACE_EVENT_SECCOMP_OBSOLETE	8 // ubuntu 12.04
 #define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
 #endif
+
+using namespace std;
 
 /* The tracee doesn't open the desched event fd during replay, so it
  * can't be shared to this process.  We pretend that the tracee shared
@@ -363,6 +367,7 @@ void iterate_memory_map(Task* t,
 			    "Failed to open %s", maps_path);
 	}
 	while (fgets(line, sizeof(line), maps_file)) {
+		uint64_t start, end;
 		struct map_iterator_data data;
 		char flags[32];
 		int nparsed;
@@ -371,19 +376,36 @@ void iterate_memory_map(Task* t,
 		memset(&data, 0, sizeof(data));
 		data.raw_map_line = line;
 
-		nparsed = sscanf(line, "%p-%p %31s %Lx %x:%x %Lu %s",
-				 &data.info.start_addr, &data.info.end_addr,
+		nparsed = sscanf(line, "%llx-%llx %31s %Lx %x:%x %Lu %s",
+				 &start, &end,
 				 flags, &data.info.file_offset,
 				 &data.info.dev_major, &data.info.dev_minor,
 				 &data.info.inode, data.info.name);
-		trim_leading_blanks(data.info.name);
-
 		assert_exec(t,
 			    (8/*number of info fields*/ == nparsed
 			     || 7/*num fields if name is blank*/ == nparsed),
 			    "Only parsed %d fields of segment info from\n"
 			    "%s",
 			    nparsed, data.raw_map_line);
+
+		trim_leading_blanks(data.info.name);
+		if (start > numeric_limits<uint32_t>::max()
+		    || end > numeric_limits<uint32_t>::max()
+		    || !strcmp(data.info.name, "[vsyscall]")) {
+			// We manually read the exe link here because
+			// this helper is used to set
+			// |t->vm()->exe_image()|, so we can't rely on
+			// that being correct yet.
+			char proc_exe[PATH_MAX];
+			char exe[PATH_MAX];
+			snprintf(proc_exe, sizeof(proc_exe),
+				 "/proc/%d/exe", t->tid);
+			readlink(proc_exe, exe, sizeof(exe));
+			fatal("Sorry, tracee %d has x86-64 image %s and that's not supported.",
+			      t->tid, exe);
+		}
+		data.info.start_addr = (byte*)start;
+		data.info.end_addr = (byte*)end;
 
 		data.info.prot |= strchr(flags, 'r') ? PROT_READ : 0;
 		data.info.prot |= strchr(flags, 'w') ? PROT_WRITE : 0;
