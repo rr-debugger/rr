@@ -1453,6 +1453,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			case F_SETLKW64:
 			case F_GETLK:
 			case F_GETLK64:
+			case F_GETOWN_EX:
 				step->syscall.num_emu_args = 1;
 				break;
 			default:
