@@ -201,18 +201,23 @@ static void dump_events_matching(FILE* out, const char* spec)
 
 static void start_dumping(int argc, char* argv[], char** envp)
 {
-	int i;
+	FILE* out = stdout;
 
 	rep_setup_trace_dir(argv[0]);
 	open_trace_files();
 	rep_init_trace_files();
 
+	fprintf(out,
+		"global_time thread_time tid reason entry/exit "
+		"hw_interrupts page_faults adapted_rbc instructions "
+		"eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
+
 	if (1 == argc) {
-		/* No specs => dump all events. */
+		// No specs => dump all events.
 		return dump_events_matching(stdout, NULL /*all events*/);
 	}
 
-	for (i = 1; i < argc; ++i) {
+	for (int i = 1; i < argc; ++i) {
 		dump_events_matching(stdout, argv[i]);
 	}
 }
@@ -325,9 +330,12 @@ static void print_usage(void)
 "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
 "\n"
 "Syntax for `dump`\n"
-" rr dump <trace_dir> <event-spec>...\n"
+" rr dump [OPTIONS] <trace_dir> <event-spec>...\n"
 "  Event specs can be either an event number like `127', or a range\n"
 "  like `1000-5000'.  By default, all events are dumped.\n"
+"  -r, --raw                  dump trace frames in a more easily\n"
+"                             machine-parseable format instead of the\n"
+"                             default human-readable format\n"
 "\n"
 "A command line like `rr (-h|--help|help)...' will print this message.\n"
 , stderr);
@@ -409,14 +417,18 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 static int parse_dump_args(int cmdi, int argc, char** argv,
 			   struct flags* flags)
 {
-	/* No named options for now. */
-	struct option opts[] = { { 0 } };
+	struct option opts[] = {
+		{ "raw", no_argument, NULL, 'r' },
+	};
 	optind = cmdi + 1;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "", opts, &i)) {
+		switch (getopt_long(argc, argv, "r", opts, &i)) {
 		case -1:
 			return optind;
+		case 'r':
+			flags->raw_dump = true;
+			break;
 		default:
 			return -1;
 		}

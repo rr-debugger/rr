@@ -77,6 +77,9 @@ struct flags {
 	bool check_cached_mmaps;
 	// Start a debug server after reaching this event.
 	uint32_t goto_event;
+	// Dump trace frames in a more easily machine-parseable
+	// format.
+	bool raw_dump;
 };
 
 struct msghdr;
