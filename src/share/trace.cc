@@ -137,24 +137,44 @@ const char* strevent(int event)
 
 void dump_trace_frame(FILE* out, const struct trace_frame* f)
 {
+	bool raw_dump = rr_flags()->raw_dump;
 	const struct user_regs_struct* r = &f->recorded_regs;
 
-	fprintf(out,
+	if (raw_dump) {
+		fprintf(out, " %d %d %d %d %d",
+			f->global_time, f->thread_time, f->tid,
+			f->stop_reason, f->state);
+	} else {
+		fprintf(out,
 "{\n  global_time:%u, event:`%s' (state:%d), tid:%d, thread_time:%u",
-		f->global_time, strevent(f->stop_reason), f->state,
-		f->tid, f->thread_time);
+			f->global_time, strevent(f->stop_reason), f->state,
+			f->tid, f->thread_time);
+	}
 	if (!f->has_exec_info) {
-		fprintf(out, "\n}\n");
+		if (!raw_dump) {
+			fprintf(out, "\n}");
+		}
+		fprintf(out, "\n");
 		return;
 	}
 
-	fprintf(out,
+	if (raw_dump) {
+		fprintf(out,
+			" %lld %lld %lld %lld"
+			" %ld %ld %ld %ld %ld %ld %ld"
+			" %ld %ld %ld %ld\n",
+			f->hw_interrupts, f->page_faults, f->rbc, f->insts,
+			r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
+			r->orig_eax, r->esp, r->eip, r->eflags);
+	} else {
+		fprintf(out,
 "\n  hw_ints:%lld, faults:%lld, rbc:%lld, insns:%lld"
 "\n  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx"
 "\n  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld\n}\n",
-		f->hw_interrupts, f->page_faults, f->rbc, f->insts,
-		r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
-		r->eip, r->esp, r->eflags, r->orig_eax);
+			f->hw_interrupts, f->page_faults, f->rbc, f->insts,
+			r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
+			r->eip, r->esp, r->eflags, r->orig_eax);
+	}
 }
 
 /**
