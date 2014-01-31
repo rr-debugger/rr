@@ -1,7 +1,5 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#define _GNU_SOURCE
-
 #include "rrutil.h"
 
 #define FILENAME "foo.txt"

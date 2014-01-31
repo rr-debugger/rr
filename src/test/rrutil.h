@@ -3,7 +3,7 @@
 #ifndef RRUTIL_H
 #define RRUTIL_H
 
-#define _GNU_SOURCE
+#define _GNU_SOURCE 1
 
 #include <assert.h>
 #include <errno.h>
