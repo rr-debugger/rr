@@ -94,7 +94,9 @@ find_next_runnable_task(int* by_waitpid)
 
 			debug("  %d is blocked on %s, checking status ...", tid,
 			      strevent(t->event));
-			if (0 != sys_waitpid_nonblock(tid, &t->status)) {
+			if ((t->pseudo_blocked && sys_waitpid(tid, &t->status))
+			    || 0 != sys_waitpid_nonblock(tid, &t->status)) {
+				t->pseudo_blocked = 0;
 				*by_waitpid = 1;
 				debug("  ready with status 0x%x", t->status);
 				return t;

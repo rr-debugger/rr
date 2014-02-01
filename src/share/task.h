@@ -947,6 +947,11 @@ public:
 	 * current state.  Some operations must be completed
 	 * atomically and aren't switchable. */
 	int switchable;
+	/* Nonzero when this is switchable for semantic purposes, but
+	 * definitely isn't blocked on ony resource.  In that case,
+	 * it's safe for the scheduler to do a blocking waitpid on
+	 * this if our scheduling slot is open. */
+	int pseudo_blocked;
 	/* Number of times this context has been scheduled in a row,
 	 * which approximately corresponds to the number of events
 	 * it's processed in succession.  The scheduler maintains this
