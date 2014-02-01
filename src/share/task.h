@@ -695,6 +695,18 @@ public:
 	~Task();
 
 	/**
+	 * Return true iff this is at an execution state where
+	 * resuming execution may lead to the restart of an
+	 * interrupted syscall.
+	 *
+	 * For example, if a signal without a user handler is about to
+	 * be delivered to this just after a syscall interruption,
+	 * then delivering the signal may restart the first syscall
+	 * and this method will return true.
+	 */
+	bool at_may_restart_syscall() const;
+
+	/**
 	 * Return a new Task cloned from this.  |flags| are a set of
 	 * CloneFlags (see above) that determine which resources are
 	 * shared or copied to the new child.  |new_tid| is the tid

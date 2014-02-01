@@ -30,7 +30,7 @@ struct trace_frame;
 	(-ERANGE <= (int)(eax) && (int)(eax) < 0)
 #define SYSCALL_MAY_RESTART(eax) \
 	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax)	\
-	 || -ERESTARTSYS == (eax))
+	 || -ERESTARTNOHAND == (eax) || -ERESTARTSYS == (eax))
 
 #define SHMEM_FS "/dev/shm"
 

@@ -127,6 +127,7 @@ struct mmapped_file {
  * header apparently isn't distributed with libc. */
 #define ERESTARTSYS 512
 #define ERESTARTNOINTR 513
+#define ERESTARTNOHAND 514
 #define ERESTART_RESTARTBLOCK 516
 
 #define MAX_RAW_DATA_SIZE		(1 << 30)
