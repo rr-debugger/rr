@@ -32,6 +32,7 @@ static void fin_intr_sleep(int secs) {
 static void fin_poll(int secs) {
 	static int pipefds[2];
 	struct pollfd pfd;
+	int ret;
 
 	pipe(pipefds);
 
@@ -39,7 +40,11 @@ static void fin_poll(int secs) {
 	pfd.events = POLLIN;
 	pfd.revents = -1;
 	errno = 0;
-	test_assert(0 == poll(&pfd, 1, 1000 * secs));
+
+	ret = poll(&pfd, 1, 1000 * secs);
+	atomic_printf("r: poll() returns %d; pfd.revents = 0x%x\n",
+		      ret, pfd.revents);
+	test_assert(0 == ret);
 	test_assert(0 == pfd.revents);
 }
 

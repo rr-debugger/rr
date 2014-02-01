@@ -179,7 +179,7 @@ static void handle_ptrace_event(Task** tp)
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
 static void task_continue(Task* t, int force_cont, int sig)
 {
-	int may_restart = (EV_SYSCALL_INTERRUPTION == t->ev->type);
+	bool may_restart = t->at_may_restart_syscall();
 
 	if (sig) {
 		debug("  delivering %s to %d", signalname(sig), t->tid);
@@ -350,6 +350,11 @@ static int maybe_restart_syscall(Task* t)
 		return 1;
 	}
 	if (EV_SYSCALL_INTERRUPTION == t->ev->type) {
+		debug("  %d: popping abandoned interrupted %s; pending events:",
+		      t->tid, syscallname(t->ev->syscall.no));
+#ifdef DEBUGTAG
+		log_pending_events(t);
+#endif
 		pop_syscall_interruption(t);
 	}
 	return 0;

@@ -849,6 +849,17 @@ Task::~Task()
 	debug("  dead");
 }
 
+bool
+Task::at_may_restart_syscall() const
+{
+	ssize_t depth = FIXEDSTACK_DEPTH(&pending_events);
+	const struct event* prev_ev =
+		depth > 2 ? &pending_events.elts[depth - 2] : nullptr;
+	return EV_SYSCALL_INTERRUPTION == ev->type
+		|| (EV_SIGNAL_DELIVERY == ev->type
+		    && prev_ev && EV_SYSCALL_INTERRUPTION == prev_ev->type);
+}
+
 Task*
 Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
 {
