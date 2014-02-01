@@ -28,6 +28,7 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 
+#include <limits>
 #include <utility>
 
 #include <rr/rr.h>
@@ -625,6 +626,17 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, long* sync_val)
 	}
 
 	case SYS_sched_yield:
+		// Force |t| to be context-switched if another thread
+		// of equal or higher priority is available.  We set
+		// the counter to INT_MAX / 2 because various other
+		// irrelevant events intervening between now and
+		// scheduling may increment t's event counter, and we
+		// don't want it to overflow.
+		t->succ_event_counter = numeric_limits<int>::max() / 2;
+		// We're just pretending that t is blocked.  The next
+		// time its scheduling slot opens up, it's OK to
+		// blocking-waitpid on t to see its status change.
+		t->pseudo_blocked = 1;
 		return 1;
 
 	default:

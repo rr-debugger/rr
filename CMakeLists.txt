@@ -135,6 +135,7 @@ set(BASIC_TESTS
   rdtsc
   save_data_fd
   sched_setaffinity
+  sched_yield
   segfault
   sigchld_interrupt_signal
   sigill
