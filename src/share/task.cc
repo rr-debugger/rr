@@ -788,7 +788,7 @@ sleep_hack:
 
 Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	: thread_time(1), ev(nullptr), pending_events()
-	, switchable(), succ_event_counter(), unstable()
+	, switchable(), pseudo_blocked(), succ_event_counter(), unstable()
 	, priority(_priority)
 	, scratch_ptr(), scratch_size()
 	, event(), flushed_syscallbuf()
