@@ -2,6 +2,12 @@
 
 #include "rrutil.h"
 
+static void breakpoint(void) {
+	int break_here = 1;
+	(void)break_here;
+}
+
+
 static int child(void* arg) {
 	return 0;
 }
@@ -11,11 +17,17 @@ int main(int argc, char *argv[]) {
 	void* stack = mmap(NULL, stack_size,
 			   PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
 			   -1, 0);
-	int pid = clone(child, stack + stack_size,
-			CLONE_FS | CLONE_FILES | CLONE_UNTRACED,
-			NULL, NULL, NULL);
+	int pid;
 	int status;
 	int ret;
+
+	sys_gettid();
+	/* NB: no syscalls in between the sys_gettid() above and this
+	 * clone(). */
+	breakpoint();
+	pid = clone(child, stack + stack_size,
+		    CLONE_FS | CLONE_FILES | CLONE_UNTRACED,
+		    NULL, NULL, NULL);
 
 	atomic_printf("clone()d pid: %d\n", pid);
 	test_assert(pid > 0);
@@ -25,6 +37,17 @@ int main(int argc, char *argv[]) {
 
 	atomic_printf("child status: 0x%x\n", status);
 	test_assert(status == 0);
+
+	sys_gettid();
+	/* NB: no syscalls in between the sys_gettid() above and this
+	 * clone(). */
+	breakpoint();
+	pid = clone(child, stack + stack_size,
+		    CLONE_SIGHAND /*must also have CLONE_VM*/,
+		    NULL, NULL, NULL);
+
+	atomic_printf("clone(CLONE_SIGHAND)'d pid: %d\n", pid);
+	test_assert(-1 == pid);
 
 	atomic_puts("EXIT-SUCCESS");
 	return 0;

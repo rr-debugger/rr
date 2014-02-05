@@ -556,17 +556,21 @@ static bool is_failed_syscall(const struct trace_frame* frame)
 }
 
 static void process_clone(Task* t,
-			  struct trace_frame* trace, int state)
+			  struct trace_frame* trace, int state,
+			  struct rep_trace_step* step)
 {
 	int syscallno = SYS_clone;
 	if (is_failed_syscall(trace)) {
 		/* creation failed, emulate it */
-		return (state == STATE_SYSCALL_ENTRY) ?
-			enter_syscall_emu(t, SYS_clone) :
-			exit_syscall_emu(t, SYS_clone, 0);
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->action = (state == STATE_SYSCALL_ENTRY) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
 	}
 	if (state == STATE_SYSCALL_ENTRY) {
-		return enter_syscall_exec(t, SYS_clone);
+		step->action = TSTEP_ENTER_SYSCALL;
+		return;
 	}
 
 	struct user_regs_struct rec_regs = trace->recorded_regs;
@@ -577,6 +581,8 @@ static void process_clone(Task* t,
 		rec_regs.ebx = flags & ~CLONE_UNTRACED;
 		write_child_registers(t, &rec_regs);
 	}
+
+	// TODO: can debugger signals interrupt us here?
 
 	/* execute the system call */
 	__ptrace_cont(t);
@@ -633,6 +639,8 @@ static void process_clone(Task* t,
 	validate_args(syscallno, state, t);
 
 	init_scratch_memory(new_task);
+
+	step->action = TSTEP_RETIRE;
 }
 
 static void process_futex(Task* t, int state, struct rep_trace_step* step,
@@ -1420,6 +1428,9 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	/* Manual implementations of irregular syscalls. */
 
 	switch (syscall) {
+	case SYS_clone:
+		return process_clone(t, trace, state, step);
+
 	case SYS_exit:
 	case SYS_exit_group:
 		step->syscall.emu = 0;
@@ -1571,11 +1582,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	step->action = TSTEP_RETIRE;
 
 	switch (syscall) {
-
-	case SYS_clone:
-		process_clone(t, trace, state);
-		break;
-
 	case SYS_execve: {
 		int check;
 
