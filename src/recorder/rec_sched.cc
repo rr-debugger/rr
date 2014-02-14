@@ -178,18 +178,23 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 
 		debug("  all tasks blocked or some unstable, waiting for runnable (%d total)",
 		      Task::count());
-		while (-1 == (tid = waitpid(-1, &status,
-					    __WALL | WSTOPPED | WUNTRACED))) {
-			if (EINTR == errno) {
-				debug("  waitpid(-1) interrupted by EINTR");
-				return nullptr;
+		while (!next) {
+			tid = waitpid(-1, &status,
+				      __WALL | WSTOPPED | WUNTRACED);
+			if (-1 == tid) {
+				if (EINTR == errno) {
+					debug("  waitpid(-1) interrupted");
+					return nullptr;
+				}
+				fatal("Failed to waitpid()");
 			}
-			fatal("Failed to waitpid()");
+			debug("  %d changed status to 0x%x", tid, status);
+
+			next = Task::find(tid);
+			if (!next) {
+				debug("    ... but it's dead");
+			}
 		}
-		debug("  %d changed status to 0x%x", tid, status);
-
-		next = Task::find(tid);
-
 		assert(next->unstable || next->may_be_blocked());
 		next->status = status;
 		*by_waitpid = 1;

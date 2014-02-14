@@ -128,6 +128,7 @@ set(BASIC_TESTS
   mutex_pi_stress
   nanosleep
   perf_event
+  poll_sig_race
   prctl
   prctl_name
   priority

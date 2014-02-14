@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh poll_sig_race "$@"
+compare_test EXIT-SUCCESS

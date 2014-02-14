@@ -1395,20 +1395,26 @@ int ppoll(struct pollfd* fds, nfds_t nfds,
 {
 	void* ptr = prep_syscall(NO_SIGNAL_SAFETY);
 	struct pollfd* fds2 = NULL;
+	struct timespec* timeout_arg = NULL;
+	struct timespec timeout_copy;
 	long ret;
 
+	if (timeout_ts) {
+		timeout_copy = *timeout_ts;
+		timeout_arg = &timeout_copy;
+	}
 	if (fds && nfds > 0) {
 		fds2 = ptr;
 		ptr += nfds * sizeof(*fds2);
 	}
 	if (!start_commit_buffered_syscall(SYS_ppoll, ptr, MAY_BLOCK)) {
-		return syscall(SYS_ppoll, fds, nfds, timeout_ts, sigmask);
+		return syscall(SYS_ppoll, fds, nfds, timeout_arg, sigmask);
 	}
 	if (fds2) {
 		local_memcpy(fds2, fds, nfds * sizeof(*fds2));
 	}
 
-	ret = untraced_syscall4(SYS_ppoll, fds2, nfds, timeout_ts, sigmask);
+	ret = untraced_syscall4(SYS_ppoll, fds2, nfds, timeout_arg, sigmask);
 
 	/* NB: even when poll returns 0 indicating no pending fds, it
 	 * still sets each .revent outparam to 0.  (Reasonably.)  So
