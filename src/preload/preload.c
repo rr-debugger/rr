@@ -1378,54 +1378,6 @@ int open64(const char* pathname, int flags, ...)
 	return open(pathname, flags | O_LARGEFILE, mode);
 }
 
-int poll(struct pollfd* fds, nfds_t nfds, int timeout)
-{
-	struct timespec ts;
-	const struct timespec* tsp = NULL;
-	if (timeout >= 0) {
-		ts.tv_sec = timeout / 1000;
-		ts.tv_nsec = 1000000 * (timeout % 1000);
-		tsp = &ts;
-	}
-	return ppoll(fds, nfds, tsp, NULL);
-}
-
-int ppoll(struct pollfd* fds, nfds_t nfds,
-	  const struct timespec* timeout_ts, const sigset_t* sigmask)
-{
-	void* ptr = prep_syscall(NO_SIGNAL_SAFETY);
-	struct pollfd* fds2 = NULL;
-	struct timespec* timeout_arg = NULL;
-	struct timespec timeout_copy;
-	long ret;
-
-	if (timeout_ts) {
-		timeout_copy = *timeout_ts;
-		timeout_arg = &timeout_copy;
-	}
-	if (fds && nfds > 0) {
-		fds2 = ptr;
-		ptr += nfds * sizeof(*fds2);
-	}
-	if (!start_commit_buffered_syscall(SYS_ppoll, ptr, MAY_BLOCK)) {
-		return syscall(SYS_ppoll, fds, nfds, timeout_arg, sigmask);
-	}
-	if (fds2) {
-		local_memcpy(fds2, fds, nfds * sizeof(*fds2));
-	}
-
-	ret = untraced_syscall4(SYS_ppoll, fds2, nfds, timeout_arg, sigmask);
-
-	/* NB: even when poll returns 0 indicating no pending fds, it
-	 * still sets each .revent outparam to 0.  (Reasonably.)  So
-	 * we always need to copy on return value >= 0.  poll() may or
-	 * may not copy on errors, but we assume those are rare enough
-	 * not to merit a special case here. */
-	local_memcpy(fds, fds2, nfds * sizeof(*fds));
-
-	return commit_syscall(SYS_ppoll, ptr, ret);	
-}
-
 ssize_t read(int fd, void* buf, size_t count)
 {
 	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
