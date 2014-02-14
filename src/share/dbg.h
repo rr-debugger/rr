@@ -40,6 +40,7 @@
 # define debug(M, ...)							\
 	do {								\
 		fprintf(LOG_FILE, "[" DEBUGTAG "] " M "\n", ##__VA_ARGS__); \
+		fflush(LOG_FILE);					\
 	} while(0)
 #else
 # define debug(M, ...)				\

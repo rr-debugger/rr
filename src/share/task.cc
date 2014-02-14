@@ -662,39 +662,29 @@ private:
 	Sighandlers operator=(const Sighandlers&);
 };
 
-/**
- * Tracks a group of tasks with an associated ID, set from the
- * original "thread group leader", the child of |fork()| which became
- * the ancestor of all other threads in the group.  Each constituent
- * task must own a reference to this.
- */
-struct TaskGroup : public HasTaskSet {
-	typedef shared_ptr<TaskGroup> shr_ptr;
-
-	void destabilize() {
-		debug("destabilizing task group %d", tgid);
-		for (auto it = task_set().begin(); it != task_set().end(); ++it) {
-			Task* t = *it;
-			t->unstable = 1;
-			debug("  destabilized task %d", t->tid);
-		}
+void
+TaskGroup::destabilize()
+{
+	debug("destabilizing task group %d", tgid);
+	for (auto it = task_set().begin(); it != task_set().end(); ++it) {
+		Task* t = *it;
+		t->unstable = 1;
+		debug("  destabilized task %d", t->tid);
 	}
+}
 
-	static shr_ptr create(Task* t) {
-		shr_ptr tg(new TaskGroup(t->rec_tid));
-		tg->insert_task(t);
-		return tg;
-	}
+/*static*/ TaskGroup::shr_ptr
+TaskGroup::create(Task* t)
+{
+	shr_ptr tg(new TaskGroup(t->rec_tid));
+	tg->insert_task(t);
+	return tg;
+}
 
-	pid_t tgid;
-
-private:
-	TaskGroup(pid_t tgid) : tgid(tgid) {
-		debug("creating new task group %d", tgid);
-	}
-	TaskGroup(const TaskGroup&);
-	TaskGroup operator=(const TaskGroup&);
-};
+TaskGroup::TaskGroup(pid_t tgid) : tgid(tgid)
+{
+	debug("creating new task group %d", tgid);
+}
 
 static const char* event_type_name(int type)
 {
@@ -836,7 +826,7 @@ Task::~Task()
 
 	tasks.erase(rec_tid);
 	tasks_by_priority.erase(std::make_pair(priority, this));
-	task_group->erase_task(this);
+	tg->erase_task(this);
 	as->erase_task(this);
 
 	destroy_hpc(this);
@@ -874,11 +864,11 @@ Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
 		t->sighandlers.swap(sh);
 	}
 	if (CLONE_SHARE_TASK_GROUP & flags) {
-		t->task_group = task_group;
-		task_group->insert_task(t);
+		t->tg = tg;
+		tg->insert_task(t);
 	} else {
-		auto tg = TaskGroup::create(t);
-		t->task_group.swap(tg);
+		auto g = TaskGroup::create(t);
+		t->tg.swap(g);
 	}
 	if (CLONE_SHARE_VM & flags) {
 		t->as = as;
@@ -931,7 +921,7 @@ Task::destabilize_task_group()
 		       rec_tid, tgid(), signalname(ev->signal.no));
 	}
 
-	task_group->destabilize();
+	tg->destabilize();
 }
 
 void
@@ -1096,7 +1086,7 @@ Task::signal_has_user_handler(int sig) const
 pid_t
 Task::tgid() const
 {
-	return task_group->tgid;
+	return tg->tgid;
 }
 
 void
@@ -1143,8 +1133,8 @@ Task::create(pid_t tid, pid_t rec_tid)
 	auto sh = Sighandlers::create();
 	sh->init_from_current_process();
 	t->sighandlers.swap(sh);
-	auto tg = TaskGroup::create(t);
-	t->task_group.swap(tg);
+	auto g = TaskGroup::create(t);
+	t->tg.swap(g);
 	auto as = AddressSpace::create(t);
 	t->as.swap(as);
 	return t;

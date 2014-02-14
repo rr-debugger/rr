@@ -460,6 +460,30 @@ private:
 	AddressSpace operator=(const AddressSpace&) = delete;
 };
 
+/**
+ * Tracks a group of tasks with an associated ID, set from the
+ * original "thread group leader", the child of |fork()| which became
+ * the ancestor of all other threads in the group.  Each constituent
+ * task must own a reference to this.
+ */
+struct TaskGroup : public HasTaskSet {
+	typedef std::shared_ptr<TaskGroup> shr_ptr;
+
+	/** See |Task::destabilize_task_group()|. */
+	void destabilize();
+
+	/** Return a new task group consisting of |t|. */
+	static shr_ptr create(Task* t);
+
+	const pid_t tgid;
+
+private:
+	TaskGroup(pid_t tgid);
+
+	TaskGroup(const TaskGroup&);
+	TaskGroup operator=(const TaskGroup&);
+};
+
 enum PseudosigType {
 	ESIG_NONE,
 	ESIG_SEGV_MMAP_READ, ESIG_SEGV_MMAP_WRITE, ESIG_SEGV_RDTSC,
@@ -870,9 +894,10 @@ public:
 	 */
 	bool signal_has_user_handler(int sig) const;
 
-	/**
-	 * Return the id of this task's thread group.
-	 */
+	/** Return the task group this belongs to. */
+	TaskGroup::shr_ptr task_group() { return tg; }
+
+	/** Return the id of this task's thread group. */
 	pid_t tgid() const;
 
 	/**
@@ -1099,7 +1124,7 @@ private:
 	 * stripped of user sighandlers (see below). */
 	std::shared_ptr<Sighandlers> sighandlers;
 	/* The task group this belongs to. */
-	std::shared_ptr<TaskGroup> task_group;
+	std::shared_ptr<TaskGroup> tg;
 
 	Task(Task&) = delete;
 	Task operator=(Task&) = delete;

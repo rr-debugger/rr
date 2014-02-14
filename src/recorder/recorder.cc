@@ -150,7 +150,7 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_EXIT:
 		if (EV_SYSCALL == t->ev->type
 		    && SYS_exit_group == t->ev->syscall.no
-		    && Task::count() > 1) {
+		    && t->task_group()->task_set().size() > 1) {
 			log_warn("exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race");
 			t->destabilize_task_group();
 		}
@@ -255,6 +255,7 @@ static void desched_state_changed(Task* t)
 {
 	switch (t->ev->desched.state) {
 	case IN_SYSCALL:
+		debug("desched: IN_SYSCALL");
 		/* We need to ensure that the syscallbuf code doesn't
 		 * try to commit the current record; we've already
 		 * recorded that syscall.  The following event sets
@@ -266,12 +267,17 @@ static void desched_state_changed(Task* t)
 
 		t->ev->desched.state = DISARMING_DESCHED_EVENT;
 		/* fall through */
-	case DISARMING_DESCHED_EVENT:
+	case DISARMING_DESCHED_EVENT: {
+		int sig_status = 0;
+		siginfo_t si;
+
+		debug("desched: DISARMING_DESCHED_EVENT");
 		/* TODO: send this through main loop. */
 		/* TODO: mask off signals and avoid this loop. */
 		do {
 			sys_ptrace_syscall(t);
 			sys_waitpid(t->tid, &t->status);
+			read_child_registers(t, &t->regs);
 			/* We can safely ignore SIG_TIMESLICE while
 			 * trying to reach the disarm-desched ioctl:
 			 * once we reach it, the desched'd syscall
@@ -289,26 +295,23 @@ static void desched_state_changed(Task* t)
 			 * unbounded memcpy(), which can be very
 			 * expensive. */
 			if (HPC_TIME_SLICE_SIGNAL == signal_pending(t->status)) {
-				read_child_registers(t, &t->regs);
 				continue;
 			}
 
-			status_changed(t);
-			if (EV_DESCHED != t->ev->type) {
-				/* Something else happened that needs to be
-				 * processed first.  Most likely a signal
-				 * interrupted us. */
-				return;
+			t->event = t->regs.orig_eax;
+
+			if (int sig = signal_pending(t->status)) {
+				int old_sig = signal_pending(sig_status);
+				debug("  %s now pending", signalname(sig));
+				assert_exec(t,
+					    !sig_status || old_sig == sig,
+					    "TODO multiple pending signals: %s became pending while %s already was",
+					    signalname(sig),
+					    signalname(old_sig));
+				sig_status = t->status;
+				sys_ptrace_getsiginfo(t, &si);
 			}
-		} while (!SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(t->regs.eip, t));
-		assert_exec(t,
-			    (0 == signal_pending(t->status)
-			     || HPC_TIME_SLICE_SIGNAL == signal_pending(t->status)),
-			    "TODO: %s pending",
-			    signalname(signal_pending(t->status)));
-		assert_exec(t, is_disarm_desched_event_syscall(t, &t->regs),
-			    "Didn't reach desched ioctl; at %s?",
-			    syscallname(t->regs.orig_eax));
+		} while (!is_disarm_desched_event_syscall(t, &t->regs));
 
 		t->ev->desched.state = DISARMED_DESCHED_EVENT;
 		record_event(t);
@@ -324,8 +327,15 @@ static void desched_state_changed(Task* t)
 		t->delay_syscallbuf_flush = 0;
 		record_event(t);
 		pop_pseudosig(t);
-		return;
 
+		if (sig_status) {
+			debug("  delivering deferred %s",
+			      signalname(signal_pending(t->status)));
+			t->status = sig_status;
+			handle_signal(t, &si);
+		}
+		return;
+	}
 	default:
 		fatal("Unhandled desched state");
 	}
@@ -495,6 +505,10 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		 * might be restarted. */
 		if (!may_restart) {
 			pop_syscall(t);
+			if (EV_DESCHED == t->ev->type) {
+				debug("  exiting desched critical section");
+				desched_state_changed(t);
+			}
 		} else {
 			t->ev->type = EV_SYSCALL_INTERRUPTION;
 			t->ev->syscall.is_restart = 1;
@@ -750,8 +764,11 @@ void record()
 		}
 		t = next;
 
-		debug("line %d: Active task is %d", get_global_time(), t->tid);
-
+		debug("line %d: Active task is %d. Events:",
+		      get_global_time(), t->tid);
+#ifdef DEBUGTAG
+		log_pending_events(t);
+#endif
 		ptrace_event = GET_PTRACE_EVENT(t->status);
 		assert_exec(t, (!by_waitpid || t->may_be_blocked() ||
 				ptrace_event),

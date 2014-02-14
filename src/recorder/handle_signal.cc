@@ -7,7 +7,6 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <sched.h>
-#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
@@ -519,7 +518,8 @@ static int go_to_a_happy_place(Task* t,
 		}
 		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
 		    && t->desched_rec()) {
-			debug("  tracee interrupted by desched");
+			debug("  tracee interrupted by desched of %s",
+			      syscallname(t->desched_rec()->syscallno));
 			goto happy_place;
 		}
 		if (initial_hdr.locked && !hdr->locked) {
@@ -661,16 +661,19 @@ static void handle_siginfo_regs(Task* t, siginfo_t* si,
 	record_signal(t, si, max_rbc);
 }
 
-void handle_signal(Task* t)
+void handle_signal(Task* t, siginfo_t* si)
 {
-	siginfo_t si;
+	siginfo_t local_si;
 	struct user_regs_struct regs;
 
 	if (0 >= signal_pending(t->status)) {
 		return;
 	}
 
-	sys_ptrace_getsiginfo(t, &si);
+	if (!si) {
+		sys_ptrace_getsiginfo(t, &local_si);
+		si = &local_si;
+	}
 	read_child_registers(t, &regs);
-	return handle_siginfo_regs(t, &si, &regs);
+	return handle_siginfo_regs(t, si, &regs);
 }
