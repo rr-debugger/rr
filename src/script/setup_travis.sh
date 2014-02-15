@@ -15,3 +15,7 @@ sudo apt-get update && \
     wget http://people.mozilla.org/~gal/libpfm_4.3.0-1_amd64.deb && \
     sudo dpkg -i libpfm_4.3.0-1_amd64.deb && \
     echo ... finished configuring slave
+
+
+# XXX temporary
+locate libstdc++.so
