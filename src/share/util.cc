@@ -1672,7 +1672,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 
 	/* Bind the server socket, but don't start listening yet. */
 	listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (bind(listen_sock, (struct sockaddr*)&addr, sizeof(addr))) {
+	if (::bind(listen_sock, (struct sockaddr*)&addr, sizeof(addr))) {
 		fatal("Failed to bind listen socket");
 	}
 	if (listen(listen_sock, 1)) {
