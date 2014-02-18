@@ -1309,7 +1309,7 @@ static void assert_at_buffered_syscall(Task* t,
 {
 	void* ip = (void*)regs->eip;
 
-	assert_exec(t, SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(ip, t),
+	assert_exec(t, SYSCALLBUF_IS_IP_UNTRACED_SYSCALL(ip, t),
 		    "Bad ip %p: should have been buffered-syscall ip", ip);
 	assert_exec(t, regs->orig_eax == syscallno,
 		    "At %s; should have been at %s(%d)",

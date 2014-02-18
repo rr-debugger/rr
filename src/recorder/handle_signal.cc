@@ -516,7 +516,11 @@ static int go_to_a_happy_place(Task* t,
 			debug("  tracee outside syscallbuf lib");
 			goto happy_place;
 		}
-		if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(regs->eip, t)
+		if (SYSCALLBUF_IS_IP_TRACED_SYSCALL(regs->eip, t)) {
+			debug("  tracee at traced syscallbuf syscall");
+			goto happy_place;
+		}
+		if (SYSCALLBUF_IS_IP_UNTRACED_SYSCALL(regs->eip, t)
 		    && t->desched_rec()) {
 			debug("  tracee interrupted by desched of %s",
 			      syscallname(t->desched_rec()->syscallno));
@@ -558,10 +562,11 @@ static int go_to_a_happy_place(Task* t,
 				return -1;
 			}
 
-			fatal("TODO: support multiple pending signals; received %s (code: %d) at $ip:%p while trying to deliver %s (code: %d)",
-			      signalname(tmp_si.si_signo), tmp_si.si_code,
-			      (void*)regs->eip,
-			      signalname(si->si_signo), si->si_code);
+			assert_exec(t, 0,
+				    "TODO: support multiple pending signals; received %s (code: %d) at $ip:%p while trying to deliver %s (code: %d)",
+				    signalname(tmp_si.si_signo),
+				    tmp_si.si_code, (void*)regs->eip,
+				    signalname(si->si_signo), si->si_code);
 		}
 		if (!is_syscall) {
 			continue;

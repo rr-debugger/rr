@@ -1661,6 +1661,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	void* tmp;
 	int zero = 0;
 
+	t->traced_syscall_ip = args->traced_syscall_ip;
 	t->untraced_syscall_ip = args->untraced_syscall_ip;
 	format_syscallbuf_shmem_path(tid, shmem_name);
 	/* NB: the sockaddr prepared by the child uses the recorded
