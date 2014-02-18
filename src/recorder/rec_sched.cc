@@ -195,7 +195,8 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 				debug("    ... but it's dead");
 			}
 		}
-		assert(next->unstable || next->may_be_blocked());
+		assert_exec(next, next->unstable || next->may_be_blocked(),
+			    "Scheduled task should have been blocked or unstable");
 		next->status = status;
 		*by_waitpid = 1;
 	}

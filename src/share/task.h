@@ -1091,6 +1091,9 @@ public:
 	pid_t rec_tid;
 	int child_mem_fd;
 
+	/* The instruction pointer from which traced syscalls made by
+	 * the syscallbuf will originate. */
+	byte* traced_syscall_ip;
 	/* The instruction pointer from which untraced syscalls will
 	 * originate, used to determine whether a syscall is being
 	 * made by the syscallbuf wrappers or not. */

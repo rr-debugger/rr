@@ -534,7 +534,7 @@ static void init_scratch_memory(Task* t)
 static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 {
 	read_child_registers(t, &t->regs);
-	if (SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(t->regs.eip, t)) {
+	if (SYSCALLBUF_IS_IP_UNTRACED_SYSCALL(t->regs.eip, t)) {
 		debug("  noop-restoring scratch for write-only desched'd %s",
 		      syscallname(t->regs.orig_eax));
 		set_child_data(t);

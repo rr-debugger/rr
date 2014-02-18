@@ -39,11 +39,19 @@ extern "C" {
 	 && (uintptr_t)(_eip) <= (uintptr_t)(_t)->syscallbuf_lib_end)
 
 /**
- * True when |_eip| is at a buffered syscall, i.e. one initiated by a
- * libc wrapper in the library.  Callers may assume
- * |SYSCALLBUF_IS_IP_IN_LIB()| is implied by this.
+ * True when |_eip| is at a traced syscall made by the syscallbuf
+ * code.  Callers may assume |SYSCALLBUF_IS_IP_IN_LIB()| is implied by
+ * this.
  */
-#define SYSCALLBUF_IS_IP_BUFFERED_SYSCALL(_eip, _t)			\
+#define SYSCALLBUF_IS_IP_TRACED_SYSCALL(_eip, _t)			\
+	((uintptr_t)(_eip) == (uintptr_t)(_t)->traced_syscall_ip)	\
+
+/**
+ * True when |_eip| is at a buffered (and therefore untraced) syscall,
+ * i.e. one initiated by a libc wrapper in the library.  Callers may
+ * assume |SYSCALLBUF_IS_IP_IN_LIB()| is implied by this.
+ */
+#define SYSCALLBUF_IS_IP_UNTRACED_SYSCALL(_eip, _t)			\
 	((uintptr_t)(_eip) == (uintptr_t)(_t)->untraced_syscall_ip)	\
 
 /* "Magic" (rr-implemented) syscall that we use to initialize the
@@ -71,8 +79,9 @@ struct rrcall_init_buffers_params {
 	 * We let the syscallbuf code decide in order to more simply
 	 * replay the same decision that was recorded. */
 	int syscallbuf_enabled;
-	/* Lets rr know where our untraced syscalls will originate
-	 * from. */
+	/* Where our traced syscalls will originate. */
+	byte* traced_syscall_ip;
+	/* Where our untraced syscalls will originate. */
 	byte* untraced_syscall_ip;
 	/* Address of the control socket the child expects to connect
 	 * to. */
