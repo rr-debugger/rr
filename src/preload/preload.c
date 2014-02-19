@@ -1205,68 +1205,12 @@ static int commit_syscall(int syscallno, void* record_end, int ret)
 }
 
 /**
- * Copy |in| to |out|, watching for overflow on vulnerable fields.  If
- * overflow is observed, |errno| is set to EOVERFLOW and -1 is
- * returned.
- */
-static int copy_to_stat(const struct stat64* in, struct stat* out)
-{
-	/* XXX this is /really/ reaching deep into libc innards, but
-	 * we don't have a choice ... */
-	out->st_dev = in->st_dev;
-	out->__pad1 = 0;
-	COPY_CHECK_OVERFLOW(out->st_ino, in->st_ino);
-	out->st_mode = in->st_mode;
-	out->st_nlink = in->st_nlink;
-	out->st_uid = in->st_uid;
-	out->st_gid = in->st_gid;
-	out->st_rdev = in->st_rdev;
-	out->__pad2 = 0;
-	COPY_CHECK_OVERFLOW(out->st_size, in->st_size);
-	out->st_blksize = in->st_blksize;
-	COPY_CHECK_OVERFLOW(out->st_blocks, in->st_blocks);
-	out->st_atime = in->st_atime;
-	out->st_mtime = in->st_mtime;
-	out->st_ctime = in->st_ctime;
-	out->__unused4 = 0;
-	out->__unused5 = 0;
-	return 0;
-}
-
-static int stat_something(int syscallno, int vers, unsigned long what,
-			  struct stat64* buf)
-{
-	/* Like open(), not arming the desched event because it's not
-	 * needed for correctness, and there are no data to suggest
-	 * whether it's a good idea perf-wise. */
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	struct stat64* buf2 = NULL;
-	long ret;
-
-	if (_STAT_VER_LINUX != vers) {
-		fatal("Unhandled stat ABI version %d", vers);		
-	}
-
-	if (buf) {
-		buf2 = ptr;
-		ptr += sizeof(*buf2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_syscall2(syscallno, what, buf);
-	}
-	ret = untraced_syscall2(syscallno, what, buf2);
-	if (buf2) {
-		local_memcpy(buf, buf2, sizeof(*buf));
-	}
-	return commit_syscall(syscallno, ptr, ret);
-}
-
-/**
  * Make the traced socketcall |call| with the given args.
  *
  * NB: this helper *DOES* update errno and massage the return value.
  */
-int traced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
+static int traced_socketcall(int call,
+			     long a0, long a1, long a2, long a3, long a4)
 {
 	unsigned long args[] = { a0, a1, a2, a3, a4 };
 	return traced_syscall2(SYS_socketcall, call, args);
@@ -1290,7 +1234,8 @@ int traced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
  * NB: this helper *DOES NOT* touch the raw return value from the
  * kernel.  Callers must update errno themselves.
  */
-long untraced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
+static long untraced_socketcall(int call,
+				long a0, long a1, long a2, long a3, long a4)
 {
 	unsigned long args[] = { a0, a1, a2, a3, a4 };
 	return untraced_syscall2(SYS_socketcall, call, args);
@@ -1471,36 +1416,6 @@ int fcntl(int fd, int cmd, ... /* arg */)
 	}
 }
 
-int __fxstat64(int vers, int fd, struct stat64* buf)
-{
-	return stat_something(SYS_fstat64, vers, fd, buf);
-}
-
-int __fxstat(int vers, int fd, struct stat* buf)
-{
-	struct stat64 tmp;
-	int ret = __fxstat64(vers, fd, &tmp);
-	if (0 == ret && buf) {
-		return copy_to_stat(&tmp, buf);
-	}
-	return ret;
-}
-
-int __lxstat64(int vers, const char* path, struct stat64* buf)
-{
-	return stat_something(SYS_lstat64, vers, (uintptr_t)path, buf);
-}
-
-int __lxstat(int vers, const char* path, struct stat* buf)
-{
-	struct stat64 tmp;
-	int ret = __lxstat64(vers, path, &tmp);
-	if (0 == ret && buf) {
-		return copy_to_stat(&tmp, buf);
-	}
-	return ret;
-}
-
 ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 {
 	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
@@ -1560,21 +1475,6 @@ time_t time(time_t* t)
 	return commit_syscall(SYS_time, ptr, ret);
 }
 
-int __xstat64(int vers, const char* path, struct stat64* buf)
-{
-	return stat_something(SYS_stat64, vers, (uintptr_t)path, buf);
-}
-
-int __xstat(int vers, const char* path, struct stat* buf)
-{
-	struct stat64 tmp;
-	int ret = __xstat64(vers, path, &tmp);
-	if (0 == ret && buf) {
-		return copy_to_stat(&tmp, buf);
-	}
-	return ret;
-}
-
 static long sys_clock_gettime(const struct syscall_info* call)
 {
 	const int syscallno = SYS_clock_gettime;
@@ -1632,7 +1532,6 @@ static long sys_creat(const struct syscall_info* call)
 	open_call.args[2] = mode;
 	return sys_open(&open_call);
 }
-
 
 static long sys_gettimeofday(const struct syscall_info* call)
 {
@@ -1734,6 +1633,35 @@ static long sys_read(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_xstat64(const struct syscall_info* call)
+{
+	const int syscallno = call->no;
+	/* NB: this arg may be a string or an fd, but for the purposes
+	 * of this generic helper we don't care. */
+	long what = call->args[0];
+	struct stat64* buf = (struct stat64*)call->args[1];
+
+	/* Like open(), not arming the desched event because it's not
+	 * needed for correctness, and there are no data to suggest
+	 * whether it's a good idea perf-wise. */
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	struct stat64* buf2 = NULL;
+	long ret;
+
+	if (buf) {
+		buf2 = ptr;
+		ptr += sizeof(*buf2);
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall2(syscallno, what, buf);
+	}
+	ret = untraced_syscall2(syscallno, what, buf2);
+	if (buf2) {
+		local_memcpy(buf, buf2, sizeof(*buf));
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_write(const struct syscall_info* call)
 {
 	const int syscallno = SYS_write;
@@ -1774,6 +1702,10 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(read);
 	CASE(write);
 #undef CASE
+	case SYS_fstat64:
+	case SYS_lstat64:
+	case SYS_stat64:
+		return sys_xstat64(call);
 	default:
 		/* FIXME: pass |call| to avoid pushing these on the
 		 * stack again. */
