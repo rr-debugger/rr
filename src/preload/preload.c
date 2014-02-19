@@ -88,6 +88,15 @@
 	} while(0)
 
 /**
+ * Represents syscall params.  Makes it simpler to pass them around,
+ * and avoids pushing/popping all the data for calls.
+ */
+struct syscall_info {
+    long no;
+    long args[6];
+};
+
+/**
  * Tracks per-task state that may need to be cleaned up on task exit.
  * 
  * Cleanup must be done in the tracee because the rr process doesn't
@@ -290,23 +299,20 @@ static int traced_syscall(int syscallno, long a0, long a1, long a2,
 	traced_syscall1(no, 0)
 
 /**
- * "Raw" traced syscalls return the raw kernel return value, and don't
- * transform it to -1/errno per POSIX semantics.
+ * Make a raw traced syscall using the params in |call|.  "Raw" traced
+ * syscalls return the raw kernel return value, and don't transform it
+ * to -1/errno per POSIX semantics.
  */
-#define raw_traced_syscall6(no, a0, a1, a2, a3, a4, a5)			\
-	_raw_traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
-#define raw_traced_syscall5(no, a0, a1, a2, a3, a4)	\
-	raw_traced_syscall6(no, a0, a1, a2, a3, a4, 0)
-#define raw_traced_syscall4(no, a0, a1, a2, a3)	\
-	raw_traced_syscall5(no, a0, a1, a2, a3, 0)
-#define raw_traced_syscall3(no, a0, a1, a2)	\
-	raw_traced_syscall4(no, a0, a1, a2, 0)
-#define raw_traced_syscall2(no, a0, a1)		\
-	raw_traced_syscall3(no, a0, a1, 0)
-#define raw_traced_syscall1(no, a0)		\
-	raw_traced_syscall2(no, a0, 0)
-#define raw_traced_syscall0(no)			\
-	raw_traced_syscall1(no, 0)
+static long raw_traced_syscall(const struct syscall_info* call)
+{
+	/* FIXME: pass |call| to avoid pushing these on the stack
+	 * again. */
+	return _raw_traced_syscall(call->no,
+				   call->args[0], call->args[1],
+				   call->args[2], call->args[3],
+				   call->args[4], call->args[5]);
+}
+
 
 static void* get_traced_syscall_entry_point(void)
 {
@@ -476,6 +482,32 @@ static int untraced_syscall(int syscall, long arg0, long arg1, long arg2,
 	untraced_syscall1(no, 0)
 
 /**
+ * Make the *un*traced socketcall |call| with the given args.
+ *
+ * NB: like untraced_syscall(), this helper *DOES NOT* touch the raw
+ * return value from the kernel.  Callers must update errno
+ * themselves if necessary.
+ */
+static long untraced_socketcall(int call,
+				long a0, long a1, long a2, long a3, long a4)
+{
+	unsigned long args[] = { a0, a1, a2, a3, a4 };
+	return untraced_syscall2(SYS_socketcall, call, args);
+}
+#define untraced_socketcall5(no, a0, a1, a2, a3, a4)			\
+	untraced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
+#define untraced_socketcall4(no, a0, a1, a2, a3)	\
+	untraced_socketcall5(no, a0, a1, a2, a3, 0)
+#define untraced_socketcall3(no, a0, a1, a2)	\
+	untraced_socketcall4(no, a0, a1, a2, 0)
+#define untraced_socketcall2(no, a0, a1)	\
+	untraced_socketcall3(no, a0, a1, 0)
+#define untraced_socketcall1(no, a0)		\
+	untraced_socketcall2(no, a0, 0)
+#define untraced_socketcall0(no)		\
+	untraced_socketcall1(no, 0)
+
+/**
  * The seccomp filter is set up so that system calls made through
  * _untraced_syscall_entry_point are always allowed without triggering
  * ptrace. This gives us a convenient way to make non-traced system calls.
@@ -496,16 +528,6 @@ static void* get_untraced_syscall_entry_point(void)
 	    : "=a"(ret));
     return ret;
 }
-
-/**
- * Save the syscall params to this struct so that we can pass around a
- * pointer to it and avoid pushing/popping all this data for calls to
- * subsequent handlers.
- */
-struct syscall_info {
-    long no;
-    long args[6];
-};
 
 /**
  * Call this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -1204,55 +1226,6 @@ static int commit_syscall(int syscallno, void* record_end, int ret)
 	return update_errno_ret(commit_raw_syscall(syscallno, record_end, ret));
 }
 
-/**
- * Make the traced socketcall |call| with the given args.
- *
- * NB: this helper *DOES* update errno and massage the return value.
- */
-static int traced_socketcall(int call,
-			     long a0, long a1, long a2, long a3, long a4)
-{
-	unsigned long args[] = { a0, a1, a2, a3, a4 };
-	return traced_syscall2(SYS_socketcall, call, args);
-}
-#define traced_socketcall5(no, a0, a1, a2, a3, a4)			\
-	traced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
-#define traced_socketcall4(no, a0, a1, a2, a3)		\
-	traced_socketcall5(no, a0, a1, a2, a3, 0)
-#define traced_socketcall3(no, a0, a1, a2)	\
-	traced_socketcall4(no, a0, a1, a2, 0)
-#define traced_socketcall2(no, a0, a1)		\
-	traced_socketcall3(no, a0, a1, 0)
-#define traced_socketcall1(no, a0)		\
-	traced_socketcall2(no, a0, 0)
-#define traced_socketcall0(no)			\
-	traced_socketcall1(no, 0)
-
-/**
- * Make the *un*traced socketcall |call| with the given args.
- *
- * NB: this helper *DOES NOT* touch the raw return value from the
- * kernel.  Callers must update errno themselves.
- */
-static long untraced_socketcall(int call,
-				long a0, long a1, long a2, long a3, long a4)
-{
-	unsigned long args[] = { a0, a1, a2, a3, a4 };
-	return untraced_syscall2(SYS_socketcall, call, args);
-}
-#define untraced_socketcall5(no, a0, a1, a2, a3, a4)			\
-	untraced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
-#define untraced_socketcall4(no, a0, a1, a2, a3)	\
-	untraced_socketcall5(no, a0, a1, a2, a3, 0)
-#define untraced_socketcall3(no, a0, a1, a2)	\
-	untraced_socketcall4(no, a0, a1, a2, 0)
-#define untraced_socketcall2(no, a0, a1)	\
-	untraced_socketcall3(no, a0, a1, 0)
-#define untraced_socketcall1(no, a0)		\
-	untraced_socketcall2(no, a0, 0)
-#define untraced_socketcall0(no)		\
-	untraced_socketcall1(no, 0)
-
 /* Keep syscalls in alphabetical order, please. */
 
 static int fcntl0(int fd, int cmd)
@@ -1405,28 +1378,6 @@ int fcntl(int fd, int cmd, ... /* arg */)
 	}
 }
 
-ssize_t recv(int sockfd, void* buf, size_t len, int flags)
-{
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	void* buf2 = NULL;
-	long ret;
-
-	if (buf && len > 0) {
-		buf2 = ptr;
-		ptr += len;
-	}
-	if (!start_commit_buffered_syscall(SYS_socketcall, ptr, MAY_BLOCK)) {
-		return traced_socketcall4(SYS_RECV, sockfd, buf, len, flags);
-	}
-
-	ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
-
-	if (buf2 && ret > 0) {
-		local_memcpy(buf, buf2, ret);
-	}
-	return commit_syscall(SYS_socketcall, ptr, ret);
-}
-
 static long sys_access(const struct syscall_info* call)
 {
 	const int syscallno = SYS_access;
@@ -1439,7 +1390,7 @@ static long sys_access(const struct syscall_info* call)
 	assert(syscallno == call->no);
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall2(syscallno, pathname, mode);
+		return raw_traced_syscall(call);
  	}
 	ret = untraced_syscall2(syscallno, pathname, mode);
 	return commit_raw_syscall(syscallno, ptr, ret);
@@ -1462,7 +1413,7 @@ static long sys_clock_gettime(const struct syscall_info* call)
 		ptr += sizeof(*tp2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall2(syscallno, clk_id, tp);
+		return raw_traced_syscall(call);
  	}
 	ret = untraced_syscall2(syscallno, clk_id, tp2);
 	if (tp) {
@@ -1480,7 +1431,7 @@ static long sys_close(const struct syscall_info* call)
 	long ret;
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall1(syscallno, fd);
+		return raw_traced_syscall(call);
  	}
 	ret = untraced_syscall1(syscallno, fd);
 	return commit_raw_syscall(syscallno, ptr, ret);
@@ -1528,7 +1479,7 @@ static long sys_gettimeofday(const struct syscall_info* call)
 		ptr += sizeof(*tzp2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall2(syscallno, tp, tzp);
+		return raw_traced_syscall(call);
 	}
 	ret = untraced_syscall2(syscallno, tp2, tzp2);
 	if (tp) {
@@ -1567,7 +1518,7 @@ static long sys_open(const struct syscall_info* call)
 
 	ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall3(syscallno, pathname, flags, mode);
+		return raw_traced_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, pathname, flags, mode);
@@ -1592,7 +1543,7 @@ static long sys_read(const struct syscall_info* call)
 		ptr += count;
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return raw_traced_syscall3(syscallno, fd, buf, count);
+		return raw_traced_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, fd, buf2, count);
@@ -1621,7 +1572,7 @@ static long sys_readlink(const struct syscall_info* call)
 		ptr += bufsiz;
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall3(syscallno, path, buf, bufsiz);
+		return raw_traced_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, path, buf2, bufsiz);
@@ -1631,6 +1582,46 @@ static long sys_readlink(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_recv(const struct syscall_info* call)
+{
+	const int syscallno = SYS_socketcall;
+	long* args = (long*)call->args[1];
+	int sockfd = args[0];
+	void* buf = (void*)args[1];
+	size_t len = args[2];
+	unsigned int flags = args[3];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* buf2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (buf && len > 0) {
+		buf2 = ptr;
+		ptr += len;
+	}
+	if (!start_commit_buffered_syscall(SYS_socketcall, ptr, MAY_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+
+	ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
+
+	if (buf2 && ret > 0) {
+		local_memcpy(buf, buf2, ret);
+	}
+	return commit_raw_syscall(SYS_socketcall, ptr, ret);
+}
+
+static long sys_socketcall(const struct syscall_info* call)
+{
+	switch (call->args[0]) {
+	case SYS_RECV:
+		return sys_recv(call);
+	default:
+		return raw_traced_syscall(call);
+	}
+}
 
 static long sys_time(const struct syscall_info* call)
 {
@@ -1643,7 +1634,7 @@ static long sys_time(const struct syscall_info* call)
 	assert(syscallno == call->no);
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall1(syscallno, tp);
+		return raw_traced_syscall(call);
 	}
 	ret = untraced_syscall1(syscallno, NULL);
 	if (tp) {
@@ -1673,7 +1664,7 @@ static long sys_xstat64(const struct syscall_info* call)
 		ptr += sizeof(*buf2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall2(syscallno, what, buf);
+		return raw_traced_syscall(call);
 	}
 	ret = untraced_syscall2(syscallno, what, buf2);
 	if (buf2) {
@@ -1700,7 +1691,7 @@ static long sys_write(const struct syscall_info* call)
 	 * TODO: buffer them normally here. */
 	if (RR_MAGIC_SAVE_DATA_FD == fd ||
 	    !start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return raw_traced_syscall3(syscallno, fd, buf, count);
+		return raw_traced_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, fd, buf, count);
@@ -1722,6 +1713,7 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(open);
 	CASE(read);
 	CASE(readlink);
+	CASE(socketcall);
 	CASE(time);
 	CASE(write);
 #undef CASE
@@ -1730,11 +1722,6 @@ vsyscall_hook(const struct syscall_info* call)
 	case SYS_stat64:
 		return sys_xstat64(call);
 	default:
-		/* FIXME: pass |call| to avoid pushing these on the
-		 * stack again. */
-		return _raw_traced_syscall(call->no,
-					   call->args[0], call->args[1],
-					   call->args[2], call->args[3],
-					   call->args[4], call->args[5]);
+		return raw_traced_syscall(call);
 	}
 }
