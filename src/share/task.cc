@@ -146,7 +146,7 @@ AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
 
 typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
 MappingResourcePair
-AddressSpace::mapping_of(const byte* addr, size_t num_bytes)
+AddressSpace::mapping_of(const byte* addr, size_t num_bytes) const
 {
 	auto it = mem.find(Mapping(addr, num_bytes));
 	assert(it != mem.end());
@@ -438,6 +438,13 @@ AddressSpace::check_segment_iterator(void* pvas, Task* t,
 	return check_segment_iterator(pvas, t, data);
 }
 
+Mapping
+AddressSpace::vdso() const
+{
+	assert(vdso_start_addr);
+	return mapping_of(vdso_start_addr, 1).first;
+}
+
 void
 AddressSpace::verify(Task* t) const
 {
@@ -458,6 +465,7 @@ AddressSpace::create(Task* t)
 	as->insert_task(t);
 	iterate_memory_map(t, populate_address_space, as.get(),
 			   kNeverReadSegment, NULL);
+	assert(as->vdso_start_addr);
 	return as;
 }
 
@@ -547,6 +555,8 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	} else if (!strcmp("[stack]", info.name)) {
 		id.psdev = PSEUDODEVICE_STACK;
 	} else if (!strcmp("[vdso]", info.name)) {
+		assert(!as->vdso_start_addr);
+		as->vdso_start_addr = info.start_addr;
 		id.psdev = PSEUDODEVICE_VDSO;
 	} else {
 		id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode);
@@ -1051,15 +1061,14 @@ Task::post_exec()
 }
 
 long
-Task::read_word(byte* child_addr)
+Task::read_word(const byte* child_addr)
 {
-	off_t offset = reinterpret_cast<off_t>(child_addr);
-	long v;
-	ssize_t nread = pread(child_mem_fd, &v, sizeof(v), offset);
-	assert_exec(this, sizeof(v) == nread,
-		    "Expected to read %d bytes at %p, but only read %d",
-		    sizeof(v), child_addr, nread);
-	return v;
+	union {
+		long word;
+		byte bytes[sizeof(long)];
+	} buf;
+	read_bytes(child_addr, buf.bytes);
+	return buf.word;
 }
 
 void
@@ -1099,13 +1108,14 @@ Task::update_prname(byte* child_addr)
 }
 
 void
-Task::write_word(byte* child_addr, long word)
+Task::write_word(const byte* child_addr, long word)
 {
-	off_t offset = reinterpret_cast<off_t>(child_addr);
-	ssize_t nwritten = pwrite(child_mem_fd, &word, sizeof(word), offset);
-	assert_exec(this, sizeof(word) == nwritten,
-		    "Expected to write %d bytes at %p, but only wrote %d",
-		    sizeof(word), child_addr, nwritten);
+	union {
+		long word;
+		byte bytes[sizeof(long)];
+	} buf;
+	buf.word = word;
+	write_bytes(child_addr, buf.bytes);
 }
 
 /*static*/ Task::Map::const_iterator

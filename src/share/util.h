@@ -515,4 +515,10 @@ void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N])
 enum { SHARE_DESCHED_EVENT_FD = 1, DONT_SHARE_DESCHED_EVENT_FD = 0 };
 void* init_buffers(Task* t, void* map_hint, int share_desched_fd);
 
+/**
+ * Locate |t|'s |__kernel_vsyscall()| helper and then monkey-patch it
+ * to jump to the preload lib's hook function.
+ */
+void monkeypatch_vdso(Task* t);
+
 #endif /* UTIL_H_ */

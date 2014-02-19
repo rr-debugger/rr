@@ -29,6 +29,8 @@ extern "C" {
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
+/* TODO: convert the following macros into task.h helpers. */
+
 /**
  * True if |_eip| is an $ip within the syscallbuf library.  This *does
  * not* imply that $ip is at a buffered syscall; use the macro below
@@ -37,6 +39,17 @@ extern "C" {
 #define SYSCALLBUF_IS_IP_IN_LIB(_eip, _t)				\
 	((uintptr_t)(_t)->syscallbuf_lib_start <= (uintptr_t)(_eip)	\
 	 && (uintptr_t)(_eip) <= (uintptr_t)(_t)->syscallbuf_lib_end)
+
+/**
+ * True when |_eip| is just before a syscall trap instruction for a
+ * traced syscall made by the syscallbuf code.  Callers may assume
+ * |SYSCALLBUF_IS_IP_IN_LIB()| is implied by this.
+ *
+ * |int $0x80| is |5d 80|, so the magic-looking |2| below is
+ * |sizeof(int $0x80)|.
+ */
+#define SYSCALLBUF_IS_IP_ENTERING_TRACED_SYSCALL(_eip, _t)		\
+	((uintptr_t)(_eip) + 2 == (uintptr_t)(_t)->traced_syscall_ip)	\
 
 /**
  * True when |_eip| is at a traced syscall made by the syscallbuf
@@ -64,7 +77,9 @@ extern "C" {
 #define FIRST_RRCALL 400
 
 #define __NR_rrcall_init_buffers 442
+#define __NR_rrcall_monkeypatch_vdso 443
 #define SYS_rrcall_init_buffers __NR_rrcall_init_buffers
+#define SYS_rrcall_monkeypatch_vdso __NR_rrcall_monkeypatch_vdso
 
 typedef unsigned char byte;
 

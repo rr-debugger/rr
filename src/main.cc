@@ -8,6 +8,7 @@
 #include <sys/prctl.h>
 
 #include <limits>
+#include <string>
 
 #include "preload/syscall_buffer.h"
 #include "recorder/recorder.h"
@@ -17,6 +18,8 @@
 #include "share/dbg.h"
 #include "share/hpc.h"
 #include "share/sys.h"
+#include "share/task.h"
+#include "share/trace.h"
 #include "share/util.h"
 
 using namespace std;
@@ -384,6 +387,7 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 			     struct flags* flags)
 {
 	struct option opts[] = {
+		{ "autopilot", no_argument, NULL, 'a' },
 		{ "dbgport", required_argument, NULL, 'p' },
 		{ "goto", required_argument, NULL, 'g' },
 		{ "no-redirect-output", no_argument, NULL, 'q' },

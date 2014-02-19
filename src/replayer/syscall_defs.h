@@ -1423,4 +1423,14 @@ SYSCALL_DEF(EMU, writev, 0)
  */
 SYSCALL_DEF(IRREGULAR, rrcall_init_buffers, -1)
 
+/**
+ *  void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline);
+ *
+ * Monkeypatch |__kernel_vsyscall()| to jump into
+ * |vdso_hook_trampoline|.
+ *
+ * This is a "magic" syscall implemented by rr.
+ */
+SYSCALL_DEF(IRREGULAR, rrcall_monkeypatch_vdso, -1)
+
 #define MAX_NR_SYSCALLS 512

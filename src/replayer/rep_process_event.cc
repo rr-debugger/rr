@@ -1573,6 +1573,20 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	case SYS_rrcall_init_buffers:
 		return process_init_buffers(t, state, step);
 
+	case SYS_rrcall_monkeypatch_vdso:
+		step->syscall.num_emu_args = 0;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		/* Proceed to syscall exit so we can run our own syscalls. */
+		exit_syscall_emu(t, SYS_rrcall_monkeypatch_vdso, 0);
+		monkeypatch_vdso(t);
+		step->action = TSTEP_RETIRE;
+		return;
+
 	default:
 		break;
 	}

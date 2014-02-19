@@ -19,6 +19,7 @@
 #include <set>
 #include <utility>
 
+#include "dbg.h"
 #include "fixedstack.h"
 #include "trace.h"
 #include "util.h"
@@ -237,7 +238,7 @@ struct Mapping {
  * less than |b|'s/
  */
 struct MappingComparator {
-	bool operator()(const Mapping& a, const Mapping& b) {
+	bool operator()(const Mapping& a, const Mapping& b) const {
 		return a.intersects(b) ? false : a.start < b.start;
 	}
 };
@@ -371,7 +372,7 @@ public:
 	 * Return the mapping and mapped resource that underly [addr,
 	 * addr + num_bytes).  There must be exactly one such mapping.
 	 */
-	MemoryMap::value_type mapping_of(const byte* addr, size_t num_bytes);
+	MemoryMap::value_type mapping_of(const byte* addr, size_t num_bytes) const;
 
 	/**
 	 * Change the protection bits of [addr, addr + num_bytes) to
@@ -392,6 +393,9 @@ public:
 	 */
 	void unmap(const byte* addr, ssize_t num_bytes);
 
+	/** Return the vdso mapping of this. */
+	Mapping vdso() const;
+
 	/**
 	 * Verify that this cached address space matches what the
 	 * kernel thinks it should be.
@@ -407,11 +411,12 @@ public:
 	static shr_ptr create(Task* t);
 
 private:
-	AddressSpace() {
+	AddressSpace() : vdso_start_addr() {
 		sas.insert(this);
 	}
 	AddressSpace(const AddressSpace& o)
-		: exe(o.exe), heap(o.heap), mem(o.mem) {
+		: exe(o.exe), heap(o.heap), mem(o.mem)
+		, vdso_start_addr(o.vdso_start_addr) {
 		sas.insert(this);
 	}
 
@@ -427,18 +432,16 @@ private:
 			       MAP_ANONYMOUS | MAP_PRIVATE, 0);
 	}
 
-	/**
-	 * Path of the executable image this address space was
-	 * exec()'d with.
-	 */
+	/* Path of the executable image this address space was
+	 * exec()'d with. */
 	std::string exe;
-	/**
-	 * Track the special process-global heap in order to support
-	 * adjustments by brk().
-	 */
+	/* Track the special process-global heap in order to support
+	 * adjustments by brk(). */
 	Mapping heap;
-	/** All segments mapped into this address space. */
+	/* All segments mapped into this address space. */
 	MemoryMap mem;
+	/* First mapped byte of the vdso. */
+	byte* vdso_start_addr;
 
 	/**
 	 * Ensure that the cached mapping of |t| matches /proc/maps,
@@ -682,6 +685,74 @@ struct event {
 	};
 };
 
+/* (This function is an implementation detail that should go away in
+ * favor of a |task_init()| pseudo-constructor that initializes state
+ * shared across record and replay.) */
+void push_placeholder_event(Task* t);
+
+/**
+ * Push/pop event tracking descheduling of |rec|.
+ */
+void push_desched(Task* t, const struct syscallbuf_record* rec);
+void pop_desched(Task* t);
+
+/**
+ * Push/pop pseudo-sig events on the pending stack.  |no| is the enum
+ * value of the pseudosig (see above), and |record_exec_info| is true
+ * if the tracee's current state can be replicated during replay and
+ * so should be recorded for consistency-checking purposes.
+ */
+enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
+void push_pseudosig(Task* t, PseudosigType no, int has_exec_info);
+void pop_pseudosig(Task* t);
+
+/**
+ * Push/pop signal events on the pending stack.  |no| is the signum,
+ * and |deterministic| is nonzero for deterministically-delivered
+ * signals (see handle_signal.c).
+ */
+enum { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
+void push_pending_signal(Task* t, int no, int deterministic);
+void pop_signal_delivery(Task* t);
+void pop_signal_handler(Task* t);
+
+/**
+ * Push/pop syscall events on the pending stack.  |no| is the syscall
+ * number.
+ */
+void push_syscall(Task* t, int no);
+void pop_syscall(Task* t);
+
+/**
+ * Push/pop syscall interruption events.
+ *
+ * During recording, only descheduled buffered syscalls /push/ syscall
+ * interruptions; all others are detected at exit time and transformed
+ * into syscall interruptions from the original, normal syscalls.
+ *
+ * During replay, we push interruptions to know when we need to
+ * emulate syscall entry, since the kernel won't have set things up
+ * for the tracee to restart on its own.
+ */
+void push_syscall_interruption(Task* t, int no,
+			       const struct user_regs_struct* args);
+void pop_syscall_interruption(Task* t);
+
+/**
+ * Dump |t|'s stack of pending events to INFO log.
+ */
+void log_pending_events(const Task* t);
+
+/**
+ * Dump info about |ev| to INFO log.
+ */
+void log_event(const struct event* ev);
+
+/**
+ * Return a string naming |ev|'s type.
+ */
+const char* event_name(const struct event* ev);
+
 enum CloneFlags {
 	/**
 	 * The child gets a semantic copy of all parent resources (and
@@ -867,12 +938,26 @@ public:
 	void post_exec();
 
 	/**
+	 * Read |N| bytes from |child_addr| into |buf|, or don't
+	 * return.
+	 */
+	template<size_t N>
+	void read_bytes(const byte* child_addr, byte (&buf)[N])
+	{
+		off_t offset = reinterpret_cast<off_t>(child_addr);
+		ssize_t nread = pread(child_mem_fd, buf, N, offset);
+		assert_exec(this, N == nread,
+			    "Expected to read %d bytes at %p, but only read %d",
+			    N, child_addr, nread);
+	}
+
+	/**
 	 * Return the word at |child_addr| in this address space.
 	 *
 	 * NB: doesn't use the ptrace API, so safe to use even when
 	 * the tracee isn't at a trace-stop.
 	 */
-	long read_word(byte* child_addr);
+	long read_word(const byte* child_addr);
 
 	/**
 	 * Set the disposition and resethand semantics of |sig| to
@@ -915,12 +1000,25 @@ public:
 	AddressSpace::shr_ptr vm() { return as; }
 
 	/**
+	 * Write |N| bytes from |buf| to |child_addr|, or don't
+	 * return.
+	 */
+	template<size_t N>
+	void write_bytes(const byte* child_addr, const byte (&buf)[N]) {
+		off_t offset = reinterpret_cast<off_t>(child_addr);
+		ssize_t nwritten = pwrite(child_mem_fd, buf, N, offset);
+		assert_exec(this, N == nwritten,
+			    "Expected to write %d bytes at %p, but only wrote %d",
+			    N, child_addr, nwritten);
+	}
+
+	/**
 	 * Write |word| to |child_addr| in this address space.
 	 *
 	 * NB: doesn't use the ptrace API, so safe to use even when
 	 * the tracee isn't at a trace-stop.
 	 */
-	void write_word(byte* child_addr, long word);
+	void write_word(const byte* child_addr, long word);
 
 	/** Return an iterator at the beginning of the task map. */
 	static Map::const_iterator begin();
@@ -1132,73 +1230,5 @@ private:
 	Task(Task&) = delete;
 	Task operator=(Task&) = delete;
 };
-
-/* (This function is an implementation detail that should go away in
- * favor of a |task_init()| pseudo-constructor that initializes state
- * shared across record and replay.) */
-void push_placeholder_event(Task* t);
-
-/**
- * Push/pop event tracking descheduling of |rec|.
- */
-void push_desched(Task* t, const struct syscallbuf_record* rec);
-void pop_desched(Task* t);
-
-/**
- * Push/pop pseudo-sig events on the pending stack.  |no| is the enum
- * value of the pseudosig (see above), and |record_exec_info| is true
- * if the tracee's current state can be replicated during replay and
- * so should be recorded for consistency-checking purposes.
- */
-enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
-void push_pseudosig(Task* t, PseudosigType no, int has_exec_info);
-void pop_pseudosig(Task* t);
-
-/**
- * Push/pop signal events on the pending stack.  |no| is the signum,
- * and |deterministic| is nonzero for deterministically-delivered
- * signals (see handle_signal.c).
- */
-enum { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
-void push_pending_signal(Task* t, int no, int deterministic);
-void pop_signal_delivery(Task* t);
-void pop_signal_handler(Task* t);
-
-/**
- * Push/pop syscall events on the pending stack.  |no| is the syscall
- * number.
- */
-void push_syscall(Task* t, int no);
-void pop_syscall(Task* t);
-
-/**
- * Push/pop syscall interruption events.
- *
- * During recording, only descheduled buffered syscalls /push/ syscall
- * interruptions; all others are detected at exit time and transformed
- * into syscall interruptions from the original, normal syscalls.
- *
- * During replay, we push interruptions to know when we need to
- * emulate syscall entry, since the kernel won't have set things up
- * for the tracee to restart on its own.
- */
-void push_syscall_interruption(Task* t, int no,
-			       const struct user_regs_struct* args);
-void pop_syscall_interruption(Task* t);
-
-/**
- * Dump |t|'s stack of pending events to INFO log.
- */
-void log_pending_events(const Task* t);
-
-/**
- * Dump info about |ev| to INFO log.
- */
-void log_event(const struct event* ev);
-
-/**
- * Return a string naming |ev|'s type.
- */
-const char* event_name(const struct event* ev);
 
 #endif /* TASK_H_ */
