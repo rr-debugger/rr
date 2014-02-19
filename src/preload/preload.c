@@ -288,6 +288,25 @@ static int traced_syscall(int syscallno, long a0, long a1, long a2,
 #define traced_syscall0(no)			\
 	traced_syscall1(no, 0)
 
+/**
+ * "Raw" traced syscalls return the raw kernel return value, and don't
+ * transform it to -1/errno per POSIX semantics.
+ */
+#define raw_traced_syscall6(no, a0, a1, a2, a3, a4, a5)			\
+	_raw_traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+#define raw_traced_syscall5(no, a0, a1, a2, a3, a4)	\
+	raw_traced_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define raw_traced_syscall4(no, a0, a1, a2, a3)	\
+	raw_traced_syscall5(no, a0, a1, a2, a3, 0)
+#define raw_traced_syscall3(no, a0, a1, a2)	\
+	raw_traced_syscall4(no, a0, a1, a2, 0)
+#define raw_traced_syscall2(no, a0, a1)		\
+	raw_traced_syscall3(no, a0, a1, 0)
+#define raw_traced_syscall1(no, a0)		\
+	raw_traced_syscall2(no, a0, 0)
+#define raw_traced_syscall0(no)			\
+	raw_traced_syscall1(no, 0)
+
 static void* get_traced_syscall_entry_point(void)
 {
     void *ret;
@@ -1113,13 +1132,13 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
 }
 
 /**
- * Commit the record for a buffered system call.
- * record_end can be adjusted downward from what was passed to
- * start_commit_buffered_syscall, if not all of the initially requested space is needed.
- * The result of this function should be returned directly by the
- * wrapper function.
+ * Commit the record for a buffered system call.  record_end can be
+ * adjusted downward from what was passed to
+ * start_commit_buffered_syscall, if not all of the initially
+ * requested space is needed.  The result of this function should be
+ * returned directly by the kernel vsyscall hook.
  */
-static int commit_syscall(int syscallno, void* record_end, int ret)
+static long commit_raw_syscall(int syscallno, void* record_end, int ret)
 {
 	void* record_start = buffer_last();
 	struct syscallbuf_record* rec = record_start;
@@ -1172,7 +1191,16 @@ static int commit_syscall(int syscallno, void* record_end, int ret)
 
 	buffer_hdr()->locked = 0;
 
-	return update_errno_ret(ret);
+	return ret;
+}
+
+/**
+ *  Soon-to-be obsoleted version of |commit_raw_syscall()| for libc
+ *  wrappers.
+ */
+static int commit_syscall(int syscallno, void* record_end, int ret)
+{
+	return update_errno_ret(commit_raw_syscall(syscallno, record_end, ret));
 }
 
 /**
@@ -1280,7 +1308,6 @@ long untraced_socketcall(int call, long a0, long a1, long a2, long a3, long a4)
 	untraced_socketcall1(no, 0)
 
 /* Keep syscalls in alphabetical order, please. */
-
 int access(const char* pathname, int mode)
 {
 	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
@@ -1291,30 +1318,6 @@ int access(const char* pathname, int mode)
  	}
 	ret = untraced_syscall2(SYS_access, pathname, mode);
 	return commit_syscall(SYS_access, ptr, ret);
-}
-
-int clock_gettime(clockid_t clk_id, struct timespec* tp)
-{
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	struct timespec *tp2 = NULL;
-	long ret;
-
-	/* Set it up so the syscall writes to the record cache. */
-	if (tp) {
-		tp2 = ptr;
-		ptr += sizeof(struct timespec);
-	}
-	if (!start_commit_buffered_syscall(SYS_clock_gettime, ptr, WONT_BLOCK)) {
-		return traced_syscall2(SYS_clock_gettime, clk_id, tp);
- 	}
-	ret = untraced_syscall2(SYS_clock_gettime, clk_id, tp2);
-	/* Now in the replay we can simply refill the recorded buffer
-	 * data, emulate the syscalls, and this code will restore the
-	 * recorded data to the outparams. */
-	if (tp) {
-		local_memcpy(tp, tp2, sizeof(struct timespec));
-	}
-	return commit_syscall(SYS_clock_gettime, ptr, ret);
 }
 
 int close(int fd)
@@ -1503,37 +1506,6 @@ int __fxstat(int vers, int fd, struct stat* buf)
 	return ret;
 }
 
-int gettimeofday(struct timeval* tp, struct timezone* tzp)
-{
-	/* XXX it seems odd that clock_gettime() is spec'd to be
-	 * async-signal-safe while gettimeofday() isn't, but that's
-	 * what the docs say! */
-	void *ptr = prep_syscall(NO_SIGNAL_SAFETY);
-	struct timeval *tp2 = NULL;
-	struct timezone *tzp2 = NULL;
-	long ret;
-
-	if (tp) {
-		tp2 = ptr;
-		ptr += sizeof(struct timeval);
-	}
-	if (tzp) {
-		tzp2 = ptr;
-		ptr += sizeof(struct timezone);
-	}
-	if (!start_commit_buffered_syscall(SYS_gettimeofday, ptr, WONT_BLOCK)) {
-		return traced_syscall2(SYS_gettimeofday, tp, tzp);
-	}
-	ret = untraced_syscall2(SYS_gettimeofday, tp2, tzp2);
-	if (tp) {
-		local_memcpy(tp, tp2, sizeof(struct timeval));
-	}
-	if (tzp) {
-		local_memcpy(tzp, tzp2, sizeof(struct timezone));
-	}
-	return commit_syscall(SYS_gettimeofday, ptr, ret);
-}
-
 int __lxstat64(int vers, const char* path, struct stat64* buf)
 {
 	return stat_something(SYS_lstat64, vers, (uintptr_t)path, buf);
@@ -1709,10 +1681,78 @@ int __xstat(int vers, const char* path, struct stat* buf)
 	return ret;
 }
 
+static long sys_clock_gettime(const struct syscall_info* call)
+{
+	const int syscallno = SYS_clock_gettime;
+	clockid_t clk_id = (clockid_t)call->args[0];
+	struct timespec* tp = (struct timespec*)call->args[1];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	struct timespec *tp2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (tp) {
+		tp2 = ptr;
+		ptr += sizeof(*tp2);
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall2(syscallno, clk_id, tp);
+ 	}
+	ret = untraced_syscall2(syscallno, clk_id, tp2);
+	if (tp) {
+		local_memcpy(tp, tp2, sizeof(*tp));
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_gettimeofday(const struct syscall_info* call)
+{
+	const int syscallno = SYS_gettimeofday;
+	struct timeval* tp = (struct timeval*)call->args[0];
+	struct timezone* tzp = (struct timezone*)call->args[1];
+
+	/* XXX it seems odd that clock_gettime() is spec'd to be
+	 * async-signal-safe while gettimeofday() isn't, but that's
+	 * what the docs say! */
+	void *ptr = prep_syscall(NO_SIGNAL_SAFETY);
+	struct timeval *tp2 = NULL;
+	struct timezone *tzp2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (tp) {
+		tp2 = ptr;
+		ptr += sizeof(*tp2);
+	}
+	if (tzp) {
+		tzp2 = ptr;
+		ptr += sizeof(*tzp2);
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall2(syscallno, tp, tzp);
+	}
+	ret = untraced_syscall2(syscallno, tp2, tzp2);
+	if (tp) {
+		local_memcpy(tp, tp2, sizeof(*tp));
+	}
+	if (tzp) {
+		local_memcpy(tzp, tzp2, sizeof(*tzp));
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long __attribute__((unused))
 vsyscall_hook(const struct syscall_info* call)
 {
 	switch (call->no) {
+#define CASE(syscallname)						\
+		case SYS_ ## syscallname: return sys_ ## syscallname(call)
+	CASE(clock_gettime);
+	CASE(gettimeofday);
+#undef CASE
 	default:
 		/* FIXME: pass |call| to avoid pushing these on the
 		 * stack again. */
