@@ -1254,17 +1254,6 @@ static long untraced_socketcall(int call,
 	untraced_socketcall1(no, 0)
 
 /* Keep syscalls in alphabetical order, please. */
-int access(const char* pathname, int mode)
-{
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	long ret;
-
-	if (!start_commit_buffered_syscall(SYS_access, ptr, WONT_BLOCK)) {
-		return traced_syscall2(SYS_access, pathname, mode);
- 	}
-	ret = untraced_syscall2(SYS_access, pathname, mode);
-	return commit_syscall(SYS_access, ptr, ret);
-}
 
 static int fcntl0(int fd, int cmd)
 {
@@ -1416,27 +1405,6 @@ int fcntl(int fd, int cmd, ... /* arg */)
 	}
 }
 
-ssize_t readlink(const char* path, char* buf, size_t bufsiz)
-{
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	char* buf2 = NULL;
-	long ret;
-
-	if (buf && bufsiz > 0) {
-		buf2 = ptr;
-		ptr += bufsiz;
-	}
-	if (!start_commit_buffered_syscall(SYS_readlink, ptr, WONT_BLOCK)) {
-		return traced_syscall3(SYS_readlink, path, buf, bufsiz);
-	}
-
-	ret = untraced_syscall3(SYS_readlink, path, buf2, bufsiz);
-	if (buf2 && ret > 0) {
-		local_memcpy(buf, buf2, ret);
-	}
-	return commit_syscall(SYS_readlink, ptr, ret);
-}
-
 ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 {
 	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
@@ -1459,20 +1427,22 @@ ssize_t recv(int sockfd, void* buf, size_t len, int flags)
 	return commit_syscall(SYS_socketcall, ptr, ret);
 }
 
-time_t time(time_t* t)
+static long sys_access(const struct syscall_info* call)
 {
+	const int syscallno = SYS_access;
+	const char* pathname = (const char*)call->args[0];
+	int mode = call->args[1];
+
 	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
 	long ret;
 
-	if (!start_commit_buffered_syscall(SYS_time, ptr, WONT_BLOCK)) {
-		return traced_syscall1(SYS_time, t);
-	}
-	ret = untraced_syscall1(SYS_time, NULL);
-	if (t) {
-		/* No error is possible here. */
-		*t = ret;
-	}
-	return commit_syscall(SYS_time, ptr, ret);
+	assert(syscallno == call->no);
+
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall2(syscallno, pathname, mode);
+ 	}
+	ret = untraced_syscall2(syscallno, pathname, mode);
+	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
 static long sys_clock_gettime(const struct syscall_info* call)
@@ -1633,6 +1603,56 @@ static long sys_read(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_readlink(const struct syscall_info* call)
+{
+	const int syscallno = SYS_readlink;
+	const char* path = (const char*)call->args[0];
+	char* buf = (char*)call->args[1];
+	int bufsiz = call->args[2];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	char* buf2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (buf && bufsiz > 0) {
+		buf2 = ptr;
+		ptr += bufsiz;
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall3(syscallno, path, buf, bufsiz);
+	}
+
+	ret = untraced_syscall3(syscallno, path, buf2, bufsiz);
+	if (buf2 && ret > 0) {
+		local_memcpy(buf, buf2, ret);
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+
+static long sys_time(const struct syscall_info* call)
+{
+	const int syscallno = SYS_time;
+	time_t* tp = (time_t*)call->args[0];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall1(syscallno, tp);
+	}
+	ret = untraced_syscall1(syscallno, NULL);
+	if (tp) {
+		/* No error is possible here. */
+		*tp = ret;
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_xstat64(const struct syscall_info* call)
 {
 	const int syscallno = call->no;
@@ -1694,12 +1714,15 @@ vsyscall_hook(const struct syscall_info* call)
 	switch (call->no) {
 #define CASE(syscallname)						\
 		case SYS_ ## syscallname: return sys_ ## syscallname(call)
+	CASE(access);
 	CASE(clock_gettime);
 	CASE(close);
 	CASE(creat);
 	CASE(gettimeofday);
 	CASE(open);
 	CASE(read);
+	CASE(readlink);
+	CASE(time);
 	CASE(write);
 #undef CASE
 	case SYS_fstat64:
