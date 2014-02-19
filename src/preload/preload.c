@@ -408,6 +408,25 @@ static void logmsg(const char* msg, ...)
 # define debug(msg, ...) ((void)0)
 #endif
 
+/**
+ * Mask out all signals in preparation for a critical section.
+ * Previous mask saved to |saved_mask|, which should be passed to
+ * |exit_signal_critical_section()|.
+ */
+static void enter_signal_critical_section(sigset_t* saved_mask)
+{
+	sigset_t mask;
+	sigfillset(&mask);
+	traced_sigprocmask(SIG_BLOCK, &mask, saved_mask);
+}
+
+/**
+ * Restore |saved_mask|, after exiting critical section.
+ */
+static void exit_signal_critical_section(const sigset_t* saved_mask)
+{
+	traced_sigprocmask(SIG_SETMASK, saved_mask, NULL);
+}
 
 /* Helpers for invoking untraced syscalls, which do *not* generate
  * ptrace traps.
@@ -459,6 +478,127 @@ static void* get_untraced_syscall_entry_point(void)
 }
 
 /**
+ * Save the syscall params to this struct so that we can pass around a
+ * pointer to it and avoid pushing/popping all this data for calls to
+ * subsequent handlers.
+ */
+struct syscall_info {
+    long no;
+    long args[6];
+};
+
+/**
+ * Call this hook from |__kernel_vsyscall()|, to buffer syscalls that
+ * we otherwise couldn't wrap through LD_PRELOAD helpers.  Return the
+ * *RAW* kernel return value, not the -1/errno mandated by POSIX.
+ *
+ * Remember, this function runs *below* the level of libc.  libc can't
+ * know that its call to |__kernel_vsyscall()| has been re-routed to
+ * us.
+ */
+static long vsyscall_hook(const struct syscall_info* call);
+
+/**
+ * |__kernel_vsyscall()| is /actually/ patched to jump here.  This
+ * trampoline then prepares a "real" call to |vsyscall_hook()|.
+ */
+__asm__(".text\n\t"
+	".globl _vsyscall_hook_trampoline\n\t"
+	".type _vsyscall_hook_trampoline, @function\n\t"
+	"_vsyscall_hook_trampoline:\n\t"
+	".cfi_startproc\n\t"
+
+	/* The monkeypatch pushed $eax on the stack, but there's no
+	 * CFI info for it.  Fix up the CFA offset here to account for
+	 * the monkeypatch code. */
+        ".cfi_adjust_cfa_offset 4\n\t"
+        ".cfi_rel_offset %eax, 0\n\t"
+
+        /* Pull $eax back off the stack.  Now our syscall-arg
+         * registers are restored to their state on entry to
+         * __kernel_vsyscall(). */
+        "popl %eax\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %eax\n\t"
+
+        /* Build a |struct syscall_info| by pushing all the syscall
+         * args and the number onto the stack. */
+                                /* struct syscall_info info; */
+        "pushl %ebp\n\t"        /* info.args[5] = $ebp; */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %ebp, 0\n\t"
+        "pushl %edi\n\t"        /* info.args[4] = $edi; */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %edi, 0\n\t"
+        "pushl %esi\n\t"        /* info.args[3] = $esi; */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %esi, 0\n\t"
+        "pushl %edx\n\t"        /* info.args[2] = $edx; */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %edx, 0\n\t"
+        "pushl %ecx\n\t"        /* info.args[1] = $ecx; */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %ecx, 0\n\t"
+        "pushl %ebx\n\t"        /* info.args[0] = $ebx; */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %ebx, 0\n\t"
+        "pushl %eax\n\t"        /* info.no = $eax; */
+	".cfi_adjust_cfa_offset 4\n\t"
+
+        /* $esp points at &info.  Push that pointer on the stack as
+         * our arg for syscall_hook(). */
+        "movl %esp, %ecx\n\t"
+        "pushl %ecx\n\t"
+	".cfi_adjust_cfa_offset 4\n\t"
+
+        "movl $vsyscall_hook, %eax\n\t"
+        "call *%eax\n\t"        /* $eax = vsyscall_hook(&info); */
+
+        /* $eax is now the syscall return value.  Erase the |&info|
+         * arg and |info.no| from the stack so that we can restore the
+         * other registers we saved. */
+        "addl $8, %esp\n\t"
+	".cfi_adjust_cfa_offset -8\n\t"
+
+        /* Contract of __kernel_vsyscall() is that even callee-save
+         * registers aren't touched, so we restore everything here. */
+        "popl %ebx\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %ebx\n\t"
+        "popl %ecx\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %ecx\n\t"
+        "popl %edx\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %edx\n\t"
+        "popl %esi\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %esi\n\t"
+        "popl %edi\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %edi\n\t"
+        "popl %ebp\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %ebp\n\t"
+
+        /* Return to the caller of *|__kernel_vsyscall()|*, because
+         * the monkeypatch jumped to us. */
+        "ret\n\t"
+    	".cfi_endproc\n\t"
+        ".size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline\n\t");
+
+static void* get_vsyscall_hook_trampoline(void)
+{
+    void *ret;
+    __asm__ __volatile__(
+	    "call .L_get_vsyscall_hook_trampoline__pic_helper\n\t"
+	    ".L_get_vsyscall_hook_trampoline__pic_helper: pop %0\n\t"
+	    "addl $(_vsyscall_hook_trampoline - .L_get_vsyscall_hook_trampoline__pic_helper),%0"
+	    : "=a"(ret));
+    return ret;
+}
+
+/**
  * Do what's necessary to set up buffers for the caller.
  * |untraced_syscall_ip| lets rr know where our untraced syscalls will
  * originate from.  |addr| is the address of the control socket the
@@ -473,32 +613,24 @@ static void* get_untraced_syscall_entry_point(void)
  *
  * This is a "magic" syscall implemented by rr.
  */
-static void rrcall_init_buffers(void* traced_syscall_ip,
-				void* untraced_syscall_ip,
-				struct sockaddr_un* sockaddr,
-				struct msghdr* msg, int* fdptr,
-				struct socketcall_args* args_vec,
-				void** scratch_ptr,
-				size_t* num_scratch_bytes,
-				void** syscallbuf_ptr,
-				size_t* num_syscallbuf_bytes)
+static void rrcall_init_buffers(struct rrcall_init_buffers_params* args)
 {
-	struct rrcall_init_buffers_params args;
+	sigset_t mask;
+	enter_signal_critical_section(&mask);
+	traced_syscall1(SYS_rrcall_init_buffers, args);
+	exit_signal_critical_section(&mask);
+}
 
-	args.syscallbuf_enabled = buffer_enabled;
-	args.traced_syscall_ip = traced_syscall_ip;
-	args.untraced_syscall_ip = untraced_syscall_ip;
-	args.sockaddr = sockaddr;
-	args.msg = msg;
-	args.fdptr = fdptr;
-	args.args_vec = args_vec;
-
-	traced_syscall1(SYS_rrcall_init_buffers, &args);
-
-	*scratch_ptr = args.scratch_ptr;
-	*num_scratch_bytes = args.num_scratch_bytes;
-	*syscallbuf_ptr = args.syscallbuf_ptr;
-	*num_syscallbuf_bytes = args.num_syscallbuf_bytes;
+/**
+ * Monkeypatch |__kernel_vsyscall()| to jump into
+ * |vdso_hook_trampoline|.
+ */
+static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline)
+{
+	sigset_t mask;
+	enter_signal_critical_section(&mask);
+	traced_syscall1(SYS_rrcall_monkeypatch_vdso, vdso_hook_trampoline);
+	exit_signal_critical_section(&mask);
 }
 
 /**
@@ -522,7 +654,7 @@ static void install_syscall_filter(void)
 	};
 
 	debug("Initializing syscall buffer: protected_call_start = %p",
-	      protected_call_start);
+	      untraced_syscall_start);
 
 	if (traced_prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
 		fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your kernel is too old.  Use `record -n` to disable the filter.");
@@ -602,6 +734,7 @@ static void set_up_buffer(void)
 	int* cmsg_fdptr;
 	char cmsgbuf[CMSG_SPACE(sizeof(*cmsg_fdptr))];
 	struct socketcall_args args_vec;
+	struct rrcall_init_buffers_params args;
 
 	assert(!buffer);
 
@@ -642,32 +775,27 @@ static void set_up_buffer(void)
 	 * the kernel parses, dups, then sets to the fd number
 	 * allocated in the other process. */
 	*cmsg_fdptr = desched_counter_fd;
-	{
-		sigset_t mask, oldmask;
-		/* Create a "critical section" that can't be
-		 * interrupted by signals.  rr doesn't want to deal
-		 * with signals while injecting syscalls into us. */
-		sigfillset(&mask);
-		traced_sigprocmask(SIG_BLOCK, &mask, &oldmask);
 
-		/* Trap to rr: let the magic begin!  We've prepared
-		 * the buffer so that it's immediately ready to be
-		 * sendmsg()'d to rr to share the desched counter to
-		 * it (under rr's control).  rr can further use the
-		 * buffer to share more fd's to us. */
-		rrcall_init_buffers(get_traced_syscall_entry_point(),
-				    get_untraced_syscall_entry_point(),
-				    &addr, &msg, cmsg_fdptr, &args_vec,
-				    &cleanup->scratch_ptr,
-				    &cleanup->num_scratch_bytes,
-				    &cleanup->syscallbuf_ptr,
-				    &cleanup->num_syscallbuf_bytes);
-		buffer = cleanup->syscallbuf_ptr;
-		/* rr initializes the buffer header. */
+	args.syscallbuf_enabled = buffer_enabled;
+	args.traced_syscall_ip = get_traced_syscall_entry_point();
+	args.untraced_syscall_ip = get_untraced_syscall_entry_point();
+	args.sockaddr = &addr;
+	args.msg = &msg;
+	args.fdptr = cmsg_fdptr;
+	args.args_vec = &args_vec;
 
-		/* End "critical section". */
-		traced_sigprocmask(SIG_SETMASK, &oldmask, NULL);
-	}
+	/* Trap to rr: let the magic begin!  We've prepared the buffer
+	 * so that it's immediately ready to be sendmsg()'d to rr to
+	 * share the desched counter to it (under rr's control).  rr
+	 * can further use the buffer to share more fd's to us. */
+	rrcall_init_buffers(&args);
+
+	/* rr initializes the buffer header. */
+	buffer = cleanup->syscallbuf_ptr = args.syscallbuf_ptr;
+	cleanup->scratch_ptr = args.scratch_ptr;
+	cleanup->num_scratch_bytes = args.num_scratch_bytes;
+	cleanup->syscallbuf_ptr = args.syscallbuf_ptr;
+	cleanup->num_syscallbuf_bytes = args.num_syscallbuf_bytes;
 }
 
 /**
@@ -695,6 +823,7 @@ static void init_process(void)
 	if (buffer_enabled) {
 		install_syscall_filter();
 		pthread_atfork(NULL, NULL, drop_buffer);
+		rrcall_monkeypatch_vdso(get_vsyscall_hook_trampoline());
 	} else {
 		debug("Syscall buffering is disabled");
 	}
@@ -730,8 +859,8 @@ static void ensure_thread_init(int signal_safety)
 	set_up_buffer();
 }
 
-__attribute__((constructor))
-static void init_process_static(void)
+static void __attribute__((constructor))
+init_process_static(void)
 {
 	ensure_thread_init(NO_SIGNAL_SAFETY);
 }
@@ -768,7 +897,7 @@ static void* thread_trampoline(void* arg)
  * syscalls, rather in order to initialize rr thread data.
  */
 int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
-                          void* (*start_routine) (void*), void* arg)
+		   void* (*start_routine) (void*), void* arg)
 {
 	struct thread_func_data* data;
 
@@ -860,6 +989,7 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
  * fallback_trace:
  *   return syscall(...);  // traced
  */
+
 static void* prep_syscall(int signal_safety)
 {
 	ensure_thread_init(signal_safety);
@@ -1577,4 +1707,18 @@ int __xstat(int vers, const char* path, struct stat* buf)
 		return copy_to_stat(&tmp, buf);
 	}
 	return ret;
+}
+
+static long __attribute__((unused))
+vsyscall_hook(const struct syscall_info* call)
+{
+	switch (call->no) {
+	default:
+		/* FIXME: pass |call| to avoid pushing these on the
+		 * stack again. */
+		return _raw_traced_syscall(call->no,
+					   call->args[0], call->args[1],
+					   call->args[2], call->args[3],
+					   call->args[4], call->args[5]);
+	}
 }

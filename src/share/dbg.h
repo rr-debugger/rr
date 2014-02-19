@@ -10,7 +10,6 @@
 
 #include "../replayer/replayer.h" /* for emergency_debug() */
 
-#include "task.h"
 #include "util.h"
 
 /**

@@ -3128,6 +3128,10 @@ void rec_process_syscall(Task *t)
 		init_buffers(t, NULL, SHARE_DESCHED_EVENT_FD);
 		break;
 
+	case SYS_rrcall_monkeypatch_vdso:
+		monkeypatch_vdso(t);
+		break;
+
 	default:
 		print_register_file_tid(t);
 		fatal("Unknown syscall %s(%d)", syscallname(syscall), syscall);

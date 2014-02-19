@@ -1834,3 +1834,141 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 
 	return child_map_addr;
 }
+
+static const byte vsyscall_impl[] = {
+    0x51,                       /* push %ecx */
+    0x52,                       /* push %edx */
+    0x55,                       /* push %ebp */
+    0x89, 0xe5,                 /* mov %esp,%ebp */
+    0x0f, 0x34,                 /* sysenter */
+    0x90,                       /* nop */
+    0x90,                       /* nop */
+    0x90,                       /* nop */
+    0x90,                       /* nop */
+    0x90,                       /* nop */
+    0x90,                       /* nop */
+    0x90,                       /* nop */
+    0xcd, 0x80,                 /* int $0x80 */
+    0x5d,                       /* pop %ebp */
+    0x5a,                       /* pop %edx */
+    0x59,                       /* pop %ecx */
+    0xc3,                       /* ret */
+};
+
+/**
+ * Return true iff |addr| points to a known |__kernel_vsyscall()|
+ * implementation.
+ */
+static bool is_kernel_vsyscall(Task* t, const byte* addr)
+{
+	byte impl[sizeof(vsyscall_impl)];
+	t->read_bytes(addr, impl);
+	for (size_t i = 0; i < sizeof(vsyscall_impl); ++i) {
+		if (vsyscall_impl[i] != impl[i]) {
+			log_warn("Byte %d of __kernel_vsyscall should be 0x%x, but is 0x%x",
+				 i, vsyscall_impl[i], impl[i]);
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
+ * Return the address of a recognized |__kernel_vsyscall()|
+ * implementation in |t|'s address space.
+ */
+static const byte* locate_and_verify_kernel_vsyscall(Task* t)
+{
+	const byte* vdso_start = t->vm()->vdso().start;
+	// __kernel_vsyscall() has been observed to be mapped at the
+	// following offsets from the vdso start address.  We'll try
+	// to recognize a known __kernel_vsyscall() impl at any of
+	// these offsets.
+	const ssize_t known_offsets[] = {
+		0x414,		// x86 native kernel ca. 3.12.10-300
+		0x420		// x86 process on x64 kernel
+	};
+	for (size_t i = 0; i < ALEN(known_offsets); ++i) {
+		const byte* addr = vdso_start + known_offsets[i];
+		if (is_kernel_vsyscall(t, addr)) {
+			return addr;
+		}
+	}
+	return nullptr;
+}
+
+// NBB: the placeholder bytes in |struct insns_template| below must be
+// kept in sync with this.
+static const byte vsyscall_monkeypatch[] = {
+	0x50,                         // push %eax
+	0xb8, 0x00, 0x00, 0x00, 0x00, // mov $_vsyscall_hook_trampoline, %eax
+	// The immediate param of the |mov| is filled in dynamically
+	// by the template mechanism below.  The NULL here is a
+	// placeholder.
+	0xff, 0xe0,		// jmp *%eax
+};
+
+struct insns_template {
+	// NBB: |vsyscall_monkeypatch| must be kept in sync with these
+	// placeholder bytes.
+	byte push_eax_insn;
+	byte mov_vsyscall_hook_trampoline_eax_insn;
+	void* vsyscall_hook_trampoline;
+} __attribute__((packed));
+
+/**
+ * Monkeypatch |t|'s |__kernel_vsyscall()| helper to jump to
+ * |vsyscall_hook_trampoline|.
+ */
+static void monkeypatch(Task* t, const byte* kernel_vsyscall,
+			void* vsyscall_hook_trampoline)
+{
+	union {
+		byte bytes[sizeof(vsyscall_monkeypatch)];
+		struct insns_template insns;
+	} __attribute__((packed)) patch;
+	// Write the basic monkeypatch onto to the template, except
+	// for the (dynamic) $vsyscall_hook_trampoline address.
+	memcpy(patch.bytes, vsyscall_monkeypatch, sizeof(patch.bytes));
+	// (Try to catch out-of-sync |vsyscall_monkeypatch| and
+	// |struct insns_template|.)
+	assert(nullptr == patch.insns.vsyscall_hook_trampoline);
+	patch.insns.vsyscall_hook_trampoline = vsyscall_hook_trampoline;
+
+	t->write_bytes(kernel_vsyscall, patch.bytes);
+	debug("monkeypatched __kernel_vsyscall to jump to %p",
+	      vsyscall_hook_trampoline);
+}
+
+void monkeypatch_vdso(Task* t)
+{
+	const byte* kernel_vsyscall = locate_and_verify_kernel_vsyscall(t);
+	if (!kernel_vsyscall) {
+		fatal(
+"Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't recognized.\n"
+"    Syscall buffering is now effectively disabled.  If you're OK with\n"
+"    running rr without syscallbuf, then run the recorder passing the\n"
+"    --no-syscall-buffer arg.\n"
+"    If you're *not* OK with that, file an issue.");
+	}
+
+	debug("__kernel_vsyscall is %p", kernel_vsyscall);
+
+	assert_exec(t, 1 == t->vm()->task_set().size(),
+		    "TODO: monkeypatch multithreaded process");
+
+	// NB: the tracee can't be interrupted with a signal while
+	// we're processing the rrcall, because it's masked off all
+	// signals.
+	struct user_regs_struct regs;
+	read_child_registers(t, &regs);
+
+	void* vsyscall_hook_trampoline = (void*)regs.ebx;
+	// Luckily, linux is happy for us to scribble directly over
+	// the vdso mapping's bytes without mprotecting the region, so
+	// we don't need to prepare remote syscalls here.
+	monkeypatch(t, kernel_vsyscall, vsyscall_hook_trampoline);
+
+	regs.eax = 0;
+	write_child_registers(t, &regs);
+}

@@ -491,10 +491,10 @@ static int go_to_a_happy_place(Task* t,
 		goto happy_place;
 	}
 
-	if (SYSCALLBUF_IS_IP_IN_LIB(regs->eip, t)
-	    && is_deterministic_signal(si)) {
-		fatal("TODO: support deterministic signals triggered by syscallbuf code");
-	}
+	assert_exec(t, !(SYSCALLBUF_IS_IP_IN_LIB(regs->eip, t)
+			 && is_deterministic_signal(si)),
+		    "TODO: %s (code:%d) raised by syscallbuf code",
+		    signalname(si->si_signo), si->si_code);
 	/* TODO: when we add support for deterministic signals, we
 	 * should sigprocmask-off all tracee signals while we're
 	 * stepping.  If we tried that with the current impl, the
@@ -514,6 +514,18 @@ static int go_to_a_happy_place(Task* t,
 			 * desched'd syscalls, which are OK per
 			 * above.. */
 			debug("  tracee outside syscallbuf lib");
+			goto happy_place;
+		}
+		if (SYSCALLBUF_IS_IP_ENTERING_TRACED_SYSCALL(regs->eip, t)) {
+			// Unlike the untraced syscall entry, if we
+			// step a tracee into a *traced* syscall,
+			// we'll see a SIGTRAP for the tracee.  That
+			// causes several problems for rr, most
+			// relevant of them to this code being that
+			// the syscall entry looks like a synchronous
+			// SIGTRAP generated from the syscallbuf lib,
+			// which we don't know how to handle.
+			debug("  tracee entering traced syscallbuf syscall");
 			goto happy_place;
 		}
 		if (SYSCALLBUF_IS_IP_TRACED_SYSCALL(regs->eip, t)) {
