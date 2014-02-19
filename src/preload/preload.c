@@ -1321,27 +1321,6 @@ int access(const char* pathname, int mode)
 	return commit_syscall(SYS_access, ptr, ret);
 }
 
-int close(int fd)
-{
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	long ret;
-
-	if (!start_commit_buffered_syscall(SYS_close, ptr, WONT_BLOCK)) {
-		return traced_syscall1(SYS_close, fd);
- 	}
-	ret = untraced_syscall1(SYS_close, fd);
-	return commit_syscall(SYS_close, ptr, ret);
-}
-
-int creat(const char* pathname, mode_t mode)
-{
-	/* Thus sayeth the man page:
-	 *
-	 *   creat() is equivalent to open() with flags equal to
-	 *   O_CREAT|O_WRONLY|O_TRUNC. */
-	return open(pathname, O_CREAT | O_TRUNC | O_WRONLY, mode);
-}
-
 static int fcntl0(int fd, int cmd)
 {
 	/* No zero-arg fcntl's are known to be may-block. */
@@ -1522,56 +1501,6 @@ int __lxstat(int vers, const char* path, struct stat* buf)
 	return ret;
 }
 
-int open(const char* pathname, int flags, ...)
-{
-	/* NB: not arming the desched event is technically correct,
-	 * since open() can't deadlock if it blocks.  However, not
-	 * allowing descheds here may cause performance issues if the
-	 * open does block for a while.  Err on the side of simplicity
-	 * until we have perf data. */
-	void* ptr;
-	int mode = 0;
-	long ret;
-
-	/* The strcmp() done here is OK because we're not in the
-	 * critical section yet. */
-	if (is_blacklisted_filename(pathname)) {
-		/* Would be nice to debug() here, but that would flush
-		 * the syscallbuf ...  This special bail-out case is
-		 * deterministic, so no need to save any breadcrumbs
-		 * in the syscallbuf. */
-		errno = ENOENT;
-		return -1;
-	}
-
-	ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-
-	if (O_CREAT & flags) {
-		va_list mode_arg;
-		va_start(mode_arg, flags);
-		mode = va_arg(mode_arg, int);
-		va_end(mode_arg);
-	}
-	if (!start_commit_buffered_syscall(SYS_open, ptr, WONT_BLOCK)) {
-		return traced_syscall3(SYS_open, pathname, flags, mode);
-	}
-
-	ret = untraced_syscall3(SYS_open, pathname, flags, mode);
-	return commit_syscall(SYS_open, ptr, ret);
-}
-
-int open64(const char* pathname, int flags, ...)
-{
-	int mode = 0;
-	if (O_CREAT & flags) {
-		va_list mode_arg;
-		va_start(mode_arg, flags);
-		mode = va_arg(mode_arg, int);
-		va_end(mode_arg);
-	}
-	return open(pathname, flags | O_LARGEFILE, mode);
-}
-
 ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 {
 	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
@@ -1672,6 +1601,39 @@ static long sys_clock_gettime(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_close(const struct syscall_info* call)
+{
+	const int syscallno = SYS_close;
+	int fd = call->args[0];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	long ret;
+
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall1(syscallno, fd);
+ 	}
+	ret = untraced_syscall1(syscallno, fd);
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_open(const struct syscall_info* call);
+static long sys_creat(const struct syscall_info* call)
+{
+	int fd = call->args[0];
+	mode_t mode = call->args[1];
+	/* Thus sayeth the man page:
+	 *
+	 *   creat() is equivalent to open() with flags equal to
+	 *   O_CREAT|O_WRONLY|O_TRUNC. */
+	struct syscall_info open_call;
+	open_call.no = SYS_open;
+	open_call.args[0] = fd;
+	open_call.args[1] = O_CREAT | O_TRUNC | O_WRONLY;
+	open_call.args[2] = mode;
+	return sys_open(&open_call);
+}
+
+
 static long sys_gettimeofday(const struct syscall_info* call)
 {
 	const int syscallno = SYS_gettimeofday;
@@ -1706,6 +1668,40 @@ static long sys_gettimeofday(const struct syscall_info* call)
 	if (tzp) {
 		local_memcpy(tzp, tzp2, sizeof(*tzp));
 	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_open(const struct syscall_info* call)
+{
+	const int syscallno = SYS_open;
+	const char* pathname = (const char*)call->args[0];
+	int flags = call->args[1];
+	mode_t mode = call->args[2];
+
+	/* NB: not arming the desched event is technically correct,
+	 * since open() can't deadlock if it blocks.  However, not
+	 * allowing descheds here may cause performance issues if the
+	 * open does block for a while.  Err on the side of simplicity
+	 * until we have perf data. */
+	void* ptr;
+	long ret;
+
+	/* The strcmp() done here is OK because we're not in the
+	 * critical section yet. */
+	if (is_blacklisted_filename(pathname)) {
+		/* Would be nice to debug() here, but that would flush
+		 * the syscallbuf ...  This special bail-out case is
+		 * deterministic, so no need to save any breadcrumbs
+		 * in the syscallbuf. */
+		return -ENOENT;
+	}
+
+	ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall3(syscallno, pathname, flags, mode);
+	}
+
+	ret = untraced_syscall3(syscallno, pathname, flags, mode);
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -1771,7 +1767,10 @@ vsyscall_hook(const struct syscall_info* call)
 #define CASE(syscallname)						\
 		case SYS_ ## syscallname: return sys_ ## syscallname(call)
 	CASE(clock_gettime);
+	CASE(close);
+	CASE(creat);
 	CASE(gettimeofday);
+	CASE(open);
 	CASE(read);
 	CASE(write);
 #undef CASE
