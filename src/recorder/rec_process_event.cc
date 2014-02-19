@@ -1554,8 +1554,7 @@ void rec_process_syscall(Task *t)
 	 * type is indicated in parentheses after each cmd name (in most cases, the required type is long,
 	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
 	 */
-	case SYS_fcntl64:
-	{
+	case SYS_fcntl64: {
 		int cmd = regs.ecx;
 		switch (cmd) {
 		case F_DUPFD:
@@ -1566,6 +1565,15 @@ void rec_process_syscall(Task *t)
 		case F_SETOWN:
 		case F_SETOWN_EX:
 		case F_SETSIG:
+			break;
+
+		case F_GETLK:
+		case F_SETLK:
+		case F_SETLKW:
+			static_assert(sizeof(struct flock) < sizeof(struct flock64),
+				      "struct flock64 not declared differently from struct flock");
+			record_child_data(t, sizeof(struct flock),
+					  (byte*)regs.edx);
 			break;
 
 		case F_GETLK64:
