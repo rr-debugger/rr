@@ -30,7 +30,7 @@
  * libc symbols, the code is rather delicate.  The following rules
  * must be followed
  *
- * o No rr headers (other than seccomp-bpf.h) may be included
+ * o No rr headers (other than seccomp-bpf.h and rr.h) may be included
  * o All syscalls invoked by this code must be called directly, not
  *   through libc wrappers (which this file may itself wrap)
  */
@@ -59,6 +59,7 @@
 #include <unistd.h>
 
 /* NB: don't include any other local headers here. */
+#include "rr/rr.h"
 #include "seccomp-bpf.h"
 
 #ifdef memcpy
@@ -1571,28 +1572,6 @@ int open64(const char* pathname, int flags, ...)
 	return open(pathname, flags | O_LARGEFILE, mode);
 }
 
-ssize_t read(int fd, void* buf, size_t count)
-{
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	void* buf2 = NULL;
-	long ret;
-
-	if (buf && count > 0) {
-		buf2 = ptr;
-		ptr += count;
-	}
-	if (!start_commit_buffered_syscall(SYS_read, ptr, MAY_BLOCK)) {
-		return traced_syscall3(SYS_read, fd, buf, count);
-	}
-
-	ret = untraced_syscall3(SYS_read, fd, buf2, count);
-
-	if (buf2 && ret > 0) {
-		local_memcpy(buf, buf2, ret);
-	}
-	return commit_syscall(SYS_read, ptr, ret);
-}
-
 ssize_t readlink(const char* path, char* buf, size_t bufsiz)
 {
 	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
@@ -1650,20 +1629,6 @@ time_t time(time_t* t)
 		*t = ret;
 	}
 	return commit_syscall(SYS_time, ptr, ret);
-}
-
-ssize_t write(int fd, const void* buf, size_t count)
-{
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	long ret;
-
-	if (!start_commit_buffered_syscall(SYS_write, ptr, MAY_BLOCK)) {
-		return traced_syscall3(SYS_write, fd, buf, count);
-	}
-
-	ret = untraced_syscall3(SYS_write, fd, buf, count);
-
-	return commit_syscall(SYS_write, ptr, ret);
 }
 
 int __xstat64(int vers, const char* path, struct stat64* buf)
@@ -1744,6 +1709,61 @@ static long sys_gettimeofday(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_read(const struct syscall_info* call)
+{
+	const int syscallno = SYS_read;
+	int fd = call->args[0];
+	void* buf = (void*)call->args[1];
+	size_t count = call->args[2];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* buf2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (buf && count > 0) {
+		buf2 = ptr;
+		ptr += count;
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+		return raw_traced_syscall3(syscallno, fd, buf, count);
+	}
+
+	ret = untraced_syscall3(syscallno, fd, buf2, count);
+
+	if (buf2 && ret > 0) {
+		local_memcpy(buf, buf2, ret);
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_write(const struct syscall_info* call)
+{
+	const int syscallno = SYS_write;
+	int fd = call->args[0];
+	const void* buf = (const void*)call->args[1];
+	size_t count = call->args[2];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	long ret;
+
+	assert(syscallno == call->no);
+
+	/* We always have to trap for writes to the magic save-data
+	 * fd, because the rr tracer processes them specially.
+	 *
+	 * TODO: buffer them normally here. */
+	if (RR_MAGIC_SAVE_DATA_FD == fd ||
+	    !start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+		return raw_traced_syscall3(syscallno, fd, buf, count);
+	}
+
+	ret = untraced_syscall3(syscallno, fd, buf, count);
+
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long __attribute__((unused))
 vsyscall_hook(const struct syscall_info* call)
 {
@@ -1752,6 +1772,8 @@ vsyscall_hook(const struct syscall_info* call)
 		case SYS_ ## syscallname: return sys_ ## syscallname(call)
 	CASE(clock_gettime);
 	CASE(gettimeofday);
+	CASE(read);
+	CASE(write);
 #undef CASE
 	default:
 		/* FIXME: pass |call| to avoid pushing these on the
