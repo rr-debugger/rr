@@ -952,40 +952,38 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 }
 
 /**
- * Wrappers start here.
+ * vsyscall hooks start here.
  *
  * !!! NBB !!!: from here on, all code that executes within the
  * critical sections of transactions *MUST KEEP $ip IN THE SYSCALLBUF
  * CODE*.  That means no calls into libc, even for innocent-looking
  * functions like |memcpy()|.
  *
- * How wrappers operate:
+ * How syscall hooks operate:
  *
- * 1. The syscall is intercepted by the wrapper function.
- * 2. A new record is prepared on the buffer. A record is composed of:
- * 		[the syscall number]
- * 		[the overall size in bytes of the record]
- * 		[the return value]
- * 		[other syscall output, if such exists]
- *    If the buffer runs out of space, we turn this into a
- *    non-intercepted system call which is handled by rr directly,
- *    flushing the buffer and aborting these steps.  Note: these
- *    records will be written AS-IS to the raw file, and a succinct
- *    line will be written to the trace file (without register
- *    content, etc.)
- * 3. Then, the syscall wrapper code redirects all potential output
+ * 1. The rr tracer monkey-patches __kernel_vsyscall() to jump to
+ *    _vsyscall_hook_trampoline() above.
+ * 2. When a call is made to __kernel_vsyscall(), it jumps to
+ *    _vsyscall_hook_trampoline(), where the syscall params are
+ *    packaged up into a call to vsyscall_hook() below.
+ * 3. vsyscall_hook() dispatches to a syscall processor function.
+ * 4. The syscall processor prepares a new record in the buffer. See
+ *    struct syscallbuf_record for record fields.  If the buffer runs
+ *    out of space, the processor function aborts and makes a traced
+ *    syscall, trapping to rr.  rr then flushes the buffer.  Records
+ *    are directly saved to trace, and a buffer-flush event is
+ *    recorded without execution info because it's a synthetic event.
+ * 5. Then, the syscall processor redirects all potential output
  *    for the syscall to the record (and corrects the overall size of
  *    the record while it does so).
- * 4. The syscall is invoked directly via assembly.
- * 5. The syscall output, written on the buffer, is copied to the
+ * 6. The syscall is invoked through a asm helper that does *not*
+ *    ptrace-trap to rr.
+ * 7. The syscall output, written on the buffer, is copied to the
  *    original pointers provided by the user.  Take notice that this
  *    part saves us the injection of the data on replay, as we only
  *    need to push the data to the buffer and the wrapper code will
  *    copy it to the user address for us.
- * 6. The first 3 parameters of the record are put in (return value
- *    and overall size are known now)
- * 7. buffer[0] is updated.
- * 8. errno is set.
+ * 8. The return value and overall size are saved to the record.
  */
 
 /**
@@ -995,41 +993,10 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
  * However, do not read or write through this pointer until
  * can_buffer_syscall has been called.  And you *must* call
  * can_buffer_syscall after this is called, otherwise buffering state
- * will be inconsistent between syscalls.  Usage should look something
- * like
+ * will be inconsistent between syscalls.
  *
- *   // If there's something at runtime that should stop buffering the
- *   // syscall, like an unknown parameter, bail.
- *   if (!try_to_buffer()) {
- *       goto fallback_trace;
- *   }
- *
- *   // Reserve buffer space for the recorded syscall and any other
- *   // required internal bookkeeping data.  If the wrapper is for
- *   // an async-signal-safe libc function, pass ASYNC_SIGNAL_SAFE.
- *   // Otherwise pass NO_SIGNAL_SAFETY.
- *   void* ptr = prep_syscall(ASYNC_SIGNAL_SAFETY);
- *
- *   // If the syscall requires recording any extra data, reserve
- *   // space for it too.
- *   ptr += sizeof(extra_syscall_data);
- *
- *   // If there's not enough space, bail.  Since this syscall may
- *   // block, arm/disarm the desched notification.
- *   if (!start_commit_buffered_syscall(SYS_foo, ptr, MAY_BLOCK)) {
- *       goto fallback_trace;
- *   }
- *
- *   untraced_syscall(...);
- *
- *   // Store the extra_syscall_data that space was reserved for
- *   // above.
- *
- *   // Update the buffer.
- *   return commit_syscall(...);
- *
- * fallback_trace:
- *   return syscall(...);  // traced
+ * See |sys_clock_gettime()| for a simple example of how this helper
+ * should be used to buffer outparam data.
  */
 
 static void* prep_syscall(int signal_safety)
@@ -1217,166 +1184,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, int ret)
 	return ret;
 }
 
-/**
- *  Soon-to-be obsoleted version of |commit_raw_syscall()| for libc
- *  wrappers.
- */
-static int commit_syscall(int syscallno, void* record_end, int ret)
-{
-	return update_errno_ret(commit_raw_syscall(syscallno, record_end, ret));
-}
-
 /* Keep syscalls in alphabetical order, please. */
-
-static int fcntl0(int fd, int cmd)
-{
-	/* No zero-arg fcntl's are known to be may-block. */
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	long ret;
-
-	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, WONT_BLOCK)) {
-		return traced_syscall2(SYS_fcntl64, fd, cmd);
- 	}
-	ret = untraced_syscall2(SYS_fcntl64, fd, cmd);
-	return commit_syscall(SYS_fcntl64, ptr, ret);
-}
-
-static int fcntl1(int fd, int cmd, int arg)
-{
-	/* No one-int-arg fcntl's are known to be may-block. */
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	long ret;
-
-	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, WONT_BLOCK)) {
-		return traced_syscall3(SYS_fcntl64, fd, cmd, arg);
-	}
-	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, arg);
-	return commit_syscall(SYS_fcntl64, ptr, ret);
-}
-
-static int fcntl_own_ex(int fd, int cmd, struct f_owner_ex* owner)
-{
-	/* The OWN_EX fcntl's aren't may-block. */
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
-	struct f_owner_ex* owner2 = NULL;
-	long ret;
-
-	if (owner) {
-		owner2 = ptr;
-		ptr += sizeof(*owner2);
-	}
-	if (!start_commit_buffered_syscall(SYS_fcntl64, ptr, WONT_BLOCK)) {
-		return traced_syscall3(SYS_fcntl64, fd, cmd, owner);
-	}
-	if (owner2) {
-		local_memcpy(owner2, owner, sizeof(*owner2));
-	}
-	ret = untraced_syscall3(SYS_fcntl64, fd, cmd, owner2);
-	if (owner2) {
-		local_memcpy(owner, owner2, sizeof(*owner));
-	}
-	return commit_syscall(SYS_fcntl64, ptr, ret);
-}
-
-static int fcntl_flock(int fd, int cmd, struct flock64* lock)
-{
-	/* Quite unfortunately, the flock ABI uses the l_type field as
-	 * an inout param.  To buffer that field, we'd have to copy-in
-	 * the value passed by the user, then store the value returned
-	 * by the kernel.  But during replay, that would write data to
-	 * the syscallbuf without any way to recover the stored
-	 * outparam data.  Because of that, we have to always trace
-	 * flock operations. */
-	return traced_syscall3(SYS_fcntl64, fd, cmd, lock);
-}
-
-int fcntl(int fd, int cmd, ... /* arg */)
-{
-	switch (cmd) {
-	case F_DUPFD:
-	case F_GETFD:
-	case F_GETFL:
-	case F_GETOWN:
-		return fcntl0(fd, cmd);
-
-	case F_SETFL:
-	case F_SETFD:
-	case F_SETOWN:
-	case F_SETSIG: {
-		va_list varg;
-		int arg;
-
-		va_start(varg, cmd);
-		arg = va_arg(varg, int);
-		va_end(varg);
-
-		return fcntl1(fd, cmd, arg);
-	}
-	case F_GETOWN_EX:
-	case F_SETOWN_EX: {
-		va_list varg;
-		struct f_owner_ex* owner;
-
-		va_start(varg, cmd);
-		owner = va_arg(varg, struct f_owner_ex*);
-		va_end(varg);
-
-		return fcntl_own_ex(fd, cmd, owner);
-	}
-	case F_GETLK:
-	case F_SETLK:
-	case F_SETLKW: {
-		va_list varg;
-		int cmd64;
-		struct flock* lock;
-		struct flock64 lock64;
-		int ret;
-
-		switch (cmd) {
-		case F_GETLK: cmd64 = F_GETLK64; break;
-		case F_SETLK: cmd64 = F_SETLK64; break;
-		case F_SETLKW: cmd64 = F_SETLKW64; break;
-		}
-
-		va_start(varg, cmd);
-		lock = va_arg(varg, struct flock*);
-		va_end(varg);
-
-		lock64.l_type = lock->l_type;
-		lock64.l_whence = lock->l_whence;
-		COPY_CHECK_OVERFLOW(lock64.l_start, lock->l_start);
-		COPY_CHECK_OVERFLOW(lock64.l_len, lock->l_len);
-		lock64.l_pid = lock->l_pid;
-
-		ret = fcntl_flock(fd, cmd64, &lock64);
-
-		lock->l_type = lock64.l_type;
-		lock->l_whence = lock64.l_whence;
-		COPY_CHECK_OVERFLOW(lock->l_start, lock64.l_start);
-		COPY_CHECK_OVERFLOW(lock->l_len, lock64.l_len);
-		lock->l_pid = lock64.l_pid;
-		return ret;
-	}
-	case F_GETLK64:
-	case F_SETLK64:
-	case F_SETLKW64: {
-		va_list varg;
-		struct flock64* lock;
-
-		va_start(varg, cmd);
-		lock = va_arg(varg, struct flock64*);
-		va_end(varg);
-
-		return fcntl_flock(fd, cmd, lock);
-	}
-	default:
-		/* Unfortunately, we can't fall back on a traced
-		 * fcntl, because we don't know how to interpret the
-		 * args to set them up for the syscall. */
-		fatal("Unhandled fcntl %d", cmd);
-		return -1;	/* not reached */
-	}
-}
 
 static long sys_access(const struct syscall_info* call)
 {
@@ -1452,6 +1260,88 @@ static long sys_creat(const struct syscall_info* call)
 	open_call.args[1] = O_CREAT | O_TRUNC | O_WRONLY;
 	open_call.args[2] = mode;
 	return sys_open(&open_call);
+}
+
+static int sys_fcntl64_no_outparams(const struct syscall_info* call)
+{
+	const int syscallno = SYS_fcntl64;
+	int fd = call->args[0];
+	int cmd = call->args[1];
+	long arg = call->args[2];
+
+	/* None of the no-outparam fcntl's are known to be
+	 * may-block. */
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+	ret = untraced_syscall3(syscallno, fd, cmd, arg);
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static int sys_fcntl64_own_ex(const struct syscall_info* call)
+{
+	const int syscallno = SYS_fcntl64;
+	int fd = call->args[0];
+	int cmd = call->args[1];
+	struct f_owner_ex* owner = (struct f_owner_ex*)call->args[2];
+
+	/* The OWN_EX fcntl's aren't may-block. */
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	struct f_owner_ex* owner2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (owner) {
+		owner2 = ptr;
+		ptr += sizeof(*owner2);
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+	if (owner2) {
+		local_memcpy(owner2, owner, sizeof(*owner2));
+	}
+	ret = untraced_syscall3(syscallno, fd, cmd, owner2);
+	if (owner2) {
+		local_memcpy(owner, owner2, sizeof(*owner));
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_fcntl64(const struct syscall_info* call)
+{
+	switch (call->args[1]) {
+	case F_DUPFD:
+	case F_GETFD:
+	case F_GETFL:
+	case F_GETOWN:
+	case F_SETFL:
+	case F_SETFD:
+	case F_SETOWN:
+	case F_SETSIG:
+		return sys_fcntl64_no_outparams(call);
+
+	case F_GETOWN_EX:
+	case F_SETOWN_EX:
+		return sys_fcntl64_own_ex(call);
+
+	case F_GETLK:
+	case F_SETLK:
+	case F_SETLKW:
+	case F_GETLK64:
+	case F_SETLK64:
+	case F_SETLKW64:
+		/* TODO: buffer the F_*LK API. */
+		/* fall through */
+	default:
+		return raw_traced_syscall(call);
+	}
 }
 
 static long sys_gettimeofday(const struct syscall_info* call)
@@ -1709,6 +1599,7 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(clock_gettime);
 	CASE(close);
 	CASE(creat);
+	CASE(fcntl64);
 	CASE(gettimeofday);
 	CASE(open);
 	CASE(read);
