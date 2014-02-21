@@ -111,16 +111,9 @@ struct rrcall_init_buffers_params {
 	struct socketcall_args* args_vec;
 
 	/* "Out" params. */
-	/* Returned pointer to and size of the scratch segment.  For
-	 * the purposes of this code, it doesn't matter what the
-	 * scratch region is, all we need to know about it is that it
-	 * must be unmapped at thread exit time. */
-	byte* scratch_ptr;
-	size_t num_scratch_bytes;
 	/* Returned pointer to and size of the shared syscallbuf
 	 * segment. */
 	byte* syscallbuf_ptr;
-	size_t num_syscallbuf_bytes;
 };
 
 /**

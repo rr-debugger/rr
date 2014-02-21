@@ -63,6 +63,8 @@ using namespace std;
 
 struct flags flags = { 0 };
 
+const byte syscall_insn[] = { 0xcd, 0x80 };
+
 const struct flags* rr_flags(void)
 {
 	return &flags;
@@ -1388,8 +1390,6 @@ void resize_shmem_segment(int fd, size_t num_bytes)
 void prepare_remote_syscalls(Task* t,
 			     struct current_state_buffer* state)
 {
-	byte syscall_insn[] = { 0xcd, 0x80 };
-
 	/* Save current state of |t|. */
 	memset(state, 0, sizeof(*state));
 	state->pid = t->tid;
@@ -1433,6 +1433,26 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 	write_child_registers(t, &state->regs);
 }
 
+// XXX this is probably dup'd somewhere else
+static void advance_syscall(Task* t)
+{
+	pid_t tid = t->tid;
+
+	sys_ptrace_syscall(t);
+	sys_waitpid(tid, &t->status);
+
+	/* Skip past a seccomp trace, if we happened to see one. */
+	if (GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP
+	    /* XXX this is a special case for ubuntu 12.04.  revisit
+	     * this check if an event is added with number 8 (just
+	     * after SECCOMP */
+	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
+		sys_ptrace_syscall(t);
+		sys_waitpid(tid, &t->status);
+	}
+	assert(GET_PTRACE_EVENT(t->status) == 0);
+}
+
 long remote_syscall(Task* t, struct current_state_buffer* state,
 		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6)
@@ -1453,20 +1473,7 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 	callregs.ebp = a6;
 	write_child_registers(t, &callregs);
 
-	/* Advance to syscall entry. */
-	sys_ptrace_syscall(t);
-	sys_waitpid(tid, &t->status);
-
-	/* Skip past a seccomp trace, if we happened to see one. */
-	if (GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP
-	    /* XXX this is a special case for ubuntu 12.04.  revisit
-	     * this check if an event is added with number 8 (just
-	     * after SECCOMP */
-	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
-		sys_ptrace_syscall(t);
-		sys_waitpid(tid, &t->status);
-	}
-	assert(GET_PTRACE_EVENT(t->status) == 0);
+	advance_syscall(t);
 
 	read_child_registers(t, &callregs);
 	assert_exec(t, callregs.orig_eax == syscallno,
@@ -1717,14 +1724,13 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 			     shmem_fd, 0))) {
 		fatal("Failed to mmap shmem region");
 	}
-	t->num_syscallbuf_bytes = args->num_syscallbuf_bytes
-				= SYSCALLBUF_BUFFER_SIZE;
+	t->num_syscallbuf_bytes = SYSCALLBUF_BUFFER_SIZE;
 	int prot = PROT_READ | PROT_WRITE;
 	int flags = MAP_SHARED;
 	off_t offset = 0;
 	child_map_addr = (byte*)remote_syscall6(t, state, SYS_mmap2,
 						map_hint,
-						args->num_syscallbuf_bytes,
+						t->num_syscallbuf_bytes,
 						prot, flags, child_shmem_fd,
 						offset);
 	t->syscallbuf_child = args->syscallbuf_ptr = child_map_addr;
@@ -1732,7 +1738,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	/* No entries to begin with. */
 	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
 
-	t->vm()->map((const byte*)child_map_addr, args->num_syscallbuf_bytes,
+	t->vm()->map((const byte*)child_map_addr, t->num_syscallbuf_bytes,
 		     prot, flags, offset,
 		     MappableResource::syscallbuf(t->rec_tid, shmem_fd));
 
@@ -1759,15 +1765,12 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 	args = (struct rrcall_init_buffers_params*)
 	       read_child_data(t, sizeof(*args), child_args);
 
-	args->scratch_ptr = t->scratch_ptr;
-	args->num_scratch_bytes = t->scratch_size;
 	if (args->syscallbuf_enabled) {
 		child_map_addr =
 			init_syscall_buffer(t, &state, args,
 					    map_hint, share_desched_fd);
 	} else {
-		args->syscallbuf_ptr = NULL;
-		args->num_syscallbuf_bytes = 0;
+		args->syscallbuf_ptr = nullptr;
 	}
 
 	/* Return the mapped buffers to the child. */
@@ -1782,6 +1785,78 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 	finish_remote_syscalls(t, &state);
 
 	return child_map_addr;
+}
+
+void destroy_buffers(Task* t, int flags)
+{
+	// NB: we have to pay all this complexity here because glibc
+	// makes its SYS_exit call through an inline int $0x80 insn,
+	// instead of going through the vdso.  There may be a deep
+	// reason for why it does that, but if it starts going through
+	// the vdso in the future, this code can be eliminated in
+	// favor of a *much* simpler vsyscall SYS_exit hook in the
+	// preload lib.
+
+	if (!(DESTROY_ALREADY_AT_EXIT_SYSCALL & flags)) {
+		// Advance the tracee into SYS_exit so that it's at a
+		// known state that we can manipulate it from.
+		advance_syscall(t);
+	}
+
+	struct user_regs_struct exit_regs;
+	read_child_registers(t, &exit_regs);
+	assert_exec(t, SYS_exit == exit_regs.orig_eax,
+		    "Tracee should have been at exit, but instead at %s",
+		    syscallname(exit_regs.orig_eax));
+
+	// The tracee is at the entry to SYS_exit, but hasn't started
+	// the call yet.  We can't directly start injecting syscalls
+	// because the tracee is still in the kernel.  And obviously,
+	// if we finish the SYS_exit syscall, the tracee isn't around
+	// anymore.
+	//
+	// So hijack this SYS_exit call and rewrite it into a harmless
+	// one that we can exit successfully, SYS_gettid here (though
+	// that choice is arbitrary).
+	exit_regs.orig_eax = SYS_gettid;
+	write_child_registers(t, &exit_regs);
+	// This exits the hijacked SYS_gettid.  Now the tracee is
+	// ready to do our bidding.
+	advance_syscall(t);
+
+	// Restore these regs to what they would have been just before
+	// the tracee trapped at SYS_exit.  When we've finished
+	// cleanup, we'll restart the SYS_exit call.
+	exit_regs.orig_eax = -1;
+	exit_regs.eax = SYS_exit;
+	exit_regs.eip -= sizeof(syscall_insn);
+
+	byte insn[sizeof(syscall_insn)];
+	t->read_bytes((const byte*)exit_regs.eip, insn);
+	assert_exec(t, !memcmp(insn, syscall_insn, sizeof(insn)),
+		    "Tracee should have entered through int $0x80.");
+
+	struct current_state_buffer state;
+	prepare_remote_syscalls(t, &state);
+
+	// Do the actual buffer and fd cleanup.
+	remote_syscall2(t, &state, SYS_munmap,
+			t->scratch_ptr, t->scratch_size);
+	t->vm()->unmap(t->scratch_ptr, t->scratch_size);
+	if (t->syscallbuf_child) {
+		remote_syscall2(t, &state, SYS_munmap,
+				t->syscallbuf_child, t->num_syscallbuf_bytes);
+		t->vm()->unmap(t->syscallbuf_child, t->num_syscallbuf_bytes);
+		remote_syscall1(t, &state, SYS_close, t->desched_fd_child);
+	}
+
+	finish_remote_syscalls(t, &state);
+
+	// Prepare to restart the SYS_exit call.
+	write_child_registers(t, &exit_regs);
+	if (DESTROY_NEED_EXIT_SYSCALL_RESTART & flags) {
+		advance_syscall(t);
+	}
 }
 
 static const byte vsyscall_impl[] = {
