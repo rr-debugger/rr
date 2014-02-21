@@ -130,6 +130,8 @@ AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
 	debug("[%d] mmap(%p, %u, 0x%x, 0x%x)", get_global_time(),
 	      addr, num_bytes, prot, flags);
 
+	num_bytes = ceil_page_size(num_bytes);
+
 	Mapping m(addr, num_bytes, prot, flags, offset);
 	if (mem.end() != mem.find(m)) {
 		// The mmap() man page doesn't specifically describe
@@ -209,29 +211,51 @@ void
 AddressSpace::unmap(const byte* addr, ssize_t num_bytes)
 {
 	debug("[%d] munmap(%p, %u)", get_global_time(), addr, num_bytes);
-	do {
-		Mapping u(addr, num_bytes);
-		auto it = mem.find(u);
-		assert(it != mem.end());
+
+	num_bytes = ceil_page_size(num_bytes);
+
+	const byte* last_unmapped_end = addr;
+	const byte* region_end = addr + num_bytes;
+	while (last_unmapped_end < region_end) {
+		// Invariant: |u| is always exactly the region of
+		// memory remaining to be examined for pages to be
+		// unmapped.
+		Mapping u(last_unmapped_end, region_end);
+		debug("  unmapping (%p, %u) ...", u.start, u.num_bytes());
+		// The next page to unmap may not be contiguous with
+		// the last one we unmapped.
+		auto it = mem.lower_bound(u);
+		if (mem.end() == it) {
+			debug("  not found, done.");
+			return;
+		}
 
 		Mapping m = it->first;
+		if (u.end <= m.start) {
+			debug("  mapping at %p out of range, done.", m.start);
+			return;
+		}
 		MappableResource r = it->second;
 
 		mem.erase(m);
+		debug("  erased (%p, %u) ...", m.start, m.num_bytes());
 
+		// If the first segment we unmap underflows the unmap
+		// region, remap the underflow region.
 		if (m.start < u.start) {
 			mem[Mapping(m.start, u.start - m.start, m.prot,
 				    m.flags, m.offset)] = r;
 		}
+		// If the last segment we unmap overflows the unmap
+		// region, remap the overflow region.
 		if (u.end < m.end) {
 			mem[Mapping(u.end, m.end - u.end, m.prot, m.flags,
 				    adjust_offset(r, m, u.start - m.start))]
 				= r;
 		}
-
-		addr = m.end;
-		num_bytes -= m.num_bytes();
-	} while (num_bytes > 0);
+		// Maintain the loop invariant.
+		last_unmapped_end = m.end;
+	}
 }
 
 /**
