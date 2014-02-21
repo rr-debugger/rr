@@ -1140,7 +1140,7 @@ static void emulate_signal_delivery(Task* oldtask, int sig)
 	/* Restore the signal-hander frame data, if there was one. */
 	bool restored_sighandler_frame = 0 < set_child_data(t);
 	if (!restored_sighandler_frame
-	    && possibly_destabilizing_signal(sig)) {
+	    && possibly_destabilizing_signal(t, sig)) {
 		push_pending_signal(t, sig, DETERMINISTIC_SIG);
 		t->ev->type = EV_SIGNAL_DELIVERY;
 

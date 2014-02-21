@@ -770,6 +770,8 @@ enum CloneFlags {
 	CLONE_SHARE_TASK_GROUP = 1 << 1,
 	/** Child will share its parent's address space. */
 	CLONE_SHARE_VM = 1 << 2,
+	/** Kernel will clear and notify tid futex on task exit. */
+	CLONE_CLEARTID = 1 << 3,
 };
 
 /**
@@ -810,8 +812,8 @@ public:
 	 * only relevant to replay, and is the pid that was assigned
 	 * to the task during recording.
 	 */
-	Task* clone(int flags, const byte* stack, pid_t new_tid,
-		    pid_t new_rec_tid = -1);
+	Task* clone(int flags, const byte* stack, const byte* cleartid_addr,
+		    pid_t new_tid, pid_t new_rec_tid = -1);
 
 	/**
 	 * Shortcut to the single |pending_event->desched.rec| when
@@ -908,6 +910,16 @@ public:
 	bool fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes);
 
 	/**
+	 * Wait for |futex| in this address space to have the value
+	 * |val|.
+	 *
+	 * WARNING: this implementation semi-busy-waits for the value
+	 * change.  This must only be used in contexts where the futex
+	 * will change "soon".
+	 */
+	void futex_wait(const byte* futex, uint32_t val);
+
+	/**
 	 * Return nonzero if |t| may not be immediately runnable,
 	 * i.e., resuming execution and then |waitpid()|'ing may block
 	 * for an unbounded amount of time.  When the task is in this
@@ -962,16 +974,22 @@ public:
 	void set_signal_disposition(int sig,
 				    const struct kernel_sigaction& sa);
 
+	/** Update the clear-tid futex to |tid_addr|. */
+	void set_tid_addr(const byte* tid_addr);
+
 	/**
 	 * Call this after |sig| is delivered to this task.  Emulate
 	 * sighandler updates induced by the signal delivery.
 	 */
 	void signal_delivered(int sig);
 
+	/** Return the disposition of |sig|. */
+	sig_handler_t signal_disposition(int sig) const;
+
 	/**
-	 * Return nonzero if the disposition of |sig| in |table| isn't SIG_IGN
-	 * or SIG_DFL, that is, if a user sighandler will be invoked when
-	 * |sig| is received.
+	 * Return true if the disposition of |sig| in |table| isn't
+	 * SIG_IGN or SIG_DFL, that is, if a user sighandler will be
+	 * invoked when |sig| is received.
 	 */
 	bool signal_has_user_handler(int sig) const;
 
@@ -1203,6 +1221,15 @@ private:
 	Task(pid_t tid, pid_t rec_tid, int priority);
 
 	/**
+	 * Detach this from rr and try hard to ensure any operations
+	 * related to it have completed by the time this function
+	 * returns.
+	 *
+	 * Warning: called by destructor.
+	 */
+	void detach_and_reap();
+
+	/**
 	 * Read/write the number of bytes that the template wrapper
 	 * inferred.
 	 */
@@ -1226,6 +1253,9 @@ private:
 	std::shared_ptr<Sighandlers> sighandlers;
 	/* The task group this belongs to. */
 	std::shared_ptr<TaskGroup> tg;
+	// The memory cell the kernel will clear and notify on exit,
+	// if our clone parent requested it.
+	const byte* tid_futex;
 
 	Task(Task&) = delete;
 	Task operator=(Task&) = delete;

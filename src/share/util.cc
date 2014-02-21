@@ -286,13 +286,10 @@ int signal_pending(int status)
 int clone_flags_to_task_flags(int flags_arg)
 {
 	int flags = CLONE_SHARE_NOTHING;
-	// The rather misleadingly named CLONE_SIGHAND flag actually
-	// means *share* the sighandler table.
+	// See task.h for description of the flags.
+	flags |= (CLONE_CHILD_CLEARTID & flags_arg) ? CLONE_CLEARTID : 0;
 	flags |= (CLONE_SIGHAND & flags_arg) ? CLONE_SHARE_SIGHANDLERS : 0;
-	// Among other things, CLONE_THREAD puts the new task
-	// in its creator's thread group.
 	flags |= (CLONE_THREAD & flags_arg) ? CLONE_SHARE_TASK_GROUP : 0;
-	// Child will share parent's address space.
 	flags |= (CLONE_VM & flags_arg) ? CLONE_SHARE_VM : 0;
 	return flags;
 }
@@ -1177,10 +1174,12 @@ int is_disarm_desched_event_syscall(Task* t,
 		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
 }
 
-bool is_now_contended_pi_futex(Task* t, byte* futex, long* next_val)
+bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val)
 {
-	long val = t->read_word(futex);
-	long owner_tid = (val & FUTEX_TID_MASK);
+	static_assert(sizeof(uint32_t) == sizeof(long),
+		      "Sorry, need to add Task::read_int()");
+	uint32_t val = t->read_word(futex);
+	pid_t owner_tid = (val & FUTEX_TID_MASK);
 	bool now_contended = (owner_tid != 0 && owner_tid != t->rec_tid
 			      && !(val & FUTEX_WAITERS));
 	if (now_contended) {
@@ -1241,12 +1240,13 @@ static int default_action(int sig)
 	}
 }
 
-bool possibly_destabilizing_signal(int sig)
+bool possibly_destabilizing_signal(Task* t, int sig)
 {
-	// XXX: this heuristic is based only on the fact that it works
-	// with SIGABRT and SIGTERM.  Deeper answers are almost
-	// certainly available in the kernel source.
-	return DUMP_CORE == default_action(sig);
+	sig_handler_t disp = t->signal_disposition(sig);
+	int action = default_action(sig);
+	// If the diposition is IGN or user handler, then the signal
+	// won't be fatal.  So we only need to check for DFL.
+	return SIG_DFL == disp && (DUMP_CORE == action || TERMINATE == action);
 }
 
 static bool has_fs_name(const char* path)

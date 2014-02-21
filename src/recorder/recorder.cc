@@ -98,6 +98,7 @@ static void handle_ptrace_event(Task** tp)
 
 		read_child_registers(t, &t->regs);
 		const byte* stack = (const byte*)t->regs.ecx;
+		const byte* ctid = (const byte*)t->regs.edi;
 		// fork and vfork can never share these resources,
 		// only copy, so the flags here aren't meaningful for
 		// them, only clone.
@@ -105,7 +106,7 @@ static void handle_ptrace_event(Task** tp)
 				t->regs.ebx : 0;
 
 		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
-					  stack, new_tid);
+					  stack, ctid, new_tid);
 		start_hpc(new_task, rr_flags()->max_rbc);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
@@ -458,7 +459,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		}
 
 		byte* sync_addr = nullptr;
-		long sync_val;
+		uint32_t sync_val;
 		t->switchable = rec_prepare_syscall(t, &sync_addr, &sync_val);
 
 		// Resume the syscall execution in the kernel context.
@@ -466,23 +467,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		debug_exec_state("after cont", t);
 
 		if (sync_addr) {
-			// Wait for *sync_addr == sync_val.  This
-			// implementation isn't pretty, but it's
-			// pretty much the best we can do with
-			// available kernel tools.
-			//
-			// In practice, in the mutex_pi_stress test,
-			// this loop runs ~0-5 iterations, which means
-			// there's not too much busy-waiting.  (The
-			// /elapsed time/ of the loop is wildly
-			// variable, O(1us) - O(1s), because it
-			// depends on kernel scheduling decisions.)
-			while (sync_val != t->read_word(sync_addr)) {
-				// Try to give our scheduling slot to
-				// the kernel thread that's going to
-				// write sync_addr.
-				sched_yield();
-			}
+			t->futex_wait(sync_addr, sync_val);
 		}
 		t->ev->syscall.state = PROCESSING_SYSCALL;
 		return;
@@ -742,7 +727,7 @@ static int signal_state_changed(Task* t, int by_waitpid)
 
 		task_continue(t, DEFAULT_CONT, sig);
 		t->ev->signal.delivered = 1;
-		return t->switchable = possibly_destabilizing_signal(sig);
+		return t->switchable = possibly_destabilizing_signal(t, sig);
 	}
 
 	/* The tracee's waitpid status has changed, so we're finished

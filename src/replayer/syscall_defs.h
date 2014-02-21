@@ -1117,7 +1117,7 @@ SYSCALL_DEF(EXEC, set_thread_area, 1)
  * When set_child_tid is set, the very first thing the new process
  * does is writing its PID at this address.
  */
-SYSCALL_DEF(EXEC_RET_EMU, set_tid_address, 1)
+SYSCALL_DEF(IRREGULAR, set_tid_address, -1)
 
 /**
  *  int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);

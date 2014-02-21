@@ -724,68 +724,6 @@ static int is_syscall_event(int type) {
 	}
 }
 
-/**
- * Detach |t| from rr and try hard to ensure any operations related to
- * it have completed by the time this function returns.
- */
-static void detach_and_reap(Task* t)
-{
-	sys_ptrace_detach(t->tid);
-	if (t->unstable) {
-		log_warn("%d is unstable; not blocking on its termination",
-			 t->tid);
-		goto sleep_hack;
-	}
-
-	debug("Joining with exiting %d ...", t->tid);
-	while (1) {
-		int err = waitpid(t->tid, &t->status, __WALL);
-		if (-1 == err && ECHILD == errno) {
-			debug(" ... ECHILD");
-			break;
-		} else if (-1 == err) {
-			assert_exec(t, EINTR == errno,
-				    "waitpid(%d) returned -1, errno %d",
-				    t->tid, errno);
-		}
-		if (err == t->tid && (WIFEXITED(t->status) || 
-				      WIFSIGNALED(t->status))) {
-			debug(" ... exited with status 0x%x", t->status);
-			break;
-		} else if (err == t->tid) {
-			assert_exec(t, (PTRACE_EVENT_EXIT ==
-					GET_PTRACE_EVENT(t->status)),
-				    "waitpid(%d) return status %d",
-				    t->tid, t->status);
-		}
-	}
-
-sleep_hack:
-	/* clone()'d tasks can have a pid_t* |ctid| argument that's
-	 * written with the new task's pid.  That pointer can also be
-	 * used as a futex: when the task dies, the original ctid
-	 * value is cleared and a FUTEX_WAKE is done on the
-	 * address. So pthread_join() is basically a standard futex
-	 * wait loop.
-	 *
-	 * That means that the kernel writes shared memory behind rr's
-	 * back, which can diverge replay.  The "real fix" for this is
-	 * for rr to track access to shared memory, like the |ctid|
-	 * location.  But until then, we (attempt to) let "time"
-	 * resolve this memory race with the sleep() hack below.
-	 *
-	 * Why 4ms?  Because
-	 *
-	 * $ for i in $(seq 10); do (cd $rr/src/test/ && bash thread_cleanup.run) & done
-	 *
-	 * has been observed to fail when we sleep 3ms, but not when
-	 * we sleep 4ms.  Yep, this hack is that horrible! */
-	struct timespec ts;
-	memset(&ts, 0, sizeof(ts));
-	ts.tv_nsec = 4000000LL;
-	nanosleep_nointr(&ts);
-}
-
 Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	: thread_time(1), ev(nullptr), pending_events()
 	, switchable(), pseudo_blocked(), succ_event_counter(), unstable()
@@ -802,7 +740,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, child_mem_fd(sys_open_child_mem(this))
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
-	, prname("???")
+	, prname("???"), tid_futex()
 {
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.
@@ -840,11 +778,12 @@ Task::~Task()
 	as->erase_task(this);
 
 	destroy_hpc(this);
-	close(child_mem_fd);
 	close(desched_fd);
 	munmap(syscallbuf_hdr, num_syscallbuf_bytes);
 
-	detach_and_reap(this);
+	// We need the mem_fd in detach_and_reap().
+	detach_and_reap();
+	close(child_mem_fd);
 
 	debug("  dead");
 }
@@ -861,7 +800,8 @@ Task::at_may_restart_syscall() const
 }
 
 Task*
-Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
+Task::clone(int flags, const byte* stack, const byte* cleartid_addr,
+	    pid_t new_tid, pid_t new_rec_tid)
 {
 	Task* t = new Task(new_tid, new_rec_tid, priority);
 
@@ -891,13 +831,17 @@ Task::clone(int flags, const byte* stack, pid_t new_tid, pid_t new_rec_tid)
 		debug("mapping stack for %d at [%p, %p)", new_tid, m.start, m.end);
 		t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
 			   MappableResource::stack(new_tid));
-	} else {
-		assert_exec(this, CLONE_SHARE_NOTHING == flags,
-			    "No explicit stack for fork()-clone");
 	}
 	// Clone children, both thread and fork, inherit the parent
 	// prname.
 	t->prname = prname;
+	if (CLONE_CLEARTID & flags) {
+		debug("cleartid futex is %p", cleartid_addr);
+		assert(cleartid_addr);
+		t->tid_futex = cleartid_addr;
+	} else {
+		debug("(clone child not enabling CLEARTID)");
+	}
 
 	t->as->insert_task(t);
 	return t;
@@ -925,7 +869,10 @@ static int signal_delivery_event_offset()
 void
 Task::destabilize_task_group()
 {
-	if (EV_SIGNAL_DELIVERY == ev->type) {
+	// Only print this helper warning if there's (probably) a
+	// human around to see it.  This is done to avoid polluting
+	// output from tests.
+	if (EV_SIGNAL_DELIVERY == ev->type && !probably_not_interactive()) {
 		printf("[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
 		       get_global_time() + signal_delivery_event_offset(),
 		       rec_tid, tgid(), signalname(ev->signal.no));
@@ -984,6 +931,23 @@ Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes)
 	}
 	buf[nbytes] = '\0';
 	return 0 == fstat(backing_fd, st);
+}
+
+void
+Task::futex_wait(const byte* futex, uint32_t val)
+{
+	static_assert(sizeof(val) == sizeof(long),
+		      "Sorry, need to implement Task::read_int().");
+	// Wait for *sync_addr == sync_val.  This implementation isn't
+	// pretty, but it's pretty much the best we can do with
+	// available kernel tools.
+	//
+	// TODO: find clever way to avoid busy-waiting.
+	while (val != uint32_t(read_word(futex))) {
+		// Try to give our scheduling slot to the kernel
+		// thread that's going to write sync_addr.
+		sched_yield();
+	}
 }
 
 bool
@@ -1074,7 +1038,16 @@ Task::read_word(const byte* child_addr)
 void
 Task::set_signal_disposition(int sig, const struct kernel_sigaction& sa)
 {
+	// TODO: discard attempts to handle or ignore signals that
+	// can't be by POSIX
 	sighandlers->get(sig) = Sighandler(sa);
+}
+
+void
+Task::set_tid_addr(const byte* tid_addr)
+{
+	debug("updating cleartid futex to %p", tid_addr);
+	tid_futex = tid_addr;
 }
 
 void
@@ -1084,6 +1057,12 @@ Task::signal_delivered(int sig)
 	if (h.resethand) {
 		h = Sighandler();
 	}
+}
+
+sig_handler_t
+Task::signal_disposition(int sig) const
+{
+	return sighandlers->get(sig).handler;
 }
 
 bool
@@ -1182,6 +1161,72 @@ Task::find(pid_t rec_tid)
 {
 	auto it = tasks.find(rec_tid);
 	return tasks.end() != it ? it->second : NULL;
+}
+
+void
+Task::detach_and_reap()
+{
+	if (tid_futex) {
+		static_assert(sizeof(int32_t) == sizeof(long),
+			      "Sorry, need to add Task::read_int()");
+		int32_t tid_addr_val = read_word(tid_futex);
+		assert_exec(this, rec_tid == tid_addr_val,
+			    "tid addr should be %d (tid), but is %d",
+			    rec_tid, tid_addr_val);
+	}
+
+	sys_ptrace_detach(tid);
+	if (unstable) {
+		// In addition to problems described in the long
+		// comment at the prototype of this function, unstable
+		// exits may result in the kernel *not* clearing the
+		// futex, for example for fatal signals.  So we would
+		// deadlock waiting on the futex.
+		log_warn("%d is unstable; not blocking on its termination",
+			 tid);
+		return;
+	}
+
+	debug("Joining with exiting %d ...", tid);
+	while (true) {
+		int err = waitpid(tid, &status, __WALL);
+		if (-1 == err && ECHILD == errno) {
+			debug(" ... ECHILD");
+			break;
+		} else if (-1 == err) {
+			assert_exec(this, EINTR == errno,
+				    "waitpid(%d) returned -1, errno %d",
+				    tid, errno);
+		}
+		if (err == tid && (WIFEXITED(status) || 
+				      WIFSIGNALED(status))) {
+			debug(" ... exited with status 0x%x", status);
+			break;
+		} else if (err == tid) {
+			assert_exec(this, (PTRACE_EVENT_EXIT ==
+					   GET_PTRACE_EVENT(status)),
+				    "waitpid(%d) return status %d",
+				    tid, status);
+		}
+	}
+
+	if (tid_futex && as->task_set().size() > 0) {
+		// clone()'d tasks can have a pid_t* |ctid| argument
+		// that's written with the new task's pid.  That
+		// pointer can also be used as a futex: when the task
+		// dies, the original ctid value is cleared and a
+		// FUTEX_WAKE is done on the address. So
+		// pthread_join() is basically a standard futex wait
+		// loop.
+		debug("  waiting for tid futex %p to be cleared ...",
+		      tid_futex);
+		futex_wait(tid_futex, 0);
+	} else if(tid_futex) {
+		// There are no other live tasks in this address
+		// space, which means the address space just died
+		// along with our exit.  So we can't read the futex.
+		debug("  (can't futex_wait last task in vm)");
+	}
 }
 
 void

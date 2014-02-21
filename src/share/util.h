@@ -362,13 +362,13 @@ int is_disarm_desched_event_syscall(Task* t,
  * value.)  The new value of the futex after the kernel updates it is
  * returned in |next_val|.
  */
-bool is_now_contended_pi_futex(Task* t, byte* futex, long* next_val);
+bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val);
 
 /**
  * Return true if |sig| may cause the status of other tasks to change
  * unpredictably beyond rr's observation.
  */
-bool possibly_destabilizing_signal(int sig);
+bool possibly_destabilizing_signal(Task* t, int sig);
 
 /**
  * Return nonzero if a mapping of |filename| with metadata |stat|,

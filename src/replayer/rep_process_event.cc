@@ -598,10 +598,11 @@ static void process_clone(Task* t,
 
 	read_child_registers(t, &t->regs);
 	const byte* stack = (const byte*)t->regs.ecx;
+	const byte* ctid = (const byte*)t->regs.edi;
 	int flags_arg = (SYS_clone == t->regs.orig_eax) ? t->regs.ebx : 0;
 
 	Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
-				  stack, new_tid, rec_tid);
+				  stack, ctid, new_tid, rec_tid);
 
 	/* FIXME: what if registers are non-null and contain an
 	 * invalid address? */
@@ -654,8 +655,10 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 
 	if (state == STATE_SYSCALL_ENTRY) {
 		if (FUTEX_LOCK_PI == op) {
-			long next_val;
+			uint32_t next_val;
 			if (is_now_contended_pi_futex(t, futex, &next_val)) {
+				static_assert(sizeof(next_val) == sizeof(long),
+					      "Sorry, need Task::write_int()");
 				// During recording, we waited for the
 				// kernel to update the futex, but
 				// since we emulate SYS_futex in
@@ -1563,6 +1566,25 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		return;
 
+	case SYS_set_tid_address:
+		// set_tid_address returns the caller's PID.
+		step->syscall.emu_ret = 1;
+		// We have to actually execute set_tid_address in case
+		// any crazy code uses it in a clone child.  The
+		// kernel actually notifies the futex during replay,
+		// so if we didn't update the cleartid addr, then the
+		// kernel would randomly scribble over a word in
+		// replay that it didn't during recording.
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		step->syscall.num_emu_args = 1;
+		step->action = TSTEP_EXIT_SYSCALL;
+		set_child_data(t);
+		t->set_tid_addr((byte*)rec_regs->ebx);
+		return;
+
 	case SYS_socketcall:
 		if (process_socketcall(t, state, step)) {
 			return;
@@ -1740,7 +1762,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 				peek_next_trace(&next_trace);
 				t->clone(CLONE_SHARE_NOTHING,
 					 (const byte*)next_trace.recorded_regs.ecx,
-					 new_tid, next_trace.tid);
+					 nullptr, new_tid, next_trace.tid);
 			}
 			validate_args(syscall, state, t);
 		} else {
