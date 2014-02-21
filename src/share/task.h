@@ -153,21 +153,16 @@ struct Mapping {
 
 	Mapping() : start(nullptr), end(nullptr), prot(0), flags(0), offset(0)
 	{ }
-	Mapping(const byte* addr, size_t num_bytes)
-		: start(addr), end(addr + ceil_page_size(num_bytes))
-		, prot(0), flags(0), offset(0) {
-		assert_valid();
-	}
-	Mapping(const byte* addr, size_t num_bytes, int prot, int flags,
-		off_t offset)
+	Mapping(const byte* addr, size_t num_bytes, int prot=0, int flags=0,
+		off_t offset=0)
 		: start(addr), end(addr + ceil_page_size(num_bytes))
 		, prot(prot)
 		, flags(flags & map_flags_mask)
 		, offset(offset) {
 		assert_valid();
 	}
-	Mapping(const byte* start, const byte* end, int prot, int flags,
-		off_t offset)
+	Mapping(const byte* start, const byte* end, int prot=0, int flags=0,
+		off_t offset=0)
 		: start(start), end(end), prot(prot)
 		, flags(flags & map_flags_mask)
 		, offset(offset) {

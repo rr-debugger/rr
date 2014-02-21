@@ -1,2 +1,2 @@
-source `dirname $0`/util.sh mmap_shared "$@"
+source `dirname $0`/util.sh mmap_discontinuous "$@"
 compare_test 'done'
