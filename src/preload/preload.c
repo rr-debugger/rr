@@ -114,9 +114,6 @@ struct task_cleanup_data {
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
 
-/* Key for per-thread |task_cleanup_data| object. */
-static pthread_key_t task_cleanup_data_key;
-
 /* During thread/process initialization, we have to call into libdl in
  * order to resolve the pthread_create symbol.  But libdl can and does
  * call libc functions that we wrap here.  The initialization code
@@ -164,13 +161,6 @@ static __thread byte* buffer;
  * numerous implementation details that are documented in
  * handle_signal.c, where they're dealt with. */
 static __thread int desched_counter_fd;
-
-/* Points at the libc/pthread pthread_create().  We wrap
- * pthread_create, so need to retain this pointer to call out to the
- * libc version. */
-static int (*real_pthread_create)(pthread_t* thread,
-				  const pthread_attr_t* attr,
-				  void* (*start_routine) (void*), void* arg);
 
 /**
  * Return a pointer to the buffer header, which happens to occupy the
@@ -325,11 +315,6 @@ static void* get_traced_syscall_entry_point(void)
     return ret;
 }
 
-static int traced_close(int fd)
-{
-	return traced_syscall1(SYS_close, fd);
-}
-
 static int traced_fcntl(int fd, int cmd, ...)
 {
 	va_list ap;
@@ -350,11 +335,6 @@ static pid_t traced_getpid(void)
 static pid_t traced_gettid(void)
 {
 	return traced_syscall0(SYS_gettid);
-}
-
-static int traced_munmap(void* addr, size_t length)
-{
-	return traced_syscall2(SYS_munmap, addr, length);
 }
 
 static int traced_perf_event_open(struct perf_event_attr *attr,
@@ -712,22 +692,6 @@ static void install_syscall_filter(void)
 }
 
 /**
- * Unmap and close per-thread resources.  Runs at thread exit.
- */
-static void clean_up_task(void* data)
-{
-	struct task_cleanup_data* cleanup = data;
-
-	traced_munmap(cleanup->scratch_ptr, cleanup->num_scratch_bytes);
-	if (cleanup->syscallbuf_ptr) {
-		traced_munmap(cleanup->syscallbuf_ptr,
-			      cleanup->num_syscallbuf_bytes);
-		traced_close(cleanup->desched_counter_fd);
-		buffer = NULL;
-	}
-}
-
-/**
  * Return a counter that generates a signal targeted at this task
  * every time the task is descheduled |nr_descheds| times.
  */
@@ -766,7 +730,6 @@ static int open_desched_event_counter(size_t nr_descheds)
 
 static void set_up_buffer(void)
 {
-	struct task_cleanup_data* cleanup = malloc(sizeof(*cleanup));
 	struct sockaddr_un addr;
 	struct msghdr msg;
 	struct iovec data;
@@ -780,13 +743,9 @@ static void set_up_buffer(void)
 
 	assert(!buffer);
 
-	memset(cleanup, 0, sizeof(*cleanup));
-	pthread_setspecific(task_cleanup_data_key, cleanup);
-
 	/* NB: we want this setup emulated during replay. */
 	if (buffer_enabled) {
-		cleanup->desched_counter_fd = desched_counter_fd =
-					      open_desched_event_counter(1);
+		desched_counter_fd = open_desched_event_counter(1);
 	}
 
 	/* Prepare arguments for rrcall.  We do this in the tracee
@@ -833,11 +792,7 @@ static void set_up_buffer(void)
 	rrcall_init_buffers(&args);
 
 	/* rr initializes the buffer header. */
-	buffer = cleanup->syscallbuf_ptr = args.syscallbuf_ptr;
-	cleanup->scratch_ptr = args.scratch_ptr;
-	cleanup->num_scratch_bytes = args.num_scratch_bytes;
-	cleanup->syscallbuf_ptr = args.syscallbuf_ptr;
-	cleanup->num_syscallbuf_bytes = args.num_syscallbuf_bytes;
+	buffer = args.syscallbuf_ptr;
 }
 
 /**
@@ -850,7 +805,6 @@ static void drop_buffer(void)
 {
 	buffer = NULL;
 	called_ensure_thread_init = 0;
-	pthread_setspecific(task_cleanup_data_key, NULL);
 }
 
 /**
@@ -859,8 +813,6 @@ static void drop_buffer(void)
 static pthread_once_t init_process_once = PTHREAD_ONCE_INIT;
 static void init_process(void)
 {
-	int ret;
-
 	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 	if (buffer_enabled) {
 		install_syscall_filter();
@@ -869,13 +821,6 @@ static void init_process(void)
 	} else {
 		debug("Syscall buffering is disabled");
 	}
-
-	if ((ret = pthread_key_create(&task_cleanup_data_key,
-				      clean_up_task))) {
-		fatal("pthread_key_create() failed with code %d", ret);
-	}
-
-	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
 }
 
 /**
@@ -888,16 +833,15 @@ static void ensure_thread_init(int signal_safety)
 		return;
 	}
 	if (ASYNC_SIGNAL_SAFE == signal_safety) {
-		/* Our initialization can end up calling malloc() and
-		 * other potentially non-async-signal-safe functions,
-		 * so we can't init from a context in which
-		 * async-signal-safety needs to be preserved. */
+		/* Our initialization may end up calling potentially
+		 * non-async-signal-safe functions, so we can't init
+		 * from a context in which async-signal-safety needs
+		 * to be preserved. */
 		debug("(refusing to init from async-signal-safe context)");
 		return;
 	}
 	called_ensure_thread_init = 1;
 	pthread_once(&init_process_once, init_process);
-	assert(!pthread_getspecific(task_cleanup_data_key));
 	set_up_buffer();
 }
 
@@ -905,50 +849,6 @@ static void __attribute__((constructor))
 init_process_static(void)
 {
 	ensure_thread_init(NO_SIGNAL_SAFETY);
-}
-
-/**
- * In a thread newly created by |pthread_create()|, first initialize
- * thread-local internal rr data, then trampoline into the user's
- * thread function.
- */
-struct thread_func_data {
-	void* (*start_routine) (void*);
-	void* arg;
-};
-static void* thread_trampoline(void* arg)
-{
-	struct thread_func_data* data = arg;
-	void* ret;
-
-	ensure_thread_init(NO_SIGNAL_SAFETY);
-
-	ret = data->start_routine(data->arg);
-
-	free(data);
-	return ret;
-}
-
-/**
- * Interpose |pthread_create()| so that we can use a custom trampoline
- * function (see above) that initializes rr thread-local data for new
- * threads.
- *
- * This is a wrapper of |pthread_create()|, but not like the ones
- * below: we don't wrap |pthread_create()| in order to buffer its
- * syscalls, rather in order to initialize rr thread data.
- */
-int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
-		   void* (*start_routine) (void*), void* arg)
-{
-	struct thread_func_data* data;
-
-	ensure_thread_init(NO_SIGNAL_SAFETY);
-
-	data = malloc(sizeof(*data));
-	data->start_routine = start_routine;
-	data->arg = arg;
-	return real_pthread_create(thread, attr, thread_trampoline, data);
 }
 
 /**

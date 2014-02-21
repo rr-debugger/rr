@@ -1456,6 +1456,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return process_clone(t, trace, state, step);
 
 	case SYS_exit:
+		destroy_buffers(t, DESTROY_DEFAULT);
+		// fall through
 	case SYS_exit_group:
 		step->syscall.emu = 0;
 		assert(state == STATE_SYSCALL_ENTRY);

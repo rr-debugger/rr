@@ -417,6 +417,11 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		return 0;
 	}
 
+	case SYS_exit:
+		destroy_buffers(t, (DESTROY_ALREADY_AT_EXIT_SYSCALL |
+				    DESTROY_NEED_EXIT_SYSCALL_RESTART));
+		return 0;
+
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
 		switch (regs.ecx & FUTEX_CMD_MASK) {
