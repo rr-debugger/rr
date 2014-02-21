@@ -943,13 +943,8 @@ public:
 	 * return.
 	 */
 	template<size_t N>
-	void read_bytes(const byte* child_addr, byte (&buf)[N])
-	{
-		off_t offset = reinterpret_cast<off_t>(child_addr);
-		ssize_t nread = pread(child_mem_fd, buf, N, offset);
-		assert_exec(this, N == nread,
-			    "Expected to read %d bytes at %p, but only read %d",
-			    N, child_addr, nread);
+	void read_bytes(const byte* child_addr, byte (&buf)[N])	{
+		return read_bytes_helper(child_addr, N, buf);
 	}
 
 	/**
@@ -1006,11 +1001,7 @@ public:
 	 */
 	template<size_t N>
 	void write_bytes(const byte* child_addr, const byte (&buf)[N]) {
-		off_t offset = reinterpret_cast<off_t>(child_addr);
-		ssize_t nwritten = pwrite(child_mem_fd, buf, N, offset);
-		assert_exec(this, N == nwritten,
-			    "Expected to write %d bytes at %p, but only wrote %d",
-			    N, child_addr, nwritten);
+		return write_bytes_helper(child_addr, N, buf);
 	}
 
 	/**
@@ -1210,6 +1201,14 @@ public:
 
 private:
 	Task(pid_t tid, pid_t rec_tid, int priority);
+
+	/**
+	 * Read/write the number of bytes that the template wrapper
+	 * inferred.
+	 */
+	void read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf);
+	void write_bytes_helper(const byte* addr,
+				ssize_t buf_size, const byte* buf);
 
 	/* The address space of this task. */
 	std::shared_ptr<AddressSpace> as;

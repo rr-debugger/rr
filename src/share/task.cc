@@ -1184,6 +1184,18 @@ Task::find(pid_t rec_tid)
 	return tasks.end() != it ? it->second : NULL;
 }
 
+void
+Task::read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf)
+{
+	return read_child_data_direct(this, (byte*)addr, buf_size, buf);
+}
+
+void
+Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
+{
+	write_child_data(this, buf_size, (byte*)addr, buf);
+}
+
 /**
  * Push a new event onto |t|'s event stack of type |type|.
  */

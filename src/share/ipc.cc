@@ -250,8 +250,15 @@ ssize_t checked_pread(Task* t, byte* buf, size_t size, off_t offset) {
 		return read;
 	}
 
-	// for some reason reading from the child process requires to re-open the fd
-	// who knows why??
+	// We open the child_mem_fd just after being notified of
+	// exec(), when the Task is created.  Trying to read from that
+	// fd seems to return 0 with errno 0.  Reopening the mem fd
+	// allows the pread to succeed.  It seems that the first mem
+	// fd we open, very early in exec, refers to some resource
+	// that's different than the one we see after reopening the
+	// fd, after exec.
+	//
+	// TODO create the fd on demand and remove this workaround.
 	if (read == 0 && errno == 0) {
 		sys_close(t->child_mem_fd);
 		t->child_mem_fd = sys_open_child_mem(t);
@@ -290,17 +297,15 @@ void read_child_usr(Task *t, void *dest, void *src, size_t size) {
 void* read_child_data(Task *t, size_t size, byte* addr)
 {
 	byte* buf = (byte*)malloc(size);
-	/* if pread fails: do the following:   echo 0 > /proc/sys/kernel/yama/ptrace_scope */
-	ssize_t read_bytes = checked_pread(t, buf, size, PTR_TO_OFF_T(addr));
-	if (read_bytes != ssize_t(size)) {
-		free(buf);
-		buf = (byte*)read_child_data_ptrace(t, size, addr);
-		printf("reading from: %p demanded: %u  read %u  event: %d\n", addr, size, read_bytes, t->event);
-		perror("warning: reading from child process: ");
-		printf("try the following: echo 0 > /proc/sys/kernel/yama/ptrace_scope\n");
-	}
-
+	read_child_data_direct(t, (byte*)addr, size, buf);
 	return buf;
+}
+
+void read_child_data_direct(Task *t, const byte* addr, size_t size, byte* buf)
+{
+	ssize_t read_bytes = checked_pread(t, buf, size, PTR_TO_OFF_T(addr));
+	assert_exec(t, read_bytes == ssize_t(size),
+		    "Expected to read %u bytes, but read %d", size, read_bytes);
 }
 
 /**
@@ -364,6 +369,7 @@ void write_child_buffer(pid_t child_pid, uintptr_t address, size_t length, char 
 
 char* read_child_str(Task* t, byte* addr)
 {
+	// XXX rewrite me
 	char *tmp, *str;
 	int idx = 0;
 	int buffer_size = 256;
