@@ -46,6 +46,10 @@ enum {
 	 * There are no more trace frames coming, so the best thing to
 	 * do is probably to shut down. */
 	USR_TRACE_TERMINATION,
+	/* Pretty self-explanatory: recording detected that an
+	 * interrupted syscall wasn't restarted, so the interruption
+	 * record can be popped off the tracee's event stack. */
+	USR_INTERRUPTED_SYSCALL_NOT_RESTARTED,
 	/* TODO: this is actually a pseudo-pseudosignal: it will never
 	 * appear in a trace, but is only used to communicate between
 	 * different parts of the recorder code that should be

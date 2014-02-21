@@ -1356,56 +1356,77 @@ static void maybe_verify_tracee_saved_data(Task* t,
 void rep_process_syscall(Task* t, struct rep_trace_step* step)
 {
 	int syscall = t->trace.stop_reason; /* FIXME: don't shadow syscall() */
-	const struct syscall_def* def = &syscall_table[syscall];
+	const struct syscall_def* def;
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->state;
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
 	EmuFs::AutoGc maybe_gc(syscall, state);
 
+	debug("processing %s (%s)", syscallname(syscall), statename(state));
+
 	if (STATE_SYSCALL_EXIT == state
 	    && SYSCALL_MAY_RESTART(rec_regs->eax)) {
-		/* During recording, when a syscall exits with a
-		 * restart "error", the kernel may use some black
-		 * magic to restart that syscall without intervention
-		 * from userspace.  rr can observe that magic with
-		 * ptrace, but there's no way to directly replicate it
-		 * with a syscall exit/re-enter pair of commands.
-		 *
-		 * So instead we leave the syscall return "hanging".
-		 * If it's restarted, we'll skip advancing to the
-		 * restart entry below and just emulate exit by
-		 * setting the kernel outparams. */
+		// During recording, when a syscall exits with a
+		// restart "error", the kernel sometimes restarts the
+		// tracee by resetting its $ip to the syscall entry
+		// point, but other times restarts the syscall without
+		// changing the $ip.  In the latter case, we have to
+		// leave the syscall return "hanging".  If it's
+		// restarted without changing the $ip, we'll skip
+		// advancing to the restart entry below and just
+		// emulate exit by setting the kernel outparams.
+		//
+		// It's probably possible to predict which case is
+		// going to happen (seems to be for
+		// -ERESTART_RESTARTBLOCK and
+		// ptrace-declined-signal-delivery restarts), but it's
+		// simpler and probably more reliable to just check
+		// the tracee $ip at syscall restart to determine
+		// whether syscall re-entry needs to occur.
 		set_return_value(t);
 		process_restart_syscall(t, syscall);
-		/* Use this record to recognize the syscall if it
-		 * indeed restarts. */
-		push_syscall_interruption(t, rec_regs->orig_eax, rec_regs);
+		// Use this record to recognize the syscall if it
+		// indeed restarts.  If the syscall isn't restarted,
+		// we'll pop this event eventually, at the point when
+		// the recorder determined that the syscall wasn't
+		// going to be restarted.
+		push_syscall_interruption(t, syscall, rec_regs);
 		step->action = TSTEP_RETIRE;
-		debug("  %s interrupted, may restart", syscallname(syscall));
+		debug("  %s interrupted by %ld at %p, may restart",
+		      syscallname(syscall), rec_regs->eax, (void*)rec_regs->eip);
 		return;
 	}
 
-	if (EV_SYSCALL_INTERRUPTION == t->ev->type) {
-		int restarting;
+	if (SYS_restart_syscall == syscall) {
+		assert_exec(t, EV_SYSCALL_INTERRUPTION == t->ev->type,
+			    "Must have interrupted syscall to restart");
 
-		assert_exec(t, STATE_SYSCALL_ENTRY == state,
-			    "Syscall interruptions can only be seen at syscall (re-)entry");
+		syscall = t->ev->syscall.no;
+		if (STATE_SYSCALL_ENTRY == state) {
+			void* intr_ip = (void*)t->ev->syscall.regs.eip;
+			void* cur_ip = (void*)read_child_eip(t);
 
-		restarting = is_syscall_restart(t, syscall, rec_regs);
-		pop_syscall_interruption(t);
-		if (restarting) {
-			/* This "emulates" the restart by just
-			 * continuing on from the interrupted
-			 * syscall. */
-			step->action = TSTEP_RETIRE;
-			return;
+			debug("'restarting' %s interrupted by %ld at %p; now at %p",
+			      syscallname(syscall), t->ev->syscall.regs.eax,
+			      intr_ip, cur_ip);
+			if (cur_ip == intr_ip) {
+				// See long comment above; this
+				// "emulates" the restart by just
+				// continuing on from the interrupted
+				// syscall.
+				step->action = TSTEP_RETIRE;
+				return;
+			}
+		} else {
+			pop_syscall_interruption(t);
+			debug("exiting restarted %s", syscallname(syscall));
 		}
 	}
-	assert_exec(t, SYS_restart_syscall != syscall,
-		    "restart_syscall must have interruption record");
 
 	assert_exec(t, syscall < int(ALEN(syscall_table)),
 		    "%d not in syscall table, but possibly valid", syscall);
+
+	def = &syscall_table[syscall];
 	assert_exec(t, rep_UNDEFINED != def->type,
 		    "Valid but unhandled syscallno %d", syscall);
 

@@ -1636,6 +1636,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		log_info("Exiting.");
 		exit(0);
 		break;
+	case USR_INTERRUPTED_SYSCALL_NOT_RESTARTED:
+		debug("  popping interrupted but not restarted %s",
+		      syscallname(t->ev->syscall.no));
+		pop_syscall_interruption(t);
+		break;
 	default:
 		/* Pseudosignals are handled above. */
 		assert(event > LAST_RR_PSEUDOSIGNAL);
@@ -1652,7 +1657,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			step.target.signo = -event;
 			stop_sig = step.target.signo;
 		} else {
-			assert(event > 0);
+			assert(event >= 0);
 			rep_process_syscall(t, &step);
 		}
 	}

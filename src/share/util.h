@@ -356,13 +356,6 @@ int is_disarm_desched_event_syscall(Task* t,
 				    const struct user_regs_struct* regs);
 
 /**
- * Return nonzero if |syscallno| and |regs| look like the interrupted
- * syscall at the top of |t|'s event stack, if there is one.
- */
-int is_syscall_restart(Task* t, int syscallno,
-		       const struct user_regs_struct* regs);
-
-/**
  * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
  * will transition the futex into the contended state.  (This results
  * in the kernel atomically setting the FUTEX_WAITERS bit on the futex

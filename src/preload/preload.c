@@ -458,13 +458,13 @@ static void exit_signal_critical_section(const sigset_t* saved_mask)
  * ptrace traps.
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
-static int untraced_syscall(int syscall, long arg0, long arg1, long arg2,
+static int untraced_syscall(int syscallno, long arg0, long arg1, long arg2,
 			    long arg3, long arg4)
 {
 	int ret;
 	__asm__ __volatile__("call _untraced_syscall_entry_point"
 			     : "=a"(ret)
-			     : "0"(syscall), "b"(arg0), "c"(arg1), "d"(arg2),
+			     : "0"(syscallno), "b"(arg0), "c"(arg1), "d"(arg2),
 			       "S"(arg3), "D"(arg4));
 	return ret;
 }
@@ -1415,6 +1415,44 @@ static long sys_open(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_poll(const struct syscall_info* call)
+{
+	const int syscallno = SYS_poll;
+	struct pollfd* fds = (struct pollfd*)call->args[0];
+	unsigned int nfds = call->args[1];
+	int timeout = call->args[2];
+
+	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	struct pollfd* fds2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (fds && nfds > 0) {
+		fds2 = ptr;
+		ptr += nfds * sizeof(*fds2);
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+	if (fds2) {
+		local_memcpy(fds2, fds, nfds * sizeof(*fds2));
+	}
+
+	ret = untraced_syscall3(syscallno, fds2, nfds, timeout);
+
+	if (fds2) {
+		/* NB: even when poll returns 0 indicating no pending
+		 * fds, it still sets each .revent outparam to 0.
+		 * (Reasonably.)  So we always need to copy on return
+		 * value >= 0.  poll() may or may not copy on errors,
+		 * but we assume those are rare enough not to merit a
+		 * special case here. */
+		local_memcpy(fds, fds2, nfds * sizeof(*fds));
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);	
+}
+
 static long sys_read(const struct syscall_info* call)
 {
 	const int syscallno = SYS_read;
@@ -1602,6 +1640,7 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(fcntl64);
 	CASE(gettimeofday);
 	CASE(open);
+	CASE(poll);
 	CASE(read);
 	CASE(readlink);
 	CASE(socketcall);

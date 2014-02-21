@@ -1177,57 +1177,6 @@ int is_disarm_desched_event_syscall(Task* t,
 		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
 }
 
-int is_syscall_restart(Task* t, int syscallno,
-		       const struct user_regs_struct* regs)
-{
-	int must_restart = (SYS_restart_syscall == syscallno);
-	int is_restart = 0;
-	const struct user_regs_struct* old_regs;
-
-	if (EV_SYSCALL_INTERRUPTION != t->ev->type) {
-		goto done;
-	}
-	/* It's possible for the tracee to resume after a sighandler
-	 * with a fresh syscall that happens to be the same as the one
-	 * that was interrupted.  So we check here if the args are the
-	 * same.
-	 *
-	 * Of course, it's possible (but less likely) for the tracee
-	 * to incidentally resume with a fresh syscall that just
-	 * happens to have the same *arguments* too.  But in that
-	 * case, we would usually set up scratch buffers etc the same
-	 * was as for the original interrupted syscall, so we just
-	 * save a step here.
-	 *
-	 * TODO: it's possible for arg structures to be mutated
-	 * between the original call and restarted call in such a way
-	 * that it might change the scratch allocation decisions. */
-	if (SYS_restart_syscall == syscallno) {
-		syscallno = t->ev->syscall.no;
-		debug("  (SYS_restart_syscall)");
-	}
-	old_regs = &t->ev->syscall.regs;
-	is_restart = (t->ev->syscall.no == syscallno
-		      && old_regs->ebx == regs->ebx
-		      && old_regs->ecx == regs->ecx
-		      && old_regs->edx == regs->edx
-		      && old_regs->esi == regs->esi
-		      && old_regs->edi == regs->edi
-		      && old_regs->ebp == regs->ebp);
-	if (!is_restart) {
-		debug("  interrupted %s != %s or args differ",
-		      syscallname(t->ev->syscall.no), syscallname(syscallno));
-	}
-
-done:
-	assert_exec(t, !must_restart || is_restart,
-		    "Must restart %s but won't", syscallname(syscallno));
-	if (is_restart) {
-		debug("  restart of %s", syscallname(syscallno));
-	}
-	return is_restart;
-}
-
 bool is_now_contended_pi_futex(Task* t, byte* futex, long* next_val)
 {
 	long val = t->read_word(futex);
