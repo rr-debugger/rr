@@ -233,7 +233,8 @@ static int encode_event(const struct event* ev, int* state)
 	}
 
 	case EV_SYSCALL: {
-		int event = ev->syscall.no;
+		int event = ev->syscall.is_restart ?
+			    SYS_restart_syscall : ev->syscall.no;
 
 		assert(ev->syscall.state != PROCESSING_SYSCALL);
 
