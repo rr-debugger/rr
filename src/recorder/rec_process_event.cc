@@ -194,7 +194,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		read_socketcall_args(t, regs, &argsp, args);
 		addrlenp = (socklen_t*)args[2];
 		assert(sizeof(long) == sizeof(addrlen));
-		addrlen = read_child_data_word(t, (byte*)addrlenp);
+		addrlen = t->read_word((byte*)addrlenp);
 		/* We use the same basic scheme here as for RECV
 		 * above.  For accept() though, there are two
 		 * (in)outparams: |addr| and |addrlen|.  |*addrlen| is
@@ -865,19 +865,19 @@ static void process_execve(Task* t,
 	 *        where the esp does not point to argc. For example,
 	 *        it may point to &argc.
 	 */
-//	long* argc = (long*)read_child_data_word(t, (byte*)stack_ptr);
+//	long* argc = (long*)t->read_word((byte*)stack_ptr);
 //	stack_ptr += *argc + 1;
-	long argc = read_child_data_word(t, (byte*)stack_ptr);
+	long argc = t->read_word((byte*)stack_ptr);
 	stack_ptr += argc + 1;	
 
 	//unsigned long* null_ptr = read_child_data(t, sizeof(void*), stack_ptr);
 	//assert(*null_ptr == 0);
-	long null_ptr = read_child_data_word(t, (byte*)stack_ptr);
+	long null_ptr = t->read_word((byte*)stack_ptr);
 	assert(null_ptr == 0);
 	stack_ptr++;
 
 	/* should now point to envp (pointer to environment strings) */
-	while (0 != read_child_data_word(t, (byte*)stack_ptr)) {
+	while (0 != t->read_word((byte*)stack_ptr)) {
 		stack_ptr++;
 	}
 	stack_ptr++;
@@ -889,28 +889,30 @@ static void process_execve(Task* t,
 		AT_UID, AT_EUID, AT_GID, AT_EGID,
 		AT_SECURE
 	};
-	typedef pair<long, long> ElfEntry;
-	size_t table_size = ALEN(elf_aux) * sizeof(ElfEntry);
-	ElfEntry* entries =
-		(ElfEntry*)read_child_data(t, table_size, (byte*)stack_ptr);
+
+	struct ElfEntry { long key; long value; };
+	union {
+		ElfEntry entries[ALEN(elf_aux)];
+		byte bytes[sizeof(entries)];
+	} table;
+	t->read_bytes((byte*)stack_ptr, table.bytes);
 	stack_ptr += 2 * ALEN(elf_aux);
 
 	for (int i = 0; i < ssize_t(ALEN(elf_aux)); ++i) {
 		long expected_field = elf_aux[i];
-		const ElfEntry& entry = entries[i];
-		assert_exec(t, expected_field == entry.first,
+		const ElfEntry& entry = table.entries[i];
+		assert_exec(t, expected_field == entry.key,
 			    "Elf aux entry %d should be 0x%lx, but is 0x%lx",
-			    i, expected_field, entry.first);
+			    i, expected_field, entry.key);
 	}
-	free(entries);
 
-	long at_random = read_child_data_word(t, (byte*)stack_ptr);
+	long at_random = t->read_word((byte*)stack_ptr);
 	stack_ptr++;
 	assert_exec(t, AT_RANDOM == at_random,
 		    "ELF item should be 0x%x, but is 0x%lx",
 		    AT_RANDOM, at_random);
 
-	byte* rand_addr = (byte*)read_child_data_word(t, (byte*)stack_ptr);
+	byte* rand_addr = (byte*)t->read_word((byte*)stack_ptr);
 	// XXX where does the magic number come from?
 	record_child_data(t, 16, rand_addr);
 
@@ -1165,9 +1167,7 @@ static void process_socketcall(Task* t,
 			record_noop_data(t);
 		}
 		if (child_args->src_addr && child_args->addrlen) {
-			long len =
-				read_child_data_word(t,
-						     (byte*)child_args->addrlen);
+			long len = t->read_word((byte*)child_args->addrlen);
 
 			record_child_data(t, sizeof(child_args->addrlen),
 					  (byte*)child_args->addrlen);

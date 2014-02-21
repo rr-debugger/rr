@@ -323,54 +323,16 @@ void sys_fcntl(int fd, int cmd, long arg1)
 	}
 }
 
-void* sys_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
-{
-	void* tmp = mmap(addr, length, prot, flags, fd, offset);
-	if (tmp == MAP_FAILED) {
-		log_err("cannot memory-map file");
-		sys_exit();
-	}
-	return tmp;
-}
-
-void sys_munmap(void* addr, size_t length)
-{
-	if (munmap(addr, length) == -1) {
-		log_err("cannot un-map file");
-		sys_exit();
-	}
-}
-
-void* sys_memset(void * block, int c, size_t size)
-{
-	void* tmp;
-	if ((tmp = memset(block,c,size)) == NULL) {
-		log_err("malloc failed, size is: %d\n",size);
-		sys_exit();
-	}
-	return tmp;
-}
-
-void sys_setpgid(pid_t pid, pid_t pgid)
-{
-	if (setpgid(pid, pgid) == -1) {
-		log_err("error setting group id of child process");
-	}
-}
-
 int sys_mkdir(const char *path, mode_t mode)
 {
     struct stat st;
     int status = 0;
 
-    if (stat(path, &st) != 0)
-    {
+    if (stat(path, &st) != 0) {
         // Directory does not exist. EEXIST for race condition
         if (mkdir(path, mode) != 0 && errno != EEXIST)
             status = -1;
-    }
-    else if (!S_ISDIR(st.st_mode))
-    {
+    } else if (!S_ISDIR(st.st_mode)) {
         errno = ENOTDIR;
         status = -1;
     }

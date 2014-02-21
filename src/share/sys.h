@@ -51,9 +51,4 @@ bool sys_waitpid(pid_t pid, int *status);
 pid_t sys_waitpid_nonblock(pid_t pid, int *status);
 void sys_fcntl(int fd, int cmd, long arg1);
 
-void* sys_mmap(void* addr, size_t length, int prot, int flags, int filedes, off_t offset);
-void sys_munmap(void* addr, size_t length);
-void* sys_memset(void * block, int c, size_t size);
-void sys_setpgid(pid_t pid, pid_t pgid);
-
 #endif /* SYS_H_ */
