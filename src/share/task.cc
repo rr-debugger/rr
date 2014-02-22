@@ -109,7 +109,7 @@ AddressSpace::dump() const
 		const Mapping& m = it->first;
 		const MappableResource& r = it->second;
 		fprintf(stderr,
-			"%08lx-%08lx %c%c%c%c %08lx %02llx:%02llx %-10ld %s %s (f:0x%x d:0x%llx i:%ld)\n",
+			"%08lx-%08lx %c%c%c%c %08llx %02llx:%02llx %-10ld %s %s (f:0x%x d:0x%llx i:%ld)\n",
 			reinterpret_cast<long>(m.start),
 			reinterpret_cast<long>(m.end),
 			(PROT_READ & m.prot) ? 'r' : '-',
@@ -125,14 +125,14 @@ AddressSpace::dump() const
 
 void
 AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
-		  off_t offset, const MappableResource& res)
+		  off64_t offset_bytes, const MappableResource& res)
 {
-	debug("[%d] mmap(%p, %u, 0x%x, 0x%x)", get_global_time(),
-	      addr, num_bytes, prot, flags);
+	debug("[%d] mmap(%p, %u, %#x, %#x, %#llx)", get_global_time(),
+	      addr, num_bytes, prot, flags, offset);
 
 	num_bytes = ceil_page_size(num_bytes);
 
-	Mapping m(addr, num_bytes, prot, flags, offset);
+	Mapping m(addr, num_bytes, prot, flags, offset_bytes);
 	if (mem.end() != mem.find(m)) {
 		// The mmap() man page doesn't specifically describe
 		// what should happen if an existing map is
@@ -163,8 +163,8 @@ AddressSpace::mapping_of(const byte* addr, size_t num_bytes) const
  * a pseudo-device that doesn't have offsets, in which case the
  * updated offset 0 is returned.
  */
-static off_t adjust_offset(const MappableResource& r, const Mapping& m,
-			   off_t delta)
+static off64_t adjust_offset(const MappableResource& r, const Mapping& m,
+			     off64_t delta)
 {
 	return r.id.is_real_device() ? m.offset + delta : 0;
 }
@@ -283,7 +283,7 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
 		return false;
 	}
 	if (rleft.id.is_real_device()
-	    && off_t(mleft.offset + mleft.num_bytes()) != mright.offset) {
+	    && off64_t(mleft.offset + mleft.num_bytes()) != mright.offset) {
 		debug("    (offsets into real device aren't adjacent)");
 		return false;
 	}

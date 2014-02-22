@@ -154,7 +154,7 @@ struct Mapping {
 	Mapping() : start(nullptr), end(nullptr), prot(0), flags(0), offset(0)
 	{ }
 	Mapping(const byte* addr, size_t num_bytes, int prot=0, int flags=0,
-		off_t offset=0)
+		off64_t offset=0)
 		: start(addr), end(addr + ceil_page_size(num_bytes))
 		, prot(prot)
 		, flags(flags & map_flags_mask)
@@ -162,7 +162,7 @@ struct Mapping {
 		assert_valid();
 	}
 	Mapping(const byte* start, const byte* end, int prot=0, int flags=0,
-		off_t offset=0)
+		off64_t offset=0)
 		: start(start), end(end), prot(prot)
 		, flags(flags & map_flags_mask)
 		, offset(offset) {
@@ -184,6 +184,7 @@ struct Mapping {
 		assert(end >= start);
 		assert(num_bytes() % page_size() == 0);
 		assert(!(flags & ~map_flags_mask));
+		assert(offset % page_size() == 0);
 	}
 
 	/**
@@ -219,7 +220,7 @@ struct Mapping {
 	const byte* const end;
 	const int prot;
 	const int flags;
-	const off_t offset;
+	const off64_t offset;
 };
 
 /**
@@ -361,7 +362,7 @@ public:
 	 * initially) backed starting at |offset| of |res|.
 	 */
 	void map(const byte* addr, size_t num_bytes, int prot, int flags,
-		 off_t offset, const MappableResource& res);
+		 off64_t offset_bytes, const MappableResource& res);
 
 	/**
 	 * Return the mapping and mapped resource that underly [addr,

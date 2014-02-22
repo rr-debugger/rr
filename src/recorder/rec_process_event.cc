@@ -709,11 +709,11 @@ static void init_scratch_memory(Task *t)
 	int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
 	int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 	int fd = -1;
-	off_t offset = 0;
+	off64_t offset_pages = 0;
 
 	t->scratch_ptr = (byte*)remote_syscall6(t, &state, SYS_mmap2,
 						0, sz, prot, flags,
-						fd, offset);
+						fd, offset_pages);
 	t->scratch_size = scratch_size;
 	finish_remote_syscalls(t, &state);
 
@@ -735,7 +735,8 @@ static void init_scratch_memory(Task *t)
 	orig_regs.eax = eax;
 	write_child_registers(t, &orig_regs);
 
-	t->vm()->map(t->scratch_ptr, sz, prot, flags, offset,
+	t->vm()->map(t->scratch_ptr, sz, prot, flags,
+		     page_size() * offset_pages,
 		     MappableResource::scratch(t->rec_tid));
 }
 
@@ -2761,7 +2762,7 @@ void rec_process_syscall(Task *t)
 		byte* addr = (byte*)regs.eax;
 		size_t size = ceil_page_size(regs.ecx);
 		int prot = regs.edx, flags = regs.esi, fd = regs.edi;
-		off_t offset = page_size() * regs.ebp;
+		off_t offset_pages = regs.ebp;
 		if (flags & MAP_ANONYMOUS) {
 			// Anonymous mappings are by definition not
 			// backed by any file-like object, and are
@@ -2805,7 +2806,8 @@ void rec_process_syscall(Task *t)
 		}
 		record_mmapped_file_stats(&file);
 
-		t->vm()->map(addr, size, prot, flags, offset,
+		t->vm()->map(addr, size, prot, flags,
+			     page_size() * offset_pages,
 			     MappableResource(FileId(file.stat),
 					      file.filename));
 		break;
