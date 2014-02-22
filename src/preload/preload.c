@@ -1226,6 +1226,36 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static int sys_fcntl64_xlk64(const struct syscall_info* call)
+{
+	const int syscallno = SYS_fcntl64;
+	int fd = call->args[0];
+	int cmd = call->args[1];
+	struct flock64* lock = (struct flock64*)call->args[2];
+
+	void* ptr = prep_syscall();
+	struct flock64* lock2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (lock) {
+		lock2 = ptr;
+		ptr += sizeof(*lock2);
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+	if (lock2) {
+		local_memcpy(lock2, lock, sizeof(*lock2));
+	}
+	ret = untraced_syscall3(syscallno, fd, cmd, lock2);
+	if (lock2) {
+		local_memcpy(lock, lock2, sizeof(*lock));
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_fcntl64(const struct syscall_info* call)
 {
 	switch (call->args[1]) {
@@ -1243,11 +1273,13 @@ static long sys_fcntl64(const struct syscall_info* call)
 	case F_SETOWN_EX:
 		return sys_fcntl64_own_ex(call);
 
+	case F_SETLK64:
+		return sys_fcntl64_xlk64(call);
+
 	case F_GETLK:
 	case F_SETLK:
 	case F_SETLKW:
 	case F_GETLK64:
-	case F_SETLK64:
 	case F_SETLKW64:
 		/* TODO: buffer the F_*LK API. */
 		/* fall through */
