@@ -1281,6 +1281,40 @@ static long sys_gettimeofday(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys__llseek(const struct syscall_info* call)
+{
+	const int syscallno = SYS__llseek;
+	int fd = call->args[0];
+	unsigned long offset_high = call->args[1];
+	unsigned long offset_low = call->args[2];
+	loff_t* result = (loff_t*)call->args[3];
+	unsigned int whence = call->args[4];
+
+	void *ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	loff_t* result2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (result) {
+		result2 = ptr;
+		ptr += sizeof(*result2);
+	}
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+
+	if (result2) {
+		*result2 = *result;
+	}
+	ret = untraced_syscall5(syscallno, fd, offset_high, offset_low,
+				result2, whence);
+	if (result2) {
+		*result = *result2;
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_open(const struct syscall_info* call)
 {
 	const int syscallno = SYS_open;
@@ -1539,6 +1573,7 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(creat);
 	CASE(fcntl64);
 	CASE(gettimeofday);
+	CASE(_llseek);
 	CASE(open);
 	CASE(poll);
 	CASE(read);
