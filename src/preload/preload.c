@@ -96,31 +96,15 @@ struct syscall_info {
     long args[6];
 };
 
-/**
- * Tracks per-task state that may need to be cleaned up on task exit.
- * 
- * Cleanup must be done in the tracee because the rr process doesn't
- * know that threads are going to exit until it's too late to clean up
- * their state.
- */
-struct task_cleanup_data {
-	void* scratch_ptr;
-	size_t num_scratch_bytes;
-	void* syscallbuf_ptr;
-	size_t num_syscallbuf_bytes;
-	int desched_counter_fd;
-};
-
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
+/* Nonzero after process-global state like the seccomp-bpf has been
+ * initialized. */
+static int process_inited;
 
-/* During thread/process initialization, we have to call into libdl in
- * order to resolve the pthread_create symbol.  But libdl can and does
- * call libc functions that we wrap here.  The initialization code
- * obviously doesn't nest, so we use this helper variable as a
- * re-entry guard.  It's nonzero after |ensure_thread_init()| is
- * called the first time. */
-static __thread int called_ensure_thread_init;
+/* Nonzero when thread-local state like the syscallbuf has been
+ * initialized.  */
+static __thread int thread_inited;
 /* When buffering is enabled, this points at the thread's mapped
  * buffer segment.  At the start of the segment is an object of type
  * |struct syscallbuf_hdr|, so |buffer| is also a pointer to the
@@ -161,6 +145,13 @@ static __thread byte* buffer;
  * numerous implementation details that are documented in
  * handle_signal.c, where they're dealt with. */
 static __thread int desched_counter_fd;
+
+/* Points at the libc/pthread pthread_create().  We wrap
+ * pthread_create, so need to retain this pointer to call out to the
+ * libc version. */
+static int (*real_pthread_create)(pthread_t* thread,
+				  const pthread_attr_t* attr,
+				  void* (*start_routine) (void*), void* arg);
 
 /**
  * Return a pointer to the buffer header, which happens to occupy the
@@ -796,59 +787,101 @@ static void set_up_buffer(void)
 }
 
 /**
- * After a fork(), the new child will still share the buffer mapping
- * with its parent.  That's obviously very bad.  Pretend that we don't
- * know about the old buffer, so that the next time a buffered syscall
- * is hit, we map a new buffer.
+ * Initialize thread-local buffering state, if enabled.
  */
-static void drop_buffer(void)
+static void init_thread(void)
+{
+	assert(process_inited);
+	assert(!thread_inited);
+
+	if (!buffer_enabled) {
+		thread_inited = 1;
+		return;
+	}
+
+	set_up_buffer();
+	thread_inited = 1;
+}
+
+/**
+ * After a fork(), we retain a CoW mapping of our parent's syscallbuf.
+ * That's bad, because we don't want to use that buffer.  So drop the
+ * parent's copy and reinstall our own.
+ *
+ * FIXME: this "leaks" the parent's old copy in our address space.
+ */
+static void post_fork_child(void)
 {
 	buffer = NULL;
-	called_ensure_thread_init = 0;
+	thread_inited = 0;
+	init_thread();
 }
 
 /**
  * Initialize process-global buffering state, if enabled.
  */
-static pthread_once_t init_process_once = PTHREAD_ONCE_INIT;
-static void init_process(void)
+static void  __attribute__((constructor))
+init_process(void)
 {
+	assert(!process_inited);
+
+	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
+
 	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
-	if (buffer_enabled) {
-		install_syscall_filter();
-		pthread_atfork(NULL, NULL, drop_buffer);
-		rrcall_monkeypatch_vdso(get_vsyscall_hook_trampoline());
-	} else {
+	if (!buffer_enabled) {
 		debug("Syscall buffering is disabled");
+		process_inited = 1;
+		return;
 	}
+
+	pthread_atfork(NULL, NULL, post_fork_child);
+
+	install_syscall_filter();
+	rrcall_monkeypatch_vdso(get_vsyscall_hook_trampoline());
+	process_inited = 1;
+
+	init_thread();
 }
 
 /**
- * Initialize thread-local buffering state, if enabled.
+ * In a thread newly created by |pthread_create()|, first initialize
+ * thread-local internal rr data, then trampoline into the user's
+ * thread function.
  */
-enum { NO_SIGNAL_SAFETY, ASYNC_SIGNAL_SAFE };
-static void ensure_thread_init(int signal_safety)
+struct thread_func_data {
+	void* (*start_routine) (void*);
+	void* arg;
+};
+
+static void* thread_trampoline(void* arg)
 {
-	if (called_ensure_thread_init) {
-		return;
-	}
-	if (ASYNC_SIGNAL_SAFE == signal_safety) {
-		/* Our initialization may end up calling potentially
-		 * non-async-signal-safe functions, so we can't init
-		 * from a context in which async-signal-safety needs
-		 * to be preserved. */
-		debug("(refusing to init from async-signal-safe context)");
-		return;
-	}
-	called_ensure_thread_init = 1;
-	pthread_once(&init_process_once, init_process);
-	set_up_buffer();
+	struct thread_func_data* data = arg;
+	void* ret;
+
+	init_thread();
+
+	ret = data->start_routine(data->arg);
+
+	free(data);
+	return ret;
 }
 
-static void __attribute__((constructor))
-init_process_static(void)
+/**
+ * Interpose |pthread_create()| so that we can use a custom trampoline
+ * function (see above) that initializes rr thread-local data for new
+ * threads.
+ *
+ * This is a wrapper of |pthread_create()|, but not like the ones
+ * below: we don't wrap |pthread_create()| in order to buffer its
+ * syscalls, rather in order to initialize rr thread data.
+ */
+int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
+		   void* (*start_routine) (void*), void* arg)
 {
-	ensure_thread_init(NO_SIGNAL_SAFETY);
+	struct thread_func_data* data = malloc(sizeof(*data));
+	data->start_routine = start_routine;
+	data->arg = arg;
+	return real_pthread_create(thread, attr, thread_trampoline, data);
 }
 
 /**
@@ -891,24 +924,22 @@ init_process_static(void)
  * want to buffer. The result is a pointer into the record space. You
  * can add to this pointer to allocate space in the trace record.
  * However, do not read or write through this pointer until
- * can_buffer_syscall has been called.  And you *must* call
- * can_buffer_syscall after this is called, otherwise buffering state
- * will be inconsistent between syscalls.
+ * start_commit_syscall() has been called.  And you *must* call
+ * start_commit_syscall() after this is called, otherwise buffering
+ * state will be inconsistent between syscalls.
  *
  * See |sys_clock_gettime()| for a simple example of how this helper
  * should be used to buffer outparam data.
  */
 
-static void* prep_syscall(int signal_safety)
+static void* prep_syscall(void)
 {
-	ensure_thread_init(signal_safety);
 	if (!buffer) {
 		return NULL;
 	}
 	if (buffer_hdr()->locked) {
 		/* We may be reentering via a signal handler. Return
-		 * an invalid pointer.
-		 */
+		 * an invalid pointer. */
 		return NULL;
 	}
 	/* We don't need to worry about a race between testing
@@ -1092,7 +1123,7 @@ static long sys_access(const struct syscall_info* call)
 	const char* pathname = (const char*)call->args[0];
 	int mode = call->args[1];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	long ret;
 
 	assert(syscallno == call->no);
@@ -1110,7 +1141,7 @@ static long sys_clock_gettime(const struct syscall_info* call)
 	clockid_t clk_id = (clockid_t)call->args[0];
 	struct timespec* tp = (struct timespec*)call->args[1];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	struct timespec *tp2 = NULL;
 	long ret;
 
@@ -1135,7 +1166,7 @@ static long sys_close(const struct syscall_info* call)
 	const int syscallno = SYS_close;
 	int fd = call->args[0];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	long ret;
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
@@ -1171,7 +1202,7 @@ static int sys_fcntl64_no_outparams(const struct syscall_info* call)
 
 	/* None of the no-outparam fcntl's are known to be
 	 * may-block. */
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	long ret;
 
 	assert(syscallno == call->no);
@@ -1191,7 +1222,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call)
 	struct f_owner_ex* owner = (struct f_owner_ex*)call->args[2];
 
 	/* The OWN_EX fcntl's aren't may-block. */
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	struct f_owner_ex* owner2 = NULL;
 	long ret;
 
@@ -1253,7 +1284,7 @@ static long sys_gettimeofday(const struct syscall_info* call)
 	/* XXX it seems odd that clock_gettime() is spec'd to be
 	 * async-signal-safe while gettimeofday() isn't, but that's
 	 * what the docs say! */
-	void *ptr = prep_syscall(NO_SIGNAL_SAFETY);
+	void *ptr = prep_syscall();
 	struct timeval *tp2 = NULL;
 	struct timezone *tzp2 = NULL;
 	long ret;
@@ -1290,7 +1321,7 @@ static long sys__llseek(const struct syscall_info* call)
 	loff_t* result = (loff_t*)call->args[3];
 	unsigned int whence = call->args[4];
 
-	void *ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void *ptr = prep_syscall();
 	loff_t* result2 = NULL;
 	long ret;
 
@@ -1340,7 +1371,7 @@ static long sys_open(const struct syscall_info* call)
 		return -ENOENT;
 	}
 
-	ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	ptr = prep_syscall();
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
 		return raw_traced_syscall(call);
 	}
@@ -1356,7 +1387,7 @@ static long sys_poll(const struct syscall_info* call)
 	unsigned int nfds = call->args[1];
 	int timeout = call->args[2];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	struct pollfd* fds2 = NULL;
 	long ret;
 
@@ -1394,7 +1425,7 @@ static long sys_read(const struct syscall_info* call)
 	void* buf = (void*)call->args[1];
 	size_t count = call->args[2];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	void* buf2 = NULL;
 	long ret;
 
@@ -1423,7 +1454,7 @@ static long sys_readlink(const struct syscall_info* call)
 	char* buf = (char*)call->args[1];
 	int bufsiz = call->args[2];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	char* buf2 = NULL;
 	long ret;
 
@@ -1453,7 +1484,7 @@ static long sys_recv(const struct syscall_info* call)
 	size_t len = args[2];
 	unsigned int flags = args[3];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	void* buf2 = NULL;
 	long ret;
 
@@ -1490,7 +1521,7 @@ static long sys_time(const struct syscall_info* call)
 	const int syscallno = SYS_time;
 	time_t* tp = (time_t*)call->args[0];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	long ret;
 
 	assert(syscallno == call->no);
@@ -1517,7 +1548,7 @@ static long sys_xstat64(const struct syscall_info* call)
 	/* Like open(), not arming the desched event because it's not
 	 * needed for correctness, and there are no data to suggest
 	 * whether it's a good idea perf-wise. */
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	struct stat64* buf2 = NULL;
 	long ret;
 
@@ -1542,7 +1573,7 @@ static long sys_write(const struct syscall_info* call)
 	const void* buf = (const void*)call->args[1];
 	size_t count = call->args[2];
 
-	void* ptr = prep_syscall(ASYNC_SIGNAL_SAFE);
+	void* ptr = prep_syscall();
 	long ret;
 
 	assert(syscallno == call->no);
