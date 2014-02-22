@@ -96,8 +96,6 @@ struct syscall_info {
     long args[6];
 };
 
-/* Nonzero when syscall buffering is enabled. */
-static int buffer_enabled;
 /* Nonzero after process-global state like the seccomp-bpf has been
  * initialized. */
 static int process_inited;
@@ -105,10 +103,9 @@ static int process_inited;
 /* Nonzero when thread-local state like the syscallbuf has been
  * initialized.  */
 static __thread int thread_inited;
-/* When buffering is enabled, this points at the thread's mapped
- * buffer segment.  At the start of the segment is an object of type
- * |struct syscallbuf_hdr|, so |buffer| is also a pointer to the
- * buffer header.*/
+/* Points at the thread's mapped buffer segment.  At the start of the
+ * segment is an object of type |struct syscallbuf_hdr|, so |buffer|
+ * is also a pointer to the buffer header. */
 static __thread byte* buffer;
 /* This is used to support the buffering of "may-block" system calls.
  * The problem that needs to be addressed can be introduced with a
@@ -621,8 +618,8 @@ static void* get_vsyscall_hook_trampoline(void)
  * |args_vec| provides the tracer with preallocated space to make
  * socketcall syscalls.
  *
- * Pointers to the scratch buffer and syscallbuf, if enabled, and
- * their sizes are returned through the outparams.
+ * Return a pointer to the syscallbuf (with an initialized header
+ * including the available size).
  *
  * This is a "magic" syscall implemented by rr.
  */
@@ -647,9 +644,8 @@ static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline)
 }
 
 /**
- * This installs the actual filter which examines the callsite and
- * determines whether it will be ptraced or handled by the
- * intercepting library
+ * Install the seccomp-bpf that generates trace traps for all syscalls
+ * other than those made through _untraced_syscall_entry_point().
  */
 static void install_syscall_filter(void)
 {
@@ -735,9 +731,7 @@ static void set_up_buffer(void)
 	assert(!buffer);
 
 	/* NB: we want this setup emulated during replay. */
-	if (buffer_enabled) {
-		desched_counter_fd = open_desched_event_counter(1);
-	}
+	desched_counter_fd = open_desched_event_counter(1);
 
 	/* Prepare arguments for rrcall.  We do this in the tracee
 	 * just to avoid some hairy IPC to set up the arguments
@@ -768,7 +762,6 @@ static void set_up_buffer(void)
 	 * allocated in the other process. */
 	*cmsg_fdptr = desched_counter_fd;
 
-	args.syscallbuf_enabled = buffer_enabled;
 	args.traced_syscall_ip = get_traced_syscall_entry_point();
 	args.untraced_syscall_ip = get_untraced_syscall_entry_point();
 	args.sockaddr = &addr;
@@ -793,11 +786,6 @@ static void init_thread(void)
 {
 	assert(process_inited);
 	assert(!thread_inited);
-
-	if (!buffer_enabled) {
-		thread_inited = 1;
-		return;
-	}
 
 	set_up_buffer();
 	thread_inited = 1;
@@ -826,13 +814,6 @@ init_process(void)
 	assert(!process_inited);
 
 	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
-
-	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
-	if (!buffer_enabled) {
-		debug("Syscall buffering is disabled");
-		process_inited = 1;
-		return;
-	}
 
 	pthread_atfork(NULL, NULL, post_fork_child);
 
