@@ -1718,28 +1718,27 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 
 	/* Map the segment in our address space and in the
 	 * tracee's. */
-	if ((void*)-1 ==
-	    (map_addr = mmap(NULL, SYSCALLBUF_BUFFER_SIZE,
-			     PROT_READ | PROT_WRITE, MAP_SHARED,
-			     shmem_fd, 0))) {
-		fatal("Failed to mmap shmem region");
-	}
 	t->num_syscallbuf_bytes = SYSCALLBUF_BUFFER_SIZE;
 	int prot = PROT_READ | PROT_WRITE;
 	int flags = MAP_SHARED;
-	off_t offset = 0;
+	off64_t offset_pages = 0;
+	if ((void*)-1 == (map_addr = mmap(NULL, t->num_syscallbuf_bytes,
+					  prot, flags,
+					  shmem_fd, offset_pages))) {
+		fatal("Failed to mmap shmem region");
+	}
 	child_map_addr = (byte*)remote_syscall6(t, state, SYS_mmap2,
 						map_hint,
 						t->num_syscallbuf_bytes,
 						prot, flags, child_shmem_fd,
-						offset);
+						offset_pages);
 	t->syscallbuf_child = args->syscallbuf_ptr = child_map_addr;
 	t->syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
 	/* No entries to begin with. */
 	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
 
 	t->vm()->map((const byte*)child_map_addr, t->num_syscallbuf_bytes,
-		     prot, flags, offset,
+		     prot, flags, page_size() * offset_pages,
 		     MappableResource::syscallbuf(t->rec_tid, shmem_fd));
 
 	close(shmem_fd);

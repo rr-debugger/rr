@@ -873,6 +873,7 @@ static void* finish_anonymous_mmap(Task* t,
 				   struct current_state_buffer* state,
 				   struct trace_frame* trace,
 				   int prot, int flags,
+				   off64_t offset_pages,
 				   int note_task_map=NOTE_TASK_MAP)
 {
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
@@ -883,11 +884,11 @@ static void* finish_anonymous_mmap(Task* t,
 	/* These are supposed to be (-1, 0) respectively, but use
 	 * whatever the tracee passed to avoid stirring up trouble. */
 	int fd = rec_regs->edi;
-	off_t offset = rec_regs->ebp;
 
 	if (note_task_map) {
 		t->vm()->map((const byte*)rec_addr, length, prot, flags,
-			     offset, MappableResource::anonymous());
+			     page_size() * offset_pages,
+			     MappableResource::anonymous());
 	}
 
 	return (void*)remote_syscall6(t, state, SYS_mmap2,
@@ -895,20 +896,20 @@ static void* finish_anonymous_mmap(Task* t,
 				      /* Tell the kernel to take
 				       * |rec_addr| seriously. */
 				      flags | MAP_FIXED,
-				      fd, offset);
+				      fd, offset_pages);
 }
 
 static void* finish_private_mmap(Task* t,
 				 struct current_state_buffer* state,
 				 struct trace_frame* trace,
 				 int prot, int flags,
+				 off64_t offset_pages,
 				 const struct mmapped_file* file)
 {
 	debug("  finishing private mmap of %s", file->filename);
 
 	const struct user_regs_struct& rec_regs = trace->recorded_regs;
 	size_t num_bytes = rec_regs.ecx;
-	off_t offset = rec_regs.ebp;
 	void* mapped_addr = finish_anonymous_mmap(t, state, trace, prot,
 						  /* The restored region
 						   * won't be backed by
@@ -918,7 +919,8 @@ static void* finish_private_mmap(Task* t,
 	/* Restore the map region we copied. */
 	set_child_data(t);
 
-	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags, offset,
+	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags,
+		     page_size() * offset_pages,
 		     // Intentionally drop the stat() information
 		     // saved to trace so as to match /proc/maps's
 		     // device/inode info for this anonymous mapping.
@@ -960,6 +962,7 @@ static void* finish_direct_mmap(Task* t,
 				struct current_state_buffer* state,
 				struct trace_frame* trace,
 				int prot, int flags,
+				off64_t offset_pages,
 				const struct mmapped_file* file,
 				int verify = VERIFY_BACKING_FILE,
 				int note_task_map=NOTE_TASK_MAP)
@@ -967,7 +970,6 @@ static void* finish_direct_mmap(Task* t,
 	struct user_regs_struct* rec_regs = &trace->recorded_regs;
 	void* rec_addr = (void*)rec_regs->eax;
 	size_t length = rec_regs->ecx;
-	off_t offset = rec_regs->ebp;
 	int fd;
 	void* mapped_addr;
 
@@ -1008,14 +1010,14 @@ static void* finish_direct_mmap(Task* t,
 				       * they're not handled properly,
 				       * but we shouldn't do that.) */
 				      prot, flags,
-				      fd, offset);
+				      fd, offset_pages);
 	/* Don't leak the tmp fd.  The mmap doesn't need the fd to
 	 * stay open. */
 	remote_syscall1(t, state, SYS_close, fd);
 
 	if (note_task_map) {
 		t->vm()->map((const byte*)mapped_addr, length, prot, flags,
-			     offset,
+			     page_size() * offset_pages,
 			     MappableResource(FileId(file->stat),
 					      file->filename));
 	}
@@ -1027,11 +1029,11 @@ static void* finish_shared_mmap(Task* t,
 				struct current_state_buffer* state,
 				struct trace_frame* trace,
 				int prot, int flags,
+				off64_t offset_pages,
 				const struct mmapped_file* file)
 {
 	const struct user_regs_struct& rec_regs = trace->recorded_regs;
 	size_t rec_num_bytes = ceil_page_size(rec_regs.ecx);
-	off_t rec_offset = rec_regs.ebp;
 
 	// Ensure there's a virtual file for the file that was mapped
 	// during recording.
@@ -1045,6 +1047,7 @@ static void* finish_shared_mmap(Task* t,
 	snprintf(vfile.filename, sizeof(vfile.filename) - 1,
 		 "/proc/%d/fd/%d", getpid(), emufs_fd);
 	void* mapped_addr = finish_direct_mmap(t, state, trace, prot, flags,
+					       offset_pages,
 					       &vfile, DONT_VERIFY,
 					       DONT_NOTE_TASK_MAP);
 	// Write back the snapshot of the segment that we recorded.
@@ -1059,17 +1062,18 @@ static void* finish_shared_mmap(Task* t,
 	byte* data = (byte*)read_raw_data(&(t->trace), &num_bytes, &rec_addr);
 	assert(data && rec_addr == mapped_addr && rec_num_bytes == num_bytes);
 
+	off64_t offset_bytes = page_size() * offset_pages;
 	if (ssize_t(num_bytes) !=
-	    pwrite(emufs_fd, data, num_bytes, rec_offset)) {
-		fatal("Failed to write %d bytes at 0x%lx to %s",
-		      num_bytes, rec_offset, vfile.filename);
+	    pwrite64(emufs_fd, data, num_bytes, offset_bytes)) {
+		fatal("Failed to write %d bytes at %#llx to %s",
+		      num_bytes, offset_bytes, vfile.filename);
 	}
 	free(data);
 	debug("  restored %d bytes at 0x%lx to %s",
-	      num_bytes, rec_offset, vfile.filename);
+	      num_bytes, offset_bytes, vfile.filename);
 
 	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags,
-		     rec_offset,
+		     offset_bytes,
 		     MappableResource(FileId(file->stat), file->filename));
 
 	return mapped_addr;
@@ -1081,6 +1085,7 @@ static void process_mmap2(Task* t,
 {
 	int prot = trace->recorded_regs.edx;
 	int flags = trace->recorded_regs.esi;
+	off64_t offset_pages = trace->recorded_regs.ebp;
 	struct current_state_buffer state;
 	void* mapped_addr;
 
@@ -1107,7 +1112,7 @@ static void process_mmap2(Task* t,
 	prepare_remote_syscalls(t, &state);
 	if (flags & MAP_ANONYMOUS) {
 		mapped_addr = finish_anonymous_mmap(t, &state, trace,
-						    prot, flags);
+						    prot, flags, offset_pages);
 	} else {
 		struct mmapped_file file;
 		read_next_mmapped_file_stats(&file);
@@ -1117,13 +1122,16 @@ static void process_mmap2(Task* t,
 			    file.time, trace->global_time);
 		if (!file.copied) {
 			mapped_addr = finish_direct_mmap(t, &state, trace,
-							 prot, flags, &file);
+							 prot, flags,
+							 offset_pages, &file);
 		} else if (!(MAP_SHARED & flags)) {
 			mapped_addr = finish_private_mmap(t, &state, trace,
-							  prot, flags, &file);
+							  prot, flags,
+							  offset_pages, &file);
 		} else {
 			mapped_addr = finish_shared_mmap(t, &state, trace,
-							 prot, flags, &file);
+							 prot, flags,
+							 offset_pages, &file);
 		}
 	}
 	/* Finally, we finish by emulating the return value. */
