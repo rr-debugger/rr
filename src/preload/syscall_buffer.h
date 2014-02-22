@@ -26,9 +26,6 @@ extern "C" {
 /* This size counts the header along with record data. */
 #define SYSCALLBUF_BUFFER_SIZE (1 << 20)
 
-/* Set this env var to enable syscall buffering. */
-#define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
-
 /* TODO: convert the following macros into task.h helpers. */
 
 /**
@@ -90,10 +87,6 @@ typedef unsigned char byte;
  */
 struct rrcall_init_buffers_params {
 	/* "In" params. */
-	/* The syscallbuf lib's idea of whether buffering is enabled.
-	 * We let the syscallbuf code decide in order to more simply
-	 * replay the same decision that was recorded. */
-	int syscallbuf_enabled;
 	/* Where our traced syscalls will originate. */
 	byte* traced_syscall_ip;
 	/* Where our untraced syscalls will originate. */
