@@ -1417,6 +1417,26 @@ static long sys__llseek(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_madvise(const struct syscall_info* call)
+{
+	const int syscallno = SYS_madvise;
+	void* addr = (void*)call->args[0];
+	size_t length = call->args[1];
+	int advice = call->args[2];
+
+	void *ptr = prep_syscall();
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+
+	ret = untraced_syscall3(syscallno, addr, length, advice);
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_open(const struct syscall_info* call)
 {
 	const int syscallno = SYS_open;
@@ -1678,6 +1698,7 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(fcntl64);
 	CASE(gettimeofday);
 	CASE(_llseek);
+	CASE(madvise);
 	CASE(open);
 	CASE(poll);
 	CASE(read);
