@@ -170,10 +170,10 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 		fprintf(out,
 "\n  hw_ints:%lld, faults:%lld, rbc:%lld, insns:%lld"
 "\n  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx"
-"\n  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld\n}\n",
+"\n  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld xfs:0x%lx xgs:0x%lx\n}\n",
 			f->hw_interrupts, f->page_faults, f->rbc, f->insts,
 			r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
-			r->eip, r->esp, r->eflags, r->orig_eax);
+			r->eip, r->esp, r->eflags, r->orig_eax, r->xfs, r->xgs);
 	}
 }
 
