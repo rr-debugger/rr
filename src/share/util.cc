@@ -601,6 +601,8 @@ int compare_register_files(Task* t,
 	REGCMP(edi, ++errbit);
 	REGCMP(ebp, ++errbit);
 	REGCMP(eip, ++errbit);
+	REGCMP(xfs, ++errbit);
+	REGCMP(xgs, ++errbit);
 	/* The following are eflags that have been observed to be
 	 * nondeterministic in practice.  We need to mask them off in
 	 * this comparison to prevent replay from diverging. */

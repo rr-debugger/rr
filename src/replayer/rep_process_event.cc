@@ -639,6 +639,11 @@ static void process_clone(Task* t,
 	set_return_value(t);
 	validate_args(syscallno, state, t);
 
+	// Clear the TCB guard.
+	read_child_registers(new_task, &new_task->regs);
+	new_task->regs.xfs = 0;
+	write_child_registers(new_task, &new_task->regs);
+
 	init_scratch_memory(new_task);
 
 	step->action = TSTEP_RETIRE;

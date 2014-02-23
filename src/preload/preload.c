@@ -88,6 +88,12 @@
 	} while(0)
 
 /**
+ * Prevent the compiler from reordering instructions across this
+ * barrier.
+ */
+#define COMPILER_BARRIER() __asm__ __volatile__("" : : : "memory")
+
+/**
  * Represents syscall params.  Makes it simpler to pass them around,
  * and avoids pushing/popping all the data for calls.
  */
@@ -780,6 +786,38 @@ static void set_up_buffer(void)
 }
 
 /**
+ * Call this after we know for sure that it's OK to read TLS.
+ */
+static void set_tcb_guard(void)
+{
+	/* Why doesn't |movl %gs, %fs| assemble?  Probably some
+	 * interesting reason. */
+	__asm__("pushl %gs; popl %fs");
+}
+
+/**
+ * Return nonzero if TLS is available for use.
+ */
+static int can_use_tls(void)
+{
+	int wrong_tls;
+	__asm__ __volatile__("movl %%fs, %0\n\t"
+			     "movl %%gs, %%eax\n\t"
+			     "xorl %%eax, %0\n\t"
+			     : "=r"(wrong_tls) : : "%eax");
+	return !wrong_tls;
+}
+
+/**
+ * Call this when TLS may become inaccessible.
+ */
+static void clear_tcb_guard(void)
+{
+	__asm__ __volatile__("pushl $0; popl %fs");
+	assert(!can_use_tls());
+}
+
+/**
  * Initialize thread-local buffering state, if enabled.
  */
 static void init_thread(void)
@@ -789,6 +827,7 @@ static void init_thread(void)
 
 	set_up_buffer();
 	thread_inited = 1;
+	set_tcb_guard();
 }
 
 /**
@@ -800,6 +839,8 @@ static void init_thread(void)
  */
 static void post_fork_child(void)
 {
+	/* Generally, |can_use_tls()| will be false here, but that's
+	 * OK; we know TLS is usable at this point. */
 	buffer = NULL;
 	thread_inited = 0;
 	init_thread();
@@ -843,6 +884,10 @@ static void* thread_trampoline(void* arg)
 
 	ret = data->start_routine(data->arg);
 
+	/* We don't want glibc re-entering us during thread cleanup.
+	 * We don't have to clear |buffer| here because the TLS guard
+	 * dominates its use. */
+	clear_tcb_guard();
 	free(data);
 	return ret;
 }
@@ -915,6 +960,12 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 
 static void* prep_syscall(void)
 {
+	if (!can_use_tls()) {
+		return NULL;
+	}
+	/* Don't reorder TLS access across this barrier. */
+	COMPILER_BARRIER();
+
 	if (!buffer) {
 		return NULL;
 	}
@@ -972,6 +1023,11 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
 	void* record_start;
 	void* stored_end;
 	struct syscallbuf_record* rec;
+
+	if (!can_use_tls()) {
+		return 0;
+	}
+	COMPILER_BARRIER();
 
 	if (!buffer) {
 		return 0;
@@ -1045,6 +1101,8 @@ static long commit_raw_syscall(int syscallno, void* record_end, int ret)
 	void* record_start = buffer_last();
 	struct syscallbuf_record* rec = record_start;
 	struct syscallbuf_hdr* hdr = buffer_hdr();
+
+	assert(buffer_hdr()->locked);
 
 	/* NB: the ordering of this statement with the
 	 * |disarm_desched_event()| call below is important.
@@ -1373,6 +1431,8 @@ static long sys_open(const struct syscall_info* call)
 	 * until we have perf data. */
 	void* ptr;
 	long ret;
+
+	assert(syscallno == call->no);
 
 	/* The strcmp() done here is OK because we're not in the
 	 * critical section yet. */
