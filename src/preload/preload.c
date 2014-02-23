@@ -1417,8 +1417,7 @@ static long sys_futex(const struct syscall_info* call)
 	case FUTEX_CMP_REQUEUE:
 	case FUTEX_WAKE_OP:
 		flags |= FUTEX_USES_UADDR2;
-		/* TODO: need 6-arg untraced syscall. */
-		/*break;*/
+		break;
 
 	/* It turns out not to be worth buffering the FUTEX_WAIT*
 	 * calls.  When a WAIT call is made, we know almost for sure
@@ -1441,9 +1440,7 @@ static long sys_futex(const struct syscall_info* call)
 	uint32_t val = call->args[2];
 	const struct timespec* timeout = (const struct timespec*)call->args[3];
 	uint32_t* uaddr2 = (uint32_t*)call->args[4];
-	/* TODO: unused until we have 6-arg syscall support.
 	uint32_t val3 = call->args[5];
-	*/
 
 	void *ptr = prep_syscall();
 	uint32_t* saved_uaddr;
@@ -1469,10 +1466,8 @@ static long sys_futex(const struct syscall_info* call)
 		return raw_traced_syscall(call);
 	}
 
-	/* TODO: here we rely on ignoring uaddr2 and
-	 * val3. */
-	ret = untraced_syscall4(syscallno, uaddr, op, val, timeout/*,
-				uaddr2, val3*/);
+	ret = untraced_syscall6(syscallno, uaddr, op, val, timeout,
+				uaddr2, val3);
 	/* During recording, we just saved these outparams to the
 	 * buffer.  In replay, the rr tracer has already restored the
 	 * saved values directly to uaddr/uaddr2, bypassing us.  So
