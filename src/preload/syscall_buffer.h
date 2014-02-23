@@ -75,8 +75,10 @@ extern "C" {
 
 #define __NR_rrcall_init_buffers 442
 #define __NR_rrcall_monkeypatch_vdso 443
+#define __NR_rrcall_clear_tcb_guard 444
 #define SYS_rrcall_init_buffers __NR_rrcall_init_buffers
 #define SYS_rrcall_monkeypatch_vdso __NR_rrcall_monkeypatch_vdso
+#define SYS_rrcall_clear_tcb_guard __NR_rrcall_clear_tcb_guard
 
 typedef unsigned char byte;
 

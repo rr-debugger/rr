@@ -354,7 +354,8 @@ static int traced_sigprocmask(int how, const sigset_t* set, sigset_t* oldset)
 	/* Warning: expecting this to only change the mask of the
 	 * current task is a linux-ism; POSIX leaves the behavior
 	 * undefined. */
-	return traced_syscall3(SYS_rt_sigprocmask, how, set, oldset);
+	return traced_syscall4(SYS_rt_sigprocmask, how, set, oldset,
+			       _NSIG / 8);
 }
 
 static ssize_t traced_write(int fd, const void* buf, size_t count)
@@ -402,8 +403,8 @@ static void logmsg(const char* msg, ...)
 	} while (0)
 
 #ifdef DEBUGTAG
-# define debug(msg, ...)						\
-	logmsg("[INFO] (%s:%d) " msg "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+# define debug(msg, ...)					\
+	logmsg("[" DEBUGTAG "] " msg "\n" ##__VA_ARGS__)
 #else
 # define debug(msg, ...) ((void)0)
 #endif
@@ -650,6 +651,16 @@ static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline)
 }
 
 /**
+ * Tell the tracer to reset our tcb-guard register, $fs.  This has to
+ * be a magic rrcall because the tracer may need to update its own
+ * state based on us clearing the guard.
+ */
+static void rrcall_clear_tcb_guard(void)
+{
+	traced_syscall0(SYS_rrcall_clear_tcb_guard);
+}
+
+/**
  * Install the seccomp-bpf that generates trace traps for all syscalls
  * other than those made through _untraced_syscall_entry_point().
  */
@@ -778,21 +789,16 @@ static void set_up_buffer(void)
 	/* Trap to rr: let the magic begin!  We've prepared the buffer
 	 * so that it's immediately ready to be sendmsg()'d to rr to
 	 * share the desched counter to it (under rr's control).  rr
-	 * can further use the buffer to share more fd's to us. */
+	 * can further use the buffer to share more fd's to us.
+	 *
+	 * If the desched signal is currently blocked, then the tracer
+	 * will clear our TCB guard and we won't be able to buffer
+	 * syscalls.  But the tracee will set the guard when (or if)
+	 * the signal is unblocked. */
 	rrcall_init_buffers(&args);
 
 	/* rr initializes the buffer header. */
 	buffer = args.syscallbuf_ptr;
-}
-
-/**
- * Call this after we know for sure that it's OK to read TLS.
- */
-static void set_tcb_guard(void)
-{
-	/* Why doesn't |movl %gs, %fs| assemble?  Probably some
-	 * interesting reason. */
-	__asm__("pushl %gs; popl %fs");
 }
 
 /**
@@ -813,7 +819,7 @@ static int can_use_tls(void)
  */
 static void clear_tcb_guard(void)
 {
-	__asm__ __volatile__("pushl $0; popl %fs");
+	rrcall_clear_tcb_guard();
 	assert(!can_use_tls());
 }
 
@@ -827,7 +833,6 @@ static void init_thread(void)
 
 	set_up_buffer();
 	thread_inited = 1;
-	set_tcb_guard();
 }
 
 /**

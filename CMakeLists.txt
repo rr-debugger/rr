@@ -155,6 +155,7 @@ set(BASIC_TESTS
   term_nonmain
   tgkill
   thread_stress
+  threaded_syscall_spam
   threads
   tiocinq
   truncate

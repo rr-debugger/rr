@@ -1155,8 +1155,8 @@ SYSCALL_DEF(EMU, sigaltstack, 1)
  * delivery is currently blocked for the caller (see also signal(7)
  * for more details).
  */
-SYSCALL_DEF(EMU, sigprocmask, 1)
-SYSCALL_DEF(EMU, rt_sigprocmask, 1)
+SYSCALL_DEF(IRREGULAR, sigprocmask, -1)
+SYSCALL_DEF(IRREGULAR, rt_sigprocmask, -1)
 
 /**
  *  int sigreturn(unsigned long __unused)
@@ -1432,5 +1432,14 @@ SYSCALL_DEF(IRREGULAR, rrcall_init_buffers, -1)
  * This is a "magic" syscall implemented by rr.
  */
 SYSCALL_DEF(IRREGULAR, rrcall_monkeypatch_vdso, -1)
+
+/**
+ *  void rrcall_clear_tcb_guard(void);
+ *
+ * Clear the tcb-guard register, $fs.
+ *
+ * This is a "magic" syscall implemented by rr.
+ */
+SYSCALL_DEF(IRREGULAR, rrcall_clear_tcb_guard, -1)
 
 #define MAX_NR_SYSCALLS 512

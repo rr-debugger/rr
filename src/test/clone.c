@@ -7,8 +7,24 @@ static void breakpoint(void) {
 	(void)break_here;
 }
 
+static long read_fs(void) {
+	long fs;
+	__asm__ __volatile__("movl %%fs, %0" : "=g"(fs));
+	return fs;
+}
 
 static int child(void* arg) {
+	sigset_t set;
+
+	sigfillset(&set);
+	/* NB: we have to naughtily make the linux assumption that
+	 * sigprocmask is per-task, because we're not a real
+	 * pthread. */
+	test_assert(0 == syscall(SYS_rt_sigprocmask, SIG_UNBLOCK, &set, NULL,
+				 _NSIG / 8));
+	/* Since we're not a real pthread, we can't have successfully
+	 * initialized the syscallbuf (currently). */
+	test_assert(0 == read_fs());
 	return 0;
 }
 
@@ -20,6 +36,7 @@ int main(int argc, char *argv[]) {
 	int pid;
 	int status;
 	int ret;
+	sigset_t set;
 
 	sys_gettid();
 	/* NB: no syscalls in between the sys_gettid() above and this
@@ -39,6 +56,10 @@ int main(int argc, char *argv[]) {
 	test_assert(status == 0);
 
 	sys_gettid();
+
+	sigfillset(&set);
+	test_assert(0 == sigprocmask(SIG_BLOCK, &set, NULL));
+
 	/* NB: no syscalls in between the sys_gettid() above and this
 	 * clone(). */
 	breakpoint();

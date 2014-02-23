@@ -19,6 +19,8 @@
 #include <set>
 #include <utility>
 
+#include "../preload/syscall_buffer.h"
+
 #include "dbg.h"
 #include "fixedstack.h"
 #include "trace.h"
@@ -34,6 +36,13 @@ struct syscallbuf_record;
 /* (There are various GNU and BSD extensions that define this, but
  * it's not worth the bother to sort those out.) */
 typedef void (*sig_handler_t)(int);
+
+/* We need to complement sigsets in order to update the Task blocked
+ * set, but POSIX doesn't appear to define a convenient helper.  So we
+ * define our own linux-compatible sig_set_t and use bit operators to
+ * manipulate sigsets. */
+typedef uint64_t sig_set_t;
+static_assert(_NSIG / 8 == sizeof(sig_set_t), "Update sig_set_t for _NSIG.");
 
 /**
  * The kernel SYS_sigaction ABI is different from the libc API; this
@@ -916,6 +925,15 @@ public:
 	void futex_wait(const byte* futex, uint32_t val);
 
 	/**
+	 * Call this when the tracee's syscallbuf has been initialized
+	 * and the syscall finished with |regs|.
+	 *
+	 * NB: |regs| may be modified and should be written back to
+	 * the tracee.
+	 */
+	void inited_syscallbuf(struct user_regs_struct* regs);
+
+	/**
 	 * Return nonzero if |t| may not be immediately runnable,
 	 * i.e., resuming execution and then |waitpid()|'ing may block
 	 * for an unbounded amount of time.  When the task is in this
@@ -953,6 +971,15 @@ public:
 	template<size_t N>
 	void read_bytes(const byte* child_addr, byte (&buf)[N])	{
 		return read_bytes_helper(child_addr, N, buf);
+	}
+
+	/**
+	 * Read |val| from |child_addr|.
+	 */
+	template<typename T>
+	void read_mem(const byte* child_addr, T* val) {
+		return read_bytes_helper(child_addr, sizeof(*val),
+					 reinterpret_cast<byte*>(val));
 	}
 
 	/**
@@ -1004,6 +1031,15 @@ public:
 	void update_prname(byte* child_addr);
 
 	/**
+	 * Call this after the tracee has completed a
+	 * SYS_rt_sigprocmask syscall with |regs|.
+	 *
+	 * NB: |regs| may be modified and should be written back to
+	 * the tracee.
+	 */
+	void update_sigmask(struct user_regs_struct* regs);
+
+	/**
 	 * Return the virtual memory mapping (address space) of this
 	 * task.
 	 */
@@ -1016,6 +1052,15 @@ public:
 	template<size_t N>
 	void write_bytes(const byte* child_addr, const byte (&buf)[N]) {
 		return write_bytes_helper(child_addr, N, buf);
+	}
+
+	/**
+	 * Write |val| to |child_addr|.
+	 */
+	template<typename T>
+	void write_mem(const byte* child_addr, const T* val) {
+		return write_bytes_helper(child_addr, sizeof(*val),
+					  reinterpret_cast<const byte*>(val));
 	}
 
 	/**
@@ -1226,6 +1271,35 @@ private:
 	void detach_and_reap();
 
 	/**
+	 * True if this has blocked delivery of the desched signal.
+	 */
+	bool is_desched_sig_blocked();
+
+	/**
+	 * Override $fs-savedness state to |xfs|/|is_saved|.
+	 */
+	void force_xfs(long xfs, bool is_saved);
+
+	/**
+	 * Restore the value of $fs saved by |save_xfs()|.
+	 */
+	long restore_xfs() {
+		assert(is_xfs_saved);
+		is_xfs_saved = false;
+		return saved_xfs;
+	}
+
+	/**
+	 * Save the current value of the $fs register, |xfs|.  There
+	 * must not be a currently-saved value.
+	 */
+	void save_xfs(long xfs) {
+		assert(!is_xfs_saved);
+		saved_xfs = xfs;
+		is_xfs_saved = true;
+	}
+
+	/**
 	 * Read/write the number of bytes that the template wrapper
 	 * inferred.
 	 */
@@ -1235,8 +1309,15 @@ private:
 
 	/* The address space of this task. */
 	std::shared_ptr<AddressSpace> as;
+	/* The set of signals that are currently blocked. */
+	sig_set_t blocked_sigs;
 	/* Task's OS name */
 	std::string prname;
+	/* If we're preserving an $fs value for the tracee, this is it
+	 * and |is_xfs_saved| is true.  Otherwise |is_xfs_saved| is
+	 * false. */
+	long saved_xfs;
+	bool is_xfs_saved;
 	/* Points to the signal-hander table of this task.  If this
 	 * task is a non-fork clone child, then the table will be
 	 * shared with all its "thread" siblings.  Any updates made to
