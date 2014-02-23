@@ -129,7 +129,8 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 	assert(!t || t == current);
 
 	if (current && !current->switchable) {
-		debug("  (%d is un-switchable)", current->tid);
+		debug("  (%d is un-switchable at %s)",
+		      current->tid, strevent(current->event));
 		if (current->may_be_blocked()) {
 			debug("  and not runnable; waiting for state change");
 			/* |current| is un-switchable, but not runnable in

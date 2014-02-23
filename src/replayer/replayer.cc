@@ -1336,6 +1336,39 @@ static void assert_same_rec(Task* t,
 }
 
 /**
+ * Directly restore the uaddr/uaddr2 outparams that were saved to
+ * buffer.  Because the syscallbuf can't use scratch values for the
+ * futexes, it can't restore the record data itself.
+ */
+static void restore_futex_words(Task* t,
+				const struct syscallbuf_record* rec,
+				const struct user_regs_struct* regs)
+{
+	static_assert(sizeof(uint32_t) == sizeof(long), "NYI: Task::write_int()");
+	ssize_t extra_data_size = rec->size - sizeof(*rec);
+	bool saved_uaddr2 = 2 * sizeof(uint32_t) == extra_data_size;
+	assert_exec(t, sizeof(uint32_t) == extra_data_size || saved_uaddr2,
+		    "Futex should have saved 4 or 8 bytes, but instead saved %d bytes",
+		    extra_data_size);
+
+	byte* child_uaddr = (byte*)regs->ebx;
+	uint32_t rec_uaddr =
+		*reinterpret_cast<const uint32_t*>(rec->extra_data);
+	write_child_data(t, sizeof(rec_uaddr), child_uaddr,
+			 reinterpret_cast<const byte*>(&rec_uaddr));
+
+	if (2 * sizeof(uint32_t) == extra_data_size) {
+		byte* child_uaddr2 = (byte*)regs->edi;
+		uint32_t rec_uaddr2 =
+			*reinterpret_cast<const uint32_t*>(rec->extra_data +
+							   sizeof(uint32_t));
+		write_child_data(t, sizeof(rec_uaddr2), child_uaddr2,
+				 reinterpret_cast<const byte*>(&rec_uaddr2));
+	}
+}
+
+
+/**
  * Try to flush one buffered syscall as described by |flush|.  Return
  * nonzero if an unhandled interrupt occurred, and zero if the syscall
  * was flushed (in which case |flush->state == DONE|).
@@ -1429,10 +1462,13 @@ static int flush_one_syscall(Task* t,
 			step_exit_syscall_emu(t);
 		}
 
-		/* XXX not pretty; should have this
-		 * actually-replay-parts-of-trace logic centralized */
-		if (SYS_write == call) {
+		switch (call) {
+		case SYS_futex:
+			restore_futex_words(t, rec_rec, &regs);
+			break;
+		case SYS_write:
 			rep_maybe_replay_stdio_write(t);
+			break;
 		}
 
 		if (!rec_rec->desched) {
