@@ -200,6 +200,12 @@ static void* local_memcpy(void* dest, const void* source, size_t n)
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
+/* NB: this code is copied and pasted for both _raw_traced_syscall()
+ * and _raw_untraced_syscall() because it needs to be debuggable, and
+ * generating it from a macro would hinder that.  So for now, please
+ * keep the two in sync.
+ *
+ * TODO: generate from shared .S file. */
 long _raw_traced_syscall(int syscallno, long a0, long a1, long a2,
 			 long a3, long a4, long a5);
 __asm__(".text\n\t"
@@ -296,7 +302,6 @@ static long raw_traced_syscall(const struct syscall_info* call)
 				   call->args[2], call->args[3],
 				   call->args[4], call->args[5]);
 }
-
 
 static void* get_traced_syscall_entry_point(void)
 {
@@ -433,18 +438,78 @@ static void exit_signal_critical_section(const sigset_t* saved_mask)
  * ptrace traps.
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
-static int untraced_syscall(int syscallno, long arg0, long arg1, long arg2,
-			    long arg3, long arg4)
+
+/* NB: this code is copied and pasted for both _raw_traced_syscall()
+ * and _raw_untraced_syscall() because it needs to be debuggable, and
+ * generating it from a macro would hinder that.  So for now, please
+ * keep the two in sync.
+ *
+ * TODO: generate from shared .S file. */
+long _raw_untraced_syscall(int syscallno, long a0, long a1, long a2,
+			 long a3, long a4, long a5);
+__asm__(".text\n\t"
+	".globl _raw_untraced_syscall\n\t"
+	".type _raw_untraced_syscall, @function\n\t"
+	"_raw_untraced_syscall:\n\t" /* syscallno = 4(%esp) */
+	".cfi_startproc\n\t"
+
+	"pushl %ebx\n\t"	/* syscallno = 8(%esp) */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %ebx, 0\n\t"
+	"pushl %esi\n\t"	/* syscallno = 12(%esp) */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %esi, 0\n\t"
+	"pushl %edi\n\t"	/* syscallno = 16(%esp) */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %edi, 0\n\t"
+	"pushl %ebp\n\t"	/* syscallno = 20(%esp) */
+	".cfi_adjust_cfa_offset 4\n\t"
+	".cfi_rel_offset %ebp, 0\n\t"
+
+	"movl 20(%esp), %eax\n\t" /* %eax = syscallno */
+	"movl 24(%esp), %ebx\n\t" /* %ebx = a0 */
+	"movl 28(%esp), %ecx\n\t" /* %ecx = a1 */
+	"movl 32(%esp), %edx\n\t" /* %edx = a2 */
+	"movl 36(%esp), %esi\n\t" /* %esi = a3 */
+	"movl 40(%esp), %edi\n\t" /* %edi = a4 */
+	"movl 44(%esp), %ebp\n\t" /* %ebp = a5 */
+
+	"int $0x80\n\t"		/* syscall() */
+	/* When the tracee is in the traced syscall, its $ip will be
+	 * the value of this label.  We need to be able to recognize
+	 * when the tracees are in traced syscalls. */
+	".L_untraced_syscall_entry_point_ip:\n\t"
+
+	"popl %ebp\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %ebp\n\t"
+	"popl %edi\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %edi\n\t"
+	"popl %esi\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %esi\n\t"
+	"popl %ebx\n\t"
+	".cfi_adjust_cfa_offset -4\n\t"
+	".cfi_restore %ebx\n\t"
+	"ret\n\t"
+	".cfi_endproc\n\t"
+	".size _raw_untraced_syscall, .-_raw_untraced_syscall\n\t");
+
+/**
+ * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
+ * the direct kernel return value), because the vsyscall hooks have to
+ * save that raw return value.
+ */
+static long untraced_syscall(int syscallno, long a0, long a1, long a2,
+			    long a3, long a4, long a5)
 {
-	int ret;
-	__asm__ __volatile__("call _untraced_syscall_entry_point"
-			     : "=a"(ret)
-			     : "0"(syscallno), "b"(arg0), "c"(arg1), "d"(arg2),
-			       "S"(arg3), "D"(arg4));
-	return ret;
+	return _raw_untraced_syscall(syscallno, a0, a1, a2, a3, a4, a5);
 }
-#define untraced_syscall5(no, a0, a1, a2, a3, a4)			\
-	untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
+#define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)			\
+	untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+#define untraced_syscall5(no, a0, a1, a2, a3, a4)	\
+	untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
 #define untraced_syscall4(no, a0, a1, a2, a3)		\
 	untraced_syscall5(no, a0, a1, a2, a3, 0)
 #define untraced_syscall3(no, a0, a1, a2)	\
@@ -455,6 +520,17 @@ static int untraced_syscall(int syscallno, long arg0, long arg1, long arg2,
 	untraced_syscall2(no, a0, 0)
 #define untraced_syscall0(no)			\
 	untraced_syscall1(no, 0)
+
+static void* get_untraced_syscall_entry_point(void)
+{
+    void *ret;
+    __asm__ __volatile__(
+	    "call _get_untraced_syscall_entry_point__pic_helper\n\t"
+	    "_get_untraced_syscall_entry_point__pic_helper: pop %0\n\t"
+	    "addl $(.L_untraced_syscall_entry_point_ip - _get_untraced_syscall_entry_point__pic_helper),%0"
+	    : "=a"(ret));
+    return ret;
+}
 
 /**
  * Make the *un*traced socketcall |call| with the given args.
@@ -481,28 +557,6 @@ static long untraced_socketcall(int call,
 	untraced_socketcall2(no, a0, 0)
 #define untraced_socketcall0(no)		\
 	untraced_socketcall1(no, 0)
-
-/**
- * The seccomp filter is set up so that system calls made through
- * _untraced_syscall_entry_point are always allowed without triggering
- * ptrace. This gives us a convenient way to make non-traced system calls.
- */
-__asm__(".text\n\t"
-	"_untraced_syscall_entry_point:\n\t"
-	"int $0x80\n\t"
-	"_untraced_syscall_entry_point_ip:\n\t"
-	"ret");
-
-static void* get_untraced_syscall_entry_point(void)
-{
-    void *ret;
-    __asm__ __volatile__(
-	    "call _get_untraced_syscall_entry_point__pic_helper\n\t"
-	    "_get_untraced_syscall_entry_point__pic_helper: pop %0\n\t"
-	    "addl $(_untraced_syscall_entry_point_ip - _get_untraced_syscall_entry_point__pic_helper),%0"
-	    : "=a"(ret));
-    return ret;
-}
 
 /**
  * Call this hook from |__kernel_vsyscall()|, to buffer syscalls that
