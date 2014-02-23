@@ -139,7 +139,7 @@ struct syscallbuf_record {
 	 * TODO: static_assert this can repr >= buffer size */
 	uint32_t size : 21;
 	/* Extra recorded outparam data starts here. */
-	unsigned char extra_data[0];
+	byte extra_data[0];
 } __attribute__((__packed__));
 
 /**

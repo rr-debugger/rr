@@ -1351,6 +1351,92 @@ static long sys_fcntl64(const struct syscall_info* call)
 	}
 }
 
+static long sys_futex(const struct syscall_info* call)
+{
+	enum { FUTEX_USES_UADDR2 = 1 << 0, };
+
+	int op = call->args[1];
+	int flags = 0;
+	switch (FUTEX_CMD_MASK & op) {
+	case FUTEX_WAKE:
+		break;
+	case FUTEX_CMP_REQUEUE:
+	case FUTEX_WAKE_OP:
+		flags |= FUTEX_USES_UADDR2;
+		/* TODO: need 6-arg untraced syscall. */
+		/*break;*/
+
+	/* It turns out not to be worth buffering the FUTEX_WAIT*
+	 * calls.  When a WAIT call is made, we know almost for sure
+	 * that the tracee is going to be desched'd (otherwise the
+	 * userspace CAS would have succeeded).  This is unlike
+	 * read/write, f.e., where the vast majority of calls aren't
+	 * desched'd and the overhead is worth it.  So all that
+	 * buffering WAIT does is add the overhead of arming/disarming
+	 * desched (which is a measurable perf loss).
+	 *
+	 * NB: don't ever try to buffer FUTEX_LOCK_PI; it requires
+	 * special processing in the tracer process (in addition to
+	 * not being worth doing for perf reasons). */
+	default:
+		return raw_traced_syscall(call);
+	}
+
+	const int syscallno = SYS_futex;
+	uint32_t* uaddr = (uint32_t*)call->args[0];
+	uint32_t val = call->args[2];
+	const struct timespec* timeout = (const struct timespec*)call->args[3];
+	uint32_t* uaddr2 = (uint32_t*)call->args[4];
+	/* TODO: unused until we have 6-arg syscall support.
+	uint32_t val3 = call->args[5];
+	*/
+
+	void *ptr = prep_syscall();
+	uint32_t* saved_uaddr;
+	uint32_t* saved_uaddr2 = NULL;
+	long ret;
+
+	assert(syscallno == call->no);
+
+	/* We have to record the value of the futex at kernel exit,
+	 * but we can't substitute a scratch pointer for the uaddrs:
+	 * the futex identity is the memory cell.  There are schemes
+	 * that would allow us to use scratch futexes, but they get
+	 * complicated quickly. */
+	saved_uaddr = ptr;
+	ptr += sizeof(*saved_uaddr);
+	if (FUTEX_USES_UADDR2 & flags) {
+		saved_uaddr2 = ptr;
+		ptr += sizeof(*saved_uaddr2);
+	}
+	/* See above; it's not worth buffering may-block futex
+	 * calls. */
+	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+		return raw_traced_syscall(call);
+	}
+
+	/* TODO: here we rely on ignoring uaddr2 and
+	 * val3. */
+	ret = untraced_syscall4(syscallno, uaddr, op, val, timeout/*,
+				uaddr2, val3*/);
+	/* During recording, we just saved these outparams to the
+	 * buffer.  In replay, the rr tracer has already restored the
+	 * saved values directly to uaddr/uaddr2, bypassing us.  So
+	 * these stores read the same values, but don't serve any
+	 * purpose other than preventing divergence.
+	 *
+	 * The *ONLY* reason it's correct for us to read these values
+	 * so carelessly is that rr protects this syscallbuf
+	 * transaction as as a critical section.  It's OK if we get
+	 * desched'd here; we'll just abort the record commit,
+	 * throwing away the garbage values we read here. */
+	*saved_uaddr = *uaddr;
+	if (saved_uaddr2) {
+		*saved_uaddr2 = *uaddr2;
+	}
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_gettimeofday(const struct syscall_info* call)
 {
 	const int syscallno = SYS_gettimeofday;
@@ -1701,6 +1787,7 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(close);
 	CASE(creat);
 	CASE(fcntl64);
+	CASE(futex);
 	CASE(gettimeofday);
 	CASE(_llseek);
 	CASE(madvise);
