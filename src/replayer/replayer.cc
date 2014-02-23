@@ -1348,6 +1348,8 @@ static int flush_one_syscall(Task* t,
 	int call = rec_rec->syscallno;
 	int ret;
 	struct user_regs_struct regs;
+	// TODO: use syscall_defs table information to determine this.
+	int emu = (SYS_madvise == call) ? EXEC : EMU;
 
 	switch (flush->state) {
 	case FLUSH_START:
@@ -1390,7 +1392,7 @@ static int flush_one_syscall(Task* t,
 
 	case FLUSH_ENTER:
 		debug("  advancing to buffered syscall entry");
-		if ((ret = cont_syscall_boundary(t, EMU, stepi))) {
+		if ((ret = cont_syscall_boundary(t, emu, stepi))) {
 			return ret;
 		}
 		read_child_registers(t, &regs);
@@ -1412,9 +1414,20 @@ static int flush_one_syscall(Task* t,
 		       rec_rec->size);
 
 		// Restore return value.
+		// TODO: try to share more code with cont_syscall_boundary()
+		if (!emu) {
+			int ret = cont_syscall_boundary(t, emu, stepi);
+			if (ret) {
+				return ret;
+			}
+			read_child_registers(t, &regs);
+			assert_at_buffered_syscall(t, &regs, call);
+		}
 		regs.eax = rec_rec->ret;
 		write_child_registers(t, &regs);
-		step_exit_syscall_emu(t);
+		if (emu) {
+			step_exit_syscall_emu(t);
+		}
 
 		/* XXX not pretty; should have this
 		 * actually-replay-parts-of-trace logic centralized */
