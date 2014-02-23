@@ -2382,8 +2382,13 @@ void rec_process_syscall(Task *t)
 	 *  thread.  The signal mask is the set of signals whose delivery is currently
 	 *   blocked for the caller (see also signal(7) for more details).
 	 */
-	SYS_REC1(sigprocmask, sizeof(sigset_t), (byte*)regs.edx)
-	SYS_REC1(rt_sigprocmask, sizeof(sigset_t), (byte*)regs.edx)
+	case SYS_sigprocmask:
+	case SYS_rt_sigprocmask: {
+		byte* oldsetp = (byte*)regs.edx;
+		record_child_data(t, sizeof(sigset_t), oldsetp);
+		t->update_sigmask(&regs);
+		break;
+	}
 
 	/**
 	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
@@ -3154,6 +3159,12 @@ void rec_process_syscall(Task *t)
 
 	case SYS_rrcall_monkeypatch_vdso:
 		monkeypatch_vdso(t);
+		break;
+
+	case SYS_rrcall_clear_tcb_guard:
+		regs.eax = 0;
+		regs.xfs = 0;
+		write_child_registers(t, &regs);
 		break;
 
 	default:

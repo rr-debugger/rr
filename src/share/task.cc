@@ -764,7 +764,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, child_mem_fd(sys_open_child_mem(this))
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
-	, prname("???"), tid_futex()
+	, prname("???"), saved_xfs(), is_xfs_saved(false), tid_futex()
 {
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.
@@ -831,6 +831,7 @@ Task::clone(int flags, const byte* stack, const byte* cleartid_addr,
 
 	t->syscallbuf_lib_start = syscallbuf_lib_start;
 	t->syscallbuf_lib_end = syscallbuf_lib_end;
+	t->blocked_sigs = blocked_sigs;
 	if (CLONE_SHARE_SIGHANDLERS & flags) {
 		t->sighandlers = sighandlers;
 	} else {
@@ -974,6 +975,16 @@ Task::futex_wait(const byte* futex, uint32_t val)
 	}
 }
 
+void
+Task::inited_syscallbuf(struct user_regs_struct* regs)
+{
+	assert_exec(this, is_desched_sig_blocked(),
+		    "Should be in signal critical section.");
+	assert_exec(this, regs->xfs == 0, "$fs should have been 0, but is %ld",
+		    regs->xfs);
+	force_xfs(regs->xgs, true);
+}
+
 bool
 Task::may_be_blocked() const
 {
@@ -1051,12 +1062,9 @@ Task::post_exec()
 long
 Task::read_word(const byte* child_addr)
 {
-	union {
-		long word;
-		byte bytes[sizeof(long)];
-	} buf;
-	read_bytes(child_addr, buf.bytes);
-	return buf.word;
+	long word;
+	read_mem(child_addr, &word);
+	return word;
 }
 
 void
@@ -1111,14 +1119,72 @@ Task::update_prname(byte* child_addr)
 }
 
 void
+Task::update_sigmask(struct user_regs_struct* regs)
+{
+	int how = regs->ebx;
+	byte* setp = (byte*)regs->ecx;
+
+	if (SYSCALL_FAILED(regs->eax) || !setp) {
+		return;
+	}
+
+	bool desched_was_blocked = is_desched_sig_blocked();
+	sig_set_t set;
+	read_mem(setp, &set);
+
+	// Update the blocked signals per |how|.
+	switch (how) {
+	case SIG_BLOCK:
+		blocked_sigs |= set;
+		break;
+	case SIG_UNBLOCK:
+		blocked_sigs &= ~set;
+		break;
+	case SIG_SETMASK:
+		blocked_sigs = set;
+		break;
+	default:
+		fatal("Unknown sigmask manipulator %d", how);
+	}
+
+	// In the syscallbuf, we rely on SIGSYS being raised when
+	// tracees are descheduled in blocked syscalls.  But
+	// unfortunately, if tracees block SIGSYS, then we don't get
+	// notification of the pending signal and deadlock.  If we did
+	// get those notifications, this code would be unnecessary.
+	//
+	// So to work around that, we clear the tracee's TCB guard
+	// register, $fs, when SIGSYS is first blocked.  Then we
+	// restore $fs when SIGSYS is unblocked.  That effectively
+	// prevents the tracee from making buffered syscalls while
+	// SIGSYS is masked, without monkeying with the syscallbuf
+	// itself.
+	//
+	// "Why not just set a bit in the syscallbuf header", you may
+	// be thinking.  The problem is that a signal handler could
+	// interrupt a may-block syscall and establish a new sigmask
+	// that blocks SIGSYS, and then the may-block syscall restarts
+	// and blocks.  It may be possible, with great care, to handle
+	// that situation, but it's known to be worth the engineering
+	// cost at the moment.
+	if (!desched_was_blocked && is_desched_sig_blocked()) {
+		debug("%d: desched sig blocked, saving xfs=%ld ...",
+		      rec_tid, regs->xfs);
+		save_xfs(regs->xfs);
+		regs->xfs = 0;
+		write_child_registers(this, regs);
+	} else if (desched_was_blocked && !is_desched_sig_blocked()) {
+		regs->xfs = restore_xfs();
+		debug("%d: desched sig unblocked, restoring xfs=%ld ...",
+		      rec_tid, regs->xfs);
+		write_child_registers(this, regs);
+	}
+}
+
+void
 Task::write_word(const byte* child_addr, long word)
 {
-	union {
-		long word;
-		byte bytes[sizeof(long)];
-	} buf;
-	buf.word = word;
-	write_bytes(child_addr, buf.bytes);
+	write_mem(child_addr, &word);
 }
 
 /*static*/ Task::Map::const_iterator
@@ -1146,6 +1212,12 @@ Task::create(pid_t tid, pid_t rec_tid)
 	auto sh = Sighandlers::create();
 	sh->init_from_current_process();
 	t->sighandlers.swap(sh);
+	// Don't use the POSIX wrapper, because it doesn't necessarily
+	// read the entire sigset tracked by the kernel.
+	if (syscall(SYS_rt_sigprocmask, SIG_SETMASK, NULL,
+		    &t->blocked_sigs, sizeof(t->blocked_sigs))) {
+		fatal("Failed to read blocked signals");
+	}
 	auto g = TaskGroup::create(t);
 	t->tg.swap(g);
 	auto as = AddressSpace::create(t);
@@ -1251,6 +1323,22 @@ Task::detach_and_reap()
 		// along with our exit.  So we can't read the futex.
 		debug("  (can't futex_wait last task in vm)");
 	}
+}
+
+bool
+Task::is_desched_sig_blocked()
+{
+	int sig_bit = SYSCALLBUF_DESCHED_SIGNAL - 1;
+	return (blocked_sigs >> sig_bit) & 1;
+}
+
+void
+Task::force_xfs(long xfs, bool is_saved)
+{
+	debug("%d: Forcing $fs/saved:%ld/%d to %ld/%d",
+	      rec_tid, saved_xfs, is_xfs_saved, xfs, is_saved);
+	saved_xfs = xfs;
+	is_xfs_saved = is_saved;
 }
 
 void

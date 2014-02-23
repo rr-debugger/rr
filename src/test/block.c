@@ -135,6 +135,21 @@ void* reader_thread(void* dontcare) {
 
 		free(buf);
 	}
+
+	atomic_puts("r: reading socket with masked signals ...");
+	{
+		sigset_t old_mask, mask;
+		sigfillset(&mask);
+		test_assert(0 == pthread_sigmask(SIG_BLOCK, &mask, &old_mask));
+
+		test_assert(1 == read(sock, &c, sizeof(c)));
+
+		test_assert(0 == pthread_sigmask(SIG_SETMASK, &old_mask, NULL));
+	}
+	atomic_printf("r:   ... read '%c'\n", c);
+	test_assert(c == token);
+	++token;
+
 	/* Make the main thread wait on our join() */
 	atomic_puts("r: sleeping ...");
 	usleep(500000);
@@ -272,6 +287,14 @@ int main(int argc, char *argv[]) {
 
 		free(buf);
 	}
+	atomic_puts("M:   ... done");
+
+	/* Force a wait on read() */
+	atomic_puts("M: sleeping again ...");
+	usleep(500000);
+	atomic_printf("M: writing '%c' to socket ...\n", token);
+	write(sock, &token, sizeof(token));
+	++token;
 	atomic_puts("M:   ... done");
 
 	pthread_join(reader, NULL);

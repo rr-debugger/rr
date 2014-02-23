@@ -1263,7 +1263,7 @@ static void process_init_buffers(Task* t, int exec_state,
 	step->action = TSTEP_RETIRE;
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
-	exit_syscall_emu(t, SYS_rrcall_init_buffers, 0);
+	finish_syscall_emu(t);
 	rec_child_map_addr = (void*)t->trace.recorded_regs.eax;
 
 	/* We don't want the desched event fd during replay, because
@@ -1275,6 +1275,7 @@ static void process_init_buffers(Task* t, int exec_state,
 	assert_exec(t, child_map_addr == rec_child_map_addr,
 		    "Should have mapped syscallbuf at %p, but it's at %p",
 		    rec_child_map_addr, child_map_addr);
+	validate_args(SYS_rrcall_init_buffers, STATE_SYSCALL_EXIT, t);
 }
 
 static void process_restart_syscall(Task* t, int syscallno)
@@ -1606,6 +1607,20 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		break;
 
+	case SYS_sigprocmask:
+	case SYS_rt_sigprocmask:
+		step->syscall.num_emu_args = 1;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		read_child_registers(t, &t->regs);
+		t->update_sigmask(&t->regs);
+		step->action = TSTEP_EXIT_SYSCALL;
+		return;
+
 	case SYS_write:
 		step->syscall.num_emu_args = 0;
 		step->syscall.emu = 1;
@@ -1643,6 +1658,20 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		exit_syscall_emu(t, SYS_rrcall_monkeypatch_vdso, 0);
 		monkeypatch_vdso(t);
 		step->action = TSTEP_RETIRE;
+		return;
+
+	case SYS_rrcall_clear_tcb_guard:
+		step->syscall.num_emu_args = 0;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		read_child_registers(t, &t->regs);
+		t->regs.xfs = 0;
+		write_child_registers(t, &t->regs);
+		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 
 	default:
