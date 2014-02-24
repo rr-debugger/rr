@@ -1269,6 +1269,12 @@ Task::detach_and_reap()
 		assert_exec(this, rec_tid == tid_addr_val,
 			    "tid addr should be %d (tid), but is %d",
 			    rec_tid, tid_addr_val);
+		// If we're going to synchronize on the tid futex,
+		// read it now to ensure that child_mem_fd is valid
+		// before the tracee exits.  Otherwise we won't be
+		// create it below.  See TODO comment in ipc.cc.
+		long dummy;
+		read_mem(tid_futex, &dummy);
 	}
 
 	sys_ptrace_detach(tid);
