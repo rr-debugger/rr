@@ -206,13 +206,8 @@ static int read_int_file(const char* filename)
 }
 
 static void assert_prerequisites(void) {
-	int aslr_val =
-		read_int_file("/proc/sys/kernel/randomize_va_space");
 	int ptrace_scope_val =
 		read_int_file("/proc/sys/kernel/yama/ptrace_scope");
-	if (aslr_val != 0) {
-		fatal("ASLR not disabled; randomize is %d", aslr_val);
-	}
 	if (ptrace_scope_val > 0) {
 		fatal("Can't write to process memory; ptrace_scope is %d",
 		      ptrace_scope_val);
