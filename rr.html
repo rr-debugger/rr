@@ -131,7 +131,8 @@
 <section>
   <p>rr touches low-level details of machine architecture, by
     necessity; f.e. kernel syscall ABI.</p>
-  <p>Supporting more ISAs is "just work"; expect x86-64 soon.</p>
+  <p>Supporting more ISAs is "just work"; expect x86-64 in the
+    future.</p>
 </section>
 
 <section>
@@ -155,19 +156,13 @@
 <section>
   <p>seccomp-bpf enables rr to <em>selectively trace</em>
   syscalls.</p>
-  <p>Trace traps are slow; only trap to rr for syscalls that can't be
-  handled in the tracee.</p>
+  <p>Only trap to rr for syscalls that can't be handled in the tracee.
+  Over 100x faster in µbenchmarks.</p>
 </section>
 
 <section>
   <h3>Buffer syscalls; flush buffer as "super event"</h3>
   <p class="todo">TODO DIAGRAM</p>
-</section>
-
-<section>
-  <p>seccomp-bpf support is <em>technically</em> optional...</p>
-  <p>... but rr can record over 100x faster with syscall buffering
-  enabled.</p>
 </section>
 
 <section>
@@ -299,8 +294,8 @@
 
 <section>
   <p>(rr tracees can share memory mappings with other processes.</p>
-  <p>Nondeterministic input that must be recorded, but for now, assume
-  "don't do that".)</p>
+  <p>Not possible to record efficiently in SW; needs kernel and/or HW
+  support. Unsupported until then.)</p>
 </section>
 
 <section>
@@ -384,15 +379,16 @@
 </section>
 
 <section>
-  <p><code>LD_PRELOAD</code> a lib that wraps libc functions.</p>
-  <p>Wrapper functions record kernel return value and outparam data to
-  the <em>syscall buffer</em>.</p>
+  <p>Syscall hooks are <code>LD_PRELOAD</code>'d into tracees.</p>
+  <p>Hooks record kernel return value and outparam data to
+    the <em>syscall buffer</em>.</p>
 </section>
 
 <section>
-  <p>Upside: works "out of the box"; no recompilation necessary.</p>
-  <p>Downside: Exposes rr to glibc internals.  And rr can't wrap
-  syscalls made by glibc itself.</p>
+  <p>rr monkeypatches <code>__kernel_vsyscall()</code> in vdso to jump
+  to rr trampoline.</p>
+  <p>Trampoline calls dispatcher, which calls rr hook if
+  available.</p>
 </section>
 
 <section>
@@ -405,7 +401,7 @@
 <section>
   <h3>Simplified example of wrapper function</h3>
   <pre>
-int close(int fd)
+static int sys_close(int fd)
 {
    long ret;
    if (!start_buffer_syscall(SYS_close))
@@ -437,7 +433,7 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <h3>Syscallbuf wrappers of blocking syscalls</h3>
+  <h3>Syscallbuf hooks of may-block syscalls</h3>
   <p class="todo">TODO</p>
 </section>
 
@@ -585,7 +581,7 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <h3>Record shared memory mappings</h3>
+  <h3>Record shared-memory multithreading</h3>
   <p class="todo">TODO</p>
 </section>
 
@@ -598,10 +594,10 @@ asm("_untraced_syscall:\n\t"
   <h3>Port, port, port</h3>
   <p class="todo">TODO</p>
   <ul>
-    <li>ARM</li>
     <li>GPU drivers (NVIDIA, ATI, ...)</li>
     <li>Windows NT kernel</li>
     <li>Darwin kernel</li>
+    <li><s>ARM port not possible with current tech</s></li>
   </ul>
 </section>
 
@@ -620,7 +616,7 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <p>Release 0.1 available today at</p>
+  <p>Release 0.4 available today at</p>
   <p><a href="http://rr-project.org/">rr-project.org</a></p>
 </section>
 
@@ -646,8 +642,8 @@ asm("_untraced_syscall:\n\t"
       (e.g., ptrace, PEBS)</li>
     <li>Record tests at scale &rarr; record perf must be "economical",
       but not mission-critical</li>
-    <li>"Super-debugger" &rarr; the usual, plus reverse-break,
-      reverse-continue, &hellip;; pretty fast replay</li>
+    <li>"Super-debugger" &rarr; the usual, plus queries over execution
+      history; pretty fast replay</li>
     <li>Search exe space &rarr; flexible scheduling and
       checkpointing</li>
 </section>
@@ -721,22 +717,26 @@ asm("_untraced_syscall:\n\t"
 <section>
   <h3>Recorder "fast mode": syscall buffering</h3>
   <ul>
-    <li>ptrace traps are not that fast</li>
+    <li>ptrace traps are slow</li>
     <li><em>Idea</em>: avoid them when possible by buffering log data
       in tracee task</li>
-    <li>Implementation: LD_PRELOAD a helper library that interposes
-      common libc helpers (read, write, gettimeofday, etc.)</li>
-    <li>Interposed helper makes fast untraced syscall, saves outparams
-      in task-local buffer</li>
+    <li>Implementation: LD_PRELOAD a helper library with hooks for
+      common syscalls (read, write, gettimeofday, etc.)</li>
+    <li>Hook makes fast untraced syscall, saves outparams in
+      task-local buffer</li>
     <li>Flush buffer at traced event (including buffer overflow)</li>
 </section>
 
 <section>
-  <h3>Headache: can't buffer many libc syscalls</h3>
+  <h3>Headache: many syscalls made internally in glibc</h3>
   <ul>
-    <li>Syscallbuf can only interpose public libc functions</li>
-    <li>libc makes many internal syscalls that can't be buffered</li>
-    <li>Wild idea: hook into kernel vdso syscall code</li>
+    <li>Those syscalls can't be wrapped by usual approach of
+    interposing exported symbol using LD_PRELOAD</li>
+    <li>Solution: monkeypatch <code>__kernel_vsyscall()</code> in
+      vdso.</li>
+    <li>Syscalls directly made through <code>int $0x80</code> still
+      can't be buffered.</li>
+    <li>We hope this terrible hack evolves into kernel support.</li>
 </section>
 
 <section>
@@ -754,45 +754,6 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <h3><em>Very</em> preliminary performance numbers (1/2)</h3>
-  <ul>
-    <li>Firefox running jquery testsuite (record / replay)
-      <ul>
-        <li>syscallbuf: 1.3x slower / 1.1x <em>faster</em></li>
-        <li>without: 1.9x slower / 1.3x slower</li>
-        <li>(trace sizes: 118MB / 172MB resp.<sup>&#10033;</sup>)</li>
-      </ul>
-    </li>
-    <li>Purely syscall bound program (2<sup>20</sup>
-      gettimeofday)
-      <ul>
-        <li>syscallbuf: record 3.9x slower</li>
-        <li>without: record 680x (!!) slower</li>
-        <li>(cf. <code>strace &gt;/dev/null</code>: 63x slower)</li>
-        <li>(trace sizes: 17MB / 590MB resp.<sup>&#10033;</sup>)</li>
-      </ul>
-    </li>
-  </ul>
-</section>
-
-<section>
-  <h3><em>Very</em> preliminary performance numbers (2/2)</h3>
-  <ul>
-    <li>Purely CPU bound program, no synchronization (syscallbuf makes
-      no difference)
-      <ul>
-        <li>default timeslice: record 1.3x slower</li>
-        <li>"large" timeslice (rbc=5e6): record &lt;= 1.02x slower</li>
-        <li>(trace sizes: 2.2MB / 200KB resp.<sup>&#10033;</sup>)</li>
-      </ul>
-    </li>
-    <li><sup>&#10033;</sup> traces currently uncompressed and include
-      inefficiently-stored debug information; will be much
-      smaller</li>
-  </ul>
-</section>
-
-<section>
   <h3>Fun debugging tricks</h3>
   <ul>
     <li>Save register / RBC info at all events, verify in replay</li>
@@ -805,21 +766,6 @@ asm("_untraced_syscall:\n\t"
       arbitrary points</li>
   </ul>
 </section>
-
-<section>
-  <h3>But syscallbuf bugs remain</h3>
-  <ul>
-    <li>At entry to <code>write</code>: overshot recorded rcb by
-      1</li>
-    <li>At target rbc/$ip: $edx has differing bits in in low 2
-      bytes</li>
-    <li>At target [regs], rbc off by +/-2
-    <li>At entry to <code>futex</code>: undershot recorded rcb by
-      2</li>
-    <li>Relative frequencies vary depending on system load</li>
-  </ul>
-  <p>and much future work!</p>
-</sections>
 
 <style>
 .highlight {
