@@ -118,59 +118,6 @@ static void start_recording(int argc, char* argv[], char** envp)
 	close_libpfm();
 }
 
-static void start_replaying(int argc, char* argv[], char** envp)
-{
-	pid_t pid;
-	int status;
-
-	load_recorded_env(argv[0], &argc, &exe_image, &arg_v, &env_p);
-
-	pid = sys_fork();
-	if (pid == 0) { /* child process */
-		/* When we execvpe() the tracee, we must ensure that
-		 * $PATH is the same as in recording so that libc
-		 * searches paths in the same order.  So copy that
-		 * over now.
-		 *
-		 * And because we use execvpe(), the exec'd tracee
-		 * will start with a fresh environment guaranteed to
-		 * be the same as in replay, so we don't have to worry
-		 * about any mutation here affecting post-exec
-		 * execution. */
-		for (CharpVector::const_iterator it = env_p.begin();
-		     *it && it != env_p.end(); ++it) {
-			if (!strncmp(*it, "PATH=", sizeof("PATH=") - 1)) {
-				// NB: intentionally leaking this string.
-				putenv(strdup(*it));
-			}
-		}
-		return sys_start_trace(exe_image.c_str(),
-				       arg_v.data(), env_p.data());
-		/* not reached */
-	}
-
-	child = pid;
-
-	sys_waitpid(pid, &status);
-
-	init_libpfm();
-
-	rep_setup_trace_dir(argv[0]);
-	open_trace_files();
-	rep_init_trace_files();
-
-	pid_t rec_main_thread = get_recorded_main_thread();
-	Task* t = Task::create(pid, rec_main_thread);
-
-	sys_ptrace_setup(t);
-
-	/* main loop */
-	replay();
-	/* thread wants to exit*/
-	close_libpfm();
-	close_trace_files();
-}
-
 /**
  * Dump all events from the current to trace that match |spec| to
  * |out|.  |spec| has the following syntax: /\d+(-\d+)?/, expressing
@@ -232,7 +179,7 @@ static void start(int argc, char* argv[], char** envp)
 	case RECORD:
 		return start_recording(argc, argv, envp);
 	case REPLAY:
-		return start_replaying(argc, argv, envp);
+		return replay(argc, argv, envp);
 	case DUMP_EVENTS:
 		return start_dumping(argc, argv, envp);
 	default:

@@ -1840,7 +1840,45 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 	return dbg_await_client_connection("127.0.0.1", port, probe);
 }
 
-void replay(void)
+/**
+ * Fork an initial tracee child and have exec() the specified image.
+ * Return the new tracee pid.
+ */
+static pid_t launch_initial_tracee(string& exe_image, CharpVector& arg_v,
+				   CharpVector& env_p)
+{
+	pid_t pid;
+	if (0 == (pid = fork())) {
+		// Child process.
+		//
+		// Because we execvpe() the tracee, we must ensure
+		// that $PATH is the same as in recording so that libc
+		// searches paths in the same order.  So copy that
+		// over now.
+		//
+		// And because we use execvpe(), the exec'd tracee
+		// will start with a fresh environment guaranteed to
+		// be the same as in replay, so we don't have to worry
+		// about any mutation here affecting post-exec
+		// execution.
+		for (CharpVector::const_iterator it = env_p.begin();
+		     *it && it != env_p.end(); ++it) {
+			if (!strncmp(*it, "PATH=", sizeof("PATH=") - 1)) {
+				// NB: intentionally leaking this string.
+				putenv(strdup(*it));
+			}
+		}
+		sys_start_trace(exe_image.c_str(), arg_v.data(), env_p.data());
+		fatal("Not reached");
+	}
+
+	int status;
+	sys_waitpid(pid, &status);
+	assert(WIFSTOPPED(status));
+	return pid;
+}
+
+static void replay_trace_frames(void)
 {
 	struct dbg_context* dbg = NULL;
 
@@ -1858,6 +1896,31 @@ void replay(void)
 	fflush(stdout);
 
 	dbg_destroy_context(&dbg);
+}
+
+void replay(int argc, char* argv[], char** envp)
+{
+	string exe_image;
+	CharpVector arg_v;
+	CharpVector env_p;
+
+	load_recorded_env(argv[0], &argc, &exe_image, &arg_v, &env_p);
+
+	pid_t tracee_pid = launch_initial_tracee(exe_image, arg_v, env_p);
+
+	init_libpfm();
+
+	rep_setup_trace_dir(argv[0]);
+	open_trace_files();
+	rep_init_trace_files();
+
+	Task* t = Task::create(tracee_pid, get_recorded_main_thread());
+	sys_ptrace_setup(t);
+
+	replay_trace_frames();
+
+	close_libpfm();
+	close_trace_files();
 }
 
 void emergency_debug(Task* t)
