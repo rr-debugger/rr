@@ -6,7 +6,11 @@
 #include "../share/types.h"
 #include "../share/util.h"
 
-void replay(void);
+/**
+ * Replay the trace.  argc, argv, and envp are this process's
+ * parameters.
+ */
+void replay(int argc, char* argv[], char** envp);
 
 /**
  * Open a temporary debugging connection for |t| and service requests
