@@ -246,7 +246,9 @@ static long get_reg(const struct user_regs_struct* regs, DbgRegister reg,
 
 static dbg_threadid_t get_threadid(Task* t)
 {
-	dbg_threadid_t thread = t->rec_tid;
+	dbg_threadid_t thread;
+	thread.pid = t->tgid();
+	thread.tid = t->rec_tid;
 	return thread;
 }
 
@@ -334,7 +336,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		struct dbg_request continue_all_tasks;
 		memset(&continue_all_tasks, 0, sizeof(continue_all_tasks));
 		continue_all_tasks.type = DREQ_CONTINUE;
-		continue_all_tasks.target = -1;
+		continue_all_tasks.target = DBG_ALL_THREADS;
 		return continue_all_tasks;
 	}
 	while (1) {
@@ -356,11 +358,11 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		case DREQ_GET_THREAD_LIST: {
 			size_t len = Task::count();
-			vector<pid_t> tids;
+			vector<dbg_threadid_t> tids;
 			for (Task::Map::const_iterator it = Task::begin();
 			     it != Task::end(); ++it) {
 				Task* t = it->second;
-				tids.push_back(t->rec_tid);
+				tids.push_back(get_threadid(t));
 			}
 			dbg_reply_get_thread_list(dbg, tids.data(), len);
 			continue;
@@ -375,7 +377,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			break;
 		}
 
-		target = (req.target > 0) ? Task::find(req.target) : t;
+		target = (req.target.tid > 0) ? Task::find(req.target.tid) : t;
 		/* These requests query or manipulate which task is
 		 * the target, so it's OK if the task doesn't
 		 * exist. */
@@ -405,7 +407,8 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		}
 		switch (req.type) {
 		case DREQ_GET_AUXV: {
-			pid_t tid = req.target > 0 ? req.target : t->tid;
+			// FIXME: translate tid to rec_tid
+			pid_t tid = req.target.tid > 0 ? req.target.tid : t->tid;
 			char filename[] = "/proc/01234567890/auxv";
 			int fd;
 			struct dbg_auxv_pair auxv[4096];
@@ -466,7 +469,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_GET_STOP_REASON: {
-			dbg_reply_get_stop_reason(dbg, target->rec_tid,
+			dbg_reply_get_stop_reason(dbg, get_threadid(target),
 						  target->child_sig);
 			continue;
 		}
@@ -1567,8 +1570,7 @@ static int try_one_trace_step(Task* t,
 	if (DREQ_DETACH == req->type) {
 		return 0;
 	}
-	int stepi = (DREQ_STEP == req->type
-		     && get_threadid(t) == req->target);
+	int stepi = (DREQ_STEP == req->type && get_threadid(t) == req->target);
 	switch (step->action) {
 	case TSTEP_RETIRE:
 		return 0;
