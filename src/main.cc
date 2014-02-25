@@ -278,6 +278,8 @@ static void print_usage(void)
 "                             in the trace.  See -m above.\n"
 "  -p, --dbgport=PORT         bind the debugger server to PORT\n"
 "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
+"  -s, --socket-only          only open the debugger socket; don't\n"
+"                             automatically launch the debugger too.\n"
 "\n"
 "Syntax for `dump`\n"
 " rr dump [OPTIONS] <trace_dir> <event-spec>...\n"
@@ -338,12 +340,13 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		{ "dbgport", required_argument, NULL, 'p' },
 		{ "goto", required_argument, NULL, 'g' },
 		{ "no-redirect-output", no_argument, NULL, 'q' },
+		{ "socket-only", no_argument, NULL, 's' },
 		{ 0 }
 	};
 	optind = cmdi + 1;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+ag:p:q", opts, &i)) {
+		switch (getopt_long(argc, argv, "+ag:p:qs", opts, &i)) {
 		case -1:
 			return optind;
 		case 'a':
@@ -358,6 +361,9 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 			break;
 		case 'q':
 			flags->redirect = false;
+			break;
+		case 's':
+			flags->dont_launch_debugger = true;
 			break;
 		default:
 			return -1;

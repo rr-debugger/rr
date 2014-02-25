@@ -80,6 +80,8 @@ struct flags {
 	// Dump trace frames in a more easily machine-parseable
 	// format.
 	bool raw_dump;
+	// Only open a debug socket, don't launch the debugger too.
+	bool dont_launch_debugger;
 };
 
 struct msghdr;

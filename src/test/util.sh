@@ -181,7 +181,7 @@ function replay { replayflags=$1
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { exe=$1; expectscript=$2; replayargs=$3
-    python $TESTDIR/$expectscript.py $exe-$nonce rr -u replay --dbgport=$$ $replayargs trace_0/
+    python $TESTDIR/$expectscript.py $exe-$nonce rr $GLOBAL_OPTIONS replay $replayargs trace_0/
     if [[ $? == 0 ]]; then
         passed=y
 	echo "Test '$TESTNAME' PASSED"
