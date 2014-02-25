@@ -113,8 +113,8 @@ static dbg_context* open_socket(const char* address, unsigned short port,
 		   &reuseaddr, sizeof(reuseaddr));
 	do {
 		dbg->addr.sin_port = htons(port);
-		ret = bind(dbg->listen_fd,
-			   (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
+		ret = ::bind(dbg->listen_fd,
+			     (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
 		if (ret && (EADDRINUSE == errno || EACCES == errno)) {
 			continue;
 		}
