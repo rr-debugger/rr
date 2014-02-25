@@ -7,12 +7,6 @@ static void breakpoint(void) {
 	(void)break_here;
 }
 
-static long read_fs(void) {
-	long fs;
-	__asm__ __volatile__("movl %%fs, %0" : "=g"(fs));
-	return fs;
-}
-
 static int child(void* arg) {
 	sigset_t set;
 
@@ -22,9 +16,6 @@ static int child(void* arg) {
 	 * pthread. */
 	test_assert(0 == syscall(SYS_rt_sigprocmask, SIG_UNBLOCK, &set, NULL,
 				 _NSIG / 8));
-	/* Since we're not a real pthread, we can't have successfully
-	 * initialized the syscallbuf (currently). */
-	test_assert(0 == read_fs());
 	return 0;
 }
 

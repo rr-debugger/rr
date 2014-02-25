@@ -88,12 +88,6 @@
 	} while(0)
 
 /**
- * Prevent the compiler from reordering instructions across this
- * barrier.
- */
-#define COMPILER_BARRIER() __asm__ __volatile__("" : : : "memory")
-
-/**
  * Represents syscall params.  Makes it simpler to pass them around,
  * and avoids pushing/popping all the data for calls.
  */
@@ -705,16 +699,6 @@ static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline)
 }
 
 /**
- * Tell the tracer to reset our tcb-guard register, $fs.  This has to
- * be a magic rrcall because the tracer may need to update its own
- * state based on us clearing the guard.
- */
-static void rrcall_clear_tcb_guard(void)
-{
-	traced_syscall0(SYS_rrcall_clear_tcb_guard);
-}
-
-/**
  * Install the seccomp-bpf that generates trace traps for all syscalls
  * other than those made through _untraced_syscall_entry_point().
  */
@@ -856,28 +840,6 @@ static void set_up_buffer(void)
 }
 
 /**
- * Return nonzero if TLS is available for use.
- */
-static int can_use_tls(void)
-{
-	int wrong_tls;
-	__asm__ __volatile__("movl %%fs, %0\n\t"
-			     "movl %%gs, %%eax\n\t"
-			     "xorl %%eax, %0\n\t"
-			     : "=r"(wrong_tls) : : "%eax");
-	return !wrong_tls;
-}
-
-/**
- * Call this when TLS may become inaccessible.
- */
-static void clear_tcb_guard(void)
-{
-	rrcall_clear_tcb_guard();
-	assert(!can_use_tls());
-}
-
-/**
  * Initialize thread-local buffering state, if enabled.
  */
 static void init_thread(void)
@@ -898,8 +860,6 @@ static void init_thread(void)
  */
 static void post_fork_child(void)
 {
-	/* Generally, |can_use_tls()| will be false here, but that's
-	 * OK; we know TLS is usable at this point. */
 	buffer = NULL;
 	thread_inited = 0;
 	init_thread();
@@ -943,10 +903,8 @@ static void* thread_trampoline(void* arg)
 
 	ret = data->start_routine(data->arg);
 
-	/* We don't want glibc re-entering us during thread cleanup.
-	 * We don't have to clear |buffer| here because the TLS guard
-	 * dominates its use. */
-	clear_tcb_guard();
+	/* We don't want glibc re-entering us during thread cleanup. */
+	buffer = NULL;
 	free(data);
 	return ret;
 }
@@ -964,9 +922,16 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 		   void* (*start_routine) (void*), void* arg)
 {
 	struct thread_func_data* data = malloc(sizeof(*data));
+	void* saved_buffer = buffer;
+	int ret;
+
 	data->start_routine = start_routine;
 	data->arg = arg;
-	return real_pthread_create(thread, attr, thread_trampoline, data);
+	/* Don't let the new thread use our TLS pointer. */
+	buffer = NULL;
+	ret = real_pthread_create(thread, attr, thread_trampoline, data);
+	buffer = saved_buffer;
+	return ret;
 }
 
 /**
@@ -1019,12 +984,6 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 
 static void* prep_syscall(void)
 {
-	if (!can_use_tls()) {
-		return NULL;
-	}
-	/* Don't reorder TLS access across this barrier. */
-	COMPILER_BARRIER();
-
 	if (!buffer) {
 		return NULL;
 	}
@@ -1082,11 +1041,6 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
 	void* record_start;
 	void* stored_end;
 	struct syscallbuf_record* rec;
-
-	if (!can_use_tls()) {
-		return 0;
-	}
-	COMPILER_BARRIER();
 
 	if (!buffer) {
 		return 0;

@@ -976,13 +976,9 @@ Task::futex_wait(const byte* futex, uint32_t val)
 }
 
 void
-Task::inited_syscallbuf(struct user_regs_struct* regs)
+Task::inited_syscallbuf()
 {
-	assert_exec(this, is_desched_sig_blocked(),
-		    "Should be in signal critical section.");
-	assert_exec(this, regs->xfs == 0, "$fs should have been 0, but is %ld",
-		    regs->xfs);
-	force_xfs(regs->xgs, true);
+	syscallbuf_hdr->locked = is_desched_sig_blocked();
 }
 
 bool
@@ -1128,7 +1124,10 @@ Task::update_sigmask(struct user_regs_struct* regs)
 		return;
 	}
 
-	bool desched_was_blocked = is_desched_sig_blocked();
+	assert_exec(this, (!syscallbuf_hdr || !syscallbuf_hdr->locked
+			   || is_desched_sig_blocked()),
+		    "syscallbuf is locked but SIGSYS isn't blocked");
+
 	sig_set_t set;
 	read_mem(setp, &set);
 
@@ -1153,31 +1152,11 @@ Task::update_sigmask(struct user_regs_struct* regs)
 	// notification of the pending signal and deadlock.  If we did
 	// get those notifications, this code would be unnecessary.
 	//
-	// So to work around that, we clear the tracee's TCB guard
-	// register, $fs, when SIGSYS is first blocked.  Then we
-	// restore $fs when SIGSYS is unblocked.  That effectively
-	// prevents the tracee from making buffered syscalls while
-	// SIGSYS is masked, without monkeying with the syscallbuf
-	// itself.
-	//
-	// "Why not just set a bit in the syscallbuf header", you may
-	// be thinking.  The problem is that a signal handler could
-	// interrupt a may-block syscall and establish a new sigmask
-	// that blocks SIGSYS, and then the may-block syscall restarts
-	// and blocks.  It may be possible, with great care, to handle
-	// that situation, but it's known to be worth the engineering
-	// cost at the moment.
-	if (!desched_was_blocked && is_desched_sig_blocked()) {
-		debug("%d: desched sig blocked, saving xfs=%ld ...",
-		      rec_tid, regs->xfs);
-		save_xfs(regs->xfs);
-		regs->xfs = 0;
-		write_child_registers(this, regs);
-	} else if (desched_was_blocked && !is_desched_sig_blocked()) {
-		regs->xfs = restore_xfs();
-		debug("%d: desched sig unblocked, restoring xfs=%ld ...",
-		      rec_tid, regs->xfs);
-		write_child_registers(this, regs);
+	// So we lock the syscallbuf while the desched signal is
+	// blocked, which prevents the tracee from attempting a
+	// buffered call.
+	if (syscallbuf_hdr) {
+		syscallbuf_hdr->locked = is_desched_sig_blocked();
 	}
 }
 
@@ -1336,15 +1315,6 @@ Task::is_desched_sig_blocked()
 {
 	int sig_bit = SYSCALLBUF_DESCHED_SIGNAL - 1;
 	return (blocked_sigs >> sig_bit) & 1;
-}
-
-void
-Task::force_xfs(long xfs, bool is_saved)
-{
-	debug("%d: Forcing $fs/saved:%ld/%d to %ld/%d",
-	      rec_tid, saved_xfs, is_xfs_saved, xfs, is_saved);
-	saved_xfs = xfs;
-	is_xfs_saved = is_saved;
 }
 
 void

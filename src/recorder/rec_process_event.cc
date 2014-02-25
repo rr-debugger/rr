@@ -1395,11 +1395,6 @@ void rec_process_syscall(Task *t)
 				  sizeof(pid_t), (byte*)new_regs.edx);
 		record_child_data(new_task,
 				  sizeof(pid_t), (byte*)new_regs.esi);
-		// Reset the TCB-guard register on behalf of the
-		// tracee.  It's awkward for tracees to do it
-		// themselves, reliably.
-		new_regs.xfs = 0;
-		write_child_registers(new_task, &new_regs);
 
 		pop_syscall(new_task);
 
@@ -3159,12 +3154,6 @@ void rec_process_syscall(Task *t)
 
 	case SYS_rrcall_monkeypatch_vdso:
 		monkeypatch_vdso(t);
-		break;
-
-	case SYS_rrcall_clear_tcb_guard:
-		regs.eax = 0;
-		regs.xfs = 0;
-		write_child_registers(t, &regs);
 		break;
 
 	default:

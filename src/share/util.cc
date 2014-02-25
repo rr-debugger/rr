@@ -1778,7 +1778,7 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 	 * away in the return value slot so that we can easily check
 	 * that we map the segment at the same addr during replay. */
 	state.regs.eax = (uintptr_t)child_map_addr;
-	t->inited_syscallbuf(&state.regs);
+	t->inited_syscallbuf();
 	finish_remote_syscalls(t, &state);
 
 	return child_map_addr;
