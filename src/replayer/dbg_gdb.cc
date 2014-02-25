@@ -371,14 +371,6 @@ static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
 	return write_packet_bytes(dbg, buf, buf_num_bytes);
 }
 
-static void write_hex_packet(struct dbg_context* dbg, unsigned long hex)
-{
-	char buf[32];
-
-	snprintf(buf, sizeof(buf) - 1, "%02lx", hex);
-	write_packet(dbg, buf);	
-}
-
 static void write_hex_bytes_packet(struct dbg_context* dbg,
 				   const byte* bytes, size_t len)
 {
@@ -503,7 +495,27 @@ static void read_packet(struct dbg_context* dbg)
  */
 static dbg_threadid_t parse_threadid(const char* str, char** endptr)
 {
-	return strtol(str, endptr, 16);
+	dbg_threadid_t t;
+	char* endp;
+
+	if ('p' == *str) {
+		++str;
+	}
+	t.pid = strtol(str, &endp, 16);
+	assert(endp);
+	if ('\0' == *endp) {
+		t.tid = -1;
+		*endptr = endp;
+		return t;
+	}
+
+	assert('.' == *endp);
+	str = endp + 1;
+	t.tid = strtol(str, &endp, 16);
+	assert(endp && '\0' == *endp);
+
+	*endptr = endp;
+	return t;
 }
 
 static int xfer(struct dbg_context* dbg, const char* name, char* args)
@@ -578,7 +590,8 @@ static int query(struct dbg_context* dbg, char* payload)
 		debug("gdb supports %s", args);
 
 		snprintf(supported, sizeof(supported) - 1,
-			 "PacketSize=%x;QStartNoAckMode+;qXfer:auxv:read+",
+			 "PacketSize=%x;QStartNoAckMode+;qXfer:auxv:read+"
+			 ";multiprocess+",
 			 sizeof(dbg->outbuf));
 		write_packet(dbg, supported);
 		return 0;
@@ -765,7 +778,8 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->req.target = parse_threadid(payload, &payload);
 		assert('\0' == *payload);
 
-		debug("gdb selecting %d", dbg->req.target);
+		debug("gdb selecting %d.%d",
+		      dbg->req.target.tid, dbg->req.target.pid);
 
 		ret = 1;
 		break;
@@ -818,7 +832,8 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->req.type = DREQ_GET_IS_THREAD_ALIVE;
 		dbg->req.target = parse_threadid(payload, &payload);
 		assert('\0' == *payload);
-		debug("gdb wants to know if %d is alive", dbg->req.target);
+		debug("gdb wants to know if %d.%d is alive",
+		      dbg->req.target.pid, dbg->req.target.tid);
 		ret = 1;
 		break;
 	case 'v':
@@ -1012,8 +1027,8 @@ static void send_stop_reply_packet(struct dbg_context* dbg,
 {
 	if (sig >= 0) {
 		char buf[64];
-		snprintf(buf, sizeof(buf) - 1, "T%02xthread:%02x;",
-			 to_gdb_signum(sig), thread);
+		snprintf(buf, sizeof(buf) - 1, "T%02xthread:p%02x.%02x;",
+			 to_gdb_signum(sig), thread.pid, thread.tid);
 		write_packet(dbg, buf);
 	} else {
 		write_packet(dbg, "E01");
@@ -1035,8 +1050,9 @@ void dbg_reply_get_current_thread(struct dbg_context* dbg,
 {
 	assert(DREQ_GET_CURRENT_THREAD == dbg->req.type);
 
-	/* TODO multiprocess */
-	write_hex_packet(dbg, thread);
+	char buf[1024];
+	snprintf(buf, sizeof(buf), "QCp%02x.%02x", thread.pid, thread.tid);
+	write_packet(dbg, buf);
 
 	consume_request(dbg);
 }
@@ -1179,15 +1195,16 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 		write_packet(dbg, "l");
 	} else {
 		ssize_t maxlen = 1/*m char*/ +
-				 (2 * sizeof(pid_t) + 1/*,*/) * len +
+				 len * (1/*p*/ + 2 * sizeof(*threads) + 1/*,*/) +
 				 1/*\0*/;
 		char* str = (char*)malloc(maxlen);
 		int offset = 0;
 
 		str[offset++] = 'm';
 		for (int i = 0; i < len; ++i) {
+			const dbg_threadid_t& t = threads[i];
 			offset += snprintf(&str[offset], maxlen - offset,
-					   "%02x,", threads[i]);
+					   "p%02x.%02x,", t.pid, t.tid);
 		}
 		/* Overwrite the trailing ',' */
 		str[offset - 1] = '\0';

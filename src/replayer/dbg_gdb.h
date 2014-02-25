@@ -13,11 +13,21 @@
 struct dbg_context;
 
 /**
- * Descriptor for a target task.
- *
- * TODO support gdb "multiprocess".
+ * Descriptor for task within a task group.  Note: on linux, we can
+ * uniquely identify any thread by its |tid| (ignoring pid
+ * namespaces).
  */
-typedef pid_t dbg_threadid_t;
+struct dbg_threadid_t {
+	pid_t pid;
+	pid_t tid;
+
+	bool operator==(const dbg_threadid_t& o) const {
+		return pid == o.pid && tid == o.tid;
+	}
+};
+
+static const dbg_threadid_t DBG_ANY_THREAD = { 0, 0 };
+static const dbg_threadid_t DBG_ALL_THREADS = { -1, -1 };
 
 /**
  * This is gdb's view of the register file.  The ordering must be the
