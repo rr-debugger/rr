@@ -27,12 +27,17 @@
  * decides how to handle it (see seccomp-bpf.h).
  *
  * Because this code runs in the tracee's address space and overrides
- * libc symbols, the code is rather delicate.  The following rules
+ * system calls, the code is rather delicate.  The following rules
  * must be followed
  *
  * o No rr headers (other than seccomp-bpf.h and rr.h) may be included
  * o All syscalls invoked by this code must be called directly, not
- *   through libc wrappers (which this file may itself wrap)
+ *   through libc wrappers (which this file may itself indirectly override)
+ */
+
+/**
+ * We also use this preload library to disable XShm by overriding
+ * XShmQueryExtension.
  */
 
 #include <fcntl.h>
@@ -1809,4 +1814,10 @@ vsyscall_hook(const struct syscall_info* call)
 	default:
 		return raw_traced_syscall(call);
 	}
+}
+
+/* Disable XShm since rr doesn't work with it */
+int XShmQueryExtension(void* dpy)
+{
+  return 0;
 }
