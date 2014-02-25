@@ -1843,15 +1843,25 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 		return nullptr;
 	}
 	uint32_t goto_event = rr_flags()->goto_event;
-	if (get_global_time() < goto_event) {
+	pid_t target_process = rr_flags()->target_process;
+	bool require_exec = (CREATED_EXEC == rr_flags()->process_created_how);
+	uint32_t event_now = get_global_time();
+	if (event_now < goto_event
+	    // NB: we'll happily attach to whichever task within the
+	    // group happens to be scheduled here.  We don't take
+	    // "attach to process" to mean "attach to thread-group
+	    // leader".
+	    || (target_process && t->tgid() != target_process)
+	    || (require_exec && !t->vm()->execed())) {
 		return nullptr;
 	}
 	assert(!dbg);
 
-	if (goto_event) {
+	if (goto_event || target_process) {
 		fprintf(stderr,	"\a\n"
 			"--------------------------------------------------\n"
-			" ---> Reached selected event %u.\n", goto_event);
+			" ---> Reached target process %d at event %u.\n",
+			target_process, event_now);
 	}
 
 	unsigned short port = (rr_flags()->dbgport > 0) ?

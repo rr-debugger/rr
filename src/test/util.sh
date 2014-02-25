@@ -159,8 +159,12 @@ function just_record { exe=$1; exeargs=$2;
     rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
 }
 
-function record { exe=$1; exeargs=$2;
+function save_exe { exe=$1;
     cp ${OBJDIR}/bin/$exe $exe-$nonce
+}    
+
+function record { exe=$1; exeargs=$2;
+    save_exe $exe
     just_record ./$exe-$nonce "$exeargs"
 }
 

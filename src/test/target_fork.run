@@ -1,0 +1,8 @@
+test=target_fork
+source `dirname $0`/util.sh $test "$@"
+
+record $test 1000
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+
+echo Targeting recorded pid $TARGET_PID ...
+debug $test generic_break "-f $TARGET_PID"

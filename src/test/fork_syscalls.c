@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 static void syscalls(int num) {
 	struct timespec ts;
 	struct timeval tv;

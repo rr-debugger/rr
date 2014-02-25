@@ -41,6 +41,16 @@ typedef unsigned char byte;
 #define CHECKSUM_SYSCALL		-2
 #define CHECKSUM_ALL			-1
 
+// We let users specify which process should be "created" before
+// starting a debug session for it.  Problem is, "process" in this
+// context is ambiguous.  It could mean the "thread group", which is
+// created at fork().  Or it could mean the "address space", which is
+// created at exec() (after the fork).
+//
+// We force choosers to specify which they mean, and default to the
+// much more useful (and probably common) exec() definition.
+enum { CREATED_EXEC, CREATED_FORK };
+
 struct flags {
 	/* Max counter value before the scheduler interrupts a tracee. */
 	int max_rbc;
@@ -75,13 +85,17 @@ struct flags {
 	bool mark_stdio;
 	// Check that cached mmaps match /proc/maps after each event.
 	bool check_cached_mmaps;
-	// Start a debug server after reaching this event.
+	// Start a debug server for the task scheduled at the first
+	// event at which reached this event AND target_process has
+	// been "created".
 	uint32_t goto_event;
+	pid_t target_process;
+	int process_created_how;
 	// Dump trace frames in a more easily machine-parseable
 	// format.
 	bool raw_dump;
 	// Only open a debug socket, don't launch the debugger too.
-	bool dont_launch_debugger;
+ 	bool dont_launch_debugger;
 };
 
 struct msghdr;

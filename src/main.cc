@@ -274,12 +274,18 @@ static void print_usage(void)
 "Syntax for `replay'\n"
 " rr replay [OPTION]... <trace-dir>\n"
 "  -a, --autopilot            replay without debugger server\n"
+"  -f, --onfork=<PID>         start a debug server when <PID> has been\n"
+"                             fork()d, AND the target event has been\n"
+"                             reached.\n"
 "  -g, --goto=<EVENT-NUM>     start a debug server on reaching <EVENT-NUM>\n"
 "                             in the trace.  See -m above.\n"
-"  -p, --dbgport=PORT         bind the debugger server to PORT\n"
+"  -p, --onprocess=<PID>      start a debug server when <PID> has been\n"
+"                             exec()d, AND the target event has been\n"
+"                             reached.\n"
 "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
-"  -s, --socket-only          only open the debugger socket; don't\n"
-"                             automatically launch the debugger too.\n"
+"  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
+"                             don't automatically launch the debugger\n"
+"                             client too.\n"
 "\n"
 "Syntax for `dump`\n"
 " rr dump [OPTIONS] <trace_dir> <event-spec>...\n"
@@ -337,32 +343,39 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 {
 	struct option opts[] = {
 		{ "autopilot", no_argument, NULL, 'a' },
-		{ "dbgport", required_argument, NULL, 'p' },
+		{ "dbgport", required_argument, NULL, 's' },
 		{ "goto", required_argument, NULL, 'g' },
 		{ "no-redirect-output", no_argument, NULL, 'q' },
-		{ "socket-only", no_argument, NULL, 's' },
+		{ "onfork", required_argument, NULL, 'f' },
+		{ "onprocess", required_argument, NULL, 'p' },
 		{ 0 }
 	};
 	optind = cmdi + 1;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+ag:p:qs", opts, &i)) {
+		switch (getopt_long(argc, argv, "+af:g:p:qs:", opts, &i)) {
 		case -1:
 			return optind;
 		case 'a':
 			flags->goto_event = numeric_limits<decltype(
 				flags->goto_event)>::max();
 			break;
+		case 'f':
+			flags->target_process = atoi(optarg);
+			flags->process_created_how = CREATED_FORK;
+			break;
 		case 'g':
 			flags->goto_event = atoi(optarg);
 			break;
 		case 'p':
-			flags->dbgport = atoi(optarg);
+			flags->target_process = atoi(optarg);
+			flags->process_created_how = CREATED_EXEC;
 			break;
 		case 'q':
 			flags->redirect = false;
 			break;
 		case 's':
+			flags->dbgport = atoi(optarg);
 			flags->dont_launch_debugger = true;
 			break;
 		default:

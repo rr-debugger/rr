@@ -764,7 +764,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, child_mem_fd(sys_open_child_mem(this))
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
-	, prname("???"), saved_xfs(), is_xfs_saved(false), tid_futex()
+	, blocked_sigs(), prname("???"), tid_futex()
 {
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.

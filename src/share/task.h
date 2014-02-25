@@ -361,6 +361,12 @@ public:
 	}
 
 	/**
+	 * Return true if this was created as the result of an exec()
+	 * call, instead of cloned from another address space.
+	 */
+	bool execed() const { return !is_clone; }
+
+	/**
 	 * Return the path this address space was exec()'d with.
 	 */
 	const std::string& exe_image() const { return exe; }
@@ -416,12 +422,12 @@ public:
 	static shr_ptr create(Task* t);
 
 private:
-	AddressSpace() : vdso_start_addr() {
+	AddressSpace() : is_clone(false), vdso_start_addr() {
 		sas.insert(this);
 	}
 	AddressSpace(const AddressSpace& o)
-		: exe(o.exe), heap(o.heap), mem(o.mem)
-		, vdso_start_addr(o.vdso_start_addr) {
+		: exe(o.exe), heap(o.heap), is_clone(true)
+		, mem(o.mem), vdso_start_addr(o.vdso_start_addr) {
 		sas.insert(this);
 	}
 
@@ -443,6 +449,8 @@ private:
 	/* Track the special process-global heap in order to support
 	 * adjustments by brk(). */
 	Mapping heap;
+	/* Were we cloned from another address space? */
+	bool is_clone;
 	/* All segments mapped into this address space. */
 	MemoryMap mem;
 	/* First mapped byte of the vdso. */
@@ -1285,11 +1293,6 @@ private:
 	sig_set_t blocked_sigs;
 	/* Task's OS name */
 	std::string prname;
-	/* If we're preserving an $fs value for the tracee, this is it
-	 * and |is_xfs_saved| is true.  Otherwise |is_xfs_saved| is
-	 * false. */
-	long saved_xfs;
-	bool is_xfs_saved;
 	/* Points to the signal-hander table of this task.  If this
 	 * task is a non-fork clone child, then the table will be
 	 * shared with all its "thread" siblings.  Any updates made to
