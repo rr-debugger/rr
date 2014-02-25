@@ -29,6 +29,17 @@
 
 #define INTERRUPT_CHAR '\x03'
 
+#ifdef DEBUGTAG
+# define unhandled_req(_g, _m, ...)		\
+	fatal(_m, ## __VA_ARGS__)
+#else
+# define unhandled_req(_g, _m, ...)		\
+	do {					\
+		log_info(_m, ##__VA_ARGS__);	\
+		write_packet(_g, "");		\
+	} while (0)
+#endif
+
 using namespace std;
 
 /**
@@ -200,7 +211,7 @@ void dbg_launch_debugger(int params_pipe_fd)
 	assert(nread == sizeof(params));
 
 	stringstream attach_cmd;
-	attach_cmd << "target remote " << params.socket_addr << ":"
+	attach_cmd << "target extended-remote " << params.socket_addr << ":"
 		   << params.port;
 	debug("launching gdb with command '%s'", attach_cmd.str().c_str());
 	execlp("gdb", "gdb", params.exe_image,
@@ -507,8 +518,7 @@ static int xfer(struct dbg_context* dbg, const char* name, char* args)
 		return 1;
 	}
 
-	log_warn("Unhandled gdb xfer request: %s(%s)", name, args);
-	write_packet(dbg, "");
+	unhandled_req(dbg, "Unhandled gdb xfer request: %s(%s)", name, args);
 	return 0;
 }
 
@@ -609,8 +619,7 @@ static int query(struct dbg_context* dbg, char* payload)
 		return xfer(dbg, name, args);
 	}
 
-	log_warn("Unhandled gdb query: q%s", name);
-	write_packet(dbg, "");
+	unhandled_req(dbg, "Unhandled gdb query: q%s", name);
 	return 0;
 }
 
@@ -631,8 +640,7 @@ static int set_var(struct dbg_context* dbg, char* payload)
 		return 0;
 	}
 
-	log_warn("Unhandled gdb set: Q%s", name);
-	write_packet(dbg, "");
+	unhandled_req(dbg, "Unhandled gdb set: Q%s", name);
 	return 0;
 }
 
@@ -686,8 +694,8 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			}
 			return 1;
 		default:
-			log_warn("Unhandled vCont command %c(%s)", cmd, args);
-			write_packet(dbg, "");
+			unhandled_req(dbg, "Unhandled vCont command %c(%s)",
+				      cmd, args);
 			return 0;
 		}
 	}
@@ -698,8 +706,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		return 0;
 	}
 
-	log_warn("Unhandled gdb vpacket: v%s", name);
-	write_packet(dbg, "");
+	unhandled_req(dbg, "Unhandled gdb vpacket: v%s", name);
 	return 0;
 }
 
@@ -848,6 +855,11 @@ static int process_packet(struct dbg_context* dbg)
 		ret = 1;
 		break;
 	}
+	case '!':
+		debug("gdb requests extended mode");
+		write_packet(dbg, "OK");
+		ret = 0;
+		break;
 	case '?':
 		debug("gdb requests stop reason");
 		dbg->req.type = DREQ_GET_STOP_REASON;
@@ -855,10 +867,7 @@ static int process_packet(struct dbg_context* dbg)
 		ret = 1;
 		break;
 	default:
-		log_warn("Unhandled gdb request '%c'", dbg->inbuf[1]);
-		/* Play dumb and hope gdb doesn't /really/ need this
-		 * request ... */
-		write_packet(dbg, "");
+		unhandled_req(dbg, "Unhandled gdb request '%c'", dbg->inbuf[1]);
 		ret = 0;
 	}
 	/* Erase the newly processed packet from the input buffer. */
