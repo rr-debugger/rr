@@ -8,6 +8,8 @@
 
 #include "../share/types.h"
 
+#define DBG_SOCKET_READY_SIG SIGURG
+
 struct dbg_context;
 
 /**
@@ -139,13 +141,29 @@ bool dbg_is_resume_request(const struct dbg_request* req);
  * port based on |start_port| will be searched for.  Otherwise, if
  * |port| is already bound, this function will fail.
  *
+ * If we're opening this connection on behalf of a known client, past
+ * its pid as |client| and its |client_params_fd|.  |exe_image| is the
+ * process that will be debugged by client, or null ptr if there isn't
+ * a client.
+ *
+ * |exe_image| is of the process that will be debugged, or nullptr if we don't know
+ *
  * This function is infallible: either it will return a valid
  * debugging context, or it won't return.
  */
 enum { DONT_PROBE = 0, PROBE_PORT };
 struct dbg_context* dbg_await_client_connection(const char* addr,
-						unsigned short port,
-						int probe);
+						unsigned short desired_port,
+						int probe,
+						const char* exe_image = nullptr,
+						pid_t client = -1,
+						int client_params_fd = -1);
+
+/**
+ * Launch a debugger using the params that were written to
+ * |params_pipe_fd|.
+ */
+void dbg_launch_debugger(int params_pipe_fd);
 
 /**
  * Call this when the target of |req| is needed to fulfill the

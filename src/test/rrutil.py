@@ -5,40 +5,38 @@ __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr',
 
 # Public API
 def expect_gdb(what):
-    expect(gdb, what)
+    expect(gdb_rr, what)
 
 def expect_rr(what):
-    expect(rr, what)
+    expect(gdb_rr, what)
 
 def interrupt_gdb():
     try:
-        gdb.kill(signal.SIGINT)
+        gdb_rr.kill(signal.SIGINT)
     except Exception, e:
         failed('interrupting gdb', e)
     expect_gdb('stopped.')
 
 def send_gdb(what):
-    send(gdb, what)
+    send(gdb_rr, what)
 
 def send_rr(what):
-    send(rr, what)
+    send(gdb_rr, what)
 
 def ok():
     clean_up()
 
 # Internal helpers
 TIMEOUT_SEC = 20
-gdb = None
-rr = None
+# gdb and rr are part of the same process tree, so they share
+# stdin/stdout.
+gdb_rr = None
 
 def clean_up():
-    global gdb, rr
-    if gdb:
-        gdb.close(force=1)
-        gdb = None
-    if rr:
-        rr.close(force=1)
-        rr = None
+    global gdb_rr
+    if gdb_rr:
+        gdb_rr.close(force=1)
+        gdb_rr = None
 
 def expect(prog, what):
     try:
@@ -70,16 +68,9 @@ def send(prog, what):
         failed('sending "%s"'% (what), e)
 
 def set_up():
-    global gdb, rr
+    global gdb_rr
     try:
-        rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, logfile=open('rr.log', 'w'))
-        expect_rr(r'server listening on :(\d+)\)')
-        dbgport = int(rr.match.group(1))
-
-        gdb = pexpect.spawn('gdb '+ get_exe(), timeout=TIMEOUT_SEC, logfile=open('gdb.log', 'w'))
-
-        expect_gdb(r'\(gdb\)')
-        send_gdb('target remote :'+ str(dbgport) +'\n')
+        gdb_rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, logfile=open('rr.log', 'w'))
         expect_gdb(r'\(gdb\)')
     except Exception, e:
         failed('initializing rr and gdb', e)

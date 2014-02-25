@@ -21,11 +21,15 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <sstream>
+
 #include "../share/dbg.h"
 #include "../share/sys.h"
 #include "../share/task.h"
 
 #define INTERRUPT_CHAR '\x03'
+
+using namespace std;
 
 /**
  * This struct wraps up the state of the gdb protocol, so that we can
@@ -40,7 +44,9 @@ struct dbg_context {
 	int no_ack;		/* nonzero when "no-ack mode" is
 				 * enabled */
 	struct sockaddr_in addr;	    /* server address */
+	int listen_fd;			    /* listen socket */
 	int fd;				    /* client socket fd */
+	pid_t child;			    /* debugger process */
 	/* XXX probably need to dynamically size these */
 	byte inbuf[4096];	/* buffered input from gdb */
 	ssize_t inlen;		/* length of valid data */
@@ -75,36 +81,39 @@ inline static bool request_needs_immediate_response(const struct dbg_request* re
 	}
 }
 
-struct dbg_context* dbg_await_client_connection(const char* address,
-						unsigned short port,
-						int probe)
+static void make_cloexec(int fd)
+{
+	int flags = fcntl(fd, F_GETFD);
+	if (-1 == flags) {
+		fatal("Can't GETFD flags");
+	}
+	if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC)) {
+		fatal("Can't make client socket CLOEXEC");
+	}
+}
+
+static dbg_context* open_socket(const char* address, unsigned short port,
+				int probe)
 {
 	struct dbg_context* dbg;
-	int listen_fd;
 	int reuseaddr;
-	struct sockaddr_in client_addr;
 	int ret;
-	socklen_t len;
-	int flags;
-
-#ifdef REDIRECT_DEBUGLOG
-	out = fopen("/tmp/rr.debug.log", "w");
-#endif
 
 	dbg = (struct dbg_context*)calloc(1, sizeof(*dbg));
 	dbg->insize = sizeof(dbg->inbuf);
 	dbg->outsize = sizeof(dbg->outbuf);
 
-	listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+	dbg->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+	make_cloexec(dbg->listen_fd);
+
 	dbg->addr.sin_family = AF_INET;
 	dbg->addr.sin_addr.s_addr = inet_addr(address);
 	reuseaddr = 1;
-	setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
+	setsockopt(dbg->listen_fd, SOL_SOCKET, SO_REUSEADDR,
 		   &reuseaddr, sizeof(reuseaddr));
-
 	do {
 		dbg->addr.sin_port = htons(port);
-		ret = bind(listen_fd,
+		ret = bind(dbg->listen_fd,
 			   (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
 		if (ret && (EADDRINUSE == errno || EACCES == errno)) {
 			continue;
@@ -113,7 +122,7 @@ struct dbg_context* dbg_await_client_connection(const char* address,
 			break;
 		}
 
-		ret = listen(listen_fd, 1/*backlogged connection*/);
+		ret = listen(dbg->listen_fd, 1/*backlogged connection*/);
 		if (ret == 0 || EADDRINUSE != errno) {
 			break;
 		}
@@ -121,23 +130,82 @@ struct dbg_context* dbg_await_client_connection(const char* address,
 	if (ret) {
 		fatal("Couldn't bind to port %d", port);
 	}
-	fprintf(stderr, "(rr debug server listening on %s:%d)\n",
-		!strcmp(address, "127.0.0.1") ? "" : address,
-		ntohs(dbg->addr.sin_port));
-	/* block until debugging client connects to us */
-	len = sizeof(client_addr);
-	dbg->fd = accept(listen_fd, (struct sockaddr*)&client_addr, &len);
 
-	if (-1 == (flags = fcntl(dbg->fd, F_GETFD))) {
-		fatal("Can't GETFD flags");
-	}
-	if (fcntl(dbg->fd, F_SETFD, flags | FD_CLOEXEC)) {
-		fatal("Can't make client socket CLOEXEC");
-	}
+	return dbg;
+}
+
+/**
+ * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
+ * indefinitely.
+ */
+static void await_debugger(struct dbg_context* dbg)
+{
+	struct sockaddr_in client_addr;
+	socklen_t len = sizeof(client_addr);
+
+	dbg->fd = accept(dbg->listen_fd, (struct sockaddr*)&client_addr, &len);
+	make_cloexec(dbg->fd);
 	if (fcntl(dbg->fd, F_SETFL, O_NONBLOCK)) {
 		fatal("Can't make client socket NONBLOCK");
 	}
+	close(dbg->listen_fd);
+	dbg->listen_fd = -1;
+}
+
+struct debugger_params {
+	char exe_image[PATH_MAX];
+	char socket_addr[PATH_MAX];
+	short port;
+};
+
+struct dbg_context* dbg_await_client_connection(const char* addr,
+						unsigned short desired_port,
+						int probe,
+						const char* exe_image,
+						pid_t client,
+						int client_params_fd)
+{
+	struct dbg_context* dbg = open_socket(addr, desired_port, probe);
+	int port = ntohs(dbg->addr.sin_port);
+	if (exe_image) {
+		// NB: the order of the kill() and write() is
+		// sigificant.  The client can't start reading the
+		// socket until it's awoken.  But the write() may
+		// block, and only the client can finish it by
+		// read()ing those bytes.  So the client be able to
+		// reach read() before we write().
+		kill(client, DBG_SOCKET_READY_SIG);
+
+		struct debugger_params params;
+		memset(&params, 0, sizeof(params));
+		strcpy(params.exe_image, exe_image);
+		strcpy(params.socket_addr, addr);
+		params.port = port;
+
+		ssize_t nwritten = write(client_params_fd,
+					 &params, sizeof(params));
+		assert(nwritten == sizeof(params));
+	} else {
+		fprintf(stderr, "(rr debug server listening on %s:%d)\n",
+			!strcmp(addr, "127.0.0.1") ? "" : addr, port);
+	}
+	await_debugger(dbg);
 	return dbg;
+}
+
+void dbg_launch_debugger(int params_pipe_fd)
+{
+	struct debugger_params params;
+	ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
+	assert(nread == sizeof(params));
+
+	stringstream attach_cmd;
+	attach_cmd << "target remote " << params.socket_addr << ":"
+		   << params.port;
+	debug("launching gdb with command '%s'", attach_cmd.str().c_str());
+	execlp("gdb", "gdb", params.exe_image,
+	       "-ex", attach_cmd.str().c_str(), NULL);
+	fatal("Failed to exec gdb.");
 }
 
 /**
@@ -183,6 +251,10 @@ static void read_data_once(struct dbg_context* dbg)
 	poll_incoming(dbg, -1/* wait forever */);
 	nread = read(dbg->fd, dbg->inbuf + dbg->inlen,
 		     dbg->insize - dbg->inlen);
+	if (0 == nread) {
+		log_info("(gdb closed debugging socket, exiting)");
+		exit(0);
+	}
 	if (nread <= 0) {
 		fatal("Error reading from gdb");
 	}
@@ -542,7 +614,7 @@ static int query(struct dbg_context* dbg, char* payload)
 	return 0;
 }
 
-static int set(struct dbg_context* dbg, char* payload)
+static int set_var(struct dbg_context* dbg, char* payload)
 {
 	const char* name;
 	char* args;
@@ -659,7 +731,7 @@ static int process_packet(struct dbg_context* dbg)
 		ret = 1;
 		break;
 	case 'D':
-		log_info("gdb is detaching from us");
+		debug("gdb is detaching from us");
 		dbg->req.type = DREQ_DETACH;
 		ret = 1;
 		break;
@@ -733,7 +805,7 @@ static int process_packet(struct dbg_context* dbg)
 		ret = query(dbg, payload);
 		break;
 	case 'Q':
-		ret = set(dbg, payload);
+		ret = set_var(dbg, payload);
 		break;
 	case 'T':
 		dbg->req.type = DREQ_GET_IS_THREAD_ALIVE;

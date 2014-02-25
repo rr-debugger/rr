@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/user.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <map>
@@ -85,6 +86,19 @@
 #define SKID_SIZE 70
 
 using namespace std;
+
+// |parent| is the (potential) debugger client.  It waits until the
+// server, |child|, creates a debug socket.  Then the client exec()s
+// the debugger over itself.
+static pid_t parent, child;
+// The server writes debugger params to the pipe, and the clients
+// reads those params out.
+static int debugger_params_pipe[2];
+
+// When we notify the debugger of process exit, it wants to be able to
+// poke around at that last task.  So we store it here to allow
+// processing debugger requests for it later.
+static Task* last_task;
 
 enum TrapType { TRAP_NONE = 0, TRAP_STEPI,
 		TRAP_BKPT_INTERNAL, TRAP_BKPT_USER };
@@ -1620,6 +1634,12 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		t->unstable = 1;
 		/* fall through */
 	case USR_EXIT: {
+		if (Task::count() == 1) {
+			debug("last task is %d (%d)", t->rec_tid, t->tid);
+			last_task = t;
+			return;
+		}
+
 		/* If the task was killed by a terminating signal,
 		 * then it may have ended abruptly in a syscall or at
 		 * some other random execution point.  That's bad for
@@ -1760,7 +1780,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	}
 
 	if (DREQ_DETACH == req.type) {
-		log_info("debugger detached from us, exiting");
+		log_info("(debugger detached from us, rr exiting)");
 		exit(0);
 	}
 
@@ -1812,10 +1832,15 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
  * the trace has reached the event at which the user wanted a debugger
  * started, then create one and return it.  Otherwise return nullptr.
  */
-struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
+struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 {
 	if (dbg) {
 		return dbg;
+	}
+	// Don't launch the debugger for the initial rr fork child.
+	// No one ever wants that to happen.
+	if (!validate) {
+		return nullptr;
 	}
 	uint32_t goto_event = rr_flags()->goto_event;
 	if (get_global_time() < goto_event) {
@@ -1837,7 +1862,24 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 	// rr (otherwise why would they specify a port in the first
 	// place).  So fail with a clearer error message.
 	int probe = (rr_flags()->dbgport > 0) ? DONT_PROBE : PROBE_PORT;
-	return dbg_await_client_connection("127.0.0.1", port, probe);
+	const char* exe = rr_flags()->dont_launch_debugger ? nullptr :
+			  t->vm()->exe_image().c_str();
+	return dbg_await_client_connection("127.0.0.1", port, probe,
+					   exe, parent,
+					   debugger_params_pipe[1]);
+}
+
+/**
+ * Set the blocked-ness of |sig| to |blockedness|.
+ */
+static void set_sig_blockedness(int sig, int blockedness)
+{
+	sigset_t sset;
+	sigemptyset(&sset);
+	sigaddset(&sset, sig);
+	if (sigprocmask(blockedness, &sset, NULL)) {
+		fatal("Didn't change sigmask.");
+	}
 }
 
 /**
@@ -1868,6 +1910,7 @@ static pid_t launch_initial_tracee(string& exe_image, CharpVector& arg_v,
 				putenv(strdup(*it));
 			}
 		}
+
 		sys_start_trace(exe_image.c_str(), arg_v.data(), env_p.data());
 		fatal("Not reached");
 	}
@@ -1880,25 +1923,24 @@ static pid_t launch_initial_tracee(string& exe_image, CharpVector& arg_v,
 
 static void replay_trace_frames(void)
 {
-	struct dbg_context* dbg = NULL;
-
-	while (Task::count()) {
-		dbg = maybe_create_debugger(dbg);
-		replay_one_trace_frame(dbg, schedule_task());
+	struct dbg_context* dbg = nullptr;
+	while (!last_task) {
+		Task* t = schedule_task();
+		dbg = maybe_create_debugger(t, dbg);
+		replay_one_trace_frame(dbg, t);
 	}
-
-	if (dbg) {
-		/* TODO keep record of the code, if it's useful */
-		dbg_notify_exit_code(dbg, 0);
-	}
-
 	log_info("Replayer successfully finished.");
 	fflush(stdout);
 
-	dbg_destroy_context(&dbg);
+	if (dbg) {
+		// TODO return real exit code, if it's useful.
+		dbg_notify_exit_code(dbg, 0);
+		process_debugger_requests(dbg, last_task);
+		fatal("Received continue request after end-of-trace.");
+	}
 }
 
-void replay(int argc, char* argv[], char** envp)
+static void serve_replay(int argc, char* argv[], char** envp)
 {
 	string exe_image;
 	CharpVector arg_v;
@@ -1921,6 +1963,101 @@ void replay(int argc, char* argv[], char** envp)
 
 	close_libpfm();
 	close_trace_files();
+
+	debug("debugger server exiting ...");
+	exit(0);
+}
+
+static bool launch_debugger;
+static void handle_signal(int sig)
+{
+	switch (sig) {
+	case SIGINT:
+		// Translate the SIGINT into SIGTERM for the debugger
+		// server, because it's blocking SIGINT.  We don't use
+		// SIGINT for anything, so all it's meant to do is
+		// kill us, and SIGTERM works just as well for that.
+		if (child > 0) {
+			kill(child, SIGTERM);
+		}
+		break;
+	case DBG_SOCKET_READY_SIG:
+		launch_debugger = true;
+		break;
+	default:
+		fatal("Unhandled signal %s", signalname(sig));
+	}
+}
+
+void replay(int argc, char* argv[], char** envp)
+{
+	parent = getpid();
+
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = handle_signal;
+	if (sigaction(SIGINT, &sa, nullptr)
+	    || sigaction(DBG_SOCKET_READY_SIG, &sa, nullptr)) {
+		fatal("Couldn't set sigaction for SIGINT.");
+	}
+
+	if (pipe2(debugger_params_pipe, O_CLOEXEC)) {
+		fatal("Couldn't open debugger params pipe.");
+	}
+	if (0 == (child = fork())) {
+		// The parent process (gdb) must be able to receive
+		// SIGINT's to interrupt non-stopped tracees.  But the
+		// debugger server isn't set up to handle SIGINT.  So
+		// block it.
+		set_sig_blockedness(SIGINT, SIG_BLOCK);
+		serve_replay(argc, argv, envp);
+		fatal("Not reached");
+	}
+	debug("%d: forked debugger server %d", parent, child);
+
+	while (true) {
+		int ret, status;
+		// NB: we're forced to use waitpid() because linux
+		// doesn't provide a way to poll waitpid.  If it did,
+		// we would poll both that and the debugger-params
+		// pipe and we wouldn't need the signal hack.
+		// Alternatively, passing a sigmask to waitpid() in
+		// the style of ppoll() would solve the problem.
+		//
+		// But as it is, there's a potential race condition
+		// betweed the params-ready signal being delivered to
+		// us and us entering waitpid().  We rely on waitpid()
+		// erroring out on signal delivery to wake us up.  If
+		// the signal arrives between the if-condition here
+		// and entry to waitpid(), then we'll deadlock with
+		// the debug server.  This sched_yield() is a
+		// poor-man's "please run the next few instructions
+		// atomically".
+		//
+		// FIXME: add pwaitpid() to linux?
+		sched_yield();
+		// BEGIN CRITICAL SECTION
+		if (launch_debugger) {
+			dbg_launch_debugger(debugger_params_pipe[0]);
+			fatal("Not reached");
+		}
+		ret = waitpid(child, &status, 0);
+		// END CRITICAL SECTION
+
+		int err = errno;
+		debug("%d: waitpid(%d) returned %s(%d); status:%#x",
+		      getpid(), child, strerror(err), err, status);
+		if (child != ret) {
+			if (EINTR == err) {
+				continue;
+			}
+			fatal("%d: waitpid(%d) failed", getpid(), child);
+		}
+		if (WIFEXITED(status) || WIFSIGNALED(status)) {
+			log_info("Debugger server died.  Exiting.");
+			exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
+		}
+	}
 }
 
 void emergency_debug(Task* t)
@@ -1945,6 +2082,9 @@ void start_debug_server(Task* t)
 	// breakpoint up.
 	remove_all_sw_breakpoints(t);
 
+	// Don't launch a debugger on fatal errors; the user is most
+	// likely already in a debugger, and wouldn't be able to
+	// control another session.
 	struct dbg_context* dbg =
 		dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT);
 
