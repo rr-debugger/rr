@@ -925,13 +925,9 @@ public:
 	void futex_wait(const byte* futex, uint32_t val);
 
 	/**
-	 * Call this when the tracee's syscallbuf has been initialized
-	 * and the syscall finished with |regs|.
-	 *
-	 * NB: |regs| may be modified and should be written back to
-	 * the tracee.
+	 * Call this when the tracee's syscallbuf has been initialized.
 	 */
-	void inited_syscallbuf(struct user_regs_struct* regs);
+	void inited_syscallbuf();
 
 	/**
 	 * Return nonzero if |t| may not be immediately runnable,
@@ -1274,30 +1270,6 @@ private:
 	 * True if this has blocked delivery of the desched signal.
 	 */
 	bool is_desched_sig_blocked();
-
-	/**
-	 * Override $fs-savedness state to |xfs|/|is_saved|.
-	 */
-	void force_xfs(long xfs, bool is_saved);
-
-	/**
-	 * Restore the value of $fs saved by |save_xfs()|.
-	 */
-	long restore_xfs() {
-		assert(is_xfs_saved);
-		is_xfs_saved = false;
-		return saved_xfs;
-	}
-
-	/**
-	 * Save the current value of the $fs register, |xfs|.  There
-	 * must not be a currently-saved value.
-	 */
-	void save_xfs(long xfs) {
-		assert(!is_xfs_saved);
-		saved_xfs = xfs;
-		is_xfs_saved = true;
-	}
 
 	/**
 	 * Read/write the number of bytes that the template wrapper

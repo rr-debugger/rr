@@ -639,11 +639,6 @@ static void process_clone(Task* t,
 	set_return_value(t);
 	validate_args(syscallno, state, t);
 
-	// Clear the TCB guard.
-	read_child_registers(new_task, &new_task->regs);
-	new_task->regs.xfs = 0;
-	write_child_registers(new_task, &new_task->regs);
-
 	init_scratch_memory(new_task);
 
 	step->action = TSTEP_RETIRE;
@@ -1658,20 +1653,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		exit_syscall_emu(t, SYS_rrcall_monkeypatch_vdso, 0);
 		monkeypatch_vdso(t);
 		step->action = TSTEP_RETIRE;
-		return;
-
-	case SYS_rrcall_clear_tcb_guard:
-		step->syscall.num_emu_args = 0;
-		step->syscall.emu = 1;
-		step->syscall.emu_ret = 1;
-		if (STATE_SYSCALL_ENTRY == state) {
-			step->action = TSTEP_ENTER_SYSCALL;
-			return;
-		}
-		read_child_registers(t, &t->regs);
-		t->regs.xfs = 0;
-		write_child_registers(t, &t->regs);
-		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 
 	default:

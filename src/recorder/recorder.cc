@@ -510,7 +510,6 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 				|| (0 > syscallno
 				    || SYS_rrcall_init_buffers == t->event
 				    || SYS_rrcall_monkeypatch_vdso == t->event
-				    || SYS_rrcall_clear_tcb_guard == t->event
 				    || SYS_clone == syscallno
 				    || SYS_exit_group == syscallno
 				    || SYS_exit == syscallno)),
