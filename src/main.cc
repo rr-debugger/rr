@@ -535,6 +535,29 @@ int main(int argc, char* argv[])
 		log_info("... continuing.");
 	}
 
+	if (!rr_flags()->cpu_unbound) {
+		cpu_set_t mask;
+		// Pin tracee tasks to logical CPU 0, both in
+		// recording and replay.  Tracees can see which HW
+		// thread they're running on by asking CPUID, and we
+		// don't have a way to emulate it yet.  So if a tracee
+		// happens to be scheduled on a different core in
+		// recording than replay, it can diverge.  (And
+		// indeed, has been observed to diverge in practice,
+		// in glibc.)
+		//
+		// Note that this pins both the tracee processes *and*
+		// the tracer procer.  This ends up being a tidy
+		// performance win in certain circumstances,
+		// presumably due to cheaper context switching and/or
+		// better interaction with CPU frequency scaling.
+		CPU_ZERO(&mask);
+		CPU_SET(0, &mask);
+		if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
+			fatal("Couldn't bind to CPU 0");
+		}
+	}
+
 	if (RECORD == flags->option) {
 		log_info("Scheduler using max_events=%d, max_rbc=%d",
 			 flags->max_events, flags->max_rbc);

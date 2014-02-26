@@ -112,20 +112,6 @@ static void set_up_process(void)
 {
 	int orig_pers;
 
-	if (!rr_flags()->cpu_unbound) {
-		cpu_set_t mask;
-		/* Bind tracee tasks to exactly one logical CPU, the
-		 * same across record/replay.  This prevents tracees
-		 * from observing nondeterminism through issuing
-		 * 'cpuid' instructions that reveal which HW thread
-		 * they're running on. */
-		CPU_ZERO(&mask);
-		CPU_SET(0, &mask);
-		if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
-			fatal("Couldn't bind to CPU 0");
-		}
-	}
-
 	/* TODO tracees can probably undo some of the setup below
 	 * ... */
 
