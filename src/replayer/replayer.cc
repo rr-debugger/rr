@@ -1803,6 +1803,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 	if (DREQ_DETACH == req.type) {
 		log_info("(debugger detached from us, rr exiting)");
+		dbg_destroy_context(&dbg);
 		exit(0);
 	}
 

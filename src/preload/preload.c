@@ -54,6 +54,7 @@
 #include <stdio.h>
 #include <syscall.h>
 #include <sys/epoll.h>
+#include <sysexits.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -404,7 +405,7 @@ static void logmsg(const char* msg, ...)
 		logmsg("[FATAL] (%s:%d: errno: %s: tid: %d) " msg "\n",	\
 		       __FILE__, __LINE__, strerror(errno),		\
 		       traced_gettid(), ##__VA_ARGS__);			\
-		traced_raise(SIGABRT);					\
+		traced_syscall1(SYS_exit_group, EX_OSERR);		\
 	} while (0)
 
 #ifdef DEBUGTAG
