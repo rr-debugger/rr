@@ -784,7 +784,7 @@ static void install_termsig_handlers(void)
  * meaningful, it just allows this to give task context to the
  * trace-termination event, for simplicity.
  */
-static void maybe_process_term_request(Task* t)
+static void maybe_process_term_request()
 {
 	if (!term_request) {
 		return;
@@ -792,9 +792,7 @@ static void maybe_process_term_request(Task* t)
 
 	log_info("Processing termination request ...");
 	log_info("  recording TRACE_TERMINATION event ...");
-	push_pseudosig(t, EUSR_TRACE_TERMINATION, NO_EXEC_INFO);
-	record_event(t);
-	pop_pseudosig(t);
+	record_trace_termination_event();
 
 	log_info("  exiting, goodbye.");
 	flush_trace_files();
@@ -811,11 +809,11 @@ void record()
 		int by_waitpid;
 		int ptrace_event;
 
-		maybe_process_term_request(t);
+		maybe_process_term_request();
 
 		Task* next = rec_sched_get_active_thread(t, &by_waitpid);
 		if (!next) {
-			maybe_process_term_request(t);
+			maybe_process_term_request();
 		}
 		t = next;
 
@@ -857,7 +855,7 @@ void record()
 		}
 
 		if (!resume_execution(t, DEFAULT_CONT)) {
-			maybe_process_term_request(t);
+			maybe_process_term_request();
 		}
 		runnable_state_changed(t);
 	}

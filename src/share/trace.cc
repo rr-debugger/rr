@@ -214,7 +214,6 @@ static int encode_event(const struct event* ev, int* state)
 			TRANSLATE(USR_SYSCALLBUF_ABORT_COMMIT);
 			TRANSLATE(USR_SYSCALLBUF_RESET);
 			TRANSLATE(USR_UNSTABLE_EXIT);
-			TRANSLATE(USR_TRACE_TERMINATION);
 		default:
 			fatal("Unknown pseudosig %d", ev->pseudosig.no);
 #undef TRANSLATE
@@ -538,6 +537,15 @@ void record_event(Task *t)
 	if (frame.has_exec_info) {
 		reset_hpc(t, rr_flags()->max_rbc);
 	}
+}
+
+void record_trace_termination_event()
+{
+	struct trace_frame frame;
+	memset(&frame, 0, sizeof(frame));
+	frame.global_time = global_time++;
+	frame.stop_reason = USR_TRACE_TERMINATION;
+	write_trace_frame(&frame);
 }
 
 static void print_header(int syscallno, void* addr)

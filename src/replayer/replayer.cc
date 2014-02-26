@@ -521,20 +521,24 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  * Return the task that was recorded running the next event in the
  * trace, and should be replayed now.
  */
+static trace_frame cur_trace_frame;
 static Task* schedule_task()
 {
-	struct trace_frame trace;
-	read_next_trace(&trace);
+	read_next_trace(&cur_trace_frame);
+	if (!cur_trace_frame.tid) {
+		assert(USR_TRACE_TERMINATION == cur_trace_frame.stop_reason);
+		return nullptr;
+	}
 
-	Task *t = Task::find(trace.tid);
+	Task *t = Task::find(cur_trace_frame.tid);
 	assert(t != NULL);
 
-	memcpy(&(t->trace), &trace, sizeof(struct trace_frame));
+	memcpy(&(t->trace), &cur_trace_frame, sizeof(t->trace));
 
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (trace.stop_reason == USR_SCHED) {
+	if (t->trace.stop_reason == USR_SCHED) {
 		bool combined = false;
 		struct trace_frame next_trace;
 
@@ -1160,7 +1164,11 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 	return 0;
 }
 
-static void emulate_signal_delivery(Task* oldtask, int sig)
+/**
+ * Emulates delivery of |sig| to |oldtask|.  Returns nonzero if
+ * emulation was interrupted, zero if completed.
+ */
+static int emulate_signal_delivery(Task* oldtask, int sig)
 {
 	/* We are now at the exact point in the child where the signal
 	 * was recorded, emulate it using the next trace line (records
@@ -1171,6 +1179,11 @@ static void emulate_signal_delivery(Task* oldtask, int sig)
 	reset_hpc(oldtask, 0);
 
 	t = schedule_task();
+	if (!t) {
+		// Trace terminated abnormally.  We'll pop out to code
+		// that knows what to do.
+		return 1;
+	}
 	assert_exec(oldtask, t == oldtask, "emulate_signal_delivery changed task");
 	trace = &t->trace;
 
@@ -1193,6 +1206,7 @@ static void emulate_signal_delivery(Task* oldtask, int sig)
 	t->child_sig = 0;
 
 	validate_args(trace->stop_reason, -1, t);
+	return 0;
 }
 
 static void assert_at_recorded_rcb(Task* t, int event)
@@ -1235,11 +1249,9 @@ static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 		write_child_registers(t, &t->trace.recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
-	} else {
-		emulate_signal_delivery(t, sig);
+		return 0;
 	}
-
-	return 0;
+	return emulate_signal_delivery(t, sig);
 }
 
 /**
@@ -1256,7 +1268,9 @@ static int emulate_async_signal(Task* t,
 		return 1;
 	}
 	if (sig) {
-		emulate_signal_delivery(t, sig);
+		if (emulate_signal_delivery(t, sig)) {
+			return 1;
+		}
 	}
 	stop_hpc(t);
 	return 0;
@@ -1616,6 +1630,23 @@ static int try_one_trace_step(Task* t,
 	}
 }
 
+/**
+ * The trace was interrupted abnormally at this point during replay.
+ * All we can do is notify the debugger, process its final requests,
+ * and then die.
+ */
+static void handle_interrupted_trace(struct dbg_context* dbg)
+{
+	log_info("Trace terminated early at this point during recording.");
+	if (dbg) {
+		dbg_notify_stop(dbg, DBG_ALL_THREADS, 0x05);
+		log_info("Processing last round of debugger requests.");
+		process_debugger_requests(dbg, nullptr);
+	}
+	log_info("Exiting.");
+	exit(0);
+}
+
 static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
@@ -1717,16 +1748,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		step.action = TSTEP_DETERMINISTIC_SIGNAL;
 		step.signo = SIGSEGV;
 		break;
-	case USR_TRACE_TERMINATION:
-		log_info("Trace terminated early at this point during recording.");
-		if (dbg) {
-			dbg_notify_stop(dbg, get_threadid(t), 0x05);
-			log_info("Processing last round of debugger requests.");
-			process_debugger_requests(dbg, t);
-		}
-		log_info("Exiting.");
-		exit(0);
-		break;
 	case USR_INTERRUPTED_SYSCALL_NOT_RESTARTED:
 		debug("  popping interrupted but not restarted %s",
 		      syscallname(t->ev->syscall.no));
@@ -1771,12 +1792,20 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(t, &step, &req)) {
-		struct user_regs_struct regs;
+		if (USR_TRACE_TERMINATION == cur_trace_frame.stop_reason) {
+			// An irregular trace step had to read the
+			// next trace frame, and that frame was an
+			// early-termination marker.  Otherwise we
+			// would have seen the marker at
+			// |schedule_task()|.
+			return handle_interrupted_trace(dbg);
+		}
 
 		/* Currently we only understand software breakpoints
 		 * and successful stepi's. */
 		assert(SIGTRAP == t->child_sig && "Unknown trap");
 
+		struct user_regs_struct regs;
 		read_child_registers(t, &regs);
 		if (TRAP_BKPT_USER == ip_breakpoint_type((byte*)regs.eip)) {
 			debug("  hit debugger breakpoint");
@@ -1960,6 +1989,9 @@ static void replay_trace_frames(void)
 	struct dbg_context* dbg = nullptr;
 	while (!last_task) {
 		Task* t = schedule_task();
+		if (!t) {
+			return handle_interrupted_trace(dbg);
+		}
 		dbg = maybe_create_debugger(t, dbg);
 		replay_one_trace_frame(dbg, t);
 	}

@@ -176,6 +176,11 @@ void record_parent_data(Task *t, size_t len, void *addr, void *buf);
  * at |t|'s current execution point.
  */
 void record_event(Task* t);
+/**
+ * Record that the trace will be ending abnormally early, usually
+ * because of an interrupting signal.
+ */
+void record_trace_termination_event();
 void record_mmapped_file_stats(struct mmapped_file *file);
 /**
  * Return the current global time.  This is approximately the number
