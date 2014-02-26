@@ -20,13 +20,7 @@ def interrupt_gdb():
 def restart_replay():
     send_gdb('r\n')
     expect_gdb('Start it from the beginning')
-
     send_gdb('y\n')
-    expect_gdb(re.compile(r'target extended-remote :(\d+)'))
-    port = gdb_rr.match.group(1)
-
-    send_gdb('target extended-remote :'+ port +'\n')
-    expect_gdb('Remote debugging using :'+ port)
 
 def send_gdb(what):
     send(gdb_rr, what)
@@ -38,7 +32,7 @@ def ok():
     clean_up()
 
 # Internal helpers
-TIMEOUT_SEC = 5
+TIMEOUT_SEC = 20
 # gdb and rr are part of the same process tree, so they share
 # stdin/stdout.
 gdb_rr = None
@@ -81,7 +75,7 @@ def send(prog, what):
 def set_up():
     global gdb_rr
     try:
-        gdb_rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, logfile=open('rr.log', 'w'))
+        gdb_rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, logfile=open('gdb_rr.log', 'w'))
         expect_gdb(r'\(gdb\)')
     except Exception, e:
         failed('initializing rr and gdb', e)

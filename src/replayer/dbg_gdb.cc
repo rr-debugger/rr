@@ -45,8 +45,17 @@ using namespace std;
 /**
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
+ *
+ * dbg_contexts are mapped into their own (unlinked) shmem.  We do
+ * this in order to save/restore debugger state across replay
+ * restarts, which is pretty tricky do otherwise.  Before replay
+ * restart, we save a cookie in the environment that lets us find the
+ * fd of our mapping.  Then after exec(), we re-init our state by
+ * finding the cookie and remapping the region (then unsetting the
+ * cookie, of course).
  */
 struct dbg_context {
+	int desc_fd;		// fd of dbg_context mapping
 	struct dbg_request req;	/* current request to be processed */
 	dbg_threadid_t resume_thread; /* thread to be resumed */
 	dbg_threadid_t query_thread;  /* thread for get/set */
@@ -57,7 +66,6 @@ struct dbg_context {
 	struct sockaddr_in addr;	    /* server address */
 	int listen_fd;			    /* listen socket */
 	int sock_fd;			    /* client socket fd */
-	pid_t child;			    /* debugger process */
 	/* XXX probably need to dynamically size these */
 	byte inbuf[4096];	/* buffered input from gdb */
 	ssize_t inlen;		/* length of valid data */
@@ -103,16 +111,45 @@ static void make_cloexec(int fd)
 	}
 }
 
-static dbg_context* open_socket(const char* address, unsigned short port,
-				int probe)
+static size_t dbg_context_mapped_size()
 {
-	struct dbg_context* dbg;
-	int reuseaddr;
-	int ret;
+	return ceil_page_size(sizeof(struct dbg_context));
+}
 
-	dbg = (struct dbg_context*)calloc(1, sizeof(*dbg));
+static dbg_context* map_dbg_context(int desc_fd)
+{
+	void* m = mmap(nullptr, dbg_context_mapped_size(),
+		       PROT_READ | PROT_WRITE, MAP_SHARED, desc_fd, 0);
+	if ((void*)-1 == m) {
+		fatal("Couldn't mmap dbg_context desc_fd %d", desc_fd);
+	}
+	debug("mmap dbg_context desc_fd %d at %p", desc_fd, m);
+	return reinterpret_cast<struct dbg_context*>(m);
+}
+
+static dbg_context* new_dbg_context()
+{
+	static int counter = 0;
+	stringstream ss;
+	ss << "rr-dbg-ctx-" << getpid() << "-" << ++counter;
+	// NB: we don't set CLOEXEC here because we may need to
+	// preserve the backing segment across exec(), if replay
+	// restarts.
+	int desc_fd = create_shmem_segment(ss.str().c_str(),
+					   dbg_context_mapped_size(),
+					   O_NO_CLOEXEC);
+	struct dbg_context* dbg = map_dbg_context(desc_fd);
+	dbg->desc_fd = desc_fd;
 	dbg->insize = sizeof(dbg->inbuf);
 	dbg->outsize = sizeof(dbg->outbuf);
+	return dbg;
+}
+
+static void open_socket(struct dbg_context* dbg,
+			const char* address, unsigned short port, int probe)
+{
+	int reuseaddr;
+	int ret;
 
 	dbg->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 	make_cloexec(dbg->listen_fd);
@@ -141,7 +178,40 @@ static dbg_context* open_socket(const char* address, unsigned short port,
 	if (ret) {
 		fatal("Couldn't bind to port %d", port);
 	}
+}
 
+static string make_exec_cookie_envvar()
+{
+	stringstream ss;
+	ss << "_RR_DBG_CONTEXT_EXEC_COOKIE_" << getpid();
+	return ss.str();
+}
+
+/**
+ * If an exec cookie is found, restore and return the context it
+ * points at.  Otherwise return nullptr.
+ */
+static struct dbg_context* try_load_from_exec_cookie()
+{
+	string envvar = make_exec_cookie_envvar();
+	const char* cookiep = getenv(envvar.c_str());
+	if (!cookiep) {
+		return nullptr;
+	}
+	string cookie = cookiep;
+	unsetenv(envvar.c_str());
+
+	assert('\0' != cookie[0]);
+	int desc_fd = stoi(cookie);
+	debug("found exec cookie %s=%d", envvar.c_str(), desc_fd);
+
+	struct dbg_context* dbg = map_dbg_context(desc_fd);
+	// Sanity-check the restored mapping.
+	assert(dbg->desc_fd == desc_fd);
+	assert(dbg->listen_fd == -1);
+	assert(dbg->sock_fd >= 0);
+	assert(dbg->insize == sizeof(dbg->inbuf));
+	assert(dbg->outsize == sizeof(dbg->outbuf));
 	return dbg;
 }
 
@@ -156,7 +226,8 @@ static void await_debugger(struct dbg_context* dbg)
 
 	dbg->sock_fd =
 		accept(dbg->listen_fd, (struct sockaddr*)&client_addr, &len);
-	make_cloexec(dbg->sock_fd);
+	// We might restart this debugging session, so don't set the
+	// socket fd CLOEXEC.
 	if (fcntl(dbg->sock_fd, F_SETFL, O_NONBLOCK)) {
 		fatal("Can't make client socket NONBLOCK");
 	}
@@ -177,7 +248,14 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 						pid_t client,
 						int client_params_fd)
 {
-	struct dbg_context* dbg = open_socket(addr, desired_port, probe);
+	if (struct dbg_context* dbg = try_load_from_exec_cookie()) {
+		// Replay just restarted.  |dbg| is now restored to
+		// what it was in the prior session.
+		return dbg;
+	}
+
+	struct dbg_context* dbg = new_dbg_context();
+	open_socket(dbg, addr, desired_port, probe);
 	int port = ntohs(dbg->addr.sin_port);
 	if (exe_image) {
 		// NB: the order of the kill() and write() is
@@ -226,6 +304,17 @@ void dbg_launch_debugger(int params_pipe_fd)
 	execlp("gdb", "gdb", params.exe_image,
 	       "-ex", attach_cmd.str().c_str(), NULL);
 	fatal("Failed to exec gdb.");
+}
+
+void dbg_prepare_restore_after_exec_restart(struct dbg_context* dbg)
+{
+	string envvar = make_exec_cookie_envvar();
+	assert(!getenv(envvar.c_str()));
+
+	stringstream ss;
+	ss << dbg->desc_fd;
+	setenv(envvar.c_str(), ss.str().c_str(), 1/*override*/);
+	debug("set exec cookie to %s=%s", envvar.c_str(), ss.str().c_str());
 }
 
 /**
@@ -986,8 +1075,37 @@ void dbg_notify_no_such_thread(struct dbg_context* dbg,
 	consume_request(dbg);
 }
 
+/**
+ * Finish a DREQ_RESTART request.  Should be invoked after replay
+ * restarts and prior dbg_context has been restored as |dbg|.
+ */
+static void dbg_notify_restart(struct dbg_context* dbg)
+{
+	assert(DREQ_RESTART == dbg->req.type);
+
+	// These threads may not exist at the first trace-stop after
+	// restart.  The gdb client should reset this state, but help
+	// it out just in case.
+	dbg->resume_thread = DBG_ANY_THREAD;
+	dbg->query_thread = DBG_ANY_THREAD;
+
+	memset(&dbg->req, 0, sizeof(dbg->req));
+}
+
 struct dbg_request dbg_get_request(struct dbg_context* dbg)
 {
+	if (DREQ_RESTART == dbg->req.type) {
+		debug("consuming RESTART request");
+		dbg_notify_restart(dbg);
+		// gdb wants to be notified with a stop packet when
+		// the process "relaunches".  In rr's case, the
+		// traceee may be very far away from process creation,
+		// but that's OK.
+		dbg->req.type = DREQ_GET_STOP_REASON;
+		dbg->req.target = dbg->query_thread;
+		return dbg->req;
+	}
+
 	/* Can't ask for the next request until you've satisfied the
 	 * current one, for requests that need an immediate
 	 * response. */
@@ -1304,7 +1422,9 @@ void dbg_destroy_context(struct dbg_context** dbg)
 		return;
 	}
 	*dbg = NULL;
+	close(d->desc_fd);
+	close(d->listen_fd);
 	close(d->sock_fd);
-	free(d);
+	munmap(d, dbg_context_mapped_size());
 	*dbg = NULL;
 }
