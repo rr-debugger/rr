@@ -38,7 +38,7 @@ private:
 
 /**
  * Collect emulated files that aren't referenced by tracees.  Call
- * this only when a tracee (possibly shared) file table has been
+ * this only when a tracee's (possibly shared) file table has been
  * destroyed.  All other gc triggers are handled internally.
  */
 void gc();

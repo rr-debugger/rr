@@ -128,7 +128,7 @@ AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
 		  off64_t offset_bytes, const MappableResource& res)
 {
 	debug("[%d] mmap(%p, %u, %#x, %#x, %#llx)", get_global_time(),
-	      addr, num_bytes, prot, flags, offset);
+	      addr, num_bytes, prot, flags, offset_bytes);
 
 	num_bytes = ceil_page_size(num_bytes);
 
@@ -1236,6 +1236,53 @@ Task::find(pid_t rec_tid)
 {
 	auto it = tasks.find(rec_tid);
 	return tasks.end() != it ? it->second : NULL;
+}
+
+/*static*/ void
+Task::killall()
+{
+	ssize_t task_count = Task::count();
+	while (!tasks.empty()) {
+		auto it = tasks.rbegin();
+		Task* t = it->second;
+
+		debug("sending SIGKILL to %d ...", t->tid);
+		syscall(SYS_tgkill, t->tgid(), t->tid, SIGKILL);
+
+		// Don't attempt to synchonize on the cleartid futex.
+		// We won't be able to reliably read it, and it's
+		// pointless anyway.
+		t->tid_futex = nullptr;
+		// This is an unstable exit in that we don't know a
+		// priori what order of tasks it's safe to
+		// individually wait on.  So we use the waitpid(-1)
+		// loop below.
+		t->unstable = 1;
+		delete t;
+	}
+	while (task_count > 0) {
+		debug("killall: %d tasks to go, waitpid(-1) ...", task_count);
+		int status;
+		pid_t tid = waitpid(-1, &status, __WALL);
+		if (-1 == tid) {
+			switch (errno) {
+			case EINTR:
+				debug("  interrupted by signal");
+				continue;
+			case ECHILD:
+				debug("  no more children, giving up");
+				return;
+			default:
+				fatal("Failed to waitpid(-1)");
+			}
+		}
+		debug("  %d changed status to %#x", tid, status);
+		if (WIFSIGNALED(status) || WIFEXITED(status)) {
+			// TODO: find a more reliable way to kill off
+			// processes.
+			--task_count;
+		}
+	}
 }
 
 void

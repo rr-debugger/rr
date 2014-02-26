@@ -1369,7 +1369,7 @@ int create_shmem_segment(const char* name, size_t num_bytes)
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path) - 1, "%s/%s", SHMEM_FS, name);
 
-	int fd = open(path, O_CREAT | O_EXCL | O_RDWR, 0600);
+	int fd = open(path, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
 	if (0 > fd) {
 		fatal("Failed to create shmem segment %s", path);
 	}

@@ -2,7 +2,12 @@
 
 #include "rrutil.h"
 
-static void breakpoint(void) {
+static void bad_breakpoint(void) {
+	int break_here = 1;
+	(void)break_here;
+}
+
+static void good_breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }
@@ -11,6 +16,8 @@ int main(int argc, char** argv) {
 	int num_syscalls;
 	int child;
 	int i;
+
+	bad_breakpoint();
 
 	test_assert(argc == 2);
 	num_syscalls = atoi(argv[1]);
@@ -21,7 +28,7 @@ int main(int argc, char** argv) {
 	}
 
 	if (0 == (child = fork())) {
-		breakpoint();
+		good_breakpoint();
 		exit(0);
 	}
 

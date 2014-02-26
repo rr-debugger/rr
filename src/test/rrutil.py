@@ -1,7 +1,7 @@
-import pexpect, signal, sys, time
+import pexpect, re, signal, sys, time
 
 __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr',
-            'interrupt_gdb', 'ok' ]
+            'restart_replay', 'interrupt_gdb', 'ok' ]
 
 # Public API
 def expect_gdb(what):
@@ -17,6 +17,17 @@ def interrupt_gdb():
         failed('interrupting gdb', e)
     expect_gdb('stopped.')
 
+def restart_replay():
+    send_gdb('r\n')
+    expect_gdb('Start it from the beginning')
+
+    send_gdb('y\n')
+    expect_gdb(re.compile(r'target extended-remote :(\d+)'))
+    port = gdb_rr.match.group(1)
+
+    send_gdb('target extended-remote :'+ port +'\n')
+    expect_gdb('Remote debugging using :'+ port)
+
 def send_gdb(what):
     send(gdb_rr, what)
 
@@ -27,7 +38,7 @@ def ok():
     clean_up()
 
 # Internal helpers
-TIMEOUT_SEC = 20
+TIMEOUT_SEC = 5
 # gdb and rr are part of the same process tree, so they share
 # stdin/stdout.
 gdb_rr = None
