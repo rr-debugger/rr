@@ -100,6 +100,7 @@ set(BASIC_TESTS
   fcntl_owner_ex
   flock
   fork_syscalls
+  goto_event
   hello
   ignored_async_usr1
   int3
