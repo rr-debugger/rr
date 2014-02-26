@@ -197,8 +197,16 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 					 &params, sizeof(params));
 		assert(nwritten == sizeof(params));
 	} else {
-		fprintf(stderr, "(rr debug server listening on %s:%d)\n",
+		fprintf(stderr,
+			"Attach to the rr debug server with this command:\n"
+			"  target extended-remote %s:%d\n",
 			!strcmp(addr, "127.0.0.1") ? "" : addr, port);
+		// XXX if we're a restarted replayer in gdb,
+		// our replay spam has destroyed the gdb
+		// prompt.  It's not obvious to the user that
+		// commands can be entered.  So put one back.
+		printf("(rr is replacing gdb's prompt now, whether or not gdb is running)\n(gdb) ");
+		fflush(stdout);
 	}
 	await_debugger(dbg);
 	return dbg;
@@ -386,6 +394,25 @@ static void write_hex_bytes_packet(struct dbg_context* dbg,
 	}
 	write_packet(dbg, buf);
 	free(buf);
+}
+
+/**
+ * Return a string decoded from |encoded|, which contains ASCII
+ * characters encoded as pairs of hex digits, f.e. '1' -> "31".
+ */
+static string decode_ascii_encoded_hex_str(const char* encoded)
+{
+	ssize_t enc_len = strlen(encoded);
+	assert(enc_len % 2 == 0);
+	string str;
+	for (int i = 0; i < enc_len / 2; ++i) {
+		char enc_byte[] = { encoded[2 * i], encoded[2 * i + 1], '\0' };
+		char* endp;
+		int c = strtol(enc_byte, &endp, 16);
+		assert(c < 128);
+		str += static_cast<char>(c);
+	}
+	return str;
 }
 
 /**
@@ -717,6 +744,49 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		debug("gdb queries which continue commands we support");
 		write_packet(dbg, "vCont;c;C;s;S;t;");
 		return 0;
+	}
+
+	if (!strcmp("Kill", name)) {
+		// We can't kill tracees or replay can diverge.  We
+		// assume that this kill request is being made because
+		// a "vRun" restart is coming right up.  We know how
+		// to implement vRun, so we'll ignore this one.
+		debug("gdb asks us to kill tracee(s); ignoring");
+		write_packet(dbg, "OK");
+		return 0;
+	}
+
+	if (!strcmp("Run", name)) {
+		dbg->req.type = DREQ_RESTART;
+		dbg->req.restart.event = -1;
+		dbg->req.restart.port = ntohs(dbg->addr.sin_port);
+
+		if ('\0' == *args) {
+			return 1;
+		}
+		const char* filename = args;
+		*args++ = '\0';
+		if (strlen(filename)) {
+			fatal("gdb wants us to run the exe image `%s', but we don't support that.",
+				filename);
+		}
+		if (strchr(args, ';')) {
+			fatal("Extra arguments '%s' passed to run. We don't support that.",
+			      args);
+		}
+		if (strlen(args)) {
+			string event_str = decode_ascii_encoded_hex_str(args);
+			char* endp;
+			dbg->req.restart.event =
+				strtol(event_str.c_str(), &endp, 0);
+			if (!endp || *endp != '\0') {
+				fatal("Couldn't parse event string `%s'",
+				      event_str.c_str());
+			}
+		}
+		debug("next replayer advancing to event %d",
+		      dbg->req.restart.event);
+		return 1;
 	}
 
 	unhandled_req(dbg, "Unhandled gdb vpacket: v%s", name);

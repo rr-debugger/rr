@@ -1104,6 +1104,12 @@ public:
 	 */
 	static Task* find(pid_t rec_tid);
 
+	/**
+	 * |Task::count()| will be zero and all the OS tasks will be
+	 * gone when this returns, or this won't return.
+	 */
+	static void killall();
+
 	/* State only used during recording. */
 
 	/* The running count of events that have been recorded for

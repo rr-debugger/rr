@@ -33,6 +33,9 @@
 #include <unistd.h>
 
 #include <map>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "dbg_gdb.h"
 #include "rep_process_event.h"
@@ -99,6 +102,14 @@ static int debugger_params_pipe[2];
 // poke around at that last task.  So we store it here to allow
 // processing debugger requests for it later.
 static Task* last_task;
+
+/**
+ * Restart a fresh debugging session, possibly updating our replay
+ * params based on the debugger's |req|.  This results in the old
+ * debugging socket being closed, and a new one created that the user
+ * must manually connect to.
+ */
+static void restart_replay(struct dbg_request req);
 
 enum TrapType { TRAP_NONE = 0, TRAP_STEPI,
 		TRAP_BKPT_INTERNAL, TRAP_BKPT_USER };
@@ -345,6 +356,13 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 
 		if (dbg_is_resume_request(&req)) {
 			return req;
+		}
+
+		// Debugger client requested that we restart execution
+		// from the beginning.  Restart our debug session.
+		if (DREQ_RESTART == req.type) {
+			restart_replay(req);
+			fatal("Not reached");
 		}
 
 		/* These requests don't require a target task. */
@@ -1862,7 +1880,8 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	if (goto_event || target_process) {
 		fprintf(stderr,	"\a\n"
 			"--------------------------------------------------\n"
-			" ---> Reached target process %d at event %u.\n",
+			" ---> Reached target process %d at event %u.\n"
+			"--------------------------------------------------\n",
 			target_process, event_now);
 	}
 
@@ -2003,6 +2022,13 @@ static void handle_signal(int sig)
 
 void replay(int argc, char* argv[], char** envp)
 {
+	// If we're not going to autolaunch the debugger, don't go
+	// through the rigamarole to set that up.  All it does is
+	// complicate the process tree and confuse users.
+	if (rr_flags()->dont_launch_debugger) {
+		return serve_replay(argc, argv, envp);
+	}
+
 	parent = getpid();
 
 	struct sigaction sa;
@@ -2070,6 +2096,115 @@ void replay(int argc, char* argv[], char** envp)
 			exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
 		}
 	}
+}
+
+void replay_flags_to_args(const struct flags& f,
+			  vector<string>* common_args,
+			  vector<string>* replay_args)
+{
+	// Common args.
+	if (f.force_enable_debugger) {
+		common_args->push_back("-f");
+	}
+	if (f.check_cached_mmaps) {
+		common_args->push_back("-k");
+	}
+	if (f.mark_stdio) {
+		common_args->push_back("-m");
+	}
+	if (f.cpu_unbound) {
+		common_args->push_back("-u");
+	}
+	if (f.verbose) {
+		common_args->push_back("-v");
+	}
+	// Replay args.
+	if (!f.redirect) {
+		replay_args->push_back("-q");
+	}
+	if (f.target_process) {
+		switch (f.process_created_how) {
+		case CREATED_FORK:
+			replay_args->push_back("-f");
+			break;
+		case CREATED_EXEC:
+			replay_args->push_back("-p");
+			break;
+		default:
+			fatal("Not reached");
+		}
+		stringstream ss;
+		ss << f.target_process;
+		replay_args->push_back(ss.str());
+	}
+	if (f.goto_event) {
+		stringstream ss;
+		ss << f.goto_event;
+		replay_args->push_back(ss.str());
+	}
+	if (f.dbgport) {
+		replay_args->push_back("-s");
+		stringstream ss;
+		ss << f.dbgport;
+		replay_args->push_back(ss.str());
+	}
+}
+
+static void restart_replay(struct dbg_request req)
+{
+	// We're going to restart by exec()ing on top of ourselves, in
+	// order to keep the process tree intact.  So our tracees
+	// won't get the kill signal they usually would if we
+	// early-exited.
+	//
+	// NB: it's critical that *all* allocated rr resources die
+	// when our task does, and exec()ing is an easy way to test
+	// that we're not potentially leaking anything.
+	Task::killall();
+
+	// FIXME: we have to handle crashes and abnormal termination,
+	// so these shouldn't be mandatory.  I don't know if they are
+	// or not.
+	close_libpfm();
+	close_trace_files();
+
+	// Update the replayer launch flags with values the debugger
+	// has most recently seen from the user.
+	struct flags f = *rr_flags();
+	f.goto_event = req.restart.event > 0 ?
+			req.restart.event : f.goto_event;
+	f.dbgport = req.restart.port;
+
+	char exe[PATH_MAX];
+	ssize_t nbytes = readlink("/proc/self/exe", exe, sizeof(exe));
+	if (-1 == nbytes) {
+		fatal("Failed to readlink('/proc/self/exe')");
+	}
+	exe[nbytes] = '\0';
+
+	vector<string> common_args;
+	vector<string> replay_args;
+	replay_flags_to_args(f, &common_args, &replay_args);
+
+	ssize_t len = 1/*exe*/ + common_args.size() + 1/*replay*/ +
+		      replay_args.size() + 1/*trace-dir*/ + 1/*nullptr*/;
+	char** argv = (char**)malloc(len * sizeof(char*));
+
+	int i = 0;
+	argv[i++] = exe;
+	for (size_t j = 0; j < common_args.size(); ++j) {
+		argv[i++] = strdup(common_args[j].c_str());
+	}
+	argv[i++] = strdup("replay");
+	for (size_t j = 0; j < replay_args.size(); ++j) {
+		argv[i++] = strdup(replay_args[j].c_str());
+	}
+	argv[i++] = strdup(get_trace_path());
+	argv[i++] = nullptr;
+	assert(i == len);
+
+	execv(exe, argv);
+	fatal("Failed to exec %s", exe);
 }
 
 void emergency_debug(Task* t)

@@ -109,6 +109,9 @@ enum DbgRequestType{
 
 	/* gdb host detaching from stub.  No parameters. */
 	DREQ_DETACH,
+
+	/* Uses params.restart. */
+	DREQ_RESTART,
 };
 
 /**
@@ -127,6 +130,11 @@ struct dbg_request {
 		} mem;
 
 		DbgRegister reg;
+
+		struct {
+			int event;
+			short port;
+		} restart;
 	};
 };
 

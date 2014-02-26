@@ -401,9 +401,10 @@ static void logmsg(const char* msg, ...)
 
 #define fatal(msg, ...)							\
 	do {								\
-		logmsg("[FATAL] (%s:%d: errno: %s) " msg "\n",		\
-		       __FILE__, __LINE__, strerror(errno), ##__VA_ARGS__); \
-		assert("Bailing because of fatal error" && 0);		\
+		logmsg("[FATAL] (%s:%d: errno: %s: tid: %d) " msg "\n",	\
+		       __FILE__, __LINE__, strerror(errno),		\
+		       traced_gettid(), ##__VA_ARGS__);			\
+		traced_raise(SIGABRT);					\
 	} while (0)
 
 #ifdef DEBUGTAG
