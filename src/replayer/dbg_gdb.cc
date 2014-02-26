@@ -56,7 +56,7 @@ struct dbg_context {
 				 * enabled */
 	struct sockaddr_in addr;	    /* server address */
 	int listen_fd;			    /* listen socket */
-	int fd;				    /* client socket fd */
+	int sock_fd;			    /* client socket fd */
 	pid_t child;			    /* debugger process */
 	/* XXX probably need to dynamically size these */
 	byte inbuf[4096];	/* buffered input from gdb */
@@ -154,9 +154,10 @@ static void await_debugger(struct dbg_context* dbg)
 	struct sockaddr_in client_addr;
 	socklen_t len = sizeof(client_addr);
 
-	dbg->fd = accept(dbg->listen_fd, (struct sockaddr*)&client_addr, &len);
-	make_cloexec(dbg->fd);
-	if (fcntl(dbg->fd, F_SETFL, O_NONBLOCK)) {
+	dbg->sock_fd =
+		accept(dbg->listen_fd, (struct sockaddr*)&client_addr, &len);
+	make_cloexec(dbg->sock_fd);
+	if (fcntl(dbg->sock_fd, F_SETFL, O_NONBLOCK)) {
 		fatal("Can't make client socket NONBLOCK");
 	}
 	close(dbg->listen_fd);
@@ -239,7 +240,7 @@ static int poll_socket(const struct dbg_context* dbg,
 	int ret;
 
 	memset(&pfd, 0, sizeof(pfd));
-	pfd.fd = dbg->fd;
+	pfd.fd = dbg->sock_fd;
 	pfd.events = events;
 
 	ret = poll(&pfd, 1, timeoutMs);
@@ -268,7 +269,7 @@ static void read_data_once(struct dbg_context* dbg)
 	/* Wait until there's data, instead of busy-looping on
 	 * EAGAIN. */
 	poll_incoming(dbg, -1/* wait forever */);
-	nread = read(dbg->fd, dbg->inbuf + dbg->inlen,
+	nread = read(dbg->sock_fd, dbg->inbuf + dbg->inlen,
 		     dbg->insize - dbg->inlen);
 	if (0 == nread) {
 		log_info("(gdb closed debugging socket, exiting)");
@@ -297,7 +298,7 @@ static void write_flush(struct dbg_context* dbg)
 		ssize_t nwritten;
 
 		poll_outgoing(dbg, -1/*wait forever*/);
-		nwritten = write(dbg->fd,
+		nwritten = write(dbg->sock_fd,
 				 dbg->outbuf + write_index,
 				 dbg->outlen - write_index);
 		if (nwritten < 0) {
@@ -1303,7 +1304,7 @@ void dbg_destroy_context(struct dbg_context** dbg)
 		return;
 	}
 	*dbg = NULL;
-	close(d->fd);
+	close(d->sock_fd);
 	free(d);
 	*dbg = NULL;
 }
