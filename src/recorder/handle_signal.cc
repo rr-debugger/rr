@@ -364,7 +364,9 @@ static void record_signal(Task* t, const siginfo_t* si,
 		sys_ptrace_singlestep_sig(t, sig);
 		t->ev->signal.delivered = 1;
 
-		sys_waitpid(t->tid, &t->status);
+		if (!sys_waitpid(t->tid, &t->status)) {
+			return;
+		}
 		/* It's been observed that when tasks enter
 		 * sighandlers, the singlestep operation above doesn't
 		 * retire any instructions; and indeed, if an
