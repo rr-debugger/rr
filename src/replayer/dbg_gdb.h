@@ -184,6 +184,12 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 void dbg_launch_debugger(int params_pipe_fd);
 
 /**
+ * Notify the debug server that replay is about to be restarted, and
+ * it should prepare any state necessary to restore post-exec.
+ */
+void dbg_prepare_restore_after_exec_restart(struct dbg_context* dbg);
+
+/**
  * Call this when the target of |req| is needed to fulfill the
  * request, but the target is dead.  This situation is a symptom of a
  * gdb or rr bug.

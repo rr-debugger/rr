@@ -385,9 +385,12 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 
 /**
  * Return an fd referring to a new shmem segment with descriptive
- * |name| of size |num_bytes|.
+ * |name| of size |num_bytes|.  Pass O_NO_CLOEXEC to clo_exec to
+ * prevent setting the O_CLOEXEC flag.
  */
-int create_shmem_segment(const char* name, size_t num_bytes);
+enum { O_NO_CLOEXEC = 0 };
+int create_shmem_segment(const char* name, size_t num_bytes,
+			 int cloexec = O_CLOEXEC);
 
 /**
  * Ensure that the shmem segment referred to by |fd| has exactly the

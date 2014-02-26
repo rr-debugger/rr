@@ -109,7 +109,7 @@ static Task* last_task;
  * debugging socket being closed, and a new one created that the user
  * must manually connect to.
  */
-static void restart_replay(struct dbg_request req);
+static void restart_replay(struct dbg_context* dbg, struct dbg_request req);
 
 enum TrapType { TRAP_NONE = 0, TRAP_STEPI,
 		TRAP_BKPT_INTERNAL, TRAP_BKPT_USER };
@@ -351,17 +351,19 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		return continue_all_tasks;
 	}
 	while (1) {
+		debug("getting next debugger request ...");
 		struct dbg_request req = dbg_get_request(dbg);
 		Task* target = NULL;
 
 		if (dbg_is_resume_request(&req)) {
+			debug("  is resume request");
 			return req;
 		}
 
 		// Debugger client requested that we restart execution
 		// from the beginning.  Restart our debug session.
 		if (DREQ_RESTART == req.type) {
-			restart_replay(req);
+			restart_replay(dbg, req);
 			fatal("Not reached");
 		}
 
@@ -2150,7 +2152,7 @@ void replay_flags_to_args(const struct flags& f,
 	}
 }
 
-static void restart_replay(struct dbg_request req)
+static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 {
 	// We're going to restart by exec()ing on top of ourselves, in
 	// order to keep the process tree intact.  So our tracees
@@ -2167,6 +2169,8 @@ static void restart_replay(struct dbg_request req)
 	// or not.
 	close_libpfm();
 	close_trace_files();
+
+	dbg_prepare_restore_after_exec_restart(dbg);
 
 	// Update the replayer launch flags with values the debugger
 	// has most recently seen from the user.
