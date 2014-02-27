@@ -35,7 +35,7 @@ extern "C" {
  */
 #define SYSCALLBUF_IS_IP_IN_LIB(_eip, _t)				\
 	((uintptr_t)(_t)->syscallbuf_lib_start <= (uintptr_t)(_eip)	\
-	 && (uintptr_t)(_eip) <= (uintptr_t)(_t)->syscallbuf_lib_end)
+	 && (uintptr_t)(_eip) < (uintptr_t)(_t)->syscallbuf_lib_end)
 
 /**
  * True when |_eip| is just before a syscall trap instruction for a
