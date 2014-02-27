@@ -13,7 +13,7 @@ send_gdb('info threads\n')
 for i in xrange(NUM_THREADS + 1, 1, -1):
     # The threads are at the kernel syscall entry, or either the
     # traced/untraced entry reached through the rr monkeypatched one.
-    expect_gdb(r'%d\s+Thread[^(]+\(BP-THREAD-%d\)[^_]+(?:__kernel_vsyscall|_raw_traced_syscall|_untraced_syscall_entry_point_ip) \(\)'%
+    expect_gdb(r'%d\s+Thread[^(]+\(BP-THREAD-%d\)[^_]+(?:__kernel_vsyscall|_traced_raw_syscall|_untraced_syscall_entry_point_ip) \(\)'%
                (i, i))
 
 expect_gdb(r'1\s+Thread[^h]+hit_barrier \(\)')

@@ -200,18 +200,18 @@ static void* local_memcpy(void* dest, const void* source, size_t n)
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
-/* NB: this code is copied and pasted for both _raw_traced_syscall()
- * and _raw_untraced_syscall() because it needs to be debuggable, and
+/* NB: this code is copied and pasted for both _traced_raw_syscall()
+ * and _untraced_raw_syscall() because it needs to be debuggable, and
  * generating it from a macro would hinder that.  So for now, please
  * keep the two in sync.
  *
  * TODO: generate from shared .S file. */
-long _raw_traced_syscall(int syscallno, long a0, long a1, long a2,
+long _traced_raw_syscall(int syscallno, long a0, long a1, long a2,
 			 long a3, long a4, long a5);
 __asm__(".text\n\t"
-	".globl _raw_traced_syscall\n\t"
-	".type _raw_traced_syscall, @function\n\t"
-	"_raw_traced_syscall:\n\t" /* syscallno = 4(%esp) */
+	".globl _traced_raw_syscall\n\t"
+	".type _traced_raw_syscall, @function\n\t"
+	"_traced_raw_syscall:\n\t" /* syscallno = 4(%esp) */
 	".cfi_startproc\n\t"
 
 	"pushl %ebx\n\t"	/* syscallno = 8(%esp) */
@@ -255,7 +255,7 @@ __asm__(".text\n\t"
 	".cfi_restore %ebx\n\t"
 	"ret\n\t"
 	".cfi_endproc\n\t"
-	".size _raw_traced_syscall, .-_raw_traced_syscall\n\t");
+	".size _traced_raw_syscall, .-_traced_raw_syscall\n\t");
 
 static int update_errno_ret(long ret)
 {
@@ -270,7 +270,7 @@ static int update_errno_ret(long ret)
 static int traced_syscall(int syscallno, long a0, long a1, long a2,
 			  long a3, long a4, long a5)
 {
-	long ret = _raw_traced_syscall(syscallno, a0, a1, a2, a3, a4, a5);
+	long ret = _traced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
 	return update_errno_ret(ret);
 }
 #define traced_syscall6(no, a0, a1, a2, a3, a4, a5)			\
@@ -293,11 +293,11 @@ static int traced_syscall(int syscallno, long a0, long a1, long a2,
  * syscalls return the raw kernel return value, and don't transform it
  * to -1/errno per POSIX semantics.
  */
-static long raw_traced_syscall(const struct syscall_info* call)
+static long traced_raw_syscall(const struct syscall_info* call)
 {
 	/* FIXME: pass |call| to avoid pushing these on the stack
 	 * again. */
-	return _raw_traced_syscall(call->no,
+	return _traced_raw_syscall(call->no,
 				   call->args[0], call->args[1],
 				   call->args[2], call->args[3],
 				   call->args[4], call->args[5]);
@@ -440,18 +440,18 @@ static void exit_signal_critical_section(const sigset_t* saved_mask)
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
 
-/* NB: this code is copied and pasted for both _raw_traced_syscall()
- * and _raw_untraced_syscall() because it needs to be debuggable, and
+/* NB: this code is copied and pasted for both _traced_raw_syscall()
+ * and _untraced_raw_syscall() because it needs to be debuggable, and
  * generating it from a macro would hinder that.  So for now, please
  * keep the two in sync.
  *
  * TODO: generate from shared .S file. */
-long _raw_untraced_syscall(int syscallno, long a0, long a1, long a2,
+long _untraced_raw_syscall(int syscallno, long a0, long a1, long a2,
 			 long a3, long a4, long a5);
 __asm__(".text\n\t"
-	".globl _raw_untraced_syscall\n\t"
-	".type _raw_untraced_syscall, @function\n\t"
-	"_raw_untraced_syscall:\n\t" /* syscallno = 4(%esp) */
+	".globl _untraced_raw_syscall\n\t"
+	".type _untraced_raw_syscall, @function\n\t"
+	"_untraced_raw_syscall:\n\t" /* syscallno = 4(%esp) */
 	".cfi_startproc\n\t"
 
 	"pushl %ebx\n\t"	/* syscallno = 8(%esp) */
@@ -495,7 +495,7 @@ __asm__(".text\n\t"
 	".cfi_restore %ebx\n\t"
 	"ret\n\t"
 	".cfi_endproc\n\t"
-	".size _raw_untraced_syscall, .-_raw_untraced_syscall\n\t");
+	".size _untraced_raw_syscall, .-_untraced_raw_syscall\n\t");
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
@@ -505,7 +505,7 @@ __asm__(".text\n\t"
 static long untraced_syscall(int syscallno, long a0, long a1, long a2,
 			    long a3, long a4, long a5)
 {
-	return _raw_untraced_syscall(syscallno, a0, a1, a2, a3, a4, a5);
+	return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
 }
 #define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)			\
 	untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
@@ -1188,7 +1188,7 @@ static long sys_access(const struct syscall_info* call)
 	assert(syscallno == call->no);
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
  	}
 	ret = untraced_syscall2(syscallno, pathname, mode);
 	return commit_raw_syscall(syscallno, ptr, ret);
@@ -1211,7 +1211,7 @@ static long sys_clock_gettime(const struct syscall_info* call)
 		ptr += sizeof(*tp2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
  	}
 	ret = untraced_syscall2(syscallno, clk_id, tp2);
 	if (tp) {
@@ -1229,7 +1229,7 @@ static long sys_close(const struct syscall_info* call)
 	long ret;
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
  	}
 	ret = untraced_syscall1(syscallno, fd);
 	return commit_raw_syscall(syscallno, ptr, ret);
@@ -1267,7 +1267,7 @@ static int sys_fcntl64_no_outparams(const struct syscall_info* call)
 	assert(syscallno == call->no);
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 	ret = untraced_syscall3(syscallno, fd, cmd, arg);
 	return commit_raw_syscall(syscallno, ptr, ret);
@@ -1292,7 +1292,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call)
 		ptr += sizeof(*owner2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 	if (owner2) {
 		local_memcpy(owner2, owner, sizeof(*owner2));
@@ -1322,7 +1322,7 @@ static int sys_fcntl64_xlk64(const struct syscall_info* call)
 		ptr += sizeof(*lock2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 	if (lock2) {
 		local_memcpy(lock2, lock, sizeof(*lock2));
@@ -1362,7 +1362,7 @@ static long sys_fcntl64(const struct syscall_info* call)
 		/* TODO: buffer the F_*LK API. */
 		/* fall through */
 	default:
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 }
 
@@ -1393,7 +1393,7 @@ static long sys_futex(const struct syscall_info* call)
 	 * special processing in the tracer process (in addition to
 	 * not being worth doing for perf reasons). */
 	default:
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	const int syscallno = SYS_futex;
@@ -1424,7 +1424,7 @@ static long sys_futex(const struct syscall_info* call)
 	/* See above; it's not worth buffering may-block futex
 	 * calls. */
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	ret = untraced_syscall6(syscallno, uaddr, op, val, timeout,
@@ -1472,7 +1472,7 @@ static long sys_gettimeofday(const struct syscall_info* call)
 		ptr += sizeof(*tzp2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 	ret = untraced_syscall2(syscallno, tp2, tzp2);
 	if (tp) {
@@ -1504,7 +1504,7 @@ static long sys__llseek(const struct syscall_info* call)
 		ptr += sizeof(*result2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	if (result2) {
@@ -1531,7 +1531,7 @@ static long sys_madvise(const struct syscall_info* call)
 	assert(syscallno == call->no);
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, addr, length, advice);
@@ -1567,7 +1567,7 @@ static long sys_open(const struct syscall_info* call)
 
 	ptr = prep_syscall();
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, pathname, flags, mode);
@@ -1592,7 +1592,7 @@ static long sys_poll(const struct syscall_info* call)
 		ptr += nfds * sizeof(*fds2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 	if (fds2) {
 		local_memcpy(fds2, fds, nfds * sizeof(*fds2));
@@ -1630,7 +1630,7 @@ static long sys_read(const struct syscall_info* call)
 		ptr += count;
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, fd, buf2, count);
@@ -1659,7 +1659,7 @@ static long sys_readlink(const struct syscall_info* call)
 		ptr += bufsiz;
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, path, buf2, bufsiz);
@@ -1689,7 +1689,7 @@ static long sys_recv(const struct syscall_info* call)
 		ptr += len;
 	}
 	if (!start_commit_buffered_syscall(SYS_socketcall, ptr, MAY_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
@@ -1706,7 +1706,7 @@ static long sys_socketcall(const struct syscall_info* call)
 	case SYS_RECV:
 		return sys_recv(call);
 	default:
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 }
 
@@ -1721,7 +1721,7 @@ static long sys_time(const struct syscall_info* call)
 	assert(syscallno == call->no);
 
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 	ret = untraced_syscall1(syscallno, NULL);
 	if (tp) {
@@ -1751,7 +1751,7 @@ static long sys_xstat64(const struct syscall_info* call)
 		ptr += sizeof(*buf2);
 	}
 	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 	ret = untraced_syscall2(syscallno, what, buf2);
 	if (buf2) {
@@ -1778,7 +1778,7 @@ static long sys_write(const struct syscall_info* call)
 	 * TODO: buffer them normally here. */
 	if (RR_MAGIC_SAVE_DATA_FD == fd ||
 	    !start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 
 	ret = untraced_syscall3(syscallno, fd, buf, count);
@@ -1814,7 +1814,7 @@ vsyscall_hook(const struct syscall_info* call)
 	case SYS_stat64:
 		return sys_xstat64(call);
 	default:
-		return raw_traced_syscall(call);
+		return traced_raw_syscall(call);
 	}
 }
 
