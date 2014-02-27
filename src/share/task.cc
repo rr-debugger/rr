@@ -1064,14 +1064,6 @@ Task::read_word(const byte* child_addr)
 }
 
 void
-Task::set_signal_disposition(int sig, const struct kernel_sigaction& sa)
-{
-	// TODO: discard attempts to handle or ignore signals that
-	// can't be by POSIX
-	sighandlers->get(sig) = Sighandler(sa);
-}
-
-void
 Task::set_tid_addr(const byte* tid_addr)
 {
 	debug("updating cleartid futex to %p", tid_addr);
@@ -1115,7 +1107,23 @@ Task::update_prname(byte* child_addr)
 }
 
 void
-Task::update_sigmask(struct user_regs_struct* regs)
+Task::update_sigaction(const struct user_regs_struct* regs)
+{
+	int sig = regs->ebx;
+	const byte* new_sigaction = (const byte*)regs->ecx;
+	if (0 == regs->eax && new_sigaction) {
+		// A new sighandler was installed.  Update our
+		// sighandler table.
+		// TODO: discard attempts to handle or ignore signals
+		// that can't be by POSIX
+		struct kernel_sigaction sa;
+		read_mem(new_sigaction, &sa);
+		sighandlers->get(sig) = Sighandler(sa);
+	}
+}
+
+void
+Task::update_sigmask(const struct user_regs_struct* regs)
 {
 	int how = regs->ebx;
 	byte* setp = (byte*)regs->ecx;

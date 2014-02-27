@@ -2351,21 +2351,10 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_rt_sigaction: {
-		int sig = regs.ebx;
-		byte* new_sigaction = (byte*)regs.ecx;
 		byte* old_sigaction = (byte*)regs.edx;
-
 		record_child_data(t, sizeof(struct kernel_sigaction),
 				  old_sigaction);
-		if (0 == regs.eax && new_sigaction) {
-			/* A new sighandler was installed.  Update t's
-			 * sighandler table. */
-			struct kernel_sigaction* sa =
-				(struct kernel_sigaction*)
-				read_child_data(t, sizeof(*sa), new_sigaction);
-			t->set_signal_disposition(sig, *sa);
-			free(sa);
-		}
+		t->update_sigaction(&regs);
 		break;
 	 }
 	 /* TODO: SYS_signal, SYS_sigaction */

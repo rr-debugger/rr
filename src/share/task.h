@@ -993,13 +993,6 @@ public:
 	 */
 	long read_word(const byte* child_addr);
 
-	/**
-	 * Set the disposition and resethand semantics of |sig| to
-	 * |sa|, overwriting whatever may already be there.
-	 */
-	void set_signal_disposition(int sig,
-				    const struct kernel_sigaction& sa);
-
 	/** Update the clear-tid futex to |tid_addr|. */
 	void set_tid_addr(const byte* tid_addr);
 
@@ -1033,14 +1026,16 @@ public:
 	 */
 	void update_prname(byte* child_addr);
 
+ 	/**
+	 * Call this when SYS_sigaction is finishing with |regs|.
+	 */
+	void update_sigaction(const struct user_regs_struct* regs);
+
 	/**
 	 * Call this after the tracee has completed a
 	 * SYS_rt_sigprocmask syscall with |regs|.
-	 *
-	 * NB: |regs| may be modified and should be written back to
-	 * the tracee.
 	 */
-	void update_sigmask(struct user_regs_struct* regs);
+	void update_sigmask(const struct user_regs_struct* regs);
 
 	/**
 	 * Return the virtual memory mapping (address space) of this

@@ -1365,6 +1365,28 @@ static void maybe_verify_tracee_saved_data(Task* t,
 	free(buf);
 }
 
+/**
+ * Call this hook just before exiting a syscall.  Often Task
+ * attributes need to be updated based on the finishing syscall.
+ */
+void before_syscall_exit(Task* t, int syscallno,
+			 const struct user_regs_struct* rec_regs)
+{
+	switch (syscallno) {
+	case SYS_sigaction:
+		t->update_sigaction(rec_regs);
+		return;
+
+	case SYS_sigprocmask:
+	case SYS_rt_sigprocmask:
+		t->update_sigmask(rec_regs);
+		return;
+
+	default:
+		return;
+	}
+}
+
 void rep_process_syscall(Task* t, struct rep_trace_step* step)
 {
 	int syscall = t->trace.stop_reason; /* FIXME: don't shadow syscall() */
@@ -1453,6 +1475,13 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->syscall.emu = rep_EMU == def->type;
 		step->syscall.emu_ret =
 			rep_EMU == def->type || rep_EXEC_RET_EMU == def->type;
+		// TODO: there are several syscalls below that aren't
+		// /actually/ irregular, they just want to update some
+		// state on syscall exit.  Convert them to use
+		// before_syscall_exit().
+		if (TSTEP_EXIT_SYSCALL == step->action) {
+			before_syscall_exit(t, syscall, rec_regs);
+		}
 		return;
 	}
 
@@ -1601,20 +1630,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			return;
 		}
 		break;
-
-	case SYS_sigprocmask:
-	case SYS_rt_sigprocmask:
-		step->syscall.num_emu_args = 1;
-		step->syscall.emu = 1;
-		step->syscall.emu_ret = 1;
-		if (STATE_SYSCALL_ENTRY == state) {
-			step->action = TSTEP_ENTER_SYSCALL;
-			return;
-		}
-		read_child_registers(t, &t->regs);
-		t->update_sigmask(&t->regs);
-		step->action = TSTEP_EXIT_SYSCALL;
-		return;
 
 	case SYS_write:
 		step->syscall.num_emu_args = 0;
