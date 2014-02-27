@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh fault_in_code_page "$@"
+compare_test 'EXIT-SUCCESS'
