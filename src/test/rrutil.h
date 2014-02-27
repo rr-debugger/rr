@@ -118,4 +118,13 @@ inline static void check_data(void* buf, size_t len)
 	test_assert(len == nwritten);
 }
 
+/**
+ * Return the current value of the time-stamp counter.
+ */
+inline static uint64_t rdtsc(void) {
+	uint32_t hi, lo;
+	__asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+	return (uint64_t)hi << 32 | (uint64_t)lo;
+}
+
 #endif /* RRUTIL_H */

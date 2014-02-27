@@ -32,15 +32,34 @@ static void fault_in_code_page(int sig, siginfo_t* si, void* context) {
 	atomic_puts("  ... and protected it. sigreturn'ing");
 }
 
+static uint64_t sigsegv_blocked_rdtsc(void)
+{
+	sigset_t s, old;
+
+	sigemptyset(&s);
+	sigaddset(&s, SIGSEGV);
+
+	sigprocmask(SIG_BLOCK, &s, &old);
+	uint64_t tsc = rdtsc();
+	sys_gettid();
+	sigprocmask(SIG_SETMASK, &old, NULL);
+
+	return tsc;
+}
+
 int main(int argc, char *argv[]) {
 	struct sigaction act;
 
 	page_size = sysconf(_SC_PAGESIZE);
 
-	memset(&act, 0, sizeof(act));
 	act.sa_sigaction = fault_in_code_page;
 	act.sa_flags = SA_SIGINFO;
+	sigemptyset(&act.sa_mask);
 	sigaction(SIGSEGV, &act, NULL);
+
+	atomic_printf("current tsc: %llu\n", sigsegv_blocked_rdtsc());
+
+	atomic_printf("    and now: %llu\n", sigsegv_blocked_rdtsc());
 
 	code_page = mmap(NULL, page_size,
 			 PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

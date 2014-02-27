@@ -2,13 +2,6 @@
 
 #include "rrutil.h"
 
-
-static uint64_t rdtsc(void) {
-	uint32_t hi, lo;
-	__asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-	return (uint64_t)hi << 32 | (uint64_t)lo;
-}
-
 static void breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;

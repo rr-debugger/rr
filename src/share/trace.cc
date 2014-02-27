@@ -168,9 +168,11 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 			r->orig_eax, r->esp, r->eip, r->eflags);
 	} else {
 		fprintf(out,
-"\n  hw_ints:%lld, faults:%lld, rbc:%lld, insns:%lld"
-"\n  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx"
-"\n  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld xfs:0x%lx xgs:0x%lx\n}\n",
+"\n"
+"  hw_ints:%lld, faults:%lld, rbc:%lld, insns:%lld\n"
+"  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx\n"
+"  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld xfs:0x%lx xgs:0x%lx\n"
+"}\n",
 			f->hw_interrupts, f->page_faults, f->rbc, f->insts,
 			r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
 			r->eip, r->esp, r->eflags, r->orig_eax, r->xfs, r->xgs);
@@ -459,6 +461,20 @@ static int has_exec_info(const struct event* ev)
 }
 
 /**
+ * Collect execution info about |t| that's relevant for replay.  For
+ * example, the current rbc value must read and saved in order to
+ * replay asynchronous signals.
+ */
+static void collect_execution_info(Task* t, struct trace_frame* frame)
+{
+	frame->hw_interrupts = read_hw_int(t->hpc);
+	frame->page_faults = read_page_faults(t->hpc);
+	frame->rbc = read_rbc(t->hpc);
+	frame->insts = read_insts(t->hpc);
+	read_child_registers(t, &frame->recorded_regs);
+}
+
+/**
  * Translate |t|'s event |ev| into a trace frame that can be saved to
  * the log.
  */
@@ -476,11 +492,7 @@ static void encode_trace_frame(Task* t, const struct event* ev,
 	frame->state = state;
 	frame->has_exec_info = has_exec_info(ev);
 	if (frame->has_exec_info) {
-		frame->hw_interrupts = read_hw_int(t->hpc);
-		frame->page_faults = read_page_faults(t->hpc);
-		frame->rbc = read_rbc(t->hpc);
-		frame->insts = read_insts(t->hpc);
-		read_child_registers(t, &frame->recorded_regs);
+		collect_execution_info(t, frame);
 	}
 }
 

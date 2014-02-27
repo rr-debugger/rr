@@ -278,14 +278,8 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 	} else {
 		fprintf(stderr,
 			"Attach to the rr debug server with this command:\n"
-			"  target extended-remote %s:%d\n",
+			"  target remote %s:%d\n",
 			!strcmp(addr, "127.0.0.1") ? "" : addr, port);
-		// XXX if we're a restarted replayer in gdb,
-		// our replay spam has destroyed the gdb
-		// prompt.  It's not obvious to the user that
-		// commands can be entered.  So put one back.
-		printf("(rr is replacing gdb's prompt now, whether or not gdb is running)\n(gdb) ");
-		fflush(stdout);
 	}
 	await_debugger(dbg);
 	return dbg;

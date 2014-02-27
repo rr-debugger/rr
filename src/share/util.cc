@@ -1406,21 +1406,30 @@ void prepare_remote_syscalls(Task* t,
 			 syscall_insn);
 }
 
-void* push_tmp_str(Task* t, struct current_state_buffer* state,
-		   const char* str, struct restore_mem* mem)
+void* push_tmp_mem(Task* t, struct current_state_buffer* state,
+		   const byte* mem, ssize_t num_bytes,
+		   struct restore_mem* restore)
 {
-	mem->len = strlen(str) + 1/*null byte*/;
-	mem->saved_sp = (byte*)state->regs.esp;
+	restore->len = num_bytes;
+	restore->saved_sp = (byte*)state->regs.esp;
 
-	state->regs.esp -= mem->len;
+	state->regs.esp -= restore->len;
 	write_child_registers(t, &state->regs);
-	mem->addr = (byte*)state->regs.esp;
+	restore->addr = (byte*)state->regs.esp;
 
-	mem->data = (byte*)read_child_data(t, mem->len, mem->addr);
+	restore->data = (byte*)read_child_data(t, restore->len, restore->addr);
 
-	write_child_data(t, mem->len, mem->addr, (const byte*)str);
+	write_child_data(t, restore->len, restore->addr, mem);
 
-	return mem->addr;
+	return restore->addr;
+}
+
+void* push_tmp_str(Task* t, struct current_state_buffer* state,
+		   const char* str, struct restore_mem* restore)
+{
+	return push_tmp_mem(t, state,
+			    (const byte*)str, strlen(str) + 1/*null byte*/,
+			    restore);
 }
 
 void pop_tmp_mem(Task* t, struct current_state_buffer* state,

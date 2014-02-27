@@ -30,6 +30,10 @@ struct Sighandlers;
 class Task;
 struct TaskGroup;
 
+/** Add the signal |_sig| to |_set|. */
+#define SIGSET_ADD(_set, _sig)			\
+	((_set) | (1 << ((_sig) - 1)))
+
 struct syscallbuf_hdr;
 struct syscallbuf_record;
 
@@ -936,6 +940,9 @@ public:
 	 */
 	void inited_syscallbuf();
 
+	/** Return true iff |sig| is blocked for this. */
+	bool is_sig_blocked(int sig);
+
 	/**
 	 * Return nonzero if |t| may not be immediately runnable,
 	 * i.e., resuming execution and then |waitpid()|'ing may block
@@ -1011,6 +1018,9 @@ public:
 	 * invoked when |sig| is received.
 	 */
 	bool signal_has_user_handler(int sig) const;
+
+	/** Return |sig|'s current sigaction. */
+	const kernel_sigaction& signal_action(int sig) const;
 
 	/** Return the task group this belongs to. */
 	TaskGroup::shr_ptr task_group() { return tg; }
