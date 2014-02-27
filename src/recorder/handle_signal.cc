@@ -54,6 +54,38 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si)
 }
 
 /**
+ * Restore the blocked-ness and sigaction for SIGSEGV from |t|'s local
+ * copy.
+ */
+static void
+restore_sigsegv_state(Task* t)
+{
+	kernel_sigaction sa = t->signal_action(SIGSEGV);
+	struct current_state_buffer state;
+	prepare_remote_syscalls(t, &state);
+	{
+		struct restore_mem restore;
+		const byte* child_sa = (const byte*)
+			push_tmp_mem(t, &state, (const byte*)&sa, sizeof(sa),
+				     &restore);
+
+		int ret = remote_syscall4(t, &state, SYS_rt_sigaction,
+					  SIGSEGV, child_sa, NULL, 
+					  _NSIG / 8);
+		assert_exec(t, 0 == ret, "Failed to restore SIGSEGV handler");
+
+		pop_tmp_mem(t, &state, &restore);
+	}
+	// NB: we would normally want to restore the SIG_BLOCK for
+	// SIGSEGV here, but doing so doesn't change the kernel's
+	// "SigBlk" mask.  There's no bug observed in the kernel's
+	// delivery of SIGSEGV after the RDTSC trap, so we do nothing
+	// here and move on.
+	finish_remote_syscalls(t, &state);
+}
+
+
+/**
  * Return nonzero if |t| was stopped because of a SIGSEGV resulting
  * from a rdtsc and |t| was updated appropriately, zero otherwise.
  */
@@ -92,6 +124,30 @@ static int try_handle_rdtsc(Task *t)
 		regs.edx = edx;
 		regs.eip += size;
 		write_child_registers(t, &regs);
+
+		// When SIGSEGV is blocked, apparently the kernel has
+		// to do some ninjutsu to raise the RDTSC trap.  We
+		// see the SIGSEGV bit in the "SigBlk" mask in
+		// /proc/status cleared, and if there's a user handler
+		// the SIGSEGV bit in "SigCgt" is cleared too.  That's
+		// perfectly fine, except that it's unclear who's
+		// supposed to undo the signal-state munging.  A
+		// legitimate argument can be made that the tracer is
+		// responsible, so we go ahead and restore the old
+		// state.
+		//
+		// One could also argue that this is a kernel bug.  If
+		// so, then this is a workaround that can be removed
+		// in the future.
+		//
+		// If we don't restore the old state, at least firefox
+		// has been observed to hang at delivery of SIGSEGV.
+		// However, the test written for this bug,
+		// fault_in_code_addr, doesn't hang without the
+		// restore.
+		if (t->is_sig_blocked(SIGSEGV)) {
+			restore_sigsegv_state(t);
+		}
 
 		t->event = SIG_SEGV_RDTSC;
 		push_pseudosig(t, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);

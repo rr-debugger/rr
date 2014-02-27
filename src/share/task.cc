@@ -601,20 +601,19 @@ AddressSpace::populate_address_space(void* asp, Task* t,
  * the |refcount|s while they still refer to this.
  */
 struct Sighandler {
-	Sighandler() : handler(SIG_DFL), resethand(false) { }
+	Sighandler() : sa(), resethand() { }
 	Sighandler(const struct kernel_sigaction& sa)
-		: handler(sa.k_sa_handler)
-		, resethand(sa.sa_flags & SA_RESETHAND)	{ }
+		: sa(sa), resethand(sa.sa_flags & SA_RESETHAND)	{ }
 
 	bool is_default() const {
-		return SIG_DFL == handler && !resethand;
+		return SIG_DFL == sa.k_sa_handler && !resethand;
 	}
 	bool is_user_handler() const {
 		static_assert((void*)1 == SIG_IGN, "");
-		return (uintptr_t)handler & ~(uintptr_t)SIG_IGN;
+		return (uintptr_t)sa.k_sa_handler & ~(uintptr_t)SIG_IGN;
 	}
 
-	sig_handler_t handler;
+	kernel_sigaction sa;
 	bool resethand;
 };
 struct Sighandlers {
@@ -975,6 +974,13 @@ Task::futex_wait(const byte* futex, uint32_t val)
 	}
 }
 
+bool
+Task::is_sig_blocked(int sig)
+{
+	int sig_bit = sig - 1;
+	return (blocked_sigs >> sig_bit) & 1;
+}
+
 void
 Task::inited_syscallbuf()
 {
@@ -1082,13 +1088,19 @@ Task::signal_delivered(int sig)
 sig_handler_t
 Task::signal_disposition(int sig) const
 {
-	return sighandlers->get(sig).handler;
+	return sighandlers->get(sig).sa.k_sa_handler;
 }
 
 bool
 Task::signal_has_user_handler(int sig) const
 {
 	return sighandlers->get(sig).is_user_handler();
+}
+
+const kernel_sigaction&
+Task::signal_action(int sig) const
+{
+	return sighandlers->get(sig).sa;
 }
 
 pid_t
@@ -1368,8 +1380,7 @@ Task::detach_and_reap()
 bool
 Task::is_desched_sig_blocked()
 {
-	int sig_bit = SYSCALLBUF_DESCHED_SIGNAL - 1;
-	return (blocked_sigs >> sig_bit) & 1;
+	return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
 void
