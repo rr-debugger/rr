@@ -99,8 +99,11 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  * Find out the cpu model using the cpuid instruction.
  * full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
  */
-typedef enum { UnknownArch = -1, IntelSandyBridge , IntelIvyBridge, IntelNehalem, IntelMerom } cpu_type;
-cpu_type get_cpu_type(void){
+enum cpu_type {
+	IntelSandyBridge, IntelIvyBridge, IntelNehalem, IntelMerom,
+};
+static cpu_type get_cpu_type()
+{
 	unsigned int cpu_type,eax,edx;
 	cpuid(CPUID_GETFEATURES,&eax,&edx);
 	cpu_type = (eax & 0xF0FF0);
@@ -108,29 +111,19 @@ cpu_type get_cpu_type(void){
 	case 0x006F0:
 		assert(0 && "Merom not completely supported yet (find deterministic events).");
 		return IntelMerom;
-		break;
 	case 0x106E0:
 		return IntelNehalem;
-		break;
 	case 0x206A0:
 	case 0x206D0:
 		return IntelSandyBridge;
-		break;
 	case 0x306A0:
 		return IntelIvyBridge;
-		break;
 	default:
-		fprintf(stderr,	"CPU 0x%5X not supported yet (add cpuid and adjust the event string to add support).",
-			cpu_type);
-		exit(0);
-		break; /* not reached */
+		fatal("CPU 0x%5X not supported yet (add cpuid and adjust the event string to add support).",
+		      cpu_type);
 	}
-	return UnknownArch;
 }
 
-/**
- * initialize hpc here
- */
 void init_hpc(Task* t)
 {
 
@@ -173,13 +166,19 @@ void init_hpc(Task* t)
 		break;
 	}
 
-	libpfm_event_encoding(&(counters->inst.attr), inst_event , 1);
 	libpfm_event_encoding(&(counters->rbc.attr), rbc_event , 1);
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+	libpfm_event_encoding(&(counters->inst.attr), inst_event , 1);
 	/* counts up to double check */
 	//libpfm_event_encoding(&(counters->rbc.attr), rbc_event, 1);
 	libpfm_event_encoding(&(counters->hw_int.attr), hw_int_event, 1);
 	//libpfm_event_encoding(&(counters->hw_int.attr), event_str, 1);
 	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event, 0);
+#else
+	(void)inst_event;
+	(void)hw_int_event;
+	(void)page_faults_event;
+#endif
 }
 
 static void start_counter(Task* t, int group_fd, hpc_event_t* counter)
@@ -205,15 +204,17 @@ static void __start_hpc(Task* t)
 {
 	struct hpc_context *counters = t->hpc;
 	pid_t tid = t->tid;
+
+	start_counter(t, -1, &counters->rbc);
+	counters->group_leader = counters->rbc.fd;
+
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+	start_counter(t, counters->group_leader, &counters->hw_int);
+	start_counter(t, counters->group_leader, &counters->inst);
+	start_counter(t, counters->group_leader, &counters->page_faults);
+#endif
+
 	struct f_owner_ex own;
-
-	// see http://www.eece.maine.edu/~vweaver/projects/perf_events/perf_event_open.html for more information
-	start_counter(t, -1, &counters->hw_int); // group leader.
-	start_counter(t, counters->hw_int.fd, &counters->inst);
-	start_counter(t, counters->hw_int.fd, &counters->rbc);
-	start_counter(t, counters->hw_int.fd, &counters->page_faults);
-	//START_COUNTER(tid,counters->hw_int.fd,counters->rbc);
-
 	own.type = F_OWNER_TID;
 	own.pid = tid;
 	if (fcntl(counters->rbc.fd, F_SETOWN_EX, &own)) {
@@ -222,22 +223,19 @@ static void __start_hpc(Task* t)
 	sys_fcntl(counters->rbc.fd, F_SETFL, O_ASYNC);
 	sys_fcntl(counters->rbc.fd, F_SETSIG, HPC_TIME_SLICE_SIGNAL);
 
-	counters->started = 1;
-}
-
-void stop_rbc(Task* t)
-{
-	stop_counter(t, &t->hpc->rbc);
+	counters->started = true;
 }
 
 void stop_hpc(Task* t)
 {
 	struct hpc_context* counters = t->hpc;
 
+	stop_counter(t, &counters->rbc);
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 	stop_counter(t, &counters->hw_int);
 	stop_counter(t, &counters->inst);
 	stop_counter(t, &counters->page_faults);
-	stop_counter(t, &counters->rbc);
+#endif
 }
 
 static void cleanup_hpc(Task* t)
@@ -246,11 +244,13 @@ static void cleanup_hpc(Task* t)
 
 	stop_hpc(t);
 
+	sys_close(counters->rbc.fd);
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 	sys_close(counters->hw_int.fd);
 	sys_close(counters->inst.fd);
 	sys_close(counters->page_faults.fd);
-	sys_close(counters->rbc.fd);
-	counters->started = 0;
+#endif
+	counters->started = false;
 }
 
 /*
@@ -290,9 +290,14 @@ void destroy_hpc(Task *t)
 		assert(ret == size);		 \
 	} while(0)
 
-/**
- * Counter access functions
- */
+int64_t read_rbc(struct hpc_context *counters)
+{
+	int64_t tmp;
+	READ_COUNTER(counters->rbc.fd, &tmp, sizeof(int64_t));
+	return tmp;
+}
+
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 int64_t read_hw_int(struct hpc_context *counters)
 {
 	int64_t tmp;
@@ -314,10 +319,4 @@ int64_t read_page_faults(struct hpc_context *counters)
 	READ_COUNTER(counters->page_faults.fd, &tmp, sizeof(int64_t));
 	return tmp;
 }
-
-int64_t read_rbc(struct hpc_context *counters)
-{
-	int64_t tmp;
-	READ_COUNTER(counters->rbc.fd, &tmp, sizeof(int64_t));
-	return tmp;
-}
+#endif

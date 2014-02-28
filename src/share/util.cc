@@ -646,10 +646,8 @@ int compare_register_files(Task* t,
 	}
 
 	assert_exec(t, !bail_error || !err,
-		    "Fatal register mismatch\n"
-		    "    (rbc/rec:%lld/%lld; irc/rec:%lld/%lld)",
-		    read_rbc(t->hpc), t->trace.rbc,
-		    read_insts(t->hpc), t->trace.insts);
+		    "Fatal register mismatch (rbc/rec:%lld/%lld)",
+		    read_rbc(t->hpc), t->trace.rbc);
 
 	if (!err && mismatch_behavior == LOG_MISMATCHES) {
 		log_info("(register files are the same for %s and %s)",

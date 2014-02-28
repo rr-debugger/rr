@@ -21,22 +21,27 @@
  * hope that tracees don't either. */
 #define HPC_TIME_SLICE_SIGNAL SIGSTKFLT
 
+// Define this macro to enable perf counters that may be interesting
+// for experimentation, but aren't necessary for core functionality.
+//#define HPC_ENABLE_EXTRA_PERF_COUNTERS
+
 class Task;
 
-typedef struct _hpc_event
-{
+typedef struct {
 	struct perf_event_attr attr;
 	int fd;
 } hpc_event_t;
 
 struct hpc_context {
-	pid_t tid;
-	int started;
+	bool started;
+	int group_leader;
 
-	hpc_event_t inst;
 	hpc_event_t rbc;
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+	hpc_event_t inst;
 	hpc_event_t page_faults;
 	hpc_event_t hw_int;
+#endif
 };
 
 void init_libpfm(void);
@@ -48,13 +53,14 @@ void destroy_hpc(Task *t);
 void start_hpc(Task *t, int64_t val);
 void stop_hpc(Task *t);
 void reset_hpc(Task *t, int64_t val);
-void stop_rbc(Task *t);
-int pending_rbc_down(struct hpc_context *counters);
 
-int64_t read_page_faults(struct hpc_context *counters);
 int64_t read_rbc(struct hpc_context *counters);
+
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+int64_t read_page_faults(struct hpc_context *counters);
 int64_t read_rbc_down(struct hpc_context *counters);
 int64_t read_hw_int(struct hpc_context* counters);
 int64_t read_insts(struct hpc_context *counters);
+#endif
 
 #endif /* HPC_H_ */

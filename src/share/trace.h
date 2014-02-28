@@ -103,10 +103,12 @@ struct trace_frame {
 	STRUCT_DELIMITER(end_event_info);
 
 	STRUCT_DELIMITER(begin_exec_info);
+	int64_t rbc;
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 	int64_t hw_interrupts;
 	int64_t page_faults;
-	int64_t rbc;
 	int64_t insts;
+#endif
 
 	struct user_regs_struct recorded_regs;
 	STRUCT_DELIMITER(end_exec_info);
