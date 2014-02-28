@@ -163,17 +163,30 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 			" %lld %lld %lld %lld"
 			" %ld %ld %ld %ld %ld %ld %ld"
 			" %ld %ld %ld %ld\n",
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 			f->hw_interrupts, f->page_faults, f->rbc, f->insts,
+#else
+			// Don't force tools to detect our config.
+			-1LL, -1LL, f->rbc, -1LL,
+#endif
 			r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
 			r->orig_eax, r->esp, r->eip, r->eflags);
 	} else {
 		fprintf(out,
 "\n"
-"  hw_ints:%lld, faults:%lld, rbc:%lld, insns:%lld\n"
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+"  hw_ints:%lld faults:%lld rbc:%lld insns:%lld\n"
+#else
+"  rbc:%lld\n"
+#endif
 "  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx\n"
 "  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld xfs:0x%lx xgs:0x%lx\n"
 "}\n",
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 			f->hw_interrupts, f->page_faults, f->rbc, f->insts,
+#else
+			f->rbc,
+#endif
 			r->eax, r->ebx, r->ecx, r->edx, r->esi, r->edi, r->ebp,
 			r->eip, r->esp, r->eflags, r->orig_eax, r->xfs, r->xgs);
 	}
@@ -469,10 +482,12 @@ static int has_exec_info(const struct event* ev)
  */
 static void collect_execution_info(Task* t, struct trace_frame* frame)
 {
+	frame->rbc = read_rbc(t->hpc);
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 	frame->hw_interrupts = read_hw_int(t->hpc);
 	frame->page_faults = read_page_faults(t->hpc);
-	frame->rbc = read_rbc(t->hpc);
 	frame->insts = read_insts(t->hpc);
+#endif
 	read_child_registers(t, &frame->recorded_regs);
 }
 

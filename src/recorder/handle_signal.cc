@@ -436,7 +436,9 @@ static void record_signal(Task* t, const siginfo_t* si,
 		 * instruction could be retired, this code wouldn't
 		 * work.  This also cross-checks the sighandler
 		 * information we maintain in |t->sighandlers|. */
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 		assert(0 == read_insts(t->hpc));
+#endif
 
 		/* It's somewhat difficult engineering-wise to compute
 		 * the sigframe size at compile time, and it can vary
