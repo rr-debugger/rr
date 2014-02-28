@@ -191,12 +191,15 @@ static int advance_syscall_boundary(Task* t,
 		debug("  dropping ignored signal %s ...", signalname(sig));
 		return advance_syscall_boundary(t, regs);
 	}
-	assert_exec(t, (STOPSIG_SYSCALL == sig
-			|| SYSCALLBUF_DESCHED_SIGNAL == sig
-			|| HPC_TIME_SLICE_SIGNAL == sig),
-		    /* TODO: need to handle signals here */
-		    "Trying to reach syscall boundary, but saw signal %s instead (status 0x%x)",
-		    signalname(sig), status);
+	if (STOPSIG_SYSCALL != sig
+	    && SYSCALLBUF_DESCHED_SIGNAL != sig
+	    && HPC_TIME_SLICE_SIGNAL != sig) {
+		/* TODO: queue multiple pending signals */
+		fatal(
+"Sorry, %s became pending while processing another signal.\n"
+"    Multiple pending signals aren't supported currently, aborting.",
+		      signalname(sig));
+	}
 	return sig;
 }
 
