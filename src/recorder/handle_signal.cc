@@ -181,12 +181,19 @@ static int advance_syscall_boundary(Task* t,
 	sys_ptrace_syscall(t);
 	sys_waitpid(tid, &status);
 	read_child_registers(t, regs);
-	sig = WSTOPSIG(status);
 
-	assert_exec(t, (WIFSTOPPED(status)
-			&& (STOPSIG_SYSCALL == sig
-			    || SYSCALLBUF_DESCHED_SIGNAL == sig
-			    || HPC_TIME_SLICE_SIGNAL == sig)),
+	assert(WIFSTOPPED(status));
+	sig = WSTOPSIG(status);
+	// Ignore signals that we would have dropped anyway.
+	// STOPSIG_SIGNAL isn't a real signal, so we don't ask for its
+	// status.
+	if (STOPSIG_SYSCALL != sig && t->is_sig_ignored(sig)) {
+		debug("  dropping ignored signal %s ...", signalname(sig));
+		return advance_syscall_boundary(t, regs);
+	}
+	assert_exec(t, (STOPSIG_SYSCALL == sig
+			|| SYSCALLBUF_DESCHED_SIGNAL == sig
+			|| HPC_TIME_SLICE_SIGNAL == sig),
 		    /* TODO: need to handle signals here */
 		    "Trying to reach syscall boundary, but saw signal %s instead (status 0x%x)",
 		    signalname(sig), status);

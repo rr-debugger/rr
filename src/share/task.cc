@@ -603,8 +603,13 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 struct Sighandler {
 	Sighandler() : sa(), resethand() { }
 	Sighandler(const struct kernel_sigaction& sa)
-		: sa(sa), resethand(sa.sa_flags & SA_RESETHAND)	{ }
+		: sa(sa), resethand(sa.sa_flags & SA_RESETHAND) { }
 
+	bool ignored(int sig) const {
+		return (SIG_IGN == sa.k_sa_handler ||
+			(SIG_DFL == sa.k_sa_handler
+			 && IGNORE == default_action(sig)));
+	}
 	bool is_default() const {
 		return SIG_DFL == sa.k_sa_handler && !resethand;
 	}
@@ -979,6 +984,12 @@ Task::is_sig_blocked(int sig)
 {
 	int sig_bit = sig - 1;
 	return (blocked_sigs >> sig_bit) & 1;
+}
+
+bool
+Task::is_sig_ignored(int sig)
+{
+	return sighandlers->get(sig).ignored(sig);
 }
 
 void

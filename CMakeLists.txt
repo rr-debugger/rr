@@ -89,6 +89,7 @@ set(BASIC_TESTS
   barrier
   big_buffers
   block
+  block_intr_sigchld
   breakpoint
   chew_cpu
   clock

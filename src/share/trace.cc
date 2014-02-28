@@ -216,6 +216,8 @@ static int encode_event(const struct event* ev, int* state)
 			TRANSLATE(USR_SYSCALLBUF_ABORT_COMMIT);
 			TRANSLATE(USR_SYSCALLBUF_RESET);
 			TRANSLATE(USR_UNSTABLE_EXIT);
+			TRANSLATE(USR_INTERRUPTED_SYSCALL_NOT_RESTARTED);
+			TRANSLATE(USR_EXIT_SIGHANDLER);
 		default:
 			fatal("Unknown pseudosig %d", ev->pseudosig.no);
 #undef TRANSLATE

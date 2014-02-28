@@ -365,6 +365,10 @@ int is_disarm_desched_event_syscall(Task* t,
  */
 bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val);
 
+/** Return the default action of |sig|. */
+enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
+int default_action(int sig);
+
 /**
  * Return true if |sig| may cause the status of other tasks to change
  * unpredictably beyond rr's observation.

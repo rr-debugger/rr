@@ -405,6 +405,20 @@ done:
 	return is_restart;
 }
 
+static void syscall_not_restarted(Task* t)
+{
+	debug("  %d: popping abandoned interrupted %s; pending events:",
+	      t->tid, syscallname(t->ev->syscall.no));
+#ifdef DEBUGTAG
+	log_pending_events(t);
+#endif
+	pop_syscall_interruption(t);
+
+	push_pseudosig(t, EUSR_INTERRUPTED_SYSCALL_NOT_RESTARTED, NO_EXEC_INFO);
+	record_event(t);
+	pop_pseudosig(t);
+}
+
 /**
  * "Thaw" a frozen interrupted syscall if |t| is restarting it.
  * Return nonzero if a syscall is indeed restarted.
@@ -424,17 +438,7 @@ static int maybe_restart_syscall(Task* t)
 		return 1;
 	}
 	if (EV_SYSCALL_INTERRUPTION == t->ev->type) {
-		debug("  %d: popping abandoned interrupted %s; pending events:",
-		      t->tid, syscallname(t->ev->syscall.no));
-#ifdef DEBUGTAG
-		log_pending_events(t);
-#endif
-		pop_syscall_interruption(t);
-
-		push_pseudosig(t, EUSR_INTERRUPTED_SYSCALL_NOT_RESTARTED,
-			       NO_EXEC_INFO);
-		record_event(t);
-		pop_pseudosig(t);
+		syscall_not_restarted(t);
 	}
 	return 0;
 }
@@ -596,11 +600,7 @@ static void maybe_discard_syscall_interruption(Task* t, int ret)
 
 	syscallno = t->ev->syscall.no;
 	if (0 > ret) {
-		/* The sigreturn won't restart the interrupted
-		 * syscall.  Pop it. */
-		debug("  not restarting interrupted %s",
-		      syscallname(syscallno));
-		pop_syscall_interruption(t);
+		syscall_not_restarted(t);
 	} else if (0 < ret) {
 		assert_exec(t, syscallno == ret,
 			    "Interrupted call was %s, and sigreturn claims to be restarting %s",
@@ -686,6 +686,10 @@ static void runnable_state_changed(Task* t)
 
 		/* We've finished processing this signal now. */
 		pop_signal_handler(t);
+		push_pseudosig(t, EUSR_EXIT_SIGHANDLER, NO_EXEC_INFO);
+		record_event(t);
+		pop_pseudosig(t);
+
 		/* If the sigreturn isn't restarting an interrupted
 		 * syscall we're tracking, go ahead and pop it. */
 		maybe_discard_syscall_interruption(t, ret);

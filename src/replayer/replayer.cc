@@ -1,12 +1,7 @@
 /* -*- mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Replayer"
-
-#ifdef DEBUGTAG
-# define USE_BREAKPOINT_TARGET 0
-#else
-# define USE_BREAKPOINT_TARGET 1
-#endif
+#define USE_BREAKPOINT_TARGET 1
 
 #include "replayer.h"
 
@@ -1168,7 +1163,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
  * Emulates delivery of |sig| to |oldtask|.  Returns nonzero if
  * emulation was interrupted, zero if completed.
  */
-static int emulate_signal_delivery(Task* oldtask, int sig)
+static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 {
 	/* We are now at the exact point in the child where the signal
 	 * was recorded, emulate it using the next trace line (records
@@ -1189,9 +1184,12 @@ static int emulate_signal_delivery(Task* oldtask, int sig)
 
 	/* Restore the signal-hander frame data, if there was one. */
 	bool restored_sighandler_frame = 0 < set_child_data(t);
-	if (!restored_sighandler_frame
-	    && possibly_destabilizing_signal(t, sig)) {
-		push_pending_signal(t, sig, DETERMINISTIC_SIG);
+	if (restored_sighandler_frame) {
+		debug("--> restoring sighandler frame for %s", signalname(sig));
+		push_pending_signal(t, sig, sigtype);
+		t->ev->type = EV_SIGNAL_HANDLER;
+	} else if (possibly_destabilizing_signal(t, sig)) {
+		push_pending_signal(t, sig, sigtype);
 		t->ev->type = EV_SIGNAL_DELIVERY;
 
 		t->destabilize_task_group();
@@ -1251,7 +1249,7 @@ static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 		t->child_sig = 0;
 		return 0;
 	}
-	return emulate_signal_delivery(t, sig);
+	return emulate_signal_delivery(t, sig, DETERMINISTIC_SIG);
 }
 
 /**
@@ -1268,7 +1266,7 @@ static int emulate_async_signal(Task* t,
 		return 1;
 	}
 	if (sig) {
-		if (emulate_signal_delivery(t, sig)) {
+		if (emulate_signal_delivery(t, sig, NONDETERMINISTIC_SIG)) {
 			return 1;
 		}
 	}
@@ -1752,6 +1750,12 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		debug("  popping interrupted but not restarted %s",
 		      syscallname(t->ev->syscall.no));
 		pop_syscall_interruption(t);
+		step.action = TSTEP_RETIRE;
+		break;
+	case USR_EXIT_SIGHANDLER:
+		debug("<-- sigreturn from %s", signalname(t->ev->syscall.no));
+		pop_signal_handler(t);
+		step.action = TSTEP_RETIRE;
 		break;
 	default:
 		/* Pseudosignals are handled above. */
