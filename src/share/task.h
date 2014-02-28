@@ -512,6 +512,7 @@ enum PseudosigType {
 	EUSR_SYSCALLBUF_RESET,
 	EUSR_UNSTABLE_EXIT,
 	EUSR_INTERRUPTED_SYSCALL_NOT_RESTARTED,
+	EUSR_EXIT_SIGHANDLER,
 };
 
 enum EventType {
@@ -942,6 +943,12 @@ public:
 
 	/** Return true iff |sig| is blocked for this. */
 	bool is_sig_blocked(int sig);
+
+	/**
+	 * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
+	 * default disposition is "ignore".
+	 */
+	bool is_sig_ignored(int sig);
 
 	/**
 	 * Return nonzero if |t| may not be immediately runnable,

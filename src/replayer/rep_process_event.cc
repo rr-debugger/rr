@@ -973,8 +973,8 @@ static void* finish_direct_mmap(Task* t,
 	int fd;
 	void* mapped_addr;
 
-	debug("directly mmap'ing %d bytes of %s at offset 0x%lx",
-	      length, file->filename, offset);
+	debug("directly mmap'ing %d bytes of %s at page offset 0x%llx",
+	      length, file->filename, offset_pages);
 
 	if (verify) {
 		verify_backing_file(file, prot, flags);
@@ -1069,7 +1069,7 @@ static void* finish_shared_mmap(Task* t,
 		      num_bytes, offset_bytes, vfile.filename);
 	}
 	free(data);
-	debug("  restored %d bytes at 0x%lx to %s",
+	debug("  restored %d bytes at 0x%llx to %s",
 	      num_bytes, offset_bytes, vfile.filename);
 
 	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags,
@@ -1400,6 +1400,16 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 	if (STATE_SYSCALL_EXIT == state
 	    && SYSCALL_MAY_RESTART(rec_regs->eax)) {
+		bool interrupted_restart =
+			(EV_SYSCALL_INTERRUPTION == t->ev->type);
+		// The tracee was interrupted while attempting to
+		// restart a syscall.  We have to look at the previous
+		// event to see which syscall we're trying to restart.
+		if (interrupted_restart) {
+			syscall = t->ev->syscall.no;
+			debug("  interrupted %s interrupted again",
+			      syscallname(syscall));
+		}
 		// During recording, when a syscall exits with a
 		// restart "error", the kernel sometimes restarts the
 		// tracee by resetting its $ip to the syscall entry
@@ -1424,7 +1434,14 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		// we'll pop this event eventually, at the point when
 		// the recorder determined that the syscall wasn't
 		// going to be restarted.
-		push_syscall_interruption(t, syscall, rec_regs);
+		if (!interrupted_restart) {
+			// For interrupted SYS_restart_syscall's,
+			// reuse the restart record, both because
+			// that's semantically correct, and because
+			// we'll only know how to pop one interruption
+			// event later.
+			push_syscall_interruption(t, syscall, rec_regs);
+		}
 		step->action = TSTEP_RETIRE;
 		debug("  %s interrupted by %ld at %p, may restart",
 		      syscallname(syscall), rec_regs->eax, (void*)rec_regs->eip);

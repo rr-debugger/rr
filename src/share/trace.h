@@ -50,6 +50,10 @@ enum {
 	 * interrupted syscall wasn't restarted, so the interruption
 	 * record can be popped off the tracee's event stack. */
 	USR_INTERRUPTED_SYSCALL_NOT_RESTARTED,
+	/* Tracee exited its sighandler.  We leave this breadcrumb so
+	 * that the popping of not-restarted syscall interruptions and
+	 * sigreturns is replayed in the same order. */
+	USR_EXIT_SIGHANDLER,
 	/* TODO: this is actually a pseudo-pseudosignal: it will never
 	 * appear in a trace, but is only used to communicate between
 	 * different parts of the recorder code that should be

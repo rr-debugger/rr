@@ -1194,8 +1194,7 @@ bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val)
 	return now_contended;
 }
 
-enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
-static int default_action(int sig)
+int default_action(int sig)
 {
 	if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
 		return TERMINATE;
