@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
+// This header has to be included after sys/ptrace.h.
+#include <asm/ptrace-abi.h>
 #include <sys/signal.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -215,6 +217,50 @@ const char* ptrace_event_name(int event)
 	}
 }
 
+const char* ptrace_req_name(enum __ptrace_request request)
+{
+#define CASE(_id) case PTRACE_## _id: return #_id
+	// These aren't part of the official ptrace-request enum.
+	switch (int(request)) {
+	CASE(SYSEMU);
+	CASE(SYSEMU_SINGLESTEP);
+	}
+	switch (request) {
+	CASE(TRACEME);
+	CASE(PEEKTEXT);
+	CASE(PEEKDATA);
+	CASE(PEEKUSER);
+	CASE(POKETEXT);
+	CASE(POKEDATA);
+	CASE(POKEUSER);
+	CASE(CONT);
+	CASE(KILL);
+	CASE(SINGLESTEP);
+	CASE(GETREGS);
+	CASE(SETREGS);
+	CASE(GETFPREGS);
+	CASE(SETFPREGS);
+	CASE(ATTACH);
+	CASE(DETACH);
+	CASE(GETFPXREGS);
+	CASE(SETFPXREGS);
+	CASE(SYSCALL);
+	CASE(SETOPTIONS);
+	CASE(GETEVENTMSG);
+	CASE(GETSIGINFO);
+	CASE(SETSIGINFO);
+	CASE(GETREGSET);
+	CASE(SETREGSET);
+	CASE(SEIZE);
+	CASE(INTERRUPT);
+	CASE(LISTEN);
+	CASE(PEEKSIGINFO);
+#undef CASE
+	default:
+		return "???REQ";
+	}
+}
+
 const char* signalname(int sig)
 {
 	/* strsignal() would be nice to use here, but it provides TMI. */
@@ -299,7 +345,7 @@ int clone_flags_to_task_flags(int flags_arg)
 void print_register_file_tid(Task* t)
 {
 	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 	print_register_file(&regs);
 }
 
@@ -450,7 +496,7 @@ void print_process_mmap(Task* t)
 char* get_inst(Task* t, int eip_offset, int* opcode_size)
 {
 	char* buf = NULL;
-	unsigned long eip = read_child_eip(t);
+	unsigned long eip = t->get_eip();
 	ssize_t nr_read_bytes;
 	byte* inst =
 		(byte*)read_child_data_checked(t, 128,
@@ -661,7 +707,7 @@ void assert_child_regs_are(Task* t,
 			   const struct user_regs_struct* regs,
 			   int event, int state)
 {
-	read_child_registers(t, &t->regs);
+	t->get_regs(&t->regs);
 	compare_register_files(t, "replaying", &t->regs, "recorded", regs,
 			       BAIL_ON_MISMATCH);
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
@@ -1392,7 +1438,7 @@ void prepare_remote_syscalls(Task* t,
 	/* Save current state of |t|. */
 	memset(state, 0, sizeof(*state));
 	state->pid = t->tid;
-	read_child_registers(t, &state->regs);
+	t->get_regs(&state->regs);
 	state->code_size = sizeof(syscall_insn);
 	state->start_addr = (byte*)state->regs.eip;
 	state->code_buffer =
@@ -1411,7 +1457,7 @@ void* push_tmp_mem(Task* t, struct current_state_buffer* state,
 	restore->saved_sp = (byte*)state->regs.esp;
 
 	state->regs.esp -= restore->len;
-	write_child_registers(t, &state->regs);
+	t->set_regs(state->regs);
 	restore->addr = (byte*)state->regs.esp;
 
 	restore->data = (byte*)read_child_data(t, restore->len, restore->addr);
@@ -1438,7 +1484,7 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 	free(mem->data);
 
 	state->regs.esp += mem->len;
-	write_child_registers(t, &state->regs);
+	t->set_regs(state->regs);
 }
 
 // XXX this is probably dup'd somewhere else
@@ -1479,11 +1525,11 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 	callregs.esi = a4;
 	callregs.edi = a5;
 	callregs.ebp = a6;
-	write_child_registers(t, &callregs);
+	t->set_regs(callregs);
 
 	advance_syscall(t);
 
-	read_child_registers(t, &callregs);
+	t->get_regs(&callregs);
 	assert_exec(t, callregs.orig_eax == syscallno,
 		    "Should be entering %s, but instead at %s",
 		    syscallname(syscallno), syscallname(callregs.orig_eax));
@@ -1504,7 +1550,7 @@ long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 	/* Wait for syscall-exit trap. */
 	sys_waitpid(tid, &t->status);
 
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 	assert_exec(t, regs.orig_eax == syscallno,
 		    "Should be entering %s, but instead at %s",
 		    syscallname(syscallno), syscallname(regs.orig_eax));
@@ -1525,7 +1571,7 @@ void finish_remote_syscalls(Task* t,
 	free(state->code_buffer);
 
 	/* Restore stomped registers. */
-	write_child_registers(t, &state->regs);
+	t->set_regs(state->regs);
 }
 
 /**
@@ -1807,7 +1853,7 @@ void destroy_buffers(Task* t, int flags)
 	}
 
 	struct user_regs_struct exit_regs;
-	read_child_registers(t, &exit_regs);
+	t->get_regs(&exit_regs);
 	assert_exec(t, SYS_exit == exit_regs.orig_eax,
 		    "Tracee should have been at exit, but instead at %s",
 		    syscallname(exit_regs.orig_eax));
@@ -1822,7 +1868,7 @@ void destroy_buffers(Task* t, int flags)
 	// one that we can exit successfully, SYS_gettid here (though
 	// that choice is arbitrary).
 	exit_regs.orig_eax = SYS_gettid;
-	write_child_registers(t, &exit_regs);
+	t->set_regs(exit_regs);
 	// This exits the hijacked SYS_gettid.  Now the tracee is
 	// ready to do our bidding.
 	advance_syscall(t);
@@ -1856,7 +1902,7 @@ void destroy_buffers(Task* t, int flags)
 	finish_remote_syscalls(t, &state);
 
 	// Prepare to restart the SYS_exit call.
-	write_child_registers(t, &exit_regs);
+	t->set_regs(exit_regs);
 	if (DESTROY_NEED_EXIT_SYSCALL_RESTART & flags) {
 		advance_syscall(t);
 	}
@@ -1988,7 +2034,7 @@ void monkeypatch_vdso(Task* t)
 	// we're processing the rrcall, because it's masked off all
 	// signals.
 	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 
 	void* vsyscall_hook_trampoline = (void*)regs.ebx;
 	// Luckily, linux is happy for us to scribble directly over
@@ -1997,5 +2043,5 @@ void monkeypatch_vdso(Task* t)
 	monkeypatch(t, kernel_vsyscall, vsyscall_hook_trampoline);
 
 	regs.eax = 0;
-	write_child_registers(t, &regs);
+	t->set_regs(regs);
 }

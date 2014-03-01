@@ -18,11 +18,6 @@
 
 #define PTR_TO_OFF_T(_p) (off_t)(uintptr_t)(_p)
 
-void read_child_registers(Task* t, struct user_regs_struct* regs)
-{
-	sys_ptrace(t, PTRACE_GETREGS, NULL, regs);
-}
-
 size_t set_child_data(Task *t)
 {
 	size_t size;
@@ -38,9 +33,9 @@ size_t set_child_data(Task *t)
 void set_return_value(Task* t)
 {
 	struct user_regs_struct r;
-	read_child_registers(t, &r);
+	t->get_regs(&r);
 	r.eax = t->trace.recorded_regs.eax;
-	write_child_registers(t, &r);
+	t->set_regs(r);
 }
 
 static long read_child_word(pid_t tid, byte* addr, int ptrace_op)
@@ -85,11 +80,6 @@ long read_child_data_word(Task* t, byte* addr)
 	return read_child_word(t->tid, addr, PTRACE_PEEKDATA);
 }
 
-void write_child_registers(Task* t, struct user_regs_struct *regs)
-{
-	sys_ptrace(t, PTRACE_SETREGS, NULL, regs);
-}
-
 void write_child_code(Task* t, void* addr, long code)
 {
 	CHECK_ALIGNMENT(addr);
@@ -101,121 +91,6 @@ static void write_child_data_word(Task* t, void *addr, uintptr_t data)
 {
 	CHECK_ALIGNMENT(addr);
 	sys_ptrace(t, PTRACE_POKEDATA, addr, (void*)data);
-}
-
- /* Rad child registers */
-
-long int read_child_eip(Task* t)
-{
-	struct user_regs_struct regs;
-	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
-	return regs.eip;
-}
-
-long int read_child_orig_eax(Task* t)
-{
-	struct user_regs_struct regs;
-	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
-	return regs.orig_eax;
-}
-
-long int read_child_eax(Task* t)
-{
-	struct user_regs_struct regs;
-	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
-	return regs.eax;
-}
-
-long int read_child_ebx(Task* t)
-{
-	struct user_regs_struct regs;
-	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
-	return regs.ebx;
-}
-
-long int read_child_ecx(Task* t)
-{
-	struct user_regs_struct regs;
-	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
-	return regs.ecx;
-}
-
-long int read_child_edx(Task* t)
-{
-	struct user_regs_struct regs;
-	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
-	return regs.edx;
-}
-
-long int read_child_ebp(Task* t)
-{
-	struct user_regs_struct regs;
-	sys_ptrace(t, PTRACE_GETREGS, NULL, &regs);
-	return regs.ebp;
-}
-
-void write_child_eax(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.eax = val;
-	write_child_registers(t, &regs);
-}
-
-void write_child_ebx(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.ebx = val;
-	write_child_registers(t, &regs);
-}
-
-void write_child_ecx(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.ecx = val;
-	write_child_registers(t, &regs);
-}
-
-void write_child_edx(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.edx = val;
-	write_child_registers(t, &regs);
-}
-
-void write_child_edi(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.edi = val;
-	write_child_registers(t, &regs);
-}
-
-void write_child_ebp(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.ebp = val;
-	write_child_registers(t, &regs);
-}
-
-void write_child_esi(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.esi = val;
-	write_child_registers(t, &regs);
-}
-
-void write_child_eip(Task* t, long int val)
-{
-	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
-	regs.eip = val;
-	write_child_registers(t, &regs);
 }
 
 #define READ_SIZE (sizeof(long))

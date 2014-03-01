@@ -119,11 +119,11 @@ static int try_handle_rdtsc(Task *t)
 		edx = current_time >> 32;
 
 		struct user_regs_struct regs;
-		read_child_registers(t, &regs);
+		t->get_regs(&regs);
 		regs.eax = eax;
 		regs.edx = edx;
 		regs.eip += size;
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 
 		// When SIGSEGV is blocked, apparently the kernel has
 		// to do some ninjutsu to raise the RDTSC trap.  We
@@ -180,7 +180,7 @@ static int advance_syscall_boundary(Task* t,
 
 	sys_ptrace_syscall(t);
 	sys_waitpid(tid, &status);
-	read_child_registers(t, regs);
+	t->get_regs(regs);
 
 	assert(WIFSTOPPED(status));
 	sig = WSTOPSIG(status);
@@ -461,7 +461,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 		 * here. */
 		sigframe_size = 2048;
 
-		read_child_registers(t, &t->regs);
+		t->get_regs(&t->regs);
 
 		t->ev->type = EV_SIGNAL_HANDLER;
 	} else {
@@ -628,7 +628,7 @@ static int go_to_a_happy_place(Task* t,
 
 		assert(WIFSTOPPED(status));
 		sys_ptrace_getsiginfo(t, &tmp_si);
-		read_child_registers(t, regs);
+		t->get_regs(regs);
 		is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
@@ -761,6 +761,6 @@ void handle_signal(Task* t, siginfo_t* si)
 		sys_ptrace_getsiginfo(t, &local_si);
 		si = &local_si;
 	}
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 	return handle_siginfo_regs(t, si, &regs);
 }

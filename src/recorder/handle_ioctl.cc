@@ -40,7 +40,7 @@ void handle_ioctl_request(Task *t, int request)
 	debug("handling ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d",
 	      request, type, nr, dir, size);
 
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 
 	assert_exec(t, !is_desched_event_syscall(t, &regs),
 		    "Failed to skip past desched ioctl()");
