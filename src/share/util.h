@@ -302,10 +302,11 @@ struct current_state_buffer {
 void mprotect_child_region(Task* t, byte* addr, int prot);
 
 /**
- * Return |sz| rounded up to the nearest multiple of the system
- * |page_size()|.
+ * Return the argument rounded up to the nearest multiple of the
+ * system |page_size()|.
  */
 size_t ceil_page_size(size_t sz);
+const byte* ceil_page_size(const byte* addr);
 
 /**
  * Return true if the pointer or size is a multiple of the system

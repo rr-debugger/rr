@@ -2083,18 +2083,18 @@ void rec_process_syscall(Task *t)
 	 * int open(const char *pathname, int flags, mode_t mode)
 	 */
 	case SYS_open: {
-		char* pathname = read_child_str(t, (byte*)t->regs().ebx);
-		if (is_blacklisted_filename(pathname)) {
+		string pathname = t->read_c_str((const byte*)t->regs().ebx);
+		if (is_blacklisted_filename(pathname.c_str())) {
 			/* NB: the file will still be open in the
 			 * process's file table, but let's hope this
 			 * gross hack dies before we have to worry
 			 * about that. */
-			log_warn("Cowardly refusing to open %s", pathname);
+			log_warn("Cowardly refusing to open %s",
+				 pathname.c_str());
 			struct user_regs_struct r = t->regs();
 			r.eax = -ENOENT;
 			t->set_regs(r);
 		}
-		free(pathname);
 		break;
 	}
 

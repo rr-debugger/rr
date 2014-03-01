@@ -514,6 +514,12 @@ size_t ceil_page_size(size_t sz)
 	return (sz + page_size() - 1) & page_mask;
 }
 
+const byte* ceil_page_size(const byte* addr)
+{
+	uintptr_t ceil = ceil_page_size((uintptr_t)addr);
+	return (const byte*)ceil;
+}
+
 void print_inst(Task* t)
 {
 	int size;

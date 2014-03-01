@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <linux/limits.h>
 #include <linux/perf_event.h>
 #include <poll.h>
 #include <pthread.h>
