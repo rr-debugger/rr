@@ -325,7 +325,6 @@ static void validate_args(int syscall, int state, Task* t)
 static void goto_next_syscall_emu(Task *t)
 {
 	t->cont_sysemu();
-	t->wait();
 
 	int sig = t->pending_sig();
 	/* SIGCHLD is pending, do not deliver it, wait for it to
@@ -373,7 +372,6 @@ static void finish_syscall_emu(Task *t)
 	struct user_regs_struct regs;
 	t->get_regs(&regs);
 	t->cont_sysemu_singlestep();
-	t->wait();
 	t->set_regs(regs);
 
 	t->force_status(0);
@@ -385,7 +383,6 @@ static void finish_syscall_emu(Task *t)
 void __ptrace_cont(Task *t)
 {
 	t->cont_syscall();
-	t->wait();
 
 	t->child_sig = t->pending_sig();
 	t->get_regs(&t->regs);
