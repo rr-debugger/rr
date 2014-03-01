@@ -688,15 +688,13 @@ void record_child_str(Task* t, byte* child_ptr)
 	(void)state;
 
 	print_header(event, child_ptr);
-	char* buf = read_child_str(t, child_ptr);
-	size_t len = strlen(buf) + 1;
-	fprintf(syscall_header, "%11d\n", len);
-	size_t bytes_written = fwrite(buf, 1, len, raw_data);
+	string str = t->read_c_str(child_ptr);
+	fprintf(syscall_header, "%11d\n", str.size());
+	size_t bytes_written = fwrite(str.c_str(), 1, str.size(), raw_data);
 	(void)bytes_written;
-	overall_raw_bytes += len;
+	overall_raw_bytes += str.size();
 
-	assert(bytes_written == len);
-	free(buf);
+	assert(bytes_written == str.size());
 
 	// new raw data file
 	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)

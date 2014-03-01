@@ -54,6 +54,4 @@ size_t set_child_data(Task* t);
 
 void set_return_value(Task* context);
 
-char* read_child_str(Task* t, byte* addr);
-
 #endif /* __IPC_H__ */

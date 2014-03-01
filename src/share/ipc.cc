@@ -94,29 +94,6 @@ static void write_child_data_word(Task* t, void *addr, uintptr_t data)
 
 #define READ_SIZE (sizeof(long))
 
-static void* read_child_data_ptrace(Task* t, size_t size, byte* addr)
-{
-
-	int i, padding = 0;
-	long tmp;
-	byte* data = (byte*)malloc(size);
-
-	int offset = ((uintptr_t) addr) & 0x3;
-	if (offset) {
-		tmp = read_child_data_word(t,
-					   (byte*)((uintptr_t)addr & ~0x3));
-		padding = READ_SIZE - offset;
-		memcpy(data, &tmp + offset, padding);
-	}
-
-	for (i = padding; i < ssize_t(size); i += READ_SIZE) {
-		tmp = read_child_data_word(t, addr + i);
-		memcpy(data + i, &tmp, READ_SIZE);
-	}
-	/* make sure we no not return more than required */
-	return data;
-}
-
 ssize_t checked_pread(Task* t, byte* buf, size_t size, off_t offset) {
 	errno = 0;
 	ssize_t read = pread(t->child_mem_fd, buf, size, offset);
@@ -239,37 +216,6 @@ void write_child_buffer(pid_t child_pid, uintptr_t address, size_t length, char 
         ptrace(PTRACE_POKEDATA, child_pid,
         		address + i * 4, data.val);
     }
-}
-
-char* read_child_str(Task* t, byte* addr)
-{
-	// XXX rewrite me
-	char *tmp, *str;
-	int idx = 0;
-	int buffer_size = 256;
-
-	str = (char*)malloc(buffer_size);
-
-	while (1) {
-
-		if (idx + ssize_t(READ_SIZE) >= buffer_size) {
-			buffer_size *= 2;
-			str = (char*)realloc(str, buffer_size);
-		}
-
-		tmp = (char*)read_child_data_ptrace(t, READ_SIZE, addr + idx);
-		memcpy(str + idx, tmp, READ_SIZE);
-		free(tmp);
-
-		for (int i = 0; i < ssize_t(READ_SIZE); i++) {
-			if (str[idx + i] == '\0') {
-				return str;
-			}
-		}
-
-		idx += READ_SIZE;
-	}assert(1==0);
-	return 0;
 }
 
 void write_child_data_n(Task* t, ssize_t size, byte* addr, const byte* data)

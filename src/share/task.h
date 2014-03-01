@@ -1175,6 +1175,12 @@ public:
 	}
 
 	/**
+	 * Read and return the C string located at |child_addr| in
+	 * this address space.
+	 */
+	std::string read_c_str(const byte* child_addr);
+
+	/**
 	 * Return the word at |child_addr| in this address space.
 	 *
 	 * NB: doesn't use the ptrace API, so safe to use even when

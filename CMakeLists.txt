@@ -102,6 +102,7 @@ set(BASIC_TESTS
   fcntl_owner_ex
   flock
   fork_syscalls
+  getcwd
   goto_event
   hello
   ignored_async_usr1

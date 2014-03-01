@@ -1170,6 +1170,30 @@ Task::post_exec()
 	prname = prname_from_exe_image(as->exe_image());
 }
 
+string
+Task::read_c_str(const byte* child_addr)
+{
+	// XXX handle invalid C strings
+	string str;
+	while (true) {
+		// We're only guaranteed that [child_addr,
+		// end_of_page) is mapped.
+		const byte* end_of_page = ceil_page_size(child_addr + 1);
+		ssize_t nbytes = end_of_page - child_addr;
+		char buf[nbytes];
+
+		read_bytes_helper(child_addr, nbytes,
+				  reinterpret_cast<byte*>(buf));
+		for (int i = 0; i < nbytes; ++i) {
+			if ('\0' == buf[i]) {
+				return str;
+			}
+			str += buf[i];
+		}
+		child_addr = end_of_page;
+	}
+}
+
 long
 Task::read_word(const byte* child_addr)
 {
