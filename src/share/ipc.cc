@@ -243,10 +243,3 @@ void write_child_data(Task* t, ssize_t size, byte* addr,
 		write_child_data_n(t, size, addr, data);
 	}
 }
-
-void memcpy_child(Task* t, void* dest, void* src, int size)
-{
-	void *tmp = read_child_data(t, size, (byte*)src);
-	write_child_data(t, size, (byte*)dest, (byte*)tmp);
-	free(tmp);
-}

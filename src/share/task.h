@@ -1189,6 +1189,12 @@ public:
 	long read_word(const byte* child_addr);
 
 	/**
+	 * Copy |num_bytes| from |src| to |dst| in the address space
+	 * of this.
+	 */
+	void remote_memcpy(void* dst, const void* src, size_t num_bytes);
+
+	/**
 	 * Resume execution |how|, deliverying |sig| if nonzero.
 	 * After resuming, |wait_how|.
 	 *
