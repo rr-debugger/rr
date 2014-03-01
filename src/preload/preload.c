@@ -102,6 +102,8 @@ struct syscall_info {
     long args[6];
 };
 
+/* Nonzero when syscall buffering is enabled. */
+static int buffer_enabled;
 /* Nonzero after process-global state like the seccomp-bpf has been
  * initialized. */
 static int process_inited;
@@ -109,9 +111,10 @@ static int process_inited;
 /* Nonzero when thread-local state like the syscallbuf has been
  * initialized.  */
 static __thread int thread_inited;
-/* Points at the thread's mapped buffer segment.  At the start of the
- * segment is an object of type |struct syscallbuf_hdr|, so |buffer|
- * is also a pointer to the buffer header. */
+/* When buffering is enabled, points at the thread's mapped buffer
+ * segment.  At the start of the segment is an object of type |struct
+ * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
+ * header. */
 static __thread byte* buffer;
 /* This is used to support the buffering of "may-block" system calls.
  * The problem that needs to be addressed can be introduced with a
@@ -681,7 +684,7 @@ static void* get_vsyscall_hook_trampoline(void)
  * socketcall syscalls.
  *
  * Return a pointer to the syscallbuf (with an initialized header
- * including the available size).
+ * including the available size), if syscallbuf is enabled.
  *
  * This is a "magic" syscall implemented by rr.
  */
@@ -793,7 +796,9 @@ static void set_up_buffer(void)
 	assert(!buffer);
 
 	/* NB: we want this setup emulated during replay. */
-	desched_counter_fd = open_desched_event_counter(1);
+	if (buffer_enabled) {
+		desched_counter_fd = open_desched_event_counter(1);
+	}
 
 	/* Prepare arguments for rrcall.  We do this in the tracee
 	 * just to avoid some hairy IPC to set up the arguments
@@ -824,6 +829,7 @@ static void set_up_buffer(void)
 	 * allocated in the other process. */
 	*cmsg_fdptr = desched_counter_fd;
 
+	args.syscallbuf_enabled = buffer_enabled;
 	args.traced_syscall_ip = get_traced_syscall_entry_point();
 	args.untraced_syscall_ip = get_untraced_syscall_entry_point();
 	args.sockaddr = &addr;
@@ -854,6 +860,11 @@ static void init_thread(void)
 	assert(process_inited);
 	assert(!thread_inited);
 
+	if (!buffer_enabled) {
+		thread_inited = 1;
+		return;
+	}
+
 	set_up_buffer();
 	thread_inited = 1;
 }
@@ -881,6 +892,12 @@ init_process(void)
 	assert(!process_inited);
 
 	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
+	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
+	if (!buffer_enabled) {
+		debug("Syscall buffering is disabled");
+		process_inited = 1;
+		return;
+	}
 
 	pthread_atfork(NULL, NULL, post_fork_child);
 
@@ -1818,8 +1835,33 @@ vsyscall_hook(const struct syscall_info* call)
 	}
 }
 
-/* Disable XShm since rr doesn't work with it */
+/**
+ * Exported glibc synonym for |sysconf()|.  We can't use |dlsym()| to
+ * resolve the next "sysconf" symbol, because
+ *  - dlysym usually calls malloc()
+ *  - custom allocators like jemalloc may use sysconf()
+ *  - if our sysconf wrapper is re-entered during initialization, it
+ *    has nothing to fall back on to get the conf name, and chaos will
+ *    likely ensue if we return something random.
+ */
+long __sysconf(int name);
+
+/**
+ *  Pretend that only 1 processor is configured/online, because rr
+ *  binds all tracees to one logical CPU.
+ */
+long sysconf(int name)
+{
+	switch (name) {
+	case _SC_NPROCESSORS_ONLN:
+	case _SC_NPROCESSORS_CONF:
+		return 1;
+	}
+	return __sysconf(name);
+}
+
+/** Disable XShm since rr doesn't work with it */
 int XShmQueryExtension(void* dpy)
 {
-  return 0;
+	return 0;
 }

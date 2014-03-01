@@ -154,6 +154,7 @@ set(BASIC_TESTS
   strict_priorities
   switch_read
   syscallbuf_timeslice
+  sysconf
   target_fork
   target_process
   tcgets

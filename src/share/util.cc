@@ -1730,8 +1730,13 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 	args = (struct rrcall_init_buffers_params*)
 	       read_child_data(t, sizeof(*args), child_args);
 
-	child_map_addr = init_syscall_buffer(t, &state, args,
-					     map_hint, share_desched_fd);
+	if (args->syscallbuf_enabled) {
+		child_map_addr =
+			init_syscall_buffer(t, &state, args,
+					    map_hint, share_desched_fd);
+	} else {
+		args->syscallbuf_ptr = nullptr;
+	}
 
 	/* Return the mapped buffers to the child. */
 	write_child_data(t, sizeof(*args), child_args, (byte*)args);

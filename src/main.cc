@@ -557,17 +557,20 @@ int main(int argc, char* argv[])
 		log_info("Scheduler using max_events=%d, max_rbc=%d",
 			 flags->max_events, flags->max_rbc);
 
+		// The syscallbuf library interposes some critical
+		// external symbols like XShmQueryExtension(), so we
+		// preload it whether or not syscallbuf is enabled.
 		if (flags->use_syscall_buffer) {
-			/* We rely on the distribution package or the
-			 * user to set up the LD_LIBRARY_PATH properly
-			 * so that we can LD_PRELOAD the bare library
-			 * name.  Trying to do otherwise is possible,
-			 * but annoying. */
-			flags->syscall_buffer_lib_path =
-				SYSCALLBUF_LIB_FILENAME;
+			setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
 		} else {
 			log_info("Syscall buffer disabled by flag");
+			unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
 		}
+		// We rely on the distribution package or the user to
+		// set up the LD_LIBRARY_PATH properly so that we can
+		// LD_PRELOAD the bare library name.  Trying to do
+		// otherwise is possible, but annoying. */
+		flags->syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
 	}
 
 	start(argc - argi , argv + argi, environ);
