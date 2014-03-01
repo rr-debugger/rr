@@ -97,7 +97,7 @@ static void start_recording(int argc, char* argv[], char** envp)
 
 	// Sync with the child process.
 	Task* t = Task::create(pid);
-	t->wait(&t->status);
+	t->wait();
 
 	start_hpc(t, rr_flags()->max_rbc);
 

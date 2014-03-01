@@ -609,9 +609,9 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi)
 		resume_how = RESUME_SYSCALL;
 	}
 	t->resume_execution(resume_how);
-	t->wait(&t->status);
+	t->wait();
 
-	switch ((t->child_sig = signal_pending(t->status))) {
+	switch ((t->child_sig = t->pending_sig())) {
 	case 0:
 		break;
 	case SIGCHLD:
@@ -645,11 +645,11 @@ static void step_exit_syscall_emu(Task *t)
 	t->get_regs(&regs);
 
 	t->cont_sysemu_singlestep();
-	t->wait(&t->status);
+	t->wait();
 
 	t->set_regs(regs);
 
-	t->status = 0;
+	t->force_status(0);
 }
 
 /**
@@ -723,9 +723,9 @@ static void continue_or_step(Task* t, int stepi)
 		resume_how = RESUME_SYSCALL;
 	}
 	t->resume_execution(resume_how);
-	t->wait(&t->status);
+	t->wait();
 
-	t->child_sig = signal_pending(t->status);
+	t->child_sig = t->pending_sig();
 
 	/* TODO: get rid of this if-stmt after we always read
 	 * registers following an execution resume/waitpid. */
@@ -2026,8 +2026,8 @@ static void serve_replay(int argc, char* argv[], char** envp)
 
 	pid_t tracee_pid = launch_initial_tracee(exe_image, arg_v, env_p);
 	Task* t = Task::create(tracee_pid, get_recorded_main_thread());
-	t->wait(&t->status);
-	assert(WIFSTOPPED(t->status));
+	t->wait();
+	assert(t->stopped());
 
 	sys_ptrace_setup(t);
 

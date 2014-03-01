@@ -93,8 +93,8 @@ find_next_runnable_task(int* by_waitpid)
 
 			debug("  %d is blocked on %s, checking status ...", tid,
 			      strevent(t->event));
-			if ((t->pseudo_blocked && t->wait(&t->status))
-			    || t->try_wait(&t->status)) {
+			if ((t->pseudo_blocked && t->wait())
+			    || t->try_wait()) {
 				t->pseudo_blocked = 0;
 				*by_waitpid = 1;
 				debug("  ready with status 0x%x", t->status);
@@ -139,7 +139,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 #ifdef MONITOR_UNSWITCHABLE_WAITS
 			double start = now_sec(), wait_duration;
 #endif
-			if (!t->wait(&t->status)) {
+			if (!t->wait()) {
 				debug("  waitpid(%d) interrupted by EINTR",
 				      t->tid);
 				return nullptr;
@@ -197,7 +197,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 		}
 		assert_exec(next, next->unstable || next->may_be_blocked(),
 			    "Scheduled task should have been blocked or unstable");
-		next->status = status;
+		next->force_status(status);
 		*by_waitpid = 1;
 	}
 

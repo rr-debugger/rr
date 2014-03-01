@@ -48,12 +48,6 @@
 #include "../recorder/rec_sched.h"
 #include "../replayer/replayer.h"
 
-#ifndef PTRACE_EVENT_SECCOMP
-#define PTRACE_O_TRACESECCOMP			0x00000080
-#define PTRACE_EVENT_SECCOMP_OBSOLETE	8 // ubuntu 12.04
-#define PTRACE_EVENT_SECCOMP			7 // ubuntu 12.10 and future kernels
-#endif
-
 using namespace std;
 
 /* The tracee doesn't open the desched event fd during replay, so it
@@ -187,12 +181,6 @@ void maybe_mark_stdio_write(Task* t, int fd)
 	}
 }
 
-int is_ptrace_seccomp_event(int event)
-{
-	return (PTRACE_EVENT_SECCOMP_OBSOLETE == event ||
-		PTRACE_EVENT_SECCOMP == event);
-}
-
 const char* ptrace_event_name(int event)
 {
 	switch (event) {
@@ -296,35 +284,6 @@ const char* syscallname(int syscall)
 		return "restart_syscall";
 	default:
 		return "???syscall";
-	}
-}
-
-int signal_pending(int status)
-{
-	int sig = WSTOPSIG(status);
-
-	if (status == 0) {
-		return 0;
-	}
-	assert(WIFSTOPPED(status));
-
-	switch (sig) {
-	case (SIGTRAP | 0x80):
-		/* We ask for PTRACE_O_TRACESYSGOOD, so this was a
-		 * trap for a syscall.  Pretend like it wasn't a
-		 * signal. */
-		return 0;
-	case SIGTRAP:
-		/* For a "normal" SIGTRAP, it's a ptrace trap if
-		 * there's a ptrace event.  If so, pretend like we
-		 * didn't get a signal.  Otherwise it was a genuine
-		 * TRAP signal raised by something else (most likely a
-		 * debugger breakpoint). */
-		return GET_PTRACE_EVENT(status) ? 0 : SIGTRAP;
-	default:
-		/* XXX do we really get the high bit set on some
-		 * SEGVs? */
-		return sig & ~0x80;
 	}
 }
 
@@ -1488,18 +1447,14 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 static void advance_syscall(Task* t)
 {
 	t->cont_syscall();
-	t->wait(&t->status);
+	t->wait();
 
 	/* Skip past a seccomp trace, if we happened to see one. */
-	if (GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP
-	    /* XXX this is a special case for ubuntu 12.04.  revisit
-	     * this check if an event is added with number 8 (just
-	     * after SECCOMP */
-	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
+	if (t->is_ptrace_seccomp_event()) {
 		t->cont_syscall();
-		t->wait(&t->status);
+		t->wait();
 	}
-	assert(GET_PTRACE_EVENT(t->status) == 0);
+	assert(t->ptrace_event() == 0);
 }
 
 long remote_syscall(Task* t, struct current_state_buffer* state,
@@ -1542,7 +1497,7 @@ long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 {
 	struct user_regs_struct regs;
 	/* Wait for syscall-exit trap. */
-	t->wait(&t->status);
+	t->wait();
 
 	t->get_regs(&regs);
 	assert_exec(t, regs.orig_eax == syscallno,
