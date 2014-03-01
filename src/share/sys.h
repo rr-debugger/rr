@@ -28,20 +28,12 @@ void goto_next_event(Task *t);
 
 void sys_ptrace(Task* t, int request, void* addr, void* data);
 void sys_ptrace_setup(Task* t);
-void sys_ptrace_singlestep(Task* t);
-void sys_ptrace_singlestep_sig(Task* t, int sig);
-void sys_ptrace_sysemu(Task* t);
-void sys_ptrace_sysemu_singlestep(Task* t);
 void sys_ptrace_traceme(void);
-void sys_ptrace_cont(pid_t pid);
-void sys_ptrace_cont_sig(pid_t pid, int sig);
-void sys_ptrace_syscall_sig(Task* pid, int sig);
 /* Return zero on success, -1 on error. */
 int sys_ptrace_peekdata(pid_t pid, long addr, long* value);
 unsigned long sys_ptrace_getmsg(Task* t);
 void sys_ptrace_getsiginfo(Task* t, siginfo_t* sig);
 void sys_ptrace_detach(pid_t pid);
-void sys_ptrace_syscall(Task* t);
 
 /**
  * Block until the status of |pid| changes.  Write the new status into

@@ -51,11 +51,6 @@ static void status_changed(Task* t)
 	}
 }
 
-static void cont_nonblock(Task *t)
-{
-	sys_ptrace_syscall(t);
-}
-
 static void handle_ptrace_event(Task** tp)
 {
 	Task* t = *tp;
@@ -78,7 +73,7 @@ static void handle_ptrace_event(Task** tp)
 		record_event(t);
 
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
-		sys_ptrace_syscall(t);
+		t->cont_syscall();
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 
@@ -120,9 +115,9 @@ static void handle_ptrace_event(Task** tp)
 			record_event(t);
 			pop_syscall(t);
 
-			cont_nonblock(t);
+			t->cont_syscall();
 		} else {
-			sys_ptrace_syscall(t);
+			t->cont_syscall();
 			sys_waitpid(t->tid, &t->status);
 			status_changed(t);
 		}
@@ -140,7 +135,7 @@ static void handle_ptrace_event(Task** tp)
 		record_event(t);
 		pop_syscall(t);
 
-		sys_ptrace_syscall(t);
+		t->cont_syscall();
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 
@@ -197,7 +192,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 		 * syscall_buffer lib in the child, therefore we must
 		 * record in the traditional way (with PTRACE_SYSCALL)
 		 * until it is installed. */
-		sys_ptrace_syscall_sig(t, sig);
+		t->cont_syscall(sig);
 	} else {
 		/* When the seccomp filter is on, instead of capturing
 		 * syscalls by using PTRACE_SYSCALL, the filter will
@@ -209,7 +204,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 		 * process to continue to the actual entry point of
 		 * the syscall (using cont_syscall_block()) and then
 		 * using the same logic as before. */
-		sys_ptrace_cont_sig(t->tid, sig);
+		t->cont(sig);
 	}
 }
 
@@ -276,7 +271,7 @@ static void desched_state_changed(Task* t)
 		/* TODO: send this through main loop. */
 		/* TODO: mask off signals and avoid this loop. */
 		do {
-			sys_ptrace_syscall(t);
+			t->cont_syscall();
 			sys_waitpid(t->tid, &t->status);
 			t->get_regs(&t->regs);
 			/* We can safely ignore SIG_TIMESLICE while
@@ -467,7 +462,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		t->switchable = rec_prepare_syscall(t, &sync_addr, &sync_val);
 
 		// Resume the syscall execution in the kernel context.
-		cont_nonblock(t);
+		t->cont_syscall();
 		debug_exec_state("after cont", t);
 
 		if (sync_addr) {
@@ -668,7 +663,7 @@ static void runnable_state_changed(Task* t)
 		maybe_reset_syscallbuf(t);
 
 		/* "Finish" the sigreturn. */
-		sys_ptrace_syscall(t);
+		t->cont_syscall();
 		sys_waitpid(t->tid, &t->status);
 		status_changed(t);
 		ret = t->regs.eax;

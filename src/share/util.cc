@@ -217,15 +217,10 @@ const char* ptrace_event_name(int event)
 	}
 }
 
-const char* ptrace_req_name(enum __ptrace_request request)
+const char* ptrace_req_name(int request)
 {
 #define CASE(_id) case PTRACE_## _id: return #_id
-	// These aren't part of the official ptrace-request enum.
 	switch (int(request)) {
-	CASE(SYSEMU);
-	CASE(SYSEMU_SINGLESTEP);
-	}
-	switch (request) {
 	CASE(TRACEME);
 	CASE(PEEKTEXT);
 	CASE(PEEKDATA);
@@ -254,6 +249,9 @@ const char* ptrace_req_name(enum __ptrace_request request)
 	CASE(SEIZE);
 	CASE(INTERRUPT);
 	CASE(LISTEN);
+	// These aren't part of the official ptrace-request enum.
+	CASE(SYSEMU);
+	CASE(SYSEMU_SINGLESTEP);
 #undef CASE
 	default:
 		return "???REQ";
@@ -1491,7 +1489,7 @@ static void advance_syscall(Task* t)
 {
 	pid_t tid = t->tid;
 
-	sys_ptrace_syscall(t);
+	t->cont_syscall();
 	sys_waitpid(tid, &t->status);
 
 	/* Skip past a seccomp trace, if we happened to see one. */
@@ -1500,7 +1498,7 @@ static void advance_syscall(Task* t)
 	     * this check if an event is added with number 8 (just
 	     * after SECCOMP */
 	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
-		sys_ptrace_syscall(t);
+		t->cont_syscall();
 		sys_waitpid(tid, &t->status);
 	}
 	assert(GET_PTRACE_EVENT(t->status) == 0);
@@ -1534,7 +1532,7 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 		    syscallname(syscallno), syscallname(callregs.orig_eax));
 
 	/* Start running the syscall. */
-	sys_ptrace_syscall(t);
+	t->cont_syscall();
 	if (WAIT == wait) {
 		return wait_remote_syscall(t, state, syscallno);
 	}

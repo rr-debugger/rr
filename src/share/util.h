@@ -272,7 +272,7 @@ const char* ptrace_event_name(int event);
  * Return the symbolic name of the PTRACE_ |request|, or "???REQ" if
  * unknown.
  */
-const char* ptrace_req_name(enum __ptrace_request request);
+const char* ptrace_req_name(int request);
 
 /**
  * Return the symbolic name of |sig|, f.e. "SIGILL", or "???signal" if

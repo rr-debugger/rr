@@ -598,18 +598,18 @@ static void validate_args(int event, int state, Task* t)
 enum { EXEC = 0, EMU = 1 };
 static int cont_syscall_boundary(Task* t, int emu, int stepi)
 {
-	pid_t tid = t->tid;
-
+	ResumeRequest resume_how;
 	if (emu && stepi) {
-		sys_ptrace_sysemu_singlestep(t);
+		resume_how = RESUME_SYSEMU_SINGLESTEP;
 	} else if (emu) {
-		sys_ptrace_sysemu(t);
+		resume_how = RESUME_SYSEMU;
 	} else if (stepi) {
-		sys_ptrace_singlestep(t);
+		resume_how = RESUME_SINGLESTEP;
 	} else {
-		sys_ptrace_syscall(t);
+		resume_how = RESUME_SYSCALL;
 	}
-	sys_waitpid(tid, &t->status);
+	t->resume_execution(resume_how);
+	sys_waitpid(t->tid, &t->status);
 
 	switch ((t->child_sig = signal_pending(t->status))) {
 	case 0:
@@ -644,7 +644,7 @@ static void step_exit_syscall_emu(Task *t)
 
 	t->get_regs(&regs);
 
-	sys_ptrace_sysemu_singlestep(t);
+	t->cont_sysemu_singlestep();
 	sys_waitpid(t->tid, &t->status);
 
 	t->set_regs(regs);
@@ -711,17 +711,19 @@ static void continue_or_step(Task* t, int stepi)
 	pid_t tid = t->tid;
 	int child_sig_gt_zero;
 
+	ResumeRequest resume_how;
 	if (stepi) {
-		sys_ptrace_singlestep(t);
+		resume_how = RESUME_SINGLESTEP;
 	} else {
-		/* We continue with PTRACE_SYSCALL for error checking:
+		/* We continue with RESUME_SYSCALL for error checking:
 		 * since the next event is supposed to be a signal,
 		 * entering a syscall here means divergence.  There
 		 * shouldn't be any straight-line execution overhead
 		 * for SYSCALL vs. CONT, so the difference in cost
 		 * should be neglible. */
-		sys_ptrace_syscall(t);
+		resume_how = RESUME_SYSCALL;
 	}
+	t->resume_execution(resume_how);
 	sys_waitpid(tid, &t->status);
 
 	t->child_sig = signal_pending(t->status);

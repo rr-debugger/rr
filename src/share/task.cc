@@ -1087,6 +1087,12 @@ Task::read_word(const byte* child_addr)
 }
 
 void
+Task::resume_execution(ResumeRequest how, int sig)
+{
+	xptrace(how, nullptr, (void*)(uintptr_t)sig);
+}
+
+void
 Task::set_regs(const struct user_regs_struct& regs)
 {
 	xptrace(PTRACE_SETREGS, nullptr, (void*)&regs);
@@ -1236,8 +1242,8 @@ Task::create(pid_t tid, pid_t rec_tid)
 	t->sighandlers.swap(sh);
 	// Don't use the POSIX wrapper, because it doesn't necessarily
 	// read the entire sigset tracked by the kernel.
-	if (syscall(SYS_rt_sigprocmask, SIG_SETMASK, NULL,
-		    &t->blocked_sigs, sizeof(t->blocked_sigs))) {
+	if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, NULL,
+		      &t->blocked_sigs, sizeof(t->blocked_sigs))) {
 		fatal("Failed to read blocked signals");
 	}
 	auto g = TaskGroup::create(t);
@@ -1290,7 +1296,7 @@ Task::killall()
 		Task* t = it->second;
 
 		debug("sending SIGKILL to %d ...", t->tid);
-		syscall(SYS_tgkill, t->tgid(), t->tid, SIGKILL);
+		::syscall(SYS_tgkill, t->tgid(), t->tid, SIGKILL);
 
 		// Don't attempt to synchonize on the cleartid futex.
 		// We won't be able to reliably read it, and it's
@@ -1419,9 +1425,9 @@ Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 }
 
 void
-Task::xptrace(enum __ptrace_request request, void* addr, void* data)
+Task::xptrace(int request, void* addr, void* data)
 {
-	long ret = ptrace(request, tid, addr, data);
+	long ret = ptrace(__ptrace_request(request), tid, addr, data);
 	assert_exec(this, 0 == ret,
 		    "ptrace(%s, %d, addr=%p, data=%p) failed",
 		    ptrace_req_name(request), tid, addr, data);

@@ -165,21 +165,6 @@ void sys_ptrace(Task* t, int request, void *addr, void *data)
 		    request, tid, addr, data);
 }
 
-void sys_ptrace_syscall(Task* t)
-{
-	sys_ptrace(t, PTRACE_SYSCALL, 0, 0);
-}
-
-void sys_ptrace_cont(pid_t pid)
-{
-	ptrace(PTRACE_CONT, pid, 0, 0);
-}
-
-void sys_ptrace_cont_sig(pid_t pid, int sig)
-{
-	ptrace(PTRACE_CONT, pid, 0, (void*)sig);
-}
-
 /**
  * Detaches the child process from monitoring. This method must only be
  * invoked, if the thread exits. We do not check errors here, since the
@@ -188,21 +173,6 @@ void sys_ptrace_cont_sig(pid_t pid, int sig)
 void sys_ptrace_detach(pid_t pid)
 {
 	ptrace(PTRACE_DETACH, pid, 0, 0);
-}
-
-void sys_ptrace_syscall_sig(Task* t, int sig)
-{
-	sys_ptrace(t, PTRACE_SYSCALL, 0, (void*)sig);
-}
-
-void sys_ptrace_sysemu(Task* t)
-{
-	sys_ptrace(t, PTRACE_SYSEMU, 0, 0);
-}
-
-void sys_ptrace_sysemu_singlestep(Task* t)
-{
-	sys_ptrace(t, PTRACE_SYSEMU_SINGLESTEP, 0, 0);
 }
 
 int sys_ptrace_peekdata(pid_t pid, long addr, long* value)
@@ -238,16 +208,6 @@ void sys_ptrace_setup(Task* t)
 		/* No seccomp on the system, try without (this has to succeed) */
 		sys_ptrace(t, PTRACE_SETOPTIONS, 0, (void*) flags);
 	}
-}
-
-void sys_ptrace_singlestep(Task* t)
-{
-	sys_ptrace(t, PTRACE_SINGLESTEP, 0, 0);
-}
-
-void sys_ptrace_singlestep_sig(Task* t, int sig)
-{
-	sys_ptrace(t, PTRACE_SINGLESTEP, 0, (void*) sig);
 }
 
 void sys_ptrace_traceme()
