@@ -1213,6 +1213,15 @@ Task::regs()
 	return registers;
 }
 
+void
+Task::remote_memcpy(void* dst, const void* src, size_t num_bytes)
+{
+	// XXX this could be more efficient
+	byte buf[num_bytes];
+	read_bytes_helper((const byte*)src, num_bytes, buf);
+	write_bytes_helper((const byte*)dst, num_bytes, buf);
+}
+
 bool
 Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 {

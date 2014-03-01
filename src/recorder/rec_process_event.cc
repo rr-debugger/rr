@@ -381,14 +381,14 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		if (off_in) {
 			loff_t* off_in2 = (loff_t*)scratch;
 			scratch += sizeof(*off_in2);
-			memcpy_child(t, off_in2, off_in, sizeof(*off_in2));
+			t->remote_memcpy(off_in2, off_in, sizeof(*off_in2));
        			r.ecx = (uintptr_t)off_in2;
 		}
 		push_arg_ptr(t, off_out);
 		if (off_out) {
 			loff_t* off_out2 = (loff_t*)scratch;
 			scratch += sizeof(*off_out2);
-			memcpy_child(t, off_out2, off_out, sizeof(*off_out2));
+			t->remote_memcpy(off_out2, off_out, sizeof(*off_out2));
        			r.esi = (uintptr_t)off_out2;
 		}
 		if (!can_use_scratch(t, scratch)) {
@@ -518,7 +518,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		}
 		/* |fds| is an inout param, so we need to copy over
 		 * the source data. */
-		memcpy_child(t, fds2, fds, nfds * sizeof(*fds));
+		t->remote_memcpy(fds2, fds, nfds * sizeof(*fds));
 		t->set_regs(r);
 		return 1;
 	}
@@ -688,7 +688,7 @@ void rec_prepare_restart_syscall(Task* t)
 		struct timespec* rem2 = (struct timespec*)t->regs().ecx;
 
 		if (rem) {
-			memcpy_child(t, rem, rem2, sizeof(*rem));
+			t->remote_memcpy(rem, rem2, sizeof(*rem));
 			record_child_data(t, sizeof(*rem), (byte*)rem);
 		} else {
 			record_noop_data(t);
