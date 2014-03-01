@@ -74,7 +74,7 @@ static void handle_ptrace_event(Task** tp)
 
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		t->cont_syscall();
-		sys_waitpid(t->tid, &t->status);
+		t->wait(&t->status);
 		status_changed(t);
 
 		record_event(t);
@@ -86,12 +86,9 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK:
 	case PTRACE_EVENT_VFORK: {
-		int new_tid = sys_ptrace_getmsg(t);
-
-		// Wait until the new task is ready.
-		sys_waitpid(new_tid, &t->status);
-
 		t->get_regs(&t->regs);
+
+		int new_tid = sys_ptrace_getmsg(t);
 		const byte* stack = (const byte*)t->regs.ecx;
 		const byte* ctid = (const byte*)t->regs.edi;
 		// fork and vfork can never share these resources,
@@ -99,9 +96,11 @@ static void handle_ptrace_event(Task** tp)
 		// them, only clone.
 		int flags_arg = (SYS_clone == t->regs.orig_eax) ?
 				t->regs.ebx : 0;
-
 		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
 					  stack, ctid, new_tid);
+		// Wait until the new task is ready.
+		new_task->wait(&new_task->status);
+
 		start_hpc(new_task, rr_flags()->max_rbc);
 
 		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
@@ -118,7 +117,7 @@ static void handle_ptrace_event(Task** tp)
 			t->cont_syscall();
 		} else {
 			t->cont_syscall();
-			sys_waitpid(t->tid, &t->status);
+			t->wait(&t->status);
 			status_changed(t);
 		}
 		break;
@@ -136,7 +135,7 @@ static void handle_ptrace_event(Task** tp)
 		pop_syscall(t);
 
 		t->cont_syscall();
-		sys_waitpid(t->tid, &t->status);
+		t->wait(&t->status);
 		status_changed(t);
 
 		assert(signal_pending(t->status) == 0);
@@ -224,7 +223,7 @@ static bool resume_execution(Task* t, int force_cont)
 	debug_exec_state("EXEC_START", t);
 
 	task_continue(t, force_cont, /*no sig*/0);
-	if (!sys_waitpid(t->tid, &t->status)) {
+	if (!t->wait(&t->status)) {
 		debug("  waitpid() interrupted");
 		return false;
 	}
@@ -272,7 +271,7 @@ static void desched_state_changed(Task* t)
 		/* TODO: mask off signals and avoid this loop. */
 		do {
 			t->cont_syscall();
-			sys_waitpid(t->tid, &t->status);
+			t->wait(&t->status);
 			t->get_regs(&t->regs);
 			/* We can safely ignore SIG_TIMESLICE while
 			 * trying to reach the disarm-desched ioctl:
@@ -664,7 +663,7 @@ static void runnable_state_changed(Task* t)
 
 		/* "Finish" the sigreturn. */
 		t->cont_syscall();
-		sys_waitpid(t->tid, &t->status);
+		t->wait(&t->status);
 		status_changed(t);
 		ret = t->regs.eax;
 

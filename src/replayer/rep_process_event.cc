@@ -325,7 +325,7 @@ static void validate_args(int syscall, int state, Task* t)
 static void goto_next_syscall_emu(Task *t)
 {
 	t->cont_sysemu();
-	sys_waitpid(t->tid, &(t->status));
+	t->wait(&t->status);
 
 	int sig = signal_pending(t->status);
 	/* SIGCHLD is pending, do not deliver it, wait for it to
@@ -373,7 +373,7 @@ static void finish_syscall_emu(Task *t)
 	struct user_regs_struct regs;
 	t->get_regs(&regs);
 	t->cont_sysemu_singlestep();
-	sys_waitpid(t->tid, &(t->status));
+	t->wait(&t->status);
 	t->set_regs(regs);
 
 	t->status = 0;
@@ -385,7 +385,7 @@ static void finish_syscall_emu(Task *t)
 void __ptrace_cont(Task *t)
 {
 	t->cont_syscall();
-	sys_waitpid(t->tid, &t->status);
+	t->wait(&t->status);
 
 	t->child_sig = signal_pending(t->status);
 	t->get_regs(&t->regs);
@@ -592,10 +592,6 @@ static void process_clone(Task* t,
 	int rec_tid = rec_regs.eax;
 	pid_t new_tid = sys_ptrace_getmsg(t);
 
-	/* wait until the new thread is ready */
-	int status;
-	sys_waitpid(new_tid, &status);
-
 	t->get_regs(&t->regs);
 	const byte* stack = (const byte*)t->regs.ecx;
 	const byte* ctid = (const byte*)t->regs.edi;
@@ -603,6 +599,8 @@ static void process_clone(Task* t,
 
 	Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
 				  stack, ctid, new_tid, rec_tid);
+	// Wait until the new thread is ready.
+	new_task->wait(&t->status);
 
 	/* FIXME: what if registers are non-null and contain an
 	 * invalid address? */
@@ -1813,7 +1811,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 				unsigned long new_tid = sys_ptrace_getmsg(t);
 				/* wait until the new thread is ready */
 				int status;
-				sys_waitpid(new_tid, &status);
+				t->wait(&status);
 
 				struct trace_frame next_trace;
 				peek_next_trace(&next_trace);

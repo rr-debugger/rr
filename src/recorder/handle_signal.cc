@@ -174,12 +174,11 @@ static void disarm_desched_event(Task* t)
 static int advance_syscall_boundary(Task* t,
 				     struct user_regs_struct* regs)
 {
-	pid_t tid = t->tid;
 	int status;
 	int sig;
 
 	t->cont_syscall();
-	sys_waitpid(tid, &status);
+	t->wait(&status);
 	t->get_regs(regs);
 
 	assert(WIFSTOPPED(status));
@@ -430,7 +429,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 		t->cont_singlestep(sig);
 		t->ev->signal.delivered = 1;
 
-		if (!sys_waitpid(t->tid, &t->status)) {
+		if (!t->wait(&t->status)) {
 			return;
 		}
 		/* It's been observed that when tasks enter
@@ -514,7 +513,6 @@ static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si)
 static int go_to_a_happy_place(Task* t,
 			       siginfo_t* si, struct user_regs_struct* regs)
 {
-	pid_t tid = t->tid;
 	/* If we deliver the signal at the tracee's current execution
 	 * point, it will result in a syscall-buffer-flush event being
 	 * recorded if there are any buffered syscalls.  The
@@ -624,7 +622,7 @@ static int go_to_a_happy_place(Task* t,
 		debug("  stepi out of syscallbuf from %p ...",
 		      (void*)regs->eip);
 		t->cont_singlestep();
-		sys_waitpid(tid, &status);
+		t->wait(&status);
 
 		assert(WIFSTOPPED(status));
 		sys_ptrace_getsiginfo(t, &tmp_si);
@@ -663,7 +661,7 @@ static int go_to_a_happy_place(Task* t,
 			debug("  stepping over desched-event syscall");
 			/* Finish the syscall. */
 			t->cont_singlestep();
-			sys_waitpid(tid, &status);
+			t->wait(&status);
 			if (is_arm_desched_event_syscall(t, regs)) {
 				/* Disarm the event: we don't need or
 				 * want to hear about descheds while
@@ -687,7 +685,7 @@ static int go_to_a_happy_place(Task* t,
 			disarm_desched_event(t);
 			/* And (hopefully!) finish the syscall. */
 			t->cont_singlestep();
-			sys_waitpid(tid, &status);
+			t->wait(&status);
 		}
 	}
 
