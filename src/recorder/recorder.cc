@@ -56,7 +56,7 @@ static void handle_ptrace_event(Task** tp)
 	Task* t = *tp;
 
 	/* handle events */
-	int event = GET_PTRACE_EVENT(t->status);
+	int event = t->ptrace_event();
 	if (event != PTRACE_EVENT_NONE) {
 		debug("  %d: handle_ptrace_event %d: event %s",
 		      t->tid, event, strevent(t->event));
@@ -74,7 +74,7 @@ static void handle_ptrace_event(Task** tp)
 
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		t->cont_syscall();
-		t->wait(&t->status);
+		t->wait();
 		status_changed(t);
 
 		record_event(t);
@@ -99,7 +99,7 @@ static void handle_ptrace_event(Task** tp)
 		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
 					  stack, ctid, new_tid);
 		// Wait until the new task is ready.
-		new_task->wait(&new_task->status);
+		new_task->wait();
 
 		start_hpc(new_task, rr_flags()->max_rbc);
 
@@ -117,7 +117,7 @@ static void handle_ptrace_event(Task** tp)
 			t->cont_syscall();
 		} else {
 			t->cont_syscall();
-			t->wait(&t->status);
+			t->wait();
 			status_changed(t);
 		}
 		break;
@@ -135,10 +135,10 @@ static void handle_ptrace_event(Task** tp)
 		pop_syscall(t);
 
 		t->cont_syscall();
-		t->wait(&t->status);
+		t->wait();
 		status_changed(t);
 
-		assert(signal_pending(t->status) == 0);
+		assert(t->pending_sig() == 0);
 		break;
 	}
 
@@ -216,14 +216,12 @@ static void task_continue(Task* t, int force_cont, int sig)
  */
 static bool resume_execution(Task* t, int force_cont)
 {
-	int ptrace_event;
-
 	assert(!t->may_be_blocked());
 
 	debug_exec_state("EXEC_START", t);
 
 	task_continue(t, force_cont, /*no sig*/0);
-	if (!t->wait(&t->status)) {
+	if (!t->wait()) {
 		debug("  waitpid() interrupted");
 		return false;
 	}
@@ -231,14 +229,66 @@ static bool resume_execution(Task* t, int force_cont)
 
 	debug_exec_state("  after resume", t);
 
-	ptrace_event = GET_PTRACE_EVENT(t->status);
-	if (is_ptrace_seccomp_event(ptrace_event)) {
+	if (t->is_ptrace_seccomp_event()) {
 		t->seccomp_bpf_enabled = true;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
 		return resume_execution(t, FORCE_SYSCALL);
 	}
 	return true;
+}
+
+/**
+ * Step |t| forward utnil the desched event is disarmed.  If a signal
+ * becomes pending in the interim, the |waitpid()| status is returned,
+ * and |si| is filled in.  This allows the caller to deliver the
+ * signal after this returns and the desched event is disabled.
+ */
+static int disarm_desched(Task* t, siginfo_t* si)
+{
+	int sig_status = 0;
+
+	debug("desched: DISARMING_DESCHED_EVENT");
+	/* TODO: send this through main loop. */
+	/* TODO: mask off signals and avoid this loop. */
+	do {
+		t->cont_syscall();
+		t->wait();
+		t->get_regs(&t->regs);
+		/* We can safely ignore SIG_TIMESLICE while trying to
+		 * reach the disarm-desched ioctl: once we reach it,
+		 * the desched'd syscall will be "done" and the tracee
+		 * will be at a preemption point.  In fact, we *want*
+		 * to ignore this signal.  Syscalls like read() can
+		 * have large buffers passed to them, and we have to
+		 * copy-out the buffered out data to the user's
+		 * buffer.  This happens in the interval where we're
+		 * reaching the disarm-desched ioctl, so that code is
+		 * susceptible to receiving SIG_TIMESLICE.  If it
+		 * does, we'll try to stepi the tracee to a safe point
+		 * ... through a practically unbounded memcpy(), which
+		 * can be very expensive. */
+		int sig = t->pending_sig();
+		if (HPC_TIME_SLICE_SIGNAL == sig) {
+			continue;
+		}
+
+		t->event = t->regs.orig_eax;
+
+		if (sig) {
+			int old_sig =
+				Task::pending_sig_from_status(sig_status);
+			debug("  %s now pending", signalname(sig));
+			assert_exec(t,
+				    !sig_status || old_sig == sig,
+				    "TODO multiple pending signals: %s became pending while %s already was",
+				    signalname(sig),
+				    signalname(old_sig));
+			sig_status = t->status();
+			sys_ptrace_getsiginfo(t, si);
+		}
+	} while (!is_disarm_desched_event_syscall(t, &t->regs));
+	return sig_status;
 }
 
 /**
@@ -263,50 +313,8 @@ static void desched_state_changed(Task* t)
 		t->ev->desched.state = DISARMING_DESCHED_EVENT;
 		/* fall through */
 	case DISARMING_DESCHED_EVENT: {
-		int sig_status = 0;
 		siginfo_t si;
-
-		debug("desched: DISARMING_DESCHED_EVENT");
-		/* TODO: send this through main loop. */
-		/* TODO: mask off signals and avoid this loop. */
-		do {
-			t->cont_syscall();
-			t->wait(&t->status);
-			t->get_regs(&t->regs);
-			/* We can safely ignore SIG_TIMESLICE while
-			 * trying to reach the disarm-desched ioctl:
-			 * once we reach it, the desched'd syscall
-			 * will be "done" and the tracee will be at a
-			 * preemption point.  In fact, we *want* to
-			 * ignore this signal.  Syscalls like read()
-			 * can have large buffers passed to them, and
-			 * we have to copy-out the buffered out data
-			 * to the user's buffer.  This happens in the
-			 * interval where we're reaching the
-			 * disarm-desched ioctl, so that code is
-			 * susceptible to receiving SIG_TIMESLICE.  If
-			 * it does, we'll try to stepi the tracee to a
-			 * safe point ... through a practically
-			 * unbounded memcpy(), which can be very
-			 * expensive. */
-			if (HPC_TIME_SLICE_SIGNAL == signal_pending(t->status)) {
-				continue;
-			}
-
-			t->event = t->regs.orig_eax;
-
-			if (int sig = signal_pending(t->status)) {
-				int old_sig = signal_pending(sig_status);
-				debug("  %s now pending", signalname(sig));
-				assert_exec(t,
-					    !sig_status || old_sig == sig,
-					    "TODO multiple pending signals: %s became pending while %s already was",
-					    signalname(sig),
-					    signalname(old_sig));
-				sig_status = t->status;
-				sys_ptrace_getsiginfo(t, &si);
-			}
-		} while (!is_disarm_desched_event_syscall(t, &t->regs));
+		int sig_status = disarm_desched(t, &si);
 
 		t->ev->desched.state = DISARMED_DESCHED_EVENT;
 		record_event(t);
@@ -326,7 +334,7 @@ static void desched_state_changed(Task* t)
 		if (sig_status) {
 			debug("  delivering deferred %s",
 			      signalname(signal_pending(t->status)));
-			t->status = sig_status;
+			t->force_status(sig_status);
 			handle_signal(t, &si);
 		}
 		return;
@@ -476,9 +484,9 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		assert(by_waitpid);
 		/* Linux kicks tasks out of syscalls before delivering
 		 * signals. */
-		assert_exec(t, !signal_pending(t->status),
+		assert_exec(t, !t->pending_sig(),
 			    "Signal %s pending while %d in syscall???",
-			    signalname(signal_pending(t->status)), t->tid);
+			    signalname(t->pending_sig()), t->tid);
 
 		status_changed(t);
 		t->ev->syscall.state = EXITING_SYSCALL;
@@ -492,7 +500,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 
 		debug_exec_state("EXEC_SYSCALL_DONE", t);
 
-		assert(signal_pending(t->status) == 0);
+		assert(t->pending_sig() == 0);
 		assert(SYS_sigreturn != t->event);
 
 		t->get_regs(&t->regs);
@@ -663,12 +671,12 @@ static void runnable_state_changed(Task* t)
 
 		/* "Finish" the sigreturn. */
 		t->cont_syscall();
-		t->wait(&t->status);
+		t->wait();
 		status_changed(t);
 		ret = t->regs.eax;
 
 		/* TODO: can signals interrupt a sigreturn? */
-		assert(signal_pending(t->status) != SIGTRAP);
+		assert(t->pending_sig() != SIGTRAP);
 
 		/* orig_eax seems to be -1 here for not-understood
 		 * reasons. */
@@ -716,8 +724,6 @@ static void runnable_state_changed(Task* t)
  */
 static int signal_state_changed(Task* t, int by_waitpid)
 {
-	int ptrace_event;
-
 	assert(EV_SIGNAL_DELIVERY == t->ev->type);
 
 	if (!t->ev->signal.delivered) {
@@ -734,8 +740,7 @@ static int signal_state_changed(Task* t, int by_waitpid)
 
 	status_changed(t);
 
-	ptrace_event = GET_PTRACE_EVENT(t->status);
-	if (is_ptrace_seccomp_event(ptrace_event)) {
+	if (t->is_ptrace_seccomp_event()) {
 		t->seccomp_bpf_enabled = true;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
@@ -805,7 +810,6 @@ void record()
 
 	while (Task::count() > 0) {
 		int by_waitpid;
-		int ptrace_event;
 
 		maybe_process_term_request();
 
@@ -820,12 +824,12 @@ void record()
 #ifdef DEBUGTAG
 		log_pending_events(t);
 #endif
-		ptrace_event = GET_PTRACE_EVENT(t->status);
+		int ptrace_event = t->ptrace_event();
 		assert_exec(t, (!by_waitpid || t->may_be_blocked() ||
 				ptrace_event),
 			    "%d unexpectedly runnable (0x%x) by waitpid",
-			    t->tid, t->status);
-		if (ptrace_event && !is_ptrace_seccomp_event(ptrace_event)) {
+			    t->tid, t->status());
+		if (ptrace_event && !t->is_ptrace_seccomp_event()) {
 			handle_ptrace_event(&t);
 			if (!t) {
 				continue;

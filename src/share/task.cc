@@ -763,12 +763,13 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, desched_fd(-1), desched_fd_child(-1)
 	, seccomp_bpf_enabled()
 	, child_sig()
-	, trace(), hpc(), status(), regs()
+	, trace(), hpc(), regs()
 	, tid(_tid), rec_tid(_rec_tid > 0 ? _rec_tid : _tid)
 	, child_mem_fd(sys_open_child_mem(this))
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
 	, blocked_sigs(), prname("???"), tid_futex()
+	, wait_status()
 {
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.
@@ -915,7 +916,7 @@ Task::dump(FILE* out) const
 {
 	out = out ? out : LOG_FILE;
 	fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s%s)<%p>\n",
-		prname.c_str(), tid, rec_tid, status,
+		prname.c_str(), tid, rec_tid, wait_status,
 		switchable ? "" : " UNSWITCHABLE",
 		unstable ? " UNSTABLE" : "",
 		this);
@@ -986,14 +987,22 @@ Task::get_regs(struct user_regs_struct* regs)
 }
 
 bool
-Task::is_sig_blocked(int sig)
+Task::is_ptrace_seccomp_event() const
+{
+	int event = ptrace_event();
+	return (PTRACE_EVENT_SECCOMP_OBSOLETE == event ||
+		PTRACE_EVENT_SECCOMP == event);
+}
+
+bool
+Task::is_sig_blocked(int sig) const
 {
 	int sig_bit = sig - 1;
 	return (blocked_sigs >> sig_bit) & 1;
 }
 
 bool
-Task::is_sig_ignored(int sig)
+Task::is_sig_ignored(int sig) const
 {
 	return sighandlers->get(sig).ignored(sig);
 }
@@ -1210,9 +1219,9 @@ Task::update_sigmask(const struct user_regs_struct* regs)
 }
 
 bool
-Task::wait(int* status)
+Task::wait()
 {
-	pid_t ret = waitpid(tid, status, __WALL);
+	pid_t ret = waitpid(tid, &wait_status, __WALL);
 	if (0 > ret && EINTR == errno) {
 		return false;
 	}
@@ -1222,9 +1231,9 @@ Task::wait(int* status)
 }
 
 bool
-Task::try_wait(int* status)
+Task::try_wait()
 {
-	pid_t ret = waitpid(tid, status, WNOHANG | __WALL | WSTOPPED);
+	pid_t ret = waitpid(tid, &wait_status, WNOHANG | __WALL | WSTOPPED);
 	assert_exec(this, 0 <= ret, "waitpid(%d, NOHANG) failed with %d",
 		    tid, ret);
 	return ret == tid;
@@ -1355,6 +1364,33 @@ Task::killall()
 	}
 }
 
+/*static*/int
+Task::pending_sig_from_status(int status)
+{
+	if (status == 0) {
+		return 0;
+	}
+	int sig = stop_sig_from_status(status);
+	switch (sig) {
+	case (SIGTRAP | 0x80):
+		/* We ask for PTRACE_O_TRACESYSGOOD, so this was a
+		 * trap for a syscall.  Pretend like it wasn't a
+		 * signal. */
+		return 0;
+	case SIGTRAP:
+		/* For a "normal" SIGTRAP, it's a ptrace trap if
+		 * there's a ptrace event.  If so, pretend like we
+		 * didn't get a signal.  Otherwise it was a genuine
+		 * TRAP signal raised by something else (most likely a
+		 * debugger breakpoint). */
+		return ptrace_event_from_status(status) ? 0 : SIGTRAP;
+	default:
+		/* XXX do we really get the high bit set on some
+		 * SEGVs? */
+		return sig & ~0x80;
+	}
+}
+
 void
 Task::detach_and_reap()
 {
@@ -1387,7 +1423,7 @@ Task::detach_and_reap()
 
 	debug("Joining with exiting %d ...", tid);
 	while (true) {
-		int err = waitpid(tid, &status, __WALL);
+		int err = waitpid(tid, &wait_status, __WALL);
 		if (-1 == err && ECHILD == errno) {
 			debug(" ... ECHILD");
 			break;
@@ -1396,15 +1432,13 @@ Task::detach_and_reap()
 				    "waitpid(%d) returned -1, errno %d",
 				    tid, errno);
 		}
-		if (err == tid && (WIFEXITED(status) || 
-				      WIFSIGNALED(status))) {
-			debug(" ... exited with status 0x%x", status);
+		if (err == tid && (exited() || signaled())) {
+			debug(" ... exited with status 0x%x", wait_status);
 			break;
 		} else if (err == tid) {
-			assert_exec(this, (PTRACE_EVENT_EXIT ==
-					   GET_PTRACE_EVENT(status)),
+			assert_exec(this, PTRACE_EVENT_EXIT == ptrace_event(),
 				    "waitpid(%d) return status %d",
-				    tid, status);
+				    tid, wait_status);
 		}
 	}
 

@@ -325,9 +325,9 @@ static void validate_args(int syscall, int state, Task* t)
 static void goto_next_syscall_emu(Task *t)
 {
 	t->cont_sysemu();
-	t->wait(&t->status);
+	t->wait();
 
-	int sig = signal_pending(t->status);
+	int sig = t->pending_sig();
 	/* SIGCHLD is pending, do not deliver it, wait for it to
 	 * appear in the trace SIGCHLD is the only signal that should
 	 * ever be generated as all other signals are emulated! */
@@ -349,7 +349,7 @@ static void goto_next_syscall_emu(Task *t)
 		/* this signal is ignored and most likey delivered
 		 * later, or was already delivered earlier */
 		/* TODO: this code is now obselete */
-		if (WSTOPSIG(t->status) == SIGCHLD) {
+		if (t->stop_sig() == SIGCHLD) {
 			debug("do we come here?\n");
 			/*t->replay_sig = SIGCHLD; // remove that if
 			 * spec does not work anymore */
@@ -373,10 +373,10 @@ static void finish_syscall_emu(Task *t)
 	struct user_regs_struct regs;
 	t->get_regs(&regs);
 	t->cont_sysemu_singlestep();
-	t->wait(&t->status);
+	t->wait();
 	t->set_regs(regs);
 
-	t->status = 0;
+	t->force_status(0);
 }
 
 /**
@@ -385,16 +385,16 @@ static void finish_syscall_emu(Task *t)
 void __ptrace_cont(Task *t)
 {
 	t->cont_syscall();
-	t->wait(&t->status);
+	t->wait();
 
-	t->child_sig = signal_pending(t->status);
+	t->child_sig = t->pending_sig();
 	t->get_regs(&t->regs);
 	t->event = t->regs.orig_eax;
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = t->trace.recorded_regs.orig_eax;
 	int current_syscall = t->regs.orig_eax;
-	if (current_syscall != rec_syscall && WSTOPSIG(t->status) == SIGCHLD) {
+	if (current_syscall != rec_syscall && t->stop_sig() == SIGCHLD) {
 		/* SIGCHLD can be delivered pretty much at any time
 		 * during replay, and we need to ignore it since
 		 * replayed signals are only emulated. */
@@ -600,7 +600,7 @@ static void process_clone(Task* t,
 	Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
 				  stack, ctid, new_tid, rec_tid);
 	// Wait until the new thread is ready.
-	new_task->wait(&t->status);
+	new_task->wait();
 
 	/* FIXME: what if registers are non-null and contain an
 	 * invalid address? */
@@ -1806,12 +1806,10 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		if (state == STATE_SYSCALL_ENTRY) {
 			/* go to the system call */
 			__ptrace_cont(t);
-			if (PTRACE_EVENT_VFORK ==
-			    GET_PTRACE_EVENT(t->status)) {
+			if (PTRACE_EVENT_VFORK == t->ptrace_event()) {
 				unsigned long new_tid = sys_ptrace_getmsg(t);
 				/* wait until the new thread is ready */
-				int status;
-				t->wait(&status);
+				t->wait();
 
 				struct trace_frame next_trace;
 				peek_next_trace(&next_trace);
