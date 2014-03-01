@@ -60,19 +60,6 @@ long read_child_data_word(Task* t, byte* addr)
 	return read_child_word(t->tid, addr, PTRACE_PEEKDATA);
 }
 
-void write_child_code(Task* t, void* addr, long code)
-{
-	CHECK_ALIGNMENT(addr);
-
-	sys_ptrace(t, PTRACE_POKETEXT, addr, (void*) code);
-}
-
-static void write_child_data_word(Task* t, void *addr, uintptr_t data)
-{
-	CHECK_ALIGNMENT(addr);
-	sys_ptrace(t, PTRACE_POKEDATA, addr, (void*)data);
-}
-
 #define READ_SIZE (sizeof(long))
 
 ssize_t checked_pread(Task* t, byte* buf, size_t size, off_t offset) {
@@ -167,79 +154,4 @@ void read_child_buffer(pid_t child_pid, uintptr_t address, size_t length, char *
         memcpy(laddr, data.chars, j);
     }
     buffer[length] = '\0';
-}
-
-/**
- * A more conservative way for writing data from the child,
- * this method doesn't use the memory file descriptor.
- */
-void write_child_buffer(pid_t child_pid, uintptr_t address, size_t length, char *buffer){
-	const int long_size = sizeof(long);
-	char *laddr;
-    int i, j;
-    union u {
-            long val;
-            char chars[long_size];
-    }data;
-    i = 0;
-    j = length / long_size;
-    laddr = buffer;
-    while(i < j) {
-        memcpy(data.chars, laddr, long_size);
-        ptrace(PTRACE_POKEDATA, child_pid,
-        		address + i * 4, data.val);
-        ++i;
-        laddr += long_size;
-    }
-    j = length % long_size;
-    if(j != 0) {
-        memcpy(data.chars, laddr, j);
-        ptrace(PTRACE_POKEDATA, child_pid,
-        		address + i * 4, data.val);
-    }
-}
-
-void write_child_data_n(Task* t, ssize_t size, byte* addr, const byte* data)
-{
-	int start_offset = (uintptr_t)addr & 0x3;
-	int end_offset = ((uintptr_t)addr + size) & 0x3;
-
-	ssize_t write_size = size;
-	byte* write_data = (byte*)malloc(size + 2 * READ_SIZE);
-	byte* write_addr = addr;
-
-	if (start_offset) {
-		byte* aligned_start = (byte*)((uintptr_t)addr & ~0x3);
-		long int word = read_child_data_word(t, aligned_start);
-		memcpy(write_data, &word, READ_SIZE);
-		write_size += start_offset;
-		write_addr = aligned_start;
-	}
-
-	if (end_offset) {
-		byte* aligned_end = (byte*)(((uintptr_t)addr + size) & ~0x3);
-		long int word = read_child_data_word(t, aligned_end);
-		write_size += READ_SIZE - end_offset;
-		unsigned long buffer_addr = ((unsigned long) write_data + start_offset + size) & ~0x3;
-		memcpy((void*) buffer_addr, &word, READ_SIZE);
-	}
-
-	assert(write_size % 4 == 0);
-	memcpy(write_data + start_offset, data, size);
-
-	for (int i = 0; i < write_size; i += READ_SIZE) {
-		uint32_t word = *(uint32_t*) (write_data + i);
-		write_child_data_word(t, write_addr + i, word);
-	}
-
-	free(write_data);
-}
-
-void write_child_data(Task* t, ssize_t size, byte* addr,
-		      const byte* data)
-{
-	ssize_t written = pwrite(t->child_mem_fd, data, size, PTR_TO_OFF_T(addr));
-	if (written != size) {
-		write_child_data_n(t, size, addr, data);
-	}
 }

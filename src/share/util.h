@@ -290,12 +290,14 @@ const char* syscallname(int syscall);
  */
 int clone_flags_to_task_flags(int flags_arg);
 
+static const byte syscall_insn[] = { 0xcd, 0x80 };
+
 // TODO: RAII-ify me and helpers below.
 struct current_state_buffer {
 	pid_t pid;
 	struct user_regs_struct regs;
 	int code_size;
-	byte* code_buffer;
+	byte code_buffer[sizeof(syscall_insn)];
 	byte* start_addr;
 };
 

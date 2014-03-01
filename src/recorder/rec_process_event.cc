@@ -51,13 +51,12 @@ using namespace std;
  * |regs| into the |args| outparam.  Also store the address of the
  * socketcall args into |*argsp|.
  */
-template<size_t N>
-void read_socketcall_args(Task* t, long** argsp, long (&args)[N])
+template<typename T>
+void read_socketcall_args(Task* t, long** argsp, T* args)
 {
-	*argsp = reinterpret_cast<long*>(t->regs().ecx);
-	byte* buf = (byte*)read_child_data(t, sizeof(args), (byte*)*argsp);
-	memcpy(args, buf, sizeof(args));
-	free(buf);
+	const byte* p = (const byte*)t->regs().ecx;
+	t->read_mem(p, args);
+	*argsp = (long*)p;
 }
 
 /**
@@ -147,12 +146,12 @@ int prepare_socketcall(Task* t, int would_need_scratch)
 	switch (r.ebx) {
 	/* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
 	case SYS_RECV: {
-		long args[4];
+		struct { long words[4]; } args;
 
 		if (!would_need_scratch) {
 			return 1;
 		}
-		read_socketcall_args(t, &argsp, args);
+		read_socketcall_args(t, &argsp, &args);
 		/* The socketcall args are passed on the stack and
 		 * pointed at by $ecx.  We need to set up scratch
 		 * buffer space for |buf|, but we also have to
@@ -167,14 +166,14 @@ int prepare_socketcall(Task* t, int would_need_scratch)
 		r.ecx = (uintptr_t)(tmpargsp = scratch);
 		scratch += sizeof(args);
 		/* The |buf| pointer. */
-		push_arg_ptr(t, (void*)args[1]);
-		args[1] = (uintptr_t)scratch;
-		scratch += args[2]/*len*/;
+		push_arg_ptr(t, (void*)args.words[1]);
+		args.words[1] = (uintptr_t)scratch;
+		scratch += args.words[2]/*len*/;
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, "recv");
 		}
 
-		write_child_data(t, sizeof(args), tmpargsp, (byte*)args);
+		t->write_mem(tmpargsp, args);
 		t->set_regs(r);
 		return 1;
 	}
@@ -183,15 +182,15 @@ int prepare_socketcall(Task* t, int would_need_scratch)
 	/* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags]) */
 	case SYS_ACCEPT:
 	case SYS_ACCEPT4: {
-		long args[4];
+		struct { long words[4]; } args;
 		socklen_t* addrlenp;
 		socklen_t addrlen;
 
 		if (!would_need_scratch) {
 			return 1;
 		}
-		read_socketcall_args(t, &argsp, args);
-		addrlenp = (socklen_t*)args[2];
+		read_socketcall_args(t, &argsp, &args);
+		addrlenp = (socklen_t*)args.words[2];
 		assert(sizeof(long) == sizeof(addrlen));
 		addrlen = t->read_word((byte*)addrlenp);
 		/* We use the same basic scheme here as for RECV
@@ -207,18 +206,18 @@ int prepare_socketcall(Task* t, int would_need_scratch)
 		scratch += sizeof(args);
 		/* The |addrlen| pointer. */
 		push_arg_ptr(t, addrlenp);
-		args[2] = (uintptr_t)scratch;
+		args.words[2] = (uintptr_t)scratch;
 		scratch += sizeof(*addrlenp);
 		/* The |addr| pointer. */
-		push_arg_ptr(t, (void*)args[1]);
-		args[1] = (uintptr_t)scratch;
+		push_arg_ptr(t, (void*)args.words[1]);
+		args.words[1] = (uintptr_t)scratch;
 		scratch += addrlen;
 
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, "accept");
 		}
 
-		write_child_data(t, sizeof(args), tmpargsp, (byte*)args);
+		t->write_mem((const byte*)tmpargsp, args);
 		t->set_regs(r);
 		return 1;
 	}
@@ -795,8 +794,9 @@ static void restore_and_record_arg_buf(Task* t,
 				       size_t num_bytes, byte* child_addr,
 				       byte** parent_data_iter)
 {
+	// TODO: move scratch-arg tracking into Task
 	byte* parent_data = *parent_data_iter;
-	write_child_data(t, num_bytes, child_addr, parent_data);
+	t->write_bytes_helper(child_addr, num_bytes, parent_data);
 	record_parent_data(t, num_bytes, child_addr, parent_data);
 	*parent_data_iter += num_bytes;
 }
@@ -1085,7 +1085,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 	 *  }
 	 */
 	case SYS_RECV: {
-		long args[4];
+		struct { long words[4]; } args;
 		byte* buf;
 		byte* argsp;
 		byte* iter;
@@ -1100,12 +1100,12 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 			/* We don't need to record the fudging of the
 			 * socketcall arguments, because we won't
 			 * replay that. */
-			memcpy(args, iter, sizeof(args));
+			memcpy(args.words, iter, sizeof(args.words));
 			iter += sizeof(args);
 		} else {
 			long* argsp;
-			read_socketcall_args(t, &argsp, args);
-			buf = (byte*)args[1];
+			read_socketcall_args(t, &argsp, &args);
+			buf = (byte*)args.words[1];
 		}
 
 		/* Restore |buf| contents. */

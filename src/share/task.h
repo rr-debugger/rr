@@ -1308,20 +1308,26 @@ public:
 
 	/**
 	 * Write |val| to |child_addr|.
-	 */
-	template<typename T>
-	void write_mem(const byte* child_addr, const T* val) {
-		return write_bytes_helper(child_addr, sizeof(*val),
-					  reinterpret_cast<const byte*>(val));
-	}
-
-	/**
-	 * Write |word| to |child_addr| in this address space.
 	 *
 	 * NB: doesn't use the ptrace API, so safe to use even when
 	 * the tracee isn't at a trace-stop.
 	 */
-	void write_word(const byte* child_addr, long word);
+	template<typename T>
+	void write_mem(const byte* child_addr, const T& val) {
+		return write_bytes_helper(child_addr, sizeof(val),
+					  reinterpret_cast<const byte*>(&val));
+	}
+
+	/**
+	 * Don't use these helpers directly; use the safer and more
+	 * convenient variants above.
+	 *
+	 * Read/write the number of bytes that the template wrapper
+	 * inferred.
+	 */
+	void read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf);
+	void write_bytes_helper(const byte* addr,
+				ssize_t buf_size, const byte* buf);
 
 	/** Return an iterator at the beginning of the task map. */
 	static Map::const_iterator begin();
@@ -1548,14 +1554,6 @@ private:
 	 * Either the request succeeds, or this doesn't return.
 	 */
 	void xptrace(int request, void* addr, void* data);
-
-	/**
-	 * Read/write the number of bytes that the template wrapper
-	 * inferred.
-	 */
-	void read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf);
-	void write_bytes_helper(const byte* addr,
-				ssize_t buf_size, const byte* buf);
 
 	/* The address space of this task. */
 	std::shared_ptr<AddressSpace> as;

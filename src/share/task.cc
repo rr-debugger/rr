@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <limits>
 #include <set>
 
 #include "dbg.h"
@@ -1400,12 +1401,6 @@ Task::try_wait()
 	return ret == tid;
 }
 
-void
-Task::write_word(const byte* child_addr, long word)
-{
-	write_mem(child_addr, &word);
-}
-
 /*static*/ Task::Map::const_iterator
 Task::begin()
 {
@@ -1637,7 +1632,28 @@ Task::read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf)
 void
 Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 {
-	write_child_data(this, buf_size, (byte*)addr, buf);
+	off64_t offset = (uintptr_t)addr;
+	assert_exec(this, offset < numeric_limits<unsigned long>::max(),
+		    "%p was sign-extended to #%llx", addr, offset);
+
+	ssize_t nwritten = pwrite64(child_mem_fd, buf, buf_size, offset);
+	// We open the child_mem_fd just after being notified of
+	// exec(), when the Task is created.  Trying to read from that
+	// fd seems to return 0 with errno 0.  Reopening the mem fd
+	// allows the pwrite to succeed.  It seems that the first mem
+	// fd we open, very early in exec, refers to some resource
+	// that's different than the one we see after reopening the
+	// fd, after exec.
+	//
+	// TODO: create the fd on demand and remove this workaround.
+	if (0 == nwritten && 0 == errno) {
+		close(child_mem_fd);
+		child_mem_fd = sys_open_child_mem(this);
+		return write_bytes_helper(addr, buf_size, buf);
+	}
+	assert_exec(this, nwritten == buf_size,
+		    "Should have written %d bytes, but only wrote %d",
+		    buf_size, nwritten);
 }
 
 void
