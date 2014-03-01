@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/prctl.h>
+#include <sys/wait.h>
 
 #include <limits>
 #include <string>
@@ -25,8 +26,6 @@
 using namespace std;
 
 extern char** environ;
-
-static pid_t child;
 
 static string exe_image;
 // NB: we currently intentionally leak the constituent strings in
@@ -78,7 +77,6 @@ static void copy_envp(char** envp)
 static void start_recording(int argc, char* argv[], char** envp)
 {
 	pid_t pid;
-	int status;
 
 	exe_image = argv[0];
 	copy_argv(argc, argv);
@@ -95,15 +93,12 @@ static void start_recording(int argc, char* argv[], char** envp)
 	open_trace_files();
 	rec_init_trace_files();
 	record_argv_envp(argc, arg_v.data(), env_p.data());
-
-	child = pid;
-
-	/* sync with the child process */
-	sys_waitpid(pid, &status);
-
 	init_libpfm();
 
+	// Sync with the child process.
 	Task* t = Task::create(pid);
+	t->wait(&t->status);
+
 	start_hpc(t, rr_flags()->max_rbc);
 
 	/* Configure the child process to get a message upon a thread

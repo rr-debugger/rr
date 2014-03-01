@@ -1487,10 +1487,8 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 // XXX this is probably dup'd somewhere else
 static void advance_syscall(Task* t)
 {
-	pid_t tid = t->tid;
-
 	t->cont_syscall();
-	sys_waitpid(tid, &t->status);
+	t->wait(&t->status);
 
 	/* Skip past a seccomp trace, if we happened to see one. */
 	if (GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP
@@ -1499,7 +1497,7 @@ static void advance_syscall(Task* t)
 	     * after SECCOMP */
 	    || GET_PTRACE_EVENT(t->status) == PTRACE_EVENT_SECCOMP_OBSOLETE) {
 		t->cont_syscall();
-		sys_waitpid(tid, &t->status);
+		t->wait(&t->status);
 	}
 	assert(GET_PTRACE_EVENT(t->status) == 0);
 }
@@ -1542,10 +1540,9 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 			 int syscallno)
 {
-	pid_t tid = t->tid;
 	struct user_regs_struct regs;
 	/* Wait for syscall-exit trap. */
-	sys_waitpid(tid, &t->status);
+	t->wait(&t->status);
 
 	t->get_regs(&regs);
 	assert_exec(t, regs.orig_eax == syscallno,

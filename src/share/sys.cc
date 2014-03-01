@@ -215,46 +215,6 @@ void sys_ptrace_traceme()
 	ptrace(PTRACE_TRACEME, 0, 0, 0);
 }
 
-void goto_next_event(Task *t)
-{
-
-	if (t->child_sig != 0) {
-		printf("sending signal: %d\n",t->child_sig);
-	}
-	sys_ptrace(t, PTRACE_SYSCALL, 0, (void*) t->child_sig);
-	sys_waitpid(t->tid, &t->status);
-
-	t->child_sig = signal_pending(t->status);
-	assert_exec(t, t->child_sig != SIGTRAP,
-		    "Caught unexpected SIGTRAP while going to next event");
-
-	t->event = t->get_orig_eax();
-}
-
-bool sys_waitpid(pid_t pid, int *status)
-{
-	pid_t ret = waitpid(pid, status, __WALL);
-	if (0 > ret && EINTR == errno) {
-		return false;
-	} else if (0 > ret) {
-		fatal("Failed to waitpid(%d)", pid);
-	}
-	assert(ret == pid);
-	return true;
-}
-
-pid_t sys_waitpid_nonblock(pid_t pid, int* status)
-{
-	pid_t ret;
-
-	if ((ret = waitpid(pid, status, __WALL | __WCLONE | WNOHANG | WSTOPPED )) < 0) {
-		log_err("waiting for: %d -- bailing out",pid);
-		sys_exit();
-	}
-
-	return ret;
-}
-
 /*
  * Returns the time difference t2 - t1 in microseconds.
  */

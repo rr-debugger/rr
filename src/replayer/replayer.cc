@@ -609,7 +609,7 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi)
 		resume_how = RESUME_SYSCALL;
 	}
 	t->resume_execution(resume_how);
-	sys_waitpid(t->tid, &t->status);
+	t->wait(&t->status);
 
 	switch ((t->child_sig = signal_pending(t->status))) {
 	case 0:
@@ -645,7 +645,7 @@ static void step_exit_syscall_emu(Task *t)
 	t->get_regs(&regs);
 
 	t->cont_sysemu_singlestep();
-	sys_waitpid(t->tid, &t->status);
+	t->wait(&t->status);
 
 	t->set_regs(regs);
 
@@ -708,7 +708,6 @@ static int exit_syscall(Task* t,
 enum { DONT_STEPI = 0, STEPI };
 static void continue_or_step(Task* t, int stepi)
 {
-	pid_t tid = t->tid;
 	int child_sig_gt_zero;
 
 	ResumeRequest resume_how;
@@ -724,7 +723,7 @@ static void continue_or_step(Task* t, int stepi)
 		resume_how = RESUME_SYSCALL;
 	}
 	t->resume_execution(resume_how);
-	sys_waitpid(tid, &t->status);
+	t->wait(&t->status);
 
 	t->child_sig = signal_pending(t->status);
 
@@ -1954,6 +1953,8 @@ static void set_sig_blockedness(int sig, int blockedness)
 /**
  * Fork an initial tracee child and have exec() the specified image.
  * Return the new tracee pid.
+ *
+ * TODO: share this duplicated code with the recorder.
  */
 static pid_t launch_initial_tracee(string& exe_image, CharpVector& arg_v,
 				   CharpVector& env_p)
@@ -1984,9 +1985,6 @@ static pid_t launch_initial_tracee(string& exe_image, CharpVector& arg_v,
 		fatal("Not reached");
 	}
 
-	int status;
-	sys_waitpid(pid, &status);
-	assert(WIFSTOPPED(status));
 	return pid;
 }
 
@@ -2020,15 +2018,17 @@ static void serve_replay(int argc, char* argv[], char** envp)
 
 	load_recorded_env(argv[0], &argc, &exe_image, &arg_v, &env_p);
 
-	pid_t tracee_pid = launch_initial_tracee(exe_image, arg_v, env_p);
-
 	init_libpfm();
 
 	rep_setup_trace_dir(argv[0]);
 	open_trace_files();
 	rep_init_trace_files();
 
+	pid_t tracee_pid = launch_initial_tracee(exe_image, arg_v, env_p);
 	Task* t = Task::create(tracee_pid, get_recorded_main_thread());
+	t->wait(&t->status);
+	assert(WIFSTOPPED(t->status));
+
 	sys_ptrace_setup(t);
 
 	replay_trace_frames();

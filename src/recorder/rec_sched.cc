@@ -80,7 +80,6 @@ find_next_runnable_task(int* by_waitpid)
 		auto task_iterator = begin_at;
 		do {
 			Task* t = task_iterator->second;
-			pid_t tid = t->tid;
 
 			if (t->unstable) {
 				debug("  %d is unstable, going to waitpid(-1)", tid);
@@ -94,8 +93,8 @@ find_next_runnable_task(int* by_waitpid)
 
 			debug("  %d is blocked on %s, checking status ...", tid,
 			      strevent(t->event));
-			if ((t->pseudo_blocked && sys_waitpid(tid, &t->status))
-			    || 0 != sys_waitpid_nonblock(tid, &t->status)) {
+			if ((t->pseudo_blocked && t->wait(&t->status))
+			    || t->try_wait(&t->status)) {
 				t->pseudo_blocked = 0;
 				*by_waitpid = 1;
 				debug("  ready with status 0x%x", t->status);
@@ -140,7 +139,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 #ifdef MONITOR_UNSWITCHABLE_WAITS
 			double start = now_sec(), wait_duration;
 #endif
-			if (!sys_waitpid(t->tid, &t->status)) {
+			if (!t->wait(&t->status)) {
 				debug("  waitpid(%d) interrupted by EINTR",
 				      t->tid);
 				return nullptr;

@@ -1209,6 +1209,27 @@ Task::update_sigmask(const struct user_regs_struct* regs)
 	}
 }
 
+bool
+Task::wait(int* status)
+{
+	pid_t ret = waitpid(tid, status, __WALL);
+	if (0 > ret && EINTR == errno) {
+		return false;
+	}
+	assert_exec(this, tid == ret, "waitpid(%d) failed with %d",
+		    tid, ret);
+	return true;
+}
+
+bool
+Task::try_wait(int* status)
+{
+	pid_t ret = waitpid(tid, status, WNOHANG | __WALL | WSTOPPED);
+	assert_exec(this, 0 <= ret, "waitpid(%d, NOHANG) failed with %d",
+		    tid, ret);
+	return ret == tid;
+}
+
 void
 Task::write_word(const byte* child_addr, long word)
 {

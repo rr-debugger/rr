@@ -1144,6 +1144,19 @@ public:
 	AddressSpace::shr_ptr vm() { return as; }
 
 	/**
+	 * Block until the status of this changes.  Write the new
+	 * status into |*status|.  Return true if successful, false if
+	 * interrupted, and don't return at all on errors.
+	 */
+	bool wait(int* status);
+	/**
+	 * See if the status of this has changed, but don't block.
+	 * Return true if status changed and write new status into
+	 * |status|, otherwise return false.
+	 */
+	bool try_wait(int* status);
+
+	/**
 	 * Write |N| bytes from |buf| to |child_addr|, or don't
 	 * return.
 	 */

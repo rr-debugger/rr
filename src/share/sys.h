@@ -24,8 +24,6 @@ void sys_kill(int pid, int msg);
 void sys_exit(void);
 void sys_start_trace(const char* executable, char** fake_argv, char** envp);
 
-void goto_next_event(Task *t);
-
 void sys_ptrace(Task* t, int request, void* addr, void* data);
 void sys_ptrace_setup(Task* t);
 void sys_ptrace_traceme(void);
@@ -35,12 +33,6 @@ unsigned long sys_ptrace_getmsg(Task* t);
 void sys_ptrace_getsiginfo(Task* t, siginfo_t* sig);
 void sys_ptrace_detach(pid_t pid);
 
-/**
- * Block until the status of |pid| changes.  Write the new status into
- * |*status|.  Return true if successful, false if interrupted.
- */
-bool sys_waitpid(pid_t pid, int *status);
-pid_t sys_waitpid_nonblock(pid_t pid, int *status);
 void sys_fcntl(int fd, int cmd, long arg1);
 
 #endif /* SYS_H_ */
