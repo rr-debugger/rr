@@ -434,7 +434,7 @@ static void enter_syscall_emu(Task* t, int syscall)
 
 static void exit_syscall_emu_ret(Task* t, int syscall)
 {
-	set_return_value(t);
+	t->set_return_value_from_trace();
 	validate_args(syscall, STATE_SYSCALL_EXIT, t);
 	finish_syscall_emu(t);
 }
@@ -445,7 +445,7 @@ static void exit_syscall_emu(Task* t,
 	int i;
 
 	for (i = 0; i < num_emu_args; ++i) {
-		set_child_data(t);
+		t->set_data_from_trace();
 	}
 	exit_syscall_emu_ret(t, syscall);
 }
@@ -464,10 +464,10 @@ static void exit_syscall_exec(Task* t, int syscall,
 
 	__ptrace_cont(t);
 	for (i = 0; i < num_emu_args; ++i) {
-		set_child_data(t);
+		t->set_data_from_trace();
 	}
 	if (emu_ret) {
-		set_return_value(t); 
+		t->set_return_value_from_trace(); 
 	}
 	validate_args(syscall, STATE_SYSCALL_EXIT, t);
 }
@@ -528,7 +528,7 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 	if (t->is_untraced_syscall()) {
 		debug("  noop-restoring scratch for write-only desched'd %s",
 		      syscallname(t->regs().orig_eax));
-		set_child_data(t);
+		t->set_data_from_trace();
 	}
 }
 
@@ -594,8 +594,8 @@ static void process_clone(Task* t,
 
 	/* FIXME: what if registers are non-null and contain an
 	 * invalid address? */
-	set_child_data(t);
-	set_child_data(t);
+	t->set_data_from_trace();
+	t->set_data_from_trace();
 
 	size_t size;
 	byte* rec_addr;
@@ -625,7 +625,7 @@ static void process_clone(Task* t,
 	// masked out CLONE_UNTRACED.
 	r.ebx = flags;
 	t->set_regs(r);
-	set_return_value(t);
+	t->set_return_value_from_trace();
 	validate_args(syscallno, state, t);
 
 	init_scratch_memory(new_task);
@@ -836,7 +836,7 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 		r = t->regs();
 		r.ecx = orig_shmemid;
 		t->set_regs(r);
-		set_child_data(t);
+		t->set_data_from_trace();
 		validate_args(SYS_ipc, state, t);
 		return;
 	}
@@ -849,7 +849,7 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 	case SHMGET: {
 		__ptrace_cont(t);
 		shmem_store_key(trace->recorded_regs.eax, t->regs().eax);
-		set_return_value(t);
+		t->set_return_value_from_trace();
 		validate_args(SYS_ipc, state, t);
 		return;
 	}
@@ -913,7 +913,7 @@ static void* finish_private_mmap(Task* t,
 						  flags | MAP_ANONYMOUS,
 						  DONT_NOTE_TASK_MAP);
 	/* Restore the map region we copied. */
-	set_child_data(t);
+	t->set_data_from_trace();
 
 	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags,
 		     page_size() * offset_pages,
@@ -1275,7 +1275,7 @@ static void process_restart_syscall(Task* t, int syscallno)
 	case SYS_nanosleep:
 		/* Write the remaining-time outparam that we were
 		 * forced to during recording. */
-		set_child_data(t);
+		t->set_data_from_trace();
 
 	default:
 		return;
@@ -1422,7 +1422,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		// simpler and probably more reliable to just check
 		// the tracee $ip at syscall restart to determine
 		// whether syscall re-entry needs to occur.
-		set_return_value(t);
+		t->set_return_value_from_trace();
 		process_restart_syscall(t, syscall);
 		// Use this record to recognize the syscall if it
 		// indeed restarts.  If the syscall isn't restarted,
@@ -1633,7 +1633,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		step->syscall.num_emu_args = 1;
 		step->action = TSTEP_EXIT_SYSCALL;
-		set_child_data(t);
+		t->set_data_from_trace();
 		t->set_tid_addr((byte*)rec_regs->ebx);
 		return;
 
@@ -1737,7 +1737,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 		t->post_exec();
 
-		set_return_value(t);
+		t->set_return_value_from_trace();
 		validate_args(syscall, state, t);
 		break;
 	}
@@ -1769,7 +1769,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 
 		for (i = 0; i < nmmsgs; ++i) {
-			set_child_data(t);
+			t->set_data_from_trace();
 		}
 		return exit_syscall_emu_ret(t, syscall);
 	}

@@ -1225,6 +1225,27 @@ Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 	return wait();
 }
 
+ssize_t
+Task::set_data_from_trace()
+{
+	size_t size;
+	byte* rec_addr;
+	byte* data = (byte*)read_raw_data(&trace, &size, &rec_addr);
+	if (data && size > 0) {
+		write_bytes_helper(rec_addr, size, data);
+		free(data);
+	}
+	return size;
+}
+
+void
+Task::set_return_value_from_trace()
+{
+	struct user_regs_struct r = regs();
+	r.eax = trace.recorded_regs.eax;
+	set_regs(r);
+}
+
 void
 Task::set_regs(const struct user_regs_struct& regs)
 {
