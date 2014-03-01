@@ -178,7 +178,7 @@ static int advance_syscall_boundary(Task* t,
 	int status;
 	int sig;
 
-	sys_ptrace_syscall(t);
+	t->cont_syscall();
 	sys_waitpid(tid, &status);
 	t->get_regs(regs);
 
@@ -427,7 +427,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 		/* Deliver the signal immediately when there's a user
 		 * handler: we need to record the sigframe that the
 		 * kernel sets up. */
-		sys_ptrace_singlestep_sig(t, sig);
+		t->cont_singlestep(sig);
 		t->ev->signal.delivered = 1;
 
 		if (!sys_waitpid(t->tid, &t->status)) {
@@ -623,7 +623,7 @@ static int go_to_a_happy_place(Task* t,
 		 * recorded. */
 		debug("  stepi out of syscallbuf from %p ...",
 		      (void*)regs->eip);
-		sys_ptrace_singlestep(t);
+		t->cont_singlestep();
 		sys_waitpid(tid, &status);
 
 		assert(WIFSTOPPED(status));
@@ -662,7 +662,7 @@ static int go_to_a_happy_place(Task* t,
 		if (is_desched_event_syscall(t, regs)) {
 			debug("  stepping over desched-event syscall");
 			/* Finish the syscall. */
-			sys_ptrace_singlestep(t);
+			t->cont_singlestep();
 			sys_waitpid(tid, &status);
 			if (is_arm_desched_event_syscall(t, regs)) {
 				/* Disarm the event: we don't need or
@@ -686,7 +686,7 @@ static int go_to_a_happy_place(Task* t,
 			  syscallname(regs->orig_eax));*/
 			disarm_desched_event(t);
 			/* And (hopefully!) finish the syscall. */
-			sys_ptrace_singlestep(t);
+			t->cont_singlestep();
 			sys_waitpid(tid, &status);
 		}
 	}

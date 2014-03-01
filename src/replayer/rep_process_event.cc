@@ -324,7 +324,7 @@ static void validate_args(int syscall, int state, Task* t)
  */
 static void goto_next_syscall_emu(Task *t)
 {
-	sys_ptrace_sysemu(t);
+	t->cont_sysemu();
 	sys_waitpid(t->tid, &(t->status));
 
 	int sig = signal_pending(t->status);
@@ -372,7 +372,7 @@ static void finish_syscall_emu(Task *t)
 {
 	struct user_regs_struct regs;
 	t->get_regs(&regs);
-	sys_ptrace_sysemu_singlestep(t);
+	t->cont_sysemu_singlestep();
 	sys_waitpid(t->tid, &(t->status));
 	t->set_regs(regs);
 
@@ -384,7 +384,7 @@ static void finish_syscall_emu(Task *t)
  */
 void __ptrace_cont(Task *t)
 {
-	sys_ptrace_syscall(t);
+	t->cont_syscall();
 	sys_waitpid(t->tid, &t->status);
 
 	t->child_sig = signal_pending(t->status);

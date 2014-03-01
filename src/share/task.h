@@ -11,6 +11,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/ptrace.h>
+// This header has to be included after sys/ptrace.h.
+#include <asm/ptrace-abi.h>
 #include <sys/queue.h>
 #include <sys/user.h>
 
@@ -792,6 +795,23 @@ enum CloneFlags {
 };
 
 /**
+ * Enumeration of ways to resume execution.  See the ptrace manual for
+ * details of the semantics of these.
+ *
+ * We define a new datatype because the PTRACE_SYSEMU* requests aren't
+ * part of the official ptrace API, and we want to use a strong type
+ * for these resume requests to ensure callers don't confuse their
+ * arguments.
+ */
+enum ResumeRequest {
+	RESUME_CONT = PTRACE_CONT,
+	RESUME_SINGLESTEP = PTRACE_SINGLESTEP,
+	RESUME_SYSCALL = PTRACE_SYSCALL,
+	RESUME_SYSEMU = PTRACE_SYSEMU,
+	RESUME_SYSEMU_SINGLESTEP = PTRACE_SYSEMU_SINGLESTEP,
+};
+
+/**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
  * tasks may share the same address space and file descriptors, in
@@ -831,6 +851,28 @@ public:
 	 */
 	Task* clone(int flags, const byte* stack, const byte* cleartid_addr,
 		    pid_t new_tid, pid_t new_rec_tid = -1);
+
+	/**
+	 * Continue according to the semantics implied by the helper's
+	 * name.  See the ptrace manual for details of semantics.  If
+	 * |sig| is nonzero, it's delivered to this as part of the
+	 * resume request.
+	 */
+	void cont(int sig=0) {
+		return resume_execution(RESUME_CONT, sig);
+	}
+	void cont_singlestep(int sig=0) {
+		return resume_execution(RESUME_SINGLESTEP, sig);
+	}
+	void cont_syscall(int sig=0) {
+		return resume_execution(RESUME_SYSCALL, sig);
+	}
+	void cont_sysemu(int sig=0) {
+		return resume_execution(RESUME_SYSEMU, sig);
+	}
+	void cont_sysemu_singlestep(int sig=0) {
+		return resume_execution(RESUME_SYSEMU_SINGLESTEP, sig);
+	}
 
 	/**
 	 * Shortcut to the single |pending_event->desched.rec| when
@@ -1024,6 +1066,14 @@ public:
 	 * the tracee isn't at a trace-stop.
 	 */
 	long read_word(const byte* child_addr);
+
+	/**
+	 * Resume execution |how|, deliverying |sig| if nonzero.
+	 *
+	 * You probably want to use one of the cont*() helpers above,
+	 * and not this.
+	 */
+	void resume_execution(ResumeRequest how, int sig=0);
 
 	/** Set the tracee's registers to |regs|. */
 	void set_regs(const struct user_regs_struct& regs);
@@ -1333,7 +1383,7 @@ private:
 	 * Make an infallible ptrace |request| with |addr| and |data|.
 	 * Either the request succeeds, or this doesn't return.
 	 */
-	void xptrace(enum __ptrace_request request, void* addr, void* data);
+	void xptrace(int request, void* addr, void* data);
 
 	/**
 	 * Read/write the number of bytes that the template wrapper
