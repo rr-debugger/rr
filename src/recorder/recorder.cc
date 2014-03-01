@@ -41,7 +41,7 @@ static int can_deliver_signals;
 
 static void status_changed(Task* t)
 {
-	read_child_registers(t, &t->regs);
+	t->get_regs(&t->regs);
 	t->event = t->regs.orig_eax;
 	/* If the initial tracee isn't prepared to handle signals yet,
 	 * then us ignoring the ptrace notification here will have the
@@ -96,7 +96,7 @@ static void handle_ptrace_event(Task** tp)
 		// Wait until the new task is ready.
 		sys_waitpid(new_tid, &t->status);
 
-		read_child_registers(t, &t->regs);
+		t->get_regs(&t->regs);
 		const byte* stack = (const byte*)t->regs.ecx;
 		const byte* ctid = (const byte*)t->regs.edi;
 		// fork and vfork can never share these resources,
@@ -278,7 +278,7 @@ static void desched_state_changed(Task* t)
 		do {
 			sys_ptrace_syscall(t);
 			sys_waitpid(t->tid, &t->status);
-			read_child_registers(t, &t->regs);
+			t->get_regs(&t->regs);
 			/* We can safely ignore SIG_TIMESLICE while
 			 * trying to reach the disarm-desched ioctl:
 			 * once we reach it, the desched'd syscall
@@ -501,7 +501,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		assert(signal_pending(t->status) == 0);
 		assert(SYS_sigreturn != t->event);
 
-		read_child_registers(t, &t->regs);
+		t->get_regs(&t->regs);
 		t->event = t->regs.orig_eax;
 		if (SYS_restart_syscall == t->event) {
 			t->event = syscallno;
@@ -553,7 +553,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			 * because scratch doesn't exist in replay.
 			 * So cover our tracks here. */
 			copy_syscall_arg_regs(&t->regs, &t->ev->syscall.regs);
-			write_child_registers(t, &t->regs);
+			t->set_regs(t->regs);
 		}
 		record_event(t);
 

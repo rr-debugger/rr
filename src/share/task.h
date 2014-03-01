@@ -936,6 +936,24 @@ public:
 	 */
 	void futex_wait(const byte* futex, uint32_t val);
 
+	/** Return the tracee's current regs through |regs|. */
+	void get_regs(struct user_regs_struct* regs);
+
+	// TODO: temporary reg getters for backwards compatibility.
+	// Don't use these, they're going to be removed.
+#define REG_GETTER(_reg)			\
+	long get_ ## _reg() {			\
+		struct user_regs_struct regs;	\
+		get_regs(&regs);		\
+		return regs._reg;		\
+	}
+	REG_GETTER(eax)
+	REG_GETTER(ebx)
+	REG_GETTER(ecx)
+	REG_GETTER(ebp)
+	REG_GETTER(orig_eax)
+	REG_GETTER(eip)
+
 	/**
 	 * Call this when the tracee's syscallbuf has been initialized.
 	 */
@@ -1006,6 +1024,21 @@ public:
 	 * the tracee isn't at a trace-stop.
 	 */
 	long read_word(const byte* child_addr);
+
+	/** Set the tracee's registers to |regs|. */
+	void set_regs(const struct user_regs_struct& regs);
+
+	// See REG_GETTER().
+#define REG_SETTER(_reg)			\
+	void set_ ## _reg(long value) {		\
+		struct user_regs_struct regs;	\
+		get_regs(&regs);		\
+		regs._reg = value;		\
+		set_regs(regs);			\
+	}
+	REG_SETTER(ebx)
+	REG_SETTER(ecx)
+	REG_SETTER(edi)
 
 	/** Update the clear-tid futex to |tid_addr|. */
 	void set_tid_addr(const byte* tid_addr);
@@ -1295,6 +1328,12 @@ private:
 	 * True if this has blocked delivery of the desched signal.
 	 */
 	bool is_desched_sig_blocked();
+
+	/**
+	 * Make an infallible ptrace |request| with |addr| and |data|.
+	 * Either the request succeeds, or this doesn't return.
+	 */
+	void xptrace(enum __ptrace_request request, void* addr, void* data);
 
 	/**
 	 * Read/write the number of bytes that the template wrapper

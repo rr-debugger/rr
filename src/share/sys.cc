@@ -268,7 +268,7 @@ void goto_next_event(Task *t)
 	assert_exec(t, t->child_sig != SIGTRAP,
 		    "Caught unexpected SIGTRAP while going to next event");
 
-	t->event = read_child_orig_eax(t);
+	t->event = t->get_orig_eax();
 }
 
 bool sys_waitpid(pid_t pid, int *status)

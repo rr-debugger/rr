@@ -343,7 +343,7 @@ static void goto_next_syscall_emu(Task *t)
 	/* check if we are synchronized with the trace -- should never
 	 * fail */
 	const int rec_syscall = t->trace.recorded_regs.orig_eax;
-	const int current_syscall = read_child_orig_eax(t);
+	const int current_syscall = t->get_orig_eax();
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered
@@ -371,10 +371,10 @@ static void goto_next_syscall_emu(Task *t)
 static void finish_syscall_emu(Task *t)
 {
 	struct user_regs_struct regs;
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 	sys_ptrace_sysemu_singlestep(t);
 	sys_waitpid(t->tid, &(t->status));
-	write_child_registers(t, &regs);
+	t->set_regs(regs);
 
 	t->status = 0;
 }
@@ -388,7 +388,7 @@ void __ptrace_cont(Task *t)
 	sys_waitpid(t->tid, &t->status);
 
 	t->child_sig = signal_pending(t->status);
-	read_child_registers(t, &t->regs);
+	t->get_regs(&t->regs);
 	t->event = t->regs.orig_eax;
 
 	/* check if we are synchronized with the trace -- should never fail */
@@ -416,7 +416,7 @@ void rep_maybe_replay_stdio_write(Task* t)
 		return;
 	}
 
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 
 	assert(SYS_write == regs.orig_eax);
 
@@ -533,7 +533,7 @@ static void init_scratch_memory(Task* t)
  */
 static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 {
-	read_child_registers(t, &t->regs);
+	t->get_regs(&t->regs);
 	if (SYSCALLBUF_IS_IP_UNTRACED_SYSCALL(t->regs.eip, t)) {
 		debug("  noop-restoring scratch for write-only desched'd %s",
 		      syscallname(t->regs.orig_eax));
@@ -579,7 +579,7 @@ static void process_clone(Task* t,
 	if (flags & CLONE_UNTRACED) {
 		// See related comment in rec_process_event.c.
 		rec_regs.ebx = flags & ~CLONE_UNTRACED;
-		write_child_registers(t, &rec_regs);
+		t->set_regs(rec_regs);
 	}
 
 	// TODO: can debugger signals interrupt us here?
@@ -596,7 +596,7 @@ static void process_clone(Task* t,
 	int status;
 	sys_waitpid(new_tid, &status);
 
-	read_child_registers(t, &t->regs);
+	t->get_regs(&t->regs);
 	const byte* stack = (const byte*)t->regs.ecx;
 	const byte* ctid = (const byte*)t->regs.edi;
 	int flags_arg = (SYS_clone == t->regs.orig_eax) ? t->regs.ebx : 0;
@@ -635,7 +635,7 @@ static void process_clone(Task* t,
 	// Restore the saved flags, to hide the fact that we may have
 	// masked out CLONE_UNTRACED.
 	t->regs.ebx = flags;
-	write_child_registers(t, &t->regs);
+	t->set_regs(t->regs);
 	set_return_value(t);
 	validate_args(syscallno, state, t);
 
@@ -705,7 +705,7 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	request = read_child_ecx(t);
+	request = t->get_ecx();
 	dir = _IOC_DIR(request);
 
 	debug("Processing ioctl 0x%x: dir 0x%x", request, dir);
@@ -798,10 +798,10 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 	/* void *shmat(int shmid, const void *shmaddr, int shmflg) */
 	case SHMAT: {
 		struct user_regs_struct regs;
-		read_child_registers(t, &regs);
+		t->get_regs(&regs);
 		int orig_shmemid = regs.ecx;
 		int shmid = shmem_get_key(regs.ecx);
-		write_child_ecx(t, shmid);
+		t->set_ecx(shmid);
 		/* demand the mapping to be at the address supplied by
 		 * the replay */
 		size_t size;
@@ -809,14 +809,14 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 		long* map_addr = (long*)read_raw_data(trace, &size, &rec_addr);
 		assert(rec_addr == (void*)regs.esi);
 		/* hint sits at edi */
-		write_child_edi(t, *map_addr);
+		t->set_edi(*map_addr);
 		__ptrace_cont(t);
-		read_child_registers(t, &regs);
+		t->get_regs(&regs);
 		/* put the key back */
 		regs.ecx = orig_shmemid;
 		/* restore the hint */
 		regs.edi = trace->recorded_regs.edi;
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		long result = read_child_data_word(t, (byte*)regs.esi);
 		(void)result;
 		assert(*map_addr == result);
@@ -834,12 +834,12 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 	}
 	/* int shmctl(int shmid, int cmd, struct shmid_ds *buf); */
 	case SHMCTL: {
-		int orig_shmemid = read_child_ecx(t);
-		int shmid = shmem_get_key(read_child_ecx(t));
+		int orig_shmemid = t->get_ecx();
+		int shmid = shmem_get_key(t->get_ecx());
 
-		write_child_ecx(t, shmid);
+		t->set_ecx(shmid);
 		__ptrace_cont(t);
-		write_child_ecx(t, orig_shmemid);
+		t->set_ecx( orig_shmemid);
 		set_child_data(t);
 		validate_args(SYS_ipc, state, t);
 		return;
@@ -852,7 +852,7 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 	/* int shmget(key_t key, size_t size, int shmflg); */
 	case SHMGET: {
 		__ptrace_cont(t);
-		shmem_store_key(trace->recorded_regs.eax, read_child_eax(t));
+		shmem_store_key(trace->recorded_regs.eax, t->get_eax());
 		set_return_value(t);
 		validate_args(SYS_ipc, state, t);
 		return;
@@ -1162,7 +1162,7 @@ static int process_socketcall(Task* t, int state,
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	switch ((call = read_child_ebx(t))) {
+	switch ((call = t->get_ebx())) {
 		/* FIXME: define a SSOT for socketcall record and
 		 * replay data, a la syscall_defs.h */
 	case SYS_SOCKET:
@@ -1455,7 +1455,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		syscall = t->ev->syscall.no;
 		if (STATE_SYSCALL_ENTRY == state) {
 			void* intr_ip = (void*)t->ev->syscall.regs.eip;
-			void* cur_ip = (void*)read_child_eip(t);
+			void* cur_ip = (void*)t->get_eip();
 
 			debug("'restarting' %s interrupted by %ld at %p; now at %p",
 			      syscallname(syscall), t->ev->syscall.regs.eax,
@@ -1525,7 +1525,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		if (state == 0) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
-			int cmd = read_child_ecx(t);
+			int cmd = t->get_ecx();
 
 			step->action = TSTEP_EXIT_SYSCALL;
 			switch (cmd) {
@@ -1597,7 +1597,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
-			int cmd = read_child_ebp(t);
+			int cmd = t->get_ebp();
 
 			step->action = TSTEP_EXIT_SYSCALL;
 			switch (cmd & SUBCMDMASK) {
@@ -1706,7 +1706,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		if (0 > rec_regs->eax) {
 			/* Failed exec(). */
 			exit_syscall_exec(t, syscall, 0, DONT_EMULATE_RETURN);
-			read_child_registers(t, &t->regs);
+			t->get_regs(&t->regs);
 			assert_exec(t, rec_regs->eax == t->regs.eax,
 				    "Recorded exec() return %ld, but replayed %ld",
 				    rec_regs->eax, t->regs.eax);
@@ -1716,7 +1716,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		/* we need an additional ptrace syscall, since ptrace
 		 * is setup with PTRACE_O_TRACEEXEC */
 		__ptrace_cont(t);
-		read_child_registers(t, &t->regs);
+		t->get_regs(&t->regs);
 
 		/* We just saw a successful exec(), so from now on we
 		 * know that the address space layout for the replay
@@ -1785,7 +1785,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		if (state == STATE_SYSCALL_ENTRY) {
 			enter_syscall_emu(t, SYS_setpgid);
 		} else {
-			write_child_ebx(t, t->trace.recorded_regs.ebx);
+			t->set_ebx(t->trace.recorded_regs.ebx);
 			exit_syscall_emu(t, SYS_setpgid, 0);
 		}
 		break;
@@ -1796,7 +1796,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			enter_syscall_emu(t, syscall);
 			finish_syscall_emu(t);
 		} else {
-			write_child_registers(t, &trace->recorded_regs);
+			t->set_regs(trace->recorded_regs);
 		}
 		break;
 

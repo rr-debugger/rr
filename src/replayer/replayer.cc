@@ -460,7 +460,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			struct user_regs_struct regs;
 			dbg_regvalue_t val;
 
-			read_child_registers(target, &regs);
+			target->get_regs(&regs);
 			val.value = get_reg(&regs, req.reg, &val.defined);
 			dbg_reply_get_reg(dbg, val);
 			continue;
@@ -470,7 +470,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			struct dbg_regfile file;
 			dbg_regvalue_t* val;
 
-			read_child_registers(target, &regs);
+			target->get_regs(&regs);
 			memset(&file, 0, sizeof(file));
 			for (int i = DREG_EAX; i < DREG_NUM_USER_REGS; ++i) {
 				val = &file.regs[i];
@@ -578,7 +578,7 @@ static void validate_args(int event, int state, Task* t)
 		 * clear whether this is a ptrace bug or a kernel bug,
 		 * but either way it's not supposed to happen.  So we
 		 * fudge registers here to cover up that bug. */
-		read_child_registers(t, &cur_regs);
+		t->get_regs(&cur_regs);
 		if (cur_regs.esi != rec_regs->esi) {
 			log_warn("Probably saw kernel bug mutating $esi across pread/write64 call: recorded:0x%lx; replaying:0x%lx.  Fudging registers.",
 				 rec_regs->esi, cur_regs.esi);
@@ -642,12 +642,12 @@ static void step_exit_syscall_emu(Task *t)
 {
 	struct user_regs_struct regs;
 
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 
 	sys_ptrace_sysemu_singlestep(t);
 	sys_waitpid(t->tid, &t->status);
 
-	write_child_registers(t, &regs);
+	t->set_regs(regs);
 
 	t->status = 0;
 }
@@ -732,7 +732,7 @@ static void continue_or_step(Task* t, int stepi)
 	if (child_sig_gt_zero) {
 		return;
 	}
-	read_child_registers(t, &t->regs);
+	t->get_regs(&t->regs);
 	assert_exec(t, child_sig_gt_zero,
 		    "Replaying `%s': expecting tracee signal or trap, but instead at `%s' (rcb: %lld)",
 		    strevent(t->trace.stop_reason),
@@ -799,7 +799,7 @@ static TrapType compute_trap_type(Task* t, int target_sig,
 	/* We're trying to replay a deterministic SIGTRAP, or we're
 	 * replaying an async signal. */
 
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 	ip = (byte*)regs.eip;
 	trap_type = ip_breakpoint_type(ip);
 	if (TRAP_BKPT_USER == trap_type || TRAP_BKPT_INTERNAL == trap_type) {
@@ -868,7 +868,7 @@ static void guard_overshoot(Task* t,
 		long target_ip = target_regs->eip;
 
 		log_err("Replay diverged.  Dumping register comparison.");
-		read_child_registers(t, &t->regs);
+		t->get_regs(&t->regs);
 		/* Cover up the internal breakpoint that we may have
 		 * set, and restore the tracee's $ip to what it would
 		 * have been had it not hit the breakpoint (if it did
@@ -876,7 +876,7 @@ static void guard_overshoot(Task* t,
 		remove_internal_sw_breakpoint(t, (byte*)target_ip);
 		if (t->regs.eip == long(target_ip + sizeof(int_3_insn))) {
 			t->regs.eip -= sizeof(int_3_insn);
-			write_child_registers(t, &t->regs);
+			t->set_regs(t->regs);
 		}
 		compare_register_files(t, "rep overshoot", &t->regs,
 				       "rec", target_regs, LOG_MISMATCHES);
@@ -900,7 +900,7 @@ static void guard_unexpected_signal(Task* t)
 	if (t->child_sig) {
 		event = -t->child_sig;
 	} else {
-		read_child_registers(t, &t->regs);
+		t->get_regs(&t->regs);
 		event = MAX(0, t->regs.orig_eax);
 	}
 	assert_exec(t, child_sig_is_zero_or_sigtrap,
@@ -1040,7 +1040,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 		struct user_regs_struct regs_now;
 		int at_target;
 
-		read_child_registers(t, &regs_now);
+		t->get_regs(&regs_now);
 		at_target = is_same_execution_point(t, regs,
 						    rcbs_left, &regs_now);
 		if (SIGTRAP == t->child_sig) {
@@ -1069,7 +1069,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 
 				t->child_sig = 0;
 				regs_now.eip -= sizeof(int_3_insn);
-				write_child_registers(t, &regs_now);
+				t->set_regs(regs_now);
 				/* We just backed up the $ip, but
 				 * rewound it over an |int $3|
 				 * instruction, which couldn't have
@@ -1199,7 +1199,7 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	/* If this signal had a user handler, and we just set up the
 	 * callframe, and we need to restore the $sp for continued
 	 * execution. */
-	write_child_registers(t, &trace->recorded_regs);
+	t->set_regs(trace->recorded_regs);
 	/* Delivered the signal. */
 	t->child_sig = 0;
 
@@ -1244,7 +1244,7 @@ static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 	assert_at_recorded_rcb(t, event);
 
 	if (SIG_SEGV_RDTSC == event) {
-		write_child_registers(t, &t->trace.recorded_regs);
+		t->set_regs(t->trace.recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
 		return 0;
@@ -1292,7 +1292,7 @@ static int skip_desched_ioctl(Task* t,
 	}
 	ds->state = DESCHED_EXIT;
 
-	read_child_registers(t, &t->regs);
+	t->get_regs(&t->regs);
 	is_desched_syscall = (DESCHED_ARM == ds->type ?
 			      is_arm_desched_event_syscall(t, &t->regs) :
 			      is_disarm_desched_event_syscall(t, &t->regs));
@@ -1304,7 +1304,7 @@ static int skip_desched_ioctl(Task* t,
 	 * desched ioctl returns non-zero (it doesn't know how to
 	 * handle that). */
 	t->regs.eax = 0;
-	write_child_registers(t, &t->regs);
+	t->set_regs(t->regs);
 	step_exit_syscall_emu(t);
 	return 0;
 }
@@ -1477,7 +1477,7 @@ static int flush_one_syscall(Task* t,
 		if ((ret = cont_syscall_boundary(t, emu, stepi))) {
 			return ret;
 		}
-		read_child_registers(t, &regs);
+		t->get_regs(&regs);
 		assert_at_buffered_syscall(t, &regs, call);
 		assert_same_rec(t, rec_rec, child_rec);
 		flush->state = FLUSH_EXIT;
@@ -1488,7 +1488,7 @@ static int flush_one_syscall(Task* t,
 
 		EmuFs::AutoGc gc(call);
 
-		read_child_registers(t, &regs);
+		t->get_regs(&regs);
 		assert_at_buffered_syscall(t, &regs, call);
 
 		// Restore saved trace data.
@@ -1502,11 +1502,11 @@ static int flush_one_syscall(Task* t,
 			if (ret) {
 				return ret;
 			}
-			read_child_registers(t, &regs);
+			t->get_regs(&regs);
 			assert_at_buffered_syscall(t, &regs, call);
 		}
 		regs.eax = rec_rec->ret;
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		if (emu) {
 			step_exit_syscall_emu(t);
 		}
@@ -1810,14 +1810,14 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		assert(SIGTRAP == t->child_sig && "Unknown trap");
 
 		struct user_regs_struct regs;
-		read_child_registers(t, &regs);
+		t->get_regs(&regs);
 		if (TRAP_BKPT_USER == ip_breakpoint_type((byte*)regs.eip)) {
 			debug("  hit debugger breakpoint");
 			/* SW breakpoint: $ip is just past the
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
 			regs.eip -= sizeof(int_3_insn);
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 		} else {
 			debug("  finished debugger stepi");
 			/* Successful stepi.  Nothing else to do. */

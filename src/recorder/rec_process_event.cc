@@ -176,7 +176,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		}
 
 		write_child_data(t, sizeof(args), tmpargsp, (byte*)args);
-		write_child_registers(t, regs);
+		t->set_regs(*regs);
 		return 1;
 	}
 
@@ -220,7 +220,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		}
 
 		write_child_data(t, sizeof(args), tmpargsp, (byte*)args);
-		write_child_registers(t, regs);
+		t->set_regs(*regs);
 		return 1;
 	}
 
@@ -350,7 +350,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		return set_up_scratch_for_syscallbuf(t, syscallno);
 	}
 
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 
 	/* For syscall params that may need scratch memory, they
 	 * *will* need scratch memory if |would_need_scratch| is
@@ -398,7 +398,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		return 1;
 	}
 
@@ -412,7 +412,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			// and then cover our tracks on exit from
 			// clone().
 			regs.ebx = flags & ~CLONE_UNTRACED;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 		}
 		return 0;
 	}
@@ -455,7 +455,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		return 1;
 	}
 
@@ -489,7 +489,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		return 1;
 	}
 
@@ -517,7 +517,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		/* |fds| is an inout param, so we need to copy over
 		 * the source data. */
 		memcpy_child(t, fds2, fds, nfds * sizeof(*fds));
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		return 1;
 	}
 
@@ -545,7 +545,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 						     syscallname(syscallno));
 			}
 
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 			return 1;
 		}
 		case PR_GET_NAME: {
@@ -567,7 +567,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 						     syscallname(syscallno));
 			}
 
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 			return 1;
 		}
 		default:
@@ -594,7 +594,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 
 		/* (Unlike poll(), the |events| param is a pure
 		 * outparam, no copy-over needed.) */
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		return 1;
 	}
 
@@ -626,7 +626,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		return 1;
 	}
 
@@ -719,10 +719,10 @@ static void init_scratch_memory(Task *t)
 
 	// record this mmap for the replay
 	struct user_regs_struct orig_regs;
-	read_child_registers(t, &orig_regs);
+	t->get_regs(&orig_regs);
 	int eax = orig_regs.eax;
 	orig_regs.eax = (uintptr_t)t->scratch_ptr;
-	write_child_registers(t, &orig_regs);
+	t->set_regs(orig_regs);
 
 	struct mmapped_file file = {0};
 	file.time = get_global_time();
@@ -733,7 +733,7 @@ static void init_scratch_memory(Task *t)
 	record_mmapped_file_stats(&file);
 
 	orig_regs.eax = eax;
-	write_child_registers(t, &orig_regs);
+	t->set_regs(orig_regs);
 
 	t->vm()->map(t->scratch_ptr, sz, prot, flags,
 		     page_size() * offset_pages,
@@ -1132,7 +1132,7 @@ static void process_socketcall(Task* t,
 		if (data) {
 			/* Restore the pointer to the original args. */
 			regs.ecx = (uintptr_t)argsp;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 			finish_restoring_some_scratch(t, iter, &data);
 		}
 		return;
@@ -1237,7 +1237,7 @@ static void process_socketcall(Task* t,
 		restore_and_record_arg_buf(t, len, addr, &iter);
 		/* Restore the pointer to the original args. */
 		regs.ecx = (uintptr_t)argsp;
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 
 		finish_restoring_some_scratch(t, iter, &data);
 		return;
@@ -1311,7 +1311,7 @@ void rec_process_syscall(Task *t)
 	int syscall = t->ev->syscall.no; /* FIXME: don't shadow syscall() */
 	struct user_regs_struct regs;
 
-	read_child_registers(t, &regs);
+	t->get_regs(&regs);
 
 	debug("%d: processing syscall: %s(%d) -- time: %u",
 	      tid, syscallname(syscall), syscall, get_global_time());
@@ -1375,7 +1375,7 @@ void rec_process_syscall(Task *t)
 
 		if (flags & CLONE_UNTRACED) {
 			regs.ebx = flags;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 		}
 
 		if (regs.eax < 0)
@@ -1388,7 +1388,7 @@ void rec_process_syscall(Task *t)
 		record_child_data(new_task, sizeof(pid_t), (byte*)regs.esi);
 
 		struct user_regs_struct new_regs;
-		read_child_registers(new_task, &new_regs);
+		t->get_regs(&new_regs);
 		record_child_data(new_task, sizeof(struct user_desc),
 				  (byte*)new_regs.edi);
 		record_child_data(new_task,
@@ -1508,7 +1508,7 @@ void rec_process_syscall(Task *t)
 						   maxevents * sizeof(*events),
 						   (byte*)events, &iter);
 			regs.ecx = (uintptr_t)events;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 		}
 		finish_restoring_scratch(t, iter, &data);
 		break;
@@ -2098,7 +2098,7 @@ void rec_process_syscall(Task *t)
 			 * about that. */
 			log_warn("Cowardly refusing to open %s", pathname);
 			regs.eax = -ENOENT;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 		}
 		free(pathname);
 		break;
@@ -2174,7 +2174,7 @@ void rec_process_syscall(Task *t)
 		restore_and_record_arg_buf(t, nfds * sizeof(*fds), (byte*)fds,
 					   &iter);
 		regs.ebx = (uintptr_t)fds;
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
@@ -2229,7 +2229,7 @@ void rec_process_syscall(Task *t)
 
 			restore_and_record_arg_buf(t, size, arg, &iter);
 			regs.ecx = (uintptr_t)arg;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 
 			finish_restoring_scratch(t, iter, &data);
 		} else {
@@ -2843,7 +2843,7 @@ void rec_process_syscall(Task *t)
 				restore_and_record_arg(t, rem, &iter);
 			}
 			regs.ecx = (uintptr_t)rem;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 		}
 
 		finish_restoring_some_scratch(t, iter, &data);
@@ -2876,7 +2876,7 @@ void rec_process_syscall(Task *t)
 
 			record_child_data(t, len, buf);
 			regs.eax = len;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 		}
 		break;
 	}
@@ -2919,7 +2919,7 @@ void rec_process_syscall(Task *t)
 
 		if (data) {
 			regs.ecx = (uintptr_t)buf;
-			write_child_registers(t, &regs);
+			t->set_regs(regs);
 			finish_restoring_some_scratch(t, iter, &data);
 		}
 		break;
@@ -3041,7 +3041,7 @@ void rec_process_syscall(Task *t)
 			record_noop_data(t);
 		}
 
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
@@ -3125,7 +3125,7 @@ void rec_process_syscall(Task *t)
 		} else if (SYS_wait4 == syscall) {
 			record_noop_data(t);
 		}
-		write_child_registers(t, &regs);
+		t->set_regs(regs);
 
 		finish_restoring_scratch(t, iter, &data);
 	}

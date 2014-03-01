@@ -979,6 +979,12 @@ Task::futex_wait(const byte* futex, uint32_t val)
 	}
 }
 
+void
+Task::get_regs(struct user_regs_struct* regs)
+{
+	xptrace(PTRACE_GETREGS, nullptr, regs);
+}
+
 bool
 Task::is_sig_blocked(int sig)
 {
@@ -1078,6 +1084,12 @@ Task::read_word(const byte* child_addr)
 	long word;
 	read_mem(child_addr, &word);
 	return word;
+}
+
+void
+Task::set_regs(const struct user_regs_struct& regs)
+{
+	xptrace(PTRACE_SETREGS, nullptr, (void*)&regs);
 }
 
 void
@@ -1404,6 +1416,15 @@ void
 Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 {
 	write_child_data(this, buf_size, (byte*)addr, buf);
+}
+
+void
+Task::xptrace(enum __ptrace_request request, void* addr, void* data)
+{
+	long ret = ptrace(request, tid, addr, data);
+	assert_exec(this, 0 == ret,
+		    "ptrace(%s, %d, addr=%p, data=%p) failed",
+		    ptrace_req_name(request), tid, addr, data);
 }
 
 /**
