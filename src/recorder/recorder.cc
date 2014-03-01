@@ -30,8 +30,6 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 
-#define PTRACE_EVENT_NONE			0
-
 /* Nonzero when it's safe to deliver signals, namely, when the initial
  * tracee has exec()'d the tracee image.  Before then, the address
  * space layout will not be the same during replay as recording, so
@@ -74,7 +72,6 @@ static void handle_ptrace_event(Task** tp)
 
 		/* issue an additional continue, since the process was stopped by the additional ptrace event */
 		t->cont_syscall();
-		t->wait();
 		status_changed(t);
 
 		record_event(t);
@@ -114,10 +111,9 @@ static void handle_ptrace_event(Task** tp)
 			record_event(t);
 			pop_syscall(t);
 
-			t->cont_syscall();
+			t->cont_syscall_nonblocking();
 		} else {
 			t->cont_syscall();
-			t->wait();
 			status_changed(t);
 		}
 		break;
@@ -135,7 +131,6 @@ static void handle_ptrace_event(Task** tp)
 		pop_syscall(t);
 
 		t->cont_syscall();
-		t->wait();
 		status_changed(t);
 
 		assert(t->pending_sig() == 0);
@@ -191,7 +186,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 		 * syscall_buffer lib in the child, therefore we must
 		 * record in the traditional way (with PTRACE_SYSCALL)
 		 * until it is installed. */
-		t->cont_syscall(sig);
+		t->cont_syscall_nonblocking(sig);
 	} else {
 		/* When the seccomp filter is on, instead of capturing
 		 * syscalls by using PTRACE_SYSCALL, the filter will
@@ -203,7 +198,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 		 * process to continue to the actual entry point of
 		 * the syscall (using cont_syscall_block()) and then
 		 * using the same logic as before. */
-		t->cont(sig);
+		t->cont_nonblocking(sig);
 	}
 }
 
@@ -253,7 +248,6 @@ static int disarm_desched(Task* t, siginfo_t* si)
 	/* TODO: mask off signals and avoid this loop. */
 	do {
 		t->cont_syscall();
-		t->wait();
 		t->get_regs(&t->regs);
 		/* We can safely ignore SIG_TIMESLICE while trying to
 		 * reach the disarm-desched ioctl: once we reach it,
@@ -469,7 +463,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		t->switchable = rec_prepare_syscall(t, &sync_addr, &sync_val);
 
 		// Resume the syscall execution in the kernel context.
-		t->cont_syscall();
+		t->cont_syscall_nonblocking();
 		debug_exec_state("after cont", t);
 
 		if (sync_addr) {
@@ -671,7 +665,6 @@ static void runnable_state_changed(Task* t)
 
 		/* "Finish" the sigreturn. */
 		t->cont_syscall();
-		t->wait();
 		status_changed(t);
 		ret = t->regs.eax;
 

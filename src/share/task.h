@@ -29,6 +29,7 @@
 #include "trace.h"
 #include "util.h"
 
+#define PTRACE_EVENT_NONE 0
 #ifndef PTRACE_EVENT_SECCOMP
 #define PTRACE_O_TRACESECCOMP 0x00000080
 #define PTRACE_EVENT_SECCOMP_OBSOLETE 8 // ubuntu 12.04
@@ -816,6 +817,13 @@ enum ResumeRequest {
 	RESUME_SYSEMU = PTRACE_SYSEMU,
 	RESUME_SYSEMU_SINGLESTEP = PTRACE_SYSEMU_SINGLESTEP,
 };
+enum WaitRequest {
+	// After resuming, blocking-waitpid() until tracee status
+	// changes.
+	RESUME_WAIT,
+	// Don't wait after resuming.
+	RESUME_NONBLOCKING
+};
 
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
@@ -863,21 +871,33 @@ public:
 	 * name.  See the ptrace manual for details of semantics.  If
 	 * |sig| is nonzero, it's delivered to this as part of the
 	 * resume request.
+	 *
+	 * By default, wait for status to change after resuming,
+	 * before returning.  Return true if successful, false if
+	 * interrupted.  Don't wait for status change in the
+	 * "_nonblocking()" variants.
 	 */
-	void cont(int sig=0) {
-		return resume_execution(RESUME_CONT, sig);
+	bool cont(int sig=0) {
+		return resume_execution(RESUME_CONT, RESUME_WAIT, sig);
 	}
-	void cont_singlestep(int sig=0) {
-		return resume_execution(RESUME_SINGLESTEP, sig);
+	void cont_nonblocking(int sig=0) {
+		resume_execution(RESUME_CONT, RESUME_NONBLOCKING, sig);
 	}
-	void cont_syscall(int sig=0) {
-		return resume_execution(RESUME_SYSCALL, sig);
+	bool cont_singlestep(int sig=0) {
+		return resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, sig);
 	}
-	void cont_sysemu(int sig=0) {
-		return resume_execution(RESUME_SYSEMU, sig);
+	bool cont_syscall(int sig=0) {
+		return resume_execution(RESUME_SYSCALL, RESUME_WAIT, sig);
 	}
-	void cont_sysemu_singlestep(int sig=0) {
-		return resume_execution(RESUME_SYSEMU_SINGLESTEP, sig);
+	void cont_syscall_nonblocking(int sig=0) {
+		resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, sig);
+	}
+	bool cont_sysemu(int sig=0) {
+		return resume_execution(RESUME_SYSEMU, RESUME_WAIT, sig);
+	}
+	bool cont_sysemu_singlestep(int sig=0) {
+		return resume_execution(RESUME_SYSEMU_SINGLESTEP,
+					RESUME_WAIT, sig);
 	}
 
 	/**
@@ -1077,7 +1097,7 @@ public:
 
 	/**
 	 * Return the ptrace event as of the last call to
-	 * |wait()/try_wait()|.  The event 0 means "no event'.
+	 * |wait()/try_wait()|.
 	 */
 	int ptrace_event() const {
 		return ptrace_event_from_status(wait_status);
@@ -1111,11 +1131,13 @@ public:
 
 	/**
 	 * Resume execution |how|, deliverying |sig| if nonzero.
+	 * After resuming, |wait_how|.
 	 *
 	 * You probably want to use one of the cont*() helpers above,
 	 * and not this.
 	 */
-	void resume_execution(ResumeRequest how, int sig=0);
+	bool resume_execution(ResumeRequest how, WaitRequest wait_how,
+			      int sig=0);
 
 	/** Set the tracee's registers to |regs|. */
 	void set_regs(const struct user_regs_struct& regs);

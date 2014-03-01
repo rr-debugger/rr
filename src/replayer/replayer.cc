@@ -608,8 +608,7 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi)
 	} else {
 		resume_how = RESUME_SYSCALL;
 	}
-	t->resume_execution(resume_how);
-	t->wait();
+	t->resume_execution(resume_how, RESUME_WAIT);
 
 	switch ((t->child_sig = t->pending_sig())) {
 	case 0:
@@ -645,7 +644,6 @@ static void step_exit_syscall_emu(Task *t)
 	t->get_regs(&regs);
 
 	t->cont_sysemu_singlestep();
-	t->wait();
 
 	t->set_regs(regs);
 
@@ -722,8 +720,7 @@ static void continue_or_step(Task* t, int stepi)
 		 * should be neglible. */
 		resume_how = RESUME_SYSCALL;
 	}
-	t->resume_execution(resume_how);
-	t->wait();
+	t->resume_execution(resume_how, RESUME_WAIT);
 
 	t->child_sig = t->pending_sig();
 

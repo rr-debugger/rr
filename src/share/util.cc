@@ -1447,12 +1447,10 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 static void advance_syscall(Task* t)
 {
 	t->cont_syscall();
-	t->wait();
 
 	/* Skip past a seccomp trace, if we happened to see one. */
 	if (t->is_ptrace_seccomp_event()) {
 		t->cont_syscall();
-		t->wait();
 	}
 	assert(t->ptrace_event() == 0);
 }
@@ -1485,7 +1483,7 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 		    syscallname(syscallno), syscallname(callregs.orig_eax));
 
 	/* Start running the syscall. */
-	t->cont_syscall();
+	t->cont_syscall_nonblocking();
 	if (WAIT == wait) {
 		return wait_remote_syscall(t, state, syscallno);
 	}

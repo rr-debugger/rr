@@ -1095,10 +1095,14 @@ Task::read_word(const byte* child_addr)
 	return word;
 }
 
-void
-Task::resume_execution(ResumeRequest how, int sig)
+bool
+Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 {
 	xptrace(how, nullptr, (void*)(uintptr_t)sig);
+	if (RESUME_NONBLOCKING == wait_how) {
+		return true;
+	}
+	return wait();
 }
 
 void
