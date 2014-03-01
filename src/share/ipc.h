@@ -44,10 +44,4 @@ void read_child_usr(Task *t, void *dest, void *src, size_t size);
 void* read_child_data_checked(Task *t, size_t size, byte* addr, ssize_t *read_bytes);
 ssize_t checked_pread(Task* t, byte* buf, size_t size, off_t offset);
 
-void write_child_code(Task* t, void* addr, long code);
-void write_child_data_n(Task* t, ssize_t size, byte* addr,
-			const byte* data);
-void write_child_data(Task* t, ssize_t size, byte* addr,
-		      const byte* data);
-
 #endif /* __IPC_H__ */

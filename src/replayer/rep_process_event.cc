@@ -597,25 +597,10 @@ static void process_clone(Task* t,
 	t->set_data_from_trace();
 	t->set_data_from_trace();
 
-	size_t size;
-	byte* rec_addr;
-	byte* data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
-	if (data != NULL ) {
-		write_child_data_n(new_task, size, rec_addr, data);
-		free(data);
-	}
-
-	data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
-	if (data != NULL ) {
-		write_child_data_n(new_task, size, rec_addr, data);
-		free(data);
-	}
-
-	data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
-	if (data != NULL ) {
-		write_child_data_n(new_task, size, rec_addr, data);
-		free(data);
-	}
+	new_task->trace = t->trace;
+	new_task->set_data_from_trace();
+	new_task->set_data_from_trace();
+	new_task->set_data_from_trace();
 
 	struct user_regs_struct r = t->regs();
 	/* set the ebp register to the recorded value -- it should not
@@ -653,7 +638,7 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 				// since we emulate SYS_futex in
 				// replay, we need to set it ourselves
 				// here.
-				t->write_word(futex, next_val);
+				t->write_mem(futex, next_val);
 			}
 		}
 		step->action = TSTEP_ENTER_SYSCALL;
@@ -1723,14 +1708,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		 * ebx register is not zero. in this case, no recorded
 		 * data needs to be injected */
 		if (check == 0) {
-			size_t size;
-			byte* rec_addr;
-			byte* data = (byte*)read_raw_data(&(t->trace),
-							  &size, &rec_addr);
-			if (data) {
-				write_child_data(t, size, rec_addr, data);
-				free(data);
-			}
+			t->set_data_from_trace();
 		}
 
 		init_scratch_memory(t);

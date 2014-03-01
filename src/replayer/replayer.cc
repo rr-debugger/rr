@@ -161,13 +161,8 @@ bool validate = false;
 Breakpoint::Breakpoint(Task* t, byte* addr)
 	: addr(addr), internal_count(0), user_count(0)
 {
-	byte* orig_data_ptr =
-		(byte*)read_child_data(t, sizeof(int_3_insn), addr);
-	memcpy(&overwritten_data, orig_data_ptr, sizeof(int_3_insn));
-	free(orig_data_ptr);
-
-	write_child_data_n(t, sizeof(int_3_insn), addr, &int_3_insn);
-
+	t->read_mem(addr, &overwritten_data);
+	t->write_mem(addr, int_3_insn);
 	breakpoints[addr] = this;
 }
 
@@ -179,8 +174,7 @@ Breakpoint::~Breakpoint()
 void
 Breakpoint::destroy(Task* t)
 {
-	write_child_data_n(t, sizeof(overwritten_data), addr,
-			   &overwritten_data);
+	t->write_mem(addr, overwritten_data);
 	delete this;
 }
 
@@ -1375,7 +1369,7 @@ static void restore_futex_words(Task* t,
 {
 	static_assert(sizeof(uint32_t) == sizeof(long), "NYI: Task::write_int()");
 	ssize_t extra_data_size = rec->size - sizeof(*rec);
-	bool saved_uaddr2 = 2 * sizeof(uint32_t) == extra_data_size;
+	bool saved_uaddr2 = (2 * sizeof(uint32_t) == extra_data_size);
 	assert_exec(t, sizeof(uint32_t) == extra_data_size || saved_uaddr2,
 		    "Futex should have saved 4 or 8 bytes, but instead saved %d bytes",
 		    extra_data_size);
@@ -1383,16 +1377,14 @@ static void restore_futex_words(Task* t,
 	byte* child_uaddr = (byte*)t->regs().ebx;
 	uint32_t rec_uaddr =
 		*reinterpret_cast<const uint32_t*>(rec->extra_data);
-	write_child_data(t, sizeof(rec_uaddr), child_uaddr,
-			 reinterpret_cast<const byte*>(&rec_uaddr));
+	t->write_mem(child_uaddr, rec_uaddr);
 
-	if (2 * sizeof(uint32_t) == extra_data_size) {
+	if (saved_uaddr2) {
 		byte* child_uaddr2 = (byte*)t->regs().edi;
 		uint32_t rec_uaddr2 =
 			*reinterpret_cast<const uint32_t*>(rec->extra_data +
 							   sizeof(uint32_t));
-		write_child_data(t, sizeof(rec_uaddr2), child_uaddr2,
-				 reinterpret_cast<const byte*>(&rec_uaddr2));
+		t->write_mem(child_uaddr2, rec_uaddr2);
 	}
 }
 

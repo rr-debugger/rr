@@ -54,8 +54,6 @@ using namespace std;
 
 struct flags flags = { 0 };
 
-const byte syscall_insn[] = { 0xcd, 0x80 };
-
 const struct flags* rr_flags(void)
 {
 	return &flags;
@@ -1087,7 +1085,6 @@ void validate_process_memory(Task* t)
 
 void cleanup_code_injection(struct current_state_buffer* buf)
 {
-	free(buf->code_buffer);
 	free(buf);
 }
 
@@ -1373,12 +1370,9 @@ void prepare_remote_syscalls(Task* t,
 	state->regs = t->regs();
 	state->code_size = sizeof(syscall_insn);
 	state->start_addr = (byte*)state->regs.eip;
-	state->code_buffer =
-		(byte*)read_child_data(t, state->code_size, state->start_addr);
-
+	t->read_bytes(state->start_addr, state->code_buffer);
 	/* Inject phony syscall instruction. */
-	write_child_data(t, state->code_size, state->start_addr,
-			 syscall_insn);
+	t->write_bytes(state->start_addr, syscall_insn);
 }
 
 void* push_tmp_mem(Task* t, struct current_state_buffer* state,
@@ -1394,7 +1388,7 @@ void* push_tmp_mem(Task* t, struct current_state_buffer* state,
 
 	restore->data = (byte*)read_child_data(t, restore->len, restore->addr);
 
-	write_child_data(t, restore->len, restore->addr, mem);
+	t->write_bytes_helper(restore->addr, restore->len, mem);
 
 	return restore->addr;
 }
@@ -1412,7 +1406,7 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 {
 	assert(mem->saved_sp == (byte*)state->regs.esp + mem->len);
 
-	write_child_data(t, mem->len, mem->addr, mem->data);
+	t->write_bytes_helper(mem->addr, mem->len, mem->data);
 	free(mem->data);
 
 	state->regs.esp += mem->len;
@@ -1484,9 +1478,7 @@ void finish_remote_syscalls(Task* t,
 	assert(tid == state->pid);
 
 	/* Restore stomped instruction. */
-	write_child_data(t, state->code_size, state->start_addr,
-			 state->code_buffer);
-	free(state->code_buffer);
+	t->write_bytes(state->start_addr, state->code_buffer);
 
 	/* Restore stomped registers. */
 	t->set_regs(state->regs);
@@ -1571,7 +1563,7 @@ static void write_socketcall_args(Task* t,
 				  long arg1, long arg2, long arg3)
 {
 	struct socketcall_args args = { { arg1, arg2, arg3 } };
-	write_child_data(t, sizeof(args), (byte*)child_args_vec, (byte*)&args);
+	t->write_mem((byte*)child_args_vec, args);
 }
 
 static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
@@ -1681,7 +1673,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	 * "real" fds, which in general will not be the same across
 	 * record/replay. */
 	write_socketcall_args(t, args->args_vec, 0, 0, 0);
-	write_child_data(t, sizeof(zero), (byte*)args->fdptr, (byte*)&zero);
+	t->write_mem((byte*)args->fdptr, zero);
 
 	/* Socket magic is now done. */
 	close(listen_sock);
@@ -1745,7 +1737,7 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 	}
 
 	/* Return the mapped buffers to the child. */
-	write_child_data(t, sizeof(*args), child_args, (byte*)args);
+	t->write_mem(child_args, *args);
 	free(args);
 
 	/* The tracee doesn't need this addr returned, because it's
