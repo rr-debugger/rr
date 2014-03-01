@@ -254,7 +254,6 @@ const char* ptrace_req_name(enum __ptrace_request request)
 	CASE(SEIZE);
 	CASE(INTERRUPT);
 	CASE(LISTEN);
-	CASE(PEEKSIGINFO);
 #undef CASE
 	default:
 		return "???REQ";
