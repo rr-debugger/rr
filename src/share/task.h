@@ -1198,6 +1198,15 @@ public:
 	bool resume_execution(ResumeRequest how, WaitRequest wait_how,
 			      int sig=0);
 
+	/** Restore the next chunk of saved data from the trace to this. */
+	ssize_t set_data_from_trace();
+
+	/**
+	 * Set the syscall-return-value register of this to what was
+	 * saved in the current trace frame.
+	 */
+	void set_return_value_from_trace();
+
 	/** Set the tracee's registers to |regs|. */
 	void set_regs(const struct user_regs_struct& regs);
 

@@ -679,10 +679,10 @@ static int exit_syscall(Task* t,
 	}
 
 	for (i = 0; i < step->syscall.num_emu_args; ++i) {
-		set_child_data(t);
+		t->set_data_from_trace();
 	}
 	if (step->syscall.emu_ret) {
-		set_return_value(t);
+		t->set_return_value_from_trace();
 	}
 	validate_args(step->syscall.no, STATE_SYSCALL_EXIT, t);
 
@@ -1167,7 +1167,7 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	trace = &t->trace;
 
 	/* Restore the signal-hander frame data, if there was one. */
-	bool restored_sighandler_frame = 0 < set_child_data(t);
+	bool restored_sighandler_frame = 0 < t->set_data_from_trace();
 	if (restored_sighandler_frame) {
 		debug("--> restoring sighandler frame for %s", signalname(sig));
 		push_pending_signal(t, sig, sigtype);

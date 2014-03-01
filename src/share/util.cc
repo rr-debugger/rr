@@ -1144,14 +1144,14 @@ void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 	int i;
 
 	for (i = 0; i < num_emu_args; ++i) {
-		set_child_data(t);
+		t->set_data_from_trace();
 	}
 }
 
 void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 {
 	restore_struct_msghdr(t, (struct msghdr*)child_mmsghdr);
-	set_child_data(t);
+	t->set_data_from_trace();
 }
 
 bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val)

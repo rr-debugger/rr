@@ -50,8 +50,5 @@ void write_child_data_n(Task* t, ssize_t size, byte* addr,
 			const byte* data);
 void write_child_data(Task* t, ssize_t size, byte* addr,
 		      const byte* data);
-size_t set_child_data(Task* t);
-
-void set_return_value(Task* context);
 
 #endif /* __IPC_H__ */

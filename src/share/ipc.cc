@@ -18,25 +18,6 @@
 
 #define PTR_TO_OFF_T(_p) (off_t)(uintptr_t)(_p)
 
-size_t set_child_data(Task *t)
-{
-	size_t size;
-	byte* rec_addr;
-	byte* data = (byte*)read_raw_data(&(t->trace), &size, &rec_addr);
-	if (data != NULL && size > 0) {
-		write_child_data(t, size, rec_addr, data);
-		free(data);
-	}
-	return size;
-}
-
-void set_return_value(Task* t)
-{
-	struct user_regs_struct r = t->regs();
-	r.eax = t->trace.recorded_regs.eax;
-	t->set_regs(r);
-}
-
 static long read_child_word(pid_t tid, byte* addr, int ptrace_op)
 {
 	CHECK_ALIGNMENT(addr);
