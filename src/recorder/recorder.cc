@@ -39,8 +39,7 @@ static int can_deliver_signals;
 
 static void status_changed(Task* t)
 {
-	t->get_regs(&t->regs);
-	t->event = t->regs.orig_eax;
+	t->event = t->regs().orig_eax;
 	/* If the initial tracee isn't prepared to handle signals yet,
 	 * then us ignoring the ptrace notification here will have the
 	 * side effect of declining to deliver the signal. */
@@ -83,16 +82,14 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK:
 	case PTRACE_EVENT_VFORK: {
-		t->get_regs(&t->regs);
-
 		int new_tid = sys_ptrace_getmsg(t);
-		const byte* stack = (const byte*)t->regs.ecx;
-		const byte* ctid = (const byte*)t->regs.edi;
+		const byte* stack = (const byte*)t->regs().ecx;
+		const byte* ctid = (const byte*)t->regs().edi;
 		// fork and vfork can never share these resources,
 		// only copy, so the flags here aren't meaningful for
 		// them, only clone.
-		int flags_arg = (SYS_clone == t->regs.orig_eax) ?
-				t->regs.ebx : 0;
+		int flags_arg = (SYS_clone == t->regs().orig_eax) ?
+				t->regs().ebx : 0;
 		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
 					  stack, ctid, new_tid);
 		// Wait until the new task is ready.
@@ -248,7 +245,6 @@ static int disarm_desched(Task* t, siginfo_t* si)
 	/* TODO: mask off signals and avoid this loop. */
 	do {
 		t->cont_syscall();
-		t->get_regs(&t->regs);
 		/* We can safely ignore SIG_TIMESLICE while trying to
 		 * reach the disarm-desched ioctl: once we reach it,
 		 * the desched'd syscall will be "done" and the tracee
@@ -267,7 +263,7 @@ static int disarm_desched(Task* t, siginfo_t* si)
 			continue;
 		}
 
-		t->event = t->regs.orig_eax;
+		t->event = t->regs().orig_eax;
 
 		if (sig) {
 			int old_sig =
@@ -281,7 +277,7 @@ static int disarm_desched(Task* t, siginfo_t* si)
 			sig_status = t->status();
 			sys_ptrace_getsiginfo(t, si);
 		}
-	} while (!is_disarm_desched_event_syscall(t, &t->regs));
+	} while (!t->is_disarm_desched_event_syscall());
 	return sig_status;
 }
 
@@ -338,69 +334,6 @@ static void desched_state_changed(Task* t)
 	}
 }
 
-/**
- * Return nonzero if |syscallno| and |regs| look like the interrupted
- * syscall at the top of |t|'s event stack, if there is one.
- */
-static int is_syscall_restart(Task* t, int syscallno,
-			      const struct user_regs_struct* regs)
-{
-	int must_restart = (SYS_restart_syscall == syscallno);
-	int is_restart = 0;
-	const struct user_regs_struct* old_regs = &t->ev->syscall.regs;
-
-	debug("  is syscall interruption of recorded %s? (now %s)",
-	      syscallname(t->ev->syscall.no), syscallname(syscallno));
-
-	if (EV_SYSCALL_INTERRUPTION != t->ev->type) {
-		goto done;
-	}
-	/* It's possible for the tracee to resume after a sighandler
-	 * with a fresh syscall that happens to be the same as the one
-	 * that was interrupted.  So we check here if the args are the
-	 * same.
-	 *
-	 * Of course, it's possible (but less likely) for the tracee
-	 * to incidentally resume with a fresh syscall that just
-	 * happens to have the same *arguments* too.  But in that
-	 * case, we would usually set up scratch buffers etc the same
-	 * was as for the original interrupted syscall, so we just
-	 * save a step here.
-	 *
-	 * TODO: it's possible for arg structures to be mutated
-	 * between the original call and restarted call in such a way
-	 * that it might change the scratch allocation decisions. */
-	if (SYS_restart_syscall == syscallno) {
-		must_restart = 1;
-		syscallno = t->ev->syscall.no;
-		debug("  (SYS_restart_syscall)");
-	}
-	if (t->ev->syscall.no != syscallno) {
-		debug("  interrupted %s != %s",
-		      syscallname(t->ev->syscall.no), syscallname(syscallno));
-		goto done;
-	}
-	if (!(old_regs->ebx == regs->ebx
-	      && old_regs->ecx == regs->ecx
-	      && old_regs->edx == regs->edx
-	      && old_regs->esi == regs->esi
-	      && old_regs->edi == regs->edi
-	      && old_regs->ebp == regs->ebp)) {
-		debug("  regs different at interrupted %s",
-		      syscallname(syscallno));
-		goto done;
-	}
-	is_restart = 1;
-
-done:
-	assert_exec(t, !must_restart || is_restart,
-		    "Must restart %s but won't", syscallname(syscallno));
-	if (is_restart) {
-		debug("  restart of %s", syscallname(syscallno));
-	}
-	return is_restart;
-}
-
 static void syscall_not_restarted(Task* t)
 {
 	debug("  %d: popping abandoned interrupted %s; pending events:",
@@ -429,7 +362,7 @@ static int maybe_restart_syscall(Task* t)
 		debug("  %d: SYS_restart_syscall'ing %s",
 		      t->tid, syscallname(t->ev->syscall.no));
 	}
-	if (is_syscall_restart(t, t->event, &t->regs)) {
+	if (t->is_syscall_restart()) {
 		t->ev->type = EV_SYSCALL;
 		return 1;
 	}
@@ -454,8 +387,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			 * need the original registers; the restart
 			 * (if it's not a SYS_restart_syscall restart)
 			 * will use the original registers. */
-			memcpy(&t->ev->syscall.regs, &t->regs,
-			       sizeof(t->ev->syscall.regs));
+			t->ev->syscall.regs = t->regs();
 		}
 
 		byte* sync_addr = nullptr;
@@ -497,12 +429,11 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		assert(t->pending_sig() == 0);
 		assert(SYS_sigreturn != t->event);
 
-		t->get_regs(&t->regs);
-		t->event = t->regs.orig_eax;
+		t->event = t->regs().orig_eax;
 		if (SYS_restart_syscall == t->event) {
 			t->event = syscallno;
 		}
-		retval = t->regs.eax;
+		retval = t->regs().eax;
 
 		assert_exec(t, syscallno == t->event,
 			    "Event stack and current event must be in sync.");
@@ -548,8 +479,9 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			 * want to record those fudged registers,
 			 * because scratch doesn't exist in replay.
 			 * So cover our tracks here. */
-			copy_syscall_arg_regs(&t->regs, &t->ev->syscall.regs);
-			t->set_regs(t->regs);
+			struct user_regs_struct r = t->regs();
+			copy_syscall_arg_regs(&r, &t->ev->syscall.regs);
+			t->set_regs(r);
 		}
 		record_event(t);
 
@@ -666,7 +598,7 @@ static void runnable_state_changed(Task* t)
 		/* "Finish" the sigreturn. */
 		t->cont_syscall();
 		status_changed(t);
-		ret = t->regs.eax;
+		ret = t->regs().eax;
 
 		/* TODO: can signals interrupt a sigreturn? */
 		assert(t->pending_sig() != SIGTRAP);

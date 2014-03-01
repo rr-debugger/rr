@@ -24,8 +24,7 @@
 #include "../share/trace.h"
 #include "../share/util.h"
 
-static void handle_siginfo_regs(Task* t, siginfo_t* si,
-				struct user_regs_struct* regs);
+static void handle_siginfo(Task* t, siginfo_t* si);
 
 static __inline__ unsigned long long rdtsc(void)
 {
@@ -118,12 +117,11 @@ static int try_handle_rdtsc(Task *t)
 		eax = current_time & 0xffffffff;
 		edx = current_time >> 32;
 
-		struct user_regs_struct regs;
-		t->get_regs(&regs);
-		regs.eax = eax;
-		regs.edx = edx;
-		regs.eip += size;
-		t->set_regs(regs);
+		struct user_regs_struct r = t->regs();
+		r.eax = eax;
+		r.edx = edx;
+		r.eip += size;
+		t->set_regs(r);
 
 		// When SIGSEGV is blocked, apparently the kernel has
 		// to do some ninjutsu to raise the RDTSC trap.  We
@@ -171,11 +169,9 @@ static void disarm_desched_event(Task* t)
 	}
 }
 
-static int advance_syscall_boundary(Task* t,
-				     struct user_regs_struct* regs)
+static int advance_syscall_boundary(Task* t)
 {
 	t->cont_syscall();
-	t->get_regs(regs);
 	int sig = t->stop_sig();
 
 	// Ignore signals that we would have dropped anyway.
@@ -183,7 +179,7 @@ static int advance_syscall_boundary(Task* t,
 	// status.
 	if (STOPSIG_SYSCALL != sig && t->is_sig_ignored(sig)) {
 		debug("  dropping ignored signal %s ...", signalname(sig));
-		return advance_syscall_boundary(t, regs);
+		return advance_syscall_boundary(t);
 	}
 	if (STOPSIG_SYSCALL != sig
 	    && SYSCALLBUF_DESCHED_SIGNAL != sig
@@ -202,8 +198,7 @@ static int advance_syscall_boundary(Task* t,
  * The tracee's execution may be advanced, and if so |regs| is updated
  * to the tracee's latest state.
  */
-static int handle_desched_event(Task* t, const siginfo_t* si,
-				struct user_regs_struct* regs)
+static int handle_desched_event(Task* t, const siginfo_t* si)
 {
 	int call, sig;
 
@@ -297,7 +292,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si,
 		 * loop iteration because a restarted arm-desched
 		 * syscall may have re-armed the event. */
 		disarm_desched_event(t);
-		sig = advance_syscall_boundary(t, regs);
+		sig = advance_syscall_boundary(t);
 	} while (SYSCALLBUF_DESCHED_SIGNAL == sig
 		 /* Just ignore time-slice signals received here.  If
 		  * we get lucky and hit the disarm-desched ioctl,
@@ -310,17 +305,12 @@ static int handle_desched_event(Task* t, const siginfo_t* si,
 		  * happen an unbounded number of consecutive times
 		  * and the tracee never switched out. */
 		 || HPC_TIME_SLICE_SIGNAL == sig
-		 || is_arm_desched_event_syscall(t, regs));
+		 || t->is_arm_desched_event_syscall());
 
 	/* This code can be entered through various different paths.
 	 * Ensure they all end up with the most up-to-date register
-	 * contents on exit.
-	 *
-	 * TODO: centralize the PTRACE_CONT/et al. code and make it
-	 * responsible for keeping registers up to date. */
-	memcpy(&t->regs, regs, sizeof(t->regs));
-
-	if (is_disarm_desched_event_syscall(t, regs)) {
+	 * contents on exit. */
+	if (t->is_disarm_desched_event_syscall()) {
 		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
 		return USR_NOOP;
 	}
@@ -353,7 +343,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si,
 	 * all other may-restart syscalls, with the exception that
 	 * this one has already been restarted (which we'll detect
 	 * back in the main loop). */
-	push_syscall_interruption(t, call, regs);
+	push_syscall_interruption(t, call);
 
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));
@@ -453,15 +443,13 @@ static void record_signal(Task* t, const siginfo_t* si,
 		 * here. */
 		sigframe_size = 2048;
 
-		t->get_regs(&t->regs);
-
 		t->ev->type = EV_SIGNAL_HANDLER;
 	} else {
 		debug("  %d: no user handler for %s", t->tid, signalname(sig));
 	}
 
 	/* We record this data regardless to simplify replay. */
-	record_child_data(t, sigframe_size, (byte*)t->regs.esp);
+	record_child_data(t, sigframe_size, (byte*)t->sp());
 
 	t->signal_delivered(sig);
 
@@ -497,14 +485,11 @@ static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si)
 }
 
 /**
- * Take |t| to a place where it's OK to deliver a signal.  |si| and
- * |regs| must be the current state of |t|.  The registers at the
- * happy place will be returned in |regs|.  Return zero if stepping
- * completed successfully, or -1 if it was interrupted by another
- * signal.
+ * Take |t| to a place where it's OK to deliver a signal.  |si| must
+ * be the current state of |t|.  Return zero if stepping completed
+ * successfully, or -1 if it was interrupted by another signal.
  */
-static int go_to_a_happy_place(Task* t,
-			       siginfo_t* si, struct user_regs_struct* regs)
+static int go_to_a_happy_place(Task* t, siginfo_t* si)
 {
 	/* If we deliver the signal at the tracee's current execution
 	 * point, it will result in a syscall-buffer-flush event being
@@ -551,7 +536,7 @@ static int go_to_a_happy_place(Task* t,
 		goto happy_place;
 	}
 
-	assert_exec(t, !(SYSCALLBUF_IS_IP_IN_LIB(regs->eip, t)
+	assert_exec(t, !(t->is_in_syscallbuf()
 			 && is_deterministic_signal(si)),
 		    "TODO: %s (code:%d) raised by syscallbuf code",
 		    signalname(si->si_signo), si->si_code);
@@ -566,7 +551,7 @@ static int go_to_a_happy_place(Task* t,
 		siginfo_t tmp_si;
 		int is_syscall;
 
-		if (!SYSCALLBUF_IS_IP_IN_LIB(regs->eip, t)) {
+		if (!t->is_in_syscallbuf()) {
 			/* The tracee is outside the syscallbuf code,
 			 * so in most cases can't possibly affect
 			 * syscallbuf critical sections.  The
@@ -576,7 +561,7 @@ static int go_to_a_happy_place(Task* t,
 			debug("  tracee outside syscallbuf lib");
 			goto happy_place;
 		}
-		if (SYSCALLBUF_IS_IP_ENTERING_TRACED_SYSCALL(regs->eip, t)) {
+		if (t->is_entering_traced_syscall()) {
 			// Unlike the untraced syscall entry, if we
 			// step a tracee into a *traced* syscall,
 			// we'll see a SIGTRAP for the tracee.  That
@@ -588,11 +573,11 @@ static int go_to_a_happy_place(Task* t,
 			debug("  tracee entering traced syscallbuf syscall");
 			goto happy_place;
 		}
-		if (SYSCALLBUF_IS_IP_TRACED_SYSCALL(regs->eip, t)) {
+		if (t->is_traced_syscall()) {
 			debug("  tracee at traced syscallbuf syscall");
 			goto happy_place;
 		}
-		if (SYSCALLBUF_IS_IP_UNTRACED_SYSCALL(regs->eip, t)
+		if (t->is_untraced_syscall()
 		    && t->desched_rec()) {
 			debug("  tracee interrupted by desched of %s",
 			      syscallname(t->desched_rec()->syscallno));
@@ -617,7 +602,6 @@ static int go_to_a_happy_place(Task* t,
 		assert(t->stopped());
 
 		sys_ptrace_getsiginfo(t, &tmp_si);
-		t->get_regs(regs);
 		is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
@@ -629,14 +613,14 @@ static int go_to_a_happy_place(Task* t,
 				memcpy(si, &tmp_si, sizeof(*si));
 				debug("  upgraded delivery of SIG_TIMESLICE to %s",
 				      signalname(si->si_signo));
-				handle_siginfo_regs(t, si, regs);
+				handle_siginfo(t, si);
 				return -1;
 			}
 
 			assert_exec(t, 0,
 				    "TODO: support multiple pending signals; received %s (code: %d) at $ip:%p while trying to deliver %s (code: %d)",
 				    signalname(tmp_si.si_signo),
-				    tmp_si.si_code, (void*)regs->eip,
+				    tmp_si.si_code, t->ip(),
 				    signalname(si->si_signo), si->si_code);
 		}
 		if (!is_syscall) {
@@ -648,11 +632,11 @@ static int go_to_a_happy_place(Task* t,
 		 * masking signals off.  When we mask off signals, we
 		 * won't need to disarm the desched event, but we will
 		 * need to handle spurious desched notifications. */
-		if (is_desched_event_syscall(t, regs)) {
+		if (t->is_desched_event_syscall()) {
 			debug("  stepping over desched-event syscall");
 			/* Finish the syscall. */
 			t->cont_singlestep();
-			if (is_arm_desched_event_syscall(t, regs)) {
+			if (t->is_arm_desched_event_syscall()) {
 				/* Disarm the event: we don't need or
 				 * want to hear about descheds while
 				 * we're stepping the tracee through
@@ -683,8 +667,7 @@ happy_place:
 	return 0;
 }
 
-static void handle_siginfo_regs(Task* t, siginfo_t* si,
-				struct user_regs_struct* regs)
+static void handle_siginfo(Task* t, siginfo_t* si)
 {
 	uint64_t max_rbc = rr_flags()->max_rbc;
 
@@ -697,11 +680,11 @@ static void handle_siginfo_regs(Task* t, siginfo_t* si,
 	 * step the tracee out of the syscallbuf code before
 	 * attempting to deliver the signal. */
 	if (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo) {
-		t->event = handle_desched_event(t, si, regs);
+		t->event = handle_desched_event(t, si);
 		return;
 	}
 
-	if (go_to_a_happy_place(t, si, regs)) {
+	if (go_to_a_happy_place(t, si)) {
 		/* While stepping, another signal arrived that we
 		 * "upgraded" to. */
 		return;
@@ -738,7 +721,6 @@ static void handle_siginfo_regs(Task* t, siginfo_t* si,
 void handle_signal(Task* t, siginfo_t* si)
 {
 	siginfo_t local_si;
-	struct user_regs_struct regs;
 
 	if (0 >= t->pending_sig()) {
 		return;
@@ -748,6 +730,5 @@ void handle_signal(Task* t, siginfo_t* si)
 		sys_ptrace_getsiginfo(t, &local_si);
 		si = &local_si;
 	}
-	t->get_regs(&regs);
-	return handle_siginfo_regs(t, si, &regs);
+	return handle_siginfo(t, si);
 }

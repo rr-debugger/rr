@@ -32,8 +32,7 @@ size_t set_child_data(Task *t)
 
 void set_return_value(Task* t)
 {
-	struct user_regs_struct r;
-	t->get_regs(&r);
+	struct user_regs_struct r = t->regs();
 	r.eax = t->trace.recorded_regs.eax;
 	t->set_regs(r);
 }

@@ -35,14 +35,11 @@ void handle_ioctl_request(Task *t, int request)
 	int nr = _IOC_NR(request);
 	int dir = _IOC_DIR(request);
 	int size = _IOC_SIZE(request);
-	struct user_regs_struct regs;
 
 	debug("handling ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d",
 	      request, type, nr, dir, size);
 
-	t->get_regs(&regs);
-
-	assert_exec(t, !is_desched_event_syscall(t, &regs),
+	assert_exec(t, !t->is_desched_event_syscall(),
 		    "Failed to skip past desched ioctl()");
 
 	/* Some ioctl()s are irregular and don't follow the _IOC()
@@ -50,12 +47,13 @@ void handle_ioctl_request(Task *t, int request)
 	switch (request) {
 	case TCGETS:
 		push_syscall(t, syscall);
-		record_child_data(t, sizeof(struct termios), (byte*)regs.edx);
+		record_child_data(t, sizeof(struct termios),
+				  (byte*)t->regs().edx);
 		pop_syscall(t);
 		return;
 	case TIOCINQ:
 		push_syscall(t, syscall);
-		record_child_data(t, sizeof(int), (byte*)regs.edx);
+		record_child_data(t, sizeof(int), (byte*)t->regs().edx);
 		pop_syscall(t);
 		return;
 	}
@@ -144,6 +142,7 @@ void handle_ioctl_request(Task *t, int request)
 		print_register_file_tid(t);
 		assert_exec(t, 0,
 			    "Unknown ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d addr:%p",
-			    request, type, nr, dir, size, (void*)regs.edx);
+			    request, type, nr, dir, size,
+			    (void*)t->regs().edx);
 	}
 }
