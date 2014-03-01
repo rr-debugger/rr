@@ -52,10 +52,9 @@ using namespace std;
  * socketcall args into |*argsp|.
  */
 template<size_t N>
-void read_socketcall_args(Task* t, const struct user_regs_struct* regs,
-			  long** argsp, long (&args)[N])
+void read_socketcall_args(Task* t, long** argsp, long (&args)[N])
 {
-	*argsp = reinterpret_cast<long*>(regs->ecx);
+	*argsp = reinterpret_cast<long*>(t->regs().ecx);
 	byte* buf = (byte*)read_child_data(t, sizeof(args), (byte*)*argsp);
 	memcpy(args, buf, sizeof(args));
 	free(buf);
@@ -127,13 +126,13 @@ static int can_use_scratch(Task* t, byte* scratch_end)
  * is stopped at, for example replacing tracee args with pointers into
  * scratch memory if necessary.
  */
-int prepare_socketcall(Task* t, int would_need_scratch,
-		       struct user_regs_struct* regs)
+int prepare_socketcall(Task* t, int would_need_scratch)
 {
 	byte* scratch = would_need_scratch ?
 			t->ev->syscall.tmp_data_ptr : NULL;
 	long* argsp;
 	byte* tmpargsp;
+	struct user_regs_struct r = t->regs();
 
 	assert(!t->desched_rec());
 
@@ -145,7 +144,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 	 *
 	 *  (from http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
 	 */
-	switch (regs->ebx) {
+	switch (r.ebx) {
 	/* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
 	case SYS_RECV: {
 		long args[4];
@@ -153,7 +152,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		if (!would_need_scratch) {
 			return 1;
 		}
-		read_socketcall_args(t, regs, &argsp, args);
+		read_socketcall_args(t, &argsp, args);
 		/* The socketcall args are passed on the stack and
 		 * pointed at by $ecx.  We need to set up scratch
 		 * buffer space for |buf|, but we also have to
@@ -165,7 +164,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		 * scratch pointer to the kernel. */
 		/* The socketcall arg pointer. */
 		push_arg_ptr(t, argsp);
-		regs->ecx = (uintptr_t)(tmpargsp = scratch);
+		r.ecx = (uintptr_t)(tmpargsp = scratch);
 		scratch += sizeof(args);
 		/* The |buf| pointer. */
 		push_arg_ptr(t, (void*)args[1]);
@@ -176,7 +175,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		}
 
 		write_child_data(t, sizeof(args), tmpargsp, (byte*)args);
-		t->set_regs(*regs);
+		t->set_regs(r);
 		return 1;
 	}
 
@@ -191,7 +190,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		if (!would_need_scratch) {
 			return 1;
 		}
-		read_socketcall_args(t, regs, &argsp, args);
+		read_socketcall_args(t, &argsp, args);
 		addrlenp = (socklen_t*)args[2];
 		assert(sizeof(long) == sizeof(addrlen));
 		addrlen = t->read_word((byte*)addrlenp);
@@ -204,7 +203,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		 * |addrlen| too. */
 		/* The socketcall arg pointer. */
 		push_arg_ptr(t, argsp);
-		regs->ecx = (uintptr_t)(tmpargsp = scratch);
+		r.ecx = (uintptr_t)(tmpargsp = scratch);
 		scratch += sizeof(args);
 		/* The |addrlen| pointer. */
 		push_arg_ptr(t, addrlenp);
@@ -220,7 +219,7 @@ int prepare_socketcall(Task* t, int would_need_scratch,
 		}
 
 		write_child_data(t, sizeof(args), tmpargsp, (byte*)args);
-		t->set_regs(*regs);
+		t->set_regs(r);
 		return 1;
 	}
 
@@ -342,15 +341,12 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 	 * redirect to scratch again as we will lose the original
 	 * addresses values. */
 	bool restart = (syscallno == SYS_restart_syscall);
-	struct user_regs_struct regs;
 	int would_need_scratch;
 	byte* scratch = NULL;
 
 	if (t->desched_rec()) {
 		return set_up_scratch_for_syscallbuf(t, syscallno);
 	}
-
-	t->get_regs(&regs);
 
 	/* For syscall params that may need scratch memory, they
 	 * *will* need scratch memory if |would_need_scratch| is
@@ -373,8 +369,9 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		fatal("Ptrace not yet implemented.  We need to go deeper.");
 
 	case SYS_splice: {
-		loff_t* off_in = (loff_t*)regs.ecx;
-		loff_t* off_out = (loff_t*)regs.esi;
+		struct user_regs_struct r = t->regs();
+		loff_t* off_in = (loff_t*)r.ecx;
+		loff_t* off_out = (loff_t*)r.esi;
 
 		if (!would_need_scratch) {
 			return 1;
@@ -385,34 +382,35 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			loff_t* off_in2 = (loff_t*)scratch;
 			scratch += sizeof(*off_in2);
 			memcpy_child(t, off_in2, off_in, sizeof(*off_in2));
-       			regs.ecx = (uintptr_t)off_in2;
+       			r.ecx = (uintptr_t)off_in2;
 		}
 		push_arg_ptr(t, off_out);
 		if (off_out) {
 			loff_t* off_out2 = (loff_t*)scratch;
 			scratch += sizeof(*off_out2);
 			memcpy_child(t, off_out2, off_out, sizeof(*off_out2));
-       			regs.esi = (uintptr_t)off_out2;
+       			r.esi = (uintptr_t)off_out2;
 		}
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		t->set_regs(regs);
+		t->set_regs(r);
 		return 1;
 	}
 
 	case SYS_clone: {
-		unsigned long flags = regs.ebx;
+		unsigned long flags = t->regs().ebx;
 		push_arg_ptr(t, (void*)(uintptr_t)flags);
 		if (flags & CLONE_UNTRACED) {
+			struct user_regs_struct r = t->regs();
 			// We can't let tracees clone untraced tasks,
 			// because they can create nondeterminism that
 			// we can't replay.  So unset the UNTRACED bit
 			// and then cover our tracks on exit from
 			// clone().
-			regs.ebx = flags & ~CLONE_UNTRACED;
-			t->set_regs(regs);
+			r.ebx = flags & ~CLONE_UNTRACED;
+			t->set_regs(r);
 		}
 		return 0;
 	}
@@ -424,9 +422,9 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
-		switch (regs.ecx & FUTEX_CMD_MASK) {
+		switch (t->regs().ecx & FUTEX_CMD_MASK) {
 		case FUTEX_LOCK_PI:
-			return prep_futex_lock_pi(t, (byte*)regs.ebx,
+			return prep_futex_lock_pi(t, (byte*)t->regs().ebx,
 						  kernel_sync_addr, sync_val);
 		case FUTEX_WAIT:
 		case FUTEX_WAIT_BITSET:
@@ -437,7 +435,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 	case SYS_socketcall:
-		return prepare_socketcall(t, would_need_scratch, &regs);
+		return prepare_socketcall(t, would_need_scratch);
 
 	case SYS__newselect:
 		return 1;
@@ -447,41 +445,44 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		if (!would_need_scratch) {
 			return 1;
 		}
-		push_arg_ptr(t, (void*)regs.ecx);
-		regs.ecx = (uintptr_t)scratch;
-		scratch += regs.edx/*count*/;
+		struct user_regs_struct r =  t->regs();
+
+		push_arg_ptr(t, (void*)r.ecx);
+		r.ecx = (uintptr_t)scratch;
+		scratch += r.edx/*count*/;
 
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		t->set_regs(regs);
+		t->set_regs(r);
 		return 1;
 	}
 
 	case SYS_write:
-		maybe_mark_stdio_write(t, regs.ebx);
+		maybe_mark_stdio_write(t, t->regs().ebx);
 		return 1;
 
 	/* pid_t waitpid(pid_t pid, int *status, int options); */
 	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
 	case SYS_waitpid:
 	case SYS_wait4: {
-		int* status = (int*)regs.ecx;
+		struct user_regs_struct r = t->regs();
+		int* status = (int*)r.ecx;
 		struct rusage* rusage = (SYS_wait4 == syscallno) ?
-					(struct rusage*)regs.esi : NULL;
+					(struct rusage*)r.esi : NULL;
 
 		if (!would_need_scratch) {
 			return 1;
 		}
 		push_arg_ptr(t, status);
 		if (status) {
-			regs.ecx = (uintptr_t)scratch;
+			r.ecx = (uintptr_t)scratch;
 			scratch += sizeof(*status);
 		}
 		push_arg_ptr(t, rusage);
 		if (rusage) {
-			regs.esi = (uintptr_t)scratch;
+			r.esi = (uintptr_t)scratch;
 			scratch += sizeof(*rusage);
 		}
 
@@ -489,7 +490,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		t->set_regs(regs);
+		t->set_regs(r);
 		return 1;
 	}
 
@@ -499,16 +500,17 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 	 *           const sigset_t *sigmask); */
 	case SYS_poll:
 	case SYS_ppoll: {
-		struct pollfd* fds = (struct pollfd*)regs.ebx;
+		struct user_regs_struct r = t->regs();
+		struct pollfd* fds = (struct pollfd*)r.ebx;
 		struct pollfd* fds2 = (struct pollfd*)scratch;
-		nfds_t nfds = regs.ecx;
+		nfds_t nfds = r.ecx;
 
 		if (!would_need_scratch) {
 			return 1;
 		}
 		/* XXX fds can be NULL, right? */
 		push_arg_ptr(t, fds);
-		regs.ebx = (uintptr_t)fds2;
+		r.ebx = (uintptr_t)fds2;
 		scratch += nfds * sizeof(*fds);
 
 		if (!can_use_scratch(t, scratch)) {
@@ -517,27 +519,28 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		/* |fds| is an inout param, so we need to copy over
 		 * the source data. */
 		memcpy_child(t, fds2, fds, nfds * sizeof(*fds));
-		t->set_regs(regs);
+		t->set_regs(r);
 		return 1;
 	}
 
 	/* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5); */
-	case SYS_prctl:
+	case SYS_prctl: {
 		/* TODO: many of these prctls are not blocking. */
 		if (!would_need_scratch) {
 			return 1;
 		}
-		switch (regs.ebx) {
+		struct user_regs_struct r = t->regs();
+		switch (r.ebx) {
 		case PR_GET_ENDIAN:
 		case PR_GET_FPEMU:
 		case PR_GET_FPEXC:
 		case PR_GET_PDEATHSIG:
 		case PR_GET_TSC:
 		case PR_GET_UNALIGN: {
-			int* outparam = (int*)regs.ecx;
+			int* outparam = (int*)r.ecx;
 
 			push_arg_ptr(t, outparam);
-			regs.ecx = (uintptr_t)scratch;
+			r.ecx = (uintptr_t)scratch;
 			scratch += sizeof(*outparam);
 
 			if (!can_use_scratch(t, scratch)) {
@@ -545,7 +548,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 						     syscallname(syscallno));
 			}
 
-			t->set_regs(regs);
+			t->set_regs(r);
 			return 1;
 		}
 		case PR_GET_NAME: {
@@ -556,10 +559,10 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			 *   16 bytes; The returned string will be
 			 *   null-terminated if it is shorter than
 			 *   that. */
-			char* name = (char*)regs.ecx;
+			char* name = (char*)r.ecx;
 
 			push_arg_ptr(t, name);
-			regs.ecx = (uintptr_t)scratch;
+			r.ecx = (uintptr_t)scratch;
 			scratch += 16;
 
 			if (!can_use_scratch(t, scratch)) {
@@ -567,7 +570,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 						     syscallname(syscallno));
 			}
 
-			t->set_regs(regs);
+			t->set_regs(r);
 			return 1;
 		}
 		default:
@@ -575,17 +578,21 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			 * outparams ... */
 			return 1;
 		}
+		fatal("Not reached");
+	}
 
 	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
 	case SYS_epoll_wait: {
-		struct epoll_event* events = (struct epoll_event*)regs.ecx;
-		int maxevents = regs.edx;
-
 		if (!would_need_scratch) {
 			return 1;
 		}
+
+		struct user_regs_struct r = t->regs();
+		struct epoll_event* events = (struct epoll_event*)r.ecx;
+		int maxevents = r.edx;
+
 		push_arg_ptr(t, events);
-		regs.ecx = (uintptr_t)scratch;
+		r.ecx = (uintptr_t)scratch;
 		scratch += maxevents * sizeof(*events);
 
 		if (!can_use_scratch(t, scratch)) {
@@ -594,7 +601,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 
 		/* (Unlike poll(), the |events| param is a pure
 		 * outparam, no copy-over needed.) */
-		t->set_regs(regs);
+		t->set_regs(r);
 		return 1;
 	}
 
@@ -611,14 +618,15 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 
 	/* int nanosleep(const struct timespec *req, struct timespec *rem); */
 	case SYS_nanosleep: {
-		struct timespec* rem = (struct timespec*)regs.ecx;
-
 		if (!would_need_scratch) {
 			return 1;
 		}
+
+		struct user_regs_struct r= t->regs();
+		struct timespec* rem = (struct timespec*)r.ecx;
 		push_arg_ptr(t, rem);
 		if (rem) {
-       			regs.ecx = (uintptr_t)scratch;
+       			r.ecx = (uintptr_t)scratch;
 			scratch += sizeof(*rem);
 		}
 
@@ -626,7 +634,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 			return abort_scratch(t, syscallname(syscallno));
 		}
 
-		t->set_regs(regs);
+		t->set_regs(r);
 		return 1;
 	}
 
@@ -677,7 +685,7 @@ void rec_prepare_restart_syscall(Task* t)
 		 * regardless. */
 		struct timespec* rem = (struct timespec*)
 				       *FIXEDSTACK_TOP(&t->ev->syscall.saved_args);
-		struct timespec* rem2 = (struct timespec*)t->regs.ecx;
+		struct timespec* rem2 = (struct timespec*)t->regs().ecx;
 
 		if (rem) {
 			memcpy_child(t, rem, rem2, sizeof(*rem));
@@ -718,11 +726,10 @@ static void init_scratch_memory(Task *t)
 	finish_remote_syscalls(t, &state);
 
 	// record this mmap for the replay
-	struct user_regs_struct orig_regs;
-	t->get_regs(&orig_regs);
-	int eax = orig_regs.eax;
-	orig_regs.eax = (uintptr_t)t->scratch_ptr;
-	t->set_regs(orig_regs);
+	struct user_regs_struct r = t->regs();
+	int eax = r.eax;
+	r.eax = (uintptr_t)t->scratch_ptr;
+	t->set_regs(r);
 
 	struct mmapped_file file = {0};
 	file.time = get_global_time();
@@ -732,8 +739,8 @@ static void init_scratch_memory(Task *t)
 	sprintf(file.filename,"scratch for thread %d",t->tid);
 	record_mmapped_file_stats(&file);
 
-	orig_regs.eax = eax;
-	t->set_regs(orig_regs);
+	r.eax = eax;
+	t->set_regs(r);
 
 	t->vm()->map(t->scratch_ptr, sz, prot, flags,
 		     page_size() * offset_pages,
@@ -851,19 +858,16 @@ static void finish_restoring_some_scratch(Task* t,
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
-static void process_execve(Task* t,
-			   const struct user_regs_struct *regsp)
+static void process_execve(Task* t)
 {
-	struct user_regs_struct regs(*regsp);
-
 	// XXX what does this signifiy?
-	if (regs.ebx != 0) {
+	if (t->regs().ebx != 0) {
 		return;
 	}
 
 	t->post_exec();
 
-	long* stack_ptr = (long*)regs.esp;
+	long* stack_ptr = (long*)t->regs().esp;
 
 	/* start_stack points to argc - iterate over argv pointers */
 
@@ -925,15 +929,9 @@ static void process_execve(Task* t,
 	init_scratch_memory(t);
 }
 
-static void process_ipc(Task* t,
-			struct user_regs_struct* call_regs, int call)
+static void process_ipc(Task* t, int call)
 {
-	struct user_regs_struct regs;
-
 	debug("ipc call: %d\n", call);
-
-	/* TODO: use t->regs exclusively */
-	memcpy(&regs, call_regs, sizeof(regs));
 
 	switch (call) {
 	/* int msgget(key_t key, int msgflg); */
@@ -956,9 +954,9 @@ static void process_ipc(Task* t,
 			byte* msgbuf;
 			long msgtype;
 		};
-		size_t msgsize = regs.edx;
+		size_t msgsize = t->regs().edx;
 		struct kludge_args* kludge;
-		byte* child_kludge = (byte*)regs.edi;
+		byte* child_kludge = (byte*)t->regs().edi;
 
 		kludge = (struct kludge_args*)
 			 read_child_data(t, sizeof(*kludge), child_kludge);
@@ -980,7 +978,7 @@ static void process_ipc(Task* t,
            };
 	*/
 	case SEMCTL: {
-		int cmd = regs.edx;
+		int cmd = t->regs().edx;
 		switch (cmd) {
 		case IPC_SET:
 		case IPC_RMID:
@@ -995,19 +993,19 @@ static void process_ipc(Task* t,
 		case IPC_STAT:
 		case SEM_STAT:
 			record_child_data(t, sizeof(struct semid_ds),
-					  (byte*)regs.esi);
+					  (byte*)t->regs().esi);
 			return;
 
 		case IPC_INFO:
 		case SEM_INFO:
 			record_child_data(t, sizeof(struct seminfo),
-					  (byte*)regs.esi);
+					  (byte*)t->regs().esi);
 			return;
 
 		case GETALL: {
-			int semnum = regs.ecx;
+			int semnum = t->regs().ecx;
 			record_child_data(t, semnum * sizeof(unsigned short),
-					  (byte*)regs.esi);
+					  (byte*)t->regs().esi);
 			return;
 		}
 		default:
@@ -1018,15 +1016,15 @@ static void process_ipc(Task* t,
 	/* void *shmat(int shmid, const void *shmaddr, int shmflg); */
 	case SHMAT:
 		// the kernel copies the returned address to *third
-		record_child_data(t, sizeof(long), (byte*)regs.esi);
+		record_child_data(t, sizeof(long), (byte*)t->regs().esi);
 		return;
 
 	/* int shmctl(int shmid, int cmd, struct shmid_ds *buf); */
 	case SHMCTL: {
-		int cmd = regs.edx;
+		int cmd = t->regs().edx;
 		(void)cmd;
 		assert(cmd != IPC_INFO && cmd != SHM_INFO && cmd != SHM_STAT);
-		record_child_data(t, sizeof(struct shmid_ds), (byte*)regs.esi);
+		record_child_data(t, sizeof(struct shmid_ds), (byte*)t->regs().esi);
 		return;
 	}
 	default:
@@ -1034,16 +1032,9 @@ static void process_ipc(Task* t,
 	}
 }
 
-static void process_socketcall(Task* t,
-			       struct user_regs_struct* call_regs,
-			       int call, byte* base_addr)
+static void process_socketcall(Task* t, int call, byte* base_addr)
 {
-	struct user_regs_struct regs;
-
 	debug("socket call: %d\n", call);
-
-	/* TODO: use t->regs exclusively */
-	memcpy(&regs, call_regs, sizeof(regs));
 
 	switch (call) {
 	/* int socket(int domain, int type, int protocol); */
@@ -1101,7 +1092,7 @@ static void process_socketcall(Task* t,
 		byte* data = NULL;
 		ssize_t nrecvd;
 
-		nrecvd = regs.eax;
+		nrecvd = t->regs().eax;
 		if (has_saved_arg_ptrs(t)) {
 			buf = pop_arg_ptr<byte>(t);
 			argsp = pop_arg_ptr<byte>(t);
@@ -1113,7 +1104,7 @@ static void process_socketcall(Task* t,
 			iter += sizeof(args);
 		} else {
 			long* argsp;
-			read_socketcall_args(t, &regs, &argsp, args);
+			read_socketcall_args(t, &argsp, args);
 			buf = (byte*)args[1];
 		}
 
@@ -1130,9 +1121,10 @@ static void process_socketcall(Task* t,
 		}
 
 		if (data) {
+			struct user_regs_struct r = t->regs();
 			/* Restore the pointer to the original args. */
-			regs.ecx = (uintptr_t)argsp;
-			t->set_regs(regs);
+			r.ecx = (uintptr_t)argsp;
+			t->set_regs(r);
 			finish_restoring_some_scratch(t, iter, &data);
 		}
 		return;
@@ -1161,7 +1153,7 @@ static void process_socketcall(Task* t,
 			socklen_t* addrlen;
 		};
 		struct recvfrom_args* child_args;
-		int recvdlen = regs.eax;
+		int recvdlen = t->regs().eax;
 
 		child_args = (struct recvfrom_args*)
 			     read_child_data(t, sizeof(*child_args),
@@ -1193,11 +1185,11 @@ static void process_socketcall(Task* t,
 	 */
 	case SYS_GETSOCKOPT: {
 		socklen_t** len_ptr = (socklen_t**)
-				      read_child_data(t, sizeof(socklen_t*), (byte*)(regs.ecx + 3 * sizeof(int) + sizeof(void*)));
+				      read_child_data(t, sizeof(socklen_t*), (byte*)(t->regs().ecx + 3 * sizeof(int) + sizeof(void*)));
 		socklen_t* len = (socklen_t*)
 				 read_child_data(t, sizeof(socklen_t), (byte*)*len_ptr);
 		unsigned long** optval = (unsigned long**)
-					 read_child_data(t, sizeof(void*), (byte*)(regs.ecx + 3 * sizeof(int)));
+					 read_child_data(t, sizeof(void*), (byte*)(t->regs().ecx + 3 * sizeof(int)));
 		record_child_data(t, *len, (byte*)*optval);
 
 		free(len_ptr);
@@ -1236,8 +1228,9 @@ static void process_socketcall(Task* t,
 		/* addr */
 		restore_and_record_arg_buf(t, len, addr, &iter);
 		/* Restore the pointer to the original args. */
-		regs.ecx = (uintptr_t)argsp;
-		t->set_regs(regs);
+		struct user_regs_struct r = t->regs();
+		r.ecx = (uintptr_t)argsp;
+		t->set_regs(r);
 
 		finish_restoring_some_scratch(t, iter, &data);
 		return;
@@ -1249,7 +1242,7 @@ static void process_socketcall(Task* t,
 	 */
 	case SYS_SOCKETPAIR: {
 		unsigned long* addr = (unsigned long*)
-				      read_child_data(t, sizeof(int*), (byte*)(regs.ecx + (3 * sizeof(int))));
+				      read_child_data(t, sizeof(int*), (byte*)(t->regs().ecx + (3 * sizeof(int))));
 		record_child_data(t, 2 * sizeof(int), (byte*)*addr);
 		free(addr);
 		return;
@@ -1309,14 +1302,11 @@ void rec_process_syscall(Task *t)
 
 	pid_t tid = t->tid;
 	int syscall = t->ev->syscall.no; /* FIXME: don't shadow syscall() */
-	struct user_regs_struct regs;
-
-	t->get_regs(&regs);
 
 	debug("%d: processing syscall: %s(%d) -- time: %u",
 	      tid, syscallname(syscall), syscall, get_global_time());
 
-	t->maybe_update_vm(syscall, STATE_SYSCALL_EXIT, regs);
+	t->maybe_update_vm(syscall, STATE_SYSCALL_EXIT);
 
 	if (const struct syscallbuf_record* rec = t->desched_rec()) {
 		assert(t->ev->syscall.tmp_data_ptr != t->scratch_ptr);
@@ -1369,32 +1359,33 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_clone:	{
-		pid_t new_tid = regs.eax;
+		pid_t new_tid = t->regs().eax;
 		Task* new_task = Task::find(new_tid);
 		unsigned long flags = (uintptr_t)pop_arg_ptr<void>(t);
 
 		if (flags & CLONE_UNTRACED) {
-			regs.ebx = flags;
-			t->set_regs(regs);
+			struct user_regs_struct r = t->regs();
+			r.ebx = flags;
+			t->set_regs(r);
 		}
 
-		if (regs.eax < 0)
+		if (t->regs().eax < 0)
 			break;
 
 		push_syscall(new_task, syscall);
 
 		/* record child id here */
-		record_child_data(new_task, sizeof(pid_t), (byte*)regs.edx);
-		record_child_data(new_task, sizeof(pid_t), (byte*)regs.esi);
+		record_child_data(new_task, sizeof(pid_t),
+				  (byte*)t->regs().edx);
+		record_child_data(new_task, sizeof(pid_t),
+				  (byte*)t->regs().esi);
 
-		struct user_regs_struct new_regs;
-		t->get_regs(&new_regs);
 		record_child_data(new_task, sizeof(struct user_desc),
-				  (byte*)new_regs.edi);
-		record_child_data(new_task,
-				  sizeof(pid_t), (byte*)new_regs.edx);
-		record_child_data(new_task,
-				  sizeof(pid_t), (byte*)new_regs.esi);
+				  (byte*)new_task->regs().edi);
+		record_child_data(new_task, sizeof(pid_t),
+				  (byte*)new_task->regs().edx);
+		record_child_data(new_task, sizeof(pid_t),
+				  (byte*)new_task->regs().esi);
 
 		pop_syscall(new_task);
 
@@ -1454,7 +1445,7 @@ void rec_process_syscall(Task *t)
 	 * argument tp of clock_settime() is not a multiple of res, then it is truncated
 	 * to a multiple of res.
 	 */
-	SYS_REC1(clock_getres, sizeof(struct timespec), (byte*)regs.ecx)
+	SYS_REC1(clock_getres, sizeof(struct timespec), (byte*)t->regs().ecx)
 
 	/**
 	 * int clock_gettime(clockid_t clk_id, struct timespec *tp);
@@ -1462,7 +1453,7 @@ void rec_process_syscall(Task *t)
 	 * The functions clock_gettime() and clock_settime() retrieve and set the time of the
 	 * specified clock clk_id.
 	 */
-	SYS_REC1(clock_gettime, sizeof(struct timespec), (byte*)regs.ecx)
+	SYS_REC1(clock_gettime, sizeof(struct timespec), (byte*)t->regs().ecx)
 
 	/**
 	 * int dup(int oldfd)
@@ -1502,13 +1493,14 @@ void rec_process_syscall(Task *t)
 		byte* data = start_restoring_scratch(t, &iter);
 		struct epoll_event* events =
 			pop_arg_ptr<struct epoll_event>(t);
-		int maxevents = regs.edx;
+		int maxevents = t->regs().edx;
 		if (events) {
 			restore_and_record_arg_buf(t,
 						   maxevents * sizeof(*events),
 						   (byte*)events, &iter);
-			regs.ecx = (uintptr_t)events;
-			t->set_regs(regs);
+			struct user_regs_struct r = t->regs();
+			r.ecx = (uintptr_t)events;
+			t->set_regs(r);
 		}
 		finish_restoring_scratch(t, iter, &data);
 		break;
@@ -1561,7 +1553,7 @@ void rec_process_syscall(Task *t)
 	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
 	 */
 	case SYS_fcntl64: {
-		int cmd = regs.ecx;
+		int cmd = t->regs().ecx;
 		switch (cmd) {
 		case F_DUPFD:
 		case F_GETFD:
@@ -1579,19 +1571,19 @@ void rec_process_syscall(Task *t)
 			static_assert(sizeof(struct flock) < sizeof(struct flock64),
 				      "struct flock64 not declared differently from struct flock");
 			record_child_data(t, sizeof(struct flock),
-					  (byte*)regs.edx);
+					  (byte*)t->regs().edx);
 			break;
 
 		case F_GETLK64:
 		case F_SETLK64:
 		case F_SETLKW64:
 			record_child_data(t, sizeof(struct flock64),
-					  (byte*)regs.edx);
+					  (byte*)t->regs().edx);
 			break;
 
 		case F_GETOWN_EX:
 			record_child_data(t, sizeof(struct f_owner_ex),
-					  (byte*)regs.edx);
+					  (byte*)t->regs().edx);
 			break;
 
 		default:
@@ -1646,8 +1638,8 @@ void rec_process_syscall(Task *t)
 	 * 2 paramaters. However, strace tells another story...
 	 *
 	 */
-	SYS_REC1(fstatfs, sizeof(struct statfs), (byte*)regs.ecx)
-	SYS_REC1(fstatfs64, sizeof(struct statfs64), (byte*)regs.edx)
+	SYS_REC1(fstatfs, sizeof(struct statfs), (byte*)t->regs().ecx)
+	SYS_REC1(fstatfs64, sizeof(struct statfs64), (byte*)t->regs().edx)
 
 	/**
 	 * int ftruncate(int fd, off_t length)
@@ -1686,8 +1678,8 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_futex:
 	{
-		record_child_data(t, sizeof(int), (byte*)regs.ebx);
-		int op = regs.ecx & FUTEX_CMD_MASK;
+		record_child_data(t, sizeof(int), (byte*)t->regs().ebx);
+		int op = t->regs().ecx & FUTEX_CMD_MASK;
 
 		switch (op) {
 
@@ -1702,7 +1694,7 @@ void rec_process_syscall(Task *t)
 		case FUTEX_WAKE_OP:
 		case FUTEX_CMP_REQUEUE_PI:
 		case FUTEX_WAIT_REQUEUE_PI:
-			record_child_data(t, sizeof(int), (byte*)regs.edi);
+			record_child_data(t, sizeof(int), (byte*)t->regs().edi);
 			break;
 
 		default:
@@ -1720,7 +1712,7 @@ void rec_process_syscall(Task *t)
 	 * that is the current working directory of the calling process.  The pathname is returned as the function result and via the argument buf, if
 	 * present.
 	 */
-	SYS_REC1_STR(getcwd, (byte*)regs.ebx)
+	SYS_REC1_STR(getcwd, (byte*)t->regs().ebx)
 
 	/**
 	 * int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
@@ -1730,8 +1722,8 @@ void rec_process_syscall(Task *t)
 	 * specifies the size of that buffer.
 	 *
 	 */
-	SYS_REC1(getdents64, regs.eax, (byte*)regs.ecx)
-	SYS_REC1(getdents, regs.eax, (byte*)regs.ecx)
+	SYS_REC1(getdents64, t->regs().eax, (byte*)t->regs().ecx)
+	SYS_REC1(getdents, t->regs().eax, (byte*)t->regs().ecx)
 
 	/**
 	 * gid_t getgid(void);
@@ -1774,7 +1766,7 @@ void rec_process_syscall(Task *t)
 	 * the value of the ecx register when returning from the systenm call is different from entering
 	 * the system call.
 	 */
-	SYS_REC1(getgroups32, regs.ebx * sizeof(gid_t), (byte*)regs.ecx);
+	SYS_REC1(getgroups32, t->regs().ebx * sizeof(gid_t), (byte*)t->regs().ecx);
 
 	/**
 	 * uid_t getuid(void);
@@ -1826,7 +1818,7 @@ void rec_process_syscall(Task *t)
 	 *
 	 * getrusage() returns resource usage measures for who, which can be one of the following..
 	 */
-	SYS_REC1(getrusage, sizeof(struct rusage), (byte*)regs.ecx)
+	SYS_REC1(getrusage, sizeof(struct rusage), (byte*)t->regs().ecx)
 
 	/**
 	 * int gettimeofday(struct timeval *tv, struct timezone *tz);
@@ -1836,8 +1828,8 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	SYS_REC2(gettimeofday,
-		 sizeof(struct timeval), (byte*)regs.ebx,
-		 sizeof(struct timezone), (byte*)regs.ecx)
+		 sizeof(struct timeval), (byte*)t->regs().ebx,
+		 sizeof(struct timezone), (byte*)t->regs().ecx)
 
 	/**
 	 *  ssize_t getxattr(const char *path, const char *name,
@@ -1855,8 +1847,8 @@ void rec_process_syscall(Task *t)
 	case SYS_getxattr:
 	case SYS_lgetxattr:
 	case SYS_fgetxattr: {
-		ssize_t len = regs.eax;
-		byte* value = (byte*)regs.edx;
+		ssize_t len = t->regs().eax;
+		byte* value = (byte*)t->regs().edx;
 
 		if (len > 0) {
 			record_child_data(t, len, value);
@@ -1896,7 +1888,7 @@ void rec_process_syscall(Task *t)
 	 * 			7-0	function #
 	 * */
 	case SYS_ioctl:
-		handle_ioctl_request(t, regs.ecx);
+		handle_ioctl_request(t, t->regs().ecx);
 		break;
 
 	/**
@@ -1909,7 +1901,8 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_ipc:
-		return process_ipc(t, &regs, regs.ebx);
+		process_ipc(t, t->regs().ebx);
+		break;
 
 	/**
 	 * int link(const char *oldpath, const char *newpath);
@@ -1932,7 +1925,7 @@ void rec_process_syscall(Task *t)
 	 * lstat() is identical to stat(), except that if path is a symbolic link, then
 	 * the link itself is stat-ed, not the file that it refers to.
 	 */
-	SYS_REC1(lstat64, sizeof(struct stat64), (byte*)regs.ecx)
+	SYS_REC1(lstat64, sizeof(struct stat64), (byte*)t->regs().ecx)
 
 	/**
 	 * void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
@@ -1998,9 +1991,9 @@ void rec_process_syscall(Task *t)
 	 * @return:  On success, zero is returned.  On error, -1 is returned, and errno is set appropriately.
 	 */
 	SYS_REC3(getresgid32,
-		 sizeof(uid_t), (byte*)regs.ebx,
-		 sizeof(uid_t), (byte*)regs.ecx,
-		 sizeof(uid_t), (byte*)regs.edx)
+		 sizeof(uid_t), (byte*)t->regs().ebx,
+		 sizeof(uid_t), (byte*)t->regs().ecx,
+		 sizeof(uid_t), (byte*)t->regs().edx)
 
 	/**
 	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
@@ -2011,9 +2004,9 @@ void rec_process_syscall(Task *t)
 	 * process's group IDs.
 	 */
 	SYS_REC3(getresuid32,
-		 sizeof(uid_t), (byte*)regs.ebx,
-		 sizeof(uid_t), (byte*)regs.ecx,
-		 sizeof(uid_t), (byte*)regs.edx)
+		 sizeof(uid_t), (byte*)t->regs().ebx,
+		 sizeof(uid_t), (byte*)t->regs().ecx,
+		 sizeof(uid_t), (byte*)t->regs().edx)
 
 	/*
 	 * int _llseek(unsigned int fd, unsigned long offset_high, unsigned long offset_low,
@@ -2025,7 +2018,7 @@ void rec_process_syscall(Task *t)
 	 * resulting file position in the argument result.
 	 */
 
-	SYS_REC1(_llseek, sizeof(loff_t), (byte*)regs.esi)
+	SYS_REC1(_llseek, sizeof(loff_t), (byte*)t->regs().esi)
 
 	/**
 	 * int madvise(void *addr, size_t length, int advice);
@@ -2080,25 +2073,26 @@ void rec_process_syscall(Task *t)
 	 */
 
 	SYS_REC4(_newselect,
-		 sizeof(fd_set), (byte*)regs.ecx,
-		 sizeof(fd_set), (byte*)regs.edx,
-		 sizeof(fd_set), (byte*)regs.esi,
-		 sizeof(struct timeval), (byte*)regs.edi)
+		 sizeof(fd_set), (byte*)t->regs().ecx,
+		 sizeof(fd_set), (byte*)t->regs().edx,
+		 sizeof(fd_set), (byte*)t->regs().esi,
+		 sizeof(struct timeval), (byte*)t->regs().edi)
 
 	/**
 	 * int open(const char *pathname, int flags)
 	 * int open(const char *pathname, int flags, mode_t mode)
 	 */
 	case SYS_open: {
-		char* pathname = read_child_str(t, (byte*)regs.ebx);
+		char* pathname = read_child_str(t, (byte*)t->regs().ebx);
 		if (is_blacklisted_filename(pathname)) {
 			/* NB: the file will still be open in the
 			 * process's file table, but let's hope this
 			 * gross hack dies before we have to worry
 			 * about that. */
 			log_warn("Cowardly refusing to open %s", pathname);
-			regs.eax = -ENOENT;
-			t->set_regs(regs);
+			struct user_regs_struct r = t->regs();
+			r.eax = -ENOENT;
+			t->set_regs(r);
 		}
 		free(pathname);
 		break;
@@ -2135,8 +2129,8 @@ void rec_process_syscall(Task *t)
 	 * from the read end of the pipe.  For further details, see pipe(7).
 	 */
 	SYS_REC2(pipe,
-		 sizeof(int), (byte*)regs.ebx,
-		 sizeof(int), (byte*)(regs.ebx+sizeof(int*)))
+		 sizeof(int), (byte*)t->regs().ebx,
+		 sizeof(int), (byte*)(t->regs().ebx+sizeof(int*)))
 
 	/**
 	 * int pipe2(int pipefd[2], int flags)
@@ -2145,8 +2139,8 @@ void rec_process_syscall(Task *t)
 	 * ORed in flags to obtain different behavior...
 	 */
 	SYS_REC2(pipe2,
-		 sizeof(int), (byte*)regs.ebx,
-		 sizeof(int), (byte*)(regs.ebx+sizeof(int*)))
+		 sizeof(int), (byte*)t->regs().ebx,
+		 sizeof(int), (byte*)(t->regs().ebx+sizeof(int*)))
 
 	/**
 	 * int poll(struct pollfd *fds, nfds_t nfds, int timeout)
@@ -2169,12 +2163,13 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		byte* data = start_restoring_scratch(t, &iter);
 		struct pollfd* fds = pop_arg_ptr<struct pollfd>(t);
-		size_t nfds = regs.ecx;
+		size_t nfds = t->regs().ecx;
 
 		restore_and_record_arg_buf(t, nfds * sizeof(*fds), (byte*)fds,
 					   &iter);
-		regs.ebx = (uintptr_t)fds;
-		t->set_regs(regs);
+		struct user_regs_struct r = t->regs();
+		r.ebx = (uintptr_t)fds;
+		t->set_regs(r);
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
@@ -2188,7 +2183,7 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_prctl:	{
 		int size;
-		switch (regs.ebx) {
+		switch (t->regs().ebx) {
 			/* See rec_prepare_syscall() for how these
 			 * sizes are determined. */
 		case PR_GET_ENDIAN:
@@ -2201,7 +2196,7 @@ void rec_process_syscall(Task *t)
 			break;
 		case PR_GET_NAME: {
 			size = 16;
-			byte* addr = (byte*)regs.ecx;
+			byte* addr = (byte*)t->regs().ecx;
 			char* name = (char*)read_child_data(t, size, addr);
 			name[size - 1] = '\0';
 			assert_exec(t, t->name() == name,
@@ -2211,7 +2206,7 @@ void rec_process_syscall(Task *t)
 			break;
 		}
 		case PR_SET_NAME: {
-			byte* addr = (byte*)regs.ecx;
+			byte* addr = (byte*)t->regs().ecx;
 			t->update_prname(addr);
 			// The string value being set is
 			// deterministic.
@@ -2228,8 +2223,9 @@ void rec_process_syscall(Task *t)
 			byte* arg = pop_arg_ptr<byte>(t);
 
 			restore_and_record_arg_buf(t, size, arg, &iter);
-			regs.ecx = (uintptr_t)arg;
-			t->set_regs(regs);
+			struct user_regs_struct r = t->regs();
+			r.ecx = (uintptr_t)arg;
+			t->set_regs(r);
 
 			finish_restoring_scratch(t, iter, &data);
 		} else {
@@ -2244,7 +2240,7 @@ void rec_process_syscall(Task *t)
 	 * pread, pwrite - read from or write to a file descriptor at a given off‐
 	 * set
 	 */
-	SYS_REC1(pread64, regs.eax, (byte*)regs.ecx)
+	SYS_REC1(pread64, t->regs().eax, (byte*)t->regs().ecx)
 	SYS_REC0(pwrite64)
 
 	/**
@@ -2262,7 +2258,7 @@ void rec_process_syscall(Task *t)
 	 * places the previous soft and hard limits for resource in the rlimit structure
 	 * pointed to by old_limit.
 	 */
-	SYS_REC1(prlimit64, sizeof(struct rlimit64), (byte*)regs.esi)
+	SYS_REC1(prlimit64, sizeof(struct rlimit64), (byte*)t->regs().esi)
 
 	/**
 	 * int quotactl(int cmd, const char *special, int id, caddr_t addr);
@@ -2275,8 +2271,8 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_quotactl:
 	 {
-		 int cmd = regs.ebx;
-		 byte* addr = (byte*)regs.esi;
+		 int cmd = t->regs().ebx;
+		 byte* addr = (byte*)t->regs().esi;
 		 switch (cmd & SUBCMDMASK) {
 		 case Q_GETQUOTA:
 		 // Get disk quota limits and current usage for user or group id. The addr argument is a pointer to a dqblk structure 
@@ -2336,7 +2332,7 @@ void rec_process_syscall(Task *t)
 	 * It will truncate the contents (to a length of bufsiz characters), in case
 	 * the buffer is too small to hold all of the contents.
 	 */
-	SYS_REC1(readlink, regs.edx, (byte*)regs.ecx)
+	SYS_REC1(readlink, t->regs().edx, (byte*)t->regs().ecx)
 
 	/**
 	 * int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
@@ -2351,10 +2347,10 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_rt_sigaction: {
-		byte* old_sigaction = (byte*)regs.edx;
+		byte* old_sigaction = (byte*)t->regs().edx;
 		record_child_data(t, sizeof(struct kernel_sigaction),
 				  old_sigaction);
-		t->update_sigaction(&regs);
+		t->update_sigaction();
 		break;
 	 }
 	 /* TODO: SYS_signal, SYS_sigaction */
@@ -2368,9 +2364,9 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_sigprocmask:
 	case SYS_rt_sigprocmask: {
-		byte* oldsetp = (byte*)regs.edx;
+		byte* oldsetp = (byte*)t->regs().edx;
 		record_child_data(t, sizeof(sigset_t), oldsetp);
-		t->update_sigmask(&regs);
+		t->update_sigmask();
 		break;
 	}
 
@@ -2381,7 +2377,7 @@ void rec_process_syscall(Task *t)
 	 * pointed to by mask.  The cpusetsize argument specifies the
 	 *  size (in bytes) of mask.  If pid is zero, then the mask of the calling process is returned.
 	 */
-	SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (byte*)regs.edx)
+	SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), (byte*)t->regs().edx)
 
 	/**
 	 * int sched_getparam(pid_t pid, struct sched_param *param)
@@ -2390,7 +2386,7 @@ void rec_process_syscall(Task *t)
 	 * dentified  by  pid.  If pid is zero, then the parameters of the calling process
 	 * are retrieved.
 	 */
-	SYS_REC1(sched_getparam, sizeof(struct sched_param), (byte*)regs.ecx)
+	SYS_REC1(sched_getparam, sizeof(struct sched_param), (byte*)t->regs().ecx)
 
 	/**
 	 *  int sched_get_priority_max(int policy)
@@ -2438,20 +2434,20 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_sched_setaffinity:
 	{
-		if (SYSCALL_FAILED(regs.eax)) {
+		if (SYSCALL_FAILED(t->regs().eax)) {
 			// Nothing to do
 			break;
 		}
 
-		Task *target = regs.ebx ? Task::find(regs.ebx) : t;
+		Task *target = t->regs().ebx ? Task::find(t->regs().ebx) : t;
 		if (target) {
 			// The only sched_setaffinity call we allow on an
 			// rr-managed task is one that sets affinity to CPU 0.
-			assert_exec(t, regs.ecx == sizeof(cpu_set_t),
+			assert_exec(t, t->regs().ecx == sizeof(cpu_set_t),
 				    "Invalid sched_setaffinity parameters");
 			cpu_set_t* cpus = (cpu_set_t*)
 				read_child_data(target, sizeof(cpu_set_t),
-				                (byte*)regs.edx);
+				                (byte*)t->regs().edx);
 			assert_exec(t, cpus && CPU_COUNT(cpus) == 1 &&
 			            CPU_ISSET(0, cpus),
 			            "Invalid affinity setting");
@@ -2472,7 +2468,7 @@ void rec_process_syscall(Task *t)
 	 * int setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value);
 	 *
 	 */
-	SYS_REC1(setitimer, sizeof(struct itimerval), (byte*)regs.edx);
+	SYS_REC1(setitimer, sizeof(struct itimerval), (byte*)t->regs().edx);
 
 	/**
 	 * int setpriority(int which, int who, int prio);
@@ -2490,11 +2486,11 @@ void rec_process_syscall(Task *t)
 		// to be able to test configurations where a child thread
 		// has a lower nice value than its parent, which requires
 		// lowering the child's nice value.
-		if (regs.ebx == PRIO_PROCESS) {
-			Task *target = regs.ecx ? Task::find(regs.ecx) : t;
+		if (t->regs().ebx == PRIO_PROCESS) {
+			Task *target = t->regs().ecx ? Task::find(t->regs().ecx) : t;
 			if (target) {
-				debug("Setting nice value for tid %d to %ld", tid, regs.edx);
-				target->set_priority(regs.edx);
+				debug("Setting nice value for tid %d to %ld", tid, t->regs().edx);
+				target->set_priority(t->regs().edx);
 			}
 		}
 		break;
@@ -2545,7 +2541,7 @@ void rec_process_syscall(Task *t)
 	 * changed.
 	 *
 	 */
-	SYS_REC1(set_thread_area, sizeof(struct user_desc), (byte*)regs.ebx);
+	SYS_REC1(set_thread_area, sizeof(struct user_desc), (byte*)t->regs().ebx);
 
 	/**
 	 * long set_tid_address(int *tidptr);
@@ -2561,7 +2557,7 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_set_tid_address: {
-		byte* addr = (byte*)regs.ebx;
+		byte* addr = (byte*)t->regs().ebx;
 		record_child_data(t, sizeof(pid_t), addr);
 		t->set_tid_addr(addr);
 	}
@@ -2573,7 +2569,7 @@ void rec_process_syscall(Task *t)
 	 * an existing alternate signal stack.  An alternate signal stack is used during the execution of a signal
 	 * handler if the establishment of that handler (see sigaction(2)) requested it.
 	 */
-	SYS_REC1(sigaltstack, regs.ecx ? sizeof(stack_t) : 0, (byte*)regs.ecx)
+	SYS_REC1(sigaltstack, t->regs().ecx ? sizeof(stack_t) : 0, (byte*)t->regs().ecx)
 
 	/**
 	 * int sigreturn(unsigned long __unused)
@@ -2593,15 +2589,15 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_socketcall:
-		return process_socketcall(t, &regs,
-					  regs.ebx, (byte*)regs.ecx);
+		process_socketcall(t, t->regs().ebx, (byte*)t->regs().ecx);
+		break;
 
 	/**
 	 *  int stat(const char *path, struct stat *buf);
 	 *
 	 *  stat() stats the file pointed to by path and fills in buf.
 	 */
-	SYS_REC1(stat64, sizeof(struct stat64), (byte*)regs.ecx)
+	SYS_REC1(stat64, sizeof(struct stat64), (byte*)t->regs().ecx)
 
 	/**
 	 * int statfs(const char *path, struct statfs *buf)
@@ -2609,7 +2605,7 @@ void rec_process_syscall(Task *t)
 	 * The function statfs() returns information about a mounted file system.  path is the pathname of any file within the mounted
 	 * file system.  buf is a pointer to a statfs structure defined approximately as follows:
 	 */
-	SYS_REC1(statfs, sizeof(struct statfs), (byte*)regs.ecx)
+	SYS_REC1(statfs, sizeof(struct statfs), (byte*)t->regs().ecx)
 
 	/**
 	 * int statfs(const char *path, struct statfs *buf)
@@ -2621,7 +2617,7 @@ void rec_process_syscall(Task *t)
 	 * FIXXME: we use edx here, although according to man pages this system call has only
 	 * 2 paramaters. However, strace tells another story...
 	 */
-	SYS_REC1(statfs64, sizeof(struct statfs64), (byte*)regs.edx)
+	SYS_REC1(statfs64, sizeof(struct statfs64), (byte*)t->regs().edx)
 
 	/**
 	 * int symlink(const char *oldpath, const char *newpath)
@@ -2635,7 +2631,7 @@ void rec_process_syscall(Task *t)
 	 *
 	 * sysinfo() provides a simple way of getting overall system statistics.
 	 */
-	SYS_REC1(sysinfo, sizeof(struct sysinfo), (byte*)regs.ebx)
+	SYS_REC1(sysinfo, sizeof(struct sysinfo), (byte*)t->regs().ebx)
 
 	/**
 	 * int tgkill(int tgid, int tid, int sig)
@@ -2654,7 +2650,7 @@ void rec_process_syscall(Task *t)
 	 *  in seconds. If t is non-NULL, the return value is also stored in the memory pointed
 	 *  to by t.
 	 */
-	SYS_REC1(time, sizeof(time_t), (byte*)regs.ebx)
+	SYS_REC1(time, sizeof(time_t), (byte*)t->regs().ebx)
 
 	/**
 	 * clock_t times(struct tms *buf)
@@ -2662,7 +2658,7 @@ void rec_process_syscall(Task *t)
 	 * times()  stores  the  current  process  times in the struct tms that buf points to.  The
 	 *  struct tms is as defined in <sys/times.h>:
 	 */
-	SYS_REC1(times, sizeof(struct tms), (byte*)regs.ebx)
+	SYS_REC1(times, sizeof(struct tms), (byte*)t->regs().ebx)
 
 	/**
 	 * int getrlimit(int resource, struct rlimit *rlim)
@@ -2671,7 +2667,7 @@ void rec_process_syscall(Task *t)
 	 * Each resource has an associated soft and hard limit, as defined by the rlimit structure
 	 * (the rlim argument to both getrlimit() and setrlimit()):
 	 */
-	SYS_REC1(ugetrlimit, sizeof(struct rlimit), (byte*)regs.ecx)
+	SYS_REC1(ugetrlimit, sizeof(struct rlimit), (byte*)t->regs().ecx)
 
 	/**
 	 * int uname(struct utsname *buf)
@@ -2679,7 +2675,7 @@ void rec_process_syscall(Task *t)
 	 * uname() returns system information in the structure pointed to by buf. The utsname
 	 * struct is defined in <sys/utsname.h>:
 	 */
-	SYS_REC1(uname, sizeof(struct utsname), (byte*)regs.ebx)
+	SYS_REC1(uname, sizeof(struct utsname), (byte*)t->regs().ebx)
 
 	/**
 	 * int utime(const char *filename, const struct utimbuf *times)
@@ -2707,7 +2703,8 @@ void rec_process_syscall(Task *t)
 	 * int execve(const char *filename, char *const argv[], char *const envp[]);
 	 */
 	case SYS_execve:
-		return process_execve(t, &regs);
+		process_execve(t);
+		break;
 
 	/**
 	 * int fstat(int fd, struct stat *buf)
@@ -2717,7 +2714,7 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 
-	SYS_REC1(fstat64, sizeof(struct stat64), (byte*)regs.ecx)
+	SYS_REC1(fstat64, sizeof(struct stat64), (byte*)t->regs().ecx)
 
 	/**
 	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
@@ -2725,7 +2722,7 @@ void rec_process_syscall(Task *t)
 	 * The  fstatat()  system  call operates in exactly the same way as stat(2), except for the
 	 * differences described in this manual page....
 	 */
-	SYS_REC1(fstatat64, sizeof(struct stat64), (byte*)regs.edx)
+	SYS_REC1(fstatat64, sizeof(struct stat64), (byte*)t->regs().edx)
 
 	/**
 	 * pid_t fork(void)
@@ -2748,15 +2745,16 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_mmap2:
 	{
-		if (SYSCALL_FAILED(regs.eax)) {
+		if (SYSCALL_FAILED(t->regs().eax)) {
 			// We purely emulate failed mmaps.
 			break;
 		}
 
-		byte* addr = (byte*)regs.eax;
-		size_t size = ceil_page_size(regs.ecx);
-		int prot = regs.edx, flags = regs.esi, fd = regs.edi;
-		off_t offset_pages = regs.ebp;
+		byte* addr = (byte*)t->regs().eax;
+		size_t size = ceil_page_size(t->regs().ecx);
+		int prot = t->regs().edx, flags = t->regs().esi,
+		      fd = t->regs().edi;
+		off_t offset_pages = t->regs().ebp;
 		if (flags & MAP_ANONYMOUS) {
 			// Anonymous mappings are by definition not
 			// backed by any file-like object, and are
@@ -2829,10 +2827,11 @@ void rec_process_syscall(Task *t)
 		byte* data = start_restoring_scratch(t, &iter);
 
 		if (rem) {
+			struct user_regs_struct r = t->regs();
 			/* If the sleep completes, the kernel doesn't
 			 * write back to the remaining-time
 			 * argument. */
-			if (0 == regs.eax) {
+			if (0 == r.eax) {
 				record_noop_data(t);
 			} else {
 				/* TODO: where are we supposed to
@@ -2842,8 +2841,8 @@ void rec_process_syscall(Task *t)
 				 * by a user-handled signal. */
 				restore_and_record_arg(t, rem, &iter);
 			}
-			regs.ecx = (uintptr_t)rem;
-			t->set_regs(regs);
+			r.ecx = (uintptr_t)rem;
+			t->set_regs(r);
 		}
 
 		finish_restoring_some_scratch(t, iter, &data);
@@ -2866,17 +2865,18 @@ void rec_process_syscall(Task *t)
 	 *  systems are POSIX conforming.
 	 */
 	case SYS_write: {
-		int fd = regs.ebx;
+		struct user_regs_struct r = t->regs();
+		int fd = r.ebx;
 
 		if (RR_MAGIC_SAVE_DATA_FD == fd) {
-			byte* buf = (byte*)regs.ecx;
-			size_t len = regs.edx;
+			byte* buf = (byte*)r.ecx;
+			size_t len = r.edx;
 
 			assert_exec(t, buf, "Can't save a null buffer");
 
 			record_child_data(t, len, buf);
-			regs.eax = len;
-			t->set_regs(regs);
+			r.eax = len;
+			t->set_regs(r);
 		}
 		break;
 	}
@@ -2898,12 +2898,12 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		byte* data = NULL;
 
-		nread = regs.eax;
+		nread = t->regs().eax;
 		if (has_saved_arg_ptrs(t)) {
 			buf = pop_arg_ptr<byte>(t);
 			data = start_restoring_scratch(t, &iter);
 		} else {
-			buf = (byte*)regs.ecx;
+			buf = (byte*)t->regs().ecx;
 		}
 
 		if (nread > 0) {
@@ -2918,8 +2918,9 @@ void rec_process_syscall(Task *t)
 		}
 
 		if (data) {
-			regs.ecx = (uintptr_t)buf;
-			t->set_regs(regs);
+			struct user_regs_struct r = t->regs();
+			r.ecx = (uintptr_t)buf;
+			t->set_regs(r);
 			finish_restoring_some_scratch(t, iter, &data);
 		}
 		break;
@@ -2938,8 +2939,8 @@ void rec_process_syscall(Task *t)
 	 * operation.
 	 */
 	case SYS_recvmmsg: {
-		struct mmsghdr* msg = (struct mmsghdr*)regs.ecx;
-		ssize_t nmmsgs = regs.eax;
+		struct mmsghdr* msg = (struct mmsghdr*)t->regs().ecx;
+		ssize_t nmmsgs = t->regs().eax;
 		int i;
 
 		for (i = 0; i < nmmsgs; ++i, ++msg) {
@@ -2965,8 +2966,8 @@ void rec_process_syscall(Task *t)
 	 * benefits for some applications.)
 	 */
 	case SYS_sendmmsg: {
-		struct mmsghdr* msg = (struct mmsghdr*)regs.ecx;
-		ssize_t nmmsgs = regs.eax;
+		struct mmsghdr* msg = (struct mmsghdr*)t->regs().ecx;
+		ssize_t nmmsgs = t->regs().eax;
 		int i;
 
 		/* Record the outparam msg_len fields. */
@@ -3006,7 +3007,7 @@ void rec_process_syscall(Task *t)
 	 (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
 	 arbitrary changes to either limit value.
 	 */
-	SYS_REC1(setrlimit, sizeof(struct rlimit), (byte*)regs.ecx)
+	SYS_REC1(setrlimit, sizeof(struct rlimit), (byte*)t->regs().ecx)
 
 	/**
 	 * ssize_t splice(int fd_in, loff_t *off_in, int fd_out,
@@ -3028,20 +3029,21 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		byte* data = start_restoring_scratch(t, &iter);
 
+		struct user_regs_struct r = t->regs();
 		if (off_in) {
 			restore_and_record_arg(t, off_in, &iter);
-			regs.ecx = (uintptr_t)off_in;
+			r.ecx = (uintptr_t)off_in;
 		} else {
 			record_noop_data(t);
 		}
 		if (off_out) {
 			restore_and_record_arg(t, off_out, &iter);
-			regs.esi = (uintptr_t)off_out;
+			r.esi = (uintptr_t)off_out;
 		} else {
 			record_noop_data(t);
 		}
 
-		t->set_regs(regs);
+		t->set_regs(r);
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
@@ -3081,7 +3083,7 @@ void rec_process_syscall(Task *t)
 	 * filename to the actime and modtime fields of times respectively.
 	 *
 	 */
-	SYS_REC1(utimes, 2*sizeof(struct timeval), (byte*)regs.ecx);
+	SYS_REC1(utimes, 2*sizeof(struct timeval), (byte*)t->regs().ecx);
 
 	/**
 	 * pid_t vfork(void);
@@ -3113,19 +3115,20 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		byte* data = start_restoring_scratch(t, &iter);
 
+		struct user_regs_struct r = t->regs();
 		if (status) {
 			restore_and_record_arg(t, status, &iter);
-			regs.ecx = (uintptr_t)status;
+			r.ecx = (uintptr_t)status;
 		} else {
 			record_noop_data(t);
 		}
 		if (rusage) {
 			restore_and_record_arg(t, rusage, &iter);
-			regs.esi = (uintptr_t)rusage;
+			r.esi = (uintptr_t)rusage;
 		} else if (SYS_wait4 == syscall) {
 			record_noop_data(t);
 		}
-		t->set_regs(regs);
+		t->set_regs(r);
 
 		finish_restoring_scratch(t, iter, &data);
 	}

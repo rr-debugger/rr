@@ -50,6 +50,12 @@ struct trace_frame;
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
+/* The tracee doesn't open the desched event fd during replay, so it
+ * can't be shared to this process.  We pretend that the tracee shared
+ * this magic fd number with us and then give it a free pass for fd
+ * checks that include this fd. */
+#define REPLAY_DESCHED_EVENT_FD -123
+
 /**
  * Collecion of data describing a mapped memory segment, as parsed
  * from /proc/[tid]/maps on linux.
@@ -122,7 +128,7 @@ byte* str2x(const char* start, size_t max_size);
 void read_line(FILE* file, char* buf, int size, const char* name);
 
 void print_register_file_tid(Task* t);
-void print_register_file(struct user_regs_struct* regs);
+void print_register_file(const struct user_regs_struct* regs);
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
@@ -332,25 +338,6 @@ void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
 void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr);
 /** Like restore_struct_msghdr(), but for mmsghdr. */
 void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
-
-/**
- * Return nonzero if |t|'s current registers |regs| indicate that
- * |t| is at an arm-desched-event or disarm-desched-event syscall.
- */
-int is_desched_event_syscall(Task* t,
-			     const struct user_regs_struct* regs);
-/**
- * Return nonzero if |t|'s current registers |regs| indicate that
- * |t| is at an arm-desched-event syscall.
- */
-int is_arm_desched_event_syscall(Task* t,
-				 const struct user_regs_struct* regs);
-/**
- * Return nonzero if |t|'s current registers |regs| indicate that
- * |t| is at a disarm-desched-event syscall.
- */
-int is_disarm_desched_event_syscall(Task* t,
-				    const struct user_regs_struct* regs);
 
 /**
  * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|

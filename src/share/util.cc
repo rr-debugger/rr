@@ -50,11 +50,6 @@
 
 using namespace std;
 
-/* The tracee doesn't open the desched event fd during replay, so it
- * can't be shared to this process.  We pretend that the tracee shared
- * this magic fd number with us and then give it a free pass for fd
- * checks that include this fd. */
-#define REPLAY_DESCHED_EVENT_FD -123
 #define NUM_MAX_MAPS 1024
 
 struct flags flags = { 0 };
@@ -300,12 +295,10 @@ int clone_flags_to_task_flags(int flags_arg)
 
 void print_register_file_tid(Task* t)
 {
-	struct user_regs_struct regs;
-	t->get_regs(&regs);
-	print_register_file(&regs);
+	print_register_file(&t->regs());
 }
 
-void print_register_file(struct user_regs_struct* regs)
+void print_register_file(const struct user_regs_struct* regs)
 {
 	fprintf(stderr, "Printing register file:\n");
 	fprintf(stderr, "eax: %lx\n", regs->eax);
@@ -452,7 +445,7 @@ void print_process_mmap(Task* t)
 char* get_inst(Task* t, int eip_offset, int* opcode_size)
 {
 	char* buf = NULL;
-	unsigned long eip = t->get_eip();
+	byte* eip = (byte*)t->ip();
 	ssize_t nr_read_bytes;
 	byte* inst =
 		(byte*)read_child_data_checked(t, 128,
@@ -663,8 +656,7 @@ void assert_child_regs_are(Task* t,
 			   const struct user_regs_struct* regs,
 			   int event, int state)
 {
-	t->get_regs(&t->regs);
-	compare_register_files(t, "replaying", &t->regs, "recorded", regs,
+	compare_register_files(t, "replaying", &t->regs(), "recorded", regs,
 			       BAIL_ON_MISMATCH);
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }
@@ -1156,28 +1148,6 @@ void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 	set_child_data(t);
 }
 
-int is_desched_event_syscall(Task* t,
-			     const struct user_regs_struct* regs)
-{
-	return (SYS_ioctl == regs->orig_eax
-		&& (t->desched_fd_child == regs->ebx
-		    || t->desched_fd_child == REPLAY_DESCHED_EVENT_FD));
-}
-
-int is_arm_desched_event_syscall(Task* t,
-				 const struct user_regs_struct* regs)
-{
-	return (is_desched_event_syscall(t, regs)
-		&& PERF_EVENT_IOC_ENABLE == regs->ecx);
-}
-
-int is_disarm_desched_event_syscall(Task* t,
-				    const struct user_regs_struct* regs)
-{
-	return (is_desched_event_syscall(t, regs)
-		&& PERF_EVENT_IOC_DISABLE == regs->ecx);
-}
-
 bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val)
 {
 	static_assert(sizeof(uint32_t) == sizeof(long),
@@ -1394,7 +1364,7 @@ void prepare_remote_syscalls(Task* t,
 	/* Save current state of |t|. */
 	memset(state, 0, sizeof(*state));
 	state->pid = t->tid;
-	t->get_regs(&state->regs);
+	state->regs = t->regs();
 	state->code_size = sizeof(syscall_insn);
 	state->start_addr = (byte*)state->regs.eip;
 	state->code_buffer =
@@ -1459,13 +1429,10 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 		    int wait, int syscallno,
 		    long a1, long a2, long a3, long a4, long a5, long a6)
 {
-	pid_t tid = t->tid;
-	struct user_regs_struct callregs;
-
-	assert(tid == state->pid);
+	assert(t->tid == state->pid);
 
 	/* Prepare syscall arguments. */
-	memcpy(&callregs, &state->regs, sizeof(callregs));
+	struct user_regs_struct callregs = state->regs;
 	callregs.eax = syscallno;
 	callregs.ebx = a1;
 	callregs.ecx = a2;
@@ -1477,8 +1444,7 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 
 	advance_syscall(t);
 
-	t->get_regs(&callregs);
-	assert_exec(t, callregs.orig_eax == syscallno,
+	assert_exec(t, t->regs().orig_eax == syscallno,
 		    "Should be entering %s, but instead at %s",
 		    syscallname(syscallno), syscallname(callregs.orig_eax));
 
@@ -1497,12 +1463,11 @@ long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 	/* Wait for syscall-exit trap. */
 	t->wait();
 
-	t->get_regs(&regs);
-	assert_exec(t, regs.orig_eax == syscallno,
+	assert_exec(t, t->regs().orig_eax == syscallno,
 		    "Should be entering %s, but instead at %s",
 		    syscallname(syscallno), syscallname(regs.orig_eax));
 
-	return regs.eax;
+	return t->regs().eax;
 }
 
 void finish_remote_syscalls(Task* t,
@@ -1799,8 +1764,7 @@ void destroy_buffers(Task* t, int flags)
 		advance_syscall(t);
 	}
 
-	struct user_regs_struct exit_regs;
-	t->get_regs(&exit_regs);
+	struct user_regs_struct exit_regs = t->regs();
 	assert_exec(t, SYS_exit == exit_regs.orig_eax,
 		    "Tracee should have been at exit, but instead at %s",
 		    syscallname(exit_regs.orig_eax));
@@ -1980,15 +1944,13 @@ void monkeypatch_vdso(Task* t)
 	// NB: the tracee can't be interrupted with a signal while
 	// we're processing the rrcall, because it's masked off all
 	// signals.
-	struct user_regs_struct regs;
-	t->get_regs(&regs);
-
-	void* vsyscall_hook_trampoline = (void*)regs.ebx;
+	void* vsyscall_hook_trampoline = (void*)t->regs().ebx;
 	// Luckily, linux is happy for us to scribble directly over
 	// the vdso mapping's bytes without mprotecting the region, so
 	// we don't need to prepare remote syscalls here.
 	monkeypatch(t, kernel_vsyscall, vsyscall_hook_trampoline);
 
-	regs.eax = 0;
-	t->set_regs(regs);
+	struct user_regs_struct r = t->regs();
+	r.eax = 0;
+	t->set_regs(r);
 }

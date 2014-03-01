@@ -762,8 +762,7 @@ void pop_syscall(Task* t);
  * emulate syscall entry, since the kernel won't have set things up
  * for the tracee to restart on its own.
  */
-void push_syscall_interruption(Task* t, int no,
-			       const struct user_regs_struct* args);
+void push_syscall_interruption(Task* t, int no);
 void pop_syscall_interruption(Task* t);
 
 /**
@@ -1016,28 +1015,70 @@ public:
 	 */
 	void futex_wait(const byte* futex, uint32_t val);
 
-	/** Return the tracee's current regs through |regs|. */
-	void get_regs(struct user_regs_struct* regs);
-
-	// TODO: temporary reg getters for backwards compatibility.
-	// Don't use these, they're going to be removed.
-#define REG_GETTER(_reg)			\
-	long get_ ## _reg() {			\
-		struct user_regs_struct regs;	\
-		get_regs(&regs);		\
-		return regs._reg;		\
-	}
-	REG_GETTER(eax)
-	REG_GETTER(ebx)
-	REG_GETTER(ecx)
-	REG_GETTER(ebp)
-	REG_GETTER(orig_eax)
-	REG_GETTER(eip)
-
 	/**
 	 * Call this when the tracee's syscallbuf has been initialized.
 	 */
 	void inited_syscallbuf();
+
+	/** Return the current $ip of this. */
+	const byte* ip() { return (const byte*)regs().eip; }
+
+	/**
+	 * Return true if this is at an arm-desched-event syscall.
+	 */
+	bool is_arm_desched_event_syscall();
+
+	/**
+	 * Return true if this is at an arm-desched-event or
+	 * disarm-desched-event syscall.
+	 */
+	bool is_desched_event_syscall();
+
+	/**
+	 * Return true if this is at a disarm-desched-event syscall.
+	 */
+	bool is_disarm_desched_event_syscall();
+
+	/**
+	 * return True when this is just before a syscall trap
+	 * instruction for a traced syscall made by the syscallbuf
+	 * code.  Callers may assume |is_in_syscallbuf()| is implied
+	 * by this.
+	 */
+	bool is_entering_traced_syscall() {
+		// |int $0x80| is |5d 80|, so |2| comes from
+		// |sizeof(int $0x80)|.
+		const byte* next_ip = ip() + 2;
+		return next_ip == traced_syscall_ip;
+	}
+
+	/**
+	 * Return true if this is within the syscallbuf library.  This
+	 * *does not* imply that $ip is at a buffered syscall; see
+	 * below.
+	 */
+	bool is_in_syscallbuf() {
+		return (syscallbuf_lib_start <= ip()
+			&& ip() < syscallbuf_lib_end);
+	}
+
+	/**
+	 * Return true when this at a traced syscall made by the
+	 * syscallbuf code.  Callers may assume |is_in_syscallbuf()|
+	 * is implied by this.
+	 */
+	bool is_traced_syscall() {
+		return ip() == traced_syscall_ip;
+	}
+
+	/**
+	 * Return true when this is at an untraced syscall, i.e. one
+	 * initiated by a function in the syscallbuf.  Callers may
+	 * assume |is_in_syscallbuf()| is implied by this.
+	 */
+	bool is_untraced_syscall() {
+		return ip() == untraced_syscall_ip;
+	}
 
 	/**
 	 * Return true if |ptrace_event()| is the trace event
@@ -1056,6 +1097,13 @@ public:
 	bool is_sig_ignored(int sig) const;
 
 	/**
+	 * Return true if the current state of this looks like the
+	 * interrupted syscall at the top of our event stack, if there
+	 * is one.
+	 */
+	bool is_syscall_restart();
+
+	/**
 	 * Return nonzero if |t| may not be immediately runnable,
 	 * i.e., resuming execution and then |waitpid()|'ing may block
 	 * for an unbounded amount of time.  When the task is in this
@@ -1071,8 +1119,7 @@ public:
 	 * calls: they're complicated enough to be handled separately.
 	 * Client code should call |t->vm()->map(...)| directly.
 	 */
-	void maybe_update_vm(int syscallno, int state,
-			     const struct user_regs_struct& regs);
+	void maybe_update_vm(int syscallno, int state);
 
 	/**
 	 * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or
@@ -1112,6 +1159,12 @@ public:
 		return read_bytes_helper(child_addr, N, buf);
 	}
 
+	/** Return the current regs of this. */
+	const struct user_regs_struct& regs();
+
+	/** Return the current $sp of this. */
+	const byte* sp() { return (const byte*)regs().esp; }
+
 	/**
 	 * Read |val| from |child_addr|.
 	 */
@@ -1141,18 +1194,6 @@ public:
 
 	/** Set the tracee's registers to |regs|. */
 	void set_regs(const struct user_regs_struct& regs);
-
-	// See REG_GETTER().
-#define REG_SETTER(_reg)			\
-	void set_ ## _reg(long value) {		\
-		struct user_regs_struct regs;	\
-		get_regs(&regs);		\
-		regs._reg = value;		\
-		set_regs(regs);			\
-	}
-	REG_SETTER(ebx)
-	REG_SETTER(ecx)
-	REG_SETTER(edi)
 
 	/** Update the clear-tid futex to |tid_addr|. */
 	void set_tid_addr(const byte* tid_addr);
@@ -1209,13 +1250,13 @@ public:
  	/**
 	 * Call this when SYS_sigaction is finishing with |regs|.
 	 */
-	void update_sigaction(const struct user_regs_struct* regs);
+	void update_sigaction();
 
 	/**
 	 * Call this after the tracee has completed a
 	 * SYS_rt_sigprocmask syscall with |regs|.
 	 */
-	void update_sigmask(const struct user_regs_struct* regs);
+	void update_sigmask();
 
 	/**
 	 * Return the virtual memory mapping (address space) of this
@@ -1438,7 +1479,6 @@ public:
 	struct trace_frame trace;
 	struct hpc_context* hpc;
 
-	struct user_regs_struct regs;
 	/* This is always the "real" tid of the tracee. */
 	pid_t tid;
 	/* This is always the recorded tid of the tracee.  During
@@ -1502,6 +1542,15 @@ private:
 	sig_set_t blocked_sigs;
 	/* Task's OS name */
 	std::string prname;
+	// When |registers_known|, these are our child registers.
+	// When execution is resumed, we no longer know what the child
+	// registers are so the flag is unset.  The next time the
+	// registers are read after a trace-stop, we actually make the
+	// ptrace call to update the cache, and set the "known" bit
+	// back to true.  Manually setting the registers also updates
+	// this cached value and set the "known" flag.
+	struct user_regs_struct registers;
+	bool registers_known;
 	/* Points to the signal-hander table of this task.  If this
 	 * task is a non-fork clone child, then the table will be
 	 * shared with all its "thread" siblings.  Any updates made to

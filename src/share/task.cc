@@ -763,12 +763,14 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, desched_fd(-1), desched_fd_child(-1)
 	, seccomp_bpf_enabled()
 	, child_sig()
-	, trace(), hpc(), regs()
+	, trace(), hpc()
 	, tid(_tid), rec_tid(_rec_tid > 0 ? _rec_tid : _tid)
 	, child_mem_fd(sys_open_child_mem(this))
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
-	, blocked_sigs(), prname("???"), tid_futex()
+	, blocked_sigs(), prname("???")
+	, registers(), registers_known(false)
+	, tid_futex()
 	, wait_status()
 {
 	if (RECORD != rr_flags()->option) {
@@ -980,10 +982,26 @@ Task::futex_wait(const byte* futex, uint32_t val)
 	}
 }
 
-void
-Task::get_regs(struct user_regs_struct* regs)
+bool
+Task::is_arm_desched_event_syscall()
 {
-	xptrace(PTRACE_GETREGS, nullptr, regs);
+	return (is_desched_event_syscall()
+		&& PERF_EVENT_IOC_ENABLE == regs().ecx);
+}
+
+bool
+Task::is_desched_event_syscall()
+{
+	return (SYS_ioctl == regs().orig_eax
+		&& (desched_fd_child == regs().ebx
+		    || desched_fd_child == REPLAY_DESCHED_EVENT_FD));
+}
+
+bool
+Task::is_disarm_desched_event_syscall()
+{
+	return (is_desched_event_syscall()
+		&& PERF_EVENT_IOC_DISABLE == regs().ecx);
 }
 
 bool
@@ -1007,6 +1025,66 @@ Task::is_sig_ignored(int sig) const
 	return sighandlers->get(sig).ignored(sig);
 }
 
+bool
+Task::is_syscall_restart()
+{
+	int syscallno = event;
+	bool must_restart = (SYS_restart_syscall == syscallno);
+	bool is_restart = false;
+	const struct user_regs_struct* old_regs = &ev->syscall.regs;
+
+	debug("  is syscall interruption of recorded %s? (now %s)",
+	      syscallname(ev->syscall.no), syscallname(syscallno));
+
+	if (EV_SYSCALL_INTERRUPTION != ev->type) {
+		goto done;
+	}
+	/* It's possible for the tracee to resume after a sighandler
+	 * with a fresh syscall that happens to be the same as the one
+	 * that was interrupted.  So we check here if the args are the
+	 * same.
+	 *
+	 * Of course, it's possible (but less likely) for the tracee
+	 * to incidentally resume with a fresh syscall that just
+	 * happens to have the same *arguments* too.  But in that
+	 * case, we would usually set up scratch buffers etc the same
+	 * was as for the original interrupted syscall, so we just
+	 * save a step here.
+	 *
+	 * TODO: it's possible for arg structures to be mutated
+	 * between the original call and restarted call in such a way
+	 * that it might change the scratch allocation decisions. */
+	if (SYS_restart_syscall == syscallno) {
+		must_restart = true;
+		syscallno = ev->syscall.no;
+		debug("  (SYS_restart_syscall)");
+	}
+	if (ev->syscall.no != syscallno) {
+		debug("  interrupted %s != %s",
+		      syscallname(ev->syscall.no), syscallname(syscallno));
+		goto done;
+	}
+	if (!(old_regs->ebx == regs().ebx
+	      && old_regs->ecx == regs().ecx
+	      && old_regs->edx == regs().edx
+	      && old_regs->esi == regs().esi
+	      && old_regs->edi == regs().edi
+	      && old_regs->ebp == regs().ebp)) {
+		debug("  regs different at interrupted %s",
+		      syscallname(syscallno));
+		goto done;
+	}
+	is_restart = true;
+
+done:
+	assert_exec(this, !must_restart || is_restart,
+		    "Must restart %s but won't", syscallname(syscallno));
+	if (is_restart) {
+		debug("  restart of %s", syscallname(syscallno));
+	}
+	return is_restart;
+}
+
 void
 Task::inited_syscallbuf()
 {
@@ -1023,15 +1101,20 @@ Task::may_be_blocked() const
 }
 
 void
-Task::maybe_update_vm(int syscallno, int state,
-		      const struct user_regs_struct& regs)
+Task::maybe_update_vm(int syscallno, int state)
 {
-	if (STATE_SYSCALL_EXIT != state || SYSCALL_FAILED(regs.eax)) {
+	// We have to use the recorded_regs during replay because they
+	// have the return value set in |eax|.  We may not have
+	// advanced regs() to that point yet.
+	const struct user_regs_struct& r = RECORD == rr_flags()->option ?
+					   regs() : trace.recorded_regs;
+
+	if (STATE_SYSCALL_EXIT != state || SYSCALL_FAILED(r.eax)) {
 		return;
 	}
 	switch (syscallno) {
 	case SYS_brk: {
-		byte* addr = reinterpret_cast<byte*>(regs.ebx);
+		byte* addr = reinterpret_cast<byte*>(r.ebx);
 		if (!addr) {
 			// A brk() update of NULL is observed with
 			// libc, which apparently is its means of
@@ -1048,22 +1131,22 @@ Task::maybe_update_vm(int syscallno, int state,
 	}
 	case SYS_mprotect: {
 		//int mprotect(void *addr, size_t len, int prot);
-		byte* addr = reinterpret_cast<byte*>(regs.ebx);
-		size_t num_bytes = regs.ecx;
-		int prot = regs.edx;
+		byte* addr = reinterpret_cast<byte*>(r.ebx);
+		size_t num_bytes = r.ecx;
+		int prot = r.edx;
 		return vm()->protect(addr, num_bytes, prot);
 	}
 	case SYS_mremap: {
-		byte* old_addr = reinterpret_cast<byte*>(regs.ebx);
-		size_t old_num_bytes = regs.ecx;
-		byte* new_addr = reinterpret_cast<byte*>(regs.eax);
-		size_t new_num_bytes = regs.edx;
+		byte* old_addr = reinterpret_cast<byte*>(r.ebx);
+		size_t old_num_bytes = r.ecx;
+		byte* new_addr = reinterpret_cast<byte*>(r.eax);
+		size_t new_num_bytes = r.edx;
 		return vm()->remap(old_addr, old_num_bytes,
 				   new_addr, new_num_bytes);
 	}
 	case SYS_munmap: {
-		byte* addr = reinterpret_cast<byte*>(regs.ebx);
-		size_t num_bytes = regs.ecx;
+		byte* addr = reinterpret_cast<byte*>(r.ebx);
+		size_t num_bytes = r.ecx;
 		return vm()->unmap(addr, num_bytes);
 	}
 	}
@@ -1095,10 +1178,23 @@ Task::read_word(const byte* child_addr)
 	return word;
 }
 
+const struct user_regs_struct&
+Task::regs()
+{
+	if (!registers_known) {
+		debug("  (refreshing register cache)");
+		xptrace(PTRACE_GETREGS, nullptr, &registers);
+		registers_known = true;
+	}
+	return registers;
+}
+
 bool
 Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 {
+	debug("resuming execution with %s", ptrace_req_name(how));
 	xptrace(how, nullptr, (void*)(uintptr_t)sig);
+	registers_known = false;
 	if (RESUME_NONBLOCKING == wait_how) {
 		return true;
 	}
@@ -1108,7 +1204,9 @@ Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 void
 Task::set_regs(const struct user_regs_struct& regs)
 {
-	xptrace(PTRACE_SETREGS, nullptr, (void*)&regs);
+	registers = regs;
+	xptrace(PTRACE_SETREGS, nullptr, (void*)&registers);
+	registers_known = true;
 }
 
 void
@@ -1161,11 +1259,11 @@ Task::update_prname(byte* child_addr)
 }
 
 void
-Task::update_sigaction(const struct user_regs_struct* regs)
+Task::update_sigaction()
 {
-	int sig = regs->ebx;
-	const byte* new_sigaction = (const byte*)regs->ecx;
-	if (0 == regs->eax && new_sigaction) {
+	int sig = regs().ebx;
+	const byte* new_sigaction = (const byte*)regs().ecx;
+	if (0 == regs().eax && new_sigaction) {
 		// A new sighandler was installed.  Update our
 		// sighandler table.
 		// TODO: discard attempts to handle or ignore signals
@@ -1177,12 +1275,12 @@ Task::update_sigaction(const struct user_regs_struct* regs)
 }
 
 void
-Task::update_sigmask(const struct user_regs_struct* regs)
+Task::update_sigmask()
 {
-	int how = regs->ebx;
-	byte* setp = (byte*)regs->ecx;
+	int how = regs().ebx;
+	byte* setp = (byte*)regs().ecx;
 
-	if (SYSCALL_FAILED(regs->eax) || !setp) {
+	if (SYSCALL_FAILED(regs().eax) || !setp) {
 		return;
 	}
 
@@ -1225,10 +1323,13 @@ Task::update_sigmask(const struct user_regs_struct* regs)
 bool
 Task::wait()
 {
+	debug("going into blocking waitpid(%d) ...", tid);
 	pid_t ret = waitpid(tid, &wait_status, __WALL);
 	if (0 > ret && EINTR == errno) {
+		debug("  waitpid(%d) interrupted!", tid);
 		return false;
 	}
+	debug("  waitpid(%d) returns %d; status %#x", tid, ret, wait_status);
 	assert_exec(this, tid == ret, "waitpid(%d) failed with %d",
 		    tid, ret);
 	return true;
@@ -1238,6 +1339,8 @@ bool
 Task::try_wait()
 {
 	pid_t ret = waitpid(tid, &wait_status, WNOHANG | __WALL | WSTOPPED);
+	debug("waitpid(%d, NOHANG) returns %d, status %#x",
+	      tid, ret, wait_status);
 	assert_exec(this, 0 <= ret, "waitpid(%d, NOHANG) failed with %d",
 		    tid, ret);
 	return ret == tid;
@@ -1586,8 +1689,7 @@ void pop_syscall(Task* t)
 	pop_event(t, EV_SYSCALL);
 }
 
-void push_syscall_interruption(Task* t, int no,
-			       const struct user_regs_struct* args)
+void push_syscall_interruption(Task* t, int no)
 {
 	const struct syscallbuf_record* rec = t->desched_rec();
 
@@ -1598,7 +1700,7 @@ void push_syscall_interruption(Task* t, int no,
 	t->ev->syscall.state = EXITING_SYSCALL;
 	t->ev->syscall.no = no;
 	t->ev->syscall.desched_rec = rec;
-	memcpy(&t->ev->syscall.regs, args, sizeof(t->ev->syscall.regs));
+	t->ev->syscall.regs = t->regs();
 }
 
 void pop_syscall_interruption(Task* t)

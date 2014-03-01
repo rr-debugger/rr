@@ -488,7 +488,7 @@ static void collect_execution_info(Task* t, struct trace_frame* frame)
 	frame->page_faults = read_page_faults(t->hpc);
 	frame->insts = read_insts(t->hpc);
 #endif
-	t->get_regs(&frame->recorded_regs);
+	frame->recorded_regs = t->regs();
 }
 
 /**
