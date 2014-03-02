@@ -766,10 +766,11 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, child_sig()
 	, trace(), hpc()
 	, tid(_tid), rec_tid(_rec_tid > 0 ? _rec_tid : _tid)
-	, child_mem_fd(sys_open_child_mem(this))
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
-	, blocked_sigs(), prname("???")
+	, blocked_sigs()
+	, child_mem_fd(open_mem_fd())
+	, prname("???")
 	, registers(), registers_known(false)
 	, tid_futex()
 	, wait_status()
@@ -1617,6 +1618,23 @@ Task::detach_and_reap()
 	}
 }
 
+int
+Task::open_mem_fd()
+{
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path) - 1, "/proc/%d/mem", tid);
+	int fd =open(path, O_RDWR);
+	assert_exec(this, fd >= 0, "Failed to open %s", path);
+	return fd;
+}
+
+void
+Task::reopen_mem_fd()
+{
+	close(child_mem_fd);
+	child_mem_fd = open_mem_fd();
+}
+
 bool
 Task::is_desched_sig_blocked()
 {
@@ -1646,11 +1664,8 @@ Task::read_bytes_fallible(const byte* addr, ssize_t buf_size, byte* buf)
 	// fd we open, very early in exec, refers to some resource
 	// that's different than the one we see after reopening the
 	// fd, after exec.
-	//
-	// TODO: create the fd on demand and remove this workaround.
 	if (0 == nread && 0 == errno) {
-		close(child_mem_fd);
-		child_mem_fd = sys_open_child_mem(this);
+		reopen_mem_fd();
 		return read_bytes_fallible(addr, buf_size, buf);
 	}
 	return nread;
@@ -1673,8 +1688,7 @@ Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 				    to_offset(addr));
 	// See comment in read_bytes_helper().
 	if (0 == nwritten && 0 == errno) {
-		close(child_mem_fd);
-		child_mem_fd = sys_open_child_mem(this);
+		reopen_mem_fd();
 		return write_bytes_helper(addr, buf_size, buf);
 	}
 	assert_exec(this, nwritten == buf_size,

@@ -1514,7 +1514,6 @@ public:
 	 * recording, it's synonymous with |tid|, and during replay
 	 * it's the tid that was recorded. */
 	pid_t rec_tid;
-	int child_mem_fd;
 
 	/* The instruction pointer from which traced syscalls made by
 	 * the syscallbuf will originate. */
@@ -1547,6 +1546,13 @@ private:
 	void detach_and_reap();
 
 	/**
+	 * Open our /proc/[tid]/mem fd.  For reopen(), close the old
+	 * one first.
+	 */
+	int open_mem_fd();
+	void reopen_mem_fd();
+
+	/**
 	 * True if this has blocked delivery of the desched signal.
 	 */
 	bool is_desched_sig_blocked();
@@ -1557,11 +1563,20 @@ private:
 	 */
 	void xptrace(int request, void* addr, void* data);
 
-	/* The address space of this task. */
+	// The address space of this task.
 	std::shared_ptr<AddressSpace> as;
-	/* The set of signals that are currently blocked. */
+	// The set of signals that are currently blocked.
 	sig_set_t blocked_sigs;
-	/* Task's OS name */
+	// Tracee memory is read and written through this fd, which is
+	// opened for the tracee's magic /proc/[tid]/mem device.  The
+	// advantage of this over ptrace is that we can access it even
+	// when the tracee isn't at a ptrace-stop.  It's also
+	// theoretically faster for large data transfers, which rr can
+	// do often.
+	//
+	// TODO: we should only need one of these per address space.
+	int child_mem_fd;
+	// Task's OS name.
 	std::string prname;
 	// When |registers_known|, these are our child registers.
 	// When execution is resumed, we no longer know what the child
