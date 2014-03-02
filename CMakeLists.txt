@@ -31,7 +31,6 @@ add_library(rrpreload
 
 add_executable(rr
   src/main.cc
-  src/recorder/handle_ioctl.cc
   src/recorder/handle_signal.cc
   src/recorder/rec_process_event.cc
   src/recorder/rec_sched.cc
