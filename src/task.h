@@ -22,7 +22,7 @@
 #include <set>
 #include <utility>
 
-#include "../preload/syscall_buffer.h"
+#include "preload/syscall_buffer.h"
 
 #include "dbg.h"
 #include "fixedstack.h"

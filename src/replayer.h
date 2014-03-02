@@ -3,8 +3,8 @@
 #ifndef REPLAYER_H_
 #define REPLAYER_H_
 
-#include "../share/types.h"
-#include "../share/util.h"
+#include "types.h"
+#include "util.h"
 
 /**
  * Replay the trace.  argc, argv, and envp are this process's

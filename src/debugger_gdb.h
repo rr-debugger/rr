@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-#include "../share/types.h"
+#include "types.h"
 
 #define DBG_SOCKET_READY_SIG SIGURG
 

@@ -8,7 +8,7 @@
  * http://sourceware.org/gdb/onlinedocs/gdb/Packets.html
  */
 
-#include "dbg_gdb.h"
+#include "debugger_gdb.h"
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -23,9 +23,9 @@
 
 #include <sstream>
 
-#include "../share/dbg.h"
-#include "../share/sys.h"
-#include "../share/task.h"
+#include "dbg.h"
+#include "sys.h"
+#include "task.h"
 
 #define INTERRUPT_CHAR '\x03'
 

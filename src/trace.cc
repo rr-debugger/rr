@@ -14,6 +14,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include "preload/syscall_buffer.h"
+
 #include "config.h"
 #include "dbg.h"
 #include "hpc.h"
@@ -21,8 +23,6 @@
 #include "task.h"
 #include "trace.h"
 #include "util.h"
-
-#include "../preload/syscall_buffer.h"
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;

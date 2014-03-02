@@ -17,17 +17,17 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 
-#include "handle_signal.h"
-#include "rec_process_event.h"
-#include "rec_sched.h"
+#include "preload/syscall_buffer.h"
 
-#include "../preload/syscall_buffer.h"
-#include "../share/dbg.h"
-#include "../share/hpc.h"
-#include "../share/sys.h"
-#include "../share/task.h"
-#include "../share/trace.h"
-#include "../share/util.h"
+#include "dbg.h"
+#include "hpc.h"
+#include "record_signal.h"
+#include "record_syscall.h"
+#include "recorder_sched.h"
+#include "sys.h"
+#include "task.h"
+#include "trace.h"
+#include "util.h"
 
 /* Nonzero when it's safe to deliver signals, namely, when the initial
  * tracee has exec()'d the tracee image.  Before then, the address

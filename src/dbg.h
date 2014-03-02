@@ -8,8 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../replayer/replayer.h" /* for emergency_debug() */
-
+#include "replayer.h"		/* for emergency_debug() */
 #include "util.h"
 
 /**

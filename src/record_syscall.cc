@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "ProcessSyscallRec"
 
-#include "rec_process_event.h"
+#include "record_syscall.h"
 
 #include <asm/ldt.h>
 #include <assert.h>
@@ -35,15 +35,15 @@
 
 #include <rr/rr.h>
 
-#include "rec_sched.h"
+#include "preload/syscall_buffer.h"
 
-#include "../preload/syscall_buffer.h"
-#include "../share/dbg.h"
-#include "../share/drm.h"
-#include "../share/sys.h"
-#include "../share/task.h"
-#include "../share/trace.h"
-#include "../share/util.h"
+#include "dbg.h"
+#include "drm.h"
+#include "recorder_sched.h"
+#include "sys.h"
+#include "task.h"
+#include "trace.h"
+#include "util.h"
 
 using namespace std;
 

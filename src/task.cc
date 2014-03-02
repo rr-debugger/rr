@@ -15,12 +15,12 @@
 #include <limits>
 #include <set>
 
+#include "preload/syscall_buffer.h"
+
 #include "dbg.h"
 #include "hpc.h"
 #include "sys.h"
 #include "util.h"
-
-#include "../preload/syscall_buffer.h"
 
 using namespace std;
 

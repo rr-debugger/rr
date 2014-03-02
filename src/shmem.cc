@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <sys/shm.h>
 
-#include "../share/sys.h"
+#include "sys.h"
 
 
 #define SHMEM_MAXKEYS		10

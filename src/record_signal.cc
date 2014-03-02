@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "Signal"
 
-#include "handle_signal.h"
+#include "record_signal.h"
 
 #include <assert.h>
 #include <fcntl.h>
@@ -13,15 +13,15 @@
 #include <sys/mman.h>
 #include <sys/user.h>
 
-#include "recorder.h"
+#include "preload/syscall_buffer.h"
 
-#include "../preload/syscall_buffer.h"
-#include "../share/dbg.h"
-#include "../share/hpc.h"
-#include "../share/sys.h"
-#include "../share/task.h"
-#include "../share/trace.h"
-#include "../share/util.h"
+#include "dbg.h"
+#include "hpc.h"
+#include "recorder.h"
+#include "sys.h"
+#include "task.h"
+#include "trace.h"
+#include "util.h"
 
 static void handle_siginfo(Task* t, siginfo_t* si);
 
