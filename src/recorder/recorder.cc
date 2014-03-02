@@ -161,7 +161,7 @@ static void handle_ptrace_event(Task** tp)
 
 #define debug_exec_state(_msg, _t)					\
 	debug(_msg ": status=0x%x pevent=%d, event=%s",			\
-	      (_t)->status, GET_PTRACE_EVENT(_t->status), strevent(_t->event))
+	      (_t)->status(), (_t)->ptrace_event(), strevent(_t->event))
 
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
 static void task_continue(Task* t, int force_cont, int sig)
@@ -323,7 +323,7 @@ static void desched_state_changed(Task* t)
 
 		if (sig_status) {
 			debug("  delivering deferred %s",
-			      signalname(signal_pending(t->status)));
+			      signalname(t->pending_sig()));
 			t->force_status(sig_status);
 			handle_signal(t, &si);
 		}
@@ -448,7 +448,8 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			    syscallname(syscallno));
 
 		debug("  orig_eax:%ld (%s); eax:%ld",
-		      t->regs.orig_eax, syscallname(syscallno), t->regs.eax);
+		      t->regs().orig_eax, syscallname(syscallno),
+		      t->regs().eax);
 
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
