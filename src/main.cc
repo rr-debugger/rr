@@ -12,16 +12,17 @@
 #include <string>
 
 #include "preload/syscall_buffer.h"
-#include "recorder/recorder.h"
-#include "recorder/rec_sched.h"
-#include "replayer/replayer.h"
-#include "share/config.h"
-#include "share/dbg.h"
-#include "share/hpc.h"
-#include "share/sys.h"
-#include "share/task.h"
-#include "share/trace.h"
-#include "share/util.h"
+
+#include "config.h"
+#include "dbg.h"
+#include "hpc.h"
+#include "recorder.h"
+#include "recorder_sched.h"
+#include "replayer.h"
+#include "sys.h"
+#include "task.h"
+#include "trace.h"
+#include "util.h"
 
 using namespace std;
 

@@ -32,16 +32,16 @@
 #include <string>
 #include <vector>
 
-#include "dbg_gdb.h"
-#include "rep_process_event.h"
+#include "preload/syscall_buffer.h"
 
-#include "../preload/syscall_buffer.h"
-#include "../share/dbg.h"
-#include "../share/hpc.h"
-#include "../share/trace.h"
-#include "../share/sys.h"
-#include "../share/task.h"
-#include "../share/util.h"
+#include "dbg.h"
+#include "debugger_gdb.h"
+#include "hpc.h"
+#include "replay_syscall.h"
+#include "sys.h"
+#include "task.h"
+#include "trace.h"
+#include "util.h"
 
 #include <perfmon/pfmlib_perf_event.h>
 

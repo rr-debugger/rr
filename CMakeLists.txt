@@ -30,20 +30,20 @@ add_library(rrpreload
 )
 
 add_executable(rr
+  src/debugger_gdb.cc
+  src/hpc.cc
   src/main.cc
-  src/recorder/handle_signal.cc
-  src/recorder/rec_process_event.cc
-  src/recorder/rec_sched.cc
-  src/recorder/recorder.cc
-  src/replayer/dbg_gdb.cc
-  src/replayer/rep_process_event.cc
-  src/replayer/replayer.cc
-  src/share/hpc.cc
-  src/share/shmem.cc
-  src/share/sys.cc
-  src/share/task.cc
-  src/share/trace.cc
-  src/share/util.cc
+  src/recorder.cc
+  src/recorder_sched.cc
+  src/record_signal.cc
+  src/record_syscall.cc
+  src/replayer.cc
+  src/replay_syscall.cc
+  src/shmem.cc
+  src/sys.cc
+  src/task.cc
+  src/trace.cc
+  src/util.cc
 )
 
 # TODO remove this when we can manage pfm and disasm dependencies

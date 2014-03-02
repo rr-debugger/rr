@@ -36,16 +36,16 @@
 
 #include <limits>
 
+#include "preload/syscall_buffer.h"
+
 #include "dbg.h"
 #include "hpc.h"
+#include "recorder_sched.h"
+#include "replayer.h"
 #include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "types.h"
-
-#include "../preload/syscall_buffer.h"
-#include "../recorder/rec_sched.h"
-#include "../replayer/replayer.h"
 
 using namespace std;
 
@@ -269,7 +269,7 @@ const char* syscallname(int syscall)
 {
 	switch (syscall) {
 #define SYSCALL_DEF(_, _name, __) case __NR_## _name: return #_name;
-#include "../replayer/syscall_defs.h"
+#include "syscall_defs.h"
 #undef SYSCALL_DEF
 
 	case SYS_restart_syscall:

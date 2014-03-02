@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "ProcessSyscallRep"
 
-#include "rep_process_event.h"
+#include "replay_syscall.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -34,15 +34,15 @@
 
 #include <rr/rr.h>
 
-#include "replayer.h"
+#include "preload/syscall_buffer.h"
 
-#include "../preload/syscall_buffer.h"
-#include "../share/dbg.h"
-#include "../share/sys.h"
-#include "../share/task.h"
-#include "../share/trace.h"
-#include "../share/util.h"
-#include "../share/shmem.h"
+#include "dbg.h"
+#include "replayer.h"
+#include "shmem.h"
+#include "sys.h"
+#include "task.h"
+#include "trace.h"
+#include "util.h"
 
 using namespace std;
 

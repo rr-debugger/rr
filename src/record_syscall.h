@@ -3,8 +3,10 @@
 #ifndef PROCESS_SYSCALL_H_
 #define PROCESS_SYSCALL_H_
 
-#include "../share/types.h"
-#include "../share/util.h"
+#include "types.h"
+#include "util.h"
+
+class Task;
 
 /**
  * Prepare |t| to enter its current syscall event.  Return nonzero if

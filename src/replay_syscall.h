@@ -3,7 +3,7 @@
 #ifndef REP_PROCESS_EVENT_H_
 #define REP_PROCESS_EVENT_H_
 
-#include "../share/trace.h"
+#include "trace.h"
 
 class Task;
 struct rep_trace_step;

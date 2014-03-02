@@ -3,7 +3,7 @@
 //#define DEBUGTAG "Sched"
 //#define MONITOR_UNSWITCHABLE_WAITS
 
-#include "rec_sched.h"
+#include "recorder_sched.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -16,12 +16,11 @@
 #include <sys/wait.h>
 #include <algorithm>
 
+#include "config.h"
+#include "dbg.h"
 #include "recorder.h"
-
-#include "../share/config.h"
-#include "../share/dbg.h"
-#include "../share/sys.h"
-#include "../share/task.h"
+#include "sys.h"
+#include "task.h"
 
 /**
  * The currently scheduled task. This may be NULL if the last scheduled task
