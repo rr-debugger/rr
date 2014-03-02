@@ -18,7 +18,6 @@
 #include "../preload/syscall_buffer.h"
 #include "../share/dbg.h"
 #include "../share/hpc.h"
-#include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/task.h"
 #include "../share/trace.h"

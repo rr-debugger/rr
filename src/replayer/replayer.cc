@@ -39,7 +39,6 @@
 #include "../share/dbg.h"
 #include "../share/hpc.h"
 #include "../share/trace.h"
-#include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/task.h"
 #include "../share/util.h"
@@ -255,9 +254,9 @@ static dbg_threadid_t get_threadid(Task* t)
 static byte* read_mem(Task* t, byte* addr, size_t len,
 		      size_t* read_len)
 {
-	ssize_t nread;
-	byte* buf = (byte*)read_child_data_checked(t, len, addr, &nread);
-	*read_len = MAX(0, nread);
+	byte* buf = (byte*)malloc(len);
+	ssize_t nread = t->read_bytes_fallible(addr, len, buf);
+	*read_len = max(0, nread);
 	return buf;
 }
 

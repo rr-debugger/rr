@@ -17,7 +17,6 @@
 #include <sys/wait.h>
 
 #include "dbg.h"
-#include "ipc.h"
 #include "../recorder/rec_sched.h"
 #include "task.h"
 #include "trace.h"

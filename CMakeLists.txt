@@ -40,7 +40,6 @@ add_executable(rr
   src/replayer/rep_process_event.cc
   src/replayer/replayer.cc
   src/share/hpc.cc
-  src/share/ipc.cc
   src/share/shmem.cc
   src/share/sys.cc
   src/share/task.cc

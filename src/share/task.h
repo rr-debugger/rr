@@ -1325,6 +1325,8 @@ public:
 	 * Read/write the number of bytes that the template wrapper
 	 * inferred.
 	 */
+	ssize_t read_bytes_fallible(const byte* addr, ssize_t buf_size,
+				    byte* buf);
 	void read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf);
 	void write_bytes_helper(const byte* addr,
 				ssize_t buf_size, const byte* buf);
