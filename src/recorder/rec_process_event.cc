@@ -1169,7 +1169,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 	 *  int getsockopt(int sockfd, int level, int optname, const void *optval, socklen_t* optlen);
 	 */
 	case SYS_GETSOCKOPT: {
-		struct { long sockfd; long level;
+		struct { long sockfd; long level; int optname;
 			void* optval; socklen_t* optlen; } args;
 		t->read_mem(base_addr, &args);
 		socklen_t optlen = t->read_word((byte*)args.optlen);
