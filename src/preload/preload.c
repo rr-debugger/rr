@@ -1803,6 +1803,27 @@ static long sys_write(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_writev(const struct syscall_info* call)
+{
+	int syscallno = SYS_writev;
+	int fd = call->args[0];
+	const struct iovec* iov = (const struct iovec*)call->args[1];
+	unsigned long iovcnt = call->args[2];
+
+	void* ptr = prep_syscall();
+	long ret;
+
+	assert(syscallno == call->no);
+
+	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+		return traced_raw_syscall(call);
+	}
+
+	ret = untraced_syscall3(syscallno, fd, iov, iovcnt);
+
+	return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long __attribute__((unused))
 vsyscall_hook(const struct syscall_info* call)
 {
@@ -1825,6 +1846,7 @@ vsyscall_hook(const struct syscall_info* call)
 	CASE(socketcall);
 	CASE(time);
 	CASE(write);
+	CASE(writev);
 #undef CASE
 	case SYS_fstat64:
 	case SYS_lstat64:

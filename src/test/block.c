@@ -19,6 +19,7 @@ void* reader_thread(void* dontcare) {
 	int sock = sockfds[1];
 	struct timeval ts;
 	char c = '\0';
+	int i;
 
 	gettimeofday(&ts, NULL);
 
@@ -27,12 +28,15 @@ void* reader_thread(void* dontcare) {
 	atomic_puts("r:   ... releasing mutex");
 	pthread_mutex_unlock(&lock);
 
-	atomic_puts("r: reading socket ...");
-	gettimeofday(&ts, NULL);
-	test_assert(1 == read(sock, &c, sizeof(c)));
-	atomic_printf("r:   ... read '%c'\n", c);
-	test_assert(c == token);
-	++token;
+	for (i = 0; i < 2; ++i) {
+		atomic_puts("r: reading socket ...");
+		gettimeofday(&ts, NULL);
+		test_assert(1 == read(sock, &c, sizeof(c)));
+		atomic_printf("r:   ... read '%c'\n", c);
+		test_assert(c == token);
+		++token;
+	}
+	/* TODO: readv() support */
 
 	atomic_puts("r: recv'ing socket ...");
 	gettimeofday(&ts, NULL);
@@ -185,10 +189,21 @@ int main(int argc, char *argv[]) {
 	atomic_puts("M: sleeping again ...");
 	usleep(500000);
 	atomic_printf("M: writing '%c' to socket ...\n", token);
-	write(sock, &token, sizeof(token));
+	test_assert(1 == write(sock, &token, sizeof(token)));
 	++token;
 	atomic_puts("M:   ... done");
+	/* Force a wait on readv() */
+	{
+		struct iovec v = { .iov_base = &token,
+				   .iov_len = sizeof(token) };
 
+		atomic_puts("M: sleeping again ...");
+		usleep(500000);
+		atomic_printf("r: writev('%c')'ing socket ...\n", token);
+		test_assert(1 == writev(sock, &v, 1));
+		++token;
+		atomic_puts("M:   ... done");
+	}
 	/* Force a wait on recv() */
 	atomic_puts("M: sleeping again ...");
 	usleep(500000);
