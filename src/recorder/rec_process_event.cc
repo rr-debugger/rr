@@ -458,6 +458,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	case SYS_write:
+	case SYS_writev:
 		maybe_mark_stdio_write(t, t->regs().ebx);
 		return 1;
 
