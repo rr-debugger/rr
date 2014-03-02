@@ -4,6 +4,7 @@
 
 #include "task.h"
 
+#include <errno.h>
 #include <linux/kdev_t.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +17,6 @@
 
 #include "dbg.h"
 #include "hpc.h"
-#include "ipc.h"
 #include "sys.h"
 #include "util.h"
 
@@ -1307,10 +1307,10 @@ Task::tgid() const
 void
 Task::update_prname(byte* child_addr)
 {
-	char* name = (char*)read_child_data(this, 16, child_addr);
-	name[15] = '\0';
-	prname = name;
-	free(name);
+	struct { char chars[16]; } name;
+	read_mem(child_addr, &name);
+	name.chars[sizeof(name.chars) - 1] = '\0';
+	prname = name.chars;
 }
 
 void
@@ -1623,20 +1623,22 @@ Task::is_desched_sig_blocked()
 	return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
-void
-Task::read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf)
-{
-	return read_child_data_direct(this, (byte*)addr, buf_size, buf);
-}
-
-void
-Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
+static off64_t to_offset(const byte* addr)
 {
 	off64_t offset = (uintptr_t)addr;
-	assert_exec(this, offset < numeric_limits<unsigned long>::max(),
-		    "%p was sign-extended to #%llx", addr, offset);
+	assert(offset < numeric_limits<unsigned long>::max());
+	return offset;
+}
 
-	ssize_t nwritten = pwrite64(child_mem_fd, buf, buf_size, offset);
+ssize_t
+Task::read_bytes_fallible(const byte* addr, ssize_t buf_size, byte* buf)
+{
+	assert_exec(this, buf_size >= 0, "Invalid buf_size %d", buf_size);
+	if (0 == buf_size) {
+		return 0;
+	}
+	errno = 0;
+	ssize_t nread = pread64(child_mem_fd, buf, buf_size, to_offset(addr));
 	// We open the child_mem_fd just after being notified of
 	// exec(), when the Task is created.  Trying to read from that
 	// fd seems to return 0 with errno 0.  Reopening the mem fd
@@ -1646,14 +1648,38 @@ Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 	// fd, after exec.
 	//
 	// TODO: create the fd on demand and remove this workaround.
+	if (0 == nread && 0 == errno) {
+		close(child_mem_fd);
+		child_mem_fd = sys_open_child_mem(this);
+		return read_bytes_fallible(addr, buf_size, buf);
+	}
+	return nread;
+}
+
+void
+Task::read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf)
+{
+	ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
+	assert_exec(this, nread == buf_size,
+		    "Should have read %d bytes from %p, but only read %d",
+		    buf_size, addr, nread);
+}
+
+void
+Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
+{
+	errno = 0;
+	ssize_t nwritten = pwrite64(child_mem_fd, buf, buf_size,
+				    to_offset(addr));
+	// See comment in read_bytes_helper().
 	if (0 == nwritten && 0 == errno) {
 		close(child_mem_fd);
 		child_mem_fd = sys_open_child_mem(this);
 		return write_bytes_helper(addr, buf_size, buf);
 	}
 	assert_exec(this, nwritten == buf_size,
-		    "Should have written %d bytes, but only wrote %d",
-		    buf_size, nwritten);
+		    "Should have written %d bytes to %p, but only wrote %d",
+		    buf_size, addr, nwritten);
 }
 
 void

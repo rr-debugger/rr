@@ -349,6 +349,7 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		case 'a':
 			flags->goto_event = numeric_limits<decltype(
 				flags->goto_event)>::max();
+			flags->dont_launch_debugger = true;
 			break;
 		case 'f':
 			flags->target_process = atoi(optarg);

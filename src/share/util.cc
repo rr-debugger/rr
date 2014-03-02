@@ -38,7 +38,6 @@
 
 #include "dbg.h"
 #include "hpc.h"
-#include "ipc.h"
 #include "sys.h"
 #include "task.h"
 #include "trace.h"
@@ -408,13 +407,13 @@ void iterate_memory_map(Task* t,
 				   (intptr_t)data.info.start_addr);
 		if (caller_wants_segment_read(t, &data.info,
 					      filt, filt_data)) {
-			data.mem =
-				(byte*)
-				read_child_data_checked(t, data.size_bytes,
-							data.info.start_addr,
-							&data.mem_len);
+			const byte* addr = data.info.start_addr;
+			ssize_t nbytes = data.size_bytes;
+			data.mem = (byte*)malloc(nbytes);
+			data.mem_len = t->read_bytes_fallible(addr, nbytes,
+							      data.mem);
 			/* TODO: expose read errors, somehow. */
-			data.mem_len = MAX(0, data.mem_len);
+			data.mem_len = max(0, data.mem_len);
 		}
 
 		next_action = it(it_data, t, &data);
@@ -442,16 +441,10 @@ void print_process_mmap(Task* t)
 
 char* get_inst(Task* t, int eip_offset, int* opcode_size)
 {
-	char* buf = NULL;
-	byte* eip = (byte*)t->ip();
-	ssize_t nr_read_bytes;
-	byte* inst =
-		(byte*)read_child_data_checked(t, 128,
-					       (byte*)(eip + eip_offset),
-					       &nr_read_bytes);
-
-	if (nr_read_bytes <= 0) {
-		free(inst);
+	byte inst[128];
+	ssize_t nread = t->read_bytes_fallible(t->ip() + eip_offset,
+					       sizeof(inst), inst);
+	if (nread <= 0) {
 		return NULL;
 	}
 
@@ -461,14 +454,13 @@ char* get_inst(Task* t, int eip_offset, int* opcode_size)
 	unsigned int size = x86_disasm(inst, 128, 0, 0, &x86_inst);
 	*opcode_size = size;
 
-	buf = (char*)malloc(128);
+	char* buf = (char*)malloc(128);
 	if (size) {
 		x86_format_insn(&x86_inst, buf, 128, att_syntax);
 	} else {
 		/* libdiasm does not support the entire instruction set -- pretty sad */
 		strcpy(buf, "unknown");
 	}
-	free(inst);
 	x86_oplist_free(&x86_inst);
 	x86_cleanup();
 
@@ -938,13 +930,10 @@ static int checksum_iterator(void* it_data, Task* t,
 		 * So here, we set things up so that we only checksum
 		 * the deterministic region. */
 		byte* child_hdr = data->info.start_addr;
-		struct syscallbuf_hdr* hdr =
-			(struct syscallbuf_hdr*)read_child_data(t,
-								sizeof(*hdr),
-								child_hdr);
-		valid_mem_len = sizeof(*hdr) + hdr->num_rec_bytes +
+		struct syscallbuf_hdr hdr;
+		t->read_mem(child_hdr, &hdr);
+		valid_mem_len = sizeof(hdr) + hdr.num_rec_bytes +
 				sizeof(struct syscallbuf_record);
-		free(hdr);
 	}
 
 	/* If this segment was filtered, then data->mem_len will be 0
@@ -1101,26 +1090,22 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
 
 void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 {
-	struct msghdr* msg =
-		(struct msghdr*)read_child_data(t, sizeof(*msg),
-						(byte*)child_msghdr);
-	struct iovec* iov;
+	struct msghdr msg;
+	t->read_mem((byte*)child_msghdr, &msg);
 
 	/* Record the entire struct, because some of the direct fields
 	 * are written as inoutparams. */
 	record_child_data(t, sizeof(*child_msghdr), (byte*)child_msghdr);
-	record_child_data(t, msg->msg_namelen, (byte*)msg->msg_name);
+	record_child_data(t, msg.msg_namelen, (byte*)msg.msg_name);
 
-	assert("TODO: record more than 1 iov" && msg->msg_iovlen == 1);
+	assert("TODO: record more than 1 iov" && msg.msg_iovlen == 1);
 
-	record_child_data(t, sizeof(struct iovec), (byte*)msg->msg_iov);
-	iov = (struct iovec*)read_child_data(t, sizeof(struct iovec), (byte*)msg->msg_iov);
-	record_child_data(t, iov->iov_len, (byte*)iov->iov_base);
+	record_child_data(t, sizeof(struct iovec), (byte*)msg.msg_iov);
+	struct iovec iov;
+	t->read_mem((byte*)msg.msg_iov, &iov);
+	record_child_data(t, iov.iov_len, (byte*)iov.iov_base);
 
-	record_child_data(t, msg->msg_controllen, (byte*)msg->msg_control);
-
-	free(iov);
-	free(msg);
+	record_child_data(t, msg.msg_controllen, (byte*)msg.msg_control);
 }
 
 void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
@@ -1386,7 +1371,8 @@ void* push_tmp_mem(Task* t, struct current_state_buffer* state,
 	t->set_regs(state->regs);
 	restore->addr = (byte*)state->regs.esp;
 
-	restore->data = (byte*)read_child_data(t, restore->len, restore->addr);
+	restore->data = (byte*)malloc(restore->len);
+	t->read_bytes_helper(restore->addr, restore->len, restore->data);
 
 	t->write_bytes_helper(restore->addr, restore->len, mem);
 
@@ -1578,7 +1564,6 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	int shmem_fd, child_shmem_fd;
 	void* map_addr;
 	byte* child_map_addr;
-	void* tmp;
 	int zero = 0;
 
 	t->traced_syscall_ip = args->traced_syscall_ip;
@@ -1665,9 +1650,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	}
 
 	/* Get the newly-allocated fd. */
-	tmp = read_child_data(t, sizeof(child_shmem_fd), (byte*)args->fdptr);
-	child_shmem_fd = *(int*)tmp;
-	free(tmp);
+	t->read_mem((byte*)args->fdptr, &child_shmem_fd);
 
 	/* Zero out the child buffers we use here.  They contain
 	 * "real" fds, which in general will not be the same across
@@ -1715,7 +1698,7 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 {
 	struct current_state_buffer state;
 	byte* child_args;
-	struct rrcall_init_buffers_params* args;
+	struct rrcall_init_buffers_params args;
 	void* child_map_addr = NULL;
 
 	/* NB: the tracee can't be interrupted with a signal while
@@ -1725,20 +1708,23 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 	prepare_remote_syscalls(t, &state);
 	/* Arguments to the rrcall. */
 	child_args = (byte*)state.regs.ebx;
-	args = (struct rrcall_init_buffers_params*)
-	       read_child_data(t, sizeof(*args), child_args);
+	t->read_mem(child_args, &args);
 
-	if (args->syscallbuf_enabled) {
+	assert_exec(t,
+		    rr_flags()->use_syscall_buffer == !!args.syscallbuf_enabled,
+		    "Tracee things syscallbuf is %sabled, but tracer things %sabled",
+		    args.syscallbuf_enabled ? "en" : "dis",
+		    rr_flags()->use_syscall_buffer ? "en" : "dis");
+	if (args.syscallbuf_enabled) {
 		child_map_addr =
-			init_syscall_buffer(t, &state, args,
+			init_syscall_buffer(t, &state, &args,
 					    map_hint, share_desched_fd);
 	} else {
-		args->syscallbuf_ptr = nullptr;
+		args.syscallbuf_ptr = nullptr;
 	}
 
 	/* Return the mapped buffers to the child. */
-	t->write_mem(child_args, *args);
-	free(args);
+	t->write_mem(child_args, args);
 
 	/* The tracee doesn't need this addr returned, because it's
 	 * already written to the inout |args| param, but we stash it

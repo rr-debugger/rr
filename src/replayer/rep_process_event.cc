@@ -38,7 +38,6 @@
 
 #include "../preload/syscall_buffer.h"
 #include "../share/dbg.h"
-#include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/task.h"
 #include "../share/trace.h"
@@ -416,13 +415,13 @@ void rep_maybe_replay_stdio_write(Task* t)
 	if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
 		ssize_t len = t->regs().edx;
 		byte* addr = (byte*) t->regs().ecx;
-		void* buf = read_child_data(t, len, addr);
-
+		byte buf[len];
+		// NB: |buf| may not be null-terminated.
+		t->read_bytes_helper(addr, sizeof(buf), buf);
 		maybe_mark_stdio_write(t, fd);
 		if (len != write(fd, buf, len)) {
 			fatal("Couldn't write stdio");
 		}
-		free(buf);
 	}
 }
 
@@ -793,7 +792,7 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 		/* restore the hint */
 		r.edi = trace->recorded_regs.edi;
 		t->set_regs(r);
-		long result = read_child_data_word(t, (byte*)r.esi);
+		long result = t->read_word((byte*)r.esi);
 		(void)result;
 		assert(*map_addr == result);
 		/* TODO: remove this once this call is emulated */
@@ -1181,8 +1180,11 @@ static int process_socketcall(Task* t, int state,
 		return 1;
 
 	case SYS_SOCKETPAIR:
-	case SYS_GETSOCKOPT:
 		step->syscall.num_emu_args = 1;
+		return 1;
+
+	case SYS_GETSOCKOPT:
+		step->syscall.num_emu_args = 2;
 		return 1;
 
 	case SYS_RECVFROM:
@@ -1206,14 +1208,11 @@ static void process_irregular_socketcall_exit(Task* t,
 	switch (call) {
 	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 	case SYS_RECVMSG: {
-		struct recvmsg_args* args = (struct recvmsg_args*)
-					    read_child_data(t, sizeof(*args),
-							    base_addr);
-		
-		restore_struct_msghdr(t, args->msg);
-		exit_syscall_emu_ret(t, SYS_socketcall);
+		struct recvmsg_args args;
+		t->read_mem(base_addr, &args);
 
-		free(args);
+		restore_struct_msghdr(t, args.msg);
+		exit_syscall_emu_ret(t, SYS_socketcall);
 		return;
 	}
 	default:
@@ -1321,7 +1320,6 @@ static void maybe_verify_tracee_saved_data(Task* t,
 	int fd = rec_regs->ebx;
 	byte* addr = (byte*)rec_regs->ecx;
 	size_t len = rec_regs->edx;
-	void* buf;
 	byte* rec_addr;
 	size_t rec_len;
 	void* rec_buf;
@@ -1337,13 +1335,13 @@ static void maybe_verify_tracee_saved_data(Task* t,
 		    "Recorded write(%p) being replayed as write(%p)",
 		    rec_addr, addr);
 
-	buf = read_child_data(t, len, addr);
+	byte buf[rec_len];
+	t->read_bytes_helper(addr, len, buf);
 	if (len != rec_len || memcmp(rec_buf, buf, len)) {
 		notify_save_data_error(t, addr, rec_buf, rec_len, buf, len);
 	}
 
 	free(rec_buf);
-	free(buf);
 }
 
 /**

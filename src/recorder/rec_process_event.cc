@@ -38,7 +38,6 @@
 
 #include "../preload/syscall_buffer.h"
 #include "../share/dbg.h"
-#include "../share/ipc.h"
 #include "../share/sys.h"
 #include "../share/task.h"
 #include "../share/trace.h"
@@ -756,13 +755,15 @@ static void init_scratch_memory(Task *t)
  */
 static byte* start_restoring_scratch(Task* t, byte** iter)
 {
+	// TODO: manage this in Task.
 	byte* scratch = t->ev->syscall.tmp_data_ptr;
 	ssize_t num_bytes = t->ev->syscall.tmp_data_num_bytes;
 
 	assert(num_bytes >= 0);
 
-	*iter = (byte*)read_child_data(t, num_bytes, scratch);
-	return *iter;
+	byte* data = (byte*)malloc(num_bytes);
+	t->read_bytes_helper(scratch, num_bytes, data);
+	return *iter = data;
 }
 
 /**
@@ -955,14 +956,10 @@ static void process_ipc(Task* t, int call)
 			long msgtype;
 		};
 		size_t msgsize = t->regs().edx;
-		struct kludge_args* kludge;
+		struct kludge_args kludge;
 		byte* child_kludge = (byte*)t->regs().edi;
-
-		kludge = (struct kludge_args*)
-			 read_child_data(t, sizeof(*kludge), child_kludge);
-		record_child_data(t, msgsize, kludge->msgbuf);
-
-		free(kludge);
+		t->read_mem(child_kludge, &kludge);
+		record_child_data(t, msgsize, kludge.msgbuf);
 		return;
 	}
 	/**
@@ -1061,18 +1058,16 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 	case SYS_GETPEERNAME:
 	/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 	case SYS_GETSOCKNAME: {
-		byte** addr = (byte**)
-			      read_child_data(t, sizeof(void*), base_addr + sizeof(int) + sizeof(struct sockaddr*));
-		socklen_t* addrlen = (socklen_t*)
-				     read_child_data(t, sizeof(*addr), *addr);
-		record_child_data(t, sizeof(*addr), *addr);
-		free(addr);
-
-		addr = (byte**)
-		       read_child_data(t, sizeof(void*), base_addr + sizeof(int));
-		record_child_data(t, *addrlen, *addr);
-		free(addr);
-		free(addrlen);
+		struct {
+			long sockfd;
+			struct sockaddr* addr;
+			socklen_t* addrlen;
+		} args;
+		t->read_mem(base_addr, &args);
+		socklen_t len = t->read_word((byte*)args.addrlen);
+		record_child_data(t, sizeof(*args.addrlen),
+				  (byte*)args.addrlen);
+		record_child_data(t, len, (byte*)args.addr);
 		return;
 	}
 
@@ -1132,51 +1127,40 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 
 	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 	case SYS_RECVMSG: {
-		struct recvmsg_args* args = (struct recvmsg_args*)
-					    read_child_data(t,
-							    sizeof(*args),
-							    base_addr);
-		record_struct_msghdr(t, args->msg);
-
-		free(args);
+		struct recvmsg_args args;
+		t->read_mem(base_addr, &args);
+		record_struct_msghdr(t, args.msg);
 		return;
 	}
 
 	/* ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen); */
 	case SYS_RECVFROM: {
-		struct recvfrom_args {
+		struct {
 			long fd;
 			byte* buf;
 			long len;
 			long flags;
 			struct sockaddr* src_addr;
 			socklen_t* addrlen;
-		};
-		struct recvfrom_args* child_args;
+		} args;
+		t->read_mem(base_addr, &args);
 		int recvdlen = t->regs().eax;
 
-		child_args = (struct recvfrom_args*)
-			     read_child_data(t, sizeof(*child_args),
-					     base_addr);
-
 		if (recvdlen > 0) {
-			record_child_data(t, child_args->len, child_args->buf);
+			record_child_data(t, args.len, args.buf);
 		} else {
 			record_noop_data(t);
 		}
-		if (child_args->src_addr && child_args->addrlen) {
-			long len = t->read_word((byte*)child_args->addrlen);
+		if (args.src_addr && args.addrlen) {
+			long len = t->read_word((byte*)args.addrlen);
 
-			record_child_data(t, sizeof(child_args->addrlen),
-					  (byte*)child_args->addrlen);
-			record_child_data(t, len,
-					  (byte*)child_args->src_addr);
+			record_child_data(t, sizeof(*args.addrlen),
+					  (byte*)args.addrlen);
+			record_child_data(t, len, (byte*)args.src_addr);
 		} else {
 			record_noop_data(t);
 			record_noop_data(t);
 		}
-
-		free(child_args);
 		return;
 	}
 
@@ -1184,17 +1168,12 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 	 *  int getsockopt(int sockfd, int level, int optname, const void *optval, socklen_t* optlen);
 	 */
 	case SYS_GETSOCKOPT: {
-		socklen_t** len_ptr = (socklen_t**)
-				      read_child_data(t, sizeof(socklen_t*), (byte*)(t->regs().ecx + 3 * sizeof(int) + sizeof(void*)));
-		socklen_t* len = (socklen_t*)
-				 read_child_data(t, sizeof(socklen_t), (byte*)*len_ptr);
-		unsigned long** optval = (unsigned long**)
-					 read_child_data(t, sizeof(void*), (byte*)(t->regs().ecx + 3 * sizeof(int)));
-		record_child_data(t, *len, (byte*)*optval);
-
-		free(len_ptr);
-		free(len);
-		free(optval);
+		struct { long sockfd; long level;
+			void* optval; socklen_t* optlen; } args;
+		t->read_mem(base_addr, &args);
+		socklen_t optlen = t->read_word((byte*)args.optlen);
+		record_child_data(t, sizeof(*args.optlen), (byte*)args.optlen);
+		record_child_data(t, optlen, (byte*)args.optval);
 		return;
 	}
 
@@ -1241,10 +1220,9 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 	 * values returned in sv
 	 */
 	case SYS_SOCKETPAIR: {
-		unsigned long* addr = (unsigned long*)
-				      read_child_data(t, sizeof(int*), (byte*)(t->regs().ecx + (3 * sizeof(int))));
-		record_child_data(t, 2 * sizeof(int), (byte*)*addr);
-		free(addr);
+		struct { int domain; int type; int protocol; int* sv; } args;
+		t->read_mem(base_addr, &args);
+		record_child_data(t, 2 * sizeof(*args.sv), (byte*)args.sv);
 		return;
 	}
 
@@ -2195,14 +2173,14 @@ void rec_process_syscall(Task *t)
 			size = sizeof(int);
 			break;
 		case PR_GET_NAME: {
-			size = 16;
-			byte* addr = (byte*)t->regs().ecx;
-			char* name = (char*)read_child_data(t, size, addr);
-			name[size - 1] = '\0';
-			assert_exec(t, t->name() == name,
+			struct { char chars[16]; } name;
+			byte* nameaddr = (byte*)t->regs().ecx;
+			t->read_mem(nameaddr, &name);
+			name.chars[sizeof(name.chars) - 1] = '\0';
+			assert_exec(t, t->name() == name.chars,
 				    "Kernel says prname is'%s', but rr thinks it's '%s'",
-				    name, t->name().c_str());
-			free(name);
+				    name.chars, t->name().c_str());
+			size = sizeof(name.chars);
 			break;
 		}
 		case PR_SET_NAME: {
@@ -2441,17 +2419,18 @@ void rec_process_syscall(Task *t)
 
 		Task *target = t->regs().ebx ? Task::find(t->regs().ebx) : t;
 		if (target) {
-			// The only sched_setaffinity call we allow on an
-			// rr-managed task is one that sets affinity to CPU 0.
-			assert_exec(t, t->regs().ecx == sizeof(cpu_set_t),
+			ssize_t cpuset_len = t->regs().ecx;
+			const byte* child_cpuset = (const byte*)t->regs().edx;
+			// The only sched_setaffinity call we allow on
+			// an rr-managed task is one that sets
+			// affinity to CPU 0.
+			assert_exec(t, cpuset_len == sizeof(cpu_set_t),
 				    "Invalid sched_setaffinity parameters");
-			cpu_set_t* cpus = (cpu_set_t*)
-				read_child_data(target, sizeof(cpu_set_t),
-				                (byte*)t->regs().edx);
-			assert_exec(t, cpus && CPU_COUNT(cpus) == 1 &&
-			            CPU_ISSET(0, cpus),
+			cpu_set_t cpus;
+			target->read_mem(child_cpuset, &cpus);
+			assert_exec(t, (CPU_COUNT(&cpus) == 1
+					&&  CPU_ISSET(0, &cpus)),
 			            "Invalid affinity setting");
-			free(cpus);
 		}
 		break;
 	}

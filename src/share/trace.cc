@@ -17,7 +17,6 @@
 #include "config.h"
 #include "dbg.h"
 #include "hpc.h"
-#include "ipc.h"
 #include "sys.h"
 #include "task.h"
 #include "trace.h"
@@ -603,41 +602,34 @@ static void write_raw_data(Task *t, void *buf, size_t to_write)
  * syscall_input.
  */
 
-#define SMALL_READ_SIZE	4096
+// Max size we'll attempt to read into an inline buffer.  Otherwise,
+// we allocate a temporary heap buffer.
+#define MAX_STACK_BUFFER_SIZE (1 << 17)
 
 void record_child_data(Task *t, size_t size, byte* child_ptr)
 {
 	int state;
 	int event = encode_event(t->ev, &state);
-	void* buf;
-	ssize_t read_bytes;
+	ssize_t read_bytes = 0;
 
 	/* We shouldn't be recording a scratch address */
 	assert_exec(t, !child_ptr || child_ptr != t->scratch_ptr, "");
 
 	maybe_flush_syscallbuf(t);
+	if (child_ptr && size > 0) {
+		byte stack_buf[MAX_STACK_BUFFER_SIZE];
+		byte* heap_buf = nullptr;
+		if (size > sizeof(stack_buf)) {
+			heap_buf = (byte*)malloc(size);
+		}
+		byte* read_buf = heap_buf ? heap_buf : stack_buf;
 
-	if (!child_ptr) {
-		read_bytes = 0;
-		goto record_read;
-	}
-	if (size <= SMALL_READ_SIZE) {
-		char read_buffer[SMALL_READ_SIZE];
-
-		read_child_usr(t, read_buffer, child_ptr, size);
-		write_raw_data(t, read_buffer, size);
+		t->read_bytes_helper(child_ptr, size, read_buf);
+		write_raw_data(t, read_buf, size);
 		read_bytes = size;
-		goto record_read;
+
+		free(heap_buf);
 	}
-
-	buf = read_child_data_checked(t, size, child_ptr, &read_bytes);
-	assert_exec(t, read_bytes == ssize_t(size),
-		    "Failed to read %d bytes at %p", size, child_ptr);
-
-	write_raw_data(t, buf, read_bytes);
-	free(buf);
-
-record_read:
 	print_header(event, child_ptr);
 	fprintf(syscall_header, "%11d\n", read_bytes);
 }
