@@ -596,8 +596,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 		 * (critical section), so there's no chance here of
 		 * "skipping over" a syscall we should have
 		 * recorded. */
-		debug("  stepi out of syscallbuf from %p ...",
-		      (void*)regs->eip);
+		debug("  stepi out of syscallbuf from %p ...", t->ip());
 		t->cont_singlestep();
 		assert(t->stopped());
 
@@ -673,7 +672,7 @@ static void handle_siginfo(Task* t, siginfo_t* si)
 
 	debug("%d: handling signal %s (pevent: %d, event: %s)",
 	      t->tid, signalname(si->si_signo),
-	      GET_PTRACE_EVENT(t->status), strevent(t->event));
+	      t->ptrace_event(), strevent(t->event));
 
 	/* We have to check for a desched event first, because for
 	 * those we *do not* want to (and cannot, most of the time)
