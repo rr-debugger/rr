@@ -62,18 +62,6 @@ void sys_close(int filedes)
 	}
 }
 
-int sys_open_child_mem(Task* t)
-{
-	char path[PATH_MAX];
-	int fd;
-
-	snprintf(path, sizeof(path) - 1, "/proc/%d/mem", t->tid);
-	fd = open(path, O_RDWR);
-	assert_exec(t, fd >= 0, "Failed to open %s", path);
-
-	return fd;
-}
-
 pid_t sys_fork()
 {
 	pid_t pid = fork();

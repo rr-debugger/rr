@@ -19,7 +19,6 @@ int sys_open(const char* path, int flags, mode_t mode);
 int sys_mkpath(const char *path, mode_t mode);
 void sys_fclose(FILE* file);
 pid_t sys_fork(void);
-int sys_open_child_mem(Task* t);
 void sys_kill(int pid, int msg);
 void sys_exit(void);
 void sys_start_trace(const char* executable, char** fake_argv, char** envp);
