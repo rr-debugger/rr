@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh msync "$@"
+compare_test 'done'

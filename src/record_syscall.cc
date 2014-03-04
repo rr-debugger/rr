@@ -3038,6 +3038,8 @@ void rec_process_syscall(Task *t)
 	 */
 	SYS_REC0(mremap)
 
+	SYS_REC0(msync)
+
 	/**
 	 * int nanosleep(const struct timespec *req, struct timespec *rem)
 	 *
