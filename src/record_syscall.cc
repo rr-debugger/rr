@@ -279,15 +279,12 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 
 		push_arg_ptr(t, args._.addrlen);
 		args._.addrlen = (socklen_t*)scratch;
-		t->write_mem((byte*)args._.addrlen, addrlen);
 		scratch += sizeof(*args._.addrlen);
 
 		byte* src = (byte*)args._.addr;
 		push_arg_ptr(t, src);
 		args._.addr = (struct sockaddr*)scratch;
-		t->remote_memcpy((byte*)args._.addr, src, addrlen);
 		scratch += addrlen;
-
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, "accept");
 		}
@@ -297,6 +294,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		} else {
 			t->write_mem(tmpargsp, args);
 		}
+		t->write_mem((byte*)args._.addrlen, addrlen);
 		t->set_regs(r);
 		return 1;
 	}
