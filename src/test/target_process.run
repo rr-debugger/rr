@@ -8,4 +8,4 @@ record $test "$saved_breakpoint"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug $test restart_breakpoint "-p $TARGET_PID"
+debug $test restart_breakpoint "-p $TARGET_PID -g 1"

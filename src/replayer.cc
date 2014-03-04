@@ -2146,6 +2146,7 @@ void replay_flags_to_args(const struct flags& f,
 		replay_args->push_back(ss.str());
 	}
 	if (f.goto_event) {
+		replay_args->push_back("-g");
 		stringstream ss;
 		ss << f.goto_event;
 		replay_args->push_back(ss.str());
@@ -2196,24 +2197,20 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	vector<string> replay_args;
 	replay_flags_to_args(f, &common_args, &replay_args);
 
-	ssize_t len = 1/*exe*/ + common_args.size() + 1/*replay*/ +
-		      replay_args.size() + 1/*trace-dir*/ + 1/*nullptr*/;
-	char** argv = (char**)malloc(len * sizeof(char*));
-
-	int i = 0;
-	argv[i++] = exe;
+	CharpVector argv;
+	argv.push_back(exe);
 	for (size_t j = 0; j < common_args.size(); ++j) {
-		argv[i++] = strdup(common_args[j].c_str());
+		argv.push_back(strdup(common_args[j].c_str()));
 	}
-	argv[i++] = strdup("replay");
+	argv.push_back(strdup("replay"));
 	for (size_t j = 0; j < replay_args.size(); ++j) {
-		argv[i++] = strdup(replay_args[j].c_str());
+		argv.push_back(strdup(replay_args[j].c_str()));
 	}
-	argv[i++] = strdup(get_trace_path());
-	argv[i++] = nullptr;
-	assert(i == len);
+	argv.push_back(strdup(get_trace_path()));
 
-	execv(exe, argv);
+	argv.push_back(nullptr);
+
+	execv(exe, argv.data());
 	fatal("Failed to exec %s", exe);
 }
 
