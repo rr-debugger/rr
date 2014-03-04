@@ -50,6 +50,20 @@
 using namespace std;
 
 /**
+ * The parameters that are packaged up for the ACCEPT and ACCEPT4
+ * socketcalls.
+ */
+struct accept_args {
+	long sockfd;
+	struct sockaddr* addr;
+	socklen_t* addrlen;
+};
+struct accept4_args {
+	struct accept_args _;
+	long flags;
+};
+
+/**
  *  Some ipc calls require 7 params, so two of them are stashed into
  *  one of these structs and a pointer to this is passed instead.
  */
@@ -193,7 +207,8 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	 *
 	 *  (from http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
 	 */
-	switch (r.ebx) {
+	int call = r.ebx;
+	switch (call) {
 	/* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
 	case SYS_RECV: {
 		struct { long words[4]; } args;
@@ -232,42 +247,56 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	/* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags]) */
 	case SYS_ACCEPT:
 	case SYS_ACCEPT4: {
-		struct { long words[4]; } args;
-		socklen_t* addrlenp;
-		socklen_t addrlen;
-
 		if (!would_need_scratch) {
 			return 1;
 		}
-		read_socketcall_args(t, &argsp, &args);
-		addrlenp = (socklen_t*)args.words[2];
-		assert(sizeof(long) == sizeof(addrlen));
-		addrlen = t->read_word((byte*)addrlenp);
-		/* We use the same basic scheme here as for RECV
-		 * above.  For accept() though, there are two
-		 * (in)outparams: |addr| and |addrlen|.  |*addrlen| is
-		 * the total size of |addr|, so we reserve that much
-		 * space for it.  |*addrlen| is set to the size of the
-		 * returned sockaddr, so we reserve space for
-		 * |addrlen| too. */
-		/* The socketcall arg pointer. */
+		struct user_regs_struct r = t->regs();
+		byte* argsp = (byte*)r.ecx;
+		struct accept4_args args;
+		if (SYS_ACCEPT == call) {
+			t->read_mem(argsp, &args._);
+		} else {
+			t->read_mem(argsp, &args);
+		}
+
+		socklen_t addrlen;
+		t->read_mem((byte*)args._.addrlen, &addrlen);
+
+		// We use the same basic scheme here as for RECV
+		// above.  For accept() though, there are two
+		// (in)outparams: |addr| and |addrlen|.  |*addrlen| is
+		// the total size of |addr|, so we reserve that much
+		// space for it.  |*addrlen| is set to the size of the
+		// returned sockaddr, so we reserve space for
+		// |addrlen| too.
+
+		// Reserve space for scratch socketcall args.
 		push_arg_ptr(t, argsp);
-		r.ecx = (uintptr_t)(tmpargsp = scratch);
-		scratch += sizeof(args);
-		/* The |addrlen| pointer. */
-		push_arg_ptr(t, addrlenp);
-		args.words[2] = (uintptr_t)scratch;
-		scratch += sizeof(*addrlenp);
-		/* The |addr| pointer. */
-		push_arg_ptr(t, (void*)args.words[1]);
-		args.words[1] = (uintptr_t)scratch;
+		byte* tmpargsp = scratch;
+		r.ecx = (uintptr_t)tmpargsp;
+		scratch += (SYS_ACCEPT == call) ?
+			   sizeof(args._) : sizeof(args);
+
+		push_arg_ptr(t, args._.addrlen);
+		args._.addrlen = (socklen_t*)scratch;
+		t->write_mem((byte*)args._.addrlen, addrlen);
+		scratch += sizeof(*args._.addrlen);
+
+		byte* src = (byte*)args._.addr;
+		push_arg_ptr(t, src);
+		args._.addr = (struct sockaddr*)scratch;
+		t->remote_memcpy((byte*)args._.addr, src, addrlen);
 		scratch += addrlen;
 
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, "accept");
 		}
 
-		t->write_mem((const byte*)tmpargsp, args);
+		if (SYS_ACCEPT == call) {
+			t->write_mem(tmpargsp, args._);
+		} else {
+			t->write_mem(tmpargsp, args);
+		}
 		t->set_regs(r);
 		return 1;
 	}
@@ -1319,24 +1348,26 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 	 */
 	case SYS_ACCEPT:
 	case SYS_ACCEPT4: {
-		long args[4];
-		byte* addr = pop_arg_ptr<byte>(t);
-		byte* addrlenp = pop_arg_ptr<byte>(t);
-		byte* argsp = pop_arg_ptr<byte>(t);
+		struct user_regs_struct r = t->regs();
+		struct sockaddr* addrp = pop_arg_ptr<struct sockaddr>(t);
+		socklen_t* addrlenp = pop_arg_ptr<socklen_t>(t);
+		byte* orig_argsp = pop_arg_ptr<byte>(t);
+
 		byte* iter;
 		byte* data = start_restoring_scratch(t, &iter);
-		socklen_t len;
-		/* Consume the scratch args; nothing there is
-		 * interesting to us now. */
-		iter += sizeof(args);
-		/* addrlen */
-		len = *(socklen_t*)iter;
-		restore_and_record_arg_buf(t, sizeof(len), addrlenp, &iter);
-		/* addr */
-		restore_and_record_arg_buf(t, len, addr, &iter);
+		// Consume the scratch args.
+		if (SYS_ACCEPT == call) {
+			iter += sizeof(struct accept_args);
+		} else {
+			iter += sizeof(struct accept4_args);
+		}
+		socklen_t addrlen = *(socklen_t*)iter;
+		restore_and_record_arg_buf(t, sizeof(addrlen), (byte*)addrlenp,
+					   &iter);
+		restore_and_record_arg_buf(t, addrlen, (byte*)addrp, &iter);
+
 		/* Restore the pointer to the original args. */
-		struct user_regs_struct r = t->regs();
-		r.ecx = (uintptr_t)argsp;
+		r.ecx = (uintptr_t)orig_argsp;
 		t->set_regs(r);
 
 		finish_restoring_some_scratch(t, iter, &data);

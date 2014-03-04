@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 static void client(const struct sockaddr_un* addr) {
 	int clientfd;
 
@@ -16,7 +15,7 @@ static void server(void) {
 	int listenfd;
 	int servefd;
 	struct sockaddr_un peer_addr;
-	socklen_t len = sizeof(peer_addr);;
+	socklen_t len = sizeof(peer_addr);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
@@ -31,6 +30,7 @@ static void server(void) {
 		return client(&addr);
 	}
 
+	memset(&addr, 0, sizeof(addr));
 	test_assert(0 <= (servefd = accept(listenfd,
 					   (struct sockaddr*)&peer_addr,
 					   &len)));
