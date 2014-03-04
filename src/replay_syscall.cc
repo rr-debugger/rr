@@ -1395,15 +1395,15 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			case F_GETFL:
 			case F_SETFL:
 			case F_SETFD:
+			case F_SETLK:
+			case F_SETLK64:
+			case F_SETLKW:
+			case F_SETLKW64:
 			case F_SETOWN:
 			case F_SETOWN_EX:
 			case F_SETSIG:
 				step->syscall.num_emu_args = 0;
 				break;
-			case F_SETLK:
-			case F_SETLK64:
-			case F_SETLKW:
-			case F_SETLKW64:
 			case F_GETLK:
 			case F_GETLK64:
 			case F_GETOWN_EX:

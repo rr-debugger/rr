@@ -58,12 +58,11 @@ int main(int argc, char *argv[]) {
 				    && pagesize / 2 == lock.l_start
 				    && pagesize / 2 == lock.l_len
 				    && parent_pid == lock.l_pid);
-			return 0;
-		} else {
-			waitpid(pid, &status, 0);
-			test_assert(WIFEXITED(status)
-				    && 0 == WEXITSTATUS(status));
+			exit(0);
 		}
+
+		waitpid(pid, &status, 0);
+		test_assert(WIFEXITED(status) && 0 == WEXITSTATUS(status));
 	}
 
 	{
@@ -92,22 +91,41 @@ int main(int argc, char *argv[]) {
 			err = fcntl(fd, F_GETLK64, &lock);
 			test_assert(0 == err);
 
-			atomic_printf("  after lock: type: %d, pid: %d\n",
+			atomic_printf("  after GETLK: type: %d, pid: %d\n",
 				      lock.l_type, lock.l_pid);
 			test_assert(F_WRLCK == lock.l_type
 				    && 0 == lock.l_start
 				    && pagesize == lock.l_len
 				    && parent_pid == lock.l_pid);
+
+			lock.l_type = F_RDLCK;
+			lock.l_pid = 0;
+			err = fcntl(fd, F_SETLKW64, &lock);
+			test_assert(0 == err);
+
+			atomic_printf("  after SETLKW: type: %d, pid: %d\n",
+				      lock.l_type, lock.l_pid);
+			test_assert(F_RDLCK == lock.l_type
+				    && 0 == lock.l_start
+				    && pagesize == lock.l_len
+				    && 0 == lock.l_pid);
+
+			atomic_puts("  releasing lock ...");
+			lock.l_type = F_UNLCK;
+			fcntl(fd, F_SETLK64, &lock);
+			test_assert(0 == err);
 			return 0;
-		} else {
-			waitpid(pid, &status, 0);
-			test_assert(WIFEXITED(status)
-				    && 0 == WEXITSTATUS(status));
 		}
 
+		atomic_puts("P: forcing child to block on LK, sleeping ...");
+		usleep(500000);
+		atomic_puts("P: ... awake, releasing lock");
 		lock.l_type = F_UNLCK;
 		fcntl(fd, F_SETLK64, &lock);
 		test_assert(0 == err);
+
+		waitpid(pid, &status, 0);
+		test_assert(WIFEXITED(status) && 0 == WEXITSTATUS(status));
 	}
 
 	atomic_puts("EXIT-SUCCESS");
