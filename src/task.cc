@@ -1683,6 +1683,10 @@ Task::read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf)
 void
 Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 {
+	assert_exec(this, buf_size >= 0, "Invalid buf_size %d", buf_size);
+	if (0 == buf_size) {
+		return;
+	}
 	errno = 0;
 	ssize_t nwritten = pwrite64(child_mem_fd, buf, buf_size,
 				    to_offset(addr));

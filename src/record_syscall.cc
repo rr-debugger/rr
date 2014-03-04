@@ -72,6 +72,16 @@ struct ipc_kludge_args {
 	long msgtype;
 };
 
+/** Params packaged up for RECVFROM socketcalls. */
+struct recvfrom_args {
+	long sockfd;
+	void* buf;
+	size_t len;
+	long flags;
+	struct sockaddr* src_addr;
+	socklen_t* addrlen;
+};
+
 /**
  * Read the socketcall args pushed by |t| as part of the syscall in
  * |regs| into the |args| outparam.  Also store the address of the
@@ -298,11 +308,51 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		t->set_regs(r);
 		return 1;
 	}
+	case SYS_RECVFROM: {
+		if (!would_need_scratch) {
+			return 1;
+		}
+		struct user_regs_struct r = t->regs();
+		byte* argsp = (byte*)r.ecx;
+		struct recvfrom_args args;
+		t->read_mem(argsp, &args);
 
-	case SYS_RECVFROM:
-		/* TODO: this can block, needs scratch. */
-		return abort_scratch(t, "recvfrom");
+		// Reserve space for scratch socketcall args.
+		push_arg_ptr(t, argsp);
+		byte* tmpargsp = scratch;
+		r.ecx = (uintptr_t)tmpargsp;
+		scratch += sizeof(args);
 
+		push_arg_ptr(t, args.buf);
+		args.buf = scratch;
+		scratch += args.len;
+
+		socklen_t addrlen;
+		if (args.src_addr) {
+			t->read_mem((byte*)args.addrlen, &addrlen);
+
+			push_arg_ptr(t, args.addrlen);
+			args.addrlen = (socklen_t*)scratch;
+			scratch += sizeof(*args.addrlen);
+
+			push_arg_ptr(t, args.src_addr);
+			args.src_addr = (struct sockaddr*)scratch;
+			scratch += addrlen;
+		} else {
+			push_arg_ptr(t, nullptr);
+			push_arg_ptr(t, nullptr);
+		}
+		if (!can_use_scratch(t, scratch)) {
+			return abort_scratch(t, "recvfrom");
+		}
+
+		t->write_mem(tmpargsp, args);
+		if (args.addrlen) {
+			t->write_mem((byte*)args.addrlen, addrlen);
+		}
+		t->set_regs(r);
+		return 1;
+	}
 	case SYS_RECVMSG:
 		/* TODO: this can block too, so also needs scratch
 		 * pointers.  Unfortunately the format is fiendishly
@@ -1288,30 +1338,48 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		return;
 	}
 
-	/* ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen); */
 	case SYS_RECVFROM: {
-		struct {
-			long fd;
-			byte* buf;
-			long len;
-			long flags;
-			struct sockaddr* src_addr;
-			socklen_t* addrlen;
-		} args;
+		struct recvfrom_args args;
 		t->read_mem(base_addr, &args);
+
 		int recvdlen = t->regs().eax;
+		if (has_saved_arg_ptrs(t)) {
+			byte* src_addrp = pop_arg_ptr<byte>(t);
+			byte* addrlenp = pop_arg_ptr<byte>(t);
+			byte* buf = pop_arg_ptr<byte>(t);
+			byte* argsp = pop_arg_ptr<byte>(t);
+
+			if (recvdlen > 0) {
+				t->remote_memcpy(buf, args.buf, recvdlen);
+			}
+			args.buf = buf;
+
+			if (src_addrp) {
+				socklen_t addrlen;
+				t->read_mem((byte*)args.addrlen, &addrlen);
+				t->remote_memcpy(src_addrp, args.src_addr,
+						 addrlen);
+				t->write_mem(addrlenp, addrlen);
+				args.src_addr = (struct sockaddr*)src_addrp;
+				args.addrlen = (socklen_t*)addrlenp;
+			}
+			struct user_regs_struct r = t->regs();
+			r.ecx = (uintptr_t)argsp;
+			t->set_regs(r);
+		}
 
 		if (recvdlen > 0) {
-			record_child_data(t, args.len, args.buf);
+			record_child_data(t, recvdlen, (byte*)args.buf);
 		} else {
 			record_noop_data(t);
 		}
-		if (args.src_addr && args.addrlen) {
-			long len = t->read_word((byte*)args.addrlen);
+		if (args.src_addr) {
+			socklen_t addrlen;
+			t->read_mem((byte*)args.addrlen, &addrlen);
 
 			record_child_data(t, sizeof(*args.addrlen),
 					  (byte*)args.addrlen);
-			record_child_data(t, len, (byte*)args.src_addr);
+			record_child_data(t, addrlen, (byte*)args.src_addr);
 		} else {
 			record_noop_data(t);
 			record_noop_data(t);

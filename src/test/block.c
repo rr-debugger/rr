@@ -44,6 +44,27 @@ static void* reader_thread(void* dontcare) {
 	atomic_printf("r:   ... recv'd '%c'\n", c);
 	test_assert(c == token);
 	++token;
+
+	atomic_puts("r: recvfrom'ing socket ...");
+	test_assert(1 == recvfrom(sock, &c, sizeof(c), 0, NULL, NULL));
+	atomic_printf("r:   ... recvfrom'd '%c'\n", c);
+	test_assert(c == token);
+	++token;
+	{
+		struct sockaddr_un addr;
+		socklen_t addrlen = sizeof(addr);
+
+		atomic_puts("r: recvfrom(&sock)'ing socket ...");
+		test_assert(1 == recvfrom(sock, &c, sizeof(c), 0,
+					  &addr, &addrlen));
+		atomic_printf("r:   ... recvfrom'd '%c' from sock len:%d\n",
+			      c, addrlen);
+		test_assert(c == token);
+		/* socketpair() AF_LOCAL sockets don't identify
+		 * themselves. */
+		test_assert(addrlen == 0);
+		++token;
+	}
 	{
 		struct mmsghdr mmsg = {{ 0 }};
 		struct iovec data = { 0 };
@@ -205,6 +226,22 @@ int main(int argc, char *argv[]) {
 		atomic_puts("M:   ... done");
 	}
 	/* Force a wait on recv() */
+	atomic_puts("M: sleeping again ...");
+	usleep(500000);
+	atomic_printf("M: sending '%c' to socket ...\n", token);
+	send(sock, &token, sizeof(token), 0);
+	++token;
+	atomic_puts("M:   ... done");
+
+	/* Force a wait on recvfrom() */
+	atomic_puts("M: sleeping again ...");
+	usleep(500000);
+	atomic_printf("M: sending '%c' to socket ...\n", token);
+	send(sock, &token, sizeof(token), 0);
+	++token;
+	atomic_puts("M:   ... done");
+
+	/* Force a wait on recvfrom(&sock) */
 	atomic_puts("M: sleeping again ...");
 	usleep(500000);
 	atomic_printf("M: sending '%c' to socket ...\n", token);
