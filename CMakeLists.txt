@@ -128,6 +128,7 @@ set(BASIC_TESTS
   mprotect_stack
   mremap
   msg
+  msync
   munmap_discontinuous
   mutex_pi_stress
   nanosleep

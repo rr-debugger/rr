@@ -691,6 +691,18 @@ SYSCALL_DEF(EXEC, mprotect, 0)
 SYSCALL_DEF(EXEC, mremap, 0)
 
 /**
+ *  int msync(void *addr, size_t length, int flags);
+ *
+ * msync() flushes changes made to the in-core copy of a file that was
+ * mapped into memory using mmap(2) back to disk.  Without use of this
+ * call there is no guarantee that changes are written back before
+ * munmap(2) is called.  To be more precise, the part of the file that
+ * corresponds to the memory area starting at addr and having length
+ * length is updated.
+ */
+SYSCALL_DEF(EXEC, msync, 0)
+
+/**
  *  int munmap(void *addr, size_t length)
  *
  * The munmap() system call deletes the mappings for the specified
