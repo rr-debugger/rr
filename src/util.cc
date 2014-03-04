@@ -14,6 +14,7 @@
 #include <libdis.h>
 #include <limits.h>
 #include <linux/futex.h>
+#include <linux/ipc.h>
 #include <linux/magic.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -288,6 +289,11 @@ int clone_flags_to_task_flags(int flags_arg)
 	flags |= (CLONE_THREAD & flags_arg) ? CLONE_SHARE_TASK_GROUP : 0;
 	flags |= (CLONE_VM & flags_arg) ? CLONE_SHARE_VM : 0;
 	return flags;
+}
+
+int get_ipc_command(int raw_cmd)
+{
+	return raw_cmd & ~IPC_64;
 }
 
 void print_register_file_tid(Task* t)

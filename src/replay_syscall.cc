@@ -707,10 +707,12 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 void process_ipc(Task* t, struct trace_frame* trace, int state)
 {
 	int call = trace->recorded_regs.ebx;
+	debug("ipc call: %d\n", call);
 
 	/* TODO: ipc may be completely emulated */
 	if (state == STATE_SYSCALL_ENTRY) {
 		switch (call) {
+		case MSGCTL:
 		case MSGGET:
 		case MSGRCV:
 		case MSGSND:
@@ -720,12 +722,18 @@ void process_ipc(Task* t, struct trace_frame* trace, int state)
 			enter_syscall_emu(t, SYS_ipc);
 			return;
 		default:
-			enter_syscall_exec(t, SYS_ipc);
+			fatal("Unhandled ipc call %d", call);
 			return;
 		}
 	}
 
+	// FIXME: make this switch statement only compute
+	// |num_emu_args|, and then exit_syscall_emu(num_emu_args)
+	// below it.
 	switch (call) {
+	case MSGCTL:
+		return exit_syscall_emu(t, SYS_ipc, 1);
+
 	case MSGGET:
 	case MSGSND:
 	case SEMGET:
