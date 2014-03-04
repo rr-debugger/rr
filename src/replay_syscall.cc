@@ -408,7 +408,8 @@ void rep_maybe_replay_stdio_write(Task* t)
 		return;
 	}
 
-	assert(SYS_write == t->regs().orig_eax);
+	assert(SYS_write == t->regs().orig_eax
+	       || SYS_writev == t->regs().orig_eax);
 
 	fd = t->regs().ebx;
 	if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
@@ -1510,6 +1511,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		break;
 
 	case SYS_write:
+	case SYS_writev:
 		step->syscall.num_emu_args = 0;
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
@@ -1523,12 +1525,15 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		 * we reach the interrupt.  That could maybe cause
 		 * issues in the future. */
 		rep_maybe_replay_stdio_write(t);
-		/* write() can be desched'd, but it doesn't use
-		 * scratch, so we might have saved 0 bytes of scratch
-		 * after a desched. */
+		/* write*() can be desched'd, but don't use scratch,
+		 * so we might have saved 0 bytes of scratch after a
+		 * desched. */
 		maybe_noop_restore_syscallbuf_scratch(t);
-
-		maybe_verify_tracee_saved_data(t, rec_regs);
+		if (SYS_write == syscall) {
+			// TODO: we only support tracee-saved data
+			// through write for now.
+			maybe_verify_tracee_saved_data(t, rec_regs);
+		}
 		return;
 
 	case SYS_rrcall_init_buffers:

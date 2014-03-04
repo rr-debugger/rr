@@ -143,6 +143,7 @@ static void* reader_thread(void* dontcare) {
 	{
 		char* buf = (char*)malloc(num_sockbuf_bytes);
 		ssize_t nwritten = 0;
+		struct iovec iov;
 
 		++token;
 		memset(buf, token, num_sockbuf_bytes);
@@ -158,6 +159,19 @@ static void* reader_thread(void* dontcare) {
 			nwritten += this_write;
 		}
 
+		++token;
+		memset(buf, token, num_sockbuf_bytes);
+		iov.iov_base = buf;
+		iov.iov_len = num_sockbuf_bytes;
+		atomic_printf("r: writev()ing outbuf of size %d ...\n",
+			      num_sockbuf_bytes);
+		while (iov.iov_len > 0) {
+			ssize_t this_write = writev(sock, &iov, 1);
+			atomic_printf("r:   wrote %d bytes this time\n",
+				      this_write);
+			iov.iov_len -= this_write;
+		}
+
 		free(buf);
 	}
 
@@ -171,15 +185,45 @@ static void* reader_thread(void* dontcare) {
 
 		test_assert(0 == pthread_sigmask(SIG_SETMASK, &old_mask, NULL));
 	}
+	++token;
 	atomic_printf("r:   ... read '%c'\n", c);
 	test_assert(c == token);
-	++token;
 
 	/* Make the main thread wait on our join() */
 	atomic_puts("r: sleeping ...");
 	usleep(500000);
 
 	return NULL;
+}
+
+static void read_all_chunks(int sock, char* buf, ssize_t num_sockbuf_bytes,
+			    char token) {
+	ssize_t nread = 0;
+	while (nread < num_sockbuf_bytes) {
+		char* this_buf = buf + nread;
+		ssize_t this_read = read(sock, this_buf,
+					 num_sockbuf_bytes - nread);
+		int i;
+
+		atomic_printf("M:   read %d bytes this time,\n", this_read);
+		test_assert(this_read > 0);
+		/* XXX: we would like to assert that the written data
+		 * was read in more than one chunk, which should imply
+		 * that at least one write() from the other thread
+		 * blocked, but it's possible for multiple write()s to
+		 * complete and fill the read buffer here before the
+		 * reader returns. */
+		/*test_assert(this_read < num_sockbuf_bytes);*/
+
+		for (i = nread; i < nread + this_read; ++i) {
+			if (token != buf[i]) {
+				atomic_printf("M:   byte %d should be '%c', but is '%c'\n",
+					      i, token, buf[i]);
+			}
+		}
+		nread += this_read;
+		atomic_printf("M:      %d total so far\n", nread);
+	}
 }
 
 int main(int argc, char *argv[]) {
@@ -307,36 +351,11 @@ int main(int argc, char *argv[]) {
 	++token;
 	{
 		char* buf = (char*)malloc(num_sockbuf_bytes);
-		ssize_t nread = 0;
-
-		while (nread < num_sockbuf_bytes) {
-			char* this_buf = buf + nread;
-			ssize_t this_read = read(sock, this_buf,
-						 num_sockbuf_bytes - nread);
-			int i;
-
-			atomic_printf("M:   read %d bytes this time,\n",
-				      this_read);
-			test_assert(this_read > 0);
-			/* XXX: we would like to assert that the
-			 * written data was read in more than one
-			 * chunk, which should imply that at least one
-			 * write() from the other thread blocked, but
-			 * it's possible for multiple write()s to
-			 * complete and fill the read buffer here
-			 * before the reader returns. */
-			/*test_assert(this_read < num_sockbuf_bytes);*/
-
-			for (i = nread; i < nread + this_read; ++i) {
-				if (token != buf[i]) {
-					atomic_printf("M:   byte %d should be '%c', but is '%c'\n",
-						      i, token, buf[i]);
-				}
-			}
-			nread += this_read;
-			atomic_printf("M:      %d total so far\n", nread);
+		int i;
+		for (i = 0; i < 2; ++i) {
+			read_all_chunks(sock, buf, num_sockbuf_bytes, token);
+			++token;
 		}
-
 		free(buf);
 	}
 	atomic_puts("M:   ... done");
@@ -346,7 +365,6 @@ int main(int argc, char *argv[]) {
 	usleep(500000);
 	atomic_printf("M: writing '%c' to socket ...\n", token);
 	write(sock, &token, sizeof(token));
-	++token;
 	atomic_puts("M:   ... done");
 
 	pthread_join(reader, NULL);
