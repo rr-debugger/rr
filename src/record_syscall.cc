@@ -165,7 +165,6 @@ static int prepare_ipc(Task* t, int would_need_scratch)
 	}
 	case MSGSND:
 		return 1;
-
 	default:
 		return 0;
 	}
@@ -1150,85 +1149,11 @@ static void process_ipc(Task* t, int call)
 		record_child_data(t, buf_size, kludge.msgbuf);
 		return;
 	}
-
-	/* int msgget(key_t key, int msgflg); */
 	case MSGGET:
-	/* int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg); */
 	case MSGSND:
-	/* int semget(key_t key, int nsems, int semflg); */
-	case SEMGET:
-	/* int semop(int semid, struct sembuf *sops, unsigned nsops); */
-	case SEMOP:
-	/* int shmdt(const void *shmaddr); */
-	case SHMDT:
-	/* int shmget(key_t key, size_t size, int shmflg); */
-	case SHMGET:
 		return;
-
-	/**
-	 *  int semctl(int semid, int semnum, int cmd, union semnum);
-	 *
-	 *  semnum is optional and determined by cmd
-	 
-	 * union semun {
-               int              val;    // Value for SETVAL
-               struct semid_ds *buf;    // Buffer for IPC_STAT, IPC_SET
-               unsigned short  *array;  // Array for GETALL, SETALL
-               struct seminfo  *__buf;  // Buffer for IPC_INFO (Linux-specific)
-           };
-	*/
-	case SEMCTL: {
-		int cmd = t->regs().edx;
-		switch (cmd) {
-		case IPC_SET:
-		case IPC_RMID:
-		case GETNCNT:
-		case GETPID:
-		case GETVAL:
-		case GETZCNT:
-		case SETALL:
-		case SETVAL:
-			return;
-
-		case IPC_STAT:
-		case SEM_STAT:
-			record_child_data(t, sizeof(struct semid_ds),
-					  (byte*)t->regs().esi);
-			return;
-
-		case IPC_INFO:
-		case SEM_INFO:
-			record_child_data(t, sizeof(struct seminfo),
-					  (byte*)t->regs().esi);
-			return;
-
-		case GETALL: {
-			int semnum = t->regs().ecx;
-			record_child_data(t, semnum * sizeof(unsigned short),
-					  (byte*)t->regs().esi);
-			return;
-		}
-		default:
-			fatal("Unknown semctl command %d", cmd);
-			return;
-		}
-	}
-	/* void *shmat(int shmid, const void *shmaddr, int shmflg); */
-	case SHMAT:
-		// the kernel copies the returned address to *third
-		record_child_data(t, sizeof(long), (byte*)t->regs().esi);
-		return;
-
-	/* int shmctl(int shmid, int cmd, struct shmid_ds *buf); */
-	case SHMCTL: {
-		int cmd = t->regs().edx;
-		(void)cmd;
-		assert(cmd != IPC_INFO && cmd != SHM_INFO && cmd != SHM_STAT);
-		record_child_data(t, sizeof(struct shmid_ds), (byte*)t->regs().esi);
-		return;
-	}
 	default:
-		fatal("Unknown IPC call %d", call);
+		fatal("Unhandled IPC call %d", call);
 	}
 }
 
