@@ -229,6 +229,9 @@ static void __start_hpc(Task* t)
 void stop_hpc(Task* t)
 {
 	struct hpc_context* counters = t->hpc;
+	if (!counters->started) {
+		return;
+	}
 
 	stop_counter(t, &counters->rbc);
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
