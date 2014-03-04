@@ -1410,7 +1410,7 @@ SYSCALL_DEF(IRREGULAR, write, -1)
  * iov to the file associated with the file descriptor fd ("gather
  * output").
  */
-SYSCALL_DEF(EMU, writev, 0)
+SYSCALL_DEF(IRREGULAR, writev, -1)
 
 /**
  *  void* rrcall_init_buffers(struct rrcall_init_buffers_params* args);
