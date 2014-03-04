@@ -546,6 +546,18 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 				    DESTROY_NEED_EXIT_SYSCALL_RESTART));
 		return 0;
 
+	case SYS_fcntl64:
+		switch (t->regs().ecx) {
+		case F_SETLKW:
+		case F_SETLKW64:
+			// SETLKW blocks, but doesn't write any
+			// outparam data to the |struct flock|
+			// argument, so no need for scratch.
+			return 1;
+		default:
+			return 0;
+		}
+
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
 	case SYS_futex:
 		switch (t->regs().ecx & FUTEX_CMD_MASK) {
@@ -1774,19 +1786,23 @@ void rec_process_syscall(Task *t)
 			break;
 
 		case F_GETLK:
-		case F_SETLK:
-		case F_SETLKW:
 			static_assert(sizeof(struct flock) < sizeof(struct flock64),
 				      "struct flock64 not declared differently from struct flock");
 			record_child_data(t, sizeof(struct flock),
 					  (byte*)t->regs().edx);
 			break;
 
+		case F_SETLK:
+		case F_SETLKW:
+			break;
+
 		case F_GETLK64:
-		case F_SETLK64:
-		case F_SETLKW64:
 			record_child_data(t, sizeof(struct flock64),
 					  (byte*)t->regs().edx);
+			break;
+
+		case F_SETLK64:
+		case F_SETLKW64:
 			break;
 
 		case F_GETOWN_EX:

@@ -413,7 +413,7 @@ static void logmsg(const char* msg, ...)
 
 #ifdef DEBUGTAG
 # define debug(msg, ...)					\
-	logmsg("[" DEBUGTAG "] " msg "\n" ##__VA_ARGS__)
+	logmsg("[" DEBUGTAG "] " msg "\n", ##__VA_ARGS__)
 #else
 # define debug(msg, ...) ((void)0)
 #endif
