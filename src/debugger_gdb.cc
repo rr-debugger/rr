@@ -1409,6 +1409,15 @@ void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code)
 	consume_request(dbg);
 }
 
+void dbg_reply_detach(struct dbg_context* dbg)
+{
+	assert(DREQ_DETACH <= dbg->req.type);
+
+	write_packet(dbg, "OK");
+
+	consume_request(dbg);
+}
+
 void dbg_destroy_context(struct dbg_context** dbg)
 {
 	struct dbg_context* d;

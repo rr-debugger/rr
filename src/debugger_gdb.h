@@ -300,6 +300,15 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code);
 
 /**
+ * DREQ_DETACH was processed.
+ *
+ * There's no functional reason to reply to the detach request.
+ * However, some versions of gdb expect a response and time out
+ * awaiting it, wasting developer time.
+ */
+void dbg_reply_detach(struct dbg_context* dbg);
+
+/**
  * Destroy a gdb debugging context created by
  * |dbg_await_client_connection()|.  It's legal to pass a null |*dbg|.
  * The passed-in outparam is nulled on return.
