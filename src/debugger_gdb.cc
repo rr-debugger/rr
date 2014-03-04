@@ -295,7 +295,25 @@ void dbg_launch_debugger(int params_pipe_fd)
 	attach_cmd << "target extended-remote " << params.socket_addr << ":"
 		   << params.port;
 	debug("launching gdb with command '%s'", attach_cmd.str().c_str());
-	execlp("gdb", "gdb", params.exe_image,
+	execlp("gdb", "gdb",
+	       // The gdb protocol uses the "vRun" packet to reload
+	       // remote targets.  The packet is specified to be like
+	       // "vCont", in which gdb waits infinitely long for a
+	       // stop reply packet.  But in practice, gdb client
+	       // expects the vRun to complete within the remote-reply
+	       // timeout, after which it issues vCont.  The timeout
+	       // causes gdb<-->rr communication to go haywire.
+	       //
+	       // rr can take a very long time indeed to send the
+	       // stop-reply to gdb after restarting replay; the time
+	       // to reach a specified execution target is
+	       // theoretically unbounded.  Timing our on vRun is
+	       // technically a gdb bug, but because the rr replay and
+	       // the gdb reload models don't quite match up, we'll
+	       // work around it on the rr side by disabling the
+	       // remote-reply timeout.
+	       "-l", "-1",
+	       params.exe_image,
 	       "-ex", attach_cmd.str().c_str(), NULL);
 	fatal("Failed to exec gdb.");
 }
