@@ -104,6 +104,7 @@ set(BASIC_TESTS
   goto_event
   hello
   ignored_async_usr1
+  immediate_restart
   int3
   interrupt
   intr_futex_wait_restart

@@ -3,16 +3,12 @@
 #include "rrutil.h"
 
 int main(int argc, char** argv) {
-	const char* exe_image;
 	int child;
 
-	test_assert(argc == 2);
-	exe_image = argv[1];
-
-	atomic_printf("%d: forking and exec'ing %s...\n", getpid(), exe_image);
+	atomic_printf("%d: forking...\n", getpid());
 	if (0 == (child = fork())) {
-		execl(exe_image, exe_image, NULL);
-		test_assert("Not reached; execl() failed." && 0);
+	    atomic_puts("EXIT-SUCCESS");
+	    return 0;
 	}
 
 	atomic_printf("child %d\n", child);
