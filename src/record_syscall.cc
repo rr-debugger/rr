@@ -1527,6 +1527,11 @@ void rec_process_syscall(Task *t)
 		pop_syscall(new_task);
 
 		init_scratch_memory(new_task);
+		// The new tracee just "finished" a clone that was
+		// started by its parent.  It has no pending events,
+		// so it can be context-switched out.
+		new_task->event = SYS_clone;
+		new_task->switchable = 1;
 
 		break;
 	}

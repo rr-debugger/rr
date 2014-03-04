@@ -81,22 +81,24 @@ find_next_runnable_task(int* by_waitpid)
 			Task* t = task_iterator->second;
 
 			if (t->unstable) {
-				debug("  %d is unstable, going to waitpid(-1)", tid);
+				debug("  %d is unstable, going to waitpid(-1)",
+				      t->tid);
 				return NULL;
 			}
 
 			if (!t->may_be_blocked()) {
-				debug("  %d isn't blocked", tid);
+				debug("  %d isn't blocked", t->tid);
 				return t;
 			}
 
-			debug("  %d is blocked on %s, checking status ...", tid,
+			debug("  %d is blocked on %s, checking status ...",
+			      t->tid,
 			      strevent(t->event));
 			if ((t->pseudo_blocked && t->wait())
 			    || t->try_wait()) {
 				t->pseudo_blocked = 0;
 				*by_waitpid = 1;
-				debug("  ready with status 0x%x", t->status);
+				debug("  ready with status 0x%x", t->status());
 				return t;
 			}
 			debug("  still blocked");
@@ -152,7 +154,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 			}
 #endif
 			*by_waitpid = 1;
-			debug("  new status is 0x%x", current->status);
+			debug("  new status is 0x%x", current->status());
 		}
 		return current;
 	}

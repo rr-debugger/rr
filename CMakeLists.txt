@@ -166,6 +166,7 @@ set(BASIC_TESTS
   tiocinq
   truncate
   uname
+  unjoined_thread
   user_ignore_sig
 )
 
