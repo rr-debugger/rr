@@ -14,7 +14,7 @@ const ssize_t num_sockbuf_bytes = 1 << 20;
  * synchronization behind a barrier, for now. */
 static pthread_barrier_t cheater_barrier;
 
-void* reader_thread(void* dontcare) {
+static void* reader_thread(void* dontcare) {
 	char token = '!';
 	int sock = sockfds[1];
 	struct timeval ts;

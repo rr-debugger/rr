@@ -23,7 +23,9 @@
 #include <syscall.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <sys/ipc.h>
 #include <sys/mman.h>
+#include <sys/msg.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>

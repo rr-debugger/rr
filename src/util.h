@@ -290,6 +290,12 @@ const char* syscallname(int syscall);
  */
 int clone_flags_to_task_flags(int flags_arg);
 
+/**
+ * Return the SYS_ipc sub-command (to an ipc operation) encoded in
+ * |raw_cmd|.
+ */
+int get_ipc_command(int raw_cmd);
+
 static const byte syscall_insn[] = { 0xcd, 0x80 };
 
 // TODO: RAII-ify me and helpers below.

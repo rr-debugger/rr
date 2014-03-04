@@ -10,10 +10,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/futex.h>
+#include <linux/ipc.h>
+#include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/prctl.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
-#include <linux/prctl.h>
 #include <poll.h>
 #include <sched.h>
 #include <sys/epoll.h>
@@ -46,6 +48,15 @@
 #include "util.h"
 
 using namespace std;
+
+/**
+ *  Some ipc calls require 7 params, so two of them are stashed into
+ *  one of these structs and a pointer to this is passed instead.
+ */
+struct ipc_kludge_args {
+	byte* msgbuf;
+	long msgtype;
+};
 
 /**
  * Read the socketcall args pushed by |t| as part of the syscall in
@@ -122,11 +133,50 @@ static int can_use_scratch(Task* t, byte* scratch_end)
 }
 
 /**
+ * Return nonzero if it's OK to context-switch away from |t| for its
+ * ipc call.  If so, prepare any required scratch buffers for |t|.
+ */
+static int prepare_ipc(Task* t, int would_need_scratch)
+{
+	int call = t->regs().ebx;
+	byte* scratch = would_need_scratch ?
+			t->ev->syscall.tmp_data_ptr : NULL;
+
+	assert(!t->desched_rec());
+
+	switch (call) {
+	case MSGRCV: {
+		if (!would_need_scratch) {
+			return 1;
+		}
+		size_t msgsize = t->regs().edx;
+		struct ipc_kludge_args kludge;
+		byte* child_kludge = (byte*)t->regs().edi;
+		t->read_mem(child_kludge, &kludge);
+
+		push_arg_ptr(t, kludge.msgbuf);
+		kludge.msgbuf = scratch;
+		scratch += msgsize;
+		if (!can_use_scratch(t, scratch)) {
+			return abort_scratch(t, "msgrcv");
+		}
+		t->write_mem(child_kludge, kludge);
+		return 1;
+	}
+	case MSGSND:
+		return 1;
+
+	default:
+		return 0;
+	}
+}
+
+/**
  * Initialize any necessary state to execute the socketcall that |t|
  * is stopped at, for example replacing tracee args with pointers into
  * scratch memory if necessary.
  */
-int prepare_socketcall(Task* t, int would_need_scratch)
+static int prepare_socketcall(Task* t, int would_need_scratch)
 {
 	byte* scratch = would_need_scratch ?
 			t->ev->syscall.tmp_data_ptr : NULL;
@@ -433,6 +483,9 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		default:
 			return 0;
 		}
+
+	case SYS_ipc:
+		return prepare_ipc(t, would_need_scratch);
 
 	case SYS_socketcall:
 		return prepare_socketcall(t, would_need_scratch);
@@ -1057,6 +1110,47 @@ static void process_ipc(Task* t, int call)
 	debug("ipc call: %d\n", call);
 
 	switch (call) {
+	case MSGCTL: {
+		int cmd = get_ipc_command(t->regs().edx);
+		byte* buf = (byte*)t->regs().edi;
+		ssize_t buf_size;
+		switch (cmd) {
+		case IPC_STAT:
+		case MSG_STAT:
+			buf_size = sizeof(struct msqid64_ds);
+			break;
+		case IPC_INFO:
+		case MSG_INFO:
+			buf_size = sizeof(struct msginfo);
+			break;
+		default:
+			buf_size = 0;
+		}
+		record_child_data(t, buf_size, buf);
+		return;
+	}
+	case MSGRCV: {
+		// The |msgsize| arg is only the size of message
+		// payload; there's also a |msgtype| tag set just
+		// before the payload.
+		size_t buf_size = sizeof(long) + t->regs().edx;
+		struct ipc_kludge_args kludge;
+		byte* child_kludge = (byte*)t->regs().edi;
+
+		t->read_mem(child_kludge, &kludge);
+		if (has_saved_arg_ptrs(t)) {
+			byte* src = kludge.msgbuf;
+			byte* dst = pop_arg_ptr<byte>(t);
+
+			kludge.msgbuf = dst;
+			t->write_mem(child_kludge, &kludge);
+
+			t->remote_memcpy(dst, src, buf_size);
+		}
+		record_child_data(t, buf_size, kludge.msgbuf);
+		return;
+	}
+
 	/* int msgget(key_t key, int msgflg); */
 	case MSGGET:
 	/* int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg); */
@@ -1071,19 +1165,6 @@ static void process_ipc(Task* t, int call)
 	case SHMGET:
 		return;
 
-	/* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg); */
-	case MSGRCV: {
-		struct kludge_args {
-			byte* msgbuf;
-			long msgtype;
-		};
-		size_t msgsize = t->regs().edx;
-		struct kludge_args kludge;
-		byte* child_kludge = (byte*)t->regs().edi;
-		t->read_mem(child_kludge, &kludge);
-		record_child_data(t, msgsize, kludge.msgbuf);
-		return;
-	}
 	/**
 	 *  int semctl(int semid, int semnum, int cmd, union semnum);
 	 *
