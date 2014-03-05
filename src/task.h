@@ -328,6 +328,19 @@ struct MappableResource {
 	static ino_t nr_anonymous_maps;
 };
 
+struct Breakpoint;
+
+enum TrapType {
+	TRAP_NONE = 0,
+	// Trap for debugger 'stepi' request.
+	TRAP_STEPI,
+	// Trap for internal rr purposes, f.e. replaying async
+	// signals.
+	TRAP_BKPT_INTERNAL,
+	// Trap on behalf of a debugger user.
+	TRAP_BKPT_USER,
+};
+
 /**
  * Models the address space for a set of tasks.  This includes the set
  * of mapped pages, and the resources those mappings refer to.
@@ -336,6 +349,7 @@ class AddressSpace : public HasTaskSet {
 	friend struct VerifyAddressSpace;
 
 public:
+	typedef std::map<void*, std::shared_ptr<Breakpoint> > BreakpointMap;
 	typedef std::map<Mapping, MappableResource,
 			 MappingComparator> MemoryMap;
 	typedef std::shared_ptr<AddressSpace> shr_ptr;
@@ -386,6 +400,14 @@ public:
 	const std::string& exe_image() const { return exe; }
 
 	/**
+	 * Assuming this has raised a SIGTRAP and might be just past a
+	 * breakpoint instruction, return the type of breakpoint set
+	 * at |ip() - sizeof(breakpoint_insn)|, if one exists.
+	 * Otherwise return TRAP_NONE.
+	 */
+	TrapType get_breakpoint_type_at_ip(void* ip);
+
+	/**
 	 * Map |num_bytes| into this address space at |addr|, with
 	 * |prot| protection and |flags|.  The pages are (possibly
 	 * initially) backed starting at |offset| of |res|.
@@ -413,6 +435,22 @@ public:
 		   const byte* new_addr, size_t new_num_bytes);
 
 	/**
+	 * Remove a |type| reference to the breakpoint at |addr|.  If
+	 * the removed reference was the last, the breakpoint is
+	 * destroyed.
+	 */
+	void remove_breakpoint(void* addr, TrapType type);
+
+	/** Ensure a breakpoint of |type| is set at |addr|. */
+	void set_breakpoint(void* addr, TrapType type);
+
+	/**
+	 * Destroy all breakpoints in this VM, regardless of their
+	 * reference counts.
+	 */
+	void destroy_all_breakpoints();
+
+	/**
 	 * Make [addr, addr + num_bytes) inaccesible within this
 	 * address space.
 	 */
@@ -435,15 +473,20 @@ public:
 	 */
 	static shr_ptr create(Task* t);
 
+	// Encoding of the |int $3| instruction.
+	static const byte breakpoint_insn = 0xCC;
+
 private:
 	AddressSpace() : is_clone(false), vdso_start_addr() {
 		sas.insert(this);
 	}
-	AddressSpace(const AddressSpace& o)
-		: exe(o.exe), heap(o.heap), is_clone(true)
-		, mem(o.mem), vdso_start_addr(o.vdso_start_addr) {
-		sas.insert(this);
-	}
+	AddressSpace(const AddressSpace& o);
+
+	/**
+	 * Erase |it| from |breakpoints| and restore any memory in
+	 * this it may have overwritten.
+	 */
+	void destroy_breakpoint(BreakpointMap::const_iterator it);
 
 	/**
 	 * Map |m| of |r| into this address space, and coalesce any
@@ -457,6 +500,8 @@ private:
 			       MAP_ANONYMOUS | MAP_PRIVATE, 0);
 	}
 
+	// All breakpoints set in this VM.
+	BreakpointMap breakpoints;
 	/* Path of the executable image this address space was
 	 * exec()'d with. */
 	std::string exe;
@@ -1021,7 +1066,7 @@ public:
 	void inited_syscallbuf();
 
 	/** Return the current $ip of this. */
-	const byte* ip() { return (const byte*)regs().eip; }
+	void* ip() { return (void*)regs().eip; }
 
 	/**
 	 * Return true if this is at an arm-desched-event syscall.
@@ -1048,7 +1093,7 @@ public:
 	bool is_entering_traced_syscall() {
 		// |int $0x80| is |5d 80|, so |2| comes from
 		// |sizeof(int $0x80)|.
-		const byte* next_ip = ip() + 2;
+		void* next_ip = (byte*)ip() + 2;
 		return next_ip == traced_syscall_ip;
 	}
 
@@ -1120,6 +1165,12 @@ public:
 	 * Client code should call |t->vm()->map(...)| directly.
 	 */
 	void maybe_update_vm(int syscallno, int state);
+
+	/**
+	 * Assuming ip() is just past a breakpoint instruction, adjust
+	 * ip() backwards to point at that breakpoint insn.
+	 */
+	void move_ip_before_breakpoint();
 
 	/**
 	 * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or

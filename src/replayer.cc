@@ -97,6 +97,11 @@ static int debugger_params_pipe[2];
 // processing debugger requests for it later.
 static Task* last_task;
 
+/* Nonzero after the first exec() has been observed during replay.
+ * After this point, the first recorded binary image has been exec()d
+ * over the initial rr image. */
+bool validate = false;
+
 /**
  * Restart a fresh debugging session, possibly updating our replay
  * params based on the debugger's |req|.  This results in the old
@@ -104,95 +109,6 @@ static Task* last_task;
  * must manually connect to.
  */
 static void restart_replay(struct dbg_context* dbg, struct dbg_request req);
-
-enum TrapType { TRAP_NONE = 0, TRAP_STEPI,
-		TRAP_BKPT_INTERNAL, TRAP_BKPT_USER };
-
-struct Breakpoint {
-	Breakpoint(Task* t, byte* addr);
-	~Breakpoint();
-
-	void destroy(Task* t);
-
-	void ref(TrapType which) {
-		++*counter(which);
-	}
-	void unref(Task* t, TrapType which);
-
-	TrapType type() {
-		// NB: USER breakpoints need to be processed before
-		// INTERNAL ones.  We want to give the debugger a
-		// chance to dispatch commands before we attend to the
-		// internal rr business.  So if there's a USER "ref"
-		// on the breakpoint, treat it as a USER breakpoint.
-		return user_count > 0 ? TRAP_BKPT_USER : TRAP_BKPT_INTERNAL;
-	}
-
-	static Breakpoint* find(byte* addr);
-
-	byte* addr;
-	/* "Refcounts" of breakpoints set at |addr|.  The breakpoint
-	 * object must be unique since we have to save the overwritten
-	 * data, and we can't enforce the order in which breakpoints
-	 * are set/removed. */
-	int internal_count, user_count;
-	byte overwritten_data;
-private:
-	int* counter(TrapType which) {
-		assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
-		int* p = TRAP_BKPT_USER == which ?
-			 &user_count : &internal_count;
-		assert(*p >= 0);
-		return p;
-	}
-};
-
-typedef map<void*, Breakpoint*> BreakpointMap;
-static BreakpointMap breakpoints;
-
-static const byte int_3_insn = 0xCC;
-
-/* Nonzero after the first exec() has been observed during replay.
- * After this point, the first recorded binary image has been exec()d
- * over the initial rr image. */
-bool validate = false;
-
-Breakpoint::Breakpoint(Task* t, byte* addr)
-	: addr(addr), internal_count(0), user_count(0)
-{
-	t->read_mem(addr, &overwritten_data);
-	t->write_mem(addr, int_3_insn);
-	breakpoints[addr] = this;
-}
-
-Breakpoint::~Breakpoint()
-{
-	breakpoints.erase(addr);
-}
-
-void
-Breakpoint::destroy(Task* t)
-{
-	t->write_mem(addr, overwritten_data);
-	delete this;
-}
-
-void
-Breakpoint::unref(Task* t, TrapType which)
-{
-	--*counter(which);
-	assert(internal_count >= 0 && user_count >= 0);
-	if (0 == internal_count + user_count) {
-		destroy(t);
-	}
-}
-
-/*static*/Breakpoint*
-Breakpoint::find(byte* addr)
-{
-	BreakpointMap::const_iterator it = breakpoints.find(addr);
-	return it != breakpoints.end() ? it->second : NULL;
-}
 
 static void debug_memory(Task* t)
 {
@@ -258,70 +174,6 @@ static byte* read_mem(Task* t, byte* addr, size_t len,
 	ssize_t nread = t->read_bytes_fallible(addr, len, buf);
 	*read_len = max(0, nread);
 	return buf;
-}
-
-static void set_sw_breakpoint(Task* t, byte* ip, TrapType type)
-{
-	Breakpoint* bp = Breakpoint::find(ip);
-	if (!bp) {
-		bp = new Breakpoint(t, ip);
-	}
-	bp->ref(type);
-}
-
-static void remove_sw_breakpoint(Task* t, byte* ip, TrapType type)
-{
-	if (Breakpoint* bp = Breakpoint::find(ip)) {
-		bp->unref(t, type);
-	}
-}
-
-static void remove_internal_sw_breakpoint(Task* t, byte* ip)
-{
-	remove_sw_breakpoint(t, ip, TRAP_BKPT_INTERNAL);
-}
-
-static void remove_user_sw_breakpoint(Task* t,
-				      const struct dbg_request* req)
-{
-	assert(sizeof(int_3_insn) == req->mem.len);
-	remove_sw_breakpoint(t, req->mem.addr, TRAP_BKPT_USER);
-}
-
-static void set_internal_sw_breakpoint(Task* t, byte* ip)
-{
-	set_sw_breakpoint(t, ip, TRAP_BKPT_INTERNAL);
-}
-
-static void set_user_sw_breakpoint(Task* t,
-				   const struct dbg_request* req)
-{
-	assert(sizeof(int_3_insn) == req->mem.len);
-	set_sw_breakpoint(t, req->mem.addr, TRAP_BKPT_USER);
-}
-
-static TrapType ip_breakpoint_type(const byte* eip)
-{
-	byte* ip = (byte*)((uintptr_t)eip - sizeof(int_3_insn));
-	if (Breakpoint* bp = Breakpoint::find(ip)) {
-		return bp->type();
-	}
-	return TRAP_NONE;
-}
-
-/**
- * Remove all breakpoints in preparation for emergency debugging.
- *
- * This can be wildly unsafe.  In particular, it ignores breakpoint
- * refcounts, and assumes that all breakpoints were set in |t|'s
- * address space.  Use with caution.
- */
-static void remove_all_sw_breakpoints(Task* t)
-{
-	while (!breakpoints.empty()) {
-		Breakpoint* bp = breakpoints.begin()->second;
-		bp->destroy(t);
-	}
 }
 
 /**
@@ -482,11 +334,17 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_SET_SW_BREAK:
-			set_user_sw_breakpoint(target, &req);
+			assert_exec(target,
+				    (req.mem.len ==
+				     sizeof(AddressSpace::breakpoint_insn)),
+				    "Debugger setting bad breakpoint insn");
+			target->vm()->set_breakpoint(req.mem.addr,
+						     TRAP_BKPT_USER);
 			dbg_reply_watchpoint_request(dbg, 0);
 			continue;
 		case DREQ_REMOVE_SW_BREAK:
-			remove_user_sw_breakpoint(target, &req);
+			target->vm()->remove_breakpoint(req.mem.addr,
+							TRAP_BKPT_USER);
 			dbg_reply_watchpoint_request(dbg, 0);
 			break;
 		case DREQ_REMOVE_HW_BREAK:
@@ -786,7 +644,7 @@ static TrapType compute_trap_type(Task* t, int target_sig,
 	/* We're trying to replay a deterministic SIGTRAP, or we're
 	 * replaying an async signal. */
 
-	trap_type = ip_breakpoint_type(t->ip());
+	trap_type = t->vm()->get_breakpoint_type_at_ip(t->ip());
 	if (TRAP_BKPT_USER == trap_type || TRAP_BKPT_INTERNAL == trap_type) {
 		assert(is_breakpoint_trap(t));
 		return trap_type;
@@ -857,11 +715,11 @@ static void guard_overshoot(Task* t,
 		 * set, and restore the tracee's $ip to what it would
 		 * have been had it not hit the breakpoint (if it did
 		 * hit the breakpoint).*/
-		remove_internal_sw_breakpoint(t, (byte*)target_ip);
-		if (t->regs().eip == long(target_ip + sizeof(int_3_insn))) {
-			struct user_regs_struct r = t->regs();
-			r.eip -= sizeof(int_3_insn);
-			t->set_regs(r);
+		t->vm()->remove_breakpoint((void*)target_ip,
+					   TRAP_BKPT_INTERNAL);
+		if (t->regs().eip ==
+		    long(target_ip + sizeof(AddressSpace::breakpoint_insn))) {
+			t->move_ip_before_breakpoint();
 		}
 		compare_register_files(t, "rep overshoot", &t->regs(),
 				       "rec", target_regs, LOG_MISMATCHES);
@@ -1048,9 +906,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 				assert(!at_target);
 
 				t->child_sig = 0;
-				struct user_regs_struct r = t->regs();
-				r.eip -= sizeof(int_3_insn);
-				t->set_regs(r);
+				t->move_ip_before_breakpoint();
 				/* We just backed up the $ip, but
 				 * rewound it over an |int $3|
 				 * instruction, which couldn't have
@@ -1077,7 +933,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 		 * to resume execution in one of a variety of ways,
 		 * and it's simpler to start out knowing that the
 		 * breakpoint isn't set. */
-		remove_internal_sw_breakpoint(t, ip);
+		t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
 		
 		if (at_target) {
 			/* Case (2) above: done. */
@@ -1102,7 +958,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 			 * no slower than single-stepping our way to
 			 * the target execution point. */
 			debug("    breaking on target $ip");
-			set_internal_sw_breakpoint(t, ip);
+			t->vm()->set_breakpoint(ip, TRAP_BKPT_INTERNAL);
 			continue_or_step(t, stepi);
 		} else {
 			/* Case (3) above: we can't put a breakpoint
@@ -1784,14 +1640,13 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		 * and successful stepi's. */
 		assert(SIGTRAP == t->child_sig && "Unknown trap");
 
-		if (TRAP_BKPT_USER == ip_breakpoint_type((byte*)t->ip())) {
+		if (TRAP_BKPT_USER ==
+		    t->vm()->get_breakpoint_type_at_ip(t->ip())) {
 			debug("  hit debugger breakpoint");
 			/* SW breakpoint: $ip is just past the
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
-			struct user_regs_struct r = t->regs();
-			r.eip -= sizeof(int_3_insn);
-			t->set_regs(r);
+			t->move_ip_before_breakpoint();
 		} else {
 			debug("  finished debugger stepi");
 			/* Successful stepi.  Nothing else to do. */
@@ -2242,7 +2097,7 @@ void start_debug_server(Task* t)
 	// this.  Unlike in that context though, we don't know if |t|
 	// overshot an internal breakpoint.  If it did, cover that
 	// breakpoint up.
-	remove_all_sw_breakpoints(t);
+	t->vm()->destroy_all_breakpoints();
 
 	// Don't launch a debugger on fatal errors; the user is most
 	// likely already in a debugger, and wouldn't be able to
