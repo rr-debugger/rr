@@ -12,11 +12,6 @@ const char thread_name[] = "thread";
 const char fork_child_name[] = "fchild";
 const char exec_child_name[] = "echild";
 
-static void breakpoint(void) {
-	int break_here = 1;
-	(void)break_here;
-}
-
 static void assert_prname_is(const char* tag, const char* name) {
 	char prname[PRNAME_NUM_BYTES] = { 0 };
 	test_assert(0 == prctl(PR_GET_NAME, prname));
@@ -49,8 +44,6 @@ static void* thread(void* unused) {
 	prctl(PR_SET_NAME, fork_child_name);
 	assert_prname_is("fork child", fork_child_name);
 
-	breakpoint();
-	/* No syscalls in between here. */
 	execl(exe_image, exe_image, "exec child", NULL);
 	test_assert("Not reached" && 0);
 

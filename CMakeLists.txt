@@ -93,6 +93,7 @@ set(BASIC_TESTS
   clone
   condvar_stress
   crash
+  exec_self
   exit_group
   fadvise
   fault_in_code_page
