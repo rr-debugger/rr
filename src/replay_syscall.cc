@@ -425,12 +425,6 @@ void rep_maybe_replay_stdio_write(Task* t)
 	}
 }
 
-static void enter_syscall_emu(Task* t, int syscall)
-{
-	goto_next_syscall_emu(t);
-	validate_args(syscall, STATE_SYSCALL_ENTRY, t);
-}
-
 static void exit_syscall_emu_ret(Task* t, int syscall)
 {
 	t->set_return_value_from_trace();
@@ -1538,6 +1532,18 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		t->set_tid_addr((byte*)rec_regs->ebx);
 		return;
 
+	case SYS_sigreturn:
+	case SYS_rt_sigreturn:
+		if (state == STATE_SYSCALL_ENTRY) {
+			step->syscall.emu = 1;
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		finish_syscall_emu(t);
+		t->set_regs(trace->recorded_regs);
+		step->action = TSTEP_RETIRE;
+		return;
+
 	case SYS_socketcall:
 		if (process_socketcall(t, state, step)) {
 			return;
@@ -1639,16 +1645,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		validate_args(syscall, state, t);
 		break;
 	}
-
-	case SYS_sigreturn:
-	case SYS_rt_sigreturn:
-		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_emu(t, syscall);
-			finish_syscall_emu(t);
-		} else {
-			t->set_regs(trace->recorded_regs);
-		}
-		break;
 
 	case SYS_socketcall:
 		assert(STATE_SYSCALL_EXIT == state);
