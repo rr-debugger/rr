@@ -567,10 +567,11 @@ void record_event(Task *t)
 	}
 }
 
-void record_trace_termination_event()
+void record_trace_termination_event(Task* t)
 {
 	struct trace_frame frame;
 	memset(&frame, 0, sizeof(frame));
+	frame.tid = t ? t->tid : 0;
 	frame.global_time = global_time++;
 	frame.stop_reason = USR_TRACE_TERMINATION;
 	write_trace_frame(&frame);

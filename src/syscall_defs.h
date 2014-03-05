@@ -838,6 +838,18 @@ SYSCALL_DEF(EMU, pwrite64, 0)
 SYSCALL_DEF(EXEC, prlimit64, 1)
 
 /**
+ *  long ptrace(enum __ptrace_request request, pid_t pid,
+ *              void *addr, void *data);
+ *
+ * The ptrace() system call provides a means by which one process (the
+ * "tracer") may observe and control the execution of another process
+ * (the "tracee"), and examine and change the tracee's memory and
+ * registers.  It is primarily used to implement breakpoint debugging
+ * and system call tracing.
+ */
+SYSCALL_DEF(IRREGULAR, ptrace, -1)
+
+/**
  *  int quotactl(int cmd, const char *special, int id, caddr_t addr);
  *
  * The quotactl() call manipulates disk quotas.  The cmd argument

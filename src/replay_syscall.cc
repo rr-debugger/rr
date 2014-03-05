@@ -1485,6 +1485,22 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		return;
 
+	case SYS_ptrace:
+		step->syscall.emu = 1;
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		// ptrace isn't supported yet, but we bend over
+		// backwards to make traces that contain ptrace aborts
+		// as pleasantly debuggable as possible.  This is
+		// because several crash-monitoring systems use ptrace
+		// to generate crash reports, and those are exactly
+		// the kinds of events users will want to debug.
+		assert_exec(t, false,
+			    "Should have reached trace termination.");
+		return;		// not reached
+
 	case SYS_quotactl:
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
