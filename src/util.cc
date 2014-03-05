@@ -167,7 +167,7 @@ void maybe_mark_stdio_write(Task* t, int fd)
 					 || STDERR_FILENO == fd)) {
 		return;
 	}
-	snprintf(buf, sizeof(buf) - 1, "[rr.%d]", get_global_time());
+	snprintf(buf, sizeof(buf) - 1, "[rr %d %d]", t->tgid(), get_global_time());
 	len = strlen(buf);
 	if (write(fd, buf, len) != len) {
 		fatal("Couldn't write to %d", fd);
