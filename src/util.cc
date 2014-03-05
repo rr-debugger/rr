@@ -448,7 +448,7 @@ void print_process_mmap(Task* t)
 char* get_inst(Task* t, int eip_offset, int* opcode_size)
 {
 	byte inst[128];
-	ssize_t nread = t->read_bytes_fallible(t->ip() + eip_offset,
+	ssize_t nread = t->read_bytes_fallible((byte*)t->ip() + eip_offset,
 					       sizeof(inst), inst);
 	if (nread <= 0) {
 		return NULL;

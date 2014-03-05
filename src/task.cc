@@ -27,6 +27,7 @@ using namespace std;
 static Task::Map tasks;
 static Task::PrioritySet tasks_by_priority;
 
+/*static*/ const byte AddressSpace::breakpoint_insn;
 /*static*/ AddressSpace::Set AddressSpace::sas;
 
 dev_t
@@ -81,6 +82,74 @@ MappableResource::syscallbuf(pid_t tid, int fd)
 	 return MappableResource(FileId(st), path);
  }
 
+/**
+ * Represents a refcount set on a particular address.  Because there
+ * can be multiple refcounts of multiple types set on a single
+ * address, Breakpoint stores explicit USER and INTERNAL breakpoint
+ * refcounts.  Clients adding/removing breakpoints at this addr must
+ * call ref()/unref() as appropropiate.
+ */
+struct Breakpoint {
+	typedef shared_ptr<Breakpoint> shr_ptr;
+
+	// AddressSpace::destroy_all_breakpoints() can cause this
+	// destructor to be invoked while we have nonzero total
+	// refcount, so the most we can assert is that the refcounts
+	// are valid.
+	~Breakpoint() { assert(internal_count >= 0 && user_count >= 0); }
+
+	shr_ptr clone() {
+		return shr_ptr(new Breakpoint(*this));
+	}
+
+	void ref(TrapType which) {
+		assert(internal_count >= 0 && user_count >= 0);
+		++*counter(which);
+	}
+	int unref(TrapType which) {
+		assert(internal_count >= 0 && user_count >= 0
+		       && (internal_count > 0 || user_count > 0));
+		--*counter(which);
+		return internal_count + user_count;
+	}
+
+	TrapType type() const {
+		// NB: USER breakpoints need to be processed before
+		// INTERNAL ones.  We want to give the debugger a
+		// chance to dispatch commands before we attend to the
+		// internal rr business.  So if there's a USER "ref"
+		// on the breakpoint, treat it as a USER breakpoint.
+		return user_count > 0 ? TRAP_BKPT_USER : TRAP_BKPT_INTERNAL;
+	}
+
+	static shr_ptr create() {
+		return shr_ptr(new Breakpoint());
+	}
+
+	// "Refcounts" of breakpoints set at |addr|.  The breakpoint
+	// object must be unique since we have to save the overwritten
+	// data, and we can't enforce the order in which breakpoints
+	// are set/removed.
+	int internal_count, user_count;
+	byte overwritten_data;
+	static_assert(sizeof(overwritten_data) ==
+		      sizeof(AddressSpace::breakpoint_insn), 
+		      "Must have the same size.");
+private:
+	Breakpoint() : internal_count(), user_count() { }
+	Breakpoint(const Breakpoint& o)
+		: internal_count(o.internal_count), user_count(o.user_count)
+		, overwritten_data(o.overwritten_data) { }
+
+	int* counter(TrapType which) {
+		assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
+		int* p = TRAP_BKPT_USER == which ?
+			 &user_count : &internal_count;
+		assert(*p >= 0);
+		return p;
+	}
+};
+
 void
 AddressSpace::brk(const byte* addr)
 {
@@ -122,6 +191,14 @@ AddressSpace::dump() const
 			r.fsname.c_str(), r.id.special_name(),
 			m.flags, r.id.device, r.id.inode);
 	}
+}
+
+TrapType
+AddressSpace::get_breakpoint_type_at_ip(void* ip)
+{
+	void* addr = (byte*)ip - sizeof(breakpoint_insn);
+	auto it = breakpoints.find(addr);
+	return it == breakpoints.end() ? TRAP_NONE : it->second->type();
 }
 
 void
@@ -206,6 +283,44 @@ AddressSpace::remap(const byte* old_addr, size_t old_num_bytes,
 	map_and_coalesce(Mapping(new_addr, new_num_bytes, m.prot, m.flags,
 				 adjust_offset(r, m, (old_addr - m.start))),
 			 r);
+}
+
+void
+AddressSpace::remove_breakpoint(void* addr, TrapType type)
+{
+	auto it = breakpoints.find(addr);
+	if (it == breakpoints.end() || !it->second
+	    || it->second->unref(type) > 0) {
+		return;
+	}
+	destroy_breakpoint(it);
+}
+
+void
+AddressSpace::set_breakpoint(void* addr, TrapType type)
+{
+	auto it = breakpoints.find(addr);
+	if (it == breakpoints.end()) {
+		auto bp = Breakpoint::create();
+		// Grab a random task from the VM so we can use its
+		// read/write_mem() helpers.
+		Task* t = *task_set().begin();
+		t->read_mem((byte*)addr, &bp->overwritten_data);
+		t->write_mem((byte*)addr, breakpoint_insn);
+
+		auto it_and_is_new = breakpoints.insert(make_pair(addr, bp));
+		assert(it_and_is_new.second);
+		it = it_and_is_new.first;
+	}
+	it->second->ref(type);
+}
+
+void
+AddressSpace::destroy_all_breakpoints()
+{
+	while (!breakpoints.empty()) {
+		destroy_breakpoint(breakpoints.begin());
+	}
 }
 
 void
@@ -492,6 +607,30 @@ AddressSpace::create(Task* t)
 			   kNeverReadSegment, NULL);
 	assert(as->vdso_start_addr);
 	return as;
+}
+
+AddressSpace::AddressSpace(const AddressSpace& o)
+	// Whether the new VM wants our breakpoints our not,
+	// it's going to inherit them.  This is pretty much
+	// never what anyone wants, so a call to
+	// |remove_all_breakpoints()| is expected soon after
+	// the creation of this.
+	: breakpoints(o.breakpoints)
+	, exe(o.exe), heap(o.heap), is_clone(true)
+	, mem(o.mem), vdso_start_addr(o.vdso_start_addr)
+{
+	for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
+		it->second = it->second->clone();
+	}
+	sas.insert(this);
+}
+
+void
+AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it)
+{
+	Task* t = *task_set().begin();
+	t->write_mem((byte*)it->first, it->second->overwritten_data);
+	breakpoints.erase(it);
 }
 
 void
@@ -1152,6 +1291,15 @@ Task::maybe_update_vm(int syscallno, int state)
 		return vm()->unmap(addr, num_bytes);
 	}
 	}
+}
+
+void
+Task::move_ip_before_breakpoint()
+{
+	// TODO: assert that this is at a breakpoint trap.
+	struct user_regs_struct r = regs();
+	r.eip -= sizeof(AddressSpace::breakpoint_insn);
+	set_regs(r);
 }
 
 static string prname_from_exe_image(const string& e)
