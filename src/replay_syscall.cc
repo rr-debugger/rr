@@ -1640,17 +1640,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		break;
 	}
 
-	case SYS_setpgid:
-		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_emu(t, SYS_setpgid);
-		} else {
-			struct user_regs_struct r = t->regs();
-			r.ebx = t->trace.recorded_regs.ebx;
-			t->set_regs(r);
-			exit_syscall_emu(t, SYS_setpgid, 0);
-		}
-		break;
-
 	case SYS_sigreturn:
 	case SYS_rt_sigreturn:
 		if (state == STATE_SYSCALL_ENTRY) {
