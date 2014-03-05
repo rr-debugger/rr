@@ -169,6 +169,7 @@ set(BASIC_TESTS
   uname
   unjoined_thread
   user_ignore_sig
+  vfork
 )
 
 # A "custom test" is a foo.run driver script only, which does

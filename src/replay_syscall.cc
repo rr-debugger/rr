@@ -1663,27 +1663,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		assert(STATE_SYSCALL_EXIT == state);
 		return process_irregular_socketcall_exit(t, rec_regs);
 
-	case SYS_vfork:
-		if (state == STATE_SYSCALL_ENTRY) {
-			/* go to the system call */
-			__ptrace_cont(t);
-			if (PTRACE_EVENT_VFORK == t->ptrace_event()) {
-				unsigned long new_tid = sys_ptrace_getmsg(t);
-				/* wait until the new thread is ready */
-				t->wait();
-
-				struct trace_frame next_trace;
-				peek_next_trace(&next_trace);
-				t->clone(CLONE_SHARE_NOTHING,
-					 (const byte*)next_trace.recorded_regs.ecx,
-					 nullptr, new_tid, next_trace.tid);
-			}
-			validate_args(syscall, state, t);
-		} else {
-			exit_syscall_exec(t, syscall, 0, EMULATE_RETURN);
-		}
-		break;
-
 	default:
 		fatal("Unhandled  irregular syscall %d", syscall);
 	}

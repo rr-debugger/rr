@@ -1593,9 +1593,9 @@ private:
 	 * that shared table are immediately visible to all sibling
 	 * threads.
 	 *
-	 * fork and vfork children always get their own copies of the
-	 * table.  And if this task exec()s, the table is copied and
-	 * stripped of user sighandlers (see below). */
+	 * fork children always get their own copies of the table.
+	 * And if this task exec()s, the table is copied and stripped
+	 * of user sighandlers (see below). */
 	std::shared_ptr<Sighandlers> sighandlers;
 	// The task group this belongs to.
 	std::shared_ptr<TaskGroup> tg;

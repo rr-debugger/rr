@@ -3313,13 +3313,6 @@ void rec_process_syscall(Task *t)
 	SYS_REC1(utimes, 2*sizeof(struct timeval), (byte*)t->regs().ecx);
 
 	/**
-	 * pid_t vfork(void);
-	 *
-	 * vfork - create a child process and block parent
-	 */
-	SYS_REC0(vfork)
-
-	/**
 	 * pid_t waitpid(pid_t pid, int *status, int options);
 	 *
 	 * The waitpid() system call suspends execution of the calling process until

@@ -62,31 +62,13 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_NONE:
 		break;
 
-	case PTRACE_EVENT_VFORK_DONE:
-		push_syscall(t, t->event);
-		t->ev->syscall.state = EXITING_SYSCALL;
-		rec_process_syscall(t);
-		record_event(t);
-
-		/* issue an additional continue, since the process was stopped by the additional ptrace event */
-		t->cont_syscall();
-		status_changed(t);
-
-		record_event(t);
-		pop_syscall(t);
-
-		t->switchable = 1;
-		break;
-
 	case PTRACE_EVENT_CLONE:
-	case PTRACE_EVENT_FORK:
-	case PTRACE_EVENT_VFORK: {
+	case PTRACE_EVENT_FORK: {
 		int new_tid = sys_ptrace_getmsg(t);
 		const byte* stack = (const byte*)t->regs().ecx;
 		const byte* ctid = (const byte*)t->regs().edi;
-		// fork and vfork can never share these resources,
-		// only copy, so the flags here aren't meaningful for
-		// them, only clone.
+		// fork and can never share these resources, only
+		// copy, so the flags here aren't meaningful for it.
 		int flags_arg = (SYS_clone == t->regs().orig_eax) ?
 				t->regs().ebx : 0;
 		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
@@ -96,22 +78,8 @@ static void handle_ptrace_event(Task** tp)
 
 		start_hpc(new_task, rr_flags()->max_rbc);
 
-		/* execute an additional ptrace_sysc((0xFF0000 & status) >> 16), since we setup trace like that.
-		 * If the event is vfork we must no execute the cont_block, since the parent sleeps until the
-		 * child has finished */
-		if (event == PTRACE_EVENT_VFORK) {
-			t->switchable = 1;
-
-			push_syscall(t, t->event);
-			t->ev->syscall.state = ENTERING_SYSCALL;
-			record_event(t);
-			pop_syscall(t);
-
-			t->cont_syscall_nonblocking();
-		} else {
-			t->cont_syscall();
-			status_changed(t);
-		}
+		t->cont_syscall();
+		status_changed(t);
 		break;
 	}
 
@@ -152,8 +120,11 @@ static void handle_ptrace_event(Task** tp)
 		t = *tp;
 		break;
 
+	case PTRACE_EVENT_VFORK:
+	case PTRACE_EVENT_VFORK_DONE:
 	default:
-		fatal("Unknown ptrace event %d", event);
+		fatal("Unhandled ptrace event %s(%d)",
+		      ptrace_event_name(event), event);
 		break;
 	}
 }
