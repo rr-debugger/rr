@@ -2,6 +2,10 @@
 
 #include "rrutil.h"
 
+static void breakpoint(void) {
+	int break_here = 1;
+	(void)break_here;
+}
 
 static int interrupted_sleep(void) {
 	struct timespec ts = { .tv_sec = 2 };
@@ -17,6 +21,9 @@ static int interrupted_sleep(void) {
 static int caught_signal;
 static void handle_signal(int sig) {
 	++caught_signal;
+
+	breakpoint();
+	/* No more syscalls after here. */
 }
 
 int main(int argc, char *argv[]) {
