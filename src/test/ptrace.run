@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh ptrace "$@"
+
+fails "There's no meaningful ptrace() support to test yet."
