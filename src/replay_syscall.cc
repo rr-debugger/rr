@@ -1490,6 +1490,35 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		return;
 
+	case SYS_recvmmsg: {
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->ecx;
+		ssize_t nmmsgs = rec_regs->eax;
+		for (int i = 0; i < nmmsgs; ++i, ++msg) {
+			restore_struct_mmsghdr(t, msg);
+		}
+		step->action = TSTEP_EXIT_SYSCALL;
+		return;
+	}
+	case SYS_sendmmsg: {
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			return;
+		}
+		ssize_t nmmsgs = rec_regs->eax;
+		for (int i = 0; i < nmmsgs; ++i) {
+			t->set_data_from_trace();
+		}
+		step->action = TSTEP_EXIT_SYSCALL;
+		return;
+	}
 	case SYS_set_tid_address:
 		// set_tid_address returns the caller's PID.
 		step->syscall.emu_ret = 1;
@@ -1609,35 +1638,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		t->set_return_value_from_trace();
 		validate_args(syscall, state, t);
 		break;
-	}
-
-	case SYS_recvmmsg: {
-		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->ecx;
-		ssize_t nmmsgs = rec_regs->eax;
-		int i;
-
-		if (state == STATE_SYSCALL_ENTRY) {
-			return enter_syscall_emu(t, syscall);
-		}
-
-		for (i = 0; i < nmmsgs; ++i, ++msg) {
-			restore_struct_mmsghdr(t, msg);
-		}
-		return exit_syscall_emu_ret(t, syscall);
-	}
-
-	case SYS_sendmmsg: {
-		ssize_t nmmsgs = rec_regs->eax;
-		int i;
-
-		if (state == STATE_SYSCALL_ENTRY) {
-			return enter_syscall_emu(t, syscall);
-		}
-
-		for (i = 0; i < nmmsgs; ++i) {
-			t->set_data_from_trace();
-		}
-		return exit_syscall_emu_ret(t, syscall);
 	}
 
 	case SYS_setpgid:
