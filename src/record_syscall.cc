@@ -41,6 +41,7 @@
 
 #include "dbg.h"
 #include "drm.h"
+#include "recorder.h"		// for terminate_recording()
 #include "recorder_sched.h"
 #include "sys.h"
 #include "task.h"
@@ -491,9 +492,6 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	switch (syscallno) {
-	case SYS_ptrace:
-		fatal("Ptrace not yet implemented.  We need to go deeper.");
-
 	case SYS_splice: {
 		struct user_regs_struct r = t->regs();
 		loff_t* off_in = (loff_t*)r.ecx;
@@ -746,6 +744,20 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		t->set_regs(r);
 		return 1;
 	}
+
+	case SYS_ptrace:
+		fprintf(stderr,
+"\n"
+"rr: internal recorder error:\n"
+"  ptrace() is not yet supported.  We need to go deeper.\n"
+"\n"
+"  Your trace is being synced and will be available for replay when\n"
+"  this process exits.\n"
+			);
+		terminate_recording(t);
+		fatal("Not reached");
+		return 0;
+
 
 	case SYS_epoll_pwait:
 		fatal("Unhandled syscall %s", strevent(syscallno));

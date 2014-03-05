@@ -138,6 +138,7 @@ set(BASIC_TESTS
   prctl_name
   priority
   prw
+  ptrace
   rdtsc
   save_data_fd
   sched_setaffinity
@@ -189,6 +190,7 @@ set(CUSTOM_TESTS
   break_int3
   break_mmap_private
   break_msg
+  break_ptrace
   break_rdtsc
   break_sigreturn
   break_sync_signal

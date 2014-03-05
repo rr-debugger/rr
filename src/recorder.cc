@@ -677,25 +677,12 @@ static void install_termsig_handlers(void)
 	}
 }
 
-/**
- * If |term_request| is set, then record a trace-termination event,
- * sync the trace files, and shut down.  The |t| argument isn't
- * meaningful, it just allows this to give task context to the
- * trace-termination event, for simplicity.
- */
-static void maybe_process_term_request()
+/** If |term_request| is set, then terminate_recording(). */
+static void maybe_process_term_request(Task* t)
 {
-	if (!term_request) {
-		return;
+	if (term_request) {
+		terminate_recording(t);
 	}
-
-	log_info("Processing termination request ...");
-	log_info("  recording TRACE_TERMINATION event ...");
-	record_trace_termination_event();
-
-	log_info("  exiting, goodbye.");
-	flush_trace_files();
-	exit(0);
 }
 
 void record()
@@ -707,11 +694,11 @@ void record()
 	while (Task::count() > 0) {
 		int by_waitpid;
 
-		maybe_process_term_request();
+		maybe_process_term_request(t);
 
 		Task* next = rec_sched_get_active_thread(t, &by_waitpid);
 		if (!next) {
-			maybe_process_term_request();
+			maybe_process_term_request(t);
 		}
 		t = next;
 
@@ -753,8 +740,21 @@ void record()
 		}
 
 		if (!resume_execution(t, DEFAULT_CONT)) {
-			maybe_process_term_request();
+			maybe_process_term_request(t);
 		}
 		runnable_state_changed(t);
 	}
+}
+
+void terminate_recording(Task* t)
+{
+	log_info("Processing termination request ...");
+	log_info("  recording final TRACE_TERMINATION event ...");
+	record_trace_termination_event(t);
+	flush_trace_files();
+
+	// TODO: Task::killall() here?
+
+	log_info("  exiting, goodbye.");
+	exit(0);
 }

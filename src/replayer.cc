@@ -507,14 +507,19 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 
 /**
  * Return the task that was recorded running the next event in the
- * trace, and should be replayed now.
+ * trace, and should be replayed now.  Return nullptr if the trace was
+ * interrupted at this point in recording.  If so, |*intr_t| is set to
+ * the task recorded along with that event, if there was one.
+ * |intr_t| may be nullptr.
  */
 static trace_frame cur_trace_frame;
-static Task* schedule_task()
+static Task* schedule_task(Task** intr_t = nullptr)
 {
 	read_next_trace(&cur_trace_frame);
-	if (!cur_trace_frame.tid) {
-		assert(USR_TRACE_TERMINATION == cur_trace_frame.stop_reason);
+	if (USR_TRACE_TERMINATION == cur_trace_frame.stop_reason) {
+		if (intr_t) {
+			*intr_t = Task::find(cur_trace_frame.tid);
+		}
 		return nullptr;
 	}
 
@@ -1601,13 +1606,15 @@ static int try_one_trace_step(Task* t,
  * All we can do is notify the debugger, process its final requests,
  * and then die.
  */
-static void handle_interrupted_trace(struct dbg_context* dbg)
+static void handle_interrupted_trace(struct dbg_context* dbg,
+				     Task* t = nullptr)
 {
 	log_info("Trace terminated early at this point during recording.");
 	if (dbg) {
-		dbg_notify_stop(dbg, DBG_ALL_THREADS, 0x05);
+		dbg_notify_stop(dbg, t ? get_threadid(t) : DBG_ALL_THREADS,
+				0x05);
 		log_info("Processing last round of debugger requests.");
-		process_debugger_requests(dbg, nullptr);
+		process_debugger_requests(dbg, t);
 	}
 	log_info("Exiting.");
 	exit(0);
@@ -1770,7 +1777,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			// early-termination marker.  Otherwise we
 			// would have seen the marker at
 			// |schedule_task()|.
-			return handle_interrupted_trace(dbg);
+			return handle_interrupted_trace(dbg, t);
 		}
 
 		/* Currently we only understand software breakpoints
@@ -1959,9 +1966,10 @@ static void replay_trace_frames(void)
 {
 	struct dbg_context* dbg = nullptr;
 	while (!last_task) {
-		Task* t = schedule_task();
+		Task* intr_t;
+		Task* t = schedule_task(&intr_t);
 		if (!t) {
-			return handle_interrupted_trace(dbg);
+			return handle_interrupted_trace(dbg, intr_t);
 		}
 		dbg = maybe_create_debugger(t, dbg);
 		replay_one_trace_frame(dbg, t);
