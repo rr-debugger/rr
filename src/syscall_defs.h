@@ -1374,14 +1374,6 @@ SYSCALL_DEF(EMU, utimes, 1)
 SYSCALL_DEF(EMU, utimensat, 0)
 
 /**
- *  pid_t vfork(void);
- *
- * vfork(), just like fork(2), creates a child process of the calling
- * process.  For details and return value and errors, see fork(2).
- */
-SYSCALL_DEF(IRREGULAR, vfork, -1)
-
-/**
  *  pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
  *
  * The wait3() and wait4() system calls are similar to waitpid(2), but
