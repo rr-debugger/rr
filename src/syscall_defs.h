@@ -1023,7 +1023,7 @@ SYSCALL_DEF(EMU, setitimer, 1)
  * the session ID of that group must match the session ID of the
  * joining process.
  */
-SYSCALL_DEF(IRREGULAR, setpgid, -1)
+SYSCALL_DEF(EMU, setpgid, 0)
 
 /**
  *  int setpriority(int which, int who, int prio);
