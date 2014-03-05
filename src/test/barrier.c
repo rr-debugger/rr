@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
 static void breakpoint(void) {

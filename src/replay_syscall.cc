@@ -704,26 +704,28 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	}
 }
 
-void process_ipc(Task* t, struct trace_frame* trace, int state)
+void process_ipc(Task* t, struct trace_frame* trace, int state,
+		 struct rep_trace_step* step)
 {
-	int call = trace->recorded_regs.ebx;
-	debug("ipc call: %d\n", call);
-
-	if (state == STATE_SYSCALL_ENTRY) {
-		return enter_syscall_emu(t, SYS_ipc);
+	step->syscall.emu = 1;
+	step->syscall.emu_ret = 1;
+	if (STATE_SYSCALL_ENTRY == state) {
+		step->action = TSTEP_ENTER_SYSCALL;
+		return;
 	}
 
-	int num_emu_args;
+	step->action = TSTEP_EXIT_SYSCALL;
+	int call = trace->recorded_regs.ebx;
+	debug("ipc call: %d\n", call);
 	switch (call) {
 	case MSGCTL:
 	case MSGRCV:
-		num_emu_args = 1;
-		break;
+		step->syscall.num_emu_args = 1;
+		return;
 	default:
-		num_emu_args = 0;
-		break;
+		step->syscall.num_emu_args = 0;
+		return;
 	}
-	exit_syscall_emu(t, SYS_ipc, num_emu_args);
 }
 
 /**
@@ -1422,6 +1424,9 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	case SYS_ioctl:
 		return process_ioctl(t, state, step);
 
+	case SYS_ipc:
+		return process_ipc(t, trace, state, step);
+
 	case SYS_mmap2:
 		return process_mmap2(t, trace, state, step);
 
@@ -1605,9 +1610,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		validate_args(syscall, state, t);
 		break;
 	}
-	case SYS_ipc:
-		process_ipc(t, trace, state);
-		break;
 
 	case SYS_recvmmsg: {
 		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->ecx;
