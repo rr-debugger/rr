@@ -2,6 +2,11 @@
 
 #include "rrutil.h"
 
+static void breakpoint(void) {
+	int break_here = 1;
+	(void)break_here;
+}
+
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int sockfds[2];
 
@@ -86,6 +91,9 @@ static void* reader_thread(void* dontcare) {
 		atomic_puts("r: recmmsg'ing socket ...");
 
 		pthread_barrier_wait(&cheater_barrier);
+
+		breakpoint();
+
 		test_assert(1 == recvmmsg(sock, &mmsg, 1, 0, NULL));
 		atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n",
 			      magic, mmsg.msg_len);
@@ -316,6 +324,9 @@ int main(int argc, char *argv[]) {
 		usleep(500000);
 		atomic_printf("M: sendmmsg'ing 0x%x to socket ...\n",
 			      msg_magic);
+
+		breakpoint();
+
 		sendmmsg(sock, &mmsg, 1, 0);
 		atomic_printf("M:   ... sent %u bytes\n", mmsg.msg_len);
 		pthread_barrier_wait(&cheater_barrier);
