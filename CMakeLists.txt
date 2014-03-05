@@ -182,11 +182,15 @@ set(BASIC_TESTS
 set(CUSTOM_TESTS
   async_signal_syscalls_100
   async_signal_syscalls_1000
+  break_block
   break_clock
+  break_clone
+  break_exec
   break_int3
   break_mmap_private
   break_msg
   break_rdtsc
+  break_sigreturn
   break_sync_signal
   break_thread
   break_time_slice
