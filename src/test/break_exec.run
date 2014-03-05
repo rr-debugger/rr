@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh break_exec "$@"
-record prctl_name
-debug prctl_name generic_break
+record exec_self
+debug exec_self generic_break

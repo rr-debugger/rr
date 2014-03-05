@@ -588,6 +588,13 @@ static void process_clone(Task* t,
 	new_task->set_data_from_trace();
 	new_task->set_data_from_trace();
 	new_task->set_data_from_trace();
+	if (!(CLONE_VM & flags)) {
+		// It's hard to imagine a scenario in which it would
+		// be useful to inherit breakpoints (along with their
+		// refcounts) across a non-VM-sharing clone, but for
+		// now we never want to do this.
+		new_task->vm()->destroy_all_breakpoints();
+	}
 
 	struct user_regs_struct r = t->regs();
 	/* set the ebp register to the recorded value -- it should not
