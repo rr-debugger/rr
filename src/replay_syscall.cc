@@ -443,12 +443,6 @@ static void exit_syscall_emu(Task* t,
 	exit_syscall_emu_ret(t, syscall);
 }
 
-static void enter_syscall_exec(Task* t, int syscall)
-{
-	__ptrace_cont(t);
-	validate_args(syscall, STATE_SYSCALL_ENTRY, t);
-}
-
 enum { DONT_EMULATE_RETURN = 0, EMULATE_RETURN = 1 };
 static void exit_syscall_exec(Task* t, int syscall,
 			      int num_emu_args, int emu_ret)
@@ -609,6 +603,55 @@ static void process_clone(Task* t,
 	init_scratch_memory(new_task);
 
 	step->action = TSTEP_RETIRE;
+}
+
+static void process_execve(Task* t, int state,
+			   const struct user_regs_struct* rec_regs,
+			   struct rep_trace_step* step)
+{
+	const int syscallno = SYS_execve;
+
+	if (STATE_SYSCALL_ENTRY == state) {
+		// Executed, not emulated.
+		step->action = TSTEP_ENTER_SYSCALL;
+		return;
+	}
+
+	step->action = TSTEP_RETIRE;
+
+	if (0 > rec_regs->eax) {
+		/* Failed exec(). */
+		exit_syscall_exec(t, syscallno, 0, DONT_EMULATE_RETURN);
+		assert_exec(t, rec_regs->eax == t->regs().eax,
+			    "Recorded exec() return %ld, but replayed %ld",
+			    rec_regs->eax, t->regs().eax);
+		return;
+	}
+
+	/* we need an additional ptrace syscall, since ptrace is setup
+	 * with PTRACE_O_TRACEEXEC */
+	__ptrace_cont(t);
+
+	/* We just saw a successful exec(), so from now on we know
+	 * that the address space layout for the replay tasks will
+	 * (should!) be the same as for the recorded tasks.  So we can
+	 * start validating registers at events. */
+	validate = true;
+
+	bool check = t->regs().ebx;
+	/* if the execve comes from a vfork system call the ebx
+	 * register is not zero. in this case, no recorded data needs
+	 * to be injected */
+	if (check == 0) {
+		t->set_data_from_trace();
+	}
+
+	init_scratch_memory(t);
+
+	t->post_exec();
+
+	t->set_return_value_from_trace();
+	validate_args(syscallno, state, t);
 }
 
 static void process_futex(Task* t, int state, struct rep_trace_step* step,
@@ -1355,6 +1398,9 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	case SYS_clone:
 		return process_clone(t, trace, state, step);
 
+	case SYS_execve:
+		return process_execve(t, state, rec_regs, step);
+
 	case SYS_exit:
 		destroy_buffers(t, DESTROY_DEFAULT);
 		// fall through
@@ -1586,49 +1632,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	step->action = TSTEP_RETIRE;
 
 	switch (syscall) {
-	case SYS_execve: {
-		int check;
-
-		if (state == STATE_SYSCALL_ENTRY) {
-			enter_syscall_exec(t, syscall);
-			break;
-		}
-		if (0 > rec_regs->eax) {
-			/* Failed exec(). */
-			exit_syscall_exec(t, syscall, 0, DONT_EMULATE_RETURN);
-			assert_exec(t, rec_regs->eax == t->regs().eax,
-				    "Recorded exec() return %ld, but replayed %ld",
-				    rec_regs->eax, t->regs().eax);
-			break;
-		}
-
-		/* we need an additional ptrace syscall, since ptrace
-		 * is setup with PTRACE_O_TRACEEXEC */
-		__ptrace_cont(t);
-
-		/* We just saw a successful exec(), so from now on we
-		 * know that the address space layout for the replay
-		 * tasks will (should!) be the same as for the
-		 * recorded tasks.  So we can start validating
-		 * registers at events. */
-		validate = true;
-
-		check = t->regs().ebx;
-		/* if the execve comes from a vfork system call the
-		 * ebx register is not zero. in this case, no recorded
-		 * data needs to be injected */
-		if (check == 0) {
-			t->set_data_from_trace();
-		}
-
-		init_scratch_memory(t);
-
-		t->post_exec();
-
-		t->set_return_value_from_trace();
-		validate_args(syscall, state, t);
-		break;
-	}
 	default:
 		fatal("Unhandled irregular syscall %d", syscall);
 	}
