@@ -9,6 +9,11 @@ struct msg {
 	long msg;
 };
 
+static void breakpoint(void) {
+	int break_here = 1;
+	(void)break_here;
+}
+
 static int msqid;
 
 static void child(void) {
@@ -52,6 +57,9 @@ int main(int argc, char *argv[]) {
 	int i;
 	struct msg msg = { 0 };
 	int status;
+
+	breakpoint();
+	/* NB: no syscalls between here and |msgget()| below. */
 
 	/* NB: surprisingly, this test will leak Q's on failure, even
 	 * though we're using IPC_PRIVATE.  There doesn't appear to be
