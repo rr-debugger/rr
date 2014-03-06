@@ -48,10 +48,29 @@ static void get_ifconfig(int sockfd, struct ifreq* req) {
 int main(int argc, char *argv[]) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	struct ifreq req;
+	char name[PATH_MAX];
+	int index;
 	struct ethtool_cmd etc;
 	int ret;
 
 	get_ifconfig(sockfd, &req);
+	strcpy(name, req.ifr_name);
+
+	req.ifr_ifindex = -1;
+	strcpy(req.ifr_name, name);
+	ret = ioctl(sockfd, SIOCGIFINDEX, &req);
+	atomic_printf("SIOCGIFINDEX(ret:%d): %s index is %d\n", ret,
+		      req.ifr_name, req.ifr_ifindex);
+	test_assert(0 == ret);
+	index = req.ifr_ifindex;
+
+	memset(&req.ifr_name, 0x5a, sizeof(req.ifr_name));
+	req.ifr_ifindex = index;
+	ret = ioctl(sockfd, SIOCGIFNAME, &req);
+	atomic_printf("SIOCGIFNAME(ret:%d): index %d(%s) name is %s\n", ret,
+		      index, name, req.ifr_name);
+	test_assert(0 == ret);
+	test_assert(!strcmp(name, req.ifr_name));
 
 	memset(&req.ifr_addr, 0x5a, sizeof(req.ifr_addr));
 	ret = ioctl(sockfd, SIOCGIFADDR, &req);

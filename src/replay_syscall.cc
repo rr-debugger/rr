@@ -736,7 +736,9 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	case SIOCETHTOOL:
 	case SIOCGIFADDR:
 	case SIOCGIFFLAGS:
+	case SIOCGIFINDEX:
 	case SIOCGIFMTU:
+	case SIOCGIFNAME:
 	case TCGETS:
 	case TIOCINQ:
 	case TIOCGWINSZ:
