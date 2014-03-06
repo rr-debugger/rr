@@ -1,0 +1,6 @@
+testname=tiocgwinsz
+source `dirname $0`/util.sh $testname "$@"
+
+record $testname
+replay $replayflags
+check EXIT-SUCCESS

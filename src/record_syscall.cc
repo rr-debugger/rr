@@ -1086,9 +1086,16 @@ static void process_execve(Task* t)
 	init_scratch_memory(t);
 }
 
+static void record_ioctl_data(Task *t, ssize_t num_bytes)
+{
+	byte* param = (byte*)t->regs().edx;
+	push_syscall(t, SYS_ioctl);
+	record_child_data(t, num_bytes, param);
+	pop_syscall(t);	
+}
+
 static void process_ioctl(Task *t, int request)
 {
-	int syscall = SYS_ioctl;
 	int type = _IOC_TYPE(request);
 	int nr = _IOC_NR(request);
 	int dir = _IOC_DIR(request);
@@ -1104,16 +1111,11 @@ static void process_ioctl(Task *t, int request)
 	 * conventions.  Special case them here. */
 	switch (request) {
 	case TCGETS:
-		push_syscall(t, syscall);
-		record_child_data(t, sizeof(struct termios),
-				  (byte*)t->regs().edx);
-		pop_syscall(t);
-		return;
+		return record_ioctl_data(t, sizeof(struct termios));
 	case TIOCINQ:
-		push_syscall(t, syscall);
-		record_child_data(t, sizeof(int), (byte*)t->regs().edx);
-		pop_syscall(t);
-		return;
+		return record_ioctl_data(t, sizeof(int));
+	case TIOCGWINSZ:
+		return record_ioctl_data(t, sizeof(struct winsize));
 	}
 
 	/* In ioctl language, "_IOC_WRITE" means "outparam".  Both

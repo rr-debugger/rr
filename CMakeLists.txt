@@ -168,6 +168,7 @@ set(BASIC_TESTS
   threaded_syscall_spam
   threads
   tiocinq
+  tiocgwinsz
   truncate
   uname
   unjoined_thread
