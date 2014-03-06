@@ -1,7 +1,7 @@
 import pexpect, re, signal, sys, time
 
 __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr',
-            'restart_replay', 'interrupt_gdb', 'ok' ]
+            'restart_replay', 'restart_replay_at_end', 'interrupt_gdb', 'ok' ]
 
 # Public API
 def expect_gdb(what):
@@ -21,6 +21,10 @@ def restart_replay():
     send_gdb('r\n')
     expect_gdb('Start it from the beginning')
     send_gdb('y\n')
+
+def restart_replay_at_end():
+    # gdb doesn't prompt if it thinks the inferior has exited.
+    send_gdb('r\n')
 
 def send_gdb(what):
     send(gdb_rr, what)

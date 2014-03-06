@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh parent_no_stop_child_crash "$@"
+record fork_child_crash
+debug fork_child_crash parent_no_stop_child_crash

@@ -1,0 +1,10 @@
+source `dirname $0`/util.sh fork_exec_info_thr "$@"
+
+save_exe barrier
+saved_barrier="barrier-$nonce"
+
+record target_process "$saved_barrier"
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+
+echo Targeting recorded pid $TARGET_PID ...
+debug target_process get_thread_list "-p $TARGET_PID -g 1"
