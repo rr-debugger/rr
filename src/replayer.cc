@@ -96,6 +96,12 @@ static int debugger_params_pipe[2];
 // poke around at that last task.  So we store it here to allow
 // processing debugger requests for it later.
 static Task* last_task;
+// Another little hack: technically replayer doesn't know about the
+// fact that debugger_gdb hides all but one tgid from the gdb client.
+// But to recognize the last_task above (another little hack), we need
+// to known when an exiting thread from the target task group is the
+// last.
+pid_t debugged_tgid;
 
 /* Nonzero after the first exec() has been observed during replay.
  * After this point, the first recorded binary image has been exec()d
@@ -1475,6 +1481,14 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 	exit(0);
 }
 
+/** Return true when replaying/debugging should cease after |t| exits. */
+static bool is_last_interesting_task(Task* t)
+{
+	return (0 == debugged_tgid && Task::count() == 1)
+		|| (t->tgid() == debugged_tgid
+		    && t->task_group()->task_set().size() == 1);
+}
+
 static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
@@ -1515,8 +1529,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		t->unstable = 1;
 		/* fall through */
 	case USR_EXIT: {
-		if (Task::count() == 1) {
-			debug("last task is %d (%d)", t->rec_tid, t->tid);
+		if (is_last_interesting_task(t)) {
+			debug("last interesting task is %d (%d)",
+			      debugged_tid, t->rec_tid, t->tid);
 			last_task = t;
 			return;
 		}
@@ -1766,7 +1781,7 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	const char* exe = rr_flags()->dont_launch_debugger ? nullptr :
 			  t->vm()->exe_image().c_str();
 	return dbg_await_client_connection("127.0.0.1", port, probe,
-					   t->tgid(), exe,
+					   debugged_tgid = t->tgid(), exe,
 					   parent, debugger_params_pipe[1]);
 }
 

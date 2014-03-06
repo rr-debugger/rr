@@ -1,7 +1,8 @@
 import pexpect, re, signal, sys, time
 
 __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr',
-            'restart_replay', 'restart_replay_at_end', 'interrupt_gdb', 'ok' ]
+            'restart_replay', 'restart_replay_at_end', 'interrupt_gdb', 'ok',
+            'failed', 'iterlines_both', ]
 
 # Public API
 def expect_gdb(what):
@@ -10,12 +11,22 @@ def expect_gdb(what):
 def expect_rr(what):
     expect(gdb_rr, what)
 
+def failed(why, e=None):
+    print 'FAILED:', why
+    if e:
+        print 'exception:', e
+    clean_up()
+    sys.exit(1)
+
 def interrupt_gdb():
     try:
         gdb_rr.kill(signal.SIGINT)
     except Exception, e:
         failed('interrupting gdb', e)
     expect_gdb('stopped.')
+
+def iterlines_both():
+    return gdb_rr
 
 def restart_replay():
     send_gdb('r\n')
@@ -52,13 +63,6 @@ def expect(prog, what):
         prog.expect(what)
     except Exception, e:
         failed('expecting "%s"'% (what), e)
-
-def failed(why, e):
-    print 'FAILED:', why
-    if e:
-        print 'exception:', e
-    clean_up()
-    sys.exit(1)
 
 def get_exe():
     '''Return the image to be debugged'''
