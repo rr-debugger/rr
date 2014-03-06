@@ -159,12 +159,15 @@ bool dbg_is_resume_request(const struct dbg_request* req);
  * port based on |start_port| will be searched for.  Otherwise, if
  * |port| is already bound, this function will fail.
  *
+ * Pass the |tgid| of the task on which this debug-connection request
+ * is being made.  The remaining debugging session will be limited to
+ * traffic regarding |tgid|, but clients don't need to and shouldn't
+ * need to assume that.
+ *
  * If we're opening this connection on behalf of a known client, past
  * its pid as |client| and its |client_params_fd|.  |exe_image| is the
  * process that will be debugged by client, or null ptr if there isn't
  * a client.
- *
- * |exe_image| is of the process that will be debugged, or nullptr if we don't know
  *
  * This function is infallible: either it will return a valid
  * debugging context, or it won't return.
@@ -173,6 +176,7 @@ enum { DONT_PROBE = 0, PROBE_PORT };
 struct dbg_context* dbg_await_client_connection(const char* addr,
 						unsigned short desired_port,
 						int probe,
+						pid_t tgid,
 						const char* exe_image = nullptr,
 						pid_t client = -1,
 						int client_params_fd = -1);

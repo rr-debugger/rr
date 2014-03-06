@@ -219,8 +219,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		case DREQ_GET_THREAD_LIST: {
 			size_t len = Task::count();
 			vector<dbg_threadid_t> tids;
-			for (Task::Map::const_iterator it = Task::begin();
-			     it != Task::end(); ++it) {
+			for (auto it = Task::begin(); it != Task::end(); ++it) {
 				Task* t = it->second;
 				tids.push_back(get_threadid(t));
 			}
@@ -1667,6 +1666,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		log_info("(debugger detached from us, rr exiting)");
 		dbg_reply_detach(dbg);
 		dbg_destroy_context(&dbg);
+		// Don't orphan tracees: their VMs are inconsistent
+		// because we've been using emulated tracing, so they
+		// can't resume normal execution.  And we wouldn't
+		// want them continuing to execute even if they could.
+		Task::killall();
 		exit(0);
 	}
 
@@ -1762,8 +1766,8 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	const char* exe = rr_flags()->dont_launch_debugger ? nullptr :
 			  t->vm()->exe_image().c_str();
 	return dbg_await_client_connection("127.0.0.1", port, probe,
-					   exe, parent,
-					   debugger_params_pipe[1]);
+					   t->tgid(), exe,
+					   parent, debugger_params_pipe[1]);
 }
 
 /**
@@ -2103,7 +2107,8 @@ void start_debug_server(Task* t)
 	// likely already in a debugger, and wouldn't be able to
 	// control another session.
 	struct dbg_context* dbg =
-		dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT);
+		dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT,
+					    t->tgid());
 
 	process_debugger_requests(dbg, t);
 

@@ -55,17 +55,28 @@ using namespace std;
  * cookie, of course).
  */
 struct dbg_context {
-	int desc_fd;		// fd of dbg_context mapping
-	struct dbg_request req;	/* current request to be processed */
-	dbg_threadid_t resume_thread; /* thread to be resumed */
-	dbg_threadid_t query_thread;  /* thread for get/set */
-	int serving_symbol_lookups;	    /* nonzero when we can
-					     * request lookups */
-	int no_ack;		/* nonzero when "no-ack mode" is
-				 * enabled */
-	struct sockaddr_in addr;	    /* server address */
-	int listen_fd;			    /* listen socket */
-	int sock_fd;			    /* client socket fd */
+	// fd of dbg_context shmem region.
+	int desc_fd;
+	// Current request to be processed.
+	struct dbg_request req;
+	// Thread to be resumed.
+	dbg_threadid_t resume_thread;
+	// Thread for get/set requests.
+	dbg_threadid_t query_thread;
+	// gdb and rr don't work well together in multi-process and
+	// multi-exe-image debugging scenarios, so we pretend only
+	// this task group exists when interfacing with gdb
+	pid_t tgid;
+	// Nonzero when we can request lookups.
+	int serving_symbol_lookups;
+	// nonzero when "no-ack mode" enabled, in which we don't have
+	// to send ack packets back to gdb.  This is a huge perf win.
+	int no_ack;
+	// Server address we listen for a connection on.
+	struct sockaddr_in addr;
+	// Listen and client sockets created for |addr|.
+	int listen_fd;
+	int sock_fd;
 	/* XXX probably need to dynamically size these */
 	byte inbuf[4096];	/* buffered input from gdb */
 	ssize_t inlen;		/* length of valid data */
@@ -244,11 +255,13 @@ struct debugger_params {
 struct dbg_context* dbg_await_client_connection(const char* addr,
 						unsigned short desired_port,
 						int probe,
+						pid_t tgid,
 						const char* exe_image,
 						pid_t client,
 						int client_params_fd)
 {
 	if (struct dbg_context* dbg = try_load_from_exec_cookie()) {
+		assert(tgid == dbg->tgid);
 		// Replay just restarted.  |dbg| is now restored to
 		// what it was in the prior session.
 		return dbg;
@@ -281,6 +294,8 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 			"  target remote %s:%d\n",
 			!strcmp(addr, "127.0.0.1") ? "" : addr, port);
 	}
+	dbg->tgid = tgid;
+	debug("limiting debugger traffic to tgid %d", tgid);
 	await_debugger(dbg);
 	return dbg;
 }
@@ -1241,6 +1256,12 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
 	assert(dbg_is_resume_request(&dbg->req)
 	       || dbg->req.type == DREQ_INTERRUPT);
 
+	if (dbg->tgid != thread.pid) {
+		debug("ignoring stop of thread %d.%d", thread.pid, thread.tid);
+		// Re-use the existing continue request to advance to
+		// the next stop we're willing to tell gdb about.
+		return;
+	}
 	send_stop_reply_packet(dbg, thread, sig);
 
 	consume_request(dbg);
@@ -1404,6 +1425,9 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
 		str[offset++] = 'm';
 		for (int i = 0; i < len; ++i) {
 			const dbg_threadid_t& t = threads[i];
+			if (dbg->tgid != t.pid) {
+				continue;
+			}
 			offset += snprintf(&str[offset], maxlen - offset,
 					   "p%02x.%02x,", t.pid, t.tid);
 		}

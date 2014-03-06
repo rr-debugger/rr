@@ -99,6 +99,7 @@ set(BASIC_TESTS
   fault_in_code_page
   fcntl_owner_ex
   flock
+  fork_child_crash
   fork_syscalls
   getcwd
   goto_event
@@ -201,7 +202,10 @@ set(CUSTOM_TESTS
   dead_thread_target
   deliver_async_signal_during_syscalls
   execp
+  fork_exec_info_thr
   get_thread_list
+  parent_no_break_child_bkpt
+  parent_no_stop_child_crash
   read_bad_mem
   sanity
   signal_stop
