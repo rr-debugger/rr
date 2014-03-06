@@ -13,6 +13,7 @@
 #include <linux/prctl.h>
 #include <linux/shm.h>
 #include <linux/sem.h>
+#include <linux/sockios.h>
 #include <linux/soundcard.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -729,6 +730,13 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 
 	/* Process special-cased ioctls first. */
 	switch (request) {
+	case SIOCGIFCONF:
+		step->syscall.num_emu_args = 2;
+		return;
+	case SIOCETHTOOL:
+	case SIOCGIFADDR:
+	case SIOCGIFFLAGS:
+	case SIOCGIFMTU:
 	case TCGETS:
 	case TIOCINQ:
 	case TIOCGWINSZ:

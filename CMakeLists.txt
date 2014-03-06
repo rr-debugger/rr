@@ -152,6 +152,7 @@ set(BASIC_TESTS
   sigrt
   sigtrap
   simple
+  sioc
   splice
   statfs
   step_thread

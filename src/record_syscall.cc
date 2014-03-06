@@ -9,6 +9,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/ethtool.h>
 #include <linux/futex.h>
 #include <linux/ipc.h>
 #include <linux/msg.h>
@@ -16,6 +17,8 @@
 #include <linux/prctl.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
+#include <linux/sockios.h>
+#include <net/if.h>
 #include <poll.h>
 #include <sched.h>
 #include <sys/epoll.h>
@@ -1100,6 +1103,7 @@ static void process_ioctl(Task *t, int request)
 	int nr = _IOC_NR(request);
 	int dir = _IOC_DIR(request);
 	int size = _IOC_SIZE(request);
+	byte* param = (byte*)t->regs().edx;
 
 	debug("handling ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d",
 	      request, type, nr, dir, size);
@@ -1110,6 +1114,30 @@ static void process_ioctl(Task *t, int request)
 	/* Some ioctl()s are irregular and don't follow the _IOC()
 	 * conventions.  Special case them here. */
 	switch (request) {
+	case SIOCETHTOOL: {
+		struct ifreq ifr;
+		t->read_mem(param, &ifr);
+
+		push_syscall(t, SYS_ioctl);
+		record_child_data(t, sizeof(struct ethtool_cmd),
+				  (byte*)ifr.ifr_data);
+		pop_syscall(t);	
+		return;
+	}
+	case SIOCGIFCONF: {
+		struct ifconf ifconf;
+		t->read_mem(param, &ifconf);
+
+		push_syscall(t, SYS_ioctl);
+		record_parent_data(t, sizeof(ifconf), param, &ifconf);
+		record_child_data(t, ifconf.ifc_len, (byte*)ifconf.ifc_buf);
+		pop_syscall(t);	
+		return;
+	}
+	case SIOCGIFADDR:
+	case SIOCGIFFLAGS:
+	case SIOCGIFMTU:
+		return record_ioctl_data(t, sizeof(struct ifreq));
 	case TCGETS:
 		return record_ioctl_data(t, sizeof(struct termios));
 	case TIOCINQ:
