@@ -211,6 +211,7 @@ set(CUSTOM_TESTS
   signal_stop
   step1
   step_signal
+  subprocess_exit_ends_session
   syscallbuf_timeslice_250
   term_trace_cpu
   term_trace_syscall

@@ -12,16 +12,17 @@ int main(int argc, char *argv[]) {
 	int status;
 
 	if (0 == child) {
-		atomic_puts("child: crashing ...");
+		atomic_printf("child %d\n", getpid());
 
 		breakpoint();
 
+		atomic_puts("subprocess: crashing ...");
 		*(volatile int*)NULL = 0;
 		exit(0);	/* not reached */
 	}
 
 	test_assert(child == waitpid(child, &status, 0));
-	atomic_printf("parent: child %d exited with %#x\n", child, status);
+	atomic_printf("parent: subprocess %d exited with %#x\n", child, status);
 	test_assert(WIFSIGNALED(status) && SIGSEGV == WTERMSIG(status));
 
 	atomic_puts("EXIT-SUCCESS");
