@@ -731,6 +731,7 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	switch (request) {
 	case TCGETS:
 	case TIOCINQ:
+	case TIOCGWINSZ:
 		step->syscall.num_emu_args = 1;
 		return;
 	}
