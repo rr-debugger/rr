@@ -100,6 +100,29 @@ static void* reader_thread(void* dontcare) {
 		test_assert(msg_magic == magic);
 	}
 	{
+		struct msghdr msg = { 0 };
+		struct iovec iovs[2];
+		char c1 = '\0', c2 = '\0';
+
+		iovs[0].iov_base = &c1;
+		iovs[0].iov_len = sizeof(c1);
+		iovs[1].iov_base = &c2;
+		iovs[1].iov_len = sizeof(c2);
+
+		msg.msg_iov = iovs;
+		msg.msg_iovlen = sizeof(iovs) / sizeof(iovs[0]);
+
+		atomic_puts("r: recmsg'ing socket with two iovs ...");
+		pthread_barrier_wait(&cheater_barrier);
+		test_assert(2 == recvmsg(sock, &msg, 0));
+		atomic_printf("r:   ... recvmsg'd '%c' and '%c'\n", c1, c2);
+
+		test_assert(c1 == token);
+		token++;
+		test_assert(c2 == token);
+		token++;
+	}
+	{
 		struct pollfd pfd;
 
 		atomic_puts("r: polling socket ...");
@@ -329,6 +352,29 @@ int main(int argc, char *argv[]) {
 
 		sendmmsg(sock, &mmsg, 1, 0);
 		atomic_printf("M:   ... sent %u bytes\n", mmsg.msg_len);
+		pthread_barrier_wait(&cheater_barrier);
+	}
+	{
+		struct msghdr msg = { 0 };
+		struct iovec iovs[2];
+		char c1 = token++;
+		char c2 = token++;
+
+		iovs[0].iov_base = &c1;
+		iovs[0].iov_len = sizeof(c1);
+		iovs[1].iov_base = &c2;
+		iovs[1].iov_len = sizeof(c2);
+
+		msg.msg_iov = iovs;
+		msg.msg_iovlen = sizeof(iovs) / sizeof(iovs[0]);
+
+		/* Force a wait on recvmsg(). */
+		atomic_puts("M: sleeping again ...");
+		usleep(500000);
+		atomic_printf("M: writing { '%c', '%c' } to socket ...\n",
+			      c1, c2);
+		test_assert(2 == sendmsg(sock, &msg, 0));
+		atomic_puts("M:   ... done");
 		pthread_barrier_wait(&cheater_barrier);
 	}
 	/* Force a wait on poll() */

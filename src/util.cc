@@ -1099,17 +1099,22 @@ void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 	struct msghdr msg;
 	t->read_mem((byte*)child_msghdr, &msg);
 
-	/* Record the entire struct, because some of the direct fields
-	 * are written as inoutparams. */
-	record_child_data(t, sizeof(*child_msghdr), (byte*)child_msghdr);
-	record_child_data(t, msg.msg_namelen, (byte*)msg.msg_name);
+	// Record the entire struct, because some of the direct fields
+	// are written as inoutparams.
+	record_parent_data(t, sizeof(msg), child_msghdr, &msg);
+	record_child_data(t, msg.msg_namelen, (byte*)msg.msg_name);	
 
-	assert("TODO: record more than 1 iov" && msg.msg_iovlen == 1);
-
-	record_child_data(t, sizeof(struct iovec), (byte*)msg.msg_iov);
-	struct iovec iov;
-	t->read_mem((byte*)msg.msg_iov, &iov);
-	record_child_data(t, iov.iov_len, (byte*)iov.iov_base);
+	// Read all the inout iovecs in one shot.
+	struct iovec iovs[msg.msg_iovlen];
+	t->read_bytes_helper((byte*)msg.msg_iov,
+			     msg.msg_iovlen * sizeof(iovs[0]), (byte*)iovs);
+	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
+		const struct iovec* iov = &iovs[i];
+		void* child_iov = &msg.msg_iov[i];
+		// |iov_len| is an inoutparam.
+		record_parent_data(t, sizeof(*iov), child_iov, (void*)iov);
+		record_child_data(t, iov->iov_len, (byte*)iov->iov_base);
+	}
 
 	record_child_data(t, msg.msg_controllen, (byte*)msg.msg_control);
 }
@@ -1127,13 +1132,22 @@ void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 
 void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 {
-	/* TODO: with above, generalize for arbitrary msghdr. */
-	const int num_emu_args = 5;
-	int i;
+	struct msghdr msg;
+	t->read_mem((byte*)child_msghdr, &msg);
 
-	for (i = 0; i < num_emu_args; ++i) {
+	// Restore msg itself.
+	t->set_data_from_trace();
+	// Restore msg.msg_name.
+	t->set_data_from_trace();
+	// For each iovec arg, restore its recorded data.
+	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
+		// Restore iovec itself (iov_len inoutparam).
+		t->set_data_from_trace();
+		// Restore iov_base buffer.
 		t->set_data_from_trace();
 	}
+	// Restore msg_control buffer.
+	t->set_data_from_trace();
 }
 
 void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
