@@ -5,12 +5,16 @@
 
 #define _GNU_SOURCE 1
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <linux/ethtool.h>
 #include <linux/limits.h>
 #include <linux/perf_event.h>
+#include <linux/sockios.h>
+#include <net/if.h>
 #include <poll.h>
 #include <pthread.h>
 #include <sched.h>
