@@ -151,6 +151,28 @@ static void* reader_thread(void* dontcare) {
 		++token;
 	}
 	{
+		fd_set fds;
+		const struct timeval infinity = { 1 << 30, 0 };
+		struct timeval tv = infinity;
+		int ret;
+
+		atomic_puts("r: select()ing socket ...");
+		FD_ZERO(&fds);
+		FD_SET(sock, &fds);
+		ret = select(sock + 1, &fds, NULL, NULL, &tv);
+		atomic_printf("r:   ... returned %d; tv { %ld, %ld }\n",
+			      ret, tv.tv_sec, tv.tv_usec);
+		test_assert(1 == ret);
+		test_assert(FD_ISSET(sock, &fds));
+		test_assert(0 < tv.tv_sec && tv.tv_sec < infinity.tv_sec);
+
+		atomic_puts("r:   ... done, doing nonblocking read ...");
+		test_assert(1 == read(sock, &c, sizeof(c)));
+		atomic_printf("r:   ... read '%c'\n", c);
+		test_assert(c == token);
+		++token;
+	}
+	{
 		int epfd;
 		struct epoll_event ev;
 
@@ -386,6 +408,14 @@ int main(int argc, char *argv[]) {
 	atomic_puts("M:   ... done");
 
 	/* Force a wait on ppoll() */
+	atomic_puts("M: sleeping again ...");
+	usleep(500000);
+	atomic_printf("M: writing '%c' to socket ...\n", token);
+	write(sock, &token, sizeof(token));
+	++token;
+	atomic_puts("M:   ... done");
+
+	/* Force a wait on select() */
 	atomic_puts("M: sleeping again ...");
 	usleep(500000);
 	atomic_printf("M: writing '%c' to socket ...\n", token);

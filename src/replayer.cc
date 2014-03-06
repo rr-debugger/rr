@@ -1470,7 +1470,10 @@ static int try_one_trace_step(Task* t,
 static void handle_interrupted_trace(struct dbg_context* dbg,
 				     Task* t = nullptr)
 {
-	log_info("Trace terminated early at this point during recording.");
+	if (!probably_not_interactive()) {
+		fprintf(stderr,
+			"\nrr: (Trace terminated early at this point during recording.)\n\n");
+	}
 	if (dbg) {
 		dbg_notify_stop(dbg, t ? get_threadid(t) : DBG_ALL_THREADS,
 				0x05);
