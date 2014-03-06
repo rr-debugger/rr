@@ -1136,7 +1136,9 @@ static void process_ioctl(Task *t, int request)
 	}
 	case SIOCGIFADDR:
 	case SIOCGIFFLAGS:
+	case SIOCGIFINDEX:
 	case SIOCGIFMTU:
+	case SIOCGIFNAME:
 		return record_ioctl_data(t, sizeof(struct ifreq));
 	case TCGETS:
 		return record_ioctl_data(t, sizeof(struct termios));
