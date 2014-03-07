@@ -122,8 +122,10 @@ inline static pid_t sys_gettid(void) {
  */
 inline static void check_data(void* buf, size_t len)
 {
-	syscall(SYS_write, RR_MAGIC_SAVE_DATA_FD, buf, len);
-	atomic_printf("Wrote %d bytes to magic fd\n", len);
+	int nwritten = syscall(SYS_write, RR_MAGIC_SAVE_DATA_FD, buf, len);
+	atomic_printf("Wrote %d bytes to magic fd; expected %d\n",
+		      nwritten, len);
+	test_assert(len == nwritten);
 }
 
 /**

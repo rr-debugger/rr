@@ -9,13 +9,6 @@
 class Task;
 
 /**
- * Call this just before the recorder is going to store a
- * syscall-entry event.  If any data needs to be saved at syscall
- * entry, do it now.
- */
-void rec_before_record_syscall_entry(Task* t, int syscallno);
-
-/**
  * Prepare |t| to enter its current syscall event.  Return nonzero if
  * a context-switch is allowed for |t|, 0 if not.
  *

@@ -741,8 +741,10 @@ byte* str2x(const char* start, size_t max_size)
 void read_line(FILE* file, char* buf, int size, const char* name)
 {
 	if (feof(file) || fgets(buf, size, file) == NULL) {
-		fatal("Failed to read line from %s into buf %p (size %d)",
-		      name, buf, size);
+		printf("error reading line in file: %s  -- bailing out\n", name);
+		printf("buf: %p  size: %d\n",buf,size);
+		perror("");
+		exit(-1);
 	}
 }
 

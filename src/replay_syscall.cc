@@ -1276,14 +1276,6 @@ static void maybe_verify_tracee_saved_data(Task* t,
 	free(rec_buf);
 }
 
-void rep_after_enter_syscall(Task* t, int syscallno)
-{
-	if (SYS_write != syscallno) {
-		return;
-	}
-	maybe_verify_tracee_saved_data(t, &t->trace.recorded_regs);
-}
-
 /**
  * Call this hook just before exiting a syscall.  Often Task
  * attributes need to be updated based on the finishing syscall.
@@ -1645,6 +1637,11 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		 * so we might have saved 0 bytes of scratch after a
 		 * desched. */
 		maybe_noop_restore_syscallbuf_scratch(t);
+		if (SYS_write == syscall) {
+			// TODO: we only support tracee-saved data
+			// through write for now.
+			maybe_verify_tracee_saved_data(t, rec_regs);
+		}
 		return;
 
 	case SYS_rrcall_init_buffers:
