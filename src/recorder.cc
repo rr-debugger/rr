@@ -597,6 +597,7 @@ static void runnable_state_changed(Task* t)
 		/* We just entered a syscall. */
 		if (!maybe_restart_syscall(t)) {
 			push_syscall(t, t->event);
+			rec_before_record_syscall_entry(t, t->ev->syscall.no);
 		}
 		assert_exec(t, EV_SYSCALL == t->ev->type,
 			    "Should be at syscall event.");

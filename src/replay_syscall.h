@@ -8,6 +8,12 @@
 class Task;
 struct rep_trace_step;
 
+/**
+ * Call this when |t| has just entered a syscall.  At this point, data
+ * saved at |rec_before_record_syscall_entry()| can be restored.
+ */
+void rep_after_enter_syscall(Task* t, int syscallno);
+
 /* |redirect_stdio| is nonzero if output written to stdout/stderr
  * during recording should be tee'd during replay, zero otherwise. */
 void rep_process_syscall(Task* t, struct rep_trace_step* step);
