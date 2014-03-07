@@ -51,7 +51,8 @@ int main(int argc, char *argv[]) {
 	char name[PATH_MAX];
 	int index;
 	struct ethtool_cmd etc;
-	int ret;
+	int err, ret;
+	struct iwreq wreq;
 
 	get_ifconfig(sockfd, &req);
 	strcpy(name, req.ifr_name);
@@ -94,15 +95,34 @@ int main(int argc, char *argv[]) {
 	etc.cmd = ETHTOOL_GSET;
 	req.ifr_data = (char*)&etc;
 	ret = ioctl(sockfd, SIOCETHTOOL, &req);
+	err = errno;
 	atomic_printf("SIOCETHTOOL(ret:%d): %s ethtool data:\n",
 		      ret, req.ifr_name);
-	test_assert(0 == ret);
 	atomic_printf(
 "  speed:%#x duplex:%#x port:%#x physaddr:%#x, maxtxpkt:%u maxrxpkt:%u ...\n",
 ethtool_cmd_speed(&etc), etc.duplex, etc.port, etc.phy_address,
 etc.maxtxpkt, etc.maxrxpkt);
+	if (-1 == ret) {
+		atomic_printf("WARNING: %s doesn't appear to support SIOCETHTOOL; the test may have been meaningless (%s/%d)\n",
+			      name, strerror(err), err);
+		test_assert(EOPNOTSUPP == err);
+	}
 
-	/* TODO: read SIOCGIWRATE for wifi interfaces. */
+	memset(&wreq, 0x5a, sizeof(wreq));
+	strcpy(wreq.ifr_ifrn.ifrn_name, name);
+	ret = ioctl(sockfd, SIOCGIWRATE, &wreq);
+	err = errno;
+	atomic_printf("SIOCGIWRATE(ret:%d): %s:\n", ret, wreq.ifr_name);
+	atomic_printf("  bitrate:%d (fixed? %s; disabled? %s) flags:%#x\n",
+		      wreq.u.bitrate.value,
+		      wreq.u.bitrate.fixed ? "yes" : "no",
+		      wreq.u.bitrate.disabled ? "yes" : "no",
+		      wreq.u.bitrate.flags);
+	if (-1 == ret) {
+		atomic_printf("WARNING: %s doesn't appear to be a wireless iface; SIOCGIWRATE test may have been meaningless (%s/%d)\n",
+			      name, strerror(err), err);
+		test_assert(EOPNOTSUPP == err);
+	}
 
 	atomic_puts("EXIT-SUCCESS");
 	return 0;

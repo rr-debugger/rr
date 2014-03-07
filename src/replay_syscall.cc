@@ -4,10 +4,12 @@
 
 #include "replay_syscall.h"
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/futex.h>
+#include <linux/if.h>
 #include <linux/net.h>
 #include <linux/mman.h>
 #include <linux/prctl.h>
@@ -15,6 +17,7 @@
 #include <linux/sem.h>
 #include <linux/sockios.h>
 #include <linux/soundcard.h>
+#include <linux/wireless.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -739,6 +742,7 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	case SIOCGIFINDEX:
 	case SIOCGIFMTU:
 	case SIOCGIFNAME:
+	case SIOCGIWRATE:
 	case TCGETS:
 	case TIOCINQ:
 	case TIOCGWINSZ:
