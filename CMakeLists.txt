@@ -145,6 +145,7 @@ set(BASIC_TESTS
   save_data_fd
   sched_setaffinity
   sched_yield
+  scm_rights
   segfault
   sigchld_interrupt_signal
   sigill

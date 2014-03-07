@@ -103,8 +103,9 @@ struct msghdr;
  * These arguments are pushed on the stack for the recvmsg socketcall.
  */
 struct recvmsg_args {
-	int fd;
+	long fd;
 	struct msghdr* msg;
+	long flags;
 };
 
 #endif /* TYPES_H_ */

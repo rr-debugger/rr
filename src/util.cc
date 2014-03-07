@@ -1110,9 +1110,6 @@ void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 			     msg.msg_iovlen * sizeof(iovs[0]), (byte*)iovs);
 	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
 		const struct iovec* iov = &iovs[i];
-		void* child_iov = &msg.msg_iov[i];
-		// |iov_len| is an inoutparam.
-		record_parent_data(t, sizeof(*iov), child_iov, (void*)iov);
 		record_child_data(t, iov->iov_len, (byte*)iov->iov_base);
 	}
 
@@ -1141,8 +1138,6 @@ void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 	t->set_data_from_trace();
 	// For each iovec arg, restore its recorded data.
 	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
-		// Restore iovec itself (iov_len inoutparam).
-		t->set_data_from_trace();
 		// Restore iov_base buffer.
 		t->set_data_from_trace();
 	}
@@ -1332,11 +1327,10 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 	 * mapping is likely to change. */
 	debug("  copying writeable SHARED mapping %s", filename);
 	if (PROT_WRITE | prot) {
-#ifndef DEBUGTAG
-		if (warn_shared_writeable)
-#endif
-		log_warn("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written by programs outside the rr tracee tree.",
+		if (warn_shared_writeable) {
+			debug("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written by programs outside the rr tracee tree.",
 			 filename);
+		}
 	}
 	return true;
 }
