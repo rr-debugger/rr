@@ -74,15 +74,22 @@ static void* reader_thread(void* dontcare) {
 		struct mmsghdr mmsg = {{ 0 }};
 		struct iovec data = { 0 };
 		int magic = ~msg_magic;
+		int err, ret;
 
 		data.iov_base = &magic;
 		data.iov_len = sizeof(magic);
 		mmsg.msg_hdr.msg_iov = &data;
 		mmsg.msg_hdr.msg_iovlen = 1;
 
+		atomic_puts("r: recvmsg with DONTWAIT ...");
+		ret = recvmsg(sock, &mmsg.msg_hdr, MSG_DONTWAIT);
+		err = errno;
+		atomic_printf("r:  ... returned %d (%s/%d)\n",
+			      ret, strerror(err), err);
+		test_assert(-1 == ret && EWOULDBLOCK == err);
+
 		atomic_puts("r: recmsg'ing socket ...");
 
-		pthread_barrier_wait(&cheater_barrier);
 		test_assert(0 < recvmsg(sock, &mmsg.msg_hdr, 0));
 		atomic_printf("r:   ... recvmsg'd 0x%x\n", magic);
 		test_assert(msg_magic == magic);
@@ -91,9 +98,7 @@ static void* reader_thread(void* dontcare) {
 		atomic_puts("r: recmmsg'ing socket ...");
 
 		pthread_barrier_wait(&cheater_barrier);
-
 		breakpoint();
-
 		test_assert(1 == recvmmsg(sock, &mmsg, 1, 0, NULL));
 		atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n",
 			      magic, mmsg.msg_len);
@@ -113,7 +118,6 @@ static void* reader_thread(void* dontcare) {
 		msg.msg_iovlen = sizeof(iovs) / sizeof(iovs[0]);
 
 		atomic_puts("r: recmsg'ing socket with two iovs ...");
-		pthread_barrier_wait(&cheater_barrier);
 		test_assert(2 == recvmsg(sock, &msg, 0));
 		atomic_printf("r:   ... recvmsg'd '%c' and '%c'\n", c1, c2);
 
@@ -362,7 +366,6 @@ int main(int argc, char *argv[]) {
 			      msg_magic);
 		sendmsg(sock, &mmsg.msg_hdr, 0);
 		atomic_puts("M:   ... done");
-		pthread_barrier_wait(&cheater_barrier);
 
 		/* Force a wait on recvmmsg() */
 		atomic_puts("M: sleeping again ...");
@@ -397,7 +400,6 @@ int main(int argc, char *argv[]) {
 			      c1, c2);
 		test_assert(2 == sendmsg(sock, &msg, 0));
 		atomic_puts("M:   ... done");
-		pthread_barrier_wait(&cheater_barrier);
 	}
 	/* Force a wait on poll() */
 	atomic_puts("M: sleeping again ...");

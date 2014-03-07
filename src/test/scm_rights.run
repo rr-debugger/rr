@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh scm_rights "$@"
+compare_test EXIT-SUCCESS
