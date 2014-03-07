@@ -372,15 +372,14 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	case SYS_RECVMSG: {
 		struct user_regs_struct r = t->regs();
 		byte* argsp = (byte*)r.ecx;
-		int flags = r.edx;
-		if (flags & MSG_DONTWAIT) {
+		struct recvmsg_args args;
+		t->read_mem(argsp, &args);
+		if (args.flags & MSG_DONTWAIT) {
 			return 0;
 		}
 		if (!would_need_scratch) {
 			return 1;
 		}
-		struct recvmsg_args args;
-		t->read_mem(argsp, &args);
 		struct msghdr msg;
 		t->read_mem((byte*)args.msg, &msg);
 
@@ -441,8 +440,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		return 1;
 	}
 	case SYS_SENDMSG: {
-		int flags = r.edx;
-		return !(flags & MSG_DONTWAIT);
+		struct user_regs_struct r = t->regs();
+		byte* argsp = (byte*)r.ecx;
+		struct recvmsg_args args;
+		t->read_mem(argsp, &args);
+		return !(args.flags & MSG_DONTWAIT);
 	}
 	default:
 		return 0;
