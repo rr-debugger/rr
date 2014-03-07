@@ -4,6 +4,7 @@
 
 #include "record_syscall.h"
 
+#include <arpa/inet.h>
 #include <asm/ldt.h>
 #include <assert.h>
 #include <elf.h>
@@ -11,6 +12,7 @@
 #include <fcntl.h>
 #include <linux/ethtool.h>
 #include <linux/futex.h>
+#include <linux/if.h>
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/net.h>
@@ -18,7 +20,7 @@
 #include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/sockios.h>
-#include <net/if.h>
+#include <linux/wireless.h>
 #include <poll.h>
 #include <sched.h>
 #include <sys/epoll.h>
@@ -1227,6 +1229,8 @@ static void process_ioctl(Task *t, int request)
 	case SIOCGIFMTU:
 	case SIOCGIFNAME:
 		return record_ioctl_data(t, sizeof(struct ifreq));
+	case SIOCGIWRATE:
+		return record_ioctl_data(t, sizeof(struct iwreq));
 	case TCGETS:
 		return record_ioctl_data(t, sizeof(struct termios));
 	case TIOCINQ:

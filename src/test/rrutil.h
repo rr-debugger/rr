@@ -11,10 +11,11 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <linux/ethtool.h>
+#include <linux/if.h>
 #include <linux/limits.h>
 #include <linux/perf_event.h>
 #include <linux/sockios.h>
-#include <net/if.h>
+#include <linux/wireless.h>
 #include <poll.h>
 #include <pthread.h>
 #include <sched.h>
