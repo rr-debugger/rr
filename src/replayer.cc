@@ -1692,9 +1692,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		exit(0);
 	}
 
-	if (TSTEP_ENTER_SYSCALL == step.action) {
-		rep_after_enter_syscall(t, step.syscall.no);
-	}
 	if (STATE_SYSCALL_EXIT == t->trace.state
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);

@@ -88,23 +88,6 @@ struct recvfrom_args {
 	socklen_t* addrlen;
 };
 
-void rec_before_record_syscall_entry(Task* t, int syscallno)
-{
-	if (SYS_write != syscallno) {
-		return;
-	}
-	int fd = t->regs().ebx;
-	if (RR_MAGIC_SAVE_DATA_FD != fd) {
-		return;
-	}
-	byte* buf = (byte*)t->regs().ecx;
-	size_t len = t->regs().edx;
-
-	assert_exec(t, buf, "Can't save a null buffer");
-
-	record_child_data(t, len, buf);
-}
-
 /**
  * Read the socketcall args pushed by |t| as part of the syscall in
  * |regs| into the |args| outparam.  Also store the address of the
@@ -703,10 +686,11 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	case SYS_write:
-	case SYS_writev:
-		maybe_mark_stdio_write(t, t->regs().ebx);
-		return 1;
-
+	case SYS_writev: {
+		int fd = t->regs().ebx;
+		maybe_mark_stdio_write(t, fd);
+		return RR_MAGIC_SAVE_DATA_FD != fd;
+	}
 	/* pid_t waitpid(pid_t pid, int *status, int options); */
 	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
 	case SYS_waitpid:
@@ -3292,7 +3276,22 @@ void rec_process_syscall(Task *t)
 	 * proved to occur after a write() has returned returns the new data. Note that not all file
 	 *  systems are POSIX conforming.
 	 */
-	SYS_REC0(write)
+	case SYS_write: {
+		struct user_regs_struct r = t->regs();
+		int fd = r.ebx;
+
+		if (RR_MAGIC_SAVE_DATA_FD == fd) {
+			byte* buf = (byte*)r.ecx;
+			size_t len = r.edx;
+
+			assert_exec(t, buf, "Can't save a null buffer");
+
+			record_child_data(t, len, buf);
+			r.eax = len;
+			t->set_regs(r);
+		}
+		break;
+	}
 
 	/*
 	 * ssize_t read(int fd, void *buf, size_t count);
