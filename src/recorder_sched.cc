@@ -148,9 +148,9 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 #ifdef MONITOR_UNSWITCHABLE_WAITS
 			wait_duration = now_sec() - start;
 			if (wait_duration >= 0.010) {
-				warn("Waiting for unswitchable %s took %g ms",
-				     strevent(current->event),
-				     1000.0 * wait_duration);
+				log_warn("Waiting for unswitchable %s took %g ms",
+					 strevent(current->event),
+					 1000.0 * wait_duration);
 			}
 #endif
 			*by_waitpid = 1;
