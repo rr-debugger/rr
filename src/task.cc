@@ -902,7 +902,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	  // These will be initialized when the syscall buffer is.
 	, desched_fd(-1), desched_fd_child(-1)
 	, seccomp_bpf_enabled()
-	, child_sig()
+	, child_sig(), stepped_into_syscall()
 	, trace(), hpc()
 	, tid(_tid), rec_tid(_rec_tid > 0 ? _rec_tid : _tid)
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()

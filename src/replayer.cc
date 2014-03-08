@@ -197,7 +197,8 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		return continue_all_tasks;
 	}
 	while (1) {
-		debug("getting next debugger request ...");
+		debug("%d (rec:%d): getting next debugger request ...",
+		      t->tid, t->rec_tid);
 		struct dbg_request req = dbg_get_request(dbg);
 		Task* target = NULL;
 
@@ -447,6 +448,19 @@ static void validate_args(int event, int state, Task* t)
 	assert_child_regs_are(t, &rec_regs, event, state);
 }
 
+/** Return true when |t|'s $ip points at a syscall instruction. */
+static bool entering_syscall_insn(Task* t)
+{
+	const byte sysenter[] = { 0x0f, 0x34 };
+	const byte int_0x80[] = { 0xcd, 0x80 };
+	static_assert(sizeof(sysenter) == sizeof(int_0x80), "Must ==");
+	byte insn[sizeof(sysenter)];
+
+	t->read_bytes((byte*)t->ip(), insn);
+	return (!memcmp(insn, sysenter, sizeof(sysenter))
+		|| !memcmp(insn, int_0x80, sizeof(int_0x80)));
+}
+
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when
@@ -457,6 +471,11 @@ static void validate_args(int event, int state, Task* t)
 enum { EXEC = 0, EMU = 1 };
 static int cont_syscall_boundary(Task* t, int emu, int stepi)
 {
+	bool is_syscall_entry = (STATE_SYSCALL_ENTRY == t->trace.state);
+	if (is_syscall_entry) {
+		t->stepped_into_syscall = false;
+	}
+
 	ResumeRequest resume_how;
 	if (emu && stepi) {
 		resume_how = RESUME_SYSEMU_SINGLESTEP;
@@ -464,6 +483,26 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi)
 		resume_how = RESUME_SYSEMU;
 	} else if (stepi) {
 		resume_how = RESUME_SINGLESTEP;
+		// Annoyingly, PTRACE_SINGLESTEP doesn't raise
+		// PTRACE_O_SYSGOOD traps.  (Unlike
+		// PTRACE_SINGLESTEP_SYSEMU, which does.)  That means
+		// if we just blindly stepi'd the tracee to a
+		// non-emulated syscall, we'd shoot right past it
+		// without knowing.
+		//
+		// The correct solution to this problem is to emulate
+		// all syscalls during replay and then inject the
+		// executed ones (as we do for mmap).  But for now,
+		// work around this problem by recognizing syscall
+		// insns and issuing PTRACE_SYSCALL to enter them
+		// instead of PTRACE_SINGLESTEP.
+		if (entering_syscall_insn(t) || t->stepped_into_syscall) {
+			resume_how = RESUME_SYSCALL;
+			// Leave this breadcrumb on syscall entry so
+			// that we know to issue PTRACE_SYSCALL to
+			// exit the syscall the next time we stepi.
+			t->stepped_into_syscall = is_syscall_entry;
+		}
 	} else {
 		resume_how = RESUME_SYSCALL;
 	}
@@ -1533,8 +1572,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		/* fall through */
 	case USR_EXIT: {
 		if (is_last_interesting_task(t)) {
-			debug("last interesting task is %d (%d)",
-			      debugged_tid, t->rec_tid, t->tid);
+			debug("last interesting task in %d is %d (%d)",
+			      debugged_tgid, t->rec_tid, t->tid);
 			last_task = t;
 			return;
 		}
