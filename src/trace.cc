@@ -618,7 +618,7 @@ static void write_raw_data(Task *t, void *buf, size_t to_write)
 // we allocate a temporary heap buffer.
 #define MAX_STACK_BUFFER_SIZE (1 << 17)
 
-void record_child_data(Task *t, size_t size, byte* child_ptr)
+void record_child_data(Task *t, size_t size, void* child_ptr)
 {
 	int state;
 	int event = encode_event(t->ev, &state);
@@ -636,7 +636,7 @@ void record_child_data(Task *t, size_t size, byte* child_ptr)
 		}
 		byte* read_buf = heap_buf ? heap_buf : stack_buf;
 
-		t->read_bytes_helper(child_ptr, size, read_buf);
+		t->read_bytes_helper((byte*)child_ptr, size, read_buf);
 		write_raw_data(t, read_buf, size);
 		read_bytes = size;
 
@@ -685,14 +685,14 @@ void record_mmapped_file_stats(struct mmapped_file* file)
 	fprintf(mmaps_file, "%s\n", file->filename);
 }
 
-void record_child_str(Task* t, byte* child_ptr)
+void record_child_str(Task* t, void* child_ptr)
 {
 	int state;
 	int event = encode_event(t->ev, &state);
 	(void)state;
 
 	print_header(event, child_ptr);
-	string str = t->read_c_str(child_ptr);
+	string str = t->read_c_str((byte*)child_ptr);
 	size_t len = str.size() + 1;
 	fprintf(syscall_header, "%11d\n", len);
 	size_t bytes_written = fwrite(str.c_str(), 1, len, raw_data);
