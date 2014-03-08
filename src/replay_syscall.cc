@@ -479,7 +479,7 @@ static void init_scratch_memory(Task* t)
 	prepare_remote_syscalls(t, &state);
 
 	t->scratch_ptr = file.start;
-	t->scratch_size = file.end - file.start;
+	t->scratch_size = (byte*)file.end - (byte*)file.start;
 
 	size_t sz = t->scratch_size;
 	int prot = PROT_NONE;
