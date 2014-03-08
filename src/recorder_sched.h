@@ -18,6 +18,5 @@ class Task;
 Task* rec_sched_get_active_thread(Task* t, int* by_waitpid);
 
 void rec_sched_deregister_thread(Task** t);
-void rec_sched_exit_all(void);
 
 #endif /* REC_SCHED_H_ */

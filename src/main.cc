@@ -84,7 +84,7 @@ static void start_recording(int argc, char* argv[], char** envp)
 	copy_envp(envp);
 	rec_setup_trace_dir();
 
-	pid = sys_fork();
+	pid = fork();
 	if (pid == 0) { /* child process */
 		return sys_start_trace(exe_image.c_str(),
 				       arg_v.data(), env_p.data());

@@ -22,6 +22,24 @@
 #include "trace.h"
 #include "util.h"
 
+static void sys_exit()
+{
+	log_err("Exiting");
+	Task::killall();
+	close_trace_files();
+	abort();
+}
+
+/* ptrace stuff comes here */
+static void sys_ptrace(Task* t, int request, void *addr, void *data)
+{
+	pid_t tid = t->tid;
+	long ret = ptrace(__ptrace_request(request), tid, addr, data);
+	assert_exec(t, 0 == ret,
+		    "ptrace_error: request: %d of tid: %d: addr %p, data %p",
+		    request, tid, addr, data);
+}
+
 FILE* sys_fopen(const char* path, const char* mode)
 {
 	FILE* file = fopen(path, mode);
@@ -60,34 +78,6 @@ void sys_close(int filedes)
 		log_err("error while closing file -- bailing out\n");
 		sys_exit();
 	}
-}
-
-pid_t sys_fork()
-{
-	pid_t pid = fork();
-
-	if (pid == -1) {
-		log_err("error forking process");
-		exit(-1);
-	}
-
-	return pid;
-}
-
-void sys_kill(int pid, int msg)
-{
-	int ret;
-	if ((ret = kill(pid, msg)) < 0) {
-		log_err("error sending signal");
-	}
-}
-
-void sys_exit()
-{
-	log_err("Exiting");
-	rec_sched_exit_all();
-	close_trace_files();
-	abort();
 }
 
 /**
@@ -130,6 +120,11 @@ static void set_up_process(void)
 	 * process is the only intensive one in the system? */
 }
 
+static void sys_ptrace_traceme()
+{
+	ptrace(PTRACE_TRACEME, 0, 0, 0);
+}
+
 void sys_start_trace(const char* executable, char** argv, char** envp)
 {
 	set_up_process();
@@ -142,16 +137,6 @@ void sys_start_trace(const char* executable, char** argv, char** envp)
 	fatal("Failed to exec %s", executable);
 }
 
-/* ptrace stuff comes here */
-void sys_ptrace(Task* t, int request, void *addr, void *data)
-{
-	pid_t tid = t->tid;
-	long ret = ptrace(__ptrace_request(request), tid, addr, data);
-	assert_exec(t, 0 == ret,
-		    "ptrace_error: request: %d of tid: %d: addr %p, data %p",
-		    request, tid, addr, data);
-}
-
 /**
  * Detaches the child process from monitoring. This method must only be
  * invoked, if the thread exits. We do not check errors here, since the
@@ -160,21 +145,6 @@ void sys_ptrace(Task* t, int request, void *addr, void *data)
 void sys_ptrace_detach(pid_t pid)
 {
 	ptrace(PTRACE_DETACH, pid, 0, 0);
-}
-
-int sys_ptrace_peekdata(pid_t pid, long addr, long* value)
-{
-	long ret;
-
-	assert(0 == (addr & (sizeof(void*) - 1)));
-
-	errno = 0;
-	ret = ptrace(PTRACE_PEEKDATA, pid, addr, 0);
-	if (-1 == ret && errno) {
-		return -1;
-	}
-	*value = ret;
-	return 0;
 }
 
 unsigned long sys_ptrace_getmsg(Task* t)
@@ -195,11 +165,6 @@ void sys_ptrace_setup(Task* t)
 		/* No seccomp on the system, try without (this has to succeed) */
 		sys_ptrace(t, PTRACE_SETOPTIONS, 0, (void*) flags);
 	}
-}
-
-void sys_ptrace_traceme()
-{
-	ptrace(PTRACE_TRACEME, 0, 0, 0);
 }
 
 /*

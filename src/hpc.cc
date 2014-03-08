@@ -36,7 +36,8 @@ void close_libpfm()
 	pfm_terminate();
 }
 
-void libpfm_event_encoding(struct perf_event_attr* attr, const char* event_str, int hw_event)
+static void libpfm_event_encoding(struct perf_event_attr* attr,
+				  const char* event_str, int hw_event)
 {
 	memset(attr, 0, sizeof(struct perf_event_attr));
 
