@@ -57,9 +57,9 @@ struct rrcall_init_buffers_params {
 	 * replay the same decision that was recorded. */
 	int syscallbuf_enabled;
 	/* Where our traced syscalls will originate. */
-	byte* traced_syscall_ip;
+	void* traced_syscall_ip;
 	/* Where our untraced syscalls will originate. */
-	byte* untraced_syscall_ip;
+	void* untraced_syscall_ip;
 	/* Address of the control socket the child expects to connect
 	 * to. */
 	struct sockaddr_un* sockaddr;
@@ -75,7 +75,7 @@ struct rrcall_init_buffers_params {
 	/* "Out" params. */
 	/* Returned pointer to and size of the shared syscallbuf
 	 * segment. */
-	byte* syscallbuf_ptr;
+	void* syscallbuf_ptr;
 };
 
 /**

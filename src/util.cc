@@ -1746,7 +1746,8 @@ void destroy_buffers(Task* t, int flags)
 	if (t->syscallbuf_child) {
 		remote_syscall2(t, &state, SYS_munmap,
 				t->syscallbuf_child, t->num_syscallbuf_bytes);
-		t->vm()->unmap(t->syscallbuf_child, t->num_syscallbuf_bytes);
+		t->vm()->unmap((const byte*)t->syscallbuf_child,
+			       t->num_syscallbuf_bytes);
 		remote_syscall1(t, &state, SYS_close, t->desched_fd_child);
 	}
 
