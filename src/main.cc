@@ -77,34 +77,19 @@ static void copy_envp(char** envp)
 
 static void start_recording(int argc, char* argv[], char** envp)
 {
-	pid_t pid;
-
 	exe_image = argv[0];
 	copy_argv(argc, argv);
 	copy_envp(envp);
 	rec_setup_trace_dir();
-
-	pid = fork();
-	if (pid == 0) { /* child process */
-		return sys_start_trace(exe_image.c_str(),
-				       arg_v.data(), env_p.data());
-		/* not reached */
-	}
 
 	open_trace_files();
 	rec_init_trace_files();
 	record_argv_envp(argc, arg_v.data(), env_p.data());
 	init_libpfm();
 
-	// Sync with the child process.
-	Task* t = Task::create(pid);
-	t->wait();
+	Task* t = Task::create(exe_image, arg_v, env_p);
 
 	start_hpc(t, rr_flags()->max_rbc);
-
-	/* Configure the child process to get a message upon a thread
-	 * start, fork(), etc. */
-	t->set_up_ptrace();
 
 	log_info("Start recording...");
 	record();

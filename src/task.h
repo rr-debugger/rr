@@ -1284,13 +1284,6 @@ public:
 	void set_tid_addr(const byte* tid_addr);
 
 	/**
-	 * Set the required ptrace flags.  Call this for the first
-	 * tracee created.  Subsequent tracees will inherit these
-	 * settings.
-	 */
-	void set_up_ptrace();
-
-	/**
 	 * Call this after |sig| is delivered to this task.  Emulate
 	 * sighandler updates induced by the signal delivery.
 	 */
@@ -1417,12 +1410,13 @@ public:
 	static const PrioritySet& get_priority_set();
 
 	/**
-	 * Create and return the first tracee task.  It's hard-baked
-	 * into rr that the first tracee is fork()ed, so create()
-	 * "clones" the new task using fork() semantics.  |tid| and
-	 * |rec_tid| are as for Task::clone().
+	 * Fork and exec the initial tracee task to run |exe| with
+	 * |argv| in |envp|.  For replay, pass |rec_tid|.  Return that
+	 * Task.
 	 */
-	static Task* create(pid_t tid, pid_t rec_tid = -1);
+	static Task* create(const std::string& exe,
+			    CharpVector& argv, CharpVector& envp,
+			    pid_t rec_tid = -1);
 
 	/** Call |Task::dump(out)| for all live tasks. */
 	static void dump_all(FILE* out = NULL);
@@ -1639,6 +1633,13 @@ private:
 	 * True if this has blocked delivery of the desched signal.
 	 */
 	bool is_desched_sig_blocked();
+
+	/**
+	 * Set the required ptrace flags.  Call this for the first
+	 * tracee created.  Subsequent tracees will inherit these
+	 * settings.
+	 */
+	void set_up_ptrace();
 
 	/**
 	 * Like |fallible_ptrace()| but infallible: except either the

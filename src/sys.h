@@ -18,7 +18,6 @@ FILE* sys_fopen(const char* path, const char* mode);
 int sys_open(const char* path, int flags, mode_t mode);
 int sys_mkpath(const char *path, mode_t mode);
 void sys_fclose(FILE* file);
-void sys_start_trace(const char* executable, char** fake_argv, char** envp);
 
 void sys_fcntl(int fd, int cmd, long arg1);
 

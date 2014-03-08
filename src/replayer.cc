@@ -1840,44 +1840,6 @@ static void set_sig_blockedness(int sig, int blockedness)
 	}
 }
 
-/**
- * Fork an initial tracee child and have exec() the specified image.
- * Return the new tracee pid.
- *
- * TODO: share this duplicated code with the recorder.
- */
-static pid_t launch_initial_tracee(string& exe_image, CharpVector& arg_v,
-				   CharpVector& env_p)
-{
-	pid_t pid;
-	if (0 == (pid = fork())) {
-		// Child process.
-		//
-		// Because we execvpe() the tracee, we must ensure
-		// that $PATH is the same as in recording so that libc
-		// searches paths in the same order.  So copy that
-		// over now.
-		//
-		// And because we use execvpe(), the exec'd tracee
-		// will start with a fresh environment guaranteed to
-		// be the same as in replay, so we don't have to worry
-		// about any mutation here affecting post-exec
-		// execution.
-		for (CharpVector::const_iterator it = env_p.begin();
-		     *it && it != env_p.end(); ++it) {
-			if (!strncmp(*it, "PATH=", sizeof("PATH=") - 1)) {
-				// NB: intentionally leaking this string.
-				putenv(strdup(*it));
-			}
-		}
-
-		sys_start_trace(exe_image.c_str(), arg_v.data(), env_p.data());
-		fatal("Not reached");
-	}
-
-	return pid;
-}
-
 static void replay_trace_frames(void)
 {
 	struct dbg_context* dbg = nullptr;
@@ -1915,13 +1877,23 @@ static void serve_replay(int argc, char* argv[], char** envp)
 	open_trace_files();
 	rep_init_trace_files();
 
-	pid_t tracee_pid = launch_initial_tracee(exe_image, arg_v, env_p);
-	Task* t = Task::create(tracee_pid, get_recorded_main_thread());
-	t->wait();
-	assert(t->stopped());
+	// Because we execvpe() the tracee, we must ensure that $PATH
+	// is the same as in recording so that libc searches paths in
+	// the same order.  So copy that over now.
+	//
+	// And because we use execvpe(), the exec'd tracee will start
+	// with a fresh environment guaranteed to be the same as in
+	// replay, so we don't have to worry about any mutation here
+	// affecting post-exec execution.
+	for (CharpVector::const_iterator it = env_p.begin();
+	     *it && it != env_p.end(); ++it) {
+		if (!strncmp(*it, "PATH=", sizeof("PATH=") - 1)) {
+			// NB: intentionally leaking this string.
+			putenv(strdup(*it));
+		}
+	}
 
-	t->set_up_ptrace();
-
+	Task::create(exe_image, arg_v, env_p, get_recorded_main_thread());
 	replay_trace_frames();
 
 	close_libpfm();

@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
+#include <sys/personality.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -1436,21 +1438,6 @@ Task::set_tid_addr(const byte* tid_addr)
 }
 
 void
-Task::set_up_ptrace()
-{
-	int flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-		    PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
-		    PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-		    PTRACE_O_TRACEEXIT;
-	if (-1 == fallible_ptrace(PTRACE_SETOPTIONS, nullptr,
-				  (void*)(PTRACE_O_TRACESECCOMP | flags))) {
-		// No seccomp on the system, try without (this has to
-		// succeed).
-		xptrace(PTRACE_SETOPTIONS, nullptr, (void*)flags);
-	}
-}
-
-void
 Task::signal_delivered(int sig)
 {
 	Sighandler& h = sighandlers->get(sig);
@@ -1586,10 +1573,63 @@ Task::count()
 	return tasks.size();
 }
 
+/**
+ * Prepare this process and its ancestors for recording/replay by
+ * preventing direct access to sources of nondeterminism, and ensuring
+ * that rr bugs don't adversely affect the underlying system.
+ */
+static void set_up_process(void)
+{
+	int orig_pers;
+
+	/* TODO tracees can probably undo some of the setup below
+	 * ... */
+
+	/* Disable address space layout randomization, for obvious
+	 * reasons, and ensure that the layout is otherwise well-known
+	 * ("COMPAT").  For not-understood reasons, "COMPAT" layouts
+	 * have been observed in certain recording situations but not
+	 * in replay, which causes divergence. */
+	if (0 > (orig_pers = personality(0xffffffff))) {
+		fatal("error getting personaity");
+	}
+	if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE |
+			    ADDR_COMPAT_LAYOUT)) {
+		fatal("error disabling randomization");
+	}
+	/* Trap to the rr process if a 'rdtsc' instruction is issued.
+	 * That allows rr to record the tsc and replay it
+	 * deterministically. */
+	if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
+		fatal("error setting up prctl -- bailing out");
+	}
+	// If the rr process dies, prevent runaway tracee processes
+	// from dragging down the underlying system.
+	//
+	// TODO: this isn't inherited across fork().
+	if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
+		fatal("Couldn't set parent-death signal");
+	}
+}
+
 /*static*/ Task*
-Task::create(pid_t tid, pid_t rec_tid)
+Task::create(const std::string& exe, CharpVector& argv, CharpVector& envp,
+	     pid_t rec_tid)
 {
 	assert(Task::count() == 0);
+
+	pid_t tid = fork();
+	if (0 == tid) {
+		set_up_process();
+		if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr)) {
+			fatal("Failed to request TRACEME");
+		}
+		// Signal to tracer that we're configured.
+		kill(getpid(), SIGSTOP);
+
+		execvpe(exe.c_str(), argv.data(), envp.data());
+		fatal("Failed to exec %s", exe.c_str());
+	}
 
 	Task* t = new Task(tid, rec_tid, 0);
 	// The very first task we fork inherits the signal
@@ -1609,6 +1649,10 @@ Task::create(pid_t tid, pid_t rec_tid)
 	t->tg.swap(g);
 	auto as = AddressSpace::create(t);
 	t->as.swap(as);
+
+	// Sync with the child process.
+	t->wait();
+	t->set_up_ptrace();
 	return t;
 }
 
@@ -1862,6 +1906,21 @@ Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 	assert_exec(this, nwritten == buf_size,
 		    "Should have written %d bytes to %p, but only wrote %d",
 		    buf_size, addr, nwritten);
+}
+
+void
+Task::set_up_ptrace()
+{
+	int flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+		    PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
+		    PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
+		    PTRACE_O_TRACEEXIT;
+	if (-1 == fallible_ptrace(PTRACE_SETOPTIONS, nullptr,
+				  (void*)(PTRACE_O_TRACESECCOMP | flags))) {
+		// No seccomp on the system, try without (this has to
+		// succeed).
+		xptrace(PTRACE_SETOPTIONS, nullptr, (void*)flags);
+	}
 }
 
 void
