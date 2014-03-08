@@ -70,63 +70,6 @@ void sys_close(int filedes)
 	}
 }
 
-/**
- * Prepare this process and its ancestors for recording/replay by
- * preventing direct access to sources of nondeterminism, and ensuring
- * that rr bugs don't adversely affect the underlying system.
- */
-static void set_up_process(void)
-{
-	int orig_pers;
-
-	/* TODO tracees can probably undo some of the setup below
-	 * ... */
-
-	/* Disable address space layout randomization, for obvious
-	 * reasons, and ensure that the layout is otherwise well-known
-	 * ("COMPAT").  For not-understood reasons, "COMPAT" layouts
-	 * have been observed in certain recording situations but not
-	 * in replay, which causes divergence. */
-	if (0 > (orig_pers = personality(0xffffffff))) {
-		fatal("error getting personaity");
-	}
-	if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE |
-			    ADDR_COMPAT_LAYOUT)) {
-		fatal("error disabling randomization");
-	}
-	/* Trap to the rr process if a 'rdtsc' instruction is issued.
-	 * That allows rr to record the tsc and replay it
-	 * deterministically. */
-	if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
-		fatal("error setting up prctl -- bailing out");
-	}
-	/* If the rr process dies, prevent runaway tracee processes
-	 * from dragging down the underlying system. */
-	if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
-		fatal("Couldn't set parent-death signal");
-	}
-
-	/* XXX is it faster to mask off a CPU affinity when this
-	 * process is the only intensive one in the system? */
-}
-
-static void sys_ptrace_traceme()
-{
-	ptrace(PTRACE_TRACEME, 0, 0, 0);
-}
-
-void sys_start_trace(const char* executable, char** argv, char** envp)
-{
-	set_up_process();
-	sys_ptrace_traceme();
-
-	/* signal the parent that the child is ready */
-	kill(getpid(), SIGSTOP);
-
-	execvpe(executable, argv, envp);
-	fatal("Failed to exec %s", executable);
-}
-
 /*
  * Returns the time difference t2 - t1 in microseconds.
  */
