@@ -1588,21 +1588,21 @@ public:
 
 	/* The instruction pointer from which traced syscalls made by
 	 * the syscallbuf will originate. */
-	byte* traced_syscall_ip;
+	void* traced_syscall_ip;
 	/* The instruction pointer from which untraced syscalls will
 	 * originate, used to determine whether a syscall is being
 	 * made by the syscallbuf wrappers or not. */
-	byte* untraced_syscall_ip;
+	void* untraced_syscall_ip;
 	/* Start and end of the mapping of the syscallbuf code
 	 * section, used to determine whether a tracee's $ip is in the
 	 * lib. */
-	byte* syscallbuf_lib_start;
-	byte* syscallbuf_lib_end;
+	void* syscallbuf_lib_start;
+	void* syscallbuf_lib_end;
 	/* Points at rr's mapping of the (shared) syscall buffer. */
 	struct syscallbuf_hdr* syscallbuf_hdr;
 	size_t num_syscallbuf_bytes;
 	/* Points at the tracee's mapping of the buffer. */
-	byte* syscallbuf_child;
+	void* syscallbuf_child;
 
 private:
 	Task(pid_t tid, pid_t rec_tid, int priority);
