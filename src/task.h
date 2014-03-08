@@ -1553,6 +1553,10 @@ public:
 	/* State used only during replay. */
 
 	int child_sig;
+	// True when this has been forced to enter a syscall with
+	// PTRACE_SYSCALL when instead we wanted to use
+	// PTRACE_SINGLESTEP.  See replayer.cc.
+	bool stepped_into_syscall;
 
 	/* State used during both recording and replay. */
 

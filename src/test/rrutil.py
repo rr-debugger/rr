@@ -1,12 +1,15 @@
 import pexpect, re, signal, sys, time
 
-__all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr',
+__all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr', 'expect_list',
             'restart_replay', 'restart_replay_at_end', 'interrupt_gdb', 'ok',
-            'failed', 'iterlines_both', ]
+            'failed', 'iterlines_both', 'last_match' ]
 
 # Public API
 def expect_gdb(what):
     expect(gdb_rr, what)
+
+def expect_list(pats):
+    return gdb_rr.expect_list(pats)
 
 def expect_rr(what):
     expect(gdb_rr, what)
@@ -27,6 +30,9 @@ def interrupt_gdb():
 
 def iterlines_both():
     return gdb_rr
+
+def last_match():
+    return gdb_rr.match
 
 def restart_replay():
     send_gdb('r\n')

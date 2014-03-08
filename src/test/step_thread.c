@@ -7,39 +7,49 @@ pthread_barrier_t bar;
 
 /* NB: these must *not* be macros so that debugger step-next works as
  * expected per the program source. */
-void A(void) {
-	atomic_puts("entered A");
+static void A(void) {
 	pthread_barrier_wait(&bar);
 	pthread_barrier_wait(&bar);
 }
-void B(void) {
-	atomic_puts("entered B");
+static void B(void) {
 	pthread_barrier_wait(&bar);
 	pthread_barrier_wait(&bar);
 }
 
-void* threadA(void* unused) {
+static void* threadA(void* unused) {
 	A();
 	return NULL;
 }
-void* threadB(void* unused) {
+static void* threadB(void* unused) {
 	B();
 	return NULL;
 }
 
-void C(void) {
-	atomic_puts("entered C");
+static void C(void) {
 	pthread_barrier_wait(&bar);
 }
 
-void hit_barrier(void) {
+static void hit_barrier(void) {
+	int break_here = 1;
+	(void)break_here;
 	atomic_puts("hit barrier");
 }
 
+static void ready(void) {
+	int break_here = 1;
+	(void)break_here;
+}
+
 int main(void) {
+	void* dummy;
 	pthread_t a, b;
 
 	pthread_barrier_init(&bar, NULL, 3);
+	dummy = pthread_create;
+	dummy = pthread_barrier_wait;
+	(void)dummy;
+
+	ready();
 
 	pthread_create(&a, NULL, threadA, NULL);
 	pthread_create(&b, NULL, threadB, NULL);
