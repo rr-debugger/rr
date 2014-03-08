@@ -1784,10 +1784,10 @@ static const byte vsyscall_impl[] = {
  * Return true iff |addr| points to a known |__kernel_vsyscall()|
  * implementation.
  */
-static bool is_kernel_vsyscall(Task* t, const byte* addr)
+static bool is_kernel_vsyscall(Task* t, void* addr)
 {
 	byte impl[sizeof(vsyscall_impl)];
-	t->read_bytes(addr, impl);
+	t->read_bytes((byte*)addr, impl);
 	for (size_t i = 0; i < sizeof(vsyscall_impl); ++i) {
 		if (vsyscall_impl[i] != impl[i]) {
 			log_warn("Byte %d of __kernel_vsyscall should be 0x%x, but is 0x%x",
@@ -1802,9 +1802,9 @@ static bool is_kernel_vsyscall(Task* t, const byte* addr)
  * Return the address of a recognized |__kernel_vsyscall()|
  * implementation in |t|'s address space.
  */
-static const byte* locate_and_verify_kernel_vsyscall(Task* t)
+static void* locate_and_verify_kernel_vsyscall(Task* t)
 {
-	const byte* vdso_start = t->vm()->vdso().start;
+	void* vdso_start = t->vm()->vdso().start;
 	// __kernel_vsyscall() has been observed to be mapped at the
 	// following offsets from the vdso start address.  We'll try
 	// to recognize a known __kernel_vsyscall() impl at any of
@@ -1814,7 +1814,7 @@ static const byte* locate_and_verify_kernel_vsyscall(Task* t)
 		0x420		// x86 process on x64 kernel
 	};
 	for (size_t i = 0; i < ALEN(known_offsets); ++i) {
-		const byte* addr = vdso_start + known_offsets[i];
+		void* addr = (byte*)vdso_start + known_offsets[i];
 		if (is_kernel_vsyscall(t, addr)) {
 			return addr;
 		}
@@ -1845,7 +1845,7 @@ struct insns_template {
  * Monkeypatch |t|'s |__kernel_vsyscall()| helper to jump to
  * |vsyscall_hook_trampoline|.
  */
-static void monkeypatch(Task* t, const byte* kernel_vsyscall,
+static void monkeypatch(Task* t, void* kernel_vsyscall,
 			void* vsyscall_hook_trampoline)
 {
 	union {
@@ -1860,14 +1860,14 @@ static void monkeypatch(Task* t, const byte* kernel_vsyscall,
 	assert(nullptr == patch.insns.vsyscall_hook_trampoline);
 	patch.insns.vsyscall_hook_trampoline = vsyscall_hook_trampoline;
 
-	t->write_bytes(kernel_vsyscall, patch.bytes);
+	t->write_bytes((byte*)kernel_vsyscall, patch.bytes);
 	debug("monkeypatched __kernel_vsyscall to jump to %p",
 	      vsyscall_hook_trampoline);
 }
 
 void monkeypatch_vdso(Task* t)
 {
-	const byte* kernel_vsyscall = locate_and_verify_kernel_vsyscall(t);
+	void* kernel_vsyscall = locate_and_verify_kernel_vsyscall(t);
 	if (!kernel_vsyscall) {
 		fatal(
 "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't recognized.\n"
