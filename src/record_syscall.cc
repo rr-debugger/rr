@@ -1017,7 +1017,7 @@ static void init_scratch_memory(Task *t)
  * The returned opaque handle must be passed to
  * |finish_restoring_scratch()|.
  */
-static byte* start_restoring_scratch(Task* t, byte** iter)
+static void* start_restoring_scratch(Task* t, byte** iter)
 {
 	// TODO: manage this in Task.
 	byte* scratch = t->ev->syscall.tmp_data_ptr;
@@ -1056,12 +1056,12 @@ static T* pop_arg_ptr(Task* t)
  * |syscallno|.
  */
 static void restore_and_record_arg_buf(Task* t,
-				       size_t num_bytes, byte* child_addr,
+				       size_t num_bytes, void* child_addr,
 				       byte** parent_data_iter)
 {
 	// TODO: move scratch-arg tracking into Task
 	byte* parent_data = *parent_data_iter;
-	t->write_bytes_helper(child_addr, num_bytes, parent_data);
+	t->write_bytes_helper((byte*)child_addr, num_bytes, parent_data);
 	record_parent_data(t, num_bytes, child_addr, parent_data);
 	*parent_data_iter += num_bytes;
 }
@@ -1070,8 +1070,7 @@ template<typename T>
 static void restore_and_record_arg(Task* t,  T* child_arg,
 				   byte** parent_data_iter)
 {
-	return restore_and_record_arg_buf(t,
-					  sizeof(*child_arg), (byte*)child_arg,
+	return restore_and_record_arg_buf(t, sizeof(*child_arg), child_arg,
 					  parent_data_iter);
 }
 
@@ -1083,11 +1082,10 @@ static void restore_and_record_arg(Task* t,  T* child_arg,
  * Don't call this directly; use one of the helpers below.
  */
 enum { NO_SLACK = 0, ALLOW_SLACK = 1 };
-static void finish_restoring_scratch_slack(Task* t,
-					   byte* iter, byte** datap,
+static void finish_restoring_scratch_slack(Task* t, byte* iter, void** datap,
 					   int slack)
 {
-	byte* data = *datap;
+	byte* data = (byte*)*datap;
 	ssize_t consumed = (iter - data);
 	ssize_t diff = t->ev->syscall.tmp_data_num_bytes - consumed;
 
@@ -1107,8 +1105,7 @@ static void finish_restoring_scratch_slack(Task* t,
 /**
  * Like above, but require that all saved scratch data was consumed.
  */
-static void finish_restoring_scratch(Task* t,
-				     byte* iter, byte** data)
+static void finish_restoring_scratch(Task* t, byte* iter, void** data)
 {
 	return finish_restoring_scratch_slack(t, iter, data, NO_SLACK);
 }
@@ -1117,8 +1114,7 @@ static void finish_restoring_scratch(Task* t,
  * Like above, but allow some saved scratch data to remain unconsumed,
  * for example if a buffer wasn't filled entirely.
  */
-static void finish_restoring_some_scratch(Task* t,
-					  byte* iter, byte** data)
+static void finish_restoring_some_scratch(Task* t, byte* iter, void** data)
 {
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
@@ -1452,7 +1448,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		byte* buf;
 		byte* argsp;
 		byte* iter;
-		byte* data = NULL;
+		void* data = NULL;
 		ssize_t nrecvd;
 
 		nrecvd = t->regs().eax;
@@ -1632,7 +1628,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		byte* orig_argsp = pop_arg_ptr<byte>(t);
 
 		byte* iter;
-		byte* data = start_restoring_scratch(t, &iter);
+		void* data = start_restoring_scratch(t, &iter);
 		// Consume the scratch args.
 		if (SYS_ACCEPT == call) {
 			iter += sizeof(struct accept_args);
@@ -1910,7 +1906,7 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_epoll_wait: {
 		byte* iter;
-		byte* data = start_restoring_scratch(t, &iter);
+		void* data = start_restoring_scratch(t, &iter);
 		struct epoll_event* events =
 			pop_arg_ptr<struct epoll_event>(t);
 		int maxevents = t->regs().edx;
@@ -2585,7 +2581,7 @@ void rec_process_syscall(Task *t)
 	case SYS_poll:
 	case SYS_ppoll: {
 		byte* iter;
-		byte* data = start_restoring_scratch(t, &iter);
+		void* data = start_restoring_scratch(t, &iter);
 		struct pollfd* fds = pop_arg_ptr<struct pollfd>(t);
 		size_t nfds = t->regs().ecx;
 
@@ -2643,7 +2639,7 @@ void rec_process_syscall(Task *t)
 		}
 		if (size > 0) {
 			byte* iter;
-			byte* data = start_restoring_scratch(t, &iter);
+			void* data = start_restoring_scratch(t, &iter);
 			byte* arg = pop_arg_ptr<byte>(t);
 
 			restore_and_record_arg_buf(t, size, arg, &iter);
@@ -3251,7 +3247,7 @@ void rec_process_syscall(Task *t)
 	{
 		struct timespec* rem = pop_arg_ptr<struct timespec>(t);
 		byte* iter;
-		byte* data = start_restoring_scratch(t, &iter);
+		void* data = start_restoring_scratch(t, &iter);
 
 		if (rem) {
 			struct user_regs_struct r = t->regs();
@@ -3308,7 +3304,7 @@ void rec_process_syscall(Task *t)
 		byte* buf;
 		ssize_t nread;
 		byte* iter;
-		byte* data = NULL;
+		void* data = nullptr;
 
 		nread = t->regs().eax;
 		if (has_saved_arg_ptrs(t)) {
@@ -3439,7 +3435,7 @@ void rec_process_syscall(Task *t)
 		loff_t* off_out = pop_arg_ptr<loff_t>(t);
 		loff_t* off_in = pop_arg_ptr<loff_t>(t);
 		byte* iter;
-		byte* data = start_restoring_scratch(t, &iter);
+		void* data = start_restoring_scratch(t, &iter);
 
 		struct user_regs_struct r = t->regs();
 		if (off_in) {
@@ -3518,7 +3514,7 @@ void rec_process_syscall(Task *t)
 		struct rusage* rusage = pop_arg_ptr<struct rusage>(t);
 		int* status = pop_arg_ptr<int>(t);
 		byte* iter;
-		byte* data = start_restoring_scratch(t, &iter);
+		void* data = start_restoring_scratch(t, &iter);
 
 		struct user_regs_struct r = t->regs();
 		if (status) {
