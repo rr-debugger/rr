@@ -161,8 +161,8 @@ AddressSpace::brk(void* addr)
 		return;
 	}
 
-	update_heap((byte*)heap.start, addr);
-	map((byte*)heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
+	update_heap(heap.start, addr);
+	map(heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
 	    MappableResource::heap());
 }
 
@@ -211,7 +211,7 @@ AddressSpace::map(void* addr, size_t num_bytes, int prot, int flags,
 
 	num_bytes = ceil_page_size(num_bytes);
 
-	Mapping m((byte*)addr, num_bytes, prot, flags, offset_bytes);
+	Mapping m(addr, num_bytes, prot, flags, offset_bytes);
 	if (mem.end() != mem.find(m)) {
 		// The mmap() man page doesn't specifically describe
 		// what should happen if an existing map is
@@ -229,11 +229,11 @@ typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
 MappingResourcePair
 AddressSpace::mapping_of(void* addr, size_t num_bytes) const
 {
-	auto it = mem.find(Mapping((byte*)addr, num_bytes));
+	auto it = mem.find(Mapping(addr, num_bytes));
 	assert(it != mem.end());
 	// TODO callers assume [addr, addr + num_bytes] doesn't cross
 	// resource boundaries
-	assert(it->first.has_subset(Mapping((byte*)addr, num_bytes)));
+	assert(it->first.has_subset(Mapping(addr, num_bytes)));
 	return *it;
 }
 
@@ -261,7 +261,8 @@ AddressSpace::protect(void* addr, size_t num_bytes, int prot)
 	unmap(addr, num_bytes);
 
 	map_and_coalesce(Mapping((byte*)addr, num_bytes, prot, m.flags,
-				 adjust_offset(r, m, (byte*)addr - m.start)),
+				 adjust_offset(r, m,
+					       (byte*)addr - (byte*)m.start)),
 			 r);
 }
 
@@ -284,7 +285,7 @@ AddressSpace::remap(void* old_addr, size_t old_num_bytes,
 	map_and_coalesce(Mapping((byte*)new_addr, new_num_bytes,
 				 m.prot, m.flags,
 				 adjust_offset(r, m,
-					       ((byte*)old_addr - m.start))),
+					       ((byte*)old_addr - (byte*)m.start))),
 			 r);
 }
 
@@ -362,14 +363,15 @@ AddressSpace::unmap(void* addr, ssize_t num_bytes)
 		// If the first segment we unmap underflows the unmap
 		// region, remap the underflow region.
 		if (m.start < u.start) {
-			mem[Mapping(m.start, u.start - m.start, m.prot,
-				    m.flags, m.offset)] = r;
+			mem[Mapping(m.start, (byte*)u.start - (byte*)m.start,
+				    m.prot, m.flags, m.offset)] = r;
 		}
 		// If the last segment we unmap overflows the unmap
 		// region, remap the overflow region.
 		if (u.end < m.end) {
-			mem[Mapping(u.end, m.end - u.end, m.prot, m.flags,
-				    adjust_offset(r, m, u.start - m.start))]
+			mem[Mapping(u.end, (byte*)m.end - (byte*)u.end,
+				    m.prot, m.flags,
+				    adjust_offset(r, m, (byte*)u.start - (byte*)m.start))]
 				= r;
 		}
 		// Maintain the loop invariant.
@@ -718,7 +720,7 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	FileId id;
 	if (is_dynamic_heap) {
 		id.psdev = PSEUDODEVICE_HEAP;
-		as->update_heap((void*)as->heap.start, info.end_addr);
+		as->update_heap(as->heap.start, info.end_addr);
 	} else if (!strcmp("[stack]", info.name)) {
 		id.psdev = PSEUDODEVICE_STACK;
 	} else if (!strcmp("[vdso]", info.name)) {
@@ -1008,8 +1010,8 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 					  page_size()).first;
 		debug("mapping stack for %d at [%p, %p)",
 		      new_tid, m.start, m.end);
-		t->as->map((void*)m.start, m.num_bytes(), m.prot, m.flags,
-			    m.offset, MappableResource::stack(new_tid));
+		t->as->map(m.start, m.num_bytes(), m.prot, m.flags,
+			   m.offset, MappableResource::stack(new_tid));
 	}
 	// Clone children, both thread and fork, inherit the parent
 	// prname.

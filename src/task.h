@@ -176,15 +176,15 @@ struct Mapping {
 
 	Mapping() : start(nullptr), end(nullptr), prot(0), flags(0), offset(0)
 	{ }
-	Mapping(const byte* addr, size_t num_bytes, int prot=0, int flags=0,
+	Mapping(void* addr, size_t num_bytes, int prot=0, int flags=0,
 		off64_t offset=0)
-		: start(addr), end(addr + ceil_page_size(num_bytes))
+		: start(addr), end((byte*)addr + ceil_page_size(num_bytes))
 		, prot(prot)
 		, flags(flags & map_flags_mask)
 		, offset(offset) {
 		assert_valid();
 	}
-	Mapping(const byte* start, const byte* end, int prot=0, int flags=0,
+	Mapping(void* start, void* end, int prot=0, int flags=0,
 		off64_t offset=0)
 		: start(start), end(end), prot(prot)
 		, flags(flags & map_flags_mask)
@@ -227,7 +227,7 @@ struct Mapping {
 			|| (start < o.end && o.end <= end);
 	}
 
-	size_t num_bytes() const { return end - start; }
+	size_t num_bytes() const { return (byte*)end - (byte*)start; }
 
 	/**
 	 * Return the lowest-common-denominator interpretation of this
@@ -239,8 +239,8 @@ struct Mapping {
 			       offset);
 	}
 
-	const byte* const start;
-	const byte* const end;
+	void* const start;
+	void* const end;
 	const int prot;
 	const int flags;
 	const off64_t offset;
