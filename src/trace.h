@@ -168,9 +168,7 @@ void dump_trace_frame(FILE* out, const struct trace_frame* frame);
  * Recording
  */
 
-void clear_trace_files(void);
 void rec_init_trace_files(void);
-void record_input_str(pid_t pid, int syscall, int len);
 
 void record_child_data(Task *t, size_t len, byte* child_ptr);
 void record_child_str(Task* t, byte* child_ptr);
@@ -203,7 +201,6 @@ void record_mmapped_file_stats(struct mmapped_file *file);
  * return a string like "trace_0:457293".
  */
 unsigned int get_global_time(void);
-unsigned int get_time(pid_t tid);
 void record_argv_envp(int argc, char* argv[], char* envp[]);
 /**
  * Create a unique directory in which all trace files will be stored.
@@ -231,7 +228,6 @@ void read_next_trace(struct trace_frame* frame);
 int try_read_next_trace(struct trace_frame* frame);
 void peek_next_trace(struct trace_frame *trace);
 void read_next_mmapped_file_stats(struct mmapped_file *file);
-void peek_next_mmapped_file_stats(struct mmapped_file *file);
 void rep_init_trace_files(void);
 void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr);
 /**

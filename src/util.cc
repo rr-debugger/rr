@@ -69,50 +69,6 @@ struct flags* rr_flags_for_init(void)
 	return NULL;		/* not reached */
 }
 
-/**
- * Return nonzero if |addr| falls within |info|'s segment.
- */
-static int addr_in_segment(void* addr, const struct mapped_segment_info* info)
-{
-	return info->start_addr <= addr && addr < info->end_addr;
-}
-
-static int find_segment_iterator(void* it_data, Task* t,
-				 const struct map_iterator_data* data)
-{
-	struct mapped_segment_info* info =
-		(struct mapped_segment_info*)it_data;
-	void* search_addr = info->start_addr;
-	if (addr_in_segment(search_addr, &data->info)) {
-		memcpy(info, &data->info, sizeof(*info));
-		return STOP_ITERATING;
-	}
-	return CONTINUE_ITERATING;
-}
-
-/**
- * Search for the segment containing |search_addr|, and if found copy
- * out the segment info to |info| and return nonzero.  Return zero if
- * not found.
- */
-static int find_segment_containing(Task* t, byte* search_addr,
-			    struct mapped_segment_info* info)
-{
-	memset(info, 0, sizeof(*info));
-	info->start_addr = search_addr;
-	iterate_memory_map(t, find_segment_iterator, info,
-			   kNeverReadSegment, NULL);
-	return addr_in_segment(search_addr, info);
-}
-
-static byte* get_mmaped_region_end(Task* t, byte* start)
-{
-	struct mapped_segment_info info;
-	int found_info = find_segment_containing(t, start, &info);
-	assert_exec(t, found_info, "Didn't find segment containing %p", start);
-	return info.end_addr;
-}
-
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.
@@ -470,22 +426,6 @@ char* get_inst(Task* t, int eip_offset, int* opcode_size)
 	x86_cleanup();
 
 	return buf;
-}
-
-void mprotect_child_region(Task* t, byte* addr, int prot)
-{
-	struct current_state_buffer state;
-	size_t length;
-	long ret;
-
-	/* Page-align the address. */
-	addr = (byte*)((uintptr_t)addr & PAGE_MASK);
-	length = get_mmaped_region_end(t, addr) - addr;
-
-	prepare_remote_syscalls(t, &state);
-	ret = remote_syscall3(t, &state, SYS_mprotect, addr, length, prot);
-	assert(ret == 0);
-	finish_remote_syscalls(t, &state);
 }
 
 bool is_page_aligned(const byte* addr)
