@@ -1227,7 +1227,7 @@ public:
 	const struct user_regs_struct& regs();
 
 	/** Return the current $sp of this. */
-	const byte* sp() { return (const byte*)regs().esp; }
+	void* sp() { return (void*)regs().esp; }
 
 	/**
 	 * Read |val| from |child_addr|.
