@@ -1124,6 +1124,20 @@ Task::futex_wait(const byte* futex, uint32_t val)
 	}
 }
 
+unsigned long
+Task::get_ptrace_eventmsg()
+{
+	unsigned long msg;
+	xptrace(PTRACE_GETEVENTMSG, nullptr, &msg);
+	return msg;
+}
+
+void
+Task::get_siginfo(siginfo_t* si)
+{
+	xptrace(PTRACE_GETSIGINFO, nullptr, si);
+}
+
 bool
 Task::is_arm_desched_event_syscall()
 {
@@ -1422,6 +1436,21 @@ Task::set_tid_addr(const byte* tid_addr)
 }
 
 void
+Task::set_up_ptrace()
+{
+	int flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+		    PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
+		    PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
+		    PTRACE_O_TRACEEXIT;
+	if (-1 == fallible_ptrace(PTRACE_SETOPTIONS, nullptr,
+				  (void*)(PTRACE_O_TRACESECCOMP | flags))) {
+		// No seccomp on the system, try without (this has to
+		// succeed).
+		xptrace(PTRACE_SETOPTIONS, nullptr, (void*)flags);
+	}
+}
+
+void
 Task::signal_delivered(int sig)
 {
 	Sighandler& h = sighandlers->get(sig);
@@ -1699,7 +1728,7 @@ Task::detach_and_reap()
 	}
 
 	// XXX: why do we detach before harvesting?
-	sys_ptrace_detach(tid);
+	fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 	if (unstable) {
 		// In addition to problems described in the long
 		// comment at the prototype of this function, unstable
@@ -1745,6 +1774,12 @@ Task::detach_and_reap()
 		// along with our exit.  So we can't read the futex.
 		debug("  (can't futex_wait last task in vm)");
 	}
+}
+
+long
+Task::fallible_ptrace(int request, void* addr, void* data)
+{
+	return ptrace(__ptrace_request(request), tid, addr, data);
 }
 
 int
@@ -1832,7 +1867,7 @@ Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
 void
 Task::xptrace(int request, void* addr, void* data)
 {
-	long ret = ptrace(__ptrace_request(request), tid, addr, data);
+	long ret = fallible_ptrace(request, addr, data);
 	assert_exec(this, 0 == ret,
 		    "ptrace(%s, %d, addr=%p, data=%p) failed",
 		    ptrace_req_name(request), tid, addr, data);

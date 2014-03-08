@@ -64,7 +64,7 @@ static void handle_ptrace_event(Task** tp)
 
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK: {
-		int new_tid = sys_ptrace_getmsg(t);
+		int new_tid = t->get_ptrace_eventmsg();
 		const byte* stack = (const byte*)t->regs().ecx;
 		const byte* ctid = (const byte*)t->regs().edi;
 		// fork and can never share these resources, only
@@ -245,7 +245,7 @@ static int disarm_desched(Task* t, siginfo_t* si)
 				    signalname(sig),
 				    signalname(old_sig));
 			sig_status = t->status();
-			sys_ptrace_getsiginfo(t, si);
+			t->get_siginfo(si);
 		}
 	} while (!t->is_disarm_desched_event_syscall());
 	return sig_status;

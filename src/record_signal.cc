@@ -599,7 +599,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 		t->cont_singlestep();
 		assert(t->stopped());
 
-		sys_ptrace_getsiginfo(t, &tmp_si);
+		t->get_siginfo(&tmp_si);
 		is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
@@ -725,7 +725,7 @@ void handle_signal(Task* t, siginfo_t* si)
 	}
 
 	if (!si) {
-		sys_ptrace_getsiginfo(t, &local_si);
+		t->get_siginfo(&local_si);
 		si = &local_si;
 	}
 	return handle_siginfo(t, si);

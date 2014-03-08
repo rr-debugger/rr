@@ -1062,6 +1062,18 @@ public:
 	void futex_wait(const byte* futex, uint32_t val);
 
 	/**
+	 * Return the message associated with the current ptrace
+	 * event, f.e. the new child's pid at PTRACE_EVENT_CLONE.
+	 */
+	unsigned long get_ptrace_eventmsg();
+
+	/**
+	 * Return through |si| the siginfo at the signal-stop of this.
+	 * Not meaningful unless this is actually at a signal stop.
+	 */
+	void get_siginfo(siginfo_t* si);
+
+	/**
 	 * Call this when the tracee's syscallbuf has been initialized.
 	 */
 	void inited_syscallbuf();
@@ -1270,6 +1282,13 @@ public:
 
 	/** Update the clear-tid futex to |tid_addr|. */
 	void set_tid_addr(const byte* tid_addr);
+
+	/**
+	 * Set the required ptrace flags.  Call this for the first
+	 * tracee created.  Subsequent tracees will inherit these
+	 * settings.
+	 */
+	void set_up_ptrace();
 
 	/**
 	 * Call this after |sig| is delivered to this task.  Emulate
@@ -1604,6 +1623,12 @@ private:
 	void detach_and_reap();
 
 	/**
+	 * Make the ptrace |request| with |addr| and |data|, return
+	 * the ptrace return value.
+	 */
+	long fallible_ptrace(int request, void* addr, void* data);
+
+	/**
 	 * Open our /proc/[tid]/mem fd.  For reopen(), close the old
 	 * one first.
 	 */
@@ -1616,8 +1641,8 @@ private:
 	bool is_desched_sig_blocked();
 
 	/**
-	 * Make an infallible ptrace |request| with |addr| and |data|.
-	 * Either the request succeeds, or this doesn't return.
+	 * Like |fallible_ptrace()| but infallible: except either the
+	 * request succeeds, or this doesn't return.
 	 */
 	void xptrace(int request, void* addr, void* data);
 

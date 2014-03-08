@@ -640,7 +640,7 @@ static int is_breakpoint_trap(Task* t)
 
 	assert(SIGTRAP == t->child_sig);
 
-	sys_ptrace_getsiginfo(t, &si);
+	t->get_siginfo(&si);
 	assert(SIGTRAP == si.si_signo);
 
 	/* XXX unable to find docs on which of these "should" be
@@ -1920,7 +1920,7 @@ static void serve_replay(int argc, char* argv[], char** envp)
 	t->wait();
 	assert(t->stopped());
 
-	sys_ptrace_setup(t);
+	t->set_up_ptrace();
 
 	replay_trace_frames();
 

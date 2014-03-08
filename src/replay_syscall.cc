@@ -572,7 +572,7 @@ static void process_clone(Task* t,
 	__ptrace_cont(t);
 
 	int rec_tid = rec_regs.eax;
-	pid_t new_tid = sys_ptrace_getmsg(t);
+	pid_t new_tid = t->get_ptrace_eventmsg();
 
 	const byte* stack = (const byte*)t->regs().ecx;
 	const byte* ctid = (const byte*)t->regs().edi;
