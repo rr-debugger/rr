@@ -19,7 +19,6 @@
 #include "recorder.h"
 #include "recorder_sched.h"
 #include "replayer.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"

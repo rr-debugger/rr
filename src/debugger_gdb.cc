@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdlib.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -24,8 +25,6 @@
 #include <sstream>
 
 #include "dbg.h"
-#include "sys.h"
-#include "task.h"
 
 #define INTERRUPT_CHAR '\x03'
 

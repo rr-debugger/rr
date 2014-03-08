@@ -21,7 +21,6 @@
 
 #include "dbg.h"
 #include "hpc.h"
-#include "sys.h"
 #include "util.h"
 
 using namespace std;

@@ -43,7 +43,6 @@
 #include "hpc.h"
 #include "recorder_sched.h"
 #include "replayer.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "types.h"
@@ -541,7 +540,7 @@ void print_process_state(pid_t tid)
 		putchar(c);
 		c = getc(file);
 	}
-	sys_fclose(file);
+	fclose(file);
 }
 
 
