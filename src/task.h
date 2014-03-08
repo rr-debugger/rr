@@ -551,9 +551,10 @@ struct TaskGroup : public HasTaskSet {
 	static shr_ptr create(Task* t);
 
 	const pid_t tgid;
+	const pid_t real_tgid;
 
 private:
-	TaskGroup(pid_t tgid);
+	TaskGroup(pid_t tgid, pid_t real_tgid);
 
 	TaskGroup(const TaskGroup&);
 	TaskGroup operator=(const TaskGroup&);
@@ -1308,8 +1309,10 @@ public:
 	/** Return the task group this belongs to. */
 	TaskGroup::shr_ptr task_group() { return tg; }
 
-	/** Return the id of this task's thread group. */
-	pid_t tgid() const;
+	/** Return the id of this task's recorded thread group. */
+	pid_t tgid() const { return tg->tgid; }
+	/** Return id of real OS task group. */
+	pid_t real_tgid() const { return tg->real_tgid; }
 
 	/**
 	 * Call this after the tracee successfully makes a

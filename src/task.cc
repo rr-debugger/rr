@@ -854,14 +854,15 @@ TaskGroup::destabilize()
 /*static*/ TaskGroup::shr_ptr
 TaskGroup::create(Task* t)
 {
-	shr_ptr tg(new TaskGroup(t->rec_tid));
+	shr_ptr tg(new TaskGroup(t->rec_tid, t->tid));
 	tg->insert_task(t);
 	return tg;
 }
 
-TaskGroup::TaskGroup(pid_t tgid) : tgid(tgid)
+TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
+	: tgid(tgid), real_tgid(real_tgid)
 {
-	debug("creating new task group %d", tgid);
+	debug("creating new task group %d (real tgid: %d)", tgid, real_tgid);
 }
 
 static const char* event_type_name(int type)
@@ -1447,12 +1448,6 @@ Task::signal_action(int sig) const
 	return sighandlers->get(sig).sa;
 }
 
-pid_t
-Task::tgid() const
-{
-	return tg->tgid;
-}
-
 void
 Task::update_prname(byte* child_addr)
 {
@@ -1622,50 +1617,39 @@ Task::find(pid_t rec_tid)
 	return tasks.end() != it ? it->second : NULL;
 }
 
+/** Send |sig| to task |tid| within group |tgid|. */
+static int sys_tgkill(pid_t tgid, pid_t tid, int sig)
+{
+	return syscall(SYS_tgkill, tgid, tid, SIGKILL);
+}
+
 /*static*/ void
 Task::killall()
 {
-	ssize_t task_count = Task::count();
 	while (!tasks.empty()) {
 		auto it = tasks.rbegin();
 		Task* t = it->second;
 
 		debug("sending SIGKILL to %d ...", t->tid);
-		::syscall(SYS_tgkill, t->tgid(), t->tid, SIGKILL);
+		sys_tgkill(t->real_tgid(), t->tid, SIGKILL);
 
+		t->wait();
+		debug("  ... status %#x", t->status());
+
+		int status = t->status();
+		if (WIFSIGNALED(status)) {
+			assert(SIGKILL == WTERMSIG(status));
+			// The task is already dead and reaped, so
+			// skip any waitpid()'ing during cleanup.
+			t->unstable = 1;
+		} else {
+			assert(PTRACE_EVENT_EXIT == t->ptrace_event());
+		}
 		// Don't attempt to synchonize on the cleartid futex.
 		// We won't be able to reliably read it, and it's
 		// pointless anyway.
 		t->tid_futex = nullptr;
-		// This is an unstable exit in that we don't know a
-		// priori what order of tasks it's safe to
-		// individually wait on.  So we use the waitpid(-1)
-		// loop below.
-		t->unstable = 1;
 		delete t;
-	}
-	while (task_count > 0) {
-		debug("killall: %d tasks to go, waitpid(-1) ...", task_count);
-		int status;
-		pid_t tid = waitpid(-1, &status, __WALL);
-		if (-1 == tid) {
-			switch (errno) {
-			case EINTR:
-				debug("  interrupted by signal");
-				continue;
-			case ECHILD:
-				debug("  no more children, giving up");
-				return;
-			default:
-				fatal("Failed to waitpid(-1)");
-			}
-		}
-		debug("  %d changed status to %#x", tid, status);
-		if (WIFSIGNALED(status) || WIFEXITED(status)) {
-			// TODO: find a more reliable way to kill off
-			// processes.
-			--task_count;
-		}
 	}
 }
 
@@ -1714,6 +1698,7 @@ Task::detach_and_reap()
 		read_mem(tid_futex, &dummy);
 	}
 
+	// XXX: why do we detach before harvesting?
 	sys_ptrace_detach(tid);
 	if (unstable) {
 		// In addition to problems described in the long
@@ -1733,17 +1718,13 @@ Task::detach_and_reap()
 			debug(" ... ECHILD");
 			break;
 		} else if (-1 == err) {
-			assert_exec(this, EINTR == errno,
-				    "waitpid(%d) returned -1, errno %d",
-				    tid, errno);
+			assert(EINTR == errno);
 		}
 		if (err == tid && (exited() || signaled())) {
 			debug(" ... exited with status 0x%x", wait_status);
 			break;
 		} else if (err == tid) {
-			assert_exec(this, PTRACE_EVENT_EXIT == ptrace_event(),
-				    "waitpid(%d) return status %d",
-				    tid, wait_status);
+			assert(PTRACE_EVENT_EXIT == ptrace_event());
 		}
 	}
 
