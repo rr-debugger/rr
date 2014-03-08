@@ -685,11 +685,10 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	case SYS_write:
-	case SYS_writev: {
-		int fd = t->regs().ebx;
-		maybe_mark_stdio_write(t, fd);
-		return RR_MAGIC_SAVE_DATA_FD != fd;
-	}
+	case SYS_writev:
+		maybe_mark_stdio_write(t, t->regs().ebx);
+		return 1;
+
 	/* pid_t waitpid(pid_t pid, int *status, int options); */
 	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
 	case SYS_waitpid:
