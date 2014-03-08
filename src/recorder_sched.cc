@@ -208,19 +208,6 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 }
 
 /**
- * Sends a SIGINT to all processes/threads.
- */
-void rec_sched_exit_all()
-{
-	while (Task::count() > 0) {
-		Task* t = Task::begin()->second;
-
-		sys_kill(t->tid, SIGINT);
-		rec_sched_deregister_thread(&t);
-	}
-}
-
-/**
  * De-regsiter a thread and de-allocate all resources. This function
  * should be called when a thread exits.
  */

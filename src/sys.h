@@ -18,16 +18,10 @@ FILE* sys_fopen(const char* path, const char* mode);
 int sys_open(const char* path, int flags, mode_t mode);
 int sys_mkpath(const char *path, mode_t mode);
 void sys_fclose(FILE* file);
-pid_t sys_fork(void);
-void sys_kill(int pid, int msg);
-void sys_exit(void);
 void sys_start_trace(const char* executable, char** fake_argv, char** envp);
 
-void sys_ptrace(Task* t, int request, void* addr, void* data);
 void sys_ptrace_setup(Task* t);
-void sys_ptrace_traceme(void);
 /* Return zero on success, -1 on error. */
-int sys_ptrace_peekdata(pid_t pid, long addr, long* value);
 unsigned long sys_ptrace_getmsg(Task* t);
 void sys_ptrace_getsiginfo(Task* t, siginfo_t* sig);
 void sys_ptrace_detach(pid_t pid);
