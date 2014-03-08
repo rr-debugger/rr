@@ -1742,7 +1742,7 @@ void destroy_buffers(Task* t, int flags)
 	// Do the actual buffer and fd cleanup.
 	remote_syscall2(t, &state, SYS_munmap,
 			t->scratch_ptr, t->scratch_size);
-	t->vm()->unmap(t->scratch_ptr, t->scratch_size);
+	t->vm()->unmap((byte*)t->scratch_ptr, t->scratch_size);
 	if (t->syscallbuf_child) {
 		remote_syscall2(t, &state, SYS_munmap,
 				t->syscallbuf_child, t->num_syscallbuf_bytes);

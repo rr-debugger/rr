@@ -741,7 +741,7 @@ struct event {
 			 * buffers.  The syscallbuf code will do that
 			 * itself.) */
 			FIXEDSTACK_DECL(, void*, 5) saved_args;
-			byte* tmp_data_ptr;
+			void* tmp_data_ptr;
 			ssize_t tmp_data_num_bytes;
 
 			/* Nonzero when this syscall was restarted
@@ -1530,7 +1530,7 @@ public:
 	 *
 	 * |scratch_ptr| points at the mapped address in the child,
 	 * and |size| is the total available space. */
-	byte* scratch_ptr;
+	void* scratch_ptr;
 	ssize_t scratch_size;
 
 	int event;

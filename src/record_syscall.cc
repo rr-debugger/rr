@@ -169,7 +169,7 @@ static int abort_scratch(Task* t, const char* event)
  */
 static int can_use_scratch(Task* t, byte* scratch_end)
 {
-	byte* scratch_start = t->scratch_ptr;
+	byte* scratch_start = (byte*)t->scratch_ptr;
 
 	assert(t->ev->syscall.tmp_data_ptr == t->scratch_ptr);
 
@@ -186,7 +186,7 @@ static int prepare_ipc(Task* t, int would_need_scratch)
 {
 	int call = t->regs().ebx;
 	byte* scratch = would_need_scratch ?
-			t->ev->syscall.tmp_data_ptr : NULL;
+			(byte*)t->ev->syscall.tmp_data_ptr : nullptr;
 
 	assert(!t->desched_rec());
 
@@ -236,7 +236,7 @@ static ssize_t read_iovs(Task* t, const struct msghdr& msg,
 static int prepare_socketcall(Task* t, int would_need_scratch)
 {
 	byte* scratch = would_need_scratch ?
-			t->ev->syscall.tmp_data_ptr : NULL;
+			(byte*)t->ev->syscall.tmp_data_ptr : nullptr;
 	long* argsp;
 	byte* tmpargsp;
 	struct user_regs_struct r = t->regs();
@@ -591,7 +591,7 @@ int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
 		 * TODO: but, we'll stomp if we reenter through a
 		 * signal handler ... */
 		reset_scratch_pointers(t);
-		scratch = t->ev->syscall.tmp_data_ptr;
+		scratch = (byte*)t->ev->syscall.tmp_data_ptr;
 	}
 
 	switch (syscallno) {
@@ -981,7 +981,7 @@ static void init_scratch_memory(Task *t)
 	int fd = -1;
 	off64_t offset_pages = 0;
 
-	t->scratch_ptr = (byte*)remote_syscall6(t, &state, SYS_mmap2,
+	t->scratch_ptr = (void*)remote_syscall6(t, &state, SYS_mmap2,
 						0, sz, prot, flags,
 						fd, offset_pages);
 	t->scratch_size = scratch_size;
@@ -996,15 +996,15 @@ static void init_scratch_memory(Task *t)
 	struct mmapped_file file = {0};
 	file.time = get_global_time();
 	file.tid = t->tid;
-	file.start = t->scratch_ptr;
-	file.end = t->scratch_ptr + scratch_size;
+	file.start = (byte*)t->scratch_ptr;
+	file.end = (byte*)t->scratch_ptr + scratch_size;
 	sprintf(file.filename,"scratch for thread %d",t->tid);
 	record_mmapped_file_stats(&file);
 
 	r.eax = eax;
 	t->set_regs(r);
 
-	t->vm()->map(t->scratch_ptr, sz, prot, flags,
+	t->vm()->map((byte*)t->scratch_ptr, sz, prot, flags,
 		     page_size() * offset_pages,
 		     MappableResource::scratch(t->rec_tid));
 }
@@ -1020,13 +1020,13 @@ static void init_scratch_memory(Task *t)
 static void* start_restoring_scratch(Task* t, byte** iter)
 {
 	// TODO: manage this in Task.
-	byte* scratch = t->ev->syscall.tmp_data_ptr;
+	void* scratch = t->ev->syscall.tmp_data_ptr;
 	ssize_t num_bytes = t->ev->syscall.tmp_data_num_bytes;
 
 	assert(num_bytes >= 0);
 
 	byte* data = (byte*)malloc(num_bytes);
-	t->read_bytes_helper(scratch, num_bytes, data);
+	t->read_bytes_helper((byte*)scratch, num_bytes, data);
 	return *iter = data;
 }
 
