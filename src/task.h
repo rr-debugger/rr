@@ -366,7 +366,7 @@ public:
 	 * Change the program data break of this address space to
 	 * |addr|.
 	 */
-	void brk(const byte* addr);
+	void brk(void* addr);
 
 	/**
 	 * Return a copy of this address space with the same mappings.
@@ -412,27 +412,27 @@ public:
 	 * |prot| protection and |flags|.  The pages are (possibly
 	 * initially) backed starting at |offset| of |res|.
 	 */
-	void map(const byte* addr, size_t num_bytes, int prot, int flags,
+	void map(void* addr, size_t num_bytes, int prot, int flags,
 		 off64_t offset_bytes, const MappableResource& res);
 
 	/**
 	 * Return the mapping and mapped resource that underly [addr,
 	 * addr + num_bytes).  There must be exactly one such mapping.
 	 */
-	MemoryMap::value_type mapping_of(const byte* addr, size_t num_bytes) const;
+	MemoryMap::value_type mapping_of(void* addr, size_t num_bytes) const;
 
 	/**
 	 * Change the protection bits of [addr, addr + num_bytes) to
 	 * |prot|.
 	 */
-	void protect(const byte* addr, size_t num_bytes, int prot);
+	void protect(void* addr, size_t num_bytes, int prot);
 
 	/**
 	 * Move the mapping [old_addr, old_addr + old_num_bytes) to
 	 * [new_addr, old_addr + new_num_bytes), preserving metadata.
 	 */
-	void remap(const byte* old_addr, size_t old_num_bytes,
-		   const byte* new_addr, size_t new_num_bytes);
+	void remap(void* old_addr, size_t old_num_bytes,
+		   void* new_addr, size_t new_num_bytes);
 
 	/**
 	 * Remove a |type| reference to the breakpoint at |addr|.  If
@@ -454,7 +454,7 @@ public:
 	 * Make [addr, addr + num_bytes) inaccesible within this
 	 * address space.
 	 */
-	void unmap(const byte* addr, ssize_t num_bytes);
+	void unmap(void* addr, ssize_t num_bytes);
 
 	/** Return the vdso mapping of this. */
 	Mapping vdso() const;
@@ -495,8 +495,9 @@ private:
 	void map_and_coalesce(const Mapping& m, const MappableResource& r);
 
 	/** Set the dynamic heap segment to |[start, end)| */
-	void update_heap(const byte* start, const byte* end) {
-		heap = Mapping(start, end - start, PROT_READ | PROT_WRITE,
+	void update_heap(void* start, void* end) {
+		heap = Mapping((byte*)start, (byte*)end - (byte*)start,
+			       PROT_READ | PROT_WRITE,
 			       MAP_ANONYMOUS | MAP_PRIVATE, 0);
 	}
 
@@ -513,7 +514,7 @@ private:
 	/* All segments mapped into this address space. */
 	MemoryMap mem;
 	/* First mapped byte of the vdso. */
-	byte* vdso_start_addr;
+	void* vdso_start_addr;
 
 	/**
 	 * Ensure that the cached mapping of |t| matches /proc/maps,
@@ -908,7 +909,7 @@ public:
 	 * only relevant to replay, and is the pid that was assigned
 	 * to the task during recording.
 	 */
-	Task* clone(int flags, const byte* stack, const byte* cleartid_addr,
+	Task* clone(int flags, void* stack, void* cleartid_addr,
 		    pid_t new_tid, pid_t new_rec_tid = -1);
 
 	/**
@@ -1059,7 +1060,7 @@ public:
 	 * change.  This must only be used in contexts where the futex
 	 * will change "soon".
 	 */
-	void futex_wait(const byte* futex, uint32_t val);
+	void futex_wait(void* futex, uint32_t val);
 
 	/**
 	 * Return the message associated with the current ptrace
@@ -1281,7 +1282,7 @@ public:
 	void set_regs(const struct user_regs_struct& regs);
 
 	/** Update the clear-tid futex to |tid_addr|. */
-	void set_tid_addr(const byte* tid_addr);
+	void set_tid_addr(void* tid_addr);
 
 	/**
 	 * Call this after |sig| is delivered to this task.  Emulate
@@ -1685,7 +1686,7 @@ private:
 	std::shared_ptr<TaskGroup> tg;
 	// The memory cell the kernel will clear and notify on exit,
 	// if our clone parent requested it.
-	const byte* tid_futex;
+	void* tid_futex;
 	// The most recent status of this task as returned by
 	// waitpid().
 	int wait_status;

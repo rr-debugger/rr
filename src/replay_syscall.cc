@@ -472,7 +472,7 @@ static void init_scratch_memory(Task* t)
 	 * to the scratch memory are caught. */
 	struct mmapped_file file;
 	struct current_state_buffer state;
-	const byte* map_addr;
+	void* map_addr;
 
 	read_next_mmapped_file_stats(&file);
 
@@ -487,7 +487,7 @@ static void init_scratch_memory(Task* t)
 	int fd = -1;
 	off_t offset = 0;
 
-	map_addr = (const byte*)remote_syscall6(
+	map_addr = (void*)remote_syscall6(
 		t, &state, SYS_mmap2,
 		t->scratch_ptr, sz, prot, flags, fd, offset);
 	finish_remote_syscalls(t, &state);
@@ -573,8 +573,8 @@ static void process_clone(Task* t,
 	int rec_tid = rec_regs.eax;
 	pid_t new_tid = t->get_ptrace_eventmsg();
 
-	const byte* stack = (const byte*)t->regs().ecx;
-	const byte* ctid = (const byte*)t->regs().edi;
+	void* stack = (void*)t->regs().ecx;
+	void* ctid = (void*)t->regs().edi;
 	int flags_arg = (SYS_clone == t->regs().orig_eax) ? t->regs().ebx : 0;
 
 	Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
@@ -668,7 +668,7 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 			  const struct user_regs_struct* regs)
 {
 	int op = regs->ecx & FUTEX_CMD_MASK;
-	byte* futex = (byte*)regs->ebx;
+	void* futex = (void*)regs->ebx;
 
 	step->syscall.emu = 1;
 	step->syscall.emu_ret = 1;
@@ -684,7 +684,7 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 				// since we emulate SYS_futex in
 				// replay, we need to set it ourselves
 				// here.
-				t->write_mem(futex, next_val);
+				t->write_mem((byte*)futex, next_val);
 			}
 		}
 		step->action = TSTEP_ENTER_SYSCALL;
@@ -810,7 +810,7 @@ static void* finish_anonymous_mmap(Task* t,
 	int fd = rec_regs->edi;
 
 	if (note_task_map) {
-		t->vm()->map((const byte*)rec_addr, length, prot, flags,
+		t->vm()->map(rec_addr, length, prot, flags,
 			     page_size() * offset_pages,
 			     MappableResource::anonymous());
 	}
@@ -843,7 +843,7 @@ static void* finish_private_mmap(Task* t,
 	/* Restore the map region we copied. */
 	t->set_data_from_trace();
 
-	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags,
+	t->vm()->map(mapped_addr, num_bytes, prot, flags,
 		     page_size() * offset_pages,
 		     // Intentionally drop the stat() information
 		     // saved to trace so as to match /proc/maps's
@@ -940,7 +940,7 @@ static void* finish_direct_mmap(Task* t,
 	remote_syscall1(t, state, SYS_close, fd);
 
 	if (note_task_map) {
-		t->vm()->map((const byte*)mapped_addr, length, prot, flags,
+		t->vm()->map(mapped_addr, length, prot, flags,
 			     page_size() * offset_pages,
 			     MappableResource(FileId(file->stat),
 					      file->filename));
@@ -996,7 +996,7 @@ static void* finish_shared_mmap(Task* t,
 	debug("  restored %d bytes at 0x%llx to %s",
 	      num_bytes, offset_bytes, vfile.filename);
 
-	t->vm()->map((const byte*)mapped_addr, num_bytes, prot, flags,
+	t->vm()->map(mapped_addr, num_bytes, prot, flags,
 		     offset_bytes,
 		     MappableResource(FileId(file->stat), file->filename));
 
@@ -1607,7 +1607,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->syscall.num_emu_args = 1;
 		step->action = TSTEP_EXIT_SYSCALL;
 		t->set_data_from_trace();
-		t->set_tid_addr((byte*)rec_regs->ebx);
+		t->set_tid_addr((void*)rec_regs->ebx);
 		return;
 
 	case SYS_sigreturn:

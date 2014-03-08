@@ -353,7 +353,7 @@ void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
  * value.)  The new value of the futex after the kernel updates it is
  * returned in |next_val|.
  */
-bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val);
+bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val);
 
 /** Return the default action of |sig|. */
 enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };

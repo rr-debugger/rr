@@ -1088,11 +1088,11 @@ void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 	t->set_data_from_trace();
 }
 
-bool is_now_contended_pi_futex(Task* t, byte* futex, uint32_t* next_val)
+bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val)
 {
 	static_assert(sizeof(uint32_t) == sizeof(long),
 		      "Sorry, need to add Task::read_int()");
-	uint32_t val = t->read_word(futex);
+	uint32_t val = t->read_word((byte*)futex);
 	pid_t owner_tid = (val & FUTEX_TID_MASK);
 	bool now_contended = (owner_tid != 0 && owner_tid != t->rec_tid
 			      && !(val & FUTEX_WAITERS));
@@ -1635,7 +1635,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	/* No entries to begin with. */
 	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
 
-	t->vm()->map((const byte*)child_map_addr, t->num_syscallbuf_bytes,
+	t->vm()->map(child_map_addr, t->num_syscallbuf_bytes,
 		     prot, flags, page_size() * offset_pages,
 		     MappableResource::syscallbuf(t->rec_tid, shmem_fd));
 
@@ -1742,11 +1742,11 @@ void destroy_buffers(Task* t, int flags)
 	// Do the actual buffer and fd cleanup.
 	remote_syscall2(t, &state, SYS_munmap,
 			t->scratch_ptr, t->scratch_size);
-	t->vm()->unmap((byte*)t->scratch_ptr, t->scratch_size);
+	t->vm()->unmap(t->scratch_ptr, t->scratch_size);
 	if (t->syscallbuf_child) {
 		remote_syscall2(t, &state, SYS_munmap,
 				t->syscallbuf_child, t->num_syscallbuf_bytes);
-		t->vm()->unmap((const byte*)t->syscallbuf_child,
+		t->vm()->unmap(t->syscallbuf_child,
 			       t->num_syscallbuf_bytes);
 		remote_syscall1(t, &state, SYS_close, t->desched_fd_child);
 	}
