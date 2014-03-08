@@ -1277,13 +1277,13 @@ static void restore_futex_words(Task* t,
 		    "Futex should have saved 4 or 8 bytes, but instead saved %d bytes",
 		    extra_data_size);
 
-	byte* child_uaddr = (byte*)t->regs().ebx;
+	void* child_uaddr = (void*)t->regs().ebx;
 	uint32_t rec_uaddr =
 		*reinterpret_cast<const uint32_t*>(rec->extra_data);
 	t->write_mem(child_uaddr, rec_uaddr);
 
 	if (saved_uaddr2) {
-		byte* child_uaddr2 = (byte*)t->regs().edi;
+		void* child_uaddr2 = (void*)t->regs().edi;
 		uint32_t rec_uaddr2 =
 			*reinterpret_cast<const uint32_t*>(rec->extra_data +
 							   sizeof(uint32_t));

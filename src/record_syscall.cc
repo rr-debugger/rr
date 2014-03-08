@@ -197,8 +197,8 @@ static int prepare_ipc(Task* t, int would_need_scratch)
 		}
 		size_t msgsize = t->regs().edx;
 		struct ipc_kludge_args kludge;
-		byte* child_kludge = (byte*)t->regs().edi;
-		t->read_mem(child_kludge, &kludge);
+		void* child_kludge = (void*)t->regs().edi;
+		t->read_mem((byte*)child_kludge, &kludge);
 
 		push_arg_ptr(t, kludge.msgbuf);
 		kludge.msgbuf = scratch;
@@ -238,7 +238,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	byte* scratch = would_need_scratch ?
 			(byte*)t->ev->syscall.tmp_data_ptr : nullptr;
 	long* argsp;
-	byte* tmpargsp;
+	void* tmpargsp;
 	struct user_regs_struct r = t->regs();
 
 	assert(!t->desched_rec());
@@ -316,7 +316,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 
 		// Reserve space for scratch socketcall args.
 		push_arg_ptr(t, argsp);
-		byte* tmpargsp = scratch;
+		void* tmpargsp = scratch;
 		r.ecx = (uintptr_t)tmpargsp;
 		scratch += (SYS_ACCEPT == call) ?
 			   sizeof(args._) : sizeof(args);
@@ -338,7 +338,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		} else {
 			t->write_mem(tmpargsp, args);
 		}
-		t->write_mem((byte*)args._.addrlen, addrlen);
+		t->write_mem(args._.addrlen, addrlen);
 		t->set_regs(r);
 		return 1;
 	}
@@ -353,7 +353,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 
 		// Reserve space for scratch socketcall args.
 		push_arg_ptr(t, argsp);
-		byte* tmpargsp = scratch;
+		void* tmpargsp = scratch;
 		r.ecx = (uintptr_t)tmpargsp;
 		scratch += sizeof(args);
 
@@ -382,7 +382,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 
 		t->write_mem(tmpargsp, args);
 		if (args.addrlen) {
-			t->write_mem((byte*)args.addrlen, addrlen);
+			t->write_mem(args.addrlen, addrlen);
 		}
 		t->set_regs(r);
 		return 1;
@@ -404,7 +404,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		struct msghdr tmpmsg = msg;
 		// Reserve space for scratch socketcall args.
 		push_arg_ptr(t, argsp);
-		byte* tmpargsp = scratch;
+		void* tmpargsp = scratch;
 		scratch += sizeof(args);
 		r.ecx = (uintptr_t)tmpargsp;
 
@@ -442,9 +442,9 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		t->write_mem(tmpargsp, args);
 		t->set_regs(r);
 
-		t->write_mem((byte*)args.msg, tmpmsg);
-		t->write_bytes_helper((byte*)tmpmsg.msg_iov, num_iov_bytes,
-				      (byte*)tmpiovs);
+		t->write_mem(args.msg, tmpmsg);
+		t->write_bytes_helper(tmpmsg.msg_iov, num_iov_bytes,
+				      (const byte*)tmpiovs);
 		for (size_t i = 0; i < tmpmsg.msg_iovlen; ++i) {
 			const struct iovec& iov = iovs[i];
 			const struct iovec& tmpiov = tmpiovs[i];
@@ -1061,7 +1061,7 @@ static void restore_and_record_arg_buf(Task* t,
 {
 	// TODO: move scratch-arg tracking into Task
 	byte* parent_data = *parent_data_iter;
-	t->write_bytes_helper((byte*)child_addr, num_bytes, parent_data);
+	t->write_bytes_helper(child_addr, num_bytes, parent_data);
 	record_parent_data(t, num_bytes, child_addr, parent_data);
 	*parent_data_iter += num_bytes;
 }
@@ -1377,7 +1377,7 @@ static void process_ipc(Task* t, int call)
 			void* dst = pop_arg_ptr<void>(t);
 
 			kludge.msgbuf = dst;
-			t->write_mem((byte*)child_kludge, kludge);
+			t->write_mem(child_kludge, kludge);
 
 			t->remote_memcpy((byte*)dst, (byte*)src, buf_size);
 		}
@@ -1493,7 +1493,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		int recvdlen = t->regs().eax;
 		if (has_saved_arg_ptrs(t)) {
 			byte* src_addrp = pop_arg_ptr<byte>(t);
-			byte* addrlenp = pop_arg_ptr<byte>(t);
+			void* addrlenp = pop_arg_ptr<void>(t);
 			byte* buf = pop_arg_ptr<byte>(t);
 			byte* argsp = pop_arg_ptr<byte>(t);
 
@@ -1554,7 +1554,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 
 		msg.msg_namelen = tmpmsg.msg_namelen;
 		msg.msg_flags = tmpmsg.msg_flags;
-		t->write_mem((byte*)args.msg, msg);
+		t->write_mem(args.msg, msg);
 		record_parent_data(t, sizeof(tmpmsg), args.msg, &msg);
 
 		if (msg.msg_name) {

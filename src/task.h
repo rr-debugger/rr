@@ -1369,7 +1369,7 @@ public:
 	 * return.
 	 */
 	template<size_t N>
-	void write_bytes(const byte* child_addr, const byte (&buf)[N]) {
+	void write_bytes(void* child_addr, const byte (&buf)[N]) {
 		return write_bytes_helper(child_addr, N, buf);
 	}
 
@@ -1380,7 +1380,7 @@ public:
 	 * the tracee isn't at a trace-stop.
 	 */
 	template<typename T>
-	void write_mem(const byte* child_addr, const T& val) {
+	void write_mem(void* child_addr, const T& val) {
 		return write_bytes_helper(child_addr, sizeof(val),
 					  reinterpret_cast<const byte*>(&val));
 	}
@@ -1395,8 +1395,8 @@ public:
 	ssize_t read_bytes_fallible(const byte* addr, ssize_t buf_size,
 				    byte* buf);
 	void read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf);
-	void write_bytes_helper(const byte* addr,
-				ssize_t buf_size, const byte* buf);
+	void write_bytes_helper(void* addr,
+				 ssize_t buf_size, const byte* buf);
 
 	/** Return an iterator at the beginning of the task map. */
 	static Map::const_iterator begin();

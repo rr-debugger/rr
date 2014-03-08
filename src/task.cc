@@ -310,7 +310,7 @@ AddressSpace::set_breakpoint(void* addr, TrapType type)
 		// read/write_mem() helpers.
 		Task* t = *task_set().begin();
 		t->read_mem((byte*)addr, &bp->overwritten_data);
-		t->write_mem((byte*)addr, breakpoint_insn);
+		t->write_mem(addr, breakpoint_insn);
 
 		auto it_and_is_new = breakpoints.insert(make_pair(addr, bp));
 		assert(it_and_is_new.second);
@@ -634,7 +634,7 @@ void
 AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it)
 {
 	Task* t = *task_set().begin();
-	t->write_mem((byte*)it->first, it->second->overwritten_data);
+	t->write_mem(it->first, it->second->overwritten_data);
 	breakpoints.erase(it);
 }
 
@@ -1391,7 +1391,7 @@ Task::remote_memcpy(void* dst, const void* src, size_t num_bytes)
 	// XXX this could be more efficient
 	byte buf[num_bytes];
 	read_bytes_helper((const byte*)src, num_bytes, buf);
-	write_bytes_helper((const byte*)dst, num_bytes, buf);
+	write_bytes_helper(dst, num_bytes, buf);
 }
 
 bool
@@ -1854,7 +1854,7 @@ Task::is_desched_sig_blocked()
 	return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
-static off64_t to_offset(const byte* addr)
+static off64_t to_offset(void* addr)
 {
 	off64_t offset = (uintptr_t)addr;
 	assert(offset < numeric_limits<unsigned long>::max());
@@ -1869,7 +1869,8 @@ Task::read_bytes_fallible(const byte* addr, ssize_t buf_size, byte* buf)
 		return 0;
 	}
 	errno = 0;
-	ssize_t nread = pread64(child_mem_fd, buf, buf_size, to_offset(addr));
+	ssize_t nread = pread64(child_mem_fd, buf, buf_size,
+				to_offset((void*)addr));
 	// We open the child_mem_fd just after being notified of
 	// exec(), when the Task is created.  Trying to read from that
 	// fd seems to return 0 with errno 0.  Reopening the mem fd
@@ -1894,7 +1895,7 @@ Task::read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf)
 }
 
 void
-Task::write_bytes_helper(const byte* addr, ssize_t buf_size, const byte* buf)
+Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 {
 	assert_exec(this, buf_size >= 0, "Invalid buf_size %d", buf_size);
 	if (0 == buf_size) {

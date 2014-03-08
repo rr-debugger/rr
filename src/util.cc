@@ -1297,8 +1297,7 @@ void resize_shmem_segment(int fd, size_t num_bytes)
 	}
 }
 
-void prepare_remote_syscalls(Task* t,
-			     struct current_state_buffer* state)
+void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
 {
 	/* Save current state of |t|. */
 	memset(state, 0, sizeof(*state));
@@ -1407,8 +1406,7 @@ long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 	return t->regs().eax;
 }
 
-void finish_remote_syscalls(Task* t,
-			    struct current_state_buffer* state)
+void finish_remote_syscalls(Task* t, struct current_state_buffer* state)
 {
 	pid_t tid = t->tid;
 
@@ -1500,7 +1498,7 @@ static void write_socketcall_args(Task* t,
 				  long arg1, long arg2, long arg3)
 {
 	struct socketcall_args args = { { arg1, arg2, arg3 } };
-	t->write_mem((byte*)child_args_vec, args);
+	t->write_mem(child_args_vec, args);
 }
 
 static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
@@ -1607,7 +1605,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	 * "real" fds, which in general will not be the same across
 	 * record/replay. */
 	write_socketcall_args(t, args->args_vec, 0, 0, 0);
-	t->write_mem((byte*)args->fdptr, zero);
+	t->write_mem(args->fdptr, zero);
 
 	/* Socket magic is now done. */
 	close(listen_sock);
@@ -1860,7 +1858,7 @@ static void monkeypatch(Task* t, void* kernel_vsyscall,
 	assert(nullptr == patch.insns.vsyscall_hook_trampoline);
 	patch.insns.vsyscall_hook_trampoline = vsyscall_hook_trampoline;
 
-	t->write_bytes((byte*)kernel_vsyscall, patch.bytes);
+	t->write_bytes(kernel_vsyscall, patch.bytes);
 	debug("monkeypatched __kernel_vsyscall to jump to %p",
 	      vsyscall_hook_trampoline);
 }

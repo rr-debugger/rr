@@ -684,7 +684,7 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 				// since we emulate SYS_futex in
 				// replay, we need to set it ourselves
 				// here.
-				t->write_mem((byte*)futex, next_val);
+				t->write_mem(futex, next_val);
 			}
 		}
 		step->action = TSTEP_ENTER_SYSCALL;
