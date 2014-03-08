@@ -48,7 +48,6 @@
 #include "drm.h"
 #include "recorder.h"		// for terminate_recording()
 #include "recorder_sched.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"

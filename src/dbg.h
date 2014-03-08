@@ -8,7 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "replayer.h"		/* for emergency_debug() */
+#include "replayer.h"		// for emergency_debug()
+#include "trace.h"		// for get_global_time()
 #include "util.h"
 
 /**

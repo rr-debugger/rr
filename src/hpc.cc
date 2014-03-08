@@ -17,7 +17,6 @@
 #include <unistd.h>
 
 #include "dbg.h"
-#include "sys.h"
 #include "task.h"
 
 /**
@@ -221,8 +220,11 @@ static void __start_hpc(Task* t)
 	if (fcntl(counters->rbc.fd, F_SETOWN_EX, &own)) {
 		fatal("Failed to SETOWN_EX rbc event fd");
 	}
-	sys_fcntl(counters->rbc.fd, F_SETFL, O_ASYNC);
-	sys_fcntl(counters->rbc.fd, F_SETSIG, HPC_TIME_SLICE_SIGNAL);
+	if (fcntl(counters->rbc.fd, F_SETFL, O_ASYNC)
+	    || fcntl(counters->rbc.fd, F_SETSIG, HPC_TIME_SLICE_SIGNAL)) {
+		fatal("Failed to make rbc counter ASYNC with sig %s",
+		      signalname(HPC_TIME_SLICE_SIGNAL));
+	}
 
 	counters->started = true;
 }
@@ -248,11 +250,11 @@ static void cleanup_hpc(Task* t)
 
 	stop_hpc(t);
 
-	sys_close(counters->rbc.fd);
+	close(counters->rbc.fd);
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-	sys_close(counters->hw_int.fd);
-	sys_close(counters->inst.fd);
-	sys_close(counters->page_faults.fd);
+	close(counters->hw_int.fd);
+	close(counters->inst.fd);
+	close(counters->page_faults.fd);
 #endif
 	counters->started = false;
 }

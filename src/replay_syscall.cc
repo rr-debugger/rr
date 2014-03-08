@@ -42,7 +42,6 @@
 
 #include "dbg.h"
 #include "replayer.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"

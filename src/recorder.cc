@@ -24,7 +24,6 @@
 #include "record_signal.h"
 #include "record_syscall.h"
 #include "recorder_sched.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"

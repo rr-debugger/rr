@@ -18,7 +18,6 @@
 #include "dbg.h"
 #include "hpc.h"
 #include "recorder.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"

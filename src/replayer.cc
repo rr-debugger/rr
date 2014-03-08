@@ -38,7 +38,6 @@
 #include "debugger_gdb.h"
 #include "hpc.h"
 #include "replay_syscall.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"

@@ -19,7 +19,6 @@
 #include "config.h"
 #include "dbg.h"
 #include "hpc.h"
-#include "sys.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -302,7 +301,10 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	strcpy(tmp, "/arg_env");
 	strcat(path, tmp);
 
-	FILE* arg_env = (FILE*) sys_fopen(path, "a+");
+	FILE* arg_env = fopen(path, "a+");
+	if (!arg_env) {
+		fatal("Failed to open %s", path);
+	}
 
 	/* print argc */
 	fprintf(arg_env, "%d\n", argc);
@@ -322,7 +324,7 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	for (j = 0; j < i; j++) {
 		fprintf(arg_env, "%s\n", envp[j]);
 	}
-	sys_fclose(arg_env);
+	fclose(arg_env);
 }
 
 static void use_new_rawdata_file(void)
@@ -330,13 +332,16 @@ static void use_new_rawdata_file(void)
 	char path[PATH_MAX];
 
 	if (raw_data) {
-		sys_fclose(raw_data);
+		fclose(raw_data);
 	}
 	overall_raw_bytes = 0;
 
 	snprintf(path, sizeof(path) - 1,
 		 "%s/raw_data_%u", trace_path_, raw_data_file_counter++);
-	raw_data = sys_fopen(path, "a+");
+	raw_data = fopen(path, "a+");
+	if (!raw_data) {
+		fatal("Failed to create new rawdata file %s", path);
+	}
 }
 
 static void use_new_trace_file(void)
@@ -370,12 +375,18 @@ void open_trace_files(void)
 	use_new_trace_file();
 
 	snprintf(path, sizeof(path) - 1, "%s/syscall_input", trace_path_);
-	syscall_header = sys_fopen(path, "a+");
+	syscall_header = fopen(path, "a+");
+	if (!syscall_header) {
+		fatal("Failed to open syscall header file %s", path);
+	}
 
 	use_new_rawdata_file();
 
 	snprintf(path, sizeof(path) - 1, "%s/mmaps", trace_path_);
-	mmaps_file = sys_fopen(path, "a+");
+	mmaps_file = fopen(path, "a+");
+	if (!mmaps_file) {
+		fatal("Failed to open mmaps record file %s", path);
+	}
 }
 
 void rec_init_trace_files(void)
@@ -414,11 +425,11 @@ void close_trace_files(void)
 {
 	close(trace_file_fd);
 	if (syscall_header)
-		sys_fclose(syscall_header);
+		fclose(syscall_header);
 	if (raw_data)
-		sys_fclose(raw_data);
+		fclose(raw_data);
 	if (mmaps_file)
-		sys_fclose(mmaps_file);
+		fclose(mmaps_file);
 }
 
 /**
@@ -717,7 +728,10 @@ void load_recorded_env(const char* trace_path,
 	string arg_env_path = trace_path;
 	arg_env_path += "/arg_env";
 
-	FILE* arg_env = sys_fopen(arg_env_path.c_str(), "r");
+	FILE* arg_env = fopen(arg_env_path.c_str(), "r");
+	if (!arg_env) {
+		fatal("Failed to load arg_env from trace");
+	}
 	char buf[8192];
 
 	/* the first line contains argc */
@@ -756,7 +770,7 @@ void load_recorded_env(const char* trace_path,
 	envp->push_back(NULL);
 
 	/* clean up */
-	sys_fclose(arg_env);
+	fclose(arg_env);
 }
 
 static size_t parse_raw_data_hdr(struct trace_frame* trace, byte** addr)

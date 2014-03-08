@@ -19,7 +19,6 @@
 #include "config.h"
 #include "dbg.h"
 #include "recorder.h"
-#include "sys.h"
 #include "task.h"
 
 /**
