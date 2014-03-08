@@ -996,7 +996,7 @@ static void init_scratch_memory(Task *t)
 	struct mmapped_file file = {0};
 	file.time = get_global_time();
 	file.tid = t->tid;
-	file.start = (byte*)t->scratch_ptr;
+	file.start = t->scratch_ptr;
 	file.end = (byte*)t->scratch_ptr + scratch_size;
 	sprintf(file.filename,"scratch for thread %d",t->tid);
 	record_mmapped_file_stats(&file);
@@ -3171,7 +3171,7 @@ void rec_process_syscall(Task *t)
 			break;
 		}
 
-		byte* addr = (byte*)t->regs().eax;
+		void* addr = (void*)t->regs().eax;
 		size_t size = ceil_page_size(t->regs().ecx);
 		int prot = t->regs().edx, flags = t->regs().esi,
 		      fd = t->regs().edi;
@@ -3202,7 +3202,7 @@ void rec_process_syscall(Task *t)
 			fatal("Failed to fdstat %d", fd);
 		}
 		file.start = addr;
-		file.end = addr + size;
+		file.end = (byte*)addr + size;
 
 		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
 		    && (prot & PROT_EXEC) ) {
@@ -3215,7 +3215,7 @@ void rec_process_syscall(Task *t)
 						      prot, flags,
 						      WARN_DEFAULT);
 		if (file.copied) {
-			record_child_data(t, size, addr);
+			record_child_data(t, size, (byte*)addr);
 		}
 		record_mmapped_file_stats(&file);
 

@@ -661,7 +661,7 @@ void record_parent_data(Task *t, size_t len, void *addr, void *buf)
 	fprintf(syscall_header, "%11d\n", len);
 }
 
-void record_mmapped_file_stats(struct mmapped_file *file)
+void record_mmapped_file_stats(struct mmapped_file* file)
 {
 	// XXX rewrite me
 	fprintf(mmaps_file, "%11d", file->time);
@@ -869,7 +869,7 @@ pid_t get_recorded_main_thread(void)
  * Returns file reader tid on success, -1 on failure.
  *
  */
-void read_next_mmapped_file_stats(struct mmapped_file * file) {
+void read_next_mmapped_file_stats(struct mmapped_file* file) {
 	assert(!feof(mmaps_file));
 	/* XXX this could be considerably faster, simpler, and
 	 * memory-safer ... */

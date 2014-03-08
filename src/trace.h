@@ -128,8 +128,8 @@ struct mmapped_file {
 	struct stat stat;
 
 	/* Bounds of mapped region. */
-	byte* start;
-	byte* end;
+	void* start;
+	void* end;
 };
 
 /* These are defined by the include/linux/errno.h in the kernel tree.
@@ -186,7 +186,7 @@ void record_event(Task* t);
  * have run, and it may be nullptr.
  */
 void record_trace_termination_event(Task* t);
-void record_mmapped_file_stats(struct mmapped_file *file);
+void record_mmapped_file_stats(struct mmapped_file* file);
 /**
  * Return the current global time.  This is approximately the number
  * of events that have been recorded or replayed.  It is exactly the
@@ -226,8 +226,8 @@ void read_next_trace(struct trace_frame* frame);
  * Return nonzero if the next trace frame was read, zero if not.
  */
 int try_read_next_trace(struct trace_frame* frame);
-void peek_next_trace(struct trace_frame *trace);
-void read_next_mmapped_file_stats(struct mmapped_file *file);
+void peek_next_trace(struct trace_frame* trace);
+void read_next_mmapped_file_stats(struct mmapped_file* file);
 void rep_init_trace_files(void);
 void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr);
 /**
