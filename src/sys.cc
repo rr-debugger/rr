@@ -30,16 +30,6 @@ static void sys_exit()
 	abort();
 }
 
-/* ptrace stuff comes here */
-static void sys_ptrace(Task* t, int request, void *addr, void *data)
-{
-	pid_t tid = t->tid;
-	long ret = ptrace(__ptrace_request(request), tid, addr, data);
-	assert_exec(t, 0 == ret,
-		    "ptrace_error: request: %d of tid: %d: addr %p, data %p",
-		    request, tid, addr, data);
-}
-
 FILE* sys_fopen(const char* path, const char* mode)
 {
 	FILE* file = fopen(path, mode);
@@ -135,36 +125,6 @@ void sys_start_trace(const char* executable, char** argv, char** envp)
 
 	execvpe(executable, argv, envp);
 	fatal("Failed to exec %s", executable);
-}
-
-/**
- * Detaches the child process from monitoring. This method must only be
- * invoked, if the thread exits. We do not check errors here, since the
- * thread could have already exited.
- */
-void sys_ptrace_detach(pid_t pid)
-{
-	ptrace(PTRACE_DETACH, pid, 0, 0);
-}
-
-unsigned long sys_ptrace_getmsg(Task* t)
-{
-	unsigned long tmp;
-	sys_ptrace(t, PTRACE_GETEVENTMSG, 0, &tmp);
-	return tmp;
-}
-void sys_ptrace_getsiginfo(Task* t, siginfo_t* sig)
-{
-	sys_ptrace(t, PTRACE_GETSIGINFO, 0, sig);
-}
-
-void sys_ptrace_setup(Task* t)
-{
-	int flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE | PTRACE_O_TRACEEXIT;
-	if (ptrace(PTRACE_SETOPTIONS, t->tid, 0, (void*) (PTRACE_O_TRACESECCOMP | flags)) == -1) {
-		/* No seccomp on the system, try without (this has to succeed) */
-		sys_ptrace(t, PTRACE_SETOPTIONS, 0, (void*) flags);
-	}
 }
 
 /*

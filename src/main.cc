@@ -104,7 +104,7 @@ static void start_recording(int argc, char* argv[], char** envp)
 
 	/* Configure the child process to get a message upon a thread
 	 * start, fork(), etc. */
-	sys_ptrace_setup(t);
+	t->set_up_ptrace();
 
 	log_info("Start recording...");
 	record();
