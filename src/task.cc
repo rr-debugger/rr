@@ -152,7 +152,7 @@ private:
 };
 
 void
-AddressSpace::brk(const byte* addr)
+AddressSpace::brk(void* addr)
 {
 	debug("[%d] brk(%p)", get_global_time(), addr);
 
@@ -161,8 +161,8 @@ AddressSpace::brk(const byte* addr)
 		return;
 	}
 
-	update_heap(heap.start, addr);
-	map(heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
+	update_heap((byte*)heap.start, addr);
+	map((byte*)heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
 	    MappableResource::heap());
 }
 
@@ -203,7 +203,7 @@ AddressSpace::get_breakpoint_type_at_ip(void* ip)
 }
 
 void
-AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
+AddressSpace::map(void* addr, size_t num_bytes, int prot, int flags,
 		  off64_t offset_bytes, const MappableResource& res)
 {
 	debug("[%d] mmap(%p, %u, %#x, %#x, %#llx)", get_global_time(),
@@ -211,7 +211,7 @@ AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
 
 	num_bytes = ceil_page_size(num_bytes);
 
-	Mapping m(addr, num_bytes, prot, flags, offset_bytes);
+	Mapping m((byte*)addr, num_bytes, prot, flags, offset_bytes);
 	if (mem.end() != mem.find(m)) {
 		// The mmap() man page doesn't specifically describe
 		// what should happen if an existing map is
@@ -227,13 +227,13 @@ AddressSpace::map(const byte* addr, size_t num_bytes, int prot, int flags,
 
 typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
 MappingResourcePair
-AddressSpace::mapping_of(const byte* addr, size_t num_bytes) const
+AddressSpace::mapping_of(void* addr, size_t num_bytes) const
 {
-	auto it = mem.find(Mapping(addr, num_bytes));
+	auto it = mem.find(Mapping((byte*)addr, num_bytes));
 	assert(it != mem.end());
 	// TODO callers assume [addr, addr + num_bytes] doesn't cross
 	// resource boundaries
-	assert(it->first.has_subset(Mapping(addr, num_bytes)));
+	assert(it->first.has_subset(Mapping((byte*)addr, num_bytes)));
 	return *it;
 }
 
@@ -249,7 +249,7 @@ static off64_t adjust_offset(const MappableResource& r, const Mapping& m,
 }
 
 void
-AddressSpace::protect(const byte* addr, size_t num_bytes, int prot)
+AddressSpace::protect(void* addr, size_t num_bytes, int prot)
 {
 	debug("[%d] mprotect(%p, %u, 0x%x)", get_global_time(),
 	      addr, num_bytes, prot);
@@ -260,14 +260,14 @@ AddressSpace::protect(const byte* addr, size_t num_bytes, int prot)
 
 	unmap(addr, num_bytes);
 
-	map_and_coalesce(Mapping(addr, num_bytes, prot, m.flags,
-				 adjust_offset(r, m, addr - m.start)),
+	map_and_coalesce(Mapping((byte*)addr, num_bytes, prot, m.flags,
+				 adjust_offset(r, m, (byte*)addr - m.start)),
 			 r);
 }
 
 void
-AddressSpace::remap(const byte* old_addr, size_t old_num_bytes,
-		    const byte* new_addr, size_t new_num_bytes)
+AddressSpace::remap(void* old_addr, size_t old_num_bytes,
+		    void* new_addr, size_t new_num_bytes)
 {
 	debug("[%d] mremap(%p, %u, %p, %u)", get_global_time(),
 	      old_addr, old_num_bytes, new_addr, new_num_bytes);
@@ -281,8 +281,10 @@ AddressSpace::remap(const byte* old_addr, size_t old_num_bytes,
 		return;
 	}
 
-	map_and_coalesce(Mapping(new_addr, new_num_bytes, m.prot, m.flags,
-				 adjust_offset(r, m, (old_addr - m.start))),
+	map_and_coalesce(Mapping((byte*)new_addr, new_num_bytes,
+				 m.prot, m.flags,
+				 adjust_offset(r, m,
+					       ((byte*)old_addr - m.start))),
 			 r);
 }
 
@@ -325,14 +327,14 @@ AddressSpace::destroy_all_breakpoints()
 }
 
 void
-AddressSpace::unmap(const byte* addr, ssize_t num_bytes)
+AddressSpace::unmap(void* addr, ssize_t num_bytes)
 {
 	debug("[%d] munmap(%p, %u)", get_global_time(), addr, num_bytes);
 
 	num_bytes = ceil_page_size(num_bytes);
 
-	const byte* last_unmapped_end = addr;
-	const byte* region_end = addr + num_bytes;
+	byte* last_unmapped_end = (byte*)addr;
+	byte* region_end = (byte*)addr + num_bytes;
 	while (last_unmapped_end < region_end) {
 		// Invariant: |u| is always exactly the region of
 		// memory remaining to be examined for pages to be
@@ -371,7 +373,7 @@ AddressSpace::unmap(const byte* addr, ssize_t num_bytes)
 				= r;
 		}
 		// Maintain the loop invariant.
-		last_unmapped_end = m.end;
+		last_unmapped_end = (byte*)m.end;
 	}
 }
 
@@ -716,7 +718,7 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	FileId id;
 	if (is_dynamic_heap) {
 		id.psdev = PSEUDODEVICE_HEAP;
-		as->update_heap(as->heap.start, info.end_addr);
+		as->update_heap((void*)as->heap.start, info.end_addr);
 	} else if (!strcmp("[stack]", info.name)) {
 		id.psdev = PSEUDODEVICE_STACK;
 	} else if (!strcmp("[vdso]", info.name)) {
@@ -974,7 +976,7 @@ Task::at_may_restart_syscall() const
 }
 
 Task*
-Task::clone(int flags, const byte* stack, const byte* cleartid_addr,
+Task::clone(int flags, void* stack, void* cleartid_addr,
 	    pid_t new_tid, pid_t new_rec_tid)
 {
 	Task* t = new Task(new_tid, new_rec_tid, priority);
@@ -1001,11 +1003,13 @@ Task::clone(int flags, const byte* stack, const byte* cleartid_addr,
 		t->as = as->clone();
 	}
 	if (stack) {
-		const Mapping& m =
-			t->as->mapping_of(stack - page_size(), page_size()).first;
-		debug("mapping stack for %d at [%p, %p)", new_tid, m.start, m.end);
-		t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
-			   MappableResource::stack(new_tid));
+		const Mapping& m = 
+			t->as->mapping_of((byte*)stack - page_size(),
+					  page_size()).first;
+		debug("mapping stack for %d at [%p, %p)",
+		      new_tid, m.start, m.end);
+		t->as->map((void*)m.start, m.num_bytes(), m.prot, m.flags,
+			    m.offset, MappableResource::stack(new_tid));
 	}
 	// Clone children, both thread and fork, inherit the parent
 	// prname.
@@ -1109,7 +1113,7 @@ Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes)
 }
 
 void
-Task::futex_wait(const byte* futex, uint32_t val)
+Task::futex_wait(void* futex, uint32_t val)
 {
 	static_assert(sizeof(val) == sizeof(long),
 		      "Sorry, need to implement Task::read_int().");
@@ -1118,7 +1122,7 @@ Task::futex_wait(const byte* futex, uint32_t val)
 	// available kernel tools.
 	//
 	// TODO: find clever way to avoid busy-waiting.
-	while (val != uint32_t(read_word(futex))) {
+	while (val != uint32_t(read_word((byte*)futex))) {
 		// Try to give our scheduling slot to the kernel
 		// thread that's going to write sync_addr.
 		sched_yield();
@@ -1271,7 +1275,7 @@ Task::maybe_update_vm(int syscallno, int state)
 	}
 	switch (syscallno) {
 	case SYS_brk: {
-		byte* addr = reinterpret_cast<byte*>(r.ebx);
+		void* addr = reinterpret_cast<void*>(r.ebx);
 		if (!addr) {
 			// A brk() update of NULL is observed with
 			// libc, which apparently is its means of
@@ -1288,21 +1292,21 @@ Task::maybe_update_vm(int syscallno, int state)
 	}
 	case SYS_mprotect: {
 		//int mprotect(void *addr, size_t len, int prot);
-		byte* addr = reinterpret_cast<byte*>(r.ebx);
+		void* addr = reinterpret_cast<void*>(r.ebx);
 		size_t num_bytes = r.ecx;
 		int prot = r.edx;
 		return vm()->protect(addr, num_bytes, prot);
 	}
 	case SYS_mremap: {
-		byte* old_addr = reinterpret_cast<byte*>(r.ebx);
+		void* old_addr = reinterpret_cast<void*>(r.ebx);
 		size_t old_num_bytes = r.ecx;
-		byte* new_addr = reinterpret_cast<byte*>(r.eax);
+		void* new_addr = reinterpret_cast<void*>(r.eax);
 		size_t new_num_bytes = r.edx;
 		return vm()->remap(old_addr, old_num_bytes,
 				   new_addr, new_num_bytes);
 	}
 	case SYS_munmap: {
-		byte* addr = reinterpret_cast<byte*>(r.ebx);
+		void* addr = reinterpret_cast<void*>(r.ebx);
 		size_t num_bytes = r.ecx;
 		return vm()->unmap(addr, num_bytes);
 	}
@@ -1430,7 +1434,7 @@ Task::set_regs(const struct user_regs_struct& regs)
 }
 
 void
-Task::set_tid_addr(const byte* tid_addr)
+Task::set_tid_addr(void* tid_addr)
 {
 	debug("updating cleartid futex to %p", tid_addr);
 	tid_futex = tid_addr;
@@ -1758,7 +1762,7 @@ Task::detach_and_reap()
 	if (tid_futex) {
 		static_assert(sizeof(int32_t) == sizeof(long),
 			      "Sorry, need to add Task::read_int()");
-		int32_t tid_addr_val = read_word(tid_futex);
+		int32_t tid_addr_val = read_word((byte*)tid_futex);
 		assert_exec(this, rec_tid == tid_addr_val,
 			    "tid addr should be %d (tid), but is %d",
 			    rec_tid, tid_addr_val);
@@ -1767,7 +1771,7 @@ Task::detach_and_reap()
 		// before the tracee exits.  Otherwise we won't be
 		// create it below.  See TODO comment in ipc.cc.
 		long dummy;
-		read_mem(tid_futex, &dummy);
+		read_mem((byte*)tid_futex, &dummy);
 	}
 
 	// XXX: why do we detach before harvesting?

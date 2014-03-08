@@ -556,7 +556,7 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
  * the bit itself at (3) during replay, and this is deterministic.
  */
 static bool prep_futex_lock_pi(Task* t, byte* futex,
-			      byte** kernel_sync_addr, uint32_t* sync_val)
+			       void** kernel_sync_addr, uint32_t* sync_val)
 {
 	if (is_now_contended_pi_futex(t, futex, sync_val)) {
 		*kernel_sync_addr = futex;
@@ -564,7 +564,7 @@ static bool prep_futex_lock_pi(Task* t, byte* futex,
 	return true;
 }
 
-int rec_prepare_syscall(Task* t, byte** kernel_sync_addr, uint32_t* sync_val)
+int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 {
 	int syscallno = t->ev->syscall.no;
 	/* If we are called again due to a restart_syscall, we musn't
@@ -1004,7 +1004,7 @@ static void init_scratch_memory(Task *t)
 	r.eax = eax;
 	t->set_regs(r);
 
-	t->vm()->map((byte*)t->scratch_ptr, sz, prot, flags,
+	t->vm()->map(t->scratch_ptr, sz, prot, flags,
 		     page_size() * offset_pages,
 		     MappableResource::scratch(t->rec_tid));
 }
@@ -2978,8 +2978,8 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_set_tid_address: {
-		byte* addr = (byte*)t->regs().ebx;
-		record_child_data(t, sizeof(pid_t), addr);
+		void* addr = (void*)t->regs().ebx;
+		record_child_data(t, sizeof(pid_t), (byte*)addr);
 		t->set_tid_addr(addr);
 	}
 

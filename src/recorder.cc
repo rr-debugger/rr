@@ -64,8 +64,8 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK: {
 		int new_tid = t->get_ptrace_eventmsg();
-		const byte* stack = (const byte*)t->regs().ecx;
-		const byte* ctid = (const byte*)t->regs().edi;
+		void* stack = (void*)t->regs().ecx;
+		void* ctid = (void*)t->regs().edi;
 		// fork and can never share these resources, only
 		// copy, so the flags here aren't meaningful for it.
 		int flags_arg = (SYS_clone == t->regs().orig_eax) ?
@@ -359,7 +359,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			t->ev->syscall.regs = t->regs();
 		}
 
-		byte* sync_addr = nullptr;
+		void* sync_addr = nullptr;
 		uint32_t sync_val;
 		t->switchable = rec_prepare_syscall(t, &sync_addr, &sync_val);
 
