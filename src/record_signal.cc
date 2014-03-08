@@ -447,7 +447,7 @@ static void record_signal(Task* t, const siginfo_t* si,
 	}
 
 	/* We record this data regardless to simplify replay. */
-	record_child_data(t, sigframe_size, (byte*)t->sp());
+	record_child_data(t, sigframe_size, t->sp());
 
 	t->signal_delivered(sig);
 

@@ -780,7 +780,7 @@ SYSCALL_DEF(EMU, perf_event_open, 0)
  * pipe is buffered by the kernel until it is read from the read end
  * of the pipe.  For further details, see pipe(7).
  */
-SYSCALL_DEF(EMU, pipe, 2)
+SYSCALL_DEF(EMU, pipe, 1)
 
 /**
  *  int pipe2(int pipefd[2], int flags)
@@ -788,7 +788,7 @@ SYSCALL_DEF(EMU, pipe, 2)
  * If flags is 0, then pipe2() is the same as pipe().  The following
  * values can be bitwise ORed in flags to obtain different behavior...
  */
-SYSCALL_DEF(EMU, pipe2, 2)
+SYSCALL_DEF(EMU, pipe2, 1)
 
 /**
  *  int poll(struct pollfd *fds, nfds_t nfds, int timeout)
