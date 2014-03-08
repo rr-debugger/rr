@@ -918,14 +918,6 @@ void read_next_mmapped_file_stats(struct mmapped_file * file) {
 	file->filename[strlen(file->filename) - 1] = '\0';
 }
 
-void peek_next_mmapped_file_stats(struct mmapped_file* file)
-{
-	fpos_t pos;
-	fgetpos(mmaps_file, &pos);
-	read_next_mmapped_file_stats(file);
-	fsetpos(mmaps_file, &pos);
-}
-
 void peek_next_trace(struct trace_frame* trace)
 {
 	/* FIXME if peeking causes the trace file to roll over, then

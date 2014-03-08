@@ -307,8 +307,6 @@ struct current_state_buffer {
 	byte* start_addr;
 };
 
-void mprotect_child_region(Task* t, byte* addr, int prot);
-
 /**
  * Return the argument rounded up to the nearest multiple of the
  * system |page_size()|.
