@@ -1199,16 +1199,15 @@ static void process_restart_syscall(Task* t, int syscallno)
 
 static void dump_path_data(Task* t, const char* tag,
 			   char* filename, size_t filename_size,
-			   const void* buf, size_t buf_len, const void* addr)
+			   const void* buf, size_t buf_len, void* addr)
 {
 	format_dump_filename(t, tag, filename, filename_size);
 	dump_binary_data(filename, tag,
-			 (const uint32_t*)buf, buf_len / 4,
-			 (const byte*)addr);
+			 (const uint32_t*)buf, buf_len / 4, addr);
 }
 
 static void
-notify_save_data_error(Task* t, const void* addr,
+notify_save_data_error(Task* t, void* addr,
 		       const void* rec_buf, size_t rec_buf_len,
 		       const void* rep_buf, size_t rep_buf_len)
 {

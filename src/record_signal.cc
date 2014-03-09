@@ -62,9 +62,8 @@ restore_sigsegv_state(Task* t)
 	prepare_remote_syscalls(t, &state);
 	{
 		struct restore_mem restore;
-		const byte* child_sa = (const byte*)
-			push_tmp_mem(t, &state, (const byte*)&sa, sizeof(sa),
-				     &restore);
+		void* child_sa = push_tmp_mem(t, &state, (const byte*)&sa,
+					      sizeof(sa), &restore);
 
 		int ret = remote_syscall4(t, &state, SYS_rt_sigaction,
 					  SIGSEGV, child_sa, NULL, 
