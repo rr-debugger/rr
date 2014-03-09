@@ -309,7 +309,7 @@ AddressSpace::set_breakpoint(void* addr, TrapType type)
 		// Grab a random task from the VM so we can use its
 		// read/write_mem() helpers.
 		Task* t = *task_set().begin();
-		t->read_mem((byte*)addr, &bp->overwritten_data);
+		t->read_mem(addr, &bp->overwritten_data);
 		t->write_mem(addr, breakpoint_insn);
 
 		auto it_and_is_new = breakpoints.insert(make_pair(addr, bp));
@@ -1124,7 +1124,7 @@ Task::futex_wait(void* futex, uint32_t val)
 	// available kernel tools.
 	//
 	// TODO: find clever way to avoid busy-waiting.
-	while (val != uint32_t(read_word((byte*)futex))) {
+	while (val != uint32_t(read_word(futex))) {
 		// Try to give our scheduling slot to the kernel
 		// thread that's going to write sync_addr.
 		sched_yield();
@@ -1343,15 +1343,15 @@ Task::post_exec()
 }
 
 string
-Task::read_c_str(const byte* child_addr)
+Task::read_c_str(void* child_addr)
 {
 	// XXX handle invalid C strings
 	string str;
 	while (true) {
 		// We're only guaranteed that [child_addr,
 		// end_of_page) is mapped.
-		const byte* end_of_page = ceil_page_size(child_addr + 1);
-		ssize_t nbytes = end_of_page - child_addr;
+		void* end_of_page = ceil_page_size((byte*)child_addr + 1);
+		ssize_t nbytes = (byte*)end_of_page - (byte*)child_addr;
 		char buf[nbytes];
 
 		read_bytes_helper(child_addr, nbytes,
@@ -1367,7 +1367,7 @@ Task::read_c_str(const byte* child_addr)
 }
 
 long
-Task::read_word(const byte* child_addr)
+Task::read_word(void* child_addr)
 {
 	long word;
 	read_mem(child_addr, &word);
@@ -1390,7 +1390,7 @@ Task::remote_memcpy(void* dst, const void* src, size_t num_bytes)
 {
 	// XXX this could be more efficient
 	byte buf[num_bytes];
-	read_bytes_helper((const byte*)src, num_bytes, buf);
+	read_bytes_helper((void*)src, num_bytes, buf);
 	write_bytes_helper(dst, num_bytes, buf);
 }
 
@@ -1470,7 +1470,7 @@ Task::signal_action(int sig) const
 }
 
 void
-Task::update_prname(byte* child_addr)
+Task::update_prname(void* child_addr)
 {
 	struct { char chars[16]; } name;
 	read_mem(child_addr, &name);
@@ -1482,7 +1482,7 @@ void
 Task::update_sigaction()
 {
 	int sig = regs().ebx;
-	const byte* new_sigaction = (const byte*)regs().ecx;
+	void* new_sigaction = (void*)regs().ecx;
 	if (0 == regs().eax && new_sigaction) {
 		// A new sighandler was installed.  Update our
 		// sighandler table.
@@ -1498,7 +1498,7 @@ void
 Task::update_sigmask()
 {
 	int how = regs().ebx;
-	byte* setp = (byte*)regs().ecx;
+	void* setp = (void*)regs().ecx;
 
 	if (SYSCALL_FAILED(regs().eax) || !setp) {
 		return;
@@ -1764,16 +1764,13 @@ Task::detach_and_reap()
 	if (tid_futex) {
 		static_assert(sizeof(int32_t) == sizeof(long),
 			      "Sorry, need to add Task::read_int()");
-		int32_t tid_addr_val = read_word((byte*)tid_futex);
+		// This read also ensures that child_mem_fd is valid
+		// before the tracee exits.  Otherwise we might not be
+		// open the fd below.  See TODO comment in Task ctor.
+		int32_t tid_addr_val = read_word(tid_futex);
 		assert_exec(this, rec_tid == tid_addr_val,
 			    "tid addr should be %d (tid), but is %d",
 			    rec_tid, tid_addr_val);
-		// If we're going to synchronize on the tid futex,
-		// read it now to ensure that child_mem_fd is valid
-		// before the tracee exits.  Otherwise we won't be
-		// create it below.  See TODO comment in ipc.cc.
-		long dummy;
-		read_mem((byte*)tid_futex, &dummy);
 	}
 
 	// XXX: why do we detach before harvesting?
@@ -1862,15 +1859,14 @@ static off64_t to_offset(void* addr)
 }
 
 ssize_t
-Task::read_bytes_fallible(const byte* addr, ssize_t buf_size, byte* buf)
+Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf)
 {
 	assert_exec(this, buf_size >= 0, "Invalid buf_size %d", buf_size);
 	if (0 == buf_size) {
 		return 0;
 	}
 	errno = 0;
-	ssize_t nread = pread64(child_mem_fd, buf, buf_size,
-				to_offset((void*)addr));
+	ssize_t nread = pread64(child_mem_fd, buf, buf_size, to_offset(addr));
 	// We open the child_mem_fd just after being notified of
 	// exec(), when the Task is created.  Trying to read from that
 	// fd seems to return 0 with errno 0.  Reopening the mem fd
@@ -1886,7 +1882,7 @@ Task::read_bytes_fallible(const byte* addr, ssize_t buf_size, byte* buf)
 }
 
 void
-Task::read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf)
+Task::read_bytes_helper(void* addr, ssize_t buf_size, byte* buf)
 {
 	ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
 	assert_exec(this, nread == buf_size,

@@ -371,7 +371,7 @@ void iterate_memory_map(Task* t,
 			void* addr = data.info.start_addr;
 			ssize_t nbytes = data.size_bytes;
 			data.mem = (byte*)malloc(nbytes);
-			data.mem_len = t->read_bytes_fallible((byte*)addr, nbytes,
+			data.mem_len = t->read_bytes_fallible(addr, nbytes,
 							      data.mem);
 			/* TODO: expose read errors, somehow. */
 			data.mem_len = max(0, data.mem_len);
@@ -449,10 +449,10 @@ size_t ceil_page_size(size_t sz)
 	return (sz + page_size() - 1) & page_mask;
 }
 
-const byte* ceil_page_size(const byte* addr)
+void* ceil_page_size(void* addr)
 {
 	uintptr_t ceil = ceil_page_size((uintptr_t)addr);
-	return (const byte*)ceil;
+	return (void*)ceil;
 }
 
 void print_inst(Task* t)
@@ -873,7 +873,7 @@ static int checksum_iterator(void* it_data, Task* t,
 		 * the deterministic region. */
 		void* child_hdr = data->info.start_addr;
 		struct syscallbuf_hdr hdr;
-		t->read_mem((byte*)child_hdr, &hdr);
+		t->read_mem(child_hdr, &hdr);
 		valid_mem_len = sizeof(hdr) + hdr.num_rec_bytes +
 				sizeof(struct syscallbuf_record);
 	}
@@ -1033,7 +1033,7 @@ void copy_syscall_arg_regs(struct user_regs_struct* to,
 void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 {
 	struct msghdr msg;
-	t->read_mem((byte*)child_msghdr, &msg);
+	t->read_mem(child_msghdr, &msg);
 
 	// Record the entire struct, because some of the direct fields
 	// are written as inoutparams.
@@ -1042,7 +1042,7 @@ void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 
 	// Read all the inout iovecs in one shot.
 	struct iovec iovs[msg.msg_iovlen];
-	t->read_bytes_helper((byte*)msg.msg_iov,
+	t->read_bytes_helper(msg.msg_iov,
 			     msg.msg_iovlen * sizeof(iovs[0]), (byte*)iovs);
 	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
 		const struct iovec* iov = &iovs[i];
@@ -1066,7 +1066,7 @@ void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 {
 	struct msghdr msg;
-	t->read_mem((byte*)child_msghdr, &msg);
+	t->read_mem(child_msghdr, &msg);
 
 	// Restore msg itself.
 	t->set_data_from_trace();
@@ -1091,7 +1091,7 @@ bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val)
 {
 	static_assert(sizeof(uint32_t) == sizeof(long),
 		      "Sorry, need to add Task::read_int()");
-	uint32_t val = t->read_word((byte*)futex);
+	uint32_t val = t->read_word(futex);
 	pid_t owner_tid = (val & FUTEX_TID_MASK);
 	bool now_contended = (owner_tid != 0 && owner_tid != t->rec_tid
 			      && !(val & FUTEX_WAITERS));
@@ -1304,7 +1304,7 @@ void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
 	state->regs = t->regs();
 	state->code_size = sizeof(syscall_insn);
 	state->start_addr = (byte*)state->regs.eip;
-	t->read_bytes((byte*)state->start_addr, state->code_buffer);
+	t->read_bytes(state->start_addr, state->code_buffer);
 	/* Inject phony syscall instruction. */
 	t->write_bytes(state->start_addr, syscall_insn);
 }
@@ -1321,7 +1321,7 @@ void* push_tmp_mem(Task* t, struct current_state_buffer* state,
 	restore->addr = (void*)state->regs.esp;
 
 	restore->data = (byte*)malloc(restore->len);
-	t->read_bytes_helper((byte*)restore->addr, restore->len, restore->data);
+	t->read_bytes_helper(restore->addr, restore->len, restore->data);
 
 	t->write_bytes_helper(restore->addr, restore->len, mem);
 
@@ -1598,7 +1598,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	}
 
 	/* Get the newly-allocated fd. */
-	t->read_mem((byte*)args->fdptr, &child_shmem_fd);
+	t->read_mem(args->fdptr, &child_shmem_fd);
 
 	/* Zero out the child buffers we use here.  They contain
 	 * "real" fds, which in general will not be the same across
@@ -1645,7 +1645,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 {
 	struct current_state_buffer state;
-	byte* child_args;
+	void* child_args;
 	struct rrcall_init_buffers_params args;
 	void* child_map_addr = NULL;
 
@@ -1655,7 +1655,7 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 
 	prepare_remote_syscalls(t, &state);
 	/* Arguments to the rrcall. */
-	child_args = (byte*)state.regs.ebx;
+	child_args = (void*)state.regs.ebx;
 	t->read_mem(child_args, &args);
 
 	assert_exec(t,
@@ -1729,7 +1729,7 @@ void destroy_buffers(Task* t, int flags)
 	exit_regs.eip -= sizeof(syscall_insn);
 
 	byte insn[sizeof(syscall_insn)];
-	t->read_bytes((const byte*)exit_regs.eip, insn);
+	t->read_bytes((void*)exit_regs.eip, insn);
 	assert_exec(t, !memcmp(insn, syscall_insn, sizeof(insn)),
 		    "Tracee should have entered through int $0x80.");
 
@@ -1784,7 +1784,7 @@ static const byte vsyscall_impl[] = {
 static bool is_kernel_vsyscall(Task* t, void* addr)
 {
 	byte impl[sizeof(vsyscall_impl)];
-	t->read_bytes((byte*)addr, impl);
+	t->read_bytes(addr, impl);
 	for (size_t i = 0; i < sizeof(vsyscall_impl); ++i) {
 		if (vsyscall_impl[i] != impl[i]) {
 			log_warn("Byte %d of __kernel_vsyscall should be 0x%x, but is 0x%x",
