@@ -981,7 +981,7 @@ static void* finish_shared_mmap(Task* t,
 	// TODO: this is a poor man's shared segment synchronization.
 	// For full generality, we also need to emulate direct file
 	// modifications through write/splice/etc.
-	byte* rec_addr;
+	void* rec_addr;
 	size_t num_bytes;
 	byte* data = (byte*)read_raw_data(&(t->trace), &num_bytes, &rec_addr);
 	assert(data && rec_addr == mapped_addr && rec_num_bytes == num_bytes);
@@ -1248,9 +1248,9 @@ static void maybe_verify_tracee_saved_data(Task* t,
 					   const struct user_regs_struct* rec_regs)
 {
 	int fd = rec_regs->ebx;
-	byte* addr = (byte*)rec_regs->ecx;
+	void* addr = (void*)rec_regs->ecx;
 	size_t len = rec_regs->edx;
-	byte* rec_addr;
+	void* rec_addr;
 	size_t rec_len;
 	void* rec_buf;
 
@@ -1266,7 +1266,7 @@ static void maybe_verify_tracee_saved_data(Task* t,
 		    rec_addr, addr);
 
 	byte buf[rec_len];
-	t->read_bytes_helper(addr, len, buf);
+	t->read_bytes_helper((byte*)addr, len, buf);
 	if (len != rec_len || memcmp(rec_buf, buf, len)) {
 		notify_save_data_error(t, addr, rec_buf, rec_len, buf, len);
 	}

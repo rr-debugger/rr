@@ -229,7 +229,7 @@ int try_read_next_trace(struct trace_frame* frame);
 void peek_next_trace(struct trace_frame* trace);
 void read_next_mmapped_file_stats(struct mmapped_file* file);
 void rep_init_trace_files(void);
-void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr);
+void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr);
 /**
  * Read the next raw-data record from the trace directly into |buf|,
  * which is of size |buf_size|, without allocating temporary storage.
@@ -238,7 +238,7 @@ void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr);
  * recorded is returned in the outparam |rec_addr|.
  */
 ssize_t read_raw_data_direct(struct trace_frame* trace,
-			     void* buf, size_t buf_size, byte** rec_addr);
+			     void* buf, size_t buf_size, void** rec_addr);
 /**
  * Return the tid of the first thread seen during recording.  Must be
  * called after |init_trace_files()|, and before any calls to
