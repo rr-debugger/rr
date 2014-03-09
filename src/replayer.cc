@@ -172,8 +172,7 @@ static dbg_threadid_t get_threadid(Task* t)
 	return thread;
 }
 
-static byte* read_mem(Task* t, byte* addr, size_t len,
-		      size_t* read_len)
+static byte* read_mem(Task* t, void* addr, size_t len, size_t* read_len)
 {
 	byte* buf = (byte*)malloc(len);
 	ssize_t nread = t->read_bytes_fallible(addr, len, buf);
@@ -455,7 +454,7 @@ static bool entering_syscall_insn(Task* t)
 	static_assert(sizeof(sysenter) == sizeof(int_0x80), "Must ==");
 	byte insn[sizeof(sysenter)];
 
-	t->read_bytes((byte*)t->ip(), insn);
+	t->read_bytes(t->ip(), insn);
 	return (!memcmp(insn, sysenter, sizeof(sysenter))
 		|| !memcmp(insn, int_0x80, sizeof(int_0x80)));
 }

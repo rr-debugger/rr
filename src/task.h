@@ -1220,7 +1220,7 @@ public:
 	 * return.
 	 */
 	template<size_t N>
-	void read_bytes(const byte* child_addr, byte (&buf)[N])	{
+	void read_bytes(void* child_addr, byte (&buf)[N]) {
 		return read_bytes_helper(child_addr, N, buf);
 	}
 
@@ -1234,7 +1234,7 @@ public:
 	 * Read |val| from |child_addr|.
 	 */
 	template<typename T>
-	void read_mem(const byte* child_addr, T* val) {
+	void read_mem(void* child_addr, T* val) {
 		return read_bytes_helper(child_addr, sizeof(*val),
 					 reinterpret_cast<byte*>(val));
 	}
@@ -1243,7 +1243,7 @@ public:
 	 * Read and return the C string located at |child_addr| in
 	 * this address space.
 	 */
-	std::string read_c_str(const byte* child_addr);
+	std::string read_c_str(void* child_addr);
 
 	/**
 	 * Return the word at |child_addr| in this address space.
@@ -1251,7 +1251,7 @@ public:
 	 * NB: doesn't use the ptrace API, so safe to use even when
 	 * the tracee isn't at a trace-stop.
 	 */
-	long read_word(const byte* child_addr);
+	long read_word(void* child_addr);
 
 	/**
 	 * Copy |num_bytes| from |src| to |dst| in the address space
@@ -1333,7 +1333,7 @@ public:
 	 * string pointed at in the tracee's address space by
 	 * |child_addr|.
 	 */
-	void update_prname(byte* child_addr);
+	void update_prname(void* child_addr);
 
  	/**
 	 * Call this when SYS_sigaction is finishing with |regs|.
@@ -1392,9 +1392,9 @@ public:
 	 * Read/write the number of bytes that the template wrapper
 	 * inferred.
 	 */
-	ssize_t read_bytes_fallible(const byte* addr, ssize_t buf_size,
+	ssize_t read_bytes_fallible(void* addr, ssize_t buf_size,
 				    byte* buf);
-	void read_bytes_helper(const byte* addr, ssize_t buf_size, byte* buf);
+	void read_bytes_helper(void* addr, ssize_t buf_size, byte* buf);
 	void write_bytes_helper(void* addr,
 				 ssize_t buf_size, const byte* buf);
 

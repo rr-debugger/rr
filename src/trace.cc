@@ -636,7 +636,7 @@ void record_child_data(Task *t, size_t size, void* child_ptr)
 		}
 		byte* read_buf = heap_buf ? heap_buf : stack_buf;
 
-		t->read_bytes_helper((byte*)child_ptr, size, read_buf);
+		t->read_bytes_helper(child_ptr, size, read_buf);
 		write_raw_data(t, read_buf, size);
 		read_bytes = size;
 
@@ -692,7 +692,7 @@ void record_child_str(Task* t, void* child_ptr)
 	(void)state;
 
 	print_header(event, child_ptr);
-	string str = t->read_c_str((byte*)child_ptr);
+	string str = t->read_c_str(child_ptr);
 	size_t len = str.size() + 1;
 	fprintf(syscall_header, "%11d\n", len);
 	size_t bytes_written = fwrite(str.c_str(), 1, len, raw_data);

@@ -311,7 +311,7 @@ struct current_state_buffer {
  * system |page_size()|.
  */
 size_t ceil_page_size(size_t sz);
-const byte* ceil_page_size(const byte* addr);
+void* ceil_page_size(void* addr);
 
 /**
  * Return true if the pointer or size is a multiple of the system

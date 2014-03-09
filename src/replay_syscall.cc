@@ -417,7 +417,7 @@ void rep_maybe_replay_stdio_write(Task* t)
 	fd = t->regs().ebx;
 	if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
 		ssize_t len = t->regs().edx;
-		byte* addr = (byte*) t->regs().ecx;
+		void* addr = (void*) t->regs().ecx;
 		byte buf[len];
 		// NB: |buf| may not be null-terminated.
 		t->read_bytes_helper(addr, sizeof(buf), buf);
@@ -1139,7 +1139,7 @@ static void process_socketcall(Task* t, int state,
 		// We manually restore the msg buffer.
 		step->syscall.num_emu_args = 0;
 
-		byte* base_addr = (byte*)t->trace.recorded_regs.ecx;
+		void* base_addr = (void*)t->trace.recorded_regs.ecx;
 		struct recvmsg_args args;
 		t->read_mem(base_addr, &args);
 
@@ -1266,7 +1266,7 @@ static void maybe_verify_tracee_saved_data(Task* t,
 		    rec_addr, addr);
 
 	byte buf[rec_len];
-	t->read_bytes_helper((byte*)addr, len, buf);
+	t->read_bytes_helper(addr, len, buf);
 	if (len != rec_len || memcmp(rec_buf, buf, len)) {
 		notify_save_data_error(t, addr, rec_buf, rec_len, buf, len);
 	}
@@ -1508,7 +1508,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->action = TSTEP_EXIT_SYSCALL;
 		step->syscall.num_emu_args = 1;
 		if (PR_SET_NAME == trace->recorded_regs.ebx) {
-			byte* addr = (byte*)trace->recorded_regs.ecx;
+			void* addr = (void*)trace->recorded_regs.ecx;
 			t->update_prname(addr);
 		}
 		return;

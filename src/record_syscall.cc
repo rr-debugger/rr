@@ -112,7 +112,7 @@ void rec_before_record_syscall_entry(Task* t, int syscallno)
 template<typename T>
 void read_socketcall_args(Task* t, long** argsp, T* args)
 {
-	const byte* p = (const byte*)t->regs().ecx;
+	void* p = (void*)t->regs().ecx;
 	t->read_mem(p, args);
 	*argsp = (long*)p;
 }
@@ -198,7 +198,7 @@ static int prepare_ipc(Task* t, int would_need_scratch)
 		size_t msgsize = t->regs().edx;
 		struct ipc_kludge_args kludge;
 		void* child_kludge = (void*)t->regs().edi;
-		t->read_mem((byte*)child_kludge, &kludge);
+		t->read_mem(child_kludge, &kludge);
 
 		push_arg_ptr(t, kludge.msgbuf);
 		kludge.msgbuf = scratch;
@@ -224,7 +224,7 @@ static ssize_t read_iovs(Task* t, const struct msghdr& msg,
 			 struct iovec* iovs)
 {
 	size_t num_iov_bytes = msg.msg_iovlen * sizeof(*iovs);
-	t->read_bytes_helper((byte*)msg.msg_iov, num_iov_bytes, (byte*)iovs);
+	t->read_bytes_helper(msg.msg_iov, num_iov_bytes, (byte*)iovs);
 	return num_iov_bytes;
 }
 
@@ -295,7 +295,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			return 1;
 		}
 		struct user_regs_struct r = t->regs();
-		byte* argsp = (byte*)r.ecx;
+		void* argsp = (void*)r.ecx;
 		struct accept4_args args;
 		if (SYS_ACCEPT == call) {
 			t->read_mem(argsp, &args._);
@@ -304,7 +304,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		}
 
 		socklen_t addrlen;
-		t->read_mem((byte*)args._.addrlen, &addrlen);
+		t->read_mem(args._.addrlen, &addrlen);
 
 		// We use the same basic scheme here as for RECV
 		// above.  For accept() though, there are two
@@ -347,7 +347,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			return 1;
 		}
 		struct user_regs_struct r = t->regs();
-		byte* argsp = (byte*)r.ecx;
+		void* argsp = (void*)r.ecx;
 		struct recvfrom_args args;
 		t->read_mem(argsp, &args);
 
@@ -363,7 +363,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 
 		socklen_t addrlen;
 		if (args.src_addr) {
-			t->read_mem((byte*)args.addrlen, &addrlen);
+			t->read_mem(args.addrlen, &addrlen);
 
 			push_arg_ptr(t, args.addrlen);
 			args.addrlen = (socklen_t*)scratch;
@@ -389,7 +389,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	}
 	case SYS_RECVMSG: {
 		struct user_regs_struct r = t->regs();
-		byte* argsp = (byte*)r.ecx;
+		void* argsp = (void*)r.ecx;
 		struct recvmsg_args args;
 		t->read_mem(argsp, &args);
 		if (args.flags & MSG_DONTWAIT) {
@@ -399,7 +399,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			return 1;
 		}
 		struct msghdr msg;
-		t->read_mem((byte*)args.msg, &msg);
+		t->read_mem(args.msg, &msg);
 
 		struct msghdr tmpmsg = msg;
 		// Reserve space for scratch socketcall args.
@@ -459,7 +459,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	}
 	case SYS_SENDMSG: {
 		struct user_regs_struct r = t->regs();
-		byte* argsp = (byte*)r.ecx;
+		void* argsp = (void*)r.ecx;
 		struct recvmsg_args args;
 		t->read_mem(argsp, &args);
 		return !(args.flags & MSG_DONTWAIT);
@@ -1026,7 +1026,7 @@ static void* start_restoring_scratch(Task* t, byte** iter)
 	assert(num_bytes >= 0);
 
 	byte* data = (byte*)malloc(num_bytes);
-	t->read_bytes_helper((byte*)scratch, num_bytes, data);
+	t->read_bytes_helper(scratch, num_bytes, data);
 	return *iter = data;
 }
 
@@ -1138,17 +1138,17 @@ static void process_execve(Task* t)
 	 */
 //	long* argc = (long*)t->read_word((byte*)stack_ptr);
 //	stack_ptr += *argc + 1;
-	long argc = t->read_word((byte*)stack_ptr);
+	long argc = t->read_word(stack_ptr);
 	stack_ptr += argc + 1;	
 
 	//unsigned long* null_ptr = read_child_data(t, sizeof(void*), stack_ptr);
 	//assert(*null_ptr == 0);
-	long null_ptr = t->read_word((byte*)stack_ptr);
+	long null_ptr = t->read_word(stack_ptr);
 	assert(null_ptr == 0);
 	stack_ptr++;
 
 	/* should now point to envp (pointer to environment strings) */
-	while (0 != t->read_word((byte*)stack_ptr)) {
+	while (0 != t->read_word(stack_ptr)) {
 		stack_ptr++;
 	}
 	stack_ptr++;
@@ -1166,7 +1166,7 @@ static void process_execve(Task* t)
 		ElfEntry entries[ALEN(elf_aux)];
 		byte bytes[sizeof(entries)];
 	} table;
-	t->read_bytes((byte*)stack_ptr, table.bytes);
+	t->read_bytes(stack_ptr, table.bytes);
 	stack_ptr += 2 * ALEN(elf_aux);
 
 	for (int i = 0; i < ssize_t(ALEN(elf_aux)); ++i) {
@@ -1177,13 +1177,13 @@ static void process_execve(Task* t)
 			    i, expected_field, entry.key);
 	}
 
-	long at_random = t->read_word((byte*)stack_ptr);
+	long at_random = t->read_word(stack_ptr);
 	stack_ptr++;
 	assert_exec(t, AT_RANDOM == at_random,
 		    "ELF item should be 0x%x, but is 0x%lx",
 		    AT_RANDOM, at_random);
 
-	void* rand_addr = (void*)t->read_word((byte*)stack_ptr);
+	void* rand_addr = (void*)t->read_word(stack_ptr);
 	// XXX where does the magic number come from?
 	record_child_data(t, 16, rand_addr);
 
@@ -1204,7 +1204,7 @@ static void process_ioctl(Task *t, int request)
 	int nr = _IOC_NR(request);
 	int dir = _IOC_DIR(request);
 	int size = _IOC_SIZE(request);
-	byte* param = (byte*)t->regs().edx;
+	void* param = (void*)t->regs().edx;
 
 	debug("handling ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d",
 	      request, type, nr, dir, size);
@@ -1369,7 +1369,7 @@ static void process_ipc(Task* t, int call)
 		// before the payload.
 		size_t buf_size = sizeof(long) + t->regs().edx;
 		struct ipc_kludge_args kludge;
-		byte* child_kludge = (byte*)t->regs().edi;
+		void* child_kludge = (void*)t->regs().edi;
 
 		t->read_mem(child_kludge, &kludge);
 		if (has_saved_arg_ptrs(t)) {
@@ -1392,7 +1392,7 @@ static void process_ipc(Task* t, int call)
 	}
 }
 
-static void process_socketcall(Task* t, int call, byte* base_addr)
+static void process_socketcall(Task* t, int call, void* base_addr)
 {
 	debug("socket call: %d\n", call);
 
@@ -1427,7 +1427,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 			socklen_t* addrlen;
 		} args;
 		t->read_mem(base_addr, &args);
-		socklen_t len = t->read_word((byte*)args.addrlen);
+		socklen_t len = t->read_word(args.addrlen);
 		record_child_data(t, sizeof(*args.addrlen), args.addrlen);
 		record_child_data(t, len, args.addr);
 		return;
@@ -1504,7 +1504,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 
 			if (src_addrp) {
 				socklen_t addrlen;
-				t->read_mem((byte*)args.addrlen, &addrlen);
+				t->read_mem(args.addrlen, &addrlen);
 				t->remote_memcpy(src_addrp, args.src_addr,
 						 addrlen);
 				t->write_mem(addrlenp, addrlen);
@@ -1523,7 +1523,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		}
 		if (args.src_addr) {
 			socklen_t addrlen;
-			t->read_mem((byte*)args.addrlen, &addrlen);
+			t->read_mem(args.addrlen, &addrlen);
 
 			record_child_data(t, sizeof(*args.addrlen),
 					  args.addrlen);
@@ -1539,7 +1539,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		struct user_regs_struct r = t->regs();
 		struct recvmsg_args* tmpargsp = (struct recvmsg_args*)r.ecx;
 		struct recvmsg_args tmpargs;
-		t->read_mem((byte*)tmpargsp, &tmpargs);
+		t->read_mem(tmpargsp, &tmpargs);
 		if (!has_saved_arg_ptrs(t)) {
 			return record_struct_msghdr(t, tmpargs.msg);
 		}
@@ -1549,8 +1549,8 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		t->read_mem(argsp, &args);
 
 		struct msghdr msg, tmpmsg;
-		t->read_mem((byte*)args.msg, &msg);
-		t->read_mem((byte*)tmpargs.msg, &tmpmsg);
+		t->read_mem(args.msg, &msg);
+		t->read_mem(tmpargs.msg, &tmpmsg);
 
 		msg.msg_namelen = tmpmsg.msg_namelen;
 		msg.msg_flags = tmpmsg.msg_flags;
@@ -1598,7 +1598,7 @@ static void process_socketcall(Task* t, int call, byte* base_addr)
 		struct { long sockfd; long level; int optname;
 			void* optval; socklen_t* optlen; } args;
 		t->read_mem(base_addr, &args);
-		socklen_t optlen = t->read_word((byte*)args.optlen);
+		socklen_t optlen = t->read_word(args.optlen);
 		record_child_data(t, sizeof(*args.optlen), args.optlen);
 		record_child_data(t, optlen, args.optval);
 		return;
@@ -2487,7 +2487,7 @@ void rec_process_syscall(Task *t)
 	 * int open(const char *pathname, int flags, mode_t mode)
 	 */
 	case SYS_open: {
-		string pathname = t->read_c_str((const byte*)t->regs().ebx);
+		string pathname = t->read_c_str((void*)t->regs().ebx);
 		if (is_blacklisted_filename(pathname.c_str())) {
 			/* NB: the file will still be open in the
 			 * process's file table, but let's hope this
@@ -2596,7 +2596,7 @@ void rec_process_syscall(Task *t)
 			break;
 		case PR_GET_NAME: {
 			struct { char chars[16]; } name;
-			byte* nameaddr = (byte*)t->regs().ecx;
+			void* nameaddr = (void*)t->regs().ecx;
 			t->read_mem(nameaddr, &name);
 			name.chars[sizeof(name.chars) - 1] = '\0';
 			assert_exec(t, t->name() == name.chars,
@@ -2606,7 +2606,7 @@ void rec_process_syscall(Task *t)
 			break;
 		}
 		case PR_SET_NAME: {
-			byte* addr = (byte*)t->regs().ecx;
+			void* addr = (void*)t->regs().ecx;
 			t->update_prname(addr);
 			// The string value being set is
 			// deterministic.
@@ -2840,7 +2840,7 @@ void rec_process_syscall(Task *t)
 		Task *target = t->regs().ebx ? Task::find(t->regs().ebx) : t;
 		if (target) {
 			ssize_t cpuset_len = t->regs().ecx;
-			const byte* child_cpuset = (const byte*)t->regs().edx;
+			void* child_cpuset = (void*)t->regs().edx;
 			// The only sched_setaffinity call we allow on
 			// an rr-managed task is one that sets
 			// affinity to CPU 0.
@@ -2987,7 +2987,7 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_socketcall:
-		process_socketcall(t, t->regs().ebx, (byte*)t->regs().ecx);
+		process_socketcall(t, t->regs().ebx, (void*)t->regs().ecx);
 		break;
 
 	/**

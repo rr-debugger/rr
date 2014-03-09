@@ -125,7 +125,7 @@ struct dbg_request {
 
 	union {
 		struct {
-			byte* addr;
+			void* addr;
 			size_t len;
 		} mem;
 
