@@ -731,7 +731,7 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 		id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode);
 	}
 
-	as->map(info.start_addr, info.end_addr - info.start_addr,
+	as->map(info.start_addr, (byte*)info.end_addr - (byte*)info.start_addr,
 		info.prot, info.flags, info.file_offset,
 		MappableResource(id, info.name));
 

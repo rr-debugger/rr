@@ -65,8 +65,8 @@ struct mapped_segment_info {
 	 * anywhere. */
 	char name[PATH_MAX];	/* technically PATH_MAX + "deleted",
 				 * but let's not go there. */
-	byte* start_addr;
-	byte* end_addr;
+	void* start_addr;
+	void* end_addr;
 	int prot;
 	int flags;
 	int64_t file_offset;
@@ -138,8 +138,7 @@ void print_register_file(const struct user_regs_struct* regs);
  * look like "0xValue | [0xAddr]".
  */
 void dump_binary_data(const char* filename, const char* label,
-		      const uint32_t* buf, size_t buf_len,
-		      const byte* start_addr);
+		      const uint32_t* buf, size_t buf_len, void* start_addr);
 
 /**
  * Format a suitable filename within the trace directory for dumping
@@ -304,7 +303,7 @@ struct current_state_buffer {
 	struct user_regs_struct regs;
 	int code_size;
 	byte code_buffer[sizeof(syscall_insn)];
-	byte* start_addr;
+	void* start_addr;
 };
 
 /**
@@ -402,8 +401,7 @@ void resize_shmem_segment(int fd, size_t num_bytes);
  * *must* ensure the callee will not receive any signals.  This code
  * does not attempt to deal with signals.
  */
-void prepare_remote_syscalls(Task* t,
-			     struct current_state_buffer* state);
+void prepare_remote_syscalls(Task* t, struct current_state_buffer* state);
 
 /**
  * Cookie used to restore stomped memory.  Users should treat these as
@@ -411,11 +409,11 @@ void prepare_remote_syscalls(Task* t,
  */
 struct restore_mem {
 	/* Address of tmp mem. */
-	byte* addr;
+	void* addr;
 	/* Pointer to saved data. */
 	byte* data;
 	/* (We keep this around for error checking.) */
-	byte* saved_sp;
+	void* saved_sp;
 	/* Length of tmp mem. */
 	size_t len;
 };
@@ -472,8 +470,7 @@ long wait_remote_syscall(Task* t, struct current_state_buffer* state,
  * Undo in |t| any preparations that were made for a series of
  * remote syscalls.
  */
-void finish_remote_syscalls(Task* t,
-			    struct current_state_buffer* state);
+void finish_remote_syscalls(Task* t, struct current_state_buffer* state);
 
 #define remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)	\
 	remote_syscall(_c, _s, WAIT, _no,				\

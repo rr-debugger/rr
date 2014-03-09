@@ -368,10 +368,10 @@ void iterate_memory_map(Task* t,
 				   (intptr_t)data.info.start_addr);
 		if (caller_wants_segment_read(t, &data.info,
 					      filt, filt_data)) {
-			const byte* addr = data.info.start_addr;
+			void* addr = data.info.start_addr;
 			ssize_t nbytes = data.size_bytes;
 			data.mem = (byte*)malloc(nbytes);
-			data.mem_len = t->read_bytes_fallible(addr, nbytes,
+			data.mem_len = t->read_bytes_fallible((byte*)addr, nbytes,
 							      data.mem);
 			/* TODO: expose read errors, somehow. */
 			data.mem_len = max(0, data.mem_len);
@@ -692,7 +692,7 @@ void read_line(FILE* file, char* buf, int size, const char* name)
  */
 static void dump_binary_chunk(FILE* out, const char* label,
 			      const uint32_t* buf, size_t buf_len,
-			      const byte* start_addr)
+			      void* start_addr)
 {
 	int i;
 
@@ -700,13 +700,12 @@ static void dump_binary_chunk(FILE* out, const char* label,
 	for (i = 0 ; i < ssize_t(buf_len); i += 1) {
 		uint32_t word = buf[i];
 		fprintf(out, "0x%08x | [%p]\n", word,
-			start_addr + i * sizeof(*buf));
+			(byte*)start_addr + i * sizeof(*buf));
 	}
 }
 
 void dump_binary_data(const char* filename, const char* label,
-		      const uint32_t* buf, size_t buf_len,
-		      const byte* start_addr)
+		      const uint32_t* buf, size_t buf_len, void* start_addr)
 {
 	FILE* out = fopen(filename, "w");
 	if (!out) {
@@ -748,7 +747,7 @@ static int dump_process_memory_iterator(void* it_data, Task* t,
 {
 	FILE* dump_file = (FILE*)it_data;
 	const unsigned* buf = (const unsigned*)data->mem;
-	byte* start_addr = data->info.start_addr;
+	void* start_addr = data->info.start_addr;
 
 	if (!buf) {
 		/* This segment was filtered by debugging code. */
@@ -793,7 +792,7 @@ void dump_process_memory(Task* t, const char* tag)
 	flush_trace_files();
 
 	iterate_memory_map(t, dump_process_memory_iterator, dump_file,
-			   dump_process_memory_segment_filter, NULL);
+			   dump_process_memory_segment_filter, nullptr);
 	fclose(dump_file);
 }
 
@@ -872,9 +871,9 @@ static int checksum_iterator(void* it_data, Task* t,
 		 *
 		 * So here, we set things up so that we only checksum
 		 * the deterministic region. */
-		byte* child_hdr = data->info.start_addr;
+		void* child_hdr = data->info.start_addr;
 		struct syscallbuf_hdr hdr;
-		t->read_mem(child_hdr, &hdr);
+		t->read_mem((byte*)child_hdr, &hdr);
 		valid_mem_len = sizeof(hdr) + hdr.num_rec_bytes +
 				sizeof(struct syscallbuf_record);
 	}
@@ -1305,7 +1304,7 @@ void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
 	state->regs = t->regs();
 	state->code_size = sizeof(syscall_insn);
 	state->start_addr = (byte*)state->regs.eip;
-	t->read_bytes(state->start_addr, state->code_buffer);
+	t->read_bytes((byte*)state->start_addr, state->code_buffer);
 	/* Inject phony syscall instruction. */
 	t->write_bytes(state->start_addr, syscall_insn);
 }
@@ -1315,14 +1314,14 @@ void* push_tmp_mem(Task* t, struct current_state_buffer* state,
 		   struct restore_mem* restore)
 {
 	restore->len = num_bytes;
-	restore->saved_sp = (byte*)state->regs.esp;
+	restore->saved_sp = (void*)state->regs.esp;
 
 	state->regs.esp -= restore->len;
 	t->set_regs(state->regs);
-	restore->addr = (byte*)state->regs.esp;
+	restore->addr = (void*)state->regs.esp;
 
 	restore->data = (byte*)malloc(restore->len);
-	t->read_bytes_helper(restore->addr, restore->len, restore->data);
+	t->read_bytes_helper((byte*)restore->addr, restore->len, restore->data);
 
 	t->write_bytes_helper(restore->addr, restore->len, mem);
 
