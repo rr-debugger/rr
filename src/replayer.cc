@@ -1215,7 +1215,7 @@ static void prepare_syscallbuf_records(Task* t,
 {
 	/* Read the recorded syscall buffer back into the buffer
 	 * region. */
-	byte* rec_addr;
+	void* rec_addr;
 	*num_rec_bytes = read_raw_data_direct(&t->trace,
 					      syscallbuf_flush_buffer,
 					      sizeof(syscallbuf_flush_buffer),

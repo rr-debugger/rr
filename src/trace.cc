@@ -773,7 +773,7 @@ void load_recorded_env(const char* trace_path,
 	fclose(arg_env);
 }
 
-static size_t parse_raw_data_hdr(struct trace_frame* trace, byte** addr)
+static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 {
 	/* XXX rewrite me */
 	char line[1024];
@@ -788,7 +788,7 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, byte** addr)
 	tmp_ptr += LI_COLUMN_SIZE;
 	syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	*addr = (byte*)str2li(tmp_ptr, LI_COLUMN_SIZE);
+	*addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	size = str2li(tmp_ptr, LI_COLUMN_SIZE);
 
@@ -824,7 +824,7 @@ static void read_rawdata(void* buf, size_t num_bytes)
 	overall_raw_bytes += bytes_read;
 }
 
-void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr)
+void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr)
 {
 	size_t size = parse_raw_data_hdr(trace, addr);
 	void* data = NULL;
@@ -840,7 +840,7 @@ void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, byte** addr)
 }
 
 ssize_t read_raw_data_direct(struct trace_frame* trace,
-			     void* buf, size_t buf_size, byte** rec_addr)
+			     void* buf, size_t buf_size, void** rec_addr)
 {
 	size_t data_size = parse_raw_data_hdr(trace, rec_addr);
 
