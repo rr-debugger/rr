@@ -34,8 +34,11 @@ def iterlines_both():
 def last_match():
     return gdb_rr.match
 
-def restart_replay():
-    send_gdb('r\n')
+def restart_replay(event=0):
+    if event:
+        send_gdb('r %d\n'%(event))
+    else:
+        send_gdb('r\n')
     expect_gdb('Start it from the beginning')
     send_gdb('y\n')
 

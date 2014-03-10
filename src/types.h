@@ -49,7 +49,7 @@ typedef unsigned char byte;
 //
 // We force choosers to specify which they mean, and default to the
 // much more useful (and probably common) exec() definition.
-enum { CREATED_EXEC, CREATED_FORK };
+enum { CREATED_DEFAULT = 0, CREATED_EXEC, CREATED_FORK };
 
 struct flags {
 	/* Max counter value before the scheduler interrupts a tracee. */
