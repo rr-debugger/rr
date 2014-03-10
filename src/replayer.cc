@@ -2058,6 +2058,25 @@ void replay_flags_to_args(const struct flags& f,
 
 static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 {
+	// Update the replayer launch flags with values the debugger
+	// has most recently seen from the user.
+	struct flags f = *rr_flags();
+	f.goto_event = req.restart.event > 0 ?
+			req.restart.event : f.goto_event;
+	if (f.goto_event && !f.target_process) {
+		// We allow the user to change the target event.  It's
+		// perfectly acceptable for them to target an event
+		// before |debugged_tgid| was launched; rr should Do
+		// The Right Thing in that case and attach the
+		// debugger at the first event after |f.goto_event| at
+		// which |debugged_tgid| exists.
+		f.target_process = debugged_tgid;
+		f.process_created_how =
+			Task::find(debugged_tgid)->vm()->execed() ?
+			CREATED_EXEC : CREATED_FORK;
+	}
+	f.dbgport = req.restart.port;
+
 	// We're going to restart by exec()ing on top of ourselves, in
 	// order to keep the process tree intact.  So our tracees
 	// won't get the kill signal they usually would if we
@@ -2075,13 +2094,6 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	close_trace_files();
 
 	dbg_prepare_restore_after_exec_restart(dbg);
-
-	// Update the replayer launch flags with values the debugger
-	// has most recently seen from the user.
-	struct flags f = *rr_flags();
-	f.goto_event = req.restart.event > 0 ?
-			req.restart.event : f.goto_event;
-	f.dbgport = req.restart.port;
 
 	char exe[PATH_MAX];
 	ssize_t nbytes = readlink("/proc/self/exe", exe, sizeof(exe));
