@@ -1216,7 +1216,10 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 	bool can_write_file = (0 == access(filename, W_OK));
 
 	if (!can_write_file && 0 == stat->st_uid) {
-		assert(!(prot & PROT_WRITE));
+		// We would like to assert this, but on Ubuntu 13.10,
+		// the file /lib/i386-linux-gnu/libdl-2.17.so is
+		// writeable by root for unknown reasons.
+		//assert(!(prot & PROT_WRITE));
 		/* Mapping a file owned by root: we don't care if this
 		 * was a PRIVATE or SHARED mapping, because unless the
 		 * program is disastrously buggy or unlucky, the
