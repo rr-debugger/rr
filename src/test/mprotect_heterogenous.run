@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh mprotect_heterogenous "$@"
+compare_test 'done'

@@ -254,16 +254,46 @@ AddressSpace::protect(void* addr, size_t num_bytes, int prot)
 	debug("[%d] mprotect(%p, %u, 0x%x)", get_global_time(),
 	      addr, num_bytes, prot);
 
-	auto mr = mapping_of(addr, num_bytes);
-	Mapping m = mr.first;
-	MappableResource r = mr.second;
+	Mapping last_overlap;
+	auto protector = [this, prot, &last_overlap](
+		const Mapping& m, const MappableResource& r,
+		const Mapping& rem) {
+		debug("  protecting (%p, %u) ...", rem.start, rem.num_bytes());
 
-	unmap(addr, num_bytes);
+		mem.erase(m);
+		debug("  erased (%p, %u, %#x) ...",
+		      m.start, m.num_bytes(), m.prot);
 
-	map_and_coalesce(Mapping((byte*)addr, num_bytes, prot, m.flags,
-				 adjust_offset(r, m,
-					       (byte*)addr - (byte*)m.start)),
-			 r);
+		// If the first segment we protect underflows the
+		// region, remap the underflow region with previous
+		// prot.
+		if (m.start < rem.start) {
+			Mapping underflow(m.start, rem.start, m.prot, m.flags,
+					  m.offset);
+			mem[underflow] = r;
+		}
+		// Remap the overlapping region with the new prot.
+		void* new_end = min(rem.end, m.end);
+		Mapping overlap(rem.start, new_end, prot, m.flags,
+				adjust_offset(r, m,
+					      (byte*)rem.start - (byte*)m.start));
+		mem[overlap] = r;
+		last_overlap = overlap;
+
+		// If the last segment we protect overflows the
+		// region, remap the overflow region with previous
+		// prot.
+		if (rem.end < m.end) {
+			Mapping overflow(rem.end, m.end, m.prot, m.flags,
+					 adjust_offset(r, m,
+						       (byte*)rem.end - (byte*)m.start));
+			mem[overflow] = r;
+		}
+	};
+	for_each_in_range(addr, num_bytes, protector, ITERATE_CONTIGUOUS);
+	// All mappings that we altered which might need coalescing
+	// are adjacent to |last_overlap|.
+	coalesce_around(mem.find(last_overlap));
 }
 
 void
@@ -383,8 +413,9 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
 		return false;
 	}
 	if (rleft.id.is_real_device()
-	    && off64_t(mleft.offset + mleft.num_bytes()) != mright.offset) {
-		debug("    (offsets into real device aren't adjacent)");
+	    && mleft.offset + mleft.num_bytes() != mright.offset) {
+		debug("    (%lld + %d != %lld: offsets into real device aren't adjacent)",
+		      mleft.offset, mleft.num_bytes(), mright.offset);
 		return false;
 	}
 	debug("    adjacent!");
@@ -405,7 +436,7 @@ static bool try_merge_adjacent(Mapping* left_m,
 				MappingResourcePair(right_m, right_r))) {
 		*left_m = Mapping(left_m->start, right_m.end,
 				  right_m.prot, right_m.flags,
-				  right_m.offset);
+				  left_m->offset);
 		return true;
 	}
 	return false;
@@ -527,6 +558,9 @@ AddressSpace::check_segment_iterator(void* pvas, Task* t,
 		vas->phase = vas->INITING_KERNEL;
 	}
 
+	debug("  merged cached seg: '%p-%p 0x%x f:0x%x'",
+	      vas->m.start, vas->m.end, vas->m.prot, vas->m.flags);
+
 	// Merge adjacent kernel mappings.
 	assert(info.flags == (info.flags & Mapping::checkable_flags_mask));
 	Mapping km(info.start_addr, info.end_addr, info.prot, info.flags,
@@ -611,6 +645,45 @@ AddressSpace::AddressSpace(const AddressSpace& o)
 }
 
 void
+AddressSpace::coalesce_around(MemoryMap::iterator it)
+{
+	Mapping m = it->first;
+	MappableResource r = it->second;
+
+	auto first_kv = it;
+	while (mem.begin() != first_kv) {
+		auto next = first_kv;
+		if (!is_adjacent_mapping(*--first_kv, *next)) {
+			first_kv = next;
+			break;
+		}
+	}
+	auto last_kv = it;
+	while (true) {
+		auto prev = last_kv;
+		if (mem.end() == ++last_kv
+		    || !is_adjacent_mapping(*prev, *last_kv)) {
+			last_kv = prev;
+			break;
+		}
+	}
+	assert(last_kv != mem.end());
+	if (first_kv == last_kv) {
+		debug("  no mappings to coalesce");
+		return;
+	}
+
+	Mapping c(first_kv->first.start, last_kv->first.end, m.prot, m.flags,
+		  first_kv->first.offset);
+	debug("  coalescing %p-%p", c.start, c.end);
+
+	mem.erase(first_kv, ++last_kv);
+
+	auto ins = mem.insert(MemoryMap::value_type(c, r));
+	assert(ins.second);	// key didn't already exist
+}
+
+void
 AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it)
 {
 	Task* t = *task_set().begin();
@@ -622,7 +695,8 @@ void
 AddressSpace::for_each_in_range(void* addr, ssize_t num_bytes,
 				function<void (const Mapping& m,
 					       const MappableResource& r,
-					       const Mapping& rem)> f)
+					       const Mapping& rem)> f,
+				int how)
 {
 	num_bytes = ceil_page_size(num_bytes);
 	byte* last_unmapped_end = (byte*)addr;
@@ -646,6 +720,12 @@ AddressSpace::for_each_in_range(void* addr, ssize_t num_bytes,
 			debug("  mapping at %p out of range, done.", m.start);
 			return;
 		}
+		if (ITERATE_CONTIGUOUS == how &&
+		    !(m.start < addr || rem.start == m.start)) {
+			debug("  discontiguous mapping at %p, done.", m.start);
+			return;
+		}
+
 		MappableResource r = it->second;
 		f(m, r, rem);
 
@@ -662,38 +742,7 @@ AddressSpace::map_and_coalesce(const Mapping& m, const MappableResource& r)
 
 	auto ins = mem.insert(MemoryMap::value_type(m, r));
 	assert(ins.second);	// key didn't already exist
-
-	auto first_kv = ins.first;
-	while (mem.begin() != first_kv) {
-		auto next = first_kv;
-		if (!is_adjacent_mapping(*--first_kv, *next)) {
-			first_kv = next;
-			break;
-		}
-	}
-	auto last_kv = ins.first;
-	while (true) {
-		auto prev = last_kv;
-		if (mem.end() == ++last_kv
-		    || !is_adjacent_mapping(*prev, *last_kv)) {
-			last_kv = prev;
-			break;
-		}
-	}
-	assert(last_kv != mem.end());
-	if (first_kv == last_kv) {
-		debug("  no mappings to coalesce");
-		return;
-	}
-
-	Mapping c(first_kv->first.start, last_kv->first.end, m.prot, m.flags,
-		  first_kv->first.offset);
-	debug("  coalescing %p-%p", c.start, c.end);
-
-	mem.erase(first_kv, ++last_kv);
-
-	ins = mem.insert(MemoryMap::value_type(c, r));
-	assert(ins.second);	// key didn't already exist
+	coalesce_around(ins.first);
 }
 
 /*static*/ int
@@ -1288,7 +1337,8 @@ Task::maybe_update_vm(int syscallno, int state)
 	const struct user_regs_struct& r = RECORD == rr_flags()->option ?
 					   regs() : trace.recorded_regs;
 
-	if (STATE_SYSCALL_EXIT != state || SYSCALL_FAILED(r.eax)) {
+	if (STATE_SYSCALL_EXIT != state
+	    || (SYSCALL_FAILED(r.eax) && SYS_mprotect != syscallno)) {
 		return;
 	}
 	switch (syscallno) {
@@ -1309,13 +1359,15 @@ Task::maybe_update_vm(int syscallno, int state)
 		return;
 	}
 	case SYS_mprotect: {
-		//int mprotect(void *addr, size_t len, int prot);
 		void* addr = reinterpret_cast<void*>(r.ebx);
 		size_t num_bytes = r.ecx;
 		int prot = r.edx;
 		return vm()->protect(addr, num_bytes, prot);
 	}
 	case SYS_mremap: {
+		if (SYSCALL_FAILED(r.eax) && -ENOMEM != r.eax) {
+			return;
+		}
 		void* old_addr = reinterpret_cast<void*>(r.ebx);
 		size_t old_num_bytes = r.ecx;
 		void* new_addr = reinterpret_cast<void*>(r.eax);

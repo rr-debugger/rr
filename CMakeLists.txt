@@ -126,6 +126,7 @@ set(BASIC_TESTS
   mmap_tmpfs
   mmap_write
   mprotect
+  mprotect_heterogenous
   mprotect_stack
   mremap
   msg
