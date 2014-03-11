@@ -489,6 +489,17 @@ private:
 	void destroy_breakpoint(BreakpointMap::const_iterator it);
 
 	/**
+	 * For each mapped segment overlapping [addr, addr +
+	 * num_bytes), call |f|.  Pass |f| the overlapping mapping,
+	 * the mapped resource, and the range of addresses remaining
+	 * to be iterated over.
+	 */
+	void for_each_in_range(void* addr, ssize_t num_bytes,
+			       std::function<void (const Mapping& m,
+						   const MappableResource& r,
+						   const Mapping& rem)> f);
+
+	/**
 	 * Map |m| of |r| into this address space, and coalesce any
 	 * mappings of |r| that are adjacent to |m|.
 	 */

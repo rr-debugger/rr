@@ -332,51 +332,30 @@ AddressSpace::unmap(void* addr, ssize_t num_bytes)
 {
 	debug("[%d] munmap(%p, %u)", get_global_time(), addr, num_bytes);
 
-	num_bytes = ceil_page_size(num_bytes);
-
-	byte* last_unmapped_end = (byte*)addr;
-	byte* region_end = (byte*)addr + num_bytes;
-	while (last_unmapped_end < region_end) {
-		// Invariant: |u| is always exactly the region of
-		// memory remaining to be examined for pages to be
-		// unmapped.
-		Mapping u(last_unmapped_end, region_end);
-		debug("  unmapping (%p, %u) ...", u.start, u.num_bytes());
-		// The next page to unmap may not be contiguous with
-		// the last one we unmapped.
-		auto it = mem.lower_bound(u);
-		if (mem.end() == it) {
-			debug("  not found, done.");
-			return;
-		}
-
-		Mapping m = it->first;
-		if (u.end <= m.start) {
-			debug("  mapping at %p out of range, done.", m.start);
-			return;
-		}
-		MappableResource r = it->second;
+	auto unmapper = [this](const Mapping& m, const MappableResource& r,
+			       const Mapping& rem) {
+		debug("  unmapping (%p, %u) ...", rem.start, rem.num_bytes());
 
 		mem.erase(m);
 		debug("  erased (%p, %u) ...", m.start, m.num_bytes());
 
 		// If the first segment we unmap underflows the unmap
 		// region, remap the underflow region.
-		if (m.start < u.start) {
-			mem[Mapping(m.start, (byte*)u.start - (byte*)m.start,
+		if (m.start < rem.start) {
+			mem[Mapping(m.start, (byte*)rem.start - (byte*)m.start,
 				    m.prot, m.flags, m.offset)] = r;
 		}
 		// If the last segment we unmap overflows the unmap
 		// region, remap the overflow region.
-		if (u.end < m.end) {
-			mem[Mapping(u.end, (byte*)m.end - (byte*)u.end,
+		if (rem.end < m.end) {
+			mem[Mapping(rem.end, (byte*)m.end - (byte*)rem.end,
 				    m.prot, m.flags,
-				    adjust_offset(r, m, (byte*)u.start - (byte*)m.start))]
-				= r;
+				    adjust_offset(r, m,
+						  (byte*)rem.start - (byte*)m.start))]
+			= r;
 		}
-		// Maintain the loop invariant.
-		last_unmapped_end = (byte*)m.end;
-	}
+	};
+	for_each_in_range(addr, num_bytes, unmapper);
 }
 
 /**
@@ -637,6 +616,42 @@ AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it)
 	Task* t = *task_set().begin();
 	t->write_mem(it->first, it->second->overwritten_data);
 	breakpoints.erase(it);
+}
+
+void
+AddressSpace::for_each_in_range(void* addr, ssize_t num_bytes,
+				function<void (const Mapping& m,
+					       const MappableResource& r,
+					       const Mapping& rem)> f)
+{
+	num_bytes = ceil_page_size(num_bytes);
+	byte* last_unmapped_end = (byte*)addr;
+	byte* region_end = (byte*)addr + num_bytes;
+	while (last_unmapped_end < region_end) {
+		// Invariant: |rem| is always exactly the region of
+		// memory remaining to be examined for pages to be
+		// unmapped.
+		Mapping rem(last_unmapped_end, region_end);
+
+		// The next page to iterate may not be contiguous with
+		// the last one seen.
+		auto it = mem.lower_bound(rem);
+		if (mem.end() == it) {
+			debug("  not found, done.");
+			return;
+		}
+
+		Mapping m = it->first;
+		if (rem.end <= m.start) {
+			debug("  mapping at %p out of range, done.", m.start);
+			return;
+		}
+		MappableResource r = it->second;
+		f(m, r, rem);
+
+		// Maintain the loop invariant.
+		last_unmapped_end = (byte*)m.end;
+	}
 }
 
 void
