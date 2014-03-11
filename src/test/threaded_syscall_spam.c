@@ -25,9 +25,8 @@ static void syscall_spam(void) {
 
 static void unblock_signals(void) {
 	sigset_t set;
-	atomic_printf("%d: unblocking all signals...\n", sys_gettid());
 	sigfillset(&set);
-	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+	test_assert(0 == pthread_sigmask(SIG_UNBLOCK, &set, NULL));
 	atomic_printf("  %d: unblocked all sigs\n", sys_gettid());
 }
 
@@ -47,9 +46,9 @@ int main(int argc, char** argv) {
 
 	atomic_printf("Running 2^%d iterations in two threads\n", num_its);
 
+	atomic_printf("parent %d: blocking all sigs ...\n", getpid());
 	sigfillset(&set);
 	test_assert(0 == pthread_sigmask(SIG_BLOCK, &set, NULL));
-	atomic_puts("parent: blocked all sigs");
 
 	pthread_create(&t, NULL, thread, NULL);
 
