@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 	breakpoint();
 	pid = clone(child, stack + stack_size,
 		    CLONE_FS | CLONE_FILES | CLONE_UNTRACED,
-		    NULL, NULL, NULL);
+		    NULL, NULL, NULL, NULL);
 
 	atomic_printf("clone()d pid: %d\n", pid);
 	test_assert(pid > 0);
