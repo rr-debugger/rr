@@ -2,10 +2,20 @@
 
 #include "rrutil.h"
 
+#define TEST_FILE "foo.txt"
+
 int main(int argc, char *argv[]) {
 	size_t page_size = sysconf(_SC_PAGESIZE);
-	byte* pages = mmap(NULL, 7 * page_size,
-			   PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	int fd = open(TEST_FILE, O_CREAT | O_EXCL | O_RDWR, 0600);
+	byte* pages;
+
+	test_assert(fd >= 0);
+	test_assert(0 == ftruncate(fd, 8 * page_size));
+
+	unlink(TEST_FILE);
+
+	pages = mmap(NULL, 8 * page_size,  PROT_READ | PROT_WRITE,
+		     MAP_PRIVATE, fd, 0);
 	test_assert(pages != (void*)-1);
 
 	/* Unmap first page. */
@@ -23,7 +33,7 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-	/* Unmap first 6 page locations, leave 7th. */
+	/* Unmap first 6 page locations, leave last 2. */
 	munmap(pages, 6 * page_size);
 
 	atomic_puts(" done");
