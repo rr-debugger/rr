@@ -14,7 +14,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 # is cool with it.  Sigh.
 set(rr_VERSION_MAJOR 0)
 set(rr_VERSION_MINOR 5)
-set(rr_VERSION_PATCH 0)
+set(rr_VERSION_PATCH 1)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict-prototypes")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -pthread -O0 -g3 -Wall -Werror -m32")
