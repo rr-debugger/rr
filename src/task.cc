@@ -342,17 +342,17 @@ AddressSpace::unmap(void* addr, ssize_t num_bytes)
 		// If the first segment we unmap underflows the unmap
 		// region, remap the underflow region.
 		if (m.start < rem.start) {
-			mem[Mapping(m.start, (byte*)rem.start - (byte*)m.start,
-				    m.prot, m.flags, m.offset)] = r;
+			Mapping underflow(m.start, rem.start, m.prot, m.flags,
+					  m.offset);
+			mem[underflow] = r;
 		}
 		// If the last segment we unmap overflows the unmap
 		// region, remap the overflow region.
 		if (rem.end < m.end) {
-			mem[Mapping(rem.end, (byte*)m.end - (byte*)rem.end,
-				    m.prot, m.flags,
-				    adjust_offset(r, m,
-						  (byte*)rem.start - (byte*)m.start))]
-			= r;
+			Mapping overflow(rem.end, m.end, m.prot, m.flags,
+					 adjust_offset(r, m,
+						       (byte*)rem.end - (byte*)m.start));
+			mem[overflow] = r;
 		}
 	};
 	for_each_in_range(addr, num_bytes, unmapper);
