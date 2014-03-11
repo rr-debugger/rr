@@ -483,6 +483,14 @@ private:
 	AddressSpace(const AddressSpace& o);
 
 	/**
+	 * Merge the mappings adjacent to |it| in memory that are
+	 * semantically "adjacent mappings" of the same resource as
+	 * well, for example have adjacent file offsets and the same
+	 * prot and flags.
+	 */
+	void coalesce_around(MemoryMap::iterator it);
+
+	/**
 	 * Erase |it| from |breakpoints| and restore any memory in
 	 * this it may have overwritten.
 	 */
@@ -493,11 +501,17 @@ private:
 	 * num_bytes), call |f|.  Pass |f| the overlapping mapping,
 	 * the mapped resource, and the range of addresses remaining
 	 * to be iterated over.
+	 *
+	 * Pass |ITERATE_CONTIGUOUS| to stop iterating when the last
+	 * contiguous mapping after |addr| within the region is seen.
+	 * Default is to iterate all mappings in the region.
 	 */
+	enum { ITERATE_DEFAULT, ITERATE_CONTIGUOUS };
 	void for_each_in_range(void* addr, ssize_t num_bytes,
 			       std::function<void (const Mapping& m,
 						   const MappableResource& r,
-						   const Mapping& rem)> f);
+						   const Mapping& rem)> f,
+			       int how = ITERATE_DEFAULT);
 
 	/**
 	 * Map |m| of |r| into this address space, and coalesce any

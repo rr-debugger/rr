@@ -14,8 +14,7 @@ int main(int argc, char *argv[]) {
 
 	unlink(TEST_FILE);
 
-	pages = mmap(NULL, 8 * page_size,  PROT_READ | PROT_WRITE,
-		     MAP_PRIVATE, fd, 0);
+	pages = mmap(NULL, 8 * page_size,  PROT_WRITE, MAP_PRIVATE, fd, 0);
 	test_assert(pages != (void*)-1);
 
 	/* Unmap first page. */
@@ -25,18 +24,9 @@ int main(int argc, char *argv[]) {
 	/* Unmap fifth page. */
 	munmap(pages + 4 * page_size, page_size);
 
-#if 0
-	{
-		char cmd[4096];
-		snprintf(cmd, sizeof(cmd) - 1, "cat /proc/%d/maps", getpid());
-		system(cmd);
-	}
-#endif
-
 	/* Unmap first 6 page locations, leave last 2. */
 	munmap(pages, 6 * page_size);
 
 	atomic_puts(" done");
-
 	return 0;
 }
