@@ -556,7 +556,7 @@ AddressSpace::check_segment_iterator(void* pvas, Task* t,
 				   info.inode), info.name);
 
 	if (vas->INITING_KERNEL == vas->phase) {
-		assert(kr == vas->r ||
+		assert(kr == vas->r
 		       // XXX not-so-pretty hack.  If the mapped file
 		       // lives in our replayer's emulated fs, then it
 		       // will have a real system device/inode
@@ -565,7 +565,8 @@ AddressSpace::check_segment_iterator(void* pvas, Task* t,
 		       // we rely on quick access to the recorded
 		       // (i.e. emulated in replay) device/inode for
 		       // gc.  So this suffices for now.
-		       string::npos != kr.fsname.find(SHMEM_FS "/rr-emufs"));
+		       || string::npos != kr.fsname.find(SHMEM_FS "/rr-emufs")
+		       || string::npos != kr.fsname.find(SHMEM_FS2 "/rr-emufs"));
 		vas->km = km;
 		vas->phase = vas->MERGING_KERNEL;
 		return CONTINUE_ITERATING;

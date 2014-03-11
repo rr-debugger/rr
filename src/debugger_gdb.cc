@@ -655,7 +655,6 @@ static dbg_threadid_t parse_threadid(const char* str, char** endptr)
 	assert('.' == *endp);
 	str = endp + 1;
 	t.tid = strtol(str, &endp, 16);
-	assert(endp && '\0' == *endp);
 
 	*endptr = endp;
 	return t;
@@ -844,7 +843,13 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			dbg->req.type = DREQ_STEP;
 			if (args) {
 				dbg->req.target = parse_threadid(args, &args);
-				assert('\0' == *args || !strcmp(args, ";c"));
+				// If we get a step request for a
+				// thread, we just assume that
+				// requests for all other threads are
+				// 'c' (if any).  That's all we can
+				// support anyway.
+				assert('\0' == *args
+				       || args == strstr(args, ";c"));
 			} else {
 				dbg->req.target = dbg->resume_thread;
 			}

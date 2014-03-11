@@ -31,6 +31,7 @@ struct trace_frame;
 	 || -ERESTARTNOHAND == (eax) || -ERESTARTSYS == (eax))
 
 #define SHMEM_FS "/dev/shm"
+#define SHMEM_FS2 "/run/shm"
 
 /* The syscallbuf shared with tracees is created with this prefix
  * followed by the tracee tid, then immediately unlinked and shared

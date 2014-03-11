@@ -1096,7 +1096,7 @@ bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val)
 	bool now_contended = (owner_tid != 0 && owner_tid != t->rec_tid
 			      && !(val & FUTEX_WAITERS));
 	if (now_contended) {
-		debug("[%d] %d: futex %p is %ld, so WAITERS bit will be set",
+		debug("[%d] %d: futex %p is %d, so WAITERS bit will be set",
 		      get_global_time(), t->tid, futex, val);
 		*next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
 	}
@@ -1171,7 +1171,10 @@ static bool is_tmp_file(const char* path)
 {
 	struct statfs sfs;
 	statfs(path, &sfs);
-	return TMPFS_MAGIC == sfs.f_type;
+	return (TMPFS_MAGIC == sfs.f_type
+		// In observed configurations of Ubuntu 13.10, /tmp is
+		// a folder in the / fs, not a separate tmpfs.
+		|| path == strstr(path, "/tmp/"));
 }
 
 bool should_copy_mmap_region(const char* filename, const struct stat* stat,
