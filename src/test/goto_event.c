@@ -12,7 +12,8 @@ static void second_breakpoint(void) {
 	(void)break_here;
 }
 
-static void child(int num_syscalls) {
+static void* child_thread(void* num_syscallsp) {
+	int num_syscalls = (uintptr_t)num_syscallsp;
 	int i;
 
 	first_breakpoint();
@@ -25,6 +26,16 @@ static void child(int num_syscalls) {
 	}
 
 	second_breakpoint();
+
+	return NULL;
+}
+
+static void child(int num_syscalls) {
+	pthread_t t;
+
+	test_assert(0 == pthread_create(&t, NULL, child_thread,
+					(void*)(uintptr_t)num_syscalls));
+	pthread_join(t, NULL);
 
 	exit(0);
 }
