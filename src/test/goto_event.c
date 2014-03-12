@@ -2,12 +2,12 @@
 
 #include "rrutil.h"
 
-static void bad_breakpoint(void) {
+static void first_breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }
 
-static void good_breakpoint(void) {
+static void second_breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
 }
@@ -15,7 +15,7 @@ static void good_breakpoint(void) {
 static void child(int num_syscalls) {
 	int i;
 
-	bad_breakpoint();
+	first_breakpoint();
 
 	/* NB: this test assumes that gettid() produces at least one
 	 * trace event per syscall. */
@@ -24,7 +24,7 @@ static void child(int num_syscalls) {
 		(void)sys_gettid();
 	}
 
-	good_breakpoint();
+	second_breakpoint();
 
 	exit(0);
 }

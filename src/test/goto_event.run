@@ -5,5 +5,4 @@ EVENTS=1000
 record $test $EVENTS
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
-debug $test bad_good_break "-g $EVENTS"
-
+debug $test goto_event "-g $EVENTS"
