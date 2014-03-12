@@ -970,7 +970,7 @@ static int process_packet(struct dbg_context* dbg)
 		assert('\0' == *payload);
 
 		debug("gdb selecting %d.%d",
-		      dbg->req.target.tid, dbg->req.target.pid);
+		      dbg->req.target.pid, dbg->req.target.tid);
 
 		ret = 1;
 		break;
@@ -1267,6 +1267,14 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
 		return;
 	}
 	send_stop_reply_packet(dbg, thread, sig);
+
+	// This isn't documented in the gdb remote protocol, but if we
+	// don't do this, gdb will sometimes continue to send requests
+	// for the previously-stopped thread when it obviously intends
+	// to making requests about the stopped thread.
+	debug("forcing query/resume thread to %d.%d", thread.pid, thread.tid);
+	dbg->query_thread = thread;
+	dbg->resume_thread = thread;
 
 	consume_request(dbg);
 }

@@ -1696,7 +1696,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 		if (TRAP_BKPT_USER ==
 		    t->vm()->get_breakpoint_type_at_ip(t->ip())) {
-			debug("  hit debugger breakpoint");
+			debug("  %d(rec:%d): hit debugger breakpoint at ip %p",
+			      t->tid, t->rec_tid, t->ip());
 			/* SW breakpoint: $ip is just past the
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
