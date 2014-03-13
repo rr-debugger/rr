@@ -5,8 +5,6 @@
 
 #include <inttypes.h>
 
-#define MAX_TRACE_ENTRY_SIZE	8000001
-
 /**
  * The following parameters define the default scheduling parameters.
  * The recorder scheduler basically works as follows
