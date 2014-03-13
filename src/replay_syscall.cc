@@ -1497,7 +1497,20 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		return;
 
-	case SYS_prctl:
+	case SYS_prctl: {
+		int option = trace->recorded_regs.ebx;
+		void* arg2 = (void*)trace->recorded_regs.ecx;
+		if (PR_SET_NAME == option || PR_GET_NAME == option) {
+			step->syscall.num_emu_args = 1;
+			// We actually execute these.
+			step->action =
+				(STATE_SYSCALL_ENTRY == state) ?
+				TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+			if (TSTEP_EXIT_SYSCALL == step->action) {
+				t->update_prname(arg2);
+			}
+			return;
+		}
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
 		step->syscall.num_emu_args = 1;
@@ -1507,12 +1520,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		step->action = TSTEP_EXIT_SYSCALL;
 		step->syscall.num_emu_args = 1;
-		if (PR_SET_NAME == trace->recorded_regs.ebx) {
-			void* addr = (void*)trace->recorded_regs.ecx;
-			t->update_prname(addr);
-		}
 		return;
-
+	}
 	case SYS_ptrace:
 		step->syscall.emu = 1;
 		if (STATE_SYSCALL_ENTRY == state) {
