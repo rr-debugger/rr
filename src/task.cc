@@ -1922,7 +1922,7 @@ Task::is_desched_sig_blocked()
 static off64_t to_offset(void* addr)
 {
 	off64_t offset = (uintptr_t)addr;
-	assert(offset < numeric_limits<unsigned long>::max());
+	assert(offset <= off64_t(numeric_limits<unsigned long>::max()));
 	return offset;
 }
 
