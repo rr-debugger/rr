@@ -1517,6 +1517,7 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 		log_info("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
 	}
+	Task::killall();
 	log_info("Exiting.");
 	exit(0);
 }
