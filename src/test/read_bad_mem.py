@@ -9,4 +9,7 @@ expect_gdb('Breakpoint 1, main')
 send_gdb('p *0xf\n')
 expect_gdb('Cannot access memory at address 0xf')
 
+send_gdb('p *0xffffffff\n')
+expect_gdb('Cannot access memory at address 0xffffffff')
+
 ok()
