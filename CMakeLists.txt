@@ -134,6 +134,7 @@ set(BASIC_TESTS
   munmap_discontinuous
   mutex_pi_stress
   nanosleep
+  pause
   perf_event
   poll_sig_race
   prctl
