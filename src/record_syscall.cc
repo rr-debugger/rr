@@ -737,6 +737,9 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
+	case SYS_pause:
+		return 1;
+
 	/* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
 	/* int ppoll(struct pollfd *fds, nfds_t nfds,
 	 *           const struct timespec *timeout_ts,
@@ -3216,6 +3219,8 @@ void rec_process_syscall(Task *t)
 		finish_restoring_some_scratch(t, iter, &data);
 		break;
 	}
+
+	SYS_REC0(pause);
 
 	/**
 	 * int rmdir(const char *pathname)

@@ -759,6 +759,15 @@ SYSCALL_DEF(EMU, open, 0)
 SYSCALL_DEF(EMU, openat, 0)
 
 /**
+ *  int pause(void);
+ *
+ * pause() causes the calling process (or thread) to sleep until a
+ * signal is delivered that either terminates the process or causes
+ * the invocation of a signal-catching function.
+ */
+SYSCALL_DEF(EMU, pause, 0)
+
+/**
  *  int perf_event_open(struct perf_event_attr *attr,
  *                      pid_t pid, int cpu, int group_fd,
  *                      unsigned long flags);
