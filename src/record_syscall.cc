@@ -794,28 +794,10 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			t->set_regs(r);
 			return 1;
 		}
-		case PR_GET_NAME: {
-			/* Outparam is a |char*| in the second
-			 * parameter.  Thus sayeth the docs:
-			 *
-			 *   The buffer should allow space for up to
-			 *   16 bytes; The returned string will be
-			 *   null-terminated if it is shorter than
-			 *   that. */
-			char* name = (char*)r.ecx;
+		case PR_GET_NAME:
+		case PR_SET_NAME:
+			return 0;
 
-			push_arg_ptr(t, name);
-			r.ecx = (uintptr_t)scratch;
-			scratch += 16;
-
-			if (!can_use_scratch(t, scratch)) {
-				return abort_scratch(t,
-						     syscallname(syscallno));
-			}
-
-			t->set_regs(r);
-			return 1;
-		}
 		default:
 			/* TODO: there are many more prctls with
 			 * outparams ... */
@@ -2594,25 +2576,16 @@ void rec_process_syscall(Task *t)
 		case PR_GET_UNALIGN:
 			size = sizeof(int);
 			break;
-		case PR_GET_NAME: {
-			struct { char chars[16]; } name;
-			void* nameaddr = (void*)t->regs().ecx;
-			t->read_mem(nameaddr, &name);
-			name.chars[sizeof(name.chars) - 1] = '\0';
-			assert_exec(t, t->name() == name.chars,
-				    "Kernel says prname is'%s', but rr thinks it's '%s'",
-				    name.chars, t->name().c_str());
-			size = sizeof(name.chars);
-			break;
-		}
-		case PR_SET_NAME: {
-			void* addr = (void*)t->regs().ecx;
-			t->update_prname(addr);
-			// The string value being set is
-			// deterministic.
+
+		case PR_SET_NAME:
+			t->update_prname((void*)t->regs().ecx);
+			// fall through
+		case PR_GET_NAME:
+			// We actually execute these during replay, so
+			// no need to save any data.
 			size = 0;
 			break;
-		}
+
 		default:
 			size = 0;
 			break;
