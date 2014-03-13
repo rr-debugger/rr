@@ -36,7 +36,6 @@ static int trace_file_fd = -1;
 static FILE *mmaps_file;
 
 static int raw_data_file_counter = 0;
-static uint32_t trace_file_counter = 0;
 /* Global time starts at "1" so that conditions like |global_time %
  * interval| don't have to consider the trivial case |global_time ==
  * 0|. */
@@ -344,35 +343,23 @@ static void use_new_rawdata_file(void)
 	}
 }
 
-static void use_new_trace_file(void)
+static void open_trace_file(void)
 {
 	char path[PATH_MAX];
 
-	close(trace_file_fd);
-
-	snprintf(path, sizeof(path) - 1,
-		 "%s/trace_%u", trace_path_, trace_file_counter++);
+	if (0 <= trace_file_fd) {
+		return;
+	}
+	snprintf(path, sizeof(path) - 1, "%s/trace", trace_path_);
 	trace_file_fd = open(path, O_APPEND | O_CLOEXEC | O_CREAT | O_RDWR,
 			     0600);
-	if (0 > trace_file_fd) {
-		fatal("Failed to open trace file `%s'", path);
-	}
-}
-
-static void ensure_current_trace_file(void)
-{
-	/* Global time starts at "1", so we won't switch to a new log
-	 * on the first event. */
-	if (global_time % MAX_TRACE_ENTRY_SIZE == 0) {
-		use_new_trace_file();
-	}
 }
 
 void open_trace_files(void)
 {
 	char path[PATH_MAX];
 
-	use_new_trace_file();
+	open_trace_file();
 
 	snprintf(path, sizeof(path) - 1, "%s/syscall_input", trace_path_);
 	syscall_header = fopen(path, "a+");
@@ -531,8 +518,6 @@ static void write_trace_frame(const struct trace_frame* frame)
 	void* begin_data = (void*)&frame->begin_event_info;
 	ssize_t nbytes = sizeof_trace_frame_event_info();
 	ssize_t nwritten;
-
-	ensure_current_trace_file();
 
 	/* TODO: only store exec info for non-async-sig events when
 	 * debugging assertions are enabled. */
@@ -944,8 +929,6 @@ int try_read_next_trace(struct trace_frame *frame)
 	 * already correct. */
 	global_time += read_first_trace_frame ? 1 : 0;
 	read_first_trace_frame = 1;
-
-	ensure_current_trace_file();
 
 	/* Read the common event info first, to see if we also have
 	 * exec info to read. */
