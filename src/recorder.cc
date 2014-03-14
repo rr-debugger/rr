@@ -11,6 +11,7 @@
 #include <sched.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sysexits.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/prctl.h>
@@ -527,6 +528,28 @@ static void maybe_reset_syscallbuf(Task* t)
 	t->flushed_syscallbuf = 0;
 }
 
+/** If the rbc seems to be working return, otherwise don't return. */
+static void check_rbc(Task* t)
+{
+	if (can_deliver_signals || SYS_write != t->event) {
+		return;
+	}
+	int fd = t->regs().ebx;
+	assert_exec(t, -1 == fd,
+		    "rbc write should have been to fd -1, instead was %d", fd);
+
+	int64_t rbc = read_rbc(t->hpc);
+	debug("rbc on entry to dummy write: %lld", rbc);
+	if (!(rbc > 0)) {
+		fprintf(stderr,
+"\n"
+"rr: internal recorder error:\n"
+"  Retired-branch counter doesn't seem to be working.  Are you perhaps\n"
+"  running rr in a VM but didn't enable perf-counter virtualization?\n");
+		exit(EX_UNAVAILABLE);
+	}
+}
+
 static void runnable_state_changed(Task* t)
 {
 	/* Have to disable context-switching until we know it's safe
@@ -597,6 +620,7 @@ static void runnable_state_changed(Task* t)
 		t->switchable = 0;
 	} else if (t->event >= 0) {
 		/* We just entered a syscall. */
+		check_rbc(t);
 		if (!maybe_restart_syscall(t)) {
 			push_syscall(t, t->event);
 			rec_before_record_syscall_entry(t, t->ev->syscall.no);
