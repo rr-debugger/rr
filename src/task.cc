@@ -1700,6 +1700,19 @@ Task::create(const std::string& exe, CharpVector& argv, CharpVector& envp,
 		// Signal to tracer that we're configured.
 		kill(getpid(), SIGSTOP);
 
+		// We do a small amount of dummy work here to retire
+		// some branches in order to ensure that the rbc is
+		// non-zero.  The tracer can then check the rbc value
+		// at the first ptrace-trap to see if it seems to be
+		// working.
+		int start = rand() % 5;
+		int num_its = start + 5;
+		int sum = 0;
+		for (int i = start; i < num_its; ++i) {
+			sum += i;
+		}
+		syscall(SYS_write, -1, &sum, sizeof(sum));
+
 		execvpe(exe.c_str(), argv.data(), envp.data());
 		fatal("Failed to exec %s", exe.c_str());
 	}
