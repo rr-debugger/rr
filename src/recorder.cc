@@ -342,6 +342,33 @@ static int maybe_restart_syscall(Task* t)
 	return 0;
 }
 
+/**
+ * After a SYS_sigreturn "exit" of task |t| with return value |ret|,
+ * check to see if there's an interrupted syscall that /won't/ be
+ * restarted, and if so, pop it off the pending event stack.
+ */
+static void maybe_discard_syscall_interruption(Task* t, int ret)
+{
+	int syscallno;
+
+	if (!t->ev || EV_SYSCALL_INTERRUPTION != t->ev->type) {
+		/* We currently don't track syscalls interrupted with
+		 * ERESTARTSYS or ERESTARTNOHAND, so it's possible for
+		 * a sigreturn not to affect the event stack. */
+		debug("  (no interrupted syscall to retire)");
+		return;
+	}
+
+	syscallno = t->ev->syscall.no;
+	if (0 > ret) {
+		syscall_not_restarted(t);
+	} else if (0 < ret) {
+		assert_exec(t, syscallno == ret,
+			    "Interrupted call was %s, and sigreturn claims to be restarting %s",
+			    syscallname(syscallno), syscallname(ret));
+	}
+}
+
 static void syscall_state_changed(Task* t, int by_waitpid)
 {
 	switch (t->ev->syscall.state) {
@@ -404,6 +431,32 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			t->event = syscallno;
 		}
 		retval = t->regs().eax;
+
+		// sigreturn is a special snowflake, because it
+		// doesn't actually return.  Instead, it undoes the
+		// setup for signal delivery, which possibly includes
+		// preparing the tracee for a restart-syscall.  So we
+		// take this opportunity to possibly pop an
+		// interrupted-syscall event.
+		if (SYS_sigreturn == syscallno
+		    || SYS_rt_sigreturn == syscallno) {
+			assert(t->regs().orig_eax == -1);
+			t->event = syscallno;
+			record_event(t);
+			pop_syscall(t);
+
+			// We've finished processing this signal now.
+			pop_signal_handler(t);
+			push_pseudosig(t, EUSR_EXIT_SIGHANDLER, NO_EXEC_INFO);
+			record_event(t);
+			pop_pseudosig(t);
+
+			maybe_discard_syscall_interruption(t, retval);
+			// XXX probably not necessary to make the
+			// tracee unswitchable
+			t->switchable = 0;
+			return;
+		}
 
 		assert_exec(t, syscallno == t->event,
 			    "Event stack and current event must be in sync.");
@@ -484,33 +537,6 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 }
 
 /**
- * After a SYS_sigreturn "exit" of task |t| with return value |ret|,
- * check to see if there's an interrupted syscall that /won't/ be
- * restarted, and if so, pop it off the pending event stack.
- */
-static void maybe_discard_syscall_interruption(Task* t, int ret)
-{
-	int syscallno;
-
-	if (!t->ev || EV_SYSCALL_INTERRUPTION != t->ev->type) {
-		/* We currently don't track syscalls interrupted with
-		 * ERESTARTSYS or ERESTARTNOHAND, so it's possible for
-		 * a sigreturn not to affect the event stack. */
-		debug("  (no interrupted syscall to retire)");
-		return;
-	}
-
-	syscallno = t->ev->syscall.no;
-	if (0 > ret) {
-		syscall_not_restarted(t);
-	} else if (0 < ret) {
-		assert_exec(t, syscallno == ret,
-			    "Interrupted call was %s, and sigreturn claims to be restarting %s",
-			    syscallname(syscallno), syscallname(ret));
-	}
-}
-
-/**
  * If the syscallbuf has just been flushed, and resetting hasn't been
  * overridden with a delay request, then record the reset event for
  * replay.
@@ -564,60 +590,6 @@ static void runnable_state_changed(Task* t)
 		 * after signals are delivered? */
 		t->switchable = (t->event == SIG_SEGV_RDTSC
 				   || t->event == USR_SCHED);
-	} else if (t->event == SYS_sigreturn
-		   || t->event == SYS_rt_sigreturn) {
-		int orig_event = t->event;
-		int ret;
-
-		push_syscall(t, t->event);
-		t->ev->syscall.state = ENTERING_SYSCALL;
-
-		/* These system calls never return; we remain
-		 * in the same execution state */
-		/* we record the sigreturn event here, since we have
-		 * to do another ptrace_cont to fully process the
-		 * sigreturn system call. */
-		debug("  sigreturn");
-		/* Recording the sigreturn here may flush the
-		 * syscallbuf.  That's OK: if the signal interrupted
-		 * an in-progress buffered syscall, then we made sure
-		 * we stepped the tracee to a happy place before
-		 * delivering the signal, so the syscallbuf was locked
-		 * on entry if it needed to be.  In that case, the
-		 * sighandler wouldn't have used the syscallbuf.  And
-		 * if the syscallbuf was unlocked, then that means the
-		 * tracee didn't need to lock it, so it's OK for the
-		 * sighandler to use it. */
-		record_event(t);
-		maybe_reset_syscallbuf(t);
-
-		/* "Finish" the sigreturn. */
-		t->cont_syscall();
-		status_changed(t);
-		ret = t->regs().eax;
-
-		/* TODO: can signals interrupt a sigreturn? */
-		assert(t->pending_sig() != SIGTRAP);
-
-		/* orig_eax seems to be -1 here for not-understood
-		 * reasons. */
-		assert(t->event == -1);
-		t->event = orig_event;
-		t->ev->syscall.state = EXITING_SYSCALL;
-		record_event(t);
-		pop_syscall(t);
-
-		/* We've finished processing this signal now. */
-		pop_signal_handler(t);
-		push_pseudosig(t, EUSR_EXIT_SIGHANDLER, NO_EXEC_INFO);
-		record_event(t);
-		pop_pseudosig(t);
-
-		/* If the sigreturn isn't restarting an interrupted
-		 * syscall we're tracking, go ahead and pop it. */
-		maybe_discard_syscall_interruption(t, ret);
-
-		t->switchable = 0;
 	} else if (t->event >= 0) {
 		/* We just entered a syscall. */
 		check_rbc(t);
