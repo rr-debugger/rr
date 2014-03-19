@@ -251,6 +251,8 @@ static int disarm_desched(Task* t, siginfo_t* si)
 	return sig_status;
 }
 
+static void runnable_state_changed(Task* t);
+
 /**
  * |t| is at a desched event and some relevant aspect of its state
  * changed.  (For now, changes except the original desched'd syscall
@@ -296,6 +298,7 @@ static void desched_state_changed(Task* t)
 			      signalname(t->pending_sig()));
 			t->force_status(sig_status);
 			handle_signal(t, &si);
+			runnable_state_changed(t);
 		}
 		return;
 	}
@@ -595,6 +598,128 @@ static void pseudosig_state_changed(Task* t)
 	}
 }
 
+/**
+ * |t| is being delivered a signal, and its state changed.
+ * |by_waitpid| is nonzero if the status change was observed by a
+ * waitpid() call.
+ */
+enum { NOT_BY_WAITPID = 0, BY_WAITPID };
+static void signal_state_changed(Task* t, int by_waitpid)
+{
+	int sig = t->ev->signal.no;
+
+	switch (t->ev->type) {
+	case EV_SIGNAL: {
+		assert(!by_waitpid);
+
+		// This event is used by the replayer to advance to
+		// the point of signal delivery.
+		record_event(t);
+		reset_hpc(t, rr_flags()->max_rbc);
+
+		t->ev->type = EV_SIGNAL_DELIVERY;
+		ssize_t sigframe_size;
+		if (t->signal_has_user_handler(sig)) {
+			debug("  %d: %s has user handler", t->tid,
+			      signalname(sig));
+
+			if (!t->cont_singlestep(sig)) {
+				return;
+			}
+			// It's been observed that when tasks enter
+			// sighandlers, the singlestep operation above
+			// doesn't retire any instructions; and
+			// indeed, if an instruction could be retired,
+			// this code wouldn't work.  This also
+			// cross-checks the sighandler information we
+			// maintain in |t->sighandlers|.
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+			assert(0 == read_insts(t->hpc));
+#endif
+			// It's somewhat difficult engineering-wise to
+			// compute the sigframe size at compile time,
+			// and it can vary across kernel versions.  So
+			// this size is an overestimate of the real
+			// size(s).  The estimate was made by
+			// comparing $sp before and after entering the
+			// sighandler, for a sighandler that used the
+			// main task stack.  On linux 3.11.2, that
+			// computed size was 1736 bytes, which is an
+			// upper bound on the sigframe size.  We don't
+			// want to mess with this code much, so we
+			// overapproximate the overapproximation and
+			// round off to 2048.
+			//
+			// If this size becomes too small in the
+			// future, and unit tests that use sighandlers
+			// are run with checksumming enabled, then
+			// they can catch errors here.
+			sigframe_size = 2048;
+
+			t->ev->type = EV_SIGNAL_HANDLER;
+			t->signal_delivered(sig);
+			t->ev->signal.delivered = 1;
+		} else {
+			debug("  %d: no user handler for %s", t->tid,
+			      signalname(sig));
+			sigframe_size = 0;
+		}
+
+		// We record this data regardless to simplify replay.
+		record_child_data(t, sigframe_size, t->sp());
+
+		// This event is used by the replayer to set up the
+		// signal handler frame, or to record the resulting
+		// state of the stepi if there wasn't a signal
+		// handler.
+		record_event(t);
+
+		// If we didn't set up the sighandler frame, we need
+		// to ensure that this tracee is scheduled next so
+		// that we can deliver the signal normally.  We have
+		// to do that because setting up the sighandler frame
+		// is synchronous, but delivery otherwise is async.
+		// But right after this, we may have to process some
+		// syscallbuf state, so we can't let the tracee race
+		// with us.
+		t->switchable = t->ev->signal.delivered;
+		return;
+	}
+	case EV_SIGNAL_DELIVERY:
+		if (!t->ev->signal.delivered) {
+			task_continue(t, DEFAULT_CONT, sig);
+			if (possibly_destabilizing_signal(t, sig)) {
+				log_warn("Delivered core-dumping signal; may misrecord CLONE_CHILD_CLEARTID memory race");
+				t->destabilize_task_group();
+				t->switchable = 1;
+			}
+			t->signal_delivered(sig);
+			t->ev->signal.delivered = 1;
+			return;
+		}
+
+		// The tracee's waitpid status has changed, so we're finished
+		// delivering the signal.
+		assert(by_waitpid);
+		pop_signal_delivery(t);
+		status_changed(t);
+
+		if (t->is_ptrace_seccomp_event()) {
+			t->seccomp_bpf_enabled = true;
+			// See long comments above.
+			debug("  (skipping past seccomp-bpf trap)");
+			resume_execution(t, FORCE_SYSCALL);
+		}
+
+		runnable_state_changed(t);
+		return;
+
+	default:
+		fatal("Unhandled signal state %d", t->ev->type);
+		return;		// not reached
+	}
+}
+
 static void runnable_state_changed(Task* t)
 {
 	/* Have to disable context-switching until we know it's safe
@@ -603,11 +728,17 @@ static void runnable_state_changed(Task* t)
 
 	if (t->event < 0) {
 		/* We just saw a signal or pseudosig. */
-		if (EV_PSEUDOSIG == t->ev->type) {
+		switch (t->ev->type) {
+		case EV_PSEUDOSIG:
 			pseudosig_state_changed(t);
+			break;
+		case EV_SIGNAL:
+			signal_state_changed(t, NOT_BY_WAITPID);
+			break;
+		default:
+			assert(!can_deliver_signals || USR_NOOP == t->event);
+			break;
 		}
-		/* TODO: is there any reason not to enable switching
-		 * after signals are delivered? */
 	} else if (t->event >= 0) {
 		/* We just entered a syscall. */
 		check_rbc(t);
@@ -625,43 +756,6 @@ static void runnable_state_changed(Task* t)
 	}
 
 	maybe_reset_syscallbuf(t);
-}
-
-/**
- * |t| is delivering a signal, and its state changed.  |by_waitpid| is
- * nonzero if the status change was observed by a waitpid() call.
- *
- * Delivering the signal to |t| may cause scheduling invariants about
- * the status of *other* threads to become temporarily invalid.  In
- * this case, this function returns nonzero.
- */
-static int signal_state_changed(Task* t, int by_waitpid)
-{
-	assert(EV_SIGNAL_DELIVERY == t->ev->type);
-
-	if (!t->ev->signal.delivered) {
-		int sig = t->ev->signal.no;
-
-		task_continue(t, DEFAULT_CONT, sig);
-		t->ev->signal.delivered = 1;
-		return t->switchable = possibly_destabilizing_signal(t, sig);
-	}
-
-	/* The tracee's waitpid status has changed, so we're finished
-	 * delivering the signal. */
-	pop_signal_delivery(t);
-
-	status_changed(t);
-
-	if (t->is_ptrace_seccomp_event()) {
-		t->seccomp_bpf_enabled = true;
-		/* See long comments above. */
-		debug("  (skipping past seccomp-bpf trap)");
-		resume_execution(t, FORCE_SYSCALL);
-	}
-
-	runnable_state_changed(t);
-	return 0;
 }
 
 static bool term_request;
@@ -743,11 +837,7 @@ void record()
 			syscall_state_changed(t, by_waitpid);
 			continue;
 		case EV_SIGNAL_DELIVERY: {
-			int unstable = signal_state_changed(t, by_waitpid);
-			if (unstable) {
-				log_warn("Delivered core-dumping signal; may misrecord CLONE_CHILD_CLEARTID memory race");
-				t->destabilize_task_group();
-			}
+			signal_state_changed(t, by_waitpid);
 			continue;
 		}
 		default:
