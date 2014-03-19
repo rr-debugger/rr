@@ -146,9 +146,6 @@ static int try_handle_rdtsc(Task *t)
 
 		t->event = SIG_SEGV_RDTSC;
 		push_pseudosig(t, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);
-		record_event(t);
-		pop_pseudosig(t);
-
 		handled = 1;
 
 		debug("  trapped for rdtsc: returning %llu", current_time);
@@ -694,12 +691,6 @@ static void handle_siginfo(Task* t, siginfo_t* si)
 
 		t->event = USR_SCHED;
 		push_pseudosig(t, EUSR_SCHED, HAS_EXEC_INFO);
-		/* TODO: only record the SCHED event if it actually
-		 * results in a context switch, since this will flush
-		 * the syscallbuf and can cause replay to be
-		 * pathologically slow in certain cases. */
-		record_event(t);
-		pop_pseudosig(t);
 		return;
 	}
 
