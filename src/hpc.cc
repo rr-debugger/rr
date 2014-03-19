@@ -289,40 +289,36 @@ void destroy_hpc(Task *t)
 	free(counters);
 }
 
-#define READ_COUNTER(fd,tmp,size)		 \
-	do {					 \
-		ssize_t ret = read(fd,tmp,size); \
-		(void)ret;			 \
-		assert(ret == size);		 \
-	} while(0)
-
-int64_t read_rbc(struct hpc_context *counters)
+static int64_t read_counter(struct hpc_context* hpc, int fd)
 {
-	int64_t tmp;
-	READ_COUNTER(counters->rbc.fd, &tmp, sizeof(int64_t));
-	return tmp;
+	if (!hpc->started) {
+		return 0;
+	}
+	int64_t val;
+	ssize_t nread = read(fd, &val, sizeof(val));
+	assert(nread == sizeof(val));
+	return val;
+}
+
+int64_t read_rbc(struct hpc_context* hpc)
+{
+	return read_counter(hpc, hpc->rbc.fd);
 }
 
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-int64_t read_hw_int(struct hpc_context *counters)
+int64_t read_hw_int(struct hpc_context* hpc)
 {
-	int64_t tmp;
-	READ_COUNTER(counters->hw_int.fd, &tmp, sizeof(int64_t));
-	return tmp;
+	return read_counter(hpc, hpc->hw_int.fd);
 }
 
-int64_t read_insts(struct hpc_context *counters)
+int64_t read_insts(struct hpc_context* hpc)
 {
-	int64_t tmp;
-	READ_COUNTER(counters->inst.fd, &tmp, sizeof(int64_t));
-	return tmp;
+	return read_counter(hpc, hpc->inst.fd);
 }
 
 
-int64_t read_page_faults(struct hpc_context *counters)
+int64_t read_page_faults(struct hpc_context* hpc)
 {
-	int64_t tmp;
-	READ_COUNTER(counters->page_faults.fd, &tmp, sizeof(int64_t));
-	return tmp;
+	return read_counter(hpc, hpc->page_faults.fd);
 }
 #endif
