@@ -455,14 +455,6 @@ void* ceil_page_size(void* addr)
 	return (void*)ceil;
 }
 
-void print_inst(Task* t)
-{
-	int size;
-	char* str = get_inst(t, 0, &size);
-	printf("inst: %s\n", str);
-	free(str);
-}
-
 void print_process_state(pid_t tid)
 {
 	char path[64];
