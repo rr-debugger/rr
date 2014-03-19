@@ -715,11 +715,11 @@ void dump_binary_data(const char* filename, const char* label,
 	fclose(out);
 }
 
-void format_dump_filename(Task* t, const char* tag,
+void format_dump_filename(Task* t, int global_time, const char* tag,
 			  char* filename, size_t filename_size)
 {
 	snprintf(filename, filename_size - 1, "%s/%d_%d_%s",
-		 get_trace_path(), t->rec_tid, get_global_time(), tag);
+		 get_trace_path(), t->rec_tid, global_time, tag);
 }
 
 int should_dump_memory(Task* t, int event, int state, int global_time)
@@ -779,12 +779,12 @@ static int dump_process_memory_segment_filter(
 	return 1;
 }
 
-void dump_process_memory(Task* t, const char* tag)
+void dump_process_memory(Task* t, int global_time, const char* tag)
 {
 	char filename[PATH_MAX];
 	FILE* dump_file;
 
-	format_dump_filename(t, tag, filename, sizeof(filename));
+	format_dump_filename(t, global_time, tag, filename, sizeof(filename));
 	dump_file = fopen(filename,"w");
 
 	/* flush all files in case we partially record
@@ -796,7 +796,7 @@ void dump_process_memory(Task* t, const char* tag)
 	fclose(dump_file);
 }
 
-static void notify_checksum_error(Task* t,
+static void notify_checksum_error(Task* t, int global_time,
 				  unsigned checksum, unsigned rec_checksum,
 				  const struct map_iterator_data* data)
 {
@@ -804,15 +804,17 @@ static void notify_checksum_error(Task* t,
 	char cur_dump[PATH_MAX];
 	char rec_dump[PATH_MAX];
 
-	dump_process_memory(t, "checksum_error");
+	dump_process_memory(t, global_time, "checksum_error");
 
 	/* TODO: if the right recorder memory dump is present,
 	 * automatically compare them, taking the oddball
 	 * not-mapped-during-replay region(s) into account.  And if
 	 * not present, tell the user how to make one in a future
 	 * run. */
-	format_dump_filename(t, "checksum_error", cur_dump, sizeof(cur_dump));
-	format_dump_filename(t, "rec", rec_dump, sizeof(rec_dump));
+	format_dump_filename(t, global_time, "checksum_error",
+			     cur_dump, sizeof(cur_dump));
+	format_dump_filename(t, global_time, "rec",
+			     rec_dump, sizeof(rec_dump));
 
 	assert_exec(t, checksum == rec_checksum,
 "Divergence in contents of memory segment after '%s':\n"
@@ -828,7 +830,7 @@ static void notify_checksum_error(Task* t,
 "\n"
 "then you can use the following to determine which memory cells differ:\n"
 "\n"
-"$ lcmp %s %s > mem-diverge.diff\n"
+"$ diff -u %s %s > mem-diverge.diff\n"
 		    , strevent(event),
 		    data->raw_map_line,
 		    rec_checksum, checksum,
@@ -844,8 +846,9 @@ static void notify_checksum_error(Task* t,
  */
 enum ChecksumMode { STORE_CHECKSUMS, VALIDATE_CHECKSUMS };
 struct checksum_iterator_data {
-		ChecksumMode mode;
+	ChecksumMode mode;
 	FILE* checksums_file;
+	int global_time;
 };
 static int checksum_iterator(void* it_data, Task* t,
 			     const struct map_iterator_data* data)
@@ -874,7 +877,8 @@ static int checksum_iterator(void* it_data, Task* t,
 		void* child_hdr = data->info.start_addr;
 		struct syscallbuf_hdr hdr;
 		t->read_mem(child_hdr, &hdr);
-		valid_mem_len = sizeof(hdr) + hdr.num_rec_bytes +
+		valid_mem_len = !buf ? 0 :
+				sizeof(hdr) + hdr.num_rec_bytes +
 				sizeof(struct syscallbuf_record);
 	}
 
@@ -882,6 +886,7 @@ static int checksum_iterator(void* it_data, Task* t,
 	 * to indicate nothing was read.  And data->mem will be NULL
 	 * to double-check that.  In that case, the checksum will just
 	 * be 0. */
+	assert_exec(t, buf || valid_mem_len == 0, "");
 	for (i = 0; i < ssize_t(valid_mem_len / sizeof(*buf)); ++i) {
 		checksum += buf[i];
 	}
@@ -918,7 +923,8 @@ static int checksum_iterator(void* it_data, Task* t,
 			return CONTINUE_ITERATING;
 		}
 	 	if (checksum != rec_checksum) {
-			notify_checksum_error(t, checksum, rec_checksum, data);
+			notify_checksum_error(t, c->global_time,
+					      checksum, rec_checksum, data);
 		}
 	}
 	return CONTINUE_ITERATING;
@@ -954,7 +960,7 @@ static int checksum_segment_filter(void* filt_data, Task* t,
  * address space, or validate an existing computed checksum.  Behavior
  * is selected by |mode|.
  */
-static void iterate_checksums(Task* t, ChecksumMode mode)
+static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 {
 	struct checksum_iterator_data c;
 	memset(&c, sizeof(c), 0);
@@ -963,8 +969,12 @@ static void iterate_checksums(Task* t, ChecksumMode mode)
 
 	c.mode = mode;
 	snprintf(filename, sizeof(filename) - 1, "%s/%d_%d",
-		 get_trace_path(), get_global_time(), t->rec_tid);
+		 get_trace_path(), global_time, t->rec_tid);
 	c.checksums_file = fopen(filename, fmode);
+	c.global_time = global_time;
+	if (!c.checksums_file) {
+		fatal("Failed to open checksum file %s", filename);
+	}
 
 	iterate_memory_map(t, checksum_iterator, &c,
 			   checksum_segment_filter, NULL);
@@ -1000,18 +1010,18 @@ int should_checksum(Task* t, int event, int state, int global_time)
 	return checksum <= global_time;
 }
 
-void checksum_process_memory(Task* t)
+void checksum_process_memory(Task* t, int global_time)
 {
 	/* flush all files in case we start replaying while still
 	 * recording */
 	flush_trace_files();
 
-	iterate_checksums(t, STORE_CHECKSUMS);
+	iterate_checksums(t, STORE_CHECKSUMS, global_time);
 }
 
-void validate_process_memory(Task* t)
+void validate_process_memory(Task* t, int global_time)
 {
-	iterate_checksums(t, VALIDATE_CHECKSUMS);
+	iterate_checksums(t, VALIDATE_CHECKSUMS, global_time);
 }
 
 void cleanup_code_injection(struct current_state_buffer* buf)

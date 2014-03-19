@@ -123,12 +123,12 @@ static void debug_memory(Task* t)
 	int global_time = trace->global_time;
 
 	if (should_dump_memory(t, event, state, global_time)) {
-		dump_process_memory(t, "rep");
+		dump_process_memory(t, global_time, "rep");
 	}
 	if (validate && should_checksum(t, event, state, global_time)) {
 		/* Validate the checksum we computed during the
 		 * recording phase. */
-		validate_process_memory(t);
+		validate_process_memory(t, global_time);
 	}
 }
 

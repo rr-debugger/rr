@@ -150,7 +150,7 @@ void dump_binary_data(const char* filename, const char* label,
  * "trace_0/12345_111_foo".  The returned name is not guaranteed to be
  * unique, caveat emptor.
  */
-void format_dump_filename(Task* t, const char* tag,
+void format_dump_filename(Task* t, int global_time, const char* tag,
 			  char* filename, size_t filename_size);
 
 /**
@@ -162,7 +162,7 @@ int should_dump_memory(Task* t, int event, int state, int global_time);
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
  */ 
-void dump_process_memory(Task* t, const char* tag);
+void dump_process_memory(Task* t, int global_time, const char* tag);
 
 /**
  * Return nonzero if the user has requested |t|'s memory be
@@ -174,12 +174,12 @@ int should_checksum(Task* t, int event, int state, int global_time);
  * special log, where it can be read by |validate_process_memory()|
  * during replay.
  */
-void checksum_process_memory(Task* t);
+void checksum_process_memory(Task* t, int global_time);
 /**
  * Validate the checksum of |t|'s address space that was written
  * during recording.
  */
-void validate_process_memory(Task* t);
+void validate_process_memory(Task* t, int global_time);
 
 /**
  * Cat the /proc/[t->tid]/maps file to stdout, line by line.

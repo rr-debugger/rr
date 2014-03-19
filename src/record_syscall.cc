@@ -1178,9 +1178,18 @@ static void process_execve(Task* t)
 static void record_ioctl_data(Task *t, ssize_t num_bytes)
 {
 	void* param = (void*)t->regs().edx;
-	push_syscall(t, SYS_ioctl);
 	record_child_data(t, num_bytes, param);
-	pop_syscall(t);	
+}
+
+/**
+ * Record.the page above the top of |t|'s stack.  The SIOC* ioctls
+ * have been observed to write beyond the end of tracees' stacks, as
+ * if they had allocated scratch space for themselves.  All we can do
+ * for now is try to record the scratch data.
+ */
+static void record_scratch_stack_page(Task* t)
+{
+	record_child_data(t, page_size(), (byte*)t->sp() - page_size());
 }
 
 static void process_ioctl(Task *t, int request)
@@ -1204,19 +1213,17 @@ static void process_ioctl(Task *t, int request)
 		struct ifreq ifr;
 		t->read_mem(param, &ifr);
 
-		push_syscall(t, SYS_ioctl);
+		record_scratch_stack_page(t);
 		record_child_data(t, sizeof(struct ethtool_cmd), ifr.ifr_data);
-		pop_syscall(t);	
 		return;
 	}
 	case SIOCGIFCONF: {
 		struct ifconf ifconf;
 		t->read_mem(param, &ifconf);
 
-		push_syscall(t, SYS_ioctl);
+		record_scratch_stack_page(t);
 		record_parent_data(t, sizeof(ifconf), param, &ifconf);
 		record_child_data(t, ifconf.ifc_len, ifconf.ifc_buf);
-		pop_syscall(t);	
 		return;
 	}
 	case SIOCGIFADDR:
@@ -1224,9 +1231,16 @@ static void process_ioctl(Task *t, int request)
 	case SIOCGIFINDEX:
 	case SIOCGIFMTU:
 	case SIOCGIFNAME:
+		record_scratch_stack_page(t);
 		return record_ioctl_data(t, sizeof(struct ifreq));
+
 	case SIOCGIWRATE:
+		// SIOCGIWRATE hasn't been observed to write beyond
+		// tracees' stacks, but we record a stack page here
+		// just in case the behavior is driver-dependent.
+		record_scratch_stack_page(t);
 		return record_ioctl_data(t, sizeof(struct iwreq));
+
 	case TCGETS:
 		return record_ioctl_data(t, sizeof(struct termios));
 	case TIOCINQ:
