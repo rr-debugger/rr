@@ -549,11 +549,11 @@ void record_event(Task *t)
 
 	if (should_dump_memory(t, frame.stop_reason, frame.state,
 			       frame.global_time)) {
-		dump_process_memory(t, "rec");
+		dump_process_memory(t, frame.global_time, "rec");
 	}		
 	if (should_checksum(t, frame.stop_reason, frame.state,
 			    frame.global_time)) {
-		checksum_process_memory(t);
+		checksum_process_memory(t, frame.global_time);
 	}
 
 	write_trace_frame(&frame);

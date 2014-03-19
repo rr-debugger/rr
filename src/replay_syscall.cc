@@ -733,8 +733,9 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	/* Process special-cased ioctls first. */
 	switch (request) {
 	case SIOCGIFCONF:
-		step->syscall.num_emu_args = 2;
+		step->syscall.num_emu_args = 3;
 		return;
+
 	case SIOCETHTOOL:
 	case SIOCGIFADDR:
 	case SIOCGIFFLAGS:
@@ -742,6 +743,9 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	case SIOCGIFMTU:
 	case SIOCGIFNAME:
 	case SIOCGIWRATE:
+		step->syscall.num_emu_args = 2;
+		return;
+
 	case TCGETS:
 	case TIOCINQ:
 	case TIOCGWINSZ:
@@ -1197,11 +1201,11 @@ static void process_restart_syscall(Task* t, int syscallno)
 	}
 }
 
-static void dump_path_data(Task* t, const char* tag,
+static void dump_path_data(Task* t, int global_time, const char* tag,
 			   char* filename, size_t filename_size,
 			   const void* buf, size_t buf_len, void* addr)
 {
-	format_dump_filename(t, tag, filename, filename_size);
+	format_dump_filename(t, global_time, tag, filename, filename_size);
 	dump_binary_data(filename, tag,
 			 (const uint32_t*)buf, buf_len / 4, addr);
 }
@@ -1213,11 +1217,12 @@ notify_save_data_error(Task* t, void* addr,
 {
 	char rec_dump[PATH_MAX];
 	char rep_dump[PATH_MAX];
+	int global_time = t->trace.global_time;
 
-	dump_path_data(t, "rec_save_data", rec_dump, sizeof(rec_dump),
-		       rec_buf, rec_buf_len, addr);
-	dump_path_data(t, "rep_save_data", rep_dump, sizeof(rep_dump),
-		       rep_buf, rep_buf_len, addr);
+	dump_path_data(t, global_time, "rec_save_data",
+		       rec_dump, sizeof(rec_dump), rec_buf, rec_buf_len, addr);
+	dump_path_data(t, global_time,"rep_save_data",
+		       rep_dump, sizeof(rep_dump), rep_buf, rep_buf_len, addr);
 
 	assert_exec(t,
 		    rec_buf_len == rep_buf_len && !memcmp(rec_buf, rep_buf,
