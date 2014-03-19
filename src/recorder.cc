@@ -576,6 +576,25 @@ static void check_rbc(Task* t)
 	}
 }
 
+/** Process the pending pseudosig. */
+static void pseudosig_state_changed(Task* t)
+{
+	switch (t->ev->pseudosig.no) {
+	case ESIG_SEGV_RDTSC:
+	// TODO: only record the SCHED event if it actually results in
+	// a context switch, since this will flush the syscallbuf and
+	// can cause replay to be pathologically slow in certain
+	// cases.
+	case EUSR_SCHED:
+		record_event(t);
+		pop_pseudosig(t);
+		t->switchable = 1;
+		return;
+	default:
+		fatal("Unhandled pseudosig %s", event_name(t->ev));
+	}
+}
+
 static void runnable_state_changed(Task* t)
 {
 	/* Have to disable context-switching until we know it's safe
@@ -583,13 +602,12 @@ static void runnable_state_changed(Task* t)
 	t->switchable = 0;
 
 	if (t->event < 0) {
-		/* We just saw a (pseudo-)signal.  handle_signal()
-		 * took care of recording any events related to the
-		 * (pseudo-)signal. */
+		/* We just saw a signal or pseudosig. */
+		if (EV_PSEUDOSIG == t->ev->type) {
+			pseudosig_state_changed(t);
+		}
 		/* TODO: is there any reason not to enable switching
 		 * after signals are delivered? */
-		t->switchable = (t->event == SIG_SEGV_RDTSC
-				   || t->event == USR_SCHED);
 	} else if (t->event >= 0) {
 		/* We just entered a syscall. */
 		check_rbc(t);
