@@ -1458,6 +1458,12 @@ void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code)
 	assert(DREQ_WATCH_FIRST <= dbg->req.type
 	       && dbg->req.type <= DREQ_WATCH_LAST);
 
+	if (code) {
+		fprintf(stderr,
+"rr: Warning: attempt to set unhandled watchpoint type.\n"
+"  Use 'del [breakpoint-num]' to clear the watchpoint, or else gdb may \n"
+"  become unusable.\n");
+	}
 	write_packet(dbg, code ? "" : "OK");
 
 	consume_request(dbg);

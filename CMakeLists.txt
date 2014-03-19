@@ -177,6 +177,7 @@ set(BASIC_TESTS
   unjoined_thread
   user_ignore_sig
   vfork
+  watchpoint
 )
 
 # A "custom test" is a foo.run driver script only, which does
