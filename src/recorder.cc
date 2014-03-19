@@ -42,8 +42,13 @@ static void status_changed(Task* t)
 	/* If the initial tracee isn't prepared to handle signals yet,
 	 * then us ignoring the ptrace notification here will have the
 	 * side effect of declining to deliver the signal. */
-	if (can_deliver_signals) {
-		handle_signal(t);
+	if (t->pending_sig()) {
+		if (can_deliver_signals) {
+			handle_signal(t);
+		} else {
+			log_warn("Dropping %s because it can't be delivered yet",
+				 signalname(t->pending_sig()));
+		}
 	}
 }
 

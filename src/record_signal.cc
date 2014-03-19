@@ -634,12 +634,9 @@ static void handle_siginfo(Task* t, siginfo_t* si)
 
 void handle_signal(Task* t, siginfo_t* si)
 {
+	assert(t->pending_sig());
+
 	siginfo_t local_si;
-
-	if (0 >= t->pending_sig()) {
-		return;
-	}
-
 	if (!si) {
 		t->get_siginfo(&local_si);
 		si = &local_si;

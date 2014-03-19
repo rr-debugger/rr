@@ -9,10 +9,9 @@ class Task;
 struct flags;
 
 /**
- * Handle a pending signal for |t|, if there is one.  To force
- * delivery/handling of a particular signal, pass a pointer to the
- * siginfo in |si|.  Otherwise this function determines the pending
- * signal info.
+ * Handle the pending signal for |t|.  To force delivery/handling of a
+ * particular signal, pass a pointer to the siginfo in |si|.
+ * Otherwise this function determines the pending signal info.
  */
 void handle_signal(Task* t, siginfo_t* si = nullptr);
 
