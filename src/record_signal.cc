@@ -166,30 +166,6 @@ static void disarm_desched_event(Task* t)
 	}
 }
 
-static int advance_syscall_boundary(Task* t)
-{
-	t->cont_syscall();
-	int sig = t->stop_sig();
-
-	// Ignore signals that we would have dropped anyway.
-	// STOPSIG_SIGNAL isn't a real signal, so we don't ask for its
-	// status.
-	if (STOPSIG_SYSCALL != sig && t->is_sig_ignored(sig)) {
-		debug("  dropping ignored signal %s ...", signalname(sig));
-		return advance_syscall_boundary(t);
-	}
-	if (STOPSIG_SYSCALL != sig
-	    && SYSCALLBUF_DESCHED_SIGNAL != sig
-	    && HPC_TIME_SLICE_SIGNAL != sig) {
-		/* TODO: queue multiple pending signals */
-		fatal(
-"Sorry, %s became pending while processing another signal.\n"
-"    Multiple pending signals aren't supported currently, aborting.",
-		      signalname(sig));
-	}
-	return sig;
-}
-
 /**
  * Return the event needing to be processed after this desched of |t|.
  * The tracee's execution may be advanced, and if so |regs| is updated
@@ -197,8 +173,6 @@ static int advance_syscall_boundary(Task* t)
  */
 static int handle_desched_event(Task* t, const siginfo_t* si)
 {
-	int call, sig;
-
 	assert_exec(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo
 			&& si->si_code == POLL_IN
 			&& si->si_fd == t->desched_fd_child),
@@ -281,32 +255,52 @@ static int handle_desched_event(Task* t, const siginfo_t* si)
 	 * That may be a kernel bug, but we handle it by just
 	 * continuing until we we continue past the arm-desched
 	 * syscall *and* stop seeing signals. */
-	do {
-		/* Prevent further desched notifications from firing
-		 * while we're advancing the tracee.  We're going to
-		 * leave it in a consistent state anyway, so the event
-		 * is no longer useful.  We have to do this in each
-		 * loop iteration because a restarted arm-desched
-		 * syscall may have re-armed the event. */
+	while (true) {
+		// Prevent further desched notifications from firing
+		// while we're advancing the tracee.  We're going to
+		// leave it in a consistent state anyway, so the event
+		// is no longer useful.  We have to do this in each
+		// loop iteration because a restarted arm-desched
+		// syscall may have re-armed the event.
 		disarm_desched_event(t);
-		sig = advance_syscall_boundary(t);
-	} while (SYSCALLBUF_DESCHED_SIGNAL == sig
-		 /* Just ignore time-slice signals received here.  If
-		  * we get lucky and hit the disarm-desched ioctl,
-		  * we'll send the tracee back on its way, but the rbc
-		  * interrupt will still be programmed.  At worst, the
-		  * tracee will get an extra time-slice out of
-		  * this, on average.
-		  *
-		  * TODO: it's theoretically possible for this to
-		  * happen an unbounded number of consecutive times
-		  * and the tracee never switched out. */
-		 || HPC_TIME_SLICE_SIGNAL == sig
-		 || t->is_arm_desched_event_syscall());
 
-	/* This code can be entered through various different paths.
-	 * Ensure they all end up with the most up-to-date register
-	 * contents on exit. */
+		t->cont_syscall();
+		int sig = t->stop_sig();
+
+		if (STOPSIG_SYSCALL == sig) {
+			if (t->is_arm_desched_event_syscall()) {
+				continue;
+			}
+			break;
+		}
+		// Completely ignore spurious desched signals and
+		// signals that aren't going to be delivered to the
+		// tracee.
+		//
+		// Also ignore time-slice signals.  If the tracee ends
+		// up at the disarm-desched ioctl, we'll reschedule it
+		// with the rbc interrupt still programmed.  At worst,
+		// the tracee will get an extra time-slice out of
+		// this, on average, so we don't worry too much about
+		// it.
+		//
+		// TODO: it's theoretically possible for this to
+		// happen an unbounded number of consecutive times
+		// and the tracee never switched out.
+		if (SYSCALLBUF_DESCHED_SIGNAL == sig
+		    || HPC_TIME_SLICE_SIGNAL == sig
+		    || t->is_sig_ignored(sig)) {
+			debug("  dropping ignored %s ...", signalname(sig));
+			continue;
+		}
+
+		// TODO: queue multiple pending signals
+		fatal(
+"Sorry, %s became pending while processing another signal.\n"
+"    Multiple pending signals aren't supported currently, aborting.",
+		      signalname(sig));
+	}
+
 	if (t->is_disarm_desched_event_syscall()) {
 		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
 		return USR_NOOP;
@@ -323,7 +317,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si)
 	 * the tracee was in, and how much "scratch" space it carved
 	 * off the syscallbuf, if needed. */
 	push_desched(t, next_record(t->syscallbuf_hdr));
-	call = t->desched_rec()->syscallno;
+	int call = t->desched_rec()->syscallno;
 	/* Replay needs to be prepared to see the ioctl() that arms
 	 * the desched counter when it's trying to step to the entry
 	 * of |call|.  We'll record the syscall entry when the main
