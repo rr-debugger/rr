@@ -731,20 +731,7 @@ static void runnable_state_changed(Task* t)
 	 * to allow switching the context. */
 	t->switchable = 0;
 
-	if (t->event < 0) {
-		/* We just saw a signal or pseudosig. */
-		switch (t->ev->type) {
-		case EV_PSEUDOSIG:
-			pseudosig_state_changed(t);
-			break;
-		case EV_SIGNAL:
-			signal_state_changed(t, NOT_BY_WAITPID);
-			break;
-		default:
-			assert(!can_deliver_signals || USR_NOOP == t->event);
-			break;
-		}
-	} else if (t->event >= 0) {
+	if (t->event >= 0) {
 		/* We just entered a syscall. */
 		check_rbc(t);
 		if (!maybe_restart_syscall(t)) {
@@ -755,11 +742,21 @@ static void runnable_state_changed(Task* t)
 			    "Should be at syscall event.");
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
-	} else {
-		fatal("Unhandled event %s (%d)",
-		      strevent(t->event), t->event);
 	}
 
+	switch (t->ev->type) {
+	case EV_PSEUDOSIG:
+		pseudosig_state_changed(t);
+		break;
+	case EV_SIGNAL:
+		signal_state_changed(t, NOT_BY_WAITPID);
+		break;
+	case EV_SYSCALL:
+		break;
+	default:
+		assert(!can_deliver_signals || USR_NOOP == t->event);
+		break;
+	}
 	maybe_reset_syscallbuf(t);
 }
 
