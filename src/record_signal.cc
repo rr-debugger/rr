@@ -290,11 +290,8 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 			continue;
 		}
 
-		// TODO: queue multiple pending signals
-		fatal(
-"Sorry, %s became pending while processing %s.\n"
-"    Multiple pending signals aren't supported currently, aborting.",
-signalname(sig), signalname(si->si_signo));
+		debug("  stashing %s ...", signalname(sig));
+		t->stash_sig();
 	}
 
 	if (t->is_disarm_desched_event_syscall()) {
