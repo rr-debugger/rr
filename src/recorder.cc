@@ -44,7 +44,7 @@ static void handle_ptrace_event(Task** tp)
 	int event = t->ptrace_event();
 	if (event != PTRACE_EVENT_NONE) {
 		debug("  %d: handle_ptrace_event %d: event %s",
-		      t->tid, event, strevent(t->event));
+		      t->tid, event, event_name(t->ev));
 	}
 	switch (event) {
 
@@ -77,7 +77,7 @@ static void handle_ptrace_event(Task** tp)
 		 * space, so we can unblock signals. */
 		can_deliver_signals = 1;
 
-		push_syscall(t, t->event);
+		push_syscall(t, SYS_execve);
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
 		pop_syscall(t);
@@ -96,7 +96,6 @@ static void handle_ptrace_event(Task** tp)
 			t->destabilize_task_group();
 		}
 
-		t->event = t->unstable ? USR_UNSTABLE_EXIT : USR_EXIT;
 		push_pseudosig(t,
 			       t->unstable ? EUSR_UNSTABLE_EXIT : EUSR_EXIT,
 			       HAS_EXEC_INFO);
@@ -117,8 +116,8 @@ static void handle_ptrace_event(Task** tp)
 }
 
 #define debug_exec_state(_msg, _t)					\
-	debug(_msg ": status=0x%x pevent=%d, event=%s",			\
-	      (_t)->status(), (_t)->ptrace_event(), strevent(_t->event))
+	debug(_msg ": status=0x%x pevent=%d",				\
+	      (_t)->status(), (_t)->ptrace_event())
 
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
 static void task_continue(Task* t, int force_cont, int sig)
@@ -158,7 +157,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 
 /**
  * Resume execution of |t| to the next notable event, such as a
- * syscall.  |t->event| may be mutated if a signal is caught.
+ * syscall.
  *
  * (Pass DEFAULT_CONT to the |force_syscall| parameter and ignore it;
  * it's an implementation detail.)
@@ -216,9 +215,6 @@ static int disarm_desched(Task* t, siginfo_t* si)
 		if (HPC_TIME_SLICE_SIGNAL == sig) {
 			continue;
 		}
-
-		t->event = t->regs().orig_eax;
-
 		if (sig) {
 			int old_sig =
 				Task::pending_sig_from_status(sig_status);
@@ -319,7 +315,7 @@ static void syscall_not_restarted(Task* t)
  */
 static int maybe_restart_syscall(Task* t)
 {
-	if (SYS_restart_syscall == t->event) {
+	if (SYS_restart_syscall == t->regs().orig_eax) {
 		debug("  %d: SYS_restart_syscall'ing %s",
 		      t->tid, syscallname(t->ev->syscall.no));
 	}
@@ -415,10 +411,6 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 
 		assert(t->pending_sig() == 0);
 
-		t->event = t->regs().orig_eax;
-		if (SYS_restart_syscall == t->event) {
-			t->event = syscallno;
-		}
 		retval = t->regs().eax;
 
 		// sigreturn is a special snowflake, because it
@@ -430,7 +422,6 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		if (SYS_sigreturn == syscallno
 		    || SYS_rt_sigreturn == syscallno) {
 			assert(t->regs().orig_eax == -1);
-			t->event = syscallno;
 			record_event(t);
 			pop_syscall(t);
 
@@ -447,13 +438,10 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			return;
 		}
 
-		assert_exec(t, syscallno == t->event,
-			    "Event stack(%s) and current event(%s) must be in sync.",
-			    strevent(syscallno), strevent(t->event));
 		assert_exec(t, (-ENOSYS != retval
 				|| (0 > syscallno
-				    || SYS_rrcall_init_buffers == t->event
-				    || SYS_rrcall_monkeypatch_vdso == t->event
+				    || SYS_rrcall_init_buffers == syscallno
+				    || SYS_rrcall_monkeypatch_vdso == syscallno
 				    || SYS_clone == syscallno
 				    || SYS_exit_group == syscallno
 				    || SYS_exit == syscallno)),
@@ -547,7 +535,7 @@ static void maybe_reset_syscallbuf(Task* t)
 /** If the rbc seems to be working return, otherwise don't return. */
 static void check_rbc(Task* t)
 {
-	if (can_deliver_signals || SYS_write != t->event) {
+	if (can_deliver_signals || SYS_write != t->ev->syscall.no) {
 		return;
 	}
 	int fd = t->regs().ebx;
@@ -714,7 +702,6 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 	 * to allow switching the context. */
 	t->switchable = 0;
 
-	t->event = t->regs().orig_eax;
 	if (t->pending_sig() && can_deliver_signals) {
 		// This will either push a new signal event, new
 		// desched + syscall-interruption events, or no-op.
@@ -736,7 +723,6 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 
 	switch (t->ev->type) {
 	case EV_NOOP:
-		assert_exec(t, t->event == USR_NOOP, "");
 		pop_noop(t);
 		break;
 	case EV_PSEUDOSIG:
@@ -750,13 +736,13 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 	case EV_SIGNAL_HANDLER:
 	case EV_SYSCALL_INTERRUPTION:
 		// We just entered a syscall.
-		check_rbc(t);
 		if (!maybe_restart_syscall(t)) {
 			push_syscall(t, t->regs().orig_eax);
 			rec_before_record_syscall_entry(t, t->ev->syscall.no);
 		}
 		assert_exec(t, EV_SYSCALL == t->ev->type,
 			    "Should be at syscall event.");
+		check_rbc(t);
 		t->ev->syscall.state = ENTERING_SYSCALL;
 		record_event(t);
 		break;

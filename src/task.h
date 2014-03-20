@@ -1567,7 +1567,6 @@ public:
 	void* scratch_ptr;
 	ssize_t scratch_size;
 
-	int event;
 	/* Nonzero after the trace recorder has flushed the
 	 * syscallbuf.  When this happens, the recorder must prepare a
 	 * "reset" of the buffer, to zero the record count, at the

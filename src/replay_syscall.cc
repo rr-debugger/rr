@@ -385,7 +385,6 @@ void __ptrace_cont(Task *t)
 	t->cont_syscall();
 
 	t->child_sig = t->pending_sig();
-	t->event = t->regs().orig_eax;
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = t->trace.recorded_regs.orig_eax;

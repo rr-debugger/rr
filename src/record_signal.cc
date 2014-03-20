@@ -144,7 +144,6 @@ static int try_handle_rdtsc(Task *t)
 			restore_sigsegv_state(t);
 		}
 
-		t->event = SIG_SEGV_RDTSC;
 		push_pseudosig(t, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);
 		handled = 1;
 
@@ -168,7 +167,7 @@ static void disarm_desched_event(Task* t)
  * The tracee's execution may be advanced, and if so |regs| is updated
  * to the tracee's latest state.
  */
-static int handle_desched_event(Task* t, const siginfo_t* si)
+static void handle_desched_event(Task* t, const siginfo_t* si)
 {
 	assert_exec(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo
 			&& si->si_code == POLL_IN
@@ -190,7 +189,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si)
 		 * disarmed the event itself. */
 		disarm_desched_event(t);
 		push_noop(t);
-		return USR_NOOP;
+		return;
 	}
 
 	/* TODO: how can signals interrupt us here? */
@@ -302,7 +301,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si)
 	if (t->is_disarm_desched_event_syscall()) {
 		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
 		push_noop(t);
-		return USR_NOOP;
+		return;
 	}
 
 	/* This prevents the syscallbuf record counter from being
@@ -338,7 +337,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si)
 	debug("  resuming (and probably switching out) blocked `%s'",
 	      syscallname(call));
 
-	return call;
+	return;
 }
 
 static int is_deterministic_signal(const siginfo_t* si)
@@ -375,18 +374,11 @@ static void record_signal(Task* t, const siginfo_t* si)
 	if (sig == rr_flags()->ignore_sig) {
 		log_info("Declining to deliver %s by user request",
 			 signalname(sig));
-		t->event = USR_NOOP;
 		push_noop(t);
 		return;
 	}
 
 	push_pending_signal(t, sig, is_deterministic_signal(si));
-
-	if (t->ev->signal.deterministic) {
-		t->event = -(sig | DET_SIGNAL_BIT);
-	} else {
-		t->event = -sig;
-	}
 }
 
 static int is_trace_trap(const siginfo_t* si)
@@ -596,15 +588,14 @@ static void handle_siginfo(Task* t, siginfo_t* si)
 {
 	debug("%d: handling signal %s (pevent: %d, event: %s)",
 	      t->tid, signalname(si->si_signo),
-	      t->ptrace_event(), strevent(t->event));
+	      t->ptrace_event(), event_name(t->ev));
 
 	/* We have to check for a desched event first, because for
 	 * those we *do not* want to (and cannot, most of the time)
 	 * step the tracee out of the syscallbuf code before
 	 * attempting to deliver the signal. */
 	if (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo) {
-		t->event = handle_desched_event(t, si);
-		return;
+		return handle_desched_event(t, si);
 	}
 
 	if (go_to_a_happy_place(t, si)) {
@@ -625,7 +616,6 @@ static void handle_siginfo(Task* t, siginfo_t* si)
 	case HPC_TIME_SLICE_SIGNAL:
 		assert_is_time_slice_interrupt(t, si);
 
-		t->event = USR_SCHED;
 		push_pseudosig(t, EUSR_SCHED, HAS_EXEC_INFO);
 		return;
 	}

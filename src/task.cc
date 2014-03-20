@@ -968,7 +968,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, switchable(), pseudo_blocked(), succ_event_counter(), unstable()
 	, priority(_priority)
 	, scratch_ptr(), scratch_size()
-	, event(), flushed_syscallbuf()
+	, flushed_syscallbuf()
 	, delay_syscallbuf_reset(), delay_syscallbuf_flush()
 	  // These will be initialized when the syscall buffer is.
 	, desched_fd(-1), desched_fd_child(-1)
@@ -1256,7 +1256,7 @@ Task::is_sig_ignored(int sig) const
 bool
 Task::is_syscall_restart()
 {
-	int syscallno = event;
+	int syscallno = regs().orig_eax;
 	bool must_restart = (SYS_restart_syscall == syscallno);
 	bool is_restart = false;
 	const struct user_regs_struct* old_regs = &ev->syscall.regs;
