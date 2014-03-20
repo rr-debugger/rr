@@ -448,7 +448,8 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		}
 
 		assert_exec(t, syscallno == t->event,
-			    "Event stack and current event must be in sync.");
+			    "Event stack(%s) and current event(%s) must be in sync.",
+			    strevent(syscallno), strevent(t->event));
 		assert_exec(t, (-ENOSYS != retval
 				|| (0 > syscallno
 				    || SYS_rrcall_init_buffers == t->event
@@ -715,8 +716,8 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 
 	t->event = t->regs().orig_eax;
 	if (t->pending_sig() && can_deliver_signals) {
-		// This will either push a new signal event, a new
-		// desched event, or no-op.
+		// This will either push a new signal event, new
+		// desched + syscall-interruption events, or no-op.
 		handle_signal(t, si);
 	} else if (t->pending_sig()) {
 		// If the initial tracee isn't prepared to handle
@@ -728,19 +729,9 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 		// tests that force a degenerately low time slice.
 		log_warn("Dropping %s because it can't be delivered yet",
 			 signalname(t->pending_sig()));
-	}
-
-	if (t->event >= 0) {
-		// We just entered a syscall.
-		check_rbc(t);
-		if (!maybe_restart_syscall(t)) {
-			push_syscall(t, t->event);
-			rec_before_record_syscall_entry(t, t->ev->syscall.no);
-		}
-		assert_exec(t, EV_SYSCALL == t->ev->type,
-			    "Should be at syscall event.");
-		t->ev->syscall.state = ENTERING_SYSCALL;
-		record_event(t);
+		// No events to be recorded, so no syscallbuf updates
+		// needed.
+		return;
 	}
 
 	switch (t->ev->type) {
@@ -754,10 +745,26 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 	case EV_SIGNAL:
 		signal_state_changed(t, NOT_BY_WAITPID);
 		break;
-	case EV_SYSCALL:
+
+	case EV_SENTINEL:
+	case EV_SIGNAL_HANDLER:
+	case EV_SYSCALL_INTERRUPTION:
+		// We just entered a syscall.
+		check_rbc(t);
+		if (!maybe_restart_syscall(t)) {
+			push_syscall(t, t->event);
+			rec_before_record_syscall_entry(t, t->ev->syscall.no);
+		}
+		assert_exec(t, EV_SYSCALL == t->ev->type,
+			    "Should be at syscall event.");
+		t->ev->syscall.state = ENTERING_SYSCALL;
+		record_event(t);
 		break;
+
 	default:
-		assert(!can_deliver_signals || USR_NOOP == t->event);
+		assert_exec(t, false,
+			    "%s can't be on event stack at start of new event",
+			    event_name(t->ev));
 		break;
 	}
 	maybe_reset_syscallbuf(t);
