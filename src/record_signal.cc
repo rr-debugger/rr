@@ -189,6 +189,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si)
 		 * has cleared the relevancy flag, but not yet
 		 * disarmed the event itself. */
 		disarm_desched_event(t);
+		push_noop(t);
 		return USR_NOOP;
 	}
 
@@ -300,6 +301,7 @@ static int handle_desched_event(Task* t, const siginfo_t* si)
 
 	if (t->is_disarm_desched_event_syscall()) {
 		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
+		push_noop(t);
 		return USR_NOOP;
 	}
 
@@ -374,6 +376,7 @@ static void record_signal(Task* t, const siginfo_t* si)
 		log_info("Declining to deliver %s by user request",
 			 signalname(sig));
 		t->event = USR_NOOP;
+		push_noop(t);
 		return;
 	}
 

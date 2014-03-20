@@ -2053,6 +2053,16 @@ void push_placeholder_event(Task* t)
 	push_new_event(t, EV_SENTINEL);
 }
 
+void push_noop(Task* t)
+{
+	push_new_event(t, EV_NOOP);
+}
+
+void pop_noop(Task* t)
+{
+	pop_event(t, EV_NOOP);
+}
+
 void push_desched(Task* t, const struct syscallbuf_record* rec)
 {
 	assert_exec(t, !t->desched_rec(), "Must have zero or one desched");
