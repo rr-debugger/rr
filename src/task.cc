@@ -982,6 +982,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, child_mem_fd(open_mem_fd())
 	, prname("???")
 	, registers(), registers_known(false)
+	, stashed_si(), stashed_wait_status()
 	, tid_futex()
 	, wait_status()
 {
@@ -1535,6 +1536,26 @@ const kernel_sigaction&
 Task::signal_action(int sig) const
 {
 	return sighandlers->get(sig).sa;
+}
+
+void
+Task::stash_sig()
+{
+	assert(pending_sig());
+	assert_exec(this, !has_stashed_sig(),
+		    "Tried to stash %s when %s was already stashed.",
+		    signalname(pending_sig()), signalname(stashed_si.si_signo));
+	stashed_wait_status = wait_status;
+	get_siginfo(&stashed_si);
+}
+
+const siginfo_t&
+Task::pop_stash_sig()
+{
+	assert(has_stashed_sig());
+	force_status(stashed_wait_status);
+	stashed_wait_status = 0;
+	return stashed_si;
 }
 
 void

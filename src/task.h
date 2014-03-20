@@ -1340,6 +1340,27 @@ public:
 	const kernel_sigaction& signal_action(int sig) const;
 
 	/**
+	 * Stashed-signal API: if a signal becomes pending at an
+	 * awkward time, but could be handled "soon", call
+	 * |stash_sig()| to stash the current pending-signal state.
+	 *
+	 * |has_stashed_sig()| obviously returns true if |stash_sig()|
+	 * has been called successfully.
+	 *
+	 * |pop_stash_sig()| restores the (relevant) state of this
+	 * Task to what was saved in |stash_sig()|, and returns the
+	 * saved siginfo.  After this call, |has_stashed_sig()| is
+	 * false.
+	 *
+	 * NB: |get_siginfo()| will always return the "real" siginfo,
+	 * regardless of stash popped-ness state.  Callers must ensure
+	 * they do the right thing with the popped siginfo.
+	 */
+	void stash_sig();
+	bool has_stashed_sig() const { return stashed_wait_status; }
+	const siginfo_t& pop_stash_sig();
+
+	/**
 	 * Return the status of this as of the last successful
 	 * wait()/try_wait() call.
 	 */
@@ -1704,16 +1725,21 @@ private:
 	// this cached value and set the "known" flag.
 	struct user_regs_struct registers;
 	bool registers_known;
-	/* Points to the signal-hander table of this task.  If this
-	 * task is a non-fork clone child, then the table will be
-	 * shared with all its "thread" siblings.  Any updates made to
-	 * that shared table are immediately visible to all sibling
-	 * threads.
-	 *
-	 * fork children always get their own copies of the table.
-	 * And if this task exec()s, the table is copied and stripped
-	 * of user sighandlers (see below). */
+	// Points to the signal-hander table of this task.  If this
+	// task is a non-fork clone child, then the table will be
+	// shared with all its "thread" siblings.  Any updates made to
+	// that shared table are immediately visible to all sibling
+	// threads.
+	//
+	// fork children always get their own copies of the table.
+	// And if this task exec()s, the table is copied and stripped
+	// of user sighandlers (see below). */
 	std::shared_ptr<Sighandlers> sighandlers;
+	// Stashed signal-delivery state, ready to be delivered at
+	// next opportunity.  |stashed_si| is only meaningful when
+	// |stashed_wait_status| is nonzero.
+	siginfo_t stashed_si;
+	int stashed_wait_status;
 	// The task group this belongs to.
 	std::shared_ptr<TaskGroup> tg;
 	// The memory cell the kernel will clear and notify on exit,
