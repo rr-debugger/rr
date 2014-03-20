@@ -54,8 +54,7 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si)
  * Restore the blocked-ness and sigaction for SIGSEGV from |t|'s local
  * copy.
  */
-static void
-restore_sigsegv_state(Task* t)
+static void restore_sigsegv_state(Task* t)
 {
 	kernel_sigaction sa = t->signal_action(SIGSEGV);
 	struct current_state_buffer state;
@@ -293,9 +292,9 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 
 		// TODO: queue multiple pending signals
 		fatal(
-"Sorry, %s became pending while processing another signal.\n"
+"Sorry, %s became pending while processing %s.\n"
 "    Multiple pending signals aren't supported currently, aborting.",
-		      signalname(sig));
+signalname(sig), signalname(si->si_signo));
 	}
 
 	if (t->is_disarm_desched_event_syscall()) {

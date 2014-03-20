@@ -190,9 +190,9 @@ static bool resume_execution(Task* t, int need_task_continue,
  * and |si| is filled in.  This allows the caller to deliver the
  * signal after this returns and the desched event is disabled.
  */
-static int disarm_desched(Task* t, siginfo_t* si)
+static void disarm_desched(Task* t)
 {
-	int sig_status = 0;
+	int old_sig = 0;
 
 	debug("desched: DISARMING_DESCHED_EVENT");
 	/* TODO: send this through main loop. */
@@ -216,28 +216,16 @@ static int disarm_desched(Task* t, siginfo_t* si)
 		if (HPC_TIME_SLICE_SIGNAL == sig) {
 			continue;
 		}
+		if (sig && sig == old_sig) {
+			debug("  coalescing pending %s", signalname(sig));
+			continue;
+		}
 		if (sig) {
-			int old_sig =
-				Task::pending_sig_from_status(sig_status);
 			debug("  %s now pending", signalname(sig));
-			assert_exec(t,
-				    !sig_status || old_sig == sig,
-				    "TODO multiple pending signals: %s became pending while %s already was",
-				    signalname(sig),
-				    signalname(old_sig));
-			sig_status = t->status();
-			t->get_siginfo(si);
+			t->stash_sig();
 		}
 	} while (!t->is_disarm_desched_event_syscall());
-	return sig_status;
 }
-
-/**
- * The execution of |t| has just been resumed, and it most likely has
- * a new event that needs to be processed.  Prepare that new event.
- * Pass |si| to force-override signal status.
- */
-static void runnable_state_changed(Task* t, siginfo_t* si=nullptr);
 
 /**
  * |t| is at a desched event and some relevant aspect of its state
@@ -261,8 +249,7 @@ static void desched_state_changed(Task* t)
 		t->ev->desched.state = DISARMING_DESCHED_EVENT;
 		/* fall through */
 	case DISARMING_DESCHED_EVENT: {
-		siginfo_t si;
-		int sig_status = disarm_desched(t, &si);
+		disarm_desched(t);
 
 		t->ev->desched.state = DISARMED_DESCHED_EVENT;
 		record_event(t);
@@ -278,13 +265,10 @@ static void desched_state_changed(Task* t)
 		t->delay_syscallbuf_flush = 0;
 		record_event(t);
 		pop_pseudosig(t);
-
-		if (sig_status) {
-			debug("  delivering deferred %s",
-			      signalname(si.si_signo));
-			t->force_status(sig_status);
-			runnable_state_changed(t, &si);
-		}
+		// We were just descheduled for potentially a long
+		// time, and may have just had a signal become
+		// pending.  Ensure we get another chance to run.
+		t->switchable = 0;
 		return;
 	}
 	default:
@@ -691,13 +675,24 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 	}
 }
 
-static void runnable_state_changed(Task* t, siginfo_t* si)
+/**
+ * The execution of |t| has just been resumed, and it most likely has
+ * a new event that needs to be processed.  Prepare that new event.
+ * Pass |si| to force-override signal status.
+ */
+static void runnable_state_changed(Task* t)
 {
-	assert(!si || t->pending_sig());
-
-	/* Have to disable context-switching until we know it's safe
-	 * to allow switching the context. */
+	// Have to disable context-switching until we know it's safe
+	// to allow switching the context.
 	t->switchable = 0;
+
+	siginfo_t* si = nullptr;
+	siginfo_t stash;
+	if (t->has_stashed_sig()) {
+		stash = t->pop_stash_sig();
+		si = &stash;
+		debug("pulled %s out of stash", signalname(t->pending_sig()));
+	}
 
 	if (t->pending_sig() && can_deliver_signals) {
 		// This will either push a new signal event, new
@@ -846,7 +841,8 @@ void record()
 			break;
 		}
 
-		if (!resume_execution(t, (did_initial_resume ?
+		if (!t->has_stashed_sig()
+		    && !resume_execution(t, (did_initial_resume ?
 					  DONT_NEED_TASK_CONTINUE :
 					  NEED_TASK_CONTINUE))) {
 			maybe_process_term_request(t);
