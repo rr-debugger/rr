@@ -158,27 +158,28 @@ static void task_continue(Task* t, int force_cont, int sig)
 /**
  * Resume execution of |t| to the next notable event, such as a
  * syscall.
- *
- * (Pass DEFAULT_CONT to the |force_syscall| parameter and ignore it;
- * it's an implementation detail.)
  */
-static bool resume_execution(Task* t, int force_cont)
+enum { DONT_NEED_TASK_CONTINUE = 0, NEED_TASK_CONTINUE };
+static bool resume_execution(Task* t, int need_task_continue,
+			     int force_cont=DEFAULT_CONT)
 {
 	assert(!t->may_be_blocked());
 
 	debug_exec_state("EXEC_START", t);
 
-	task_continue(t, force_cont, /*no sig*/0);
-	if (!t->wait()) {
-		debug("  waitpid() interrupted");
-		return false;
+	if (need_task_continue) {
+		task_continue(t, force_cont, /*no sig*/0);
+		if (!t->wait()) {
+			debug("  waitpid() interrupted");
+			return false;
+		}
 	}
 
 	if (t->is_ptrace_seccomp_event()) {
 		t->seccomp_bpf_enabled = true;
 		/* See long comments above. */
 		debug("  (skipping past seccomp-bpf trap)");
-		return resume_execution(t, FORCE_SYSCALL);
+		return resume_execution(t, NEED_TASK_CONTINUE, FORCE_SYSCALL);
 	}
 	return true;
 }
@@ -577,9 +578,12 @@ static void pseudosig_state_changed(Task* t)
  * |t| is being delivered a signal, and its state changed.
  * |by_waitpid| is nonzero if the status change was observed by a
  * waitpid() call.
+ *
+ * Return true if execution was incidentally resumed to a new event,
+ * false otherwise.
  */
 enum { NOT_BY_WAITPID = 0, BY_WAITPID };
-static void signal_state_changed(Task* t, int by_waitpid)
+static bool signal_state_changed(Task* t, int by_waitpid)
 {
 	int sig = t->ev->signal.no;
 
@@ -599,7 +603,7 @@ static void signal_state_changed(Task* t, int by_waitpid)
 			      signalname(sig));
 
 			if (!t->cont_singlestep(sig)) {
-				return;
+				return false;
 			}
 			// It's been observed that when tasks enter
 			// sighandlers, the singlestep operation above
@@ -658,7 +662,7 @@ static void signal_state_changed(Task* t, int by_waitpid)
 		// syscallbuf state, so we can't let the tracee race
 		// with us.
 		t->switchable = t->ev->signal.delivered;
-		return;
+		return false;
 	}
 	case EV_SIGNAL_DELIVERY:
 		if (!t->ev->signal.delivered) {
@@ -670,27 +674,20 @@ static void signal_state_changed(Task* t, int by_waitpid)
 			}
 			t->signal_delivered(sig);
 			t->ev->signal.delivered = 1;
-			return;
+			return false;
 		}
 
 		// The tracee's waitpid status has changed, so we're finished
 		// delivering the signal.
 		assert(by_waitpid);
 		pop_signal_delivery(t);
-
-		if (t->is_ptrace_seccomp_event()) {
-			t->seccomp_bpf_enabled = true;
-			// See long comments above.
-			debug("  (skipping past seccomp-bpf trap)");
-			resume_execution(t, FORCE_SYSCALL);
-		}
-
-		runnable_state_changed(t);
-		return;
+		// The event we just |task_continue()|d to above is
+		// ready to be prepared.
+		return true;
 
 	default:
 		fatal("Unhandled signal state %d", t->ev->type);
-		return;		// not reached
+		return false;	// not reached
 	}
 }
 
@@ -827,6 +824,8 @@ void record()
 				continue;
 			}
 		}
+
+		bool did_initial_resume = false;
 		switch (t->ev->type) {
 		case EV_DESCHED:
 			desched_state_changed(t);
@@ -835,7 +834,10 @@ void record()
 			syscall_state_changed(t, by_waitpid);
 			continue;
 		case EV_SIGNAL_DELIVERY: {
-			signal_state_changed(t, by_waitpid);
+			if ((did_initial_resume =
+			     signal_state_changed(t, by_waitpid))) {
+				break;
+			}
 			continue;
 		}
 		default:
@@ -844,7 +846,9 @@ void record()
 			break;
 		}
 
-		if (!resume_execution(t, DEFAULT_CONT)) {
+		if (!resume_execution(t, (did_initial_resume ?
+					  DONT_NEED_TASK_CONTINUE :
+					  NEED_TASK_CONTINUE))) {
 			maybe_process_term_request(t);
 		}
 		runnable_state_changed(t);
