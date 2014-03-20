@@ -752,7 +752,7 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 		// We just entered a syscall.
 		check_rbc(t);
 		if (!maybe_restart_syscall(t)) {
-			push_syscall(t, t->event);
+			push_syscall(t, t->regs().orig_eax);
 			rec_before_record_syscall_entry(t, t->ev->syscall.no);
 		}
 		assert_exec(t, EV_SYSCALL == t->ev->type,
