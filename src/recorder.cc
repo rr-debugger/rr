@@ -80,11 +80,10 @@ static void handle_ptrace_event(Task** tp)
 					  stack, ctid, new_tid);
 		// Wait until the new task is ready.
 		new_task->wait();
-
 		start_hpc(new_task, rr_flags()->max_rbc);
-
+		// Skip past the ptrace event.
 		t->cont_syscall();
-		status_changed(t);
+		assert(t->pending_sig() == 0);
 		break;
 	}
 
@@ -99,9 +98,8 @@ static void handle_ptrace_event(Task** tp)
 		record_event(t);
 		pop_syscall(t);
 
+		// Skip past the ptrace event.
 		t->cont_syscall();
-		status_changed(t);
-
 		assert(t->pending_sig() == 0);
 		break;
 	}
@@ -413,13 +411,12 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		debug_exec_state("EXEC_IN_SYSCALL", t);
 
 		assert(by_waitpid);
-		/* Linux kicks tasks out of syscalls before delivering
-		 * signals. */
+		// Linux kicks tasks out of syscalls before delivering
+		// signals.
 		assert_exec(t, !t->pending_sig(),
 			    "Signal %s pending while %d in syscall???",
 			    signalname(t->pending_sig()), t->tid);
 
-		status_changed(t);
 		t->ev->syscall.state = EXITING_SYSCALL;
 		t->switchable = 0;
 		return;
@@ -432,7 +429,6 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		debug_exec_state("EXEC_SYSCALL_DONE", t);
 
 		assert(t->pending_sig() == 0);
-		assert(SYS_sigreturn != t->event);
 
 		t->event = t->regs().orig_eax;
 		if (SYS_restart_syscall == t->event) {
