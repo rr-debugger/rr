@@ -599,6 +599,8 @@ enum PseudosigType {
 
 enum EventType {
 	EV_SENTINEL,
+	/* No associated data. */
+	EV_NOOP,
 	/* Uses the .desched struct below. */
 	EV_DESCHED,
 	/* Uses .pseudosig. */
@@ -789,6 +791,12 @@ struct event {
  * favor of a |task_init()| pseudo-constructor that initializes state
  * shared across record and replay.) */
 void push_placeholder_event(Task* t);
+
+/**
+ * Push/pop no-op event.
+ */
+void push_noop(Task* t);
+void pop_noop(Task* t);
 
 /**
  * Push/pop event tracking descheduling of |rec|.

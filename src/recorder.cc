@@ -731,7 +731,7 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 	}
 
 	if (t->event >= 0) {
-		/* We just entered a syscall. */
+		// We just entered a syscall.
 		check_rbc(t);
 		if (!maybe_restart_syscall(t)) {
 			push_syscall(t, t->event);
@@ -744,6 +744,10 @@ static void runnable_state_changed(Task* t, siginfo_t* si)
 	}
 
 	switch (t->ev->type) {
+	case EV_NOOP:
+		assert_exec(t, t->event == USR_NOOP, "");
+		pop_noop(t);
+		break;
 	case EV_PSEUDOSIG:
 		pseudosig_state_changed(t);
 		break;
