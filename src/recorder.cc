@@ -36,22 +36,6 @@
  * the signal. */
 static int can_deliver_signals;
 
-static void status_changed(Task* t)
-{
-	t->event = t->regs().orig_eax;
-	/* If the initial tracee isn't prepared to handle signals yet,
-	 * then us ignoring the ptrace notification here will have the
-	 * side effect of declining to deliver the signal. */
-	if (t->pending_sig()) {
-		if (can_deliver_signals) {
-			handle_signal(t);
-		} else {
-			log_warn("Dropping %s because it can't be delivered yet",
-				 signalname(t->pending_sig()));
-		}
-	}
-}
-
 static void handle_ptrace_event(Task** tp)
 {
 	Task* t = *tp;
@@ -190,9 +174,6 @@ static bool resume_execution(Task* t, int force_cont)
 		debug("  waitpid() interrupted");
 		return false;
 	}
-	status_changed(t);
-
-	debug_exec_state("  after resume", t);
 
 	if (t->is_ptrace_seccomp_event()) {
 		t->seccomp_bpf_enabled = true;
@@ -254,7 +235,12 @@ static int disarm_desched(Task* t, siginfo_t* si)
 	return sig_status;
 }
 
-static void runnable_state_changed(Task* t);
+/**
+ * The execution of |t| has just been resumed, and it most likely has
+ * a new event that needs to be processed.  Prepare that new event.
+ * Pass |si| to force-override signal status.
+ */
+static void runnable_state_changed(Task* t, siginfo_t* si=nullptr);
 
 /**
  * |t| is at a desched event and some relevant aspect of its state
@@ -298,10 +284,9 @@ static void desched_state_changed(Task* t)
 
 		if (sig_status) {
 			debug("  delivering deferred %s",
-			      signalname(t->pending_sig()));
+			      signalname(si.si_signo));
 			t->force_status(sig_status);
-			handle_signal(t, &si);
-			runnable_state_changed(t);
+			runnable_state_changed(t, &si);
 		}
 		return;
 	}
@@ -703,7 +688,6 @@ static void signal_state_changed(Task* t, int by_waitpid)
 		// delivering the signal.
 		assert(by_waitpid);
 		pop_signal_delivery(t);
-		status_changed(t);
 
 		if (t->is_ptrace_seccomp_event()) {
 			t->seccomp_bpf_enabled = true;
@@ -721,11 +705,30 @@ static void signal_state_changed(Task* t, int by_waitpid)
 	}
 }
 
-static void runnable_state_changed(Task* t)
+static void runnable_state_changed(Task* t, siginfo_t* si)
 {
+	assert(!si || t->pending_sig());
+
 	/* Have to disable context-switching until we know it's safe
 	 * to allow switching the context. */
 	t->switchable = 0;
+
+	t->event = t->regs().orig_eax;
+	if (t->pending_sig() && can_deliver_signals) {
+		// This will either push a new signal event, a new
+		// desched event, or no-op.
+		handle_signal(t, si);
+	} else if (t->pending_sig()) {
+		// If the initial tracee isn't prepared to handle
+		// signals yet, then us ignoring the ptrace
+		// notification here will have the side effect of
+		// declining to deliver the signal.
+		//
+		// This doesn't really occur in practice, only in
+		// tests that force a degenerately low time slice.
+		log_warn("Dropping %s because it can't be delivered yet",
+			 signalname(t->pending_sig()));
+	}
 
 	if (t->event >= 0) {
 		/* We just entered a syscall. */
