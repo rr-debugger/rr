@@ -134,6 +134,7 @@ set(BASIC_TESTS
   munmap_discontinuous
   mutex_pi_stress
   nanosleep
+  no_mask_timeslice
   pause
   perf_event
   poll_sig_race

@@ -48,6 +48,7 @@ static void handle_ptrace_event(Task** tp)
 	switch (event) {
 
 	case PTRACE_EVENT_NONE:
+	case PTRACE_EVENT_STOP:
 		break;
 
 	case PTRACE_EVENT_CLONE:
