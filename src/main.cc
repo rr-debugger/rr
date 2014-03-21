@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 
 #include <limits>
+#include <sstream>
 #include <string>
 
 #include "preload/syscall_buffer.h"
@@ -74,12 +75,56 @@ static void copy_envp(char** envp)
 	env_p.push_back(NULL);
 }
 
+/**
+ * Create a pulseaudio client config file with shm disabled.  That may
+ * be the cause of a mysterious divergence.  Return an envpair to set
+ * in the tracee environment.
+ */
+static string create_pulseaudio_config()
+{
+	// TODO let PULSE_CLIENTCONFIG env var take precedence.
+	static const char pulseaudio_config_path[] = "/etc/pulse/client.conf";
+	if (access(pulseaudio_config_path, R_OK)) {
+		fatal("Can't file pulseaudio config at %s.", pulseaudio_config_path);
+	}
+	char tmp[] = "rr-pulseaudio-client-conf-XXXXXX";
+	int fd = mkstemp(tmp);
+	unlink(tmp);
+
+	stringstream procfile;
+	procfile << "/proc/" << getpid() << "/fd/" << fd;
+	stringstream cmd;
+	cmd << "cp " << pulseaudio_config_path << " " << procfile.str();
+	    
+	int status = system(cmd.str().c_str());
+	if (-1 == status || !WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
+		fatal("The command '%s' failed.", cmd.str().c_str());
+	}
+	if (-1 == lseek(fd, 0, SEEK_END)) {
+		fatal("Failed to seek to end of file.");
+	}
+	char disable_shm[] = "disable-shm = true\n";
+	ssize_t nwritten = write(fd, disable_shm, sizeof(disable_shm) - 1);
+	if (nwritten != sizeof(disable_shm) - 1) {
+		fatal("Failed to append '%s' to %s",
+		      disable_shm, procfile.str().c_str());
+	}
+	stringstream envpair;
+	envpair << "PULSE_CLIENTCONFIG=" << procfile.str();
+	return envpair.str();
+}
+
 static void start_recording(int argc, char* argv[], char** envp)
 {
 	exe_image = argv[0];
 	copy_argv(argc, argv);
 	copy_envp(envp);
 	rec_setup_trace_dir();
+
+	string env_pair = create_pulseaudio_config();
+	// Intentionally leaked.
+	env_p[env_p.size() - 1] = strdup(env_pair.c_str());
+	env_p.push_back(nullptr);
 
 	open_trace_files();
 	rec_init_trace_files();
