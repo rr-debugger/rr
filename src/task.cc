@@ -1715,9 +1715,6 @@ Task::create(const std::string& exe, CharpVector& argv, CharpVector& envp,
 	pid_t tid = fork();
 	if (0 == tid) {
 		set_up_process();
-		if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr)) {
-			fatal("Failed to request TRACEME");
-		}
 		// Signal to tracer that we're configured.
 		kill(getpid(), SIGSTOP);
 
@@ -1758,8 +1755,26 @@ Task::create(const std::string& exe, CharpVector& argv, CharpVector& envp,
 	t->as.swap(as);
 
 	// Sync with the child process.
-	t->wait();
-	t->set_up_ptrace();
+	t->xptrace(PTRACE_SEIZE, nullptr,
+		   (void*)(PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+			   PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
+			   PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
+			   PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP));
+	// PTRACE_SEIZE is fundamentally racy by design.  We depend on
+	// stopping the tracee at a known location, so raciness is
+	// bad.  To resolve the race condition, we just keep running
+	// the tracee until it reaches the known-safe starting point.
+	//
+	// Alternatively, it would be possible to remove the
+	// requirement of the tracing beginning from a known point.
+	while (true) {
+		t->wait();
+		if (SIGSTOP == t->stop_sig()) {
+			break;
+		}
+		t->cont_nonblocking();
+	}
+	t->force_status(0);
 	return t;
 }
 
@@ -2010,21 +2025,6 @@ Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 	assert_exec(this, nwritten == buf_size,
 		    "Should have written %d bytes to %p, but only wrote %d",
 		    buf_size, addr, nwritten);
-}
-
-void
-Task::set_up_ptrace()
-{
-	int flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-		    PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
-		    PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-		    PTRACE_O_TRACEEXIT;
-	if (-1 == fallible_ptrace(PTRACE_SETOPTIONS, nullptr,
-				  (void*)(PTRACE_O_TRACESECCOMP | flags))) {
-		// No seccomp on the system, try without (this has to
-		// succeed).
-		xptrace(PTRACE_SETOPTIONS, nullptr, (void*)flags);
-	}
 }
 
 void

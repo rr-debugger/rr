@@ -20,8 +20,16 @@ struct mmsghdr;
 class Task;
 struct trace_frame;
 
+#define PTRACE_EVENT_NONE 0
+#define PTRACE_EVENT_STOP 128
+
+#define PTRACE_SYSEMU 31
+#define PTRACE_SYSEMU_SINGLESTEP 32
+
 #ifndef PTRACE_O_TRACESECCOMP
-# define PTRACE_O_TRACESECCOMP      0x00000080 
+# define PTRACE_O_TRACESECCOMP 0x00000080
+# define PTRACE_EVENT_SECCOMP_OBSOLETE 8 // ubuntu 12.04
+# define PTRACE_EVENT_SECCOMP 7	// ubuntu 12.10 and future kernels
 #endif
 
 #define SYSCALL_FAILED(eax) \

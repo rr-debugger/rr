@@ -11,9 +11,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/ptrace.h>
-// This header has to be included after sys/ptrace.h.
-#include <asm/ptrace-abi.h>
 #include <sys/queue.h>
 #include <sys/user.h>
 
@@ -28,13 +25,6 @@
 #include "fixedstack.h"
 #include "trace.h"
 #include "util.h"
-
-#define PTRACE_EVENT_NONE 0
-#ifndef PTRACE_EVENT_SECCOMP
-#define PTRACE_O_TRACESECCOMP 0x00000080
-#define PTRACE_EVENT_SECCOMP_OBSOLETE 8 // ubuntu 12.04
-#define PTRACE_EVENT_SECCOMP 7	// ubuntu 12.10 and future kernels
-#endif
 
 struct Sighandlers;
 class Task;
@@ -1687,13 +1677,6 @@ private:
 	 * True if this has blocked delivery of the desched signal.
 	 */
 	bool is_desched_sig_blocked();
-
-	/**
-	 * Set the required ptrace flags.  Call this for the first
-	 * tracee created.  Subsequent tracees will inherit these
-	 * settings.
-	 */
-	void set_up_ptrace();
 
 	/**
 	 * Like |fallible_ptrace()| but infallible: except either the
