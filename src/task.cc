@@ -1629,11 +1629,42 @@ Task::update_sigmask()
 	}
 }
 
+// The Task currently being wait()d on, or nullptr.
+// |waiter_was_interrupted| if a PTRACE_INTERRUPT had to be applied to
+// |waiter| to get it to stop.
+static Task* waiter;
+static bool waiter_was_interrupted;
+
 bool
 Task::wait()
 {
 	debug("going into blocking waitpid(%d) ...", tid);
+
+	// We only need this during recording.  If tracees go runaway
+	// during replay, something else is at fault.
+	bool enable_wait_interrupt = (RECORD == rr_flags()->option);
+	if (enable_wait_interrupt) {
+		waiter = this;
+		// Where does the 3 seconds come from?  No especially
+		// good reason.  We want this to be pretty high,
+		// because it's a last-ditch recovery mechanism, not a
+		// primary thread scheduler.  Though in theory the
+		// PTRACE_INTERRUPT's shouldn't interfere with other
+		// events, that's hard to test thoroughly so try to
+		// avoid it.
+		alarm(3);
+
+		// Set the wait_status to a sentinel value so that we
+		// can hopefully recognize race conditions in the
+		// SIGALRM handler.
+		wait_status = -1;
+	}
 	pid_t ret = waitpid(tid, &wait_status, __WALL);
+	if (enable_wait_interrupt) {
+		waiter = nullptr;
+		alarm(0);
+	}
+
 	if (0 > ret && EINTR == errno) {
 		debug("  waitpid(%d) interrupted!", tid);
 		return false;
@@ -1641,6 +1672,29 @@ Task::wait()
 	debug("  waitpid(%d) returns %d; status %#x", tid, ret, wait_status);
 	assert_exec(this, tid == ret, "waitpid(%d) failed with %d",
 		    tid, ret);
+	// If some other ptrace-stop happened to race with our
+	// PTRACE_INTERRUPT, then let the other event win.  We only
+	// want to interrupt tracees stuck running in userspace.
+	if (waiter_was_interrupted && PTRACE_EVENT_STOP == ptrace_event()
+	    && (SIGTRAP == WSTOPSIG(wait_status)
+		// We sometimes see SIGSTOP at interrupts, though the
+		// docs don't mention that.
+		|| SIGSTOP == WSTOPSIG(wait_status))) {
+		log_warn("Forced to PTRACE_INTERRUPT tracee");
+		stashed_wait_status = wait_status =
+				      (HPC_TIME_SLICE_SIGNAL << 8) | 0x7f;
+		memset(&stashed_si, 0, sizeof(stashed_si));
+		stashed_si.si_signo = HPC_TIME_SLICE_SIGNAL;
+		stashed_si.si_fd = hpc->rbc.fd;
+		stashed_si.si_code = POLL_IN;
+		// Starve the runaway task of CPU time.  It just got
+		// the equivalent of hundreds of time slices.
+		succ_event_counter = numeric_limits<int>::max() / 2;
+	} else if (waiter_was_interrupted) {
+		debug("  PTRACE_INTERRUPT raced with another event %#x",
+		      wait_status);
+	}
+	waiter_was_interrupted = false;
 	return true;
 }
 
@@ -1734,6 +1788,8 @@ Task::create(const std::string& exe, CharpVector& argv, CharpVector& envp,
 		execvpe(exe.c_str(), argv.data(), envp.data());
 		fatal("Failed to exec %s", exe.c_str());
 	}
+
+	signal(SIGALRM, Task::handle_runaway);
 
 	Task* t = new Task(tid, rec_tid, 0);
 	// The very first task we fork inherits the signal
@@ -2034,6 +2090,18 @@ Task::xptrace(int request, void* addr, void* data)
 	assert_exec(this, 0 == ret,
 		    "ptrace(%s, %d, addr=%p, data=%p) failed",
 		    ptrace_req_name(request), tid, addr, data);
+}
+
+/*static*/ void
+Task::handle_runaway(int sig)
+{
+	debug("SIGALRM fired; runaway tracee");
+	if (!waiter || -1 != waiter->wait_status) {
+		debug("  ... false alarm, race condition");
+		return;
+	}
+	waiter->xptrace(PTRACE_INTERRUPT, nullptr, nullptr);
+	waiter_was_interrupted = true;
 }
 
 /**

@@ -1684,6 +1684,13 @@ private:
 	 */
 	void xptrace(int request, void* addr, void* data);
 
+	/**
+	 * The rbc interrupt has failed to stop the Task currently
+	 * being |wait()|ed, so the alarm() we programmed has fired.
+	 * PTRACE_INTERRUPT the runaway tracee.
+	 */
+	static void handle_runaway(int sig);
+
 	// The address space of this task.
 	std::shared_ptr<AddressSpace> as;
 	// The set of signals that are currently blocked.
