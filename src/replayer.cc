@@ -19,7 +19,6 @@
 #include <sys/mman.h>
 #include <sys/personality.h>
 #include <sys/poll.h>
-#include <sys/ptrace.h>
 #include <asm/ptrace-abi.h>
 #include <sys/types.h>
 #include <sys/socket.h>

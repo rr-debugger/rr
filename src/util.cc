@@ -22,8 +22,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#include <sys/ptrace.h>
-// This header has to be included after sys/ptrace.h.
 #include <asm/ptrace-abi.h>
 #include <sys/signal.h>
 #include <sys/socket.h>
@@ -147,6 +145,7 @@ const char* ptrace_event_name(int event)
 #else
 	CASE(SECCOMP);
 #endif
+	CASE(STOP);
 	default:
 		return "???EVENT";
 #undef CASE

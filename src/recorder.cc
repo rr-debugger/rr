@@ -13,7 +13,6 @@
 #include <sys/epoll.h>
 #include <sysexits.h>
 #include <sys/mman.h>
-#include <sys/ptrace.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
