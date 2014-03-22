@@ -2,111 +2,424 @@
 
 <head>
   <meta charset="utf-8">
-  <title>RR</title>
+  <title>rr: lightweight recording & deterministic debugging</title>
+
+  <link href='http://fonts.googleapis.com/css?family=Open+Sans:300'
+        rel='stylesheet' type='text/css'>
+  <link href='http://fonts.googleapis.com/css?family=Cousine'
+        rel='stylesheet' type='text/css'>
+
   <style type="text/css">
-body {
-  background-color: aqua;
-}
-div {
-  display: inline;
-}
-.huge-text {
-  font-size: 72pt;
-}
-span:nth-child(7n+1) { color: red; }
-span:nth-child(7n+2) { color: orange; }
-span:nth-child(7n+3) { color: yellow; }
-span:nth-child(7n+4) { color: green; }
-span:nth-child(7n+5) { color: blue; }
-span:nth-child(7n+6) { color: indigo; }
-span:nth-child(7n+7) { color: violet; }
+    html {
+      width: 100%;
+      font-size: 12pt;
+    }
+    body {
+      padding-left: 10%;
+      padding-right: 10%;
+      font-family: 'Open Sans', sans;
+      background: linear-gradient(#d1cec4, white);
+      color: #484848;
+    }
+
+    #toprow {
+      width: 100%;
+      display: -moz-box;
+      -moz-box-orient: horizontal;
+      -moz-box-pack: center;
+      -moz-box-align: center;
+      display: -webkit-box;
+      -webkit-box-orient: horizontal;
+      -webkit-box-pack: center;
+      -webkit-box-align: center;
+      padding: 0;
+      margin: 0;
+      border: 1px solid gray;
+      border-radius: 10px;
+    }
+
+    a {
+      text-decoration: none;
+      color: #0096DD;
+    }
+
+    h1 {
+      display:inline;
+      font-weight: 300;
+      font-size: 5rem;
+    }
+
+    #topmenu {
+      display: inline-block;
+      list-style-type: none;
+      font-size: 1.2rem;
+    }
+    #topmenu li {
+      display: inline;
+      font-weight: 300;
+      padding: 1.5rem;
+    }
+    #topmenu li a {
+      text-decoration: none;
+    }
+
+    h2 {
+      text-align: center;
+      font-weight: 300;
+      font-size: 2rem;
+      background-color: white;
+    }
+
+    h3 {
+      font-weight: 300;
+      font-size: 1.5rem;
+    }
+
+    .columnar {
+      -moz-column-width: 30rem;
+      -webkit-column-width: 30rem;
+      column-width: 30rem;
+    }
+
+    code {
+      font-family: 'Cousine';
+    }
+    pre {
+      font-family: 'Cousine';
+    }
+
+    ul {
+      list-style-type: circle;
+    }
+
+    footer {
+      width: 100%;
+      text-align: center;
+    }
+
+    #old {
+      display: none;
+      background-color: aqua;
+      font-face: serif;
+    }
+    marquee {
+      font-size: 72pt;
+    }
+    blink div {
+      display: inline;
+    }
+    span:nth-child(7n+1) { color: red; }
+    span:nth-child(7n+2) { color: orange; }
+    span:nth-child(7n+3) { color: yellow; }
+    span:nth-child(7n+4) { color: green; }
+    span:nth-child(7n+5) { color: blue; }
+    span:nth-child(7n+6) { color: indigo; }
+    span:nth-child(7n+7) { color: violet; }
   </style>
 </head>
 
 <body>
-  <marquee scrollamount="40">
-    <blink>
-      <div class="huge-text"> 
-        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
-          <img src="mchammer.gif"><img src="flag.gif"></div>
-        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
-        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
-          <img src="mchammer.gif"><img src="flag.gif"></div>
-        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
-        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
-          <img src="mchammer.gif"><img src="flag.gif"></div>
-        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
-        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
-          <img src="mchammer.gif"><img src="flag.gif"></div>
-        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
-        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
-          <img src="mchammer.gif"><img src="flag.gif"></div>
-        <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
-        <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
-          <img src="mchammer.gif"><img src="flag.gif"></div>
-      </div>
-    </blink>
-  </marquee>
+  <a href="https://github.com/mozilla/rr"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/a6677b08c955af8400f44c6298f40e7d19cc5b2d/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f677261795f3664366436642e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_gray_6d6d6d.png"></a>
 
-  <h1>rr is a lightweight tool for recording and replaying execution
-    of applications (trees of processes and threads).</h1>
+  <div id="old">
+    <marquee scrollamount="40">
+      <blink>
+        <div> 
+          <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+            <img src="mchammer.gif"><img src="flag.gif"></div>
+          <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+          <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+            <img src="mchammer.gif"><img src="flag.gif"></div>
+          <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+          <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+            <img src="mchammer.gif"><img src="flag.gif"></div>
+          <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+          <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+            <img src="mchammer.gif"><img src="flag.gif"></div>
+          <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+          <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+            <img src="mchammer.gif"><img src="flag.gif"></div>
+          <div><span>W</span><span>E</span><span>L</span><span>C</span><span>O</span><span>M</span><span>E</span> <span>T</span><span>O</span> <span>R</span><span>R</span></div>
+          <div><img src="flag.gif"><img src="mchammer.gif"><img src="flag.gif">
+            <img src="mchammer.gif"><img src="flag.gif"></div>
+        </div>
+      </blink>
+    </marquee>
+    <section>
+      <p><i>Last updated Fri Oct 18 17:19</i></p>
+      <p><a href="http://www.microsoft.com/ie"><img src="ie.gif"></a></p>
+    </section>
+  </div>
 
+  <div id="toprow">
+    <h1>rr</h1>
+
+    <ul id="topmenu">
+      <li><a href="https://github.com/mozilla/rr">github</a>
+      <li><a href="https://mail.mozilla.org/listinfo/rr-dev">mailing
+          list</a>
+      <li><a href="https://travis-ci.org/mozilla/rr">travis-ci</a>
+      <li>#research on irc.mozilla.org
+    </ul>
+  </div>
+
+  <h2>rr records nondeterministic executions and debugs them
+  deterministically.</h2>
+  <h3>rr aspires to be your primary debugging tool, replacing &mdash;
+    well, enhancing &mdash; gdb.  You record a failure once, then
+    debug the recording, deterministically, as many times as you want.
+    Every time the same execution is replayed.</h3>
+
+  <h2>the rr debugging experience</h2>
+  <section class="columnar">
+    <p>
+      <!-- TODO: add to or replace with inline video
+      demonstration. -->
+    <p>
+      Start by using rr to record your application:
+      <pre>
+$ rr record /your/application --args
+...
+FAIL: oh no!
+      </pre>
+    <p>
+      The entire execution, including the failure, was saved to disk.
+      That recording can now be debugged.
+      <pre>
+$ rr replay trace_0
+GNU gdb (GDB) ...
+...
+0x4cee2050 in _start () from /lib/ld-linux.so.2
+(gdb)
+      </pre>
+    <p>
+      Remember, you're debugging the <em>recorded trace</em>
+      deterministically; <em>not</em> a live, nondeterministic
+      execution.  The replayed execution's address spaces, register
+      contents, syscall data etc are exactly the same in every run.
+    <p>
+      Most of the common gdb commands can be used.  
+      <pre>
+(gdb) break main
+Breakpoint 1 at 0x8048797: file ...
+(gdb) continue
+Continuing.
+
+Breakpoint 1, main (argc=1, argv=0xffffd694) ...
+...
+      </pre>
+    <p>
+      If you need to restart the debugging session, for example
+      because you missed breaking on some critical execution point, no
+      problem.  Just use gdb's <code>run</code> command to restart
+      replay.
+      <pre>
+(gdb) run
+The program being debugged has been started already.
+Start it from the beginning? (y or n) y
+...
+Breakpoint 1, main (argc=1, argv=0xffffd694) ...
+...
+(gdb) 
+      </pre>
+    <p>
+      The <code>run</code> command started another replay run of your
+      recording from the beginning.  But after the session restarted,
+      the <em>same execution</em> was replayed again.  And all your
+      debugging state was preserved across the restart.
+    <p>
+      This technology can make your debugging more efficient.  Read on
+      to learn more &hellip;
+      
+  </section>
+
+  <h2>getting started</h2>
   <section>
-    <h2>Quick-start guide</h2>
-    <p>rr can currently only record and replay x86 binaries. This
-      restriction will be lifted in a future version.
-    </p>
-    <p>To install prebuilt binaries on your Fedora system,</p>
-    <pre>
+    <div>
+      <h3>fedora</h3>
+      <pre>
 cd /tmp
 wget http://rr-project.org/releases/rr-0.5.1-Linux-$(uname -m).rpm
 sudo rpm -i rr-0.5.1-Linux-$(uname -m).rpm
-    </pre>
-    <p>Or on Ubuntu,</p>
-    <pre>
+      </pre>
+    </div>
+
+    <div>
+      <h3>ubuntu</h3>
+      <pre>
 cd /tmp
 wget http://rr-project.org/releases/rr-0.5.1-Linux-$(uname -m).deb
 sudo dpkg -i rr-0.5.1-Linux-$(uname -m).deb
-    </pre>
-    <p>Once rr is installed,
-      visit <a href="https://github.com/mozilla/rr/wiki/Usage">https://github.com/mozilla/rr/wiki/Usage</a>
-      to learn how to use rr.</p>
+      </pre>
+    </div>
+
+    <div>
+      <h3>build from source</h3>
+      <a href="https://github.com/mozilla/rr/wiki/Installation">Follow
+            these instructions.</a></h3>
+    </div>
+
+    <div>
+      <h3>run rr</h3>
+      <p>
+        <a href="https://github.com/mozilla/rr/wiki/Usage">Follow the
+        usage instructions</a> to set up your machine (if necessary)
+        and learn how to use rr.
+    </div>
   </section>
 
-  <section>
-    <h2>Code</h2>
-    <p>The project is tracked at <a href="https://github.com/mozilla/rr">https://github.com/mozilla/rr</a>.</p>
-    <p>To get the sources</p>
-    <pre>
-git clone git://github.com/mozilla/rr.git
-    </pre>
-    <p>Go
-      to <a href="https://github.com/mozilla/rr/wiki/Installation">https://github.com/mozilla/rr/wiki/Installation</a>
-      for instructions on how to set up your machine.</p>
+  <h2>background and motivation</h2>
+  <section class="columnar">
+    <p>
+      Everyone who's worked on a nontrivial application
+      (like <a href="httos://firefox.com">Firefox</a>) has gone
+      through the pain of debugging an intermittently-reproducible
+      bug.  Since nontrivial applications
+      are <em>nondeterministic</em>, each execution is different, and
+      you may require 5, 10, or even 100 runs just to see the bug
+      manifest.
+    <p>
+      It's hard to debug these bugs with traditional techniques
+      because single stepping, setting breakpoints, inspecting program
+      state, etc, is all a waste of time if the program execution
+      you're debugging ends up not even exhibiting the bug. Even when
+      you can reproduce the bug consistently, important information
+      such as the addresses of suspect objects is unpredictable from
+      run to run. Given that software developers spend a lot of time
+      finding and fixing bugs, nondeterminism has a major impact on
+      their work.
+    <p>
+      And there are intermittent bugs that are so hard to reproduce
+      that they're literally not the worth the time to fix with
+      traditional techniques.  However, for big projects like Firefox
+      with its half-billion users, a bug that only reproduces 1 out of
+      10,000 test runs can still have a negative impact on users.
+    <p>
+      rr solves these problems by splitting debugging into two phases:
+      first <em>recording</em>, in which the application's execution
+      history is saved; then <em>deterministic debugging</em> of the
+      saved trace: using gdb to control replay of the trace, as many
+      times as you want.
+    <p>
+      The saved execution history captures all nondeterminism in the
+      program's execution.  By replaying that trace in the right way,
+      rr guarantees each debugging session is entirely deterministic.
+      The memory layout is always the same, the addresses of objects
+      don't change, register values are identical, syscalls return the
+      same data, etc.
+    <p>
+      The benefit to developers is obvious: an intermittent bug can be
+      recorded by a script over lunchtime, say, and then debugged at
+      leisure in the afternoon.  Multiple cores can be used in
+      parallel to record failures.  If you accidentally set a
+      breakpoint in the wrong place and miss gathering critical
+      information, your precious intermittent failure isn't lost.
+      Just fix your breakpoint and then tell gdb to <code>run</code>
+      the recording back from the beginning again. Even for easily
+      reproducible bugs, a repeatable, deterministic, debugging
+      session is a powerful tool on top of traditional debugging.
+    <p>
+      And for projects like Firefox which run literally millions of
+      tests a day on a vast build and test infrastructure,
+      intermittent failures in those test runs can be recorded on the
+      infrastructure itself and then deterministically debugged at
+      some later time, offline.
+    <p>
+      Tools like fuzzers and randomized fault injectors become even
+      more powerful when used with rr.  Those tools are very good at
+      triggering <em>some</em> intermittent failure, but it's often
+      hard to reproduce <em>that same</em> failure again to debug it.
+      With rr, the randomized execution can simply be recorded.  If
+      the execution failed, then the saved recording can be used to
+      deterministically debug the problem.
+    <p>
+      So rr lowers the cost of fixing intermittent bugs.  This allows
+      a new class of bugs to be fixed with the same amount of
+      engineering time and money, which in turn produces
+      higher-quality software for the same cost.
+    <p>
+      Deterministic debugging is an old idea; many systems have
+      preceded rr.  What makes rr different, in our opinion, are the
+      design goals:
+      <ul>
+        <li><em>Initially focus on debugging Firefox</em>. Firefox is
+          a complex application, so if rr is useful for debugging
+          Firefox, it is very likely to be generally useful.  However,
+          there's nothing about rr that's specific to Firefox; we've
+          just spent the majority of our testing time on Firefox.  rr
+          will work well with more programs as the project matures.
+        <li><em>Prioritize deployability</em>. rr runs on a stock
+          linux kernel, and requires little (Ubuntu) to no (Fedora)
+          system configuration changes. And of course rr works on
+          stock, relatively modern hardware.
+        <li><em>Make run-time overload low</em>. We want rr to replace
+          gdb in your workflow. That means you need to start getting
+          results with rr about as quickly as you would if you were
+          using gdb.
+      </ul>
+    <p>
+      The overhead of rr depends on your application's workload.  On
+      Firefox test suites, we generally see about a 1.2x slowdown when
+      recording with rr.  That means that if the suite takes 10
+      minutes to run by itself, it will take around 12 minutes to be
+      recorded by rr.
   </section>
 
-  <section>
-    <h2>Communication</h2>
-    <p>Technical discussion happens in the "rr-dev" mailing
-      list. Go
-      to <a href="https://mail.mozilla.org/listinfo/rr-dev">https://mail.mozilla.org/listinfo/rr-dev</a>
-      to subscribe.</p>
-    <p>The current build and test status is available
-    at <a href="https://travis-ci.org/mozilla/rr">https://travis-ci.org/mozilla/rr</a>.</p>
-    <p>Some rr folks hang out in #research on irc.mozilla.org.</p>
+  <h2>limitations</h2>
+  <section class="columnar">
+    <p>
+      Some of rr's limitations are inherent, and some will be removed
+      in future releases.
+    <p>rr &hellip;
+    <ul>
+      <li>emulates a single-core machine. So, parallel programs incur
+        the slowdown of running on a single core. This is an inherent
+        feature of the design.
+      <li>cannot record processes that share memory with processes
+        outside the recording tree. This is an inherent feature of the
+        design. rr automatically disables features such as X shared
+        memory for recorded processes to avoid this problem.
+      <li>currently only supports x86 32-bit processes. x86-64 will be
+        supported in the future, it's just a matter of porting work.
+      <li>requires a reasonably modern x86 CPU. It depends on certain
+        performance counter features that are not available in older
+        CPUs, or in ARM at all currently.
+      <li>requires knowledge of every system call executed by the
+        recorded processes. It already supports a wide range of
+        syscalls &mdash; those needed by Firefox &mdash; but support
+        isn't comprehensive, so running rr on your application may
+        uncover a syscall that needs to be implemented.
+    </ul>
   </section>
 
-  <section>
-    <h2>Documentation</h2>
-    <p>Work-in-progress presentation about the technical details of
-    rr: <a href="http://rr-project.org/rr.html">http://rr-project.org/rr.html</a>.</p>
-    <p>Peruse <a href="https://github.com/mozilla/rr/wiki">https://github.com/mozilla/rr/wiki</a>.</p>
+  <h2>further reference</h2>
+  <section class="columnar">
+    <p>
+      <a href="http://rr-project.org/rr.html">This presentation</a>
+      provides an overview of the rr implementation and is meant for
+      potential rr developers.  There are some bonus slides intended
+      to introduce rr to record/replay researchers.
+    <p>
+      The <a href="https://github.com/mozilla/rr/wiki">rr wiki</a>
+      contains pages that cover technical topics related to rr.
+    <p>
+      More information about rr will be posted in the future.
   </section>
 
-  <section>
-    <p><i>Last updated Fri Oct 18 17:19</i></p>
-    <p><a href="http://www.microsoft.com/ie"><img src="ie.gif"></a></p>
-  </section>
+  <footer>
+    <p><a href="http://www.mozilla.org/en-US/research/">
+        <img alt="mozilla"
+             src="http://mozorg.cdn.mozilla.net/media/img/sandstone/footer-mozilla.png"></img></a>
+             &copy; 2014
+  </footer>
 </body>
+
+<script type="text/javascript">
+/*! konami-js v1.0.1 | http://mck.me/mit-license */
+var Konami={};(function(d,e){var f=d.sequence=function(){var b=Array.prototype.slice.call(arguments),c=0;return function(a){a=a||e.event;a=a.keyCode||a.which||a;if(a===b[c]||a===b[c=0])a=b[++c],"function"===typeof a&&(a(),c=0)}};d.code=function(b){return f(38,38,40,40,37,39,37,39,66,65,b)}})(Konami,window);
+document.onkeyup = Konami.code(function () {
+  document.getElementById('old').style.display = 'block';
+});
+</script>
 
 </html>
