@@ -80,6 +80,12 @@
       -webkit-column-width: 30rem;
       column-width: 30rem;
     }
+    .columnar p {
+      text-align: justify;
+    }
+    .columnar ul {
+      text-align: justify;
+    }
 
     code {
       font-family: 'Cousine';
@@ -254,7 +260,7 @@ sudo dpkg -i rr-0.5.1-Linux-$(uname -m).deb
     </div>
 
     <div>
-      <h3>build from source</h3>
+      <h3>or build from source</h3>
       <a href="https://github.com/mozilla/rr/wiki/Installation">Follow
             these instructions.</a></h3>
     </div>
@@ -265,6 +271,12 @@ sudo dpkg -i rr-0.5.1-Linux-$(uname -m).deb
         <a href="https://github.com/mozilla/rr/wiki/Usage">Follow the
         usage instructions</a> to set up your machine (if necessary)
         and learn how to use rr.
+      <p>
+        If you're using rr to debug Firefox, you may find
+        <a href="https://github.com/mozilla/rr/wiki/Recording-Firefox">
+        these special setup instructions</a> helpful.  They cover how
+        to build a 32-bit Firefox on a 64-bit OS, and how to use rr to
+        record Firefox test suites.
     </div>
   </section>
 
@@ -389,6 +401,9 @@ sudo dpkg -i rr-0.5.1-Linux-$(uname -m).deb
         syscalls &mdash; those needed by Firefox &mdash; but support
         isn't comprehensive, so running rr on your application may
         uncover a syscall that needs to be implemented.
+      <li>does not support machines that have the new Intel
+        Haswell-based CPUs.  This is just an issue of unfortunate
+        timing, and support will land in the next release if possible.
     </ul>
   </section>
 
