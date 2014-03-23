@@ -213,6 +213,7 @@ set(CUSTOM_TESTS
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   read_bad_mem
+  restart_unstable
   sanity
   signal_stop
   step1

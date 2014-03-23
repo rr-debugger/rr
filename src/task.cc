@@ -1894,7 +1894,10 @@ Task::killall()
 			// skip any waitpid()'ing during cleanup.
 			t->unstable = 1;
 		} else {
-			assert(PTRACE_EVENT_EXIT == t->ptrace_event());
+			// If the task participated in an unstable
+			// exit, it's probably already dead by now.
+			assert(t->unstable
+			       || PTRACE_EVENT_EXIT == t->ptrace_event());
 		}
 		// Don't attempt to synchonize on the cleartid futex.
 		// We won't be able to reliably read it, and it's
