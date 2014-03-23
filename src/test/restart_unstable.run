@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh restart_unstable "$@"
+record exit_group
+debug exit_group restart_unstable
