@@ -36,13 +36,13 @@ static void* thread(void* datap) {
 
 	set_thread_name(data->threadno);
 
-	atomic_puts("thread launched");
+	atomic_printf("thread %d launched with data %p\n", data->threadno, data);
 	breakpoint();
 	pthread_barrier_wait(bar);
 	pthread_barrier_wait(bar);
 
+	atomic_printf("thread %d done\n", data->threadno);
 	free(data);
-	atomic_puts("thread done");
 	return NULL;
 }
 
