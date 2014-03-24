@@ -75,16 +75,10 @@
       font-size: 1.5rem;
     }
 
-    .columnar {
-      -moz-column-width: 30rem;
-      -webkit-column-width: 30rem;
-      column-width: 30rem;
-    }
-    .columnar p {
-      text-align: justify;
-    }
-    .columnar ul {
-      text-align: justify;
+    section {
+      margin-left: auto;
+      margin-right: auto;
+      max-width: 50rem;
     }
 
     code {
@@ -170,14 +164,14 @@
   </div>
 
   <h2>rr records nondeterministic executions and debugs them
-  deterministically.</h2>
+  deterministically</h2>
   <h3>rr aspires to be your primary debugging tool, replacing &mdash;
     well, enhancing &mdash; gdb.  You record a failure once, then
     debug the recording, deterministically, as many times as you want.
     Every time the same execution is replayed.</h3>
 
   <h2>the rr debugging experience</h2>
-  <section class="columnar">
+  <section>
     <p>
       <!-- TODO: add to or replace with inline video
       demonstration. -->
@@ -206,12 +200,12 @@ GNU gdb (GDB) ...
     <p>
       Most of the common gdb commands can be used.  
       <pre>
-(gdb) break main
-Breakpoint 1 at 0x8048797: file ...
+(gdb) break mozilla::dom::HTMLMediaElement::HTMLMediaElement
+...
 (gdb) continue
 Continuing.
-
-Breakpoint 1, main (argc=1, argv=0xffffd694) ...
+...
+Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70, aNodeInfo=...)
 ...
       </pre>
     <p>
@@ -224,7 +218,7 @@ Breakpoint 1, main (argc=1, argv=0xffffd694) ...
 The program being debugged has been started already.
 Start it from the beginning? (y or n) y
 ...
-Breakpoint 1, main (argc=1, argv=0xffffd694) ...
+Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70, aNodeInfo=...)
 ...
 (gdb) 
       </pre>
@@ -234,9 +228,17 @@ Breakpoint 1, main (argc=1, argv=0xffffd694) ...
       the <em>same execution</em> was replayed again.  And all your
       debugging state was preserved across the restart.
     <p>
+      Note that the the <code>this</code> pointer of the
+      dynamically-allocated object was the same in both replay
+      sessions.  Memory allocations are exactly the same in each
+      replay, meaning you can hard-code addresses you want to watch.
+    <p>
+      This video demonstrates rr's basic capabilities in a bit more
+      detail.
+      <iframe width="560" height="315" src="//www.youtube.com/embed/zZ-pafMJJ3U" frameborder="0" allowfullscreen></iframe>
+    <p>
       This technology can make your debugging more efficient.  Read on
       to learn more &hellip;
-      
   </section>
 
   <h2>getting started</h2>
@@ -281,7 +283,7 @@ sudo dpkg -i rr-0.5.1-Linux-$(uname -m).deb
   </section>
 
   <h2>background and motivation</h2>
-  <section class="columnar">
+  <section>
     <p>
       Everyone who's worked on a nontrivial application
       (like <a href="httos://firefox.com">Firefox</a>) has gone
@@ -378,7 +380,7 @@ sudo dpkg -i rr-0.5.1-Linux-$(uname -m).deb
   </section>
 
   <h2>limitations</h2>
-  <section class="columnar">
+  <section>
     <p>
       Some of rr's limitations are inherent, and some will be removed
       in future releases.
@@ -408,7 +410,7 @@ sudo dpkg -i rr-0.5.1-Linux-$(uname -m).deb
   </section>
 
   <h2>further reference</h2>
-  <section class="columnar">
+  <section>
     <p>
       <a href="http://rr-project.org/rr.html">This presentation</a>
       provides an overview of the rr implementation and is meant for
