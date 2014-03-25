@@ -737,6 +737,27 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
+	case SYS_waitid: {
+		if (!would_need_scratch) {
+			return 1;
+		}
+
+		struct user_regs_struct r = t->regs();
+		siginfo_t* infop = (siginfo_t*)r.edx;
+		push_arg_ptr(t, infop);
+		if (infop) {
+			r.edx = (uintptr_t)scratch;
+			scratch += sizeof(*infop);
+		}
+
+		if (!can_use_scratch(t, scratch)) {
+			return abort_scratch(t, syscallname(syscallno));
+		}
+
+		t->set_regs(r);
+		return 1;
+	}
+
 	case SYS_pause:
 		return 1;
 
@@ -3495,6 +3516,25 @@ void rec_process_syscall(Task *t)
 		t->set_regs(r);
 
 		finish_restoring_scratch(t, iter, &data);
+		break;
+	}
+
+	case SYS_waitid: {
+		siginfo_t* infop = pop_arg_ptr<siginfo_t>(t);
+		byte* iter;
+		void* data = start_restoring_scratch(t, &iter);
+
+		struct user_regs_struct r = t->regs();
+		if (infop) {
+			restore_and_record_arg(t, infop, &iter);
+			r.edx = (uintptr_t)infop;
+		} else {
+			record_noop_data(t);
+		}
+		t->set_regs(r);
+
+		finish_restoring_scratch(t, iter, &data);
+		break;
 	}
 
 	/**

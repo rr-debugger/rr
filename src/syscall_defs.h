@@ -786,7 +786,7 @@ SYSCALL_DEF(EMU, perf_event_open, 0)
  * return two file descriptors referring to the ends of the pipe.
  * pipefd[0] refers to the read end of the pipe.  pipefd[1] refers to
  * the write end of the pipe.  Data writ‐ ten to the write end of the
- * pipe is buffered by the kernel until it is read from the read end
+ * pipe is buffered by the kernel until it is read from the reoad end
  * of the pipe.  For further details, see pipe(7).
  */
 SYSCALL_DEF(EMU, pipe, 1)
@@ -1393,6 +1393,18 @@ SYSCALL_DEF(EMU, utimes, 1)
  * respectively, when setting file timestamps.
  */
 SYSCALL_DEF(EMU, utimensat, 0)
+
+/**
+ *  int waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options);
+ *
+ * If WNOHANG was specified in options and there were no children in a
+ * waitable state, then waitid() returns 0 immediately and the state
+ * of the siginfo_t structure pointed to by infop is unspecified.  To
+ * distinguish this case from that where a child was in a waitable
+ * state, zero out the si_pid field before the call and check for a
+ * nonzero value in this field after the call returns.
+ */
+SYSCALL_DEF(EMU, waitid, 1)
 
 /**
  *  pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
