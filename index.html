@@ -373,10 +373,12 @@ sudo dpkg -i rr-1.0.0-Linux-$(uname -m).deb
       </ul>
     <p>
       The overhead of rr depends on your application's workload.  On
-      Firefox test suites, we generally see about a 1.2x slowdown when
-      recording with rr.  That means that if the suite takes 10
-      minutes to run by itself, it will take around 12 minutes to be
-      recorded by rr.
+      Firefox test suites, rr's recording performance is quite usable.
+      We see slowdowns down to &le; 1.2x.  A 1.2x slowdown means that if
+      the suite takes 10 minutes to run by itself, it will take around
+      12 minutes to be recorded by rr.  However, different test suites
+      have different performance characteristics, so they have
+      different overheads as well.
   </section>
 
   <h2>limitations</h2>
