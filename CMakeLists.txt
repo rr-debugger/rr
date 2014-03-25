@@ -178,6 +178,7 @@ set(BASIC_TESTS
   unjoined_thread
   user_ignore_sig
   vfork
+  wait
   watchpoint
 )
 
