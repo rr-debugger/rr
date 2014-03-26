@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh read_big_struct "$@"
+debug_test
