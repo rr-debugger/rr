@@ -77,11 +77,11 @@ struct dbg_context {
 	int listen_fd;
 	int sock_fd;
 	/* XXX probably need to dynamically size these */
-	byte inbuf[4096];	/* buffered input from gdb */
+	byte inbuf[32768];	/* buffered input from gdb */
 	ssize_t inlen;		/* length of valid data */
 	ssize_t insize;		/* total size of buffer */
 	ssize_t packetend;	/* index of '#' character */
-	byte outbuf[4096];	/* buffered output for gdb */
+	byte outbuf[32768];	/* buffered output for gdb */
 	ssize_t outlen;
 	ssize_t outsize;
 };
@@ -734,7 +734,7 @@ static int query(struct dbg_context* dbg, char* payload)
 		snprintf(supported, sizeof(supported) - 1,
 			 "PacketSize=%x;QStartNoAckMode+;qXfer:auxv:read+"
 			 ";multiprocess+",
-			 sizeof(dbg->outbuf));
+			 dbg->outsize);
 		write_packet(dbg, supported);
 		return 0;
 	}

@@ -144,6 +144,7 @@ set(BASIC_TESTS
   prw
   ptrace
   rdtsc
+  read_big_struct
   save_data_fd
   sched_setaffinity
   sched_yield
