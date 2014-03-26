@@ -9,7 +9,7 @@
 
 #include <assert.h>
 #include <err.h>
-#include <linux/perf_event.h>
+#include <perfmon/perf_event.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
