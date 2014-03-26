@@ -15,6 +15,8 @@ for bp in bps:
     send_gdb('b '+ bp +'\n')
     expect_gdb('Breakpoint \d')
 
+expect_gdb(r'\(gdb\)')
+
 hit_bps = { 'A': 0, 'B': 0, 'C': 0 }
 
 events = [ re.compile(r'Breakpoint 1, hit_barrier'),
@@ -24,7 +26,6 @@ while 1:
     send_gdb('s\n')
     i = expect_list(events)
     if 0 == i:
-        expect_gdb(r'\(gdb\)')
         break
     if 2 == i:
         continue
@@ -38,8 +39,8 @@ for bp in hit_bps.iterkeys():
     assert hit_bps[bp]
 
 send_gdb('info threads\n')
-expect_gdb(r'3\s+Thread.+(?:_traced_raw_syscall|__kernel_vsyscall)')
-expect_gdb(r'2\s+Thread.+(?:_traced_raw_syscall|__kernel_vsyscall)')
+expect_gdb(r'3\s+Thread.+?(?:_traced_raw_syscall|__kernel_vsyscall)')
+expect_gdb(r'2\s+Thread.+?(?:_traced_raw_syscall|__kernel_vsyscall)')
 expect_gdb(r'1\s+Thread.+hit_barrier')
 
 ok()
