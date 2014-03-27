@@ -954,7 +954,7 @@ static int checksum_segment_filter(void* filt_data, Task* t,
 static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 {
 	struct checksum_iterator_data c;
-	memset(&c, sizeof(c), 0);
+	memset(&c, 0, sizeof(c));
 	char filename[PATH_MAX];
 	const char* fmode = (STORE_CHECKSUMS == mode) ? "w" : "r";
 
