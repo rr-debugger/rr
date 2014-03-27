@@ -1,6 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include <assert.h>
+#include <dlfcn.h>
 #include <getopt.h>
 #include <sched.h>
 #include <stdio.h>
@@ -115,7 +116,48 @@ static string create_pulseaudio_config()
 	return envpair.str();
 }
 
-static void start_recording(int argc, char* argv[], char** envp)
+/**
+ * Ensure that when we exec the tracee image, the rrpreload lib will
+ * be preloaded.  Even if the syscallbuf is disabled, we have to load
+ * the preload lib for correctness.
+ */
+static void ensure_preload_lib_will_load(const char* rr_exe,
+					 const CharpVector& envp)
+{
+	char exe[PATH_MAX];
+	strcpy(exe, rr_exe);
+	char cmd[] = "check-preload-lib";
+	char* argv[] = { exe, cmd, nullptr };
+	CharpVector ep = envp;
+	char magic_envpair[] = "_RR_CHECK_PRELOAD=1";
+	ep[ep.size() - 1] = magic_envpair;
+	ep.push_back(nullptr);
+
+	pid_t child = fork();
+	if (0 == child) {
+		execvpe(rr_exe, argv, ep.data());
+		fatal("Failed to exec %s", rr_exe);
+	}
+	int status;
+	pid_t ret = waitpid(child, &status, 0);
+	if (ret != child) {
+		fatal("Failed to wait for %s child", rr_exe);
+	}
+	if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
+		fprintf(stderr,
+"\n"
+"rr: error: Unable to preload the '%s' library.\n"
+"  Ensure that the library is in your LD_LIBRARY_PATH.  If you installed rr\n"
+"  from a distribution package, then the package or your system was not\n"
+"  configured correctly.\n"
+"\n",
+			SYSCALLBUF_LIB_FILENAME);
+		exit(EX_CONFIG);
+	}
+}
+
+static void start_recording(const char* rr_exe,
+			    int argc, char* argv[], char** envp)
 {
 	exe_image = argv[0];
 	copy_argv(argc, argv);
@@ -126,6 +168,8 @@ static void start_recording(int argc, char* argv[], char** envp)
 	// Intentionally leaked.
 	env_p[env_p.size() - 1] = strdup(env_pair.c_str());
 	env_p.push_back(nullptr);
+
+	ensure_preload_lib_will_load(rr_exe, env_p);
 
 	open_trace_files();
 	rec_init_trace_files();
@@ -198,12 +242,12 @@ static void start_dumping(int argc, char* argv[], char** envp)
 	}
 }
 
-static void start(int argc, char* argv[], char** envp)
+static void start(const char* rr_exe, int argc, char* argv[], char** envp)
 {
 
 	switch (rr_flags()->option) {
 	case RECORD:
-		return start_recording(argc, argv, envp);
+		return start_recording(rr_exe, argc, argv, envp);
 	case REPLAY:
 		return replay(argc, argv, envp);
 	case DUMP_EVENTS:
@@ -584,6 +628,13 @@ int main(int argc, char* argv[])
 	int wait_secs;
 	struct flags* flags = rr_flags_for_init();
 
+	if (argc >= 2 && !strcmp("check-preload-lib", argv[1])) {
+		// If we reach here and we were checking the preload
+		// lib, then it didn't load --- its __constructor__
+		// function didn't run.
+		_exit(EX_CONFIG);
+	}
+
 	assert_prerequisites();
 
 	if (0 > (argi = parse_args(argc, argv, flags)) || argc <= argi) {
@@ -647,7 +698,7 @@ int main(int argc, char* argv[])
 		flags->syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
 	}
 
-	start(argc - argi , argv + argi, environ);
+	start(argv[0], argc - argi , argv + argi, environ);
 
 	return 0;
 
