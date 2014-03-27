@@ -1320,12 +1320,12 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	if (STATE_SYSCALL_EXIT == state
 	    && SYSCALL_MAY_RESTART(rec_regs->eax)) {
 		bool interrupted_restart =
-			(EV_SYSCALL_INTERRUPTION == t->ev->type);
+			(EV_SYSCALL_INTERRUPTION == t->ev().type);
 		// The tracee was interrupted while attempting to
 		// restart a syscall.  We have to look at the previous
 		// event to see which syscall we're trying to restart.
 		if (interrupted_restart) {
-			syscall = t->ev->syscall.no;
+			syscall = t->ev().syscall.no;
 			debug("  interrupted %s interrupted again",
 			      syscallname(syscall));
 		}
@@ -1368,16 +1368,16 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	}
 
 	if (SYS_restart_syscall == syscall) {
-		assert_exec(t, EV_SYSCALL_INTERRUPTION == t->ev->type,
+		assert_exec(t, EV_SYSCALL_INTERRUPTION == t->ev().type,
 			    "Must have interrupted syscall to restart");
 
-		syscall = t->ev->syscall.no;
+		syscall = t->ev().syscall.no;
 		if (STATE_SYSCALL_ENTRY == state) {
-			void* intr_ip = (void*)t->ev->syscall.regs.eip;
+			void* intr_ip = (void*)t->ev().syscall.regs.eip;
 			void* cur_ip = (void*)t->ip();
 
 			debug("'restarting' %s interrupted by %ld at %p; now at %p",
-			      syscallname(syscall), t->ev->syscall.regs.eax,
+			      syscallname(syscall), t->ev().syscall.regs.eax,
 			      intr_ip, cur_ip);
 			if (cur_ip == intr_ip) {
 				// See long comment above; this
