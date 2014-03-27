@@ -4,6 +4,7 @@
 #define FIXEDSTACK_H_
 
 #include <assert.h>
+#include <sys/types.h>
 
 #define FIXEDSTACK_ALEN(_arr) ssize_t(sizeof(_arr) / sizeof(_arr[0]))
 
