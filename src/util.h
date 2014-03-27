@@ -32,6 +32,14 @@ struct trace_frame;
 # define PTRACE_EVENT_SECCOMP 7	// ubuntu 12.10 and future kernels
 #endif
 
+// These are defined by the include/linux/errno.h in the kernel tree.
+// Since userspace doesn't see these errnos in normal operation, that
+// header apparently isn't distributed with libc.
+#define ERESTARTSYS 512
+#define ERESTARTNOINTR 513
+#define ERESTARTNOHAND 514
+#define ERESTART_RESTARTBLOCK 516
+
 #define SYSCALL_FAILED(eax) \
 	(-ERANGE <= (int)(eax) && (int)(eax) < 0)
 #define SYSCALL_MAY_RESTART(eax) \

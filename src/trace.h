@@ -132,14 +132,6 @@ struct mmapped_file {
 	void* end;
 };
 
-/* These are defined by the include/linux/errno.h in the kernel tree.
- * Since userspace doesn't see these errnos in normal operation, that
- * header apparently isn't distributed with libc. */
-#define ERESTARTSYS 512
-#define ERESTARTNOINTR 513
-#define ERESTARTNOHAND 514
-#define ERESTART_RESTARTBLOCK 516
-
 const char* get_trace_path(void);
 void open_trace_files(void);
 void close_trace_files(void);
