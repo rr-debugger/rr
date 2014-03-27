@@ -848,7 +848,7 @@ void log_event(const struct event* ev);
 /**
  * Return a string naming |ev|'s type.
  */
-const char* event_name(const struct event* ev);
+const char* event_name(const struct event& ev);
 
 enum CloneFlags {
 	/**
@@ -1054,6 +1054,14 @@ public:
 	 * call.
 	 */
 	bool exited() const { return WIFEXITED(wait_status); }
+
+	/** Return the event at the top of this's stack. */
+	struct event& ev() {
+		return *FIXEDSTACK_TOP(&pending_events);
+	}
+	const struct event& ev() const {
+		return *FIXEDSTACK_TOP(&pending_events);
+	}
 
 	/**
 	 * Sets the priority to 'value', updating the map-by-priority.
@@ -1499,14 +1507,6 @@ public:
 	 * this task.  Starts at "1" to match with "global_time". */
 	int thread_time;
 
-	/* For convenience, the current top of |pending_events| if
-	 * there are any.  If there aren't any pending, the top of the
-	 * stack will be a placeholder event of type EV_SENTINEL.
-	 *
-	 * Never reassign this pointer directly; use the
-	 * push_*()/pop_*() helpers below. */
-	/* TODO: make me a helper method */
-	struct event* ev;
 	/* The current stack of events being processed. */
 	FIXEDSTACK_DECL(, struct event, 16) pending_events;
 

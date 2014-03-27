@@ -964,7 +964,7 @@ static int is_syscall_event(int type) {
 }
 
 Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
-	: thread_time(1), ev(nullptr), pending_events()
+	: thread_time(1), pending_events()
 	, switchable(), pseudo_blocked(), succ_event_counter(), unstable()
 	, priority(_priority)
 	, scratch_ptr(), scratch_size()
@@ -1007,11 +1007,11 @@ Task::~Task()
 	assert(this == Task::find(rec_tid));
 	// We expect tasks to usually exit by a call to exit() or
 	// exit_group(), so it's not helpful to warn about that.
-	if (EV_SENTINEL != ev->type
+	if (EV_SENTINEL != ev().type
 	    && (FIXEDSTACK_DEPTH(&pending_events) > 2
-		|| !(ev->type == EV_SYSCALL
-		     && (SYS_exit == ev->syscall.no
-			 || SYS_exit_group == ev->syscall.no)))) {
+		|| !(ev().type == EV_SYSCALL
+		     && (SYS_exit == ev().syscall.no
+			 || SYS_exit_group == ev().syscall.no)))) {
 		log_warn("%d still has pending events.  From top down:", tid);
 		log_pending_events(this);
 	}
@@ -1038,8 +1038,8 @@ Task::at_may_restart_syscall() const
 	ssize_t depth = FIXEDSTACK_DEPTH(&pending_events);
 	const struct event* prev_ev =
 		depth > 2 ? &pending_events.elts[depth - 2] : nullptr;
-	return EV_SYSCALL_INTERRUPTION == ev->type
-		|| (EV_SIGNAL_DELIVERY == ev->type
+	return EV_SYSCALL_INTERRUPTION == ev().type
+		|| (EV_SIGNAL_DELIVERY == ev().type
 		    && prev_ev && EV_SYSCALL_INTERRUPTION == prev_ev->type);
 }
 
@@ -1097,8 +1097,8 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 const struct syscallbuf_record*
 Task::desched_rec() const
 {
-	return (is_syscall_event(ev->type) ? ev->syscall.desched_rec :
-		(EV_DESCHED == ev->type) ? ev->desched.rec : NULL);
+	return (is_syscall_event(ev().type) ? ev().syscall.desched_rec :
+		(EV_DESCHED == ev().type) ? ev().desched.rec : NULL);
 }
 
 /**
@@ -1119,10 +1119,10 @@ Task::destabilize_task_group()
 	// Only print this helper warning if there's (probably) a
 	// human around to see it.  This is done to avoid polluting
 	// output from tests.
-	if (EV_SIGNAL_DELIVERY == ev->type && !probably_not_interactive()) {
+	if (EV_SIGNAL_DELIVERY == ev().type && !probably_not_interactive()) {
 		printf("[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
 		       get_global_time() + signal_delivery_event_offset(),
-		       rec_tid, tgid(), signalname(ev->signal.no));
+		       rec_tid, tgid(), signalname(ev().signal.no));
 	}
 
 	tg->destabilize();
@@ -1260,12 +1260,12 @@ Task::is_syscall_restart()
 	int syscallno = regs().orig_eax;
 	bool must_restart = (SYS_restart_syscall == syscallno);
 	bool is_restart = false;
-	const struct user_regs_struct* old_regs = &ev->syscall.regs;
+	const struct user_regs_struct* old_regs = &ev().syscall.regs;
 
 	debug("  is syscall interruption of recorded %s? (now %s)",
-	      syscallname(ev->syscall.no), syscallname(syscallno));
+	      syscallname(ev().syscall.no), syscallname(syscallno));
 
-	if (EV_SYSCALL_INTERRUPTION != ev->type) {
+	if (EV_SYSCALL_INTERRUPTION != ev().type) {
 		goto done;
 	}
 	/* It's possible for the tracee to resume after a sighandler
@@ -1285,12 +1285,12 @@ Task::is_syscall_restart()
 	 * that it might change the scratch allocation decisions. */
 	if (SYS_restart_syscall == syscallno) {
 		must_restart = true;
-		syscallno = ev->syscall.no;
+		syscallno = ev().syscall.no;
 		debug("  (SYS_restart_syscall)");
 	}
-	if (ev->syscall.no != syscallno) {
+	if (ev().syscall.no != syscallno) {
 		debug("  interrupted %s != %s",
-		      syscallname(ev->syscall.no), syscallname(syscallno));
+		      syscallname(ev().syscall.no), syscallname(syscallno));
 		goto done;
 	}
 	if (!(old_regs->ebx == regs().ebx
@@ -1323,10 +1323,10 @@ Task::inited_syscallbuf()
 bool
 Task::may_be_blocked() const
 {
-	return (ev && ((EV_SYSCALL == ev->type
-			&& PROCESSING_SYSCALL == ev->syscall.state)
-		       || (EV_SIGNAL_DELIVERY == ev->type
-			   && ev->signal.delivered)));
+	return (EV_SYSCALL == ev().type
+		&& PROCESSING_SYSCALL == ev().syscall.state)
+		|| (EV_SIGNAL_DELIVERY == ev().type
+		    && ev().signal.delivered);
 }
 
 void
@@ -2117,7 +2117,6 @@ static void push_new_event(Task* t, EventType type)
 	ev.type = EventType(type);
 
 	FIXEDSTACK_PUSH(&t->pending_events, ev);
-	t->ev = FIXEDSTACK_TOP(&t->pending_events);
 }
 
 /**
@@ -2132,7 +2131,6 @@ static void pop_event(Task* t, int expected_type)
 		    "Attempting to pop sentinel event");
 
 	last_top_type = FIXEDSTACK_POP(&t->pending_events).type;
-	t->ev = FIXEDSTACK_TOP(&t->pending_events);
 	assert_exec(t, expected_type == last_top_type,
 		    "Should have popped event %s but popped %s instead",
 		    event_type_name(expected_type),
@@ -2160,8 +2158,8 @@ void push_desched(Task* t, const struct syscallbuf_record* rec)
 	assert_exec(t, !t->desched_rec(), "Must have zero or one desched");
 
 	push_new_event(t, EV_DESCHED);
-	t->ev->desched.state = IN_SYSCALL;
-	t->ev->desched.rec = rec;
+	t->ev().desched.state = IN_SYSCALL;
+	t->ev().desched.rec = rec;
 }
 
 void pop_desched(Task* t)
@@ -2174,8 +2172,8 @@ void pop_desched(Task* t)
 void push_pseudosig(Task* t, PseudosigType no, int has_exec_info)
 {
 	push_new_event(t, EV_PSEUDOSIG);
-	t->ev->pseudosig.no = no;
-	t->ev->pseudosig.has_exec_info = has_exec_info;
+	t->ev().pseudosig.no = no;
+	t->ev().pseudosig.has_exec_info = has_exec_info;
 }
 
 void pop_pseudosig(Task* t)
@@ -2186,8 +2184,8 @@ void pop_pseudosig(Task* t)
 void push_pending_signal(Task* t, int no, int deterministic)
 {
 	push_new_event(t, EV_SIGNAL);
-	t->ev->signal.no = no;
-	t->ev->signal.deterministic = deterministic;
+	t->ev().signal.no = no;
+	t->ev().signal.deterministic = deterministic;
 }
 
 void pop_signal_delivery(Task* t)
@@ -2203,7 +2201,7 @@ void pop_signal_handler(Task* t)
 void push_syscall(Task* t, int no)
 {
 	push_new_event(t, EV_SYSCALL);
-	t->ev->syscall.no = no;
+	t->ev().syscall.no = no;
 }
 
 void pop_syscall(Task* t)
@@ -2219,10 +2217,10 @@ void push_syscall_interruption(Task* t, int no)
 		    "Must be interrupting desched during recording");
 
 	push_new_event(t, EV_SYSCALL_INTERRUPTION);
-	t->ev->syscall.state = EXITING_SYSCALL;
-	t->ev->syscall.no = no;
-	t->ev->syscall.desched_rec = rec;
-	t->ev->syscall.regs = t->regs();
+	t->ev().syscall.state = EXITING_SYSCALL;
+	t->ev().syscall.no = no;
+	t->ev().syscall.desched_rec = rec;
+	t->ev().syscall.regs = t->regs();
 }
 
 void pop_syscall_interruption(Task* t)
@@ -2250,7 +2248,7 @@ void log_pending_events(const Task* t)
 
 void log_event(const struct event* ev)
 {
-	const char* name = event_name(ev);
+	const char* name = event_name(*ev);
 	switch (ev->type) {
 	case EV_SENTINEL:
 		log_info("%s", name);
@@ -2276,7 +2274,7 @@ void log_event(const struct event* ev)
 	}
 }
 
-const char* event_name(const struct event* ev)
+const char* event_name(const struct event& ev)
 {
-	return event_type_name(ev->type);
+	return event_type_name(ev.type);
 }

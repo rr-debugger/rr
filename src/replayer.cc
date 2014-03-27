@@ -1066,10 +1066,10 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	if (restored_sighandler_frame) {
 		debug("--> restoring sighandler frame for %s", signalname(sig));
 		push_pending_signal(t, sig, sigtype);
-		t->ev->type = EV_SIGNAL_HANDLER;
+		t->ev().type = EV_SIGNAL_HANDLER;
 	} else if (possibly_destabilizing_signal(t, sig)) {
 		push_pending_signal(t, sig, sigtype);
-		t->ev->type = EV_SIGNAL_DELIVERY;
+		t->ev().type = EV_SIGNAL_DELIVERY;
 
 		t->destabilize_task_group();
 
@@ -1633,12 +1633,12 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		break;
 	case USR_INTERRUPTED_SYSCALL_NOT_RESTARTED:
 		debug("  popping interrupted but not restarted %s",
-		      syscallname(t->ev->syscall.no));
+		      syscallname(t->ev().syscall.no));
 		pop_syscall_interruption(t);
 		step.action = TSTEP_RETIRE;
 		break;
 	case USR_EXIT_SIGHANDLER:
-		debug("<-- sigreturn from %s", signalname(t->ev->syscall.no));
+		debug("<-- sigreturn from %s", signalname(t->ev().syscall.no));
 		pop_signal_handler(t);
 		step.action = TSTEP_RETIRE;
 		break;

@@ -193,26 +193,26 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
  * to trace.  |state| is set to the corresponding execution state and
  * may be null.
  */
-static int encode_event(const struct event* ev, int* state)
+static int encode_event(const struct event& ev, int* state)
 {
 	int dummy;
 
 	state = state ? state : &dummy;
-	switch (ev->type) {
+	switch (ev.type) {
 	case EV_DESCHED:
-		switch (ev->desched.state) {
+		switch (ev.desched.state) {
 		case IN_SYSCALL:
 			return USR_ARM_DESCHED;
 		case DISARMED_DESCHED_EVENT:
 			return USR_DISARM_DESCHED;
 		default:
-			fatal("Unhandled desched state %d", ev->desched.state);
+			fatal("Unhandled desched state %d", ev.desched.state);
 		}
 
 	case EV_PSEUDOSIG:
 		/* (Arbitrary.) */
 		*state = STATE_SYSCALL_ENTRY;
-		switch (ev->pseudosig.no) {
+		switch (ev.pseudosig.no) {
 			/* TODO: unify these definitions. */
 #define TRANSLATE(_e) case E ##_e: return _e
 			TRANSLATE(SIG_SEGV_MMAP_READ);
@@ -228,35 +228,35 @@ static int encode_event(const struct event* ev, int* state)
 			TRANSLATE(USR_INTERRUPTED_SYSCALL_NOT_RESTARTED);
 			TRANSLATE(USR_EXIT_SIGHANDLER);
 		default:
-			fatal("Unknown pseudosig %d", ev->pseudosig.no);
+			fatal("Unknown pseudosig %d", ev.pseudosig.no);
 #undef TRANSLATE
 		}
 
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
 	case EV_SIGNAL_HANDLER: {
-		int event = ev->signal.no;
+		int event = ev.signal.no;
 		/* (Arbitrary.) */
 		*state = STATE_SYSCALL_ENTRY;
-		if (ev->signal.deterministic) {
+		if (ev.signal.deterministic) {
 			event |= DET_SIGNAL_BIT;
 		}
 		return -event;
 	}
 
 	case EV_SYSCALL: {
-		int event = ev->syscall.is_restart ?
-			    SYS_restart_syscall : ev->syscall.no;
+		int event = ev.syscall.is_restart ?
+			    SYS_restart_syscall : ev.syscall.no;
 
-		assert(ev->syscall.state != PROCESSING_SYSCALL);
+		assert(ev.syscall.state != PROCESSING_SYSCALL);
 
-		*state = (ev->syscall.state == ENTERING_SYSCALL) ?
+		*state = (ev.syscall.state == ENTERING_SYSCALL) ?
 			 STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
 		return event;
 	}
 
 	default:
-		fatal("Unknown event type %d", ev->type);
+		fatal("Unknown event type %d", ev.type);
 		return -(1 << 30); /* not reached */
 	}
 }
@@ -451,9 +451,9 @@ static void maybe_flush_syscallbuf(Task *t)
  * (registers etc.)  that rr should record.  "Meaningful" means that
  * the same state will be seen when reaching this event during replay.
  */
-static int has_exec_info(const struct event* ev)
+static int has_exec_info(const struct event& ev)
 {
-	switch (ev->type) {
+	switch (ev.type) {
 	case EV_DESCHED: {
 		int dontcare;
 		/* By the time the tracee is in the buffered syscall,
@@ -463,7 +463,7 @@ static int has_exec_info(const struct event* ev)
 		return USR_ARM_DESCHED != encode_event(ev, &dontcare);
 	}
 	case EV_PSEUDOSIG:
-		return ev->pseudosig.has_exec_info;
+		return ev.pseudosig.has_exec_info;
 	default:
 		return 1;
 	}
@@ -489,7 +489,7 @@ static void collect_execution_info(Task* t, struct trace_frame* frame)
  * Translate |t|'s event |ev| into a trace frame that can be saved to
  * the log.
  */
-static void encode_trace_frame(Task* t, const struct event* ev,
+static void encode_trace_frame(Task* t, const struct event& ev,
 			       struct trace_frame* frame)
 {
 	int state;
@@ -535,14 +535,14 @@ void record_event(Task *t)
 	/* If there's buffered syscall data, we need to record a flush
 	 * event before recording |frame|, so that they're replayed in
 	 * the correct order. */
-	if (USR_SYSCALLBUF_FLUSH != encode_event(t->ev, NULL)) {
+	if (USR_SYSCALLBUF_FLUSH != encode_event(t->ev(), NULL)) {
 		maybe_flush_syscallbuf(t);
 	}
 
 	/* NB: we must encode the frame *after* flushing the
 	 * syscallbuf, because encoding the frame has side effects on
 	 * the global and thread clocks. */
-	encode_trace_frame(t, t->ev, &frame);
+	encode_trace_frame(t, t->ev(), &frame);
 
 	if (should_dump_memory(t, frame.stop_reason, frame.state,
 			       frame.global_time)) {
@@ -599,7 +599,7 @@ static void write_raw_data(Task *t, void *buf, size_t to_write)
 void record_child_data(Task *t, size_t size, void* child_ptr)
 {
 	int state;
-	int event = encode_event(t->ev, &state);
+	int event = encode_event(t->ev(), &state);
 	ssize_t read_bytes = 0;
 
 	/* We shouldn't be recording a scratch address */
@@ -627,7 +627,7 @@ void record_child_data(Task *t, size_t size, void* child_ptr)
 void record_parent_data(Task *t, size_t len, void *addr, void *buf)
 {
 	int state;
-	int event = encode_event(t->ev, &state);
+	int event = encode_event(t->ev(), &state);
 	(void)state;
 
 	/* We shouldn't be recording a scratch address */
@@ -666,7 +666,7 @@ void record_mmapped_file_stats(struct mmapped_file* file)
 void record_child_str(Task* t, void* child_ptr)
 {
 	int state;
-	int event = encode_event(t->ev, &state);
+	int event = encode_event(t->ev(), &state);
 	(void)state;
 
 	print_header(event, child_ptr);

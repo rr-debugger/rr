@@ -78,7 +78,7 @@ static void handle_ptrace_event(Task** tp)
 		can_deliver_signals = 1;
 
 		push_syscall(t, SYS_execve);
-		t->ev->syscall.state = ENTERING_SYSCALL;
+		t->ev().syscall.state = ENTERING_SYSCALL;
 		record_event(t);
 		pop_syscall(t);
 
@@ -89,8 +89,8 @@ static void handle_ptrace_event(Task** tp)
 	}
 
 	case PTRACE_EVENT_EXIT:
-		if (EV_SYSCALL == t->ev->type
-		    && SYS_exit_group == t->ev->syscall.no
+		if (EV_SYSCALL == t->ev().type
+		    && SYS_exit_group == t->ev().syscall.no
 		    && t->task_group()->task_set().size() > 1) {
 			log_warn("exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race");
 			t->destabilize_task_group();
@@ -129,7 +129,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 	}
 	if (may_restart && t->seccomp_bpf_enabled) {
 		debug("  PTRACE_SYSCALL to possibly-restarted %s",
-		      syscallname(t->ev->syscall.no));
+		      syscallname(t->ev().syscall.no));
 	}
 
 	if (!t->seccomp_bpf_enabled
@@ -234,7 +234,7 @@ static void disarm_desched(Task* t)
  */
 static void desched_state_changed(Task* t)
 {
-	switch (t->ev->desched.state) {
+	switch (t->ev().desched.state) {
 	case IN_SYSCALL:
 		debug("desched: IN_SYSCALL");
 		/* We need to ensure that the syscallbuf code doesn't
@@ -246,12 +246,12 @@ static void desched_state_changed(Task* t)
 		record_event(t);
 		pop_pseudosig(t);
 
-		t->ev->desched.state = DISARMING_DESCHED_EVENT;
+		t->ev().desched.state = DISARMING_DESCHED_EVENT;
 		/* fall through */
 	case DISARMING_DESCHED_EVENT: {
 		disarm_desched(t);
 
-		t->ev->desched.state = DISARMED_DESCHED_EVENT;
+		t->ev().desched.state = DISARMED_DESCHED_EVENT;
 		record_event(t);
 		pop_desched(t);
 
@@ -279,7 +279,7 @@ static void desched_state_changed(Task* t)
 static void syscall_not_restarted(Task* t)
 {
 	debug("  %d: popping abandoned interrupted %s; pending events:",
-	      t->tid, syscallname(t->ev->syscall.no));
+	      t->tid, syscallname(t->ev().syscall.no));
 #ifdef DEBUGTAG
 	log_pending_events(t);
 #endif
@@ -302,13 +302,13 @@ static int maybe_restart_syscall(Task* t)
 {
 	if (SYS_restart_syscall == t->regs().orig_eax) {
 		debug("  %d: SYS_restart_syscall'ing %s",
-		      t->tid, syscallname(t->ev->syscall.no));
+		      t->tid, syscallname(t->ev().syscall.no));
 	}
 	if (t->is_syscall_restart()) {
-		t->ev->type = EV_SYSCALL;
+		t->ev().type = EV_SYSCALL;
 		return 1;
 	}
-	if (EV_SYSCALL_INTERRUPTION == t->ev->type) {
+	if (EV_SYSCALL_INTERRUPTION == t->ev().type) {
 		syscall_not_restarted(t);
 	}
 	return 0;
@@ -323,7 +323,7 @@ static void maybe_discard_syscall_interruption(Task* t, int ret)
 {
 	int syscallno;
 
-	if (!t->ev || EV_SYSCALL_INTERRUPTION != t->ev->type) {
+	if (EV_SYSCALL_INTERRUPTION != t->ev().type) {
 		/* We currently don't track syscalls interrupted with
 		 * ERESTARTSYS or ERESTARTNOHAND, so it's possible for
 		 * a sigreturn not to affect the event stack. */
@@ -331,7 +331,7 @@ static void maybe_discard_syscall_interruption(Task* t, int ret)
 		return;
 	}
 
-	syscallno = t->ev->syscall.no;
+	syscallno = t->ev().syscall.no;
 	if (0 > ret) {
 		syscall_not_restarted(t);
 	} else if (0 < ret) {
@@ -343,11 +343,11 @@ static void maybe_discard_syscall_interruption(Task* t, int ret)
 
 static void syscall_state_changed(Task* t, int by_waitpid)
 {
-	switch (t->ev->syscall.state) {
+	switch (t->ev().syscall.state) {
 	case ENTERING_SYSCALL: {
 		debug_exec_state("EXEC_SYSCALL_ENTRY", t);
 
-		if (!t->ev->syscall.is_restart) {
+		if (!t->ev().syscall.is_restart) {
 			/* Save a copy of the arg registers so that we
 			 * can use them to detect later restarted
 			 * syscalls, if this syscall ends up being
@@ -356,7 +356,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			 * need the original registers; the restart
 			 * (if it's not a SYS_restart_syscall restart)
 			 * will use the original registers. */
-			t->ev->syscall.regs = t->regs();
+			t->ev().syscall.regs = t->regs();
 		}
 
 		void* sync_addr = nullptr;
@@ -370,7 +370,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		if (sync_addr) {
 			t->futex_wait(sync_addr, sync_val);
 		}
-		t->ev->syscall.state = PROCESSING_SYSCALL;
+		t->ev().syscall.state = PROCESSING_SYSCALL;
 		return;
 	}
 	case PROCESSING_SYSCALL:
@@ -383,12 +383,12 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			    "Signal %s pending while %d in syscall???",
 			    signalname(t->pending_sig()), t->tid);
 
-		t->ev->syscall.state = EXITING_SYSCALL;
+		t->ev().syscall.state = EXITING_SYSCALL;
 		t->switchable = 0;
 		return;
 
 	case EXITING_SYSCALL: {
-		int syscallno = t->ev->syscall.no;
+		int syscallno = t->ev().syscall.no;
 		int may_restart;
 		int retval;
 
@@ -439,7 +439,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
-		if (t->ev->syscall.is_restart) {
+		if (t->ev().syscall.is_restart) {
 			debug("  exiting restarted %s", syscallname(syscallno));
 		}
 
@@ -470,7 +470,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			 * because scratch doesn't exist in replay.
 			 * So cover our tracks here. */
 			struct user_regs_struct r = t->regs();
-			copy_syscall_arg_regs(&r, &t->ev->syscall.regs);
+			copy_syscall_arg_regs(&r, &t->ev().syscall.regs);
 			t->set_regs(r);
 		}
 		record_event(t);
@@ -481,13 +481,13 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		 * might be restarted. */
 		if (!may_restart) {
 			pop_syscall(t);
-			if (EV_DESCHED == t->ev->type) {
+			if (EV_DESCHED == t->ev().type) {
 				debug("  exiting desched critical section");
 				desched_state_changed(t);
 			}
 		} else {
-			t->ev->type = EV_SYSCALL_INTERRUPTION;
-			t->ev->syscall.is_restart = 1;
+			t->ev().type = EV_SYSCALL_INTERRUPTION;
+			t->ev().syscall.is_restart = 1;
 		}
 
 		t->switchable = 1;
@@ -495,7 +495,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 	}
 
 	default:
-		fatal("Unknown exec state %d", t->ev->syscall.state);
+		fatal("Unknown exec state %d", t->ev().syscall.state);
 	}
 }
 
@@ -520,7 +520,7 @@ static void maybe_reset_syscallbuf(Task* t)
 /** If the rbc seems to be working return, otherwise don't return. */
 static void check_rbc(Task* t)
 {
-	if (can_deliver_signals || SYS_write != t->ev->syscall.no) {
+	if (can_deliver_signals || SYS_write != t->ev().syscall.no) {
 		return;
 	}
 	int fd = t->regs().ebx;
@@ -542,7 +542,7 @@ static void check_rbc(Task* t)
 /** Process the pending pseudosig. */
 static void pseudosig_state_changed(Task* t)
 {
-	switch (t->ev->pseudosig.no) {
+	switch (t->ev().pseudosig.no) {
 	case ESIG_SEGV_RDTSC:
 	// TODO: only record the SCHED event if it actually results in
 	// a context switch, since this will flush the syscallbuf and
@@ -554,7 +554,7 @@ static void pseudosig_state_changed(Task* t)
 		t->switchable = 1;
 		return;
 	default:
-		fatal("Unhandled pseudosig %s", event_name(t->ev));
+		fatal("Unhandled pseudosig %s", event_name(t->ev()));
 	}
 }
 
@@ -569,9 +569,9 @@ static void pseudosig_state_changed(Task* t)
 enum { NOT_BY_WAITPID = 0, BY_WAITPID };
 static bool signal_state_changed(Task* t, int by_waitpid)
 {
-	int sig = t->ev->signal.no;
+	int sig = t->ev().signal.no;
 
-	switch (t->ev->type) {
+	switch (t->ev().type) {
 	case EV_SIGNAL: {
 		assert(!by_waitpid);
 
@@ -580,7 +580,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		record_event(t);
 		reset_hpc(t, rr_flags()->max_rbc);
 
-		t->ev->type = EV_SIGNAL_DELIVERY;
+		t->ev().type = EV_SIGNAL_DELIVERY;
 		ssize_t sigframe_size;
 		if (t->signal_has_user_handler(sig)) {
 			debug("  %d: %s has user handler", t->tid,
@@ -619,9 +619,9 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 			// they can catch errors here.
 			sigframe_size = 2048;
 
-			t->ev->type = EV_SIGNAL_HANDLER;
+			t->ev().type = EV_SIGNAL_HANDLER;
 			t->signal_delivered(sig);
-			t->ev->signal.delivered = 1;
+			t->ev().signal.delivered = 1;
 		} else {
 			debug("  %d: no user handler for %s", t->tid,
 			      signalname(sig));
@@ -645,11 +645,11 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		// But right after this, we may have to process some
 		// syscallbuf state, so we can't let the tracee race
 		// with us.
-		t->switchable = t->ev->signal.delivered;
+		t->switchable = t->ev().signal.delivered;
 		return false;
 	}
 	case EV_SIGNAL_DELIVERY:
-		if (!t->ev->signal.delivered) {
+		if (!t->ev().signal.delivered) {
 			task_continue(t, DEFAULT_CONT, sig);
 			if (possibly_destabilizing_signal(t, sig)) {
 				log_warn("Delivered core-dumping signal; may misrecord CLONE_CHILD_CLEARTID memory race");
@@ -657,7 +657,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 				t->switchable = 1;
 			}
 			t->signal_delivered(sig);
-			t->ev->signal.delivered = 1;
+			t->ev().signal.delivered = 1;
 			return false;
 		}
 
@@ -670,7 +670,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		return true;
 
 	default:
-		fatal("Unhandled signal state %d", t->ev->type);
+		fatal("Unhandled signal state %d", t->ev().type);
 		return false;	// not reached
 	}
 }
@@ -713,7 +713,7 @@ static void runnable_state_changed(Task* t)
 		return;
 	}
 
-	switch (t->ev->type) {
+	switch (t->ev().type) {
 	case EV_NOOP:
 		pop_noop(t);
 		break;
@@ -730,19 +730,19 @@ static void runnable_state_changed(Task* t)
 		// We just entered a syscall.
 		if (!maybe_restart_syscall(t)) {
 			push_syscall(t, t->regs().orig_eax);
-			rec_before_record_syscall_entry(t, t->ev->syscall.no);
+			rec_before_record_syscall_entry(t, t->ev().syscall.no);
 		}
-		assert_exec(t, EV_SYSCALL == t->ev->type,
+		assert_exec(t, EV_SYSCALL == t->ev().type,
 			    "Should be at syscall event.");
 		check_rbc(t);
-		t->ev->syscall.state = ENTERING_SYSCALL;
+		t->ev().syscall.state = ENTERING_SYSCALL;
 		record_event(t);
 		break;
 
 	default:
 		assert_exec(t, false,
 			    "%s can't be on event stack at start of new event",
-			    event_name(t->ev));
+			    event_name(t->ev()));
 		break;
 	}
 	maybe_reset_syscallbuf(t);
@@ -821,7 +821,7 @@ void record()
 		}
 
 		bool did_initial_resume = false;
-		switch (t->ev->type) {
+		switch (t->ev().type) {
 		case EV_DESCHED:
 			desched_state_changed(t);
 			continue;
