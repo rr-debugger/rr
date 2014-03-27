@@ -140,8 +140,6 @@ struct mmapped_file {
 #define ERESTARTNOHAND 514
 #define ERESTART_RESTARTBLOCK 516
 
-#define MAX_RAW_DATA_SIZE		(1 << 30)
-
 const char* get_trace_path(void);
 void open_trace_files(void);
 void close_trace_files(void);

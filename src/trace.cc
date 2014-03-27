@@ -35,7 +35,6 @@ static FILE *raw_data;
 static int trace_file_fd = -1;
 static FILE *mmaps_file;
 
-static int raw_data_file_counter = 0;
 /* Global time starts at "1" so that conditions like |global_time %
  * interval| don't have to consider the trivial case |global_time ==
  * 0|. */
@@ -326,17 +325,15 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	fclose(arg_env);
 }
 
-static void use_new_rawdata_file(void)
+static void open_rawdata_file(void)
 {
+	assert(!raw_data);
+
 	char path[PATH_MAX];
 
-	if (raw_data) {
-		fclose(raw_data);
-	}
 	overall_raw_bytes = 0;
 
-	snprintf(path, sizeof(path) - 1,
-		 "%s/raw_data_%u", trace_path_, raw_data_file_counter++);
+	snprintf(path, sizeof(path) - 1, "%s/raw_data", trace_path_);
 	raw_data = fopen(path, "a+");
 	if (!raw_data) {
 		fatal("Failed to create new rawdata file %s", path);
@@ -367,7 +364,7 @@ void open_trace_files(void)
 		fatal("Failed to open syscall header file %s", path);
 	}
 
-	use_new_rawdata_file();
+	open_rawdata_file();
 
 	snprintf(path, sizeof(path) - 1, "%s/mmaps", trace_path_);
 	mmaps_file = fopen(path, "a+");
@@ -588,10 +585,6 @@ static void write_raw_data(Task *t, void *buf, size_t to_write)
 	bytes_written = fwrite(buf, 1, to_write, raw_data);
 	assert(bytes_written == to_write);
 	overall_raw_bytes += to_write;
-
-	if (overall_raw_bytes > MAX_RAW_DATA_SIZE) {
-		use_new_rawdata_file();
-	}
 }
 
 /**
@@ -685,11 +678,6 @@ void record_child_str(Task* t, void* child_ptr)
 	overall_raw_bytes += len;
 
 	assert(bytes_written == len);
-
-	// new raw data file
-	if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
-		use_new_rawdata_file();
-
 }
 
 void rep_setup_trace_dir(const char* path)
@@ -795,13 +783,6 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 static void read_rawdata(void* buf, size_t num_bytes)
 {
 	size_t bytes_read = fread(buf, 1, num_bytes, raw_data);
-
-	// new raw data file
-	//if (overall_raw_bytes > MAX_RAW_DATA_SIZE)
-	if (bytes_read == 0 && feof(raw_data)) {
-		use_new_rawdata_file();
-		bytes_read = fread(buf, 1, num_bytes, raw_data);
-	}
 	if (bytes_read != num_bytes) {
 		fatal("rawdata read of %u requested, but %u read",
 		      num_bytes, bytes_read);
