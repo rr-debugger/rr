@@ -282,9 +282,19 @@ void log_pending_events(const Task* t);
 void log_event(const struct event* ev);
 
 /**
+ * Return the symbolic name of |state|, or "???state" if unknown.
+ */
+const char* statename(int state);
+
+/**
+ * Return a string describing |event|, or some form of "???" if
+ * |event| is unknown.
+ */
+const char* strevent(int event);
+
+/**
  * Return a string naming |ev|'s type.
  */
 const char* event_name(const struct event& ev);
-
 
 #endif // EVENT_H_

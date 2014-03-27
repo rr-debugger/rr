@@ -68,69 +68,6 @@ const char* get_trace_path()
 	return trace_path_;
 }
 
-const char* statename(int state)
-{
-	switch (state) {
-#define CASE(_id) case _id: return #_id
-	CASE(STATE_SYSCALL_ENTRY);
-	CASE(STATE_SYSCALL_EXIT);
-	CASE(STATE_PRE_MMAP_ACCESS);
-#undef CASE
-
-	default:
-		return "???state";
-	}
-}
-
-static const char* decode_signal_event(int sig)
-{
-	int det;
-	static __thread char buf[] =
-		"SIGREALLYREALLYLONGNAME(asynchronouslydelivered)";
-
-	if (FIRST_RR_PSEUDOSIGNAL <= sig && sig <= LAST_RR_PSEUDOSIGNAL) {
-		switch (sig) {
-#define CASE(_id) case _id: return #_id
-		CASE(SIG_SEGV_MMAP_READ);
-		CASE(SIG_SEGV_MMAP_WRITE);
-		CASE(SIG_SEGV_RDTSC);
-		CASE(USR_EXIT);
-		CASE(USR_SCHED);
-		CASE(USR_NEW_RAWDATA_FILE);
-		CASE(USR_SYSCALLBUF_FLUSH);
-		CASE(USR_SYSCALLBUF_ABORT_COMMIT);
-		CASE(USR_SYSCALLBUF_RESET);
-		CASE(USR_ARM_DESCHED);
-		CASE(USR_DISARM_DESCHED);
-		CASE(USR_NOOP);
-#undef CASE
-		}
-	}
-
-	if (sig < FIRST_DET_SIGNAL) {
-		return "???pseudosignal";
-	}
-
-	sig = -sig;
-	det = sig & DET_SIGNAL_BIT;
-	sig &= ~DET_SIGNAL_BIT;
-
-	snprintf(buf, sizeof(buf) - 1, "%s(%s)",
-		 signalname(sig), det ? "det" : "async");
-	return buf;
-}
-
-const char* strevent(int event)
-{
-	if (0 > event) {
-		return decode_signal_event(event);
-	}
-	if (0 <= event) {
-		return syscallname(event);
-	}
-	return "???event";
-}
-
 void dump_trace_frame(FILE* out, const struct trace_frame* f)
 {
 	bool raw_dump = rr_flags()->raw_dump;
