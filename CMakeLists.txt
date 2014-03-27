@@ -47,6 +47,7 @@ add_executable(rr
 # TODO remove this when we can manage pfm and disasm dependencies
 # properly
 target_link_libraries(rr
+  -ldl
   -lrt
   libpfm.a
   libdisasm.a
