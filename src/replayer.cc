@@ -1221,7 +1221,7 @@ static void prepare_syscallbuf_records(Task* t,
 
 	/* The stored num_rec_bytes in the header doesn't include the
 	 * header bytes, but the stored trace data does. */
-	*num_rec_bytes -= sizeof(struct syscallbuf_hdr);
+	*num_rec_bytes -= sizeof(sizeof(struct syscallbuf_hdr));
 	assert(rec_addr == t->syscallbuf_child);
 	assert(flush_hdr->num_rec_bytes == *num_rec_bytes);
 
