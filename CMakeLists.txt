@@ -31,6 +31,7 @@ add_library(rrpreload
 
 add_executable(rr
   src/debugger_gdb.cc
+  src/event.cc
   src/hpc.cc
   src/main.cc
   src/recorder.cc
