@@ -226,12 +226,9 @@ static const char* decode_signal_event(int sig)
 	if (FIRST_RR_PSEUDOSIGNAL <= sig && sig <= LAST_RR_PSEUDOSIGNAL) {
 		switch (sig) {
 #define CASE(_id) case _id: return #_id
-		CASE(SIG_SEGV_MMAP_READ);
-		CASE(SIG_SEGV_MMAP_WRITE);
 		CASE(SIG_SEGV_RDTSC);
 		CASE(USR_EXIT);
 		CASE(USR_SCHED);
-		CASE(USR_NEW_RAWDATA_FILE);
 		CASE(USR_SYSCALLBUF_FLUSH);
 		CASE(USR_SYSCALLBUF_ABORT_COMMIT);
 		CASE(USR_SYSCALLBUF_RESET);

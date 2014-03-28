@@ -25,17 +25,14 @@ enum {
 	/* "Magic" (rr-generated) pseudo-signals can't be represented
 	 * with a byte, as "real" signals can be.  The first is -0x400
 	 * (-1024) and ascend from there. */
-	SIG_SEGV_MMAP_READ = -1024,
-	FIRST_RR_PSEUDOSIGNAL = SIG_SEGV_MMAP_READ,
-	SIG_SEGV_MMAP_WRITE,
-	SIG_SEGV_RDTSC,
+	SIG_SEGV_RDTSC = -1024,
+	FIRST_RR_PSEUDOSIGNAL = SIG_SEGV_RDTSC,
 	USR_EXIT,
-	USR_SCHED = -1020,
-	USR_NEW_RAWDATA_FILE,
+	USR_SCHED,
 	USR_SYSCALLBUF_FLUSH,
-	USR_SYSCALLBUF_ABORT_COMMIT,
+	USR_SYSCALLBUF_ABORT_COMMIT = -1020,
 	USR_SYSCALLBUF_RESET,
-	USR_ARM_DESCHED = -1015,
+	USR_ARM_DESCHED,
 	USR_DISARM_DESCHED,
 	/* Like USR_EXIT, but recorded when the task is in an
 	 * "unstable" state in which we're not sure we can
@@ -45,7 +42,7 @@ enum {
 	 * likely because the recorder was sent a terminating signal.
 	 * There are no more trace frames coming, so the best thing to
 	 * do is probably to shut down. */
-	USR_TRACE_TERMINATION,
+	USR_TRACE_TERMINATION = -1015,
 	/* Pretty self-explanatory: recording detected that an
 	 * interrupted syscall wasn't restarted, so the interruption
 	 * record can be popped off the tracee's event stack. */
