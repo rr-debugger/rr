@@ -196,6 +196,23 @@ struct event {
 };
 
 /**
+ * An encoding of the relevant bits of |struct event| that can be
+ * cheaply and easily serialized.
+ */
+union EncodedEvent {
+	struct {
+		int event : 28;
+		// We allocate 2 bits for these so that they can have
+		// a position nonzero value.
+		int state : 2;
+		int has_exec_info : 2;
+	};
+	int encoded;
+};
+
+static_assert(sizeof(int) == sizeof(EncodedEvent), "Bit fields are messed up");
+
+/**
  * Push an event that doesn't have a more specific push_*()/pop_*()
  * helper pair below.  Pass |HAS_EXEC_INFO| if the event is at a
  * stable execution point that we'll reach during replay too.
@@ -256,7 +273,7 @@ void pop_syscall_interruption(Task* t);
  * Encode (or decode) an event into (from) an encoded int suitable for
  * saving to trace.
  */
-int encode_event(const struct event& ev, int* state);
+EncodedEvent encode_event(const struct event& ev);
 
 /** Return nonzero if |type| is one of the EV_*SYSCALL* events. */
 int is_syscall_event(int type);

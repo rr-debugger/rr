@@ -117,8 +117,8 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req);
 static void debug_memory(Task* t)
 {
 	const struct trace_frame* trace = &t->trace;
-	int event = trace->stop_reason;
-	int state = trace->state;
+	int event = trace->ev.event;
+	int state = trace->ev.state;
 	int global_time = trace->global_time;
 
 	if (should_dump_memory(t, event, state, global_time)) {
@@ -377,7 +377,7 @@ static trace_frame cur_trace_frame;
 static Task* schedule_task(Task** intr_t = nullptr)
 {
 	read_next_trace(&cur_trace_frame);
-	if (USR_TRACE_TERMINATION == cur_trace_frame.stop_reason) {
+	if (USR_TRACE_TERMINATION == cur_trace_frame.ev.event) {
 		if (intr_t) {
 			*intr_t = Task::find(cur_trace_frame.tid);
 		}
@@ -392,13 +392,13 @@ static Task* schedule_task(Task** intr_t = nullptr)
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (t->trace.stop_reason == USR_SCHED) {
+	if (t->trace.ev.event == USR_SCHED) {
 		bool combined = false;
 		struct trace_frame next_trace;
 
 		peek_next_trace(&next_trace);
 		int64_t rbc = t->trace.rbc;
-		while ((next_trace.stop_reason == USR_SCHED)
+		while ((next_trace.ev.event == USR_SCHED)
 		       && (next_trace.tid == t->rec_tid)) {
 			rbc += next_trace.rbc;
 			read_next_trace(&(t->trace));
@@ -468,7 +468,7 @@ static bool entering_syscall_insn(Task* t)
 enum { EXEC = 0, EMU = 1 };
 static int cont_syscall_boundary(Task* t, int emu, int stepi)
 {
-	bool is_syscall_entry = (STATE_SYSCALL_ENTRY == t->trace.state);
+	bool is_syscall_entry = (STATE_SYSCALL_ENTRY == t->trace.ev.state);
 	if (is_syscall_entry) {
 		t->stepped_into_syscall = false;
 	}
@@ -623,7 +623,7 @@ static void continue_or_step(Task* t, int stepi)
 	}
 	assert_exec(t, child_sig_gt_zero,
 		    "Replaying `%s': expecting tracee signal or trap, but instead at `%s' (rcb: %lld)",
-		    strevent(t->trace.stop_reason),
+		    strevent(t->trace.ev.event),
 		    strevent(t->regs().orig_eax), read_rbc(t->hpc));
 }
 
@@ -1082,7 +1082,7 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	/* Delivered the signal. */
 	t->child_sig = 0;
 
-	validate_args(trace->stop_reason, -1, t);
+	validate_args(trace->ev.event, -1, t);
 	return 0;
 }
 
@@ -1107,7 +1107,7 @@ static void assert_at_recorded_rcb(Task* t, int event)
  */
 static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 {
-	int event = t->trace.stop_reason;
+	int event = t->trace.ev.event;
 
 	continue_or_step(t, stepi);
 	if (SIGCHLD == t->child_sig) {
@@ -1533,7 +1533,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
-	int event = t->trace.stop_reason;
+	int event = t->trace.ev.event;
 	int stop_sig = 0;
 
 	debug("[line %d] %d: replaying %s; state %s",
@@ -1681,7 +1681,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(t, &step, &req)) {
-		if (USR_TRACE_TERMINATION == cur_trace_frame.stop_reason) {
+		if (USR_TRACE_TERMINATION == cur_trace_frame.ev.event) {
 			// An irregular trace step had to read the
 			// next trace frame, and that frame was an
 			// early-termination marker.  Otherwise we
@@ -1733,7 +1733,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	if (TSTEP_ENTER_SYSCALL == step.action) {
 		rep_after_enter_syscall(t, step.syscall.no);
 	}
-	if (STATE_SYSCALL_EXIT == t->trace.state
+	if (STATE_SYSCALL_EXIT == t->trace.ev.state
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
 	}

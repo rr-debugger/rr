@@ -791,7 +791,6 @@ static void notify_checksum_error(Task* t, int global_time,
 				  unsigned checksum, unsigned rec_checksum,
 				  const struct map_iterator_data* data)
 {
-	int event = t->trace.stop_reason;
 	char cur_dump[PATH_MAX];
 	char rec_dump[PATH_MAX];
 
@@ -822,10 +821,10 @@ static void notify_checksum_error(Task* t, int global_time,
 "then you can use the following to determine which memory cells differ:\n"
 "\n"
 "$ diff -u %s %s > mem-diverge.diff\n"
-		    , strevent(event),
+		    , strevent(t->trace.ev.event),
 		    data->raw_map_line,
 		    rec_checksum, checksum,
-		    cur_dump, strevent(event),  get_global_time(),
+		    cur_dump, strevent(t->trace.ev.event),  get_global_time(),
 		    get_global_time(),
 		    rec_dump, cur_dump);
 }
