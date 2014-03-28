@@ -88,9 +88,7 @@ struct trace_frame {
 	uint32_t global_time;
 	uint32_t thread_time;
 	pid_t tid;
-	int stop_reason;
-	int state : 31;
-	int has_exec_info : 1;
+	EncodedEvent ev;
 	STRUCT_DELIMITER(end_event_info);
 
 	STRUCT_DELIMITER(begin_exec_info);

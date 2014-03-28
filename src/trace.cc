@@ -76,14 +76,14 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 	if (raw_dump) {
 		fprintf(out, " %d %d %d %d %d",
 			f->global_time, f->thread_time, f->tid,
-			f->stop_reason, f->state);
+			f->ev.event, f->ev.state);
 	} else {
 		fprintf(out,
 "{\n  global_time:%u, event:`%s' (state:%d), tid:%d, thread_time:%u",
-			f->global_time, strevent(f->stop_reason), f->state,
+			f->global_time, strevent(f->ev.event), f->ev.state,
 			f->tid, f->thread_time);
 	}
-	if (!f->has_exec_info) {
+	if (!f->ev.has_exec_info) {
 		if (!raw_dump) {
 			fprintf(out, "\n}");
 		}
@@ -311,27 +311,6 @@ static void maybe_flush_syscallbuf(Task *t)
 }
 
 /**
- * Return nonzero if a tracee at |ev| has meaningful execution info
- * (registers etc.)  that rr should record.  "Meaningful" means that
- * the same state will be seen when reaching this event during replay.
- */
-static int has_exec_info(const struct event& ev)
-{
-	switch (ev.type) {
-	case EV_DESCHED: {
-		int dontcare;
-		/* By the time the tracee is in the buffered syscall,
-		 * it's by definition already armed the desched event.
-		 * So we're recording that event ex post facto, and
-		 * there's no meaningful execution information. */
-		return USR_ARM_DESCHED != encode_event(ev, &dontcare);
-	}
-	default:
-		return ev.has_exec_info;
-	}
-}
-
-/**
  * Collect execution info about |t| that's relevant for replay.  For
  * example, the current rbc value must read and saved in order to
  * replay asynchronous signals.
@@ -354,17 +333,13 @@ static void collect_execution_info(Task* t, struct trace_frame* frame)
 static void encode_trace_frame(Task* t, const struct event& ev,
 			       struct trace_frame* frame)
 {
-	int state;
-
 	memset(frame, 0, sizeof(*frame));
 
 	frame->global_time = global_time++;
 	frame->thread_time = t->thread_time++;
 	frame->tid = t->tid;
-	frame->stop_reason = encode_event(ev, &state);
-	frame->state = state;
-	frame->has_exec_info = has_exec_info(ev);
-	if (frame->has_exec_info) {
+	frame->ev = encode_event(ev);
+	if (frame->ev.has_exec_info) {
 		collect_execution_info(t, frame);
 	}
 }
@@ -380,7 +355,7 @@ static void write_trace_frame(const struct trace_frame* frame)
 
 	/* TODO: only store exec info for non-async-sig events when
 	 * debugging assertions are enabled. */
-	if (frame->has_exec_info) {
+	if (frame->ev.has_exec_info) {
 		nbytes += sizeof_trace_frame_exec_info();
 	}
 	nwritten = write(trace_file_fd, begin_data, nbytes);
@@ -397,7 +372,7 @@ void record_event(Task *t)
 	/* If there's buffered syscall data, we need to record a flush
 	 * event before recording |frame|, so that they're replayed in
 	 * the correct order. */
-	if (USR_SYSCALLBUF_FLUSH != encode_event(t->ev(), NULL)) {
+	if (EV_SYSCALLBUF_FLUSH != t->ev().type) {
 		maybe_flush_syscallbuf(t);
 	}
 
@@ -406,18 +381,18 @@ void record_event(Task *t)
 	 * the global and thread clocks. */
 	encode_trace_frame(t, t->ev(), &frame);
 
-	if (should_dump_memory(t, frame.stop_reason, frame.state,
+	if (should_dump_memory(t, frame.ev.event, frame.ev.state,
 			       frame.global_time)) {
 		dump_process_memory(t, frame.global_time, "rec");
 	}		
-	if (should_checksum(t, frame.stop_reason, frame.state,
+	if (should_checksum(t, frame.ev.event, frame.ev.state,
 			    frame.global_time)) {
 		checksum_process_memory(t, frame.global_time);
 	}
 
 	write_trace_frame(&frame);
 
-	if (frame.has_exec_info) {
+	if (frame.ev.has_exec_info) {
 		reset_hpc(t, rr_flags()->max_rbc);
 	}
 }
@@ -428,14 +403,14 @@ void record_trace_termination_event(Task* t)
 	memset(&frame, 0, sizeof(frame));
 	frame.tid = t ? t->tid : 0;
 	frame.global_time = global_time++;
-	frame.stop_reason = USR_TRACE_TERMINATION;
+	frame.ev.event = USR_TRACE_TERMINATION;
 	write_trace_frame(&frame);
 }
 
-static void print_header(int syscallno, void* addr)
+static void print_header(EncodedEvent ev, void* addr)
 {
 	fprintf(syscall_header, "%11u", global_time);
-	fprintf(syscall_header, "%11d", syscallno);
+	fprintf(syscall_header, "%11d", ev.event);
 	fprintf(syscall_header, "%11u", (uintptr_t)addr);
 }
 
@@ -460,8 +435,7 @@ static void write_raw_data(Task *t, void *buf, size_t to_write)
 
 void record_child_data(Task *t, size_t size, void* child_ptr)
 {
-	int state;
-	int event = encode_event(t->ev(), &state);
+	EncodedEvent ev = encode_event(t->ev());
 	ssize_t read_bytes = 0;
 
 	/* We shouldn't be recording a scratch address */
@@ -482,21 +456,19 @@ void record_child_data(Task *t, size_t size, void* child_ptr)
 
 		free(heap_buf);
 	}
-	print_header(event, child_ptr);
+	print_header(ev, child_ptr);
 	fprintf(syscall_header, "%11d\n", read_bytes);
 }
 
 void record_parent_data(Task *t, size_t len, void *addr, void *buf)
 {
-	int state;
-	int event = encode_event(t->ev(), &state);
-	(void)state;
+	EncodedEvent ev = encode_event(t->ev());
 
 	/* We shouldn't be recording a scratch address */
 	assert(addr != t->scratch_ptr);
 
 	write_raw_data(t, buf, len);
-	print_header(event, addr);
+	print_header(ev, addr);
 	assert(len >= 0);
 	fprintf(syscall_header, "%11d\n", len);
 }
@@ -527,11 +499,8 @@ void record_mmapped_file_stats(struct mmapped_file* file)
 
 void record_child_str(Task* t, void* child_ptr)
 {
-	int state;
-	int event = encode_event(t->ev(), &state);
-	(void)state;
-
-	print_header(event, child_ptr);
+	EncodedEvent ev = encode_event(t->ev());
+	print_header(ev, child_ptr);
 	string str = t->read_c_str(child_ptr);
 	size_t len = str.size() + 1;
 	fprintf(syscall_header, "%11d\n", len);
@@ -628,10 +597,10 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 	size = str2li(tmp_ptr, LI_COLUMN_SIZE);
 
 	if (time != trace->global_time
-	    || (trace->stop_reason != SYS_restart_syscall
-		&& syscall != trace->stop_reason)) {
+	    || (trace->ev.event != SYS_restart_syscall
+		&& syscall != trace->ev.event)) {
 		fatal("trace and syscall_input out of sync: trace is at (time=%d, %s), but input is for (time=%d, %s)",
-		      trace->global_time, strevent(trace->stop_reason),
+		      trace->global_time, strevent(trace->ev.event),
 		      time, strevent(syscall));
 	}
 	return size;
@@ -781,7 +750,7 @@ int try_read_next_trace(struct trace_frame *frame)
 		return 0;
 	}
 
-	if (frame->has_exec_info) {
+	if (frame->ev.has_exec_info) {
 		nread = read(trace_file_fd, &frame->begin_exec_info,
 			     sizeof_trace_frame_exec_info());
 		if (sizeof_trace_frame_exec_info() != nread) {

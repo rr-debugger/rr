@@ -527,7 +527,7 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 static bool is_failed_syscall(const struct trace_frame* frame)
 {
 	struct trace_frame next_frame;
-	if (STATE_SYSCALL_ENTRY == frame->state) {
+	if (STATE_SYSCALL_ENTRY == frame->ev.state) {
 		peek_next_trace(&next_frame);
 		frame = &next_frame;
 	}
@@ -1308,10 +1308,10 @@ void before_syscall_exit(Task* t, int syscallno)
 
 void rep_process_syscall(Task* t, struct rep_trace_step* step)
 {
-	int syscall = t->trace.stop_reason; /* FIXME: don't shadow syscall() */
+	int syscall = t->trace.ev.event; /* FIXME: don't shadow syscall() */
 	const struct syscall_def* def;
 	struct trace_frame* trace = &(t->trace);
-	int state = trace->state;
+	int state = trace->ev.state;
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
 	EmuFs::AutoGc maybe_gc(syscall, state);
 

@@ -143,31 +143,52 @@ void pop_syscall_interruption(Task* t)
 	pop_event(t, EV_SYSCALL_INTERRUPTION);
 }
 
-int encode_event(const struct event& ev, int* state)
+/**
+ * Return nonzero if a tracee at |ev| has meaningful execution info
+ * (registers etc.)  that rr should record.  "Meaningful" means that
+ * the same state will be seen when reaching this event during replay.
+ */
+static int has_exec_info(const struct event& ev)
 {
-	int dummy;
-	state = state ? state : &dummy;
+	switch (ev.type) {
+	case EV_DESCHED: {
+		// By the time the tracee is in the buffered syscall,
+		// it's by definition already armed the desched event.
+		// So we're recording that event ex post facto, and
+		// there's no meaningful execution information.
+		return IN_SYSCALL != ev.desched.state;
+	}
+	default:
+		return ev.has_exec_info;
+	}
+}
+
+EncodedEvent encode_event(const struct event& ev)
+{
+	EncodedEvent e;
+	e.has_exec_info = has_exec_info(ev);
 	// Arbitrarily designate events for which this isn't
 	// meaningful as being at "entry".  The events for which this
 	// is meaningful set it below.
-	*state = STATE_SYSCALL_ENTRY;
+	e.state = STATE_SYSCALL_ENTRY;
 
 	switch (ev.type) {
 	case EV_DESCHED:
-		switch (ev.desched.state) {
-		case IN_SYSCALL:
-			return USR_ARM_DESCHED;
-		case DISARMED_DESCHED_EVENT:
-			return USR_DISARM_DESCHED;
-		default:
-			fatal("Unhandled desched state %d", ev.desched.state);
-		}
+		// Disarming the desched notification is a transient
+		// state that we shouldn't try to record.
+		assert(DISARMING_DESCHED_EVENT != ev.desched.state);
+		e.event = IN_SYSCALL == ev.desched.state ?
+			  USR_ARM_DESCHED : USR_DISARM_DESCHED;
+		break;
 
 	case EV_SEGV_RDTSC:
-		return SIG_SEGV_RDTSC;
+		e.event = SIG_SEGV_RDTSC;
+		break;
 
 		/* TODO: unify these definitions. */
-#define TRANSLATE(_e) case EV_ ##_e: return USR_## _e
+#define TRANSLATE(_e) case EV_ ##_e:			\
+			e.event =  USR_## _e;		\
+			break
 	TRANSLATE(EXIT);
 	TRANSLATE(SCHED);
 	TRANSLATE(SYSCALLBUF_FLUSH);
@@ -185,24 +206,25 @@ int encode_event(const struct event& ev, int* state)
 		if (ev.signal.deterministic) {
 			event |= DET_SIGNAL_BIT;
 		}
-		return -event;
+		e.event = -event;
+		break;
 	}
 
 	case EV_SYSCALL: {
-		int event = ev.syscall.is_restart ?
-			    SYS_restart_syscall : ev.syscall.no;
-
+		// PROCESSING_SYSCALL is a transient state that we
+		// should never attempt to record.
 		assert(ev.syscall.state != PROCESSING_SYSCALL);
-
-		*state = (ev.syscall.state == ENTERING_SYSCALL) ?
-			 STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
-		return event;
+		e.event = ev.syscall.is_restart ?
+			  SYS_restart_syscall : ev.syscall.no;
+		e.state = (ev.syscall.state == ENTERING_SYSCALL) ?
+			  STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
+		break;
 	}
 
 	default:
 		fatal("Unknown event type %d", ev.type);
-		return -(1 << 30); /* not reached */
 	}
+	return e;
 }
 
 int is_syscall_event(int type)
