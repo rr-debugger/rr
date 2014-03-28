@@ -135,6 +135,11 @@ static int encode_event(const struct event& ev, int* state)
 	int dummy;
 
 	state = state ? state : &dummy;
+	// Arbitrarily designate events for which this isn't
+	// meaningful as being at "entry".  The events for which this
+	// is meaningful set it below.
+	*state = STATE_SYSCALL_ENTRY;
+
 	switch (ev.type) {
 	case EV_DESCHED:
 		switch (ev.desched.state) {
@@ -146,32 +151,25 @@ static int encode_event(const struct event& ev, int* state)
 			fatal("Unhandled desched state %d", ev.desched.state);
 		}
 
-	case EV_PSEUDOSIG:
-		/* (Arbitrary.) */
-		*state = STATE_SYSCALL_ENTRY;
-		switch (ev.pseudosig.no) {
-			/* TODO: unify these definitions. */
-#define TRANSLATE(_e) case E ##_e: return _e
-			TRANSLATE(SIG_SEGV_RDTSC);
-			TRANSLATE(USR_EXIT);
-			TRANSLATE(USR_SCHED);
-			TRANSLATE(USR_SYSCALLBUF_FLUSH);
-			TRANSLATE(USR_SYSCALLBUF_ABORT_COMMIT);
-			TRANSLATE(USR_SYSCALLBUF_RESET);
-			TRANSLATE(USR_UNSTABLE_EXIT);
-			TRANSLATE(USR_INTERRUPTED_SYSCALL_NOT_RESTARTED);
-			TRANSLATE(USR_EXIT_SIGHANDLER);
-		default:
-			fatal("Unknown pseudosig %d", ev.pseudosig.no);
+	case EV_SEGV_RDTSC:
+		return SIG_SEGV_RDTSC;
+
+		/* TODO: unify these definitions. */
+#define TRANSLATE(_e) case EV_ ##_e: return USR_## _e
+	TRANSLATE(EXIT);
+	TRANSLATE(SCHED);
+	TRANSLATE(SYSCALLBUF_FLUSH);
+	TRANSLATE(SYSCALLBUF_ABORT_COMMIT);
+	TRANSLATE(SYSCALLBUF_RESET);
+	TRANSLATE(UNSTABLE_EXIT);
+	TRANSLATE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
+	TRANSLATE(EXIT_SIGHANDLER);
 #undef TRANSLATE
-		}
 
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
 	case EV_SIGNAL_HANDLER: {
 		int event = ev.signal.no;
-		/* (Arbitrary.) */
-		*state = STATE_SYSCALL_ENTRY;
 		if (ev.signal.deterministic) {
 			event |= DET_SIGNAL_BIT;
 		}
@@ -364,13 +362,13 @@ static void maybe_flush_syscallbuf(Task *t)
 	}
 	/* Write the entire buffer in one shot without parsing it,
 	 * since replay will take care of that. */
-	push_pseudosig(t, EUSR_SYSCALLBUF_FLUSH, NO_EXEC_INFO);
+	push_event(t, EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO);
 	record_parent_data(t,
 			   /* Record the header for consistency checking. */
 			   t->syscallbuf_hdr->num_rec_bytes + sizeof(*t->syscallbuf_hdr),
 			   t->syscallbuf_child, t->syscallbuf_hdr);
 	record_event(t);
-	pop_pseudosig(t);
+	pop_event(t, EV_SYSCALLBUF_FLUSH);
 
 	/* Reset header. */
 	assert(!t->syscallbuf_hdr->abort_commit);
@@ -396,10 +394,8 @@ static int has_exec_info(const struct event& ev)
 		 * there's no meaningful execution information. */
 		return USR_ARM_DESCHED != encode_event(ev, &dontcare);
 	}
-	case EV_PSEUDOSIG:
-		return ev.pseudosig.has_exec_info;
 	default:
-		return 1;
+		return ev.has_exec_info;
 	}
 }
 

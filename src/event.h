@@ -9,21 +9,19 @@
 
 struct Task;
 
-enum PseudosigType {
-	ESIG_NONE,
-	ESIG_SEGV_MMAP_READ, ESIG_SEGV_MMAP_WRITE, ESIG_SEGV_RDTSC,
-	EUSR_EXIT, EUSR_SCHED, EUSR_NEW_RAWDATA_FILE,
-	EUSR_SYSCALLBUF_FLUSH, EUSR_SYSCALLBUF_ABORT_COMMIT,
-	EUSR_SYSCALLBUF_RESET,
-	EUSR_UNSTABLE_EXIT,
-	EUSR_INTERRUPTED_SYSCALL_NOT_RESTARTED,
-	EUSR_EXIT_SIGHANDLER,
-};
-
 enum EventType {
 	EV_SENTINEL,
 	/* No associated data. */
+	EV_EXIT,
+	EV_EXIT_SIGHANDLER,
+	EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
 	EV_NOOP,
+	EV_SCHED,
+	EV_SEGV_RDTSC,
+	EV_SYSCALLBUF_FLUSH,
+	EV_SYSCALLBUF_ABORT_COMMIT,
+	EV_SYSCALLBUF_RESET,
+	EV_UNSTABLE_EXIT,
 	/* Uses the .desched struct below. */
 	EV_DESCHED,
 	/* Uses .pseudosig. */
@@ -51,6 +49,13 @@ enum SyscallState { NO_SYSCALL,
  */
 struct event {
 	EventType type;
+	/* When replaying a pseudosignal is expected to leave the
+	 * tracee in the same execution state as during replay, the
+	 * event has meaningful execution info, and it should be
+	 * recorded for checking.  But some pseudosigs aren't recorded
+	 * in the same tracee state they'll be replayed, so the tracee
+	 * exeuction state isn't meaningful. */
+	bool has_exec_info;
 	union {
 		/**
 		 * Desched events track the fact that a tracee's
@@ -72,31 +77,6 @@ struct event {
 			 * committed) this syscall record. */
 			const struct syscallbuf_record* rec;
 		} desched;
-
-		/**
-		 * Pseudosignals comprise three types of events: real,
-		 * deterministic signals raised by tracee execution
-		 * (e.g. tracees executing rdtsc); real signals raised
-		 * because of rr implementation details, not the
-		 * tracee (e.g., time-slice interrupts); and finally,
-		 * "signals" from the recorder to the replayer that
-		 * aren't real signals at all, but rather rr
-		 * implementation details at the level of the tracer.
-		 */
-		struct {
-			/* TODO: un-gnarl these names when we
-			 * eliminate the duplication in trace.h */
-			PseudosigType no;
-			/* When replaying a pseudosignal is expected
-			 * to leave the tracee in the same execution
-			 * state as during replay, the event has
-			 * meaningful execution info, and it should be
-			 * recorded for checking.  But some pseudosigs
-			 * aren't recorded in the same tracee state
-			 * they'll be replayed, so the tracee
-			 * exeuction state isn't meaningful. */
-			int has_exec_info;
-		} pseudosig;
 
 		/**
 		 * Signal events track signals through the delivery
@@ -210,6 +190,15 @@ struct event {
 	};
 };
 
+/**
+ * Push an event that doesn't have a more specific push_*()/pop_*()
+ * helper pair below.  Pass |HAS_EXEC_INFO| if the event is at a
+ * stable execution point that we'll reach during replay too.
+ */
+enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
+void push_event(Task* t, EventType type, int has_exec_info);
+void pop_event(Task* t, EventType expected_type);
+
 /* (This function is an implementation detail that should go away in
  * favor of a |task_init()| pseudo-constructor that initializes state
  * shared across record and replay.) */
@@ -226,16 +215,6 @@ void pop_noop(Task* t);
  */
 void push_desched(Task* t, const struct syscallbuf_record* rec);
 void pop_desched(Task* t);
-
-/**
- * Push/pop pseudo-sig events on the pending stack.  |no| is the enum
- * value of the pseudosig (see above), and |record_exec_info| is true
- * if the tracee's current state can be replicated during replay and
- * so should be recorded for consistency-checking purposes.
- */
-enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
-void push_pseudosig(Task* t, PseudosigType no, int has_exec_info);
-void pop_pseudosig(Task* t);
 
 /**
  * Push/pop signal events on the pending stack.  |no| is the signum,

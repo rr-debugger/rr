@@ -143,7 +143,7 @@ static int try_handle_rdtsc(Task *t)
 			restore_sigsegv_state(t);
 		}
 
-		push_pseudosig(t, ESIG_SEGV_RDTSC, HAS_EXEC_INFO);
+		push_event(t, EV_SEGV_RDTSC, HAS_EXEC_INFO);
 		handled = 1;
 
 		debug("  trapped for rdtsc: returning %llu", current_time);
@@ -612,7 +612,7 @@ static void handle_siginfo(Task* t, siginfo_t* si)
 	case HPC_TIME_SLICE_SIGNAL:
 		assert_is_time_slice_interrupt(t, si);
 
-		push_pseudosig(t, EUSR_SCHED, HAS_EXEC_INFO);
+		push_event(t, EV_SCHED, HAS_EXEC_INFO);
 		return;
 	}
 

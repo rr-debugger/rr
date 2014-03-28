@@ -88,7 +88,7 @@ static void handle_ptrace_event(Task** tp)
 		break;
 	}
 
-	case PTRACE_EVENT_EXIT:
+	case PTRACE_EVENT_EXIT: {
 		if (EV_SYSCALL == t->ev().type
 		    && SYS_exit_group == t->ev().syscall.no
 		    && t->task_group()->task_set().size() > 1) {
@@ -96,16 +96,15 @@ static void handle_ptrace_event(Task** tp)
 			t->destabilize_task_group();
 		}
 
-		push_pseudosig(t,
-			       t->unstable ? EUSR_UNSTABLE_EXIT : EUSR_EXIT,
-			       HAS_EXEC_INFO);
+		EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
+		push_event(t, ev, HAS_EXEC_INFO);
 		record_event(t);
-		pop_pseudosig(t);
+		pop_event(t, ev);
 
 		rec_sched_deregister_thread(tp);
 		t = *tp;
 		break;
-
+	}
 	case PTRACE_EVENT_VFORK:
 	case PTRACE_EVENT_VFORK_DONE:
 	default:
@@ -241,10 +240,10 @@ static void desched_state_changed(Task* t)
 		 * try to commit the current record; we've already
 		 * recorded that syscall.  The following event sets
 		 * the abort-commit bit. */
-		push_pseudosig(t, EUSR_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO);
+		push_event(t, EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO);
 		t->syscallbuf_hdr->abort_commit = 1;
 		record_event(t);
-		pop_pseudosig(t);
+		pop_event(t, EV_SYSCALLBUF_ABORT_COMMIT);
 
 		t->ev().desched.state = DISARMING_DESCHED_EVENT;
 		/* fall through */
@@ -259,12 +258,12 @@ static void desched_state_changed(Task* t)
 		 * aborted record, and won't touch the syscallbuf
 		 * during this (aborted) transaction again.  So now is
 		 * a good time for us to reset the record counter. */
-		push_pseudosig(t, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
+		push_event(t, EV_SYSCALLBUF_RESET, NO_EXEC_INFO);
 		t->syscallbuf_hdr->num_rec_bytes = 0;
 		t->delay_syscallbuf_reset = 0;
 		t->delay_syscallbuf_flush = 0;
 		record_event(t);
-		pop_pseudosig(t);
+		pop_event(t, EV_SYSCALLBUF_RESET);
 		// We were just descheduled for potentially a long
 		// time, and may have just had a signal become
 		// pending.  Ensure we get another chance to run.
@@ -285,9 +284,9 @@ static void syscall_not_restarted(Task* t)
 #endif
 	pop_syscall_interruption(t);
 
-	push_pseudosig(t, EUSR_INTERRUPTED_SYSCALL_NOT_RESTARTED, NO_EXEC_INFO);
+	push_event(t, EV_INTERRUPTED_SYSCALL_NOT_RESTARTED, NO_EXEC_INFO);
 	record_event(t);
-	pop_pseudosig(t);
+	pop_event(t, EV_INTERRUPTED_SYSCALL_NOT_RESTARTED);
 }
 
 /**
@@ -412,9 +411,9 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 
 			// We've finished processing this signal now.
 			pop_signal_handler(t);
-			push_pseudosig(t, EUSR_EXIT_SIGHANDLER, NO_EXEC_INFO);
+			push_event(t, EV_EXIT_SIGHANDLER, NO_EXEC_INFO);
 			record_event(t);
-			pop_pseudosig(t);
+			pop_event(t, EV_EXIT_SIGHANDLER);
 
 			maybe_discard_syscall_interruption(t, retval);
 			// XXX probably not necessary to make the
@@ -507,9 +506,9 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 static void maybe_reset_syscallbuf(Task* t)
 {
 	if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
-		push_pseudosig(t, EUSR_SYSCALLBUF_RESET, NO_EXEC_INFO);
+		push_event(t, EV_SYSCALLBUF_RESET, NO_EXEC_INFO);
 		record_event(t);
-		pop_pseudosig(t);
+		pop_event(t, EV_SYSCALLBUF_RESET);
 	}
 	/* Any code that sets |delay_syscallbuf_reset| is responsible
 	 * for recording its own SYSCALLBUF_RESET event at a
@@ -536,25 +535,6 @@ static void check_rbc(Task* t)
 "  Retired-branch counter doesn't seem to be working.  Are you perhaps\n"
 "  running rr in a VM but didn't enable perf-counter virtualization?\n");
 		exit(EX_UNAVAILABLE);
-	}
-}
-
-/** Process the pending pseudosig. */
-static void pseudosig_state_changed(Task* t)
-{
-	switch (t->ev().pseudosig.no) {
-	case ESIG_SEGV_RDTSC:
-	// TODO: only record the SCHED event if it actually results in
-	// a context switch, since this will flush the syscallbuf and
-	// can cause replay to be pathologically slow in certain
-	// cases.
-	case EUSR_SCHED:
-		record_event(t);
-		pop_pseudosig(t);
-		t->switchable = 1;
-		return;
-	default:
-		fatal("Unhandled pseudosig %s", event_name(t->ev()));
 	}
 }
 
@@ -717,8 +697,11 @@ static void runnable_state_changed(Task* t)
 	case EV_NOOP:
 		pop_noop(t);
 		break;
-	case EV_PSEUDOSIG:
-		pseudosig_state_changed(t);
+	case EV_SEGV_RDTSC:
+	case EV_SCHED:
+		record_event(t);
+		pop_event(t, t->ev().type);
+		t->switchable = 1;
 		break;
 	case EV_SIGNAL:
 		signal_state_changed(t, NOT_BY_WAITPID);
