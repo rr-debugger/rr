@@ -116,18 +116,13 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req);
 
 static void debug_memory(Task* t)
 {
-	const struct trace_frame* trace = &t->trace;
-	int event = trace->ev.event;
-	int state = trace->ev.state;
-	int global_time = trace->global_time;
-
-	if (should_dump_memory(t, event, state, global_time)) {
-		dump_process_memory(t, global_time, "rep");
+	if (should_dump_memory(t, t->trace)) {
+		dump_process_memory(t, t->trace.global_time, "rep");
 	}
-	if (validate && should_checksum(t, event, state, global_time)) {
+	if (validate && should_checksum(t, t->trace)) {
 		/* Validate the checksum we computed during the
 		 * recording phase. */
-		validate_process_memory(t, global_time);
+		validate_process_memory(t, t->trace.global_time);
 	}
 }
 
@@ -377,7 +372,7 @@ static trace_frame cur_trace_frame;
 static Task* schedule_task(Task** intr_t = nullptr)
 {
 	read_next_trace(&cur_trace_frame);
-	if (USR_TRACE_TERMINATION == cur_trace_frame.ev.event) {
+	if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
 		if (intr_t) {
 			*intr_t = Task::find(cur_trace_frame.tid);
 		}
@@ -392,14 +387,14 @@ static Task* schedule_task(Task** intr_t = nullptr)
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (t->trace.ev.event == USR_SCHED) {
+	if (t->trace.ev.type == EV_SCHED) {
 		bool combined = false;
 		struct trace_frame next_trace;
 
 		peek_next_trace(&next_trace);
 		int64_t rbc = t->trace.rbc;
-		while ((next_trace.ev.event == USR_SCHED)
-		       && (next_trace.tid == t->rec_tid)) {
+		while (EV_SCHED == next_trace.ev.type
+		       && next_trace.tid == t->rec_tid) {
 			rbc += next_trace.rbc;
 			read_next_trace(&(t->trace));
 			peek_next_trace(&next_trace);
@@ -442,7 +437,7 @@ static void validate_args(int event, int state, Task* t)
 			rec_regs.esi = t->regs().esi;
 		}
 	}
-	assert_child_regs_are(t, &rec_regs, event, state);
+	assert_child_regs_are(t, &rec_regs);
 }
 
 /** Return true when |t|'s $ip points at a syscall instruction. */
@@ -620,8 +615,8 @@ static void continue_or_step(Task* t, int stepi)
 	}
 	assert_exec(t, child_sig_gt_zero,
 		    "Replaying `%s': expecting tracee signal or trap, but instead at `%s' (rcb: %lld)",
-		    signalname(t->trace.ev.event),
-		    syscallname(t->regs().orig_eax), read_rbc(t->hpc));
+		    strevent(t->trace.ev), syscallname(t->regs().orig_eax),
+		    read_rbc(t->hpc));
 }
 
 /**
@@ -1081,7 +1076,7 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	/* Delivered the signal. */
 	t->child_sig = 0;
 
-	validate_args(trace->ev.event, -1, t);
+	validate_args(trace->ev.type, -1, t);
 	return 0;
 }
 
@@ -1677,7 +1672,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(t, &step, &req)) {
-		if (USR_TRACE_TERMINATION == cur_trace_frame.ev.event) {
+		if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
 			// An irregular trace step had to read the
 			// next trace frame, and that frame was an
 			// early-termination marker.  Otherwise we

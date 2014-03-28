@@ -166,6 +166,7 @@ static int has_exec_info(const struct event& ev)
 EncodedEvent encode_event(const struct event& ev)
 {
 	EncodedEvent e;
+	e.type = ev.type;
 	e.has_exec_info = has_exec_info(ev);
 	// Arbitrarily designate events for which this isn't
 	// meaningful as being at "entry".  The events for which this
@@ -173,100 +174,89 @@ EncodedEvent encode_event(const struct event& ev)
 	e.state = STATE_SYSCALL_ENTRY;
 
 	switch (ev.type) {
+	case EV_SEGV_RDTSC:
+	case EV_EXIT:
+	case EV_SCHED:
+	case EV_SYSCALLBUF_FLUSH:
+	case EV_SYSCALLBUF_ABORT_COMMIT:
+	case EV_SYSCALLBUF_RESET:
+	case EV_TRACE_TERMINATION:
+	case EV_UNSTABLE_EXIT:
+	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
+	case EV_EXIT_SIGHANDLER:
+		// No auxiliary data.
+		e.data = 0;
+		return e;
+
 	case EV_DESCHED:
 		// Disarming the desched notification is a transient
 		// state that we shouldn't try to record.
 		assert(DISARMING_DESCHED_EVENT != ev.desched.state);
-		e.event = IN_SYSCALL == ev.desched.state ?
-			  USR_ARM_DESCHED : USR_DISARM_DESCHED;
-		break;
-
-	case EV_SEGV_RDTSC:
-		e.event = SIG_SEGV_RDTSC;
-		break;
-
-		/* TODO: unify these definitions. */
-#define TRANSLATE(_e) case EV_ ##_e:			\
-			e.event =  USR_## _e;		\
-			break
-	TRANSLATE(EXIT);
-	TRANSLATE(SCHED);
-	TRANSLATE(SYSCALLBUF_FLUSH);
-	TRANSLATE(SYSCALLBUF_ABORT_COMMIT);
-	TRANSLATE(SYSCALLBUF_RESET);
-	TRANSLATE(UNSTABLE_EXIT);
-	TRANSLATE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
-	TRANSLATE(EXIT_SIGHANDLER);
-#undef TRANSLATE
+		e.data = IN_SYSCALL == ev.desched.state ?
+			 ARMING_DESCHED_EVENT : ev.desched.state;
+		return e;
 
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
 	case EV_SIGNAL_HANDLER: {
-		int event = ev.signal.no;
-		if (ev.signal.deterministic) {
-			event |= DET_SIGNAL_BIT;
-		}
-		e.event = -event;
-		break;
+		e.data = ev.signal.no | (ev.signal.deterministic ?
+					 DET_SIGNAL_BIT : 0);
+		return e;
 	}
 
 	case EV_SYSCALL: {
 		// PROCESSING_SYSCALL is a transient state that we
 		// should never attempt to record.
 		assert(ev.syscall.state != PROCESSING_SYSCALL);
-		e.event = ev.syscall.is_restart ?
+		e.data = ev.syscall.is_restart ?
 			  SYS_restart_syscall : ev.syscall.no;
 		e.state = (ev.syscall.state == ENTERING_SYSCALL) ?
 			  STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
-		break;
+		return e;
 	}
 
 	default:
 		fatal("Unknown event type %d", ev.type);
 	}
-	return e;
 }
 
 struct event decode_event(EncodedEvent e)
 {
 	struct event ev;
-	if (e.event >= 0) {
-		ev.type = EV_SYSCALL;
-		ev.syscall.no = e.event;
+
+	ev.type = EventType(e.type);
+	switch (ev.type) {
+	case EV_SEGV_RDTSC:
+	case EV_EXIT:
+	case EV_SCHED:
+	case EV_SYSCALLBUF_FLUSH:
+	case EV_SYSCALLBUF_ABORT_COMMIT:
+	case EV_SYSCALLBUF_RESET:
+	case EV_TRACE_TERMINATION:
+	case EV_UNSTABLE_EXIT:
+	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
+	case EV_EXIT_SIGHANDLER:
+		// No auxiliary data.
+		assert(0 == e.data);
+		return ev;
+
+	case EV_DESCHED:
+		ev.desched.state = DeschedState(e.data);
+		return ev;
+
+	case EV_SYSCALL:
+		ev.syscall.no = e.data;
 		ev.syscall.state = STATE_SYSCALL_ENTRY == e.state ?
 				   ENTERING_SYSCALL : EXITING_SYSCALL;
 		return ev;
-	}
-	switch (e.event) {
-	case USR_ARM_DESCHED:
-	case USR_DISARM_DESCHED:
-		ev.type = EV_DESCHED;
-		ev.desched.state = USR_ARM_DESCHED == e.event?
-				   ARMING_DESCHED_EVENT : DISARMING_DESCHED_EVENT;
-		return ev;
 
-	case SIG_SEGV_RDTSC:
-		ev.type = EV_SEGV_RDTSC;
+	case EV_SIGNAL:
+		ev.signal.deterministic = DET_SIGNAL_BIT & e.data;
+		ev.signal.no = ~DET_SIGNAL_BIT & e.data;
 		return ev;
-
-#define TRANSLATE(_e) case USR_ ##_e:			\
-			ev.type =  EV_## _e;		\
-			return ev
-	TRANSLATE(EXIT);
-	TRANSLATE(SCHED);
-	TRANSLATE(SYSCALLBUF_FLUSH);
-	TRANSLATE(SYSCALLBUF_ABORT_COMMIT);
-	TRANSLATE(SYSCALLBUF_RESET);
-	TRANSLATE(UNSTABLE_EXIT);
-	TRANSLATE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
-	TRANSLATE(EXIT_SIGHANDLER);
-#undef TRANSLATE
 
 	default:
-		ev.type = EV_SIGNAL;
-		ev.signal.deterministic = DET_SIGNAL_BIT & -e.event;
-		ev.signal.no = ~DET_SIGNAL_BIT & -e.event;
-		return ev;
+		fatal("Unexpected event %s", strevent(ev));
 	}
 }
 

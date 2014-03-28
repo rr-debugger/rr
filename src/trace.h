@@ -18,56 +18,6 @@ class Task;
 
 typedef std::vector<char*> CharpVector;
 
-enum {
-	/* "Magic" (rr-generated) pseudo-signals can't be represented
-	 * with a byte, as "real" signals can be.  The first is -0x400
-	 * (-1024) and ascend from there. */
-	SIG_SEGV_RDTSC = -1024,
-	FIRST_RR_PSEUDOSIGNAL = SIG_SEGV_RDTSC,
-	USR_EXIT,
-	USR_SCHED,
-	USR_SYSCALLBUF_FLUSH,
-	USR_SYSCALLBUF_ABORT_COMMIT = -1020,
-	USR_SYSCALLBUF_RESET,
-	USR_ARM_DESCHED,
-	USR_DISARM_DESCHED,
-	/* Like USR_EXIT, but recorded when the task is in an
-	 * "unstable" state in which we're not sure we can
-	 * synchronously wait for it to "really finish". */
-	USR_UNSTABLE_EXIT,
-	/* The trace was terminated before all tasks exited, most
-	 * likely because the recorder was sent a terminating signal.
-	 * There are no more trace frames coming, so the best thing to
-	 * do is probably to shut down. */
-	USR_TRACE_TERMINATION = -1015,
-	/* Pretty self-explanatory: recording detected that an
-	 * interrupted syscall wasn't restarted, so the interruption
-	 * record can be popped off the tracee's event stack. */
-	USR_INTERRUPTED_SYSCALL_NOT_RESTARTED,
-	/* Tracee exited its sighandler.  We leave this breadcrumb so
-	 * that the popping of not-restarted syscall interruptions and
-	 * sigreturns is replayed in the same order. */
-	USR_EXIT_SIGHANDLER,
-	/* TODO: this is actually a pseudo-pseudosignal: it will never
-	 * appear in a trace, but is only used to communicate between
-	 * different parts of the recorder code that should be
-	 * refactored to not have to do that. */
-	USR_NOOP,
-	LAST_RR_PSEUDOSIGNAL = USR_NOOP,
-
-	FIRST_DET_SIGNAL = -(_NSIG | DET_SIGNAL_BIT),
-	LAST_DET_SIGNAL = -(1 | DET_SIGNAL_BIT),
-
-	/* Asynchronously-delivered (nondeterministic) signals are
-	 * recorded as -signum.  They occupy the range [-65, 0) or
-	 * so. */
-	FIRST_ASYNC_SIGNAL = -_NSIG,
-	LAST_ASYNC_SIGNAL = -1,
-};
-
-static_assert(LAST_RR_PSEUDOSIGNAL < FIRST_DET_SIGNAL, "");
-static_assert(LAST_DET_SIGNAL < FIRST_ASYNC_SIGNAL, "");
-
 /* Use this helper to declare a struct member that doesn't occupy
  * space, but the address of which can be taken.  Useful for
  * delimiting continugous chunks of fields without having to hard-code

@@ -74,9 +74,8 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 	const struct user_regs_struct* r = &f->recorded_regs;
 
 	if (raw_dump) {
-		fprintf(out, " %d %d %d %d %d",
-			f->global_time, f->thread_time, f->tid,
-			f->ev.event, f->ev.state);
+		fprintf(out, " %d %d %d %d",
+			f->global_time, f->thread_time, f->tid,	f->ev.encoded);
 	} else {
 		fprintf(out,
 "{\n  global_time:%u, event:`%s' (state:%d), tid:%d, thread_time:%u",
@@ -381,12 +380,10 @@ void record_event(Task *t)
 	 * the global and thread clocks. */
 	encode_trace_frame(t, t->ev(), &frame);
 
-	if (should_dump_memory(t, frame.ev.event, frame.ev.state,
-			       frame.global_time)) {
+	if (should_dump_memory(t, frame)) {
 		dump_process_memory(t, frame.global_time, "rec");
 	}		
-	if (should_checksum(t, frame.ev.event, frame.ev.state,
-			    frame.global_time)) {
+	if (should_checksum(t, frame)) {
 		checksum_process_memory(t, frame.global_time);
 	}
 
@@ -403,14 +400,15 @@ void record_trace_termination_event(Task* t)
 	memset(&frame, 0, sizeof(frame));
 	frame.tid = t ? t->tid : 0;
 	frame.global_time = global_time++;
-	frame.ev.event = USR_TRACE_TERMINATION;
+	frame.ev.type = EV_TRACE_TERMINATION;
+	frame.ev.data = 0;
 	write_trace_frame(&frame);
 }
 
 static void print_header(EncodedEvent ev, void* addr)
 {
 	fprintf(syscall_header, "%11u", global_time);
-	fprintf(syscall_header, "%11d", ev.event);
+	fprintf(syscall_header, "%11d", ev.encoded);
 	fprintf(syscall_header, "%11u", (uintptr_t)addr);
 }
 
@@ -591,15 +589,16 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 
 	time = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	ev.event = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	ev.encoded = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	*addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	size = str2li(tmp_ptr, LI_COLUMN_SIZE);
 
-	if (time != trace->global_time
-	    || (trace->ev.event != SYS_restart_syscall
-		&& ev.event != trace->ev.event)) {
+	if (!(time == trace->global_time
+	      && (ev.type == trace->ev.type
+		  || (trace->ev.type == EV_SYSCALL
+		      && trace->ev.data == SYS_restart_syscall)))) {
 		fatal("trace and syscall_input out of sync: trace is at (time=%d, %s), but input is for (time=%d, %s)",
 		      trace->global_time, strevent(trace->ev),
 		      time, strevent(ev));
