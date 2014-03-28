@@ -821,10 +821,10 @@ static void notify_checksum_error(Task* t, int global_time,
 "then you can use the following to determine which memory cells differ:\n"
 "\n"
 "$ diff -u %s %s > mem-diverge.diff\n"
-		    , strevent(t->trace.ev.event),
+		    , strevent(t->trace.ev),
 		    data->raw_map_line,
 		    rec_checksum, checksum,
-		    cur_dump, strevent(t->trace.ev.event),  get_global_time(),
+		    cur_dump, strevent(t->trace.ev), get_global_time(),
 		    get_global_time(),
 		    rec_dump, cur_dump);
 }

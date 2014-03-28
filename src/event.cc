@@ -270,14 +270,26 @@ struct event decode_event(EncodedEvent e)
 	}
 }
 
-int is_syscall_event(int type)
+bool is_signal_event(const struct event& ev)
 {
-	switch (type) {
+	switch (ev.type) {
+	case EV_SIGNAL:
+	case EV_SIGNAL_DELIVERY:
+	case EV_SIGNAL_HANDLER:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool is_syscall_event(const struct event& ev)
+{
+	switch (ev.type) {
 	case EV_SYSCALL:
 	case EV_SYSCALL_INTERRUPTION:
-		return 1;
+		return true;
 	default:
-		return 0;
+		return false;
 	}
 }
 
@@ -348,50 +360,26 @@ const char* statename(int state)
 	}
 }
 
-static const char* decode_signal_event(int sig)
+static const char* decode_signal_event(const struct event& ev)
 {
-	int det;
+	int sig = ev.signal.no;
+	int det = ev.signal.deterministic;
 	static __thread char buf[] =
 		"SIGREALLYREALLYLONGNAME(asynchronouslydelivered)";
-
-	if (FIRST_RR_PSEUDOSIGNAL <= sig && sig <= LAST_RR_PSEUDOSIGNAL) {
-		switch (sig) {
-#define CASE(_id) case _id: return #_id
-		CASE(SIG_SEGV_RDTSC);
-		CASE(USR_EXIT);
-		CASE(USR_SCHED);
-		CASE(USR_SYSCALLBUF_FLUSH);
-		CASE(USR_SYSCALLBUF_ABORT_COMMIT);
-		CASE(USR_SYSCALLBUF_RESET);
-		CASE(USR_ARM_DESCHED);
-		CASE(USR_DISARM_DESCHED);
-		CASE(USR_NOOP);
-#undef CASE
-		}
-	}
-
-	if (sig < FIRST_DET_SIGNAL) {
-		return "???pseudosignal";
-	}
-
-	sig = -sig;
-	det = sig & DET_SIGNAL_BIT;
-	sig &= ~DET_SIGNAL_BIT;
-
 	snprintf(buf, sizeof(buf) - 1, "%s(%s)",
 		 signalname(sig), det ? "det" : "async");
 	return buf;
 }
 
-const char* strevent(int event)
+const char* strevent(const struct event& ev)
 {
-	if (0 > event) {
-		return decode_signal_event(event);
+	if (is_signal_event(ev)) {
+		return decode_signal_event(ev);
 	}
-	if (0 <= event) {
-		return syscallname(event);
+	if (is_syscall_event(ev)) {
+		return syscallname(ev.syscall.no);
 	}
-	return "???event";
+	return event_name(ev);;
 }
 
 const char* event_name(const struct event& ev)

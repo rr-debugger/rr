@@ -614,17 +614,14 @@ static void continue_or_step(Task* t, int stepi)
 	t->resume_execution(resume_how, RESUME_WAIT);
 
 	t->child_sig = t->pending_sig();
-
-	/* TODO: get rid of this if-stmt after we always read
-	 * registers following an execution resume/waitpid. */
 	child_sig_gt_zero = (0 < t->child_sig);
 	if (child_sig_gt_zero) {
 		return;
 	}
 	assert_exec(t, child_sig_gt_zero,
 		    "Replaying `%s': expecting tracee signal or trap, but instead at `%s' (rcb: %lld)",
-		    strevent(t->trace.ev.event),
-		    strevent(t->regs().orig_eax), read_rbc(t->hpc));
+		    signalname(t->trace.ev.event),
+		    syscallname(t->regs().orig_eax), read_rbc(t->hpc));
 }
 
 /**
@@ -772,7 +769,7 @@ static void guard_overshoot(Task* t,
 
 static void guard_unexpected_signal(Task* t)
 {
-	int event;
+	struct event ev;
 	int child_sig_is_zero_or_sigtrap = (0 == t->child_sig
 					    || SIGTRAP == t->child_sig);
 	/* "0" normally means "syscall", but continue_or_step() guards
@@ -782,13 +779,15 @@ static void guard_unexpected_signal(Task* t)
 		return;
 	}
 	if (t->child_sig) {
-		event = -t->child_sig;
+		ev.type = EV_SIGNAL;
+		ev.signal.no = t->child_sig;
 	} else {
-		event = MAX(0, t->regs().orig_eax);
+		ev.type = EV_SYSCALL;
+		ev.syscall.no = max(0L, t->regs().orig_eax);
 	}
 	assert_exec(t, child_sig_is_zero_or_sigtrap,
 		    "Replay got unrecorded event %s while awaiting signal\n",
-		    strevent(event));
+		    strevent(ev));
 }
 
 static int is_same_execution_point(Task* t,
@@ -1538,7 +1537,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 	debug("[line %d] %d: replaying %s; state %s",
 	      get_global_time(), t->rec_tid,
-	      strevent(t->trace.ev.event), statename(t->trace.ev.state));
+	      strevent(t->trace.ev), statename(t->trace.ev.state));
 	if (t->syscallbuf_hdr) {
 		debug("    (syscllbufsz:%u, abrtcmt:%u)",
 		      t->syscallbuf_hdr->num_rec_bytes,
