@@ -601,7 +601,7 @@ uint64_t str2ull(const char* start, size_t max_size)
 	}
 
 	uint64_t val = 0;
-	while (isdigit(start[idx]) && idx <= ssize_t(max_size)) {
+	while (idx <= ssize_t(max_size) && isdigit(start[idx])) {
 		char tmp_char[2];
 		tmp_char[0] = start[idx];
 		tmp_char[1] = '\0';
@@ -628,7 +628,7 @@ long int str2li(const char* start, size_t max_size)
 	}
 
 	long int val = 0;
-	while (isdigit(start[idx]) && idx <= ssize_t(max_size)) {
+	while (idx <= ssize_t(max_size) && isdigit(start[idx])) {
 		char tmp_char[2];
 		tmp_char[0] = start[idx];
 		tmp_char[1] = '\0';
