@@ -869,7 +869,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 
 
 	case SYS_epoll_pwait:
-		fatal("Unhandled syscall %s", strevent(syscallno));
+		fatal("Unhandled syscall %s", syscallname(syscallno));
 		return 1;
 
 	/* The following two syscalls enable context switching not for

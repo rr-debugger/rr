@@ -80,8 +80,8 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 	} else {
 		fprintf(out,
 "{\n  global_time:%u, event:`%s' (state:%d), tid:%d, thread_time:%u",
-			f->global_time, strevent(f->ev.event), f->ev.state,
-			f->tid, f->thread_time);
+			f->global_time, strevent(f->ev),
+			f->ev.state, f->tid, f->thread_time);
 	}
 	if (!f->ev.has_exec_info) {
 		if (!raw_dump) {
@@ -583,14 +583,15 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 	char line[1024];
 	char* tmp_ptr;
 	uint32_t time;
-	int syscall, size;
+	int size;
+	EncodedEvent ev;
 
 	read_line(syscall_header, line, 1024, "syscall_input");
 	tmp_ptr = line;
 
 	time = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
-	syscall = str2li(tmp_ptr, LI_COLUMN_SIZE);
+	ev.event = str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
 	*addr = (void*)str2li(tmp_ptr, LI_COLUMN_SIZE);
 	tmp_ptr += LI_COLUMN_SIZE;
@@ -598,10 +599,10 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 
 	if (time != trace->global_time
 	    || (trace->ev.event != SYS_restart_syscall
-		&& syscall != trace->ev.event)) {
+		&& ev.event != trace->ev.event)) {
 		fatal("trace and syscall_input out of sync: trace is at (time=%d, %s), but input is for (time=%d, %s)",
-		      trace->global_time, strevent(trace->ev.event),
-		      time, strevent(syscall));
+		      trace->global_time, strevent(trace->ev),
+		      time, strevent(ev));
 	}
 	return size;
 }

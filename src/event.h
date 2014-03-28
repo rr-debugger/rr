@@ -277,8 +277,9 @@ void pop_syscall_interruption(Task* t);
 EncodedEvent encode_event(const struct event& ev);
 struct event decode_event(EncodedEvent e);
 
-/** Return nonzero if |type| is one of the EV_*SYSCALL* events. */
-int is_syscall_event(int type);
+/** Return true if |ev| is one of the indicated type of events. */
+bool is_signal_event(const struct event& ev);
+bool is_syscall_event(const struct event& ev);
 
 /**
  * Dump |t|'s stack of pending events to INFO log.
@@ -296,10 +297,13 @@ void log_event(const struct event* ev);
 const char* statename(int state);
 
 /**
- * Return a string describing |event|, or some form of "???" if
- * |event| is unknown.
+ * Return a string describing |ev|, or some form of "???" if |ev| is
+ * unknown.
  */
-const char* strevent(int event);
+const char* strevent(const struct event& ev);
+inline const char* strevent(EncodedEvent e) {
+	return strevent(decode_event(e));
+}
 
 /**
  * Return a string naming |ev|'s type.

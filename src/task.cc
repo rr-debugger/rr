@@ -1069,7 +1069,7 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 const struct syscallbuf_record*
 Task::desched_rec() const
 {
-	return (is_syscall_event(ev().type) ? ev().syscall.desched_rec :
+	return (is_syscall_event(ev()) ? ev().syscall.desched_rec :
 		(EV_DESCHED == ev().type) ? ev().desched.rec : NULL);
 }
 
