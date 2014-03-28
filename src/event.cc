@@ -11,6 +11,16 @@ static const char* event_type_name(int type)
 	switch (type) {
 	case EV_SENTINEL: return "(none)";
 #define CASE(_t) case EV_## _t: return #_t
+	CASE(EXIT);
+	CASE(EXIT_SIGHANDLER);
+	CASE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
+	CASE(NOOP);
+	CASE(SCHED);
+	CASE(SEGV_RDTSC);
+	CASE(SYSCALLBUF_FLUSH);
+	CASE(SYSCALLBUF_ABORT_COMMIT);
+	CASE(SYSCALLBUF_RESET);
+	CASE(UNSTABLE_EXIT);
 	CASE(DESCHED);
 	CASE(PSEUDOSIG);
 	CASE(SIGNAL);
@@ -35,14 +45,12 @@ int is_syscall_event(int type)
 	}
 }
 
-/**
- * Push a new event onto |t|'s event stack of type |type|.
- */
-static void push_new_event(Task* t, EventType type)
+void push_event(Task* t, EventType type, int has_exec_info)
 {
 	struct event ev;
 	memset(&ev, 0, sizeof(ev));
-	ev.type = EventType(type);
+	ev.type = type;
+	ev.has_exec_info = has_exec_info;
 
 	FIXEDSTACK_PUSH(&t->pending_events, ev);
 }
@@ -51,9 +59,9 @@ static void push_new_event(Task* t, EventType type)
  * Pop the pending-event stack and return the type of the previous top
  * element.
  */
-static void pop_event(Task* t, int expected_type)
+void pop_event(Task* t, EventType expected_type)
 {
-	int last_top_type;
+	EventType last_top_type;
 
 	assert_exec(t, FIXEDSTACK_DEPTH(&t->pending_events) > 1,
 		    "Attempting to pop sentinel event");
@@ -68,12 +76,12 @@ static void pop_event(Task* t, int expected_type)
 void push_placeholder_event(Task* t)
 {
 	assert(FIXEDSTACK_EMPTY(&t->pending_events));
-	push_new_event(t, EV_SENTINEL);
+	push_event(t, EV_SENTINEL, NO_EXEC_INFO);
 }
 
 void push_noop(Task* t)
 {
-	push_new_event(t, EV_NOOP);
+	push_event(t, EV_NOOP, NO_EXEC_INFO);
 }
 
 void pop_noop(Task* t)
@@ -85,7 +93,7 @@ void push_desched(Task* t, const struct syscallbuf_record* rec)
 {
 	assert_exec(t, !t->desched_rec(), "Must have zero or one desched");
 
-	push_new_event(t, EV_DESCHED);
+	push_event(t, EV_DESCHED, NO_EXEC_INFO);
 	t->ev().desched.state = IN_SYSCALL;
 	t->ev().desched.rec = rec;
 }
@@ -97,21 +105,9 @@ void pop_desched(Task* t)
 	pop_event(t, EV_DESCHED);
 }
 
-void push_pseudosig(Task* t, PseudosigType no, int has_exec_info)
-{
-	push_new_event(t, EV_PSEUDOSIG);
-	t->ev().pseudosig.no = no;
-	t->ev().pseudosig.has_exec_info = has_exec_info;
-}
-
-void pop_pseudosig(Task* t)
-{
-	pop_event(t, EV_PSEUDOSIG);
-}
-
 void push_pending_signal(Task* t, int no, int deterministic)
 {
-	push_new_event(t, EV_SIGNAL);
+	push_event(t, EV_SIGNAL, HAS_EXEC_INFO);
 	t->ev().signal.no = no;
 	t->ev().signal.deterministic = deterministic;
 }
@@ -128,7 +124,7 @@ void pop_signal_handler(Task* t)
 
 void push_syscall(Task* t, int no)
 {
-	push_new_event(t, EV_SYSCALL);
+	push_event(t, EV_SYSCALL, HAS_EXEC_INFO);
 	t->ev().syscall.no = no;
 }
 
@@ -144,7 +140,7 @@ void push_syscall_interruption(Task* t, int no)
 	assert_exec(t, rec || REPLAY == rr_flags()->option,
 		    "Must be interrupting desched during recording");
 
-	push_new_event(t, EV_SYSCALL_INTERRUPTION);
+	push_event(t, EV_SYSCALL_INTERRUPTION, HAS_EXEC_INFO);
 	t->ev().syscall.state = EXITING_SYSCALL;
 	t->ev().syscall.no = no;
 	t->ev().syscall.desched_rec = rec;
@@ -179,14 +175,21 @@ void log_event(const struct event* ev)
 	const char* name = event_name(*ev);
 	switch (ev->type) {
 	case EV_SENTINEL:
+	case EV_EXIT:
+	case EV_EXIT_SIGHANDLER:
+	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
+	case EV_NOOP:
+	case EV_SCHED:
+	case EV_SEGV_RDTSC:
+	case EV_SYSCALLBUF_FLUSH:
+	case EV_SYSCALLBUF_ABORT_COMMIT:
+	case EV_SYSCALLBUF_RESET:
+	case EV_UNSTABLE_EXIT:
 		log_info("%s", name);
 		return;
 	case EV_DESCHED:
 		log_info("%s: %s", name,
 			 syscallname(ev->desched.rec->syscallno));
-		break;
-	case EV_PSEUDOSIG:
-		log_info("%s: %d", name, ev->pseudosig.no);
 		return;
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
