@@ -252,6 +252,12 @@ void pop_syscall(Task* t);
 void push_syscall_interruption(Task* t, int no);
 void pop_syscall_interruption(Task* t);
 
+/**
+ * Encode (or decode) an event into (from) an encoded int suitable for
+ * saving to trace.
+ */
+int encode_event(const struct event& ev, int* state);
+
 /** Return nonzero if |type| is one of the EV_*SYSCALL* events. */
 int is_syscall_event(int type);
 
