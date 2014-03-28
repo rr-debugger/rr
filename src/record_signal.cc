@@ -584,7 +584,7 @@ static void handle_siginfo(Task* t, siginfo_t* si)
 {
 	debug("%d: handling signal %s (pevent: %d, event: %s)",
 	      t->tid, signalname(si->si_signo),
-	      t->ptrace_event(), event_name(t->ev));
+	      t->ptrace_event(), event_name(t->ev()));
 
 	/* We have to check for a desched event first, because for
 	 * those we *do not* want to (and cannot, most of the time)
