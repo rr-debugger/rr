@@ -40,7 +40,8 @@ enum EventType {
 	EV_SYSCALL_INTERRUPTION,
 };
 
-enum DeschedState { IN_SYSCALL,
+enum DeschedState { ARMING_DESCHED_EVENT,
+		    IN_SYSCALL,
 		    DISARMING_DESCHED_EVENT, DISARMED_DESCHED_EVENT };
 
 enum SyscallState { NO_SYSCALL,
@@ -274,6 +275,7 @@ void pop_syscall_interruption(Task* t);
  * saving to trace.
  */
 EncodedEvent encode_event(const struct event& ev);
+struct event decode_event(EncodedEvent e);
 
 /** Return nonzero if |type| is one of the EV_*SYSCALL* events. */
 int is_syscall_event(int type);

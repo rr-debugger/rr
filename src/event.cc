@@ -227,6 +227,49 @@ EncodedEvent encode_event(const struct event& ev)
 	return e;
 }
 
+struct event decode_event(EncodedEvent e)
+{
+	struct event ev;
+	if (e.event >= 0) {
+		ev.type = EV_SYSCALL;
+		ev.syscall.no = e.event;
+		ev.syscall.state = STATE_SYSCALL_ENTRY == e.state ?
+				   ENTERING_SYSCALL : EXITING_SYSCALL;
+		return ev;
+	}
+	switch (e.event) {
+	case USR_ARM_DESCHED:
+	case USR_DISARM_DESCHED:
+		ev.type = EV_DESCHED;
+		ev.desched.state = USR_ARM_DESCHED == e.event?
+				   ARMING_DESCHED_EVENT : DISARMING_DESCHED_EVENT;
+		return ev;
+
+	case SIG_SEGV_RDTSC:
+		ev.type = EV_SEGV_RDTSC;
+		return ev;
+
+#define TRANSLATE(_e) case USR_ ##_e:			\
+			ev.type =  EV_## _e;		\
+			return ev
+	TRANSLATE(EXIT);
+	TRANSLATE(SCHED);
+	TRANSLATE(SYSCALLBUF_FLUSH);
+	TRANSLATE(SYSCALLBUF_ABORT_COMMIT);
+	TRANSLATE(SYSCALLBUF_RESET);
+	TRANSLATE(UNSTABLE_EXIT);
+	TRANSLATE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
+	TRANSLATE(EXIT_SIGHANDLER);
+#undef TRANSLATE
+
+	default:
+		ev.type = EV_SIGNAL;
+		ev.signal.deterministic = DET_SIGNAL_BIT & -e.event;
+		ev.signal.no = ~DET_SIGNAL_BIT & -e.event;
+		return ev;
+	}
+}
+
 int is_syscall_event(int type)
 {
 	switch (type) {

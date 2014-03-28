@@ -1086,7 +1086,7 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	return 0;
 }
 
-static void assert_at_recorded_rcb(Task* t, int event)
+static void assert_at_recorded_rcb(Task* t, const struct event& ev)
 {
 	static const int64_t rbc_slack = 0;
 	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
@@ -1097,7 +1097,7 @@ static void assert_at_recorded_rcb(Task* t, int event)
 	assert_exec(t, (!t->hpc->started
 			|| llabs(rbc_now - t->trace.rbc) <= rbc_slack),
 		    "rbc mismatch for '%s'; expected %lld, got %lld",
-		    strevent(event), t->trace.rbc, read_rbc(t->hpc));
+		    event_name(ev), t->trace.rbc, read_rbc(t->hpc));
 }
 
 /**
@@ -1107,7 +1107,7 @@ static void assert_at_recorded_rcb(Task* t, int event)
  */
 static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 {
-	int event = t->trace.ev.event;
+	struct event ev = decode_event(t->trace.ev);
 
 	continue_or_step(t, stepi);
 	if (SIGCHLD == t->child_sig) {
@@ -1120,9 +1120,9 @@ static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 	assert_exec(t, t->child_sig == sig,
 		    "Replay got unrecorded signal %d (expecting %d)",
 		    t->child_sig, sig);
-	assert_at_recorded_rcb(t, event);
+	assert_at_recorded_rcb(t, ev);
 
-	if (SIG_SEGV_RDTSC == event) {
+	if (EV_SEGV_RDTSC == ev.type) {
 		t->set_regs(t->trace.recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
@@ -1533,12 +1533,12 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
-	int event = t->trace.ev.event;
+	struct event ev = decode_event(t->trace.ev);
 	int stop_sig = 0;
 
 	debug("[line %d] %d: replaying %s; state %s",
 	      get_global_time(), t->rec_tid,
-	      strevent(event), statename(t->trace.state));
+	      strevent(t->trace.ev.event), statename(t->trace.ev.state));
 	if (t->syscallbuf_hdr) {
 		debug("    (syscllbufsz:%u, abrtcmt:%u)",
 		      t->syscallbuf_hdr->num_rec_bytes,
@@ -1555,8 +1555,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	}
 
 	if (t->child_sig != 0) {
-		assert(event == -t->child_sig
-		       || event == -(t->child_sig | DET_SIGNAL_BIT));
+		assert(EV_SIGNAL == ev.type && t->child_sig == ev.signal.no);
 		t->child_sig = 0;
 	}
 
@@ -1564,11 +1563,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	 * to retire the current frame. */
 	memset(&step, 0, sizeof(step));
 
-	switch (event) {
-	case USR_UNSTABLE_EXIT:
+	switch (ev.type) {
+	case EV_UNSTABLE_EXIT:
 		t->unstable = 1;
 		/* fall through */
-	case USR_EXIT: {
+	case EV_EXIT: {
 		if (is_last_interesting_task(t)) {
 			debug("last interesting task in %d is %d (%d)",
 			      debugged_tgid, t->rec_tid, t->tid);
@@ -1601,66 +1600,64 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		}
 		return;
 	}
-	case USR_ARM_DESCHED:
-	case USR_DISARM_DESCHED:
+	case EV_DESCHED:
 		step.action = TSTEP_DESCHED;
-		step.desched.type = USR_ARM_DESCHED == event ?
+		step.desched.type = ARMING_DESCHED_EVENT == ev.desched.state ?
 				    DESCHED_ARM : DESCHED_DISARM;
 		step.desched.state = DESCHED_ENTER;
 		break;
-	case USR_SYSCALLBUF_ABORT_COMMIT:
+	case EV_SYSCALLBUF_ABORT_COMMIT:
 		t->syscallbuf_hdr->abort_commit = 1;
 		step.action = TSTEP_RETIRE;
 		break;
-	case USR_SYSCALLBUF_FLUSH:
+	case EV_SYSCALLBUF_FLUSH:
 		step.action = TSTEP_FLUSH_SYSCALLBUF;
 		step.flush.need_buffer_restore = 1;
 		step.flush.num_rec_bytes_remaining = 0;
 		break;
-	case USR_SYSCALLBUF_RESET:
+	case EV_SYSCALLBUF_RESET:
 		t->syscallbuf_hdr->num_rec_bytes = 0;
 		step.action = TSTEP_RETIRE;
 		break;
-	case USR_SCHED:
+	case EV_SCHED:
 		step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
 		step.target.rcb = t->trace.rbc;
 		step.target.regs = &t->trace.recorded_regs;
 		step.target.signo = 0;
 		break;
-	case SIG_SEGV_RDTSC:
+	case EV_SEGV_RDTSC:
 		step.action = TSTEP_DETERMINISTIC_SIGNAL;
 		step.signo = SIGSEGV;
 		break;
-	case USR_INTERRUPTED_SYSCALL_NOT_RESTARTED:
+	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
 		debug("  popping interrupted but not restarted %s",
 		      syscallname(t->ev().syscall.no));
 		pop_syscall_interruption(t);
 		step.action = TSTEP_RETIRE;
 		break;
-	case USR_EXIT_SIGHANDLER:
+	case EV_EXIT_SIGHANDLER:
 		debug("<-- sigreturn from %s", signalname(t->ev().syscall.no));
 		pop_signal_handler(t);
 		step.action = TSTEP_RETIRE;
 		break;
-	default:
-		/* Pseudosignals are handled above. */
-		assert(event > LAST_RR_PSEUDOSIGNAL);
-		if (FIRST_DET_SIGNAL <= event && event <= LAST_DET_SIGNAL) {
-			step.action = TSTEP_DETERMINISTIC_SIGNAL;
-			step.signo = (-event & ~DET_SIGNAL_BIT);
-			stop_sig = step.signo;
-		} else if (event < 0) {
-			assert(FIRST_ASYNC_SIGNAL <= event
-			       && event <= LAST_ASYNC_SIGNAL);
-			step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
+	case EV_SIGNAL:
+		step.signo = ev.signal.no;
+		stop_sig = step.signo;
+		step.action = (ev.signal.deterministic ?
+			       TSTEP_DETERMINISTIC_SIGNAL :
+			       TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
+		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
+			step.target.signo = step.signo;
+			stop_sig = step.target.signo;
 			step.target.rcb = t->trace.rbc;
 			step.target.regs = &t->trace.recorded_regs;
-			step.target.signo = -event;
-			stop_sig = step.target.signo;
-		} else {
-			assert(event >= 0);
-			rep_process_syscall(t, &step);
 		}
+		break;
+	case EV_SYSCALL:
+		rep_process_syscall(t, &step);
+		break;
+	default:
+		fatal("Unexpected event %s", event_name(ev));
 	}
 
 	/* See the comment below about *not* resetting the hpc for
@@ -1753,23 +1750,27 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	 * to reach the rcb we recorded at signal delivery.  So don't
 	 * reset the counter for buffer flushes.  (It doesn't matter
 	 * for non-async-signal types, which are deterministic.) */
-	switch (event) {
-	case USR_SYSCALLBUF_ABORT_COMMIT:
-	case USR_SYSCALLBUF_FLUSH:
-	case USR_SYSCALLBUF_RESET:
-	case USR_ARM_DESCHED:
+	switch (ev.type) {
+	case EV_SYSCALLBUF_ABORT_COMMIT:
+	case EV_SYSCALLBUF_FLUSH:
+	case EV_SYSCALLBUF_RESET:
+		break;
+	case EV_DESCHED:
 		/* ARM_DESCHED events are like the SYSCALLBUF_* events
 		 * in that they weren't actually observed during
 		 * recording, only inferred, so we don't have any
 		 * reference to assert against during replay. */
-		break;
+		if (ARMING_DESCHED_EVENT == ev.desched.state) {
+			break;
+		}
+		// fall through
 	default:
 		/* We won't necessarily reach the same rcb when
 		 * replaying an async signal, due to debugger
 		 * interrupts and other implementation details.  This
 		 * is checked in |advance_to()| anyway. */
 		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action) {
-			assert_at_recorded_rcb(t, event);
+			assert_at_recorded_rcb(t, ev);
 		}
 		reset_hpc(t, 0);
 	}
