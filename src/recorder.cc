@@ -43,7 +43,7 @@ static void handle_ptrace_event(Task** tp)
 	int event = t->ptrace_event();
 	if (event != PTRACE_EVENT_NONE) {
 		debug("  %d: handle_ptrace_event %d: event %s",
-		      t->tid, event, event_name(t->ev));
+		      t->tid, event, event_name(t->ev()));
 	}
 	switch (event) {
 
