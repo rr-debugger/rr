@@ -2,6 +2,8 @@
 
 //#define DEBUGTAG "Event"
 
+#include <syscall.h>
+
 #include "event.h"
 
 #include "task.h"
@@ -31,17 +33,6 @@ static const char* event_type_name(int type)
 #undef CASE
 	default:
 		fatal("Unknown event type %d", type);
-	}
-}
-
-int is_syscall_event(int type)
-{
-	switch (type) {
-	case EV_SYSCALL:
-	case EV_SYSCALL_INTERRUPTION:
-		return 1;
-	default:
-		return 0;
 	}
 }
 
@@ -150,6 +141,79 @@ void push_syscall_interruption(Task* t, int no)
 void pop_syscall_interruption(Task* t)
 {
 	pop_event(t, EV_SYSCALL_INTERRUPTION);
+}
+
+int encode_event(const struct event& ev, int* state)
+{
+	int dummy;
+	state = state ? state : &dummy;
+	// Arbitrarily designate events for which this isn't
+	// meaningful as being at "entry".  The events for which this
+	// is meaningful set it below.
+	*state = STATE_SYSCALL_ENTRY;
+
+	switch (ev.type) {
+	case EV_DESCHED:
+		switch (ev.desched.state) {
+		case IN_SYSCALL:
+			return USR_ARM_DESCHED;
+		case DISARMED_DESCHED_EVENT:
+			return USR_DISARM_DESCHED;
+		default:
+			fatal("Unhandled desched state %d", ev.desched.state);
+		}
+
+	case EV_SEGV_RDTSC:
+		return SIG_SEGV_RDTSC;
+
+		/* TODO: unify these definitions. */
+#define TRANSLATE(_e) case EV_ ##_e: return USR_## _e
+	TRANSLATE(EXIT);
+	TRANSLATE(SCHED);
+	TRANSLATE(SYSCALLBUF_FLUSH);
+	TRANSLATE(SYSCALLBUF_ABORT_COMMIT);
+	TRANSLATE(SYSCALLBUF_RESET);
+	TRANSLATE(UNSTABLE_EXIT);
+	TRANSLATE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
+	TRANSLATE(EXIT_SIGHANDLER);
+#undef TRANSLATE
+
+	case EV_SIGNAL:
+	case EV_SIGNAL_DELIVERY:
+	case EV_SIGNAL_HANDLER: {
+		int event = ev.signal.no;
+		if (ev.signal.deterministic) {
+			event |= DET_SIGNAL_BIT;
+		}
+		return -event;
+	}
+
+	case EV_SYSCALL: {
+		int event = ev.syscall.is_restart ?
+			    SYS_restart_syscall : ev.syscall.no;
+
+		assert(ev.syscall.state != PROCESSING_SYSCALL);
+
+		*state = (ev.syscall.state == ENTERING_SYSCALL) ?
+			 STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
+		return event;
+	}
+
+	default:
+		fatal("Unknown event type %d", ev.type);
+		return -(1 << 30); /* not reached */
+	}
+}
+
+int is_syscall_event(int type)
+{
+	switch (type) {
+	case EV_SYSCALL:
+	case EV_SYSCALL_INTERRUPTION:
+		return 1;
+	default:
+		return 0;
+	}
 }
 
 void log_pending_events(const Task* t)
