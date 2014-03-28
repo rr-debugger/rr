@@ -584,9 +584,7 @@ int compare_register_files(Task* t,
 	return err;
 }
 
-void assert_child_regs_are(Task* t,
-			   const struct user_regs_struct* regs,
-			   int event, int state)
+void assert_child_regs_are(Task* t, const struct user_regs_struct* regs)
 {
 	compare_register_files(t, "replaying", &t->regs(), "recorded", regs,
 			       BAIL_ON_MISMATCH);
@@ -713,7 +711,7 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
 		 get_trace_path(), t->rec_tid, global_time, tag);
 }
 
-int should_dump_memory(Task* t, int event, int state, int global_time)
+int should_dump_memory(Task* t, const struct trace_frame& f)
 {
 	const struct flags* flags = rr_flags();
 
@@ -729,8 +727,8 @@ int should_dump_memory(Task* t, int event, int state, int global_time)
 		return 0;
 	}
 #endif
-	return (flags->dump_on == event || flags->dump_on == DUMP_ON_ALL
-		|| flags->dump_at == global_time);
+	return (flags->dump_on == DUMP_ON_ALL
+		|| flags->dump_at == int(f.global_time));
 }
 
 static int dump_process_memory_iterator(void* it_data, Task* t,
@@ -972,10 +970,11 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 	fclose(c.checksums_file);
 }
 
-int should_checksum(Task* t, int event, int state, int global_time)
+int should_checksum(Task* t, const struct trace_frame& f)
 {
 	int checksum = rr_flags()->checksum;
-	int is_syscall_exit = (event >= 0 && state == STATE_SYSCALL_EXIT);
+	int is_syscall_exit = (EV_SYSCALL == f.ev.type
+			       && STATE_SYSCALL_EXIT == f.ev.state);
 
 #if defined(FIRST_INTERESTING_EVENT)
 	if (is_syscall_exit
@@ -997,7 +996,7 @@ int should_checksum(Task* t, int event, int state, int global_time)
 		return is_syscall_exit;
 	}
 	/* |checksum| is a global time point. */
-	return checksum <= global_time;
+	return checksum <= int(f.global_time);
 }
 
 void checksum_process_memory(Task* t, int global_time)

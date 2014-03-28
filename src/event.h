@@ -16,28 +16,48 @@ enum { DET_SIGNAL_BIT = 0x80 };
 
 enum EventType {
 	EV_SENTINEL,
-	/* No associated data. */
+	// No associated data.
 	EV_EXIT,
+	// Tracee exited its sighandler.  We leave this breadcrumb so
+	// that the popping of not-restarted syscall interruptions and
+	// sigreturns is replayed in the same order.
 	EV_EXIT_SIGHANDLER,
+	// Pretty self-explanatory: recording detected that an
+	// interrupted syscall wasn't restarted, so the interruption
+	// record can be popped off the tracee's event stack.
 	EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
+	// TODO: this is actually a pseudo-pseudosignal: it will never
+	// appear in a trace, but is only used to communicate between
+	// different parts of the recorder code that should be
+	// refactored to not have to do that.
 	EV_NOOP,
 	EV_SCHED,
 	EV_SEGV_RDTSC,
 	EV_SYSCALLBUF_FLUSH,
 	EV_SYSCALLBUF_ABORT_COMMIT,
 	EV_SYSCALLBUF_RESET,
+	// The trace was terminated before all tasks exited, most
+	// likely because the recorder was sent a terminating signal.
+	// There are no more trace frames coming, so the best thing to
+	// do is probably to shut down.
+	EV_TRACE_TERMINATION,
+	// Like USR_EXIT, but recorded when the task is in an
+	// "unstable" state in which we're not sure we can
+	// synchronously wait for it to "really finish".
 	EV_UNSTABLE_EXIT,
-	/* Uses the .desched struct below. */
+	// Uses the .desched struct below.
 	EV_DESCHED,
-	/* Uses .pseudosig. */
+	// Uses .pseudosig.
 	EV_PSEUDOSIG,
-	/* Use .signal. */
+	// Use .signal.
 	EV_SIGNAL,
 	EV_SIGNAL_DELIVERY,
 	EV_SIGNAL_HANDLER,
-	/* Use .syscall. */
+	// Use .syscall.
 	EV_SYSCALL,
 	EV_SYSCALL_INTERRUPTION,
+
+	EV_LAST
 };
 
 enum DeschedState { ARMING_DESCHED_EVENT,
@@ -202,9 +222,10 @@ struct event {
  */
 union EncodedEvent {
 	struct {
-		int event : 28;
+		int type : 6;
+		int data : 22;
 		// We allocate 2 bits for these so that they can have
-		// a position nonzero value.
+		// a positive nonzero value.
 		int state : 2;
 		int has_exec_info : 2;
 	};
@@ -212,6 +233,8 @@ union EncodedEvent {
 };
 
 static_assert(sizeof(int) == sizeof(EncodedEvent), "Bit fields are messed up");
+static_assert(EV_LAST <= (1 << 5),
+	      "Allocate more bits to the |event_type| field");
 
 /**
  * Push an event that doesn't have a more specific push_*()/pop_*()

@@ -316,7 +316,7 @@ static void validate_args(int syscall, int state, Task* t)
 	if (!validate) {
 		return;
 	}
-	assert_child_regs_are(t, &t->trace.recorded_regs, syscall, state);
+	assert_child_regs_are(t, &t->trace.recorded_regs);
 }
 
 /**
@@ -1308,7 +1308,7 @@ void before_syscall_exit(Task* t, int syscallno)
 
 void rep_process_syscall(Task* t, struct rep_trace_step* step)
 {
-	int syscall = t->trace.ev.event; /* FIXME: don't shadow syscall() */
+	int syscall = t->trace.ev.data; /* FIXME: don't shadow syscall() */
 	const struct syscall_def* def;
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->ev.state;
