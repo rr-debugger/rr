@@ -9,6 +9,11 @@
 
 struct Task;
 
+enum { STATE_SYSCALL_ENTRY = 0, STATE_SYSCALL_EXIT = 1 };
+
+// Deterministic signals are recorded as (signum | DET_SIGNAL_BIT).
+enum { DET_SIGNAL_BIT = 0x80 };
+
 enum EventType {
 	EV_SENTINEL,
 	/* No associated data. */

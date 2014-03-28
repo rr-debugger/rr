@@ -212,7 +212,6 @@ const char* statename(int state)
 #define CASE(_id) case _id: return #_id
 	CASE(STATE_SYSCALL_ENTRY);
 	CASE(STATE_SYSCALL_EXIT);
-	CASE(STATE_PRE_MMAP_ACCESS);
 #undef CASE
 
 	default:
