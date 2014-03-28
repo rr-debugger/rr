@@ -152,12 +152,9 @@ static int encode_event(const struct event& ev, int* state)
 		switch (ev.pseudosig.no) {
 			/* TODO: unify these definitions. */
 #define TRANSLATE(_e) case E ##_e: return _e
-			TRANSLATE(SIG_SEGV_MMAP_READ);
-			TRANSLATE(SIG_SEGV_MMAP_WRITE);
 			TRANSLATE(SIG_SEGV_RDTSC);
 			TRANSLATE(USR_EXIT);
 			TRANSLATE(USR_SCHED);
-			TRANSLATE(USR_NEW_RAWDATA_FILE);
 			TRANSLATE(USR_SYSCALLBUF_FLUSH);
 			TRANSLATE(USR_SYSCALLBUF_ABORT_COMMIT);
 			TRANSLATE(USR_SYSCALLBUF_RESET);
