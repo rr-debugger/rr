@@ -11,11 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "event.h"
 #include "types.h"
-
-#define STATE_SYSCALL_ENTRY		  0
-#define STATE_SYSCALL_EXIT		  1
-#define STATE_PRE_MMAP_ACCESS     2
 
 class Task;
 
@@ -58,9 +55,6 @@ enum {
 	USR_NOOP,
 	LAST_RR_PSEUDOSIGNAL = USR_NOOP,
 
-	/* Deterministic signals are recorded as -(signum | 0x80).  So
-	 * these can occupy the range [-193, -128) or so. */
-	DET_SIGNAL_BIT = 0x80,
 	FIRST_DET_SIGNAL = -(_NSIG | DET_SIGNAL_BIT),
 	LAST_DET_SIGNAL = -(1 | DET_SIGNAL_BIT),
 
