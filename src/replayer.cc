@@ -615,7 +615,8 @@ static void continue_or_step(Task* t, int stepi)
 	}
 	assert_exec(t, child_sig_gt_zero,
 		    "Replaying `%s': expecting tracee signal or trap, but instead at `%s' (rcb: %lld)",
-		    strevent(t->trace.ev), syscallname(t->regs().orig_eax),
+		    Event(t->trace.ev).str().c_str(),
+		    syscallname(t->regs().orig_eax),
 		    read_rbc(t->hpc));
 }
 
@@ -764,7 +765,7 @@ static void guard_overshoot(Task* t,
 
 static void guard_unexpected_signal(Task* t)
 {
-	struct event ev;
+	Event ev;
 	int child_sig_is_zero_or_sigtrap = (0 == t->child_sig
 					    || SIGTRAP == t->child_sig);
 	/* "0" normally means "syscall", but continue_or_step() guards
@@ -774,15 +775,13 @@ static void guard_unexpected_signal(Task* t)
 		return;
 	}
 	if (t->child_sig) {
-		ev.type = EV_SIGNAL;
-		ev.signal.no = t->child_sig;
+		ev = SignalEvent(t->child_sig, NONDETERMINISTIC_SIG);
 	} else {
-		ev.type = EV_SYSCALL;
-		ev.syscall.no = max(0L, t->regs().orig_eax);
+		ev = SyscallEvent(max(0L, t->regs().orig_eax));
 	}
 	assert_exec(t, child_sig_is_zero_or_sigtrap,
 		    "Replay got unrecorded event %s while awaiting signal\n",
-		    strevent(ev));
+		    ev.str().c_str());
 }
 
 static int is_same_execution_point(Task* t,
@@ -1059,15 +1058,16 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	bool restored_sighandler_frame = 0 < t->set_data_from_trace();
 	if (restored_sighandler_frame) {
 		debug("--> restoring sighandler frame for %s", signalname(sig));
-		push_pending_signal(t, sig, sigtype);
-		t->ev().type = EV_SIGNAL_HANDLER;
+		t->push_event(SignalEvent(sig, sigtype));
+		t->ev().transform(EV_SIGNAL_DELIVERY);
+		t->ev().transform(EV_SIGNAL_HANDLER);
 	} else if (possibly_destabilizing_signal(t, sig)) {
-		push_pending_signal(t, sig, sigtype);
-		t->ev().type = EV_SIGNAL_DELIVERY;
+		t->push_event(SignalEvent(sig, sigtype));
+		t->ev().transform(EV_SIGNAL_DELIVERY);
 
 		t->destabilize_task_group();
 
-		pop_signal_delivery(t);
+		t->pop_signal_delivery();
 	}
 	/* If this signal had a user handler, and we just set up the
 	 * callframe, and we need to restore the $sp for continued
@@ -1080,7 +1080,7 @@ static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
 	return 0;
 }
 
-static void assert_at_recorded_rcb(Task* t, const struct event& ev)
+static void assert_at_recorded_rcb(Task* t, const Event& ev)
 {
 	static const int64_t rbc_slack = 0;
 	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
@@ -1091,7 +1091,7 @@ static void assert_at_recorded_rcb(Task* t, const struct event& ev)
 	assert_exec(t, (!t->hpc->started
 			|| llabs(rbc_now - t->trace.rbc) <= rbc_slack),
 		    "rbc mismatch for '%s'; expected %lld, got %lld",
-		    event_name(ev), t->trace.rbc, read_rbc(t->hpc));
+		    ev.str().c_str(), t->trace.rbc, read_rbc(t->hpc));
 }
 
 /**
@@ -1101,7 +1101,7 @@ static void assert_at_recorded_rcb(Task* t, const struct event& ev)
  */
 static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 {
-	struct event ev = decode_event(t->trace.ev);
+	Event ev(t->trace.ev);
 
 	continue_or_step(t, stepi);
 	if (SIGCHLD == t->child_sig) {
@@ -1116,7 +1116,7 @@ static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 		    t->child_sig, sig);
 	assert_at_recorded_rcb(t, ev);
 
-	if (EV_SEGV_RDTSC == ev.type) {
+	if (EV_SEGV_RDTSC == ev.type()) {
 		t->set_regs(t->trace.recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
@@ -1527,7 +1527,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
-	struct event ev = decode_event(t->trace.ev);
+	Event ev(t->trace.ev);
 	int stop_sig = 0;
 
 	debug("[line %d] %d: replaying %s; state %s",
@@ -1549,7 +1549,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	}
 
 	if (t->child_sig != 0) {
-		assert(EV_SIGNAL == ev.type && t->child_sig == ev.signal.no);
+		assert(EV_SIGNAL == ev.type() && t->child_sig == ev.Signal().no);
 		t->child_sig = 0;
 	}
 
@@ -1557,7 +1557,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	 * to retire the current frame. */
 	memset(&step, 0, sizeof(step));
 
-	switch (ev.type) {
+	switch (ev.type()) {
 	case EV_UNSTABLE_EXIT:
 		t->unstable = 1;
 		/* fall through */
@@ -1596,8 +1596,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	}
 	case EV_DESCHED:
 		step.action = TSTEP_DESCHED;
-		step.desched.type = ARMING_DESCHED_EVENT == ev.desched.state ?
-				    DESCHED_ARM : DESCHED_DISARM;
+		step.desched.type =
+			ARMING_DESCHED_EVENT == ev.Desched().state ?
+			DESCHED_ARM : DESCHED_DISARM;
 		step.desched.state = DESCHED_ENTER;
 		break;
 	case EV_SYSCALLBUF_ABORT_COMMIT:
@@ -1626,18 +1627,18 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
 		debug("  popping interrupted but not restarted %s",
 		      syscallname(t->ev().syscall.no));
-		pop_syscall_interruption(t);
+		t->pop_syscall_interruption();
 		step.action = TSTEP_RETIRE;
 		break;
 	case EV_EXIT_SIGHANDLER:
 		debug("<-- sigreturn from %s", signalname(t->ev().syscall.no));
-		pop_signal_handler(t);
+		t->pop_signal_handler();
 		step.action = TSTEP_RETIRE;
 		break;
 	case EV_SIGNAL:
-		step.signo = ev.signal.no;
+		step.signo = ev.Signal().no;
 		stop_sig = step.signo;
-		step.action = (ev.signal.deterministic ?
+		step.action = (ev.Signal().deterministic ?
 			       TSTEP_DETERMINISTIC_SIGNAL :
 			       TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
 		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
@@ -1651,7 +1652,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		rep_process_syscall(t, &step);
 		break;
 	default:
-		fatal("Unexpected event %s", event_name(ev));
+		fatal("Unexpected event %s", ev.str().c_str());
 	}
 
 	/* See the comment below about *not* resetting the hpc for
@@ -1744,7 +1745,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	 * to reach the rcb we recorded at signal delivery.  So don't
 	 * reset the counter for buffer flushes.  (It doesn't matter
 	 * for non-async-signal types, which are deterministic.) */
-	switch (ev.type) {
+	switch (ev.type()) {
 	case EV_SYSCALLBUF_ABORT_COMMIT:
 	case EV_SYSCALLBUF_FLUSH:
 	case EV_SYSCALLBUF_RESET:
@@ -1754,7 +1755,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		 * in that they weren't actually observed during
 		 * recording, only inferred, so we don't have any
 		 * reference to assert against during replay. */
-		if (ARMING_DESCHED_EVENT == ev.desched.state) {
+		if (ARMING_DESCHED_EVENT == ev.Desched().state) {
 			break;
 		}
 		// fall through

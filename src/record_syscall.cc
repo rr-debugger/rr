@@ -123,11 +123,13 @@ void read_socketcall_args(Task* t, long** argsp, T* args)
  */
 static void reset_scratch_pointers(Task* t)
 {
-	assert(t->ev().type == EV_SYSCALL);
+	assert(t->ev().type() == EV_SYSCALL);
 
-	FIXEDSTACK_CLEAR(&t->ev().syscall.saved_args);
-	t->ev().syscall.tmp_data_ptr = t->scratch_ptr;
-	t->ev().syscall.tmp_data_num_bytes = -1;
+	while (!t->ev().Syscall().saved_args.empty()) {
+		t->ev().Syscall().saved_args.pop();
+	}
+	t->ev().Syscall().tmp_data_ptr = t->scratch_ptr;
+	t->ev().Syscall().tmp_data_num_bytes = -1;
 }
 
 /**
@@ -139,7 +141,7 @@ static void reset_scratch_pointers(Task* t)
  */
 static void push_arg_ptr(Task* t, void* argp)
 {
-	FIXEDSTACK_PUSH(&t->ev().syscall.saved_args, argp);
+	t->ev().Syscall().saved_args.push(argp);
 }
 
 /**
@@ -148,9 +150,9 @@ static void push_arg_ptr(Task* t, void* argp)
  */
 static int abort_scratch(Task* t, const char* event)
 {
-	int num_bytes = t->ev().syscall.tmp_data_num_bytes;
+	int num_bytes = t->ev().Syscall().tmp_data_num_bytes;
 
-	assert(t->ev().syscall.tmp_data_ptr == t->scratch_ptr);
+	assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
 
 	if (0 > num_bytes) {
 		log_warn("`%s' requires scratch buffers, but that's not implemented.  Disabling context switching: deadlock may follow.",
@@ -171,11 +173,11 @@ static int can_use_scratch(Task* t, byte* scratch_end)
 {
 	byte* scratch_start = (byte*)t->scratch_ptr;
 
-	assert(t->ev().syscall.tmp_data_ptr == t->scratch_ptr);
+	assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
 
-	t->ev().syscall.tmp_data_num_bytes = (scratch_end - scratch_start);
-	return (0 <= t->ev().syscall.tmp_data_num_bytes
-		&& t->ev().syscall.tmp_data_num_bytes <= t->scratch_size);
+	t->ev().Syscall().tmp_data_num_bytes = (scratch_end - scratch_start);
+	return (0 <= t->ev().Syscall().tmp_data_num_bytes
+		&& t->ev().Syscall().tmp_data_num_bytes <= t->scratch_size);
 }
 
 /**
@@ -186,7 +188,7 @@ static int prepare_ipc(Task* t, int would_need_scratch)
 {
 	int call = t->regs().ebx;
 	byte* scratch = would_need_scratch ?
-			(byte*)t->ev().syscall.tmp_data_ptr : nullptr;
+			(byte*)t->ev().Syscall().tmp_data_ptr : nullptr;
 
 	assert(!t->desched_rec());
 
@@ -236,7 +238,7 @@ static ssize_t read_iovs(Task* t, const struct msghdr& msg,
 static int prepare_socketcall(Task* t, int would_need_scratch)
 {
 	byte* scratch = would_need_scratch ?
-			(byte*)t->ev().syscall.tmp_data_ptr : nullptr;
+			(byte*)t->ev().Syscall().tmp_data_ptr : nullptr;
 	long* argsp;
 	void* tmpargsp;
 	struct user_regs_struct r = t->regs();
@@ -487,12 +489,12 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 		    syscallname(rec->syscallno), syscallname(syscallno));
 
 	reset_scratch_pointers(t);
-	t->ev().syscall.tmp_data_ptr =
+	t->ev().Syscall().tmp_data_ptr =
 		(byte*)t->syscallbuf_child +
 		(rec->extra_data - (byte*)t->syscallbuf_hdr);
 	/* |rec->size| is the entire record including extra data; we
 	 * just care about the extra data here. */
-	t->ev().syscall.tmp_data_num_bytes = rec->size - sizeof(*rec);
+	t->ev().Syscall().tmp_data_num_bytes = rec->size - sizeof(*rec);
 	return 1;
 }
 
@@ -566,7 +568,7 @@ static bool prep_futex_lock_pi(Task* t, byte* futex,
 
 int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 {
-	int syscallno = t->ev().syscall.no;
+	int syscallno = t->ev().Syscall().no;
 	/* If we are called again due to a restart_syscall, we musn't
 	 * redirect to scratch again as we will lose the original
 	 * addresses values. */
@@ -591,7 +593,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		 * TODO: but, we'll stomp if we reenter through a
 		 * signal handler ... */
 		reset_scratch_pointers(t);
-		scratch = (byte*)t->ev().syscall.tmp_data_ptr;
+		scratch = (byte*)t->ev().Syscall().tmp_data_ptr;
 	}
 
 	switch (syscallno) {
@@ -937,7 +939,7 @@ static void record_noop_data(Task* t)
 
 void rec_prepare_restart_syscall(Task* t)
 {
-	int syscallno = t->ev().syscall.no;
+	int syscallno = t->ev().Syscall().no;
 	switch (syscallno) {
 	case SYS_nanosleep: {
 		/* Hopefully uniquely among syscalls, nanosleep()
@@ -952,7 +954,7 @@ void rec_prepare_restart_syscall(Task* t)
 		 * outparam at the -ERESTART_RESTART interruption
 		 * regardless. */
 		struct timespec* rem = (struct timespec*)
-				       *FIXEDSTACK_TOP(&t->ev().syscall.saved_args);
+				       t->ev().Syscall().saved_args.top();
 		struct timespec* rem2 = (struct timespec*)t->regs().ecx;
 
 		if (rem) {
@@ -1026,8 +1028,8 @@ static void init_scratch_memory(Task *t)
 static void* start_restoring_scratch(Task* t, byte** iter)
 {
 	// TODO: manage this in Task.
-	void* scratch = t->ev().syscall.tmp_data_ptr;
-	ssize_t num_bytes = t->ev().syscall.tmp_data_num_bytes;
+	void* scratch = t->ev().Syscall().tmp_data_ptr;
+	ssize_t num_bytes = t->ev().Syscall().tmp_data_num_bytes;
 
 	assert(num_bytes >= 0);
 
@@ -1042,7 +1044,7 @@ static void* start_restoring_scratch(Task* t, byte** iter)
  */
 static int has_saved_arg_ptrs(Task* t)
 {
-	return !FIXEDSTACK_EMPTY(&t->ev().syscall.saved_args);
+	return !t->ev().Syscall().saved_args.empty();
 }
 
 /**
@@ -1052,7 +1054,8 @@ static int has_saved_arg_ptrs(Task* t)
 template<typename T>
 static T* pop_arg_ptr(Task* t)
 {
-	void* arg = FIXEDSTACK_POP(&t->ev().syscall.saved_args);
+	void* arg = t->ev().Syscall().saved_args.top();
+	t->ev().Syscall().saved_args.pop();
 	return static_cast<T*>(arg);
 }
 
@@ -1093,16 +1096,16 @@ static void finish_restoring_scratch_slack(Task* t, byte* iter, void** datap,
 {
 	byte* data = (byte*)*datap;
 	ssize_t consumed = (iter - data);
-	ssize_t diff = t->ev().syscall.tmp_data_num_bytes - consumed;
+	ssize_t diff = t->ev().Syscall().tmp_data_num_bytes - consumed;
 
-	assert(t->ev().syscall.tmp_data_ptr == t->scratch_ptr);
+	assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
 	assert_exec(t, !diff || (slack && diff > 0),
 		    "Saved %d bytes of scratch memory but consumed %d",
-		    t->ev().syscall.tmp_data_num_bytes, consumed);
+		    t->ev().Syscall().tmp_data_num_bytes, consumed);
 	if (slack) {
 		debug("Left %d bytes unconsumed in scratch", diff);
 	}
-	assert_exec(t, FIXEDSTACK_EMPTY(&t->ev().syscall.saved_args),
+	assert_exec(t, t->ev().Syscall().saved_args.empty(),
 		    "Under-consumed saved arg pointers");
 
 	free(data);
@@ -1725,7 +1728,7 @@ void rec_process_syscall(Task *t)
 		break
 
 	pid_t tid = t->tid;
-	int syscall = t->ev().syscall.no; /* FIXME: don't shadow syscall() */
+	int syscall = t->ev().Syscall().no; /* FIXME: don't shadow syscall() */
 
 	debug("%d: processing syscall: %s(%d) -- time: %u",
 	      tid, syscallname(syscall), syscall, get_global_time());
@@ -1733,11 +1736,11 @@ void rec_process_syscall(Task *t)
 	t->maybe_update_vm(syscall, STATE_SYSCALL_EXIT);
 
 	if (const struct syscallbuf_record* rec = t->desched_rec()) {
-		assert(t->ev().syscall.tmp_data_ptr != t->scratch_ptr);
+		assert(t->ev().Syscall().tmp_data_ptr != t->scratch_ptr);
 
 		record_parent_data(t,
-				   t->ev().syscall.tmp_data_num_bytes,
-				   t->ev().syscall.tmp_data_ptr,
+				   t->ev().Syscall().tmp_data_num_bytes,
+				   t->ev().Syscall().tmp_data_ptr,
 				   (byte*)rec->extra_data);
 		return;
 	}
@@ -1796,7 +1799,7 @@ void rec_process_syscall(Task *t)
 		if (t->regs().eax < 0)
 			break;
 
-		push_syscall(new_task, syscall);
+		new_task->push_event(SyscallEvent(syscall));
 
 		/* record child id here */
 		record_child_data(new_task, sizeof(pid_t),
@@ -1811,7 +1814,7 @@ void rec_process_syscall(Task *t)
 		record_child_data(new_task, sizeof(pid_t),
 				  (void*)new_task->regs().esi);
 
-		pop_syscall(new_task);
+		new_task->pop_syscall();
 
 		init_scratch_memory(new_task);
 		// The new tracee just "finished" a clone that was

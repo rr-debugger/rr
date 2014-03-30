@@ -79,7 +79,7 @@ void dump_trace_frame(FILE* out, const struct trace_frame* f)
 	} else {
 		fprintf(out,
 "{\n  global_time:%u, event:`%s' (state:%d), tid:%d, thread_time:%u",
-			f->global_time, strevent(f->ev),
+			f->global_time, Event(f->ev).str().c_str(),
 			f->ev.state, f->tid, f->thread_time);
 	}
 	if (!f->ev.has_exec_info) {
@@ -293,13 +293,13 @@ static void maybe_flush_syscallbuf(Task *t)
 	}
 	/* Write the entire buffer in one shot without parsing it,
 	 * since replay will take care of that. */
-	push_event(t, EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO);
+	t->push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO));
 	record_parent_data(t,
 			   /* Record the header for consistency checking. */
 			   t->syscallbuf_hdr->num_rec_bytes + sizeof(*t->syscallbuf_hdr),
 			   t->syscallbuf_child, t->syscallbuf_hdr);
 	record_event(t);
-	pop_event(t, EV_SYSCALLBUF_FLUSH);
+	t->pop_event(EV_SYSCALLBUF_FLUSH);
 
 	/* Reset header. */
 	assert(!t->syscallbuf_hdr->abort_commit);
@@ -329,7 +329,7 @@ static void collect_execution_info(Task* t, struct trace_frame* frame)
  * Translate |t|'s event |ev| into a trace frame that can be saved to
  * the log.
  */
-static void encode_trace_frame(Task* t, const struct event& ev,
+static void encode_trace_frame(Task* t, const Event& ev,
 			       struct trace_frame* frame)
 {
 	memset(frame, 0, sizeof(*frame));
@@ -337,7 +337,7 @@ static void encode_trace_frame(Task* t, const struct event& ev,
 	frame->global_time = global_time++;
 	frame->thread_time = t->thread_time++;
 	frame->tid = t->tid;
-	frame->ev = encode_event(ev);
+	frame->ev = ev.encode();
 	if (frame->ev.has_exec_info) {
 		collect_execution_info(t, frame);
 	}
@@ -371,7 +371,7 @@ void record_event(Task *t)
 	/* If there's buffered syscall data, we need to record a flush
 	 * event before recording |frame|, so that they're replayed in
 	 * the correct order. */
-	if (EV_SYSCALLBUF_FLUSH != t->ev().type) {
+	if (EV_SYSCALLBUF_FLUSH != t->ev().type()) {
 		maybe_flush_syscallbuf(t);
 	}
 
@@ -433,7 +433,7 @@ static void write_raw_data(Task *t, void *buf, size_t to_write)
 
 void record_child_data(Task *t, size_t size, void* child_ptr)
 {
-	EncodedEvent ev = encode_event(t->ev());
+	EncodedEvent ev = t->ev().encode();
 	ssize_t read_bytes = 0;
 
 	/* We shouldn't be recording a scratch address */
@@ -460,7 +460,7 @@ void record_child_data(Task *t, size_t size, void* child_ptr)
 
 void record_parent_data(Task *t, size_t len, void *addr, void *buf)
 {
-	EncodedEvent ev = encode_event(t->ev());
+	EncodedEvent ev = t->ev().encode();
 
 	/* We shouldn't be recording a scratch address */
 	assert(addr != t->scratch_ptr);
@@ -497,7 +497,7 @@ void record_mmapped_file_stats(struct mmapped_file* file)
 
 void record_child_str(Task* t, void* child_ptr)
 {
-	EncodedEvent ev = encode_event(t->ev());
+	EncodedEvent ev = t->ev().encode();
 	print_header(ev, child_ptr);
 	string str = t->read_c_str(child_ptr);
 	size_t len = str.size() + 1;
@@ -600,8 +600,8 @@ static size_t parse_raw_data_hdr(struct trace_frame* trace, void** addr)
 		  || (trace->ev.type == EV_SYSCALL
 		      && trace->ev.data == SYS_restart_syscall)))) {
 		fatal("trace and syscall_input out of sync: trace is at (time=%d, %s), but input is for (time=%d, %s)",
-		      trace->global_time, strevent(trace->ev),
-		      time, strevent(ev));
+		      trace->global_time, Event(trace->ev).str().c_str(),
+		      time, Event(ev).str().c_str());
 	}
 	return size;
 }
