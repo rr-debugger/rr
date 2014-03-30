@@ -71,7 +71,7 @@ inline static int should_log(void)
 				__FILE__, __LINE__, __FUNCTION__,	\
 				clean_errno(), _t->tid, _t->rec_tid,	\
 				get_global_time(), ##__VA_ARGS__);	\
-			log_pending_events(_t);				\
+			_t->log_pending_events();			\
 			emergency_debug(_t);				\
 		}							\
 	} while(0)

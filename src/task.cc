@@ -936,7 +936,7 @@ TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
 }
 
 Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
-	: thread_time(1), pending_events()
+	: thread_time(1)
 	, switchable(), pseudo_blocked(), succ_event_counter(), unstable()
 	, priority(_priority)
 	, scratch_ptr(), scratch_size()
@@ -965,7 +965,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	}
 	tasks_by_priority.insert(std::make_pair(priority, this));
 
-	push_placeholder_event(this);
+	push_event(Event(EV_SENTINEL, NO_EXEC_INFO));
 
 	init_hpc(this);
 
@@ -979,13 +979,13 @@ Task::~Task()
 	assert(this == Task::find(rec_tid));
 	// We expect tasks to usually exit by a call to exit() or
 	// exit_group(), so it's not helpful to warn about that.
-	if (EV_SENTINEL != ev().type
-	    && (FIXEDSTACK_DEPTH(&pending_events) > 2
-		|| !(ev().type == EV_SYSCALL
-		     && (SYS_exit == ev().syscall.no
-			 || SYS_exit_group == ev().syscall.no)))) {
+	if (EV_SENTINEL != ev().type()
+	    && (pending_events.size() > 2
+		|| !(ev().type() == EV_SYSCALL
+		     && (SYS_exit == ev().Syscall().no
+			 || SYS_exit_group == ev().Syscall().no)))) {
 		log_warn("%d still has pending events.  From top down:", tid);
-		log_pending_events(this);
+		log_pending_events();
 	}
 
 	tasks.erase(rec_tid);
@@ -1007,12 +1007,12 @@ Task::~Task()
 bool
 Task::at_may_restart_syscall() const
 {
-	ssize_t depth = FIXEDSTACK_DEPTH(&pending_events);
-	const struct event* prev_ev =
-		depth > 2 ? &pending_events.elts[depth - 2] : nullptr;
-	return EV_SYSCALL_INTERRUPTION == ev().type
-		|| (EV_SIGNAL_DELIVERY == ev().type
-		    && prev_ev && EV_SYSCALL_INTERRUPTION == prev_ev->type);
+	ssize_t depth = pending_events.size();
+	const Event* prev_ev =
+		depth > 2 ? &pending_events[depth - 2] : nullptr;
+	return EV_SYSCALL_INTERRUPTION == ev().type()
+		|| (EV_SIGNAL_DELIVERY == ev().type()
+		    && prev_ev && EV_SYSCALL_INTERRUPTION == prev_ev->type());
 }
 
 Task*
@@ -1069,8 +1069,8 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 const struct syscallbuf_record*
 Task::desched_rec() const
 {
-	return (is_syscall_event(ev()) ? ev().syscall.desched_rec :
-		(EV_DESCHED == ev().type) ? ev().desched.rec : NULL);
+	return (ev().is_syscall_event() ? ev().Syscall().desched_rec :
+		(EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
 }
 
 /**
@@ -1091,10 +1091,10 @@ Task::destabilize_task_group()
 	// Only print this helper warning if there's (probably) a
 	// human around to see it.  This is done to avoid polluting
 	// output from tests.
-	if (EV_SIGNAL_DELIVERY == ev().type && !probably_not_interactive()) {
+	if (EV_SIGNAL_DELIVERY == ev().type() && !probably_not_interactive()) {
 		printf("[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
 		       get_global_time() + signal_delivery_event_offset(),
-		       rec_tid, tgid(), signalname(ev().signal.no));
+		       rec_tid, tgid(), signalname(ev().Signal().no));
 	}
 
 	tg->destabilize();
@@ -1113,7 +1113,7 @@ Task::dump(FILE* out) const
 		// TODO pending events are currently only meaningful
 		// during recording.  We should change that
 		// eventually, to have more informative output.
-		log_pending_events(this);
+		log_pending_events();
 	}
 }
 
@@ -1232,14 +1232,16 @@ Task::is_syscall_restart()
 	int syscallno = regs().orig_eax;
 	bool must_restart = (SYS_restart_syscall == syscallno);
 	bool is_restart = false;
-	const struct user_regs_struct* old_regs = &ev().syscall.regs;
+	const struct user_regs_struct* old_regs;
 
 	debug("  is syscall interruption of recorded %s? (now %s)",
-	      syscallname(ev().syscall.no), syscallname(syscallno));
+	      syscallname(ev().Syscall().no), syscallname(syscallno));
 
-	if (EV_SYSCALL_INTERRUPTION != ev().type) {
+	if (EV_SYSCALL_INTERRUPTION != ev().type()) {
 		goto done;
 	}
+
+	old_regs = &ev().Syscall().regs;
 	/* It's possible for the tracee to resume after a sighandler
 	 * with a fresh syscall that happens to be the same as the one
 	 * that was interrupted.  So we check here if the args are the
@@ -1257,12 +1259,12 @@ Task::is_syscall_restart()
 	 * that it might change the scratch allocation decisions. */
 	if (SYS_restart_syscall == syscallno) {
 		must_restart = true;
-		syscallno = ev().syscall.no;
+		syscallno = ev().Syscall().no;
 		debug("  (SYS_restart_syscall)");
 	}
-	if (ev().syscall.no != syscallno) {
+	if (ev().Syscall().no != syscallno) {
 		debug("  interrupted %s != %s",
-		      syscallname(ev().syscall.no), syscallname(syscallno));
+		      syscallname(ev().Syscall().no), syscallname(syscallno));
 		goto done;
 	}
 	if (!(old_regs->ebx == regs().ebx
@@ -1292,13 +1294,32 @@ Task::inited_syscallbuf()
 	syscallbuf_hdr->locked = is_desched_sig_blocked();
 }
 
+void
+Task::log_pending_events() const
+{
+	ssize_t depth = pending_events.size();
+
+	assert(depth > 0);
+	if (1 == depth) {
+		log_info("(no pending events)");
+		return;
+	}
+
+	/* The event at depth 0 is the placeholder event, which isn't
+	 * useful to log.  Skip it. */
+	for (auto it = pending_events.rbegin(); it != pending_events.rend();
+	     ++it) {
+		it->log();
+	}
+}
+
 bool
 Task::may_be_blocked() const
 {
-	return (EV_SYSCALL == ev().type
-		&& PROCESSING_SYSCALL == ev().syscall.state)
-		|| (EV_SIGNAL_DELIVERY == ev().type
-		    && ev().signal.delivered);
+	return (EV_SYSCALL == ev().type()
+		&& PROCESSING_SYSCALL == ev().Syscall().state)
+		|| (EV_SIGNAL_DELIVERY == ev().type()
+		    && ev().Signal().delivered);
 }
 
 void

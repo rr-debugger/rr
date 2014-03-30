@@ -2,178 +2,137 @@
 
 //#define DEBUGTAG "Event"
 
-#include <syscall.h>
-
 #include "event.h"
 
-#include "task.h"
+#include <syscall.h>
 
-static const char* event_type_name(int type)
+#include <sstream>
+#include <string>
+
+#include "preload/syscall_buffer.h"
+
+#include "dbg.h"
+
+using namespace std;
+
+Event::Event(EncodedEvent e)
 {
-	switch (type) {
-	case EV_SENTINEL: return "(none)";
-#define CASE(_t) case EV_## _t: return #_t
-	CASE(EXIT);
-	CASE(EXIT_SIGHANDLER);
-	CASE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
-	CASE(NOOP);
-	CASE(SCHED);
-	CASE(SEGV_RDTSC);
-	CASE(SYSCALLBUF_FLUSH);
-	CASE(SYSCALLBUF_ABORT_COMMIT);
-	CASE(SYSCALLBUF_RESET);
-	CASE(UNSTABLE_EXIT);
-	CASE(DESCHED);
-	CASE(PSEUDOSIG);
-	CASE(SIGNAL);
-	CASE(SIGNAL_DELIVERY);
-	CASE(SIGNAL_HANDLER);
-	CASE(SYSCALL);
-	CASE(SYSCALL_INTERRUPTION);
-#undef CASE
+	switch ((event_type = EventType(e.type))) {
+	case EV_SEGV_RDTSC:
+	case EV_EXIT:
+	case EV_SCHED:
+	case EV_SYSCALLBUF_FLUSH:
+	case EV_SYSCALLBUF_ABORT_COMMIT:
+	case EV_SYSCALLBUF_RESET:
+	case EV_TRACE_TERMINATION:
+	case EV_UNSTABLE_EXIT:
+	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
+	case EV_EXIT_SIGHANDLER:
+		new (&Base()) BaseEvent(e.has_exec_info);
+		// No auxiliary data.
+		assert(0 == e.data);
+		return;
+
+	case EV_DESCHED:
+		new (&Desched()) DeschedEvent(nullptr);
+		Desched().state = DeschedState(e.data);
+		return;
+
+	case EV_SIGNAL:
+		new (&Signal()) SignalEvent(~DET_SIGNAL_BIT & e.data,
+				     DET_SIGNAL_BIT & e.data);
+		return;
+
+	case EV_SYSCALL:
+		new (&Syscall()) SyscallEvent(e.data);
+		Syscall().state = STATE_SYSCALL_ENTRY == e.state ?
+				  ENTERING_SYSCALL : EXITING_SYSCALL;
+		return;
+
 	default:
-		fatal("Unknown event type %d", type);
+		fatal("Unexpected event %s", str().c_str());
 	}
 }
 
-void push_event(Task* t, EventType type, int has_exec_info)
+Event::Event(const Event& o)
+	: event_type(o.event_type)
 {
-	struct event ev;
-	memset(&ev, 0, sizeof(ev));
-	ev.type = type;
-	ev.has_exec_info = has_exec_info;
-
-	FIXEDSTACK_PUSH(&t->pending_events, ev);
-}
-
-/**
- * Pop the pending-event stack and return the type of the previous top
- * element.
- */
-void pop_event(Task* t, EventType expected_type)
-{
-	EventType last_top_type;
-
-	assert_exec(t, FIXEDSTACK_DEPTH(&t->pending_events) > 1,
-		    "Attempting to pop sentinel event");
-
-	last_top_type = FIXEDSTACK_POP(&t->pending_events).type;
-	assert_exec(t, expected_type == last_top_type,
-		    "Should have popped event %s but popped %s instead",
-		    event_type_name(expected_type),
-		    event_type_name(last_top_type));
-}
-
-void push_placeholder_event(Task* t)
-{
-	assert(FIXEDSTACK_EMPTY(&t->pending_events));
-	push_event(t, EV_SENTINEL, NO_EXEC_INFO);
-}
-
-void push_noop(Task* t)
-{
-	push_event(t, EV_NOOP, NO_EXEC_INFO);
-}
-
-void pop_noop(Task* t)
-{
-	pop_event(t, EV_NOOP);
-}
-
-void push_desched(Task* t, const struct syscallbuf_record* rec)
-{
-	assert_exec(t, !t->desched_rec(), "Must have zero or one desched");
-
-	push_event(t, EV_DESCHED, NO_EXEC_INFO);
-	t->ev().desched.state = IN_SYSCALL;
-	t->ev().desched.rec = rec;
-}
-
-void pop_desched(Task* t)
-{
-	assert_exec(t, t->desched_rec(), "Must have desched_rec to pop");
-
-	pop_event(t, EV_DESCHED);
-}
-
-void push_pending_signal(Task* t, int no, int deterministic)
-{
-	push_event(t, EV_SIGNAL, HAS_EXEC_INFO);
-	t->ev().signal.no = no;
-	t->ev().signal.deterministic = deterministic;
-}
-
-void pop_signal_delivery(Task* t)
-{
-	pop_event(t, EV_SIGNAL_DELIVERY);
-}
-
-void pop_signal_handler(Task* t)
-{
-	pop_event(t, EV_SIGNAL_HANDLER);
-}
-
-void push_syscall(Task* t, int no)
-{
-	push_event(t, EV_SYSCALL, HAS_EXEC_INFO);
-	t->ev().syscall.no = no;
-}
-
-void pop_syscall(Task* t)
-{
-	pop_event(t, EV_SYSCALL);
-}
-
-void push_syscall_interruption(Task* t, int no)
-{
-	const struct syscallbuf_record* rec = t->desched_rec();
-
-	assert_exec(t, rec || REPLAY == rr_flags()->option,
-		    "Must be interrupting desched during recording");
-
-	push_event(t, EV_SYSCALL_INTERRUPTION, HAS_EXEC_INFO);
-	t->ev().syscall.state = EXITING_SYSCALL;
-	t->ev().syscall.no = no;
-	t->ev().syscall.desched_rec = rec;
-	t->ev().syscall.regs = t->regs();
-}
-
-void pop_syscall_interruption(Task* t)
-{
-	pop_event(t, EV_SYSCALL_INTERRUPTION);
-}
-
-/**
- * Return nonzero if a tracee at |ev| has meaningful execution info
- * (registers etc.)  that rr should record.  "Meaningful" means that
- * the same state will be seen when reaching this event during replay.
- */
-static int has_exec_info(const struct event& ev)
-{
-	switch (ev.type) {
-	case EV_DESCHED: {
-		// By the time the tracee is in the buffered syscall,
-		// it's by definition already armed the desched event.
-		// So we're recording that event ex post facto, and
-		// there's no meaningful execution information.
-		return IN_SYSCALL != ev.desched.state;
-	}
+	switch (event_type) {
+	case EV_DESCHED:
+		new (&Desched()) DeschedEvent(o.Desched());
+		return;
+	case EV_SIGNAL:
+	case EV_SIGNAL_DELIVERY:
+	case EV_SIGNAL_HANDLER:
+		new (&Signal()) SignalEvent(o.Signal());
+		return;
+	case EV_SYSCALL:
+	case EV_SYSCALL_INTERRUPTION:
+		new (&Syscall()) SyscallEvent(o.Syscall());
+		return;
 	default:
-		return ev.has_exec_info;
+		new (&Base()) BaseEvent(o.Base());
+		return;
 	}
 }
 
-EncodedEvent encode_event(const struct event& ev)
+Event::~Event()
+{
+	switch (event_type) {
+	case EV_DESCHED:
+		Desched().~DeschedEvent();
+		return;
+	case EV_SIGNAL:
+	case EV_SIGNAL_DELIVERY:
+	case EV_SIGNAL_HANDLER:
+		Signal().~SignalEvent();
+		return;
+	case EV_SYSCALL:
+	case EV_SYSCALL_INTERRUPTION:
+		Syscall().~SyscallEvent();
+		return;
+	default:
+		Base().~BaseEvent();
+		return;
+	}
+}
+
+Event&
+Event::operator=(const Event& o)
+{
+	event_type = o.event_type;
+	switch (event_type) {
+	case EV_DESCHED:
+		Desched().operator=(o.Desched());
+		break;
+	case EV_SIGNAL:
+	case EV_SIGNAL_DELIVERY:
+	case EV_SIGNAL_HANDLER:
+		Signal().operator=(o.Signal());
+		break;
+	case EV_SYSCALL:
+	case EV_SYSCALL_INTERRUPTION:
+		Syscall().operator=(o.Syscall());
+		break;
+	default:
+		Base().operator=(o.Base());
+		break;
+	}	
+	return *this;
+}
+
+EncodedEvent
+Event::encode() const
 {
 	EncodedEvent e;
-	e.type = ev.type;
-	e.has_exec_info = has_exec_info(ev);
+	e.type = event_type;
+	e.has_exec_info = has_exec_info();
 	// Arbitrarily designate events for which this isn't
 	// meaningful as being at "entry".  The events for which this
 	// is meaningful set it below.
 	e.state = STATE_SYSCALL_ENTRY;
 
-	switch (ev.type) {
+	switch (event_type) {
 	case EV_SEGV_RDTSC:
 	case EV_EXIT:
 	case EV_SCHED:
@@ -191,78 +150,55 @@ EncodedEvent encode_event(const struct event& ev)
 	case EV_DESCHED:
 		// Disarming the desched notification is a transient
 		// state that we shouldn't try to record.
-		assert(DISARMING_DESCHED_EVENT != ev.desched.state);
-		e.data = IN_SYSCALL == ev.desched.state ?
-			 ARMING_DESCHED_EVENT : ev.desched.state;
+		assert(DISARMING_DESCHED_EVENT != Desched().state);
+		e.data = IN_SYSCALL == Desched().state ?
+			 ARMING_DESCHED_EVENT : Desched().state;
 		return e;
 
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
 	case EV_SIGNAL_HANDLER: {
-		e.data = ev.signal.no | (ev.signal.deterministic ?
-					 DET_SIGNAL_BIT : 0);
+		e.data = Signal().no | (Signal().deterministic ?
+					DET_SIGNAL_BIT : 0);
 		return e;
 	}
 
 	case EV_SYSCALL: {
 		// PROCESSING_SYSCALL is a transient state that we
 		// should never attempt to record.
-		assert(ev.syscall.state != PROCESSING_SYSCALL);
-		e.data = ev.syscall.is_restart ?
-			  SYS_restart_syscall : ev.syscall.no;
-		e.state = (ev.syscall.state == ENTERING_SYSCALL) ?
+		assert(Syscall().state != PROCESSING_SYSCALL);
+		e.data = Syscall().is_restart ?
+			 SYS_restart_syscall : Syscall().no;
+		e.state = (Syscall().state == ENTERING_SYSCALL) ?
 			  STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
 		return e;
 	}
 
 	default:
-		fatal("Unknown event type %d", ev.type);
+		fatal("Unknown event type %d", event_type);
 	}
 }
 
-struct event decode_event(EncodedEvent e)
+bool
+Event::has_exec_info() const
 {
-	struct event ev;
-
-	ev.type = EventType(e.type);
-	switch (ev.type) {
-	case EV_SEGV_RDTSC:
-	case EV_EXIT:
-	case EV_SCHED:
-	case EV_SYSCALLBUF_FLUSH:
-	case EV_SYSCALLBUF_ABORT_COMMIT:
-	case EV_SYSCALLBUF_RESET:
-	case EV_TRACE_TERMINATION:
-	case EV_UNSTABLE_EXIT:
-	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
-	case EV_EXIT_SIGHANDLER:
-		// No auxiliary data.
-		assert(0 == e.data);
-		return ev;
-
-	case EV_DESCHED:
-		ev.desched.state = DeschedState(e.data);
-		return ev;
-
-	case EV_SYSCALL:
-		ev.syscall.no = e.data;
-		ev.syscall.state = STATE_SYSCALL_ENTRY == e.state ?
-				   ENTERING_SYSCALL : EXITING_SYSCALL;
-		return ev;
-
-	case EV_SIGNAL:
-		ev.signal.deterministic = DET_SIGNAL_BIT & e.data;
-		ev.signal.no = ~DET_SIGNAL_BIT & e.data;
-		return ev;
-
+	switch (event_type) {
+	case EV_DESCHED: {
+		// By the time the tracee is in the buffered syscall,
+		// it's by definition already armed the desched event.
+		// So we're recording that event ex post facto, and
+		// there's no meaningful execution information.
+		return IN_SYSCALL != Desched().state;
+	}
 	default:
-		fatal("Unexpected event %s", strevent(ev));
+		return Base().has_exec_info;
 	}
 }
 
-bool is_signal_event(const struct event& ev)
+bool
+Event::is_signal_event() const
 {
-	switch (ev.type) {
+	switch (event_type) {
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
 	case EV_SIGNAL_HANDLER:
@@ -272,9 +208,10 @@ bool is_signal_event(const struct event& ev)
 	}
 }
 
-bool is_syscall_event(const struct event& ev)
+bool
+Event::is_syscall_event() const
 {
-	switch (ev.type) {
+	switch (event_type) {
 	case EV_SYSCALL:
 	case EV_SYSCALL_INTERRUPTION:
 		return true;
@@ -283,59 +220,90 @@ bool is_syscall_event(const struct event& ev)
 	}
 }
 
-void log_pending_events(const Task* t)
+void
+Event::log() const
 {
-	ssize_t depth = FIXEDSTACK_DEPTH(&t->pending_events);
-	int i;
-
-	assert(depth > 0);
-	if (1 == depth) {
-		log_info("(no pending events)");
-		return;
-	}
-
-	/* The event at depth 0 is the placeholder event, which isn't
-	 * useful to log.  Skip it. */
-	for (i = depth - 1; i >= 1; --i) {
-		log_event(&t->pending_events.elts[i]);
-	}
+	log_info("%s", str().c_str());
 }
 
-void log_event(const struct event* ev)
+string
+Event::str() const
 {
-	const char* name = event_name(*ev);
-	switch (ev->type) {
-	case EV_SENTINEL:
-	case EV_EXIT:
-	case EV_EXIT_SIGHANDLER:
-	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
-	case EV_NOOP:
-	case EV_SCHED:
-	case EV_SEGV_RDTSC:
-	case EV_SYSCALLBUF_FLUSH:
-	case EV_SYSCALLBUF_ABORT_COMMIT:
-	case EV_SYSCALLBUF_RESET:
-	case EV_UNSTABLE_EXIT:
-		log_info("%s", name);
-		return;
+	stringstream ss;
+	ss << type_name();
+	switch (event_type) {
 	case EV_DESCHED:
-		log_info("%s: %s", name,
-			 syscallname(ev->desched.rec->syscallno));
-		return;
+		ss << ": " << syscallname(Desched().rec->syscallno);
+		break;
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
 	case EV_SIGNAL_HANDLER:
-		log_info("%s: %s", name, signalname(ev->signal.no));
-		return;
+		ss << ": " << signalname(Signal().no) << "("
+		   << (const char*)(Signal().deterministic ? "det" : "async")
+		   << ")";
+		break;
 	case EV_SYSCALL:
 	case EV_SYSCALL_INTERRUPTION:
-		log_info("%s: %s", name, syscallname(ev->syscall.no));
-		return;
+		ss << ": " << syscallname(Syscall().no);
+		break;
 	default:
-		fatal("Unknown event type %d", ev->type);
+		// No auxiliary information.
+		break;
 	}
+	return ss.str();
 }
 
+void
+Event::transform(EventType new_type)
+{
+	switch (event_type) {
+	case EV_SIGNAL:
+		assert(EV_SIGNAL_DELIVERY == new_type);
+		break;
+	case EV_SIGNAL_DELIVERY:
+		assert(EV_SIGNAL_HANDLER == new_type);
+		break;
+	case EV_SYSCALL:
+		assert(EV_SYSCALL_INTERRUPTION == new_type);
+		break;
+	case EV_SYSCALL_INTERRUPTION:
+		assert(EV_SYSCALL == new_type);
+		break;
+	default:
+		fatal("Can't transform immutable %s into %d",
+		      str().c_str(), new_type);
+	}
+	event_type = new_type;
+}
+
+std::string
+Event::type_name() const
+{
+	switch (event_type) {
+	case EV_SENTINEL: return "(none)";
+#define CASE(_t) case EV_## _t: return #_t
+	CASE(EXIT);
+	CASE(EXIT_SIGHANDLER);
+	CASE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
+	CASE(NOOP);
+	CASE(SCHED);
+	CASE(SEGV_RDTSC);
+	CASE(SYSCALLBUF_FLUSH);
+	CASE(SYSCALLBUF_ABORT_COMMIT);
+	CASE(SYSCALLBUF_RESET);
+	CASE(UNSTABLE_EXIT);
+	CASE(DESCHED);
+	CASE(SIGNAL);
+	CASE(SIGNAL_DELIVERY);
+	CASE(SIGNAL_HANDLER);
+	CASE(SYSCALL);
+	CASE(SYSCALL_INTERRUPTION);
+#undef CASE
+	default:
+		fatal("Unknown event type %d", event_type);
+		return nullptr;	// not reached
+	}
+}
 
 const char* statename(int state)
 {
@@ -348,31 +316,4 @@ const char* statename(int state)
 	default:
 		return "???state";
 	}
-}
-
-static const char* decode_signal_event(const struct event& ev)
-{
-	int sig = ev.signal.no;
-	int det = ev.signal.deterministic;
-	static __thread char buf[] =
-		"SIGREALLYREALLYLONGNAME(asynchronouslydelivered)";
-	snprintf(buf, sizeof(buf) - 1, "%s(%s)",
-		 signalname(sig), det ? "det" : "async");
-	return buf;
-}
-
-const char* strevent(const struct event& ev)
-{
-	if (is_signal_event(ev)) {
-		return decode_signal_event(ev);
-	}
-	if (is_syscall_event(ev)) {
-		return syscallname(ev.syscall.no);
-	}
-	return event_name(ev);;
-}
-
-const char* event_name(const struct event& ev)
-{
-	return event_type_name(ev.type);
 }

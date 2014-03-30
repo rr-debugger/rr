@@ -14,6 +14,7 @@
 #include <sys/queue.h>
 #include <sys/user.h>
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <set>
@@ -23,7 +24,6 @@
 
 #include "dbg.h"
 #include "event.h"
-#include "fixedstack.h"
 #include "trace.h"
 #include "util.h"
 
@@ -783,11 +783,11 @@ public:
 	bool exited() const { return WIFEXITED(wait_status); }
 
 	/** Return the event at the top of this's stack. */
-	struct event& ev() {
-		return *FIXEDSTACK_TOP(&pending_events);
+	Event& ev() {
+		return pending_events.back();
 	}
-	const struct event& ev() const {
-		return *FIXEDSTACK_TOP(&pending_events);
+	const Event& ev() const {
+		return pending_events.back();
 	}
 
 	/**
@@ -920,6 +920,9 @@ public:
 	 */
 	bool is_syscall_restart();
 
+	/** Dump all pending events to the INFO log. */
+	void log_pending_events() const;
+
 	/**
 	 * Return nonzero if |t| may not be immediately runnable,
 	 * i.e., resuming execution and then |waitpid()|'ing may block
@@ -971,6 +974,38 @@ public:
 	 */
 	int ptrace_event() const {
 		return ptrace_event_from_status(wait_status);
+	}
+
+	/**
+	 * Manage pending events.  |push_event()| pushes the given
+	 * event onto the top of the event stack.  The |pop_*()|
+	 * helpers pop the event at top of the stack, which must be of
+	 * the specified type.
+	 */
+	void push_event(const Event& ev) {
+		pending_events.push_back(ev);
+	}
+	void pop_event(EventType expected_type) {
+		assert(pending_events.back().type() == expected_type);
+		pending_events.pop_back();
+	}
+	void pop_noop() {
+		pop_event(EV_NOOP);
+	}
+	void pop_desched() {
+		pop_event(EV_DESCHED);
+	}
+	void pop_signal_delivery() {
+		pop_event(EV_SIGNAL_DELIVERY);
+	}
+	void pop_signal_handler() {
+		pop_event(EV_SIGNAL_HANDLER);
+	}
+	void pop_syscall() {
+		pop_event(EV_SYSCALL);
+	}
+	void pop_syscall_interruption() {
+		pop_event(EV_SYSCALL_INTERRUPTION);
 	}
 
 	/**
@@ -1234,9 +1269,6 @@ public:
 	 * this task.  Starts at "1" to match with "global_time". */
 	int thread_time;
 
-	/* The current stack of events being processed. */
-	FIXEDSTACK_DECL(, struct event, 16) pending_events;
-
 	/* Whether switching away from this task is allowed in its
 	 * current state.  Some operations must be completed
 	 * atomically and aren't switchable. */
@@ -1431,6 +1463,10 @@ private:
 	//
 	// TODO: we should only need one of these per address space.
 	int child_mem_fd;
+	// The current stack of events being processed.  (We use a
+	// deque instead of a stack because we need to iterate the
+	// events.)
+	std::deque<Event> pending_events;
 	// Task's OS name.
 	std::string prname;
 	// When |registers_known|, these are our child registers.
