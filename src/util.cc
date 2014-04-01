@@ -696,7 +696,7 @@ static void dump_binary_chunk(FILE* out, const char* label,
 void dump_binary_data(const char* filename, const char* label,
 		      const uint32_t* buf, size_t buf_len, void* start_addr)
 {
-	FILE* out = fopen(filename, "w");
+	FILE* out = fopen64(filename, "w");
 	if (!out) {
 		return;
 	}
@@ -774,7 +774,7 @@ void dump_process_memory(Task* t, int global_time, const char* tag)
 	FILE* dump_file;
 
 	format_dump_filename(t, global_time, tag, filename, sizeof(filename));
-	dump_file = fopen(filename,"w");
+	dump_file = fopen64(filename, "w");
 
 	/* flush all files in case we partially record
 	 * TODO: what does that mean? */
@@ -959,7 +959,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 	c.mode = mode;
 	snprintf(filename, sizeof(filename) - 1, "%s/%d_%d",
 		 get_trace_path(), global_time, t->rec_tid);
-	c.checksums_file = fopen(filename, fmode);
+	c.checksums_file = fopen64(filename, fmode);
 	c.global_time = global_time;
 	if (!c.checksums_file) {
 		fatal("Failed to open checksum file %s", filename);
