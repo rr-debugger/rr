@@ -656,8 +656,18 @@ static void check_rbc(Task* t)
 		return;
 	}
 	int fd = t->regs().ebx;
-	assert_exec(t, -1 == fd,
-		    "rbc write should have been to fd -1, instead was %d", fd);
+	if (-1 != fd) {
+		fprintf(stderr,
+"\n"
+"rr: error:\n"
+"  Unexpected `write(%d, ...)' call from first tracee process.\n"
+"  Most likely, the executable image `%s' doesn't exist or isn't\n"
+"  in your $PATH.  Terminating recording.\n"
+"\n",
+			fd, exe_image.c_str());
+		terminate_recording(t);
+		return;
+	}
 
 	int64_t rbc = read_rbc(t->hpc);
 	debug("rbc on entry to dummy write: %lld", rbc);
