@@ -199,7 +199,9 @@ function debug { exe=$1; expectscript=$2; replayargs=$3
 # Otherwise the test fails.
 function check { token=$1;
     # The test failed until we prove otherwise below.
-    if [[ $(cat replay.err) != "" ]]; then
+    if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out ]; then
+	echo "Test '$TESTNAME' FAILED: output files not found."
+    elif [[ $(cat replay.err) != "" ]]; then
 	echo "Test '$TESTNAME' FAILED: error during replay:"
 	echo "--------------------------------------------------"
 	cat replay.err

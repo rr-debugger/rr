@@ -10,9 +10,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sysexits.h>
 #include <sys/user.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+
+#include <fstream>
+#include <sstream>
+#include <string>
 
 #include "preload/syscall_buffer.h"
 
@@ -22,6 +27,17 @@
 #include "task.h"
 #include "trace.h"
 #include "util.h"
+
+//
+// This represents the format and layout of recorded traces.  This
+// version number doesn't track the rr version number, because changes
+// to the trace format will be rare.
+//
+// NB: if you *do* change the trace format for whatever reason, you
+// MUST increment this version number.  Otherwise users' old traces
+// will become unreplayable and they won't know why.
+//
+#define TRACE_VERSION 1
 
 #define BUF_SIZE 1024;
 #define LINE_SIZE 50;
@@ -129,6 +145,13 @@ unsigned int get_global_time(void)
 	return global_time;
 }
 
+static string get_version_file_path()
+{
+	stringstream path;
+	path << trace_path_ << "/version";
+	return path.str();
+}
+
 void rec_setup_trace_dir()
 {
 	int nonce = 0;
@@ -149,6 +172,14 @@ void rec_setup_trace_dir()
 	if (ret) {
 		fatal("Unable to create trace directory `%s'", trace_path_);
 	}
+
+	string path = get_version_file_path();
+	fstream version(path.c_str(), fstream::out);
+	if (!version.good()) {
+		fatal("Unable to create %s", path.c_str());
+	}
+	version << TRACE_VERSION << endl;
+
 	log_info("Saving trace files to %s", trace_path_);
 }
 
@@ -215,8 +246,41 @@ static void open_trace_file(void)
 			     0600);
 }
 
+static void ensure_compatible_trace_version()
+{
+	string path = get_version_file_path();
+	fstream vfile(path.c_str(), fstream::in);
+	if (!vfile.good()) {
+		fprintf(stderr,
+"\n"
+"rr: error: Version file for recorded trace `%s' not found.  Did you record\n"
+"           `%s' with an older version of rr?  If so, you'll need to replay\n"
+"           `%s' with that older version.  Otherwise, your trace is\n"
+"           likely corrupted.\n"
+"\n",
+			trace_path_, trace_path_, trace_path_);
+		exit(EX_DATAERR);
+	}
+	int version = 0;
+	vfile >> version;
+	if (vfile.fail() || TRACE_VERSION != version) {
+		fprintf(stderr,
+"\n"
+"rr: error: Recorded trace `%s' has an incompatible version %d; expected\n"
+"           %d.  Did you record `%s' with an older version of rr?  If so,\n"
+"           you'll need to replay `%s' with that older version.  Otherwise,\n"
+"           your trace is likely corrupted.\n"
+"\n",
+			trace_path_, version, TRACE_VERSION,
+			trace_path_, trace_path_);
+		exit(EX_DATAERR);
+	}
+}
+
 void open_trace_files(void)
 {
+	ensure_compatible_trace_version();
+
 	char path[PATH_MAX];
 
 	open_trace_file();
