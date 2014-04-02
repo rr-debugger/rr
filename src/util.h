@@ -142,6 +142,7 @@ uint64_t str2ull(const char* start, size_t max_size);
 long int str2li(const char* start, size_t max_size);
 byte* str2x(const char* start, size_t max_size);
 void read_line(FILE* file, char* buf, int size, const char* name);
+void read_null_terminated(FILE* file, char* buf, int size, const char* name);
 
 void print_register_file_tid(Task* t);
 void print_register_file(const struct user_regs_struct* regs);

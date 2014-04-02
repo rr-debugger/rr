@@ -168,11 +168,11 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	}
 
 	/* print argc */
-	fprintf(arg_env, "%d\n", argc);
+	fprintf(arg_env, "%d%c", argc, 0);
 
 	/* print arguments to file */
 	for (i = 0; i < argc; i++) {
-		fprintf(arg_env, "%s\n", argv[i]);
+		fprintf(arg_env, "%s%c", argv[i], 0);
 	}
 
 	/* figure out the length of envp */
@@ -180,10 +180,10 @@ void record_argv_envp(int argc, char* argv[], char* envp[])
 	while (envp[i] != NULL) {
 		i++;
 	}
-	fprintf(arg_env, "%d\n", i);
+	fprintf(arg_env, "%d%c", i, 0);
 
 	for (j = 0; j < i; j++) {
-		fprintf(arg_env, "%s\n", envp[j]);
+		fprintf(arg_env, "%s%c", envp[j], 0);
 	}
 	fclose(arg_env);
 }
@@ -537,16 +537,12 @@ void load_recorded_env(const char* trace_path,
 	char buf[8192];
 
 	/* the first line contains argc */
-	read_line(arg_env, buf, sizeof(buf), "arg_env");
+	read_null_terminated(arg_env, buf, sizeof(buf), "arg_env");
 	*argc = str2li(buf, LI_COLUMN_SIZE);
 
 	/* followed by argv */
 	for (int i = 0; i < *argc; ++i) {
-		read_line(arg_env, buf, sizeof(buf), "arg_env");
-		int len = strlen(buf);
-		assert(len < 8192);
-		/* overwrite the newline */
-		buf[len - 1] = '\0';
+		read_null_terminated(arg_env, buf, sizeof(buf), "arg_env");
 		argv->push_back(strdup(buf));
 	}
 
@@ -555,16 +551,12 @@ void load_recorded_env(const char* trace_path,
 	*exe_image = argv->at(0);
 
 	/* now, read the number of environment entries */
-	read_line(arg_env, buf, sizeof(buf), "arg_env");
+	read_null_terminated(arg_env, buf, sizeof(buf), "arg_env");
 	int envc = str2li(buf, LI_COLUMN_SIZE);
 
 	/* followed by argv */
 	for (int i = 0; i < envc; i++) {
-		read_line(arg_env, buf, sizeof(buf), "arg_env");
-		int len = strlen(buf);
-		assert(len < 8192);
-		/* overwrite the newline */
-		buf[len - 1] = '\0';
+		read_null_terminated(arg_env, buf, sizeof(buf), "arg_env");
 		envp->push_back(strdup(buf));
 	}
 
