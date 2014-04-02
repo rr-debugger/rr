@@ -11,8 +11,6 @@
 #include <sys/wait.h>
 
 #include <limits>
-#include <sstream>
-#include <string>
 
 #include "preload/syscall_buffer.h"
 
@@ -29,164 +27,6 @@
 using namespace std;
 
 extern char** environ;
-
-static string exe_image;
-// NB: we currently intentionally leak the constituent strings in
-// these arrays.
-static CharpVector arg_v;
-static CharpVector env_p;
-
-static void copy_argv(int argc, char* argv[])
-{
-	for (int i = 0; i < argc; ++i) {
-		arg_v.push_back(strdup(argv[i]));
-	}
-	arg_v.push_back(NULL);
-}
-
-static void copy_envp(char** envp)
-{
-	int i = 0, preload_index = -1;
-	for (i = 0; envp[i]; ++i) {
-		env_p.push_back(strdup(envp[i]));
-		if (envp[i] == strstr(envp[i], "LD_PRELOAD=")) {
-			preload_index = i;
-		}
-	}
-	// LD_PRELOAD the syscall interception lib
-	if (rr_flags()->syscall_buffer_lib_path) {
-		string ld_preload = "LD_PRELOAD=";
-		// Our preload lib *must* come first
-		ld_preload += rr_flags()->syscall_buffer_lib_path;
-		if (preload_index >= 0) {
-			const char* old_preload =
-				strchr(envp[preload_index], '=') + 1;
-			assert(old_preload);
-			// Honor old preloads too.  this may cause
-			// problems, but only in those libs, and
-			// that's the user's problem.
-			ld_preload += ":";
-			ld_preload += old_preload;
-		} else {
-			/* Or if this is a new key/value, "allocate"
-			 * an index for it */
-			preload_index = i++;
-		}
-		env_p.push_back(strdup(ld_preload.c_str()));
-	}
-	env_p.push_back(NULL);
-}
-
-/**
- * Create a pulseaudio client config file with shm disabled.  That may
- * be the cause of a mysterious divergence.  Return an envpair to set
- * in the tracee environment.
- */
-static string create_pulseaudio_config()
-{
-	// TODO let PULSE_CLIENTCONFIG env var take precedence.
-	static const char pulseaudio_config_path[] = "/etc/pulse/client.conf";
-	if (access(pulseaudio_config_path, R_OK)) {
-		fatal("Can't file pulseaudio config at %s.", pulseaudio_config_path);
-	}
-	char tmp[] = "rr-pulseaudio-client-conf-XXXXXX";
-	int fd = mkstemp(tmp);
-	unlink(tmp);
-
-	stringstream procfile;
-	procfile << "/proc/" << getpid() << "/fd/" << fd;
-	stringstream cmd;
-	cmd << "cp " << pulseaudio_config_path << " " << procfile.str();
-	    
-	int status = system(cmd.str().c_str());
-	if (-1 == status || !WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
-		fatal("The command '%s' failed.", cmd.str().c_str());
-	}
-	if (-1 == lseek(fd, 0, SEEK_END)) {
-		fatal("Failed to seek to end of file.");
-	}
-	char disable_shm[] = "disable-shm = true\n";
-	ssize_t nwritten = write(fd, disable_shm, sizeof(disable_shm) - 1);
-	if (nwritten != sizeof(disable_shm) - 1) {
-		fatal("Failed to append '%s' to %s",
-		      disable_shm, procfile.str().c_str());
-	}
-	stringstream envpair;
-	envpair << "PULSE_CLIENTCONFIG=" << procfile.str();
-	return envpair.str();
-}
-
-/**
- * Ensure that when we exec the tracee image, the rrpreload lib will
- * be preloaded.  Even if the syscallbuf is disabled, we have to load
- * the preload lib for correctness.
- */
-static void ensure_preload_lib_will_load(const char* rr_exe,
-					 const CharpVector& envp)
-{
-	char exe[PATH_MAX];
-	strcpy(exe, rr_exe);
-	char cmd[] = "check-preload-lib";
-	char* argv[] = { exe, cmd, nullptr };
-	CharpVector ep = envp;
-	char magic_envpair[] = "_RR_CHECK_PRELOAD=1";
-	ep[ep.size() - 1] = magic_envpair;
-	ep.push_back(nullptr);
-
-	pid_t child = fork();
-	if (0 == child) {
-		execvpe(rr_exe, argv, ep.data());
-		fatal("Failed to exec %s", rr_exe);
-	}
-	int status;
-	pid_t ret = waitpid(child, &status, 0);
-	if (ret != child) {
-		fatal("Failed to wait for %s child", rr_exe);
-	}
-	if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
-		fprintf(stderr,
-"\n"
-"rr: error: Unable to preload the '%s' library.\n"
-"  Ensure that the library is in your LD_LIBRARY_PATH.  If you installed rr\n"
-"  from a distribution package, then the package or your system was not\n"
-"  configured correctly.\n"
-"\n",
-			SYSCALLBUF_LIB_FILENAME);
-		exit(EX_CONFIG);
-	}
-}
-
-static void start_recording(const char* rr_exe,
-			    int argc, char* argv[], char** envp)
-{
-	exe_image = argv[0];
-	copy_argv(argc, argv);
-	copy_envp(envp);
-	rec_setup_trace_dir();
-
-	string env_pair = create_pulseaudio_config();
-	// Intentionally leaked.
-	env_p[env_p.size() - 1] = strdup(env_pair.c_str());
-	env_p.push_back(nullptr);
-
-	ensure_preload_lib_will_load(rr_exe, env_p);
-
-	open_trace_files();
-	rec_init_trace_files();
-	record_argv_envp(argc, arg_v.data(), env_p.data());
-	init_libpfm();
-
-	Task* t = Task::create(exe_image, arg_v, env_p);
-
-	start_hpc(t, rr_flags()->max_rbc);
-
-	log_info("Start recording...");
-	record();
-	log_info("Done recording -- cleaning up");
-
-	close_trace_files();
-	close_libpfm();
-}
 
 /**
  * Dump all events from the current to trace that match |spec| to
@@ -247,7 +87,7 @@ static void start(const char* rr_exe, int argc, char* argv[], char** envp)
 
 	switch (rr_flags()->option) {
 	case RECORD:
-		return start_recording(rr_exe, argc, argv, envp);
+		return record(rr_exe, argc, argv, envp);
 	case REPLAY:
 		return replay(argc, argv, envp);
 	case DUMP_EVENTS:
