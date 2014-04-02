@@ -674,6 +674,23 @@ void read_line(FILE* file, char* buf, int size, const char* name)
 	}
 }
 
+void read_null_terminated(FILE* file, char* buf, int size, const char* name)
+{
+	while (size > 1) {
+		int ch = getc(file);
+		if (ch == EOF) {
+			fatal("Failed to read line from %s into buf %p (size %d)",
+				name, buf, size);
+		}
+		if (ch == 0) {
+			break;
+		}
+		*buf++ = ch;
+		size--;
+	}
+	*buf = 0;
+}
+
 /**
  * Dump |buf_len| words in |buf| to |out|, starting with a line
  * containing |label|.  See |dump_binary_data()| for a description of

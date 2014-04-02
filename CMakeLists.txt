@@ -211,6 +211,7 @@ set(CUSTOM_TESTS
   cont_signal
   dead_thread_target
   deliver_async_signal_during_syscalls
+  env-newline
   execp
   fork_exec_info_thr
   get_thread_list
