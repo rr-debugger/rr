@@ -6,7 +6,12 @@
 struct flags;
 class Task;
 
-void record(void);
+/**
+ * Record the execution of the application that will be created by
+ * argc, argv, and envp.  |rr_exe| points at rr's image (possibly in
+ * the $PATH).
+ */
+void record(const char* rr_exe, int argc, char* argv[], char** envp);
 
 /**
  * Record a trace-termination event, sync the trace files, and shut
