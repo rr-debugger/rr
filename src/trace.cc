@@ -197,7 +197,7 @@ static void open_rawdata_file(void)
 	overall_raw_bytes = 0;
 
 	snprintf(path, sizeof(path) - 1, "%s/raw_data", trace_path_);
-	raw_data = fopen(path, "a+");
+	raw_data = fopen64(path, "a+");
 	if (!raw_data) {
 		fatal("Failed to create new rawdata file %s", path);
 	}
@@ -222,7 +222,7 @@ void open_trace_files(void)
 	open_trace_file();
 
 	snprintf(path, sizeof(path) - 1, "%s/syscall_input", trace_path_);
-	syscall_header = fopen(path, "a+");
+	syscall_header = fopen64(path, "a+");
 	if (!syscall_header) {
 		fatal("Failed to open syscall header file %s", path);
 	}
@@ -230,7 +230,7 @@ void open_trace_files(void)
 	open_rawdata_file();
 
 	snprintf(path, sizeof(path) - 1, "%s/mmaps", trace_path_);
-	mmaps_file = fopen(path, "a+");
+	mmaps_file = fopen64(path, "a+");
 	if (!mmaps_file) {
 		fatal("Failed to open mmaps record file %s", path);
 	}
