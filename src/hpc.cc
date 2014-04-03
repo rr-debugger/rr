@@ -97,11 +97,17 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
 
 /*
  * Find out the cpu model using the cpuid instruction.
- * full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
+ * Full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
+ * Another list at http://software.intel.com/en-us/articles/intel-architecture-and-processor-identification-with-cpuid-model-and-family-numbers
  */
 enum cpu_type {
-	IntelSandyBridge, IntelIvyBridge, IntelNehalem, IntelMerom,
-	IntelHaswell, IntelWestmere
+	IntelMerom,
+	IntelPenryn,
+	IntelNehalem,
+	IntelWestmere,
+	IntelSandyBridge,
+	IntelIvyBridge,
+	IntelHaswell
 };
 static cpu_type get_cpu_type()
 {
@@ -110,11 +116,18 @@ static cpu_type get_cpu_type()
 	cpu_type = (eax & 0xF0FF0);
 	switch (cpu_type) {
 	case 0x006F0:
-		assert(0 && "Merom not completely supported yet (find deterministic events).");
+	case 0x10660:
 		return IntelMerom;
+	case 0x10670:
+	case 0x106D0:
+		return IntelPenryn;
+	case 0x106A0:
 	case 0x106E0:
+	case 0x206E0:
 		return IntelNehalem;
 	case 0x20650:
+	case 0x206C0:
+	case 0x206F0:
 		return IntelWestmere;
 	case 0x206A0:
 	case 0x206D0:
@@ -125,14 +138,13 @@ static cpu_type get_cpu_type()
 	case 0x40660:
 		return IntelHaswell;
 	default:
-		fatal("CPU 0x%5X not supported yet (add cpuid and adjust the event string to add support).",
+		fatal("CPU 0x%5X unknown (add cpuid and adjust event strings to add support).",
 		      cpu_type);
 	}
 }
 
 void init_hpc(Task* t)
 {
-
 	struct hpc_context* counters =
 		(struct hpc_context*)calloc(1, sizeof(*counters));
 	t->hpc = counters;
@@ -146,9 +158,10 @@ void init_hpc(Task* t)
 	const char * page_faults_event = "PERF_COUNT_SW_PAGE_FAULTS:u";
 	switch (get_cpu_type()) {
 	case IntelMerom :
-		rbc_event = "BR_INST_RETIRED:u";
-		inst_event = "INST_RETIRED:u";
-		hw_int_event = "HW_INT_RCV:u";
+		fatal("Intel Merom CPUs currently unsupported.");
+		break;
+	case IntelPenryn :
+		fatal("Intel Penryn CPUs currently unsupported.");
 		break;
 	case IntelWestmere :
 		fprintf(stderr,
@@ -179,15 +192,12 @@ void init_hpc(Task* t)
 		hw_int_event = "HW_INTERRUPTS:u";
 		fprintf(stderr,
 "\n"
-"rr: Warning: Your CPU type is Haswell. rr is known to not work correctly on\n"
-"Haswell currently. See https://github.com/mozilla/rr/issues/973.\n"
+"rr: Warning: Your CPU type is Intel Haswell. rr does not yet work properly on\n"
+"Haswell. See https://github.com/mozilla/rr/issues/973.\n"
 "\n");
 		break;
-	default: // best guess
-		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
-		inst_event = "INST_RETIRED:u";
-		hw_int_event = "HW_INTERRUPTS:u";
-		break;
+	default:
+		fatal("Unknown CPU type");
 	}
 
 	libpfm_event_encoding(&(counters->rbc.attr), rbc_event , 1);
