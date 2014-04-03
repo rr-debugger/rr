@@ -98,7 +98,8 @@ static string create_pulseaudio_config()
 	// TODO let PULSE_CLIENTCONFIG env var take precedence.
 	static const char pulseaudio_config_path[] = "/etc/pulse/client.conf";
 	if (access(pulseaudio_config_path, R_OK)) {
-		fatal("Can't file pulseaudio config at %s.", pulseaudio_config_path);
+		// Assume pulseaudio isn't installed
+		return "";
 	}
 	char tmp[] = "rr-pulseaudio-client-conf-XXXXXX";
 	int fd = mkstemp(tmp);
@@ -922,9 +923,11 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 	rec_setup_trace_dir();
 
 	string env_pair = create_pulseaudio_config();
-	// Intentionally leaked.
-	env_p[env_p.size() - 1] = strdup(env_pair.c_str());
-	env_p.push_back(nullptr);
+	if (!env_pair.empty()) {
+		// Intentionally leaked.
+		env_p[env_p.size() - 1] = strdup(env_pair.c_str());
+		env_p.push_back(nullptr);
+	}
 
 	ensure_preload_lib_will_load(rr_exe, env_p);
 
