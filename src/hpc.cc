@@ -101,6 +101,7 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  */
 enum cpu_type {
 	IntelSandyBridge, IntelIvyBridge, IntelNehalem, IntelMerom,
+	IntelHaswell
 };
 static cpu_type get_cpu_type()
 {
@@ -118,6 +119,9 @@ static cpu_type get_cpu_type()
 		return IntelSandyBridge;
 	case 0x306A0:
 		return IntelIvyBridge;
+	case 0x306C0:
+	case 0x40660:
+		return IntelHaswell;
 	default:
 		fatal("CPU 0x%5X not supported yet (add cpuid and adjust the event string to add support).",
 		      cpu_type);
@@ -158,6 +162,16 @@ void init_hpc(Task* t)
 		rbc_event = "BR_INST_RETIRED:COND:u:precise=0";
 		inst_event = "INST_RETIRED:u";
 		hw_int_event = "HW_INTERRUPTS:u";
+		break;
+	case IntelHaswell :
+		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		inst_event = "INST_RETIRED:u";
+		hw_int_event = "HW_INTERRUPTS:u";
+		fprintf(stderr,
+"\n"
+"rr: Warning: Your CPU type is Haswell. rr is known to not work correctly on\n"
+"Haswell currently. See https://github.com/mozilla/rr/issues/973.\n"
+"\n");
 		break;
 	default: // best guess
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
