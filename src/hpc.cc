@@ -101,7 +101,7 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
  */
 enum cpu_type {
 	IntelSandyBridge, IntelIvyBridge, IntelNehalem, IntelMerom,
-	IntelHaswell
+	IntelHaswell, IntelWestmere
 };
 static cpu_type get_cpu_type()
 {
@@ -114,6 +114,8 @@ static cpu_type get_cpu_type()
 		return IntelMerom;
 	case 0x106E0:
 		return IntelNehalem;
+	case 0x20650:
+		return IntelWestmere;
 	case 0x206A0:
 	case 0x206D0:
 		return IntelSandyBridge;
@@ -148,6 +150,14 @@ void init_hpc(Task* t)
 		inst_event = "INST_RETIRED:u";
 		hw_int_event = "HW_INT_RCV:u";
 		break;
+	case IntelWestmere :
+		fprintf(stderr,
+"\n"
+"rr: Warning: Your CPU type is Westmere. Westmere support in rr is\n"
+"  currently experimental; you may encounter bugs.\n"
+"  See https://github.com/mozilla/rr/issues/1023.\n"
+"\n");
+		// fall through
 	case IntelNehalem :
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
