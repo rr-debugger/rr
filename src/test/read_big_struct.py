@@ -10,6 +10,6 @@ send_gdb('f 1\n')
 expect_gdb('(gdb)')
 
 send_gdb('p big\n')
-expect_gdb("  bytes = 'Z'")
+expect_gdb("bytes = 'Z'")
 
 ok()
