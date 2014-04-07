@@ -35,6 +35,7 @@
 #include <sys/ptrace.h>
 #include <sys/resource.h>
 #include <sys/select.h>
+#include <sys/sendfile.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>

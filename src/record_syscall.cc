@@ -628,6 +628,29 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
+	case SYS_sendfile64: {
+		struct user_regs_struct r = t->regs();
+		loff_t* offset = (loff_t*)r.edx;
+
+		if (!would_need_scratch) {
+			return 1;
+		}
+
+		push_arg_ptr(t, offset);
+		if (offset) {
+			loff_t* offset2 = (loff_t*)scratch;
+			scratch += sizeof(*offset2);
+			t->remote_memcpy(offset2, offset, sizeof(*offset2));
+			r.edx = (uintptr_t)offset2;
+		}
+		if (!can_use_scratch(t, scratch)) {
+			return abort_scratch(t, syscallname(syscallno));
+		}
+
+		t->set_regs(r);
+		return 1;
+	}
+
 	case SYS_clone: {
 		unsigned long flags = t->regs().ebx;
 		push_arg_ptr(t, (void*)(uintptr_t)flags);
@@ -3434,6 +3457,33 @@ void rec_process_syscall(Task *t)
 		if (off_out) {
 			restore_and_record_arg(t, off_out, &iter);
 			r.esi = (uintptr_t)off_out;
+		} else {
+			record_noop_data(t);
+		}
+
+		t->set_regs(r);
+		finish_restoring_scratch(t, iter, &data);
+		break;
+	}
+
+	/**
+	 * ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t __count);
+	 *
+	 * Send up to COUNT bytes from file associated with IN_FD starting at
+	 * *OFFSET to descriptor OUT_FD.  Set *OFFSET to the IN_FD's file position
+	 * following the read bytes.  If OFFSET is a null pointer, use the normal
+	 * file position instead.  Return the number of written bytes, or -1 in
+	 * case of error.
+	 */
+	case SYS_sendfile64: {
+		loff_t* offset = pop_arg_ptr<loff_t>(t);
+		byte* iter;
+		void* data = start_restoring_scratch(t, &iter);
+
+		struct user_regs_struct r = t->regs();
+		if (offset) {
+			restore_and_record_arg(t, offset, &iter);
+			r.edx = (uintptr_t)offset;
 		} else {
 			record_noop_data(t);
 		}
