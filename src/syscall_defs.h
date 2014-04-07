@@ -1231,6 +1231,17 @@ SYSCALL_DEF(IRREGULAR, socketcall, -1)
 SYSCALL_DEF(EMU, splice, 2)
 
 /**
+ * ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t __count);
+ *
+ * Send up to COUNT bytes from file associated with IN_FD starting at
+ * *OFFSET to descriptor OUT_FD.  Set *OFFSET to the IN_FD's file position
+ * following the read bytes.  If OFFSET is a null pointer, use the normal
+ * file position instead.  Return the number of written bytes, or -1 in
+ * case of error.
+ */
+SYSCALL_DEF(EMU, sendfile64, 1)
+
+/**
  * int stat(const char *path, struct stat *buf);
  *
  * stat() stats the file pointed to by path and fills in buf.
