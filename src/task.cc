@@ -2034,20 +2034,29 @@ Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf)
 	if (0 == buf_size) {
 		return 0;
 	}
-	errno = 0;
-	ssize_t nread = pread64(child_mem_fd, buf, buf_size, to_offset(addr));
-	// We open the child_mem_fd just after being notified of
-	// exec(), when the Task is created.  Trying to read from that
-	// fd seems to return 0 with errno 0.  Reopening the mem fd
-	// allows the pwrite to succeed.  It seems that the first mem
-	// fd we open, very early in exec, refers to some resource
-	// that's different than the one we see after reopening the
-	// fd, after exec.
-	if (0 == nread && 0 == errno) {
-		reopen_mem_fd();
-		return read_bytes_fallible(addr, buf_size, buf);
-	}
-	return nread;
+	ssize_t total_read = 0;
+	off64_t offset = to_offset(addr);
+	ssize_t nread = 0;
+	do {
+		errno = 0;
+		nread = pread64(child_mem_fd, buf + total_read, buf_size - total_read, offset);
+		// We open the child_mem_fd just after being notified of
+		// exec(), when the Task is created.  Trying to read from that
+		// fd seems to return 0 with errno 0.  Reopening the mem fd
+		// allows the pwrite to succeed.  It seems that the first mem
+		// fd we open, very early in exec, refers to some resource
+		// that's different than the one we see after reopening the
+		// fd, after exec.
+		if (0 == nread && 0 == errno) {
+			reopen_mem_fd();
+			return read_bytes_fallible(addr, buf_size, buf);
+		}
+		if (nread > 0) {
+			total_read += nread;
+			offset += nread;
+		}
+	} while (nread >= 0 && total_read < buf_size && (errno == 0 || errno == EAGAIN || errno == EWOULDBLOCK));
+	return total_read;
 }
 
 void
