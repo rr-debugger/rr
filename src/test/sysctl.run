@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh sysctl "$@"
+compare_test EXIT-SUCCESS

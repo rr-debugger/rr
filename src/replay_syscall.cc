@@ -29,6 +29,7 @@
 #include <sys/prctl.h>
 #include <sys/quota.h>
 #include <sys/socket.h>
+#include <sys/sysctl.h>
 
 #include <map>
 #include <memory>

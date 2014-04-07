@@ -562,7 +562,8 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 				    || SYS_rrcall_monkeypatch_vdso == syscallno
 				    || SYS_clone == syscallno
 				    || SYS_exit_group == syscallno
-				    || SYS_exit == syscallno)),
+				    || SYS_exit == syscallno
+				    || SYS__sysctl == syscallno)),
 			    "Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
 			    syscallname(syscallno));
 

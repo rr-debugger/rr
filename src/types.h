@@ -11,8 +11,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define __unused __attribute__((unused))
-
 #define CHECK_ALIGNMENT(addr) 	assert(((long int)(addr) & 0x3) == 0)
 
 #define PTR_SIZE		(sizeof(void*))
