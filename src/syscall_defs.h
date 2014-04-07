@@ -829,6 +829,16 @@ SYSCALL_DEF(EMU, ppoll, 1)
 SYSCALL_DEF(IRREGULAR, prctl, -1)
 
 /**
+ *  int _sysctl(struct __syscall_args* args);
+ *
+ * The _sysctl() call reads and/or writes kernel parameters.  For example,
+ * the hostname, or the maximum number of open files.
+ *
+ * Often not supported in modern kernels, so can return ENOSYS.
+ */
+SYSCALL_DEF(EMU, _sysctl, 2)
+
+/**
  *  ssize_t pread(int fd, void *buf, size_t count, off_t offset);
  *
  * pread, pwrite - read from or write to a file descriptor at a given

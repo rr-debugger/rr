@@ -163,6 +163,7 @@ set(BASIC_TESTS
   statfs
   step_thread
   strict_priorities
+  sysctl
   switch_read
   syscallbuf_timeslice
   sysconf

@@ -30,6 +30,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/sysctl.h>
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/times.h>
@@ -830,6 +831,16 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 1;
 		}
 		fatal("Not reached");
+	}
+
+	case SYS__sysctl: {
+		struct __sysctl_args sysctl_args;
+		void* args_ptr = (void*)t->regs().ebx;
+		t->read_mem(args_ptr, &sysctl_args);
+
+		push_arg_ptr(t, sysctl_args.oldval);
+		push_arg_ptr(t, sysctl_args.oldlenp);
+		return 0;
 	}
 
 	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
@@ -2647,6 +2658,17 @@ void rec_process_syscall(Task *t)
 		break;
 	}
 	
+	case SYS__sysctl: {
+		size_t* oldlenp = pop_arg_ptr<size_t>(t);
+		void* oldval = pop_arg_ptr<void>(t);
+		size_t oldlen;
+		t->read_mem(oldlenp, &oldlen);
+
+		record_child_data(t, sizeof(size_t), oldlenp);
+		record_child_data(t, oldlen, oldval);
+		break;
+	}
+
 	/**
 	 * ssize_t pread(int fd, void *buf, size_t count, off_t offset);
 	 *
