@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh mmap_short_file "$@"
+compare_test 'EXIT-SUCCESS'
