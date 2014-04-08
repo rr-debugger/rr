@@ -826,6 +826,49 @@ static void* finish_anonymous_mmap(Task* t,
 				      fd, offset_pages);
 }
 
+/* Ensure that accesses to the memory region given by start/length
+   cause a SIGBUS, as for accesses beyond the end of an mmaped file. */
+static void create_sigbus_region(Task* t,
+				 struct current_state_buffer* state,
+				 int prot, void* start, size_t length)
+{
+	if (length == 0) {
+		return;
+	}
+
+	/* Open an empty file in the tracee */
+	char filename[] = "/tmp/rr-emptyfile-XXXXXX";
+	int fd = mkstemp(filename);
+	/* Close our side immediately */
+	close(fd);
+
+	int child_fd;
+	{
+		struct restore_mem restore;
+		void* child_str = push_tmp_str(t, state, filename, &restore);
+		child_fd = remote_syscall2(t, state, SYS_open, child_str, O_RDONLY);
+		if (0 > child_fd) {
+			fatal("Couldn't open %s to mmap in tracee", filename);
+		}
+		pop_tmp_mem(t, state, &restore);
+	}
+
+	/* Unlink it now that the child has opened it */
+	unlink(filename);
+
+	/* mmap it in the tracee. We need to set the correct 'prot' flags
+	   so that the correct signal is generated on a memory access
+	   (SEGV if 'prot' doesn't allow the access, BUS if 'prot' does allow
+	   the access). */
+	remote_syscall6(t, state, SYS_mmap2,
+			start, length,
+			prot, MAP_FIXED | MAP_PRIVATE,
+			child_fd, 0);
+	/* Don't leak the tmp fd.  The mmap doesn't need the fd to
+	 * stay open. */
+	remote_syscall1(t, state, SYS_close, fd);
+}
+
 static void* finish_private_mmap(Task* t,
 				 struct current_state_buffer* state,
 				 struct trace_frame* trace,
@@ -844,7 +887,13 @@ static void* finish_private_mmap(Task* t,
 						  flags | MAP_ANONYMOUS,
 						  DONT_NOTE_TASK_MAP);
 	/* Restore the map region we copied. */
-	t->set_data_from_trace();
+	ssize_t data_size = t->set_data_from_trace();
+
+	/* Ensure pages past the end of the file fault on access */
+	size_t data_pages = ceil_page_size(data_size);
+	size_t mapped_pages = ceil_page_size(num_bytes);
+	create_sigbus_region(t, state, prot, (char*)mapped_addr + data_pages,
+			     mapped_pages - data_pages);
 
 	t->vm()->map(mapped_addr, num_bytes, prot, flags,
 		     page_size() * offset_pages,

@@ -3206,7 +3206,7 @@ void rec_process_syscall(Task *t)
 		size_t size = ceil_page_size(t->regs().ecx);
 		int prot = t->regs().edx, flags = t->regs().esi,
 		      fd = t->regs().edi;
-		off_t offset_pages = t->regs().ebp;
+		off64_t offset = t->regs().ebp * 4096; // 4096-byte chunks, not pages
 		if (flags & MAP_ANONYMOUS) {
 			// Anonymous mappings are by definition not
 			// backed by any file-like object, and are
@@ -3246,12 +3246,13 @@ void rec_process_syscall(Task *t)
 						      prot, flags,
 						      WARN_DEFAULT);
 		if (file.copied) {
-			record_child_data(t, size, addr);
+			off64_t end = (off64_t)file.stat.st_blocks * 512 -
+				offset;
+			record_child_data(t, (size_t)min(end, (off64_t)size), addr);
 		}
 		record_mmapped_file_stats(&file);
 
-		t->vm()->map(addr, size, prot, flags,
-			     page_size() * offset_pages,
+		t->vm()->map(addr, size, prot, flags, offset,
 			     MappableResource(FileId(file.stat),
 					      file.filename));
 		break;
