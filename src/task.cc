@@ -408,6 +408,10 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
 	}
 	const MappableResource& rleft = left.second;
 	const MappableResource& rright = right.second;
+	if (rright.fsname.substr(0, strlen(PREFIX_FOR_EMPTY_MMAPED_REGIONS)) ==
+	    PREFIX_FOR_EMPTY_MMAPED_REGIONS) {
+		return true;
+	}
 	if (rleft != rright) {
 		debug("    (not the same resource)");
 		return false;

@@ -3246,7 +3246,7 @@ void rec_process_syscall(Task *t)
 						      prot, flags,
 						      WARN_DEFAULT);
 		if (file.copied) {
-			off64_t end = (off64_t)file.stat.st_blocks * 512 -
+			off64_t end = (off64_t)file.stat.st_size -
 				offset;
 			record_child_data(t, (size_t)min(end, (off64_t)size), addr);
 		}
