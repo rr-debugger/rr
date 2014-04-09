@@ -837,7 +837,7 @@ static void create_sigbus_region(Task* t,
 	}
 
 	/* Open an empty file in the tracee */
-	char filename[] = "/tmp/rr-emptyfile-XXXXXX";
+	char filename[] = PREFIX_FOR_EMPTY_MMAPED_REGIONS "XXXXXX";
 	int fd = mkstemp(filename);
 	/* Close our side immediately */
 	close(fd);
@@ -1036,7 +1036,8 @@ static void* finish_shared_mmap(Task* t,
 	void* rec_addr;
 	size_t num_bytes;
 	byte* data = (byte*)read_raw_data(&(t->trace), &num_bytes, &rec_addr);
-	assert(data && rec_addr == mapped_addr && rec_num_bytes == num_bytes);
+	assert(data && rec_addr == mapped_addr &&
+	       rec_num_bytes == ceil_page_size(num_bytes));
 
 	off64_t offset_bytes = page_size() * offset_pages;
 	if (ssize_t(num_bytes) !=

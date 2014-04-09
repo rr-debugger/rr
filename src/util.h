@@ -73,6 +73,8 @@ struct trace_frame;
  * checks that include this fd. */
 #define REPLAY_DESCHED_EVENT_FD -123
 
+#define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
+
 /**
  * Collecion of data describing a mapped memory segment, as parsed
  * from /proc/[tid]/maps on linux.
