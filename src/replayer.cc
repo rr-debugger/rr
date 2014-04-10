@@ -1867,11 +1867,11 @@ static void serve_replay(int argc, char* argv[], char** envp)
 	CharpVector arg_v;
 	CharpVector env_p;
 
-	load_recorded_env(argv[0], &argc, &exe_image, &arg_v, &env_p);
+	rep_set_up_trace_dir(argc, argv);
+	load_recorded_env(&argc, &exe_image, &arg_v, &env_p);
 
 	init_libpfm();
 
-	rep_setup_trace_dir(argv[0]);
 	open_trace_files();
 	rep_init_trace_files();
 

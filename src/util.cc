@@ -102,13 +102,13 @@ int nanosleep_nointr(const struct timespec* ts)
 	}
 }
 
-int probably_not_interactive(void)
+int probably_not_interactive(int fd)
 {
 	/* Eminently tunable heuristic, but this is guaranteed to be
 	 * true during rr unit tests, where we care most about this
 	 * check (to a first degree).  A failing test shouldn't
 	 * hang. */
-	return !isatty(STDERR_FILENO);
+	return !isatty(fd);
 }
 
 void maybe_mark_stdio_write(Task* t, int fd)

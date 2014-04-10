@@ -63,7 +63,9 @@ function onexit {
     if [[ "$passed" == "y" ]]; then
         rm -rf $workdir
     else
-        echo Test $TESTNAME failed, leaving behind $workdir
+        echo Test $TESTNAME failed, leaving behind $workdir.
+        echo To replay the failed test, run
+        echo " " _RR_WORK_DIR="$workdir" rr replay
     fi
 }
 
@@ -156,7 +158,8 @@ function skip_if_syscall_buf {
 }
 
 function just_record { exe=$1; exeargs=$2;
-    rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
+    _RR_TRACE_DIR="$workdir" \
+        rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
 }
 
 function save_exe { exe=$1;
@@ -178,14 +181,17 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 }
 
 function replay { replayflags=$1
-    rr $GLOBAL_OPTIONS replay -a $replayflags trace_0/ 1> replay.out 2> replay.err
+    _RR_TRACE_DIR="$workdir" \
+        rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
 #  debug <exe> <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { exe=$1; expectscript=$2; replayargs=$3
-    python $TESTDIR/$expectscript.py $exe-$nonce rr $GLOBAL_OPTIONS replay $replayargs trace_0/
+    _RR_TRACE_DIR="$workdir" \
+        python $TESTDIR/$expectscript.py $exe-$nonce \
+        rr $GLOBAL_OPTIONS replay $replayargs
     if [[ $? == 0 ]]; then
         passed=y
 	echo "Test '$TESTNAME' PASSED"
