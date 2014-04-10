@@ -445,22 +445,6 @@ static void exit_syscall_emu(Task* t,
 	exit_syscall_emu_ret(t, syscall);
 }
 
-enum { DONT_EMULATE_RETURN = 0, EMULATE_RETURN = 1 };
-static void exit_syscall_exec(Task* t, int syscall,
-			      int num_emu_args, int emu_ret)
-{
-	int i;
-
-	__ptrace_cont(t);
-	for (i = 0; i < num_emu_args; ++i) {
-		t->set_data_from_trace();
-	}
-	if (emu_ret) {
-		t->set_return_value_from_trace(); 
-	}
-	validate_args(syscall, STATE_SYSCALL_EXIT, t);
-}
-
 static void init_scratch_memory(Task* t)
 {
 	/* Initialize the scratchpad as the recorder did, but make it
@@ -614,11 +598,20 @@ static void process_clone(Task* t,
 	step->action = TSTEP_RETIRE;
 }
 
-static void process_execve(Task* t, int state,
+static void process_execve(Task* t, struct trace_frame* trace, int state,
 			   const struct user_regs_struct* rec_regs,
 			   struct rep_trace_step* step)
 {
 	const int syscallno = SYS_execve;
+
+	if (is_failed_syscall(trace)) {
+		/* exec failed, emulate it */
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->action = (state == STATE_SYSCALL_ENTRY) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+	}
 
 	if (STATE_SYSCALL_ENTRY == state) {
 		// Executed, not emulated.
@@ -627,15 +620,6 @@ static void process_execve(Task* t, int state,
 	}
 
 	step->action = TSTEP_RETIRE;
-
-	if (0 > rec_regs->eax) {
-		/* Failed exec(). */
-		exit_syscall_exec(t, syscallno, 0, DONT_EMULATE_RETURN);
-		assert_exec(t, rec_regs->eax == t->regs().eax,
-			    "Recorded exec() return %ld, but replayed %ld",
-			    rec_regs->eax, t->regs().eax);
-		return;
-	}
 
 	/* we need an additional ptrace syscall, since ptrace is setup
 	 * with PTRACE_O_TRACEEXEC */
@@ -1485,7 +1469,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return process_clone(t, trace, state, step);
 
 	case SYS_execve:
-		return process_execve(t, state, rec_regs, step);
+		return process_execve(t, trace, state, rec_regs, step);
 
 	case SYS_exit:
 		destroy_buffers(t, DESTROY_DEFAULT);
