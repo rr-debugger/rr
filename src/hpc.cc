@@ -16,8 +16,12 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <fstream>
+
 #include "dbg.h"
 #include "task.h"
+
+using namespace std;
 
 /**
  * libpfm4 specific stuff
@@ -72,7 +76,7 @@ enum cpuid_requests {
  *  note that even if only "eax" and "edx" are of interest, other registers
  *  will be modified by the operation, so we need to tell the compiler about it.
  */
-static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
+static void cpuid(int code, unsigned int *a, unsigned int *d) {
 /* this asm returns 1 if CPUID is supported, 0 otherwise (ZF is also set accordingly)
  * add it later for full compatibility
 
@@ -93,6 +97,22 @@ static inline void cpuid(int code, unsigned int *a, unsigned int *d) {
 
  */
   asm volatile("cpuid":"=a"(*a),"=d"(*d):"a"(code):"ecx","ebx");
+}
+
+/** Return the microcode revision of CPU 0. */
+unsigned get_microcode_rev()
+{
+	char line[PATH_MAX];
+	unsigned ucode_rev;
+	ifstream fin("/proc/cpuinfo");
+	while (fin.good()) {
+		fin.getline(line, sizeof(line));
+		if (1 == sscanf(line, "microcode : 0x%x", &ucode_rev)) {
+			return ucode_rev;
+		}
+	}
+	log_err("Couldn't read microcode rev");
+	return 0;
 }
 
 /*
@@ -164,12 +184,6 @@ void init_hpc(Task* t)
 		fatal("Intel Penryn CPUs currently unsupported.");
 		break;
 	case IntelWestmere :
-		fprintf(stderr,
-"\n"
-"rr: Warning: Your CPU type is Westmere. Westmere support in rr is\n"
-"  currently experimental; you may encounter bugs.\n"
-"  See https://github.com/mozilla/rr/issues/1023.\n"
-"\n");
 		// fall through
 	case IntelNehalem :
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
@@ -186,16 +200,22 @@ void init_hpc(Task* t)
 		inst_event = "INST_RETIRED:u";
 		hw_int_event = "HW_INTERRUPTS:u";
 		break;
-	case IntelHaswell :
+	case IntelHaswell : {
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
 		hw_int_event = "HW_INTERRUPTS:u";
-		fprintf(stderr,
+		unsigned ucode = get_microcode_rev();
+		if (0x7 != ucode) {
+			fprintf(stderr,
 "\n"
-"rr: Warning: Your CPU type is Intel Haswell. rr does not yet work properly on\n"
-"Haswell. See https://github.com/mozilla/rr/issues/973.\n"
-"\n");
+"rr: Warning: Your Intel Haswell CPU has microcode revision %#x.\n"
+"  rr is only known to work properly on Haswell microcode rev 0x7.\n"
+"  See https://github.com/mozilla/rr/issues/1054.\n"
+"\n",
+				ucode);
+		}
 		break;
+	}
 	default:
 		fatal("Unknown CPU type");
 	}
