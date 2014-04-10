@@ -921,7 +921,7 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 	exe_image = argv[0];
 	copy_argv(argc, argv);
 	copy_envp(envp);
-	rec_setup_trace_dir();
+	rec_set_up_trace_dir(argv[0]);
 
 	string env_pair = create_pulseaudio_config();
 	if (!env_pair.empty()) {

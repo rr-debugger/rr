@@ -44,6 +44,9 @@
 
 using namespace std;
 
+// The directory in which traces are saved.  Can be overridden by the
+// environment variable "_RR_TRACE_DIR=/foo".
+static char rr_trace_dir[PATH_MAX];
 static char trace_path_[PATH_MAX];
 
 static FILE *syscall_header;
@@ -152,26 +155,106 @@ static string get_version_file_path()
 	return path.str();
 }
 
-void rec_setup_trace_dir()
+static void set_default_rr_trace_dir()
+{
+	snprintf(rr_trace_dir, sizeof(rr_trace_dir), "%s/.rr", getenv("HOME"));
+}
+
+/**
+ * Figure out where the saved-trace directory is, and store that
+ * directory to |rr_trace_dir|.
+ */
+static void resolve_rr_trace_dir()
+{
+	const char* output_dir = getenv("_RR_TRACE_DIR");
+	if (output_dir) {
+		strncpy(rr_trace_dir, output_dir, sizeof(rr_trace_dir));
+	} else {
+		set_default_rr_trace_dir();
+	}
+}
+
+/**
+ * Create the default ~/.rr directory if it doesn't already exist.
+ * Must be called *before* |resolve_rr_trace_dir()|.
+ */
+static void ensure_default_rr_trace_dir()
+{
+	set_default_rr_trace_dir();
+
+	struct stat st;
+	if (0 == stat(rr_trace_dir, &st)) {
+		if (!(S_IFDIR & st.st_mode)) {
+			fatal("`%s' exists but isn't a directory.",
+			      rr_trace_dir);
+		}
+		if (access(rr_trace_dir, W_OK)) {
+			fatal("Can't write to `%s'.", rr_trace_dir);
+		}
+		return;
+	}
+	int ret = mkdir(rr_trace_dir, S_IRWXU | S_IRWXG);
+	// Another rr process can be concurrently attempting to create
+	// ~/.rr, so the directory may have come into existence since
+	// we checked above.
+	if (ret && EEXIST != ret) {
+		fatal("Failed to create directory `%s'", rr_trace_dir);
+	}
+}
+
+/**
+ * Return the name of the latest-trace symlink in the saved-trace dir.
+ */
+static string get_latest_trace_symlink()
+{
+	return string(rr_trace_dir) + "/latest-trace";
+}
+
+/**
+ * Update the latest-trace symlink in the saved-trace dir to |dir|.
+ */
+static void set_latest_trace_dir(const char* dir)
+{
+	string link_name = get_latest_trace_symlink();
+	// Try to update the symlink to |dir|.  We only try attempt to
+	// set the symlink once.  If the link is re-created after we
+	// |unlink()| it, then another rr process is racing with us
+	// and it "won".  The link is then valid and points at some
+	// very-recent trace, so that's good enough.
+	unlink(link_name.c_str());
+	int ret = symlink(dir, link_name.c_str());
+	if (!(0 == ret || EEXIST == ret)) {
+		fatal("Failed to update symlink `%s' to `%s'.",
+		      link_name.c_str(), dir);
+	}
+}
+
+void rec_set_up_trace_dir(const char* exe_path)
 {
 	int nonce = 0;
-	const char* output_dir;
 	int ret;
 
-	if (!(output_dir = getenv("_RR_TRACE_DIR"))) {
-		output_dir = ".";
-	}
-	/* Find a unique trace directory name. */
+	ensure_default_rr_trace_dir();
+	resolve_rr_trace_dir();
+
+	// Find a unique trace directory name.
 	do {
-		snprintf(trace_path_, sizeof(trace_path_) - 1,
-			 "%s/trace_%d", output_dir, nonce++);
-		ret = mkdir(trace_path_,
-			    S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+		snprintf(trace_path_, sizeof(trace_path_) - 1, "%s/%s-%d",
+			 rr_trace_dir, basename(exe_path), nonce++);
+		ret = mkdir(trace_path_, S_IRWXU | S_IRWXG);
 	} while (ret && EEXIST == errno);
 
 	if (ret) {
 		fatal("Unable to create trace directory `%s'", trace_path_);
 	}
+
+	// Update the latest-trace symlink so that |rr replay| (with
+	// no args) does what you expect.  We do this even if a
+	// non-default saved-trace directory is being used, because
+	// it's still convenient to be able to replay the latest trace
+	// in that dir using |rr replay| (and in fact, the rr test
+	// harness relies on being able to do that).
+	set_latest_trace_dir(trace_path_);
 
 	string path = get_version_file_path();
 	fstream version(path.c_str(), fstream::out);
@@ -180,41 +263,41 @@ void rec_setup_trace_dir()
 	}
 	version << TRACE_VERSION << endl;
 
-	log_info("Saving trace files to %s", trace_path_);
+	if (!probably_not_interactive(STDOUT_FILENO)) {
+		printf(
+"rr: Saving the execution of `%s' to trace directory `%s'.\n",
+			exe_path, trace_path_);
+	}
+}
+
+static string get_arg_env_file_path()
+{
+	stringstream arg_env_path;
+	arg_env_path << trace_path_ << "/arg_env";
+	return arg_env_path.str();
 }
 
 void record_argv_envp(int argc, char* argv[], char* envp[])
 {
-
-	char tmp[128], path[64];
-	int i, j;
-	/* construct path to file */
-	strcpy(path, trace_path_);
-	strcpy(tmp, "/arg_env");
-	strcat(path, tmp);
-
-	FILE* arg_env = fopen(path, "a+");
+	FILE* arg_env = fopen(get_arg_env_file_path().c_str(), "a+");
 	if (!arg_env) {
-		fatal("Failed to open %s", path);
+		fatal("Failed to open arg_env file in %s.", trace_path_);
 	}
 
 	/* print argc */
 	fprintf(arg_env, "%d%c", argc, 0);
 
 	/* print arguments to file */
-	for (i = 0; i < argc; i++) {
+	for (int i = 0; i < argc; ++i) {
 		fprintf(arg_env, "%s%c", argv[i], 0);
 	}
 
-	/* figure out the length of envp */
-	i = 0;
-	while (envp[i] != NULL) {
-		i++;
-	}
-	fprintf(arg_env, "%d%c", i, 0);
+	int envp_len = 0;
+	while (envp[envp_len]) ++envp_len;
+	fprintf(arg_env, "%d%c", envp_len, 0);
 
-	for (j = 0; j < i; j++) {
-		fprintf(arg_env, "%s%c", envp[j], 0);
+	for (int i = 0; i < envp_len; i++) {
+		fprintf(arg_env, "%s%c", envp[i], 0);
 	}
 	fclose(arg_env);
 }
@@ -573,9 +656,11 @@ void record_child_str(Task* t, void* child_ptr)
 	assert(bytes_written == len);
 }
 
-void rep_setup_trace_dir(const char* path)
+void rep_set_up_trace_dir(int argc, char** argv)
 {
-	strncpy(trace_path_, path, sizeof(trace_path_) - 1);
+	resolve_rr_trace_dir();
+	string trace_dir = argc > 0 ? argv[0] : get_latest_trace_symlink();
+	strncpy(trace_path_, trace_dir.c_str(), sizeof(trace_path_) - 1);
 }
 
 void rep_init_trace_files(void)
@@ -587,16 +672,15 @@ void rep_init_trace_files(void)
 	read_line(mmaps_file, line, 1024, "stats");
 }
 
-void load_recorded_env(const char* trace_path,
-		       int* argc, string* exe_image,
+void load_recorded_env(int* argc, string* exe_image,
 		       CharpVector* argv, CharpVector* envp)
 {
-	string arg_env_path = trace_path;
-	arg_env_path += "/arg_env";
-
-	FILE* arg_env = fopen(arg_env_path.c_str(), "r");
+	FILE* arg_env = fopen(get_arg_env_file_path().c_str(), "r");
 	if (!arg_env) {
-		fatal("Failed to load arg_env from trace");
+		fprintf(stderr,
+"rr: Error: Unable to load files from trace directory `%s'.\n",
+			trace_path_);
+		exit(EX_DATAERR);
 	}
 	char buf[8192];
 

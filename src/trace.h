@@ -121,21 +121,15 @@ void record_mmapped_file_stats(struct mmapped_file* file);
 unsigned int get_global_time(void);
 void record_argv_envp(int argc, char* argv[], char* envp[]);
 /**
- * Create a unique directory in which all trace files will be stored.
+ * Create a unique directory named something like "$(basename
+ * exe_path)-$number" in which all trace files will be stored.
  */
-void rec_setup_trace_dir(void);
+void rec_set_up_trace_dir(const char* exe_path);
 
 /**
  * Replaying
  */
 
-/**
- * Return the exe image path, arg vector, and environment variables
- * that were recorded, in |exec_image|, |argv|, |envp| respectively.
- */
-void load_recorded_env(const char* trace_path,
-		       int* argc, std::string* exec_image,
-		       CharpVector* argv, CharpVector* envp);
 /**
  * Read and return the next trace frame.  Succeed or don't return.
  */
@@ -166,6 +160,15 @@ pid_t get_recorded_main_thread(void);
 /**
  * Set the trace directory that will be replayed to |path|.
  */
-void rep_setup_trace_dir(const char* path);
+void rep_set_up_trace_dir(int argc, char** argv);
+
+/**
+ * Return the exe image path, arg vector, and environment variables
+ * that were recorded, in |exec_image|, |argv|, |envp| respectively.
+ *
+ * Must be called after |rep_set_up_trace_dir()|.
+ */
+void load_recorded_env(int* argc, std::string* exec_image,
+		       CharpVector* argv, CharpVector* envp);
 
 #endif /* TRACE_H_ */

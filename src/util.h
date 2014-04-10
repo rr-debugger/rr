@@ -269,7 +269,7 @@ int nanosleep_nointr(const struct timespec* ts);
  * is, there's probably no user watching or interacting with rr), and
  * so asking for user input or other actions is probably pointless.
  */
-int probably_not_interactive(void);
+int probably_not_interactive(int fd = STDERR_FILENO);
 
 /**
  * If |child_fd| is a stdio fd and stdio-marking is enabled, prepend

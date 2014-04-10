@@ -63,7 +63,7 @@ static void start_dumping(int argc, char* argv[], char** envp)
 {
 	FILE* out = stdout;
 
-	rep_setup_trace_dir(argv[0]);
+	rep_set_up_trace_dir(argc, argv);
 	open_trace_files();
 	rep_init_trace_files();
 
@@ -219,7 +219,7 @@ static void print_usage(void)
 "                             even if it would otherwise be used\n"
 "\n"
 "Syntax for `replay'\n"
-" rr replay [OPTION]... <trace-dir>\n"
+" rr replay [OPTION]... [<trace-dir>]\n"
 "  -a, --autopilot            replay without debugger server\n"
 "  -f, --onfork=<PID>         start a debug server when <PID> has been\n"
 "                             fork()d, AND the target event has been\n"
@@ -235,7 +235,7 @@ static void print_usage(void)
 "                             client too.\n"
 "\n"
 "Syntax for `dump`\n"
-" rr dump [OPTIONS] <trace_dir> <event-spec>...\n"
+" rr dump [OPTIONS] <trace_dir> [<event-spec>...]\n"
 "  Event specs can be either an event number like `127', or a range\n"
 "  like `1000-5000'.  By default, all events are dumped.\n"
 "  -r, --raw                  dump trace frames in a more easily\n"
@@ -477,7 +477,11 @@ int main(int argc, char* argv[])
 
 	assert_prerequisites();
 
-	if (0 > (argi = parse_args(argc, argv, flags)) || argc <= argi) {
+	if (0 > (argi = parse_args(argc, argv, flags))
+	    || argc < argi
+	    // |rr replay| is allowed to have no arguments to replay
+	    // the most recently saved trace.
+	    || (REPLAY != flags->option && argc <= argi)) {
 		print_usage();
 		return 1;
 	}
