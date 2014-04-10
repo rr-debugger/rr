@@ -1162,6 +1162,7 @@ static void process_socketcall(Task* t, int state,
 		return;
 
 	/* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+	 * int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
 	 *
 	 * Note: The returned address is truncated if the buffer
 	 * provided is too small; in this case, addrlen will return a
@@ -1172,6 +1173,7 @@ static void process_socketcall(Task* t, int state,
 	 * actually too small and throw an error there.
 	 */
 	case SYS_ACCEPT:
+	case SYS_ACCEPT4:
 		/* FIXME: not quite sure about socket_addr */
 		step->syscall.num_emu_args = 2;
 		return;

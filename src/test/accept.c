@@ -24,7 +24,7 @@ static void client(const struct sockaddr_un* addr) {
 	exit(0);
 }
 
-static void server(void) {
+static void server(int use_accept4) {
 	struct sockaddr_un addr;
 	int listenfd;
 	pid_t child;
@@ -36,7 +36,7 @@ static void server(void) {
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
 	strncpy(addr.sun_path, "socket.unix", sizeof(addr.sun_path) - 1);
-	
+
 	test_assert(0 <= (listenfd = socket(AF_UNIX, SOCK_STREAM, 0)));
 	test_assert(0 == bind(listenfd, (struct sockaddr*)&addr,
 			      sizeof(addr)));
@@ -47,23 +47,30 @@ static void server(void) {
 		test_assert("Not reached" && 0);
 	}
 
-	memset(&addr, 0, sizeof(addr));
-	test_assert(0 <= (servefd = accept(listenfd,
-					   (struct sockaddr*)&peer_addr,
-					   &len)));
+	if (use_accept4) {
+		test_assert(0 <= (servefd = accept4(listenfd,
+						    (struct sockaddr*)&peer_addr,
+						    &len, 0)));
+	} else {
+		test_assert(0 <= (servefd = accept(listenfd,
+						   (struct sockaddr*)&peer_addr,
+						   &len)));
+	}
 	test_assert(AF_UNIX == peer_addr.sun_family);
 
 	test_assert(1 == send(servefd, "!", 1, 0));
 
-	unlink(addr.sun_path);
-
 	test_assert(child == waitpid(child, &status, 0));
 	test_assert(WIFEXITED(status) && 0 == WEXITSTATUS(status));
 
-	atomic_puts("EXIT-SUCCESS");
+	unlink(addr.sun_path);
+	close(servefd);
+	close(listenfd);
 }
 
 int main(int argc, char *argv[]) {
-	server();
+	server(0);
+	server(1);
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }
