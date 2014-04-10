@@ -567,29 +567,6 @@ static bool prep_futex_lock_pi(Task* t, byte* futex,
 	return true;
 }
 
-static bool exec_file_supported(const string& filename)
-{
-	/* All this function does is reject 64-bit ELF binaries. Everything
-	   else we (optimistically) indicate support for. Missing or corrupt
-	   files will cause execve to fail normally. When we support 64-bit,
-	   this entire function can be removed. */
-	int fd = open(filename.c_str(), O_RDONLY);
-	if (fd < 0) {
-		return true;
-	}
-	char header[5];
-	bool ok = true;
-	if (read(fd, header, sizeof(header)) == sizeof(header)) {
-		if (header[0] == ELFMAG0 && header[1] == ELFMAG1 &&
-		    header[2] == ELFMAG2 && header[3] == ELFMAG3 &&
-		    header[4] == ELFCLASS64) {
-			ok = false;
-		}
-	}
-	close(fd);
-	return ok;
-}
-
 int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 {
 	int syscallno = t->ev().Syscall().no;
@@ -695,30 +672,6 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		destroy_buffers(t, (DESTROY_ALREADY_AT_EXIT_SYSCALL |
 				    DESTROY_NEED_EXIT_SYSCALL_RESTART));
 		return 0;
-
-	case SYS_execve: {
-		struct user_regs_struct r =  t->regs();
-		string filename = t->read_c_str((void*)r.ebx);
-		// We can't use push_arg_ptr/pop_arg_ptr to save and restore
-		// ebx because execs get special ptrace events that clobber
-		// the trace event for this system call.
-		t->exec_saved_ebx = r.ebx;
-		uintptr_t end = r.ebx + filename.length();
-		if (filename[0] != '/') {
-			char buf[PATH_MAX];
-			snprintf(buf, sizeof(buf),
-			         "/proc/%d/cwd/%s", t->real_tgid(),
-			         filename.c_str());
-			filename = buf;
-		}
-		if (!exec_file_supported(filename)) {
-			// Force exec to fail with ENOENT by advancing ebx to
-			// the null byte
-			r.ebx = end;
-			t->set_regs(r);
-		}
-		return 0;
-	}
 
 	case SYS_fcntl64:
 		switch (t->regs().ecx) {
@@ -1209,41 +1162,10 @@ static void finish_restoring_some_scratch(Task* t, byte* iter, void** data)
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
-static int successful_execs = 0;
-
 static void process_execve(Task* t)
 {
-	struct user_regs_struct r = t->regs();
-	if (SYSCALL_FAILED(r.eax)) {
-		if (successful_execs == 0) {
-			fprintf(stderr,
-"\n"
-"rr: error:\n"
-"  Initial exec() of image %s failed.\n",
-				get_exe_image().c_str());
-			if (r.ebx == t->exec_saved_ebx) {
-				fprintf(stderr,
-"  Most likely it doesn't exist or isn't in your $PATH.  Terminating recording.\n"
-"\n");
-			} else {
-				fprintf(stderr,
-"  It is a 64-bit image and rr does not support that yet.  Terminating recording.\n"
-"\n");
-			}
-			terminate_recording(t);
-		} else if (r.ebx != t->exec_saved_ebx) {
-			log_warn("Failed attempt to execve 64-bit image (not yet supported by rr)");
-		}
-		// Restore EBX, which we might have clobbered
-		r.ebx = t->exec_saved_ebx;
-		t->set_regs(r);
-		return;
-	}
-
-	++successful_execs;
-
 	// XXX what does this signifiy?
-	if (r.ebx != 0) {
+	if (t->regs().ebx != 0) {
 		return;
 	}
 

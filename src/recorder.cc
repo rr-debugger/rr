@@ -659,7 +659,16 @@ static void check_rbc(Task* t)
 	}
 	int fd = t->regs().ebx;
 	if (-1 != fd) {
-		fatal("Unexpected `write' call from first tracee process.");
+		fprintf(stderr,
+"\n"
+"rr: error:\n"
+"  Unexpected `write(%d, ...)' call from first tracee process.\n"
+"  Most likely, the executable image `%s' doesn't exist or isn't\n"
+"  in your $PATH.  Terminating recording.\n"
+"\n",
+			fd, exe_image.c_str());
+		terminate_recording(t);
+		return;
 	}
 
 	int64_t rbc = read_rbc(t->hpc);
@@ -1007,9 +1016,4 @@ void terminate_recording(Task* t)
 
 	log_info("  exiting, goodbye.");
 	exit(0);
-}
-
-const string& get_exe_image()
-{
-	return exe_image;
 }

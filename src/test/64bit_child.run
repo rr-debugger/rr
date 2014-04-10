@@ -1,2 +1,0 @@
-source `dirname $0`/util.sh 64bit_child "$@"
-compare_test 'EXIT-SUCCESS'

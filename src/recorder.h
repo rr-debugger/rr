@@ -3,8 +3,6 @@
 #ifndef RECORDER_H_
 #define RECORDER_H_
 
-#include <string>
-
 struct flags;
 class Task;
 
@@ -22,10 +20,5 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp);
  * executed task.
  */
 void terminate_recording(Task* t = nullptr);
-
-/**
- * Return the name of the initial exe image.
- */
-const std::string& get_exe_image();
 
 #endif /* RECORDER_H_ */
