@@ -1017,6 +1017,17 @@ public:
 		return read_bytes_helper(child_addr, N, buf);
 	}
 
+	/**
+	 * Save tracee data to the trace.  |addr| is the address in
+	 * the address space of this task.  The |record_local*()|
+	 * variants record data that's already been read from this,
+	 * and the |record_remote*()| variants read the data and then
+	 * record it.
+	 */
+	void record_local(void* addr, ssize_t num_bytes, const void* buf);
+	void record_remote(void* addr, ssize_t num_bytes);
+	void record_remote_str(void* str);
+
 	/** Return the current regs of this. */
 	const struct user_regs_struct& regs();
 

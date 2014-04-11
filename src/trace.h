@@ -88,9 +88,11 @@ void dump_trace_frame(FILE* out, const struct trace_frame* frame);
 
 void rec_init_trace_files(void);
 
-void record_child_data(Task *t, size_t len, void* child_ptr);
-void record_child_str(Task* t, void* child_ptr);
-void record_parent_data(Task *t, size_t len, void *addr, void *buf);
+/**
+ * Store |len| bytes of the data in |buf|, which was read from |t|'s
+ * address |addr|, to the trace.
+ */
+void record_data(Task* t, void* addr, ssize_t len, const void* buf);
 /**
  * Record the current event of |t|.  Record the registers of |t|
  * (and other relevant execution state) so that it can be used or

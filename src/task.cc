@@ -1408,6 +1408,48 @@ Task::post_exec()
 	prname = prname_from_exe_image(as->exe_image());
 }
 
+void
+Task::record_local(void* addr, ssize_t num_bytes, const void* buf)
+{
+	record_data(this, addr, num_bytes, buf);
+}
+
+// Max size we'll attempt to read into an inline buffer. Otherwise, we
+// allocate a temporary heap buffer.
+#define MAX_STACK_BUFFER_SIZE (1 << 17)
+
+void
+Task::record_remote(void* addr, ssize_t num_bytes)
+{
+	byte stack_buf[MAX_STACK_BUFFER_SIZE];
+	byte* heap_buf = nullptr;
+	byte* read_buf = nullptr;
+	ssize_t read_bytes = 0;
+
+	// We shouldn't be recording a scratch address.
+	assert_exec(this, !addr || addr != scratch_ptr, "");
+
+ 	if (addr && num_bytes > 0) {
+		if (num_bytes > ssize_t(sizeof(stack_buf))) {
+			heap_buf = (byte*)malloc(num_bytes);
+		}
+		read_buf = heap_buf ? heap_buf : stack_buf;
+
+		read_bytes_helper(addr, num_bytes, read_buf);
+		read_bytes = num_bytes;
+	}
+
+	record_data(this, addr, read_bytes, read_buf);
+	free(heap_buf);
+}
+
+void
+Task::record_remote_str(void* str)
+{
+	string s = read_c_str(str);
+	record_data(this, str, s.size(), s.c_str());
+}
+
 string
 Task::read_c_str(void* child_addr)
 {
