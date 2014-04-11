@@ -74,6 +74,7 @@ install(TARGETS rr rrpreload
 #
 # Alphabetical, please.
 set(BASIC_TESTS
+  64bit_child
   abort_nonmain
   accept
   alarm

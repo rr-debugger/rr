@@ -663,8 +663,8 @@ static void check_rbc(Task* t)
 "\n"
 "rr: error:\n"
 "  Unexpected `write(%d, ...)' call from first tracee process.\n"
-"  Most likely, the executable image `%s' doesn't exist or isn't\n"
-"  in your $PATH.  Terminating recording.\n"
+"  Most likely, the executable image `%s' is 64-bit, doesn't exist, or\n"
+"  isn't in your $PATH.  Terminating recording.\n"
 "\n",
 			fd, exe_image.c_str());
 		terminate_recording(t);
@@ -1016,4 +1016,9 @@ void terminate_recording(Task* t)
 
 	log_info("  exiting, goodbye.");
 	exit(0);
+}
+
+const string& get_exe_image()
+{
+	return exe_image;
 }
