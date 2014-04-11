@@ -318,7 +318,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 	 * the desched counter when it's trying to step to the entry
 	 * of |call|.  We'll record the syscall entry when the main
 	 * recorder code sees the tracee's syscall event. */
-	record_event(t);
+	t->record_current_event();
 
 	/* Because we set the |delay_syscallbuf_reset| flag and the
 	 * record counter will stay intact for a bit, we need to also

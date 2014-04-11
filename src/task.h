@@ -1018,6 +1018,17 @@ public:
 	}
 
 	/**
+	 * Record an event on behalf of this.  Record the registers of
+	 * this (and other relevant execution state) so that it can be
+	 * used or verified during replay, if that state is available
+	 * and meaningful at this's current execution point.
+	 * |record_current_event()| record |this->ev()|, and
+	 * |record_event()| records the specified event.
+	 */
+	void record_current_event();
+	void record_event(const Event& ev);
+
+	/**
 	 * Save tracee data to the trace.  |addr| is the address in
 	 * the address space of this task.  The |record_local*()|
 	 * variants record data that's already been read from this,

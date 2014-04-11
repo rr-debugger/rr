@@ -1409,6 +1409,18 @@ Task::post_exec()
 }
 
 void
+Task::record_current_event()
+{
+	record_event(ev());
+}
+
+void
+Task::record_event(const Event& ev)
+{
+	::record_event(this, ev);
+}
+
+void
 Task::record_local(void* addr, ssize_t num_bytes, const void* buf)
 {
 	record_data(this, addr, num_bytes, buf);
