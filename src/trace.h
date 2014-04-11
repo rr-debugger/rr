@@ -93,13 +93,8 @@ void rec_init_trace_files(void);
  * address |addr|, to the trace.
  */
 void record_data(Task* t, void* addr, ssize_t len, const void* buf);
-/**
- * Record the current event of |t|.  Record the registers of |t|
- * (and other relevant execution state) so that it can be used or
- * verified during replay, if that state is available and meaningful
- * at |t|'s current execution point.
- */
-void record_event(Task* t);
+/** Store |ev| to the trace on behalf of |t|. */
+void record_event(Task* t, const Event& ev);
 /**
  * Record that the trace will be ending abnormally early, usually
  * because of an interrupting signal.  |t| was the last task known to

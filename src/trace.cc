@@ -477,7 +477,7 @@ static void maybe_flush_syscallbuf(Task *t)
 		  /* Record the header for consistency checking. */
 		  t->syscallbuf_hdr->num_rec_bytes + sizeof(*t->syscallbuf_hdr),
 		  t->syscallbuf_hdr);
-	record_event(t);
+	t->record_current_event();
 	t->pop_event(EV_SYSCALLBUF_FLUSH);
 
 	/* Reset header. */
@@ -543,21 +543,21 @@ static void write_trace_frame(const struct trace_frame* frame)
 	}
 }
 
-void record_event(Task *t)
+void record_event(Task *t, const Event& ev)
 {
 	struct trace_frame frame;
 
 	/* If there's buffered syscall data, we need to record a flush
 	 * event before recording |frame|, so that they're replayed in
 	 * the correct order. */
-	if (EV_SYSCALLBUF_FLUSH != t->ev().type()) {
+	if (EV_SYSCALLBUF_FLUSH != ev.type()) {
 		maybe_flush_syscallbuf(t);
 	}
 
 	/* NB: we must encode the frame *after* flushing the
 	 * syscallbuf, because encoding the frame has side effects on
 	 * the global and thread clocks. */
-	encode_trace_frame(t, t->ev(), &frame);
+	encode_trace_frame(t, ev, &frame);
 
 	if (should_dump_memory(t, frame)) {
 		dump_process_memory(t, frame.global_time, "rec");

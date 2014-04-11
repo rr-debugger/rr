@@ -212,7 +212,7 @@ static void handle_ptrace_event(Task** tp)
 
 		t->push_event(SyscallEvent(SYS_execve));
 		t->ev().Syscall().state = ENTERING_SYSCALL;
-		record_event(t);
+		t->record_current_event();
 		t->pop_syscall();
 
 		// Skip past the ptrace event.
@@ -230,9 +230,7 @@ static void handle_ptrace_event(Task** tp)
 		}
 
 		EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
-		t->push_event(Event(ev, HAS_EXEC_INFO));
-		record_event(t);
-		t->pop_event(ev);
+		t->record_event(Event(ev, HAS_EXEC_INFO));
 
 		rec_sched_deregister_thread(tp);
 		t = *tp;
@@ -373,10 +371,8 @@ static void desched_state_changed(Task* t)
 		 * try to commit the current record; we've already
 		 * recorded that syscall.  The following event sets
 		 * the abort-commit bit. */
-		t->push_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO));
 		t->syscallbuf_hdr->abort_commit = 1;
-		record_event(t);
-		t->pop_event(EV_SYSCALLBUF_ABORT_COMMIT);
+		t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO));
 
 		t->ev().Desched().state = DISARMING_DESCHED_EVENT;
 		/* fall through */
@@ -384,19 +380,17 @@ static void desched_state_changed(Task* t)
 		disarm_desched(t);
 
 		t->ev().Desched().state = DISARMED_DESCHED_EVENT;
-		record_event(t);
+		t->record_current_event();
 		t->pop_desched();
 
 		/* The tracee has just finished sanity-checking the
 		 * aborted record, and won't touch the syscallbuf
 		 * during this (aborted) transaction again.  So now is
 		 * a good time for us to reset the record counter. */
-		t->push_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
 		t->syscallbuf_hdr->num_rec_bytes = 0;
 		t->delay_syscallbuf_reset = 0;
 		t->delay_syscallbuf_flush = 0;
-		record_event(t);
-		t->pop_event(EV_SYSCALLBUF_RESET);
+		t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
 		// We were just descheduled for potentially a long
 		// time, and may have just had a signal become
 		// pending.  Ensure we get another chance to run.
@@ -417,10 +411,8 @@ static void syscall_not_restarted(Task* t)
 #endif
 	t->pop_syscall_interruption();
 
-	t->push_event(Event(EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
-			    NO_EXEC_INFO));
-	record_event(t);
-	t->pop_event(EV_INTERRUPTED_SYSCALL_NOT_RESTARTED);
+	t->record_event(Event(EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
+			      NO_EXEC_INFO));
 }
 
 /**
@@ -540,14 +532,12 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		if (SYS_sigreturn == syscallno
 		    || SYS_rt_sigreturn == syscallno) {
 			assert(t->regs().orig_eax == -1);
-			record_event(t);
+			t->record_current_event();
 			t->pop_syscall();
 
 			// We've finished processing this signal now.
 			t->pop_signal_handler();
-			t->push_event(Event(EV_EXIT_SIGHANDLER, NO_EXEC_INFO));
-			record_event(t);
-			t->pop_event(EV_EXIT_SIGHANDLER);
+			t->record_event(Event(EV_EXIT_SIGHANDLER, NO_EXEC_INFO));
 
 			maybe_discard_syscall_interruption(t, retval);
 			// XXX probably not necessary to make the
@@ -607,7 +597,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			copy_syscall_arg_regs(&r, &t->ev().Syscall().regs);
 			t->set_regs(r);
 		}
-		record_event(t);
+		t->record_current_event();
 
 		/* If we're not going to restart this syscall, we're
 		 * done with it.  But if we are, "freeze" it on the
@@ -641,9 +631,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 static void maybe_reset_syscallbuf(Task* t)
 {
 	if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
-		t->push_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
-		record_event(t);
-		t->pop_event(EV_SYSCALLBUF_RESET);
+		t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
 	}
 	/* Any code that sets |delay_syscallbuf_reset| is responsible
 	 * for recording its own SYSCALLBUF_RESET event at a
@@ -702,7 +690,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 
 		// This event is used by the replayer to advance to
 		// the point of signal delivery.
-		record_event(t);
+		t->record_current_event();
 		reset_hpc(t, rr_flags()->max_rbc);
 
 		t->ev().transform(EV_SIGNAL_DELIVERY);
@@ -760,7 +748,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		// signal handler frame, or to record the resulting
 		// state of the stepi if there wasn't a signal
 		// handler.
-		record_event(t);
+		t->record_current_event();
 
 		// If we didn't set up the sighandler frame, we need
 		// to ensure that this tracee is scheduled next so
@@ -844,7 +832,7 @@ static void runnable_state_changed(Task* t)
 		break;
 	case EV_SEGV_RDTSC:
 	case EV_SCHED:
-		record_event(t);
+		t->record_current_event();
 		t->pop_event(t->ev().type());
 		t->switchable = 1;
 		break;
@@ -864,7 +852,7 @@ static void runnable_state_changed(Task* t)
 			    "Should be at syscall event.");
 		check_rbc(t);
 		t->ev().Syscall().state = ENTERING_SYSCALL;
-		record_event(t);
+		t->record_current_event();
 		break;
 
 	default:
