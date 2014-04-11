@@ -3,11 +3,13 @@
 #ifndef TRACE_H_
 #define TRACE_H_
 
-#include <signal.h>		/* for _NSIG */
-#include <stdint.h>
+#include <linux/limits.h>
 #include <sys/stat.h>
-#include <sys/user.h>
+#include <sys/types.h>
+#include <unistd.h>
 
+#include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -18,11 +20,11 @@ class Task;
 
 typedef std::vector<char*> CharpVector;
 
-/* Use this helper to declare a struct member that doesn't occupy
- * space, but the address of which can be taken.  Useful for
- * delimiting continugous chunks of fields without having to hard-code
- * the name of first last fields in the chunk.  (Nested structs
- * achieve the same, but at the expense of unnecessary verbosity.) */
+// Use this helper to declare a struct member that doesn't occupy
+// space, but the address of which can be taken.  Useful for
+// delimiting continugous chunks of fields without having to hard-code
+// the name of first last fields in the chunk.  (Nested structs
+// achieve the same, but at the expense of unnecessary verbosity.)
 #define STRUCT_DELIMITER(_name) char _name[0]
 
 /**
@@ -34,6 +36,14 @@ typedef std::vector<char*> CharpVector;
  * of the transition.
  */
 struct trace_frame {
+	/**
+	 * Log a human-readable representation of this to |out|
+	 * (defaulting to stdout), including a newline character.  An
+	 * easily machine-parseable format is dumped when |raw_dump|
+	 * is true, otherwise a human-friendly format is used.
+	 */
+	void dump(FILE* out = nullptr, bool raw_dump = false);
+
 	STRUCT_DELIMITER(begin_event_info);
 	uint32_t global_time;
 	uint32_t thread_time;
@@ -71,101 +81,194 @@ struct mmapped_file {
 	void* end;
 };
 
-const char* get_trace_path(void);
-void open_trace_files(void);
-void close_trace_files(void);
-void flush_trace_files(void);
+/**
+ * Records data needed to supply the arguments for |execve()| calls.
+ */
+struct args_env {
+	args_env() { }
+	args_env(int argc, char* argv[], char** envp);
+	~args_env();
+
+	args_env& operator=(args_env&& o);
+
+	std::string exe_image;
+	// The initial argv and envp for a tracee.  We store these as
+	// the relatively complicated array of naked |char*| strings
+	// so that calling |.data()| on both vectors returns a
+	// |char**| that can be passed to POSIX APIs like |execve()|.
+	CharpVector argv;
+	CharpVector envp;
+
+private:
+	void destroy();
+
+	args_env(const args_env&) = delete;
+	args_env& operator=(const args_env&) = delete;
+};
 
 /**
- * Log a human-readable representation of |frame| to |out|, including
- * a newline character.
+ * A parcel of recorded tracee data.  |data| contains the data read
+ * from |addr| in the tracee, and |ev| and |global_time| represent the
+ * tracee state when the data was read.
  */
-void dump_trace_frame(FILE* out, const struct trace_frame* frame);
+struct raw_data {
+	std::vector<byte> data;
+	void* addr;
+	EncodedEvent ev;
+	int32_t global_time;
+};
 
 /**
- * Recording
+ * TraceFstream stores all the data common to both recording and
+ * replay.  TraceOfstream deals with recording-specific logic, and
+ * TraceIfstream handles replay-specific details.
  */
+class TraceFstream {
+protected:
+	typedef std::fstream fstream;
+	typedef std::string string;
+public:
+	/** Return the directory storing this trace's files. */
+	const string& dir() const { return trace_dir; }
 
-void rec_init_trace_files(void);
+	/**
+	 * Return true iff all trace files are "good".  See std::ios
+	 * for more details.
+	 */
+	bool good() const;
 
-/**
- * Store |len| bytes of the data in |buf|, which was read from |t|'s
- * address |addr|, to the trace.
- */
-void record_data(Task* t, void* addr, ssize_t len, const void* buf);
-/** Store |ev| to the trace on behalf of |t|. */
-void record_event(Task* t, const Event& ev);
-/**
- * Record that the trace will be ending abnormally early, usually
- * because of an interrupting signal.  |t| was the last task known to
- * have run, and it may be nullptr.
- */
-void record_trace_termination_event(Task* t);
-void record_mmapped_file_stats(struct mmapped_file* file);
-/**
- * Return the current global time.  This is approximately the number
- * of events that have been recorded or replayed.  It is exactly the
- * line number within the first trace file (trace_dir/trace_0) of the
- * event that was just recorded or is being replayed.
- *
- * Beware: if there are multiple trace files, this value doesn't
- * directly identify a unique file:line, by itself.
- *
- * TODO: we should either stop creating multiple files, or use an
- * interface like |const char* get_trace_file_coord()| that would
- * return a string like "trace_0:457293".
- */
-unsigned int get_global_time(void);
-void record_argv_envp(int argc, char* argv[], char* envp[]);
-/**
- * Create a unique directory named something like "$(basename
- * exe_path)-$number" in which all trace files will be stored.
- */
-void rec_set_up_trace_dir(const char* exe_path);
+	/**
+	 * Return the current "global time" (event count) for this
+	 * trace.
+	 */
+	uint32_t time() const { return global_time; }
 
-/**
- * Replaying
- */
+protected:
+	TraceFstream(const string& trace_dir, fstream::openmode mode,
+		     uint32_t initial_time)
+		: trace_dir(trace_dir)
+		, events(trace_dir + "/events", mode | fstream::binary)
+		, data(trace_dir + "/data", mode)
+		, data_header(trace_dir + "/data_header", mode)
+		, mmaps(trace_dir + "/mmaps", mode)
+		, global_time(initial_time)
+	{}
 
-/**
- * Read and return the next trace frame.  Succeed or don't return.
- */
-void read_next_trace(struct trace_frame* frame);
-/**
- * Return nonzero if the next trace frame was read, zero if not.
- */
-int try_read_next_trace(struct trace_frame* frame);
-void peek_next_trace(struct trace_frame* trace);
-void read_next_mmapped_file_stats(struct mmapped_file* file);
-void rep_init_trace_files(void);
-void* read_raw_data(struct trace_frame* trace, size_t* size_ptr, void** addr);
-/**
- * Read the next raw-data record from the trace directly into |buf|,
- * which is of size |buf_size|, without allocating temporary storage.
- * The number of bytes written into |buf| is returned, or -1 if an
- * error occurred.  The tracee address from which this data was
- * recorded is returned in the outparam |rec_addr|.
- */
-ssize_t read_raw_data_direct(struct trace_frame* trace,
-			     void* buf, size_t buf_size, void** rec_addr);
-/**
- * Return the tid of the first thread seen during recording.  Must be
- * called after |init_trace_files()|, and before any calls to
- * |read_next_trace()|.
- */
-pid_t get_recorded_main_thread(void);
-/**
- * Set the trace directory that will be replayed to |path|.
- */
-void rep_set_up_trace_dir(int argc, char** argv);
+	/**
+	 * Return the path of the "args_env" file, into which the
+	 * initial tracee argv and envp are recorded.
+	 */
+	string args_env_file_path() const;
 
-/**
- * Return the exe image path, arg vector, and environment variables
- * that were recorded, in |exec_image|, |argv|, |envp| respectively.
- *
- * Must be called after |rep_set_up_trace_dir()|.
- */
-void load_recorded_env(int* argc, std::string* exec_image,
-		       CharpVector* argv, CharpVector* envp);
+	/**
+	 * Increment the global time and return the incremented value.
+	 */
+	uint32_t tick_time() { return ++global_time; }
+
+	/**
+	 * Return the path of "version" file, into which the current
+	 * trace format version of rr is stored upon creation of the
+	 * trace.
+	 */
+	string version_file_path() const;
+
+	// Directory into which we're saving the trace files.
+	string trace_dir;
+	// File that stores events (trace frames).
+	fstream events;
+	// Files that store raw data saved from tracees (|data|), and
+	// metadata about the stored data (|data_header|).
+	fstream data;
+	fstream data_header;
+	// File that stores metadata about files mmap'd during
+	// recording.
+	fstream mmaps;
+	// Arbitrary notion of trace time, ticked on the recording of
+	// each event (trace frame).
+	uint32_t global_time;
+};
+
+class TraceOfstream: public TraceFstream {
+public:
+	typedef std::shared_ptr<TraceOfstream> shr_ptr;
+
+	/**
+	 * Write relevant data to the trace.
+	 *
+	 * NB: recording a trace frame has the side effect of ticking
+	 * the global time.
+	 */
+	friend TraceOfstream& operator<<(TraceOfstream& tif,
+					 const struct trace_frame& frame);
+	friend TraceOfstream& operator<<(TraceOfstream& tif,
+					 const struct mmapped_file& map);
+	friend TraceOfstream& operator<<(TraceOfstream& tif,
+					 const struct args_env& ae);
+	friend TraceOfstream& operator<<(TraceOfstream& tif,
+					 const struct raw_data& d);
+
+	/** Call flush() on all the relevant trace files. */
+	void flush();
+
+	/**
+	 * Create and return a trace that will record the initial exe
+	 * image |exe_path|.  The trace name is determined by the
+	 * global rr args and environment.
+	 */
+	static shr_ptr create(const string& exe_path);
+
+private:
+	TraceOfstream(const string& trace_dir)
+		: TraceFstream(trace_dir, fstream::out | fstream::app,
+			       // Somewhat arbitrarily start the
+			       // global time from 1.
+			       1)
+	{}
+};
+
+class TraceIfstream: public TraceFstream {
+	friend struct AutoRestoreState;
+public:
+	typedef std::shared_ptr<TraceIfstream> shr_ptr;
+
+	/**
+	 * Read relevant data from the trace.
+	 *
+	 * NB: reading a trace frame has the side effect of ticking
+	 * the global time to match the time recorded in the trace
+	 * frame.
+	 */
+	friend TraceIfstream& operator>>(TraceIfstream& tif,
+					 struct trace_frame& frame);
+	friend TraceIfstream& operator>>(TraceIfstream& tif,
+					 struct mmapped_file& map);
+	friend TraceIfstream& operator>>(TraceIfstream& tif,
+					 struct args_env& ae);
+	friend TraceIfstream& operator>>(TraceIfstream& tif,
+					 struct raw_data& d);
+
+	/**
+	 * Return the next trace frame, without mutating any stream
+	 * state.
+	 */
+	struct trace_frame peek_frame();
+
+	/**
+	 * Open and return the trace specified by the command line
+	 * spec |argc| / |argv|.  These are just the portion of the
+	 * args that specify the trace, not the entire command line.
+	 */
+	static shr_ptr open(int argc, char** argv);
+
+private:
+	TraceIfstream(const string& trace_dir)
+		: TraceFstream(trace_dir, fstream::in,
+			       // Initialize the global time at 0, so
+			       // that when we tick it when reading
+			       // the first trace, it matches the
+			       // initial global time at recording, 1.
+			       0)
+	{}
+};
 
 #endif /* TRACE_H_ */

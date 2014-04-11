@@ -477,7 +477,7 @@ static void init_scratch_memory(Task* t)
 	struct current_state_buffer state;
 	void* map_addr;
 
-	read_next_mmapped_file_stats(&file);
+	t->ifstream() >> file;
 
 	prepare_remote_syscalls(t, &state);
 
@@ -529,11 +529,11 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t)
  * Return true iff the syscall represented by |frame| (either entry to
  * or exit from) failed.
  */
-static bool is_failed_syscall(const struct trace_frame* frame)
+static bool is_failed_syscall(Task* t, const struct trace_frame* frame)
 {
 	struct trace_frame next_frame;
 	if (STATE_SYSCALL_ENTRY == frame->ev.state) {
-		peek_next_trace(&next_frame);
+		next_frame = t->ifstream().peek_frame();
 		frame = &next_frame;
 	}
 	return SYSCALL_FAILED(frame->recorded_regs.eax);
@@ -544,7 +544,7 @@ static void process_clone(Task* t,
 			  struct rep_trace_step* step)
 {
 	int syscallno = SYS_clone;
-	if (is_failed_syscall(trace)) {
+	if (is_failed_syscall(t, trace)) {
 		/* creation failed, emulate it */
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
@@ -624,7 +624,7 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 {
 	const int syscallno = SYS_execve;
 
-	if (is_failed_syscall(trace)) {
+	if (is_failed_syscall(t, trace)) {
 		/* exec failed, emulate it */
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
@@ -1037,23 +1037,22 @@ static void* finish_shared_mmap(Task* t,
 	// TODO: this is a poor man's shared segment synchronization.
 	// For full generality, we also need to emulate direct file
 	// modifications through write/splice/etc.
-	void* rec_addr;
-	size_t num_bytes;
-	byte* data = (byte*)read_raw_data(&(t->trace), &num_bytes, &rec_addr);
-	assert(data && rec_addr == mapped_addr &&
-	       rec_num_bytes == ceil_page_size(num_bytes));
+	struct raw_data buf;
+	t->ifstream() >> buf;
+	assert(mapped_addr == buf.addr
+	       && rec_num_bytes == ceil_page_size(buf.data.size()));
 
 	off64_t offset_bytes = page_size() * offset_pages;
-	if (ssize_t(num_bytes) !=
-	    pwrite64(emufs_fd, data, num_bytes, offset_bytes)) {
+	if (ssize_t(buf.data.size()) !=
+	    pwrite64(emufs_fd, buf.data.data(), buf.data.size(),
+		     offset_bytes)) {
 		fatal("Failed to write %d bytes at %#llx to %s",
-		      num_bytes, offset_bytes, vfile.filename);
+		      buf.data.size(), offset_bytes, vfile.filename);
 	}
-	free(data);
 	debug("  restored %d bytes at 0x%llx to %s",
-	      num_bytes, offset_bytes, vfile.filename);
+	      buf.data.size(), offset_bytes, vfile.filename);
 
-	t->vm()->map(mapped_addr, num_bytes, prot, flags,
+	t->vm()->map(mapped_addr, buf.data.size(), prot, flags,
 		     offset_bytes,
 		     MappableResource(FileId(file->stat), file->filename));
 
@@ -1087,7 +1086,7 @@ static void process_mmap(Task* t,
 						    prot, flags, offset_pages);
 	} else {
 		struct mmapped_file file;
-		read_next_mmapped_file_stats(&file);
+		t->ifstream() >> file;
 
 		assert_exec(t, file.time == trace->global_time,
 			    "mmap time %u should equal %u",
@@ -1299,30 +1298,30 @@ static void maybe_verify_tracee_saved_data(Task* t,
 					   const struct user_regs_struct* rec_regs)
 {
 	int fd = rec_regs->ebx;
-	void* addr = (void*)rec_regs->ecx;
-	size_t len = rec_regs->edx;
-	void* rec_addr;
-	size_t rec_len;
-	void* rec_buf;
+	void* rep_addr = (void*)rec_regs->ecx;
+	size_t rep_len = rec_regs->edx;
 
 	if (RR_MAGIC_SAVE_DATA_FD != fd) {
 		return;
 	}
 
-	rec_buf = read_raw_data(&t->trace, &rec_len, &rec_addr);
-	/* If the data address changed, something disastrous happened
-	 * and the buffers aren't comparable.  Just bail. */
-	assert_exec(t, addr == rec_addr,
+	struct raw_data rec;
+	t->ifstream() >> rec;
+
+	// If the data address changed, something disastrous happened
+	// and the buffers aren't comparable.  Just bail.
+	assert_exec(t, rec.addr == rep_addr,
 		    "Recorded write(%p) being replayed as write(%p)",
-		    rec_addr, addr);
+		    rec.addr, rep_addr);
 
-	byte buf[rec_len];
-	t->read_bytes_helper(addr, len, buf);
-	if (len != rec_len || memcmp(rec_buf, buf, len)) {
-		notify_save_data_error(t, addr, rec_buf, rec_len, buf, len);
+	byte rep_buf[rep_len];
+	t->read_bytes_helper(rep_addr, sizeof(rep_buf), rep_buf);
+	if (rec.data.size() != rep_len
+	    || memcmp(rec.data.data(), rep_buf, rep_len)) {
+		notify_save_data_error(t, rec.addr,
+				       rec.data.data(), rec.data.size(),
+				       rep_buf, rep_len);
 	}
-
-	free(rec_buf);
 }
 
 void rep_after_enter_syscall(Task* t, int syscallno)

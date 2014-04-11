@@ -34,11 +34,10 @@
 
 using namespace std;
 
-static string exe_image;
-// NB: we currently intentionally leak the constituent strings in
-// these arrays.
-static CharpVector arg_v;
-static CharpVector env_p;
+// The trace we're currently recording.
+static TraceOfstream::shr_ptr trace;
+// Args/env for the initial tracee.
+struct args_env ae;
 
 /* Nonzero when it's safe to deliver signals, namely, when the initial
  * tracee has exec()'d the tracee image.  Before then, the address
@@ -46,47 +45,6 @@ static CharpVector env_p;
  * replay won't be able to find the right execution point to deliver
  * the signal. */
 static int can_deliver_signals;
-
-static void copy_argv(int argc, char* argv[])
-{
-	for (int i = 0; i < argc; ++i) {
-		arg_v.push_back(strdup(argv[i]));
-	}
-	arg_v.push_back(NULL);
-}
-
-static void copy_envp(char** envp)
-{
-	int i = 0, preload_index = -1;
-	for (i = 0; envp[i]; ++i) {
-		env_p.push_back(strdup(envp[i]));
-		if (envp[i] == strstr(envp[i], "LD_PRELOAD=")) {
-			preload_index = i;
-		}
-	}
-	// LD_PRELOAD the syscall interception lib
-	if (rr_flags()->syscall_buffer_lib_path.length() > 0) {
-		string ld_preload = "LD_PRELOAD=";
-		// Our preload lib *must* come first
-		ld_preload += rr_flags()->syscall_buffer_lib_path;
-		if (preload_index >= 0) {
-			const char* old_preload =
-				strchr(envp[preload_index], '=') + 1;
-			assert(old_preload);
-			// Honor old preloads too.  this may cause
-			// problems, but only in those libs, and
-			// that's the user's problem.
-			ld_preload += ":";
-			ld_preload += old_preload;
-		} else {
-			/* Or if this is a new key/value, "allocate"
-			 * an index for it */
-			preload_index = i++;
-		}
-		env_p.push_back(strdup(ld_preload.c_str()));
-	}
-	env_p.push_back(NULL);
-}
 
 /**
  * Create a pulseaudio client config file with shm disabled.  That may
@@ -174,7 +132,7 @@ static void handle_ptrace_event(Task** tp)
 	int event = t->ptrace_event();
 	if (event != PTRACE_EVENT_NONE) {
 		debug("  %d: handle_ptrace_event %d: event %s",
-		      t->tid, event, event_name(t->ev()));
+		      t->tid, event, t->ev().str().c_str());
 	}
 	switch (event) {
 
@@ -405,7 +363,7 @@ static void syscall_not_restarted(Task* t)
 	debug("  %d: popping abandoned interrupted %s; pending events:",
 	      t->tid, syscallname(t->ev().Syscall().no));
 #ifdef DEBUGTAG
-	log_pending_events(t);
+	t->log_pending_events();
 #endif
 	t->pop_syscall_interruption();
 
@@ -652,7 +610,7 @@ static void check_rbc(Task* t)
 "  Most likely, the executable image `%s' is 64-bit, doesn't exist, or\n"
 "  isn't in your $PATH.  Terminating recording.\n"
 "\n",
-			fd, exe_image.c_str());
+			fd, ae.exe_image.c_str());
 		terminate_recording(t);
 		return;
 	}
@@ -904,28 +862,58 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 {
 	log_info("Start recording...");
 
-	exe_image = argv[0];
-	copy_argv(argc, argv);
-	copy_envp(envp);
-	rec_set_up_trace_dir(argv[0]);
+	trace = TraceOfstream::create(argv[0]);
+	ae = args_env(argc, argv, envp);
+	// LD_PRELOAD the syscall interception lib
+	if (!rr_flags()->syscall_buffer_lib_path.empty()) {
+		// Remove the trailing nullptr.  We'll put it back
+		// after injecting the preload lib into the envp.
+		ae.envp.pop_back();
+		string ld_preload = "LD_PRELOAD=";
+		// Our preload lib *must* come first
+		ld_preload += rr_flags()->syscall_buffer_lib_path;
+		auto it = ae.envp.begin();
+		for (; it != ae.envp.end(); ++it) {
+			if (*it != strstr(*it, "LD_PRELOAD=")) {
+				continue;
+			}
+			const char* old_preload = strchr(*it, '=') + 1;
+			assert(old_preload);
+			// Honor old preloads too.  This may cause
+			// problems, but only in those libs, and
+			// that's the user's problem.
+			ld_preload += ":";
+			ld_preload += old_preload;
+			break;
+		}
+		// The envp vector takes over ownership of this
+		// string.
+		char* new_preload = strdup(ld_preload.c_str());
+		if (it == ae.envp.end()) {
+			ae.envp.push_back(new_preload);
+		} else {
+			free(*it);
+			*it = new_preload;
+		}
+		ae.envp.push_back(nullptr);
+	}
 
 	string env_pair = create_pulseaudio_config();
 	if (!env_pair.empty()) {
-		// Intentionally leaked.
-		env_p[env_p.size() - 1] = strdup(env_pair.c_str());
-		env_p.push_back(nullptr);
+		// The envp vector takes over ownership of this
+		// string.
+		ae.envp.back() = strdup(env_pair.c_str());
+		ae.envp.push_back(nullptr);
 	}
 
-	ensure_preload_lib_will_load(rr_exe, env_p);
+	ensure_preload_lib_will_load(rr_exe, ae.envp);
 
-	open_trace_files();
-	rec_init_trace_files();
-	record_argv_envp(argc, arg_v.data(), env_p.data());
+	*trace << ae;
+
 	init_libpfm();
-
 	install_termsig_handlers();
 
-	Task* t = Task::create(exe_image, arg_v, env_p);
+	Task* t = Task::create(ae, trace);
 	start_hpc(t, rr_flags()->max_rbc);
 
 	while (Task::count() > 0) {
@@ -940,9 +928,9 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 		t = next;
 
 		debug("line %d: Active task is %d. Events:",
-		      get_global_time(), t->tid);
+		      t->trace_time(), t->tid);
 #ifdef DEBUGTAG
-		log_pending_events(t);
+		t->log_pending_events();
 #endif
 		int ptrace_event = t->ptrace_event();
 		assert_exec(t, (!by_waitpid || t->may_be_blocked() ||
@@ -987,7 +975,7 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 	}
 
 	log_info("Done recording -- cleaning up");
-	close_trace_files();
+	trace = nullptr;
 	close_libpfm();
 }
 
@@ -995,16 +983,18 @@ void terminate_recording(Task* t)
 {
 	log_info("Processing termination request ...");
 	log_info("  recording final TRACE_TERMINATION event ...");
-	record_trace_termination_event(t);
-	flush_trace_files();
+
+	struct trace_frame frame;
+	memset(&frame, 0, sizeof(frame));
+	frame.tid = t ? t->tid : 0;
+	frame.global_time = trace->time();
+	frame.ev = Event(EV_TRACE_TERMINATION,
+			 BaseEvent(NO_EXEC_INFO)).encode();
+	*trace << frame;
+	trace->flush();
 
 	// TODO: Task::killall() here?
 
 	log_info("  exiting, goodbye.");
 	exit(0);
-}
-
-const string& get_exe_image()
-{
-	return exe_image;
 }

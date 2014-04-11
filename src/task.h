@@ -833,6 +833,13 @@ public:
 	void get_siginfo(siginfo_t* si);
 
 	/**
+	 * Return the trace we're either recording to (|ofstream()|)
+	 * or replaying from (|ifstream()|).
+	 */
+	TraceIfstream& ifstream() { return *trace_ifstream; }
+	TraceOfstream& ofstream() { return *trace_ofstream; }
+
+	/**
 	 * Call this when the tracee's syscallbuf has been initialized.
 	 */
 	void inited_syscallbuf();
@@ -1163,6 +1170,9 @@ public:
 	/** Return id of real OS task group. */
 	pid_t real_tgid() const { return tg->real_tgid; }
 
+	/** Return the dir of the trace we're using. */
+	const std::string& trace_dir() const;
+
 	/**
 	 * Get the current "time" measured as ticks on recording trace
 	 * events.  |task_time()| returns that "time" wrt this task
@@ -1262,13 +1272,26 @@ public:
 	static const PrioritySet& get_priority_set();
 
 	/**
-	 * Fork and exec the initial tracee task to run |exe| with
-	 * |argv| in |envp|.  For replay, pass |rec_tid|.  Return that
-	 * Task.
+	 * Fork and exec the initial tracee task to run |ae|, and
+	 * record events into |trace|.  Return that Task.
 	 */
-	static Task* create(const std::string& exe,
-			    CharpVector& argv, CharpVector& envp,
-			    pid_t rec_tid = -1);
+	static Task* create(const struct args_env& ae,
+			    TraceOfstream::shr_ptr trace) {
+		Task* t = create(ae);
+		t->trace_ofstream = trace;
+		return t;
+	}
+	/**
+	 * Fork and exec the initial tracee task to run |ae|, and read
+	 * recorded events from |trace|.  |rec_tid| is the recorded
+	 * tid of the initial tracee task.  Return that Task.
+	 */
+	static Task* create(const struct args_env& ae,
+			    TraceIfstream::shr_ptr trace, pid_t rec_tid) {
+		Task* t = create(ae, rec_tid);
+		t->trace_ifstream = trace;
+		return t;
+	}
 
 	/** Call |Task::dump(out)| for all live tasks. */
 	static void dump_all(FILE* out = NULL);
@@ -1478,10 +1501,37 @@ private:
 	bool is_desched_sig_blocked();
 
 	/**
+	 * Call this before recording events or data.  Records
+	 * syscallbuf data and flushes the buffer, if there's buffered
+	 * data.
+	 */
+	void maybe_flush_syscallbuf();
+
+	/**
+	 * Return the trace fstream that we're using, whether in
+	 * recording or replay.
+	 */
+	TraceFstream& trace_fstream() {
+		if (trace_ofstream) {
+			return *trace_ofstream;
+		}
+		return *trace_ifstream;
+	}
+	const TraceFstream& trace_fstream() const {
+		if (trace_ofstream) {
+			return *trace_ofstream;
+		}
+		return *trace_ifstream;
+	}
+
+	/**
 	 * Like |fallible_ptrace()| but infallible: except either the
 	 * request succeeds, or this doesn't return.
 	 */
 	void xptrace(int request, void* addr, void* data);
+
+	/** Fork and exec a task to run |ae|, with |rec_tid|. */
+	static Task* create(const struct args_env& ae, pid_t rec_tid = -1);
 
 	/**
 	 * The rbc interrupt has failed to stop the Task currently
@@ -1503,6 +1553,12 @@ private:
 	//
 	// TODO: we should only need one of these per address space.
 	int child_mem_fd;
+	// During recording, |trace_ofstream| is nonnull and is the
+	// trace that our events will be recorded into.  During
+	// replay, |trace_ifstream| is nonnull and is the trace we'll
+	// be reading saved events from.
+	TraceIfstream::shr_ptr trace_ifstream;
+	TraceOfstream::shr_ptr trace_ofstream;
 	// The current stack of events being processed.  (We use a
 	// deque instead of a stack because we need to iterate the
 	// events.)

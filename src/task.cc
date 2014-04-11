@@ -1018,6 +1018,8 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 {
 	Task* t = new Task(new_tid, new_rec_tid, priority);
 
+	t->trace_ifstream = trace_ifstream;
+	t->trace_ofstream = trace_ofstream;
 	t->syscallbuf_lib_start = syscallbuf_lib_start;
 	t->syscallbuf_lib_end = syscallbuf_lib_end;
 	t->blocked_sigs = blocked_sigs;
@@ -1410,49 +1412,73 @@ Task::record_current_event()
 void
 Task::record_event(const Event& ev)
 {
-	::record_event(this, ev);
+	maybe_flush_syscallbuf();
+
+	struct trace_frame frame;
+	frame.global_time = ofstream().time();
+	frame.thread_time = thread_time++;
+	frame.tid = tid;
+	frame.ev = ev.encode();
+	if (ev.has_exec_info()) {
+		frame.rbc = read_rbc(hpc);
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+		frame.hw_interrupts = read_hw_int(hpc);
+		frame.page_faults = read_page_faults(hpc);
+		frame.insts = read_insts(hpc);
+#endif
+		frame.recorded_regs = regs();
+	}
+	ofstream() << frame;
+	if (frame.ev.has_exec_info) {
+		reset_hpc(this, rr_flags()->max_rbc);
+	}
 }
 
 void
-Task::record_local(void* addr, ssize_t num_bytes, const void* buf)
+Task::record_local(void* addr, ssize_t num_bytes, const void* data)
 {
-	record_data(this, addr, num_bytes, buf);
-}
+	maybe_flush_syscallbuf();
 
-// Max size we'll attempt to read into an inline buffer. Otherwise, we
-// allocate a temporary heap buffer.
-#define MAX_STACK_BUFFER_SIZE (1 << 17)
+	struct raw_data buf;
+	buf.addr = addr;
+	buf.data.assign((const byte*)data, (const byte*)data + num_bytes);
+	buf.ev = ev().encode();
+	buf.global_time = ofstream().time();
+	ofstream() << buf;
+}
 
 void
 Task::record_remote(void* addr, ssize_t num_bytes)
 {
-	byte stack_buf[MAX_STACK_BUFFER_SIZE];
-	byte* heap_buf = nullptr;
-	byte* read_buf = nullptr;
-	ssize_t read_bytes = 0;
-
 	// We shouldn't be recording a scratch address.
 	assert_exec(this, !addr || addr != scratch_ptr, "");
 
+	maybe_flush_syscallbuf();
+
+	struct raw_data buf;
+	buf.addr = addr;
+	buf.ev = ev().encode();
+	buf.global_time = ofstream().time();
  	if (addr && num_bytes > 0) {
-		if (num_bytes > ssize_t(sizeof(stack_buf))) {
-			heap_buf = (byte*)malloc(num_bytes);
-		}
-		read_buf = heap_buf ? heap_buf : stack_buf;
-
-		read_bytes_helper(addr, num_bytes, read_buf);
-		read_bytes = num_bytes;
+		buf.data.resize(num_bytes);
+		read_bytes_helper(addr, buf.data.size(), buf.data.data());
 	}
-
-	record_data(this, addr, read_bytes, read_buf);
-	free(heap_buf);
+	ofstream() << buf;
 }
 
 void
 Task::record_remote_str(void* str)
 {
+	maybe_flush_syscallbuf();
+
 	string s = read_c_str(str);
-	record_data(this, str, s.size() + 1, s.c_str());
+	struct raw_data buf;
+	buf.addr = str;
+	// Record the \0 byte.
+	buf.data.assign(s.c_str(), s.c_str() + s.size() + 1);
+	buf.ev = ev().encode();
+	buf.global_time = ofstream().time();
+	ofstream() << buf;
 }
 
 string
@@ -1522,14 +1548,12 @@ Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 ssize_t
 Task::set_data_from_trace()
 {
-	size_t size;
-	void* rec_addr;
-	byte* data = (byte*)read_raw_data(&trace, &size, &rec_addr);
-	if (data && size > 0) {
-		write_bytes_helper(rec_addr, size, data);
-		free(data);
+	struct raw_data buf;
+	ifstream() >> buf;
+	if (buf.addr && buf.data.size() > 0) {
+		write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
 	}
-	return size;
+	return buf.data.size();
 }
 
 void
@@ -1602,10 +1626,16 @@ Task::pop_stash_sig()
 	return stashed_si;
 }
 
+const string&
+Task::trace_dir() const
+{
+	return trace_fstream().dir();
+}
+
 uint32_t
 Task::trace_time() const
 {
-	return get_global_time();
+	return trace_fstream().time();
 }
 
 void
@@ -1810,80 +1840,6 @@ static void set_up_process(void)
 	}
 }
 
-/*static*/ Task*
-Task::create(const std::string& exe, CharpVector& argv, CharpVector& envp,
-	     pid_t rec_tid)
-{
-	assert(Task::count() == 0);
-
-	pid_t tid = fork();
-	if (0 == tid) {
-		set_up_process();
-		// Signal to tracer that we're configured.
-		kill(getpid(), SIGSTOP);
-
-		// We do a small amount of dummy work here to retire
-		// some branches in order to ensure that the rbc is
-		// non-zero.  The tracer can then check the rbc value
-		// at the first ptrace-trap to see if it seems to be
-		// working.
-		int start = rand() % 5;
-		int num_its = start + 5;
-		int sum = 0;
-		for (int i = start; i < num_its; ++i) {
-			sum += i;
-		}
-		syscall(SYS_write, -1, &sum, sizeof(sum));
-
-		execvpe(exe.c_str(), argv.data(), envp.data());
-		fatal("Failed to exec %s", exe.c_str());
-	}
-
-	signal(SIGALRM, Task::handle_runaway);
-
-	Task* t = new Task(tid, rec_tid, 0);
-	// The very first task we fork inherits the signal
-	// dispositions of the current OS process (which should all be
-	// default at this point, but ...).  From there on, new tasks
-	// will transitively inherit from this first task.
-	auto sh = Sighandlers::create();
-	sh->init_from_current_process();
-	t->sighandlers.swap(sh);
-	// Don't use the POSIX wrapper, because it doesn't necessarily
-	// read the entire sigset tracked by the kernel.
-	if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, NULL,
-		      &t->blocked_sigs, sizeof(t->blocked_sigs))) {
-		fatal("Failed to read blocked signals");
-	}
-	auto g = TaskGroup::create(t);
-	t->tg.swap(g);
-	auto as = AddressSpace::create(t);
-	t->as.swap(as);
-
-	// Sync with the child process.
-	t->xptrace(PTRACE_SEIZE, nullptr,
-		   (void*)(PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-			   PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
-			   PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-			   PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP));
-	// PTRACE_SEIZE is fundamentally racy by design.  We depend on
-	// stopping the tracee at a known location, so raciness is
-	// bad.  To resolve the race condition, we just keep running
-	// the tracee until it reaches the known-safe starting point.
-	//
-	// Alternatively, it would be possible to remove the
-	// requirement of the tracing beginning from a known point.
-	while (true) {
-		t->wait();
-		if (SIGSTOP == t->stop_sig()) {
-			break;
-		}
-		t->cont_nonblocking();
-	}
-	t->force_status(0);
-	return t;
-}
-
 /*static*/ void
 Task::dump_all(FILE* out)
 {
@@ -2077,6 +2033,37 @@ Task::is_desched_sig_blocked()
 	return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
+void
+Task::maybe_flush_syscallbuf()
+{
+	if (EV_SYSCALLBUF_FLUSH == ev().type()) {
+		// Already flushing.
+		return;
+	}
+	if (!syscallbuf_hdr
+	    || 0 == syscallbuf_hdr->num_rec_bytes 
+	    || delay_syscallbuf_flush) {
+		// No syscallbuf or no records.  No flushing to do.
+		return;
+	}
+	// Write the entire buffer in one shot without parsing it,
+	// because replay will take care of that.
+	push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO));
+	record_local(syscallbuf_child,
+		     // Record the header for consistency checking.
+		     syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr),
+		     syscallbuf_hdr);
+	record_current_event();
+	pop_event(EV_SYSCALLBUF_FLUSH);
+
+	// Reset header.
+	assert(!syscallbuf_hdr->abort_commit);
+	if (!delay_syscallbuf_reset) {
+		syscallbuf_hdr->num_rec_bytes = 0;
+	}
+	flushed_syscallbuf = 1;
+}
+
 static off64_t to_offset(void* addr)
 {
 	off64_t offset = (uintptr_t)addr;
@@ -2143,6 +2130,79 @@ Task::xptrace(int request, void* addr, void* data)
 	assert_exec(this, 0 == ret,
 		    "ptrace(%s, %d, addr=%p, data=%p) failed",
 		    ptrace_req_name(request), tid, addr, data);
+}
+
+/*static*/ Task*
+Task::create(const struct args_env& ae, pid_t rec_tid)
+{
+	assert(Task::count() == 0);
+
+	pid_t tid = fork();
+	if (0 == tid) {
+		set_up_process();
+		// Signal to tracer that we're configured.
+		kill(getpid(), SIGSTOP);
+
+		// We do a small amount of dummy work here to retire
+		// some branches in order to ensure that the rbc is
+		// non-zero.  The tracer can then check the rbc value
+		// at the first ptrace-trap to see if it seems to be
+		// working.
+		int start = rand() % 5;
+		int num_its = start + 5;
+		int sum = 0;
+		for (int i = start; i < num_its; ++i) {
+			sum += i;
+		}
+		syscall(SYS_write, -1, &sum, sizeof(sum));
+
+		execvpe(ae.exe_image.c_str(), ae.argv.data(), ae.envp.data());
+		fatal("Failed to exec '%s'", ae.exe_image.c_str());
+	}
+
+	signal(SIGALRM, Task::handle_runaway);
+
+	Task* t = new Task(tid, rec_tid, 0);
+	// The very first task we fork inherits the signal
+	// dispositions of the current OS process (which should all be
+	// default at this point, but ...).  From there on, new tasks
+	// will transitively inherit from this first task.
+	auto sh = Sighandlers::create();
+	sh->init_from_current_process();
+	t->sighandlers.swap(sh);
+	// Don't use the POSIX wrapper, because it doesn't necessarily
+	// read the entire sigset tracked by the kernel.
+	if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, NULL,
+		      &t->blocked_sigs, sizeof(t->blocked_sigs))) {
+		fatal("Failed to read blocked signals");
+	}
+	auto g = TaskGroup::create(t);
+	t->tg.swap(g);
+	auto as = AddressSpace::create(t);
+	t->as.swap(as);
+
+	// Sync with the child process.
+	t->xptrace(PTRACE_SEIZE, nullptr,
+		   (void*)(PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+			   PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
+			   PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
+			   PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP));
+	// PTRACE_SEIZE is fundamentally racy by design.  We depend on
+	// stopping the tracee at a known location, so raciness is
+	// bad.  To resolve the race condition, we just keep running
+	// the tracee until it reaches the known-safe starting point.
+	//
+	// Alternatively, it would be possible to remove the
+	// requirement of the tracing beginning from a known point.
+	while (true) {
+		t->wait();
+		if (SIGSTOP == t->stop_sig()) {
+			break;
+		}
+		t->cont_nonblocking();
+	}
+	t->force_status(0);
+	return t;
 }
 
 /*static*/ void
