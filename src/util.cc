@@ -120,7 +120,7 @@ void maybe_mark_stdio_write(Task* t, int fd)
 					 || STDERR_FILENO == fd)) {
 		return;
 	}
-	snprintf(buf, sizeof(buf) - 1, "[rr %d %d]", t->tgid(), get_global_time());
+	snprintf(buf, sizeof(buf) - 1, "[rr %d %d]", t->tgid(), t->trace_time());
 	len = strlen(buf);
 	if (write(fd, buf, len) != len) {
 		fatal("Couldn't write to %d", fd);
@@ -840,8 +840,8 @@ static void notify_checksum_error(Task* t, int global_time,
 		    , ev.str().c_str(),
 		    data->raw_map_line,
 		    rec_checksum, checksum,
-		    cur_dump, ev.str().c_str(), get_global_time(),
-		    get_global_time(),
+		    cur_dump, ev.str().c_str(), t->trace_time(),
+		    t->trace_time(),
 		    rec_dump, cur_dump);
 }
 

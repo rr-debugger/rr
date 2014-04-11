@@ -70,7 +70,7 @@ inline static int should_log(void)
 				_msg "\n",				\
 				__FILE__, __LINE__, __FUNCTION__,	\
 				clean_errno(), _t->tid, _t->rec_tid,	\
-				get_global_time(), ##__VA_ARGS__);	\
+				_t->trace_time(), ##__VA_ARGS__);	\
 			_t->log_pending_events();			\
 			emergency_debug(_t);				\
 		}							\
@@ -82,10 +82,9 @@ inline static int should_log(void)
 #define fatal(M, ...)							\
 	do {								\
 		fprintf(LOG_FILE, "[FATAL] (%s:%d:%s: errno: %s) "	\
-			"(trace line %d)\n"				\
 			" -> " M "\n",					\
 			__FILE__, __LINE__, __FUNCTION__,		\
-			clean_errno(), get_global_time(), ##__VA_ARGS__); \
+			clean_errno(), ##__VA_ARGS__);			\
 		abort();						\
 	} while (0)
 

@@ -405,7 +405,7 @@ static Task* schedule_task(Task** intr_t = nullptr)
 			t->trace.rbc = rbc;
 		}
 	}
-	assert(get_global_time() == t->trace.global_time);
+	assert(t->trace_time() == t->trace.global_time);
 	return t;
 }
 
@@ -1790,7 +1790,7 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	uint32_t goto_event = rr_flags()->goto_event;
 	pid_t target_process = rr_flags()->target_process;
 	bool require_exec = (CREATED_EXEC == rr_flags()->process_created_how);
-	uint32_t event_now = get_global_time();
+	uint32_t event_now = t->trace_time();
 	if (event_now < goto_event
 	    // NB: we'll happily attach to whichever task within the
 	    // group happens to be scheduled here.  We don't take

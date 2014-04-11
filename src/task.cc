@@ -1097,7 +1097,7 @@ Task::destabilize_task_group()
 	// output from tests.
 	if (EV_SIGNAL_DELIVERY == ev().type() && !probably_not_interactive()) {
 		printf("[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
-		       get_global_time() + signal_delivery_event_offset(),
+		       trace_time() + signal_delivery_event_offset(),
 		       rec_tid, tgid(), signalname(ev().Signal().no));
 	}
 
@@ -1595,6 +1595,12 @@ Task::pop_stash_sig()
 	force_status(stashed_wait_status);
 	stashed_wait_status = 0;
 	return stashed_si;
+}
+
+uint32_t
+Task::trace_time() const
+{
+	return get_global_time();
 }
 
 void

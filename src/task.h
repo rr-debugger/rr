@@ -1153,6 +1153,14 @@ public:
 	pid_t real_tgid() const { return tg->real_tgid; }
 
 	/**
+	 * Get the current "time" measured as ticks on recording trace
+	 * events.  |task_time()| returns that "time" wrt this task
+	 * only.
+	 */
+	uint32_t trace_time() const;
+	uint32_t task_time() const { return thread_time; }
+
+	/**
 	 * Call this after the tracee successfully makes a
 	 * |prctl(PR_SET_NAME)| call to change the task name to the
 	 * string pointed at in the tracee's address space by
