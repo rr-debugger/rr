@@ -4,6 +4,6 @@ source `dirname $0`/util.sh execp "$@"
 
 exe=simple
 cp ${OBJDIR}/bin/$exe $exe-$nonce
-PATH=".:${PATH}" just_record $exe-$nonce
+PATH="${PATH}:." just_record $exe-$nonce
 replay
 check 'EXIT-SUCCESS'
