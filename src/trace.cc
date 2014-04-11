@@ -426,6 +426,38 @@ void close_trace_files(void)
 		fclose(mmaps_file);
 }
 
+static void print_header(EncodedEvent ev, void* addr)
+{
+	fprintf(syscall_header, "%11u", global_time);
+	fprintf(syscall_header, "%11d", ev.encoded);
+	fprintf(syscall_header, "%11u", (uintptr_t)addr);
+}
+
+static void write_raw_data(Task *t, const void *buf, size_t to_write)
+{
+	size_t bytes_written;
+	(void)bytes_written;
+
+	bytes_written = fwrite(buf, 1, to_write, raw_data);
+	assert(bytes_written == to_write);
+	overall_raw_bytes += to_write;
+}
+
+static void save_data(Task *t, void* addr, ssize_t num_bytes, const void* buf)
+{
+	EncodedEvent ev = t->ev().encode();
+
+	/* We shouldn't be recording a scratch address */
+	assert_exec(t, !addr || addr != t->scratch_ptr, "");
+
+	if (addr && num_bytes > 0) {
+		write_raw_data(t, buf, num_bytes);
+	}
+	print_header(ev, addr);
+	assert(num_bytes >= 0);
+	fprintf(syscall_header, "%11d\n", num_bytes);
+}
+
 /**
  * Flush the syscallbuf to the trace, if there are any pending entries.
  */
@@ -441,10 +473,10 @@ static void maybe_flush_syscallbuf(Task *t)
 	/* Write the entire buffer in one shot without parsing it,
 	 * since replay will take care of that. */
 	t->push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO));
-	record_parent_data(t,
-			   /* Record the header for consistency checking. */
-			   t->syscallbuf_hdr->num_rec_bytes + sizeof(*t->syscallbuf_hdr),
-			   t->syscallbuf_child, t->syscallbuf_hdr);
+	save_data(t, t->syscallbuf_child,
+		  /* Record the header for consistency checking. */
+		  t->syscallbuf_hdr->num_rec_bytes + sizeof(*t->syscallbuf_hdr),
+		  t->syscallbuf_hdr);
 	record_event(t);
 	t->pop_event(EV_SYSCALLBUF_FLUSH);
 
@@ -552,70 +584,10 @@ void record_trace_termination_event(Task* t)
 	write_trace_frame(&frame);
 }
 
-static void print_header(EncodedEvent ev, void* addr)
+void record_data(Task* t, void* addr, ssize_t num_bytes, const void* buf)
 {
-	fprintf(syscall_header, "%11u", global_time);
-	fprintf(syscall_header, "%11d", ev.encoded);
-	fprintf(syscall_header, "%11u", (uintptr_t)addr);
-}
-
-static void write_raw_data(Task *t, void *buf, size_t to_write)
-{
-	size_t bytes_written;
-	(void)bytes_written;
-
-	bytes_written = fwrite(buf, 1, to_write, raw_data);
-	assert(bytes_written == to_write);
-	overall_raw_bytes += to_write;
-}
-
-/**
- * Writes data into the raw_data file and generates a corresponding entry in
- * syscall_input.
- */
-
-// Max size we'll attempt to read into an inline buffer.  Otherwise,
-// we allocate a temporary heap buffer.
-#define MAX_STACK_BUFFER_SIZE (1 << 17)
-
-void record_child_data(Task *t, size_t size, void* child_ptr)
-{
-	EncodedEvent ev = t->ev().encode();
-	ssize_t read_bytes = 0;
-
-	/* We shouldn't be recording a scratch address */
-	assert_exec(t, !child_ptr || child_ptr != t->scratch_ptr, "");
-
 	maybe_flush_syscallbuf(t);
-	if (child_ptr && size > 0) {
-		byte stack_buf[MAX_STACK_BUFFER_SIZE];
-		byte* heap_buf = nullptr;
-		if (size > sizeof(stack_buf)) {
-			heap_buf = (byte*)malloc(size);
-		}
-		byte* read_buf = heap_buf ? heap_buf : stack_buf;
-
-		t->read_bytes_helper(child_ptr, size, read_buf);
-		write_raw_data(t, read_buf, size);
-		read_bytes = size;
-
-		free(heap_buf);
-	}
-	print_header(ev, child_ptr);
-	fprintf(syscall_header, "%11d\n", read_bytes);
-}
-
-void record_parent_data(Task *t, size_t len, void *addr, void *buf)
-{
-	EncodedEvent ev = t->ev().encode();
-
-	/* We shouldn't be recording a scratch address */
-	assert(addr != t->scratch_ptr);
-
-	write_raw_data(t, buf, len);
-	print_header(ev, addr);
-	assert(len >= 0);
-	fprintf(syscall_header, "%11d\n", len);
+	save_data(t, addr, num_bytes, buf);
 }
 
 void record_mmapped_file_stats(struct mmapped_file* file)

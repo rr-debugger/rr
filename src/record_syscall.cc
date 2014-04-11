@@ -102,7 +102,7 @@ void rec_before_record_syscall_entry(Task* t, int syscallno)
 
 	assert_exec(t, buf, "Can't save a null buffer");
 
-	record_child_data(t, len, buf);
+	t->record_remote(buf, len);
 }
 
 /**
@@ -968,7 +968,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
  */
 static void record_noop_data(Task* t)
 {
-	record_parent_data(t, 0, NULL, NULL);
+	t->record_local(nullptr, 0, nullptr);
 }
 
 void rec_prepare_restart_syscall(Task* t)
@@ -993,7 +993,7 @@ void rec_prepare_restart_syscall(Task* t)
 
 		if (rem) {
 			t->remote_memcpy(rem, rem2, sizeof(*rem));
-			record_child_data(t, sizeof(*rem), rem);
+			t->record_remote(rem, sizeof(*rem));
 		} else {
 			record_noop_data(t);
 		}
@@ -1105,7 +1105,7 @@ static void restore_and_record_arg_buf(Task* t,
 	// TODO: move scratch-arg tracking into Task
 	byte* parent_data = *parent_data_iter;
 	t->write_bytes_helper(child_addr, num_bytes, parent_data);
-	record_parent_data(t, num_bytes, child_addr, parent_data);
+	t->record_local(child_addr, num_bytes, parent_data);
 	*parent_data_iter += num_bytes;
 }
 
@@ -1228,7 +1228,7 @@ static void process_execve(Task* t)
 
 	void* rand_addr = (void*)t->read_word(stack_ptr);
 	// XXX where does the magic number come from?
-	record_child_data(t, 16, rand_addr);
+	t->record_remote(rand_addr, 16);
 
 	init_scratch_memory(t);
 }
@@ -1236,7 +1236,7 @@ static void process_execve(Task* t)
 static void record_ioctl_data(Task *t, ssize_t num_bytes)
 {
 	void* param = (void*)t->regs().edx;
-	record_child_data(t, num_bytes, param);
+	t->record_remote(param, num_bytes);
 }
 
 /**
@@ -1247,7 +1247,7 @@ static void record_ioctl_data(Task *t, ssize_t num_bytes)
  */
 static void record_scratch_stack_page(Task* t)
 {
-	record_child_data(t, page_size(), (byte*)t->sp() - page_size());
+	t->record_remote((byte*)t->sp() - page_size(), page_size());
 }
 
 static void process_ioctl(Task *t, int request)
@@ -1272,7 +1272,7 @@ static void process_ioctl(Task *t, int request)
 		t->read_mem(param, &ifr);
 
 		record_scratch_stack_page(t);
-		record_child_data(t, sizeof(struct ethtool_cmd), ifr.ifr_data);
+		t->record_remote(ifr.ifr_data, sizeof(struct ethtool_cmd));
 		return;
 	}
 	case SIOCGIFCONF: {
@@ -1280,8 +1280,8 @@ static void process_ioctl(Task *t, int request)
 		t->read_mem(param, &ifconf);
 
 		record_scratch_stack_page(t);
-		record_parent_data(t, sizeof(ifconf), param, &ifconf);
-		record_child_data(t, ifconf.ifc_len, ifconf.ifc_buf);
+		t->record_local(param, sizeof(ifconf), &ifconf);
+		t->record_remote(ifconf.ifc_buf, ifconf.ifc_len);
 		return;
 	}
 	case SIOCGIFADDR:
@@ -1417,7 +1417,7 @@ static void process_ipc(Task* t, int call)
 		default:
 			buf_size = 0;
 		}
-		record_child_data(t, buf_size, buf);
+		t->record_remote(buf, buf_size);
 		return;
 	}
 	case MSGRCV: {
@@ -1438,7 +1438,7 @@ static void process_ipc(Task* t, int call)
 
 			t->remote_memcpy((byte*)dst, (byte*)src, buf_size);
 		}
-		record_child_data(t, buf_size, kludge.msgbuf);
+		t->record_remote(kludge.msgbuf, buf_size);
 		return;
 	}
 	case MSGGET:
@@ -1485,8 +1485,8 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		} args;
 		t->read_mem(base_addr, &args);
 		socklen_t len = t->read_word(args.addrlen);
-		record_child_data(t, sizeof(*args.addrlen), args.addrlen);
-		record_child_data(t, len, args.addr);
+		t->record_remote(args.addrlen, sizeof(*args.addrlen));
+		t->record_remote(args.addr, len);
 		return;
 	}
 
@@ -1528,7 +1528,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 				restore_and_record_arg_buf(t, nrecvd, buf,
 							   &iter);
 			} else {
-				record_child_data(t, nrecvd, buf);
+				t->record_remote(buf, nrecvd);
 			}
 		} else {
 			record_noop_data(t);
@@ -1574,7 +1574,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		}
 
 		if (recvdlen > 0) {
-			record_child_data(t, recvdlen, args.buf);
+			t->record_remote(args.buf, recvdlen);
 		} else {
 			record_noop_data(t);
 		}
@@ -1582,9 +1582,8 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			socklen_t addrlen;
 			t->read_mem(args.addrlen, &addrlen);
 
-			record_child_data(t, sizeof(*args.addrlen),
-					  args.addrlen);
-			record_child_data(t, addrlen, args.src_addr);
+			t->record_remote(args.addrlen, sizeof(*args.addrlen));
+			t->record_remote(args.src_addr, addrlen);
 		} else {
 			record_noop_data(t);
 			record_noop_data(t);
@@ -1612,13 +1611,13 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		msg.msg_namelen = tmpmsg.msg_namelen;
 		msg.msg_flags = tmpmsg.msg_flags;
 		t->write_mem(args.msg, msg);
-		record_parent_data(t, sizeof(tmpmsg), args.msg, &msg);
+		t->record_local(args.msg, sizeof(tmpmsg), &msg);
 
 		if (msg.msg_name) {
 			t->remote_memcpy(msg.msg_name, tmpmsg.msg_name,
 					 tmpmsg.msg_namelen);
 		}
-		record_child_data(t, msg.msg_namelen, msg.msg_name);
+		t->record_remote(msg.msg_name, msg.msg_namelen);
 
 		assert_exec(t, msg.msg_iovlen == tmpmsg.msg_iovlen,
 			    "Scratch msg should have %d iovs, but has %d",
@@ -1634,14 +1633,14 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 					 tmpiov.iov_len);
 			iov->iov_len = tmpiov.iov_len;
 
-			record_child_data(t, iov->iov_len, iov->iov_base);
+			t->record_remote(iov->iov_base, iov->iov_len);
 		}
 
 		if (msg.msg_control) {
 			t->remote_memcpy(msg.msg_control, tmpmsg.msg_control,
 					 tmpmsg.msg_controllen);
 		}
-		record_child_data(t, msg.msg_controllen, msg.msg_control);
+		t->record_remote(msg.msg_control, msg.msg_controllen);
 
 		r.ecx = (uintptr_t)argsp;
 		t->set_regs(r);
@@ -1656,8 +1655,8 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			void* optval; socklen_t* optlen; } args;
 		t->read_mem(base_addr, &args);
 		socklen_t optlen = t->read_word(args.optlen);
-		record_child_data(t, sizeof(*args.optlen), args.optlen);
-		record_child_data(t, optlen, args.optval);
+		t->record_remote(args.optlen, sizeof(*args.optlen));
+		t->record_remote(args.optval, optlen);
 		return;
 	}
 
@@ -1708,7 +1707,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	case SYS_SOCKETPAIR: {
 		struct { int domain; int type; int protocol; int* sv; } args;
 		t->read_mem(base_addr, &args);
-		record_child_data(t, 2 * sizeof(*args.sv), args.sv);
+		t->record_remote(args.sv, 2 * sizeof(*args.sv));
 		return;
 	}
 
@@ -1732,33 +1731,33 @@ void rec_process_syscall(Task *t)
 
 #define SYS_REC1(_syscall, _size, _reg)					\
 	case SYS_##_syscall:						\
-		record_child_data(t, _size, (void*)t->regs()._reg);	\
+		t->record_remote((void*)t->regs()._reg, _size);		\
 		break
 
 #define SYS_REC1_STR(_syscall, _reg)			     \
 	case SYS_##_syscall:				     \
-		record_child_str(t, (void*)t->regs()._reg);  \
+		t->record_remote_str((void*)t->regs()._reg); \
 		break
 
 #define SYS_REC2(_syscall, _size1, _reg1, _size2, _reg2)	      \
 	case SYS_##_syscall:					      \
-		record_child_data(t, _size1, (void*)t->regs()._reg1); \
-		record_child_data(t, _size2, (void*)t->regs()._reg2); \
+		t->record_remote((void*)t->regs()._reg1, _size1);     \
+		t->record_remote((void*)t->regs()._reg2, _size2);     \
 		break
 
 #define SYS_REC3(_syscall, _size1, _reg1, _size2, _reg2, _size3, _reg3) \
 	case SYS_##_syscall:						\
-		record_child_data(t, _size1, (void*)t->regs()._reg1);	\
-		record_child_data(t, _size2, (void*)t->regs()._reg2);	\
-		record_child_data(t, _size3, (void*)t->regs()._reg3);	\
+		t->record_remote((void*)t->regs()._reg1, _size1);	\
+		t->record_remote((void*)t->regs()._reg2, _size2);	\
+		t->record_remote((void*)t->regs()._reg3, _size3);	\
 		break
 
 #define SYS_REC4(_syscall, _size1, _reg1, _size2, _reg2, _size3, _reg3, _size4, _reg4)	\
 	case SYS_##_syscall:						\
-		record_child_data(t, _size1, (void*)t->regs()._reg1);	\
-		record_child_data(t, _size2, (void*)t->regs()._reg2);	\
-		record_child_data(t, _size3, (void*)t->regs()._reg3);	\
-		record_child_data(t, _size4, (void*)t->regs()._reg4);	\
+		t->record_remote((void*)t->regs()._reg1, _size1);	\
+		t->record_remote((void*)t->regs()._reg2, _size2);	\
+		t->record_remote((void*)t->regs()._reg3, _size3);	\
+		t->record_remote((void*)t->regs()._reg4, _size4);	\
 		break
 
 	pid_t tid = t->tid;
@@ -1772,10 +1771,9 @@ void rec_process_syscall(Task *t)
 	if (const struct syscallbuf_record* rec = t->desched_rec()) {
 		assert(t->ev().Syscall().tmp_data_ptr != t->scratch_ptr);
 
-		record_parent_data(t,
-				   t->ev().Syscall().tmp_data_num_bytes,
-				   t->ev().Syscall().tmp_data_ptr,
-				   (byte*)rec->extra_data);
+		t->record_local(t->ev().Syscall().tmp_data_ptr,
+				t->ev().Syscall().tmp_data_num_bytes,
+				(byte*)rec->extra_data);
 		return;
 	}
 
@@ -1836,17 +1834,15 @@ void rec_process_syscall(Task *t)
 		new_task->push_event(SyscallEvent(syscall));
 
 		/* record child id here */
-		record_child_data(new_task, sizeof(pid_t),
-				  (void*)t->regs().edx);
-		record_child_data(new_task, sizeof(pid_t),
-				  (void*)t->regs().esi);
+		new_task->record_remote((void*)t->regs().edx, sizeof(pid_t));
+		new_task->record_remote((void*)t->regs().esi, sizeof(pid_t));
 
-		record_child_data(new_task, sizeof(struct user_desc),
-				  (void*)new_task->regs().edi);
-		record_child_data(new_task, sizeof(pid_t),
-				  (void*)new_task->regs().edx);
-		record_child_data(new_task, sizeof(pid_t),
-				  (void*)new_task->regs().esi);
+		new_task->record_remote((void*)new_task->regs().edi,
+					sizeof(struct user_desc));
+		new_task->record_remote((void*)new_task->regs().edx,
+					sizeof(pid_t));
+		new_task->record_remote((void*)new_task->regs().esi,
+					sizeof(pid_t));
 
 		new_task->pop_syscall();
 
@@ -2033,8 +2029,8 @@ void rec_process_syscall(Task *t)
 		case F_GETLK:
 			static_assert(sizeof(struct flock) < sizeof(struct flock64),
 				      "struct flock64 not declared differently from struct flock");
-			record_child_data(t, sizeof(struct flock),
-					  (void*)t->regs().edx);
+			t->record_remote((void*)t->regs().edx,
+					 sizeof(struct flock));
 			break;
 
 		case F_SETLK:
@@ -2042,8 +2038,8 @@ void rec_process_syscall(Task *t)
 			break;
 
 		case F_GETLK64:
-			record_child_data(t, sizeof(struct flock64),
-					  (void*)t->regs().edx);
+			t->record_remote((void*)t->regs().edx,
+					 sizeof(struct flock64));
 			break;
 
 		case F_SETLK64:
@@ -2051,8 +2047,8 @@ void rec_process_syscall(Task *t)
 			break;
 
 		case F_GETOWN_EX:
-			record_child_data(t, sizeof(struct f_owner_ex),
-					  (void*)t->regs().edx);
+			t->record_remote((void*)t->regs().edx,
+					 sizeof(struct f_owner_ex));
 			break;
 
 		default:
@@ -2146,7 +2142,7 @@ void rec_process_syscall(Task *t)
 	 *
 	 */
 	case SYS_futex:	{
-		record_child_data(t, sizeof(int), (void*)t->regs().ebx);
+		t->record_remote((void*)t->regs().ebx, sizeof(int));
 		int op = t->regs().ecx & FUTEX_CMD_MASK;
 
 		switch (op) {
@@ -2162,7 +2158,7 @@ void rec_process_syscall(Task *t)
 		case FUTEX_WAKE_OP:
 		case FUTEX_CMP_REQUEUE_PI:
 		case FUTEX_WAIT_REQUEUE_PI:
-			record_child_data(t, sizeof(int), (void*)t->regs().edi);
+			t->record_remote((void*)t->regs().edi, sizeof(int));
 			break;
 
 		default:
@@ -2318,7 +2314,7 @@ void rec_process_syscall(Task *t)
 		void* value = (void*)t->regs().edx;
 
 		if (len > 0) {
-			record_child_data(t, len, value);
+			t->record_remote(value, len);
 		} else {
 			record_noop_data(t);
 		}
@@ -2687,8 +2683,8 @@ void rec_process_syscall(Task *t)
 		size_t oldlen;
 		t->read_mem(oldlenp, &oldlen);
 
-		record_child_data(t, sizeof(size_t), oldlenp);
-		record_child_data(t, oldlen, oldval);
+		t->record_remote(oldlenp, sizeof(size_t));
+		t->record_remote(oldval, oldlen);
 		break;
 	}
 
@@ -2733,15 +2729,15 @@ void rec_process_syscall(Task *t)
 		 switch (cmd & SUBCMDMASK) {
 		 case Q_GETQUOTA:
 		 // Get disk quota limits and current usage for user or group id. The addr argument is a pointer to a dqblk structure 
-		 	 record_child_data(t, sizeof(struct dqblk), addr);
+		 	 t->record_remote(addr, sizeof(struct dqblk));
 		 	 break;
 		 case Q_GETINFO:
 		 // Get information (like grace times) about quotafile. The addr argument should be a pointer to a dqinfo structure 
-		 	 record_child_data(t, sizeof(struct dqinfo), addr);
+		 	 t->record_remote(addr, sizeof(struct dqinfo));
 		 	 break;
 		 case Q_GETFMT:
 		 // Get quota format used on the specified file system. The addr argument should be a pointer to a 4-byte buffer 
-		 	 record_child_data(t, 4, addr);
+		 	 t->record_remote(addr, 4);
 		 	 break;
 
 		 /**
@@ -2805,8 +2801,8 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_rt_sigaction: {
 		void* old_sigaction = (void*)t->regs().edx;
-		record_child_data(t, sizeof(struct kernel_sigaction),
-				  old_sigaction);
+		t->record_remote(old_sigaction,
+				 sizeof(struct kernel_sigaction));
 		t->update_sigaction();
 		break;
 	 }
@@ -2822,7 +2818,7 @@ void rec_process_syscall(Task *t)
 	case SYS_sigprocmask:
 	case SYS_rt_sigprocmask: {
 		void* oldsetp = (void*)t->regs().edx;
-		record_child_data(t, sizeof(sigset_t), oldsetp);
+		t->record_remote(oldsetp, sizeof(sigset_t));
 		t->update_sigmask();
 		break;
 	}
@@ -3014,7 +3010,7 @@ void rec_process_syscall(Task *t)
 	 */
 	case SYS_set_tid_address: {
 		void* addr = (void*)t->regs().ebx;
-		record_child_data(t, sizeof(pid_t), addr);
+		t->record_remote(addr, sizeof(pid_t));
 		t->set_tid_addr(addr);
 	}
 
@@ -3246,9 +3242,8 @@ void rec_process_syscall(Task *t)
 						      prot, flags,
 						      WARN_DEFAULT);
 		if (file.copied) {
-			off64_t end = (off64_t)file.stat.st_size -
-				offset;
-			record_child_data(t, (size_t)min(end, (off64_t)size), addr);
+			off64_t end = (off64_t)file.stat.st_size - offset;
+			t->record_remote(addr, min(end, (off64_t)size));
 		}
 		record_mmapped_file_stats(&file);
 
@@ -3352,7 +3347,7 @@ void rec_process_syscall(Task *t)
 				restore_and_record_arg_buf(t, nread, buf,
 							   &iter);
 			} else {
-				record_child_data(t, nread, buf);
+				t->record_remote(buf, nread);
 			}
 		} else {
 			record_noop_data(t);
@@ -3413,8 +3408,7 @@ void rec_process_syscall(Task *t)
 
 		/* Record the outparam msg_len fields. */
 		for (i = 0; i < nmmsgs; ++i, ++msg) {
-			record_child_data(t, sizeof(msg->msg_len),
-					  &msg->msg_len);
+			t->record_remote(&msg->msg_len, sizeof(msg->msg_len));
 		}
 		break;
 	}

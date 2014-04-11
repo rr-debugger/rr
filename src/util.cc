@@ -1054,8 +1054,8 @@ void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 
 	// Record the entire struct, because some of the direct fields
 	// are written as inoutparams.
-	record_parent_data(t, sizeof(msg), child_msghdr, &msg);
-	record_child_data(t, msg.msg_namelen, msg.msg_name);
+	t->record_local(child_msghdr, sizeof(msg), &msg);
+	t->record_remote(msg.msg_name, msg.msg_namelen);
 
 	// Read all the inout iovecs in one shot.
 	struct iovec iovs[msg.msg_iovlen];
@@ -1063,10 +1063,10 @@ void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 			     msg.msg_iovlen * sizeof(iovs[0]), (byte*)iovs);
 	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
 		const struct iovec* iov = &iovs[i];
-		record_child_data(t, iov->iov_len, iov->iov_base);
+		t->record_remote(iov->iov_base, iov->iov_len);
 	}
 
-	record_child_data(t, msg.msg_controllen, msg.msg_control);
+	t->record_remote(msg.msg_control, msg.msg_controllen);
 }
 
 void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
@@ -1076,8 +1076,8 @@ void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
 	record_struct_msghdr(t, (struct msghdr*)child_mmsghdr);
 	/* We additionally have to record the outparam number of
 	 * received bytes. */
-	record_child_data(t, sizeof(child_mmsghdr->msg_len),
-			  &child_mmsghdr->msg_len);
+	t->record_remote(&child_mmsghdr->msg_len,
+			 sizeof(child_mmsghdr->msg_len));
 }
 
 void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)

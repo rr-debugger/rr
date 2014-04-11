@@ -754,7 +754,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		}
 
 		// We record this data regardless to simplify replay.
-		record_child_data(t, sigframe_size, t->sp());
+		t->record_remote(t->sp(), sigframe_size);
 
 		// This event is used by the replayer to set up the
 		// signal handler frame, or to record the resulting
