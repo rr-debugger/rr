@@ -1083,7 +1083,7 @@ static void init_scratch_memory(Task *t)
 	t->set_regs(r);
 
 	struct mmapped_file file = {0};
-	file.time = get_global_time();
+	file.time = t->trace_time();
 	file.tid = t->tid;
 	file.start = t->scratch_ptr;
 	file.end = (byte*)t->scratch_ptr + scratch_size;
@@ -3280,7 +3280,7 @@ void rec_process_syscall(Task *t)
 		// trace directory as |fs/[st_dev].[st_inode]|.  Then
 		// we wouldn't have to care about looking up a name
 		// for the resource.
-		file.time = get_global_time();
+		file.time = t->trace_time();
 		file.tid = tid;
 		if (!t->fdstat(fd, &file.stat,
 			       file.filename, sizeof(file.filename))) {
