@@ -49,7 +49,7 @@ using namespace std;
 
 #define NUM_MAX_MAPS 1024
 
-struct flags flags = { 0 };
+struct flags flags;
 
 const struct flags* rr_flags(void)
 {

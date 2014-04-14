@@ -11,6 +11,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <string>
+
 #define CHECK_ALIGNMENT(addr) 	assert(((long int)(addr) & 0x3) == 0)
 
 #define PTR_SIZE		(sizeof(void*))
@@ -61,7 +63,7 @@ struct flags {
 	int option;
 	bool redirect;
 	bool use_syscall_buffer;
-	const char* syscall_buffer_lib_path;
+	std::string syscall_buffer_lib_path;
 	int dump_on;	// event
 	int dump_at;	// global time
 	int checksum;
@@ -93,7 +95,32 @@ struct flags {
 	// format.
 	bool raw_dump;
 	// Only open a debug socket, don't launch the debugger too.
- 	bool dont_launch_debugger;
+	bool dont_launch_debugger;
+
+	flags()
+	  : max_rbc(0)
+	  , max_events(0)
+	  , ignore_sig(0)
+	  , option(0)
+	  , redirect(false)
+	  , use_syscall_buffer(false)
+	  , syscall_buffer_lib_path("")
+	  , dump_on(0)
+	  , dump_at(0)
+	  , checksum(0)
+	  , dbgport(0)
+	  , wait_secs(0)
+	  , verbose(false)
+	  , cpu_unbound(false)
+	  , force_enable_debugger(false)
+	  , mark_stdio(false)
+	  , check_cached_mmaps(false)
+	  , goto_event(0)
+	  , target_process(0)
+	  , process_created_how(0)
+	  , raw_dump(false)
+	  , dont_launch_debugger(false)
+	{}
 };
 
 struct msghdr;
