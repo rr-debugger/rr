@@ -1459,7 +1459,7 @@ void
 Task::record_remote_str(void* str)
 {
 	string s = read_c_str(str);
-	record_data(this, str, s.size(), s.c_str());
+	record_data(this, str, s.size() + 1, s.c_str());
 }
 
 string
