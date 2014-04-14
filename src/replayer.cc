@@ -1035,24 +1035,31 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
  * Emulates delivery of |sig| to |oldtask|.  Returns nonzero if
  * emulation was interrupted, zero if completed.
  */
-static int emulate_signal_delivery(Task* oldtask, int sig, int sigtype)
+static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
+				   int sig, int sigtype,
+				   struct dbg_request* req)
 {
-	/* We are now at the exact point in the child where the signal
-	 * was recorded, emulate it using the next trace line (records
-	 * the state at sighandler entry). */
-	Task* t;
-	struct trace_frame* trace;
+	// Notify the debugger of the signal at the instruction where
+	// it became pending, not in the sighandler frame (if there is
+	// one).
+	if (dbg) {
+		dbg_notify_stop(dbg, get_threadid(oldtask), sig);
+		*req = process_debugger_requests(dbg, oldtask);
+	}
 
 	reset_hpc(oldtask, 0);
 
-	t = schedule_task();
+	// We are now at the exact point in the child where the signal
+	// was recorded, emulate it using the next trace line (records
+	// the state at sighandler entry).
+	Task* t = schedule_task();
 	if (!t) {
 		// Trace terminated abnormally.  We'll pop out to code
 		// that knows what to do.
 		return 1;
 	}
 	assert_exec(oldtask, t == oldtask, "emulate_signal_delivery changed task");
-	trace = &t->trace;
+	const struct trace_frame* trace = &t->trace;
 
 	/* Restore the signal-hander frame data, if there was one. */
 	bool restored_sighandler_frame = 0 < t->set_data_from_trace();
@@ -1099,14 +1106,16 @@ static void assert_at_recorded_rcb(Task* t, const Event& ev)
  * update registers to what was recorded.  Return 0 if successful or 1
  * if an unhandled interrupt occurred.
  */
-static int emulate_deterministic_signal(Task* t, int sig, int stepi)
+static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
+					int sig, int stepi,
+					struct dbg_request* req)
 {
 	Event ev(t->trace.ev);
 
 	continue_or_step(t, stepi);
 	if (SIGCHLD == t->child_sig) {
 		t->child_sig = 0;
-		return emulate_deterministic_signal(t, sig, stepi);
+		return emulate_deterministic_signal(dbg, t, sig, stepi, req);
 	} else if (SIGTRAP == t->child_sig
 		   && is_debugger_trap(t, sig, DETERMINISTIC, UNKNOWN, stepi)) {
 		return 1;
@@ -1122,7 +1131,7 @@ static int emulate_deterministic_signal(Task* t, int sig, int stepi)
 		t->child_sig = 0;
 		return 0;
 	}
-	return emulate_signal_delivery(t, sig, DETERMINISTIC_SIG);
+	return emulate_signal_delivery(dbg, t, sig, DETERMINISTIC_SIG, req);
 }
 
 /**
@@ -1131,15 +1140,17 @@ static int emulate_deterministic_signal(Task* t, int sig, int stepi)
  * nonzero.  Return 0 if successful or 1 if an unhandled interrupt
  * occurred.
  */
-static int emulate_async_signal(Task* t,
+static int emulate_async_signal(struct dbg_context* dbg, Task* t,
 				const struct user_regs_struct* regs, int sig,
-				int stepi, int64_t* rcb)
+				int stepi, int64_t* rcb,
+				struct dbg_request* req)
 {
 	if (advance_to(t, regs, 0, stepi, rcb)) {
 		return 1;
 	}
 	if (sig) {
-		if (emulate_signal_delivery(t, sig, NONDETERMINISTIC_SIG)) {
+		if (emulate_signal_delivery(dbg, t, sig, NONDETERMINISTIC_SIG,
+					    req)) {
 			return 1;
 		}
 	}
@@ -1459,9 +1470,9 @@ static int flush_syscallbuf(Task* t, struct rep_trace_step* step,
  * |step| was made, or nonzero if there was a trap or |step| needs
  * more work.
  */
-static int try_one_trace_step(Task* t,
+static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 			      struct rep_trace_step* step,
-			      const struct dbg_request* req)
+			      struct dbg_request* req)
 {
 	if (DREQ_DETACH == req->type) {
 		return 0;
@@ -1475,13 +1486,14 @@ static int try_one_trace_step(Task* t,
 	case TSTEP_EXIT_SYSCALL:
 		return exit_syscall(t, step, stepi);
 	case TSTEP_DETERMINISTIC_SIGNAL:
-		return emulate_deterministic_signal(t, step->signo, stepi);
+		return emulate_deterministic_signal(dbg, t, step->signo,
+						    stepi, req);
 	case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-		return emulate_async_signal(t,
+		return emulate_async_signal(dbg, t,
 					    step->target.regs,
 					    step->target.signo,
 					    stepi,
-					    &step->target.rcb);
+					    &step->target.rcb, req);
 	case TSTEP_FLUSH_SYSCALLBUF:
 		return flush_syscallbuf(t, step, stepi);
 	case TSTEP_DESCHED:
@@ -1528,7 +1540,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	struct dbg_request req;
 	struct rep_trace_step step;
 	Event ev(t->trace.ev);
-	int stop_sig = 0;
 
 	debug("[line %d] %d: replaying %s; state %s",
 	      get_global_time(), t->rec_tid,
@@ -1637,13 +1648,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		break;
 	case EV_SIGNAL:
 		step.signo = ev.Signal().no;
-		stop_sig = step.signo;
 		step.action = (ev.Signal().deterministic ?
 			       TSTEP_DETERMINISTIC_SIGNAL :
 			       TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
 		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
 			step.target.signo = step.signo;
-			stop_sig = step.target.signo;
 			step.target.rcb = t->trace.rbc;
 			step.target.regs = &t->trace.recorded_regs;
 		}
@@ -1672,7 +1681,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	}
 
 	/* Advance until |step| has been fulfilled. */
-	while (try_one_trace_step(t, &step, &req)) {
+	while (try_one_trace_step(dbg, t, &step, &req)) {
 		if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
 			// An irregular trace step had to read the
 			// next trace frame, and that frame was an
@@ -1728,10 +1737,6 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	if (STATE_SYSCALL_EXIT == t->trace.ev.state
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
-	}
-
-	if (dbg && stop_sig) {
-		dbg_notify_stop(dbg, get_threadid(t), stop_sig);
 	}
 
 	/* We flush the syscallbuf in response to detecting *other*
