@@ -423,7 +423,6 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	const char* cmd;
 	int cmdi;
 
-	memset(flags, 0, sizeof(*flags));
 	flags->max_rbc = DEFAULT_MAX_RBC;
 	flags->max_events = DEFAULT_MAX_EVENTS;
 	flags->checksum = CHECKSUM_NONE;
@@ -460,6 +459,26 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	}
 	fprintf(stderr, "%s: unknown command `%s`\n", exe, cmd);
 	return -1;
+}
+
+static string find_syscall_buffer_library()
+{
+	char* exe_path = realpath("/proc/self/exe", NULL);
+	string lib_path = exe_path;
+	free(exe_path);
+
+	int end = lib_path.length();
+	// Chop off the filename
+	while (end > 0 && lib_path[end - 1] != '/') {
+		--end;
+	}
+	lib_path.erase(end);
+	lib_path += "../lib/" SYSCALLBUF_LIB_FILENAME;
+	if (access(lib_path.c_str(), F_OK) != 0) {
+		// File does not exist. Assume install put it in LD_LIBRARY_PATH.
+		lib_path = SYSCALLBUF_LIB_FILENAME;
+	}
+	return lib_path;
 }
 
 int main(int argc, char* argv[])
@@ -535,11 +554,7 @@ int main(int argc, char* argv[])
 			log_info("Syscall buffer disabled by flag");
 			unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
 		}
-		// We rely on the distribution package or the user to
-		// set up the LD_LIBRARY_PATH properly so that we can
-		// LD_PRELOAD the bare library name.  Trying to do
-		// otherwise is possible, but annoying. */
-		flags->syscall_buffer_lib_path = SYSCALLBUF_LIB_FILENAME;
+		flags->syscall_buffer_lib_path = find_syscall_buffer_library();
 	}
 
 	start(argv[0], argc - argi , argv + argi, environ);

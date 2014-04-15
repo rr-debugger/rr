@@ -65,7 +65,7 @@ static void copy_envp(char** envp)
 		}
 	}
 	// LD_PRELOAD the syscall interception lib
-	if (rr_flags()->syscall_buffer_lib_path) {
+	if (rr_flags()->syscall_buffer_lib_path.length() > 0) {
 		string ld_preload = "LD_PRELOAD=";
 		// Our preload lib *must* come first
 		ld_preload += rr_flags()->syscall_buffer_lib_path;
@@ -156,14 +156,12 @@ static void ensure_preload_lib_will_load(const char* rr_exe,
 		fatal("Failed to wait for %s child", rr_exe);
 	}
 	if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
+		const struct flags* flags = rr_flags();
 		fprintf(stderr,
 "\n"
 "rr: error: Unable to preload the '%s' library.\n"
-"  Ensure that the library is in your LD_LIBRARY_PATH.  If you installed rr\n"
-"  from a distribution package, then the package or your system was not\n"
-"  configured correctly.\n"
 "\n",
-			SYSCALLBUF_LIB_FILENAME);
+			flags->syscall_buffer_lib_path.c_str());
 		exit(EX_CONFIG);
 	}
 }
