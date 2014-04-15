@@ -99,22 +99,6 @@ static void cpuid(int code, unsigned int *a, unsigned int *d) {
   asm volatile("cpuid":"=a"(*a),"=d"(*d):"a"(code):"ecx","ebx");
 }
 
-/** Return the microcode revision of CPU 0. */
-unsigned get_microcode_rev()
-{
-	char line[PATH_MAX];
-	unsigned ucode_rev;
-	ifstream fin("/proc/cpuinfo");
-	while (fin.good()) {
-		fin.getline(line, sizeof(line));
-		if (1 == sscanf(line, "microcode : 0x%x", &ucode_rev)) {
-			return ucode_rev;
-		}
-	}
-	log_err("Couldn't read microcode rev");
-	return 0;
-}
-
 /*
  * Find out the cpu model using the cpuid instruction.
  * Full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
@@ -184,7 +168,6 @@ void init_hpc(Task* t)
 		fatal("Intel Penryn CPUs currently unsupported.");
 		break;
 	case IntelWestmere :
-		// fall through
 	case IntelNehalem :
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
@@ -204,16 +187,6 @@ void init_hpc(Task* t)
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
 		hw_int_event = "HW_INTERRUPTS:u";
-		unsigned ucode = get_microcode_rev();
-		if (0x7 != ucode) {
-			fprintf(stderr,
-"\n"
-"rr: Warning: Your Intel Haswell CPU has microcode revision %#x.\n"
-"  rr is only known to work properly on Haswell microcode rev 0x7.\n"
-"  See https://github.com/mozilla/rr/issues/1054.\n"
-"\n",
-				ucode);
-		}
 		break;
 	}
 	default:
