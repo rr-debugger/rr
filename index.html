@@ -405,9 +405,9 @@ sudo dpkg -i rr-1.2.1-Linux-$(uname -m).deb
         syscalls &mdash; those needed by Firefox &mdash; but support
         isn't comprehensive, so running rr on your application may
         uncover a syscall that needs to be implemented.
-      <li>does not support machines that have the new Intel
-        Haswell-based CPUs.  This is just an issue of unfortunate
-        timing, and support will land in the next release if possible.
+      <li>does not work on some systems using Intel Haswell CPUs (but does work
+        on many other Haswell systems). This is being investigated; follow
+        <a href="https://github.com/mozilla/rr/issues/973">the github issue</a>.
     </ul>
   </section>
 
