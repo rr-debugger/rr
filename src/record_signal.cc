@@ -79,6 +79,17 @@ static void restore_sigsegv_state(Task* t)
 	finish_remote_syscalls(t, &state);
 }
 
+/** Return true iff |t->ip()| points at a RDTSC instruction. */
+static const byte rdtsc_insn[] = { 0x0f, 0x31 };
+static bool is_ip_rdtsc(Task* t)
+{
+	byte insn[sizeof(rdtsc_insn)];
+	if (sizeof(insn) != t->read_bytes_fallible(t->ip(),
+						   sizeof(insn), insn)) {
+		return false;
+	}
+	return !memcmp(insn, rdtsc_insn, sizeof(insn));
+}
 
 /**
  * Return nonzero if |t| was stopped because of a SIGSEGV resulting
@@ -86,72 +97,44 @@ static void restore_sigsegv_state(Task* t)
  */
 static int try_handle_rdtsc(Task *t)
 {
-	int handled = 0;
 	int sig = t->pending_sig();
 	assert(sig != SIGTRAP);
 
-	if (sig <= 0 || sig != SIGSEGV) {
+	if (sig <= 0 || sig != SIGSEGV || !is_ip_rdtsc(t)) {
 		return 0;
 	}
 
-	int size;
-	char *inst = get_inst(t, 0, &size);
-	if (!inst) {
-		/* If the segfault was caused by a jump to a bad $ip,
-		 * then we obviously won't be able to read the
-		 * instruction. */
-		return 0;
+	unsigned long long current_time = rdtsc();
+	struct user_regs_struct r = t->regs();
+	r.eax = current_time & 0xffffffff;
+	r.edx = current_time >> 32;
+	r.eip += sizeof(rdtsc_insn);
+	t->set_regs(r);
+
+	// When SIGSEGV is blocked, apparently the kernel has to do
+	// some ninjutsu to raise the RDTSC trap.  We see the SIGSEGV
+	// bit in the "SigBlk" mask in /proc/status cleared, and if
+	// there's a user handler the SIGSEGV bit in "SigCgt" is
+	// cleared too.  That's perfectly fine, except that it's
+	// unclear who's supposed to undo the signal-state munging.  A
+	// legitimate argument can be made that the tracer is
+	// responsible, so we go ahead and restore the old state.
+	//
+	// One could also argue that this is a kernel bug.  If so,
+	// then this is a workaround that can be removed in the
+	// future.
+	//
+	// If we don't restore the old state, at least firefox has
+	// been observed to hang at delivery of SIGSEGV.  However, the
+	// test written for this bug, fault_in_code_addr, doesn't hang
+	// without the restore.
+	if (t->is_sig_blocked(SIGSEGV)) {
+		restore_sigsegv_state(t);
 	}
 
-	/* if the current instruction is a rdtsc, the segfault was triggered by
-	 * by reading the rdtsc instruction */
-	if (strncmp(inst, "rdtsc", 5) == 0) {
-		long int eax, edx;
-		unsigned long long current_time;
-
-		current_time = rdtsc();
-		eax = current_time & 0xffffffff;
-		edx = current_time >> 32;
-
-		struct user_regs_struct r = t->regs();
-		r.eax = eax;
-		r.edx = edx;
-		r.eip += size;
-		t->set_regs(r);
-
-		// When SIGSEGV is blocked, apparently the kernel has
-		// to do some ninjutsu to raise the RDTSC trap.  We
-		// see the SIGSEGV bit in the "SigBlk" mask in
-		// /proc/status cleared, and if there's a user handler
-		// the SIGSEGV bit in "SigCgt" is cleared too.  That's
-		// perfectly fine, except that it's unclear who's
-		// supposed to undo the signal-state munging.  A
-		// legitimate argument can be made that the tracer is
-		// responsible, so we go ahead and restore the old
-		// state.
-		//
-		// One could also argue that this is a kernel bug.  If
-		// so, then this is a workaround that can be removed
-		// in the future.
-		//
-		// If we don't restore the old state, at least firefox
-		// has been observed to hang at delivery of SIGSEGV.
-		// However, the test written for this bug,
-		// fault_in_code_addr, doesn't hang without the
-		// restore.
-		if (t->is_sig_blocked(SIGSEGV)) {
-			restore_sigsegv_state(t);
-		}
-
-		t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO));
-		handled = 1;
-
-		debug("  trapped for rdtsc: returning %llu", current_time);
-	}
-
-	free(inst);
-
-	return handled;
+	t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO));
+	debug("  trapped for rdtsc: returning %llu", current_time);
+	return 1;
 }
 
 static void disarm_desched_event(Task* t)

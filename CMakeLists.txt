@@ -51,7 +51,6 @@ target_link_libraries(rr
   -ldl
   -lrt
   libpfm.a
-  libdisasm.a
 )
 
 target_link_libraries(rrpreload

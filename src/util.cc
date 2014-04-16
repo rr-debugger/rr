@@ -11,7 +11,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <libdis.h>
 #include <limits.h>
 #include <linux/futex.h>
 #include <linux/ipc.h>
@@ -397,34 +396,6 @@ void print_process_mmap(Task* t)
 {
 	return iterate_memory_map(t, print_process_mmap_iterator, NULL,
 				  kNeverReadSegment, NULL);
-}
-
-char* get_inst(Task* t, int eip_offset, int* opcode_size)
-{
-	byte inst[128];
-	ssize_t nread = t->read_bytes_fallible((byte*)t->ip() + eip_offset,
-					       sizeof(inst), inst);
-	if (nread <= 0) {
-		return NULL;
-	}
-
-	x86_init(opt_none, 0, 0);
-
-	x86_insn_t x86_inst;
-	unsigned int size = x86_disasm(inst, 128, 0, 0, &x86_inst);
-	*opcode_size = size;
-
-	char* buf = (char*)malloc(128);
-	if (size) {
-		x86_format_insn(&x86_inst, buf, 128, att_syntax);
-	} else {
-		/* libdiasm does not support the entire instruction set -- pretty sad */
-		strcpy(buf, "unknown");
-	}
-	x86_oplist_free(&x86_inst);
-	x86_cleanup();
-
-	return buf;
 }
 
 bool is_page_aligned(const byte* addr)
