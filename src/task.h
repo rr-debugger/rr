@@ -1228,6 +1228,13 @@ public:
 		return write_bytes_helper(child_addr, sizeof(val),
 					  reinterpret_cast<const byte*>(&val));
 	}
+	/**
+	 * This is not the helper you're looking for.  See above: you
+	 * probably accidentally wrote |write_mem(addr, &foo)| when
+	 * you meant |write_mem(addr, foo)|.
+	 */
+	template<typename T>
+	void write_mem(void* child_addr, const T* val) = delete;
 
 	/**
 	 * Don't use these helpers directly; use the safer and more
