@@ -194,10 +194,11 @@ static void ensure_default_rr_trace_dir()
 		return;
 	}
 	int ret = mkdir(rr_trace_dir, S_IRWXU | S_IRWXG);
+	int err = errno;
 	// Another rr process can be concurrently attempting to create
 	// ~/.rr, so the directory may have come into existence since
 	// we checked above.
-	if (ret && EEXIST != ret) {
+	if (ret && EEXIST != err) {
 		fatal("Failed to create directory `%s'", rr_trace_dir);
 	}
 }
