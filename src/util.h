@@ -121,8 +121,6 @@ const struct flags* rr_flags(void);
  */
 struct flags* rr_flags_for_init(void);
 
-char* get_inst(Task* t, int eip_offset, int* opcode_size);
-
 /**
  * Return zero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
  * indicates that the caller is using this as a general register
