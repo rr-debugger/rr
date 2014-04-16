@@ -1507,6 +1507,67 @@ static void process_ipc(Task* t, int call)
 	}
 }
 
+static void process_mmap(Task* t, int syscallno,
+			 size_t length, int prot, int flags,
+			 int fd, off_t offset_pages)
+{
+		size_t size = ceil_page_size(length);
+		off64_t offset = offset_pages * 4096;
+
+		if (SYSCALL_FAILED(t->regs().eax)) {
+			// We purely emulate failed mmaps.
+			return;
+		}
+		void* addr = (void*)t->regs().eax;
+		if (flags & MAP_ANONYMOUS) {
+			// Anonymous mappings are by definition not
+			// backed by any file-like object, and are
+			// initialized to zero, so there's no
+			// nondeterminism to record.
+			//assert(!(flags & MAP_UNINITIALIZED));
+			t->vm()->map(addr, size, prot, flags, 0,
+				     MappableResource::anonymous());
+			return;
+		}
+
+		assert_exec(t, fd >= 0, "Valid fd required for file mapping");
+		assert(!(flags & MAP_GROWSDOWN));
+
+		struct mmapped_file file;
+		// TODO: save a reflink copy of the resource to the
+		// trace directory as |fs/[st_dev].[st_inode]|.  Then
+		// we wouldn't have to care about looking up a name
+		// for the resource.
+		file.time = t->trace_time();
+		file.tid = t->tid;
+		if (!t->fdstat(fd, &file.stat,
+			       file.filename, sizeof(file.filename))) {
+			fatal("Failed to fdstat %d", fd);
+		}
+		file.start = addr;
+		file.end = (byte*)addr + size;
+
+		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
+		    && (prot & PROT_EXEC) ) {
+			t->syscallbuf_lib_start = file.start;
+			t->syscallbuf_lib_end = file.end;
+		}
+
+		file.copied = should_copy_mmap_region(file.filename,
+						      &file.stat,
+						      prot, flags,
+						      WARN_DEFAULT);
+		if (file.copied) {
+			off64_t end = (off64_t)file.stat.st_size - offset;
+			t->record_remote(addr, min(end, (off64_t)size));
+		}
+		record_mmapped_file_stats(&file);
+
+		t->vm()->map(addr, size, prot, flags, offset,
+			     MappableResource(FileId(file.stat),
+					      file.filename));
+}
+
 static void process_socketcall(Task* t, int call, void* base_addr)
 {
 	debug("socket call: %d\n", call);
@@ -1818,7 +1879,6 @@ void rec_process_syscall(Task *t)
 		t->record_remote((void*)t->regs()._reg4, _size4);	\
 		break
 
-	pid_t tid = t->tid;
 	int syscall = t->ev().Syscall().no; /* FIXME: don't shadow syscall() */
 
 	debug("%d: processing syscall: %s(%d) -- time: %u",
@@ -3250,66 +3310,19 @@ void rec_process_syscall(Task *t)
 	 * as is done by mmap(2)).  This enables applications that use
 	 * a 32-bit off_t to map large files (up to 2^44 bytes).
 	 */
-	case SYS_mmap2: {
-		if (SYSCALL_FAILED(t->regs().eax)) {
-			// We purely emulate failed mmaps.
-			break;
-		}
-
-		void* addr = (void*)t->regs().eax;
-		size_t size = ceil_page_size(t->regs().ecx);
-		int prot = t->regs().edx, flags = t->regs().esi,
-		      fd = t->regs().edi;
-		off64_t offset = t->regs().ebp * 4096; // 4096-byte chunks, not pages
-		if (flags & MAP_ANONYMOUS) {
-			// Anonymous mappings are by definition not
-			// backed by any file-like object, and are
-			// initialized to zero, so there's no
-			// nondeterminism to record.
-			//assert(!(flags & MAP_UNINITIALIZED));
-			t->vm()->map(addr, size, prot, flags, 0,
-				     MappableResource::anonymous());
-			break;
-		}
-
-		assert_exec(t, fd >= 0, "Valid fd required for file mapping");
-		assert(!(flags & MAP_GROWSDOWN));
-
-		struct mmapped_file file;
-		// TODO: save a reflink copy of the resource to the
-		// trace directory as |fs/[st_dev].[st_inode]|.  Then
-		// we wouldn't have to care about looking up a name
-		// for the resource.
-		file.time = t->trace_time();
-		file.tid = tid;
-		if (!t->fdstat(fd, &file.stat,
-			       file.filename, sizeof(file.filename))) {
-			fatal("Failed to fdstat %d", fd);
-		}
-		file.start = addr;
-		file.end = (byte*)addr + size;
-
-		if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME)
-		    && (prot & PROT_EXEC) ) {
-			t->syscallbuf_lib_start = file.start;
-			t->syscallbuf_lib_end = file.end;
-		}
-
-		file.copied = should_copy_mmap_region(file.filename,
-						      &file.stat,
-						      prot, flags,
-						      WARN_DEFAULT);
-		if (file.copied) {
-			off64_t end = (off64_t)file.stat.st_size - offset;
-			t->record_remote(addr, min(end, (off64_t)size));
-		}
-		record_mmapped_file_stats(&file);
-
-		t->vm()->map(addr, size, prot, flags, offset,
-			     MappableResource(FileId(file.stat),
-					      file.filename));
+	case SYS_mmap: {
+		struct mmap_arg_struct args;
+		t->read_mem((void*)t->regs().ebx, &args);
+		process_mmap(t, syscall, args.len,
+			     args.prot, args.flags, args.fd,
+			     args.offset / 4096);
 		break;
 	}
+	case SYS_mmap2:
+		process_mmap(t, syscall, t->regs().ecx,
+			     t->regs().edx, t->regs().esi,
+			     t->regs().edi, t->regs().ebp);
+		break;
 
 	/*
 	 * void *mremap(void *old_address, size_t old_size, size_t new_size, int flags, ... ( void *new_address ));

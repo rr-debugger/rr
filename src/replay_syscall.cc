@@ -1040,23 +1040,14 @@ static void* finish_shared_mmap(Task* t,
 	return mapped_addr;
 }
 
-static void process_mmap2(Task* t,
-			  struct trace_frame* trace, int exec_state,
-			  struct rep_trace_step* step)
+static void process_mmap(Task* t,
+			 struct trace_frame* trace, int exec_state,
+			 int prot, int flags, off64_t offset_pages,
+			 struct rep_trace_step* step)
 {
-	int prot = trace->recorded_regs.edx;
-	int flags = trace->recorded_regs.esi;
-	off64_t offset_pages = trace->recorded_regs.ebp;
 	struct current_state_buffer state;
 	void* mapped_addr;
 
-	if (STATE_SYSCALL_ENTRY == exec_state) {
-		/* We emulate entry for all types of mmap calls,
-		 * successful and not. */
-		step->action = TSTEP_ENTER_SYSCALL;
-		step->syscall.emu = 1;
-		return;
-	}
 	if (SYSCALL_FAILED(trace->recorded_regs.eax)) {
 		/* Failed maps are fully emulated too; nothing
 		 * interesting to do. */
@@ -1524,8 +1515,31 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	case SYS_ipc:
 		return process_ipc(t, trace, state, step);
 
+	case SYS_mmap: {
+		if (STATE_SYSCALL_ENTRY == state) {
+			step->action = TSTEP_ENTER_SYSCALL;
+			step->syscall.emu = 1;
+			return;
+		}
+		struct mmap_arg_struct args;
+		t->read_mem((void*)t->regs().ebx, &args);
+		return process_mmap(t, trace, state,
+				    args.prot, args.flags, args.offset / 4096,
+				    step);
+	}
 	case SYS_mmap2:
-		return process_mmap2(t, trace, state, step);
+		if (STATE_SYSCALL_ENTRY == state) {
+			/* We emulate entry for all types of mmap calls,
+			 * successful and not. */
+			step->action = TSTEP_ENTER_SYSCALL;
+			step->syscall.emu = 1;
+			return;
+		}
+		return process_mmap(t, trace, state,
+				    trace->recorded_regs.edx,
+				    trace->recorded_regs.esi,
+				    trace->recorded_regs.ebp,
+				    step);
 
 	case SYS_nanosleep:
 		step->syscall.emu = 1;
