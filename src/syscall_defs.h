@@ -666,6 +666,7 @@ SYSCALL_DEF(EXEC, madvise, 0)
  * mmap(2)).  This enables applications that use a 32-bit off_t to map
  * large files (up to 2^44 bytes).
  */
+SYSCALL_DEF(IRREGULAR, mmap, -1)
 SYSCALL_DEF(IRREGULAR, mmap2, -1)
 
 /**
