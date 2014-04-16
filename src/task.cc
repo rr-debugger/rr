@@ -756,31 +756,24 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	AddressSpace* as = static_cast<AddressSpace*>(asp);
 	const struct mapped_segment_info& info = data->info;
 
-	if (!as->heap.start) {
-		// We assume that the first mapped segment is the
-		// program text segment.  It's possible, but not
-		// probably, that the end of this segment is the
-		// beginning of the dynamic heap segment.  We'll
-		// determine that for sure in subsequent iterations.
-		//
-		// TODO: handle arbitrarily positioned text segments
-		assert(info.prot & PROT_EXEC);
-		assert(!as->exe.length());
-
-		as->exe = info.name;
-
+	if (!as->heap.start
+	    && !(info.prot & PROT_EXEC)
+	    && (info.prot & (PROT_READ | PROT_WRITE))) {
 		as->update_heap(info.end_addr, info.end_addr);
 		debug("  guessing heap starts at %p (end of text segment)",
 		      as->heap.start);
+	}
+
+	if (!as->exe.length() && (info.prot & PROT_EXEC)) {
+		as->exe = info.name;
 	}
 
 	bool is_dynamic_heap = !strcmp("[heap]", info.name);
 	// This segment is adjacent to our previous guess at the start
 	// of the dynamic heap, but it's still not an explicit heap
 	// segment.  Update the guess.
-	if (as->heap.end == info.start_addr) {
+	if (as->heap.end == info.start_addr && !(info.prot & PROT_EXEC)) {
 		assert(as->heap.start == as->heap.end);
-		assert(!(info.prot & PROT_EXEC));
 		as->update_heap(info.end_addr, info.end_addr);
 		debug("  updating start-of-heap guess to %p (end of mapped-data segment)",
 		      as->heap.start);
