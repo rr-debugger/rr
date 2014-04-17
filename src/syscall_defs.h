@@ -47,7 +47,7 @@
  * access() checks whether the calling process can access the file
  * pathname.  If pathname is a symbolic link, it is dereferenced.
  */
-SYSCALL_DEF0(access, EXEC_RET_EMU)
+SYSCALL_DEF0(access, EMU)
 
 /**
  *  unsigned int alarm(unsigned int seconds)
