@@ -1340,6 +1340,10 @@ void rep_after_enter_syscall(Task* t, int syscallno)
 void before_syscall_exit(Task* t, int syscallno)
 {
 	switch (syscallno) {
+	case SYS_set_tid_address:
+		t->set_tid_addr((void*)t->regs().ebx);
+		return;
+
 	case SYS_sigaction:
 	case SYS_rt_sigaction:
 		t->update_sigaction();
@@ -1696,13 +1700,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}
-	case SYS_sched_setaffinity:
-		step->syscall.emu = 1;
-		step->syscall.emu_ret = 1;
-		step->action = (STATE_SYSCALL_ENTRY == state) ?
-			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
-		return;
-
 	case SYS_sendfile64:
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
@@ -1725,46 +1722,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}
-	case SYS_setpriority:
-		step->syscall.emu = 1;
-		step->syscall.emu_ret = 1;
-		step->action = (STATE_SYSCALL_ENTRY == state) ?
-			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
-		return;
-
-	case SYS_set_tid_address:
-		// set_tid_address returns the caller's PID.
-		step->syscall.emu_ret = 1;
-		// We have to actually execute set_tid_address in case
-		// any crazy code uses it in a clone child.  The
-		// kernel actually notifies the futex during replay,
-		// so if we didn't update the cleartid addr, then the
-		// kernel would randomly scribble over a word in
-		// replay that it didn't during recording.
-		if (STATE_SYSCALL_ENTRY == state) {
-			step->action = TSTEP_ENTER_SYSCALL;
-			return;
-		}
-		step->syscall.num_emu_args = 1;
-		step->action = TSTEP_EXIT_SYSCALL;
-		t->set_data_from_trace();
-		t->set_tid_addr((void*)rec_regs->ebx);
-		return;
-
-	case SYS_sigaction:
-	case SYS_rt_sigaction:
-	case SYS_sigprocmask:
-	case SYS_rt_sigprocmask:
-		step->syscall.emu = 1;
-		step->syscall.emu_ret = 1;
-		step->syscall.num_emu_args = 1;
-		step->action = (STATE_SYSCALL_ENTRY == state) ?
-			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
-		if (STATE_SYSCALL_EXIT == state) {
-			before_syscall_exit(t, syscall);
-		}
-		return;
-
 	case SYS_sigreturn:
 	case SYS_rt_sigreturn:
 		if (state == STATE_SYSCALL_ENTRY) {

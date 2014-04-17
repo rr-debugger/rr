@@ -1003,7 +1003,7 @@ SYSCALL_DEF0(sched_getscheduler, EMU)
  * (in bytes) of the data pointed to by mask.  Normally this argument
  * would be specified as sizeof(cpu_set_t).
  */
-SYSCALL_DEF_IRREG(sched_setaffinity)
+SYSCALL_DEF0(sched_setaffinity, EMU)
 
 /**
  *  int sched_setscheduler(pid_t pid, int policy, const struct sched_param *param);
@@ -1079,7 +1079,7 @@ SYSCALL_DEF0(setpgid, EMU)
  * indicated by which and who is obtained with the getpriority() call
  * and set with the setpriority() call.
  */
-SYSCALL_DEF_IRREG(setpriority)
+SYSCALL_DEF0(setpriority, EMU)
 
 /**
  *  int setregid(gid_t rgid, gid_t egid)
@@ -1176,7 +1176,7 @@ SYSCALL_DEF1(set_thread_area, EXEC, struct user_desc, ebx)
  * When set_child_tid is set, the very first thing the new process
  * does is writing its PID at this address.
  */
-SYSCALL_DEF_IRREG(set_tid_address)
+SYSCALL_DEF1(set_tid_address, EXEC_RET_EMU, pid_t, ebx)
 
 /**
  *  int sigaltstack(const stack_t *ss, stack_t *oss)
@@ -1204,8 +1204,8 @@ SYSCALL_DEF1_DYNSIZE(sigaltstack, EMU,
  * from act.  If oldact is non-NULL, the previous action is saved in
  * oldact.
  */
-SYSCALL_DEF_IRREG(sigaction)
-SYSCALL_DEF_IRREG(rt_sigaction)
+SYSCALL_DEF1(sigaction, EMU, struct kernel_sigaction, edx)
+SYSCALL_DEF1(rt_sigaction, EMU, struct kernel_sigaction, edx)
 
 /**
  *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
@@ -1215,8 +1215,8 @@ SYSCALL_DEF_IRREG(rt_sigaction)
  * delivery is currently blocked for the caller (see also signal(7)
  * for more details).
  */
-SYSCALL_DEF_IRREG(sigprocmask)
-SYSCALL_DEF_IRREG(rt_sigprocmask)
+SYSCALL_DEF1(sigprocmask, EMU, sigset_t, edx)
+SYSCALL_DEF1(rt_sigprocmask, EMU, sigset_t, edx)
 
 /**
  *  int sigreturn(unsigned long __unused)
