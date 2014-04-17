@@ -1835,6 +1835,67 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	}
 }
 
+static void before_syscall_exit(Task* t, int syscallno)
+{
+	t->maybe_update_vm(syscallno, STATE_SYSCALL_EXIT);
+
+	switch (syscallno) {
+ 	case SYS_sched_setaffinity: {
+		if (SYSCALL_FAILED(t->regs().eax)) {
+			// Nothing to do
+			return;
+		}
+		Task *target = t->regs().ebx ? Task::find(t->regs().ebx) : t;
+		if (target) {
+			ssize_t cpuset_len = t->regs().ecx;
+			void* child_cpuset = (void*)t->regs().edx;
+			// The only sched_setaffinity call we allow on
+			// an rr-managed task is one that sets
+			// affinity to CPU 0.
+			assert_exec(t, cpuset_len == sizeof(cpu_set_t),
+				    "Invalid sched_setaffinity parameters");
+			cpu_set_t cpus;
+			target->read_mem(child_cpuset, &cpus);
+			assert_exec(t, (CPU_COUNT(&cpus) == 1
+					&&  CPU_ISSET(0, &cpus)),
+			            "Invalid affinity setting");
+		}
+		return;
+	}
+	case SYS_setpriority: {
+		// The syscall might have failed due to insufficient
+		// permissions (e.g. while trying to decrease the nice value
+		// while not root).
+		// We'll choose to honor the new value anyway since we'd like
+		// to be able to test configurations where a child thread
+		// has a lower nice value than its parent, which requires
+		// lowering the child's nice value.
+		if (t->regs().ebx == PRIO_PROCESS) {
+			Task *target = t->regs().ecx ? Task::find(t->regs().ecx) : t;
+			if (target) {
+				debug("Setting nice value for tid %d to %ld", tid, t->regs().edx);
+				target->set_priority(t->regs().edx);
+			}
+		}
+		return;
+	}
+	case SYS_set_tid_address:
+		t->set_tid_addr((void*)t->regs().ebx);
+		return;
+
+	case SYS_sigaction:
+	case SYS_rt_sigaction:
+		// TODO: SYS_signal, SYS_sigaction
+		t->update_sigaction();
+		return;
+
+	case SYS_sigprocmask:
+	case SYS_rt_sigprocmask:
+		t->update_sigmask();
+		return;
+	}
+}
+
 void rec_process_syscall(Task *t)
 {
 	int syscallno = t->ev().Syscall().no;
@@ -1842,7 +1903,7 @@ void rec_process_syscall(Task *t)
 	debug("%d: processing syscall: %s(%d) -- time: %u",
 	      tid, syscallname(syscallno), call, get_global_time());
 
-	t->maybe_update_vm(syscallno, STATE_SYSCALL_EXIT);
+	before_syscall_exit(t, syscallno);
 
 	if (const struct syscallbuf_record* rec = t->desched_rec()) {
 		assert(t->ev().Syscall().tmp_data_ptr != t->scratch_ptr);
@@ -2233,29 +2294,6 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
-	case SYS_sched_setaffinity: {
-		if (SYSCALL_FAILED(t->regs().eax)) {
-			// Nothing to do
-			break;
-		}
-
-		Task *target = t->regs().ebx ? Task::find(t->regs().ebx) : t;
-		if (target) {
-			ssize_t cpuset_len = t->regs().ecx;
-			void* child_cpuset = (void*)t->regs().edx;
-			// The only sched_setaffinity call we allow on
-			// an rr-managed task is one that sets
-			// affinity to CPU 0.
-			assert_exec(t, cpuset_len == sizeof(cpu_set_t),
-				    "Invalid sched_setaffinity parameters");
-			cpu_set_t cpus;
-			target->read_mem(child_cpuset, &cpus);
-			assert_exec(t, (CPU_COUNT(&cpus) == 1
-					&&  CPU_ISSET(0, &cpus)),
-			            "Invalid affinity setting");
-		}
-		break;
-	}
 	case SYS_sendfile64: {
 		loff_t* offset = pop_arg_ptr<loff_t>(t);
 		byte* iter;
@@ -2282,44 +2320,6 @@ void rec_process_syscall(Task *t)
 		for (i = 0; i < nmmsgs; ++i, ++msg) {
 			t->record_remote(&msg->msg_len, sizeof(msg->msg_len));
 		}
-		break;
-	}
-	case SYS_setpriority: {
-		// The syscall might have failed due to insufficient
-		// permissions (e.g. while trying to decrease the nice value
-		// while not root).
-		// We'll choose to honor the new value anyway since we'd like
-		// to be able to test configurations where a child thread
-		// has a lower nice value than its parent, which requires
-		// lowering the child's nice value.
-		if (t->regs().ebx == PRIO_PROCESS) {
-			Task *target = t->regs().ecx ? Task::find(t->regs().ecx) : t;
-			if (target) {
-				debug("Setting nice value for tid %d to %ld", tid, t->regs().edx);
-				target->set_priority(t->regs().edx);
-			}
-		}
-		break;
-	}
-	case SYS_set_tid_address: {
-		void* addr = (void*)t->regs().ebx;
-		t->record_remote(addr, sizeof(pid_t));
-		t->set_tid_addr(addr);
-	}
-	case SYS_sigaction:
-	case SYS_rt_sigaction: {
-		// TODO: SYS_signal, SYS_sigaction
-		void* old_sigaction = (void*)t->regs().edx;
-		t->record_remote(old_sigaction,
-				 sizeof(struct kernel_sigaction));
-		t->update_sigaction();
-		break;
-	 }
-	case SYS_sigprocmask:
-	case SYS_rt_sigprocmask: {
-		void* oldsetp = (void*)t->regs().edx;
-		t->record_remote(oldsetp, sizeof(sigset_t));
-		t->update_sigmask();
 		break;
 	}
 	case SYS_socketcall:
