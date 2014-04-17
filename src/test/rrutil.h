@@ -53,6 +53,8 @@
 
 typedef unsigned char byte;
 
+#define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
+
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
 
 #if (defined(__linux__) && (defined(__i386__) || defined(__x86_64__)) \

@@ -421,13 +421,8 @@ SYSCALL_DEF0(geteuid32, EMU)
  * supplementary group IDs for the process is returned.  This allows
  * the caller to determine the size of a dynamically allocated list to
  * be used in a further call to getgroups().
- *
- * NOTE: This system call is executed although it should also be
- * possible to completely emulate the system call. However, the call
- * seems to change a register value (ecx) if the register is not zero.
- * This is very strange.
  */
-SYSCALL_DEF1_DYNSIZE(getgroups32, EXEC, t->regs().ebx * sizeof(gid_t), ecx)
+SYSCALL_DEF1_DYNSIZE(getgroups32, EMU, t->regs().ebx * sizeof(gid_t), ecx)
 
 /**
  *  pid_t getpgid(pid_t pid);

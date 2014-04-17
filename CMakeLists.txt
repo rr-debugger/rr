@@ -103,6 +103,7 @@ set(BASIC_TESTS
   fork_child_crash
   fork_syscalls
   getcwd
+  getgroups
   goto_event
   hello
   ignored_async_usr1
