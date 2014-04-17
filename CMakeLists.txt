@@ -177,6 +177,7 @@ set(BASIC_TESTS
   thread_stress
   threaded_syscall_spam
   threads
+  timerfd
   tiocinq
   tiocgwinsz
   truncate

@@ -3219,6 +3219,10 @@ void rec_process_syscall(Task *t)
 	 */
 	SYS_REC1(time, sizeof(time_t), ebx);
 
+	SYS_REC0(timerfd_create);
+	SYS_REC1(timerfd_gettime, sizeof(struct itimerspec), ecx);
+	SYS_REC1(timerfd_settime, sizeof(struct itimerspec), esi);
+
 	/**
 	 * clock_t times(struct tms *buf)
 	 *

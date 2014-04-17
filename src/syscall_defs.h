@@ -1321,6 +1321,31 @@ SYSCALL_DEF(EMU, tgkill, 0)
 SYSCALL_DEF(EMU, time, 1)
 
 /**
+ *  int timerfd_create(int clockid, int flags);
+ *
+ * timerfd_create() creates a new timer object, and returns a file
+ * descriptor that refers to that timer.
+ */
+SYSCALL_DEF(EMU, timerfd_create, 0)
+/**
+ *  int timerfd_gettime(int fd, struct itimerspec *curr_value);
+ *
+ * timerfd_gettime() returns, in curr_value, an itimerspec structure
+ * that contains the current setting of the timer referred to by the
+ * file descriptor fd.
+ */
+SYSCALL_DEF(EMU, timerfd_gettime, 1)
+/**
+ *  int timerfd_settime(int fd, int flags,
+ *                      const struct itimerspec *new_value,
+ *                      struct itimerspec *old_value);
+ *
+ * timerfd_settime() arms (starts) or disarms (stops) the timer
+ * referred to by the file descriptor fd.
+ */
+SYSCALL_DEF(EMU, timerfd_settime, 1)
+
+/**
  *  clock_t times(struct tms *buf)
  *
  * times() stores the current process times in the struct tms that buf
