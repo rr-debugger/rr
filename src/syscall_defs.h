@@ -1,43 +1,45 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 /**
- * Each understood syscall is defined as
+ * Each understood syscall is written as
  *
- * SYSCALL_DEF
+ *   SYSCALL_DEF*(name[, ...])
  *
- *   DEF[N] -> the syscall has N pairs of (type, register) args that
- *   are specified after the syscall def.
+ * These definitions comprise the syscalls known to rr.  The includer
+ * should define SYSCALL_DEF*() macros, in the format described below,
+ * that will do something with each syscall definition.  The
+ * SYSCALL_DEF*() formats are
  *
- *   DEF_STR[N]) -> like above, except that the params refer to N args in the 
+ *   DEF[N](name, semantics[, type, reg...]) -> the syscall has N
+ *   pairs of (type, register) args.  For example,
+ *   |SYSCALL_DEF1(gettimeofday, EMU, struct timeval, ebx)| has one
+ *   outparam arg in |ebx| of size |sizeof(struct timeval)|.
  *
- *   _IRREG -> the syscall doesn't fit a regular pattern, read the
- *   hand-written code implementing it.
-
-/** */
-/**
- * These are the syscalls that rr knows how to replay.  The includer
- * should define SYSCALL_DEF to a macro that will do something each
- * syscall definition.  The format of SYSCALL_DEF is
+ *   DEF[N]_DYNSIZE(name, semantics[, dynamic-size, reg...]) -> like
+ *   above, except that the N pairs are (dynamic-size, register) args.
+ *   An arbitrary expression of the relevant Task |t| can be used to
+ *   specify the size of each argument, for example |t->regs().eax *
+ *   sizeof(int)|.
  *
- *   SYSCALL_DEF(type, name, num_args)
+ *   DEF_STR[N](name, semantics[, reg...]) -> like above, except that the
+ *   params refer to N args (register) that are C strings.
  *
- * |type| is one of
+ *   DEF_IRREG(name) -> the syscall doesn't fit a regular pattern;
+ *   hand-written code is needed to process the syscall args.
+ *
+ * |name| is the short syscall descriptor, e.g. "close".  For syscalls
+ * other than DEF_IRREG(), replay |semantics| is one of
+ *
  *   EMU: fully emulated syscall
  *   EXEC: fully executed syscall
  *   EXEC_RET_EMU: syscall is executed, but retval is emulated
  *   IRREGULAR: doesn't adhere to regular format (e.g. meta-syscalls
  *     like socketcall)
- *
- * |name| is the short syscall descriptor, e.g. "close".  |num_args|
- * is the number of recorded arguments.  Note: |num_args| is
- * meaningless for IRREGULAR syscalls.
- *
- * "Irregular" syscalls, those with special semantics or
- * conditionally-recorded arguments, are *not* defined here.
- * Includers must deal with them specially.
  */
 
-/* Please keep the list of syscalls alphabetized by syscall name. */
+//
+// Please keep this list alphabetized by syscall name.
+//
 
 /**
  *  int access(const char *pathname, int mode);
