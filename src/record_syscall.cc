@@ -1837,54 +1837,12 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 
 void rec_process_syscall(Task *t)
 {
-	/* TODO: extend syscall_defs.h in order to generate code
-	 * automatically for the "regular" syscalls.
-	 *
-	 * Macros to make the recording of syscalls easier. The suffix
-	 * denotes the number of buffers that have to be recorded,
-	 * which can usually be inferred from the syscall function
-	 * signature. */
-#define SYS_REC0(_syscall)     \
-	case SYS_##_syscall:   \
-		break
-
-#define SYS_REC1(_syscall, _size, _reg)					\
-	case SYS_##_syscall:						\
-		t->record_remote((void*)t->regs()._reg, _size);		\
-		break
-
-#define SYS_REC1_STR(_syscall, _reg)			     \
-	case SYS_##_syscall:				     \
-		t->record_remote_str((void*)t->regs()._reg); \
-		break
-
-#define SYS_REC2(_syscall, _size1, _reg1, _size2, _reg2)	      \
-	case SYS_##_syscall:					      \
-		t->record_remote((void*)t->regs()._reg1, _size1);     \
-		t->record_remote((void*)t->regs()._reg2, _size2);     \
-		break
-
-#define SYS_REC3(_syscall, _size1, _reg1, _size2, _reg2, _size3, _reg3) \
-	case SYS_##_syscall:						\
-		t->record_remote((void*)t->regs()._reg1, _size1);	\
-		t->record_remote((void*)t->regs()._reg2, _size2);	\
-		t->record_remote((void*)t->regs()._reg3, _size3);	\
-		break
-
-#define SYS_REC4(_syscall, _size1, _reg1, _size2, _reg2, _size3, _reg3, _size4, _reg4)	\
-	case SYS_##_syscall:						\
-		t->record_remote((void*)t->regs()._reg1, _size1);	\
-		t->record_remote((void*)t->regs()._reg2, _size2);	\
-		t->record_remote((void*)t->regs()._reg3, _size3);	\
-		t->record_remote((void*)t->regs()._reg4, _size4);	\
-		break
-
-	int syscall = t->ev().Syscall().no; /* FIXME: don't shadow syscall() */
+	int syscallno = t->ev().Syscall().no;
 
 	debug("%d: processing syscall: %s(%d) -- time: %u",
-	      tid, syscallname(syscall), syscall, get_global_time());
+	      tid, syscallname(syscallno), call, get_global_time());
 
-	t->maybe_update_vm(syscall, STATE_SYSCALL_EXIT);
+	t->maybe_update_vm(syscallno, STATE_SYSCALL_EXIT);
 
 	if (const struct syscallbuf_record* rec = t->desched_rec()) {
 		assert(t->ev().Syscall().tmp_data_ptr != t->scratch_ptr);
@@ -1895,46 +1853,56 @@ void rec_process_syscall(Task *t)
 		return;
 	}
 
-	/* main processing (recording of I/O) */
-	switch (syscall) {
+	switch (syscallno) {
+		// These macros are used to generate code that
+		// processes the "regular" syscalls.  Irregular
+		// syscalls are implemented by hand-written case
+		// statements below.
+#define SYSCALL_DEF0(_call, _)			\
+	case SYS_##_call:			\
+		break;
+#define SYSCALL_DEF1(_call, _, _t0, _r0)				\
+	case SYS_##_call:						\
+		t->record_remote((void*)t->regs()._r0, sizeof(_t0));	\
+		break;
+#define SYSCALL_DEF1_DYNSIZE(_call, _, _s0, _r0)			\
+	case SYS_##_call:						\
+		t->record_remote((void*)t->regs()._r0, _s0);		\
+		break;
+#define SYSCALL_DEF1_STR(_call, _, _r0)					\
+	case SYS_##_call:						\
+		t->record_remote_str((void*)t->regs()._r0);		\
+		break;
+#define SYSCALL_DEF2(_call, _, _t0, _r0, _t1, _r1)			\
+	case SYS_##_call:						\
+		t->record_remote((void*)t->regs()._r0, sizeof(_t0));	\
+		t->record_remote((void*)t->regs()._r1, sizeof(_t1));	\
+		break;
+#define SYSCALL_DEF3(_call, _, _t0, _r0, _t1, _r1, _t2, _r2)		\
+	case SYS_##_call:						\
+		t->record_remote((void*)t->regs()._r0, sizeof(_t0));	\
+		t->record_remote((void*)t->regs()._r1, sizeof(_t1));	\
+		t->record_remote((void*)t->regs()._r2, sizeof(_t2));	\
+		break;
+#define SYSCALL_DEF4(_call, _, _t0, _r0, _t1, _r1, _t2, _r2, _t3, _r3)	\
+	case SYS_##_call:						\
+		t->record_remote((void*)t->regs()._r0, sizeof(_t0));	\
+		t->record_remote((void*)t->regs()._r1, sizeof(_t1));	\
+		t->record_remote((void*)t->regs()._r2, sizeof(_t2));	\
+		t->record_remote((void*)t->regs()._r3, sizeof(_t3));	\
+		break;
+#define SYSCALL_DEF_IRREG(_call)	// manually implemented below
 
-	/**
-	 * int access(const char *pathname, int mode);
-	 *
-	 * access()  checks  whether  the calling process can access the file pathname.
-	 * If pathname is a symbolic link, it is dereferenced.
-	 *
-	 */
-	SYS_REC0(access);
+#include "syscall_defs.h"
 
-	/**
-	 * unsigned int alarm(unsigned int seconds)
-	 *
-	 * The alarm() system call schedules an alarm. The process will get a SIGALRM
-	 * after the requested amount of seconds.
-	 *
-	 */
-	SYS_REC0(alarm);
+#undef SYSCALL_DEF0
+#undef SYSCALL_DEF1
+#undef SYSCALL_DEF1_STR
+#undef SYSCALL_DEF2
+#undef SYSCALL_DEF3
+#undef SYSCALL_DEF4
+#undef SYSCALL_DEF_IRREG
 
-	/**
-	 * int brk(void *addr)
-	 * brk() sets the end of the data segment to the value specified by addr, when that value is
-	 * reasonable, the system has enough memory, and the process does not exceed its maximum data size
-	 * (see setrlimit(2)).
-	 */
-	SYS_REC0(brk);
-
-	/** READ NOTE:
-	 * int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
-	 *
-	 * clone()  creates  a new process, in a manner similar to fork(2).  It is actually a library function layered on
-	 * top of the underlying clone() system call, hereinafter referred to as sys_clone.  A description  of  sys_clone
-	 * is given towards the end of this page.
-	 *
-	 * NOTE: clone is actually implemented by sys_clone which has the following signature:
-	 * long sys_clone(unsigned long clone_flags, unsigned long newsp, void __user *parent_tid, void __user *child_tid, struct pt_regs *regs)
-	 *
-	 */
 	case SYS_clone:	{
 		pid_t new_tid = t->regs().eax;
 		Task* new_task = Task::find(new_tid);
@@ -1949,7 +1917,7 @@ void rec_process_syscall(Task *t)
 		if (t->regs().eax < 0)
 			break;
 
-		new_task->push_event(SyscallEvent(syscall));
+		new_task->push_event(SyscallEvent(syscallno));
 
 		/* record child id here */
 		new_task->record_remote((void*)t->regs().edx, sizeof(pid_t));
@@ -1972,101 +1940,6 @@ void rec_process_syscall(Task *t)
 
 		break;
 	}
-
-	/**
-	 *  int creat(const char *pathname, mode_t mode);
-	 *
-	 * creat() is equivalent to open() with flags equal to
-	 * O_CREAT|O_WRONLY|O_TRUNC.
-	 */
-	SYS_REC0(creat);
-
-	/**
-	 * int dup2(int oldfd, int newfd)
-	 *
-	 * dup2()  makes newfd be the copy of oldfd, closing newfd first if necessary, but note the
-	 *  following..
-	 */
-	SYS_REC0(dup2);
-
-	/**
-	 * int close(int fd)
-	 *
-	 * close()  closes  a file descriptor, so that it no longer refers to any file
-	 * and may be reused.  Any record locks (see fcntl(2)) held on the file it was
-	 * associated with, and owned by the process,  are removed (regardless of the file
-	 *  descriptor that was used to obtain the lock).
-	 */
-	SYS_REC0(close);
-
-	/**
-	 * int chdir(const char *path);
-	 *
-	 * chdir() changes the current working directory of the calling process to the directory
-	 * specified in path.
-	 */
-	SYS_REC0(chdir);
-
-	/**
-	 * int chmod(const char *path, mode_t mode)
-	 *
-	 * The mode of the file given by path or referenced by fildes is changed
-	 */
-	SYS_REC0(chmod);
-
-	/**
-	 * int clock_getres(clockid_t clk_id, struct timespec *res)
-	 *
-	 * The  function clock_getres() finds the resolution (precision) of the specified
-	 * clock clk_id, and, if res is non-NULL, stores it in the struct timespec pointed
-	 * to by res.  The resolution of clocks depends on the implementation and cannot
-	 * be configured by a particular process.  If the time value pointed to by  the
-	 * argument tp of clock_settime() is not a multiple of res, then it is truncated
-	 * to a multiple of res.
-	 */
-	SYS_REC1(clock_getres, sizeof(struct timespec), ecx);
-
-	/**
-	 * int clock_gettime(clockid_t clk_id, struct timespec *tp);
-	 *
-	 * The functions clock_gettime() and clock_settime() retrieve and set the time of the
-	 * specified clock clk_id.
-	 */
-	SYS_REC1(clock_gettime, sizeof(struct timespec), ecx);
-
-	/**
-	 * int dup(int oldfd)
-	 *
-	 * dup() uses the lowest-numbered unused descriptor for the new descriptor.
-	 */
-	SYS_REC0(dup);
-
-	/**
-	 * int epoll_create(int size);
-	 *
-	 * epoll_create()  creates  an epoll "instance", requesting the kernel to allocate an event backing
-	 * store dimensioned for size descriptors.  The size is not the maximum size of the backing store but
-	 * just a hint to the kernel about how to dimension internal structures.
-	 * When  no  longer  required,  the  file  descriptor returned  by epoll_create() should be closed by using close(2).
-	 */
-	SYS_REC0(epoll_create);
-
-	/**
-	 * int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
-	 *
-	 * This system call performs control operations on the epoll instance referred to by the file descriptor epfd.
-	 * It requests that the operation op be performed for the target file descriptor, fd.
-	 *
-	 */
-	SYS_REC0(epoll_ctl);
-
-	/**
-	 * int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
-	 *
-	 * The  epoll_wait() system call waits for events on the epoll instance referred to by the file descriptor epfd.
-	 * The memory area pointed to by events will contain the events that will be available for the caller.  Up
-	 * to maxevents are returned by epoll_wait().  The maxevents argument must be greater than zero.
-	 */
 	case SYS_epoll_wait: {
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
@@ -2080,57 +1953,16 @@ void rec_process_syscall(Task *t)
 			struct user_regs_struct r = t->regs();
 			r.ecx = (uintptr_t)events;
 			t->set_regs(r);
+		} else {
+			record_noop_data(t);
 		}
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
+	case SYS_execve:
+		process_execve(t);
+		break;
 
-	/**
-	 * eventfd()  creates  an  "eventfd  object"  that can be used as an event
-	 * wait/notify mechanism by userspace applications, and by the  kernel  to
-	 * notify  userspace  applications  of  events.   The  object  contains an
-	 * unsigned 64-bit integer (uint64_t) counter that is  maintained  by  the
-	 * kernel.   This  counter  is initialized with the value specified in the
-	 * argument initval.
-	 */
-	SYS_REC0(eventfd2);
-
-	/**
-	 * int faccessat(int dirfd, const char *pathname, int mode, int flags)
-	 *
-	 * The  faccessat() system call operates in exactly the same way as access(2), except for the differences
-	 * described in this manual page....
-	 */
-	SYS_REC0(faccessat);
-
-	/**
-	 * int posix_fadvise(int fd, off_t offset, off_t len, int advice);
-	 *
-	 * Programs can use posix_fadvise() to announce an intention to access
-	 * file data in a specific pattern in the future, thus allowing the kernel
-	 * to perform appropriate optimizations.
-	 */
-	SYS_REC0(fadvise64);
-	SYS_REC0(fadvise64_64);
-
-	/**
-	 * int fallocate(int fd, int mode, off_t offset, off_t len);
-	 *
-	 * fallocate() allows the caller to directly manipulate the allocated disk space
-	 * for the file referred to by fd for the byte range starting at offset and
-	 * continuing for len bytes
-	 */
-	SYS_REC0(fallocate);
-
-	/* int fcntl(int fd, int cmd, ... ( arg ));
-	 *
-	 *
-	 * fcntl()  performs  one  of the operations described below on the open file descriptor fd.
-	 * The operation is determined by cmd. fcntl() can take an optional third argument.
-	 * Whether or not this argument is required is determined by cmd. The required  argument
-	 * type is indicated in parentheses after each cmd name (in most cases, the required type is long,
-	 * and we identify the argument using the name arg), or void is specified if the argument is not required.
-	 */
 	case SYS_fcntl64: {
 		int cmd = t->regs().ecx;
 		switch (cmd) {
@@ -2174,91 +2006,6 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
-
-	/**
-	 * int fchdir(int fd);
-	 *
-	 * fchdir() is identical to chdir(); the only difference is that the directory is given as an open file descriptor.
-	 */
-	SYS_REC0(fchdir);
-
-	/**
-	 * int fchmod(int fd, mode_t mode);
-	 *
-	 * fchmod() changes the permissions of the file referred to by the open file descriptor fd */
-	SYS_REC0(fchmod);
-
-	/**
-	 * int fdatasync(int fd)
-	 *
-	 * fdatasync() is similar to fsync(), but does not flush modified metadata unless that metadata is needed in order
-	 * to allow a subsequent data retrieval to be correctly handled.  For example, changes to st_atime or st_mtime (respectively,
-	 * time of last access and time of last modification; see stat(2)) do not require flushing because they are not necessary
-	 * for a subsequent data read to be handled correctly.  On  the other hand, a change to the file size (st_size, as made by
-	 * say ftruncate(2)), would require a metadata flush
-	 */
-	SYS_REC0(fdatasync);
-
-	/**
-	 * void flockfile(FILE * stream)
-	 *
-	 * The flockfile function acquires the internal locking object associated with the stream stream. This
- 	 * ensures that no other thread can explicitly through flockfile/ftrylockfile or implicit through a call of a
- 	 * stream function lock the stream. The thread will block until the lock is acquired. An explicit call to
- 	 * funlockfile has to be used to release the lock.
- 	 *
-	 */
-	SYS_REC0(flock);
-
-	/**
-	 * int fstatfs(int fd, struct statfs *buf)
-	 *
-	 * The  function  statfs()  returns  information  about  a mounted file system.
-	 * path is the pathname of any file within the get_time(GET_TID(thread_id));mounted file system.  buf is a pointer to a
-	 * statfs structure defined approximately as follows:
-	 *
-	 * FIXXME: we use edx here, although according to man pages this system call has only
-	 * 2 paramaters. However, strace tells another story...
-	 *
-	 */
-	SYS_REC1(fstatfs, sizeof(struct statfs), ecx);
-	SYS_REC1(fstatfs64, sizeof(struct statfs64), edx);
-
-	/**
-	 * int ftruncate(int fd, off_t length)
-	 *
-	 * The  truncate() and ftruncate() functions cause the regular file named by path or referenced by fd
-	 * to be truncated to a size of precisely length bytes.
-	 *
-	 */
-	SYS_REC0(ftruncate64);
-	SYS_REC0(ftruncate);
-	SYS_REC0(truncate);
-	SYS_REC0(truncate64);
-
-	/**
-	 * int fsync(int fd)
-	 *
-	 * fsync()  transfers ("flushes") all modified in-core data of (i.e., modified buffer cache pages for)
-	 * the file referred to by the file descriptor fd to the disk device (or other permanent storage device)
-	 * where that file  resides.   The  call  blocks until  the  device  reports that the transfer has
-	 * completed.  It also flushes metadata information associated with the file (see stat(2))
-	 */
-	SYS_REC0(fsync);
-
-	/**
-	 * int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
-	 *
-	 * The  futex()  system call provides a method for a program to wait for a
-	 * value at a given address to change, and a  method  to  wake  up  anyone
-	 * waiting  on a particular address (while the addresses for the same mem‐
-	 * ory in separate processes may not be equal, the kernel maps them inter‐
-	 * nally  so the same memory mapped in different locations will correspond
-	 * for futex() calls).  This system call is typically  used  to  implement
-	 * the  contended  case  of  a  lock  in  shared  memory,  as described in
-	 * futex(7).
-	 *
-	 */
 	case SYS_futex:	{
 		t->record_remote((void*)t->regs().ebx, sizeof(int));
 		int op = t->regs().ecx & FUTEX_CMD_MASK;
@@ -2285,146 +2032,6 @@ void rec_process_syscall(Task *t)
 
 		break;
 	}
-
-
-	/**
-	 * char *getcwd(char *buf, size_t size);
-	 *
-	 * These  functions  return  a  null-terminated  string containing an absolute pathname
-	 * that is the current working directory of the calling process.  The pathname is returned as the function result and via the argument buf, if
-	 * present.
-	 */
-	SYS_REC1_STR(getcwd, ebx);
-
-	/**
-	 * int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
-	 *
-	 * The system call getdents() reads several linux_dirent structures from the directory referred
-	 * to by the open  file  descriptor fd into the buffer pointed to by dirp.  The argument count
-	 * specifies the size of that buffer.
-	 *
-	 */
-	SYS_REC1(getdents64, t->regs().eax, ecx);
-	SYS_REC1(getdents, t->regs().eax, ecx);
-
-	/**
-	 * gid_t getgid(void);
-	 *
-	 * getgid() returns the real group ID of the calling process.
-	 */
-	SYS_REC0(getgid32);
-
-	/**
-	 * gid_t getegid(void);
-	 *
-	 * getegid() returns the effective group ID of the calling process.
-	 */
-	SYS_REC0(getegid32);
-
-	/**
-	 * pid_t getpid(void);
-	 *
-	 * getpid() returns the process ID of the calling process.
-	 * (This is often used by routines that generate unique temporary filenames.)
-	 *
-	 */
-	SYS_REC0(getpid);
-
-	/**
-	 * int getgroups(int size, gid_t list[]);
-	 *
-	 * getgroups()  returns  the  supplementary  group IDs of the calling process in list.
-	 * The argument size should be set to the maximum number of items that can be stored in
-	 * the buffer pointed to by list. If the calling process is a member of more than size
-	 * supplementary groups, then an error results.  It is unspecified whether the effective
-	 * group ID of the calling process is included in  the  returned  list. (Thus, an application
-	 * should also call getegid(2) and add or remove the resulting value.)
-
-	 *  If size is zero, list is not modified, but the total number of supplementary group IDs for the process
-	 *  is returned.  This allows the caller to determine the size of a dynamically allocated list to be  used
-	 *  in a further call to getgroups().
-	 *
-	 * The pointer correction seems to be a bug in ptrace/linux kernel. For some wired reason, the
-	 * the value of the ecx register when returning from the systenm call is different from entering
-	 * the system call.
-	 */
-	SYS_REC1(getgroups32, t->regs().ebx * sizeof(gid_t), ecx);
-
-	/**
-	 * uid_t getuid(void);
-	 *
-	 *  getuid() returns the real user ID of the calling process
-	 */
-	SYS_REC0(getuid32);
-
-	/**
-	 * uid_t geteuid(void);
-	 *
-	 * geteuid() returns the effective user ID of the calling process.
-	 */
-	SYS_REC0(geteuid32);
-
-	/**
-	 * pid_t getpgid(pid_t pid);
-	 *
-	 * getpgid() returns the PGID of the process specified by pid.  If pid is zero,
-	 * getpgid() the process ID of the calling process is used.int getrusage(int who, struct rusage *usage);
-	 */
-	SYS_REC0(getpgid);
-
-	/**
-	 * pid_t getppid(void);
-	 *
-	 * getppid() returns the process ID of the parent of the calling process.
-	 */
-	SYS_REC0(getppid);
-
-	/**
-	 * int getpriority(int which, int who);
-	 *
-	 * The scheduling priority of the process, process group, or
-	 * user, as indicated by which and who is obtained with the
-	 * getpriority() call.
-	 */
-	SYS_REC0(getpriority);
-
-	/**
-	 * pid_t gettid(void);
-	 *
-	 * gettid()  returns  the caller's thread ID (TID).
-	 */
-	SYS_REC0(gettid);
-
-	/**
-	 * int getrusage(int who, struct rusage *usage)
-	 *
-	 * getrusage() returns resource usage measures for who, which can be one of the following..
-	 */
-	SYS_REC1(getrusage, sizeof(struct rusage), ecx);
-
-	/**
-	 * int gettimeofday(struct timeval *tv, struct timezone *tz);
-	 *
-	 * The functions gettimeofday() and settimget_timeofday() can get and set the time as
-	 * well as a timezone.  The tv argument is a struct timeval (as specified in <sys/time.h>):
-	 *
-	 */
-	SYS_REC2(gettimeofday, sizeof(struct timeval), ebx,
-		 sizeof(struct timezone), ecx);
-
-	/**
-	 *  ssize_t getxattr(const char *path, const char *name,
-	 *                   void *value, size_t size);
-	 *  ssize_t lgetxattr(const char *path, const char *name,
-	 *                    void *value, size_t size);
-	 *  ssize_t fgetxattr(int fd, const char *name,
-	 *                    void *value, size_t size);
-	 *
-	 * getxattr() retrieves the value of the extended attribute
-	 * identified by name and associated with the given path in
-	 * the file system. The length of the attribute value is
-	 * returned.
-	 */
 	case SYS_getxattr:
 	case SYS_lgetxattr:
 	case SYS_fgetxattr: {
@@ -2438,224 +2045,55 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
-
-	/**
-	 * int inotify_rm_watch(int fd, uint32_t wd)
-	 *
-	 * inotify_rm_watch()  removes the watch associated with the watch descriptor wd from the
-	 * inotify instance associated with the file descriptor fd.
-	 */
-	SYS_REC0(inotify_rm_watch);
-
-	/**
-	 *  int ioctl(int d, int request, ...)
-	 *
-	 * The ioctl()  function  manipulates the underlying device parameters of
-	 * special files.  In particular, many operating characteristics of  char‐
-	 * acter  special  files  (e.g., terminals) may be controlled with ioctl()
-	 * requests.  The argument d must be an open file descriptor.
-	 *
-	 * bits    meaning
-	 *	31-30	00 - no parameters: uses _IO macro
-	 *			10 - read: _IOR
-	 *			01 - write: _IOW
-	 *			11 - read/write: _IOWR
-	 *
-	 * 			29-16	size of arguments
-	 *
-	 * 			15-8	ascii character supposedly
-	 *				unique to each driver
-	 *
-	 * 			7-0	function #
-	 * */
 	case SYS_ioctl:
 		process_ioctl(t, t->regs().ecx);
 		break;
 
-	/**
-	 * int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth);
-	 *
-	 * ipc()  is  a  common  kernel entry point for the System V IPC calls for
-	 * messages, semaphores, and shared memory.   call  determines  which  IPC
-	 * function  to  invoke;  the  other  arguments  are passed through to the
-	 * appropriate call.
-	 *
-	 */
 	case SYS_ipc:
 		process_ipc(t, t->regs().ebx);
 		break;
 
-	/**
-	 * int link(const char *oldpath, const char *newpath);
-	 *
-	 * link() creates a new link (also known as a hard link) to an
-	 * existing file.
-	 */
-	SYS_REC0(link);
+	case SYS_mmap: {
+		struct mmap_arg_struct args;
+		t->read_mem((void*)t->regs().ebx, &args);
+		process_mmap(t, syscallno, args.len,
+			     args.prot, args.flags, args.fd,
+			     args.offset / 4096);
+		break;
+	}
+	case SYS_mmap2:
+		process_mmap(t, syscallno, t->regs().ecx,
+			     t->regs().edx, t->regs().esi,
+			     t->regs().edi, t->regs().ebp);
+		break;
 
-	/**
-	 * off_t lseek(int fd, off_t offset, int whence)
-	 * The  lseek()  function  repositions the offset of the open file associated with the file
-	 descriptor fd to the argument offset according to the directive whence as follows:
-	 */
-	SYS_REC0(lseek);
+	case SYS_nanosleep: {
+		struct timespec* rem = pop_arg_ptr<struct timespec>(t);
+		byte* iter;
+		void* data = start_restoring_scratch(t, &iter);
 
-	/**
-	 * int lstat(const char *path, struct stat *buf);
-	 *
-	 * lstat() is identical to stat(), except that if path is a symbolic link, then
-	 * the link itself is stat-ed, not the file that it refers to.
-	 */
-	SYS_REC1(lstat64, sizeof(struct stat64), ecx);
+		if (rem) {
+			struct user_regs_struct r = t->regs();
+			/* If the sleep completes, the kernel doesn't
+			 * write back to the remaining-time
+			 * argument. */
+			if (0 == r.eax) {
+				record_noop_data(t);
+			} else {
+				/* TODO: where are we supposed to
+				 * write back these args?  We don't
+				 * see an EINTR return from
+				 * nanosleep() when it's interrupted
+				 * by a user-handled signal. */
+				restore_and_record_arg(t, rem, &iter);
+			}
+			r.ecx = (uintptr_t)rem;
+			t->set_regs(r);
+		}
 
-	/**
-	 * void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
-	 *
-	 * mmap()  creates  a  new  mapping in the virtual address space of the calling process.
-	 * The starting address for the new mapping is specified in addr.  The length argument specifies
-	 * the length of the mapping.
-	 */
-	SYS_REC0(munmap);
-
-	/**
-	 * pid_t getpgrp(void)
-	 *
-	 * The POSIX.1 getpgrp() always returns the PGID of the caller
-	 */
-	SYS_REC0(getpgrp);
-
-	/**
-	 * int inotify_init(void)
-	 *
-	 * inotify_init()  initializes  a  new inotify instance and returns a file
-	 * descriptor associated with a new inotify event queue.
-	 */
-	SYS_REC0(inotify_init);
-	SYS_REC0(inotify_init1);
-
-	/**
-	 * int inotify_add_watch(int fd, const char *pathname, uint32_t mask)
-	 *
-	 * inotify_add_watch()  adds  a  new watch, or modifies an existing watch,
-	 * for the file whose location is specified in pathname; the  caller  must
-	 * have read permission for this file.  The fd argument is a file descrip
-	 * tor referring to the inotify instance whose watch list is to  be  modi‐
-	 * fied.   The  events  to  be monitored for pathname are specified in the
-	 * mask bit-mask argument.  See inotify(7) for a description of  the  bits
-	 * that can be set in mask.
-	 */
-	SYS_REC0(inotify_add_watch);
-
-	/* int kill(pid_t pid, int sig)
-	 *
-	 * The kill() system call can be used to send any signal to any process group or process.
-	 */
-	SYS_REC0(kill);
-
-	/**
-	 * long set_robust_list(struct robust_list_head *head, size_t len)
-	 *
-	 * The robust futex implementation needs to maintain per-thread lists of robust futexes
-	 * which are unlocked when the thread exits. These lists are managed in user space, the
-	 * kernel is only notified about the location of the head of the list.
-
-	 * set_robust_list sets the head of the list of robust futexes owned by the current thread to head.
-	 * len is the size of *head.
-	 */
-	SYS_REC0(set_robust_list);
-
-	/* int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
-	 *
-	 * getresuid()  returns  the  real  UID,  the effective UID, and the saved set-user-ID of
-	 * the calling process, in the arguments ruid, euid, and suid, respectively.  getresgid()
-	 * performs the analogous task  for  the  process's  group IDs.
-	 * @return:  On success, zero is returned.  On error, -1 is returned, and errno is set appropriately.
-	 */
-	SYS_REC3(getresgid32, sizeof(uid_t), ebx, sizeof(uid_t), ecx,
-		 sizeof(uid_t), edx);
-
-	/**
-	 * int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
-	 *
-	 * getresuid() returns the real UID, the effective UID, and the saved set-
-	 * user-ID of the calling process, in the arguments ruid, euid, and  suid,
-	 * respectively.    getresgid()   performs  the  analogous  task  for  the
-	 * process's group IDs.
-	 */
-	SYS_REC3(getresuid32, sizeof(uid_t), ebx, sizeof(uid_t), ecx,
-		 sizeof(uid_t), edx);
-
-	/*
-	 * int _llseek(unsigned int fd, unsigned long offset_high, unsigned long offset_low,
-	 * loff_t *result, unsigned int whence);
-	 *
-	 * The  _llseek()  function  repositions  the offset of the open file associated with the file descriptor fd to (off‐
-	 * set_high<<32) | offset_low bytes relative to the beginning of the file, the current position in the file,  or  the
-	 * end  of  the  file,  depending on whether whence is SEEK_SET, SEEK_CUR, or SEEK_END, respectively.  It returns the
-	 * resulting file position in the argument result.
-	 */
-
-	SYS_REC1(_llseek, sizeof(loff_t), esi);
-
-	/**
-	 * int madvise(void *addr, size_t length, int advice);
-	 *
-	 * The  madvise()  system  call  advises  the  kernel  about how to handle paging input/output
-	 * in the address range beginning at address addr and with size length bytes.  It allows an application
-	 * to tell the kernel how it expects to use  some  mapped  or shared  memory areas, so that the kernel
-	 * can choose appropriate read-ahead and caching techniques.  This call does not influence the semantics
-	 * of the application (except in the case of MADV_DONTNEED), but may influence its performance.   The  kernel
-	 * is free to ignore the advice.
-	 *
-	 */
-	SYS_REC0(madvise);
-
-	/**
-	 * int mkdir(const char *pathname, mode_t mode);
-	 *
-	 * mkdir() attempts to create a directory named pathname.
-	 */
-	SYS_REC0(mkdir);
-
-	/**
-	 * int mkdirat(int dirfd, const char *pathname, mode_t mode);
-	 *
-	 * The mkdirat() system call operates in exactly the same way as mkdir(2), except
-	 * for the differences described in this manual page....
-	 *
-	 */
-	SYS_REC0(mkdirat);
-
-	/**
-	 * int mprotect(const void *addr, size_t len, int prot)
-	 *
-	 * mprotect()  changes  protection for the calling process's memory page(s) containing any
-	 * part of the address range in the interval [addr, addr+len-1].  addr must be aligned to a
-	 *  page boundary.
-
-	 * If the calling process tries to access memory in a manner that violates the  protection,  then  the
-	 * kernel generates a SIGSEGV signal for the process
-	 */
-	SYS_REC0(mprotect);
-
-	/**
-	 * int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
-	 *
-	 * select()  and  pselect() allow a program to monitor multiple file descriptors, waiting until one or
-	 * more of the file descriptors become "ready" for some class of I/O operation (e.g., input possible).
-	 * A file descriptor is considered ready if  it  is possible to perform the corresponding I/O operation
-	 * (e.g., read(2)) without blocking.
-	 *
-	 * We also need to record edi, since the return value of the time struct is not defined
-	 */
-
-	SYS_REC4(_newselect, sizeof(fd_set), ecx, sizeof(fd_set), edx,
-		 sizeof(fd_set), esi, sizeof(struct timeval), edi);
-
-	/**
-	 * int open(const char *pathname, int flags)
-	 * int open(const char *pathname, int flags, mode_t mode)
-	 */
+		finish_restoring_some_scratch(t, iter, &data);
+		break;
+	}
 	case SYS_open: {
 		string pathname = t->read_c_str((void*)t->regs().ebx);
 		if (is_blacklisted_filename(pathname.c_str())) {
@@ -2671,63 +2109,6 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
-
-	/**
-	 * int openat(int dirfd, const char *pathname, int flags);
-	 * int openat(int dirfd, const char *pathname, int flags, mode_t mode);
-	 *
-	 * The  openat() system call operates in exactly the same way as open(2), except for the
-	 * differences described in this manual page.
-	 */
-	SYS_REC0(openat);
-
-	/**
-	 *  int perf_event_open(struct perf_event_attr *attr,
-	 *                      pid_t pid, int cpu, int group_fd,
-         *                      unsigned long flags);
-	 *
-	 * Given a list of parameters, perf_event_open() returns a
-	 * file descriptor, for use in subsequent system calls
-	 * (read(2), mmap(2), prctl(2), fcntl(2), etc.).
-	 */
-	SYS_REC0(perf_event_open);
-
-	/**
-	 *  int pipe(int pipefd[2]);
-	 *
-	 * pipe()  creates  a  pipe, a unidirectional data channel that can be used for
-	 * interprocess communiinotify_init1cation.  The array pipefd is used  to  return  two  file
-	 * descriptors referring to the ends of the pipe.  pipefd[0] refers to the read
-	 * end of the pipe.  pipefd[1] refers to the write end of the pipe.  Data writ‐
-	 * ten  to the write end of the pipe is buffered by the kernel until it is read
-	 * from the read end of the pipe.  For further details, see pipe(7).
-	 */
-	SYS_REC1(pipe, sizeof(int[2]), ebx);
-
-	/**
-	 * int pipe2(int pipefd[2], int flags)
-	 *
-	 * If flags is 0, then pipe2() is the same as pipe().  The following values can be bitwise
-	 * ORed in flags to obtain different behavior...
-	 */
-	SYS_REC1(pipe2, sizeof(int[2]), ebx);
-
-	/**
-	 * int poll(struct pollfd *fds, nfds_t nfds, int timeout)
-	 * int ppoll(struct pollfd *fds, nfds_t nfds,
-	 *           const struct timespec *timeout_ts,
-	 *           const sigset_t *sigmask);
-	 *
-	 * poll() performs a similar task to select(2): it waits for
-	 * one of a set of file descriptors to become ready to perform
-	 * I/O.
-	 *
-	 * The relationship between poll() and ppoll() is analogous to
-	 * the relationship between select(2) and pselect(2): like
-	 * pselect(2), ppoll() allows an application to safely wait
-	 * until either a file descriptor becomes ready or until a
-	 * signal is caught.
-	 */
 	case SYS_poll:
 	case SYS_ppoll: {
 		byte* iter;
@@ -2743,14 +2124,6 @@ void rec_process_syscall(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-
-	/**
-	 * int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
-	 *
-	 *  prctl() is called with a first argument describing what to do (with values defined in <linux/prctl.h>), and
-	 *  further arguments with a significance depending on the first one.
-	 *
-	 */
 	case SYS_prctl:	{
 		int size;
 		switch (t->regs().ebx) {
@@ -2794,615 +2167,29 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
-	
-	case SYS__sysctl: {
-		size_t* oldlenp = pop_arg_ptr<size_t>(t);
-		void* oldval = pop_arg_ptr<void>(t);
-		size_t oldlen;
-		t->read_mem(oldlenp, &oldlen);
-
-		t->record_remote(oldlenp, sizeof(size_t));
-		t->record_remote(oldval, oldlen);
-		break;
-	}
-
-	/**
-	 * ssize_t pread(int fd, void *buf, size_t count, off_t offset);
-	 *
-	 * pread, pwrite - read from or write to a file descriptor at a given off‐
-	 * set
-	 */
-	SYS_REC1(pread64, t->regs().eax, ecx);
-	SYS_REC0(pwrite64);
-
-	/**
-	 *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
-	 *
-	 * The Linux-specific prlimit() system call combines and extends the
-	 * functionality of setrlimit() and getrlimit().  It can be used to both set and
-	 * get the resource limits of an arbitrary process.
-	 *
-	 * The resource argument has the same meaning as for setrlimit() and getrlimit().
-	 *
-	 * If the new_limit argument is a not NULL, then the rlimit structure to which it
-	 * points is used to set new values for the soft and hard limits for resource.
-	 * If the old_limit argument is a not NULL, then a successful call to prlimit()
-	 * places the previous soft and hard limits for resource in the rlimit structure
-	 * pointed to by old_limit.
-	 */
-	SYS_REC1(prlimit64, sizeof(struct rlimit64), esi);
-
-	/**
-	 * int quotactl(int cmd, const char *special, int id, caddr_t addr);
-	 *
-	 * The  quotactl()  call  manipulates disk quotas.  The cmd argument indi‐
-	 * cates a command to be applied to the user or group ID specified in  id.
-	 * To  initialize the cmd argument, use the QCMD(subcmd, type) macro.  The
-	 * type value is either USRQUOTA, for user quotas, or GRPQUOTA, for  group
-	 * quotas.  The subcmd value is described below.
-	 */
 	case SYS_quotactl: {
-		 int cmd = t->regs().ebx;
+		 int cmd = t->regs().ebx & SUBCMDMASK;
 		 void* addr = (void*)t->regs().esi;
-		 switch (cmd & SUBCMDMASK) {
+		 switch (cmd) {
 		 case Q_GETQUOTA:
-		 // Get disk quota limits and current usage for user or group id. The addr argument is a pointer to a dqblk structure 
 		 	 t->record_remote(addr, sizeof(struct dqblk));
 		 	 break;
 		 case Q_GETINFO:
-		 // Get information (like grace times) about quotafile. The addr argument should be a pointer to a dqinfo structure 
 		 	 t->record_remote(addr, sizeof(struct dqinfo));
 		 	 break;
 		 case Q_GETFMT:
-		 // Get quota format used on the specified file system. The addr argument should be a pointer to a 4-byte buffer 
-		 	 t->record_remote(addr, 4);
+		 	 t->record_remote(addr, 4/*FIXME: magic number*/);
 		 	 break;
-
-		 /**
-		  * case Q_GETSTATS:
-		  * This operation is obsolete and not supported by recent kernels.
-		  * Get statistics and other generic information about the quota subsystem. The addr argument should be a pointer to a dqstats structure
-		  */
-
 		 case Q_SETQUOTA:
-		 	 assert(0 && "Warning: trying to set disk quota usage, this may interfere with rr recording");
-		 	 break;
-
-		 /**
-		  * XFS file systems
-		  *
-		  * case Q_XGETQUOTA:
-		  * case Q_XGETQSTAT:
-		  */
-
+		 	 fatal("Trying to set disk quota usage, this may interfere with rr recording");
+			 // not reached
 		 default:
-		 	 break;
+			 // TODO: some of these may need to be
+			 // recorded ...
+			 break;
 		 }
-
 		 break;
-	 }
-
-	/**
-	 * ssize_t readahead(int fd, off64_t offset, size_t count);
-	 *
-	 * readahead()  populates the page cache with data from a file so that subsequent reads from that file will not block
-	 * on disk I/O.  The fd argument is a file descriptor identifying the file which is to be read.  The offset argu-
-	 * ment specifies the starting point from which data is to be read and count specifies the number of bytes to be read.
-	 * I/O is performed in whole pages, so that offset is effectively rounded down to a page boundary and bytes are
-	 * read  up  to  the  next page boundary greater than or equal to (offset+count).  readahead() does not read
-	 * beyond the end of the file.  readahead() blocks until the specified data has been read.  The current file offset of the
-	 * open file referred to by fd is left unchanged.
-	 */
-	SYS_REC0(readahead);
-
-	/**
-	 * ssize_t readlink(const char *path, char *buf, size_t bufsiz);
-	 *
-	 * readlink() places the contents of the symbolic link path in the buffer
-	 * buf, which has size bufsiz. readlink() does not append a null byte to buf.
-	 * It will truncate the contents (to a length of bufsiz characters), in case
-	 * the buffer is too small to hold all of the contents.
-	 */
-	SYS_REC1(readlink, t->regs().edx, ecx);
-
-	/**
-	 * int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
-	 *
-	 * The sigaction() system call is used to change the action taken by a process on receipt of a
-	 * specific signal.  (See signal(7) for an overview of signals.)
-	 *
-	 * signum specifies the signal and can be any valid signal except SIGKILL and SIGSTOP.
-	 *
-	 * If act is non-NULL, the new action for signal signum is installed from act.  If oldact is non-NULL, the  previous  action  is
-	 * saved in oldact.
-	 *
-	 */
-	case SYS_rt_sigaction: {
-		void* old_sigaction = (void*)t->regs().edx;
-		t->record_remote(old_sigaction,
-				 sizeof(struct kernel_sigaction));
-		t->update_sigaction();
-		break;
-	 }
-	 /* TODO: SYS_signal, SYS_sigaction */
-
-	/**
-	 *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
-	 *
-	 *  sigprocmask() is used to fetch and/or change the signal mask of the calling
-	 *  thread.  The signal mask is the set of signals whose delivery is currently
-	 *   blocked for the caller (see also signal(7) for more details).
-	 */
-	case SYS_sigprocmask:
-	case SYS_rt_sigprocmask: {
-		void* oldsetp = (void*)t->regs().edx;
-		t->record_remote(oldsetp, sizeof(sigset_t));
-		t->update_sigmask();
-		break;
 	}
-
-	/**
-	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
-	 *
-	 * sched_getaffinity()  writes  the affinity mask of the process whose ID is pid into the cpu_set_t structure
-	 * pointed to by mask.  The cpusetsize argument specifies the
-	 *  size (in bytes) of mask.  If pid is zero, then the mask of the calling process is returned.
-	 */
-	SYS_REC1(sched_getaffinity, sizeof(cpu_set_t), edx);
-
-	/**
-	 * int sched_getparam(pid_t pid, struct sched_param *param)
-	 *
-	 * sched_getparam()  retrieves  the  scheduling  parameters  for  the  process  i
-	 * dentified  by  pid.  If pid is zero, then the parameters of the calling process
-	 * are retrieved.
-	 */
-	SYS_REC1(sched_getparam, sizeof(struct sched_param), ecx);
-
-	/**
-	 *  int sched_get_priority_max(int policy)
-	 *
-	 * sched_get_priority_max() returns the maximum priority value that can be
-	 * used    with   the   scheduling   algorithm   identified   by   policy.
-	 */
-	SYS_REC0(sched_get_priority_max);
-
-	/**
-	 * int sched_get_priority_min(int policy)
-	 *
-	 * sched_get_priority_min() returns the minimint fdatasync(int fd);um priority value that can be used
-	 * with the scheduling algorithm identified by  policy.
-	 */
-	SYS_REC0(sched_get_priority_min);
-
-	/**
-	 * int sched_getscheduler(pid_t pid);
-	 *
-	 * sched_getscheduler() queries the scheduling policy currently applied to the
-	 * process identified by pid.  If pid equals zero, the policy  of  the  calling
-	 * process will be retrieved.
-	 */
-	SYS_REC0(sched_getscheduler);
-
-	/**
-	 * int sched_setscheduler(pid_t pid, int policy, const struct sched_param *param);
-	 *
-	 * sched_setscheduler()  sets  both the scheduling policy and the associated parameters
-	 * for the process whose ID is specified in pid.  If pid equals zero, the scheduling policy
-	 * and parameters of the calling process will be set.  The interpretation of the argument
-	 * param depends on the selected policy.
-	 */
-	SYS_REC0(sched_setscheduler);
-
-	/**
-	 * int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
-	 *
-	 * sched_setaffinity()  sets the CPU affinity mask of the process whose ID
-	 * is pid to the value specified by mask.  If pid is zero, then the  call‐
-	 * ing  process is used.  The argument cpusetsize is the length (in bytes)
-	 * of the data pointed to by mask.  Normally this argument would be speci‐
-	 * fied as sizeof(cpu_set_t).
-	 */
-	case SYS_sched_setaffinity: {
-		if (SYSCALL_FAILED(t->regs().eax)) {
-			// Nothing to do
-			break;
-		}
-
-		Task *target = t->regs().ebx ? Task::find(t->regs().ebx) : t;
-		if (target) {
-			ssize_t cpuset_len = t->regs().ecx;
-			void* child_cpuset = (void*)t->regs().edx;
-			// The only sched_setaffinity call we allow on
-			// an rr-managed task is one that sets
-			// affinity to CPU 0.
-			assert_exec(t, cpuset_len == sizeof(cpu_set_t),
-				    "Invalid sched_setaffinity parameters");
-			cpu_set_t cpus;
-			target->read_mem(child_cpuset, &cpus);
-			assert_exec(t, (CPU_COUNT(&cpus) == 1
-					&&  CPU_ISSET(0, &cpus)),
-			            "Invalid affinity setting");
-		}
-		break;
-	}
-
-	/**
-	 * int sched_yield(void)
-	 *
-	 * sched_yield() causes the calling thread to relinquish the CPU.  The thread is moved to the end of
-	 * the queue for its static priority and a new thread gets to run.
-	 */
-	SYS_REC0(sched_yield);
-
-	/**
-	 * int setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value);
-	 *
-	 */
-	SYS_REC1(setitimer, sizeof(struct itimerval), edx);
-
-	/**
-	 * int setpriority(int which, int who, int prio);
-	 *
-	 * The scheduling priority of the process, process group, or
-	 * user, as indicated by which and who is set with the
-	 * setpriority() call.
-	 */
-	case SYS_setpriority: {
-		// The syscall might have failed due to insufficient
-		// permissions (e.g. while trying to decrease the nice value
-		// while not root).
-		// We'll choose to honor the new value anyway since we'd like
-		// to be able to test configurations where a child thread
-		// has a lower nice value than its parent, which requires
-		// lowering the child's nice value.
-		if (t->regs().ebx == PRIO_PROCESS) {
-			Task *target = t->regs().ecx ? Task::find(t->regs().ecx) : t;
-			if (target) {
-				debug("Setting nice value for tid %d to %ld", tid, t->regs().edx);
-				target->set_priority(t->regs().edx);
-			}
-		}
-		break;
-	}
-
-	/**
-	 * int setregid(gid_t rgid, gid_t egid)
-	 *
-	 * setreuid() sets real and effective user IDs of the calling process
-	 */
-	SYS_REC0(setregid32);
-
-	/**
-	 * int setresgid(gid_t rgid, gid_t egid, gid_t sgid);
-	 *
-	 * setresgid() sets the real GID, effective GID, and saved set-group-ID of the calling process.
-	 *
-	 */
-	SYS_REC0(setresgid32);
-
-	/**
-	 * int setresuid(uid_t ruid, uid_t euid, uid_t suid);
-	 *
-	 * setresuid() sets the real user ID, the effective user ID, and the saved set-user-ID of the calling process.
-	 *
-	 */
-	SYS_REC0(setresuid32);
-
-	/**
-	 * pid_t setsid(void);
-	 *
-	 * setsid() creates a new session if the calling process is not a process group leader.
-	 */
-	SYS_REC0(setsid);
-
-	/**
-	 * int set_thread_area(struct user_desc *u_info)
-	 *
-	 * set_thread_area()  sets  an  entry in the current thread's Thread Local
-	 * Storage (TLS) array.  The TLS array entry set by set_thread_area() cor‐
-	 * responds  to  the  value of u_info->entry_number passed in by the user.
-	 * If this value is in bounds, set_thread_area() copies the TLS descriptor
-	 * pointed to by u_info into the thread's TLS array.
-	 *
-	 * When  set_thread_area() is passed an entry_number of -1, it uses a free
-	 * TLS entry.  If set_thread_area() finds a free TLS entry, the  value  of
-	 * u_info->entry_number  is  set  upon  return  to  show  which  entry was
-	 * changed.
-	 *
-	 */
-	SYS_REC1(set_thread_area, sizeof(struct user_desc), ebx);
-
-	/**
-	 * long set_tid_address(int *tidptr);
-	 *
-	 * The kernel keeps for each process two values called set_child_tid and clear_child_tid
-	 * that are NULL by default.
-	 *
-	 * If  a  process  is  started  using  clone(2)  with   the   CLONE_CHILD_SETTID   flag,
-	 * set_child_tid is set to child_tidptr, the fifth argument of that system call.
-	 *
-	 * When  set_child_tid  is set, the very first thing the new process does is writing its
-	 * PID at this address.
-	 *
-	 */
-	case SYS_set_tid_address: {
-		void* addr = (void*)t->regs().ebx;
-		t->record_remote(addr, sizeof(pid_t));
-		t->set_tid_addr(addr);
-	}
-
-	/**
-	 * int sigaltstack(const stack_t *ss, stack_t *oss)
-	 *
-	 * sigaltstack()  allows a process to define a new alternate signal stack and/or retrieve the state of
-	 * an existing alternate signal stack.  An alternate signal stack is used during the execution of a signal
-	 * handler if the establishment of that handler (see sigaction(2)) requested it.
-	 */
-	SYS_REC1(sigaltstack, t->regs().ecx ? sizeof(stack_t) : 0, ecx);
-
-	/**
-	 * int sigreturn(unsigned long __unused)
-	 *
-	 * When  the Linux kernel creates the stack frame for a signal handler, a call to sigreturn()
-	 * is inserted into the stack frame so that upon return from the signal handler, sigreturn() will
-	 * be called.
-	 */
-	SYS_REC0(sigreturn);
-
-	/**
-	 * int socketcall(int call, unsigned long *args)
-	 *
-	 * socketcall()  is  a common kernel entry point for the socket system calls.  call determines
-	 * which socket function to invoke.  args points to a block containing the actual arguments,
-	 * which  are  passed  through  to  the appropriate call.
-	 *
-	 */
-	case SYS_socketcall:
-		process_socketcall(t, t->regs().ebx, (void*)t->regs().ecx);
-		break;
-
-	/**
-	 *  int stat(const char *path, struct stat *buf);
-	 *
-	 *  stat() stats the file pointed to by path and fills in buf.
-	 */
-	SYS_REC1(stat64, sizeof(struct stat64), ecx);
-
-	/**
-	 * int statfs(const char *path, struct statfs *buf)
-	 *
-	 * The function statfs() returns information about a mounted file system.  path is the pathname of any file within the mounted
-	 * file system.  buf is a pointer to a statfs structure defined approximately as follows:
-	 */
-	SYS_REC1(statfs, sizeof(struct statfs), ecx);
-
-	/**
-	 * int statfs(const char *path, struct statfs *buf)
-	 *
-	 * The  function  statfs() returns information about a mounted file system.
-	 * path is the pathname of any file within the mounted file system.  buf is a
-	 * pointer to a statfs structure defined approximately as follows:
-	 *
-	 * FIXXME: we use edx here, although according to man pages this system call has only
-	 * 2 paramaters. However, strace tells another story...
-	 */
-	SYS_REC1(statfs64, sizeof(struct statfs64), edx);
-
-	/**
-	 * int symlink(const char *oldpath, const char *newpath)
-	 *
-	 * symlink() creates a symbolic link named newpath which contains the string oldpath.
-	 */
-	SYS_REC0(symlink);
-
-	/**
-	 * int sysinfo(struct sysinfo *info)
-	 *
-	 * sysinfo() provides a simple way of getting overall system statistics.
-	 */
-	SYS_REC1(sysinfo, sizeof(struct sysinfo), ebx);
-
-	/**
-	 * int tgkill(int tgid, int tid, int sig)
-	 * tgkill()  sends  the  signal sig to the thread with the thread ID tid in the thread group tgid.  (By contrast, kill(2) can only be used to send a
-	 * signal to a process (i.e., thread group) as a whole, and the signal will be delivered to an arbitrary thread within that process.)
-	 */
-	SYS_REC0(tgkill);
-
-	/**
-	 * time_t time(time_t *t);
-	 *
-	 * time() returns the time since the Epoch (00:00:00 UTC, January 1, 1970), measured
-	 *  in seconds. If t is non-NULL, the return value is also stored in the memory pointed
-	 *  to by t.
-	 */
-	SYS_REC1(time, sizeof(time_t), ebx);
-
-	SYS_REC0(timerfd_create);
-	SYS_REC1(timerfd_gettime, sizeof(struct itimerspec), ecx);
-	SYS_REC1(timerfd_settime, sizeof(struct itimerspec), esi);
-
-	/**
-	 * clock_t times(struct tms *buf)
-	 *
-	 * times()  stores  the  current  process  times in the struct tms that buf points to.  The
-	 *  struct tms is as defined in <sys/times.h>:
-	 */
-	SYS_REC1(times, sizeof(struct tms), ebx);
-
-	/**
-	 * int getrlimit(int resource, struct rlimit *rlim)
-	 *
-	 * getrlimit()  and  setrlimit()  get and set resource limits respectively.
-	 * Each resource has an associated soft and hard limit, as defined by the rlimit structure
-	 * (the rlim argument to both getrlimit() and setrlimit()):
-	 */
-	SYS_REC1(ugetrlimit, sizeof(struct rlimit), ecx);
-
-	/**
-	 * int uname(struct utsname *buf)
-	 *
-	 * uname() returns system information in the structure pointed to by buf. The utsname
-	 * struct is defined in <sys/utsname.h>:
-	 */
-	SYS_REC1(uname, sizeof(struct utsname), ebx);
-
-	/**
-	 * int utime(const char *filename, const struct utimbuf *times)
-	 *
-	 * The  utime()  system call changes the access and modification times of the inode specified by
-	 * filename to the actime and modtime fields of times respectively.
-	 *
-	 * If times is NULL, then the access and modification times of the file are set to the current time.
-	 *
-	 * Changing timestamps is permitted when: either the process has appropriate privileges, or the effective  user  ID  equals  the
-	 * user ID of the file, or times is NULL and the process has write permission for the file.
-	 */
-	SYS_REC0(utime);
-
-	/**
-	 * int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
-	 *
-	 * utimensat() and futimens() update the timestamps of a file with nanosecond precision.  This
-	 * contrasts with the historical utime(2) and utimes(2), which permit only second and microsecond precision,
-	 * respectively, when setting file timestamps.
-	 */
-	SYS_REC0(utimensat);
-
-	/* signature:
-	 * int execve(const char *filename, char *const argv[], char *const envp[]);
-	 */
-	case SYS_execve:
-		process_execve(t);
-		break;
-
-	/**
-	 * int fstat(int fd, struct stat *buf)
-	 *
-	 * fstat()  is  identical  to  stat(),  except  that  the  file to be stat-ed is specified
-	 * by the file descriptor fd.
-	 *
-	 */
-
-	SYS_REC1(fstat64, sizeof(struct stat64), ecx);
-
-	/**
-	 * int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
-	 *
-	 * The  fstatat()  system  call operates in exactly the same way as stat(2), except for the
-	 * differences described in this manual page....
-	 */
-	SYS_REC1(fstatat64, sizeof(struct stat64), edx);
-
-	/**
-	 * pid_t fork(void)
-	 *
-	 * fork()  creates  a new process by duplicating the calling process.  The new process, referred to as
-	 * the child, is an exact duplicate of the calling process, referred to as the parent, except for the
-	 * following points...
-	 *
-	 */
-	SYS_REC0(fork);
-
-	/**
-	 *  void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t pgoffset);
-	 *
-	 * The mmap2() system call operates in exactly the same way as
-	 * mmap(2), except that the final argument specifies the
-	 * offset into the file in 4096-byte units (instead of bytes,
-	 * as is done by mmap(2)).  This enables applications that use
-	 * a 32-bit off_t to map large files (up to 2^44 bytes).
-	 */
-	case SYS_mmap: {
-		struct mmap_arg_struct args;
-		t->read_mem((void*)t->regs().ebx, &args);
-		process_mmap(t, syscall, args.len,
-			     args.prot, args.flags, args.fd,
-			     args.offset / 4096);
-		break;
-	}
-	case SYS_mmap2:
-		process_mmap(t, syscall, t->regs().ecx,
-			     t->regs().edx, t->regs().esi,
-			     t->regs().edi, t->regs().ebp);
-		break;
-
-	/*
-	 * void *mremap(void *old_address, size_t old_size, size_t new_size, int flags, ... ( void *new_address ));
-	 *
-	 *  mremap()  expands  (or  shrinks) an existing memory mapping, potentially moving it at the same time
-	 *  (controlled by the flags argument and the available virtual address space).
-	 */
-	SYS_REC0(mremap);
-
-	SYS_REC0(msync);
-
-	/**
-	 * int nanosleep(const struct timespec *req, struct timespec *rem)
-	 *
-	 * nanosleep()  suspends  the  execution  of the calling thread until either at least the time specified in *req has
-	 * elapsed, or the delivery of a signal that triggers the invocation of a handler in the calling thread or that ter-
-	 * minates the process.
-	 */
-	case SYS_nanosleep: {
-		struct timespec* rem = pop_arg_ptr<struct timespec>(t);
-		byte* iter;
-		void* data = start_restoring_scratch(t, &iter);
-
-		if (rem) {
-			struct user_regs_struct r = t->regs();
-			/* If the sleep completes, the kernel doesn't
-			 * write back to the remaining-time
-			 * argument. */
-			if (0 == r.eax) {
-				record_noop_data(t);
-			} else {
-				/* TODO: where are we supposed to
-				 * write back these args?  We don't
-				 * see an EINTR return from
-				 * nanosleep() when it's interrupted
-				 * by a user-handled signal. */
-				restore_and_record_arg(t, rem, &iter);
-			}
-			r.ecx = (uintptr_t)rem;
-			t->set_regs(r);
-		}
-
-		finish_restoring_some_scratch(t, iter, &data);
-		break;
-	}
-
-	SYS_REC0(pause);
-
-	/**
-	 * int rmdir(const char *pathname)
-	 *
-	 * rmdir() deletes a directory, which must be empty.
-	 */
-	SYS_REC0(rmdir);
-
-	/**
-	 * ssize_t write(int fd, const void *buf, size_t count)
-	 *
-	 * write() writes up to count bytes to the file referenced by the file descriptor fd
-	 * write()  from the buffer starting at buf. POSIX requires that a read() which can be
-	 * proved to occur after a write() has returned returns the new data. Note that not all file
-	 *  systems are POSIX conforming.
-	 */
-	SYS_REC0(write);
-
-	/*
-	 * ssize_t read(int fd, void *buf, size_t count);
-	 *
-	 * read() attempts to read up to count bytes from file descriptor fd into the buffer starting at buf.
-	 * On success, the number of bytes read is returned (zero indicates end of file), and the file position
-	 * is advanced by this number. It is not an error if this number is smaller than the number of bytes
-	 * requested; this may happen for example because fewer bytes are actually available right now (maybe
-	 * because we were close to end-of-file, or because we are reading from a pipe, or from a terminal),
-	 * or because read() was interrupted by a signal. On error, -1 is returned, and errno is set appropriately.
-	 * In this case it is left unspecified whether the file position (if any) changes.
-	 */
 	case SYS_read: {
 		void* buf;
 		ssize_t nread;
@@ -3436,19 +2223,6 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
-
-	/**
-	 *  int recvmmsg(int sockfd, struct mmsghdr *msgvec,
-	 *               unsigned int vlen, unsigned int flags,
-	 *               struct timespec *timeout);
-	 *
-	 * The recvmmsg() system call is an extension of recvmsg(2)
-	 * that allows the caller to receive multiple messages from a
-	 * socket using a single system call.  (This has performance
-	 * benefits for some applications.)  A further extension over
-	 * recvmsg(2) is support for a timeout on the receive
-	 * operation.
-	 */
 	case SYS_recvmmsg: {
 		struct mmsghdr* msg = (struct mmsghdr*)t->regs().ecx;
 		ssize_t nmmsgs = t->regs().eax;
@@ -3459,23 +2233,46 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
+	case SYS_sched_setaffinity: {
+		if (SYSCALL_FAILED(t->regs().eax)) {
+			// Nothing to do
+			break;
+		}
 
-	/**
-	 * int rename(const char *oldpath, const char *newpath)
-	 *
-	 * rename() renames a file, moving it between directories if required.
-	 */
-	SYS_REC0(rename);
+		Task *target = t->regs().ebx ? Task::find(t->regs().ebx) : t;
+		if (target) {
+			ssize_t cpuset_len = t->regs().ecx;
+			void* child_cpuset = (void*)t->regs().edx;
+			// The only sched_setaffinity call we allow on
+			// an rr-managed task is one that sets
+			// affinity to CPU 0.
+			assert_exec(t, cpuset_len == sizeof(cpu_set_t),
+				    "Invalid sched_setaffinity parameters");
+			cpu_set_t cpus;
+			target->read_mem(child_cpuset, &cpus);
+			assert_exec(t, (CPU_COUNT(&cpus) == 1
+					&&  CPU_ISSET(0, &cpus)),
+			            "Invalid affinity setting");
+		}
+		break;
+	}
+	case SYS_sendfile64: {
+		loff_t* offset = pop_arg_ptr<loff_t>(t);
+		byte* iter;
+		void* data = start_restoring_scratch(t, &iter);
 
-	/**
-	 *  int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
-	 *               unsigned int flags);
-	 *
-	 * The sendmmsg() system call is an extension of sendmsg(2)
-	 * that allows the caller to transmit multiple messages on a
-	 * socket using a single system call.  (This has performance
-	 * benefits for some applications.)
-	 */
+		struct user_regs_struct r = t->regs();
+		if (offset) {
+			restore_and_record_arg(t, offset, &iter);
+			r.edx = (uintptr_t)offset;
+		} else {
+			record_noop_data(t);
+		}
+
+		t->set_regs(r);
+		finish_restoring_scratch(t, iter, &data);
+		break;
+	}
 	case SYS_sendmmsg: {
 		struct mmsghdr* msg = (struct mmsghdr*)t->regs().ecx;
 		ssize_t nmmsgs = t->regs().eax;
@@ -3487,52 +2284,48 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
+	case SYS_setpriority: {
+		// The syscall might have failed due to insufficient
+		// permissions (e.g. while trying to decrease the nice value
+		// while not root).
+		// We'll choose to honor the new value anyway since we'd like
+		// to be able to test configurations where a child thread
+		// has a lower nice value than its parent, which requires
+		// lowering the child's nice value.
+		if (t->regs().ebx == PRIO_PROCESS) {
+			Task *target = t->regs().ecx ? Task::find(t->regs().ecx) : t;
+			if (target) {
+				debug("Setting nice value for tid %d to %ld", tid, t->regs().edx);
+				target->set_priority(t->regs().edx);
+			}
+		}
+		break;
+	}
+	case SYS_set_tid_address: {
+		void* addr = (void*)t->regs().ebx;
+		t->record_remote(addr, sizeof(pid_t));
+		t->set_tid_addr(addr);
+	}
+	case SYS_sigaction:
+	case SYS_rt_sigaction: {
+		// TODO: SYS_signal, SYS_sigaction
+		void* old_sigaction = (void*)t->regs().edx;
+		t->record_remote(old_sigaction,
+				 sizeof(struct kernel_sigaction));
+		t->update_sigaction();
+		break;
+	 }
+	case SYS_sigprocmask:
+	case SYS_rt_sigprocmask: {
+		void* oldsetp = (void*)t->regs().edx;
+		t->record_remote(oldsetp, sizeof(sigset_t));
+		t->update_sigmask();
+		break;
+	}
+	case SYS_socketcall:
+		process_socketcall(t, t->regs().ebx, (void*)t->regs().ecx);
+		break;
 
-	/**
-	 * int setpgid(pid_t pid, pid_t pgid);
-	 *
-	 * setpgid()  sets the PGID of the process specified by pid to pgid.  If pid is zero, then
-	 * the process ID of the calling process is used.  If pgid is zero, then the PGID of the
-	 * process specified by pid is made the same as its process ID.  If setpgid() is used  to
-	 * move  a process from one process group to another (as is done by some shells when creating
-	 * pipelines), both process groups must be part of the same session (see setsid(2) and
-	 * credentials(7)).  In this case, the  pgid  specifies  an  existing process group to be
-	 * joined and the session ID of that group must match the session ID of the joining process.
-	 */
-	SYS_REC0(setpgid);
-
-	/**
-	 * int setrlimit(int resource, const struct rlimit *rlim)
-	 *
-	 *  getrlimit() and setrlimit() get and set resource limits respectively.  Each resource has an associated soft and hard limit, as
-	 defined by the rlimit structure (the rlim argument to both getrlimit() and setrlimit()):
-
-	 struct rlimit {
-	 rlim_t rlim_cur;  // Soft limit
-	 rlim_t rlim_max;  // Hard limit (ceiling for rlim_cur)
-	 };
-
-	 The soft limit is the value that the kernel enforces for the corresponding resource.  The hard limit acts as a ceiling for the
-	 soft  limit:  an  unprivileged  process  may  only set its soft limit to a value in the range from 0 up to the hard limit, and
-	 (irreversibly) lower its hard limit.  A privileged process (under Linux: one with the CAP_SYS_RESOURCE  capability)  may  make
-	 arbitrary changes to either limit value.
-	 */
-	SYS_REC1(setrlimit, sizeof(struct rlimit), ecx);
-
-	/**
-	 * ssize_t splice(int fd_in, loff_t *off_in, int fd_out,
-	 *                loff_t *off_out, size_t len, unsigned int flags);
-	 *
-	 * splice() moves data between two file descriptors without
-	 * copying between kernel address space and user address
-	 * space.  It transfers up to len bytes of data from the file
-	 * descriptor fd_in to the file descriptor fd_out, where one
-	 * of the descriptors must refer to a pipe.
-	 *
-	 * Technically, the following implementation is unsound for
-	 * programs that splice with stdin/stdout/stderr and have
-	 * output redirected during replay.  But, *crickets*.
-	 */
 	case SYS_splice: {
 		loff_t* off_out = pop_arg_ptr<loff_t>(t);
 		loff_t* off_in = pop_arg_ptr<loff_t>(t);
@@ -3557,113 +2350,16 @@ void rec_process_syscall(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
+	case SYS__sysctl: {
+		size_t* oldlenp = pop_arg_ptr<size_t>(t);
+		void* oldval = pop_arg_ptr<void>(t);
+		size_t oldlen;
+		t->read_mem(oldlenp, &oldlen);
 
-	/**
-	 * ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t __count);
-	 *
-	 * Send up to COUNT bytes from file associated with IN_FD starting at
-	 * *OFFSET to descriptor OUT_FD.  Set *OFFSET to the IN_FD's file position
-	 * following the read bytes.  If OFFSET is a null pointer, use the normal
-	 * file position instead.  Return the number of written bytes, or -1 in
-	 * case of error.
-	 */
-	case SYS_sendfile64: {
-		loff_t* offset = pop_arg_ptr<loff_t>(t);
-		byte* iter;
-		void* data = start_restoring_scratch(t, &iter);
-
-		struct user_regs_struct r = t->regs();
-		if (offset) {
-			restore_and_record_arg(t, offset, &iter);
-			r.edx = (uintptr_t)offset;
-		} else {
-			record_noop_data(t);
-		}
-
-		t->set_regs(r);
-		finish_restoring_scratch(t, iter, &data);
+		t->record_remote(oldlenp, sizeof(size_t));
+		t->record_remote(oldval, oldlen);
 		break;
 	}
-
-	/**
-	 * mode_t umask(mode_t mask);
-	 * umask()  sets  the  calling  process's file mode creation mask (umask) to mask & 0777
-	 * (i.e., only the file permission bits of mask are used), and returns the previous value of the mask.
-	 *
-	 */
-	SYS_REC0(umask);
-
-	/**
-	 * int unlink(const char *path);
-	 *
-	 * The unlink() function shall remove a link to a file. If path names a symbolic link, unlink()
-	 * shall remove the symbolic link named by path and shall not affect any file or directory named
-	 * by the contents of the symbolic link. Otherwise, unlink() shall remove the link named by the
-	 * pathname pointed to by path and shall decrement the link count of the file referenced by the link.
-	 *
-	 */
-	SYS_REC0(unlink);
-
-	/**
-	 * int unlinkat(int dirfd, const char *pathname, int flags)
-	 *
-	 * The unlinkat() system call operates in exactly the same way as either unlink(2) or
-	 * rmdir(2) (depending on whether or not flags includes the AT_REMOVEDIR flag) except for the
-	 * differences described in this manual page.
-	 */
-	SYS_REC0(unlinkat);
-
-	/**
-	 * int utimes(const char *filename, const struct timeval times[2])
-	 *
-	 * The utime() system call changes the access and modification times of the inode specified by
-	 * filename to the actime and modtime fields of times respectively.
-	 *
-	 */
-	SYS_REC1(utimes, 2 * sizeof(struct timeval), ecx);
-
-	/**
-	 * pid_t waitpid(pid_t pid, int *status, int options);
-	 *
-	 * The waitpid() system call suspends execution of the calling process until
-	 * a child specified by pid argument has changed state.  By default, waitpid()
-	 * waits only for terminated children, but this behavior  is  modifiable  via
-	 * the options argument, as described below....
-	 *
-	 */
-	/**
-	 * pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
-	 *
-	 * The  wait3()  and wait4() system calls are similar to waitpid(2), but
-	 * additionally return resource usage information about the child in the
-	 * structure pointed to by rusage.
-	 */
-	case SYS_waitpid:
-	case SYS_wait4:	{
-		struct rusage* rusage = pop_arg_ptr<struct rusage>(t);
-		int* status = pop_arg_ptr<int>(t);
-		byte* iter;
-		void* data = start_restoring_scratch(t, &iter);
-
-		struct user_regs_struct r = t->regs();
-		if (status) {
-			restore_and_record_arg(t, status, &iter);
-			r.ecx = (uintptr_t)status;
-		} else {
-			record_noop_data(t);
-		}
-		if (rusage) {
-			restore_and_record_arg(t, rusage, &iter);
-			r.esi = (uintptr_t)rusage;
-		} else if (SYS_wait4 == syscall) {
-			record_noop_data(t);
-		}
-		t->set_regs(r);
-
-		finish_restoring_scratch(t, iter, &data);
-		break;
-	}
-
 	case SYS_waitid: {
 		siginfo_t* infop = pop_arg_ptr<siginfo_t>(t);
 		byte* iter;
@@ -3681,16 +2377,37 @@ void rec_process_syscall(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
+	case SYS_waitpid:
+	case SYS_wait4: {
+		struct rusage* rusage = pop_arg_ptr<struct rusage>(t);
+		int* status = pop_arg_ptr<int>(t);
+		byte* iter;
+		void* data = start_restoring_scratch(t, &iter);
 
-	/**
-	 * ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
-	 * The writev() function writes iovcnt buffers of data described by iov
-	 * to the file associated with the file descriptor fd ("gather output").
-	 */
-	SYS_REC0(writev);
+		struct user_regs_struct r = t->regs();
+		if (status) {
+			restore_and_record_arg(t, status, &iter);
+			r.ecx = (uintptr_t)status;
+		} else {
+			record_noop_data(t);
+		}
+		if (rusage) {
+			restore_and_record_arg(t, rusage, &iter);
+			r.esi = (uintptr_t)rusage;
+		} else if (SYS_wait4 == syscallno) {
+			record_noop_data(t);
+		}
+		t->set_regs(r);
+
+		finish_restoring_scratch(t, iter, &data);
+		break;
+	}
+	case SYS_write:
+	case SYS_writev:
+		break;
 
 	case SYS_rrcall_init_buffers:
-		init_buffers(t, NULL, SHARE_DESCHED_EVENT_FD);
+		init_buffers(t, nullptr, SHARE_DESCHED_EVENT_FD);
 		break;
 
 	case SYS_rrcall_monkeypatch_vdso:
@@ -3699,7 +2416,8 @@ void rec_process_syscall(Task *t)
 
 	default:
 		print_register_file_tid(t);
-		fatal("Unknown syscall %s(%d)", syscallname(syscall), syscall);
+		fatal("Unhandled syscall %s(%d)",
+		      syscallname(syscallno), syscallno);
 		break;		/* not reached */
 	}
 }

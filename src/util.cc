@@ -222,9 +222,33 @@ const char* signalname(int sig)
 const char* syscallname(int syscall)
 {
 	switch (syscall) {
-#define SYSCALL_DEF(_, _name, __) case __NR_## _name: return #_name;
+#define SYSCALL_DEF0(_name, _)				\
+		case __NR_## _name: return #_name;
+#define SYSCALL_DEF1(_name, _, _1, _2)			\
+		case __NR_## _name: return #_name;
+#define SYSCALL_DEF1_DYNSIZE(_name, _, _1, _2)		\
+		case __NR_## _name: return #_name;
+#define SYSCALL_DEF1_STR(_name, _, _1)			\
+		case __NR_## _name: return #_name;
+#define SYSCALL_DEF2(_name, _, _1, _2, _3, _4)		\
+		case __NR_## _name: return #_name;
+#define SYSCALL_DEF3(_name, _, _1, _2, _3, _4, _5, _6)	\
+		case __NR_## _name: return #_name;
+#define SYSCALL_DEF4(_name, _, _1, _2, _3, _4, _5, _6, _7, _8)	\
+		case __NR_## _name: return #_name;
+#define SYSCALL_DEF_IRREG(_name)		\
+		case __NR_## _name: return #_name;
+
 #include "syscall_defs.h"
-#undef SYSCALL_DEF
+
+#undef SYSCALL_NUM
+#undef SYSCALL_DEF0
+#undef SYSCALL_DEF1
+#undef SYSCALL_DEF1_DYNSIZE
+#undef SYSCALL_DEF1_STR
+#undef SYSCALL_DEF2
+#undef SYSCALL_DEF3
+#undef SYSCALL_DEF4
 
 	case SYS_restart_syscall:
 		return "restart_syscall";
