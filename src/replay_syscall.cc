@@ -64,16 +64,36 @@ struct syscall_def {
 };
 
 #define SYSCALL_NUM(_name)__NR_##_name
-#define SYSCALL_DEF(_type, _name, _num_args)		\
-	{ SYSCALL_NUM(_name), rep_##_type, _num_args },
+#define SYSCALL_DEF0(_name, _type)		\
+	{ SYSCALL_NUM(_name), rep_##_type, 0 },
+#define SYSCALL_DEF1(_name, _type, _, _1)	\
+	{ SYSCALL_NUM(_name), rep_##_type, 1 },
+#define SYSCALL_DEF1_DYNSIZE(_name, _type, _, _1)	\
+	{ SYSCALL_NUM(_name), rep_##_type, 1 },
+#define SYSCALL_DEF1_STR(_name, _type, _)	\
+	{ SYSCALL_NUM(_name), rep_##_type, 1 },
+#define SYSCALL_DEF2(_name, _type, _, _1, _2, _3)	\
+	{ SYSCALL_NUM(_name), rep_##_type, 2 },
+#define SYSCALL_DEF3(_name, _type, _, _1, _2, _3, _4, _5)	\
+	{ SYSCALL_NUM(_name), rep_##_type, 3 },
+#define SYSCALL_DEF4(_name, _type, _, _1, _2, _3, _4, _5, _6, _7)	\
+	{ SYSCALL_NUM(_name), rep_##_type, 4 },
+#define SYSCALL_DEF_IRREG(_name)			\
+	{ SYSCALL_NUM(_name), rep_IRREGULAR, -1 },
 
 static struct syscall_def syscall_defs[] = {
 	/* Not-yet-defined syscalls will end up being type
 	 * rep_UNDEFINED. */
 #include "syscall_defs.h"
 };
-#undef SYSCALL_DEF
 #undef SYSCALL_NUM
+#undef SYSCALL_DEF0
+#undef SYSCALL_DEF1
+#undef SYSCALL_DEF1_DYNSIZE
+#undef SYSCALL_DEF1_STR
+#undef SYSCALL_DEF2
+#undef SYSCALL_DEF3
+#undef SYSCALL_DEF4
 
 static struct syscall_def syscall_table[MAX_NR_SYSCALLS];
 
@@ -1321,6 +1341,7 @@ void before_syscall_exit(Task* t, int syscallno)
 {
 	switch (syscallno) {
 	case SYS_sigaction:
+	case SYS_rt_sigaction:
 		t->update_sigaction();
 		return;
 
@@ -1459,6 +1480,14 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	case SYS_clone:
 		return process_clone(t, trace, state, step);
 
+	case SYS_epoll_wait:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
 	case SYS_execve:
 		return process_execve(t, trace, state, rec_regs, step);
 
@@ -1474,7 +1503,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	case SYS_fcntl64:
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
-		if (state == 0) {
+		if (STATE_SYSCALL_ENTRY == state) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
 			int cmd = t->regs().ecx;
@@ -1508,6 +1537,16 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 	case SYS_futex:
 		return process_futex(t, state, step, rec_regs);
+
+	case SYS_getxattr:
+	case SYS_lgetxattr:
+	case SYS_fgetxattr:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
 
 	case SYS_ioctl:
 		return process_ioctl(t, state, step);
@@ -1551,6 +1590,22 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->syscall.num_emu_args =
 				(trace->recorded_regs.ecx != 0) ? 1 : 0;
 		}
+		return;
+
+	case SYS_open:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
+	case SYS_poll:
+	case SYS_ppoll:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
 		return;
 
 	case SYS_prctl: {
@@ -1641,6 +1696,21 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}
+	case SYS_sched_setaffinity:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
+	case SYS_sendfile64:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
 	case SYS_sendmmsg: {
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
@@ -1655,6 +1725,13 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}
+	case SYS_setpriority:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
 	case SYS_set_tid_address:
 		// set_tid_address returns the caller's PID.
 		step->syscall.emu_ret = 1;
@@ -1674,6 +1751,20 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		t->set_tid_addr((void*)rec_regs->ebx);
 		return;
 
+	case SYS_sigaction:
+	case SYS_rt_sigaction:
+	case SYS_sigprocmask:
+	case SYS_rt_sigprocmask:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		if (STATE_SYSCALL_EXIT == state) {
+			before_syscall_exit(t, syscall);
+		}
+		return;
+
 	case SYS_sigreturn:
 	case SYS_rt_sigreturn:
 		if (state == STATE_SYSCALL_ENTRY) {
@@ -1688,6 +1779,33 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 	case SYS_socketcall:
 		return process_socketcall(t, state, step);
+
+	case SYS_splice:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 2;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
+	case SYS__sysctl:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 2;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
+	case SYS_waitid:
+	case SYS_waitpid:
+	case SYS_wait4:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = SYS_wait4 == syscall ?
+					     2 : 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
 
 	case SYS_write:
 	case SYS_writev:
