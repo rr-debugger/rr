@@ -19,8 +19,8 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
 #include "hpc.h"
+#include "log.h"
 #include "util.h"
 
 using namespace std;
@@ -51,25 +51,32 @@ FileId::special_name() const {
 	case PSEUDODEVICE_SYSCALLBUF: return "(syscallbuf)";
 	case PSEUDODEVICE_VDSO: return "(vdso)";
 	}
-	fatal("Not reached");
+	FATAL() <<"Not reached";
 	return nullptr;
 }
 
 void
 HasTaskSet::insert_task(Task* t)
 {
-	debug("adding %d to task set %p", t->tid, this);
+	LOG(debug) <<"adding "<< t->tid <<" to task set "<< this;
 	tasks.insert(t);
 }
 
 void
 HasTaskSet::erase_task(Task* t) {
-	debug("removing %d from task group %p", t->tid, this);
+	LOG(debug) <<"removing "<< t->tid <<" from task group "<< this;
 	tasks.erase(t);
 }
 
 FileId::FileId(dev_t dev_major, dev_t dev_minor, ino_t ino, PseudoDevice psdev)
 	: device(MKDEV(dev_major, dev_minor)), inode(ino), psdev(psdev) { }
+
+ostream& operator<<(ostream& o, const Mapping& m)
+{
+	o << m.start <<"-"<< m.end <<" "<< HEX(m.prot) <<" f:"<< HEX(m.flags);
+	return o;
+}
+
 
 /*static*/ MappableResource
 MappableResource::syscallbuf(pid_t tid, int fd)
@@ -78,7 +85,7 @@ MappableResource::syscallbuf(pid_t tid, int fd)
 	 format_syscallbuf_shmem_path(tid, path);
 	 struct stat st;
 	 if (fstat(fd, &st)) {
-		 fatal("Failed to fstat(%d) (%s)", fd, path);
+		 FATAL() <<"Failed to fstat("<< fd <<") ("<< path <<")";
 	 }
 	 return MappableResource(FileId(st), path);
  }
@@ -154,7 +161,7 @@ private:
 void
 AddressSpace::brk(void* addr)
 {
-	debug("[%d] brk(%p)", get_global_time(), addr);
+	LOG(debug) << "brk("<< addr <<")";
 
 	assert(heap.start <= addr);
 	if (addr == heap.end) {
@@ -206,8 +213,8 @@ void
 AddressSpace::map(void* addr, size_t num_bytes, int prot, int flags,
 		  off64_t offset_bytes, const MappableResource& res)
 {
-	debug("[%d] mmap(%p, %u, %#x, %#x, %#llx)", get_global_time(),
-	      addr, num_bytes, prot, flags, offset_bytes);
+	LOG(debug) <<"mmap("<< addr <<", "<< num_bytes <<", "<< HEX(prot)
+		   <<", "<< HEX(flags) <<", "<< HEX(offset_bytes);
 
 	num_bytes = ceil_page_size(num_bytes);
 
@@ -251,18 +258,16 @@ static off64_t adjust_offset(const MappableResource& r, const Mapping& m,
 void
 AddressSpace::protect(void* addr, size_t num_bytes, int prot)
 {
-	debug("[%d] mprotect(%p, %u, 0x%x)", get_global_time(),
-	      addr, num_bytes, prot);
+	LOG(debug) <<"mprotect("<< addr <<", "<< num_bytes <<", "<< HEX(prot) <<")";
 
 	Mapping last_overlap;
 	auto protector = [this, prot, &last_overlap](
 		const Mapping& m, const MappableResource& r,
 		const Mapping& rem) {
-		debug("  protecting (%p, %u) ...", rem.start, rem.num_bytes());
+		LOG(debug) <<"  protecting ("<< rem <<") ...";
 
 		mem.erase(m);
-		debug("  erased (%p, %u, %#x) ...",
-		      m.start, m.num_bytes(), m.prot);
+		LOG(debug) <<"  erased ("<< m <<")";
 
 		// If the first segment we protect underflows the
 		// region, remap the underflow region with previous
@@ -300,8 +305,8 @@ void
 AddressSpace::remap(void* old_addr, size_t old_num_bytes,
 		    void* new_addr, size_t new_num_bytes)
 {
-	debug("[%d] mremap(%p, %u, %p, %u)", get_global_time(),
-	      old_addr, old_num_bytes, new_addr, new_num_bytes);
+	LOG(debug) <<"mremap("<< old_addr <<", "<< old_num_bytes <<", "
+		   << new_addr <<", "<< new_num_bytes <<")";
 
 	auto mr = mapping_of(old_addr, old_num_bytes);
 	const Mapping& m = mr.first;
@@ -360,14 +365,14 @@ AddressSpace::destroy_all_breakpoints()
 void
 AddressSpace::unmap(void* addr, ssize_t num_bytes)
 {
-	debug("[%d] munmap(%p, %u)", get_global_time(), addr, num_bytes);
+	LOG(debug) <<"munmap("<< addr <<", "<< num_bytes <<")";
 
 	auto unmapper = [this](const Mapping& m, const MappableResource& r,
 			       const Mapping& rem) {
-		debug("  unmapping (%p, %u) ...", rem.start, rem.num_bytes());
+		LOG(debug) <<"  unmapping ("<< rem <<") ...";
 
 		mem.erase(m);
-		debug("  erased (%p, %u) ...", m.start, m.num_bytes());
+		LOG(debug) <<"  erased ("<< m <<") ...";
 
 		// If the first segment we unmap underflows the unmap
 		// region, remap the underflow region.
@@ -399,11 +404,11 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
 	const Mapping& mleft = left.first;
 	const Mapping& mright = right.first;
 	if (mleft.end != mright.start) {
-		debug("    (not adjacent in memory)");
+		LOG(debug) <<"    (not adjacent in memory)";
 		return false;
 	}
 	if (mleft.flags != mright.flags || mleft.prot != mright.prot) {
-		debug("    (flags or prot differ)");
+		LOG(debug) <<"    (flags or prot differ)";
 		return false;
 	}
 	const MappableResource& rleft = left.second;
@@ -413,16 +418,17 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
 		return true;
 	}
 	if (rleft != rright) {
-		debug("    (not the same resource)");
+		LOG(debug) <<"    (not the same resource)";
 		return false;
 	}
 	if (rleft.id.is_real_device()
 	    && mleft.offset + mleft.num_bytes() != mright.offset) {
-		debug("    (%lld + %d != %lld: offsets into real device aren't adjacent)",
-		      mleft.offset, mleft.num_bytes(), mright.offset);
+		LOG(debug) <<"    ("<< mleft.offset <<" + "
+			   << mleft.num_bytes() <<" != "<< mright.offset
+			   <<": offsets into real device aren't adjacent)";
 		return false;
 	}
-	debug("    adjacent!");
+	LOG(debug) <<"    adjacent!";
 	return true;
 }
 
@@ -488,16 +494,13 @@ VerifyAddressSpace::assert_segments_match(Task* t)
 			     && m.prot == km.prot
 			     && m.flags == km.flags);
 	if (!same_mapping) {
-		log_err("cached mmap:");
+		LOG(error) <<"cached mmap:";
 		as->dump();
-		log_err("/proc/%d/mmaps:", t->tid);
+		LOG(error) <<"/proc/"<< t->tid <<"/mmaps:";
 		print_process_mmap(t);
 
-		assert_exec(t, same_mapping,
-			    "\nCached mapping '%p-%p 0x%x f:0x%x'\n"
-			    "    should be '%p-%p 0x%x f:0x%x'",
-			    m.start, m.end, m.prot, m.flags,
-			    km.start, km.end, km.prot, km.flags);
+		ASSERT(t, same_mapping)
+			<< "\nCached mapping "<< m <<"should be "<< km;
 	}
 }
 
@@ -542,8 +545,7 @@ AddressSpace::check_segment_iterator(void* pvas, Task* t,
 	const AddressSpace* as = vas->as;
 	const struct mapped_segment_info& info = data->info;
 
-	debug("examining /proc/maps segment '%p-%p 0x%x f:0x%x'",
-	      info.start_addr, info.end_addr, info.prot, info.flags);
+	LOG(debug) <<"examining /proc/maps segment "<< info;
 
 	// Merge adjacent cached mappings.
 	if (vas->NO_PHASE == vas->phase) {
@@ -562,8 +564,7 @@ AddressSpace::check_segment_iterator(void* pvas, Task* t,
 		vas->phase = vas->INITING_KERNEL;
 	}
 
-	debug("  merged cached seg: '%p-%p 0x%x f:0x%x'",
-	      vas->m.start, vas->m.end, vas->m.prot, vas->m.flags);
+	LOG(debug) <<"  merged cached seg: "<< vas->m;
 
 	// Merge adjacent kernel mappings.
 	assert(info.flags == (info.flags & Mapping::checkable_flags_mask));
@@ -673,13 +674,13 @@ AddressSpace::coalesce_around(MemoryMap::iterator it)
 	}
 	assert(last_kv != mem.end());
 	if (first_kv == last_kv) {
-		debug("  no mappings to coalesce");
+		LOG(debug) <<"  no mappings to coalesce";
 		return;
 	}
 
 	Mapping c(first_kv->first.start, last_kv->first.end, m.prot, m.flags,
 		  first_kv->first.offset);
-	debug("  coalescing %p-%p", c.start, c.end);
+	LOG(debug) <<"  coalescing "<< c;
 
 	mem.erase(first_kv, ++last_kv);
 
@@ -715,18 +716,20 @@ AddressSpace::for_each_in_range(void* addr, ssize_t num_bytes,
 		// the last one seen.
 		auto it = mem.lower_bound(rem);
 		if (mem.end() == it) {
-			debug("  not found, done.");
+			LOG(debug) <<"  not found, done.";
 			return;
 		}
 
 		Mapping m = it->first;
 		if (rem.end <= m.start) {
-			debug("  mapping at %p out of range, done.", m.start);
+			LOG(debug) <<"  mapping at "<< m.start
+				   <<" out of range, done.";
 			return;
 		}
 		if (ITERATE_CONTIGUOUS == how &&
 		    !(m.start < addr || rem.start == m.start)) {
-			debug("  discontiguous mapping at %p, done.", m.start);
+			LOG(debug) <<"  discontiguous mapping at "<< m.start
+				   <<", done.";
 			return;
 		}
 
@@ -741,8 +744,7 @@ AddressSpace::for_each_in_range(void* addr, ssize_t num_bytes,
 void
 AddressSpace::map_and_coalesce(const Mapping& m, const MappableResource& r)
 {
-	debug("  mapping %p-%p (prot:0x%d flags:0x%x)",
-	      m.start, m.end, m.prot, m.flags);
+	LOG(debug) <<"  mapping "<< m;
 
 	auto ins = mem.insert(MemoryMap::value_type(m, r));
 	assert(ins.second);	// key didn't already exist
@@ -760,8 +762,8 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	    && !(info.prot & PROT_EXEC)
 	    && (info.prot & (PROT_READ | PROT_WRITE))) {
 		as->update_heap(info.end_addr, info.end_addr);
-		debug("  guessing heap starts at %p (end of text segment)",
-		      as->heap.start);
+		LOG(debug) <<"  guessing heap starts at "<< as->heap.start
+			   <<" (end of text segment)";
 	}
 
 	if (!as->exe.length() && (info.prot & PROT_EXEC)) {
@@ -775,8 +777,8 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	if (as->heap.end == info.start_addr && !(info.prot & PROT_EXEC)) {
 		assert(as->heap.start == as->heap.end);
 		as->update_heap(info.end_addr, info.end_addr);
-		debug("  updating start-of-heap guess to %p (end of mapped-data segment)",
-		      as->heap.start);
+		LOG(debug) <<"  updating start-of-heap guess to "
+			   << as->heap.start <<" (end of mapped-data segment)";
 	}
 
 	FileId id;
@@ -910,11 +912,11 @@ private:
 void
 TaskGroup::destabilize()
 {
-	debug("destabilizing task group %d", tgid);
+	LOG(debug) <<"destabilizing task group "<< tgid;
 	for (auto it = task_set().begin(); it != task_set().end(); ++it) {
 		Task* t = *it;
 		t->unstable = 1;
-		debug("  destabilized task %d", t->tid);
+		LOG(debug) <<"  destabilized task "<< t->tid;
 	}
 }
 
@@ -929,7 +931,8 @@ TaskGroup::create(Task* t)
 TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
 	: tgid(tgid), real_tgid(real_tgid)
 {
-	debug("creating new task group %d (real tgid: %d)", tgid, real_tgid);
+	LOG(debug) <<"creating new task group "<< tgid <<" (real tgid:"
+		   << real_tgid <<")";
 }
 
 Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
@@ -971,7 +974,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 
 Task::~Task()
 {
-	debug("task %d (rec:%d) is dying ...", tid, rec_tid);
+	LOG(debug) <<"task "<< tid <<" (rec:"<< rec_tid <<") is dying ...";
 
 	assert(this == Task::find(rec_tid));
 	// We expect tasks to usually exit by a call to exit() or
@@ -981,7 +984,7 @@ Task::~Task()
 		|| !(ev().type() == EV_SYSCALL
 		     && (SYS_exit == ev().Syscall().no
 			 || SYS_exit_group == ev().Syscall().no)))) {
-		log_warn("%d still has pending events.  From top down:", tid);
+		LOG(warn) << tid <<" still has pending events.  From top down:";
 		log_pending_events();
 	}
 
@@ -998,7 +1001,7 @@ Task::~Task()
 	detach_and_reap();
 	close(child_mem_fd);
 
-	debug("  dead");
+	LOG(debug) <<"  dead";
 }
 
 bool
@@ -1045,8 +1048,7 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 		const Mapping& m = 
 			t->as->mapping_of((byte*)stack - page_size(),
 					  page_size()).first;
-		debug("mapping stack for %d at [%p, %p)",
-		      new_tid, m.start, m.end);
+		LOG(debug) <<"mapping stack for "<< new_tid <<" at "<< m;
 		t->as->map(m.start, m.num_bytes(), m.prot, m.flags,
 			   m.offset, MappableResource::stack(new_tid));
 	}
@@ -1054,11 +1056,11 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 	// prname.
 	t->prname = prname;
 	if (CLONE_CLEARTID & flags) {
-		debug("cleartid futex is %p", cleartid_addr);
+		LOG(debug) <<"cleartid futex is "<< cleartid_addr;
 		assert(cleartid_addr);
 		t->tid_futex = cleartid_addr;
 	} else {
-		debug("(clone child not enabling CLEARTID)");
+		LOG(debug) <<"(clone child not enabling CLEARTID)";
 	}
 
 	t->as->insert_task(t);
@@ -1102,7 +1104,7 @@ Task::destabilize_task_group()
 void
 Task::dump(FILE* out) const
 {
-	out = out ? out : LOG_FILE;
+	out = out ? out : stderr;
 	fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s%s)<%p>\n",
 		prname.c_str(), tid, rec_tid, wait_status,
 		switchable ? "" : " UNSWITCHABLE",
@@ -1233,8 +1235,8 @@ Task::is_syscall_restart()
 	bool is_restart = false;
 	const struct user_regs_struct* old_regs;
 
-	debug("  is syscall interruption of recorded %s? (now %s)",
-	      syscallname(ev().Syscall().no), syscallname(syscallno));
+	LOG(debug) <<"  is syscall interruption of recorded " << ev()
+		   <<"? (now "<< syscallname(syscallno) <<")";
 
 	if (EV_SYSCALL_INTERRUPTION != ev().type()) {
 		goto done;
@@ -1259,11 +1261,11 @@ Task::is_syscall_restart()
 	if (SYS_restart_syscall == syscallno) {
 		must_restart = true;
 		syscallno = ev().Syscall().no;
-		debug("  (SYS_restart_syscall)");
+		LOG(debug) <<"  (SYS_restart_syscall)";
 	}
 	if (ev().Syscall().no != syscallno) {
-		debug("  interrupted %s != %s",
-		      syscallname(ev().Syscall().no), syscallname(syscallno));
+		LOG(debug) <<"  interrupted %s"<< ev() <<" != "
+			   << syscallname(syscallno);
 		goto done;
 	}
 	if (!(old_regs->ebx == regs().ebx
@@ -1272,17 +1274,17 @@ Task::is_syscall_restart()
 	      && old_regs->esi == regs().esi
 	      && old_regs->edi == regs().edi
 	      && old_regs->ebp == regs().ebp)) {
-		debug("  regs different at interrupted %s",
-		      syscallname(syscallno));
+		LOG(debug) <<"  regs different at interrupted "
+			   << syscallname(syscallno);
 		goto done;
 	}
 	is_restart = true;
 
 done:
-	assert_exec(this, !must_restart || is_restart,
-		    "Must restart %s but won't", syscallname(syscallno));
+	ASSERT(this, !must_restart || is_restart)
+		<<"Must restart %s"<< syscallname(syscallno) <<" but won't";
 	if (is_restart) {
-		debug("  restart of %s", syscallname(syscallno));
+		LOG(debug) <<"  restart of " << syscallname(syscallno);
 	}
 	return is_restart;
 }
@@ -1300,7 +1302,7 @@ Task::log_pending_events() const
 
 	assert(depth > 0);
 	if (1 == depth) {
-		log_info("(no pending events)");
+		LOG(info) <<"(no pending events)";
 		return;
 	}
 
@@ -1348,7 +1350,7 @@ Task::maybe_update_vm(int syscallno, int state)
 		return vm()->brk(addr);
 	}
 	case SYS_mmap2: {
-		debug("(mmap2 will receive / has received direct processing)");
+		LOG(debug) <<"(mmap2 will receive / has received direct processing)";
 		return;
 	}
 	case SYS_mprotect: {
@@ -1451,7 +1453,7 @@ void
 Task::record_remote(void* addr, ssize_t num_bytes)
 {
 	// We shouldn't be recording a scratch address.
-	assert_exec(this, !addr || addr != scratch_ptr, "");
+	ASSERT(this, !addr || addr != scratch_ptr);
 
 	maybe_flush_syscallbuf();
 
@@ -1517,7 +1519,7 @@ const struct user_regs_struct&
 Task::regs()
 {
 	if (!registers_known) {
-		debug("  (refreshing register cache)");
+		LOG(debug) <<"  (refreshing register cache)";
 		xptrace(PTRACE_GETREGS, nullptr, &registers);
 		registers_known = true;
 	}
@@ -1536,7 +1538,7 @@ Task::remote_memcpy(void* dst, const void* src, size_t num_bytes)
 bool
 Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 {
-	debug("resuming execution with %s", ptrace_req_name(how));
+	LOG(debug) <<"resuming execution with "<< ptrace_req_name(how);
 	xptrace(how, nullptr, (void*)(uintptr_t)sig);
 	registers_known = false;
 	if (RESUME_NONBLOCKING == wait_how) {
@@ -1575,7 +1577,7 @@ Task::set_regs(const struct user_regs_struct& regs)
 void
 Task::set_tid_addr(void* tid_addr)
 {
-	debug("updating cleartid futex to %p", tid_addr);
+	LOG(debug) <<"updating cleartid futex to "<< tid_addr;
 	tid_futex = tid_addr;
 }
 
@@ -1610,9 +1612,9 @@ void
 Task::stash_sig()
 {
 	assert(pending_sig());
-	assert_exec(this, !has_stashed_sig(),
-		    "Tried to stash %s when %s was already stashed.",
-		    signalname(pending_sig()), signalname(stashed_si.si_signo));
+	ASSERT(this, !has_stashed_sig())
+		<< "Tried to stash "<< signalname(pending_sig()) <<" when "
+		<< signalname(stashed_si.si_signo) <<" was already stashed.";
 	stashed_wait_status = wait_status;
 	get_siginfo(&stashed_si);
 }
@@ -1673,9 +1675,9 @@ Task::update_sigmask()
 		return;
 	}
 
-	assert_exec(this, (!syscallbuf_hdr || !syscallbuf_hdr->locked
-			   || is_desched_sig_blocked()),
-		    "syscallbuf is locked but SIGSYS isn't blocked");
+	ASSERT(this, (!syscallbuf_hdr || !syscallbuf_hdr->locked
+		      || is_desched_sig_blocked()))
+	       <<"syscallbuf is locked but SIGSYS isn't blocked";
 
 	sig_set_t set;
 	read_mem(setp, &set);
@@ -1692,7 +1694,7 @@ Task::update_sigmask()
 		blocked_sigs = set;
 		break;
 	default:
-		fatal("Unknown sigmask manipulator %d", how);
+		FATAL() <<"Unknown sigmask manipulator "<< how;
 	}
 
 	// In the syscallbuf, we rely on SIGSYS being raised when
@@ -1718,7 +1720,7 @@ static bool waiter_was_interrupted;
 bool
 Task::wait()
 {
-	debug("going into blocking waitpid(%d) ...", tid);
+	LOG(debug) <<"going into blocking waitpid("<< tid <<") ...";
 
 	// We only need this during recording.  If tracees go runaway
 	// during replay, something else is at fault.
@@ -1746,12 +1748,13 @@ Task::wait()
 	}
 
 	if (0 > ret && EINTR == errno) {
-		debug("  waitpid(%d) interrupted!", tid);
+		LOG(debug) <<"  waitpid("<< tid <<") interrupted!";
 		return false;
 	}
-	debug("  waitpid(%d) returns %d; status %#x", tid, ret, wait_status);
-	assert_exec(this, tid == ret, "waitpid(%d) failed with %d",
-		    tid, ret);
+	LOG(debug) <<"  waitpid("<< tid <<") returns "<< ret <<"; status "
+		   << HEX(wait_status);
+	ASSERT(this, tid == ret)
+		<<"waitpid("<< tid <<") failed with "<< ret;;
 	// If some other ptrace-stop happened to race with our
 	// PTRACE_INTERRUPT, then let the other event win.  We only
 	// want to interrupt tracees stuck running in userspace.
@@ -1760,7 +1763,7 @@ Task::wait()
 		// We sometimes see SIGSTOP at interrupts, though the
 		// docs don't mention that.
 		|| SIGSTOP == WSTOPSIG(wait_status))) {
-		log_warn("Forced to PTRACE_INTERRUPT tracee");
+		LOG(warn) <<"Forced to PTRACE_INTERRUPT tracee";
 		stashed_wait_status = wait_status =
 				      (HPC_TIME_SLICE_SIGNAL << 8) | 0x7f;
 		memset(&stashed_si, 0, sizeof(stashed_si));
@@ -1771,8 +1774,8 @@ Task::wait()
 		// the equivalent of hundreds of time slices.
 		succ_event_counter = numeric_limits<int>::max() / 2;
 	} else if (waiter_was_interrupted) {
-		debug("  PTRACE_INTERRUPT raced with another event %#x",
-		      wait_status);
+		LOG(debug) <<"  PTRACE_INTERRUPT raced with another event "
+			   << HEX(wait_status);
 	}
 	waiter_was_interrupted = false;
 	return true;
@@ -1782,10 +1785,10 @@ bool
 Task::try_wait()
 {
 	pid_t ret = waitpid(tid, &wait_status, WNOHANG | __WALL | WSTOPPED);
-	debug("waitpid(%d, NOHANG) returns %d, status %#x",
-	      tid, ret, wait_status);
-	assert_exec(this, 0 <= ret, "waitpid(%d, NOHANG) failed with %d",
-		    tid, ret);
+	LOG(debug) <<"waitpid("<< tid <<", NOHANG) returns "<< ret
+		   <<", status "<< HEX(wait_status);
+	ASSERT(this, 0 <= ret)
+		<<"waitpid("<< tid <<", NOHANG) failed with "<< ret;
 	return ret == tid;
 }
 
@@ -1819,31 +1822,31 @@ static void set_up_process(void)
 	 * have been observed in certain recording situations but not
 	 * in replay, which causes divergence. */
 	if (0 > (orig_pers = personality(0xffffffff))) {
-		fatal("error getting personaity");
+		FATAL() <<"error getting personaity";
 	}
 	if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE |
 			    ADDR_COMPAT_LAYOUT)) {
-		fatal("error disabling randomization");
+		FATAL() <<"error disabling randomization";
 	}
 	/* Trap to the rr process if a 'rdtsc' instruction is issued.
 	 * That allows rr to record the tsc and replay it
 	 * deterministically. */
 	if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
-		fatal("error setting up prctl -- bailing out");
+		FATAL() <<"error setting up prctl";
 	}
 	// If the rr process dies, prevent runaway tracee processes
 	// from dragging down the underlying system.
 	//
 	// TODO: this isn't inherited across fork().
 	if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
-		fatal("Couldn't set parent-death signal");
+		FATAL() <<"Couldn't set parent-death signal";
 	}
 }
 
 /*static*/ void
 Task::dump_all(FILE* out)
 {
-	out = out ? out : LOG_FILE;
+	out = out ? out : stderr;
 
 	auto sas = AddressSpace::set();
 	for (auto ait = sas.begin(); ait != sas.end(); ++ait) {
@@ -1887,11 +1890,11 @@ Task::killall()
 		auto it = tasks.rbegin();
 		Task* t = it->second;
 
-		debug("sending SIGKILL to %d ...", t->tid);
+		LOG(debug) <<"sending SIGKILL to "<< t->tid <<" ...";
 		sys_tgkill(t->real_tgid(), t->tid, SIGKILL);
 
 		t->wait();
-		debug("  ... status %#x", t->status());
+		LOG(debug) <<"  ... status "<< HEX(t->status());
 
 		int status = t->status();
 		if (WIFSIGNALED(status)) {
@@ -1950,9 +1953,8 @@ Task::detach_and_reap()
 		// before the tracee exits.  Otherwise we might not be
 		// open the fd below.  See TODO comment in Task ctor.
 		int32_t tid_addr_val = read_word(tid_futex);
-		assert_exec(this, rec_tid == tid_addr_val,
-			    "tid addr should be %d (tid), but is %d",
-			    rec_tid, tid_addr_val);
+		ASSERT(this, rec_tid == tid_addr_val)
+			<<"tid addr should be "<< rec_tid <<", but is "<< tid_addr_val;
 	}
 
 	// XXX: why do we detach before harvesting?
@@ -1963,22 +1965,22 @@ Task::detach_and_reap()
 		// exits may result in the kernel *not* clearing the
 		// futex, for example for fatal signals.  So we would
 		// deadlock waiting on the futex.
-		log_warn("%d is unstable; not blocking on its termination",
-			 tid);
+		LOG(warn) << tid <<" is unstable; not blocking on its termination";
 		return;
 	}
 
-	debug("Joining with exiting %d ...", tid);
+	LOG(debug) <<"Joining with exiting "<< tid <<" ...";
 	while (true) {
 		int err = waitpid(tid, &wait_status, __WALL);
 		if (-1 == err && ECHILD == errno) {
-			debug(" ... ECHILD");
+			LOG(debug) <<" ... ECHILD";
 			break;
 		} else if (-1 == err) {
 			assert(EINTR == errno);
 		}
 		if (err == tid && (exited() || signaled())) {
-			debug(" ... exited with status 0x%x", wait_status);
+			LOG(debug) <<" ... exited with status "
+				   << HEX(wait_status);
 			break;
 		} else if (err == tid) {
 			assert(PTRACE_EVENT_EXIT == ptrace_event());
@@ -1993,14 +1995,14 @@ Task::detach_and_reap()
 		// FUTEX_WAKE is done on the address. So
 		// pthread_join() is basically a standard futex wait
 		// loop.
-		debug("  waiting for tid futex %p to be cleared ...",
-		      tid_futex);
+		LOG(debug) <<"  waiting for tid futex "<< tid_futex
+			   <<" to be cleared ...";
 		futex_wait(tid_futex, 0);
 	} else if(tid_futex) {
 		// There are no other live tasks in this address
 		// space, which means the address space just died
 		// along with our exit.  So we can't read the futex.
-		debug("  (can't futex_wait last task in vm)");
+		LOG(debug) <<"  (can't futex_wait last task in vm)";
 	}
 }
 
@@ -2016,7 +2018,7 @@ Task::open_mem_fd()
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path) - 1, "/proc/%d/mem", tid);
 	int fd =open(path, O_RDWR);
-	assert_exec(this, fd >= 0, "Failed to open %s", path);
+	ASSERT(this, fd >= 0) <<"Failed to open "<< path;
 	return fd;
 }
 
@@ -2074,7 +2076,7 @@ static off64_t to_offset(void* addr)
 ssize_t
 Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf)
 {
-	assert_exec(this, buf_size >= 0, "Invalid buf_size %d", buf_size);
+	ASSERT(this, buf_size >= 0) <<"Invalid buf_size "<< buf_size;
 	if (0 == buf_size) {
 		return 0;
 	}
@@ -2098,15 +2100,15 @@ void
 Task::read_bytes_helper(void* addr, ssize_t buf_size, byte* buf)
 {
 	ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
-	assert_exec(this, nread == buf_size,
-		    "Should have read %d bytes from %p, but only read %d",
-		    buf_size, addr, nread);
+	ASSERT(this, nread == buf_size)
+		<<"Should have read "<< buf_size <<" bytes from "<< addr
+		<<", but only read "<< nread;
 }
 
 void
 Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 {
-	assert_exec(this, buf_size >= 0, "Invalid buf_size %d", buf_size);
+	ASSERT(this, buf_size >= 0) <<"Invalid buf_size "<< buf_size;
 	if (0 == buf_size) {
 		return;
 	}
@@ -2118,18 +2120,18 @@ Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 		reopen_mem_fd();
 		return write_bytes_helper(addr, buf_size, buf);
 	}
-	assert_exec(this, nwritten == buf_size,
-		    "Should have written %d bytes to %p, but only wrote %d",
-		    buf_size, addr, nwritten);
+	ASSERT(this, nwritten == buf_size)
+		<<"Should have written "<< buf_size <<" bytes to "<< addr
+		<<", but only wrote "<< nwritten;
 }
 
 void
 Task::xptrace(int request, void* addr, void* data)
 {
 	long ret = fallible_ptrace(request, addr, data);
-	assert_exec(this, 0 == ret,
-		    "ptrace(%s, %d, addr=%p, data=%p) failed",
-		    ptrace_req_name(request), tid, addr, data);
+	ASSERT(this, 0 == ret)
+		<< "ptrace("<< ptrace_req_name(request) <<", "<< tid
+		<<", addr="<< addr <<", data="<< data <<") failed";
 }
 
 /*static*/ Task*
@@ -2157,7 +2159,7 @@ Task::create(const struct args_env& ae, pid_t rec_tid)
 		syscall(SYS_write, -1, &sum, sizeof(sum));
 
 		execvpe(ae.exe_image.c_str(), ae.argv.data(), ae.envp.data());
-		fatal("Failed to exec '%s'", ae.exe_image.c_str());
+		FATAL() <<"Failed to exec '"<< ae.exe_image.c_str() <<"'";
 	}
 
 	signal(SIGALRM, Task::handle_runaway);
@@ -2174,7 +2176,7 @@ Task::create(const struct args_env& ae, pid_t rec_tid)
 	// read the entire sigset tracked by the kernel.
 	if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, NULL,
 		      &t->blocked_sigs, sizeof(t->blocked_sigs))) {
-		fatal("Failed to read blocked signals");
+		FATAL() <<"Failed to read blocked signals";
 	}
 	auto g = TaskGroup::create(t);
 	t->tg.swap(g);
@@ -2208,9 +2210,9 @@ Task::create(const struct args_env& ae, pid_t rec_tid)
 /*static*/ void
 Task::handle_runaway(int sig)
 {
-	debug("SIGALRM fired; runaway tracee");
+	LOG(debug) <<"SIGALRM fired; runaway tracee";
 	if (!waiter || -1 != waiter->wait_status) {
-		debug("  ... false alarm, race condition");
+		LOG(debug) <<"  ... false alarm, race condition";
 		return;
 	}
 	waiter->xptrace(PTRACE_INTERRUPT, nullptr, nullptr);

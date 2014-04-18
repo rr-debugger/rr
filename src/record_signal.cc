@@ -15,8 +15,8 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
 #include "hpc.h"
+#include "log.h"
 #include "recorder.h"
 #include "task.h"
 #include "trace.h"
@@ -43,11 +43,11 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si)
 	 * target, because this signal may have become pending before
 	 * we reset the HPC counters.  There be a way to handle that
 	 * more elegantly, but bridge will be crossed in due time. */
-	assert_exec(t, (HPC_TIME_SLICE_SIGNAL == si->si_signo
-			&& si->si_fd == t->hpc->rbc.fd
-			&& POLL_IN == si->si_code),
-		    "Tracee is using SIGSTKFLT??? (code=%d, fd=%d)",
-		    si->si_code, si->si_fd);
+	ASSERT(t, (HPC_TIME_SLICE_SIGNAL == si->si_signo
+		   && si->si_fd == t->hpc->rbc.fd
+		   && POLL_IN == si->si_code))
+		<< "Tracee is using SIGSTKFLT??? (code="<< si->si_code
+		<<", fd="<< si->si_fd <<")";
 }
 
 /**
@@ -67,7 +67,7 @@ static void restore_sigsegv_state(Task* t)
 		int ret = remote_syscall4(t, &state, SYS_rt_sigaction,
 					  SIGSEGV, child_sa, NULL, 
 					  _NSIG / 8);
-		assert_exec(t, 0 == ret, "Failed to restore SIGSEGV handler");
+		ASSERT(t, 0 == ret) <<"Failed to restore SIGSEGV handler";
 
 		pop_tmp_mem(t, &state, &restore);
 	}
@@ -133,14 +133,14 @@ static int try_handle_rdtsc(Task *t)
 	}
 
 	t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO));
-	debug("  trapped for rdtsc: returning %llu", current_time);
+	LOG(debug) <<"  trapped for rdtsc: returning "<< current_time;
 	return 1;
 }
 
 static void disarm_desched_event(Task* t)
 {
 	if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
-		fatal("Failed to disarm desched event");
+		FATAL() <<"Failed to disarm desched event";
 	}
 }
 
@@ -151,11 +151,11 @@ static void disarm_desched_event(Task* t)
  */
 static void handle_desched_event(Task* t, const siginfo_t* si)
 {
-	assert_exec(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo
-			&& si->si_code == POLL_IN
-			&& si->si_fd == t->desched_fd_child),
-		    "Tracee is using SIGSYS??? (code=%d, fd=%d)",
-		    si->si_code, si->si_fd);
+	ASSERT(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo
+		   && si->si_code == POLL_IN
+		   && si->si_fd == t->desched_fd_child))
+		<<"Tracee is using SIGSYS??? (code="<< si->si_code
+		<<", fd="<< si->si_fd <<")";
 
 	/* If the tracee isn't in the critical section where a desched
 	 * event is relevant, we can ignore it.  See the long comments
@@ -165,7 +165,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 	 * may-block syscall B, but this signal was delivered by an
 	 * event programmed by a previous may-block syscall A. */
 	if (!t->syscallbuf_hdr->desched_signal_may_be_relevant) {
-		debug("  (not entering may-block syscall; resuming)");
+		LOG(debug) <<"  (not entering may-block syscall; resuming)";
 		/* We have to disarm the event just in case the tracee
 		 * has cleared the relevancy flag, but not yet
 		 * disarmed the event itself. */
@@ -269,16 +269,16 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 		if (SYSCALLBUF_DESCHED_SIGNAL == sig
 		    || HPC_TIME_SLICE_SIGNAL == sig
 		    || t->is_sig_ignored(sig)) {
-			debug("  dropping ignored %s ...", signalname(sig));
+			LOG(debug) <<"  dropping ignored "<< signalname(sig);
 			continue;
 		}
 
-		debug("  stashing %s ...", signalname(sig));
+		LOG(debug) <<"  stashing "<< signalname(sig);
 		t->stash_sig();
 	}
 
 	if (t->is_disarm_desched_event_syscall()) {
-		debug("  (at disarm-desched, so finished buffered syscall; resuming)");
+		LOG(debug) <<"  (at disarm-desched, so finished buffered syscall; resuming)";
 		t->push_event(Event::noop());
 		return;
 	}
@@ -318,8 +318,8 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 	t->ev().Syscall().regs = t->regs();
 	t->ev().Syscall().state = EXITING_SYSCALL;
 
-	debug("  resuming (and probably switching out) blocked `%s'",
-	      syscallname(call));
+	LOG(debug) <<"  resuming (and probably switching out) blocked `"
+		   << syscallname(call) <<"'";
 
 	return;
 }
@@ -356,8 +356,8 @@ static void record_signal(Task* t, const siginfo_t* si)
 {
 	int sig = si->si_signo;
 	if (sig == rr_flags()->ignore_sig) {
-		log_info("Declining to deliver %s by user request",
-			 signalname(sig));
+		LOG(info) <<"Declining to deliver "<< signalname(sig)
+			  <<" by user request";
 		t->push_event(Event::noop());
 		return;
 	}
@@ -429,19 +429,18 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 	struct syscallbuf_hdr initial_hdr;
 	struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
 
-	debug("Stepping tracee to happy place to deliver signal ...");
+	LOG(debug) <<"Stepping tracee to happy place to deliver signal ...";
 
 	if (!hdr) {
 		/* Can't be in critical section because the lock
 		 * doesn't exist yet! */
-		debug("  tracee hasn't allocated syscallbuf yet");
+		LOG(debug) <<"  tracee hasn't allocated syscallbuf yet";
 		goto happy_place;
 	}
 
-	assert_exec(t, !(t->is_in_syscallbuf()
-			 && is_deterministic_signal(si)),
-		    "TODO: %s (code:%d) raised by syscallbuf code",
-		    signalname(si->si_signo), si->si_code);
+	ASSERT(t, !(t->is_in_syscallbuf() && is_deterministic_signal(si)))
+		<< "TODO: "<< signalname(si->si_signo) <<" (code:"
+		<< si->si_code <<") raised by syscallbuf code";
 	/* TODO: when we add support for deterministic signals, we
 	 * should sigprocmask-off all tracee signals while we're
 	 * stepping.  If we tried that with the current impl, the
@@ -460,7 +459,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 			 * exception is signal handlers "re-entering"
 			 * desched'd syscalls, which are OK per
 			 * above.. */
-			debug("  tracee outside syscallbuf lib");
+			LOG(debug) <<"  tracee outside syscallbuf lib";
 			goto happy_place;
 		}
 		if (t->is_entering_traced_syscall()) {
@@ -472,23 +471,23 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 			// the syscall entry looks like a synchronous
 			// SIGTRAP generated from the syscallbuf lib,
 			// which we don't know how to handle.
-			debug("  tracee entering traced syscallbuf syscall");
+			LOG(debug) <<"  tracee entering traced syscallbuf syscall";
 			goto happy_place;
 		}
 		if (t->is_traced_syscall()) {
-			debug("  tracee at traced syscallbuf syscall");
+			LOG(debug) <<"  tracee at traced syscallbuf syscall";
 			goto happy_place;
 		}
 		if (t->is_untraced_syscall()
 		    && t->desched_rec()) {
-			debug("  tracee interrupted by desched of %s",
-			      syscallname(t->desched_rec()->syscallno));
+			LOG(debug) <<"  tracee interrupted by desched of "
+				   << syscallname(t->desched_rec()->syscallno);
 			goto happy_place;
 		}
 		if (initial_hdr.locked && !hdr->locked) {
 			/* Tracee just stepped out of a critical
 			 * section and into a happy place.. */
-			debug("  tracee just unlocked syscallbuf");
+			LOG(debug) <<"  tracee just unlocked syscallbuf";
 			goto happy_place;
 		}
 
@@ -498,7 +497,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 		 * (critical section), so there's no chance here of
 		 * "skipping over" a syscall we should have
 		 * recorded. */
-		debug("  stepi out of syscallbuf from %p ...", t->ip());
+		LOG(debug) <<"  stepi out of syscallbuf from "<< t->ip();
 		t->cont_singlestep();
 		assert(t->stopped());
 
@@ -507,22 +506,24 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
 			if (HPC_TIME_SLICE_SIGNAL == tmp_si.si_signo) {
-				debug("  ignoring SIG_TIMESLICE");
+				LOG(debug) <<"  ignoring SIG_TIMESLICE";
 				continue;
 			}
 			if (HPC_TIME_SLICE_SIGNAL == si->si_signo) {
 				memcpy(si, &tmp_si, sizeof(*si));
-				debug("  upgraded delivery of SIG_TIMESLICE to %s",
-				      signalname(si->si_signo));
+				LOG(debug) <<"  upgraded delivery of SIG_TIMESLICE to "
+					   << signalname(si->si_signo);
 				handle_siginfo(t, si);
 				return -1;
 			}
 
-			assert_exec(t, 0,
-				    "TODO: support multiple pending signals; received %s (code: %d) at $ip:%p while trying to deliver %s (code: %d)",
-				    signalname(tmp_si.si_signo),
-				    tmp_si.si_code, t->ip(),
-				    signalname(si->si_signo), si->si_code);
+			ASSERT(t, false)
+				<< "TODO: support multiple pending signals; received "
+				<< signalname(tmp_si.si_signo) <<" (code: "
+				<< tmp_si.si_code <<") at $ip:"
+				<< t->ip() <<" while trying to deliver "
+				<< signalname(si->si_signo) <<" (code: "
+				<< si->si_code <<")";
 		}
 		if (!is_syscall) {
 			continue;
@@ -534,7 +535,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 		 * won't need to disarm the desched event, but we will
 		 * need to handle spurious desched notifications. */
 		if (t->is_desched_event_syscall()) {
-			debug("  stepping over desched-event syscall");
+			LOG(debug) <<"  stepping over desched-event syscall";
 			/* Finish the syscall. */
 			t->cont_singlestep();
 			if (t->is_arm_desched_event_syscall()) {
@@ -547,7 +548,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 			/* We don't care about disarm-desched-event
 			 * syscalls; they're irrelevant. */
 		} else {
-			debug("  running wrapped syscall");
+			LOG(debug) <<"  running wrapped syscall";
 			/* We may have been notified of the signal
 			 * just after arming the event, but just
 			 * before entering the syscall.  So disarm for
@@ -570,9 +571,8 @@ happy_place:
 
 static void handle_siginfo(Task* t, siginfo_t* si)
 {
-	debug("%d: handling signal %s (pevent: %d, event: %s)",
-	      t->tid, signalname(si->si_signo),
-	      t->ptrace_event(), event_name(t->ev()));
+	LOG(debug) << t->tid <<": handling signal "<< signalname(si->si_signo)
+		   <<" (pevent: "<< t->ptrace_event() <<", event: "<< t->ev();
 
 	/* We have to check for a desched event first, because for
 	 * those we *do not* want to (and cannot, most of the time)

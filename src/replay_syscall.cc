@@ -40,7 +40,7 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
+#include "log.h"
 #include "replayer.h"
 #include "task.h"
 #include "trace.h"
@@ -155,7 +155,7 @@ namespace EmuFs {
 struct File {
 	typedef shared_ptr<File> shr_ptr;
 
-	~File() { debug("    EmuFs::~File(einode:%ld)", est.st_ino); }
+	~File() { LOG(debug) <<"    EmuFs::~File(einode:"<< est.st_ino <<")"; }
 
 	/**
 	 * Ensure that the emulated file is sized to match a later
@@ -186,8 +186,8 @@ struct File {
 		shr_ptr f(new File(create_shmem_segment(name.str().c_str(),
 							est.st_size),
 				   est));
-		debug("created emulated file for %s as %s",
-		      orig_path, name.str().c_str());
+		LOG(debug) <<"created emulated file for "<< orig_path
+			   <<" as "<< name.str();
 		return f;
 	}
 
@@ -211,7 +211,7 @@ static void mark_used_vfiles(Task* t, const AddressSpace& as,
 {
 	for (auto it = as.begin(); it != as.end(); ++it) {
 		const MappableResource& r = it->second;
-		debug("  examining %s ...", r.fsname.c_str());
+		LOG(debug) <<"  examining "<< r.fsname.c_str() <<" ...";
 
 		auto id_ef = emufs.find(r.id);
 		if (id_ef == emufs.end()) {
@@ -220,10 +220,10 @@ static void mark_used_vfiles(Task* t, const AddressSpace& as,
 		auto ef = id_ef->second;
 		if (!ef->marked) {
 			ef->marked = true;
-			debug("    marked einode:%ld", r.id.inode);
+			LOG(debug) <<"    marked einode:"<< r.id.inode;
 			++*nr_marked_files;
 			if (emufs.size() == *nr_marked_files) {
-				debug("  (marked all files, bailing)");
+				LOG(debug) <<"  (marked all files, bailing)";
 				return;
 			}
 		}
@@ -237,7 +237,7 @@ void gc()
 	// shot once rr is caching local mmaps for all address spaces,
 	// which obviates the need for the yuck slow maps parsing
 	// here.
-	debug("Beginning emufs gc of %d files", emufs.size());
+	LOG(debug) <<"Beginning emufs gc of "<< emufs.size() <<" files";
 
 	// Mark in-use files by iterating through the mmaps of all
 	// tracee address spaces.
@@ -261,7 +261,7 @@ void gc()
 	for (auto it = sas.begin(); it != sas.end(); ++it) {
 		AddressSpace* as = *it;
 		Task* t = *as->task_set().begin();
-		debug("  iterating /proc/%d/maps ...", t->tid);
+		LOG(debug) <<"  iterating /proc/"<< t->tid <<"/maps ...";
 
 		mark_used_vfiles(t, *as, &nr_marked_files);
 		if (emufs.size() == nr_marked_files) {
@@ -284,7 +284,7 @@ void gc()
 		it->second->marked = false;
 	}
 	for (auto it = garbage.begin(); it != garbage.end(); ++it) {
-		debug("  emufs gc reclaiming einode:%ld", it->inode);
+		LOG(debug) <<"  emufs gc reclaiming einode:"<< it->inode;
 		emufs.erase(*it);
 	}
 }
@@ -295,8 +295,8 @@ AutoGc::AutoGc(int syscallno, int state)
 		      && (SYS_close == syscallno
 			  || SYS_munmap == syscallno)) {
 	if (is_gc_point) {
-		debug("emufs gc required because of syscall `%s'",
-		      syscallname(syscallno));
+		LOG(debug) <<"emufs gc required because of syscall `"
+			   << syscallname(syscallno) <<"'";
 	}
 }
 
@@ -355,9 +355,9 @@ static void goto_next_syscall_emu(Task *t)
 		goto_next_syscall_emu(t);
 		return;
 	} else if (SIGTRAP == sig) {
-		fatal("SIGTRAP while entering syscall ... were you using a debugger? If so, the current syscall needs to be made interruptible");
+		FATAL() <<"SIGTRAP while entering syscall ... were you using a debugger? If so, the current syscall needs to be made interruptible";
 	} else if (sig) {
-		fatal("Replay got unrecorded signal %d", sig);
+		FATAL() <<"Replay got unrecorded signal "<< sig;
 	}
 
 	/* check if we are synchronized with the trace -- should never
@@ -370,17 +370,16 @@ static void goto_next_syscall_emu(Task *t)
 		 * later, or was already delivered earlier */
 		/* TODO: this code is now obselete */
 		if (t->stop_sig() == SIGCHLD) {
-			debug("do we come here?\n");
+			LOG(debug) <<"do we come here?\n";
 			/*t->replay_sig = SIGCHLD; // remove that if
 			 * spec does not work anymore */
 			goto_next_syscall_emu(t);
 			return;
 		}
 
-		assert_exec(t, current_syscall == rec_syscall,
-			    "Should be at `%s', instead at `%s'",
-			    syscallname(rec_syscall),
-			    syscallname(current_syscall));
+		ASSERT(t, current_syscall == rec_syscall)
+			<<"Should be at `"<< syscallname(rec_syscall)
+			<<"', instead at `"<< syscallname(current_syscall) <<"'";
 	}
 	t->child_sig = 0;
 }
@@ -417,9 +416,9 @@ void __ptrace_cont(Task *t)
 		t->child_sig = 0;
 		return;
 	}
-	assert_exec(t, current_syscall == rec_syscall,
-		    "Should be at %s, but instead at %s\n",
-		    syscallname(rec_syscall), syscallname(current_syscall));
+	ASSERT(t, current_syscall == rec_syscall)
+		<<"Should be at "<< syscallname(rec_syscall)
+		<<", but instead at "<< syscallname(current_syscall);
 }
 
 void rep_maybe_replay_stdio_write(Task* t)
@@ -442,7 +441,7 @@ void rep_maybe_replay_stdio_write(Task* t)
 		t->read_bytes_helper(addr, sizeof(buf), buf);
 		maybe_mark_stdio_write(t, fd);
 		if (len != write(fd, buf, len)) {
-			fatal("Couldn't write stdio");
+			FATAL() <<"Couldn't write stdio";
 		}
 	}
 }
@@ -495,9 +494,9 @@ static void init_scratch_memory(Task* t)
 		t->scratch_ptr, sz, prot, flags, fd, offset);
 	finish_remote_syscalls(t, &state);
 
-	assert_exec(t, t->scratch_ptr == map_addr,
-		    "scratch mapped %p during recording, but %p in replay",
-		    file.start, map_addr);
+	ASSERT(t, t->scratch_ptr == map_addr)
+		<<"scratch mapped "<< file.start <<" during recording, but "
+		<< map_addr <<" in replay";
 
 	t->vm()->map(map_addr, sz, prot, flags, offset,
 		     MappableResource::scratch(t->rec_tid));
@@ -519,8 +518,8 @@ static void init_scratch_memory(Task* t)
 static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 {
 	if (t->is_untraced_syscall()) {
-		debug("  noop-restoring scratch for write-only desched'd %s",
-		      syscallname(t->regs().orig_eax));
+		LOG(debug) <<"  noop-restoring scratch for write-only desched'd "
+			   << syscallname(t->regs().orig_eax);
 		t->set_data_from_trace();
 	}
 }
@@ -710,7 +709,7 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 		step->syscall.num_emu_args = 2;
 		return;
 	default:
-		fatal("Unknown futex op %d", op);
+		FATAL() <<"Unknown futex op "<< op;
 	}
 }
 
@@ -731,7 +730,7 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	request = t->regs().ecx;
 	dir = _IOC_DIR(request);
 
-	debug("Processing ioctl 0x%x: dir 0x%x", request, dir);
+	LOG(debug) <<"Processing ioctl "<< HEX(request) <<": dir "<< HEX(dir);
 
 	/* Process special-cased ioctls first. */
 	switch (request) {
@@ -765,7 +764,7 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 
 	switch (request) {
 	default:
-		fatal("Unknown ioctl 0x%x", request);
+		FATAL() <<"Unknown ioctl "<< HEX(request);
 	}
 }
 
@@ -781,7 +780,7 @@ void process_ipc(Task* t, struct trace_frame* trace, int state,
 
 	step->action = TSTEP_EXIT_SYSCALL;
 	int call = trace->recorded_regs.ebx;
-	debug("ipc call: %d\n", call);
+	LOG(debug) <<"ipc call: "<< call;
 	switch (call) {
 	case MSGCTL:
 	case MSGRCV:
@@ -852,7 +851,8 @@ static void create_sigbus_region(Task* t,
 		void* child_str = push_tmp_str(t, state, filename, &restore);
 		child_fd = remote_syscall2(t, state, SYS_open, child_str, O_RDONLY);
 		if (0 > child_fd) {
-			fatal("Couldn't open %s to mmap in tracee", filename);
+			FATAL() <<"Couldn't open "<< filename
+				<<" to mmap in tracee";
 		}
 		pop_tmp_mem(t, state, &restore);
 	}
@@ -880,7 +880,7 @@ static void* finish_private_mmap(Task* t,
 				 off64_t offset_pages,
 				 const struct mmapped_file* file)
 {
-	debug("  finishing private mmap of %s", file->filename);
+	LOG(debug) <<"  finishing private mmap of "<< file->filename;
 
 	const struct user_regs_struct& rec_regs = trace->recorded_regs;
 	size_t num_bytes = rec_regs.ecx;
@@ -916,8 +916,8 @@ static void verify_backing_file(const struct mmapped_file* file,
 {
 	struct stat metadata;
 	if (stat(file->filename, &metadata)) {
-		fatal("Failed to stat %s: replay is impossible",
-		      file->filename);
+		FATAL() <<"Failed to stat "<< file->filename
+			<<": replay is impossible";
 	}
 	if (metadata.st_ino != file->stat.st_ino
 	    || metadata.st_mode != file->stat.st_mode
@@ -926,13 +926,11 @@ static void verify_backing_file(const struct mmapped_file* file,
 	    || metadata.st_size != file->stat.st_size
 	    || metadata.st_mtime != file->stat.st_mtime
 	    || metadata.st_ctime != file->stat.st_ctime) {
-		log_err("Metadata of %s changed: replay divergence likely, but continuing anyway ...",
-			 file->filename);
+		LOG(error) <<"Metadata of "<< file->filename <<" changed: replay divergence likely, but continuing anyway ...";
 	}
 	if (should_copy_mmap_region(file->filename, &metadata, prot, flags,
 				    WARN_DEFAULT)) {
-		log_err("%s wasn't copied during recording, but now it should be?",
-			file->filename);
+		LOG(error) << file->filename <<" wasn't copied during recording, but now it should be?";
 	}
 
 }
@@ -953,8 +951,8 @@ static void* finish_direct_mmap(Task* t,
 	int fd;
 	void* mapped_addr;
 
-	debug("directly mmap'ing %d bytes of %s at page offset 0x%llx",
-	      length, file->filename, offset_pages);
+	LOG(debug) <<"directly mmap'ing "<< length <<" bytes of "
+		   << file->filename <<" at page offset "<< HEX(offset_pages);
 
 	if (verify) {
 		verify_backing_file(file, prot, flags);
@@ -976,8 +974,8 @@ static void* finish_direct_mmap(Task* t,
 		/* TODO: unclear if O_NOATIME is relevant for mmaps */
 		fd = remote_syscall2(t, state, SYS_open, child_str, oflags);
 		if (0 > fd) {
-			fatal("Couldn't open %s to mmap in tracee",
-			      file->filename);
+			FATAL() <<"Couldn't open "<< file->filename
+				<<" to mmap in tracee";
 		}
 		pop_tmp_mem(t, state, &restore);
 	}
@@ -1046,11 +1044,12 @@ static void* finish_shared_mmap(Task* t,
 	if (ssize_t(buf.data.size()) !=
 	    pwrite64(emufs_fd, buf.data.data(), buf.data.size(),
 		     offset_bytes)) {
-		fatal("Failed to write %d bytes at %#llx to %s",
-		      buf.data.size(), offset_bytes, vfile.filename);
+		FATAL() <<"Failed to write "<< buf.data.size()
+			<<" bytes at "<< HEX(offset_bytes)
+			<<" to "<< vfile.filename;
 	}
-	debug("  restored %d bytes at 0x%llx to %s",
-	      buf.data.size(), offset_bytes, vfile.filename);
+	LOG(debug) <<"  restored "<< buf.data.size() <<" bytes at "
+		   << HEX(offset_bytes) <<" to "<< vfile.filename;
 
 	t->vm()->map(mapped_addr, buf.data.size(), prot, flags,
 		     offset_bytes,
@@ -1088,9 +1087,9 @@ static void process_mmap(Task* t,
 		struct mmapped_file file;
 		t->ifstream() >> file;
 
-		assert_exec(t, file.time == trace->global_time,
-			    "mmap time %u should equal %u",
-			    file.time, trace->global_time);
+		ASSERT(t, file.time == trace->global_time)
+			<<"mmap time "<< file.time <<" should equal "
+			<< trace->global_time;
 		if (!file.copied) {
 			mapped_addr = finish_direct_mmap(t, &state, trace,
 							 prot, flags,
@@ -1196,7 +1195,7 @@ static void process_socketcall(Task* t, int state,
 		return;
 	}
 	default:
-		fatal("Unhandled socketcall %d", call);
+		FATAL() <<"Unhandled socketcall "<< call;
 	}
 }
 
@@ -1227,9 +1226,9 @@ static void process_init_buffers(Task* t, int exec_state,
 	child_map_addr = init_buffers(t, rec_child_map_addr,
 				      DONT_SHARE_DESCHED_EVENT_FD);
 
-	assert_exec(t, child_map_addr == rec_child_map_addr,
-		    "Should have mapped syscallbuf at %p, but it's at %p",
-		    rec_child_map_addr, child_map_addr);
+	ASSERT(t, child_map_addr == rec_child_map_addr)
+		<<"Should have mapped syscallbuf at "<< rec_child_map_addr
+		<<", but it's at "<< child_map_addr;
 	validate_args(SYS_rrcall_init_buffers, STATE_SYSCALL_EXIT, t);
 }
 
@@ -1269,24 +1268,21 @@ notify_save_data_error(Task* t, void* addr,
 	dump_path_data(t, global_time,"rep_save_data",
 		       rep_dump, sizeof(rep_dump), rep_buf, rep_buf_len, addr);
 
-	assert_exec(t,
-		    rec_buf_len == rep_buf_len && !memcmp(rec_buf, rep_buf,
-							  rec_buf_len),
+	ASSERT(t, (rec_buf_len == rep_buf_len && !memcmp(rec_buf, rep_buf,
+							 rec_buf_len)))
+		<<
 "Divergence in contents of 'tracee-save buffer'.  Recording executed\n"
 "\n"
-"  write(%d, %p, %u)\n"
+"  write("<< RR_MAGIC_SAVE_DATA_FD <<", "<< addr <<", "<< rec_buf_len <<")\n"
 "\n"
 "and replay executed\n"
 "\n"
-"  write(%d, %p, %u)\n"
+"  write("<< RR_MAGIC_SAVE_DATA_FD <<", "<< addr <<", "<< rep_buf_len <<")\n"
 "\n"
 "The contents of the tracee-save buffers have been dumped to disk.\n"
 "Compare them by using the following command\n"
 "\n"
-"$ diff -u %s %s >save-data-diverge.diff\n"
-		    , RR_MAGIC_SAVE_DATA_FD, addr, rec_buf_len,
-		    RR_MAGIC_SAVE_DATA_FD, addr, rep_buf_len,
-		    rec_dump, rep_dump);
+"$ diff -u "<< rec_dump <<" "<< rep_dump <<" >save-data-diverge.diff\n";
 }
 
 /**
@@ -1310,9 +1306,9 @@ static void maybe_verify_tracee_saved_data(Task* t,
 
 	// If the data address changed, something disastrous happened
 	// and the buffers aren't comparable.  Just bail.
-	assert_exec(t, rec.addr == rep_addr,
-		    "Recorded write(%p) being replayed as write(%p)",
-		    rec.addr, rep_addr);
+	ASSERT(t, rec.addr == rep_addr)
+		<<"Recorded write("<< rec.addr <<") being replayed as write("
+		<< rep_addr <<")";
 
 	byte rep_buf[rep_len];
 	t->read_bytes_helper(rep_addr, sizeof(rep_buf), rep_buf);
@@ -1367,7 +1363,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
 	EmuFs::AutoGc maybe_gc(syscall, state);
 
-	debug("processing %s (%s)", syscallname(syscall), statename(state));
+	LOG(debug) <<"processing "<< syscallname(syscall) <<" ("
+		   << statename(state) <<")";
 
 	if (STATE_SYSCALL_EXIT == state
 	    && SYSCALL_MAY_RESTART(rec_regs->eax)) {
@@ -1378,8 +1375,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		// event to see which syscall we're trying to restart.
 		if (interrupted_restart) {
 			syscall = t->ev().Syscall().no;
-			debug("  interrupted %s interrupted again",
-			      syscallname(syscall));
+			LOG(debug) <<"  interrupted "<< syscallname(syscall)
+				   <<" interrupted again";
 		}
 		// During recording, when a syscall exits with a
 		// restart "error", the kernel sometimes restarts the
@@ -1416,23 +1413,24 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			t->ev().Syscall().regs = t->regs();
 		}
 		step->action = TSTEP_RETIRE;
-		debug("  %s interrupted by %ld at %p, may restart",
-		      syscallname(syscall), rec_regs->eax, (void*)rec_regs->eip);
+		LOG(debug) <<"  "<< syscallname(syscall) <<" interrupted by "
+			   << rec_regs->eax <<" at "<< (void*)rec_regs->eip
+			   <<", may restart";
 		return;
 	}
 
 	if (SYS_restart_syscall == syscall) {
-		assert_exec(t, EV_SYSCALL_INTERRUPTION == t->ev().type(),
-			    "Must have interrupted syscall to restart");
+		ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
+			<<"Must have interrupted syscall to restart";
 
 		syscall = t->ev().Syscall().no;
 		if (STATE_SYSCALL_ENTRY == state) {
 			void* intr_ip = (void*)t->ev().Syscall().regs.eip;
 			void* cur_ip = (void*)t->ip();
 
-			debug("'restarting' %s interrupted by %ld at %p; now at %p",
-			      syscallname(syscall), t->ev().Syscall().regs.eax,
-			      intr_ip, cur_ip);
+			LOG(debug) <<"'restarting' "<< syscallname(syscall)
+				   <<" interrupted by "<< t->ev().Syscall().regs.eax
+				   <<" at "<< intr_ip <<"; now at "<< cur_ip;
 			if (cur_ip == intr_ip) {
 				// See long comment above; this
 				// "emulates" the restart by just
@@ -1443,16 +1441,16 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			}
 		} else {
 			t->pop_syscall_interruption();
-			debug("exiting restarted %s", syscallname(syscall));
+			LOG(debug) <<"exiting restarted "<< syscallname(syscall);
 		}
 	}
 
-	assert_exec(t, syscall < int(ALEN(syscall_table)),
-		    "%d not in syscall table, but possibly valid", syscall);
+	ASSERT(t, syscall < int(ALEN(syscall_table)))
+		<< syscall <<" not in syscall table, but possibly valid";
 
 	def = &syscall_table[syscall];
-	assert_exec(t, rep_UNDEFINED != def->type,
-		    "Valid but unhandled syscallno %d", syscall);
+	ASSERT(t, rep_UNDEFINED != def->type)
+		<< "Valid but unhandled syscallno "<< syscall;
 
 	step->syscall.no = syscall;
 
@@ -1533,7 +1531,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 				step->syscall.num_emu_args = 1;
 				break;
 			default:
-				fatal("Unknown fcntl64 command: %d", cmd);
+				FATAL() <<"Unknown fcntl64 command: "<< cmd;
 			}
 		}
 		return;
@@ -1648,8 +1646,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		// because several crash-monitoring systems use ptrace
 		// to generate crash reports, and those are exactly
 		// the kinds of events users will want to debug.
-		assert_exec(t, false,
-			    "Should have reached trace termination.");
+		ASSERT(t, false) <<"Should have reached trace termination.";
 		return;		// not reached
 
 	case SYS_quotactl:
@@ -1811,6 +1808,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 	switch (syscall) {
 	default:
-		fatal("Unhandled irregular syscall %d", syscall);
+		FATAL() <<"Unhandled irregular syscall "<< syscall;
 	}
 }

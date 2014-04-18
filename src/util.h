@@ -13,6 +13,8 @@
 #include <sys/user.h>
 #include <unistd.h>
 
+#include <ostream>
+
 #include "types.h"
 
 struct msghdr;
@@ -93,6 +95,7 @@ struct mapped_segment_info {
 	int dev_major;
 	int dev_minor;
 };
+std::ostream& operator<<(std::ostream& o, const mapped_segment_info& m);
 
 /**
  * RAII helper to open a file and then close the fd when the helper

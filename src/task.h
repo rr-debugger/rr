@@ -17,12 +17,12 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <set>
 #include <utility>
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
 #include "event.h"
 #include "trace.h"
 #include "util.h"
@@ -236,6 +236,7 @@ struct Mapping {
 	const int flags;
 	const off64_t offset;
 };
+std::ostream& operator<<(std::ostream& o, const Mapping& m);
 
 /**
  * Compare |a| and |b| so that "subset" lookups will succeed.  What

@@ -36,8 +36,8 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
 #include "hpc.h"
+#include "log.h"
 #include "recorder_sched.h"
 #include "replayer.h"
 #include "task.h"
@@ -49,6 +49,13 @@ using namespace std;
 #define NUM_MAX_MAPS 1024
 
 struct flags flags;
+
+ostream& operator<<(ostream& o, const mapped_segment_info& m)
+{
+	o << m.start_addr <<"-"<< m.end_addr <<" "<<HEX(m.prot)
+	  <<" f:"<< HEX(m.flags);
+	return o;
+}
 
 const struct flags* rr_flags(void)
 {
@@ -62,7 +69,7 @@ struct flags* rr_flags_for_init(void)
 		initialized = 1;
 		return &flags;
 	}
-	fatal("Multiple initialization of flags.");
+	FATAL() <<"Multiple initialization of flags.";
 	return NULL;		/* not reached */
 }
 
@@ -122,7 +129,7 @@ void maybe_mark_stdio_write(Task* t, int fd)
 	snprintf(buf, sizeof(buf) - 1, "[rr %d %d]", t->tgid(), t->trace_time());
 	len = strlen(buf);
 	if (write(fd, buf, len) != len) {
-		fatal("Couldn't write to %d", fd);
+		FATAL() <<"Couldn't write to "<< fd;
 	}
 }
 
@@ -337,8 +344,8 @@ void iterate_memory_map(Task* t,
 		char maps_path[PATH_MAX];
 		snprintf(maps_path, sizeof(maps_path) - 1, "/proc/%d/maps",
 			t->tid);
-		assert_exec(t, (maps_file = fopen(maps_path, "r")),
-			    "Failed to open %s", maps_path);
+		ASSERT(t, (maps_file = fopen(maps_path, "r")))
+			<<"Failed to open "<< maps_path;
 	}
 	while (fgets(line, sizeof(line), maps_file)) {
 		uint64_t start, end;
@@ -355,12 +362,10 @@ void iterate_memory_map(Task* t,
 				 flags, &data.info.file_offset,
 				 &data.info.dev_major, &data.info.dev_minor,
 				 &data.info.inode, data.info.name);
-		assert_exec(t,
-			    (8/*number of info fields*/ == nparsed
-			     || 7/*num fields if name is blank*/ == nparsed),
-			    "Only parsed %d fields of segment info from\n"
-			    "%s",
-			    nparsed, data.raw_map_line);
+		ASSERT(t, (8/*number of info fields*/ == nparsed
+			   || 7/*num fields if name is blank*/ == nparsed))
+			<<"Only parsed "<< nparsed <<" fields of segment info from\n"
+			<< data.raw_map_line;
 
 		trim_leading_blanks(data.info.name);
 		if (start > numeric_limits<uint32_t>::max()
@@ -375,8 +380,8 @@ void iterate_memory_map(Task* t,
 			snprintf(proc_exe, sizeof(proc_exe),
 				 "/proc/%d/exe", t->tid);
 			readlink(proc_exe, exe, sizeof(exe));
-			fatal("Sorry, tracee %d has x86-64 image %s and that's not supported.",
-			      t->tid, exe);
+			FATAL() <<"Sorry, tracee "<< t->tid <<" has x86-64 image "
+				<< exe <<" and that's not supported.";
 		}
 		data.info.start_addr = (byte*)start;
 		data.info.end_addr = (byte*)end;
@@ -485,11 +490,11 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 				     const char* label2, long val2)
 {
 	if (mismatch_behavior >= BAIL_ON_MISMATCH) {
-		log_err("%s 0x%lx != 0x%lx (%s vs. %s)",
-			regname, val1, val2, label1, label2);
+		LOG(error) << regname <<" "<< HEX(val1) <<" != "
+			   << HEX(val2) <<" ("<< label1 <<" vs. "<< label2 <<")";
 	} else if (mismatch_behavior >= LOG_MISMATCHES) {
-		log_info("%s 0x%lx != 0x%lx (%s vs. %s)",
-			 regname, val1, val2, label1, label2);
+		LOG(info) << regname <<" "<< HEX(val1) <<" != "
+			  << HEX(val2) <<" ("<< label1 <<" vs. "<< label2 <<")";
 	}
 }
 
@@ -567,13 +572,13 @@ int compare_register_files(Task* t,
 		err |= (1 << ++errbit);
 	}
 
-	assert_exec(t, !bail_error || !err,
-		    "Fatal register mismatch (rbc/rec:%lld/%lld)",
-		    read_rbc(t->hpc), t->trace.rbc);
+	ASSERT(t, !bail_error || !err)
+		<<"Fatal register mismatch (rbc/rec:"
+		<< read_rbc(t->hpc) <<"/"<< t->trace.rbc <<")";
 
 	if (!err && mismatch_behavior == LOG_MISMATCHES) {
-		log_info("(register files are the same for %s and %s)",
-			 name1, name2);
+		LOG(info) <<"(register files are the same for "<< name1
+			  <<" and "<< name2 <<")";
 	}
 
 	return err;
@@ -713,27 +718,22 @@ static void notify_checksum_error(Task* t, int global_time,
 			     rec_dump, sizeof(rec_dump));
 
 	Event ev(t->trace.ev);
-	assert_exec(t, checksum == rec_checksum,
-"Divergence in contents of memory segment after '%s':\n"
+	ASSERT(t, checksum == rec_checksum)
+<<"Divergence in contents of memory segment after '"<< ev <<"':\n"
 "\n"
-"%s"
-"    (recorded checksum:0x%x; replaying checksum:0x%x)\n"
+<< data->raw_map_line
+<<"    (recorded checksum:"<< HEX(rec_checksum)
+<<"; replaying checksum:"<< HEX(checksum) <<")\n"
 "\n"
-"Dumped current memory contents to %s. If you've created a memory dump for\n"
-"the '%s' event (line %d) during recording by using, for example with\n"
-"the args\n"
+<<"Dumped current memory contents to "<< cur_dump <<". If you've created a memory dump for\n"
+<<"the '"<< ev <<"' event (line "<< t->trace_time() <<") during recording by using, for example with\n"
+<<"the args\n"
 "\n"
-"$ rr --dump-at=%d record ...\n"
+<<"$ rr --dump-at="<< t->trace_time() <<" record ...\n"
 "\n"
-"then you can use the following to determine which memory cells differ:\n"
+<<"then you can use the following to determine which memory cells differ:\n"
 "\n"
-"$ diff -u %s %s > mem-diverge.diff\n"
-		    , ev.str().c_str(),
-		    data->raw_map_line,
-		    rec_checksum, checksum,
-		    cur_dump, ev.str().c_str(), t->trace_time(),
-		    t->trace_time(),
-		    rec_dump, cur_dump);
+<<"$ diff -u "<< rec_dump <<" "<< cur_dump <<" > mem-diverge.diff\n";
 }
 
 /**
@@ -783,7 +783,7 @@ static int checksum_iterator(void* it_data, Task* t,
 	 * to indicate nothing was read.  And data->mem will be NULL
 	 * to double-check that.  In that case, the checksum will just
 	 * be 0. */
-	assert_exec(t, buf || valid_mem_len == 0, "");
+	ASSERT(t, buf || valid_mem_len == 0);
 	for (i = 0; i < ssize_t(valid_mem_len / sizeof(*buf)); ++i) {
 		checksum += buf[i];
 	}
@@ -801,13 +801,12 @@ static int checksum_iterator(void* it_data, Task* t,
 		fgets(line, sizeof(line), c->checksums_file);
 		nparsed = sscanf(line, "(%x) %p-%p", &rec_checksum,
 				 &rec_start_addr, &rec_end_addr);
-		assert_exec(t, 3 == nparsed, "Only parsed %d items", nparsed);
+		ASSERT(t, 3 == nparsed) << "Only parsed "<< nparsed <<" items";
 
-		assert_exec(t, (rec_start_addr == data->info.start_addr
-				&& rec_end_addr == data->info.end_addr),
-			    "Segment %p-%p changed to %p-%p??",
-			    rec_start_addr, rec_end_addr,
-			    data->info.start_addr, data->info.end_addr);
+		ASSERT(t, (rec_start_addr == data->info.start_addr
+			   && rec_end_addr == data->info.end_addr))
+			<< "Segment "<< rec_start_addr <<"-"<< rec_end_addr
+			<<" changed to "<< data->info <<"??";
 
 		if (is_start_of_scratch_region(rec_start_addr)) {
 			/* Replay doesn't touch scratch regions, so
@@ -815,8 +814,8 @@ static int checksum_iterator(void* it_data, Task* t,
 			 * Tracees can't observe those segments unless
 			 * they do something sneaky (or disastrously
 			 * buggy). */
-			debug("Not validating scratch starting at %p",
-			      rec_start_addr);
+			LOG(debug) <<"Not validating scratch starting at "
+				   << rec_start_addr;
 			return CONTINUE_ITERATING;
 		}
 	 	if (checksum != rec_checksum) {
@@ -836,7 +835,7 @@ static int checksum_segment_filter(void* filt_data, Task* t,
 	if (stat(info->name, &st)) {
 		/* If there's no persistent resource backing this
 		 * mapping, we should expect it to change. */
-		debug("CHECKSUMMING unlinked '%s'", info->name);
+		LOG(debug) <<"CHECKSUMMING unlinked '"<< info->name <<"'";
 		return 1;
 	}
 	/* If we're pretty sure the backing resource is effectively
@@ -847,8 +846,8 @@ static int checksum_segment_filter(void* filt_data, Task* t,
 					       info->prot, info->flags,
 					       DONT_WARN_SHARED_WRITEABLE)
 		       || (PROT_WRITE & info->prot));
-	debug("%s '%s'",
-	      may_diverge ? "CHECKSUMMING" : "  skipping", info->name);
+	LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping")
+		   <<" '"<< info->name <<"'";
 	return may_diverge;
 }
 
@@ -870,7 +869,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 	c.checksums_file = fopen64(filename, fmode);
 	c.global_time = global_time;
 	if (!c.checksums_file) {
-		fatal("Failed to open checksum file %s", filename);
+		FATAL() <<"Failed to open checksum file "<< filename;
 	}
 
 	iterate_memory_map(t, checksum_iterator, &c,
@@ -1000,8 +999,8 @@ bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val)
 	bool now_contended = (owner_tid != 0 && owner_tid != t->rec_tid
 			      && !(val & FUTEX_WAITERS));
 	if (now_contended) {
-		debug("[%d] %d: futex %p is %d, so WAITERS bit will be set",
-		      get_global_time(), t->tid, futex, val);
+		LOG(debug) << t->tid <<": futex "<< futex <<" is "
+			   << val <<", so WAITERS bit will be set";
 		*next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
 	}
 	return now_contended;
@@ -1051,7 +1050,8 @@ int default_action(int sig)
 	/*CASE(LOST, TERMINATE);*/
 	CASE(WINCH, IGNORE);
 	default:
-		fatal("Unknown signal %d", sig);
+		FATAL() <<"Unknown signal "<< sig;
+		return -1;	// not reached
 #undef CASE
 	}
 }
@@ -1090,11 +1090,11 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 	// TODO: handle mmap'd files that are unlinked during
 	// recording.
 	if (!has_fs_name(filename)) {
-		debug("  copying unlinked file");
+		LOG(debug) <<"  copying unlinked file";
 		return true;
 	}
 	if (is_tmp_file(filename)) {
-		debug("  copying file on tmpfs");
+		LOG(debug) <<"  copying file on tmpfs";
 		return true;
 	}
 	if (private_mapping && (prot & PROT_EXEC)) {
@@ -1103,7 +1103,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 		 * *cough*), we're doing no worse (in theory) by being
 		 * optimistic about the shared libraries too, most of
 		 * which are system libraries. */
-		debug("  (no copy for +x private mapping %s)", filename);
+		LOG(debug) <<"  (no copy for +x private mapping "<< filename <<")";
 		return false;
 	}
 	if (private_mapping && (0111 & stat->st_mode)) {
@@ -1112,7 +1112,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 		 * Since we're already assuming those change very
 		 * infrequently, we can avoid copying the data
 		 * sections too. */
-		debug("  (no copy for private mapping of +x %s)", filename);
+		LOG(debug) <<"  (no copy for private mapping of +x "<< filename <<")";
 		return false;
 	}
 
@@ -1136,7 +1136,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 		 * frequent than even system updates.
 		 *
 		 * XXX what about the fontconfig cache files? */
-		debug("  (no copy for root-owned %s)", filename);
+		LOG(debug) <<"  (no copy for root-owned "<< filename <<")";
 		return false;
 	}
 	if (private_mapping) {
@@ -1150,8 +1150,8 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 		 *
 		 * TODO: could get into dirty heuristics here like
 		 * trying to match "cache" in the filename ...	 */
-		debug("  copying private mapping of non-system -x %s",
-		      filename);
+		LOG(debug) <<"  copying private mapping of non-system -x "
+			   << filename;
 		return true;
 	}
 	if (!(0222 & stat->st_mode)) {
@@ -1159,23 +1159,22 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
 		 * But it's not a root-owned file (therefore not a
 		 * system file), so it's likely that it could be
 		 * temporary.  Copy it. */
-		debug("  copying read-only, non-system file");
+		LOG(debug) <<"  copying read-only, non-system file";
 		return true;
 	}
 	if (!can_write_file) {
 		/* mmap'ing another user's (non-system) files?  Highly
 		 * irregular ... */
-		fatal("Unhandled mmap %s(prot:%x%s); uid:%d mode:%o",
-		      filename, prot, (flags & MAP_SHARED) ? ";SHARED" : "",
-		      stat->st_uid, stat->st_mode);
+		FATAL() <<"Unhandled mmap "<< filename <<"(prot:"
+			<< HEX(prot) << ((flags & MAP_SHARED) ? ";SHARED" : "")
+			<<"); uid:"<< stat->st_uid <<" mode:"<< stat->st_mode;
 	}
 	/* Shared mapping that we can write.  Should assume that the
 	 * mapping is likely to change. */
-	debug("  copying writeable SHARED mapping %s", filename);
+	LOG(debug) <<"  copying writeable SHARED mapping "<< filename;
 	if (PROT_WRITE | prot) {
 		if (warn_shared_writeable) {
-			debug("%s is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written by programs outside the rr tracee tree.",
-			 filename);
+			LOG(debug) << filename <<" is SHARED|WRITEABLE; that's not handled correctly yet. Optimistically hoping it's not written by programs outside the rr tracee tree.";
 		}
 	}
 	return true;
@@ -1188,21 +1187,21 @@ int create_shmem_segment(const char* name, size_t num_bytes, int cloexec)
 
 	int fd = open(path, O_CREAT | O_EXCL | O_RDWR | cloexec, 0600);
 	if (0 > fd) {
-		fatal("Failed to create shmem segment %s", path);
+		FATAL() <<"Failed to create shmem segment "<< path;
 	}
 	/* Remove the fs name so that we don't have to worry about
 	 * cleaning up this segment in error conditions. */
 	unlink(path);
 	resize_shmem_segment(fd, num_bytes);
 
-	debug("created shmem segment %s", path);
+	LOG(debug) <<"created shmem segment "<< path;
 	return fd;
 }
 
 void resize_shmem_segment(int fd, size_t num_bytes)
 {
 	if (ftruncate(fd, num_bytes)) {
-		fatal("Failed to resize shmem to %d", num_bytes);
+		FATAL() <<"Failed to resize shmem to "<< num_bytes;
 	}
 }
 
@@ -1289,9 +1288,9 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 
 	advance_syscall(t);
 
-	assert_exec(t, t->regs().orig_eax == syscallno,
-		    "Should be entering %s, but instead at %s",
-		    syscallname(syscallno), syscallname(callregs.orig_eax));
+	ASSERT(t, t->regs().orig_eax == syscallno)
+		<<"Should be entering "<< syscallname(syscallno)
+		<<", but instead at "<< syscallname(callregs.orig_eax);
 
 	/* Start running the syscall. */
 	t->cont_syscall_nonblocking();
@@ -1308,9 +1307,9 @@ long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 	/* Wait for syscall-exit trap. */
 	t->wait();
 
-	assert_exec(t, t->regs().orig_eax == syscallno,
-		    "Should be entering %s, but instead at %s",
-		    syscallname(syscallno), syscallname(regs.orig_eax));
+	ASSERT(t, t->regs().orig_eax == syscallno)
+		<<"Should be entering "<< syscallname(syscallno)
+		<<", but instead at "<< syscallname(regs.orig_eax);
 
 	return t->regs().eax;
 }
@@ -1359,7 +1358,7 @@ static void send_fd(int fd, int sock)
 	*(int*)CMSG_DATA(cmsg) = fd;
 
 	if (0 >= sendmsg(sock, &msg, 0)) {
-		fatal("Failed to send fd");
+		FATAL() <<"Failed to send fd";
 	}
 }
 
@@ -1387,7 +1386,7 @@ static int recv_fd(int sock, int* remote_fdno)
 	msg.msg_controllen = sizeof(cmsgbuf);
 
 	if (0 >= recvmsg(sock, &msg, 0)) {
-		fatal("Failed to receive fd");
+		FATAL() <<"Failed to receive fd";
 	}
 
 	cmsg = CMSG_FIRSTHDR(&msg);
@@ -1437,10 +1436,10 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	/* Bind the server socket, but don't start listening yet. */
 	listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (::bind(listen_sock, (struct sockaddr*)&addr, sizeof(addr))) {
-		fatal("Failed to bind listen socket");
+		FATAL() <<"Failed to bind listen socket";
 	}
 	if (listen(listen_sock, 1)) {
-		fatal("Failed to mark listening for listen socket");
+		FATAL() <<"Failed to mark listening for listen socket";
 	}
 
 	/* Initiate tracee connect(), but don't wait for it to
@@ -1450,7 +1449,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 				     SYS_SOCKET, args->args_vec);
 	if (0 > child_sock) {
 		errno = -child_sock;
-		fatal("Failed to create child socket");
+		FATAL() <<"Failed to create child socket";
 	}
 	write_socketcall_args(t, args->args_vec, child_sock,
 			      (uintptr_t)args->sockaddr,
@@ -1466,7 +1465,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	sock = accept(listen_sock, NULL, NULL);
 	if ((child_ret = wait_remote_syscall(t, state, SYS_socketcall))) {
 		errno = -child_ret;
-		fatal("Failed to connect() in tracee");
+		FATAL() <<"Failed to connect() in tracee";
 	}
 	/* Socket name not needed anymore. */
 	unlink(addr.sun_path);
@@ -1489,7 +1488,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 		t->desched_fd = recv_fd(sock, &t->desched_fd_child);
 		if (0 >= wait_remote_syscall(t, state, SYS_socketcall)) {
 			errno = -child_ret;
-			fatal("Failed to sendmsg() in tracee");
+			FATAL() <<"Failed to sendmsg() in tracee";
 		}
 	} else {
 		t->desched_fd_child = REPLAY_DESCHED_EVENT_FD;
@@ -1504,7 +1503,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 				    SYS_RECVMSG, args->args_vec);
 	if (0 >= child_ret) {
 		errno = -child_ret;
-		fatal("Failed to recvmsg() shared fd in tracee");
+		FATAL() <<"Failed to recvmsg() shared fd in tracee";
 	}
 
 	/* Get the newly-allocated fd. */
@@ -1530,7 +1529,7 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	if ((void*)-1 == (map_addr = mmap(NULL, t->num_syscallbuf_bytes,
 					  prot, flags,
 					  shmem_fd, offset_pages))) {
-		fatal("Failed to mmap shmem region");
+		FATAL() <<"Failed to mmap shmem region";
 	}
 	child_map_addr = (byte*)remote_syscall6(t, state, SYS_mmap2,
 						map_hint,
@@ -1568,11 +1567,11 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 	child_args = (void*)state.regs.ebx;
 	t->read_mem(child_args, &args);
 
-	assert_exec(t,
-		    rr_flags()->use_syscall_buffer == !!args.syscallbuf_enabled,
-		    "Tracee things syscallbuf is %sabled, but tracer things %sabled",
-		    args.syscallbuf_enabled ? "en" : "dis",
-		    rr_flags()->use_syscall_buffer ? "en" : "dis");
+	ASSERT(t, rr_flags()->use_syscall_buffer == !!args.syscallbuf_enabled)
+		<<"Tracee things syscallbuf is "
+		<< (args.syscallbuf_enabled ? "en" : "dis")
+		<<"abled, but tracer thinks "
+		<< (rr_flags()->use_syscall_buffer ? "en" : "dis") <<"abled";
 	if (args.syscallbuf_enabled) {
 		child_map_addr =
 			init_syscall_buffer(t, &state, &args,
@@ -1612,9 +1611,9 @@ void destroy_buffers(Task* t, int flags)
 	}
 
 	struct user_regs_struct exit_regs = t->regs();
-	assert_exec(t, SYS_exit == exit_regs.orig_eax,
-		    "Tracee should have been at exit, but instead at %s",
-		    syscallname(exit_regs.orig_eax));
+	ASSERT(t, SYS_exit == exit_regs.orig_eax)
+		<< "Tracee should have been at exit, but instead at "
+		<< syscallname(exit_regs.orig_eax);
 
 	// The tracee is at the entry to SYS_exit, but hasn't started
 	// the call yet.  We can't directly start injecting syscalls
@@ -1640,8 +1639,8 @@ void destroy_buffers(Task* t, int flags)
 
 	byte insn[sizeof(syscall_insn)];
 	t->read_bytes((void*)exit_regs.eip, insn);
-	assert_exec(t, !memcmp(insn, syscall_insn, sizeof(insn)),
-		    "Tracee should have entered through int $0x80.");
+	ASSERT(t, !memcmp(insn, syscall_insn, sizeof(insn)))
+		<<"Tracee should have entered through int $0x80.";
 
 	struct current_state_buffer state;
 	prepare_remote_syscalls(t, &state);
@@ -1697,8 +1696,9 @@ static bool is_kernel_vsyscall(Task* t, void* addr)
 	t->read_bytes(addr, impl);
 	for (size_t i = 0; i < sizeof(vsyscall_impl); ++i) {
 		if (vsyscall_impl[i] != impl[i]) {
-			log_warn("Byte %d of __kernel_vsyscall should be 0x%x, but is 0x%x",
-				 i, vsyscall_impl[i], impl[i]);
+			LOG(warn) <<"Byte "<< i <<" of __kernel_vsyscall should be "
+				  << HEX(vsyscall_impl[i]) <<" but is "
+				  << HEX(impl[i]);
 			return false;
 		}
 	}
@@ -1768,26 +1768,26 @@ static void monkeypatch(Task* t, void* kernel_vsyscall,
 	patch.insns.vsyscall_hook_trampoline = vsyscall_hook_trampoline;
 
 	t->write_bytes(kernel_vsyscall, patch.bytes);
-	debug("monkeypatched __kernel_vsyscall to jump to %p",
-	      vsyscall_hook_trampoline);
+	LOG(debug) <<"monkeypatched __kernel_vsyscall to jump to "
+		   << vsyscall_hook_trampoline;
 }
 
 void monkeypatch_vdso(Task* t)
 {
 	void* kernel_vsyscall = locate_and_verify_kernel_vsyscall(t);
 	if (!kernel_vsyscall) {
-		fatal(
+		FATAL() <<
 "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't recognized.\n"
 "    Syscall buffering is now effectively disabled.  If you're OK with\n"
 "    running rr without syscallbuf, then run the recorder passing the\n"
 "    --no-syscall-buffer arg.\n"
-"    If you're *not* OK with that, file an issue.");
+"    If you're *not* OK with that, file an issue.";
 	}
 
-	debug("__kernel_vsyscall is %p", kernel_vsyscall);
+	LOG(debug) <<"__kernel_vsyscall is "<< kernel_vsyscall;
 
-	assert_exec(t, 1 == t->vm()->task_set().size(),
-		    "TODO: monkeypatch multithreaded process");
+	ASSERT(t, 1 == t->vm()->task_set().size())
+		<<"TODO: monkeypatch multithreaded process";
 
 	// NB: the tracee can't be interrupted with a signal while
 	// we're processing the rrcall, because it's masked off all

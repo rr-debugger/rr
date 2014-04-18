@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+#include <ostream>
+
 #include "types.h"
 
 #define DBG_SOCKET_READY_SIG SIGURG
@@ -25,6 +27,12 @@ struct dbg_threadid_t {
 		return pid == o.pid && tid == o.tid;
 	}
 };
+
+inline static std::ostream& operator<<(std::ostream& o,
+				       const dbg_threadid_t& t) {
+	o << t.pid <<"."<< t.tid;
+	return o;
+}
 
 static const dbg_threadid_t DBG_ANY_THREAD = { 0, 0 };
 static const dbg_threadid_t DBG_ALL_THREADS = { -1, -1 };
