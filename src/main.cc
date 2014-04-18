@@ -15,8 +15,8 @@
 #include "preload/syscall_buffer.h"
 
 #include "config.h"
-#include "dbg.h"
 #include "hpc.h"
+#include "log.h"
 #include "recorder.h"
 #include "recorder_sched.h"
 #include "replayer.h"
@@ -96,7 +96,7 @@ static void start(const char* rr_exe, int argc, char* argv[], char** envp)
 	case DUMP_EVENTS:
 		return start_dumping(argc, argv, envp);
 	default:
-		fatal("Uknown option %d", rr_flags()->option);
+		FATAL() <<"Uknown option "<< rr_flags()->option;
 	}
 }
 
@@ -112,7 +112,7 @@ static int read_int_file(const char* filename)
 		return -1;
 	}
 	if (1 != fscanf(inf, "%d", &val)) {
-		fatal("Failed to scan integer from %s", filename);
+		FATAL() <<"Failed to scan integer from " << filename;
 	}
 	fclose(inf);
 	return val;
@@ -122,8 +122,8 @@ static void assert_prerequisites(void) {
 	int ptrace_scope_val =
 		read_int_file("/proc/sys/kernel/yama/ptrace_scope");
 	if (ptrace_scope_val > 0) {
-		fatal("Can't write to process memory; ptrace_scope is %d",
-		      ptrace_scope_val);
+		FATAL() <<"Can't write to process memory; ptrace_scope is "
+			<< ptrace_scope_val;
 	}
 	// NB: we hard-code "cpu0" here because rr pins itself and all
 	// tracees to cpu 0.  We don't care about the other CPUs.
@@ -133,13 +133,13 @@ static void assert_prerequisites(void) {
 		// If the file doesn't exist, the system probably
 		// doesn't have the ability to frequency-scale, for
 		// example a VM.
-		log_warn("Unable to check CPU-frequency governor.");
+		LOG(warn) <<"Unable to check CPU-frequency governor.";
 		return;
 	}
 	char governor[PATH_MAX];
 	ssize_t nread = read(fd, governor, sizeof(governor) - 1);
 	if (0 > nread) {
-		fatal("Unable to read cpu0's frequency governor.");
+		FATAL() <<"Unable to read cpu0's frequency governor.";
 	}
 	governor[nread] = '\0';
 	ssize_t len = strlen(governor);
@@ -147,7 +147,7 @@ static void assert_prerequisites(void) {
 		// Eat the '\n'.
 		governor[len - 1] = '\0';
 	}
-	log_info("cpu0's frequency governor is '%s'", governor);
+	LOG(info) <<"cpu0's frequency governor is '"<< governor <<"'";
 	if (strcmp("performance", governor)) {
 		fprintf(stderr,
 "\n"
@@ -377,15 +377,15 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			return optind;
 		case 'c':
 			if (!strcmp("on-syscalls", optarg)) {
-				log_info("checksumming on syscall exit");
+				LOG(info) <<"checksumming on syscall exit";
 				flags->checksum = CHECKSUM_SYSCALL;
 			} else if (!strcmp("on-all-events", optarg)) {
-				log_info("checksumming on all events");
+				LOG(info) <<"checksumming on all events";
 				flags->checksum = CHECKSUM_ALL;
 			} else {
 				flags->checksum = atoi(optarg);
-				log_info("checksumming on at event %d",
-					 flags->checksum);
+				LOG(info) <<"checksumming on at event "
+					  << flags->checksum;
 			}
 			break;
 		case 'd':
@@ -512,12 +512,11 @@ int main(int argc, char* argv[])
 		struct timespec ts;
 		ts.tv_sec = wait_secs;
 		ts.tv_nsec = 0;
-		log_info("Waiting %d seconds before continuing ...",
-			 wait_secs);
+		LOG(info) <<"Waiting "<< wait_secs <<" seconds before continuing ...";
 		if (nanosleep_nointr(&ts)) {
-			fatal("Failed to wait requested duration");
+			FATAL() <<"Failed to wait requested duration";
 		}
-		log_info("... continuing.");
+		LOG(info) <<"... continuing.";
 	}
 
 	if (!rr_flags()->cpu_unbound) {
@@ -539,13 +538,13 @@ int main(int argc, char* argv[])
 		CPU_ZERO(&mask);
 		CPU_SET(0, &mask);
 		if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
-			fatal("Couldn't bind to CPU 0");
+			FATAL() <<"Couldn't bind to CPU 0";
 		}
 	}
 
 	if (RECORD == flags->option) {
-		log_info("Scheduler using max_events=%d, max_rbc=%d",
-			 flags->max_events, flags->max_rbc);
+		LOG(info) << "Scheduler using max_events="<< flags->max_events
+			  <<", max_rbc="<< flags->max_rbc;
 
 		// The syscallbuf library interposes some critical
 		// external symbols like XShmQueryExtension(), so we
@@ -553,7 +552,7 @@ int main(int argc, char* argv[])
 		if (flags->use_syscall_buffer) {
 			setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
 		} else {
-			log_info("Syscall buffer disabled by flag");
+			LOG(info) <<"Syscall buffer disabled by flag";
 			unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
 		}
 		flags->syscall_buffer_lib_path = find_syscall_buffer_library();

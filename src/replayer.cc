@@ -33,9 +33,9 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
 #include "debugger_gdb.h"
 #include "hpc.h"
+#include "log.h"
 #include "replay_syscall.h"
 #include "task.h"
 #include "trace.h"
@@ -192,13 +192,13 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		return continue_all_tasks;
 	}
 	while (1) {
-		debug("%d (rec:%d): getting next debugger request ...",
-		      t->tid, t->rec_tid);
+		LOG(debug) << t->tid <<" (rec:"<< t->rec_tid
+			   <<"): getting next debugger request ...";
 		struct dbg_request req = dbg_get_request(dbg);
 		Task* target = NULL;
 
 		if (dbg_is_resume_request(&req)) {
-			debug("  is resume request");
+			LOG(debug) <<"  is resume request";
 			return req;
 		}
 
@@ -206,7 +206,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		// from the beginning.  Restart our debug session.
 		if (DREQ_RESTART == req.type) {
 			restart_replay(dbg, req);
-			fatal("Not reached");
+			FATAL() <<"Not reached";
 		}
 
 		/* These requests don't require a target task. */
@@ -335,11 +335,11 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_SET_SW_BREAK:
-			assert_exec(target,
-				    (req.mem.len ==
-				     sizeof(AddressSpace::breakpoint_insn)),
-				    "Debugger setting bad breakpoint insn");
-			target->vm()->set_breakpoint(req.mem.addr,
+			ASSERT(target,
+			       (req.mem.len ==
+				sizeof(AddressSpace::breakpoint_insn)))
+				<< "Debugger setting bad breakpoint insn";
+		target->vm()->set_breakpoint(req.mem.addr,
 						     TRAP_BKPT_USER);
 			dbg_reply_watchpoint_request(dbg, 0);
 			continue;
@@ -359,7 +359,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_watchpoint_request(dbg, -1);
 			continue;
 		default:
-			fatal("Unknown debugger request %d", req.type);
+			FATAL() <<"Unknown debugger request "<< req.type;
 		}
 	}
 }
@@ -433,8 +433,9 @@ static void validate_args(int event, int state, Task* t)
 		 * but either way it's not supposed to happen.  So we
 		 * fudge registers here to cover up that bug. */
 		if (t->regs().esi != rec_regs.esi) {
-			log_warn("Probably saw kernel bug mutating $esi across pread/write64 call: recorded:0x%lx; replaying:0x%lx.  Fudging registers.",
-				 rec_regs.esi, t->regs().esi);
+			LOG(warn) <<"Probably saw kernel bug mutating $esi across pread/write64 call: recorded:"
+				  << HEX(rec_regs.esi) <<"; replaying:"
+				  << t->regs().esi <<".  Fudging registers.";
 			rec_regs.esi = t->regs().esi;
 		}
 	}
@@ -513,8 +514,8 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi)
 	case SIGTRAP:
 		return 1;
 	default:
-		assert_exec(t, 0, "Replay got unrecorded signal %d",
-			    t->child_sig);
+		ASSERT(t, false) << "Replay got unrecorded signal "
+				 << t->child_sig;
 	}
 
 	assert(t->child_sig == 0);
@@ -614,11 +615,11 @@ static void continue_or_step(Task* t, int stepi)
 	if (child_sig_gt_zero) {
 		return;
 	}
-	assert_exec(t, child_sig_gt_zero,
-		    "Replaying `%s': expecting tracee signal or trap, but instead at `%s' (rcb: %lld)",
-		    Event(t->trace.ev).str().c_str(),
-		    syscallname(t->regs().orig_eax),
-		    read_rbc(t->hpc));
+	ASSERT(t, child_sig_gt_zero)
+		<< "Replaying `"<< Event(t->trace.ev)
+		<<"': expecting tracee signal or trap, but instead at `"
+		<< syscallname(t->regs().orig_eax) <<"' (rcb: "
+		<< read_rbc(t->hpc) <<")";
 }
 
 /**
@@ -745,7 +746,7 @@ static void guard_overshoot(Task* t,
 	if (!remaining_rcbs_gt_0) {
 		long target_ip = target_regs->eip;
 
-		log_err("Replay diverged.  Dumping register comparison.");
+		LOG(error) <<"Replay diverged.  Dumping register comparison.";
 		/* Cover up the internal breakpoint that we may have
 		 * set, and restore the tracee's $ip to what it would
 		 * have been had it not hit the breakpoint (if it did
@@ -758,9 +759,9 @@ static void guard_overshoot(Task* t,
 		}
 		compare_register_files(t, "rep overshoot", &t->regs(),
 				       "rec", target_regs, LOG_MISMATCHES);
-		assert_exec(t, remaining_rcbs_gt_0,
-			    "overshot target rcb=%lld by %lld",
-			    target_rcb, -remaining_rcbs);
+		ASSERT(t, remaining_rcbs_gt_0)
+			<< "overshot target rcb="<< target_rcb <<" by "
+			<< -remaining_rcbs;
 	}
 }
 
@@ -780,9 +781,8 @@ static void guard_unexpected_signal(Task* t)
 	} else {
 		ev = SyscallEvent(max(0L, t->regs().orig_eax));
 	}
-	assert_exec(t, child_sig_is_zero_or_sigtrap,
-		    "Replay got unrecorded event %s while awaiting signal\n",
-		    ev.str().c_str());
+	ASSERT(t, child_sig_is_zero_or_sigtrap)
+		<< "Replay got unrecorded event "<< ev <<" while awaiting signal";
 }
 
 static int is_same_execution_point(Task* t,
@@ -797,8 +797,8 @@ static int is_same_execution_point(Task* t,
 #endif
 		;
 	if (0 != rcbs_left) {
-		debug("  not same execution point: %lld rcbs left (@%p)",
-		      rcbs_left, (void*)rec_regs->eip);
+		LOG(debug) <<"  not same execution point: "<< rcbs_left
+			   <<" rcbs left (@"<< HEX(rec_regs->eip) <<")";
 #ifdef DEBUGTAG
 		compare_register_files(t, "(rep)", &t->regs(),
 				       "(rec)", rec_regs, LOG_MISMATCHES);
@@ -807,11 +807,11 @@ static int is_same_execution_point(Task* t,
 	}
 	if (compare_register_files(t, "rep", &t->regs(), "rec", rec_regs,
 				   behavior)) {
-		debug("  not same execution point: regs differ (@%p)",
-		      (void*)rec_regs->eip);
+		LOG(debug) <<"  not same execution point: regs differ (@"
+			   << HEX(rec_regs->eip) <<")";
 		return 0;
 	}
-	debug("  same execution point");
+	LOG(debug) <<"  same execution point";
 	return 1;
 }
 
@@ -838,8 +838,8 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 	 * quickly as possible by programming the hpc. */
 	rcbs_left = *rcb - read_rbc(t->hpc);
 
-	debug("advancing %lld rcbs to reach %lld/%p",
-	      rcbs_left, *rcb, ip);
+	LOG(debug) <<"advancing "<< rcbs_left <<" rcbs to reach "<< *rcb
+		   <<"/"<< ip;
 
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcbs_left - SKID_SIZE > SKID_SIZE) {
@@ -855,8 +855,8 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 		}
 		t->child_sig = 0;
 
-		debug("  programming interrupt for %lld rcbs",
-		      rcbs_left - SKID_SIZE);
+		LOG(debug) <<"  programming interrupt for "
+			   << (rcbs_left - SKID_SIZE) <<" rcbs";
 		*rcb -= read_rbc(t->hpc);
 		reset_hpc(t, rcbs_left - SKID_SIZE);
 
@@ -876,7 +876,8 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 		 * signals; should assert that the siginfo says the
 		 * source is io-ready and the fd is the child's fd. */
 		if (fcntl(t->hpc->rbc.fd, F_GETOWN) != tid) {
-			fatal("Scheduled task %d doesn't own hpc; replay divergence", tid);
+			FATAL() <<"Scheduled task "<< tid 
+				<<" doesn't own hpc; replay divergence";
 		}
 
 		rcbs_left = *rcb - read_rbc(t->hpc);
@@ -926,15 +927,15 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 			case TRAP_STEPI:
 				/* Case (0) above: interrupt for the
 				 * debugger. */
-				debug("    trap was debugger interrupt %d",
-				      trap_type);
+				LOG(debug) <<"    trap was debugger interrupt "
+					   << trap_type;
 				return 1;
 			case TRAP_BKPT_INTERNAL: {
 				/* Case (1) above: cover the tracks of
 				 * our internal breakpoint, and go
 				 * check again if we're at the
 				 * target. */
-				debug("    trap was for target $ip");
+				LOG(debug) <<"    trap was for target $ip";
 				/* (The breakpoint would have trapped
 				 * at the $ip one byte beyond the
 				 * target.) */
@@ -956,7 +957,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 				 * the target.  Unfortunately, it's
 				 * awkward to assert that here, so we
 				 * don't yet.  TODO. */
-				debug("    (SIGTRAP; stepi'd target $ip)");
+				LOG(debug) <<"    (SIGTRAP; stepi'd target $ip)";
 				assert(!stepi);
 				t->child_sig = 0;
 				break;
@@ -992,7 +993,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 			 * imprecise counters.  This should still be
 			 * no slower than single-stepping our way to
 			 * the target execution point. */
-			debug("    breaking on target $ip");
+			LOG(debug) <<"    breaking on target $ip";
 			t->vm()->set_breakpoint(ip, TRAP_BKPT_INTERNAL);
 			continue_or_step(t, stepi);
 		} else {
@@ -1000,7 +1001,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 			 * on the $ip, because resuming execution
 			 * would just trap and we'd be back where we
 			 * started.  Single-step past it. */
-			debug("    (single-stepping over target $ip)");
+			LOG(debug) <<"    (single-stepping over target $ip)";
 			continue_or_step(t, STEPI);
 		}
 
@@ -1059,13 +1060,14 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 		// that knows what to do.
 		return 1;
 	}
-	assert_exec(oldtask, t == oldtask, "emulate_signal_delivery changed task");
+	ASSERT(oldtask, t == oldtask) <<"emulate_signal_delivery changed task";
 	const struct trace_frame* trace = &t->trace;
 
 	/* Restore the signal-hander frame data, if there was one. */
 	bool restored_sighandler_frame = 0 < t->set_data_from_trace();
 	if (restored_sighandler_frame) {
-		debug("--> restoring sighandler frame for %s", signalname(sig));
+		LOG(debug) <<"--> restoring sighandler frame for "
+			   << signalname(sig);
 		t->push_event(SignalEvent(sig, sigtype));
 		t->ev().transform(EV_SIGNAL_DELIVERY);
 		t->ev().transform(EV_SIGNAL_HANDLER);
@@ -1096,10 +1098,10 @@ static void assert_at_recorded_rcb(Task* t, const Event& ev)
 	if (!validate) {
 		return;
 	}
-	assert_exec(t, (!t->hpc->started
-			|| llabs(rbc_now - t->trace.rbc) <= rbc_slack),
-		    "rbc mismatch for '%s'; expected %lld, got %lld",
-		    ev.str().c_str(), t->trace.rbc, read_rbc(t->hpc));
+	ASSERT(t, (!t->hpc->started
+		   || llabs(rbc_now - t->trace.rbc) <= rbc_slack))
+		<<"rbc mismatch for '"<< ev <<"'; expected "
+		<< t->trace.rbc <<", got "<< read_rbc(t->hpc) <<"";
 }
 
 /**
@@ -1121,9 +1123,9 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 		   && is_debugger_trap(t, sig, DETERMINISTIC, UNKNOWN, stepi)) {
 		return 1;
 	}
-	assert_exec(t, t->child_sig == sig,
-		    "Replay got unrecorded signal %d (expecting %d)",
-		    t->child_sig, sig);
+	ASSERT(t, t->child_sig == sig)
+		<< "Replay got unrecorded signal "<< t->child_sig
+		<<" (expecting "<< sig <<")";
 	assert_at_recorded_rcb(t, ev);
 
 	if (EV_SEGV_RDTSC == ev.type()) {
@@ -1180,10 +1182,10 @@ static int skip_desched_ioctl(Task* t,
 	is_desched_syscall = (DESCHED_ARM == ds->type ?
 			      t->is_arm_desched_event_syscall() :
 			      t->is_disarm_desched_event_syscall());
-	assert_exec(t, is_desched_syscall,
-		    "Failed to reach desched ioctl; at %s(%ld, %ld) instead",
-		    syscallname(t->regs().orig_eax),
-		    t->regs().ebx, t->regs().ecx);
+	ASSERT(t, is_desched_syscall)
+		<<"Failed to reach desched ioctl; at "
+		<< syscallname(t->regs().orig_eax) <<"("<< t->regs().ebx
+		<<", "<< t->regs().ecx <<") instead";
 	/* Emulate a return value of "0".  It's OK for us to hard-code
 	 * that value here, because the syscallbuf lib aborts if a
 	 * desched ioctl returns non-zero (it doesn't know how to
@@ -1241,12 +1243,12 @@ static void prepare_syscallbuf_records(Task* t,
  */
 static void assert_at_buffered_syscall(Task* t, int syscallno)
 {
-	assert_exec(t, t->is_untraced_syscall(),
-		    "Bad ip %p: should have been buffered-syscall ip", t->ip());
-	assert_exec(t, t->regs().orig_eax == syscallno,
-		    "At %s; should have been at %s(%d)",
-		    syscallname(t->regs().orig_eax),
-		    syscallname(syscallno), syscallno);
+	ASSERT(t, t->is_untraced_syscall())
+		<< "Bad ip "<< t->ip() <<": should have been buffered-syscall ip";
+	ASSERT(t, t->regs().orig_eax == syscallno)
+		<< "At "<< syscallname(t->regs().orig_eax)
+		<<"; should have been at "<< syscallname(syscallno)
+		<<"("<< syscallno <<")";
 }
 
 /**
@@ -1257,14 +1259,14 @@ static void assert_same_rec(Task* t,
 			    const struct syscallbuf_record* rec_rec,
 			    struct syscallbuf_record* rep_rec)
 {
-	assert_exec(t,
-		    rec_rec->syscallno == rep_rec->syscallno
-		    && rec_rec->desched == rep_rec->desched
-		    && rec_rec->size == rep_rec->size,
-		    "Recorded rec { no=%d, desched:%d, size: %u } "
-		    "being replayed as { no=%d, desched:%d, size: %u }",
-		    rec_rec->syscallno, rec_rec->desched, rec_rec->size,
-		    rep_rec->syscallno, rep_rec->desched, rep_rec->size);
+	ASSERT(t, (rec_rec->syscallno == rep_rec->syscallno
+		   && rec_rec->desched == rep_rec->desched
+		   && rec_rec->size == rep_rec->size))
+		<<"Recorded rec { no="<< rec_rec->syscallno <<", desched:"
+		<< rec_rec->desched <<", size: "<< rec_rec->size <<" } "
+		<<"being replayed as { no="<< rep_rec->syscallno
+		<<", desched:"<< rep_rec->desched <<", size: "
+		<< rep_rec->size <<" }";
 }
 
 /**
@@ -1278,9 +1280,9 @@ static void restore_futex_words(Task* t,
 	static_assert(sizeof(uint32_t) == sizeof(long), "NYI: Task::write_int()");
 	ssize_t extra_data_size = rec->size - sizeof(*rec);
 	bool saved_uaddr2 = (2 * sizeof(uint32_t) == extra_data_size);
-	assert_exec(t, sizeof(uint32_t) == extra_data_size || saved_uaddr2,
-		    "Futex should have saved 4 or 8 bytes, but instead saved %d bytes",
-		    extra_data_size);
+	ASSERT(t, sizeof(uint32_t) == extra_data_size || saved_uaddr2)
+		<< "Futex should have saved 4 or 8 bytes, but instead saved "
+		<< extra_data_size;
 
 	void* child_uaddr = (void*)t->regs().ebx;
 	uint32_t rec_uaddr =
@@ -1314,23 +1316,24 @@ static int flush_one_syscall(Task* t,
 
 	switch (flush->state) {
 	case FLUSH_START:
-		assert_exec(t, 0 == ((uintptr_t)rec_rec & (sizeof(int) - 1)),
-			    "Recorded record must be int-aligned, but instead is %p",
-			    rec_rec);
-		assert_exec(t, 0 == ((uintptr_t)child_rec & (sizeof(int) - 1)),
-			    "Replaying record must be int-aligned, but instead is %p",
-			    child_rec);
-		assert_exec(t, MAX_SYSCALLNO >= call,
-			    "Replaying unknown syscall %d", call);
-		assert_exec(t, 0 == rec_rec->desched || 1 == rec_rec->desched,
-			    "Recorded record is corrupted: rec->desched is %d",
-			    rec_rec->desched);
+		ASSERT(t, 0 == ((uintptr_t)rec_rec & (sizeof(int) - 1)))
+			<<"Recorded record must be int-aligned, but instead is "
+			<< rec_rec;
+		ASSERT(t, 0 == ((uintptr_t)child_rec & (sizeof(int) - 1)))
+			<<"Replaying record must be int-aligned, but instead is %p"
+			<< child_rec;
+		ASSERT(t, MAX_SYSCALLNO >= call)
+			<<"Replaying unknown syscall "<< call;
+		ASSERT(t, 0 == rec_rec->desched || 1 == rec_rec->desched)
+			<<"Recorded record is corrupted: rec->desched is "
+			<< rec_rec->desched;
 		// We'll check at syscall entry that the recorded and
 		// replayed record values match.
 
-		debug("Replaying buffered `%s' (ret:%ld) which does%s use desched event",
-		      syscallname(call), rec_rec->ret,
-		      !rec_rec->desched ? " not" : "");
+		LOG(debug) <<"Replaying buffered `"<< syscallname(call)
+			   <<"' (ret:"<< rec_rec->ret <<") which does"
+			   << (!rec_rec->desched ? " not" : "")
+			   <<" use desched event";
 
 		if (!rec_rec->desched) {
 			flush->state = FLUSH_ENTER;
@@ -1344,7 +1347,7 @@ static int flush_one_syscall(Task* t,
 	case FLUSH_ARM:
 		/* Skip past the ioctl that armed the desched
 		 * notification. */
-		debug("  skipping over arm-desched ioctl");
+		LOG(debug) <<"  skipping over arm-desched ioctl";
 		if ((ret = skip_desched_ioctl(t, &flush->desched, stepi))) {
 			return ret;
 		}
@@ -1352,7 +1355,7 @@ static int flush_one_syscall(Task* t,
 		return flush_one_syscall(t, flush, stepi);
 
 	case FLUSH_ENTER:
-		debug("  advancing to buffered syscall entry");
+		LOG(debug) <<"  advancing to buffered syscall entry";
 		if ((ret = cont_syscall_boundary(t, emu, stepi))) {
 			return ret;
 		}
@@ -1362,7 +1365,7 @@ static int flush_one_syscall(Task* t,
 		return flush_one_syscall(t, flush, stepi);
 
 	case FLUSH_EXIT: {
-		debug("  advancing to buffered syscall exit");
+		LOG(debug) <<"  advancing to buffered syscall exit";
 
 		EmuFs::AutoGc gc(call);
 
@@ -1409,7 +1412,7 @@ static int flush_one_syscall(Task* t,
 	case FLUSH_DISARM:
 		/* And skip past the ioctl that disarmed the desched
 		 * notification. */
-		debug("  skipping over disarm-desched ioctl");
+		LOG(debug) <<"  skipping over disarm-desched ioctl";
 		if ((ret = skip_desched_ioctl(t, &flush->desched, stepi))) {
 			return ret;
 		}
@@ -1417,7 +1420,7 @@ static int flush_one_syscall(Task* t,
 		return 0;
 
 	default:
-		fatal("Unknown buffer-flush state %d", flush->state);
+		FATAL() <<"Unknown buffer-flush state "<< flush->state;
 		return 0;	/* unreached */
 	}
 }
@@ -1439,8 +1442,8 @@ static int flush_syscallbuf(Task* t, struct rep_trace_step* step,
 					   &flush->rec_rec, &flush->child_rec);
 		flush->need_buffer_restore = 0;
 
-		debug("Prepared %d bytes of syscall records",
-		      flush->num_rec_bytes_remaining);
+		LOG(debug) <<"Prepared "<< flush->num_rec_bytes_remaining
+			   <<" bytes of syscall records";
 	}
 
 	while (flush->num_rec_bytes_remaining > 0) {
@@ -1461,8 +1464,8 @@ static int flush_syscallbuf(Task* t, struct rep_trace_step* step,
 		flush->num_rec_bytes_remaining -= stored_rec_size;
 		flush->state = FLUSH_START;
 
-		debug("  %d bytes remain to flush",
-		      flush->num_rec_bytes_remaining);
+		LOG(debug) <<"  "<< flush->num_rec_bytes_remaining
+			   <<" bytes remain to flush";
 	}
 	return 0;
 }
@@ -1501,7 +1504,7 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 	case TSTEP_DESCHED:
 		return skip_desched_ioctl(t, &step->desched, stepi);
 	default:
-		fatal("Unhandled step type %d", step->action);
+		FATAL() <<"Unhandled step type "<< step->action;
 		return 0;
 	}
 }
@@ -1521,11 +1524,11 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 	if (dbg) {
 		dbg_notify_stop(dbg, t ? get_threadid(t) : DBG_ALL_THREADS,
 				0x05);
-		log_info("Processing last round of debugger requests.");
+		LOG(info) <<("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
 	}
 	Task::killall();
-	log_info("Exiting.");
+	LOG(info) <<("Exiting.");
 	exit(0);
 }
 
@@ -1543,13 +1546,12 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	struct rep_trace_step step;
 	Event ev(t->trace.ev);
 
-	debug("[line %d] %d: replaying %s; state %s",
-	      t->trace_time(), t->rec_tid,
-	      Event(t->trace.ev).str().c_str(), statename(t->trace.ev.state));
+	LOG(debug) <<"[line "<< t->trace_time() <<"] "<< t->rec_tid
+		   <<": replaying "<< Event(t->trace.ev) <<"; state "
+		   << statename(t->trace.ev.state);
 	if (t->syscallbuf_hdr) {
-		debug("    (syscllbufsz:%u, abrtcmt:%u)",
-		      t->syscallbuf_hdr->num_rec_bytes,
-		      t->syscallbuf_hdr->abort_commit);
+		LOG(debug) <<"    (syscllbufsz:"<< t->syscallbuf_hdr->num_rec_bytes
+			   <<", abrtcmt:"<< t->syscallbuf_hdr->abort_commit <<")";
 	}
 
 	/* Advance the trace until we've exec()'d the tracee before
@@ -1576,8 +1578,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		/* fall through */
 	case EV_EXIT: {
 		if (is_last_interesting_task(t)) {
-			debug("last interesting task in %d is %d (%d)",
-			      debugged_tgid, t->rec_tid, t->tid);
+			LOG(debug) <<"last interesting task in "
+				   << debugged_tgid <<" is "<< t->rec_tid
+				   <<" ("<< t->tid <<")";
 			last_task = t;
 			return;
 		}
@@ -1638,13 +1641,13 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		step.signo = SIGSEGV;
 		break;
 	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
-		debug("  popping interrupted but not restarted %s",
-		      t->ev().str().c_str());
+		LOG(debug) <<"  popping interrupted but not restarted "
+			   << t->ev();
 		t->pop_syscall_interruption();
 		step.action = TSTEP_RETIRE;
 		break;
 	case EV_EXIT_SIGHANDLER:
-		debug("<-- sigreturn from %s", t->ev().str().c_str());
+		LOG(debug) <<"<-- sigreturn from "<< t->ev();
 		t->pop_signal_handler();
 		step.action = TSTEP_RETIRE;
 		break;
@@ -1663,7 +1666,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		rep_process_syscall(t, &step);
 		break;
 	default:
-		fatal("Unexpected event %s", ev.str().c_str());
+		FATAL() <<"Unexpected event "<< ev;
 	}
 
 	/* See the comment below about *not* resetting the hpc for
@@ -1699,14 +1702,15 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 		if (TRAP_BKPT_USER ==
 		    t->vm()->get_breakpoint_type_at_ip(t->ip())) {
-			debug("  %d(rec:%d): hit debugger breakpoint at ip %p",
-			      t->tid, t->rec_tid, t->ip());
+			LOG(debug) <<"  "<< t->tid <<"(rec:"<< t->rec_tid
+				   <<"): hit debugger breakpoint at ip "
+				   << t->ip();
 			/* SW breakpoint: $ip is just past the
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
 			t->move_ip_before_breakpoint();
 		} else {
-			debug("  finished debugger stepi");
+			LOG(debug) <<"  finished debugger stepi";
 			/* Successful stepi.  Nothing else to do. */
 			assert(DREQ_STEP == req.type
 			       && req.target == get_threadid(t));
@@ -1722,7 +1726,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	}
 
 	if (DREQ_DETACH == req.type) {
-		log_info("(debugger detached from us, rr exiting)");
+		LOG(info) <<("(debugger detached from us, rr exiting)");
 		dbg_reply_detach(dbg);
 		dbg_destroy_context(&dbg);
 		// Don't orphan tracees: their VMs are inconsistent
@@ -1841,7 +1845,7 @@ static void set_sig_blockedness(int sig, int blockedness)
 	sigemptyset(&sset);
 	sigaddset(&sset, sig);
 	if (sigprocmask(blockedness, &sset, NULL)) {
-		fatal("Didn't change sigmask.");
+		FATAL() <<"Didn't change sigmask.";
 	}
 }
 
@@ -1857,14 +1861,14 @@ static void replay_trace_frames(void)
 		dbg = maybe_create_debugger(t, dbg);
 		replay_one_trace_frame(dbg, t);
 	}
-	log_info("Replayer successfully finished.");
+	LOG(info) <<("Replayer successfully finished.");
 	fflush(stdout);
 
 	if (dbg) {
 		// TODO return real exit code, if it's useful.
 		dbg_notify_exit_code(dbg, 0);
 		process_debugger_requests(dbg, last_task);
-		fatal("Received continue request after end-of-trace.");
+		FATAL() <<"Received continue request after end-of-trace.";
 	}
 }
 
@@ -1897,7 +1901,7 @@ static void serve_replay(int argc, char* argv[], char** envp)
 	close_libpfm();
 	trace = nullptr;
 
-	debug("debugger server exiting ...");
+	LOG(debug) <<"debugger server exiting ...";
 	exit(0);
 }
 
@@ -1918,7 +1922,7 @@ static void handle_signal(int sig)
 		launch_debugger = true;
 		break;
 	default:
-		fatal("Unhandled signal %s", signalname(sig));
+		FATAL() <<"Unhandled signal "<< signalname(sig);
 	}
 }
 
@@ -1938,11 +1942,11 @@ void replay(int argc, char* argv[], char** envp)
 	sa.sa_handler = handle_signal;
 	if (sigaction(SIGINT, &sa, nullptr)
 	    || sigaction(DBG_SOCKET_READY_SIG, &sa, nullptr)) {
-		fatal("Couldn't set sigaction for SIGINT.");
+		FATAL() <<"Couldn't set sigaction for SIGINT.";
 	}
 
 	if (pipe2(debugger_params_pipe, O_CLOEXEC)) {
-		fatal("Couldn't open debugger params pipe.");
+		FATAL() <<"Couldn't open debugger params pipe.";
 	}
 	if (0 == (child = fork())) {
 		// The parent process (gdb) must be able to receive
@@ -1951,9 +1955,9 @@ void replay(int argc, char* argv[], char** envp)
 		// block it.
 		set_sig_blockedness(SIGINT, SIG_BLOCK);
 		serve_replay(argc, argv, envp);
-		fatal("Not reached");
+		FATAL() <<"Not reached";
 	}
-	debug("%d: forked debugger server %d", parent, child);
+	LOG(debug) << parent <<": forked debugger server "<< child;
 
 	while (true) {
 		int ret, status;
@@ -1979,22 +1983,23 @@ void replay(int argc, char* argv[], char** envp)
 		// BEGIN CRITICAL SECTION
 		if (launch_debugger) {
 			dbg_launch_debugger(debugger_params_pipe[0]);
-			fatal("Not reached");
+			FATAL() <<"Not reached";
 		}
 		ret = waitpid(child, &status, 0);
 		// END CRITICAL SECTION
 
 		int err = errno;
-		debug("%d: waitpid(%d) returned %s(%d); status:%#x",
-		      getpid(), child, strerror(err), err, status);
+		LOG(debug) << getpid() <<": waitpid("<< child <<") returned "
+			   << strerror(err) <<"("<< err <<"); status:"
+			   << HEX(status);
 		if (child != ret) {
 			if (EINTR == err) {
 				continue;
 			}
-			fatal("%d: waitpid(%d) failed", getpid(), child);
+			FATAL() << getpid() <<": waitpid("<< child <<") failed";
 		}
 		if (WIFEXITED(status) || WIFSIGNALED(status)) {
-			log_info("Debugger server died.  Exiting.");
+			LOG(info) <<("Debugger server died.  Exiting.");
 			exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
 		}
 	}
@@ -2033,7 +2038,7 @@ void replay_flags_to_args(const struct flags& f,
 			replay_args->push_back("-p");
 			break;
 		default:
-			fatal("Not reached");
+			FATAL() <<"Not reached";
 		}
 		stringstream ss;
 		ss << f.target_process;
@@ -2094,7 +2099,7 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	char exe[PATH_MAX];
 	ssize_t nbytes = readlink("/proc/self/exe", exe, sizeof(exe));
 	if (-1 == nbytes) {
-		fatal("Failed to readlink('/proc/self/exe')");
+		FATAL() <<"Failed to readlink('/proc/self/exe')";
 	}
 	exe[nbytes] = '\0';
 
@@ -2116,7 +2121,7 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	argv.push_back(nullptr);
 
 	execv(exe, argv.data());
-	fatal("Failed to exec %s", exe);
+	FATAL() <<"Failed to exec "<< exe;
 }
 
 void emergency_debug(Task* t)
@@ -2124,11 +2129,11 @@ void emergency_debug(Task* t)
 	if (probably_not_interactive()
 	    && !rr_flags()->force_enable_debugger) {
 		errno = 0;
-		fatal("(session doesn't look interactive, aborting emergency debugging)");
+		FATAL() <<"(session doesn't look interactive, aborting emergency debugging)";
 	}
 
 	start_debug_server(t);
-	fatal("Can't resume execution from invalid state");
+	FATAL() <<"Can't resume execution from invalid state";
 }
 
 void start_debug_server(Task* t)

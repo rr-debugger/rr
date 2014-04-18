@@ -23,8 +23,8 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
 #include "hpc.h"
+#include "log.h"
 #include "record_signal.h"
 #include "record_syscall.h"
 #include "recorder_sched.h"
@@ -70,16 +70,16 @@ static string create_pulseaudio_config()
 	    
 	int status = system(cmd.str().c_str());
 	if (-1 == status || !WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
-		fatal("The command '%s' failed.", cmd.str().c_str());
+		FATAL() <<"The command '"<< cmd.str() <<"' failed.";
 	}
 	if (-1 == lseek(fd, 0, SEEK_END)) {
-		fatal("Failed to seek to end of file.");
+		FATAL() <<"Failed to seek to end of file.";
 	}
 	char disable_shm[] = "disable-shm = true\n";
 	ssize_t nwritten = write(fd, disable_shm, sizeof(disable_shm) - 1);
 	if (nwritten != sizeof(disable_shm) - 1) {
-		fatal("Failed to append '%s' to %s",
-		      disable_shm, procfile.str().c_str());
+		FATAL() <<"Failed to append '"<< disable_shm <<"' to "
+			<< procfile.str();
 	}
 	stringstream envpair;
 	envpair << "PULSE_CLIENTCONFIG=" << procfile.str();
@@ -106,12 +106,12 @@ static void ensure_preload_lib_will_load(const char* rr_exe,
 	pid_t child = fork();
 	if (0 == child) {
 		execvpe(rr_exe, argv, ep.data());
-		fatal("Failed to exec %s", rr_exe);
+		FATAL() <<"Failed to exec "<< rr_exe;
 	}
 	int status;
 	pid_t ret = waitpid(child, &status, 0);
 	if (ret != child) {
-		fatal("Failed to wait for %s child", rr_exe);
+		FATAL() <<"Failed to wait for "<< rr_exe <<" child";
 	}
 	if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
 		const struct flags* flags = rr_flags();
@@ -131,8 +131,8 @@ static void handle_ptrace_event(Task** tp)
 	/* handle events */
 	int event = t->ptrace_event();
 	if (event != PTRACE_EVENT_NONE) {
-		debug("  %d: handle_ptrace_event %d: event %s",
-		      t->tid, event, t->ev().str().c_str());
+		LOG(debug) <<"  "<< t->tid <<": handle_ptrace_event "
+			   << event <<": event "<< t->ev();
 	}
 	switch (event) {
 
@@ -181,7 +181,7 @@ static void handle_ptrace_event(Task** tp)
 		if (EV_SYSCALL == t->ev().type()
 		    && SYS_exit_group == t->ev().Syscall().no
 		    && t->task_group()->task_set().size() > 1) {
-			log_warn("exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race");
+			LOG(warn) <<"exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race";
 			t->destabilize_task_group();
 		}
 
@@ -195,15 +195,17 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_VFORK:
 	case PTRACE_EVENT_VFORK_DONE:
 	default:
-		fatal("Unhandled ptrace event %s(%d)",
-		      ptrace_event_name(event), event);
+		FATAL() <<"Unhandled ptrace event "<< ptrace_event_name(event)
+			<<"("<< event <<")";
 		break;
 	}
 }
 
-#define debug_exec_state(_msg, _t)					\
-	debug(_msg ": status=0x%x pevent=%d",				\
-	      (_t)->status(), (_t)->ptrace_event())
+static void debug_exec_state(const char* msg, Task* t)
+{
+	LOG(debug) << msg <<": status="<< HEX(t->status())
+		   <<" pevent="<< t->ptrace_event();
+}
 
 enum { DEFAULT_CONT = 0, FORCE_SYSCALL = 1 };
 static void task_continue(Task* t, int force_cont, int sig)
@@ -211,11 +213,12 @@ static void task_continue(Task* t, int force_cont, int sig)
 	bool may_restart = t->at_may_restart_syscall();
 
 	if (sig) {
-		debug("  delivering %s to %d", signalname(sig), t->tid);
+		LOG(debug) <<"  delivering "<< signalname(sig)
+			   <<" to "<< t->tid;
 	}
 	if (may_restart && t->seccomp_bpf_enabled) {
-		debug("  PTRACE_SYSCALL to possibly-restarted %s",
-		      syscallname(t->ev().Syscall().no));
+		LOG(debug) <<"  PTRACE_SYSCALL to possibly-restarted "
+			   << t->ev();
 	}
 
 	if (!t->seccomp_bpf_enabled
@@ -256,7 +259,7 @@ static bool resume_execution(Task* t, int need_task_continue,
 	if (need_task_continue) {
 		task_continue(t, force_cont, /*no sig*/0);
 		if (!t->wait()) {
-			debug("  waitpid() interrupted");
+			LOG(debug) <<"  waitpid() interrupted";
 			return false;
 		}
 	}
@@ -264,7 +267,7 @@ static bool resume_execution(Task* t, int need_task_continue,
 	if (t->is_ptrace_seccomp_event()) {
 		t->seccomp_bpf_enabled = true;
 		/* See long comments above. */
-		debug("  (skipping past seccomp-bpf trap)");
+		LOG(debug) <<"  (skipping past seccomp-bpf trap)";
 		return resume_execution(t, NEED_TASK_CONTINUE, FORCE_SYSCALL);
 	}
 	return true;
@@ -280,7 +283,7 @@ static void disarm_desched(Task* t)
 {
 	int old_sig = 0;
 
-	debug("desched: DISARMING_DESCHED_EVENT");
+	LOG(debug) <<"desched: DISARMING_DESCHED_EVENT";
 	/* TODO: send this through main loop. */
 	/* TODO: mask off signals and avoid this loop. */
 	do {
@@ -303,11 +306,11 @@ static void disarm_desched(Task* t)
 			continue;
 		}
 		if (sig && sig == old_sig) {
-			debug("  coalescing pending %s", signalname(sig));
+			LOG(debug) <<"  coalescing pending "<< signalname(sig);
 			continue;
 		}
 		if (sig) {
-			debug("  %s now pending", signalname(sig));
+			LOG(debug) <<"  "<< signalname(sig) <<" now pending";
 			t->stash_sig();
 		}
 	} while (!t->is_disarm_desched_event_syscall());
@@ -322,7 +325,7 @@ static void desched_state_changed(Task* t)
 {
 	switch (t->ev().Desched().state) {
 	case IN_SYSCALL:
-		debug("desched: IN_SYSCALL");
+		LOG(debug) <<"desched: IN_SYSCALL";
 		/* We need to ensure that the syscallbuf code doesn't
 		 * try to commit the current record; we've already
 		 * recorded that syscall.  The following event sets
@@ -354,14 +357,14 @@ static void desched_state_changed(Task* t)
 		return;
 	}
 	default:
-		fatal("Unhandled desched state");
+		FATAL() <<"Unhandled desched state";
 	}
 }
 
 static void syscall_not_restarted(Task* t)
 {
-	debug("  %d: popping abandoned interrupted %s; pending events:",
-	      t->tid, syscallname(t->ev().Syscall().no));
+	LOG(debug) <<"  "<< t->tid <<": popping abandoned interrupted "
+		   << t->ev() <<"; pending events:";
 #ifdef DEBUGTAG
 	t->log_pending_events();
 #endif
@@ -382,8 +385,8 @@ static void syscall_not_restarted(Task* t)
 static int maybe_restart_syscall(Task* t)
 {
 	if (SYS_restart_syscall == t->regs().orig_eax) {
-		debug("  %d: SYS_restart_syscall'ing %s",
-		      t->tid, syscallname(t->ev().Syscall().no));
+		LOG(debug) <<"  "<< t->tid <<": SYS_restart_syscall'ing "
+			   << t->ev();
 	}
 	if (t->is_syscall_restart()) {
 		t->ev().transform(EV_SYSCALL);
@@ -408,7 +411,7 @@ static void maybe_discard_syscall_interruption(Task* t, int ret)
 		/* We currently don't track syscalls interrupted with
 		 * ERESTARTSYS or ERESTARTNOHAND, so it's possible for
 		 * a sigreturn not to affect the event stack. */
-		debug("  (no interrupted syscall to retire)");
+		LOG(debug) <<"  (no interrupted syscall to retire)";
 		return;
 	}
 
@@ -416,9 +419,10 @@ static void maybe_discard_syscall_interruption(Task* t, int ret)
 	if (0 > ret) {
 		syscall_not_restarted(t);
 	} else if (0 < ret) {
-		assert_exec(t, syscallno == ret,
-			    "Interrupted call was %s, and sigreturn claims to be restarting %s",
-			    syscallname(syscallno), syscallname(ret));
+		ASSERT(t, syscallno == ret)
+			<<"Interrupted call was "<< syscallname(syscallno)
+			<<" and sigreturn claims to be restarting "
+			<< syscallname(ret);
 	}
 }
 
@@ -460,9 +464,9 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		assert(by_waitpid);
 		// Linux kicks tasks out of syscalls before delivering
 		// signals.
-		assert_exec(t, !t->pending_sig(),
-			    "Signal %s pending while %d in syscall???",
-			    signalname(t->pending_sig()), t->tid);
+		ASSERT(t, !t->pending_sig())
+			<< "Signal "<< signalname(t->pending_sig())
+			<<" pending while in syscall???";
 
 		t->ev().Syscall().state = EXITING_SYSCALL;
 		t->switchable = 0;
@@ -502,25 +506,25 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			return;
 		}
 
-		assert_exec(t, (-ENOSYS != retval
-				|| (0 > syscallno
-				    || SYS_rrcall_init_buffers == syscallno
-				    || SYS_rrcall_monkeypatch_vdso == syscallno
-				    || SYS_clone == syscallno
-				    || SYS_exit_group == syscallno
-				    || SYS_exit == syscallno
-				    || SYS__sysctl == syscallno)),
-			    "Exiting syscall %s, but retval is -ENOSYS, usually only seen at entry",
-			    syscallname(syscallno));
+		ASSERT(t, (-ENOSYS != retval
+			   || (0 > syscallno
+			       || SYS_rrcall_init_buffers == syscallno
+			       || SYS_rrcall_monkeypatch_vdso == syscallno
+			       || SYS_clone == syscallno
+			       || SYS_exit_group == syscallno
+			       || SYS_exit == syscallno
+			       || SYS__sysctl == syscallno)))
+			<< "Exiting syscall "<< syscallname(syscallno)
+			<<" but retval is -ENOSYS, usually only seen at entry";
 
-		debug("  orig_eax:%ld (%s); eax:%ld",
-		      t->regs().orig_eax, syscallname(syscallno),
-		      t->regs().eax);
+		LOG(debug) <<"  orig_eax:"<< t->regs().orig_eax
+			   <<" ("<< syscallname(syscallno) <<"); eax:"
+			   << t->regs().eax;
 
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
 		if (t->ev().Syscall().is_restart) {
-			debug("  exiting restarted %s", syscallname(syscallno));
+			LOG(debug) <<"  exiting restarted "<< syscallname(syscallno);
 		}
 
 		/* TODO: is there any reason a restart_syscall can't
@@ -539,8 +543,8 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 				t->vm()->verify(t);
 			}
 		} else {
-			debug("  may restart %s (from retval %d)",
-			      syscallname(syscallno), retval);
+			LOG(debug) <<"  may restart "<< syscallname(syscallno)
+				   <<" (from retval "<< retval <<")";
 
 			rec_prepare_restart_syscall(t);
 			/* If we may restart this syscall, we've most
@@ -562,7 +566,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		if (!may_restart) {
 			t->pop_syscall();
 			if (EV_DESCHED == t->ev().type()) {
-				debug("  exiting desched critical section");
+				LOG(debug) <<"  exiting desched critical section";
 				desched_state_changed(t);
 			}
 		} else {
@@ -575,7 +579,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 	}
 
 	default:
-		fatal("Unknown exec state %d", t->ev().Syscall().state);
+		FATAL() <<"Unknown exec state "<< t->ev().Syscall().state;
 	}
 }
 
@@ -616,7 +620,7 @@ static void check_rbc(Task* t)
 	}
 
 	int64_t rbc = read_rbc(t->hpc);
-	debug("rbc on entry to dummy write: %lld", rbc);
+	LOG(debug) <<"rbc on entry to dummy write: " << rbc;
 	if (!(rbc > 0)) {
 		fprintf(stderr,
 "\n"
@@ -652,8 +656,8 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		t->ev().transform(EV_SIGNAL_DELIVERY);
 		ssize_t sigframe_size;
 		if (t->signal_has_user_handler(sig)) {
-			debug("  %d: %s has user handler", t->tid,
-			      signalname(sig));
+			LOG(debug) <<"  "<< t->tid <<": "<< signalname(sig)
+				   <<" has user handler";
 
 			if (!t->cont_singlestep(sig)) {
 				return false;
@@ -692,8 +696,8 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 			t->signal_delivered(sig);
 			t->ev().Signal().delivered = 1;
 		} else {
-			debug("  %d: no user handler for %s", t->tid,
-			      signalname(sig));
+			LOG(debug) <<"  "<< t->tid <<": no user handler for "
+				   << signalname(sig);
 			sigframe_size = 0;
 		}
 
@@ -721,7 +725,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		if (!t->ev().Signal().delivered) {
 			task_continue(t, DEFAULT_CONT, sig);
 			if (possibly_destabilizing_signal(t, sig)) {
-				log_warn("Delivered core-dumping signal; may misrecord CLONE_CHILD_CLEARTID memory race");
+				LOG(warn) <<"Delivered core-dumping signal; may misrecord CLONE_CHILD_CLEARTID memory race";
 				t->destabilize_task_group();
 				t->switchable = 1;
 			}
@@ -739,7 +743,7 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		return true;
 
 	default:
-		fatal("Unhandled signal state %d", t->ev().type());
+		FATAL() <<"Unhandled signal state " << t->ev().type();
 		return false;	// not reached
 	}
 }
@@ -760,7 +764,8 @@ static void runnable_state_changed(Task* t)
 	if (t->has_stashed_sig()) {
 		stash = t->pop_stash_sig();
 		si = &stash;
-		debug("pulled %s out of stash", signalname(t->pending_sig()));
+		LOG(debug) <<"pulled "<< signalname(t->pending_sig())
+			   <<" out of stash";
 	}
 
 	if (t->pending_sig() && can_deliver_signals) {
@@ -775,8 +780,8 @@ static void runnable_state_changed(Task* t)
 		//
 		// This doesn't really occur in practice, only in
 		// tests that force a degenerately low time slice.
-		log_warn("Dropping %s because it can't be delivered yet",
-			 signalname(t->pending_sig()));
+		LOG(warn) <<"Dropping "<< signalname(t->pending_sig())
+			  <<" because it can't be delivered yet";
 		// No events to be recorded, so no syscallbuf updates
 		// needed.
 		return;
@@ -804,17 +809,15 @@ static void runnable_state_changed(Task* t)
 			t->push_event(SyscallEvent(t->regs().orig_eax));
 			rec_before_record_syscall_entry(t, t->ev().Syscall().no);
 		}
-		assert_exec(t, EV_SYSCALL == t->ev().type(),
-			    "Should be at syscall event.");
+		ASSERT(t, EV_SYSCALL == t->ev().type());
 		check_rbc(t);
 		t->ev().Syscall().state = ENTERING_SYSCALL;
 		t->record_current_event();
 		break;
 
 	default:
-		assert_exec(t, false,
-			    "%s can't be on event stack at start of new event",
-			    t->ev().str().c_str());
+		ASSERT(t, false)
+			<< t->ev() <<" can't be on event stack at start of new event";
 		break;
 	}
 	maybe_reset_syscallbuf(t);
@@ -832,10 +835,10 @@ static bool term_request;
 static void handle_termsig(int sig)
 {
 	if (term_request) {
-		fatal("Received termsig while an earlier one was pending.  We're probably wedged.");
+		FATAL() <<"Received termsig while an earlier one was pending.  We're probably wedged.";
 	}
-	log_info("Received termsig %s, requesting shutdown ...\n",
-		 signalname(sig));
+	LOG(info) <<"Received termsig "<< signalname(sig)
+		  <<", requesting shutdown ...\n";
 	term_request = true;
 }
 
@@ -860,7 +863,7 @@ static void maybe_process_term_request(Task* t)
 
 void record(const char* rr_exe, int argc, char* argv[], char** envp)
 {
-	log_info("Start recording...");
+	LOG(info) <<"Start recording...";
 
 	trace = TraceOfstream::create(argv[0]);
 	ae = args_env(argc, argv, envp);
@@ -927,16 +930,16 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 		}
 		t = next;
 
-		debug("line %d: Active task is %d. Events:",
-		      t->trace_time(), t->tid);
+		LOG(debug) <<"line "<< t->trace_time() <<": Active task is "
+			   << t->tid <<". Events:";
 #ifdef DEBUGTAG
 		t->log_pending_events();
 #endif
 		int ptrace_event = t->ptrace_event();
-		assert_exec(t, (!by_waitpid || t->may_be_blocked() ||
-				ptrace_event),
-			    "%d unexpectedly runnable (0x%x) by waitpid",
-			    t->tid, t->status());
+		ASSERT(t, (!by_waitpid || t->may_be_blocked() ||
+			   ptrace_event))
+			<< "unexpectedly runnable ("<< HEX(t->status())
+			<<") by waitpid";
 		if (ptrace_event && !t->is_ptrace_seccomp_event()) {
 			handle_ptrace_event(&t);
 			if (!t) {
@@ -974,15 +977,15 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 		runnable_state_changed(t);
 	}
 
-	log_info("Done recording -- cleaning up");
+	LOG(info) <<"Done recording -- cleaning up";
 	trace = nullptr;
 	close_libpfm();
 }
 
 void terminate_recording(Task* t)
 {
-	log_info("Processing termination request ...");
-	log_info("  recording final TRACE_TERMINATION event ...");
+	LOG(info) <<"Processing termination request ...";
+	LOG(info) <<"  recording final TRACE_TERMINATION event ...";
 
 	struct trace_frame frame;
 	memset(&frame, 0, sizeof(frame));
@@ -995,6 +998,6 @@ void terminate_recording(Task* t)
 
 	// TODO: Task::killall() here?
 
-	log_info("  exiting, goodbye.");
+	LOG(info) <<"  exiting, goodbye.";
 	exit(0);
 }

@@ -11,7 +11,7 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
+#include "log.h"
 
 using namespace std;
 
@@ -50,7 +50,7 @@ Event::Event(EncodedEvent e)
 		return;
 
 	default:
-		fatal("Unexpected event %s", str().c_str());
+		FATAL() <<"Unexpected event "<< *this;
 	}
 }
 
@@ -175,7 +175,8 @@ Event::encode() const
 	}
 
 	default:
-		fatal("Unknown event type %d", event_type);
+		FATAL() <<"Unknown event type "<< event_type;
+		return e;	// not reached
 	}
 }
 
@@ -223,7 +224,7 @@ Event::is_syscall_event() const
 void
 Event::log() const
 {
-	log_info("%s", str().c_str());
+	LOG(info) << *this;
 }
 
 string
@@ -270,8 +271,7 @@ Event::transform(EventType new_type)
 		assert(EV_SYSCALL == new_type);
 		break;
 	default:
-		fatal("Can't transform immutable %s into %d",
-		      str().c_str(), new_type);
+		FATAL() << "Can't transform immutable "<< *this <<" into "<< new_type;
 	}
 	event_type = new_type;
 }
@@ -300,7 +300,7 @@ Event::type_name() const
 	CASE(SYSCALL_INTERRUPTION);
 #undef CASE
 	default:
-		fatal("Unknown event type %d", event_type);
+		FATAL() <<"Unknown event type "<< event_type;
 		return nullptr;	// not reached
 	}
 }

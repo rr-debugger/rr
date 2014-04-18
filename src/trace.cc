@@ -10,7 +10,7 @@
 #include <string>
 #include <sstream>
 
-#include "dbg.h"
+#include "log.h"
 #include "util.h"
 
 using namespace std;
@@ -63,11 +63,10 @@ static void ensure_default_rr_trace_dir()
 	struct stat st;
 	if (0 == stat(dir.c_str(), &st)) {
 		if (!(S_IFDIR & st.st_mode)) {
-			fatal("`%s' exists but isn't a directory.",
-			      dir.c_str());
+			FATAL() <<"`"<< dir <<"' exists but isn't a directory.";
 		}
 		if (access(dir.c_str(), W_OK)) {
-			fatal("Can't write to `%s'.", dir.c_str());
+			FATAL() <<"Can't write to `"<< dir <<"'.";
 		}
 		return;
 	}
@@ -77,7 +76,7 @@ static void ensure_default_rr_trace_dir()
 	// ~/.rr, so the directory may have come into existence since
 	// we checked above.
 	if (ret && EEXIST != err) {
-		fatal("Failed to create directory `%s'", dir.c_str());
+		FATAL() <<"Failed to create directory `"<< dir <<"'";
 	}
 }
 
@@ -208,8 +207,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const struct trace_frame& frame)
 	}
 	tof.events.write(begin_data, nbytes);
 	if (!tof.events.good()) {
-		fatal("Tried to save %d bytes to the trace, but failed",
-		      nbytes);
+		FATAL() <<"Tried to save "<< nbytes <<" bytes to the trace, but failed";
 	}
 	tof.tick_time();
 	return tof;
@@ -370,7 +368,7 @@ TraceOfstream::create(const string& exe_path)
 	} while (ret && EEXIST == errno);
 
 	if (ret) {
-		fatal("Unable to create trace directory `%s'", dir.c_str());
+		FATAL() <<"Unable to create trace directory `"<< dir <<"'";
 	}
 
 	shr_ptr trace(new TraceOfstream(dir));
@@ -378,7 +376,7 @@ TraceOfstream::create(const string& exe_path)
 	string version_path = trace->version_file_path();
 	fstream version(version_path.c_str(), fstream::out);
 	if (!version.good()) {
-		fatal("Unable to create %s", version_path.c_str());
+		FATAL() <<"Unable to create "<< version_path;
 	}
 	version << TRACE_VERSION << endl;
 
@@ -391,8 +389,8 @@ TraceOfstream::create(const string& exe_path)
 	unlink(link_name.c_str());
 	ret = symlink(trace->trace_dir.c_str(), link_name.c_str());
 	if (!(0 == ret || EEXIST == ret)) {
-		fatal("Failed to update symlink `%s' to `%s'.",
-		      link_name.c_str(), trace->trace_dir.c_str());
+		FATAL() <<"Failed to update symlink `"<< link_name
+			<<"' to `"<< trace->trace_dir <<"'.";
 	}
 
 	if (!probably_not_interactive(STDOUT_FILENO)) {

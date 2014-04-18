@@ -45,8 +45,8 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "dbg.h"
 #include "drm.h"
+#include "log.h"
 #include "recorder.h"		// for terminate_recording()
 #include "recorder_sched.h"
 #include "task.h"
@@ -100,7 +100,7 @@ void rec_before_record_syscall_entry(Task* t, int syscallno)
 	void* buf = (void*)t->regs().ecx;
 	size_t len = t->regs().edx;
 
-	assert_exec(t, buf, "Can't save a null buffer");
+	ASSERT(t, buf) << "Can't save a null buffer";
 
 	t->record_remote(buf, len);
 }
@@ -156,11 +156,11 @@ static int abort_scratch(Task* t, const char* event)
 	assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
 
 	if (0 > num_bytes) {
-		log_warn("`%s' requires scratch buffers, but that's not implemented.  Disabling context switching: deadlock may follow.",
-			 event);
+		LOG(warn) <<"`"<< event <<"' requires scratch buffers, but that's not implemented.  Disabling context switching: deadlock may follow.";
 	} else {
-		log_warn("`%s' needed a scratch buffer of size %d, but only %d was available.  Disabling context switching: deadlock may follow.",
-			 event, num_bytes, t->scratch_size);
+		LOG(warn) <<"`"<< event <<"' needed a scratch buffer of size "
+			  << num_bytes <<", but only "<< t->scratch_size
+			  <<" was available.  Disabling context switching: deadlock may follow.";
 	}
 	reset_scratch_pointers(t);
 	return 0;		/* don't allow context-switching */
@@ -485,9 +485,9 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 	const struct syscallbuf_record* rec = t->desched_rec();
 
 	assert(rec);
-	assert_exec(t, syscallno == rec->syscallno, 
-		    "Syscallbuf records syscall %s, but expecting %s",
-		    syscallname(rec->syscallno), syscallname(syscallno));
+	ASSERT(t, syscallno == rec->syscallno)
+		<< "Syscallbuf records syscall "<< syscallname(rec->syscallno)
+		<<", but expecting "<< syscallname(syscallno);
 
 	reset_scratch_pointers(t);
 	t->ev().Syscall().tmp_data_ptr =
@@ -900,7 +900,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			 * outparams ... */
 			return 1;
 		}
-		fatal("Not reached");
+		FATAL() <<"Not reached";
 	}
 
 	case SYS__sysctl: {
@@ -947,12 +947,12 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 "  this process exits.\n"
 			);
 		terminate_recording(t);
-		fatal("Not reached");
+		FATAL() <<"Not reached";
 		return 0;
 
 
 	case SYS_epoll_pwait:
-		fatal("Unhandled syscall %s", syscallname(syscallno));
+		FATAL() <<"Unhandled syscall "<< syscallname(syscallno);
 		return 1;
 
 	/* The following two syscalls enable context switching not for
@@ -1180,14 +1180,14 @@ static void finish_restoring_scratch_slack(Task* t, byte* iter, void** datap,
 	ssize_t diff = t->ev().Syscall().tmp_data_num_bytes - consumed;
 
 	assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
-	assert_exec(t, !diff || (slack && diff > 0),
-		    "Saved %d bytes of scratch memory but consumed %d",
-		    t->ev().Syscall().tmp_data_num_bytes, consumed);
+	ASSERT(t, !diff || (slack && diff > 0))
+		<< "Saved "<< t->ev().Syscall().tmp_data_num_bytes
+		<< " bytes of scratch memory but consumed "<< consumed;
 	if (slack) {
-		debug("Left %d bytes unconsumed in scratch", diff);
+		LOG(debug) <<"Left "<< diff <<" bytes unconsumed in scratch";
 	}
-	assert_exec(t, t->ev().Syscall().saved_args.empty(),
-		    "Under-consumed saved arg pointers");
+	ASSERT(t, t->ev().Syscall().saved_args.empty())
+		<< "Under-consumed saved arg pointers";
 
 	free(data);
 }
@@ -1214,7 +1214,7 @@ static void process_execve(Task* t)
 	struct user_regs_struct r = t->regs();
 	if (SYSCALL_FAILED(r.eax)) {
 		if (r.ebx != t->exec_saved_ebx) {
-			log_warn("Blocked attempt to execve 64-bit image (not yet supported by rr)");
+			LOG(warn) <<"Blocked attempt to execve 64-bit image (not yet supported by rr)";
 			// Restore EBX, which we clobbered.
 			r.ebx = t->exec_saved_ebx;
 			t->set_regs(r);
@@ -1273,16 +1273,16 @@ static void process_execve(Task* t)
 	for (int i = 0; i < ssize_t(ALEN(elf_aux)); ++i) {
 		long expected_field = elf_aux[i];
 		const ElfEntry& entry = table.entries[i];
-		assert_exec(t, expected_field == entry.key,
-			    "Elf aux entry %d should be 0x%lx, but is 0x%lx",
-			    i, expected_field, entry.key);
+		ASSERT(t, expected_field == entry.key)
+			<< "Elf aux entry "<< i <<" should be "
+			<< HEX(expected_field) <<", but is "<< HEX(entry.key);
 	}
 
 	long at_random = t->read_word(stack_ptr);
 	stack_ptr++;
-	assert_exec(t, AT_RANDOM == at_random,
-		    "ELF item should be 0x%x, but is 0x%lx",
-		    AT_RANDOM, at_random);
+	ASSERT(t, AT_RANDOM == at_random)
+		<< "ELF item should be "<< HEX(AT_RANDOM) <<", but is "
+		<< HEX(at_random);
 
 	void* rand_addr = (void*)t->read_word(stack_ptr);
 	// XXX where does the magic number come from?
@@ -1316,11 +1316,12 @@ static void process_ioctl(Task *t, int request)
 	int size = _IOC_SIZE(request);
 	void* param = (void*)t->regs().edx;
 
-	debug("handling ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d",
-	      request, type, nr, dir, size);
+	LOG(debug) <<"handling ioctl("<< HEX(request) <<"): type:"
+		   << HEX(type) <<" nr:"<< HEX(nr) <<" dir:"<< HEX(dir)
+		   <<" size:"<< size;
 
-	assert_exec(t, !t->is_desched_event_syscall(),
-		    "Failed to skip past desched ioctl()");
+	ASSERT(t, !t->is_desched_event_syscall())
+		<< "Failed to skip past desched ioctl()";
 
 	/* Some ioctl()s are irregular and don't follow the _IOC()
 	 * conventions.  Special case them here. */
@@ -1371,7 +1372,7 @@ static void process_ioctl(Task *t, int request)
 		/* If the kernel isn't going to write any data back to
 		 * us, we hope and pray that the result of the ioctl
 		 * (observable to the tracee) is deterministic. */
-		debug("  (deterministic ioctl, nothing to do)");
+		LOG(debug) <<"  (deterministic ioctl, nothing to do)";
 		return;
 	}
 
@@ -1385,7 +1386,7 @@ static void process_ioctl(Task *t, int request)
 	case 0xc048464d:
 	case 0xc0204637:
 	case 0xc0304627:
-		fatal("Unknown 0x46-series ioctl nr 0x%x", nr);
+		FATAL() <<"Unknown 0x46-series ioctl nr "<< HEX(nr);
 		break;	/* not reached */
 
 	/* The following are ioctls for the linux Direct Rendering
@@ -1424,7 +1425,8 @@ static void process_ioctl(Task *t, int request)
 	case DRM_IOCTL_VERSION:
 	case DRM_IOCTL_NOUVEAU_GEM_NEW:
 	case DRM_IOCTL_NOUVEAU_GEM_PUSHBUF:
-		fatal("Intentionally unhandled DRM(0x64) ioctl nr 0x%x", nr);
+		FATAL() <<"Intentionally unhandled DRM(0x64) ioctl nr "
+			<< HEX(nr);
 		break;
 
 	case DRM_IOCTL_GET_MAGIC:
@@ -1434,7 +1436,7 @@ static void process_ioctl(Task *t, int request)
 	case DRM_IOCTL_I915_GEM_MMAP:
 	case DRM_IOCTL_RADEON_GEM_CREATE:
 	case DRM_IOCTL_RADEON_GEM_GET_TILING:
-		fatal("Not-understood DRM(0x64) ioctl nr 0x%x", nr);
+		FATAL() <<"Not-understood DRM(0x64) ioctl nr "<< HEX(nr);
 		break;	/* not reached */
 
 	case 0x4010644d:
@@ -1442,21 +1444,22 @@ static void process_ioctl(Task *t, int request)
 	case 0x80086447:
 	case 0xc0306449:
 	case 0xc030644b:
-		fatal("Unknown DRM(0x64) ioctl nr 0x%x", nr);
+		FATAL() <<"Unknown DRM(0x64) ioctl nr "<< HEX(nr);
 		break;	/* not reached */
 
 	default:
 		print_register_file_tid(t);
-		assert_exec(t, 0,
-			    "Unknown ioctl(0x%x): type:0x%x nr:0x%x dir:0x%x size:%d addr:%p",
-			    request, type, nr, dir, size,
-			    (void*)t->regs().edx);
+		ASSERT(t, false)
+			<< "Unknown ioctl("<< HEX(request) <<"): type:"
+			<< HEX(type) <<" nr:"<< HEX(nr) <<" dir:"
+			<< HEX(dir) <<" size:"<< size <<" addr:"
+			<< HEX(t->regs().edx);
 	}
 }
 
 static void process_ipc(Task* t, int call)
 {
-	debug("ipc call: %d\n", call);
+	LOG(debug) <<"ipc call: "<< call;
 
 	switch (call) {
 	case MSGCTL: {
@@ -1503,7 +1506,7 @@ static void process_ipc(Task* t, int call)
 	case MSGSND:
 		return;
 	default:
-		fatal("Unhandled IPC call %d", call);
+		FATAL() <<"Unhandled IPC call "<< call;
 	}
 }
 
@@ -1530,7 +1533,7 @@ static void process_mmap(Task* t, int syscallno,
 			return;
 		}
 
-		assert_exec(t, fd >= 0, "Valid fd required for file mapping");
+		ASSERT(t, fd >= 0) << "Valid fd required for file mapping";
 		assert(!(flags & MAP_GROWSDOWN));
 
 		struct mmapped_file file;
@@ -1542,7 +1545,7 @@ static void process_mmap(Task* t, int syscallno,
 		file.tid = t->tid;
 		if (!t->fdstat(fd, &file.stat,
 			       file.filename, sizeof(file.filename))) {
-			fatal("Failed to fdstat %d", fd);
+			FATAL() <<"Failed to fdstat "<< fd;
 		}
 		file.start = addr;
 		file.end = (byte*)addr + size;
@@ -1570,7 +1573,7 @@ static void process_mmap(Task* t, int syscallno,
 
 static void process_socketcall(Task* t, int call, void* base_addr)
 {
-	debug("socket call: %d\n", call);
+	LOG(debug) <<"socket call: "<< call;
 
 	switch (call) {
 	/* int socket(int domain, int type, int protocol); */
@@ -1738,9 +1741,9 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		}
 		t->record_remote(msg.msg_name, msg.msg_namelen);
 
-		assert_exec(t, msg.msg_iovlen == tmpmsg.msg_iovlen,
-			    "Scratch msg should have %d iovs, but has %d",
-			    msg.msg_iovlen, tmpmsg.msg_iovlen);
+		ASSERT(t, msg.msg_iovlen == tmpmsg.msg_iovlen)
+		       << "Scratch msg should have "<< msg.msg_iovlen
+		       <<" iovs, but has "<< tmpmsg.msg_iovlen;
 		struct iovec iovs[msg.msg_iovlen];
 		read_iovs(t, msg, iovs);
 		struct iovec tmpiovs[tmpmsg.msg_iovlen];
@@ -1831,7 +1834,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	}
 
 	default:
-		fatal("Unknown socketcall %d", call);
+		FATAL() <<"Unknown socketcall "<< call;
 	}
 }
 
@@ -1852,13 +1855,13 @@ static void before_syscall_exit(Task* t, int syscallno)
 			// The only sched_setaffinity call we allow on
 			// an rr-managed task is one that sets
 			// affinity to CPU 0.
-			assert_exec(t, cpuset_len == sizeof(cpu_set_t),
-				    "Invalid sched_setaffinity parameters");
+			ASSERT(t, cpuset_len == sizeof(cpu_set_t))
+				<< "Invalid sched_setaffinity parameters";
 			cpu_set_t cpus;
 			target->read_mem(child_cpuset, &cpus);
-			assert_exec(t, (CPU_COUNT(&cpus) == 1
-					&&  CPU_ISSET(0, &cpus)),
-			            "Invalid affinity setting");
+			ASSERT(t, (CPU_COUNT(&cpus) == 1
+				   &&  CPU_ISSET(0, &cpus)))
+				<< "Invalid affinity setting";
 		}
 		return;
 	}
@@ -1873,7 +1876,8 @@ static void before_syscall_exit(Task* t, int syscallno)
 		if (t->regs().ebx == PRIO_PROCESS) {
 			Task *target = t->regs().ecx ? Task::find(t->regs().ecx) : t;
 			if (target) {
-				debug("Setting nice value for tid %d to %ld", tid, t->regs().edx);
+				LOG(debug) <<"Setting nice value for tid "
+					   << t->tid <<" to "<< t->regs().edx;
 				target->set_priority(t->regs().edx);
 			}
 		}
@@ -1900,8 +1904,8 @@ void rec_process_syscall(Task *t)
 {
 	int syscallno = t->ev().Syscall().no;
 
-	debug("%d: processing syscall: %s(%d) -- time: %u",
-	      tid, syscallname(syscallno), call, get_global_time());
+	LOG(debug) << t->tid <<": processing: "<< t->ev() <<" -- time: "
+		   << t->trace_time();
 
 	before_syscall_exit(t, syscallno);
 
@@ -2063,7 +2067,7 @@ void rec_process_syscall(Task *t)
 			break;
 
 		default:
-			fatal("Unknown fcntl %d", cmd);
+			FATAL() <<"Unknown fcntl "<< cmd;
 		}
 		break;
 	}
@@ -2088,7 +2092,7 @@ void rec_process_syscall(Task *t)
 			break;
 
 		default:
-			fatal("Unknown futex op %d", op);
+			FATAL() <<"Unknown futex op "<< op;
 		}
 
 		break;
@@ -2162,8 +2166,7 @@ void rec_process_syscall(Task *t)
 			 * process's file table, but let's hope this
 			 * gross hack dies before we have to worry
 			 * about that. */
-			log_warn("Cowardly refusing to open %s",
-				 pathname.c_str());
+			LOG(warn) <<"Cowardly refusing to open "<< pathname;
 			struct user_regs_struct r = t->regs();
 			r.eax = -ENOENT;
 			t->set_regs(r);
@@ -2242,7 +2245,7 @@ void rec_process_syscall(Task *t)
 		 	 t->record_remote(addr, 4/*FIXME: magic number*/);
 		 	 break;
 		 case Q_SETQUOTA:
-		 	 fatal("Trying to set disk quota usage, this may interfere with rr recording");
+		 	 FATAL() <<"Trying to set disk quota usage, this may interfere with rr recording";
 			 // not reached
 		 default:
 			 // TODO: some of these may need to be
@@ -2416,8 +2419,8 @@ void rec_process_syscall(Task *t)
 
 	default:
 		print_register_file_tid(t);
-		fatal("Unhandled syscall %s(%d)",
-		      syscallname(syscallno), syscallno);
+		FATAL() <<"Unhandled syscall "<< syscallname(syscallno)
+			<<"("<< syscallno <<")";
 		break;		/* not reached */
 	}
 }

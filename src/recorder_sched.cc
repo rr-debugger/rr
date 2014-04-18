@@ -17,7 +17,7 @@
 #include <algorithm>
 
 #include "config.h"
-#include "dbg.h"
+#include "log.h"
 #include "recorder.h"
 #include "task.h"
 
@@ -80,27 +80,27 @@ find_next_runnable_task(int* by_waitpid)
 			Task* t = task_iterator->second;
 
 			if (t->unstable) {
-				debug("  %d is unstable, going to waitpid(-1)",
-				      t->tid);
+				LOG(debug) <<"  "<< t->tid
+					   <<" is unstable, doing waitpid(-1)";
 				return NULL;
 			}
 
 			if (!t->may_be_blocked()) {
-				debug("  %d isn't blocked", t->tid);
+				LOG(debug) <<"  "<< t->tid <<" isn't blocked";
 				return t;
 			}
 
-			debug("  %d is blocked on %s, checking status ...",
-			      t->tid,
-			      strevent(t->event));
+			LOG(debug) <<"  "<< t->tid <<" is blocked on "
+				   << t->ev() << "checking status ...";
 			if ((t->pseudo_blocked && t->wait())
 			    || t->try_wait()) {
 				t->pseudo_blocked = 0;
 				*by_waitpid = 1;
-				debug("  ready with status 0x%x", t->status());
+				LOG(debug) <<"  ready with status "
+					   << HEX(t->status());
 				return t;
 			}
-			debug("  still blocked");
+			LOG(debug) <<"  still blocked";
 
 			++task_iterator;
 			if (task_iterator == same_priority_end) {
@@ -118,7 +118,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 {
 	int max_events = rr_flags()->max_events;
 
-	debug("Scheduling next task");
+	LOG(debug) <<"Scheduling next task";
 
 	*by_waitpid = 0;
 
@@ -128,10 +128,10 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 	assert(!t || t == current);
 
 	if (current && !current->switchable) {
-		debug("  (%d is un-switchable at %s)",
-		      current->tid, strevent(current->event));
+		LOG(debug) <<"  ("<< current->tid <<" is un-switchable at "
+			   << current->ev() <<")";
 		if (current->may_be_blocked()) {
-			debug("  and not runnable; waiting for state change");
+			LOG(debug) <<"  and not runnable; waiting for state change";
 			/* |current| is un-switchable, but not runnable in
 			 * this state.  Wait for it to change state
 			 * before "scheduling it", so avoid
@@ -140,8 +140,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 			double start = now_sec(), wait_duration;
 #endif
 			if (!t->wait()) {
-				debug("  waitpid(%d) interrupted by EINTR",
-				      t->tid);
+				LOG(debug) <<"  waitpid("<< t->tid <<") interrupted by EINTR";
 				return nullptr;
 			}
 #ifdef MONITOR_UNSWITCHABLE_WAITS
@@ -153,7 +152,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 			}
 #endif
 			*by_waitpid = 1;
-			debug("  new status is 0x%x", current->status());
+			LOG(debug) <<"  new status is "<< HEX(current->status());
 		}
 		return current;
 	}
@@ -161,7 +160,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 	/* Prefer switching to the next task if the current one
 	 * exceeded its event limit. */
 	if (current && current->succ_event_counter > max_events) {
-		debug("  previous task exceeded event limit, preferring next");
+		LOG(debug) <<"  previous task exceeded event limit, preferring next";
 		current->succ_event_counter = 0;
 		current = get_next_task_with_same_priority(current);
 	}
@@ -169,34 +168,35 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 	Task* next = find_next_runnable_task(by_waitpid);
 
 	if (next) {
-		debug("  selecting task %d", next->tid);
+		LOG(debug) <<"  selecting task "<< next->tid;
 	} else {
 		// All the tasks are blocked. Wait for the next one to
 		// change state.
 		int status;
 		pid_t tid;
 
-		debug("  all tasks blocked or some unstable, waiting for runnable (%d total)",
-		      Task::count());
+		LOG(debug) <<"  all tasks blocked or some unstable, waiting for runnable ("
+			   << Task::count() <<" total)";
 		while (!next) {
 			tid = waitpid(-1, &status,
 				      __WALL | WSTOPPED | WUNTRACED);
 			if (-1 == tid) {
 				if (EINTR == errno) {
-					debug("  waitpid(-1) interrupted");
+					LOG(debug) <<"  waitpid(-1) interrupted";
 					return nullptr;
 				}
-				fatal("Failed to waitpid()");
+				FATAL() <<"Failed to waitpid()";
 			}
-			debug("  %d changed status to 0x%x", tid, status);
+			LOG(debug) <<"  "<< tid <<" changed status to "
+				   << status;
 
 			next = Task::find(tid);
 			if (!next) {
-				debug("    ... but it's dead");
+				LOG(debug) <<"    ... but it's dead";
 			}
 		}
-		assert_exec(next, next->unstable || next->may_be_blocked(),
-			    "Scheduled task should have been blocked or unstable");
+		ASSERT(next, next->unstable || next->may_be_blocked())
+			<< "Scheduled task should have been blocked or unstable";
 		next->force_status(status);
 		*by_waitpid = 1;
 	}

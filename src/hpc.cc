@@ -3,7 +3,6 @@
 #include "hpc.h"
 
 #include <assert.h>
-#include <err.h>
 #include <fcntl.h>
 #include <perfmon/pfmlib_perf_event.h>
 #include <stdio.h>
@@ -18,7 +17,7 @@
 
 #include <fstream>
 
-#include "dbg.h"
+#include "log.h"
 #include "task.h"
 
 using namespace std;
@@ -30,7 +29,7 @@ void init_libpfm()
 {
 	int ret = pfm_initialize();
 	if (ret != PFM_SUCCESS) {
-		errx(1, "cannot initialize libpfm: %s\n", pfm_strerror(ret));
+		FATAL() <<"Failed to init libpfm: "<< pfm_strerror(ret);
 	}
 }
 
@@ -105,6 +104,7 @@ static void cpuid(int code, unsigned int *a, unsigned int *d) {
  * Another list at http://software.intel.com/en-us/articles/intel-architecture-and-processor-identification-with-cpuid-model-and-family-numbers
  */
 enum cpu_type {
+	UnknownCpu,
 	IntelMerom,
 	IntelPenryn,
 	IntelNehalem,
@@ -142,8 +142,8 @@ static cpu_type get_cpu_type()
 	case 0x40660:
 		return IntelHaswell;
 	default:
-		fatal("CPU 0x%5X unknown (add cpuid and adjust event strings to add support).",
-		      cpu_type);
+		FATAL() << "CPU "<< HEX(cpu_type) << " unknown.";
+		return UnknownCpu; // not reached
 	}
 }
 
@@ -162,10 +162,10 @@ void init_hpc(Task* t)
 	const char * page_faults_event = "PERF_COUNT_SW_PAGE_FAULTS:u";
 	switch (get_cpu_type()) {
 	case IntelMerom :
-		fatal("Intel Merom CPUs currently unsupported.");
+		FATAL() <<"Intel Merom CPUs currently unsupported.";
 		break;
 	case IntelPenryn :
-		fatal("Intel Penryn CPUs currently unsupported.");
+		FATAL() <<"Intel Penryn CPUs currently unsupported.";
 		break;
 	case IntelWestmere :
 	case IntelNehalem :
@@ -190,7 +190,7 @@ void init_hpc(Task* t)
 		break;
 	}
 	default:
-		fatal("Unknown CPU type");
+		FATAL() <<"Unknown CPU type";
 	}
 
 	libpfm_event_encoding(&(counters->rbc.attr), rbc_event , 1);
@@ -213,17 +213,17 @@ static void start_counter(Task* t, int group_fd, hpc_event_t* counter)
 	counter->fd = syscall(__NR_perf_event_open, &counter->attr, t->tid,
 			      -1, group_fd, 0);
 	if (0 > counter->fd) {
-		fatal("Failed to initialize counter");
+		FATAL() <<"Failed to initialize counter";
 	}
 	if (ioctl(counter->fd, PERF_EVENT_IOC_ENABLE, 0)) {
-		fatal("Failed to start counter");
+		FATAL() <<"Failed to start counter";
 	}
 }
 
 static void stop_counter(Task* t, const hpc_event_t* counter)
 {
 	if (ioctl(counter->fd, PERF_EVENT_IOC_DISABLE, 0)) {
-		fatal("Failed to stop counter");
+		FATAL() <<"Failed to stop counter";
 	}
 }
 
@@ -245,12 +245,12 @@ static void __start_hpc(Task* t)
 	own.type = F_OWNER_TID;
 	own.pid = tid;
 	if (fcntl(counters->rbc.fd, F_SETOWN_EX, &own)) {
-		fatal("Failed to SETOWN_EX rbc event fd");
+		FATAL() <<"Failed to SETOWN_EX rbc event fd";
 	}
 	if (fcntl(counters->rbc.fd, F_SETFL, O_ASYNC)
 	    || fcntl(counters->rbc.fd, F_SETSIG, HPC_TIME_SLICE_SIGNAL)) {
-		fatal("Failed to make rbc counter ASYNC with sig %s",
-		      signalname(HPC_TIME_SLICE_SIGNAL));
+		FATAL() <<"Failed to make rbc counter ASYNC with sig"
+			<< signalname(HPC_TIME_SLICE_SIGNAL);
 	}
 
 	counters->started = true;
