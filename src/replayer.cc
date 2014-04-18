@@ -82,6 +82,9 @@
 
 using namespace std;
 
+// The trace we're currently replaying.
+TraceIfstream::shr_ptr trace;
+
 // |parent| is the (potential) debugger client.  It waits until the
 // server, |child|, creates a debug socket.  Then the client exec()s
 // the debugger over itself.
@@ -371,7 +374,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 static trace_frame cur_trace_frame;
 static Task* schedule_task(Task** intr_t = nullptr)
 {
-	read_next_trace(&cur_trace_frame);
+	*trace >> cur_trace_frame;
 	if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
 		if (intr_t) {
 			*intr_t = Task::find(cur_trace_frame.tid);
@@ -382,22 +385,20 @@ static Task* schedule_task(Task** intr_t = nullptr)
 	Task *t = Task::find(cur_trace_frame.tid);
 	assert(t != NULL);
 
-	memcpy(&(t->trace), &cur_trace_frame, sizeof(t->trace));
+	t->trace = cur_trace_frame;
 
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
 	if (t->trace.ev.type == EV_SCHED) {
 		bool combined = false;
-		struct trace_frame next_trace;
-
-		peek_next_trace(&next_trace);
+		struct trace_frame next_trace = trace->peek_frame();
 		int64_t rbc = t->trace.rbc;
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid) {
 			rbc += next_trace.rbc;
-			read_next_trace(&(t->trace));
-			peek_next_trace(&next_trace);
+			*trace >> t->trace;
+			next_trace = trace->peek_frame();
 			combined = true;
 		}
 
@@ -1216,18 +1217,19 @@ static void prepare_syscallbuf_records(Task* t,
 				       const struct syscallbuf_record** first_rec_rec,
 				       struct syscallbuf_record** first_child_rec)
 {
-	/* Read the recorded syscall buffer back into the buffer
-	 * region. */
-	void* rec_addr;
-	*num_rec_bytes = read_raw_data_direct(&t->trace,
-					      syscallbuf_flush_buffer,
-					      sizeof(syscallbuf_flush_buffer),
-					      &rec_addr);
+	// Read the recorded syscall buffer back into the buffer
+	// region.
+	struct raw_data buf;
+	t->ifstream() >> buf;
+	*num_rec_bytes = buf.data.size();
 
-	/* The stored num_rec_bytes in the header doesn't include the
-	 * header bytes, but the stored trace data does. */
+	assert(*num_rec_bytes <= sizeof(syscallbuf_flush_buffer));
+	memcpy(syscallbuf_flush_buffer, buf.data.data(), *num_rec_bytes);
+
+	// The stored num_rec_bytes in the header doesn't include the
+	// header bytes, but the stored trace data does.
 	*num_rec_bytes -= sizeof(sizeof(struct syscallbuf_hdr));
-	assert(rec_addr == t->syscallbuf_child);
+	assert(buf.addr == t->syscallbuf_child);
 	assert(flush_hdr->num_rec_bytes == *num_rec_bytes);
 
 	*first_rec_rec = flush_hdr->recs;
@@ -1542,8 +1544,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	Event ev(t->trace.ev);
 
 	debug("[line %d] %d: replaying %s; state %s",
-	      get_global_time(), t->rec_tid,
-	      strevent(t->trace.ev), statename(t->trace.ev.state));
+	      t->trace_time(), t->rec_tid,
+	      Event(t->trace.ev).str().c_str(), statename(t->trace.ev.state));
 	if (t->syscallbuf_hdr) {
 		debug("    (syscllbufsz:%u, abrtcmt:%u)",
 		      t->syscallbuf_hdr->num_rec_bytes,
@@ -1637,12 +1639,12 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		break;
 	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
 		debug("  popping interrupted but not restarted %s",
-		      syscallname(t->ev().syscall.no));
+		      t->ev().str().c_str());
 		t->pop_syscall_interruption();
 		step.action = TSTEP_RETIRE;
 		break;
 	case EV_EXIT_SIGHANDLER:
-		debug("<-- sigreturn from %s", signalname(t->ev().syscall.no));
+		debug("<-- sigreturn from %s", t->ev().str().c_str());
 		t->pop_signal_handler();
 		step.action = TSTEP_RETIRE;
 		break;
@@ -1868,17 +1870,11 @@ static void replay_trace_frames(void)
 
 static void serve_replay(int argc, char* argv[], char** envp)
 {
-	string exe_image;
-	CharpVector arg_v;
-	CharpVector env_p;
-
-	rep_set_up_trace_dir(argc, argv);
-	load_recorded_env(&argc, &exe_image, &arg_v, &env_p);
+	trace = TraceIfstream::open(argc, argv);
+	struct args_env ae;
+	*trace >> ae;
 
 	init_libpfm();
-
-	open_trace_files();
-	rep_init_trace_files();
 
 	// Because we execvpe() the tracee, we must ensure that $PATH
 	// is the same as in recording so that libc searches paths in
@@ -1888,19 +1884,18 @@ static void serve_replay(int argc, char* argv[], char** envp)
 	// with a fresh environment guaranteed to be the same as in
 	// replay, so we don't have to worry about any mutation here
 	// affecting post-exec execution.
-	for (CharpVector::const_iterator it = env_p.begin();
-	     *it && it != env_p.end(); ++it) {
+	for (auto it = ae.envp.begin(); *it && it != ae.envp.end(); ++it) {
 		if (!strncmp(*it, "PATH=", sizeof("PATH=") - 1)) {
 			// NB: intentionally leaking this string.
 			putenv(strdup(*it));
 		}
 	}
 
-	Task::create(exe_image, arg_v, env_p, get_recorded_main_thread());
+	Task::create(ae, trace, trace->peek_frame().tid);
 	replay_trace_frames();
 
 	close_libpfm();
-	close_trace_files();
+	trace = nullptr;
 
 	debug("debugger server exiting ...");
 	exit(0);
@@ -2093,7 +2088,6 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	// so these shouldn't be mandatory.  I don't know if they are
 	// or not.
 	close_libpfm();
-	close_trace_files();
 
 	dbg_prepare_restore_after_exec_restart(dbg);
 
@@ -2117,7 +2111,7 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	for (size_t j = 0; j < replay_args.size(); ++j) {
 		argv.push_back(strdup(replay_args[j].c_str()));
 	}
-	argv.push_back(strdup(get_trace_path()));
+	argv.push_back(strdup(trace->dir().c_str()));
 
 	argv.push_back(nullptr);
 
@@ -2139,8 +2133,6 @@ void emergency_debug(Task* t)
 
 void start_debug_server(Task* t)
 {
-	flush_trace_files();
-
 	// See the comment in |guard_overshoot()| explaining why we do
 	// this.  Unlike in that context though, we don't know if |t|
 	// overshot an internal breakpoint.  If it did, cover that

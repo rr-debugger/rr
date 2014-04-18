@@ -23,9 +23,4 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp);
  */
 void terminate_recording(Task* t = nullptr);
 
-/**
- * Return the name of the initial exe image.
- */
-const std::string& get_exe_image();
-
 #endif /* RECORDER_H_ */

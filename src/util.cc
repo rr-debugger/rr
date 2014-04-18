@@ -586,106 +586,6 @@ void assert_child_regs_are(Task* t, const struct user_regs_struct* regs)
 	/* TODO: add perf counter validations (hw int, page faults, insts) */
 }
 
-uint64_t str2ull(const char* start, size_t max_size)
-{
-	int idx = 0;
-	while (start[idx] == ' ') {
-		idx += 1;
-	}
-
-	uint64_t val = 0;
-	while (idx <= ssize_t(max_size) && isdigit(start[idx])) {
-		char tmp_char[2];
-		tmp_char[0] = start[idx];
-		tmp_char[1] = '\0';
-		int tmp = atoi(tmp_char);
-		val *= 10;
-		val += tmp;
-		idx++;
-	}
-	return val;
-}
-
-long int str2li(const char* start, size_t max_size)
-{
-	int idx = 0;
-	int sign = 1;
-
-	while (start[idx] == ' ') {
-		idx += 1;
-	}
-
-	if (start[idx] == '-') {
-		idx += 1;
-		sign = -1;
-	}
-
-	long int val = 0;
-	while (idx <= ssize_t(max_size) && isdigit(start[idx])) {
-		char tmp_char[2];
-		tmp_char[0] = start[idx];
-		tmp_char[1] = '\0';
-		int tmp = atoi(tmp_char);
-		val *= 10;
-		val += tmp;
-		idx++;
-	}
-
-	val *= sign;
-	return val;
-}
-
-byte* str2x(const char* start, size_t max_size)
-{
-	int idx = 0;
-
-	while (start[idx] == ' ') {
-		idx++;
-	}
-
-	long int val = 0;
-	while (idx <= ssize_t(max_size)) {
-		int tmp = 0;
-		if (isdigit(start[idx])) {
-			tmp = start[idx] - '0';
-		} else if (isalpha(start[idx])) {
-			tmp = 10 + start[idx] - 'a';
-		} else {
-			break;
-		}
-		val *= 16;
-		val += tmp;
-		idx++;
-	}
-
-	return (byte*)val;
-}
-
-void read_line(FILE* file, char* buf, int size, const char* name)
-{
-	if (feof(file) || fgets(buf, size, file) == NULL) {
-		fatal("Failed to read line from %s into buf %p (size %d)",
-		      name, buf, size);
-	}
-}
-
-void read_null_terminated(FILE* file, char* buf, int size, const char* name)
-{
-	while (size > 1) {
-		int ch = getc(file);
-		if (ch == EOF) {
-			fatal("Failed to read line from %s into buf %p (size %d)",
-				name, buf, size);
-		}
-		if (ch == 0) {
-			break;
-		}
-		*buf++ = ch;
-		size--;
-	}
-	*buf = 0;
-}
-
 /**
  * Dump |buf_len| words in |buf| to |out|, starting with a line
  * containing |label|.  See |dump_binary_data()| for a description of
@@ -720,7 +620,7 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
 			  char* filename, size_t filename_size)
 {
 	snprintf(filename, filename_size - 1, "%s/%d_%d_%s",
-		 get_trace_path(), t->rec_tid, global_time, tag);
+		 t->trace_dir().c_str(), t->rec_tid, global_time, tag);
 }
 
 int should_dump_memory(Task* t, const struct trace_frame& f)
@@ -787,10 +687,6 @@ void dump_process_memory(Task* t, int global_time, const char* tag)
 
 	format_dump_filename(t, global_time, tag, filename, sizeof(filename));
 	dump_file = fopen64(filename, "w");
-
-	/* flush all files in case we partially record
-	 * TODO: what does that mean? */
-	flush_trace_files();
 
 	iterate_memory_map(t, dump_process_memory_iterator, dump_file,
 			   dump_process_memory_segment_filter, nullptr);
@@ -970,7 +866,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 
 	c.mode = mode;
 	snprintf(filename, sizeof(filename) - 1, "%s/%d_%d",
-		 get_trace_path(), global_time, t->rec_tid);
+		 t->trace_dir().c_str(), global_time, t->rec_tid);
 	c.checksums_file = fopen64(filename, fmode);
 	c.global_time = global_time;
 	if (!c.checksums_file) {
@@ -1014,10 +910,6 @@ int should_checksum(Task* t, const struct trace_frame& f)
 
 void checksum_process_memory(Task* t, int global_time)
 {
-	/* flush all files in case we start replaying while still
-	 * recording */
-	flush_trace_files();
-
 	iterate_checksums(t, STORE_CHECKSUMS, global_time);
 }
 

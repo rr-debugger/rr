@@ -1088,7 +1088,7 @@ static void init_scratch_memory(Task *t)
 	file.start = t->scratch_ptr;
 	file.end = (byte*)t->scratch_ptr + scratch_size;
 	sprintf(file.filename,"scratch for thread %d",t->tid);
-	record_mmapped_file_stats(&file);
+	t->ofstream() << file;
 
 	r.eax = eax;
 	t->set_regs(r);
@@ -1561,7 +1561,7 @@ static void process_mmap(Task* t, int syscallno,
 			off64_t end = (off64_t)file.stat.st_size - offset;
 			t->record_remote(addr, min(end, (off64_t)size));
 		}
-		record_mmapped_file_stats(&file);
+		t->ofstream() << file;
 
 		t->vm()->map(addr, size, prot, flags, offset,
 			     MappableResource(FileId(file.stat),

@@ -40,21 +40,27 @@ extern char** environ;
  * is, they should comprise disjoint and monotonically increasing
  * event sets.  No attempt is made to enforce this or normalize specs.
  */
-static void dump_events_matching(FILE* out, const char* spec)
+static void dump_events_matching(TraceIfstream& trace,
+				 FILE* out, const char* spec)
 {
+	
 	uint32_t start = 0, end = numeric_limits<uint32_t>::max();
-	struct trace_frame frame;
 
-	/* Try to parse the "range" syntax '[start]-[end]'. */
+	// Try to parse the "range" syntax '[start]-[end]'.
 	if (spec && 2 > sscanf(spec, "%u-%u", &start, &end)) {
-		/* Fall back on assuming the spec is a single event
-		 * number, however it parses out with atoi(). */
+		// Fall back on assuming the spec is a single event
+		// number, however it parses out with atoi().
 		start = end = atoi(spec);
 	}
 
-	while (try_read_next_trace(&frame) && frame.global_time <= end) {
-		if (start <= frame.global_time) {
-			dump_trace_frame(out, &frame);
+	while (trace.good()) {
+		struct trace_frame frame;
+		trace >> frame;
+		if (end < frame.global_time) {
+			return;
+		}
+		if (start <= frame.global_time && frame.global_time <= end) {
+			frame.dump(out, rr_flags()->raw_dump);
 		}
 	}
 }
@@ -62,10 +68,7 @@ static void dump_events_matching(FILE* out, const char* spec)
 static void start_dumping(int argc, char* argv[], char** envp)
 {
 	FILE* out = stdout;
-
-	rep_set_up_trace_dir(argc, argv);
-	open_trace_files();
-	rep_init_trace_files();
+	auto trace = TraceIfstream::open(argc, argv);
 
 	fprintf(out,
 		"global_time thread_time tid reason entry/exit "
@@ -74,11 +77,11 @@ static void start_dumping(int argc, char* argv[], char** envp)
 
 	if (1 == argc) {
 		// No specs => dump all events.
-		return dump_events_matching(stdout, NULL /*all events*/);
+		return dump_events_matching(*trace, stdout,
+					    nullptr/*all events*/);
 	}
-
 	for (int i = 1; i < argc; ++i) {
-		dump_events_matching(stdout, argv[i]);
+		dump_events_matching(*trace, stdout, argv[i]);
 	}
 }
 
@@ -380,8 +383,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 				log_info("checksumming on all events");
 				flags->checksum = CHECKSUM_ALL;
 			} else {
-				flags->checksum = str2li(optarg,
-							 LI_COLUMN_SIZE);
+				flags->checksum = atoi(optarg);
 				log_info("checksumming on at event %d",
 					 flags->checksum);
 			}
