@@ -177,6 +177,31 @@ static byte* read_mem(Task* t, void* addr, size_t len, size_t* read_len)
 	return buf;
 }
 
+static WatchType watchpoint_type(DbgRequestType req)
+{
+	switch (req) {
+	case DREQ_SET_HW_BREAK:
+	case DREQ_REMOVE_HW_BREAK:
+		return WATCH_EXEC;
+	case DREQ_SET_WR_WATCH:
+	case DREQ_REMOVE_WR_WATCH:
+		return WATCH_WRITE;
+	case DREQ_REMOVE_RDWR_WATCH:
+	case DREQ_SET_RDWR_WATCH:
+	// NB: x86 doesn't support read-only watchpoints (who would
+	// ever want to use one?) so we treat them as readwrite
+	// watchpoints and hope that gdb can figure out what's going
+	// on.  That is, if a user ever tries to set a read
+	// watchpoint.
+	case DREQ_REMOVE_RD_WATCH:
+	case DREQ_SET_RD_WATCH:
+		return WATCH_READWRITE;
+	default:
+		FATAL() <<"Unknown dbg request "<< req;
+		return WatchType(-1); // not reached
+	}
+}
+
 /**
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
@@ -339,7 +364,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			       (req.mem.len ==
 				sizeof(AddressSpace::breakpoint_insn)))
 				<< "Debugger setting bad breakpoint insn";
-		target->vm()->set_breakpoint(req.mem.addr,
+			target->vm()->set_breakpoint(req.mem.addr,
 						     TRAP_BKPT_USER);
 			dbg_reply_watchpoint_request(dbg, 0);
 			continue;
@@ -347,17 +372,25 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			target->vm()->remove_breakpoint(req.mem.addr,
 							TRAP_BKPT_USER);
 			dbg_reply_watchpoint_request(dbg, 0);
-			break;
+			continue;
 		case DREQ_REMOVE_HW_BREAK:
 		case DREQ_REMOVE_RD_WATCH:
 		case DREQ_REMOVE_WR_WATCH:
 		case DREQ_REMOVE_RDWR_WATCH:
+			target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
+							watchpoint_type(req.type));
+			dbg_reply_watchpoint_request(dbg, 0);
+			continue;
 		case DREQ_SET_HW_BREAK:
 		case DREQ_SET_RD_WATCH:
 		case DREQ_SET_WR_WATCH:
-		case DREQ_SET_RDWR_WATCH:
-			dbg_reply_watchpoint_request(dbg, -1);
+		case DREQ_SET_RDWR_WATCH: {
+			bool ok = target->vm()->set_watchpoint(
+				req.mem.addr, req.mem.len,
+				watchpoint_type(req.type));
+			dbg_reply_watchpoint_request(dbg, ok ? 0 : 1);
 			continue;
+		}
 		default:
 			FATAL() <<"Unknown debugger request "<< req.type;
 		}
@@ -1700,6 +1733,12 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		 * and successful stepi's. */
 		assert(SIGTRAP == t->child_sig && "Unknown trap");
 
+		// NBB: very little effort has been made to handle
+		// corner cases where multiple
+		// breakpoints/watchpoints/singlesteps are fired
+		// simultaneously.  These cases will be addressed as
+		// they arise in practice.
+		void* watch_addr = nullptr;
 		if (TRAP_BKPT_USER ==
 		    t->vm()->get_breakpoint_type_at_ip(t->ip())) {
 			LOG(debug) <<"  "<< t->tid <<"(rec:"<< t->rec_tid
@@ -1709,18 +1748,35 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			 * breakpoint instruction.  Move $ip back
 			 * right before it. */
 			t->move_ip_before_breakpoint();
-		} else {
+		} else if (DS_SINGLESTEP & t->debug_status()) {
 			LOG(debug) <<"  finished debugger stepi";
 			/* Successful stepi.  Nothing else to do. */
 			assert(DREQ_STEP == req.type
 			       && req.target == get_threadid(t));
 		}
+
+		if (DS_WATCHPOINT_ANY & t->debug_status()) {
+			LOG(debug) <<"  "<< t->tid <<"(rec:"<< t->rec_tid
+				   <<"): hit debugger watchpoint.";
+			// XXX it's possible for multiple watchpoints
+			// to be triggered simultaneously.  No attempt
+			// to prioritize them is made here; we just
+			// choose the first one that fired.
+			size_t dr = DS_WATCHPOINT0 & t->debug_status() ? 0
+				    : DS_WATCHPOINT1 & t->debug_status() ? 1
+				    : DS_WATCHPOINT2 & t->debug_status() ? 2
+				    : DS_WATCHPOINT3 & t->debug_status() ? 3
+				    : -1;
+			watch_addr = t->watchpoint_addr(dr);
+		}
+
 		/* Don't restart with SIGTRAP anywhere. */
 		t->child_sig = 0;
 
 		/* Notify the debugger and process any new requests
 		 * that might have triggered before resuming. */
-		dbg_notify_stop(dbg, get_threadid(t),	0x05/*gdb mandate*/);
+		dbg_notify_stop(dbg, get_threadid(t),	0x05/*gdb mandate*/,
+				watch_addr);
 		req = process_debugger_requests(dbg, t);
 		assert(dbg_is_resume_request(&req));
 	}

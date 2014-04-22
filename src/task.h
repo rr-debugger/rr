@@ -333,6 +333,61 @@ enum TrapType {
 	TRAP_BKPT_USER,
 };
 
+// XXX one is tempted to merge Breakpoint and Watchpoint into a single
+// entity, but the semantics are just different enough that separate
+// objects are easier for now.
+class Watchpoint;
+
+enum WatchType {
+	// NB: these random-looking enumeration values are chosen to
+	// match the numbers programmed into x86 debug registers.
+	WATCH_EXEC = 0x00,
+	WATCH_WRITE = 0x01,
+	WATCH_READWRITE = 0x03
+};
+
+enum DebugStatus {
+	DS_WATCHPOINT0 = 1 << 0,
+	DS_WATCHPOINT1 = 1 << 1,
+	DS_WATCHPOINT2 = 1 << 2,
+	DS_WATCHPOINT3 = 1 << 3,
+	DS_WATCHPOINT_ANY = 0xf,
+	DS_SINGLESTEP = 1 << 14,
+};
+
+/**
+ * Range of memory addresses that can be used as a std::map key.
+ */
+struct MemoryRange {
+	MemoryRange(void* addr, size_t num_bytes)
+		: addr(addr), num_bytes(num_bytes) {}
+	MemoryRange(const MemoryRange&) = default;
+	MemoryRange& operator=(const MemoryRange&) = default;
+
+	bool operator==(const MemoryRange& o) const {
+		return addr == o.addr && num_bytes == o.num_bytes;
+	}
+	bool operator<(const MemoryRange& o) const {
+		return addr != o.addr ?
+			addr < o.addr : num_bytes < o.num_bytes;
+	}
+
+	void* addr;
+	size_t num_bytes;
+};
+
+/**
+ * A distinct watchpoint, corresponding to the information needed to
+ * program a single x86 debug register.
+ */
+struct WatchConfig {
+	WatchConfig(void* addr, size_t num_bytes, WatchType type)
+		: addr(addr), num_bytes(num_bytes), type(type) {}
+	void* addr;
+	size_t num_bytes;
+	WatchType type;
+};
+
 /**
  * Models the address space for a set of tasks.  This includes the set
  * of mapped pages, and the resources those mappings refer to.
@@ -341,11 +396,12 @@ class AddressSpace : public HasTaskSet {
 	friend struct VerifyAddressSpace;
 
 public:
-	typedef std::map<void*, std::shared_ptr<Breakpoint> > BreakpointMap;
+	typedef std::map<void*, std::shared_ptr<Breakpoint>> BreakpointMap;
 	typedef std::map<Mapping, MappableResource,
 			 MappingComparator> MemoryMap;
 	typedef std::shared_ptr<AddressSpace> shr_ptr;
 	typedef std::set<AddressSpace*> Set;
+	typedef std::map<MemoryRange, std::shared_ptr<Watchpoint>> WatchpointMap;
 
 	~AddressSpace() { sas.erase(this); }
 
@@ -353,6 +409,12 @@ public:
 	MemoryMap::const_iterator begin() const {
 		return mem.begin();
 	}
+
+	/**
+	 * Call this after a new task has been cloned within this
+	 * address space.
+	 */
+	void after_clone();
 
 	/**
 	 * Change the program data break of this address space to
@@ -443,6 +505,15 @@ public:
 	void destroy_all_breakpoints();
 
 	/**
+	 * Manage watchpoints.  Analogous to breakpoint-managing
+	 * methods above, except that watchpoints can be set for an
+	 * address range.
+	 */
+	void remove_watchpoint(void* addr, size_t num_bytes, WatchType type);
+	bool set_watchpoint(void* addr, size_t num_bytes, WatchType type);
+	void destroy_all_watchpoints();
+
+	/**
 	 * Make [addr, addr + num_bytes) inaccesible within this
 	 * address space.
 	 */
@@ -473,6 +544,13 @@ private:
 		sas.insert(this);
 	}
 	AddressSpace(const AddressSpace& o);
+
+	/**
+	 * Construct a minimal set of watchpoints to be enabled based
+	 * on |set_watchpoint()| calls, and program them for each task
+	 * in this address space.
+	 */
+	bool allocate_watchpoints();
 
 	/**
 	 * Merge the mappings adjacent to |it| in memory that are
@@ -532,6 +610,10 @@ private:
 	MemoryMap mem;
 	/* First mapped byte of the vdso. */
 	void* vdso_start_addr;
+	// The watchpoints set for tasks in this VM.  Watchpoints are
+	// programmed per Task, but we track them per address space on
+	// behalf of debuggers that assume that model.
+	WatchpointMap watchpoints;
 
 	/**
 	 * Ensure that the cached mapping of |t| matches /proc/maps,
@@ -637,6 +719,7 @@ public:
 	/** For each priority, the list of tasks with that priority.
 	    These lists are never empty. */
 	typedef std::set<std::pair<int, Task*> > PrioritySet;
+	typedef std::vector<WatchConfig> DebugRegs;
 
 	~Task();
 
@@ -1050,6 +1133,18 @@ public:
 	/** Return the current regs of this. */
 	const struct user_regs_struct& regs();
 
+	/**
+	 * Return the debug status, which is a bitfield comprising
+	 * |DebugStatus| bits (see above).
+	 */
+	uintptr_t debug_status();
+
+	/**
+	 * Return the address of the watchpoint programmed at slot
+	 * |i|.
+	 */
+	void* watchpoint_addr(size_t i);
+
 	/** Return the current $sp of this. */
 	void* sp() { return (void*)regs().esp; }
 
@@ -1103,6 +1198,17 @@ public:
 
 	/** Set the tracee's registers to |regs|. */
 	void set_regs(const struct user_regs_struct& regs);
+
+	/**
+	 * Program the debug registers to the vector of watchpoint
+	 * configurations in |reg| (also updating the debug control
+	 * register appropriately).  Return true if all registers were
+	 * successfully programmed, false otherwise.  Any time false
+	 * is returned, the caller is guaranteed that no watchpoint
+	 * has been enabled; either all of |regs| is enabled and true
+	 * is returned, or none are and false is returned.
+	 */
+	bool set_debug_regs(const DebugRegs& regs);
 
 	/** Update the clear-tid futex to |tid_addr|. */
 	void set_tid_addr(void* tid_addr);

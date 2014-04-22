@@ -7,13 +7,23 @@ static void breakpoint(void) {
 	(void)break_here;
 }
 
+static int var;
+
+static void* thread(void* unused) {
+	var = 1337;
+	return NULL;
+}
+
 int main(int argc, char *argv[]) {
-	int var = 0;
+	pthread_t t;
 
 	breakpoint();
 
 	var = 42;
 	(void)var;
+
+	pthread_create(&t, NULL, thread, NULL);
+	pthread_join(t, NULL);
 
 	atomic_puts("EXIT-SUCCESS");
 	return 0;

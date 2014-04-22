@@ -599,6 +599,7 @@ static void process_clone(Task* t,
 		// refcounts) across a non-VM-sharing clone, but for
 		// now we never want to do this.
 		new_task->vm()->destroy_all_breakpoints();
+		new_task->vm()->destroy_all_watchpoints();
 	}
 
 	struct user_regs_struct r = t->regs();
@@ -613,6 +614,8 @@ static void process_clone(Task* t,
 	validate_args(syscallno, state, t);
 
 	init_scratch_memory(new_task);
+
+	new_task->vm()->after_clone();
 
 	step->action = TSTEP_RETIRE;
 }

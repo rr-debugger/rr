@@ -1241,19 +1241,28 @@ static int to_gdb_signum(int sig)
 }
 
 static void send_stop_reply_packet(struct dbg_context* dbg,
-				   dbg_threadid_t thread, int sig)
+				   dbg_threadid_t thread, int sig,
+				   void* watch_addr = nullptr)
 {
-	if (sig >= 0) {
-		char buf[64];
-		snprintf(buf, sizeof(buf) - 1, "T%02xthread:p%02x.%02x;",
-			 to_gdb_signum(sig), thread.pid, thread.tid);
-		write_packet(dbg, buf);
-	} else {
+	if (sig < 0) {
 		write_packet(dbg, "E01");
+		return;
 	}
+	char watch[1024];
+	if (watch_addr) {
+		snprintf(watch, sizeof(watch) - 1, "watch:%x;",
+			 uintptr_t(watch_addr));
+	} else {
+		watch[0] = '\0';
+	}
+	char buf[PATH_MAX];
+	snprintf(buf, sizeof(buf) - 1, "T%02xthread:p%02x.%02x;%s",
+		 to_gdb_signum(sig), thread.pid, thread.tid, watch);
+	write_packet(dbg, buf);
 }
 
-void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
+void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig,
+		     void* watch_addr)
 {
 	assert(dbg_is_resume_request(&dbg->req)
 	       || dbg->req.type == DREQ_INTERRUPT);
@@ -1264,7 +1273,7 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig)
 		// the next stop we're willing to tell gdb about.
 		return;
 	}
-	send_stop_reply_packet(dbg, thread, sig);
+	send_stop_reply_packet(dbg, thread, sig, watch_addr);
 
 	// This isn't documented in the gdb remote protocol, but if we
 	// don't do this, gdb will sometimes continue to send requests
@@ -1456,13 +1465,7 @@ void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code)
 	assert(DREQ_WATCH_FIRST <= dbg->req.type
 	       && dbg->req.type <= DREQ_WATCH_LAST);
 
-	if (code) {
-		fprintf(stderr,
-"rr: Warning: attempt to set unhandled watchpoint type.\n"
-"  Use 'del [breakpoint-num]' to clear the watchpoint, or else gdb may \n"
-"  become unusable.\n");
-	}
-	write_packet(dbg, code ? "" : "OK");
+	write_packet(dbg, code ? "E01" : "OK");
 
 	consume_request(dbg);
 }
