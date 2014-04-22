@@ -1893,3 +1893,17 @@ int XShmQueryExtension(void* dpy)
 {
 	return 0;
 }
+
+/** Make sure XShmCreateImage returns null in case an application doesn't do
+    extension checks first. */
+void *XShmCreateImage(register void *dpy,
+	register void *visual,
+	unsigned int depth,
+	int format,
+	char *data,
+	void *shminfo,
+	unsigned int width,
+	unsigned int height)
+{
+	return 0;
+}
