@@ -4,14 +4,16 @@
 <title>rr</title>
 
 <section>
-  <h1>How rr works</h1>
-  <footer>mozilla research</footer>
+  <h1>How <a href="http://rr-project.org">rr</a> works</h1>
+  <footer><a href="www.mozilla.org/research/">mozilla
+      research</a></footer>
 </section>
 
 <section>
-  <p>Low overhead recording and replay of applications (trees of
-    processes and threads).</p>
-  <p>Record nondeterministic inputs, replay deterministically.</p>
+  <p>rr records nondeterministic executions and debugs them
+    deterministically.
+  <p>Practical tool; version 1.2 is latest release.  Used to debug
+    Firefox.
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -22,18 +24,18 @@
 </section>
 
 <section>
-  <p>Offline debugging: record intermittent test failures "at scale"
-  online, debug the recordings offline at leisure.</p>
-</section>
-
-<section>
   <p>Deterministic debugging: record nondeterministic failure once,
-  replay deterministically forever.</p>
+    debug deterministically forever.
 </section>
 
 <section>
-  <p>Omniscient debugging: step backwards in time; issue queries over
-  program state changes.</p>
+  <p>Record intermittent test failures "at scale" online, debug the
+    recordings offline at leisure.
+</section>
+
+<section>
+  <p>Omniscient debugging: issue queries over program state changes;
+    go backwards in time.
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -45,67 +47,67 @@
 
 <section>
   <p><code>rr record prog --args</code><br />
-    &rarr;<em>saves recording to <code>trace/</code></em></p>
-  <p><code>rr replay trace/</code><br />
-    &rarr;<em>debugger socket drives replay</em></p>
+    &rarr;<em>saves recording</em>
+  <p><code>rr replay</code><br /> &rarr;<em>debugger socket drives
+    replay of most recent recording</em>
 </section>
 
 <section>
-  <p>Most of an application's execution is deterministic.</p>
-  <p>rr records the <em>nondeterministic</em> parts.</p>
+  <p>Most of an application's execution is deterministic.
+  <p>rr records the <em>nondeterministic</em> parts.
 </section>
 
 <section>
   <h3>Examples of nondeterministic inputs</h3>
   <ul>
-    <li><code>clock_gettime(...<span class="highlight">&now</span>);</code></li>
+    <li><code>clock_gettime(...<span class="highlight">&now</span>);</code>
     <li><code>read(fd, <span class="highlight">buf</span>,
-        4096);</code></li>
-    <li><code>__asm__("<span class="highlight">rdtsc</span>")</code></li>
-    <li><code>ioctl(<span class="highlight">...</span>)</code></li>
-    <li>UNIX signals...</li>
+        4096);</code>
+    <li><code>__asm__("<span class="highlight">rdtsc</span>")</code>
+    <li><code>ioctl(<span class="highlight">...</span>)</code>
+    <li>UNIX signals...
   </ul>
 </section>
 
 <section>
   <p>Then during replay, emulate system calls and <code>rdtsc</code>
-  by writing the saved nondeterministic data back to the tracee.</p>
+  by writing the saved nondeterministic data back to the tracee.
 </section>
 
 <section>
-  <p>Shared-memory multitasking is a nondeterministic "input".</p>
+  <p>Shared-memory multitasking is a nondeterministic "input".
   <p>... but modern hardware can't record it efficiently.  So rr
-  doesn't record truly parallel executions.</p>
+  doesn't record truly parallel executions.
 </section>
 
 <section>
   <h3>Scheduling tasks</h3>
   <p>Can switch tasks at syscalls.  Must preempt straight-line code
-  too; <em>and replay the preemptions deterministically</em>.</p>
+  too; <em>and replay the preemptions deterministically</em>.
 </section>
 
 <section>
   <h3>Hardware performance counters (HPCs)</h3>
   <p>Recent chips count instructions-retired, branches-retired,
   ..., and can be programmed to interrupt after a count
-  of <i>x</i>.</p>
+  of <i>x</i>.
 </section>
 
 <section>
-  <p>Simulate task preemption with HPC interrupts.</p>
+  <p>Simulate task preemption with HPC interrupts.
   <p>Idea: program insns-retired counter to interrupt
   after <i>k</i> <sup>&#10033;</sup>.  That <i>k</i> approximates
-  a <em>time slice</em>.</p>
+  a <em>time slice</em>.
 </section>
 
 <section>
   <h3>Replaying preemption</h3>
   <p>Record the insn-retired counter value <i>v</i> to the trace file.
-  During replay, program the interrupt for <i>v</i>.  Voilà.</p>
+  During replay, program the interrupt for <i>v</i>.  Voilà.
 </section>
 
 <section>
-  <p>UNIX signals are recorded and replayed like task preemptions.</p>
+  <p>UNIX signals are recorded and replayed like task preemptions.
   <p>Record counter value <i>v</i> and signum.  Replay by interrupting
   after <i>v</i> and "delivering" signum.
 </section>
@@ -120,54 +122,57 @@
 <section>
   <h3>Basic requirements</h3>
   <ul>
-    <li>x86 userspace (x86-64 kernel OK)</li>
-    <li>linux with "precise event-based sampling" (PEBS; perf events)
-      support: &gt;= 3.0</li>
-    <li>(<i>optional</i>) linux with seccomp-bpf support: &gt;=
-      3.5</li>
+    <li>Intel chip with Nehalem (2010) or later µarch<sup>1</sup>. VM
+      with perf counter virtualization is OK.
+    <li>x86 userspace. x86-64 kernel is OK.
+    <li>linux with <code>PTRACE_INTERRUPT</code> support: &ge;
+      3.4
+    <li>(<i>strongly encouraged</i>) linux with seccomp-bpf support:
+      &ge; 3.5
   </ul>
+  <footer><sup>1</sup> Some Haswell chips don't work with rr
+    (yet).</footer>
 </section>
 
 <section>
   <p>rr touches low-level details of machine architecture, by
-    necessity; f.e. kernel syscall ABI.</p>
-  <p>Supporting more ISAs is "just work"; expect x86-64 in the
-    future.</p>
+    necessity; f.e. kernel syscall ABI.
+  <p>Supporting more ISAs is "just work". x86-64 coming.
 </section>
 
 <section>
-  <p>Precise HPC events identify points in execution.</p>
+  <p>ARM chips don't have the performance counters that rr requires.
+  <p>So no ARM support is possible at the moment.
+</section>
+
+<section>
+  <p>Precise HPC events identify points in execution.
   <p>Precise replay of signals and preemption requires interrupting
-  tracees at these events.</p>
+  tracees at these events.
 </section>
 
 <section>
   <h3><sup>&#10033;</sup>Performance counters are messier in reality</h3>
   <ul>
     <li>Insns-retired counter is imprecise.  <em>Use precise
-      retired-branch counter instead</em>.</li>
+      retired-branch counter instead</em>.
     <li>Counter interrupts can overshoot.  <em>Subtract a "skid
-      region"</em>.</li>
+      region"</em>.
     <li>(<em>So replay point is technically indeterminate.  But
-      doesn't seem to be a problem in practice, yet</em>.)</li>
+      doesn't seem to be a problem in practice, yet</em>.)
   </ul>
 </section>
 
 <section>
   <p>seccomp-bpf enables rr to <em>selectively trace</em>
-  syscalls.</p>
+  syscalls.
   <p>Only trap to rr for syscalls that can't be handled in the tracee.
-  Over 100x faster in µbenchmarks.</p>
+  Over 100x faster in µbenchmarks.
 </section>
 
 <section>
   <h3>Buffer syscalls; flush buffer as "super event"</h3>
-  <p class="todo">TODO DIAGRAM</p>
-</section>
-
-<section>
-  <h3>No ASLR or ptrace hardening</h3>
-  <p class="todo">TODO</p>
+  <p><img style="width: 100%;" src="res/syscall-buffer.svg">
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -179,14 +184,14 @@
 
 <section>
   <p>Tasks are controlled through the ptrace API.
-  <p>HPCs are controlled through the perf event API.</p>
+  <p>HPCs are controlled through the perf event API.
 </section>
 
 <section>
   <p>The first traced task is forked from rr.  After
   that, <code>clone()</code> and <code>fork()</code>from tracees
-  add new tasks.</p>
-  <p>And tasks die at <code>exit()</code>.</p>
+  add new tasks.
+  <p>And tasks die at <code>exit()</code>.
 </section>
 
 <section>
@@ -197,9 +202,9 @@
         task t = <span class="highlight">schedule()</span>
         if not <span class="highlight">status_changed(t)</span>:
             <span class="highlight">resume_execution(t)</span>
-        <span class="highlight">handle_event(t)</span>
+        <span class="highlight">state_change(t)</span>
     </pre>
-    <footer>src/recorder/recorder.c</footer>
+    <footer>src/recorder.cc</footer>
 </section>
 
 <section>
@@ -213,7 +218,7 @@
         tid = waitpid(ANY_CHILD_TASK)
         return task_map[tid]
   </pre>
-  <footer>src/recorder/rec_sched.c</footer>
+  <footer>src/recorder_sched.cc</footer>
 </section>
 
 <section>
@@ -227,19 +232,21 @@
     # syscalls, signals, ptrace
     # events ...</em>
   </pre>
-  <footer>src/recorder/rec_sched.c</footer>
+  <footer>src/task.cc</footer>
 </section>
 
 <section>
   <h3>Resuming task execution</h3>
   <p><em>Invariant</em>: At most one task is running userspace code.
   All other tasks are either idle or awaiting completion of a
-  syscall.<sup>&#8224;</sup></p>
+  syscall.<sup>&#8224;</sup>
 </section>
 
 <section>
-  <h3>Multiple running tasks are nondeterministic</h3>
-  <p class="highlight">TODO EXAMPLE RACE, SYSCALL DIVERGENCE</p>
+  <p>Multiple running tasks suffer from <em>shared-memory
+      hazards</em>.
+  <p>rr doesn't attempt to record these hazards, so can't replay them
+    deterministically.
 </section>
 
 <section>
@@ -253,117 +260,136 @@
     # for syscalls, signals, ptrace
     # events ...</em>
   </pre>
-  <footer>src/recorder/recorder.c</footer>
+  <footer>src/{recorder, task}.cc</footer>
 </section>
 
 <section>
   <p>Most recorder work is done
-  for <code><span class="highlight">handle_event(task
-  t)</span></code>.</p>
-  <p>But before looking at it, a few digressions ...</p>
+  for <code><span class="highlight">state_change(task
+  t)</span></code>.
+  <p>But before looking at it, a few digressions ...
 </section>
 
 <section>
   <h3>Generating time-slice interrupts</h3>
   <ul>
     <li><code>perf_event_open()</code> fd for
-      retired-conditional-branches; details are microarch
-      specific</li>
-    <li>Set event "sample period" to <i>k</i></li>
-    <li>Make event fd O_ASYNC and set tracee task as owner</li>
-    <li>&rarr; <em>tracee sent SIGIO at rbc ≈ <i>k</i></em></li>
+      retired-conditional-branches; details are µarch
+      specific
+    <li>Set event "sample period" to <i>k</i>
+    <li>Make event fd O_ASYNC and set tracee task as owner
+    <li>&rarr; <em>tracee sent SIGSTKFLT at rbc ≈ <i>k</i></em>
   </ul>
+  <footer>src/hpc.cc</footer>
 </section>
 
 <section>
   <h3>Trapping tracees at rdtsc</h3>
   <ul>
     <li><code>prctl(PR_SET_TSC, PR_TSC_SIGSEGV)</code> &rarr; tracees
-      executing rdtsc trap to SIGSEGV</li>
-    <li>rr examines which instruction triggered SIGSEGV</li>
-    <li>if rdtsc, value is recorded and insn is emulated</li>
+      executing rdtsc trap to SIGSEGV
+    <li>rr examines which instruction triggered SIGSEGV
+    <li>if rdtsc, value is recorded by rr tracer and tracee insn is
+      emulated
   </ul>
 </section>
 
 <section>
   <p>Tracees generate ptrace events by executing fork, clone, exit,
-    and some other syscalls.</p>
+    and some other syscalls.
   <p>ptrace events exist for linux reasons that aren't
-  interesting.</p>
+  interesting.
 </section>
 
 <section>
-  <p>(rr tracees can share memory mappings with other processes.</p>
+  <p>(rr tracees can share memory mappings with other processes.
   <p>Not possible to record efficiently in SW; needs kernel and/or HW
-  support. Unsupported until then.)</p>
+  support. Unsupported until then.)
 </section>
 
 <section>
-  <h3>Tracee events seen
-    by <code><span class="highlight">handle_event()</span></code></h3>
+  <h3>Tracee events recorded
+    by <code><span class="highlight">state_change()</span></code></h3>
   <ul>
-    <li>"Pseudo"-signal delivered by implementation of rdtsc or
-      time-slice interrupts</li>
-    <li>Other, "real", signals</li>
-    <li>ptrace events</li>
-    <li>Syscall entry and exit</li>
+    <li>"Pseudo"-signals delivered by implementation of rdtsc or
+      time-slice interrupts
+    <li>Other, "real", signals
+    <li>ptrace events
+    <li>Syscall entry and exit
   </ul>
 </section>
 
 <section>
-  <h3><span class="highlight">handle_event()</span> structure</h3>
-  <p class="todo">TODO</p>
-  <footer>src/recorder/*.c
-</section>
-
-<section>
-  <h3>Non-nestable events</h3>
-  <p class="todo">TODO</p>
-</section>
-
-<section>
   <p>Some syscalls must be executed atomically; can't switch task
-  until syscall finishes.</p>
-  <p class="todo">TODO mmap example</p>
+  until syscall finishes.
+  <p>Ex: <code>mmap</code> modifies address space, can race other
+    syscalls.
 </section>
 
 <section>
   <p>On the other hand, some syscalls <em>require</em> switching;
-  syscall can't finish until the task switches.</p>
-  <p class="todo">TODO waitpid example</p>
+  syscall can't finish until the task switches.
+  <p>Ex: <code>waitpid()</code> only returns after child runs, changes
+    state.
 </section>
 
 <section>
-  <h3>Scratch buffers for blocking syscalls</h3>
-  <p class="todo">TODO</p>
+  <p><em>Problem</em>: kernel writes non-atomic syscall outparams in
+    an order that rr can't record.
+  <p>Kernel outparam writes race rr tracees in userspace, syscalls.
 </section>
 
 <section>
-  <h3>POSIX signals 101</h3>
-  <p class="todo">TODO</p>
+  <p>Solution: allocate <em>scratch space</em> for the outparams of
+    non-atomic syscalls.  At syscall exit, write scratch data back to
+    outparams.
+  <p><em>&rarr; rr orders outparam writes</em>
 </section>
 
 <section>
-  <h3>Linux signals 202</h3>
-  <p class="todo">TODO</p>
+  <p>POSIX signals can arrive at practically any point in execution
+    and invoke signal handler code.
+  <p><em>&rarr; tracee code can be (almost) arbitrarily
+      re-entered</em>
 </section>
 
 <section>
-  <h3>Recording signal delivery</h3>
-  <p class="todo">TODO</p>
+  <p>Linux exits tracees out of syscalls with
+    an <code>ERESTART*</code> error code before delivering signals.
+    Syscall not always restarted after signal.
+  <p>Sighandler
+      nesting <a href="https://github.com/mozilla/rr/wiki/Linux-signals">gets
+      complex</a>.
 </section>
 
 <section>
-  <h3>Finishing signal handlers</h3>
-  <p class="todo">TODO</p>
+  <h3>When a signal becomes pending</h3>
+  <ul>
+    <li>consult sighandler table to see if there's a registered
+      sighandler function
+    <li>if so, <code>SINGLESTEP</code> into the sighandler frame and
+      record the <code>struct sigframe</code> set up by kernel. Also
+      record sighandler registers.
+    <li>otherwise, deliver the signal using the ptrace API
 </section>
 
 <section>
-  <h3>Delivering unhandled signals</h3>
-  <p class="todo">TODO</p>
-  <p><sup>&#8224;</sup>This breaks the rr scheduling invariant.</p>
+  <p>Sighandlers exit using the <code>SYS_sigreturn</code> syscall.
+    rr uses these calls to help determine whether interrupted syscalls
+    are restarted.
 </section>
 
+<section>
+  <p>Tracees exit in unpredictable order at fatal signals like
+  SIGABRT. Naïve <code>waitpid()</code> calls deadlock.
+  <p><code>exit_group</code>: same problem.
+</section>
+
+<section>
+  <h3>"Unstable" tracee exit</h3>
+  <p>rr solves this by detaching and not waiting on affected tracees.
+  <p><sup>&#8224;</sup>Breaks rr scheduling invariant.
+</section>
 
 <!-----------------------------------------------------------------------------
 -- Syscall buffer
@@ -373,43 +399,47 @@
 </section>
 
 <section>
-  <p>ptrace traps are expensive.  Do as much work in tracee process as
-    possible.</p>
+  <p>ptrace traps are expensive.  Better to do as much work in tracee
+    process as possible.
   <p>Use seccomp-bpf to selectively trap syscalls.
 </section>
 
 <section>
-  <p>Syscall hooks are <code>LD_PRELOAD</code>'d into tracees.</p>
-  <p>Hooks record kernel return value and outparam data to
-    the <em>syscall buffer</em>.</p>
+  <p>Syscall hooks are <code>LD_PRELOAD</code>'d into tracees.
+  <p>Hook functions record kernel return value and outparam data to
+    the <em>syscall buffer</em>.
 </section>
 
 <section>
   <p>rr monkeypatches <code>__kernel_vsyscall()</code> in vdso to jump
-  to rr trampoline.</p>
+    to rr trampoline.
   <p>Trampoline calls dispatcher, which calls rr hook if
-  available.</p>
+    available.
 </section>
 
 <section>
   <p><em>Untraced</em> syscalls are recorded to syscallbuf by tracee.
   <em>Traced</em> events recorded by the rr process "flush" the
-  tracee's syscallbuf.</p>
-  <p>Lib falls back on traced syscalls.</p>
+  tracee's syscallbuf.
+  <p>Lib falls back on traced syscalls.
 </section>
 
 <section>
-  <h3>Simplified example of wrapper function</h3>
-  <pre>
+  <h3>Simplified example of syscallbuf hook function</h3>
+  <pre style="margin: 50px 50px; font-size: 24px">
 static int sys_close(int fd)
 {
-   long ret;
-   if (!start_buffer_syscall(SYS_close))
-     /* Fall back on traced syscall. */
-     return syscall(SYS_close, fd);
-   /* Buffer this close() call. */
-   ret = untraced_syscall1(SYS_close, fd);
-   return commit_syscall(SYS_close, ret);
+	long ret;
+	if (!start_buffer_syscall(SYS_close))
+		/* Fall back on traced syscall.
+                 * This generates a ptrace trap. */
+		return syscall(SYS_close, fd);
+
+	/* Untraced syscall. Does not generate
+         * ptrace trap.*/
+	ret = untraced_syscall1(SYS_close, fd);
+        /* Save the result to syscall buffer. */
+	return commit_syscall(SYS_close, ret);
 }
   </pre>
 </section>
@@ -421,30 +451,44 @@ static int sys_close(int fd)
       <pre>
 asm("_untraced_syscall:\n\t"
     "int $0x80");
-      </pre></li>
-    <li>Install filter that passes calls
-    from <code>_untraced_syscall</code>, traps to rr otherwise.</li>
+      </pre>
+    <li>Install seccomp-bpf filter that passes calls
+    from <code>_untraced_syscall</code>, traps to rr otherwise.
     </ul>
 </section>
 
 <section>
-  <h3>resume_execution changes for PTRACE_SECCOMP events</h3>
-  <p class="todo">TODO</p>
+  <p>seccomp-bpf traps generate <code>PTRACE_EVENT_SECCOMP</code> in
+    tracer process.
+  <p>rr can then <code>PTRACE_SYSCALL</code> the tracee into traced
+    syscall.
 </section>
 
 <section>
-  <h3>Syscallbuf hooks of may-block syscalls</h3>
-  <p class="todo">TODO</p>
+  <p><em>Problem</em>: buffered syscalls don't trap to rr, by design.
+    But may-block syscalls (f.e. <code>waitpid()</code>) require rr to
+    schedule another task.
 </section>
 
 <section>
   <h3>perf events to the rescue: "descheduled" event</h3>
-  <p class="todo">TODO</p>
+  <p>Set event to fire on tracee context switch.  Event traps to rr.
+  <p><em>Buffered syscall blocks &rarr; context switch &rarr; rr
+      trap</em>
 </section>
 
 <section>
-  <h3>Handling "desched notifications"</h3>
-  <p class="todo">TODO</p>
+  <h3>Generating desched events</h3>
+  <ul>
+    <li>In <em>tracee</em>, <code>perf_event_open()</code> fd for
+      context-switch counter
+    <li>Set event "sample period" to <code>1</code> (i.e. next context
+      switch) just before buffered syscall
+    <li>Disarm event just after buffered syscall.
+    <li>&rarr; <em>tracee sent SIGSYS if context switched during
+        buffered syscall</em>
+  </ul>
+  <footer>src/preload/preload.c</footer>
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -455,14 +499,21 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
+  <p>Traces are saved to <code>~/.rr</code> by default.
+  <p>Stored on disk uncompressed. Trace compression is planned.
+</section>
+
+<section>
   <h3>Trace directory contents</h3>
   <ul>
-    <li class="todo">TODO</li>
-    <li><code>arg_env</code></li>
-    <li><code>trace</code></li>
-    <li><code>mmaps</code></li>
-    <li><code>raw_data</code></li>
-    <li><code>syscall_input</code></li>
+    <li><code>args_env</code>: command-line args and environment
+      pairs used to <code>execvpe()</code> initial tracee
+    <li><code>events</code>: sequence of syscalls, signals, and
+      various other execution events
+    <li><code>mmaps</code>: metadata about mmap'd files
+    <li><code>data</code>/<code>data_header</code>: all recorded data,
+      along with metadata about when it was recorded
+    <li><code>version</code>: trace format version number
   </ul>
 </section>
 
@@ -474,44 +525,72 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <p>Emulate most syscalls using trace data.</p>
-  <p>Actually execute a small number.</p>
+  <p>Emulate most syscalls using trace data.
+  <p>Actually execute a small number.
 </section>
 
 <section>
   <h3>Built around PTRACE_SYSEMU</h3>
-  <p class="todo">TODO</span> show difference from
-  PTRACE_SYSCALL</p>
-</section>
-
-<section>
-  <h3>Main loop overview</h3>
-  <p class="todo">TODO</p>
+  <p><code>SYSCALL</code> runs tracee to syscall, executes it.
+  <p><code>SYSEMU</code> runs to syscall, <em>doesn't</em> execute it.
+    rr replays side effects.
 </section>
 
 <section>
   <h3>Replaying time-slice interrupts, in theory</h3>
-  <p class="todo">TODO</p>
+  <p>Program instructions counter to interrupt after the
+    recorded <i>t</i> number of instructions.
+  <p>Tracee stops at <i>t</i>.
 </section>
 
 <section>
   <h3>Replaying time-slice interrupts, in practice</h3>
   <ul>
-    <li><span class="todo">TODO</span>Compare register files to
-    approximate exact execution point</li>
-    <li><span class="todo">TODO</span>Set a breakpoint on target
-    $ip to avoid single-stepping</li>
+    <li>have to use retired-conditional-branch counter (RBC)
+    <li>RBC interrupts aren't precise.  Can overshoot by up to 70
+      branches.
+    <li>RBC counter value doesn't uniquely identify a point in
+      execution (unlike retired-insn counter value)
   </ul>
 </section>
 
 <section>
-  <h3>Delivering signals</h3>
-  <p class="todo">TODO</p>
+  <h3>Finding execution target, in practice</h3>
+  <ul>
+    <li>program RBC interrupt for <i>target-rbc - SKID_SIZE</i>
+    <li>after RBC interrupt, set breakpoint on target <code>$ip</code>
+      to avoid single-stepping when possible
+    <li>when breakpoint hit, compare RBC value and register files to
+      guess if at execution target.  If RBC and regs match what was
+      recorded, done.
+  </ul>
+  <p>To reiterate, this is not sound.
 </section>
 
 <section>
+  <p>Deterministic signals were raised by program execution.  For
+    example, <code>*NULL = 42;</code>
+  <p>Replayed "naturally" in the course of execution.
+</section>
+
+<section>
+  <p>Async signals were raised externally at some execution point
+    during recording.
+  <p>Replay to that execution point <em>just as for time-slice
+    interrupts</em>.
+</section>
+
+<section>
+  <h3>Replay signal delivery by emulating</h3>
+  <p>If there was a sighandler, restore recorded <code>sigframe</code>
+    and registers at sighandler entry.
+  <p>Otherwise, nothing else to do.
+</section>
+<section>
   <h3>Replaying buffered syscalls</h3>
-  <p class="todo">TODO</p>
+  <p>Read saved buffer from trace.
+  <p>Replay each syscall as normal, but restore outparam data from
+    records in the read buffer.
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -522,24 +601,34 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <p><code>(gdb) set i 10</code> can cause replay divergence.</p>
-  <p>So you're not allowed to do it.</p>
+  <p>Common commands supported.
+  <p><code>c, s, si, b, bt, watch, info regs, thr, info thr ...</code>
 </section>
 
 <section>
-  <h3>Light wrapper around gdb protocol</h3>
-  <p class="todo">TODO</p>
+  <p><code>(gdb) call foo()</code> can cause replay divergence.
+  <p>So you're not allowed to do it &hellip; for now. Support coming.
 </section>
 
 <section>
-  <h3>Replayer core passes through to ptrace requests of tracee</h3>
-  <p class="todo">TODO</p>
+  <p>Small stub translates from and to gdb remote protocol.
+  <p>Then passes debugger requests up to rr replayer.
+  <footer>src/debugger_gdb.cc</footer>
 </section>
 
 <section>
-  <h3>SIGTRAP, SIGTRAP, SIGTRAP; breakpoints, int3, stepi</h3>
-  <p class="todo">TODO</span>distinguishing causes of
-  traps</p>
+  <p>Replayer fulfills requests using <code>ptrace()</code> or cached
+  data.
+  <p>And resumes tracee execution when asked.
+  <footer>src/replayer.cc</footer>
+</section>
+
+<section>
+  <p>Breakpoints, <code>int $3</code>, <code>stepi</code>, watchpoints
+    all raise <code>SIGTRAP</code>.
+  <p><code>$ip</code>, breakpoint table, gdb request,
+    and <code>$DR6</code> decode trap.
+  <footer>src/replayer.cc</footer>
 </section>
 
 <!-----------------------------------------------------------------------------
@@ -550,86 +639,69 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <h3>Roadmap for near future</h3>
-  <p class="todo">TODO</p>
+  <h3><a href="https://github.com/mozilla/rr/wiki/Checkpointing-(deepfork)-during-replay">Checkpointing</a></h3>
+  <p>Make a "deep fork" of tracee tree during replay.
+  <p>Run code (or whatever) in copied tree, return to original.
+</section>
+
+<section>
+  <h3><a href="https://github.com/mozilla/rr/wiki/Chroniclerr">Omniscient
+      debugging (aka chroniclerr)</a></h3>
+  <p>Use <a href="https://code.google.com/p/chronicle-recorder/">chronicle</a>-style
+    instrumentation to generate execution DB.
+  <p>Query state changes in DB.
+</section>
+
+<section>
+  <h3><a href="http://research.microsoft.com/en-us/projects/chess/">CHESS</a>-style
+    execution search; targeted recording</h3>
+  <p>At each scheduling decision, make a checkpoint.
+  <p>If execution reaches bad state, done.  Else, resume checkpoint.
+</section>
+
+<section>
+  <h3>Other projects</h3>
   <ul>
-    <li>0.1</li>
-    <li>0.2</li>
-    <li>0.3</li>
-    <li>1.0</li>
-  </ul>
-</section>
-
-<section>
-  <h3>Checkpointing</h3>
-  <p class="todo">TODO</p>
-</section>
-
-<section>
-  <h3>Omniscient debugging</h3>
-  <p class="todo">TODO</p>
-</section>
-
-<section>
-  <h3>Exploratory scheduling; targeted recording</h3>
-  <p class="todo">TODO</p>
-</section>
-
-<section>
-  <h3>Copy traces across machines</h3>
-  <p class="todo">TODO</p>
-</section>
-
-<section>
-  <h3>Record shared-memory multithreading</h3>
-  <p class="todo">TODO</p>
-</section>
-
-<section>
-  <h3>Record ptrace API</h3>
-  <p class="todo">TODO</p>
-</section>
-
-<section>
-  <h3>Port, port, port</h3>
-  <p class="todo">TODO</p>
-  <ul>
-    <li>GPU drivers (NVIDIA, ATI, ...)</li>
-    <li>Windows NT kernel</li>
-    <li>Darwin kernel</li>
-    <li><s>ARM port not possible with current tech</s></li>
+    <li>Copy traces across machines
+    <li>Integrate hardware shared-memory multithreading recorder
+      like <a href="http://iacoma.cs.uiuc.edu/iacoma-papers/isca13_1.pdf">QuickRec</a>
+    <li>Record ptrace API; <code>rr record rr record</code>&hellip;
+    <li>Handle GPU drivers (NVIDIA, ATI, ...)
+    <li>Port to Darwin kernel
+    <li>Port to Windows NT kernel
+    <li><s>ARM port not possible with current generation of chips</s>
   </ul>
 </section>
 
 <section>
   <h3>Thanks from the rr team!</h3>
   <ul>
-    <li><a href="http://rr-project.org/">rr-project.org</a></li>
-    <li><a href="https://github.com/mozilla/rr">github.com/mozilla/rr</a></li>
-    <li><a href="https://mail.mozilla.org/listinfo/rr-dev">mail.mozilla.org/listinfo/rr-dev</a></li>
-    <li>#research on irc.mozilla.org</li>
+    <li><a href="http://rr-project.org/">rr-project.org</a>
+    <li><a href="https://github.com/mozilla/rr">github.com/mozilla/rr</a>
+    <li><a href="https://mail.mozilla.org/listinfo/rr-dev">mail.mozilla.org/listinfo/rr-dev</a>
+    <li>#research on irc.mozilla.org
   </ul>
 </section>
 
 <section>
-  <h2>rr for RnR people</h2>
+  <h2>Appendix: rr for RnR people</h2>
 </section>
 
 <section>
-  <p>Release 0.4 available today at</p>
-  <p><a href="http://rr-project.org/">rr-project.org</a></p>
+  <p>Release 1.2 available today at
+  <p><a href="http://rr-project.org/">rr-project.org</a>
 </section>
 
 <section>
   <h3>Use cases</h3>
   <ul>
     <li>Run on modern, commodity hardware and software: <code>yum
-    install rr; rr record</code>&hellip;</li>
-    <li>Aspire to general tool, focus on Firefox initially</li>
+    install rr; rr record</code>&hellip;
+    <li>Aspire to general tool, focus on Firefox initially
     <li>Record nondeterministic test failures at scale (e.g., Firefox
-    build/test infra), debug offline</li>
-    <li>"Super-debugger" for local development</li>
-    <li>Search execution space to actively find bugs</li>
+    build/test infra), debug offline
+    <li>"Super-debugger" for local development
+    <li>Search execution space to actively find bugs
   </ul>
 </section>
 
@@ -637,40 +709,40 @@ asm("_untraced_syscall:\n\t"
   <h3>Design concerns</h3>
   <ul>
     <li>Commodity HW &rarr; only record single HW thread (for
-      now!)</li>
+      now!)
     <li>Commodity SW &rarr; stick to higher-level userspace APIs
-      (e.g., ptrace, PEBS)</li>
+      (e.g., ptrace, PEBS)
     <li>Record tests at scale &rarr; record perf must be "economical",
-      but not mission-critical</li>
+      but not mission-critical
     <li>"Super-debugger" &rarr; the usual, plus queries over execution
-      history; pretty fast replay</li>
+      history; pretty fast replay
     <li>Search exe space &rarr; flexible scheduling and
-      checkpointing</li>
+      checkpointing
 </section>
 
 <section>
   <h3>rr recorder overview</h3>
   <ul>
-    <li>Record "applications" consisting of linux tasks</li>
+    <li>Record "applications" consisting of linux tasks
     <li>Schedule CPU slices by programming precise counter interrupt
-      (retired branches, RBC) for <i>k</i></li>
+      (retired branches, RBC) for <i>k</i>
     <li>Time slice is special case of signal: time-slice recorded as
-      <i>(0, rec-RBC)</i>, signals <i>(signum, rec-RBC)</i></li>
-    <li>Record kernel-created signal stack</li>
+      <i>(0, rec-RBC)</i>, signals <i>(signum, rec-RBC)</i>
+    <li>Record kernel-created signal stack
     <li>Syscall "outparams" and <code>rdtsc</code> generate trace
-      traps; results saved to log</li>
-    <li><i>Plus a "faster" mode we'll cover later</i></li>
+      traps; results saved to log
+    <li><i>Plus a "faster" mode we'll cover later</i>
 </section>
 
 <section>
   <h3>Trade-off: scheduling from userspace</h3>
   <ul>
-    <li>While it's great to fully control scheduling ...</li>
-    <li>... we have to approximate timeslices; can be unfair</li>
+    <li>While it's great to fully control scheduling ...
+    <li>... we have to approximate timeslices; can be unfair
     <li>... interactive programs don't "feel" native; rr has its own
-      heuristics</li>
-    <li>... can be slower</li>
-    <li>Future work is to have the option of both</li>
+      heuristics
+    <li>... can be slower
+    <li>Future work is to have the option of both
   </ul>
 </section>
 
@@ -678,14 +750,14 @@ asm("_untraced_syscall:\n\t"
   <h3>Headache: kernel writes racing with userspace</h3>
   <ul>
     <li>rr doesn't (can't efficiently) record reads/writes of memory
-      shared outside of tracee application.</li>
-    <li>But there are still hazards with the kernel:</li>
+      shared outside of tracee application.
+    <li>But there are still hazards with the kernel:
     <li>... kernel-write/task-read hazard on syscall outparam buffers
       &rarr; rr replaces user buffers with scratch and serializes
-      writes</li>
+      writes
     <li>... kernel-write/task-read on random futexes,
       e.g. CLONE_CHILD_CLEARTID &rarr; no good solution yet;
-      usleep&hellip;</li>
+      usleep&hellip;
   </ul>
 </section>
 
@@ -693,77 +765,77 @@ asm("_untraced_syscall:\n\t"
   <h3>rr replayer overview</h3>
   <ul>
     <li>Replay signal/time-slice <i>(signum, rec-RBC)</i> by
-      programming interrupt for <i>rec-RBC</i></li>
-    <li>Emulate signals by restoring signal stack and regs</li>
-    <li>Emulate syscalls by restoring outparams where possible</li>
-    <li>Execute non-emulatable clone/mmap/et al. as required</li>
-    <li>Serve debugger requests (maybe covered later)</li>
+      programming interrupt for <i>rec-RBC</i>
+    <li>Emulate signals by restoring signal stack and regs
+    <li>Emulate syscalls by restoring outparams where possible
+    <li>Execute non-emulatable clone/mmap/et al. as required
+    <li>Serve debugger requests (maybe covered later)
 </section>
 
 <section>
   <h3>Replayer headache: slack in counter interrupts</h3>
   <ul>
     <li>Interrupt programmed for <i>RBC = k</i> may actually fire at
-      up to <i>RBC = k + slack</i></li>
-    <li>(Slack empirically seen to be >= 70 branches)</li>
+      up to <i>RBC = k + slack</i>
+    <li>(Slack empirically seen to be >= 70 branches)
     <li>So we program interrupt for <i>RBC = k - slack</i> and then
-      advance by breakpoint+stepi</li>
+      advance by breakpoint+stepi
     <li>"At target" when <i>rec-RBC == rep-RBC</i> and <i>[rec-regs]
-        == [rep-regs]</i></li>
-    <li>Replay target therefore technically indeterminate</li>
+        == [rep-regs]</i>
+    <li>Replay target therefore technically indeterminate
   </ul>
 </section>
 
 <section>
   <h3>Recorder "fast mode": syscall buffering</h3>
   <ul>
-    <li>ptrace traps are slow</li>
+    <li>ptrace traps are slow
     <li><em>Idea</em>: avoid them when possible by buffering log data
-      in tracee task</li>
+      in tracee task
     <li>Implementation: LD_PRELOAD a helper library with hooks for
-      common syscalls (read, write, gettimeofday, etc.)</li>
+      common syscalls (read, write, gettimeofday, etc.)
     <li>Hook makes fast untraced syscall, saves outparams in
-      task-local buffer</li>
-    <li>Flush buffer at traced event (including buffer overflow)</li>
+      task-local buffer
+    <li>Flush buffer at traced event (including buffer overflow)
 </section>
 
 <section>
   <h3>Headache: many syscalls made internally in glibc</h3>
   <ul>
     <li>Those syscalls can't be wrapped by usual approach of
-    interposing exported symbol using LD_PRELOAD</li>
+    interposing exported symbol using LD_PRELOAD
     <li>Solution: monkeypatch <code>__kernel_vsyscall()</code> in
-      vdso.</li>
+      vdso.
     <li>Syscalls directly made through <code>int $0x80</code> still
-      can't be buffered.</li>
-    <li>We hope this terrible hack evolves into kernel support.</li>
+      can't be buffered.
+    <li>We hope this terrible hack evolves into kernel support.
 </section>
 
 <section>
   <h3>Headache: buffering syscalls that may block</h3>
   <ul>
-    <li>read/write/&hellip; may block if buffer empty/full/&hellip;</li>
+    <li>read/write/&hellip; may block if buffer empty/full/&hellip;
     <li>But, <em>untraced</em> syscall from wrapper means no trap to
-      rr for scheduling arbitration</li>
-    <li>If another tracee is blocked too, then may deadlock</li>
+      rr for scheduling arbitration
+    <li>If another tracee is blocked too, then may deadlock
     <li>Solution: libc wrapper programs perf_event interrupt triggered
-      by next context-switch of task</li>
+      by next context-switch of task
     <li>If the syscall blocks, task is switched out, and rr tracer
-      gets interrupt (SIGIO from perf_event)</li>
+      gets interrupt (SIGIO from perf_event)
   </ul>
 </section>
 
 <section>
   <h3>Fun debugging tricks</h3>
   <ul>
-    <li>Save register / RBC info at all events, verify in replay</li>
+    <li>Save register / RBC info at all events, verify in replay
     <li>Generate memory checksums at selected events, verify in
-      replay</li>
+      replay
     <li>LLVM pass to add "execution path logging" (Bell-Larus): poor
       man's log of retired branches.  Save to "magic fd" in recording,
-      verify in replay.</li>
+      verify in replay.
     <li>Hack replayer itself to efficiently log arbitrary info at
-      arbitrary points</li>
+      arbitrary points
   </ul>
 </section>
 
