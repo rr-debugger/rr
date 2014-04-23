@@ -23,6 +23,9 @@
 #include "log.h"
 #include "util.h"
 
+#define NUM_X86_DEBUG_REGS 8
+#define NUM_X86_WATCHPOINTS 4
+
 using namespace std;
 
 static Task::Map tasks;
@@ -145,9 +148,7 @@ struct Breakpoint {
 		      "Must have the same size.");
 private:
 	Breakpoint() : internal_count(), user_count() { }
-	Breakpoint(const Breakpoint& o)
-		: internal_count(o.internal_count), user_count(o.user_count)
-		, overwritten_data(o.overwritten_data) { }
+	Breakpoint(const Breakpoint& o) = default;
 
 	int* counter(TrapType which) {
 		assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
@@ -157,6 +158,91 @@ private:
 		return p;
 	}
 };
+
+enum {
+	EXEC_BIT = 1 << 0, READ_BIT = 1 << 1, WRITE_BIT = 1 << 2
+};
+
+/** Return the access bits above needed to watch |type|. */
+static int access_bits_of(WatchType type)
+{
+	switch (type) {
+	case WATCH_EXEC:
+		return EXEC_BIT;
+	case WATCH_WRITE:
+		return WRITE_BIT;
+	case WATCH_READWRITE:
+		return READ_BIT | WRITE_BIT;
+	default:
+		FATAL() <<"Unknown watchpoint type "<< type;
+		return 0;	// not reached
+	}
+}
+
+/**
+ * Track the watched accesses of a contiguous range of memory
+ * addresses.
+ */
+class Watchpoint {
+public:
+	typedef shared_ptr<Watchpoint> shr_ptr;
+
+	~Watchpoint() { assert_valid(); }
+
+	shr_ptr clone() { return shr_ptr(new Watchpoint(*this)); }
+
+	void watch(int which) {
+		assert_valid();
+		exec_count += (EXEC_BIT & which);
+		read_count += (READ_BIT & which);
+		write_count += (WRITE_BIT & which);
+	}
+	int unwatch(int which) {
+		assert_valid();
+		if (EXEC_BIT & which) {
+			assert(exec_count > 0);
+			--exec_count;
+		}
+		if (READ_BIT & which) {
+			assert(read_count > 0);
+			--read_count;
+		}
+		if (WRITE_BIT & which) {
+			assert(write_count > 0);
+			--write_count;
+		}
+		return exec_count + read_count + write_count;
+	}
+
+	int watched_bits() const {
+		return (exec_count > 0 ? EXEC_BIT : 0)
+			| (read_count > 0 ? READ_BIT : 0)
+			| (write_count > 0 ? WRITE_BIT : 0);
+	}
+
+	static shr_ptr create() {
+		return shr_ptr(new Watchpoint());
+	}
+
+private:
+	Watchpoint() : exec_count(), read_count(), write_count() { }
+	Watchpoint(const Watchpoint&) = default;
+
+	void assert_valid() const {
+		assert(exec_count >= 0 && read_count >= 0 && write_count >= 0);
+	}
+
+	// Watchpoints stay alive until all watched access typed have
+	// been cleared.  We track refcounts of each watchable access
+	// separately.
+	int exec_count, read_count, write_count;
+};
+
+void
+AddressSpace::after_clone()
+{
+	allocate_watchpoints();
+}
 
 void
 AddressSpace::brk(void* addr)
@@ -360,6 +446,40 @@ AddressSpace::destroy_all_breakpoints()
 	while (!breakpoints.empty()) {
 		destroy_breakpoint(breakpoints.begin());
 	}
+}
+
+void
+AddressSpace::remove_watchpoint(void* addr, size_t num_bytes, WatchType type)
+{
+	auto it = watchpoints.find(MemoryRange(addr, num_bytes));
+	if (it != watchpoints.end()
+	    && 0 == it->second->unwatch(access_bits_of(type))) {
+		watchpoints.erase(it);
+	}
+	allocate_watchpoints();
+}
+
+bool
+AddressSpace::set_watchpoint(void* addr, size_t num_bytes, WatchType type)
+{
+	MemoryRange key(addr, num_bytes);
+	auto it = watchpoints.find(key);
+	if (it == watchpoints.end()) {
+		auto it_and_is_new =
+			watchpoints.insert(make_pair(key,
+						     Watchpoint::create()));
+		assert(it_and_is_new.second);
+		it = it_and_is_new.first;
+	}
+	it->second->watch(access_bits_of(type));
+	return allocate_watchpoints();
+}
+
+void
+AddressSpace::destroy_all_watchpoints()
+{
+	watchpoints.clear();
+	allocate_watchpoints();
 }
 
 void
@@ -647,6 +767,34 @@ AddressSpace::AddressSpace(const AddressSpace& o)
 		it->second = it->second->clone();
 	}
 	sas.insert(this);
+}
+
+bool
+AddressSpace::allocate_watchpoints()
+{
+	Task::DebugRegs regs;
+	for (auto kv : watchpoints) {
+		const MemoryRange& r = kv.first;
+		int watching = kv.second->watched_bits();
+		if (EXEC_BIT & watching) {
+			regs.push_back(WatchConfig(r.addr, r.num_bytes,
+						   WATCH_EXEC));
+		}
+		if (!(READ_BIT & watching) && (WRITE_BIT & watching)) {
+			regs.push_back(WatchConfig(r.addr, r.num_bytes,
+						   WATCH_WRITE));
+		}
+		if (READ_BIT & watching) {
+			regs.push_back(WatchConfig(r.addr, r.num_bytes,
+						   WATCH_READWRITE));
+		}
+	}
+	for (auto t : task_set()) {
+		if (!t->set_debug_regs(regs)) {
+			return false;
+		}
+	}
+	return true;
 }
 
 void
@@ -1526,6 +1674,28 @@ Task::regs()
 	return registers;
 }
 
+static ssize_t dr_user_word_offset(size_t i)
+{
+	assert(i < NUM_X86_DEBUG_REGS);
+	return offsetof(struct user, u_debugreg[0]) + sizeof(void*) * i;
+}
+
+uintptr_t
+Task::debug_status()
+{
+	return fallible_ptrace(PTRACE_PEEKUSER, (void*)dr_user_word_offset(6),
+			       nullptr);
+}
+
+void*
+Task::watchpoint_addr(size_t i)
+{
+	assert(i < NUM_X86_WATCHPOINTS);
+	return (void*)fallible_ptrace(PTRACE_PEEKUSER,
+				      (void*)dr_user_word_offset(i),
+				      nullptr);
+}
+
 void
 Task::remote_memcpy(void* dst, const void* src, size_t num_bytes)
 {
@@ -1572,6 +1742,94 @@ Task::set_regs(const struct user_regs_struct& regs)
 	registers = regs;
 	xptrace(PTRACE_SETREGS, nullptr, (void*)&registers);
 	registers_known = true;
+}
+
+enum WatchBytesX86 {
+    BYTES_1 = 0x00, BYTES_2 = 0x01, BYTES_4 = 0x03, BYTES_8 = 0x02
+};
+static WatchBytesX86 num_bytes_to_dr_len(size_t num_bytes)
+{
+	switch (num_bytes) {
+	case 1:
+		return BYTES_1;
+	case 2:
+		return BYTES_2;
+	case 4:
+		return BYTES_4;
+	case 8:
+		return BYTES_8;
+	default:
+		FATAL() <<"Unsupported breakpoint size "<< num_bytes;
+		return WatchBytesX86(-1); // not reached
+	}
+}
+
+bool
+Task::set_debug_regs(const DebugRegs& regs)
+{
+	struct DebugControl {
+		uintptr_t packed() { return *(uintptr_t*)this; }
+
+		uintptr_t dr0_local : 1;
+		uintptr_t dr0_global : 1;
+		uintptr_t dr1_local : 1;
+		uintptr_t dr1_global : 1;
+		uintptr_t dr2_local : 1;
+		uintptr_t dr2_global : 1;
+		uintptr_t dr3_local : 1;
+		uintptr_t dr3_global : 1;
+
+		uintptr_t ignored : 8;
+
+		WatchType dr0_type : 2;
+		WatchBytesX86 dr0_len : 2;
+		WatchType dr1_type : 2;
+		WatchBytesX86 dr1_len : 2;
+		WatchType dr2_type : 2;
+		WatchBytesX86 dr2_len : 2;
+		WatchType dr3_type : 2;
+		WatchBytesX86 dr3_len : 2;
+	} dr7 = { 0 };
+	static_assert(sizeof(DebugControl) == sizeof(uintptr_t),
+		      "Can't pack DebugControl");
+
+	// Reset the debug status since we're about to change the set
+	// of programmed watchpoints.
+	xptrace(PTRACE_POKEUSER, (void*)dr_user_word_offset(6), 0);
+	// Ensure that we clear the programmed watchpoints in case
+	// enabling one of them fails.  We guarantee atomicity to the
+	// caller.
+	xptrace(PTRACE_POKEUSER, (void*)dr_user_word_offset(7), 0);
+	if (regs.size() > NUM_X86_WATCHPOINTS) {
+		return false;
+	}
+
+	size_t dr = 0;
+	for (auto reg : regs) {
+		if (fallible_ptrace(PTRACE_POKEUSER,
+				    (void*)dr_user_word_offset(dr),
+				    reg.addr)) {
+			return false;
+		}
+		switch (dr++) {
+#define CASE_ENABLE_DR(_dr7, _i, _reg)					\
+			case _i:					\
+				_dr7.dr## _i ##_local = 1;		\
+				_dr7.dr## _i ##_type = _reg.type;	\
+				_dr7.dr## _i ##_len = num_bytes_to_dr_len(_reg.num_bytes); \
+				break
+		CASE_ENABLE_DR(dr7, 0, reg);
+		CASE_ENABLE_DR(dr7, 1, reg);
+		CASE_ENABLE_DR(dr7, 2, reg);
+		CASE_ENABLE_DR(dr7, 3, reg);
+#undef CASE_ENABLE_DR
+		default:
+			FATAL() <<"There's no debug register "<< dr;
+		}
+	}
+	return 0 == fallible_ptrace(PTRACE_POKEUSER,
+				    (void*)dr_user_word_offset(7),
+				    (void*)dr7.packed());
 }
 
 void

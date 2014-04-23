@@ -237,7 +237,8 @@ void dbg_notify_exit_signal(struct dbg_context* dbg, int sig);
  * target has stopped executing for some reason.  |sig| is the signal
  * that stopped execution, or 0 if execution stopped otherwise.
  */
-void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t which, int sig);
+void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t which, int sig,
+		     void* watch_addr = nullptr);
 
 /**
  * Tell the host that |thread| is the current thread.
