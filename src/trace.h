@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef TRACE_H_
-#define TRACE_H_
+#ifndef RR_TRACE_H_
+#define RR_TRACE_H_
 
 #include <linux/limits.h>
 #include <sys/stat.h>
@@ -271,4 +271,4 @@ private:
 	{}
 };
 
-#endif /* TRACE_H_ */
+#endif /* RR_TRACE_H_ */

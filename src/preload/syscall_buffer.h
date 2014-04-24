@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef SYSCALL_BUFFER_H_
-#define SYSCALL_BUFFER_H_
+#ifndef RR_SYSCALL_BUFFER_H_
+#define RR_SYSCALL_BUFFER_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -201,4 +201,4 @@ inline static int is_blacklisted_filename(const char* filename)
 }
 #endif
 
-#endif /* SYSCALL_BUFFER_H_ */
+#endif /* RR_SYSCALL_BUFFER_H_ */

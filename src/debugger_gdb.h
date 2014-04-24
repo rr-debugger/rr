@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef DBG_GDB_H_
-#define DBG_GDB_H_
+#ifndef RR_DBG_GDB_H_
+#define RR_DBG_GDB_H_
 
 #include <stddef.h>
 #include <sys/types.h>
