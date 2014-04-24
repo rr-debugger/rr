@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef REC_SCHED_H_
-#define REC_SCHED_H_
+#ifndef RR_REC_SCHED_H_
+#define RR_REC_SCHED_H_
 
 class Task;
 
@@ -19,4 +19,4 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid);
 
 void rec_sched_deregister_thread(Task** t);
 
-#endif /* REC_SCHED_H_ */
+#endif /* RR_REC_SCHED_H_ */

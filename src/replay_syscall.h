@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef REP_PROCESS_EVENT_H_
-#define REP_PROCESS_EVENT_H_
+#ifndef RR_REP_PROCESS_EVENT_H_
+#define RR_REP_PROCESS_EVENT_H_
 
 #include "trace.h"
 
@@ -30,4 +30,4 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step);
  */
 void rep_maybe_replay_stdio_write(Task* t);
 
-#endif /* REP_PROCESS_EVENT_H_ */
+#endif /* RR_REP_PROCESS_EVENT_H_ */

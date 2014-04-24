@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef TYPES_H_
-#define TYPES_H_
+#ifndef RR_TYPES_H_
+#define RR_TYPES_H_
 
 #include <linux/limits.h>
 #include <stddef.h>
@@ -143,4 +143,4 @@ struct recvmsg_args {
 	long flags;
 };
 
-#endif /* TYPES_H_ */
+#endif /* RR_TYPES_H_ */

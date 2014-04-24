@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef LOG_H
-#define LOG_H
+#ifndef RR_LOG_H
+#define RR_LOG_H
 
 #include <iostream>
 
@@ -177,4 +177,4 @@ inline static T& prepare_log_stream(T&& stream, LogLevel level,
  */
 #define HEX(_v) ((void*)(uintptr_t)_v)
 
-#endif // LOG_H
+#endif // RR_LOG_H

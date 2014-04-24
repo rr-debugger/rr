@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef __HANDLE_SIGNAL_H__
-#define __HANDLE_SIGNAL_H__
+#ifndef RR_HANDLE_SIGNAL_H__
+#define RR_HANDLE_SIGNAL_H__
 
 #include <signal.h>
 
@@ -15,4 +15,4 @@ struct flags;
  */
 void handle_signal(Task* t, siginfo_t* si = nullptr);
 
-#endif /* __HANDLE_SIGNAL_H__ */
+#endif /* RR_HANDLE_SIGNAL_H__ */

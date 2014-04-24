@@ -11,8 +11,8 @@
  * The code may be used by anyone for any purpose, and can serve as a
  * starting point for developing applications using mode 2 seccomp.
  */
-#ifndef _SECCOMP_BPF_H_
-#define _SECCOMP_BPF_H_
+#ifndef RR_SECCOMP_BPF_H_
+#define RR_SECCOMP_BPF_H_
 
 #define _GNU_SOURCE 1
 #include <stdio.h>
@@ -130,4 +130,4 @@ struct seccomp_data {
 #define TRACE_PROCESS \
 	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRACE)
 
-#endif /* _SECCOMP_BPF_H_ */
+#endif /* RR_SECCOMP_BPF_H_ */
