@@ -108,8 +108,8 @@ public:
 	    : fd(open(pathname, flags, mode)) { }
 	~ScopedOpen() { close(fd); }
 
-	operator int() { return get(); }
-	int get() { return fd; }
+	operator int() const { return get(); }
+	int get() const { return fd; }
 private:
 	int fd;
 };

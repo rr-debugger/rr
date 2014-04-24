@@ -34,6 +34,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "debugger_gdb.h"
+#include "emufs.h"
 #include "hpc.h"
 #include "log.h"
 #include "replay_syscall.h"
@@ -81,6 +82,10 @@
 #define SKID_SIZE 70
 
 using namespace std;
+
+// Emulated file system we'll use to track the files backing shared
+// mmaps.
+EmuFs emufs;
 
 // The trace we're currently replaying.
 TraceIfstream::shr_ptr trace;
@@ -1400,7 +1405,7 @@ static int flush_one_syscall(Task* t,
 	case FLUSH_EXIT: {
 		LOG(debug) <<"  advancing to buffered syscall exit";
 
-		EmuFs::AutoGc gc(call);
+		AutoGc gc(emufs, call);
 
 		assert_at_buffered_syscall(t, call);
 
@@ -1639,7 +1644,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		delete t;
 		/* Early-return because |t| is gone now. */
 		if (file_table_dying) {
-			EmuFs::gc();
+			emufs.gc();
 		}
 		return;
 	}
