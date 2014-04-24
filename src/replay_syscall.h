@@ -30,24 +30,4 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step);
  */
 void rep_maybe_replay_stdio_write(Task* t);
 
-namespace EmuFs {
-/**
- * RAII helper that schedules an EmuFs GC when the exit of a given
- * syscall may have dropped the last reference to an emulated file.
- */
-struct AutoGc {
-	AutoGc(int syscallno, int state = STATE_SYSCALL_EXIT);
-	~AutoGc();
-private:
-	const bool is_gc_point;
-};
-
-/**
- * Collect emulated files that aren't referenced by tracees.  Call
- * this only when a tracee's (possibly shared) file table has been
- * destroyed.  All other gc triggers are handled internally.
- */
-void gc();
-}
-
 #endif /* REP_PROCESS_EVENT_H_ */
