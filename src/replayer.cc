@@ -38,6 +38,7 @@
 #include "hpc.h"
 #include "log.h"
 #include "replay_syscall.h"
+#include "session.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -249,10 +250,11 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_offsets(dbg);
 			continue;
 		case DREQ_GET_THREAD_LIST: {
-			size_t len = Task::count();
+			auto tasks = Session::current()->tasks();
+			size_t len = tasks.size();
 			vector<dbg_threadid_t> tids;
-			for (auto it = Task::begin(); it != Task::end(); ++it) {
-				Task* t = it->second;
+			for (auto& kv : tasks) {
+				Task* t = kv.second;
 				tids.push_back(get_threadid(t));
 			}
 			dbg_reply_get_thread_list(dbg, tids.data(), len);
@@ -268,7 +270,8 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			break;
 		}
 
-		target = (req.target.tid > 0) ? Task::find(req.target.tid) : t;
+		target = (req.target.tid > 0) ?
+			 Session::current()->find_task(req.target.tid) : t;
 		/* These requests query or manipulate which task is
 		 * the target, so it's OK if the task doesn't
 		 * exist. */
@@ -415,12 +418,12 @@ static Task* schedule_task(Task** intr_t = nullptr)
 	*trace >> cur_trace_frame;
 	if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
 		if (intr_t) {
-			*intr_t = Task::find(cur_trace_frame.tid);
+			*intr_t = Session::current()->find_task(cur_trace_frame.tid);
 		}
 		return nullptr;
 	}
 
-	Task *t = Task::find(cur_trace_frame.tid);
+	Task *t = Session::current()->find_task(cur_trace_frame.tid);
 	assert(t != NULL);
 
 	t->trace = cur_trace_frame;
@@ -1565,7 +1568,7 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 		LOG(info) <<("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
 	}
-	Task::killall();
+	Session::current()->kill_all_tasks();
 	LOG(info) <<("Exiting.");
 	exit(0);
 }
@@ -1573,7 +1576,7 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 /** Return true when replaying/debugging should cease after |t| exits. */
 static bool is_last_interesting_task(Task* t)
 {
-	return (0 == debugged_tgid && Task::count() == 1)
+	return (0 == debugged_tgid && Session::current()->tasks().size() == 1)
 		|| (t->tgid() == debugged_tgid
 		    && t->task_group()->task_set().size() == 1);
 }
@@ -1794,7 +1797,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		// because we've been using emulated tracing, so they
 		// can't resume normal execution.  And we wouldn't
 		// want them continuing to execute even if they could.
-		Task::killall();
+		Session::current()->kill_all_tasks();
 		exit(0);
 	}
 
@@ -1956,7 +1959,7 @@ static void serve_replay(int argc, char* argv[], char** envp)
 		}
 	}
 
-	Task::create(ae, trace, trace->peek_frame().tid);
+	Session::current()->create_task(ae, trace, trace->peek_frame().tid);
 	replay_trace_frames();
 
 	close_libpfm();
@@ -2135,8 +2138,8 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 		// which |debugged_tgid| exists.
 		f.target_process = debugged_tgid;
 		f.process_created_how =
-			Task::find(debugged_tgid)->vm()->execed() ?
-			CREATED_EXEC : CREATED_FORK;
+			Session::current()->find_task(debugged_tgid)->
+			vm()->execed() ? CREATED_EXEC : CREATED_FORK;
 	}
 	f.dbgport = req.restart.port;
 
@@ -2148,7 +2151,7 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	// NB: it's critical that *all* allocated rr resources die
 	// when our task does, and exec()ing is an easy way to test
 	// that we're not potentially leaking anything.
-	Task::killall();
+	Session::current()->kill_all_tasks();
 
 	// FIXME: we have to handle crashes and abnormal termination,
 	// so these shouldn't be mandatory.  I don't know if they are

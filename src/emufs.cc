@@ -1,5 +1,7 @@
 /* -*- mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
+//#define DEBUGTAG "EmuFs"
+
 #include "emufs.h"
 
 #include <syscall.h>
@@ -8,6 +10,7 @@
 #include <string>
 
 #include "log.h"
+#include "session.h"
 
 using namespace std;
 
@@ -80,9 +83,7 @@ EmuFs::gc()
 	// they're different things: two tracees could share an
 	// address space but have different file tables.
 	size_t nr_marked_files = 0;
-	auto sas = AddressSpace::set();
-	for (auto it = sas.begin(); it != sas.end(); ++it) {
-		AddressSpace* as = *it;
+	for (auto as : Session::current()->vms()) {
 		Task* t = *as->task_set().begin();
 		LOG(debug) <<"  iterating /proc/"<< t->tid <<"/maps ...";
 

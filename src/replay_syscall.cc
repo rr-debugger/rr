@@ -43,6 +43,7 @@
 #include "emufs.h"
 #include "log.h"
 #include "replayer.h"
+#include "session.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -365,8 +366,9 @@ static void process_clone(Task* t,
 	void* ctid = (void*)t->regs().edi;
 	int flags_arg = (SYS_clone == t->regs().orig_eax) ? t->regs().ebx : 0;
 
-	Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
-				  stack, ctid, new_tid, rec_tid);
+	Task* new_task = Session::current()->clone(
+		t, clone_flags_to_task_flags(flags_arg),
+		stack, ctid, new_tid, rec_tid);
 	// Wait until the new thread is ready.
 	new_task->wait();
 

@@ -28,6 +28,7 @@
 #include "record_signal.h"
 #include "record_syscall.h"
 #include "recorder_sched.h"
+#include "session.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -149,8 +150,9 @@ static void handle_ptrace_event(Task** tp)
 		// copy, so the flags here aren't meaningful for it.
 		int flags_arg = (SYS_clone == t->regs().orig_eax) ?
 				t->regs().ebx : 0;
-		Task* new_task = t->clone(clone_flags_to_task_flags(flags_arg),
-					  stack, ctid, new_tid);
+		Task* new_task = Session::current()->clone(
+			t, clone_flags_to_task_flags(flags_arg),
+			stack, ctid, new_tid);
 		// Wait until the new task is ready.
 		new_task->wait();
 		start_hpc(new_task, rr_flags()->max_rbc);
@@ -916,10 +918,10 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 	init_libpfm();
 	install_termsig_handlers();
 
-	Task* t = Task::create(ae, trace);
+	Task* t = Session::current()->create_task(ae, trace);
 	start_hpc(t, rr_flags()->max_rbc);
 
-	while (Task::count() > 0) {
+	while (Session::current()->tasks().size() > 0) {
 		int by_waitpid;
 
 		maybe_process_term_request(t);

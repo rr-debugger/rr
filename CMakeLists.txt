@@ -41,6 +41,7 @@ add_executable(rr
   src/record_syscall.cc
   src/replayer.cc
   src/replay_syscall.cc
+  src/session.cc
   src/task.cc
   src/trace.cc
   src/util.cc

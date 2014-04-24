@@ -21,6 +21,7 @@
 
 #include "hpc.h"
 #include "log.h"
+#include "session.h"
 #include "util.h"
 
 #define NUM_X86_DEBUG_REGS 8
@@ -28,11 +29,7 @@
 
 using namespace std;
 
-static Task::Map tasks;
-static Task::PrioritySet tasks_by_priority;
-
 /*static*/ const byte AddressSpace::breakpoint_insn;
-/*static*/ AddressSpace::Set AddressSpace::sas;
 
 dev_t
 FileId::dev_major() const { return is_real_device() ? MAJOR(device) : 0; }
@@ -238,6 +235,11 @@ private:
 	int exec_count, read_count, write_count;
 };
 
+AddressSpace::~AddressSpace()
+{
+	Session::current()->on_destroy(this);
+}
+
 void
 AddressSpace::after_clone()
 {
@@ -257,12 +259,6 @@ AddressSpace::brk(void* addr)
 	update_heap(heap.start, addr);
 	map(heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
 	    MappableResource::heap());
-}
-
-AddressSpace::shr_ptr
-AddressSpace::clone()
-{
-	return shr_ptr(new AddressSpace(*this));
 }
 
 void
@@ -742,15 +738,11 @@ AddressSpace::verify(Task* t) const
 	vas.assert_segments_match(t);
 }
 
-/*static*/ AddressSpace::shr_ptr
-AddressSpace::create(Task* t)
+AddressSpace::AddressSpace(Task* t) : is_clone(false), vdso_start_addr()
 {
-	shr_ptr as(new AddressSpace());
-	as->insert_task(t);
-	iterate_memory_map(t, populate_address_space, as.get(),
+	iterate_memory_map(t, populate_address_space, this,
 			   kNeverReadSegment, NULL);
-	assert(as->vdso_start_addr);
-	return as;
+	assert(vdso_start_addr);
 }
 
 AddressSpace::AddressSpace(const AddressSpace& o)
@@ -766,7 +758,6 @@ AddressSpace::AddressSpace(const AddressSpace& o)
 	for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
 		it->second = it->second->clone();
 	}
-	sas.insert(this);
 }
 
 bool
@@ -1068,14 +1059,6 @@ TaskGroup::destabilize()
 	}
 }
 
-/*static*/ TaskGroup::shr_ptr
-TaskGroup::create(Task* t)
-{
-	shr_ptr tg(new TaskGroup(t->rec_tid, t->tid));
-	tg->insert_task(t);
-	return tg;
-}
-
 TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
 	: tgid(tgid), real_tgid(real_tgid)
 {
@@ -1111,20 +1094,17 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 		// Suppress output related to it outside recording.
 		switchable = 1;
 	}
-	tasks_by_priority.insert(std::make_pair(priority, this));
 
 	push_event(Event(EV_SENTINEL, NO_EXEC_INFO));
 
 	init_hpc(this);
-
-	tasks[rec_tid] = this;
 }
 
 Task::~Task()
 {
 	LOG(debug) <<"task "<< tid <<" (rec:"<< rec_tid <<") is dying ...";
 
-	assert(this == Task::find(rec_tid));
+	assert(this == Session::current()->find_task(rec_tid));
 	// We expect tasks to usually exit by a call to exit() or
 	// exit_group(), so it's not helpful to warn about that.
 	if (EV_SENTINEL != ev().type()
@@ -1136,8 +1116,7 @@ Task::~Task()
 		log_pending_events();
 	}
 
-	tasks.erase(rec_tid);
-	tasks_by_priority.erase(std::make_pair(priority, this));
+	Session::current()->on_destroy(this);
 	tg->erase_task(this);
 	as->erase_task(this);
 
@@ -1161,58 +1140,6 @@ Task::at_may_restart_syscall() const
 	return EV_SYSCALL_INTERRUPTION == ev().type()
 		|| (EV_SIGNAL_DELIVERY == ev().type()
 		    && prev_ev && EV_SYSCALL_INTERRUPTION == prev_ev->type());
-}
-
-Task*
-Task::clone(int flags, void* stack, void* cleartid_addr,
-	    pid_t new_tid, pid_t new_rec_tid)
-{
-	Task* t = new Task(new_tid, new_rec_tid, priority);
-
-	t->trace_ifstream = trace_ifstream;
-	t->trace_ofstream = trace_ofstream;
-	t->syscallbuf_lib_start = syscallbuf_lib_start;
-	t->syscallbuf_lib_end = syscallbuf_lib_end;
-	t->blocked_sigs = blocked_sigs;
-	if (CLONE_SHARE_SIGHANDLERS & flags) {
-		t->sighandlers = sighandlers;
-	} else {
-		auto sh = Sighandlers::create();
-		t->sighandlers.swap(sh);
-	}
-	if (CLONE_SHARE_TASK_GROUP & flags) {
-		t->tg = tg;
-		tg->insert_task(t);
-	} else {
-		auto g = TaskGroup::create(t);
-		t->tg.swap(g);
-	}
-	if (CLONE_SHARE_VM & flags) {
-		t->as = as;
-	} else {
-		t->as = as->clone();
-	}
-	if (stack) {
-		const Mapping& m = 
-			t->as->mapping_of((byte*)stack - page_size(),
-					  page_size()).first;
-		LOG(debug) <<"mapping stack for "<< new_tid <<" at "<< m;
-		t->as->map(m.start, m.num_bytes(), m.prot, m.flags,
-			   m.offset, MappableResource::stack(new_tid));
-	}
-	// Clone children, both thread and fork, inherit the parent
-	// prname.
-	t->prname = prname;
-	if (CLONE_CLEARTID & flags) {
-		LOG(debug) <<"cleartid futex is "<< cleartid_addr;
-		assert(cleartid_addr);
-		t->tid_futex = cleartid_addr;
-	} else {
-		LOG(debug) <<"(clone child not enabling CLEARTID)";
-	}
-
-	t->as->insert_task(t);
-	return t;
 }
 
 const struct syscallbuf_record*
@@ -1273,15 +1200,7 @@ Task::set_priority(int value)
 		// don't mess with task order
 		return;
 	}
-	tasks_by_priority.erase(std::make_pair(priority, this));
-	priority = value;
-	tasks_by_priority.insert(std::make_pair(priority, this));
-}
-
-const Task::PrioritySet&
-Task::get_priority_set()
-{
-	return tasks_by_priority;
+	Session::current()->update_task_priority(this, value);
 }
 
 bool
@@ -1548,8 +1467,10 @@ Task::post_exec()
 {
 	sighandlers = sighandlers->clone();
 	sighandlers->reset_user_handlers();
-	auto a = AddressSpace::create(this);
+	as->erase_task(this);
+	auto a = Session::current()->create_vm(this);
 	as.swap(a);
+	// XXX should we re-create our TaskGroup here too?
 	prname = prname_from_exe_image(as->exe_image());
 }
 
@@ -2050,18 +1971,6 @@ Task::try_wait()
 	return ret == tid;
 }
 
-/*static*/ Task::Map::const_iterator
-Task::begin()
-{
-	return tasks.begin();
-}
-
-/*static*/ ssize_t
-Task::count()
-{
-	return tasks.size();
-}
-
 /**
  * Prepare this process and its ancestors for recording/replay by
  * preventing direct access to sources of nondeterminism, and ensuring
@@ -2101,79 +2010,6 @@ static void set_up_process(void)
 	}
 }
 
-/*static*/ void
-Task::dump_all(FILE* out)
-{
-	out = out ? out : stderr;
-
-	auto sas = AddressSpace::set();
-	for (auto ait = sas.begin(); ait != sas.end(); ++ait) {
-		const AddressSpace* as = *ait;
-		auto ts = as->task_set();
-		Task* t = *ts.begin();
-		// XXX assuming that address space == task group,
-		// which is almost certainly what the kernel enforces
-		// too.
-		fprintf(out, "\nTask group %d, image '%s':\n",
-			t->tgid(), as->exe_image().c_str());
-		for (auto tsit = ts.begin(); tsit != ts.end(); ++tsit) {
-			(*tsit)->dump(out);
-		}
-	}
-}
-
-/*static*/ Task::Map::const_iterator
-Task::end()
-{
-	return tasks.end();
-}
-
-/*static*/Task*
-Task::find(pid_t rec_tid)
-{
-	auto it = tasks.find(rec_tid);
-	return tasks.end() != it ? it->second : NULL;
-}
-
-/** Send |sig| to task |tid| within group |tgid|. */
-static int sys_tgkill(pid_t tgid, pid_t tid, int sig)
-{
-	return syscall(SYS_tgkill, tgid, tid, SIGKILL);
-}
-
-/*static*/ void
-Task::killall()
-{
-	while (!tasks.empty()) {
-		auto it = tasks.rbegin();
-		Task* t = it->second;
-
-		LOG(debug) <<"sending SIGKILL to "<< t->tid <<" ...";
-		sys_tgkill(t->real_tgid(), t->tid, SIGKILL);
-
-		t->wait();
-		LOG(debug) <<"  ... status "<< HEX(t->status());
-
-		int status = t->status();
-		if (WIFSIGNALED(status)) {
-			assert(SIGKILL == WTERMSIG(status));
-			// The task is already dead and reaped, so
-			// skip any waitpid()'ing during cleanup.
-			t->unstable = 1;
-		} else {
-			// If the task participated in an unstable
-			// exit, it's probably already dead by now.
-			assert(t->unstable
-			       || PTRACE_EVENT_EXIT == t->ptrace_event());
-		}
-		// Don't attempt to synchonize on the cleartid futex.
-		// We won't be able to reliably read it, and it's
-		// pointless anyway.
-		t->tid_futex = nullptr;
-		delete t;
-	}
-}
-
 /*static*/int
 Task::pending_sig_from_status(int status)
 {
@@ -2199,6 +2035,58 @@ Task::pending_sig_from_status(int status)
 		 * SEGVs? */
 		return sig & ~0x80;
 	}
+}
+
+Task*
+Task::clone(int flags, void* stack, void* cleartid_addr,
+	    pid_t new_tid, pid_t new_rec_tid)
+{
+	Task* t = new Task(new_tid, new_rec_tid, priority);
+
+	t->trace_ifstream = trace_ifstream;
+	t->trace_ofstream = trace_ofstream;
+	t->syscallbuf_lib_start = syscallbuf_lib_start;
+	t->syscallbuf_lib_end = syscallbuf_lib_end;
+	t->blocked_sigs = blocked_sigs;
+	if (CLONE_SHARE_SIGHANDLERS & flags) {
+		t->sighandlers = sighandlers;
+	} else {
+		auto sh = Sighandlers::create();
+		t->sighandlers.swap(sh);
+	}
+	if (CLONE_SHARE_TASK_GROUP & flags) {
+		t->tg = tg;
+		tg->insert_task(t);
+	} else {
+		auto g = Session::current()->create_tg(t);
+		t->tg.swap(g);
+	}
+	if (CLONE_SHARE_VM & flags) {
+		t->as = as;
+	} else {
+		t->as = Session::current()->clone(as);
+	}
+	if (stack) {
+		const Mapping& m = 
+			t->as->mapping_of((byte*)stack - page_size(),
+					  page_size()).first;
+		LOG(debug) <<"mapping stack for "<< new_tid <<" at "<< m;
+		t->as->map(m.start, m.num_bytes(), m.prot, m.flags,
+			   m.offset, MappableResource::stack(new_tid));
+	}
+	// Clone children, both thread and fork, inherit the parent
+	// prname.
+	t->prname = prname;
+	if (CLONE_CLEARTID & flags) {
+		LOG(debug) <<"cleartid futex is "<< cleartid_addr;
+		assert(cleartid_addr);
+		t->tid_futex = cleartid_addr;
+	} else {
+		LOG(debug) <<"(clone child not enabling CLEARTID)";
+	}
+
+	t->as->insert_task(t);
+	return t;
 }
 
 void
@@ -2291,6 +2179,37 @@ bool
 Task::is_desched_sig_blocked()
 {
 	return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
+}
+
+/** Send |sig| to task |tid| within group |tgid|. */
+static int sys_tgkill(pid_t tgid, pid_t tid, int sig)
+{
+	return syscall(SYS_tgkill, tgid, tid, SIGKILL);
+}
+
+void
+Task::kill()
+{
+	LOG(debug) <<"sending SIGKILL to "<< tid <<" ...";
+	sys_tgkill(real_tgid(), tid, SIGKILL);
+
+	wait();
+	LOG(debug) <<"  ... status "<< HEX(status());
+
+	if (WIFSIGNALED(wait_status)) {
+		assert(SIGKILL == WTERMSIG(wait_status));
+		// The task is already dead and reaped, so skip any
+		// waitpid()'ing during cleanup.
+		unstable = 1;
+	} else {
+		// If the task participated in an unstable exit, it's
+		// probably already dead by now.
+		assert(unstable || PTRACE_EVENT_EXIT == ptrace_event());
+	}
+	// Don't attempt to synchonize on the cleartid futex.  We
+	// won't be able to reliably read it, and it's pointless
+	// anyway.
+	tid_futex = nullptr;
 }
 
 void
@@ -2392,16 +2311,28 @@ Task::xptrace(int request, void* addr, void* data)
 		<<", addr="<< addr <<", data="<< data <<") failed";
 }
 
-/*static*/ Task*
-Task::create(const struct args_env& ae, pid_t rec_tid)
+/*static*/ void
+Task::handle_runaway(int sig)
 {
-	assert(Task::count() == 0);
+	LOG(debug) <<"SIGALRM fired; runaway tracee";
+	if (!waiter || -1 != waiter->wait_status) {
+		LOG(debug) <<"  ... false alarm, race condition";
+		return;
+	}
+	waiter->xptrace(PTRACE_INTERRUPT, nullptr, nullptr);
+	waiter_was_interrupted = true;
+}
+
+/*static*/ Task*
+Task::spawn(const struct args_env& ae, pid_t rec_tid)
+{
+	assert(Session::current()->tasks().size() == 0);
 
 	pid_t tid = fork();
 	if (0 == tid) {
 		set_up_process();
 		// Signal to tracer that we're configured.
-		kill(getpid(), SIGSTOP);
+		::kill(getpid(), SIGSTOP);
 
 		// We do a small amount of dummy work here to retire
 		// some branches in order to ensure that the rbc is
@@ -2436,9 +2367,9 @@ Task::create(const struct args_env& ae, pid_t rec_tid)
 		      &t->blocked_sigs, sizeof(t->blocked_sigs))) {
 		FATAL() <<"Failed to read blocked signals";
 	}
-	auto g = TaskGroup::create(t);
+	auto g = Session::current()->create_tg(t);
 	t->tg.swap(g);
-	auto as = AddressSpace::create(t);
+	auto as = Session::current()->create_vm(t);
 	t->as.swap(as);
 
 	// Sync with the child process.
@@ -2463,16 +2394,4 @@ Task::create(const struct args_env& ae, pid_t rec_tid)
 	}
 	t->force_status(0);
 	return t;
-}
-
-/*static*/ void
-Task::handle_runaway(int sig)
-{
-	LOG(debug) <<"SIGALRM fired; runaway tracee";
-	if (!waiter || -1 != waiter->wait_status) {
-		LOG(debug) <<"  ... false alarm, race condition";
-		return;
-	}
-	waiter->xptrace(PTRACE_INTERRUPT, nullptr, nullptr);
-	waiter_was_interrupted = true;
 }
