@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef EMUFS_H_
-#define EMUFS_H_
+#ifndef RR_EMUFS_H_
+#define RR_EMUFS_H_
 
 #include <map>
 #include <memory>
@@ -136,4 +136,4 @@ private:
 	const bool is_gc_point;
 };
 
-#endif  // EMUFS_H
+#endif  // RR_EMUFS_H

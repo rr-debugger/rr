@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef UTIL_H_
-#define UTIL_H_
+#ifndef RR_UTIL_H_
+#define RR_UTIL_H_
 
 #include <errno.h>
 #include <fcntl.h>
@@ -547,4 +547,4 @@ void destroy_buffers(Task* t, int flags);
  */
 void monkeypatch_vdso(Task* t);
 
-#endif /* UTIL_H_ */
+#endif /* RR_UTIL_H_ */

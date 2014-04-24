@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef RECORDER_H_
-#define RECORDER_H_
+#ifndef RR_RECORDER_H_
+#define RR_RECORDER_H_
 
 #include <string>
 
@@ -23,4 +23,4 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp);
  */
 void terminate_recording(Task* t = nullptr);
 
-#endif /* RECORDER_H_ */
+#endif /* RR_RECORDER_H_ */

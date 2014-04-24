@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-#ifndef TASK_H_
-#define TASK_H_
+#ifndef RR_TASK_H_
+#define RR_TASK_H_
 
 // Define linux-specific flags in mman.h.
 #define __USE_MISC 1
@@ -1709,4 +1709,4 @@ private:
 	Task operator=(Task&) = delete;
 };
 
-#endif /* TASK_H_ */
+#endif /* RR_TASK_H_ */
