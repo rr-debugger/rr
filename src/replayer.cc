@@ -105,11 +105,6 @@ static Task* last_task;
 // last.
 pid_t debugged_tgid;
 
-/* Nonzero after the first exec() has been observed during replay.
- * After this point, the first recorded binary image has been exec()d
- * over the initial rr image. */
-bool validate = false;
-
 /**
  * Restart a fresh debugging session, possibly updating our replay
  * params based on the debugger's |req|.  This results in the old
@@ -123,7 +118,8 @@ static void debug_memory(Task* t)
 	if (should_dump_memory(t, t->trace)) {
 		dump_process_memory(t, t->trace.global_time, "rep");
 	}
-	if (validate && should_checksum(t, t->trace)) {
+	if (t->replay_session().can_validate()
+	    && should_checksum(t, t->trace)) {
 		/* Validate the checksum we computed during the
 		 * recording phase. */
 		validate_process_memory(t, t->trace.global_time);
@@ -458,7 +454,7 @@ static void validate_args(int event, int state, Task* t)
 
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
-	if (!validate) {
+	if (!t->replay_session().can_validate()) {
 		return;
 	}
 	if ((SYS_pwrite64 == event || SYS_pread64 == event)
@@ -1133,7 +1129,7 @@ static void assert_at_recorded_rcb(Task* t, const Event& ev)
 	static const int64_t rbc_slack = 0;
 	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
 
-	if (!validate) {
+	if (!t->replay_session().can_validate()) {
 		return;
 	}
 	ASSERT(t, (!t->hpc->started
@@ -1596,7 +1592,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	 * processing debugger requests.  Otherwise the debugger host
 	 * will be confused about the initial executable image,
 	 * rr's. */
-	if (validate) {
+	if (t->replay_session().can_validate()) {
 		req = process_debugger_requests(dbg, t);
 		assert(dbg_is_resume_request(&req));
 	}
@@ -1856,7 +1852,7 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	}
 	// Don't launch the debugger for the initial rr fork child.
 	// No one ever wants that to happen.
-	if (!validate) {
+	if (!t->replay_session().can_validate()) {
 		return nullptr;
 	}
 	uint32_t goto_event = rr_flags()->goto_event;
