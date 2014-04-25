@@ -65,7 +65,7 @@ function onexit {
     else
         echo Test $TESTNAME failed, leaving behind $workdir.
         echo To replay the failed test, run
-        echo " " _RR_WORK_DIR="$workdir" rr replay
+        echo " " _RR_TRACE_DIR="$workdir" rr replay
     fi
 }
 
