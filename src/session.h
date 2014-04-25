@@ -9,6 +9,7 @@
 #include <string>
 
 class AddressSpace;
+class EmuFs;
 class Task;
 struct TaskGroup;
 class TraceIfstream;
@@ -140,6 +141,11 @@ public:
 	Task* create_task(const struct args_env& ae, shr_ptr self,
 			  pid_t rec_tid);
 
+	EmuFs& emufs() { return *emu_fs; }
+
+	/** Collect garbage files from this session's emufs. */
+	void gc_emufs();
+
 	TraceIfstream& ifstream() { return *trace_ifstream; }
 
 	/**
@@ -149,6 +155,7 @@ public:
 	static shr_ptr create(int argc, char* argv[]);
 
 private:
+	std::shared_ptr<EmuFs> emu_fs;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
 };
 

@@ -126,6 +126,12 @@ EmuFs::get_or_create(const struct mmapped_file& mf)
 	return vf->fd();
 }
 
+/*static*/ EmuFs::shr_ptr
+EmuFs::create()
+{
+	return shr_ptr(new EmuFs());
+}
+
 void
 EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
 			size_t* nr_marked_files)
@@ -151,9 +157,9 @@ EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
 	}
 }
 
-AutoGc::AutoGc(EmuFs& fs, const Session& session, int syscallno, int state)
-	: fs(fs), session(session)
-	, is_gc_point(fs.size() > 0
+AutoGc::AutoGc(ReplaySession& session, int syscallno, int state)
+	: session(session)
+	, is_gc_point(session.emufs().size() > 0
 		      && STATE_SYSCALL_EXIT == state
 		      && (SYS_close == syscallno
 			  || SYS_munmap == syscallno)) {
@@ -165,6 +171,6 @@ AutoGc::AutoGc(EmuFs& fs, const Session& session, int syscallno, int state)
 
 AutoGc::~AutoGc() {
 	if (is_gc_point) {
-		fs.gc(session);
+		session.gc_emufs();
 	}
 }

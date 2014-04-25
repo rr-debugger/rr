@@ -95,15 +95,10 @@ private:
 };
 
 class EmuFs {
+	friend class ReplaySession;
 	typedef std::map<FileId, EmuFile::shr_ptr> FileMap;
 public:
-	/**
-	 * Collect emulated files that aren't referenced by tracees.
-	 * Call this only when a tracee's (possibly shared) file table
-	 * has been destroyed.  All other gc triggers are handled
-	 * internally.
-	 */
-	void gc(const Session& session);
+	typedef std::shared_ptr<EmuFs> shr_ptr;
 
 	/**
 	 * Return an fd that refers to an emulated file representing
@@ -113,7 +108,20 @@ public:
 
 	size_t size() const { return files.size(); }
 
+	/** Create and return a new emufs. */
+	static shr_ptr create();
+
 private:
+	EmuFs() {}
+
+	/**
+	 * Collect emulated files that aren't referenced by tracees.
+	 * Call this only when a tracee's (possibly shared) file table
+	 * has been destroyed.  All other gc triggers are handled
+	 * internally.
+	 */
+	void gc(const Session& session);
+
 	/**
 	 * Mark all the files being used by the tasks in |as|, and
 	 * increment |nt_marked_files| by the number of files that
@@ -123,6 +131,9 @@ private:
 			      size_t* nr_marked_files);
 
 	FileMap files;
+
+	EmuFs(const EmuFs&) = delete;
+	EmuFs& operator=(const EmuFs&) = delete;
 };
 
 /**
@@ -130,12 +141,11 @@ private:
  * syscall may have dropped the last reference to an emulated file.
  */
 struct AutoGc {
-	AutoGc(EmuFs& fs, const Session& session,
+	AutoGc(ReplaySession& session,
 	       int syscallno, int state = STATE_SYSCALL_EXIT);
 	~AutoGc();
 private:
-	EmuFs& fs;
-	const Session& session;
+	ReplaySession& session;
 	const bool is_gc_point;
 };
 
