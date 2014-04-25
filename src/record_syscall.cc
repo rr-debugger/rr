@@ -1850,8 +1850,7 @@ static void before_syscall_exit(Task* t, int syscallno)
 			return;
 		}
 		Task *target = t->regs().ebx ?
-			       Session::current()->find_task(t->regs().ebx) :
-			       t;
+			       t->session().find_task(t->regs().ebx) : t;
 		if (target) {
 			ssize_t cpuset_len = t->regs().ecx;
 			void* child_cpuset = (void*)t->regs().edx;
@@ -1878,8 +1877,8 @@ static void before_syscall_exit(Task* t, int syscallno)
 		// lowering the child's nice value.
 		if (t->regs().ebx == PRIO_PROCESS) {
 			Task* target = t->regs().ecx ?
-				       Session::current()->find_task(
-					       t->regs().ecx) : t;
+				       t->session().find_task(t->regs().ecx) :
+				       t;
 			if (target) {
 				LOG(debug) <<"Setting nice value for tid "
 					   << t->tid <<" to "<< t->regs().edx;
@@ -1975,7 +1974,7 @@ void rec_process_syscall(Task *t)
 
 	case SYS_clone:	{
 		pid_t new_tid = t->regs().eax;
-		Task* new_task = Session::current()->find_task(new_tid);
+		Task* new_task = t->session().find_task(new_tid);
 		unsigned long flags = (uintptr_t)pop_arg_ptr<void>(t);
 
 		if (flags & CLONE_UNTRACED) {

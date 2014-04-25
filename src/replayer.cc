@@ -88,8 +88,7 @@ using namespace std;
 // mmaps.
 EmuFs emufs;
 
-// The trace we're currently replaying.
-TraceIfstream::shr_ptr trace;
+ReplaySession::shr_ptr session;
 
 // |parent| is the (potential) debugger client.  It waits until the
 // server, |child|, creates a debug socket.  Then the client exec()s
@@ -250,7 +249,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			dbg_reply_get_offsets(dbg);
 			continue;
 		case DREQ_GET_THREAD_LIST: {
-			auto tasks = Session::current()->tasks();
+			auto tasks = t->session().tasks();
 			size_t len = tasks.size();
 			vector<dbg_threadid_t> tids;
 			for (auto& kv : tasks) {
@@ -271,7 +270,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		}
 
 		target = (req.target.tid > 0) ?
-			 Session::current()->find_task(req.target.tid) : t;
+			 t->session().find_task(req.target.tid) : t;
 		/* These requests query or manipulate which task is
 		 * the target, so it's OK if the task doesn't
 		 * exist. */
@@ -413,17 +412,17 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  * |intr_t| may be nullptr.
  */
 static trace_frame cur_trace_frame;
-static Task* schedule_task(Task** intr_t = nullptr)
+static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
 {
-	*trace >> cur_trace_frame;
+	session.ifstream() >> cur_trace_frame;
 	if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
 		if (intr_t) {
-			*intr_t = Session::current()->find_task(cur_trace_frame.tid);
+			*intr_t = session.find_task(cur_trace_frame.tid);
 		}
 		return nullptr;
 	}
 
-	Task *t = Session::current()->find_task(cur_trace_frame.tid);
+	Task *t = session.find_task(cur_trace_frame.tid);
 	assert(t != NULL);
 
 	t->trace = cur_trace_frame;
@@ -433,13 +432,15 @@ static Task* schedule_task(Task** intr_t = nullptr)
 	// tremendous win.
 	if (t->trace.ev.type == EV_SCHED) {
 		bool combined = false;
-		struct trace_frame next_trace = trace->peek_frame();
+		struct trace_frame next_trace =
+			t->replay_session().ifstream().peek_frame();
 		int64_t rbc = t->trace.rbc;
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid) {
 			rbc += next_trace.rbc;
-			*trace >> t->trace;
-			next_trace = trace->peek_frame();
+			t->replay_session().ifstream() >> t->trace;
+			next_trace =
+				t->replay_session().ifstream().peek_frame();
 			combined = true;
 		}
 
@@ -1095,7 +1096,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 	// We are now at the exact point in the child where the signal
 	// was recorded, emulate it using the next trace line (records
 	// the state at sighandler entry).
-	Task* t = schedule_task();
+	Task* t = schedule_task(oldtask->replay_session());
 	if (!t) {
 		// Trace terminated abnormally.  We'll pop out to code
 		// that knows what to do.
@@ -1408,7 +1409,7 @@ static int flush_one_syscall(Task* t,
 	case FLUSH_EXIT: {
 		LOG(debug) <<"  advancing to buffered syscall exit";
 
-		AutoGc gc(emufs, call);
+		AutoGc gc(emufs, t->session(), call);
 
 		assert_at_buffered_syscall(t, call);
 
@@ -1568,7 +1569,7 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 		LOG(info) <<("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
 	}
-	Session::current()->kill_all_tasks();
+	session->kill_all_tasks();
 	LOG(info) <<("Exiting.");
 	exit(0);
 }
@@ -1576,7 +1577,7 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 /** Return true when replaying/debugging should cease after |t| exits. */
 static bool is_last_interesting_task(Task* t)
 {
-	return (0 == debugged_tgid && Session::current()->tasks().size() == 1)
+	return (0 == debugged_tgid && t->session().tasks().size() == 1)
 		|| (t->tgid() == debugged_tgid
 		    && t->task_group()->task_set().size() == 1);
 }
@@ -1647,7 +1648,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		delete t;
 		/* Early-return because |t| is gone now. */
 		if (file_table_dying) {
-			emufs.gc();
+			emufs.gc(t->session());
 		}
 		return;
 	}
@@ -1797,7 +1798,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		// because we've been using emulated tracing, so they
 		// can't resume normal execution.  And we wouldn't
 		// want them continuing to execute even if they could.
-		Session::current()->kill_all_tasks();
+		t->session().kill_all_tasks();
 		exit(0);
 	}
 
@@ -1918,7 +1919,7 @@ static void replay_trace_frames(void)
 	struct dbg_context* dbg = nullptr;
 	while (!last_task) {
 		Task* intr_t;
-		Task* t = schedule_task(&intr_t);
+		Task* t = schedule_task(*session, &intr_t);
 		if (!t) {
 			return handle_interrupted_trace(dbg, intr_t);
 		}
@@ -1938,9 +1939,9 @@ static void replay_trace_frames(void)
 
 static void serve_replay(int argc, char* argv[], char** envp)
 {
-	trace = TraceIfstream::open(argc, argv);
+	session = ReplaySession::create(argc, argv);
 	struct args_env ae;
-	*trace >> ae;
+	session->ifstream() >> ae;
 
 	init_libpfm();
 
@@ -1959,11 +1960,12 @@ static void serve_replay(int argc, char* argv[], char** envp)
 		}
 	}
 
-	Session::current()->create_task(ae, trace, trace->peek_frame().tid);
+	session->create_task(ae, session,
+			     session->ifstream().peek_frame().tid);
 	replay_trace_frames();
 
 	close_libpfm();
-	trace = nullptr;
+	session = nullptr;
 
 	LOG(debug) <<"debugger server exiting ...";
 	exit(0);
@@ -2138,7 +2140,7 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 		// which |debugged_tgid| exists.
 		f.target_process = debugged_tgid;
 		f.process_created_how =
-			Session::current()->find_task(debugged_tgid)->
+			session->find_task(debugged_tgid)->
 			vm()->execed() ? CREATED_EXEC : CREATED_FORK;
 	}
 	f.dbgport = req.restart.port;
@@ -2151,7 +2153,7 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	// NB: it's critical that *all* allocated rr resources die
 	// when our task does, and exec()ing is an easy way to test
 	// that we're not potentially leaking anything.
-	Session::current()->kill_all_tasks();
+	session->kill_all_tasks();
 
 	// FIXME: we have to handle crashes and abnormal termination,
 	// so these shouldn't be mandatory.  I don't know if they are
@@ -2180,7 +2182,7 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 	for (size_t j = 0; j < replay_args.size(); ++j) {
 		argv.push_back(strdup(replay_args[j].c_str()));
 	}
-	argv.push_back(strdup(trace->dir().c_str()));
+	argv.push_back(strdup(session->ifstream().dir().c_str()));
 
 	argv.push_back(nullptr);
 

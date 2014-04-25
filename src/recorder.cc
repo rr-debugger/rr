@@ -35,8 +35,8 @@
 
 using namespace std;
 
-// The trace we're currently recording.
-static TraceOfstream::shr_ptr trace;
+// Global state of this recording session.
+static RecordSession::shr_ptr session;
 // Args/env for the initial tracee.
 struct args_env ae;
 
@@ -150,7 +150,7 @@ static void handle_ptrace_event(Task** tp)
 		// copy, so the flags here aren't meaningful for it.
 		int flags_arg = (SYS_clone == t->regs().orig_eax) ?
 				t->regs().ebx : 0;
-		Task* new_task = Session::current()->clone(
+		Task* new_task = t->session().clone(
 			t, clone_flags_to_task_flags(flags_arg),
 			stack, ctid, new_tid);
 		// Wait until the new task is ready.
@@ -867,7 +867,6 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 {
 	LOG(info) <<"Start recording...";
 
-	trace = TraceOfstream::create(argv[0]);
 	ae = args_env(argc, argv, envp);
 	// LD_PRELOAD the syscall interception lib
 	if (!rr_flags()->syscall_buffer_lib_path.empty()) {
@@ -912,21 +911,23 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 	}
 
 	ensure_preload_lib_will_load(rr_exe, ae.envp);
+	session = RecordSession::create(argv[0]);
 
-	*trace << ae;
+	session->ofstream() << ae;
 
 	init_libpfm();
 	install_termsig_handlers();
 
-	Task* t = Session::current()->create_task(ae, trace);
+	Task* t = session->create_task(ae, session);
 	start_hpc(t, rr_flags()->max_rbc);
 
-	while (Session::current()->tasks().size() > 0) {
+	while (session->tasks().size() > 0) {
 		int by_waitpid;
 
 		maybe_process_term_request(t);
 
-		Task* next = rec_sched_get_active_thread(t, &by_waitpid);
+		Task* next = rec_sched_get_active_thread(*session,
+							 t, &by_waitpid);
 		if (!next) {
 			maybe_process_term_request(t);
 		}
@@ -980,7 +981,7 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 	}
 
 	LOG(info) <<"Done recording -- cleaning up";
-	trace = nullptr;
+	session = nullptr;
 	close_libpfm();
 }
 
@@ -992,11 +993,11 @@ void terminate_recording(Task* t)
 	struct trace_frame frame;
 	memset(&frame, 0, sizeof(frame));
 	frame.tid = t ? t->tid : 0;
-	frame.global_time = trace->time();
+	frame.global_time = session->ofstream().time();
 	frame.ev = Event(EV_TRACE_TERMINATION,
 			 BaseEvent(NO_EXEC_INFO)).encode();
-	*trace << frame;
-	trace->flush();
+	session->ofstream() << frame;
+	session->ofstream().flush();
 
 	// TODO: Task::killall() here?
 

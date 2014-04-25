@@ -42,7 +42,7 @@ static void note_switch(Task* prev_t, Task* t, int max_events)
 static Task*
 get_next_task_with_same_priority(Task* t)
 {
-	auto tasks = Session::current()->tasks_by_priority();
+	auto tasks = t->session().tasks_by_priority();
 	auto it = tasks.find(make_pair(t->priority, t));
 	assert(it != tasks.end());
 	++it;
@@ -60,11 +60,11 @@ get_next_task_with_same_priority(Task* t)
  * calling waitpid on it and observing a state change.
  */
 static Task*
-find_next_runnable_task(int* by_waitpid)
+find_next_runnable_task(Session& session, int* by_waitpid)
 {
 	*by_waitpid = 0;
 
-	auto tasks = Session::current()->tasks_by_priority();
+	auto tasks = session.tasks_by_priority();
 	// The outer loop has one iteration per unique priority value.
 	// The inner loop iterates over all tasks with that priority.
 	for (auto same_priority_start = tasks.begin();
@@ -117,7 +117,8 @@ find_next_runnable_task(int* by_waitpid)
 	return NULL;
 }
 
-Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
+Task* rec_sched_get_active_thread(RecordSession& session,
+				  Task* t, int* by_waitpid)
 {
 	int max_events = rr_flags()->max_events;
 
@@ -168,7 +169,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 		current = get_next_task_with_same_priority(current);
 	}
 
-	Task* next = find_next_runnable_task(by_waitpid);
+	Task* next = find_next_runnable_task(session, by_waitpid);
 
 	if (next) {
 		LOG(debug) <<"  selecting task "<< next->tid;
@@ -179,7 +180,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 		pid_t tid;
 
 		LOG(debug) <<"  all tasks blocked or some unstable, waiting for runnable ("
-			   << Session::current()->tasks().size() <<" total)";
+			   << session.tasks().size() <<" total)";
 		while (!next) {
 			tid = waitpid(-1, &status,
 				      __WALL | WSTOPPED | WUNTRACED);
@@ -193,7 +194,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 			LOG(debug) <<"  "<< tid <<" changed status to "
 				   << status;
 
-			next = Session::current()->find_task(tid);
+			next = session.find_task(tid);
 			if (!next) {
 				LOG(debug) <<"    ... but it's dead";
 			}

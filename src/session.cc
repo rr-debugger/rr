@@ -7,12 +7,10 @@
 
 using namespace std;
 
-/*static*/ Session::shr_ptr Session::session(new Session());
-
 AddressSpace::shr_ptr
 Session::create_vm(Task* t)
 {
-	AddressSpace::shr_ptr as(new AddressSpace(t));
+	AddressSpace::shr_ptr as(new AddressSpace(t, *this));
 	as->insert_task(t);
 	sas.insert(as.get());
 	return as;
@@ -22,25 +20,6 @@ AddressSpace::shr_ptr
 Session::clone(AddressSpace::shr_ptr vm)
 {
 	return AddressSpace::shr_ptr(new AddressSpace(*vm));
-}
-
-Task*
-Session::create_task(const struct args_env& ae, TraceOfstream::shr_ptr trace)
-{
-	Task* t = Task::spawn(ae);
-	track(t);
-	t->trace_ofstream = trace;
-	return t;
-}
-
-Task*
-Session::create_task(const struct args_env& ae, TraceIfstream::shr_ptr trace,
-		     pid_t rec_tid)
-{
-	Task* t = Task::spawn(ae, rec_tid);
-	track(t);
-	t->trace_ifstream = trace;
-	return t;
 }
 
 Task*
@@ -125,8 +104,39 @@ Session::update_task_priority(Task* t, int value)
 	task_priority_set.insert(make_pair(t->priority, t));
 }
 
-/*static*/ Session::shr_ptr
-Session::current()
+Task*
+RecordSession::create_task(const struct args_env& ae, shr_ptr self)
 {
+	assert(self.get() == this);
+	Task* t = Task::spawn(ae, *this);
+	track(t);
+	t->session_record = self;
+	return t;
+}
+
+/*static*/ RecordSession::shr_ptr
+RecordSession::create(const string& exe_path)
+{
+	shr_ptr session(new RecordSession());
+	session->trace_ofstream = TraceOfstream::create(exe_path);
+	return session;
+}
+
+Task*
+ReplaySession::create_task(const struct args_env& ae, shr_ptr self,
+			   pid_t rec_tid)
+{
+	assert(self.get() == this);
+	Task* t = Task::spawn(ae, *this, rec_tid);
+	track(t);
+	t->session_replay = self;
+	return t;
+}
+
+/*static*/ ReplaySession::shr_ptr
+ReplaySession::create(int argc, char* argv[])
+{
+	shr_ptr session(new ReplaySession());
+	session->trace_ifstream = TraceIfstream::open(argc, argv);
 	return session;
 }

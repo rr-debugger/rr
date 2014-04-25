@@ -27,6 +27,9 @@
 #include "trace.h"
 #include "util.h"
 
+class Session;
+class RecordSession;
+class ReplaySession;
 struct Sighandlers;
 class Task;
 struct TaskGroup;
@@ -525,7 +528,7 @@ public:
 	static const byte breakpoint_insn = 0xCC;
 
 private:
-	AddressSpace(Task* t);
+	AddressSpace(Task* t, Session& session);
 	AddressSpace(const AddressSpace& o);
 
 	/**
@@ -591,6 +594,9 @@ private:
 	bool is_clone;
 	/* All segments mapped into this address space. */
 	MemoryMap mem;
+	// The session that created this.  We save a ref to it so that
+	// we can notify it when we die.
+	Session& session;
 	/* First mapped byte of the vdso. */
 	void* vdso_start_addr;
 	// The watchpoints set for tasks in this VM.  Watchpoints are
@@ -695,6 +701,8 @@ enum WaitRequest {
  */
 class Task {
 	friend class Session;
+	friend class RecordSession;
+	friend class ReplaySession;
 public:
 	typedef std::vector<WatchConfig> DebugRegs;
 
@@ -886,8 +894,8 @@ public:
 	 * Return the trace we're either recording to (|ofstream()|)
 	 * or replaying from (|ifstream()|).
 	 */
-	TraceIfstream& ifstream() { return *trace_ifstream; }
-	TraceOfstream& ofstream() { return *trace_ofstream; }
+	TraceIfstream& ifstream();
+	TraceOfstream& ofstream();
 
 	/**
 	 * Call this when the tracee's syscallbuf has been initialized.
@@ -1152,6 +1160,11 @@ public:
 	 */
 	bool resume_execution(ResumeRequest how, WaitRequest wait_how,
 			      int sig=0);
+
+	/** Return the session this is part of. */
+	Session& session();
+	RecordSession& record_session();
+	ReplaySession& replay_session();
 
 	/** Restore the next chunk of saved data from the trace to this. */
 	ssize_t set_data_from_trace();
@@ -1554,18 +1567,8 @@ private:
 	 * Return the trace fstream that we're using, whether in
 	 * recording or replay.
 	 */
-	TraceFstream& trace_fstream() {
-		if (trace_ofstream) {
-			return *trace_ofstream;
-		}
-		return *trace_ifstream;
-	}
-	const TraceFstream& trace_fstream() const {
-		if (trace_ofstream) {
-			return *trace_ofstream;
-		}
-		return *trace_ifstream;
-	}
+	TraceFstream& trace_fstream();
+	const TraceFstream& trace_fstream() const;
 
 	/**
 	 * Like |fallible_ptrace()| but infallible: except either the
@@ -1581,7 +1584,8 @@ private:
 	static void handle_runaway(int sig);
 
 	/** Fork and exec a task to run |ae|, with |rec_tid|. */
-	static Task* spawn(const struct args_env& ae, pid_t rec_tid = -1);
+	static Task* spawn(const struct args_env& ae, Session& session,
+			   pid_t rec_tid = -1);
 
 	// The address space of this task.
 	std::shared_ptr<AddressSpace> as;
@@ -1596,12 +1600,6 @@ private:
 	//
 	// TODO: we should only need one of these per address space.
 	int child_mem_fd;
-	// During recording, |trace_ofstream| is nonnull and is the
-	// trace that our events will be recorded into.  During
-	// replay, |trace_ifstream| is nonnull and is the trace we'll
-	// be reading saved events from.
-	TraceIfstream::shr_ptr trace_ifstream;
-	TraceOfstream::shr_ptr trace_ofstream;
 	// The current stack of events being processed.  (We use a
 	// deque instead of a stack because we need to iterate the
 	// events.)
@@ -1617,6 +1615,9 @@ private:
 	// this cached value and set the "known" flag.
 	struct user_regs_struct registers;
 	bool registers_known;
+	// The record or replay session we're part of.
+	std::shared_ptr<RecordSession> session_record;
+	std::shared_ptr<ReplaySession> session_replay;
 	// Points to the signal-hander table of this task.  If this
 	// task is a non-fork clone child, then the table will be
 	// shared with all its "thread" siblings.  Any updates made to

@@ -366,7 +366,7 @@ static void process_clone(Task* t,
 	void* ctid = (void*)t->regs().edi;
 	int flags_arg = (SYS_clone == t->regs().orig_eax) ? t->regs().ebx : 0;
 
-	Task* new_task = Session::current()->clone(
+	Task* new_task = t->session().clone(
 		t, clone_flags_to_task_flags(flags_arg),
 		stack, ctid, new_tid, rec_tid);
 	// Wait until the new thread is ready.
@@ -1152,7 +1152,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->ev.state;
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
-	AutoGc maybe_gc(emufs, syscall, state);
+	AutoGc maybe_gc(emufs, t->session(), syscall, state);
 
 	LOG(debug) <<"processing "<< syscallname(syscall) <<" ("
 		   << statename(state) <<")";
