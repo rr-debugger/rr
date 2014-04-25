@@ -741,9 +741,11 @@ AddressSpace::verify(Task* t) const
 AddressSpace::AddressSpace(Task* t, Session& session)
 	: is_clone(false), session(session), vdso_start_addr()
 {
-	iterate_memory_map(t, populate_address_space, this,
-			   kNeverReadSegment, NULL);
-	assert(vdso_start_addr);
+	if (session.can_validate()) {
+		iterate_memory_map(t, populate_address_space, this,
+				   kNeverReadSegment, NULL);
+		assert(vdso_start_addr);
+	}
 }
 
 AddressSpace::AddressSpace(const AddressSpace& o)

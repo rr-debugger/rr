@@ -425,6 +425,17 @@ TraceIfstream::peek_frame()
 	return frame;
 }
 
+void
+TraceIfstream::rewind()
+{
+	events.seekg(0);
+	data.seekg(0);
+	data_header.seekg(0);
+	mmaps.seekg(0);
+	global_time = 0;
+	assert(good());
+}
+
 /*static*/ TraceIfstream::shr_ptr
 TraceIfstream::open(int argc, char** argv)
 {

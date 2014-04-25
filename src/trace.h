@@ -254,6 +254,12 @@ public:
 	struct trace_frame peek_frame();
 
 	/**
+	 * Restore the state of this to what it was just after
+	 * |open()|.
+	 */
+	void rewind();
+
+	/**
 	 * Open and return the trace specified by the command line
 	 * spec |argc| / |argv|.  These are just the portion of the
 	 * args that specify the trace, not the entire command line.

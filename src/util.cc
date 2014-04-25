@@ -74,6 +74,14 @@ struct flags* rr_flags_for_init(void)
 	return NULL;		/* not reached */
 }
 
+void update_replay_target(pid_t process, int event)
+{
+	flags.target_process = process;
+	if (event > 0) {
+		flags.goto_event = event;
+	}
+}
+
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.

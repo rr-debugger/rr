@@ -1228,6 +1228,7 @@ static void process_execve(Task* t)
 		return;
 	}
 
+	t->session().after_exec();
 	t->post_exec();
 
 	long* stack_ptr = (long*)t->regs().esp;

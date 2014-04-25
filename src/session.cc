@@ -148,3 +148,18 @@ ReplaySession::create(int argc, char* argv[])
 	session->trace_ifstream = TraceIfstream::open(argc, argv);
 	return session;
 }
+
+void
+ReplaySession::restart()
+{
+	kill_all_tasks();
+	assert(tasks().size() == 0 && vms().size() == 0);
+	last_debugged_task = nullptr;
+	tgid_debugged = 0;
+	tracees_consistent = false;
+
+	gc_emufs();
+	assert(emufs().size() == 0);
+
+	trace_ifstream->rewind();
+}

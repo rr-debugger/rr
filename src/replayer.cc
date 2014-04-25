@@ -85,6 +85,12 @@
 using namespace std;
 
 ReplaySession::shr_ptr session;
+// When we restart a replay session, we stash the debug context here
+// so that we can find it again in |maybe_create_debugger()|.  We want
+// to reuse the context after the restart, but we don't want to notify
+// the debugger about irrelevant stuff before our target
+// process/event.
+struct dbg_context* stashed_dbg;
 
 // |parent| is the (potential) debugger client.  It waits until the
 // server, |child|, creates a debug socket.  Then the client exec()s
@@ -94,20 +100,12 @@ static pid_t parent, child;
 // reads those params out.
 static int debugger_params_pipe[2];
 
-/**
- * Restart a fresh debugging session, possibly updating our replay
- * params based on the debugger's |req|.  This results in the old
- * debugging socket being closed, and a new one created that the user
- * must manually connect to.
- */
-static void restart_replay(struct dbg_context* dbg, struct dbg_request req);
-
 static void debug_memory(Task* t)
 {
 	if (should_dump_memory(t, t->trace)) {
 		dump_process_memory(t, t->trace.global_time, "rep");
 	}
-	if (t->replay_session().can_validate()
+	if (t->session().can_validate()
 	    && should_checksum(t, t->trace)) {
 		/* Validate the checksum we computed during the
 		 * recording phase. */
@@ -216,8 +214,12 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		// Debugger client requested that we restart execution
 		// from the beginning.  Restart our debug session.
 		if (DREQ_RESTART == req.type) {
-			restart_replay(dbg, req);
-			FATAL() <<"Not reached";
+			LOG(debug) <<"  request to restart at event "
+				   << req.restart_event;
+			update_replay_target(
+				t->replay_session().debugged_tgid(),
+				req.restart_event);
+			return req;
 		}
 
 		/* These requests don't require a target task. */
@@ -443,7 +445,7 @@ static void validate_args(int event, int state, Task* t)
 
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
-	if (!t->replay_session().can_validate()) {
+	if (!t->session().can_validate()) {
 		return;
 	}
 	if ((SYS_pwrite64 == event || SYS_pread64 == event)
@@ -1118,7 +1120,7 @@ static void assert_at_recorded_rcb(Task* t, const Event& ev)
 	static const int64_t rbc_slack = 0;
 	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
 
-	if (!t->replay_session().can_validate()) {
+	if (!t->session().can_validate()) {
 		return;
 	}
 	ASSERT(t, (!t->hpc->started
@@ -1564,7 +1566,7 @@ static bool is_last_interesting_task(Task* t)
 		    && t->task_group()->task_set().size() == 1);
 }
 
-static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
+static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
@@ -1582,8 +1584,11 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	 * processing debugger requests.  Otherwise the debugger host
 	 * will be confused about the initial executable image,
 	 * rr's. */
-	if (t->replay_session().can_validate()) {
+	if (t->session().can_validate()) {
 		req = process_debugger_requests(dbg, t);
+		if (DREQ_RESTART == req.type) {
+			return false;
+		}
 		assert(dbg_is_resume_request(&req));
 	}
 
@@ -1606,7 +1611,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 				   << t->replay_session().debugged_tgid()
 				   <<" is "<< t->rec_tid <<" ("<< t->tid <<")";
 			t->replay_session().set_last_task(t);
-			return;
+			return true;
 		}
 
 		/* If the task was killed by a terminating signal,
@@ -1632,7 +1637,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		if (file_table_dying) {
 			t->replay_session().gc_emufs();
 		}
-		return;
+		return true;
 	}
 	case EV_DESCHED:
 		step.action = TSTEP_DESCHED;
@@ -1717,7 +1722,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			// early-termination marker.  Otherwise we
 			// would have seen the marker at
 			// |schedule_task()|.
-			return handle_interrupted_trace(dbg, t);
+			handle_interrupted_trace(dbg, t);
+			return false; // not reached
 		}
 
 		/* Currently we only understand software breakpoints
@@ -1769,6 +1775,9 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		dbg_notify_stop(dbg, get_threadid(t),	0x05/*gdb mandate*/,
 				watch_addr);
 		req = process_debugger_requests(dbg, t);
+		if (DREQ_RESTART == req.type) {
+			return false;
+		}
 		assert(dbg_is_resume_request(&req));
 	}
 
@@ -1787,7 +1796,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	if (TSTEP_ENTER_SYSCALL == step.action) {
 		rep_after_enter_syscall(t, step.syscall.no);
 	}
-	if (STATE_SYSCALL_EXIT == t->trace.ev.state
+	if (t->session().can_validate()
+	    && STATE_SYSCALL_EXIT == t->trace.ev.state
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
 	}
@@ -1828,6 +1838,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		reset_hpc(t, 0);
 	}
 	debug_memory(t);
+	return true;
 }
 
 /**
@@ -1842,7 +1853,7 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	}
 	// Don't launch the debugger for the initial rr fork child.
 	// No one ever wants that to happen.
-	if (!t->replay_session().can_validate()) {
+	if (!t->session().can_validate()) {
 		return nullptr;
 	}
 	uint32_t goto_event = rr_flags()->goto_event;
@@ -1868,6 +1879,12 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 			target_process, event_now);
 	}
 
+	t->replay_session().set_debugged_tgid(t->tgid());
+	if (stashed_dbg) {
+		dbg = stashed_dbg;
+		stashed_dbg = nullptr;
+		return dbg;
+	}
 	unsigned short port = (rr_flags()->dbgport > 0) ?
 			      rr_flags()->dbgport : getpid();
 	// Don't probe if the user specified a port.  Explicitly
@@ -1878,7 +1895,6 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	int probe = (rr_flags()->dbgport > 0) ? DONT_PROBE : PROBE_PORT;
 	const char* exe = rr_flags()->dont_launch_debugger ? nullptr :
 			  t->vm()->exe_image().c_str();
-	t->replay_session().set_debugged_tgid(t->tgid());
 	return dbg_await_client_connection("127.0.0.1", port, probe,
 					   t->tgid(), exe,
 					   parent, debugger_params_pipe[1]);
@@ -1897,37 +1913,10 @@ static void set_sig_blockedness(int sig, int blockedness)
 	}
 }
 
-static void replay_trace_frames(void)
+static void init_session(ReplaySession::shr_ptr session)
 {
-	struct dbg_context* dbg = nullptr;
-	while (!session->last_task()) {
-		Task* intr_t;
-		Task* t = schedule_task(*session, &intr_t);
-		if (!t) {
-			return handle_interrupted_trace(dbg, intr_t);
-		}
-		dbg = maybe_create_debugger(t, dbg);
-		replay_one_trace_frame(dbg, t);
-	}
-	LOG(info) <<("Replayer successfully finished.");
-	fflush(stdout);
-
-	if (dbg) {
-		// TODO return real exit code, if it's useful.
-		dbg_notify_exit_code(dbg, 0);
-		process_debugger_requests(dbg, session->last_task());
-		FATAL() <<"Received continue request after end-of-trace.";
-	}
-}
-
-static void serve_replay(int argc, char* argv[], char** envp)
-{
-	session = ReplaySession::create(argc, argv);
 	struct args_env ae;
 	session->ifstream() >> ae;
-
-	init_libpfm();
-
 	// Because we execvpe() the tracee, we must ensure that $PATH
 	// is the same as in recording so that libc searches paths in
 	// the same order.  So copy that over now.
@@ -1942,9 +1931,56 @@ static void serve_replay(int argc, char* argv[], char** envp)
 			putenv(strdup(*it));
 		}
 	}
-
 	session->create_task(ae, session,
 			     session->ifstream().peek_frame().tid);
+}
+
+static dbg_context* restart_session(ReplaySession::shr_ptr session,
+				    dbg_context* dbg)
+{
+	stashed_dbg = dbg;
+	session->restart();
+	init_session(session);
+	return nullptr;
+}
+
+static void replay_trace_frames(void)
+{
+	struct dbg_context* dbg = nullptr;
+	while (!session->last_task()) {
+		Task* intr_t;
+		Task* t = schedule_task(*session, &intr_t);
+		if (!t) {
+			return handle_interrupted_trace(dbg, intr_t);
+		}
+		dbg = maybe_create_debugger(t, dbg);
+		if (!replay_one_trace_frame(dbg, t)) {
+			dbg = restart_session(session, dbg);
+		}
+	}
+	LOG(info) <<("Replayer successfully finished.");
+	fflush(stdout);
+
+	if (dbg) {
+		// TODO return real exit code, if it's useful.
+		dbg_notify_exit_code(dbg, 0);
+		struct dbg_request req =
+			process_debugger_requests(dbg, session->last_task());
+		if (DREQ_RESTART == req.type) {
+			dbg = restart_session(session, dbg);
+			return replay_trace_frames();
+		}
+		FATAL() <<"Received continue request after end-of-trace.";
+	}
+}
+
+static void serve_replay(int argc, char* argv[], char** envp)
+{
+	session = ReplaySession::create(argc, argv);
+
+	init_libpfm();
+
+	init_session(session);
 	replay_trace_frames();
 
 	close_libpfm();
@@ -2052,125 +2088,6 @@ void replay(int argc, char* argv[], char** envp)
 			exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
 		}
 	}
-}
-
-void replay_flags_to_args(const struct flags& f,
-			  vector<string>* common_args,
-			  vector<string>* replay_args)
-{
-	// Common args.
-	if (f.force_enable_debugger) {
-		common_args->push_back("-f");
-	}
-	if (f.check_cached_mmaps) {
-		common_args->push_back("-k");
-	}
-	if (f.mark_stdio) {
-		common_args->push_back("-m");
-	}
-	if (f.cpu_unbound) {
-		common_args->push_back("-u");
-	}
-	if (f.verbose) {
-		common_args->push_back("-v");
-	}
-	// Replay args.
-	if (!f.redirect) {
-		replay_args->push_back("-q");
-	}
-	if (f.target_process) {
-		switch (f.process_created_how) {
-		case CREATED_FORK:
-			replay_args->push_back("-f");
-			break;
-		case CREATED_EXEC:
-			replay_args->push_back("-p");
-			break;
-		default:
-			FATAL() <<"Not reached";
-		}
-		stringstream ss;
-		ss << f.target_process;
-		replay_args->push_back(ss.str());
-	}
-	if (f.goto_event) {
-		replay_args->push_back("-g");
-		stringstream ss;
-		ss << f.goto_event;
-		replay_args->push_back(ss.str());
-	}
-	if (f.dbgport) {
-		replay_args->push_back("-s");
-		stringstream ss;
-		ss << f.dbgport;
-		replay_args->push_back(ss.str());
-	}
-}
-
-static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
-{
-	// Update the replayer launch flags with values the debugger
-	// has most recently seen from the user.
-	struct flags f = *rr_flags();
-	f.goto_event = req.restart.event > 0 ?
-			req.restart.event : f.goto_event;
-	if (f.goto_event && !f.target_process) {
-		// We allow the user to change the target event.  It's
-		// perfectly acceptable for them to target an event
-		// before |debugged_tgid| was launched; rr should Do
-		// The Right Thing in that case and attach the
-		// debugger at the first event after |f.goto_event| at
-		// which |debugged_tgid| exists.
-		f.target_process = session->debugged_tgid();
-		f.process_created_how =
-			session->find_task(session->debugged_tgid())->
-			vm()->execed() ? CREATED_EXEC : CREATED_FORK;
-	}
-	f.dbgport = req.restart.port;
-
-	// We're going to restart by exec()ing on top of ourselves, in
-	// order to keep the process tree intact.  So our tracees
-	// won't get the kill signal they usually would if we
-	// early-exited.
-	//
-	// NB: it's critical that *all* allocated rr resources die
-	// when our task does, and exec()ing is an easy way to test
-	// that we're not potentially leaking anything.
-	session->kill_all_tasks();
-
-	// FIXME: we have to handle crashes and abnormal termination,
-	// so these shouldn't be mandatory.  I don't know if they are
-	// or not.
-	close_libpfm();
-
-	dbg_prepare_restore_after_exec_restart(dbg);
-
-	char exe[PATH_MAX];
-	ssize_t nbytes = readlink("/proc/self/exe", exe, sizeof(exe));
-	if (-1 == nbytes) {
-		FATAL() <<"Failed to readlink('/proc/self/exe')";
-	}
-	exe[nbytes] = '\0';
-
-	vector<string> common_args;
-	vector<string> replay_args;
-	replay_flags_to_args(f, &common_args, &replay_args);
-
-	CharpVector argv;
-	argv.push_back(exe);
-	for (size_t j = 0; j < common_args.size(); ++j) {
-		argv.push_back(strdup(common_args[j].c_str()));
-	}
-	argv.push_back(strdup("replay"));
-	for (size_t j = 0; j < replay_args.size(); ++j) {
-		argv.push_back(strdup(replay_args[j].c_str()));
-	}
-	argv.push_back(strdup(session->ifstream().dir().c_str()));
-
-	argv.push_back(nullptr);
-
-	execv(exe, argv.data());
-	FATAL() <<"Failed to exec "<< exe;
 }
 
 void emergency_debug(Task* t)

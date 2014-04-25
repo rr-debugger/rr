@@ -125,6 +125,12 @@ const struct flags* rr_flags(void);
 struct flags* rr_flags_for_init(void);
 
 /**
+ * Update the |rr_flags()| execution-target parameters to |process|
+ * and |event| (if > 0).
+ */
+void update_replay_target(pid_t process, int event = -1);
+
+/**
  * Return zero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
  * indicates that the caller is using this as a general register
  * compare and nothing special should be done if the register files
