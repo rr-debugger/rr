@@ -541,7 +541,8 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		 * restart_syscall */
 		if (!may_restart) {
 			rec_process_syscall(t);
-			if (rr_flags()->check_cached_mmaps) {
+			if (t->session().can_validate()
+			    && rr_flags()->check_cached_mmaps) {
 				t->vm()->verify(t);
 			}
 		} else {

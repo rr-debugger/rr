@@ -39,18 +39,8 @@ using namespace std;
 /**
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
- *
- * dbg_contexts are mapped into their own (unlinked) shmem.  We do
- * this in order to save/restore debugger state across replay
- * restarts, which is pretty tricky do otherwise.  Before replay
- * restart, we save a cookie in the environment that lets us find the
- * fd of our mapping.  Then after exec(), we re-init our state by
- * finding the cookie and remapping the region (then unsetting the
- * cookie, of course).
  */
 struct dbg_context {
-	// fd of dbg_context shmem region.
-	int desc_fd;
 	// Current request to be processed.
 	struct dbg_request req;
 	// Thread to be resumed.
@@ -116,35 +106,9 @@ static void make_cloexec(int fd)
 	}
 }
 
-static size_t dbg_context_mapped_size()
-{
-	return ceil_page_size(sizeof(struct dbg_context));
-}
-
-static dbg_context* map_dbg_context(int desc_fd)
-{
-	void* m = mmap(nullptr, dbg_context_mapped_size(),
-		       PROT_READ | PROT_WRITE, MAP_SHARED, desc_fd, 0);
-	if ((void*)-1 == m) {
-		FATAL() << "Couldn't mmap dbg_context desc_fd %d" << desc_fd;
-	}
-	LOG(debug) <<"mmap dbg_context desc_fd "<< desc_fd <<" at %p "<< m;
-	return reinterpret_cast<struct dbg_context*>(m);
-}
-
 static dbg_context* new_dbg_context()
 {
-	static int counter = 0;
-	stringstream ss;
-	ss << "rr-dbg-ctx-" << getpid() << "-" << ++counter;
-	// NB: we don't set CLOEXEC here because we may need to
-	// preserve the backing segment across exec(), if replay
-	// restarts.
-	int desc_fd = create_shmem_segment(ss.str().c_str(),
-					   dbg_context_mapped_size(),
-					   O_NO_CLOEXEC);
-	struct dbg_context* dbg = map_dbg_context(desc_fd);
-	dbg->desc_fd = desc_fd;
+	struct dbg_context* dbg = (struct dbg_context*)calloc(1, sizeof(*dbg));
 	dbg->insize = sizeof(dbg->inbuf);
 	dbg->outsize = sizeof(dbg->outbuf);
 	return dbg;
@@ -185,41 +149,6 @@ static void open_socket(struct dbg_context* dbg,
 	}
 }
 
-static string make_exec_cookie_envvar()
-{
-	stringstream ss;
-	ss << "_RR_DBG_CONTEXT_EXEC_COOKIE_" << getpid();
-	return ss.str();
-}
-
-/**
- * If an exec cookie is found, restore and return the context it
- * points at.  Otherwise return nullptr.
- */
-static struct dbg_context* try_load_from_exec_cookie()
-{
-	string envvar = make_exec_cookie_envvar();
-	const char* cookiep = getenv(envvar.c_str());
-	if (!cookiep) {
-		return nullptr;
-	}
-	string cookie = cookiep;
-	unsetenv(envvar.c_str());
-
-	assert('\0' != cookie[0]);
-	int desc_fd = stoi(cookie);
-	LOG(debug) <<"found exec cookie "<< envvar <<"="<< desc_fd;
-
-	struct dbg_context* dbg = map_dbg_context(desc_fd);
-	// Sanity-check the restored mapping.
-	assert(dbg->desc_fd == desc_fd);
-	assert(dbg->listen_fd == -1);
-	assert(dbg->sock_fd >= 0);
-	assert(dbg->insize == sizeof(dbg->inbuf));
-	assert(dbg->outsize == sizeof(dbg->outbuf));
-	return dbg;
-}
-
 /**
  * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
  * indefinitely.
@@ -254,13 +183,6 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 						pid_t client,
 						int client_params_fd)
 {
-	if (struct dbg_context* dbg = try_load_from_exec_cookie()) {
-		assert(tgid == dbg->tgid);
-		// Replay just restarted.  |dbg| is now restored to
-		// what it was in the prior session.
-		return dbg;
-	}
-
 	struct dbg_context* dbg = new_dbg_context();
 	open_socket(dbg, addr, desired_port, probe);
 	int port = ntohs(dbg->addr.sin_port);
@@ -327,17 +249,6 @@ void dbg_launch_debugger(int params_pipe_fd)
 	FATAL() <<"Failed to exec gdb.";
 }
 
-void dbg_prepare_restore_after_exec_restart(struct dbg_context* dbg)
-{
-	string envvar = make_exec_cookie_envvar();
-	assert(!getenv(envvar.c_str()));
-
-	stringstream ss;
-	ss << dbg->desc_fd;
-	setenv(envvar.c_str(), ss.str().c_str(), 1/*override*/);
-	LOG(debug) <<"set exec cookie to "<< envvar <<"="<< ss.str();
-}
-
 /**
  * Poll for data to or from gdb, waiting |timeoutMs|.  0 means "don't
  * wait", and -1 means "wait forever".  Return zero if no data is
@@ -402,7 +313,7 @@ static void write_flush(struct dbg_context* dbg)
 
 #ifdef DEBUGTAG
 	dbg->outbuf[dbg->outlen] = '\0';
-	LOG(debug) <<"write_flush: '%s'", dbg->outbuf);
+	LOG(debug) <<"write_flush: '"<< dbg->outbuf <<"'";
 #endif
 	while (write_index < dbg->outlen) {
 		ssize_t nwritten;
@@ -874,8 +785,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 
 	if (!strcmp("Run", name)) {
 		dbg->req.type = DREQ_RESTART;
-		dbg->req.restart.event = -1;
-		dbg->req.restart.port = ntohs(dbg->addr.sin_port);
+		dbg->req.restart_event = -1;
 
 		if ('\0' == *args) {
 			return 1;
@@ -893,7 +803,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		if (strlen(args)) {
 			string event_str = decode_ascii_encoded_hex_str(args);
 			char* endp;
-			dbg->req.restart.event =
+			dbg->req.restart_event =
 				strtol(event_str.c_str(), &endp, 0);
 			if (!endp || *endp != '\0') {
 				FATAL() <<"Couldn't parse event string `"
@@ -901,7 +811,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 			}
 		}
 		LOG(debug) <<"next replayer advancing to event "
-			   << dbg->req.restart.event;
+			   << dbg->req.restart_event;
 		return 1;
 	}
 
@@ -1268,7 +1178,8 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig,
 	       || dbg->req.type == DREQ_INTERRUPT);
 
 	if (dbg->tgid != thread.pid) {
-		LOG(debug) <<"ignoring stop of thread "<< thread;
+		LOG(debug) <<"ignoring stop of "<< thread
+			   <<" because we're debugging tgid "<< dbg->tgid;
 		// Re-use the existing continue request to advance to
 		// the next stop we're willing to tell gdb about.
 		return;
@@ -1485,10 +1396,8 @@ void dbg_destroy_context(struct dbg_context** dbg)
 	if (!(d = *dbg)) {
 		return;
 	}
-	*dbg = NULL;
-	close(d->desc_fd);
 	close(d->listen_fd);
 	close(d->sock_fd);
-	munmap(d, dbg_context_mapped_size());
+	free(d);
 	*dbg = NULL;
 }

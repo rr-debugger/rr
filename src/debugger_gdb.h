@@ -118,7 +118,7 @@ enum DbgRequestType{
 	/* gdb host detaching from stub.  No parameters. */
 	DREQ_DETACH,
 
-	/* Uses params.restart. */
+	/* Uses params.restart_event. */
 	DREQ_RESTART,
 };
 
@@ -139,10 +139,7 @@ struct dbg_request {
 
 		DbgRegister reg;
 
-		struct {
-			int event;
-			short port;
-		} restart;
+		int restart_event;
 	};
 };
 
@@ -194,12 +191,6 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
  * |params_pipe_fd|.
  */
 void dbg_launch_debugger(int params_pipe_fd);
-
-/**
- * Notify the debug server that replay is about to be restarted, and
- * it should prepare any state necessary to restore post-exec.
- */
-void dbg_prepare_restore_after_exec_restart(struct dbg_context* dbg);
 
 /**
  * Call this when the target of |req| is needed to fulfill the

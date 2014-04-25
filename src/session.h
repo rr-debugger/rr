@@ -35,6 +35,19 @@ public:
 	typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
 
 	/**
+	 * Call |after_exec()| after a tracee has successfully
+	 * |execve()|'d.  After that, |can_validate()| return true.
+	 *
+	 * Tracee state can't be validated before the first exec,
+	 * because the address space inside the rr process for |rr
+	 * replay| will be different than it was for |rr record|.
+	 * After the first exec, we're running tracee code, and
+	 * everything must be the same.
+	 */
+	void after_exec() { tracees_consistent = true; }
+	bool can_validate() const { return tracees_consistent; }
+
+	/**
 	 * Create and return a new address space that's constructed
 	 * from |t|'s actual OS address space.
 	 */
@@ -93,13 +106,14 @@ public:
 	const AddressSpaceSet& vms() const { return sas; }
 
 protected:
-	Session() {}
+	Session() : tracees_consistent(false) {}
 
 	void track(Task* t);
 
 	AddressSpaceSet sas;
 	TaskMap task_map;
 	TaskPrioritySet task_priority_set;
+	bool tracees_consistent;
 
 	Session(const Session&) = delete;
 	Session& operator=(const Session&) = delete;
@@ -135,19 +149,6 @@ public:
 	typedef std::shared_ptr<ReplaySession> shr_ptr;
 
 	/**
-	 * Call |after_exec()| after a tracee has successfully
-	 * |execve()|'d.  After that, |can_validate()| return true.
-	 *
-	 * Tracee state can't be validated before the first exec,
-	 * because the address space inside the rr process for |rr
-	 * replay| will be different than it was for |rr record|.
-	 * After the first exec, we're running tracee code, and
-	 * everything must be the same.
-	 */
-	void after_exec() { tracees_consistent = true; }
-	bool can_validate() const { return tracees_consistent; }
-
-	/**
 	 * Fork and exec the initial tracee task to run |ae|, and read
 	 * recorded events from |trace|.  |rec_tid| is the recorded
 	 * tid of the initial tracee task.  Return that Task.
@@ -161,6 +162,12 @@ public:
 	void gc_emufs();
 
 	TraceIfstream& ifstream() { return *trace_ifstream; }
+
+	/**
+	 * Restore the state of this session to what it was just after
+	 * |create()|.
+	 */
+	void restart();
 
 	/**
 	 * Set |tgid| as the one that's being debugged in this
@@ -198,17 +205,12 @@ public:
 	static shr_ptr create(int argc, char* argv[]);
 
 private:
-	ReplaySession()
-		: last_debugged_task(nullptr)
-		, tgid_debugged(0)
-		, tracees_consistent(false)
-	{}
+	ReplaySession() : last_debugged_task(nullptr), tgid_debugged(0)	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
 	Task* last_debugged_task;
 	pid_t tgid_debugged;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
-	bool tracees_consistent;
 };
 
 #endif // RR_SESSION_H_
