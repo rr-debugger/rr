@@ -3,6 +3,7 @@
 #ifndef RR_REC_SCHED_H_
 #define RR_REC_SCHED_H_
 
+class RecordSession;
 class Task;
 
 /**
@@ -15,7 +16,8 @@ class Task;
  *
  * Return nullptr if an interrupt occurred while waiting on a tracee.
  */
-Task* rec_sched_get_active_thread(Task* t, int* by_waitpid);
+Task* rec_sched_get_active_thread(RecordSession& session,
+				  Task* t, int* by_waitpid);
 
 void rec_sched_deregister_thread(Task** t);
 

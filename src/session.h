@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 
 class AddressSpace;
 class Task;
@@ -26,7 +27,6 @@ class TraceOfstream;
  */
 class Session {
 public:
-	typedef std::shared_ptr<Session> shr_ptr;
 	typedef std::set<AddressSpace*> AddressSpaceSet;
 	typedef std::map<pid_t, Task*> TaskMap;
 	// Tasks sorted by priority.
@@ -44,19 +44,6 @@ public:
 	 */
 	std::shared_ptr<AddressSpace> clone(std::shared_ptr<AddressSpace> vm);
 
-	/**
-	 * Fork and exec the initial tracee task to run |ae|, and
-	 * record events into |trace|.  Return that Task.
-	 */
-	Task* create_task(const struct args_env& ae,
-			  std::shared_ptr<TraceOfstream> trace);
-	/**
-	 * Fork and exec the initial tracee task to run |ae|, and read
-	 * recorded events from |trace|.  |rec_tid| is the recorded
-	 * tid of the initial tracee task.  Return that Task.
-	 */
-	Task* create_task(const struct args_env& ae,
-			  std::shared_ptr<TraceIfstream> trace, pid_t rec_tid);
 	/** See Task::clone(). */
 	Task* clone(Task* p, int flags, void* stack, void* cleartid_addr,
 		    pid_t new_tid, pid_t new_rec_tid = -1);
@@ -103,10 +90,7 @@ public:
 	 */
 	const AddressSpaceSet& vms() const { return sas; }
 
-	/** Return the session that's currently being used. */
-	static shr_ptr current();
-
-private:
+protected:
 	Session() {}
 
 	void track(Task* t);
@@ -115,12 +99,57 @@ private:
 	TaskMap task_map;
 	TaskPrioritySet task_priority_set;
 
-	// XXX for now, there's only one session.  That will change in
-	// the future.
-	static shr_ptr session;
-
 	Session(const Session&) = delete;
 	Session& operator=(const Session&) = delete;
+};
+
+/** Encapsulates additional session state related to recording. */
+class RecordSession : public Session {
+public:
+	typedef std::shared_ptr<RecordSession> shr_ptr;
+
+	/**
+	 * Fork and exec the initial tracee task to run |ae|.  Return
+	 * that Task.
+	 */
+	Task* create_task(const struct args_env& ae, shr_ptr self);
+
+	TraceOfstream& ofstream() { return *trace_ofstream; }
+
+	/**
+	 * Create a recording session for the initial exe image
+	 * |exe_path|.  (That argument is used to name the trace
+	 * directory.)
+	 */
+	static shr_ptr create(const std::string& exe_path);
+
+private:
+	std::shared_ptr<TraceOfstream> trace_ofstream;
+};
+
+/** Encapsulates additional session state related to replay. */
+class ReplaySession : public Session {
+public:
+	typedef std::shared_ptr<ReplaySession> shr_ptr;
+
+	/**
+	 * Fork and exec the initial tracee task to run |ae|, and read
+	 * recorded events from |trace|.  |rec_tid| is the recorded
+	 * tid of the initial tracee task.  Return that Task.
+	 */
+	Task* create_task(const struct args_env& ae, shr_ptr self,
+			  pid_t rec_tid);
+
+	TraceIfstream& ifstream() { return *trace_ifstream; }
+
+	/**
+	 * Create a replay session that will use the trace specified
+	 * by the commad-line args |argc|/|argv|.  Return it.
+	 */
+	static shr_ptr create(int argc, char* argv[]);
+
+private:
+	std::shared_ptr<TraceIfstream> trace_ifstream;
 };
 
 #endif // RR_SESSION_H_

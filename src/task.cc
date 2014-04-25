@@ -237,7 +237,7 @@ private:
 
 AddressSpace::~AddressSpace()
 {
-	Session::current()->on_destroy(this);
+	session.on_destroy(this);
 }
 
 void
@@ -738,7 +738,8 @@ AddressSpace::verify(Task* t) const
 	vas.assert_segments_match(t);
 }
 
-AddressSpace::AddressSpace(Task* t) : is_clone(false), vdso_start_addr()
+AddressSpace::AddressSpace(Task* t, Session& session)
+	: is_clone(false), session(session), vdso_start_addr()
 {
 	iterate_memory_map(t, populate_address_space, this,
 			   kNeverReadSegment, NULL);
@@ -753,7 +754,8 @@ AddressSpace::AddressSpace(const AddressSpace& o)
 	// the creation of this.
 	: breakpoints(o.breakpoints)
 	, exe(o.exe), heap(o.heap), is_clone(true)
-	, mem(o.mem), vdso_start_addr(o.vdso_start_addr)
+	, mem(o.mem), session(o.session)
+	, vdso_start_addr(o.vdso_start_addr)
 {
 	for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
 		it->second = it->second->clone();
@@ -1104,7 +1106,7 @@ Task::~Task()
 {
 	LOG(debug) <<"task "<< tid <<" (rec:"<< rec_tid <<") is dying ...";
 
-	assert(this == Session::current()->find_task(rec_tid));
+	assert(this == session().find_task(rec_tid));
 	// We expect tasks to usually exit by a call to exit() or
 	// exit_group(), so it's not helpful to warn about that.
 	if (EV_SENTINEL != ev().type()
@@ -1116,7 +1118,7 @@ Task::~Task()
 		log_pending_events();
 	}
 
-	Session::current()->on_destroy(this);
+	session().on_destroy(this);
 	tg->erase_task(this);
 	as->erase_task(this);
 
@@ -1200,7 +1202,7 @@ Task::set_priority(int value)
 		// don't mess with task order
 		return;
 	}
-	Session::current()->update_task_priority(this, value);
+	session().update_task_priority(this, value);
 }
 
 bool
@@ -1249,6 +1251,18 @@ void
 Task::get_siginfo(siginfo_t* si)
 {
 	xptrace(PTRACE_GETSIGINFO, nullptr, si);
+}
+
+TraceIfstream&
+Task::ifstream()
+{
+	return session_replay->ifstream();
+}
+
+TraceOfstream&
+Task::ofstream()
+{
+	return session_record->ofstream();
 }
 
 bool
@@ -1468,7 +1482,7 @@ Task::post_exec()
 	sighandlers = sighandlers->clone();
 	sighandlers->reset_user_handlers();
 	as->erase_task(this);
-	auto a = Session::current()->create_vm(this);
+	auto a = session().create_vm(this);
 	as.swap(a);
 	// XXX should we re-create our TaskGroup here too?
 	prname = prname_from_exe_image(as->exe_image());
@@ -1636,6 +1650,27 @@ Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
 		return true;
 	}
 	return wait();
+}
+
+Session&
+Task::session()
+{
+	if (session_record) {
+		return *session_record;
+	}
+	return *session_replay;
+}
+
+RecordSession&
+Task::record_session()
+{
+	return *session_record;
+}
+
+ReplaySession&
+Task::replay_session()
+{
+	return *session_replay;
 }
 
 ssize_t
@@ -2043,8 +2078,8 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 {
 	Task* t = new Task(new_tid, new_rec_tid, priority);
 
-	t->trace_ifstream = trace_ifstream;
-	t->trace_ofstream = trace_ofstream;
+	t->session_record = session_record;
+	t->session_replay = session_replay;
 	t->syscallbuf_lib_start = syscallbuf_lib_start;
 	t->syscallbuf_lib_end = syscallbuf_lib_end;
 	t->blocked_sigs = blocked_sigs;
@@ -2058,13 +2093,13 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 		t->tg = tg;
 		tg->insert_task(t);
 	} else {
-		auto g = Session::current()->create_tg(t);
+		auto g = session().create_tg(t);
 		t->tg.swap(g);
 	}
 	if (CLONE_SHARE_VM & flags) {
 		t->as = as;
 	} else {
-		t->as = Session::current()->clone(as);
+		t->as = session().clone(as);
 	}
 	if (stack) {
 		const Mapping& m = 
@@ -2302,6 +2337,24 @@ Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 		<<", but only wrote "<< nwritten;
 }
 
+TraceFstream&
+Task::trace_fstream()
+{
+	if (session_record) {
+		return session_record->ofstream();
+	}
+	return session_replay->ifstream();
+}
+
+const TraceFstream&
+Task::trace_fstream() const
+{
+	if (session_record) {
+		return session_record->ofstream();
+	}
+	return session_replay->ifstream();
+}
+
 void
 Task::xptrace(int request, void* addr, void* data)
 {
@@ -2324,9 +2377,9 @@ Task::handle_runaway(int sig)
 }
 
 /*static*/ Task*
-Task::spawn(const struct args_env& ae, pid_t rec_tid)
+Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 {
-	assert(Session::current()->tasks().size() == 0);
+	assert(session.tasks().size() == 0);
 
 	pid_t tid = fork();
 	if (0 == tid) {
@@ -2367,9 +2420,9 @@ Task::spawn(const struct args_env& ae, pid_t rec_tid)
 		      &t->blocked_sigs, sizeof(t->blocked_sigs))) {
 		FATAL() <<"Failed to read blocked signals";
 	}
-	auto g = Session::current()->create_tg(t);
+	auto g = session.create_tg(t);
 	t->tg.swap(g);
-	auto as = Session::current()->create_vm(t);
+	auto as = session.create_vm(t);
 	t->as.swap(as);
 
 	// Sync with the child process.

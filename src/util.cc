@@ -77,11 +77,11 @@ struct flags* rr_flags_for_init(void)
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.
-static bool is_start_of_scratch_region(void* start_addr)
+static bool is_start_of_scratch_region(Task* t, void* start_addr)
 {
-	for (auto& kv : Session::current()->tasks()) {
-		Task* t = kv.second;
-		if (start_addr == t->scratch_ptr) {
+	for (auto& kv : t->session().tasks()) {
+		Task* c = kv.second;
+		if (start_addr == c->scratch_ptr) {
 			return true;
 		}
 	}
@@ -659,7 +659,7 @@ static int dump_process_memory_iterator(void* it_data, Task* t,
 		/* This segment was filtered by debugging code. */
 		return CONTINUE_ITERATING;
 	}
-	if (is_start_of_scratch_region(start_addr)) {
+	if (is_start_of_scratch_region(t, start_addr)) {
 		/* Scratch regions will diverge between
 		 * recording/replay, so including them in memory dumps
 		 * makes comparing record/replay dumps very noisy. */
@@ -808,7 +808,7 @@ static int checksum_iterator(void* it_data, Task* t,
 			<< "Segment "<< rec_start_addr <<"-"<< rec_end_addr
 			<<" changed to "<< data->info <<"??";
 
-		if (is_start_of_scratch_region(rec_start_addr)) {
+		if (is_start_of_scratch_region(t, rec_start_addr)) {
 			/* Replay doesn't touch scratch regions, so
 			 * their contents are allowed to diverge.
 			 * Tracees can't observe those segments unless

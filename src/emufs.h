@@ -10,6 +10,7 @@
 #include "task.h"
 #include "util.h"
 
+class Session;
 class Task;
 
 /**
@@ -102,7 +103,7 @@ public:
 	 * has been destroyed.  All other gc triggers are handled
 	 * internally.
 	 */
-	void gc();
+	void gc(const Session& session);
 
 	/**
 	 * Return an fd that refers to an emulated file representing
@@ -129,10 +130,12 @@ private:
  * syscall may have dropped the last reference to an emulated file.
  */
 struct AutoGc {
-	AutoGc(EmuFs& fs, int syscallno, int state = STATE_SYSCALL_EXIT);
+	AutoGc(EmuFs& fs, const Session& session,
+	       int syscallno, int state = STATE_SYSCALL_EXIT);
 	~AutoGc();
 private:
 	EmuFs& fs;
+	const Session& session;
 	const bool is_gc_point;
 };
 

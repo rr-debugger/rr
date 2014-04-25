@@ -56,7 +56,7 @@ EmuFile::create(const char* orig_path, const struct stat& est)
 }
 
 void
-EmuFs::gc()
+EmuFs::gc(const Session& session)
 {
 	// XXX this implementation is unnecessarily slow.  But before
 	// throwing it away for something different, give it another
@@ -83,7 +83,7 @@ EmuFs::gc()
 	// they're different things: two tracees could share an
 	// address space but have different file tables.
 	size_t nr_marked_files = 0;
-	for (auto as : Session::current()->vms()) {
+	for (auto as : session.vms()) {
 		Task* t = *as->task_set().begin();
 		LOG(debug) <<"  iterating /proc/"<< t->tid <<"/maps ...";
 
@@ -151,8 +151,8 @@ EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
 	}
 }
 
-AutoGc::AutoGc(EmuFs& fs, int syscallno, int state)
-	: fs(fs)
+AutoGc::AutoGc(EmuFs& fs, const Session& session, int syscallno, int state)
+	: fs(fs), session(session)
 	, is_gc_point(fs.size() > 0
 		      && STATE_SYSCALL_EXIT == state
 		      && (SYS_close == syscallno
@@ -165,6 +165,6 @@ AutoGc::AutoGc(EmuFs& fs, int syscallno, int state)
 
 AutoGc::~AutoGc() {
 	if (is_gc_point) {
-		fs.gc();
+		fs.gc(session);
 	}
 }
