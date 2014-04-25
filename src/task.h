@@ -393,6 +393,7 @@ struct WatchConfig {
  * of mapped pages, and the resources those mappings refer to.
  */
 class AddressSpace : public HasTaskSet {
+	friend class Session;
 	friend struct VerifyAddressSpace;
 
 public:
@@ -400,10 +401,9 @@ public:
 	typedef std::map<Mapping, MappableResource,
 			 MappingComparator> MemoryMap;
 	typedef std::shared_ptr<AddressSpace> shr_ptr;
-	typedef std::set<AddressSpace*> Set;
 	typedef std::map<MemoryRange, std::shared_ptr<Watchpoint>> WatchpointMap;
 
-	~AddressSpace() { sas.erase(this); }
+	~AddressSpace();
 
 	/** Return an iterator at the beginning of the memory map. */
 	MemoryMap::const_iterator begin() const {
@@ -421,13 +421,6 @@ public:
 	 * |addr|.
 	 */
 	void brk(void* addr);
-
-	/**
-	 * Return a copy of this address space with the same mappings.
-	 * If any mapping is changed, only the |clone()|d copy is
-	 * updated, not its origin (i.e. copy-on-write semantics).
-	 */
-	shr_ptr clone();
 
 	/**
 	 * Dump a representation of |this| to stderr in a format
@@ -528,21 +521,11 @@ public:
 	 */
 	void verify(Task* t) const;
 
-	static const Set& set() { return sas; }
-
-	/**
-	 * Create and return a new address space that's a copy of the
-	 * current address space of |t|.
-	 */
-	static shr_ptr create(Task* t);
-
 	// Encoding of the |int $3| instruction.
 	static const byte breakpoint_insn = 0xCC;
 
 private:
-	AddressSpace() : is_clone(false), vdso_start_addr() {
-		sas.insert(this);
-	}
+	AddressSpace(Task* t);
 	AddressSpace(const AddressSpace& o);
 
 	/**
@@ -630,8 +613,6 @@ private:
 	static int populate_address_space(void* asp, Task* t,
 					  const struct map_iterator_data* data);
 
-	static Set sas;
-
 	AddressSpace operator=(const AddressSpace&) = delete;
 };
 
@@ -642,13 +623,12 @@ private:
  * task must own a reference to this.
  */
 struct TaskGroup : public HasTaskSet {
+	friend class Session;
+
 	typedef std::shared_ptr<TaskGroup> shr_ptr;
 
 	/** See |Task::destabilize_task_group()|. */
 	void destabilize();
-
-	/** Return a new task group consisting of |t|. */
-	static shr_ptr create(Task* t);
 
 	const pid_t tgid;
 	const pid_t real_tgid;
@@ -656,8 +636,8 @@ struct TaskGroup : public HasTaskSet {
 private:
 	TaskGroup(pid_t tgid, pid_t real_tgid);
 
-	TaskGroup(const TaskGroup&);
-	TaskGroup operator=(const TaskGroup&);
+	TaskGroup(const TaskGroup&) = delete;
+	TaskGroup operator=(const TaskGroup&) = delete;
 };
 
 enum CloneFlags {
@@ -714,11 +694,8 @@ enum WaitRequest {
  * so no distinction is made here.
  */
 class Task {
+	friend class Session;
 public:
-	typedef std::map<pid_t, Task*> Map;
-	/** For each priority, the list of tasks with that priority.
-	    These lists are never empty. */
-	typedef std::set<std::pair<int, Task*> > PrioritySet;
 	typedef std::vector<WatchConfig> DebugRegs;
 
 	~Task();
@@ -734,17 +711,6 @@ public:
 	 * and this method will return true.
 	 */
 	bool at_may_restart_syscall() const;
-
-	/**
-	 * Return a new Task cloned from this.  |flags| are a set of
-	 * CloneFlags (see above) that determine which resources are
-	 * shared or copied to the new child.  |new_tid| is the tid
-	 * assigned to the new task by the kernel.  |new_rec_tid| is
-	 * only relevant to replay, and is the pid that was assigned
-	 * to the task during recording.
-	 */
-	Task* clone(int flags, void* stack, void* cleartid_addr,
-		    pid_t new_tid, pid_t new_rec_tid = -1);
 
 	/**
 	 * Continue according to the semantics implied by the helper's
@@ -1366,55 +1332,6 @@ public:
 	void write_bytes_helper(void* addr,
 				 ssize_t buf_size, const byte* buf);
 
-	/** Return an iterator at the beginning of the task map. */
-	static Map::const_iterator begin();
-
-	/** Return an iterator at the end of the task map. */
-	static Map::const_iterator end();
-
-	/** Return the number of extant tasks. */
-	static ssize_t count();
-
-	/** Get tasks organized by priority. */
-	static const PrioritySet& get_priority_set();
-
-	/**
-	 * Fork and exec the initial tracee task to run |ae|, and
-	 * record events into |trace|.  Return that Task.
-	 */
-	static Task* create(const struct args_env& ae,
-			    TraceOfstream::shr_ptr trace) {
-		Task* t = create(ae);
-		t->trace_ofstream = trace;
-		return t;
-	}
-	/**
-	 * Fork and exec the initial tracee task to run |ae|, and read
-	 * recorded events from |trace|.  |rec_tid| is the recorded
-	 * tid of the initial tracee task.  Return that Task.
-	 */
-	static Task* create(const struct args_env& ae,
-			    TraceIfstream::shr_ptr trace, pid_t rec_tid) {
-		Task* t = create(ae, rec_tid);
-		t->trace_ifstream = trace;
-		return t;
-	}
-
-	/** Call |Task::dump(out)| for all live tasks. */
-	static void dump_all(FILE* out = NULL);
-
-	/**
-	 * Return the task created with |rec_tid|, or NULL if no such
-	 * task exists.
-	 */
-	static Task* find(pid_t rec_tid);
-
-	/**
-	 * |Task::count()| will be zero and all the OS tasks will be
-	 * gone when this returns, or this won't return.
-	 */
-	static void killall();
-
 	/** See |pending_sig()| above. */
 	static int pending_sig_from_status(int status);
 	/** See |ptrace_event()| above. */
@@ -1581,6 +1498,17 @@ private:
 	Task(pid_t tid, pid_t rec_tid, int priority);
 
 	/**
+	 * Return a new Task cloned from |p|.  |flags| are a set of
+	 * CloneFlags (see above) that determine which resources are
+	 * shared or copied to the new child.  |new_tid| is the tid
+	 * assigned to the new task by the kernel.  |new_rec_tid| is
+	 * only relevant to replay, and is the pid that was assigned
+	 * to the task during recording.
+	 */
+	Task* clone(int flags, void* stack, void* cleartid_addr,
+		    pid_t new_tid, pid_t new_rec_tid = -1);
+
+	/**
 	 * Detach this from rr and try hard to ensure any operations
 	 * related to it have completed by the time this function
 	 * returns.
@@ -1606,6 +1534,14 @@ private:
 	 * True if this has blocked delivery of the desched signal.
 	 */
 	bool is_desched_sig_blocked();
+
+	/**
+	 * Destroy the OS task backing this by sending it SIGKILL and
+	 * ensuring it was delivered.  After |kill()|, the only
+	 * meaningful thing that can be done with this task is to
+	 * delete it.
+	 */
+	void kill();
 
 	/**
 	 * Call this before recording events or data.  Records
@@ -1637,15 +1573,15 @@ private:
 	 */
 	void xptrace(int request, void* addr, void* data);
 
-	/** Fork and exec a task to run |ae|, with |rec_tid|. */
-	static Task* create(const struct args_env& ae, pid_t rec_tid = -1);
-
 	/**
 	 * The rbc interrupt has failed to stop the Task currently
 	 * being |wait()|ed, so the alarm() we programmed has fired.
 	 * PTRACE_INTERRUPT the runaway tracee.
 	 */
 	static void handle_runaway(int sig);
+
+	/** Fork and exec a task to run |ae|, with |rec_tid|. */
+	static Task* spawn(const struct args_env& ae, pid_t rec_tid = -1);
 
 	// The address space of this task.
 	std::shared_ptr<AddressSpace> as;

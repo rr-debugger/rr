@@ -19,6 +19,7 @@
 #include "config.h"
 #include "log.h"
 #include "recorder.h"
+#include "session.h"
 #include "task.h"
 
 /**
@@ -39,7 +40,7 @@ static void note_switch(Task* prev_t, Task* t, int max_events)
 static Task*
 get_next_task_with_same_priority(Task* t)
 {
-	const Task::PrioritySet& tasks = Task::get_priority_set();
+	auto tasks = Session::current()->tasks_by_priority();
 	auto it = tasks.find(std::make_pair(t->priority, t));
 	assert(it != tasks.end());
 	++it;
@@ -61,7 +62,7 @@ find_next_runnable_task(int* by_waitpid)
 {
 	*by_waitpid = 0;
 
-	const Task::PrioritySet& tasks = Task::get_priority_set();
+	auto tasks = Session::current()->tasks_by_priority();
 	// The outer loop has one iteration per unique priority value.
 	// The inner loop iterates over all tasks with that priority.
 	for (auto same_priority_start = tasks.begin();
@@ -176,7 +177,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 		pid_t tid;
 
 		LOG(debug) <<"  all tasks blocked or some unstable, waiting for runnable ("
-			   << Task::count() <<" total)";
+			   << Session::current()->tasks().size() <<" total)";
 		while (!next) {
 			tid = waitpid(-1, &status,
 				      __WALL | WSTOPPED | WUNTRACED);
@@ -190,7 +191,7 @@ Task* rec_sched_get_active_thread(Task* t, int* by_waitpid)
 			LOG(debug) <<"  "<< tid <<" changed status to "
 				   << status;
 
-			next = Task::find(tid);
+			next = Session::current()->find_task(tid);
 			if (!next) {
 				LOG(debug) <<"    ... but it's dead";
 			}

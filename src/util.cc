@@ -40,6 +40,7 @@
 #include "log.h"
 #include "recorder_sched.h"
 #include "replayer.h"
+#include "session.h"
 #include "task.h"
 #include "trace.h"
 #include "types.h"
@@ -78,9 +79,8 @@ struct flags* rr_flags_for_init(void)
 // question.
 static bool is_start_of_scratch_region(void* start_addr)
 {
-	for (Task::Map::const_iterator it = Task::begin(); it != Task::end();
-	     ++it) {
-		Task* t = it->second;
+	for (auto& kv : Session::current()->tasks()) {
+		Task* t = kv.second;
 		if (start_addr == t->scratch_ptr) {
 			return true;
 		}
