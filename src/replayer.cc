@@ -94,13 +94,6 @@ static pid_t parent, child;
 // reads those params out.
 static int debugger_params_pipe[2];
 
-// Another little hack: technically replayer doesn't know about the
-// fact that debugger_gdb hides all but one tgid from the gdb client.
-// But to recognize the last_task above (another little hack), we need
-// to known when an exiting thread from the target task group is the
-// last.
-pid_t debugged_tgid;
-
 /**
  * Restart a fresh debugging session, possibly updating our replay
  * params based on the debugger's |req|.  This results in the old
@@ -1565,8 +1558,9 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 /** Return true when replaying/debugging should cease after |t| exits. */
 static bool is_last_interesting_task(Task* t)
 {
-	return (0 == debugged_tgid && t->session().tasks().size() == 1)
-		|| (t->tgid() == debugged_tgid
+	return (0 == t->replay_session().debugged_tgid()
+		&& t->session().tasks().size() == 1)
+		|| (t->tgid() == t->replay_session().debugged_tgid()
 		    && t->task_group()->task_set().size() == 1);
 }
 
@@ -1609,8 +1603,8 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	case EV_EXIT: {
 		if (is_last_interesting_task(t)) {
 			LOG(debug) <<"last interesting task in "
-				   << debugged_tgid <<" is "<< t->rec_tid
-				   <<" ("<< t->tid <<")";
+				   << t->replay_session().debugged_tgid()
+				   <<" is "<< t->rec_tid <<" ("<< t->tid <<")";
 			t->replay_session().set_last_task(t);
 			return;
 		}
@@ -1884,8 +1878,9 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	int probe = (rr_flags()->dbgport > 0) ? DONT_PROBE : PROBE_PORT;
 	const char* exe = rr_flags()->dont_launch_debugger ? nullptr :
 			  t->vm()->exe_image().c_str();
+	t->replay_session().set_debugged_tgid(t->tgid());
 	return dbg_await_client_connection("127.0.0.1", port, probe,
-					   debugged_tgid = t->tgid(), exe,
+					   t->tgid(), exe,
 					   parent, debugger_params_pipe[1]);
 }
 
@@ -2126,9 +2121,9 @@ static void restart_replay(struct dbg_context* dbg, struct dbg_request req)
 		// The Right Thing in that case and attach the
 		// debugger at the first event after |f.goto_event| at
 		// which |debugged_tgid| exists.
-		f.target_process = debugged_tgid;
+		f.target_process = session->debugged_tgid();
 		f.process_created_how =
-			session->find_task(debugged_tgid)->
+			session->find_task(session->debugged_tgid())->
 			vm()->execed() ? CREATED_EXEC : CREATED_FORK;
 	}
 	f.dbgport = req.restart.port;
