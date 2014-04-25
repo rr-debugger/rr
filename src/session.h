@@ -3,6 +3,7 @@
 #ifndef RR_SESSION_H_
 #define RR_SESSION_H_
 
+#include <cassert>
 #include <map>
 #include <memory>
 #include <set>
@@ -162,15 +163,31 @@ public:
 	TraceIfstream& ifstream() { return *trace_ifstream; }
 
 	/**
+	 * Set |t| as the last (debugged) task in this session.
+	 *
+	 * When we notify the debugger of process exit, it wants to be
+	 * able to poke around at that last task.  So we store it here
+	 * to allow processing debugger requests for it later.
+	 */
+	void set_last_task(Task* t) {
+		assert(!last_debugged_task);
+		last_debugged_task = t;
+	}
+	Task* last_task() { return last_debugged_task; }
+
+	/**
 	 * Create a replay session that will use the trace specified
 	 * by the commad-line args |argc|/|argv|.  Return it.
 	 */
 	static shr_ptr create(int argc, char* argv[]);
 
 private:
-	ReplaySession() : tracees_consistent(false) {}
+	ReplaySession()
+		: last_debugged_task(nullptr), tracees_consistent(false)
+	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
+	Task* last_debugged_task;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
 	bool tracees_consistent;
 };

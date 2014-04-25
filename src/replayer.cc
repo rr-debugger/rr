@@ -94,10 +94,6 @@ static pid_t parent, child;
 // reads those params out.
 static int debugger_params_pipe[2];
 
-// When we notify the debugger of process exit, it wants to be able to
-// poke around at that last task.  So we store it here to allow
-// processing debugger requests for it later.
-static Task* last_task;
 // Another little hack: technically replayer doesn't know about the
 // fact that debugger_gdb hides all but one tgid from the gdb client.
 // But to recognize the last_task above (another little hack), we need
@@ -1615,7 +1611,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			LOG(debug) <<"last interesting task in "
 				   << debugged_tgid <<" is "<< t->rec_tid
 				   <<" ("<< t->tid <<")";
-			last_task = t;
+			t->replay_session().set_last_task(t);
 			return;
 		}
 
@@ -1909,7 +1905,7 @@ static void set_sig_blockedness(int sig, int blockedness)
 static void replay_trace_frames(void)
 {
 	struct dbg_context* dbg = nullptr;
-	while (!last_task) {
+	while (!session->last_task()) {
 		Task* intr_t;
 		Task* t = schedule_task(*session, &intr_t);
 		if (!t) {
@@ -1924,7 +1920,7 @@ static void replay_trace_frames(void)
 	if (dbg) {
 		// TODO return real exit code, if it's useful.
 		dbg_notify_exit_code(dbg, 0);
-		process_debugger_requests(dbg, last_task);
+		process_debugger_requests(dbg, session->last_task());
 		FATAL() <<"Received continue request after end-of-trace.";
 	}
 }
