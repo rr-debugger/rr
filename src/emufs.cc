@@ -46,8 +46,8 @@ EmuFile::create(const char* orig_path, const struct stat& est)
 	replace_char(tag, '/', '\\');
 
 	stringstream name;
-	name << "rr-emufs-dev-" << est.st_dev << "-inode-" << est.st_ino
-	     << "-" << tag;
+	name << "rr-emufs-"<< getpid() <<"-dev-" << est.st_dev
+	     << "-inode-" << est.st_ino << "-" << tag;
 	shr_ptr f(new EmuFile(create_shmem_segment(name.str().c_str(),
 						   est.st_size), est));
 	LOG(debug) <<"created emulated file for "<< orig_path
