@@ -22,6 +22,8 @@
 #include "session.h"
 #include "task.h"
 
+using namespace std;
+
 /**
  * The currently scheduled task. This may be NULL if the last scheduled task
  * has been destroyed.
@@ -41,11 +43,11 @@ static Task*
 get_next_task_with_same_priority(Task* t)
 {
 	auto tasks = Session::current()->tasks_by_priority();
-	auto it = tasks.find(std::make_pair(t->priority, t));
+	auto it = tasks.find(make_pair(t->priority, t));
 	assert(it != tasks.end());
 	++it;
 	if (it == tasks.end() || it->first != t->priority) {
-		it = tasks.lower_bound(std::make_pair(t->priority, nullptr));
+		it = tasks.lower_bound(make_pair(t->priority, nullptr));
 	}
 	return it->second;
 }
@@ -69,11 +71,11 @@ find_next_runnable_task(int* by_waitpid)
 		same_priority_start != tasks.end();) {
 		int priority = same_priority_start->first;
 		auto same_priority_end =
-			tasks.lower_bound(std::make_pair(same_priority_start->first + 1, nullptr));
+			tasks.lower_bound(make_pair(same_priority_start->first + 1, nullptr));
 
 		auto begin_at = same_priority_start;
 	        if (current && priority == current->priority) {
-			begin_at = tasks.find(std::make_pair(priority, current));
+			begin_at = tasks.find(make_pair(priority, current));
 		}
 
 		auto task_iterator = begin_at;
