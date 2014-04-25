@@ -84,10 +84,6 @@
 
 using namespace std;
 
-// Emulated file system we'll use to track the files backing shared
-// mmaps.
-EmuFs emufs;
-
 ReplaySession::shr_ptr session;
 
 // |parent| is the (potential) debugger client.  It waits until the
@@ -1409,7 +1405,7 @@ static int flush_one_syscall(Task* t,
 	case FLUSH_EXIT: {
 		LOG(debug) <<"  advancing to buffered syscall exit";
 
-		AutoGc gc(emufs, t->session(), call);
+		AutoGc gc(t->replay_session(), call);
 
 		assert_at_buffered_syscall(t, call);
 
@@ -1648,7 +1644,7 @@ static void replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		delete t;
 		/* Early-return because |t| is gone now. */
 		if (file_table_dying) {
-			emufs.gc(t->session());
+			t->replay_session().gc_emufs();
 		}
 		return;
 	}

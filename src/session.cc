@@ -2,6 +2,7 @@
 
 #include "session.h"
 
+#include "emufs.h"
 #include "task.h"
 #include "util.h"
 
@@ -133,10 +134,17 @@ ReplaySession::create_task(const struct args_env& ae, shr_ptr self,
 	return t;
 }
 
+void
+ReplaySession::gc_emufs()
+{
+	emu_fs->gc(*this);
+}
+
 /*static*/ ReplaySession::shr_ptr
 ReplaySession::create(int argc, char* argv[])
 {
 	shr_ptr session(new ReplaySession());
+	session->emu_fs = EmuFs::create();
 	session->trace_ifstream = TraceIfstream::open(argc, argv);
 	return session;
 }

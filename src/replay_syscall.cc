@@ -50,7 +50,6 @@
 
 using namespace std;
 
-extern EmuFs emufs;
 extern bool validate;
 
 enum SyscallDefType {
@@ -806,7 +805,7 @@ static void* finish_shared_mmap(Task* t,
 
 	// Ensure there's a virtual file for the file that was mapped
 	// during recording.
-	int emufs_fd = emufs.get_or_create(*file);
+	int emufs_fd = t->replay_session().emufs().get_or_create(*file);
 	// Re-use the direct_map() machinery to map the virtual file.
 	//
 	// NB: the tracee will map the procfs link to our fd; there's
@@ -1152,7 +1151,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->ev.state;
 	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
-	AutoGc maybe_gc(emufs, t->session(), syscall, state);
+	AutoGc maybe_gc(t->replay_session(), syscall, state);
 
 	LOG(debug) <<"processing "<< syscallname(syscall) <<" ("
 		   << statename(state) <<")";
