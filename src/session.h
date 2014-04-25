@@ -134,6 +134,19 @@ public:
 	typedef std::shared_ptr<ReplaySession> shr_ptr;
 
 	/**
+	 * Call |after_exec()| after a tracee has successfully
+	 * |execve()|'d.  After that, |can_validate()| return true.
+	 *
+	 * Tracee state can't be validated before the first exec,
+	 * because the address space inside the rr process for |rr
+	 * replay| will be different than it was for |rr record|.
+	 * After the first exec, we're running tracee code, and
+	 * everything must be the same.
+	 */
+	void after_exec() { tracees_consistent = true; }
+	bool can_validate() const { return tracees_consistent; }
+
+	/**
 	 * Fork and exec the initial tracee task to run |ae|, and read
 	 * recorded events from |trace|.  |rec_tid| is the recorded
 	 * tid of the initial tracee task.  Return that Task.
@@ -155,8 +168,11 @@ public:
 	static shr_ptr create(int argc, char* argv[]);
 
 private:
+	ReplaySession() : tracees_consistent(false) {}
+
 	std::shared_ptr<EmuFs> emu_fs;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
+	bool tracees_consistent;
 };
 
 #endif // RR_SESSION_H_

@@ -50,8 +50,6 @@
 
 using namespace std;
 
-extern bool validate;
-
 enum SyscallDefType {
 	rep_UNDEFINED,	/* NB: this symbol must have the value 0 */
 	rep_EMU,
@@ -120,7 +118,7 @@ static void validate_args(int syscall, int state, Task* t)
 {
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
-	if (!validate) {
+	if (!t->replay_session().can_validate()) {
 		return;
 	}
 	assert_child_regs_are(t, &t->trace.recorded_regs);
@@ -438,7 +436,7 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 	 * that the address space layout for the replay tasks will
 	 * (should!) be the same as for the recorded tasks.  So we can
 	 * start validating registers at events. */
-	validate = true;
+	t->replay_session().after_exec();
 
 	bool check = t->regs().ebx;
 	/* if the execve comes from a vfork system call the ebx
