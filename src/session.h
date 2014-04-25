@@ -163,6 +163,22 @@ public:
 	TraceIfstream& ifstream() { return *trace_ifstream; }
 
 	/**
+	 * Set |tgid| as the one that's being debugged in this
+	 * session.
+	 *
+	 * Little hack: technically replayer doesn't know about the
+	 * fact that debugger_gdb hides all but one tgid from the gdb
+	 * client.  But to recognize the last_task below (another
+	 * little hack), we need to known when an exiting thread from
+	 * the target task group is the last.
+	 */
+	void set_debugged_tgid(pid_t tgid) {
+		assert(0 == tgid_debugged);
+		tgid_debugged = tgid;
+	}
+	pid_t debugged_tgid() const { return tgid_debugged; }
+
+	/**
 	 * Set |t| as the last (debugged) task in this session.
 	 *
 	 * When we notify the debugger of process exit, it wants to be
@@ -183,11 +199,14 @@ public:
 
 private:
 	ReplaySession()
-		: last_debugged_task(nullptr), tracees_consistent(false)
+		: last_debugged_task(nullptr)
+		, tgid_debugged(0)
+		, tracees_consistent(false)
 	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
 	Task* last_debugged_task;
+	pid_t tgid_debugged;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
 	bool tracees_consistent;
 };
