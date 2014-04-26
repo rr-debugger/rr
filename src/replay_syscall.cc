@@ -841,7 +841,7 @@ static void* finish_shared_mmap(Task* t,
 
 	t->vm()->map(mapped_addr, buf.data.size(), prot, flags,
 		     offset_bytes,
-		     MappableResource(FileId(file->stat), file->filename));
+		     MappableResource::shared_mmap_file(*file));
 
 	return mapped_addr;
 }

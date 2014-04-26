@@ -47,6 +47,7 @@ FileId::special_name() const {
 	case PSEUDODEVICE_HEAP: return "(heap)";
 	case PSEUDODEVICE_NONE: return "";
 	case PSEUDODEVICE_SCRATCH: return "";
+	case PSEUDODEVICE_SHARED_MMAP_FILE: return "(shmmap)";
 	case PSEUDODEVICE_STACK: return "(stack)";
 	case PSEUDODEVICE_SYSCALLBUF: return "(syscallbuf)";
 	case PSEUDODEVICE_VDSO: return "(vdso)";
@@ -77,6 +78,13 @@ ostream& operator<<(ostream& o, const Mapping& m)
 	return o;
 }
 
+/*static*/ MappableResource
+MappableResource::shared_mmap_file(const struct mmapped_file& file)
+{
+	return MappableResource(
+		FileId(file.stat, PSEUDODEVICE_SHARED_MMAP_FILE),
+		file.filename);
+}
 
 /*static*/ MappableResource
 MappableResource::syscallbuf(pid_t tid, int fd)
@@ -741,6 +749,8 @@ AddressSpace::verify(Task* t) const
 AddressSpace::AddressSpace(Task* t, Session& session)
 	: is_clone(false), session(session), vdso_start_addr()
 {
+	// TODO: this is a workaround of
+	// https://github.com/mozilla/rr/issues/1113 .
 	if (session.can_validate()) {
 		iterate_memory_map(t, populate_address_space, this,
 				   kNeverReadSegment, NULL);

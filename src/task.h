@@ -73,6 +73,7 @@ enum PseudoDevice {
 	PSEUDODEVICE_ANONYMOUS,
 	PSEUDODEVICE_HEAP,
 	PSEUDODEVICE_SCRATCH,
+	PSEUDODEVICE_SHARED_MMAP_FILE,
 	PSEUDODEVICE_STACK,
 	PSEUDODEVICE_SYSCALLBUF,
 	PSEUDODEVICE_VDSO,
@@ -88,7 +89,7 @@ struct FileId {
 
 	FileId() : device(NO_DEVICE), inode(NO_INODE)
 		 , psdev(PSEUDODEVICE_NONE) { }
-	FileId(const struct stat& st)
+	FileId(const struct stat& st, PseudoDevice psdev = PSEUDODEVICE_NONE)
 		: device(st.st_dev), inode(st.st_ino)
 		, psdev(PSEUDODEVICE_NONE) { }
 	FileId(dev_t dev, ino_t ino, PseudoDevice psdev = PSEUDODEVICE_NONE)
@@ -305,6 +306,8 @@ struct MappableResource {
 					       PSEUDODEVICE_SCRATCH),
 					"[scratch]");
 	}
+	static MappableResource shared_mmap_file(
+		const struct mmapped_file& file);
 	static MappableResource stack(pid_t tid) {
 		return MappableResource(FileId(FileId::NO_DEVICE, tid,
 					       PSEUDODEVICE_STACK),
