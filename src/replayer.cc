@@ -216,9 +216,10 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		if (DREQ_RESTART == req.type) {
 			LOG(debug) <<"  request to restart at event "
 				   << req.restart_event;
-			update_replay_target(
-				t->replay_session().debugged_tgid(),
-				req.restart_event);
+			// If the user requested restarting to a
+			// different event, ensure that we change that
+			// param for the next replay session.
+			update_replay_target(-1, req.restart_event);
 			return req;
 		}
 
@@ -1880,6 +1881,11 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 	}
 
 	t->replay_session().set_debugged_tgid(t->tgid());
+	// Store the current tgid and event as the "execution target"
+	// for the next replay session, if we end up restarting.  This
+	// allows us to determine if a later session has reached this
+	// target without necessarily replaying up to this point.
+	update_replay_target(t->tgid(), event_now);
 	if (stashed_dbg) {
 		dbg = stashed_dbg;
 		stashed_dbg = nullptr;
