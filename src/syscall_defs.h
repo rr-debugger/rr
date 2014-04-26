@@ -24,8 +24,9 @@
  *   DEF_STR[N](name, semantics[, reg...]) -> like above, except that the
  *   params refer to N args (register) that are C strings.
  *
- *   DEF_IRREG(name) -> the syscall doesn't fit a regular pattern;
- *   hand-written code is needed to process the syscall args.
+ *   DEF_IRREG(name, irreg_semantics) -> the syscall doesn't fit a
+ *   regular pattern; hand-written code is needed to process the
+ *   syscall args.
  *
  * |name| is the short syscall descriptor, e.g. "close".  For syscalls
  * other than DEF_IRREG(), replay |semantics| is one of
@@ -35,6 +36,11 @@
  *   EXEC_RET_EMU: syscall is executed, but retval is emulated
  *   IRREGULAR: doesn't adhere to regular format (e.g. meta-syscalls
  *     like socketcall)
+ *
+ * For DEF_IRREG(), the replay |irreg_semantics| is one of
+ *
+ *   MAY_EXEC: syscall may be fully executed
+ *   EMU: syscall will always be emulated
  */
 
 //
@@ -125,7 +131,7 @@ SYSCALL_DEF1(clock_getres, EMU, struct timespec, ecx)
  *
  *  long sys_clone(unsigned long clone_flags, unsigned long newsp, void __user *parent_tid, void __user *child_tid, struct pt_regs *regs)
  */
-SYSCALL_DEF_IRREG(clone)
+SYSCALL_DEF_IRREG(clone, MAY_EXEC)
 
 /**
  *  int close(int fd)
@@ -194,7 +200,7 @@ SYSCALL_DEF0(epoll_ctl, EMU)
  *
  * XXX is this irregular?  CHECKED: (trace->recorded_regs.eax >= 0)
  */
-SYSCALL_DEF_IRREG(epoll_wait)
+SYSCALL_DEF_IRREG(epoll_wait, EMU)
 
 /**
  *  int eventfd(unsigned int initval, int flags);
@@ -213,7 +219,7 @@ SYSCALL_DEF0(eventfd2, EMU)
  *
  * execve() executes the program pointed to by filename.
  */
-SYSCALL_DEF_IRREG(execve)
+SYSCALL_DEF_IRREG(execve, MAY_EXEC)
 
 /**
  *  void exit(int status)
@@ -221,7 +227,7 @@ SYSCALL_DEF_IRREG(execve)
  * The exit() function causes normal process termination and the value
  * of status & 0377 is returned to the parent (see wait(2)).
  */
-SYSCALL_DEF_IRREG(exit)
+SYSCALL_DEF_IRREG(exit, MAY_EXEC)
 
 /**
  *  void exit_group(int status)
@@ -230,7 +236,7 @@ SYSCALL_DEF_IRREG(exit)
  * not only the calling thread, but all threads in the calling
  * process's thread group.
  */
-SYSCALL_DEF_IRREG(exit_group)
+SYSCALL_DEF_IRREG(exit_group, MAY_EXEC)
 
 /**
  *  int faccessat(int dirfd, const char *pathname, int mode, int flags)
@@ -287,7 +293,7 @@ SYSCALL_DEF0(fchmod, EMU)
  * required type is long, and we identify the argument using the name
  * arg), or void is specified if the argument is not required.
  */
-SYSCALL_DEF_IRREG(fcntl64)
+SYSCALL_DEF_IRREG(fcntl64, EMU)
 
 /**
  *  int fstat(int fd, struct stat *buf)
@@ -368,7 +374,7 @@ SYSCALL_DEF0(truncate64, EMU)
  * typically used to implement the contended case of a lock in shared
  * memory, as described in futex(7).
  */
-SYSCALL_DEF_IRREG(futex)
+SYSCALL_DEF_IRREG(futex, EMU)
 
 /**
  *  char *getwd(char *buf);
@@ -537,9 +543,9 @@ SYSCALL_DEF0(getuid32, EMU)
  * by name and associated with the given path in the file system. The
  * length of the attribute value is returned.
  */
-SYSCALL_DEF_IRREG(getxattr)
-SYSCALL_DEF_IRREG(lgetxattr)
-SYSCALL_DEF_IRREG(fgetxattr)
+SYSCALL_DEF_IRREG(getxattr, EMU)
+SYSCALL_DEF_IRREG(lgetxattr, EMU)
+SYSCALL_DEF_IRREG(fgetxattr, EMU)
 
 /**
  *  int inotify_add_watch(int fd, const char *pathname, uint32_t mask)
@@ -581,7 +587,7 @@ SYSCALL_DEF0(inotify_rm_watch, EMU)
  * ioctl() requests.  The argument d must be an open file descriptor.
  *
  */
-SYSCALL_DEF_IRREG(ioctl)
+SYSCALL_DEF_IRREG(ioctl, EMU)
 
 /**
  *  int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth);
@@ -591,7 +597,7 @@ SYSCALL_DEF_IRREG(ioctl)
  * function to invoke; the other arguments are passed through to the
  * appropriate call.
  */
-SYSCALL_DEF_IRREG(ipc)
+SYSCALL_DEF_IRREG(ipc, EMU)
 
 /**
  *  int kill(pid_t pid, int sig)
@@ -679,8 +685,8 @@ SYSCALL_DEF0(mkdirat, EMU)
  * mmap(2)).  This enables applications that use a 32-bit off_t to map
  * large files (up to 2^44 bytes).
  */
-SYSCALL_DEF_IRREG(mmap)
-SYSCALL_DEF_IRREG(mmap2)
+SYSCALL_DEF_IRREG(mmap, MAY_EXEC)
+SYSCALL_DEF_IRREG(mmap2, MAY_EXEC)
 
 /**
  *  int mprotect(const void *addr, size_t len, int prot)
@@ -737,7 +743,7 @@ SYSCALL_DEF0(munmap, EXEC)
  *
  * CHECKED: trace->recorded_regs.ecx != NULL
  */
-SYSCALL_DEF_IRREG(nanosleep)
+SYSCALL_DEF_IRREG(nanosleep, EMU)
 
 /**
  *  int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
@@ -762,7 +768,7 @@ SYSCALL_DEF4(_newselect, EMU, fd_set, ecx, fd_set, edx,
  * returned by a successful call will be the lowest-numbered file
  * descriptor not currently open for the process.
  */
-SYSCALL_DEF_IRREG(open)
+SYSCALL_DEF_IRREG(open, EMU)
 
 /**
  *  int openat(int dirfd, const char *pathname, int flags);
@@ -830,8 +836,8 @@ SYSCALL_DEF1(pipe2, EMU, int[2], ebx)
  *
  * XXX is this irregular?  CHECKED: (trace->recorded_regs.eax > 0)
  */
-SYSCALL_DEF_IRREG(poll)
-SYSCALL_DEF_IRREG(ppoll)
+SYSCALL_DEF_IRREG(poll, EMU)
+SYSCALL_DEF_IRREG(ppoll, EMU)
 
 /**
  *  int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
@@ -841,7 +847,7 @@ SYSCALL_DEF_IRREG(ppoll)
  * significance depending on the first one.
  *
  */
-SYSCALL_DEF_IRREG(prctl)
+SYSCALL_DEF_IRREG(prctl, MAY_EXEC)
 
 /**
  *  ssize_t pread(int fd, void *buf, size_t count, off_t offset);
@@ -871,7 +877,7 @@ SYSCALL_DEF1(prlimit64, EXEC, struct rlimit64, esi)
  * registers.  It is primarily used to implement breakpoint debugging
  * and system call tracing.
  */
-SYSCALL_DEF_IRREG(ptrace)
+SYSCALL_DEF_IRREG(ptrace, EMU)
 
 /**
  *  int quotactl(int cmd, const char *special, int id, caddr_t addr);
@@ -883,7 +889,7 @@ SYSCALL_DEF_IRREG(ptrace)
  * user quotas, or GRPQUOTA, for group quotas.  The subcmd value is
  * described below.
  */
-SYSCALL_DEF_IRREG(quotactl)
+SYSCALL_DEF_IRREG(quotactl, EMU)
 
 /**
  *  ssize_t read(int fd, void *buf, size_t count);
@@ -893,7 +899,7 @@ SYSCALL_DEF_IRREG(quotactl)
  *
  * CHECKED: (trace->recorded_regs.eax > 0)
  */
-SYSCALL_DEF_IRREG(read)
+SYSCALL_DEF_IRREG(read, EMU)
 
 /**
  *  ssize_t readahead(int fd, off64_t offset, size_t count);
@@ -934,7 +940,7 @@ SYSCALL_DEF1_DYNSIZE(readlink, EMU, t->regs().edx, ecx)
  * applications.)  A further extension over recvmsg(2) is support for
  * a timeout on the receive operation.
  */
-SYSCALL_DEF_IRREG(recvmmsg)
+SYSCALL_DEF_IRREG(recvmmsg, EMU)
 
 /**
  *  int rename(const char *oldpath, const char *newpath)
@@ -1034,7 +1040,7 @@ SYSCALL_DEF0(sched_yield, EMU)
  * file position instead.  Return the number of written bytes, or -1 in
  * case of error.
  */
-SYSCALL_DEF_IRREG(sendfile64)
+SYSCALL_DEF_IRREG(sendfile64, EMU)
 
 /**
  *  int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
@@ -1045,7 +1051,7 @@ SYSCALL_DEF_IRREG(sendfile64)
  * single system call.  (This has performance benefits for some
  * applications.)
  */
-SYSCALL_DEF_IRREG(sendmmsg)
+SYSCALL_DEF_IRREG(sendmmsg, EMU)
 
 /**
  *  int setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value);
@@ -1225,8 +1231,8 @@ SYSCALL_DEF1(rt_sigprocmask, EMU, sigset_t, edx)
  * a call to sigreturn() is inserted into the stack frame so that upon
  * return from the signal handler, sigreturn() will be called.
  */
-SYSCALL_DEF_IRREG(sigreturn)
-SYSCALL_DEF_IRREG(rt_sigreturn)
+SYSCALL_DEF_IRREG(sigreturn, EMU)
+SYSCALL_DEF_IRREG(rt_sigreturn, EMU)
 
 /**
  *  int socketcall(int call, unsigned long *args)
@@ -1236,7 +1242,7 @@ SYSCALL_DEF_IRREG(rt_sigreturn)
  * points to a block containing the actual arguments, which are passed
  * through to the appropriate call.
  */
-SYSCALL_DEF_IRREG(socketcall)
+SYSCALL_DEF_IRREG(socketcall, EMU)
 
 /**
  *  ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, size_t len, unsigned int flags);
@@ -1255,7 +1261,7 @@ SYSCALL_DEF_IRREG(socketcall)
  * programs that splice with stdin/stdout/stderr and have output
  * redirected during replay.  But, *crickets*.
  */
-SYSCALL_DEF_IRREG(splice)
+SYSCALL_DEF_IRREG(splice, EMU)
 
 /**
  * int stat(const char *path, struct stat *buf);
@@ -1295,7 +1301,7 @@ SYSCALL_DEF1(statfs64, EMU, struct statfs64, edx)
  *
  * Often not supported in modern kernels, so can return ENOSYS.
  */
-SYSCALL_DEF_IRREG(_sysctl)
+SYSCALL_DEF_IRREG(_sysctl, EMU)
 
 /**
  *  int symlink(const char *oldpath, const char *newpath)
@@ -1466,7 +1472,7 @@ SYSCALL_DEF0(utimensat, EMU)
  * state, zero out the si_pid field before the call and check for a
  * nonzero value in this field after the call returns.
  */
-SYSCALL_DEF_IRREG(waitid)
+SYSCALL_DEF_IRREG(waitid, EMU)
 
 /**
  *  pid_t waitpid(pid_t pid, int *status, int options);
@@ -1477,7 +1483,7 @@ SYSCALL_DEF_IRREG(waitid)
  * behavior is modifiable via the options argument, as described
  * below....
  */
-SYSCALL_DEF_IRREG(waitpid)
+SYSCALL_DEF_IRREG(waitpid, EMU)
 
 /**
  *  pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
@@ -1486,7 +1492,7 @@ SYSCALL_DEF_IRREG(waitpid)
  * additionally return resource usage information about the child in
  * the structure pointed to by rusage.
  */
-SYSCALL_DEF_IRREG(wait4)
+SYSCALL_DEF_IRREG(wait4, EMU)
 
 /**
  *  ssize_t write(int fd, const void *buf, size_t count);
@@ -1500,7 +1506,7 @@ SYSCALL_DEF_IRREG(wait4)
  * Note: write isn't irregular per se; we hook it to redirect output
  * to stdout/stderr during replay.
  */
-SYSCALL_DEF_IRREG(write)
+SYSCALL_DEF_IRREG(write, EMU)
 
 /**
  *  ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
@@ -1509,7 +1515,7 @@ SYSCALL_DEF_IRREG(write)
  * iov to the file associated with the file descriptor fd ("gather
  * output").
  */
-SYSCALL_DEF_IRREG(writev)
+SYSCALL_DEF_IRREG(writev, EMU)
 
 /**
  *  void* rrcall_init_buffers(struct rrcall_init_buffers_params* args);
@@ -1520,7 +1526,7 @@ SYSCALL_DEF_IRREG(writev)
  *
  * This is a "magic" syscall implemented by rr.
  */
-SYSCALL_DEF_IRREG(rrcall_init_buffers)
+SYSCALL_DEF_IRREG(rrcall_init_buffers, EMU)
 
 /**
  *  void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline);
@@ -1530,6 +1536,6 @@ SYSCALL_DEF_IRREG(rrcall_init_buffers)
  *
  * This is a "magic" syscall implemented by rr.
  */
-SYSCALL_DEF_IRREG(rrcall_monkeypatch_vdso)
+SYSCALL_DEF_IRREG(rrcall_monkeypatch_vdso, EMU)
 
 #define MAX_NR_SYSCALLS 512

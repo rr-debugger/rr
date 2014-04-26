@@ -80,7 +80,7 @@ struct syscall_def {
 	{ SYSCALL_NUM(_name), rep_##_type, 3 },
 #define SYSCALL_DEF4(_name, _type, _, _1, _2, _3, _4, _5, _6, _7)	\
 	{ SYSCALL_NUM(_name), rep_##_type, 4 },
-#define SYSCALL_DEF_IRREG(_name)			\
+#define SYSCALL_DEF_IRREG(_name, _type)				\
 	{ SYSCALL_NUM(_name), rep_IRREGULAR, -1 },
 
 static struct syscall_def syscall_defs[] = {

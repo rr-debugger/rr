@@ -306,6 +306,13 @@ const char* signalname(int sig);
 const char* syscallname(int syscall);
 
 /**
+ * Return true iff replaying |syscallno| will never ever require
+ * actually executing it, i.e. replay of |syscallno| is always
+ * emulated.
+ */
+bool is_always_emulated_syscall(int syscallno);
+
+/**
  * Convert the flags passed to the clone() syscall, |flags_arg|, into
  * the format understood by Task::clone().
  */

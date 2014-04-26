@@ -1961,7 +1961,7 @@ void rec_process_syscall(Task *t)
 		t->record_remote((void*)t->regs()._r2, sizeof(_t2));	\
 		t->record_remote((void*)t->regs()._r3, sizeof(_t3));	\
 		break;
-#define SYSCALL_DEF_IRREG(_call)	// manually implemented below
+#define SYSCALL_DEF_IRREG(_call, _)	// manually implemented below
 
 #include "syscall_defs.h"
 
