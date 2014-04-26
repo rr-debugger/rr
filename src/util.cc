@@ -253,7 +253,7 @@ const char* syscallname(int syscall)
 		case __NR_## _name: return #_name;
 #define SYSCALL_DEF4(_name, _, _1, _2, _3, _4, _5, _6, _7, _8)	\
 		case __NR_## _name: return #_name;
-#define SYSCALL_DEF_IRREG(_name)		\
+#define SYSCALL_DEF_IRREG(_name, _)			\
 		case __NR_## _name: return #_name;
 
 #include "syscall_defs.h"
@@ -266,10 +266,58 @@ const char* syscallname(int syscall)
 #undef SYSCALL_DEF2
 #undef SYSCALL_DEF3
 #undef SYSCALL_DEF4
+#undef SYSCALL_DEF_IRREG
 
 	case SYS_restart_syscall:
 		return "restart_syscall";
 	default:
+		return "???syscall";
+	}
+}
+
+bool is_always_emulated_syscall(int syscallno)
+{
+	switch (syscallno) {
+#define EMU() true
+#define EXEC() false
+#define EXEC_RET_EMU() false
+#define MAY_EXEC() false
+
+#define SYSCALL_DEF0(_name, _type)			\
+		case __NR_## _name: return _type();
+#define SYSCALL_DEF1(_name, _type, _1, _2)		\
+		case __NR_## _name: return _type();
+#define SYSCALL_DEF1_DYNSIZE(_name, _type, _1, _2)	\
+		case __NR_## _name: return _type();
+#define SYSCALL_DEF1_STR(_name, _type, _1)		\
+		case __NR_## _name: return _type();
+#define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4)	\
+		case __NR_## _name: return _type();
+#define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6)	\
+		case __NR_## _name: return _type();
+#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)	\
+		case __NR_## _name: return _type();
+#define SYSCALL_DEF_IRREG(_name, _type)			\
+		case __NR_## _name: return _type();
+
+#include "syscall_defs.h"
+
+#undef EMU
+#undef EXEC
+#undef EXEC_EMU_RET
+#undef MAY_EXEC
+#undef SYSCALL_DEF0
+#undef SYSCALL_DEF1
+#undef SYSCALL_DEF1_DYNSIZE
+#undef SYSCALL_DEF1_STR
+#undef SYSCALL_DEF2
+#undef SYSCALL_DEF3
+#undef SYSCALL_DEF4
+
+	case SYS_restart_syscall:
+		return false;
+	default:
+		FATAL() <<"Unknown syscall "<< syscallno;
 		return "???syscall";
 	}
 }
