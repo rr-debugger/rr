@@ -794,15 +794,15 @@ static void* finish_shared_mmap(Task* t,
 
 	// Ensure there's a virtual file for the file that was mapped
 	// during recording.
-	int emufs_fd = t->replay_session().emufs().get_or_create(*file);
+	auto emufile = t->replay_session().emufs().get_or_create(*file);
 	// Re-use the direct_map() machinery to map the virtual file.
 	//
 	// NB: the tracee will map the procfs link to our fd; there's
 	// no "real" name for the file anywhere, to ensure that when
 	// we exit/crash the kernel will clean up for us.
 	struct mmapped_file vfile = *file;
-	snprintf(vfile.filename, sizeof(vfile.filename) - 1,
-		 "/proc/%d/fd/%d", getpid(), emufs_fd);
+	strncpy(vfile.filename, emufile->proc_path().c_str(),
+		sizeof(vfile.filename));
 	void* mapped_addr = finish_direct_mmap(t, state, trace, prot, flags,
 					       offset_pages,
 					       &vfile, DONT_VERIFY,
@@ -821,7 +821,7 @@ static void* finish_shared_mmap(Task* t,
 
 	off64_t offset_bytes = page_size() * offset_pages;
 	if (ssize_t(buf.data.size()) !=
-	    pwrite64(emufs_fd, buf.data.data(), buf.data.size(),
+	    pwrite64(emufile->fd(), buf.data.data(), buf.data.size(),
 		     offset_bytes)) {
 		FATAL() <<"Failed to write "<< buf.data.size()
 			<<" bytes at "<< HEX(offset_bytes)

@@ -1,0 +1,9 @@
+source `dirname $0`/util.sh checkpoint_simple "$@"
+
+record simple
+# TODO: use |rr dump -r| to calculate dynamically
+num_events=200
+for i in $(seq $num_events); do
+    echo Checkpointing at event $i ...
+    debug simple restart_finish "-g $i"
+done

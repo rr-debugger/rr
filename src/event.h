@@ -367,8 +367,12 @@ private:
 
 inline static std::ostream& operator<<(std::ostream& o, const Event& ev)
 {
-	o << ev.str();
-	return o;
+	return o << ev.str();
+}
+
+inline static std::ostream& operator<<(std::ostream& o, const EncodedEvent& ev)
+{
+	return o << Event(ev);
 }
 
 /**
