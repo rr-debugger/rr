@@ -76,7 +76,9 @@ struct flags* rr_flags_for_init(void)
 
 void update_replay_target(pid_t process, int event)
 {
-	flags.target_process = process;
+	if (process > 0) {
+		flags.target_process = process;
+	}
 	if (event > 0) {
 		flags.goto_event = event;
 	}
