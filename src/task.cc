@@ -1099,8 +1099,11 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, child_mem_fd(open_mem_fd())
 	, prname("???")
 	, registers(), registers_known(false)
+	, robust_futex_list(), robust_futex_list_len()
 	, stashed_si(), stashed_wait_status()
+	, thread_area()
 	, tid_futex()
+	, top_of_stack()
 	, wait_status()
 {
 	if (RECORD != rr_flags()->option) {
@@ -1801,6 +1804,12 @@ Task::set_debug_regs(const DebugRegs& regs)
 }
 
 void
+Task::set_thread_area(void* tls)
+{
+	read_mem(tls, &thread_area);
+}
+
+void
 Task::set_tid_addr(void* tid_addr)
 {
 	LOG(debug) <<"updating cleartid futex to "<< tid_addr;
@@ -2085,7 +2094,7 @@ Task::pending_sig_from_status(int status)
 }
 
 Task*
-Task::clone(int flags, void* stack, void* cleartid_addr,
+Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
 	    pid_t new_tid, pid_t new_rec_tid)
 {
 	Task* t = new Task(new_tid, new_rec_tid, priority);
@@ -2120,6 +2129,7 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 		LOG(debug) <<"mapping stack for "<< new_tid <<" at "<< m;
 		t->as->map(m.start, m.num_bytes(), m.prot, m.flags,
 			   m.offset, MappableResource::stack(new_tid));
+		t->top_of_stack = stack;
 	}
 	// Clone children, both thread and fork, inherit the parent
 	// prname.
@@ -2130,6 +2140,9 @@ Task::clone(int flags, void* stack, void* cleartid_addr,
 		t->tid_futex = cleartid_addr;
 	} else {
 		LOG(debug) <<"(clone child not enabling CLEARTID)";
+	}
+	if (CLONE_SET_TLS & flags) {
+		set_thread_area(tls);
 	}
 
 	t->as->insert_task(t);

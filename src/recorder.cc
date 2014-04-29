@@ -145,6 +145,7 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_FORK: {
 		int new_tid = t->get_ptrace_eventmsg();
 		void* stack = (void*)t->regs().ecx;
+		void* tls = (void*)t->regs().esi;
 		void* ctid = (void*)t->regs().edi;
 		// fork and can never share these resources, only
 		// copy, so the flags here aren't meaningful for it.
@@ -152,7 +153,7 @@ static void handle_ptrace_event(Task** tp)
 				t->regs().ebx : 0;
 		Task* new_task = t->session().clone(
 			t, clone_flags_to_task_flags(flags_arg),
-			stack, ctid, new_tid);
+			stack, tls, ctid, new_tid);
 		// Wait until the new task is ready.
 		new_task->wait();
 		start_hpc(new_task, rr_flags()->max_rbc);

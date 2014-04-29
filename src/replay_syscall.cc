@@ -360,12 +360,13 @@ static void process_clone(Task* t,
 	pid_t new_tid = t->get_ptrace_eventmsg();
 
 	void* stack = (void*)t->regs().ecx;
+	void* tls = (void*)t->regs().esi;
 	void* ctid = (void*)t->regs().edi;
 	int flags_arg = (SYS_clone == t->regs().orig_eax) ? t->regs().ebx : 0;
 
 	Task* new_task = t->session().clone(
 		t, clone_flags_to_task_flags(flags_arg),
-		stack, ctid, new_tid, rec_tid);
+		stack, tls, ctid, new_tid, rec_tid);
 	// Wait until the new thread is ready.
 	new_task->wait();
 
@@ -1123,6 +1124,14 @@ void rep_after_enter_syscall(Task* t, int syscallno)
 void before_syscall_exit(Task* t, int syscallno)
 {
 	switch (syscallno) {
+	case SYS_set_robust_list:
+		t->set_robust_list((void*)t->regs().ebx, t->regs().ecx);
+		return;
+
+	case SYS_set_thread_area:
+		t->set_thread_area((void*)t->regs().ebx);
+		return;
+
 	case SYS_set_tid_address:
 		t->set_tid_addr((void*)t->regs().ebx);
 		return;
