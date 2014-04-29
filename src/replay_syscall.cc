@@ -316,7 +316,9 @@ static bool is_failed_syscall(Task* t, const struct trace_frame* frame)
 {
 	struct trace_frame next_frame;
 	if (STATE_SYSCALL_ENTRY == frame->ev.state) {
-		next_frame = t->ifstream().peek_frame();
+		next_frame = t->ifstream().peek_to(t->rec_tid,
+						   EventType(frame->ev.type),
+						   STATE_SYSCALL_EXIT);
 		frame = &next_frame;
 	}
 	return SYSCALL_FAILED(frame->recorded_regs.eax);

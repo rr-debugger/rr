@@ -425,6 +425,24 @@ TraceIfstream::peek_frame()
 	return frame;
 }
 
+struct trace_frame
+TraceIfstream::peek_to(pid_t pid, EventType type, int state)
+{
+	AutoRestoreState restore(*this);
+	struct trace_frame frame;
+	while (good()) {
+		*this >> frame;
+		if (frame.tid == pid
+		    && frame.ev.type == type
+		    && frame.ev.state == state) {
+			return frame;
+		}
+	}
+	FATAL() <<"Unable to find requested frame in stream";
+	// Unreachable
+	return frame;
+}
+
 void
 TraceIfstream::rewind()
 {
