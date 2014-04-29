@@ -6,6 +6,7 @@
 // Define linux-specific flags in mman.h.
 #define __USE_MISC 1
 
+#include <asm/ldt.h>		// struct user_desc
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -667,6 +668,8 @@ enum CloneFlags {
 	CLONE_SHARE_VM = 1 << 2,
 	/** Kernel will clear and notify tid futex on task exit. */
 	CLONE_CLEARTID = 1 << 3,
+	// Set the thread area to what's specified by the |tls| arg.
+	CLONE_SET_TLS = 1 << 4,
 };
 
 /**
@@ -1192,8 +1195,24 @@ public:
 	 */
 	bool set_debug_regs(const DebugRegs& regs);
 
+	/**
+	 * Update the futex robust list head pointer to |list| (which
+	 * is of size |len|).
+	 */
+	void set_robust_list(void* list, size_t len) {
+		robust_futex_list = list;
+		robust_futex_list_len = len;
+	}
+	void* robust_list() const { return robust_futex_list; }
+	size_t robust_list_len() const { return robust_futex_list_len; }
+
+	/** Update the thread area to |addr|. */
+	void set_thread_area(void* tls);
+	const struct user_desc& tls() const { return thread_area; }
+
 	/** Update the clear-tid futex to |tid_addr|. */
 	void set_tid_addr(void* tid_addr);
+	void* tid_addr() const { return tid_futex; }
 
 	/**
 	 * Call this after |sig| is delivered to this task.  Emulate
@@ -1216,6 +1235,15 @@ public:
 
 	/** Return |sig|'s current sigaction. */
 	const kernel_sigaction& signal_action(int sig) const;
+
+	/**
+	 * Return the |stack| argument passed to |clone()|, i.e. the
+	 * top of this thread's stack if it's a thread.
+	 *
+	 * This IS NOT the stack pointer.  Call |sp()| if you want
+	 * that.
+	 */
+	void* stack() const { return top_of_stack; }
 
 	/**
 	 * Stashed-signal API: if a signal becomes pending at an
@@ -1521,7 +1549,7 @@ private:
 	 * only relevant to replay, and is the pid that was assigned
 	 * to the task during recording.
 	 */
-	Task* clone(int flags, void* stack, void* cleartid_addr,
+	Task* clone(int flags, void* stack, void* tls, void* cleartid_addr,
 		    pid_t new_tid, pid_t new_rec_tid = -1);
 
 	/**
@@ -1618,6 +1646,12 @@ private:
 	// this cached value and set the "known" flag.
 	struct user_regs_struct registers;
 	bool registers_known;
+	// Futex list passed to |set_robust_list()|.  We could keep a
+	// strong type for this list head and read it if we wanted to,
+	// but for now we only need to remember its address / size at
+	// the time of the most recent set_robust_list() call.
+	void* robust_futex_list;
+	size_t robust_futex_list_len;
 	// The record or replay session we're part of.
 	std::shared_ptr<RecordSession> session_record;
 	std::shared_ptr<ReplaySession> session_replay;
@@ -1638,9 +1672,15 @@ private:
 	int stashed_wait_status;
 	// The task group this belongs to.
 	std::shared_ptr<TaskGroup> tg;
+	// Contents of the |tls| argument passed to |clone()| and
+	// |set_thread_area()|.
+	struct user_desc thread_area;
 	// The memory cell the kernel will clear and notify on exit,
 	// if our clone parent requested it.
 	void* tid_futex;
+	// The |stack| argument passed to |clone()|, which for
+	// "threads" is the top of the user-allocated stack.
+	void* top_of_stack;
 	// The most recent status of this task as returned by
 	// waitpid().
 	int wait_status;

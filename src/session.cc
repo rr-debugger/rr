@@ -24,10 +24,11 @@ Session::clone(AddressSpace::shr_ptr vm)
 }
 
 Task*
-Session::clone(Task* p, int flags, void* stack, void* cleartid_addr,
+Session::clone(Task* p, int flags, void* stack, void* tls, void* cleartid_addr,
 	       pid_t new_tid, pid_t new_rec_tid)
 {
-	Task* c = p->clone(flags, stack, cleartid_addr, new_tid, new_rec_tid);
+	Task* c = p->clone(flags, stack, tls, cleartid_addr, new_tid,
+			   new_rec_tid);
 	track(c);
 	return c;
 }

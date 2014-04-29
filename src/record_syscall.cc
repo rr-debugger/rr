@@ -1888,6 +1888,14 @@ static void before_syscall_exit(Task* t, int syscallno)
 		}
 		return;
 	}
+	case SYS_set_robust_list:
+		t->set_robust_list((void*)t->regs().ebx, t->regs().ecx);
+		return;
+
+	case SYS_set_thread_area:
+		t->set_thread_area((void*)t->regs().ebx);
+		return;
+
 	case SYS_set_tid_address:
 		t->set_tid_addr((void*)t->regs().ebx);
 		return;
