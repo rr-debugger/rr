@@ -254,6 +254,13 @@ public:
 	struct trace_frame peek_frame();
 
 	/**
+	 * Peek ahead in the stream to find the next trace frame that
+	 * matches the requested parameters. Returns the frame if one
+	 * was found, and issues a fatal error if not.
+	 */
+	struct trace_frame peek_to(pid_t pid, EventType type, int state);
+
+	/**
 	 * Restore the state of this to what it was just after
 	 * |open()|.
 	 */
