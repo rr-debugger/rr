@@ -15,6 +15,23 @@
 
 using namespace std;
 
+static const char* desched_state_name(DeschedState state)
+{
+	switch (state) {
+	case ARMING_DESCHED_EVENT:
+		return "arming";
+	case IN_SYSCALL:
+		return "in-syscall";
+	case DISARMING_DESCHED_EVENT:
+		return "disarming";
+	case DISARMED_DESCHED_EVENT:
+		return "disarmed";
+	default:
+		FATAL() <<"Unknown desched state "<< state;
+		return nullptr;	// not reached
+	}
+}
+
 Event::Event(EncodedEvent e)
 {
 	switch ((event_type = EventType(e.type))) {
@@ -234,7 +251,11 @@ Event::str() const
 	ss << type_name();
 	switch (event_type) {
 	case EV_DESCHED:
-		ss << ": " << syscallname(Desched().rec->syscallno);
+		ss << ": " << desched_state_name(Desched().state);
+		// This is null during replay.
+		if (Desched().rec) {
+			ss <<"; "<< syscallname(Desched().rec->syscallno);
+		}
 		break;
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
