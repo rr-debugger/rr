@@ -276,18 +276,8 @@ AddressSpace::dump() const
 	for (auto it = mem.begin(); it != mem.end(); ++it) {
 		const Mapping& m = it->first;
 		const MappableResource& r = it->second;
-		fprintf(stderr,
-			"%08lx-%08lx %c%c%c%c %08llx %02llx:%02llx %-10ld %s %s (f:0x%x d:0x%llx i:%ld)\n",
-			reinterpret_cast<long>(m.start),
-			reinterpret_cast<long>(m.end),
-			(PROT_READ & m.prot) ? 'r' : '-',
-			(PROT_WRITE & m.prot) ? 'w' : '-',
-			(PROT_EXEC & m.prot) ? 'x' : '-',
-			(MAP_SHARED & m.flags) ? 's' : 'p',
-			m.offset,
-			r.id.dev_major(), r.id.dev_minor(), r.id.disp_inode(),
-			r.fsname.c_str(), r.id.special_name(),
-			m.flags, r.id.device, r.id.inode);
+		fprintf(stderr, "%s %s\n", m.str().c_str(),
+				r.str().c_str());
 	}
 }
 

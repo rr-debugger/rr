@@ -658,43 +658,6 @@ int should_dump_memory(Task* t, const struct trace_frame& f)
 		|| flags->dump_at == int(f.global_time));
 }
 
-static int dump_process_memory_iterator(void* it_data, Task* t,
-					const struct map_iterator_data* data)
-{
-	FILE* dump_file = (FILE*)it_data;
-	const unsigned* buf = (const unsigned*)data->mem;
-	void* start_addr = data->info.start_addr;
-
-	if (!buf) {
-		/* This segment was filtered by debugging code. */
-		return CONTINUE_ITERATING;
-	}
-	if (is_start_of_scratch_region(t, start_addr)) {
-		/* Scratch regions will diverge between
-		 * recording/replay, so including them in memory dumps
-		 * makes comparing record/replay dumps very noisy. */
-		return CONTINUE_ITERATING;
-	}
-
-	dump_binary_chunk(dump_file, data->raw_map_line,
-			  buf, data->mem_len / sizeof(*buf), start_addr);
-
-	return CONTINUE_ITERATING;
-}
-
-static int dump_process_memory_segment_filter(
-	void* filt_data, Task* t,
-	const struct mapped_segment_info* info)
-{
-	/* For debugging purposes, add segment filtering here, for
-	 * example
-	if (!strstr(info->name, "[stack]")) {
-		return 0;
-	}
-	*/
-	return 1;
-}
-
 void dump_process_memory(Task* t, int global_time, const char* tag)
 {
 	char filename[PATH_MAX];
@@ -703,14 +666,30 @@ void dump_process_memory(Task* t, int global_time, const char* tag)
 	format_dump_filename(t, global_time, tag, filename, sizeof(filename));
 	dump_file = fopen64(filename, "w");
 
-	iterate_memory_map(t, dump_process_memory_iterator, dump_file,
-			   dump_process_memory_segment_filter, nullptr);
+	const AddressSpace& as = *(t->vm());
+	for (auto it = as.begin(); it != as.end(); ++it) {
+		const Mapping &first = it->first;
+		const MappableResource &second = it->second; 
+		vector<byte> mem;
+		mem.resize(first.num_bytes());
+
+		ssize_t mem_len = t->read_bytes_fallible(first.start,
+				first.num_bytes(), mem.data());
+		mem_len = max(0, mem_len);
+
+		string label = first.str() + ' ' + second.str();
+
+		if (!is_start_of_scratch_region(t, first.start)) {
+			dump_binary_chunk(dump_file, label.c_str(), (const uint32_t*)mem.data(),
+					mem_len / sizeof(uint32_t), first.start);
+		}
+	}
 	fclose(dump_file);
 }
 
 static void notify_checksum_error(Task* t, int global_time,
 				  unsigned checksum, unsigned rec_checksum,
-				  const struct map_iterator_data* data)
+				  const string &raw_map_line)
 {
 	char cur_dump[PATH_MAX];
 	char rec_dump[PATH_MAX];
@@ -731,7 +710,7 @@ static void notify_checksum_error(Task* t, int global_time,
 	ASSERT(t, checksum == rec_checksum)
 <<"Divergence in contents of memory segment after '"<< ev <<"':\n"
 "\n"
-<< data->raw_map_line
+<< raw_map_line
 <<"    (recorded checksum:"<< HEX(rec_checksum)
 <<"; replaying checksum:"<< HEX(checksum) <<")\n"
 "\n"
@@ -757,107 +736,29 @@ struct checksum_iterator_data {
 	FILE* checksums_file;
 	int global_time;
 };
-static int checksum_iterator(void* it_data, Task* t,
-			     const struct map_iterator_data* data)
-{
-	struct checksum_iterator_data* c =
-		(struct checksum_iterator_data*)it_data;
-	unsigned* buf = (unsigned*)data->mem;
-	ssize_t valid_mem_len = data->mem_len;
-	unsigned checksum = 0;
-	int i;
 
-	if (data->info.name ==
-	    strstr(data->info.name, SYSCALLBUF_SHMEM_PATH_PREFIX)) {
-		/* The syscallbuf consists of a region that's written
-		 * deterministically wrt the trace events, and a
-		 * region that's written nondeterministically in the
-		 * same way as trace scratch buffers.  The
-		 * deterministic region comprises committed syscallbuf
-		 * records, and possibly the one pending record
-		 * metadata.  The nondeterministic region starts at
-		 * the "extra data" for the possibly one pending
-		 * record.
-		 *
-		 * So here, we set things up so that we only checksum
-		 * the deterministic region. */
-		void* child_hdr = data->info.start_addr;
-		struct syscallbuf_hdr hdr;
-		t->read_mem(child_hdr, &hdr);
-		valid_mem_len = !buf ? 0 :
-				sizeof(hdr) + hdr.num_rec_bytes +
-				sizeof(struct syscallbuf_record);
-	}
-
-	/* If this segment was filtered, then data->mem_len will be 0
-	 * to indicate nothing was read.  And data->mem will be NULL
-	 * to double-check that.  In that case, the checksum will just
-	 * be 0. */
-	ASSERT(t, buf || valid_mem_len == 0);
-	for (i = 0; i < ssize_t(valid_mem_len / sizeof(*buf)); ++i) {
-		checksum += buf[i];
-	}
-
-	if (STORE_CHECKSUMS == c->mode) {
-		fprintf(c->checksums_file,"(%x) %s",
-			checksum, data->raw_map_line);
-	} else {
-		char line[1024];
-		unsigned rec_checksum;
-		void* rec_start_addr;
-		void* rec_end_addr;
-		int nparsed;
-
-		fgets(line, sizeof(line), c->checksums_file);
-		nparsed = sscanf(line, "(%x) %p-%p", &rec_checksum,
-				 &rec_start_addr, &rec_end_addr);
-		ASSERT(t, 3 == nparsed) << "Only parsed "<< nparsed <<" items";
-
-		ASSERT(t, (rec_start_addr == data->info.start_addr
-			   && rec_end_addr == data->info.end_addr))
-			<< "Segment "<< rec_start_addr <<"-"<< rec_end_addr
-			<<" changed to "<< data->info <<"??";
-
-		if (is_start_of_scratch_region(t, rec_start_addr)) {
-			/* Replay doesn't touch scratch regions, so
-			 * their contents are allowed to diverge.
-			 * Tracees can't observe those segments unless
-			 * they do something sneaky (or disastrously
-			 * buggy). */
-			LOG(debug) <<"Not validating scratch starting at "
-				   << rec_start_addr;
-			return CONTINUE_ITERATING;
-		}
-	 	if (checksum != rec_checksum) {
-			notify_checksum_error(t, c->global_time,
-					      checksum, rec_checksum, data);
-		}
-	}
-	return CONTINUE_ITERATING;
-}
-
-static int checksum_segment_filter(void* filt_data, Task* t,
-				   const struct mapped_segment_info* info)
+static int checksum_segment_filter(const Mapping &m,
+				   const MappableResource &r)
 {
 	struct stat st;
 	int may_diverge;
 
-	if (stat(info->name, &st)) {
+	if (stat(r.fsname.c_str(), &st)) {
 		/* If there's no persistent resource backing this
 		 * mapping, we should expect it to change. */
-		LOG(debug) <<"CHECKSUMMING unlinked '"<< info->name <<"'";
+		LOG(debug) <<"CHECKSUMMING unlinked '"<< r.fsname <<"'";
 		return 1;
 	}
 	/* If we're pretty sure the backing resource is effectively
 	 * immutable, skip checksumming, it's a waste of time.  Except
 	 * if the mapping is mutable, for example the rw data segment
 	 * of a system library, then it's interesting. */
-	may_diverge = (should_copy_mmap_region(info->name, &st,
-					       info->prot, info->flags,
+	may_diverge = (should_copy_mmap_region(r.fsname.c_str(), &st,
+					       m.prot, m.flags,
 					       DONT_WARN_SHARED_WRITEABLE)
-		       || (PROT_WRITE & info->prot));
+		       || (PROT_WRITE & m.prot));
 	LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping")
-		   <<" '"<< info->name <<"'";
+		   <<" '"<< r.fsname <<"'";
 	return may_diverge;
 }
 
@@ -882,8 +783,93 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 		FATAL() <<"Failed to open checksum file "<< filename;
 	}
 
-	iterate_memory_map(t, checksum_iterator, &c,
-			   checksum_segment_filter, NULL);
+	const AddressSpace &as = *(t->vm());
+	for (auto it = as.begin(); it != as.end(); ++it) {
+		const Mapping &first = it->first;
+		const MappableResource &second = it->second; 
+
+		vector<byte> mem;
+		ssize_t valid_mem_len = 0; 
+
+		if (checksum_segment_filter(first, second)) {
+			mem.resize(first.num_bytes());
+			valid_mem_len = t->read_bytes_fallible(first.start,
+			    first.num_bytes(), mem.data());
+			valid_mem_len = max(0, valid_mem_len);
+		}
+
+		unsigned* buf = (unsigned*)mem.data();
+		unsigned checksum = 0;
+		int i;
+
+		if (second.fsname.find(SYSCALLBUF_SHMEM_PATH_PREFIX)
+				!= string::npos) {
+			/* The syscallbuf consists of a region that's written
+			* deterministically wrt the trace events, and a
+			* region that's written nondeterministically in the
+			* same way as trace scratch buffers.  The
+			* deterministic region comprises committed syscallbuf
+			* records, and possibly the one pending record
+			* metadata.  The nondeterministic region starts at
+			* the "extra data" for the possibly one pending
+			* record.
+			*
+			* So here, we set things up so that we only checksum
+			* the deterministic region. */
+			void* child_hdr = first.start;
+			struct syscallbuf_hdr hdr;
+			t->read_mem(child_hdr, &hdr);
+			valid_mem_len = !buf ? 0 :
+				sizeof(hdr) + hdr.num_rec_bytes +
+				sizeof(struct syscallbuf_record);
+		}
+
+		/* If this segment was filtered, then data->mem_len will be 0
+		 * to indicate nothing was read.  And data->mem will be NULL
+		 * to double-check that.  In that case, the checksum will just
+		 * be 0. */
+		ASSERT(t, buf || valid_mem_len == 0);
+		for (i = 0; i < ssize_t(valid_mem_len / sizeof(*buf)); ++i) {
+			checksum += buf[i];
+		}
+
+		string raw_map_line = first.str() + ' ' + second.str();
+		if (STORE_CHECKSUMS == c.mode) {
+			fprintf(c.checksums_file,"(%x) %s",
+					checksum, raw_map_line.c_str());
+		} else {
+			char line[1024];
+			unsigned rec_checksum;
+			void* rec_start_addr;
+			void* rec_end_addr;
+			int nparsed;
+
+			fgets(line, sizeof(line), c.checksums_file);
+			nparsed = sscanf(line, "(%x) %p-%p", &rec_checksum,
+					&rec_start_addr, &rec_end_addr);
+			ASSERT(t, 3 == nparsed) << "Only parsed "<< nparsed <<" items";
+
+			ASSERT(t, (rec_start_addr == first.start
+						&& rec_end_addr == first.end))
+				<< "Segment "<< rec_start_addr <<"-"<< rec_end_addr
+				<<" changed to "<< first <<"??";
+
+			if (is_start_of_scratch_region(t, rec_start_addr)) {
+				/* Replay doesn't touch scratch regions, so
+				 * their contents are allowed to diverge.
+				 * Tracees can't observe those segments unless
+				 * they do something sneaky (or disastrously
+				 * buggy). */
+				LOG(debug) << "Not validating scratch starting at 0x"
+					<< hex << rec_start_addr << dec;
+				continue;
+			}
+			if (checksum != rec_checksum) {
+				notify_checksum_error(t, c.global_time,
+						checksum, rec_checksum, raw_map_line.c_str());
+			}
+		}
+	}
 
 	fclose(c.checksums_file);
 }
