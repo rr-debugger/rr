@@ -1341,6 +1341,26 @@ Task::init_buffers(void* map_hint, int share_desched_fd)
 	return child_map_addr;
 }
 
+void
+Task::destroy_buffers(int which)
+{
+	struct current_state_buffer state;
+	prepare_remote_syscalls(this, &state);
+
+	if (DESTROY_SCRATCH & which) {
+		remote_syscall2(this, &state, SYS_munmap,
+				scratch_ptr, scratch_size);
+		vm()->unmap(scratch_ptr, scratch_size);
+	}
+	if ((DESTROY_SYSCALLBUF & which) && syscallbuf_child) {
+		remote_syscall2(this, &state, SYS_munmap,
+				syscallbuf_child, num_syscallbuf_bytes);
+		vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
+		remote_syscall1(this, &state, SYS_close, desched_fd_child);
+	}
+	finish_remote_syscalls(this, &state);
+}
+
 bool
 Task::is_arm_desched_event_syscall()
 {
