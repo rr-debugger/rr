@@ -519,28 +519,6 @@ void finish_remote_syscalls(Task* t, struct current_state_buffer* state);
 	remote_syscall1(_c, _s, _no, 0)
 
 /**
- * Format into |path| the path name at which syscallbuf shmem for
- * tracee |tid| will be allocated (briefly, until unlinked).
- */
-template<size_t N>
-void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N])
-{
-	snprintf(path, N - 1, SYSCALLBUF_SHMEM_NAME_PREFIX "%d", tid);
-}
-
-/**
- * Initialize tracee buffers in |t|, i.e., implement
- * RRCALL_init_syscall_buffer.  |t| must be at the point of *exit
- * from* the rrcall.  Its registers will be updated with the return
- * value from the rrcall, which is also returned from this call.
- * |map_hint| suggests where to map the region.
- *
- * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
- */
-enum { SHARE_DESCHED_EVENT_FD = 1, DONT_SHARE_DESCHED_EVENT_FD = 0 };
-void* init_buffers(Task* t, void* map_hint, int share_desched_fd);
-
-/**
  * At thread exit time, undo the work that init_buffers() did.
  *
  * Pass |DESTROY_ALREADY_AT_EXIT_SYSCALL| if the tracee has already

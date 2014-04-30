@@ -1014,8 +1014,8 @@ static void process_init_buffers(Task* t, int exec_state,
 	/* We don't want the desched event fd during replay, because
 	 * we already know where they were.  (The perf_event fd is
 	 * emulated anyway.) */
-	child_map_addr = init_buffers(t, rec_child_map_addr,
-				      DONT_SHARE_DESCHED_EVENT_FD);
+	child_map_addr = t->init_buffers(rec_child_map_addr,
+					 DONT_SHARE_DESCHED_EVENT_FD);
 
 	ASSERT(t, child_map_addr == rec_child_map_addr)
 		<<"Should have mapped syscallbuf at "<< rec_child_map_addr

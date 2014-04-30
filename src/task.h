@@ -729,6 +729,8 @@ enum WaitRequest {
 	RESUME_NONBLOCKING
 };
 
+enum { SHARE_DESCHED_EVENT_FD = 1, DONT_SHARE_DESCHED_EVENT_FD = 0 };
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -937,9 +939,16 @@ public:
 	TraceOfstream& ofstream();
 
 	/**
-	 * Call this when the tracee's syscallbuf has been initialized.
+	 * Initialize tracee buffers in this, i.e., implement
+	 * RRCALL_init_syscall_buffer.  This task must be at the point
+	 * of *exit from* the rrcall.  Registers will be updated with
+	 * the return value from the rrcall, which is also returned
+	 * from this call.  |map_hint| suggests where to map the
+	 * region; see |init_syscallbuf_buffer()|.
+	 *
+	 * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
 	 */
-	void inited_syscallbuf();
+	void* init_buffers(void* map_hint, int share_desched_fd);
 
 	/** Return the current $ip of this. */
 	void* ip() { return (void*)regs().eip; }
@@ -1606,6 +1615,23 @@ private:
 	 */
 	int open_mem_fd();
 	void reopen_mem_fd();
+
+	/**
+	 * Map the syscallbuffer for this, shared with this process.
+	 * |map_hint| is the address where the syscallbuf is expected
+	 * to be mapped --- and this is asserted --- or nullptr if
+	 * there are no expectations.
+	 */
+	void* init_syscall_buffer(struct current_state_buffer* state,
+				  void* map_hint);
+
+	/**
+	 * Share the desched-event fd that this task has already
+	 * opened to this process when |share_desched_fd|.
+	 */
+	void init_desched_fd(struct current_state_buffer* state,
+			     struct rrcall_init_buffers_params* args,
+			     int share_desched_fd);
 
 	/**
 	 * True if this has blocked delivery of the desched signal.

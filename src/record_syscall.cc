@@ -2423,7 +2423,7 @@ void rec_process_syscall(Task *t)
 		break;
 
 	case SYS_rrcall_init_buffers:
-		init_buffers(t, nullptr, SHARE_DESCHED_EVENT_FD);
+		t->init_buffers(nullptr, SHARE_DESCHED_EVENT_FD);
 		break;
 
 	case SYS_rrcall_monkeypatch_vdso:
