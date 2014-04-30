@@ -1373,41 +1373,6 @@ void finish_remote_syscalls(Task* t, struct current_state_buffer* state)
 }
 
 /**
- * Share |fd| to the other side of |sock|.
- */
-static void send_fd(int fd, int sock)
-{
-	struct msghdr msg;
-	int dummy_fd = 0;
-	struct iovec data;
-	struct cmsghdr* cmsg;
-	char cmsgbuf[CMSG_SPACE(sizeof(int))];
-
-	memset(&msg, 0, sizeof(msg));
-
-	/* We must always send the same value to the child so that
-	 * nondeterministic values, like fd numbers in this process,
-	 * don't leak into its address space. */
-	data.iov_base = &dummy_fd;
-	data.iov_len = sizeof(dummy_fd);
-	msg.msg_iov = &data;
-	msg.msg_iovlen = 1;
-
-	msg.msg_control = cmsgbuf;
-	msg.msg_controllen = CMSG_LEN(sizeof(int));
-
-	cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-	cmsg->cmsg_level = SOL_SOCKET;
-	cmsg->cmsg_type = SCM_RIGHTS;
-	*(int*)CMSG_DATA(cmsg) = fd;
-
-	if (0 >= sendmsg(sock, &msg, 0)) {
-		FATAL() <<"Failed to send fd";
-	}
-}
-
-/**
  * Block until receiving an fd the other side of |sock| sent us, then
  * return the fd (valid in this address space).  Optionally return the
  * remote fd number that was shared to us in |remote_fdno|.
@@ -1454,119 +1419,40 @@ static void write_socketcall_args(Task* t,
 	t->write_mem(child_args_vec, args);
 }
 
+/**
+ * Map the syscallbuffer for |t|, shared with this process.
+ * |map_hint| is the address where the syscallbuf is expected to be
+ * mapped --- and this is asserted --- or nullptr if there are no
+ * expectations.
+ */
 static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
-				 struct rrcall_init_buffers_params* args,
-				 void* map_hint, int share_desched_fd)
+				 void* map_hint)
 {
-	pid_t tid = t->tid;
+	// Create the segment we'll share with the tracee.
 	char shmem_name[PATH_MAX];
-	struct sockaddr_un addr;
-	long child_ret;
-	int listen_sock, sock, child_sock;
-	int shmem_fd, child_shmem_fd;
-	void* map_addr;
-	byte* child_map_addr;
-	int zero = 0;
-
-	t->traced_syscall_ip = args->traced_syscall_ip;
-	t->untraced_syscall_ip = args->untraced_syscall_ip;
-	format_syscallbuf_shmem_path(tid, shmem_name);
-	/* NB: the sockaddr prepared by the child uses the recorded
-	 * tid, so always must here. */
-	prepare_syscallbuf_socket_addr(&addr, t->rec_tid);
-
-	/* Create the segment we'll share with the tracee. */
-	shmem_fd = create_shmem_segment(shmem_name, SYSCALLBUF_BUFFER_SIZE);
-
-	/* Bind the server socket, but don't start listening yet. */
-	listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (::bind(listen_sock, (struct sockaddr*)&addr, sizeof(addr))) {
-		FATAL() <<"Failed to bind listen socket";
-	}
-	if (listen(listen_sock, 1)) {
-		FATAL() <<"Failed to mark listening for listen socket";
-	}
-
-	/* Initiate tracee connect(), but don't wait for it to
-	 * finish. */
-	write_socketcall_args(t, args->args_vec, AF_UNIX, SOCK_STREAM, 0);
-	child_sock = remote_syscall2(t, state, SYS_socketcall,
-				     SYS_SOCKET, args->args_vec);
-	if (0 > child_sock) {
-		errno = -child_sock;
-		FATAL() <<"Failed to create child socket";
-	}
-	write_socketcall_args(t, args->args_vec, child_sock,
-			      (uintptr_t)args->sockaddr,
-			      sizeof(*args->sockaddr));
-	remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
-		       SYS_CONNECT, (uintptr_t)args->args_vec, 0, 0, 0, 0);
-	/* Now the child is waiting for us to accept it. */
-
-	/* Accept the child's connection and finish its syscall.
-	 *
-	 * XXX could be really anal and check credentials of
-	 * connecting endpoint ... */
-	sock = accept(listen_sock, NULL, NULL);
-	if ((child_ret = wait_remote_syscall(t, state, SYS_socketcall))) {
-		errno = -child_ret;
-		FATAL() <<"Failed to connect() in tracee";
-	}
-	/* Socket name not needed anymore. */
-	unlink(addr.sun_path);
-
-	if (SHARE_DESCHED_EVENT_FD == share_desched_fd) {
-		/* Pull the puppet strings to have the child share its
-		 * desched counter with us.  Similarly to above, we
-		 * DONT_WAIT on the call to finish, since it's likely
-		 * not defined whether the sendmsg() may block on our
-		 * recvmsg()ing what the tracee sent us (in which case
-		 * we would deadlock with the tracee). */
-		write_socketcall_args(t, args->args_vec, child_sock,
-				      (uintptr_t)args->msg, 0);
-		remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
-			       SYS_SENDMSG, (uintptr_t)args->args_vec,
-			       0, 0, 0, 0);
-		/* Child may be waiting on our recvmsg(). */
-
-		/* Read the shared fd and finish the child's syscall. */
-		t->desched_fd = recv_fd(sock, &t->desched_fd_child);
-		if (0 >= wait_remote_syscall(t, state, SYS_socketcall)) {
-			errno = -child_ret;
-			FATAL() <<"Failed to sendmsg() in tracee";
+	format_syscallbuf_shmem_path(t->tid, shmem_name);
+	int shmem_fd = create_shmem_segment(shmem_name,
+					    SYSCALLBUF_BUFFER_SIZE);
+	// Map the shmem fd in the child.
+	int child_shmem_fd;
+	{
+		struct restore_mem restore_path;
+		char proc_path[PATH_MAX];
+		snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d",
+			 getpid(), shmem_fd);
+		void* child_path = push_tmp_str(t, state, proc_path,
+						&restore_path);
+		child_shmem_fd = remote_syscall3(t, state, SYS_open,
+						 child_path, O_RDWR, 0600);
+		if (0 > child_shmem_fd) {
+			errno = -child_shmem_fd;
+			FATAL() <<"Failed to open("<< proc_path <<") in tracee";
 		}
-	} else {
-		t->desched_fd_child = REPLAY_DESCHED_EVENT_FD;
+		pop_tmp_mem(t, state, &restore_path);
 	}
 
-	/* Share the shmem fd with the child.  It's ok to reuse the
-	 * |child_msg| buffer. */
-	send_fd(shmem_fd, sock);
-	write_socketcall_args(t, args->args_vec, child_sock,
-			      (uintptr_t)args->msg, 0);
-	child_ret = remote_syscall2(t, state, SYS_socketcall,
-				    SYS_RECVMSG, args->args_vec);
-	if (0 >= child_ret) {
-		errno = -child_ret;
-		FATAL() <<"Failed to recvmsg() shared fd in tracee";
-	}
-
-	/* Get the newly-allocated fd. */
-	t->read_mem(args->fdptr, &child_shmem_fd);
-
-	/* Zero out the child buffers we use here.  They contain
-	 * "real" fds, which in general will not be the same across
-	 * record/replay. */
-	write_socketcall_args(t, args->args_vec, 0, 0, 0);
-	t->write_mem(args->fdptr, zero);
-
-	/* Socket magic is now done. */
-	close(listen_sock);
-	close(sock);
-	remote_syscall1(t, state, SYS_close, child_sock);
-
-	/* Map the segment in our address space and in the
-	 * tracee's. */
+	// Map the segment in ours and the tracee's address spaces.
+	void* map_addr;
 	t->num_syscallbuf_bytes = SYSCALLBUF_BUFFER_SIZE;
 	int prot = PROT_READ | PROT_WRITE;
 	int flags = MAP_SHARED;
@@ -1576,14 +1462,15 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 					  shmem_fd, offset_pages))) {
 		FATAL() <<"Failed to mmap shmem region";
 	}
-	child_map_addr = (byte*)remote_syscall6(t, state, SYS_mmap2,
-						map_hint,
-						t->num_syscallbuf_bytes,
-						prot, flags, child_shmem_fd,
-						offset_pages);
-	t->syscallbuf_child = args->syscallbuf_ptr = child_map_addr;
+	void* child_map_addr = (byte*)remote_syscall6(t, state, SYS_mmap2,
+						      map_hint,
+						      t->num_syscallbuf_bytes,
+						      prot, flags,
+						      child_shmem_fd,
+						      offset_pages);
+	t->syscallbuf_child = child_map_addr;
 	t->syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
-	/* No entries to begin with. */
+	// No entries to begin with.
 	memset(t->syscallbuf_hdr, 0, sizeof(*t->syscallbuf_hdr));
 
 	t->vm()->map(child_map_addr, t->num_syscallbuf_bytes,
@@ -1594,6 +1481,87 @@ static void* init_syscall_buffer(Task* t, struct current_state_buffer* state,
 	remote_syscall1(t, state, SYS_close, child_shmem_fd);
 
 	return child_map_addr;
+}
+
+/**
+ * Share the desched-event fd that |t| has already opened to this
+ * process when |share_desched_fd|.
+ */
+static void init_desched_fd(Task* t, struct current_state_buffer* state,
+			     struct rrcall_init_buffers_params* args,
+			     int share_desched_fd)
+{
+	if (!share_desched_fd) {
+		t->desched_fd_child = REPLAY_DESCHED_EVENT_FD;
+		return;
+	}
+
+	// NB: the sockaddr prepared by the child uses the recorded
+	// tid, so always must here. */
+	struct sockaddr_un addr;
+	prepare_syscallbuf_socket_addr(&addr, t->rec_tid);
+
+	/* Bind the server socket, but don't start listening yet. */
+	int listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (::bind(listen_sock, (struct sockaddr*)&addr, sizeof(addr))) {
+		FATAL() <<"Failed to bind listen socket";
+	}
+	if (listen(listen_sock, 1)) {
+		FATAL() <<"Failed to mark listening for listen socket";
+	}
+
+	// Initiate tracee connect(), but don't wait for it to
+	// finish.
+	write_socketcall_args(t, args->args_vec, AF_UNIX, SOCK_STREAM, 0);
+	int child_sock = remote_syscall2(t, state, SYS_socketcall,
+					 SYS_SOCKET, args->args_vec);
+	if (0 > child_sock) {
+		errno = -child_sock;
+		FATAL() <<"Failed to create child socket";
+	}
+	write_socketcall_args(t, args->args_vec, child_sock,
+			      (uintptr_t)args->sockaddr,
+			      sizeof(*args->sockaddr));
+	remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
+		       SYS_CONNECT, (uintptr_t)args->args_vec, 0, 0, 0, 0);
+	// Now the child is waiting for us to accept it.
+
+	// Accept the child's connection and finish its syscall.
+	//
+	// XXX could be really anal and check credentials of
+	// connecting endpoint ...
+	int sock = accept(listen_sock, NULL, NULL);
+	int child_ret;
+	if ((child_ret = wait_remote_syscall(t, state, SYS_socketcall))) {
+		errno = -child_ret;
+		FATAL() <<"Failed to connect() in tracee";
+	}
+	// Socket name not needed anymore.
+	unlink(addr.sun_path);
+
+	// Pull the puppet strings to have the child share its desched
+	// counter with us.  Similarly to above, we DONT_WAIT on the
+	// call to finish, since it's likely not defined whether the
+	// sendmsg() may block on our recvmsg()ing what the tracee
+	// sent us (in which case we would deadlock with the tracee).
+	write_socketcall_args(t, args->args_vec, child_sock,
+			      (uintptr_t)args->msg, 0);
+	remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
+		       SYS_SENDMSG, (uintptr_t)args->args_vec,
+		       0, 0, 0, 0);
+	// Child may be waiting on our recvmsg().
+
+	// Read the shared fd and finish the child's syscall.
+	t->desched_fd = recv_fd(sock, &t->desched_fd_child);
+	if (0 >= wait_remote_syscall(t, state, SYS_socketcall)) {
+		errno = -child_ret;
+		FATAL() <<"Failed to sendmsg() in tracee";
+	}
+
+	// Socket magic is now done.
+	close(listen_sock);
+	close(sock);
+	remote_syscall1(t, state, SYS_close, child_sock);
 }
 
 void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
@@ -1618,9 +1586,16 @@ void* init_buffers(Task* t, void* map_hint, int share_desched_fd)
 		<<"abled, but tracer thinks "
 		<< (rr_flags()->use_syscall_buffer ? "en" : "dis") <<"abled";
 	if (args.syscallbuf_enabled) {
-		child_map_addr =
-			init_syscall_buffer(t, &state, &args,
-					    map_hint, share_desched_fd);
+		t->traced_syscall_ip = args.traced_syscall_ip;
+		t->untraced_syscall_ip = args.untraced_syscall_ip;
+		args.syscallbuf_ptr = child_map_addr =
+				      init_syscall_buffer(t, &state, map_hint);
+		init_desched_fd(t, &state, &args, share_desched_fd);
+		// Zero out the child buffers we may have used here.
+		// They may contain "real" fds, which in general will
+		// not be the same across record/replay.
+		write_socketcall_args(t, args.args_vec, 0, 0, 0);
+		t->write_mem(args.fdptr, 0);
 	} else {
 		args.syscallbuf_ptr = nullptr;
 	}
