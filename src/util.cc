@@ -1420,22 +1420,8 @@ void destroy_buffers(Task* t, int flags)
 	ASSERT(t, !memcmp(insn, syscall_insn, sizeof(insn)))
 		<<"Tracee should have entered through int $0x80.";
 
-	struct current_state_buffer state;
-	prepare_remote_syscalls(t, &state);
-
 	// Do the actual buffer and fd cleanup.
-	remote_syscall2(t, &state, SYS_munmap,
-			t->scratch_ptr, t->scratch_size);
-	t->vm()->unmap(t->scratch_ptr, t->scratch_size);
-	if (t->syscallbuf_child) {
-		remote_syscall2(t, &state, SYS_munmap,
-				t->syscallbuf_child, t->num_syscallbuf_bytes);
-		t->vm()->unmap(t->syscallbuf_child,
-			       t->num_syscallbuf_bytes);
-		remote_syscall1(t, &state, SYS_close, t->desched_fd_child);
-	}
-
-	finish_remote_syscalls(t, &state);
+	t->destroy_buffers(DESTROY_SCRATCH | DESTROY_SYSCALLBUF);
 
 	// Prepare to restart the SYS_exit call.
 	t->set_regs(exit_regs);

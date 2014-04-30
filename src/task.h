@@ -731,6 +731,11 @@ enum WaitRequest {
 
 enum { SHARE_DESCHED_EVENT_FD = 1, DONT_SHARE_DESCHED_EVENT_FD = 0 };
 
+enum DestroyBufferFlags {
+	DESTROY_SCRATCH = 1 << 0,
+	DESTROY_SYSCALLBUF = 1 << 1,
+};
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -949,6 +954,14 @@ public:
 	 * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
 	 */
 	void* init_buffers(void* map_hint, int share_desched_fd);
+
+	/**
+	 * Destroy in the tracee task the buffer(s) specified by the
+	 * DestroyBufferFlags mask |which|.  This task must already be
+	 * at a state in which remote syscalls can be executed; if
+	 * it's not, results are undefined.
+	 */
+	void destroy_buffers(int which);
 
 	/** Return the current $ip of this. */
 	void* ip() { return (void*)regs().eip; }
