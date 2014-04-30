@@ -235,6 +235,24 @@ struct Mapping {
 			       offset);
 	}
 
+	/**
+	 * Dump a representation of |this| to a string in a format
+	 * similar to the former part of /proc/[tid]/maps.
+	*/
+	std::string str() const {
+		char str[200];
+		sprintf(str,
+			"%08lx-%08lx %c%c%c%c %08llx",
+			reinterpret_cast<long>(start),
+			reinterpret_cast<long>(end),
+			(PROT_READ & prot) ? 'r' : '-',
+			(PROT_WRITE & prot) ? 'w' : '-',
+			(PROT_EXEC & prot) ? 'x' : '-',
+			(MAP_SHARED & flags) ? 's' : 'p',
+			offset);
+		return str;
+	}
+
 	void* const start;
 	void* const end;
 	const int prot;
@@ -290,6 +308,21 @@ struct MappableResource {
 		return MappableResource(FileId(id.dev_major(), id.dev_minor(),
 					       id.disp_inode()),
 					fsname.c_str());
+	}
+
+	/**
+	 * Dump a representation of |this| to a string in a format
+	 * similar to the tail part of /proc/[tid]/maps. Some extra
+	 * informations are put in a '()'.
+	*/
+	std::string str() const {
+		char str[200];
+		sprintf(str,
+			"%02llx:%02llx %-10ld %s %s (d:0x%llx i:%ld)",
+			id.dev_major(), id.dev_minor(), id.disp_inode(),
+			fsname.c_str(), id.special_name(), id.device, 
+			id.inode);
+		return str;
 	}
 
 	static MappableResource anonymous() {
