@@ -350,15 +350,16 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 						  target->child_sig);
 			continue;
 		}
-		case DREQ_SET_SW_BREAK:
+		case DREQ_SET_SW_BREAK: {
 			ASSERT(target,
 			       (req.mem.len ==
 				sizeof(AddressSpace::breakpoint_insn)))
 				<< "Debugger setting bad breakpoint insn";
-			target->vm()->set_breakpoint(req.mem.addr,
-						     TRAP_BKPT_USER);
-			dbg_reply_watchpoint_request(dbg, 0);
+			bool ok = target->vm()->set_breakpoint(req.mem.addr,
+							       TRAP_BKPT_USER);
+			dbg_reply_watchpoint_request(dbg, ok ? 0 : 1);
 			continue;
+		}
 		case DREQ_REMOVE_SW_BREAK:
 			target->vm()->remove_breakpoint(req.mem.addr,
 							TRAP_BKPT_USER);

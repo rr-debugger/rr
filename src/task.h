@@ -529,7 +529,7 @@ public:
 	void remove_breakpoint(void* addr, TrapType type);
 
 	/** Ensure a breakpoint of |type| is set at |addr|. */
-	void set_breakpoint(void* addr, TrapType type);
+	bool set_breakpoint(void* addr, TrapType type);
 
 	/**
 	 * Destroy all breakpoints in this VM, regardless of their

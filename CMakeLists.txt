@@ -202,6 +202,7 @@ set(BASIC_TESTS
 set(CUSTOM_TESTS
   async_signal_syscalls_100
   async_signal_syscalls_1000
+  bad_breakpoint
   break_block
   break_clock
   break_clone
