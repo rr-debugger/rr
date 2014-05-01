@@ -1405,7 +1405,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action =
 				(STATE_SYSCALL_ENTRY == state) ?
 				TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
-			if (TSTEP_EXIT_SYSCALL == step->action) {
+			if (TSTEP_EXIT_SYSCALL == step->action
+			    && PR_SET_NAME == option) {
 				t->update_prname(arg2);
 			}
 			return;
