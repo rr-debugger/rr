@@ -169,18 +169,6 @@ static void goto_next_syscall_emu(Task *t)
 }
 
 /**
- *  Step over the system call to be able to reuse PTRACE_SYSTEM call
- */
-static void finish_syscall_emu(Task *t)
-{
-	struct user_regs_struct r = t->regs();
-	t->cont_sysemu_singlestep();
-	t->set_regs(r);
-
-	t->force_status(0);
-}
-
-/**
  * Proceeds until the next system call, which is being executed.
  */
 void __ptrace_cont(Task *t)
@@ -234,7 +222,7 @@ static void exit_syscall_emu_ret(Task* t, int syscall)
 {
 	t->set_return_value_from_trace();
 	validate_args(syscall, STATE_SYSCALL_EXIT, t);
-	finish_syscall_emu(t);
+	t->finish_emulated_syscall();
 }
 
 static void exit_syscall_emu(Task* t,
@@ -867,7 +855,7 @@ static void process_mmap(Task* t,
 	}
 	/* Successful mmap calls are much more interesting to process.
 	 * First we advance to the emulated syscall exit. */
-	finish_syscall_emu(t);
+	t->finish_emulated_syscall();
 	/* Next we hand off actual execution of the mapping to the
 	 * appropriate helper. */
 	prepare_remote_syscalls(t, &state);
@@ -1008,7 +996,7 @@ static void process_init_buffers(Task* t, int exec_state,
 	step->action = TSTEP_RETIRE;
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
-	finish_syscall_emu(t);
+	t->finish_emulated_syscall();
 	rec_child_map_addr = (void*)t->trace.recorded_regs.eax;
 
 	/* We don't want the desched event fd during replay, because
@@ -1524,7 +1512,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 			return;
 		}
-		finish_syscall_emu(t);
+		t->finish_emulated_syscall();
 		t->set_regs(trace->recorded_regs);
 		step->action = TSTEP_RETIRE;
 		return;

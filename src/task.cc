@@ -1169,6 +1169,20 @@ Task::at_may_restart_syscall() const
 		    && prev_ev && EV_SYSCALL_INTERRUPTION == prev_ev->type());
 }
 
+void
+Task::finish_emulated_syscall()
+{
+	// XXX verify that this can't be interrupted by a breakpoint trap
+	struct user_regs_struct r = regs();
+	// TODO: this will execute the instruction just after syscall
+	// entry twice, so if that instruction has non-idempotent side
+	// effects, replay can diverge.
+	cont_sysemu_singlestep();
+	set_regs(r);
+
+	force_status(0);
+}
+
 const struct syscallbuf_record*
 Task::desched_rec() const
 {

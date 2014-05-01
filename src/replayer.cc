@@ -550,21 +550,6 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi)
 }
 
 /**
- *  Step over the system call instruction to "exit" the emulated
- *  syscall.
- *
- * XXX verify that this can't be interrupted by a breakpoint trap
- */
-static void step_exit_syscall_emu(Task *t)
-{
-	struct user_regs_struct r = t->regs();
-	t->cont_sysemu_singlestep();
-	t->set_regs(r);
-
-	t->force_status(0);
-}
-
-/**
  * Advance to the next syscall entry (or virtual entry) according to
  * |step|.  Return 0 if successful, or nonzero if an unhandled trap
  * occurred.
@@ -607,7 +592,7 @@ static int exit_syscall(Task* t,
 	validate_args(step->syscall.no, STATE_SYSCALL_EXIT, t);
 
 	if (emu) {
-		step_exit_syscall_emu(t);
+		t->finish_emulated_syscall();
 	}
 	return 0;
 }
@@ -1219,7 +1204,7 @@ static int skip_desched_ioctl(Task* t,
 	struct user_regs_struct r = t->regs();
 	r.eax = 0;
 	t->set_regs(r);
-	step_exit_syscall_emu(t);
+	t->finish_emulated_syscall();
 	return 0;
 }
 
@@ -1414,7 +1399,7 @@ static int flush_one_syscall(Task* t,
 		r.eax = rec_rec->ret;
 		t->set_regs(r);
 		if (emu) {
-			step_exit_syscall_emu(t);
+			t->finish_emulated_syscall();
 		}
 
 		switch (call) {
