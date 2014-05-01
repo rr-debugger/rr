@@ -2231,7 +2231,7 @@ Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
 		LOG(debug) <<"(clone child not enabling CLEARTID)";
 	}
 	if (CLONE_SET_TLS & flags) {
-		set_thread_area(tls);
+		t->set_thread_area(tls);
 	}
 
 	t->as->insert_task(t);
