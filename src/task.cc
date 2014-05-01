@@ -435,7 +435,7 @@ AddressSpace::remove_breakpoint(void* addr, TrapType type)
 	destroy_breakpoint(it);
 }
 
-void
+bool
 AddressSpace::set_breakpoint(void* addr, TrapType type)
 {
 	auto it = breakpoints.find(addr);
@@ -444,7 +444,12 @@ AddressSpace::set_breakpoint(void* addr, TrapType type)
 		// Grab a random task from the VM so we can use its
 		// read/write_mem() helpers.
 		Task* t = *task_set().begin();
-		t->read_mem(addr, &bp->overwritten_data);
+		if (sizeof(bp->overwritten_data) !=
+		    t->read_bytes_fallible(addr,
+					   sizeof(bp->overwritten_data),
+					   &bp->overwritten_data)) {
+			return false;
+		}
 		t->write_mem(addr, breakpoint_insn);
 
 		auto it_and_is_new = breakpoints.insert(make_pair(addr, bp));
@@ -452,6 +457,7 @@ AddressSpace::set_breakpoint(void* addr, TrapType type)
 		it = it_and_is_new.first;
 	}
 	it->second->ref(type);
+	return true;
 }
 
 void
