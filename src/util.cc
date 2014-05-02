@@ -716,9 +716,9 @@ void dump_process_memory(Task* t, int global_time, const char* tag)
 	dump_file = fopen64(filename, "w");
 
 	const AddressSpace& as = *(t->vm());
-	for (auto it = as.begin(); it != as.end(); ++it) {
-		const Mapping &first = it->first;
-		const MappableResource &second = it->second; 
+	for (auto& kv : as.memmap()) {
+		const Mapping& first = kv.first;
+		const MappableResource& second = kv.second; 
 		vector<byte> mem;
 		mem.resize(first.num_bytes());
 
@@ -832,10 +832,10 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 		FATAL() <<"Failed to open checksum file "<< filename;
 	}
 
-	const AddressSpace &as = *(t->vm());
-	for (auto it = as.begin(); it != as.end(); ++it) {
-		const Mapping &first = it->first;
-		const MappableResource &second = it->second; 
+	const AddressSpace& as = *(t->vm());
+	for (auto& kv : as.memmap()) {
+		const Mapping& first = kv.first;
+		const MappableResource& second = kv.second; 
 
 		vector<byte> mem;
 		ssize_t valid_mem_len = 0; 
@@ -1305,12 +1305,9 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 // XXX this is probably dup'd somewhere else
 static void advance_syscall(Task* t)
 {
-	t->cont_syscall();
-
-	/* Skip past a seccomp trace, if we happened to see one. */
-	if (t->is_ptrace_seccomp_event()) {
+	do {
 		t->cont_syscall();
-	}
+	} while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
 	assert(t->ptrace_event() == 0);
 }
 

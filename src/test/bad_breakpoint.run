@@ -2,5 +2,5 @@ source `dirname $0`/util.sh bad_breakpoint "$@"
 record simple
 for i in $(seq 15 25); do
     echo Replaying to event $i ...
-    debug simple bad_breakpoint "-g $i"
+    debug simple restart_finish "-g $i"
 done

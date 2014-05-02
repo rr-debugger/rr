@@ -5,6 +5,7 @@
 
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "task.h"
@@ -59,9 +60,21 @@ public:
 	~EmuFile();
 
 	/**
+	 * Return a copy of this file.  See |create()| for the meaning
+	 * of |fs_tag|.
+	 */
+	shr_ptr clone(int fs_tag);
+
+	/**
 	 * Return the fd of the real file backing this.
 	 */
 	int fd() const { return file; }
+
+	/**
+	 * Return a pathname referring to the fd of this in this
+	 * tracer's address space.  For example, "/proc/12345/fd/5".
+	 */
+	std::string proc_path() const;
 
 	/**
 	 * Mark/unmark/check to see if this file is marked.
@@ -78,20 +91,23 @@ public:
 
 	/**
 	 * Create a new emulated file for |orig_path| that will
-	 * emulate the recorded attributes |est|.
+	 * emulate the recorded attributes |est|.  |tag| is used to
+	 * uniquely identify this file among multiple EmuFs's that
+	 * might exist concurrently in this tracer process.
 	 */
-	static shr_ptr create(const char* orig_path, const struct stat& est);
+	static shr_ptr create(int fs_tag,
+			      const char* orig_path, const struct stat& est);
 
 private:
-	EmuFile(int fd, const struct stat& est)
-		: est(est), file(fd), is_marked(false) { }
+	EmuFile(int fd, const struct stat& est, const char* orig_path);
+
+	struct stat est;
+	std::string orig_path;
+	ScopedOpen file;
+	bool is_marked;
 
 	EmuFile(const EmuFile&) = delete;
 	EmuFile operator=(const EmuFile&) = delete;
-
-	struct stat est;
-	ScopedOpen file;
-	bool is_marked;
 };
 
 class EmuFs {
@@ -101,10 +117,24 @@ public:
 	typedef std::shared_ptr<EmuFs> shr_ptr;
 
 	/**
-	 * Return an fd that refers to an emulated file representing
-	 * the recorded file underlying |mf|.
+	 * Return the EmuFile defined by |id|, which must exist or
+	 * this won't return.
 	 */
-	int get_or_create(const struct mmapped_file& mf);
+	EmuFile::shr_ptr at(const FileId& id) const;
+
+	/**
+	 * Return a copy of this fs such that |at()| and
+	 * |get_or_create()| will return semantically identical
+	 * results as this, and such that mutations of the returned fs
+	 * won't affect this and vice versa.
+	 */
+	shr_ptr clone();
+
+	/**
+	 * Return a real file path that refers to an emulated file
+	 * representing the recorded file underlying |mf|.
+	 */
+	EmuFile::shr_ptr get_or_create(const struct mmapped_file& mf);
 
 	size_t size() const { return files.size(); }
 
@@ -112,7 +142,7 @@ public:
 	static shr_ptr create();
 
 private:
-	EmuFs() {}
+	EmuFs();
 
 	/**
 	 * Collect emulated files that aren't referenced by tracees.
@@ -131,6 +161,7 @@ private:
 			      size_t* nr_marked_files);
 
 	FileMap files;
+	int tag;
 
 	EmuFs(const EmuFs&) = delete;
 	EmuFs& operator=(const EmuFs&) = delete;

@@ -10,6 +10,7 @@
 #include <string>
 
 class AddressSpace;
+struct current_state_buffer;
 class EmuFs;
 class Task;
 struct TaskGroup;
@@ -28,6 +29,7 @@ class TraceOfstream;
  * is required when using replay checkpoints, for example.
  */
 class Session {
+	friend class ReplaySession;
 public:
 	typedef std::set<AddressSpace*> AddressSpaceSet;
 	typedef std::map<pid_t, Task*> TaskMap;
@@ -148,6 +150,17 @@ private:
 class ReplaySession : public Session {
 public:
 	typedef std::shared_ptr<ReplaySession> shr_ptr;
+
+	/**
+	 * Return a semantic copy of all the state managed by this,
+	 * that is the entire tracee tree and the state it depends on.
+	 * Any mutations of the returned Session can't affect the
+	 * state of this, and vice versa.
+	 *
+	 * This operation is also called "checkpointing" the replay
+	 * session.
+	 */
+	shr_ptr clone();
 
 	/**
 	 * Fork and exec the initial tracee task to run |ae|, and read

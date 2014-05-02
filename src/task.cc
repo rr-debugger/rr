@@ -39,7 +39,9 @@ using namespace std;
 template<size_t N>
 void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N])
 {
-	snprintf(path, N - 1, SYSCALLBUF_SHMEM_NAME_PREFIX "%d", tid);
+	static int nonce;
+	snprintf(path, N - 1, SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d",
+		 tid, nonce++);
 }
 
 // TODO: merge other dups of this function.
@@ -108,10 +110,8 @@ MappableResource::shared_mmap_file(const struct mmapped_file& file)
 }
 
 /*static*/ MappableResource
-MappableResource::syscallbuf(pid_t tid, int fd)
+MappableResource::syscallbuf(pid_t tid, int fd, const char* path)
  {
-	 char path[PATH_MAX];
-	 format_syscallbuf_shmem_path(tid, path);
 	 struct stat st;
 	 if (fstat(fd, &st)) {
 		 FATAL() <<"Failed to fstat("<< fd <<") ("<< path <<")";
@@ -1118,7 +1118,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, registers(), registers_known(false)
 	, robust_futex_list(), robust_futex_list_len()
 	, stashed_si(), stashed_wait_status()
-	, thread_area()
+	, thread_area(), thread_area_valid()
 	, tid_futex()
 	, top_of_stack()
 	, wait_status()
@@ -1155,8 +1155,7 @@ Task::~Task()
 	as->erase_task(this);
 
 	destroy_hpc(this);
-	close(desched_fd);
-	munmap(syscallbuf_hdr, num_syscallbuf_bytes);
+	destroy_local_buffers();
 
 	// We need the mem_fd in detach_and_reap().
 	detach_and_reap();
@@ -1402,6 +1401,20 @@ Task::is_disarm_desched_event_syscall()
 {
 	return (is_desched_event_syscall()
 		&& PERF_EVENT_IOC_DISABLE == regs().ecx);
+}
+
+bool
+Task::is_probably_replaying_syscall()
+{
+	assert(session_replay);
+	// If the tracee is at our syscall entry points, we know for
+	// sure it's entering/exiting/just-exited a syscall.
+	return (is_traced_syscall() || is_untraced_syscall()
+		// Otherwise, we assume that if orig_eax has been
+		// saved from eax, then the tracee is in a syscall.
+		// This seems to be the heuristic used by the linux
+		// kernel for /proc/PID/syscall.
+		|| regs().orig_eax >= 0);
 }
 
 bool
@@ -1903,6 +1916,13 @@ void
 Task::set_thread_area(void* tls)
 {
 	read_mem(tls, &thread_area);
+	thread_area_valid = true;
+}
+
+const struct user_desc*
+Task::tls() const
+{
+	return thread_area_valid ? &thread_area : nullptr;
 }
 
 void
@@ -2191,8 +2211,10 @@ Task::pending_sig_from_status(int status)
 
 Task*
 Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
-	    pid_t new_tid, pid_t new_rec_tid)
+	    pid_t new_tid, pid_t new_rec_tid,
+	    Session* other_session)
 {
+	auto& sess = other_session ? *other_session : session();
 	Task* t = new Task(new_tid, new_rec_tid, priority);
 
 	t->session_record = session_record;
@@ -2210,13 +2232,13 @@ Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
 		t->tg = tg;
 		tg->insert_task(t);
 	} else {
-		auto g = session().create_tg(t);
+		auto g = sess.create_tg(t);
 		t->tg.swap(g);
 	}
 	if (CLONE_SHARE_VM & flags) {
 		t->as = as;
 	} else {
-		t->as = session().clone(as);
+		t->as = sess.clone(as);
 	}
 	if (stack) {
 		const Mapping& m = 
@@ -2243,6 +2265,157 @@ Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
 
 	t->as->insert_task(t);
 	return t;
+}
+
+Task*
+Task::os_fork_into(Session* session)
+{
+	struct current_state_buffer state;
+	prepare_remote_syscalls(this, &state);
+	Task* child = os_clone(this, session, &state, rec_tid,
+			       // Most likely, we'll be setting up a
+			       // CLEARTID futex.  That's not done
+			       // here, but rather later in
+			       // |copy_state()|.
+			       //
+			       // We also don't use any of the SETTID
+			       // flags because that earlier work will
+			       // be copied by fork()ing the address
+			       // space.
+			       SIGCHLD);
+	finish_remote_syscalls(this, &state);
+	// When we forked ourselves, the child inherited the setup we
+	// did to make the clone() call.  So we have to "finish" the
+	// remote calls (i.e. undo fudged state) in the child too,
+	// even though we never made any there.
+	state.pid = child->tid;
+	finish_remote_syscalls(child, &state);
+	return child;
+}
+
+Task*
+Task::os_clone_into(Task* task_leader, struct current_state_buffer* state)
+{
+	return os_clone(task_leader, &task_leader->session(), state,
+			rec_tid,
+			// We don't actually /need/ to specify the
+			// SIGHAND/SYSVMEM flags because those things
+			// are emulated in the tracee.  But we use the
+			// same flags as glibc to be on the safe side
+			// wrt kernel bugs.
+			//
+			// We don't pass CLONE_SETTLS here *only*
+			// because we'll do it later in
+			// |copy_state()|.
+			//
+			// See |os_fork_into()| above for discussion
+			// of the CTID flags.
+			(CLONE_VM | CLONE_FS | CLONE_FILES |
+			 CLONE_SIGHAND | CLONE_THREAD |
+			 CLONE_SYSVSEM),
+			stack());
+}
+
+void
+Task::copy_state(Task* from)
+{
+	long err;
+	set_regs(from->regs());
+	struct current_state_buffer state;
+	prepare_remote_syscalls(this, &state);
+	{
+		struct restore_mem restore_prname;
+		char prname[16];
+		strncpy(prname, from->name().c_str(), sizeof(prname));
+		void* remote_prname = push_tmp_mem(this, &state,
+						   (const byte*)prname,
+						   sizeof(prname),
+						   &restore_prname);
+		LOG(debug) <<"    setting name to "<< prname;
+		err = remote_syscall2(this, &state, SYS_prctl,
+				      PR_SET_NAME, remote_prname);
+		ASSERT(this, 0 == err);
+		update_prname(remote_prname);
+		pop_tmp_mem(this, &state, &restore_prname);
+	}
+
+	if (from->robust_list()) {
+		set_robust_list(from->robust_list(), from->robust_list_len());
+		LOG(debug) <<"    setting robust-list "<< this->robust_list()
+			   <<" (size "<< this->robust_list_len() <<")";
+		err = remote_syscall2(this, &state, SYS_set_robust_list,
+				      this->robust_list(),
+				      this->robust_list_len());
+		ASSERT(this, 0 == err);
+	}
+
+	if (const struct user_desc* tls = from->tls()) {
+		struct restore_mem restore_tls;
+		void* remote_tls = push_tmp_mem(this, &state,
+						(const byte*)tls, sizeof(*tls),
+						&restore_tls);
+		LOG(debug) <<"    setting tls "<< remote_tls;
+		err = remote_syscall1(this, &state, SYS_set_thread_area,
+				      remote_tls);
+		ASSERT(this, 0 == err);
+		set_thread_area(remote_tls);
+		pop_tmp_mem(this, &state, &restore_tls);
+	}
+
+	if (void* ctid = from->tid_addr()) {
+		err = remote_syscall1(this, &state, SYS_set_tid_address, ctid);
+		ASSERT(this, tid == err);
+	}
+
+	if (from->syscallbuf_child) {
+		// All these fields are preserved by the fork.
+		traced_syscall_ip = from->traced_syscall_ip;
+		untraced_syscall_ip = from->untraced_syscall_ip;
+		syscallbuf_child = from->syscallbuf_child;
+		num_syscallbuf_bytes = from->num_syscallbuf_bytes;
+		desched_fd_child = from->desched_fd_child;
+
+		// The syscallbuf is mapped as a shared segment
+		// between rr and the tracee.  So we have to unmap it,
+		// create a copy, and then re-map the copy in rr and
+		// the tracee.
+		void* map_hint = from->syscallbuf_child;
+		destroy_buffers(DESTROY_SYSCALLBUF);
+		destroy_local_buffers();
+
+		syscallbuf_child = init_syscall_buffer(&state, map_hint);
+		ASSERT(this, from->syscallbuf_child == syscallbuf_child);
+		// Ensure the copied syscallbuf has the same contents
+		// as the old one, for consistency checking.
+		memcpy(syscallbuf_hdr, from->syscallbuf_hdr,
+		       num_syscallbuf_bytes);
+	}
+
+	finish_remote_syscalls(this, &state);
+
+	// The scratch buffer (for now) is merely a private mapping in
+	// the remote task.  The CoW copy made by fork()'ing the
+	// address space has the semantics we want.  It's not used in
+	// replay anyway.
+	scratch_ptr = from->scratch_ptr;
+	scratch_size = from->scratch_size;
+
+	// Whatever |from|'s last wait status was is what ours would
+	// have been.
+	wait_status = from->wait_status;
+
+	// These are only metadata that have been inferred from the
+	// series of syscalls made by the trace so far.
+	blocked_sigs = from->blocked_sigs;
+	pending_events = from->pending_events;
+	trace = from->trace;
+}
+
+void
+Task::destroy_local_buffers()
+{
+	close(desched_fd);
+	munmap(syscallbuf_hdr, num_syscallbuf_bytes);
 }
 
 void
@@ -2319,7 +2492,7 @@ Task::open_mem_fd()
 {
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path) - 1, "/proc/%d/mem", tid);
-	int fd =open(path, O_RDWR);
+	int fd = open(path, O_RDWR);
 	ASSERT(this, fd >= 0) <<"Failed to open "<< path;
 	return fd;
 }
@@ -2380,8 +2553,9 @@ Task::init_syscall_buffer(struct current_state_buffer* state, void* map_hint)
 	memset(syscallbuf_hdr, 0, sizeof(*syscallbuf_hdr));
 
 	vm()->map(child_map_addr, num_syscallbuf_bytes,
-		     prot, flags, page_size() * offset_pages,
-		     MappableResource::syscallbuf(rec_tid, shmem_fd));
+		  prot, flags, page_size() * offset_pages,
+		  MappableResource::syscallbuf(rec_tid, shmem_fd,
+					       shmem_name));
 
 	close(shmem_fd);
 	remote_syscall1(this, state, SYS_close, child_shmem_fd);
@@ -2678,6 +2852,39 @@ Task::handle_runaway(int sig)
 }
 
 /*static*/ Task*
+Task::os_clone(Task* parent, Session* session,
+	       struct current_state_buffer* state,
+	       pid_t rec_child_tid, unsigned base_flags, void* stack,
+	       void* ptid, void* tls, void* ctid)
+{
+	// NB: reference the glibc i386 clone.S implementation for
+	// placement of clone syscall args.  The man page is incorrect
+	// and the linux source is confusing.
+	remote_syscall5(parent, state, SYS_clone,
+			base_flags, stack, ptid, tls, ctid);
+	while (!(PTRACE_EVENT_CLONE == parent->ptrace_event()
+		 || PTRACE_EVENT_FORK == parent->ptrace_event())) {
+		ASSERT(parent, (SYSCALL_MAY_RESTART(parent->regs().eax)
+				|| -ENOSYS == parent->regs().eax))
+			<<"Unexpected task status "<< HEX(parent->status())
+			<<" (eax:"<< parent->regs().eax <<")";
+		parent->cont_syscall();
+	}
+
+	parent->cont_syscall();
+	pid_t new_tid = parent->regs().eax;
+	if (0 > new_tid) {
+		FATAL() <<"Failed to clone("<< parent->tid <<") -> "<< new_tid
+			<< ": "<< strerror(-new_tid);
+	}
+	Task* child = parent->clone(clone_flags_to_task_flags(base_flags),
+				    stack, tls, ctid,
+				    new_tid, rec_child_tid, session);
+	child->wait();
+	return child;
+}
+
+/*static*/ Task*
 Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 {
 	assert(session.tasks().size() == 0);
@@ -2748,4 +2955,5 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 	}
 	t->force_status(0);
 	return t;
+
 }

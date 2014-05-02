@@ -47,7 +47,6 @@ static void run_test(void) {
 	for (i = 0; i < num_bytes / sizeof(int); ++i) {
 		wpage[i] = i;
 		test_assert(rpage[i] == i);
-		atomic_printf("%d,", rpage[i]);
 	}
 }
 
@@ -55,9 +54,11 @@ int main(int argc, char *argv[]) {
 	pid_t c;
 	int status;
 
+	atomic_printf("%d: checking shared maps ...\n", getpid());
 	run_test();
 
 	if (0 == (c = fork())) {
+		atomic_printf("%d:   and in fork child ...\n", getpid());
 		run_test();
 		exit(0);
 	}

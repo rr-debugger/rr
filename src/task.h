@@ -297,6 +297,9 @@ struct MappableResource {
 	bool is_scratch() const {
 		return PSEUDODEVICE_SCRATCH == id.psdev;
 	}
+	bool is_shared_mmap_file() const {
+		return PSEUDODEVICE_SHARED_MMAP_FILE == id.psdev;
+	}
 	bool is_stack() const {
 		return PSEUDODEVICE_STACK == id.psdev;
 	}
@@ -348,7 +351,8 @@ struct MappableResource {
 					       PSEUDODEVICE_STACK),
 					"[stack]");
 	}
-	static MappableResource syscallbuf(pid_t tid, int fd);
+	static MappableResource syscallbuf(pid_t tid, int fd,
+					   const char* path);
 
 	FileId id;
 	/**
@@ -446,11 +450,6 @@ public:
 
 	~AddressSpace();
 
-	/** Return an iterator at the beginning of the memory map. */
-	MemoryMap::const_iterator begin() const {
-		return mem.begin();
-	}
-
 	/**
 	 * Call this after a new task has been cloned within this
 	 * address space.
@@ -470,11 +469,6 @@ public:
 	 * XXX/ostream-ify me.
 	 */
 	void dump() const;
-
-	/** Return an iterator at the end of the memory map. */
-	MemoryMap::const_iterator end() const {
-		return mem.end();
-	}
 
 	/**
 	 * Return true if this was created as the result of an exec()
@@ -508,6 +502,11 @@ public:
 	 * addr + num_bytes).  There must be exactly one such mapping.
 	 */
 	MemoryMap::value_type mapping_of(void* addr, size_t num_bytes) const;
+
+	/**
+	 * Return the memory map.
+	 */
+	const MemoryMap& memmap() const { return mem; }
 
 	/**
 	 * Change the protection bits of [addr, addr + num_bytes) to
@@ -806,6 +805,12 @@ public:
 	 * |cont_sysemu()| or |cont_sysemu_singlestep()|, but that's
 	 * not checked.  If so, step over the system call instruction
 	 * to "exit" the emulated syscall.
+	 *
+	 * This operation is (assumed to be) idempotent:
+	 * |finish_emulated_syscall()| can be called any number of
+	 * times without changing state other than
+	 * emulated-syscall-exited-ness.  Checkpointing relies on this
+	 * assumption.
 	 */
 	void finish_emulated_syscall();
 
@@ -1031,6 +1036,17 @@ public:
 	bool is_untraced_syscall() {
 		return ip() == untraced_syscall_ip;
 	}
+
+	/**
+	 * Return true if this task is most likely entering or exiting
+	 * a syscall.
+	 *
+	 * No false negatives are known to be possible (i.e. if this
+	 * task really is replaying a syscall, true will be returned),
+	 * however false positives are possible.  Callers should
+	 * therefore use this return value conservatively.
+	 */
+	bool is_probably_replaying_syscall();
 
 	/**
 	 * Return true if |ptrace_event()| is the trace event
@@ -1272,7 +1288,7 @@ public:
 
 	/** Update the thread area to |addr|. */
 	void set_thread_area(void* tls);
-	const struct user_desc& tls() const { return thread_area; }
+	const struct user_desc* tls() const;
 
 	/** Update the clear-tid futex to |tid_addr|. */
 	void set_tid_addr(void* tid_addr);
@@ -1614,7 +1630,26 @@ private:
 	 * to the task during recording.
 	 */
 	Task* clone(int flags, void* stack, void* tls, void* cleartid_addr,
-		    pid_t new_tid, pid_t new_rec_tid = -1);
+		    pid_t new_tid, pid_t new_rec_tid = -1,
+		    Session* other_session = nullptr);
+
+	/**
+	 * Make this task look like an identical copy of |from| in
+	 * every way relevant to replay.  This task should have been
+	 * created by calling |from->os_clone()| or |from->os_fork()|,
+	 * and if it wasn't results are undefined.
+	 *
+	 * Some task state must be copied into this by injecting and
+	 * running syscalls in this task.  Other state is metadata
+	 * that can simply be copied over in local memory.
+	 */
+	void copy_state(Task* from);
+
+	/**
+	 * Destroy tracer-side state of this (as opposed to remote,
+	 * tracee-side state).
+	 */
+	void destroy_local_buffers();
 
 	/**
 	 * Detach this from rr and try hard to ensure any operations
@@ -1676,6 +1711,25 @@ private:
 	void maybe_flush_syscallbuf();
 
 	/**
+	 * Make the OS-level calls to create a new fork or clone that
+	 * will eventually be a copy of this task and return that Task
+	 * metadata.  These methods are used in concert with
+	 * |Task::copy_state()| to create task copies during
+	 * checkpointing.
+	 *
+	 * For |os_fork_into()|, |session| will be tracking the
+	 * returned fork child.
+	 *
+	 * For |os_clone_into()|, |task_leader| is the "main thread"
+	 * in the process into which the copy of this task will be
+	 * created.  |task_leader| will perform the actual OS calls to
+	 * create the new child.
+	 */
+	Task* os_fork_into(Session* session);
+	Task* os_clone_into(Task* task_leader,
+			    struct current_state_buffer* state);
+
+	/**
 	 * Return the trace fstream that we're using, whether in
 	 * recording or replay.
 	 */
@@ -1694,6 +1748,24 @@ private:
 	 * PTRACE_INTERRUPT the runaway tracee.
 	 */
 	static void handle_runaway(int sig);
+
+	/**
+	 * Make the OS-level calls to clone |parent| into |session|
+	 * and return the resulting Task metadata for that new
+	 * process.  This is as opposed to |Task::clone()|, which only
+	 * attaches Task metadata to an /existing/ process.
+	 *
+	 * The new clone will be tracked in |session|.  The other
+	 * arguments are as for |Task::clone()| above.
+	 */
+	static Task* os_clone(Task* parent, Session* session,
+			      struct current_state_buffer* state,
+			      pid_t rec_child_tid,
+			      unsigned base_flags,
+			      void* stack = nullptr,
+			      void* ptid = nullptr,
+			      void* tls = nullptr,
+			      void* ctid = nullptr);
 
 	/** Fork and exec a task to run |ae|, with |rec_tid|. */
 	static Task* spawn(const struct args_env& ae, Session& session,
@@ -1754,8 +1826,9 @@ private:
 	// The task group this belongs to.
 	std::shared_ptr<TaskGroup> tg;
 	// Contents of the |tls| argument passed to |clone()| and
-	// |set_thread_area()|.
+	// |set_thread_area()|, when |thread_area_valid| is true.
 	struct user_desc thread_area;
+	bool thread_area_valid;
 	// The memory cell the kernel will clear and notify on exit,
 	// if our clone parent requested it.
 	void* tid_futex;

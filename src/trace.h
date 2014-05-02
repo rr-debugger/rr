@@ -248,6 +248,13 @@ public:
 					 struct raw_data& d);
 
 	/**
+	 * Return a copy of this stream that has exactly the same
+	 * state as this, but for which mutations of the returned
+	 * clone won't affect the state of this (and vice versa).
+	 */
+	shr_ptr clone();
+
+	/**
 	 * Return the next trace frame, without mutating any stream
 	 * state.
 	 */

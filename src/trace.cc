@@ -416,6 +416,19 @@ struct AutoRestoreState {
 	uint32_t global_time;
 };
 
+TraceIfstream::shr_ptr
+TraceIfstream::clone()
+{
+	shr_ptr stream(new TraceIfstream(dir()));
+	stream->events.seekg(events.tellg());
+	stream->data.seekg(data.tellg());
+	stream->data_header.seekg(data_header.tellg());
+	stream->mmaps.seekg(mmaps.tellg());
+	stream->global_time = global_time;
+	assert(stream->good());
+	return stream;
+}
+
 struct trace_frame
 TraceIfstream::peek_frame()
 {

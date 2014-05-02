@@ -6,6 +6,7 @@
 
 #include <syscall.h>
 
+#include <fstream>
 #include <sstream>
 #include <string>
 
@@ -13,6 +14,8 @@
 #include "session.h"
 
 using namespace std;
+
+static int emufs_count;
 
 static void replace_char(string& s, char c, char replacement)
 {
@@ -27,6 +30,26 @@ EmuFile::~EmuFile()
 	LOG(debug) <<"    EmuFs::~File(einode:"<< est.st_ino <<")";
 }
 
+EmuFile::shr_ptr
+EmuFile::clone(int fs_tag)
+{
+	auto f = EmuFile::create(fs_tag, orig_path.c_str(), est);
+	// NB: this isn't the most efficient possible file copy, but
+	// it's simple and not too slow.
+	ifstream src(proc_path(), ifstream::binary);
+	ofstream dst(f->proc_path(), ofstream::binary);
+	dst << src.rdbuf();
+	return f;
+}
+
+string
+EmuFile::proc_path() const
+{
+	stringstream ss;
+	ss <<"/proc/"<< getpid() <<"/fd/"<< fd();
+	return ss.str();
+}
+
 void
 EmuFile::update(const struct stat& st)
 {
@@ -38,21 +61,45 @@ EmuFile::update(const struct stat& st)
 }
 
 /*static*/ EmuFile::shr_ptr
-EmuFile::create(const char* orig_path, const struct stat& est)
+EmuFile::create(int fs_tag, const char* orig_path, const struct stat& est)
 {
 	// Sanitize the mapped file path so that we can use it in a
 	// leaf name.
-	string tag(orig_path);
-	replace_char(tag, '/', '\\');
+	string path_tag(orig_path);
+	replace_char(path_tag, '/', '\\');
 
 	stringstream name;
-	name << "rr-emufs-"<< getpid() <<"-dev-" << est.st_dev
-	     << "-inode-" << est.st_ino << "-" << tag;
+	name << "rr-emufs-"<< getpid() <<"-"<< fs_tag <<"-dev-" << est.st_dev
+	     << "-inode-" << est.st_ino << "-" << path_tag;
 	shr_ptr f(new EmuFile(create_shmem_segment(name.str().c_str(),
-						   est.st_size), est));
+						   est.st_size),
+			      est, orig_path));
 	LOG(debug) <<"created emulated file for "<< orig_path
 		   <<" as "<< name.str();
 	return f;
+}
+
+EmuFile::EmuFile(int fd, const struct stat& est, const char* orig_path)
+	: est(est)
+	, orig_path(orig_path)
+	, file(fd)
+{}
+
+EmuFile::shr_ptr
+EmuFs::at(const FileId& id) const
+{
+	return files.at(id);
+}
+
+EmuFs::shr_ptr
+EmuFs::clone()
+{
+	shr_ptr fs(new EmuFs());
+	for (auto& kv : files) {
+		const FileId& id = kv.first;
+		fs->files[id] = kv.second->clone(fs->tag);
+	}
+	return fs;
 }
 
 void
@@ -83,7 +130,7 @@ EmuFs::gc(const Session& session)
 	// they're different things: two tracees could share an
 	// address space but have different file tables.
 	size_t nr_marked_files = 0;
-	for (auto as : session.vms()) {
+	for (auto& as : session.vms()) {
 		Task* t = *as->task_set().begin();
 		LOG(debug) <<"  iterating /proc/"<< t->tid <<"/maps ...";
 
@@ -113,17 +160,18 @@ EmuFs::gc(const Session& session)
 	}
 }
 
-int
+EmuFile::shr_ptr
 EmuFs::get_or_create(const struct mmapped_file& mf)
 {
-	auto it = files.find(mf.stat);
+	FileId id(mf.stat, PSEUDODEVICE_SHARED_MMAP_FILE);
+	auto it = files.find(id);
 	if (it != files.end()) {
 		it->second->update(mf.stat);
-		return it->second->fd();
+		return it->second;
 	}
-	auto vf = EmuFile::create(mf.filename, mf.stat);
-	files[mf.stat] = vf;
-	return vf->fd();
+	auto vf = EmuFile::create(tag, mf.filename, mf.stat);
+	files[id] = vf;
+	return vf;
 }
 
 /*static*/ EmuFs::shr_ptr
@@ -132,16 +180,19 @@ EmuFs::create()
 	return shr_ptr(new EmuFs());
 }
 
+EmuFs::EmuFs() : tag(emufs_count++) {}
+
 void
 EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
 			size_t* nr_marked_files)
 {
-	for (auto it = as.begin(); it != as.end(); ++it) {
-		const MappableResource& r = it->second;
+	for (auto& kv : as.memmap()) {
+		const MappableResource& r = kv.second;
 		LOG(debug) <<"  examining "<< r.fsname.c_str() <<" ...";
 
 		auto id_ef = files.find(r.id);
 		if (id_ef == files.end()) {
+			ASSERT(t, !r.is_shared_mmap_file());
 			continue;
 		}
 		auto ef = id_ef->second;

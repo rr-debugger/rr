@@ -84,7 +84,11 @@
 
 using namespace std;
 
+// |session| is used to drive replay.  If we're being controlled by a
+// |debugger, then |checkpoint| is a copy of |session| that was made
+// |when the debugger was attached.
 ReplaySession::shr_ptr session;
+ReplaySession::shr_ptr checkpoint;
 // When we restart a replay session, we stash the debug context here
 // so that we can find it again in |maybe_create_debugger()|.  We want
 // to reuse the context after the restart, but we don't want to notify
@@ -409,6 +413,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
 
 	Task *t = session.find_task(cur_trace_frame.tid);
 	assert(t != NULL);
+	ASSERT(t, &session == &t->replay_session());
 
 	t->trace = cur_trace_frame;
 
@@ -1564,7 +1569,8 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		   << statename(t->trace.ev.state);
 	if (t->syscallbuf_hdr) {
 		LOG(debug) <<"    (syscllbufsz:"<< t->syscallbuf_hdr->num_rec_bytes
-			   <<", abrtcmt:"<< t->syscallbuf_hdr->abort_commit <<")";
+			   <<", abrtcmt:"<< t->syscallbuf_hdr->abort_commit
+			   <<", locked:"<< t->syscallbuf_hdr->locked <<")";
 	}
 
 	/* Advance the trace until we've exec()'d the tracee before
@@ -1829,31 +1835,102 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 }
 
 /**
+ * Return true if a side effect of creating the debugger interface
+ * will be checkpointing the replay session.
+ */
+static bool will_checkpoint()
+{
+	return !rr_flags()->dont_launch_debugger;
+}
+
+/**
+ * Return true if |t| appears to have entered but not exited an atomic
+ * syscall (one that can't be interrupted).
+ */
+static bool is_atomic_syscall(Task* t)
+{
+	return (t->is_probably_replaying_syscall()
+		&& (SYS_execve == t->regs().orig_eax
+		    || (-ENOSYS == t->regs().eax
+			&& !is_always_emulated_syscall(t->regs().orig_eax))));
+}
+
+/**
+ * Return true if it's possible/meaningful to make a checkpoint at the
+ * |frame| that |t| will replay.
+ */
+static bool can_checkpoint_at(Task* t, const struct trace_frame& frame)
+{
+	Event ev(frame.ev);
+	if (is_atomic_syscall(t)) {
+		return false;
+	}
+	switch (ev.type()) {
+	case EV_EXIT:
+	case EV_UNSTABLE_EXIT:
+		// At exits, we can't clone the exiting tasks, so
+		// don't event bother trying to checkpoint.
+	case EV_SYSCALLBUF_RESET:
+		// RESETs are usually inserted in between syscall
+		// entry/exit.  Help the |is_atomic_syscall()|
+		// heuristics by not attempting to checkpoint at
+		// RESETs.  Users would never want to do that anyway.
+	case EV_TRACE_TERMINATION:
+		// There's nothing to checkpoint at the end of an
+		// early-terminated trace.
+		return false;
+	default:
+		return true;
+	}
+}
+
+/**
  * Return the previous debugger |dbg| if there was one.  Otherwise if
  * the trace has reached the event at which the user wanted a debugger
  * started, then create one and return it.  Otherwise return nullptr.
+ *
+ * This must be called before scheduling the task for the next event
+ * (and thereby mutating the TraceIfstream for that event).
  */
-struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
+struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 {
 	if (dbg) {
 		return dbg;
 	}
-	// Don't launch the debugger for the initial rr fork child.
-	// No one ever wants that to happen.
-	if (!t->session().can_validate()) {
+	if (rr_flags()->dont_launch_debugger) {
 		return nullptr;
 	}
+	// Don't launch the debugger for the initial rr fork child.
+	// No one ever wants that to happen.
+	if (!session->can_validate()) {
+		return nullptr;
+	}
+	// When we decide to create the debugger, we may end up
+	// creating a checkpoint.  In that case, we want the
+	// checkpoint to retain the state it had *before* we started
+	// replaying the next frame.  Otherwise, the TraceIfstream
+	// will be one frame ahead of its tracee tree.
+	//
+	// So we make the decision to create the debugger based on the
+	// frame we're *about to* replay, without modifying the
+	// TraceIfstream.
+	struct trace_frame next_frame = session->ifstream().peek_frame();
+	Task* t = session->find_task(next_frame.tid);
+	if (!t) {
+		return nullptr;
+	}
+	uint32_t event_now = next_frame.global_time;
 	uint32_t goto_event = rr_flags()->goto_event;
 	pid_t target_process = rr_flags()->target_process;
 	bool require_exec = (CREATED_EXEC == rr_flags()->process_created_how);
-	uint32_t event_now = t->trace_time();
 	if (event_now < goto_event
 	    // NB: we'll happily attach to whichever task within the
 	    // group happens to be scheduled here.  We don't take
 	    // "attach to process" to mean "attach to thread-group
 	    // leader".
 	    || (target_process && t->tgid() != target_process)
-	    || (require_exec && !t->vm()->execed())) {
+	    || (require_exec && !t->vm()->execed())
+	    || (will_checkpoint() && !can_checkpoint_at(t, next_frame))){
 		return nullptr;
 	}
 	assert(!dbg);
@@ -1866,12 +1943,24 @@ struct dbg_context* maybe_create_debugger(Task* t, struct dbg_context* dbg)
 			target_process, event_now);
 	}
 
+	if (will_checkpoint()) {
+		// Have the "checkpoint" be the original replay
+		// session, and then switch over to using the cloned
+		// session.  The cloned tasks will look like children
+		// of the clonees, so this scheme prevents |pstree|
+		// output from getting /too/ far out of whack.
+		checkpoint = session;
+		session = checkpoint->clone();
+		t = session->find_task(t->rec_tid);
+	}
+
 	t->replay_session().set_debugged_tgid(t->tgid());
 	// Store the current tgid and event as the "execution target"
 	// for the next replay session, if we end up restarting.  This
 	// allows us to determine if a later session has reached this
 	// target without necessarily replaying up to this point.
 	update_replay_target(t->tgid(), event_now);
+
 	if (stashed_dbg) {
 		dbg = stashed_dbg;
 		stashed_dbg = nullptr;
@@ -1927,12 +2016,17 @@ static void init_session(ReplaySession::shr_ptr session)
 			     session->ifstream().peek_frame().tid);
 }
 
-static dbg_context* restart_session(ReplaySession::shr_ptr session,
-				    dbg_context* dbg)
+static dbg_context* restart_session(dbg_context* dbg)
 {
 	stashed_dbg = dbg;
-	session->restart();
-	init_session(session);
+	if (checkpoint) {
+		session->kill_all_tasks();
+		session = checkpoint;
+	}
+	if (session->ifstream().time() > rr_flags()->goto_event) {
+		session->restart();
+		init_session(session);
+	}
 	return nullptr;
 }
 
@@ -1940,14 +2034,15 @@ static void replay_trace_frames(void)
 {
 	struct dbg_context* dbg = nullptr;
 	while (!session->last_task()) {
+		dbg = maybe_create_debugger(dbg);
+
 		Task* intr_t;
 		Task* t = schedule_task(*session, &intr_t);
 		if (!t) {
 			return handle_interrupted_trace(dbg, intr_t);
 		}
-		dbg = maybe_create_debugger(t, dbg);
 		if (!replay_one_trace_frame(dbg, t)) {
-			dbg = restart_session(session, dbg);
+			dbg = restart_session(dbg);
 		}
 	}
 	LOG(info) <<("Replayer successfully finished.");
@@ -1959,7 +2054,7 @@ static void replay_trace_frames(void)
 		struct dbg_request req =
 			process_debugger_requests(dbg, session->last_task());
 		if (DREQ_RESTART == req.type) {
-			dbg = restart_session(session, dbg);
+			dbg = restart_session(dbg);
 			return replay_trace_frames();
 		}
 		FATAL() <<"Received continue request after end-of-trace.";
