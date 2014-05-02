@@ -565,7 +565,7 @@ public:
 	static const byte breakpoint_insn = 0xCC;
 
 private:
-	AddressSpace(Task* t, Session& session);
+	AddressSpace(Task* t, const std::string& exe, Session& session);
 	AddressSpace(const AddressSpace& o);
 
 	/**
@@ -895,6 +895,12 @@ public:
 	void dump(FILE* out = NULL) const;
 
 	/**
+	 * Return the exe path passed to the most recent (successful)
+	 * execve call.
+	 */
+	const std::string& exec_file() const { return execve_file; }
+
+	/**
 	 * Return true if this exited because of a SYS_exit/exit_group
 	 * call.
 	 */
@@ -1112,6 +1118,12 @@ public:
 	int pending_sig() const {
 		return pending_sig_from_status(wait_status);
 	}
+
+	/**
+	 * Call this method when this task has entered an |execve()|
+	 * call.
+	 */
+	void pre_exec();
 
 	/**
 	 * Call this after an |execve()| syscall finishes.  Emulate
@@ -1784,6 +1796,9 @@ private:
 	//
 	// TODO: we should only need one of these per address space.
 	int child_mem_fd;
+	// The exe-file argument passed to the most recent execve call
+	// made by this task.
+	std::string execve_file;
 	// The current stack of events being processed.  (We use a
 	// deque instead of a stack because we need to iterate the
 	// events.)

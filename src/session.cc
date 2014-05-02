@@ -15,9 +15,9 @@
 using namespace std;
 
 AddressSpace::shr_ptr
-Session::create_vm(Task* t)
+Session::create_vm(Task* t, const std::string& exe)
 {
-	AddressSpace::shr_ptr as(new AddressSpace(t, *this));
+	AddressSpace::shr_ptr as(new AddressSpace(t, exe, *this));
 	as->insert_task(t);
 	sas.insert(as.get());
 	return as;

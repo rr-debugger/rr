@@ -53,7 +53,8 @@ public:
 	 * Create and return a new address space that's constructed
 	 * from |t|'s actual OS address space.
 	 */
-	std::shared_ptr<AddressSpace> create_vm(Task* t);
+	std::shared_ptr<AddressSpace> create_vm(Task* t,
+						const std::string& exe);
 	/**
 	 * Return a copy of |vm| with the same mappings.  If any
 	 * mapping is changed, only the |clone()|d copy is updated,
