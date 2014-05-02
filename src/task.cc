@@ -763,8 +763,8 @@ AddressSpace::verify(Task* t) const
 	vas.assert_segments_match(t);
 }
 
-AddressSpace::AddressSpace(Task* t, Session& session)
-	: is_clone(false), session(session), vdso_start_addr()
+AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
+	: exe(exe), is_clone(false), session(session), vdso_start_addr()
 {
 	// TODO: this is a workaround of
 	// https://github.com/mozilla/rr/issues/1113 .
@@ -929,15 +929,12 @@ AddressSpace::populate_address_space(void* asp, Task* t,
 	const struct mapped_segment_info& info = data->info;
 
 	if (!as->heap.start
+	    && as->exe == info.name
 	    && !(info.prot & PROT_EXEC)
 	    && (info.prot & (PROT_READ | PROT_WRITE))) {
 		as->update_heap(info.end_addr, info.end_addr);
 		LOG(debug) <<"  guessing heap starts at "<< as->heap.start
 			   <<" (end of text segment)";
-	}
-
-	if (!as->exe.length() && (info.prot & PROT_EXEC)) {
-		as->exe = info.name;
 	}
 
 	bool is_dynamic_heap = !strcmp("[heap]", info.name);
@@ -1601,12 +1598,30 @@ static string prname_from_exe_image(const string& e)
 }
 
 void
+Task::pre_exec()
+{
+	execve_file = read_c_str((void*)regs().ebx);
+	if (execve_file[0] != '/') {
+		char buf[PATH_MAX];
+		snprintf(buf, sizeof(buf),
+			 "/proc/%d/cwd/%s", real_tgid(),
+			 execve_file.c_str());
+		execve_file = buf;
+	}
+	char abspath[PATH_MAX];
+	if (realpath(execve_file.c_str(), abspath)) {
+		execve_file = abspath;
+	}
+}
+
+void
 Task::post_exec()
 {
 	sighandlers = sighandlers->clone();
 	sighandlers->reset_user_handlers();
 	as->erase_task(this);
-	auto a = session().create_vm(this);
+	assert(execve_file.size() > 0);
+	auto a = session().create_vm(this, execve_file);
 	as.swap(a);
 	// XXX should we re-create our TaskGroup here too?
 	prname = prname_from_exe_image(as->exe_image());
@@ -2930,7 +2945,7 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 	}
 	auto g = session.create_tg(t);
 	t->tg.swap(g);
-	auto as = session.create_vm(t);
+	auto as = session.create_vm(t, ae.exe_image);
 	t->as.swap(as);
 
 	// Sync with the child process.

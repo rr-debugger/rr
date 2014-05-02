@@ -412,6 +412,20 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 	}
 
 	if (STATE_SYSCALL_ENTRY == state) {
+		Event next_ev(t->ifstream().peek_frame().ev);
+		if (EV_SYSCALL == next_ev.type()
+		    && SYS_execve == next_ev.Syscall().no
+		    && EXITING_SYSCALL == next_ev.Syscall().state) {
+			// The first entering-exec event, when the
+			// tracee is /about to/ enter execve(),
+			// records the PTRACE_EVENT_EXEC delivery.
+			// (TODO: we don't need to record that.)  The
+			// second entering-exec event is when the
+			// tracee is in the exec call.  At that point,
+			// the /next/ event will be the exiting-exec
+			// event, which we're checking for here.
+			t->pre_exec();
+		}
 		// Executed, not emulated.
 		step->action = TSTEP_ENTER_SYSCALL;
 		return;

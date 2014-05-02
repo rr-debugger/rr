@@ -698,21 +698,16 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 0;
 
 	case SYS_execve: {
+		t->pre_exec();
+
 		struct user_regs_struct r =  t->regs();
-		string filename = t->read_c_str((void*)r.ebx);
+		string raw_filename = t->read_c_str((void*)r.ebx);
 		// We can't use push_arg_ptr/pop_arg_ptr to save and restore
 		// ebx because execs get special ptrace events that clobber
 		// the trace event for this system call.
 		t->exec_saved_ebx = r.ebx;
-		uintptr_t end = r.ebx + filename.length();
-		if (filename[0] != '/') {
-			char buf[PATH_MAX];
-			snprintf(buf, sizeof(buf),
-			         "/proc/%d/cwd/%s", t->real_tgid(),
-			         filename.c_str());
-			filename = buf;
-		}
-		if (!exec_file_supported(filename)) {
+		uintptr_t end = r.ebx + raw_filename.length();
+		if (!exec_file_supported(t->exec_file())) {
 			// Force exec to fail with ENOENT by advancing ebx to
 			// the null byte
 			r.ebx = end;
