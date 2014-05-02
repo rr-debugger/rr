@@ -1652,6 +1652,14 @@ Task::record_event(const Event& ev)
 #endif
 		frame.recorded_regs = regs();
 	}
+
+	if (should_dump_memory(this, frame)) {
+		dump_process_memory(this, frame.global_time, "rec");
+	}
+	if (should_checksum(this, frame)) {
+		checksum_process_memory(this, frame.global_time);
+	}
+
 	ofstream() << frame;
 	if (frame.ev.has_exec_info) {
 		reset_hpc(this, rr_flags()->max_rbc);
