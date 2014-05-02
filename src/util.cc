@@ -884,7 +884,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 
 		string raw_map_line = first.str() + ' ' + second.str();
 		if (STORE_CHECKSUMS == c.mode) {
-			fprintf(c.checksums_file,"(%x) %s",
+			fprintf(c.checksums_file,"(%x) %s\n",
 					checksum, raw_map_line.c_str());
 		} else {
 			char line[1024];
