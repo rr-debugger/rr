@@ -90,7 +90,8 @@ HasTaskSet::erase_task(Task* t) {
 }
 
 FileId::FileId(dev_t dev_major, dev_t dev_minor, ino_t ino, PseudoDevice psdev)
-	: device(MKDEV(dev_major, dev_minor)), inode(ino), psdev(psdev) { }
+	: device(MKDEV(dev_major, dev_minor)), inode(ino)
+	, psdev(psdev) { }
 
 ostream& operator<<(ostream& o, const Mapping& m)
 {

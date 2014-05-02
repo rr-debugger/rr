@@ -92,9 +92,10 @@ struct FileId {
 		 , psdev(PSEUDODEVICE_NONE) { }
 	FileId(const struct stat& st, PseudoDevice psdev = PSEUDODEVICE_NONE)
 		: device(st.st_dev), inode(st.st_ino)
-		, psdev(PSEUDODEVICE_NONE) { }
+		, psdev(psdev) { }
 	FileId(dev_t dev, ino_t ino, PseudoDevice psdev = PSEUDODEVICE_NONE)
-		: device(dev), inode(ino), psdev(psdev) { }
+		: device(dev), inode(ino)
+		, psdev(psdev) { }
 	FileId(dev_t dev_major, dev_t dev_minor, ino_t ino,
 	       PseudoDevice psdev = PSEUDODEVICE_NONE);
 
