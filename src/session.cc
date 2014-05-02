@@ -20,7 +20,9 @@ Session::create_vm(Task* t)
 AddressSpace::shr_ptr
 Session::clone(AddressSpace::shr_ptr vm)
 {
-	return AddressSpace::shr_ptr(new AddressSpace(*vm));
+	AddressSpace::shr_ptr as(new AddressSpace(*vm));
+	sas.insert(as.get());
+	return as;
 }
 
 Task*

@@ -20,7 +20,7 @@ struct mmap_arg_struct {
 	unsigned long offset;
 };
 
-int main(int argc, char *argv[]) {
+static void run_test(void) {
 	size_t num_bytes = sysconf(_SC_PAGESIZE);
 	int fd = create_segment(num_bytes);
 	int* wpage = mmap(NULL, num_bytes, PROT_WRITE, MAP_SHARED, fd, 0);
@@ -49,6 +49,20 @@ int main(int argc, char *argv[]) {
 		test_assert(rpage[i] == i);
 		atomic_printf("%d,", rpage[i]);
 	}
+}
+
+int main(int argc, char *argv[]) {
+	pid_t c;
+	int status;
+
+	run_test();
+
+	if (0 == (c = fork())) {
+		run_test();
+		exit(0);
+	}
+	test_assert(c == waitpid(c, &status, 0)
+		    && WIFEXITED(status) && 0 == WEXITSTATUS(status));
 
 	atomic_puts(" done");
 
