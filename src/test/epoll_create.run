@@ -1,0 +1,2 @@
+source `dirname $0`/util.sh epoll_create "$@"
+compare_test EXIT-SUCCESS
