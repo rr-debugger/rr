@@ -1151,6 +1151,14 @@ SYSCALL_DEF0(setresuid32, EMU)
 SYSCALL_DEF1(setrlimit, EXEC, struct rlimit, ecx)
 
 /**
+ *  pid_t setsid(void)
+ *
+ * setsid() is used to start a new session and set the new process
+ * group ID.
+ */
+SYSCALL_DEF0(setsid, EMU)
+
+/**
  *  long set_robust_list(struct robust_list_head *head, size_t len)
  *
  * The robust futex implementation needs to maintain per-thread lists

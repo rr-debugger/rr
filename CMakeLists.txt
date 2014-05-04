@@ -159,6 +159,7 @@ set(BASIC_TESTS
   scm_rights
   segfault
   sendfile
+  setsid
   sigchld_interrupt_signal
   sigill
   sigprocmask
