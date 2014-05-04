@@ -181,6 +181,16 @@ SYSCALL_DEF0(dup2, EMU)
 SYSCALL_DEF0(epoll_create, EMU)
 
 /**
+ *  int epoll_create1(int flags);
+ *
+ * epoll_create1() is very similar to epoll_create.  They are identical
+ * if the passed flag value is 0, they are completely identical.  The
+ * flag argument can be used to set the close-on-exec flag on the new
+ * file descriptor.
+ */
+SYSCALL_DEF0(epoll_create1, EMU)
+
+/**
  *  int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
  *
  * This system call performs control operations on the epoll instance
@@ -1139,6 +1149,14 @@ SYSCALL_DEF0(setresuid32, EMU)
  * must be the same in the replay as in the recording phase.
  */
 SYSCALL_DEF1(setrlimit, EXEC, struct rlimit, ecx)
+
+/**
+ *  pid_t setsid(void)
+ *
+ * setsid() is used to start a new session and set the new process
+ * group ID.
+ */
+SYSCALL_DEF0(setsid, EMU)
 
 /**
  *  long set_robust_list(struct robust_list_head *head, size_t len)

@@ -96,6 +96,8 @@ set(BASIC_TESTS
   clone
   condvar_stress
   crash
+  epoll_create
+  epoll_create1
   exec_self
   exit_group
   fadvise
@@ -157,6 +159,7 @@ set(BASIC_TESTS
   scm_rights
   segfault
   sendfile
+  setsid
   sigchld_interrupt_signal
   sigill
   sigprocmask
