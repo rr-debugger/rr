@@ -97,6 +97,7 @@ set(BASIC_TESTS
   condvar_stress
   crash
   epoll_create
+  epoll_create1
   exec_self
   exit_group
   fadvise
