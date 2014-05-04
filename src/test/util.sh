@@ -37,15 +37,18 @@ function delay_kill { sig=$1; delay_secs=$2; proc=$3
     done
 
     if [[ "$num" -gt 1 ]]; then
+	leave_data=y
 	echo FAILED: "$num" of "'$proc'" >&2
 	exit 1
     elif [[ -z "$pid" ]]; then
+	leave_data=y
 	echo FAILED: process "'$proc'" not located >&2
 	exit 1
     fi
 
     kill -s $sig $pid
     if [[ $? != 0 ]]; then
+	leave_data=y
 	echo FAILED: signal $sig not delivered to "'$proc'" >&2
 	exit 1
     fi
@@ -60,12 +63,12 @@ function fatal { #...
 
 function onexit {
     cd
-    if [[ "$passed" == "y" ]]; then
-        rm -rf $workdir
+    if [[ "$leave_data" != "y" ]]; then
+	rm -rf $workdir
     else
-        echo Test $TESTNAME failed, leaving behind $workdir.
-        echo To replay the failed test, run
-        echo " " _RR_TRACE_DIR="$workdir" rr replay
+	echo Test $TESTNAME failed, leaving behind $workdir.
+	echo To replay the failed test, run
+	echo " " _RR_TRACE_DIR="$workdir" rr replay
     fi
 }
 
@@ -91,7 +94,7 @@ OBJDIR=$3
 workdir=
 # Did the test pass?  If not, then we'll leave the recording and
 # output around for developers to debug.
-passed=n
+leave_data=n
 # The unique ID allocated to this test directory.
 nonce=
 
@@ -133,7 +136,6 @@ nonce=${workdir#/tmp/rr-test-$TESTNAME-}
 
 function fails { why=$1;
     echo NOTE: Skipping "'$TESTNAME'" because it fails: $why
-    passed=y
     exit 0
 }
 
@@ -142,7 +144,6 @@ function fails { why=$1;
 function skip_if_no_syscall_buf {
     if [[ "-n" == "$LIB_ARG" ]]; then
 	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is disabled
-        passed=y
 	exit 0
     fi
 }
@@ -152,14 +153,13 @@ function skip_if_no_syscall_buf {
 function skip_if_syscall_buf {
     if [[ "-b" == "$LIB_ARG" || "" == "$LIB_ARG" ]]; then
 	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is enabled
-        passed=y
 	exit 0
     fi
 }
 
 function just_record { exe=$1; exeargs=$2;
     _RR_TRACE_DIR="$workdir" \
-        rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
+	rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
 }
 
 function save_exe { exe=$1;
@@ -182,7 +182,7 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 
 function replay { replayflags=$1
     _RR_TRACE_DIR="$workdir" \
-        rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
+	rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
 #  debug <exe> <expect-script-name> [replay-args]
@@ -190,12 +190,12 @@ function replay { replayflags=$1
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { exe=$1; expectscript=$2; replayargs=$3
     _RR_TRACE_DIR="$workdir" \
-        python $TESTDIR/$expectscript.py $exe-$nonce \
-        rr $GLOBAL_OPTIONS replay $replayargs
+	python $TESTDIR/$expectscript.py $exe-$nonce \
+	rr $GLOBAL_OPTIONS replay $replayargs
     if [[ $? == 0 ]]; then
-        passed=y
 	echo "Test '$TESTNAME' PASSED"
     else
+	leave_data=y
 	echo "Test '$TESTNAME' FAILED"
     fi
 }
@@ -204,15 +204,17 @@ function debug { exe=$1; expectscript=$2; replayargs=$3
 # output match; (iii) the supplied token was found in the output.
 # Otherwise the test fails.
 function check { token=$1;
-    # The test failed until we prove otherwise below.
     if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out ]; then
+	leave_data=y
 	echo "Test '$TESTNAME' FAILED: output files not found."
     elif [[ $(cat replay.err) != "" ]]; then
+	leave_data=y
 	echo "Test '$TESTNAME' FAILED: error during replay:"
 	echo "--------------------------------------------------"
 	cat replay.err
 	echo "--------------------------------------------------"
     elif [[ $(diff record.out replay.out) != "" ]]; then
+	leave_data=y
 	echo "Test '$TESTNAME' FAILED: output from recording different than replay"
 	echo "Output from recording:"
 	echo "--------------------------------------------------"
@@ -223,12 +225,12 @@ function check { token=$1;
 	cat replay.out
 	echo "--------------------------------------------------"
     elif [[ "$token" != "" && "record.out" != $(grep -l "$token" record.out) ]]; then
+	leave_data=y
 	echo "Test '$TESTNAME' FAILED: token '$token' not in output:"
 	echo "--------------------------------------------------"
 	cat record.out
 	echo "--------------------------------------------------"
     else
-        passed=y
 	echo "Test '$TESTNAME' PASSED"
     fi
 }
@@ -241,7 +243,8 @@ function check { token=$1;
 function compare_test { token=$1; replayflags=$2;
     test=$TESTNAME
     if [[ $token == "" ]]; then
-        fatal "FAILED: Test $test didn't pass an exit token"
+	leave_data=y
+	fatal "FAILED: Test $test didn't pass an exit token"
     fi
     record $test
     replay $replayflags
