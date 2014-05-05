@@ -288,15 +288,13 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		}
 		switch (req.type) {
 		case DREQ_GET_AUXV: {
-			// FIXME: translate tid to rec_tid
-			pid_t tid = req.target.tid > 0 ? req.target.tid : t->tid;
 			char filename[] = "/proc/01234567890/auxv";
 			int fd;
 			struct dbg_auxv_pair auxv[4096];
 			ssize_t len;
 
 			snprintf(filename, sizeof(filename) - 1,
-				 "/proc/%d/auxv", tid);
+				 "/proc/%d/auxv", target->real_tgid());
 			fd = open(filename, O_RDONLY);
 			if (0 > fd) {
 				dbg_reply_get_auxv(dbg, NULL, -1);
