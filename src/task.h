@@ -633,7 +633,7 @@ private:
 	MemoryMap mem;
 	// The session that created this.  We save a ref to it so that
 	// we can notify it when we die.
-	Session& session;
+	Session* session;
 	/* First mapped byte of the vdso. */
 	void* vdso_start_addr;
 	// The watchpoints set for tasks in this VM.  Watchpoints are
@@ -893,6 +893,13 @@ public:
 	 * to |out|, which defaults to LOG_FILE.
 	 */
 	void dump(FILE* out = NULL) const;
+
+	/**
+	 * Return the rbc value that this process would have at this
+	 * point in execution, irrespective of checkpointinging
+	 * operations etc.
+	 */
+	int64_t effective_rbc() const;
 
 	/**
 	 * Return the exe path passed to the most recent (successful)
@@ -1297,6 +1304,9 @@ public:
 	Session& session();
 	RecordSession& record_session();
 	ReplaySession& replay_session();
+	std::shared_ptr<ReplaySession> replay_session_ptr() {
+		return session_replay;
+	}
 
 	/** Restore the next chunk of saved data from the trace to this. */
 	ssize_t set_data_from_trace();
@@ -1839,6 +1849,8 @@ private:
 	std::deque<Event> pending_events;
 	// Task's OS name.
 	std::string prname;
+	// See comment in implementation of |Task::copy_state()|.
+	int64_t rbc_boost;
 	// See long comment at |maybe_save_rbc_slop()| above.
 	int64_t rbc_slop;
 	// When |registers_known|, these are our child registers.
