@@ -27,6 +27,7 @@ AddressSpace::shr_ptr
 Session::clone(AddressSpace::shr_ptr vm)
 {
 	AddressSpace::shr_ptr as(new AddressSpace(*vm));
+	as->session = this;
 	sas.insert(as.get());
 	return as;
 }
@@ -90,6 +91,7 @@ void
 Session::on_destroy(AddressSpace* vm)
 {
 	assert(vm->task_set().size() == 0);
+	assert(sas.end() != sas.find(vm));
 	sas.erase(vm);
 }
 

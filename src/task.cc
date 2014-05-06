@@ -266,7 +266,7 @@ private:
 
 AddressSpace::~AddressSpace()
 {
-	session.on_destroy(this);
+	session->on_destroy(this);
 }
 
 void
@@ -764,7 +764,7 @@ AddressSpace::verify(Task* t) const
 }
 
 AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
-	: exe(exe), is_clone(false), session(session), vdso_start_addr()
+	: exe(exe), is_clone(false), session(&session), vdso_start_addr()
 {
 	// TODO: this is a workaround of
 	// https://github.com/mozilla/rr/issues/1113 .
@@ -783,7 +783,7 @@ AddressSpace::AddressSpace(const AddressSpace& o)
 	// the creation of this.
 	: breakpoints(o.breakpoints)
 	, exe(o.exe), heap(o.heap), is_clone(true)
-	, mem(o.mem), session(o.session)
+	, mem(o.mem), session(nullptr)
 	, vdso_start_addr(o.vdso_start_addr)
 {
 	for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
@@ -1112,6 +1112,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, blocked_sigs()
 	, child_mem_fd(open_mem_fd())
 	, prname("???")
+	, rbc_boost(0), rbc_slop(0)
 	, registers(), registers_known(false)
 	, robust_futex_list(), robust_futex_list_len()
 	, stashed_si(), stashed_wait_status()
@@ -1235,6 +1236,13 @@ Task::dump(FILE* out) const
 		// eventually, to have more informative output.
 		log_pending_events();
 	}
+}
+
+int64_t
+Task::effective_rbc() const
+{
+	int64_t rbc_now = hpc->started ? read_rbc(hpc) : 0;
+	return rbc_now + rbc_boost;
 }
 
 void
@@ -1531,6 +1539,7 @@ Task::maybe_save_rbc_slop(const Event& ev)
 	if (!ev.has_rbc_slop()) {
 		reset_hpc(this, 0);
 		rbc_slop = 0;
+		rbc_boost = 0;
 	}
 	rbc_slop = read_rbc(hpc);
 }
@@ -2453,6 +2462,20 @@ Task::copy_state(Task* from)
 	pending_events = from->pending_events;
 	trace = from->trace;
 	rbc_slop = from->rbc_slop;
+
+	// We, the deepfork clone of |from|, need to have the same
+	// |effective_rbc()| value as |from|.  The |rbc_boost| helper
+	// will account for rcb's that |from| has seen that we
+	// haven't.  But since we also reuse |rbc_slop| for
+	// |rbc_boost|, |from|'s rbc value must be exactly |rbc_slop|.
+	ASSERT(this, rbc_slop == read_rbc(from->hpc));
+	rbc_boost = rbc_slop;
+	// In all probability, |from| has started counting rcbs by
+	// now.  Kick on the counter so that we can match its rbc
+	// targets at significant events.
+	//
+	// TODO: rbc should always be initialized to a known value.
+	reset_hpc(this, 0);
 }
 
 void

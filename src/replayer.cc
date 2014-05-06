@@ -205,8 +205,6 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		return continue_all_tasks;
 	}
 	while (1) {
-		LOG(debug) << t->tid <<" (rec:"<< t->rec_tid
-			   <<"): getting next debugger request ...";
 		struct dbg_request req = dbg_get_request(dbg);
 		Task* target = NULL;
 
@@ -1108,7 +1106,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 static void assert_at_recorded_rcb(Task* t, const Event& ev)
 {
 	static const int64_t rbc_slack = 0;
-	int64_t rbc_now = t->hpc->started ? read_rbc(t->hpc) : 0;
+	int64_t rbc_now = t->effective_rbc();
 
 	if (!t->session().can_validate()) {
 		return;
@@ -1116,7 +1114,7 @@ static void assert_at_recorded_rcb(Task* t, const Event& ev)
 	ASSERT(t, (!t->hpc->started
 		   || llabs(rbc_now - t->trace.rbc) <= rbc_slack))
 		<<"rbc mismatch for '"<< ev <<"'; expected "
-		<< t->trace.rbc <<", got "<< read_rbc(t->hpc) <<"";
+		<< t->trace.rbc <<", got "<< rbc_now <<"";
 }
 
 /**
@@ -1641,10 +1639,11 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		syscall(SYS_tkill, t->tid, SIGABRT);
 		// TODO dissociate address space from file table
 		bool file_table_dying = (1 == t->vm()->task_set().size());
+		ReplaySession::shr_ptr sess = t->replay_session_ptr();
 		delete t;
 		/* Early-return because |t| is gone now. */
 		if (file_table_dying) {
-			t->replay_session().gc_emufs();
+			sess->gc_emufs();
 		}
 		return true;
 	}
