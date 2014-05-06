@@ -1556,6 +1556,24 @@ static bool is_last_interesting_task(Task* t)
 		    && t->task_group()->task_set().size() == 1);
 }
 
+/**
+ * Return true if replaying |ev| by running |step| should result in
+ * the target task having the same rbc value as it did during
+ * recording.
+ */
+static bool has_deterministic_rbc(const Event& ev,
+				  const struct rep_trace_step& step)
+{
+	if (ev.has_rbc_slop()) {
+		return false;
+	}
+	// We won't necessarily reach the same rcb when replaying an
+	// async signal, due to debugger interrupts and other
+	// implementation details.  This is checked in |advance_to()|
+	// anyway.
+	return (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action);
+}
+
 static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
@@ -1689,20 +1707,19 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		FATAL() <<"Unexpected event "<< ev;
 	}
 
-	/* See the comment below about *not* resetting the hpc for
-	 * buffer flushes.  Here, we're processing the *other* event,
-	 * just after the buffer flush, where the rcb matters.  To
-	 * simplify the advance-to-target code that follows (namely,
-	 * making debugger interrupts simpler), pretend like the
-	 * execution in the BUFFER_FLUSH didn't happen by resetting
-	 * the rbc and compensating down the target rcb. */
+	// See the comment in |Task::maybe_save_rbc_slop()| about
+	// *not* resetting the hpc for buffer flushes.  Here, we're
+	// processing the *other* event, just after the buffer flush,
+	// where the rcb matters.  To simplify the advance-to-target
+	// code that follows (namely, making debugger interrupts
+	// simpler), pretend like the execution in the BUFFER_FLUSH
+	// didn't happen by resetting the rbc and compensating down
+	// the target rcb.
+	//
+	// TODO: implement monotonically increasing rbc, and get rid
+	// of this hack
 	if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
-		int64_t rcb_now = read_rbc(t->hpc);
-
-		assert(step.target.rcb >= rcb_now);
-
-		step.target.rcb -= rcb_now;
-		reset_hpc(t, 0);
+		t->adjust_for_rbc_slop(&step.target.rcb);
 	}
 
 	/* Advance until |step| has been fulfilled. */
@@ -1792,42 +1809,12 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
 	}
-
-	/* We flush the syscallbuf in response to detecting *other*
-	 * events, like signal delivery.  Flushing the syscallbuf is a
-	 * sort of side-effect of reaching the other event.  But once
-	 * we've flushed the syscallbuf during replay, we still must
-	 * reach the execution point of the *other* event.  For async
-	 * signals, that requires us to have an "intact" rbc, with the
-	 * same value as it was when the last buffered syscall was
-	 * retired during replay.  We'll be continuing from that rcb
-	 * to reach the rcb we recorded at signal delivery.  So don't
-	 * reset the counter for buffer flushes.  (It doesn't matter
-	 * for non-async-signal types, which are deterministic.) */
-	switch (ev.type()) {
-	case EV_SYSCALLBUF_ABORT_COMMIT:
-	case EV_SYSCALLBUF_FLUSH:
-	case EV_SYSCALLBUF_RESET:
-		break;
-	case EV_DESCHED:
-		/* ARM_DESCHED events are like the SYSCALLBUF_* events
-		 * in that they weren't actually observed during
-		 * recording, only inferred, so we don't have any
-		 * reference to assert against during replay. */
-		if (ARMING_DESCHED_EVENT == ev.Desched().state) {
-			break;
-		}
-		// fall through
-	default:
-		/* We won't necessarily reach the same rcb when
-		 * replaying an async signal, due to debugger
-		 * interrupts and other implementation details.  This
-		 * is checked in |advance_to()| anyway. */
-		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action) {
-			assert_at_recorded_rcb(t, ev);
-		}
-		reset_hpc(t, 0);
+	if (has_deterministic_rbc(ev, step)) {
+		assert_at_recorded_rcb(t, ev);
 	}
+
+	t->maybe_save_rbc_slop(ev);
+
 	debug_memory(t);
 	return true;
 }
@@ -1861,6 +1848,9 @@ static bool can_checkpoint_at(Task* t, const struct trace_frame& frame)
 {
 	Event ev(frame.ev);
 	if (is_atomic_syscall(t)) {
+		return false;
+	}
+	if (ev.has_rbc_slop()) {
 		return false;
 	}
 	switch (ev.type()) {

@@ -219,6 +219,7 @@ set(CUSTOM_TESTS
   break_sync_signal
   break_thread
   break_time_slice
+  checkpoint_async_signal_syscalls_1000
   checkpoint_simple
   cont_signal
   dead_thread_target

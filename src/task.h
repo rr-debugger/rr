@@ -1091,6 +1091,40 @@ public:
 	bool may_be_blocked() const;
 
 	/**
+	 * What's "rbc slop", you ask?  We flush the syscallbuf in
+	 * response to detecting *other* events, like signal delivery.
+	 * Flushing the syscallbuf is a sort of side-effect of
+	 * reaching the other event.  But once we've flushed the
+	 * syscallbuf during replay, we still must reach the execution
+	 * point of the *other* event.  For async signals, that
+	 * requires us to have an "intact" rbc, with the same value as
+	 * it was when the last buffered syscall was retired during
+	 * replay.  We'll be continuing from that rcb to reach the rcb
+	 * we recorded at signal delivery.  So we don't reset the
+	 * counter for buffer flushes, among other events.  (It
+	 * doesn't matter for non-async-signal types, which are
+	 * deterministic.)
+	 *
+	 * The rbc value at the point where we *don't* reset it is the
+	 * "slop".
+	 *
+	 * A difficulty is that we have to be able to checkpoint tasks
+	 * that have rbc slop.  To do that, we track the pending slop
+	 * here in Task.
+	 *
+	 * So, call |maybe_save_rbc_slop()| at the end of replaying an
+	 * event.  And then before *starting* to replay an event that
+	 * has an rbc target |target|, call
+	 * |adjust_for_rbc_slop(&target)|.  |target| is an inout
+	 * param.
+	 *
+	 * TODO: a monotonically increasing rbc would obviate the need
+	 * for this hack.
+	 */
+	void maybe_save_rbc_slop(const Event& ev);
+	void adjust_for_rbc_slop(int64_t* target);
+
+	/**
 	 * If |syscallno| at |state| changes our VM mapping, then
 	 * update the cache for that change.  The exception is mmap()
 	 * calls: they're complicated enough to be handled separately.
@@ -1805,6 +1839,8 @@ private:
 	std::deque<Event> pending_events;
 	// Task's OS name.
 	std::string prname;
+	// See long comment at |maybe_save_rbc_slop()| above.
+	int64_t rbc_slop;
 	// When |registers_known|, these are our child registers.
 	// When execution is resumed, we no longer know what the child
 	// registers are so the flag is unset.  The next time the
