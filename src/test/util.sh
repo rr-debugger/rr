@@ -282,3 +282,24 @@ function count_events {
     let "events -= 10"
     echo $events
 }
+
+# /** */
+function rand_range { min=$1; max=$2
+    local num=$RANDOM
+    local range=""
+    let "range = 1 + $max - $min"
+    let "num %= $range"
+    let "num += $min"
+    echo $num
+}
+
+# /** */
+function checkpoint_test { exe=$1; min=$2; max=$3;
+    record $exe
+    num_events=$(count_events)
+    stride=$(rand_range $min $max)
+    for i in $(seq 1 $stride $num_events); do
+        echo Checkpointing at event $i ...
+        debug $exe restart_finish "-g $i"
+    done
+}

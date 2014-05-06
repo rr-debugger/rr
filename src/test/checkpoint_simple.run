@@ -1,8 +1,2 @@
 source `dirname $0`/util.sh checkpoint_simple "$@"
-
-record simple
-num_events=$(count_events)
-for i in $(seq $num_events); do
-    echo Checkpointing at event $i ...
-    debug simple restart_finish "-g $i"
-done
+checkpoint_test simple 3 5
