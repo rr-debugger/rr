@@ -220,6 +220,8 @@ set(CUSTOM_TESTS
   break_thread
   break_time_slice
   checkpoint_async_signal_syscalls_1000
+  checkpoint_mmap_shared
+  checkpoint_prctl_name
   checkpoint_simple
   cont_signal
   dead_thread_target
