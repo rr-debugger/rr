@@ -5,9 +5,13 @@ source `dirname $0`/util.sh checkpoint_async_signal_syscalls_1000 "$@"
 
 record async_signal_syscalls 9
 
-# TODO: use |rr dump -r| to calculate dynamically
-num_events=750
-stride=75
+num_events=$(count_events)
+# This recording has a large number of events, and it's impractical to
+# run the debugger for each one.  The original bug reproduces when the
+# debugger attaches to pretty much any event past event 350, so we
+# somewhat arbitrarily choose a stride that reduces the number of
+# debug sessions by about 10x.
+stride=80
 for i in $(seq 1 $stride $num_events); do
     echo Checkpointing at event $i ...
     debug async_signal_syscalls restart_finish "-g $i"

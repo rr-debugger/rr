@@ -261,3 +261,24 @@ function debug_test {
     record $test
     debug $test $test
 }
+
+# Return the number of events in the most recent local recording.
+function count_events {
+    local events=$(rr dump -r latest-trace | wc -l)
+    # The |simple| test is just about the simplest possible C program,
+    # and has around 180 events (when recorded on a particular
+    # developer's machine).  If we count a number of events
+    # significalty less than that, almost certainly something has gone
+    # wrong.
+    if [ "$events" -le 150 ]; then
+        leave_data=y
+        fatal "FAILED: Recording for $test had too few events.  Is |rr dump -r| broken?"
+    fi
+    # This event count is used to loop over attaching the debugger.
+    # The tests assume that the debugger can be attached at all
+    # events, but at the very last events, EXIT and so forth, rr can't
+    # attach the debugger.  So we fudge the event count down to avoid
+    # that edge case.
+    let "events -= 10"
+    echo $events
+}
