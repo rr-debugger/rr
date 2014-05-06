@@ -19,10 +19,6 @@ set(rr_VERSION_PATCH 1)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict-prototypes")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -pthread -O0 -g3 -Wall -Werror -m32")
 
-# Disable PIC.
-string(REGEX REPLACE "-fPIC" ""
-  CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
-
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
 add_library(rrpreload
