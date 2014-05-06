@@ -1526,6 +1526,26 @@ Task::may_be_blocked() const
 }
 
 void
+Task::maybe_save_rbc_slop(const Event& ev)
+{
+	if (!ev.has_rbc_slop()) {
+		reset_hpc(this, 0);
+		rbc_slop = 0;
+	}
+	rbc_slop = read_rbc(hpc);
+}
+
+void
+Task::adjust_for_rbc_slop(int64_t* target)
+{
+	assert(*target >= rbc_slop);
+
+	*target -= rbc_slop;
+	reset_hpc(this, 0);
+	rbc_slop = 0;
+}
+
+void
 Task::maybe_update_vm(int syscallno, int state)
 {
 	// We have to use the recorded_regs during replay because they
@@ -2432,6 +2452,7 @@ Task::copy_state(Task* from)
 	blocked_sigs = from->blocked_sigs;
 	pending_events = from->pending_events;
 	trace = from->trace;
+	rbc_slop = from->rbc_slop;
 }
 
 void

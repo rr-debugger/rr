@@ -325,6 +325,11 @@ struct Event {
 	bool has_exec_info() const;
 
 	/**
+	 * See long comment at |Task::maybe_save_rbc_slop()|.
+	 */
+	bool has_rbc_slop() const;
+
+	/**
 	 * Return true if this is one of the indicated type of events.
 	 */
 	bool is_signal_event() const;
