@@ -283,7 +283,7 @@ function count_events {
     echo $events
 }
 
-# /** */
+# Return a random number from the range [min, max], inclusive.
 function rand_range { min=$1; max=$2
     local num=$RANDOM
     local range=""
@@ -293,7 +293,14 @@ function rand_range { min=$1; max=$2
     echo $num
 }
 
-# /** */
+# Record |exe|, then replay it using the |restart_finish| debugger
+# script attaching at every recorded event.  To make the
+# debugger-replays more practical, the events are strided between at a
+# random interval between [min, max], inclusive.
+#
+# So for example, |checkpoint_test simple 3 5| means to record the
+# "simple" test, and attach the debugger at every X'th event, where X
+# is a random number in [3, 5].
 function checkpoint_test { exe=$1; min=$2; max=$3;
     record $exe
     num_events=$(count_events)
