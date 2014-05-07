@@ -41,7 +41,7 @@ static const dbg_threadid_t DBG_ALL_THREADS = { -1, -1 };
  * This is gdb's view of the register file.  The ordering must be the
  * same as in the gdb sources.
  */
-enum DbgRegister {
+enum DbgRegisterName {
 	DREG_EAX, DREG_ECX, DREG_EDX, DREG_EBX,
 	DREG_ESP, DREG_EBP, DREG_ESI, DREG_EDI,
 	DREG_EIP, DREG_EFLAGS,
@@ -59,20 +59,21 @@ enum DbgRegister {
 };
 
 /**
- * Represents a possibly-undefined register value.  |defined| is
- * nonzero if |value| is well defined.
+ * Represents a possibly-undefined register |reg|.  |defined| is true
+ * if |value| is well defined.
  */
-typedef struct dbg_regvalue {
-	int defined;
+struct DbgRegister {
+	DbgRegisterName name;
 	long value;
-} dbg_regvalue_t;
+	bool defined;
+};
 
 /**
  * Represents the register file, indexed by |DbgRegister| values
  * above.
  */
-struct dbg_regfile {
-	dbg_regvalue_t regs[DREG_NUM_LINUX_I386];
+struct DbgRegfile {
+	DbgRegister regs[DREG_NUM_LINUX_I386];
 };
 
 enum DbgRequestType{ 
@@ -275,14 +276,13 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */);
 /**
  * Send |value| back to the debugger host.  |value| may be undefined.
  */
-void dbg_reply_get_reg(struct dbg_context* dbg, dbg_regvalue_t value);
+void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& value);
 
 /**
  * Send |file| back to the debugger host.  |file| may contain
  * undefined register values.
  */
-void dbg_reply_get_regs(struct dbg_context* dbg,
-			const struct dbg_regfile* file);
+void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file);
 
 /**
  * Reply to the DREQ_GET_STOP_REASON request.

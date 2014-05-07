@@ -118,34 +118,69 @@ static void debug_memory(Task* t)
 }
 
 /**
- * Return the value of |reg| in |regs|, or set |*defined = 0| and
- * return an undefined value if |reg| isn't found.
+ * Return the register |which|, which may not have a defined value.
  */
-static long get_reg(const struct user_regs_struct* regs, DbgRegister reg,
-		    int* defined)
+static DbgRegister get_reg(const struct user_regs_struct* regs,
+			   DbgRegisterName which)
 {
-	*defined = 1;
-	switch (reg) {
-	case DREG_EAX: return regs->eax;
-	case DREG_ECX: return regs->ecx;
-	case DREG_EDX: return regs->edx;
-	case DREG_EBX: return regs->ebx;
-	case DREG_ESP: return regs->esp;
-	case DREG_EBP: return regs->ebp;
-	case DREG_ESI: return regs->esi;
-	case DREG_EDI: return regs->edi;
-	case DREG_EIP: return regs->eip;
-	case DREG_EFLAGS: return regs->eflags;
-	case DREG_CS: return regs->xcs;
-	case DREG_SS: return regs->xss;
-	case DREG_DS: return regs->xds;
-	case DREG_ES: return regs->xes;
-	case DREG_FS: return regs->xfs;
-	case DREG_GS: return regs->xgs;
-	case DREG_ORIG_EAX: return regs->orig_eax;
+	DbgRegister reg;
+	reg.name = which;
+	reg.defined = true;
+	switch (which) {
+	case DREG_EAX:
+		reg.value = regs->eax;
+		return reg;
+	case DREG_ECX:
+		reg.value = regs->ecx;
+		return reg;
+	case DREG_EDX:
+		reg.value = regs->edx;
+		return reg;
+	case DREG_EBX:
+		reg.value = regs->ebx;
+		return reg;
+	case DREG_ESP:
+		reg.value = regs->esp;
+		return reg;
+	case DREG_EBP:
+		reg.value = regs->ebp;
+		return reg;
+	case DREG_ESI:
+		reg.value = regs->esi;
+		return reg;
+	case DREG_EDI:
+		reg.value = regs->edi;
+		return reg;
+	case DREG_EIP:
+		reg.value = regs->eip;
+		return reg;
+	case DREG_EFLAGS:
+		reg.value = regs->eflags;
+		return reg;
+	case DREG_CS:
+		reg.value = regs->xcs;
+		return reg;
+	case DREG_SS:
+		reg.value = regs->xss;
+		return reg;
+	case DREG_DS:
+		reg.value = regs->xds;
+		return reg;
+	case DREG_ES:
+		reg.value = regs->xes;
+		return reg;
+	case DREG_FS:
+		reg.value = regs->xfs;
+		return reg;
+	case DREG_GS:
+		reg.value = regs->xgs;
+		return reg;
+	case DREG_ORIG_EAX:
+		reg.value = regs->orig_eax;
+		return reg;
 	default:
-		*defined = 0;
-		return 0;
+		reg.defined = false;
+		return reg;
 	}
 }
 
@@ -319,30 +354,20 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_GET_REG: {
-			dbg_regvalue_t val;
-
-			val.value = get_reg(&target->regs(),
-					    req.reg, &val.defined);
-			dbg_reply_get_reg(dbg, val);
+			req.reg = get_reg(&target->regs(), req.reg.name);
+			dbg_reply_get_reg(dbg, req.reg);
 			continue;
 		}
 		case DREQ_GET_REGS: {
-			struct user_regs_struct regs;
-			struct dbg_regfile file;
-			dbg_regvalue_t* val;
-
+			DbgRegfile file;
 			memset(&file, 0, sizeof(file));
 			for (int i = DREG_EAX; i < DREG_NUM_USER_REGS; ++i) {
-				val = &file.regs[i];
-				val->value = get_reg(&target->regs(),
-						     DbgRegister(i),
-						     &val->defined);
+				file.regs[i] = get_reg(&target->regs(),
+						       DbgRegisterName(i));
 			}
-			val = &file.regs[DREG_ORIG_EAX];
-			val->value = get_reg(&regs, DREG_ORIG_EAX,
-					     &val->defined);
-
-			dbg_reply_get_regs(dbg, &file);
+			file.regs[DREG_ORIG_EAX] = get_reg(&target->regs(),
+							   DREG_ORIG_EAX);
+			dbg_reply_get_regs(dbg, file);
 			continue;
 		}
 		case DREQ_GET_STOP_REASON: {
