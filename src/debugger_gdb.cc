@@ -904,10 +904,11 @@ static int process_packet(struct dbg_context* dbg)
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.reg = DbgRegister(strtoul(payload, &payload, 16));
+		dbg->req.reg.name =
+			DbgRegisterName(strtoul(payload, &payload, 16));
 		assert('\0' == *payload);
-		LOG(debug) <<"gdb requests register value (" << dbg->req.reg
-			   <<")";
+		LOG(debug) <<"gdb requests register value (" 
+			   << dbg->req.reg.name <<")";
 		ret = 1;
 		break;
 	case 'P':
@@ -1287,32 +1288,31 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
  * available.  Exactly that many bytes (including '\0' terminator)
  * will be written by this function.
  */
-static void print_reg(dbg_regvalue_t value, char* buf) {
-	if (value.defined) {
+static void print_reg_value(const DbgRegister& reg, char* buf) {
+	if (reg.defined) {
 		/* gdb wants the register value in native endianness, so
 		 * swizzle to big-endian so that printf gives us a
 		 * little-endian string.  (Network order is big-endian.) */
-		long v = htonl(value.value);
+		long v = htonl(reg.value);
 		sprintf(buf, "%08lx", v);
 	} else {
 		strcpy(buf, "xxxxxxxx");
 	}
 }
 
-void dbg_reply_get_reg(struct dbg_context* dbg, dbg_regvalue_t value)
+void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)
 {
 	char buf[32];
 
 	assert(DREQ_GET_REG == dbg->req.type);
 
-	print_reg(value, buf);
+	print_reg_value(reg, buf);
 	write_packet(dbg, buf);
 
 	consume_request(dbg);
 }
 
-void dbg_reply_get_regs(struct dbg_context* dbg,
-			const struct dbg_regfile* file)
+void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file)
 {
 	/* XXX this will be wrong on x64 WINNT */
 	char buf[1 + DREG_NUM_LINUX_I386 * 2 * sizeof(long)];
@@ -1321,7 +1321,7 @@ void dbg_reply_get_regs(struct dbg_context* dbg,
 	assert(DREQ_GET_REGS == dbg->req.type);
 
 	for (i = 0; i < DREG_NUM_LINUX_I386; ++i) {
-		print_reg(file->regs[i], &buf[i * 2 * sizeof(long)]);
+		print_reg_value(file.regs[i], &buf[i * 2 * sizeof(long)]);
 	}
 	write_packet(dbg, buf);
 
