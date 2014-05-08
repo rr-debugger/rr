@@ -1325,7 +1325,7 @@ Task::init_buffers(void* map_hint, int share_desched_fd)
 	prepare_remote_syscalls(this, &state);
 
 	// Arguments to the rrcall.
-	void* child_args = (void*)state.regs.ebx;
+	void* child_args = (void*)state.regs.arg1();
 	struct rrcall_init_buffers_params args;
 	read_mem(child_args, &args);
 
@@ -1359,7 +1359,7 @@ Task::init_buffers(void* map_hint, int share_desched_fd)
 	// already written to the inout |args| param, but we stash it
 	// away in the return value slot so that we can easily check
 	// that we map the segment at the same addr during replay.
-	state.regs.eax = (uintptr_t)child_map_addr;
+	state.regs.set_syscall_result((uintptr_t)child_map_addr);
 	syscallbuf_hdr->locked = is_desched_sig_blocked();
 	finish_remote_syscalls(this, &state);
 
@@ -1390,14 +1390,14 @@ bool
 Task::is_arm_desched_event_syscall()
 {
 	return (is_desched_event_syscall()
-		&& PERF_EVENT_IOC_ENABLE == regs().ecx);
+		&& PERF_EVENT_IOC_ENABLE == regs().arg2());
 }
 
 bool
 Task::is_desched_event_syscall()
 {
-	return (SYS_ioctl == regs().orig_eax
-		&& (desched_fd_child == regs().ebx
+	return (SYS_ioctl == regs().original_syscallno()
+		&& (desched_fd_child == (int)regs().arg1_signed()
 		    || desched_fd_child == REPLAY_DESCHED_EVENT_FD));
 }
 
@@ -1405,7 +1405,7 @@ bool
 Task::is_disarm_desched_event_syscall()
 {
 	return (is_desched_event_syscall()
-		&& PERF_EVENT_IOC_DISABLE == regs().ecx);
+		&& PERF_EVENT_IOC_DISABLE == regs().arg2());
 }
 
 bool
@@ -1415,11 +1415,11 @@ Task::is_probably_replaying_syscall()
 	// If the tracee is at our syscall entry points, we know for
 	// sure it's entering/exiting/just-exited a syscall.
 	return (is_traced_syscall() || is_untraced_syscall()
-		// Otherwise, we assume that if orig_eax has been
-		// saved from eax, then the tracee is in a syscall.
+		// Otherwise, we assume that if original_syscallno() has been
+		// saved from syscallno(), then the tracee is in a syscall.
 		// This seems to be the heuristic used by the linux
 		// kernel for /proc/PID/syscall.
-		|| regs().orig_eax >= 0);
+		|| regs().original_syscallno() >= 0);
 }
 
 bool
@@ -1446,7 +1446,7 @@ Task::is_sig_ignored(int sig) const
 bool
 Task::is_syscall_restart()
 {
-	int syscallno = regs().orig_eax;
+	int syscallno = regs().original_syscallno();
 	bool must_restart = (SYS_restart_syscall == syscallno);
 	bool is_restart = false;
 	const Registers* old_regs;
@@ -1484,12 +1484,12 @@ Task::is_syscall_restart()
 			   << syscallname(syscallno);
 		goto done;
 	}
-	if (!(old_regs->ebx == regs().ebx
-	      && old_regs->ecx == regs().ecx
-	      && old_regs->edx == regs().edx
-	      && old_regs->esi == regs().esi
-	      && old_regs->edi == regs().edi
-	      && old_regs->ebp == regs().ebp)) {
+	if (!(old_regs->arg1() == regs().arg1()
+	      && old_regs->arg2() == regs().arg2()
+	      && old_regs->arg3() == regs().arg3()
+	      && old_regs->arg4() == regs().arg4()
+	      && old_regs->arg5() == regs().arg5()
+	      && old_regs->arg6() == regs().arg6())) {
 		LOG(debug) <<"  regs different at interrupted "
 			   << syscallname(syscallno);
 		goto done;
@@ -1558,18 +1558,19 @@ void
 Task::maybe_update_vm(int syscallno, int state)
 {
 	// We have to use the recorded_regs during replay because they
-	// have the return value set in |eax|.  We may not have
+	// have the return value set in syscall_result().  We may not have
 	// advanced regs() to that point yet.
 	const Registers& r = RECORD == rr_flags()->option ?
 					   regs() : trace.recorded_regs;
 
 	if (STATE_SYSCALL_EXIT != state
-	    || (SYSCALL_FAILED(r.eax) && SYS_mprotect != syscallno)) {
+	    || (SYSCALL_FAILED(r.syscall_result_signed()) &&
+	        SYS_mprotect != syscallno)) {
 		return;
 	}
 	switch (syscallno) {
 	case SYS_brk: {
-		void* addr = reinterpret_cast<void*>(r.ebx);
+		void* addr = reinterpret_cast<void*>(r.arg1());
 		if (!addr) {
 			// A brk() update of NULL is observed with
 			// libc, which apparently is its means of
@@ -1585,25 +1586,26 @@ Task::maybe_update_vm(int syscallno, int state)
 		return;
 	}
 	case SYS_mprotect: {
-		void* addr = reinterpret_cast<void*>(r.ebx);
-		size_t num_bytes = r.ecx;
-		int prot = r.edx;
+		void* addr = reinterpret_cast<void*>(r.arg1());
+		size_t num_bytes = r.arg2();
+		int prot = r.arg3_signed();
 		return vm()->protect(addr, num_bytes, prot);
 	}
 	case SYS_mremap: {
-		if (SYSCALL_FAILED(r.eax) && -ENOMEM != r.eax) {
+		if (SYSCALL_FAILED(r.syscall_result_signed()) &&
+		    -ENOMEM != r.syscall_result_signed()) {
 			return;
 		}
-		void* old_addr = reinterpret_cast<void*>(r.ebx);
-		size_t old_num_bytes = r.ecx;
-		void* new_addr = reinterpret_cast<void*>(r.eax);
-		size_t new_num_bytes = r.edx;
+		void* old_addr = reinterpret_cast<void*>(r.arg1());
+		size_t old_num_bytes = r.arg2();
+		void* new_addr = reinterpret_cast<void*>(r.syscall_result());
+		size_t new_num_bytes = r.arg3();
 		return vm()->remap(old_addr, old_num_bytes,
 				   new_addr, new_num_bytes);
 	}
 	case SYS_munmap: {
-		void* addr = reinterpret_cast<void*>(r.ebx);
-		size_t num_bytes = r.ecx;
+		void* addr = reinterpret_cast<void*>(r.arg1());
+		size_t num_bytes = r.arg2();
 		return vm()->unmap(addr, num_bytes);
 	}
 	}
@@ -1614,7 +1616,7 @@ Task::move_ip_before_breakpoint()
 {
 	// TODO: assert that this is at a breakpoint trap.
 	Registers r = regs();
-	r.eip -= sizeof(AddressSpace::breakpoint_insn);
+	r.set_ip(r.ip() - sizeof(AddressSpace::breakpoint_insn));
 	set_regs(r);
 }
 
@@ -1629,7 +1631,7 @@ static string prname_from_exe_image(const string& e)
 void
 Task::pre_exec()
 {
-	execve_file = read_c_str((void*)regs().ebx);
+	execve_file = read_c_str((void*)regs().arg1());
 	if (execve_file[0] != '/') {
 		char buf[PATH_MAX];
 		snprintf(buf, sizeof(buf),
@@ -1864,7 +1866,7 @@ void
 Task::set_return_value_from_trace()
 {
 	Registers r = regs();
-	r.eax = trace.recorded_regs.eax;
+	r.set_syscall_result(trace.recorded_regs.syscall_result());
 	set_regs(r);
 }
 
@@ -2055,9 +2057,9 @@ Task::update_prname(void* child_addr)
 void
 Task::update_sigaction()
 {
-	int sig = regs().ebx;
-	void* new_sigaction = (void*)regs().ecx;
-	if (0 == regs().eax && new_sigaction) {
+	int sig = regs().arg1_signed();
+	void* new_sigaction = (void*)regs().arg2();
+	if (0 == regs().syscall_result() && new_sigaction) {
 		// A new sighandler was installed.  Update our
 		// sighandler table.
 		// TODO: discard attempts to handle or ignore signals
@@ -2071,10 +2073,10 @@ Task::update_sigaction()
 void
 Task::update_sigmask()
 {
-	int how = regs().ebx;
-	void* setp = (void*)regs().ecx;
+	int how = regs().arg1_signed();
+	void* setp = (void*)regs().arg2();
 
-	if (SYSCALL_FAILED(regs().eax) || !setp) {
+	if (SYSCALL_FAILED(regs().syscall_result_signed()) || !setp) {
 		return;
 	}
 
@@ -2931,15 +2933,15 @@ Task::os_clone(Task* parent, Session* session,
 			base_flags, stack, ptid, tls, ctid);
 	while (!(PTRACE_EVENT_CLONE == parent->ptrace_event()
 		 || PTRACE_EVENT_FORK == parent->ptrace_event())) {
-		ASSERT(parent, (SYSCALL_MAY_RESTART(parent->regs().eax)
-				|| -ENOSYS == parent->regs().eax))
+		ASSERT(parent, (SYSCALL_MAY_RESTART(parent->regs().syscall_result_signed())
+				|| -ENOSYS == parent->regs().syscall_result_signed()))
 			<<"Unexpected task status "<< HEX(parent->status())
-			<<" (eax:"<< parent->regs().eax <<")";
+			<<" (syscall result:"<< parent->regs().syscall_result_signed() <<")";
 		parent->cont_syscall();
 	}
 
 	parent->cont_syscall();
-	pid_t new_tid = parent->regs().eax;
+	long new_tid = parent->regs().syscall_result_signed();
 	if (0 > new_tid) {
 		FATAL() <<"Failed to clone("<< parent->tid <<") -> "<< new_tid
 			<< ": "<< strerror(-new_tid);

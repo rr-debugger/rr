@@ -991,7 +991,7 @@ public:
 	void destroy_buffers(int which);
 
 	/** Return the current $ip of this. */
-	void* ip() { return (void*)regs().eip; }
+	void* ip() { return (void*)regs().ip(); }
 
 	/**
 	 * Return true if this is at an arm-desched-event syscall.
