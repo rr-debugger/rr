@@ -144,13 +144,13 @@ static void handle_ptrace_event(Task** tp)
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK: {
 		int new_tid = t->get_ptrace_eventmsg();
-		void* stack = (void*)t->regs().ecx;
-		void* tls = (void*)t->regs().esi;
-		void* ctid = (void*)t->regs().edi;
+		void* stack = (void*)t->regs().arg2();
+		void* tls = (void*)t->regs().arg4();
+		void* ctid = (void*)t->regs().arg5();
 		// fork and can never share these resources, only
 		// copy, so the flags here aren't meaningful for it.
-		int flags_arg = (SYS_clone == t->regs().orig_eax) ?
-				t->regs().ebx : 0;
+		unsigned long flags_arg = (SYS_clone == t->regs().original_syscallno()) ?
+			t->regs().arg1() : 0;
 		Task* new_task = t->session().clone(
 			t, clone_flags_to_task_flags(flags_arg),
 			stack, tls, ctid, new_tid);
@@ -609,7 +609,7 @@ static void check_rbc(Task* t)
 	if (can_deliver_signals || SYS_write != t->ev().Syscall().no) {
 		return;
 	}
-	int fd = t->regs().ebx;
+	int fd = t->regs().arg1_signed();
 	if (-1 != fd) {
 		fprintf(stderr,
 "\n"
