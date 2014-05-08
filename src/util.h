@@ -42,11 +42,11 @@ struct trace_frame;
 #define ERESTARTNOHAND 514
 #define ERESTART_RESTARTBLOCK 516
 
-#define SYSCALL_FAILED(eax) \
-	(-ERANGE <= (int)(eax) && (int)(eax) < 0)
-#define SYSCALL_MAY_RESTART(eax) \
-	(-ERESTART_RESTARTBLOCK == (eax) || -ERESTARTNOINTR == (eax)	\
-	 || -ERESTARTNOHAND == (eax) || -ERESTARTSYS == (eax))
+#define SYSCALL_FAILED(result) \
+	(-ERANGE <= (result) && (result) < 0)
+#define SYSCALL_MAY_RESTART(result) \
+	(-ERESTART_RESTARTBLOCK == (result) || -ERESTARTNOINTR == (result)	\
+	 || -ERESTARTNOHAND == (result) || -ERESTARTSYS == (result))
 
 #define SHMEM_FS "/dev/shm"
 #define SHMEM_FS2 "/run/shm"
