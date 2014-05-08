@@ -1487,7 +1487,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			return;
 		}
 		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->arg2();
-		ssize_t nmmsgs = rec_regs->syscall_result();
+		int nmmsgs = rec_regs->syscall_result_signed();
 		for (int i = 0; i < nmmsgs; ++i, ++msg) {
 			restore_struct_mmsghdr(t, msg);
 		}
@@ -1509,7 +1509,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 			return;
 		}
-		ssize_t nmmsgs = rec_regs->syscall_result();
+		int nmmsgs = rec_regs->syscall_result_signed();
 		for (int i = 0; i < nmmsgs; ++i) {
 			t->set_data_from_trace();
 		}

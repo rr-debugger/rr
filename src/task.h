@@ -1671,8 +1671,8 @@ public:
 	/* Points at the tracee's mapping of the buffer. */
 	void* syscallbuf_child;
 
-	/* The value of ebx passed to the last execve syscall in this task. */
-	int exec_saved_ebx;
+	/* The value of arg1 passed to the last execve syscall in this task. */
+	uintptr_t exec_saved_arg1;
 
 private:
 	Task(pid_t tid, pid_t rec_tid, int priority);
