@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "event.h"
+#include "registers.h"
 #include "types.h"
 
 class Task;
@@ -59,7 +60,7 @@ struct trace_frame {
 	int64_t insts;
 #endif
 
-	struct user_regs_struct recorded_regs;
+	Registers recorded_regs;
 	STRUCT_DELIMITER(end_exec_info);
 };
 

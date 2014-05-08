@@ -105,7 +105,7 @@ static int try_handle_rdtsc(Task *t)
 	}
 
 	unsigned long long current_time = rdtsc();
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	r.eax = current_time & 0xffffffff;
 	r.edx = current_time >> 32;
 	r.eip += sizeof(rdtsc_insn);

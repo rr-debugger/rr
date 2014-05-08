@@ -84,7 +84,7 @@ void
 trace_frame::dump(FILE* out, bool raw_dump)
 {
 	out = out ? out : stdout;
-	const struct user_regs_struct& r = recorded_regs;
+	const Registers& r = recorded_regs;
 
 	if (raw_dump) {
 		fprintf(out, " %d %d %d %d",

@@ -146,8 +146,8 @@ static void goto_next_syscall_emu(Task *t)
 
 	/* check if we are synchronized with the trace -- should never
 	 * fail */
-	const int rec_syscall = t->trace.recorded_regs.orig_eax;
-	const int current_syscall = t->regs().orig_eax;
+	const int rec_syscall = t->trace.recorded_regs.original_syscallno();
+	const int current_syscall = t->regs().original_syscallno();
 
 	if (current_syscall != rec_syscall) {
 		/* this signal is ignored and most likey delivered
@@ -178,8 +178,8 @@ void __ptrace_cont(Task *t)
 	t->child_sig = t->pending_sig();
 
 	/* check if we are synchronized with the trace -- should never fail */
-	int rec_syscall = t->trace.recorded_regs.orig_eax;
-	int current_syscall = t->regs().orig_eax;
+	int rec_syscall = t->trace.recorded_regs.original_syscallno();
+	int current_syscall = t->regs().original_syscallno();
 	if (current_syscall != rec_syscall && t->stop_sig() == SIGCHLD) {
 		/* SIGCHLD can be delivered pretty much at any time
 		 * during replay, and we need to ignore it since
@@ -195,24 +195,22 @@ void __ptrace_cont(Task *t)
 
 void rep_maybe_replay_stdio_write(Task* t)
 {
-	int fd;
-
 	if (!rr_flags()->redirect) {
 		return;
 	}
 
-	assert(SYS_write == t->regs().orig_eax
-	       || SYS_writev == t->regs().orig_eax);
+	assert(SYS_write == t->regs().original_syscallno()
+	       || SYS_writev == t->regs().original_syscallno());
 
-	fd = t->regs().ebx;
+	int fd = t->regs().arg1_signed();
 	if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-		ssize_t len = t->regs().edx;
-		void* addr = (void*) t->regs().ecx;
+		size_t len = t->regs().arg3();
+		void* addr = (void*) t->regs().arg2();
 		byte buf[len];
 		// NB: |buf| may not be null-terminated.
 		t->read_bytes_helper(addr, sizeof(buf), buf);
 		maybe_mark_stdio_write(t, fd);
-		if (len != write(fd, buf, len)) {
+		if (len != (size_t)write(fd, buf, len)) {
 			FATAL() <<"Couldn't write stdio";
 		}
 	}
@@ -291,7 +289,7 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 {
 	if (t->is_untraced_syscall()) {
 		LOG(debug) <<"  noop-restoring scratch for write-only desched'd "
-			   << syscallname(t->regs().orig_eax);
+			   << syscallname(t->regs().original_syscallno());
 		t->set_data_from_trace();
 	}
 }
@@ -309,7 +307,7 @@ static bool is_failed_syscall(Task* t, const struct trace_frame* frame)
 						   STATE_SYSCALL_EXIT);
 		frame = &next_frame;
 	}
-	return SYSCALL_FAILED(frame->recorded_regs.eax);
+	return SYSCALL_FAILED(frame->recorded_regs.syscall_result_signed());
 }
 
 static void process_clone(Task* t,
@@ -330,12 +328,12 @@ static void process_clone(Task* t,
 		return;
 	}
 
-	struct user_regs_struct rec_regs = trace->recorded_regs;
-	unsigned long flags = rec_regs.ebx;
+	Registers rec_regs = trace->recorded_regs;
+	unsigned long flags = rec_regs.arg1();
 
 	if (flags & CLONE_UNTRACED) {
 		// See related comment in rec_process_event.c.
-		rec_regs.ebx = flags & ~CLONE_UNTRACED;
+		rec_regs.set_arg1(flags & ~CLONE_UNTRACED);
 		t->set_regs(rec_regs);
 	}
 
@@ -346,13 +344,14 @@ static void process_clone(Task* t,
 	/* wait for the signal that a new process is created */
 	__ptrace_cont(t);
 
-	int rec_tid = rec_regs.eax;
+	long rec_tid = rec_regs.syscall_result_signed();
 	pid_t new_tid = t->get_ptrace_eventmsg();
 
-	void* stack = (void*)t->regs().ecx;
-	void* tls = (void*)t->regs().esi;
-	void* ctid = (void*)t->regs().edi;
-	int flags_arg = (SYS_clone == t->regs().orig_eax) ? t->regs().ebx : 0;
+	void* stack = (void*)t->regs().arg2();
+	void* tls = (void*)t->regs().arg4();
+	void* ctid = (void*)t->regs().arg5();
+	unsigned long flags_arg = (SYS_clone == t->regs().original_syscallno())
+		? t->regs().arg1() : 0;
 
 	Task* new_task = t->session().clone(
 		t, clone_flags_to_task_flags(flags_arg),
@@ -378,13 +377,13 @@ static void process_clone(Task* t,
 		new_task->vm()->destroy_all_watchpoints();
 	}
 
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	/* set the ebp register to the recorded value -- it should not
 	 * point to data on that is used afterwards */
 	r.ebp = rec_regs.ebp;
 	// Restore the saved flags, to hide the fact that we may have
 	// masked out CLONE_UNTRACED.
-	r.ebx = flags;
+	r.set_arg1(flags);
 	t->set_regs(r);
 	t->set_return_value_from_trace();
 	validate_args(syscallno, state, t);
@@ -397,7 +396,7 @@ static void process_clone(Task* t,
 }
 
 static void process_execve(Task* t, struct trace_frame* trace, int state,
-			   const struct user_regs_struct* rec_regs,
+			   const Registers* rec_regs,
 			   struct rep_trace_step* step)
 {
 	const int syscallno = SYS_execve;
@@ -460,10 +459,10 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 }
 
 static void process_futex(Task* t, int state, struct rep_trace_step* step,
-			  const struct user_regs_struct* regs)
+			  const Registers* regs)
 {
-	int op = regs->ecx & FUTEX_CMD_MASK;
-	void* futex = (void*)regs->ebx;
+	int op = (int)regs->arg2_signed() & FUTEX_CMD_MASK;
+	void* futex = (void*)regs->arg1();
 
 	step->syscall.emu = 1;
 	step->syscall.emu_ret = 1;
@@ -508,9 +507,6 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 
 static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 {
-	int request;
-	int dir;
-
 	step->syscall.emu = 1;
 	step->syscall.emu_ret = 1;
 
@@ -520,8 +516,8 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step)
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	request = t->regs().ecx;
-	dir = _IOC_DIR(request);
+	int request = t->regs().arg2_signed();
+	int dir = _IOC_DIR(request);
 
 	LOG(debug) <<"Processing ioctl "<< HEX(request) <<": dir "<< HEX(dir);
 
@@ -572,7 +568,7 @@ void process_ipc(Task* t, struct trace_frame* trace, int state,
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	int call = trace->recorded_regs.ebx;
+	unsigned int call = trace->recorded_regs.arg1();
 	LOG(debug) <<"ipc call: "<< call;
 	switch (call) {
 	case MSGCTL:
@@ -599,14 +595,14 @@ static void* finish_anonymous_mmap(Task* t,
 				   off64_t offset_pages,
 				   int note_task_map=NOTE_TASK_MAP)
 {
-	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	const Registers* rec_regs = &trace->recorded_regs;
 	/* *Must* map the segment at the recorded address, regardless
 	   of what the recorded tracee passed as the |addr| hint. */
-	void* rec_addr = (void*)rec_regs->eax;
-	size_t length = rec_regs->ecx;
+	void* rec_addr = (void*)rec_regs->syscall_result();
+	size_t length = rec_regs->arg2();
 	/* These are supposed to be (-1, 0) respectively, but use
 	 * whatever the tracee passed to avoid stirring up trouble. */
-	int fd = rec_regs->edi;
+	int fd = rec_regs->arg5_signed();
 
 	if (note_task_map) {
 		t->vm()->map(rec_addr, length, prot, flags,
@@ -675,8 +671,8 @@ static void* finish_private_mmap(Task* t,
 {
 	LOG(debug) <<"  finishing private mmap of "<< file->filename;
 
-	const struct user_regs_struct& rec_regs = trace->recorded_regs;
-	size_t num_bytes = rec_regs.ecx;
+	const Registers& rec_regs = trace->recorded_regs;
+	size_t num_bytes = rec_regs.arg2();
 	void* mapped_addr = finish_anonymous_mmap(t, state, trace, prot,
 						  /* The restored region
 						   * won't be backed by
@@ -738,9 +734,9 @@ static void* finish_direct_mmap(Task* t,
 				int verify = VERIFY_BACKING_FILE,
 				int note_task_map=NOTE_TASK_MAP)
 {
-	struct user_regs_struct* rec_regs = &trace->recorded_regs;
-	void* rec_addr = (void*)rec_regs->eax;
-	size_t length = rec_regs->ecx;
+	Registers* rec_regs = &trace->recorded_regs;
+	void* rec_addr = (void*)rec_regs->syscall_result();
+	size_t length = rec_regs->arg2();
 	int fd;
 	void* mapped_addr;
 
@@ -803,8 +799,8 @@ static void* finish_shared_mmap(Task* t,
 				off64_t offset_pages,
 				const struct mmapped_file* file)
 {
-	const struct user_regs_struct& rec_regs = trace->recorded_regs;
-	size_t rec_num_bytes = ceil_page_size(rec_regs.ecx);
+	const Registers& rec_regs = trace->recorded_regs;
+	size_t rec_num_bytes = ceil_page_size(rec_regs.arg2());
 
 	// Ensure there's a virtual file for the file that was mapped
 	// during recording.
@@ -859,7 +855,7 @@ static void process_mmap(Task* t,
 	struct current_state_buffer state;
 	void* mapped_addr;
 
-	if (SYSCALL_FAILED(trace->recorded_regs.eax)) {
+	if (SYSCALL_FAILED(trace->recorded_regs.syscall_result_signed())) {
 		/* Failed maps are fully emulated too; nothing
 		 * interesting to do. */
 		step->action = TSTEP_EXIT_SYSCALL;
@@ -898,7 +894,7 @@ static void process_mmap(Task* t,
 		}
 	}
 	/* Finally, we finish by emulating the return value. */
-	state.regs.eax = (uintptr_t)mapped_addr;
+	state.regs.set_syscall_result((uintptr_t)mapped_addr);
 	finish_remote_syscalls(t, &state);
 
 	validate_args(SYS_mmap2, exec_state, t);
@@ -914,7 +910,7 @@ static void process_mmap(Task* t,
 static void process_socketcall(Task* t, int state,
 			       struct rep_trace_step* step)
 {
-	int call;
+	unsigned int call;
 
 	step->syscall.emu = 1;
 	step->syscall.emu_ret = 1;
@@ -925,7 +921,7 @@ static void process_socketcall(Task* t, int state,
 	}
 
 	step->action = TSTEP_EXIT_SYSCALL;
-	switch ((call = t->regs().ebx)) {
+	switch ((call = t->regs().arg1())) {
 		/* FIXME: define a SSOT for socketcall record and
 		 * replay data, a la syscall_defs.h */
 	case SYS_SOCKET:
@@ -980,7 +976,7 @@ static void process_socketcall(Task* t, int state,
 		// We manually restore the msg buffer.
 		step->syscall.num_emu_args = 0;
 
-		void* base_addr = (void*)t->trace.recorded_regs.ecx;
+		void* base_addr = (void*)t->trace.recorded_regs.arg2();
 		struct recvmsg_args args;
 		t->read_mem(base_addr, &args);
 
@@ -1011,7 +1007,7 @@ static void process_init_buffers(Task* t, int exec_state,
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
 	t->finish_emulated_syscall();
-	rec_child_map_addr = (void*)t->trace.recorded_regs.eax;
+	rec_child_map_addr = (void*)t->trace.recorded_regs.syscall_result();
 
 	/* We don't want the desched event fd during replay, because
 	 * we already know where they were.  (The perf_event fd is
@@ -1084,11 +1080,11 @@ notify_save_data_error(Task* t, void* addr,
  * recording.
  */
 static void maybe_verify_tracee_saved_data(Task* t,
-					   const struct user_regs_struct* rec_regs)
+					   const Registers* rec_regs)
 {
-	int fd = rec_regs->ebx;
-	void* rep_addr = (void*)rec_regs->ecx;
-	size_t rep_len = rec_regs->edx;
+	int fd = rec_regs->arg1_signed();
+	void* rep_addr = (void*)rec_regs->arg2();
+	size_t rep_len = rec_regs->arg3();
 
 	if (RR_MAGIC_SAVE_DATA_FD != fd) {
 		return;
@@ -1129,15 +1125,15 @@ void before_syscall_exit(Task* t, int syscallno)
 {
 	switch (syscallno) {
 	case SYS_set_robust_list:
-		t->set_robust_list((void*)t->regs().ebx, t->regs().ecx);
+		t->set_robust_list((void*)t->regs().arg1(), t->regs().arg2());
 		return;
 
 	case SYS_set_thread_area:
-		t->set_thread_area((void*)t->regs().ebx);
+		t->set_thread_area((void*)t->regs().arg1());
 		return;
 
 	case SYS_set_tid_address:
-		t->set_tid_addr((void*)t->regs().ebx);
+		t->set_tid_addr((void*)t->regs().arg1());
 		return;
 
 	case SYS_sigaction:
@@ -1161,14 +1157,14 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	const struct syscall_def* def;
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->ev.state;
-	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	const Registers* rec_regs = &trace->recorded_regs;
 	AutoGc maybe_gc(t->replay_session(), syscall, state);
 
 	LOG(debug) <<"processing "<< syscallname(syscall) <<" ("
 		   << statename(state) <<")";
 
 	if (STATE_SYSCALL_EXIT == state
-	    && SYSCALL_MAY_RESTART(rec_regs->eax)) {
+	    && SYSCALL_MAY_RESTART(rec_regs->syscall_result_signed())) {
 		bool interrupted_restart =
 			(EV_SYSCALL_INTERRUPTION == t->ev().type());
 		// The tracee was interrupted while attempting to
@@ -1215,7 +1211,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		step->action = TSTEP_RETIRE;
 		LOG(debug) <<"  "<< syscallname(syscall) <<" interrupted by "
-			   << rec_regs->eax <<" at "<< (void*)rec_regs->eip
+			   << rec_regs->syscall_result() <<" at "<< (void*)rec_regs->ip()
 			   <<", may restart";
 		return;
 	}
@@ -1226,11 +1222,11 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 		syscall = t->ev().Syscall().no;
 		if (STATE_SYSCALL_ENTRY == state) {
-			void* intr_ip = (void*)t->ev().Syscall().regs.eip;
+			void* intr_ip = (void*)t->ev().Syscall().regs.ip();
 			void* cur_ip = (void*)t->ip();
 
 			LOG(debug) <<"'restarting' "<< syscallname(syscall)
-				   <<" interrupted by "<< t->ev().Syscall().regs.eax
+				   <<" interrupted by "<< t->ev().Syscall().regs.syscall_result()
 				   <<" at "<< intr_ip <<"; now at "<< cur_ip;
 			if (cur_ip == intr_ip) {
 				// See long comment above; this
@@ -1308,7 +1304,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		if (STATE_SYSCALL_ENTRY == state) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
-			int cmd = t->regs().ecx;
+			int cmd = t->regs().arg2_signed();
 
 			step->action = TSTEP_EXIT_SYSCALL;
 			switch (cmd) {
@@ -1363,7 +1359,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			return;
 		}
 		struct mmap_arg_struct args;
-		t->read_mem((void*)t->regs().ebx, &args);
+		t->read_mem((void*)t->regs().arg1(), &args);
 		return process_mmap(t, trace, state,
 				    args.prot, args.flags, args.offset / 4096,
 				    step);
@@ -1377,9 +1373,9 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			return;
 		}
 		return process_mmap(t, trace, state,
-				    trace->recorded_regs.edx,
-				    trace->recorded_regs.esi,
-				    trace->recorded_regs.ebp,
+				    trace->recorded_regs.arg3(),
+				    trace->recorded_regs.arg4(),
+				    trace->recorded_regs.arg6(),
 				    step);
 
 	case SYS_nanosleep:
@@ -1390,7 +1386,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		} else {
 			step->action = TSTEP_EXIT_SYSCALL;
 			step->syscall.num_emu_args =
-				(trace->recorded_regs.ecx != 0) ? 1 : 0;
+				(trace->recorded_regs.arg2() != 0) ? 1 : 0;
 		}
 		return;
 
@@ -1411,8 +1407,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return;
 
 	case SYS_prctl: {
-		int option = trace->recorded_regs.ebx;
-		void* arg2 = (void*)trace->recorded_regs.ecx;
+		int option = trace->recorded_regs.arg1_signed();
+		void* arg2 = (void*)trace->recorded_regs.arg2();
 		if (PR_SET_NAME == option || PR_GET_NAME == option) {
 			step->syscall.num_emu_args = 1;
 			// We actually execute these.
@@ -1457,7 +1453,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		if (state == STATE_SYSCALL_ENTRY) {
 			step->action = TSTEP_ENTER_SYSCALL;
 		} else {
-			int cmd = t->regs().ebp;
+			int cmd = t->regs().arg1_signed();
 
 			step->action = TSTEP_EXIT_SYSCALL;
 			switch (cmd & SUBCMDMASK) {
@@ -1490,8 +1486,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 			return;
 		}
-		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->ecx;
-		ssize_t nmmsgs = rec_regs->eax;
+		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->arg2();
+		int nmmsgs = rec_regs->syscall_result_signed();
 		for (int i = 0; i < nmmsgs; ++i, ++msg) {
 			restore_struct_mmsghdr(t, msg);
 		}
@@ -1513,7 +1509,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 			return;
 		}
-		ssize_t nmmsgs = rec_regs->eax;
+		int nmmsgs = rec_regs->syscall_result_signed();
 		for (int i = 0; i < nmmsgs; ++i) {
 			t->set_data_from_trace();
 		}

@@ -4,11 +4,12 @@
 #define RR_EVENT_H_
 
 #include <assert.h>
-#include <sys/user.h>
 
 #include <ostream>
 #include <stack>
 #include <string>
+
+#include "registers.h"
 
 enum EventType {
 	EV_UNASSIGNED,
@@ -184,7 +185,7 @@ struct SyscallEvent : public BaseEvent {
 	// The original (before scratch is set up) arguments to the
 	// syscall passed by the tracee.  These are used to detect
 	// restarted syscalls.
-	struct user_regs_struct regs;
+	Registers regs;
 	// If this is a descheduled buffered syscall, points at the
 	// record for that syscall.
 	const struct syscallbuf_record* desched_rec;

@@ -120,7 +120,7 @@ static void debug_memory(Task* t)
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static DbgRegister get_reg(const struct user_regs_struct* regs,
+static DbgRegister get_reg(const Registers* regs,
 			   DbgRegisterName which)
 {
 	DbgRegister reg;
@@ -469,7 +469,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
  */
 static void validate_args(int event, int state, Task* t)
 {
-	struct user_regs_struct rec_regs = t->trace.recorded_regs;
+	Registers rec_regs = t->trace.recorded_regs;
 
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
@@ -656,7 +656,7 @@ static void continue_or_step(Task* t, int stepi)
 	ASSERT(t, child_sig_gt_zero)
 		<< "Replaying `"<< Event(t->trace.ev)
 		<<"': expecting tracee signal or trap, but instead at `"
-		<< syscallname(t->regs().orig_eax) <<"' (rcb: "
+		<< syscallname(t->regs().original_syscallno()) <<"' (rcb: "
 		<< read_rbc(t->hpc) <<")";
 }
 
@@ -777,12 +777,12 @@ static int is_debugger_trap(Task* t, int target_sig,
 }
 
 static void guard_overshoot(Task* t,
-			    const struct user_regs_struct* target_regs,
+			    const Registers* target_regs,
 			    int64_t target_rcb, int64_t remaining_rcbs)
 {
 	int remaining_rcbs_gt_0 = remaining_rcbs >= 0;
 	if (!remaining_rcbs_gt_0) {
-		long target_ip = target_regs->eip;
+		uintptr_t target_ip = target_regs->ip();
 
 		LOG(error) <<"Replay diverged.  Dumping register comparison.";
 		/* Cover up the internal breakpoint that we may have
@@ -791,8 +791,8 @@ static void guard_overshoot(Task* t,
 		 * hit the breakpoint).*/
 		t->vm()->remove_breakpoint((void*)target_ip,
 					   TRAP_BKPT_INTERNAL);
-		if (t->regs().eip ==
-		    long(target_ip + sizeof(AddressSpace::breakpoint_insn))) {
+		if (t->regs().ip() ==
+		    target_ip + sizeof(AddressSpace::breakpoint_insn)) {
 			t->move_ip_before_breakpoint();
 		}
 		compare_register_files(t, "rep overshoot", &t->regs(),
@@ -817,14 +817,14 @@ static void guard_unexpected_signal(Task* t)
 	if (t->child_sig) {
 		ev = SignalEvent(t->child_sig, NONDETERMINISTIC_SIG);
 	} else {
-		ev = SyscallEvent(max(0L, t->regs().orig_eax));
+		ev = SyscallEvent(max(0L, (long)t->regs().original_syscallno()));
 	}
 	ASSERT(t, child_sig_is_zero_or_sigtrap)
 		<< "Replay got unrecorded event "<< ev <<" while awaiting signal";
 }
 
 static int is_same_execution_point(Task* t,
-				   const struct user_regs_struct* rec_regs,
+				   const Registers* rec_regs,
 				   int64_t rcbs_left)
 {
 	int behavior =
@@ -836,7 +836,7 @@ static int is_same_execution_point(Task* t,
 		;
 	if (0 != rcbs_left) {
 		LOG(debug) <<"  not same execution point: "<< rcbs_left
-			   <<" rcbs left (@"<< HEX(rec_regs->eip) <<")";
+			   <<" rcbs left (@"<< HEX(rec_regs->ip()) <<")";
 #ifdef DEBUGTAG
 		compare_register_files(t, "(rep)", &t->regs(),
 				       "(rec)", rec_regs, LOG_MISMATCHES);
@@ -846,7 +846,7 @@ static int is_same_execution_point(Task* t,
 	if (compare_register_files(t, "rep", &t->regs(), "rec", rec_regs,
 				   behavior)) {
 		LOG(debug) <<"  not same execution point: regs differ (@"
-			   << HEX(rec_regs->eip) <<")";
+			   << HEX(rec_regs->ip()) <<")";
 		return 0;
 	}
 	LOG(debug) <<"  same execution point";
@@ -862,11 +862,11 @@ static int is_same_execution_point(Task* t,
  * that will be decremented by branches retired during this attempted
  * step.
  */
-static int advance_to(Task* t, const struct user_regs_struct* regs,
+static int advance_to(Task* t, const Registers* regs,
 		      int sig, int stepi, int64_t* rcb)
 {
 	pid_t tid = t->tid;
-	byte* ip = (byte*)regs->eip;
+	byte* ip = (byte*)regs->ip();
 	int64_t rcbs_left;
 
 	assert(t->hpc->rbc.fd > 0);
@@ -1017,7 +1017,7 @@ static int advance_to(Task* t, const struct user_regs_struct* regs,
 		/* At this point, we've proven that we're not at the
 		 * target execution point, and we've ensured the
 		 * internal breakpoint is unset. */
-		if (USE_BREAKPOINT_TARGET && regs->eip != t->regs().eip) {
+		if (USE_BREAKPOINT_TARGET && regs->ip() != t->regs().ip()) {
 			/* Case (4) above: set a breakpoint on the
 			 * target $ip and PTRACE_CONT in an attempt to
 			 * execute as many non-trapped insns as we
@@ -1182,7 +1182,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
  * occurred.
  */
 static int emulate_async_signal(struct dbg_context* dbg, Task* t,
-				const struct user_regs_struct* regs, int sig,
+				const Registers* regs, int sig,
 				int stepi, int64_t* rcb,
 				struct dbg_request* req)
 {
@@ -1222,14 +1222,14 @@ static int skip_desched_ioctl(Task* t,
 			      t->is_disarm_desched_event_syscall());
 	ASSERT(t, is_desched_syscall)
 		<<"Failed to reach desched ioctl; at "
-		<< syscallname(t->regs().orig_eax) <<"("<< t->regs().ebx
-		<<", "<< t->regs().ecx <<") instead";
+		<< syscallname(t->regs().original_syscallno()) <<"("<< t->regs().arg1()
+		<<", "<< t->regs().arg2() <<") instead";
 	/* Emulate a return value of "0".  It's OK for us to hard-code
 	 * that value here, because the syscallbuf lib aborts if a
 	 * desched ioctl returns non-zero (it doesn't know how to
 	 * handle that). */
-	struct user_regs_struct r = t->regs();
-	r.eax = 0;
+	Registers r = t->regs();
+	r.set_syscall_result(0);
 	t->set_regs(r);
 	t->finish_emulated_syscall();
 	return 0;
@@ -1283,8 +1283,8 @@ static void assert_at_buffered_syscall(Task* t, int syscallno)
 {
 	ASSERT(t, t->is_untraced_syscall())
 		<< "Bad ip "<< t->ip() <<": should have been buffered-syscall ip";
-	ASSERT(t, t->regs().orig_eax == syscallno)
-		<< "At "<< syscallname(t->regs().orig_eax)
+	ASSERT(t, t->regs().original_syscallno() == syscallno)
+		<< "At "<< syscallname(t->regs().original_syscallno())
 		<<"; should have been at "<< syscallname(syscallno)
 		<<"("<< syscallno <<")";
 }
@@ -1322,13 +1322,13 @@ static void restore_futex_words(Task* t,
 		<< "Futex should have saved 4 or 8 bytes, but instead saved "
 		<< extra_data_size;
 
-	void* child_uaddr = (void*)t->regs().ebx;
+	void* child_uaddr = (void*)t->regs().arg1();
 	uint32_t rec_uaddr =
 		*reinterpret_cast<const uint32_t*>(rec->extra_data);
 	t->write_mem(child_uaddr, rec_uaddr);
 
 	if (saved_uaddr2) {
-		void* child_uaddr2 = (void*)t->regs().edi;
+		void* child_uaddr2 = (void*)t->regs().arg5();
 		uint32_t rec_uaddr2 =
 			*reinterpret_cast<const uint32_t*>(rec->extra_data +
 							   sizeof(uint32_t));
@@ -1422,8 +1422,8 @@ static int flush_one_syscall(Task* t,
 			}
 			assert_at_buffered_syscall(t, call);
 		}
-		struct user_regs_struct r = t->regs();
-		r.eax = rec_rec->ret;
+		Registers r = t->regs();
+		r.set_syscall_result(rec_rec->ret);
 		t->set_regs(r);
 		if (emu) {
 			t->finish_emulated_syscall();
@@ -1859,9 +1859,9 @@ static bool will_checkpoint()
 static bool is_atomic_syscall(Task* t)
 {
 	return (t->is_probably_replaying_syscall()
-		&& (SYS_execve == t->regs().orig_eax
-		    || (-ENOSYS == t->regs().eax
-			&& !is_always_emulated_syscall(t->regs().orig_eax))));
+		&& (SYS_execve == t->regs().original_syscallno()
+		    || (-ENOSYS == t->regs().syscall_result_signed()
+			&& !is_always_emulated_syscall(t->regs().original_syscallno()))));
 }
 
 /**

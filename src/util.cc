@@ -344,7 +344,7 @@ void print_register_file_tid(Task* t)
 	print_register_file(&t->regs());
 }
 
-void print_register_file(const struct user_regs_struct* regs)
+void print_register_file(const Registers* regs)
 {
 	fprintf(stderr, "Printing register file:\n");
 	fprintf(stderr, "eax: %lx\n", regs->eax);
@@ -559,9 +559,9 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 
 int compare_register_files(Task* t,
 			   const char* name1,
-			   const struct user_regs_struct* reg1,
+			   const Registers* reg1,
 			   const char* name2,
-			   const struct user_regs_struct* reg2,
+			   const Registers* reg2,
 			   int mismatch_behavior)
 {
 	int bail_error = (mismatch_behavior >= BAIL_ON_MISMATCH);
@@ -643,7 +643,7 @@ int compare_register_files(Task* t,
 	return err;
 }
 
-void assert_child_regs_are(Task* t, const struct user_regs_struct* regs)
+void assert_child_regs_are(Task* t, const Registers* regs)
 {
 	compare_register_files(t, "replaying", &t->regs(), "recorded", regs,
 			       BAIL_ON_MISMATCH);
@@ -967,15 +967,15 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 	free(buf);
 }
 
-void copy_syscall_arg_regs(struct user_regs_struct* to,
-			   const struct user_regs_struct* from)
+void copy_syscall_arg_regs(Registers* to,
+			   const Registers* from)
 {
-	to->ebx = from->ebx;
-	to->ecx = from->ecx;
-	to->edx = from->edx;
-	to->esi = from->esi;
-	to->edi = from->edi;
-	to->ebp = from->ebp;
+	to->set_arg1(from->arg1());
+	to->set_arg2(from->arg2());
+	to->set_arg3(from->arg3());
+	to->set_arg4(from->arg4());
+	to->set_arg5(from->arg5());
+	to->set_arg6(from->arg6());
 }
 
 void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
@@ -1257,7 +1257,7 @@ void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
 	state->pid = t->tid;
 	state->regs = t->regs();
 	state->code_size = sizeof(syscall_insn);
-	state->start_addr = (byte*)state->regs.eip;
+	state->start_addr = (byte*)state->regs.ip();
 	t->read_bytes(state->start_addr, state->code_buffer);
 	/* Inject phony syscall instruction. */
 	t->write_bytes(state->start_addr, syscall_insn);
@@ -1268,11 +1268,11 @@ void* push_tmp_mem(Task* t, struct current_state_buffer* state,
 		   struct restore_mem* restore)
 {
 	restore->len = num_bytes;
-	restore->saved_sp = (void*)state->regs.esp;
+	restore->saved_sp = (void*)state->regs.sp();
 
-	state->regs.esp -= restore->len;
+	state->regs.set_sp(state->regs.sp() - restore->len);
 	t->set_regs(state->regs);
-	restore->addr = (void*)state->regs.esp;
+	restore->addr = (void*)state->regs.sp();
 
 	restore->data = (byte*)malloc(restore->len);
 	t->read_bytes_helper(restore->addr, restore->len, restore->data);
@@ -1293,12 +1293,12 @@ void* push_tmp_str(Task* t, struct current_state_buffer* state,
 void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 		 struct restore_mem* mem)
 {
-	assert(mem->saved_sp == (byte*)state->regs.esp + mem->len);
+	assert(mem->saved_sp == (byte*)state->regs.sp() + mem->len);
 
 	t->write_bytes_helper(mem->addr, mem->len, mem->data);
 	free(mem->data);
 
-	state->regs.esp += mem->len;
+	state->regs.set_sp(state->regs.sp() + mem->len);
 	t->set_regs(state->regs);
 }
 
@@ -1318,21 +1318,21 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 	assert(t->tid == state->pid);
 
 	/* Prepare syscall arguments. */
-	struct user_regs_struct callregs = state->regs;
-	callregs.eax = syscallno;
-	callregs.ebx = a1;
-	callregs.ecx = a2;
-	callregs.edx = a3;
-	callregs.esi = a4;
-	callregs.edi = a5;
-	callregs.ebp = a6;
+	Registers callregs = state->regs;
+	callregs.set_syscallno(syscallno);
+	callregs.set_arg1(a1);
+	callregs.set_arg2(a2);
+	callregs.set_arg3(a3);
+	callregs.set_arg4(a4);
+	callregs.set_arg5(a5);
+	callregs.set_arg6(a6);
 	t->set_regs(callregs);
 
 	advance_syscall(t);
 
-	ASSERT(t, t->regs().orig_eax == syscallno)
+	ASSERT(t, t->regs().original_syscallno() == syscallno)
 		<<"Should be entering "<< syscallname(syscallno)
-		<<", but instead at "<< syscallname(callregs.orig_eax);
+		<<", but instead at "<< syscallname(t->regs().original_syscallno());
 
 	/* Start running the syscall. */
 	t->cont_syscall_nonblocking();
@@ -1345,15 +1345,14 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 			 int syscallno)
 {
-	struct user_regs_struct regs;
 	/* Wait for syscall-exit trap. */
 	t->wait();
 
-	ASSERT(t, t->regs().orig_eax == syscallno)
+	ASSERT(t, t->regs().original_syscallno() == syscallno)
 		<<"Should be entering "<< syscallname(syscallno)
-		<<", but instead at "<< syscallname(regs.orig_eax);
+		<<", but instead at "<< syscallname(t->regs().original_syscallno());
 
-	return t->regs().eax;
+	return t->regs().syscall_result_signed();
 }
 
 void finish_remote_syscalls(Task* t, struct current_state_buffer* state)
@@ -1385,10 +1384,10 @@ void destroy_buffers(Task* t, int flags)
 		advance_syscall(t);
 	}
 
-	struct user_regs_struct exit_regs = t->regs();
-	ASSERT(t, SYS_exit == exit_regs.orig_eax)
+	Registers exit_regs = t->regs();
+	ASSERT(t, SYS_exit == exit_regs.original_syscallno())
 		<< "Tracee should have been at exit, but instead at "
-		<< syscallname(exit_regs.orig_eax);
+		<< syscallname(exit_regs.original_syscallno());
 
 	// The tracee is at the entry to SYS_exit, but hasn't started
 	// the call yet.  We can't directly start injecting syscalls
@@ -1399,7 +1398,7 @@ void destroy_buffers(Task* t, int flags)
 	// So hijack this SYS_exit call and rewrite it into a harmless
 	// one that we can exit successfully, SYS_gettid here (though
 	// that choice is arbitrary).
-	exit_regs.orig_eax = SYS_gettid;
+	exit_regs.set_original_syscallno(SYS_gettid);
 	t->set_regs(exit_regs);
 	// This exits the hijacked SYS_gettid.  Now the tracee is
 	// ready to do our bidding.
@@ -1408,12 +1407,12 @@ void destroy_buffers(Task* t, int flags)
 	// Restore these regs to what they would have been just before
 	// the tracee trapped at SYS_exit.  When we've finished
 	// cleanup, we'll restart the SYS_exit call.
-	exit_regs.orig_eax = -1;
-	exit_regs.eax = SYS_exit;
-	exit_regs.eip -= sizeof(syscall_insn);
+	exit_regs.set_original_syscallno(-1);
+	exit_regs.set_syscallno(SYS_exit);
+	exit_regs.set_ip(exit_regs.ip() - sizeof(syscall_insn));
 
 	byte insn[sizeof(syscall_insn)];
-	t->read_bytes((void*)exit_regs.eip, insn);
+	t->read_bytes((void*)exit_regs.ip(), insn);
 	ASSERT(t, !memcmp(insn, syscall_insn, sizeof(insn)))
 		<<"Tracee should have entered through int $0x80.";
 
@@ -1559,7 +1558,7 @@ void monkeypatch_vdso(Task* t)
 	// we don't need to prepare remote syscalls here.
 	monkeypatch(t, kernel_vsyscall, vsyscall_hook_trampoline);
 
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	r.eax = 0;
 	t->set_regs(r);
 }

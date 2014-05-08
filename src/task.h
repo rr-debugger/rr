@@ -13,7 +13,6 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/queue.h>
-#include <sys/user.h>
 
 #include <deque>
 #include <map>
@@ -25,6 +24,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "event.h"
+#include "registers.h"
 #include "trace.h"
 #include "util.h"
 
@@ -991,7 +991,7 @@ public:
 	void destroy_buffers(int which);
 
 	/** Return the current $ip of this. */
-	void* ip() { return (void*)regs().eip; }
+	void* ip() { return (void*)regs().ip(); }
 
 	/**
 	 * Return true if this is at an arm-desched-event syscall.
@@ -1244,7 +1244,7 @@ public:
 	void record_remote_str(void* str);
 
 	/** Return the current regs of this. */
-	const struct user_regs_struct& regs();
+	const Registers& regs();
 
 	/**
 	 * Return the debug status, which is a bitfield comprising
@@ -1318,7 +1318,7 @@ public:
 	void set_return_value_from_trace();
 
 	/** Set the tracee's registers to |regs|. */
-	void set_regs(const struct user_regs_struct& regs);
+	void set_regs(const Registers& regs);
 
 	/**
 	 * Program the debug registers to the vector of watchpoint
@@ -1671,8 +1671,8 @@ public:
 	/* Points at the tracee's mapping of the buffer. */
 	void* syscallbuf_child;
 
-	/* The value of ebx passed to the last execve syscall in this task. */
-	int exec_saved_ebx;
+	/* The value of arg1 passed to the last execve syscall in this task. */
+	uintptr_t exec_saved_arg1;
 
 private:
 	Task(pid_t tid, pid_t rec_tid, int priority);
@@ -1860,7 +1860,7 @@ private:
 	// ptrace call to update the cache, and set the "known" bit
 	// back to true.  Manually setting the registers also updates
 	// this cached value and set the "known" flag.
-	struct user_regs_struct registers;
+	Registers registers;
 	bool registers_known;
 	// Futex list passed to |set_robust_list()|.  We could keep a
 	// strong type for this list head and read it if we wanted to,

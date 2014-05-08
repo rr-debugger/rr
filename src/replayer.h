@@ -3,6 +3,7 @@
 #ifndef RR_REPLAYER_H_
 #define RR_REPLAYER_H_
 
+#include "registers.h"
 #include "types.h"
 #include "util.h"
 
@@ -130,7 +131,7 @@ struct rep_trace_step {
 		struct {
 			int64_t rcb;
 			/* XXX can be just $ip in "production". */
-			const struct user_regs_struct* regs;
+			const Registers* regs;
 			int signo;
 		} target;
 
