@@ -13,7 +13,6 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/queue.h>
-#include <sys/user.h>
 
 #include <deque>
 #include <map>
@@ -25,6 +24,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "event.h"
+#include "registers.h"
 #include "trace.h"
 #include "util.h"
 
@@ -1244,7 +1244,7 @@ public:
 	void record_remote_str(void* str);
 
 	/** Return the current regs of this. */
-	const struct user_regs_struct& regs();
+	const Registers& regs();
 
 	/**
 	 * Return the debug status, which is a bitfield comprising
@@ -1318,7 +1318,7 @@ public:
 	void set_return_value_from_trace();
 
 	/** Set the tracee's registers to |regs|. */
-	void set_regs(const struct user_regs_struct& regs);
+	void set_regs(const Registers& regs);
 
 	/**
 	 * Program the debug registers to the vector of watchpoint
@@ -1860,7 +1860,7 @@ private:
 	// ptrace call to update the cache, and set the "known" bit
 	// back to true.  Manually setting the registers also updates
 	// this cached value and set the "known" flag.
-	struct user_regs_struct registers;
+	Registers registers;
 	bool registers_known;
 	// Futex list passed to |set_robust_list()|.  We could keep a
 	// strong type for this list head and read it if we wanted to,

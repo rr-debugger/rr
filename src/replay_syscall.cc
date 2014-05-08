@@ -330,7 +330,7 @@ static void process_clone(Task* t,
 		return;
 	}
 
-	struct user_regs_struct rec_regs = trace->recorded_regs;
+	Registers rec_regs = trace->recorded_regs;
 	unsigned long flags = rec_regs.ebx;
 
 	if (flags & CLONE_UNTRACED) {
@@ -378,7 +378,7 @@ static void process_clone(Task* t,
 		new_task->vm()->destroy_all_watchpoints();
 	}
 
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	/* set the ebp register to the recorded value -- it should not
 	 * point to data on that is used afterwards */
 	r.ebp = rec_regs.ebp;
@@ -397,7 +397,7 @@ static void process_clone(Task* t,
 }
 
 static void process_execve(Task* t, struct trace_frame* trace, int state,
-			   const struct user_regs_struct* rec_regs,
+			   const Registers* rec_regs,
 			   struct rep_trace_step* step)
 {
 	const int syscallno = SYS_execve;
@@ -460,7 +460,7 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 }
 
 static void process_futex(Task* t, int state, struct rep_trace_step* step,
-			  const struct user_regs_struct* regs)
+			  const Registers* regs)
 {
 	int op = regs->ecx & FUTEX_CMD_MASK;
 	void* futex = (void*)regs->ebx;
@@ -599,7 +599,7 @@ static void* finish_anonymous_mmap(Task* t,
 				   off64_t offset_pages,
 				   int note_task_map=NOTE_TASK_MAP)
 {
-	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	const Registers* rec_regs = &trace->recorded_regs;
 	/* *Must* map the segment at the recorded address, regardless
 	   of what the recorded tracee passed as the |addr| hint. */
 	void* rec_addr = (void*)rec_regs->eax;
@@ -675,7 +675,7 @@ static void* finish_private_mmap(Task* t,
 {
 	LOG(debug) <<"  finishing private mmap of "<< file->filename;
 
-	const struct user_regs_struct& rec_regs = trace->recorded_regs;
+	const Registers& rec_regs = trace->recorded_regs;
 	size_t num_bytes = rec_regs.ecx;
 	void* mapped_addr = finish_anonymous_mmap(t, state, trace, prot,
 						  /* The restored region
@@ -738,7 +738,7 @@ static void* finish_direct_mmap(Task* t,
 				int verify = VERIFY_BACKING_FILE,
 				int note_task_map=NOTE_TASK_MAP)
 {
-	struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	Registers* rec_regs = &trace->recorded_regs;
 	void* rec_addr = (void*)rec_regs->eax;
 	size_t length = rec_regs->ecx;
 	int fd;
@@ -803,7 +803,7 @@ static void* finish_shared_mmap(Task* t,
 				off64_t offset_pages,
 				const struct mmapped_file* file)
 {
-	const struct user_regs_struct& rec_regs = trace->recorded_regs;
+	const Registers& rec_regs = trace->recorded_regs;
 	size_t rec_num_bytes = ceil_page_size(rec_regs.ecx);
 
 	// Ensure there's a virtual file for the file that was mapped
@@ -1084,7 +1084,7 @@ notify_save_data_error(Task* t, void* addr,
  * recording.
  */
 static void maybe_verify_tracee_saved_data(Task* t,
-					   const struct user_regs_struct* rec_regs)
+					   const Registers* rec_regs)
 {
 	int fd = rec_regs->ebx;
 	void* rep_addr = (void*)rec_regs->ecx;
@@ -1161,7 +1161,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	const struct syscall_def* def;
 	struct trace_frame* trace = &(t->trace);
 	int state = trace->ev.state;
-	const struct user_regs_struct* rec_regs = &trace->recorded_regs;
+	const Registers* rec_regs = &trace->recorded_regs;
 	AutoGc maybe_gc(t->replay_session(), syscall, state);
 
 	LOG(debug) <<"processing "<< syscallname(syscall) <<" ("

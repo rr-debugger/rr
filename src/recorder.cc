@@ -557,7 +557,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			 * want to record those fudged registers,
 			 * because scratch doesn't exist in replay.
 			 * So cover our tracks here. */
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			copy_syscall_arg_regs(&r, &t->ev().Syscall().regs);
 			t->set_regs(r);
 		}

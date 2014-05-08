@@ -120,7 +120,7 @@ static void debug_memory(Task* t)
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static DbgRegister get_reg(const struct user_regs_struct* regs,
+static DbgRegister get_reg(const Registers* regs,
 			   DbgRegisterName which)
 {
 	DbgRegister reg;
@@ -469,7 +469,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
  */
 static void validate_args(int event, int state, Task* t)
 {
-	struct user_regs_struct rec_regs = t->trace.recorded_regs;
+	Registers rec_regs = t->trace.recorded_regs;
 
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
@@ -777,7 +777,7 @@ static int is_debugger_trap(Task* t, int target_sig,
 }
 
 static void guard_overshoot(Task* t,
-			    const struct user_regs_struct* target_regs,
+			    const Registers* target_regs,
 			    int64_t target_rcb, int64_t remaining_rcbs)
 {
 	int remaining_rcbs_gt_0 = remaining_rcbs >= 0;
@@ -824,7 +824,7 @@ static void guard_unexpected_signal(Task* t)
 }
 
 static int is_same_execution_point(Task* t,
-				   const struct user_regs_struct* rec_regs,
+				   const Registers* rec_regs,
 				   int64_t rcbs_left)
 {
 	int behavior =
@@ -862,7 +862,7 @@ static int is_same_execution_point(Task* t,
  * that will be decremented by branches retired during this attempted
  * step.
  */
-static int advance_to(Task* t, const struct user_regs_struct* regs,
+static int advance_to(Task* t, const Registers* regs,
 		      int sig, int stepi, int64_t* rcb)
 {
 	pid_t tid = t->tid;
@@ -1182,7 +1182,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
  * occurred.
  */
 static int emulate_async_signal(struct dbg_context* dbg, Task* t,
-				const struct user_regs_struct* regs, int sig,
+				const Registers* regs, int sig,
 				int stepi, int64_t* rcb,
 				struct dbg_request* req)
 {
@@ -1228,7 +1228,7 @@ static int skip_desched_ioctl(Task* t,
 	 * that value here, because the syscallbuf lib aborts if a
 	 * desched ioctl returns non-zero (it doesn't know how to
 	 * handle that). */
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	r.eax = 0;
 	t->set_regs(r);
 	t->finish_emulated_syscall();
@@ -1422,7 +1422,7 @@ static int flush_one_syscall(Task* t,
 			}
 			assert_at_buffered_syscall(t, call);
 		}
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		r.eax = rec_rec->ret;
 		t->set_regs(r);
 		if (emu) {

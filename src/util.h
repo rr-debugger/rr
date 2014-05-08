@@ -10,11 +10,11 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <sys/ptrace.h>
-#include <sys/user.h>
 #include <unistd.h>
 
 #include <ostream>
 
+#include "registers.h"
 #include "types.h"
 
 struct msghdr;
@@ -142,15 +142,15 @@ void update_replay_target(pid_t process, int event);
 enum { EXPECT_MISMATCHES = 0, LOG_MISMATCHES, BAIL_ON_MISMATCH };
 int compare_register_files(Task* t,
 			   const char* name1,
-			   const struct user_regs_struct* reg1,
+			   const Registers* reg1,
 			   const char* name2,
-			   const struct user_regs_struct* reg2,
+			   const Registers* reg2,
 			   int mismatch_behavior);
 
-void assert_child_regs_are(Task* t, const struct user_regs_struct* regs);
+void assert_child_regs_are(Task* t, const Registers* regs);
 
 void print_register_file_tid(Task* t);
-void print_register_file(const struct user_regs_struct* regs);
+void print_register_file(const Registers* regs);
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
@@ -329,7 +329,7 @@ static const byte syscall_insn[] = { 0xcd, 0x80 };
 // TODO: RAII-ify me and helpers below.
 struct current_state_buffer {
 	pid_t pid;
-	struct user_regs_struct regs;
+	Registers regs;
 	int code_size;
 	byte code_buffer[sizeof(syscall_insn)];
 	void* start_addr;
@@ -356,8 +356,8 @@ size_t page_size();
  * Copy the registers used for syscall arguments (not including
  * syscall number) from |from| to |to|.
  */
-void copy_syscall_arg_regs(struct user_regs_struct* to,
-			   const struct user_regs_struct* from);
+void copy_syscall_arg_regs(Registers* to,
+			   const Registers* from);
 
 /**
  * Record all the data needed to restore the |struct msghdr| pointed

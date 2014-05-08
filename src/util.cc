@@ -344,7 +344,7 @@ void print_register_file_tid(Task* t)
 	print_register_file(&t->regs());
 }
 
-void print_register_file(const struct user_regs_struct* regs)
+void print_register_file(const Registers* regs)
 {
 	fprintf(stderr, "Printing register file:\n");
 	fprintf(stderr, "eax: %lx\n", regs->eax);
@@ -559,9 +559,9 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 
 int compare_register_files(Task* t,
 			   const char* name1,
-			   const struct user_regs_struct* reg1,
+			   const Registers* reg1,
 			   const char* name2,
-			   const struct user_regs_struct* reg2,
+			   const Registers* reg2,
 			   int mismatch_behavior)
 {
 	int bail_error = (mismatch_behavior >= BAIL_ON_MISMATCH);
@@ -643,7 +643,7 @@ int compare_register_files(Task* t,
 	return err;
 }
 
-void assert_child_regs_are(Task* t, const struct user_regs_struct* regs)
+void assert_child_regs_are(Task* t, const Registers* regs)
 {
 	compare_register_files(t, "replaying", &t->regs(), "recorded", regs,
 			       BAIL_ON_MISMATCH);
@@ -967,8 +967,8 @@ void cleanup_code_injection(struct current_state_buffer* buf)
 	free(buf);
 }
 
-void copy_syscall_arg_regs(struct user_regs_struct* to,
-			   const struct user_regs_struct* from)
+void copy_syscall_arg_regs(Registers* to,
+			   const Registers* from)
 {
 	to->ebx = from->ebx;
 	to->ecx = from->ecx;
@@ -1318,7 +1318,7 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 	assert(t->tid == state->pid);
 
 	/* Prepare syscall arguments. */
-	struct user_regs_struct callregs = state->regs;
+	Registers callregs = state->regs;
 	callregs.eax = syscallno;
 	callregs.ebx = a1;
 	callregs.ecx = a2;
@@ -1345,7 +1345,7 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 			 int syscallno)
 {
-	struct user_regs_struct regs;
+	Registers regs;
 	/* Wait for syscall-exit trap. */
 	t->wait();
 
@@ -1385,7 +1385,7 @@ void destroy_buffers(Task* t, int flags)
 		advance_syscall(t);
 	}
 
-	struct user_regs_struct exit_regs = t->regs();
+	Registers exit_regs = t->regs();
 	ASSERT(t, SYS_exit == exit_regs.orig_eax)
 		<< "Tracee should have been at exit, but instead at "
 		<< syscallname(exit_regs.orig_eax);
@@ -1559,7 +1559,7 @@ void monkeypatch_vdso(Task* t)
 	// we don't need to prepare remote syscalls here.
 	monkeypatch(t, kernel_vsyscall, vsyscall_hook_trampoline);
 
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	r.eax = 0;
 	t->set_regs(r);
 }

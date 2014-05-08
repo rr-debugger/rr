@@ -243,7 +243,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			(byte*)t->ev().Syscall().tmp_data_ptr : nullptr;
 	long* argsp;
 	void* tmpargsp;
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 
 	assert(!t->desched_rec());
 
@@ -298,7 +298,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		if (!would_need_scratch) {
 			return 1;
 		}
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		void* argsp = (void*)r.ecx;
 		struct accept4_args args;
 		if (SYS_ACCEPT == call) {
@@ -350,7 +350,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		if (!would_need_scratch) {
 			return 1;
 		}
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		void* argsp = (void*)r.ecx;
 		struct recvfrom_args args;
 		t->read_mem(argsp, &args);
@@ -392,7 +392,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		return 1;
 	}
 	case SYS_RECVMSG: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		void* argsp = (void*)r.ecx;
 		struct recvmsg_args args;
 		t->read_mem(argsp, &args);
@@ -462,7 +462,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		return 1;
 	}
 	case SYS_SENDMSG: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		void* argsp = (void*)r.ecx;
 		struct recvmsg_args args;
 		t->read_mem(argsp, &args);
@@ -623,7 +623,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 
 	switch (syscallno) {
 	case SYS_splice: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		loff_t* off_in = (loff_t*)r.ecx;
 		loff_t* off_out = (loff_t*)r.esi;
 
@@ -654,7 +654,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	case SYS_sendfile64: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		loff_t* offset = (loff_t*)r.edx;
 
 		if (!would_need_scratch) {
@@ -680,7 +680,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		unsigned long flags = t->regs().ebx;
 		push_arg_ptr(t, (void*)(uintptr_t)flags);
 		if (flags & CLONE_UNTRACED) {
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			// We can't let tracees clone untraced tasks,
 			// because they can create nondeterminism that
 			// we can't replay.  So unset the UNTRACED bit
@@ -700,7 +700,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	case SYS_execve: {
 		t->pre_exec();
 
-		struct user_regs_struct r =  t->regs();
+		Registers r =  t->regs();
 		string raw_filename = t->read_c_str((void*)r.ebx);
 		// We can't use push_arg_ptr/pop_arg_ptr to save and restore
 		// ebx because execs get special ptrace events that clobber
@@ -756,7 +756,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		if (!would_need_scratch) {
 			return 1;
 		}
-		struct user_regs_struct r =  t->regs();
+		Registers r =  t->regs();
 
 		push_arg_ptr(t, (void*)r.ecx);
 		r.ecx = (uintptr_t)scratch;
@@ -779,7 +779,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
 	case SYS_waitpid:
 	case SYS_wait4: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		int* status = (int*)r.ecx;
 		struct rusage* rusage = (SYS_wait4 == syscallno) ?
 					(struct rusage*)r.esi : NULL;
@@ -811,7 +811,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 1;
 		}
 
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		siginfo_t* infop = (siginfo_t*)r.edx;
 		push_arg_ptr(t, infop);
 		if (infop) {
@@ -836,7 +836,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	 *           const sigset_t *sigmask); */
 	case SYS_poll:
 	case SYS_ppoll: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		struct pollfd* fds = (struct pollfd*)r.ebx;
 		struct pollfd* fds2 = (struct pollfd*)scratch;
 		nfds_t nfds = r.ecx;
@@ -865,7 +865,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		if (!would_need_scratch) {
 			return 1;
 		}
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		switch (r.ebx) {
 		case PR_GET_ENDIAN:
 		case PR_GET_FPEMU:
@@ -915,7 +915,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 1;
 		}
 
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		struct epoll_event* events = (struct epoll_event*)r.ecx;
 		int maxevents = r.edx;
 
@@ -964,7 +964,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 1;
 		}
 
-		struct user_regs_struct r= t->regs();
+		Registers r= t->regs();
 		struct timespec* rem = (struct timespec*)r.ecx;
 		push_arg_ptr(t, rem);
 		if (rem) {
@@ -1073,7 +1073,7 @@ static void init_scratch_memory(Task *t)
 	finish_remote_syscalls(t, &state);
 
 	// record this mmap for the replay
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	int eax = r.eax;
 	r.eax = (uintptr_t)t->scratch_ptr;
 	t->set_regs(r);
@@ -1207,7 +1207,7 @@ static void finish_restoring_some_scratch(Task* t, byte* iter, void** data)
 
 static void process_execve(Task* t)
 {
-	struct user_regs_struct r = t->regs();
+	Registers r = t->regs();
 	if (SYSCALL_FAILED(r.eax)) {
 		if (r.ebx != t->exec_saved_ebx) {
 			LOG(warn) <<"Blocked attempt to execve 64-bit image (not yet supported by rr)";
@@ -1654,7 +1654,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		}
 
 		if (data) {
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			/* Restore the pointer to the original args. */
 			r.ecx = (uintptr_t)argsp;
 			t->set_regs(r);
@@ -1687,7 +1687,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 				args.src_addr = (struct sockaddr*)src_addrp;
 				args.addrlen = (socklen_t*)addrlenp;
 			}
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			r.ecx = (uintptr_t)argsp;
 			t->set_regs(r);
 		}
@@ -1711,7 +1711,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	}
 	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 	case SYS_RECVMSG: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		struct recvmsg_args* tmpargsp = (struct recvmsg_args*)r.ecx;
 		struct recvmsg_args tmpargs;
 		t->read_mem(tmpargsp, &tmpargs);
@@ -1793,7 +1793,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	 */
 	case SYS_ACCEPT:
 	case SYS_ACCEPT4: {
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		struct sockaddr* addrp = pop_arg_ptr<struct sockaddr>(t);
 		socklen_t* addrlenp = pop_arg_ptr<socklen_t>(t);
 		byte* orig_argsp = pop_arg_ptr<byte>(t);
@@ -1982,7 +1982,7 @@ void rec_process_syscall(Task *t)
 		unsigned long flags = (uintptr_t)pop_arg_ptr<void>(t);
 
 		if (flags & CLONE_UNTRACED) {
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			r.ebx = flags;
 			t->set_regs(r);
 		}
@@ -2023,7 +2023,7 @@ void rec_process_syscall(Task *t)
 			restore_and_record_arg_buf(t,
 						   maxevents * sizeof(*events),
 						   (byte*)events, &iter);
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			r.ecx = (uintptr_t)events;
 			t->set_regs(r);
 		} else {
@@ -2146,7 +2146,7 @@ void rec_process_syscall(Task *t)
 		void* data = start_restoring_scratch(t, &iter);
 
 		if (rem) {
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			/* If the sleep completes, the kernel doesn't
 			 * write back to the remaining-time
 			 * argument. */
@@ -2175,7 +2175,7 @@ void rec_process_syscall(Task *t)
 			 * gross hack dies before we have to worry
 			 * about that. */
 			LOG(warn) <<"Cowardly refusing to open "<< pathname;
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			r.eax = -ENOENT;
 			t->set_regs(r);
 		}
@@ -2190,7 +2190,7 @@ void rec_process_syscall(Task *t)
 
 		restore_and_record_arg_buf(t, nfds * sizeof(*fds), (byte*)fds,
 					   &iter);
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		r.ebx = (uintptr_t)fds;
 		t->set_regs(r);
 		finish_restoring_scratch(t, iter, &data);
@@ -2229,7 +2229,7 @@ void rec_process_syscall(Task *t)
 			byte* arg = pop_arg_ptr<byte>(t);
 
 			restore_and_record_arg_buf(t, size, arg, &iter);
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			r.ecx = (uintptr_t)arg;
 			t->set_regs(r);
 
@@ -2288,7 +2288,7 @@ void rec_process_syscall(Task *t)
 		}
 
 		if (data) {
-			struct user_regs_struct r = t->regs();
+			Registers r = t->regs();
 			r.ecx = (uintptr_t)buf;
 			t->set_regs(r);
 			finish_restoring_some_scratch(t, iter, &data);
@@ -2310,7 +2310,7 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		if (offset) {
 			restore_and_record_arg(t, offset, &iter);
 			r.edx = (uintptr_t)offset;
@@ -2343,7 +2343,7 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		if (off_in) {
 			restore_and_record_arg(t, off_in, &iter);
 			r.ecx = (uintptr_t)off_in;
@@ -2376,7 +2376,7 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		if (infop) {
 			restore_and_record_arg(t, infop, &iter);
 			r.edx = (uintptr_t)infop;
@@ -2395,7 +2395,7 @@ void rec_process_syscall(Task *t)
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
-		struct user_regs_struct r = t->regs();
+		Registers r = t->regs();
 		if (status) {
 			restore_and_record_arg(t, status, &iter);
 			r.ecx = (uintptr_t)status;

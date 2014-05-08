@@ -1177,7 +1177,7 @@ void
 Task::finish_emulated_syscall()
 {
 	// XXX verify that this can't be interrupted by a breakpoint trap
-	struct user_regs_struct r = regs();
+	Registers r = regs();
 	// TODO: this will execute the instruction just after syscall
 	// entry twice, so if that instruction has non-idempotent side
 	// effects, replay can diverge.
@@ -1449,7 +1449,7 @@ Task::is_syscall_restart()
 	int syscallno = regs().orig_eax;
 	bool must_restart = (SYS_restart_syscall == syscallno);
 	bool is_restart = false;
-	const struct user_regs_struct* old_regs;
+	const Registers* old_regs;
 
 	LOG(debug) <<"  is syscall interruption of recorded " << ev()
 		   <<"? (now "<< syscallname(syscallno) <<")";
@@ -1560,7 +1560,7 @@ Task::maybe_update_vm(int syscallno, int state)
 	// We have to use the recorded_regs during replay because they
 	// have the return value set in |eax|.  We may not have
 	// advanced regs() to that point yet.
-	const struct user_regs_struct& r = RECORD == rr_flags()->option ?
+	const Registers& r = RECORD == rr_flags()->option ?
 					   regs() : trace.recorded_regs;
 
 	if (STATE_SYSCALL_EXIT != state
@@ -1613,7 +1613,7 @@ void
 Task::move_ip_before_breakpoint()
 {
 	// TODO: assert that this is at a breakpoint trap.
-	struct user_regs_struct r = regs();
+	Registers r = regs();
 	r.eip -= sizeof(AddressSpace::breakpoint_insn);
 	set_regs(r);
 }
@@ -1774,7 +1774,7 @@ Task::read_word(void* child_addr)
 	return word;
 }
 
-const struct user_regs_struct&
+const Registers&
 Task::regs()
 {
 	if (!registers_known) {
@@ -1863,13 +1863,13 @@ Task::set_data_from_trace()
 void
 Task::set_return_value_from_trace()
 {
-	struct user_regs_struct r = regs();
+	Registers r = regs();
 	r.eax = trace.recorded_regs.eax;
 	set_regs(r);
 }
 
 void
-Task::set_regs(const struct user_regs_struct& regs)
+Task::set_regs(const Registers& regs)
 {
 	registers = regs;
 	xptrace(PTRACE_SETREGS, nullptr, (void*)&registers);
