@@ -12,17 +12,14 @@
  *
  *   DEF[N](name, semantics[, type, reg...]) -> the syscall has N
  *   pairs of (type, register) args.  For example,
- *   |SYSCALL_DEF1(gettimeofday, EMU, struct timeval, ebx)| has one
- *   outparam arg in |ebx| of size |sizeof(struct timeval)|.
+ *   |SYSCALL_DEF1(gettimeofday, EMU, struct timeval, arg1)| has one
+ *   outparam arg in |arg1()| of size |sizeof(struct timeval)|.
  *
  *   DEF[N]_DYNSIZE(name, semantics[, dynamic-size, reg...]) -> like
  *   above, except that the N pairs are (dynamic-size, register) args.
  *   An arbitrary expression of the relevant Task |t| can be used to
- *   specify the size of each argument, for example |t->regs().eax *
+ *   specify the size of each argument, for example |t->regs().syscall_result() *
  *   sizeof(int)|.
- *
- *   DEF_STR[N](name, semantics[, reg...]) -> like above, except that the
- *   params refer to N args (register) that are C strings.
  *
  *   DEF_IRREG(name, irreg_semantics) -> the syscall doesn't fit a
  *   regular pattern; hand-written code is needed to process the
@@ -102,7 +99,7 @@ SYSCALL_DEF0(chmod, EMU)
  * The functions clock_gettime() and clock_settime() retrieve and set
  * the time of the specified clock clk_id.
  */
-SYSCALL_DEF1(clock_gettime, EMU, struct timespec, ecx)
+SYSCALL_DEF1(clock_gettime, EMU, struct timespec, arg2)
 
 /**
  *  int clock_getres(clockid_t clk_id, struct timespec *res)
@@ -115,7 +112,7 @@ SYSCALL_DEF1(clock_gettime, EMU, struct timespec, ecx)
  * tp of clock_settime() is not a multiple of res, then it is
  * truncated to a multiple of res.
  */
-SYSCALL_DEF1(clock_getres, EMU, struct timespec, ecx)
+SYSCALL_DEF1(clock_getres, EMU, struct timespec, arg2)
 
 /**
  *  int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
@@ -311,7 +308,7 @@ SYSCALL_DEF_IRREG(fcntl64, EMU)
  * fstat() is identical to stat(), except that the file to be stat-ed
  * is specified by the file descriptor fd.
  */
-SYSCALL_DEF1(fstat64, EMU, struct stat64, ecx)
+SYSCALL_DEF1(fstat64, EMU, struct stat64, arg2)
 
 /**
  *  int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
@@ -320,7 +317,7 @@ SYSCALL_DEF1(fstat64, EMU, struct stat64, ecx)
  * stat(2), except for the differences described in this manual
  * page....
  */
-SYSCALL_DEF1(fstatat64, EMU, struct stat64, edx)
+SYSCALL_DEF1(fstatat64, EMU, struct stat64, arg3)
 
 /**
  *  int fstatfs(int fd, struct statfs *buf)
@@ -330,8 +327,8 @@ SYSCALL_DEF1(fstatat64, EMU, struct stat64, edx)
  * get_time(GET_TID(thread_id));mounted file system.  buf is a pointer
  * to a statfs structure defined approximately as follows:
  */
-SYSCALL_DEF1(fstatfs, EMU, struct statfs, ecx)
-SYSCALL_DEF1(fstatfs64, EMU, struct statfs64, edx)
+SYSCALL_DEF1(fstatfs, EMU, struct statfs, arg2)
+SYSCALL_DEF1(fstatfs64, EMU, struct statfs64, arg3)
 
 /**
  *  int fsync(int fd)
@@ -394,7 +391,7 @@ SYSCALL_DEF_IRREG(futex, EMU)
  * calling process.  The pathname is returned as the function result
  * and via the argument buf, if present.
  */
-SYSCALL_DEF1_STR(getcwd, EMU, ebx)
+SYSCALL_DEF1_STR(getcwd, EMU, arg1)
 
 /**
  *  int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
@@ -404,8 +401,8 @@ SYSCALL_DEF1_STR(getcwd, EMU, ebx)
  * the buffer pointed to by dirp.  The argument count specifies the
  * size of that buffer.
  */
-SYSCALL_DEF1_DYNSIZE(getdents, EMU, t->regs().eax, ecx)
-SYSCALL_DEF1_DYNSIZE(getdents64, EMU, t->regs().eax, ecx)
+SYSCALL_DEF1_DYNSIZE(getdents, EMU, (int)t->regs().syscall_result_signed(), arg2)
+SYSCALL_DEF1_DYNSIZE(getdents64, EMU, (int)t->regs().syscall_result_signed(), arg2)
 
 /**
  *  gid_t getegid(void);
@@ -438,7 +435,8 @@ SYSCALL_DEF0(geteuid32, EMU)
  * the caller to determine the size of a dynamically allocated list to
  * be used in a further call to getgroups().
  */
-SYSCALL_DEF1_DYNSIZE(getgroups32, EMU, t->regs().ebx * sizeof(gid_t), ecx)
+SYSCALL_DEF1_DYNSIZE(getgroups32, EMU,
+	(int)t->regs().syscall_result_signed() * sizeof(gid_t), arg2)
 
 /**
  *  pid_t getpgid(pid_t pid);
@@ -498,7 +496,7 @@ SYSCALL_DEF0(getpriority, EMU)
  * returned.  On error, -1 is returned, and errno is set
  * appropriately.
  */
-SYSCALL_DEF3(getresgid32, EMU, uid_t, ebx, uid_t, ecx, uid_t, edx)
+SYSCALL_DEF3(getresgid32, EMU, uid_t, arg1, uid_t, arg2, uid_t, arg3)
 
 /**
  *  int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid)
@@ -508,7 +506,7 @@ SYSCALL_DEF3(getresgid32, EMU, uid_t, ebx, uid_t, ecx, uid_t, edx)
  * and suid, respectively.  getresgid() performs the analogous task
  * for the process's group IDs.
  */
-SYSCALL_DEF3(getresuid32, EMU, uid_t, ebx, uid_t, ecx, uid_t, edx)
+SYSCALL_DEF3(getresuid32, EMU, uid_t, arg1, uid_t, arg2, uid_t, arg3)
 
 /**
  *  int getrusage(int who, struct rusage *usage)
@@ -516,7 +514,7 @@ SYSCALL_DEF3(getresuid32, EMU, uid_t, ebx, uid_t, ecx, uid_t, edx)
  * getrusage() returns resource usage measures for who, which can be
  * one of the following..
  */
-SYSCALL_DEF1(getrusage, EMU, struct rusage, ecx)
+SYSCALL_DEF1(getrusage, EMU, struct rusage, arg2)
 
 /**
  *  pid_t gettid(void);
@@ -532,7 +530,7 @@ SYSCALL_DEF0(gettid, EMU)
  * time as well as a timezone.  The tv argument is a struct timeval
  * (as specified in <sys/time.h>):
  */
-SYSCALL_DEF2(gettimeofday, EMU, struct timeval, ebx, struct timezone, ecx)
+SYSCALL_DEF2(gettimeofday, EMU, struct timeval, arg1, struct timezone, arg2)
 
 /**
  *  uid_t getuid(void);
@@ -635,7 +633,7 @@ SYSCALL_DEF0(link, EMU)
  * whence is SEEK_SET, SEEK_CUR, or SEEK_END, respectively.  It
  * returns the resulting file position in the argument result.
  */
-SYSCALL_DEF1(_llseek, EMU, loff_t, esi)
+SYSCALL_DEF1(_llseek, EMU, loff_t, arg4)
 
 /**
  *  off_t lseek(int fd, off_t offset, int whence)
@@ -653,7 +651,7 @@ SYSCALL_DEF0(lseek, EMU)
  * link, then the link itself is stat-ed, not the file that it refers
  * to.
  */
-SYSCALL_DEF1(lstat64, EMU, struct stat64, ecx)
+SYSCALL_DEF1(lstat64, EMU, struct stat64, arg2)
 
 /**
  *  int madvise(void *addr, size_t length, int advice);
@@ -765,8 +763,8 @@ SYSCALL_DEF_IRREG(nanosleep, EMU)
  * to perform the corresponding I/O operation (e.g., read(2)) without
  * blocking.
  */
-SYSCALL_DEF4(_newselect, EMU, fd_set, ecx, fd_set, edx,
-	     fd_set, esi, struct timeval, edi)
+SYSCALL_DEF4(_newselect, EMU, fd_set, arg2, fd_set, arg3,
+	     fd_set, arg4, struct timeval, arg5)
 
 /**
  *  int open(const char *pathname, int flags)
@@ -820,7 +818,7 @@ SYSCALL_DEF0(perf_event_open, EMU)
  * pipe is buffered by the kernel until it is read from the reoad end
  * of the pipe.  For further details, see pipe(7).
  */
-SYSCALL_DEF1(pipe, EMU, int[2], ebx)
+SYSCALL_DEF1(pipe, EMU, int[2], arg1)
 
 /**
  *  int pipe2(int pipefd[2], int flags)
@@ -828,7 +826,7 @@ SYSCALL_DEF1(pipe, EMU, int[2], ebx)
  * If flags is 0, then pipe2() is the same as pipe().  The following
  * values can be bitwise ORed in flags to obtain different behavior...
  */
-SYSCALL_DEF1(pipe2, EMU, int[2], ebx)
+SYSCALL_DEF1(pipe2, EMU, int[2], arg1)
 
 /**
  *  int poll(struct pollfd *fds, nfds_t nfds, int timeout)
@@ -865,7 +863,7 @@ SYSCALL_DEF_IRREG(prctl, MAY_EXEC)
  * pread, pwrite - read from or write to a file descriptor at a given
  * offset
  */
-SYSCALL_DEF1_DYNSIZE(pread64, EMU, t->regs().eax, ecx)
+SYSCALL_DEF1_DYNSIZE(pread64, EMU, (ssize_t)t->regs().syscall_result_signed(), arg2)
 SYSCALL_DEF0(pwrite64, EMU)
 
 /**
@@ -875,7 +873,7 @@ SYSCALL_DEF0(pwrite64, EMU)
  * functionality of setrlimit() and getrlimit().  It can be used to
  * both set and get the resource limits of an arbitrary process.
  */
-SYSCALL_DEF1(prlimit64, EXEC, struct rlimit64, esi)
+SYSCALL_DEF1(prlimit64, EXEC, struct rlimit64, arg4)
 
 /**
  *  long ptrace(enum __ptrace_request request, pid_t pid,
@@ -937,7 +935,7 @@ SYSCALL_DEF0(readahead, EMU)
  * bufsiz characters), in case the buffer is too small to hold all of
  * the contents.
  */
-SYSCALL_DEF1_DYNSIZE(readlink, EMU, t->regs().edx, ecx)
+SYSCALL_DEF1_DYNSIZE(readlink, EMU, (size_t)t->regs().arg3(), arg2)
 
 /**
  *  int recvmmsg(int sockfd, struct mmsghdr *msgvec,
@@ -974,7 +972,7 @@ SYSCALL_DEF0(rmdir, EMU)
  * cpusetsize argument specifies the size (in bytes) of mask.  If pid
  * is zero, then the mask of the calling process is returned.
  */
-SYSCALL_DEF1(sched_getaffinity, EMU, cpu_set_t, edx)
+SYSCALL_DEF1(sched_getaffinity, EMU, cpu_set_t, arg3)
 
 /**
  *  int sched_getparam(pid_t pid, struct sched_param *param)
@@ -983,7 +981,7 @@ SYSCALL_DEF1(sched_getaffinity, EMU, cpu_set_t, edx)
  * process i dentified by pid.  If pid is zero, then the parameters of
  * the calling process are retrieved.
  */
-SYSCALL_DEF1(sched_getparam, EMU, struct sched_param, ecx)
+SYSCALL_DEF1(sched_getparam, EMU, struct sched_param, arg2)
 
 /**
  *  int sched_get_priority_max(int policy)
@@ -1070,7 +1068,7 @@ SYSCALL_DEF_IRREG(sendmmsg, EMU)
  * new_value.  If old_value is non-NULL, the old value of the timer is
  * stored there.
  */
-SYSCALL_DEF1(setitimer, EMU, struct itimerval, edx)
+SYSCALL_DEF1(setitimer, EMU, struct itimerval, arg3)
 
 /**
  *  int setpgid(pid_t pid, pid_t pgid);
@@ -1148,7 +1146,7 @@ SYSCALL_DEF0(setresuid32, EMU)
  * sets a limit on a resource (e.g., the stack size) This bahavior
  * must be the same in the replay as in the recording phase.
  */
-SYSCALL_DEF1(setrlimit, EXEC, struct rlimit, ecx)
+SYSCALL_DEF1(setrlimit, EXEC, struct rlimit, arg2)
 
 /**
  *  pid_t setsid(void)
@@ -1185,7 +1183,7 @@ SYSCALL_DEF0(set_robust_list, EXEC)
  * u_info->entry_number  is  set  upon  return  to  show  which  entry was
  * changed.
  */
-SYSCALL_DEF1(set_thread_area, EXEC, struct user_desc, ebx)
+SYSCALL_DEF1(set_thread_area, EXEC, struct user_desc, arg1)
 
 /**
  *  long set_tid_address(int *tidptr);
@@ -1200,7 +1198,7 @@ SYSCALL_DEF1(set_thread_area, EXEC, struct user_desc, ebx)
  * When set_child_tid is set, the very first thing the new process
  * does is writing its PID at this address.
  */
-SYSCALL_DEF1(set_tid_address, EXEC_RET_EMU, pid_t, ebx)
+SYSCALL_DEF1(set_tid_address, EXEC_RET_EMU, pid_t, arg1)
 
 /**
  *  int sigaltstack(const stack_t *ss, stack_t *oss)
@@ -1212,7 +1210,7 @@ SYSCALL_DEF1(set_tid_address, EXEC_RET_EMU, pid_t, ebx)
  * sigaction(2)) requested it.
  */
 SYSCALL_DEF1_DYNSIZE(sigaltstack, EMU,
-		     t->regs().ecx ? sizeof(stack_t) : 0, ecx)
+		     t->regs().arg2() ? sizeof(stack_t) : 0, arg2)
 
 /**
  *  int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
@@ -1228,8 +1226,8 @@ SYSCALL_DEF1_DYNSIZE(sigaltstack, EMU,
  * from act.  If oldact is non-NULL, the previous action is saved in
  * oldact.
  */
-SYSCALL_DEF1(sigaction, EMU, struct kernel_sigaction, edx)
-SYSCALL_DEF1(rt_sigaction, EMU, struct kernel_sigaction, edx)
+SYSCALL_DEF1(sigaction, EMU, struct kernel_sigaction, arg3)
+SYSCALL_DEF1(rt_sigaction, EMU, struct kernel_sigaction, arg3)
 
 /**
  *  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
@@ -1239,8 +1237,8 @@ SYSCALL_DEF1(rt_sigaction, EMU, struct kernel_sigaction, edx)
  * delivery is currently blocked for the caller (see also signal(7)
  * for more details).
  */
-SYSCALL_DEF1(sigprocmask, EMU, sigset_t, edx)
-SYSCALL_DEF1(rt_sigprocmask, EMU, sigset_t, edx)
+SYSCALL_DEF1(sigprocmask, EMU, sigset_t, arg3)
+SYSCALL_DEF1(rt_sigprocmask, EMU, sigset_t, arg3)
 
 /**
  *  int sigreturn(unsigned long __unused)
@@ -1286,7 +1284,7 @@ SYSCALL_DEF_IRREG(splice, EMU)
  *
  * stat() stats the file pointed to by path and fills in buf.
  */
-SYSCALL_DEF1(stat64, EMU, struct stat64, ecx)
+SYSCALL_DEF1(stat64, EMU, struct stat64, arg2)
 
 /**
  *  int statfs(const char *path, struct statfs *buf)
@@ -1296,7 +1294,7 @@ SYSCALL_DEF1(stat64, EMU, struct stat64, ecx)
  * system.  buf is a pointer to a statfs structure defined
  * approximately as follows:
  */
-SYSCALL_DEF1(statfs, EMU, struct statfs, ecx)
+SYSCALL_DEF1(statfs, EMU, struct statfs, arg2)
 
 /**
  *  int statfs(const char *path, struct statfs *buf)
@@ -1306,10 +1304,10 @@ SYSCALL_DEF1(statfs, EMU, struct statfs, ecx)
  * system.  buf is a pointer to a statfs structure defined
  * approximately as follows...
  *
- * FIXME: we use edx here, although according to man pages this system
+ * FIXME: we use arg3() here, although according to man pages this system
  * call has only 2 paramaters. However, strace tells another story...
  */
-SYSCALL_DEF1(statfs64, EMU, struct statfs64, edx)
+SYSCALL_DEF1(statfs64, EMU, struct statfs64, arg3)
 
 /**
  *  int _sysctl(struct __syscall_args* args);
@@ -1337,7 +1335,7 @@ SYSCALL_DEF0(symlink, EMU)
  * sysinfo() provides a simple way of getting overall system
  * statistics.
  */
-SYSCALL_DEF1(sysinfo, EMU, struct sysinfo, ebx)
+SYSCALL_DEF1(sysinfo, EMU, struct sysinfo, arg1)
 
 /**
  *  int tgkill(int tgid, int tid, int sig)
@@ -1357,7 +1355,7 @@ SYSCALL_DEF0(tgkill, EMU)
  * 1970), measured in seconds. If t is non-NULL, the return value is
  * also stored in the memory pointed to by t.
  */
-SYSCALL_DEF1(time, EMU, time_t, ebx)
+SYSCALL_DEF1(time, EMU, time_t, arg1)
 
 /**
  *  int timerfd_create(int clockid, int flags);
@@ -1373,7 +1371,7 @@ SYSCALL_DEF0(timerfd_create, EMU)
  * that contains the current setting of the timer referred to by the
  * file descriptor fd.
  */
-SYSCALL_DEF1(timerfd_gettime, EMU, struct itimerspec, ecx)
+SYSCALL_DEF1(timerfd_gettime, EMU, struct itimerspec, arg2)
 /**
  *  int timerfd_settime(int fd, int flags,
  *                      const struct itimerspec *new_value,
@@ -1382,7 +1380,7 @@ SYSCALL_DEF1(timerfd_gettime, EMU, struct itimerspec, ecx)
  * timerfd_settime() arms (starts) or disarms (stops) the timer
  * referred to by the file descriptor fd.
  */
-SYSCALL_DEF1(timerfd_settime, EMU, struct itimerspec, esi)
+SYSCALL_DEF1(timerfd_settime, EMU, struct itimerspec, arg4)
 
 /**
  *  clock_t times(struct tms *buf)
@@ -1390,7 +1388,7 @@ SYSCALL_DEF1(timerfd_settime, EMU, struct itimerspec, esi)
  * times() stores the current process times in the struct tms that buf
  *  points to.  The struct tms is as defined in <sys/times.h>:
  */
-SYSCALL_DEF1(times, EMU, struct tms, ebx)
+SYSCALL_DEF1(times, EMU, struct tms, arg1)
 
 /**
  *  int getrlimit(int resource, struct rlimit *rlim)
@@ -1400,7 +1398,7 @@ SYSCALL_DEF1(times, EMU, struct tms, ebx)
  * as defined by the rlimit structure (the rlim argument to both
  * getrlimit() and setrlimit()):
  */
-SYSCALL_DEF1(ugetrlimit, EMU, struct rlimit, ecx)
+SYSCALL_DEF1(ugetrlimit, EMU, struct rlimit, arg2)
 
 /**
  *  mode_t umask(mode_t mask);
@@ -1417,7 +1415,7 @@ SYSCALL_DEF0(umask, EMU)
  * uname() returns system information in the structure pointed to by
  * buf. The utsname struct is defined in <sys/utsname.h>:
  */
-SYSCALL_DEF1(uname, EMU, struct utsname, ebx)
+SYSCALL_DEF1(uname, EMU, struct utsname, arg1)
 
 /**
  *  int unlink(const char *path);
@@ -1468,7 +1466,7 @@ SYSCALL_DEF0(utime, EMU)
  * of times respectively.
  *
  */
-SYSCALL_DEF1_DYNSIZE(utimes, EMU, 2 * sizeof(struct timeval), ecx)
+SYSCALL_DEF1_DYNSIZE(utimes, EMU, 2 * sizeof(struct timeval), arg2)
 
 /**
  *  int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
