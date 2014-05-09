@@ -44,9 +44,15 @@
 #include "log.h"
 #include "replayer.h"
 #include "session.h"
+#include "syscalls.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
+
+/* Uncomment this to check syscall names and numbers defined in syscall_defs.h
+   against the definitions in unistd.h. This may cause the build to fail
+   if unistd.h is slightly out of date, so it's not turned on by default. */
+//#define CHECK_SYSCALL_NUMBERS
 
 using namespace std;
 
@@ -65,7 +71,8 @@ struct syscall_def {
 	ssize_t num_emu_args;
 };
 
-#define SYSCALL_NUM(_name)__NR_##_name
+#define SYSCALLNO_X86(num)
+#define SYSCALL_NUM(_name) static_cast<int>(SyscallsX86::_name)
 #define SYSCALL_DEF0(_name, _type)		\
 	{ SYSCALL_NUM(_name), rep_##_type, 0 },
 #define SYSCALL_DEF1(_name, _type, _, _1)	\
@@ -82,13 +89,15 @@ struct syscall_def {
 	{ SYSCALL_NUM(_name), rep_##_type, 4 },
 #define SYSCALL_DEF_IRREG(_name, _type)				\
 	{ SYSCALL_NUM(_name), rep_IRREGULAR, -1 },
+#define SYSCALL_DEF_UNSUPPORTED(_name)
 
 static struct syscall_def syscall_defs[] = {
 	/* Not-yet-defined syscalls will end up being type
 	 * rep_UNDEFINED. */
 #include "syscall_defs.h"
 };
-#undef SYSCALL_NUM
+
+#undef SYSCALLNO_X86
 #undef SYSCALL_DEF0
 #undef SYSCALL_DEF1
 #undef SYSCALL_DEF1_DYNSIZE
@@ -96,18 +105,66 @@ static struct syscall_def syscall_defs[] = {
 #undef SYSCALL_DEF2
 #undef SYSCALL_DEF3
 #undef SYSCALL_DEF4
+#undef SYSCALL_DEF_IRREG
+#undef SYSCALL_DEF_UNSUPPORTED
 
-static struct syscall_def syscall_table[MAX_NR_SYSCALLS];
+static struct syscall_def syscall_table[static_cast<int>(SyscallsX86::COUNT)];
 
 __attribute__((constructor))
 static void init_syscall_table()
 {
-	static_assert(ALEN(syscall_defs) <= MAX_NR_SYSCALLS, "");
+	static_assert(ALEN(syscall_defs) <= ALEN(syscall_table), "");
 	for (size_t i = 0; i < ALEN(syscall_defs); ++i) {
 		const struct syscall_def& def = syscall_defs[i];
-		assert(def.no < MAX_NR_SYSCALLS);
+		assert(def.no < (int)ALEN(syscall_table));
+		assert(def.no == 0 || def.type != rep_UNDEFINED);
 		syscall_table[def.no] = def;
 	}
+
+#ifdef CHECK_SYSCALL_NUMBERS
+
+// Hack because our 'break' syscall is called '_break'
+#define SYS__break SYS_break
+
+#define SYSCALLNO_X86(num)
+#define CHECK_SYSCALL_NUM(_name) 		\
+	static_assert(static_cast<int>(SyscallsX86::_name) == SYS_##_name,	\
+		      "Incorrect syscall number for " #_name);
+#define SYSCALL_DEF0(_name, _type)		\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF1(_name, _type, _, _1)	\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF1_DYNSIZE(_name, _type, _, _1)	\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF1_STR(_name, _type, _)	\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF2(_name, _type, _, _1, _2, _3)	\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF3(_name, _type, _, _1, _2, _3, _4, _5)	\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF4(_name, _type, _, _1, _2, _3, _4, _5, _6, _7)	\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF_IRREG(_name, _type)				\
+	CHECK_SYSCALL_NUM(_name)
+#define SYSCALL_DEF_UNSUPPORTED(_name)				\
+	CHECK_SYSCALL_NUM(_name)
+
+#include "syscall_defs.h"
+
+#undef SYSCALLNO_X86
+#undef CHECK_SYSCALL_NUM
+#undef SYSCALL_DEF0
+#undef SYSCALL_DEF1
+#undef SYSCALL_DEF1_DYNSIZE
+#undef SYSCALL_DEF1_STR
+#undef SYSCALL_DEF2
+#undef SYSCALL_DEF3
+#undef SYSCALL_DEF4
+#undef SYSCALL_DEF_IRREG
+#undef SYSCALL_DEF_UNSUPPORTED
+
+#endif // CHECK_SYSCALL_NUMBERS
+
 }
 
 /**

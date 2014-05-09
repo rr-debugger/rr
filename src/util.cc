@@ -41,6 +41,7 @@
 #include "recorder_sched.h"
 #include "replayer.h"
 #include "session.h"
+#include "syscalls.h"
 #include "task.h"
 #include "trace.h"
 #include "types.h"
@@ -239,26 +240,32 @@ const char* signalname(int sig)
 const char* syscallname(int syscall)
 {
 	switch (syscall) {
+#define SYSCALLNO_X86(num)
+#define CASE(_name) 					\
+		case static_cast<int>(SyscallsX86::_name): return #_name;
 #define SYSCALL_DEF0(_name, _)				\
-		case __NR_## _name: return #_name;
+		CASE(_name)
 #define SYSCALL_DEF1(_name, _, _1, _2)			\
-		case __NR_## _name: return #_name;
+		CASE(_name)
 #define SYSCALL_DEF1_DYNSIZE(_name, _, _1, _2)		\
-		case __NR_## _name: return #_name;
+		CASE(_name)
 #define SYSCALL_DEF1_STR(_name, _, _1)			\
-		case __NR_## _name: return #_name;
+		CASE(_name)
 #define SYSCALL_DEF2(_name, _, _1, _2, _3, _4)		\
-		case __NR_## _name: return #_name;
+		CASE(_name)
 #define SYSCALL_DEF3(_name, _, _1, _2, _3, _4, _5, _6)	\
-		case __NR_## _name: return #_name;
+		CASE(_name)
 #define SYSCALL_DEF4(_name, _, _1, _2, _3, _4, _5, _6, _7, _8)	\
-		case __NR_## _name: return #_name;
+		CASE(_name)
 #define SYSCALL_DEF_IRREG(_name, _)			\
-		case __NR_## _name: return #_name;
+		CASE(_name)
+#define SYSCALL_DEF_UNSUPPORTED(_name)			\
+		CASE(_name)
 
 #include "syscall_defs.h"
 
-#undef SYSCALL_NUM
+#undef SYSCALLNO_X86
+#undef CASE
 #undef SYSCALL_DEF0
 #undef SYSCALL_DEF1
 #undef SYSCALL_DEF1_DYNSIZE
@@ -267,11 +274,12 @@ const char* syscallname(int syscall)
 #undef SYSCALL_DEF3
 #undef SYSCALL_DEF4
 #undef SYSCALL_DEF_IRREG
+#undef SYSCALL_DEF_UNSUPPORTED
 
 	case SYS_restart_syscall:
 		return "restart_syscall";
 	default:
-		return "???syscall";
+		return "<unknown-syscall>";
 	}
 }
 
@@ -283,22 +291,27 @@ bool is_always_emulated_syscall(int syscallno)
 #define EXEC_RET_EMU() false
 #define MAY_EXEC() false
 
+#define SYSCALLNO_X86(num)
+#define CASE(_name, _type) 				\
+		case static_cast<int>(SyscallsX86::_name): return _type();
 #define SYSCALL_DEF0(_name, _type)			\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
 #define SYSCALL_DEF1(_name, _type, _1, _2)		\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
 #define SYSCALL_DEF1_DYNSIZE(_name, _type, _1, _2)	\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
 #define SYSCALL_DEF1_STR(_name, _type, _1)		\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
 #define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4)	\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
 #define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6)	\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
 #define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)	\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
 #define SYSCALL_DEF_IRREG(_name, _type)			\
-		case __NR_## _name: return _type();
+		CASE(_name, _type)
+#define SYSCALL_DEF_UNSUPPORTED(_name)			\
+		CASE(_name, EXEC)
 
 #include "syscall_defs.h"
 
@@ -306,6 +319,8 @@ bool is_always_emulated_syscall(int syscallno)
 #undef EXEC
 #undef EXEC_EMU_RET
 #undef MAY_EXEC
+#undef CASE
+#undef SYSCALLNO_X86
 #undef SYSCALL_DEF0
 #undef SYSCALL_DEF1
 #undef SYSCALL_DEF1_DYNSIZE
@@ -313,12 +328,13 @@ bool is_always_emulated_syscall(int syscallno)
 #undef SYSCALL_DEF2
 #undef SYSCALL_DEF3
 #undef SYSCALL_DEF4
+#undef SYSCALL_DEF_UNSUPPORTED
 
 	case SYS_restart_syscall:
 		return false;
 	default:
 		FATAL() <<"Unknown syscall "<< syscallno;
-		return "???syscall";
+		return "<unknown-syscall>";
 	}
 }
 
