@@ -219,6 +219,34 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 	return dbg;
 }
 
+static const char gdb_command_file[] =
+	"define checkpoint\n"
+	"  init-if-undefined $_next_checkpoint_index = 1\n"
+	/* Ensure the command echoes the checkpoint number, not the encoded message */
+	"  p (*(int*)29298 = 0x01000000 | $_next_checkpoint_index), $_next_checkpoint_index++\n"
+	"end\n"
+	"define delete checkpoint\n"
+	"  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
+	"end\n";
+
+static string create_gdb_command_file()
+{
+	char tmp[] = "rr-gdb-commands-XXXXXX";
+	// This fd is just leaked. That's fine since we only call this once
+	// per rr invocation at the moment.
+	int fd = mkstemp(tmp);
+	unlink(tmp);
+
+	int written = write(fd, gdb_command_file, ALEN(gdb_command_file));
+	if (written != ALEN(gdb_command_file)) {
+		FATAL() <<"Failed to write gdb command file";
+	}
+
+	stringstream procfile;
+	procfile << "/proc/" << getpid() << "/fd/" << fd;
+	return procfile.str();
+}
+
 void dbg_launch_debugger(int params_pipe_fd)
 {
 	struct debugger_params params;
@@ -228,6 +256,7 @@ void dbg_launch_debugger(int params_pipe_fd)
 	stringstream attach_cmd;
 	attach_cmd << "target extended-remote " << params.socket_addr << ":"
 		   << params.port;
+	string gdb_command_file = create_gdb_command_file();
 	LOG(debug) <<"launching gdb with command '"<< attach_cmd.str() <<"'";
 	execlp("gdb", "gdb",
 	       // The gdb protocol uses the "vRun" packet to reload
@@ -248,6 +277,7 @@ void dbg_launch_debugger(int params_pipe_fd)
 	       // remote-reply timeout.
 	       "-l", "-1",
 	       params.exe_image,
+	       "-x", gdb_command_file.c_str(),
 	       "-ex", attach_cmd.str().c_str(), NULL);
 	FATAL() <<"Failed to exec gdb.";
 }
