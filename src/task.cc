@@ -2468,11 +2468,9 @@ Task::copy_state(Task* from)
 
 	// We, the deepfork clone of |from|, need to have the same
 	// |effective_rbc()| value as |from|.  The |rbc_boost| helper
-	// will account for rcb's that |from| has seen that we
-	// haven't.  But since we also reuse |rbc_slop| for
-	// |rbc_boost|, |from|'s rbc value must be exactly |rbc_slop|.
-	ASSERT(this, rbc_slop == read_rbc(from->hpc));
-	rbc_boost = rbc_slop;
+	// accounts for rcb's that |from| has seen that we haven't.
+	rbc_boost = from->effective_rbc();
+
 	// In all probability, |from| has started counting rcbs by
 	// now.  Kick on the counter so that we can match its rbc
 	// targets at significant events.

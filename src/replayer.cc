@@ -229,6 +229,14 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			 * further instructions. */
 			dbg_notify_stop(dbg, get_threadid(t), 0);
 			continue;
+		case DREQ_CREATE_CHECKPOINT: {
+			ReplaySession::shr_ptr checkpoint = session->clone();
+			dbg_created_checkpoint(dbg, checkpoint, req.checkpoint_id);
+			continue;
+		}
+		case DREQ_DELETE_CHECKPOINT:
+			dbg_delete_checkpoint(dbg, req.checkpoint_id);
+			continue;
 		default:
 			/* fall through to next switch stmt */
 			break;

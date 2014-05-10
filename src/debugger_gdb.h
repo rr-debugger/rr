@@ -9,9 +9,33 @@
 #include <ostream>
 #include <vector>
 
+#include "session.h"
 #include "types.h"
 
 #define DBG_SOCKET_READY_SIG SIGURG
+
+/**
+ * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
+ * rr commands
+ */
+#define DBG_COMMAND_MAGIC_ADDRESS 29298 // 'rr'
+/**
+ * The high-order byte of the 32-bit value indicates the specific command
+ * message. Not-understood command messages are ignored.
+ */
+#define DBG_COMMAND_MSG_MASK 0xFF000000
+/**
+ * Create a checkpoint of the current state whose index is given by the
+ * command parameter. If there is already a checkpoint with that index, it
+ * is deleted first.
+ */
+#define DBG_COMMAND_MSG_CREATE_CHECKPOINT 0x01000000
+/**
+ * Delete the checkpoint of the current state whose index is given by the
+ * command parameter.
+ */
+#define DBG_COMMAND_MSG_DELETE_CHECKPOINT 0x02000000
+#define DBG_COMMAND_PARAMETER_MASK 0x00FFFFFF
 
 struct dbg_context;
 
@@ -108,6 +132,10 @@ enum DbgRequestType{
 
 	/* Uses params.restart_event. */
 	DREQ_RESTART,
+
+	/* These use params.checkpoint_id. */
+	DREQ_CREATE_CHECKPOINT,
+	DREQ_DELETE_CHECKPOINT,
 };
 
 /**
@@ -128,6 +156,7 @@ struct dbg_request {
 		DbgRegister reg;
 
 		int restart_event;
+		int checkpoint_id;
 	};
 };
 
@@ -298,6 +327,20 @@ void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code);
  * awaiting it, wasting developer time.
  */
 void dbg_reply_detach(struct dbg_context* dbg);
+
+/**
+ * Create a checkpoint of the given Session with the given id. Delete the
+ * existing checkpoint with that id if there is one.
+ */
+void dbg_created_checkpoint(struct dbg_context* dbg,
+			    ReplaySession::shr_ptr& checkpoint,
+			    int checkpoint_id);
+
+/**
+ * Delete the checkpoint with the given id. Silently fail if the checkpoint
+ * does not exist.
+ */
+void dbg_delete_checkpoint(struct dbg_context* dbg, int checkpoint_id);
 
 /**
  * Destroy a gdb debugging context created by

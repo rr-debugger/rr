@@ -25,6 +25,7 @@
 #include <sstream>
 
 #include "log.h"
+#include "session.h"
 
 #define INTERRUPT_CHAR '\x03'
 
@@ -69,6 +70,8 @@ struct dbg_context {
 	byte outbuf[32768];	/* buffered output for gdb */
 	ssize_t outlen;
 	ssize_t outsize;
+	// Checkpoints, indexed by checkpoint ID
+	std::map<int, ReplaySession::shr_ptr> checkpoints;
 };
 
 bool dbg_is_resume_request(const struct dbg_request* req)
@@ -108,7 +111,7 @@ static void make_cloexec(int fd)
 
 static dbg_context* new_dbg_context()
 {
-	struct dbg_context* dbg = (struct dbg_context*)calloc(1, sizeof(*dbg));
+	struct dbg_context* dbg = new dbg_context();
 	dbg->insize = sizeof(dbg->inbuf);
 	dbg->outsize = sizeof(dbg->outbuf);
 	return dbg;
@@ -895,12 +898,45 @@ static int process_packet(struct dbg_context* dbg)
 
 		ret = 1;
 		break;
-	case 'M':
+	case 'M': {
+		uintptr_t addr = strtoul(payload, &payload, 16);
+		++payload;
+		uintptr_t len = strtoul(payload, &payload, 16);
+		if (addr == DBG_COMMAND_MAGIC_ADDRESS && len == 4) {
+			++payload;
+			ret = 0;
+			// gdb's bytes are in host order, flip them to
+			// big-endian to get the actual value
+			uintptr_t cmd = htonl(strtoul(payload, &payload, 16));
+			switch (cmd & DBG_COMMAND_MSG_MASK) {
+			case DBG_COMMAND_MSG_CREATE_CHECKPOINT:
+				dbg->req.type = DREQ_CREATE_CHECKPOINT;
+				dbg->req.checkpoint_id = cmd & DBG_COMMAND_PARAMETER_MASK;
+				LOG(debug) <<"gdb request checkpoint creation (id="
+					   << dbg->req.checkpoint_id <<")";
+				ret = 1;
+				break;
+			case DBG_COMMAND_MSG_DELETE_CHECKPOINT:
+				dbg->req.type = DREQ_DELETE_CHECKPOINT;
+				dbg->req.checkpoint_id = cmd & DBG_COMMAND_PARAMETER_MASK;
+				LOG(debug) <<"gdb request checkpoint deletion (id="
+					   << dbg->req.checkpoint_id <<")";
+				ret = 1;
+				break;
+			default:
+				ret = 0;
+				break;
+			}
+			if (ret) {
+				break;
+			}
+		}
 		/* We can't allow the debugger to write arbitrary data
 		 * to memory, or the replay may diverge. */
 		write_packet(dbg, "");
 		ret = 0;
 		break;
+	}
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
@@ -1395,12 +1431,46 @@ void dbg_reply_detach(struct dbg_context* dbg)
 	consume_request(dbg);
 }
 
+static void delete_checkpoint_internal(struct dbg_context* dbg,
+				       int checkpoint_id)
+{
+	auto it = dbg->checkpoints.find(checkpoint_id);
+	if (it == dbg->checkpoints.end()) {
+		return;
+	}
+
+	it->second->kill_all_tasks();
+	dbg->checkpoints.erase(it);
+}
+
+void dbg_created_checkpoint(struct dbg_context* dbg,
+			    ReplaySession::shr_ptr& checkpoint,
+			    int checkpoint_id)
+{
+	delete_checkpoint_internal(dbg, checkpoint_id);
+	dbg->checkpoints[checkpoint_id] = checkpoint;
+
+	write_packet(dbg, "OK");
+
+	consume_request(dbg);
+}
+
+void dbg_delete_checkpoint(struct dbg_context* dbg, int checkpoint_id)
+{
+	delete_checkpoint_internal(dbg, checkpoint_id);
+
+	write_packet(dbg, "OK");
+
+	consume_request(dbg);
+}
+
 void dbg_destroy_context(struct dbg_context** dbg)
 {
 	struct dbg_context* d;
 	if (!(d = *dbg)) {
 		return;
 	}
+	d->checkpoints.clear();
 	close(d->listen_fd);
 	close(d->sock_fd);
 	free(d);
