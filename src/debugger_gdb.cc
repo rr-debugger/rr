@@ -1284,9 +1284,9 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
 
 /**
  * Format |value| into |buf| in the manner gdb expects.  |buf| must
- * point at a buffer with at least |1 + 2*sizeof(long)| bytes
- * available.  Exactly that many bytes (including '\0' terminator)
- * will be written by this function.
+ * point at a buffer with at least |1 + 2*DBG_MAX_REG_SIZE| bytes
+ * available.  Fewer bytes than that may be written, but |buf| is
+ * guaranteed to be null-terminated.
  */
 static void print_reg_value(const DbgRegister& reg, char* buf) {
 	if (reg.defined) {
@@ -1302,7 +1302,7 @@ static void print_reg_value(const DbgRegister& reg, char* buf) {
 
 void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)
 {
-	char buf[32];
+	char buf[2 * DBG_MAX_REG_SIZE + 1];
 
 	assert(DREQ_GET_REG == dbg->req.type);
 
@@ -1314,8 +1314,7 @@ void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)
 
 void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file)
 {
-	/* XXX this will be wrong on x64 WINNT */
-	char buf[1 + DREG_NUM_LINUX_I386 * 2 * sizeof(long)];
+	char buf[1 + DREG_NUM_LINUX_I386 * 2 * DBG_MAX_REG_SIZE];
 	int i;
 
 	assert(DREQ_GET_REGS == dbg->req.type);

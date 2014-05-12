@@ -58,6 +58,8 @@ enum DbgRegisterName {
 	DREG_NUM_LINUX_I386 = DREG_ORIG_EAX + 1
 };
 
+static const size_t DBG_MAX_REG_SIZE = 4;
+
 /**
  * Represents a possibly-undefined register |reg|.  |defined| is true
  * if |value| is well defined.
