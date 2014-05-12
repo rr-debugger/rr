@@ -904,8 +904,7 @@ static int process_packet(struct dbg_context* dbg)
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.reg.name =
-			DbgRegisterName(strtoul(payload, &payload, 16));
+		dbg->req.reg.name = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 		LOG(debug) <<"gdb requests register value (" 
 			   << dbg->req.reg.name <<")";
@@ -1288,15 +1287,21 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
  * available.  Fewer bytes than that may be written, but |buf| is
  * guaranteed to be null-terminated.
  */
-static void print_reg_value(const DbgRegister& reg, char* buf) {
-	if (reg.defined) {
-		/* gdb wants the register value in native endianness, so
-		 * swizzle to big-endian so that printf gives us a
-		 * little-endian string.  (Network order is big-endian.) */
-		long v = htonl(reg.value);
-		sprintf(buf, "%08lx", v);
+static size_t print_reg_value(const DbgRegister& reg, char* buf) {
+	if (reg.size) {
+		/* gdb wants the register value in native endianness.
+		 * reg.value read in native endianness is exactly that.
+		 */
+		for (size_t i = 0; i < reg.size; ++i) {
+			snprintf(&buf[2 * i], 3, "%02lx", (unsigned long)reg.value[i]);
+		}
+		return reg.size * 2;
 	} else {
+		/* XXX should really write the actual register length
+		 * worth of x's, not just a 32-bit value.
+		 */
 		strcpy(buf, "xxxxxxxx");
+		return 8;
 	}
 }
 
@@ -1314,13 +1319,15 @@ void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)
 
 void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file)
 {
-	char buf[1 + DREG_NUM_LINUX_I386 * 2 * DBG_MAX_REG_SIZE];
-	int i;
+	size_t n_regs = file.total_registers();
+	char buf[n_regs * 2 * DBG_MAX_REG_SIZE + 1];
 
 	assert(DREQ_GET_REGS == dbg->req.type);
 
-	for (i = 0; i < DREG_NUM_LINUX_I386; ++i) {
-		print_reg_value(file.regs[i], &buf[i * 2 * sizeof(long)]);
+	size_t offset = 0;
+	for (auto it = file.regs.begin(), end = file.regs.end();
+	     it != end; ++it) {
+		offset += print_reg_value(*it, &buf[offset]);
 	}
 	write_packet(dbg, buf);
 

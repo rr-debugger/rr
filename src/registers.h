@@ -3,6 +3,7 @@
 #ifndef RR_REGISTERS_H_
 #define RR_REGISTERS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 #include <sys/user.h>
 
@@ -70,6 +71,35 @@ public:
 	uintptr_t arg6() const { return ebp; }
 	intptr_t arg6_signed() const { return ebp; }
 	void set_arg6(uintptr_t value) { ebp = value; }
-};
 
+	// Various things the GDB stub needs to know about.
+	enum DebuggerRegister {
+		DREG_EAX, DREG_ECX, DREG_EDX, DREG_EBX,
+		DREG_ESP, DREG_EBP, DREG_ESI, DREG_EDI,
+		DREG_EIP, DREG_EFLAGS,
+		DREG_CS, DREG_SS, DREG_DS, DREG_ES, DREG_FS, DREG_GS,
+		DREG_ST0,
+		/* Last register we can find in user_regs_struct (except for
+		 * orig_eax). */
+		DREG_NUM_USER_REGS = DREG_GS + 1,
+		DREG_MXCSR = 40,
+		DREG_ORIG_EAX = 41,
+		DREG_NUM_LINUX_I386,
+		DREG_YMM0H,
+		DREG_YMM7H = DREG_YMM0H + 7,
+	};
+
+	/**
+	 * Return the total number of registers for this target.
+	 */
+	size_t total_registers() const { return DREG_NUM_LINUX_I386; }
+
+	/**
+	 * Write the value for register |regno| into |buf|, which should
+	 * be large enough to hold any register supported by the target.
+	 * Return the number of bytes written, 0 to indicate that the
+	 * register is unavailable.
+	 */
+	size_t read_register(uint8_t* buf, unsigned int regno) const;
+};
 #endif /* RR_REGISTERS_H_ */

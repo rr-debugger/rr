@@ -7,6 +7,7 @@
 #include <sys/types.h>
 
 #include <ostream>
+#include <vector>
 
 #include "types.h"
 
@@ -37,37 +38,16 @@ inline static std::ostream& operator<<(std::ostream& o,
 static const dbg_threadid_t DBG_ANY_THREAD = { 0, 0 };
 static const dbg_threadid_t DBG_ALL_THREADS = { -1, -1 };
 
-/**
- * This is gdb's view of the register file.  The ordering must be the
- * same as in the gdb sources.
- */
-enum DbgRegisterName {
-	DREG_EAX, DREG_ECX, DREG_EDX, DREG_EBX,
-	DREG_ESP, DREG_EBP, DREG_ESI, DREG_EDI,
-	DREG_EIP, DREG_EFLAGS,
-	DREG_CS, DREG_SS, DREG_DS, DREG_ES, DREG_FS, DREG_GS,
-	DREG_ST0,
-	/* Last register we can find in user_regs_struct (except for
-	 * orig_eax). */
-	DREG_NUM_USER_REGS = DREG_GS + 1,
-	DREG_MXCSR = 40,
-	DREG_YMM0H,
-	DREG_YMM7H = DREG_YMM0H + 7,
-	DREG_NUM_AVX = DREG_YMM0H + 1,
-	DREG_ORIG_EAX = DREG_NUM_AVX,
-	DREG_NUM_LINUX_I386 = DREG_ORIG_EAX + 1
-};
-
 static const size_t DBG_MAX_REG_SIZE = 4;
 
 /**
- * Represents a possibly-undefined register |reg|.  |defined| is true
- * if |value| is well defined.
+ * Represents a possibly-undefined register |name|.  |size| indicates how
+ * many bytes of |value| are valid, if any.
  */
 struct DbgRegister {
-	DbgRegisterName name;
-	long value;
-	bool defined;
+	unsigned int name;
+	uint8_t value[DBG_MAX_REG_SIZE];
+	size_t size;
 };
 
 /**
@@ -75,7 +55,11 @@ struct DbgRegister {
  * above.
  */
 struct DbgRegfile {
-	DbgRegister regs[DREG_NUM_LINUX_I386];
+	std::vector<DbgRegister> regs;
+
+	DbgRegfile(size_t n_regs) : regs(n_regs) {};
+
+	size_t total_registers() const { return regs.size(); }
 };
 
 enum DbgRequestType{ 
