@@ -1288,21 +1288,20 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
  * guaranteed to be null-terminated.
  */
 static size_t print_reg_value(const DbgRegister& reg, char* buf) {
-	if (reg.size) {
+	assert(reg.size <= DBG_MAX_REG_SIZE);
+	if (reg.defined) {
 		/* gdb wants the register value in native endianness.
 		 * reg.value read in native endianness is exactly that.
 		 */
 		for (size_t i = 0; i < reg.size; ++i) {
 			snprintf(&buf[2 * i], 3, "%02lx", (unsigned long)reg.value[i]);
 		}
-		return reg.size * 2;
 	} else {
-		/* XXX should really write the actual register length
-		 * worth of x's, not just a 32-bit value.
-		 */
-		strcpy(buf, "xxxxxxxx");
-		return 8;
+		for (size_t i = 0; i < reg.size; ++i) {
+			strcpy(&buf[2 * i], "xx");
+		}
 	}
+	return reg.size * 2;
 }
 
 void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)

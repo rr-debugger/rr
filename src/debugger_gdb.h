@@ -38,7 +38,7 @@ inline static std::ostream& operator<<(std::ostream& o,
 static const dbg_threadid_t DBG_ANY_THREAD = { 0, 0 };
 static const dbg_threadid_t DBG_ALL_THREADS = { -1, -1 };
 
-static const size_t DBG_MAX_REG_SIZE = 4;
+static const size_t DBG_MAX_REG_SIZE = 16;
 
 /**
  * Represents a possibly-undefined register |name|.  |size| indicates how
@@ -48,6 +48,7 @@ struct DbgRegister {
 	unsigned int name;
 	uint8_t value[DBG_MAX_REG_SIZE];
 	size_t size;
+	bool defined;
 };
 
 /**

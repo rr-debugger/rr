@@ -124,7 +124,7 @@ static DbgRegister get_reg(const Registers* regs, unsigned int which)
 {
 	DbgRegister reg;
 	memset(&reg, 0, sizeof(reg));
-	reg.size = regs->read_register(&reg.value[0], which);
+	reg.size = regs->read_register(&reg.value[0], which, &reg.defined);
 	return reg;
 }
 

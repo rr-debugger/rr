@@ -78,13 +78,23 @@ public:
 		DREG_ESP, DREG_EBP, DREG_ESI, DREG_EDI,
 		DREG_EIP, DREG_EFLAGS,
 		DREG_CS, DREG_SS, DREG_DS, DREG_ES, DREG_FS, DREG_GS,
-		DREG_ST0,
+		/* We can't actually fetch the floating-point-related
+		 * registers, but we record them here so we can
+		 * communicate their sizes accurately.
+		 */
+		DREG_ST0, DREG_ST1, DREG_ST2, DREG_ST3,
+		DREG_ST4, DREG_ST5, DREG_ST6, DREG_ST7,
+		/* These are the names GDB gives the registers.  */
+		DREG_FCTRL, DREG_FSTAT, DREG_FTAG, DREG_FISEG,
+		DREG_FIOFF, DREG_FOSEG, DREG_FOOFF, DREG_FOP,
+		DREG_XMM0, DREG_XMM1, DREG_XMM2, DREG_XMM3,
+		DREG_XMM4, DREG_XMM5, DREG_XMM6, DREG_XMM7,
+		DREG_MXCSR,
+		DREG_ORIG_EAX,
+		DREG_NUM_LINUX_I386,
 		/* Last register we can find in user_regs_struct (except for
 		 * orig_eax). */
 		DREG_NUM_USER_REGS = DREG_GS + 1,
-		DREG_MXCSR = 40,
-		DREG_ORIG_EAX = 41,
-		DREG_NUM_LINUX_I386,
 		DREG_YMM0H,
 		DREG_YMM7H = DREG_YMM0H + 7,
 	};
@@ -97,9 +107,10 @@ public:
 	/**
 	 * Write the value for register |regno| into |buf|, which should
 	 * be large enough to hold any register supported by the target.
-	 * Return the number of bytes written, 0 to indicate that the
-	 * register is unavailable.
+	 * Return the size of the register in bytes and set |defined| to
+	 * indicate whether a useful value has been written to |buf|.
 	 */
-	size_t read_register(uint8_t* buf, unsigned int regno) const;
+	size_t read_register(uint8_t* buf, unsigned int regno,
+			     bool* defined) const;
 };
 #endif /* RR_REGISTERS_H_ */

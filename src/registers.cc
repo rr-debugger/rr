@@ -4,6 +4,7 @@
 
 #include "registers.h"
 
+#include <assert.h>
 #include <string.h>
 
 template<typename T>
@@ -13,8 +14,11 @@ static size_t copy_register_value(uint8_t* buf, T src)
 	return sizeof(src);
 }
 
-size_t Registers::read_register(uint8_t* buf, unsigned int regno) const
+size_t Registers::read_register(uint8_t* buf, unsigned int regno,
+				bool* defined) const
 {
+	*defined = true;
+	assert(regno < DREG_NUM_USER_REGS);
 	switch (regno) {
 	case DREG_EAX:
 		return copy_register_value(buf, eax);
@@ -50,7 +54,47 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno) const
 		return copy_register_value(buf, xgs);
 	case DREG_ORIG_EAX:
 		return copy_register_value(buf, orig_eax);
+	case DREG_ST0:
+	case DREG_ST1:
+	case DREG_ST2:
+	case DREG_ST3:
+	case DREG_ST4:
+	case DREG_ST5:
+	case DREG_ST6:
+	case DREG_ST7:
+		*defined = false;
+		/* Yes, really.  If somehow we ever support x87 values in
+		 * the debugger, we will have to be careful about how we
+		 * format our bits here.
+		 */
+		return 16;
+	case DREG_FCTRL:
+	case DREG_FSTAT:
+	case DREG_FTAG:
+	case DREG_FISEG:
+	case DREG_FOSEG:
+	case DREG_FOP:
+		*defined = false;
+		return 2;
+	case DREG_FIOFF:
+	case DREG_FOOFF:
+		*defined = false;
+		return 4;
+	case DREG_XMM0:
+	case DREG_XMM1:
+	case DREG_XMM2:
+	case DREG_XMM3:
+	case DREG_XMM4:
+	case DREG_XMM5:
+	case DREG_XMM6:
+	case DREG_XMM7:
+		*defined = false;
+		return 16;
+	case DREG_MXCSR:
+		*defined = false;
+		return 4;
 	default:
+		assert(false);
 		return 0;
   }
 }
