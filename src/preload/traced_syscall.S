@@ -1,0 +1,3 @@
+#define RAW_SYSCALL_FUNCTION _traced_raw_syscall
+#define SYSCALL_ENTRY_POINT get_traced_syscall_entry_point
+#include "traced_syscall_shared.S"
