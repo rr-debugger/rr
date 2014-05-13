@@ -387,7 +387,7 @@ static void syscall_not_restarted(Task* t)
  */
 static int maybe_restart_syscall(Task* t)
 {
-	if (SYS_restart_syscall == t->regs().orig_eax) {
+	if (SYS_restart_syscall == t->regs().original_syscallno()) {
 		LOG(debug) <<"  "<< t->tid <<": SYS_restart_syscall'ing "
 			   << t->ev();
 	}
@@ -494,7 +494,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 		// interrupted-syscall event.
 		if (SYS_sigreturn == syscallno
 		    || SYS_rt_sigreturn == syscallno) {
-			assert(t->regs().orig_eax == -1);
+			assert(t->regs().original_syscallno() == -1);
 			t->record_current_event();
 			t->pop_syscall();
 
@@ -520,7 +520,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			<< "Exiting syscall "<< syscallname(syscallno)
 			<<" but retval is -ENOSYS, usually only seen at entry";
 
-		LOG(debug) <<"  orig_eax:"<< t->regs().orig_eax
+		LOG(debug) <<"  original_syscallno:"<< t->regs().original_syscallno()
 			   <<" ("<< syscallname(syscallno) <<"); eax:"
 			   << t->regs().eax;
 
@@ -810,7 +810,7 @@ static void runnable_state_changed(Task* t)
 	case EV_SYSCALL_INTERRUPTION:
 		// We just entered a syscall.
 		if (!maybe_restart_syscall(t)) {
-			t->push_event(SyscallEvent(t->regs().orig_eax));
+			t->push_event(SyscallEvent(t->regs().original_syscallno()));
 			rec_before_record_syscall_entry(t, t->ev().Syscall().no);
 		}
 		ASSERT(t, EV_SYSCALL == t->ev().type());
