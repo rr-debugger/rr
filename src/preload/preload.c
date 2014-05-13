@@ -203,62 +203,8 @@ static void* local_memcpy(void* dest, const void* source, size_t n)
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
-/* NB: this code is copied and pasted for both _traced_raw_syscall()
- * and _untraced_raw_syscall() because it needs to be debuggable, and
- * generating it from a macro would hinder that.  So for now, please
- * keep the two in sync.
- *
- * TODO: generate from shared .S file. */
-long _traced_raw_syscall(int syscallno, long a0, long a1, long a2,
-			 long a3, long a4, long a5);
-__asm__(".text\n\t"
-	".globl _traced_raw_syscall\n\t"
-	".type _traced_raw_syscall, @function\n\t"
-	"_traced_raw_syscall:\n\t" /* syscallno = 4(%esp) */
-	".cfi_startproc\n\t"
-
-	"pushl %ebx\n\t"	/* syscallno = 8(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %ebx, 0\n\t"
-	"pushl %esi\n\t"	/* syscallno = 12(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %esi, 0\n\t"
-	"pushl %edi\n\t"	/* syscallno = 16(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %edi, 0\n\t"
-	"pushl %ebp\n\t"	/* syscallno = 20(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %ebp, 0\n\t"
-
-	"movl 20(%esp), %eax\n\t" /* %eax = syscallno */
-	"movl 24(%esp), %ebx\n\t" /* %ebx = a0 */
-	"movl 28(%esp), %ecx\n\t" /* %ecx = a1 */
-	"movl 32(%esp), %edx\n\t" /* %edx = a2 */
-	"movl 36(%esp), %esi\n\t" /* %esi = a3 */
-	"movl 40(%esp), %edi\n\t" /* %edi = a4 */
-	"movl 44(%esp), %ebp\n\t" /* %ebp = a5 */
-
-	"int $0x80\n\t"		/* syscall() */
-	/* When the tracee is in the traced syscall, its $ip will be
-	 * the value of this label.  We need to be able to recognize
-	 * when the tracees are in traced syscalls. */
-	".L_traced_syscall_entry_point_ip:\n\t"
-
-	"popl %ebp\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %ebp\n\t"
-	"popl %edi\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %edi\n\t"
-	"popl %esi\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %esi\n\t"
-	"popl %ebx\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %ebx\n\t"
-	"ret\n\t"
-	".cfi_endproc\n\t"
-	".size _traced_raw_syscall, .-_traced_raw_syscall\n\t");
+extern long _traced_raw_syscall(int syscallno, long a0, long a1, long a2,
+				long a3, long a4, long a5);
 
 static int update_errno_ret(long ret)
 {
@@ -306,16 +252,7 @@ static long traced_raw_syscall(const struct syscall_info* call)
 				   call->args[4], call->args[5]);
 }
 
-static void* get_traced_syscall_entry_point(void)
-{
-    void *ret;
-    __asm__ __volatile__(
-	    "call _get_traced_syscall_entry_point__pic_helper\n\t"
-	    "_get_traced_syscall_entry_point__pic_helper: pop %0\n\t"
-	    "addl $(.L_traced_syscall_entry_point_ip - _get_traced_syscall_entry_point__pic_helper),%0"
-	    : "=a"(ret));
-    return ret;
-}
+extern void* get_traced_syscall_entry_point(void);
 
 static int traced_fcntl(int fd, int cmd, ...)
 {
@@ -443,62 +380,8 @@ static void exit_signal_critical_section(const sigset_t* saved_mask)
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
 
-/* NB: this code is copied and pasted for both _traced_raw_syscall()
- * and _untraced_raw_syscall() because it needs to be debuggable, and
- * generating it from a macro would hinder that.  So for now, please
- * keep the two in sync.
- *
- * TODO: generate from shared .S file. */
-long _untraced_raw_syscall(int syscallno, long a0, long a1, long a2,
-			 long a3, long a4, long a5);
-__asm__(".text\n\t"
-	".globl _untraced_raw_syscall\n\t"
-	".type _untraced_raw_syscall, @function\n\t"
-	"_untraced_raw_syscall:\n\t" /* syscallno = 4(%esp) */
-	".cfi_startproc\n\t"
-
-	"pushl %ebx\n\t"	/* syscallno = 8(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %ebx, 0\n\t"
-	"pushl %esi\n\t"	/* syscallno = 12(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %esi, 0\n\t"
-	"pushl %edi\n\t"	/* syscallno = 16(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %edi, 0\n\t"
-	"pushl %ebp\n\t"	/* syscallno = 20(%esp) */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %ebp, 0\n\t"
-
-	"movl 20(%esp), %eax\n\t" /* %eax = syscallno */
-	"movl 24(%esp), %ebx\n\t" /* %ebx = a0 */
-	"movl 28(%esp), %ecx\n\t" /* %ecx = a1 */
-	"movl 32(%esp), %edx\n\t" /* %edx = a2 */
-	"movl 36(%esp), %esi\n\t" /* %esi = a3 */
-	"movl 40(%esp), %edi\n\t" /* %edi = a4 */
-	"movl 44(%esp), %ebp\n\t" /* %ebp = a5 */
-
-	"int $0x80\n\t"		/* syscall() */
-	/* When the tracee is in the traced syscall, its $ip will be
-	 * the value of this label.  We need to be able to recognize
-	 * when the tracees are in traced syscalls. */
-	".L_untraced_syscall_entry_point_ip:\n\t"
-
-	"popl %ebp\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %ebp\n\t"
-	"popl %edi\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %edi\n\t"
-	"popl %esi\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %esi\n\t"
-	"popl %ebx\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %ebx\n\t"
-	"ret\n\t"
-	".cfi_endproc\n\t"
-	".size _untraced_raw_syscall, .-_untraced_raw_syscall\n\t");
+extern long _untraced_raw_syscall(int syscallno, long a0, long a1, long a2,
+				  long a3, long a4, long a5);
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
@@ -525,16 +408,7 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2,
 #define untraced_syscall0(no)			\
 	untraced_syscall1(no, 0)
 
-static void* get_untraced_syscall_entry_point(void)
-{
-    void *ret;
-    __asm__ __volatile__(
-	    "call _get_untraced_syscall_entry_point__pic_helper\n\t"
-	    "_get_untraced_syscall_entry_point__pic_helper: pop %0\n\t"
-	    "addl $(.L_untraced_syscall_entry_point_ip - _get_untraced_syscall_entry_point__pic_helper),%0"
-	    : "=a"(ret));
-    return ret;
-}
+extern void* get_untraced_syscall_entry_point(void);
 
 /**
  * Make the *un*traced socketcall |call| with the given args.

@@ -1,7 +1,7 @@
 # *-* Mode: cmake; *-*
 
 cmake_minimum_required(VERSION 2.8.5)
-project(rr)
+project(rr C CXX ASM)
 
 enable_testing()
 set(BUILD_SHARED_LIBS ON)
@@ -18,6 +18,7 @@ set(rr_VERSION_PATCH 1)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict-prototypes")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -pthread -O0 -g3 -Wall -Werror -m32")
+set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3 -m32")
 
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" ""
@@ -27,6 +28,8 @@ include_directories("${PROJECT_SOURCE_DIR}/include")
 
 add_library(rrpreload
   src/preload/preload.c
+  src/preload/traced_syscall.S
+  src/preload/untraced_syscall.S
 )
 
 add_executable(rr
