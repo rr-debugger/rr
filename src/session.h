@@ -9,6 +9,8 @@
 #include <set>
 #include <string>
 
+#include "preload/syscall_buffer.h"
+
 #include "trace.h"
 #include "replayer.h"
 
@@ -189,12 +191,18 @@ public:
 	 * for replay to reach.
 	 */
 	struct trace_frame& current_trace_frame() { return trace_frame; }
-
 	/**
 	 * State of the replay as we advance towards the event given by
 	 * current_trace_frame().
 	 */
 	struct rep_trace_step& current_replay_step() { return replay_step; }
+
+	byte* syscallbuf_flush_buffer() {
+		return syscallbuf_flush_buffer_array;
+	}
+	const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
+		return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
+	}
 
 	/**
 	 * Restore the state of this session to what it was just after
@@ -251,6 +259,14 @@ private:
 	std::shared_ptr<TraceIfstream> trace_ifstream;
 	struct trace_frame trace_frame;
 	struct rep_trace_step replay_step;
+	/**
+	 * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
+	 * must be replayed sequentially, so we can use one buffer for all
+	 * tracees.  At the start of the flush, the recorded bytes are read
+	 * back into this buffer.  Then they're copied back to the tracee
+	 * record-by-record, as the tracee exits those syscalls.
+	 */
+	byte syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
 };
 
 #endif // RR_SESSION_H_

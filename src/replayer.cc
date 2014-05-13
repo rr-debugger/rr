@@ -1185,44 +1185,41 @@ static int skip_desched_ioctl(Task* t,
 }
 
 /**
- * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
- * must be replayed sequentially, so we can use one buffer for all
- * tracees.  At the start of the flush, the recorded bytes are read
- * back into this buffer.  Then they're copied back to the tracee
- * record-by-record, as the tracee exits those syscalls.
- */
-static byte syscallbuf_flush_buffer[SYSCALLBUF_BUFFER_SIZE];
-/** Convenience header pointer to skip tedious pointer arithmetic. */
-static const struct syscallbuf_hdr* flush_hdr =
-	(const struct syscallbuf_hdr*)syscallbuf_flush_buffer;
-
-/**
  * Restore the recorded syscallbuf data to the tracee, preparing the
  * tracee for replaying the records.  Return the number of record
  * bytes and a pointer to the first record through outparams.
  */
-static void prepare_syscallbuf_records(Task* t,
-				       size_t* num_rec_bytes,
-				       const struct syscallbuf_record** first_rec_rec,
-				       struct syscallbuf_record** first_child_rec)
+static void prepare_syscallbuf_records(Task* t)
 {
+	struct rep_flush_state* flush =
+		&t->replay_session().current_replay_step().flush;
+	if (!flush->need_buffer_restore) {
+		return;
+	}
+	flush->need_buffer_restore = 0;
+
 	// Read the recorded syscall buffer back into the buffer
 	// region.
 	struct raw_data buf;
 	t->ifstream() >> buf;
-	*num_rec_bytes = buf.data.size();
+	flush->num_rec_bytes_remaining = buf.data.size();
 
-	assert(*num_rec_bytes <= sizeof(syscallbuf_flush_buffer));
-	memcpy(syscallbuf_flush_buffer, buf.data.data(), *num_rec_bytes);
+	assert(flush->num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);
+	memcpy(t->replay_session().syscallbuf_flush_buffer(), buf.data.data(),
+		flush->num_rec_bytes_remaining);
 
 	// The stored num_rec_bytes in the header doesn't include the
 	// header bytes, but the stored trace data does.
-	*num_rec_bytes -= sizeof(sizeof(struct syscallbuf_hdr));
+	flush->num_rec_bytes_remaining -= sizeof(sizeof(struct syscallbuf_hdr));
 	assert(buf.addr == t->syscallbuf_child);
-	assert(flush_hdr->num_rec_bytes == *num_rec_bytes);
+	const syscallbuf_hdr* flush_hdr =
+		t->replay_session().syscallbuf_flush_buffer_hdr();
+	assert(flush_hdr->num_rec_bytes == flush->num_rec_bytes_remaining);
 
-	*first_rec_rec = flush_hdr->recs;
-	*first_child_rec = t->syscallbuf_hdr->recs;
+	flush->syscall_record_offset = 0;
+
+	LOG(debug) <<"Prepared "<< flush->num_rec_bytes_remaining
+		   <<" bytes of syscall records";
 }
 
 /**
@@ -1291,11 +1288,16 @@ static void restore_futex_words(Task* t,
  * nonzero if an unhandled interrupt occurred, and zero if the syscall
  * was flushed (in which case |flush->state == DONE|).
  */
-static int flush_one_syscall(Task* t,
-			     struct rep_flush_state* flush, int stepi)
+static int flush_one_syscall(Task* t, int stepi)
 {
-	const struct syscallbuf_record* rec_rec = flush->rec_rec;
-	struct syscallbuf_record* child_rec = flush->child_rec;
+	struct rep_flush_state* flush =
+		&t->replay_session().current_replay_step().flush;
+	const syscallbuf_hdr* flush_hdr =
+		t->replay_session().syscallbuf_flush_buffer_hdr();
+	const struct syscallbuf_record* rec_rec = (const struct syscallbuf_record*)
+		((byte*)flush_hdr->recs + flush->syscall_record_offset);
+	struct syscallbuf_record* child_rec = (struct syscallbuf_record*)
+		((byte*)t->syscallbuf_hdr->recs + flush->syscall_record_offset);
 	int call = rec_rec->syscallno;
 	int ret;
 	// TODO: use syscall_defs table information to determine this.
@@ -1329,7 +1331,7 @@ static int flush_one_syscall(Task* t,
 			flush->desched.type = DESCHED_ARM;
 			flush->desched.state = DESCHED_ENTER;
 		}
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 
 	case FLUSH_ARM:
 		/* Skip past the ioctl that armed the desched
@@ -1339,7 +1341,7 @@ static int flush_one_syscall(Task* t,
 			return ret;
 		}
 		flush->state = FLUSH_ENTER;
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 
 	case FLUSH_ENTER:
 		LOG(debug) <<"  advancing to buffered syscall entry";
@@ -1349,7 +1351,7 @@ static int flush_one_syscall(Task* t,
 		assert_at_buffered_syscall(t, call);
 		assert_same_rec(t, rec_rec, child_rec);
 		flush->state = FLUSH_EXIT;
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 
 	case FLUSH_EXIT: {
 		LOG(debug) <<"  advancing to buffered syscall exit";
@@ -1394,7 +1396,7 @@ static int flush_one_syscall(Task* t,
 		flush->state = FLUSH_DISARM;
 		flush->desched.type = DESCHED_DISARM;
 		flush->desched.state = DESCHED_ENTER;
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 	}
 	case FLUSH_DISARM:
 		/* And skip past the ioctl that disarmed the desched
@@ -1418,36 +1420,27 @@ static int flush_one_syscall(Task* t,
  * that flushed the buffer).  Return 0 if successful or 1 if an
  * unhandled interrupt occurred.
  */
-static int flush_syscallbuf(Task* t, struct rep_trace_step* step,
-			    int stepi)
+static int flush_syscallbuf(Task* t, int stepi)
 {
-	struct rep_flush_state* flush = &step->flush;
+	prepare_syscallbuf_records(t);
 
-	if (flush->need_buffer_restore) {
-		prepare_syscallbuf_records(t,
-					   &flush->num_rec_bytes_remaining,
-					   &flush->rec_rec, &flush->child_rec);
-		flush->need_buffer_restore = 0;
-
-		LOG(debug) <<"Prepared "<< flush->num_rec_bytes_remaining
-			   <<" bytes of syscall records";
-	}
+	struct rep_flush_state* flush =
+		&t->replay_session().current_replay_step().flush;
+	const syscallbuf_hdr* flush_hdr =
+		t->replay_session().syscallbuf_flush_buffer_hdr();
 
 	while (flush->num_rec_bytes_remaining > 0) {
 		int ret;
-		size_t stored_rec_size;
-
-		if ((ret = flush_one_syscall(t, flush, stepi))) {
+		if ((ret = flush_one_syscall(t, stepi))) {
 			return ret;
 		}
 
 		assert(FLUSH_DONE == flush->state);
 
-		stored_rec_size = stored_record_size(flush->rec_rec->size);
-		flush->rec_rec = (const struct syscallbuf_record*)
-				 ((byte*)flush->rec_rec + stored_rec_size);
-		flush->child_rec = (struct syscallbuf_record*)
-				   ((byte*)flush->child_rec + stored_rec_size);
+		const struct syscallbuf_record* record = (const struct syscallbuf_record*)
+			((byte*)flush_hdr->recs + flush->syscall_record_offset);
+		size_t stored_rec_size = stored_record_size(record->size);
+		flush->syscall_record_offset += stored_rec_size;
 		flush->num_rec_bytes_remaining -= stored_rec_size;
 		flush->state = FLUSH_START;
 
@@ -1487,7 +1480,7 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 					    stepi,
 					    &step->target.rcb, req);
 	case TSTEP_FLUSH_SYSCALLBUF:
-		return flush_syscallbuf(t, step, stepi);
+		return flush_syscallbuf(t, stepi);
 	case TSTEP_DESCHED:
 		return skip_desched_ioctl(t, &step->desched, stepi);
 	default:
