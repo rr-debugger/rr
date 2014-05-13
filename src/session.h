@@ -10,6 +10,7 @@
 #include <string>
 
 #include "trace.h"
+#include "replayer.h"
 
 class AddressSpace;
 struct current_state_buffer;
@@ -190,6 +191,12 @@ public:
 	struct trace_frame& current_trace_frame() { return trace_frame; }
 
 	/**
+	 * State of the replay as we advance towards the event given by
+	 * current_trace_frame().
+	 */
+	struct rep_trace_step& current_replay_step() { return replay_step; }
+
+	/**
 	 * Restore the state of this session to what it was just after
 	 * |create()|.
 	 */
@@ -235,6 +242,7 @@ private:
 		: last_debugged_task(nullptr)
 		, tgid_debugged(0)
 		, trace_frame()
+		, replay_step()
 	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
@@ -242,6 +250,7 @@ private:
 	pid_t tgid_debugged;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
 	struct trace_frame trace_frame;
+	struct rep_trace_step replay_step;
 };
 
 #endif // RR_SESSION_H_

@@ -81,7 +81,7 @@ struct rep_flush_state {
  * frame.
  */
 enum RepTraceStepType {
-	TSTEP_UNKNOWN,
+	TSTEP_NONE,
 
 	/* Frame has been replayed, done. */
 	TSTEP_RETIRE,
@@ -130,8 +130,6 @@ struct rep_trace_step {
 
 		struct {
 			int64_t rcb;
-			/* XXX can be just $ip in "production". */
-			const Registers* regs;
 			int signo;
 		} target;
 

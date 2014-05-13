@@ -371,9 +371,9 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  * the task recorded along with that event, if there was one.
  * |intr_t| may be nullptr.
  */
-static trace_frame cur_trace_frame;
 static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
 {
+	struct trace_frame cur_trace_frame;
 	session.ifstream() >> cur_trace_frame;
 	if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
 		if (intr_t) {
@@ -1482,7 +1482,7 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 						    stepi, req);
 	case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
 		return emulate_async_signal(dbg, t,
-					    step->target.regs,
+					    &t->current_trace_frame().recorded_regs,
 					    step->target.signo,
 					    stepi,
 					    &step->target.rcb, req);
@@ -1545,14 +1545,20 @@ static bool has_deterministic_rbc(const Event& ev,
 	return (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action);
 }
 
-static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
+/**
+ * Set up rep_trace_step state in t's Session to start replaying towards
+ * the event given by the session's current_trace_frame --- but only if
+ * it's not already set up.
+ * Return true if we should continue replaying, false if the debugger
+ * requested a restart. If this returns false, t's Session state was not
+ * modified.
+ */
+static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
-	struct dbg_request req;
-	struct rep_trace_step step;
 	Event ev(t->current_trace_frame().ev);
 
 	LOG(debug) <<"[line "<< t->trace_time() <<"] "<< t->rec_tid
-		   <<": replaying "<< Event(t->current_trace_frame().ev) <<"; state "
+		   <<": replaying "<< Event(ev) <<"; state "
 		   << statename(t->current_trace_frame().ev.state);
 	if (t->syscallbuf_hdr) {
 		LOG(debug) <<"    (syscllbufsz:"<< t->syscallbuf_hdr->num_rec_bytes
@@ -1565,7 +1571,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	 * will be confused about the initial executable image,
 	 * rr's. */
 	if (t->session().can_validate()) {
-		req = process_debugger_requests(dbg, t);
+		struct dbg_request req = process_debugger_requests(dbg, t);
 		if (DREQ_RESTART == req.type) {
 			return false;
 		}
@@ -1577,6 +1583,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		t->child_sig = 0;
 	}
 
+	struct rep_trace_step& step = t->replay_session().current_replay_step();
 	/* Ask the trace-interpretation code what to do next in order
 	 * to retire the current frame. */
 	memset(&step, 0, sizeof(step));
@@ -1643,7 +1650,6 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	case EV_SCHED:
 		step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
 		step.target.rcb = t->current_trace_frame().rbc;
-		step.target.regs = &t->current_trace_frame().recorded_regs;
 		step.target.signo = 0;
 		break;
 	case EV_SEGV_RDTSC:
@@ -1669,7 +1675,6 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
 			step.target.signo = step.signo;
 			step.target.rcb = t->current_trace_frame().rbc;
-			step.target.regs = &t->current_trace_frame().recorded_regs;
 		}
 		break;
 	case EV_SYSCALL:
@@ -1694,9 +1699,30 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		t->adjust_for_rbc_slop(&step.target.rcb);
 	}
 
+	return true;
+}
+
+static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
+{
+	struct rep_trace_step& step = t->replay_session().current_replay_step();
+
+	/* If we restored from a checkpoint, the steps might have been
+	 * computed already in which case step.action will not be TSTEP_NONE.
+	 */
+	if (step.action == TSTEP_NONE) {
+		if (!setup_replay_one_trace_frame(dbg, t)) {
+			return false;
+		}
+		if (step.action == TSTEP_NONE) {
+			// Already at the destination event.
+			return true;
+		}
+	}
+
+	struct dbg_request req;
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(dbg, t, &step, &req)) {
-		if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
+		if (EV_TRACE_TERMINATION == t->current_trace_frame().ev.type) {
 			// An irregular trace step had to read the
 			// next trace frame, and that frame was an
 			// early-termination marker.  Otherwise we
@@ -1780,6 +1806,8 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
 	}
+
+	Event ev(t->current_trace_frame().ev);
 	if (has_deterministic_rbc(ev, step)) {
 		assert_at_recorded_rcb(t, ev);
 	}
@@ -1787,6 +1815,9 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	t->maybe_save_rbc_slop(ev);
 
 	debug_memory(t);
+
+	// Record that this step completed successfully.
+	step.action = TSTEP_NONE;
 	return true;
 }
 
