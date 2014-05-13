@@ -649,7 +649,7 @@ int compare_register_files(Task* t,
 
 	ASSERT(t, !bail_error || !err)
 		<<"Fatal register mismatch (rbc/rec:"
-		<< read_rbc(t->hpc) <<"/"<< t->trace.rbc <<")";
+		<< read_rbc(t->hpc) <<"/"<< t->current_trace_frame().rbc <<")";
 
 	if (!err && mismatch_behavior == LOG_MISMATCHES) {
 		LOG(info) <<"(register files are the same for "<< name1
@@ -771,7 +771,7 @@ static void notify_checksum_error(Task* t, int global_time,
 	format_dump_filename(t, global_time, "rec",
 			     rec_dump, sizeof(rec_dump));
 
-	Event ev(t->trace.ev);
+	Event ev(t->current_trace_frame().ev);
 	ASSERT(t, checksum == rec_checksum)
 <<"Divergence in contents of memory segment after '"<< ev <<"':\n"
 "\n"

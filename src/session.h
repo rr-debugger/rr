@@ -9,6 +9,8 @@
 #include <set>
 #include <string>
 
+#include "trace.h"
+
 class AddressSpace;
 struct current_state_buffer;
 class EmuFs;
@@ -181,6 +183,11 @@ public:
 	void gc_emufs();
 
 	TraceIfstream& ifstream() { return *trace_ifstream; }
+	/**
+	 * The trace record that we are working on --- the next event
+	 * for replay to reach.
+	 */
+	struct trace_frame& current_trace_frame() { return trace_frame; }
 
 	/**
 	 * Restore the state of this session to what it was just after
@@ -224,12 +231,17 @@ public:
 	static shr_ptr create(int argc, char* argv[]);
 
 private:
-	ReplaySession() : last_debugged_task(nullptr), tgid_debugged(0)	{}
+	ReplaySession()
+		: last_debugged_task(nullptr)
+		, tgid_debugged(0)
+		, trace_frame()
+	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
 	Task* last_debugged_task;
 	pid_t tgid_debugged;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
+	struct trace_frame trace_frame;
 };
 
 #endif // RR_SESSION_H_

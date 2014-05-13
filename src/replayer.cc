@@ -106,14 +106,14 @@ static int debugger_params_pipe[2];
 
 static void debug_memory(Task* t)
 {
-	if (should_dump_memory(t, t->trace)) {
-		dump_process_memory(t, t->trace.global_time, "rep");
+	if (should_dump_memory(t, t->current_trace_frame())) {
+		dump_process_memory(t, t->current_trace_frame().global_time, "rep");
 	}
 	if (t->session().can_validate()
-	    && should_checksum(t, t->trace)) {
+	    && should_checksum(t, t->current_trace_frame())) {
 		/* Validate the checksum we computed during the
 		 * recording phase. */
-		validate_process_memory(t, t->trace.global_time);
+		validate_process_memory(t, t->current_trace_frame().global_time);
 	}
 }
 
@@ -386,30 +386,28 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
 	assert(t != NULL);
 	ASSERT(t, &session == &t->replay_session());
 
-	t->trace = cur_trace_frame;
+	session.current_trace_frame() = cur_trace_frame;
 
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (t->trace.ev.type == EV_SCHED) {
+	if (session.current_trace_frame().ev.type == EV_SCHED) {
 		bool combined = false;
-		struct trace_frame next_trace =
-			t->replay_session().ifstream().peek_frame();
-		int64_t rbc = t->trace.rbc;
+		struct trace_frame next_trace = session.ifstream().peek_frame();
+		int64_t rbc = session.current_trace_frame().rbc;
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid) {
 			rbc += next_trace.rbc;
-			t->replay_session().ifstream() >> t->trace;
-			next_trace =
-				t->replay_session().ifstream().peek_frame();
+			session.ifstream() >> session.current_trace_frame();
+			next_trace = session.ifstream().peek_frame();
 			combined = true;
 		}
 
 		if (combined) {
-			t->trace.rbc = rbc;
+			session.current_trace_frame().rbc = rbc;
 		}
 	}
-	assert(t->trace_time() == t->trace.global_time);
+	assert(t->trace_time() == session.current_trace_frame().global_time);
 	return t;
 }
 
@@ -419,7 +417,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
  */
 static void validate_args(int event, int state, Task* t)
 {
-	Registers rec_regs = t->trace.recorded_regs;
+	Registers rec_regs = t->current_trace_frame().recorded_regs;
 
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
@@ -468,7 +466,8 @@ static bool entering_syscall_insn(Task* t)
 enum { EXEC = 0, EMU = 1 };
 static int cont_syscall_boundary(Task* t, int emu, int stepi)
 {
-	bool is_syscall_entry = (STATE_SYSCALL_ENTRY == t->trace.ev.state);
+	bool is_syscall_entry =
+		STATE_SYSCALL_ENTRY == t->current_trace_frame().ev.state;
 	if (is_syscall_entry) {
 		t->stepped_into_syscall = false;
 	}
@@ -604,7 +603,7 @@ static void continue_or_step(Task* t, int stepi)
 		return;
 	}
 	ASSERT(t, child_sig_gt_zero)
-		<< "Replaying `"<< Event(t->trace.ev)
+		<< "Replaying `"<< Event(t->current_trace_frame().ev)
 		<<"': expecting tracee signal or trap, but instead at `"
 		<< syscallname(t->regs().original_syscallno()) <<"' (rcb: "
 		<< read_rbc(t->hpc) <<")";
@@ -1049,7 +1048,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 		return 1;
 	}
 	ASSERT(oldtask, t == oldtask) <<"emulate_signal_delivery changed task";
-	const struct trace_frame* trace = &t->trace;
+	const struct trace_frame* trace = &t->current_trace_frame();
 
 	/* Restore the signal-hander frame data, if there was one. */
 	bool restored_sighandler_frame = 0 < t->set_data_from_trace();
@@ -1087,9 +1086,9 @@ static void assert_at_recorded_rcb(Task* t, const Event& ev)
 		return;
 	}
 	ASSERT(t, (!t->hpc->started
-		   || llabs(rbc_now - t->trace.rbc) <= rbc_slack))
+		   || llabs(rbc_now - t->current_trace_frame().rbc) <= rbc_slack))
 		<<"rbc mismatch for '"<< ev <<"'; expected "
-		<< t->trace.rbc <<", got "<< rbc_now <<"";
+		<< t->current_trace_frame().rbc <<", got "<< rbc_now <<"";
 }
 
 /**
@@ -1101,7 +1100,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 					int sig, int stepi,
 					struct dbg_request* req)
 {
-	Event ev(t->trace.ev);
+	Event ev(t->current_trace_frame().ev);
 
 	continue_or_step(t, stepi);
 	if (SIGCHLD == t->child_sig) {
@@ -1117,7 +1116,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 	assert_at_recorded_rcb(t, ev);
 
 	if (EV_SEGV_RDTSC == ev.type()) {
-		t->set_regs(t->trace.recorded_regs);
+		t->set_regs(t->current_trace_frame().recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
 		return 0;
@@ -1550,11 +1549,11 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
 	struct dbg_request req;
 	struct rep_trace_step step;
-	Event ev(t->trace.ev);
+	Event ev(t->current_trace_frame().ev);
 
 	LOG(debug) <<"[line "<< t->trace_time() <<"] "<< t->rec_tid
-		   <<": replaying "<< Event(t->trace.ev) <<"; state "
-		   << statename(t->trace.ev.state);
+		   <<": replaying "<< Event(t->current_trace_frame().ev) <<"; state "
+		   << statename(t->current_trace_frame().ev.state);
 	if (t->syscallbuf_hdr) {
 		LOG(debug) <<"    (syscllbufsz:"<< t->syscallbuf_hdr->num_rec_bytes
 			   <<", abrtcmt:"<< t->syscallbuf_hdr->abort_commit
@@ -1643,8 +1642,8 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		break;
 	case EV_SCHED:
 		step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-		step.target.rcb = t->trace.rbc;
-		step.target.regs = &t->trace.recorded_regs;
+		step.target.rcb = t->current_trace_frame().rbc;
+		step.target.regs = &t->current_trace_frame().recorded_regs;
 		step.target.signo = 0;
 		break;
 	case EV_SEGV_RDTSC:
@@ -1669,8 +1668,8 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			       TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
 		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
 			step.target.signo = step.signo;
-			step.target.rcb = t->trace.rbc;
-			step.target.regs = &t->trace.recorded_regs;
+			step.target.rcb = t->current_trace_frame().rbc;
+			step.target.regs = &t->current_trace_frame().recorded_regs;
 		}
 		break;
 	case EV_SYSCALL:
@@ -1777,7 +1776,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		rep_after_enter_syscall(t, step.syscall.no);
 	}
 	if (t->session().can_validate()
-	    && STATE_SYSCALL_EXIT == t->trace.ev.state
+	    && STATE_SYSCALL_EXIT == t->current_trace_frame().ev.state
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
 	}

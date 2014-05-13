@@ -193,6 +193,7 @@ ReplaySession::clone()
 	assert(!last_debugged_task);
 	session->tgid_debugged = tgid_debugged;
 	session->trace_ifstream = trace_ifstream->clone();
+	session->trace_frame = trace_frame;
 
 	for (auto vm : sas) {
 		Task* some_task = *vm->task_set().begin();

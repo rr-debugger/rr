@@ -1105,7 +1105,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, desched_fd(-1), desched_fd_child(-1)
 	, seccomp_bpf_enabled()
 	, child_sig(), stepped_into_syscall()
-	, trace(), hpc()
+	, hpc()
 	, tid(_tid), rec_tid(_rec_tid > 0 ? _rec_tid : _tid)
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
@@ -1562,7 +1562,7 @@ Task::maybe_update_vm(int syscallno, int state)
 	// have the return value set in syscall_result().  We may not have
 	// advanced regs() to that point yet.
 	const Registers& r = RECORD == rr_flags()->option ?
-					   regs() : trace.recorded_regs;
+		regs() : current_trace_frame().recorded_regs;
 
 	if (STATE_SYSCALL_EXIT != state
 	    || (SYSCALL_FAILED(r.syscall_result_signed()) &&
@@ -1852,6 +1852,12 @@ Task::replay_session()
 	return *session_replay;
 }
 
+const struct trace_frame&
+Task::current_trace_frame()
+{
+	return replay_session().current_trace_frame();
+}
+
 ssize_t
 Task::set_data_from_trace()
 {
@@ -1867,7 +1873,7 @@ void
 Task::set_return_value_from_trace()
 {
 	Registers r = regs();
-	r.set_syscall_result(trace.recorded_regs.syscall_result());
+	r.set_syscall_result(current_trace_frame().recorded_regs.syscall_result());
 	set_regs(r);
 }
 
@@ -2463,7 +2469,6 @@ Task::copy_state(Task* from)
 	// series of syscalls made by the trace so far.
 	blocked_sigs = from->blocked_sigs;
 	pending_events = from->pending_events;
-	trace = from->trace;
 	rbc_slop = from->rbc_slop;
 
 	// We, the deepfork clone of |from|, need to have the same
