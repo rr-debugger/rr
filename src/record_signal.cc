@@ -557,7 +557,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 			 * it's just too noisy during unit tests.
 			 * Should find a better way to choose mode. */
 			/*log_warn("Disabling context-switching for possibly-blocking syscall (%s); deadlock may follow",
-			  syscallname(regs->orig_eax));*/
+			  syscallname(regs->original_syscallno()));*/
 			disarm_desched_event(t);
 			/* And (hopefully!) finish the syscall. */
 			t->cont_singlestep();
