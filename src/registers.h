@@ -3,6 +3,7 @@
 #ifndef RR_REGISTERS_H_
 #define RR_REGISTERS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 #include <sys/user.h>
 
@@ -70,6 +71,46 @@ public:
 	uintptr_t arg6() const { return ebp; }
 	intptr_t arg6_signed() const { return ebp; }
 	void set_arg6(uintptr_t value) { ebp = value; }
-};
 
+	// Various things the GDB stub needs to know about.
+	enum DebuggerRegister {
+		DREG_EAX, DREG_ECX, DREG_EDX, DREG_EBX,
+		DREG_ESP, DREG_EBP, DREG_ESI, DREG_EDI,
+		DREG_EIP, DREG_EFLAGS,
+		DREG_CS, DREG_SS, DREG_DS, DREG_ES, DREG_FS, DREG_GS,
+		/* We can't actually fetch the floating-point-related
+		 * registers, but we record them here so we can
+		 * communicate their sizes accurately.
+		 */
+		DREG_ST0, DREG_ST1, DREG_ST2, DREG_ST3,
+		DREG_ST4, DREG_ST5, DREG_ST6, DREG_ST7,
+		/* These are the names GDB gives the registers.  */
+		DREG_FCTRL, DREG_FSTAT, DREG_FTAG, DREG_FISEG,
+		DREG_FIOFF, DREG_FOSEG, DREG_FOOFF, DREG_FOP,
+		DREG_XMM0, DREG_XMM1, DREG_XMM2, DREG_XMM3,
+		DREG_XMM4, DREG_XMM5, DREG_XMM6, DREG_XMM7,
+		DREG_MXCSR,
+		DREG_ORIG_EAX,
+		DREG_NUM_LINUX_I386,
+		/* Last register we can find in user_regs_struct (except for
+		 * orig_eax). */
+		DREG_NUM_USER_REGS = DREG_GS + 1,
+		DREG_YMM0H,
+		DREG_YMM7H = DREG_YMM0H + 7,
+	};
+
+	/**
+	 * Return the total number of registers for this target.
+	 */
+	size_t total_registers() const { return DREG_NUM_LINUX_I386; }
+
+	/**
+	 * Write the value for register |regno| into |buf|, which should
+	 * be large enough to hold any register supported by the target.
+	 * Return the size of the register in bytes and set |defined| to
+	 * indicate whether a useful value has been written to |buf|.
+	 */
+	size_t read_register(uint8_t* buf, unsigned int regno,
+			     bool* defined) const;
+};
 #endif /* RR_REGISTERS_H_ */

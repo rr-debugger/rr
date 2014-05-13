@@ -120,68 +120,12 @@ static void debug_memory(Task* t)
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static DbgRegister get_reg(const Registers* regs,
-			   DbgRegisterName which)
+static DbgRegister get_reg(const Registers* regs, unsigned int which)
 {
 	DbgRegister reg;
-	reg.name = which;
-	reg.defined = true;
-	switch (which) {
-	case DREG_EAX:
-		reg.value = regs->eax;
-		return reg;
-	case DREG_ECX:
-		reg.value = regs->ecx;
-		return reg;
-	case DREG_EDX:
-		reg.value = regs->edx;
-		return reg;
-	case DREG_EBX:
-		reg.value = regs->ebx;
-		return reg;
-	case DREG_ESP:
-		reg.value = regs->esp;
-		return reg;
-	case DREG_EBP:
-		reg.value = regs->ebp;
-		return reg;
-	case DREG_ESI:
-		reg.value = regs->esi;
-		return reg;
-	case DREG_EDI:
-		reg.value = regs->edi;
-		return reg;
-	case DREG_EIP:
-		reg.value = regs->eip;
-		return reg;
-	case DREG_EFLAGS:
-		reg.value = regs->eflags;
-		return reg;
-	case DREG_CS:
-		reg.value = regs->xcs;
-		return reg;
-	case DREG_SS:
-		reg.value = regs->xss;
-		return reg;
-	case DREG_DS:
-		reg.value = regs->xds;
-		return reg;
-	case DREG_ES:
-		reg.value = regs->xes;
-		return reg;
-	case DREG_FS:
-		reg.value = regs->xfs;
-		return reg;
-	case DREG_GS:
-		reg.value = regs->xgs;
-		return reg;
-	case DREG_ORIG_EAX:
-		reg.value = regs->orig_eax;
-		return reg;
-	default:
-		reg.defined = false;
-		return reg;
-	}
+	memset(&reg, 0, sizeof(reg));
+	reg.size = regs->read_register(&reg.value[0], which, &reg.defined);
+	return reg;
 }
 
 static dbg_threadid_t get_threadid(Task* t)
@@ -359,14 +303,12 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			continue;
 		}
 		case DREQ_GET_REGS: {
-			DbgRegfile file;
-			memset(&file, 0, sizeof(file));
-			for (int i = DREG_EAX; i < DREG_NUM_USER_REGS; ++i) {
-				file.regs[i] = get_reg(&target->regs(),
-						       DbgRegisterName(i));
+			const Registers* regs = &target->regs();
+			size_t n_regs = regs->total_registers();
+			DbgRegfile file(n_regs);
+			for (size_t i = 0; i < n_regs; ++i) {
+				file.regs[i] = get_reg(regs, i);
 			}
-			file.regs[DREG_ORIG_EAX] = get_reg(&target->regs(),
-							   DREG_ORIG_EAX);
 			dbg_reply_get_regs(dbg, file);
 			continue;
 		}

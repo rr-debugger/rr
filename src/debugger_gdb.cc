@@ -904,8 +904,7 @@ static int process_packet(struct dbg_context* dbg)
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
-		dbg->req.reg.name =
-			DbgRegisterName(strtoul(payload, &payload, 16));
+		dbg->req.reg.name = strtoul(payload, &payload, 16);
 		assert('\0' == *payload);
 		LOG(debug) <<"gdb requests register value (" 
 			   << dbg->req.reg.name <<")";
@@ -1284,25 +1283,30 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
 
 /**
  * Format |value| into |buf| in the manner gdb expects.  |buf| must
- * point at a buffer with at least |1 + 2*sizeof(long)| bytes
- * available.  Exactly that many bytes (including '\0' terminator)
- * will be written by this function.
+ * point at a buffer with at least |1 + 2*DBG_MAX_REG_SIZE| bytes
+ * available.  Fewer bytes than that may be written, but |buf| is
+ * guaranteed to be null-terminated.
  */
-static void print_reg_value(const DbgRegister& reg, char* buf) {
+static size_t print_reg_value(const DbgRegister& reg, char* buf) {
+	assert(reg.size <= DBG_MAX_REG_SIZE);
 	if (reg.defined) {
-		/* gdb wants the register value in native endianness, so
-		 * swizzle to big-endian so that printf gives us a
-		 * little-endian string.  (Network order is big-endian.) */
-		long v = htonl(reg.value);
-		sprintf(buf, "%08lx", v);
+		/* gdb wants the register value in native endianness.
+		 * reg.value read in native endianness is exactly that.
+		 */
+		for (size_t i = 0; i < reg.size; ++i) {
+			snprintf(&buf[2 * i], 3, "%02lx", (unsigned long)reg.value[i]);
+		}
 	} else {
-		strcpy(buf, "xxxxxxxx");
+		for (size_t i = 0; i < reg.size; ++i) {
+			strcpy(&buf[2 * i], "xx");
+		}
 	}
+	return reg.size * 2;
 }
 
 void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)
 {
-	char buf[32];
+	char buf[2 * DBG_MAX_REG_SIZE + 1];
 
 	assert(DREQ_GET_REG == dbg->req.type);
 
@@ -1314,14 +1318,15 @@ void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)
 
 void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file)
 {
-	/* XXX this will be wrong on x64 WINNT */
-	char buf[1 + DREG_NUM_LINUX_I386 * 2 * sizeof(long)];
-	int i;
+	size_t n_regs = file.total_registers();
+	char buf[n_regs * 2 * DBG_MAX_REG_SIZE + 1];
 
 	assert(DREQ_GET_REGS == dbg->req.type);
 
-	for (i = 0; i < DREG_NUM_LINUX_I386; ++i) {
-		print_reg_value(file.regs[i], &buf[i * 2 * sizeof(long)]);
+	size_t offset = 0;
+	for (auto it = file.regs.begin(), end = file.regs.end();
+	     it != end; ++it) {
+		offset += print_reg_value(*it, &buf[offset]);
 	}
 	write_packet(dbg, buf);
 
