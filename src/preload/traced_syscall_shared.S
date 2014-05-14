@@ -66,3 +66,5 @@ SYSCALL_ENTRY_POINT:
 	.size SYSCALL_ENTRY_POINT, . - SYSCALL_ENTRY_POINT
 
 #undef ENTRY_POINT_IP
+	.section .note.GNU-stack,"",@progbits
+	.previous
