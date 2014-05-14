@@ -18,7 +18,7 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
 				bool* defined) const
 {
 	*defined = true;
-	assert(regno < DREG_NUM_USER_REGS);
+	assert(regno < total_registers());
 	switch (regno) {
 	case DREG_EAX:
 		return copy_register_value(buf, eax);
