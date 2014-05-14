@@ -87,16 +87,16 @@ public:
 		/* These are the names GDB gives the registers.  */
 		DREG_FCTRL, DREG_FSTAT, DREG_FTAG, DREG_FISEG,
 		DREG_FIOFF, DREG_FOSEG, DREG_FOOFF, DREG_FOP,
+		DREG_ORIG_EAX,
 		DREG_XMM0, DREG_XMM1, DREG_XMM2, DREG_XMM3,
 		DREG_XMM4, DREG_XMM5, DREG_XMM6, DREG_XMM7,
 		DREG_MXCSR,
-		DREG_ORIG_EAX,
 		DREG_NUM_LINUX_I386,
+		DREG_YMM0H, DREG_YMM1H, DREG_YMM2H, DREG_YMM3H,
+		DREG_YMM4H, DREG_YMM5H, DREG_YMM6H, DREG_YMM7H,
 		/* Last register we can find in user_regs_struct (except for
 		 * orig_eax). */
 		DREG_NUM_USER_REGS = DREG_GS + 1,
-		DREG_YMM0H,
-		DREG_YMM7H = DREG_YMM0H + 7,
 	};
 
 	/**

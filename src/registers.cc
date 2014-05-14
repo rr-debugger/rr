@@ -52,8 +52,6 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
 		return copy_register_value(buf, xfs);
 	case DREG_GS:
 		return copy_register_value(buf, xgs);
-	case DREG_ORIG_EAX:
-		return copy_register_value(buf, orig_eax);
 	case DREG_ST0:
 	case DREG_ST1:
 	case DREG_ST2:
@@ -67,7 +65,7 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
 		 * the debugger, we will have to be careful about how we
 		 * format our bits here.
 		 */
-		return 16;
+		return 10;
 	case DREG_FCTRL:
 	case DREG_FSTAT:
 	case DREG_FTAG:
@@ -80,6 +78,8 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
 	case DREG_FOOFF:
 		*defined = false;
 		return 4;
+	case DREG_ORIG_EAX:
+		return copy_register_value(buf, orig_eax);
 	case DREG_XMM0:
 	case DREG_XMM1:
 	case DREG_XMM2:
@@ -93,6 +93,16 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
 	case DREG_MXCSR:
 		*defined = false;
 		return 4;
+	case DREG_YMM0H:
+	case DREG_YMM1H:
+	case DREG_YMM2H:
+	case DREG_YMM3H:
+	case DREG_YMM4H:
+	case DREG_YMM5H:
+	case DREG_YMM6H:
+	case DREG_YMM7H:
+		*defined = false;
+		return 16;
 	default:
 		assert(false);
 		return 0;
