@@ -111,6 +111,10 @@ public:
 
 protected:
 	Session() : tracees_consistent(false) {}
+	~Session()
+	{
+		kill_all_tasks();
+	}
 
 	void track(Task* t);
 

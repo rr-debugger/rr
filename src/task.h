@@ -1304,7 +1304,7 @@ public:
 	Session& session();
 	RecordSession& record_session();
 	ReplaySession& replay_session();
-	std::shared_ptr<ReplaySession> replay_session_ptr() {
+	ReplaySession* replay_session_ptr() {
 		return session_replay;
 	}
 
@@ -1869,8 +1869,8 @@ private:
 	void* robust_futex_list;
 	size_t robust_futex_list_len;
 	// The record or replay session we're part of.
-	std::shared_ptr<RecordSession> session_record;
-	std::shared_ptr<ReplaySession> session_replay;
+	RecordSession* session_record;
+	ReplaySession* session_replay;
 	// Points to the signal-hander table of this task.  If this
 	// task is a non-fork clone child, then the table will be
 	// shared with all its "thread" siblings.  Any updates made to

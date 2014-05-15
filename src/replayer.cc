@@ -1507,7 +1507,6 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 		LOG(info) <<("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
 	}
-	session->kill_all_tasks();
 	LOG(info) <<("Exiting.");
 	exit(0);
 }
@@ -1606,7 +1605,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		syscall(SYS_tkill, t->tid, SIGABRT);
 		// TODO dissociate address space from file table
 		bool file_table_dying = (1 == t->vm()->task_set().size());
-		ReplaySession::shr_ptr sess = t->replay_session_ptr();
+		ReplaySession* sess = t->replay_session_ptr();
 		delete t;
 		/* Early-return because |t| is gone now. */
 		if (file_table_dying) {
@@ -1763,7 +1762,6 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		// because we've been using emulated tracing, so they
 		// can't resume normal execution.  And we wouldn't
 		// want them continuing to execute even if they could.
-		t->session().kill_all_tasks();
 		exit(0);
 	}
 
@@ -1948,7 +1946,7 @@ static void set_sig_blockedness(int sig, int blockedness)
 	}
 }
 
-static void init_session(ReplaySession::shr_ptr session)
+static void init_session()
 {
 	struct args_env ae;
 	session->ifstream() >> ae;
@@ -1974,12 +1972,11 @@ static dbg_context* restart_session(dbg_context* dbg)
 {
 	stashed_dbg = dbg;
 	if (checkpoint) {
-		session->kill_all_tasks();
 		session = checkpoint;
 	}
 	if (session->ifstream().time() > rr_flags()->goto_event) {
 		session->restart();
-		init_session(session);
+		init_session();
 	}
 	return nullptr;
 }
@@ -2021,7 +2018,7 @@ static void serve_replay(int argc, char* argv[], char** envp)
 
 	init_libpfm();
 
-	init_session(session);
+	init_session();
 	replay_trace_frames();
 
 	close_libpfm();
