@@ -1507,7 +1507,6 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 		LOG(info) <<("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
 	}
-	session->kill_all_tasks();
 	LOG(info) <<("Exiting.");
 	exit(0);
 }
@@ -1763,7 +1762,6 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		// because we've been using emulated tracing, so they
 		// can't resume normal execution.  And we wouldn't
 		// want them continuing to execute even if they could.
-		t->session().kill_all_tasks();
 		exit(0);
 	}
 
@@ -1974,7 +1972,6 @@ static dbg_context* restart_session(dbg_context* dbg)
 {
 	stashed_dbg = dbg;
 	if (checkpoint) {
-		session->kill_all_tasks();
 		session = checkpoint;
 	}
 	if (session->ifstream().time() > rr_flags()->goto_event) {
