@@ -123,7 +123,7 @@ RecordSession::create_task(const struct args_env& ae, shr_ptr self)
 	assert(self.get() == this);
 	Task* t = Task::spawn(ae, *this);
 	track(t);
-	t->session_record = self;
+	t->session_record = self.get();
 	return t;
 }
 
@@ -206,7 +206,7 @@ ReplaySession::clone()
 		}
 
 		Task* clone_leader = group_leader->os_fork_into(session.get());
-		clone_leader->session_replay = session;
+		clone_leader->session_replay = session.get();
 		session->track(clone_leader);
 		LOG(debug) <<"  forked new group leader "<< clone_leader->tid;
 
@@ -233,7 +233,7 @@ ReplaySession::clone()
 				t->finish_emulated_syscall();
 			}
 			Task* t_clone = t->os_clone_into(clone_leader, &state);
-			t_clone->session_replay = session;
+			t_clone->session_replay = session.get();
 			session->track(t_clone);
 			t_clone->copy_state(t);
 		}
@@ -253,7 +253,7 @@ ReplaySession::create_task(const struct args_env& ae, shr_ptr self,
 	assert(self.get() == this);
 	Task* t = Task::spawn(ae, *this, rec_tid);
 	track(t);
-	t->session_replay = self;
+	t->session_replay = self.get();
 	return t;
 }
 
