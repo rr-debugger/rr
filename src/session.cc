@@ -14,6 +14,18 @@
 
 using namespace std;
 
+Session::Session()
+	: tracees_consistent(false)
+{
+	LOG(debug) <<"Session "<< this <<" created";
+}
+
+Session::~Session()
+{
+	kill_all_tasks();
+	LOG(debug) <<"Session "<< this <<" destroyed";
+}
+
 AddressSpace::shr_ptr
 Session::create_vm(Task* t, const std::string& exe)
 {

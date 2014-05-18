@@ -115,11 +115,8 @@ public:
 	const AddressSpaceSet& vms() const { return sas; }
 
 protected:
-	Session() : tracees_consistent(false) {}
-	~Session()
-	{
-		kill_all_tasks();
-	}
+	Session();
+	~Session();
 
 	void track(Task* t);
 
