@@ -192,20 +192,18 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			return req;
 		}
 
-		// Debugger client requested that we restart execution
-		// from the beginning.  Restart our debug session.
-		if (DREQ_RESTART == req.type) {
+		/* These requests don't require a target task. */
+		switch (req.type) {
+		case DREQ_RESTART:
+			// Debugger client requested that we restart execution
+			// from the beginning.  Restart our debug session.
 			LOG(debug) <<"  request to restart at event "
-				   << req.restart_event;
+				<< req.restart_event;
 			// If the user requested restarting to a
 			// different event, ensure that we change that
 			// param for the next replay session.
 			update_replay_target(-1, req.restart_event);
 			return req;
-		}
-
-		/* These requests don't require a target task. */
-		switch (req.type) {
 		case DREQ_GET_CURRENT_THREAD:
 			dbg_reply_get_current_thread(dbg, get_threadid(t));
 			continue;
@@ -237,6 +235,16 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		case DREQ_DELETE_CHECKPOINT:
 			dbg_delete_checkpoint(dbg, req.checkpoint_id);
 			continue;
+		case DREQ_DETACH:
+			LOG(info) <<("(debugger detached from us, rr exiting)");
+			dbg_reply_detach(dbg);
+			dbg_destroy_context(&dbg);
+			// Don't orphan tracees: their VMs are inconsistent
+			// because we've been using emulated tracing, so they
+			// can't resume normal execution.  And we wouldn't
+			// want them continuing to execute even if they could.
+			exit(0);
+			// not reached
 		default:
 			/* fall through to next switch stmt */
 			break;
@@ -1459,9 +1467,6 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 			      struct rep_trace_step* step,
 			      struct dbg_request* req)
 {
-	if (DREQ_DETACH == req->type) {
-		return 0;
-	}
 	int stepi = (DREQ_STEP == req->type && get_threadid(t) == req->target);
 	switch (step->action) {
 	case TSTEP_RETIRE:
@@ -1778,17 +1783,6 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			return false;
 		}
 		assert(dbg_is_resume_request(&req));
-	}
-
-	if (DREQ_DETACH == req.type) {
-		LOG(info) <<("(debugger detached from us, rr exiting)");
-		dbg_reply_detach(dbg);
-		dbg_destroy_context(&dbg);
-		// Don't orphan tracees: their VMs are inconsistent
-		// because we've been using emulated tracing, so they
-		// can't resume normal execution.  And we wouldn't
-		// want them continuing to execute even if they could.
-		exit(0);
 	}
 
 	if (TSTEP_ENTER_SYSCALL == step.action) {

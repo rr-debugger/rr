@@ -79,7 +79,6 @@ bool dbg_is_resume_request(const struct dbg_request* req)
 	switch (req->type) {
 	case DREQ_CONTINUE:
 	case DREQ_STEP:
-	case DREQ_DETACH:
 		return true;
 	default:
 		return false;
