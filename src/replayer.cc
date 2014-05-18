@@ -379,22 +379,29 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  * the task recorded along with that event, if there was one.
  * |intr_t| may be nullptr.
  */
-static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
+static Task* schedule_task(ReplaySession& session, Task** intr_t,
+		           bool advance_to_next_trace_frame)
 {
-	struct trace_frame cur_trace_frame;
-	session.ifstream() >> cur_trace_frame;
-	if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
-		if (intr_t) {
-			*intr_t = session.find_task(cur_trace_frame.tid);
-		}
-		return nullptr;
+	if (advance_to_next_trace_frame) {
+		session.ifstream() >> session.current_trace_frame();
+		session.reached_trace_frame() = false;
+	} else {
+		/* We shouldn't be scheduling a task which has already reached
+		 * its current_trace_frame().
+		 */
+		assert(!session.reached_trace_frame());
 	}
 
-	Task *t = session.find_task(cur_trace_frame.tid);
+	Task *t = session.find_task(session.current_trace_frame().tid);
 	assert(t != NULL);
 	ASSERT(t, &session == &t->replay_session());
 
-	session.current_trace_frame() = cur_trace_frame;
+	if (EV_TRACE_TERMINATION == session.current_trace_frame().ev.type) {
+		if (intr_t) {
+			*intr_t = t;
+		}
+		return nullptr;
+	}
 
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
@@ -1049,7 +1056,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 	// We are now at the exact point in the child where the signal
 	// was recorded, emulate it using the next trace line (records
 	// the state at sighandler entry).
-	Task* t = schedule_task(oldtask->replay_session());
+	Task* t = schedule_task(oldtask->replay_session(), nullptr, true);
 	if (!t) {
 		// Trace terminated abnormally.  We'll pop out to code
 		// that knows what to do.
@@ -1564,18 +1571,6 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			   <<", locked:"<< t->syscallbuf_hdr->locked <<")";
 	}
 
-	/* Advance the trace until we've exec()'d the tracee before
-	 * processing debugger requests.  Otherwise the debugger host
-	 * will be confused about the initial executable image,
-	 * rr's. */
-	if (t->session().can_validate()) {
-		struct dbg_request req = process_debugger_requests(dbg, t);
-		if (DREQ_RESTART == req.type) {
-			return false;
-		}
-		assert(dbg_is_resume_request(&req));
-	}
-
 	if (t->child_sig != 0) {
 		assert(EV_SIGNAL == ev.type() && t->child_sig == ev.Signal().no);
 		t->child_sig = 0;
@@ -1700,8 +1695,23 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 	return true;
 }
 
-static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
+static bool replay_one_trace_frame(struct dbg_context* dbg,
+				   Task* t,
+				   struct dbg_request* restart_request)
 {
+	/* Advance the trace until we've exec()'d the tracee before
+	 * processing debugger requests.  Otherwise the debugger host
+	 * will be confused about the initial executable image,
+	 * rr's. */
+	if (t->session().can_validate()) {
+		struct dbg_request req = process_debugger_requests(dbg, t);
+		if (DREQ_RESTART == req.type) {
+			*restart_request = req;
+			return false;
+		}
+		assert(dbg_is_resume_request(&req));
+	}
+
 	struct rep_trace_step& step = t->replay_session().current_replay_step();
 
 	/* If we restored from a checkpoint, the steps might have been
@@ -1713,11 +1723,13 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		}
 		if (step.action == TSTEP_NONE) {
 			// Already at the destination event.
+			t->replay_session().reached_trace_frame() = true;
 			return true;
 		}
 	}
 
 	struct dbg_request req;
+
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(dbg, t, &step, &req)) {
 		if (EV_TRACE_TERMINATION == t->current_trace_frame().ev.type) {
@@ -1727,7 +1739,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			// would have seen the marker at
 			// |schedule_task()|.
 			handle_interrupted_trace(dbg, t);
-			return false; // not reached
+			return true; // not reached
 		}
 
 		/* Currently we only understand software breakpoints
@@ -1780,6 +1792,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 				watch_addr);
 		req = process_debugger_requests(dbg, t);
 		if (DREQ_RESTART == req.type) {
+			*restart_request = req;
 			return false;
 		}
 		assert(dbg_is_resume_request(&req));
@@ -1805,6 +1818,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 
 	// Record that this step completed successfully.
 	step.action = TSTEP_NONE;
+	t->replay_session().reached_trace_frame() = true;
 	return true;
 }
 
@@ -2008,17 +2022,23 @@ static dbg_context* restart_session(dbg_context* dbg)
 
 static void replay_trace_frames(void)
 {
+	bool advance_to_next_trace_frame = true;
 	struct dbg_context* dbg = nullptr;
 	while (!session->last_task()) {
 		dbg = maybe_create_debugger(dbg);
 
 		Task* intr_t;
-		Task* t = schedule_task(*session, &intr_t);
+		Task* t = schedule_task(*session, &intr_t,
+			advance_to_next_trace_frame);
 		if (!t) {
 			return handle_interrupted_trace(dbg, intr_t);
 		}
-		if (!replay_one_trace_frame(dbg, t)) {
+		struct dbg_request restart_request;
+		if (replay_one_trace_frame(dbg, t, &restart_request)) {
+			advance_to_next_trace_frame = true;
+		} else {
 			dbg = restart_session(dbg);
+			advance_to_next_trace_frame = true;
 		}
 	}
 	LOG(info) <<("Replayer successfully finished.");

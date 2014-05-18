@@ -204,8 +204,9 @@ public:
 		return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
 	}
 
-	/**
-	 * Restore the state of this session to what it was just after
+	bool& reached_trace_frame() { return trace_frame_reached; }
+
+	/* Restore the state of this session to what it was just after
 	 * |create()|.
 	 */
 	void restart();
@@ -251,6 +252,7 @@ private:
 		, tgid_debugged(0)
 		, trace_frame()
 		, replay_step()
+		, trace_frame_reached(false)
 	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
@@ -265,8 +267,14 @@ private:
 	 * tracees.  At the start of the flush, the recorded bytes are read
 	 * back into this buffer.  Then they're copied back to the tracee
 	 * record-by-record, as the tracee exits those syscalls.
+	 * This needs to be word-aligned.
 	 */
 	byte syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
+	/**
+	 * True when the session has reached the state in trace_frame.
+	 * False when the session is working towards the state in trace_frame.
+	 */
+	bool trace_frame_reached;
 };
 
 #endif // RR_SESSION_H_
