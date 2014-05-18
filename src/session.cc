@@ -248,6 +248,7 @@ ReplaySession::clone()
 		clone_leader->copy_state(group_leader);
 	}
 	assert(session->vms().size() > 0);
+
 	return session;
 }
 

@@ -84,11 +84,11 @@
 
 using namespace std;
 
-// |session| is used to drive replay.  If we're being controlled by a
-// |debugger, then |checkpoint| is a copy of |session| that was made
-// |when the debugger was attached.
+// |session| is used to drive replay.
 ReplaySession::shr_ptr session;
-ReplaySession::shr_ptr checkpoint;
+// If we're being controlled by a debugger, then |last_debugger_start| is
+// the saved session we forked 'session' from.
+ReplaySession::shr_ptr debugger_restart_checkpoint;
 // When we restart a replay session, we stash the debug context here
 // so that we can find it again in |maybe_create_debugger()|.  We want
 // to reuse the context after the restart, but we don't want to notify
@@ -198,11 +198,11 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			// Debugger client requested that we restart execution
 			// from the beginning.  Restart our debug session.
 			LOG(debug) <<"  request to restart at event "
-				<< req.restart_event;
+				<< req.restart.param;
 			// If the user requested restarting to a
 			// different event, ensure that we change that
 			// param for the next replay session.
-			update_replay_target(-1, req.restart_event);
+			update_replay_target(-1, req.restart.param);
 			return req;
 		case DREQ_GET_CURRENT_THREAD:
 			dbg_reply_get_current_thread(dbg, get_threadid(t));
@@ -1926,7 +1926,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 	}
 	assert(!dbg);
 
-	if (goto_event || target_process) {
+	if (goto_event > 0 || target_process) {
 		fprintf(stderr,	"\a\n"
 			"--------------------------------------------------\n"
 			" ---> Reached target process %d at event %u.\n"
@@ -1934,18 +1934,21 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 			target_process, event_now);
 	}
 
+	// Call set_debugged_tgid now so it will be cloned into the
+	// checkpoint below if one is created.
+	t->replay_session().set_debugged_tgid(t->tgid());
+
 	if (will_checkpoint()) {
 		// Have the "checkpoint" be the original replay
 		// session, and then switch over to using the cloned
 		// session.  The cloned tasks will look like children
 		// of the clonees, so this scheme prevents |pstree|
 		// output from getting /too/ far out of whack.
-		checkpoint = session;
-		session = checkpoint->clone();
+		debugger_restart_checkpoint = session;
+		session = session->clone();
 		t = session->find_task(t->rec_tid);
 	}
 
-	t->replay_session().set_debugged_tgid(t->tgid());
 	// Store the current tgid and event as the "execution target"
 	// for the next replay session, if we end up restarting.  This
 	// allows us to determine if a later session has reached this
@@ -2007,16 +2010,40 @@ static void init_session()
 			     session->ifstream().peek_frame().tid);
 }
 
-static dbg_context* restart_session(dbg_context* dbg)
+static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
+		                    bool* advance_to_next_trace_record)
 {
-	stashed_dbg = dbg;
-	if (checkpoint) {
-		session = checkpoint;
+	assert(req->type == DREQ_RESTART);
+
+	ReplaySession::shr_ptr checkpoint_to_restore;
+	if (req->restart.type == RESTART_FROM_CHECKPOINT) {
+		checkpoint_to_restore =
+			dbg_get_checkpoint(dbg, req->restart.param);
+		// The code that sets RESTART_FROM_CHECKPOINT should have
+		// already verified that the checkpoint exists.
+		assert(checkpoint_to_restore);
+	} else if (req->restart.type == RESTART_FROM_PREVIOUS) {
+		checkpoint_to_restore = debugger_restart_checkpoint;
 	}
+	if (checkpoint_to_restore) {
+		debugger_restart_checkpoint = checkpoint_to_restore;
+		session = checkpoint_to_restore->clone();
+		// Advance to the next trace record if the state of the session
+		// is that the current record has already been reached.
+		// If the current record hasn't been reached yet, don't
+		// advance to the next, and instead allow the current record
+		// to complete.
+		*advance_to_next_trace_record = session->reached_trace_frame();
+		return dbg;
+	}
+
+	stashed_dbg = dbg;
+
 	if (session->ifstream().time() > rr_flags()->goto_event) {
 		session->restart();
 		init_session();
 	}
+	*advance_to_next_trace_record = true;
 	return nullptr;
 }
 
@@ -2024,36 +2051,40 @@ static void replay_trace_frames(void)
 {
 	bool advance_to_next_trace_frame = true;
 	struct dbg_context* dbg = nullptr;
-	while (!session->last_task()) {
-		dbg = maybe_create_debugger(dbg);
+	while (true) {
+		while (!session->last_task()) {
+			dbg = maybe_create_debugger(dbg);
 
-		Task* intr_t;
-		Task* t = schedule_task(*session, &intr_t,
-			advance_to_next_trace_frame);
-		if (!t) {
-			return handle_interrupted_trace(dbg, intr_t);
+			Task* intr_t;
+			Task* t = schedule_task(*session, &intr_t,
+				advance_to_next_trace_frame);
+			if (!t) {
+				return handle_interrupted_trace(dbg, intr_t);
+			}
+			struct dbg_request restart_request;
+			if (replay_one_trace_frame(dbg, t, &restart_request)) {
+				advance_to_next_trace_frame = true;
+			} else {
+				dbg = restart_session(dbg, &restart_request,
+					&advance_to_next_trace_frame);
+			}
 		}
-		struct dbg_request restart_request;
-		if (replay_one_trace_frame(dbg, t, &restart_request)) {
-			advance_to_next_trace_frame = true;
-		} else {
-			dbg = restart_session(dbg);
-			advance_to_next_trace_frame = true;
-		}
-	}
-	LOG(info) <<("Replayer successfully finished.");
-	fflush(stdout);
+		LOG(info) <<("Replayer successfully finished.");
+		fflush(stdout);
 
-	if (dbg) {
-		// TODO return real exit code, if it's useful.
-		dbg_notify_exit_code(dbg, 0);
-		struct dbg_request req =
-			process_debugger_requests(dbg, session->last_task());
-		if (DREQ_RESTART == req.type) {
-			dbg = restart_session(dbg);
-			return replay_trace_frames();
+		if (dbg) {
+			// TODO return real exit code, if it's useful.
+			dbg_notify_exit_code(dbg, 0);
+			struct dbg_request req =
+				process_debugger_requests(dbg, session->last_task());
+			if (DREQ_RESTART == req.type) {
+				dbg = restart_session(dbg, &req,
+					&advance_to_next_trace_frame);
+				continue;
+			}
+			FATAL() <<"Received continue request after end-of-trace.";
 		}
-		FATAL() <<"Received continue request after end-of-trace.";
+		return;
 	}
 }
 

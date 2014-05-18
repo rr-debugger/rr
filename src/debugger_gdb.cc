@@ -817,7 +817,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 
 	if (!strcmp("Run", name)) {
 		dbg->req.type = DREQ_RESTART;
-		dbg->req.restart_event = -1;
+		dbg->req.restart.type = RESTART_FROM_PREVIOUS;
 
 		if ('\0' == *args) {
 			return 1;
@@ -835,15 +835,30 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		if (strlen(args)) {
 			string event_str = decode_ascii_encoded_hex_str(args);
 			char* endp;
-			dbg->req.restart_event =
-				strtol(event_str.c_str(), &endp, 0);
+			if (event_str[0] == 'c') {
+				int param = strtol(event_str.c_str() + 1, &endp, 0);
+				if (dbg_get_checkpoint(dbg, param)) {
+					dbg->req.restart.type = RESTART_FROM_CHECKPOINT;
+					dbg->req.restart.param = param;
+					LOG(debug) <<"next replayer restarting from checkpoint "
+						<< dbg->req.restart.param;
+				} else {
+					LOG(debug) << "Checkpoint "<< param <<" not found.";
+					write_packet(dbg, "E01");
+					return 0;
+				}
+			} else {
+				dbg->req.restart.type = RESTART_FROM_EVENT;
+				dbg->req.restart.param =
+					strtol(event_str.c_str(), &endp, 0);
+				LOG(debug) <<"next replayer advancing to event "
+					   << dbg->req.restart.param;
+			}
 			if (!endp || *endp != '\0') {
 				FATAL() <<"Couldn't parse event string `"
 					<< event_str << "'";
 			}
 		}
-		LOG(debug) <<"next replayer advancing to event "
-			   << dbg->req.restart_event;
 		return 1;
 	}
 
@@ -1491,6 +1506,17 @@ void dbg_delete_checkpoint(struct dbg_context* dbg, int checkpoint_id)
 	write_packet(dbg, "OK");
 
 	consume_request(dbg);
+}
+
+ReplaySession::shr_ptr dbg_get_checkpoint(struct dbg_context* dbg,
+		                          int checkpoint_id)
+{
+	auto it = dbg->checkpoints.find(checkpoint_id);
+	if (it == dbg->checkpoints.end()) {
+		return nullptr;
+	}
+
+	return it->second;
 }
 
 void dbg_destroy_context(struct dbg_context** dbg)

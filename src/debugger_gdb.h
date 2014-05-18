@@ -87,7 +87,7 @@ struct DbgRegfile {
 	size_t total_registers() const { return regs.size(); }
 };
 
-enum DbgRequestType{ 
+enum DbgRequestType {
 	DREQ_NONE = 0,
 
 	/* None of these requests have parameters. */
@@ -130,12 +130,18 @@ enum DbgRequestType{
 	/* gdb host detaching from stub.  No parameters. */
 	DREQ_DETACH,
 
-	/* Uses params.restart_event. */
+	/* Uses params.restart. */
 	DREQ_RESTART,
 
 	/* These use params.checkpoint_id. */
 	DREQ_CREATE_CHECKPOINT,
 	DREQ_DELETE_CHECKPOINT,
+};
+
+enum DbgRestartType {
+	RESTART_FROM_PREVIOUS,
+	RESTART_FROM_EVENT,
+	RESTART_FROM_CHECKPOINT,
 };
 
 /**
@@ -155,7 +161,11 @@ struct dbg_request {
 
 		DbgRegister reg;
 
-		int restart_event;
+		struct {
+			int param;
+			DbgRestartType type;
+		} restart;
+
 		int checkpoint_id;
 	};
 };
@@ -341,6 +351,12 @@ void dbg_created_checkpoint(struct dbg_context* dbg,
  * does not exist.
  */
 void dbg_delete_checkpoint(struct dbg_context* dbg, int checkpoint_id);
+
+/**
+ * Get the checkpoint with the given id. Return null if not found.
+ */
+ReplaySession::shr_ptr dbg_get_checkpoint(struct dbg_context* dbg,
+		                          int checkpoint_id);
 
 /**
  * Destroy a gdb debugging context created by
