@@ -104,6 +104,7 @@ set(BASIC_TESTS
   epoll_create1
   exec_self
   exit_group
+  explicit_checkpoints
   fadvise
   fault_in_code_page
   fcntl_owner_ex
