@@ -226,6 +226,9 @@ static const char gdb_command_file[] =
 	"end\n"
 	"define delete checkpoint\n"
 	"  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
+	"end\n"
+	"define restart\n"
+	"  run c$arg0\n"
 	"end\n";
 
 static string create_gdb_command_file()
