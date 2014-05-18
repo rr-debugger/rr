@@ -561,6 +561,15 @@ public:
 	 */
 	void verify(Task* t) const;
 
+	bool has_breakpoints()
+	{
+		return !breakpoints.empty();
+	}
+	bool has_watchpoints()
+	{
+		return !watchpoints.empty();
+	}
+
 	// Encoding of the |int $3| instruction.
 	static const byte breakpoint_insn = 0xCC;
 
