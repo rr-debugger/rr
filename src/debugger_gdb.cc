@@ -23,9 +23,11 @@
 #include <unistd.h>
 
 #include <sstream>
+#include <vector>
 
 #include "log.h"
 #include "session.h"
+#include "types.h"
 
 #define INTERRUPT_CHAR '\x03'
 
@@ -260,27 +262,42 @@ void dbg_launch_debugger(int params_pipe_fd)
 		   << params.port;
 	string gdb_command_file = create_gdb_command_file();
 	LOG(debug) <<"launching gdb with command '"<< attach_cmd.str() <<"'";
-	execlp("gdb", "gdb",
-	       // The gdb protocol uses the "vRun" packet to reload
-	       // remote targets.  The packet is specified to be like
-	       // "vCont", in which gdb waits infinitely long for a
-	       // stop reply packet.  But in practice, gdb client
-	       // expects the vRun to complete within the remote-reply
-	       // timeout, after which it issues vCont.  The timeout
-	       // causes gdb<-->rr communication to go haywire.
-	       //
-	       // rr can take a very long time indeed to send the
-	       // stop-reply to gdb after restarting replay; the time
-	       // to reach a specified execution target is
-	       // theoretically unbounded.  Timing our on vRun is
-	       // technically a gdb bug, but because the rr replay and
-	       // the gdb reload models don't quite match up, we'll
-	       // work around it on the rr side by disabling the
-	       // remote-reply timeout.
-	       "-l", "-1",
-	       params.exe_image,
-	       "-x", gdb_command_file.c_str(),
-	       "-ex", attach_cmd.str().c_str(), NULL);
+
+	vector<const char*> args;
+	args.push_back("gdb");
+	// The gdb protocol uses the "vRun" packet to reload
+	// remote targets.  The packet is specified to be like
+	// "vCont", in which gdb waits infinitely long for a
+	// stop reply packet.  But in practice, gdb client
+	// expects the vRun to complete within the remote-reply
+	// timeout, after which it issues vCont.  The timeout
+	// causes gdb<-->rr communication to go haywire.
+	//
+	// rr can take a very long time indeed to send the
+	// stop-reply to gdb after restarting replay; the time
+	// to reach a specified execution target is
+	// theoretically unbounded.  Timing our on vRun is
+	// technically a gdb bug, but because the rr replay and
+	// the gdb reload models don't quite match up, we'll
+	// work around it on the rr side by disabling the
+	// remote-reply timeout.
+	args.push_back("-l");
+	args.push_back("-1");
+	args.push_back(params.exe_image);
+	const string& gdb_command_file_path =
+		rr_flags()->gdb_command_file_path;
+	if (gdb_command_file_path.length() > 0 ) {
+		args.push_back("-x");
+		args.push_back(gdb_command_file_path.c_str());
+	}
+	args.push_back("-l");
+	args.push_back("-1");
+	args.push_back("-x");
+	args.push_back(gdb_command_file.c_str());
+	args.push_back("-ex");
+	args.push_back(attach_cmd.str().c_str());
+	args.push_back(nullptr);
+	execvp("gdb", (char* const*)args.data());
 	FATAL() <<"Failed to exec gdb.";
 }
 

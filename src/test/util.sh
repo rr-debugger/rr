@@ -191,7 +191,7 @@ function replay { replayflags=$1
 function debug { exe=$1; expectscript=$2; replayargs=$3
     _RR_TRACE_DIR="$workdir" \
 	python $TESTDIR/$expectscript.py $exe-$nonce \
-	rr $GLOBAL_OPTIONS replay $replayargs
+	rr $GLOBAL_OPTIONS replay -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
 	echo "Test '$TESTNAME' PASSED"
     else
