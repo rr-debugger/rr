@@ -649,7 +649,7 @@ int compare_register_files(Task* t,
 
 	ASSERT(t, !bail_error || !err)
 		<<"Fatal register mismatch (rbc/rec:"
-		<< read_rbc(t->hpc) <<"/"<< t->current_trace_frame().rbc <<")";
+		<< t->rbc_count() <<"/"<< t->current_trace_frame().rbc <<")";
 
 	if (!err && mismatch_behavior == LOG_MISMATCHES) {
 		LOG(info) <<"(register files are the same for "<< name1

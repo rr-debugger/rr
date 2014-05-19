@@ -407,19 +407,11 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
 	if (session.current_trace_frame().ev.type == EV_SCHED) {
-		bool combined = false;
 		struct trace_frame next_trace = session.ifstream().peek_frame();
-		int64_t rbc = session.current_trace_frame().rbc;
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid) {
-			rbc += next_trace.rbc;
 			session.ifstream() >> session.current_trace_frame();
 			next_trace = session.ifstream().peek_frame();
-			combined = true;
-		}
-
-		if (combined) {
-			session.current_trace_frame().rbc = rbc;
 		}
 	}
 	assert(t->trace_time() == session.current_trace_frame().global_time);
@@ -594,7 +586,7 @@ static int exit_syscall(Task* t,
  * normally.  The delivered signal is recorded in |t->child_sig|.
  */
 enum { DONT_STEPI = 0, STEPI };
-static void continue_or_step(Task* t, int stepi)
+static void continue_or_step(Task* t, int stepi, int64_t rbc_period = 0)
 {
 	int child_sig_gt_zero;
 
@@ -610,7 +602,7 @@ static void continue_or_step(Task* t, int stepi)
 		 * should be neglible. */
 		resume_how = RESUME_SYSCALL;
 	}
-	t->resume_execution(resume_how, RESUME_WAIT);
+	t->resume_execution(resume_how, RESUME_WAIT, 0, rbc_period);
 
 	t->child_sig = t->pending_sig();
 	child_sig_gt_zero = (0 < t->child_sig);
@@ -621,7 +613,7 @@ static void continue_or_step(Task* t, int stepi)
 		<< "Replaying `"<< Event(t->current_trace_frame().ev)
 		<<"': expecting tracee signal or trap, but instead at `"
 		<< syscallname(t->regs().original_syscallno()) <<"' (rcb: "
-		<< read_rbc(t->hpc) <<")";
+		<< t->rbc_count() <<")";
 }
 
 /**
@@ -827,7 +819,7 @@ static int is_same_execution_point(Task* t,
  * step.
  */
 static int advance_to(Task* t, const Registers* regs,
-		      int sig, int stepi, int64_t* rcb)
+		      int sig, int stepi, int64_t rcb)
 {
 	pid_t tid = t->tid;
 	byte* ip = (byte*)regs->ip();
@@ -838,9 +830,9 @@ static int advance_to(Task* t, const Registers* regs,
 
 	/* Step 1: advance to the target rcb (minus a slack region) as
 	 * quickly as possible by programming the hpc. */
-	rcbs_left = *rcb - read_rbc(t->hpc);
+	rcbs_left = rcb - t->rbc_count();
 
-	LOG(debug) <<"advancing "<< rcbs_left <<" rcbs to reach "<< *rcb
+	LOG(debug) <<"advancing "<< rcbs_left <<" rcbs to reach "<< rcb
 		   <<"/"<< ip;
 
 	/* XXX should we only do this if (rcb > 10000)? */
@@ -859,10 +851,8 @@ static int advance_to(Task* t, const Registers* regs,
 
 		LOG(debug) <<"  programming interrupt for "
 			   << (rcbs_left - SKID_SIZE) <<" rcbs";
-		*rcb -= read_rbc(t->hpc);
-		reset_hpc(t, rcbs_left - SKID_SIZE);
 
-		continue_or_step(t, stepi);
+		continue_or_step(t, stepi, rcbs_left - SKID_SIZE);
 		if (HPC_TIME_SLICE_SIGNAL == t->child_sig
 		    || SIGCHLD == t->child_sig) {
 			/* Tracees can receive SIGCHLD at pretty much
@@ -882,9 +872,9 @@ static int advance_to(Task* t, const Registers* regs,
 				<<" doesn't own hpc; replay divergence";
 		}
 
-		rcbs_left = *rcb - read_rbc(t->hpc);
+		rcbs_left = rcb - t->rbc_count();
 	}
-	guard_overshoot(t, regs, *rcb, rcbs_left);
+	guard_overshoot(t, regs, rcb, rcbs_left);
 
 	/* Step 2: more slowly, find our way to the target rcb and
 	 * execution point.  We set an internal breakpoint on the
@@ -1028,9 +1018,9 @@ static int advance_to(Task* t, const Registers* regs,
 
 		/* Maintain the "'rcbs_left'-is-up-to-date"
 		 * invariant. */
-		rcbs_left = *rcb - read_rbc(t->hpc);
+		rcbs_left = rcb - t->rbc_count();
 	}
-	guard_overshoot(t, regs, *rcb, rcbs_left);
+	guard_overshoot(t, regs, rcb, rcbs_left);
 
 	return 0;
 }
@@ -1050,8 +1040,6 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 		dbg_notify_stop(dbg, get_threadid(oldtask), sig);
 		*req = process_debugger_requests(dbg, oldtask);
 	}
-
-	reset_hpc(oldtask, 0);
 
 	// We are now at the exact point in the child where the signal
 	// was recorded, emulate it using the next trace line (records
@@ -1095,9 +1083,10 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 static void assert_at_recorded_rcb(Task* t, const Event& ev)
 {
 	static const int64_t rbc_slack = 0;
-	int64_t rbc_now = t->effective_rbc();
+	int64_t rbc_now = t->rbc_count();
 
-	if (!t->session().can_validate()) {
+	if (!t->session().can_validate() ||
+		!t->current_trace_frame().ev.has_exec_info) {
 		return;
 	}
 	ASSERT(t, (!t->hpc->started
@@ -1147,7 +1136,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
  */
 static int emulate_async_signal(struct dbg_context* dbg, Task* t,
 				const Registers* regs, int sig,
-				int stepi, int64_t* rcb,
+				int stepi, int64_t rcb,
 				struct dbg_request* req)
 {
 	if (advance_to(t, regs, 0, stepi, rcb)) {
@@ -1490,7 +1479,7 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 					    &t->current_trace_frame().recorded_regs,
 					    step->target.signo,
 					    stepi,
-					    &step->target.rcb, req);
+					    step->target.rcb, req);
 	case TSTEP_FLUSH_SYSCALLBUF:
 		return flush_syscallbuf(t, stepi);
 	case TSTEP_DESCHED:
@@ -1677,21 +1666,6 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		FATAL() <<"Unexpected event "<< ev;
 	}
 
-	// See the comment in |Task::maybe_save_rbc_slop()| about
-	// *not* resetting the hpc for buffer flushes.  Here, we're
-	// processing the *other* event, just after the buffer flush,
-	// where the rcb matters.  To simplify the advance-to-target
-	// code that follows (namely, making debugger interrupts
-	// simpler), pretend like the execution in the BUFFER_FLUSH
-	// didn't happen by resetting the rbc and compensating down
-	// the target rcb.
-	//
-	// TODO: implement monotonically increasing rbc, and get rid
-	// of this hack
-	if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
-		t->adjust_for_rbc_slop(&step.target.rcb);
-	}
-
 	return true;
 }
 
@@ -1811,8 +1785,6 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 	if (has_deterministic_rbc(ev, step)) {
 		assert_at_recorded_rcb(t, ev);
 	}
-
-	t->maybe_save_rbc_slop(ev);
 
 	debug_memory(t);
 

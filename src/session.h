@@ -51,7 +51,7 @@ public:
 	 * After the first exec, we're running tracee code, and
 	 * everything must be the same.
 	 */
-	void after_exec() { tracees_consistent = true; }
+	void after_exec();
 	bool can_validate() const { return tracees_consistent; }
 
 	/**

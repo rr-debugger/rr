@@ -26,6 +26,19 @@ Session::~Session()
 	LOG(debug) <<"Session "<< this <<" destroyed";
 }
 
+void
+Session::after_exec()
+{
+	if (tracees_consistent) {
+		return;
+	}
+	tracees_consistent = true;
+	// Reset rbcs for all Tasks (there should only be one).
+	for (auto task = tasks().begin(); task != tasks().end(); ++task) {
+		task->second->flush_inconsistent_state();
+	}
+}
+
 AddressSpace::shr_ptr
 Session::create_vm(Task* t, const std::string& exe)
 {

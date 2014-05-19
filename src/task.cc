@@ -1112,7 +1112,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, blocked_sigs()
 	, child_mem_fd(open_mem_fd())
 	, prname("???")
-	, rbc_boost(0), rbc_slop(0)
+	, rbcs(0)
 	, registers(), registers_known(false)
 	, robust_futex_list(), robust_futex_list_len()
 	, session_record(nullptr), session_replay(nullptr)
@@ -1237,13 +1237,6 @@ Task::dump(FILE* out) const
 		// eventually, to have more informative output.
 		log_pending_events();
 	}
-}
-
-int64_t
-Task::effective_rbc() const
-{
-	int64_t rbc_now = hpc->started ? read_rbc(hpc) : 0;
-	return rbc_now + rbc_boost;
 }
 
 void
@@ -1535,27 +1528,6 @@ Task::may_be_blocked() const
 }
 
 void
-Task::maybe_save_rbc_slop(const Event& ev)
-{
-	if (!ev.has_rbc_slop()) {
-		reset_hpc(this, 0);
-		rbc_slop = 0;
-		rbc_boost = 0;
-	}
-	rbc_slop = read_rbc(hpc);
-}
-
-void
-Task::adjust_for_rbc_slop(int64_t* target)
-{
-	assert(*target >= rbc_slop);
-
-	*target -= rbc_slop;
-	reset_hpc(this, 0);
-	rbc_slop = 0;
-}
-
-void
 Task::maybe_update_vm(int syscallno, int state)
 {
 	// We have to use the recorded_regs during replay because they
@@ -1676,7 +1648,8 @@ Task::record_event(const Event& ev)
 	frame.tid = tid;
 	frame.ev = ev.encode();
 	if (ev.has_exec_info()) {
-		frame.rbc = read_rbc(hpc);
+		rbcs += read_rbc(hpc);
+		frame.rbc = rbcs;
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 		frame.hw_interrupts = read_hw_int(hpc);
 		frame.page_faults = read_page_faults(hpc);
@@ -1693,9 +1666,26 @@ Task::record_event(const Event& ev)
 	}
 
 	ofstream() << frame;
-	if (frame.ev.has_exec_info) {
+	if (ev.has_exec_info()) {
 		reset_hpc(this, rr_flags()->max_rbc);
 	}
+}
+
+void
+Task::flush_inconsistent_state()
+{
+	rbcs = 0;
+}
+
+int64_t
+Task::rbc_count()
+{
+	int64_t hpc_rbcs = read_rbc(hpc);
+	if (hpc_rbcs > 0) {
+		rbcs += hpc_rbcs;
+		reset_hpc(this, 0);
+	}
+	return rbcs;
 }
 
 void
@@ -1820,8 +1810,16 @@ Task::remote_memcpy(void* dst, const void* src, size_t num_bytes)
 }
 
 bool
-Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
+Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
+		       int64_t rbc_period)
 {
+	// Ensure no rbcs are lost when we reset_hpc below.
+	rbc_count();
+	if (session_replay) {
+		reset_hpc(this, rbc_period);
+	} else {
+		assert(rbc_period == 0);
+	}
 	LOG(debug) <<"resuming execution with "<< ptrace_req_name(how);
 	xptrace(how, nullptr, (void*)(uintptr_t)sig);
 	registers_known = false;
@@ -2469,18 +2467,10 @@ Task::copy_state(Task* from)
 	// series of syscalls made by the trace so far.
 	blocked_sigs = from->blocked_sigs;
 	pending_events = from->pending_events;
-	rbc_slop = from->rbc_slop;
 
-	// We, the deepfork clone of |from|, need to have the same
-	// |effective_rbc()| value as |from|.  The |rbc_boost| helper
-	// accounts for rcb's that |from| has seen that we haven't.
-	rbc_boost = from->effective_rbc();
+	rbcs = from->rbc_count();
+	tid_futex = from->tid_futex;
 
-	// In all probability, |from| has started counting rcbs by
-	// now.  Kick on the counter so that we can match its rbc
-	// targets at significant events.
-	//
-	// TODO: rbc should always be initialized to a known value.
 	reset_hpc(this, 0);
 }
 
