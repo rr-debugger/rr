@@ -152,6 +152,8 @@ void assert_child_regs_are(Task* t, const Registers* regs);
 void print_register_file_tid(Task* t);
 void print_register_file(const Registers* regs);
 
+void print_register_file_compact(FILE* file, const Registers* regs);
+
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
  * that file, starting with a line containing |label|.  |start_addr|

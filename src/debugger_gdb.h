@@ -153,6 +153,8 @@ struct dbg_request {
 
 	dbg_threadid_t target;
 
+	bool suppress_debugger_stop;
+
 	union {
 		struct {
 			void* addr;

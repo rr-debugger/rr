@@ -104,6 +104,8 @@ static pid_t parent, child;
 // reads those params out.
 static int debugger_params_pipe[2];
 
+static uint64_t instruction_trace_at_event = 0;
+
 static void debug_memory(Task* t)
 {
 	if (should_dump_memory(t, t->current_trace_frame())) {
@@ -185,9 +187,19 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	}
 	while (1) {
 		struct dbg_request req = dbg_get_request(dbg);
+		req.suppress_debugger_stop = false;
 		Task* target = NULL;
 
 		if (dbg_is_resume_request(&req)) {
+			if (session->current_trace_frame().global_time ==
+				instruction_trace_at_event) {
+				fputs("Stepping: ", stderr);
+				print_register_file_compact(stderr, &t->regs());
+				fprintf(stderr, " rbc:%lld\n", t->rbc_count());
+				req.type = DREQ_STEP;
+				req.target = get_threadid(t);
+				req.suppress_debugger_stop = true;
+			}
 			LOG(debug) <<"  is resume request";
 			return req;
 		}
@@ -1673,12 +1685,15 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 				   Task* t,
 				   struct dbg_request* restart_request)
 {
+	struct dbg_request req;
+	req.type = DREQ_NONE;
+
 	/* Advance the trace until we've exec()'d the tracee before
 	 * processing debugger requests.  Otherwise the debugger host
 	 * will be confused about the initial executable image,
 	 * rr's. */
 	if (t->session().can_validate()) {
-		struct dbg_request req = process_debugger_requests(dbg, t);
+		req = process_debugger_requests(dbg, t);
 		if (DREQ_RESTART == req.type) {
 			*restart_request = req;
 			return false;
@@ -1701,8 +1716,6 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 			return true;
 		}
 	}
-
-	struct dbg_request req;
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(dbg, t, &step, &req)) {
@@ -1760,10 +1773,12 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 		/* Don't restart with SIGTRAP anywhere. */
 		t->child_sig = 0;
 
-		/* Notify the debugger and process any new requests
-		 * that might have triggered before resuming. */
-		dbg_notify_stop(dbg, get_threadid(t),	0x05/*gdb mandate*/,
+		if (!req.suppress_debugger_stop) {
+			/* Notify the debugger and process any new requests
+			 * that might have triggered before resuming. */
+			dbg_notify_stop(dbg, get_threadid(t),	0x05/*gdb mandate*/,
 				watch_addr);
+		}
 		req = process_debugger_requests(dbg, t);
 		if (DREQ_RESTART == req.type) {
 			*restart_request = req;

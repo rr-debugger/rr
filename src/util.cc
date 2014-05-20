@@ -381,7 +381,13 @@ void print_register_file(const Registers* regs)
 	fprintf(stderr, "xgs: %lx\n", regs->xgs);
 	fprintf(stderr, "xss: %lx\n", regs->xss);
 	fprintf(stderr, "\n");
+}
 
+void print_register_file_compact(FILE* file, const Registers* regs)
+{
+	fprintf(file, "eax:%lx ebx:%lx ecx:%lx edx:%lx esi:%lx edi:%lx ebp:%lx esp:%lx eip:%lx eflags:%lx",
+		regs->eax, regs->ebx, regs->ecx, regs->edx, regs->esi,
+		regs->edi, regs->ebp, regs->esp, regs->eip, regs->eflags);
 }
 
 /**
