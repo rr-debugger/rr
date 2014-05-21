@@ -178,7 +178,8 @@ static void validate_args(int syscall, int state, Task* t)
 	if (!t->session().can_validate()) {
 		return;
 	}
-	assert_child_regs_are(t, &t->trace.recorded_regs);
+	assert_child_regs_are(t,
+		&t->current_trace_frame().recorded_regs);
 }
 
 /**
@@ -203,7 +204,8 @@ static void goto_next_syscall_emu(Task *t)
 
 	/* check if we are synchronized with the trace -- should never
 	 * fail */
-	const int rec_syscall = t->trace.recorded_regs.original_syscallno();
+	const int rec_syscall =
+		t->current_trace_frame().recorded_regs.original_syscallno();
 	const int current_syscall = t->regs().original_syscallno();
 
 	if (current_syscall != rec_syscall) {
@@ -235,7 +237,7 @@ void __ptrace_cont(Task *t)
 	t->child_sig = t->pending_sig();
 
 	/* check if we are synchronized with the trace -- should never fail */
-	int rec_syscall = t->trace.recorded_regs.original_syscallno();
+	int rec_syscall = t->current_trace_frame().recorded_regs.original_syscallno();
 	int current_syscall = t->regs().original_syscallno();
 	if (current_syscall != rec_syscall && t->stop_sig() == SIGCHLD) {
 		/* SIGCHLD can be delivered pretty much at any time
@@ -421,7 +423,6 @@ static void process_clone(Task* t,
 	t->set_data_from_trace();
 	t->set_data_from_trace();
 
-	new_task->trace = t->trace;
 	new_task->set_data_from_trace();
 	new_task->set_data_from_trace();
 	new_task->set_data_from_trace();
@@ -1033,7 +1034,7 @@ static void process_socketcall(Task* t, int state,
 		// We manually restore the msg buffer.
 		step->syscall.num_emu_args = 0;
 
-		void* base_addr = (void*)t->trace.recorded_regs.arg2();
+		void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
 		struct recvmsg_args args;
 		t->read_mem(base_addr, &args);
 
@@ -1064,7 +1065,8 @@ static void process_init_buffers(Task* t, int exec_state,
 
 	/* Proceed to syscall exit so we can run our own syscalls. */
 	t->finish_emulated_syscall();
-	rec_child_map_addr = (void*)t->trace.recorded_regs.syscall_result();
+	rec_child_map_addr =
+		(void*)t->current_trace_frame().recorded_regs.syscall_result();
 
 	/* We don't want the desched event fd during replay, because
 	 * we already know where they were.  (The perf_event fd is
@@ -1107,7 +1109,7 @@ notify_save_data_error(Task* t, void* addr,
 {
 	char rec_dump[PATH_MAX];
 	char rep_dump[PATH_MAX];
-	int global_time = t->trace.global_time;
+	int global_time = t->current_trace_frame().global_time;
 
 	dump_path_data(t, global_time, "rec_save_data",
 		       rec_dump, sizeof(rec_dump), rec_buf, rec_buf_len, addr);
@@ -1168,10 +1170,19 @@ static void maybe_verify_tracee_saved_data(Task* t,
 
 void rep_after_enter_syscall(Task* t, int syscallno)
 {
-	if (SYS_write != syscallno) {
+	switch (syscallno) {
+	case SYS_exit:
+		destroy_buffers(t);
+		return;
+
+	case SYS_write:
+		maybe_verify_tracee_saved_data(t,
+			&t->current_trace_frame().recorded_regs);
+		return;
+
+	default:
 		return;
 	}
-	maybe_verify_tracee_saved_data(t, &t->trace.recorded_regs);
 }
 
 /**
@@ -1210,9 +1221,9 @@ void before_syscall_exit(Task* t, int syscallno)
 
 void rep_process_syscall(Task* t, struct rep_trace_step* step)
 {
-	int syscall = t->trace.ev.data; /* FIXME: don't shadow syscall() */
+	int syscall = t->current_trace_frame().ev.data; /* FIXME: don't shadow syscall() */
 	const struct syscall_def* def;
-	struct trace_frame* trace = &(t->trace);
+	struct trace_frame* trace = &t->replay_session().current_trace_frame();
 	int state = trace->ev.state;
 	const Registers* rec_regs = &trace->recorded_regs;
 	AutoGc maybe_gc(t->replay_session(), syscall, state);
@@ -1347,8 +1358,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return process_execve(t, trace, state, rec_regs, step);
 
 	case SYS_exit:
-		destroy_buffers(t, DESTROY_DEFAULT);
-		// fall through
 	case SYS_exit_group:
 		step->syscall.emu = 0;
 		assert(state == STATE_SYSCALL_ENTRY);

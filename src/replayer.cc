@@ -84,11 +84,11 @@
 
 using namespace std;
 
-// |session| is used to drive replay.  If we're being controlled by a
-// |debugger, then |checkpoint| is a copy of |session| that was made
-// |when the debugger was attached.
+// |session| is used to drive replay.
 ReplaySession::shr_ptr session;
-ReplaySession::shr_ptr checkpoint;
+// If we're being controlled by a debugger, then |last_debugger_start| is
+// the saved session we forked 'session' from.
+ReplaySession::shr_ptr debugger_restart_checkpoint;
 // When we restart a replay session, we stash the debug context here
 // so that we can find it again in |maybe_create_debugger()|.  We want
 // to reuse the context after the restart, but we don't want to notify
@@ -104,16 +104,18 @@ static pid_t parent, child;
 // reads those params out.
 static int debugger_params_pipe[2];
 
+static uint64_t instruction_trace_at_event = 0;
+
 static void debug_memory(Task* t)
 {
-	if (should_dump_memory(t, t->trace)) {
-		dump_process_memory(t, t->trace.global_time, "rep");
+	if (should_dump_memory(t, t->current_trace_frame())) {
+		dump_process_memory(t, t->current_trace_frame().global_time, "rep");
 	}
 	if (t->session().can_validate()
-	    && should_checksum(t, t->trace)) {
+	    && should_checksum(t, t->current_trace_frame())) {
 		/* Validate the checksum we computed during the
 		 * recording phase. */
-		validate_process_memory(t, t->trace.global_time);
+		validate_process_memory(t, t->current_trace_frame().global_time);
 	}
 }
 
@@ -185,27 +187,35 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	}
 	while (1) {
 		struct dbg_request req = dbg_get_request(dbg);
+		req.suppress_debugger_stop = false;
 		Task* target = NULL;
 
 		if (dbg_is_resume_request(&req)) {
+			if (session->current_trace_frame().global_time ==
+				instruction_trace_at_event) {
+				fputs("Stepping: ", stderr);
+				print_register_file_compact(stderr, &t->regs());
+				fprintf(stderr, " rbc:%lld\n", t->rbc_count());
+				req.type = DREQ_STEP;
+				req.target = get_threadid(t);
+				req.suppress_debugger_stop = true;
+			}
 			LOG(debug) <<"  is resume request";
-			return req;
-		}
-
-		// Debugger client requested that we restart execution
-		// from the beginning.  Restart our debug session.
-		if (DREQ_RESTART == req.type) {
-			LOG(debug) <<"  request to restart at event "
-				   << req.restart_event;
-			// If the user requested restarting to a
-			// different event, ensure that we change that
-			// param for the next replay session.
-			update_replay_target(-1, req.restart_event);
 			return req;
 		}
 
 		/* These requests don't require a target task. */
 		switch (req.type) {
+		case DREQ_RESTART:
+			// Debugger client requested that we restart execution
+			// from the beginning.  Restart our debug session.
+			LOG(debug) <<"  request to restart at event "
+				<< req.restart.param;
+			// If the user requested restarting to a
+			// different event, ensure that we change that
+			// param for the next replay session.
+			update_replay_target(-1, req.restart.param);
+			return req;
 		case DREQ_GET_CURRENT_THREAD:
 			dbg_reply_get_current_thread(dbg, get_threadid(t));
 			continue;
@@ -229,6 +239,24 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			 * further instructions. */
 			dbg_notify_stop(dbg, get_threadid(t), 0);
 			continue;
+		case DREQ_CREATE_CHECKPOINT: {
+			ReplaySession::shr_ptr checkpoint = session->clone();
+			dbg_created_checkpoint(dbg, checkpoint, req.checkpoint_id);
+			continue;
+		}
+		case DREQ_DELETE_CHECKPOINT:
+			dbg_delete_checkpoint(dbg, req.checkpoint_id);
+			continue;
+		case DREQ_DETACH:
+			LOG(info) <<("(debugger detached from us, rr exiting)");
+			dbg_reply_detach(dbg);
+			dbg_destroy_context(&dbg);
+			// Don't orphan tracees: their VMs are inconsistent
+			// because we've been using emulated tracing, so they
+			// can't resume normal execution.  And we wouldn't
+			// want them continuing to execute even if they could.
+			exit(0);
+			// not reached
 		default:
 			/* fall through to next switch stmt */
 			break;
@@ -363,45 +391,42 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
  * the task recorded along with that event, if there was one.
  * |intr_t| may be nullptr.
  */
-static trace_frame cur_trace_frame;
-static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
+static Task* schedule_task(ReplaySession& session, Task** intr_t,
+		           bool advance_to_next_trace_frame)
 {
-	session.ifstream() >> cur_trace_frame;
-	if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
+	if (advance_to_next_trace_frame) {
+		session.ifstream() >> session.current_trace_frame();
+		session.reached_trace_frame() = false;
+	} else {
+		/* We shouldn't be scheduling a task which has already reached
+		 * its current_trace_frame().
+		 */
+		assert(!session.reached_trace_frame());
+	}
+
+	Task *t = session.find_task(session.current_trace_frame().tid);
+	assert(t != NULL);
+	ASSERT(t, &session == &t->replay_session());
+
+	if (EV_TRACE_TERMINATION == session.current_trace_frame().ev.type) {
 		if (intr_t) {
-			*intr_t = session.find_task(cur_trace_frame.tid);
+			*intr_t = t;
 		}
 		return nullptr;
 	}
 
-	Task *t = session.find_task(cur_trace_frame.tid);
-	assert(t != NULL);
-	ASSERT(t, &session == &t->replay_session());
-
-	t->trace = cur_trace_frame;
-
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (t->trace.ev.type == EV_SCHED) {
-		bool combined = false;
-		struct trace_frame next_trace =
-			t->replay_session().ifstream().peek_frame();
-		int64_t rbc = t->trace.rbc;
+	if (session.current_trace_frame().ev.type == EV_SCHED) {
+		struct trace_frame next_trace = session.ifstream().peek_frame();
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid) {
-			rbc += next_trace.rbc;
-			t->replay_session().ifstream() >> t->trace;
-			next_trace =
-				t->replay_session().ifstream().peek_frame();
-			combined = true;
-		}
-
-		if (combined) {
-			t->trace.rbc = rbc;
+			session.ifstream() >> session.current_trace_frame();
+			next_trace = session.ifstream().peek_frame();
 		}
 	}
-	assert(t->trace_time() == t->trace.global_time);
+	assert(t->trace_time() == session.current_trace_frame().global_time);
 	return t;
 }
 
@@ -411,7 +436,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t = nullptr)
  */
 static void validate_args(int event, int state, Task* t)
 {
-	Registers rec_regs = t->trace.recorded_regs;
+	Registers rec_regs = t->current_trace_frame().recorded_regs;
 
 	/* don't validate anything before execve is done as the actual
 	 * process did not start prior to this point */
@@ -460,7 +485,8 @@ static bool entering_syscall_insn(Task* t)
 enum { EXEC = 0, EMU = 1 };
 static int cont_syscall_boundary(Task* t, int emu, int stepi)
 {
-	bool is_syscall_entry = (STATE_SYSCALL_ENTRY == t->trace.ev.state);
+	bool is_syscall_entry =
+		STATE_SYSCALL_ENTRY == t->current_trace_frame().ev.state;
 	if (is_syscall_entry) {
 		t->stepped_into_syscall = false;
 	}
@@ -572,7 +598,7 @@ static int exit_syscall(Task* t,
  * normally.  The delivered signal is recorded in |t->child_sig|.
  */
 enum { DONT_STEPI = 0, STEPI };
-static void continue_or_step(Task* t, int stepi)
+static void continue_or_step(Task* t, int stepi, int64_t rbc_period = 0)
 {
 	int child_sig_gt_zero;
 
@@ -588,7 +614,7 @@ static void continue_or_step(Task* t, int stepi)
 		 * should be neglible. */
 		resume_how = RESUME_SYSCALL;
 	}
-	t->resume_execution(resume_how, RESUME_WAIT);
+	t->resume_execution(resume_how, RESUME_WAIT, 0, rbc_period);
 
 	t->child_sig = t->pending_sig();
 	child_sig_gt_zero = (0 < t->child_sig);
@@ -596,10 +622,10 @@ static void continue_or_step(Task* t, int stepi)
 		return;
 	}
 	ASSERT(t, child_sig_gt_zero)
-		<< "Replaying `"<< Event(t->trace.ev)
+		<< "Replaying `"<< Event(t->current_trace_frame().ev)
 		<<"': expecting tracee signal or trap, but instead at `"
 		<< syscallname(t->regs().original_syscallno()) <<"' (rcb: "
-		<< read_rbc(t->hpc) <<")";
+		<< t->rbc_count() <<")";
 }
 
 /**
@@ -805,7 +831,7 @@ static int is_same_execution_point(Task* t,
  * step.
  */
 static int advance_to(Task* t, const Registers* regs,
-		      int sig, int stepi, int64_t* rcb)
+		      int sig, int stepi, int64_t rcb)
 {
 	pid_t tid = t->tid;
 	byte* ip = (byte*)regs->ip();
@@ -816,9 +842,9 @@ static int advance_to(Task* t, const Registers* regs,
 
 	/* Step 1: advance to the target rcb (minus a slack region) as
 	 * quickly as possible by programming the hpc. */
-	rcbs_left = *rcb - read_rbc(t->hpc);
+	rcbs_left = rcb - t->rbc_count();
 
-	LOG(debug) <<"advancing "<< rcbs_left <<" rcbs to reach "<< *rcb
+	LOG(debug) <<"advancing "<< rcbs_left <<" rcbs to reach "<< rcb
 		   <<"/"<< ip;
 
 	/* XXX should we only do this if (rcb > 10000)? */
@@ -837,10 +863,8 @@ static int advance_to(Task* t, const Registers* regs,
 
 		LOG(debug) <<"  programming interrupt for "
 			   << (rcbs_left - SKID_SIZE) <<" rcbs";
-		*rcb -= read_rbc(t->hpc);
-		reset_hpc(t, rcbs_left - SKID_SIZE);
 
-		continue_or_step(t, stepi);
+		continue_or_step(t, stepi, rcbs_left - SKID_SIZE);
 		if (HPC_TIME_SLICE_SIGNAL == t->child_sig
 		    || SIGCHLD == t->child_sig) {
 			/* Tracees can receive SIGCHLD at pretty much
@@ -860,9 +884,9 @@ static int advance_to(Task* t, const Registers* regs,
 				<<" doesn't own hpc; replay divergence";
 		}
 
-		rcbs_left = *rcb - read_rbc(t->hpc);
+		rcbs_left = rcb - t->rbc_count();
 	}
-	guard_overshoot(t, regs, *rcb, rcbs_left);
+	guard_overshoot(t, regs, rcb, rcbs_left);
 
 	/* Step 2: more slowly, find our way to the target rcb and
 	 * execution point.  We set an internal breakpoint on the
@@ -1006,9 +1030,9 @@ static int advance_to(Task* t, const Registers* regs,
 
 		/* Maintain the "'rcbs_left'-is-up-to-date"
 		 * invariant. */
-		rcbs_left = *rcb - read_rbc(t->hpc);
+		rcbs_left = rcb - t->rbc_count();
 	}
-	guard_overshoot(t, regs, *rcb, rcbs_left);
+	guard_overshoot(t, regs, rcb, rcbs_left);
 
 	return 0;
 }
@@ -1029,19 +1053,17 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 		*req = process_debugger_requests(dbg, oldtask);
 	}
 
-	reset_hpc(oldtask, 0);
-
 	// We are now at the exact point in the child where the signal
 	// was recorded, emulate it using the next trace line (records
 	// the state at sighandler entry).
-	Task* t = schedule_task(oldtask->replay_session());
+	Task* t = schedule_task(oldtask->replay_session(), nullptr, true);
 	if (!t) {
 		// Trace terminated abnormally.  We'll pop out to code
 		// that knows what to do.
 		return 1;
 	}
 	ASSERT(oldtask, t == oldtask) <<"emulate_signal_delivery changed task";
-	const struct trace_frame* trace = &t->trace;
+	const struct trace_frame* trace = &t->current_trace_frame();
 
 	/* Restore the signal-hander frame data, if there was one. */
 	bool restored_sighandler_frame = 0 < t->set_data_from_trace();
@@ -1073,15 +1095,16 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 static void assert_at_recorded_rcb(Task* t, const Event& ev)
 {
 	static const int64_t rbc_slack = 0;
-	int64_t rbc_now = t->effective_rbc();
+	int64_t rbc_now = t->rbc_count();
 
-	if (!t->session().can_validate()) {
+	if (!t->session().can_validate() ||
+		!t->current_trace_frame().ev.has_exec_info) {
 		return;
 	}
 	ASSERT(t, (!t->hpc->started
-		   || llabs(rbc_now - t->trace.rbc) <= rbc_slack))
+		   || llabs(rbc_now - t->current_trace_frame().rbc) <= rbc_slack))
 		<<"rbc mismatch for '"<< ev <<"'; expected "
-		<< t->trace.rbc <<", got "<< rbc_now <<"";
+		<< t->current_trace_frame().rbc <<", got "<< rbc_now <<"";
 }
 
 /**
@@ -1093,7 +1116,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 					int sig, int stepi,
 					struct dbg_request* req)
 {
-	Event ev(t->trace.ev);
+	Event ev(t->current_trace_frame().ev);
 
 	continue_or_step(t, stepi);
 	if (SIGCHLD == t->child_sig) {
@@ -1109,7 +1132,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 	assert_at_recorded_rcb(t, ev);
 
 	if (EV_SEGV_RDTSC == ev.type()) {
-		t->set_regs(t->trace.recorded_regs);
+		t->set_regs(t->current_trace_frame().recorded_regs);
 		/* We just "delivered" this pseudosignal. */
 		t->child_sig = 0;
 		return 0;
@@ -1125,7 +1148,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
  */
 static int emulate_async_signal(struct dbg_context* dbg, Task* t,
 				const Registers* regs, int sig,
-				int stepi, int64_t* rcb,
+				int stepi, int64_t rcb,
 				struct dbg_request* req)
 {
 	if (advance_to(t, regs, 0, stepi, rcb)) {
@@ -1178,44 +1201,41 @@ static int skip_desched_ioctl(Task* t,
 }
 
 /**
- * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
- * must be replayed sequentially, so we can use one buffer for all
- * tracees.  At the start of the flush, the recorded bytes are read
- * back into this buffer.  Then they're copied back to the tracee
- * record-by-record, as the tracee exits those syscalls.
- */
-static byte syscallbuf_flush_buffer[SYSCALLBUF_BUFFER_SIZE];
-/** Convenience header pointer to skip tedious pointer arithmetic. */
-static const struct syscallbuf_hdr* flush_hdr =
-	(const struct syscallbuf_hdr*)syscallbuf_flush_buffer;
-
-/**
  * Restore the recorded syscallbuf data to the tracee, preparing the
  * tracee for replaying the records.  Return the number of record
  * bytes and a pointer to the first record through outparams.
  */
-static void prepare_syscallbuf_records(Task* t,
-				       size_t* num_rec_bytes,
-				       const struct syscallbuf_record** first_rec_rec,
-				       struct syscallbuf_record** first_child_rec)
+static void prepare_syscallbuf_records(Task* t)
 {
+	struct rep_flush_state* flush =
+		&t->replay_session().current_replay_step().flush;
+	if (!flush->need_buffer_restore) {
+		return;
+	}
+	flush->need_buffer_restore = 0;
+
 	// Read the recorded syscall buffer back into the buffer
 	// region.
 	struct raw_data buf;
 	t->ifstream() >> buf;
-	*num_rec_bytes = buf.data.size();
+	flush->num_rec_bytes_remaining = buf.data.size();
 
-	assert(*num_rec_bytes <= sizeof(syscallbuf_flush_buffer));
-	memcpy(syscallbuf_flush_buffer, buf.data.data(), *num_rec_bytes);
+	assert(flush->num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);
+	memcpy(t->replay_session().syscallbuf_flush_buffer(), buf.data.data(),
+		flush->num_rec_bytes_remaining);
 
 	// The stored num_rec_bytes in the header doesn't include the
 	// header bytes, but the stored trace data does.
-	*num_rec_bytes -= sizeof(sizeof(struct syscallbuf_hdr));
+	flush->num_rec_bytes_remaining -= sizeof(sizeof(struct syscallbuf_hdr));
 	assert(buf.addr == t->syscallbuf_child);
-	assert(flush_hdr->num_rec_bytes == *num_rec_bytes);
+	const syscallbuf_hdr* flush_hdr =
+		t->replay_session().syscallbuf_flush_buffer_hdr();
+	assert(flush_hdr->num_rec_bytes == flush->num_rec_bytes_remaining);
 
-	*first_rec_rec = flush_hdr->recs;
-	*first_child_rec = t->syscallbuf_hdr->recs;
+	flush->syscall_record_offset = 0;
+
+	LOG(debug) <<"Prepared "<< flush->num_rec_bytes_remaining
+		   <<" bytes of syscall records";
 }
 
 /**
@@ -1284,11 +1304,16 @@ static void restore_futex_words(Task* t,
  * nonzero if an unhandled interrupt occurred, and zero if the syscall
  * was flushed (in which case |flush->state == DONE|).
  */
-static int flush_one_syscall(Task* t,
-			     struct rep_flush_state* flush, int stepi)
+static int flush_one_syscall(Task* t, int stepi)
 {
-	const struct syscallbuf_record* rec_rec = flush->rec_rec;
-	struct syscallbuf_record* child_rec = flush->child_rec;
+	struct rep_flush_state* flush =
+		&t->replay_session().current_replay_step().flush;
+	const syscallbuf_hdr* flush_hdr =
+		t->replay_session().syscallbuf_flush_buffer_hdr();
+	const struct syscallbuf_record* rec_rec = (const struct syscallbuf_record*)
+		((byte*)flush_hdr->recs + flush->syscall_record_offset);
+	struct syscallbuf_record* child_rec = (struct syscallbuf_record*)
+		((byte*)t->syscallbuf_hdr->recs + flush->syscall_record_offset);
 	int call = rec_rec->syscallno;
 	int ret;
 	// TODO: use syscall_defs table information to determine this.
@@ -1322,7 +1347,7 @@ static int flush_one_syscall(Task* t,
 			flush->desched.type = DESCHED_ARM;
 			flush->desched.state = DESCHED_ENTER;
 		}
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 
 	case FLUSH_ARM:
 		/* Skip past the ioctl that armed the desched
@@ -1332,7 +1357,7 @@ static int flush_one_syscall(Task* t,
 			return ret;
 		}
 		flush->state = FLUSH_ENTER;
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 
 	case FLUSH_ENTER:
 		LOG(debug) <<"  advancing to buffered syscall entry";
@@ -1342,7 +1367,7 @@ static int flush_one_syscall(Task* t,
 		assert_at_buffered_syscall(t, call);
 		assert_same_rec(t, rec_rec, child_rec);
 		flush->state = FLUSH_EXIT;
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 
 	case FLUSH_EXIT: {
 		LOG(debug) <<"  advancing to buffered syscall exit";
@@ -1387,7 +1412,7 @@ static int flush_one_syscall(Task* t,
 		flush->state = FLUSH_DISARM;
 		flush->desched.type = DESCHED_DISARM;
 		flush->desched.state = DESCHED_ENTER;
-		return flush_one_syscall(t, flush, stepi);
+		return flush_one_syscall(t, stepi);
 	}
 	case FLUSH_DISARM:
 		/* And skip past the ioctl that disarmed the desched
@@ -1411,36 +1436,27 @@ static int flush_one_syscall(Task* t,
  * that flushed the buffer).  Return 0 if successful or 1 if an
  * unhandled interrupt occurred.
  */
-static int flush_syscallbuf(Task* t, struct rep_trace_step* step,
-			    int stepi)
+static int flush_syscallbuf(Task* t, int stepi)
 {
-	struct rep_flush_state* flush = &step->flush;
+	prepare_syscallbuf_records(t);
 
-	if (flush->need_buffer_restore) {
-		prepare_syscallbuf_records(t,
-					   &flush->num_rec_bytes_remaining,
-					   &flush->rec_rec, &flush->child_rec);
-		flush->need_buffer_restore = 0;
-
-		LOG(debug) <<"Prepared "<< flush->num_rec_bytes_remaining
-			   <<" bytes of syscall records";
-	}
+	struct rep_flush_state* flush =
+		&t->replay_session().current_replay_step().flush;
+	const syscallbuf_hdr* flush_hdr =
+		t->replay_session().syscallbuf_flush_buffer_hdr();
 
 	while (flush->num_rec_bytes_remaining > 0) {
 		int ret;
-		size_t stored_rec_size;
-
-		if ((ret = flush_one_syscall(t, flush, stepi))) {
+		if ((ret = flush_one_syscall(t, stepi))) {
 			return ret;
 		}
 
 		assert(FLUSH_DONE == flush->state);
 
-		stored_rec_size = stored_record_size(flush->rec_rec->size);
-		flush->rec_rec = (const struct syscallbuf_record*)
-				 ((byte*)flush->rec_rec + stored_rec_size);
-		flush->child_rec = (struct syscallbuf_record*)
-				   ((byte*)flush->child_rec + stored_rec_size);
+		const struct syscallbuf_record* record = (const struct syscallbuf_record*)
+			((byte*)flush_hdr->recs + flush->syscall_record_offset);
+		size_t stored_rec_size = stored_record_size(record->size);
+		flush->syscall_record_offset += stored_rec_size;
 		flush->num_rec_bytes_remaining -= stored_rec_size;
 		flush->state = FLUSH_START;
 
@@ -1459,9 +1475,6 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 			      struct rep_trace_step* step,
 			      struct dbg_request* req)
 {
-	if (DREQ_DETACH == req->type) {
-		return 0;
-	}
 	int stepi = (DREQ_STEP == req->type && get_threadid(t) == req->target);
 	switch (step->action) {
 	case TSTEP_RETIRE:
@@ -1475,12 +1488,12 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
 						    stepi, req);
 	case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
 		return emulate_async_signal(dbg, t,
-					    step->target.regs,
+					    &t->current_trace_frame().recorded_regs,
 					    step->target.signo,
 					    stepi,
-					    &step->target.rcb, req);
+					    step->target.rcb, req);
 	case TSTEP_FLUSH_SYSCALLBUF:
-		return flush_syscallbuf(t, step, stepi);
+		return flush_syscallbuf(t, stepi);
 	case TSTEP_DESCHED:
 		return skip_desched_ioctl(t, &step->desched, stepi);
 	default:
@@ -1506,6 +1519,7 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 				0x05);
 		LOG(info) <<("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
+		dbg_destroy_context(&dbg);
 	}
 	LOG(info) <<("Exiting.");
 	exit(0);
@@ -1538,31 +1552,25 @@ static bool has_deterministic_rbc(const Event& ev,
 	return (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action);
 }
 
-static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
+/**
+ * Set up rep_trace_step state in t's Session to start replaying towards
+ * the event given by the session's current_trace_frame --- but only if
+ * it's not already set up.
+ * Return true if we should continue replaying, false if the debugger
+ * requested a restart. If this returns false, t's Session state was not
+ * modified.
+ */
+static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 {
-	struct dbg_request req;
-	struct rep_trace_step step;
-	Event ev(t->trace.ev);
+	Event ev(t->current_trace_frame().ev);
 
 	LOG(debug) <<"[line "<< t->trace_time() <<"] "<< t->rec_tid
-		   <<": replaying "<< Event(t->trace.ev) <<"; state "
-		   << statename(t->trace.ev.state);
+		   <<": replaying "<< Event(ev) <<"; state "
+		   << statename(t->current_trace_frame().ev.state);
 	if (t->syscallbuf_hdr) {
 		LOG(debug) <<"    (syscllbufsz:"<< t->syscallbuf_hdr->num_rec_bytes
 			   <<", abrtcmt:"<< t->syscallbuf_hdr->abort_commit
 			   <<", locked:"<< t->syscallbuf_hdr->locked <<")";
-	}
-
-	/* Advance the trace until we've exec()'d the tracee before
-	 * processing debugger requests.  Otherwise the debugger host
-	 * will be confused about the initial executable image,
-	 * rr's. */
-	if (t->session().can_validate()) {
-		req = process_debugger_requests(dbg, t);
-		if (DREQ_RESTART == req.type) {
-			return false;
-		}
-		assert(dbg_is_resume_request(&req));
 	}
 
 	if (t->child_sig != 0) {
@@ -1570,6 +1578,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		t->child_sig = 0;
 	}
 
+	struct rep_trace_step& step = t->replay_session().current_replay_step();
 	/* Ask the trace-interpretation code what to do next in order
 	 * to retire the current frame. */
 	memset(&step, 0, sizeof(step));
@@ -1635,8 +1644,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		break;
 	case EV_SCHED:
 		step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-		step.target.rcb = t->trace.rbc;
-		step.target.regs = &t->trace.recorded_regs;
+		step.target.rcb = t->current_trace_frame().rbc;
 		step.target.signo = 0;
 		break;
 	case EV_SEGV_RDTSC:
@@ -1661,8 +1669,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 			       TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
 		if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
 			step.target.signo = step.signo;
-			step.target.rcb = t->trace.rbc;
-			step.target.regs = &t->trace.recorded_regs;
+			step.target.rcb = t->current_trace_frame().rbc;
 		}
 		break;
 	case EV_SYSCALL:
@@ -1672,31 +1679,55 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		FATAL() <<"Unexpected event "<< ev;
 	}
 
-	// See the comment in |Task::maybe_save_rbc_slop()| about
-	// *not* resetting the hpc for buffer flushes.  Here, we're
-	// processing the *other* event, just after the buffer flush,
-	// where the rcb matters.  To simplify the advance-to-target
-	// code that follows (namely, making debugger interrupts
-	// simpler), pretend like the execution in the BUFFER_FLUSH
-	// didn't happen by resetting the rbc and compensating down
-	// the target rcb.
-	//
-	// TODO: implement monotonically increasing rbc, and get rid
-	// of this hack
-	if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
-		t->adjust_for_rbc_slop(&step.target.rcb);
+	return true;
+}
+
+static bool replay_one_trace_frame(struct dbg_context* dbg,
+				   Task* t,
+				   struct dbg_request* restart_request)
+{
+	struct dbg_request req;
+	req.type = DREQ_NONE;
+
+	/* Advance the trace until we've exec()'d the tracee before
+	 * processing debugger requests.  Otherwise the debugger host
+	 * will be confused about the initial executable image,
+	 * rr's. */
+	if (t->session().can_validate()) {
+		req = process_debugger_requests(dbg, t);
+		if (DREQ_RESTART == req.type) {
+			*restart_request = req;
+			return false;
+		}
+		assert(dbg_is_resume_request(&req));
+	}
+
+	struct rep_trace_step& step = t->replay_session().current_replay_step();
+
+	/* If we restored from a checkpoint, the steps might have been
+	 * computed already in which case step.action will not be TSTEP_NONE.
+	 */
+	if (step.action == TSTEP_NONE) {
+		if (!setup_replay_one_trace_frame(dbg, t)) {
+			return false;
+		}
+		if (step.action == TSTEP_NONE) {
+			// Already at the destination event.
+			t->replay_session().reached_trace_frame() = true;
+			return true;
+		}
 	}
 
 	/* Advance until |step| has been fulfilled. */
 	while (try_one_trace_step(dbg, t, &step, &req)) {
-		if (EV_TRACE_TERMINATION == cur_trace_frame.ev.type) {
+		if (EV_TRACE_TERMINATION == t->current_trace_frame().ev.type) {
 			// An irregular trace step had to read the
 			// next trace frame, and that frame was an
 			// early-termination marker.  Otherwise we
 			// would have seen the marker at
 			// |schedule_task()|.
 			handle_interrupted_trace(dbg, t);
-			return false; // not reached
+			return true; // not reached
 		}
 
 		/* Currently we only understand software breakpoints
@@ -1743,43 +1774,39 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t)
 		/* Don't restart with SIGTRAP anywhere. */
 		t->child_sig = 0;
 
-		/* Notify the debugger and process any new requests
-		 * that might have triggered before resuming. */
-		dbg_notify_stop(dbg, get_threadid(t),	0x05/*gdb mandate*/,
+		if (!req.suppress_debugger_stop) {
+			/* Notify the debugger and process any new requests
+			 * that might have triggered before resuming. */
+			dbg_notify_stop(dbg, get_threadid(t),	0x05/*gdb mandate*/,
 				watch_addr);
+		}
 		req = process_debugger_requests(dbg, t);
 		if (DREQ_RESTART == req.type) {
+			*restart_request = req;
 			return false;
 		}
 		assert(dbg_is_resume_request(&req));
-	}
-
-	if (DREQ_DETACH == req.type) {
-		LOG(info) <<("(debugger detached from us, rr exiting)");
-		dbg_reply_detach(dbg);
-		dbg_destroy_context(&dbg);
-		// Don't orphan tracees: their VMs are inconsistent
-		// because we've been using emulated tracing, so they
-		// can't resume normal execution.  And we wouldn't
-		// want them continuing to execute even if they could.
-		exit(0);
 	}
 
 	if (TSTEP_ENTER_SYSCALL == step.action) {
 		rep_after_enter_syscall(t, step.syscall.no);
 	}
 	if (t->session().can_validate()
-	    && STATE_SYSCALL_EXIT == t->trace.ev.state
+	    && STATE_SYSCALL_EXIT == t->current_trace_frame().ev.state
 	    && rr_flags()->check_cached_mmaps) {
 		t->vm()->verify(t);
 	}
+
+	Event ev(t->current_trace_frame().ev);
 	if (has_deterministic_rbc(ev, step)) {
 		assert_at_recorded_rcb(t, ev);
 	}
 
-	t->maybe_save_rbc_slop(ev);
-
 	debug_memory(t);
+
+	// Record that this step completed successfully.
+	step.action = TSTEP_NONE;
+	t->replay_session().reached_trace_frame() = true;
 	return true;
 }
 
@@ -1887,7 +1914,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 	}
 	assert(!dbg);
 
-	if (goto_event || target_process) {
+	if (goto_event > 0 || target_process) {
 		fprintf(stderr,	"\a\n"
 			"--------------------------------------------------\n"
 			" ---> Reached target process %d at event %u.\n"
@@ -1895,18 +1922,21 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 			target_process, event_now);
 	}
 
+	// Call set_debugged_tgid now so it will be cloned into the
+	// checkpoint below if one is created.
+	t->replay_session().set_debugged_tgid(t->tgid());
+
 	if (will_checkpoint()) {
 		// Have the "checkpoint" be the original replay
 		// session, and then switch over to using the cloned
 		// session.  The cloned tasks will look like children
 		// of the clonees, so this scheme prevents |pstree|
 		// output from getting /too/ far out of whack.
-		checkpoint = session;
-		session = checkpoint->clone();
+		debugger_restart_checkpoint = session;
+		session = session->clone();
 		t = session->find_task(t->rec_tid);
 	}
 
-	t->replay_session().set_debugged_tgid(t->tgid());
 	// Store the current tgid and event as the "execution target"
 	// for the next replay session, if we end up restarting.  This
 	// allows us to determine if a later session has reached this
@@ -1968,47 +1998,82 @@ static void init_session()
 			     session->ifstream().peek_frame().tid);
 }
 
-static dbg_context* restart_session(dbg_context* dbg)
+static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
+		                    bool* advance_to_next_trace_record)
 {
-	stashed_dbg = dbg;
-	if (checkpoint) {
-		session = checkpoint;
+	assert(req->type == DREQ_RESTART);
+
+	ReplaySession::shr_ptr checkpoint_to_restore;
+	if (req->restart.type == RESTART_FROM_CHECKPOINT) {
+		checkpoint_to_restore =
+			dbg_get_checkpoint(dbg, req->restart.param);
+		// The code that sets RESTART_FROM_CHECKPOINT should have
+		// already verified that the checkpoint exists.
+		assert(checkpoint_to_restore);
+	} else if (req->restart.type == RESTART_FROM_PREVIOUS) {
+		checkpoint_to_restore = debugger_restart_checkpoint;
 	}
+	if (checkpoint_to_restore) {
+		debugger_restart_checkpoint = checkpoint_to_restore;
+		session = checkpoint_to_restore->clone();
+		// Advance to the next trace record if the state of the session
+		// is that the current record has already been reached.
+		// If the current record hasn't been reached yet, don't
+		// advance to the next, and instead allow the current record
+		// to complete.
+		*advance_to_next_trace_record = session->reached_trace_frame();
+		return dbg;
+	}
+
+	stashed_dbg = dbg;
+
 	if (session->ifstream().time() > rr_flags()->goto_event) {
 		session->restart();
 		init_session();
 	}
+	*advance_to_next_trace_record = true;
 	return nullptr;
 }
 
 static void replay_trace_frames(void)
 {
+	bool advance_to_next_trace_frame = true;
 	struct dbg_context* dbg = nullptr;
-	while (!session->last_task()) {
-		dbg = maybe_create_debugger(dbg);
+	while (true) {
+		while (!session->last_task()) {
+			dbg = maybe_create_debugger(dbg);
 
-		Task* intr_t;
-		Task* t = schedule_task(*session, &intr_t);
-		if (!t) {
-			return handle_interrupted_trace(dbg, intr_t);
+			Task* intr_t;
+			Task* t = schedule_task(*session, &intr_t,
+				advance_to_next_trace_frame);
+			if (!t) {
+				return handle_interrupted_trace(dbg, intr_t);
+			}
+			struct dbg_request restart_request;
+			if (replay_one_trace_frame(dbg, t, &restart_request)) {
+				advance_to_next_trace_frame = true;
+			} else {
+				dbg = restart_session(dbg, &restart_request,
+					&advance_to_next_trace_frame);
+			}
 		}
-		if (!replay_one_trace_frame(dbg, t)) {
-			dbg = restart_session(dbg);
-		}
-	}
-	LOG(info) <<("Replayer successfully finished.");
-	fflush(stdout);
+		LOG(info) <<("Replayer successfully finished.");
+		fflush(stdout);
 
-	if (dbg) {
-		// TODO return real exit code, if it's useful.
-		dbg_notify_exit_code(dbg, 0);
-		struct dbg_request req =
-			process_debugger_requests(dbg, session->last_task());
-		if (DREQ_RESTART == req.type) {
-			dbg = restart_session(dbg);
-			return replay_trace_frames();
+		if (dbg) {
+			// TODO return real exit code, if it's useful.
+			dbg_notify_exit_code(dbg, 0);
+			struct dbg_request req =
+				process_debugger_requests(dbg, session->last_task());
+			if (DREQ_RESTART == req.type) {
+				dbg = restart_session(dbg, &req,
+					&advance_to_next_trace_frame);
+				continue;
+			}
+			FATAL() <<"Received continue request after end-of-trace.";
 		}
-		FATAL() <<"Received continue request after end-of-trace.";
+		dbg_destroy_context(&dbg);
+		return;
 	}
 }
 

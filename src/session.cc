@@ -14,6 +14,31 @@
 
 using namespace std;
 
+Session::Session()
+	: tracees_consistent(false)
+{
+	LOG(debug) <<"Session "<< this <<" created";
+}
+
+Session::~Session()
+{
+	kill_all_tasks();
+	LOG(debug) <<"Session "<< this <<" destroyed";
+}
+
+void
+Session::after_exec()
+{
+	if (tracees_consistent) {
+		return;
+	}
+	tracees_consistent = true;
+	// Reset rbcs for all Tasks (there should only be one).
+	for (auto task = tasks().begin(); task != tasks().end(); ++task) {
+		task->second->flush_inconsistent_state();
+	}
+}
+
 AddressSpace::shr_ptr
 Session::create_vm(Task* t, const std::string& exe)
 {
@@ -193,8 +218,18 @@ ReplaySession::clone()
 	assert(!last_debugged_task);
 	session->tgid_debugged = tgid_debugged;
 	session->trace_ifstream = trace_ifstream->clone();
+	session->trace_frame = trace_frame;
+	session->replay_step = replay_step;
+	session->trace_frame_reached = trace_frame_reached;
+	memcpy(session->syscallbuf_flush_buffer_array, syscallbuf_flush_buffer_array,
+		sizeof(syscallbuf_flush_buffer_array));
 
 	for (auto vm : sas) {
+		// Creating a checkpoint of a session with active breakpoints
+		// or watchpoints is not supported.
+		assert(!vm->has_breakpoints());
+		assert(!vm->has_watchpoints());
+
 		Task* some_task = *vm->task_set().begin();
 		pid_t tgid = some_task->tgid();
 		Task* group_leader = find_task(tgid);
@@ -243,6 +278,7 @@ ReplaySession::clone()
 		clone_leader->copy_state(group_leader);
 	}
 	assert(session->vms().size() > 0);
+
 	return session;
 }
 

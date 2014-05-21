@@ -57,6 +57,10 @@ struct rep_desched_state {
  */
 enum RepFlushState { FLUSH_START, FLUSH_ARM, FLUSH_ENTER, FLUSH_EXIT,
 		     FLUSH_DISARM, FLUSH_DONE };
+/**
+ * rep_flush_state is saved in Session and cloned with its Session, so it needs
+ * to be simple data, i.e. not holding pointers to per-Session data.
+ */
 struct rep_flush_state {
 	/* Nonzero when we need to write the syscallbuf data back to
 	 * the child. */
@@ -64,11 +68,9 @@ struct rep_flush_state {
 	/* After the data is restored, the number of record bytes that
 	 * still need to be flushed. */
 	size_t num_rec_bytes_remaining;
-	/* The syscallbuf record that was saved to trace.  This is
-	 * what we'll use to restore |child_rec| below. */
-	const struct syscallbuf_record* rec_rec;
-	/* Pointer to the tracee's next syscallbuf record to replay. */
-	struct syscallbuf_record* child_rec;
+	/* The offset of the next syscall record in both the rr and child
+	 * buffers */
+	size_t syscall_record_offset;
 	/* The next step to take. */
 	RepFlushState state;
 	/* Track the state of retiring desched arm/disarm ioctls, when
@@ -81,7 +83,7 @@ struct rep_flush_state {
  * frame.
  */
 enum RepTraceStepType {
-	TSTEP_UNKNOWN,
+	TSTEP_NONE,
 
 	/* Frame has been replayed, done. */
 	TSTEP_RETIRE,
@@ -107,6 +109,10 @@ enum RepTraceStepType {
 	 * tracks the replay state. */
 	TSTEP_DESCHED,
 };
+/**
+ * rep_trace_step is saved in Session and cloned with its Session, so it needs
+ * to be simple data, i.e. not holding pointers to per-Session data.
+ */
 struct rep_trace_step {
 	RepTraceStepType action;
 
@@ -130,8 +136,6 @@ struct rep_trace_step {
 
 		struct {
 			int64_t rcb;
-			/* XXX can be just $ip in "production". */
-			const Registers* regs;
 			int signo;
 		} target;
 

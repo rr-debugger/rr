@@ -381,7 +381,13 @@ void print_register_file(const Registers* regs)
 	fprintf(stderr, "xgs: %lx\n", regs->xgs);
 	fprintf(stderr, "xss: %lx\n", regs->xss);
 	fprintf(stderr, "\n");
+}
 
+void print_register_file_compact(FILE* file, const Registers* regs)
+{
+	fprintf(file, "eax:%lx ebx:%lx ecx:%lx edx:%lx esi:%lx edi:%lx ebp:%lx esp:%lx eip:%lx eflags:%lx",
+		regs->eax, regs->ebx, regs->ecx, regs->edx, regs->esi,
+		regs->edi, regs->ebp, regs->esp, regs->eip, regs->eflags);
 }
 
 /**
@@ -649,7 +655,7 @@ int compare_register_files(Task* t,
 
 	ASSERT(t, !bail_error || !err)
 		<<"Fatal register mismatch (rbc/rec:"
-		<< read_rbc(t->hpc) <<"/"<< t->trace.rbc <<")";
+		<< t->rbc_count() <<"/"<< t->current_trace_frame().rbc <<")";
 
 	if (!err && mismatch_behavior == LOG_MISMATCHES) {
 		LOG(info) <<"(register files are the same for "<< name1
@@ -771,7 +777,7 @@ static void notify_checksum_error(Task* t, int global_time,
 	format_dump_filename(t, global_time, "rec",
 			     rec_dump, sizeof(rec_dump));
 
-	Event ev(t->trace.ev);
+	Event ev(t->current_trace_frame().ev);
 	ASSERT(t, checksum == rec_checksum)
 <<"Divergence in contents of memory segment after '"<< ev <<"':\n"
 "\n"
@@ -1384,7 +1390,7 @@ void finish_remote_syscalls(Task* t, struct current_state_buffer* state)
 	t->set_regs(state->regs);
 }
 
-void destroy_buffers(Task* t, int flags)
+void destroy_buffers(Task* t)
 {
 	// NB: we have to pay all this complexity here because glibc
 	// makes its SYS_exit call through an inline int $0x80 insn,
@@ -1393,12 +1399,6 @@ void destroy_buffers(Task* t, int flags)
 	// the vdso in the future, this code can be eliminated in
 	// favor of a *much* simpler vsyscall SYS_exit hook in the
 	// preload lib.
-
-	if (!(DESTROY_ALREADY_AT_EXIT_SYSCALL & flags)) {
-		// Advance the tracee into SYS_exit so that it's at a
-		// known state that we can manipulate it from.
-		advance_syscall(t);
-	}
 
 	Registers exit_regs = t->regs();
 	ASSERT(t, SYS_exit == exit_regs.original_syscallno())
@@ -1435,11 +1435,9 @@ void destroy_buffers(Task* t, int flags)
 	// Do the actual buffer and fd cleanup.
 	t->destroy_buffers(DESTROY_SCRATCH | DESTROY_SYSCALLBUF);
 
-	// Prepare to restart the SYS_exit call.
+	// Restart the SYS_exit call.
 	t->set_regs(exit_regs);
-	if (DESTROY_NEED_EXIT_SYSCALL_RESTART & flags) {
-		advance_syscall(t);
-	}
+	advance_syscall(t);
 }
 
 static const byte vsyscall_impl[] = {

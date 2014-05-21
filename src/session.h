@@ -9,6 +9,11 @@
 #include <set>
 #include <string>
 
+#include "preload/syscall_buffer.h"
+
+#include "trace.h"
+#include "replayer.h"
+
 class AddressSpace;
 struct current_state_buffer;
 class EmuFs;
@@ -46,7 +51,7 @@ public:
 	 * After the first exec, we're running tracee code, and
 	 * everything must be the same.
 	 */
-	void after_exec() { tracees_consistent = true; }
+	void after_exec();
 	bool can_validate() const { return tracees_consistent; }
 
 	/**
@@ -110,11 +115,8 @@ public:
 	const AddressSpaceSet& vms() const { return sas; }
 
 protected:
-	Session() : tracees_consistent(false) {}
-	~Session()
-	{
-		kill_all_tasks();
-	}
+	Session();
+	~Session();
 
 	void track(Task* t);
 
@@ -181,9 +183,27 @@ public:
 	void gc_emufs();
 
 	TraceIfstream& ifstream() { return *trace_ifstream; }
-
 	/**
-	 * Restore the state of this session to what it was just after
+	 * The trace record that we are working on --- the next event
+	 * for replay to reach.
+	 */
+	struct trace_frame& current_trace_frame() { return trace_frame; }
+	/**
+	 * State of the replay as we advance towards the event given by
+	 * current_trace_frame().
+	 */
+	struct rep_trace_step& current_replay_step() { return replay_step; }
+
+	byte* syscallbuf_flush_buffer() {
+		return syscallbuf_flush_buffer_array;
+	}
+	const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
+		return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
+	}
+
+	bool& reached_trace_frame() { return trace_frame_reached; }
+
+	/* Restore the state of this session to what it was just after
 	 * |create()|.
 	 */
 	void restart();
@@ -224,12 +244,34 @@ public:
 	static shr_ptr create(int argc, char* argv[]);
 
 private:
-	ReplaySession() : last_debugged_task(nullptr), tgid_debugged(0)	{}
+	ReplaySession()
+		: last_debugged_task(nullptr)
+		, tgid_debugged(0)
+		, trace_frame()
+		, replay_step()
+		, trace_frame_reached(false)
+	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
 	Task* last_debugged_task;
 	pid_t tgid_debugged;
 	std::shared_ptr<TraceIfstream> trace_ifstream;
+	struct trace_frame trace_frame;
+	struct rep_trace_step replay_step;
+	/**
+	 * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
+	 * must be replayed sequentially, so we can use one buffer for all
+	 * tracees.  At the start of the flush, the recorded bytes are read
+	 * back into this buffer.  Then they're copied back to the tracee
+	 * record-by-record, as the tracee exits those syscalls.
+	 * This needs to be word-aligned.
+	 */
+	byte syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
+	/**
+	 * True when the session has reached the state in trace_frame.
+	 * False when the session is working towards the state in trace_frame.
+	 */
+	bool trace_frame_reached;
 };
 
 #endif // RR_SESSION_H_

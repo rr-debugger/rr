@@ -23,8 +23,11 @@
 #include <unistd.h>
 
 #include <sstream>
+#include <vector>
 
 #include "log.h"
+#include "session.h"
+#include "types.h"
 
 #define INTERRUPT_CHAR '\x03'
 
@@ -69,6 +72,8 @@ struct dbg_context {
 	byte outbuf[32768];	/* buffered output for gdb */
 	ssize_t outlen;
 	ssize_t outsize;
+	// Checkpoints, indexed by checkpoint ID
+	std::map<int, ReplaySession::shr_ptr> checkpoints;
 };
 
 bool dbg_is_resume_request(const struct dbg_request* req)
@@ -76,7 +81,6 @@ bool dbg_is_resume_request(const struct dbg_request* req)
 	switch (req->type) {
 	case DREQ_CONTINUE:
 	case DREQ_STEP:
-	case DREQ_DETACH:
 		return true;
 	default:
 		return false;
@@ -108,7 +112,7 @@ static void make_cloexec(int fd)
 
 static dbg_context* new_dbg_context()
 {
-	struct dbg_context* dbg = (struct dbg_context*)calloc(1, sizeof(*dbg));
+	struct dbg_context* dbg = new dbg_context();
 	dbg->insize = sizeof(dbg->inbuf);
 	dbg->outsize = sizeof(dbg->outbuf);
 	return dbg;
@@ -216,6 +220,37 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 	return dbg;
 }
 
+static const char gdb_command_file[] =
+	"define checkpoint\n"
+	"  init-if-undefined $_next_checkpoint_index = 1\n"
+	/* Ensure the command echoes the checkpoint number, not the encoded message */
+	"  p (*(int*)29298 = 0x01000000 | $_next_checkpoint_index), $_next_checkpoint_index++\n"
+	"end\n"
+	"define delete checkpoint\n"
+	"  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
+	"end\n"
+	"define restart\n"
+	"  run c$arg0\n"
+	"end\n";
+
+static string create_gdb_command_file()
+{
+	char tmp[] = "rr-gdb-commands-XXXXXX";
+	// This fd is just leaked. That's fine since we only call this once
+	// per rr invocation at the moment.
+	int fd = mkstemp(tmp);
+	unlink(tmp);
+
+	int written = write(fd, gdb_command_file, ALEN(gdb_command_file));
+	if (written != ALEN(gdb_command_file)) {
+		FATAL() <<"Failed to write gdb command file";
+	}
+
+	stringstream procfile;
+	procfile << "/proc/" << getpid() << "/fd/" << fd;
+	return procfile.str();
+}
+
 void dbg_launch_debugger(int params_pipe_fd)
 {
 	struct debugger_params params;
@@ -225,27 +260,44 @@ void dbg_launch_debugger(int params_pipe_fd)
 	stringstream attach_cmd;
 	attach_cmd << "target extended-remote " << params.socket_addr << ":"
 		   << params.port;
+	string gdb_command_file = create_gdb_command_file();
 	LOG(debug) <<"launching gdb with command '"<< attach_cmd.str() <<"'";
-	execlp("gdb", "gdb",
-	       // The gdb protocol uses the "vRun" packet to reload
-	       // remote targets.  The packet is specified to be like
-	       // "vCont", in which gdb waits infinitely long for a
-	       // stop reply packet.  But in practice, gdb client
-	       // expects the vRun to complete within the remote-reply
-	       // timeout, after which it issues vCont.  The timeout
-	       // causes gdb<-->rr communication to go haywire.
-	       //
-	       // rr can take a very long time indeed to send the
-	       // stop-reply to gdb after restarting replay; the time
-	       // to reach a specified execution target is
-	       // theoretically unbounded.  Timing our on vRun is
-	       // technically a gdb bug, but because the rr replay and
-	       // the gdb reload models don't quite match up, we'll
-	       // work around it on the rr side by disabling the
-	       // remote-reply timeout.
-	       "-l", "-1",
-	       params.exe_image,
-	       "-ex", attach_cmd.str().c_str(), NULL);
+
+	vector<const char*> args;
+	args.push_back("gdb");
+	// The gdb protocol uses the "vRun" packet to reload
+	// remote targets.  The packet is specified to be like
+	// "vCont", in which gdb waits infinitely long for a
+	// stop reply packet.  But in practice, gdb client
+	// expects the vRun to complete within the remote-reply
+	// timeout, after which it issues vCont.  The timeout
+	// causes gdb<-->rr communication to go haywire.
+	//
+	// rr can take a very long time indeed to send the
+	// stop-reply to gdb after restarting replay; the time
+	// to reach a specified execution target is
+	// theoretically unbounded.  Timing our on vRun is
+	// technically a gdb bug, but because the rr replay and
+	// the gdb reload models don't quite match up, we'll
+	// work around it on the rr side by disabling the
+	// remote-reply timeout.
+	args.push_back("-l");
+	args.push_back("-1");
+	args.push_back(params.exe_image);
+	const string& gdb_command_file_path =
+		rr_flags()->gdb_command_file_path;
+	if (gdb_command_file_path.length() > 0 ) {
+		args.push_back("-x");
+		args.push_back(gdb_command_file_path.c_str());
+	}
+	args.push_back("-l");
+	args.push_back("-1");
+	args.push_back("-x");
+	args.push_back(gdb_command_file.c_str());
+	args.push_back("-ex");
+	args.push_back(attach_cmd.str().c_str());
+	args.push_back(nullptr);
+	execvp("gdb", (char* const*)args.data());
 	FATAL() <<"Failed to exec gdb.";
 }
 
@@ -294,6 +346,7 @@ static void read_data_once(struct dbg_context* dbg)
 		     dbg->insize - dbg->inlen);
 	if (0 == nread) {
 		LOG(info) <<"(gdb closed debugging socket, exiting)";
+		dbg_destroy_context(&dbg);
 		exit(0);
 	}
 	if (nread <= 0) {
@@ -785,7 +838,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 
 	if (!strcmp("Run", name)) {
 		dbg->req.type = DREQ_RESTART;
-		dbg->req.restart_event = -1;
+		dbg->req.restart.type = RESTART_FROM_PREVIOUS;
 
 		if ('\0' == *args) {
 			return 1;
@@ -803,15 +856,30 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		if (strlen(args)) {
 			string event_str = decode_ascii_encoded_hex_str(args);
 			char* endp;
-			dbg->req.restart_event =
-				strtol(event_str.c_str(), &endp, 0);
+			if (event_str[0] == 'c') {
+				int param = strtol(event_str.c_str() + 1, &endp, 0);
+				if (dbg_get_checkpoint(dbg, param)) {
+					dbg->req.restart.type = RESTART_FROM_CHECKPOINT;
+					dbg->req.restart.param = param;
+					LOG(debug) <<"next replayer restarting from checkpoint "
+						<< dbg->req.restart.param;
+				} else {
+					LOG(debug) << "Checkpoint "<< param <<" not found.";
+					write_packet(dbg, "E01");
+					return 0;
+				}
+			} else {
+				dbg->req.restart.type = RESTART_FROM_EVENT;
+				dbg->req.restart.param =
+					strtol(event_str.c_str(), &endp, 0);
+				LOG(debug) <<"next replayer advancing to event "
+					   << dbg->req.restart.param;
+			}
 			if (!endp || *endp != '\0') {
 				FATAL() <<"Couldn't parse event string `"
 					<< event_str << "'";
 			}
 		}
-		LOG(debug) <<"next replayer advancing to event "
-			   << dbg->req.restart_event;
 		return 1;
 	}
 
@@ -881,6 +949,7 @@ static int process_packet(struct dbg_context* dbg)
 	case 'k':
 		LOG(info) <<"gdb requests kill, exiting";
 		write_packet(dbg, "OK");
+		dbg_destroy_context(&dbg);
 		exit(0);
 	case 'm':
 		dbg->req.type = DREQ_GET_MEM;
@@ -895,12 +964,45 @@ static int process_packet(struct dbg_context* dbg)
 
 		ret = 1;
 		break;
-	case 'M':
+	case 'M': {
+		uintptr_t addr = strtoul(payload, &payload, 16);
+		++payload;
+		uintptr_t len = strtoul(payload, &payload, 16);
+		if (addr == DBG_COMMAND_MAGIC_ADDRESS && len == 4) {
+			++payload;
+			ret = 0;
+			// gdb's bytes are in host order, flip them to
+			// big-endian to get the actual value
+			uintptr_t cmd = htonl(strtoul(payload, &payload, 16));
+			switch (cmd & DBG_COMMAND_MSG_MASK) {
+			case DBG_COMMAND_MSG_CREATE_CHECKPOINT:
+				dbg->req.type = DREQ_CREATE_CHECKPOINT;
+				dbg->req.checkpoint_id = cmd & DBG_COMMAND_PARAMETER_MASK;
+				LOG(debug) <<"gdb request checkpoint creation (id="
+					   << dbg->req.checkpoint_id <<")";
+				ret = 1;
+				break;
+			case DBG_COMMAND_MSG_DELETE_CHECKPOINT:
+				dbg->req.type = DREQ_DELETE_CHECKPOINT;
+				dbg->req.checkpoint_id = cmd & DBG_COMMAND_PARAMETER_MASK;
+				LOG(debug) <<"gdb request checkpoint deletion (id="
+					   << dbg->req.checkpoint_id <<")";
+				ret = 1;
+				break;
+			default:
+				ret = 0;
+				break;
+			}
+			if (ret) {
+				break;
+			}
+		}
 		/* We can't allow the debugger to write arbitrary data
 		 * to memory, or the replay may diverge. */
 		write_packet(dbg, "");
 		ret = 0;
 		break;
+	}
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
@@ -1395,12 +1497,57 @@ void dbg_reply_detach(struct dbg_context* dbg)
 	consume_request(dbg);
 }
 
+static void delete_checkpoint_internal(struct dbg_context* dbg,
+				       int checkpoint_id)
+{
+	auto it = dbg->checkpoints.find(checkpoint_id);
+	if (it == dbg->checkpoints.end()) {
+		return;
+	}
+
+	it->second->kill_all_tasks();
+	dbg->checkpoints.erase(it);
+}
+
+void dbg_created_checkpoint(struct dbg_context* dbg,
+			    ReplaySession::shr_ptr& checkpoint,
+			    int checkpoint_id)
+{
+	delete_checkpoint_internal(dbg, checkpoint_id);
+	dbg->checkpoints[checkpoint_id] = checkpoint;
+
+	write_packet(dbg, "OK");
+
+	consume_request(dbg);
+}
+
+void dbg_delete_checkpoint(struct dbg_context* dbg, int checkpoint_id)
+{
+	delete_checkpoint_internal(dbg, checkpoint_id);
+
+	write_packet(dbg, "OK");
+
+	consume_request(dbg);
+}
+
+ReplaySession::shr_ptr dbg_get_checkpoint(struct dbg_context* dbg,
+		                          int checkpoint_id)
+{
+	auto it = dbg->checkpoints.find(checkpoint_id);
+	if (it == dbg->checkpoints.end()) {
+		return nullptr;
+	}
+
+	return it->second;
+}
+
 void dbg_destroy_context(struct dbg_context** dbg)
 {
 	struct dbg_context* d;
 	if (!(d = *dbg)) {
 		return;
 	}
+	d->checkpoints.clear();
 	close(d->listen_fd);
 	close(d->sock_fd);
 	free(d);

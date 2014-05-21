@@ -42,7 +42,11 @@ static void get_ifconfig(int sockfd, struct ifreq* req) {
 			set_req_iface = 1;
 		}
 	}
-	test_assert(set_req_iface);
+	if (!set_req_iface) {
+		atomic_puts("Only loopback interface found\n");
+		atomic_puts("EXIT-SUCCESS");
+		exit(0);
+	}
 }
 
 int main(int argc, char *argv[]) {

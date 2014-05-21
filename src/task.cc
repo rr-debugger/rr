@@ -1105,14 +1105,14 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, desched_fd(-1), desched_fd_child(-1)
 	, seccomp_bpf_enabled()
 	, child_sig(), stepped_into_syscall()
-	, trace(), hpc()
+	, hpc()
 	, tid(_tid), rec_tid(_rec_tid > 0 ? _rec_tid : _tid)
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
 	, blocked_sigs()
 	, child_mem_fd(open_mem_fd())
 	, prname("???")
-	, rbc_boost(0), rbc_slop(0)
+	, rbcs(0)
 	, registers(), registers_known(false)
 	, robust_futex_list(), robust_futex_list_len()
 	, session_record(nullptr), session_replay(nullptr)
@@ -1237,13 +1237,6 @@ Task::dump(FILE* out) const
 		// eventually, to have more informative output.
 		log_pending_events();
 	}
-}
-
-int64_t
-Task::effective_rbc() const
-{
-	int64_t rbc_now = hpc->started ? read_rbc(hpc) : 0;
-	return rbc_now + rbc_boost;
 }
 
 void
@@ -1535,34 +1528,13 @@ Task::may_be_blocked() const
 }
 
 void
-Task::maybe_save_rbc_slop(const Event& ev)
-{
-	if (!ev.has_rbc_slop()) {
-		reset_hpc(this, 0);
-		rbc_slop = 0;
-		rbc_boost = 0;
-	}
-	rbc_slop = read_rbc(hpc);
-}
-
-void
-Task::adjust_for_rbc_slop(int64_t* target)
-{
-	assert(*target >= rbc_slop);
-
-	*target -= rbc_slop;
-	reset_hpc(this, 0);
-	rbc_slop = 0;
-}
-
-void
 Task::maybe_update_vm(int syscallno, int state)
 {
 	// We have to use the recorded_regs during replay because they
 	// have the return value set in syscall_result().  We may not have
 	// advanced regs() to that point yet.
 	const Registers& r = RECORD == rr_flags()->option ?
-					   regs() : trace.recorded_regs;
+		regs() : current_trace_frame().recorded_regs;
 
 	if (STATE_SYSCALL_EXIT != state
 	    || (SYSCALL_FAILED(r.syscall_result_signed()) &&
@@ -1676,7 +1648,8 @@ Task::record_event(const Event& ev)
 	frame.tid = tid;
 	frame.ev = ev.encode();
 	if (ev.has_exec_info()) {
-		frame.rbc = read_rbc(hpc);
+		rbcs += read_rbc(hpc);
+		frame.rbc = rbcs;
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 		frame.hw_interrupts = read_hw_int(hpc);
 		frame.page_faults = read_page_faults(hpc);
@@ -1693,9 +1666,26 @@ Task::record_event(const Event& ev)
 	}
 
 	ofstream() << frame;
-	if (frame.ev.has_exec_info) {
+	if (ev.has_exec_info()) {
 		reset_hpc(this, rr_flags()->max_rbc);
 	}
+}
+
+void
+Task::flush_inconsistent_state()
+{
+	rbcs = 0;
+}
+
+int64_t
+Task::rbc_count()
+{
+	int64_t hpc_rbcs = read_rbc(hpc);
+	if (hpc_rbcs > 0) {
+		rbcs += hpc_rbcs;
+		reset_hpc(this, 0);
+	}
+	return rbcs;
 }
 
 void
@@ -1820,8 +1810,16 @@ Task::remote_memcpy(void* dst, const void* src, size_t num_bytes)
 }
 
 bool
-Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig)
+Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
+		       int64_t rbc_period)
 {
+	// Ensure no rbcs are lost when we reset_hpc below.
+	rbc_count();
+	if (session_replay) {
+		reset_hpc(this, rbc_period);
+	} else {
+		assert(rbc_period == 0);
+	}
 	LOG(debug) <<"resuming execution with "<< ptrace_req_name(how);
 	xptrace(how, nullptr, (void*)(uintptr_t)sig);
 	registers_known = false;
@@ -1852,6 +1850,12 @@ Task::replay_session()
 	return *session_replay;
 }
 
+const struct trace_frame&
+Task::current_trace_frame()
+{
+	return replay_session().current_trace_frame();
+}
+
 ssize_t
 Task::set_data_from_trace()
 {
@@ -1867,7 +1871,7 @@ void
 Task::set_return_value_from_trace()
 {
 	Registers r = regs();
-	r.set_syscall_result(trace.recorded_regs.syscall_result());
+	r.set_syscall_result(current_trace_frame().recorded_regs.syscall_result());
 	set_regs(r);
 }
 
@@ -2463,21 +2467,10 @@ Task::copy_state(Task* from)
 	// series of syscalls made by the trace so far.
 	blocked_sigs = from->blocked_sigs;
 	pending_events = from->pending_events;
-	trace = from->trace;
-	rbc_slop = from->rbc_slop;
 
-	// We, the deepfork clone of |from|, need to have the same
-	// |effective_rbc()| value as |from|.  The |rbc_boost| helper
-	// will account for rcb's that |from| has seen that we
-	// haven't.  But since we also reuse |rbc_slop| for
-	// |rbc_boost|, |from|'s rbc value must be exactly |rbc_slop|.
-	ASSERT(this, rbc_slop == read_rbc(from->hpc));
-	rbc_boost = rbc_slop;
-	// In all probability, |from| has started counting rcbs by
-	// now.  Kick on the counter so that we can match its rbc
-	// targets at significant events.
-	//
-	// TODO: rbc should always be initialized to a known value.
+	rbcs = from->rbc_count();
+	tid_futex = from->tid_futex;
+
 	reset_hpc(this, 0);
 }
 

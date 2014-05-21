@@ -96,6 +96,8 @@ struct flags {
 	bool raw_dump;
 	// Only open a debug socket, don't launch the debugger too.
 	bool dont_launch_debugger;
+	// Pass this file name to debugger with -x
+	std::string gdb_command_file_path;
 
 	flags()
 	  : max_rbc(0)
@@ -120,6 +122,7 @@ struct flags {
 	  , process_created_how(0)
 	  , raw_dump(false)
 	  , dont_launch_debugger(false)
+	  , gdb_command_file_path("")
 	{}
 };
 

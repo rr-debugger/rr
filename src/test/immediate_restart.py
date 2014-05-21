@@ -1,7 +1,10 @@
 from rrutil import *
 
 restart_replay()
-expect_rr('Reached target process')
+# A single EXIT-SUCCESS is expected since the child process to which we have
+# attached only prints one, and it exits before the parent prints its
+# EXIT-SUCCESS.
+expect_rr('EXIT-SUCCESS')
 send_gdb('q\n')
 
 ok()

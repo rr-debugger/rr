@@ -24,7 +24,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 2
+#define TRACE_VERSION 3
 
 static ssize_t sizeof_trace_frame_event_info(void)
 {

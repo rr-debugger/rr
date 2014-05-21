@@ -152,6 +152,8 @@ void assert_child_regs_are(Task* t, const Registers* regs);
 void print_register_file_tid(Task* t);
 void print_register_file(const Registers* regs);
 
+void print_register_file_compact(FILE* file, const Registers* regs);
+
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
  * that file, starting with a line containing |label|.  |start_addr|
@@ -521,17 +523,11 @@ void finish_remote_syscalls(Task* t, struct current_state_buffer* state);
 /**
  * At thread exit time, undo the work that init_buffers() did.
  *
- * Pass |DESTROY_ALREADY_AT_EXIT_SYSCALL| if the tracee has already
- * entered SYS_exit.  Pass |DESTROY_NEED_EXIT_SYSCALL_RESTART| if the
- * tracee should be returned at a state in which it has entered (or
+ * Call this when the tracee has already entered SYS_exit. The
+ * tracee will be returned at a state in which it has entered (or
  * re-entered) SYS_exit.
  */
-enum { 
-	DESTROY_DEFAULT = 0,
-	DESTROY_ALREADY_AT_EXIT_SYSCALL = 1 << 0,
-	DESTROY_NEED_EXIT_SYSCALL_RESTART = 1 << 1,
-};
-void destroy_buffers(Task* t, int flags);
+void destroy_buffers(Task* t);
 
 /**
  * Locate |t|'s |__kernel_vsyscall()| helper and then monkey-patch it

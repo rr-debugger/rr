@@ -236,6 +236,7 @@ static void print_usage(void)
 "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
 "                             don't automatically launch the debugger\n"
 "                             client too.\n"
+"  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n"
 "\n"
 "Syntax for `dump`\n"
 " rr dump [OPTIONS] <trace_dir> [<event-spec>...]\n"
@@ -298,12 +299,13 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		{ "no-redirect-output", no_argument, NULL, 'q' },
 		{ "onfork", required_argument, NULL, 'f' },
 		{ "onprocess", required_argument, NULL, 'p' },
+		{ "gdb-x", required_argument, NULL, 'x' },
 		{ 0 }
 	};
 	optind = cmdi + 1;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+af:g:p:qs:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+af:g:p:qs:x:", opts, &i)) {
 		case -1:
 			return optind;
 		case 'a':
@@ -328,6 +330,9 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		case 's':
 			flags->dbgport = atoi(optarg);
 			flags->dont_launch_debugger = true;
+			break;
+		case 'x':
+			flags->gdb_command_file_path = optarg;
 			break;
 		default:
 			return -1;
