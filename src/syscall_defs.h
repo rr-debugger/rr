@@ -846,7 +846,14 @@ SYSCALL_DEF_UNSUPPORTED(readv)
  */
 SYSCALL_DEF_IRREG(writev, EMU)
 
-SYSCALL_DEF_UNSUPPORTED(getsid)
+/**
+ * pid_t getsid(pid_t pid);
+ *
+ * getsid(0) returns the session ID of the calling process.  getsid(p)
+ * returns the session ID of the process with process ID p.  (The session
+ * ID of a process is the process group ID of the session leader.)
+ */
+SYSCALL_DEF0(getsid, EMU)
 
 /**
  *  int fdatasync(int fd)
