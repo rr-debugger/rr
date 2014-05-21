@@ -233,6 +233,7 @@ set(CUSTOM_TESTS
   deliver_async_signal_during_syscalls
   env-newline
   execp
+  explicit_checkpoint_clone
   fork_exec_info_thr
   get_thread_list
   parent_no_break_child_bkpt
