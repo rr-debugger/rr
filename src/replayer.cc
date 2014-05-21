@@ -1519,6 +1519,7 @@ static void handle_interrupted_trace(struct dbg_context* dbg,
 				0x05);
 		LOG(info) <<("Processing last round of debugger requests.");
 		process_debugger_requests(dbg, t);
+		dbg_destroy_context(&dbg);
 	}
 	LOG(info) <<("Exiting.");
 	exit(0);
@@ -2071,6 +2072,7 @@ static void replay_trace_frames(void)
 			}
 			FATAL() <<"Received continue request after end-of-trace.";
 		}
+		dbg_destroy_context(&dbg);
 		return;
 	}
 }

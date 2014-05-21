@@ -346,6 +346,7 @@ static void read_data_once(struct dbg_context* dbg)
 		     dbg->insize - dbg->inlen);
 	if (0 == nread) {
 		LOG(info) <<"(gdb closed debugging socket, exiting)";
+		dbg_destroy_context(&dbg);
 		exit(0);
 	}
 	if (nread <= 0) {
@@ -948,6 +949,7 @@ static int process_packet(struct dbg_context* dbg)
 	case 'k':
 		LOG(info) <<"gdb requests kill, exiting";
 		write_packet(dbg, "OK");
+		dbg_destroy_context(&dbg);
 		exit(0);
 	case 'm':
 		dbg->req.type = DREQ_GET_MEM;
