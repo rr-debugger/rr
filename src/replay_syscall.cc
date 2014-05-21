@@ -1170,11 +1170,19 @@ static void maybe_verify_tracee_saved_data(Task* t,
 
 void rep_after_enter_syscall(Task* t, int syscallno)
 {
-	if (SYS_write != syscallno) {
+	switch (syscallno) {
+	case SYS_exit:
+		destroy_buffers(t);
+		return;
+
+	case SYS_write:
+		maybe_verify_tracee_saved_data(t,
+			&t->current_trace_frame().recorded_regs);
+		return;
+
+	default:
 		return;
 	}
-	maybe_verify_tracee_saved_data(t,
-		&t->current_trace_frame().recorded_regs);
 }
 
 /**
@@ -1350,8 +1358,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return process_execve(t, trace, state, rec_regs, step);
 
 	case SYS_exit:
-		destroy_buffers(t, DESTROY_DEFAULT);
-		// fall through
 	case SYS_exit_group:
 		step->syscall.emu = 0;
 		assert(state == STATE_SYSCALL_ENTRY);

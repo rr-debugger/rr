@@ -694,8 +694,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	case SYS_exit:
-		destroy_buffers(t, (DESTROY_ALREADY_AT_EXIT_SYSCALL |
-				    DESTROY_NEED_EXIT_SYSCALL_RESTART));
+		destroy_buffers(t);
 		return 0;
 
 	case SYS_execve: {
