@@ -85,6 +85,9 @@ struct flags {
 	bool mark_stdio;
 	// Check that cached mmaps match /proc/maps after each event.
 	bool check_cached_mmaps;
+	// Suppress warnings about low performance (e.g. when the system
+	// performance governor is set wrong)
+	bool suppress_performance_warnings;
 	// Start a debug server for the task scheduled at the first
 	// event at which reached this event AND target_process has
 	// been "created".

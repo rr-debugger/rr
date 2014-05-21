@@ -118,13 +118,18 @@ static int read_int_file(const char* filename)
 	return val;
 }
 
-static void assert_prerequisites(void) {
+static void assert_prerequisites()
+{
 	int ptrace_scope_val =
 		read_int_file("/proc/sys/kernel/yama/ptrace_scope");
 	if (ptrace_scope_val > 0) {
 		FATAL() <<"Can't write to process memory; ptrace_scope is "
 			<< ptrace_scope_val;
 	}
+}
+
+static void check_performance_settings()
+{
 	// NB: we hard-code "cpu0" here because rr pins itself and all
 	// tracees to cpu 0.  We don't care about the other CPUs.
 	int fd = open("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
@@ -195,6 +200,9 @@ static void print_usage(void)
 "  -m, --mark-stdio           mark stdio writes with [rr.<EVENT-NO>],\n"
 "                             where EVENT-NO is the global trace time at\n"
 "                             which the write occures.\n"
+"  -s, --suppress-performance-warnings\n"
+"                             suppress warnings related to potential\n"
+"                             performance issues\n"
 "  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
 "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
 "                             Default is to bind to CPU 0.  This option\n"
@@ -371,13 +379,14 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 		{ "dump-on", required_argument, NULL, 'd' },
 		{ "force-enable-debugger", no_argument, NULL, 'f' },
 		{ "mark-stdio", no_argument, NULL, 'm' },
+		{ "suppress-performance-warnings", no_argument, NULL, 's' },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "wait-secs", required_argument, NULL, 'w' },
 		{ 0 }
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+c:d:fkmt:uvw:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+c:d:fkmst:uvw:", opts, &i)) {
 		case -1:
 			return optind;
 		case 'c':
@@ -404,6 +413,9 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			break;
 		case 'm':
 			flags->mark_stdio = true;
+			break;
+		case 's':
+			flags->suppress_performance_warnings = true;
 			break;
 		case 't':
 			flags->dump_at = atoi(optarg);
@@ -438,6 +450,7 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	flags->dump_on = DUMP_ON_NONE;
 	flags->redirect = true;
 	flags->use_syscall_buffer = true;
+	flags->suppress_performance_warnings = false;
 
 	if (0 > (cmdi = parse_common_args(argc, argv, flags))) {
 		return -1;
@@ -501,8 +514,6 @@ int main(int argc, char* argv[])
 		_exit(EX_CONFIG);
 	}
 
-	assert_prerequisites();
-
 	if (0 > (argi = parse_args(argc, argv, flags))
 	    || argc < argi
 	    // |rr replay| is allowed to have no arguments to replay
@@ -510,6 +521,11 @@ int main(int argc, char* argv[])
 	    || (REPLAY != flags->option && argc <= argi)) {
 		print_usage();
 		return 1;
+	}
+
+	assert_prerequisites();
+	if (!flags->suppress_performance_warnings) {
+		check_performance_settings();
 	}
 
 	wait_secs = flags->wait_secs;
