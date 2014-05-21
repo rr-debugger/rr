@@ -113,6 +113,7 @@ set(BASIC_TESTS
   fork_syscalls
   getcwd
   getgroups
+  getsid
   goto_event
   hello
   ignored_async_usr1
