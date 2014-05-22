@@ -92,16 +92,4 @@ _vsyscall_hook_trampoline:
     	.cfi_endproc
 	.size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline
 
-	.global get_vsyscall_hook_trampoline
-	.type get_vsyscall_hook_trampoline, @function
-get_vsyscall_hook_trampoline:
-	.cfi_startproc
-	call .L2
-.L2:
-	pop %eax
-	addl $(_vsyscall_hook_trampoline - .L2), %eax
-	ret
-	.cfi_endproc
-	.size get_vsyscall_hook_trampoline, .-get_vsyscall_hook_trampoline
-
 	.section .note.GNU-stack,"",@progbits

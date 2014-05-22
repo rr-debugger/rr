@@ -442,7 +442,6 @@ static long untraced_socketcall(int call,
 	untraced_socketcall1(no, 0)
 
 extern void _vsyscall_hook_trampoline(void);
-extern void* get_vsyscall_hook_trampoline(void);
 
 /**
  * Do what's necessary to set up buffers for the caller.
@@ -681,7 +680,7 @@ init_process(void)
 	pthread_atfork(NULL, NULL, post_fork_child);
 
 	install_syscall_filter();
-	rrcall_monkeypatch_vdso(get_vsyscall_hook_trampoline());
+	rrcall_monkeypatch_vdso(&_vsyscall_hook_trampoline);
 	process_inited = 1;
 
 	init_thread();
