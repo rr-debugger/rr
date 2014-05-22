@@ -121,7 +121,7 @@ static int read_int_file(const char* filename)
 	return val;
 }
 
-static void assert_prerequisites()
+static void assert_prerequisites(struct flags* flags)
 {
 	int ptrace_scope_val =
 		read_int_file("/proc/sys/kernel/yama/ptrace_scope");
@@ -140,6 +140,12 @@ static void assert_prerequisites()
 		if (KERNEL_VERSION(major, minor, 0) < KERNEL_VERSION(3, 4, 0)) {
 			FATAL() << "Kernel doesn't support necessary ptrace "
 				<< "functionality; need 3.4.0 or better.";
+		}
+
+		if (flags->use_syscall_buffer &&
+		    KERNEL_VERSION(major, minor, 0) < KERNEL_VERSION(3, 5, 0)) {
+			FATAL() << "Your kernel does not support syscall "
+				<< "filtering; please use the -n option";
 		}
 	}
 }
@@ -539,7 +545,7 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	assert_prerequisites();
+	assert_prerequisites(flags);
 	if (!flags->suppress_performance_warnings) {
 		check_performance_settings();
 	}
