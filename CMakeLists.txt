@@ -30,6 +30,7 @@ add_library(rrpreload
   src/preload/preload.c
   src/preload/traced_syscall.S
   src/preload/untraced_syscall.S
+  src/preload/vsyscall_hook.S
 )
 
 add_executable(rr

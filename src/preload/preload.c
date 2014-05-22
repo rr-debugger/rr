@@ -441,116 +441,8 @@ static long untraced_socketcall(int call,
 #define untraced_socketcall0(no)		\
 	untraced_socketcall1(no, 0)
 
-/**
- * Call this hook from |__kernel_vsyscall()|, to buffer syscalls that
- * we otherwise couldn't wrap through LD_PRELOAD helpers.  Return the
- * *RAW* kernel return value, not the -1/errno mandated by POSIX.
- *
- * Remember, this function runs *below* the level of libc.  libc can't
- * know that its call to |__kernel_vsyscall()| has been re-routed to
- * us.
- */
-static long vsyscall_hook(const struct syscall_info* call);
-
-/**
- * |__kernel_vsyscall()| is /actually/ patched to jump here.  This
- * trampoline then prepares a "real" call to |vsyscall_hook()|.
- */
-__asm__(".text\n\t"
-	".globl _vsyscall_hook_trampoline\n\t"
-	".type _vsyscall_hook_trampoline, @function\n\t"
-	"_vsyscall_hook_trampoline:\n\t"
-	".cfi_startproc\n\t"
-
-	/* The monkeypatch pushed $eax on the stack, but there's no
-	 * CFI info for it.  Fix up the CFA offset here to account for
-	 * the monkeypatch code. */
-        ".cfi_adjust_cfa_offset 4\n\t"
-        ".cfi_rel_offset %eax, 0\n\t"
-
-        /* Pull $eax back off the stack.  Now our syscall-arg
-         * registers are restored to their state on entry to
-         * __kernel_vsyscall(). */
-        "popl %eax\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %eax\n\t"
-
-        /* Build a |struct syscall_info| by pushing all the syscall
-         * args and the number onto the stack. */
-                                /* struct syscall_info info; */
-        "pushl %ebp\n\t"        /* info.args[5] = $ebp; */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %ebp, 0\n\t"
-        "pushl %edi\n\t"        /* info.args[4] = $edi; */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %edi, 0\n\t"
-        "pushl %esi\n\t"        /* info.args[3] = $esi; */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %esi, 0\n\t"
-        "pushl %edx\n\t"        /* info.args[2] = $edx; */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %edx, 0\n\t"
-        "pushl %ecx\n\t"        /* info.args[1] = $ecx; */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %ecx, 0\n\t"
-        "pushl %ebx\n\t"        /* info.args[0] = $ebx; */
-	".cfi_adjust_cfa_offset 4\n\t"
-	".cfi_rel_offset %ebx, 0\n\t"
-        "pushl %eax\n\t"        /* info.no = $eax; */
-	".cfi_adjust_cfa_offset 4\n\t"
-
-        /* $esp points at &info.  Push that pointer on the stack as
-         * our arg for syscall_hook(). */
-        "movl %esp, %ecx\n\t"
-        "pushl %ecx\n\t"
-	".cfi_adjust_cfa_offset 4\n\t"
-
-        "movl $vsyscall_hook, %eax\n\t"
-        "call *%eax\n\t"        /* $eax = vsyscall_hook(&info); */
-
-        /* $eax is now the syscall return value.  Erase the |&info|
-         * arg and |info.no| from the stack so that we can restore the
-         * other registers we saved. */
-        "addl $8, %esp\n\t"
-	".cfi_adjust_cfa_offset -8\n\t"
-
-        /* Contract of __kernel_vsyscall() is that even callee-save
-         * registers aren't touched, so we restore everything here. */
-        "popl %ebx\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %ebx\n\t"
-        "popl %ecx\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %ecx\n\t"
-        "popl %edx\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %edx\n\t"
-        "popl %esi\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %esi\n\t"
-        "popl %edi\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %edi\n\t"
-        "popl %ebp\n\t"
-	".cfi_adjust_cfa_offset -4\n\t"
-	".cfi_restore %ebp\n\t"
-
-        /* Return to the caller of *|__kernel_vsyscall()|*, because
-         * the monkeypatch jumped to us. */
-        "ret\n\t"
-    	".cfi_endproc\n\t"
-        ".size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline\n\t");
-
-static void* get_vsyscall_hook_trampoline(void)
-{
-    void *ret;
-    __asm__ __volatile__(
-	    "call .L_get_vsyscall_hook_trampoline__pic_helper\n\t"
-	    ".L_get_vsyscall_hook_trampoline__pic_helper: pop %0\n\t"
-	    "addl $(_vsyscall_hook_trampoline - .L_get_vsyscall_hook_trampoline__pic_helper),%0"
-	    : "=a"(ret));
-    return ret;
-}
+extern void _vsyscall_hook_trampoline(void);
+extern void* get_vsyscall_hook_trampoline(void);
 
 /**
  * Do what's necessary to set up buffers for the caller.
@@ -1758,7 +1650,7 @@ static long sys_writev(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long __attribute__((unused))
+long
 vsyscall_hook(const struct syscall_info* call)
 {
 	switch (call->no) {
