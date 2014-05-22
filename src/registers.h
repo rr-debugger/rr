@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <sys/user.h>
 
 /**
@@ -71,6 +72,9 @@ public:
 	uintptr_t arg6() const { return ebp; }
 	intptr_t arg6_signed() const { return ebp; }
 	void set_arg6(uintptr_t value) { ebp = value; }
+
+	void print_register_file(FILE* f) const;
+	void print_register_file_compact(FILE* f) const;
 
 	// Various things the GDB stub needs to know about.
 	enum DebuggerRegister {

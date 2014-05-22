@@ -362,32 +362,12 @@ void print_register_file_tid(Task* t)
 
 void print_register_file(const Registers* regs)
 {
-	fprintf(stderr, "Printing register file:\n");
-	fprintf(stderr, "eax: %lx\n", regs->eax);
-	fprintf(stderr, "ebx: %lx\n", regs->ebx);
-	fprintf(stderr, "ecx: %lx\n", regs->ecx);
-	fprintf(stderr, "edx: %lx\n", regs->edx);
-	fprintf(stderr, "esi: %lx\n", regs->esi);
-	fprintf(stderr, "edi: %lx\n", regs->edi);
-	fprintf(stderr, "ebp: %lx\n", regs->ebp);
-	fprintf(stderr, "esp: %lx\n", regs->esp);
-	fprintf(stderr, "eip: %lx\n", regs->eip);
-	fprintf(stderr, "eflags %lx\n",regs->eflags);
-	fprintf(stderr, "orig_eax %lx\n", regs->orig_eax);
-	fprintf(stderr, "xcs: %lx\n", regs->xcs);
-	fprintf(stderr, "xds: %lx\n", regs->xds);
-	fprintf(stderr, "xes: %lx\n", regs->xes);
-	fprintf(stderr, "xfs: %lx\n", regs->xfs);
-	fprintf(stderr, "xgs: %lx\n", regs->xgs);
-	fprintf(stderr, "xss: %lx\n", regs->xss);
-	fprintf(stderr, "\n");
+	regs->print_register_file(stderr);
 }
 
 void print_register_file_compact(FILE* file, const Registers* regs)
 {
-	fprintf(file, "eax:%lx ebx:%lx ecx:%lx edx:%lx esi:%lx edi:%lx ebp:%lx esp:%lx eip:%lx eflags:%lx",
-		regs->eax, regs->ebx, regs->ecx, regs->edx, regs->esi,
-		regs->edi, regs->ebp, regs->esp, regs->eip, regs->eflags);
+	regs->print_register_file_compact(file);
 }
 
 /**
