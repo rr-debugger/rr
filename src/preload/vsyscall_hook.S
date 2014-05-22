@@ -56,8 +56,8 @@ _vsyscall_hook_trampoline:
 	pushl %ecx
 	.cfi_adjust_cfa_offset 4
 
-	movl $vsyscall_hook, %eax
-	call *%eax        /* $eax = vsyscall_hook(&info); */
+	call vsyscall_hook
+	/* $eax = vsyscall_hook(&info); */
 
         /* $eax is now the syscall return value.  Erase the |&info|
          * arg and |info.no| from the stack so that we can restore the

@@ -1649,7 +1649,10 @@ static long sys_writev(const struct syscall_info* call)
 	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-long
+/* Explicitly declare this as hidden so we can call it from
+ * _vsyscall_hook_trampoline without doing all sorts of special PIC handling.
+ */
+__attribute__((visibility("hidden"))) long
 vsyscall_hook(const struct syscall_info* call)
 {
 	switch (call->no) {
