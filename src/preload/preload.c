@@ -62,6 +62,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <time.h>
 #include <unistd.h>
 
 /* NB: don't include any other local headers here. */
@@ -158,6 +159,22 @@ static __thread int desched_counter_fd;
 static int (*real_pthread_create)(pthread_t* thread,
 				  const pthread_attr_t* attr,
 				  void* (*start_routine) (void*), void* arg);
+
+/* Points at the libc/pthread pthread_mutex_lock().  We wrap
+ * pthread_mutex_lock, so need to retain this pointer to call out to the
+ * libc version. */
+static int (*real_pthread_mutex_lock)(pthread_mutex_t* mutex);
+
+/* Points at the libc/pthread pthread_mutex_timedlock().  We wrap
+ * pthread_mutex_timedlock, so need to retain this pointer to call out to the
+ * libc version. */
+static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
+					   const struct timespec *abstime);
+
+/* Points at the libc/pthread pthread_mutex_trylock().  We wrap
+ * pthread_mutex_trylock, so need to retain this pointer to call out to the
+ * libc version. */
+static int (*real_pthread_mutex_trylock)(pthread_mutex_t* mutex);
 
 /**
  * Return a pointer to the buffer header, which happens to occupy the
@@ -772,6 +789,9 @@ init_process(void)
 	}
 
 	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
+	real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
+	real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+	real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 	if (!buffer_enabled) {
 		debug("Syscall buffering is disabled");
@@ -836,6 +856,45 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 	ret = real_pthread_create(thread, attr, thread_trampoline, data);
 	buffer = saved_buffer;
 	return ret;
+}
+
+#define PTHREAD_MUTEX_ELISION_NP 256
+#define PTHREAD_MUTEX_NO_ELISION_NP 512
+
+static void disable_elision_for_mutex(pthread_mutex_t* mutex)
+{
+	/* Cancel explicitly-set elision requests */
+	mutex->__data.__kind &= ~PTHREAD_MUTEX_ELISION_NP;
+	/* Prevent auto-enabling of elision */
+	mutex->__data.__kind |= PTHREAD_MUTEX_NO_ELISION_NP;
+}
+
+int pthread_mutex_lock(pthread_mutex_t* mutex)
+{
+	/* Prevent use of lock elision; Haswell's TSX/RTM features used by
+	   lock elision increment the rbc perf counter for instructions which
+	   are later rolled back if the transaction fails. */
+	disable_elision_for_mutex(mutex);
+	return real_pthread_mutex_lock(mutex);
+}
+
+int pthread_mutex_timedlock(pthread_mutex_t* mutex,
+			    const struct timespec *abstime)
+{
+	/* Prevent use of lock elision; Haswell's TSX/RTM features used by
+	   lock elision increment the rbc perf counter for instructions which
+	   are later rolled back if the transaction fails. */
+	disable_elision_for_mutex(mutex);
+	return real_pthread_mutex_timedlock(mutex, abstime);
+}
+
+int pthread_mutex_trylock(pthread_mutex_t* mutex)
+{
+	/* Prevent use of lock elision; Haswell's TSX/RTM features used by
+	   lock elision increment the rbc perf counter for instructions which
+	   are later rolled back if the transaction fails. */
+	disable_elision_for_mutex(mutex);
+	return real_pthread_mutex_trylock(mutex);
 }
 
 /**
@@ -1506,7 +1565,7 @@ static long sys_poll(const struct syscall_info* call)
 		 * special case here. */
 		local_memcpy(fds, fds2, nfds * sizeof(*fds));
 	}
-	return commit_raw_syscall(syscallno, ptr, ret);	
+	return commit_raw_syscall(syscallno, ptr, ret);
 }
 
 static long sys_read(const struct syscall_info* call)
