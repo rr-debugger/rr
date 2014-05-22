@@ -3,14 +3,17 @@
 #include <assert.h>
 #include <dlfcn.h>
 #include <getopt.h>
+#include <linux/version.h>
 #include <sched.h>
 #include <stdio.h>
 #include <string.h>
 #include <sysexits.h>
 #include <sys/prctl.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 
 #include <limits>
+#include <sstream>
 
 #include "preload/syscall_buffer.h"
 
@@ -125,6 +128,19 @@ static void assert_prerequisites()
 	if (ptrace_scope_val > 0) {
 		FATAL() <<"Can't write to process memory; ptrace_scope is "
 			<< ptrace_scope_val;
+	}
+
+	struct utsname uname_buf;
+	memset(&uname_buf, 0, sizeof(uname_buf));
+	if (!uname(&uname_buf)) {
+		unsigned int major, minor;
+		char dot;
+		stringstream stream(uname_buf.release);
+		stream >> major >> dot >> minor;
+		if (KERNEL_VERSION(major, minor, 0) < KERNEL_VERSION(3, 4, 0)) {
+			FATAL() << "Kernel doesn't support necessary ptrace "
+				<< "functionality; need 3.4.0 or better.";
+		}
 	}
 }
 
