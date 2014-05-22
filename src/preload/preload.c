@@ -160,22 +160,6 @@ static int (*real_pthread_create)(pthread_t* thread,
 				  const pthread_attr_t* attr,
 				  void* (*start_routine) (void*), void* arg);
 
-/* Points at the libc/pthread pthread_mutex_lock().  We wrap
- * pthread_mutex_lock, so need to retain this pointer to call out to the
- * libc version. */
-static int (*real_pthread_mutex_lock)(pthread_mutex_t* mutex);
-
-/* Points at the libc/pthread pthread_mutex_timedlock().  We wrap
- * pthread_mutex_timedlock, so need to retain this pointer to call out to the
- * libc version. */
-static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
-					   const struct timespec *abstime);
-
-/* Points at the libc/pthread pthread_mutex_trylock().  We wrap
- * pthread_mutex_trylock, so need to retain this pointer to call out to the
- * libc version. */
-static int (*real_pthread_mutex_trylock)(pthread_mutex_t* mutex);
-
 /**
  * Return a pointer to the buffer header, which happens to occupy the
  * initial bytes in the mapped region.
@@ -789,9 +773,6 @@ init_process(void)
 	}
 
 	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
-	real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
-	real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
-	real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 	if (!buffer_enabled) {
 		debug("Syscall buffering is disabled");
@@ -869,32 +850,31 @@ static void disable_elision_for_mutex(pthread_mutex_t* mutex)
 	mutex->__data.__kind |= PTHREAD_MUTEX_NO_ELISION_NP;
 }
 
+extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
+extern int __pthread_mutex_timedlock(pthread_mutex_t* mutex,
+				     const struct timespec *abstime);
+extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
+
+/* Prevent use of lock elision; Haswell's TSX/RTM features used by
+   lock elision increment the rbc perf counter for instructions which
+   are later rolled back if the transaction fails. */
 int pthread_mutex_lock(pthread_mutex_t* mutex)
 {
-	/* Prevent use of lock elision; Haswell's TSX/RTM features used by
-	   lock elision increment the rbc perf counter for instructions which
-	   are later rolled back if the transaction fails. */
 	disable_elision_for_mutex(mutex);
-	return real_pthread_mutex_lock(mutex);
+	return __pthread_mutex_lock(mutex);
 }
 
 int pthread_mutex_timedlock(pthread_mutex_t* mutex,
 			    const struct timespec *abstime)
 {
-	/* Prevent use of lock elision; Haswell's TSX/RTM features used by
-	   lock elision increment the rbc perf counter for instructions which
-	   are later rolled back if the transaction fails. */
 	disable_elision_for_mutex(mutex);
-	return real_pthread_mutex_timedlock(mutex, abstime);
+	return __pthread_mutex_timedlock(mutex, abstime);
 }
 
 int pthread_mutex_trylock(pthread_mutex_t* mutex)
 {
-	/* Prevent use of lock elision; Haswell's TSX/RTM features used by
-	   lock elision increment the rbc perf counter for instructions which
-	   are later rolled back if the transaction fails. */
 	disable_elision_for_mutex(mutex);
-	return real_pthread_mutex_trylock(mutex);
+	return __pthread_mutex_trylock(mutex);
 }
 
 /**
