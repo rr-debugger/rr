@@ -112,11 +112,8 @@ trace_frame::dump(FILE* out, bool raw_dump)
 			-1LL, -1LL, rbc, -1LL
 #endif
 			);
-		fprintf(out,
-			" %ld %ld %ld %ld %ld %ld %ld"
-			" %ld %ld %ld %ld\n",
-			r.eax, r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp,
-			r.orig_eax, r.esp, r.eip, r.eflags);
+		r.print_register_file_for_trace(out, true);
+		fprintf(out, "\n");
 	} else {
 		fprintf(out,
 "\n"
@@ -132,12 +129,8 @@ trace_frame::dump(FILE* out, bool raw_dump)
 			rbc
 #endif
 			);
-		fprintf(out,
-"  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx\n"
-"  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld xfs:0x%lx xgs:0x%lx\n"
-"}\n",
-			r.eax, r.ebx, r.ecx, r.edx, r.esi, r.edi, r.ebp,
-			r.eip, r.esp, r.eflags, r.orig_eax, r.xfs, r.xgs);
+		r.print_register_file_for_trace(out, false);
+		fprintf(out, "}\n");
 	}
 }
 
