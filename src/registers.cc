@@ -7,6 +7,35 @@
 #include <assert.h>
 #include <string.h>
 
+void Registers::print_register_file(FILE* f) const
+{
+	fprintf(f, "Printing register file:\n");
+	fprintf(f, "eax: %lx\n", eax);
+	fprintf(f, "ebx: %lx\n", ebx);
+	fprintf(f, "ecx: %lx\n", ecx);
+	fprintf(f, "edx: %lx\n", edx);
+	fprintf(f, "esi: %lx\n", esi);
+	fprintf(f, "edi: %lx\n", edi);
+	fprintf(f, "ebp: %lx\n", ebp);
+	fprintf(f, "esp: %lx\n", esp);
+	fprintf(f, "eip: %lx\n", eip);
+	fprintf(f, "eflags %lx\n",eflags);
+	fprintf(f, "orig_eax %lx\n", orig_eax);
+	fprintf(f, "xcs: %lx\n", xcs);
+	fprintf(f, "xds: %lx\n", xds);
+	fprintf(f, "xes: %lx\n", xes);
+	fprintf(f, "xfs: %lx\n", xfs);
+	fprintf(f, "xgs: %lx\n", xgs);
+	fprintf(f, "xss: %lx\n", xss);
+	fprintf(f, "\n");
+}
+
+void Registers::print_register_file_compact(FILE* f) const
+{
+	fprintf(f, "eax:%lx ebx:%lx ecx:%lx edx:%lx esi:%lx edi:%lx ebp:%lx esp:%lx eip:%lx eflags:%lx",
+		eax, ebx, ecx, edx, esi, edi, ebp, esp, eip, eflags);
+}
+
 template<typename T>
 static size_t copy_register_value(uint8_t* buf, T src)
 {
