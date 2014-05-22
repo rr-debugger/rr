@@ -36,6 +36,23 @@ void Registers::print_register_file_compact(FILE* f) const
 		eax, ebx, ecx, edx, esi, edi, ebp, esp, eip, eflags);
 }
 
+void Registers::print_register_file_for_trace(FILE* f, bool raw_dump) const
+{
+	if (raw_dump) {
+		fprintf(f,
+			" %ld %ld %ld %ld %ld %ld %ld"
+			" %ld %ld %ld %ld",
+			eax, ebx, ecx, edx, esi, edi, ebp,
+			orig_eax, esp, eip, eflags);
+	} else {
+		fprintf(f,
+"  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx\n"
+"  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld xfs:0x%lx xgs:0x%lx\n",
+			eax, ebx, ecx, edx, esi, edi, ebp,
+			eip, esp, eflags, orig_eax, xfs, xgs);
+	}
+}
+
 template<typename T>
 static size_t copy_register_value(uint8_t* buf, T src)
 {

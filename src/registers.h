@@ -75,6 +75,7 @@ public:
 
 	void print_register_file(FILE* f) const;
 	void print_register_file_compact(FILE* f) const;
+	void print_register_file_for_trace(FILE*, bool raw_dump) const;
 
 	// Various things the GDB stub needs to know about.
 	enum DebuggerRegister {
