@@ -559,38 +559,36 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 	}
 }
 
-int compare_register_files(Task* t,
-			   const char* name1,
-			   const Registers* reg1,
-			   const char* name2,
-			   const Registers* reg2,
-			   int mismatch_behavior)
+bool compare_register_files(Task* t,
+			    const char* name1,
+			    const Registers* reg1,
+			    const char* name2,
+			    const Registers* reg2,
+			    int mismatch_behavior)
 {
 	int bail_error = (mismatch_behavior >= BAIL_ON_MISMATCH);
-	/* TODO: do any callers use this? */
-	int errbit = 0;
-	int err = 0;
+	bool match = true;
 
-#define REGCMP(_reg, _bit)						   \
+#define REGCMP(_reg)							   \
 	do {								   \
 		if (reg1-> _reg != reg2-> _reg) {			   \
 			maybe_print_reg_mismatch(mismatch_behavior, #_reg, \
 						 name1, reg1-> _reg,	   \
 						 name2, reg2-> _reg);	   \
-			err |= (1 << (_bit));				   \
+			match = false;					   \
 		}							   \
 	} while (0)
 
-	REGCMP(eax, ++errbit);
-	REGCMP(ebx, ++errbit);
-	REGCMP(ecx, ++errbit);
-	REGCMP(edx, ++errbit);
-	REGCMP(esi, ++errbit);
-	REGCMP(edi, ++errbit);
-	REGCMP(ebp, ++errbit);
-	REGCMP(eip, ++errbit);
-	REGCMP(xfs, ++errbit);
-	REGCMP(xgs, ++errbit);
+	REGCMP(eax);
+	REGCMP(ebx);
+	REGCMP(ecx);
+	REGCMP(edx);
+	REGCMP(esi);
+	REGCMP(edi);
+	REGCMP(ebp);
+	REGCMP(eip);
+	REGCMP(xfs);
+	REGCMP(xgs);
 	/* The following are eflags that have been observed to be
 	 * nondeterministic in practice.  We need to mask them off in
 	 * this comparison to prevent replay from diverging. */
@@ -630,19 +628,19 @@ int compare_register_files(Task* t,
 	if (eflags1 != eflags2) {
 		maybe_print_reg_mismatch(mismatch_behavior, "deterministic eflags",
 					 name1, eflags1, name2, eflags2);
-		err |= (1 << ++errbit);
+		match = false;
 	}
 
-	ASSERT(t, !bail_error || !err)
+	ASSERT(t, !bail_error || match)
 		<<"Fatal register mismatch (rbc/rec:"
 		<< t->rbc_count() <<"/"<< t->current_trace_frame().rbc <<")";
 
-	if (!err && mismatch_behavior == LOG_MISMATCHES) {
+	if (match && mismatch_behavior == LOG_MISMATCHES) {
 		LOG(info) <<"(register files are the same for "<< name1
 			  <<" and "<< name2 <<")";
 	}
 
-	return err;
+	return match;
 }
 
 void assert_child_regs_are(Task* t, const Registers* regs)

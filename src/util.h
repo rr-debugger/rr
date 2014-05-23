@@ -132,7 +132,7 @@ struct flags* rr_flags_for_init(void);
 void update_replay_target(pid_t process, int event);
 
 /**
- * Return zero if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
+ * Return true if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
  * indicates that the caller is using this as a general register
  * compare and nothing special should be done if the register files
  * mismatch.  Passing LOG_MISMATCHES will log the registers that don't
@@ -140,12 +140,12 @@ void update_replay_target(pid_t process, int event);
  * mismatch.
  */
 enum { EXPECT_MISMATCHES = 0, LOG_MISMATCHES, BAIL_ON_MISMATCH };
-int compare_register_files(Task* t,
-			   const char* name1,
-			   const Registers* reg1,
-			   const char* name2,
-			   const Registers* reg2,
-			   int mismatch_behavior);
+bool compare_register_files(Task* t,
+			    const char* name1,
+			    const Registers* reg1,
+			    const char* name2,
+			    const Registers* reg2,
+			    int mismatch_behavior);
 
 void assert_child_regs_are(Task* t, const Registers* regs);
 
