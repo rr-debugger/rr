@@ -484,7 +484,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 
 		assert(t->pending_sig() == 0);
 
-		retval = t->regs().eax;
+		retval = t->regs().syscall_result();
 
 		// sigreturn is a special snowflake, because it
 		// doesn't actually return.  Instead, it undoes the
@@ -521,8 +521,8 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			<<" but retval is -ENOSYS, usually only seen at entry";
 
 		LOG(debug) <<"  original_syscallno:"<< t->regs().original_syscallno()
-			   <<" ("<< syscallname(syscallno) <<"); eax:"
-			   << t->regs().eax;
+			   <<" ("<< syscallname(syscallno) <<"); return val:"
+			   << t->regs().syscall_result();
 
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */

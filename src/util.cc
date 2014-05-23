@@ -1470,13 +1470,13 @@ void monkeypatch_vdso(Task* t)
 	// NB: the tracee can't be interrupted with a signal while
 	// we're processing the rrcall, because it's masked off all
 	// signals.
-	void* vsyscall_hook_trampoline = (void*)t->regs().ebx;
+	void* vsyscall_hook_trampoline = (void*)t->regs().arg1();
 	// Luckily, linux is happy for us to scribble directly over
 	// the vdso mapping's bytes without mprotecting the region, so
 	// we don't need to prepare remote syscalls here.
 	monkeypatch(t, kernel_vsyscall, vsyscall_hook_trampoline);
 
 	Registers r = t->regs();
-	r.eax = 0;
+	r.set_syscall_result(0);
 	t->set_regs(r);
 }

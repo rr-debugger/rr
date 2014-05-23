@@ -500,7 +500,7 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 	 * start validating registers at events. */
 	t->session().after_exec();
 
-	bool check = t->regs().ebx;
+	bool check = t->regs().arg1();
 	/* if the execve comes from a vfork system call the ebx
 	 * register is not zero. in this case, no recorded data needs
 	 * to be injected */
