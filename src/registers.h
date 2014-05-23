@@ -77,6 +77,18 @@ public:
 	void print_register_file_compact(FILE* f) const;
 	void print_register_file_for_trace(FILE*, bool raw_dump) const;
 
+	/**
+	 * Return true if |reg1| matches |reg2|.  If |mismatch_behavior|
+	 * is BAIL_ON_MISMATCH, mismatched registers will be logged as
+	 * errors; if |mismatch_behavior| is LOG_MISMATCHES, mismatched
+	 * registers will be logged as informative messages.
+	 */
+	static bool compare_register_files(const char* name1,
+					   const Registers* reg1,
+					   const char* name2,
+					   const Registers* reg2,
+					   int mismatch_behavior);
+
 	// Various things the GDB stub needs to know about.
 	enum DebuggerRegister {
 		DREG_EAX, DREG_ECX, DREG_EDX, DREG_EBX,
