@@ -155,10 +155,14 @@ static __thread int desched_counter_fd;
 
 /* Points at the libc/pthread pthread_create().  We wrap
  * pthread_create, so need to retain this pointer to call out to the
- * libc version. */
+ * libc version. There is no __pthread_create stub to call. There are
+ * some explicitly-versioned stubs but let's not use those. */
 static int (*real_pthread_create)(pthread_t* thread,
 				  const pthread_attr_t* attr,
 				  void* (*start_routine) (void*), void* arg);
+
+static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
+					   const struct timespec *abstime);
 
 /**
  * Return a pointer to the buffer header, which happens to occupy the
@@ -773,6 +777,8 @@ init_process(void)
 	}
 
 	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
+	real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+
 	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 	if (!buffer_enabled) {
 		debug("Syscall buffering is disabled");
@@ -850,9 +856,14 @@ static void disable_elision_for_mutex(pthread_mutex_t* mutex)
 	mutex->__data.__kind |= PTHREAD_MUTEX_NO_ELISION_NP;
 }
 
+/*
+ * We bind directly to __pthread_mutex_lock and __pthread_mutex_trylock
+ * because setting up indirect function pointers in init_process requires
+ * calls to dlsym which itself can call pthread_mutex_lock (e.g. via
+ * application code overriding malloc/calloc to use a pthreads-based
+ * implementation).
+ */
 extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
-extern int __pthread_mutex_timedlock(pthread_mutex_t* mutex,
-				     const struct timespec *abstime);
 extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
 
 /* Prevent use of lock elision; Haswell's TSX/RTM features used by
@@ -868,7 +879,11 @@ int pthread_mutex_timedlock(pthread_mutex_t* mutex,
 			    const struct timespec *abstime)
 {
 	disable_elision_for_mutex(mutex);
-	return __pthread_mutex_timedlock(mutex, abstime);
+	/* No __pthread_mutex_timedlock stub exists, so we have to use the
+	 * indirect call.
+	 */
+	return real_pthread_mutex_timedlock(mutex, abstime);
+
 }
 
 int pthread_mutex_trylock(pthread_mutex_t* mutex)
