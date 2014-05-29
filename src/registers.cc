@@ -27,7 +27,7 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
 	case DREG_EDX:
 		return copy_register_value(buf, edx);
 	case DREG_EBX:
-		return copy_register_value(buf, edx);
+		return copy_register_value(buf, ebx);
 	case DREG_ESP:
 		return copy_register_value(buf, esp);
 	case DREG_EBP:
