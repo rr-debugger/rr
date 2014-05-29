@@ -80,21 +80,6 @@
 #define syscall you_must_use_traced_syscall
 
 /**
- * Copy |_rhs| to |_lhs|.  If the copy overflows, set errno to
- * EOVERFLOW and return -1.
- *
- * WARNING: this macro affects control flow, use with great care.
- */
-#define COPY_CHECK_OVERFLOW(_lhs, _rhs)					\
-	do {								\
-		_lhs = _rhs;						\
-		if (sizeof(_lhs) != sizeof(_rhs) && (_lhs) != (_rhs)) {	\
-			errno = EOVERFLOW;				\
-			return -1;					\
-		}							\
-	} while(0)
-
-/**
  * Represents syscall params.  Makes it simpler to pass them around,
  * and avoids pushing/popping all the data for calls.
  */
