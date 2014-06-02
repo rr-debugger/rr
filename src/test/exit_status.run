@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh exit_status "$@"
+record exit_status
+if [[ $? != 7 ]]; then
+    failed "got exit status $?, expected 7"
+else
+    passed
+fi
