@@ -83,16 +83,19 @@ struct mmapped_file {
 };
 
 /**
- * Records data needed to supply the arguments for |execve()| calls.
+ * Records data needed to supply the arguments for the |execve()| call that
+ * initiates the recorded process group.
+ * Also includes the current working directory at the time of the exec.
  */
 struct args_env {
 	args_env() { }
-	args_env(int argc, char* argv[], char** envp);
+	args_env(int argc, char* argv[], char** envp, char* cwd);
 	~args_env();
 
 	args_env& operator=(args_env&& o);
 
 	std::string exe_image;
+	std::string cwd;
 	// The initial argv and envp for a tracee.  We store these as
 	// the relatively complicated array of naked |char*| strings
 	// so that calling |.data()| on both vectors returns a

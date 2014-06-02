@@ -24,7 +24,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 3
+#define TRACE_VERSION 4
 
 static ssize_t sizeof_trace_frame_event_info(void)
 {
@@ -134,8 +134,9 @@ trace_frame::dump(FILE* out, bool raw_dump)
 	}
 }
 
-args_env::args_env(int argc, char* arg_v[], char** env_p)
+args_env::args_env(int argc, char* arg_v[], char** env_p, char* cwd)
 	: exe_image(arg_v[0])
+	, cwd(cwd)
 {
 	for (int i = 0; i < argc; ++i) {
 		argv.push_back(strdup(arg_v[i]));
@@ -158,6 +159,7 @@ args_env::operator=(args_env&& o)
 	swap(exe_image, o.exe_image);
 	swap(argv, o.argv);
 	swap(envp, o.envp);
+	swap(cwd, o.cwd);
 	return *this;
 }
 
@@ -301,7 +303,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const struct args_env& ae)
 
 	assert(out.good());
 
-
+	out << ae.cwd << '\0';
 	out << ae.argv;
 	out << ae.envp;
 	return tof;
@@ -311,6 +313,10 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae)
 	ifstream in(tif.args_env_file_path());
 
 	assert(in.good());
+
+	char buf[PATH_MAX];
+	in.getline(buf, sizeof(buf), '\0');
+	ae.cwd = buf;
 
 	in >> ae.argv;
 

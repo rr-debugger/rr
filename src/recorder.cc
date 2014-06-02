@@ -869,7 +869,10 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 {
 	LOG(info) <<"Start recording...";
 
-	ae = args_env(argc, argv, envp);
+	char cwd[PATH_MAX] = "";
+	getcwd(cwd, sizeof(cwd));
+
+	ae = args_env(argc, argv, envp, cwd);
 	// LD_PRELOAD the syscall interception lib
 	if (!rr_flags()->syscall_buffer_lib_path.empty()) {
 		// Remove the trailing nullptr.  We'll put it back

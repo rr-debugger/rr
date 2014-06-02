@@ -2954,7 +2954,15 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 
 	pid_t tid = fork();
 	if (0 == tid) {
+		// Set current working directory to the cwd used during
+		// recording. The main effect of this is to resolve relative
+		// paths in the following execvpe correctly during replay.
+		chdir(ae.cwd.c_str());
 		set_up_process();
+		// The preceding code must run before sending SIGSTOP here,
+		// since after SIGSTOP replay emulates almost all syscalls, but
+		// we need the above syscalls to run "for real".
+
 		// Signal to tracer that we're configured.
 		::kill(getpid(), SIGSTOP);
 
