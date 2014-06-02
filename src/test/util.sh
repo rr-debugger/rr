@@ -200,22 +200,28 @@ function debug { exe=$1; expectscript=$2; replayargs=$3
     fi
 }
 
+function failed { msg=$1;
+    leave_data=y
+    echo "Test '$TESTNAME' FAILED: $msg"
+}
+
+function passed {
+    echo "Test '$TESTNAME' PASSED"
+}
+
 # Check that (i) no error during replay; (ii) recorded and replayed
 # output match; (iii) the supplied token was found in the output.
 # Otherwise the test fails.
 function check { token=$1;
     if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out ]; then
-	leave_data=y
-	echo "Test '$TESTNAME' FAILED: output files not found."
+	failed "output files not found."
     elif [[ $(cat replay.err) != "" ]]; then
-	leave_data=y
-	echo "Test '$TESTNAME' FAILED: error during replay:"
+	failed ": error during replay:"
 	echo "--------------------------------------------------"
 	cat replay.err
 	echo "--------------------------------------------------"
     elif [[ $(diff record.out replay.out) != "" ]]; then
-	leave_data=y
-	echo "Test '$TESTNAME' FAILED: output from recording different than replay"
+	failed ": output from recording different than replay"
 	echo "Output from recording:"
 	echo "--------------------------------------------------"
 	cat record.out
@@ -225,13 +231,12 @@ function check { token=$1;
 	cat replay.out
 	echo "--------------------------------------------------"
     elif [[ "$token" != "" && "record.out" != $(grep -l "$token" record.out) ]]; then
-	leave_data=y
-	echo "Test '$TESTNAME' FAILED: token '$token' not in output:"
+	failed ": token '$token' not in output:"
 	echo "--------------------------------------------------"
 	cat record.out
 	echo "--------------------------------------------------"
     else
-	echo "Test '$TESTNAME' PASSED"
+        passed
     fi
 }
 
@@ -243,8 +248,7 @@ function check { token=$1;
 function compare_test { token=$1; replayflags=$2;
     test=$TESTNAME
     if [[ $token == "" ]]; then
-	leave_data=y
-	fatal "FAILED: Test $test didn't pass an exit token"
+	failed ": didn't pass an exit token"
     fi
     record $test
     replay $replayflags
@@ -271,8 +275,7 @@ function count_events {
     # significalty less than that, almost certainly something has gone
     # wrong.
     if [ "$events" -le 150 ]; then
-        leave_data=y
-        fatal "FAILED: Recording for $test had too few events.  Is |rr dump -r| broken?"
+        failed ": Recording had too few events.  Is |rr dump -r| broken?"
     fi
     # This event count is used to loop over attaching the debugger.
     # The tests assume that the debugger can be attached at all
