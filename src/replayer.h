@@ -10,8 +10,9 @@
 /**
  * Replay the trace.  argc, argv, and envp are this process's
  * parameters.
+ * Returns an exit code: 0 on success.
  */
-void replay(int argc, char* argv[], char** envp);
+int replay(int argc, char* argv[], char** envp);
 
 /**
  * Open a temporary debugging connection for |t| and service requests

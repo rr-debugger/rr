@@ -12,8 +12,10 @@ class Task;
  * Record the execution of the application that will be created by
  * argc, argv, and envp.  |rr_exe| points at rr's image (possibly in
  * the $PATH).
+ * Returns an exit code --- if recording terminates normally, the exit code
+ * of the recorded process.
  */
-void record(const char* rr_exe, int argc, char* argv[], char** envp);
+int record(const char* rr_exe, int argc, char* argv[], char** envp);
 
 /**
  * Record a trace-termination event, sync the trace files, and shut

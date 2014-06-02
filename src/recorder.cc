@@ -865,7 +865,7 @@ static void maybe_process_term_request(Task* t)
 	}
 }
 
-void record(const char* rr_exe, int argc, char* argv[], char** envp)
+int record(const char* rr_exe, int argc, char* argv[], char** envp)
 {
 	LOG(info) <<"Start recording...";
 
@@ -924,6 +924,7 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 	install_termsig_handlers();
 
 	Task* t = session->create_task(ae, session);
+	TaskGroup::shr_ptr initial_task_group = t->task_group();
 	start_hpc(t, rr_flags()->max_rbc);
 
 	while (session->tasks().size() > 0) {
@@ -985,9 +986,14 @@ void record(const char* rr_exe, int argc, char* argv[], char** envp)
 		runnable_state_changed(t);
 	}
 
+	int exit_code = initial_task_group->exit_code;
+
 	LOG(info) <<"Done recording -- cleaning up";
 	session = nullptr;
+	initial_task_group = nullptr;
 	close_libpfm();
+
+	return exit_code;
 }
 
 void terminate_recording(Task* t)

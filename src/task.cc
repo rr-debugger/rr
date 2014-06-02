@@ -1088,7 +1088,9 @@ TaskGroup::destabilize()
 }
 
 TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
-	: tgid(tgid), real_tgid(real_tgid)
+	: tgid(tgid)
+	, real_tgid(real_tgid)
+	, exit_code(-1)
 {
 	LOG(debug) <<"creating new task group "<< tgid <<" (real tgid:"
 		   << real_tgid <<")";

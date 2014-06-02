@@ -68,7 +68,7 @@ static void dump_events_matching(TraceIfstream& trace,
 	}
 }
 
-static void start_dumping(int argc, char* argv[], char** envp)
+static int start_dumping(int argc, char* argv[], char** envp)
 {
 	FILE* out = stdout;
 	auto trace = TraceIfstream::open(argc, argv);
@@ -80,15 +80,18 @@ static void start_dumping(int argc, char* argv[], char** envp)
 
 	if (1 == argc) {
 		// No specs => dump all events.
-		return dump_events_matching(*trace, stdout,
-					    nullptr/*all events*/);
+		dump_events_matching(*trace, stdout,
+				     nullptr/*all events*/);
+		return 0;
 	}
 	for (int i = 1; i < argc; ++i) {
 		dump_events_matching(*trace, stdout, argv[i]);
 	}
+
+	return 0;
 }
 
-static void start(const char* rr_exe, int argc, char* argv[], char** envp)
+static int start(const char* rr_exe, int argc, char* argv[], char** envp)
 {
 
 	switch (rr_flags()->option) {
@@ -100,6 +103,7 @@ static void start(const char* rr_exe, int argc, char* argv[], char** envp)
 		return start_dumping(argc, argv, envp);
 	default:
 		FATAL() <<"Uknown option "<< rr_flags()->option;
+		return 0; // unreached
 	}
 }
 
@@ -601,8 +605,5 @@ int main(int argc, char* argv[])
 		flags->syscall_buffer_lib_path = find_syscall_buffer_library();
 	}
 
-	start(argv[0], argc - argi , argv + argi, environ);
-
-	return 0;
-
+	return start(argv[0], argc - argi , argv + argi, environ);
 }

@@ -2077,7 +2077,7 @@ static void replay_trace_frames(void)
 	}
 }
 
-static void serve_replay(int argc, char* argv[], char** envp)
+static int serve_replay(int argc, char* argv[], char** envp)
 {
 	session = ReplaySession::create(argc, argv);
 
@@ -2090,7 +2090,7 @@ static void serve_replay(int argc, char* argv[], char** envp)
 	session = nullptr;
 
 	LOG(debug) <<"debugger server exiting ...";
-	exit(0);
+	return 0;
 }
 
 static bool launch_debugger;
@@ -2114,7 +2114,7 @@ static void handle_signal(int sig)
 	}
 }
 
-void replay(int argc, char* argv[], char** envp)
+int replay(int argc, char* argv[], char** envp)
 {
 	// If we're not going to autolaunch the debugger, don't go
 	// through the rigamarole to set that up.  All it does is
@@ -2142,8 +2142,7 @@ void replay(int argc, char* argv[], char** envp)
 		// debugger server isn't set up to handle SIGINT.  So
 		// block it.
 		set_sig_blockedness(SIGINT, SIG_BLOCK);
-		serve_replay(argc, argv, envp);
-		FATAL() <<"Not reached";
+		return serve_replay(argc, argv, envp);
 	}
 	LOG(debug) << parent <<": forked debugger server "<< child;
 
@@ -2191,6 +2190,8 @@ void replay(int argc, char* argv[], char** envp)
 			exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
 		}
 	}
+
+	return 0;
 }
 
 void emergency_debug(Task* t)

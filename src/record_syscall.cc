@@ -694,7 +694,14 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	case SYS_exit:
+		if (t->task_group()->task_set().size() == 1) {
+			t->task_group()->exit_code = (int)t->regs().arg1();
+		}
 		destroy_buffers(t);
+		return 0;
+
+	case SYS_exit_group:
+		t->task_group()->exit_code = (int)t->regs().arg1();
 		return 0;
 
 	case SYS_execve: {

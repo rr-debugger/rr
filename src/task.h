@@ -685,6 +685,8 @@ struct TaskGroup : public HasTaskSet {
 	const pid_t tgid;
 	const pid_t real_tgid;
 
+	int exit_code;
+
 private:
 	TaskGroup(pid_t tgid, pid_t real_tgid);
 
