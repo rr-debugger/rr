@@ -20,6 +20,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -pthread -O0 -g3 -Wall -Werror -m32")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3 -m32")
 
+set_source_files_properties(src/test/cpuid.c PROPERTIES COMPILE_FLAGS -O2)
+
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" ""
   CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
@@ -100,6 +102,7 @@ set(BASIC_TESTS
   clock
   clone
   condvar_stress
+  cpuid
   crash
   epoll_create
   epoll_create1
