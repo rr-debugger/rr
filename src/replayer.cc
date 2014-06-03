@@ -171,6 +171,19 @@ static WatchType watchpoint_type(DbgRequestType req)
 	}
 }
 
+static void maybe_singlestep_for_event(Task* t, struct dbg_request* req)
+{
+	if (session->current_trace_frame().global_time ==
+		instruction_trace_at_event) {
+		fputs("Stepping: ", stderr);
+		print_register_file_compact(stderr, &t->regs());
+		fprintf(stderr, " rbc:%lld\n", t->rbc_count());
+		req->type = DREQ_STEP;
+		req->target = get_threadid(t);
+		req->suppress_debugger_stop = true;
+	}
+}
+
 /**
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
@@ -183,6 +196,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		memset(&continue_all_tasks, 0, sizeof(continue_all_tasks));
 		continue_all_tasks.type = DREQ_CONTINUE;
 		continue_all_tasks.target = DBG_ALL_THREADS;
+		maybe_singlestep_for_event(t, &continue_all_tasks);
 		return continue_all_tasks;
 	}
 	while (1) {
@@ -191,15 +205,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		Task* target = NULL;
 
 		if (dbg_is_resume_request(&req)) {
-			if (session->current_trace_frame().global_time ==
-				instruction_trace_at_event) {
-				fputs("Stepping: ", stderr);
-				print_register_file_compact(stderr, &t->regs());
-				fprintf(stderr, " rbc:%lld\n", t->rbc_count());
-				req.type = DREQ_STEP;
-				req.target = get_threadid(t);
-				req.suppress_debugger_stop = true;
-			}
+			maybe_singlestep_for_event(t, &req);
 			LOG(debug) <<"  is resume request";
 			return req;
 		}
@@ -418,7 +424,8 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (session.current_trace_frame().ev.type == EV_SCHED) {
+	if (session.current_trace_frame().ev.type == EV_SCHED &&
+	    !instruction_trace_at_event) {
 		struct trace_frame next_trace = session.ifstream().peek_frame();
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid) {
