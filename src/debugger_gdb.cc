@@ -72,8 +72,6 @@ struct dbg_context {
 	byte outbuf[32768];	/* buffered output for gdb */
 	ssize_t outlen;
 	ssize_t outsize;
-	// Checkpoints, indexed by checkpoint ID
-	std::map<int, ReplaySession::shr_ptr> checkpoints;
 };
 
 bool dbg_is_resume_request(const struct dbg_request* req)
@@ -220,20 +218,7 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 	return dbg;
 }
 
-static const char gdb_command_file[] =
-	"define checkpoint\n"
-	"  init-if-undefined $_next_checkpoint_index = 1\n"
-	/* Ensure the command echoes the checkpoint number, not the encoded message */
-	"  p (*(int*)29298 = 0x01000000 | $_next_checkpoint_index), $_next_checkpoint_index++\n"
-	"end\n"
-	"define delete checkpoint\n"
-	"  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
-	"end\n"
-	"define restart\n"
-	"  run c$arg0\n"
-	"end\n";
-
-static string create_gdb_command_file()
+static string create_gdb_command_file(const char* macros)
 {
 	char tmp[] = "rr-gdb-commands-XXXXXX";
 	// This fd is just leaked. That's fine since we only call this once
@@ -241,8 +226,9 @@ static string create_gdb_command_file()
 	int fd = mkstemp(tmp);
 	unlink(tmp);
 
-	int written = write(fd, gdb_command_file, ALEN(gdb_command_file));
-	if (written != ALEN(gdb_command_file)) {
+	ssize_t len = strlen(macros);
+	int written = write(fd, macros, len);
+	if (written != len) {
 		FATAL() <<"Failed to write gdb command file";
 	}
 
@@ -251,7 +237,7 @@ static string create_gdb_command_file()
 	return procfile.str();
 }
 
-void dbg_launch_debugger(int params_pipe_fd)
+void dbg_launch_debugger(int params_pipe_fd, const char* macros)
 {
 	struct debugger_params params;
 	ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
@@ -260,7 +246,6 @@ void dbg_launch_debugger(int params_pipe_fd)
 	stringstream attach_cmd;
 	attach_cmd << "target extended-remote " << params.socket_addr << ":"
 		   << params.port;
-	string gdb_command_file = create_gdb_command_file();
 	LOG(debug) <<"launching gdb with command '"<< attach_cmd.str() <<"'";
 
 	vector<const char*> args;
@@ -292,8 +277,11 @@ void dbg_launch_debugger(int params_pipe_fd)
 	}
 	args.push_back("-l");
 	args.push_back("-1");
-	args.push_back("-x");
-	args.push_back(gdb_command_file.c_str());
+	if (macros) {
+		string gdb_command_file = create_gdb_command_file(macros);
+		args.push_back("-x");
+		args.push_back(gdb_command_file.c_str());
+	}
 	args.push_back("-ex");
 	args.push_back(attach_cmd.str().c_str());
 	args.push_back(nullptr);
@@ -590,6 +578,18 @@ static void read_packet(struct dbg_context* dbg)
 	}
 }
 
+static void read_binary_data(const byte* payload, ssize_t data_len, byte* data)
+{
+	ssize_t payload_idx = 0;
+	for (ssize_t i = 0; i < data_len; ++i) {
+		byte b = payload[payload_idx++];
+		if ('}' == b) {
+			b = 0x20 ^ payload[payload_idx++];
+		}
+		data[i] = b;
+	}
+}
+
 /**
  * Parse and return a gdb thread-id from |str|.  |endptr| points to
  * the character just after the last character in the thread-id.  It
@@ -856,18 +856,18 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 		if (strlen(args)) {
 			string event_str = decode_ascii_encoded_hex_str(args);
 			char* endp;
+			// TODO: ideally we would keep checkpointing
+			// out of the gdb protocol translator, and
+			// just pass up the run parameters, but that's
+			// unnecessarily awkward due to the C-style
+			// request struct and the way gdb encodes the
+			// run args.
 			if (event_str[0] == 'c') {
 				int param = strtol(event_str.c_str() + 1, &endp, 0);
-				if (dbg_get_checkpoint(dbg, param)) {
-					dbg->req.restart.type = RESTART_FROM_CHECKPOINT;
-					dbg->req.restart.param = param;
-					LOG(debug) <<"next replayer restarting from checkpoint "
-						<< dbg->req.restart.param;
-				} else {
-					LOG(debug) << "Checkpoint "<< param <<" not found.";
-					write_packet(dbg, "E01");
-					return 0;
-				}
+				dbg->req.restart.type = RESTART_FROM_CHECKPOINT;
+				dbg->req.restart.param = param;
+				LOG(debug) <<"next replayer restarting from checkpoint "
+					   << dbg->req.restart.param;
 			} else {
 				dbg->req.restart.type = RESTART_FROM_EVENT;
 				dbg->req.restart.param =
@@ -964,45 +964,12 @@ static int process_packet(struct dbg_context* dbg)
 
 		ret = 1;
 		break;
-	case 'M': {
-		uintptr_t addr = strtoul(payload, &payload, 16);
-		++payload;
-		uintptr_t len = strtoul(payload, &payload, 16);
-		if (addr == DBG_COMMAND_MAGIC_ADDRESS && len == 4) {
-			++payload;
-			ret = 0;
-			// gdb's bytes are in host order, flip them to
-			// big-endian to get the actual value
-			uintptr_t cmd = htonl(strtoul(payload, &payload, 16));
-			switch (cmd & DBG_COMMAND_MSG_MASK) {
-			case DBG_COMMAND_MSG_CREATE_CHECKPOINT:
-				dbg->req.type = DREQ_CREATE_CHECKPOINT;
-				dbg->req.checkpoint_id = cmd & DBG_COMMAND_PARAMETER_MASK;
-				LOG(debug) <<"gdb request checkpoint creation (id="
-					   << dbg->req.checkpoint_id <<")";
-				ret = 1;
-				break;
-			case DBG_COMMAND_MSG_DELETE_CHECKPOINT:
-				dbg->req.type = DREQ_DELETE_CHECKPOINT;
-				dbg->req.checkpoint_id = cmd & DBG_COMMAND_PARAMETER_MASK;
-				LOG(debug) <<"gdb request checkpoint deletion (id="
-					   << dbg->req.checkpoint_id <<")";
-				ret = 1;
-				break;
-			default:
-				ret = 0;
-				break;
-			}
-			if (ret) {
-				break;
-			}
-		}
+	case 'M':
 		/* We can't allow the debugger to write arbitrary data
 		 * to memory, or the replay may diverge. */
 		write_packet(dbg, "");
 		ret = 0;
 		break;
-	}
 	case 'p':
 		dbg->req.type = DREQ_GET_REG;
 		dbg->req.target = dbg->query_thread;
@@ -1037,12 +1004,28 @@ static int process_packet(struct dbg_context* dbg)
 	case 'v':
 		ret = process_vpacket(dbg, payload);
 		break;
-	case 'X':
-		/* We can't allow the debugger to write arbitrary data
-		 * to memory, or the replay may diverge. */
-		write_packet(dbg, "");
-		ret = 0;
-		break;
+	case 'X': {
+		dbg->req.type = DREQ_SET_MEM;
+		dbg->req.target = dbg->query_thread;
+		dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
+		++payload;
+		dbg->req.mem.len = strtoul(payload, &payload, 16);
+		++payload;
+		// This is freed by dbg_reply_set_mem().
+		dbg->req.mem.data = (byte*)malloc(dbg->req.mem.len);
+		// TODO: verify that the length of |payload| is as
+		// expected in the presence of escaped data.  Right
+		// now this call is potential-buffer-overrun-city.
+		read_binary_data((const byte*)payload,
+				 dbg->req.mem.len,
+				 (byte*)dbg->req.mem.data);
+
+		LOG(debug) <<"gdb setting memory (addr="<< dbg->req.mem.addr
+			   <<", len="<< dbg->req.mem.len <<")";
+
+		ret = 1;
+ 		break;
+	}
 	case 'z':
 	case 'Z': {
 		int type = strtol(payload, &payload, 16);
@@ -1299,6 +1282,17 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig,
 	consume_request(dbg);
 }
 
+void dbg_notify_restart_failed(struct dbg_context* dbg)
+{
+	assert(DREQ_RESTART == dbg->req.type);
+
+	// TODO: it's not known by this author whether gdb knows how
+	// to recover from a failed "run" request.
+	write_packet(dbg, "E01");
+
+	consume_request(dbg);
+}
+
 void dbg_reply_get_current_thread(struct dbg_context* dbg,
 				  dbg_threadid_t thread)
 {
@@ -1369,6 +1363,16 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len)
 	assert(len <= dbg->req.mem.len);
 
 	write_hex_bytes_packet(dbg, mem, len);
+
+	consume_request(dbg);
+}
+
+void dbg_reply_set_mem(struct dbg_context* dbg, int ok)
+{
+	assert(DREQ_SET_MEM == dbg->req.type);
+
+	write_packet(dbg, ok ? "OK" : "E01");
+	free((byte*)dbg->req.mem.data);
 
 	consume_request(dbg);
 }
@@ -1497,57 +1501,12 @@ void dbg_reply_detach(struct dbg_context* dbg)
 	consume_request(dbg);
 }
 
-static void delete_checkpoint_internal(struct dbg_context* dbg,
-				       int checkpoint_id)
-{
-	auto it = dbg->checkpoints.find(checkpoint_id);
-	if (it == dbg->checkpoints.end()) {
-		return;
-	}
-
-	it->second->kill_all_tasks();
-	dbg->checkpoints.erase(it);
-}
-
-void dbg_created_checkpoint(struct dbg_context* dbg,
-			    ReplaySession::shr_ptr& checkpoint,
-			    int checkpoint_id)
-{
-	delete_checkpoint_internal(dbg, checkpoint_id);
-	dbg->checkpoints[checkpoint_id] = checkpoint;
-
-	write_packet(dbg, "OK");
-
-	consume_request(dbg);
-}
-
-void dbg_delete_checkpoint(struct dbg_context* dbg, int checkpoint_id)
-{
-	delete_checkpoint_internal(dbg, checkpoint_id);
-
-	write_packet(dbg, "OK");
-
-	consume_request(dbg);
-}
-
-ReplaySession::shr_ptr dbg_get_checkpoint(struct dbg_context* dbg,
-		                          int checkpoint_id)
-{
-	auto it = dbg->checkpoints.find(checkpoint_id);
-	if (it == dbg->checkpoints.end()) {
-		return nullptr;
-	}
-
-	return it->second;
-}
-
 void dbg_destroy_context(struct dbg_context** dbg)
 {
 	struct dbg_context* d;
 	if (!(d = *dbg)) {
 		return;
 	}
-	d->checkpoints.clear();
 	close(d->listen_fd);
 	close(d->sock_fd);
 	free(d);

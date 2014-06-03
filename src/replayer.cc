@@ -82,6 +82,29 @@
  */
 #define SKID_SIZE 70
 
+/**
+ * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
+ * rr commands
+ */
+static const void* DBG_COMMAND_MAGIC_ADDRESS = (void*)29298; // 'rr'
+/**
+ * The high-order byte of the 32-bit value indicates the specific command
+ * message. Not-understood command messages are ignored.
+ */
+static const uintptr_t DBG_COMMAND_MSG_MASK = 0xFF000000;
+/**
+ * Create a checkpoint of the current state whose index is given by the
+ * command parameter. If there is already a checkpoint with that index, it
+ * is deleted first.
+ */
+static const uintptr_t DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
+/**
+ * Delete the checkpoint of the current state whose index is given by the
+ * command parameter.
+ */
+static const uintptr_t DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
+static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
+
 using namespace std;
 
 // |session| is used to drive replay.
@@ -95,6 +118,27 @@ ReplaySession::shr_ptr debugger_restart_checkpoint;
 // the debugger about irrelevant stuff before our target
 // process/event.
 struct dbg_context* stashed_dbg;
+
+// Checkpoints, indexed by checkpoint ID
+std::map<int, ReplaySession::shr_ptr> checkpoints;
+// Special-sauce macros defined by rr when launching the gdb client,
+// which implement functionality outside of the gdb remote protocol.
+// (Don't stare at them too long or you'll go blind ;).)
+//
+// See #define's above for origin of magic values below.
+static const char gdb_rr_macros[] =
+	// TODO define `document' sections for these
+	"define checkpoint\n"
+	"  init-if-undefined $_next_checkpoint_index = 1\n"
+	/* Ensure the command echoes the checkpoint number, not the encoded message */
+	"  p (*(int*)29298 = 0x01000000 | $_next_checkpoint_index), $_next_checkpoint_index++\n"
+	"end\n"
+	"define delete checkpoint\n"
+	"  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
+	"end\n"
+	"define restart\n"
+	"  run c$arg0\n"
+	"end\n";
 
 // |parent| is the (potential) debugger client.  It waits until the
 // server, |child|, creates a debug socket.  Then the client exec()s
@@ -185,6 +229,64 @@ static void maybe_singlestep_for_event(Task* t, struct dbg_request* req)
 }
 
 /**
+ * Return the checkpoint stored as |checkpoint_id| or nullptr if there
+ * isn't one.
+ */
+static ReplaySession::shr_ptr get_checkpoint(int checkpoint_id)
+{
+	auto it = checkpoints.find(checkpoint_id);
+	if (it == checkpoints.end()) {
+		return nullptr;
+	}
+	return it->second;
+}
+
+/**
+ * Delete the checkpoint stored as |checkpoint_id| if it exists, or do
+ * nothing if it doesn't exist.
+ */
+static void delete_checkpoint(int checkpoint_id)
+{
+	auto it = checkpoints.find(checkpoint_id);
+	if (it == checkpoints.end()) {
+		return;
+	}
+
+	it->second->kill_all_tasks();
+	checkpoints.erase(it);
+}
+
+/**
+ * If |req| is a magic-write command, interpret it and return true.
+ * Otherwise, do nothing and return false.
+ */
+static bool maybe_process_magic_command(Task* t, struct dbg_context* dbg,
+					const struct dbg_request& req)
+{
+	if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
+		return false;
+	}
+	static_assert(4 == sizeof(uintptr_t), "32-bit assumed here");
+	uintptr_t cmd = *reinterpret_cast<const uintptr_t*>(req.mem.data);
+	uintptr_t param = cmd & DBG_COMMAND_PARAMETER_MASK;
+	switch (cmd & DBG_COMMAND_MSG_MASK) {
+	case DBG_COMMAND_MSG_CREATE_CHECKPOINT: {
+		ReplaySession::shr_ptr checkpoint = session->clone();
+		delete_checkpoint(param);
+		checkpoints[param] = checkpoint;
+		break;
+	}
+	case DBG_COMMAND_MSG_DELETE_CHECKPOINT:
+		delete_checkpoint(param);
+		break;
+	default:
+		return false;
+	}
+	dbg_reply_set_mem(dbg, true);
+	return true;
+}
+
+/**
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
  */
@@ -244,14 +346,6 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			/* Tell the debugger we stopped and await
 			 * further instructions. */
 			dbg_notify_stop(dbg, get_threadid(t), 0);
-			continue;
-		case DREQ_CREATE_CHECKPOINT: {
-			ReplaySession::shr_ptr checkpoint = session->clone();
-			dbg_created_checkpoint(dbg, checkpoint, req.checkpoint_id);
-			continue;
-		}
-		case DREQ_DELETE_CHECKPOINT:
-			dbg_delete_checkpoint(dbg, req.checkpoint_id);
 			continue;
 		case DREQ_DETACH:
 			LOG(info) <<("(debugger detached from us, rr exiting)");
@@ -329,6 +423,19 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 					     &len);
 			dbg_reply_get_mem(dbg, mem, len);
 			free(mem);
+			continue;
+		}
+		case DREQ_SET_MEM: {
+			if (maybe_process_magic_command(target, dbg, req)) {
+				continue;
+			}
+			// We can't allow the debugger to write
+			// arbitrary data - * to memory, or the replay
+			// may diverge.
+			//
+			// TODO: allow this by creating throwaway
+			// superfork clones as needed.
+			dbg_reply_set_mem(dbg, false);
 			continue;
 		}
 		case DREQ_GET_REG: {
@@ -2012,11 +2119,13 @@ static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
 
 	ReplaySession::shr_ptr checkpoint_to_restore;
 	if (req->restart.type == RESTART_FROM_CHECKPOINT) {
-		checkpoint_to_restore =
-			dbg_get_checkpoint(dbg, req->restart.param);
-		// The code that sets RESTART_FROM_CHECKPOINT should have
-		// already verified that the checkpoint exists.
-		assert(checkpoint_to_restore);
+		checkpoint_to_restore = get_checkpoint(req->restart.param);
+		if (!checkpoint_to_restore) {
+			LOG(error) << "Checkpoint "<< req->restart.param
+				   <<" not found.";
+			dbg_notify_restart_failed(dbg);
+			return dbg;
+		}
 	} else if (req->restart.type == RESTART_FROM_PREVIOUS) {
 		checkpoint_to_restore = debugger_restart_checkpoint;
 	}
@@ -2176,7 +2285,8 @@ int replay(int argc, char* argv[], char** envp)
 		sched_yield();
 		// BEGIN CRITICAL SECTION
 		if (launch_debugger) {
-			dbg_launch_debugger(debugger_params_pipe[0]);
+			dbg_launch_debugger(debugger_params_pipe[0],
+					    gdb_rr_macros);
 			FATAL() <<"Not reached";
 		}
 		ret = waitpid(child, &status, 0);

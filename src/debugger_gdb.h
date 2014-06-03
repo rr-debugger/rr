@@ -14,29 +14,6 @@
 
 #define DBG_SOCKET_READY_SIG SIGURG
 
-/**
- * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
- * rr commands
- */
-#define DBG_COMMAND_MAGIC_ADDRESS 29298 // 'rr'
-/**
- * The high-order byte of the 32-bit value indicates the specific command
- * message. Not-understood command messages are ignored.
- */
-#define DBG_COMMAND_MSG_MASK 0xFF000000
-/**
- * Create a checkpoint of the current state whose index is given by the
- * command parameter. If there is already a checkpoint with that index, it
- * is deleted first.
- */
-#define DBG_COMMAND_MSG_CREATE_CHECKPOINT 0x01000000
-/**
- * Delete the checkpoint of the current state whose index is given by the
- * command parameter.
- */
-#define DBG_COMMAND_MSG_DELETE_CHECKPOINT 0x02000000
-#define DBG_COMMAND_PARAMETER_MASK 0x00FFFFFF
-
 struct dbg_context;
 
 /**
@@ -106,6 +83,7 @@ enum DbgRequestType {
 
 	/* These use params.mem. */
 	DREQ_GET_MEM,
+	DREQ_SET_MEM,
 	DREQ_REMOVE_SW_BREAK,
 	DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
 	DREQ_REMOVE_HW_BREAK,
@@ -132,10 +110,6 @@ enum DbgRequestType {
 
 	/* Uses params.restart. */
 	DREQ_RESTART,
-
-	/* These use params.checkpoint_id. */
-	DREQ_CREATE_CHECKPOINT,
-	DREQ_DELETE_CHECKPOINT,
 };
 
 enum DbgRestartType {
@@ -159,6 +133,9 @@ struct dbg_request {
 		struct {
 			void* addr;
 			size_t len;
+			// For SET_MEM requests, the stream of |len|
+			// number of raw bytes that are to be written.
+			const byte* data;
 		} mem;
 
 		DbgRegister reg;
@@ -167,8 +144,6 @@ struct dbg_request {
 			int param;
 			DbgRestartType type;
 		} restart;
-
-		int checkpoint_id;
 	};
 };
 
@@ -217,9 +192,10 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 
 /**
  * Launch a debugger using the params that were written to
- * |params_pipe_fd|.
+ * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
+ * of macros defined in |macros| if nonnull.
  */
-void dbg_launch_debugger(int params_pipe_fd);
+void dbg_launch_debugger(int params_pipe_fd, const char* macros);
 
 /**
  * Call this when the target of |req| is needed to fulfill the
@@ -260,6 +236,9 @@ void dbg_notify_exit_signal(struct dbg_context* dbg, int sig);
 void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t which, int sig,
 		     void* watch_addr = nullptr);
 
+/** Notify the debugger that a restart request failed. */
+void dbg_notify_restart_failed(struct dbg_context* dbg);
+
 /**
  * Tell the host that |thread| is the current thread.
  */
@@ -295,6 +274,13 @@ void dbg_reply_select_thread(struct dbg_context* dbg, int ok);
  * must be less than or equal to the length of the request.
  */
 void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len);
+
+/**
+ * |ok| is true if a SET_MEM request succeeded, false otherwise.  This
+ * function *must* be called whenever a SET_MEM request is made,
+ * regardless of success/failure or special interpretation.
+ */
+void dbg_reply_set_mem(struct dbg_context* dbg, int ok);
 
 /**
  * Reply to the DREQ_GET_OFFSETS request.
