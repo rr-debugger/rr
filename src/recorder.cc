@@ -62,7 +62,10 @@ static string create_pulseaudio_config()
 	}
 	char tmp[] = "rr-pulseaudio-client-conf-XXXXXX";
 	int fd = mkstemp(tmp);
+	fcntl(fd, F_SETFD, FD_CLOEXEC);
 	unlink(tmp);
+	// The fd is deliberately leaked so that the /proc/fd link below works
+	// indefinitely. But we stop it leaking into tracee processes.
 
 	stringstream procfile;
 	procfile << "/proc/" << getpid() << "/fd/" << fd;

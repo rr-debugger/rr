@@ -198,6 +198,7 @@ static void check_performance_settings()
 		// clever to enable the 'performance' just for rr, but
 		// that seems too hard at the moment.
 	}
+	close(fd);
 }
 
 static void print_usage(void)
