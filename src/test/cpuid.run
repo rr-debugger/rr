@@ -1,2 +1,9 @@
 source `dirname $0`/util.sh cpuid "$@"
 compare_test EXIT-SUCCESS
+if [[ $@ == -n ]]; then
+    rr -s dump $workdir/latest-trace | \
+        python $TESTDIR/check_syscall_perf_interval.py geteuid32 rbc 2
+    if [[ $? != 0 ]]; then
+        failed "expected 2 rbcs between each geteuid32 syscall"
+    fi
+fi

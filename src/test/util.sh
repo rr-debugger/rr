@@ -193,10 +193,9 @@ function debug { exe=$1; expectscript=$2; replayargs=$3
 	python $TESTDIR/$expectscript.py $exe-$nonce \
 	rr $GLOBAL_OPTIONS replay -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
-	echo "Test '$TESTNAME' PASSED"
+	passed
     else
-	leave_data=y
-	echo "Test '$TESTNAME' FAILED"
+	failed "debug script failed"
     fi
 }
 

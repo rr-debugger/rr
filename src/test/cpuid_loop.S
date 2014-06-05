@@ -1,0 +1,108 @@
+        .text
+
+
+
+        .p2align 4,,15
+        .globl  cpuid_call
+        .type   cpuid_call, @function
+cpuid_call:
+        .cfi_startproc
+        pushl   %edi
+        .cfi_def_cfa_offset 8
+        .cfi_offset 7, -8
+        pushl   %esi
+        .cfi_def_cfa_offset 12
+        .cfi_offset 6, -12
+        pushl   %ebx
+        .cfi_def_cfa_offset 16
+        .cfi_offset 3, -16
+        xorl    %ebx, %ebx
+        movl    20(%esp), %esi
+        movl    %ebx, %eax
+        xchgl   %ebx, %edi
+        cpuid
+        xchgl   %ebx, %edi
+        movl    %eax, %ebx
+        xorl    %eax, %eax
+        cmpl    $4, %ebx
+        jbe     .L4
+        movl    16(%esp), %eax
+        andl    $4, %eax
+        cpuid
+        movl    %eax, (%esi)
+        movl    24(%esp), %eax
+        movl    %ebx, (%eax)
+        movl    (%esi), %eax
+.L4:
+        popl    %ebx
+        .cfi_restore 3
+        .cfi_def_cfa_offset 12
+        popl    %esi
+        .cfi_restore 6
+        .cfi_def_cfa_offset 8
+        popl    %edi
+        .cfi_restore 7
+        .cfi_def_cfa_offset 4
+        ret
+        .cfi_endproc
+.LFE89:
+        .size   cpuid_call, .-cpuid_call
+
+
+
+        .p2align 4,,15
+        .globl  cpuid_loop
+        .type   cpuid_loop, @function
+cpuid_loop:
+        .cfi_startproc
+        pushl   %ebp
+        .cfi_def_cfa_offset 8
+        .cfi_offset 5, -8
+        pushl   %edi
+        .cfi_def_cfa_offset 12
+        .cfi_offset 7, -12
+        pushl   %esi
+        .cfi_def_cfa_offset 16
+        .cfi_offset 6, -16
+        movl    $10000, %esi
+        pushl   %ebx
+        .cfi_def_cfa_offset 20
+        .cfi_offset 3, -20
+        xorl    %ebx, %ebx
+        subl    $44, %esp
+        .cfi_def_cfa_offset 64
+        leal    28(%esp), %ebp
+        leal    24(%esp), %edi
+        .p2align 4,,7
+        .p2align 3
+.L10:
+        movl    %ebx, (%esp)
+        movl    %ebp, 8(%esp)
+        movl    %edi, 4(%esp)
+        call    cpuid_call
+        addl    %eax, %ebx
+        call    geteuid
+        subl    $1, %esi
+        jne     .L10
+        addl    $44, %esp
+        .cfi_def_cfa_offset 20
+        movl    %ebx, %eax
+        popl    %ebx
+        .cfi_restore 3
+        .cfi_def_cfa_offset 16
+        popl    %esi
+        .cfi_restore 6
+        .cfi_def_cfa_offset 12
+        popl    %edi
+        .cfi_restore 7
+        .cfi_def_cfa_offset 8
+        popl    %ebp
+        .cfi_restore 5
+        .cfi_def_cfa_offset 4
+        ret
+        .cfi_endproc
+.size   cpuid_loop, .-cpuid_loop
+
+
+
+.section        .note.GNU-stack,"",@progbits

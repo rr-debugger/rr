@@ -20,8 +20,6 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -pthread -O0 -g3 -Wall -Werror -m32")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3 -m32")
 
-set_source_files_properties(src/test/cpuid.c PROPERTIES COMPILE_FLAGS -O2)
-
 # Disable PIC.
 string(REGEX REPLACE "-fPIC" ""
   CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
@@ -102,7 +100,6 @@ set(BASIC_TESTS
   clock
   clone
   condvar_stress
-  cpuid
   crash
   epoll_create
   epoll_create1
@@ -235,6 +232,7 @@ set(CUSTOM_TESTS
   checkpoint_prctl_name
   checkpoint_simple
   cont_signal
+  cpuid
   dead_thread_target
   deliver_async_signal_during_syscalls
   env-newline
@@ -261,6 +259,10 @@ foreach(test ${BASIC_TESTS})
   add_executable(${test} src/test/${test}.c)
   target_link_libraries(${test} -lrt)
 endforeach(test)
+
+# cpuid test needs to link with cpuid_loop.S
+add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
+target_link_libraries(cpuid -lrt)
 
 foreach(test ${BASIC_TESTS} ${CUSTOM_TESTS})
   add_test(${test}
