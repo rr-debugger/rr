@@ -1904,6 +1904,8 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 
 	if (TSTEP_ENTER_SYSCALL == step.action) {
 		rep_after_enter_syscall(t, step.syscall.no);
+		t->replay_session().bug_detector().
+			notify_reached_syscall_during_replay(t);
 	}
 	if (t->session().can_validate()
 	    && STATE_SYSCALL_EXIT == t->current_trace_frame().ev.state

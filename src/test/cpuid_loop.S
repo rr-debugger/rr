@@ -64,7 +64,7 @@ cpuid_loop:
         pushl   %esi
         .cfi_def_cfa_offset 16
         .cfi_offset 6, -16
-        movl    $10000, %esi
+        movl    16(%esp), %esi
         pushl   %ebx
         .cfi_def_cfa_offset 20
         .cfi_offset 3, -20

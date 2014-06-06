@@ -221,6 +221,7 @@ ReplaySession::clone()
 	session->trace_frame = trace_frame;
 	session->replay_step = replay_step;
 	session->trace_frame_reached = trace_frame_reached;
+	session->environment_bug_detector = environment_bug_detector;
 	memcpy(session->syscallbuf_flush_buffer_array, syscallbuf_flush_buffer_array,
 		sizeof(syscallbuf_flush_buffer_array));
 

@@ -2,13 +2,13 @@
 
 #include "rrutil.h"
 
-extern int cpuid_loop(void);
+extern int cpuid_loop(int iterations);
 
 int main(int argc, char** argv)
 {
 	int sum;
 	getegid();
-	sum = cpuid_loop();
+	sum = cpuid_loop(1000);
 	atomic_printf("EXIT-SUCCESS; sum=%d\n", sum);
 	return 0;
 }

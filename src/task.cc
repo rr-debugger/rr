@@ -2981,6 +2981,8 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 		}
 		syscall(SYS_write, -1, &sum, sizeof(sum));
 
+		EnvironmentBugDetector::run_detection_code();
+
 		execvpe(ae.exe_image.c_str(), ae.argv.data(), ae.envp.data());
 		FATAL() <<"Failed to exec '"<< ae.exe_image.c_str() <<"'";
 	}

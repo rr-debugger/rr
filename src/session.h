@@ -243,6 +243,8 @@ public:
 	 */
 	static shr_ptr create(int argc, char* argv[]);
 
+	EnvironmentBugDetector& bug_detector() { return environment_bug_detector; }
+
 private:
 	ReplaySession()
 		: last_debugged_task(nullptr)
@@ -258,6 +260,7 @@ private:
 	std::shared_ptr<TraceIfstream> trace_ifstream;
 	struct trace_frame trace_frame;
 	struct rep_trace_step replay_step;
+	EnvironmentBugDetector environment_bug_detector;
 	/**
 	 * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
 	 * must be replayed sequentially, so we can use one buffer for all
