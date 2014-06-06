@@ -227,9 +227,7 @@ static void print_usage(void)
 "  -m, --mark-stdio           mark stdio writes with [rr.<EVENT-NO>],\n"
 "                             where EVENT-NO is the global trace time at\n"
 "                             which the write occures.\n"
-"  -s, --suppress-performance-warnings\n"
-"                             suppress warnings related to potential\n"
-"                             performance issues\n"
+"  -s, --suppress-warnings    suppress warnings\n"
 "  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
 "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
 "                             Default is to bind to CPU 0.  This option\n"
@@ -406,7 +404,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 		{ "dump-on", required_argument, NULL, 'd' },
 		{ "force-enable-debugger", no_argument, NULL, 'f' },
 		{ "mark-stdio", no_argument, NULL, 'm' },
-		{ "suppress-performance-warnings", no_argument, NULL, 's' },
+		{ "suppress-warnings", no_argument, NULL, 's' },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "wait-secs", required_argument, NULL, 'w' },
 		{ 0 }
@@ -442,7 +440,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			flags->mark_stdio = true;
 			break;
 		case 's':
-			flags->suppress_performance_warnings = true;
+			flags->suppress_warnings = true;
 			break;
 		case 't':
 			flags->dump_at = atoi(optarg);
@@ -477,7 +475,7 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	flags->dump_on = DUMP_ON_NONE;
 	flags->redirect = true;
 	flags->use_syscall_buffer = true;
-	flags->suppress_performance_warnings = false;
+	flags->suppress_warnings = false;
 
 	if (0 > (cmdi = parse_common_args(argc, argv, flags))) {
 		return -1;
@@ -551,7 +549,7 @@ int main(int argc, char* argv[])
 	}
 
 	assert_prerequisites(flags);
-	if (!flags->suppress_performance_warnings) {
+	if (!flags->suppress_warnings) {
 		check_performance_settings();
 	}
 
