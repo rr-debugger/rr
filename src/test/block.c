@@ -12,12 +12,6 @@ static int sockfds[2];
 
 static const int msg_magic = 0x1337beef;
 const ssize_t num_sockbuf_bytes = 1 << 20;
-/* TODO: rr doesn't know how to create scratch space for struct msghdr
- * yet, so it's forced to make the {send, recv}(m?)msg() functions
- * non-context-switchable.  This test would obviously deadlock in that
- * situation, so we help rr along by hiding the send->recv
- * synchronization behind a barrier, for now. */
-static pthread_barrier_t cheater_barrier;
 
 static void* reader_thread(void* dontcare) {
 	char token = '!';
@@ -97,7 +91,6 @@ static void* reader_thread(void* dontcare) {
 		magic = ~msg_magic;
 		atomic_puts("r: recmmsg'ing socket ...");
 
-		pthread_barrier_wait(&cheater_barrier);
 		breakpoint();
 		test_assert(1 == recvmmsg(sock, &mmsg, 1, 0, NULL));
 		atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n",
@@ -294,7 +287,6 @@ int main(int argc, char *argv[]) {
 	socketpair(AF_LOCAL, SOCK_STREAM, 0, sockfds);
 	sock = sockfds[0];
 
-	pthread_barrier_init(&cheater_barrier, NULL, 2);
 
 	pthread_mutex_lock(&lock);
 
@@ -377,7 +369,6 @@ int main(int argc, char *argv[]) {
 
 		sendmmsg(sock, &mmsg, 1, 0);
 		atomic_printf("M:   ... sent %u bytes\n", mmsg.msg_len);
-		pthread_barrier_wait(&cheater_barrier);
 	}
 	{
 		struct msghdr msg = { 0 };
