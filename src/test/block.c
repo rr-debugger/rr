@@ -2,6 +2,8 @@
 
 #include "rrutil.h"
 
+#define CTRLMSG_LEN CMSG_LEN(sizeof(int))
+
 static void breakpoint(void) {
 	int break_here = 1;
 	(void)break_here;
@@ -12,12 +14,6 @@ static int sockfds[2];
 
 static const int msg_magic = 0x1337beef;
 const ssize_t num_sockbuf_bytes = 1 << 20;
-/* TODO: rr doesn't know how to create scratch space for struct msghdr
- * yet, so it's forced to make the {send, recv}(m?)msg() functions
- * non-context-switchable.  This test would obviously deadlock in that
- * situation, so we help rr along by hiding the send->recv
- * synchronization behind a barrier, for now. */
-static pthread_barrier_t cheater_barrier;
 
 static void* reader_thread(void* dontcare) {
 	char token = '!';
@@ -81,6 +77,10 @@ static void* reader_thread(void* dontcare) {
 		mmsg.msg_hdr.msg_iov = &data;
 		mmsg.msg_hdr.msg_iovlen = 1;
 
+		struct cmsghdr *cmptr = (struct cmsghdr*)malloc(CTRLMSG_LEN);
+		mmsg.msg_hdr.msg_control = cmptr;
+		mmsg.msg_hdr.msg_controllen = CTRLMSG_LEN;
+
 		atomic_puts("r: recvmsg with DONTWAIT ...");
 		ret = recvmsg(sock, &mmsg.msg_hdr, MSG_DONTWAIT);
 		err = errno;
@@ -94,15 +94,24 @@ static void* reader_thread(void* dontcare) {
 		atomic_printf("r:   ... recvmsg'd 0x%x\n", magic);
 		test_assert(msg_magic == magic);
 
+		int fd = *(int *)CMSG_DATA(cmptr);
+		struct stat fs_new, fs_old;
+		fstat(fd, &fs_new);
+		fstat(STDERR_FILENO, &fs_old);
+		// check if control msg was send successfully
+		test_assert(fs_old.st_dev == fs_new.st_dev && fs_old.st_ino == fs_new.st_ino && fs_old.st_uid == fs_new.st_uid
+			 && fs_old.st_gid == fs_new.st_gid && fs_old.st_rdev == fs_new.st_rdev && fs_old.st_size == fs_new.st_size);
+
 		magic = ~msg_magic;
 		atomic_puts("r: recmmsg'ing socket ...");
 
-		pthread_barrier_wait(&cheater_barrier);
 		breakpoint();
 		test_assert(1 == recvmmsg(sock, &mmsg, 1, 0, NULL));
 		atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n",
 			      magic, mmsg.msg_len);
 		test_assert(msg_magic == magic);
+
+		free(cmptr);
 	}
 	{
 		struct msghdr msg = { 0 };
@@ -294,7 +303,6 @@ int main(int argc, char *argv[]) {
 	socketpair(AF_LOCAL, SOCK_STREAM, 0, sockfds);
 	sock = sockfds[0];
 
-	pthread_barrier_init(&cheater_barrier, NULL, 2);
 
 	pthread_mutex_lock(&lock);
 
@@ -359,6 +367,14 @@ int main(int argc, char *argv[]) {
 		mmsg.msg_hdr.msg_iov = &data;
 		mmsg.msg_hdr.msg_iovlen = 1;
 
+		struct cmsghdr *cmptr = (struct cmsghdr*)malloc(CTRLMSG_LEN);// send a fd
+		cmptr->cmsg_level = SOL_SOCKET;
+		cmptr->cmsg_type = SCM_RIGHTS;
+		cmptr->cmsg_len = CTRLMSG_LEN;
+		mmsg.msg_hdr.msg_control = cmptr;
+		mmsg.msg_hdr.msg_controllen = CTRLMSG_LEN;
+		*(int *)CMSG_DATA(cmptr) = STDERR_FILENO; // send stderr as fd
+
 		/* Force a wait on recvmsg() */
 		atomic_puts("M: sleeping again ...");
 		usleep(500000);
@@ -377,7 +393,8 @@ int main(int argc, char *argv[]) {
 
 		sendmmsg(sock, &mmsg, 1, 0);
 		atomic_printf("M:   ... sent %u bytes\n", mmsg.msg_len);
-		pthread_barrier_wait(&cheater_barrier);
+
+		free(cmptr);
 	}
 	{
 		struct msghdr msg = { 0 };
