@@ -1691,6 +1691,12 @@ Task::rbc_count()
 }
 
 void
+Task::set_rbc_count(int64_t count)
+{
+	rbcs = count;
+}
+
+void
 Task::record_local(void* addr, ssize_t num_bytes, const void* data)
 {
 	maybe_flush_syscallbuf();

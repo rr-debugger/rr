@@ -860,10 +860,10 @@ static int is_debugger_trap(Task* t, int target_sig,
 
 static void guard_overshoot(Task* t,
 			    const Registers* target_regs,
-			    int64_t target_rcb, int64_t remaining_rcbs)
+			    int64_t target_rcb, int64_t remaining_rcbs,
+			    int64_t rcb_slack)
 {
-	int remaining_rcbs_gt_0 = remaining_rcbs >= 0;
-	if (!remaining_rcbs_gt_0) {
+	if (remaining_rcbs < -rcb_slack) {
 		uintptr_t target_ip = target_regs->ip();
 
 		LOG(error) <<"Replay diverged.  Dumping register comparison.";
@@ -879,7 +879,7 @@ static void guard_overshoot(Task* t,
 		}
 		compare_register_files(t, "rep overshoot", &t->regs(),
 				       "rec", target_regs, LOG_MISMATCHES);
-		ASSERT(t, remaining_rcbs_gt_0)
+		ASSERT(t, false)
 			<< "overshot target rcb="<< target_rcb <<" by "
 			<< -remaining_rcbs;
 	}
@@ -907,7 +907,8 @@ static void guard_unexpected_signal(Task* t)
 
 static int is_same_execution_point(Task* t,
 				   const Registers* rec_regs,
-				   int64_t rcbs_left)
+				   int64_t rcbs_left,
+				   int64_t rcb_slack)
 {
 	int behavior =
 #ifdef DEBUGTAG
@@ -916,7 +917,7 @@ static int is_same_execution_point(Task* t,
 				   EXPECT_MISMATCHES
 #endif
 		;
-	if (0 != rcbs_left) {
+	if (llabs(rcbs_left) > rcb_slack) {
 		LOG(debug) <<"  not same execution point: "<< rcbs_left
 			   <<" rcbs left (@"<< HEX(rec_regs->ip()) <<")";
 #ifdef DEBUGTAG
@@ -935,6 +936,15 @@ static int is_same_execution_point(Task* t,
 	return 1;
 }
 
+static int get_rcb_slack(Task* t)
+{
+	if (t->replay_session().bug_detector().is_cpuid_bug_detected()) {
+		// Somewhat arbitrary guess
+		return 6;
+	}
+	return 0;
+}
+
 /**
  * Run execution forwards for |t| until |*rcb| is reached, and the $ip
  * reaches the recorded $ip.  Return 0 if successful or 1 if an
@@ -950,6 +960,7 @@ static int advance_to(Task* t, const Registers* regs,
 	pid_t tid = t->tid;
 	byte* ip = (byte*)regs->ip();
 	int64_t rcbs_left;
+	int64_t rcb_slack = get_rcb_slack(t);
 
 	assert(t->hpc->rbc.fd > 0);
 	assert(t->child_sig == 0);
@@ -1000,7 +1011,7 @@ static int advance_to(Task* t, const Registers* regs,
 
 		rcbs_left = rcb - t->rbc_count();
 	}
-	guard_overshoot(t, regs, rcb, rcbs_left);
+	guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack);
 
 	/* Step 2: more slowly, find our way to the target rcb and
 	 * execution point.  We set an internal breakpoint on the
@@ -1014,10 +1025,10 @@ static int advance_to(Task* t, const Registers* regs,
 	 * What we really want to do is set a (precise)
 	 * retired-instruction interrupt and do away with all this
 	 * cruft. */
-	while (rcbs_left >= 0) {
+	while (rcbs_left >= -rcb_slack) {
 		/* Invariants here are
 		 *  o rcbs_left is up-to-date
-		 *  o rcbs_left >= 0
+		 *  o rcbs_left >= -rcb_slack
 		 *
 		 * Possible state of the execution of |t|
 		 *  0. at a debugger trap (breakpoint or stepi)
@@ -1034,7 +1045,7 @@ static int advance_to(Task* t, const Registers* regs,
 		 * registers. */
 		int at_target;
 
-		at_target = is_same_execution_point(t, regs, rcbs_left);
+		at_target = is_same_execution_point(t, regs, rcbs_left, rcb_slack);
 		if (SIGTRAP == t->child_sig) {
 			TrapType trap_type = compute_trap_type(
 				t, sig, ASYNC,
@@ -1090,6 +1101,9 @@ static int advance_to(Task* t, const Registers* regs,
 		t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
 		
 		if (at_target) {
+			// Adjust dynamic rcb count to match trace, in case
+			// there was slack.
+			t->set_rbc_count(rcb);
 			/* Case (2) above: done. */
 			return 0;
 		}
@@ -1146,8 +1160,11 @@ static int advance_to(Task* t, const Registers* regs,
 		 * invariant. */
 		rcbs_left = rcb - t->rbc_count();
 	}
-	guard_overshoot(t, regs, rcb, rcbs_left);
+	guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack);
 
+	// Adjust dynamic rcb count to match trace, in case
+	// there was slack.
+	t->set_rbc_count(rcb);
 	return 0;
 }
 
@@ -1206,19 +1223,22 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 	return 0;
 }
 
-static void assert_at_recorded_rcb(Task* t, const Event& ev)
+static void check_rcb_consistency(Task* t, const Event& ev)
 {
-	static const int64_t rbc_slack = 0;
-	int64_t rbc_now = t->rbc_count();
-
 	if (!t->session().can_validate() ||
 		!t->current_trace_frame().ev.has_exec_info) {
 		return;
 	}
-	ASSERT(t, (!t->hpc->started
-		   || llabs(rbc_now - t->current_trace_frame().rbc) <= rbc_slack))
-		<<"rbc mismatch for '"<< ev <<"'; expected "
-		<< t->current_trace_frame().rbc <<", got "<< rbc_now <<"";
+
+	int64_t rcb_slack = get_rcb_slack(t);
+	int64_t rcb_now = t->rbc_count();
+	int64_t trace_rcb = t->current_trace_frame().rbc;
+
+	ASSERT(t, llabs(rcb_now - trace_rcb) <= rcb_slack)
+		<<"rcb mismatch for '"<< ev <<"'; expected "
+		<< t->current_trace_frame().rbc <<", got "<< rcb_now <<"";
+	// Sync task rcb with trace rcb so we don't keep accumulating errors
+	t->set_rbc_count(trace_rcb);
 }
 
 /**
@@ -1243,7 +1263,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 	ASSERT(t, t->child_sig == sig)
 		<< "Replay got unrecorded signal "<< t->child_sig
 		<<" (expecting "<< sig <<")";
-	assert_at_recorded_rcb(t, ev);
+	check_rcb_consistency(t, ev);
 
 	if (EV_SEGV_RDTSC == ev.type()) {
 		t->set_regs(t->current_trace_frame().recorded_regs);
@@ -1915,7 +1935,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 
 	Event ev(t->current_trace_frame().ev);
 	if (has_deterministic_rbc(ev, step)) {
-		assert_at_recorded_rcb(t, ev);
+		check_rcb_consistency(t, ev);
 	}
 
 	debug_memory(t);

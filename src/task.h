@@ -921,6 +921,11 @@ public:
 	int64_t rbc_count();
 
 	/**
+	 * Set rbc count to 'count'.
+	 */
+	void set_rbc_count(int64_t count);
+
+	/**
 	 * Return the exe path passed to the most recent (successful)
 	 * execve call.
 	 */
