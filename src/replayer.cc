@@ -961,6 +961,7 @@ static int advance_to(Task* t, const Registers* regs,
 	byte* ip = (byte*)regs->ip();
 	int64_t rcbs_left;
 	int64_t rcb_slack = get_rcb_slack(t);
+	bool did_set_internal_breakpoint = false;
 
 	assert(t->hpc->rbc.fd > 0);
 	assert(t->child_sig == 0);
@@ -1025,7 +1026,7 @@ static int advance_to(Task* t, const Registers* regs,
 	 * What we really want to do is set a (precise)
 	 * retired-instruction interrupt and do away with all this
 	 * cruft. */
-	while (rcbs_left >= -rcb_slack) {
+	while (true) {
 		/* Invariants here are
 		 *  o rcbs_left is up-to-date
 		 *  o rcbs_left >= -rcb_slack
@@ -1058,6 +1059,10 @@ static int advance_to(Task* t, const Registers* regs,
 				 * debugger. */
 				LOG(debug) <<"    trap was debugger interrupt "
 					   << trap_type;
+				if (did_set_internal_breakpoint) {
+					t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
+					did_set_internal_breakpoint = false;
+				}
 				return 1;
 			case TRAP_BKPT_INTERNAL: {
 				/* Case (1) above: cover the tracks of
@@ -1098,8 +1103,11 @@ static int advance_to(Task* t, const Registers* regs,
 		 * to resume execution in one of a variety of ways,
 		 * and it's simpler to start out knowing that the
 		 * breakpoint isn't set. */
-		t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
-		
+		if (did_set_internal_breakpoint) {
+			t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
+			did_set_internal_breakpoint = false;
+		}
+
 		if (at_target) {
 			// Adjust dynamic rcb count to match trace, in case
 			// there was slack.
@@ -1127,6 +1135,7 @@ static int advance_to(Task* t, const Registers* regs,
 			 * the target execution point. */
 			LOG(debug) <<"    breaking on target $ip";
 			t->vm()->set_breakpoint(ip, TRAP_BKPT_INTERNAL);
+			did_set_internal_breakpoint = true;
 			continue_or_step(t, stepi);
 		} else {
 			/* Case (3) above: we can't put a breakpoint
@@ -1159,13 +1168,8 @@ static int advance_to(Task* t, const Registers* regs,
 		/* Maintain the "'rcbs_left'-is-up-to-date"
 		 * invariant. */
 		rcbs_left = rcb - t->rbc_count();
+		guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack);
 	}
-	guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack);
-
-	// Adjust dynamic rcb count to match trace, in case
-	// there was slack.
-	t->set_rbc_count(rcb);
-	return 0;
 }
 
 /**

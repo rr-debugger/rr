@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh breakpoint_overlap "$@"
+RECORD_ARGS="-c100"
+record breakpoint_overlap "3 4"
+# Don't use pipes here since we need 'debug' to run in the same bash process
+rr -s dump $workdir/latest-trace > $workdir/plaintext-trace
+debug breakpoint_overlap breakpoint_overlap < $workdir/plaintext-trace

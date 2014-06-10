@@ -99,6 +99,7 @@ set(BASIC_TESTS
   block
   block_intr_sigchld
   breakpoint
+  breakpoint_overlap
   chew_cpu
   clock
   clone

@@ -144,9 +144,9 @@ struct Breakpoint {
 		++*counter(which);
 	}
 	int unref(TrapType which) {
-		assert(internal_count >= 0 && user_count >= 0
-		       && (internal_count > 0 || user_count > 0));
+		assert(internal_count > 0 || user_count > 0);
 		--*counter(which);
+		assert(internal_count >= 0 && user_count >= 0);
 		return internal_count + user_count;
 	}
 
