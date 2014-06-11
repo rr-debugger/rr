@@ -9,6 +9,7 @@
 
 	.text
 	.globl RAW_SYSCALL_FUNCTION
+	.hidden RAW_SYSCALL_FUNCTION
 	.type RAW_SYSCALL_FUNCTION, @function
 RAW_SYSCALL_FUNCTION:	/* syscallno = 4(%esp) */
 	.cfi_startproc
@@ -56,6 +57,7 @@ ENTRY_POINT_IP:
 	.size RAW_SYSCALL_FUNCTION, . - RAW_SYSCALL_FUNCTION
 
 	.globl SYSCALL_ENTRY_POINT
+	.hidden SYSCALL_ENTRY_POINT
 	.type SYSCALL_ENTRY_POINT, @function
 SYSCALL_ENTRY_POINT:
 	call .L1

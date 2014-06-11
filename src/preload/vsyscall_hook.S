@@ -9,6 +9,7 @@
  */
 	.text
 	.global _vsyscall_hook_trampoline
+	.hidden _vsyscall_hook_trampoline
 	.type _vsyscall_hook_trampoline, @function
 _vsyscall_hook_trampoline:
 	.cfi_startproc
