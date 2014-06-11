@@ -13,14 +13,6 @@
 
 #include <string>
 
-#define CHECK_ALIGNMENT(addr) 	assert(((long int)(addr) & 0x3) == 0)
-
-#define PTR_SIZE		(sizeof(void*))
-#define INT_SIZE		(sizeof(int))
-
-#define UUL_COLUMN_SIZE 	20
-#define LI_COLUMN_SIZE 		11
-
 typedef unsigned char byte;
 
 /**
