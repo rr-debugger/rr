@@ -193,8 +193,9 @@ static void* local_memcpy(void* dest, const void* source, size_t n)
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
-extern long _traced_raw_syscall(int syscallno, long a0, long a1, long a2,
-				long a3, long a4, long a5);
+extern __attribute__((visibility("hidden"))) long
+_traced_raw_syscall(int syscallno, long a0, long a1, long a2,
+		    long a3, long a4, long a5);
 
 static int update_errno_ret(long ret)
 {
@@ -242,7 +243,7 @@ static long traced_raw_syscall(const struct syscall_info* call)
 				   call->args[4], call->args[5]);
 }
 
-extern void* get_traced_syscall_entry_point(void);
+extern __attribute__((visibility("hidden"))) void* get_traced_syscall_entry_point(void);
 
 static int traced_fcntl(int fd, int cmd, ...)
 {
@@ -370,8 +371,9 @@ static void exit_signal_critical_section(const sigset_t* saved_mask)
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
 
-extern long _untraced_raw_syscall(int syscallno, long a0, long a1, long a2,
-				  long a3, long a4, long a5);
+extern __attribute__((visibility("hidden"))) long
+_untraced_raw_syscall(int syscallno, long a0, long a1, long a2,
+		      long a3, long a4, long a5);
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
@@ -398,7 +400,7 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2,
 #define untraced_syscall0(no)			\
 	untraced_syscall1(no, 0)
 
-extern void* get_untraced_syscall_entry_point(void);
+extern __attribute__((visibility("hidden"))) void* get_untraced_syscall_entry_point(void);
 
 /**
  * Make the *un*traced socketcall |call| with the given args.
@@ -426,7 +428,7 @@ static long untraced_socketcall(int call,
 #define untraced_socketcall0(no)		\
 	untraced_socketcall1(no, 0)
 
-extern void _vsyscall_hook_trampoline(void);
+extern __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void);
 
 /**
  * Do what's necessary to set up buffers for the caller.
