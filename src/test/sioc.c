@@ -109,7 +109,7 @@ etc.maxtxpkt, etc.maxrxpkt);
 	if (-1 == ret) {
 		atomic_printf("WARNING: %s doesn't appear to support SIOCETHTOOL; the test may have been meaningless (%s/%d)\n",
 			      name, strerror(err), err);
-		test_assert(EOPNOTSUPP == err);
+		test_assert(EOPNOTSUPP == err || EPERM == err);
 	}
 
 	memset(&wreq, 0x5a, sizeof(wreq));
@@ -125,7 +125,7 @@ etc.maxtxpkt, etc.maxrxpkt);
 	if (-1 == ret) {
 		atomic_printf("WARNING: %s doesn't appear to be a wireless iface; SIOCGIWRATE test may have been meaningless (%s/%d)\n",
 			      name, strerror(err), err);
-		test_assert(EOPNOTSUPP == err);
+		test_assert(EOPNOTSUPP == err || EPERM == err);
 	}
 
 	atomic_puts("EXIT-SUCCESS");
