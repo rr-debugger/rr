@@ -37,6 +37,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "hpc.h"
+#include "kernel_abi.h"
 #include "log.h"
 #include "recorder_sched.h"
 #include "replayer.h"
@@ -47,6 +48,7 @@
 #include "types.h"
 
 using namespace std;
+using namespace rr;
 
 #define NUM_MAX_MAPS 1024
 
@@ -904,9 +906,10 @@ void copy_syscall_arg_regs(Registers* to,
 	to->set_arg6(from->arg6());
 }
 
-void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
+template<typename Arch>
+void record_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr)
 {
-	struct msghdr msg;
+	typename Arch::msghdr msg;
 	t->read_mem(child_msghdr, &msg);
 
 	// Record the entire struct, because some of the direct fields
@@ -915,31 +918,35 @@ void record_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 	t->record_remote(msg.msg_name, msg.msg_namelen);
 
 	// Read all the inout iovecs in one shot.
-	struct iovec iovs[msg.msg_iovlen];
+	typename Arch::iovec iovs[msg.msg_iovlen];
 	t->read_bytes_helper(msg.msg_iov,
 			     msg.msg_iovlen * sizeof(iovs[0]), (byte*)iovs);
-	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
-		const struct iovec* iov = &iovs[i];
+	for (typename Arch::size_t i = 0; i < msg.msg_iovlen; ++i) {
+		const typename Arch::iovec* iov = &iovs[i];
 		t->record_remote(iov->iov_base, iov->iov_len);
 	}
 
 	t->record_remote(msg.msg_control, msg.msg_controllen);
 }
+template void record_struct_msghdr<x86_arch>(Task*, typename x86_arch::msghdr*);
 
-void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
+template<typename Arch>
+void record_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr)
 {
 	/* struct mmsghdr has an inline struct msghdr as its first
 	 * field, so it's OK to make this "cast". */
-	record_struct_msghdr(t, (struct msghdr*)child_mmsghdr);
+	record_struct_msghdr<Arch>(t, (typename Arch::msghdr*)child_mmsghdr);
 	/* We additionally have to record the outparam number of
 	 * received bytes. */
 	t->record_remote(&child_mmsghdr->msg_len,
 			 sizeof(child_mmsghdr->msg_len));
 }
+template void record_struct_mmsghdr<x86_arch>(Task*, x86_arch::mmsghdr*);
 
-void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)
+template<typename Arch>
+void restore_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr)
 {
-	struct msghdr msg;
+	typename Arch::msghdr msg;
 	t->read_mem(child_msghdr, &msg);
 
 	// Restore msg itself.
@@ -947,19 +954,22 @@ void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr)
 	// Restore msg.msg_name.
 	t->set_data_from_trace();
 	// For each iovec arg, restore its recorded data.
-	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
+	for (typename Arch::size_t i = 0; i < msg.msg_iovlen; ++i) {
 		// Restore iov_base buffer.
 		t->set_data_from_trace();
 	}
 	// Restore msg_control buffer.
 	t->set_data_from_trace();
 }
+template void restore_struct_msghdr<x86_arch>(Task*, x86_arch::msghdr*);
 
-void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr)
+template<typename Arch>
+void restore_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr)
 {
-	restore_struct_msghdr(t, (struct msghdr*)child_mmsghdr);
+	restore_struct_msghdr<Arch>(t, (typename Arch::msghdr*)child_mmsghdr);
 	t->set_data_from_trace();
 }
+template void restore_struct_mmsghdr<x86_arch>(Task*, x86_arch::mmsghdr*);
 
 bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val)
 {

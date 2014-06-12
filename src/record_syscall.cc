@@ -46,6 +46,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "drm.h"
+#include "kernel_abi.h"
 #include "log.h"
 #include "recorder.h"		// for terminate_recording()
 #include "recorder_sched.h"
@@ -56,20 +57,7 @@
 #include "util.h"
 
 using namespace std;
-
-/**
- * The parameters that are packaged up for the ACCEPT and ACCEPT4
- * socketcalls.
- */
-struct accept_args {
-	long sockfd;
-	struct sockaddr* addr;
-	socklen_t* addrlen;
-};
-struct accept4_args {
-	struct accept_args _;
-	long flags;
-};
+using namespace rr;
 
 /**
  *  Some ipc calls require 7 params, so two of them are stashed into
@@ -78,16 +66,6 @@ struct accept4_args {
 struct ipc_kludge_args {
 	void* msgbuf;
 	long msgtype;
-};
-
-/** Params packaged up for RECVFROM socketcalls. */
-struct recvfrom_args {
-	long sockfd;
-	void* buf;
-	size_t len;
-	long flags;
-	struct sockaddr* src_addr;
-	socklen_t* addrlen;
 };
 
 void rec_before_record_syscall_entry(Task* t, int syscallno)
@@ -225,8 +203,9 @@ static int prepare_ipc(Task* t, int would_need_scratch)
  * Read the msg_iov array from |msg| into |iovs|, which must be sized
  * appropriately.  Return the total number of bytes comprising |iovs|.
  */
-static ssize_t read_iovs(Task* t, const struct msghdr& msg,
-			 struct iovec* iovs)
+template<typename Arch>
+static ssize_t read_iovs(Task* t, const typename Arch::msghdr& msg,
+			 typename Arch::iovec* iovs)
 {
 	size_t num_iov_bytes = msg.msg_iovlen * sizeof(*iovs);
 	t->read_bytes_helper(msg.msg_iov, num_iov_bytes, (byte*)iovs);
@@ -237,9 +216,11 @@ static ssize_t read_iovs(Task* t, const struct msghdr& msg,
  * Reserve scratch on T for all pointer members of msghdr and update the scratch
  * pointer passed in. Return TRUE if there's no scratch overflow.
  */
-static bool reserve_scratch_for_msghdr(Task *t, struct msghdr *msg, byte **scratch)
+template<typename Arch>
+static bool reserve_scratch_for_msghdr(Task *t, typename Arch::msghdr *msg,
+				       byte **scratch)
 {
-	struct msghdr tmpmsg = *msg;
+	auto tmpmsg = *msg;
 	// reserve space
 	byte *scratch_tmp = *scratch;
 	if (msg->msg_name) {
@@ -247,15 +228,15 @@ static bool reserve_scratch_for_msghdr(Task *t, struct msghdr *msg, byte **scrat
 		scratch_tmp += msg->msg_namelen;
 	}
 
-	struct iovec iovs[msg->msg_iovlen];
-	ssize_t num_iov_bytes = read_iovs(t, *msg, iovs);
-	tmpmsg.msg_iov = (struct iovec*)scratch_tmp;
+	typename Arch::iovec iovs[msg->msg_iovlen];
+	ssize_t num_iov_bytes = read_iovs<Arch>(t, *msg, iovs);
+	tmpmsg.msg_iov = (typename Arch::iovec*)scratch_tmp;
 	scratch_tmp += num_iov_bytes;
 
-	struct iovec tmpiovs[msg->msg_iovlen];
+	typename Arch::iovec tmpiovs[msg->msg_iovlen];
 	memcpy(tmpiovs, iovs, num_iov_bytes);
-	for (size_t i = 0; i < msg->msg_iovlen; ++i) {
-		struct iovec& tmpiov = tmpiovs[i];
+	for (typename Arch::size_t i = 0; i < msg->msg_iovlen; ++i) {
+		typename Arch::iovec& tmpiov = tmpiovs[i];
 		tmpiov.iov_base = scratch_tmp;
 		scratch_tmp += tmpiov.iov_len;
 	}
@@ -280,9 +261,9 @@ static bool reserve_scratch_for_msghdr(Task *t, struct msghdr *msg, byte **scrat
 	*msg = tmpmsg; // update original msghdr
 	t->write_bytes_helper(msg->msg_iov, num_iov_bytes,
 				  (const byte*)tmpiovs);
-	for (size_t i = 0; i < msg->msg_iovlen; ++i) {
-		const struct iovec& iov = iovs[i];
-		const struct iovec& tmpiov = tmpiovs[i];
+	for (typename Arch::size_t i = 0; i < msg->msg_iovlen; ++i) {
+		const typename Arch::iovec& iov = iovs[i];
+		const typename Arch::iovec& tmpiov = tmpiovs[i];
 		t->remote_memcpy(tmpiov.iov_base, iov.iov_base,
 				 tmpiov.iov_len);
 	}
@@ -293,19 +274,22 @@ static bool reserve_scratch_for_msghdr(Task *t, struct msghdr *msg, byte **scrat
  * Reserve scratch on T for struct mmsghdr *msgvec.
  * Return TRUE if there's no scratch overflow.
  */
-static bool reserve_scratch_for_msgvec(Task *t, unsigned int vlen, struct mmsghdr *pmsgvec, byte **scratch)
+template<typename Arch>
+static bool reserve_scratch_for_msgvec(Task *t, unsigned int vlen,
+				       typename Arch::mmsghdr *pmsgvec,
+				       byte **scratch)
 {
-	struct mmsghdr msgvec[vlen];
+	typename Arch::mmsghdr msgvec[vlen];
 	t->read_bytes_helper(pmsgvec, sizeof(msgvec), (byte*)msgvec);
 
 	// Reserve scratch for struct mmsghdr *msgvec
-	struct mmsghdr* tmpmsgvec = (struct mmsghdr*)*scratch;
+	typename Arch::mmsghdr* tmpmsgvec = (typename Arch::mmsghdr*)*scratch;
 	*scratch += sizeof(msgvec);
 
 	// Reserve scratch for child pointers of struct msghdr
 	for (unsigned int i = 0; i < vlen; ++i)
 	{
-		if (!reserve_scratch_for_msghdr(t, &(msgvec[i].msg_hdr), scratch))
+		if (!reserve_scratch_for_msghdr<Arch>(t, &(msgvec[i].msg_hdr), scratch))
 		{
 			return false;
 		}
@@ -343,7 +327,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	switch (call) {
 	/* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
 	case SYS_RECV: {
-		struct { long words[4]; } args;
+		x86_arch::recv_args args;
 
 		if (!would_need_scratch) {
 			return 1;
@@ -363,9 +347,9 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		r.set_arg2((uintptr_t)(tmpargsp = scratch));
 		scratch += sizeof(args);
 		/* The |buf| pointer. */
-		push_arg_ptr(t, (void*)args.words[1]);
-		args.words[1] = (uintptr_t)scratch;
-		scratch += args.words[2]/*len*/;
+		push_arg_ptr(t, (void*)args.buf);
+		args.buf = scratch;
+		scratch += args.len;
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, "recv");
 		}
@@ -384,14 +368,14 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		}
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		struct accept4_args args;
+		x86_arch::accept4_args args;
 		if (SYS_ACCEPT == call) {
 			t->read_mem(argsp, &args._);
 		} else {
 			t->read_mem(argsp, &args);
 		}
 
-		socklen_t addrlen;
+		x86_arch::socklen_t addrlen;
 		t->read_mem(args._.addrlen, &addrlen);
 
 		// We use the same basic scheme here as for RECV
@@ -410,12 +394,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			   sizeof(args._) : sizeof(args);
 
 		push_arg_ptr(t, args._.addrlen);
-		args._.addrlen = (socklen_t*)scratch;
+		args._.addrlen = (x86_arch::socklen_t*)scratch;
 		scratch += sizeof(*args._.addrlen);
 
-		byte* src = (byte*)args._.addr;
-		push_arg_ptr(t, src);
-		args._.addr = (struct sockaddr*)scratch;
+		push_arg_ptr(t, args._.addr);
+		args._.addr = (x86_arch::sockaddr*)scratch;
 		scratch += addrlen;
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, "accept");
@@ -436,7 +419,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		}
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		struct recvfrom_args args;
+		x86_arch::recvfrom_args args;
 		t->read_mem(argsp, &args);
 
 		// Reserve space for scratch socketcall args.
@@ -449,16 +432,16 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		args.buf = scratch;
 		scratch += args.len;
 
-		socklen_t addrlen;
+		x86_arch::socklen_t addrlen;
 		if (args.src_addr) {
 			t->read_mem(args.addrlen, &addrlen);
 
 			push_arg_ptr(t, args.addrlen);
-			args.addrlen = (socklen_t*)scratch;
+			args.addrlen = (x86_arch::socklen_t*)scratch;
 			scratch += sizeof(*args.addrlen);
 
 			push_arg_ptr(t, args.src_addr);
-			args.src_addr = (struct sockaddr*)scratch;
+			args.src_addr = (x86_arch::sockaddr*)scratch;
 			scratch += addrlen;
 		} else {
 			push_arg_ptr(t, nullptr);
@@ -478,7 +461,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	case SYS_RECVMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		struct recvmsg_args args;
+		x86_arch::recvmsg_args args;
 		t->read_mem(argsp, &args);
 		if (args.flags & MSG_DONTWAIT) {
 			return 0;
@@ -486,7 +469,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		if (!would_need_scratch) {
 			return 1;
 		}
-		struct msghdr msg;
+		x86_arch::msghdr msg;
 		t->read_mem(args.msg, &msg);
 
 		// Reserve scratch for the arg
@@ -500,7 +483,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		scratch += sizeof(msg);
 
 		// Reserve scratch for the child pointers of struct msghdr
-		if (reserve_scratch_for_msghdr(t, &msg, &scratch))
+		if (reserve_scratch_for_msghdr<x86_arch>(t, &msg, &scratch))
 		{
 			t->write_mem(scratch_msg, msg);
 		}
@@ -509,7 +492,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			return 0;
 		}
 
-		args.msg = (struct msghdr*)scratch_msg;
+		args.msg = (x86_arch::msghdr*)scratch_msg;
 		t->write_mem(tmpargsp, args);
 		t->set_regs(r);
 
@@ -518,7 +501,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	case SYS_SENDMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		struct recvmsg_args args;
+		x86_arch::recvmsg_args args;
 		t->read_mem(argsp, &args);
 		return !(args.flags & MSG_DONTWAIT);
 	}
@@ -532,7 +515,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	case SYS_RECVMMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		struct recvmmsg_args args;
+		x86_arch::recvmmsg_args args;
 		t->read_mem(argsp, &args);
 
 		if (args.flags & MSG_DONTWAIT) {
@@ -549,11 +532,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		r.set_arg2((uintptr_t)tmpargsp);
 
 		// Update msgvec pointer of tmp arg
-		struct mmsghdr* poldmsgvec = args.msgvec;
-		args.msgvec = (struct mmsghdr*)scratch;
+		x86_arch::mmsghdr* poldmsgvec = args.msgvec;
+		args.msgvec = (x86_arch::mmsghdr*)scratch;
 		t->write_mem(tmpargsp, args);
 
-		if (reserve_scratch_for_msgvec(t, args.vlen, poldmsgvec, &scratch))
+		if (reserve_scratch_for_msgvec<x86_arch>(t, args.vlen, poldmsgvec, &scratch))
 		{
 			t->set_regs(r);
 			return 1;
@@ -945,8 +928,8 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	case SYS_wait4: {
 		Registers r = t->regs();
 		int* status = (int*)r.arg2();
-		struct rusage* rusage = (SYS_wait4 == syscallno) ?
-					(struct rusage*)r.arg4() : NULL;
+		x86_arch::rusage* rusage = (SYS_wait4 == syscallno) ?
+					(x86_arch::rusage*)r.arg4() : NULL;
 
 		if (!would_need_scratch) {
 			return 1;
@@ -976,7 +959,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 		Registers r = t->regs();
-		siginfo_t* infop = (siginfo_t*)r.arg3();
+		x86_arch::siginfo_t* infop = (x86_arch::siginfo_t*)r.arg3();
 		push_arg_ptr(t, infop);
 		if (infop) {
 			r.set_arg3((uintptr_t)scratch);
@@ -1001,8 +984,8 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	case SYS_poll:
 	case SYS_ppoll: {
 		Registers r = t->regs();
-		struct pollfd* fds = (struct pollfd*)r.arg1();
-		struct pollfd* fds2 = (struct pollfd*)scratch;
+		x86_arch::pollfd* fds = (x86_arch::pollfd*)r.arg1();
+		x86_arch::pollfd* fds2 = (x86_arch::pollfd*)scratch;
 		nfds_t nfds = r.arg2();
 
 		if (!would_need_scratch) {
@@ -1080,7 +1063,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 		Registers r = t->regs();
-		struct epoll_event* events = (struct epoll_event*)r.arg2();
+		x86_arch::epoll_event* events = (x86_arch::epoll_event*)r.arg2();
 		int maxevents = r.arg3_signed();
 
 		push_arg_ptr(t, events);
@@ -1129,7 +1112,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 		Registers r= t->regs();
-		struct timespec* rem = (struct timespec*)r.arg2();
+		x86_arch::timespec* rem = (x86_arch::timespec*)r.arg2();
 		push_arg_ptr(t, rem);
 		if (rem) {
 			r.set_arg2((uintptr_t)scratch);
@@ -1168,11 +1151,11 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 1;
 		}
 
-		struct mmsghdr* poldmsgvec = (struct mmsghdr*)r.arg2();
+		x86_arch::mmsghdr* poldmsgvec = (x86_arch::mmsghdr*)r.arg2();
 		push_arg_ptr(t, (void*)r.arg2());
 		r.set_arg2((uintptr_t)scratch);
 
-		if (reserve_scratch_for_msgvec(t, r.arg3(), poldmsgvec, &scratch))
+		if (reserve_scratch_for_msgvec<x86_arch>(t, r.arg3(), poldmsgvec, &scratch))
 		{
 			t->set_regs(r);
 			return 1;
@@ -1758,9 +1741,11 @@ static void process_mmap(Task* t, int syscallno,
  * Restore all data of msghdr from src* to dst* (all child pointers) and
  * record child memory where the pointer members point for replay
  */
-static void record_and_restore_msghdr(Task* t, struct msghdr *dst, struct msghdr *src)
+template<typename Arch>
+static void record_and_restore_msghdr(Task* t, typename Arch::msghdr *dst,
+				      typename Arch::msghdr *src)
 {
-	struct msghdr msg, tmpmsg;
+	typename Arch::msghdr msg, tmpmsg;
 	t->read_mem(dst, &msg);
 	t->read_mem(src, &tmpmsg);
 
@@ -1779,13 +1764,13 @@ static void record_and_restore_msghdr(Task* t, struct msghdr *dst, struct msghdr
 	ASSERT(t, msg.msg_iovlen == tmpmsg.msg_iovlen)
 	       << "Scratch msg should have "<< msg.msg_iovlen
 	       <<" iovs, but has "<< tmpmsg.msg_iovlen;
-	struct iovec iovs[msg.msg_iovlen];
-	read_iovs(t, msg, iovs);
-	struct iovec tmpiovs[tmpmsg.msg_iovlen];
-	read_iovs(t, tmpmsg, tmpiovs);
-	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
-		struct iovec* iov = &iovs[i];
-		const struct iovec& tmpiov = tmpiovs[i];
+	typename Arch::iovec iovs[msg.msg_iovlen];
+	read_iovs<Arch>(t, msg, iovs);
+	typename Arch::iovec tmpiovs[tmpmsg.msg_iovlen];
+	read_iovs<Arch>(t, tmpmsg, tmpiovs);
+	for (typename Arch::size_t i = 0; i < msg.msg_iovlen; ++i) {
+		typename Arch::iovec* iov = &iovs[i];
+		const typename Arch::iovec& tmpiov = tmpiovs[i];
 		t->remote_memcpy(iov->iov_base, tmpiov.iov_base,
 				 tmpiov.iov_len);
 		iov->iov_len = tmpiov.iov_len;
@@ -1804,17 +1789,20 @@ static void record_and_restore_msghdr(Task* t, struct msghdr *dst, struct msghdr
  * Restore all data of msgvec from pnewmsg to poldmsg and
  * record child memory where the pointer members point for replay
  */
-static void record_and_restore_msgvec(Task *t, bool has_saved_arg_ptrs, int nmmsgs, struct mmsghdr *pnewmsg, struct mmsghdr *poldmsg)
+template<typename Arch>
+static void record_and_restore_msgvec(Task *t, bool has_saved_arg_ptrs, int nmmsgs,
+				      typename Arch::mmsghdr *pnewmsg,
+				      typename Arch::mmsghdr *poldmsg)
 {
 	if (!has_saved_arg_ptrs) {
 		for (int i = 0; i < nmmsgs; ++i) {
-			record_struct_mmsghdr(t, pnewmsg + i);
+			record_struct_mmsghdr<Arch>(t, pnewmsg + i);
 		}
 		return;
 	}
 
-	struct mmsghdr old;
-	struct mmsghdr tmp;
+	typename Arch::mmsghdr old;
+	typename Arch::mmsghdr tmp;
 	for (int i = 0; i < nmmsgs; ++i) {
 		t->read_mem(poldmsg + i, &old);
 		t->read_mem(pnewmsg + i, &tmp);
@@ -1823,7 +1811,8 @@ static void record_and_restore_msgvec(Task *t, bool has_saved_arg_ptrs, int nmms
 		t->write_mem(poldmsg + i, old);
 
 		// record the msghdr part of mmsghdr
-		record_and_restore_msghdr(t, (struct msghdr *)(poldmsg + i), (struct msghdr *)(pnewmsg + i));
+		record_and_restore_msghdr<Arch>(t, (typename Arch::msghdr *)(poldmsg + i),
+						(typename Arch::msghdr *)(pnewmsg + i));
 		// record mmsghdr.msg_len
 		t->record_local(&((poldmsg + i)->msg_len), sizeof(old.msg_len), &old.msg_len);
 	}
@@ -1832,7 +1821,8 @@ static void record_and_restore_msgvec(Task *t, bool has_saved_arg_ptrs, int nmms
 /*
  * Record msg_len of each element of msgvec
  * */
-static void record_each_msglen(Task *t, int nmmsgs, struct mmsghdr *msgvec)
+template<typename Arch>
+static void record_each_msglen(Task *t, int nmmsgs, typename Arch::mmsghdr *msgvec)
 {
 	/* Record the outparam msg_len fields. */
 	for (int i = 0; i < nmmsgs; ++i, ++msgvec) {
@@ -1869,13 +1859,9 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	case SYS_GETPEERNAME:
 	/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 	case SYS_GETSOCKNAME: {
-		struct {
-			long sockfd;
-			struct sockaddr* addr;
-			socklen_t* addrlen;
-		} args;
+		x86_arch::getsockname_args args;
 		t->read_mem(base_addr, &args);
-		socklen_t len = t->read_word(args.addrlen);
+		x86_arch::socklen_t len = t->read_word(args.addrlen);
 		t->record_remote(args.addrlen, sizeof(*args.addrlen));
 		t->record_remote(args.addr, len);
 		return;
@@ -1890,7 +1876,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	 *  }
 	 */
 	case SYS_RECV: {
-		struct { long words[4]; } args;
+		x86_arch::recv_args args;
 		void* buf;
 		void* argsp;
 		byte* iter;
@@ -1903,12 +1889,12 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			/* We don't need to record the fudging of the
 			 * socketcall arguments, because we won't
 			 * replay that. */
-			memcpy(args.words, iter, sizeof(args.words));
+			memcpy(&args, iter, sizeof(args));
 			iter += sizeof(args);
 		} else {
 			long* argsp;
 			read_socketcall_args(t, &argsp, &args);
-			buf = (void*)args.words[1];
+			buf = (void*)args.buf;
 		}
 
 		/* Restore |buf| contents. */
@@ -1933,7 +1919,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		return;
 	}
 	case SYS_RECVFROM: {
-		struct recvfrom_args args;
+		x86_arch::recvfrom_args args;
 		t->read_mem(base_addr, &args);
 
 		ssize_t recvdlen = t->regs().syscall_result_signed();
@@ -1949,13 +1935,13 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			args.buf = buf;
 
 			if (src_addrp) {
-				socklen_t addrlen;
+				x86_arch::socklen_t addrlen;
 				t->read_mem(args.addrlen, &addrlen);
 				t->remote_memcpy(src_addrp, args.src_addr,
 						 addrlen);
 				t->write_mem(addrlenp, addrlen);
-				args.src_addr = (struct sockaddr*)src_addrp;
-				args.addrlen = (socklen_t*)addrlenp;
+				args.src_addr = (x86_arch::sockaddr*)src_addrp;
+				args.addrlen = (x86_arch::socklen_t*)addrlenp;
 			}
 			Registers r = t->regs();
 			r.set_arg2((uintptr_t)argsp);
@@ -1968,7 +1954,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			record_noop_data(t);
 		}
 		if (args.src_addr) {
-			socklen_t addrlen;
+			x86_arch::socklen_t addrlen;
 			t->read_mem(args.addrlen, &addrlen);
 
 			t->record_remote(args.addrlen, sizeof(*args.addrlen));
@@ -1982,18 +1968,18 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 	case SYS_RECVMSG: {
 		Registers r = t->regs();
-		struct recvmsg_args* tmpargsp = (struct recvmsg_args*)r.arg2();
-		struct recvmsg_args tmpargs;
+		x86_arch::recvmsg_args* tmpargsp = (x86_arch::recvmsg_args*)r.arg2();
+		x86_arch::recvmsg_args tmpargs;
 		t->read_mem(tmpargsp, &tmpargs);
 		if (!has_saved_arg_ptrs(t)) {
-			return record_struct_msghdr(t, tmpargs.msg);
+			return record_struct_msghdr<x86_arch>(t, tmpargs.msg);
 		}
 
 		byte* argsp = pop_arg_ptr<byte>(t);
-		struct recvmsg_args args;
+		x86_arch::recvmsg_args args;
 		t->read_mem(argsp, &args);
 
-		record_and_restore_msghdr(t, args.msg, tmpargs.msg);
+		record_and_restore_msghdr<x86_arch>(t, args.msg, tmpargs.msg);
 
 		r.set_arg2((uintptr_t)argsp);
 		t->set_regs(r);
@@ -2004,10 +1990,9 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	 *  int getsockopt(int sockfd, int level, int optname, const void *optval, socklen_t* optlen);
 	 */
 	case SYS_GETSOCKOPT: {
-		struct { long sockfd; long level; int optname;
-			void* optval; socklen_t* optlen; } args;
+		x86_arch::getsockopt_args args;
 		t->read_mem(base_addr, &args);
-		socklen_t optlen = t->read_word(args.optlen);
+		x86_arch::socklen_t optlen = t->read_word(args.optlen);
 		t->record_remote(args.optlen, sizeof(*args.optlen));
 		t->record_remote(args.optval, optlen);
 		return;
@@ -2028,19 +2013,19 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	case SYS_ACCEPT:
 	case SYS_ACCEPT4: {
 		Registers r = t->regs();
-		struct sockaddr* addrp = pop_arg_ptr<struct sockaddr>(t);
-		socklen_t* addrlenp = pop_arg_ptr<socklen_t>(t);
+		x86_arch::sockaddr* addrp = pop_arg_ptr<x86_arch::sockaddr>(t);
+		x86_arch::socklen_t* addrlenp = pop_arg_ptr<x86_arch::socklen_t>(t);
 		byte* orig_argsp = pop_arg_ptr<byte>(t);
 
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 		// Consume the scratch args.
 		if (SYS_ACCEPT == call) {
-			iter += sizeof(struct accept_args);
+			iter += sizeof(x86_arch::accept_args);
 		} else {
-			iter += sizeof(struct accept4_args);
+			iter += sizeof(x86_arch::accept4_args);
 		}
-		socklen_t addrlen = *(socklen_t*)iter;
+		x86_arch::socklen_t addrlen = *(x86_arch::socklen_t*)iter;
 		restore_and_record_arg_buf(t, sizeof(addrlen), (byte*)addrlenp,
 					   &iter);
 		restore_and_record_arg_buf(t, addrlen, (byte*)addrp, &iter);
@@ -2058,7 +2043,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	 * values returned in sv
 	 */
 	case SYS_SOCKETPAIR: {
-		struct { int domain; int type; int protocol; int* sv; } args;
+		x86_arch::socketpair_args args;
 		t->read_mem(base_addr, &args);
 		t->record_remote(args.sv, 2 * sizeof(*args.sv));
 		return;
@@ -2070,11 +2055,11 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		Registers r = t->regs();
 		int nmmsgs = r.syscall_result_signed();
 
-		struct recvmmsg_args *tmpargsp = (struct recvmmsg_args*)r.arg2();
-		struct recvmmsg_args tmpargs;
+		x86_arch::recvmmsg_args *tmpargsp = (x86_arch::recvmmsg_args*)r.arg2();
+		x86_arch::recvmmsg_args tmpargs;
 		t->read_mem(tmpargsp, &tmpargs);
 
-		struct recvmmsg_args args;
+		x86_arch::recvmmsg_args args;
 		byte* argsp = NULL;
 		bool has_saved_ptr = has_saved_arg_ptrs(t);
 		if (has_saved_ptr) {
@@ -2084,18 +2069,18 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			t->set_regs(r);
 		}
 
-		record_and_restore_msgvec(t, has_saved_ptr, nmmsgs, tmpargs.msgvec, args.msgvec);
+		record_and_restore_msgvec<x86_arch>(t, has_saved_ptr, nmmsgs, tmpargs.msgvec, args.msgvec);
 		return;
 	}
 
 	/* int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
 	*              unsigned int flags);*/
 	case SYS_SENDMMSG: {
-		struct sendmmsg_args *argsp = (struct sendmmsg_args*)t->regs().arg2();
-		struct sendmmsg_args args;
+		x86_arch::sendmmsg_args *argsp = (x86_arch::sendmmsg_args*)t->regs().arg2();
+		x86_arch::sendmmsg_args args;
 		t->read_mem(argsp, &args);
 
-		record_each_msglen(t, t->regs().syscall_result_signed(), args.msgvec);
+		record_each_msglen<x86_arch>(t, t->regs().syscall_result_signed(), args.msgvec);
 		return;
 	}
 
@@ -2288,8 +2273,8 @@ void rec_process_syscall(Task *t)
 	case SYS_epoll_wait: {
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
-		struct epoll_event* events =
-			pop_arg_ptr<struct epoll_event>(t);
+		x86_arch::epoll_event* events =
+			pop_arg_ptr<x86_arch::epoll_event>(t);
 		int maxevents = t->regs().arg3_signed();
 		if (events) {
 			restore_and_record_arg_buf(t,
@@ -2399,7 +2384,7 @@ void rec_process_syscall(Task *t)
 		break;
 
 	case SYS_mmap: {
-		struct mmap_arg_struct args;
+		x86_arch::mmap_args args;
 		t->read_mem((void*)t->regs().arg1(), &args);
 		process_mmap(t, syscallno, args.len,
 			     args.prot, args.flags, args.fd,
@@ -2415,7 +2400,7 @@ void rec_process_syscall(Task *t)
 		break;
 
 	case SYS_nanosleep: {
-		struct timespec* rem = pop_arg_ptr<struct timespec>(t);
+		x86_arch::timespec* rem = pop_arg_ptr<x86_arch::timespec>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
@@ -2459,7 +2444,7 @@ void rec_process_syscall(Task *t)
 	case SYS_ppoll: {
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
-		struct pollfd* fds = pop_arg_ptr<struct pollfd>(t);
+		x86_arch::pollfd* fds = pop_arg_ptr<x86_arch::pollfd>(t);
 		size_t nfds = t->regs().arg2();
 
 		restore_and_record_arg_buf(t, nfds * sizeof(*fds), (byte*)fds,
@@ -2572,17 +2557,17 @@ void rec_process_syscall(Task *t)
 		Registers r = t->regs();
 		int nmmsgs = r.syscall_result_signed();
 
-		struct mmsghdr* msg = (struct mmsghdr*)r.arg2();
-		struct mmsghdr* oldmsg = NULL;
+		x86_arch::mmsghdr* msg = (x86_arch::mmsghdr*)r.arg2();
+		x86_arch::mmsghdr* oldmsg = NULL;
 
 		bool has_saved_ptr = has_saved_arg_ptrs(t);
 		if (has_saved_ptr) {
-			oldmsg = pop_arg_ptr<struct mmsghdr>(t);
+			oldmsg = pop_arg_ptr<x86_arch::mmsghdr>(t);
 			r.set_arg2((uintptr_t)oldmsg);
 			t->set_regs(r);
 		}
 
-		record_and_restore_msgvec(t, has_saved_ptr, nmmsgs, msg, oldmsg);
+		record_and_restore_msgvec<x86_arch>(t, has_saved_ptr, nmmsgs, msg, oldmsg);
 		break;
 	}
 	case SYS_sendfile64: {
@@ -2603,9 +2588,9 @@ void rec_process_syscall(Task *t)
 		break;
 	}
 	case SYS_sendmmsg: {
-		struct mmsghdr* msg = (struct mmsghdr*)t->regs().arg2();
+		x86_arch::mmsghdr* msg = (x86_arch::mmsghdr*)t->regs().arg2();
 
-		record_each_msglen(t, t->regs().syscall_result_signed(), msg);
+		record_each_msglen<x86_arch>(t, t->regs().syscall_result_signed(), msg);
 		break;
 	}
 	case SYS_socketcall:
@@ -2648,7 +2633,7 @@ void rec_process_syscall(Task *t)
 		break;
 	}
 	case SYS_waitid: {
-		siginfo_t* infop = pop_arg_ptr<siginfo_t>(t);
+		x86_arch::siginfo_t* infop = pop_arg_ptr<x86_arch::siginfo_t>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
@@ -2666,7 +2651,7 @@ void rec_process_syscall(Task *t)
 	}
 	case SYS_waitpid:
 	case SYS_wait4: {
-		struct rusage* rusage = pop_arg_ptr<struct rusage>(t);
+		x86_arch::rusage* rusage = pop_arg_ptr<x86_arch::rusage>(t);
 		int* status = pop_arg_ptr<int>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
