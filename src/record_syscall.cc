@@ -1734,6 +1734,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 
 		msg.msg_namelen = tmpmsg.msg_namelen;
 		msg.msg_flags = tmpmsg.msg_flags;
+		msg.msg_controllen = tmpmsg.msg_controllen;
 		t->write_mem(args.msg, msg);
 		t->record_local(args.msg, sizeof(tmpmsg), &msg);
 

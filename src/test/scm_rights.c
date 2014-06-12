@@ -13,7 +13,9 @@ static void child(int sock, int fd_minus_one) {
 		byte bytes[sizeof(int[2])];
 	} mbuf;
 	struct iovec iov;
-	byte cbuf[CMSG_SPACE(sizeof(fd))];
+	/* make cbuf bigger than necessary so we can test that the correct
+	   value is written back (the amount actually written by the kernel) */
+	byte cbuf[CMSG_SPACE(sizeof(fd)) + 77];
 	const struct cmsghdr* cmsg;
 	int zero = ~0;
 	ssize_t nread;
@@ -39,7 +41,7 @@ static void child(int sock, int fd_minus_one) {
 	test_assert(nread == sizeof(mbuf.ints[0]));
 	test_assert(MAGIC == mbuf.ints[0]);
 	test_assert(~MAGIC == mbuf.ints[1]);
-	test_assert(msg.msg_controllen == sizeof(cbuf));
+	test_assert(msg.msg_controllen == CMSG_SPACE(sizeof(fd)));
 
 	atomic_printf("c:   ... and %d name bytes\n", msg.msg_namelen);
 	test_assert(0 == msg.msg_namelen);
