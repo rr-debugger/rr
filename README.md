@@ -2,4 +2,4 @@ rr is a lightweight tool for recording and replaying execution of applications (
 
 Or go directly to the [installation and building instructions](https://github.com/mozilla/rr/wiki/Installation).
 
-Please contribute!  Make sure to review the [pull request checklist](https://github.com/mozilla/rr/wiki/Submitting--a-pull-request:-Checklist) before submitting a pull request.
+Please contribute!  Make sure to review the [pull request checklist](/CONTRIBUTING.md) before submitting a pull request.
