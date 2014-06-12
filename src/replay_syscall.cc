@@ -41,6 +41,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "emufs.h"
+#include "kernel_abi.h"
 #include "log.h"
 #include "replayer.h"
 #include "session.h"
@@ -55,6 +56,7 @@
 //#define CHECK_SYSCALL_NUMBERS
 
 using namespace std;
+using namespace rr;
 
 enum SyscallDefType {
 	rep_UNDEFINED,	/* NB: this symbol must have the value 0 */
@@ -969,10 +971,11 @@ static void process_mmap(Task* t,
 /**
  * Restore saved struct mmsghdr* msgvec
  */
-static void restore_msgvec(Task *t, int nmmsgs, struct mmsghdr* pmsgvec)
+template<typename Arch>
+static void restore_msgvec(Task *t, int nmmsgs, typename Arch::mmsghdr* pmsgvec)
 {
 	for (int i = 0; i < nmmsgs; ++i, ++pmsgvec) {
-		restore_struct_mmsghdr(t, pmsgvec);
+		restore_struct_mmsghdr<Arch>(t, pmsgvec);
 	}
 }
 
@@ -1061,10 +1064,10 @@ static void process_socketcall(Task* t, int state,
 		step->syscall.num_emu_args = 0;
 
 		void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
-		struct recvmsg_args args;
+		x86_arch::recvmsg_args args;
 		t->read_mem(base_addr, &args);
 
-		restore_struct_msghdr(t, args.msg);
+		restore_struct_msghdr<x86_arch>(t, args.msg);
 		return;
 	}
 
@@ -1072,10 +1075,10 @@ static void process_socketcall(Task* t, int state,
 		step->syscall.num_emu_args = 0;
 
 		void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
-		struct recvmmsg_args args;
+		x86_arch::recvmmsg_args args;
 		t->read_mem(base_addr, &args);
 
-		restore_msgvec(t, t->current_trace_frame().recorded_regs.syscall_result_signed(), args.msgvec);
+		restore_msgvec<x86_arch>(t, t->current_trace_frame().recorded_regs.syscall_result_signed(), args.msgvec);
 		return;
 	}
 
@@ -1467,7 +1470,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->syscall.emu = 1;
 			return;
 		}
-		struct mmap_arg_struct args;
+		x86_arch::mmap_args args;
 		t->read_mem((void*)t->regs().arg1(), &args);
 		return process_mmap(t, trace, state,
 				    args.prot, args.flags, args.offset / 4096,
@@ -1595,8 +1598,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 			return;
 		}
-
-		restore_msgvec(t, rec_regs->syscall_result_signed(), (struct mmsghdr*)rec_regs->arg2());
+		restore_msgvec<x86_arch>(t, rec_regs->syscall_result_signed(), (x86_arch::mmsghdr*)rec_regs->arg2());
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}

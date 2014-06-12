@@ -14,11 +14,10 @@
 
 #include <ostream>
 
+#include "kernel_abi.h"
 #include "registers.h"
 #include "types.h"
 
-struct msghdr;
-struct mmsghdr;
 class Task;
 struct trace_frame;
 
@@ -365,18 +364,22 @@ void copy_syscall_arg_regs(Registers* to,
 
 /**
  * Record all the data needed to restore the |struct msghdr| pointed
- * at in |t|'s address space by |child_msghdr_ptr|.
+ * at in |t|'s address space by |child_msghdr|.
  */
-void record_struct_msghdr(Task* t, struct msghdr* child_msghdr);
+template<typename Arch>
+void record_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr);
 /** Like record_struct_msghdr(), but records mmsghdr. */
-void record_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
+template<typename Arch>
+void record_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr);
 /**
  * Restore the recorded msghdr pointed at in |t|'s address space by
- * |child_msghdr_ptr|.
+ * |child_msghdr|.
  */
-void restore_struct_msghdr(Task* t, struct msghdr* child_msghdr);
+template<typename Arch>
+void restore_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr);
 /** Like restore_struct_msghdr(), but for mmsghdr. */
-void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
+template<typename Arch>
+void restore_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr);
 
 /**
  * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|

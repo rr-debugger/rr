@@ -119,26 +119,6 @@ struct flags {
 	{}
 };
 
-/** Params packaged up for old mmap syscall. */
-struct mmap_arg_struct {
-	unsigned long addr;
-	unsigned long len;
-	unsigned long prot;
-	unsigned long flags;
-        unsigned long fd;
-	unsigned long offset;
-};
-
-struct msghdr;
-/**
- * These arguments are pushed on the stack for the recvmsg socketcall.
- */
-struct recvmsg_args {
-	long fd;
-	struct msghdr* msg;
-	long flags;
-};
-
 struct mmsghdr;
 struct timespec;
 /**
