@@ -388,8 +388,8 @@ void restore_struct_mmsghdr(Task* t, struct mmsghdr* child_mmsghdr);
 bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val);
 
 /** Return the default action of |sig|. */
-enum { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
-int default_action(int sig);
+enum signal_action { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
+signal_action default_action(int sig);
 
 /**
  * Return true if |sig| may cause the status of other tasks to change

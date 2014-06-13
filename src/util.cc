@@ -977,7 +977,7 @@ bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val)
 	return now_contended;
 }
 
-int default_action(int sig)
+signal_action default_action(int sig)
 {
 	if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
 		return TERMINATE;
@@ -1022,7 +1022,7 @@ int default_action(int sig)
 	CASE(WINCH, IGNORE);
 	default:
 		FATAL() <<"Unknown signal "<< sig;
-		return -1;	// not reached
+		return TERMINATE;	// not reached
 #undef CASE
 	}
 }
@@ -1030,7 +1030,7 @@ int default_action(int sig)
 bool possibly_destabilizing_signal(Task* t, int sig)
 {
 	sig_handler_t disp = t->signal_disposition(sig);
-	int action = default_action(sig);
+	signal_action action = default_action(sig);
 	// If the diposition is IGN or user handler, then the signal
 	// won't be fatal.  So we only need to check for DFL.
 	return SIG_DFL == disp && (DUMP_CORE == action || TERMINATE == action);
