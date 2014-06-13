@@ -2,7 +2,6 @@
 
 #include "rrutil.h"
 
-
 long int counter = 0;
 
 void catcher(int sig) {
@@ -11,7 +10,7 @@ void catcher(int sig) {
 	_exit(0);
 }
 
-void* reciever(void* name) {
+void* receiver(void* name) {
 	struct sigaction sact;
 
 	sigemptyset(&sact.sa_mask);
@@ -43,7 +42,7 @@ int main(void) {
 
 	/* Create independent threads each of which will execute
 	 * function */
-	pthread_create(&thread1, NULL, reciever, NULL);
+	pthread_create(&thread1, NULL, receiver, NULL);
 	pthread_create(&thread2, NULL, sender, &thread1);
 
 	/* Wait till threads are complete before main
