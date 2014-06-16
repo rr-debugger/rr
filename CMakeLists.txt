@@ -13,8 +13,8 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
 # is cool with it.  Sigh.
 set(rr_VERSION_MAJOR 1)
-set(rr_VERSION_MINOR 2)
-set(rr_VERSION_PATCH 1)
+set(rr_VERSION_MINOR 4)
+set(rr_VERSION_PATCH 0)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict-prototypes")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -pthread -O0 -g3 -Wall -Werror -m32")
