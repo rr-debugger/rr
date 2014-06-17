@@ -107,33 +107,8 @@ static int start(const char* rr_exe, int argc, char* argv[], char** envp)
 	}
 }
 
-/**
- * Open |filename| and scan it as if it contains a single integer
- * value.  Return the integer on success, or -1 on failure.
- */
-static int read_int_file(const char* filename)
-{
-	FILE* inf = fopen(filename, "r");
-	int val;
-	if (!inf) {
-		return -1;
-	}
-	if (1 != fscanf(inf, "%d", &val)) {
-		FATAL() <<"Failed to scan integer from " << filename;
-	}
-	fclose(inf);
-	return val;
-}
-
 static void assert_prerequisites(struct flags* flags)
 {
-	int ptrace_scope_val =
-		read_int_file("/proc/sys/kernel/yama/ptrace_scope");
-	if (ptrace_scope_val > 0) {
-		FATAL() <<"Can't write to process memory; ptrace_scope is "
-			<< ptrace_scope_val;
-	}
-
 	struct utsname uname_buf;
 	memset(&uname_buf, 0, sizeof(uname_buf));
 	if (!uname(&uname_buf)) {
