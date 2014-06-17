@@ -2492,16 +2492,9 @@ Task::destroy_local_buffers()
 void
 Task::detach_and_reap()
 {
-	if (tid_futex) {
-		static_assert(sizeof(int32_t) == sizeof(long),
-			      "Sorry, need to add Task::read_int()");
-		// This read also ensures that child_mem_fd is valid
-		// before the tracee exits.  Otherwise we might not be
-		// open the fd below.  See TODO comment in Task ctor.
-		int32_t tid_addr_val = read_word(tid_futex);
-		ASSERT(this, rec_tid == tid_addr_val)
-			<<"tid addr should be "<< rec_tid <<", but is "<< tid_addr_val;
-	}
+	// child_mem_fd needs to be valid since we won't be able to open
+	// it for futex_wait below after we've detached.
+	ASSERT(this, child_mem_fd >= 0);
 
 	// XXX: why do we detach before harvesting?
 	fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
