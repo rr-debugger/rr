@@ -290,6 +290,33 @@ static bool reserve_scratch_for_msghdr(Task *t, struct msghdr *msg, byte **scrat
 }
 
 /**
+ * Reserve scratch on T for struct mmsghdr *msgvec.
+ * Return TRUE if there's no scratch overflow.
+ */
+static bool reserve_scratch_for_msgvec(Task *t, unsigned int vlen, struct mmsghdr *pmsgvec, byte **scratch)
+{
+	struct mmsghdr msgvec[vlen];
+	t->read_bytes_helper(pmsgvec, sizeof(msgvec), (byte*)msgvec);
+
+	// Reserve scratch for struct mmsghdr *msgvec
+	struct mmsghdr* tmpmsgvec = (struct mmsghdr*)*scratch;
+	*scratch += sizeof(msgvec);
+
+	// Reserve scratch for child pointers of struct msghdr
+	for (unsigned int i = 0; i < vlen; ++i)
+	{
+		if (!reserve_scratch_for_msghdr(t, &(msgvec[i].msg_hdr), scratch))
+		{
+			return false;
+		}
+	}
+
+	// Write back the modified msgvec
+	t->write_bytes_helper(tmpmsgvec, sizeof(msgvec), (byte*)msgvec);
+	return true;
+}
+
+/**
  * Initialize any necessary state to execute the socketcall that |t|
  * is stopped at, for example replacing tracee args with pointers into
  * scratch memory if necessary.
@@ -494,6 +521,45 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		struct recvmsg_args args;
 		t->read_mem(argsp, &args);
 		return !(args.flags & MSG_DONTWAIT);
+	}
+	case SYS_SENDMMSG: {
+		Registers r = t->regs();
+		void* argsp = (void*)r.arg2();
+		struct sendmmsg_args args;
+		t->read_mem(argsp, &args);
+		return !(args.flags & MSG_DONTWAIT);
+	}
+	case SYS_RECVMMSG: {
+		Registers r = t->regs();
+		void* argsp = (void*)r.arg2();
+		struct recvmmsg_args args;
+		t->read_mem(argsp, &args);
+
+		if (args.flags & MSG_DONTWAIT) {
+			return 0;
+		}
+		if (!would_need_scratch) {
+			return 1;
+		}
+
+		// Reserve scratch for the arg
+		push_arg_ptr(t, argsp);
+		void* tmpargsp = scratch;
+		scratch += sizeof(args);
+		r.set_arg2((uintptr_t)tmpargsp);
+
+		// Update msgvec pointer of tmp arg
+		struct mmsghdr* poldmsgvec = args.msgvec;
+		args.msgvec = (struct mmsghdr*)scratch;
+		t->write_mem(tmpargsp, args);
+
+		if (reserve_scratch_for_msgvec(t, args.vlen, poldmsgvec, &scratch))
+		{
+			t->set_regs(r);
+			return 1;
+		}
+		else
+			return 0;
 	}
 	default:
 		return 0;
@@ -1029,39 +1095,25 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 
 	case SYS_recvmmsg: {
 		Registers r = t->regs();
-		unsigned flags = (unsigned int)r.arg4();
 
-		if (flags & MSG_DONTWAIT) {
+		if ((unsigned int)r.arg4() & MSG_DONTWAIT) {
 			return 0;
 		}
 		if (!would_need_scratch) {
 			return 1;
 		}
 
-		int vlen = (unsigned int)r.arg3();
-		struct mmsghdr msgvec[vlen];
-		struct mmsghdr *pmsgvec = (struct mmsghdr*)r.arg2();
-		t->read_bytes_helper(pmsgvec, sizeof(msgvec), (byte*)msgvec);
-
-		// Reserve scratch for struct mmsghdr *msgvec
+		struct mmsghdr* poldmsgvec = (struct mmsghdr*)r.arg2();
 		push_arg_ptr(t, (void*)r.arg2());
-		struct mmsghdr* tmpmsgvec = (struct mmsghdr*)scratch;
-		scratch += sizeof(msgvec);
-		r.set_arg2((uintptr_t)tmpmsgvec);
+		r.set_arg2((uintptr_t)scratch);
 
-		// Reserve scratch for child pointers of struct msghdr
-		for (int i = 0; i < vlen; ++i)
+		if (reserve_scratch_for_msgvec(t, r.arg3(), poldmsgvec, &scratch))
 		{
-			if (!reserve_scratch_for_msghdr(t, &(msgvec[i].msg_hdr), &scratch))
-			{
-				return 0;
-			}
+			t->set_regs(r);
+			return 1;
 		}
-
-		t->write_bytes_helper(tmpmsgvec, sizeof(msgvec), (byte*)msgvec);
-		t->set_regs(r);
-
-		return 1;
+		else
+			return 0;
 	}
 	case SYS_sendmmsg: {
 		Registers r = t->regs();
@@ -1683,6 +1735,46 @@ static void record_and_restore_msghdr(Task* t, struct msghdr *dst, struct msghdr
 	t->record_remote(msg.msg_control, msg.msg_controllen);
 }
 
+/*
+ * Restore all data of msgvec from pnewmsg to poldmsg and
+ * record child memory where the pointer members point for replay
+ */
+static void record_and_restore_msgvec(Task *t, bool has_saved_arg_ptrs, int nmmsgs, struct mmsghdr *pnewmsg, struct mmsghdr *poldmsg)
+{
+	if (!has_saved_arg_ptrs) {
+		for (int i = 0; i < nmmsgs; ++i) {
+			record_struct_mmsghdr(t, pnewmsg + i);
+		}
+		return;
+	}
+
+	struct mmsghdr old;
+	struct mmsghdr tmp;
+	for (int i = 0; i < nmmsgs; ++i) {
+		t->read_mem(poldmsg + i, &old);
+		t->read_mem(pnewmsg + i, &tmp);
+
+		old.msg_len = tmp.msg_len;
+		t->write_mem(poldmsg + i, old);
+
+		// record the msghdr part of mmsghdr
+		record_and_restore_msghdr(t, (struct msghdr *)(poldmsg + i), (struct msghdr *)(pnewmsg + i));
+		// record mmsghdr.msg_len
+		t->record_local(&((poldmsg + i)->msg_len), sizeof(old.msg_len), &old.msg_len);
+	}
+}
+
+/*
+ * Record msg_len of each element of msgvec
+ * */
+static void record_each_msglen(Task *t, int nmmsgs, struct mmsghdr *msgvec)
+{
+	/* Record the outparam msg_len fields. */
+	for (int i = 0; i < nmmsgs; ++i, ++msgvec) {
+		t->record_remote(&msgvec->msg_len, sizeof(msgvec->msg_len));
+	}
+}
+
 static void process_socketcall(Task* t, int call, void* base_addr)
 {
 	LOG(debug) <<"socket call: "<< call;
@@ -1904,6 +1996,41 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		struct { int domain; int type; int protocol; int* sv; } args;
 		t->read_mem(base_addr, &args);
 		t->record_remote(args.sv, 2 * sizeof(*args.sv));
+		return;
+	}
+
+	/* int recvmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
+	 *              unsigned int flags, struct timespec *timeout);*/
+	case SYS_RECVMMSG: {
+		Registers r = t->regs();
+		int nmmsgs = r.syscall_result_signed();
+
+		struct recvmmsg_args *tmpargsp = (struct recvmmsg_args*)r.arg2();
+		struct recvmmsg_args tmpargs;
+		t->read_mem(tmpargsp, &tmpargs);
+
+		struct recvmmsg_args args;
+		byte* argsp = NULL;
+		bool has_saved_ptr = has_saved_arg_ptrs(t);
+		if (has_saved_ptr) {
+			argsp = pop_arg_ptr<byte>(t);
+			t->read_mem(argsp, &args);
+			r.set_arg2((uintptr_t)argsp);
+			t->set_regs(r);
+		}
+
+		record_and_restore_msgvec(t, has_saved_ptr, nmmsgs, tmpargs.msgvec, args.msgvec);
+		return;
+	}
+
+	/* int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
+	*              unsigned int flags);*/
+	case SYS_SENDMMSG: {
+		struct sendmmsg_args *argsp = (struct sendmmsg_args*)t->regs().arg2();
+		struct sendmmsg_args args;
+		t->read_mem(argsp, &args);
+
+		record_each_msglen(t, t->regs().syscall_result_signed(), args.msgvec);
 		return;
 	}
 
@@ -2378,35 +2505,19 @@ void rec_process_syscall(Task *t)
 	}
 	case SYS_recvmmsg: {
 		Registers r = t->regs();
-		struct mmsghdr* msg = (struct mmsghdr*)r.arg2();
 		int nmmsgs = r.syscall_result_signed();
-		int i;
 
-		if (!has_saved_arg_ptrs(t)) {
-			for (i = 0; i < nmmsgs; ++i, ++msg) {
-				record_struct_mmsghdr(t, msg);
-			}
-			break;
+		struct mmsghdr* msg = (struct mmsghdr*)r.arg2();
+		struct mmsghdr* oldmsg = NULL;
+
+		bool has_saved_ptr = has_saved_arg_ptrs(t);
+		if (has_saved_ptr) {
+			oldmsg = pop_arg_ptr<struct mmsghdr>(t);
+			r.set_arg2((uintptr_t)oldmsg);
+			t->set_regs(r);
 		}
 
-		struct mmsghdr* oldmsg = pop_arg_ptr<struct mmsghdr>(t);
-		for (i = 0; i < nmmsgs; ++i, ++msg) {
-			struct mmsghdr old;
-			struct mmsghdr tmp;
-			t->read_mem(oldmsg + i, &old);
-			t->read_mem(msg, &tmp);
-
-			old.msg_len = tmp.msg_len;
-			t->write_mem(oldmsg + i, old);
-
-			// record the msghdr part of mmsghdr
-			record_and_restore_msghdr(t, (struct msghdr *)(oldmsg + i), (struct msghdr *)msg);
-			// record mmsghdr.msg_len
-			t->record_local(&((oldmsg + i)->msg_len), sizeof(old.msg_len), &old.msg_len);
-		}
-
-		r.set_arg2((uintptr_t)oldmsg);
-		t->set_regs(r);
+		record_and_restore_msgvec(t, has_saved_ptr, nmmsgs, msg, oldmsg);
 		break;
 	}
 	case SYS_sendfile64: {
@@ -2428,13 +2539,8 @@ void rec_process_syscall(Task *t)
 	}
 	case SYS_sendmmsg: {
 		struct mmsghdr* msg = (struct mmsghdr*)t->regs().arg2();
-		int nmmsgs = t->regs().syscall_result_signed();
-		int i;
 
-		/* Record the outparam msg_len fields. */
-		for (i = 0; i < nmmsgs; ++i, ++msg) {
-			t->record_remote(&msg->msg_len, sizeof(msg->msg_len));
-		}
+		record_each_msglen(t, t->regs().syscall_result_signed(), msg);
 		break;
 	}
 	case SYS_socketcall:

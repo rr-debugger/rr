@@ -961,6 +961,26 @@ static void process_mmap(Task* t,
 }
 
 /**
+ * Restore saved struct mmsghdr* msgvec
+ */
+static void restore_msgvec(Task *t, int nmmsgs, struct mmsghdr* pmsgvec)
+{
+	for (int i = 0; i < nmmsgs; ++i, ++pmsgvec) {
+		restore_struct_mmsghdr(t, pmsgvec);
+	}
+}
+
+/**
+ * Restore saved msglen for each struct mmsghdr* of msgvec
+ */
+static void restore_msglen_for_msgvec(Task *t, int nmmsgs)
+{
+	for (int i = 0; i < nmmsgs; ++i) {
+		t->set_data_from_trace();
+	}
+}
+
+/**
  * Return nonzero if this socketcall was "regular" and |step| was
  * updated appropriately, or zero if this was an irregular socketcall
  * that needs to be processed specially.
@@ -1041,6 +1061,23 @@ static void process_socketcall(Task* t, int state,
 		restore_struct_msghdr(t, args.msg);
 		return;
 	}
+
+	case SYS_RECVMMSG: {
+		step->syscall.num_emu_args = 0;
+
+		void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
+		struct recvmmsg_args args;
+		t->read_mem(base_addr, &args);
+
+		restore_msgvec(t, t->current_trace_frame().recorded_regs.syscall_result_signed(), args.msgvec);
+		return;
+	}
+
+	case SYS_SENDMMSG: {
+		restore_msglen_for_msgvec(t, t->current_trace_frame().recorded_regs.syscall_result_signed());
+		return;
+	}
+
 	default:
 		FATAL() <<"Unhandled socketcall "<< call;
 	}
@@ -1552,11 +1589,8 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 			return;
 		}
-		struct mmsghdr* msg = (struct mmsghdr*)rec_regs->arg2();
-		int nmmsgs = rec_regs->syscall_result_signed();
-		for (int i = 0; i < nmmsgs; ++i, ++msg) {
-			restore_struct_mmsghdr(t, msg);
-		}
+
+		restore_msgvec(t, rec_regs->syscall_result_signed(), (struct mmsghdr*)rec_regs->arg2());
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}
@@ -1575,10 +1609,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->action = TSTEP_ENTER_SYSCALL;
 			return;
 		}
-		int nmmsgs = rec_regs->syscall_result_signed();
-		for (int i = 0; i < nmmsgs; ++i) {
-			t->set_data_from_trace();
-		}
+		restore_msglen_for_msgvec(t, rec_regs->syscall_result_signed());
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}
