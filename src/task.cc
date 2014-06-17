@@ -2825,12 +2825,81 @@ static off64_t to_offset(void* addr)
 }
 
 ssize_t
+Task::read_bytes_ptrace(void* addr, ssize_t buf_size, byte* buf)
+{
+	ssize_t nread = 0;
+	// XXX 64-bit porting issue
+	int word_size = sizeof(long);
+	errno = 0;
+	// Only read aligned words. This ensures we can always read the last
+	// byte before an unmapped region.
+	while (nread < buf_size) {
+		uintptr_t start = uintptr_t(addr) + nread;
+		uintptr_t start_word = start & ~(word_size - 1);
+		uintptr_t end_word = start_word + word_size;
+		uintptr_t length =
+			std::min(end_word - start, uintptr_t(buf_size - nread));
+
+		long v = fallible_ptrace(PTRACE_PEEKDATA,
+			reinterpret_cast<void*>(start_word), NULL);
+		if (errno) {
+			break;
+		}
+		memcpy(buf + nread,
+		       reinterpret_cast<byte*>(&v) + (start - start_word),
+		       length);
+		nread += length;
+	}
+
+	return nread;
+}
+
+ssize_t
+Task::write_bytes_ptrace(void* addr, ssize_t buf_size, const byte* buf)
+{
+	ssize_t nwritten = 0;
+	// XXX 64-bit porting issue
+	unsigned int word_size = sizeof(long);
+	errno = 0;
+	// Only write aligned words. This ensures we can always write the last
+	// byte before an unmapped region.
+	while (nwritten < buf_size) {
+		uintptr_t start = uintptr_t(addr) + nwritten;
+		uintptr_t start_word = start & ~(word_size - 1);
+		uintptr_t end_word = start_word + word_size;
+		uintptr_t length = std::min(end_word - start, uintptr_t(buf_size - nwritten));
+
+		long v;
+		if (length < word_size) {
+			v = fallible_ptrace(PTRACE_PEEKDATA, (void*)start_word, NULL);
+			if (errno) {
+				break;
+			}
+		}
+		memcpy(reinterpret_cast<byte*>(&v) + (start - start_word),
+		       buf + nwritten,
+		       length);
+		fallible_ptrace(PTRACE_POKEDATA,
+			reinterpret_cast<void*>(start_word),
+			reinterpret_cast<void*>(v));
+		nwritten += length;
+	}
+
+	return nwritten;
+}
+
+ssize_t
 Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf)
 {
 	ASSERT(this, buf_size >= 0) <<"Invalid buf_size "<< buf_size;
 	if (0 == buf_size) {
 		return 0;
 	}
+
+	if (child_mem_fd < 0) {
+		return read_bytes_ptrace(addr, buf_size, buf);
+	}
+
 	errno = 0;
 	ssize_t nread = pread64(child_mem_fd, buf, buf_size, to_offset(addr));
 	// We open the child_mem_fd just after being notified of
@@ -2863,6 +2932,12 @@ Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 	if (0 == buf_size) {
 		return;
 	}
+
+	if (child_mem_fd < 0) {
+		write_bytes_ptrace(addr, buf_size, buf);
+		return;
+	}
+
 	errno = 0;
 	ssize_t nwritten = pwrite64(child_mem_fd, buf, buf_size,
 				    to_offset(addr));

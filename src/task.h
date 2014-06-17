@@ -1715,6 +1715,18 @@ private:
 	long fallible_ptrace(int request, void* addr, void* data);
 
 	/**
+	 * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use
+	 * as fallback. Returns number of bytes actually read.
+	 */
+	ssize_t read_bytes_ptrace(void* addr, ssize_t buf_size, byte* buf);
+
+	/**
+	 * Write tracee memory using PTRACE_POKEDATA calls. Slow, only use
+	 * as fallback. Returns number of bytes actually written.
+	 */
+	ssize_t write_bytes_ptrace(void* addr, ssize_t buf_size, const byte* buf);
+
+	/**
 	 * Open our /proc/[tid]/mem fd.  For reopen(), close the old
 	 * one first.
 	 */
@@ -1829,6 +1841,9 @@ private:
 	// when the tracee isn't at a ptrace-stop.  It's also
 	// theoretically faster for large data transfers, which rr can
 	// do often.
+	//
+	// Users of child_mem_fd should fall back to ptrace-based memory
+	// access when child_mem_fd is -1.
 	//
 	// TODO: we should only need one of these per address space.
 	int child_mem_fd;
