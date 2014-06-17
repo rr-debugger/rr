@@ -155,6 +155,7 @@ set(BASIC_TESTS
   mutex_pi_stress
   nanosleep
   no_mask_timeslice
+  orphan_process
   pause
   perf_event
   poll_sig_race
