@@ -1,8 +1,26 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 #include "rrutil.h"
+#include<linux/net.h>
 
 #define CTRLMSG_LEN CMSG_LEN(sizeof(int))
+
+struct sendmmsg_arg
+{
+	int sockfd;
+	struct mmsghdr *msgvec;
+	unsigned int vlen;
+	unsigned int flags;
+};
+
+struct recvmmsg_arg
+{
+	int sockfd;
+	struct mmsghdr *msgvec;
+	unsigned int vlen;
+	unsigned int flags;
+	struct timespec *timeout;
+};
 
 static void breakpoint(void) {
 	int break_here = 1;
@@ -108,6 +126,16 @@ static void* reader_thread(void* dontcare) {
 		breakpoint();
 		test_assert(1 == recvmmsg(sock, &mmsg, 1, 0, NULL));
 		atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n",
+			      magic, mmsg.msg_len);
+		test_assert(msg_magic == magic);
+
+		magic = ~msg_magic;
+		struct recvmmsg_arg arg = {0};
+		arg.sockfd = sock; 
+		arg.msgvec = &mmsg;
+		arg.vlen = 1;
+		test_assert(1 == syscall(SYS_socketcall, SYS_RECVMMSG, (void*)&arg));
+		atomic_printf("r:   ... recvmmsg'd(by socketcall) 0x%x (%u bytes)\n",
 			      magic, mmsg.msg_len);
 		test_assert(msg_magic == magic);
 
@@ -394,6 +422,18 @@ int main(int argc, char *argv[]) {
 		sendmmsg(sock, &mmsg, 1, 0);
 		atomic_printf("M:   ... sent %u bytes\n", mmsg.msg_len);
 
+		/* Force a wait on recvmmsg() */
+		atomic_puts("M: sleeping again ...");
+		usleep(500000);
+		atomic_printf("M: sendmmsg'ing(by socketcall) 0x%x to socket ...\n",
+			      msg_magic);
+
+		struct sendmmsg_arg arg = {0};
+		arg.sockfd = sock; 
+		arg.msgvec = &mmsg;
+		arg.vlen = 1;
+		syscall(SYS_socketcall, SYS_SENDMMSG, (void*)&arg);
+	
 		free(cmptr);
 	}
 	{
