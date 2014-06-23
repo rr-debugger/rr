@@ -1112,7 +1112,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
 	, blocked_sigs()
-	, child_mem_fd(open_mem_fd())
+	, child_mem_fd(-1)
 	, prname("???")
 	, rbcs(0)
 	, registers(), registers_known(false)
@@ -1124,6 +1124,8 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, top_of_stack()
 	, wait_status()
 {
+	open_mem_fd();
+
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.
 		// Suppress output related to it outside recording.
@@ -2551,21 +2553,17 @@ Task::fallible_ptrace(int request, void* addr, void* data)
 	return ptrace(__ptrace_request(request), tid, addr, data);
 }
 
-int
+void
 Task::open_mem_fd()
 {
+	if (child_mem_fd >= 0) {
+		close(child_mem_fd);
+	}
+
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path) - 1, "/proc/%d/mem", tid);
-	int fd = open(path, O_RDWR);
-	ASSERT(this, fd >= 0) <<"Failed to open "<< path;
-	return fd;
-}
-
-void
-Task::reopen_mem_fd()
-{
-	close(child_mem_fd);
-	child_mem_fd = open_mem_fd();
+	child_mem_fd = open(path, O_RDWR);
+	ASSERT(this, child_mem_fd >= 0) <<"Failed to open "<< path;
 }
 
 void*
@@ -2910,7 +2908,7 @@ Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf)
 	// that's different than the one we see after reopening the
 	// fd, after exec.
 	if (0 == nread && 0 == errno) {
-		reopen_mem_fd();
+		open_mem_fd();
 		return read_bytes_fallible(addr, buf_size, buf);
 	}
 	return nread;
@@ -2943,7 +2941,7 @@ Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 				    to_offset(addr));
 	// See comment in read_bytes_helper().
 	if (0 == nwritten && 0 == errno) {
-		reopen_mem_fd();
+		open_mem_fd();
 		return write_bytes_helper(addr, buf_size, buf);
 	}
 	ASSERT(this, nwritten == buf_size)

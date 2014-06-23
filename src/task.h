@@ -1727,11 +1727,10 @@ private:
 	ssize_t write_bytes_ptrace(void* addr, ssize_t buf_size, const byte* buf);
 
 	/**
-	 * Open our /proc/[tid]/mem fd.  For reopen(), close the old
-	 * one first.
+	 * Open our /proc/[tid]/mem fd, closing the old one first. Opening may
+	 * fail in which case we fall back to using ptrace to read/write memory.
 	 */
-	int open_mem_fd();
-	void reopen_mem_fd();
+	void open_mem_fd();
 
 	/**
 	 * Map the syscallbuffer for this, shared with this process.
