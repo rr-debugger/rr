@@ -573,6 +573,21 @@ public:
 	// Encoding of the |int $3| instruction.
 	static const byte breakpoint_insn = 0xCC;
 
+	int mem_fd() { return child_mem_fd; }
+	void set_mem_fd(int fd) { child_mem_fd = fd; }
+
+	/**
+	 * Call this when an exec replaces 'as' with 'this' for some process.
+	 */
+	void is_replacing(AddressSpace& as)
+	{
+		// Take over as's child_mem_fd.
+		// Swap the fds so destroying 'as' cleans up.
+		int tmp = child_mem_fd;
+		child_mem_fd = as.child_mem_fd;
+		as.child_mem_fd = tmp;
+	}
+
 private:
 	AddressSpace(Task* t, const std::string& exe, Session& session);
 	AddressSpace(const AddressSpace& o);
@@ -649,6 +664,16 @@ private:
 	// programmed per Task, but we track them per address space on
 	// behalf of debuggers that assume that model.
 	WatchpointMap watchpoints;
+	// Tracee memory is read and written through this fd, which is
+	// opened for the tracee's magic /proc/[tid]/mem device.  The
+	// advantage of this over ptrace is that we can access it even
+	// when the tracee isn't at a ptrace-stop.  It's also
+	// theoretically faster for large data transfers, which rr can
+	// do often.
+	//
+	// Users of child_mem_fd should fall back to ptrace-based memory
+	// access when child_mem_fd is -1.
+	int child_mem_fd;
 
 	/**
 	 * Ensure that the cached mapping of |t| matches /proc/maps,
@@ -1521,11 +1546,17 @@ public:
 	}
 
 	/**
-	 * Open our /proc/[tid]/mem fd, closing the old one first.
+	 * Open /proc/[tid]/mem fd for our AddressSpace, closing the old one
+	 * first.
 	 * This never fails. If necessary we force the tracee to open the file
 	 * itself and smuggle the fd back to us.
 	 */
 	void open_mem_fd();
+
+	/**
+	 * Calls open_mem_fd if this task's AddressSpace doesn't already have one.
+	 */
+	void open_mem_fd_if_needed();
 
 	/* State only used during recording. */
 
@@ -1835,18 +1866,6 @@ private:
 	std::shared_ptr<AddressSpace> as;
 	// The set of signals that are currently blocked.
 	sig_set_t blocked_sigs;
-	// Tracee memory is read and written through this fd, which is
-	// opened for the tracee's magic /proc/[tid]/mem device.  The
-	// advantage of this over ptrace is that we can access it even
-	// when the tracee isn't at a ptrace-stop.  It's also
-	// theoretically faster for large data transfers, which rr can
-	// do often.
-	//
-	// Users of child_mem_fd should fall back to ptrace-based memory
-	// access when child_mem_fd is -1.
-	//
-	// TODO: we should only need one of these per address space.
-	int child_mem_fd;
 	// The exe-file argument passed to the most recent execve call
 	// made by this task.
 	std::string execve_file;

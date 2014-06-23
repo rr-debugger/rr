@@ -266,6 +266,9 @@ private:
 
 AddressSpace::~AddressSpace()
 {
+	if (child_mem_fd >= 0) {
+		close(child_mem_fd);
+	}
 	session->on_destroy(this);
 }
 
@@ -764,7 +767,11 @@ AddressSpace::verify(Task* t) const
 }
 
 AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
-	: exe(exe), is_clone(false), session(&session), vdso_start_addr()
+	: exe(exe)
+	, is_clone(false)
+	, session(&session)
+	, vdso_start_addr()
+	, child_mem_fd(-1)
 {
 	// TODO: this is a workaround of
 	// https://github.com/mozilla/rr/issues/1113 .
@@ -782,9 +789,13 @@ AddressSpace::AddressSpace(const AddressSpace& o)
 	// |remove_all_breakpoints()| is expected soon after
 	// the creation of this.
 	: breakpoints(o.breakpoints)
-	, exe(o.exe), heap(o.heap), is_clone(true)
-	, mem(o.mem), session(nullptr)
+	, exe(o.exe)
+	, heap(o.heap)
+	, is_clone(true)
+	, mem(o.mem)
+	, session(nullptr)
 	, vdso_start_addr(o.vdso_start_addr)
+	, child_mem_fd(-1)
 {
 	for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
 		it->second = it->second->clone();
@@ -1112,7 +1123,6 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, untraced_syscall_ip(), syscallbuf_lib_start(), syscallbuf_lib_end()
 	, syscallbuf_hdr(), num_syscallbuf_bytes(), syscallbuf_child()
 	, blocked_sigs()
-	, child_mem_fd(-1)
 	, prname("???")
 	, rbcs(0)
 	, registers(), registers_known(false)
@@ -1160,7 +1170,6 @@ Task::~Task()
 
 	// We need the mem_fd in detach_and_reap().
 	detach_and_reap();
-	close(child_mem_fd);
 
 	LOG(debug) <<"  dead";
 }
@@ -1628,6 +1637,7 @@ Task::post_exec()
 	as->erase_task(this);
 	assert(execve_file.size() > 0);
 	auto a = session().create_vm(this, execve_file);
+	a->is_replacing(*as);
 	as.swap(a);
 	// XXX should we re-create our TaskGroup here too?
 	prname = prname_from_exe_image(as->exe_image());
@@ -2331,7 +2341,7 @@ Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
 	// use ptrace to access memory
 	t->wait();
 
-	t->open_mem_fd();
+	t->open_mem_fd_if_needed();
 	if (CLONE_SET_TLS & flags) {
 		t->set_thread_area(tls);
 	}
@@ -2500,7 +2510,7 @@ Task::detach_and_reap()
 {
 	// child_mem_fd needs to be valid since we won't be able to open
 	// it for futex_wait below after we've detached.
-	ASSERT(this, child_mem_fd >= 0);
+	ASSERT(this, as->mem_fd() >= 0);
 
 	// XXX: why do we detach before harvesting?
 	fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
@@ -2560,10 +2570,10 @@ Task::fallible_ptrace(int request, void* addr, void* data)
 void
 Task::open_mem_fd()
 {
-	if (child_mem_fd >= 0) {
-		close(child_mem_fd);
+	if (as->mem_fd() >= 0) {
+		close(as->mem_fd());
 		// Use ptrace to read/write during open_mem_fd
-		child_mem_fd = -1;
+		as->set_mem_fd(-1);
 	}
 
 	// We could try opening /proc/<pid>/mem directly first and
@@ -2584,13 +2594,21 @@ Task::open_mem_fd()
 	assert(remote_fd >= 0);
 	pop_tmp_mem(this, &state, &restore_path);
 
-	child_mem_fd = retrieve_fd(this, &state, remote_fd);
-	assert(child_mem_fd >= 0);
+	as->set_mem_fd(retrieve_fd(this, &state, remote_fd));
+	assert(as->mem_fd() >= 0);
 
 	long err = remote_syscall1(this, &state, SYS_close, remote_fd);
 	assert(!err);
 
 	finish_remote_syscalls(this, &state);
+}
+
+void
+Task::open_mem_fd_if_needed()
+{
+	if (as->mem_fd() < 0) {
+		open_mem_fd();
+	}
 }
 
 void*
@@ -2921,13 +2939,13 @@ Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf)
 		return 0;
 	}
 
-	if (child_mem_fd < 0) {
+	if (as->mem_fd() < 0) {
 		return read_bytes_ptrace(addr, buf_size, buf);
 	}
 
 	errno = 0;
-	ssize_t nread = pread64(child_mem_fd, buf, buf_size, to_offset(addr));
-	// We open the child_mem_fd just after being notified of
+	ssize_t nread = pread64(as->mem_fd(), buf, buf_size, to_offset(addr));
+	// We open the mem_fd just after being notified of
 	// exec(), when the Task is created.  Trying to read from that
 	// fd seems to return 0 with errno 0.  Reopening the mem fd
 	// allows the pwrite to succeed.  It seems that the first mem
@@ -2958,13 +2976,13 @@ Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf)
 		return;
 	}
 
-	if (child_mem_fd < 0) {
+	if (as->mem_fd() < 0) {
 		write_bytes_ptrace(addr, buf_size, buf);
 		return;
 	}
 
 	errno = 0;
-	ssize_t nwritten = pwrite64(child_mem_fd, buf, buf_size,
+	ssize_t nwritten = pwrite64(as->mem_fd(), buf, buf_size,
 				    to_offset(addr));
 	// See comment in read_bytes_helper().
 	if (0 == nwritten && 0 == errno) {
