@@ -2674,6 +2674,8 @@ Task::init_syscall_buffer(struct current_state_buffer* state, void* map_hint)
  * Block until receiving an fd the other side of |sock| sent us, then
  * return the fd (valid in this address space).  Optionally return the
  * remote fd number that was shared to us in |remote_fdno|.
+ *
+ * XXX replace this with receive_fd().
  */
 static int recv_fd(int sock, int* remote_fdno)
 {
