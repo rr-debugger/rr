@@ -1124,8 +1124,6 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, top_of_stack()
 	, wait_status()
 {
-	open_mem_fd();
-
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.
 		// Suppress output related to it outside recording.
@@ -2328,6 +2326,12 @@ Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
 	} else {
 		LOG(debug) <<"(clone child not enabling CLEARTID)";
 	}
+
+	// wait() before trying to do anything that might need to
+	// use ptrace to access memory
+	t->wait();
+
+	t->open_mem_fd();
 	if (CLONE_SET_TLS & flags) {
 		t->set_thread_area(tls);
 	}
@@ -2558,12 +2562,35 @@ Task::open_mem_fd()
 {
 	if (child_mem_fd >= 0) {
 		close(child_mem_fd);
+		// Use ptrace to read/write during open_mem_fd
+		child_mem_fd = -1;
 	}
 
-	char path[PATH_MAX];
-	snprintf(path, sizeof(path) - 1, "/proc/%d/mem", tid);
-	child_mem_fd = open(path, O_RDWR);
-	ASSERT(this, child_mem_fd >= 0) <<"Failed to open "<< path;
+	// We could try opening /proc/<pid>/mem directly first and
+	// only do this dance if that fails. But it's simpler to
+	// always take this path, and gives better test coverage.
+	static const char path[] = "/proc/self/mem";
+
+	struct current_state_buffer state;
+	prepare_remote_syscalls(this, &state);
+
+	struct restore_mem restore_path;
+	void* remote_path = push_tmp_mem(this, &state,
+					   (const byte*)path,
+					   sizeof(path),
+					   &restore_path);
+	long remote_fd = remote_syscall2(this, &state, SYS_open,
+			      remote_path, O_RDWR);
+	assert(remote_fd >= 0);
+	pop_tmp_mem(this, &state, &restore_path);
+
+	child_mem_fd = retrieve_fd(this, &state, remote_fd);
+	assert(child_mem_fd >= 0);
+
+	long err = remote_syscall1(this, &state, SYS_close, remote_fd);
+	assert(!err);
+
+	finish_remote_syscalls(this, &state);
 }
 
 void*
@@ -3017,7 +3044,6 @@ Task::os_clone(Task* parent, Session* session,
 	Task* child = parent->clone(clone_flags_to_task_flags(base_flags),
 				    stack, tls, ctid,
 				    new_tid, rec_child_tid, session);
-	child->wait();
 	return child;
 }
 
@@ -3101,6 +3127,7 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 		t->cont_nonblocking();
 	}
 	t->force_status(0);
+	t->open_mem_fd();
 	return t;
 
 }

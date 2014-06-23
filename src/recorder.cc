@@ -157,8 +157,6 @@ static void handle_ptrace_event(Task** tp)
 		Task* new_task = t->session().clone(
 			t, clone_flags_to_task_flags(flags_arg),
 			stack, tls, ctid, new_tid);
-		// Wait until the new task is ready.
-		new_task->wait();
 		start_hpc(new_task, rr_flags()->max_rbc);
 		// Skip past the ptrace event.
 		t->cont_syscall();

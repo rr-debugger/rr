@@ -415,8 +415,6 @@ static void process_clone(Task* t,
 	Task* new_task = t->session().clone(
 		t, clone_flags_to_task_flags(flags_arg),
 		stack, tls, ctid, new_tid, rec_tid);
-	// Wait until the new thread is ready.
-	new_task->wait();
 
 	/* FIXME: what if registers are non-null and contain an
 	 * invalid address? */

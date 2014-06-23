@@ -1520,6 +1520,13 @@ public:
 		return WSTOPSIG(status);
 	}
 
+	/**
+	 * Open our /proc/[tid]/mem fd, closing the old one first.
+	 * This never fails. If necessary we force the tracee to open the file
+	 * itself and smuggle the fd back to us.
+	 */
+	void open_mem_fd();
+
 	/* State only used during recording. */
 
 	/* The running count of events that have been recorded for
@@ -1725,12 +1732,6 @@ private:
 	 * as fallback. Returns number of bytes actually written.
 	 */
 	ssize_t write_bytes_ptrace(void* addr, ssize_t buf_size, const byte* buf);
-
-	/**
-	 * Open our /proc/[tid]/mem fd, closing the old one first. Opening may
-	 * fail in which case we fall back to using ptrace to read/write memory.
-	 */
-	void open_mem_fd();
 
 	/**
 	 * Map the syscallbuffer for this, shared with this process.
