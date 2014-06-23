@@ -479,6 +479,12 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 		 struct restore_mem* mem);
 
 /**
+ * Arranges for 'fd' to be transmitted to this process and returns
+ * our opened version of it.
+ */
+int retrieve_fd(Task* t, struct current_state_buffer* state, int fd);
+
+/**
  * Remotely invoke in |t| the specified syscall with the given
  * arguments.  The arguments must of course be valid in |t|, and no
  * checking of that is done by this function.

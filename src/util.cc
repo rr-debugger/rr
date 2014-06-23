@@ -1203,7 +1203,9 @@ void* push_tmp_mem(Task* t, struct current_state_buffer* state,
 	restore->data = (byte*)malloc(restore->len);
 	t->read_bytes_helper(restore->addr, restore->len, restore->data);
 
-	t->write_bytes_helper(restore->addr, restore->len, mem);
+	if (mem) {
+		t->write_bytes_helper(restore->addr, restore->len, mem);
+	}
 
 	return restore->addr;
 }
@@ -1226,6 +1228,136 @@ void pop_tmp_mem(Task* t, struct current_state_buffer* state,
 
 	state->regs.set_sp(state->regs.sp() + mem->len);
 	t->set_regs(state->regs);
+}
+
+static void write_socketcall_args(Task* t, void* remote_mem,
+				  long arg1, long arg2, long arg3)
+{
+	struct socketcall_args sc_args = { { arg1, arg2, arg3 } };
+	t->write_mem(remote_mem, sc_args);
+}
+
+static size_t align_size(size_t size)
+{
+	static int align_amount = 8;
+	return (size + align_amount) & ~(align_amount - 1);
+}
+
+int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
+{
+	struct sockaddr_un socket_addr;
+	struct msghdr msg;
+	// Unfortunately we need to send at least one byte of data in our
+	// message for it to work
+	struct iovec msgdata;
+	char received_data;
+	char cmsgbuf[CMSG_SPACE(sizeof(fd))];
+	int data_length = align_size(sizeof(struct socketcall_args)) +
+		std::max(align_size(sizeof(socket_addr)),
+			align_size(sizeof(msg)) + align_size(sizeof(cmsgbuf)) +
+			align_size(sizeof(msgdata)));
+	struct restore_mem tmpmem;
+	byte* remote_socketcall_args =
+		static_cast<byte*>(push_tmp_mem(t, state, NULL, data_length, &tmpmem));
+
+	memset(&socket_addr, 0, sizeof(socket_addr));
+	socket_addr.sun_family = AF_UNIX;
+	snprintf(socket_addr.sun_path, sizeof(socket_addr.sun_path) - 1,
+		 "/tmp/rr-tracee-fd-transfer-%d", t->tid);
+
+	int listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (listen_sock < 0) {
+		FATAL() <<"Failed to create listen socket";
+	}
+	if (bind(listen_sock, (struct sockaddr*)&socket_addr, sizeof(socket_addr))) {
+		FATAL() <<"Failed to bind listen socket";
+	}
+	if (listen(listen_sock, 1)) {
+		FATAL() <<"Failed to mark listening for listen socket";
+	}
+
+	write_socketcall_args(t, remote_socketcall_args, AF_UNIX, SOCK_STREAM, 0);
+	int child_sock = remote_syscall2(t, state, SYS_socketcall,
+		SYS_SOCKET, remote_socketcall_args);
+	if (child_sock < 0) {
+		FATAL() <<"Failed to create child socket";
+	}
+
+	byte* remote_sockaddr = remote_socketcall_args +
+		align_size(sizeof(struct socketcall_args));
+	t->write_mem(remote_sockaddr, socket_addr);
+	write_socketcall_args(t, remote_socketcall_args, child_sock,
+		uintptr_t(remote_sockaddr), sizeof(socket_addr));
+	remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
+		       SYS_CONNECT, uintptr_t(remote_socketcall_args), 0, 0, 0, 0);
+	// Now the child is waiting for us to accept it.
+
+	int sock = accept(listen_sock, NULL, NULL);
+	if (sock < 0) {
+		FATAL() <<"Failed to create parent socket";
+	}
+	int child_ret = wait_remote_syscall(t, state, SYS_socketcall);
+	if (child_ret) {
+		FATAL() <<"Failed to connect() in tracee";
+	}
+	// Listening socket not needed anymore
+	close(listen_sock);
+	unlink(socket_addr.sun_path);
+
+	// Pull the puppet strings to have the child send its fd
+	// to us.  Similarly to above, we DONT_WAIT on the
+	// call to finish, since it's likely not defined whether the
+	// sendmsg() may block on our recvmsg()ing what the tracee
+	// sent us (in which case we would deadlock with the tracee).
+	byte* remote_msg = remote_socketcall_args +
+		align_size(sizeof(struct socketcall_args));
+	byte* remote_msgdata = remote_msg + align_size(sizeof(msg));
+	byte* remote_cmsgbuf = remote_msgdata + align_size(sizeof(msgdata));
+	msgdata.iov_base = remote_msg; // doesn't matter much, we ignore the data
+	msgdata.iov_len = 1;
+	t->write_mem(remote_msgdata, msgdata);
+	memset(&msg, 0, sizeof(msg));
+	msg.msg_control = cmsgbuf;
+	msg.msg_controllen = sizeof(cmsgbuf);
+	msg.msg_iov = reinterpret_cast<struct iovec*>(remote_msgdata);
+	msg.msg_iovlen = 1;
+	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+	cmsg->cmsg_len = CMSG_LEN(sizeof(fd));
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type = SCM_RIGHTS;
+	*(int*)CMSG_DATA(cmsg) = fd;
+	t->write_mem(remote_cmsgbuf, cmsgbuf);
+	msg.msg_control = remote_cmsgbuf;
+	t->write_mem(remote_msg, msg);
+	write_socketcall_args(t, remote_socketcall_args, child_sock,
+			      uintptr_t(remote_msg), 0);
+	remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
+		       SYS_SENDMSG, uintptr_t(remote_socketcall_args),
+		       0, 0, 0, 0);
+	// Child may be waiting on our recvmsg().
+
+	// Our 'msg' struct is mostly already OK.
+	msg.msg_control = cmsgbuf;
+	msgdata.iov_base = &received_data;
+	msg.msg_iov = &msgdata;
+	if (0 > recvmsg(sock, &msg, 0)) {
+		FATAL() <<"Failed to receive fd";
+	}
+	cmsg = CMSG_FIRSTHDR(&msg);
+	assert(cmsg && cmsg->cmsg_level == SOL_SOCKET
+	       && cmsg->cmsg_type == SCM_RIGHTS);
+	int our_fd = *(int*)CMSG_DATA(cmsg);
+	assert(our_fd >= 0);
+
+	if (0 >= wait_remote_syscall(t, state, SYS_socketcall)) {
+		FATAL() <<"Failed to sendmsg() in tracee";
+	}
+
+	remote_syscall1(t, state, SYS_close, child_sock);
+	close(sock);
+
+	pop_tmp_mem(t, state, &tmpmem);
+	return our_fd;
 }
 
 // XXX this is probably dup'd somewhere else
