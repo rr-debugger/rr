@@ -116,6 +116,7 @@ set(BASIC_TESTS
   fcntl_owner_ex
   flock
   fork_child_crash
+  fork_stress
   fork_syscalls
   getcwd
   getgroups
