@@ -74,7 +74,7 @@ static int start_dumping(int argc, char* argv[], char** envp)
 	auto trace = TraceIfstream::open(argc, argv);
 
 	fprintf(out,
-		"global_time thread_time tid reason entry/exit "
+		"global_time thread_time tid reason "
 		"hw_interrupts page_faults adapted_rbc instructions "
 		"eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
 
