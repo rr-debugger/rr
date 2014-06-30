@@ -140,6 +140,14 @@ Event::operator=(const Event& o)
 	return *this;
 }
 
+static void
+set_encoded_event_data(EncodedEvent* e, int data)
+{
+	e->data = data;
+	// Ensure that e->data is wide enough for the data
+	assert(e->data == data);
+}
+
 EncodedEvent
 Event::encode() const
 {
@@ -163,22 +171,22 @@ Event::encode() const
 	case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
 	case EV_EXIT_SIGHANDLER:
 		// No auxiliary data.
-		e.data = 0;
+		set_encoded_event_data(&e, 0);
 		return e;
 
 	case EV_DESCHED:
 		// Disarming the desched notification is a transient
 		// state that we shouldn't try to record.
 		assert(DISARMING_DESCHED_EVENT != Desched().state);
-		e.data = IN_SYSCALL == Desched().state ?
-			 ARMING_DESCHED_EVENT : Desched().state;
+		set_encoded_event_data(&e, IN_SYSCALL == Desched().state ?
+			ARMING_DESCHED_EVENT : Desched().state);
 		return e;
 
 	case EV_SIGNAL:
 	case EV_SIGNAL_DELIVERY:
 	case EV_SIGNAL_HANDLER: {
-		e.data = Signal().no | (Signal().deterministic ?
-					DET_SIGNAL_BIT : 0);
+		set_encoded_event_data(&e, Signal().no | (Signal().deterministic ?
+			DET_SIGNAL_BIT : 0));
 		return e;
 	}
 
@@ -186,8 +194,8 @@ Event::encode() const
 		// PROCESSING_SYSCALL is a transient state that we
 		// should never attempt to record.
 		assert(Syscall().state != PROCESSING_SYSCALL);
-		e.data = Syscall().is_restart ?
-			 SYS_restart_syscall : Syscall().no;
+		set_encoded_event_data(&e, Syscall().is_restart ?
+			SYS_restart_syscall : Syscall().no);
 		e.state = (Syscall().state == ENTERING_SYSCALL) ?
 			  STATE_SYSCALL_ENTRY : STATE_SYSCALL_EXIT;
 		return e;
