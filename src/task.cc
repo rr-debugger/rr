@@ -3035,6 +3035,21 @@ Task::handle_runaway(int sig)
 	waiter_was_interrupted = true;
 }
 
+bool
+Task::clone_syscall_is_complete()
+{
+	int event = ptrace_event();
+	if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event) {
+		return true;
+	}
+
+	ASSERT(this, (SYSCALL_MAY_RESTART(regs().syscall_result_signed())
+			|| -ENOSYS == regs().syscall_result_signed()))
+		<<"Unexpected task status "<< HEX(status())
+		<<" (syscall result:"<< regs().syscall_result_signed() <<")";
+	return false;
+}
+
 /*static*/ Task*
 Task::os_clone(Task* parent, Session* session,
 	       struct current_state_buffer* state,
@@ -3046,12 +3061,7 @@ Task::os_clone(Task* parent, Session* session,
 	// and the linux source is confusing.
 	remote_syscall5(parent, state, SYS_clone,
 			base_flags, stack, ptid, tls, ctid);
-	while (!(PTRACE_EVENT_CLONE == parent->ptrace_event()
-		 || PTRACE_EVENT_FORK == parent->ptrace_event())) {
-		ASSERT(parent, (SYSCALL_MAY_RESTART(parent->regs().syscall_result_signed())
-				|| -ENOSYS == parent->regs().syscall_result_signed()))
-			<<"Unexpected task status "<< HEX(parent->status())
-			<<" (syscall result:"<< parent->regs().syscall_result_signed() <<")";
+	while (!parent->clone_syscall_is_complete()) {
 		parent->cont_syscall();
 	}
 

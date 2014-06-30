@@ -1546,6 +1546,13 @@ public:
 	}
 
 	/**
+	 * Call this when performing a clone syscall in this task. Returns
+	 * true if the call completed, false if it was interrupted and
+	 * needs to be resumed.
+	 */
+	bool clone_syscall_is_complete();
+
+	/**
 	 * Open /proc/[tid]/mem fd for our AddressSpace, closing the old one
 	 * first.
 	 * This never fails. If necessary we force the tracee to open the file

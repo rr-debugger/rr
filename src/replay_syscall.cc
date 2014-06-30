@@ -230,23 +230,22 @@ static void goto_next_syscall_emu(Task *t)
 /**
  * Proceeds until the next system call, which is being executed.
  */
-void __ptrace_cont(Task *t)
+static void __ptrace_cont(Task *t)
 {
-	t->cont_syscall();
+	do {
+		t->cont_syscall();
+		/* SIGCHLD can be delivered pretty much at any time
+		 * during replay, and we need to ignore it since
+		 * replayed signals are only emulated. */
+	} while (t->stop_sig() == SIGCHLD);
 
-	t->child_sig = t->pending_sig();
+	ASSERT(t, !t->pending_sig())
+		<<"Expected no pending signal, but got "<< t->pending_sig();
+	t->child_sig = 0;
 
 	/* check if we are synchronized with the trace -- should never fail */
 	int rec_syscall = t->current_trace_frame().recorded_regs.original_syscallno();
 	int current_syscall = t->regs().original_syscallno();
-	if (current_syscall != rec_syscall && t->stop_sig() == SIGCHLD) {
-		/* SIGCHLD can be delivered pretty much at any time
-		 * during replay, and we need to ignore it since
-		 * replayed signals are only emulated. */
-		__ptrace_cont(t);
-		t->child_sig = 0;
-		return;
-	}
 	ASSERT(t, current_syscall == rec_syscall)
 		<<"Should be at "<< syscallname(rec_syscall)
 		<<", but instead at "<< syscallname(current_syscall);
@@ -398,10 +397,18 @@ static void process_clone(Task* t,
 
 	// TODO: can debugger signals interrupt us here?
 
-	/* execute the system call */
+	// The syscall may be interrupted. Keep trying it until we get the
+	// ptrace event we're expecting.
 	__ptrace_cont(t);
-	/* wait for the signal that a new process is created */
+	while (!t->clone_syscall_is_complete()) {
+		__ptrace_cont(t);
+	}
+
+	// Now continue again to get the syscall exit event.
 	__ptrace_cont(t);
+	ASSERT(t, !t->ptrace_event())
+		<<"Unexpected ptrace event while waiting for syscall exit; got "
+		<< ptrace_event_name(t->ptrace_event());
 
 	long rec_tid = rec_regs.syscall_result_signed();
 	pid_t new_tid = t->get_ptrace_eventmsg();
@@ -488,9 +495,10 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 
 	step->action = TSTEP_RETIRE;
 
-	/* we need an additional ptrace syscall, since ptrace is setup
-	 * with PTRACE_O_TRACEEXEC */
+	/* Wait for the syscall exit */
 	__ptrace_cont(t);
+	ASSERT(t, !t->ptrace_event())
+		<<"Expected no ptrace event, but got "<< ptrace_event_name(t->ptrace_event());
 
 	/* We just saw a successful exec(), so from now on we know
 	 * that the address space layout for the replay tasks will
