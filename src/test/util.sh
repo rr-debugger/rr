@@ -221,14 +221,8 @@ function check { token=$1;
 	echo "--------------------------------------------------"
     elif [[ $(diff record.out replay.out) != "" ]]; then
 	failed ": output from recording different than replay"
-	echo "Output from recording:"
-	echo "--------------------------------------------------"
-	cat record.out
-	echo "--------------------------------------------------"
-	echo "Output from replay:"
-	echo "--------------------------------------------------"
-	cat replay.out
-	echo "--------------------------------------------------"
+	echo "diff -U8 $workdir/record.out $workdir/replay.out"
+	diff -U8 record.out replay.out
     elif [[ "$token" != "" && "record.out" != $(grep -l "$token" record.out) ]]; then
 	failed ": token '$token' not in output:"
 	echo "--------------------------------------------------"
