@@ -702,14 +702,13 @@ static void create_sigbus_region(Task* t,
 
 	int child_fd;
 	{
-		struct restore_mem restore;
-		void* child_str = restore.push_tmp_str(t, state, filename);
-		child_fd = remote_syscall2(t, state, SYS_open, child_str, O_RDONLY);
+		restore_mem child_str(t, state, filename);
+		child_fd = remote_syscall2(t, state, SYS_open,
+					   static_cast<void*>(child_str), O_RDONLY);
 		if (0 > child_fd) {
 			FATAL() <<"Couldn't open "<< filename
 				<<" to mmap in tracee";
 		}
-		restore.pop_tmp_mem(t, state);
 	}
 
 	/* Unlink it now that the child has opened it */
@@ -816,8 +815,7 @@ static void* finish_direct_mmap(Task* t,
 	/* Open in the tracee the file that was mapped during
 	 * recording. */
 	{
-		struct restore_mem restore;
-		void* child_str = restore.push_tmp_str(t, state, file->filename);
+		restore_mem child_str(t, state, file->filename);
 		/* We only need RDWR for shared writeable mappings.
 		 * Private mappings will happily COW from the mapped
 		 * RDONLY file.
@@ -826,12 +824,12 @@ static void* finish_direct_mmap(Task* t,
 		int oflags = (MAP_SHARED & flags) && (PROT_WRITE & prot) ?
 			     O_RDWR : O_RDONLY;
 		/* TODO: unclear if O_NOATIME is relevant for mmaps */
-		fd = remote_syscall2(t, state, SYS_open, child_str, oflags);
+		fd = remote_syscall2(t, state, SYS_open,
+				     static_cast<void*>(child_str), oflags);
 		if (0 > fd) {
 			FATAL() <<"Couldn't open "<< file->filename
 				<<" to mmap in tracee";
 		}
-		restore.pop_tmp_mem(t, state);
 	}
 	/* And mmap that file. */
 	mapped_addr = (void*)

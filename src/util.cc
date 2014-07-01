@@ -1134,9 +1134,11 @@ void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
 	t->write_bytes(state->start_addr, syscall_insn);
 }
 
-void* restore_mem::push_tmp_mem(Task* t, struct current_state_buffer* state,
-				const byte* mem, ssize_t num_bytes)
+restore_mem::restore_mem(Task* t_, struct current_state_buffer* state_,
+			 const byte* mem, ssize_t num_bytes)
 {
+	t = t_;
+	state = state_;
 	len = num_bytes;
 	saved_sp = (void*)state->regs.sp();
 
@@ -1150,18 +1152,9 @@ void* restore_mem::push_tmp_mem(Task* t, struct current_state_buffer* state,
 	if (mem) {
 		t->write_bytes_helper(addr, len, mem);
 	}
-
-	return addr;
 }
 
-void* restore_mem::push_tmp_str(Task* t, struct current_state_buffer* state,
-				const char* str)
-{
-	return push_tmp_mem(t, state,
-			    (const byte*)str, strlen(str) + 1/*null byte*/);
-}
-
-void restore_mem::pop_tmp_mem(Task* t, struct current_state_buffer* state)
+restore_mem::~restore_mem()
 {
 	assert(saved_sp == (byte*)state->regs.sp() + len);
 
@@ -1198,9 +1191,9 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 		std::max(align_size(sizeof(socket_addr)),
 			align_size(sizeof(msg)) + align_size(sizeof(cmsgbuf)) +
 			align_size(sizeof(msgdata)));
-	struct restore_mem tmpmem;
+	restore_mem remote_socketcall_args_holder(t, state, NULL, data_length);
 	byte* remote_socketcall_args =
-		static_cast<byte*>(tmpmem.push_tmp_mem(t, state, NULL, data_length));
+		static_cast<byte*>(static_cast<void*>(remote_socketcall_args_holder));
 
 	memset(&socket_addr, 0, sizeof(socket_addr));
 	socket_addr.sun_family = AF_UNIX;
@@ -1220,7 +1213,7 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 
 	write_socketcall_args(t, remote_socketcall_args, AF_UNIX, SOCK_STREAM, 0);
 	int child_sock = remote_syscall2(t, state, SYS_socketcall,
-		SYS_SOCKET, remote_socketcall_args);
+					 SYS_SOCKET, remote_socketcall_args);
 	if (child_sock < 0) {
 		FATAL() <<"Failed to create child socket";
 	}
@@ -1298,7 +1291,6 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 	remote_syscall1(t, state, SYS_close, child_sock);
 	close(sock);
 
-	tmpmem.pop_tmp_mem(t, state);
 	return our_fd;
 }
 
