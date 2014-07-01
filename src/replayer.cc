@@ -2016,9 +2016,6 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg)
 	if (dbg) {
 		return dbg;
 	}
-	if (rr_flags()->dont_launch_debugger) {
-		return nullptr;
-	}
 	// Don't launch the debugger for the initial rr fork child.
 	// No one ever wants that to happen.
 	if (!session->can_validate()) {
