@@ -862,6 +862,7 @@ static void install_termsig_handlers(void)
 static void maybe_process_term_request(Task* t)
 {
 	if (term_request) {
+		t->maybe_flush_syscallbuf();
 		terminate_recording(t);
 	}
 }

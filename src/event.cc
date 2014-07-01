@@ -348,6 +348,7 @@ Event::type_name() const
 	CASE(SIGNAL_HANDLER);
 	CASE(SYSCALL);
 	CASE(SYSCALL_INTERRUPTION);
+	CASE(TRACE_TERMINATION);
 #undef CASE
 	default:
 		FATAL() <<"Unknown event type "<< event_type;

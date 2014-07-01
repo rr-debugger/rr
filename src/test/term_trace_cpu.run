@@ -1,3 +1,8 @@
+# During this test, try to avoid doing any rr rescheduling. This ensures our
+# SIGINT signal will arrive before the "spinning" write syscall has been
+# flushed from the syscallbuf. This lets us reliably test that our SIGINT
+# handling records and replays such writes correctly.
+RECORD_ARGS="-c2000000000"
 source `dirname $0`/util.sh term_trace_cpu "$@"
 
 EXE=chew_cpu
@@ -13,9 +18,6 @@ done
 echo "Waiting for token '$SYNC_TOKEN' from tracee ..."
 grep -m1 $SYNC_TOKEN record.out
 
-echo "  done.  Waiting for $WAIT_SECS seconds ..."
-sleep $WAIT_SECS
-
 rrpid=$(parent_pid_of $(pidof $EXE-$nonce))
 
 echo "  done.  Delivering SIGINT to $rrpid ..."
@@ -24,7 +26,7 @@ kill -INT $rrpid
 echo "  done."
 
 if [[ "record.out" == $(grep -l "EXIT-SUCCESS" record.out) ]]; then
-   	echo "Test '$TESTNAME' FAILED: error during recording: tracer not interrupted in time."
+        failed "error during recording: tracer not interrupted in time."
 fi
 
 echo "Replaying ..."

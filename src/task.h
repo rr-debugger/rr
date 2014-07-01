@@ -1472,6 +1472,13 @@ public:
 	void update_sigmask();
 
 	/**
+	 * Call this before recording events or data.  Records
+	 * syscallbuf data and flushes the buffer, if there's buffered
+	 * data.
+	 */
+	void maybe_flush_syscallbuf();
+
+	/**
 	 * Return the virtual memory mapping (address space) of this
 	 * task.
 	 */
@@ -1800,13 +1807,6 @@ private:
 	 * delete it.
 	 */
 	void kill();
-
-	/**
-	 * Call this before recording events or data.  Records
-	 * syscallbuf data and flushes the buffer, if there's buffered
-	 * data.
-	 */
-	void maybe_flush_syscallbuf();
 
 	/**
 	 * Make the OS-level calls to create a new fork or clone that
