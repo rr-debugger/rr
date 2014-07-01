@@ -12,6 +12,7 @@
 #include <syscall.h>
 #include <sys/mman.h>
 #include <sys/user.h>
+#include <x86intrin.h>
 
 #include "preload/syscall_buffer.h"
 
@@ -26,9 +27,7 @@ static void handle_siginfo(Task* t, siginfo_t* si);
 
 static __inline__ unsigned long long rdtsc(void)
 {
-	unsigned hi, lo;
-	__asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-	return ((unsigned long long) lo) | (((unsigned long long) hi) << 32);
+	return __rdtsc();
 }
 
 /**
