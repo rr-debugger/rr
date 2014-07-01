@@ -462,6 +462,11 @@ private:
 	void* saved_sp;
 	/* Length of tmp mem. */
 	size_t len;
+
+	restore_mem& operator=(const restore_mem&) = delete;
+	restore_mem(const restore_mem&) = delete;
+	void* operator new(size_t) = delete;
+	void operator delete(void*) = delete;
 };
 
 /**
