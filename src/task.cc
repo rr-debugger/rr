@@ -3042,9 +3042,16 @@ Task::clone_syscall_is_complete()
 	if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event) {
 		return true;
 	}
+	ASSERT(this, !event)
+		<<"Unexpected ptrace event "<< ptrace_event_name(event);
 
-	ASSERT(this, (SYSCALL_MAY_RESTART(regs().syscall_result_signed())
-			|| -ENOSYS == regs().syscall_result_signed()))
+	// EAGAIN has been observed here. Theoretically that should only
+	// happen when "too many processes are already running", but who
+	// knows...
+	// XXX why would ENOSYS happen here?
+	intptr_t result = regs().syscall_result_signed();
+	ASSERT(this, SYSCALL_MAY_RESTART(result)
+			|| -ENOSYS == result || -EAGAIN == result)
 		<<"Unexpected task status "<< HEX(status())
 		<<" (syscall result:"<< regs().syscall_result_signed() <<")";
 	return false;
