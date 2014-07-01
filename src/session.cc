@@ -180,8 +180,7 @@ remap_shared_mmap(Task* t, struct current_state_buffer* state,
 	{
 		string path = emufile->proc_path();
 		struct restore_mem restore_path;
-		void* child_path = push_tmp_str(t, state, path.c_str(),
-						&restore_path);
+		void* child_path = restore_path.push_tmp_str(t, state, path.c_str());
 		int oflags = (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ?
 			     O_RDWR : O_RDONLY;
 		remote_fd = remote_syscall2(t, state, SYS_open,
@@ -189,7 +188,7 @@ remap_shared_mmap(Task* t, struct current_state_buffer* state,
 		if (0 > remote_fd) {
 			FATAL() <<"Couldn't open "<< path <<" in tracee";
 		}
-		pop_tmp_mem(t, state, &restore_path);
+		restore_path.pop_tmp_mem(t, state);
 	}
 	void* addr = (void*)
 		     remote_syscall6(t, state, SYS_mmap2,

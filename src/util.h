@@ -427,34 +427,33 @@ struct restore_mem {
 	void* saved_sp;
 	/* Length of tmp mem. */
 	size_t len;
-};
 
-/**
- * Write |mem| into |t|'s address space in such a way that the write
- * can be undone.  |t| must already have been prepared for remote
- * syscalls, in |state|.  The address of the tmp mem in |t|'s
- * address space is returned.
- *
- * The cookie used to restore the stomped memory is returned in
- * |restore|.  When the temporary mem is no longer useful, the
- * caller *MUST* call |pop_tmp_mem()|.
- */
-void* push_tmp_mem(Task* t, struct current_state_buffer* state,
-		   const byte* mem, ssize_t num_bytes,
-		   struct restore_mem* restore);
-/**
- * Like |push_tmp_mem()|, but pushes a C string |str|, including '\0'
- * byte.
- */
-void* push_tmp_str(Task* t, struct current_state_buffer* state,
-		   const char* str, struct restore_mem* restore);
-/**
- * Restore the memory stomped by an earlier |push_tmp_*()|.  Tmp
- * memory must be popped in the reverse order it was pushed, that is,
- * LIFO.
- */
-void pop_tmp_mem(Task* t, struct current_state_buffer* state,
-		 struct restore_mem* mem);
+	/**
+	 * Write |mem| into |t|'s address space in such a way that the write
+	 * can be undone.  |t| must already have been prepared for remote
+	 * syscalls, in |state|.  The address of the tmp mem in |t|'s
+	 * address space is returned.
+	 *
+	 * When the temporary mem is no longer useful, the caller *MUST*
+	 * call |pop_tmp_mem()|.
+	 */
+	void* push_tmp_mem(Task* t, struct current_state_buffer* state,
+			   const byte* mem, ssize_t num_bytes);
+
+	/**
+	 * Like |push_tmp_mem()|, but pushes a C string |str|, including '\0'
+	 * byte.
+	 */
+	void* push_tmp_str(Task* t, struct current_state_buffer* state,
+			   const char* str);
+
+	/**
+	 * Restore the memory stomped by an earlier |push_tmp_*()|.  Tmp
+	 * memory must be popped in the reverse order it was pushed, that is,
+	 * LIFO.
+	 */
+	void pop_tmp_mem(Task* t, struct current_state_buffer* state);
+};
 
 /**
  * Arranges for 'fd' to be transmitted to this process and returns

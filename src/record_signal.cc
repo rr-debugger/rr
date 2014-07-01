@@ -60,15 +60,15 @@ static void restore_sigsegv_state(Task* t)
 	prepare_remote_syscalls(t, &state);
 	{
 		struct restore_mem restore;
-		void* child_sa = push_tmp_mem(t, &state, (const byte*)&sa,
-					      sizeof(sa), &restore);
+		void* child_sa = restore.push_tmp_mem(t, &state, (const byte*)&sa,
+						      sizeof(sa));
 
 		int ret = remote_syscall4(t, &state, SYS_rt_sigaction,
 					  SIGSEGV, child_sa, NULL, 
 					  _NSIG / 8);
 		ASSERT(t, 0 == ret) <<"Failed to restore SIGSEGV handler";
 
-		pop_tmp_mem(t, &state, &restore);
+		restore.pop_tmp_mem(t, &state);
 	}
 	// NB: we would normally want to restore the SIG_BLOCK for
 	// SIGSEGV here, but doing so doesn't change the kernel's
