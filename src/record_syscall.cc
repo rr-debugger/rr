@@ -926,9 +926,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		// introduces the possibility of deadlock between rr's
 		// tracee and some external program reading rr's output
 		// via a pipe ... but that seems unlikely to bite in practice.
-		bool interruptible = !is_stdio_fd(t, fd);
-		fprintf(stderr, "rec_tid %d write interruptible=%d\n", t->rec_tid, interruptible);
-		return interruptible;
+		return !is_stdio_fd(t, fd);
 		// Note that the determination of whether fd maps to rr's
 		// stdout/stderr is exact, using kcmp, whereas our decision
 		// to echo is currently based on the simple heuristic of
