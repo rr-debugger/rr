@@ -123,13 +123,20 @@ static void open_socket(struct dbg_context* dbg,
 	int ret;
 
 	dbg->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (dbg->listen_fd < 0) {
+		FATAL() << "Couldn't create socket";
+	}
 	make_cloexec(dbg->listen_fd);
 
 	dbg->addr.sin_family = AF_INET;
 	dbg->addr.sin_addr.s_addr = inet_addr(address);
 	reuseaddr = 1;
-	setsockopt(dbg->listen_fd, SOL_SOCKET, SO_REUSEADDR,
-		   &reuseaddr, sizeof(reuseaddr));
+	ret = setsockopt(dbg->listen_fd, SOL_SOCKET, SO_REUSEADDR,
+			 &reuseaddr, sizeof(reuseaddr));
+	if (ret < 0) {
+		FATAL() << "Couldn't set SO_REUSEADDR";
+	}
+
 	do {
 		dbg->addr.sin_port = htons(port);
 		ret = ::bind(dbg->listen_fd,
@@ -137,18 +144,19 @@ static void open_socket(struct dbg_context* dbg,
 		if (ret && (EADDRINUSE == errno || EACCES == errno)) {
 			continue;
 		}
-		if (ret != 0) {
-			break;
+		if (ret) {
+			FATAL() << "Couldn't bind to port " << port;
 		}
 
 		ret = listen(dbg->listen_fd, 1/*backlogged connection*/);
-		if (ret == 0 || EADDRINUSE != errno) {
-			break;
+		if (ret && EADDRINUSE == errno) {
+			continue;
 		}
+		if (ret) {
+			FATAL() << "Couldn't listen on port " << port;
+		}
+		break;
 	} while (++port, probe);
-	if (ret) {
-		FATAL() << "Couldn't bind to port " << port;
-	}
 }
 
 /**
