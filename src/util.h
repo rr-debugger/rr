@@ -303,12 +303,6 @@ const char* ptrace_req_name(int request);
 const char* signalname(int sig);
 
 /**
- * Return the symbolic name of |syscall|, f.e. "read", or "???syscall"
- * if unknown.
- */
-const char* syscallname(int syscall);
-
-/**
  * Return true iff replaying |syscallno| will never ever require
  * actually executing it, i.e. replay of |syscallno| is always
  * emulated.

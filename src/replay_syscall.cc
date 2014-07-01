@@ -223,8 +223,8 @@ static void goto_next_syscall_emu(Task *t)
 		}
 
 		ASSERT(t, current_syscall == rec_syscall)
-			<<"Should be at `"<< syscallname(rec_syscall)
-			<<"', instead at `"<< syscallname(current_syscall) <<"'";
+			<<"Should be at `"<< t->syscallname(rec_syscall)
+			<<"', instead at `"<< t->syscallname(current_syscall) <<"'";
 	}
 	t->child_sig = 0;
 }
@@ -249,8 +249,8 @@ static void __ptrace_cont(Task *t)
 	int rec_syscall = t->current_trace_frame().recorded_regs.original_syscallno();
 	int current_syscall = t->regs().original_syscallno();
 	ASSERT(t, current_syscall == rec_syscall)
-		<<"Should be at "<< syscallname(rec_syscall)
-		<<", but instead at "<< syscallname(current_syscall);
+		<<"Should be at "<< t->syscallname(rec_syscall)
+		<<", but instead at "<< t->syscallname(current_syscall);
 }
 
 void rep_maybe_replay_stdio_write(Task* t)
@@ -349,7 +349,7 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t)
 {
 	if (t->is_untraced_syscall()) {
 		LOG(debug) <<"  noop-restoring scratch for write-only desched'd "
-			   << syscallname(t->regs().original_syscallno());
+			   << t->syscallname(t->regs().original_syscallno());
 		t->set_data_from_trace();
 	}
 }
@@ -1305,7 +1305,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	const Registers* rec_regs = &trace->recorded_regs;
 	AutoGc maybe_gc(t->replay_session(), syscall, state);
 
-	LOG(debug) <<"processing "<< syscallname(syscall) <<" ("
+	LOG(debug) <<"processing "<< t->syscallname(syscall) <<" ("
 		   << statename(state) <<")";
 
 	if (STATE_SYSCALL_EXIT == state
@@ -1317,7 +1317,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		// event to see which syscall we're trying to restart.
 		if (interrupted_restart) {
 			syscall = t->ev().Syscall().no;
-			LOG(debug) <<"  interrupted "<< syscallname(syscall)
+			LOG(debug) <<"  interrupted "<< t->syscallname(syscall)
 				   <<" interrupted again";
 		}
 		// During recording, when a syscall exits with a
@@ -1355,7 +1355,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			t->ev().Syscall().regs = t->regs();
 		}
 		step->action = TSTEP_RETIRE;
-		LOG(debug) <<"  "<< syscallname(syscall) <<" interrupted by "
+		LOG(debug) <<"  "<< t->syscallname(syscall) <<" interrupted by "
 			   << rec_regs->syscall_result() <<" at "<< (void*)rec_regs->ip()
 			   <<", may restart";
 		return;
@@ -1370,7 +1370,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			void* intr_ip = (void*)t->ev().Syscall().regs.ip();
 			void* cur_ip = (void*)t->ip();
 
-			LOG(debug) <<"'restarting' "<< syscallname(syscall)
+			LOG(debug) <<"'restarting' "<< t->syscallname(syscall)
 				   <<" interrupted by "<< t->ev().Syscall().regs.syscall_result()
 				   <<" at "<< intr_ip <<"; now at "<< cur_ip;
 			if (cur_ip == intr_ip) {
@@ -1383,7 +1383,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			}
 		} else {
 			t->pop_syscall_interruption();
-			LOG(debug) <<"exiting restarted "<< syscallname(syscall);
+			LOG(debug) <<"exiting restarted "<< t->syscallname(syscall);
 		}
 	}
 

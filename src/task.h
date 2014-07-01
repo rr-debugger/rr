@@ -1572,6 +1572,11 @@ public:
 	 */
 	void open_mem_fd_if_needed();
 
+	/**
+	 * Return the name of the given syscall.
+	 */
+	const char* syscallname(int syscallno) const;
+
 	/* State only used during recording. */
 
 	/* The running count of events that have been recorded for

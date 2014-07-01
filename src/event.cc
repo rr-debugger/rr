@@ -283,7 +283,7 @@ Event::str() const
 		ss << ": " << desched_state_name(Desched().state);
 		// This is null during replay.
 		if (Desched().rec) {
-			ss <<"; "<< syscallname(Desched().rec->syscallno);
+			ss <<"; "<< Desched().rec->syscallno;
 		}
 		break;
 	case EV_SIGNAL:
@@ -295,7 +295,7 @@ Event::str() const
 		break;
 	case EV_SYSCALL:
 	case EV_SYSCALL_INTERRUPTION:
-		ss << ": " << syscallname(Syscall().no);
+		ss << ": " << Syscall().no;
 		break;
 	default:
 		// No auxiliary information.

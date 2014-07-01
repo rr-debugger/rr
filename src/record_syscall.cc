@@ -596,8 +596,8 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 
 	assert(rec);
 	ASSERT(t, syscallno == rec->syscallno)
-		<< "Syscallbuf records syscall "<< syscallname(rec->syscallno)
-		<<", but expecting "<< syscallname(syscallno);
+		<< "Syscallbuf records syscall "<< t->syscallname(rec->syscallno)
+		<<", but expecting "<< t->syscallname(syscallno);
 
 	reset_scratch_pointers(t);
 	t->ev().Syscall().tmp_data_ptr =
@@ -762,7 +762,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			r.set_arg4((uintptr_t)off_out2);
 		}
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 
 		t->set_regs(r);
@@ -785,7 +785,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			r.set_arg3((uintptr_t)offset2);
 		}
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 
 		t->set_regs(r);
@@ -885,7 +885,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		scratch += (size_t)r.arg3();
 
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 
 		t->set_regs(r);
@@ -946,7 +946,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 
 		t->set_regs(r);
@@ -967,7 +967,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 
 		t->set_regs(r);
@@ -997,7 +997,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		scratch += nfds * sizeof(*fds);
 
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 		/* |fds| is an inout param, so we need to copy over
 		 * the source data. */
@@ -1028,7 +1028,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 
 			if (!can_use_scratch(t, scratch)) {
 				return abort_scratch(t,
-						     syscallname(syscallno));
+						     t->syscallname(syscallno));
 			}
 
 			t->set_regs(r);
@@ -1071,7 +1071,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		scratch += maxevents * sizeof(*events);
 
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 
 		/* (Unlike poll(), the |events| param is a pure
@@ -1095,7 +1095,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 
 
 	case SYS_epoll_pwait:
-		FATAL() <<"Unhandled syscall "<< syscallname(syscallno);
+		FATAL() <<"Unhandled syscall "<< t->syscallname(syscallno);
 		return 1;
 
 	/* The following two syscalls enable context switching not for
@@ -1120,7 +1120,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 		if (!can_use_scratch(t, scratch)) {
-			return abort_scratch(t, syscallname(syscallno));
+			return abort_scratch(t, t->syscallname(syscallno));
 		}
 
 		t->set_regs(r);
@@ -2728,7 +2728,7 @@ void rec_process_syscall(Task *t)
 
 	default:
 		print_register_file_tid(t);
-		FATAL() <<"Unhandled syscall "<< syscallname(syscallno)
+		FATAL() <<"Unhandled syscall "<< t->syscallname(syscallno)
 			<<"("<< syscallno <<")";
 		break;		/* not reached */
 	}
