@@ -504,7 +504,7 @@ static void install_syscall_filter(void)
  * Return a counter that generates a signal targeted at this task
  * every time the task is descheduled |nr_descheds| times.
  */
-static int open_desched_event_counter(size_t nr_descheds)
+static int open_desched_event_counter(size_t nr_descheds, pid_t tid)
 {
 	struct perf_event_attr attr;
 	int fd;
@@ -525,7 +525,7 @@ static int open_desched_event_counter(size_t nr_descheds)
 		fatal("Failed to fcntl(O_ASYNC) the desched counter");
 	}
 	own.type = F_OWNER_TID;
-	own.pid = traced_gettid();
+	own.pid = tid;
 	if (traced_fcntl(fd, F_SETOWN_EX, &own)) {
 		fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
 	}
@@ -549,19 +549,20 @@ static void set_up_buffer(void)
 	char cmsgbuf[CMSG_SPACE(sizeof(*cmsg_fdptr))];
 	struct socketcall_args args_vec;
 	struct rrcall_init_buffers_params args;
+	pid_t tid = traced_gettid();
 
 	assert(!buffer);
 
 	/* NB: we want this setup emulated during replay. */
 	if (buffer_enabled) {
-		desched_counter_fd = open_desched_event_counter(1);
+		desched_counter_fd = open_desched_event_counter(1, tid);
 	}
 
 	/* Prepare arguments for rrcall.  We do this in the tracee
 	 * just to avoid some hairy IPC to set up the arguments
 	 * remotely from the tracer; this isn't strictly
 	 * necessary. */
-	prepare_syscallbuf_socket_addr(&addr, traced_gettid());
+	prepare_syscallbuf_socket_addr(&addr, tid);
 
 	memset(&msg, 0, sizeof(msg));
 	msg_fdptr = &msgbuf;
