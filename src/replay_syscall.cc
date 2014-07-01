@@ -703,13 +703,13 @@ static void create_sigbus_region(Task* t,
 	int child_fd;
 	{
 		struct restore_mem restore;
-		void* child_str = push_tmp_str(t, state, filename, &restore);
+		void* child_str = restore.push_tmp_str(t, state, filename);
 		child_fd = remote_syscall2(t, state, SYS_open, child_str, O_RDONLY);
 		if (0 > child_fd) {
 			FATAL() <<"Couldn't open "<< filename
 				<<" to mmap in tracee";
 		}
-		pop_tmp_mem(t, state, &restore);
+		restore.pop_tmp_mem(t, state);
 	}
 
 	/* Unlink it now that the child has opened it */
@@ -817,8 +817,7 @@ static void* finish_direct_mmap(Task* t,
 	 * recording. */
 	{
 		struct restore_mem restore;
-		void* child_str = push_tmp_str(t, state, file->filename,
-					       &restore);
+		void* child_str = restore.push_tmp_str(t, state, file->filename);
 		/* We only need RDWR for shared writeable mappings.
 		 * Private mappings will happily COW from the mapped
 		 * RDONLY file.
@@ -832,7 +831,7 @@ static void* finish_direct_mmap(Task* t,
 			FATAL() <<"Couldn't open "<< file->filename
 				<<" to mmap in tracee";
 		}
-		pop_tmp_mem(t, state, &restore);
+		restore.pop_tmp_mem(t, state);
 	}
 	/* And mmap that file. */
 	mapped_addr = (void*)

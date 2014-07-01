@@ -1134,44 +1134,41 @@ void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
 	t->write_bytes(state->start_addr, syscall_insn);
 }
 
-void* push_tmp_mem(Task* t, struct current_state_buffer* state,
-		   const byte* mem, ssize_t num_bytes,
-		   struct restore_mem* restore)
+void* restore_mem::push_tmp_mem(Task* t, struct current_state_buffer* state,
+				const byte* mem, ssize_t num_bytes)
 {
-	restore->len = num_bytes;
-	restore->saved_sp = (void*)state->regs.sp();
+	len = num_bytes;
+	saved_sp = (void*)state->regs.sp();
 
-	state->regs.set_sp(state->regs.sp() - restore->len);
+	state->regs.set_sp(state->regs.sp() - len);
 	t->set_regs(state->regs);
-	restore->addr = (void*)state->regs.sp();
+	addr = (void*)state->regs.sp();
 
-	restore->data = (byte*)malloc(restore->len);
-	t->read_bytes_helper(restore->addr, restore->len, restore->data);
+	data = (byte*)malloc(len);
+	t->read_bytes_helper(addr, len, data);
 
 	if (mem) {
-		t->write_bytes_helper(restore->addr, restore->len, mem);
+		t->write_bytes_helper(addr, len, mem);
 	}
 
-	return restore->addr;
+	return addr;
 }
 
-void* push_tmp_str(Task* t, struct current_state_buffer* state,
-		   const char* str, struct restore_mem* restore)
+void* restore_mem::push_tmp_str(Task* t, struct current_state_buffer* state,
+				const char* str)
 {
 	return push_tmp_mem(t, state,
-			    (const byte*)str, strlen(str) + 1/*null byte*/,
-			    restore);
+			    (const byte*)str, strlen(str) + 1/*null byte*/);
 }
 
-void pop_tmp_mem(Task* t, struct current_state_buffer* state,
-		 struct restore_mem* mem)
+void restore_mem::pop_tmp_mem(Task* t, struct current_state_buffer* state)
 {
-	assert(mem->saved_sp == (byte*)state->regs.sp() + mem->len);
+	assert(saved_sp == (byte*)state->regs.sp() + len);
 
-	t->write_bytes_helper(mem->addr, mem->len, mem->data);
-	free(mem->data);
+	t->write_bytes_helper(addr, len, data);
+	free(data);
 
-	state->regs.set_sp(state->regs.sp() + mem->len);
+	state->regs.set_sp(state->regs.sp() + len);
 	t->set_regs(state->regs);
 }
 
@@ -1203,7 +1200,7 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 			align_size(sizeof(msgdata)));
 	struct restore_mem tmpmem;
 	byte* remote_socketcall_args =
-		static_cast<byte*>(push_tmp_mem(t, state, NULL, data_length, &tmpmem));
+		static_cast<byte*>(tmpmem.push_tmp_mem(t, state, NULL, data_length));
 
 	memset(&socket_addr, 0, sizeof(socket_addr));
 	socket_addr.sun_family = AF_UNIX;
@@ -1301,7 +1298,7 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 	remote_syscall1(t, state, SYS_close, child_sock);
 	close(sock);
 
-	pop_tmp_mem(t, state, &tmpmem);
+	tmpmem.pop_tmp_mem(t, state);
 	return our_fd;
 }
 
