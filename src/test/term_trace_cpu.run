@@ -11,12 +11,10 @@ WAIT_SECS=1
 
 record $EXE &
 
-until [[ -f record.out ]]; do
-    sleep 0.1
-done
-
 echo "Waiting for token '$SYNC_TOKEN' from tracee ..."
-grep -m1 $SYNC_TOKEN record.out
+until grep -q $SYNC_TOKEN record.out; do
+        sleep 0
+done
 
 rrpid=$(parent_pid_of $(pidof $EXE-$nonce))
 
@@ -24,6 +22,11 @@ echo "  done.  Delivering SIGINT to $rrpid ..."
 kill -INT $rrpid
 
 echo "  done."
+
+# Wait for 'record' to actually terminate. Otherwise we might start
+# replaying before the trace file has been completely written, and we might
+# fail to see the tracee write EXIT-SUCCESS.
+wait
 
 if [[ "record.out" == $(grep -l "EXIT-SUCCESS" record.out) ]]; then
         failed "error during recording: tracer not interrupted in time."
