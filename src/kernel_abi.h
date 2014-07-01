@@ -12,6 +12,8 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 
+#include <assert.h>
+
 namespace rr {
 
 enum supported_arch {
@@ -107,6 +109,8 @@ struct base_arch : public wordsize {
 		};
 		T* operator=(T* p) {
 			val = reinterpret_cast<uintptr_t>(p);
+			// check that val is wide enough to hold the value of p
+			assert(val == reinterpret_cast<uintptr_t>(p));
 			return p;
 		}
 	};
