@@ -239,52 +239,6 @@ const char* signalname(int sig)
 	}
 }
 
-const char* syscallname(int syscall)
-{
-	switch (syscall) {
-#define SYSCALLNO_X86(num)
-#define CASE(_name) 					\
-		case static_cast<int>(SyscallsX86::_name): return #_name;
-#define SYSCALL_DEF0(_name, _)				\
-		CASE(_name)
-#define SYSCALL_DEF1(_name, _, _1, _2)			\
-		CASE(_name)
-#define SYSCALL_DEF1_DYNSIZE(_name, _, _1, _2)		\
-		CASE(_name)
-#define SYSCALL_DEF1_STR(_name, _, _1)			\
-		CASE(_name)
-#define SYSCALL_DEF2(_name, _, _1, _2, _3, _4)		\
-		CASE(_name)
-#define SYSCALL_DEF3(_name, _, _1, _2, _3, _4, _5, _6)	\
-		CASE(_name)
-#define SYSCALL_DEF4(_name, _, _1, _2, _3, _4, _5, _6, _7, _8)	\
-		CASE(_name)
-#define SYSCALL_DEF_IRREG(_name, _)			\
-		CASE(_name)
-#define SYSCALL_DEF_UNSUPPORTED(_name)			\
-		CASE(_name)
-
-#include "syscall_defs.h"
-
-#undef SYSCALLNO_X86
-#undef CASE
-#undef SYSCALL_DEF0
-#undef SYSCALL_DEF1
-#undef SYSCALL_DEF1_DYNSIZE
-#undef SYSCALL_DEF1_STR
-#undef SYSCALL_DEF2
-#undef SYSCALL_DEF3
-#undef SYSCALL_DEF4
-#undef SYSCALL_DEF_IRREG
-#undef SYSCALL_DEF_UNSUPPORTED
-
-	case SYS_restart_syscall:
-		return "restart_syscall";
-	default:
-		return "<unknown-syscall>";
-	}
-}
-
 bool is_always_emulated_syscall(int syscallno)
 {
 	switch (syscallno) {
@@ -1334,8 +1288,8 @@ long remote_syscall(Task* t, struct current_state_buffer* state,
 	advance_syscall(t);
 
 	ASSERT(t, t->regs().original_syscallno() == syscallno)
-		<<"Should be entering "<< syscallname(syscallno)
-		<<", but instead at "<< syscallname(t->regs().original_syscallno());
+		<<"Should be entering "<< t->syscallname(syscallno)
+		<<", but instead at "<< t->syscallname(t->regs().original_syscallno());
 
 	/* Start running the syscall. */
 	t->cont_syscall_nonblocking();
@@ -1352,8 +1306,8 @@ long wait_remote_syscall(Task* t, struct current_state_buffer* state,
 	t->wait();
 
 	ASSERT(t, t->regs().original_syscallno() == syscallno)
-		<<"Should be entering "<< syscallname(syscallno)
-		<<", but instead at "<< syscallname(t->regs().original_syscallno());
+		<<"Should be entering "<< t->syscallname(syscallno)
+		<<", but instead at "<< t->syscallname(t->regs().original_syscallno());
 
 	return t->regs().syscall_result_signed();
 }
@@ -1384,7 +1338,7 @@ void destroy_buffers(Task* t)
 	Registers exit_regs = t->regs();
 	ASSERT(t, SYS_exit == exit_regs.original_syscallno())
 		<< "Tracee should have been at exit, but instead at "
-		<< syscallname(exit_regs.original_syscallno());
+		<< t->syscallname(exit_regs.original_syscallno());
 
 	// The tracee is at the entry to SYS_exit, but hasn't started
 	// the call yet.  We can't directly start injecting syscalls

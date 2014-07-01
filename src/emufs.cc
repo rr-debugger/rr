@@ -215,8 +215,9 @@ AutoGc::AutoGc(ReplaySession& session, int syscallno, int state)
 		      && (SYS_close == syscallno
 			  || SYS_munmap == syscallno)) {
 	if (is_gc_point) {
+		assert(SYS_close == syscallno || SYS_munmap == syscallno);
 		LOG(debug) <<"emufs gc required because of syscall `"
-			   << syscallname(syscallno) <<"'";
+			   << (SYS_close == syscallno ? "close" : "munmap") <<"'";
 	}
 }
 

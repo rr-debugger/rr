@@ -424,9 +424,9 @@ static void maybe_discard_syscall_interruption(Task* t, int ret)
 		syscall_not_restarted(t);
 	} else if (0 < ret) {
 		ASSERT(t, syscallno == ret)
-			<<"Interrupted call was "<< syscallname(syscallno)
+			<<"Interrupted call was "<< t->syscallname(syscallno)
 			<<" and sigreturn claims to be restarting "
-			<< syscallname(ret);
+			<< t->syscallname(ret);
 	}
 }
 
@@ -518,17 +518,17 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			       || SYS_exit_group == syscallno
 			       || SYS_exit == syscallno
 			       || SYS__sysctl == syscallno)))
-			<< "Exiting syscall "<< syscallname(syscallno)
+			<< "Exiting syscall "<< t->syscallname(syscallno)
 			<<" but retval is -ENOSYS, usually only seen at entry";
 
 		LOG(debug) <<"  original_syscallno:"<< t->regs().original_syscallno()
-			   <<" ("<< syscallname(syscallno) <<"); return val:"
+			   <<" ("<< t->syscallname(syscallno) <<"); return val:"
 			   << t->regs().syscall_result();
 
 		/* a syscall_restart ending is equivalent to the
 		 * restarted syscall ending */
 		if (t->ev().Syscall().is_restart) {
-			LOG(debug) <<"  exiting restarted "<< syscallname(syscallno);
+			LOG(debug) <<"  exiting restarted "<< t->syscallname(syscallno);
 		}
 
 		/* TODO: is there any reason a restart_syscall can't
@@ -548,7 +548,7 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 				t->vm()->verify(t);
 			}
 		} else {
-			LOG(debug) <<"  may restart "<< syscallname(syscallno)
+			LOG(debug) <<"  may restart "<< t->syscallname(syscallno)
 				   <<" (from retval "<< retval <<")";
 
 			rec_prepare_restart_syscall(t);
