@@ -1,8 +1,12 @@
-# During this test, try to avoid doing any rr rescheduling. This ensures our
-# SIGINT signal will arrive before the "spinning" write syscall has been
-# flushed from the syscallbuf. This lets us reliably test that our SIGINT
-# handling records and replays such writes correctly.
-RECORD_ARGS="-c2000000000"
+# We want to test two things here:
+# 1) Terminating rr when the next tracee event is a reschedule
+# 2) Terminating rr when the syscallbuf contains events that need to be flushed
+# To test both of these, we need to set the reschedule threshold high enough
+# that our signal is delivered before the first reschedule after sending
+# the SYNC_TOKEN. We also need to set the reschedule threshold low enough
+# that a reschedule occurs before chew_cpu's spin() loop finishes. Currently
+# that loop has 2^30 iterations, so 100M events per reschedule sounds good.
+RECORD_ARGS="-c100000000"
 source `dirname $0`/util.sh term_trace_cpu "$@"
 
 EXE=chew_cpu
@@ -18,6 +22,10 @@ done
 
 rrpid=$(parent_pid_of $(pidof $EXE-$nonce))
 
+# It's possible for this signal to be acted on before chew_cpu actually
+# reaches the spin() loop, e.g. with syscallbuf disabled it might be delivered
+# before rr has finished handling the syscalls of atomic_puts. But scheduling
+# variations should ensure that sometimes we reach spin() first.
 echo "  done.  Delivering SIGINT to $rrpid ..."
 kill -INT $rrpid
 
