@@ -683,7 +683,7 @@ VerifyAddressSpace::assert_segments_match(Task* t)
  *
  * TODO: replace iterate_memory_map()
  */
-/*static*/ int
+/*static*/ iterator_action
 AddressSpace::check_segment_iterator(void* pvas, Task* t,
 				     const struct map_iterator_data* data)
 {
@@ -934,7 +934,7 @@ AddressSpace::map_and_coalesce(const Mapping& m, const MappableResource& r)
 	coalesce_around(ins.first);
 }
 
-/*static*/ int
+/*static*/ iterator_action
 AddressSpace::populate_address_space(void* asp, Task* t,
 				     const struct map_iterator_data* data)
 {

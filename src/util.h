@@ -230,7 +230,7 @@ void print_process_mmap(Task* t);
  * the data they wish to save beyond the scope of the iterator
  * function invocation.
  */
-enum { CONTINUE_ITERATING, STOP_ITERATING };
+enum iterator_action { CONTINUE_ITERATING, STOP_ITERATING };
 struct map_iterator_data {
 	struct mapped_segment_info info;
 	/* The nominal size of the data segment. */
@@ -243,8 +243,8 @@ struct map_iterator_data {
 	ssize_t mem_len;
 	const char* raw_map_line;
 };
-typedef int (*memory_map_iterator_t)(void* it_data, Task* t,
-				     const struct map_iterator_data* data);
+typedef iterator_action (*memory_map_iterator_t)(void* it_data, Task* t,
+						 const struct map_iterator_data* data);
 
 typedef bool (*read_segment_filter_t)(void* filt_data, Task* t,
 				      const struct mapped_segment_info* info);

@@ -415,7 +415,6 @@ void iterate_memory_map(Task* t,
 		struct map_iterator_data data;
 		char flags[32];
 		int nparsed;
-		int next_action;
 
 		memset(&data, 0, sizeof(data));
 		data.raw_map_line = line;
@@ -467,7 +466,7 @@ void iterate_memory_map(Task* t,
 			data.mem_len = max(0, data.mem_len);
 		}
 
-		next_action = it(it_data, t, &data);
+		iterator_action next_action = it(it_data, t, &data);
 		free(data.mem);
 
 		if (STOP_ITERATING == next_action) {
@@ -477,8 +476,8 @@ void iterate_memory_map(Task* t,
 	fclose(maps_file);
 }
 
-static int print_process_mmap_iterator(void* unused, Task* t,
-				       const struct map_iterator_data* data)
+static iterator_action print_process_mmap_iterator(void* unused, Task* t,
+						   const struct map_iterator_data* data)
 {
 	fputs(data->raw_map_line, stderr);
 	return CONTINUE_ITERATING;
