@@ -28,6 +28,8 @@
 #define NUM_X86_DEBUG_REGS 8
 #define NUM_X86_WATCHPOINTS 4
 
+#define RR_PTRACE_O_EXITKILL (1 << 20)
+
 using namespace std;
 
 /*static*/ const byte AddressSpace::breakpoint_insn;
@@ -3144,11 +3146,20 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 	t->as.swap(as);
 
 	// Sync with the child process.
-	t->xptrace(PTRACE_SEIZE, nullptr,
-		   (void*)(PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-			   PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
-			   PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-			   PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP));
+	int options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+		PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
+		PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
+		PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP |
+		RR_PTRACE_O_EXITKILL;
+	int ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
+	if (ret < 0 && errno == EINVAL) {
+		// PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
+		// it for more robust cleanup, so tolerate not having it.
+		options &= ~RR_PTRACE_O_EXITKILL;
+		ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
+	}
+	ASSERT(t, !ret) <<"PTRACE_SEIZE failed for tid %d"<< t->tid;
+
 	// PTRACE_SEIZE is fundamentally racy by design.  We depend on
 	// stopping the tracee at a known location, so raciness is
 	// bad.  To resolve the race condition, we just keep running
