@@ -2410,18 +2410,15 @@ Task::copy_state(Task* from)
 	struct current_state_buffer state;
 	prepare_remote_syscalls(this, &state);
 	{
-		struct restore_mem restore_prname;
 		char prname[16];
 		strncpy(prname, from->name().c_str(), sizeof(prname));
-		void* remote_prname = restore_prname.push_tmp_mem(this, &state,
-								  (const byte*)prname,
-								  sizeof(prname));
+		restore_mem remote_prname(this, &state, (const byte*)prname,
+					  sizeof(prname));
 		LOG(debug) <<"    setting name to "<< prname;
 		err = remote_syscall2(this, &state, SYS_prctl,
-				      PR_SET_NAME, remote_prname);
+				      PR_SET_NAME, static_cast<void*>(remote_prname));
 		ASSERT(this, 0 == err);
 		update_prname(remote_prname);
-		restore_prname.pop_tmp_mem(this, &state);
 	}
 
 	if (from->robust_list()) {
@@ -2435,15 +2432,12 @@ Task::copy_state(Task* from)
 	}
 
 	if (const struct user_desc* tls = from->tls()) {
-		struct restore_mem restore_tls;
-		void* remote_tls = restore_tls.push_tmp_mem(this, &state,
-							    (const byte*)tls, sizeof(*tls));
+		restore_mem remote_tls(this, &state, (const byte*)tls, sizeof(*tls));
 		LOG(debug) <<"    setting tls "<< remote_tls;
 		err = remote_syscall1(this, &state, SYS_set_thread_area,
-				      remote_tls);
+				      static_cast<void*>(remote_tls));
 		ASSERT(this, 0 == err);
 		set_thread_area(remote_tls);
-		restore_tls.pop_tmp_mem(this, &state);
 	}
 
 	if (void* ctid = from->tid_addr()) {
@@ -2585,14 +2579,13 @@ Task::open_mem_fd()
 	struct current_state_buffer state;
 	prepare_remote_syscalls(this, &state);
 
-	struct restore_mem restore_path;
-	void* remote_path = restore_path.push_tmp_mem(this, &state,
-						      (const byte*)path,
-						      sizeof(path));
-	long remote_fd = remote_syscall2(this, &state, SYS_open,
-			      remote_path, O_RDWR);
-	assert(remote_fd >= 0);
-	restore_path.pop_tmp_mem(this, &state);
+	long remote_fd;
+	{
+		restore_mem remote_path(this, &state, (const byte*)path, sizeof(path));
+		remote_fd = remote_syscall2(this, &state, SYS_open,
+					    static_cast<void*>(remote_path), O_RDWR);
+		assert(remote_fd >= 0);
+	}
 
 	as->set_mem_fd(retrieve_fd(this, &state, remote_fd));
 	assert(as->mem_fd() >= 0);
@@ -2622,18 +2615,17 @@ Task::init_syscall_buffer(struct current_state_buffer* state, void* map_hint)
 	// Map the shmem fd in the child.
 	int child_shmem_fd;
 	{
-		struct restore_mem restore_path;
 		char proc_path[PATH_MAX];
 		snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d",
 			 getpid(), shmem_fd);
-		void* child_path = restore_path.push_tmp_str(this, state, proc_path);
+		restore_mem child_path(this, state, proc_path);
 		child_shmem_fd = remote_syscall3(this, state, SYS_open,
-						 child_path, O_RDWR, 0600);
+						 static_cast<void*>(child_path),
+						 O_RDWR, 0600);
 		if (0 > child_shmem_fd) {
 			errno = -child_shmem_fd;
 			FATAL() <<"Failed to open("<< proc_path <<") in tracee";
 		}
-		restore_path.pop_tmp_mem(this, state);
 	}
 
 	// Map the segment in ours and the tracee's address spaces.
