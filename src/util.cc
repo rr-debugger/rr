@@ -337,16 +337,16 @@ static void trim_leading_blanks(char* str)
 	memmove(str, trimmed, strlen(trimmed) + 1/*\0 byte*/);
 }
 
-static int caller_wants_segment_read(Task* t,
-				     const struct mapped_segment_info* info,
-				     read_segment_filter_t filt,
-				     void* filt_data)
+static bool caller_wants_segment_read(Task* t,
+				      const struct mapped_segment_info* info,
+				      read_segment_filter_t filt,
+				      void* filt_data)
 {
 	if (kNeverReadSegment == filt) {
-		return 0;
+		return false;
 	}
 	if (kAlwaysReadSegment == filt) {
-		return 1;
+		return true;
 	}
 	return filt(filt_data, t, info);
 }

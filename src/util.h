@@ -246,8 +246,8 @@ struct map_iterator_data {
 typedef int (*memory_map_iterator_t)(void* it_data, Task* t,
 				     const struct map_iterator_data* data);
 
-typedef int (*read_segment_filter_t)(void* filt_data, Task* t,
-				     const struct mapped_segment_info* info);
+typedef bool (*read_segment_filter_t)(void* filt_data, Task* t,
+				      const struct mapped_segment_info* info);
 static const read_segment_filter_t kNeverReadSegment =
 	(read_segment_filter_t)0;
 static const read_segment_filter_t kAlwaysReadSegment =
