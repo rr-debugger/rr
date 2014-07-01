@@ -320,8 +320,6 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 
 	LOG(debug) <<"  resuming (and probably switching out) blocked `"
 		   << syscallname(call) <<"'";
-
-	return;
 }
 
 static int is_deterministic_signal(const siginfo_t* si)
