@@ -207,6 +207,7 @@ set(BASIC_TESTS
   vfork
   wait
   watchpoint
+  write_race
 )
 
 # A "custom test" is a foo.run driver script only, which does

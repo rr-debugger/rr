@@ -566,6 +566,37 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	}
 }
 
+#define RR_KCMP_FILE 0
+
+static bool is_stdio_fd(Task* t, int fd)
+{
+	int pid = getpid();
+
+	int r = syscall(SYS_kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+			STDOUT_FILENO, fd);
+	if (r == 0) {
+		return true;
+	}
+	if (r < 0 && errno == EBADF) {
+		// Tracees may try to write to invalid fds.
+		return false;
+	}
+	ASSERT(t, r >= 0) << "kcmp failed";
+
+	r = syscall(SYS_kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+		STDERR_FILENO, fd);
+	if (r == 0) {
+		return true;
+	}
+	if (r < 0 && errno == EBADF) {
+		// Tracees may try to write to invalid fds.
+		return false;
+	}
+	ASSERT(t, r >= 0) << "kcmp failed";
+
+	return false;
+}
+
 /**
  * |t| was descheduled while in a buffered syscall.  We don't want
  * to use scratch memory for the call, because the syscallbuf itself
@@ -573,6 +604,8 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
  * scratch for |t|, because it's already in the syscall.  So this
  * function sets things up so that the *syscallbuf* memory that |t|
  * is using as ~scratch will be recorded, so that it can be replayed.
+ *
+ * Returns 1 if the syscall should be interruptible, 0 otherwise.
  */
 static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 {
@@ -590,6 +623,13 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 	/* |rec->size| is the entire record including extra data; we
 	 * just care about the extra data here. */
 	t->ev().Syscall().tmp_data_num_bytes = rec->size - sizeof(*rec);
+
+	switch (syscallno) {
+	case SYS_write:
+	case SYS_writev:
+		return !is_stdio_fd(t, (int)t->regs().arg1_signed());
+	}
+
 	return 1;
 }
 
@@ -870,9 +910,36 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	case SYS_write:
-	case SYS_writev:
-		maybe_mark_stdio_write(t, (int)t->regs().arg1_signed());
-		return 1;
+	case SYS_writev: {
+		int fd = (int)t->regs().arg1_signed();
+		maybe_mark_stdio_write(t, fd);
+		// Tracee writes to rr's stdout/stderr are echoed during replay.
+		// We want to ensure that these writes are replayed in the same
+		// order as they were performed during recording. If we treat
+		// those writes as interruptible, we can get into a difficult
+		// situation: we start the system call, it gets interrupted,
+		// we switch to another thread that starts its own write, and
+		// at that point we don't know which order the kernel will
+		// actually perform the writes in.
+		// We work around this problem by making writes to rr's
+		// stdout/stderr non-interruptible. This theoretically
+		// introduces the possibility of deadlock between rr's
+		// tracee and some external program reading rr's output
+		// via a pipe ... but that seems unlikely to bite in practice.
+		bool interruptible = !is_stdio_fd(t, fd);
+		fprintf(stderr, "rec_tid %d write interruptible=%d\n", t->rec_tid, interruptible);
+		return interruptible;
+		// Note that the determination of whether fd maps to rr's
+		// stdout/stderr is exact, using kcmp, whereas our decision
+		// to echo is currently based on the simple heuristic of
+		// whether fd is STDOUT_FILENO/STDERR_FILENO (which can be
+		// wrong due to those fds being dup'ed, redirected, etc).
+		// We could use kcmp for the echo decision too, except
+		// when writes are buffered by syscallbuf it gets rather
+		// complex. A better solution is probably for the replayer
+		// to track metadata for each tracee fd, tracking whether the
+		// fd points to rr's stdout/stderr.
+	}
 
 	/* pid_t waitpid(pid_t pid, int *status, int options); */
 	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
