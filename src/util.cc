@@ -486,8 +486,8 @@ static int print_process_mmap_iterator(void* unused, Task* t,
 
 void print_process_mmap(Task* t)
 {
-	return iterate_memory_map(t, print_process_mmap_iterator, NULL,
-				  kNeverReadSegment, NULL);
+	iterate_memory_map(t, print_process_mmap_iterator, NULL,
+			   kNeverReadSegment, NULL);
 }
 
 bool is_page_aligned(const byte* addr)
