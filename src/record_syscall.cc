@@ -1785,6 +1785,46 @@ static void record_and_restore_msghdr(Task* t, typename Arch::msghdr *dst,
 	t->record_remote(msg.msg_control, msg.msg_controllen);
 }
 
+/**
+ * Record all the data needed to restore the |struct msghdr| pointed
+ * at in |t|'s address space by |child_msghdr|.
+ */
+template<typename Arch>
+static void record_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr)
+{
+	typename Arch::msghdr msg;
+	t->read_mem(child_msghdr, &msg);
+
+	// Record the entire struct, because some of the direct fields
+	// are written as inoutparams.
+	t->record_local(child_msghdr, sizeof(msg), &msg);
+	t->record_remote(msg.msg_name, msg.msg_namelen);
+
+	// Read all the inout iovecs in one shot.
+	typename Arch::iovec iovs[msg.msg_iovlen];
+	t->read_bytes_helper(msg.msg_iov,
+			     msg.msg_iovlen * sizeof(iovs[0]), (byte*)iovs);
+	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
+		auto iov = &iovs[i];
+		t->record_remote(iov->iov_base, iov->iov_len);
+	}
+
+	t->record_remote(msg.msg_control, msg.msg_controllen);
+}
+
+/** Like record_struct_msghdr(), but records mmsghdr. */
+template<typename Arch>
+static void record_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr)
+{
+	/* struct mmsghdr has an inline struct msghdr as its first
+	 * field, so it's OK to make this "cast". */
+	record_struct_msghdr<Arch>(t, (typename Arch::msghdr*)child_mmsghdr);
+	/* We additionally have to record the outparam number of
+	 * received bytes. */
+	t->record_remote(&child_mmsghdr->msg_len,
+			 sizeof(child_mmsghdr->msg_len));
+}
+
 /*
  * Restore all data of msgvec from pnewmsg to poldmsg and
  * record child memory where the pointer members point for replay

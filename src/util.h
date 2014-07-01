@@ -363,25 +363,6 @@ void copy_syscall_arg_regs(Registers* to,
 			   const Registers* from);
 
 /**
- * Record all the data needed to restore the |struct msghdr| pointed
- * at in |t|'s address space by |child_msghdr|.
- */
-template<typename Arch>
-void record_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr);
-/** Like record_struct_msghdr(), but records mmsghdr. */
-template<typename Arch>
-void record_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr);
-/**
- * Restore the recorded msghdr pointed at in |t|'s address space by
- * |child_msghdr|.
- */
-template<typename Arch>
-void restore_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr);
-/** Like restore_struct_msghdr(), but for mmsghdr. */
-template<typename Arch>
-void restore_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr);
-
-/**
  * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
  * will transition the futex into the contended state.  (This results
  * in the kernel atomically setting the FUTEX_WAITERS bit on the futex

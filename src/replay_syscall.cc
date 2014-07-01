@@ -969,6 +969,37 @@ static void process_mmap(Task* t,
 }
 
 /**
+ * Restore the recorded msghdr pointed at in |t|'s address space by
+ * |child_msghdr|.
+ */
+template<typename Arch>
+void restore_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr)
+{
+	typename Arch::msghdr msg;
+	t->read_mem(child_msghdr, &msg);
+
+	// Restore msg itself.
+	t->set_data_from_trace();
+	// Restore msg.msg_name.
+	t->set_data_from_trace();
+	// For each iovec arg, restore its recorded data.
+	for (size_t i = 0; i < msg.msg_iovlen; ++i) {
+		// Restore iov_base buffer.
+		t->set_data_from_trace();
+	}
+	// Restore msg_control buffer.
+	t->set_data_from_trace();
+}
+
+/** Like restore_struct_msghdr(), but for mmsghdr. */
+template<typename Arch>
+void restore_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr)
+{
+	restore_struct_msghdr<Arch>(t, (typename Arch::msghdr*)child_mmsghdr);
+	t->set_data_from_trace();
+}
+
+/**
  * Restore saved struct mmsghdr* msgvec
  */
 template<typename Arch>
