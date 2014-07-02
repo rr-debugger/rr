@@ -2814,19 +2814,9 @@ Task::kill()
 	LOG(debug) <<"sending SIGKILL to "<< tid <<" ...";
 	sys_tgkill(real_tgid(), tid, SIGKILL);
 
-	wait();
-	LOG(debug) <<"  ... status "<< HEX(status());
+	// Don't wait for the process exit here. We may wait later
+	// in ~Task if the exit is not unstable.
 
-	if (WIFSIGNALED(wait_status)) {
-		assert(SIGKILL == WTERMSIG(wait_status));
-		// The task is already dead and reaped, so skip any
-		// waitpid()'ing during cleanup.
-		unstable = 1;
-	} else {
-		// If the task participated in an unstable exit, it's
-		// probably already dead by now.
-		assert(unstable || PTRACE_EVENT_EXIT == ptrace_event());
-	}
 	// Don't attempt to synchonize on the cleartid futex.  We
 	// won't be able to reliably read it, and it's pointless
 	// anyway.
