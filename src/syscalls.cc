@@ -10,6 +10,8 @@ const char* syscallname(int syscall, supported_arch arch)
 	assert(arch == x86);
 	switch (syscall) {
 #define SYSCALLNO_X86(num)
+#define SYSCALLNO_X86_64(num)
+#define SYSCALL_UNDEFINED_X86_64()
 #define CASE(_name) 					\
 		case static_cast<int>(SyscallsX86::_name): return #_name;
 #define SYSCALL_DEF0(_name, _)				\

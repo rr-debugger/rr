@@ -9,6 +9,8 @@ enum class SyscallsX86 {
 
 #define SYSCALLNO_X86(num)				\
 		dummy_ ## num = num - 1,
+#define SYSCALLNO_X86_64(num)
+#define SYSCALL_UNDEFINED_X86_64()
 #define SYSCALL_DEF0(_name, _type)			\
 		_name,
 #define SYSCALL_DEF1(_name, _type, _1, _2)		\

@@ -43,11 +43,30 @@
  *   MAY_EXEC: syscall may be fully executed
  *   EMU: syscall will always be emulated
  *
- * System calls are ordered by system call number.
- * Use SYSCALLNO_X86(N) macro to set the system call number of the next system
- * call to N for x86.
+ * System calls are ordered by system call number on the x86 architecture.
+ *
+ * Use the SYSCALLNO_X86(N) macro to set the system call number of the next
+ * system call to N for x86.  Likewise, use the SYSCALLNO_X86_64(N) macro to
+ * set the system call number of the next system call to N for x86-64.
  * By default the system call number is the number of the previous system call
  * plus one.
+ *
+ * For system calls that do not exist on a given architecture (as opposed
+ * to merely being unuspported), you should call SYSCALL_UNDEFINED_${ARCH}
+ * prior to the appropriate SYSCALL_DEF* macro.  This value should be
+ * explicitly specified for all such macros, rather than letting the normal
+ * numbering take over.  That is, you should write:
+ *
+ *   SYSCALL_UNDEFINED_X86_64()
+ *   SYSCALL_DEF_UNSUPPORTED(setuid32)
+ *   SYSCALL_UNDEFINED_X86_64()
+ *   SYSCALL_DEF_UNSUPPORTED(setgid32)
+ *
+ * rather than:
+ *
+ *   SYSCALL_UNDEFINED_X86_64()
+ *   SYSCALL_DEF_UNSUPPORTED(setuid32)
+ *   SYSCALL_DEF_UNSUPPORTED(setgid32)
  */
 
 SYSCALLNO_X86(1)
@@ -57,9 +76,11 @@ SYSCALLNO_X86(1)
  * The exit() function causes normal process termination and the value
  * of status & 0377 is returned to the parent (see wait(2)).
  */
+SYSCALLNO_X86_64(60)
 SYSCALL_DEF_IRREG(exit, MAY_EXEC)
 
 // Obsolete. glibc calls clone() instead.
+SYSCALLNO_X86_64(57)
 SYSCALL_DEF_UNSUPPORTED(fork)
 
 /**
@@ -70,6 +91,7 @@ SYSCALL_DEF_UNSUPPORTED(fork)
  *
  * CHECKED: (trace->recorded_regs.eax > 0)
  */
+SYSCALLNO_X86_64(0)
 SYSCALL_DEF_IRREG(read, EMU)
 
 /**
@@ -118,6 +140,7 @@ SYSCALL_DEF0(close, EMU)
  * behavior is modifiable via the options argument, as described
  * below....
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(waitpid, EMU)
 
 /**
@@ -126,6 +149,7 @@ SYSCALL_DEF_IRREG(waitpid, EMU)
  * creat() is equivalent to open() with flags equal to
  * O_CREAT|O_WRONLY|O_TRUNC.
  */
+SYSCALLNO_X86_64(85)
 SYSCALL_DEF0(creat, EMU)
 
 /**
@@ -153,6 +177,7 @@ SYSCALL_DEF0(unlink, EMU)
  *
  * execve() executes the program pointed to by filename.
  */
+SYSCALLNO_X86_64(59)
 SYSCALL_DEF_IRREG(execve, MAY_EXEC)
 
 /**
@@ -161,6 +186,7 @@ SYSCALL_DEF_IRREG(execve, MAY_EXEC)
  * chdir() changes the current working directory of the calling
  * process to the directory specified in path.
  */
+SYSCALLNO_X86_64(80)
 SYSCALL_DEF0(chdir, EMU)
 
 /**
@@ -170,8 +196,10 @@ SYSCALL_DEF0(chdir, EMU)
  * 1970), measured in seconds. If t is non-NULL, the return value is
  * also stored in the memory pointed to by t.
  */
+SYSCALLNO_X86_64(201)
 SYSCALL_DEF1(time, EMU, time_t, arg1)
 
+SYSCALLNO_X86_64(133)
 SYSCALL_DEF_UNSUPPORTED(mknod)
 
 /**
@@ -180,10 +208,14 @@ SYSCALL_DEF_UNSUPPORTED(mknod)
  * The mode of the file given by path or referenced by fildes is
  * changed.
  */
+SYSCALLNO_X86_64(90)
 SYSCALL_DEF0(chmod, EMU)
 
+SYSCALLNO_X86_64(94)
 SYSCALL_DEF_UNSUPPORTED(lchown)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(_break)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(oldstat)
 
 /**
@@ -193,6 +225,7 @@ SYSCALL_DEF_UNSUPPORTED(oldstat)
  * associated with the file descriptor fd to the argument offset
  * according to the directive whence as follows:
  */
+SYSCALLNO_X86_64(8)
 SYSCALL_DEF0(lseek, EMU)
 
 /**
@@ -202,12 +235,18 @@ SYSCALL_DEF0(lseek, EMU)
  * often used by routines that generate unique temporary
  * filenames.)
  */
+SYSCALLNO_X86_64(39)
 SYSCALL_DEF0(getpid, EMU)
 
+SYSCALLNO_X86_64(165)
 SYSCALL_DEF_UNSUPPORTED(mount)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(umount)
+SYSCALLNO_X86_64(105)
 SYSCALL_DEF_UNSUPPORTED(setuid)
+SYSCALLNO_X86_64(102)
 SYSCALL_DEF_UNSUPPORTED(getuid)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(stime)
 
 /**
@@ -220,6 +259,7 @@ SYSCALL_DEF_UNSUPPORTED(stime)
  * registers.  It is primarily used to implement breakpoint debugging
  * and system call tracing.
  */
+SYSCALLNO_X86_64(101)
 SYSCALL_DEF_IRREG(ptrace, EMU)
 
 /**
@@ -228,8 +268,10 @@ SYSCALL_DEF_IRREG(ptrace, EMU)
  * The alarm() system call schedules an alarm. The process will get a
  * SIGALRM after the requested amount of seconds.
  */
+SYSCALLNO_X86_64(37)
 SYSCALL_DEF0(alarm, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(oldfstat)
 
 /**
@@ -239,6 +281,7 @@ SYSCALL_DEF_UNSUPPORTED(oldfstat)
  * signal is delivered that either terminates the process or causes
  * the invocation of a signal-catching function.
  */
+SYSCALLNO_X86_64(34)
 SYSCALL_DEF0(pause, EMU)
 
 /**
@@ -258,9 +301,12 @@ SYSCALL_DEF0(pause, EMU)
  *
  * FIXME: is mod_time set by the kernel?
  */
+SYSCALLNO_X86_64(132)
 SYSCALL_DEF0(utime, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(stty)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(gtty)
 
 /**
@@ -269,10 +315,14 @@ SYSCALL_DEF_UNSUPPORTED(gtty)
  * access() checks whether the calling process can access the file
  * pathname.  If pathname is a symbolic link, it is dereferenced.
  */
+SYSCALLNO_X86_64(21)
 SYSCALL_DEF0(access, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(nice)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(ftime)
+SYSCALLNO_X86_64(162)
 SYSCALL_DEF_UNSUPPORTED(sync)
 
 /**
@@ -281,6 +331,7 @@ SYSCALL_DEF_UNSUPPORTED(sync)
  * The kill() system call can be used to send any signal to any
  * process group or process.
  */
+SYSCALLNO_X86_64(62)
 SYSCALL_DEF0(kill, EMU)
 
 /**
@@ -288,6 +339,7 @@ SYSCALL_DEF0(kill, EMU)
  *
  * rename() renames a file, moving it between directories if required.
  */
+SYSCALLNO_X86_64(82)
 SYSCALL_DEF0(rename, EMU)
 
 /**
@@ -310,6 +362,7 @@ SYSCALL_DEF0(rmdir, EMU)
  * dup() uses the lowest-numbered unused descriptor for the new
  * descriptor.
  */
+SYSCALLNO_X86_64(32)
 SYSCALL_DEF0(dup, EMU)
 
 /**
@@ -323,6 +376,7 @@ SYSCALL_DEF0(dup, EMU)
  * pipe is buffered by the kernel until it is read from the reoad end
  * of the pipe.  For further details, see pipe(7).
  */
+SYSCALLNO_X86_64(22)
 SYSCALL_DEF1(pipe, EMU, int[2], arg1)
 
 /**
@@ -331,8 +385,10 @@ SYSCALL_DEF1(pipe, EMU, int[2], arg1)
  * times() stores the current process times in the struct tms that buf
  *  points to.  The struct tms is as defined in <sys/times.h>:
  */
+SYSCALLNO_X86_64(100)
 SYSCALL_DEF1(times, EMU, struct tms, arg1)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(prof)
 
 /**
@@ -350,15 +406,23 @@ SYSCALL_DEF_UNSUPPORTED(prof)
  * and the process does not exceed its maximum data size (see
  * setrlimit(2)).
  */
+SYSCALLNO_X86_64(12)
 SYSCALL_DEF0(brk, EXEC)
 
+SYSCALLNO_X86_64(106)
 SYSCALL_DEF_UNSUPPORTED(setgid)
+SYSCALLNO_X86_64(104)
 SYSCALL_DEF_UNSUPPORTED(getgid)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(signal)
+SYSCALLNO_X86_64(107)
 SYSCALL_DEF_UNSUPPORTED(geteuid)
 SYSCALL_DEF_UNSUPPORTED(getegid)
+SYSCALLNO_X86_64(163)
 SYSCALL_DEF_UNSUPPORTED(acct)
+SYSCALLNO_X86_64(166)
 SYSCALL_DEF_UNSUPPORTED(umount2)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(lock)
 
 /**
@@ -370,9 +434,12 @@ SYSCALL_DEF_UNSUPPORTED(lock)
  * ioctl() requests.  The argument d must be an open file descriptor.
  *
  */
+SYSCALLNO_X86_64(16)
 SYSCALL_DEF_IRREG(ioctl, EMU)
 
+SYSCALLNO_X86_64(72)
 SYSCALL_DEF_UNSUPPORTED(fcntl)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(mpx)
 
 /**
@@ -389,9 +456,12 @@ SYSCALL_DEF_UNSUPPORTED(mpx)
  * the session ID of that group must match the session ID of the
  * joining process.
  */
+SYSCALLNO_X86_64(109)
 SYSCALL_DEF0(setpgid, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(ulimit)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(oldolduname)
 
 /**
@@ -401,9 +471,12 @@ SYSCALL_DEF_UNSUPPORTED(oldolduname)
  * to mask & 0777 (i.e., only the file permission bits of mask are
  * used), and returns the previous value of the mask.
  */
+SYSCALLNO_X86_64(95)
 SYSCALL_DEF0(umask, EMU)
 
+SYSCALLNO_X86_64(161)
 SYSCALL_DEF_UNSUPPORTED(chroot)
+SYSCALLNO_X86_64(136)
 SYSCALL_DEF_UNSUPPORTED(ustat)
 
 /**
@@ -412,6 +485,7 @@ SYSCALL_DEF_UNSUPPORTED(ustat)
  * dup2() makes newfd be the copy of oldfd, closing newfd first if
  *  necessary, but note the following..
  */
+SYSCALLNO_X86_64(33)
 SYSCALL_DEF0(dup2, EMU)
 
 /**
@@ -420,6 +494,7 @@ SYSCALL_DEF0(dup2, EMU)
  * getppid() returns the process ID of the parent of the calling
  * process.
  */
+SYSCALLNO_X86_64(110)
 SYSCALL_DEF0(getppid, EMU)
 
 /**
@@ -451,14 +526,21 @@ SYSCALL_DEF0(setsid, EMU)
  * from act.  If oldact is non-NULL, the previous action is saved in
  * oldact.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(sigaction, EMU, struct kernel_sigaction, arg3)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(sgetmask)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(ssetmask)
+SYSCALLNO_X86_64(113)
 SYSCALL_DEF_UNSUPPORTED(setreuid)
 SYSCALL_DEF_UNSUPPORTED(setregid)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(sigsuspend)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(sigpending)
+SYSCALLNO_X86_64(170)
 SYSCALL_DEF_UNSUPPORTED(sethostname)
 
 /**
@@ -473,8 +555,10 @@ SYSCALL_DEF_UNSUPPORTED(sethostname)
  * sets a limit on a resource (e.g., the stack size) This bahavior
  * must be the same in the replay as in the recording phase.
  */
+SYSCALLNO_X86_64(160)
 SYSCALL_DEF1(setrlimit, EXEC, struct rlimit, arg2)
 
+SYSCALLNO_X86_64(97)
 SYSCALL_DEF_UNSUPPORTED(getrlimit)
 
 /**
@@ -492,11 +576,15 @@ SYSCALL_DEF1(getrusage, EMU, struct rusage, arg2)
  * time as well as a timezone.  The tv argument is a struct timeval
  * (as specified in <sys/time.h>):
  */
+SYSCALLNO_X86_64(96)
 SYSCALL_DEF2(gettimeofday, EMU, struct timeval, arg1, struct timezone, arg2)
 
+SYSCALLNO_X86_64(164)
 SYSCALL_DEF_UNSUPPORTED(settimeofday)
+SYSCALLNO_X86_64(115)
 SYSCALL_DEF_UNSUPPORTED(getgroups)
 SYSCALL_DEF_UNSUPPORTED(setgroups)
+SYSCALLNO_X86_64(23)
 SYSCALL_DEF_UNSUPPORTED(select)
 
 /**
@@ -507,8 +595,10 @@ SYSCALL_DEF_UNSUPPORTED(select)
  *
  * FIXME: Why was this disabled?
  */
+SYSCALLNO_X86_64(88)
 SYSCALL_DEF0(symlink, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(oldlstat)
 
 /**
@@ -520,11 +610,16 @@ SYSCALL_DEF_UNSUPPORTED(oldlstat)
  * bufsiz characters), in case the buffer is too small to hold all of
  * the contents.
  */
+SYSCALLNO_X86_64(89)
 SYSCALL_DEF1_DYNSIZE(readlink, EMU, (size_t)t->regs().arg3(), arg2)
 
+SYSCALLNO_X86_64(134)
 SYSCALL_DEF_UNSUPPORTED(uselib)
+SYSCALLNO_X86_64(167)
 SYSCALL_DEF_UNSUPPORTED(swapon)
+SYSCALLNO_X86_64(169)
 SYSCALL_DEF_UNSUPPORTED(reboot)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(readdir)
 
 /**
@@ -536,6 +631,7 @@ SYSCALL_DEF_UNSUPPORTED(readdir)
  * mmap(2)).  This enables applications that use a 32-bit off_t to map
  * large files (up to 2^44 bytes).
  */
+SYSCALLNO_X86_64(9)
 SYSCALL_DEF_IRREG(mmap, MAY_EXEC)
 
 /**
@@ -547,6 +643,7 @@ SYSCALL_DEF_IRREG(mmap, MAY_EXEC)
  * also automatically unmapped when the process is terminated.  On the
  * other hand, closing the file descriptor does not unmap the region.
  */
+SYSCALLNO_X86_64(11)
 SYSCALL_DEF0(munmap, EXEC)
 
 /**
@@ -557,6 +654,7 @@ SYSCALL_DEF0(munmap, EXEC)
  * named by path or referenced by fd to be truncated to a size of
  * precisely length bytes.
  */
+SYSCALLNO_X86_64(76)
 SYSCALL_DEF0(truncate, EMU)
 
 SYSCALL_DEF0(ftruncate, EMU)
@@ -567,8 +665,10 @@ SYSCALL_DEF0(ftruncate, EMU)
  * fchmod() changes the permissions of the file referred to by the
  * open file descriptor fd
  */
+SYSCALLNO_X86_64(91)
 SYSCALL_DEF0(fchmod, EMU)
 
+SYSCALLNO_X86_64(93)
 SYSCALL_DEF_UNSUPPORTED(fchown)
 
 /**
@@ -577,6 +677,7 @@ SYSCALL_DEF_UNSUPPORTED(fchown)
  * The scheduling priority of the process, process group, or user, as
  * indicated by which and who is obtained with the getpriority() call.
  */
+SYSCALLNO_X86_64(140)
 SYSCALL_DEF0(getpriority, EMU)
 
 /**
@@ -588,6 +689,7 @@ SYSCALL_DEF0(getpriority, EMU)
  */
 SYSCALL_DEF0(setpriority, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(profil)
 
 /**
@@ -598,6 +700,7 @@ SYSCALL_DEF_UNSUPPORTED(profil)
  * system.  buf is a pointer to a statfs structure defined
  * approximately as follows:
  */
+SYSCALLNO_X86_64(137)
 SYSCALL_DEF1(statfs, EMU, struct statfs, arg2)
 
 /**
@@ -610,6 +713,7 @@ SYSCALL_DEF1(statfs, EMU, struct statfs, arg2)
  */
 SYSCALL_DEF1(fstatfs, EMU, struct statfs, arg2)
 
+SYSCALLNO_X86_64(173)
 SYSCALL_DEF_UNSUPPORTED(ioperm)
 
 /**
@@ -620,8 +724,10 @@ SYSCALL_DEF_UNSUPPORTED(ioperm)
  * points to a block containing the actual arguments, which are passed
  * through to the appropriate call.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(socketcall, EMU)
 
+SYSCALLNO_X86_64(103)
 SYSCALL_DEF_UNSUPPORTED(syslog)
 
 /**
@@ -631,16 +737,26 @@ SYSCALL_DEF_UNSUPPORTED(syslog)
  * new_value.  If old_value is non-NULL, the old value of the timer is
  * stored there.
  */
+SYSCALLNO_X86_64(38)
 SYSCALL_DEF1(setitimer, EMU, struct itimerval, arg3)
 
+SYSCALLNO_X86_64(36)
 SYSCALL_DEF_UNSUPPORTED(getitimer)
+SYSCALLNO_X86_64(4)
 SYSCALL_DEF_UNSUPPORTED(stat)
+SYSCALLNO_X86_64(6)
 SYSCALL_DEF_UNSUPPORTED(lstat)
+SYSCALLNO_X86_64(5)
 SYSCALL_DEF_UNSUPPORTED(fstat)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(olduname)
+SYSCALLNO_X86_64(172)
 SYSCALL_DEF_UNSUPPORTED(iopl)
+SYSCALLNO_X86_64(153)
 SYSCALL_DEF_UNSUPPORTED(vhangup)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(idle)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(vm86old)
 
 /**
@@ -650,8 +766,10 @@ SYSCALL_DEF_UNSUPPORTED(vm86old)
  * additionally return resource usage information about the child in
  * the structure pointed to by rusage.
  */
+SYSCALLNO_X86_64(61)
 SYSCALL_DEF_IRREG(wait4, EMU)
 
+SYSCALLNO_X86_64(168)
 SYSCALL_DEF_UNSUPPORTED(swapoff)
 
 /**
@@ -660,6 +778,7 @@ SYSCALL_DEF_UNSUPPORTED(swapoff)
  * sysinfo() provides a simple way of getting overall system
  * statistics.
  */
+SYSCALLNO_X86_64(99)
 SYSCALL_DEF1(sysinfo, EMU, struct sysinfo, arg1)
 
 /**
@@ -670,6 +789,7 @@ SYSCALL_DEF1(sysinfo, EMU, struct sysinfo, arg1)
  * function to invoke; the other arguments are passed through to the
  * appropriate call.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(ipc, EMU)
 
 /**
@@ -682,6 +802,7 @@ SYSCALL_DEF_IRREG(ipc, EMU)
  * reports that the transfer has completed.  It also flushes metadata
  * information associated with the file (see stat(2))
  */
+SYSCALLNO_X86_64(74)
 SYSCALL_DEF0(fsync, EMU)
 
 /**
@@ -691,6 +812,7 @@ SYSCALL_DEF0(fsync, EMU)
  * a call to sigreturn() is inserted into the stack frame so that upon
  * return from the signal handler, sigreturn() will be called.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(sigreturn, EMU)
 
 /**
@@ -707,8 +829,10 @@ SYSCALL_DEF_IRREG(sigreturn, EMU)
  *
  *  long sys_clone(unsigned long clone_flags, unsigned long newsp, void __user *parent_tid, void __user *child_tid, struct pt_regs *regs)
  */
+SYSCALLNO_X86_64(56)
 SYSCALL_DEF_IRREG(clone, MAY_EXEC)
 
+SYSCALLNO_X86_64(171)
 SYSCALL_DEF_UNSUPPORTED(setdomainname)
 
 /**
@@ -717,9 +841,12 @@ SYSCALL_DEF_UNSUPPORTED(setdomainname)
  * uname() returns system information in the structure pointed to by
  * buf. The utsname struct is defined in <sys/utsname.h>:
  */
+SYSCALLNO_X86_64(63)
 SYSCALL_DEF1(uname, EMU, struct utsname, arg1)
 
+SYSCALLNO_X86_64(154)
 SYSCALL_DEF_UNSUPPORTED(modify_ldt)
+SYSCALLNO_X86_64(159)
 SYSCALL_DEF_UNSUPPORTED(adjtimex)
 
 /**
@@ -733,6 +860,7 @@ SYSCALL_DEF_UNSUPPORTED(adjtimex)
  * violates the protection, then the kernel generates a SIGSEGV signal
  * for the process.
  */
+SYSCALLNO_X86_64(10)
 SYSCALL_DEF0(mprotect, EXEC)
 
 /**
@@ -743,8 +871,10 @@ SYSCALL_DEF0(mprotect, EXEC)
  * delivery is currently blocked for the caller (see also signal(7)
  * for more details).
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(sigprocmask, EMU, sigset_t, arg3)
 
+SYSCALLNO_X86_64(174)
 SYSCALL_DEF_UNSUPPORTED(create_module)
 SYSCALL_DEF_UNSUPPORTED(init_module)
 SYSCALL_DEF_UNSUPPORTED(delete_module)
@@ -760,6 +890,7 @@ SYSCALL_DEF_UNSUPPORTED(get_kernel_syms)
  * user quotas, or GRPQUOTA, for group quotas.  The subcmd value is
  * described below.
  */
+SYSCALLNO_X86_64(179)
 SYSCALL_DEF_IRREG(quotactl, EMU)
 
 /**
@@ -769,6 +900,7 @@ SYSCALL_DEF_IRREG(quotactl, EMU)
  * is zero, getpgid() the process ID of the calling process is
  * used.int getrusage(int who, struct rusage *usage);
  */
+SYSCALLNO_X86_64(121)
 SYSCALL_DEF0(getpgid, EMU)
 
 /**
@@ -777,12 +909,18 @@ SYSCALL_DEF0(getpgid, EMU)
  * fchdir() is identical to chdir(); the only difference is that the
  * directory is given as an open file descriptor.
  */
+SYSCALLNO_X86_64(81)
 SYSCALL_DEF0(fchdir, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(bdflush)
+SYSCALLNO_X86_64(139)
 SYSCALL_DEF_UNSUPPORTED(sysfs)
+SYSCALLNO_X86_64(135)
 SYSCALL_DEF_UNSUPPORTED(personality)
+SYSCALLNO_X86_64(183)
 SYSCALL_DEF_UNSUPPORTED(afs_syscall)
+SYSCALLNO_X86_64(122)
 SYSCALL_DEF_UNSUPPORTED(setfsuid)
 SYSCALL_DEF_UNSUPPORTED(setfsgid)
 
@@ -796,6 +934,7 @@ SYSCALL_DEF_UNSUPPORTED(setfsgid)
  * whence is SEEK_SET, SEEK_CUR, or SEEK_END, respectively.  It
  * returns the resulting file position in the argument result.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(_llseek, EMU, loff_t, arg4)
 
 /**
@@ -806,6 +945,7 @@ SYSCALL_DEF1(_llseek, EMU, loff_t, arg4)
  * the buffer pointed to by dirp.  The argument count specifies the
  * size of that buffer.
  */
+SYSCALLNO_X86_64(78)
 SYSCALL_DEF1_DYNSIZE(getdents, EMU, (int)t->regs().syscall_result_signed(), arg2)
 
 /**
@@ -818,9 +958,11 @@ SYSCALL_DEF1_DYNSIZE(getdents, EMU, (int)t->regs().syscall_result_signed(), arg2
  * to perform the corresponding I/O operation (e.g., read(2)) without
  * blocking.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF4(_newselect, EMU, fd_set, arg2, fd_set, arg3,
 	     fd_set, arg4, struct timeval, arg5)
 
+SYSCALLNO_X86_64(73)
 SYSCALL_DEF_UNSUPPORTED(flock)
 
 /**
@@ -833,8 +975,10 @@ SYSCALL_DEF_UNSUPPORTED(flock)
  * corresponds to the memory area starting at addr and having length
  * length is updated.
  */
+SYSCALLNO_X86_64(26)
 SYSCALL_DEF0(msync, EXEC)
 
+SYSCALLNO_X86_64(19)
 SYSCALL_DEF_UNSUPPORTED(readv)
 
 /**
@@ -853,6 +997,7 @@ SYSCALL_DEF_IRREG(writev, EMU)
  * returns the session ID of the process with process ID p.  (The session
  * ID of a process is the process group ID of the session leader.)
  */
+SYSCALLNO_X86_64(124)
 SYSCALL_DEF0(getsid, EMU)
 
 /**
@@ -868,6 +1013,7 @@ SYSCALL_DEF0(getsid, EMU)
  * (st_size, as made by say ftruncate(2)), would require a metadata
  * flush
  */
+SYSCALLNO_X86_64(75)
 SYSCALL_DEF0(fdatasync, EMU)
 
 /**
@@ -878,12 +1024,15 @@ SYSCALL_DEF0(fdatasync, EMU)
  *
  * Often not supported in modern kernels, so can return ENOSYS.
  */
+SYSCALLNO_X86_64(156)
 SYSCALL_DEF_IRREG(_sysctl, EMU)
 
+SYSCALLNO_X86_64(149)
 SYSCALL_DEF_UNSUPPORTED(mlock)
 SYSCALL_DEF_UNSUPPORTED(munlock)
 SYSCALL_DEF_UNSUPPORTED(mlockall)
 SYSCALL_DEF_UNSUPPORTED(munlockall)
+SYSCALLNO_X86_64(142)
 SYSCALL_DEF_UNSUPPORTED(sched_setparam)
 
 /**
@@ -922,6 +1071,7 @@ SYSCALL_DEF0(sched_getscheduler, EMU)
  * thread is moved to the end of the queue for its static priority and
  * a new thread gets to run.
  */
+SYSCALLNO_X86_64(24)
 SYSCALL_DEF0(sched_yield, EMU)
 
 /**
@@ -930,6 +1080,7 @@ SYSCALL_DEF0(sched_yield, EMU)
  * sched_get_priority_max() returns the maximum priority value that
  * can be used with the scheduling algorithm identified by policy.
  */
+SYSCALLNO_X86_64(146)
 SYSCALL_DEF0(sched_get_priority_max, EMU)
 
 /**
@@ -952,6 +1103,7 @@ SYSCALL_DEF_UNSUPPORTED(sched_rr_get_interval)
  *
  * CHECKED: trace->recorded_regs.ecx != NULL
  */
+SYSCALLNO_X86_64(35)
 SYSCALL_DEF_IRREG(nanosleep, EMU)
 
 /**
@@ -961,6 +1113,7 @@ SYSCALL_DEF_IRREG(nanosleep, EMU)
  * potentially moving it at the same time (controlled by the flags
  * argument and the available virtual address space).
  */
+SYSCALLNO_X86_64(25)
 SYSCALL_DEF0(mremap, EXEC)
 
 /**
@@ -969,10 +1122,13 @@ SYSCALL_DEF0(mremap, EXEC)
  * setresuid() sets the real user ID, the effective user ID, and the
  * saved set-user-ID of the calling process.
  */
+SYSCALLNO_X86_64(117)
 SYSCALL_DEF0(setresuid, EMU)
 
 SYSCALL_DEF_UNSUPPORTED(getresuid)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(vm86)
+SYSCALLNO_X86_64(178)
 SYSCALL_DEF_UNSUPPORTED(query_module)
 
 /**
@@ -991,8 +1147,10 @@ SYSCALL_DEF_UNSUPPORTED(query_module)
  *
  * XXX is this irregular?  CHECKED: (trace->recorded_regs.eax > 0)
  */
+SYSCALLNO_X86_64(7)
 SYSCALL_DEF_IRREG(poll, EMU)
 
+SYSCALLNO_X86_64(180)
 SYSCALL_DEF_UNSUPPORTED(nfsservctl)
 
 /**
@@ -1001,6 +1159,7 @@ SYSCALL_DEF_UNSUPPORTED(nfsservctl)
  * setresgid() sets the real GID, effective GID, and saved
  * set-group-ID of the calling process.
  */
+SYSCALLNO_X86_64(119)
 SYSCALL_DEF0(setresgid, EMU)
 
 SYSCALL_DEF_UNSUPPORTED(getresgid)
@@ -1013,14 +1172,18 @@ SYSCALL_DEF_UNSUPPORTED(getresgid)
  * significance depending on the first one.
  *
  */
+SYSCALLNO_X86_64(157)
 SYSCALL_DEF_IRREG(prctl, MAY_EXEC)
 
+SYSCALLNO_X86_64(15)
 SYSCALL_DEF_IRREG(rt_sigreturn, EMU)
 
+SYSCALLNO_X86_64(13)
 SYSCALL_DEF1(rt_sigaction, EMU, struct kernel_sigaction, arg3)
 
 SYSCALL_DEF1(rt_sigprocmask, EMU, sigset_t, arg3)
 
+SYSCALLNO_X86_64(127)
 SYSCALL_DEF_UNSUPPORTED(rt_sigpending)
 SYSCALL_DEF_UNSUPPORTED(rt_sigtimedwait)
 SYSCALL_DEF_UNSUPPORTED(rt_sigqueueinfo)
@@ -1032,10 +1195,12 @@ SYSCALL_DEF_UNSUPPORTED(rt_sigsuspend)
  * pread, pwrite - read from or write to a file descriptor at a given
  * offset
  */
+SYSCALLNO_X86_64(17)
 SYSCALL_DEF1_DYNSIZE(pread64, EMU, (ssize_t)t->regs().syscall_result_signed(), arg2)
 
 SYSCALL_DEF0(pwrite64, EMU)
 
+SYSCALLNO_X86_64(92)
 SYSCALL_DEF_UNSUPPORTED(chown)
 
 /**
@@ -1046,8 +1211,10 @@ SYSCALL_DEF_UNSUPPORTED(chown)
  * calling process.  The pathname is returned as the function result
  * and via the argument buf, if present.
  */
+SYSCALLNO_X86_64(79)
 SYSCALL_DEF1_STR(getcwd, EMU, arg1)
 
+SYSCALLNO_X86_64(125)
 SYSCALL_DEF_UNSUPPORTED(capget)
 SYSCALL_DEF_UNSUPPORTED(capset)
 
@@ -1060,12 +1227,16 @@ SYSCALL_DEF_UNSUPPORTED(capset)
  * signal handler if the establishment of that handler (see
  * sigaction(2)) requested it.
  */
+SYSCALLNO_X86_64(131)
 SYSCALL_DEF1_DYNSIZE(sigaltstack, EMU,
 		     t->regs().arg2() ? sizeof(stack_t) : 0, arg2)
 
+SYSCALLNO_X86_64(40)
 SYSCALL_DEF_UNSUPPORTED(sendfile)
+SYSCALLNO_X86_64(181)
 SYSCALL_DEF_UNSUPPORTED(getpmsg)
 SYSCALL_DEF_UNSUPPORTED(putpmsg)
+SYSCALLNO_X86_64(58)
 SYSCALL_DEF_UNSUPPORTED(vfork)
 
 /**
@@ -1076,12 +1247,16 @@ SYSCALL_DEF_UNSUPPORTED(vfork)
  * as defined by the rlimit structure (the rlim argument to both
  * getrlimit() and setrlimit()):
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(ugetrlimit, EMU, struct rlimit, arg2)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(mmap2, MAY_EXEC)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(truncate64, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(ftruncate64, EMU)
 
 /**
@@ -1089,6 +1264,7 @@ SYSCALL_DEF0(ftruncate64, EMU)
  *
  * stat() stats the file pointed to by path and fills in buf.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(stat64, EMU, struct stat64, arg2)
 
 /**
@@ -1098,6 +1274,7 @@ SYSCALL_DEF1(stat64, EMU, struct stat64, arg2)
  * link, then the link itself is stat-ed, not the file that it refers
  * to.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(lstat64, EMU, struct stat64, arg2)
 
 /**
@@ -1106,8 +1283,10 @@ SYSCALL_DEF1(lstat64, EMU, struct stat64, arg2)
  * fstat() is identical to stat(), except that the file to be stat-ed
  * is specified by the file descriptor fd.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(fstat64, EMU, struct stat64, arg2)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(lchown32)
 
 /**
@@ -1115,6 +1294,7 @@ SYSCALL_DEF_UNSUPPORTED(lchown32)
  *
  * getuid() returns the real user ID of the calling process
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(getuid32, EMU)
 
 /**
@@ -1122,6 +1302,7 @@ SYSCALL_DEF0(getuid32, EMU)
  *
  * getgid() returns the real group ID of the calling process.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(getgid32, EMU)
 
 /**
@@ -1129,6 +1310,7 @@ SYSCALL_DEF0(getgid32, EMU)
  *
  * geteuid() returns the effective user ID of the calling process.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(geteuid32, EMU)
 
 /**
@@ -1136,8 +1318,10 @@ SYSCALL_DEF0(geteuid32, EMU)
  *
  * getegid() returns the effective group ID of the calling process.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(getegid32, EMU)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(setreuid32)
 
 /**
@@ -1145,6 +1329,7 @@ SYSCALL_DEF_UNSUPPORTED(setreuid32)
  *
  * setreuid() sets real and effective user IDs of the calling process
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(setregid32, EMU)
 
 /**
@@ -1164,10 +1349,13 @@ SYSCALL_DEF0(setregid32, EMU)
  * the caller to determine the size of a dynamically allocated list to
  * be used in a further call to getgroups().
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1_DYNSIZE(getgroups32, EMU,
 	(int)t->regs().syscall_result_signed() * sizeof(gid_t), arg2)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(setgroups32)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(fchown32)
 
 /**
@@ -1176,6 +1364,7 @@ SYSCALL_DEF_UNSUPPORTED(fchown32)
  * setresuid() sets the real user ID, the effective user ID, and the
  * saved set-user-ID of the calling process.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(setresuid32, EMU)
 
 /**
@@ -1186,6 +1375,7 @@ SYSCALL_DEF0(setresuid32, EMU)
  * and suid, respectively.  getresgid() performs the analogous task
  * for the process's group IDs.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF3(getresuid32, EMU, uid_t, arg1, uid_t, arg2, uid_t, arg3)
 
 /**
@@ -1194,6 +1384,7 @@ SYSCALL_DEF3(getresuid32, EMU, uid_t, arg1, uid_t, arg2, uid_t, arg3)
  * setresgid() sets the real GID, effective GID, and saved
  * set-group-ID of the calling process.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(setresgid32, EMU)
 
 /**
@@ -1206,14 +1397,22 @@ SYSCALL_DEF0(setresgid32, EMU)
  * returned.  On error, -1 is returned, and errno is set
  * appropriately.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF3(getresgid32, EMU, uid_t, arg1, uid_t, arg2, uid_t, arg3)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(chown32)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(setuid32)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(setgid32)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(setfsuid32)
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(setfsgid32)
+SYSCALLNO_X86_64(155)
 SYSCALL_DEF_UNSUPPORTED(pivot_root)
+SYSCALLNO_X86_64(27)
 SYSCALL_DEF_UNSUPPORTED(mincore)
 
 /**
@@ -1231,6 +1430,7 @@ SYSCALL_DEF_UNSUPPORTED(mincore)
  */
 SYSCALL_DEF0(madvise, EXEC)
 
+SYSCALLNO_X86_64(217)
 SYSCALL_DEF1_DYNSIZE(getdents64, EMU, (int)t->regs().syscall_result_signed(), arg2)
 
 /**
@@ -1244,6 +1444,7 @@ SYSCALL_DEF1_DYNSIZE(getdents64, EMU, (int)t->regs().syscall_result_signed(), ar
  * required type is long, and we identify the argument using the name
  * arg), or void is specified if the argument is not required.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(fcntl64, EMU)
 
 SYSCALLNO_X86(224)
@@ -1252,6 +1453,7 @@ SYSCALLNO_X86(224)
  *
  * gettid() returns the caller's thread ID (TID).
  */
+SYSCALLNO_X86_64(186)
 SYSCALL_DEF0(gettid, EMU)
 
 /**
@@ -1310,6 +1512,7 @@ SYSCALL_DEF_UNSUPPORTED(tkill)
  * file position instead.  Return the number of written bytes, or -1 in
  * case of error.
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(sendfile64, EMU)
 
 /**
@@ -1324,6 +1527,7 @@ SYSCALL_DEF_IRREG(sendfile64, EMU)
  * typically used to implement the contended case of a lock in shared
  * memory, as described in futex(7).
  */
+SYSCALLNO_X86_64(202)
 SYSCALL_DEF_IRREG(futex, EMU)
 
 /**
@@ -1363,7 +1567,9 @@ SYSCALL_DEF1(sched_getaffinity, EMU, cpu_set_t, arg3)
  */
 SYSCALL_DEF1(set_thread_area, EXEC, struct user_desc, arg1)
 
+SYSCALLNO_X86_64(211)
 SYSCALL_DEF_UNSUPPORTED(get_thread_area)
+SYSCALLNO_X86_64(206)
 SYSCALL_DEF_UNSUPPORTED(io_setup)
 SYSCALL_DEF_UNSUPPORTED(io_destroy)
 SYSCALL_DEF_UNSUPPORTED(io_getevents)
@@ -1377,6 +1583,7 @@ SYSCALL_DEF_UNSUPPORTED(io_cancel)
  * file data in a specific pattern in the future, thus allowing the
  * kernel to perform appropriate optimizations.
  */
+SYSCALLNO_X86_64(221)
 SYSCALL_DEF0(fadvise64, EMU)
 
 SYSCALLNO_X86(252)
@@ -1387,8 +1594,10 @@ SYSCALLNO_X86(252)
  * not only the calling thread, but all threads in the calling
  * process's thread group.
  */
+SYSCALLNO_X86_64(231)
 SYSCALL_DEF_IRREG(exit_group, MAY_EXEC)
 
+SYSCALLNO_X86_64(212)
 SYSCALL_DEF_UNSUPPORTED(lookup_dcookie)
 
 /**
@@ -1410,6 +1619,7 @@ SYSCALL_DEF0(epoll_create, EMU)
  * referred to by the file descriptor epfd.  It requests that the
  * operation op be performed for the target file descriptor, fd.
  */
+SYSCALLNO_X86_64(233)
 SYSCALL_DEF0(epoll_ctl, EMU)
 
 /**
@@ -1423,8 +1633,10 @@ SYSCALL_DEF0(epoll_ctl, EMU)
  *
  * XXX is this irregular?  CHECKED: (trace->recorded_regs.eax >= 0)
  */
+SYSCALLNO_X86_64(232)
 SYSCALL_DEF_IRREG(epoll_wait, EMU)
 
+SYSCALLNO_X86_64(216)
 SYSCALL_DEF_UNSUPPORTED(remap_file_pages)
 
 /**
@@ -1440,8 +1652,10 @@ SYSCALL_DEF_UNSUPPORTED(remap_file_pages)
  * When set_child_tid is set, the very first thing the new process
  * does is writing its PID at this address.
  */
+SYSCALLNO_X86_64(218)
 SYSCALL_DEF1(set_tid_address, EXEC_RET_EMU, pid_t, arg1)
 
+SYSCALLNO_X86_64(222)
 SYSCALL_DEF_UNSUPPORTED(timer_create)
 SYSCALL_DEF_UNSUPPORTED(timer_settime)
 SYSCALL_DEF_UNSUPPORTED(timer_gettime)
@@ -1483,8 +1697,10 @@ SYSCALL_DEF_UNSUPPORTED(clock_nanosleep)
  * FIXME: we use arg3() here, although according to man pages this system
  * call has only 2 paramaters. However, strace tells another story...
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(statfs64, EMU, struct statfs64, arg3)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(fstatfs64, EMU, struct statfs64, arg3)
 
 /**
@@ -1496,6 +1712,7 @@ SYSCALL_DEF1(fstatfs64, EMU, struct statfs64, arg3)
  * the signal will be delivered to an arbitrary thread within that
  * process.)
  */
+SYSCALLNO_X86_64(234)
 SYSCALL_DEF0(tgkill, EMU)
 
 /**
@@ -1508,12 +1725,17 @@ SYSCALL_DEF0(tgkill, EMU)
  */
 SYSCALL_DEF1_DYNSIZE(utimes, EMU, 2 * sizeof(struct timeval), arg2)
 
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF0(fadvise64_64, EMU)
 
+SYSCALLNO_X86_64(236)
 SYSCALL_DEF_UNSUPPORTED(vserver)
 SYSCALL_DEF_UNSUPPORTED(mbind)
+SYSCALLNO_X86_64(239)
 SYSCALL_DEF_UNSUPPORTED(get_mempolicy)
+SYSCALLNO_X86_64(238)
 SYSCALL_DEF_UNSUPPORTED(set_mempolicy)
+SYSCALLNO_X86_64(240)
 SYSCALL_DEF_UNSUPPORTED(mq_open)
 SYSCALL_DEF_UNSUPPORTED(mq_unlink)
 SYSCALL_DEF_UNSUPPORTED(mq_timedsend)
@@ -1602,6 +1824,7 @@ SYSCALL_DEF_UNSUPPORTED(futimesat)
  * stat(2), except for the differences described in this manual
  * page....
  */
+SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(fstatat64, EMU, struct stat64, arg3)
 
 /**
@@ -1612,6 +1835,7 @@ SYSCALL_DEF1(fstatat64, EMU, struct stat64, arg3)
  * includes the AT_REMOVEDIR flag) except for the differences
  * described in this manual page.
  */
+SYSCALLNO_X86_64(263)
 SYSCALL_DEF0(unlinkat, EMU)
 
 SYSCALL_DEF_UNSUPPORTED(renameat)
@@ -1669,11 +1893,16 @@ SYSCALL_DEF_UNSUPPORTED(get_robust_list)
  */
 SYSCALL_DEF_IRREG(splice, EMU)
 
+SYSCALLNO_X86_64(277)
 SYSCALL_DEF_UNSUPPORTED(sync_file_range)
+SYSCALLNO_X86_64(276)
 SYSCALL_DEF_UNSUPPORTED(tee)
+SYSCALLNO_X86_64(278)
 SYSCALL_DEF_UNSUPPORTED(vmsplice)
 SYSCALL_DEF_UNSUPPORTED(move_pages)
+SYSCALLNO_X86_64(309)
 SYSCALL_DEF_UNSUPPORTED(getcpu)
+SYSCALLNO_X86_64(281)
 SYSCALL_DEF_UNSUPPORTED(epoll_pwait)
 
 /**
@@ -1684,8 +1913,10 @@ SYSCALL_DEF_UNSUPPORTED(epoll_pwait)
  * and utimes(2), which permit only second and microsecond precision,
  * respectively, when setting file timestamps.
  */
+SYSCALLNO_X86_64(280)
 SYSCALL_DEF0(utimensat, EMU)
 
+SYSCALLNO_X86_64(282)
 SYSCALL_DEF_UNSUPPORTED(signalfd)
 
 /**
@@ -1726,6 +1957,7 @@ SYSCALL_DEF1(timerfd_settime, EMU, struct itimerspec, arg4)
  */
 SYSCALL_DEF1(timerfd_gettime, EMU, struct itimerspec, arg2)
 
+SYSCALLNO_X86_64(289)
 SYSCALL_DEF_UNSUPPORTED(signalfd4)
 
 /**
@@ -1819,12 +2051,14 @@ SYSCALL_DEF_UNSUPPORTED(syncfs)
 SYSCALL_DEF_IRREG(sendmmsg, EMU)
 
 SYSCALL_DEF_UNSUPPORTED(setns)
+SYSCALLNO_X86_64(310)
 SYSCALL_DEF_UNSUPPORTED(process_vm_readv)
 SYSCALL_DEF_UNSUPPORTED(process_vm_writev)
 SYSCALL_DEF_UNSUPPORTED(kcmp)
 SYSCALL_DEF_UNSUPPORTED(finit_module)
 
 SYSCALLNO_X86(442)
+SYSCALLNO_X86_64(442)
 /**
  *  void* rrcall_init_buffers(struct rrcall_init_buffers_params* args);
  *
@@ -1852,6 +2086,7 @@ SYSCALL_DEF_IRREG(rrcall_monkeypatch_vdso, EMU)
  * macros.
  */
 #undef SYSCALLNO_X86
+#undef SYSCALLNO_X86_64
 #undef SYSCALL_DEF0
 #undef SYSCALL_DEF1
 #undef SYSCALL_DEF1_DYNSIZE
@@ -1861,3 +2096,4 @@ SYSCALL_DEF_IRREG(rrcall_monkeypatch_vdso, EMU)
 #undef SYSCALL_DEF4
 #undef SYSCALL_DEF_IRREG
 #undef SYSCALL_DEF_UNSUPPORTED
+#undef SYSCALL_UNDEFINED_X86_64

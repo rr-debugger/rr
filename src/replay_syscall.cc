@@ -75,6 +75,8 @@ struct syscall_def {
 #define SYSCALL_NUM(_name) static_cast<int>(SyscallsX86::_name)
 
 #define SYSCALLNO_X86(num)
+#define SYSCALLNO_X86_64(num)
+#define SYSCALL_UNDEFINED_X86_64()
 #define SYSCALL_DEF0(_name, _type)		\
 	{ SYSCALL_NUM(_name), rep_##_type, 0 },
 #define SYSCALL_DEF1(_name, _type, _, _1)	\
@@ -118,6 +120,8 @@ static void init_syscall_table()
 #define SYS__break SYS_break
 
 #define SYSCALLNO_X86(num)
+#define SYSCALLNO_X86_64(num)
+#define SYSCALL_UNDEFINED_X86_64()
 #define CHECK_SYSCALL_NUM(_name) 		\
 	static_assert(SYSCALL_NUM(_name) == SYS_##_name,	\
 		      "Incorrect syscall number for " #_name);

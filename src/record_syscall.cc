@@ -2215,6 +2215,8 @@ void rec_process_syscall(Task *t)
 		// syscalls are implemented by hand-written case
 		// statements below.
 #define SYSCALLNO_X86(num)
+#define SYSCALLNO_X86_64(num)
+#define SYSCALL_UNDEFINED_X86_64()
 #define SYSCALL_DEF0(_call, _)						\
 	case static_cast<int>(SyscallsX86::_call):			\
 		break;
