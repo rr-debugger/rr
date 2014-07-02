@@ -4,13 +4,25 @@
 #define RR_KERNEL_ABI_H
 
 // Get all the kernel definitions so we can verify our alternative versions.
+#include <arpa/inet.h>
+#include <asm/ldt.h>
+#include <fcntl.h>
+#include <linux/ethtool.h>
+#include <linux/ipc.h>
+#include <linux/msg.h>
+#include <linux/net.h>
+#include <linux/sockios.h>
+#include <linux/wireless.h>
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
+#include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <termios.h>
 
 #include <assert.h>
 
@@ -249,6 +261,159 @@ struct base_arch : public wordsize {
 		} _sifields;
 	};
 	RR_VERIFY_TYPE_EXPLICIT(siginfo_t, ::siginfo_t)
+
+	// rr uses several types merely for their sizeof() properties
+	// and completely ignores the fields inside of them.
+	// Replicating them here with perfect fidelity seems
+	// unnecessary.
+	//
+	// For some of these structures, then, we're going to define
+	// them purely for sizeof() equivalence.  We're only going to do
+	// that where the size of the structure couldn't vary between
+	// architectures, though; if a structure depends on types like
+	// unsigned_long or an architecture's packing rules, we spell it
+	// out in full.
+	struct termios {
+		unsigned_int c_iflag;
+		unsigned_int c_oflag;
+		unsigned_int c_cflag;
+		unsigned_int c_lflag;
+		unsigned char c_line;
+		unsigned char c_cc[32];
+		unsigned_int c_ispeed;
+		unsigned_int c_ospeed;
+	};
+	RR_VERIFY_TYPE(termios);
+
+	struct winsize {
+		char dummy[8];
+	};
+	RR_VERIFY_TYPE(winsize);
+
+	struct ipc64_perm {
+		signed_int key;
+		uid_t uid;
+		gid_t gid;
+		uid_t cuid;
+		gid_t cgid;
+		unsigned_int mode; // __kernel_mode_t + padding, really.
+		unsigned_short seq;
+		unsigned_short pad2;
+		unsigned_long unused1;
+		unsigned_long unused2;
+	};
+	RR_VERIFY_TYPE(ipc64_perm);
+
+	struct msqid64_ds {
+		struct ipc64_perm msg_perm;
+		// These msg*time fields are really __kernel_time_t plus
+		// appropiate padding.  We don't touch the fields, though.
+		//
+		// We do, however, suffix them with _only_little_endian to
+		// urge anybody who does touch them to make sure the right
+		// thing is done for big-endian systems.
+		uint64_t msg_stime_only_little_endian;
+		uint64_t msg_rtime_only_little_endian;
+		uint64_t msg_ctime_only_little_endian;
+		unsigned_long msg_cbytes;
+		unsigned_long msg_qnum;
+		unsigned_long msg_qbytes;
+		pid_t msg_lspid;
+		pid_t msg_lrpid;
+		unsigned_long unused1;
+		unsigned_long unused2;
+	};
+	RR_VERIFY_TYPE(msqid64_ds);
+
+	struct msginfo {
+		signed_int msgpool;
+		signed_int msgmap;
+		signed_int msgmax;
+		signed_int msgmnb;
+		signed_int msgmni;
+		signed_int msgssz;
+		signed_int msgtql;
+		unsigned_short msgseg;
+	};
+	RR_VERIFY_TYPE(msginfo);
+
+	struct user_desc {
+		char dummy[16];
+	};
+	RR_VERIFY_TYPE(user_desc);
+
+	// This structure uses fixed-size fields, but the padding rules
+	// for 32-bit vs. 64-bit architectures dictate that it be
+	// defined in full.
+	struct dqblk {
+		uint64_t dqb_bhardlimit;
+		uint64_t dqb_bsoftlimit;
+		uint64_t dqb_curspace;
+		uint64_t dqb_ihardlimit;
+		uint64_t dqb_isoftlimit;
+		uint64_t dqb_curinodes;
+		uint64_t dqb_btime;
+		uint64_t dqb_itime;
+		uint32_t dqb_valid;
+	};
+	RR_VERIFY_TYPE(dqblk);
+
+	struct dqinfo {
+		char dummy[24];
+	};
+	RR_VERIFY_TYPE(dqinfo);
+
+	struct ifreq {
+		char ifreq_name[16];
+		union {
+			char dummy[16];
+			ptr<void> data;
+		} ifreq_union;
+	};
+	RR_VERIFY_TYPE(ifreq);
+
+	struct ifconf {
+		signed_int ifc_len;
+		union {
+			ptr<char> ifcu_buf;
+			ptr<ifreq> ifcu_req;
+		} ifc_ifcu;
+	};
+	RR_VERIFY_TYPE(ifconf);
+
+	struct iwreq {
+		char dummy[32];
+	};
+	RR_VERIFY_TYPE(iwreq);
+
+	struct ethtool_cmd {
+		char dummy[44];
+	};
+	RR_VERIFY_TYPE(ethtool_cmd);
+
+	struct flock {
+		unsigned_short l_type;
+		unsigned_short l_whence;
+		unsigned_int l_start;
+		unsigned_int l_len;
+		pid_t l_pid;
+	};
+	RR_VERIFY_TYPE(flock);
+
+	struct flock64 {
+		unsigned_short l_type;
+		unsigned_short l_whence;
+		uint64_t l_start;
+		uint64_t l_len;
+		pid_t l_pid;
+	};
+	RR_VERIFY_TYPE(flock64);
+
+	struct f_owner_ex {
+		signed_int type;
+		pid_t pid;
+	};
+	RR_VERIFY_TYPE(f_owner_ex);
 
 	// Define various structures that package up syscall arguments.
 	// The types of their members are part of the ABI, and defining
