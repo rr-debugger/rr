@@ -50,7 +50,7 @@ static void* reader_thread(void* dontcare) {
 	for (i = 0; i < 2; ++i) {
 		atomic_puts("r: reading socket ...");
 		gettimeofday(&ts, NULL);
-		test_assert(1 == read(sock, &c, sizeof(c)));
+		check_syscall(1, read(sock, &c, sizeof(c)));
 		atomic_printf("r:   ... read '%c'\n", c);
 		test_assert(c == token);
 		++token;
@@ -59,13 +59,13 @@ static void* reader_thread(void* dontcare) {
 
 	atomic_puts("r: recv'ing socket ...");
 	gettimeofday(&ts, NULL);
-	test_assert(1 == recv(sock, &c, sizeof(c), 0));
+	check_syscall(1, recv(sock, &c, sizeof(c), 0));
 	atomic_printf("r:   ... recv'd '%c'\n", c);
 	test_assert(c == token);
 	++token;
 
 	atomic_puts("r: recvfrom'ing socket ...");
-	test_assert(1 == recvfrom(sock, &c, sizeof(c), 0, NULL, NULL));
+	check_syscall(1, recvfrom(sock, &c, sizeof(c), 0, NULL, NULL));
 	atomic_printf("r:   ... recvfrom'd '%c'\n", c);
 	test_assert(c == token);
 	++token;
@@ -74,8 +74,7 @@ static void* reader_thread(void* dontcare) {
 		socklen_t addrlen = sizeof(addr);
 
 		atomic_puts("r: recvfrom(&sock)'ing socket ...");
-		test_assert(1 == recvfrom(sock, &c, sizeof(c), 0,
-					  &addr, &addrlen));
+		check_syscall(1, recvfrom(sock, &c, sizeof(c), 0, &addr, &addrlen));
 		atomic_printf("r:   ... recvfrom'd '%c' from sock len:%d\n",
 			      c, addrlen);
 		test_assert(c == token);
@@ -104,7 +103,8 @@ static void* reader_thread(void* dontcare) {
 		err = errno;
 		atomic_printf("r:  ... returned %d (%s/%d)\n",
 			      ret, strerror(err), err);
-		test_assert(-1 == ret && EWOULDBLOCK == err);
+		check_syscall(-1, ret);
+		test_assert(EWOULDBLOCK == err);
 
 		atomic_puts("r: recmsg'ing socket ...");
 
@@ -124,7 +124,7 @@ static void* reader_thread(void* dontcare) {
 		atomic_puts("r: recmmsg'ing socket ...");
 
 		breakpoint();
-		test_assert(1 == recvmmsg(sock, &mmsg, 1, 0, NULL));
+		check_syscall(1, recvmmsg(sock, &mmsg, 1, 0, NULL));
 		atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n",
 			      magic, mmsg.msg_len);
 		test_assert(msg_magic == magic);
@@ -134,7 +134,7 @@ static void* reader_thread(void* dontcare) {
 		arg.sockfd = sock;
 		arg.msgvec = &mmsg;
 		arg.vlen = 1;
-		test_assert(1 == syscall(SYS_socketcall, SYS_RECVMMSG, (void*)&arg));
+		check_syscall(1, syscall(SYS_socketcall, SYS_RECVMMSG, (void*)&arg));
 		atomic_printf("r:   ... recvmmsg'd(by socketcall) 0x%x (%u bytes)\n",
 			      magic, mmsg.msg_len);
 		test_assert(msg_magic == magic);
@@ -155,7 +155,7 @@ static void* reader_thread(void* dontcare) {
 		msg.msg_iovlen = sizeof(iovs) / sizeof(iovs[0]);
 
 		atomic_puts("r: recmsg'ing socket with two iovs ...");
-		test_assert(2 == recvmsg(sock, &msg, 0));
+		check_syscall(2, recvmsg(sock, &msg, 0));
 		atomic_printf("r:   ... recvmsg'd '%c' and '%c'\n", c1, c2);
 
 		test_assert(c1 == token);
@@ -172,7 +172,7 @@ static void* reader_thread(void* dontcare) {
 		gettimeofday(&ts, NULL);
 		poll(&pfd, 1, -1);
 		atomic_puts("r:   ... done, doing nonblocking read ...");
-		test_assert(1 == read(sock, &c, sizeof(c)));
+		check_syscall(1, read(sock, &c, sizeof(c)));
 		atomic_printf("r:   ... read '%c'\n", c);
 		test_assert(c == token);
 		++token;
@@ -186,7 +186,7 @@ static void* reader_thread(void* dontcare) {
 		gettimeofday(&ts, NULL);
 		ppoll(&pfd, 1, NULL, NULL);
 		atomic_puts("r:   ... done, doing nonblocking read ...");
-		test_assert(1 == read(sock, &c, sizeof(c)));
+		check_syscall(1, read(sock, &c, sizeof(c)));
 		atomic_printf("r:   ... read '%c'\n", c);
 		test_assert(c == token);
 		++token;
@@ -203,12 +203,12 @@ static void* reader_thread(void* dontcare) {
 		ret = select(sock + 1, &fds, NULL, NULL, &tv);
 		atomic_printf("r:   ... returned %d; tv { %ld, %ld }\n",
 			      ret, tv.tv_sec, tv.tv_usec);
-		test_assert(1 == ret);
+		check_syscall(1, ret);
 		test_assert(FD_ISSET(sock, &fds));
 		test_assert(0 < tv.tv_sec && tv.tv_sec < infinity.tv_sec);
 
 		atomic_puts("r:   ... done, doing nonblocking read ...");
-		test_assert(1 == read(sock, &c, sizeof(c)));
+		check_syscall(1, read(sock, &c, sizeof(c)));
 		atomic_printf("r:   ... read '%c'\n", c);
 		test_assert(c == token);
 		++token;
@@ -222,12 +222,12 @@ static void* reader_thread(void* dontcare) {
 		ev.events = EPOLLIN;
 		ev.data.fd = sock;
 		gettimeofday(&ts, NULL);
-		test_assert(0 == epoll_ctl(epfd, EPOLL_CTL_ADD, ev.data.fd,
-					   &ev));
-		test_assert(1 == epoll_wait(epfd, &ev, 1, -1));
+		check_syscall(0, epoll_ctl(epfd, EPOLL_CTL_ADD, ev.data.fd, &ev));
+		check_syscall(1, epoll_wait(epfd, &ev, 1, -1));
 		atomic_puts("r:   ... done, doing nonblocking read ...");
 		test_assert(sock == ev.data.fd);
-		test_assert(1 == read(sock, &c, sizeof(c)));
+		check_syscall(1, epoll_wait(epfd, &ev, 1, -1));
+		check_syscall(1, read(sock, &c, sizeof(c)));
 		atomic_printf("r:   ... read '%c'\n", c);
 		test_assert(c == token);
 		++token;
@@ -273,11 +273,11 @@ static void* reader_thread(void* dontcare) {
 	{
 		sigset_t old_mask, mask;
 		sigfillset(&mask);
-		test_assert(0 == pthread_sigmask(SIG_BLOCK, &mask, &old_mask));
+		check_syscall(0, pthread_sigmask(SIG_BLOCK, &mask, &old_mask));
 
-		test_assert(1 == read(sock, &c, sizeof(c)));
+		check_syscall(1, read(sock, &c, sizeof(c)));
 
-		test_assert(0 == pthread_sigmask(SIG_SETMASK, &old_mask, NULL));
+		check_syscall(0, pthread_sigmask(SIG_SETMASK, &old_mask, NULL));
 	}
 	++token;
 	atomic_printf("r:   ... read '%c'\n", c);
@@ -347,7 +347,7 @@ int main(int argc, char *argv[]) {
 	atomic_puts("M: sleeping again ...");
 	usleep(500000);
 	atomic_printf("M: writing '%c' to socket ...\n", token);
-	test_assert(1 == write(sock, &token, sizeof(token)));
+	check_syscall(1, write(sock, &token, sizeof(token)));
 	++token;
 	atomic_puts("M:   ... done");
 	/* Force a wait on readv() */
@@ -358,7 +358,7 @@ int main(int argc, char *argv[]) {
 		atomic_puts("M: sleeping again ...");
 		usleep(500000);
 		atomic_printf("r: writev('%c')'ing socket ...\n", token);
-		test_assert(1 == writev(sock, &v, 1));
+		check_syscall(1, writev(sock, &v, 1));
 		++token;
 		atomic_puts("M:   ... done");
 	}
@@ -455,7 +455,7 @@ int main(int argc, char *argv[]) {
 		usleep(500000);
 		atomic_printf("M: writing { '%c', '%c' } to socket ...\n",
 			      c1, c2);
-		test_assert(2 == sendmsg(sock, &msg, 0));
+		check_syscall(2, sendmsg(sock, &msg, 0));
 		atomic_puts("M:   ... done");
 	}
 	/* Force a wait on poll() */

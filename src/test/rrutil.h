@@ -59,6 +59,15 @@ typedef unsigned char byte;
 
 #define test_assert(cond)  assert("FAILED if not: " && (cond))
 
+#define check_syscall(expected, expr) \
+  do { \
+    int __result = (expr);\
+    if ((expected) != __result) { \
+      atomic_printf("syscall failed: got %d, expected %d, errno %d", __result, (expected), errno); \
+      test_assert(0); \
+    } \
+  } while (0)
+
 #if (defined(__linux__) && (defined(__i386__) || defined(__x86_64__)) \
      && defined(_BITS_PTHREADTYPES_H))
 # define PTHREAD_SPINLOCK_INITIALIZER (1)
