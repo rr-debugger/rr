@@ -1846,3 +1846,18 @@ SYSCALL_DEF_IRREG(rrcall_init_buffers, EMU)
  */
 SYSCALL_DEF_IRREG(rrcall_monkeypatch_vdso, EMU)
 
+/**
+ * Undefine required defines.  We do this so we don't clutter places
+ * with #undefs and so that clients don't accidentally miss undefining
+ * macros.
+ */
+#undef SYSCALLNO_X86
+#undef SYSCALL_DEF0
+#undef SYSCALL_DEF1
+#undef SYSCALL_DEF1_DYNSIZE
+#undef SYSCALL_DEF1_STR
+#undef SYSCALL_DEF2
+#undef SYSCALL_DEF3
+#undef SYSCALL_DEF4
+#undef SYSCALL_DEF_IRREG
+#undef SYSCALL_DEF_UNSUPPORTED

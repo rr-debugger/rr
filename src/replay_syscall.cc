@@ -72,8 +72,9 @@ struct syscall_def {
 	ssize_t num_emu_args;
 };
 
-#define SYSCALLNO_X86(num)
 #define SYSCALL_NUM(_name) static_cast<int>(SyscallsX86::_name)
+
+#define SYSCALLNO_X86(num)
 #define SYSCALL_DEF0(_name, _type)		\
 	{ SYSCALL_NUM(_name), rep_##_type, 0 },
 #define SYSCALL_DEF1(_name, _type, _, _1)	\
@@ -98,17 +99,6 @@ static struct syscall_def syscall_defs[] = {
 #include "syscall_defs.h"
 };
 
-#undef SYSCALLNO_X86
-#undef SYSCALL_DEF0
-#undef SYSCALL_DEF1
-#undef SYSCALL_DEF1_DYNSIZE
-#undef SYSCALL_DEF1_STR
-#undef SYSCALL_DEF2
-#undef SYSCALL_DEF3
-#undef SYSCALL_DEF4
-#undef SYSCALL_DEF_IRREG
-#undef SYSCALL_DEF_UNSUPPORTED
-
 static struct syscall_def syscall_table[static_cast<int>(SyscallsX86::COUNT)];
 
 __attribute__((constructor))
@@ -129,7 +119,7 @@ static void init_syscall_table()
 
 #define SYSCALLNO_X86(num)
 #define CHECK_SYSCALL_NUM(_name) 		\
-	static_assert(static_cast<int>(SyscallsX86::_name) == SYS_##_name,	\
+	static_assert(SYSCALL_NUM(_name) == SYS_##_name,	\
 		      "Incorrect syscall number for " #_name);
 #define SYSCALL_DEF0(_name, _type)		\
 	CHECK_SYSCALL_NUM(_name)
@@ -152,21 +142,13 @@ static void init_syscall_table()
 
 #include "syscall_defs.h"
 
-#undef SYSCALLNO_X86
 #undef CHECK_SYSCALL_NUM
-#undef SYSCALL_DEF0
-#undef SYSCALL_DEF1
-#undef SYSCALL_DEF1_DYNSIZE
-#undef SYSCALL_DEF1_STR
-#undef SYSCALL_DEF2
-#undef SYSCALL_DEF3
-#undef SYSCALL_DEF4
-#undef SYSCALL_DEF_IRREG
-#undef SYSCALL_DEF_UNSUPPORTED
 
 #endif // CHECK_SYSCALL_NUMBERS
 
 }
+
+#undef SYSCALL_NUM
 
 /**
  * Compares the register file as it appeared in the recording phase

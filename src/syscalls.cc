@@ -33,17 +33,7 @@ const char* syscallname(int syscall, supported_arch arch)
 
 #include "syscall_defs.h"
 
-#undef SYSCALLNO_X86
 #undef CASE
-#undef SYSCALL_DEF0
-#undef SYSCALL_DEF1
-#undef SYSCALL_DEF1_DYNSIZE
-#undef SYSCALL_DEF1_STR
-#undef SYSCALL_DEF2
-#undef SYSCALL_DEF3
-#undef SYSCALL_DEF4
-#undef SYSCALL_DEF_IRREG
-#undef SYSCALL_DEF_UNSUPPORTED
 
 	case SYS_restart_syscall:
 		return "restart_syscall";

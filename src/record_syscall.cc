@@ -2253,15 +2253,6 @@ void rec_process_syscall(Task *t)
 
 #include "syscall_defs.h"
 
-#undef SYSCALL_DEF0
-#undef SYSCALL_DEF1
-#undef SYSCALL_DEF1_STR
-#undef SYSCALL_DEF2
-#undef SYSCALL_DEF3
-#undef SYSCALL_DEF4
-#undef SYSCALL_DEF_IRREG
-#undef SYSCALL_DEF_UNSUPPORTED
-
 	case SYS_clone:	{
 		long new_tid = t->regs().syscall_result_signed();
 		Task* new_task = t->session().find_task(new_tid);
