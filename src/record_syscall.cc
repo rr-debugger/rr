@@ -555,7 +555,7 @@ static bool is_stdio_fd(Task* t, int fd)
 {
 	int pid = getpid();
 
-	int r = syscall(SYS_kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+	int r = syscall((int)SyscallsX86::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
 			STDOUT_FILENO, fd);
 	if (r == 0) {
 		return true;
@@ -566,7 +566,7 @@ static bool is_stdio_fd(Task* t, int fd)
 	}
 	ASSERT(t, r >= 0) << "kcmp failed";
 
-	r = syscall(SYS_kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+	r = syscall((int)SyscallsX86::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
 		STDERR_FILENO, fd);
 	if (r == 0) {
 		return true;
