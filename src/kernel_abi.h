@@ -90,6 +90,7 @@ struct base_arch : public wordsize {
 	typedef typename wordsize::signed_short signed_short;
 	typedef typename wordsize::unsigned_short unsigned_short;
 	typedef typename wordsize::signed_long signed_long;
+	typedef typename wordsize::unsigned_long unsigned_long;
 	typedef typename wordsize::unsigned_word unsigned_word;
 	typedef typename wordsize::sigchld_clock_t sigchld_clock_t;
 
