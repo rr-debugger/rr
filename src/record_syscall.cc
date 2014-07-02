@@ -554,7 +554,7 @@ static bool is_stdio_fd(Task* t, int fd)
 {
 	int pid = getpid();
 
-	int r = syscall((int)SyscallsX86::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+	int r = syscall((int)x86_arch::Syscalls::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
 			STDOUT_FILENO, fd);
 	if (r == 0) {
 		return true;
@@ -565,7 +565,7 @@ static bool is_stdio_fd(Task* t, int fd)
 	}
 	ASSERT(t, r >= 0) << "kcmp failed";
 
-	r = syscall((int)SyscallsX86::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+	r = syscall((int)x86_arch::Syscalls::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
 		STDERR_FILENO, fd);
 	if (r == 0) {
 		return true;
@@ -2218,33 +2218,33 @@ void rec_process_syscall(Task *t)
 #define SYSCALLNO_X86_64(num)
 #define SYSCALL_UNDEFINED_X86_64()
 #define SYSCALL_DEF0(_call, _)						\
-	case static_cast<int>(SyscallsX86::_call):			\
+	case static_cast<int>(x86_arch::Syscalls::_call):		\
 		break;
 #define SYSCALL_DEF1(_call, _, _t0, _r0)				\
-	case static_cast<int>(SyscallsX86::_call):			\
+	case static_cast<int>(x86_arch::Syscalls::_call):		\
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		break;
 #define SYSCALL_DEF1_DYNSIZE(_call, _, _s0, _r0)			\
-	case static_cast<int>(SyscallsX86::_call):			\
+	case static_cast<int>(x86_arch::Syscalls::_call):		\
 		t->record_remote((void*)t->regs()._r0(), _s0);		\
 		break;
 #define SYSCALL_DEF1_STR(_call, _, _r0)					\
-	case static_cast<int>(SyscallsX86::_call):			\
+	case static_cast<int>(x86_arch::Syscalls::_call):		\
 		t->record_remote_str((void*)t->regs()._r0());		\
 		break;
 #define SYSCALL_DEF2(_call, _, _t0, _r0, _t1, _r1)			\
-	case static_cast<int>(SyscallsX86::_call):			\
+	case static_cast<int>(x86_arch::Syscalls::_call):		\
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		t->record_remote((void*)t->regs()._r1(), sizeof(_t1));	\
 		break;
 #define SYSCALL_DEF3(_call, _, _t0, _r0, _t1, _r1, _t2, _r2)		\
-	case static_cast<int>(SyscallsX86::_call):			\
+	case static_cast<int>(x86_arch::Syscalls::_call):		\
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		t->record_remote((void*)t->regs()._r1(), sizeof(_t1));	\
 		t->record_remote((void*)t->regs()._r2(), sizeof(_t2));	\
 		break;
 #define SYSCALL_DEF4(_call, _, _t0, _r0, _t1, _r1, _t2, _r2, _t3, _r3)	\
-	case static_cast<int>(SyscallsX86::_call):			\
+	case static_cast<int>(x86_arch::Syscalls::_call):		\
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		t->record_remote((void*)t->regs()._r1(), sizeof(_t1));	\
 		t->record_remote((void*)t->regs()._r2(), sizeof(_t2));	\

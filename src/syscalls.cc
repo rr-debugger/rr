@@ -5,6 +5,10 @@
 #include <assert.h>
 #include <syscall.h>
 
+#include "kernel_abi.h"
+
+using namespace rr;
+
 const char* syscallname(int syscall, supported_arch arch)
 {
 	assert(arch == x86);
@@ -13,7 +17,7 @@ const char* syscallname(int syscall, supported_arch arch)
 #define SYSCALLNO_X86_64(num)
 #define SYSCALL_UNDEFINED_X86_64()
 #define CASE(_name) 					\
-		case static_cast<int>(SyscallsX86::_name): return #_name;
+		case static_cast<int>(x86_arch::Syscalls::_name): return #_name;
 #define SYSCALL_DEF0(_name, _)				\
 		CASE(_name)
 #define SYSCALL_DEF1(_name, _, _1, _2)			\

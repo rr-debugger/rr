@@ -332,6 +332,34 @@ struct base_arch : public wordsize {
 };
 
 struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
+	enum class Syscalls {
+#define SYSCALLNO_X86(num)				\
+		dummy_ ## num = num - 1,
+#define SYSCALLNO_X86_64(num)
+#define SYSCALL_UNDEFINED_X86_64()
+#define SYSCALL_DEF0(_name, _type)			\
+		_name,
+#define SYSCALL_DEF1(_name, _type, _1, _2)		\
+		_name,
+#define SYSCALL_DEF1_DYNSIZE(_name, _type, _1, _2)	\
+		_name,
+#define SYSCALL_DEF1_STR(_name, _type, _1)		\
+		_name,
+#define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4)	\
+		_name,
+#define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6)	\
+		_name,
+#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)	\
+		_name,
+#define SYSCALL_DEF_IRREG(_name, _type)			\
+		_name,
+#define SYSCALL_DEF_UNSUPPORTED(_name)			\
+		_name,
+
+#include "syscall_defs.h"
+
+		COUNT
+	};
 };
 
 } // namespace rr

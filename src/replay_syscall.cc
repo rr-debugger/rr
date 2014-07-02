@@ -72,7 +72,7 @@ struct syscall_def {
 	ssize_t num_emu_args;
 };
 
-#define SYSCALL_NUM(_name) static_cast<int>(SyscallsX86::_name)
+#define SYSCALL_NUM(_name) static_cast<int>(x86_arch::Syscalls::_name)
 
 #define SYSCALLNO_X86(num)
 #define SYSCALLNO_X86_64(num)
@@ -101,7 +101,7 @@ static struct syscall_def syscall_defs[] = {
 #include "syscall_defs.h"
 };
 
-static struct syscall_def syscall_table[static_cast<int>(SyscallsX86::COUNT)];
+static struct syscall_def syscall_table[static_cast<int>(x86_arch::Syscalls::COUNT)];
 
 __attribute__((constructor))
 static void init_syscall_table()
