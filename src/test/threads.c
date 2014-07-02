@@ -3,6 +3,7 @@
 #include "rrutil.h"
 
 long int counter = 0;
+pthread_barrier_t bar;
 
 void catcher(int sig) {
 	atomic_printf("Signal caught, Counter is %ld\n", counter);
@@ -17,6 +18,7 @@ void* receiver(void* name) {
 	sact.sa_flags = 0;
 	sact.sa_handler = catcher;
 	sigaction(SIGALRM, &sact, NULL);
+	pthread_barrier_wait(&bar);
 
 	while (1) {
 		counter++;
@@ -28,7 +30,7 @@ void* receiver(void* name) {
 }
 
 void* sender(void* id) {
-	sleep(1);
+	pthread_barrier_wait(&bar);
 	pthread_kill(*((pthread_t*)id), SIGALRM);
 	return NULL;
 }
@@ -40,6 +42,8 @@ int main(void) {
 	/* (Kick on the syscallbuf lib.) */
 	gettimeofday(&tv, NULL);
 
+	/* init barrier */
+	pthread_barrier_init(&bar, NULL, 2);
 	/* Create independent threads each of which will execute
 	 * function */
 	pthread_create(&thread1, NULL, receiver, NULL);
