@@ -1498,20 +1498,20 @@ static void process_ioctl(Task *t, int request)
 	 * conventions.  Special case them here. */
 	switch (request) {
 	case SIOCETHTOOL: {
-		struct ifreq ifr;
+		x86_arch::ifreq ifr;
 		t->read_mem(param, &ifr);
 
 		record_scratch_stack_page(t);
-		t->record_remote(ifr.ifr_data, sizeof(struct ethtool_cmd));
+		t->record_remote(ifr.ifreq_union.data, sizeof(x86_arch::ethtool_cmd));
 		return;
 	}
 	case SIOCGIFCONF: {
-		struct ifconf ifconf;
+		x86_arch::ifconf ifconf;
 		t->read_mem(param, &ifconf);
 
 		record_scratch_stack_page(t);
 		t->record_local(param, sizeof(ifconf), &ifconf);
-		t->record_remote(ifconf.ifc_buf, ifconf.ifc_len);
+		t->record_remote(ifconf.ifc_ifcu.ifcu_buf, ifconf.ifc_len);
 		return;
 	}
 	case SIOCGIFADDR:
@@ -1520,21 +1520,21 @@ static void process_ioctl(Task *t, int request)
 	case SIOCGIFMTU:
 	case SIOCGIFNAME:
 		record_scratch_stack_page(t);
-		return record_ioctl_data(t, sizeof(struct ifreq));
+		return record_ioctl_data(t, sizeof(x86_arch::ifreq));
 
 	case SIOCGIWRATE:
 		// SIOCGIWRATE hasn't been observed to write beyond
 		// tracees' stacks, but we record a stack page here
 		// just in case the behavior is driver-dependent.
 		record_scratch_stack_page(t);
-		return record_ioctl_data(t, sizeof(struct iwreq));
+		return record_ioctl_data(t, sizeof(x86_arch::iwreq));
 
 	case TCGETS:
-		return record_ioctl_data(t, sizeof(struct termios));
+		return record_ioctl_data(t, sizeof(x86_arch::termios));
 	case TIOCINQ:
 		return record_ioctl_data(t, sizeof(int));
 	case TIOCGWINSZ:
-		return record_ioctl_data(t, sizeof(struct winsize));
+		return record_ioctl_data(t, sizeof(x86_arch::winsize));
 	}
 
 	/* In ioctl language, "_IOC_WRITE" means "outparam".  Both
@@ -1640,11 +1640,11 @@ static void process_ipc(Task* t, int call)
 		switch (cmd) {
 		case IPC_STAT:
 		case MSG_STAT:
-			buf_size = sizeof(struct msqid64_ds);
+			buf_size = sizeof(x86_arch::msqid64_ds);
 			break;
 		case IPC_INFO:
 		case MSG_INFO:
-			buf_size = sizeof(struct msginfo);
+			buf_size = sizeof(x86_arch::msginfo);
 			break;
 		default:
 			buf_size = 0;
@@ -2292,7 +2292,7 @@ void rec_process_syscall(Task *t)
 		new_task->record_remote((void*)t->regs().arg4(), sizeof(pid_t));
 
 		new_task->record_remote((void*)new_task->regs().arg5(),
-					sizeof(struct user_desc));
+					sizeof(x86_arch::user_desc));
 		new_task->record_remote((void*)new_task->regs().arg3(),
 					sizeof(pid_t));
 		new_task->record_remote((void*)new_task->regs().arg4(),
@@ -2345,10 +2345,10 @@ void rec_process_syscall(Task *t)
 			break;
 
 		case F_GETLK:
-			static_assert(sizeof(struct flock) < sizeof(struct flock64),
+			static_assert(sizeof(x86_arch::flock) < sizeof(x86_arch::flock64),
 				      "struct flock64 not declared differently from struct flock");
 			t->record_remote((void*)t->regs().arg3(),
-					 sizeof(struct flock));
+					 sizeof(x86_arch::flock));
 			break;
 
 		case F_SETLK:
@@ -2357,7 +2357,7 @@ void rec_process_syscall(Task *t)
 
 		case F_GETLK64:
 			t->record_remote((void*)t->regs().arg3(),
-					 sizeof(struct flock64));
+					 sizeof(x86_arch::flock64));
 			break;
 
 		case F_SETLK64:
@@ -2366,7 +2366,7 @@ void rec_process_syscall(Task *t)
 
 		case F_GETOWN_EX:
 			t->record_remote((void*)t->regs().arg3(),
-					 sizeof(struct f_owner_ex));
+					 sizeof(x86_arch::f_owner_ex));
 			break;
 
 		default:
@@ -2541,10 +2541,10 @@ void rec_process_syscall(Task *t)
 		 void* addr = (void*)t->regs().arg4();
 		 switch (cmd) {
 		 case Q_GETQUOTA:
-		 	 t->record_remote(addr, sizeof(struct dqblk));
+		 	 t->record_remote(addr, sizeof(x86_arch::dqblk));
 		 	 break;
 		 case Q_GETINFO:
-		 	 t->record_remote(addr, sizeof(struct dqinfo));
+		 	 t->record_remote(addr, sizeof(x86_arch::dqinfo));
 		 	 break;
 		 case Q_GETFMT:
 		 	 t->record_remote(addr, 4/*FIXME: magic number*/);
