@@ -21,6 +21,8 @@ class Task;
 struct TaskGroup;
 class TraceIfstream;
 class TraceOfstream;
+class RecordSession;
+class ReplaySession;
 
 /**
  * Sessions track the global state of a set of tracees corresponding
@@ -114,6 +116,9 @@ public:
 	 */
 	const AddressSpaceSet& vms() const { return sas; }
 
+	virtual RecordSession* as_record() { return nullptr; }
+	virtual ReplaySession* as_replay() { return nullptr; }
+
 protected:
 	Session();
 	~Session();
@@ -148,6 +153,8 @@ public:
 	 * directory.)
 	 */
 	static shr_ptr create(const std::string& exe_path);
+
+	virtual RecordSession* as_record() { return this; }
 
 private:
 	std::shared_ptr<TraceOfstream> trace_ofstream;
@@ -244,6 +251,8 @@ public:
 	static shr_ptr create(int argc, char* argv[]);
 
 	EnvironmentBugDetector& bug_detector() { return environment_bug_detector; }
+
+	virtual ReplaySession* as_replay() { return this; }
 
 private:
 	ReplaySession()
