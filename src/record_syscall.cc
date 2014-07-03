@@ -508,7 +508,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	case SYS_SENDMMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		struct sendmmsg_args args;
+		x86_arch::sendmmsg_args args;
 		t->read_mem(argsp, &args);
 		return !(args.flags & MSG_DONTWAIT);
 	}

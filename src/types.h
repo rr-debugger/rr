@@ -127,23 +127,4 @@ struct flags {
 	{}
 };
 
-struct mmsghdr;
-struct timespec;
-/**
- * These arguments are pushed on the stack for the recvmmsg socketcall.
- */
-struct recvmmsg_args {
-	int sockfd;
-	struct mmsghdr *msgvec;
-	unsigned int vlen;
-	unsigned int flags;
-	struct timespec *timeout;
-};
-
-struct sendmmsg_args {
-	int sockfd;
-	struct mmsghdr *msgvec;
-	unsigned int vlen;
-	unsigned int flags;
-};
 #endif /* RR_TYPES_H_ */
