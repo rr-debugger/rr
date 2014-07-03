@@ -2148,6 +2148,21 @@ Task::update_sigmask()
 static Task* waiter;
 static bool waiter_was_interrupted;
 
+static bool is_signal_triggered_by_ptrace_interrupt(int sig)
+{
+	switch (sig) {
+	case SIGTRAP:
+	// We sometimes see SIGSTOP at interrupts, though the
+	// docs don't mention that.
+	case SIGSTOP:
+	// We sometimes see 0 too...
+	case 0:
+		return true;
+	default:
+		return false;
+	}
+}
+
 bool
 Task::wait()
 {
@@ -2190,10 +2205,7 @@ Task::wait()
 	// PTRACE_INTERRUPT, then let the other event win.  We only
 	// want to interrupt tracees stuck running in userspace.
 	if (waiter_was_interrupted && PTRACE_EVENT_STOP == ptrace_event()
-	    && (SIGTRAP == WSTOPSIG(wait_status)
-		// We sometimes see SIGSTOP at interrupts, though the
-		// docs don't mention that.
-		|| SIGSTOP == WSTOPSIG(wait_status))) {
+	    && is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(wait_status))) {
 		LOG(warn) <<"Forced to PTRACE_INTERRUPT tracee";
 		stashed_wait_status = wait_status =
 				      (HPC_TIME_SLICE_SIGNAL << 8) | 0x7f;
@@ -2205,8 +2217,8 @@ Task::wait()
 		// the equivalent of hundreds of time slices.
 		succ_event_counter = numeric_limits<int>::max() / 2;
 	} else if (waiter_was_interrupted) {
-		LOG(debug) <<"  PTRACE_INTERRUPT raced with another event "
-			   << HEX(wait_status);
+		LOG(warn) <<"  PTRACE_INTERRUPT raced with another event "
+			  << HEX(wait_status);
 	}
 	waiter_was_interrupted = false;
 	return true;
