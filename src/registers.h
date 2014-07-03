@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <sys/user.h>
 
+#include "types.h"
+
 /**
  * A Registers object contains values for all general-purpose registers.
  *
@@ -21,6 +23,8 @@
  */
 class Registers: public user_regs_struct {
 public:
+	rr::supported_arch arch() const { return rr::x86; }
+
 	uintptr_t ip() const { return eip; }
 	void set_ip(uintptr_t addr) { eip = addr; }
 	uintptr_t sp() const { return esp; }
