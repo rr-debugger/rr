@@ -23,7 +23,7 @@
  */
 class Registers: public user_regs_struct {
 public:
-	rr::supported_arch arch() const { return rr::x86; }
+	supported_arch arch() const { return x86; }
 
 	uintptr_t ip() const { return eip; }
 	void set_ip(uintptr_t addr) { eip = addr; }
