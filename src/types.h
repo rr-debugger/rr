@@ -33,6 +33,14 @@ typedef unsigned char byte;
 #define CHECKSUM_SYSCALL		-2
 #define CHECKSUM_ALL			-1
 
+namespace rr {
+
+enum supported_arch {
+	x86,
+};
+
+}
+
 // We let users specify which process should be "created" before
 // starting a debug session for it.  Problem is, "process" in this
 // context is ambiguous.  It could mean the "thread group", which is

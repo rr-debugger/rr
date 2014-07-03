@@ -14,11 +14,9 @@
 
 #include <assert.h>
 
-namespace rr {
+#include "types.h"
 
-enum supported_arch {
-	x86,
-};
+namespace rr {
 
 #if defined(__i386__)
 #define RR_NATIVE_ARCH supported_arch::x86
