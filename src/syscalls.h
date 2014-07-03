@@ -3,6 +3,8 @@
 #ifndef RR_SYSCALLS_H_
 #define RR_SYSCALLS_H_
 
+#include "types.h"
+
 enum class SyscallsX86 {
 
 #define SYSCALLNO_X86(num)				\
@@ -41,5 +43,11 @@ enum class SyscallsX86 {
 
 	COUNT
 };
+
+/**
+ * Return the symbolic name of |syscall|, f.e. "read", or "???syscall"
+ * if unknown.
+ */
+const char* syscallname(int syscall, supported_arch arch);
 
 #endif
