@@ -2192,12 +2192,12 @@ static void before_syscall_exit(Task* t, int syscallno)
 	case SYS_sigaction:
 	case SYS_rt_sigaction:
 		// TODO: SYS_signal, SYS_sigaction
-		t->update_sigaction();
+		t->update_sigaction(t->regs());
 		return;
 
 	case SYS_sigprocmask:
 	case SYS_rt_sigprocmask:
-		t->update_sigmask();
+		t->update_sigmask(t->regs());
 		return;
 	}
 }

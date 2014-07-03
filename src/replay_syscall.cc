@@ -1280,12 +1280,18 @@ void before_syscall_exit(Task* t, int syscallno)
 
 	case SYS_sigaction:
 	case SYS_rt_sigaction:
-		t->update_sigaction();
+		// Use registers saved in the current trace frame since the
+		// syscall result hasn't been updated to the
+		// post-syscall-exit state yet.
+		t->update_sigaction(t->current_trace_frame().recorded_regs);
 		return;
 
 	case SYS_sigprocmask:
 	case SYS_rt_sigprocmask:
-		t->update_sigmask();
+		// Use registers saved in the current trace frame since the
+		// syscall result hasn't been updated to the
+		// post-syscall-exit state yet.
+		t->update_sigmask(t->current_trace_frame().recorded_regs);
 		return;
 
 	default:

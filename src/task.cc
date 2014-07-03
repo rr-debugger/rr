@@ -2081,11 +2081,11 @@ Task::update_prname(void* child_addr)
 }
 
 void
-Task::update_sigaction()
+Task::update_sigaction(const Registers& regs)
 {
-	int sig = regs().arg1_signed();
-	void* new_sigaction = (void*)regs().arg2();
-	if (0 == regs().syscall_result() && new_sigaction) {
+	int sig = regs.arg1_signed();
+	void* new_sigaction = (void*)regs.arg2();
+	if (0 == regs.syscall_result() && new_sigaction) {
 		// A new sighandler was installed.  Update our
 		// sighandler table.
 		// TODO: discard attempts to handle or ignore signals
@@ -2097,12 +2097,12 @@ Task::update_sigaction()
 }
 
 void
-Task::update_sigmask()
+Task::update_sigmask(const Registers& regs)
 {
-	int how = regs().arg1_signed();
-	void* setp = (void*)regs().arg2();
+	int how = regs.arg1_signed();
+	void* setp = (void*)regs.arg2();
 
-	if (SYSCALL_FAILED(regs().syscall_result_signed()) || !setp) {
+	if (SYSCALL_FAILED(regs.syscall_result_signed()) || !setp) {
 		return;
 	}
 

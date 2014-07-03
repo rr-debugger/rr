@@ -1463,13 +1463,13 @@ public:
  	/**
 	 * Call this when SYS_sigaction is finishing with |regs|.
 	 */
-	void update_sigaction();
+	void update_sigaction(const Registers& regs);
 
 	/**
-	 * Call this after the tracee has completed a
+	 * Call this when the tracee is about to complete a
 	 * SYS_rt_sigprocmask syscall with |regs|.
 	 */
-	void update_sigmask();
+	void update_sigmask(const Registers& regs);
 
 	/**
 	 * Call this before recording events or data.  Records
