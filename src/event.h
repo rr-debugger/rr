@@ -80,7 +80,7 @@ union EncodedEvent {
 };
 
 static_assert(sizeof(int) == sizeof(EncodedEvent), "Bit fields are messed up");
-static_assert(EV_LAST <= (1 << 5),
+static_assert(EV_LAST < (1 << 5),
 	      "Allocate more bits to the |event_type| field");
 
 enum { NO_EXEC_INFO = 0, HAS_EXEC_INFO };
