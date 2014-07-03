@@ -2167,6 +2167,8 @@ bool
 Task::wait()
 {
 	LOG(debug) <<"going into blocking waitpid("<< tid <<") ...";
+	ASSERT(this, !unstable)
+		<<"Don't wait for unstable tasks";
 
 	// We only need this during recording.  If tracees go runaway
 	// during replay, something else is at fault.
