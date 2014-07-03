@@ -12,6 +12,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "log.h"
+#include "syscalls.h"
 
 using namespace std;
 
@@ -295,7 +296,7 @@ Event::str() const
 		break;
 	case EV_SYSCALL:
 	case EV_SYSCALL_INTERRUPTION:
-		ss << ": " << Syscall().no;
+		ss << ": " << syscallname(Syscall().no, Syscall().regs.arch());
 		break;
 	default:
 		// No auxiliary information.
