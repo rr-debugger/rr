@@ -2336,6 +2336,11 @@ int replay(int argc, char* argv[], char** envp)
 
 void emergency_debug(Task* t)
 {
+	RecordSession* record_session = t->session().as_record();
+	if (record_session) {
+		record_session->ofstream().flush();
+	}
+
 	if (probably_not_interactive()
 	    && !rr_flags()->force_enable_debugger) {
 		errno = 0;
