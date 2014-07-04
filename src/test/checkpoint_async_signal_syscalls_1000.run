@@ -15,7 +15,7 @@ stride=80
 for i in $(seq 1 $stride $num_events); do
     echo Checkpointing at event $i ...
     debug async_signal_syscalls restart_finish "-g $i"
-    if [[ $? != 0 ]]; then
+    if [[ "$leave_data" == "y" ]]; then
         break
     fi
 done

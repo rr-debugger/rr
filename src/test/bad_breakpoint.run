@@ -3,4 +3,7 @@ record simple
 for i in $(seq 15 25); do
     echo Replaying to event $i ...
     debug simple restart_finish "-g $i"
+    if [[ "$leave_data" == "y" ]]; then
+        break
+    fi
 done
