@@ -501,7 +501,13 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 				LOG(debug) <<"  ignoring SIG_TIMESLICE";
 				continue;
 			}
-			if (HPC_TIME_SLICE_SIGNAL == si->si_signo) {
+			// As a last-ditch effort to avoid dying, discard
+			// an ignored signal. This will perserve tracee
+			// behavior. It means such signals won't be observed
+			// in a debugger, but that will hardly ever be
+			// important.
+			if (HPC_TIME_SLICE_SIGNAL == si->si_signo ||
+				t->is_sig_ignored(si->si_signo)) {
 				memcpy(si, &tmp_si, sizeof(*si));
 				LOG(debug) <<"  upgraded delivery of SIG_TIMESLICE to "
 					   << signalname(si->si_signo);
