@@ -304,5 +304,8 @@ function checkpoint_test { exe=$1; min=$2; max=$3;
     for i in $(seq 1 $stride $num_events); do
         echo Checkpointing at event $i ...
         debug $exe restart_finish "-g $i"
+        if [[ $? != 0 ]]; then
+            break
+        fi
     done
 }
