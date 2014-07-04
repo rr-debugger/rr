@@ -428,7 +428,10 @@ public:
 	 * address space is available via operator void*().
 	 */
 	restore_mem(Task* t, struct current_state_buffer* state,
-		    const byte* mem, ssize_t num_bytes);
+		    const byte* mem, ssize_t num_bytes)
+	{
+		init(t, state, mem, num_bytes);
+	}
 
 	/**
 	 * Convenience constructor for pushing a C string |str|, including
@@ -436,14 +439,18 @@ public:
 	 */
 	restore_mem(Task* t, struct current_state_buffer* state,
 		    const char* str)
-		: restore_mem(t, state, (const byte*)str, strlen(str) + 1/*null byte*/)
-	{}
+	{
+		init(t, state, (const byte*)str, strlen(str) + 1/*null byte*/);
+	}
 
 	~restore_mem();
 
 	operator void*() const { return addr; }
 
 private:
+	void init(Task* t, struct current_state_buffer* state,
+		  const byte* mem, ssize_t num_bytes);
+
 	/* Associated task. */
 	Task* t;
 	/* Current state. */

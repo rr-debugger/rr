@@ -1087,8 +1087,9 @@ void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
 	t->write_bytes(state->start_addr, syscall_insn);
 }
 
-restore_mem::restore_mem(Task* t_, struct current_state_buffer* state_,
-			 const byte* mem, ssize_t num_bytes)
+void
+restore_mem::init(Task* t_, struct current_state_buffer* state_,
+		  const byte* mem, ssize_t num_bytes)
 {
 	t = t_;
 	state = state_;
