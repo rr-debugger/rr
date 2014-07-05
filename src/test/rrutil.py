@@ -53,6 +53,8 @@ def send_rr(what):
     send(gdb_rr, what)
 
 def ok():
+    send_gdb('q\n')
+    send_gdb('y\n')
     clean_up()
 
 # Internal helpers

@@ -5,6 +5,5 @@ restart_replay()
 # attached only prints one, and it exits before the parent prints its
 # EXIT-SUCCESS.
 expect_rr('EXIT-SUCCESS')
-send_gdb('q\n')
 
 ok()

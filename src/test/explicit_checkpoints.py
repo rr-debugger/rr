@@ -53,6 +53,5 @@ send_gdb('c\n')
 expect_gdb('exited normally')
 send_gdb("restart 3\n");
 expect_gdb('Breakpoint 3, breakpoint3')
-send_gdb('q\n')
 
 ok()
