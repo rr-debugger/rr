@@ -1479,6 +1479,7 @@ static void record_scratch_stack_page(Task* t)
 	t->record_remote((byte*)t->sp() - page_size(), page_size());
 }
 
+template<typename Arch>
 static void process_ioctl(Task *t, int request)
 {
 	int type = _IOC_TYPE(request);
@@ -1498,15 +1499,15 @@ static void process_ioctl(Task *t, int request)
 	 * conventions.  Special case them here. */
 	switch (request) {
 	case SIOCETHTOOL: {
-		x86_arch::ifreq ifr;
+		typename Arch::ifreq ifr;
 		t->read_mem(param, &ifr);
 
 		record_scratch_stack_page(t);
-		t->record_remote(ifr.ifr_ifru.ifru_data, sizeof(x86_arch::ethtool_cmd));
+		t->record_remote(ifr.ifr_ifru.ifru_data, sizeof(typename Arch::ethtool_cmd));
 		return;
 	}
 	case SIOCGIFCONF: {
-		x86_arch::ifconf ifconf;
+		typename Arch::ifconf ifconf;
 		t->read_mem(param, &ifconf);
 
 		record_scratch_stack_page(t);
@@ -1520,21 +1521,21 @@ static void process_ioctl(Task *t, int request)
 	case SIOCGIFMTU:
 	case SIOCGIFNAME:
 		record_scratch_stack_page(t);
-		return record_ioctl_data(t, sizeof(x86_arch::ifreq));
+		return record_ioctl_data(t, sizeof(typename Arch::ifreq));
 
 	case SIOCGIWRATE:
 		// SIOCGIWRATE hasn't been observed to write beyond
 		// tracees' stacks, but we record a stack page here
 		// just in case the behavior is driver-dependent.
 		record_scratch_stack_page(t);
-		return record_ioctl_data(t, sizeof(x86_arch::iwreq));
+		return record_ioctl_data(t, sizeof(typename Arch::iwreq));
 
 	case TCGETS:
-		return record_ioctl_data(t, sizeof(x86_arch::termios));
+		return record_ioctl_data(t, sizeof(typename Arch::termios));
 	case TIOCINQ:
 		return record_ioctl_data(t, sizeof(int));
 	case TIOCGWINSZ:
-		return record_ioctl_data(t, sizeof(x86_arch::winsize));
+		return record_ioctl_data(t, sizeof(typename Arch::winsize));
 	}
 
 	/* In ioctl language, "_IOC_WRITE" means "outparam".  Both
@@ -2207,7 +2208,8 @@ static void before_syscall_exit(Task* t, int syscallno)
 	}
 }
 
-void rec_process_syscall(Task *t)
+template<typename Arch>
+static void rec_process_syscall_arch(Task *t)
 {
 	int syscallno = t->ev().Syscall().no;
 
@@ -2292,7 +2294,7 @@ void rec_process_syscall(Task *t)
 		new_task->record_remote((void*)t->regs().arg4(), sizeof(pid_t));
 
 		new_task->record_remote((void*)new_task->regs().arg5(),
-					sizeof(x86_arch::user_desc));
+					sizeof(typename Arch::user_desc));
 		new_task->record_remote((void*)new_task->regs().arg3(),
 					sizeof(pid_t));
 		new_task->record_remote((void*)new_task->regs().arg4(),
@@ -2311,8 +2313,7 @@ void rec_process_syscall(Task *t)
 	case SYS_epoll_wait: {
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
-		x86_arch::epoll_event* events =
-			pop_arg_ptr<x86_arch::epoll_event>(t);
+		auto events = pop_arg_ptr<typename Arch::epoll_event>(t);
 		int maxevents = t->regs().arg3_signed();
 		if (events) {
 			restore_and_record_arg_buf(t,
@@ -2345,10 +2346,10 @@ void rec_process_syscall(Task *t)
 			break;
 
 		case F_GETLK:
-			static_assert(sizeof(x86_arch::flock) < sizeof(x86_arch::flock64),
+			static_assert(sizeof(typename Arch::flock) < sizeof(typename Arch::flock64),
 				      "struct flock64 not declared differently from struct flock");
 			t->record_remote((void*)t->regs().arg3(),
-					 sizeof(x86_arch::flock));
+					 sizeof(typename Arch::flock));
 			break;
 
 		case F_SETLK:
@@ -2357,7 +2358,7 @@ void rec_process_syscall(Task *t)
 
 		case F_GETLK64:
 			t->record_remote((void*)t->regs().arg3(),
-					 sizeof(x86_arch::flock64));
+					 sizeof(typename Arch::flock64));
 			break;
 
 		case F_SETLK64:
@@ -2366,7 +2367,7 @@ void rec_process_syscall(Task *t)
 
 		case F_GETOWN_EX:
 			t->record_remote((void*)t->regs().arg3(),
-					 sizeof(x86_arch::f_owner_ex));
+					 sizeof(typename Arch::f_owner_ex));
 			break;
 
 		default:
@@ -2414,7 +2415,7 @@ void rec_process_syscall(Task *t)
 		break;
 	}
 	case SYS_ioctl:
-		process_ioctl(t, (int)t->regs().arg2_signed());
+		process_ioctl<Arch>(t, (int)t->regs().arg2_signed());
 		break;
 
 	case SYS_ipc:
@@ -2422,7 +2423,7 @@ void rec_process_syscall(Task *t)
 		break;
 
 	case SYS_mmap: {
-		x86_arch::mmap_args args;
+		typename Arch::mmap_args args;
 		t->read_mem((void*)t->regs().arg1(), &args);
 		process_mmap(t, syscallno, args.len,
 			     args.prot, args.flags, args.fd,
@@ -2438,7 +2439,7 @@ void rec_process_syscall(Task *t)
 		break;
 
 	case SYS_nanosleep: {
-		x86_arch::timespec* rem = pop_arg_ptr<x86_arch::timespec>(t);
+		auto rem = pop_arg_ptr<typename Arch::timespec>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
@@ -2482,7 +2483,7 @@ void rec_process_syscall(Task *t)
 	case SYS_ppoll: {
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
-		x86_arch::pollfd* fds = pop_arg_ptr<x86_arch::pollfd>(t);
+		auto fds = pop_arg_ptr<typename Arch::pollfd>(t);
 		size_t nfds = t->regs().arg2();
 
 		restore_and_record_arg_buf(t, nfds * sizeof(*fds), (byte*)fds,
@@ -2541,10 +2542,10 @@ void rec_process_syscall(Task *t)
 		 void* addr = (void*)t->regs().arg4();
 		 switch (cmd) {
 		 case Q_GETQUOTA:
-		 	 t->record_remote(addr, sizeof(x86_arch::dqblk));
+			 t->record_remote(addr, sizeof(typename Arch::dqblk));
 		 	 break;
 		 case Q_GETINFO:
-		 	 t->record_remote(addr, sizeof(x86_arch::dqinfo));
+			 t->record_remote(addr, sizeof(typename Arch::dqinfo));
 		 	 break;
 		 case Q_GETFMT:
 		 	 t->record_remote(addr, 4/*FIXME: magic number*/);
@@ -2595,17 +2596,17 @@ void rec_process_syscall(Task *t)
 		Registers r = t->regs();
 		int nmmsgs = r.syscall_result_signed();
 
-		x86_arch::mmsghdr* msg = (x86_arch::mmsghdr*)r.arg2();
-		x86_arch::mmsghdr* oldmsg = NULL;
+		auto msg = (typename Arch::mmsghdr*)r.arg2();
+		typename Arch::mmsghdr* oldmsg = NULL;
 
 		bool has_saved_ptr = has_saved_arg_ptrs(t);
 		if (has_saved_ptr) {
-			oldmsg = pop_arg_ptr<x86_arch::mmsghdr>(t);
+			oldmsg = pop_arg_ptr<typename Arch::mmsghdr>(t);
 			r.set_arg2((uintptr_t)oldmsg);
 			t->set_regs(r);
 		}
 
-		record_and_restore_msgvec<x86_arch>(t, has_saved_ptr, nmmsgs, msg, oldmsg);
+		record_and_restore_msgvec<Arch>(t, has_saved_ptr, nmmsgs, msg, oldmsg);
 		break;
 	}
 	case SYS_sendfile64: {
@@ -2626,9 +2627,9 @@ void rec_process_syscall(Task *t)
 		break;
 	}
 	case SYS_sendmmsg: {
-		x86_arch::mmsghdr* msg = (x86_arch::mmsghdr*)t->regs().arg2();
+		auto msg = (typename Arch::mmsghdr*)t->regs().arg2();
 
-		record_each_msglen<x86_arch>(t, t->regs().syscall_result_signed(), msg);
+		record_each_msglen<Arch>(t, t->regs().syscall_result_signed(), msg);
 		break;
 	}
 	case SYS_socketcall:
@@ -2661,7 +2662,7 @@ void rec_process_syscall(Task *t)
 		break;
 	}
 	case SYS_waitid: {
-		x86_arch::siginfo_t* infop = pop_arg_ptr<x86_arch::siginfo_t>(t);
+		auto infop = pop_arg_ptr<typename Arch::siginfo_t>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 
@@ -2679,7 +2680,7 @@ void rec_process_syscall(Task *t)
 	}
 	case SYS_waitpid:
 	case SYS_wait4: {
-		x86_arch::rusage* rusage = pop_arg_ptr<x86_arch::rusage>(t);
+		auto rusage = pop_arg_ptr<typename Arch::rusage>(t);
 		int* status = pop_arg_ptr<int>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
@@ -2728,4 +2729,9 @@ void rec_process_syscall(Task *t)
 		}
 		break;
 	}
+}
+
+void rec_process_syscall(Task *t)
+{
+	rec_process_syscall_arch<x86_arch>(t);
 }
