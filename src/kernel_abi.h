@@ -59,7 +59,7 @@ struct verifier<RR_NATIVE_ARCH, T, T> {
 		"type " #system_type_ " not correctly defined");
 
 // For instances where the system type and the rr type are named identically.
-#define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(struct ::type_, type_)
+#define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
 
 struct kernel_constants {
 	static const ::size_t SIGINFO_MAX_SIZE = 128;
@@ -111,6 +111,15 @@ struct base_arch : public wordsize {
 	typedef syscall_slong_t off_t;
 
 	typedef syscall_slong_t clock_t;
+
+	typedef signed_int __kernel_key_t;
+	typedef signed_int __kernel_uid32_t;
+	typedef signed_int __kernel_gid32_t;
+	typedef unsigned_int __kernel_mode_t;
+	typedef unsigned_long __kernel_ulong_t;
+	typedef signed_long __kernel_long_t;
+	typedef __kernel_long_t __kernel_time_t;
+	typedef signed_int __kernel_pid_t;
 
 	template<typename T>
 	struct ptr {
@@ -262,45 +271,42 @@ struct base_arch : public wordsize {
 	};
 	RR_VERIFY_TYPE_EXPLICIT(siginfo_t, ::siginfo_t)
 
-	// rr uses several types merely for their sizeof() properties
-	// and completely ignores the fields inside of them.
-	// Replicating them here with perfect fidelity seems
-	// unnecessary.
-	//
-	// For some of these structures, then, we're going to define
-	// them purely for sizeof() equivalence.  We're only going to do
-	// that where the size of the structure couldn't vary between
-	// architectures, though; if a structure depends on types like
-	// unsigned_long or an architecture's packing rules, we spell it
-	// out in full.
+	typedef unsigned char cc_t;
+	typedef unsigned_int speed_t;
+	typedef unsigned_int tcflag_t;
+
 	struct termios {
-		unsigned_int c_iflag;
-		unsigned_int c_oflag;
-		unsigned_int c_cflag;
-		unsigned_int c_lflag;
-		unsigned char c_line;
-		unsigned char c_cc[32];
-		unsigned_int c_ispeed;
-		unsigned_int c_ospeed;
+		tcflag_t c_iflag;
+		tcflag_t c_oflag;
+		tcflag_t c_cflag;
+		tcflag_t c_lflag;
+		cc_t c_line;
+		cc_t c_cc[32];
+		speed_t c_ispeed;
+		speed_t c_ospeed;
 	};
 	RR_VERIFY_TYPE(termios);
 
 	struct winsize {
-		char dummy[8];
+		unsigned_short ws_row;
+		unsigned_short ws_col;
+		unsigned_short ws_xpixel;
+		unsigned_short ws_ypixel;
 	};
 	RR_VERIFY_TYPE(winsize);
 
 	struct ipc64_perm {
-		signed_int key;
-		uid_t uid;
-		gid_t gid;
-		uid_t cuid;
-		gid_t cgid;
-		unsigned_int mode; // __kernel_mode_t + padding, really.
+		__kernel_key_t key;
+		__kernel_uid32_t uid;
+		__kernel_gid32_t gid;
+		__kernel_uid32_t cuid;
+		__kernel_gid32_t cgid;
+		__kernel_mode_t mode;
+		unsigned char __pad1[4 - sizeof(__kernel_mode_t)];
 		unsigned_short seq;
-		unsigned_short pad2;
-		unsigned_long unused1;
-		unsigned_long unused2;
+		unsigned_short __pad2;
+		__kernel_ulong_t unused1;
+		__kernel_ulong_t unused2;
 	};
 	RR_VERIFY_TYPE(ipc64_perm);
 
@@ -315,13 +321,13 @@ struct base_arch : public wordsize {
 		uint64_t msg_stime_only_little_endian;
 		uint64_t msg_rtime_only_little_endian;
 		uint64_t msg_ctime_only_little_endian;
-		unsigned_long msg_cbytes;
-		unsigned_long msg_qnum;
-		unsigned_long msg_qbytes;
-		pid_t msg_lspid;
-		pid_t msg_lrpid;
-		unsigned_long unused1;
-		unsigned_long unused2;
+		__kernel_ulong_t msg_cbytes;
+		__kernel_ulong_t msg_qnum;
+		__kernel_ulong_t msg_qbytes;
+		__kernel_pid_t  msg_lspid;
+		__kernel_pid_t msg_lrpid;
+		__kernel_ulong_t unused1;
+		__kernel_ulong_t unused2;
 	};
 	RR_VERIFY_TYPE(msqid64_ds);
 
@@ -338,7 +344,16 @@ struct base_arch : public wordsize {
 	RR_VERIFY_TYPE(msginfo);
 
 	struct user_desc {
-		char dummy[16];
+		unsigned_int entry_number;
+		unsigned_int base_addr;
+		unsigned_int limit;
+		unsigned_int seg_32bit:1;
+		unsigned_int contents:2;
+		unsigned_int read_exec_only:1;
+		unsigned_int limit_in_pages:1;
+		unsigned_int seg_not_present:1;
+		unsigned_int useable:1;
+		unsigned_int lm:1;
 	};
 	RR_VERIFY_TYPE(user_desc);
 
@@ -359,16 +374,57 @@ struct base_arch : public wordsize {
 	RR_VERIFY_TYPE(dqblk);
 
 	struct dqinfo {
-		char dummy[24];
+		uint64_t dqi_bgrace;
+		uint64_t dqi_igrace;
+		uint32_t dqi_flags;
+		uint32_t dqi_valid;
 	};
 	RR_VERIFY_TYPE(dqinfo);
 
-	struct ifreq {
-		char ifreq_name[16];
+	struct ifmap {
+		unsigned_long mem_start;
+		unsigned_long mem_end;
+		unsigned_short base_addr;
+		unsigned char irq;
+		unsigned char dma;
+		unsigned char port;
+	};
+	RR_VERIFY_TYPE(ifmap);
+
+	struct if_settings {
+		unsigned_int type;
+		unsigned_int size;
 		union {
-			char dummy[16];
-			ptr<void> data;
-		} ifreq_union;
+			ptr<void> raw_hdlc;
+			ptr<void> cisco;
+			ptr<void> fr;
+			ptr<void> fr_pvc;
+			ptr<void> fr_pvc_info;
+			ptr<void> sync;
+			ptr<void> tel;
+		} ifs_ifsu;
+	};
+	RR_VERIFY_TYPE(if_settings);
+
+	struct ifreq {
+		union {
+			char ifrn_name[16];
+		} ifr_ifrn;
+		union {
+			sockaddr ifru_addr;
+			sockaddr ifru_dstaddr;
+			sockaddr ifru_broadaddr;
+			sockaddr ifru_netmask;
+			sockaddr ifru_hwaddr;
+			signed_short ifru_flags;
+			signed_int ifru_ivalue;
+			signed_int ifru_mtu;
+			ifmap ifru_map;
+			char ifru_slave[16];
+			char ifru_newname[16];
+			ptr<void> ifru_data;
+			if_settings ifru_settings;
+		} ifr_ifru;
 	};
 	RR_VERIFY_TYPE(ifreq);
 
@@ -381,28 +437,100 @@ struct base_arch : public wordsize {
 	};
 	RR_VERIFY_TYPE(ifconf);
 
+	struct iw_param {
+		int32_t value;
+		uint8_t fixed;
+		uint8_t disabled;
+		uint16_t flags;
+	};
+	RR_VERIFY_TYPE(iw_param);
+
+	struct iw_point {
+		ptr<void> pointer;
+		uint16_t length;
+		uint16_t flags;
+	};
+	RR_VERIFY_TYPE(iw_point);
+
+	struct iw_freq {
+		int32_t m;
+		int16_t e;
+		uint8_t i;
+		uint8_t flags;
+	};
+	RR_VERIFY_TYPE(iw_freq);
+
+	struct iw_quality {
+		uint8_t qual;
+		uint8_t level;
+		uint8_t noise;
+		uint8_t updated;
+	};
+	RR_VERIFY_TYPE(iw_quality);
+
+	union iwreq_data {
+		char name[16];
+		iw_point essid;
+		iw_param nwid;
+		iw_freq freq;
+		iw_param sens;
+		iw_param bitrate;
+		iw_param txpower;
+		iw_param rts;
+		iw_param frag;
+		uint32_t mode;
+		iw_param retry;
+		iw_point encoding;
+		iw_param power;
+		iw_quality qual;
+		sockaddr ap_addr;
+		sockaddr addr;
+		iw_param param;
+		iw_point data;
+	};
+	RR_VERIFY_TYPE(iwreq_data);
+
 	struct iwreq {
-		char dummy[32];
+		union {
+			char ifrn_name[16];
+		} ifr_ifrn;
+		iwreq_data u;
 	};
 	RR_VERIFY_TYPE(iwreq);
 
 	struct ethtool_cmd {
-		char dummy[44];
+		uint32_t cmd;
+		uint32_t supported;
+		uint32_t advertising;
+		uint16_t speed;
+		uint8_t duplex;
+		uint8_t port;
+		uint8_t phy_address;
+		uint8_t transceiver;
+		uint8_t autoneg;
+		uint8_t mdio_support;
+		uint32_t maxtxpkt;
+		uint32_t maxrxpkt;
+		uint16_t speed_hi;
+		uint8_t eth_tp_mdix;
+		uint8_t eth_tp_mdix_ctrl;
+		uint32_t lp_advertising;
+		uint32_t reserved[2];
 	};
 	RR_VERIFY_TYPE(ethtool_cmd);
 
 	struct flock {
-		unsigned_short l_type;
-		unsigned_short l_whence;
-		unsigned_int l_start;
-		unsigned_int l_len;
+		signed_short l_type;
+		signed_short l_whence;
+		uint32_t l_start;
+		uint32_t l_len;
 		pid_t l_pid;
 	};
 	RR_VERIFY_TYPE(flock);
 
 	struct flock64 {
-		unsigned_short l_type;
-		unsigned_short l_whence;
+		signed_short l_type;
+		signed_short l_whence;
 		uint64_t l_start;
 		uint64_t l_len;
 		pid_t l_pid;
@@ -411,7 +539,7 @@ struct base_arch : public wordsize {
 
 	struct f_owner_ex {
 		signed_int type;
-		pid_t pid;
+		__kernel_pid_t pid;
 	};
 	RR_VERIFY_TYPE(f_owner_ex);
 

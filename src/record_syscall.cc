@@ -1502,7 +1502,7 @@ static void process_ioctl(Task *t, int request)
 		t->read_mem(param, &ifr);
 
 		record_scratch_stack_page(t);
-		t->record_remote(ifr.ifreq_union.data, sizeof(x86_arch::ethtool_cmd));
+		t->record_remote(ifr.ifr_ifru.ifru_data, sizeof(x86_arch::ethtool_cmd));
 		return;
 	}
 	case SIOCGIFCONF: {
