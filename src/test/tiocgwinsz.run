@@ -1,5 +1,2 @@
 source `dirname $0`/util.sh
-
-record $TESTNAME
-replay
-check EXIT-SUCCESS
+compare_test EXIT-SUCCESS
