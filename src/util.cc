@@ -1158,7 +1158,7 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 	if (listen_sock < 0) {
 		FATAL() <<"Failed to create listen socket";
 	}
-	if (bind(listen_sock, (struct sockaddr*)&socket_addr, sizeof(socket_addr))) {
+	if (::bind(listen_sock, (struct sockaddr*)&socket_addr, sizeof(socket_addr))) {
 		FATAL() <<"Failed to bind listen socket";
 	}
 	if (listen(listen_sock, 1)) {
