@@ -86,10 +86,18 @@ function usage {
 # TODO: find a way to run faster with CPU binding
 GLOBAL_OPTIONS="-u -s --check-cached-mmaps"
 
-[[ $0 =~ ([A-Za-z0-9_]+)\.run ]] || fatal "FAILED: bad test script name"
-TESTNAME=${BASH_REMATCH[1]}
 LIB_ARG=$1
 OBJDIR=$2
+if [[ "$OBJDIR" == "" ]]; then
+    # Default to assuming that the user's working directory is the
+    # test/ directory within the rr clone.
+    OBJDIR=`realpath ../../../obj`
+fi
+TESTNAME=$3
+if [[ "$TESTNAME" == "" ]]; then
+    [[ $0 =~ ([A-Za-z0-9_]+)\.run ]] || fatal "FAILED: bad test script name"
+    TESTNAME=${BASH_REMATCH[1]}
+fi
 
 # The temporary directory we create for this test run.
 workdir=
@@ -100,15 +108,6 @@ leave_data=n
 nonce=
 
 # Set up the environment and working directory.
-if [[ "$TESTNAME" == "" ]]; then
-    usage
-    fatal FAILED: test name not passed to script
-fi
-if [[ "$OBJDIR" == "" ]]; then
-    # Default to assuming that the user's working directory is the
-    # test/ directory within the rr clone.
-    OBJDIR=`realpath ../../../obj`
-fi
 SRCDIR="${OBJDIR}/../rr"
 TESTDIR="${SRCDIR}/src/test"
 
@@ -234,11 +233,12 @@ function check { token=$1;
     fi
 }
 
-#  compare_test <token> [<replay-flags>]
+#  compare_test <token> [<replay-flags>] [executable]
 #
 # Record the test name passed to |util.sh|, then replay it (optionally
 # with $replayflags) and verify record/replay output match and $token
-# appears in the output.
+# appears in the output. Uses $executable instead of the passed-in testname
+# if present.
 function compare_test { token=$1; replayflags=$2;
     test=$TESTNAME
     if (( $# >= 3 )); then

@@ -76,6 +76,21 @@ install(TARGETS rr rrpreload
 ##--------------------------------------------------
 ## Testing
 
+# A "basic test" consists of a foo.c source file. All basic tests use the
+# same basic_test.run driver script. The test name is passed as an additional
+# parameter to the driver script. This script just does
+# "compare_test EXIT-SUCCESS", i.e. records and replays the program and verifies
+# that the output of both runs is identical and contains EXIT-SUCCESS.
+#
+# NB: you must update this variable when adding a new test source
+# file.  The list is not generated automatically.
+#
+# Alphabetical, please.
+set(BASIC_TESTS
+  64bit_child
+  accept
+)
+
 # A "test with program" consists of a foo.c source file and a foo.run driver
 # script.  See src/test/util.sh to learn how the .run files work.
 #
@@ -84,9 +99,7 @@ install(TARGETS rr rrpreload
 #
 # Alphabetical, please.
 set(TESTS_WITH_PROGRAM
-  64bit_child
   abort_nonmain
-  accept
   alarm
   args
   async_segv
@@ -263,7 +276,7 @@ set(TESTS_WITHOUT_PROGRAM
   term_trace_syscall
 )
 
-foreach(test ${TESTS_WITH_PROGRAM})
+foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
   target_link_libraries(${test} -lrt)
 endforeach(test)
@@ -271,6 +284,18 @@ endforeach(test)
 # cpuid test needs to link with cpuid_loop.S
 add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
 target_link_libraries(cpuid -lrt)
+
+foreach(test ${BASIC_TESTS})
+  add_test(${test}
+    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${PROJECT_BINARY_DIR} ${test})
+  set_tests_properties(${test}
+    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+
+  add_test(${test}-no-syscallbuf
+    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${PROJECT_BINARY_DIR} ${test})
+  set_tests_properties(${test}-no-syscallbuf
+    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+endforeach(test)
 
 foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
   add_test(${test}
