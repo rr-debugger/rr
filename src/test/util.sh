@@ -265,7 +265,7 @@ function debug_test {
 
 # Return the number of events in the most recent local recording.
 function count_events {
-    local events=$(rr dump -r latest-trace | wc -l)
+    local events=$(rr $GLOBAL_OPTIONS dump -r latest-trace | wc -l)
     # The |simple| test is just about the simplest possible C program,
     # and has around 180 events (when recorded on a particular
     # developer's machine).  If we count a number of events
