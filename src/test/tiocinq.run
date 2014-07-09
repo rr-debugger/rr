@@ -1,6 +1,5 @@
-testname=tiocinq
 source `dirname $0`/util.sh
 
-echo "hello" | (record $testname)
-replay $replayflags
+echo "hello" | (record $TESTNAME)
+replay
 check EXIT-SUCCESS

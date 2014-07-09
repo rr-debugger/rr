@@ -1,6 +1,5 @@
-testname=async_usr1
 source `dirname $0`/util.sh
 # SIGUSR1, wait 2.0s
-record_async_signal 10 2.0 $testname
+record_async_signal 10 2.0 $TESTNAME
 replay
 check 'EXIT-SUCCESS'

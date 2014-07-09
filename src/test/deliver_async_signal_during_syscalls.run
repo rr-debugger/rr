@@ -1,4 +1,3 @@
-testname=deliver_async_signal_during_syscalls
 source `dirname $0`/util.sh
 
 # See async_signal_syscalls.run for an explanation.
@@ -12,5 +11,4 @@ record_async_signal 10 0.5 async_signal_syscalls 17
 # well enough.
 #replay
 #check 'EXIT-SUCCESS'
-echo Test "'$testname'" PASSED
-passed=y
+passed

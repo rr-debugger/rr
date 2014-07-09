@@ -1,8 +1,7 @@
-test=immediate_restart
 source `dirname $0`/util.sh
 
-record $test
+record $TESTNAME
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug $test immediate_restart "-f $TARGET_PID"
+debug $TESTNAME immediate_restart "-f $TARGET_PID"

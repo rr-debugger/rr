@@ -1,8 +1,7 @@
-test=goto_event
 source `dirname $0`/util.sh
 
 EVENTS=1000
-record $test $EVENTS
+record $TESTNAME $EVENTS
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
-debug $test goto_event "-g $EVENTS"
+debug $TESTNAME goto_event "-g $EVENTS"

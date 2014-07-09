@@ -1,3 +1,5 @@
+source `dirname $0`/util.sh
+
 # We want to test two things here:
 # 1) Terminating rr when the next tracee event is a reschedule
 # 2) Terminating rr when the syscallbuf contains events that need to be flushed
@@ -7,7 +9,6 @@
 # that a reschedule occurs before chew_cpu's spin() loop finishes. Currently
 # that loop has 2^30 iterations, so 100M events per reschedule sounds good.
 RECORD_ARGS="-c100000000"
-source `dirname $0`/util.sh
 
 EXE=chew_cpu
 SYNC_TOKEN=spinning

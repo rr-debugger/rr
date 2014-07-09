@@ -1,4 +1,3 @@
-testname=async_signal_syscalls
 source `dirname $0`/util.sh
 
 # Without the syscallbuf, trying to record the large number of
@@ -6,12 +5,11 @@ source `dirname $0`/util.sh
 skip_if_no_syscall_buf
 
 # 2^17 iterations is arbitrarily chosen to take ~3s on a fast machine
-record $testname 17
+record $TESTNAME 17
 
 # Because of issue #184, replay takes longer than practical.  So for
 # now we'll skip it and hope other tests exercise the relevant code
 # well enough.
 #replay
 #check 'EXIT-SUCCESS'
-echo Test "'$testname'" PASSED
-passed=y
+passed

@@ -1,5 +1,6 @@
-TRACE_DIR=trace_0
 source `dirname $0`/util.sh
+
+TRACE_DIR=trace_0
 
 function expect_replay_fail {
     replay

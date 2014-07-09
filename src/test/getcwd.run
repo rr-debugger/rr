@@ -1,6 +1,5 @@
-test=getcwd
 source `dirname $0`/util.sh
 
-record $test "$PWD"
+record $TESTNAME "$PWD"
 replay
 check EXIT-SUCCESS

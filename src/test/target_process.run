@@ -1,11 +1,10 @@
-test=target_process
 source `dirname $0`/util.sh
 
 save_exe breakpoint
 saved_breakpoint="breakpoint-$nonce"
 
-record $test "$saved_breakpoint"
+record $TESTNAME "$saved_breakpoint"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug $test restart_breakpoint "-p $TARGET_PID -g 1"
+debug $TESTNAME restart_breakpoint "-p $TARGET_PID -g 1"

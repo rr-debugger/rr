@@ -1,6 +1,4 @@
-TEST=nanosleep
-
 source `dirname $0`/util.sh
-record $TEST 1                  # 1 second
+record $TESTNAME 1                  # 1 second
 replay
 check EXIT-SUCCESS

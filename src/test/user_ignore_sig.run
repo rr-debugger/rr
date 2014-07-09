@@ -1,5 +1,6 @@
+source `dirname $0`/util.sh
+
 # Ignore SIGUSR1; block its delivery to tracees.
 RECORD_ARGS="-i10"
 
-source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS

@@ -1,6 +1,6 @@
-# Ensure that the test records some USR_SCHED interrupt events.
-
 source `dirname $0`/util.sh
+
+# Ensure that the test records some USR_SCHED interrupt events.
 
 exe=simple
 cp ${OBJDIR}/bin/$exe $exe-$nonce

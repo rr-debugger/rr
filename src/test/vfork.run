@@ -1,4 +1,3 @@
-test=vfork
 source `dirname $0`/util.sh
 
 fails "vfork() is not supported yet."
@@ -6,6 +5,6 @@ fails "vfork() is not supported yet."
 save_exe breakpoint
 saved_simple="simple-$nonce"
 
-record $test "$saved_simple"
-replay $test
+record $TESTNAME "$saved_simple"
+replay $TESTNAME
 check vforker-EXIT-SUCCESS
