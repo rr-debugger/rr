@@ -1416,7 +1416,8 @@ static void* locate_and_verify_kernel_vsyscall(Task* t)
 	// these offsets.
 	const ssize_t known_offsets[] = {
 		0x414,		// x86 native kernel ca. 3.12.10-300
-		0x420		// x86 process on x64 kernel
+		0x420,		// x86 process on x64 kernel
+		0xb30,		// x86 process on x64 kernel ca. 3.15.3-200
 	};
 	for (size_t i = 0; i < ALEN(known_offsets); ++i) {
 		void* addr = (byte*)vdso_start + known_offsets[i];
