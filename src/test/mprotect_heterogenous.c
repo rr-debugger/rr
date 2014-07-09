@@ -34,6 +34,6 @@ int main(int argc, char *argv[]) {
 	err = errno;
 	test_assert(-1 == ret && ENOMEM == err);
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

@@ -4,7 +4,7 @@
 
 
 static void handle_sigtrap(int sig) {
-	atomic_puts("caught SIGTRAP!");
+	atomic_puts("EXIT-SUCCESS");
 	_exit(0);
 }
 

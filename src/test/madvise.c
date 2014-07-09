@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
 		test_assert(0 == page[i]);
 	}
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }

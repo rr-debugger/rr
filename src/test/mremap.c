@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
 
 	check_mapping(rpage, wpage, num_bytes / sizeof(*wpage));
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }

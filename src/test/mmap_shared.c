@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
 	test_assert(c == waitpid(c, &status, 0)
 		    && WIFEXITED(status) && 0 == WEXITSTATUS(status));
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }

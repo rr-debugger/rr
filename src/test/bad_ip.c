@@ -6,7 +6,7 @@
 static void sighandler(int sig, siginfo_t* si, void* utp) {
 	test_assert(SIGSEGV == sig && si->si_addr == (void*)0x42);
 
-	atomic_puts("caught segfault @0x42");
+	atomic_puts("EXIT-SUCCESS");
 	_exit(0);
 }
 

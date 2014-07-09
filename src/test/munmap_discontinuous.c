@@ -27,6 +27,6 @@ int main(int argc, char *argv[]) {
 	/* Unmap first 6 page locations, leave last 2. */
 	munmap(pages, 6 * page_size);
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 	return 0;
 }

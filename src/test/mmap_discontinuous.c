@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }

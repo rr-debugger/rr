@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
 
 	mprotect(map2, page_size, PROT_NONE);
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }

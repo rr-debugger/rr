@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 		atomic_printf("%d,", rpage[i]);
 	}
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }

@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
 	test_assert(map2 != (void*)-1);
 	test_assert(map2 == map1_end);
 
-	atomic_puts(" done");
+	atomic_puts("EXIT-SUCCESS");
 
 	return 0;
 }
