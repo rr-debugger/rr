@@ -89,6 +89,87 @@ install(TARGETS rr rrpreload
 set(BASIC_TESTS
   64bit_child
   accept
+  at_threadexit
+  bad_ip
+  barrier
+  big_buffers
+  block
+  chew_cpu
+  clock
+  clone
+  epoll_create
+  epoll_create1
+  exec_self
+  fadvise
+  fault_in_code_page
+  fcntl_owner_ex
+  flock
+  fork_child_crash
+  fork_stress
+  getgroups
+  getsid
+  int3
+  intr_futex_wait_restart
+  intr_poll
+  intr_read_no_restart
+  intr_read_restart
+  intr_sleep
+  intr_sleep_no_restart
+  io
+  madvise
+  map_fixed
+  mmap_discontinuous
+  mmap_private
+  mmap_ro
+  mmap_shared
+  mmap_shared_subpage
+  mmap_short_file
+  mmap_tmpfs
+  mprotect
+  mprotect_heterogenous
+  mprotect_stack
+  mremap
+  msg
+  msync
+  munmap_discontinuous
+  no_mask_timeslice
+  orphan_process
+  pause
+  perf_event
+  poll_sig_race
+  prctl
+  prctl_name
+  prw
+  rdtsc
+  save_data_fd
+  sched_setaffinity
+  sched_yield
+  scm_rights
+  sendfile
+  setsid
+  sigchld_interrupt_signal
+  sigprocmask
+  sigrt
+  sigtrap
+  simple
+  sioc
+  splice
+  statfs
+  strict_priorities
+  switch_read
+  syscallbuf_timeslice
+  sysconf
+  sysctl
+  tcgets
+  tgkill
+  thread_stress
+  timerfd
+  tiocgwinsz
+  truncate
+  uname
+  unjoined_thread
+  wait
+  write_race
 )
 
 # A "test with program" consists of a foo.c source file and a foo.run driver
@@ -105,123 +186,42 @@ set(TESTS_WITH_PROGRAM
   async_segv
   async_signal_syscalls
   async_usr1
-  at_threadexit
-  bad_ip
   bad_syscall
-  barrier
-  big_buffers
-  block
   block_intr_sigchld
   breakpoint
   breakpoint_overlap
-  chew_cpu
-  clock
-  clone
   condvar_stress
   crash
-  epoll_create
-  epoll_create1
-  exec_self
   exit_group
   exit_status
   explicit_checkpoints
-  fadvise
-  fault_in_code_page
-  fcntl_owner_ex
-  flock
-  fork_child_crash
-  fork_stress
   fork_syscalls
   getcwd
-  getgroups
-  getsid
   goto_event
   hello
   ignored_async_usr1
   immediate_restart
-  int3
   interrupt
-  intr_futex_wait_restart
-  intr_poll
   intr_ptrace_decline
-  intr_read_no_restart
-  intr_read_restart
-  intr_sleep
-  intr_sleep_no_restart
-  io
   link
-  madvise
-  map_fixed
-  mmap_discontinuous
-  mmap_private
-  mmap_ro
-  mmap_shared
-  mmap_shared_subpage
-  mmap_short_file
-  mmap_tmpfs
   mmap_write
-  mprotect
-  mprotect_heterogenous
-  mprotect_stack
-  mremap
-  msg
-  msync
-  munmap_discontinuous
   mutex_pi_stress
   nanosleep
-  no_mask_timeslice
-  orphan_process
-  pause
-  perf_event
-  poll_sig_race
-  prctl
-  prctl_name
   priority
-  prw
   ptrace
-  rdtsc
   read_big_struct
-  save_data_fd
-  sched_setaffinity
-  sched_yield
-  scm_rights
   segfault
-  sendfile
-  setsid
-  sigchld_interrupt_signal
   sigill
-  sigprocmask
-  sigrt
-  sigtrap
-  simple
-  sioc
-  splice
-  statfs
   step_thread
-  strict_priorities
-  sysctl
-  switch_read
-  syscallbuf_timeslice
-  sysconf
   target_fork
   target_process
-  tcgets
   term_nonmain
-  tgkill
-  thread_stress
   threaded_syscall_spam
   threads
-  timerfd
   tiocinq
-  tiocgwinsz
-  truncate
-  uname
-  unjoined_thread
   user_ignore_sig
   vfork
-  wait
   watchpoint
-  write_race
 )
 
 # A "test without program" is a foo.run driver script only, which does
