@@ -76,14 +76,14 @@ install(TARGETS rr rrpreload
 ##--------------------------------------------------
 ## Testing
 
-# A "basic test" consists of a foo.c source file and a foo.run driver
+# A "test with program" consists of a foo.c source file and a foo.run driver
 # script.  See src/test/util.sh to learn how the .run files work.
 #
 # NB: you must update this variable when adding a new test source
 # file.  The list is not generated automatically.
 #
 # Alphabetical, please.
-set(BASIC_TESTS
+set(TESTS_WITH_PROGRAM
   64bit_child
   abort_nonmain
   accept
@@ -211,14 +211,14 @@ set(BASIC_TESTS
   write_race
 )
 
-# A "custom test" is a foo.run driver script only, which does
-# something with one of the basic-test executables above.
+# A "test without program" is a foo.run driver script only, which does
+# something with one of the test executables above.
 #
 # NB: you must update this variable when adding a new test source
 # file.  The list is not generated automatically.
 #
 # Alphabetical, please.
-set(CUSTOM_TESTS
+set(TESTS_WITHOUT_PROGRAM
   async_signal_syscalls_100
   async_signal_syscalls_1000
   bad_breakpoint
@@ -263,7 +263,7 @@ set(CUSTOM_TESTS
   term_trace_syscall
 )
 
-foreach(test ${BASIC_TESTS})
+foreach(test ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
   target_link_libraries(${test} -lrt)
 endforeach(test)
@@ -272,7 +272,7 @@ endforeach(test)
 add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
 target_link_libraries(cpuid -lrt)
 
-foreach(test ${BASIC_TESTS} ${CUSTOM_TESTS})
+foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
   add_test(${test}
     bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR})
   set_tests_properties(${test}
