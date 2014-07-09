@@ -30,7 +30,6 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
-#include <sys/sysctl.h>
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/times.h>
@@ -1044,16 +1043,6 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 1;
 		}
 		FATAL() <<"Not reached";
-	}
-
-	case SYS__sysctl: {
-		struct __sysctl_args sysctl_args;
-		void* args_ptr = (void*)t->regs().arg1();
-		t->read_mem(args_ptr, &sysctl_args);
-
-		push_arg_ptr(t, sysctl_args.oldval);
-		push_arg_ptr(t, sysctl_args.oldlenp);
-		return 0;
 	}
 
 	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
@@ -2662,16 +2651,6 @@ void rec_process_syscall(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-	case SYS__sysctl: {
-		size_t* oldlenp = pop_arg_ptr<size_t>(t);
-		void* oldval = pop_arg_ptr<void>(t);
-		size_t oldlen;
-		t->read_mem(oldlenp, &oldlen);
-
-		t->record_remote(oldlenp, sizeof(size_t));
-		t->record_remote(oldval, oldlen);
-		break;
-	}
 	case SYS_waitid: {
 		x86_arch::siginfo_t* infop = pop_arg_ptr<x86_arch::siginfo_t>(t);
 		byte* iter;
@@ -2727,9 +2706,17 @@ void rec_process_syscall(Task *t)
 		break;
 
 	default:
-		print_register_file_tid(t);
-		FATAL() <<"Unhandled syscall "<< t->syscallname(syscallno)
-			<<"("<< syscallno <<")";
-		break;		/* not reached */
+		// Invalid syscalls return -ENOSYS. Assume any such
+		// result means the syscall was completely ignored by the
+		// kernel so it's OK for us to not do anything special.
+		// Other results mean we probably need to understand this
+		// syscall, but we don't.
+		if (t->regs().syscall_result_signed() != -ENOSYS) {
+			print_register_file_tid(t);
+			FATAL() <<"Unhandled syscall "<< t->syscallname(syscallno)
+				<<"("<< syscallno <<") returned "
+				<< t->regs().syscall_result_signed();
+		}
+		break;
 	}
 }

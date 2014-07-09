@@ -29,7 +29,6 @@
 #include <sys/prctl.h>
 #include <sys/quota.h>
 #include <sys/socket.h>
-#include <sys/sysctl.h>
 
 #include <map>
 #include <memory>
@@ -1390,8 +1389,10 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 	}
 
-	ASSERT(t, syscall < int(ALEN(syscall_table)))
-		<< syscall <<" not in syscall table, but possibly valid";
+	if (syscall < 0 || syscall >= int(ALEN(syscall_table))) {
+		// map to 0, which is an invalid syscall.
+		syscall = 0;
+	}
 
 	def = &syscall_table[syscall];
 	ASSERT(t, rep_UNDEFINED != def->type)
@@ -1678,14 +1679,6 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
 		return;
 
-	case SYS__sysctl:
-		step->syscall.emu = 1;
-		step->syscall.emu_ret = 1;
-		step->syscall.num_emu_args = 2;
-		step->action = (STATE_SYSCALL_ENTRY == state) ?
-			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
-		return;
-
 	case SYS_waitid:
 	case SYS_waitpid:
 	case SYS_wait4:
@@ -1736,15 +1729,16 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return;
 
 	default:
-		break;
-	}
-
-	/* TODO: irregular syscalls that don't understand
-	 * trace_step */
-	step->action = TSTEP_RETIRE;
-
-	switch (syscall) {
-	default:
-		FATAL() <<"Unhandled irregular syscall "<< syscall;
+		// Emulate, assuming it was an invalid syscall.
+		if (STATE_SYSCALL_EXIT == state) {
+			ASSERT(t, rec_regs->syscall_result_signed() == -ENOSYS)
+				<< "Unknown syscall should have returned -ENOSYS";
+		}
+		step->syscall.num_emu_args = 0;
+		step->action = STATE_SYSCALL_ENTRY == state ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		return;
 	}
 }
