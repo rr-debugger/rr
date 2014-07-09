@@ -1,2 +1,2 @@
-source `dirname $0`/util.sh fork_syscalls "$@"
+source `dirname $0`/util.sh
 compare_test "CHILD-EXIT PARENT-EXIT"

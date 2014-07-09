@@ -1,5 +1,5 @@
 test=getcwd
-source `dirname $0`/util.sh $test "$@"
+source `dirname $0`/util.sh
 
 record $test "$PWD"
 replay

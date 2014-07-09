@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh break_int3 "$@"
+source `dirname $0`/util.sh
 
 fails "gdb and rr don't yet agree what should happen when a breakpoint is set on a breakpoint instruction"
 

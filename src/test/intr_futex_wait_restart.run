@@ -1,2 +1,2 @@
-source `dirname $0`/util.sh intr_futex_wait_restart "$@"
+source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS

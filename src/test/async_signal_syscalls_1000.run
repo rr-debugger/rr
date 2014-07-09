@@ -2,7 +2,7 @@
 timeslice=1000
 RECORD_ARGS="-c$timeslice"
 
-source `dirname $0`/util.sh async_signal_syscalls_$timeslice "$@"
+source `dirname $0`/util.sh
 
 # 2^9 iterations is arbitrarily chosen to record and replay < 15s,
 # both with and without the syscallbuf, on a fast machine.

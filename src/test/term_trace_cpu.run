@@ -7,7 +7,7 @@
 # that a reschedule occurs before chew_cpu's spin() loop finishes. Currently
 # that loop has 2^30 iterations, so 100M events per reschedule sounds good.
 RECORD_ARGS="-c100000000"
-source `dirname $0`/util.sh term_trace_cpu "$@"
+source `dirname $0`/util.sh
 
 EXE=chew_cpu
 SYNC_TOKEN=spinning

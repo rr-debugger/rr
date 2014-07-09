@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh subprocess_exit_ends_session "$@"
+source `dirname $0`/util.sh
 
 record fork_child_crash
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')

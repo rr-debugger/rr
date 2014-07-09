@@ -5,5 +5,5 @@
 # bumping up the timeslice.
 RECORD_ARGS="-c20000000"
 
-source `dirname $0`/util.sh threads "$@"
+source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS

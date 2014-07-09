@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh breakpoint_overlap "$@"
+source `dirname $0`/util.sh
 RECORD_ARGS="-c100"
 record breakpoint_overlap "3 4"
 # Don't use pipes here since we need 'debug' to run in the same bash process

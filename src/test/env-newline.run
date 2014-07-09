@@ -1,4 +1,0 @@
-export BADENV='hello
-kitty'
-source `dirname $0`/util.sh simple "$@"
-compare_test EXIT-SUCCESS

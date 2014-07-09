@@ -1,5 +1,5 @@
 test=immediate_restart
-source `dirname $0`/util.sh $test "$@"
+source `dirname $0`/util.sh
 
 record $test
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')

@@ -1,5 +1,5 @@
 testname=async_signal_syscalls
-source `dirname $0`/util.sh $testname "$@"
+source `dirname $0`/util.sh
 
 # Without the syscallbuf, trying to record the large number of
 # syscalls in this test is impractical.

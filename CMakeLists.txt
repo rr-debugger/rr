@@ -243,7 +243,7 @@ set(CUSTOM_TESTS
   cpuid
   dead_thread_target
   deliver_async_signal_during_syscalls
-  env-newline
+  env_newline
   execp
   explicit_checkpoint_clone
   fork_exec_info_thr

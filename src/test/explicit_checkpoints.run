@@ -1,5 +1,5 @@
 test=explicit_checkpoints
-source `dirname $0`/util.sh $test "$@"
+source `dirname $0`/util.sh
 
 record $test
 debug $test explicit_checkpoints

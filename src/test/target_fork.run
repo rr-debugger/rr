@@ -1,5 +1,5 @@
 test=target_fork
-source `dirname $0`/util.sh $test "$@"
+source `dirname $0`/util.sh
 
 EVENTS=1000
 record $test $EVENTS

@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh mmap_write "$@"
+source `dirname $0`/util.sh
 
 fails "write()s to SHARED mapped files aren't propagated to mapping during replay."
 

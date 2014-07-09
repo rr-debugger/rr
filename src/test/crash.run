@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh crash "$@"
+source `dirname $0`/util.sh
 
 record crash
 replay

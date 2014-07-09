@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh fork_exec_info_thr "$@"
+source `dirname $0`/util.sh
 
 save_exe barrier
 saved_barrier="barrier-$nonce"

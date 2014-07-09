@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh exit_status "$@"
+source `dirname $0`/util.sh
 record exit_status
 if [[ $? != 7 ]]; then
     failed "got exit status $?, expected 7"

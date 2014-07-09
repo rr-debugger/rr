@@ -86,9 +86,10 @@ function usage {
 # TODO: find a way to run faster with CPU binding
 GLOBAL_OPTIONS="-u -s --check-cached-mmaps"
 
-TESTNAME=$1
-LIB_ARG=$2
-OBJDIR=$3
+[[ $0 =~ ([A-Za-z0-9_]+)\.run ]] || fatal "FAILED: bad test script name"
+TESTNAME=${BASH_REMATCH[1]}
+LIB_ARG=$1
+OBJDIR=$2
 
 # The temporary directory we create for this test run.
 workdir=
@@ -240,6 +241,9 @@ function check { token=$1;
 # appears in the output.
 function compare_test { token=$1; replayflags=$2;
     test=$TESTNAME
+    if (( $# >= 3 )); then
+        test=$3
+    fi
     if [[ $token == "" ]]; then
 	failed ": didn't pass an exit token"
     fi

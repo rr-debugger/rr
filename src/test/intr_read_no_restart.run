@@ -1,2 +1,2 @@
-source `dirname $0`/util.sh intr_read_no_restart "$@"
+source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS

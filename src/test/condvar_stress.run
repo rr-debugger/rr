@@ -1,5 +1,5 @@
 # Switch threads very eagerly on recorded events.
 RECORD_ARGS="-e1"
 
-source `dirname $0`/util.sh condvar_stress "$@"
+source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS

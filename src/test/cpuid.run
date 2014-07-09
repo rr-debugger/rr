@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh cpuid "$@"
+source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS
 if [[ $@ == -n ]]; then
     rr -s dump $workdir/latest-trace | \

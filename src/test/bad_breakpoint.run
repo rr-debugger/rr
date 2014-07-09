@@ -1,4 +1,4 @@
-source `dirname $0`/util.sh bad_breakpoint "$@"
+source `dirname $0`/util.sh
 record simple
 for i in $(seq 15 25); do
     echo Replaying to event $i ...

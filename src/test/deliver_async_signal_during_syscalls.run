@@ -1,5 +1,5 @@
 testname=deliver_async_signal_during_syscalls
-source `dirname $0`/util.sh $testname "$@"
+source `dirname $0`/util.sh
 
 # See async_signal_syscalls.run for an explanation.
 skip_if_no_syscall_buf

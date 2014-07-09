@@ -1,5 +1,5 @@
 testname=tiocinq
-source `dirname $0`/util.sh $testname "$@"
+source `dirname $0`/util.sh
 
 echo "hello" | (record $testname)
 replay $replayflags

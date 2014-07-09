@@ -1,2 +1,2 @@
-source `dirname $0`/util.sh save_data_fd "$@"
+source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS

@@ -1,2 +1,2 @@
-source `dirname $0`/util.sh sigrt "$@"
+source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS

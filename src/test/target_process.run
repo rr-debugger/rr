@@ -1,5 +1,5 @@
 test=target_process
-source `dirname $0`/util.sh $test "$@"
+source `dirname $0`/util.sh
 
 save_exe breakpoint
 saved_breakpoint="breakpoint-$nonce"

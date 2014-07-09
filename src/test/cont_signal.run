@@ -1,7 +1,7 @@
 testname=cont_signal
 recorded_exe=async_usr1
 
-source `dirname $0`/util.sh $testname "$@"
+source `dirname $0`/util.sh
 # SIGUSR1, wait 2.0s
 record_async_signal 10 2.0 $recorded_exe
 debug $recorded_exe $testname
