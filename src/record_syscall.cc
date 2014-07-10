@@ -740,6 +740,12 @@ static int rec_prepare_syscall_arch(Task* t, void** kernel_sync_addr,
 		scratch = (byte*)t->ev().Syscall().tmp_data_ptr;
 	}
 
+	if (syscallno < 0) {
+		// Invalid syscall. Don't let it accidentally match a
+		// syscall number below that's for an undefined syscall.
+		return 0;
+	}
+
 	switch (syscallno) {
 	case Arch::splice: {
 		Registers r = t->regs();
