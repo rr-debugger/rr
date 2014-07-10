@@ -623,6 +623,15 @@ struct base_arch : public wordsize {
 		signed_int fd;
 		off_t offset;
 	};
+
+	/**
+	 *  Some ipc calls require 7 params, so two of them are stashed into
+	 *  one of these structs and a pointer to this is passed instead.
+	 */
+	struct ipc_kludge_args {
+		ptr<void> msgbuf;
+		signed_long msgtype;
+	};
 };
 
 struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {

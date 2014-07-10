@@ -58,15 +58,6 @@
 using namespace std;
 using namespace rr;
 
-/**
- *  Some ipc calls require 7 params, so two of them are stashed into
- *  one of these structs and a pointer to this is passed instead.
- */
-struct ipc_kludge_args {
-	void* msgbuf;
-	long msgtype;
-};
-
 void rec_before_record_syscall_entry(Task* t, int syscallno)
 {
 	if (SYS_write != syscallno) {
@@ -178,7 +169,7 @@ static int prepare_ipc(Task* t, int would_need_scratch)
 			return 1;
 		}
 		size_t msgsize = t->regs().arg3();
-		struct ipc_kludge_args kludge;
+		x86_arch::ipc_kludge_args kludge;
 		void* child_kludge = (void*)t->regs().arg5();
 		t->read_mem(child_kludge, &kludge);
 
@@ -1662,7 +1653,7 @@ static void process_ipc(Task* t, int call)
 		// payload; there's also a |msgtype| tag set just
 		// before the payload.
 		size_t buf_size = sizeof(long) + t->regs().arg3();
-		struct ipc_kludge_args kludge;
+		x86_arch::ipc_kludge_args kludge;
 		void* child_kludge = (void*)t->regs().arg5();
 
 		t->read_mem(child_kludge, &kludge);
