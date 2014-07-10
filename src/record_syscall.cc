@@ -2208,6 +2208,22 @@ static void before_syscall_exit(Task* t, int syscallno)
 	}
 }
 
+static void check_syscall_rejected(Task* t)
+{
+	// Invalid syscalls return -ENOSYS. Assume any such
+	// result means the syscall was completely ignored by the
+	// kernel so it's OK for us to not do anything special.
+	// Other results mean we probably need to understand this
+	// syscall, but we don't.
+	if (t->regs().syscall_result_signed() != -ENOSYS) {
+		print_register_file_tid(t);
+		int syscallno = t->ev().Syscall().no;
+		FATAL() <<"Unhandled syscall "<< t->syscallname(syscallno)
+			<<"("<< syscallno <<") returned "
+			<< t->regs().syscall_result_signed();
+	}
+}
+
 template<typename Arch>
 static void rec_process_syscall_arch(Task *t)
 {
@@ -2224,6 +2240,11 @@ static void rec_process_syscall_arch(Task *t)
 		t->record_local(t->ev().Syscall().tmp_data_ptr,
 				t->ev().Syscall().tmp_data_num_bytes,
 				(byte*)rec->extra_data);
+		return;
+	}
+
+	if (syscallno < 0) {
+		check_syscall_rejected(t);
 		return;
 	}
 
@@ -2716,17 +2737,7 @@ static void rec_process_syscall_arch(Task *t)
 		break;
 
 	default:
-		// Invalid syscalls return -ENOSYS. Assume any such
-		// result means the syscall was completely ignored by the
-		// kernel so it's OK for us to not do anything special.
-		// Other results mean we probably need to understand this
-		// syscall, but we don't.
-		if (t->regs().syscall_result_signed() != -ENOSYS) {
-			print_register_file_tid(t);
-			FATAL() <<"Unhandled syscall "<< t->syscallname(syscallno)
-				<<"("<< syscallno <<") returned "
-				<< t->regs().syscall_result_signed();
-		}
+		check_syscall_rejected(t);
 		break;
 	}
 }
