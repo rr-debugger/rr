@@ -550,11 +550,12 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 
 #define RR_KCMP_FILE 0
 
+template<typename Arch>
 static bool is_stdio_fd(Task* t, int fd)
 {
 	int pid = getpid();
 
-	int r = syscall(x86_arch::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+	int r = syscall(Arch::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
 			STDOUT_FILENO, fd);
 	if (r == 0) {
 		return true;
@@ -565,7 +566,7 @@ static bool is_stdio_fd(Task* t, int fd)
 	}
 	ASSERT(t, r >= 0) << "kcmp failed";
 
-	r = syscall(x86_arch::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
+	r = syscall(Arch::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
 		STDERR_FILENO, fd);
 	if (r == 0) {
 		return true;
@@ -589,6 +590,7 @@ static bool is_stdio_fd(Task* t, int fd)
  *
  * Returns 1 if the syscall should be interruptible, 0 otherwise.
  */
+template<typename Arch>
 static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 {
 	const struct syscallbuf_record* rec = t->desched_rec();
@@ -607,9 +609,9 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno)
 	t->ev().Syscall().tmp_data_num_bytes = rec->size - sizeof(*rec);
 
 	switch (syscallno) {
-	case SYS_write:
-	case SYS_writev:
-		return !is_stdio_fd(t, (int)t->regs().arg1_signed());
+	case Arch::write:
+	case Arch::writev:
+		return !is_stdio_fd<Arch>(t, (int)t->regs().arg1_signed());
 	}
 
 	return 1;
@@ -706,7 +708,9 @@ static bool exec_file_supported(const string& filename)
 	return ok;
 }
 
-int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
+template<typename Arch>
+static int rec_prepare_syscall_arch(Task* t, void** kernel_sync_addr,
+		                    uint32_t* sync_val)
 {
 	int syscallno = t->ev().Syscall().no;
 	/* If we are called again due to a restart_syscall, we musn't
@@ -717,7 +721,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	byte* scratch = NULL;
 
 	if (t->desched_rec()) {
-		return set_up_scratch_for_syscallbuf(t, syscallno);
+		return set_up_scratch_for_syscallbuf<Arch>(t, syscallno);
 	}
 
 	/* For syscall params that may need scratch memory, they
@@ -737,7 +741,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	switch (syscallno) {
-	case SYS_splice: {
+	case Arch::splice: {
 		Registers r = t->regs();
 		loff_t* off_in = (loff_t*)r.arg2();
 		loff_t* off_out = (loff_t*)r.arg4();
@@ -768,7 +772,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
-	case SYS_sendfile64: {
+	case Arch::sendfile64: {
 		Registers r = t->regs();
 		loff_t* offset = (loff_t*)r.arg3();
 
@@ -791,7 +795,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
-	case SYS_clone: {
+	case Arch::clone: {
 		unsigned long flags = t->regs().arg1();
 		push_arg_ptr(t, (void*)(uintptr_t)flags);
 		if (flags & CLONE_UNTRACED) {
@@ -807,18 +811,18 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 0;
 	}
 
-	case SYS_exit:
+	case Arch::exit:
 		if (t->task_group()->task_set().size() == 1) {
 			t->task_group()->exit_code = (int)t->regs().arg1();
 		}
 		destroy_buffers(t);
 		return 0;
 
-	case SYS_exit_group:
+	case Arch::exit_group:
 		t->task_group()->exit_code = (int)t->regs().arg1();
 		return 0;
 
-	case SYS_execve: {
+	case Arch::execve: {
 		t->pre_exec();
 
 		Registers r =  t->regs();
@@ -837,7 +841,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 0;
 	}
 
-	case SYS_fcntl64:
+	case Arch::fcntl64:
 		switch ((int)t->regs().arg2_signed()) {
 		case F_SETLKW:
 		case F_SETLKW64:
@@ -850,7 +854,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		}
 
 	/* int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3); */
-	case SYS_futex:
+	case Arch::futex:
 		switch ((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) {
 		case FUTEX_LOCK_PI:
 			return prep_futex_lock_pi(t, (byte*)t->regs().arg1(),
@@ -863,17 +867,17 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 0;
 		}
 
-	case SYS_ipc:
+	case Arch::ipc:
 		return prepare_ipc(t, would_need_scratch);
 
-	case SYS_socketcall:
+	case Arch::socketcall:
 		return prepare_socketcall(t, would_need_scratch);
 
-	case SYS__newselect:
+	case Arch::_newselect:
 		return 1;
 
 	/* ssize_t read(int fd, void *buf, size_t count); */
-	case SYS_read: {
+	case Arch::read: {
 		if (!would_need_scratch) {
 			return 1;
 		}
@@ -891,8 +895,8 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
-	case SYS_write:
-	case SYS_writev: {
+	case Arch::write:
+	case Arch::writev: {
 		int fd = (int)t->regs().arg1_signed();
 		maybe_mark_stdio_write(t, fd);
 		// Tracee writes to rr's stdout/stderr are echoed during replay.
@@ -908,7 +912,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		// introduces the possibility of deadlock between rr's
 		// tracee and some external program reading rr's output
 		// via a pipe ... but that seems unlikely to bite in practice.
-		return !is_stdio_fd(t, fd);
+		return !is_stdio_fd<Arch>(t, fd);
 		// Note that the determination of whether fd maps to rr's
 		// stdout/stderr is exact, using kcmp, whereas our decision
 		// to echo is currently based on the simple heuristic of
@@ -923,12 +927,12 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 
 	/* pid_t waitpid(pid_t pid, int *status, int options); */
 	/* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage); */
-	case SYS_waitpid:
-	case SYS_wait4: {
+	case Arch::waitpid:
+	case Arch::wait4: {
 		Registers r = t->regs();
 		int* status = (int*)r.arg2();
-		x86_arch::rusage* rusage = (SYS_wait4 == syscallno) ?
-					(x86_arch::rusage*)r.arg4() : NULL;
+		typename Arch::rusage* rusage = (Arch::wait4 == syscallno) ?
+					(typename Arch::rusage*)r.arg4() : NULL;
 
 		if (!would_need_scratch) {
 			return 1;
@@ -952,13 +956,13 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
-	case SYS_waitid: {
+	case Arch::waitid: {
 		if (!would_need_scratch) {
 			return 1;
 		}
 
 		Registers r = t->regs();
-		x86_arch::siginfo_t* infop = (x86_arch::siginfo_t*)r.arg3();
+		auto infop = (typename Arch::siginfo_t*)r.arg3();
 		push_arg_ptr(t, infop);
 		if (infop) {
 			r.set_arg3((uintptr_t)scratch);
@@ -973,18 +977,18 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
-	case SYS_pause:
+	case Arch::pause:
 		return 1;
 
 	/* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
 	/* int ppoll(struct pollfd *fds, nfds_t nfds,
 	 *           const struct timespec *timeout_ts,
 	 *           const sigset_t *sigmask); */
-	case SYS_poll:
-	case SYS_ppoll: {
+	case Arch::poll:
+	case Arch::ppoll: {
 		Registers r = t->regs();
-		x86_arch::pollfd* fds = (x86_arch::pollfd*)r.arg1();
-		x86_arch::pollfd* fds2 = (x86_arch::pollfd*)scratch;
+		auto fds = (typename Arch::pollfd*)r.arg1();
+		auto fds2 = (typename Arch::pollfd*)scratch;
 		nfds_t nfds = r.arg2();
 
 		if (!would_need_scratch) {
@@ -1006,7 +1010,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	/* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5); */
-	case SYS_prctl: {
+	case Arch::prctl: {
 		/* TODO: many of these prctls are not blocking. */
 		if (!would_need_scratch) {
 			return 1;
@@ -1046,13 +1050,13 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	}
 
 	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
-	case SYS_epoll_wait: {
+	case Arch::epoll_wait: {
 		if (!would_need_scratch) {
 			return 1;
 		}
 
 		Registers r = t->regs();
-		x86_arch::epoll_event* events = (x86_arch::epoll_event*)r.arg2();
+		auto events = (typename Arch::epoll_event*)r.arg2();
 		int maxevents = r.arg3_signed();
 
 		push_arg_ptr(t, events);
@@ -1069,7 +1073,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
-	case SYS_ptrace:
+	case Arch::ptrace:
 		fprintf(stderr,
 "\n"
 "rr: internal recorder error:\n"
@@ -1083,7 +1087,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 0;
 
 
-	case SYS_epoll_pwait:
+	case Arch::epoll_pwait:
 		FATAL() <<"Unhandled syscall "<< t->syscallname(syscallno);
 		return 1;
 
@@ -1095,13 +1099,13 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	 * switching and we should take the hint. */
 
 	/* int nanosleep(const struct timespec *req, struct timespec *rem); */
-	case SYS_nanosleep: {
+	case Arch::nanosleep: {
 		if (!would_need_scratch) {
 			return 1;
 		}
 
 		Registers r= t->regs();
-		x86_arch::timespec* rem = (x86_arch::timespec*)r.arg2();
+		auto rem = (typename Arch::timespec*)r.arg2();
 		push_arg_ptr(t, rem);
 		if (rem) {
 			r.set_arg2((uintptr_t)scratch);
@@ -1116,7 +1120,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		return 1;
 	}
 
-	case SYS_sched_yield:
+	case Arch::sched_yield:
 		// Force |t| to be context-switched if another thread
 		// of equal or higher priority is available.  We set
 		// the counter to INT_MAX / 2 because various other
@@ -1130,7 +1134,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		t->pseudo_blocked = 1;
 		return 1;
 
-	case SYS_recvmmsg: {
+	case Arch::recvmmsg: {
 		Registers r = t->regs();
 
 		if ((unsigned int)r.arg4() & MSG_DONTWAIT) {
@@ -1140,11 +1144,11 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 			return 1;
 		}
 
-		x86_arch::mmsghdr* poldmsgvec = (x86_arch::mmsghdr*)r.arg2();
+		auto poldmsgvec = (typename Arch::mmsghdr*)r.arg2();
 		push_arg_ptr(t, (void*)r.arg2());
 		r.set_arg2((uintptr_t)scratch);
 
-		if (reserve_scratch_for_msgvec<x86_arch>(t, r.arg3(), poldmsgvec, &scratch))
+		if (reserve_scratch_for_msgvec<Arch>(t, r.arg3(), poldmsgvec, &scratch))
 		{
 			t->set_regs(r);
 			return 1;
@@ -1152,7 +1156,7 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 		else
 			return 0;
 	}
-	case SYS_sendmmsg: {
+	case Arch::sendmmsg: {
 		Registers r = t->regs();
 		unsigned flags = (unsigned int)r.arg4();
 		return !(flags & MSG_DONTWAIT);
@@ -1160,6 +1164,12 @@ int rec_prepare_syscall(Task* t, void** kernel_sync_addr, uint32_t* sync_val)
 	default:
 		return 0;
 	}
+}
+
+int rec_prepare_syscall(Task* t, void** kernel_sync_addr,
+                        uint32_t* sync_val)
+{
+	return rec_prepare_syscall_arch<x86_arch>(t, kernel_sync_addr, sync_val);
 }
 
 /**
