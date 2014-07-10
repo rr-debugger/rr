@@ -1780,7 +1780,7 @@ Task::read_c_str(void* child_addr)
 	}
 }
 
-long
+intptr_t
 Task::read_word(void* child_addr)
 {
 	long word;

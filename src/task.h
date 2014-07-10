@@ -1297,7 +1297,7 @@ public:
 	 * NB: doesn't use the ptrace API, so safe to use even when
 	 * the tracee isn't at a trace-stop.
 	 */
-	long read_word(void* child_addr);
+	intptr_t read_word(void* child_addr);
 
 	/**
 	 * Copy |num_bytes| from |src| to |dst| in the address space

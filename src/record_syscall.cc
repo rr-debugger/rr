@@ -1379,6 +1379,7 @@ static void finish_restoring_some_scratch(Task* t, byte* iter, void** data)
 	return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
+template<typename Arch>
 static void process_execve(Task* t)
 {
 	Registers r = t->regs();
@@ -1410,12 +1411,12 @@ static void process_execve(Task* t)
 	 */
 //	long* argc = (long*)t->read_word((byte*)stack_ptr);
 //	stack_ptr += *argc + 1;
-	long argc = t->read_word(stack_ptr);
+	intptr_t argc = t->read_word(stack_ptr);
 	stack_ptr += argc + 1;	
 
 	//unsigned long* null_ptr = read_child_data(t, sizeof(void*), stack_ptr);
 	//assert(*null_ptr == 0);
-	long null_ptr = t->read_word(stack_ptr);
+	intptr_t null_ptr = t->read_word(stack_ptr);
 	assert(null_ptr == 0);
 	stack_ptr++;
 
@@ -1426,14 +1427,17 @@ static void process_execve(Task* t)
 	stack_ptr++;
 
 	/* should now point to ELF Auxiliary Table */
-	const long elf_aux[] = {
+	static const int elf_aux[] = {
 		AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK,
 		AT_PHDR, AT_PHENT, AT_PHNUM, AT_BASE, AT_FLAGS, AT_ENTRY,
 		AT_UID, AT_EUID, AT_GID, AT_EGID,
 		AT_SECURE
 	};
 
-	struct ElfEntry { long key; long value; };
+	struct ElfEntry {
+		typename Arch::unsigned_word key;
+		typename Arch::unsigned_word value;
+	};
 	union {
 		ElfEntry entries[ALEN(elf_aux)];
 		byte bytes[sizeof(entries)];
@@ -1442,14 +1446,14 @@ static void process_execve(Task* t)
 	stack_ptr += 2 * ALEN(elf_aux);
 
 	for (int i = 0; i < ssize_t(ALEN(elf_aux)); ++i) {
-		long expected_field = elf_aux[i];
+		auto expected_field = elf_aux[i];
 		const ElfEntry& entry = table.entries[i];
 		ASSERT(t, expected_field == entry.key)
 			<< "Elf aux entry "<< i <<" should be "
 			<< HEX(expected_field) <<", but is "<< HEX(entry.key);
 	}
 
-	long at_random = t->read_word(stack_ptr);
+	intptr_t at_random = t->read_word(stack_ptr);
 	stack_ptr++;
 	ASSERT(t, AT_RANDOM == at_random)
 		<< "ELF item should be "<< HEX(AT_RANDOM) <<", but is "
@@ -2135,6 +2139,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	}
 }
 
+// XXX this needs to be converted to take an Arch parameter
 static void before_syscall_exit(Task* t, int syscallno)
 {
 	t->maybe_update_vm(syscallno, STATE_SYSCALL_EXIT);
@@ -2257,33 +2262,33 @@ static void rec_process_syscall_arch(Task *t)
 #define SYSCALLNO_X86_64(num)
 #define SYSCALL_UNDEFINED_X86_64()
 #define SYSCALL_DEF0(_call, _)						\
-	case x86_arch::_call:	                                        \
+	case Arch::_call:	                                        \
 		break;
 #define SYSCALL_DEF1(_call, _, _t0, _r0)				\
-	case x86_arch::_call:	                                        \
+	case Arch::_call:	                                        \
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		break;
 #define SYSCALL_DEF1_DYNSIZE(_call, _, _s0, _r0)			\
-	case x86_arch::_call:                                           \
+	case Arch::_call:                                               \
 		t->record_remote((void*)t->regs()._r0(), _s0);		\
 		break;
 #define SYSCALL_DEF1_STR(_call, _, _r0)					\
-	case x86_arch::_call:                                           \
+	case Arch::_call:                                               \
 		t->record_remote_str((void*)t->regs()._r0());		\
 		break;
 #define SYSCALL_DEF2(_call, _, _t0, _r0, _t1, _r1)			\
-	case x86_arch::_call:                                           \
+	case Arch::_call:                                               \
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		t->record_remote((void*)t->regs()._r1(), sizeof(_t1));	\
 		break;
 #define SYSCALL_DEF3(_call, _, _t0, _r0, _t1, _r1, _t2, _r2)		\
-	case x86_arch::_call:                                           \
+	case Arch::_call:                                               \
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		t->record_remote((void*)t->regs()._r1(), sizeof(_t1));	\
 		t->record_remote((void*)t->regs()._r2(), sizeof(_t2));	\
 		break;
 #define SYSCALL_DEF4(_call, _, _t0, _r0, _t1, _r1, _t2, _r2, _t3, _r3)	\
-	case x86_arch::_call:                                           \
+	case Arch::_call:                                               \
 		t->record_remote((void*)t->regs()._r0(), sizeof(_t0));	\
 		t->record_remote((void*)t->regs()._r1(), sizeof(_t1));	\
 		t->record_remote((void*)t->regs()._r2(), sizeof(_t2));	\
@@ -2294,7 +2299,7 @@ static void rec_process_syscall_arch(Task *t)
 
 #include "syscall_defs.h"
 
-	case SYS_clone:	{
+	case Arch::clone: {
 		long new_tid = t->regs().syscall_result_signed();
 		Task* new_task = t->session().find_task(new_tid);
 		unsigned long flags = (uintptr_t)pop_arg_ptr<void>(t);
@@ -2311,15 +2316,16 @@ static void rec_process_syscall_arch(Task *t)
 		new_task->push_event(SyscallEvent(syscallno));
 
 		/* record child id here */
-		new_task->record_remote((void*)t->regs().arg3(), sizeof(pid_t));
-		new_task->record_remote((void*)t->regs().arg4(), sizeof(pid_t));
+		int pid_size = sizeof(typename Arch::pid_t);
+		new_task->record_remote((void*)t->regs().arg3(), pid_size);
+		new_task->record_remote((void*)t->regs().arg4(), pid_size);
 
 		new_task->record_remote((void*)new_task->regs().arg5(),
 					sizeof(typename Arch::user_desc));
 		new_task->record_remote((void*)new_task->regs().arg3(),
-					sizeof(pid_t));
+					pid_size);
 		new_task->record_remote((void*)new_task->regs().arg4(),
-					sizeof(pid_t));
+					pid_size);
 
 		new_task->pop_syscall();
 
@@ -2331,7 +2337,7 @@ static void rec_process_syscall_arch(Task *t)
 
 		break;
 	}
-	case SYS_epoll_wait: {
+	case Arch::epoll_wait: {
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 		auto events = pop_arg_ptr<typename Arch::epoll_event>(t);
@@ -2349,11 +2355,11 @@ static void rec_process_syscall_arch(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-	case SYS_execve:
-		process_execve(t);
+	case Arch::execve:
+		process_execve<Arch>(t);
 		break;
 
-	case SYS_fcntl64: {
+	case Arch::fcntl64: {
 		int cmd = t->regs().arg2_signed();
 		switch (cmd) {
 		case F_DUPFD:
@@ -2396,7 +2402,7 @@ static void rec_process_syscall_arch(Task *t)
 		}
 		break;
 	}
-	case SYS_futex:	{
+	case Arch::futex: {
 		t->record_remote((void*)t->regs().arg1(), sizeof(int));
 		int op = (int)t->regs().arg2_signed() & FUTEX_CMD_MASK;
 
@@ -2422,9 +2428,9 @@ static void rec_process_syscall_arch(Task *t)
 
 		break;
 	}
-	case SYS_getxattr:
-	case SYS_lgetxattr:
-	case SYS_fgetxattr: {
+	case Arch::getxattr:
+	case Arch::lgetxattr:
+	case Arch::fgetxattr: {
 		ssize_t len = t->regs().syscall_result_signed();
 		void* value = (void*)t->regs().arg3();
 
@@ -2435,15 +2441,15 @@ static void rec_process_syscall_arch(Task *t)
 		}
 		break;
 	}
-	case SYS_ioctl:
+	case Arch::ioctl:
 		process_ioctl<Arch>(t, (int)t->regs().arg2_signed());
 		break;
 
-	case SYS_ipc:
+	case Arch::ipc:
 		process_ipc(t, (unsigned int)t->regs().arg1());
 		break;
 
-	case SYS_mmap: {
+	case Arch::mmap: {
 		typename Arch::mmap_args args;
 		t->read_mem((void*)t->regs().arg1(), &args);
 		process_mmap(t, syscallno, args.len,
@@ -2451,7 +2457,7 @@ static void rec_process_syscall_arch(Task *t)
 			     args.offset / 4096);
 		break;
 	}
-	case SYS_mmap2:
+	case Arch::mmap2:
 		process_mmap(t, syscallno, (size_t)t->regs().arg2(),
 			     (int)t->regs().arg3_signed(),
 			     (int)t->regs().arg4_signed(),
@@ -2459,7 +2465,7 @@ static void rec_process_syscall_arch(Task *t)
 			     (off_t)t->regs().arg6_signed());
 		break;
 
-	case SYS_nanosleep: {
+	case Arch::nanosleep: {
 		auto rem = pop_arg_ptr<typename Arch::timespec>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
@@ -2486,7 +2492,7 @@ static void rec_process_syscall_arch(Task *t)
 		finish_restoring_some_scratch(t, iter, &data);
 		break;
 	}
-	case SYS_open: {
+	case Arch::open: {
 		string pathname = t->read_c_str((void*)t->regs().arg1());
 		if (is_blacklisted_filename(pathname.c_str())) {
 			/* NB: the file will still be open in the
@@ -2500,8 +2506,8 @@ static void rec_process_syscall_arch(Task *t)
 		}
 		break;
 	}
-	case SYS_poll:
-	case SYS_ppoll: {
+	case Arch::poll:
+	case Arch::ppoll: {
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 		auto fds = pop_arg_ptr<typename Arch::pollfd>(t);
@@ -2515,7 +2521,7 @@ static void rec_process_syscall_arch(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-	case SYS_prctl:	{
+	case Arch::prctl: {
 		int size;
 		switch ((int)t->regs().arg1_signed()) {
 			/* See rec_prepare_syscall() for how these
@@ -2558,7 +2564,7 @@ static void rec_process_syscall_arch(Task *t)
 		}
 		break;
 	}
-	case SYS_quotactl: {
+	case Arch::quotactl: {
 		 int cmd = (int)t->regs().arg1_signed() & SUBCMDMASK;
 		 void* addr = (void*)t->regs().arg4();
 		 switch (cmd) {
@@ -2581,7 +2587,7 @@ static void rec_process_syscall_arch(Task *t)
 		 }
 		 break;
 	}
-	case SYS_read: {
+	case Arch::read: {
 		void* buf;
 		byte* iter;
 		void* data = nullptr;
@@ -2613,7 +2619,7 @@ static void rec_process_syscall_arch(Task *t)
 		}
 		break;
 	}
-	case SYS_recvmmsg: {
+	case Arch::recvmmsg: {
 		Registers r = t->regs();
 		int nmmsgs = r.syscall_result_signed();
 
@@ -2630,7 +2636,7 @@ static void rec_process_syscall_arch(Task *t)
 		record_and_restore_msgvec<Arch>(t, has_saved_ptr, nmmsgs, msg, oldmsg);
 		break;
 	}
-	case SYS_sendfile64: {
+	case Arch::sendfile64: {
 		loff_t* offset = pop_arg_ptr<loff_t>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
@@ -2647,18 +2653,18 @@ static void rec_process_syscall_arch(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-	case SYS_sendmmsg: {
+	case Arch::sendmmsg: {
 		auto msg = (typename Arch::mmsghdr*)t->regs().arg2();
 
 		record_each_msglen<Arch>(t, t->regs().syscall_result_signed(), msg);
 		break;
 	}
-	case SYS_socketcall:
+	case Arch::socketcall:
 		process_socketcall(t, (int)t->regs().arg1_signed(),
 		                   (void*)t->regs().arg2());
 		break;
 
-	case SYS_splice: {
+	case Arch::splice: {
 		loff_t* off_out = pop_arg_ptr<loff_t>(t);
 		loff_t* off_in = pop_arg_ptr<loff_t>(t);
 		byte* iter;
@@ -2682,7 +2688,7 @@ static void rec_process_syscall_arch(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-	case SYS_waitid: {
+	case Arch::waitid: {
 		auto infop = pop_arg_ptr<typename Arch::siginfo_t>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
@@ -2699,8 +2705,8 @@ static void rec_process_syscall_arch(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-	case SYS_waitpid:
-	case SYS_wait4: {
+	case Arch::waitpid:
+	case Arch::wait4: {
 		auto rusage = pop_arg_ptr<typename Arch::rusage>(t);
 		int* status = pop_arg_ptr<int>(t);
 		byte* iter;
@@ -2716,7 +2722,7 @@ static void rec_process_syscall_arch(Task *t)
 		if (rusage) {
 			restore_and_record_arg(t, rusage, &iter);
 			r.set_arg4((uintptr_t)rusage);
-		} else if (SYS_wait4 == syscallno) {
+		} else if (Arch::wait4 == syscallno) {
 			record_noop_data(t);
 		}
 		t->set_regs(r);
@@ -2724,8 +2730,8 @@ static void rec_process_syscall_arch(Task *t)
 		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
-	case SYS_write:
-	case SYS_writev:
+	case Arch::write:
+	case Arch::writev:
 		break;
 
 	case SYS_rrcall_init_buffers:
