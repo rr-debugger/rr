@@ -58,7 +58,7 @@ using namespace std;
 using namespace rr;
 
 enum SyscallDefType {
-	rep_UNDEFINED,	/* NB: this symbol must have the value 0 */
+	rep_UNDEFINED = 0, /* NB: this symbol must have the value 0 */
 	rep_EMU,
 	rep_EXEC,
 	rep_EXEC_RET_EMU,
@@ -101,7 +101,9 @@ static struct syscall_def syscall_defs[] = {
 #include "syscall_defs.h"
 };
 
-static struct syscall_def syscall_table[x86_arch::SYSCALL_COUNT];
+// Reserve a final element which is guaranteed to be an undefined syscall.
+// Negative and out-of-range syscall numbers are mapped to this element.
+static struct syscall_def syscall_table[x86_arch::SYSCALL_COUNT + 1];
 
 __attribute__((constructor))
 static void init_syscall_table()
@@ -1376,8 +1378,10 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 	}
 
 	if (syscall < 0 || syscall >= int(ALEN(syscall_table))) {
-		// map to 0, which is an invalid syscall.
-		syscall = 0;
+		// map to an invalid syscall.
+		syscall = ALEN(syscall_table) - 1;
+		// we ensure this when we construct the table
+		assert(syscall_table[syscall].type == rep_UNDEFINED);
 	}
 
 	def = &syscall_table[syscall];
