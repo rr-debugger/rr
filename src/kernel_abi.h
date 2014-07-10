@@ -332,7 +332,7 @@ struct base_arch : public wordsize {
 };
 
 struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
-	enum class Syscalls {
+	enum Syscalls {
 #define SYSCALLNO_X86(num)				\
 		dummy_ ## num = num - 1,
 #define SYSCALLNO_X86_64(num)
@@ -358,7 +358,7 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
 
 #include "syscall_defs.h"
 
-		COUNT
+		SYSCALL_COUNT
 	};
 };
 
