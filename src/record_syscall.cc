@@ -1418,7 +1418,7 @@ static void process_execve(Task* t)
 	stack_ptr++;
 
 	/* should now point to ELF Auxiliary Table */
-	static const int elf_aux[] = {
+	static const unsigned int elf_aux[] = {
 		AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK,
 		AT_PHDR, AT_PHENT, AT_PHNUM, AT_BASE, AT_FLAGS, AT_ENTRY,
 		AT_UID, AT_EUID, AT_GID, AT_EGID,
