@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-#define NUM_ITERATIONS 500
+#define NUM_ITERATIONS 250
 
 int main(int argc, char *argv[]) {
 	int i;
