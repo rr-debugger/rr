@@ -1164,10 +1164,8 @@ static int rec_prepare_syscall_arch(Task* t, void** kernel_sync_addr,
 }
 
 int rec_prepare_syscall(Task* t, void** kernel_sync_addr,
-                        uint32_t* sync_val)
-{
-	return rec_prepare_syscall_arch<x86_arch>(t, kernel_sync_addr, sync_val);
-}
+			uint32_t* sync_val)
+RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t, kernel_sync_addr, sync_val)
 
 /**
  * Write a trace data record that when replayed will be a no-op.  This
@@ -2740,6 +2738,4 @@ static void rec_process_syscall_arch(Task *t)
 }
 
 void rec_process_syscall(Task *t)
-{
-	rec_process_syscall_arch<x86_arch>(t);
-}
+RR_ARCH_FUNCTION(rec_process_syscall_arch, t->arch(), t)
