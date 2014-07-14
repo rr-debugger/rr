@@ -141,13 +141,11 @@ static void open_socket(struct dbg_context* dbg,
 		dbg->addr.sin_port = htons(port);
 		ret = ::bind(dbg->listen_fd,
 			     (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
-		int err = errno;
-		if (ret && (EADDRINUSE == err || EACCES == err)) {
+		if (ret && (EADDRINUSE == errno || EACCES == errno)) {
 			continue;
 		}
 		if (ret) {
-			FATAL() << strerror(err) <<"("<< err
-				<<"): Couldn't bind to port " << port;
+			FATAL() << "Couldn't bind to port " << port;
 		}
 
 		ret = listen(dbg->listen_fd, 1/*backlogged connection*/);
