@@ -141,7 +141,8 @@ static void open_socket(struct dbg_context* dbg,
 		dbg->addr.sin_port = htons(port);
 		ret = ::bind(dbg->listen_fd,
 			     (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
-		if (ret && (EADDRINUSE == errno || EACCES == errno)) {
+		if (ret && (EADDRINUSE == errno || EACCES == errno
+			    || EINVAL == errno)) {
 			continue;
 		}
 		if (ret) {
