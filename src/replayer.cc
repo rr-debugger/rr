@@ -148,7 +148,11 @@ static pid_t parent, child;
 // reads those params out.
 static int debugger_params_pipe[2];
 
-static uint64_t instruction_trace_at_event = 0;
+// Setting these causes us to trace instructions after
+// instruction_trace_at_event_start up to and including
+// instruction_trace_at_event_last
+static uint64_t instruction_trace_at_event_start = 0;
+static uint64_t instruction_trace_at_event_last = 0;
 
 static void debug_memory(Task* t)
 {
@@ -215,10 +219,15 @@ static WatchType watchpoint_type(DbgRequestType req)
 	}
 }
 
+static bool trace_instructions_up_to_event(uint64_t event)
+{
+	return event > instruction_trace_at_event_start &&
+		event <= instruction_trace_at_event_last;
+}
+
 static void maybe_singlestep_for_event(Task* t, struct dbg_request* req)
 {
-	if (session->current_trace_frame().global_time ==
-		instruction_trace_at_event) {
+	if (trace_instructions_up_to_event(session->current_trace_frame().global_time)) {
 		fputs("Stepping: ", stderr);
 		print_register_file_compact(stderr, &t->regs());
 		fprintf(stderr, " rbc:%lld\n", t->rbc_count());
@@ -531,11 +540,11 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (session.current_trace_frame().ev.type == EV_SCHED &&
-	    !instruction_trace_at_event) {
+	if (session.current_trace_frame().ev.type == EV_SCHED) {
 		struct trace_frame next_trace = session.ifstream().peek_frame();
 		while (EV_SCHED == next_trace.ev.type
-		       && next_trace.tid == t->rec_tid) {
+		       && next_trace.tid == t->rec_tid
+		       && !trace_instructions_up_to_event(next_trace.global_time)) {
 			session.ifstream() >> session.current_trace_frame();
 			next_trace = session.ifstream().peek_frame();
 		}
