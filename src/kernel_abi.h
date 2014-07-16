@@ -665,6 +665,14 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
 	};
 };
 
+#define RR_ARCH_FUNCTION(f, arch, args...) \
+{ \
+	switch (arch) { \
+	default: assert(0 && "Unknown architecture"); \
+	case x86: return f<x86_arch>(args); \
+	} \
+}
+
 } // namespace rr
 
 #endif /* RR_KERNEL_ABI_H */

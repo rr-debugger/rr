@@ -1261,6 +1261,9 @@ public:
 	/** Return the current regs of this. */
 	const Registers& regs();
 
+	/** Return the current arch of this. This can change due to exec(). */
+	supported_arch arch() { return regs().arch(); }
+
 	/**
 	 * Return the debug status, which is a bitfield comprising
 	 * |DebugStatus| bits (see above).
