@@ -49,7 +49,6 @@ void close_libpfm(void);
 
 void init_hpc(Task *t);
 void destroy_hpc(Task *t);
-void start_hpc(Task *t, int64_t val);
 void stop_hpc(Task *t);
 void reset_hpc(Task *t, int64_t val);
 

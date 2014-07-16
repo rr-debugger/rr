@@ -157,7 +157,7 @@ static void handle_ptrace_event(Task** tp)
 		Task* new_task = t->session().clone(
 			t, clone_flags_to_task_flags(flags_arg),
 			stack, tls, ctid, new_tid);
-		start_hpc(new_task, rr_flags()->max_rbc);
+		reset_hpc(new_task, rr_flags()->max_rbc);
 		// Skip past the ptrace event.
 		t->cont_syscall();
 		assert(t->pending_sig() == 0);
@@ -927,7 +927,7 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp)
 
 	Task* t = session->create_task(ae, session);
 	TaskGroup::shr_ptr initial_task_group = t->task_group();
-	start_hpc(t, rr_flags()->max_rbc);
+	reset_hpc(t, rr_flags()->max_rbc);
 
 	while (session->tasks().size() > 0) {
 		int by_waitpid;

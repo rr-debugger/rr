@@ -286,17 +286,6 @@ static void cleanup_hpc(Task* t)
 	counters->started = false;
 }
 
-/*
- * Starts the hpc.
- * @param t: the current execution context
- * @param reset: the counters are (if enabled) reset
- */
-void start_hpc(Task *t, int64_t val)
-{
-	t->hpc->rbc.attr.sample_period = val;
-	__start_hpc(t);
-}
-
 void reset_hpc(Task *t, int64_t val)
 {
 	if (t->hpc->started) {
