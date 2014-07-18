@@ -1547,3 +1547,8 @@ void EnvironmentBugDetector::notify_reached_syscall_during_replay(Task* t)
 	trace_rbc_count_at_last_geteuid32 = trace_rbc_count;
 	actual_rbc_count_at_last_geteuid32 = actual_rbc_count;
 }
+
+void cpuid(int code, int subrequest,
+	   unsigned int* a, unsigned int* c, unsigned int* d) {
+  asm volatile("cpuid":"=a"(*a),"=c"(*c),"=d"(*d):"a"(code),"c"(subrequest):"ebx");
+}

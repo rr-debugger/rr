@@ -565,4 +565,27 @@ private:
 	bool detected_cpuid_bug;
 };
 
+enum cpuid_requests {
+  CPUID_GETVENDORSTRING,
+  CPUID_GETFEATURES,
+  CPUID_GETTLB,
+  CPUID_GETSERIAL,
+  CPUID_GETXSAVE = 0x0D,
+
+  CPUID_INTELEXTENDED=0x80000000,
+  CPUID_INTELFEATURES,
+  CPUID_INTELBRANDSTRING,
+  CPUID_INTELBRANDSTRINGMORE,
+  CPUID_INTELBRANDSTRINGEND,
+};
+
+/** issue a single request to CPUID. Fits 'intel features', for instance
+ *  note that even if only "eax" and "edx" are of interest, other registers
+ *  will be modified by the operation, so we need to tell the compiler about it.
+ *  'code' is placed in EAX. 'subrequest' is placed in ECX.
+ *  *a, *c and *d receive EAX, ECX and EDX respectively.
+ */
+void cpuid(int code, int subrequest,
+	   unsigned int* a, unsigned int* c, unsigned int* d);
+
 #endif /* RR_UTIL_H_ */

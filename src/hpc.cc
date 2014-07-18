@@ -19,6 +19,7 @@
 
 #include "log.h"
 #include "task.h"
+#include "util.h"
 
 using namespace std;
 
@@ -57,47 +58,6 @@ static void libpfm_event_encoding(struct perf_event_attr* attr,
 	free(fstr);
 }
 
-
-enum cpuid_requests {
-  CPUID_GETVENDORSTRING,
-  CPUID_GETFEATURES,
-  CPUID_GETTLB,
-  CPUID_GETSERIAL,
-
-  CPUID_INTELEXTENDED=0x80000000,
-  CPUID_INTELFEATURES,
-  CPUID_INTELBRANDSTRING,
-  CPUID_INTELBRANDSTRINGMORE,
-  CPUID_INTELBRANDSTRINGEND,
-};
-
-/** issue a single request to CPUID. Fits 'intel features', for instance
- *  note that even if only "eax" and "edx" are of interest, other registers
- *  will be modified by the operation, so we need to tell the compiler about it.
- */
-static void cpuid(int code, unsigned int *a, unsigned int *d) {
-/* this asm returns 1 if CPUID is supported, 0 otherwise (ZF is also set accordingly)
- * add it later for full compatibility
-
-	pushfd ; get
-	pop eax
-	mov ecx, eax ; save
-	xor eax, 0x200000 ; flip
-	push eax ; set
-	popfd
-	pushfd ; and test
-	pop eax
-	xor eax, ecx ; mask changed bits
-	shr eax, 21 ; move bit 21 to bit 0
-	and eax, 1 ; and mask others
-	push ecx
-	popfd ; restore original flags
-	ret
-
- */
-  asm volatile("cpuid":"=a"(*a),"=d"(*d):"a"(code):"ecx","ebx");
-}
-
 /*
  * Find out the cpu model using the cpuid instruction.
  * Full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
@@ -115,8 +75,8 @@ enum cpu_type {
 };
 static cpu_type get_cpu_type()
 {
-	unsigned int cpu_type,eax,edx;
-	cpuid(CPUID_GETFEATURES,&eax,&edx);
+	unsigned int cpu_type, eax, ecx, edx;
+	cpuid(CPUID_GETFEATURES, 0, &eax, &ecx, &edx);
 	cpu_type = (eax & 0xF0FF0);
 	switch (cpu_type) {
 	case 0x006F0:
