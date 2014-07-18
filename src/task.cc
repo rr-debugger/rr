@@ -1656,10 +1656,19 @@ Task::record_current_event()
 
 static bool record_extra_regs(const Event& ev)
 {
-	return ev.type() == EV_SYSCALL
-		&& (ev.Syscall().no == SYS_rt_sigreturn ||
-		    ev.Syscall().no == SYS_sigreturn)
-		&& ev.Syscall().state == EXITING_SYSCALL;
+	switch (ev.type()) {
+	case EV_SYSCALL:
+		// sigreturn/rt_sigreturn restores register state
+		return (ev.Syscall().no == SYS_rt_sigreturn ||
+		        ev.Syscall().no == SYS_sigreturn)
+		       && ev.Syscall().state == EXITING_SYSCALL;
+	case EV_SIGNAL_HANDLER:
+		// entering a signal handler seems to clear FP/SSE regs,
+		// so record these effects.
+		return true;
+	default:
+		return false;
+	}
 }
 
 void

@@ -1209,6 +1209,15 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 	ASSERT(oldtask, t == oldtask) <<"emulate_signal_delivery changed task";
 	const struct trace_frame* trace = &t->current_trace_frame();
 
+	ASSERT(t, trace->ev.type == EV_SIGNAL_DELIVERY ||
+		  trace->ev.type == EV_SIGNAL_HANDLER) <<"Unexpected signal disposition";
+	// Entering a signal handler seems to clear FP/SSE registers for some
+	// reason. So we saved those cleared values, and now we restore that
+	// state so they're cleared during replay.
+	if (trace->ev.type == EV_SIGNAL_HANDLER) {
+		t->set_extra_regs(trace->recorded_extra_regs);
+	}
+
 	/* Restore the signal-hander frame data, if there was one. */
 	bool restored_sighandler_frame = 0 < t->set_data_from_trace();
 	if (restored_sighandler_frame) {
