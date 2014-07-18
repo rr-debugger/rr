@@ -8,10 +8,14 @@
 #include <stdio.h>
 #include <sys/user.h>
 
+#include <vector>
+
 #include "types.h"
 
 /**
  * A Registers object contains values for all general-purpose registers.
+ * These must include all registers used to pass syscall parameters and return
+ * syscall results.
  *
  * When reading register values, be sure to cast the result to the correct
  * type according to the kernel docs. E.g. int values should be cast
@@ -134,4 +138,33 @@ public:
 	size_t read_register(uint8_t* buf, unsigned int regno,
 			     bool* defined) const;
 };
+
+/**
+ * An ExtraRegisters object contains values for all user-space-visible
+ * registers other than those in Registers.
+ *
+ * Task is responsible for creating meaningful values of this class.
+ *
+ * On x86, the data is an XSAVE area.
+ */
+class ExtraRegisters {
+public:
+	// Create empty (uninitialized/unknown registers) value
+	ExtraRegisters() {}
+
+	// Set values from raw data
+	void set_to_raw_data(std::vector<byte>& consume_data)
+	{
+		std::swap(data, consume_data);
+	}
+	int data_size() const { return data.size(); }
+	const byte* data_bytes() const { return data.data(); }
+	bool empty() const { return data.empty(); }
+
+private:
+	friend class Task;
+
+	std::vector<byte> data;
+};
+
 #endif /* RR_REGISTERS_H_ */

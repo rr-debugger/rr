@@ -1261,6 +1261,9 @@ public:
 	/** Return the current regs of this. */
 	const Registers& regs();
 
+	/** Return the extra registers of this. */
+	const ExtraRegisters& extra_regs();
+
 	/**
 	 * Return the debug status, which is a bitfield comprising
 	 * |DebugStatus| bits (see above).
@@ -1337,6 +1340,9 @@ public:
 
 	/** Set the tracee's registers to |regs|. */
 	void set_regs(const Registers& regs);
+
+	/** Set the tracee's extra registers to |regs|. */
+	void set_extra_regs(const ExtraRegisters& regs);
 
 	/**
 	 * Program the debug registers to the vector of watchpoint
@@ -1899,6 +1905,9 @@ private:
 	// this cached value and set the "known" flag.
 	Registers registers;
 	bool registers_known;
+	// When |extra_registers_known|, we have saved our extra registers.
+	ExtraRegisters extra_registers;
+	bool extra_registers_known;
 	// Futex list passed to |set_robust_list()|.  We could keep a
 	// strong type for this list head and read it if we wanted to,
 	// but for now we only need to remember its address / size at

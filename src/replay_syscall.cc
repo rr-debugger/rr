@@ -1655,6 +1655,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		t->finish_emulated_syscall();
 		t->set_regs(trace->recorded_regs);
+		t->set_extra_regs(trace->recorded_extra_regs);
 		step->action = TSTEP_RETIRE;
 		return;
 

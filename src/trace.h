@@ -62,6 +62,10 @@ struct trace_frame {
 
 	Registers recorded_regs;
 	STRUCT_DELIMITER(end_exec_info);
+
+	// Only used when has_exec_info, but variable length (and usually not
+	// present) so we don't want to stuff it into exec_info
+	ExtraRegisters recorded_extra_regs;
 };
 
 /* XXX/pedant more accurately called a "mapped /region/", since we're

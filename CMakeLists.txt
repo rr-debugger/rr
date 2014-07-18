@@ -225,7 +225,8 @@ set(TESTS_WITH_PROGRAM
 )
 
 # A "test without program" is a foo.run driver script only, which does
-# something with one of the test executables above.
+# something with one of the test executables above (or has special rules
+# to build its own executable).
 #
 # NB: you must update this variable when adding a new test source
 # file.  The list is not generated automatically.
@@ -276,6 +277,17 @@ set(TESTS_WITHOUT_PROGRAM
   term_trace_syscall
 )
 
+# An "other test" is a test which doesn't have its own driver script but
+# needs its own rules for building an executable so can't be in BASIC_TESTS.
+#
+# NB: you must update this variable when adding a new test source
+# file.  The list is not generated automatically.
+#
+# Alphabetical, please.
+set(OTHER_TESTS
+  sigreturn
+)
+
 foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
   target_link_libraries(${test} -lrt)
@@ -285,7 +297,11 @@ endforeach(test)
 add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
 target_link_libraries(cpuid -lrt)
 
-foreach(test ${BASIC_TESTS})
+# sigreturn test needs to link with sigreturn_helper.S
+add_executable(sigreturn src/test/sigreturn.c src/test/sigreturn_helper.S)
+target_link_libraries(sigreturn -lrt)
+
+foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
   add_test(${test}
     bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}

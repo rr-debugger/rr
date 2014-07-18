@@ -14,6 +14,8 @@
 #include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/user.h>
+#include <elf.h>
 
 #include <limits>
 #include <set>
@@ -1652,6 +1654,14 @@ Task::record_current_event()
 	record_event(ev());
 }
 
+static bool record_extra_regs(const Event& ev)
+{
+	return ev.type() == EV_SYSCALL
+		&& (ev.Syscall().no == SYS_rt_sigreturn ||
+		    ev.Syscall().no == SYS_sigreturn)
+		&& ev.Syscall().state == EXITING_SYSCALL;
+}
+
 void
 Task::record_event(const Event& ev)
 {
@@ -1671,6 +1681,9 @@ Task::record_event(const Event& ev)
 		frame.insts = read_insts(hpc);
 #endif
 		frame.recorded_regs = regs();
+		if (record_extra_regs(ev)) {
+			frame.recorded_extra_regs = extra_regs();
+		}
 	}
 
 	if (should_dump_memory(this, frame)) {
@@ -1799,6 +1812,33 @@ Task::regs()
 	return registers;
 }
 
+static unsigned int xsave_area_size = 0;
+
+const ExtraRegisters&
+Task::extra_regs()
+{
+	if (!extra_registers_known) {
+		LOG(debug) <<"  (refreshing extra-register cache)";
+
+		if (xsave_area_size == 0) {
+			// We'll use the largest possible area all the time
+			// even when it might not be needed. Simpler that way.
+			unsigned int eax, ecx, edx;
+			cpuid(CPUID_GETXSAVE, 0, &eax, &ecx, &edx);
+			xsave_area_size = ecx;
+		}
+
+		extra_registers.data.resize(xsave_area_size);
+		struct iovec vec = { extra_registers.data.data(), xsave_area_size };
+		xptrace(PTRACE_GETREGSET, (void*)NT_X86_XSTATE, &vec);
+		ASSERT(this, vec.iov_len == xsave_area_size)
+			<<"Didn't get enough register data; expected "
+			<< xsave_area_size <<" but got "<< vec.iov_len;
+		extra_registers_known = true;
+	}
+	return extra_registers;
+}
+
 static ssize_t dr_user_word_offset(size_t i)
 {
 	assert(i < NUM_X86_DEBUG_REGS);
@@ -1844,6 +1884,7 @@ Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
 	LOG(debug) <<"resuming execution with "<< ptrace_req_name(how);
 	xptrace(how, nullptr, (void*)(uintptr_t)sig);
 	registers_known = false;
+	extra_registers_known = false;
 	if (RESUME_NONBLOCKING == wait_how) {
 		return true;
 	}
@@ -1900,8 +1941,19 @@ void
 Task::set_regs(const Registers& regs)
 {
 	registers = regs;
-	xptrace(PTRACE_SETREGS, nullptr, (void*)&registers);
+	xptrace(PTRACE_SETREGS, nullptr, &registers);
 	registers_known = true;
+}
+
+void
+Task::set_extra_regs(const ExtraRegisters& regs)
+{
+	ASSERT(this, !regs.empty())
+		<<"Trying to set empty ExtraRegisters";
+	extra_registers = regs;
+	struct iovec vec = { extra_registers.data.data(), extra_registers.data.size() };
+	xptrace(PTRACE_SETREGSET, (void*)NT_X86_XSTATE, &vec);
+	extra_registers_known = true;
 }
 
 enum WatchBytesX86 {

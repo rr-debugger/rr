@@ -24,7 +24,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 4
+#define TRACE_VERSION 5
 
 static ssize_t sizeof_trace_frame_event_info(void)
 {
@@ -208,12 +208,30 @@ TraceOfstream& operator<<(TraceOfstream& tof, const struct trace_frame& frame)
 	if (!tof.events.good()) {
 		FATAL() <<"Tried to save "<< nbytes <<" bytes to the trace, but failed";
 	}
+
+	if (frame.ev.has_exec_info) {
+		int extra_reg_bytes = frame.recorded_extra_regs.data_size();
+		tof.events.write((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
+		if (!tof.events.good()) {
+			FATAL() <<"Tried to save "<< sizeof(extra_reg_bytes)
+				<<" bytes to the trace, but failed";
+		}
+		if (extra_reg_bytes > 0) {
+			tof.events.write((const char*)frame.recorded_extra_regs.data_bytes(),
+					 extra_reg_bytes);
+			if (!tof.events.good()) {
+				FATAL() <<"Tried to save "<< extra_reg_bytes
+					<<" bytes to the trace, but failed";
+			}
+		}
+	}
+
 	tof.tick_time();
 	return tof;
 }
+
 TraceIfstream& operator>>(TraceIfstream& tif, struct trace_frame& frame)
 {
-	memset(&frame, 0, sizeof(frame));
 	// Read the common event info first, to see if we also have
 	// exec info to read.
 	tif.events.read((char*)&frame.begin_event_info,
@@ -221,6 +239,17 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct trace_frame& frame)
 	if (frame.ev.has_exec_info) {
 		tif.events.read((char*)&frame.begin_exec_info,
 				sizeof_trace_frame_exec_info());
+		int extra_reg_bytes;
+		tif.events.read((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
+		if (extra_reg_bytes > 0) {
+			std::vector<byte> data;
+			data.resize(extra_reg_bytes);
+			tif.events.read((char*)data.data(), extra_reg_bytes);
+			frame.recorded_extra_regs.set_to_raw_data(data);
+		}
+	} else {
+		memset(&frame.begin_exec_info, 0, sizeof_trace_frame_exec_info());
+		frame.recorded_extra_regs = ExtraRegisters();
 	}
 	tif.tick_time();
 	assert(tif.time() == frame.global_time);
