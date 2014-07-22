@@ -311,9 +311,15 @@ AddressSpace::dump() const
 }
 
 TrapType
-AddressSpace::get_breakpoint_type_at_ip(void* ip)
+AddressSpace::get_breakpoint_type_for_retired_insn(void* ip)
 {
 	void* addr = (byte*)ip - sizeof(breakpoint_insn);
+	return get_breakpoint_type_at_addr(addr);
+}
+
+TrapType
+AddressSpace::get_breakpoint_type_at_addr(void* addr)
+{
 	auto it = breakpoints.find(addr);
 	return it == breakpoints.end() ? TRAP_NONE : it->second->type();
 }

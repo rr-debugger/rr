@@ -176,6 +176,12 @@ public:
 	 */
 	shr_ptr clone();
 
+ 	/**
+	 * Like |clone()|, but return a session in "experimental"
+	 * mode, which allows free execution.  See experimenter.h.
+	 */
+	shr_ptr clone_experiment();
+
 	/**
 	 * Fork and exec the initial tracee task to run |ae|, and read
 	 * recorded events from |trace|.  |rec_tid| is the recorded
@@ -190,6 +196,15 @@ public:
 	void gc_emufs();
 
 	TraceIfstream& ifstream() { return *trace_ifstream; }
+
+	/** True when this session is dying, as determined by clients. */
+	bool dying() const { return is_dying; }
+
+	/**
+	 * True when this is an experimental session; see experimenter.h.
+	 */
+	bool experimental() const { return is_experimental; }
+
 	/**
 	 * The trace record that we are working on --- the next event
 	 * for replay to reach.
@@ -244,6 +259,16 @@ public:
 	}
 	Task* last_task() { return last_debugged_task; }
 
+ 	/**
+	 * Mark this session as dying.
+	 */
+	void start_dying() { is_dying = true; }
+	/**
+	 * If this session was previously thought to be dying, mark it
+	 * as longer dying.
+	 */
+	void revive() { is_dying = false; }
+
 	/**
 	 * Create a replay session that will use the trace specified
 	 * by the commad-line args |argc|/|argv|.  Return it.
@@ -256,7 +281,9 @@ public:
 
 private:
 	ReplaySession()
-		: last_debugged_task(nullptr)
+		: is_dying(false)
+		, is_experimental(false)
+		, last_debugged_task(nullptr)
 		, tgid_debugged(0)
 		, trace_frame()
 		, replay_step()
@@ -264,6 +291,13 @@ private:
 	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
+	// True when this (experimental) session appears to be dying,
+	// as determined by its client.
+	bool is_dying;
+	// True when this is an "experimental" session; see
+	// experimenter.h.  In the future, this will be a separate
+	// ExperimentSession class.
+	bool is_experimental;
 	Task* last_debugged_task;
 	pid_t tgid_debugged;
 	std::shared_ptr<TraceIfstream> trace_ifstream;

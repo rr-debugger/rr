@@ -639,9 +639,85 @@ static int xfer(struct dbg_context* dbg, const char* name, char* args)
 		dbg->req.target = dbg->query_thread;
 		return 1;
 	}
+	if (name == strstr(name, "siginfo")) {
+		if (args == strstr(args, "read")) {
+			dbg->req.type = DREQ_READ_SIGINFO;
+			args += strlen("read");
+			assert(':' == *args++);
+			assert(':' == *args++);
+
+			dbg->req.mem.addr = (void*)strtoul(args, &args, 16);
+			assert(',' == *args++);
+			
+			dbg->req.mem.len = strtoul(args, &args, 16);
+			assert('\0' == *args);
+
+			return 1;
+		}
+		if (args == strstr(args, "write")) {
+			dbg->req.type = DREQ_WRITE_SIGINFO;
+			return 1;
+		}
+		UNHANDLED_REQ(dbg) <<"Unhandled 'siginfo' request: "<< args;
+		return 0;
+	}
 
 	UNHANDLED_REQ(dbg) <<"Unhandled gdb xfer request: "<< name <<"("<< args <<")";
 	return 0;
+}
+
+/**
+ * Format |value| into |buf| in the manner gdb expects.  |buf| must
+ * point at a buffer with at least |1 + 2*DBG_MAX_REG_SIZE| bytes
+ * available.  Fewer bytes than that may be written, but |buf| is
+ * guaranteed to be null-terminated.
+ */
+static size_t print_reg_value(const DbgRegister& reg, char* buf) {
+	assert(reg.size <= DBG_MAX_REG_SIZE);
+	if (reg.defined) {
+		/* gdb wants the register value in native endianness.
+		 * reg.value read in native endianness is exactly that.
+		 */
+		for (size_t i = 0; i < reg.size; ++i) {
+			snprintf(&buf[2 * i], 3, "%02lx", (unsigned long)reg.value[i]);
+		}
+	} else {
+		for (size_t i = 0; i < reg.size; ++i) {
+			strcpy(&buf[2 * i], "xx");
+		}
+	}
+	return reg.size * 2;
+}
+
+/**
+ * Read the encoded register value in |strp| into |reg|.  |strp| may
+ * be mutated.
+ */
+static void read_reg_value(char** strp, DbgRegister* reg)
+{
+	char* str = *strp;
+
+	if ('x' == str[0]) {
+		reg->defined = false;
+		reg->size = 0;
+		return;
+	}
+
+	reg->defined = true;
+	// TODO: mixed-arch support
+	reg->size = sizeof(void*);
+	assert(2 * reg->size == strlen(str));
+	for (size_t i = 0; i < reg->size; ++i) {
+		char tmp = str[2];
+		str[2] = '\0';
+
+		reg->value[i] = strtoul(str, &str, 16);
+		assert('\0' == *str);
+
+		str[0] = tmp;
+	}
+
+	*strp = str;
 }
 
 static int query(struct dbg_context* dbg, char* payload)
@@ -701,6 +777,7 @@ static int query(struct dbg_context* dbg, char* payload)
 
 		snprintf(supported, sizeof(supported) - 1,
 			 "PacketSize=%x;QStartNoAckMode+;qXfer:auxv:read+"
+			 ";qXfer:siginfo:read+;qXfer:siginfo:write+"
 			 ";multiprocess+",
 			 dbg->outsize);
 		write_packet(dbg, supported);
@@ -976,6 +1053,8 @@ static int process_packet(struct dbg_context* dbg)
 	case 'M':
 		/* We can't allow the debugger to write arbitrary data
 		 * to memory, or the replay may diverge. */
+		// TODO: parse this packet in case some oddball gdb
+		// decides to send it instead of 'X'
 		write_packet(dbg, "");
 		ret = 0;
 		break;
@@ -989,12 +1068,16 @@ static int process_packet(struct dbg_context* dbg)
 		ret = 1;
 		break;
 	case 'P':
-		/* XXX we can't let gdb spray registers in general,
-		 * because it may cause replay to diverge.  But some
-		 * writes may be OK.  Let's see how far we can get
-		 * with ignoring these requests. */
-		write_packet(dbg, "");
-		ret = 0;
+		dbg->req.type = DREQ_SET_REG;
+		dbg->req.target = dbg->query_thread;
+		dbg->req.reg.name = strtoul(payload, &payload, 16);
+		assert('=' == *payload++);
+
+		read_reg_value(&payload, &dbg->req.reg);
+
+		assert('\0' == *payload);
+
+		ret = 1;
 		break;
 	case 'q':
 		ret = query(dbg, payload);
@@ -1396,29 +1479,6 @@ void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */)
 	consume_request(dbg);
 }
 
-/**
- * Format |value| into |buf| in the manner gdb expects.  |buf| must
- * point at a buffer with at least |1 + 2*DBG_MAX_REG_SIZE| bytes
- * available.  Fewer bytes than that may be written, but |buf| is
- * guaranteed to be null-terminated.
- */
-static size_t print_reg_value(const DbgRegister& reg, char* buf) {
-	assert(reg.size <= DBG_MAX_REG_SIZE);
-	if (reg.defined) {
-		/* gdb wants the register value in native endianness.
-		 * reg.value read in native endianness is exactly that.
-		 */
-		for (size_t i = 0; i < reg.size; ++i) {
-			snprintf(&buf[2 * i], 3, "%02lx", (unsigned long)reg.value[i]);
-		}
-	} else {
-		for (size_t i = 0; i < reg.size; ++i) {
-			strcpy(&buf[2 * i], "xx");
-		}
-	}
-	return reg.size * 2;
-}
-
 void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg)
 {
 	char buf[2 * DBG_MAX_REG_SIZE + 1];
@@ -1444,6 +1504,23 @@ void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file)
 		offset += print_reg_value(*it, &buf[offset]);
 	}
 	write_packet(dbg, buf);
+
+	consume_request(dbg);
+}
+
+void dbg_reply_set_reg(struct dbg_context* dbg, bool ok)
+{
+	assert(DREQ_SET_REG == dbg->req.type);
+
+	// TODO: what happens if we're forced to reply to a
+	// set-register request with |ok = false|, leading us to
+	// pretend not to understand the packet?  If, later, an
+	// experimental session needs the set-register request will it
+	// not be sent?
+	//
+	// We can't reply with an error packet here because gdb thinks
+	// that failed set-register requests are catastrophic.
+	write_packet(dbg, ok ? "OK" : "");
 
 	consume_request(dbg);
 }
@@ -1506,6 +1583,29 @@ void dbg_reply_detach(struct dbg_context* dbg)
 	assert(DREQ_DETACH <= dbg->req.type);
 
 	write_packet(dbg, "OK");
+
+	consume_request(dbg);
+}
+
+void dbg_reply_read_siginfo(struct dbg_context* dbg,
+			    const byte* si_bytes, ssize_t num_bytes)
+{
+	assert(DREQ_READ_SIGINFO == dbg->req.type);
+
+	if (num_bytes < 0) {
+		write_packet(dbg, "E01");
+	} else {
+		write_binary_packet(dbg, "l", si_bytes, num_bytes);
+	}
+
+	consume_request(dbg);
+}
+
+void dbg_reply_write_siginfo(struct dbg_context* dbg/*, TODO*/)
+{
+	assert(DREQ_WRITE_SIGINFO == dbg->req.type);
+
+	write_packet(dbg, "E01");
 
 	consume_request(dbg);
 }

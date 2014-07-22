@@ -40,6 +40,7 @@ add_executable(rr
   src/debugger_gdb.cc
   src/emufs.cc
   src/event.cc
+  src/experimenter.cc
   src/hpc.cc
   src/main.cc
   src/recorder.cc
@@ -94,6 +95,7 @@ set(BASIC_TESTS
   barrier
   big_buffers
   block
+  call_function
   chew_cpu
   clock
   clone

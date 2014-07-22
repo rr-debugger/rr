@@ -129,6 +129,9 @@ public:
 	 */
 	size_t total_registers() const { return DREG_NUM_LINUX_I386; }
 
+	// TODO: refactor me to use the DbgRegister helper from
+	// debugger_gdb.h.
+
 	/**
 	 * Write the value for register |regno| into |buf|, which should
 	 * be large enough to hold any register supported by the target.
@@ -137,6 +140,13 @@ public:
 	 */
 	size_t read_register(uint8_t* buf, unsigned int regno,
 			     bool* defined) const;
+
+	/**
+	 * Update the registe named |reg_name| to |value| with
+	 * |value_size| number of bytes.
+	 */
+	void write_register(unsigned reg_name,
+			    const uint8_t* value, size_t value_size);
 };
 
 /**

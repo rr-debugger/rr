@@ -280,6 +280,15 @@ ReplaySession::clone()
 	return session;
 }
 
+ReplaySession::shr_ptr
+ReplaySession::clone_experiment()
+{
+	auto session = clone();
+	session->is_experimental = true;
+	LOG(debug) <<"Cloned experiment session "<< session.get();
+	return session;
+}
+
 Task*
 ReplaySession::create_task(const struct args_env& ae, shr_ptr self,
 			   pid_t rec_tid)

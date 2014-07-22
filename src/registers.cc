@@ -244,3 +244,58 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
   }
 }
 
+template<typename T>
+static void set_register_value(const uint8_t* buf, size_t buf_size, T* src)
+{
+	assert(sizeof(*src) == buf_size);
+	memcpy(src, buf, sizeof(*src));
+}
+
+void
+Registers::write_register(unsigned reg_name,
+			  const uint8_t* value, size_t value_size)
+{
+	switch (reg_name) {
+	case DREG_EAX:
+		return set_register_value(value, value_size, &eax);
+	case DREG_ECX:
+		return set_register_value(value, value_size, &ecx);
+	case DREG_EDX:
+		return set_register_value(value, value_size, &edx);
+	case DREG_EBX:
+		return set_register_value(value, value_size, &ebx);
+	case DREG_ESP:
+		return set_register_value(value, value_size, &esp);
+	case DREG_EBP:
+		return set_register_value(value, value_size, &ebp);
+	case DREG_ESI:
+		return set_register_value(value, value_size, &esi);
+	case DREG_EDI:
+		return set_register_value(value, value_size, &edi);
+	case DREG_EIP:
+		return set_register_value(value, value_size, &eip);
+	case DREG_EFLAGS:
+		return set_register_value(value, value_size, &eflags);
+	case DREG_CS:
+		return set_register_value(value, value_size, &xcs);
+	case DREG_SS:
+		return set_register_value(value, value_size, &xss);
+	case DREG_DS:
+		return set_register_value(value, value_size, &xds);
+	case DREG_ES:
+		return set_register_value(value, value_size, &xes);
+	case DREG_FS:
+		return set_register_value(value, value_size, &xfs);
+	case DREG_GS:
+		return set_register_value(value, value_size, &xgs);
+
+	case DREG_FOSEG:
+	case DREG_MXCSR:
+		// TODO: can we get away with not writing these?
+		return;
+
+	// TODO remainder of register set
+	default:
+		FATAL() <<"Unknown register name "<< reg_name;
+	}
+}

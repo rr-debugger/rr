@@ -97,8 +97,9 @@ enum DbgRequestType {
 	DREQ_SET_RDWR_WATCH,
 	DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
 
-	/* Uses params.reg. */
+	/* Use params.reg. */
 	DREQ_GET_REG,
+	DREQ_SET_REG,
 
 	/* No parameters. */
 	DREQ_CONTINUE,
@@ -110,6 +111,20 @@ enum DbgRequestType {
 
 	/* Uses params.restart. */
 	DREQ_RESTART,
+
+	// gdb wants to read the current siginfo_t for a stopped
+	// tracee.  More importantly, this packet arrives at the very
+	// beginning of a |call foo()| experiment.
+	//
+	// Uses .mem for offset/len.
+	DREQ_READ_SIGINFO,
+
+	// gdb wants to write back siginfo_t to a tracee.  More
+	// importantly, this packet arrives before an experiment
+	// session for a |call foo()| is about to be torn down.
+	//
+	// TODO: actual interface NYI.
+	DREQ_WRITE_SIGINFO,
 };
 
 enum DbgRestartType {
@@ -299,6 +314,11 @@ void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& value);
 void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file);
 
 /**
+ * Pass |ok = true| iff the requested register was successfully set.
+ */
+void dbg_reply_set_reg(struct dbg_context* dbg, bool ok);
+
+/**
  * Reply to the DREQ_GET_STOP_REASON request.
  */
 void dbg_reply_get_stop_reason(struct dbg_context* dbg,
@@ -325,6 +345,19 @@ void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code);
  * awaiting it, wasting developer time.
  */
 void dbg_reply_detach(struct dbg_context* dbg);
+
+/**
+ * Pass the siginfo_t and its size (as requested by the debugger) in
+ * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
+ * |si_bytes = NULL|.
+ */
+void dbg_reply_read_siginfo(struct dbg_context* dbg,
+			    const byte* si_bytes, ssize_t num_bytes);
+/**
+ * Not yet implemented, but call this after a WRITE_SIGINFO request
+ * anyway.
+ */
+void dbg_reply_write_siginfo(struct dbg_context* dbg/*, TODO*/);
 
 /**
  * Create a checkpoint of the given Session with the given id. Delete the

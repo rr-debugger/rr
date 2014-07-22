@@ -482,12 +482,18 @@ public:
 	const std::string& exe_image() const { return exe; }
 
 	/**
-	 * Assuming this has raised a SIGTRAP and might be just past a
-	 * breakpoint instruction, return the type of breakpoint set
-	 * at |ip() - sizeof(breakpoint_insn)|, if one exists.
-	 * Otherwise return TRAP_NONE.
+	 * Assuming the last retired instruction has raised a SIGTRAP
+	 * and might be a breakpoint trap instruction, return the type
+	 * of breakpoint set at |ip() - sizeof(breakpoint_insn)|, if
+	 * one exists.  Otherwise return TRAP_NONE.
 	 */
-	TrapType get_breakpoint_type_at_ip(void* ip);
+	TrapType get_breakpoint_type_for_retired_insn(void* ip);
+
+ 	/**
+	 * Return the type of breakpoint that's been registered for
+	 * |addr|.
+	 */
+	TrapType get_breakpoint_type_at_addr(void* addr);
 
 	/**
 	 * Map |num_bytes| into this address space at |addr|, with

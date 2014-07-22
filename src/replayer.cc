@@ -35,6 +35,7 @@
 
 #include "debugger_gdb.h"
 #include "emufs.h"
+#include "experimenter.h"
 #include "hpc.h"
 #include "log.h"
 #include "replay_syscall.h"
@@ -108,16 +109,16 @@ static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 using namespace std;
 
 // |session| is used to drive replay.
-ReplaySession::shr_ptr session;
+static ReplaySession::shr_ptr session;
 // If we're being controlled by a debugger, then |last_debugger_start| is
 // the saved session we forked 'session' from.
-ReplaySession::shr_ptr debugger_restart_checkpoint;
+static ReplaySession::shr_ptr debugger_restart_checkpoint;
 // When we restart a replay session, we stash the debug context here
 // so that we can find it again in |maybe_create_debugger()|.  We want
 // to reuse the context after the restart, but we don't want to notify
 // the debugger about irrelevant stuff before our target
 // process/event.
-struct dbg_context* stashed_dbg;
+static struct dbg_context* stashed_dbg;
 
 // Checkpoints, indexed by checkpoint ID
 std::map<int, ReplaySession::shr_ptr> checkpoints;
@@ -295,6 +296,215 @@ static bool maybe_process_magic_command(Task* t, struct dbg_context* dbg,
 	return true;
 }
 
+void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
+			       Task* t, const struct dbg_request& req)
+{
+	assert(!dbg_is_resume_request(&req));
+
+	// These requests don't require a target task.
+	switch (req.type) {
+	case DREQ_RESTART:
+		ASSERT(t, false) <<"Can't handle RESTART request from here";
+		return;		// unreached
+	case DREQ_GET_CURRENT_THREAD:
+		dbg_reply_get_current_thread(dbg, get_threadid(t));
+		return;
+	case DREQ_GET_OFFSETS:
+		/* TODO */
+		dbg_reply_get_offsets(dbg);
+		return;
+	case DREQ_GET_THREAD_LIST: {
+		auto tasks = t->session().tasks();
+		size_t len = tasks.size();
+		vector<dbg_threadid_t> tids;
+		for (auto& kv : tasks) {
+			Task* t = kv.second;
+			tids.push_back(get_threadid(t));
+		}
+		dbg_reply_get_thread_list(dbg, tids.data(), len);
+		return;
+	}
+	case DREQ_INTERRUPT:
+		// Tell the debugger we stopped and await further
+		// instructions.
+		dbg_notify_stop(dbg, get_threadid(t), 0);
+		return;
+	case DREQ_DETACH:
+		LOG(info) <<("(debugger detached from us, rr exiting)");
+		dbg_reply_detach(dbg);
+		dbg_destroy_context(&dbg);
+		// Don't orphan tracees: their VMs are inconsistent
+		// because we've been using emulated tracing, so they
+		// can't resume normal execution.  And we wouldn't
+		// want them continuing to execute even if they could.
+		exit(0);
+		// not reached
+	default:
+		/* fall through to next switch stmt */
+		break;
+	}
+
+	Task* target = (req.target.tid > 0) ?
+		       t->session().find_task(req.target.tid) : t;
+	// These requests query or manipulate which task is the
+	// target, so it's OK if the task doesn't exist.
+	switch (req.type) {
+	case DREQ_GET_IS_THREAD_ALIVE:
+		dbg_reply_get_is_thread_alive(dbg, !!target);
+		return;
+	case DREQ_GET_THREAD_EXTRA_INFO:
+		dbg_reply_get_thread_extra_info(
+			dbg, target->name().c_str());
+		return;
+	case DREQ_SET_CONTINUE_THREAD:
+	case DREQ_SET_QUERY_THREAD:
+		dbg_reply_select_thread(dbg, !!target);
+		return;
+	default:
+		// fall through to next switch stmt
+		break;
+	}
+
+	// These requests require a valid target task.  We don't trust
+	// the debugger to use the information provided above to only
+	// query valid tasks.
+	if (!target) {
+		dbg_notify_no_such_thread(dbg, &req);
+		return;
+	}
+	switch (req.type) {
+	case DREQ_GET_AUXV: {
+		char filename[] = "/proc/01234567890/auxv";
+		int fd;
+		struct dbg_auxv_pair auxv[4096];
+		ssize_t len;
+
+		snprintf(filename, sizeof(filename) - 1,
+			 "/proc/%d/auxv", target->real_tgid());
+		fd = open(filename, O_RDONLY);
+		if (0 > fd) {
+			dbg_reply_get_auxv(dbg, NULL, -1);
+			return;
+		}
+
+		len = read(fd, auxv, sizeof(auxv));
+		if (0 > len) {
+			dbg_reply_get_auxv(dbg, NULL, -1);
+			return;
+		}
+
+		assert(0 == len % sizeof(auxv[0]));
+		len /= sizeof(auxv[0]);
+		dbg_reply_get_auxv(dbg, auxv, len);
+		return;
+	}
+	case DREQ_GET_MEM: {
+		size_t len;
+		byte* mem = read_mem(target, req.mem.addr, req.mem.len, &len);
+		dbg_reply_get_mem(dbg, mem, len);
+		free(mem);
+		return;
+	}
+	case DREQ_SET_MEM: {
+		if (maybe_process_magic_command(target, dbg, req)) {
+			return;
+		}
+		// We only allow the debugger to write memory if the
+		// memory will be written to an experimental session.
+		// Arbitrary writes to replay sessions cause
+		// divergence.
+		if (!session.experimental()) {
+			LOG(error) <<"Attempt to write memory outside experimental session";
+			dbg_reply_set_mem(dbg, false);
+			return;
+		}
+		LOG(debug) <<"Writing "<< req.mem.len
+			   <<" bytes to "<< req.mem.addr;
+		// TODO fallible
+		target->write_bytes_helper(req.mem.addr, req.mem.len,
+					   req.mem.data);
+		dbg_reply_set_mem(dbg, true);
+		return;
+	}
+	case DREQ_GET_REG: {
+		struct DbgRegister reg =
+			get_reg(&target->regs(), req.reg.name);
+		dbg_reply_get_reg(dbg, reg);
+		return;
+	}
+	case DREQ_GET_REGS: {
+		const Registers* regs = &target->regs();
+		size_t n_regs = regs->total_registers();
+		DbgRegfile file(n_regs);
+		for (size_t i = 0; i < n_regs; ++i) {
+			file.regs[i] = get_reg(regs, i);
+		}
+		dbg_reply_get_regs(dbg, file);
+		return;
+	}
+	case DREQ_SET_REG: {
+		if (!session.experimental()) {
+			LOG(error) <<"Attempt to write register outside experimental session";
+			dbg_reply_set_reg(dbg, false);
+			return;
+		}
+		if (req.reg.defined) {
+			Registers regs = target->regs();
+			regs.write_register(req.reg.name, req.reg.value,
+					    req.reg.size);
+			target->set_regs(regs);
+		}
+		dbg_reply_set_reg(dbg, true/*currently infallible*/);
+		return;
+	}
+	case DREQ_GET_STOP_REASON: {
+		dbg_reply_get_stop_reason(dbg, get_threadid(target),
+					  target->child_sig);
+		return;
+	}
+	case DREQ_SET_SW_BREAK: {
+		ASSERT(target, (req.mem.len ==
+				sizeof(AddressSpace::breakpoint_insn)))
+			<< "Debugger setting bad breakpoint insn";
+		bool ok = target->vm()->set_breakpoint(req.mem.addr,
+						       TRAP_BKPT_USER);
+		dbg_reply_watchpoint_request(dbg, ok ? 0 : 1);
+		return;
+	}
+	case DREQ_REMOVE_SW_BREAK:
+		target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
+		dbg_reply_watchpoint_request(dbg, 0);
+		return;
+	case DREQ_REMOVE_HW_BREAK:
+	case DREQ_REMOVE_RD_WATCH:
+	case DREQ_REMOVE_WR_WATCH:
+	case DREQ_REMOVE_RDWR_WATCH:
+		target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
+						watchpoint_type(req.type));
+		dbg_reply_watchpoint_request(dbg, 0);
+		return;
+	case DREQ_SET_HW_BREAK:
+	case DREQ_SET_RD_WATCH:
+	case DREQ_SET_WR_WATCH:
+	case DREQ_SET_RDWR_WATCH: {
+		bool ok = target->vm()->set_watchpoint(
+			req.mem.addr, req.mem.len, watchpoint_type(req.type));
+		dbg_reply_watchpoint_request(dbg, ok ? 0 : 1);
+		return;
+	}
+	case DREQ_READ_SIGINFO:
+		LOG(warn) <<"READ_SIGINFO request outside of experimental session";
+		dbg_reply_read_siginfo(dbg, nullptr, -1);
+		return;
+	case DREQ_WRITE_SIGINFO:
+		LOG(warn) <<"WRITE_SIGINFO request outside of experimental session";
+		dbg_reply_write_siginfo(dbg);
+		return;
+	default:
+		FATAL() <<"Unknown debugger request "<< req.type;
+	}
+}
+
 /**
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
@@ -313,7 +523,6 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 	while (1) {
 		struct dbg_request req = dbg_get_request(dbg);
 		req.suppress_debugger_stop = false;
-		Task* target = NULL;
 
 		if (dbg_is_resume_request(&req)) {
 			maybe_singlestep_for_event(t, &req);
@@ -321,188 +530,40 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			return req;
 		}
 
-		/* These requests don't require a target task. */
 		switch (req.type) {
 		case DREQ_RESTART:
 			// Debugger client requested that we restart execution
 			// from the beginning.  Restart our debug session.
 			LOG(debug) <<"  request to restart at event "
-				<< req.restart.param;
+				   << req.restart.param;
 			// If the user requested restarting to a
 			// different event, ensure that we change that
 			// param for the next replay session.
 			update_replay_target(-1, req.restart.param);
 			return req;
-		case DREQ_GET_CURRENT_THREAD:
-			dbg_reply_get_current_thread(dbg, get_threadid(t));
-			continue;
-		case DREQ_GET_OFFSETS:
-			/* TODO */
-			dbg_reply_get_offsets(dbg);
-			continue;
-		case DREQ_GET_THREAD_LIST: {
-			auto tasks = t->session().tasks();
-			size_t len = tasks.size();
-			vector<dbg_threadid_t> tids;
-			for (auto& kv : tasks) {
-				Task* t = kv.second;
-				tids.push_back(get_threadid(t));
-			}
-			dbg_reply_get_thread_list(dbg, tids.data(), len);
-			continue;
+
+		case DREQ_READ_SIGINFO: {
+			// TODO: we send back a dummy siginfo_t to gdb
+			// so that it thinks the request succeeded.
+			// If we don't, then it thinks the
+			// READ_SIGINFO failed and won't attempt to
+			// send WRITE_SIGINFO.  For |call foo()|
+			// frames, that means we don't know when the
+			// experiment session is ending.
+			byte si_bytes[req.mem.len];
+			memset(si_bytes, 0, sizeof(si_bytes));
+			dbg_reply_read_siginfo(dbg,
+					       si_bytes, sizeof(si_bytes));
+
+			experiment(*session, dbg, t->rec_tid, &req);
+			// TODO: RESTART requests, insn tracing ...
+			assert(dbg_is_resume_request(&req));
+			return req;
 		}
-		case DREQ_INTERRUPT:
-			/* Tell the debugger we stopped and await
-			 * further instructions. */
-			dbg_notify_stop(dbg, get_threadid(t), 0);
-			continue;
-		case DREQ_DETACH:
-			LOG(info) <<("(debugger detached from us, rr exiting)");
-			dbg_reply_detach(dbg);
-			dbg_destroy_context(&dbg);
-			// Don't orphan tracees: their VMs are inconsistent
-			// because we've been using emulated tracing, so they
-			// can't resume normal execution.  And we wouldn't
-			// want them continuing to execute even if they could.
-			exit(0);
-			// not reached
 		default:
-			/* fall through to next switch stmt */
 			break;
 		}
-
-		target = (req.target.tid > 0) ?
-			 t->session().find_task(req.target.tid) : t;
-		/* These requests query or manipulate which task is
-		 * the target, so it's OK if the task doesn't
-		 * exist. */
-		switch (req.type) {
-		case DREQ_GET_IS_THREAD_ALIVE:
-			dbg_reply_get_is_thread_alive(dbg, !!target);
-			continue;
-		case DREQ_GET_THREAD_EXTRA_INFO:
-			dbg_reply_get_thread_extra_info(
-				dbg, target->name().c_str());
-			continue;
-		case DREQ_SET_CONTINUE_THREAD:
-		case DREQ_SET_QUERY_THREAD:
-			dbg_reply_select_thread(dbg, !!target);
-			continue;
-		default:
-			/* fall through to next switch stmt */
-			break;
-		}
-
-		/* These requests require a valid target task.  We
-		 * don't trust the debugger to use the information
-		 * provided above to only query valid tasks. */
-		if (!target) {
-			dbg_notify_no_such_thread(dbg, &req);
-			continue;
-		}
-		switch (req.type) {
-		case DREQ_GET_AUXV: {
-			char filename[] = "/proc/01234567890/auxv";
-			int fd;
-			struct dbg_auxv_pair auxv[4096];
-			ssize_t len;
-
-			snprintf(filename, sizeof(filename) - 1,
-				 "/proc/%d/auxv", target->real_tgid());
-			fd = open(filename, O_RDONLY);
-			if (0 > fd) {
-				dbg_reply_get_auxv(dbg, NULL, -1);
-				continue;
-			}
-
-			len = read(fd, auxv, sizeof(auxv));
-			if (0 > len) {
-				dbg_reply_get_auxv(dbg, NULL, -1);
-				continue;
-			}
-
-			assert(0 == len % sizeof(auxv[0]));
-			len /= sizeof(auxv[0]);
-			dbg_reply_get_auxv(dbg, auxv, len);
-			continue;
-		}
-		case DREQ_GET_MEM: {
-			size_t len;
-			byte* mem = read_mem(target, req.mem.addr, req.mem.len,
-					     &len);
-			dbg_reply_get_mem(dbg, mem, len);
-			free(mem);
-			continue;
-		}
-		case DREQ_SET_MEM: {
-			if (maybe_process_magic_command(target, dbg, req)) {
-				continue;
-			}
-			// We can't allow the debugger to write
-			// arbitrary data - * to memory, or the replay
-			// may diverge.
-			//
-			// TODO: allow this by creating throwaway
-			// superfork clones as needed.
-			dbg_reply_set_mem(dbg, false);
-			continue;
-		}
-		case DREQ_GET_REG: {
-			req.reg = get_reg(&target->regs(), req.reg.name);
-			dbg_reply_get_reg(dbg, req.reg);
-			continue;
-		}
-		case DREQ_GET_REGS: {
-			const Registers* regs = &target->regs();
-			size_t n_regs = regs->total_registers();
-			DbgRegfile file(n_regs);
-			for (size_t i = 0; i < n_regs; ++i) {
-				file.regs[i] = get_reg(regs, i);
-			}
-			dbg_reply_get_regs(dbg, file);
-			continue;
-		}
-		case DREQ_GET_STOP_REASON: {
-			dbg_reply_get_stop_reason(dbg, get_threadid(target),
-						  target->child_sig);
-			continue;
-		}
-		case DREQ_SET_SW_BREAK: {
-			ASSERT(target,
-			       (req.mem.len ==
-				sizeof(AddressSpace::breakpoint_insn)))
-				<< "Debugger setting bad breakpoint insn";
-			bool ok = target->vm()->set_breakpoint(req.mem.addr,
-							       TRAP_BKPT_USER);
-			dbg_reply_watchpoint_request(dbg, ok ? 0 : 1);
-			continue;
-		}
-		case DREQ_REMOVE_SW_BREAK:
-			target->vm()->remove_breakpoint(req.mem.addr,
-							TRAP_BKPT_USER);
-			dbg_reply_watchpoint_request(dbg, 0);
-			continue;
-		case DREQ_REMOVE_HW_BREAK:
-		case DREQ_REMOVE_RD_WATCH:
-		case DREQ_REMOVE_WR_WATCH:
-		case DREQ_REMOVE_RDWR_WATCH:
-			target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
-							watchpoint_type(req.type));
-			dbg_reply_watchpoint_request(dbg, 0);
-			continue;
-		case DREQ_SET_HW_BREAK:
-		case DREQ_SET_RD_WATCH:
-		case DREQ_SET_WR_WATCH:
-		case DREQ_SET_RDWR_WATCH: {
-			bool ok = target->vm()->set_watchpoint(
-				req.mem.addr, req.mem.len,
-				watchpoint_type(req.type));
-			dbg_reply_watchpoint_request(dbg, ok ? 0 : 1);
-			continue;
-		}
-		default:
-			FATAL() <<"Unknown debugger request "<< req.type;
-		}
+		dispatch_debugger_request(*session, dbg, t, req);
 	}
 }
 
@@ -809,7 +870,7 @@ static TrapType compute_trap_type(Task* t, int target_sig,
 	/* We're trying to replay a deterministic SIGTRAP, or we're
 	 * replaying an async signal. */
 
-	trap_type = t->vm()->get_breakpoint_type_at_ip(t->ip());
+	trap_type = t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
 	if (TRAP_BKPT_USER == trap_type || TRAP_BKPT_INTERNAL == trap_type) {
 		assert(is_breakpoint_trap(t));
 		return trap_type;
@@ -1886,9 +1947,14 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 			return true; // not reached
 		}
 
-		/* Currently we only understand software breakpoints
-		 * and successful stepi's. */
-		assert(SIGTRAP == t->child_sig && "Unknown trap");
+		TrapType pending_bp =
+			t->vm()->get_breakpoint_type_at_addr(t->ip());
+		TrapType retired_bp =
+			t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
+		ASSERT(t, (SIGTRAP == t->child_sig
+			   || TRAP_BKPT_USER == pending_bp))
+			<<"Expected either SIGTRAP at $ip "<< t->ip()
+			<<" or USER breakpoint just before it";
 
 		// NBB: very little effort has been made to handle
 		// corner cases where multiple
@@ -1896,14 +1962,35 @@ static bool replay_one_trace_frame(struct dbg_context* dbg,
 		// simultaneously.  These cases will be addressed as
 		// they arise in practice.
 		void* watch_addr = nullptr;
-		if (TRAP_BKPT_USER ==
-		    t->vm()->get_breakpoint_type_at_ip(t->ip())) {
-			LOG(debug) <<"  "<< t->tid <<"(rec:"<< t->rec_tid
-				   <<"): hit debugger breakpoint at ip "
+		if (SIGTRAP != t->child_sig) {
+			assert(TRAP_BKPT_USER == pending_bp);
+			LOG(debug) <<"hit debugger breakpoint BEFORE ip "
+				   << t->ip() <<" for "<< signalname(t->child_sig);
+			// A signal was raised /just/ before a trap
+			// instruction for a SW breakpoint.  This is
+			// observed when debuggers write trap
+			// instructions into no-exec memory, for
+			// example the stack.
+			//
+			// We report the breakpoint before any signal
+			// that might have been raised in order to let
+			// the debugger do something at the breakpoint
+			// insn; possibly clearing the breakpoint and
+			// changing the $ip.  Otherwise, we expect the
+			// debugger to clear the breakpoint and resume
+			// execution, which should raise the original
+			// signal again.
+#ifdef DEBUGTAG
+			siginfo_t si;
+			t->get_siginfo(&si);
+			psiginfo(&si, "  siginfo for signal-stop:\n    ");
+#endif
+		} else if (TRAP_BKPT_USER == retired_bp) {
+			LOG(debug) <<"hit debugger breakpoint at ip "
 				   << t->ip();
-			/* SW breakpoint: $ip is just past the
-			 * breakpoint instruction.  Move $ip back
-			 * right before it. */
+			// SW breakpoint: $ip is just past the
+			// breakpoint instruction.  Move $ip back
+			// right before it.
 			t->move_ip_before_breakpoint();
 		} else if (DS_SINGLESTEP & t->debug_status()) {
 			LOG(debug) <<"  finished debugger stepi";

@@ -7,12 +7,27 @@
 #include "types.h"
 #include "util.h"
 
+struct dbg_context;
+struct dbg_request;
+class ReplaySession;
+
 /**
  * Replay the trace.  argc, argv, and envp are this process's
  * parameters.
  * Returns an exit code: 0 on success.
  */
 int replay(int argc, char* argv[], char** envp);
+
+/**
+ * Process the single debugger request |req|, made by |dbg| targeting
+ * |t|, inside the session |session|.
+ *
+ * Callers should implement any special semantics they want for
+ * particular debugger requests before calling this helper, to do
+ * generic processing.
+ */
+void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
+			       Task* t, const struct dbg_request& req);
 
 /**
  * Open a temporary debugging connection for |t| and service requests
