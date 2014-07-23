@@ -8,10 +8,10 @@
 
 #include "debugger_gdb.h"
 #include "log.h"
+#include "remote_syscalls.h"
 #include "replayer.h"
 #include "session.h"
 #include "task.h"
-#include "util.h"
 
 // The global experiment session, of which there can only be one at a
 // time currently.  See long comment at the top of experimenter.h.
@@ -34,14 +34,12 @@ static void execute_syscall(Task* t)
 {
 	t->finish_emulated_syscall();
 
-	struct current_state_buffer state;
-	prepare_remote_syscalls(t, &state);
-	remote_syscall6(t, &state, state.regs.original_syscallno(),
-			state.regs.arg1(), state.regs.arg2(),
-			state.regs.arg3(), state.regs.arg4(),
-			state.regs.arg5(), state.regs.arg6());
-	state.regs.set_syscall_result(t->regs().syscall_result());
-	finish_remote_syscalls(t, &state);
+	AutoRemoteSyscalls remote(t);
+	remote.syscall(remote.regs().original_syscallno(),
+		       remote.regs().arg1(), remote.regs().arg2(),
+		       remote.regs().arg3(), remote.regs().arg4(),
+		       remote.regs().arg5(), remote.regs().arg6());
+	remote.regs().set_syscall_result(t->regs().syscall_result());
 }
 
 static void process_syscall(Task* t, int syscallno)

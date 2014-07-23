@@ -9,6 +9,7 @@
 
 #include "emufs.h"
 #include "log.h"
+#include "remote_syscalls.h"
 #include "task.h"
 #include "util.h"
 
@@ -161,12 +162,11 @@ RecordSession::create(const string& exe_path)
 }
 
 static void
-remap_shared_mmap(Task* t, struct current_state_buffer* state,
-		  ReplaySession& session,
+remap_shared_mmap(AutoRemoteSyscalls& remote, ReplaySession& session,
 		  const Mapping& m, const MappableResource& r)
 {
 	LOG(debug) <<"    remapping shared region at "<< m.start <<"-"<< m.end;
-	remote_syscall2(t, state, SYS_munmap, m.start, m.num_bytes());
+	remote.syscall(SYS_munmap, m.start, m.num_bytes());
 	// NB: we don't have to unmap then re-map |t->vm()|'s idea of
 	// the emulated file mapping.  Though we'll be remapping the
 	// *real* OS mapping in |t| to a different file, that new
@@ -179,28 +179,28 @@ remap_shared_mmap(Task* t, struct current_state_buffer* state,
 	int remote_fd;
 	{
 		string path = emufile->proc_path();
-		restore_mem child_path(t, state, path.c_str());
+		AutoRestoreMem child_path(remote, path.c_str());
 		int oflags = (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ?
 			     O_RDWR : O_RDONLY;
-		remote_fd = remote_syscall2(t, state, SYS_open,
-					    static_cast<void*>(child_path), oflags);
+		remote_fd = remote.syscall(SYS_open,
+					   static_cast<void*>(child_path), oflags);
 		if (0 > remote_fd) {
 			FATAL() <<"Couldn't open "<< path <<" in tracee";
 		}
 	}
 	void* addr = (void*)
-		     remote_syscall6(t, state, SYS_mmap2,
-				     m.start, m.num_bytes(),
-				     m.prot,
-				     // The remapped segment *must* be
-				     // remapped at the same address,
-				     // or else many things will go
-				     // haywire.
-				     m.flags | MAP_FIXED,
-				     remote_fd, m.offset / page_size());
-	ASSERT(t, addr == m.start);
+		     remote.syscall(SYS_mmap2,
+				    m.start, m.num_bytes(),
+				    m.prot,
+				    // The remapped segment *must* be
+				    // remapped at the same address,
+				    // or else many things will go
+				    // haywire.
+				    m.flags | MAP_FIXED,
+				    remote_fd, m.offset / page_size());
+	ASSERT(remote.task(), addr == m.start);
 
-	remote_syscall1(t, state, SYS_close, remote_fd);
+	remote.syscall(SYS_close, remote_fd);
 }
 
 ReplaySession::shr_ptr
@@ -243,35 +243,33 @@ ReplaySession::clone()
 		session->track(clone_leader);
 		LOG(debug) <<"  forked new group leader "<< clone_leader->tid;
 
-		struct current_state_buffer state;
-		prepare_remote_syscalls(clone_leader, &state);
-
-		for (auto& kv : clone_leader->vm()->memmap()) {
-			const Mapping& m = kv.first;
-			const MappableResource& r = kv.second;
-			if (!r.is_shared_mmap_file()) {
-				continue;
+		{
+			AutoRemoteSyscalls remote(clone_leader);
+			for (auto& kv : clone_leader->vm()->memmap()) {
+				const Mapping& m = kv.first;
+				const MappableResource& r = kv.second;
+				if (!r.is_shared_mmap_file()) {
+					continue;
+				}
+				remap_shared_mmap(remote, *session, m, r);
 			}
-			remap_shared_mmap(clone_leader, &state, *session,
-					  m, r);
+
+			for (auto t : group_leader->task_group()->task_set()) {
+				if (group_leader == t) {
+					continue;
+				}
+				LOG(debug) <<"    cloning "<< t->rec_tid;
+
+				if (t->is_probably_replaying_syscall()) {
+					t->finish_emulated_syscall();
+				}
+				Task* t_clone = t->os_clone_into(clone_leader,
+								 remote);
+				t_clone->session_replay = session.get();
+				session->track(t_clone);
+				t_clone->copy_state(t);
+			}
 		}
-
-		for (auto t : group_leader->task_group()->task_set()) {
-			if (group_leader == t) {
-				continue;
-			}
-			LOG(debug) <<"    cloning "<< t->rec_tid;
-
-			if (t->is_probably_replaying_syscall()) {
-				t->finish_emulated_syscall();
-			}
-			Task* t_clone = t->os_clone_into(clone_leader, &state);
-			t_clone->session_replay = session.get();
-			session->track(t_clone);
-			t_clone->copy_state(t);
-		}
-		finish_remote_syscalls(clone_leader, &state);
-
 		LOG(debug) <<"  restoring group-leader state ...";
 		clone_leader->copy_state(group_leader);
 	}

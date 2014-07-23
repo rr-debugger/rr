@@ -13,6 +13,7 @@
 #include "util.h"
 #include "vm.h"
 
+class AutoRemoteSyscalls;
 class Session;
 class RecordSession;
 class ReplaySession;
@@ -1154,14 +1155,13 @@ private:
 	 * to be mapped --- and this is asserted --- or nullptr if
 	 * there are no expectations.
 	 */
-	void* init_syscall_buffer(struct current_state_buffer* state,
-				  void* map_hint);
+	void* init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint);
 
 	/**
 	 * Share the desched-event fd that this task has already
 	 * opened to this process when |share_desched_fd|.
 	 */
-	void init_desched_fd(struct current_state_buffer* state,
+	void init_desched_fd(AutoRemoteSyscalls& remote,
 			     struct rrcall_init_buffers_params* args,
 			     int share_desched_fd);
 
@@ -1194,8 +1194,7 @@ private:
 	 * create the new child.
 	 */
 	Task* os_fork_into(Session* session);
-	Task* os_clone_into(Task* task_leader,
-			    struct current_state_buffer* state);
+	Task* os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote);
 
 	/**
 	 * Return the trace fstream that we're using, whether in
@@ -1227,7 +1226,7 @@ private:
 	 * arguments are as for |Task::clone()| above.
 	 */
 	static Task* os_clone(Task* parent, Session* session,
-			      struct current_state_buffer* state,
+			      AutoRemoteSyscalls& remote,
 			      pid_t rec_child_tid,
 			      unsigned base_flags,
 			      void* stack = nullptr,

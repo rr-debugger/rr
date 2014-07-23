@@ -19,6 +19,7 @@
 #include "registers.h"
 #include "types.h"
 
+class AutoRemoteSyscalls;
 class Task;
 struct trace_frame;
 
@@ -322,17 +323,6 @@ int clone_flags_to_task_flags(int flags_arg);
  */
 int get_ipc_command(int raw_cmd);
 
-static const byte syscall_insn[] = { 0xcd, 0x80 };
-
-// TODO: RAII-ify me and helpers below.
-struct current_state_buffer {
-	pid_t pid;
-	Registers regs;
-	int code_size;
-	byte code_buffer[sizeof(syscall_insn)];
-	void* start_addr;
-};
-
 /**
  * Return the argument rounded up to the nearest multiple of the
  * system |page_size()|.
@@ -405,120 +395,10 @@ int create_shmem_segment(const char* name, size_t num_bytes,
 void resize_shmem_segment(int fd, size_t num_bytes);
 
 /**
- * Prepare |t| for a series of remote syscalls.  The caller must
- * treat the outparam |state| as an immutable token while it wishes to
- * make syscalls.
- *
- * NBBB!  Before preparing for a series of remote syscalls, the caller
- * *must* ensure the callee will not receive any signals.  This code
- * does not attempt to deal with signals.
- */
-void prepare_remote_syscalls(Task* t, struct current_state_buffer* state);
-
-/**
- * Cookie used to restore stomped memory.  Users should treat these as
- * opaque and immutable.
- */
-class restore_mem {
-public:
-	/**
-	 * Write |mem| into |t|'s address space in such a way that the write
-	 * can be undone.  |t| must already have been prepared for remote
-	 * syscalls, in |state|.  The address of the tmp mem in |t|'s
-	 * address space is available via operator void*().
-	 */
-	restore_mem(Task* t, struct current_state_buffer* state,
-		    const byte* mem, ssize_t num_bytes)
-	{
-		init(t, state, mem, num_bytes);
-	}
-
-	/**
-	 * Convenience constructor for pushing a C string |str|, including
-	 * the trailing '\0' byte.
-	 */
-	restore_mem(Task* t, struct current_state_buffer* state,
-		    const char* str)
-	{
-		init(t, state, (const byte*)str, strlen(str) + 1/*null byte*/);
-	}
-
-	~restore_mem();
-
-	operator void*() const { return addr; }
-
-private:
-	void init(Task* t, struct current_state_buffer* state,
-		  const byte* mem, ssize_t num_bytes);
-
-	/* Associated task. */
-	Task* t;
-	/* Current state. */
-	struct current_state_buffer* state;
-	/* Address of tmp mem. */
-	void* addr;
-	/* Pointer to saved data. */
-	byte* data;
-	/* (We keep this around for error checking.) */
-	void* saved_sp;
-	/* Length of tmp mem. */
-	size_t len;
-
-	restore_mem& operator=(const restore_mem&) = delete;
-	restore_mem(const restore_mem&) = delete;
-	void* operator new(size_t) = delete;
-	void operator delete(void*) = delete;
-};
-
-/**
  * Arranges for 'fd' to be transmitted to this process and returns
  * our opened version of it.
  */
-int retrieve_fd(Task* t, struct current_state_buffer* state, int fd);
-
-/**
- * Remotely invoke in |t| the specified syscall with the given
- * arguments.  The arguments must of course be valid in |t|, and no
- * checking of that is done by this function.
- *
- * If |wait| is |WAIT|, the syscall is finished in |t| and the
- * result is returned.  Otherwise if it's |DONT_WAIT|, the syscall is
- * initiated but *not* finished in |t|, and the return value is
- * undefined.  Call |wait_remote_syscall()| to finish the syscall and
- * get the return value.
- */
-enum { WAIT = 1, DONT_WAIT = 0 };
-long remote_syscall(Task* t, struct current_state_buffer* state,
-		    int wait, int syscallno,
-		    long a1, long a2, long a3, long a4, long a5, long a6);
-/**
- * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
- * |remote_syscall()| to finish, returning the result.
- */
-long wait_remote_syscall(Task* t, struct current_state_buffer* state,
-			 int syscallno);
-/**
- * Undo in |t| any preparations that were made for a series of
- * remote syscalls.
- */
-void finish_remote_syscalls(Task* t, struct current_state_buffer* state);
-
-#define remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, _a6)	\
-	remote_syscall(_c, _s, WAIT, _no,				\
-		       (uintptr_t)(_a1), (uintptr_t)(_a2), (uintptr_t)(_a3), \
-		       (uintptr_t)(_a4), (uintptr_t)(_a5), (uintptr_t)(_a6))
-#define remote_syscall5(_c, _s, _no, _a1, _a2, _a3, _a4, _a5)		\
-	remote_syscall6(_c, _s, _no, _a1, _a2, _a3, _a4, _a5, 0)
-#define remote_syscall4(_c, _s, _no, _a1, _a2, _a3, _a4)	\
-	remote_syscall5(_c, _s, _no, _a1, _a2, _a3, _a4, 0)
-#define remote_syscall3(_c, _s, _no, _a1, _a2, _a3)	\
-	remote_syscall4(_c, _s, _no, _a1, _a2, _a3, 0)
-#define remote_syscall2(_c, _s, _no, _a1, _a2)		\
-	remote_syscall3(_c, _s, _no, _a1, _a2, 0)
-#define remote_syscall1(_c, _s, _no, _a1)	\
-	remote_syscall2(_c, _s, _no, _a1, 0)
-#define remote_syscall0(_c, _s, _no)		\
-	remote_syscall1(_c, _s, _no, 0)
+int retrieve_fd(AutoRemoteSyscalls& remote, int fd);
 
 /**
  * At thread exit time, undo the work that init_buffers() did.

@@ -49,6 +49,7 @@
 #include "log.h"
 #include "recorder.h"		// for terminate_recording()
 #include "recorder_sched.h"
+#include "remote_syscalls.h"
 #include "session.h"
 #include "syscalls.h"
 #include "task.h"
@@ -1215,10 +1216,6 @@ void rec_prepare_restart_syscall(Task* t)
 static void init_scratch_memory(Task *t)
 {
 	const int scratch_size = 512 * page_size();
-	/* initialize the scratchpad for blocking system calls */
-	struct current_state_buffer state;
-	prepare_remote_syscalls(t, &state);
-
 	size_t sz = scratch_size;
 	// The PROT_EXEC looks scary, and it is, but it's to prevent
 	// this region from being coalesced with another anonymous
@@ -1228,13 +1225,14 @@ static void init_scratch_memory(Task *t)
 	int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 	int fd = -1;
 	off64_t offset_pages = 0;
-
-	t->scratch_ptr = (void*)remote_syscall6(t, &state, SYS_mmap2,
-						0, sz, prot, flags,
-						fd, offset_pages);
-	t->scratch_size = scratch_size;
-	finish_remote_syscalls(t, &state);
-
+	{
+		/* initialize the scratchpad for blocking system calls */
+		AutoRemoteSyscalls remote(t);
+		t->scratch_ptr = (void*)remote.syscall(SYS_mmap2,
+						       0, sz, prot, flags,
+						       fd, offset_pages);
+		t->scratch_size = scratch_size;
+	}
 	// record this mmap for the replay
 	Registers r = t->regs();
 	uintptr_t saved_result = r.syscall_result();

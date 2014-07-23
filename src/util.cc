@@ -40,6 +40,7 @@
 #include "kernel_abi.h"
 #include "log.h"
 #include "recorder_sched.h"
+#include "remote_syscalls.h"
 #include "replayer.h"
 #include "session.h"
 #include "syscalls.h"
@@ -1067,51 +1068,6 @@ void resize_shmem_segment(int fd, size_t num_bytes)
 	}
 }
 
-void prepare_remote_syscalls(Task* t, struct current_state_buffer* state)
-{
-	/* Save current state of |t|. */
-	memset(state, 0, sizeof(*state));
-	state->pid = t->tid;
-	state->regs = t->regs();
-	state->code_size = sizeof(syscall_insn);
-	state->start_addr = (byte*)state->regs.ip();
-	t->read_bytes(state->start_addr, state->code_buffer);
-	/* Inject phony syscall instruction. */
-	t->write_bytes(state->start_addr, syscall_insn);
-}
-
-void
-restore_mem::init(Task* t_, struct current_state_buffer* state_,
-		  const byte* mem, ssize_t num_bytes)
-{
-	t = t_;
-	state = state_;
-	len = num_bytes;
-	saved_sp = (void*)state->regs.sp();
-
-	state->regs.set_sp(state->regs.sp() - len);
-	t->set_regs(state->regs);
-	addr = (void*)state->regs.sp();
-
-	data = (byte*)malloc(len);
-	t->read_bytes_helper(addr, len, data);
-
-	if (mem) {
-		t->write_bytes_helper(addr, len, mem);
-	}
-}
-
-restore_mem::~restore_mem()
-{
-	assert(saved_sp == (byte*)state->regs.sp() + len);
-
-	t->write_bytes_helper(addr, len, data);
-	free(data);
-
-	state->regs.set_sp(state->regs.sp() + len);
-	t->set_regs(state->regs);
-}
-
 static void write_socketcall_args(Task* t, void* remote_mem,
 				  long arg1, long arg2, long arg3)
 {
@@ -1125,8 +1081,9 @@ static size_t align_size(size_t size)
 	return (size + align_amount) & ~(align_amount - 1);
 }
 
-int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
+int retrieve_fd(AutoRemoteSyscalls& remote, int fd)
 {
+	Task* t = remote.task();
 	struct sockaddr_un socket_addr;
 	struct msghdr msg;
 	// Unfortunately we need to send at least one byte of data in our
@@ -1138,7 +1095,8 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 		std::max(align_size(sizeof(socket_addr)),
 			align_size(sizeof(msg)) + align_size(sizeof(cmsgbuf)) +
 			align_size(sizeof(msgdata)));
-	restore_mem remote_socketcall_args_holder(t, state, NULL, data_length);
+	AutoRestoreMem remote_socketcall_args_holder(remote,
+						     nullptr, data_length);
 	byte* remote_socketcall_args =
 		static_cast<byte*>(static_cast<void*>(remote_socketcall_args_holder));
 
@@ -1159,8 +1117,8 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 	}
 
 	write_socketcall_args(t, remote_socketcall_args, AF_UNIX, SOCK_STREAM, 0);
-	int child_sock = remote_syscall2(t, state, SYS_socketcall,
-					 SYS_SOCKET, remote_socketcall_args);
+	int child_sock = remote.syscall(SYS_socketcall,
+					SYS_SOCKET, remote_socketcall_args);
 	if (child_sock < 0) {
 		FATAL() <<"Failed to create child socket";
 	}
@@ -1169,16 +1127,19 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 		align_size(sizeof(struct socketcall_args));
 	t->write_mem(remote_sockaddr, socket_addr);
 	write_socketcall_args(t, remote_socketcall_args, child_sock,
-		uintptr_t(remote_sockaddr), sizeof(socket_addr));
-	remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
-		       SYS_CONNECT, uintptr_t(remote_socketcall_args), 0, 0, 0, 0);
+			      uintptr_t(remote_sockaddr), sizeof(socket_addr));
+	Registers callregs = remote.regs();
+	callregs.set_arg1(SYS_CONNECT);
+	callregs.set_arg2(uintptr_t(remote_socketcall_args));
+	remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, SYS_socketcall,
+			      callregs);
 	// Now the child is waiting for us to accept it.
 
 	int sock = accept(listen_sock, NULL, NULL);
 	if (sock < 0) {
 		FATAL() <<"Failed to create parent socket";
 	}
-	int child_ret = wait_remote_syscall(t, state, SYS_socketcall);
+	int child_ret = remote.wait_syscall(SYS_socketcall);
 	if (child_ret) {
 		FATAL() <<"Failed to connect() in tracee";
 	}
@@ -1213,9 +1174,11 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 	t->write_mem(remote_msg, msg);
 	write_socketcall_args(t, remote_socketcall_args, child_sock,
 			      uintptr_t(remote_msg), 0);
-	remote_syscall(t, state, DONT_WAIT, SYS_socketcall,
-		       SYS_SENDMSG, uintptr_t(remote_socketcall_args),
-		       0, 0, 0, 0);
+	callregs = remote.regs();
+	callregs.set_arg1(SYS_SENDMSG);
+	callregs.set_arg2(uintptr_t(remote_socketcall_args));
+	remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, SYS_socketcall,
+			      callregs);
 	// Child may be waiting on our recvmsg().
 
 	// Our 'msg' struct is mostly already OK.
@@ -1231,80 +1194,23 @@ int retrieve_fd(Task* t, struct current_state_buffer* state, int fd)
 	int our_fd = *(int*)CMSG_DATA(cmsg);
 	assert(our_fd >= 0);
 
-	if (0 >= wait_remote_syscall(t, state, SYS_socketcall)) {
+	if (0 >= remote.wait_syscall(SYS_socketcall)) {
 		FATAL() <<"Failed to sendmsg() in tracee";
 	}
 
-	remote_syscall1(t, state, SYS_close, child_sock);
+	remote.syscall(SYS_close, child_sock);
 	close(sock);
 
 	return our_fd;
 }
 
-// XXX this is probably dup'd somewhere else
+// TODO de-dup
 static void advance_syscall(Task* t)
 {
 	do {
 		t->cont_syscall();
 	} while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
 	assert(t->ptrace_event() == 0);
-}
-
-long remote_syscall(Task* t, struct current_state_buffer* state,
-		    int wait, int syscallno,
-		    long a1, long a2, long a3, long a4, long a5, long a6)
-{
-	assert(t->tid == state->pid);
-
-	/* Prepare syscall arguments. */
-	Registers callregs = state->regs;
-	callregs.set_syscallno(syscallno);
-	callregs.set_arg1(a1);
-	callregs.set_arg2(a2);
-	callregs.set_arg3(a3);
-	callregs.set_arg4(a4);
-	callregs.set_arg5(a5);
-	callregs.set_arg6(a6);
-	t->set_regs(callregs);
-
-	advance_syscall(t);
-
-	ASSERT(t, t->regs().original_syscallno() == syscallno)
-		<<"Should be entering "<< t->syscallname(syscallno)
-		<<", but instead at "<< t->syscallname(t->regs().original_syscallno());
-
-	/* Start running the syscall. */
-	t->cont_syscall_nonblocking();
-	if (WAIT == wait) {
-		return wait_remote_syscall(t, state, syscallno);
-	}
-	return 0;
-}
-
-long wait_remote_syscall(Task* t, struct current_state_buffer* state,
-			 int syscallno)
-{
-	/* Wait for syscall-exit trap. */
-	t->wait();
-
-	ASSERT(t, t->regs().original_syscallno() == syscallno)
-		<<"Should be entering "<< t->syscallname(syscallno)
-		<<", but instead at "<< t->syscallname(t->regs().original_syscallno());
-
-	return t->regs().syscall_result_signed();
-}
-
-void finish_remote_syscalls(Task* t, struct current_state_buffer* state)
-{
-	pid_t tid = t->tid;
-
-	assert(tid == state->pid);
-
-	/* Restore stomped instruction. */
-	t->write_bytes(state->start_addr, state->code_buffer);
-
-	/* Restore stomped registers. */
-	t->set_regs(state->regs);
 }
 
 void destroy_buffers(Task* t)

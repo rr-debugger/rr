@@ -3,6 +3,7 @@
 #ifndef RR_REGISTERS_H_
 #define RR_REGISTERS_H_
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -80,6 +81,28 @@ public:
 	uintptr_t arg6() const { return ebp; }
 	intptr_t arg6_signed() const { return ebp; }
 	void set_arg6(uintptr_t value) { ebp = value; }
+
+	/**
+	 * Set the register containing syscall argument |Index| to
+	 * |value|.
+	 */
+	template<int Index, typename T>
+	void set_arg(T value) { set_arg<Index>(uintptr_t(value)); }
+
+	template<int Index>
+	void set_arg(uintptr_t value)
+	{
+		static_assert(1 <= Index && Index <= 6,
+			      "Index must be in range");
+		switch (Index) {
+		case 1: return set_arg1(value);
+		case 2: return set_arg2(value);
+		case 3: return set_arg3(value);
+		case 4: return set_arg4(value);
+		case 5: return set_arg5(value);
+		case 6: return set_arg6(value);
+		}
+	}
 
 	void print_register_file(FILE* f) const;
 	void print_register_file_compact(FILE* f) const;

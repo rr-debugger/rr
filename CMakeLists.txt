@@ -48,6 +48,7 @@ add_executable(rr
   src/record_signal.cc
   src/record_syscall.cc
   src/registers.cc
+  src/remote_syscalls.cc
   src/replayer.cc
   src/replay_syscall.cc
   src/session.cc

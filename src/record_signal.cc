@@ -19,6 +19,7 @@
 #include "hpc.h"
 #include "log.h"
 #include "recorder.h"
+#include "remote_syscalls.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -56,13 +57,12 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si)
 static void restore_sigsegv_state(Task* t)
 {
 	kernel_sigaction sa = t->signal_action(SIGSEGV);
-	struct current_state_buffer state;
-	prepare_remote_syscalls(t, &state);
+	AutoRemoteSyscalls remote(t);
 	{
-		restore_mem child_sa(t, &state, (const byte*)&sa, sizeof(sa));
-		int ret = remote_syscall4(t, &state, SYS_rt_sigaction,
-					  SIGSEGV, static_cast<void*>(child_sa),
-					  NULL, _NSIG / 8);
+		AutoRestoreMem child_sa(remote, (const byte*)&sa, sizeof(sa));
+		int ret = remote.syscall(SYS_rt_sigaction,
+					 SIGSEGV, static_cast<void*>(child_sa),
+					 nullptr, _NSIG / 8);
 		ASSERT(t, 0 == ret) <<"Failed to restore SIGSEGV handler";
 	}
 	// NB: we would normally want to restore the SIG_BLOCK for
@@ -70,7 +70,6 @@ static void restore_sigsegv_state(Task* t)
 	// "SigBlk" mask.  There's no bug observed in the kernel's
 	// delivery of SIGSEGV after the RDTSC trap, so we do nothing
 	// here and move on.
-	finish_remote_syscalls(t, &state);
 }
 
 /** Return true iff |t->ip()| points at a RDTSC instruction. */
