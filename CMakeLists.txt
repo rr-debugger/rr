@@ -55,6 +55,7 @@ add_executable(rr
   src/task.cc
   src/trace.cc
   src/util.cc
+  src/vm.cc
 )
 
 # TODO remove this when we can manage pfm and disasm dependencies
