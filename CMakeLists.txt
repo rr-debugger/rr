@@ -61,7 +61,7 @@ add_executable(rr
 target_link_libraries(rr
   -ldl
   -lrt
-  libpfm.a
+  -lpfm
 )
 
 target_link_libraries(rrpreload
