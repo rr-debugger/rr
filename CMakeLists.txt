@@ -38,9 +38,9 @@ add_library(rrpreload
 add_executable(rr
   src/test/cpuid_loop.S
   src/debugger_gdb.cc
+  src/diverter.cc
   src/emufs.cc
   src/event.cc
-  src/experimenter.cc
   src/hpc.cc
   src/main.cc
   src/recorder.cc

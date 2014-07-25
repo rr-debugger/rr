@@ -34,8 +34,8 @@
 #include "preload/syscall_buffer.h"
 
 #include "debugger_gdb.h"
+#include "diverter.h"
 #include "emufs.h"
-#include "experimenter.h"
 #include "hpc.h"
 #include "log.h"
 #include "replay_syscall.h"
@@ -410,11 +410,11 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 			return;
 		}
 		// We only allow the debugger to write memory if the
-		// memory will be written to an experimental session.
+		// memory will be written to an diversion session.
 		// Arbitrary writes to replay sessions cause
 		// divergence.
-		if (!session.experimental()) {
-			LOG(error) <<"Attempt to write memory outside experimental session";
+		if (!session.diversion()) {
+			LOG(error) <<"Attempt to write memory outside diversion session";
 			dbg_reply_set_mem(dbg, false);
 			return;
 		}
@@ -444,7 +444,7 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 	}
 	case DREQ_SET_REG: {
 		Registers regs = target->regs();
-		if (!session.experimental()) {
+		if (!session.diversion()) {
 			DbgRegister reg = get_reg(&regs, req.reg.name);
 			// Ignore attempts to set registers to values they
 			// already have. gdb has been observed to set
@@ -452,7 +452,7 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 			// value.
 			if (reg.size != req.reg.size ||
 			    memcmp(req.reg.value, reg.value, reg.size) != 0) {
-				LOG(error) <<"Attempt to write register outside experimental session";
+				LOG(error) <<"Attempt to write register outside diversion session";
 				dbg_reply_set_reg(dbg, false);
 				return;
 			}
@@ -503,11 +503,11 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 		return;
 	}
 	case DREQ_READ_SIGINFO:
-		LOG(warn) <<"READ_SIGINFO request outside of experimental session";
+		LOG(warn) <<"READ_SIGINFO request outside of diversion session";
 		dbg_reply_read_siginfo(dbg, nullptr, -1);
 		return;
 	case DREQ_WRITE_SIGINFO:
-		LOG(warn) <<"WRITE_SIGINFO request outside of experimental session";
+		LOG(warn) <<"WRITE_SIGINFO request outside of diversion session";
 		dbg_reply_write_siginfo(dbg);
 		return;
 	default:
@@ -559,13 +559,13 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 			// READ_SIGINFO failed and won't attempt to
 			// send WRITE_SIGINFO.  For |call foo()|
 			// frames, that means we don't know when the
-			// experiment session is ending.
+			// diversion session is ending.
 			byte si_bytes[req.mem.len];
 			memset(si_bytes, 0, sizeof(si_bytes));
 			dbg_reply_read_siginfo(dbg,
 					       si_bytes, sizeof(si_bytes));
 
-			experiment(*session, dbg, t->rec_tid, &req);
+			divert(*session, dbg, t->rec_tid, &req);
 			// TODO: RESTART requests, insn tracing ...
 			assert(dbg_is_resume_request(&req));
 			return req;

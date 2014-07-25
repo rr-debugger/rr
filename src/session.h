@@ -177,10 +177,10 @@ public:
 	shr_ptr clone();
 
  	/**
-	 * Like |clone()|, but return a session in "experimental"
-	 * mode, which allows free execution.  See experimenter.h.
+	 * Like |clone()|, but return a session in "diversion" mode,
+	 * which allows free execution.  See diversioner.h.
 	 */
-	shr_ptr clone_experiment();
+	shr_ptr clone_diversion();
 
 	/**
 	 * Fork and exec the initial tracee task to run |ae|, and read
@@ -201,9 +201,9 @@ public:
 	bool dying() const { return is_dying; }
 
 	/**
-	 * True when this is an experimental session; see experimenter.h.
+	 * True when this is an diversion session; see diversioner.h.
 	 */
-	bool experimental() const { return is_experimental; }
+	bool diversion() const { return is_diversion; }
 
 	/**
 	 * The trace record that we are working on --- the next event
@@ -282,7 +282,7 @@ public:
 private:
 	ReplaySession()
 		: is_dying(false)
-		, is_experimental(false)
+		, is_diversion(false)
 		, last_debugged_task(nullptr)
 		, tgid_debugged(0)
 		, trace_frame()
@@ -291,13 +291,13 @@ private:
 	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
-	// True when this (experimental) session appears to be dying,
+	// True when this (diversion) session appears to be dying,
 	// as determined by its client.
 	bool is_dying;
-	// True when this is an "experimental" session; see
-	// experimenter.h.  In the future, this will be a separate
-	// ExperimentSession class.
-	bool is_experimental;
+	// True when this is an "diversion" session; see
+	// diversioner.h.  In the future, this will be a separate
+	// DiversionSession class.
+	bool is_diversion;
 	Task* last_debugged_task;
 	pid_t tgid_debugged;
 	std::shared_ptr<TraceIfstream> trace_ifstream;

@@ -1,10 +1,10 @@
 /* -*- mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
-//#define DEBUGTAG "Experimenter"
+//#define DEBUGTAG "Diverter"
+
+#include "diverter.h"
 
 #include <sys/syscall.h>
-
-#include "experimenter.h"
 
 #include "debugger_gdb.h"
 #include "log.h"
@@ -13,8 +13,8 @@
 #include "session.h"
 #include "task.h"
 
-// The global experiment session, of which there can only be one at a
-// time currently.  See long comment at the top of experimenter.h.
+// The global diversion session, of which there can only be one at a
+// time currently.  See long comment at the top of diverter.h.
 static ReplaySession::shr_ptr session;
 
 static void finish_emulated_syscall_with_ret(Task* t, long ret)
@@ -98,7 +98,7 @@ static void process_syscall(Task* t, int syscallno)
 	// TODO: it's not known whether this is sufficient for
 	// interesting cases yet.
 	fprintf(stderr,
-"rr: Warning: Syscall `%s' not handled during experimental session.\n",
+"rr: Warning: Syscall `%s' not handled during diversion session.\n",
 		t->syscallname(syscallno));
 }
 
@@ -169,7 +169,7 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 			break;
 		}
 		case DREQ_WRITE_SIGINFO:
-			LOG(debug) <<"Experimental session dying at next continue request ...";
+			LOG(debug) <<"Diversion session dying at next continue request ...";
 			session->start_dying();
 			dbg_reply_write_siginfo(dbg);
 			continue;
@@ -181,12 +181,12 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 	}
 }
 
-void experiment(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
-		struct dbg_request* req)
+void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
+	    struct dbg_request* req)
 {
-	LOG(debug) <<"Starting debugging experiment for "<< HEX(&replay);
+	LOG(debug) <<"Starting debugging diversion for "<< HEX(&replay);
 
-	session = replay.clone_experiment();
+	session = replay.clone_diversion();
 	Task* t = session->find_task(task);
 	while (true) {
 		if (!(t = process_debugger_requests(dbg, t, req))) {
@@ -211,7 +211,7 @@ void experiment(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
 		}
 	}
 
-	LOG(debug) <<"... ending debugging experiment";
+	LOG(debug) <<"... ending debugging diversion";
 	session->kill_all_tasks();
 	session = nullptr;
 }
