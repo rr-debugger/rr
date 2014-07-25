@@ -199,7 +199,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, blocked_sigs()
 	, prname("???")
 	, rbcs(0)
-	, registers(), registers_known(false)
+	, registers_known(false), extra_registers_known(false)
 	, robust_futex_list(), robust_futex_list_len()
 	, session_record(nullptr), session_replay(nullptr)
 	, stashed_si(), stashed_wait_status()
@@ -873,6 +873,16 @@ Task::read_word(void* child_addr)
 	return word;
 }
 
+size_t
+Task::get_reg(uint8_t* buf, int regname, bool* defined)
+{
+	size_t num_bytes = regs().read_register(buf, regname, defined);
+	if (!*defined) {
+		num_bytes = extra_regs().read_register(buf, regname, defined);
+	}
+	return num_bytes;
+}
+
 const Registers&
 Task::regs()
 {
@@ -899,7 +909,6 @@ Task::extra_regs()
 			cpuid(CPUID_GETXSAVE, 0, &eax, &ecx, &edx);
 			xsave_area_size = ecx;
 		}
-
 		extra_registers.data.resize(xsave_area_size);
 		struct iovec vec = { extra_registers.data.data(), xsave_area_size };
 		xptrace(PTRACE_GETREGSET, (void*)NT_X86_XSTATE, &vec);

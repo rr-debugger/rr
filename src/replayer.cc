@@ -171,11 +171,12 @@ static void debug_memory(Task* t)
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static DbgRegister get_reg(const Registers* regs, unsigned int which)
+static DbgRegister get_reg(Task* t, unsigned int which)
 {
 	DbgRegister reg;
 	memset(&reg, 0, sizeof(reg));
-	reg.size = regs->read_register(&reg.value[0], which, &reg.defined);
+	reg.name = which;
+	reg.size = t->get_reg(&reg.value[0], which, &reg.defined);
 	return reg;
 }
 
@@ -427,25 +428,22 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 		return;
 	}
 	case DREQ_GET_REG: {
-		struct DbgRegister reg =
-			get_reg(&target->regs(), req.reg.name);
+		struct DbgRegister reg = get_reg(target, req.reg.name);
 		dbg_reply_get_reg(dbg, reg);
 		return;
 	}
 	case DREQ_GET_REGS: {
-		const Registers* regs = &target->regs();
-		size_t n_regs = regs->total_registers();
+		size_t n_regs = target->regs().total_registers();
 		DbgRegfile file(n_regs);
 		for (size_t i = 0; i < n_regs; ++i) {
-			file.regs[i] = get_reg(regs, i);
+			file.regs[i] = get_reg(target, i);
 		}
 		dbg_reply_get_regs(dbg, file);
 		return;
 	}
 	case DREQ_SET_REG: {
-		Registers regs = target->regs();
 		if (!session.diversion()) {
-			DbgRegister reg = get_reg(&regs, req.reg.name);
+			DbgRegister reg = get_reg(target, req.reg.name);
 			// Ignore attempts to set registers to values they
 			// already have. gdb has been observed to set
 			// orig_eax to -1 at startup when it already has this
@@ -460,6 +458,7 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 			return;
 		}
 		if (req.reg.defined) {
+			Registers regs = target->regs();
 			regs.write_register(req.reg.name, req.reg.value,
 					    req.reg.size);
 			target->set_regs(regs);

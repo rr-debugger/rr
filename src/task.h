@@ -615,6 +615,23 @@ public:
 	void record_remote(void* addr, ssize_t num_bytes);
 	void record_remote_str(void* str);
 
+	/**
+	 * Attempt to find the value of |regname| (a DebuggerRegister
+	 * name) in this task, and if so (i) write it to |buf|; (ii)
+	 * set |*defined = true|; (iii) return the size of written
+	 * data.  If |*defined == false|, the value of |buf| is
+	 * meaningless.
+	 *
+	 * This helper can fetch the values of both general-purpose
+	 * and "extra" registers.
+	 *
+	 * NB: |buf| must be large enough to hold the largest register
+	 * value that can be named by |regname|.
+	 *
+	 * TODO: nicer API.
+	 */
+	size_t get_reg(uint8_t* buf, int regname, bool* defined);
+
 	/** Return the current regs of this. */
 	const Registers& regs();
 

@@ -110,6 +110,7 @@ set(BASIC_TESTS
   flock
   fork_child_crash
   fork_stress
+  fxregs
   getgroups
   getsid
   int3
