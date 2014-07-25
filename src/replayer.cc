@@ -443,13 +443,23 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 		return;
 	}
 	case DREQ_SET_REG: {
+		Registers regs = target->regs();
 		if (!session.experimental()) {
-			LOG(error) <<"Attempt to write register outside experimental session";
-			dbg_reply_set_reg(dbg, false);
+			DbgRegister reg = get_reg(&regs, req.reg.name);
+			// Ignore attempts to set registers to values they
+			// already have. gdb has been observed to set
+			// orig_eax to -1 at startup when it already has this
+			// value.
+			if (reg.size != req.reg.size ||
+			    memcmp(req.reg.value, reg.value, reg.size) != 0) {
+				LOG(error) <<"Attempt to write register outside experimental session";
+				dbg_reply_set_reg(dbg, false);
+				return;
+			}
+			dbg_reply_set_reg(dbg, true);
 			return;
 		}
 		if (req.reg.defined) {
-			Registers regs = target->regs();
 			regs.write_register(req.reg.name, req.reg.value,
 					    req.reg.size);
 			target->set_regs(regs);

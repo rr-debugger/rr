@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record simple
+debug simple finish_and_restart
