@@ -82,6 +82,12 @@ static void process_syscall(Task* t, int syscallno)
 	case SYS_munmap:
 		return execute_syscall(t);
 
+	// These syscalls aren't yet emulated or executed, but are
+	// known to be commonly hit during |call foo()| frames.  We
+	// early-return here to silence the warning below, which we
+	// don't believe is helping the user.
+	case SYS_clock_gettime:
+		return;
 	}
 
 	// We "implement" unhandled syscalls by simply ignoring them.

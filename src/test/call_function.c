@@ -43,6 +43,15 @@ static void make_unhandled_syscall(void) {
 	atomic_printf("return from splice: %d\n", ret);
 }
 
+static void print_time(void) {
+	struct timespec ts = { -1, -1 };
+	double now_sec;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	now_sec = (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+	atomic_printf("now is %g sec\n", now_sec);
+}
+
 int main(int argc, char *argv[]) {
 	var = -42;
 
@@ -59,4 +68,5 @@ int main(int argc, char *argv[]) {
 	print_nums();
 	alloc_and_print();
 	make_unhandled_syscall();
+	print_time();
 }
