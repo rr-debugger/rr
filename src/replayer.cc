@@ -407,6 +407,13 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 		return;
 	}
 	case DREQ_SET_MEM: {
+		// gdb has been observed to send requests of length 0 at
+		// odd times
+		// (e.g. before sending the magic write to create a checkpoint)
+		if (req.mem.len == 0) {
+			dbg_reply_set_mem(dbg, true);
+			return;
+		}
 		if (maybe_process_magic_command(target, dbg, req)) {
 			return;
 		}

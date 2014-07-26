@@ -1,4 +1,5 @@
 from rrutil import *
+import re
 
 # Setup breakpoints
 send_gdb('b main\n')
@@ -12,7 +13,9 @@ expect_gdb('Breakpoint 3')
 send_gdb('c\n')
 expect_gdb('Breakpoint 1, main')
 send_gdb('checkpoint\n')
-expect_gdb('= 1')
+index = expect_list([re.compile(r'= 1'), re.compile(r'ERROR')])
+if index > 0:
+    failed('ERROR detected in rr output')
 send_gdb('c\n')
 expect_gdb('Breakpoint 2, breakpoint2')
 send_gdb('checkpoint\n')
