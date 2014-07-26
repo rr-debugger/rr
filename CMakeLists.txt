@@ -154,6 +154,7 @@ set(BASIC_TESTS
   setsid
   sigchld_interrupt_signal
   sigprocmask
+  sigqueueinfo
   sigrt
   sigtrap
   simple

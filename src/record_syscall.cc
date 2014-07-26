@@ -1154,6 +1154,10 @@ static int rec_prepare_syscall_arch(Task* t, void** kernel_sync_addr,
 		else
 			return 0;
 	}
+	case Arch::rt_sigsuspend:
+	case Arch::sigsuspend:
+		return 1;
+
 	case Arch::sendmmsg: {
 		Registers r = t->regs();
 		unsigned flags = (unsigned int)r.arg4();

@@ -1187,7 +1187,16 @@ SYSCALLNO_X86_64(127)
 SYSCALL_DEF_UNSUPPORTED(rt_sigpending)
 SYSCALL_DEF_UNSUPPORTED(rt_sigtimedwait)
 SYSCALL_DEF_UNSUPPORTED(rt_sigqueueinfo)
-SYSCALL_DEF_UNSUPPORTED(rt_sigsuspend)
+
+/**
+ *  int sigsuspend(const sigset_t *mask);
+ *
+ * sigsuspend() temporarily replaces the signal mask of the calling
+ * process with the mask given by mask and then suspends the process
+ * until delivery of a signal whose action is to invoke a signal
+ * handler or to terminate a process.
+ */
+SYSCALL_DEF0(rt_sigsuspend, EMU)
 
 /**
  *  ssize_t pread(int fd, void *buf, size_t count, off_t offset);
@@ -1996,7 +2005,18 @@ SYSCALL_DEF0(inotify_init1, EMU)
 
 SYSCALL_DEF_UNSUPPORTED(preadv)
 SYSCALL_DEF_UNSUPPORTED(pwritev)
-SYSCALL_DEF_UNSUPPORTED(rt_tgsigqueueinfo)
+
+/**
+ *  int rt_tgsigqueueinfo(pid_t tgid, pid_t tid, int sig,
+ *                        siginfo_t *uinfo);
+ *
+ * The rt_sigqueueinfo() and rt_tgsigqueueinfo() system calls are the
+ * low-level interfaces used to send a signal plus data to a process
+ * or thread.  The receiver of the signal can obtain the accompanying
+ * data by establishing a signal handler with the sigaction(2)
+ * SA_SIGINFO flag.
+ */
+SYSCALL_DEF0(rt_tgsigqueueinfo, EMU)
 
 /**
  *  int perf_event_open(struct perf_event_attr *attr,
