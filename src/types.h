@@ -81,7 +81,9 @@ struct flags {
 	bool mark_stdio;
 	// Check that cached mmaps match /proc/maps after each event.
 	bool check_cached_mmaps;
-	bool suppress_warnings;
+	// Suppress warnings related to environmental features outside rr's
+	// control.
+	bool suppress_environment_warnings;
 	// Start a debug server for the task scheduled at the first
 	// event at which reached this event AND target_process has
 	// been "created".

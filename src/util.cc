@@ -1417,7 +1417,7 @@ static bool rbc_counts_ok(uint64_t prev, uint64_t current, const char* source)
 	if (current - prev == 2) {
 		return true;
 	}
-	if (!rr_flags()->suppress_warnings) {
+	if (!rr_flags()->suppress_environment_warnings) {
 		fprintf(stderr,
 "\n"
 "rr: Warning: Your system exhibits a bug where executing a pair of CPUID\n"
