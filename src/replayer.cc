@@ -450,18 +450,17 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 	}
 	case DREQ_SET_REG: {
 		if (!session.diversion()) {
-			DbgRegister reg = get_reg(target, req.reg.name);
-			// Ignore attempts to set registers to values they
-			// already have. gdb has been observed to set
-			// orig_eax to -1 at startup when it already has this
-			// value.
-			if (reg.size != req.reg.size ||
-			    memcmp(req.reg.value, reg.value, reg.size) != 0) {
-				LOG(error) <<"Attempt to write register outside diversion session";
-				dbg_reply_set_reg(dbg, false);
+			// gdb sets orig_eax to -1 during a restart. For a
+			// replay session this is not correct (we might be
+			// restarting from an rr checkpoint inside a system
+			// call, and we must not tamper with replay state), so
+			// just ignore it.
+			if (req.reg.name == DREG_ORIG_EAX) {
+				dbg_reply_set_reg(dbg, true);
 				return;
 			}
-			dbg_reply_set_reg(dbg, true);
+			LOG(error) <<"Attempt to write register outside diversion session";
+			dbg_reply_set_reg(dbg, false);
 			return;
 		}
 		if (req.reg.defined) {
