@@ -30,6 +30,17 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
 			       Task* t, const struct dbg_request& req);
 
 /**
+ * Return true if |sig| is a signal that may be generated during
+ * replay but should be ignored.  For example, SIGCHLD can be
+ * delivered at almost point during replay when tasks exit, but it's
+ * not part of the recording and shouldn't be delivered.
+ *
+ * TODO: can we do some clever sigprocmask'ing to avoid pending
+ * signals altogether?
+ */
+bool is_ignored_replay_signal(int sig);
+
+/**
  * Open a temporary debugging connection for |t| and service requests
  * until the user quits or requests execution to resume.
  *

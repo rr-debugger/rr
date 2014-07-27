@@ -520,6 +520,22 @@ void dispatch_debugger_request(ReplaySession& session,struct dbg_context* dbg,
 	}
 }
 
+bool is_ignored_replay_signal(int sig)
+{
+	switch (sig) {
+	// SIGCHLD can arrive after tasks die during replay.  We don't
+	// care about SIGCHLD unless it was recorded, in which case
+	// we'll emulate its delivery.
+	case SIGCHLD:
+	// SIGWINCH arrives when the user resizes the terminal window.
+	// Not relevant to replay.
+	case SIGWINCH:
+		return true;
+	default:
+		return false;
+	}
+}
+
 /**
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
@@ -722,18 +738,13 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi)
 	}
 	t->resume_execution(resume_how, RESUME_WAIT);
 
-	switch ((t->child_sig = t->pending_sig())) {
-	case 0:
-		break;
-	case SIGCHLD:
-		/* SIGCHLD is pending, do not deliver it, wait for it
-		 * to appear in the trace SIGCHLD is the only signal
-		 * that should ever be generated as all other signals
-		 * are emulated! */
+	t->child_sig = t->pending_sig();
+	if (is_ignored_replay_signal(t->child_sig)) {
 		return cont_syscall_boundary(t, emu, stepi);
-	case SIGTRAP:
+	}
+	if (SIGTRAP == t->child_sig) {
 		return 1;
-	default:
+	} else if (t->child_sig) {
 		ASSERT(t, false) << "Replay got unrecorded signal "
 				 << t->child_sig;
 	}
@@ -1077,12 +1088,7 @@ static int advance_to(Task* t, const Registers* regs,
 
 		continue_or_step(t, stepi, rcbs_left - SKID_SIZE);
 		if (HPC_TIME_SLICE_SIGNAL == t->child_sig
-		    || SIGCHLD == t->child_sig) {
-			/* Tracees can receive SIGCHLD at pretty much
-			 * any time during replay.  If we recorded
-			 * delivery, we'll manually replay it
-			 * eventually (or already have).  Just ignore
-			 * here. */
+		    || is_ignored_replay_signal(t->child_sig)) {
 			t->child_sig = 0;
 		}
 		guard_unexpected_signal(t);
@@ -1232,20 +1238,18 @@ static int advance_to(Task* t, const Registers* regs,
 		}
 
 		if (HPC_TIME_SLICE_SIGNAL == t->child_sig
-		    || SIGCHLD == t->child_sig) {
-			/* See the long comment in "Step 1" above.
-			 *
-			 * We don't usually expect a time-slice signal
-			 * during this phase, but it's possible for a
-			 * SIGCHLD to interrupt the previous step just
-			 * as the tracee enters the slack region,
-			 * i.e., where an rbc signal was just about to
-			 * fire.  (There's not really a non-racy way
-			 * to disable the rbc interrupt, and we need
-			 * to keep the counter running for overshoot
-			 * checking anyway.)  So this is the most
-			 * convenient way to squelch that "spurious"
-			 * signal. */
+		    || is_ignored_replay_signal(t->child_sig)) {
+			/* We don't usually expect a time-slice signal
+			 * during this phase, but it's possible for an
+			 * ignored signal to interrupt the previous
+			 * step just as the tracee enters the slack
+			 * region, i.e., where an rbc signal was just
+			 * about to fire.  (There's not really a
+			 * non-racy way to disable the rbc interrupt,
+			 * and we need to keep the counter running for
+			 * overshoot checking anyway.)  So this is the
+			 * most convenient way to squelch that
+			 * "spurious" signal. */
 			t->child_sig = 0;
 		}
 		guard_unexpected_signal(t);
@@ -1351,7 +1355,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 	Event ev(t->current_trace_frame().ev);
 
 	continue_or_step(t, stepi);
-	if (SIGCHLD == t->child_sig) {
+	if (is_ignored_replay_signal(t->child_sig)) {
 		t->child_sig = 0;
 		return emulate_deterministic_signal(dbg, t, sig, stepi, req);
 	} else if (SIGTRAP == t->child_sig

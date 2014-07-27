@@ -1209,7 +1209,8 @@ static void advance_syscall(Task* t)
 {
 	do {
 		t->cont_syscall();
-	} while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
+	} while (t->is_ptrace_seccomp_event()
+		 || is_ignored_replay_signal(t->pending_sig()));
 	assert(t->ptrace_event() == 0);
 }
 

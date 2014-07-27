@@ -180,13 +180,11 @@ static void goto_next_syscall_emu(Task *t)
 	t->cont_sysemu();
 
 	int sig = t->pending_sig();
-	/* SIGCHLD is pending, do not deliver it, wait for it to
-	 * appear in the trace SIGCHLD is the only signal that should
-	 * ever be generated as all other signals are emulated! */
-	if (sig == SIGCHLD) {
+	if (is_ignored_replay_signal(sig)) {
 		goto_next_syscall_emu(t);
 		return;
-	} else if (SIGTRAP == sig) {
+	}
+	if (SIGTRAP == sig) {
 		FATAL() <<"SIGTRAP while entering syscall ... were you using a debugger? If so, the current syscall needs to be made interruptible";
 	} else if (sig) {
 		FATAL() <<"Replay got unrecorded signal "<< sig;
@@ -202,7 +200,7 @@ static void goto_next_syscall_emu(Task *t)
 		/* this signal is ignored and most likey delivered
 		 * later, or was already delivered earlier */
 		/* TODO: this code is now obselete */
-		if (t->stop_sig() == SIGCHLD) {
+		if (is_ignored_replay_signal(t->stop_sig())) {
 			LOG(debug) <<"do we come here?\n";
 			/*t->replay_sig = SIGCHLD; // remove that if
 			 * spec does not work anymore */
@@ -224,10 +222,7 @@ static void __ptrace_cont(Task *t)
 {
 	do {
 		t->cont_syscall();
-		/* SIGCHLD can be delivered pretty much at any time
-		 * during replay, and we need to ignore it since
-		 * replayed signals are only emulated. */
-	} while (t->stop_sig() == SIGCHLD);
+	} while (is_ignored_replay_signal(t->stop_sig()));
 
 	ASSERT(t, !t->pending_sig())
 		<<"Expected no pending signal, but got "<< t->pending_sig();
