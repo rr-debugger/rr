@@ -2264,8 +2264,8 @@ static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
 	if (req->restart.type == RESTART_FROM_CHECKPOINT) {
 		checkpoint_to_restore = get_checkpoint(req->restart.param);
 		if (!checkpoint_to_restore) {
-			LOG(error) << "Checkpoint "<< req->restart.param
-				   <<" not found.";
+			LOG(info) << "Checkpoint "<< req->restart.param
+				  <<" not found.";
 			dbg_notify_restart_failed(dbg);
 			return dbg;
 		}

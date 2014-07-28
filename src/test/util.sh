@@ -80,12 +80,12 @@ function usage {
     echo Usage: "util.sh TESTNAME [LIB_ARG] [OBJDIR]"
 }
 
-DEFAULT_FLAGS="-s --check-cached-mmaps"
+DEFAULT_FLAGS="--suppress-environment-warnings --check-cached-mmaps --fatal-errors"
 # Don't bind record/replay tracees to the same logical CPU.  When we
 # do that, the tests take impractically long to run.
 #
 # TODO: find a way to run faster with CPU binding
-GLOBAL_OPTIONS="-u $DEFAULT_FLAGS"
+GLOBAL_OPTIONS="--cpu-unbound $DEFAULT_FLAGS"
 # ... but tests that DO want CPU binding can override the default by
 # setting
 #

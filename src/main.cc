@@ -139,7 +139,7 @@ static void check_performance_settings()
 		// If the file doesn't exist, the system probably
 		// doesn't have the ability to frequency-scale, for
 		// example a VM.
-		LOG(warn) <<"Unable to check CPU-frequency governor.";
+		LOG(info) <<"Unable to check CPU-frequency governor.";
 		return;
 	}
 	char governor[PATH_MAX];
@@ -199,6 +199,8 @@ static void print_usage(void)
 "                             when it doesn't seem like a good idea, for\n"
 "                             example if stderr isn't a tty.\n"
 "  -k, --check-cached-mmaps   verify that cached task mmaps match /proc/maps\n"
+"  -e, --fatal-errors         any warning or error that is printed is\n"
+"                             treated as fatal\n"
 "  -m, --mark-stdio           mark stdio writes with [rr.<EVENT-NO>],\n"
 "                             where EVENT-NO is the global trace time at\n"
 "                             which the write occures.\n"
@@ -382,6 +384,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 		{ "force-enable-debugger", no_argument, NULL, 'f' },
 		{ "mark-stdio", no_argument, NULL, 'm' },
 		{ "suppress-environment-warnings", no_argument, NULL, 's' },
+		{ "fatal-errors", no_argument, NULL, 'e' },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "wait-secs", required_argument, NULL, 'w' },
 		{ 0 }
@@ -406,6 +409,9 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			break;
 		case 'd':
 			flags->dump_on = atoi(optarg);
+			break;
+		case 'e':
+			flags->fatal_errors_and_warnings = true;
 			break;
 		case 'f':
 			flags->force_enable_debugger = true;

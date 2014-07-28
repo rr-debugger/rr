@@ -266,7 +266,6 @@ set(TESTS_WITHOUT_PROGRAM
   env_newline
   execp
   explicit_checkpoint_clone
-  finish_and_restart
   fork_exec_info_thr
   get_thread_list
   parent_no_break_child_bkpt

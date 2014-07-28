@@ -61,11 +61,17 @@ inline static std::ostream& log_stream()
 }
 
 struct NewlineTerminatingOstream {
+	NewlineTerminatingOstream(LogLevel level) : level(level) {}
 	~NewlineTerminatingOstream() {
 		log_stream() << std::endl;
+		if (rr_flags()->fatal_errors_and_warnings && level <= LOG_warn) {
+			abort();
+		}
 	}
 
 	operator std::ostream&() { return log_stream(); }
+
+	LogLevel level;
 };
 template<typename T>
 NewlineTerminatingOstream& operator<<(NewlineTerminatingOstream& stream,
@@ -149,7 +155,7 @@ inline static T& prepare_log_stream(T&& stream, LogLevel level,
  */
 #define LOG(_level)							\
 	if (logging_enabled_for(LOG_##_level))				\
-		prepare_log_stream(NewlineTerminatingOstream(),	\
+		prepare_log_stream(NewlineTerminatingOstream(LOG_##_level), \
 				   LOG_##_level,			\
 				   __FILE__, __LINE__, __FUNCTION__)
 

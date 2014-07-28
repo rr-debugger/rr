@@ -84,6 +84,8 @@ struct flags {
 	// Suppress warnings related to environmental features outside rr's
 	// control.
 	bool suppress_environment_warnings;
+	// Any warning or error that would be printed is treated as fatal
+	bool fatal_errors_and_warnings;
 	// Start a debug server for the task scheduled at the first
 	// event at which reached this event AND target_process has
 	// been "created".
