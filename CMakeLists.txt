@@ -145,6 +145,7 @@ set(BASIC_TESTS
   prctl
   prctl_name
   prw
+  pthread_condvar_locking
   rdtsc
   save_data_fd
   sched_setaffinity
