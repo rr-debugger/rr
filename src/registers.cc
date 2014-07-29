@@ -151,6 +151,8 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 	REGCMP(eip);
 	REGCMP(xfs);
 	REGCMP(xgs);
+	REGCMP(orig_eax);
+
 	/* The following are eflags that have been observed to be
 	 * nondeterministic in practice.  We need to mask them off in
 	 * this comparison to prevent replay from diverging. */
