@@ -394,6 +394,9 @@ static int maybe_restart_syscall(Task* t)
 	}
 	if (t->is_syscall_restart()) {
 		t->ev().transform(EV_SYSCALL);
+		Registers regs = t->regs();
+		regs.set_original_syscallno(t->ev().Syscall().regs.original_syscallno());
+		t->set_regs(regs);
 		return 1;
 	}
 	if (EV_SYSCALL_INTERRUPTION == t->ev().type()) {

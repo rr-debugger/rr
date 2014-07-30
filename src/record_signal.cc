@@ -307,9 +307,18 @@ static void handle_desched_event(Task* t, const siginfo_t* si)
 	 * this one has already been restarted (which we'll detect
 	 * back in the main loop). */
 	t->push_event(Event(interrupted, SyscallEvent(call)));
-	t->ev().Syscall().desched_rec = desched_rec;
-	t->ev().Syscall().regs = t->regs();
-	t->ev().Syscall().state = EXITING_SYSCALL;
+	SyscallEvent& ev = t->ev().Syscall();
+	ev.desched_rec = desched_rec;
+	ev.regs = t->regs();
+	/* For some syscalls (at least poll) but not all (at least not read),
+	 * repeated cont_syscall()s above of the same interrupted syscall
+	 * can set $orig_eax to 0 ... for unclear reasons. Fix that up here
+	 * otherwise we'll get a divergence during replay, which will not
+	 * encounter this problem.
+	 */
+	ev.regs.set_original_syscallno(call);
+	t->set_regs(ev.regs);
+	ev.state = EXITING_SYSCALL;
 
 	LOG(debug) <<"  resuming (and probably switching out) blocked `"
 		   << t->syscallname(call) <<"'";

@@ -101,6 +101,7 @@ set(BASIC_TESTS
   chew_cpu
   clock
   clone
+  desched_blocking_poll
   epoll_create
   epoll_create1
   exec_self
