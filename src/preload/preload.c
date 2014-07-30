@@ -725,12 +725,15 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 }
 
 #define PTHREAD_MUTEX_TYPE_MASK 3
+#define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
 #define PTHREAD_MUTEX_ELISION_NP 256
 #define PTHREAD_MUTEX_NO_ELISION_NP 512
 
-static void disable_elision_for_mutex(pthread_mutex_t* mutex)
+static void fix_mutex_kind(pthread_mutex_t* mutex)
 {
 	int type = mutex->__data.__kind & PTHREAD_MUTEX_TYPE_MASK;
+	/* Disable priority inheritance. */
+	mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
 	if (type != PTHREAD_MUTEX_TIMED_NP) {
 		/* Currently glibc only tries to use elision for TIMED/NORMAL
 		 * mutexes. Setting elision flag bits for other types of
@@ -759,14 +762,14 @@ extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
    are later rolled back if the transaction fails. */
 int pthread_mutex_lock(pthread_mutex_t* mutex)
 {
-	disable_elision_for_mutex(mutex);
+	fix_mutex_kind(mutex);
 	return __pthread_mutex_lock(mutex);
 }
 
 int pthread_mutex_timedlock(pthread_mutex_t* mutex,
 			    const struct timespec *abstime)
 {
-	disable_elision_for_mutex(mutex);
+	fix_mutex_kind(mutex);
 	/* No __pthread_mutex_timedlock stub exists, so we have to use the
 	 * indirect call.
 	 */
@@ -776,7 +779,7 @@ int pthread_mutex_timedlock(pthread_mutex_t* mutex,
 
 int pthread_mutex_trylock(pthread_mutex_t* mutex)
 {
-	disable_elision_for_mutex(mutex);
+	fix_mutex_kind(mutex);
 	return __pthread_mutex_trylock(mutex);
 }
 
