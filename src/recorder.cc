@@ -451,17 +451,12 @@ static void syscall_state_changed(Task* t, int by_waitpid)
 			t->ev().Syscall().regs = t->regs();
 		}
 
-		void* sync_addr = nullptr;
-		uint32_t sync_val;
-		t->switchable = rec_prepare_syscall(t, &sync_addr, &sync_val);
+		t->switchable = rec_prepare_syscall(t);
 
 		// Resume the syscall execution in the kernel context.
 		t->cont_syscall_nonblocking();
 		debug_exec_state("after cont", t);
 
-		if (sync_addr) {
-			t->futex_wait(sync_addr, sync_val);
-		}
 		t->ev().Syscall().state = PROCESSING_SYSCALL;
 		return;
 	}

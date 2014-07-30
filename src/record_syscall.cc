@@ -633,8 +633,7 @@ static bool exec_file_supported(const string& filename)
 }
 
 template<typename Arch>
-static int rec_prepare_syscall_arch(Task* t, void** kernel_sync_addr,
-		                    uint32_t* sync_val)
+static int rec_prepare_syscall_arch(Task* t)
 {
 	int syscallno = t->ev().Syscall().no;
 	/* If we are called again due to a restart_syscall, we musn't
@@ -1096,9 +1095,8 @@ static int rec_prepare_syscall_arch(Task* t, void** kernel_sync_addr,
 	}
 }
 
-int rec_prepare_syscall(Task* t, void** kernel_sync_addr,
-			uint32_t* sync_val)
-RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t, kernel_sync_addr, sync_val)
+int rec_prepare_syscall(Task* t)
+RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t)
 
 /**
  * Write a trace data record that when replayed will be a no-op.  This
