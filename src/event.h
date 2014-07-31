@@ -144,7 +144,11 @@ struct SignalEvent : public BaseEvent {
 	 */
 	SignalEvent(int signo, bool deterministic)
 		: BaseEvent(HAS_EXEC_INFO)
-		, no(signo), deterministic(deterministic), delivered(false) {}
+		, no(signo)
+		, deterministic(deterministic)
+		, delivered(false)
+	{
+	}
 	// Signal number.
 	int no;
 	// True if this signal will be deterministically raised as the

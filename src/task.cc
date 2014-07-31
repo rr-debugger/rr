@@ -382,6 +382,12 @@ Task::get_siginfo(siginfo_t* si)
 	xptrace(PTRACE_GETSIGINFO, nullptr, si);
 }
 
+void
+Task::set_siginfo(const siginfo_t& si)
+{
+	xptrace(PTRACE_SETSIGINFO, nullptr, (void*)&si);
+}
+
 TraceIfstream&
 Task::ifstream()
 {

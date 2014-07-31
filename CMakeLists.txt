@@ -193,6 +193,7 @@ set(TESTS_WITH_PROGRAM
   args
   async_segv
   async_signal_syscalls
+  async_signal_syscalls_siginfo
   async_usr1
   bad_syscall
   block_intr_sigchld

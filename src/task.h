@@ -370,6 +370,11 @@ public:
 	void get_siginfo(siginfo_t* si);
 
 	/**
+	 * Set the siginfo for the signal-stop of this.
+	 */
+	void set_siginfo(const siginfo_t& si);
+
+	/**
 	 * Return the trace we're either recording to (|ofstream()|)
 	 * or replaying from (|ifstream()|).
 	 */

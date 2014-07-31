@@ -354,6 +354,11 @@ static int is_deterministic_signal(const siginfo_t* si)
 
 static void record_signal(Task* t, const siginfo_t* si)
 {
+	// goto_a_happy_place's stepping can lead to the kernel forgetting
+	// the siginfo for the signal we're going to deliver. Restore that
+	// siginfo now.
+	t->set_siginfo(*si);
+
 	int sig = si->si_signo;
 	if (sig == rr_flags()->ignore_sig) {
 		LOG(info) <<"Declining to deliver "<< signalname(sig)
