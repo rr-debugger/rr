@@ -636,6 +636,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
 		struct trace_frame next_trace = session.ifstream().peek_frame();
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid
+		       && rr_flags()->goto_event != next_trace.global_time
 		       && !trace_instructions_up_to_event(next_trace.global_time)) {
 			session.ifstream() >> session.current_trace_frame();
 			next_trace = session.ifstream().peek_frame();
