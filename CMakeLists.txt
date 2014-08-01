@@ -168,6 +168,7 @@ set(BASIC_TESTS
   syscallbuf_timeslice
   sysconf
   sysctl
+  sysemu_singlestep
   tcgets
   tgkill
   thread_stress

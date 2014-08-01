@@ -264,12 +264,39 @@ Task::finish_emulated_syscall()
 {
 	// XXX verify that this can't be interrupted by a breakpoint trap
 	Registers r = regs();
-	// TODO: this will execute the instruction just after syscall
-	// entry twice, so if that instruction has non-idempotent side
-	// effects, replay can diverge.
-	cont_sysemu_singlestep();
-	set_regs(r);
+	void* ip = (void*)r.ip();
+	bool known_idempotent_insn_after_syscall = (is_traced_syscall()
+						    || is_untraced_syscall());
 
+	// We're about to single-step the tracee at its $ip just past
+	// the syscall insn, then back up the $ip to where it started.
+	// This is problematic because it will execute the insn at the
+	// current $ip twice.  If that insns isn't idempotent, then
+	// replay will create side effects that diverge from
+	// recording.
+	//
+	// To prevent that, we insert a breakpoint trap at the current
+	// $ip.  We can execute that without creating side effects.
+	// After the single-step, we remove the breakpoint, which
+	// restores the original insn at the $ip.
+	//
+	// Syscalls made from the syscallbuf are known to execute an
+	// idempotent insn after the syscall trap (restore register
+	// from stack), so we don't have to pay this expense.
+	if (!known_idempotent_insn_after_syscall) {
+		vm()->set_breakpoint(ip, TRAP_BKPT_INTERNAL);
+	}
+	cont_sysemu_singlestep();
+
+	if (!known_idempotent_insn_after_syscall) {
+		// The breakpoint should raise SIGTRAP, but we can also see
+		// any of the host of replay-ignored signals.
+		ASSERT(this, (pending_sig() == SIGTRAP
+			      || is_ignored_replay_signal(pending_sig())))
+			<< "PENDING SIG IS "<< signalname(pending_sig());
+		vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
+	}
+	set_regs(r);
 	force_status(0);
 }
 
