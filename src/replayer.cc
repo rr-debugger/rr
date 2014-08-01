@@ -1068,7 +1068,7 @@ static int advance_to(Task* t, const Registers* regs,
 	rcbs_left = rcb - t->rbc_count();
 
 	LOG(debug) <<"advancing "<< rcbs_left <<" rcbs to reach "<< rcb
-		   <<"/"<< ip;
+		   <<"/"<< HEX(ip);
 
 	/* XXX should we only do this if (rcb > 10000)? */
 	while (rcbs_left - SKID_SIZE > SKID_SIZE) {
