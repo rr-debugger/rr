@@ -32,6 +32,7 @@
 struct dbg_context;
 struct dbg_request;
 class ReplaySession;
+class Task;
 
 /**
  * Create a new diversion session using |replay| session as the
@@ -44,7 +45,7 @@ class ReplaySession;
  * is, the first request that should be handled by |replay| upon
  * resuming execution in that session.
  */
-void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
+void divert(ReplaySession& replay, struct dbg_context* dbg, Task* original_task,
 	    struct dbg_request* req);
 
 #endif // RR_DIVERTER_H_

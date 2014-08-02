@@ -126,7 +126,8 @@ static bool advance(Task* t, const struct dbg_request& req)
  * The received request is returned through |req|.
  */
 static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
-				       struct dbg_request* req)
+				       struct dbg_request* req,
+				       Task* original_task)
 {
 	while (true) {
 		*req = dbg_get_request(dbg);
@@ -141,13 +142,38 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 			return nullptr;
 
 		case DREQ_READ_SIGINFO: {
-			session->revive();
+			if (session->dying()) {
+				LOG(debug) <<"Diversion session revived by DREQ_READ_SIGINFO";
+				session->revive();
+			}
 			// TODO: maybe share with replayer.cc?
 			byte si_bytes[req->mem.len];
 			memset(si_bytes, 0, sizeof(si_bytes));
 			dbg_reply_read_siginfo(dbg,
 					       si_bytes, sizeof(si_bytes));
 			continue;
+		}
+		case DREQ_SET_MEM: {
+			if (session->dying()) {
+				LOG(debug) <<"Diversion session revived by DREQ_SET_MEM";
+				session->revive();
+			}
+			break;
+		}
+		case DREQ_SET_REG: {
+			uint8_t buf[DBG_MAX_REG_SIZE];
+			bool defined;
+			if (session->dying() &&
+			    (original_task->get_reg(buf, req->reg.name, &defined) != req->reg.size ||
+			     !defined ||
+		             memcmp(buf, req->reg.value, req->reg.size) != 0)) {
+				// Revive the session if we're setting fresh
+				// registers, unless we're just restoring
+				// registers to their old values
+				LOG(debug) <<"Diversion session revived by DREQ_SET_REG";
+				session->revive();
+			}
+			break;
 		}
 		case DREQ_SET_QUERY_THREAD: {
 			Task* next_task =
@@ -168,15 +194,15 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 	}
 }
 
-void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
+void divert(ReplaySession& replay, struct dbg_context* dbg, Task* original_task,
 	    struct dbg_request* req)
 {
 	LOG(debug) <<"Starting debugging diversion for "<< HEX(&replay);
 
 	session = replay.clone_diversion();
-	Task* t = session->find_task(task);
+	Task* t = session->find_task(original_task->rec_tid);
 	while (true) {
-		if (!(t = process_debugger_requests(dbg, t, req))) {
+		if (!(t = process_debugger_requests(dbg, t, req, original_task))) {
 			break;
 		}
 		if (!advance(t, *req)) {
