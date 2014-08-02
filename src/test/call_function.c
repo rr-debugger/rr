@@ -35,12 +35,12 @@ static void alloc_and_print(void) {
 }
 
 static void make_unhandled_syscall(void) {
-	ssize_t ret = splice(-1, NULL, -1, NULL, 0, 0);
+	ssize_t ret = kill(getpid(), SIGKILL);
 	/* XXX the error return is somewhat arbitrary here, but as
 	 * long as |splice()| remains unimplemented in experiment
 	 * mode, it's reasonable to assume that the libc wrapper will
 	 * return -1 back to us. */
-	atomic_printf("return from splice: %d\n", ret);
+	atomic_printf("return from kill: %d\n", ret);
 }
 
 static void print_time(void) {

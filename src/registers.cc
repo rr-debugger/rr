@@ -303,7 +303,7 @@ Registers::write_register(unsigned reg_name,
 
 	// TODO remainder of register set
 	default:
-		FATAL() <<"Unhandled register name "<< reg_name;
+		LOG(warn) <<"Unhandled register name "<< reg_name;
 	}
 }
 

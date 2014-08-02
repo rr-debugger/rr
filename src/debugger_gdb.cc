@@ -704,9 +704,7 @@ static void read_reg_value(char** strp, DbgRegister* reg)
 	}
 
 	reg->defined = true;
-	// TODO: mixed-arch support
-	reg->size = sizeof(void*);
-	assert(2 * reg->size == strlen(str));
+	reg->size = strlen(str) / 2;
 	for (size_t i = 0; i < reg->size; ++i) {
 		char tmp = str[2];
 		str[2] = '\0';

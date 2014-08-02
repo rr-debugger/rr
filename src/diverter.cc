@@ -58,48 +58,35 @@ static void process_syscall(Task* t, int syscallno)
 		finish_emulated_syscall_with_ret(t, 0);
 		return;
 
-	// Writes to stdio fds are emulated in this tracer process.
-	case SYS_write: {
-		int fd = t->regs().arg1();
-		void* bufaddr = (void*)t->regs().arg2();
-		size_t num_bytes = t->regs().arg3();
-		if (STDOUT_FILENO != fd && STDERR_FILENO != fd) {
-			break;
-		}
-		byte buf[num_bytes];
-		ssize_t nread =
-			t->read_bytes_fallible(bufaddr, num_bytes, buf);
-		if (nread > 0) {
-			write(fd, buf, nread);
-		}
-		finish_emulated_syscall_with_ret(t, nread);
-		return;
-	}
-	// These syscalls are actually executed, based on the register
-	// contents already present in the remote task.  To execute a
-	// new syscall, simply add it to this list.
-	case SYS_mmap2:
-	case SYS_munmap:
-		return execute_syscall(t);
-
-	// These syscalls aren't yet emulated or executed, but are
-	// known to be commonly hit during |call foo()| frames.  We
-	// early-return here to silence the warning below, which we
-	// don't believe is helping the user.
-	case SYS_clock_gettime:
-		return;
-	}
-
-	// We "implement" unhandled syscalls by simply ignoring them.
-	// Tracees enter the syscall through a SYSEMU request, but no
-	// emulation or return value munging is done.  To tracees,
-	// this will look like an -ENOSYS return from the kernel.
+	// We blacklist these syscalls because the params include
+	// namespaced identifiers that are different in replay than
+	// recording, and during replay they may refer to different,
+	// live resources.  For example, if a recorded tracees kills
+	// one of its threads, then during replay that killed pid
+	// might refer to a live process outside the tracee tree.  We
+	// don't want diversion tracees randomly shooting down other
+	// processes!
 	//
-	// TODO: it's not known whether this is sufficient for
-	// interesting cases yet.
-	fprintf(stderr,
-"rr: Warning: Syscall `%s' not handled during diversion session.\n",
-		t->syscallname(syscallno));
+	// We optimistically assume that filesystem operations were
+	// intended by the user.
+	//
+	// There's a potential problem with "fd confusion": in the
+	// diversion tasks, fds returned from open() during replay are
+	// emulated.  But those fds may accidentally refer to live fds
+	// in the task fd table.  So write()s etc may not be writing
+	// to the file the tracee expects.  However, the only real fds
+	// that leak into tracees are the stdio fds, and there's not
+	// much harm that can be caused by accidental writes to them.
+	case SYS_ipc:
+	case SYS_kill:
+	case SYS_rt_sigqueueinfo:
+	case SYS_rt_tgsigqueueinfo:
+	case SYS_tgkill:
+	case SYS_tkill:
+		return;
+	}
+
+	return execute_syscall(t);
 }
 
 /**

@@ -97,7 +97,6 @@ set(BASIC_TESTS
   barrier
   big_buffers
   block
-  call_function
   chew_cpu
   clock
   clone
@@ -200,6 +199,7 @@ set(TESTS_WITH_PROGRAM
   block_intr_sigchld
   breakpoint
   breakpoint_overlap
+  call_function
   condvar_stress
   crash
   exit_group
