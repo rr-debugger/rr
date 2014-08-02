@@ -178,6 +178,12 @@ struct dbg_auxv_pair {
 bool dbg_is_resume_request(const struct dbg_request* req);
 
 /**
+ * Return nonzero if |req| requires that program execution be resumed
+ * in some way, or it requires a complete restart.
+ */
+bool dbg_is_resume_or_restart_request(const struct dbg_request* req);
+
+/**
  * Wait for exactly one gdb host to connect to this remote target on
  * IP address |addr|, port |port|.  If |probe| is nonzero, a unique
  * port based on |start_port| will be searched for.  Otherwise, if

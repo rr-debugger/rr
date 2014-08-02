@@ -85,6 +85,18 @@ bool dbg_is_resume_request(const struct dbg_request* req)
 	}
 }
 
+bool dbg_is_resume_or_restart_request(const struct dbg_request* req)
+{
+	switch (req->type) {
+	case DREQ_RESTART:
+	case DREQ_CONTINUE:
+	case DREQ_STEP:
+		return true;
+	default:
+		return false;
+	}
+}
+
 inline static bool request_needs_immediate_response(const struct dbg_request* req)
 {
 	switch (req->type) {
