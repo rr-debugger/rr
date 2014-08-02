@@ -178,7 +178,8 @@ public:
 
  	/**
 	 * Like |clone()|, but return a session in "diversion" mode,
-	 * which allows free execution.  See diversioner.h.
+	 * which allows free execution.  The returned session has
+	 * exactly one ref().  See diversioner.h.
 	 */
 	shr_ptr clone_diversion();
 
@@ -197,8 +198,14 @@ public:
 
 	TraceIfstream& ifstream() { return *trace_ifstream; }
 
-	/** True when this session is dying, as determined by clients. */
-	bool dying() const { return is_dying; }
+	/**
+	 * True when this diversion is dying, as determined by
+	 * clients.
+	 */
+	bool diversion_dying() const {
+		assert(is_diversion);
+		return 0 == diversion_refcount;
+	}
 
 	/**
 	 * True when this is an diversion session; see diversioner.h.
@@ -259,15 +266,26 @@ public:
 	}
 	Task* last_task() { return last_debugged_task; }
 
- 	/**
-	 * Mark this session as dying.
-	 */
-	void start_dying() { is_dying = true; }
 	/**
-	 * If this session was previously thought to be dying, mark it
-	 * as longer dying.
+	 * Add another reference to this diversion, which specifically
+	 * means another call to |diversion_unref()| must be made
+	 * before this is considered to be dying.
 	 */
-	void revive() { is_dying = false; }
+	void diversion_ref() {
+		assert(is_diversion);
+		assert(diversion_refcount >= 0);
+		++diversion_refcount;
+	}
+
+	/**
+	 * Remove a reference to this diversion created by
+	 * |diversion_ref()|.
+	 */
+	void diversion_unref() {
+		assert(is_diversion);
+		assert(diversion_refcount > 0);
+		--diversion_refcount;
+	}
 
 	/**
 	 * Create a replay session that will use the trace specified
@@ -281,7 +299,7 @@ public:
 
 private:
 	ReplaySession()
-		: is_dying(false)
+		: diversion_refcount(0)
 		, is_diversion(false)
 		, last_debugged_task(nullptr)
 		, tgid_debugged(0)
@@ -291,9 +309,10 @@ private:
 	{}
 
 	std::shared_ptr<EmuFs> emu_fs;
-	// True when this (diversion) session appears to be dying,
-	// as determined by its client.
-	bool is_dying;
+	// Number of client references to this, if it's a diversion
+	// session.  When there are 0 refs this is considered to be
+	// dying.
+	int diversion_refcount;
 	// True when this is an "diversion" session; see
 	// diversioner.h.  In the future, this will be a separate
 	// DiversionSession class.

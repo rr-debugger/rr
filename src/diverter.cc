@@ -131,7 +131,7 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 	while (true) {
 		*req = dbg_get_request(dbg);
 		if (dbg_is_resume_request(req)) {
-			if (session->dying()) {
+			if (session->diversion_dying()) {
 				return nullptr;
 			}
 			return t;
@@ -141,7 +141,8 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 			return nullptr;
 
 		case DREQ_READ_SIGINFO: {
-			session->revive();
+			LOG(debug) <<"Adding ref to diversion session";
+			session->diversion_ref();
 			// TODO: maybe share with replayer.cc?
 			byte si_bytes[req->mem.len];
 			memset(si_bytes, 0, sizeof(si_bytes));
@@ -156,8 +157,11 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 			break;
 		}
 		case DREQ_WRITE_SIGINFO:
-			LOG(debug) <<"Diversion session dying at next continue request ...";
-			session->start_dying();
+			LOG(debug) <<"Removing reference to diversion session ...";
+			session->diversion_unref();
+			if (session->diversion_dying()) {
+				LOG(debug) <<"  ... dying at next continue request";
+			}
 			dbg_reply_write_siginfo(dbg);
 			continue;
 
@@ -199,6 +203,7 @@ void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
 	}
 
 	LOG(debug) <<"... ending debugging diversion";
+	assert(session->diversion_dying());
 	session->kill_all_tasks();
 	session = nullptr;
 }

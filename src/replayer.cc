@@ -587,8 +587,9 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 					       si_bytes, sizeof(si_bytes));
 
 			divert(*session, dbg, t->rec_tid, &req);
-			// TODO: RESTART requests, insn tracing ...
-			assert(dbg_is_resume_request(&req));
+			// TODO: insn tracing ...
+			assert(DREQ_RESTART == req.type
+			       || dbg_is_resume_request(&req));
 			return req;
 		}
 		default:
