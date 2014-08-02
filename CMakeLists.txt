@@ -276,6 +276,7 @@ set(TESTS_WITHOUT_PROGRAM
   parent_no_stop_child_crash
   read_bad_mem
   restart_unstable
+  restart_diversion
   sanity
   signal_stop
   step1
