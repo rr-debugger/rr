@@ -85,6 +85,18 @@ bool dbg_is_resume_request(const struct dbg_request* req)
 	}
 }
 
+bool dbg_is_resume_or_restart_request(const struct dbg_request* req)
+{
+	switch (req->type) {
+	case DREQ_RESTART:
+	case DREQ_CONTINUE:
+	case DREQ_STEP:
+		return true;
+	default:
+		return false;
+	}
+}
+
 inline static bool request_needs_immediate_response(const struct dbg_request* req)
 {
 	switch (req->type) {
@@ -971,6 +983,30 @@ static int process_vpacket(struct dbg_context* dbg, char* payload)
 	return 0;
 }
 
+static std::string escape_string(const char* str)
+{
+	char ch;
+	std::string s;
+	while ((ch = *str++) != 0) {
+		switch (ch) {
+		case '\\': s.append("\\\\"); break;
+		case '\n': s.append("\\n"); break;
+		case '\r': s.append("\\r"); break;
+		case '\t': s.append("\\t"); break;
+		case 0: s.append("\\0"); break;
+		default:
+			if (ch < ' ') {
+				char buf[10];
+				sprintf(buf, "\\x%x", (unsigned char)ch);
+				s.append(buf);
+			} else {
+				s.append(1, ch);
+			}
+		}
+	}
+	return s;
+}
+
 static int process_packet(struct dbg_context* dbg)
 {
 	char request;
@@ -990,7 +1026,7 @@ static int process_packet(struct dbg_context* dbg)
 		dbg->inbuf[dbg->packetend] = '\0';
 	}
 
-	LOG(debug) <<"raw request "<< request <<"("<< payload <<")";
+	LOG(debug) <<"raw request "<< request <<"("<< escape_string(payload) <<")";
 
 	switch(request) {
 	case INTERRUPT_CHAR:
