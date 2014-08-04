@@ -182,9 +182,9 @@ public:
 
 	void watch(int which) {
 		assert_valid();
-		exec_count += (EXEC_BIT & which);
-		read_count += (READ_BIT & which);
-		write_count += (WRITE_BIT & which);
+		exec_count += (EXEC_BIT & which) != 0;
+		read_count += (READ_BIT & which) != 0;
+		write_count += (WRITE_BIT & which) != 0;
 	}
 	int unwatch(int which) {
 		assert_valid();
