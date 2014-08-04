@@ -130,12 +130,14 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 {
 	while (true) {
 		*req = dbg_get_request(dbg);
+
 		if (dbg_is_resume_request(req)) {
 			if (session->diversion_dying()) {
 				return nullptr;
 			}
 			return t;
 		}
+
 		switch (req->type) {
 		case DREQ_RESTART:
 			return nullptr;
@@ -165,9 +167,29 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 			dbg_reply_write_siginfo(dbg);
 			continue;
 
+		case DREQ_REMOVE_SW_BREAK:
+		case DREQ_REMOVE_HW_BREAK:
+		case DREQ_REMOVE_RD_WATCH:
+		case DREQ_REMOVE_WR_WATCH:
+		case DREQ_REMOVE_RDWR_WATCH:
+		case DREQ_SET_SW_BREAK:
+		case DREQ_SET_HW_BREAK:
+		case DREQ_SET_RD_WATCH:
+		case DREQ_SET_WR_WATCH:
+		case DREQ_SET_RDWR_WATCH: {
+			// Setting breakpoints in a dying diversion is assumed
+			// to be a user action intended for the replay
+			// session, so return to it now.
+			if (session->diversion_dying()) {
+				return nullptr;
+			}
+			break;
+		}
+
 		default:
 			break;
 		}
+
 		dispatch_debugger_request(*session, dbg, t, *req);
 	}
 }

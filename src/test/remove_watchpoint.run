@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record watchpoint
+debug watchpoint remove_watchpoint

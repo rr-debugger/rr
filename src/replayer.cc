@@ -555,25 +555,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 		struct dbg_request req = dbg_get_request(dbg);
 		req.suppress_debugger_stop = false;
 
-		if (dbg_is_resume_request(&req)) {
-			maybe_singlestep_for_event(t, &req);
-			LOG(debug) <<"  is resume request";
-			return req;
-		}
-
-		switch (req.type) {
-		case DREQ_RESTART:
-			// Debugger client requested that we restart execution
-			// from the beginning.  Restart our debug session.
-			LOG(debug) <<"  request to restart at event "
-				   << req.restart.param;
-			// If the user requested restarting to a
-			// different event, ensure that we change that
-			// param for the next replay session.
-			update_replay_target(-1, req.restart.param);
-			return req;
-
-		case DREQ_READ_SIGINFO: {
+		if (req.type == DREQ_READ_SIGINFO) {
 			// TODO: we send back a dummy siginfo_t to gdb
 			// so that it thinks the request succeeded.
 			// If we don't, then it thinks the
@@ -587,14 +569,28 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 					       si_bytes, sizeof(si_bytes));
 
 			divert(*session, dbg, t->rec_tid, &req);
-			// TODO: insn tracing ...
-			assert(DREQ_RESTART == req.type
-			       || dbg_is_resume_request(&req));
+			// Carry on to process the request that was rejected by
+			// the diversion session
+		}
+
+		if (dbg_is_resume_request(&req)) {
+			maybe_singlestep_for_event(t, &req);
+			LOG(debug) <<"  is resume request";
 			return req;
 		}
-		default:
-			break;
+
+		if (req.type == DREQ_RESTART) {
+			// Debugger client requested that we restart execution
+			// from the beginning.  Restart our debug session.
+			LOG(debug) <<"  request to restart at event "
+				   << req.restart.param;
+			// If the user requested restarting to a
+			// different event, ensure that we change that
+			// param for the next replay session.
+			update_replay_target(-1, req.restart.param);
+			return req;
 		}
+
 		dispatch_debugger_request(*session, dbg, t, req);
 	}
 }

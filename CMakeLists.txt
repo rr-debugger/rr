@@ -275,6 +275,7 @@ set(TESTS_WITHOUT_PROGRAM
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   read_bad_mem
+  remove_watchpoint
   restart_unstable
   restart_diversion
   sanity
