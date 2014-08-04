@@ -71,6 +71,9 @@ target_link_libraries(rrpreload
   -ldl
 )
 
+install(PROGRAMS scripts/signal-rr-recording.sh
+  DESTINATION bin)
+
 install(TARGETS rr rrpreload
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib

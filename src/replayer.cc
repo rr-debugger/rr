@@ -139,7 +139,8 @@ static const char gdb_rr_macros[] =
 	"end\n"
 	"define restart\n"
 	"  run c$arg0\n"
-	"end\n";
+	"end\n"
+	"handle SIGURG stop\n";
 
 // |parent| is the (potential) debugger client.  It waits until the
 // server, |child|, creates a debug socket.  Then the client exec()s
