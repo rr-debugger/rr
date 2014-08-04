@@ -20,10 +20,11 @@ int main(int argc, char *argv[]) {
 	breakpoint();
 
 	var = 42;
-	(void)var;
 
 	pthread_create(&t, NULL, thread, NULL);
 	pthread_join(t, NULL);
+
+	atomic_printf("var=%d\n", var);
 
 	atomic_puts("EXIT-SUCCESS");
 	return 0;
