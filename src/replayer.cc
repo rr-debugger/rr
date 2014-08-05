@@ -108,6 +108,12 @@ static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 
 using namespace std;
 
+// Arguments passed to rr by the user on the command line.  Used to
+// create the initial session, and subsequently re-create that initial
+// session when we do a full restart.
+static int cmdline_argc;
+static char** cmdline_argv;
+
 // |session| is used to drive replay.
 static ReplaySession::shr_ptr session;
 // If we're being controlled by a debugger, then |last_debugger_start| is
@@ -2236,8 +2242,14 @@ static void set_sig_blockedness(int sig, int blockedness)
 	}
 }
 
-static void init_session()
+/**
+ * Return a session created and initialized from the user-supplied
+ * command line params.
+ */
+ReplaySession::shr_ptr create_session_from_cmdline()
 {
+	auto session = ReplaySession::create(cmdline_argc, cmdline_argv);
+
 	struct args_env ae;
 	session->ifstream() >> ae;
 	// Because we execvpe() the tracee, we must ensure that $PATH
@@ -2256,6 +2268,7 @@ static void init_session()
 	}
 	session->create_task(ae, session,
 			     session->ifstream().peek_frame().tid);
+	return session;
 }
 
 static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
@@ -2290,8 +2303,10 @@ static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
 	stashed_dbg = dbg;
 
 	if (session->ifstream().time() > rr_flags()->goto_event) {
-		session->restart();
-		init_session();
+		// We weren't able to reuse the stashed session, so
+		// just discard it and create a fresh one that's back
+		// at beginning-of-trace.
+		session = create_session_from_cmdline();
 	}
 	*advance_to_next_trace_record = true;
 	return nullptr;
@@ -2341,11 +2356,12 @@ static void replay_trace_frames(void)
 
 static int serve_replay(int argc, char* argv[], char** envp)
 {
-	session = ReplaySession::create(argc, argv);
-
 	init_libpfm();
 
-	init_session();
+	cmdline_argc = argc;
+	cmdline_argv = argv;
+	session = create_session_from_cmdline();
+
 	replay_trace_frames();
 
 	close_libpfm();

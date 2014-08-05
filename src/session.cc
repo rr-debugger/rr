@@ -203,6 +203,18 @@ remap_shared_mmap(AutoRemoteSyscalls& remote, ReplaySession& session,
 	remote.syscall(SYS_close, remote_fd);
 }
 
+ReplaySession::~ReplaySession()
+{
+	// We won't permanently leak any OS resources by not ensuring
+	// we've cleaned up here, but sessions can be created and
+	// destroyed many times, and we don't want to temporarily hog
+	// resources.
+	kill_all_tasks();
+	assert(tasks().size() == 0 && vms().size() == 0);
+	gc_emufs();
+	assert(emufs().size() == 0);
+}
+
 ReplaySession::shr_ptr
 ReplaySession::clone()
 {
@@ -303,21 +315,6 @@ void
 ReplaySession::gc_emufs()
 {
 	emu_fs->gc(*this);
-}
-
-void
-ReplaySession::restart()
-{
-	kill_all_tasks();
-	assert(tasks().size() == 0 && vms().size() == 0);
-	last_debugged_task = nullptr;
-	tgid_debugged = 0;
-	tracees_consistent = false;
-
-	gc_emufs();
-	assert(emufs().size() == 0);
-
-	trace_ifstream->rewind();
 }
 
 /*static*/ ReplaySession::shr_ptr

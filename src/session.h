@@ -165,6 +165,8 @@ class ReplaySession : public Session {
 public:
 	typedef std::shared_ptr<ReplaySession> shr_ptr;
 
+	~ReplaySession();
+
 	/**
 	 * Return a semantic copy of all the state managed by this,
 	 * that is the entire tracee tree and the state it depends on.
@@ -231,11 +233,6 @@ public:
 	}
 
 	bool& reached_trace_frame() { return trace_frame_reached; }
-
-	/* Restore the state of this session to what it was just after
-	 * |create()|.
-	 */
-	void restart();
 
 	/**
 	 * Set |tgid| as the one that's being debugged in this
