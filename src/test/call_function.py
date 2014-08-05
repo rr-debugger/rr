@@ -19,7 +19,7 @@ send_gdb('call make_unhandled_syscall()\n')
 expect_gdb('return from kill: -1')
 
 send_gdb('call print_time()\n')
-expect_gdb(r'now is \d+ sec')
+expect_gdb(r'now is \d+(\.\d+)? sec')
 
 send_gdb('c\n')
 expect_rr('var is -42')
