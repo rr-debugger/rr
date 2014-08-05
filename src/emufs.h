@@ -71,6 +71,12 @@ public:
 	int fd() const { return file; }
 
 	/**
+	 * Return the path of the original file from recording, the
+	 * one this is emulating.
+	 */
+	const std::string emu_path() const { return orig_path; }
+
+	/**
 	 * Return a pathname referring to the fd of this in this
 	 * tracer's address space.  For example, "/proc/12345/fd/5".
 	 */
@@ -135,6 +141,11 @@ public:
 	 * representing the recorded file underlying |mf|.
 	 */
 	EmuFile::shr_ptr get_or_create(const struct mmapped_file& mf);
+
+	/**
+	 * Dump information about this emufs to the "error" log.
+	 */
+	void log() const;
 
 	size_t size() const { return files.size(); }
 

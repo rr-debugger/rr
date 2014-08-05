@@ -83,6 +83,7 @@ EmuFile::EmuFile(int fd, const struct stat& est, const char* orig_path)
 	: est(est)
 	, orig_path(orig_path)
 	, file(fd)
+	, is_marked(false)
 {}
 
 EmuFile::shr_ptr
@@ -155,7 +156,7 @@ EmuFs::gc(const Session& session)
 		it->second->unmark();
 	}
 	for (auto it = garbage.begin(); it != garbage.end(); ++it) {
-		LOG(debug) <<"  emufs gc reclaiming einode:"<< it->inode;
+		LOG(debug) <<"  emufs gc reclaiming einode:"<< it->inode <<"; fs name `"<< files[*it]->emu_path() <<"'";
 		files.erase(*it);
 	}
 }
@@ -172,6 +173,17 @@ EmuFs::get_or_create(const struct mmapped_file& mf)
 	auto vf = EmuFile::create(tag, mf.filename, mf.stat);
 	files[id] = vf;
 	return vf;
+}
+
+void
+EmuFs::log() const
+{
+	LOG(error) <<"EmuFs "<< HEX(this)
+		   <<" with "<< files.size() <<" files:";
+	for (auto& kv : files) {
+		auto file = kv.second;
+		LOG(error) <<"  "<< file->emu_path();
+	}
 }
 
 /*static*/ EmuFs::shr_ptr
