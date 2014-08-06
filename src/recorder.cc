@@ -63,6 +63,7 @@ static string create_pulseaudio_config()
 	char tmp[] = "rr-pulseaudio-client-conf-XXXXXX";
 	int fd = mkstemp(tmp);
 	fcntl(fd, F_SETFD, FD_CLOEXEC);
+	unlink(tmp);
 	// The fd is deliberately leaked so that the /proc/fd link below works
 	// indefinitely. But we stop it leaking into tracee processes.
 
@@ -70,7 +71,7 @@ static string create_pulseaudio_config()
 	procfile << "/proc/" << getpid() << "/fd/" << fd;
 	stringstream cmd;
 	cmd << "cp " << pulseaudio_config_path << " " << procfile.str();
-
+	    
 	int status = system(cmd.str().c_str());
 	if (-1 == status || !WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
 		FATAL() <<"The command '"<< cmd.str() <<"' failed.";
@@ -86,9 +87,6 @@ static string create_pulseaudio_config()
 	}
 	stringstream envpair;
 	envpair << "PULSE_CLIENTCONFIG=" << procfile.str();
-
-	unlink(tmp);
-
 	return envpair.str();
 }
 
