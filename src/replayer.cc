@@ -2,6 +2,7 @@
 
 //#define DEBUGTAG "Replayer"
 #define USE_BREAKPOINT_TARGET 1
+#define USE_TIMESLICE_COALESCING 1
 
 #include "replayer.h"
 
@@ -636,7 +637,8 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
 	// Subsequent reschedule-events of the same thread can be
 	// combined to a single event.  This meliorization is a
 	// tremendous win.
-	if (session.current_trace_frame().ev.type == EV_SCHED) {
+	if (USE_TIMESLICE_COALESCING
+	    && session.current_trace_frame().ev.type == EV_SCHED) {
 		struct trace_frame next_trace = session.ifstream().peek_frame();
 		while (EV_SCHED == next_trace.ev.type
 		       && next_trace.tid == t->rec_tid
