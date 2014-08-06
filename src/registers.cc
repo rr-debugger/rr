@@ -151,7 +151,15 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 	REGCMP(eip);
 	REGCMP(xfs);
 	REGCMP(xgs);
-	REGCMP(orig_eax);
+
+	/* Negative orig_eax values, observed at SCHED events and signals,
+	   seemingly can vary between recording and replay on some kernels
+	   (e.g. Linux ubuntu 3.13.0-24-generic). They probably reflect
+	   signals sent or something like that.
+	*/
+	if (reg1->orig_eax >= 0 || reg2->orig_eax >= 0) {
+		REGCMP(orig_eax);
+	}
 
 	/* The following are eflags that have been observed to be
 	 * nondeterministic in practice.  We need to mask them off in
