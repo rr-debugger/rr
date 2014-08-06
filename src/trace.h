@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "event.h"
+#include "hpc.h"
 #include "registers.h"
 #include "types.h"
 

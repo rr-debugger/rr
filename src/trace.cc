@@ -106,7 +106,7 @@ trace_frame::dump(FILE* out, bool raw_dump)
 	if (raw_dump) {
 		fprintf(out, " %lld %lld %lld %lld",
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-			hw_interrupts, page_faults, rbc, insts,
+			hw_interrupts, page_faults, rbc, insts
 #else
 			// Don't force tools to detect our config.
 			-1LL, -1LL, rbc, -1LL

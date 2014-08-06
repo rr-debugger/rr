@@ -39,23 +39,27 @@ void close_libpfm()
 	pfm_terminate();
 }
 
+enum PerfEventType { RAW_EVENT, SW_EVENT };
 static void libpfm_event_encoding(struct perf_event_attr* attr,
-				  const char* event_str, int hw_event)
+				  const char* event_str,
+				  PerfEventType event_type)
 {
-	memset(attr, 0, sizeof(struct perf_event_attr));
+	pfm_perf_encode_arg_t arg;
+	memset(&arg, 0, sizeof(arg));
+	// libpfm clears this.
+	arg.attr = attr;
+	arg.size = sizeof(arg);
 
-	int ret;
-	char* fstr;
-
-	attr->size = sizeof(struct perf_event_attr);
-	ret = pfm_get_perf_event_encoding(event_str, PFM_PLM0, attr, &fstr, NULL);
-	if (ret != PFM_SUCCESS) {
-		errx(1, "error while encoding event string %s :%s\n", event_str, pfm_strerror(ret));
+	int ret = pfm_get_os_event_encoding(event_str,
+					    PFM_PLM3, PFM_OS_PERF_EVENT_EXT,
+					    &arg);
+	if (PFM_SUCCESS != ret) {
+		FATAL() <<"Couldn't encode event "<< event_str <<": '"
+			<< pfm_strerror(ret) <<"'";
 	}
-	if (hw_event && attr->type != PERF_TYPE_RAW) {
-		errx(1, "error: %s is not a raw hardware event\n", event_str);
+	if (RAW_EVENT == event_type && PERF_TYPE_RAW != attr->type) {
+		FATAL() << event_str << " should have been a raw HW event";
 	}
-	free(fstr);
 }
 
 /*
@@ -131,36 +135,37 @@ void init_hpc(Task* t)
 	case IntelNehalem :
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
-		hw_int_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
+		hw_int_event = "r50011d:u";
 		break;
 	case IntelSandyBridge :
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
-		hw_int_event = "HW_INTERRUPTS:u";
+		hw_int_event = "r5301cb:u";
 		break;
 	case IntelIvyBridge :
 		rbc_event = "BR_INST_RETIRED:COND:u:precise=0";
 		inst_event = "INST_RETIRED:u";
-		hw_int_event = "HW_INTERRUPTS:u";
+		hw_int_event = "r5301cb:u";
 		break;
 	case IntelHaswell : {
 		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
 		inst_event = "INST_RETIRED:u";
-		hw_int_event = "HW_INTERRUPTS:u";
+		hw_int_event = "r5301cb:u";
 		break;
 	}
 	default:
 		FATAL() <<"Unknown CPU type";
 	}
 
-	libpfm_event_encoding(&(counters->rbc.attr), rbc_event , 1);
+	libpfm_event_encoding(&(counters->rbc.attr), rbc_event,
+			      RAW_EVENT);
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-	libpfm_event_encoding(&(counters->inst.attr), inst_event , 1);
-	/* counts up to double check */
-	//libpfm_event_encoding(&(counters->rbc.attr), rbc_event, 1);
-	libpfm_event_encoding(&(counters->hw_int.attr), hw_int_event, 1);
-	//libpfm_event_encoding(&(counters->hw_int.attr), event_str, 1);
-	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event, 0);
+	libpfm_event_encoding(&(counters->inst.attr), inst_event,
+			      RAW_EVENT);
+	libpfm_event_encoding(&(counters->hw_int.attr), hw_int_event,
+			      RAW_EVENT);
+	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event,
+			      SW_EVENT);
 #else
 	(void)inst_event;
 	(void)hw_int_event;
