@@ -29,6 +29,7 @@
 #include <sys/prctl.h>
 #include <sys/quota.h>
 #include <sys/socket.h>
+#include <sys/sysctl.h>
 
 #include <map>
 #include <memory>
@@ -1661,6 +1662,14 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->syscall.num_emu_args = 2;
 		step->action = (STATE_SYSCALL_ENTRY == state) ?
 			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
+	case SYS__sysctl:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 2;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
 		return;
 
 	case SYS_waitid:

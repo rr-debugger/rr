@@ -12,6 +12,7 @@ int main(int argc, char *argv[]) {
 	name[1] = KERN_RTSIGMAX;
 	if (sysctl(name, 2, &sig_max, &len, NULL, 0) == -1) {
 		/* many kernels don't support this */
+		atomic_printf("sysctl KERN_RTSIGMAX returned errno %d\n", errno);
 		atomic_puts("EXIT-SUCCESS");
 	} else {
 		assert(len == sizeof(sig_max));

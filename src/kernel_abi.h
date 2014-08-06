@@ -12,6 +12,7 @@
 #include <linux/msg.h>
 #include <linux/net.h>
 #include <linux/sockios.h>
+#include <linux/sysctl.h>
 #include <linux/wireless.h>
 #include <poll.h>
 #include <signal.h>
@@ -632,6 +633,17 @@ struct base_arch : public wordsize {
 		ptr<void> msgbuf;
 		signed_long msgtype;
 	};
+
+	struct __sysctl_args {
+		ptr<signed_int> name;
+		signed_int nlen;
+		ptr<void> oldval;
+		ptr<size_t> oldlenp;
+		ptr<void> newval;
+		ptr<size_t> newlen;
+		unsigned_long __unused[4];
+	};
+	RR_VERIFY_TYPE(__sysctl_args);
 };
 
 struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {

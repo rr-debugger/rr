@@ -30,6 +30,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/sysctl.h>
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/times.h>
@@ -972,6 +973,16 @@ static int rec_prepare_syscall_arch(Task* t)
 			return 1;
 		}
 		FATAL() <<"Not reached";
+	}
+
+	case Arch::_sysctl: {
+		typename Arch::__sysctl_args sysctl_args;
+		void* args_ptr = (void*)t->regs().arg1();
+		t->read_mem(args_ptr, &sysctl_args);
+
+		push_arg_ptr(t, sysctl_args.oldval);
+		push_arg_ptr(t, sysctl_args.oldlenp);
+		return 0;
 	}
 
 	/* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout); */
@@ -2599,6 +2610,16 @@ static void rec_process_syscall_arch(Task *t)
 
 		t->set_regs(r);
 		finish_restoring_scratch(t, iter, &data);
+		break;
+	}
+	case Arch::_sysctl: {
+		size_t* oldlenp = pop_arg_ptr<size_t>(t);
+		void* oldval = pop_arg_ptr<void>(t);
+		size_t oldlen;
+		t->read_mem(oldlenp, &oldlen);
+
+		t->record_remote(oldlenp, sizeof(size_t));
+		t->record_remote(oldval, oldlen);
 		break;
 	}
 	case Arch::waitid: {
