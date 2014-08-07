@@ -1092,6 +1092,25 @@ static int rec_prepare_syscall_arch(Task* t)
 		else
 			return 0;
 	}
+	case Arch::rt_sigtimedwait: {
+		if (!would_need_scratch) {
+			return 1;
+		}
+		Registers r = t->regs();
+		siginfo_t* info = (siginfo_t*)r.arg2();
+		push_arg_ptr(t, info);
+		if (info) {
+			r.set_arg2((uintptr_t)scratch);
+			// TODO: is this size arch-dependent?
+			scratch += sizeof(*info);
+		}
+
+		if (!can_use_scratch(t, scratch)) {
+			return abort_scratch(t, t->syscallname(syscallno));
+		}
+		t->set_regs(r);
+		return 1;
+	}
 	case Arch::rt_sigsuspend:
 	case Arch::sigsuspend:
 		return 1;
@@ -2558,6 +2577,22 @@ static void rec_process_syscall_arch(Task *t)
 		}
 
 		record_and_restore_msgvec<Arch>(t, has_saved_ptr, nmmsgs, msg, oldmsg);
+		break;
+	}
+	case Arch::rt_sigtimedwait: {
+		Registers r = t->regs();
+		siginfo_t* info = pop_arg_ptr<siginfo_t>(t);
+		byte* iter;
+		void* data = start_restoring_scratch(t, &iter);
+
+		if (info) {
+			restore_and_record_arg(t, info, &iter);
+			r.set_arg2((uintptr_t)info);
+		} else {
+			record_noop_data(t);
+		}
+		t->set_regs(r);
+		finish_restoring_scratch(t, iter, &data);
 		break;
 	}
 	case Arch::sendfile64: {

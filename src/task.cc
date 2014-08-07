@@ -105,7 +105,7 @@ struct Sighandlers {
 	}
 
 	void init_from_current_process() {
-		for (int i = 0; i < ssize_t(ALEN(handlers)); ++i) {
+		for (int i = 1; i < ssize_t(ALEN(handlers)); ++i) {
 			Sighandler& h = handlers[i];
 			struct sigaction act;
 			if (-1 == sigaction(i, NULL, &act)) {

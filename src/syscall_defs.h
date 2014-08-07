@@ -1184,9 +1184,42 @@ SYSCALL_DEF1(rt_sigaction, EMU, struct kernel_sigaction, arg3)
 SYSCALL_DEF1(rt_sigprocmask, EMU, sigset_t, arg3)
 
 SYSCALLNO_X86_64(127)
-SYSCALL_DEF_UNSUPPORTED(rt_sigpending)
-SYSCALL_DEF_UNSUPPORTED(rt_sigtimedwait)
-SYSCALL_DEF_UNSUPPORTED(rt_sigqueueinfo)
+
+/**
+ *  int sigpending(sigset_t *set);
+ *
+ * sigpending() returns the set of signals that are pending for
+ * delivery to the calling thread (i.e., the signals which have been
+ * raised while blocked).  The mask of pending signals is returned in
+ * set.
+ */
+SYSCALL_DEF1_DYNSIZE(rt_sigpending, EMU, t->regs().arg2(), arg1)
+
+/**
+ *  int sigtimedwait(const sigset_t *set, siginfo_t *info,
+ *                   const struct timespec *timeout);
+ *
+ * sigwaitinfo() suspends execution of the calling thread until one of
+ * the signals in set is pending (If one of the signals in set is
+ * already pending for the calling thread, sigwaitinfo() will return
+ * immedi ately.)
+ *
+ * sigtimedwait() operates in exactly the same way as sigwaitinfo()
+ * except that it has an additional argument, timeout, which specifies
+ * a minimum interval for which the thread is suspended waiting for a
+ * signal.
+ */
+SYSCALL_DEF_IRREG(rt_sigtimedwait, EMU)
+
+/**
+ *  int sigpending(sigset_t *set);
+ *
+ * sigpending() returns the set of signals that are pending for
+ * delivery to the calling thread (i.e., the signals which have been
+ * raised while blocked).  The mask of pending signals is returned in
+ * set.
+ */
+SYSCALL_DEF1_DYNSIZE(rt_sigqueueinfo, EMU, t->regs().arg2(), arg1)
 
 /**
  *  int sigsuspend(const sigset_t *mask);
