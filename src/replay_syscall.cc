@@ -1621,6 +1621,14 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		step->action = TSTEP_EXIT_SYSCALL;
 		return;
 	}
+	case SYS_rt_sigtimedwait:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 1;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			       TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
 	case SYS_sendfile64:
 		step->syscall.emu = 1;
 		step->syscall.emu_ret = 1;
