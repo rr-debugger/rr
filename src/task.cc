@@ -199,6 +199,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, blocked_sigs()
 	, prname("???")
 	, rbcs(0)
+	, rbcs_read(false)
 	, registers_known(false), extra_registers_known(false)
 	, robust_futex_list(), robust_futex_list_len()
 	, session_record(nullptr), session_replay(nullptr)
@@ -778,8 +779,7 @@ Task::record_event(const Event& ev)
 	frame.tid = tid;
 	frame.ev = ev.encode();
 	if (ev.has_exec_info()) {
-		rbcs += read_rbc(hpc);
-		frame.rbc = rbcs;
+		frame.rbc = rbc_count();
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 		frame.hw_interrupts = read_hw_int(hpc);
 		frame.page_faults = read_page_faults(hpc);
@@ -799,9 +799,6 @@ Task::record_event(const Event& ev)
 	}
 
 	ofstream() << frame;
-	if (ev.has_exec_info()) {
-		reset_hpc(this, rr_flags()->max_rbc);
-	}
 }
 
 void
@@ -813,10 +810,9 @@ Task::flush_inconsistent_state()
 int64_t
 Task::rbc_count()
 {
-	int64_t hpc_rbcs = read_rbc(hpc);
-	if (hpc_rbcs > 0) {
-		rbcs += hpc_rbcs;
-		reset_hpc(this, 0);
+	if (!rbcs_read) {
+		rbcs += read_rbc(hpc);
+		rbcs_read = true;
 	}
 	return rbcs;
 }
@@ -988,17 +984,19 @@ bool
 Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
 		       int64_t rbc_period)
 {
-	// Ensure no rbcs are lost when we reset_hpc below.
+	// Treat a 0 rbc_period as a very large but finite number.
+	// Always resetting here, and always to a nonzero number, improves
+	// consistency between recording and replay and hopefully
+	// makes counting bugs behave similarly between recording and
+	// replay.
+	// Accumulate any unknown stuff in rbc_count().
 	rbc_count();
-	if (session_replay) {
-		reset_hpc(this, rbc_period);
-	} else {
-		assert(rbc_period == 0);
-	}
+	reset_hpc(this, rbc_period == 0 ? 0xffffffff : rbc_period);
 	LOG(debug) <<"resuming execution with "<< ptrace_req_name(how);
 	xptrace(how, nullptr, (void*)(uintptr_t)sig);
 	registers_known = false;
 	extra_registers_known = false;
+	rbcs_read = false;
 	if (RESUME_NONBLOCKING == wait_how) {
 		return true;
 	}
@@ -1669,9 +1667,8 @@ Task::copy_state(Task* from)
 	pending_events = from->pending_events;
 
 	rbcs = from->rbc_count();
+	rbcs_read = true;
 	tid_futex = from->tid_futex;
-
-	reset_hpc(this, 0);
 }
 
 void

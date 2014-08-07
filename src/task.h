@@ -170,20 +170,17 @@ public:
 	 * interrupted.  Don't wait for status change in the
 	 * "_nonblocking()" variants.
 	 */
-	bool cont(int sig=0) {
-		return resume_execution(RESUME_CONT, RESUME_WAIT, sig);
-	}
-	void cont_nonblocking(int sig=0) {
-		resume_execution(RESUME_CONT, RESUME_NONBLOCKING, sig);
+	void cont_nonblocking(int sig=0, int64_t rbc_period = 0) {
+		resume_execution(RESUME_CONT, RESUME_NONBLOCKING, sig, rbc_period);
 	}
 	bool cont_singlestep(int sig=0) {
 		return resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, sig);
 	}
 	bool cont_syscall(int sig=0) {
-		return resume_execution(RESUME_SYSCALL, RESUME_WAIT, sig);
+		return resume_execution(RESUME_SYSCALL, RESUME_WAIT);
 	}
-	void cont_syscall_nonblocking(int sig=0) {
-		resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, sig);
+	void cont_syscall_nonblocking(int sig=0, int64_t rbc_period = 0) {
+		resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, sig, rbc_period);
 	}
 	bool cont_sysemu(int sig=0) {
 		return resume_execution(RESUME_SYSEMU, RESUME_WAIT, sig);
@@ -693,7 +690,8 @@ public:
 	/**
 	 * Resume execution |how|, deliverying |sig| if nonzero.
 	 * After resuming, |wait_how|. In replay, reset hpcs and
-	 * request an rbc period of rbc_period.
+	 * request an rbc period of rbc_period. The default value
+	 * of rbc_period is 0, which means effectively infinite.
 	 *
 	 * You probably want to use one of the cont*() helpers above,
 	 * and not this.
@@ -1276,6 +1274,8 @@ private:
 	// Count of all rbcs seen by this task since tracees became
 	// consistent.
 	int64_t rbcs;
+	// True if rbc hpc values have been read since the last task-resume.
+	bool rbcs_read;
 	// When |registers_known|, these are our child registers.
 	// When execution is resumed, we no longer know what the child
 	// registers are so the flag is unset.  The next time the

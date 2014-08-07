@@ -154,10 +154,9 @@ static void handle_ptrace_event(Task** tp)
 		// copy, so the flags here aren't meaningful for it.
 		unsigned long flags_arg = (SYS_clone == t->regs().original_syscallno()) ?
 			t->regs().arg1() : 0;
-		Task* new_task = t->session().clone(
+		t->session().clone(
 			t, clone_flags_to_task_flags(flags_arg),
 			stack, tls, ctid, new_tid);
-		reset_hpc(new_task, rr_flags()->max_rbc);
 		// Skip past the ptrace event.
 		t->cont_syscall();
 		assert(t->pending_sig() == 0);
@@ -232,7 +231,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 		 * syscall_buffer lib in the child, therefore we must
 		 * record in the traditional way (with PTRACE_SYSCALL)
 		 * until it is installed. */
-		t->cont_syscall_nonblocking(sig);
+		t->cont_syscall_nonblocking(sig, rr_flags()->max_rbc);
 	} else {
 		/* When the seccomp filter is on, instead of capturing
 		 * syscalls by using PTRACE_SYSCALL, the filter will
@@ -244,7 +243,7 @@ static void task_continue(Task* t, int force_cont, int sig)
 		 * process to continue to the actual entry point of
 		 * the syscall (using cont_syscall_block()) and then
 		 * using the same logic as before. */
-		t->cont_nonblocking(sig);
+		t->cont_nonblocking(sig, rr_flags()->max_rbc);
 	}
 }
 
@@ -654,8 +653,6 @@ static bool signal_state_changed(Task* t, int by_waitpid)
 		// This event is used by the replayer to advance to
 		// the point of signal delivery.
 		t->record_current_event();
-		reset_hpc(t, rr_flags()->max_rbc);
-
 		t->ev().transform(EV_SIGNAL_DELIVERY);
 		ssize_t sigframe_size;
 		if (t->signal_has_user_handler(sig)) {
@@ -925,7 +922,6 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp)
 
 	Task* t = session->create_task(ae, session);
 	TaskGroup::shr_ptr initial_task_group = t->task_group();
-	reset_hpc(t, rr_flags()->max_rbc);
 
 	while (session->tasks().size() > 0) {
 		int by_waitpid;
