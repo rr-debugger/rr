@@ -9,7 +9,6 @@
 
 #include <assert.h>
 #include <err.h>
-#include <perfmon/perf_event.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -27,25 +26,8 @@
 
 class Task;
 
-typedef struct {
-	struct perf_event_attr attr;
-	int fd;
-} hpc_event_t;
-
-struct hpc_context {
-	bool started;
-	int group_leader;
-
-	hpc_event_t rbc;
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-	hpc_event_t inst;
-	hpc_event_t page_faults;
-	hpc_event_t hw_int;
-#endif
-};
-
-void init_libpfm(void);
-void close_libpfm(void);
+// Forward decl of this "private" struct.
+struct hpc_context;
 
 void init_hpc(Task *t);
 void destroy_hpc(Task *t);
@@ -53,6 +35,7 @@ void stop_hpc(Task *t);
 void reset_hpc(Task *t, int64_t val);
 
 int64_t read_rbc(struct hpc_context *counters);
+int rcb_cntr_fd(struct hpc_context* hpc);
 
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 int64_t read_page_faults(struct hpc_context *counters);

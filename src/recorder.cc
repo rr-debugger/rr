@@ -917,7 +917,6 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp)
 
 	session->ofstream() << ae;
 
-	init_libpfm();
 	install_termsig_handlers();
 
 	Task* t = session->create_task(ae, session);
@@ -987,7 +986,6 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp)
 	LOG(info) <<"Done recording -- cleaning up";
 	session = nullptr;
 	initial_task_group = nullptr;
-	close_libpfm();
 
 	return exit_code;
 }

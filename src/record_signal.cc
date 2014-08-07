@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
 
 //#define DEBUGTAG "Signal"
 
@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <fcntl.h>
+#include <linux/perf_event.h>
 #include <sched.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +45,7 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si)
 	 * we reset the HPC counters.  There be a way to handle that
 	 * more elegantly, but bridge will be crossed in due time. */
 	ASSERT(t, (HPC_TIME_SLICE_SIGNAL == si->si_signo
-		   && si->si_fd == t->hpc->rbc.fd
+		   && si->si_fd == rcb_cntr_fd(t->hpc)
 		   && POLL_IN == si->si_code))
 		<< "Tracee is using SIGSTKFLT??? (code="<< si->si_code
 		<<", fd="<< si->si_fd <<")";

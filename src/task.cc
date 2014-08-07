@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <linux/net.h>
+#include <linux/perf_event.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
@@ -1377,7 +1378,7 @@ Task::wait()
 				      (HPC_TIME_SLICE_SIGNAL << 8) | 0x7f;
 		memset(&stashed_si, 0, sizeof(stashed_si));
 		stashed_si.si_signo = HPC_TIME_SLICE_SIGNAL;
-		stashed_si.si_fd = hpc->rbc.fd;
+		stashed_si.si_fd = rcb_cntr_fd(hpc);
 		stashed_si.si_code = POLL_IN;
 		// Starve the runaway task of CPU time.  It just got
 		// the equivalent of hundreds of time slices.

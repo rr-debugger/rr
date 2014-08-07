@@ -16,7 +16,6 @@
 #include <linux/ipc.h>
 #include <linux/magic.h>
 #include <linux/net.h>
-#include <perfmon/perf_event.h>
 #include <malloc.h>
 #include <string.h>
 #include <stdlib.h>

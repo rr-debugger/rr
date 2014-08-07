@@ -4,7 +4,7 @@
 
 #include <assert.h>
 #include <fcntl.h>
-#include <perfmon/pfmlib_perf_event.h>
+#include <linux/perf_event.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,51 +23,29 @@
 
 using namespace std;
 
-/**
- * libpfm4 specific stuff
- */
-void init_libpfm()
-{
-	int ret = pfm_initialize();
-	if (ret != PFM_SUCCESS) {
-		FATAL() <<"Failed to init libpfm: "<< pfm_strerror(ret);
-	}
-}
+struct hpc_event_t {
+	struct perf_event_attr attr;
+	int fd;
+};
 
-void close_libpfm()
-{
-	pfm_terminate();
-}
+struct hpc_context {
+	bool started;
+	int group_leader;
 
-enum PerfEventType { RAW_EVENT, SW_EVENT };
-static void libpfm_event_encoding(struct perf_event_attr* attr,
-				  const char* event_str,
-				  PerfEventType event_type)
-{
-	pfm_perf_encode_arg_t arg;
-	memset(&arg, 0, sizeof(arg));
-	// libpfm clears this.
-	arg.attr = attr;
-	arg.size = sizeof(arg);
-
-	int ret = pfm_get_os_event_encoding(event_str,
-					    PFM_PLM3, PFM_OS_PERF_EVENT_EXT,
-					    &arg);
-	if (PFM_SUCCESS != ret) {
-		FATAL() <<"Couldn't encode event "<< event_str <<": '"
-			<< pfm_strerror(ret) <<"'";
-	}
-	if (RAW_EVENT == event_type && PERF_TYPE_RAW != attr->type) {
-		FATAL() << event_str << " should have been a raw HW event";
-	}
-}
+	hpc_event_t rbc;
+#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
+	hpc_event_t inst;
+	hpc_event_t page_faults;
+	hpc_event_t hw_int;
+#endif
+};
 
 /*
  * Find out the cpu model using the cpuid instruction.
  * Full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
  * Another list at http://software.intel.com/en-us/articles/intel-architecture-and-processor-identification-with-cpuid-model-and-family-numbers
  */
-enum cpu_type {
+enum CpuMicroarch {
 	UnknownCpu,
 	IntelMerom,
 	IntelPenryn,
@@ -77,7 +55,38 @@ enum cpu_type {
 	IntelIvyBridge,
 	IntelHaswell
 };
-static cpu_type get_cpu_type()
+
+struct PmuConfig {
+	CpuMicroarch uarch;
+	const char* name;
+	unsigned rcb_cntr_event;
+	unsigned rinsn_cntr_event;
+	unsigned hw_intr_cntr_event;
+	bool supported;
+};
+
+// XXX please only edit this if you really know what you're doing.
+PmuConfig pmu_configs[] = {
+	{ IntelHaswell, "Intel Haswell",
+	  0x5101c4, 0x5100c0, 0x5301cb, true },
+	{ IntelIvyBridge, "Intel Ivy Bridge",
+	  0x5101c4, 0x5100c0, 0x5301cb, true },
+	{ IntelSandyBridge, "Intel Sandy Bridge",
+	  0x5101c4, 0x5100c0, 0x5301cb, true },
+	{ IntelNehalem, "Intel Nehalem",
+	  0x5101c4, 0x5100c0, 0x50011d, true },
+	{ IntelWestmere, "Intel Westmere",
+	  0x5101c4, 0x5100c0, 0x50011d, true },
+
+	{ IntelPenryn, "Intel Penryn", 0, 0, 0, false },
+	{ IntelMerom, "Intel Merom", 0, 0, 0, false },
+};
+
+/**
+ * Return the detected, known microarchitecture of this CPU, or don't
+ * return; i.e. never return UnknownCpu.
+ */
+static CpuMicroarch get_cpu_microarch()
 {
 	unsigned int cpu_type, eax, ecx, edx;
 	cpuid(CPUID_GETFEATURES, 0, &eax, &ecx, &edx);
@@ -111,65 +120,53 @@ static cpu_type get_cpu_type()
 	}
 }
 
+static void init_perf_event_attr(struct perf_event_attr* attr,
+				 perf_type_id type, unsigned config)
+{
+	memset(attr, 0, sizeof(*attr));
+	attr->type = type;
+	attr->size = sizeof(*attr);
+	attr->config = config;
+	// rr requires that its events count userspace tracee code
+	// only.
+	attr->exclude_kernel = 1;
+	attr->exclude_guest = 1;
+}
+
 void init_hpc(Task* t)
 {
 	struct hpc_context* counters =
 		(struct hpc_context*)calloc(1, sizeof(*counters));
 	t->hpc = counters;
 
-	/* get the event that counts down to the initial value
-	 * the precision level enables PEBS support. precise=0 uses the counter
-	 * with PEBS disabled */
-	const char * rbc_event = 0;
-	const char * inst_event = 0;
-	const char * hw_int_event = 0;
-	const char * page_faults_event = "PERF_COUNT_SW_PAGE_FAULTS:u";
-	switch (get_cpu_type()) {
-	case IntelMerom :
-		FATAL() <<"Intel Merom CPUs currently unsupported.";
-		break;
-	case IntelPenryn :
-		FATAL() <<"Intel Penryn CPUs currently unsupported.";
-		break;
-	case IntelWestmere :
-	case IntelNehalem :
-		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
-		inst_event = "INST_RETIRED:u";
-		hw_int_event = "r50011d:u";
-		break;
-	case IntelSandyBridge :
-		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
-		inst_event = "INST_RETIRED:u";
-		hw_int_event = "r5301cb:u";
-		break;
-	case IntelIvyBridge :
-		rbc_event = "BR_INST_RETIRED:COND:u:precise=0";
-		inst_event = "INST_RETIRED:u";
-		hw_int_event = "r5301cb:u";
-		break;
-	case IntelHaswell : {
-		rbc_event = "BR_INST_RETIRED:CONDITIONAL:u:precise=0";
-		inst_event = "INST_RETIRED:u";
-		hw_int_event = "r5301cb:u";
-		break;
+	CpuMicroarch uarch = get_cpu_microarch();
+	const PmuConfig* pmu = nullptr;
+	for (size_t i = 0; i < ALEN(pmu_configs); ++i) {
+		if (uarch == pmu_configs[i].uarch) {
+			pmu = &pmu_configs[i];
+			break;
+		}
 	}
-	default:
-		FATAL() <<"Unknown CPU type";
+	assert(pmu);
+
+	if (!pmu->supported) {
+		FATAL() <<"Microarchitecture `"<< pmu->name <<"' currently unsupported.";
 	}
 
-	libpfm_event_encoding(&(counters->rbc.attr), rbc_event,
-			      RAW_EVENT);
+	init_perf_event_attr(&counters->rbc.attr, PERF_TYPE_RAW,
+			     pmu->rcb_cntr_event);
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-	libpfm_event_encoding(&(counters->inst.attr), inst_event,
-			      RAW_EVENT);
-	libpfm_event_encoding(&(counters->hw_int.attr), hw_int_event,
-			      RAW_EVENT);
-	libpfm_event_encoding(&(counters->page_faults.attr), page_faults_event,
-			      SW_EVENT);
-#else
-	(void)inst_event;
-	(void)hw_int_event;
-	(void)page_faults_event;
+	init_perf_event_attr(&counters->inst.attr, PERF_TYPE_RAW,
+			     pmu->rinsn_cntr_event);
+
+	init_perf_event_attr(&counters->hw_int.attr, PERF_TYPE_RAW,
+			     pmu->hw_intr_cntr_event);
+	// libpfm encodes the event with this bit set, so we'll do the
+	// same thing.  Unclear if necessary.
+	counters->hw_int.attr.exclude_hv = 1;
+
+	init_perf_event_attr(&counters->page_faults.attr, PERF_TYPE_SOFTWARE,
+			     PERF_COUNT_SW_PAGE_FAULTS);
 #endif
 }
 
@@ -284,6 +281,11 @@ static int64_t read_counter(struct hpc_context* hpc, int fd)
 int64_t read_rbc(struct hpc_context* hpc)
 {
 	return read_counter(hpc, hpc->rbc.fd);
+}
+
+int rcb_cntr_fd(struct hpc_context* hpc)
+{
+	return hpc->rbc.fd;
 }
 
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS

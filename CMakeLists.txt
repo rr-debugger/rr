@@ -59,12 +59,9 @@ add_executable(rr
   src/vm.cc
 )
 
-# TODO remove this when we can manage pfm and disasm dependencies
-# properly
 target_link_libraries(rr
   -ldl
   -lrt
-  libpfm.a
 )
 
 target_link_libraries(rrpreload
@@ -373,7 +370,6 @@ set(CPACK_PACKAGE_VENDOR "Mozilla Foundation")
 
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Mozilla Foundation")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
-#set(CPACK_DEBIAN_PACKAGE_DEPENDS "pfm, disasm")
 
 # XXX Cmake 2.8.7 doesn't know how to avoid specifiying /usr,
 # /usr/bin, etc, as files to be installed, but distros are finicky
@@ -383,7 +379,6 @@ set(CPACK_RPM_USER_BINARY_SPECFILE "${CMAKE_SOURCE_DIR}/rr.spec")
 set(CPACK_RPM_PACKAGE_RELEASE 1)
 set(CPACK_RPM_PACKAGE_GROUP "Development/Debuggers")
 set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
-#set(CPACK_RPM_PACKAGE_REQUIRES "Requires: pfm, disasm")
 
 include (CPack)
 
