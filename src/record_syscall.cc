@@ -1252,6 +1252,7 @@ static int has_saved_arg_ptrs(Task* t)
 template<typename T>
 static T* pop_arg_ptr(Task* t)
 {
+	assert(!t->ev().Syscall().saved_args.empty());
 	void* arg = t->ev().Syscall().saved_args.top();
 	t->ev().Syscall().saved_args.pop();
 	return static_cast<T*>(arg);
@@ -2581,6 +2582,15 @@ static void rec_process_syscall_arch(Task *t)
 	}
 	case Arch::rt_sigtimedwait: {
 		Registers r = t->regs();
+		if (t->ev().Syscall().saved_args.empty()) {
+			siginfo_t* info = (siginfo_t*)r.arg2();
+			if (info) {
+				t->record_remote(info, sizeof(*info));
+			} else {
+				record_noop_data(t);
+			}
+			break;
+		}
 		siginfo_t* info = pop_arg_ptr<siginfo_t>(t);
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
