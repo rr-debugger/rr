@@ -608,6 +608,10 @@ static void check_rbc(Task* t)
 		return;
 	}
 	int fd = t->regs().arg1_signed();
+	if (-1 != fd && rr_flags()->force_things) {
+		LOG(warn) <<"Unexpected write("<< fd <<") call";
+		return;
+	}
 	if (-1 != fd) {
 		fprintf(stderr,
 "\n"

@@ -2477,8 +2477,7 @@ void emergency_debug(Task* t)
 		record_session->ofstream().flush();
 	}
 
-	if (probably_not_interactive()
-	    && !rr_flags()->force_enable_debugger) {
+	if (probably_not_interactive() && !rr_flags()->force_things) {
 		errno = 0;
 		FATAL() <<"(session doesn't look interactive, aborting emergency debugging)";
 	}

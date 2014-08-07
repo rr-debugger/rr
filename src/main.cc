@@ -182,6 +182,10 @@ static void print_usage(void)
 "Usage: rr [OPTION] (record|replay|dump) [OPTION]... [ARG]...\n"
 "\n"
 "Common options\n"
+"  -a, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
+"                             with microarch NAME even if runtime detection\n"
+"                             says otherwise.  NAME should be a string like\n"
+"                             'Ivy Bridge'.\n"
 "  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
 "                             compute and store (during recording) or\n"
 "                             read and verify (during replay) checksums\n"
@@ -194,10 +198,10 @@ static void print_usage(void)
 "                             file `[trace_dir]/[tid].[time]_{rec,rep}':\n"
 "                             `_rec' for dumps during recording, `_rep'\n"
 "                             for dumps during replay\n"
-"  -f, --force-enable-debugger\n"
-"                             always allow emergency debugging, even\n"
-"                             when it doesn't seem like a good idea, for\n"
-"                             example if stderr isn't a tty.\n"
+"  -f, --force-things\n       force rr to do some things that don't seem\n"
+"                             like good ideas, for example launching an\n"
+"                             interactive emergency debugger if stderr\n"
+"                             isn't a tty.\n"
 "  -k, --check-cached-mmaps   verify that cached task mmaps match /proc/maps\n"
 "  -e, --fatal-errors         any warning or error that is printed is\n"
 "                             treated as fatal\n"
@@ -381,7 +385,8 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 		{ "cpu-unbound", no_argument, NULL, 'u' },
 		{ "dump-at", required_argument, NULL, 't' },
 		{ "dump-on", required_argument, NULL, 'd' },
-		{ "force-enable-debugger", no_argument, NULL, 'f' },
+		{ "force-things", no_argument, NULL, 'f' },
+		{ "force-microarch", required_argument, NULL, 'a' },
 		{ "mark-stdio", no_argument, NULL, 'm' },
 		{ "suppress-environment-warnings", no_argument, NULL, 's' },
 		{ "fatal-errors", no_argument, NULL, 'e' },
@@ -391,9 +396,12 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 	};
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "+c:d:fkmst:uvw:", opts, &i)) {
+		switch (getopt_long(argc, argv, "+a:c:d:fkmst:uvw:", opts, &i)) {
 		case -1:
 			return optind;
+		case 'a':
+			flags->forced_uarch = optarg;
+			break;
 		case 'c':
 			if (!strcmp("on-syscalls", optarg)) {
 				LOG(info) <<"checksumming on syscall exit";
@@ -414,7 +422,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags)
 			flags->fatal_errors_and_warnings = true;
 			break;
 		case 'f':
-			flags->force_enable_debugger = true;
+			flags->force_things = true;
 			break;
 		case 'k':
 			flags->check_cached_mmaps = true;

@@ -15,7 +15,9 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <fstream>
+#include <string>
 
 #include "log.h"
 #include "task.h"
@@ -82,12 +84,32 @@ PmuConfig pmu_configs[] = {
 	{ IntelMerom, "Intel Merom", 0, 0, 0, false },
 };
 
+static string lowercase(const string& s)
+{
+	string c = s;
+	transform(c.begin(), c.end(), c.begin(), ::tolower);
+	return c;
+}
+
 /**
  * Return the detected, known microarchitecture of this CPU, or don't
  * return; i.e. never return UnknownCpu.
  */
 static CpuMicroarch get_cpu_microarch()
 {
+	string forced_uarch = lowercase(rr_flags()->forced_uarch);
+	if (!forced_uarch.empty()) {
+		for (size_t i = 0; i < ALEN(pmu_configs); ++i) {
+			const PmuConfig& pmu = pmu_configs[i];
+			string name = lowercase(pmu.name);
+			if (name.npos != name.find(forced_uarch)) {
+				LOG(info) <<"Using forced uarch "<< pmu.name;
+				return pmu.uarch;
+			}
+		}
+		FATAL() <<"Forced uarch "<< rr_flags()->forced_uarch <<" isn't known.";
+	}
+
 	unsigned int cpu_type, eax, ecx, edx;
 	cpuid(CPUID_GETFEATURES, 0, &eax, &ecx, &edx);
 	cpu_type = (eax & 0xF0FF0);

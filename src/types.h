@@ -74,8 +74,10 @@ struct flags {
 	/* True when tracee processes in record and replay are allowed
 	 * to run on any logical CPU. */
 	bool cpu_unbound;
-	/* Always allow emergency debugging. */
-	bool force_enable_debugger;
+	// Force rr to do some things that it otherwise wouldn't, for
+	// example launching an emergency debugger when the output
+	// doesn't seem to be a tty.
+	bool force_things;
 	/* Mark the trace global time along with tracee writes to
 	 * stdio. */
 	bool mark_stdio;
@@ -99,6 +101,9 @@ struct flags {
 	bool dont_launch_debugger;
 	// Pass this file name to debugger with -x
 	std::string gdb_command_file_path;
+	// User override for architecture detection, e.g. when running
+	// under valgrind.
+	std::string forced_uarch;
 
 	flags()
 	  : max_rbc(0)
@@ -115,7 +120,7 @@ struct flags {
 	  , wait_secs(0)
 	  , verbose(false)
 	  , cpu_unbound(false)
-	  , force_enable_debugger(false)
+	  , force_things(false)
 	  , mark_stdio(false)
 	  , check_cached_mmaps(false)
 	  , goto_event(0)
@@ -123,7 +128,6 @@ struct flags {
 	  , process_created_how(0)
 	  , raw_dump(false)
 	  , dont_launch_debugger(false)
-	  , gdb_command_file_path("")
 	{}
 };
 
