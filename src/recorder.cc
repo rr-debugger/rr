@@ -60,7 +60,7 @@ static string create_pulseaudio_config()
 		// Assume pulseaudio isn't installed
 		return "";
 	}
-	char tmp[] = "rr-pulseaudio-client-conf-XXXXXX";
+	char tmp[] = "/tmp/rr-pulseaudio-client-conf-XXXXXX";
 	int fd = mkstemp(tmp);
 	fcntl(fd, F_SETFD, FD_CLOEXEC);
 	unlink(tmp);
