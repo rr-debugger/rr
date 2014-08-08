@@ -229,7 +229,7 @@ struct dbg_context* dbg_await_client_connection(const char* addr,
 
 static string create_gdb_command_file(const char* macros)
 {
-	char tmp[] = "rr-gdb-commands-XXXXXX";
+	char tmp[] = "/tmp/rr-gdb-commands-XXXXXX";
 	// This fd is just leaked. That's fine since we only call this once
 	// per rr invocation at the moment.
 	int fd = mkstemp(tmp);
