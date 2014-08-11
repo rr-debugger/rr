@@ -2474,7 +2474,7 @@ void emergency_debug(Task* t)
 {
 	RecordSession* record_session = t->session().as_record();
 	if (record_session) {
-		record_session->ofstream().flush();
+		record_session->ofstream().close();
 	}
 
 	if (probably_not_interactive() && !rr_flags()->force_things) {
