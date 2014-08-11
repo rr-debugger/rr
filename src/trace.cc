@@ -382,12 +382,12 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d)
 }
 
 void
-TraceOfstream::flush()
+TraceOfstream::close()
 {
-	events.flush();
-	data.flush();
-	data_header.flush();
-	mmaps.flush();
+	events.close();
+	data.close();
+	data_header.close();
+	mmaps.close();
 }
 
 /*static*/ TraceOfstream::shr_ptr

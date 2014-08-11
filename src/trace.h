@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #include <fstream>
 #include <memory>
@@ -216,8 +217,12 @@ public:
 	friend TraceOfstream& operator<<(TraceOfstream& tif,
 					 const struct raw_data& d);
 
-	/** Call flush() on all the relevant trace files. */
-	void flush();
+	/** Call close() on all the relevant trace files.
+	 *  Normally this will be called by the destructor. It's helpful to
+	 *  call this before a crash that won't call the destructor, to ensure
+	 *  buffered data is flushed.
+	 */
+	void close();
 
 	/**
 	 * Create and return a trace that will record the initial exe

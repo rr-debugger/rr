@@ -1005,7 +1005,7 @@ void terminate_recording(Task* t, int status)
 	frame.ev = Event(EV_TRACE_TERMINATION,
 			 BaseEvent(NO_EXEC_INFO)).encode();
 	session->ofstream() << frame;
-	session->ofstream().flush();
+	session->ofstream().close();
 
 	// TODO: Task::killall() here?
 
