@@ -1581,6 +1581,7 @@ static void process_ioctl(Task *t, int request)
 	}
 }
 
+template<typename Arch>
 static void process_ipc(Task* t, int call)
 {
 	LOG(debug) <<"ipc call: "<< call;
@@ -1593,11 +1594,11 @@ static void process_ipc(Task* t, int call)
 		switch (cmd) {
 		case IPC_STAT:
 		case MSG_STAT:
-			buf_size = sizeof(x86_arch::msqid64_ds);
+			buf_size = sizeof(typename Arch::msqid64_ds);
 			break;
 		case IPC_INFO:
 		case MSG_INFO:
-			buf_size = sizeof(x86_arch::msginfo);
+			buf_size = sizeof(typename Arch::msginfo);
 			break;
 		default:
 			buf_size = 0;
@@ -1610,7 +1611,7 @@ static void process_ipc(Task* t, int call)
 		// payload; there's also a |msgtype| tag set just
 		// before the payload.
 		size_t buf_size = sizeof(long) + t->regs().arg3();
-		x86_arch::ipc_kludge_args kludge;
+		typename Arch::ipc_kludge_args kludge;
 		void* child_kludge = (void*)t->regs().arg5();
 
 		t->read_mem(child_kludge, &kludge);
@@ -2391,7 +2392,7 @@ static void rec_process_syscall_arch(Task *t)
 		break;
 
 	case Arch::ipc:
-		process_ipc(t, (unsigned int)t->regs().arg1());
+		process_ipc<Arch>(t, (unsigned int)t->regs().arg1());
 		break;
 
 	case Arch::mmap: {
