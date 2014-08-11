@@ -297,6 +297,7 @@ static bool reserve_scratch_for_msgvec(Task *t, unsigned int vlen,
  * is stopped at, for example replacing tracee args with pointers into
  * scratch memory if necessary.
  */
+template<typename Arch>
 static int prepare_socketcall(Task* t, int would_need_scratch)
 {
 	byte* scratch = would_need_scratch ?
@@ -319,7 +320,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	switch (call) {
 	/* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
 	case SYS_RECV: {
-		x86_arch::recv_args args;
+		typename Arch::recv_args args;
 
 		if (!would_need_scratch) {
 			return 1;
@@ -360,14 +361,14 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		}
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		x86_arch::accept4_args args;
+		typename Arch::accept4_args args;
 		if (SYS_ACCEPT == call) {
 			t->read_mem(argsp, &args._);
 		} else {
 			t->read_mem(argsp, &args);
 		}
 
-		x86_arch::socklen_t addrlen;
+		typename Arch::socklen_t addrlen;
 		t->read_mem(args._.addrlen, &addrlen);
 
 		// We use the same basic scheme here as for RECV
@@ -386,11 +387,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			   sizeof(args._) : sizeof(args);
 
 		push_arg_ptr(t, args._.addrlen);
-		args._.addrlen = (x86_arch::socklen_t*)scratch;
+		args._.addrlen = (typename Arch::socklen_t*)scratch;
 		scratch += sizeof(*args._.addrlen);
 
 		push_arg_ptr(t, args._.addr);
-		args._.addr = (x86_arch::sockaddr*)scratch;
+		args._.addr = (typename Arch::sockaddr*)scratch;
 		scratch += addrlen;
 		if (!can_use_scratch(t, scratch)) {
 			return abort_scratch(t, "accept");
@@ -411,7 +412,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		}
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		x86_arch::recvfrom_args args;
+		typename Arch::recvfrom_args args;
 		t->read_mem(argsp, &args);
 
 		// Reserve space for scratch socketcall args.
@@ -424,16 +425,16 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		args.buf = scratch;
 		scratch += args.len;
 
-		x86_arch::socklen_t addrlen;
+		typename Arch::socklen_t addrlen;
 		if (args.src_addr) {
 			t->read_mem(args.addrlen, &addrlen);
 
 			push_arg_ptr(t, args.addrlen);
-			args.addrlen = (x86_arch::socklen_t*)scratch;
+			args.addrlen = (typename Arch::socklen_t*)scratch;
 			scratch += sizeof(*args.addrlen);
 
 			push_arg_ptr(t, args.src_addr);
-			args.src_addr = (x86_arch::sockaddr*)scratch;
+			args.src_addr = (typename Arch::sockaddr*)scratch;
 			scratch += addrlen;
 		} else {
 			push_arg_ptr(t, nullptr);
@@ -453,7 +454,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	case SYS_RECVMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		x86_arch::recvmsg_args args;
+		typename Arch::recvmsg_args args;
 		t->read_mem(argsp, &args);
 		if (args.flags & MSG_DONTWAIT) {
 			return 0;
@@ -461,7 +462,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		if (!would_need_scratch) {
 			return 1;
 		}
-		x86_arch::msghdr msg;
+		typename Arch::msghdr msg;
 		t->read_mem(args.msg, &msg);
 
 		// Reserve scratch for the arg
@@ -475,7 +476,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		scratch += sizeof(msg);
 
 		// Reserve scratch for the child pointers of struct msghdr
-		if (reserve_scratch_for_msghdr<x86_arch>(t, &msg, &scratch))
+		if (reserve_scratch_for_msghdr<Arch>(t, &msg, &scratch))
 		{
 			t->write_mem(scratch_msg, msg);
 		}
@@ -484,7 +485,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 			return 0;
 		}
 
-		args.msg = (x86_arch::msghdr*)scratch_msg;
+		args.msg = (typename Arch::msghdr*)scratch_msg;
 		t->write_mem(tmpargsp, args);
 		t->set_regs(r);
 
@@ -493,21 +494,21 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 	case SYS_SENDMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		x86_arch::recvmsg_args args;
+		typename Arch::recvmsg_args args;
 		t->read_mem(argsp, &args);
 		return !(args.flags & MSG_DONTWAIT);
 	}
 	case SYS_SENDMMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		x86_arch::sendmmsg_args args;
+		typename Arch::sendmmsg_args args;
 		t->read_mem(argsp, &args);
 		return !(args.flags & MSG_DONTWAIT);
 	}
 	case SYS_RECVMMSG: {
 		Registers r = t->regs();
 		void* argsp = (void*)r.arg2();
-		x86_arch::recvmmsg_args args;
+		typename Arch::recvmmsg_args args;
 		t->read_mem(argsp, &args);
 
 		if (args.flags & MSG_DONTWAIT) {
@@ -524,11 +525,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch)
 		r.set_arg2((uintptr_t)tmpargsp);
 
 		// Update msgvec pointer of tmp arg
-		x86_arch::mmsghdr* poldmsgvec = args.msgvec;
-		args.msgvec = (x86_arch::mmsghdr*)scratch;
+		typename Arch::mmsghdr* poldmsgvec = args.msgvec;
+		args.msgvec = (typename Arch::mmsghdr*)scratch;
 		t->write_mem(tmpargsp, args);
 
-		if (reserve_scratch_for_msgvec<x86_arch>(t, args.vlen, poldmsgvec, &scratch))
+		if (reserve_scratch_for_msgvec<Arch>(t, args.vlen, poldmsgvec, &scratch))
 		{
 			t->set_regs(r);
 			return 1;
@@ -797,7 +798,7 @@ static int rec_prepare_syscall_arch(Task* t)
 		return prepare_ipc(t, would_need_scratch);
 
 	case Arch::socketcall:
-		return prepare_socketcall(t, would_need_scratch);
+		return prepare_socketcall<Arch>(t, would_need_scratch);
 
 	case Arch::_newselect:
 		return 1;
