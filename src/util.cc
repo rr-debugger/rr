@@ -1306,25 +1306,47 @@ static bool is_kernel_vsyscall(Task* t, void* addr)
  * Return the address of a recognized |__kernel_vsyscall()|
  * implementation in |t|'s address space.
  */
-static void* locate_and_verify_kernel_vsyscall(Task* t)
+static void* locate_and_verify_kernel_vsyscall(Task* t,
+					       size_t nsymbols,
+					       const typename x86_arch::ElfSym* symbols,
+					       const char* symbolnames)
 {
-	void* vdso_start = t->vm()->vdso().start;
-	// __kernel_vsyscall() has been observed to be mapped at the
-	// following offsets from the vdso start address.  We'll try
-	// to recognize a known __kernel_vsyscall() impl at any of
-	// these offsets.
-	const ssize_t known_offsets[] = {
-		0x414,		// x86 native kernel ca. 3.12.10-300
-		0x420,		// x86 process on x64 kernel
-		0xb30,		// x86 process on x64 kernel ca. 3.15.3-200
-	};
-	for (size_t i = 0; i < ALEN(known_offsets); ++i) {
-		void* addr = (byte*)vdso_start + known_offsets[i];
-		if (is_kernel_vsyscall(t, addr)) {
-			return addr;
+	void* kernel_vsyscall = nullptr;
+	// It is unlikely but possible that multiple, versioned __kernel_vsyscall
+	// symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
+	// catch that case, because only one of the versioned symbols will
+	// actually match what we expect to see, and the matching one might be
+	// the last one.  Therefore, we have this separate flag to alert us to
+	// this possbility.
+	bool seen_kernel_vsyscall = false;
+
+	for (size_t i = 0; i < nsymbols; ++i) {
+		auto sym = &symbols[i];
+		const char* name = &symbolnames[sym->st_name];
+		if (strcmp(name, "__kernel_vsyscall") == 0) {
+			assert(!seen_kernel_vsyscall);
+			seen_kernel_vsyscall = true;
+			// The ELF information in the VDSO assumes that the VDSO
+			// is always loaded at a particular address.  The kernel,
+			// however, subjects the VDSO to ASLR, which means that
+			// we have to adjust the offsets properly.
+			void* vdso_start = t->vm()->vdso().start;
+			void* candidate = reinterpret_cast<void*>(sym->st_value);
+			// The symbol values can be absolute or relative addresses.
+			// The first part of the assertion is for absolute
+			// addresses, and the second part is for relative.
+			assert((uintptr_t(candidate) & ~uintptr_t(0xfff)) == 0xffffe000 ||
+				(uintptr_t(candidate) & ~uintptr_t(0xfff)) == 0);
+			uintptr_t candidate_offset = uintptr_t(candidate) & uintptr_t(0xfff);
+			candidate = static_cast<char*>(vdso_start) + candidate_offset;
+
+			if (is_kernel_vsyscall(t, candidate)) {
+				kernel_vsyscall = candidate;
+			}
 		}
 	}
-	return nullptr;
+
+	return kernel_vsyscall;
 }
 
 // NBB: the placeholder bytes in |struct insns_template| below must be
@@ -1347,16 +1369,41 @@ struct insns_template {
 } __attribute__((packed));
 
 /**
- * Monkeypatch |t|'s |__kernel_vsyscall()| helper to jump to
- * |vsyscall_hook_trampoline|.
+ * Perform any required monkeypatching on the VDSO for the given Task.
+ * Abort if anything at all goes wrong.
  */
-static void monkeypatch(Task* t, void* kernel_vsyscall,
-			void* vsyscall_hook_trampoline)
+template<typename Arch>
+static void perform_monkeypatch(Task* t,
+				size_t nsymbols,
+				const typename Arch::ElfSym* symbols,
+				const char* symbolnames);
+
+template<>
+void perform_monkeypatch<x86_arch>(Task* t,
+				   size_t nsymbols,
+				   const typename x86_arch::ElfSym* symbols,
+				   const char* symbolnames)
 {
+	void* kernel_vsyscall = locate_and_verify_kernel_vsyscall(t, nsymbols,
+								  symbols, symbolnames);
+	if (!kernel_vsyscall) {
+		FATAL() <<
+"Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't recognized.\n"
+"    Syscall buffering is now effectively disabled.  If you're OK with\n"
+"    running rr without syscallbuf, then run the recorder passing the\n"
+"    --no-syscall-buffer arg.\n"
+"    If you're *not* OK with that, file an issue.";
+	}
+
+	// Luckily, linux is happy for us to scribble directly over
+	// the vdso mapping's bytes without mprotecting the region, so
+	// we don't need to prepare remote syscalls here.
+	void* vsyscall_hook_trampoline = (void*)t->regs().arg1();
 	union {
 		byte bytes[sizeof(vsyscall_monkeypatch)];
 		struct insns_template insns;
 	} __attribute__((packed)) patch;
+
 	// Write the basic monkeypatch onto to the template, except
 	// for the (dynamic) $vsyscall_hook_trampoline address.
 	memcpy(patch.bytes, vsyscall_monkeypatch, sizeof(patch.bytes));
@@ -1370,31 +1417,79 @@ static void monkeypatch(Task* t, void* kernel_vsyscall,
 		   << vsyscall_hook_trampoline;
 }
 
-void monkeypatch_vdso(Task* t)
+template<typename Arch>
+static void locate_vdso_symbols(Task* t,
+				size_t* nsymbols,
+				void** symbols,
+				size_t* strtabsize,
+				void** strtab)
 {
-	void* kernel_vsyscall = locate_and_verify_kernel_vsyscall(t);
-	if (!kernel_vsyscall) {
-		FATAL() <<
-"Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't recognized.\n"
-"    Syscall buffering is now effectively disabled.  If you're OK with\n"
-"    running rr without syscallbuf, then run the recorder passing the\n"
-"    --no-syscall-buffer arg.\n"
-"    If you're *not* OK with that, file an issue.";
+	void* vdso_start = t->vm()->vdso().start;
+	typename Arch::ElfEhdr elfheader;
+	t->read_mem(vdso_start, &elfheader);
+	assert(elfheader.e_ident[EI_CLASS] == Arch::elfclass);
+	assert(elfheader.e_ident[EI_DATA] == Arch::elfendian);
+	assert(elfheader.e_machine == Arch::elfmachine);
+	assert(elfheader.e_shentsize == sizeof(typename Arch::ElfShdr));
+
+	void* sections_start = static_cast<char*>(vdso_start) + elfheader.e_shoff;
+	typename Arch::ElfShdr sections[elfheader.e_shnum];
+	t->read_bytes_helper(sections_start, sizeof(sections), (byte*)sections);
+
+	typename Arch::ElfShdr* dynsym = nullptr;
+	typename Arch::ElfShdr* dynstr = nullptr;
+
+	for (size_t i = 0; i < elfheader.e_shnum; ++i) {
+		auto header = &sections[i];
+		if (header->sh_type == SHT_DYNSYM) {
+			assert(!dynsym && "multiple .dynsym sections?!");
+			dynsym = header;
+		} else if (header->sh_type == SHT_STRTAB &&
+			   header->sh_flags & SHF_ALLOC) {
+			assert(!dynstr && "multiple .dynstr sections?!");
+			dynstr = header;
+		}
 	}
 
-	LOG(debug) <<"__kernel_vsyscall is "<< kernel_vsyscall;
+	if (!dynsym || !dynstr) {
+		assert(0 && "Unable to locate vdso information");
+	}
 
+	assert(dynsym->sh_entsize == sizeof(typename Arch::ElfSym));
+	*nsymbols = dynsym->sh_size / dynsym->sh_entsize;
+	*symbols = static_cast<char*>(vdso_start) + dynsym->sh_offset;
+	*strtabsize = dynstr->sh_size;
+	*strtab = static_cast<char*>(vdso_start) + dynstr->sh_offset;
+}
+
+template<typename Arch>
+static void monkeypatch_vdso_arch(Task* t)
+{
+	size_t nsymbols = 0;
+	void* symbolsaddr = nullptr;
+	size_t strtabsize = 0;
+	void* strtabaddr = nullptr;
+
+	locate_vdso_symbols<Arch>(t, &nsymbols, &symbolsaddr,
+				  &strtabsize, &strtabaddr);
+
+	typename Arch::ElfSym symbols[nsymbols];
+	t->read_bytes_helper(symbolsaddr, sizeof(symbols), (byte*)symbols);
+	char strtab[strtabsize];
+	t->read_bytes_helper(strtabaddr, sizeof(strtab), (byte*)strtab);
+
+	perform_monkeypatch<Arch>(t, nsymbols, symbols, strtab);
+}
+
+void monkeypatch_vdso(Task* t)
+{
 	ASSERT(t, 1 == t->vm()->task_set().size())
 		<<"TODO: monkeypatch multithreaded process";
 
 	// NB: the tracee can't be interrupted with a signal while
 	// we're processing the rrcall, because it's masked off all
 	// signals.
-	void* vsyscall_hook_trampoline = (void*)t->regs().arg1();
-	// Luckily, linux is happy for us to scribble directly over
-	// the vdso mapping's bytes without mprotecting the region, so
-	// we don't need to prepare remote syscalls here.
-	monkeypatch(t, kernel_vsyscall, vsyscall_hook_trampoline);
+	RR_ARCH_FUNCTION(monkeypatch_vdso_arch, t->arch(), t);
 
 	Registers r = t->regs();
 	r.set_syscall_result(0);
