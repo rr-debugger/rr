@@ -157,6 +157,7 @@ static int can_use_scratch(Task* t, byte* scratch_end)
  * Return nonzero if it's OK to context-switch away from |t| for its
  * ipc call.  If so, prepare any required scratch buffers for |t|.
  */
+template<typename Arch>
 static int prepare_ipc(Task* t, int would_need_scratch)
 {
 	int call = t->regs().arg1_signed();
@@ -171,7 +172,7 @@ static int prepare_ipc(Task* t, int would_need_scratch)
 			return 1;
 		}
 		size_t msgsize = t->regs().arg3();
-		x86_arch::ipc_kludge_args kludge;
+		typename Arch::ipc_kludge_args kludge;
 		void* child_kludge = (void*)t->regs().arg5();
 		t->read_mem(child_kludge, &kludge);
 
@@ -795,7 +796,7 @@ static int rec_prepare_syscall_arch(Task* t)
 		}
 
 	case Arch::ipc:
-		return prepare_ipc(t, would_need_scratch);
+		return prepare_ipc<Arch>(t, would_need_scratch);
 
 	case Arch::socketcall:
 		return prepare_socketcall<Arch>(t, would_need_scratch);
