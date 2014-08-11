@@ -2089,13 +2089,13 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	}
 }
 
-// XXX this needs to be converted to take an Arch parameter
+template<typename Arch>
 static void before_syscall_exit(Task* t, int syscallno)
 {
 	t->maybe_update_vm(syscallno, STATE_SYSCALL_EXIT);
 
 	switch (syscallno) {
- 	case SYS_sched_setaffinity: {
+ 	case Arch::sched_setaffinity: {
 		if (SYSCALL_FAILED(t->regs().syscall_result_signed())) {
 			// Nothing to do
 			return;
@@ -2118,7 +2118,7 @@ static void before_syscall_exit(Task* t, int syscallno)
 		}
 		return;
 	}
-	case SYS_setpriority: {
+	case Arch::setpriority: {
 		// The syscall might have failed due to insufficient
 		// permissions (e.g. while trying to decrease the nice value
 		// while not root).
@@ -2138,26 +2138,26 @@ static void before_syscall_exit(Task* t, int syscallno)
 		}
 		return;
 	}
-	case SYS_set_robust_list:
+	case Arch::set_robust_list:
 		t->set_robust_list((void*)t->regs().arg1(), (size_t)t->regs().arg2());
 		return;
 
-	case SYS_set_thread_area:
+	case Arch::set_thread_area:
 		t->set_thread_area((void*)t->regs().arg1());
 		return;
 
-	case SYS_set_tid_address:
+	case Arch::set_tid_address:
 		t->set_tid_addr((void*)t->regs().arg1());
 		return;
 
-	case SYS_sigaction:
-	case SYS_rt_sigaction:
-		// TODO: SYS_signal, SYS_sigaction
+	case Arch::sigaction:
+	case Arch::rt_sigaction:
+		// TODO: SYS_signal
 		t->update_sigaction(t->regs());
 		return;
 
-	case SYS_sigprocmask:
-	case SYS_rt_sigprocmask:
+	case Arch::sigprocmask:
+	case Arch::rt_sigprocmask:
 		t->update_sigmask(t->regs());
 		return;
 	}
@@ -2187,7 +2187,7 @@ static void rec_process_syscall_arch(Task *t)
 	LOG(debug) << t->tid <<": processing: "<< t->ev() <<" -- time: "
 		   << t->trace_time();
 
-	before_syscall_exit(t, syscallno);
+	before_syscall_exit<Arch>(t, syscallno);
 
 	if (const struct syscallbuf_record* rec = t->desched_rec()) {
 		assert(t->ev().Syscall().tmp_data_ptr != t->scratch_ptr);
