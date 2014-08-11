@@ -1828,6 +1828,7 @@ static void record_each_msglen(Task *t, int nmmsgs, typename Arch::mmsghdr *msgv
 	}
 }
 
+template<typename Arch>
 static void process_socketcall(Task* t, int call, void* base_addr)
 {
 	LOG(debug) <<"socket call: "<< call;
@@ -1857,9 +1858,9 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	case SYS_GETPEERNAME:
 	/* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen); */
 	case SYS_GETSOCKNAME: {
-		x86_arch::getsockname_args args;
+		typename Arch::getsockname_args args;
 		t->read_mem(base_addr, &args);
-		x86_arch::socklen_t len = t->read_word(args.addrlen);
+		typename Arch::socklen_t len = t->read_word(args.addrlen);
 		t->record_remote(args.addrlen, sizeof(*args.addrlen));
 		t->record_remote(args.addr, len);
 		return;
@@ -1874,7 +1875,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	 *  }
 	 */
 	case SYS_RECV: {
-		x86_arch::recv_args args;
+		typename Arch::recv_args args;
 		void* buf;
 		void* argsp;
 		byte* iter;
@@ -1917,7 +1918,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		return;
 	}
 	case SYS_RECVFROM: {
-		x86_arch::recvfrom_args args;
+		typename Arch::recvfrom_args args;
 		t->read_mem(base_addr, &args);
 
 		ssize_t recvdlen = t->regs().syscall_result_signed();
@@ -1933,13 +1934,13 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			args.buf = buf;
 
 			if (src_addrp) {
-				x86_arch::socklen_t addrlen;
+				typename Arch::socklen_t addrlen;
 				t->read_mem(args.addrlen, &addrlen);
 				t->remote_memcpy(src_addrp, args.src_addr,
 						 addrlen);
 				t->write_mem(addrlenp, addrlen);
-				args.src_addr = (x86_arch::sockaddr*)src_addrp;
-				args.addrlen = (x86_arch::socklen_t*)addrlenp;
+				args.src_addr = (typename Arch::sockaddr*)src_addrp;
+				args.addrlen = (typename Arch::socklen_t*)addrlenp;
 			}
 			Registers r = t->regs();
 			r.set_arg2((uintptr_t)argsp);
@@ -1952,7 +1953,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			record_noop_data(t);
 		}
 		if (args.src_addr) {
-			x86_arch::socklen_t addrlen;
+			typename Arch::socklen_t addrlen;
 			t->read_mem(args.addrlen, &addrlen);
 
 			t->record_remote(args.addrlen, sizeof(*args.addrlen));
@@ -1966,18 +1967,18 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	/* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
 	case SYS_RECVMSG: {
 		Registers r = t->regs();
-		x86_arch::recvmsg_args* tmpargsp = (x86_arch::recvmsg_args*)r.arg2();
-		x86_arch::recvmsg_args tmpargs;
+		auto tmpargsp = (typename Arch::recvmsg_args*)r.arg2();
+		typename Arch::recvmsg_args tmpargs;
 		t->read_mem(tmpargsp, &tmpargs);
 		if (!has_saved_arg_ptrs(t)) {
-			return record_struct_msghdr<x86_arch>(t, tmpargs.msg);
+			return record_struct_msghdr<Arch>(t, tmpargs.msg);
 		}
 
 		byte* argsp = pop_arg_ptr<byte>(t);
-		x86_arch::recvmsg_args args;
+		typename Arch::recvmsg_args args;
 		t->read_mem(argsp, &args);
 
-		record_and_restore_msghdr<x86_arch>(t, args.msg, tmpargs.msg);
+		record_and_restore_msghdr<Arch>(t, args.msg, tmpargs.msg);
 
 		r.set_arg2((uintptr_t)argsp);
 		t->set_regs(r);
@@ -1988,9 +1989,9 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	 *  int getsockopt(int sockfd, int level, int optname, const void *optval, socklen_t* optlen);
 	 */
 	case SYS_GETSOCKOPT: {
-		x86_arch::getsockopt_args args;
+		typename Arch::getsockopt_args args;
 		t->read_mem(base_addr, &args);
-		x86_arch::socklen_t optlen = t->read_word(args.optlen);
+		typename Arch::socklen_t optlen = t->read_word(args.optlen);
 		t->record_remote(args.optlen, sizeof(*args.optlen));
 		t->record_remote(args.optval, optlen);
 		return;
@@ -2011,19 +2012,19 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	case SYS_ACCEPT:
 	case SYS_ACCEPT4: {
 		Registers r = t->regs();
-		x86_arch::sockaddr* addrp = pop_arg_ptr<x86_arch::sockaddr>(t);
-		x86_arch::socklen_t* addrlenp = pop_arg_ptr<x86_arch::socklen_t>(t);
+		auto addrp = pop_arg_ptr<typename Arch::sockaddr>(t);
+		auto addrlenp = pop_arg_ptr<typename Arch::socklen_t>(t);
 		byte* orig_argsp = pop_arg_ptr<byte>(t);
 
 		byte* iter;
 		void* data = start_restoring_scratch(t, &iter);
 		// Consume the scratch args.
 		if (SYS_ACCEPT == call) {
-			iter += sizeof(x86_arch::accept_args);
+			iter += sizeof(typename Arch::accept_args);
 		} else {
-			iter += sizeof(x86_arch::accept4_args);
+			iter += sizeof(typename Arch::accept4_args);
 		}
-		x86_arch::socklen_t addrlen = *(x86_arch::socklen_t*)iter;
+		auto addrlen = *(typename Arch::socklen_t*)iter;
 		restore_and_record_arg_buf(t, sizeof(addrlen), (byte*)addrlenp,
 					   &iter);
 		restore_and_record_arg_buf(t, addrlen, (byte*)addrp, &iter);
@@ -2041,7 +2042,7 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 	 * values returned in sv
 	 */
 	case SYS_SOCKETPAIR: {
-		x86_arch::socketpair_args args;
+		typename Arch::socketpair_args args;
 		t->read_mem(base_addr, &args);
 		t->record_remote(args.sv, 2 * sizeof(*args.sv));
 		return;
@@ -2053,11 +2054,11 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 		Registers r = t->regs();
 		int nmmsgs = r.syscall_result_signed();
 
-		x86_arch::recvmmsg_args *tmpargsp = (x86_arch::recvmmsg_args*)r.arg2();
-		x86_arch::recvmmsg_args tmpargs;
+		auto tmpargsp = (typename Arch::recvmmsg_args*)r.arg2();
+		typename Arch::recvmmsg_args tmpargs;
 		t->read_mem(tmpargsp, &tmpargs);
 
-		x86_arch::recvmmsg_args args;
+		typename Arch::recvmmsg_args args;
 		byte* argsp = NULL;
 		bool has_saved_ptr = has_saved_arg_ptrs(t);
 		if (has_saved_ptr) {
@@ -2067,18 +2068,18 @@ static void process_socketcall(Task* t, int call, void* base_addr)
 			t->set_regs(r);
 		}
 
-		record_and_restore_msgvec<x86_arch>(t, has_saved_ptr, nmmsgs, tmpargs.msgvec, args.msgvec);
+		record_and_restore_msgvec<Arch>(t, has_saved_ptr, nmmsgs, tmpargs.msgvec, args.msgvec);
 		return;
 	}
 
 	/* int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
 	*              unsigned int flags);*/
 	case SYS_SENDMMSG: {
-		x86_arch::sendmmsg_args *argsp = (x86_arch::sendmmsg_args*)t->regs().arg2();
-		x86_arch::sendmmsg_args args;
+		auto argsp = (typename Arch::sendmmsg_args*)t->regs().arg2();
+		typename Arch::sendmmsg_args args;
 		t->read_mem(argsp, &args);
 
-		record_each_msglen<x86_arch>(t, t->regs().syscall_result_signed(), args.msgvec);
+		record_each_msglen<Arch>(t, t->regs().syscall_result_signed(), args.msgvec);
 		return;
 	}
 
@@ -2629,8 +2630,8 @@ static void rec_process_syscall_arch(Task *t)
 		break;
 	}
 	case Arch::socketcall:
-		process_socketcall(t, (int)t->regs().arg1_signed(),
-		                   (void*)t->regs().arg2());
+		process_socketcall<Arch>(t, (int)t->regs().arg1_signed(),
+					 (void*)t->regs().arg2());
 		break;
 
 	case Arch::splice: {
