@@ -6,6 +6,7 @@
 // Get all the kernel definitions so we can verify our alternative versions.
 #include <arpa/inet.h>
 #include <asm/ldt.h>
+#include <elf.h>
 #include <fcntl.h>
 #include <linux/ethtool.h>
 #include <linux/ipc.h>
@@ -93,6 +94,11 @@ struct wordsize32_defs : public kernel_constants {
 	// (x86-64's ILP32 ABI) support is relatively easy.
 	typedef int32_t syscall_slong_t;
 	typedef int32_t sigchld_clock_t;
+
+	static const size_t elfclass = ELFCLASS32;
+	typedef Elf32_Ehdr ElfEhdr;
+	typedef Elf32_Shdr ElfShdr;
+	typedef Elf32_Sym ElfSym;
 };
 
 template<supported_arch arch, typename wordsize>
@@ -647,6 +653,9 @@ struct base_arch : public wordsize {
 };
 
 struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
+	static const size_t elfmachine = EM_386;
+	static const size_t elfendian = ELFDATA2LSB;
+
 	enum Syscalls {
 #define SYSCALLNO_X86(num)				\
 		dummy_ ## num = num - 1,
