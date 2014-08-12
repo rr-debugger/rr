@@ -38,6 +38,7 @@ add_library(rrpreload
 
 add_executable(rr
   src/test/cpuid_loop.S
+  src/compressed_io.cc
   src/debugger_gdb.cc
   src/diverter.cc
   src/emufs.cc
@@ -63,6 +64,7 @@ add_executable(rr
 target_link_libraries(rr
   -ldl
   -lrt
+  -lz
 )
 
 target_link_libraries(rrpreload
