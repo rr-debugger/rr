@@ -2321,7 +2321,7 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 		PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
 		PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP |
 		RR_PTRACE_O_EXITKILL;
-	int ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
+	long ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
 	if (ret < 0 && errno == EINVAL) {
 		// PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
 		// it for more robust cleanup, so tolerate not having it.
