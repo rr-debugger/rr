@@ -101,6 +101,34 @@ struct wordsize32_defs : public kernel_constants {
 	typedef Elf32_Sym ElfSym;
 };
 
+struct wordsize64_defs : public kernel_constants {
+	static const ::size_t SIGINFO_PAD_SIZE = (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 4;
+
+	typedef int16_t signed_short;
+	typedef uint16_t unsigned_short;
+
+	typedef int32_t signed_int;
+	typedef uint32_t unsigned_int;
+
+	typedef int64_t signed_long;
+	typedef uint64_t unsigned_long;
+
+	typedef int64_t signed_word;
+	typedef uint64_t unsigned_word;
+
+	typedef uint64_t size_t;
+
+	// These really only exist as proper abstractions so that adding x32
+	// (x86-64's ILP32 ABI) support is relatively easy.
+	typedef int64_t syscall_slong_t;
+	typedef int64_t sigchld_clock_t;
+
+	static const size_t elfclass = ELFCLASS64;
+	typedef Elf64_Ehdr ElfEhdr;
+	typedef Elf64_Shdr ElfShdr;
+	typedef Elf64_Sym ElfSym;
+};
+
 template<supported_arch arch, typename wordsize>
 struct base_arch : public wordsize {
 	typedef typename wordsize::syscall_slong_t syscall_slong_t;
