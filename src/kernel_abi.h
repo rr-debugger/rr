@@ -198,7 +198,17 @@ struct base_arch : public wordsize {
 	};
 	RR_VERIFY_TYPE(mmsghdr);
 
-	// XXX what to do about __EPOLL_PACKED?  Explicit specialization?
+	// x86-64 is the only architecture to pack this structure, and it does
+	// so to make the x86 and x86-64 definitions identical.  So even if
+	// we're compiling on an x86-64 host that will support recording
+	// 32-bit and 64-bit programs, this is the correct way to declare
+	// epoll_event for both kinds of recordees.
+	// See <linux/eventpoll.h>.
+#if defined(__x86_64__)
+#define RR_EPOLL_PACKED __attribute__((packed))
+#else
+#define RR_EPOLL_PACKED
+#endif
 	struct epoll_event {
 		union epoll_data {
 			ptr<void> ptr_;
@@ -209,8 +219,9 @@ struct base_arch : public wordsize {
 
 		uint32_t events;
 		epoll_data data;
-	};
+	} RR_EPOLL_PACKED;
 	RR_VERIFY_TYPE(epoll_event);
+#undef RR_EPOLL_PACKED
 
 	struct rusage {
 		timeval ru_utime;
