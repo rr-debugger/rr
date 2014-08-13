@@ -2045,8 +2045,9 @@ ssize_t
 Task::read_bytes_ptrace(void* addr, ssize_t buf_size, byte* buf)
 {
 	ssize_t nread = 0;
-	// XXX 64-bit porting issue
-	int word_size = sizeof(long);
+	// ptrace operates on the word size of the host, so we really do want
+	// to use sizes of host types here.
+	uintptr_t word_size = sizeof(long);
 	errno = 0;
 	// Only read aligned words. This ensures we can always read the last
 	// byte before an unmapped region.
@@ -2075,8 +2076,9 @@ ssize_t
 Task::write_bytes_ptrace(void* addr, ssize_t buf_size, const byte* buf)
 {
 	ssize_t nwritten = 0;
-	// XXX 64-bit porting issue
-	unsigned int word_size = sizeof(long);
+	// ptrace operates on the word size of the host, so we really do want
+	// to use sizes of host types here.
+	uintptr_t word_size = sizeof(long);
 	errno = 0;
 	// Only write aligned words. This ensures we can always write the last
 	// byte before an unmapped region.
