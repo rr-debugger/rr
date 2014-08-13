@@ -725,6 +725,78 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
 	};
 };
 
+struct x86_64_arch : public base_arch<supported_arch::x86_64, wordsize64_defs> {
+	static const size_t elfmachine = EM_X86_64;
+	static const size_t elfendian = ELFDATA2LSB;
+
+/* First, define some macros for making up dummy syscall numbers for
+ * undefined syscalls.  We need a unique dummy enum for each one.  The
+ * easiest way to do that is to use __LINE__ to get a unique ID.  But to
+ * make sure __LINE__ is expanded as its numeric value and not merely
+ * the __LINE__ token, we need to introduce layers of indirection to
+ * ensure the macros are expanded as we would like.
+ */
+#define DUMMY_ID_3(line) dummy_syscall ## line
+#define DUMMY_ID_2(line) DUMMY_ID_3(line)
+#define DUMMY_ID DUMMY_ID_2(__LINE__)
+
+private:
+	enum class Undefined {
+		ZERO,
+#define SYSCALLNO_X86_64(num)
+#define SYSCALLNO_X86(num)
+#define SYSCALL_UNDEFINED_X86_64() DUMMY_ID,
+#define SYSCALL_DEF0(_name, _type)
+#define SYSCALL_DEF1(_name, _type, _1, _2)
+#define SYSCALL_DEF1_DYNSIZE(_name, _type, _1, _2)
+#define SYSCALL_DEF1_STR(_name, _type, _1)
+#define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4)
+#define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6)
+#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)
+#define SYSCALL_DEF_IRREG(_name, _type)
+#define SYSCALL_DEF_UNSUPPORTED(_name)
+
+#include "syscall_defs.h"
+
+		COUNT,
+	};
+
+public:
+	enum Syscalls {
+#define SYSCALLNO_X86(num)
+#define SYSCALLNO_X86_64(num)				\
+		dummy_ ## num = num - 1,
+#define SYSCALL_UNDEFINED_X86_64()		\
+		DUMMY_ID = (-static_cast<int>(Undefined::DUMMY_ID)) << 8,
+#define SYSCALL_DEF0(_name, _type)			\
+		_name,
+#define SYSCALL_DEF1(_name, _type, _1, _2)		\
+		_name,
+#define SYSCALL_DEF1_DYNSIZE(_name, _type, _1, _2)	\
+		_name,
+#define SYSCALL_DEF1_STR(_name, _type, _1)		\
+		_name,
+#define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4)	\
+		_name,
+#define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6)	\
+		_name,
+#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)	\
+		_name,
+#define SYSCALL_DEF_IRREG(_name, _type)			\
+		_name,
+#define SYSCALL_DEF_UNSUPPORTED(_name)			\
+		_name,
+
+#include "syscall_defs.h"
+
+		SYSCALL_COUNT
+	};
+
+#undef DUMMY_ID
+#undef DUMMY_ID_2
+#undef DUMMY_ID_3
+};
+
 #define RR_ARCH_FUNCTION(f, arch, args...) \
 { \
 	switch (arch) { \

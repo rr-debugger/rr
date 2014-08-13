@@ -35,6 +35,7 @@ typedef unsigned char byte;
 
 enum supported_arch {
 	x86,
+	x86_64,
 };
 
 // We let users specify which process should be "created" before
