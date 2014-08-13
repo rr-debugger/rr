@@ -540,8 +540,8 @@ struct base_arch : public wordsize {
 	struct flock {
 		signed_short l_type;
 		signed_short l_whence;
-		uint32_t l_start;
-		uint32_t l_len;
+		off_t l_start;
+		off_t l_len;
 		pid_t l_pid;
 	};
 	RR_VERIFY_TYPE(flock);
