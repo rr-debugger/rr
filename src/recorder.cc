@@ -622,10 +622,9 @@ static void check_rbc(Task* t)
 "\n",
 			fd, ae.exe_image.c_str());
 		terminate_recording(t);
-		return;
 	}
 
-	int64_t rbc = read_rbc(t->hpc);
+	int64_t rbc = t->rbc_count();
 	LOG(debug) <<"rbc on entry to dummy write: " << rbc;
 	if (!(rbc > 0)) {
 		fprintf(stderr,
