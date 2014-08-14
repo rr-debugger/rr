@@ -23,6 +23,6 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp);
  * trace-termination event.  It should be the most-recently-known
  * executed task.
  */
-void terminate_recording(Task* t = nullptr);
+void terminate_recording(Task* t = nullptr, int status = 0);
 
 #endif /* RR_RECORDER_H_ */

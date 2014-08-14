@@ -632,7 +632,7 @@ static void check_rbc(Task* t)
 "rr: internal recorder error:\n"
 "  Retired-branch counter doesn't seem to be working.  Are you perhaps\n"
 "  running rr in a VM but didn't enable perf-counter virtualization?\n");
-		exit(EX_UNAVAILABLE);
+		terminate_recording(t, EX_UNAVAILABLE);
 	}
 }
 
@@ -993,7 +993,7 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp)
 	return exit_code;
 }
 
-void terminate_recording(Task* t)
+void terminate_recording(Task* t, int status)
 {
 	LOG(info) <<"Processing termination request ...";
 	LOG(info) <<"  recording final TRACE_TERMINATION event ...";
@@ -1010,5 +1010,5 @@ void terminate_recording(Task* t)
 	// TODO: Task::killall() here?
 
 	LOG(info) <<"  exiting, goodbye.";
-	exit(0);
+	exit(status);
 }
