@@ -179,18 +179,27 @@ public:
  *
  * Task is responsible for creating meaningful values of this class.
  *
- * On x86, the data is an XSAVE area.
+ * On x86, the data is either an XSAVE area or an user_fpxregs_struct.
  */
 class ExtraRegisters {
 public:
 	// Create empty (uninitialized/unknown registers) value
-	ExtraRegisters() {}
+	ExtraRegisters() : format_(NONE) {}
+
+	enum Format {
+		NONE,
+		XSAVE,
+		FPXREGS
+	};
 
 	// Set values from raw data
-	void set_to_raw_data(std::vector<byte>& consume_data)
+	void set_to_raw_data(Format format, std::vector<byte>& consume_data)
 	{
+		format_ = format;
 		std::swap(data, consume_data);
 	}
+
+	Format format() const { return format_; }
 	int data_size() const { return data.size(); }
 	const byte* data_bytes() const { return data.data(); }
 	bool empty() const { return data.empty(); }
@@ -205,6 +214,7 @@ public:
 private:
 	friend class Task;
 
+	Format format_;
 	std::vector<byte> data;
 };
 

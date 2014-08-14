@@ -24,7 +24,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 6
+#define TRACE_VERSION 7
 
 static ssize_t sizeof_trace_frame_event_info(void)
 {
@@ -211,9 +211,11 @@ TraceOfstream& operator<<(TraceOfstream& tof, const struct trace_frame& frame)
 
 	if (frame.ev.has_exec_info) {
 		int extra_reg_bytes = frame.recorded_extra_regs.data_size();
+		char extra_reg_format = (char)frame.recorded_extra_regs.format();
+		tof.events.write(&extra_reg_format, sizeof(extra_reg_format));
 		tof.events.write((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
 		if (!tof.events.good()) {
-			FATAL() <<"Tried to save "<< sizeof(extra_reg_bytes)
+			FATAL() <<"Tried to save "<< sizeof(extra_reg_bytes) + sizeof(extra_reg_format)
 				<<" bytes to the trace, but failed";
 		}
 		if (extra_reg_bytes > 0) {
@@ -240,12 +242,18 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct trace_frame& frame)
 		tif.events.read((char*)&frame.begin_exec_info,
 				sizeof_trace_frame_exec_info());
 		int extra_reg_bytes;
+		char extra_reg_format;
+		tif.events.read(&extra_reg_format, sizeof(extra_reg_format));
 		tif.events.read((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
 		if (extra_reg_bytes > 0) {
 			std::vector<byte> data;
 			data.resize(extra_reg_bytes);
 			tif.events.read((char*)data.data(), extra_reg_bytes);
-			frame.recorded_extra_regs.set_to_raw_data(data);
+			frame.recorded_extra_regs.set_to_raw_data(
+				(ExtraRegisters::Format)extra_reg_format, data);
+		} else {
+			assert(extra_reg_format == ExtraRegisters::NONE);
+			frame.recorded_extra_regs = ExtraRegisters();
 		}
 	} else {
 		memset(&frame.begin_exec_info, 0, sizeof_trace_frame_exec_info());

@@ -319,6 +319,10 @@ size_t
 ExtraRegisters::read_register(uint8_t* buf, unsigned int regno,
 			      bool* defined) const
 {
+	assert(format_ != NONE);
+	// Fortunately (though it's probably not coincidence)
+	// user_fpxregs_struct has the same layout as the XSAVE area.
+
 	size_t num_bytes;
 	switch (regno) {
 	case DREG_ST0:

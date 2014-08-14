@@ -925,27 +925,53 @@ Task::regs()
 	return registers;
 }
 
+// 0 means XSAVE not detected
 static unsigned int xsave_area_size = 0;
+static bool xsave_initialized = false;
+
+static void init_xsave()
+{
+	if (xsave_initialized) {
+		return;
+	}
+	xsave_initialized = true;
+
+	unsigned int eax, ecx, edx;
+	cpuid(CPUID_GETFEATURES, 0, &eax, &ecx, &edx);
+	if (!(ecx & (1 << 26))) {
+		// XSAVE not present
+		return;
+	}
+
+	// We'll use the largest possible area all the time
+	// even when it might not be needed. Simpler that way.
+	cpuid(CPUID_GETXSAVE, 0, &eax, &ecx, &edx);
+	xsave_area_size = ecx;
+}
 
 const ExtraRegisters&
 Task::extra_regs()
 {
 	if (!extra_registers_known) {
-		LOG(debug) <<"  (refreshing extra-register cache)";
+		init_xsave();
+		if (xsave_area_size) {
+			LOG(debug) <<"  (refreshing extra-register cache using XSAVE)";
 
-		if (xsave_area_size == 0) {
-			// We'll use the largest possible area all the time
-			// even when it might not be needed. Simpler that way.
-			unsigned int eax, ecx, edx;
-			cpuid(CPUID_GETXSAVE, 0, &eax, &ecx, &edx);
-			xsave_area_size = ecx;
+			extra_registers.format_ = ExtraRegisters::XSAVE;
+			extra_registers.data.resize(xsave_area_size);
+			struct iovec vec = { extra_registers.data.data(), extra_registers.data.size() };
+			xptrace(PTRACE_GETREGSET, (void*)NT_X86_XSTATE, &vec);
+			ASSERT(this, vec.iov_len == xsave_area_size)
+				<<"Didn't get enough register data; expected "
+				<< xsave_area_size <<" but got "<< vec.iov_len;
+		} else {
+			LOG(debug) <<"  (refreshing extra-register cache using FPXREGS)";
+
+			extra_registers.format_ = ExtraRegisters::FPXREGS;
+			extra_registers.data.resize(sizeof(user_fpxregs_struct));
+			xptrace(PTRACE_GETFPXREGS, NULL, extra_registers.data.data());
 		}
-		extra_registers.data.resize(xsave_area_size);
-		struct iovec vec = { extra_registers.data.data(), xsave_area_size };
-		xptrace(PTRACE_GETREGSET, (void*)NT_X86_XSTATE, &vec);
-		ASSERT(this, vec.iov_len == xsave_area_size)
-			<<"Didn't get enough register data; expected "
-			<< xsave_area_size <<" but got "<< vec.iov_len;
+
 		extra_registers_known = true;
 	}
 	return extra_registers;
@@ -1065,9 +1091,21 @@ Task::set_extra_regs(const ExtraRegisters& regs)
 	ASSERT(this, !regs.empty())
 		<<"Trying to set empty ExtraRegisters";
 	extra_registers = regs;
-	struct iovec vec = { extra_registers.data.data(), extra_registers.data.size() };
-	xptrace(PTRACE_SETREGSET, (void*)NT_X86_XSTATE, &vec);
 	extra_registers_known = true;
+
+	switch (extra_registers.format()) {
+	case ExtraRegisters::XSAVE: {
+		struct iovec vec = { extra_registers.data.data(), extra_registers.data.size() };
+		xptrace(PTRACE_SETREGSET, (void*)NT_X86_XSTATE, &vec);
+		break;
+	}
+	case ExtraRegisters::FPXREGS: {
+		xptrace(PTRACE_SETFPXREGS, NULL, extra_registers.data.data());
+		break;
+	}
+	default:
+		ASSERT(this, false) <<"Unexpected ExtraRegisters format";
+	}
 }
 
 enum WatchBytesX86 {
