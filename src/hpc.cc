@@ -55,7 +55,8 @@ enum CpuMicroarch {
 	IntelWestmere,
 	IntelSandyBridge,
 	IntelIvyBridge,
-	IntelHaswell
+	IntelHaswell,
+	IntelBroadwell
 };
 
 struct PmuConfig {
@@ -69,6 +70,8 @@ struct PmuConfig {
 
 // XXX please only edit this if you really know what you're doing.
 PmuConfig pmu_configs[] = {
+	{ IntelBroadwell, "Intel Broadwell",
+	  0x5101c4, 0x5100c0, 0x5301cb, true },
 	{ IntelHaswell, "Intel Haswell",
 	  0x5101c4, 0x5100c0, 0x5301cb, true },
 	{ IntelIvyBridge, "Intel Ivy Bridge",
@@ -136,6 +139,10 @@ static CpuMicroarch get_cpu_microarch()
 	case 0x306C0:
 	case 0x40660:
 		return IntelHaswell;
+	case 0x306D0:
+	case 0x406F0:
+	case 0x50660:
+		return IntelBroadwell;
 	default:
 		FATAL() << "CPU "<< HEX(cpu_type) << " unknown.";
 		return UnknownCpu; // not reached
