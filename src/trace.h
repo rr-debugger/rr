@@ -9,11 +9,11 @@
 #include <unistd.h>
 #include <stdio.h>
 
-#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "compressed_io.h"
 #include "event.h"
 #include "hpc.h"
 #include "registers.h"
@@ -142,57 +142,58 @@ public:
 	const string& dir() const { return trace_dir; }
 
 	/**
-	 * Return true iff all trace files are "good".  See std::ios
-	 * for more details.
-	 */
-	bool good() const;
-
-	/**
 	 * Return the current "global time" (event count) for this
 	 * trace.
 	 */
 	uint32_t time() const { return global_time; }
 
 protected:
-	TraceFstream(const string& trace_dir, fstream::openmode mode,
-		     uint32_t initial_time)
+	TraceFstream(const string& trace_dir, uint32_t initial_time)
 		: trace_dir(trace_dir)
-		, events(trace_dir + "/events", mode | fstream::binary)
-		, data(trace_dir + "/data", mode)
-		, data_header(trace_dir + "/data_header", mode)
-		, mmaps(trace_dir + "/mmaps", mode)
 		, global_time(initial_time)
 	{}
 
+	string events_path() const
+	{
+		return trace_dir + "/events";
+	}
+	string data_path() const
+	{
+		return trace_dir + "/data";
+	}
+	string data_header_path() const
+	{
+		return trace_dir + "/data_header";
+	}
+	string mmaps_path() const
+	{
+		return trace_dir + "/mmaps";
+	}
 	/**
 	 * Return the path of the "args_env" file, into which the
 	 * initial tracee argv and envp are recorded.
 	 */
-	string args_env_file_path() const;
+	string args_env_path() const
+	{
+		return trace_dir + "/args_env";
+	}
+	/**
+	 * Return the path of "version" file, into which the current
+	 * trace format version of rr is stored upon creation of the
+	 * trace.
+	 */
+	string version_path() const
+	{
+		return trace_dir + "/version";
+	}
 
 	/**
 	 * Increment the global time and return the incremented value.
 	 */
 	uint32_t tick_time() { return ++global_time; }
 
-	/**
-	 * Return the path of "version" file, into which the current
-	 * trace format version of rr is stored upon creation of the
-	 * trace.
-	 */
-	string version_file_path() const;
-
 	// Directory into which we're saving the trace files.
 	string trace_dir;
-	// File that stores events (trace frames).
-	fstream events;
-	// Files that store raw data saved from tracees (|data|), and
-	// metadata about the stored data (|data_header|).
-	fstream data;
-	fstream data_header;
-	// File that stores metadata about files mmap'd during
-	// recording.
-	fstream mmaps;
 	// Arbitrary notion of trace time, ticked on the recording of
 	// each event (trace frame).
 	uint32_t global_time;
@@ -217,6 +218,11 @@ public:
 	friend TraceOfstream& operator<<(TraceOfstream& tif,
 					 const struct raw_data& d);
 
+	/**
+	 * Return true iff all trace files are "good".
+	 */
+	bool good() const;
+
 	/** Call close() on all the relevant trace files.
 	 *  Normally this will be called by the destructor. It's helpful to
 	 *  call this before a crash that won't call the destructor, to ensure
@@ -233,11 +239,25 @@ public:
 
 private:
 	TraceOfstream(const string& trace_dir)
-		: TraceFstream(trace_dir, fstream::out | fstream::app,
+		: TraceFstream(trace_dir,
 			       // Somewhat arbitrarily start the
 			       // global time from 1.
 			       1)
+		, events(events_path(), 1024*1024, 1)
+		, data(data_path(), 8*1024*1024, 3)
+		, data_header(data_header_path(), 1024*1024, 1)
+		, mmaps(mmaps_path(), 64*1024, 1)
 	{}
+
+	// File that stores events (trace frames).
+	CompressedWriter events;
+	// Files that store raw data saved from tracees (|data|), and
+	// metadata about the stored data (|data_header|).
+	CompressedWriter data;
+	CompressedWriter data_header;
+	// File that stores metadata about files mmap'd during
+	// recording.
+	CompressedWriter mmaps;
 };
 
 class TraceIfstream: public TraceFstream {
@@ -260,6 +280,17 @@ public:
 					 struct args_env& ae);
 	friend TraceIfstream& operator>>(TraceIfstream& tif,
 					 struct raw_data& d);
+
+	/**
+	 * Return true iff all trace files are "good".
+	 * for more details.
+	 */
+	bool good() const;
+
+	/**
+	 * Return true if we're at the end of the trace file.
+	 */
+	bool at_end() const { return events.at_end(); }
 
 	/**
 	 * Return a copy of this stream that has exactly the same
@@ -296,13 +327,35 @@ public:
 
 private:
 	TraceIfstream(const string& trace_dir)
-		: TraceFstream(trace_dir, fstream::in,
+		: TraceFstream(trace_dir,
 			       // Initialize the global time at 0, so
 			       // that when we tick it when reading
 			       // the first trace, it matches the
 			       // initial global time at recording, 1.
 			       0)
+		, events(events_path())
+		, data(data_path())
+		, data_header(data_header_path())
+		, mmaps(mmaps_path())
 	{}
+
+	TraceIfstream(const TraceIfstream& other)
+		: TraceFstream(other.dir(), other.time())
+		, events(other.events)
+		, data(other.data)
+		, data_header(other.data_header)
+		, mmaps(other.mmaps)
+	{}
+
+	// File that stores events (trace frames).
+	CompressedReader events;
+	// Files that store raw data saved from tracees (|data|), and
+	// metadata about the stored data (|data_header|).
+	CompressedReader data;
+	CompressedReader data_header;
+	// File that stores metadata about files mmap'd during
+	// recording.
+	CompressedReader mmaps;
 };
 
 #endif /* RR_TRACE_H_ */

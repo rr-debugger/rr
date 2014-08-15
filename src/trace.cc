@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 7
+#define TRACE_VERSION 8
 
 static ssize_t sizeof_trace_frame_event_info(void)
 {
@@ -176,23 +176,15 @@ args_env::destroy()
 }
 
 bool
-TraceFstream::good() const
+TraceOfstream::good() const
 {
-	return (events.good()
-		&& data.good() && data_header.good()
-		&& mmaps.good());
+	return events.good() && data.good() && data_header.good() && mmaps.good();
 }
 
-string
-TraceFstream::args_env_file_path() const
+bool
+TraceIfstream::good() const
 {
-	return trace_dir + "/args_env";
-}
-
-string
-TraceFstream::version_file_path() const
-{
-	return trace_dir + "/version";
+	return events.good() && data.good() && data_header.good() && mmaps.good();
 }
 
 TraceOfstream& operator<<(TraceOfstream& tof, const struct trace_frame& frame)
@@ -262,51 +254,56 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct trace_frame& frame)
 	}
 	tif.tick_time();
 	assert(tif.time() == frame.global_time);
-	// Set the eofbit if we're at end-of-stream.
-	tif.events.peek();
 	return tif;
 }
 
-static ostream& operator<<(ostream& out, const struct timespec& ts)
+template<typename T>
+static CompressedWriter& operator<<(CompressedWriter& out, const T& value)
 {
-	out << ts.tv_sec <<" "<< ts.tv_nsec;
+	out.write(&value, sizeof(value));
 	return out;
 }
-static istream& operator>>(istream& in, struct timespec& ts)
+
+static void write_string(CompressedWriter& out, const char* str)
 {
-	in >> ts.tv_sec >> ts.tv_nsec;
+	out.write(str, strlen(str) + 1);
+}
+
+template<typename T>
+static CompressedReader& operator>>(CompressedReader& in, T& value)
+{
+	in.read(&value, sizeof(value));
 	return in;
 }
 
-static ostream& operator<<(ostream& out, const struct stat& v)
+template<int N>
+static void read_string(CompressedReader& in, char(&str)[N])
 {
-	out << v.st_blksize <<" "<< v.st_blocks <<" "<< v.st_ctim
-	    <<" "<< v.st_dev <<" "<< v.st_gid <<" "<< v.st_ino
-	    <<" "<< v.st_mode <<" "<< v.st_mtim <<" "<< v.st_mtim.tv_nsec
-	    <<" "<< v.st_rdev <<" "<< v.st_size <<" "<< v.st_uid;
-	return out;
-}
-static istream& operator>>(istream& in, struct stat& v)
-{
-	in >> v.st_blksize >> v.st_blocks >> v.st_ctim
-	    >> v.st_dev >> v.st_gid >> v.st_ino
-	    >> v.st_mode >> v.st_mtim >> v.st_mtim.tv_nsec
-	    >> v.st_rdev >> v.st_size >> v.st_uid;
-	return in;
+	int size = N;
+	char* s = str;
+	while (size > 0) {
+		in.read(s, 1);
+		if (*s == 0) {
+			return;
+		}
+		++s;
+		--size;
+	}
+	abort();
 }
 
 TraceOfstream& operator<<(TraceOfstream& tof, const struct mmapped_file& map)
 {
-	tof.mmaps << map.time <<" "<< map.tid <<" "<< map.copied
-		  <<" "<< map.filename <<'\0'
-		  <<" "<< map.stat <<" "<< map.start <<" "<< map.end << endl;
+	tof.mmaps << map.time << map.tid << map.copied;
+	write_string(tof.mmaps, map.filename);
+        tof.mmaps << map.stat << map.start << map.end;
 	return tof;
 }
+
 TraceIfstream& operator>>(TraceIfstream& tif, struct mmapped_file& map)
 {
 	tif.mmaps >> map.time >> map.tid >> map.copied;
-	tif.mmaps.ignore(1);
-	tif.mmaps.getline(map.filename, sizeof(map.filename), '\0');
+	read_string(tif.mmaps, map.filename);
 	tif.mmaps >> map.stat >> map.start >> map.end;
 	return tif;
 }
@@ -320,6 +317,7 @@ static ostream& operator<<(ostream& out, const CharpVector& v)
 	}
 	return out;
 }
+
 static istream& operator>>(istream& in, CharpVector& v)
 {
 	size_t len;
@@ -337,7 +335,7 @@ static istream& operator>>(istream& in, CharpVector& v)
 
 TraceOfstream& operator<<(TraceOfstream& tof, const struct args_env& ae)
 {
-	ofstream out(tof.args_env_file_path());
+	ofstream out(tof.args_env_path());
 
 	assert(out.good());
 
@@ -346,9 +344,10 @@ TraceOfstream& operator<<(TraceOfstream& tof, const struct args_env& ae)
 	out << ae.envp;
 	return tof;
 }
+
 TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae)
 {
-	ifstream in(tif.args_env_file_path());
+	ifstream in(tif.args_env_path());
 
 	assert(in.good());
 
@@ -367,11 +366,12 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae)
 
 TraceOfstream& operator<<(TraceOfstream& tof, const struct raw_data& d)
 {
-	tof.data_header << d.global_time <<" "<< d.ev.encoded
-			<<" "<< d.addr <<" "<< d.data.size() << endl;
+	tof.data_header << d.global_time << d.ev.encoded
+			<< d.addr << d.data.size();
 	tof.data.write((const char*)d.data.data(), d.data.size());
 	return tof;
 }
+
 TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d)
 {
 	size_t num_bytes;
@@ -414,7 +414,7 @@ TraceOfstream::create(const string& exe_path)
 
 	shr_ptr trace(new TraceOfstream(dir));
 
-	string version_path = trace->version_file_path();
+	string version_path = trace->version_path();
 	fstream version(version_path.c_str(), fstream::out);
 	if (!version.good()) {
 		FATAL() <<"Unable to create "<< version_path;
@@ -442,53 +442,38 @@ TraceOfstream::create(const string& exe_path)
 	return trace;
 }
 
-struct AutoRestoreState {
-	AutoRestoreState(TraceIfstream& ifs)
-		: ifs(ifs)
-		, pos(ifs.events.tellg())
-		, global_time(ifs.global_time)
-	{}
-	~AutoRestoreState() {
-		ifs.events.seekg(pos);
-		ifs.global_time = global_time;
-	}
-	TraceIfstream& ifs;
-	fstream::streampos pos;
-	uint32_t global_time;
-};
-
 TraceIfstream::shr_ptr
 TraceIfstream::clone()
 {
-	shr_ptr stream(new TraceIfstream(dir()));
-	stream->events.seekg(events.tellg());
-	stream->data.seekg(data.tellg());
-	stream->data_header.seekg(data_header.tellg());
-	stream->mmaps.seekg(mmaps.tellg());
-	stream->global_time = global_time;
-	assert(stream->good());
+	shr_ptr stream(new TraceIfstream(*this));
 	return stream;
 }
 
 struct trace_frame
 TraceIfstream::peek_frame()
 {
-	AutoRestoreState restore(*this);
 	struct trace_frame frame;
+	events.save_state();
+	auto saved_time = global_time;
 	*this >> frame;
+	events.restore_state();
+	global_time = saved_time;
 	return frame;
 }
 
 struct trace_frame
 TraceIfstream::peek_to(pid_t pid, EventType type, int state)
 {
-	AutoRestoreState restore(*this);
 	struct trace_frame frame;
-	while (good()) {
+	events.save_state();
+	auto saved_time = global_time;
+	while (good() && !at_end()) {
 		*this >> frame;
 		if (frame.tid == pid
 		    && frame.ev.type == type
 		    && frame.ev.state == state) {
+			events.restore_state();
+			global_time = saved_time;
 			return frame;
 		}
 	}
@@ -500,10 +485,10 @@ TraceIfstream::peek_to(pid_t pid, EventType type, int state)
 void
 TraceIfstream::rewind()
 {
-	events.seekg(0);
-	data.seekg(0);
-	data_header.seekg(0);
-	mmaps.seekg(0);
+	events.rewind();
+	data.rewind();
+	data_header.rewind();
+	mmaps.rewind();
 	global_time = 0;
 	assert(good());
 }
@@ -513,7 +498,7 @@ TraceIfstream::open(int argc, char** argv)
 {
 	shr_ptr trace(new TraceIfstream(0 == argc ?
 					latest_trace_symlink() : argv[0]));
-	string path = trace->version_file_path();
+	string path = trace->version_path();
 	fstream vfile(path.c_str(), fstream::in);
 	if (!vfile.good()) {
 		fprintf(stderr,
