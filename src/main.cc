@@ -56,7 +56,7 @@ static void dump_events_matching(TraceIfstream& trace,
 		start = end = atoi(spec);
 	}
 
-	while (trace.good()) {
+	while (!trace.at_end()) {
 		struct trace_frame frame;
 		trace >> frame;
 		if (end < frame.global_time) {
