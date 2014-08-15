@@ -277,7 +277,7 @@ static int parse_record_args(int cmdi, int argc, char** argv,
 		{ "no-syscall-buffer", no_argument, NULL, 'n' },
 		{ 0 }
 	};
-	optind = cmdi + 1;
+	optind = cmdi;
 	while (1) {
 		int i = 0;
 		switch (getopt_long(argc, argv, "+c:be:i:n", opts, &i)) {
@@ -318,7 +318,7 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
 		{ "gdb-x", required_argument, NULL, 'x' },
 		{ 0 }
 	};
-	optind = cmdi + 1;
+	optind = cmdi;
 	while (1) {
 		int i = 0;
 		switch (getopt_long(argc, argv, "+af:g:p:qs:x:", opts, &i)) {
@@ -362,7 +362,7 @@ static int parse_dump_args(int cmdi, int argc, char** argv,
 	struct option opts[] = {
 		{ "raw", no_argument, NULL, 'r' },
 	};
-	optind = cmdi + 1;
+	optind = cmdi;
 	while (1) {
 		int i = 0;
 		switch (getopt_long(argc, argv, "r", opts, &i)) {
@@ -479,22 +479,22 @@ static int parse_args(int argc, char** argv, struct flags* flags)
 	cmd = argv[cmdi];
 	if (!strcmp("record", cmd)) {
 		flags->option = RECORD;
-		return parse_record_args(cmdi, argc, argv, flags);
+		return parse_record_args(cmdi + 1, argc, argv, flags);
 	}
 	if (!strcmp("replay", cmd)) {
 		flags->option = REPLAY;
-		return parse_replay_args(cmdi, argc, argv, flags);
+		return parse_replay_args(cmdi + 1, argc, argv, flags);
 	}
 	if (!strcmp("dump", cmd)) {
 		flags->option = DUMP_EVENTS;
-		return parse_dump_args(cmdi, argc, argv, flags);
+		return parse_dump_args(cmdi + 1, argc, argv, flags);
 	}
 	if (!strcmp("help", cmd) || !strcmp("-h", cmd)
 	    || !strcmp("--help", cmd)) {
 		return -1;
 	}
-	fprintf(stderr, "%s: unknown command `%s`\n", exe, cmd);
-	return -1;
+	flags->option = RECORD;
+	return parse_record_args(cmdi, argc, argv, flags);
 }
 
 static string find_syscall_buffer_library()
