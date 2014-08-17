@@ -1235,14 +1235,15 @@ static void maybe_verify_tracee_saved_data(Task* t,
 	}
 }
 
-void rep_after_enter_syscall(Task* t, int syscallno)
+template<typename Arch>
+static void rep_after_enter_syscall_arch(Task* t, int syscallno)
 {
 	switch (syscallno) {
-	case SYS_exit:
+	case Arch::exit:
 		destroy_buffers(t);
 		return;
 
-	case SYS_write:
+	case Arch::write:
 		maybe_verify_tracee_saved_data(t,
 			&t->current_trace_frame().recorded_regs);
 		return;
@@ -1251,6 +1252,9 @@ void rep_after_enter_syscall(Task* t, int syscallno)
 		return;
 	}
 }
+
+void rep_after_enter_syscall(Task* t, int syscallno)
+RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
 
 /**
  * Call this hook just before exiting a syscall.  Often Task
