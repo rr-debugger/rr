@@ -237,14 +237,15 @@ static void __ptrace_cont(Task *t)
 		<<", but instead at "<< t->syscallname(current_syscall);
 }
 
-void rep_maybe_replay_stdio_write(Task* t)
+template<typename Arch>
+static void rep_maybe_replay_stdio_write_arch(Task* t)
 {
 	if (!rr_flags()->redirect) {
 		return;
 	}
 
-	assert(SYS_write == t->regs().original_syscallno()
-	       || SYS_writev == t->regs().original_syscallno());
+	assert(Arch::write == t->regs().original_syscallno()
+	       || Arch::writev == t->regs().original_syscallno());
 
 	int fd = t->regs().arg1_signed();
 	if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
@@ -259,6 +260,9 @@ void rep_maybe_replay_stdio_write(Task* t)
 		}
 	}
 }
+
+void rep_maybe_replay_stdio_write(Task* t)
+RR_ARCH_FUNCTION(rep_maybe_replay_stdio_write_arch, t->arch(), t)
 
 static void exit_syscall_emu_ret(Task* t, int syscall)
 {
@@ -1723,7 +1727,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		/* XXX technically this will print the output before
 		 * we reach the interrupt.  That could maybe cause
 		 * issues in the future. */
-		rep_maybe_replay_stdio_write(t);
+		rep_maybe_replay_stdio_write_arch<x86_arch>(t);
 		/* write*() can be desched'd, but don't use scratch,
 		 * so we might have saved 0 bytes of scratch after a
 		 * desched. */
