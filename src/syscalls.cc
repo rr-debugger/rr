@@ -9,15 +9,15 @@
 
 using namespace rr;
 
-const char* syscallname(int syscall, supported_arch arch)
+template<typename Arch>
+static const char* syscallname_arch(int syscall)
 {
-	assert(arch == x86);
 	switch (syscall) {
 #define SYSCALLNO_X86(num)
 #define SYSCALLNO_X86_64(num)
 #define SYSCALL_UNDEFINED_X86_64()
 #define CASE(_name) 					\
-		case static_cast<int>(x86_arch::Syscalls::_name): return #_name;
+		case static_cast<int>(Arch::Syscalls::_name): return #_name;
 #define SYSCALL_DEF0(_name, _)				\
 		CASE(_name)
 #define SYSCALL_DEF1(_name, _, _1, _2)			\
@@ -47,3 +47,6 @@ const char* syscallname(int syscall, supported_arch arch)
 		return "<unknown-syscall>";
 	}
 }
+
+const char* syscallname(int syscall, supported_arch arch)
+RR_ARCH_FUNCTION(syscallname_arch, arch, syscall)
