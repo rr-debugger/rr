@@ -1140,11 +1140,12 @@ static void record_noop_data(Task* t)
 	t->record_local(nullptr, 0, nullptr);
 }
 
-void rec_prepare_restart_syscall(Task* t)
+template<typename Arch>
+static void rec_prepare_restart_syscall_arch(Task* t)
 {
 	int syscallno = t->ev().Syscall().no;
 	switch (syscallno) {
-	case SYS_nanosleep: {
+	case Arch::nanosleep: {
 		/* Hopefully uniquely among syscalls, nanosleep()
 		 * requires writing to its remaining-time outparam
 		 * *only if* the syscall fails with -EINTR.  When a
@@ -1156,9 +1157,9 @@ void rec_prepare_restart_syscall(Task* t)
 		 * that, we do what the kernel does, and update the
 		 * outparam at the -ERESTART_RESTART interruption
 		 * regardless. */
-		struct timespec* rem = (struct timespec*)
-				       t->ev().Syscall().saved_args.top();
-		struct timespec* rem2 = (struct timespec*)t->regs().arg2();
+		auto rem = (typename Arch::timespec*)
+			t->ev().Syscall().saved_args.top();
+		auto rem2 = (typename Arch::timespec*)t->regs().arg2();
 
 		if (rem) {
 			t->remote_memcpy(rem, rem2, sizeof(*rem));
@@ -1174,6 +1175,9 @@ void rec_prepare_restart_syscall(Task* t)
 		return;
 	}
 }
+
+void rec_prepare_restart_syscall(Task* t)
+RR_ARCH_FUNCTION(rec_prepare_restart_syscall_arch, t->arch(), t)
 
 template<typename Arch>
 static void init_scratch_memory(Task *t)
