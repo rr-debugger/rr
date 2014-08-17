@@ -1003,6 +1003,7 @@ static void restore_msglen_for_msgvec(Task *t, int nmmsgs)
  * updated appropriately, or zero if this was an irregular socketcall
  * that needs to be processed specially.
  */
+template<typename Arch>
 static void process_socketcall(Task* t, int state,
 			       struct rep_trace_step* step)
 {
@@ -1073,10 +1074,10 @@ static void process_socketcall(Task* t, int state,
 		step->syscall.num_emu_args = 0;
 
 		void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
-		x86_arch::recvmsg_args args;
+		typename Arch::recvmsg_args args;
 		t->read_mem(base_addr, &args);
 
-		restore_struct_msghdr<x86_arch>(t, args.msg);
+		restore_struct_msghdr<Arch>(t, args.msg);
 		return;
 	}
 
@@ -1084,10 +1085,10 @@ static void process_socketcall(Task* t, int state,
 		step->syscall.num_emu_args = 0;
 
 		void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
-		x86_arch::recvmmsg_args args;
+		typename Arch::recvmmsg_args args;
 		t->read_mem(base_addr, &args);
 
-		restore_msgvec<x86_arch>(t, t->current_trace_frame().recorded_regs.syscall_result_signed(), args.msgvec);
+		restore_msgvec<Arch>(t, t->current_trace_frame().recorded_regs.syscall_result_signed(), args.msgvec);
 		return;
 	}
 
@@ -1663,7 +1664,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return;
 
 	case SYS_socketcall:
-		return process_socketcall(t, state, step);
+		return process_socketcall<x86_arch>(t, state, step);
 
 	case SYS_splice:
 		step->syscall.emu = 1;
