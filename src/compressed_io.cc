@@ -422,3 +422,21 @@ void CompressedReader::restore_state()
 	}
 	buffer_read_pos = saved_buffer_read_pos;
 }
+
+
+uint64_t CompressedReader::uncompressed_bytes() const
+{
+	uint64_t offset = 0;
+	uint64_t uncompressed_bytes = 0;
+	BlockHeader header;
+	while (read_all(fd, sizeof(header), &header, &offset)) {
+		uncompressed_bytes += header.uncompressed_length;
+		offset += header.compressed_length;
+	}
+	return uncompressed_bytes;
+}
+
+uint64_t CompressedReader::compressed_bytes() const
+{
+	return lseek(fd, 0, SEEK_END);
+}

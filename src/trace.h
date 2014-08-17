@@ -325,6 +325,9 @@ public:
 	 */
 	static shr_ptr open(int argc, char** argv);
 
+	uint64_t uncompressed_bytes() const;
+	uint64_t compressed_bytes() const;
+
 private:
 	TraceIfstream(const string& trace_dir)
 		: TraceFstream(trace_dir,
