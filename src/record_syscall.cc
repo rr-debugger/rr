@@ -1175,6 +1175,7 @@ void rec_prepare_restart_syscall(Task* t)
 	}
 }
 
+template<typename Arch>
 static void init_scratch_memory(Task *t)
 {
 	const int scratch_size = 512 * page_size();
@@ -1190,7 +1191,7 @@ static void init_scratch_memory(Task *t)
 	{
 		/* initialize the scratchpad for blocking system calls */
 		AutoRemoteSyscalls remote(t);
-		t->scratch_ptr = (void*)remote.syscall(SYS_mmap2,
+		t->scratch_ptr = (void*)remote.syscall(Arch::mmap2,
 						       0, sz, prot, flags,
 						       fd, offset_pages);
 		t->scratch_size = scratch_size;
@@ -1413,7 +1414,7 @@ static void process_execve(Task* t)
 	// XXX where does the magic number come from?
 	t->record_remote(rand_addr, 16);
 
-	init_scratch_memory(t);
+	init_scratch_memory<Arch>(t);
 }
 
 static void record_ioctl_data(Task *t, ssize_t num_bytes)
@@ -2281,7 +2282,7 @@ static void rec_process_syscall_arch(Task *t)
 
 		new_task->pop_syscall();
 
-		init_scratch_memory(new_task);
+		init_scratch_memory<Arch>(new_task);
 		// The new tracee just "finished" a clone that was
 		// started by its parent.  It has no pending events,
 		// so it can be context-switched out.
