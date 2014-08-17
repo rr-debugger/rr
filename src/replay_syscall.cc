@@ -278,6 +278,7 @@ static void exit_syscall_emu(Task* t,
 	exit_syscall_emu_ret(t, syscall);
 }
 
+template<typename Arch>
 static void init_scratch_memory(Task* t)
 {
 	/* Initialize the scratchpad as the recorder did, but make it
@@ -301,7 +302,7 @@ static void init_scratch_memory(Task* t)
 	{
 		AutoRemoteSyscalls remote(t);
 		map_addr = (void*)remote.syscall(
-			SYS_mmap2,
+			Arch::mmap2,
 			t->scratch_ptr, sz, prot, flags, fd, offset);
 	}
 	ASSERT(t, t->scratch_ptr == map_addr)
@@ -350,11 +351,12 @@ static bool is_failed_syscall(Task* t, const struct trace_frame* frame)
 	return SYSCALL_FAILED(frame->recorded_regs.syscall_result_signed());
 }
 
+template<typename Arch>
 static void process_clone(Task* t,
 			  struct trace_frame* trace, int state,
 			  struct rep_trace_step* step)
 {
-	int syscallno = SYS_clone;
+	int syscallno = Arch::clone;
 	if (is_failed_syscall(t, trace)) {
 		/* creation failed, emulate it */
 		step->syscall.emu = 1;
@@ -398,7 +400,7 @@ static void process_clone(Task* t,
 	void* stack = (void*)t->regs().arg2();
 	void* tls = (void*)t->regs().arg4();
 	void* ctid = (void*)t->regs().arg5();
-	unsigned long flags_arg = (SYS_clone == t->regs().original_syscallno())
+	unsigned long flags_arg = (Arch::clone == t->regs().original_syscallno())
 		? t->regs().arg1() : 0;
 
 	Task* new_task = t->session().clone(
@@ -433,18 +435,19 @@ static void process_clone(Task* t,
 	t->set_return_value_from_trace();
 	validate_args(syscallno, state, t);
 
-	init_scratch_memory(new_task);
+	init_scratch_memory<Arch>(new_task);
 
 	new_task->vm()->after_clone();
 
 	step->action = TSTEP_RETIRE;
 }
 
+template<typename Arch>
 static void process_execve(Task* t, struct trace_frame* trace, int state,
 			   const Registers* rec_regs,
 			   struct rep_trace_step* step)
 {
-	const int syscallno = SYS_execve;
+	const int syscallno = Arch::execve;
 
 	if (is_failed_syscall(t, trace)) {
 		/* exec failed, emulate it */
@@ -458,7 +461,7 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 	if (STATE_SYSCALL_ENTRY == state) {
 		Event next_ev(t->ifstream().peek_frame().ev);
 		if (EV_SYSCALL == next_ev.type()
-		    && SYS_execve == next_ev.Syscall().no
+		    && Arch::execve == next_ev.Syscall().no
 		    && EXITING_SYSCALL == next_ev.Syscall().state) {
 			// The first entering-exec event, when the
 			// tracee is /about to/ enter execve(),
@@ -496,7 +499,7 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
 		t->set_data_from_trace();
 	}
 
-	init_scratch_memory(t);
+	init_scratch_memory<Arch>(t);
 
 	t->post_exec();
 
@@ -1412,7 +1415,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 
 	switch (syscall) {
 	case SYS_clone:
-		return process_clone(t, trace, state, step);
+		return process_clone<x86_arch>(t, trace, state, step);
 
 	case SYS_epoll_wait:
 		step->syscall.emu = 1;
@@ -1423,7 +1426,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		return;
 
 	case SYS_execve:
-		return process_execve(t, trace, state, rec_regs, step);
+		return process_execve<x86_arch>(t, trace, state, rec_regs, step);
 
 	case SYS_exit:
 	case SYS_exit_group:
