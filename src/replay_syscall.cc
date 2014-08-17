@@ -1244,31 +1244,32 @@ void rep_after_enter_syscall(Task* t, int syscallno)
  * Call this hook just before exiting a syscall.  Often Task
  * attributes need to be updated based on the finishing syscall.
  */
-void before_syscall_exit(Task* t, int syscallno)
+template<typename Arch>
+static void before_syscall_exit(Task* t, int syscallno)
 {
 	switch (syscallno) {
-	case SYS_set_robust_list:
+	case Arch::set_robust_list:
 		t->set_robust_list((void*)t->regs().arg1(), t->regs().arg2());
 		return;
 
-	case SYS_set_thread_area:
+	case Arch::set_thread_area:
 		t->set_thread_area((void*)t->regs().arg1());
 		return;
 
-	case SYS_set_tid_address:
+	case Arch::set_tid_address:
 		t->set_tid_addr((void*)t->regs().arg1());
 		return;
 
-	case SYS_sigaction:
-	case SYS_rt_sigaction:
+	case Arch::sigaction:
+	case Arch::rt_sigaction:
 		// Use registers saved in the current trace frame since the
 		// syscall result hasn't been updated to the
 		// post-syscall-exit state yet.
 		t->update_sigaction(t->current_trace_frame().recorded_regs);
 		return;
 
-	case SYS_sigprocmask:
-	case SYS_rt_sigprocmask:
+	case Arch::sigprocmask:
+	case Arch::rt_sigprocmask:
 		// Use registers saved in the current trace frame since the
 		// syscall result hasn't been updated to the
 		// post-syscall-exit state yet.
@@ -1398,7 +1399,7 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		// state on syscall exit.  Convert them to use
 		// before_syscall_exit().
 		if (TSTEP_EXIT_SYSCALL == step->action) {
-			before_syscall_exit(t, syscall);
+			before_syscall_exit<x86_arch>(t, syscall);
 		}
 		return;
 	}
