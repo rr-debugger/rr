@@ -1367,7 +1367,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step)
 		return;
 	}
 
-	if (SYS_restart_syscall == syscall) {
+	if (Arch::restart_syscall == syscall) {
 		ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
 			<<"Must have interrupted syscall to restart";
 

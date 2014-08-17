@@ -642,7 +642,7 @@ static int rec_prepare_syscall_arch(Task* t)
 	/* If we are called again due to a restart_syscall, we musn't
 	 * redirect to scratch again as we will lose the original
 	 * addresses values. */
-	bool restart = (syscallno == SYS_restart_syscall);
+	bool restart = (syscallno == Arch::restart_syscall);
 	int would_need_scratch;
 	byte* scratch = NULL;
 

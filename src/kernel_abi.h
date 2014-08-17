@@ -696,6 +696,7 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
 	static const size_t elfendian = ELFDATA2LSB;
 
 	enum Syscalls {
+		restart_syscall = 0,
 #define SYSCALLNO_X86(num)				\
 		dummy_ ## num = num - 1,
 #define SYSCALLNO_X86_64(num)
@@ -763,6 +764,7 @@ private:
 
 public:
 	enum Syscalls {
+		restart_syscall = 219,
 #define SYSCALLNO_X86(num)
 #define SYSCALLNO_X86_64(num)				\
 		dummy_ ## num = num - 1,

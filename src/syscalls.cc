@@ -39,10 +39,10 @@ static const char* syscallname_arch(int syscall)
 
 #include "syscall_defs.h"
 
+	CASE(restart_syscall)
+
 #undef CASE
 
-	case SYS_restart_syscall:
-		return "restart_syscall";
 	default:
 		return "<unknown-syscall>";
 	}
