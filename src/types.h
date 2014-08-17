@@ -98,6 +98,8 @@ struct flags {
 	// Dump trace frames in a more easily machine-parseable
 	// format.
 	bool raw_dump;
+	// Dump statistics about the trace
+	bool dump_statistics;
 	// Only open a debug socket, don't launch the debugger too.
 	bool dont_launch_debugger;
 	// Pass this file name to debugger with -x
@@ -128,6 +130,7 @@ struct flags {
 	  , target_process(0)
 	  , process_created_how(0)
 	  , raw_dump(false)
+	  , dump_statistics(false)
 	  , dont_launch_debugger(false)
 	{}
 };

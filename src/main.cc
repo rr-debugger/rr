@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <dlfcn.h>
 #include <getopt.h>
+#include <inttypes.h>
 #include <linux/version.h>
 #include <sched.h>
 #include <stdio.h>
@@ -68,24 +69,38 @@ static void dump_events_matching(TraceIfstream& trace,
 	}
 }
 
-static int start_dumping(int argc, char* argv[], char** envp)
+static void dump_statistics(const TraceIfstream& trace, FILE* out)
+{
+	uint64_t uncompressed = trace.uncompressed_bytes();
+	uint64_t compressed = trace.compressed_bytes();
+	fprintf(stdout, "// Uncompressed bytes %" PRIu64 ", compressed bytes %" PRIu64 ", ratio %.2fx\n",
+		uncompressed, compressed, double(uncompressed)/compressed);
+}
+
+static int dump(int argc, char* argv[], char** envp)
 {
 	FILE* out = stdout;
 	auto trace = TraceIfstream::open(argc, argv);
 
-	fprintf(out,
-		"global_time thread_time tid reason "
-		"hw_interrupts page_faults adapted_rbc instructions "
-		"eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
+	if (rr_flags()->raw_dump) {
+		fprintf(out,
+			"global_time thread_time tid reason "
+			"hw_interrupts page_faults adapted_rbc instructions "
+			"eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
+	}
 
 	if (1 == argc) {
 		// No specs => dump all events.
 		dump_events_matching(*trace, stdout,
 				     nullptr/*all events*/);
-		return 0;
+	} else {
+		for (int i = 1; i < argc; ++i) {
+			dump_events_matching(*trace, stdout, argv[i]);
+		}
 	}
-	for (int i = 1; i < argc; ++i) {
-		dump_events_matching(*trace, stdout, argv[i]);
+
+	if (rr_flags()->dump_statistics) {
+		dump_statistics(*trace, stdout);
 	}
 
 	return 0;
@@ -93,16 +108,15 @@ static int start_dumping(int argc, char* argv[], char** envp)
 
 static int start(const char* rr_exe, int argc, char* argv[], char** envp)
 {
-
 	switch (rr_flags()->option) {
 	case RECORD:
 		return record(rr_exe, argc, argv, envp);
 	case REPLAY:
 		return replay(argc, argv, envp);
 	case DUMP_EVENTS:
-		return start_dumping(argc, argv, envp);
+		return dump(argc, argv, envp);
 	default:
-		FATAL() <<"Uknown option "<< rr_flags()->option;
+		FATAL() <<"Unknown option "<< rr_flags()->option;
 		return 0; // unreached
 	}
 }
@@ -261,6 +275,7 @@ static void print_usage(void)
 "  -r, --raw                  dump trace frames in a more easily\n"
 "                             machine-parseable format instead of the\n"
 "                             default human-readable format\n"
+"  -s, --statistics           dump statistics about the trace\n"
 "\n"
 "A command line like `rr (-h|--help|help)...' will print this message.\n"
 , stderr);
@@ -361,15 +376,20 @@ static int parse_dump_args(int cmdi, int argc, char** argv,
 {
 	struct option opts[] = {
 		{ "raw", no_argument, NULL, 'r' },
+		{ "statistics", no_argument, NULL, 's' },
+		{ 0 }
 	};
 	optind = cmdi;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "r", opts, &i)) {
+		switch (getopt_long(argc, argv, "rs", opts, &i)) {
 		case -1:
 			return optind;
 		case 'r':
 			flags->raw_dump = true;
+			break;
+		case 's':
+			flags->dump_statistics = true;
 			break;
 		default:
 			return -1;

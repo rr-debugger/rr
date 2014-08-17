@@ -526,3 +526,21 @@ TraceIfstream::open(int argc, char** argv)
 	}
 	return trace;
 }
+
+uint64_t
+TraceIfstream::uncompressed_bytes() const
+{
+	return events.uncompressed_bytes()
+		+ data.uncompressed_bytes()
+		+ data_header.uncompressed_bytes()
+		+ mmaps.uncompressed_bytes();
+}
+
+uint64_t
+TraceIfstream::compressed_bytes() const
+{
+	return events.compressed_bytes()
+		+ data.compressed_bytes()
+		+ data_header.compressed_bytes()
+		+ mmaps.compressed_bytes();
+}

@@ -104,6 +104,13 @@ public:
 	 */
 	void restore_state();
 
+	/**
+	 * Gathers stats on the file stream. These are independent of what's
+	 * actually been read.
+	 */
+	uint64_t uncompressed_bytes() const;
+	uint64_t compressed_bytes() const;
+
 protected:
 	/* Our fd might be the dup of another fd, so we can't rely on its current file position.
            Instead track the current position in fd_offset and use pread. */
