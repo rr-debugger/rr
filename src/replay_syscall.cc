@@ -637,6 +637,7 @@ void process_ipc(Task* t, struct trace_frame* trace, int state,
  */
 enum { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
 
+template<typename Arch>
 static void* finish_anonymous_mmap(AutoRemoteSyscalls& remote,
 				   struct trace_frame* trace,
 				   int prot, int flags,
@@ -657,7 +658,7 @@ static void* finish_anonymous_mmap(AutoRemoteSyscalls& remote,
 					 page_size() * offset_pages,
 					 MappableResource::anonymous());
 	}
-	return (void*)remote.syscall(SYS_mmap2,
+	return (void*)remote.syscall(Arch::mmap2,
 				     rec_addr, length, prot,
 				     // Tell the kernel to take
 				     // |rec_addr| seriously.
@@ -667,6 +668,7 @@ static void* finish_anonymous_mmap(AutoRemoteSyscalls& remote,
 
 /* Ensure that accesses to the memory region given by start/length
    cause a SIGBUS, as for accesses beyond the end of an mmaped file. */
+template<typename Arch>
 static void create_sigbus_region(AutoRemoteSyscalls& remote,
 				 int prot, void* start, size_t length)
 {
@@ -683,7 +685,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote,
 	int child_fd;
 	{
 		AutoRestoreMem child_str(remote, filename);
-		child_fd = remote.syscall(SYS_open,
+		child_fd = remote.syscall(Arch::open,
 					  static_cast<void*>(child_str),
 					  O_RDONLY);
 		if (0 > child_fd) {
@@ -699,15 +701,16 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote,
 	   so that the correct signal is generated on a memory access
 	   (SEGV if 'prot' doesn't allow the access, BUS if 'prot' does allow
 	   the access). */
-	remote.syscall(SYS_mmap2,
+	remote.syscall(Arch::mmap2,
 		       start, length,
 		       prot, MAP_FIXED | MAP_PRIVATE,
 		       child_fd, 0);
 	/* Don't leak the tmp fd.  The mmap doesn't need the fd to
 	 * stay open. */
-	remote.syscall(SYS_close, fd);
+	remote.syscall(Arch::close, fd);
 }
 
+template<typename Arch>
 static void* finish_private_mmap(AutoRemoteSyscalls& remote,
 				 struct trace_frame* trace,
 				 int prot, int flags,
@@ -719,20 +722,20 @@ static void* finish_private_mmap(AutoRemoteSyscalls& remote,
 	Task* t = remote.task();
 	const Registers& rec_regs = trace->recorded_regs;
 	size_t num_bytes = rec_regs.arg2();
-	void* mapped_addr = finish_anonymous_mmap(remote, trace, prot,
-						  /* The restored region
-						   * won't be backed by
-						   * file. */
-						  flags | MAP_ANONYMOUS,
-						  DONT_NOTE_TASK_MAP);
+	void* mapped_addr = finish_anonymous_mmap<Arch>(remote, trace, prot,
+							/* The restored region
+							 * won't be backed by
+							 * file. */
+							flags | MAP_ANONYMOUS,
+							DONT_NOTE_TASK_MAP);
 	/* Restore the map region we copied. */
 	ssize_t data_size = t->set_data_from_trace();
 
 	/* Ensure pages past the end of the file fault on access */
 	size_t data_pages = ceil_page_size(data_size);
 	size_t mapped_pages = ceil_page_size(num_bytes);
-	create_sigbus_region(remote, prot, (char*)mapped_addr + data_pages,
-			     mapped_pages - data_pages);
+	create_sigbus_region<Arch>(remote, prot, (char*)mapped_addr + data_pages,
+				   mapped_pages - data_pages);
 
 	t->vm()->map(mapped_addr, num_bytes, prot, flags,
 		     page_size() * offset_pages,
@@ -771,6 +774,8 @@ static void verify_backing_file(const struct mmapped_file* file,
 }
 
 enum { DONT_VERIFY = 0, VERIFY_BACKING_FILE };
+
+template<typename Arch>
 static void* finish_direct_mmap(AutoRemoteSyscalls& remote,
 				struct trace_frame* trace,
 				int prot, int flags,
@@ -805,7 +810,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote,
 		int oflags = (MAP_SHARED & flags) && (PROT_WRITE & prot) ?
 			     O_RDWR : O_RDONLY;
 		/* TODO: unclear if O_NOATIME is relevant for mmaps */
-		fd = remote.syscall(SYS_open,
+		fd = remote.syscall(Arch::open,
 				    static_cast<void*>(child_str), oflags);
 		if (0 > fd) {
 			FATAL() <<"Couldn't open "<< file->filename
@@ -813,7 +818,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote,
 		}
 	}
 	/* And mmap that file. */
-	mapped_addr = (void*)remote.syscall(SYS_mmap2,
+	mapped_addr = (void*)remote.syscall(Arch::mmap2,
 					    rec_addr, length,
 					    /* (We let SHARED|WRITEABLE
 					     * mappings go through while
@@ -823,7 +828,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote,
 					    fd, offset_pages);
 	/* Don't leak the tmp fd.  The mmap doesn't need the fd to
 	 * stay open. */
-	remote.syscall(SYS_close, fd);
+	remote.syscall(Arch::close, fd);
 
 	if (note_task_map) {
 		t->vm()->map(mapped_addr, length, prot, flags,
@@ -835,6 +840,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote,
 	return mapped_addr;
 }
 
+template<typename Arch>
 static void* finish_shared_mmap(AutoRemoteSyscalls& remote,
 				struct trace_frame* trace,
 				int prot, int flags,
@@ -856,10 +862,10 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote,
 	struct mmapped_file vfile = *file;
 	strncpy(vfile.filename, emufile->proc_path().c_str(),
 		sizeof(vfile.filename));
-	void* mapped_addr = finish_direct_mmap(remote, trace, prot, flags,
-					       offset_pages,
-					       &vfile, DONT_VERIFY,
-					       DONT_NOTE_TASK_MAP);
+	void* mapped_addr = finish_direct_mmap<Arch>(remote, trace, prot, flags,
+						     offset_pages,
+						     &vfile, DONT_VERIFY,
+						     DONT_NOTE_TASK_MAP);
 	// Write back the snapshot of the segment that we recorded.
 	// We have to write directly to the underlying file, because
 	// the tracee may have mapped its segment read-only.
@@ -890,6 +896,7 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote,
 	return mapped_addr;
 }
 
+template<typename Arch>
 static void process_mmap(Task* t,
 			 struct trace_frame* trace, int exec_state,
 			 int prot, int flags, off64_t offset_pages,
@@ -913,9 +920,9 @@ static void process_mmap(Task* t,
 		// appropriate helper.
 		AutoRemoteSyscalls remote(t);
 		if (flags & MAP_ANONYMOUS) {
-			mapped_addr = finish_anonymous_mmap(remote, trace,
-							    prot, flags,
-							    offset_pages);
+			mapped_addr = finish_anonymous_mmap<Arch>(remote, trace,
+								  prot, flags,
+								  offset_pages);
 		} else {
 			struct mmapped_file file;
 			t->ifstream() >> file;
@@ -924,27 +931,27 @@ static void process_mmap(Task* t,
 				<<"mmap time "<< file.time <<" should equal "
 				<< trace->global_time;
 			if (!file.copied) {
-				mapped_addr = finish_direct_mmap(remote, trace,
-								 prot, flags,
-								 offset_pages,
-								 &file);
+				mapped_addr = finish_direct_mmap<Arch>(remote, trace,
+								       prot, flags,
+								       offset_pages,
+								       &file);
 			} else if (!(MAP_SHARED & flags)) {
-				mapped_addr = finish_private_mmap(remote,
-								  trace,
-								  prot, flags,
-								  offset_pages,
-								  &file);
+				mapped_addr = finish_private_mmap<Arch>(remote,
+									trace,
+									prot, flags,
+									offset_pages,
+									&file);
 			} else {
-				mapped_addr = finish_shared_mmap(remote, trace,
-								 prot, flags,
-								 offset_pages,
-								 &file);
+				mapped_addr = finish_shared_mmap<Arch>(remote, trace,
+								       prot, flags,
+								       offset_pages,
+								       &file);
 			}
 		}
 		// Finally, we finish by emulating the return value.
 		remote.regs().set_syscall_result((uintptr_t)mapped_addr);
 	}
-	validate_args(SYS_mmap2, exec_state, t);
+	validate_args(Arch::mmap2, exec_state, t);
 
 	step->action = TSTEP_RETIRE;
 }
@@ -1497,9 +1504,10 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 		}
 		x86_arch::mmap_args args;
 		t->read_mem((void*)t->regs().arg1(), &args);
-		return process_mmap(t, trace, state,
-				    args.prot, args.flags, args.offset / 4096,
-				    step);
+		return process_mmap<x86_arch>(t, trace, state,
+					      args.prot, args.flags,
+					      args.offset / 4096,
+					      step);
 	}
 	case SYS_mmap2:
 		if (STATE_SYSCALL_ENTRY == state) {
@@ -1509,11 +1517,11 @@ void rep_process_syscall(Task* t, struct rep_trace_step* step)
 			step->syscall.emu = 1;
 			return;
 		}
-		return process_mmap(t, trace, state,
-				    trace->recorded_regs.arg3(),
-				    trace->recorded_regs.arg4(),
-				    trace->recorded_regs.arg6(),
-				    step);
+		return process_mmap<x86_arch>(t, trace, state,
+					      trace->recorded_regs.arg3(),
+					      trace->recorded_regs.arg4(),
+					      trace->recorded_regs.arg6(),
+					      step);
 
 	case SYS_nanosleep:
 		step->syscall.emu = 1;
