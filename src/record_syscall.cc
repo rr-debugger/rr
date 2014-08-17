@@ -60,9 +60,10 @@
 using namespace std;
 using namespace rr;
 
-void rec_before_record_syscall_entry(Task* t, int syscallno)
+template<typename Arch>
+static void rec_before_record_syscall_entry_arch(Task* t, int syscallno)
 {
-	if (SYS_write != syscallno) {
+	if (Arch::write != syscallno) {
 		return;
 	}
 	int fd = t->regs().arg1_signed();
@@ -76,6 +77,9 @@ void rec_before_record_syscall_entry(Task* t, int syscallno)
 
 	t->record_remote(buf, len);
 }
+
+void rec_before_record_syscall_entry(Task* t, int syscallno)
+RR_ARCH_FUNCTION(rec_before_record_syscall_entry_arch, t->arch(), t, syscallno)
 
 /**
  * Read the socketcall args pushed by |t| as part of the syscall in
