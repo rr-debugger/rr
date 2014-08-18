@@ -41,10 +41,16 @@ static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
 	}
 	struct raw_data buf;
 	trace >> buf;
-	assert(buf.global_time == frame.global_time && buf.ev == frame.ev);
+	if (buf.global_time != frame.global_time || buf.ev != frame.ev) {
+		fprintf(stderr, "Malformed trace file (time+event mismatch)\n");
+		abort();
+	}
 	size_t bytes_remaining = buf.data.size() - sizeof(sizeof(struct syscallbuf_hdr));
 	auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
-	assert(flush_hdr->num_rec_bytes == bytes_remaining);
+	if (flush_hdr->num_rec_bytes != bytes_remaining) {
+		fprintf(stderr, "Malformed trace file (bad recorded-bytes count)\n");
+		abort();
+	}
 
 	auto record_ptr = reinterpret_cast<const uint8_t*>(flush_hdr + 1);
 	auto end_ptr = record_ptr + bytes_remaining;
@@ -53,6 +59,10 @@ static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
 		fprintf(out, "  { syscall:'%s', ret:0x%lx }\n",
 			syscallname(record->syscallno, frame.ev.arch()),
 			record->ret);
+		if (record->size < sizeof(*record)) {
+			fprintf(stderr, "Malformed trace file (bad record size)\n");
+			abort();
+		}
 		record_ptr += stored_record_size(record->size);
 	}
 }
