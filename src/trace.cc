@@ -97,9 +97,6 @@ trace_frame::dump(FILE* out, bool raw_dump)
 			ev.state, tid, thread_time);
 	}
 	if (!ev.has_exec_info) {
-		if (!raw_dump) {
-			fprintf(out, "\n}");
-		}
 		fprintf(out, "\n");
 		return;
 	}
@@ -131,7 +128,6 @@ trace_frame::dump(FILE* out, bool raw_dump)
 #endif
 			);
 		r.print_register_file_for_trace(out, false);
-		fprintf(out, "}\n");
 	}
 }
 
@@ -380,6 +376,28 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d)
 	d.data.resize(num_bytes);
 	tif.data.read((char*)d.data.data(), num_bytes);
 	return tif;
+}
+
+bool
+TraceIfstream::read_raw_data_for_frame(const struct trace_frame& frame,
+		                       struct raw_data& d)
+{
+	while (!data_header.at_end()) {
+		uint32_t global_time;
+		EncodedEvent ev;
+		data_header.save_state();
+		data_header >> global_time >> ev.encoded;
+		data_header.restore_state();
+		if (global_time == frame.global_time) {
+			assert(ev == frame.ev);
+			*this >> d;
+			return true;
+		}
+		if (global_time > frame.global_time) {
+			return false;
+		}
+	}
+	return false;
 }
 
 void
