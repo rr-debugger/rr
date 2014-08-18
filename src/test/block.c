@@ -242,13 +242,13 @@ static void* reader_thread(void* dontcare) {
 		++token;
 		memset(buf, token, num_sockbuf_bytes);
 
-		atomic_printf("r: writing outbuf of size %d ...\n",
+		atomic_printf("r: writing outbuf of size %zd ...\n",
 			      num_sockbuf_bytes);
 		while (nwritten < num_sockbuf_bytes) {
 			ssize_t this_write =
 				write(sock, buf,
 				      num_sockbuf_bytes - nwritten);
-			atomic_printf("r:   wrote %d bytes this time\n",
+			atomic_printf("r:   wrote %zd bytes this time\n",
 				      this_write);
 			nwritten += this_write;
 		}
@@ -257,11 +257,11 @@ static void* reader_thread(void* dontcare) {
 		memset(buf, token, num_sockbuf_bytes);
 		iov.iov_base = buf;
 		iov.iov_len = num_sockbuf_bytes;
-		atomic_printf("r: writev()ing outbuf of size %d ...\n",
+		atomic_printf("r: writev()ing outbuf of size %zd ...\n",
 			      num_sockbuf_bytes);
 		while (iov.iov_len > 0) {
 			ssize_t this_write = writev(sock, &iov, 1);
-			atomic_printf("r:   wrote %d bytes this time\n",
+			atomic_printf("r:   wrote %zd bytes this time\n",
 				      this_write);
 			iov.iov_len -= this_write;
 		}
@@ -299,7 +299,7 @@ static void read_all_chunks(int sock, char* buf, ssize_t num_sockbuf_bytes,
 					 num_sockbuf_bytes - nread);
 		int i;
 
-		atomic_printf("M:   read %d bytes this time,\n", this_read);
+		atomic_printf("M:   read %zd bytes this time,\n", this_read);
 		test_assert(this_read > 0);
 		/* XXX: we would like to assert that the written data
 		 * was read in more than one chunk, which should imply
@@ -316,7 +316,7 @@ static void read_all_chunks(int sock, char* buf, ssize_t num_sockbuf_bytes,
 			}
 		}
 		nread += this_read;
-		atomic_printf("M:      %d total so far\n", nread);
+		atomic_printf("M:      %zd total so far\n", nread);
 	}
 }
 

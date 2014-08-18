@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
 	test_assert(0 <= fd);
 
 	nread = read(fd, buf, sizeof(buf));
-	atomic_printf("Read %d random bytes (expected %d)\n",
+	atomic_printf("Read %zd random bytes (expected %zu)\n",
 		      nread, sizeof(buf));
 	test_assert(nread == sizeof(buf));
 

@@ -3,6 +3,7 @@
 #ifndef RR_VM_H_
 #define RR_VM_H_
 
+#include <inttypes.h>
 #include <sys/mman.h>
 
 #include <map>
@@ -194,7 +195,7 @@ struct Mapping {
 	std::string str() const {
 		char str[200];
 		sprintf(str,
-			"%08lx-%08lx %c%c%c%c %08llx",
+			"%08lx-%08lx %c%c%c%c %08" PRIx64,
 			reinterpret_cast<long>(start),
 			reinterpret_cast<long>(end),
 			(PROT_READ & prot) ? 'r' : '-',
@@ -273,7 +274,7 @@ struct MappableResource {
 	std::string str() const {
 		char str[200];
 		sprintf(str,
-			"%02llx:%02llx %-10ld %s %s (d:0x%llx i:%ld)",
+			"%02" PRIx64 ":%02" PRIx64 " %-10ld %s %s (d:0x%" PRIx64 " i:%ld)",
 			id.dev_major(), id.dev_minor(), id.disp_inode(),
 			fsname.c_str(), id.special_name(), id.device, 
 			id.inode);

@@ -57,9 +57,9 @@ int main(int argc, char *argv[]) {
 	sigemptyset(&act.sa_mask);
 	sigaction(SIGSEGV, &act, NULL);
 
-	atomic_printf("current tsc: %llu\n", sigsegv_blocked_rdtsc());
+	atomic_printf("current tsc: %" PRIu64 "\n", sigsegv_blocked_rdtsc());
 
-	atomic_printf("    and now: %llu\n", sigsegv_blocked_rdtsc());
+	atomic_printf("    and now: %" PRIu64 "\n", sigsegv_blocked_rdtsc());
 
 	code_page = mmap(NULL, page_size,
 			 PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

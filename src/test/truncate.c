@@ -20,17 +20,17 @@ int main(int argc, char *argv[]) {
 	test_assert(0 <= fd);
 
 	size = get_file_size(TEST_FILE);
-	atomic_printf("initial file size: %d\n", size);
+	atomic_printf("initial file size: %zd\n", size);
 	test_assert(0 == size);
 
 	truncate(TEST_FILE, 4096);
 	size = get_file_size(TEST_FILE);
-	atomic_printf("after truncate(4096): %d\n", size);
+	atomic_printf("after truncate(4096): %zd\n", size);
 	test_assert(4096 == size);
 
 	ftruncate(fd, 8192);
 	size = get_file_size(TEST_FILE);
-	atomic_printf("after truncate(8192): %d\n", size);
+	atomic_printf("after truncate(8192): %zd\n", size);
 	test_assert(8192 == size);
 
 	unlink(TEST_FILE);

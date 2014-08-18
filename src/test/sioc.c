@@ -28,7 +28,7 @@ static void get_ifconfig(int sockfd, struct ifreq* req) {
 
 	ret = ioctl(sockfd, SIOCGIFCONF, &ifconf);
 	num_ifaces = ifconf.ifc_len / sizeof(ifaces[0]);
-	atomic_printf("SIOCGIFCONF(ret %d): %d ifaces (%d bytes of ifreq)\n",
+	atomic_printf("SIOCGIFCONF(ret %d): %zd ifaces (%d bytes of ifreq)\n",
 		      ret, num_ifaces, ifconf.ifc_len);
 	test_assert(0 == ret);
 	test_assert(0 == (ifconf.ifc_len % sizeof(ifaces[0])));

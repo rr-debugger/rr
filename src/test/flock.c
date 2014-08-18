@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 				      .l_start = pagesize,
 				      .l_len = -pagesize / 2 };
 
-		atomic_printf("sizeof(flock) = %d\n", sizeof(lock));
+		atomic_printf("sizeof(flock) = %zu\n", sizeof(lock));
 
 		/* It should currently be unlocked. */
 		err = fcntl(fd, F_GETLK, &lock);
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 					.l_whence = SEEK_SET,
 					.l_start = 0, .l_len = pagesize };
 
-		atomic_printf("sizeof(flock64) = %d\n", sizeof(lock));
+		atomic_printf("sizeof(flock64) = %zu\n", sizeof(lock));
 
 		/* We should be able to take a write lock on the whole
 		 * file.  The kernel will upgrade the readlock. */

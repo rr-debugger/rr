@@ -4,6 +4,7 @@
 
 #include "trace.h"
 
+#include <inttypes.h>
 #include <sysexits.h>
 
 #include <fstream>
@@ -104,7 +105,7 @@ trace_frame::dump(FILE* out, bool raw_dump)
 	}
 
 	if (raw_dump) {
-		fprintf(out, " %lld %lld %lld %lld",
+		fprintf(out, " %lld %lld %" PRId64 " %lld",
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
 			hw_interrupts, page_faults, rbc, insts
 #else
@@ -118,9 +119,9 @@ trace_frame::dump(FILE* out, bool raw_dump)
 		fprintf(out,
 "\n"
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-"  hw_ints:%lld faults:%lld rbc:%lld insns:%lld\n"
+"  hw_ints:%lld faults:%lld rbc:%" PRId64 " insns:%lld\n"
 #else
-"  rbc:%lld\n"
+"  rbc:%" PRId64 "\n"
 #endif
 "",
 #ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS

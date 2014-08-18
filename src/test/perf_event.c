@@ -31,10 +31,10 @@ int main(int argc, char *argv[]) {
 		sys_perf_event_open(&attr, 0/*self*/, -1/*any cpu*/, -1, 0);
 	test_assert(0 <= counter_fd);
 
-	atomic_printf("num descheds: %llu\n", get_desched());
+	atomic_printf("num descheds: %" PRIu64 "\n", get_desched());
 	for (i = 0; i < 5; ++i) {
 		sched_yield();
-		atomic_printf("after yield: %llu\n", get_desched());
+		atomic_printf("after yield: %" PRIu64 "\n", get_desched());
 	}
 
 	atomic_puts("EXIT-SUCCESS");

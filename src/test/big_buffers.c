@@ -25,19 +25,19 @@ int main(int argc, char *argv[]) {
 	unlink(DUMMY_FILE);
 
 	nread = read(fd, buf, BUF_SIZE);
-	atomic_printf("read %d bytes: %s\n", nread, buf);
+	atomic_printf("read %zu bytes: %s\n", nread, buf);
 	test_assert(3 == nread && !strcmp(buf, "foo"));
 
 	/* Big recv() buffer. */
 	write(sockfds[0], "bar", 3);
 	nread = recv(sockfds[1], buf, BUF_SIZE, 0);
-	atomic_printf("recv'd %d bytes: %s\n", nread, buf);
+	atomic_printf("recv'd %zu bytes: %s\n", nread, buf);
 	test_assert(3 == nread && !strcmp(buf, "bar"));
 
 	/* Big recvfrom() buffer. */
 	write(sockfds[0], "baz", 3);
 	nread = recvfrom(sockfds[1], buf, BUF_SIZE, 0, NULL, NULL);
-	atomic_printf("recvfrom'd %d bytes: %s\n", nread, buf);
+	atomic_printf("recvfrom'd %zu bytes: %s\n", nread, buf);
 	test_assert(3 == nread && !strcmp(buf, "baz"));
 
 	{
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
 		data.iov_base = buf;
 		data.iov_len = BUF_SIZE;
 		nread = recvmsg(sockfds[1], &mmsg.msg_hdr, 0);
-		atomic_printf("recvmsg'd %d bytes: %s\n", nread, buf);
+		atomic_printf("recvmsg'd %zu bytes: %s\n", nread, buf);
 		test_assert(3 <= nread && !strcmp(buf, "foo"));
 
 		/* Big recvmmsg() buffer. */
@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
 		data.iov_len = BUF_SIZE;
 		test_assert(1 == recvmmsg(sockfds[1], &mmsg, 1, 0, NULL));
 		nread = mmsg.msg_len;
-		atomic_printf("recvmmsg'd %d bytes: %s\n", nread, buf);
+		atomic_printf("recvmmsg'd %zu bytes: %s\n", nread, buf);
 		test_assert(3 <= nread && !strcmp(buf, "bar"));
 	}
 

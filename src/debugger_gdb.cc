@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdlib.h>
@@ -774,7 +775,7 @@ static int query(struct dbg_context* dbg, char* payload)
 		LOG(debug) <<"gdb supports "<< args;
 
 		snprintf(supported, sizeof(supported) - 1,
-			 "PacketSize=%x;QStartNoAckMode+;qXfer:auxv:read+"
+			 "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
 			 ";qXfer:siginfo:read+;qXfer:siginfo:write+"
 			 ";multiprocess+",
 			 dbg->outsize);
@@ -1335,7 +1336,7 @@ static void send_stop_reply_packet(struct dbg_context* dbg,
 	}
 	char watch[1024];
 	if (watch_addr) {
-		snprintf(watch, sizeof(watch) - 1, "watch:%x;",
+		snprintf(watch, sizeof(watch) - 1, "watch:%" PRIxPTR ";",
 			 uintptr_t(watch_addr));
 	} else {
 		watch[0] = '\0';
