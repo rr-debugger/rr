@@ -1062,7 +1062,7 @@ static int advance_to(Task* t, const Registers* regs,
 	pid_t tid = t->tid;
 	byte* ip = (byte*)regs->ip();
 	int64_t rcbs_left;
-	int64_t rcb_slack = get_rcb_slack(t);
+	int64_t rcb_slack = 0;
 	bool did_set_internal_breakpoint = false;
 
 	assert(rcb_cntr_fd(t->hpc) > 0);
