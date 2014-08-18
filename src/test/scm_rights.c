@@ -36,7 +36,7 @@ static void child(int sock, int fd_minus_one) {
 	atomic_printf("c: receiving msg ...\n");
 	nread = recvmsg(sock, &msg, 0);
 
-	atomic_printf("c:   ... got %#x (%d bytes), %d control bytes\n",
+	atomic_printf("c:   ... got %#x (%zd bytes), %zu control bytes\n",
 		      mbuf.ints[0], nread, msg.msg_controllen);
 	test_assert(nread == sizeof(mbuf.ints[0]));
 	test_assert(MAGIC == mbuf.ints[0]);
@@ -59,7 +59,7 @@ static void child(int sock, int fd_minus_one) {
 
 	atomic_printf("c: reading from /dev/zero ...\n");
 	nread = read(fd, &zero, sizeof(zero));
-	atomic_printf("c:   ... got %d (%d bytes) %s\n", zero, nread, strerror(errno));
+	atomic_printf("c:   ... got %d (%zd bytes) %s\n", zero, nread, strerror(errno));
 	test_assert(0 == zero);
 
 	exit(0);
@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
 	atomic_printf("P: sending %#x with fd %d ...\n", mbuf, fd);
 	nsent = sendmsg(sock, &msg, 0);
 	err = errno;
-	atomic_printf("P:   ... sent %d bytes (%s/%d)\n", nsent,
+	atomic_printf("P:   ... sent %zd bytes (%s/%d)\n", nsent,
 		      strerror(err), err);
 	test_assert(0 < nsent);
 

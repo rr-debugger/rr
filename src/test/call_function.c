@@ -40,7 +40,7 @@ static void make_unhandled_syscall(void) {
 	 * long as |splice()| remains unimplemented in experiment
 	 * mode, it's reasonable to assume that the libc wrapper will
 	 * return -1 back to us. */
-	atomic_printf("return from kill: %d\n", ret);
+	atomic_printf("return from kill: %zd\n", ret);
 }
 
 static void print_time(void) {

@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 	atomic_puts("waiting for timer to expire ...");
 	read(fd, &num_expirations, sizeof(num_expirations));
 
-	atomic_printf("  timer expired %lld times\n", num_expirations);
+	atomic_printf("  timer expired %" PRIu64 " times\n", num_expirations);
 	test_assert(1 == num_expirations);
 
 	atomic_puts("EXIT-SUCCESS");

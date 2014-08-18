@@ -32,7 +32,7 @@ int main(void) {
 	off = 0;
 	nmoved = splice(pipefds[0], NULL, filefd, &off, TOKEN_SIZE,
 			0/*no flags*/);
-	atomic_printf("spliced %d bytes from %d to %d; off changed from 0 to %"PRId64"\n",
+	atomic_printf("spliced %zd bytes from %d to %d; off changed from 0 to %"PRId64"\n",
 		      nmoved, pipefds[0], filefd, off);
 
 	lseek(filefd, 0, SEEK_SET);
@@ -41,7 +41,7 @@ int main(void) {
 	off = 0;
 	nmoved = splice(filefd, &off, pipefds[1], NULL, TOKEN_SIZE,
 			0/*no flags*/);
-	atomic_printf("spliced %d bytes from %d to %d; off changed from 0 to %"PRId64"\n",
+	atomic_printf("spliced %zd bytes from %d to %d; off changed from 0 to %"PRId64"\n",
 		      nmoved, filefd, pipefds[1], off);
 
 	verify_token(pipefds[0]);

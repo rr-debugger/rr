@@ -138,7 +138,7 @@ inline static pid_t sys_gettid(void) {
 inline static void check_data(void* buf, size_t len)
 {
 	syscall(SYS_write, RR_MAGIC_SAVE_DATA_FD, buf, len);
-	atomic_printf("Wrote %d bytes to magic fd\n", len);
+	atomic_printf("Wrote %zu bytes to magic fd\n", len);
 }
 
 /**

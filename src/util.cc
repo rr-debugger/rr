@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <linux/futex.h>
 #include <linux/ipc.h>
@@ -366,7 +367,7 @@ void iterate_memory_map(Task* t,
 		memset(&data, 0, sizeof(data));
 		data.raw_map_line = line;
 
-		nparsed = sscanf(line, "%llx-%llx %31s %Lx %x:%x %Lu %s",
+		nparsed = sscanf(line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64 " %x:%x %" SCNu64 " %s",
 				 &start, &end,
 				 flags, &data.info.file_offset,
 				 &data.info.dev_major, &data.info.dev_minor,

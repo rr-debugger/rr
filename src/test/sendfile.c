@@ -31,7 +31,7 @@ int main(void) {
 
 	sendfile64(filefd_out, filefd, &off, TOKEN_SIZE);
 
-	atomic_printf("sendfile %d bytes from %d to %d; off changed from 0 to %"PRId64"\n",
+	atomic_printf("sendfile %zu bytes from %d to %d; off changed from 0 to %"PRId64"\n",
 		      TOKEN_SIZE, filefd, filefd_out, off);
 	lseek(filefd_out, 0, SEEK_SET);
 	verify_token(filefd_out);
@@ -39,7 +39,7 @@ int main(void) {
 	lseek(filefd, 0, SEEK_SET);
 	sendfile64(filefd_out, filefd, NULL, TOKEN_SIZE);
 
-	atomic_printf("sendfile %d bytes from %d to %d\n",
+	atomic_printf("sendfile %zu bytes from %d to %d\n",
 		      TOKEN_SIZE, filefd, filefd_out);
 	lseek(filefd_out, 0, SEEK_SET);
 	verify_token(filefd_out);

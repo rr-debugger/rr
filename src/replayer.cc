@@ -239,7 +239,7 @@ static void maybe_singlestep_for_event(Task* t, struct dbg_request* req)
 	if (trace_instructions_up_to_event(session->current_trace_frame().global_time)) {
 		fputs("Stepping: ", stderr);
 		print_register_file_compact(stderr, &t->regs());
-		fprintf(stderr, " rbc:%lld\n", t->rbc_count());
+		fprintf(stderr, " rbc:%" PRId64 "\n", t->rbc_count());
 		req->type = DREQ_STEP;
 		req->target = get_threadid(t);
 		req->suppress_debugger_stop = true;
