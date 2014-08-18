@@ -44,6 +44,8 @@ struct trace_frame {
 	 * (defaulting to stdout), including a newline character.  An
 	 * easily machine-parseable format is dumped when |raw_dump|
 	 * is true, otherwise a human-friendly format is used.
+	 * Does not emit a trailing '}' (so the caller can add more fields
+	 * to the record.
 	 */
 	void dump(FILE* out = nullptr, bool raw_dump = false);
 
@@ -125,7 +127,7 @@ struct raw_data {
 	std::vector<byte> data;
 	void* addr;
 	EncodedEvent ev;
-	int32_t global_time;
+	uint32_t global_time;
 };
 
 /**
@@ -280,6 +282,8 @@ public:
 					 struct args_env& ae);
 	friend TraceIfstream& operator>>(TraceIfstream& tif,
 					 struct raw_data& d);
+
+	bool read_raw_data_for_frame(const struct trace_frame& frame, struct raw_data& d);
 
 	/**
 	 * Return true iff all trace files are "good".

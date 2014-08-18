@@ -24,6 +24,7 @@
 #include "recorder.h"
 #include "recorder_sched.h"
 #include "replayer.h"
+#include "syscalls.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -31,6 +32,30 @@
 using namespace std;
 
 extern char** environ;
+
+static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
+				 const struct trace_frame& frame)
+{
+	if (frame.ev.type != EV_SYSCALLBUF_FLUSH) {
+		return;
+	}
+	struct raw_data buf;
+	trace >> buf;
+	assert(buf.global_time == frame.global_time && buf.ev == frame.ev);
+	size_t bytes_remaining = buf.data.size() - sizeof(sizeof(struct syscallbuf_hdr));
+	auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
+	assert(flush_hdr->num_rec_bytes == bytes_remaining);
+
+	auto record_ptr = reinterpret_cast<const uint8_t*>(flush_hdr + 1);
+	auto end_ptr = record_ptr + bytes_remaining;
+	while (record_ptr < end_ptr) {
+		auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);
+		fprintf(out, "  { syscall:'%s', ret:0x%lx }\n",
+			syscallname(record->syscallno, frame.ev.arch()),
+			record->ret);
+		record_ptr += stored_record_size(record->size);
+	}
+}
 
 /**
  * Dump all events from the current to trace that match |spec| to
@@ -57,6 +82,7 @@ static void dump_events_matching(TraceIfstream& trace,
 		start = end = atoi(spec);
 	}
 
+	bool dump_raw_data = rr_flags()->dump_syscallbuf;
 	while (!trace.at_end()) {
 		struct trace_frame frame;
 		trace >> frame;
@@ -65,6 +91,16 @@ static void dump_events_matching(TraceIfstream& trace,
 		}
 		if (start <= frame.global_time && frame.global_time <= end) {
 			frame.dump(out, rr_flags()->raw_dump);
+			if (rr_flags()->dump_syscallbuf) {
+				dump_syscallbuf_data(trace, out, frame);
+			}
+			if (!rr_flags()->raw_dump) {
+				fprintf(out, "}\n");
+			}
+		}
+		struct raw_data data;
+		while (dump_raw_data && trace.read_raw_data_for_frame(frame, data)) {
+			// Skip raw data for this frame
 		}
 	}
 }
@@ -276,6 +312,7 @@ static void print_usage(void)
 "                             machine-parseable format instead of the\n"
 "                             default human-readable format\n"
 "  -s, --statistics           dump statistics about the trace\n"
+"  -b, --syscallbuf           dump syscallbuf contents\n"
 "\n"
 "A command line like `rr (-h|--help|help)...' will print this message.\n"
 , stderr);
@@ -375,6 +412,7 @@ static int parse_dump_args(int cmdi, int argc, char** argv,
 			   struct flags* flags)
 {
 	struct option opts[] = {
+		{ "syscallbuf", no_argument, NULL, 'b' },
 		{ "raw", no_argument, NULL, 'r' },
 		{ "statistics", no_argument, NULL, 's' },
 		{ 0 }
@@ -382,9 +420,12 @@ static int parse_dump_args(int cmdi, int argc, char** argv,
 	optind = cmdi;
 	while (1) {
 		int i = 0;
-		switch (getopt_long(argc, argv, "rs", opts, &i)) {
+		switch (getopt_long(argc, argv, "brs", opts, &i)) {
 		case -1:
 			return optind;
+		case 'b':
+			flags->dump_syscallbuf = true;
+			break;
 		case 'r':
 			flags->raw_dump = true;
 			break;

@@ -100,6 +100,8 @@ struct flags {
 	bool raw_dump;
 	// Dump statistics about the trace
 	bool dump_statistics;
+	// Dump syscallbuf contents
+	bool dump_syscallbuf;
 	// Only open a debug socket, don't launch the debugger too.
 	bool dont_launch_debugger;
 	// Pass this file name to debugger with -x
@@ -131,6 +133,7 @@ struct flags {
 	  , process_created_how(0)
 	  , raw_dump(false)
 	  , dump_statistics(false)
+	  , dump_syscallbuf(false)
 	  , dont_launch_debugger(false)
 	{}
 };

@@ -77,6 +77,18 @@ union EncodedEvent {
 		int has_exec_info : 2;
 	};
 	int encoded;
+
+	bool operator==(const EncodedEvent& other) const
+	{
+		return encoded == other.encoded;
+	}
+	bool operator!=(const EncodedEvent& other) const
+	{
+		return !(*this == other);
+	}
+
+	// XXX x86-64 porting hazard. We should just add 'arch' to all events.
+	supported_arch arch() const { return x86; }
 };
 
 static_assert(sizeof(int) == sizeof(EncodedEvent), "Bit fields are messed up");
