@@ -146,7 +146,7 @@ static void handle_ptrace_event(Task** tp)
 
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK: {
-		int new_tid = t->get_ptrace_eventmsg();
+		int new_tid = t->get_ptrace_eventmsg_pid();
 		void* stack = (void*)t->regs().arg2();
 		void* tls = (void*)t->regs().arg4();
 		void* ctid = (void*)t->regs().arg5();

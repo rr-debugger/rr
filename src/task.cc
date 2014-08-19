@@ -399,24 +399,28 @@ Task::futex_wait(void* futex, uint32_t val)
 	}
 }
 
-unsigned long
-Task::get_ptrace_eventmsg()
+int
+Task::get_ptrace_eventmsg_pid()
 {
-	unsigned long msg;
+	unsigned long msg = 0;
+	// in theory we could hit an assertion failure if the tracee suffers
+	// a SIGKILL before we get here. But the SIGKILL would have to be
+	// precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
+	// SYS_clone event, and us fetching the event message here.
 	xptrace(PTRACE_GETEVENTMSG, nullptr, &msg);
-	return msg;
+	return (int)msg;
 }
 
-void
+bool
 Task::get_siginfo(siginfo_t* si)
 {
-	xptrace(PTRACE_GETSIGINFO, nullptr, si);
+	return ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, si);
 }
 
 void
 Task::set_siginfo(const siginfo_t& si)
 {
-	xptrace(PTRACE_SETSIGINFO, nullptr, (void*)&si);
+	ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 
 TraceIfstream&
@@ -1022,7 +1026,7 @@ Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
 	rbc_count();
 	reset_hpc(this, rbc_period == 0 ? 0xffffffff : rbc_period);
 	LOG(debug) <<"resuming execution with "<< ptrace_req_name(how);
-	xptrace(how, nullptr, (void*)(uintptr_t)sig);
+	ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
 	registers_known = false;
 	extra_registers_known = false;
 	rbcs_read = false;
@@ -1082,7 +1086,7 @@ void
 Task::set_regs(const Registers& regs)
 {
 	registers = regs;
-	xptrace(PTRACE_SETREGS, nullptr, &registers);
+	ptrace_if_alive(PTRACE_SETREGS, nullptr, &registers);
 	registers_known = true;
 }
 
@@ -1097,11 +1101,11 @@ Task::set_extra_regs(const ExtraRegisters& regs)
 	switch (extra_registers.format()) {
 	case ExtraRegisters::XSAVE: {
 		struct iovec vec = { extra_registers.data.data(), extra_registers.data.size() };
-		xptrace(PTRACE_SETREGSET, (void*)NT_X86_XSTATE, &vec);
+		ptrace_if_alive(PTRACE_SETREGSET, (void*)NT_X86_XSTATE, &vec);
 		break;
 	}
 	case ExtraRegisters::FPXREGS: {
-		xptrace(PTRACE_SETFPXREGS, NULL, extra_registers.data.data());
+		ptrace_if_alive(PTRACE_SETFPXREGS, NULL, extra_registers.data.data());
 		break;
 	}
 	default:
@@ -1160,11 +1164,11 @@ Task::set_debug_regs(const DebugRegs& regs)
 
 	// Reset the debug status since we're about to change the set
 	// of programmed watchpoints.
-	xptrace(PTRACE_POKEUSER, (void*)dr_user_word_offset(6), 0);
+	ptrace_if_alive(PTRACE_POKEUSER, (void*)dr_user_word_offset(6), 0);
 	// Ensure that we clear the programmed watchpoints in case
 	// enabling one of them fails.  We guarantee atomicity to the
 	// caller.
-	xptrace(PTRACE_POKEUSER, (void*)dr_user_word_offset(7), 0);
+	ptrace_if_alive(PTRACE_POKEUSER, (void*)dr_user_word_offset(7), 0);
 	if (regs.size() > NUM_X86_WATCHPOINTS) {
 		return false;
 	}
@@ -1251,8 +1255,9 @@ Task::stash_sig()
 	ASSERT(this, !has_stashed_sig())
 		<< "Tried to stash "<< signalname(pending_sig()) <<" when "
 		<< signalname(stashed_si.si_signo) <<" was already stashed.";
-	stashed_wait_status = wait_status;
-	get_siginfo(&stashed_si);
+	if (get_siginfo(&stashed_si)) {
+		stashed_wait_status = wait_status;
+	}
 }
 
 const siginfo_t&
@@ -2232,10 +2237,27 @@ Task::trace_fstream() const
 void
 Task::xptrace(int request, void* addr, void* data)
 {
-	long ret = fallible_ptrace(request, addr, data);
-	ASSERT(this, 0 == ret)
+	errno = 0;
+	fallible_ptrace(request, addr, data);
+	ASSERT(this, !errno)
 		<< "ptrace("<< ptrace_req_name(request) <<", "<< tid
-		<<", addr="<< addr <<", data="<< data <<") failed";
+		<<", addr="<< addr <<", data="<< data
+		<<") failed with errno "<< errno;
+}
+
+bool
+Task::ptrace_if_alive(int request, void* addr, void* data)
+{
+	errno = 0;
+	fallible_ptrace(request, addr, data);
+	if (errno == ESRCH) {
+		return false;
+	}
+	ASSERT(this, !errno)
+		<< "ptrace("<< ptrace_req_name(request) <<", "<< tid
+		<<", addr="<< addr <<", data="<< data
+		<<") failed with errno "<< errno;
+	return true;
 }
 
 /*static*/ void
@@ -2246,7 +2268,7 @@ Task::handle_runaway(int sig)
 		LOG(debug) <<"  ... false alarm, race condition";
 		return;
 	}
-	waiter->xptrace(PTRACE_INTERRUPT, nullptr, nullptr);
+	waiter->ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
 	waiter_was_interrupted = true;
 }
 
