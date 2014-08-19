@@ -181,10 +181,10 @@ static void handle_ptrace_event(Task** tp)
 	}
 
 	case PTRACE_EVENT_EXIT: {
-		if (EV_SYSCALL == t->ev().type()
-		    && SYS_exit_group == t->ev().Syscall().no
-		    && t->task_group()->task_set().size() > 1) {
-			LOG(warn) <<"exit_group() with > 1 task; may misrecord CLONE_CHILD_CLEARTID memory race";
+		if (t->stable_exit) {
+			LOG(debug) <<"stable exit";
+		} else {
+			LOG(warn) <<"unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
 			t->destabilize_task_group();
 		}
 
