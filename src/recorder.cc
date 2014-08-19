@@ -142,6 +142,8 @@ static void handle_ptrace_event(Task** tp)
 
 	case PTRACE_EVENT_NONE:
 	case PTRACE_EVENT_STOP:
+	case PTRACE_EVENT_SECCOMP_OBSOLETE:
+	case PTRACE_EVENT_SECCOMP:
 		break;
 
 	case PTRACE_EVENT_CLONE:
@@ -953,11 +955,9 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp)
 			   ptrace_event))
 			<< "unexpectedly runnable ("<< HEX(t->status())
 			<<") by waitpid";
-		if (ptrace_event && !t->is_ptrace_seccomp_event()) {
-			handle_ptrace_event(&t);
-			if (!t) {
-				continue;
-			}
+		handle_ptrace_event(&t);
+		if (!t) {
+			continue;
 		}
 
 		bool did_initial_resume = false;
