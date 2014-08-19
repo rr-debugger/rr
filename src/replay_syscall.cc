@@ -399,7 +399,7 @@ static void process_clone(Task* t,
 		<< ptrace_event_name(t->ptrace_event());
 
 	long rec_tid = rec_regs.syscall_result_signed();
-	pid_t new_tid = t->get_ptrace_eventmsg();
+	pid_t new_tid = t->get_ptrace_eventmsg_pid();
 
 	void* stack = (void*)t->regs().arg2();
 	void* tls = (void*)t->regs().arg4();

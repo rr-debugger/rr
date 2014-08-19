@@ -507,7 +507,9 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 		t->cont_singlestep();
 		assert(t->stopped());
 
-		t->get_siginfo(&tmp_si);
+		if (!t->get_siginfo(&tmp_si)) {
+			goto happy_place;
+		}
 		is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
@@ -627,7 +629,10 @@ void handle_signal(Task* t, siginfo_t* si)
 
 	siginfo_t local_si;
 	if (!si) {
-		t->get_siginfo(&local_si);
+		if (!t->get_siginfo(&local_si)) {
+			// task died. Nothing to do here.
+			return;
+		}
 		si = &local_si;
 	}
 	return handle_siginfo(t, si);

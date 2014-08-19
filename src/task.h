@@ -355,16 +355,19 @@ public:
 	void futex_wait(void* futex, uint32_t val);
 
 	/**
-	 * Return the message associated with the current ptrace
+	 * Return the ptrace message pid associated with the current ptrace
 	 * event, f.e. the new child's pid at PTRACE_EVENT_CLONE.
 	 */
-	unsigned long get_ptrace_eventmsg();
+	int get_ptrace_eventmsg_pid();
 
 	/**
 	 * Return through |si| the siginfo at the signal-stop of this.
 	 * Not meaningful unless this is actually at a signal stop.
+	 * If the task is dead we return false; this could happen anytime
+	 * during recording and must be handled, though it shouldn't happen
+	 * during replay.
 	 */
-	void get_siginfo(siginfo_t* si);
+	bool get_siginfo(siginfo_t* si);
 
 	/**
 	 * Set the siginfo for the signal-stop of this.
@@ -801,6 +804,9 @@ public:
 	 * NB: |get_siginfo()| will always return the "real" siginfo,
 	 * regardless of stash popped-ness state.  Callers must ensure
 	 * they do the right thing with the popped siginfo.
+	 *
+	 * If the process unexpectedly died (due to SIGKILL), we don't
+	 * stash anything.
 	 */
 	void stash_sig();
 	bool has_stashed_sig() const { return stashed_wait_status; }
@@ -1161,6 +1167,20 @@ private:
 	long fallible_ptrace(int request, void* addr, void* data);
 
 	/**
+	 * Like |fallible_ptrace()| but infallible for most purposes.
+	 * Errors other than ESRCH are treated as fatal. Returns false if
+	 * we got ESRCH. This can happen any time during recording when the
+	 * task gets a SIGKILL from outside.
+	 */
+	bool ptrace_if_alive(int request, void* addr, void* data);
+
+	/**
+	 * Like |fallible_ptrace()| but completely infallible.
+	 * All errors are treated as fatal.
+	 */
+	void xptrace(int request, void* addr, void* data);
+
+	/**
 	 * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use
 	 * as fallback. Returns number of bytes actually read.
 	 */
@@ -1225,12 +1245,6 @@ private:
 	 */
 	TraceFstream& trace_fstream();
 	const TraceFstream& trace_fstream() const;
-
-	/**
-	 * Like |fallible_ptrace()| but infallible: except either the
-	 * request succeeds, or this doesn't return.
-	 */
-	void xptrace(int request, void* addr, void* data);
 
 	/**
 	 * The rbc interrupt has failed to stop the Task currently
