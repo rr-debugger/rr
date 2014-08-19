@@ -115,6 +115,10 @@ set(BASIC_TESTS
   fxregs
   getgroups
   getsid
+  grandchild_threads
+  grandchild_threads_main_running
+  grandchild_threads_thread_running
+  grandchild_threads_parent_alive
   int3
   intr_futex_wait_restart
   intr_poll
@@ -193,6 +197,9 @@ set(TESTS_WITH_PROGRAM
   abort_nonmain
   alarm
   args
+  async_kill_with_threads
+  async_kill_with_threads_main_running
+  async_kill_with_threads_thread_running
   async_segv
   async_signal_syscalls
   async_signal_syscalls_siginfo

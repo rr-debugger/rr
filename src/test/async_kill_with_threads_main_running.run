@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+# SIGKILL, wait 2.0s
+record_async_signal 9 2.0 $TESTNAME
+replay
+check 'EXIT-SUCCESS'
