@@ -881,7 +881,11 @@ public:
 	 * successful, false if interrupted, and don't return at all
 	 * on errors.
 	 */
-	bool wait();
+	enum ExpectingStop {
+		NOT_EXPECTING_STOP,
+		EXPECTING_STOP
+	};
+	bool wait(ExpectingStop expecting_stop = NOT_EXPECTING_STOP);
 	/**
 	 * Return true if the status of this has changed, but don't
 	 * block.

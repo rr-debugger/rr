@@ -1403,7 +1403,7 @@ static void handle_alarm_signal(int sig)
 }
 
 bool
-Task::wait()
+Task::wait(ExpectingStop expecting_stop)
 {
 	LOG(debug) <<"going into blocking waitpid("<< tid <<") ...";
 	ASSERT(this, !unstable)
@@ -1413,7 +1413,7 @@ Task::wait()
 	// during replay, something else is at fault.
 	bool enable_wait_interrupt = (RECORD == rr_flags()->option);
 
-	bool waiter_was_interrupted = false;
+	bool sent_wait_interrupt = false;
 	pid_t ret;
 	while (true) {
 		if (enable_wait_interrupt) {
@@ -1449,9 +1449,11 @@ Task::wait()
 			break;
 		}
 
-		if (!waiter_was_interrupted) {
+		// If we're already expecting a stop, no need to
+		// force our own stop.
+		if (!sent_wait_interrupt && expecting_stop == NOT_EXPECTING_STOP) {
 			ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
-			waiter_was_interrupted = true;
+			sent_wait_interrupt = true;
 		}
 	}
 
@@ -1462,7 +1464,11 @@ Task::wait()
 	// If some other ptrace-stop happened to race with our
 	// PTRACE_INTERRUPT, then let the other event win.  We only
 	// want to interrupt tracees stuck running in userspace.
-	if (waiter_was_interrupted && PTRACE_EVENT_STOP == ptrace_event()
+	// We convert the ptrace-stop to a reschedule signal. Note that
+	// if expecting_stop is EXPECTING_STOP then we won't reach here (and
+	// must not, since we don't want to accidentally convert an expected
+	// stop into something else).
+	if (sent_wait_interrupt && PTRACE_EVENT_STOP == ptrace_event()
 	    && is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(wait_status))) {
 		LOG(warn) <<"Forced to PTRACE_INTERRUPT tracee";
 		stashed_wait_status = wait_status =
@@ -1474,7 +1480,7 @@ Task::wait()
 		// Starve the runaway task of CPU time.  It just got
 		// the equivalent of hundreds of time slices.
 		succ_event_counter = numeric_limits<int>::max() / 2;
-	} else if (waiter_was_interrupted) {
+	} else if (sent_wait_interrupt) {
 		LOG(warn) <<"  PTRACE_INTERRUPT raced with another event "
 			  << HEX(wait_status);
 	}
@@ -2438,7 +2444,7 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 	// Alternatively, it would be possible to remove the
 	// requirement of the tracing beginning from a known point.
 	while (true) {
-		t->wait();
+		t->wait(EXPECTING_STOP);
 		if (SIGSTOP == t->stop_sig()) {
 			break;
 		}
