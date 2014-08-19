@@ -185,6 +185,7 @@ TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
 Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	: thread_time(1)
 	, switchable(), pseudo_blocked(), succ_event_counter(), unstable()
+	, stable_exit(false)
 	, priority(_priority)
 	, scratch_ptr(), scratch_size()
 	, flushed_syscallbuf()
@@ -1745,6 +1746,7 @@ Task::detach_and_reap()
 			break;
 		} else if (-1 == err) {
 			assert(EINTR == errno);
+			LOG(debug) <<" ... EINTR";
 		}
 		if (err == tid && (exited() || signaled())) {
 			LOG(debug) <<" ... exited with status "
@@ -1752,6 +1754,7 @@ Task::detach_and_reap()
 			break;
 		} else if (err == tid) {
 			assert(PTRACE_EVENT_EXIT == ptrace_event());
+			LOG(debug) <<" ... PTRACE_EVENT_EXIT";
 		}
 	}
 

@@ -987,6 +987,9 @@ public:
 	 * process have been invalidated, and must be re-established
 	 * with a waitpid() call. */
 	int unstable;
+	/* exit(), or exit_group() with one task, has been called, so
+	 * the exit can be treated as stable. */
+	bool stable_exit;
 
 	/* Task 'nice' value set by setpriority(2).
 	   We use this to drive scheduling decisions. rr's scheduler is

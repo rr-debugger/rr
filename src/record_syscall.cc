@@ -748,6 +748,7 @@ static int rec_prepare_syscall_arch(Task* t)
 	}
 
 	case Arch::exit:
+		t->stable_exit = true;
 		if (t->task_group()->task_set().size() == 1) {
 			t->task_group()->exit_code = (int)t->regs().arg1();
 		}
@@ -755,6 +756,9 @@ static int rec_prepare_syscall_arch(Task* t)
 		return 0;
 
 	case Arch::exit_group:
+		if (t->task_group()->task_set().size() == 1) {
+			t->stable_exit = true;
+		}
 		t->task_group()->exit_code = (int)t->regs().arg1();
 		return 0;
 
