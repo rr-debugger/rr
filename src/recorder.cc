@@ -762,6 +762,12 @@ static void runnable_state_changed(Task* t)
 	// to allow switching the context.
 	t->switchable = 0;
 
+	if (t->ptrace_event()) {
+		// A ptrace event arrived. The steps below are irrelevant
+		// and potentially wrong because no ev() was pushed.
+		return;
+	}
+
 	siginfo_t* si = nullptr;
 	siginfo_t stash;
 	if (t->has_stashed_sig()) {
