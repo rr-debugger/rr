@@ -1247,13 +1247,6 @@ private:
 	const TraceFstream& trace_fstream() const;
 
 	/**
-	 * The rbc interrupt has failed to stop the Task currently
-	 * being |wait()|ed, so the alarm() we programmed has fired.
-	 * PTRACE_INTERRUPT the runaway tracee.
-	 */
-	static void handle_runaway(int sig);
-
-	/**
 	 * Make the OS-level calls to clone |parent| into |session|
 	 * and return the resulting Task metadata for that new
 	 * process.  This is as opposed to |Task::clone()|, which only

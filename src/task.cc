@@ -4,6 +4,7 @@
 
 #include "task.h"
 
+#include <elf.h>
 #include <errno.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -15,7 +16,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/user.h>
-#include <elf.h>
 
 #include <limits>
 #include <set>
@@ -1352,11 +1352,33 @@ Task::update_sigmask(const Registers& regs)
 	}
 }
 
-// The Task currently being wait()d on, or nullptr.
-// |waiter_was_interrupted| if a PTRACE_INTERRUPT had to be applied to
-// |waiter| to get it to stop.
-static Task* waiter;
-static bool waiter_was_interrupted;
+static bool is_zombie_process(pid_t pid)
+{
+	char buf[1000];
+	sprintf(buf, "/proc/%d/status", pid);
+	FILE* f = fopen(buf, "r");
+	if (!f) {
+		// Something went terribly wrong. Just say it's a zombie
+		// so we treat it as dead.
+		return true;
+	}
+	static const char state_keyword[] = "State:";
+	while (fgets(buf, sizeof(buf), f)) {
+		if (strncmp(buf, state_keyword, sizeof(state_keyword) - 1) == 0) {
+			fclose(f);
+
+			char* b = buf + sizeof(state_keyword) - 1;
+			while (*b == ' ' || *b == '\t') {
+				++b;
+			}
+			return *b == 'Z';
+		}
+	}
+	fclose(f);
+	// Something went terribly wrong. Just say it's a zombie
+	// so we treat it as dead.
+	return true;
+}
 
 static bool is_signal_triggered_by_ptrace_interrupt(int sig)
 {
@@ -1373,6 +1395,13 @@ static bool is_signal_triggered_by_ptrace_interrupt(int sig)
 	}
 }
 
+// This function doesn't really need to do anything. The signal will cause
+// waitpid to return EINTR and that's all we need.
+static void handle_alarm_signal(int sig)
+{
+	LOG(debug) <<"SIGALRM fired; maybe runaway tracee";
+}
+
 bool
 Task::wait()
 {
@@ -1383,32 +1412,49 @@ Task::wait()
 	// We only need this during recording.  If tracees go runaway
 	// during replay, something else is at fault.
 	bool enable_wait_interrupt = (RECORD == rr_flags()->option);
-	if (enable_wait_interrupt) {
-		waiter = this;
-		// Where does the 3 seconds come from?  No especially
-		// good reason.  We want this to be pretty high,
-		// because it's a last-ditch recovery mechanism, not a
-		// primary thread scheduler.  Though in theory the
-		// PTRACE_INTERRUPT's shouldn't interfere with other
-		// events, that's hard to test thoroughly so try to
-		// avoid it.
-		alarm(3);
 
-		// Set the wait_status to a sentinel value so that we
-		// can hopefully recognize race conditions in the
-		// SIGALRM handler.
-		wait_status = -1;
-	}
-	pid_t ret = waitpid(tid, &wait_status, __WALL);
-	if (enable_wait_interrupt) {
-		waiter = nullptr;
-		alarm(0);
+	bool waiter_was_interrupted = false;
+	pid_t ret;
+	while (true) {
+		if (enable_wait_interrupt) {
+			// Where does the 3 seconds come from?  No especially
+			// good reason.  We want this to be pretty high,
+			// because it's a last-ditch recovery mechanism, not a
+			// primary thread scheduler.  Though in theory the
+			// PTRACE_INTERRUPT's shouldn't interfere with other
+			// events, that's hard to test thoroughly so try to
+			// avoid it.
+			alarm(3);
+		}
+		ret = waitpid(tid, &wait_status, __WALL);
+		if (enable_wait_interrupt) {
+			alarm(0);
+		}
+		if (ret >= 0 || errno != EINTR) {
+			// waitpid was not interrupted by the alarm.
+			break;
+		}
+
+		if (is_zombie_process(tg->real_tgid)) {
+			// The process is dead. We must stop waiting on it now
+			// or we might never make progress.
+			// XXX it's not clear why the waitpid() syscall
+			// doesn't return immediately in this case, but in
+			// some cases it doesn't return normally at all!
+
+			// Fake a PTRACE_EVENT_EXIT for this task.
+			wait_status = PTRACE_EVENT_EXIT << 16;
+			ret = tid;
+			// XXX could this leave unreaped zombies lying around?
+			break;
+		}
+
+		if (!waiter_was_interrupted) {
+			ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
+			waiter_was_interrupted = true;
+		}
 	}
 
-	if (0 > ret && EINTR == errno) {
-		LOG(debug) <<"  waitpid("<< tid <<") interrupted!";
-		return false;
-	}
 	LOG(debug) <<"  waitpid("<< tid <<") returns "<< ret <<"; status "
 		   << HEX(wait_status);
 	ASSERT(this, tid == ret)
@@ -1432,7 +1478,6 @@ Task::wait()
 		LOG(warn) <<"  PTRACE_INTERRUPT raced with another event "
 			  << HEX(wait_status);
 	}
-	waiter_was_interrupted = false;
 	return true;
 }
 
@@ -2260,18 +2305,6 @@ Task::ptrace_if_alive(int request, void* addr, void* data)
 	return true;
 }
 
-/*static*/ void
-Task::handle_runaway(int sig)
-{
-	LOG(debug) <<"SIGALRM fired; runaway tracee";
-	if (!waiter || -1 != waiter->wait_status) {
-		LOG(debug) <<"  ... false alarm, race condition";
-		return;
-	}
-	waiter->ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
-	waiter_was_interrupted = true;
-}
-
 bool
 Task::clone_syscall_is_complete()
 {
@@ -2357,7 +2390,11 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 		FATAL() <<"Failed to exec '"<< ae.exe_image.c_str() <<"'";
 	}
 
-	signal(SIGALRM, Task::handle_runaway);
+	struct sigaction sa;
+	sa.sa_handler = handle_alarm_signal;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
+	sigaction(SIGALRM, &sa, NULL);
 
 	Task* t = new Task(tid, rec_tid, 0);
 	// The very first task we fork inherits the signal
