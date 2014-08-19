@@ -191,7 +191,7 @@ static void handle_ptrace_event(Task** tp)
 		}
 
 		EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
-		t->record_event(Event(ev, HAS_EXEC_INFO));
+		t->record_event(Event(ev, NO_EXEC_INFO));
 
 		rec_sched_deregister_thread(tp);
 		t = *tp;
