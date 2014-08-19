@@ -934,7 +934,7 @@ public:
 				 ssize_t buf_size, const byte* buf);
 
 	/** See |pending_sig()| above. */
-	static int pending_sig_from_status(int status);
+	int pending_sig_from_status(int status) const;
 	/** See |ptrace_event()| above. */
 	static int ptrace_event_from_status(int status) {
 		return (0xFF0000 & status) >> 16;
@@ -943,10 +943,7 @@ public:
 	static bool stopped_from_status(int status) {
 		return WIFSTOPPED(status);
 	}
-	static int stop_sig_from_status(int status) {
-		assert(stopped_from_status(status));
-		return WSTOPSIG(status);
-	}
+	int stop_sig_from_status(int status) const;
 
 	/**
 	 * Call this when performing a clone syscall in this task. Returns

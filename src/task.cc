@@ -1537,8 +1537,8 @@ static void set_up_process(void)
 	}
 }
 
-/*static*/int
-Task::pending_sig_from_status(int status)
+int
+Task::pending_sig_from_status(int status) const
 {
 	if (status == 0) {
 		return 0;
@@ -1562,6 +1562,12 @@ Task::pending_sig_from_status(int status)
 		 * SEGVs? */
 		return sig & ~0x80;
 	}
+}
+
+int
+Task::stop_sig_from_status(int status) const {
+	ASSERT(const_cast<Task*>(this), stopped_from_status(status));
+	return WSTOPSIG(status);
 }
 
 Task*
