@@ -342,7 +342,13 @@ public:
 	 * Force the wait status of this to |status|, as if
 	 * |wait()/try_wait()| had returned it.
 	 */
-	void force_status(int status) { wait_status = status; }
+	void force_status(int status)
+	{
+		wait_status = status;
+		if (ptrace_event() == PTRACE_EVENT_EXIT) {
+			seen_ptrace_exit_event = true;
+		}
+	}
 
 	/**
 	 * Wait for |futex| in this address space to have the value
@@ -881,11 +887,16 @@ public:
 	 * successful, false if interrupted, and don't return at all
 	 * on errors.
 	 */
-	enum ExpectingStop {
-		NOT_EXPECTING_STOP,
-		EXPECTING_STOP
+	enum ExpectingPtraceStop {
+		NOT_EXPECTING_PTRACE_STOP,
+		EXPECTING_PTRACE_STOP
 	};
-	bool wait(ExpectingStop expecting_stop = NOT_EXPECTING_STOP);
+	enum ExpectingExitCode {
+		NOT_EXPECTING_EXIT_CODE,
+		EXPECTING_EXIT_CODE
+	};
+	bool wait(ExpectingPtraceStop expecting_ptrace_stop = NOT_EXPECTING_PTRACE_STOP,
+	          ExpectingExitCode expecting_exit_code = NOT_EXPECTING_EXIT_CODE);
 	/**
 	 * Return true if the status of this has changed, but don't
 	 * block.
@@ -1338,6 +1349,9 @@ private:
 	// The most recent status of this task as returned by
 	// waitpid().
 	int wait_status;
+	// True when a PTRACE_EXIT_EVENT has been observed in the wait_status
+	// for this task.
+	bool seen_ptrace_exit_event;
 
 	Task(Task&) = delete;
 	Task operator=(Task&) = delete;

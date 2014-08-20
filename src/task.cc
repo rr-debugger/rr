@@ -211,6 +211,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
 	, tid_futex()
 	, top_of_stack()
 	, wait_status()
+	, seen_ptrace_exit_event(false)
 {
 	if (RECORD != rr_flags()->option) {
 		// This flag isn't meaningful outside recording.
@@ -1403,7 +1404,8 @@ static void handle_alarm_signal(int sig)
 }
 
 bool
-Task::wait(ExpectingStop expecting_stop)
+Task::wait(ExpectingPtraceStop expecting_ptrace_stop,
+	   ExpectingExitCode expecting_exit_code)
 {
 	LOG(debug) <<"going into blocking waitpid("<< tid <<") ...";
 	ASSERT(this, !unstable)
@@ -1414,6 +1416,8 @@ Task::wait(ExpectingStop expecting_stop)
 	bool enable_wait_interrupt = (RECORD == rr_flags()->option);
 
 	bool sent_wait_interrupt = false;
+	static const int ptrace_exit_wait_status =
+		(PTRACE_EVENT_EXIT << 16) | 0x857f;
 	pid_t ret;
 	while (true) {
 		if (enable_wait_interrupt) {
@@ -1443,7 +1447,7 @@ Task::wait(ExpectingStop expecting_stop)
 			// some cases it doesn't return normally at all!
 
 			// Fake a PTRACE_EVENT_EXIT for this task.
-			wait_status = PTRACE_EVENT_EXIT << 16;
+			wait_status = ptrace_exit_wait_status;
 			ret = tid;
 			// XXX could this leave unreaped zombies lying around?
 			break;
@@ -1451,10 +1455,27 @@ Task::wait(ExpectingStop expecting_stop)
 
 		// If we're already expecting a stop, no need to
 		// force our own stop.
-		if (!sent_wait_interrupt && expecting_stop == NOT_EXPECTING_STOP) {
+		if (!sent_wait_interrupt
+			&& expecting_ptrace_stop == NOT_EXPECTING_PTRACE_STOP) {
 			ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
 			sent_wait_interrupt = true;
 		}
+	}
+
+	if (ret >= 0 && !stopped() && expecting_exit_code == NOT_EXPECTING_EXIT_CODE) {
+		// Unexpected non-stopping exit code returned in wait_status.
+		// This shouldn't happen; a PTRACE_EXIT_EVENT for this task
+		// should be observed first, and then we would kill the task
+		// before wait()ing again, so we'd only see the exit
+		// code in detach_and_reap. But somehow we see it here in
+		// grandchild_threads and async_kill_with_threads tests (and
+		// maybe others), when a PTRACE_EXIT_EVENT has not been sent.
+		// Verify that we have not actually seen a PTRACE_EXIT_EVENT.
+		ASSERT(this, !seen_ptrace_exit_event)
+			<<"A PTRACE_EXIT_EVENT was observed for this task, but somehow forgotten";
+
+		// Turn this into a PTRACE_EXIT_EVENT.
+		wait_status = ptrace_exit_wait_status;
 	}
 
 	LOG(debug) <<"  waitpid("<< tid <<") returns "<< ret <<"; status "
@@ -1465,9 +1486,9 @@ Task::wait(ExpectingStop expecting_stop)
 	// PTRACE_INTERRUPT, then let the other event win.  We only
 	// want to interrupt tracees stuck running in userspace.
 	// We convert the ptrace-stop to a reschedule signal. Note that
-	// if expecting_stop is EXPECTING_STOP then we won't reach here (and
-	// must not, since we don't want to accidentally convert an expected
-	// stop into something else).
+	// if expecting_ptrace_stop is EXPECTING_PTRACE_STOP then we won't
+	// reach here (and must not, since we don't want to accidentally
+	// convert an expected stop into something else).
 	if (sent_wait_interrupt && PTRACE_EVENT_STOP == ptrace_event()
 	    && is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(wait_status))) {
 		LOG(warn) <<"Forced to PTRACE_INTERRUPT tracee";
@@ -1491,6 +1512,9 @@ bool
 Task::try_wait()
 {
 	pid_t ret = waitpid(tid, &wait_status, WNOHANG | __WALL | WSTOPPED);
+	if (ptrace_event() == PTRACE_EVENT_EXIT) {
+		seen_ptrace_exit_event = true;
+	}
 	LOG(debug) <<"waitpid("<< tid <<", NOHANG) returns "<< ret
 		   <<", status "<< HEX(wait_status);
 	ASSERT(this, 0 <= ret)
@@ -2090,7 +2114,7 @@ Task::kill()
 	sys_tgkill(real_tgid(), tid, SIGKILL);
 
 	if (!unstable) {
-		wait();
+		wait(NOT_EXPECTING_PTRACE_STOP, EXPECTING_EXIT_CODE);
 
 		if (WIFSIGNALED(wait_status)) {
 			assert(SIGKILL == WTERMSIG(wait_status));
@@ -2450,7 +2474,7 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 	// Alternatively, it would be possible to remove the
 	// requirement of the tracing beginning from a known point.
 	while (true) {
-		t->wait(EXPECTING_STOP);
+		t->wait(EXPECTING_PTRACE_STOP);
 		if (SIGSTOP == t->stop_sig()) {
 			break;
 		}
