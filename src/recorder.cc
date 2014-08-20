@@ -960,6 +960,14 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp)
 			continue;
 		}
 
+		if (t->unstable) {
+			// Do not record non-ptrace events for tasks in
+			// an unstable exit. We can't replay them.
+			LOG(debug) <<"Task in unstable exit; "
+				"refusing to record non-ptrace events";
+			continue;
+		}
+
 		bool did_initial_resume = false;
 		switch (t->ev().type()) {
 		case EV_DESCHED:
