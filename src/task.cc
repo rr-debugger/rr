@@ -1404,8 +1404,7 @@ static void handle_alarm_signal(int sig)
 }
 
 bool
-Task::wait(ExpectingPtraceStop expecting_ptrace_stop,
-	   ExpectingExitCode expecting_exit_code)
+Task::wait(AllowInterrupt allow_interrupt)
 {
 	LOG(debug) <<"going into blocking waitpid("<< tid <<") ...";
 	ASSERT(this, !unstable)
@@ -1453,16 +1452,14 @@ Task::wait(ExpectingPtraceStop expecting_ptrace_stop,
 			break;
 		}
 
-		// If we're already expecting a stop, no need to
-		// force our own stop.
 		if (!sent_wait_interrupt
-			&& expecting_ptrace_stop == NOT_EXPECTING_PTRACE_STOP) {
+			&& allow_interrupt == ALLOW_INTERRUPT) {
 			ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
 			sent_wait_interrupt = true;
 		}
 	}
 
-	if (ret >= 0 && !stopped() && expecting_exit_code == NOT_EXPECTING_EXIT_CODE) {
+	if (ret >= 0 && !stopped()) {
 		// Unexpected non-stopping exit code returned in wait_status.
 		// This shouldn't happen; a PTRACE_EXIT_EVENT for this task
 		// should be observed first, and then we would kill the task
@@ -1485,10 +1482,7 @@ Task::wait(ExpectingPtraceStop expecting_ptrace_stop,
 	// If some other ptrace-stop happened to race with our
 	// PTRACE_INTERRUPT, then let the other event win.  We only
 	// want to interrupt tracees stuck running in userspace.
-	// We convert the ptrace-stop to a reschedule signal. Note that
-	// if expecting_ptrace_stop is EXPECTING_PTRACE_STOP then we won't
-	// reach here (and must not, since we don't want to accidentally
-	// convert an expected stop into something else).
+	// We convert the ptrace-stop to a reschedule signal.
 	if (sent_wait_interrupt && PTRACE_EVENT_STOP == ptrace_event()
 	    && is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(wait_status))) {
 		LOG(warn) <<"Forced to PTRACE_INTERRUPT tracee";
@@ -1812,36 +1806,42 @@ Task::detach_and_reap()
 	// it for futex_wait below after we've detached.
 	ASSERT(this, as->mem_fd() >= 0);
 
-	// XXX: why do we detach before harvesting?
-	fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 	if (unstable) {
+		fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 		// In addition to problems described in the long
 		// comment at the prototype of this function, unstable
 		// exits may result in the kernel *not* clearing the
 		// futex, for example for fatal signals.  So we would
 		// deadlock waiting on the futex.
 		LOG(warn) << tid <<" is unstable; not blocking on its termination";
+		// This will probably leak a zombie process for rr's lifetime.
 		return;
 	}
 
 	LOG(debug) <<"Joining with exiting "<< tid <<" ...";
 	while (true) {
+		// Sometimes PTRACE_DETACH does not work until we've read
+		// the PTRACE_EXIT_EVENT. Use brute force; keep trying to
+		// detach over and over again.
+		fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 		int err = waitpid(tid, &wait_status, __WALL);
 		if (-1 == err && ECHILD == errno) {
+			// child no longer exists for some reason. It's
+			// already reaped or maybe it's no longer our child.
+			// We may leak a zombie process.
 			LOG(debug) <<" ... ECHILD";
 			break;
-		} else if (-1 == err) {
-			assert(EINTR == errno);
-			LOG(debug) <<" ... EINTR";
 		}
+		// Other errors such as EINTR should not happen here.
+		ASSERT(this, err == tid);
 		if (err == tid && (exited() || signaled())) {
 			LOG(debug) <<" ... exited with status "
 				   << HEX(wait_status);
 			break;
-		} else if (err == tid) {
-			assert(PTRACE_EVENT_EXIT == ptrace_event());
-			LOG(debug) <<" ... PTRACE_EVENT_EXIT";
 		}
+		assert(PTRACE_EVENT_EXIT == ptrace_event());
+		LOG(debug) <<" ... PTRACE_EVENT_EXIT";
+		// and retry
 	}
 
 	if (tid_futex && as->task_set().size() > 0) {
@@ -2111,23 +2111,12 @@ void
 Task::kill()
 {
 	LOG(debug) <<"sending SIGKILL to "<< tid <<" ...";
-	sys_tgkill(real_tgid(), tid, SIGKILL);
-
-	if (!unstable) {
-		wait(NOT_EXPECTING_PTRACE_STOP, EXPECTING_EXIT_CODE);
-
-		if (WIFSIGNALED(wait_status)) {
-			assert(SIGKILL == WTERMSIG(wait_status));
-			// The task is already dead and reaped, so skip any
-			// waitpid()'ing during cleanup.
-			unstable = 1;
-		}
+	if (!stable_exit) {
+		// If we haven't already done a stable exit via syscall,
+		// kill the task and note that the entire task group is unstable.
+		sys_tgkill(real_tgid(), tid, SIGKILL);
+		tg->destabilize();
 	}
-
-	// Don't attempt to synchonize on the cleartid futex.  We
-	// won't be able to reliably read it, and it's pointless
-	// anyway.
-	tid_futex = nullptr;
 }
 
 void
@@ -2474,7 +2463,7 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 	// Alternatively, it would be possible to remove the
 	// requirement of the tracing beginning from a known point.
 	while (true) {
-		t->wait(EXPECTING_PTRACE_STOP);
+		t->wait(DONT_ALLOW_INTERRUPT);
 		if (SIGSTOP == t->stop_sig()) {
 			break;
 		}

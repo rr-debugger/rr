@@ -882,21 +882,19 @@ public:
 	 */
 	AddressSpace::shr_ptr vm() { return as; }
 
+	enum AllowInterrupt {
+		ALLOW_INTERRUPT,
+		// Pass this when the caller has already triggered a ptrace stop
+		// and wait() must not trigger a new one.
+		DONT_ALLOW_INTERRUPT
+	};
 	/**
 	 * Block until the status of this changes.  Return true if
 	 * successful, false if interrupted, and don't return at all
-	 * on errors.
+	 * on errors. wait() expects the wait to end with the process in a
+	 * stopped() state.
 	 */
-	enum ExpectingPtraceStop {
-		NOT_EXPECTING_PTRACE_STOP,
-		EXPECTING_PTRACE_STOP
-	};
-	enum ExpectingExitCode {
-		NOT_EXPECTING_EXIT_CODE,
-		EXPECTING_EXIT_CODE
-	};
-	bool wait(ExpectingPtraceStop expecting_ptrace_stop = NOT_EXPECTING_PTRACE_STOP,
-	          ExpectingExitCode expecting_exit_code = NOT_EXPECTING_EXIT_CODE);
+	bool wait(AllowInterrupt allow_interrupt = ALLOW_INTERRUPT);
 	/**
 	 * Return true if the status of this has changed, but don't
 	 * block.
