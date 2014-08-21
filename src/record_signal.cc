@@ -131,6 +131,13 @@ static int try_handle_rdtsc(Task *t)
 	return 1;
 }
 
+static void arm_desched_event(Task* t)
+{
+	if (ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
+		FATAL() <<"Failed to arm desched event";
+	}
+}
+
 static void disarm_desched_event(Task* t)
 {
 	if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
@@ -434,6 +441,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 	 * per above, and if not, steps it until it finds one. */
 	struct syscallbuf_hdr initial_hdr;
 	struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
+	bool desched_event_maybe_armed = true;
 
 	LOG(debug) <<"Stepping tracee to happy place to deliver signal ...";
 
@@ -484,10 +492,9 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 			LOG(debug) <<"  tracee at traced syscallbuf syscall";
 			goto happy_place;
 		}
-		if (t->is_untraced_syscall()
-		    && t->desched_rec()) {
+		if (t->is_untraced_syscall() && t->desched_rec()) {
 			LOG(debug) <<"  tracee interrupted by desched of "
-				   << t->syscallname(t->desched_rec()->syscallno);
+				<< t->syscallname(t->desched_rec()->syscallno);
 			goto happy_place;
 		}
 		if (initial_hdr.locked && !hdr->locked) {
@@ -495,6 +502,16 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 			 * section and into a happy place.. */
 			LOG(debug) <<"  tracee just unlocked syscallbuf";
 			goto happy_place;
+		}
+
+		bool should_arm_desched_event = t->is_untraced_syscall();
+		if (desched_event_maybe_armed != should_arm_desched_event) {
+			if (should_arm_desched_event) {
+				arm_desched_event(t);
+			} else {
+				disarm_desched_event(t);
+			}
+			desched_event_maybe_armed = should_arm_desched_event;
 		}
 
 		/* Move the tracee closer to a happy place.  NB: an
@@ -514,21 +531,43 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 
 		if (!is_syscall && !is_trace_trap(&tmp_si)) {
 			if (HPC_TIME_SLICE_SIGNAL == tmp_si.si_signo) {
-				LOG(debug) <<"  ignoring SIG_TIMESLICE";
+				LOG(debug) <<"  discarding HPC_TIME_SLICE_SIGNAL";
 				continue;
 			}
-			// As a last-ditch effort to avoid dying, discard
-			// an ignored signal. This will perserve tracee
+			if (SYSCALLBUF_DESCHED_SIGNAL == tmp_si.si_signo) {
+				if (!t->is_untraced_syscall()) {
+					// The performance counter is disarmed but
+					// maybe this signal could already be pending.
+					// We can ignore this signal.
+					LOG(debug) <<"  discarding SYSCALLBUF_DESCHED_SIGNAL";
+					continue;
+				}
+				// TODO what if we get a signal just before
+				// entering an untraced syscall, we step into
+				// that syscall, and then it blocks? We'll
+				// reach this point, but what should we do?
+				// We can probably treat this as a happy_place
+				// and just deliver our original signal, but
+				// we'll need logic similar to handle_desched_event.
+			}
+			// In a desperate effort to avoid dying, discard
+			// an ignored signal. This will preserve tracee
 			// behavior. It means such signals won't be observed
 			// in a debugger, but that will hardly ever be
 			// important.
 			if (HPC_TIME_SLICE_SIGNAL == si->si_signo ||
 				t->is_sig_ignored(si->si_signo)) {
 				memcpy(si, &tmp_si, sizeof(*si));
-				LOG(debug) <<"  upgraded delivery of SIG_TIMESLICE to "
+				LOG(debug) <<"  upgraded delivery of HPC_TIME_SLICE_SIGNAL to "
 					   << signalname(si->si_signo);
 				handle_siginfo(t, si);
 				return -1;
+			}
+			// In another desperate effort to avoid dying, discard
+			// the new signal if it's ignored.
+			if (t->is_sig_ignored(tmp_si.si_signo)) {
+				LOG(debug) <<"  discarding ignored signal "<< tmp_si.si_signo;
+				continue;
 			}
 
 			ASSERT(t, false)
@@ -543,39 +582,9 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si)
 			continue;
 		}
 
-		/* TODO more signals can be delivered while we're
-		 * stepping here too.  Sigh.  See comment above about
-		 * masking signals off.  When we mask off signals, we
-		 * won't need to disarm the desched event, but we will
-		 * need to handle spurious desched notifications. */
-		if (t->is_desched_event_syscall()) {
-			LOG(debug) <<"  stepping over desched-event syscall";
-			/* Finish the syscall. */
-			t->cont_singlestep();
-			if (t->is_arm_desched_event_syscall()) {
-				/* Disarm the event: we don't need or
-				 * want to hear about descheds while
-				 * we're stepping the tracee through
-				 * the syscall wrapper. */
-				disarm_desched_event(t);
-			}
-			/* We don't care about disarm-desched-event
-			 * syscalls; they're irrelevant. */
-		} else {
-			LOG(debug) <<"  running wrapped syscall";
-			/* We may have been notified of the signal
-			 * just after arming the event, but just
-			 * before entering the syscall.  So disarm for
-			 * safety. */
-			/* XXX we really should warn about this, but
-			 * it's just too noisy during unit tests.
-			 * Should find a better way to choose mode. */
-			/*log_warn("Disabling context-switching for possibly-blocking syscall (%s); deadlock may follow",
-			  syscallname(regs->original_syscallno()));*/
-			disarm_desched_event(t);
-			/* And (hopefully!) finish the syscall. */
-			t->cont_singlestep();
-		}
+		LOG(debug) <<"  running wrapped syscall";
+		/* Finish the syscall. */
+		t->cont_singlestep();
 	}
 
 happy_place:
