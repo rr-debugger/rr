@@ -524,8 +524,6 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
 		if (FUTEX_LOCK_PI == op) {
 			uint32_t next_val;
 			if (is_now_contended_pi_futex(t, futex, &next_val)) {
-				static_assert(sizeof(next_val) == sizeof(long),
-					      "Sorry, need Task::write_int()");
 				// During recording, we waited for the
 				// kernel to update the futex, but
 				// since we emulate SYS_futex in
