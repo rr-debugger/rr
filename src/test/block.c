@@ -134,7 +134,13 @@ static void* reader_thread(void* dontcare) {
 		arg.sockfd = sock;
 		arg.msgvec = &mmsg;
 		arg.vlen = 1;
+#if defined(SYS_socketcall)
 		check_syscall(1, syscall(SYS_socketcall, SYS_RECVMMSG, (void*)&arg));
+#elif defined(SYS_recvmmsg)
+		check_syscall(1, syscall(SYS_recvmmsg, (void*)&arg));
+#else
+#error unable to call recvmmsg
+#endif
 		atomic_printf("r:   ... recvmmsg'd(by socketcall) 0x%x (%u bytes)\n",
 			      magic, mmsg.msg_len);
 		test_assert(msg_magic == magic);
@@ -432,7 +438,13 @@ int main(int argc, char *argv[]) {
 		arg.sockfd = sock;
 		arg.msgvec = &mmsg;
 		arg.vlen = 1;
+#if defined(SYS_socketcall)
 		syscall(SYS_socketcall, SYS_SENDMMSG, (void*)&arg);
+#elif defined(SYS_sendmmsg)
+		syscall(SYS_sendmmsg, (void*)&arg);
+#else
+#error unable to call sendmmsg
+#endif
 
 		free(cmptr);
 	}
