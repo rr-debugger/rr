@@ -199,7 +199,7 @@ static byte* read_mem(Task* t, void* addr, size_t len, size_t* read_len)
 {
 	byte* buf = (byte*)malloc(len);
 	ssize_t nread = t->read_bytes_fallible(addr, len, buf);
-	*read_len = max(0, nread);
+	*read_len = max(ssize_t(0), nread);
 	return buf;
 }
 
