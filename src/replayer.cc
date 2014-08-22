@@ -284,8 +284,8 @@ static bool maybe_process_magic_command(Task* t, struct dbg_context* dbg,
 	if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
 		return false;
 	}
-	static_assert(4 == sizeof(uintptr_t), "32-bit assumed here");
-	uintptr_t cmd = *reinterpret_cast<const uintptr_t*>(req.mem.data);
+	uint32_t cmd;
+	memcpy(&cmd, req.mem.data, sizeof(cmd));
 	uintptr_t param = cmd & DBG_COMMAND_PARAMETER_MASK;
 	switch (cmd & DBG_COMMAND_MSG_MASK) {
 	case DBG_COMMAND_MSG_CREATE_CHECKPOINT: {
