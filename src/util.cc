@@ -411,7 +411,7 @@ void iterate_memory_map(Task* t,
 			data.mem_len = t->read_bytes_fallible(addr, nbytes,
 							      data.mem);
 			/* TODO: expose read errors, somehow. */
-			data.mem_len = max(0, data.mem_len);
+			data.mem_len = max(ssize_t(0), data.mem_len);
 		}
 
 		iterator_action next_action = it(it_data, t, &data);
@@ -599,7 +599,7 @@ void dump_process_memory(Task* t, int global_time, const char* tag)
 
 		ssize_t mem_len = t->read_bytes_fallible(first.start,
 				first.num_bytes(), mem.data());
-		mem_len = max(0, mem_len);
+		mem_len = max(ssize_t(0), mem_len);
 
 		string label = first.str() + ' ' + second.str();
 
@@ -719,7 +719,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time)
 			mem.resize(first.num_bytes());
 			valid_mem_len = t->read_bytes_fallible(first.start,
 			    first.num_bytes(), mem.data());
-			valid_mem_len = max(0, valid_mem_len);
+			valid_mem_len = max(ssize_t(0), valid_mem_len);
 		}
 
 		unsigned* buf = (unsigned*)mem.data();
