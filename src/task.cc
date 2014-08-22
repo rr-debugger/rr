@@ -2354,7 +2354,7 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 	t->as.swap(as);
 
 	// Sync with the child process.
-	int options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+	intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
 		PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
 		PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
 		PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP |
