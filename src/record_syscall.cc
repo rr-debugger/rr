@@ -556,6 +556,9 @@ static bool is_stdio_fd(Task* t, int fd)
 
 	int r = syscall(Arch::kcmp, pid, t->rec_tid, RR_KCMP_FILE,
 			STDOUT_FILENO, fd);
+	if (r < 0 && errno == ENOSYS) {
+		return fd == STDOUT_FILENO || fd == STDERR_FILENO;
+	}
 	if (r == 0) {
 		return true;
 	}
