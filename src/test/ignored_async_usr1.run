@@ -1,5 +1,21 @@
 source `dirname $0`/util.sh
-# SIGUSR1, wait 0.5s
-record_async_signal 10 0.5 ignored_async_usr1
+
+SYNC_TOKEN=disabled
+
+record $TESTNAME &
+
+echo "Waiting for token '$SYNC_TOKEN' from tracee ..."
+until grep -q $SYNC_TOKEN record.out; do
+        sleep 0
+done
+
+echo "  done.  Delivering SIGUSR1 ..."
+kill -USR1 $rrpid $(pidof $TESTNAME-$nonce)
+
+# Wait for 'record' to actually terminate. Otherwise we might start
+# replaying before the trace file has been completely written.
+wait
+
+echo "Replaying ..."
 replay
 check 'EXIT-SUCCESS'
