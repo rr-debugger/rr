@@ -65,9 +65,17 @@ gdb_rr = None
 
 def clean_up():
     global gdb_rr
-    if gdb_rr:
-        gdb_rr.close(force=1)
-        gdb_rr = None
+    iterations = 0
+    while gdb_rr:
+        try:
+            gdb_rr.close(force=1)
+            gdb_rr = None
+        except ExceptionPexpect, e:
+            if iterations < 5:
+                print "close() failed with '%s', retrying..."%e
+                ++iterations
+            else:
+                raise e
 
 def expect(prog, what):
     try:
