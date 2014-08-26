@@ -468,4 +468,15 @@ enum cpuid_requests {
 void cpuid(int code, int subrequest,
 	   unsigned int* a, unsigned int* c, unsigned int* d);
 
+/**
+ * Force this process (and its descendants) to only use the cpu with the given
+ * index.
+ */
+void set_cpu_affinity(int cpu);
+
+/**
+ * Return the number of available CPUs in the system.
+ */
+int get_num_cpus();
+
 #endif /* RR_UTIL_H_ */

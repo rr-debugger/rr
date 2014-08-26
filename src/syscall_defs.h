@@ -1581,7 +1581,7 @@ SYSCALL_DEF_IRREG(futex, EMU)
  * (in bytes) of the data pointed to by mask.  Normally this argument
  * would be specified as sizeof(cpu_set_t).
  */
-SYSCALL_DEF0(sched_setaffinity, EMU)
+SYSCALL_DEF_IRREG(sched_setaffinity, EMU)
 
 /**
  *  int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);

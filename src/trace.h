@@ -97,7 +97,7 @@ struct mmapped_file {
  */
 struct args_env {
 	args_env() { }
-	args_env(int argc, char* argv[], char** envp, char* cwd);
+	args_env(int argc, char* argv[], char** envp, char* cwd, int bind_to_cpu);
 	~args_env();
 
 	args_env& operator=(args_env&& o);
@@ -110,6 +110,7 @@ struct args_env {
 	// |char**| that can be passed to POSIX APIs like |execve()|.
 	CharpVector argv;
 	CharpVector envp;
+	int bind_to_cpu;
 
 private:
 	void destroy();

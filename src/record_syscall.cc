@@ -1133,6 +1133,18 @@ static int rec_prepare_syscall_arch(Task* t)
 		unsigned flags = (unsigned int)r.arg4();
 		return !(flags & MSG_DONTWAIT);
 	}
+
+	case Arch::sched_setaffinity: {
+		// Ignore all sched_setaffinity syscalls. They might interfere
+		// with our own affinity settings.
+		Registers r = t->regs();
+		push_arg_ptr(t, reinterpret_cast<void*>(r.arg1()));
+		// Set arg1 to an invalid PID to ensure this syscall is ignored.
+		r.set_arg1(-1);
+		t->set_regs(r);
+		return 0;
+	}
+
 	default:
 		return 0;
 	}
@@ -2113,29 +2125,6 @@ static void before_syscall_exit(Task* t, int syscallno)
 	t->maybe_update_vm(syscallno, STATE_SYSCALL_EXIT);
 
 	switch (syscallno) {
- 	case Arch::sched_setaffinity: {
-		if (SYSCALL_FAILED(t->regs().syscall_result_signed())) {
-			// Nothing to do
-			return;
-		}
-		Task *target = (pid_t)t->regs().arg1() ?
-			t->session().find_task((pid_t)t->regs().arg1()) : t;
-		if (target) {
-			size_t cpuset_len = t->regs().arg2();
-			void* child_cpuset = (void*)t->regs().arg3();
-			// The only sched_setaffinity call we allow on
-			// an rr-managed task is one that sets
-			// affinity to CPU 0.
-			ASSERT(t, cpuset_len == sizeof(cpu_set_t))
-				<< "Invalid sched_setaffinity parameters";
-			cpu_set_t cpus;
-			target->read_mem(child_cpuset, &cpus);
-			ASSERT(t, (CPU_COUNT(&cpus) == 1
-				   &&  CPU_ISSET(0, &cpus)))
-				<< "Invalid affinity setting";
-		}
-		return;
-	}
 	case Arch::setpriority: {
 		// The syscall might have failed due to insufficient
 		// permissions (e.g. while trying to decrease the nice value
@@ -2732,6 +2721,15 @@ static void rec_process_syscall_arch(Task *t)
 	case Arch::write:
 	case Arch::writev:
 		break;
+	case Arch::sched_setaffinity: {
+		// Restore the register that we altered.
+		Registers r = t->regs();
+		r.set_arg1(reinterpret_cast<uintptr_t>(pop_arg_ptr<void>(t)));
+		// Pretend the syscall succeeded.
+		r.set_syscall_result(0);
+		t->set_regs(r);
+		break;
+	}
 
 	case SYS_rrcall_init_buffers:
 		t->init_buffers(nullptr, SHARE_DESCHED_EVENT_FD);

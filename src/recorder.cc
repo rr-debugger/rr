@@ -873,14 +873,43 @@ static void maybe_process_term_request(Task* t)
 	}
 }
 
+/**
+ * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
+ * in which case we return -1.
+ */
+static int choose_cpu()
+{
+	if (rr_flags()->cpu_unbound) {
+		return -1;
+	}
+
+	// Pin tracee tasks to logical CPU 0, both in
+	// recording and replay.  Tracees can see which HW
+	// thread they're running on by asking CPUID, and we
+	// don't have a way to emulate it yet.  So if a tracee
+	// happens to be scheduled on a different core in
+	// recording than replay, it can diverge.  (And
+	// indeed, has been observed to diverge in practice,
+	// in glibc.)
+	//
+	// Note that we will pin both the tracee processes *and*
+	// the tracer process.  This ends up being a tidy
+	// performance win in certain circumstances,
+	// presumably due to cheaper context switching and/or
+	// better interaction with CPU frequency scaling.
+	return random()%get_num_cpus();
+}
+
 int record(const char* rr_exe, int argc, char* argv[], char** envp)
 {
 	LOG(info) <<"Start recording...";
 
+	int bind_to_cpu = choose_cpu();
+
 	char cwd[PATH_MAX] = "";
 	getcwd(cwd, sizeof(cwd));
 
-	ae = args_env(argc, argv, envp, cwd);
+	ae = args_env(argc, argv, envp, cwd, bind_to_cpu);
 	// LD_PRELOAD the syscall interception lib
 	if (!rr_flags()->syscall_buffer_lib_path.empty()) {
 		// Remove the trailing nullptr.  We'll put it back

@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 8
+#define TRACE_VERSION 9
 
 static ssize_t sizeof_trace_frame_event_info(void)
 {
@@ -131,9 +131,11 @@ trace_frame::dump(FILE* out, bool raw_dump)
 	}
 }
 
-args_env::args_env(int argc, char* arg_v[], char** env_p, char* cwd)
+args_env::args_env(int argc, char* arg_v[], char** env_p, char* cwd,
+		   int bind_to_cpu)
 	: exe_image(arg_v[0])
 	, cwd(cwd)
+	, bind_to_cpu(bind_to_cpu)
 {
 	for (int i = 0; i < argc; ++i) {
 		argv.push_back(strdup(arg_v[i]));
@@ -157,6 +159,7 @@ args_env::operator=(args_env&& o)
 	swap(argv, o.argv);
 	swap(envp, o.envp);
 	swap(cwd, o.cwd);
+	swap(bind_to_cpu, o.bind_to_cpu);
 	return *this;
 }
 
@@ -338,6 +341,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const struct args_env& ae)
 	out << ae.cwd << '\0';
 	out << ae.argv;
 	out << ae.envp;
+	out << ae.bind_to_cpu;
 	return tof;
 }
 
@@ -357,6 +361,7 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae)
 
 	ae.exe_image = ae.argv[0];
 	in >> ae.envp;
+	in >> ae.bind_to_cpu;
 	return tif;
 }
 

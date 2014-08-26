@@ -85,7 +85,7 @@ DEFAULT_FLAGS="--suppress-environment-warnings --check-cached-mmaps --fatal-erro
 # do that, the tests take impractically long to run.
 #
 # TODO: find a way to run faster with CPU binding
-GLOBAL_OPTIONS="--cpu-unbound $DEFAULT_FLAGS"
+GLOBAL_OPTIONS="$DEFAULT_FLAGS"
 # ... but tests that DO want CPU binding can override the default by
 # setting
 #

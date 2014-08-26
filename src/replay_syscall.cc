@@ -1734,6 +1734,14 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step)
 		maybe_noop_restore_syscallbuf_scratch(t);
 		return;
 
+	case Arch::sched_setaffinity:
+		step->syscall.emu = 1;
+		step->syscall.emu_ret = 1;
+		step->syscall.num_emu_args = 0;
+		step->action = (STATE_SYSCALL_ENTRY == state) ?
+			TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+		return;
+
 	case SYS_rrcall_init_buffers:
 		return process_init_buffers(t, state, step);
 

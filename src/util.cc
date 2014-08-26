@@ -1552,5 +1552,23 @@ void EnvironmentBugDetector::notify_reached_syscall_during_replay(Task* t)
 
 void cpuid(int code, int subrequest,
 	   unsigned int* a, unsigned int* c, unsigned int* d) {
-  asm volatile("cpuid":"=a"(*a),"=c"(*c),"=d"(*d):"a"(code),"c"(subrequest):"ebx");
+	asm volatile("cpuid":"=a"(*a),"=c"(*c),"=d"(*d):"a"(code),"c"(subrequest):"ebx");
+}
+
+void set_cpu_affinity(int cpu)
+{
+	assert(cpu >= 0);
+
+	cpu_set_t mask;
+	CPU_ZERO(&mask);
+	CPU_SET(cpu, &mask);
+	if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
+		FATAL() <<"Couldn't bind to CPU "<< cpu;
+	}
+}
+
+int get_num_cpus()
+{
+	int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
+	return cpus > 0 ? cpus : 1;
 }

@@ -588,11 +588,19 @@ static string find_syscall_buffer_library()
 	return lib_path;
 }
 
+static void init_random()
+{
+	// Not very good, but good enough for our non-security-sensitive needs.
+	srandom(time(NULL) ^ getpid());
+}
+
 int main(int argc, char* argv[])
 {
 	int argi;		/* index of first positional argument */
 	int wait_secs;
 	struct flags* flags = rr_flags_for_init();
+
+	init_random();
 
 	if (argc >= 2 && !strcmp("check-preload-lib", argv[1])) {
 		// If we reach here and we were checking the preload
@@ -625,29 +633,6 @@ int main(int argc, char* argv[])
 			FATAL() <<"Failed to wait requested duration";
 		}
 		LOG(info) <<"... continuing.";
-	}
-
-	if (!rr_flags()->cpu_unbound) {
-		cpu_set_t mask;
-		// Pin tracee tasks to logical CPU 0, both in
-		// recording and replay.  Tracees can see which HW
-		// thread they're running on by asking CPUID, and we
-		// don't have a way to emulate it yet.  So if a tracee
-		// happens to be scheduled on a different core in
-		// recording than replay, it can diverge.  (And
-		// indeed, has been observed to diverge in practice,
-		// in glibc.)
-		//
-		// Note that this pins both the tracee processes *and*
-		// the tracer procer.  This ends up being a tidy
-		// performance win in certain circumstances,
-		// presumably due to cheaper context switching and/or
-		// better interaction with CPU frequency scaling.
-		CPU_ZERO(&mask);
-		CPU_SET(0, &mask);
-		if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
-			FATAL() <<"Couldn't bind to CPU 0";
-		}
 	}
 
 	if (RECORD == flags->option) {

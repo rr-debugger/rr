@@ -2382,6 +2382,15 @@ Task::spawn(const struct args_env& ae, Session& session, pid_t rec_tid)
 {
 	assert(session.tasks().size() == 0);
 
+	if (ae.bind_to_cpu >= 0) {
+		// Set CPU affinity now, after we've created any helper threads
+		// (so they aren't affected), but before we create any
+		// tracees (so they are all affected).
+		// Note that we're binding rr itself to the same CPU as the
+		// tracees, since this seems to help performance.
+		set_cpu_affinity(ae.bind_to_cpu);
+	}
+
 	pid_t tid = fork();
 	if (0 == tid) {
 		// Set current working directory to the cwd used during
