@@ -535,7 +535,7 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
 		return false;
 	}
 	if (rleft.id.is_real_device()
-	    && mleft.offset + mleft.num_bytes() != mright.offset) {
+	    && mleft.offset + off64_t(mleft.num_bytes()) != mright.offset) {
 		LOG(debug) <<"    ("<< mleft.offset <<" + "
 			   << mleft.num_bytes() <<" != "<< mright.offset
 			   <<": offsets into real device aren't adjacent)";
