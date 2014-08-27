@@ -2330,8 +2330,6 @@ static void rec_process_syscall_arch(Task *t)
 			break;
 
 		case F_GETLK:
-			static_assert(sizeof(typename Arch::flock) < sizeof(typename Arch::flock64),
-				      "struct flock64 not declared differently from struct flock");
 			t->record_remote((void*)t->regs().arg3(),
 					 sizeof(typename Arch::flock));
 			break;
@@ -2340,13 +2338,21 @@ static void rec_process_syscall_arch(Task *t)
 		case F_SETLKW:
 			break;
 
+#if F_GETLK != F_GETLK64
 		case F_GETLK64:
+			static_assert(sizeof(typename Arch::flock) < sizeof(typename Arch::flock64),
+				      "struct flock64 not declared differently from struct flock");
 			t->record_remote((void*)t->regs().arg3(),
 					 sizeof(typename Arch::flock64));
 			break;
+#endif
 
+#if F_SETLK64 != F_SETLK
 		case F_SETLK64:
+#endif
+#if F_SETLKW64 != F_SETLKW
 		case F_SETLKW64:
+#endif
 			break;
 
 		case F_GETOWN_EX:
