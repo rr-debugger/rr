@@ -111,6 +111,15 @@ public:
 	void set_arg6(uintptr_t value) { ebp = value; }
 
 	/**
+	 * Set the output registers of the |rdtsc| instruction.
+	 */
+	void set_rdtsc_output(uint64_t value)
+	{
+		eax = value & 0xffffffff;
+		edx = value >> 32;
+	}
+
+	/**
 	 * Set the register containing syscall argument |Index| to
 	 * |value|.
 	 */

@@ -100,9 +100,8 @@ static int try_handle_rdtsc(Task *t)
 
 	unsigned long long current_time = rdtsc();
 	Registers r = t->regs();
-	r.eax = current_time & 0xffffffff;
-	r.edx = current_time >> 32;
-	r.eip += sizeof(rdtsc_insn);
+	r.set_rdtsc_output(current_time);
+	r.set_ip(r.ip() + sizeof(rdtsc_insn));
 	t->set_regs(r);
 
 	// When SIGSEGV is blocked, apparently the kernel has to do
