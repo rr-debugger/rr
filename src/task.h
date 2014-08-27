@@ -691,6 +691,14 @@ public:
 	intptr_t read_word(void* child_addr);
 
 	/**
+	 * Return the int at |child_addr| in this address space.
+	 *
+	 * NB: doesn't use the ptrace API, so safe to use even when
+	 * the tracee isn't at a trace-stop.
+	 */
+	int read_int(void* child_addr);
+
+	/**
 	 * Copy |num_bytes| from |src| to |dst| in the address space
 	 * of this.
 	 */
