@@ -27,7 +27,12 @@ int main(int argc, char *argv[]) {
 	}
 
 	signals_unblocked = 1;
+	/* Some systems only have rt_sigprocmask. */
+#if defined(SYS_sigprocmask)
 	syscall(SYS_sigprocmask, SIG_SETMASK, &oldmask, NULL);
+#else
+	sigprocmask(SIG_SETMASK, &oldmask, NULL);
+#endif
 
 	atomic_puts("EXIT-SUCCESS");
 	return 0;
