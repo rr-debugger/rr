@@ -386,14 +386,14 @@ Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes)
 void
 Task::futex_wait(void* futex, uint32_t val)
 {
-	static_assert(sizeof(val) == sizeof(long),
-		      "Sorry, need to implement Task::read_int().");
+	static_assert(sizeof(val) == sizeof(int),
+		      "need to make read_int smarter");
 	// Wait for *sync_addr == sync_val.  This implementation isn't
 	// pretty, but it's pretty much the best we can do with
 	// available kernel tools.
 	//
 	// TODO: find clever way to avoid busy-waiting.
-	while (val != uint32_t(read_word(futex))) {
+	while (val != uint32_t(read_int(futex))) {
 		// Try to give our scheduling slot to the kernel
 		// thread that's going to write sync_addr.
 		sched_yield();
@@ -908,6 +908,14 @@ Task::read_word(void* child_addr)
 	long word;
 	read_mem(child_addr, &word);
 	return word;
+}
+
+int
+Task::read_int(void* child_addr)
+{
+	int i;
+	read_mem(child_addr, &i);
+	return i;
 }
 
 size_t
