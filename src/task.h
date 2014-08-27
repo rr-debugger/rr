@@ -665,7 +665,7 @@ public:
 	void* watchpoint_addr(size_t i);
 
 	/** Return the current $sp of this. */
-	void* sp() { return (void*)regs().esp; }
+	void* sp() { return (void*)regs().sp(); }
 
 	/**
 	 * Read |val| from |child_addr|.
