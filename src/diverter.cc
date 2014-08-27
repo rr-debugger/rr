@@ -20,7 +20,7 @@ static ReplaySession::shr_ptr session;
 static void finish_emulated_syscall_with_ret(Task* t, long ret)
 {
 	Registers r = t->regs();
-	r.eax = ret;
+	r.set_syscall_result(ret);
 	t->set_regs(r);
 	t->finish_emulated_syscall();
 }
@@ -114,7 +114,7 @@ static bool advance(Task* t, const struct dbg_request& req)
 	if (t->pending_sig()) {
 		return false;
 	}
-	process_syscall(t, t->regs().orig_eax);
+	process_syscall(t, t->regs().original_syscallno());
 	return true;
 }
 
