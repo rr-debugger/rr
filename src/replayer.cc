@@ -1519,7 +1519,6 @@ static void assert_same_rec(Task* t,
 static void restore_futex_words(Task* t,
 				const struct syscallbuf_record* rec)
 {
-	static_assert(sizeof(uint32_t) == sizeof(long), "NYI: Task::write_int()");
 	ssize_t extra_data_size = rec->size - sizeof(*rec);
 	bool saved_uaddr2 = (2 * sizeof(uint32_t) == extra_data_size);
 	ASSERT(t, sizeof(uint32_t) == extra_data_size || saved_uaddr2)
