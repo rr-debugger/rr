@@ -1083,6 +1083,7 @@ static int rec_prepare_syscall_arch(Task* t)
 		// time its scheduling slot opens up, it's OK to
 		// blocking-waitpid on t to see its status change.
 		t->pseudo_blocked = 1;
+		t->session().schedule_one_round_robin(t);
 		return 1;
 
 	case Arch::recvmmsg: {

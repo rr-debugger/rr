@@ -42,6 +42,7 @@ public:
 	typedef std::map<pid_t, Task*> TaskMap;
 	// Tasks sorted by priority.
 	typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
+	typedef std::deque<Task*> TaskQueue;
 
 	/**
 	 * Call |after_exec()| after a tracee has successfully
@@ -103,13 +104,31 @@ public:
 	const TaskMap& tasks() const { return task_map; }
 
 	/** Get tasks organized by priority. */
-	const TaskPrioritySet& tasks_by_priority() { return task_priority_set;}
+	const TaskPrioritySet& tasks_by_priority() { return task_priority_set; }
 
 	/**
 	 * Set the priority of |t| to |value| and update related
 	 * state.
 	 */
 	void update_task_priority(Task* t, int value);
+
+	/**
+	 * Do one round of round-robin scheduling if we're not already doing one.
+	 * If we start round-robin scheduling now, make last_task the last
+	 * task to be scheduled.
+	 * If the task_round_robin_queue is empty this moves all tasks into it,
+	 * putting last_task last.
+	 */
+	void schedule_one_round_robin(Task* last_task);
+
+	/**
+	 * Returns the first task in the round-robin queue or null if it's empty.
+	 */
+	Task* get_next_round_robin_task();
+	/**
+	 * Removes a task from the front of the round-robin queue.
+	 */
+	void remove_round_robin_task();
 
 	/**
 	 * Return the set of AddressSpaces being tracked in this session.
@@ -127,7 +146,18 @@ protected:
 
 	AddressSpaceSet sas;
 	TaskMap task_map;
+	/**
+	 * Every task of this session is either in task_priority_set
+	 * (when in_round_robin_queue is false), or in task_round_robin_queue
+	 * (when in_round_robin_queue is true).
+	 *
+	 * task_priority_set is a set of pairs of (task->priority, task). This
+	 * lets us efficiently iterate over the tasks with a given priority, or
+	 * all tasks in priority order.
+	 */
 	TaskPrioritySet task_priority_set;
+	TaskQueue task_round_robin_queue;
+
 	bool tracees_consistent;
 
 	Session(const Session&) = delete;

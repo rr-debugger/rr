@@ -7,6 +7,8 @@
 #include <syscall.h>
 #include <sys/prctl.h>
 
+#include <algorithm>
+
 #include "emufs.h"
 #include "log.h"
 #include "remote_syscalls.h"
@@ -125,22 +127,74 @@ void
 Session::on_destroy(Task* t)
 {
 	task_map.erase(t->rec_tid);
-	task_priority_set.erase(make_pair(t->priority, t));
+	if (t->in_round_robin_queue) {
+		auto iter = find(task_round_robin_queue.begin(),
+				 task_round_robin_queue.end(), t);
+		task_round_robin_queue.erase(iter);
+	} else {
+		task_priority_set.erase(make_pair(t->priority, t));
+	}
 }
 
 void
 Session::track(Task* t)
 {
 	task_map[t->rec_tid] = t;
+	assert(!t->in_round_robin_queue);
 	task_priority_set.insert(make_pair(t->priority, t));
 }
 
 void
 Session::update_task_priority(Task* t, int value)
 {
+	if (t->in_round_robin_queue) {
+		t->priority = value;
+		return;
+	}
 	task_priority_set.erase(make_pair(t->priority, t));
 	t->priority = value;
 	task_priority_set.insert(make_pair(t->priority, t));
+}
+
+void
+Session::schedule_one_round_robin(Task* t)
+{
+	if (!task_round_robin_queue.empty()) {
+		return;
+	}
+
+	for (auto iter : task_priority_set) {
+		if (iter.second != t) {
+			task_round_robin_queue.push_back(iter.second);
+			iter.second->in_round_robin_queue = true;
+		}
+	}
+	task_round_robin_queue.push_back(t);
+	t->in_round_robin_queue = true;
+	task_priority_set.clear();
+}
+
+Task*
+Session::get_next_round_robin_task()
+{
+	if (task_round_robin_queue.empty()) {
+		return nullptr;
+	}
+
+	return task_round_robin_queue.front();
+}
+
+void
+Session::remove_round_robin_task()
+{
+	assert(!task_round_robin_queue.empty());
+
+	Task* t = task_round_robin_queue.front();
+	task_round_robin_queue.pop_front();
+	if (t) {
+		t->in_round_robin_queue = false;
+		task_priority_set.insert(make_pair(t->priority, t));
+	}
 }
 
 Task*

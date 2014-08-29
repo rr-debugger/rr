@@ -1021,6 +1021,11 @@ public:
 	   another runnable task with a lower nice value. */
 	int priority;
 
+	/* Tasks with in_round_robin_queue set are in the session's
+	 * in_round_robin_queue instead of its task_priority_set.
+	 */
+	bool in_round_robin_queue;
+
 	/* Imagine that task A passes buffer |b| to the read()
 	 * syscall.  Imagine that, after A is switched out for task B,
 	 * task B then writes to |b|.  Then B is switched out for A.
