@@ -1021,6 +1021,15 @@ public:
 	   another runnable task with a lower nice value. */
 	int priority;
 
+	/* Tasks with in_yield_queue set are in the session's task_yield_queue.
+	 * Tasks are placed in that queue when they do a sched_yield and such
+	 * tasks are not scheduled normally. When there are no other runnable
+	 * tasks, the next task in the yield queue is taken. This ensures
+	 * that when a task does sched_yield, all other tasks (regardless
+	 * of priority) are given a chance to run before the yielding task.
+	 */
+	bool in_yield_queue;
+
 	/* Imagine that task A passes buffer |b| to the read()
 	 * syscall.  Imagine that, after A is switched out for task B,
 	 * task B then writes to |b|.  Then B is switched out for A.
