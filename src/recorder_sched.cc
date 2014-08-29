@@ -42,6 +42,10 @@ static void note_switch(Task* prev_t, Task* t, int max_events)
 static Task*
 get_next_task_with_same_priority(Task* t)
 {
+	if (t->in_yield_queue) {
+		return nullptr;
+	}
+
 	auto tasks = t->session().tasks_by_priority();
 	auto it = tasks.find(make_pair(t->priority, t));
 	assert(it != tasks.end());
@@ -50,6 +54,39 @@ get_next_task_with_same_priority(Task* t)
 		it = tasks.lower_bound(make_pair(t->priority, nullptr));
 	}
 	return it->second;
+}
+
+/**
+ * Returns true if we should return t as the runnable task. Otherwise we
+ * should check the next task.
+ */
+static bool
+is_task_runnable(Task* t, int* by_waitpid)
+{
+	if (t->unstable) {
+		LOG(debug) <<"  "<< t->tid
+			   <<" is unstable, doing waitpid(-1)";
+		return true;
+	}
+
+	if (!t->may_be_blocked()) {
+		LOG(debug) <<"  "<< t->tid <<" isn't blocked";
+		return true;
+	}
+
+	LOG(debug) <<"  "<< t->tid <<" is blocked on "
+		   << t->ev() << "; checking status ...";
+	if ((t->pseudo_blocked && t->wait())
+	    || t->try_wait()) {
+		t->pseudo_blocked = 0;
+		*by_waitpid = 1;
+		LOG(debug) <<"  ready with status "
+			   << HEX(t->status());
+		return true;
+	}
+	LOG(debug) <<"  still blocked";
+	// Try next task
+	return false;
 }
 
 /**
@@ -63,6 +100,20 @@ static Task*
 find_next_runnable_task(Session& session, int* by_waitpid)
 {
 	*by_waitpid = 0;
+
+	while (true) {
+		Task* t = session.peek_task_from_yield_queue();
+		if (!t) {
+			break;
+		}
+		LOG(debug) <<"Choosing task "<< t->tid <<" from yield queue";
+		if (is_task_runnable(t, by_waitpid)) {
+			return t;
+		}
+		// This task had its chance to run but couldn't. Move to the
+		// next task in the queue.
+		session.remove_task_from_yield_queue();
+	}
 
 	auto tasks = session.tasks_by_priority();
 	// The outer loop has one iteration per unique priority value.
@@ -82,28 +133,9 @@ find_next_runnable_task(Session& session, int* by_waitpid)
 		do {
 			Task* t = task_iterator->second;
 
-			if (t->unstable) {
-				LOG(debug) <<"  "<< t->tid
-					   <<" is unstable, doing waitpid(-1)";
-				return NULL;
-			}
-
-			if (!t->may_be_blocked()) {
-				LOG(debug) <<"  "<< t->tid <<" isn't blocked";
+			if (is_task_runnable(t, by_waitpid)) {
 				return t;
 			}
-
-			LOG(debug) <<"  "<< t->tid <<" is blocked on "
-				   << t->ev() << "checking status ...";
-			if ((t->pseudo_blocked && t->wait())
-			    || t->try_wait()) {
-				t->pseudo_blocked = 0;
-				*by_waitpid = 1;
-				LOG(debug) <<"  ready with status "
-					   << HEX(t->status());
-				return t;
-			}
-			LOG(debug) <<"  still blocked";
 
 			++task_iterator;
 			if (task_iterator == same_priority_end) {
@@ -166,22 +198,25 @@ Task* rec_sched_get_active_thread(RecordSession& session,
 	if (current && current->succ_event_counter > max_events) {
 		LOG(debug) <<"  previous task exceeded event limit, preferring next";
 		current->succ_event_counter = 0;
+		if (current == session.peek_task_from_yield_queue()) {
+			session.remove_task_from_yield_queue();
+		}
 		current = get_next_task_with_same_priority(current);
 	}
 
 	Task* next = find_next_runnable_task(session, by_waitpid);
 
-	if (next) {
+	if (next && !next->unstable) {
 		LOG(debug) <<"  selecting task "<< next->tid;
 	} else {
-		// All the tasks are blocked. Wait for the next one to
-		// change state.
+		// All the tasks are blocked (or we found an unstable-exit task).
+		// Wait for the next one to change state.
 		int status;
 		pid_t tid;
 
 		LOG(debug) <<"  all tasks blocked or some unstable, waiting for runnable ("
 			   << session.tasks().size() <<" total)";
-		while (!next) {
+		do {
 			tid = waitpid(-1, &status,
 				      __WALL | WSTOPPED | WUNTRACED);
 			if (-1 == tid) {
@@ -198,7 +233,7 @@ Task* rec_sched_get_active_thread(RecordSession& session,
 			if (!next) {
 				LOG(debug) <<"    ... but it's dead";
 			}
-		}
+		} while (!next);
 		ASSERT(next, next->unstable || next->may_be_blocked())
 			<< "Scheduled task should have been blocked or unstable";
 		next->force_status(status);

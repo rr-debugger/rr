@@ -7,6 +7,8 @@
 #include <syscall.h>
 #include <sys/prctl.h>
 
+#include <algorithm>
+
 #include "emufs.h"
 #include "log.h"
 #include "remote_syscalls.h"
@@ -125,22 +127,75 @@ void
 Session::on_destroy(Task* t)
 {
 	task_map.erase(t->rec_tid);
-	task_priority_set.erase(make_pair(t->priority, t));
+	if (t->in_yield_queue) {
+		auto iter = std::find(task_yield_queue.begin(), task_yield_queue.end(), t);
+		task_yield_queue.erase(iter);
+	} else {
+		task_priority_set.erase(make_pair(t->priority, t));
+	}
 }
 
 void
 Session::track(Task* t)
 {
 	task_map[t->rec_tid] = t;
+	assert(!t->in_yield_queue);
 	task_priority_set.insert(make_pair(t->priority, t));
 }
 
 void
 Session::update_task_priority(Task* t, int value)
 {
+	if (t->in_yield_queue) {
+		t->priority = value;
+		return;
+	}
 	task_priority_set.erase(make_pair(t->priority, t));
 	t->priority = value;
 	task_priority_set.insert(make_pair(t->priority, t));
+}
+
+void
+Session::add_task_to_yield_queue(Task* t)
+{
+	if (!task_yield_queue.empty()) {
+		return;
+	}
+
+	for (auto iter = task_priority_set.begin();
+             iter != task_priority_set.end();
+             ++iter) {
+		if (iter->second != t) {
+			task_yield_queue.push_back(iter->second);
+			iter->second->in_yield_queue = true;
+		}
+	}
+	task_yield_queue.push_back(t);
+	t->in_yield_queue = true;
+	task_priority_set.clear();
+}
+
+Task*
+Session::peek_task_from_yield_queue()
+{
+	if (task_yield_queue.empty()) {
+		return nullptr;
+	}
+
+	return task_yield_queue.front();
+}
+
+void
+Session::remove_task_from_yield_queue()
+{
+	assert(!task_yield_queue.empty());
+
+	Task* t = task_yield_queue.front();
+	task_yield_queue.pop_front();
+	if (t) {
+		t->in_yield_queue = false;
+		task_priority_set.insert(make_pair(t->priority, t));
+	}
 }
 
 Task*

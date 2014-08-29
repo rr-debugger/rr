@@ -158,6 +158,7 @@ set(BASIC_TESTS
   save_data_fd
   sched_setaffinity
   sched_yield
+  sched_yield_to_lower_priority
   scm_rights
   sendfile
   setsid

@@ -42,6 +42,7 @@ public:
 	typedef std::map<pid_t, Task*> TaskMap;
 	// Tasks sorted by priority.
 	typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
+	typedef std::deque<Task*> TaskQueue;
 
 	/**
 	 * Call |after_exec()| after a tracee has successfully
@@ -103,13 +104,27 @@ public:
 	const TaskMap& tasks() const { return task_map; }
 
 	/** Get tasks organized by priority. */
-	const TaskPrioritySet& tasks_by_priority() { return task_priority_set;}
+	const TaskPrioritySet& tasks_by_priority() { return task_priority_set; }
 
 	/**
 	 * Set the priority of |t| to |value| and update related
 	 * state.
 	 */
 	void update_task_priority(Task* t, int value);
+
+	/**
+	 * Move t to the back of the yield queue. It must not already be there.
+	 */
+	void add_task_to_yield_queue(Task* t);
+
+	/**
+	 * Returns the first task in the yield queue or null if it's empty.
+	 */
+	Task* peek_task_from_yield_queue();
+	/**
+	 * Removes a task from the front of the yield queue.
+	 */
+	void remove_task_from_yield_queue();
 
 	/**
 	 * Return the set of AddressSpaces being tracked in this session.
@@ -128,6 +143,8 @@ protected:
 	AddressSpaceSet sas;
 	TaskMap task_map;
 	TaskPrioritySet task_priority_set;
+	TaskQueue task_yield_queue;
+
 	bool tracees_consistent;
 
 	Session(const Session&) = delete;
