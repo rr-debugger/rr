@@ -452,7 +452,7 @@ TraceOfstream::create(const string& exe_path)
 	// very-recent trace, so that's good enough.
 	unlink(link_name.c_str());
 	ret = symlink(trace->trace_dir.c_str(), link_name.c_str());
-	if (!(0 == ret || EEXIST == ret)) {
+	if (ret < 0 && errno != EEXIST) {
 		FATAL() <<"Failed to update symlink `"<< link_name
 			<<"' to `"<< trace->trace_dir <<"'.";
 	}
