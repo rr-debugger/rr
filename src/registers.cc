@@ -67,29 +67,29 @@ static const int fxsave_reg_offset[] = {
 void Registers::print_register_file(FILE* f) const
 {
 	fprintf(f, "Printing register file:\n");
-	fprintf(f, "eax: %lx\n", eax);
-	fprintf(f, "ebx: %lx\n", ebx);
-	fprintf(f, "ecx: %lx\n", ecx);
-	fprintf(f, "edx: %lx\n", edx);
-	fprintf(f, "esi: %lx\n", esi);
-	fprintf(f, "edi: %lx\n", edi);
-	fprintf(f, "ebp: %lx\n", ebp);
-	fprintf(f, "esp: %lx\n", esp);
-	fprintf(f, "eip: %lx\n", eip);
-	fprintf(f, "eflags %lx\n",eflags);
-	fprintf(f, "orig_eax %lx\n", orig_eax);
-	fprintf(f, "xcs: %lx\n", xcs);
-	fprintf(f, "xds: %lx\n", xds);
-	fprintf(f, "xes: %lx\n", xes);
-	fprintf(f, "xfs: %lx\n", xfs);
-	fprintf(f, "xgs: %lx\n", xgs);
-	fprintf(f, "xss: %lx\n", xss);
+	fprintf(f, "eax: %x\n", eax);
+	fprintf(f, "ebx: %x\n", ebx);
+	fprintf(f, "ecx: %x\n", ecx);
+	fprintf(f, "edx: %x\n", edx);
+	fprintf(f, "esi: %x\n", esi);
+	fprintf(f, "edi: %x\n", edi);
+	fprintf(f, "ebp: %x\n", ebp);
+	fprintf(f, "esp: %x\n", esp);
+	fprintf(f, "eip: %x\n", eip);
+	fprintf(f, "eflags %x\n",eflags);
+	fprintf(f, "orig_eax %x\n", orig_eax);
+	fprintf(f, "xcs: %x\n", xcs);
+	fprintf(f, "xds: %x\n", xds);
+	fprintf(f, "xes: %x\n", xes);
+	fprintf(f, "xfs: %x\n", xfs);
+	fprintf(f, "xgs: %x\n", xgs);
+	fprintf(f, "xss: %x\n", xss);
 	fprintf(f, "\n");
 }
 
 void Registers::print_register_file_compact(FILE* f) const
 {
-	fprintf(f, "eax:%lx ebx:%lx ecx:%lx edx:%lx esi:%lx edi:%lx ebp:%lx esp:%lx eip:%lx eflags:%lx",
+	fprintf(f, "eax:%x ebx:%x ecx:%x edx:%x esi:%x edi:%x ebp:%x esp:%x eip:%x eflags:%x",
 		eax, ebx, ecx, edx, esi, edi, ebp, esp, eip, eflags);
 }
 
@@ -97,14 +97,14 @@ void Registers::print_register_file_for_trace(FILE* f, bool raw_dump) const
 {
 	if (raw_dump) {
 		fprintf(f,
-			" %ld %ld %ld %ld %ld %ld %ld"
-			" %ld %ld %ld %ld",
+			" %d %d %d %d %d %d %d"
+			" %d %d %d %d",
 			eax, ebx, ecx, edx, esi, edi, ebp,
 			orig_eax, esp, eip, eflags);
 	} else {
 		fprintf(f,
-"  eax:0x%lx ebx:0x%lx ecx:0x%lx edx:0x%lx esi:0x%lx edi:0x%lx ebp:0x%lx\n"
-"  eip:0x%lx esp:0x%lx eflags:0x%lx orig_eax:%ld xfs:0x%lx xgs:0x%lx\n",
+"  eax:0x%x ebx:0x%x ecx:0x%x edx:0x%x esi:0x%x edi:0x%x ebp:0x%x\n"
+"  eip:0x%x esp:0x%x eflags:0x%x orig_eax:%d xfs:0x%x xgs:0x%x\n",
 			eax, ebx, ecx, edx, esi, edi, ebp,
 			eip, esp, eflags, orig_eax, xfs, xgs);
 	}

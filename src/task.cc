@@ -34,6 +34,7 @@
 
 #define RR_PTRACE_O_EXITKILL (1 << 20)
 
+using namespace rr;
 using namespace std;
 
 /**
@@ -983,7 +984,7 @@ Task::extra_regs()
 			LOG(debug) <<"  (refreshing extra-register cache using FPXREGS)";
 
 			extra_registers.format_ = ExtraRegisters::FPXREGS;
-			extra_registers.data.resize(sizeof(user_fpxregs_struct));
+			extra_registers.data.resize(sizeof(x86_arch::user_fpxregs_struct));
 			xptrace(PTRACE_GETFPXREGS, NULL, extra_registers.data.data());
 		}
 

@@ -7,10 +7,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/user.h>
 
 #include <vector>
 
+#include "kernel_abi.h"
 #include "types.h"
 
 // Various things the GDB stub needs to know about.
@@ -54,7 +54,7 @@ enum DebuggerRegister {
  * right number of register bits whether the tracee is 32-bit or 64-bit, and
  * get sign-extension right.
  */
-class Registers: public user_regs_struct {
+class Registers: public rr::x86_arch::user_regs_struct {
 public:
 	supported_arch arch() const { return x86; }
 
