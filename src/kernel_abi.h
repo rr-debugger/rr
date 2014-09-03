@@ -24,6 +24,7 @@
 #include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/user.h>
 #include <termios.h>
 
 #include <assert.h>
@@ -55,10 +56,13 @@ struct verifier<RR_NATIVE_ARCH, T, T> {
 	// with itself or (unlikely) the system's structure with itself.
 };
 
+#define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)	\
+  static_assert(verifier<arch_, system_type_, rr_type_>::same_size, \
+		"type " #system_type_ " not correctly defined");
+	
 // For instances where the system type and the rr type are named differently.
 #define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)	\
-  static_assert(verifier<arch, system_type_, rr_type_>::same_size, \
-		"type " #system_type_ " not correctly defined");
+  RR_VERIFY_TYPE_ARCH(arch, system_type_, rr_type_)
 
 // For instances where the system type and the rr type are named identically.
 #define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
@@ -724,6 +728,59 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
 
 		SYSCALL_COUNT
 	};
+
+	struct user_regs_struct {
+		int32_t ebx;
+		int32_t ecx;
+		int32_t edx;
+		int32_t esi;
+		int32_t edi;
+		int32_t ebp;
+		int32_t eax;
+		int32_t xds;
+		int32_t xes;
+		int32_t xfs;
+		int32_t xgs;
+		int32_t orig_eax;
+		int32_t eip;
+		int32_t xcs;
+		int32_t eflags;
+		int32_t esp;
+		int32_t xss;
+	};
+	RR_VERIFY_TYPE_ARCH(supported_arch::x86,
+			    ::user_regs_struct, user_regs_struct);
+
+	struct user_fpregs_struct {
+		int32_t cwd;
+		int32_t swd;
+		int32_t twd;
+		int32_t fip;
+		int32_t fcs;
+		int32_t foo;
+		int32_t fos;
+		int32_t st_space[20];
+	};
+	RR_VERIFY_TYPE_ARCH(supported_arch::x86,
+			    ::user_fpregs_struct, user_fpregs_struct);
+
+	struct user_fpxregs_struct {
+		uint16_t cwd;
+		uint16_t swd;
+		uint16_t twd;
+		uint16_t fop;
+		int32_t fip;
+		int32_t fcs;
+		int32_t foo;
+		int32_t fos;
+		int32_t mxcsr;
+		int32_t reserved;
+		int32_t st_space[32];
+		int32_t xmm_space[32];
+		int32_t padding[56];
+	};
+	RR_VERIFY_TYPE_ARCH(supported_arch::x86,
+			    ::user_fpxregs_struct, user_fpxregs_struct);
 };
 
 struct x86_64_arch : public base_arch<supported_arch::x86_64, wordsize64_defs> {
@@ -797,6 +854,54 @@ public:
 #undef DUMMY_ID
 #undef DUMMY_ID_2
 #undef DUMMY_ID_3
+
+	struct user_regs_struct {
+		uint64_t r15;
+		uint64_t r14;
+		uint64_t r13;
+		uint64_t r12;
+		uint64_t rbp;
+		uint64_t rbx;
+		uint64_t r11;
+		uint64_t r10;
+		uint64_t r9;
+		uint64_t r8;
+		uint64_t rax;
+		uint64_t rcx;
+		uint64_t rdx;
+		uint64_t rsi;
+		uint64_t rdi;
+		uint64_t orig_rax;
+		uint64_t rip;
+		uint64_t cs;
+		uint64_t eflags;
+		uint64_t rsp;
+		uint64_t ss;
+		uint64_t fs_base;
+		uint64_t gs_base;
+		uint64_t ds;
+		uint64_t es;
+		uint64_t fs;
+		uint64_t gs;
+	};
+	RR_VERIFY_TYPE_ARCH(supported_arch::x86_64,
+			    ::user_regs_struct, user_regs_struct);
+
+	struct user_fpregs_struct {
+		uint16_t cwd;
+		uint16_t swd;
+		uint16_t ftw;
+		uint16_t fop;
+		uint64_t rip;
+		uint64_t rdp;
+		uint32_t mxcsr;
+		uint32_t mxcr_mask;
+		uint32_t st_space[32];
+		uint32_t xmm_space[64];
+		uint32_t padding[24];
+	};
+	RR_VERIFY_TYPE_ARCH(supported_arch::x86_64,
+			    ::user_fpregs_struct, user_fpregs_struct);
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...) \
