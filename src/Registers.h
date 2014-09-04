@@ -25,12 +25,12 @@
  * right number of register bits whether the tracee is 32-bit or 64-bit, and
  * get sign-extension right.
  */
-class Registers : public rr::X86Arch::user_regs_struct {
+class Registers {
 public:
   SupportedArch arch() const { return x86; }
 
   // Return a pointer that can be passed to ptrace's PTRACE_GETREGS et al.
-  void* ptrace_registers() const { return this; }
+  void* ptrace_registers() { return &u.x86regs; }
 
   uintptr_t ip() const { return eip; }
   void set_ip(uintptr_t addr) { eip = addr; }
@@ -40,12 +40,12 @@ public:
   // Access the registers holding system-call numbers, results, and
   // parameters.
 
-  intptr_t syscallno() const { return eax; }
-  void set_syscallno(intptr_t syscallno) { eax = syscallno; }
+  intptr_t syscallno() const { return u.x86regs.eax; }
+  void set_syscallno(intptr_t syscallno) { u.x86regs.eax = syscallno; }
 
-  uintptr_t syscall_result() const { return eax; }
-  intptr_t syscall_result_signed() const { return eax; }
-  void set_syscall_result(uintptr_t syscall_result) { eax = syscall_result; }
+  uintptr_t syscall_result() const { return u.x86regs.eax; }
+  intptr_t syscall_result_signed() const { return u.x86regs.eax; }
+  void set_syscall_result(uintptr_t syscall_result) { u.x86regs.eax = syscall_result; }
 
   /**
    * This pseudo-register holds the system-call number when we get ptrace
@@ -53,39 +53,39 @@ public:
    * the system-call executed when resuming after an enter-system-call
    * event.
    */
-  intptr_t original_syscallno() const { return orig_eax; }
-  void set_original_syscallno(intptr_t syscallno) { orig_eax = syscallno; }
+  intptr_t original_syscallno() const { return u.x86regs.orig_eax; }
+  void set_original_syscallno(intptr_t syscallno) { u.x86regs.orig_eax = syscallno; }
 
-  uintptr_t arg1() const { return ebx; }
-  intptr_t arg1_signed() const { return ebx; }
-  void set_arg1(uintptr_t value) { ebx = value; }
+  uintptr_t arg1() const { return u.x86regs.ebx; }
+  intptr_t arg1_signed() const { return u.x86regs.ebx; }
+  void set_arg1(uintptr_t value) { u.x86regs.ebx = value; }
 
-  uintptr_t arg2() const { return ecx; }
-  intptr_t arg2_signed() const { return ecx; }
-  void set_arg2(uintptr_t value) { ecx = value; }
+  uintptr_t arg2() const { return u.x86regs.ecx; }
+  intptr_t arg2_signed() const { return u.x86regs.ecx; }
+  void set_arg2(uintptr_t value) { u.x86regs.ecx = value; }
 
-  uintptr_t arg3() const { return edx; }
-  intptr_t arg3_signed() const { return edx; }
-  void set_arg3(uintptr_t value) { edx = value; }
+  uintptr_t arg3() const { return u.x86regs.edx; }
+  intptr_t arg3_signed() const { return u.x86regs.edx; }
+  void set_arg3(uintptr_t value) { u.x86regs.edx = value; }
 
-  uintptr_t arg4() const { return esi; }
-  intptr_t arg4_signed() const { return esi; }
-  void set_arg4(uintptr_t value) { esi = value; }
+  uintptr_t arg4() const { return u.x86regs.esi; }
+  intptr_t arg4_signed() const { return u.x86regs.esi; }
+  void set_arg4(uintptr_t value) { u.x86regs.esi = value; }
 
-  uintptr_t arg5() const { return edi; }
-  intptr_t arg5_signed() const { return edi; }
-  void set_arg5(uintptr_t value) { edi = value; }
+  uintptr_t arg5() const { return u.x86regs.edi; }
+  intptr_t arg5_signed() const { return u.x86regs.edi; }
+  void set_arg5(uintptr_t value) { u.x86regs.edi = value; }
 
-  uintptr_t arg6() const { return ebp; }
-  intptr_t arg6_signed() const { return ebp; }
-  void set_arg6(uintptr_t value) { ebp = value; }
+  uintptr_t arg6() const { return u.x86regs.ebp; }
+  intptr_t arg6_signed() const { return u.x86regs.ebp; }
+  void set_arg6(uintptr_t value) { u.x86regs.ebp = value; }
 
   /**
    * Set the output registers of the |rdtsc| instruction.
    */
   void set_rdtsc_output(uint64_t value) {
-    eax = value & 0xffffffff;
-    edx = value >> 32;
+    u.x86regs.eax = value & 0xffffffff;
+    u.x86regs.edx = value >> 32;
   }
 
   /**
@@ -150,6 +150,11 @@ public:
    */
   void write_register(GDBRegister reg_name, const uint8_t* value,
                       size_t value_size);
+
+private:
+  union AllRegisters {
+    rr::X86Arch::user_regs_struct x86regs;
+  } u;
 };
 
 #endif /* RR_REGISTERS_H_ */
