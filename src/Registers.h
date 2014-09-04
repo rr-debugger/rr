@@ -29,6 +29,9 @@ class Registers : public rr::X86Arch::user_regs_struct {
 public:
   SupportedArch arch() const { return x86; }
 
+  // Return a pointer that can be passed to ptrace's PTRACE_GETREGS et al.
+  void* ptrace_registers() const { return this; }
+
   uintptr_t ip() const { return eip; }
   void set_ip(uintptr_t addr) { eip = addr; }
   uintptr_t sp() const { return esp; }
