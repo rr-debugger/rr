@@ -36,6 +36,8 @@ public:
   void set_ip(uintptr_t addr) { eip = addr; }
   uintptr_t sp() const { return esp; }
   void set_sp(uintptr_t addr) { esp = addr; }
+  uintptr_t fp() const { return ebp; }
+  void set_fp(uintptr_t addr) { ebp = addr; }
 
   // Access the registers holding system-call numbers, results, and
   // parameters.
