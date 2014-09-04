@@ -363,7 +363,7 @@ sudo dpkg -i rr-1.5.0-Linux-$(uname -m).deb
           just spent the majority of our testing time on Firefox.  rr
           will work well with more programs as the project matures.
         <li><em>Prioritize deployability</em>. rr runs on a stock
-          linux kernel, and requires little (Ubuntu) to no (Fedora)
+          linux kernel, and requires no
           system configuration changes. And of course rr works on
           stock, relatively modern hardware.
         <li><em>Make run-time overload low</em>. We want rr to replace
@@ -395,8 +395,8 @@ sudo dpkg -i rr-1.5.0-Linux-$(uname -m).deb
         outside the recording tree. This is an inherent feature of the
         design. rr automatically disables features such as X shared
         memory for recorded processes to avoid this problem.
-      <li>currently only supports x86 32-bit processes. x86-64 will be
-        supported in the future, it's just a matter of porting work.
+      <li>currently only supports x86 32-bit processes. x86-64 support
+        is being worked on.
       <li>requires a reasonably modern x86 CPU. It depends on certain
         performance counter features that are not available in older
         CPUs, or in ARM at all currently.
