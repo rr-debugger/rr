@@ -664,7 +664,8 @@ static void validate_args(int event, int state, Task* t)
 	if (!t->session().can_validate()) {
 		return;
 	}
-	if ((SYS_pwrite64 == event || SYS_pread64 == event)
+	if (rec_regs.arch() == supported_arch::x86
+	    && (SYS_pwrite64 == event || SYS_pread64 == event)
 	    && STATE_SYSCALL_EXIT == state) {
 		/* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
 		 * 12.04 has been observed to mutate $esi across
@@ -673,11 +674,11 @@ static void validate_args(int event, int state, Task* t)
 		 * clear whether this is a ptrace bug or a kernel bug,
 		 * but either way it's not supposed to happen.  So we
 		 * fudge registers here to cover up that bug. */
-		if (t->regs().esi != rec_regs.esi) {
+		if (t->regs().arg4() != rec_regs.arg4()) {
 			LOG(warn) <<"Probably saw kernel bug mutating $esi across pread/write64 call: recorded:"
-				  << HEX(rec_regs.esi) <<"; replaying:"
-				  << t->regs().esi <<".  Fudging registers.";
-			rec_regs.esi = t->regs().esi;
+				  << HEX(rec_regs.arg4()) <<"; replaying:"
+				  << t->regs().arg4() <<".  Fudging registers.";
+			rec_regs.set_arg4(t->regs().arg4());
 		}
 	}
 	assert_child_regs_are(t, &rec_regs);
