@@ -31,35 +31,49 @@ public:
   SupportedArch arch() const { return x86; }
 
   // Return a pointer that can be passed to ptrace's PTRACE_GETREGS et al.
-  void* ptrace_registers() { return &u.x86regs; }
+  void* ptrace_registers() {
+    switch (arch()) {
+    case x86:
+      return &u.x86regs;
+    case x86_64:
+      return &u.x64regs;
+    default:
+      assert(0 && "unknown architecture");
+    }
+  }
 
-#define RR_GET_REG(x86case)                     \
+#define RR_GET_REG(x86case, x64case)            \
   (arch() == x86                                \
     ? u.x86regs.x86case                         \
+    : arch() == x86_64                          \
+    ? u.x64regs.x64case                         \
     : (assert(0 && "unknown architecture"), uintptr_t(-1)))
-#define RR_SET_REG(x86case, value)              \
+#define RR_SET_REG(x86case, x64case, value)     \
   switch (arch()) {                             \
     case x86:                                   \
       u.x86regs.x86case = (value);              \
+      break;                                    \
+    case x86_64:                                \
+      u.x64regs.x64case = (value);              \
       break;                                    \
     default:                                    \
       assert(0 && "unknown architecture");      \
   }
 
-  uintptr_t ip() const { return RR_GET_REG(eip); }
-  void set_ip(uintptr_t addr) { RR_SET_REG(eip, addr); }
-  uintptr_t sp() const { return RR_GET_REG(esp); }
-  void set_sp(uintptr_t addr) { RR_SET_REG(esp, addr); }
+  uintptr_t ip() const { return RR_GET_REG(eip, rip); }
+  void set_ip(uintptr_t addr) { RR_SET_REG(eip, rip, addr); }
+  uintptr_t sp() const { return RR_GET_REG(esp, rsp); }
+  void set_sp(uintptr_t addr) { RR_SET_REG(esp, rsp, addr); }
 
   // Access the registers holding system-call numbers, results, and
   // parameters.
 
-  intptr_t syscallno() const { return RR_GET_REG(eax); }
-  void set_syscallno(intptr_t syscallno) { RR_SET_REG(eax, syscallno); }
+  intptr_t syscallno() const { return RR_GET_REG(eax, rax); }
+  void set_syscallno(intptr_t syscallno) { RR_SET_REG(eax, rax, syscallno); }
 
-  uintptr_t syscall_result() const { return RR_GET_REG(eax); }
-  intptr_t syscall_result_signed() const { return RR_GET_REG(eax); }
-  void set_syscall_result(uintptr_t syscall_result) { RR_SET_REG(eax, syscall_result); }
+  uintptr_t syscall_result() const { return RR_GET_REG(eax, rax); }
+  intptr_t syscall_result_signed() const { return RR_GET_REG(eax, rax); }
+  void set_syscall_result(uintptr_t syscall_result) { RR_SET_REG(eax, rax, syscall_result); }
 
   /**
    * This pseudo-register holds the system-call number when we get ptrace
@@ -67,39 +81,39 @@ public:
    * the system-call executed when resuming after an enter-system-call
    * event.
    */
-  intptr_t original_syscallno() const { return RR_GET_REG(orig_eax); }
-  void set_original_syscallno(intptr_t syscallno) { RR_SET_REG(orig_eax, syscallno); }
+  intptr_t original_syscallno() const { return RR_GET_REG(orig_eax, orig_rax); }
+  void set_original_syscallno(intptr_t syscallno) { RR_SET_REG(orig_eax, orig_rax, syscallno); }
 
-  uintptr_t arg1() const { return RR_GET_REG(ebx); }
-  intptr_t arg1_signed() const { return RR_GET_REG(ebx); }
-  void set_arg1(uintptr_t value) { RR_SET_REG(ebx, value); }
+  uintptr_t arg1() const { return RR_GET_REG(ebx, rdi); }
+  intptr_t arg1_signed() const { return RR_GET_REG(ebx, rdi); }
+  void set_arg1(uintptr_t value) { RR_SET_REG(ebx, rdi, value); }
 
-  uintptr_t arg2() const { return RR_GET_REG(ecx); }
-  intptr_t arg2_signed() const { return RR_GET_REG(ecx); }
-  void set_arg2(uintptr_t value) { RR_SET_REG(ecx, value); }
+  uintptr_t arg2() const { return RR_GET_REG(ecx, rsi); }
+  intptr_t arg2_signed() const { return RR_GET_REG(ecx, rsi); }
+  void set_arg2(uintptr_t value) { RR_SET_REG(ecx, rsi, value); }
 
-  uintptr_t arg3() const { return RR_GET_REG(edx); }
-  intptr_t arg3_signed() const { return RR_GET_REG(edx); }
-  void set_arg3(uintptr_t value) { RR_SET_REG(edx, value); }
+  uintptr_t arg3() const { return RR_GET_REG(edx, rdx); }
+  intptr_t arg3_signed() const { return RR_GET_REG(edx, rdx); }
+  void set_arg3(uintptr_t value) { RR_SET_REG(edx, rdx, value); }
 
-  uintptr_t arg4() const { return RR_GET_REG(esi); }
-  intptr_t arg4_signed() const { return RR_GET_REG(esi); }
-  void set_arg4(uintptr_t value) { RR_SET_REG(esi, value); }
+  uintptr_t arg4() const { return RR_GET_REG(esi, r10); }
+  intptr_t arg4_signed() const { return RR_GET_REG(esi, r10); }
+  void set_arg4(uintptr_t value) { RR_SET_REG(esi, r10, value); }
 
-  uintptr_t arg5() const { return RR_GET_REG(edi); }
-  intptr_t arg5_signed() const { return RR_GET_REG(edi); }
-  void set_arg5(uintptr_t value) { RR_SET_REG(edi, value); }
+  uintptr_t arg5() const { return RR_GET_REG(edi, r8); }
+  intptr_t arg5_signed() const { return RR_GET_REG(edi, r8); }
+  void set_arg5(uintptr_t value) { RR_SET_REG(edi, r8, value); }
 
-  uintptr_t arg6() const { return RR_GET_REG(ebp); }
-  intptr_t arg6_signed() const { return RR_GET_REG(ebp); }
-  void set_arg6(uintptr_t value) { RR_SET_REG(ebp, value); }
+  uintptr_t arg6() const { return RR_GET_REG(ebp, r9); }
+  intptr_t arg6_signed() const { return RR_GET_REG(ebp, r9); }
+  void set_arg6(uintptr_t value) { RR_SET_REG(ebp, r9, value); }
 
   /**
    * Set the output registers of the |rdtsc| instruction.
    */
   void set_rdtsc_output(uint64_t value) {
-    RR_SET_REG(eax, value & 0xffffffff);
-    RR_SET_REG(edx, value >> 32);
+    RR_SET_REG(eax, rax, value & 0xffffffff);
+    RR_SET_REG(edx, rdx, value >> 32);
   }
 
   /**
@@ -168,6 +182,7 @@ public:
 private:
   union AllRegisters {
     rr::X86Arch::user_regs_struct x86regs;
+    rr::X64Arch::user_regs_struct x64regs;
   } u;
 };
 
