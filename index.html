@@ -15,27 +15,37 @@
       font-size: 12pt;
     }
     body {
-      padding-left: 10%;
-      padding-right: 10%;
       font-family: 'Open Sans', sans;
       background: linear-gradient(#d1cec4, white);
       color: #484848;
     }
+    body > * {
+      max-width: 50rem;
+      margin-left: auto;
+      margin-right: auto;
+    }
 
     #toprow {
-      width: 100%;
-      display: -moz-box;
-      -moz-box-orient: horizontal;
-      -moz-box-pack: center;
-      -moz-box-align: center;
-      display: -webkit-box;
-      -webkit-box-orient: horizontal;
-      -webkit-box-pack: center;
-      -webkit-box-align: center;
-      padding: 0;
-      margin: 0;
       border: 1px solid gray;
       border-radius: 10px;
+    }
+
+    #toprow > h1 {
+      padding: 0 20px;
+    }
+
+    #video-container {
+      max-width: none;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin: 0;
+    }
+
+    #video-container > p {
+      width: 560px;
+      margin: 1em;
     }
 
     a {
@@ -73,12 +83,6 @@
     h3 {
       font-weight: 300;
       font-size: 1.5rem;
-    }
-
-    section {
-      margin-left: auto;
-      margin-right: auto;
-      max-width: 50rem;
     }
 
     code {
@@ -232,13 +236,16 @@ Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70,
       dynamically-allocated object was the same in both replay
       sessions.  Memory allocations are exactly the same in each
       replay, meaning you can hard-code addresses you want to watch.
+  </section>
+
+  <section id="video-container">
+    <p>
+      This video shows a quick demo of rr recording and replaying Firefox.
+      <iframe width="560" height="315" src="https://www.youtube.com/embed/hYsLBcTX00I" frameborder="0" allowfullscreen></iframe>
     <p>
       This video demonstrates rr's basic capabilities in a bit more
       detail.
-      <iframe width="560" height="315" src="//www.youtube.com/embed/61kD3x4Pu8I" frameborder="0" allowfullscreen></iframe>
-    <p>
-      This technology can make your debugging more efficient.  Read on
-      to learn more &hellip;
+      <iframe width="560" height="315" src="https://www.youtube.com/embed/61kD3x4Pu8I" frameborder="0" allowfullscreen></iframe>
   </section>
 
   <h2>getting started</h2>
