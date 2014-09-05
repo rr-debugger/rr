@@ -28,6 +28,8 @@
     #toprow {
       border: 1px solid gray;
       border-radius: 10px;
+      display: flex;
+      flex-direction: row;
     }
 
     #toprow > h1 {
@@ -54,20 +56,23 @@
     }
 
     h1 {
-      display:inline;
+      display: inline;
       font-weight: 300;
       font-size: 5rem;
+      margin: 0;
     }
 
     #topmenu {
-      display: inline-block;
       list-style-type: none;
       font-size: 1.2rem;
+      line-height: 2;
+      padding: 0;
     }
     #topmenu li {
       display: inline;
       font-weight: 300;
       padding: 1.5rem;
+      white-space: nowrap;
     }
     #topmenu li a {
       text-decoration: none;
@@ -159,11 +164,12 @@
     <h1>rr</h1>
 
     <ul id="topmenu">
-      <li><a href="https://github.com/mozilla/rr">github</a>
+      <li><a href="https://github.com/mozilla/rr">github</a></li>
+      <li><a href="https://travis-ci.org/mozilla/rr">travis-ci</a></li>
       <li><a href="https://mail.mozilla.org/listinfo/rr-dev">mailing
-          list</a>
-      <li><a href="https://travis-ci.org/mozilla/rr">travis-ci</a>
-      <li>#research on irc.mozilla.org
+          list</a></li>
+      <li><a href="https://github.com/mozilla/rr/wiki/News">news</a></li>
+      <li>#research on irc.mozilla.org</li>
     </ul>
   </div>
 
