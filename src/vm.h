@@ -82,9 +82,22 @@ struct FileId {
 	 * pseudo-devices.
 	 */
 	bool equivalent_to(const FileId& o) const {
-		return psdev == o.psdev
-			&& (psdev == PSEUDODEVICE_ANONYMOUS
-			    || (device == o.device && inode == o.inode));
+		if (psdev != o.psdev) {
+			return false;
+		}
+		if (psdev == PSEUDODEVICE_ANONYMOUS) {
+			return true;
+		}
+		if (dev_major() != o.dev_major()) {
+			return false;
+		}
+		// Allow device minor numbers to vary if the major device is
+		// 0. This was observed to be happening on
+		// "3.13.0-24-generic #46-Ubuntu SMP" in KVM with btrfs.
+		if (dev_major() != 0 && dev_minor() != o.dev_minor()) {
+			return false;
+		}
+		return inode == o.inode;
 	}
 	/**
 	 * Return true if this file is/was backed by an external
