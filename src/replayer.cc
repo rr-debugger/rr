@@ -963,7 +963,8 @@ static int is_debugger_trap(Task* t, int target_sig,
 static void guard_overshoot(Task* t,
 			    const Registers* target_regs,
 			    int64_t target_rcb, int64_t remaining_rcbs,
-			    int64_t rcb_slack)
+			    int64_t rcb_slack, bool ignored_early_match,
+			    int64_t rcb_left_at_ignored_early_match)
 {
 	if (remaining_rcbs < -rcb_slack) {
 		uintptr_t target_ip = target_regs->ip();
@@ -981,9 +982,16 @@ static void guard_overshoot(Task* t,
 		}
 		compare_register_files(t, "rep overshoot", &t->regs(),
 				       "rec", target_regs, LOG_MISMATCHES);
-		ASSERT(t, false)
-			<< "overshot target rcb="<< target_rcb <<" by "
-			<< -remaining_rcbs;
+		if (ignored_early_match) {
+			ASSERT(t, false)
+				<< "overshot target rcb="<< target_rcb <<" by "
+				<< -remaining_rcbs <<"; ignored early match with "
+				<< rcb_left_at_ignored_early_match <<" rcbs left";
+		} else {
+			ASSERT(t, false)
+				<< "overshot target rcb="<< target_rcb <<" by "
+				<< -remaining_rcbs;
+		}
 	}
 }
 
@@ -1010,7 +1018,9 @@ static void guard_unexpected_signal(Task* t)
 static int is_same_execution_point(Task* t,
 				   const Registers* rec_regs,
 				   int64_t rcbs_left,
-				   int64_t rcb_slack)
+				   int64_t rcb_slack,
+                                   bool* ignoring_early_match,
+				   int64_t* rcbs_left_at_ignored_early_match)
 {
 	int behavior =
 #ifdef DEBUGTAG
@@ -1019,7 +1029,22 @@ static int is_same_execution_point(Task* t,
 				   EXPECT_MISMATCHES
 #endif
 		;
-	if (llabs(rcbs_left) > rcb_slack) {
+	if (rcbs_left > 0) {
+		if (rcbs_left <= rcb_slack &&
+			compare_register_files(t, "(rep)", &t->regs(),
+					       "(rec)", rec_regs, EXPECT_MISMATCHES)) {
+			*ignoring_early_match = true;
+			*rcbs_left_at_ignored_early_match = rcbs_left;
+		}
+		LOG(debug) <<"  not same execution point: "<< rcbs_left
+			   <<" rcbs left (@"<< HEX(rec_regs->ip()) <<")";
+#ifdef DEBUGTAG
+		compare_register_files(t, "(rep)", &t->regs(),
+				       "(rec)", rec_regs, LOG_MISMATCHES)) {
+#endif
+		return 0;
+	}
+	if (rcbs_left < -rcb_slack) {
 		LOG(debug) <<"  not same execution point: "<< rcbs_left
 			   <<" rcbs left (@"<< HEX(rec_regs->ip()) <<")";
 #ifdef DEBUGTAG
@@ -1062,8 +1087,10 @@ static int advance_to(Task* t, const Registers* regs,
 	pid_t tid = t->tid;
 	byte* ip = (byte*)regs->ip();
 	int64_t rcbs_left;
-	int64_t rcb_slack = 0;
+	int64_t rcb_slack = get_rcb_slack(t);
 	bool did_set_internal_breakpoint = false;
+	bool ignored_early_match = false;
+	int64_t rcbs_left_at_ignored_early_match = 0;
 
 	assert(rcb_cntr_fd(t->hpc) > 0);
 	assert(t->child_sig == 0);
@@ -1109,7 +1136,8 @@ static int advance_to(Task* t, const Registers* regs,
 
 		rcbs_left = rcb - t->rbc_count();
 	}
-	guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack);
+	guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack,
+		ignored_early_match, rcbs_left_at_ignored_early_match);
 
 	/* Step 2: more slowly, find our way to the target rcb and
 	 * execution point.  We set an internal breakpoint on the
@@ -1143,7 +1171,9 @@ static int advance_to(Task* t, const Registers* regs,
 		 * registers. */
 		int at_target;
 
-		at_target = is_same_execution_point(t, regs, rcbs_left, rcb_slack);
+		at_target = is_same_execution_point(t, regs, rcbs_left,
+			rcb_slack, &ignored_early_match,
+			&rcbs_left_at_ignored_early_match);
 		if (SIGTRAP == t->child_sig) {
 			TrapType trap_type = compute_trap_type(
 				t, sig, ASYNC,
@@ -1263,7 +1293,8 @@ static int advance_to(Task* t, const Registers* regs,
 		/* Maintain the "'rcbs_left'-is-up-to-date"
 		 * invariant. */
 		rcbs_left = rcb - t->rbc_count();
-		guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack);
+		guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack,
+			ignored_early_match, rcbs_left_at_ignored_early_match);
 	}
 }
 
