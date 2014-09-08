@@ -1516,10 +1516,11 @@ static bool rbc_counts_ok(uint64_t prev, uint64_t current, const char* source)
 	if (!rr_flags()->suppress_environment_warnings) {
 		fprintf(stderr,
 "\n"
-"rr: Warning: Your system exhibits a bug where executing a pair of CPUID\n"
-"    instructions causes some performance counter events to be lost.\n"
-"    Trying to work around it by adding slack to performance counter checks.\n"
-"    Consider running rr on another system or not in a VM.\n"
+"rr: Warning: You appear to be running in a VMWare guest with a bug\n"
+"    where a conditional branch instruction between two CPUID instructions\n"
+"    sometimes fails to be counted by the conditional branch performance\n"
+"    counter. Partial workarounds have been enabled but replay may diverge.\n"
+"    Consider running rr not in a VMWare guest.\n"
 "\n");
 	}
 	return false;
