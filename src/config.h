@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef CONFIG_H_
 #define CONFIG_H_
@@ -61,7 +61,7 @@
  *
  *   50ms * (500000rcb / 10ms) / 10event = 250000 rbc / event
  */
-#define DEFAULT_MAX_RBC		250000ULL
-#define DEFAULT_MAX_EVENTS	10
+#define DEFAULT_MAX_RBC 250000ULL
+#define DEFAULT_MAX_EVENTS 10
 
 #endif /* CONFIG_H_ */

@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
@@ -8,26 +8,25 @@
 #define THREADS_PER_GROUP 10
 
 static void* thread(void* unused) {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return NULL;
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return NULL;
 }
 
-int main(int argc, char *argv[]) {
-	int i;
+int main(int argc, char* argv[]) {
+  int i;
 
-	for (i = 0; i < THREAD_GROUPS; ++i) {
-		pthread_t threads[THREADS_PER_GROUP];
-		int j;
-		for (j = 0; j < THREADS_PER_GROUP; ++j) {
-			test_assert(0 == pthread_create(&threads[j], NULL,
-							thread, NULL));
-		}
-		for (j = 0; j < THREADS_PER_GROUP; ++j) {
-			test_assert(0 == pthread_join(threads[j], NULL));
-		}
-	}
+  for (i = 0; i < THREAD_GROUPS; ++i) {
+    pthread_t threads[THREADS_PER_GROUP];
+    int j;
+    for (j = 0; j < THREADS_PER_GROUP; ++j) {
+      test_assert(0 == pthread_create(&threads[j], NULL, thread, NULL));
+    }
+    for (j = 0; j < THREADS_PER_GROUP; ++j) {
+      test_assert(0 == pthread_join(threads[j], NULL));
+    }
+  }
 
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }

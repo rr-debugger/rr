@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RR_REC_SCHED_H_
 #define RR_REC_SCHED_H_
@@ -33,8 +33,8 @@ class Task;
  * (e.g. trying to acquire a spinlock) if some other tasks don't get a chance
  * to run.
  */
-Task* rec_sched_get_active_thread(RecordSession& session,
-				  Task* t, int* by_waitpid);
+Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
+                                  int* by_waitpid);
 
 void rec_sched_deregister_thread(Task** t);
 

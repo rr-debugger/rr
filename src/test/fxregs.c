@@ -1,10 +1,10 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
 static void breakpoint(void) {
-	int break_here = 1;
-	(void)break_here;
+  int break_here = 1;
+  (void)break_here;
 }
 
 static const double st0 = 1;
@@ -25,31 +25,29 @@ static const float xmm5 = 15;
 static const float xmm6 = 16;
 static const float xmm7 = 17;
 
-int main(int argc, char *argv[]) {
-	__asm__ __volatile__(
-		/* Push the constants in stack order so they look as
-		 * we expect in gdb. */
-		"fldl st7\n\t"
-		"fldl st6\n\t"
-		"fldl st5\n\t"
-		"fldl st4\n\t"
-		"fldl st3\n\t"
-		"fldl st2\n\t"
-		"fldl st1\n\t"
-		"fldl st0\n\t"
+int main(int argc, char* argv[]) {
+  __asm__ __volatile__(
+      /* Push the constants in stack order so they look as
+       * we expect in gdb. */
+      "fldl st7\n\t"
+      "fldl st6\n\t"
+      "fldl st5\n\t"
+      "fldl st4\n\t"
+      "fldl st3\n\t"
+      "fldl st2\n\t"
+      "fldl st1\n\t"
+      "fldl st0\n\t"
+      "movss xmm0, %xmm0\n\t"
+      "movss xmm1, %xmm1\n\t"
+      "movss xmm2, %xmm2\n\t"
+      "movss xmm3, %xmm3\n\t"
+      "movss xmm4, %xmm4\n\t"
+      "movss xmm5, %xmm5\n\t"
+      "movss xmm6, %xmm6\n\t"
+      "movss xmm7, %xmm7\n\t");
 
-		"movss xmm0, %xmm0\n\t"
-		"movss xmm1, %xmm1\n\t"
-		"movss xmm2, %xmm2\n\t"
-		"movss xmm3, %xmm3\n\t"
-		"movss xmm4, %xmm4\n\t"
-		"movss xmm5, %xmm5\n\t"
-		"movss xmm6, %xmm6\n\t"
-		"movss xmm7, %xmm7\n\t"
-	);
+  breakpoint();
 
-	breakpoint();
-
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }

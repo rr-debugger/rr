@@ -1,23 +1,22 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
+int main(int argc, char* argv[]) {
+  int dummy, i;
 
-int main(int argc, char *argv[]) {
-	int dummy, i;
+  /* NB: since we're masking out the signal, there's no way for
+   * us to tell whether or not it was actually delivered.  This
+   * test can spuriously pass if it's never sent SIGUSR1. */
 
-	/* NB: since we're masking out the signal, there's no way for
-	 * us to tell whether or not it was actually delivered.  This
-	 * test can spuriously pass if it's never sent SIGUSR1. */
+  signal(SIGUSR1, SIG_IGN);
 
-	signal(SIGUSR1, SIG_IGN);
+  atomic_puts("SIGUSR1 disabled");
 
-	atomic_puts("SIGUSR1 disabled");
+  for (i = 1; i < (1 << 27); ++i) {
+    dummy += (dummy + i) % 9735;
+  }
 
-	for (i = 1; i < (1 << 27); ++i) {
-		dummy += (dummy + i) % 9735;
-	}
-
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }

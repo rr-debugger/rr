@@ -1,62 +1,62 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
 static void first_breakpoint(void) {
-	int break_here = 1;
-	(void)break_here;
+  int break_here = 1;
+  (void)break_here;
 }
 
 static void second_breakpoint(void) {
-	int break_here = 1;
-	(void)break_here;
+  int break_here = 1;
+  (void)break_here;
 }
 
 static void* child_thread(void* num_syscallsp) {
-	int num_syscalls = (uintptr_t)num_syscallsp;
-	int i;
+  int num_syscalls = (uintptr_t)num_syscallsp;
+  int i;
 
-	first_breakpoint();
+  first_breakpoint();
 
-	/* NB: this test assumes that gettid() produces at least one
-	 * trace event per syscall. */
-	atomic_printf("%d: running %d syscalls ...\n", getpid(), num_syscalls);
-	for (i = 0; i < num_syscalls; ++i) {
-		(void)sys_gettid();
-	}
+  /* NB: this test assumes that gettid() produces at least one
+   * trace event per syscall. */
+  atomic_printf("%d: running %d syscalls ...\n", getpid(), num_syscalls);
+  for (i = 0; i < num_syscalls; ++i) {
+    (void)sys_gettid();
+  }
 
-	second_breakpoint();
+  second_breakpoint();
 
-	return NULL;
+  return NULL;
 }
 
 static void child(int num_syscalls) {
-	pthread_t t;
+  pthread_t t;
 
-	test_assert(0 == pthread_create(&t, NULL, child_thread,
-					(void*)(uintptr_t)num_syscalls));
-	pthread_join(t, NULL);
+  test_assert(0 == pthread_create(&t, NULL, child_thread,
+                                  (void*)(uintptr_t)num_syscalls));
+  pthread_join(t, NULL);
 
-	exit(0);
+  exit(0);
 }
 
 int main(int argc, char** argv) {
-	int num_syscalls;
-	pid_t c;
-	int status;
+  int num_syscalls;
+  pid_t c;
+  int status;
 
-	test_assert(argc == 2);
-	num_syscalls = atoi(argv[1]);
+  test_assert(argc == 2);
+  num_syscalls = atoi(argv[1]);
 
-	if (0 == (c = fork())) {
-		child(num_syscalls);
-		test_assert("Not reached" && 0);
-	}
+  if (0 == (c = fork())) {
+    child(num_syscalls);
+    test_assert("Not reached" && 0);
+  }
 
-	atomic_printf("%d: waiting on %d ...\n", getpid(), c);
-	test_assert(c == waitpid(c, &status, 0));
-	test_assert(WIFEXITED(status) && 0 == WEXITSTATUS(status));
+  atomic_printf("%d: waiting on %d ...\n", getpid(), c);
+  test_assert(c == waitpid(c, &status, 0));
+  test_assert(WIFEXITED(status) && 0 == WEXITSTATUS(status));
 
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }

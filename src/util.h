@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RR_UTIL_H_
 #define RR_UTIL_H_
@@ -30,9 +30,9 @@ struct trace_frame;
 #define PTRACE_SYSEMU_SINGLESTEP 32
 
 #ifndef PTRACE_O_TRACESECCOMP
-# define PTRACE_O_TRACESECCOMP 0x00000080
-# define PTRACE_EVENT_SECCOMP_OBSOLETE 8 // ubuntu 12.04
-# define PTRACE_EVENT_SECCOMP 7	// ubuntu 12.10 and future kernels
+#define PTRACE_O_TRACESECCOMP 0x00000080
+#define PTRACE_EVENT_SECCOMP_OBSOLETE 8 // ubuntu 12.04
+#define PTRACE_EVENT_SECCOMP 7          // ubuntu 12.10 and future kernels
 #endif
 
 // These are defined by the include/linux/errno.h in the kernel tree.
@@ -43,11 +43,10 @@ struct trace_frame;
 #define ERESTARTNOHAND 514
 #define ERESTART_RESTARTBLOCK 516
 
-#define SYSCALL_FAILED(result) \
-	(-ERANGE <= (result) && (result) < 0)
-#define SYSCALL_MAY_RESTART(result) \
-	(-ERESTART_RESTARTBLOCK == (result) || -ERESTARTNOINTR == (result)	\
-	 || -ERESTARTNOHAND == (result) || -ERESTARTSYS == (result))
+#define SYSCALL_FAILED(result) (-ERANGE <= (result) && (result) < 0)
+#define SYSCALL_MAY_RESTART(result)                                            \
+  (-ERESTART_RESTARTBLOCK == (result) || -ERESTARTNOINTR == (result) ||        \
+   -ERESTARTNOHAND == (result) || -ERESTARTSYS == (result))
 
 #define SHMEM_FS "/dev/shm"
 #define SHMEM_FS2 "/run/shm"
@@ -85,18 +84,18 @@ class Task;
  * from /proc/[tid]/maps on linux.
  */
 struct mapped_segment_info {
-	/* Name of the segment, which isn't necessarily an fs entry
-	 * anywhere. */
-	char name[PATH_MAX];	/* technically PATH_MAX + "deleted",
-				 * but let's not go there. */
-	void* start_addr;
-	void* end_addr;
-	int prot;
-	int flags;
-	int64_t file_offset;
-	int64_t inode;
-	int dev_major;
-	int dev_minor;
+  /* Name of the segment, which isn't necessarily an fs entry
+   * anywhere. */
+  char name[PATH_MAX]; /* technically PATH_MAX + "deleted",
+                        * but let's not go there. */
+  void* start_addr;
+  void* end_addr;
+  int prot;
+  int flags;
+  int64_t file_offset;
+  int64_t inode;
+  int dev_major;
+  int dev_minor;
 };
 std::ostream& operator<<(std::ostream& o, const mapped_segment_info& m);
 
@@ -106,15 +105,16 @@ std::ostream& operator<<(std::ostream& o, const mapped_segment_info& m);
  */
 class ScopedOpen {
 public:
-	ScopedOpen(int fd) : fd(fd) { }
-	ScopedOpen(const char* pathname, int flags, mode_t mode = 0)
-	    : fd(open(pathname, flags, mode)) { }
-	~ScopedOpen() { close(fd); }
+  ScopedOpen(int fd) : fd(fd) {}
+  ScopedOpen(const char* pathname, int flags, mode_t mode = 0)
+      : fd(open(pathname, flags, mode)) {}
+  ~ScopedOpen() { close(fd); }
 
-	operator int() const { return get(); }
-	int get() const { return fd; }
+  operator int() const { return get(); }
+  int get() const { return fd; }
+
 private:
-	int fd;
+  int fd;
 };
 
 /**
@@ -142,13 +142,14 @@ void update_replay_target(pid_t process, int event);
  * match.  Passing BAIL_ON_MISMATCH will additionally abort on
  * mismatch.
  */
-enum { EXPECT_MISMATCHES = 0, LOG_MISMATCHES, BAIL_ON_MISMATCH };
-bool compare_register_files(Task* t,
-			    const char* name1,
-			    const Registers* reg1,
-			    const char* name2,
-			    const Registers* reg2,
-			    int mismatch_behavior);
+enum {
+  EXPECT_MISMATCHES = 0,
+  LOG_MISMATCHES,
+  BAIL_ON_MISMATCH
+};
+bool compare_register_files(Task* t, const char* name1, const Registers* reg1,
+                            const char* name2, const Registers* reg2,
+                            int mismatch_behavior);
 
 void assert_child_regs_are(Task* t, const Registers* regs);
 
@@ -165,7 +166,7 @@ void print_register_file_compact(FILE* file, const Registers* regs);
  * look like "0xValue | [0xAddr]".
  */
 void dump_binary_data(const char* filename, const char* label,
-		      const uint32_t* buf, size_t buf_len, void* start_addr);
+                      const uint32_t* buf, size_t buf_len, void* start_addr);
 
 /**
  * Format a suitable filename within the trace directory for dumping
@@ -177,7 +178,7 @@ void dump_binary_data(const char* filename, const char* label,
  * unique, caveat emptor.
  */
 void format_dump_filename(Task* t, int global_time, const char* tag,
-			  char* filename, size_t filename_size);
+                          char* filename, size_t filename_size);
 
 /**
  * Return nonzero if the user requested memory be dumped for |t| at
@@ -187,7 +188,7 @@ int should_dump_memory(Task* t, const struct trace_frame& f);
 /**
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
- */ 
+ */
 void dump_process_memory(Task* t, int global_time, const char* tag);
 
 /**
@@ -232,32 +233,33 @@ void print_process_mmap(Task* t);
  * the data they wish to save beyond the scope of the iterator
  * function invocation.
  */
-enum iterator_action { CONTINUE_ITERATING, STOP_ITERATING };
-struct map_iterator_data {
-	struct mapped_segment_info info;
-	/* The nominal size of the data segment. */
-	ssize_t size_bytes;
-	/* Pointer to data read from the segment if requested,
-	 * otherwise NULL. */
-	byte* mem;
-	/* Length of data read from segment.  May be less than nominal
-	 * segment length if an error occurs. */
-	ssize_t mem_len;
-	const char* raw_map_line;
+enum iterator_action {
+  CONTINUE_ITERATING,
+  STOP_ITERATING
 };
-typedef iterator_action (*memory_map_iterator_t)(void* it_data, Task* t,
-						 const struct map_iterator_data* data);
+struct map_iterator_data {
+  struct mapped_segment_info info;
+  /* The nominal size of the data segment. */
+  ssize_t size_bytes;
+  /* Pointer to data read from the segment if requested,
+   * otherwise NULL. */
+  byte* mem;
+  /* Length of data read from segment.  May be less than nominal
+   * segment length if an error occurs. */
+  ssize_t mem_len;
+  const char* raw_map_line;
+};
+typedef iterator_action (*memory_map_iterator_t)(
+    void* it_data, Task* t, const struct map_iterator_data* data);
 
 typedef bool (*read_segment_filter_t)(void* filt_data, Task* t,
-				      const struct mapped_segment_info* info);
-static const read_segment_filter_t kNeverReadSegment =
-	(read_segment_filter_t)0;
+                                      const struct mapped_segment_info* info);
+static const read_segment_filter_t kNeverReadSegment = (read_segment_filter_t)0;
 static const read_segment_filter_t kAlwaysReadSegment =
-	(read_segment_filter_t)1;
+    (read_segment_filter_t)1;
 
-void iterate_memory_map(Task* t,
-			memory_map_iterator_t it, void* it_data,
-			read_segment_filter_t filt, void* filt_data);
+void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
+                        read_segment_filter_t filt, void* filt_data);
 
 /**
  * Get the current time from the preferred monotonic clock in units of
@@ -344,8 +346,7 @@ size_t page_size();
  * Copy the registers used for syscall arguments (not including
  * syscall number) from |from| to |to|.
  */
-void copy_syscall_arg_regs(Registers* to,
-			   const Registers* from);
+void copy_syscall_arg_regs(Registers* to, const Registers* from);
 
 /**
  * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
@@ -357,7 +358,13 @@ void copy_syscall_arg_regs(Registers* to,
 bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val);
 
 /** Return the default action of |sig|. */
-enum signal_action { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
+enum signal_action {
+  DUMP_CORE,
+  TERMINATE,
+  CONTINUE,
+  STOP,
+  IGNORE
+};
 signal_action default_action(int sig);
 
 /**
@@ -374,19 +381,23 @@ bool possibly_destabilizing_signal(Task* t, int sig);
  * get away/ with not copying the region.  That doesn't mean it's
  * necessarily safe to skip copying!
  */
-enum { DONT_WARN_SHARED_WRITEABLE = 0, WARN_DEFAULT };
+enum {
+  DONT_WARN_SHARED_WRITEABLE = 0,
+  WARN_DEFAULT
+};
 bool should_copy_mmap_region(const char* filename, const struct stat* stat,
-			     int prot, int flags,
-			     int warn_shared_writeable);
+                             int prot, int flags, int warn_shared_writeable);
 
 /**
  * Return an fd referring to a new shmem segment with descriptive
  * |name| of size |num_bytes|.  Pass O_NO_CLOEXEC to clo_exec to
  * prevent setting the O_CLOEXEC flag.
  */
-enum { O_NO_CLOEXEC = 0 };
+enum {
+  O_NO_CLOEXEC = 0
+};
 int create_shmem_segment(const char* name, size_t num_bytes,
-			 int cloexec = O_CLOEXEC);
+                         int cloexec = O_CLOEXEC);
 
 /**
  * Ensure that the shmem segment referred to by |fd| has exactly the
@@ -420,29 +431,29 @@ void monkeypatch_vdso(Task* t);
  */
 class EnvironmentBugDetector {
 public:
-	EnvironmentBugDetector()
-		: trace_rbc_count_at_last_geteuid32(0)
-		, actual_rbc_count_at_last_geteuid32(0)
-		, detected_cpuid_bug(false)
-	{}
-	/**
-	 * Call this in the context of the first spawned process to run the
-	 * code that triggers the bug.
-	 */
-	static void run_detection_code();
-	/**
-	 * Call this when task t enters a traced syscall during replay.
-	 */
-	void notify_reached_syscall_during_replay(Task* t);
-	/**
-	 * Returns true when the "CPUID can cause rbcs to be lost" bug has
-	 * been detected.
-	 */
-	bool is_cpuid_bug_detected() { return detected_cpuid_bug; }
+  EnvironmentBugDetector()
+      : trace_rbc_count_at_last_geteuid32(0),
+        actual_rbc_count_at_last_geteuid32(0),
+        detected_cpuid_bug(false) {}
+  /**
+   * Call this in the context of the first spawned process to run the
+   * code that triggers the bug.
+   */
+  static void run_detection_code();
+  /**
+   * Call this when task t enters a traced syscall during replay.
+   */
+  void notify_reached_syscall_during_replay(Task* t);
+  /**
+   * Returns true when the "CPUID can cause rbcs to be lost" bug has
+   * been detected.
+   */
+  bool is_cpuid_bug_detected() { return detected_cpuid_bug; }
+
 private:
-	uint64_t trace_rbc_count_at_last_geteuid32;
-	uint64_t actual_rbc_count_at_last_geteuid32;
-	bool detected_cpuid_bug;
+  uint64_t trace_rbc_count_at_last_geteuid32;
+  uint64_t actual_rbc_count_at_last_geteuid32;
+  bool detected_cpuid_bug;
 };
 
 enum cpuid_requests {
@@ -451,8 +462,7 @@ enum cpuid_requests {
   CPUID_GETTLB,
   CPUID_GETSERIAL,
   CPUID_GETXSAVE = 0x0D,
-
-  CPUID_INTELEXTENDED=0x80000000,
+  CPUID_INTELEXTENDED = 0x80000000,
   CPUID_INTELFEATURES,
   CPUID_INTELBRANDSTRING,
   CPUID_INTELBRANDSTRINGMORE,
@@ -465,8 +475,8 @@ enum cpuid_requests {
  *  'code' is placed in EAX. 'subrequest' is placed in ECX.
  *  *a, *c and *d receive EAX, ECX and EDX respectively.
  */
-void cpuid(int code, int subrequest,
-	   unsigned int* a, unsigned int* c, unsigned int* d);
+void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
+           unsigned int* d);
 
 /**
  * Force this process (and its descendants) to only use the cpu with the given

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RR_DIVERTER_H_
 #define RR_DIVERTER_H_
@@ -45,6 +45,6 @@ class ReplaySession;
  * resuming execution in that session.
  */
 void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
-	    struct dbg_request* req);
+            struct dbg_request* req);
 
 #endif // RR_DIVERTER_H_

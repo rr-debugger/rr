@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RR_REMOTE_SYSCALLS_H_
 #define RR_REMOTE_SYSCALLS_H_
@@ -29,50 +29,46 @@ static const byte syscall_insn[] = { 0xcd, 0x80 };
  */
 class AutoRestoreMem {
 public:
-	/**
-	 * Write |mem| into address space of the Task prepared for
-	 * remote syscalls in |remote|, in such a way that the write
-	 * will be undone.  The address of the tmp mem space is
-	 * available via operator void*().
-	 */
-	AutoRestoreMem(AutoRemoteSyscalls& remote,
-		       const byte* mem, ssize_t num_bytes)
-		: remote(remote)
-	{
-		init(mem, num_bytes);
-	}
+  /**
+   * Write |mem| into address space of the Task prepared for
+   * remote syscalls in |remote|, in such a way that the write
+   * will be undone.  The address of the tmp mem space is
+   * available via operator void*().
+   */
+  AutoRestoreMem(AutoRemoteSyscalls& remote, const byte* mem, ssize_t num_bytes)
+      : remote(remote) {
+    init(mem, num_bytes);
+  }
 
-	/**
-	 * Convenience constructor for pushing a C string |str|, including
-	 * the trailing '\0' byte.
-	 */
-	AutoRestoreMem(AutoRemoteSyscalls& remote, const char* str)
-		: remote(remote)
-	{
-		init((const byte*)str, strlen(str) + 1/*null byte*/);
-	}
+  /**
+   * Convenience constructor for pushing a C string |str|, including
+   * the trailing '\0' byte.
+   */
+  AutoRestoreMem(AutoRemoteSyscalls& remote, const char* str) : remote(remote) {
+    init((const byte*)str, strlen(str) + 1 /*null byte*/);
+  }
 
-	~AutoRestoreMem();
+  ~AutoRestoreMem();
 
-	operator void*() const { return addr; }
+  operator void*() const { return addr; }
 
 private:
-	void init(const byte* mem, ssize_t num_bytes);
+  void init(const byte* mem, ssize_t num_bytes);
 
-	AutoRemoteSyscalls& remote;
-	/* Address of tmp mem. */
-	void* addr;
-	/* Pointer to saved data. */
-	byte* data;
-	/* (We keep this around for error checking.) */
-	void* saved_sp;
-	/* Length of tmp mem. */
-	size_t len;
+  AutoRemoteSyscalls& remote;
+  /* Address of tmp mem. */
+  void* addr;
+  /* Pointer to saved data. */
+  byte* data;
+  /* (We keep this around for error checking.) */
+  void* saved_sp;
+  /* Length of tmp mem. */
+  size_t len;
 
-	AutoRestoreMem& operator=(const AutoRestoreMem&) = delete;
-	AutoRestoreMem(const AutoRestoreMem&) = delete;
-	void* operator new(size_t) = delete;
-	void operator delete(void*) = delete;
+  AutoRestoreMem& operator=(const AutoRestoreMem&) = delete;
+  AutoRestoreMem(const AutoRestoreMem&) = delete;
+  void* operator new(size_t) = delete;
+  void operator delete(void*) = delete;
 };
 
 /**
@@ -81,112 +77,108 @@ private:
  */
 class AutoRemoteSyscalls {
 public:
-	/**
-	 * Prepare |t| for a series of remote syscalls.
-	 *
-	 * NBBB!  Before preparing for a series of remote syscalls,
-	 * the caller *must* ensure the callee will not receive any
-	 * signals.  This code does not attempt to deal with signals.
-	 */
-	AutoRemoteSyscalls(Task* t);
-	/**
-	 * Undo in |t| any preparations that were made for a series of
-	 * remote syscalls.
-	 */
-	~AutoRemoteSyscalls();
+  /**
+   * Prepare |t| for a series of remote syscalls.
+   *
+   * NBBB!  Before preparing for a series of remote syscalls,
+   * the caller *must* ensure the callee will not receive any
+   * signals.  This code does not attempt to deal with signals.
+   */
+  AutoRemoteSyscalls(Task* t);
+  /**
+   * Undo in |t| any preparations that were made for a series of
+   * remote syscalls.
+   */
+  ~AutoRemoteSyscalls();
 
-	/**
-	 * "Initial" registers saved from the target task.
-	 *
-	 * NB: a non-const reference is returned because some power
-	 * users want to update the registers that are restored after
-	 * finishing remote syscalls.  Perhaps these users should be
-	 * fixed, or you should just be careful.
-	 */
-	Registers& regs() { return initial_regs; }
+  /**
+   * "Initial" registers saved from the target task.
+   *
+   * NB: a non-const reference is returned because some power
+   * users want to update the registers that are restored after
+   * finishing remote syscalls.  Perhaps these users should be
+   * fixed, or you should just be careful.
+   */
+  Registers& regs() { return initial_regs; }
 
-	/**
-	 * Undo any preparations to make remote syscalls in the context of |t|.
-	 *
-	 * This is usually called automatically by the destructor;
-	 * don't call it directly unless you really know what you'd
-	 * doing.  *ESPECIALLY* don't call this on a |t| other than
-	 * the one passed to the contructor, unless you really know
-	 * what you're doing.
-	 */
-	void restore_state_to(Task* t);
+  /**
+   * Undo any preparations to make remote syscalls in the context of |t|.
+   *
+   * This is usually called automatically by the destructor;
+   * don't call it directly unless you really know what you'd
+   * doing.  *ESPECIALLY* don't call this on a |t| other than
+   * the one passed to the contructor, unless you really know
+   * what you're doing.
+   */
+  void restore_state_to(Task* t);
 
-	/**
-	 * Make |syscallno| with variadic |args| (limited to 6 on
-	 * x86).  Return the raw kernel return value.
-	 */
-	template<typename... Rest>
-	long syscall(int syscallno, Rest... args)
-	{
-		Registers callregs = regs();
-		// The first syscall argument is called "arg 1", so
-		// our syscall-arg-index template parameter starts
-		// with "1".
-		return syscall_helper<1>(syscallno, callregs, args...);
-	}
+  /**
+   * Make |syscallno| with variadic |args| (limited to 6 on
+   * x86).  Return the raw kernel return value.
+   */
+  template <typename... Rest> long syscall(int syscallno, Rest... args) {
+    Registers callregs = regs();
+    // The first syscall argument is called "arg 1", so
+    // our syscall-arg-index template parameter starts
+    // with "1".
+    return syscall_helper<1>(syscallno, callregs, args...);
+  }
 
-	/**
-	 * Remotely invoke in |t| the specified syscall with the given
-	 * arguments.  The arguments must of course be valid in |t|,
-	 * and no checking of that is done by this function.
-	 *
-	 * If |wait| is |WAIT|, the syscall is finished in |t| and the
-	 * result is returned.  Otherwise if it's |DONT_WAIT|, the
-	 * syscall is initiated but *not* finished in |t|, and the
-	 * return value is undefined.  Call |wait_remote_syscall()| to
-	 * finish the syscall and get the return value.
-	 */
-	enum SyscallWaiting { WAIT = 1, DONT_WAIT = 0 };
-	long syscall_helper(SyscallWaiting wait, int syscallno,
-			    Registers& callregs);
+  /**
+   * Remotely invoke in |t| the specified syscall with the given
+   * arguments.  The arguments must of course be valid in |t|,
+   * and no checking of that is done by this function.
+   *
+   * If |wait| is |WAIT|, the syscall is finished in |t| and the
+   * result is returned.  Otherwise if it's |DONT_WAIT|, the
+   * syscall is initiated but *not* finished in |t|, and the
+   * return value is undefined.  Call |wait_remote_syscall()| to
+   * finish the syscall and get the return value.
+   */
+  enum SyscallWaiting {
+    WAIT = 1,
+    DONT_WAIT = 0
+  };
+  long syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
 
-	/** The Task in the context of which we're making syscalls. */
-	Task* task() const { return t; }
+  /** The Task in the context of which we're making syscalls. */
+  Task* task() const { return t; }
 
-	/**
-	 * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
-	 * |remote_syscall()| to finish, returning the result.
-	 */
-	long wait_syscall(int syscallno);
+  /**
+   * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
+   * |remote_syscall()| to finish, returning the result.
+   */
+  long wait_syscall(int syscallno);
 
 private:
-	/**
-	 * "Recursively" build the set of syscall registers in
-	 * |callregs|.  |Index| is the syscall arg that will be set to
-	 * |arg|, and |args| are the remaining arguments.
-	 */
-	template<int Index, typename T, typename... Rest>
-	long syscall_helper(int syscallno, Registers& callregs, T arg,
-			    Rest... args)
-	{
-		callregs.set_arg<Index>(arg);
-		return syscall_helper<Index + 1>(syscallno, callregs, args...);
-	}
-	/**
-	 * "Recursion" "base case": no more arguments to build, so
-	 * just make the syscall and return the kernel return value.
-	 */
-	template<int Index>
-	long syscall_helper(int syscallno, Registers& callregs)
-	{
-		return syscall_helper(WAIT, syscallno, callregs);
-	}
+  /**
+   * "Recursively" build the set of syscall registers in
+   * |callregs|.  |Index| is the syscall arg that will be set to
+   * |arg|, and |args| are the remaining arguments.
+   */
+  template <int Index, typename T, typename... Rest>
+  long syscall_helper(int syscallno, Registers& callregs, T arg, Rest... args) {
+    callregs.set_arg<Index>(arg);
+    return syscall_helper<Index + 1>(syscallno, callregs, args...);
+  }
+  /**
+   * "Recursion" "base case": no more arguments to build, so
+   * just make the syscall and return the kernel return value.
+   */
+  template <int Index> long syscall_helper(int syscallno, Registers& callregs) {
+    return syscall_helper(WAIT, syscallno, callregs);
+  }
 
-	Task* t;
-	Registers initial_regs;
-	void* initial_ip;
-	int pending_syscallno;
-	byte code_buffer[sizeof(syscall_insn)];
+  Task* t;
+  Registers initial_regs;
+  void* initial_ip;
+  int pending_syscallno;
+  byte code_buffer[sizeof(syscall_insn)];
 
-	AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
-	AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
-	void* operator new(size_t) = delete;
-	void operator delete(void*) = delete;
+  AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
+  AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
+  void* operator new(size_t) = delete;
+  void operator delete(void*) = delete;
 };
 
 #endif // RR_REMOTE_SYSCALLS_H_

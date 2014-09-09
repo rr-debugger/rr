@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
@@ -6,16 +6,14 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int low_priority_thread_scheduled;
 
-static void* low_priority_thread(void* p)
-{
+static void* low_priority_thread(void* p) {
   setpriority(PRIO_PROCESS, 0, 4);
   pthread_mutex_lock(&mutex);
   low_priority_thread_scheduled = 1;
   return NULL;
 }
 
-int main(void)
-{
+int main(void) {
   pthread_t thread;
 
   pthread_mutex_lock(&mutex);

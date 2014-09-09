@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
@@ -6,32 +6,33 @@ static int pseudospinlock;
 static pthread_barrier_t bar;
 
 static void* thread(void* unused) {
-	pthread_barrier_wait(&bar);
+  pthread_barrier_wait(&bar);
 
-	sched_yield();
-	pseudospinlock = 1;
+  sched_yield();
+  pseudospinlock = 1;
 
-	return NULL;
+  return NULL;
 }
 
-int main(int argc, char *argv[]) {
-	sigset_t old, mask;
-	pthread_t t;
+int main(int argc, char* argv[]) {
+  sigset_t old, mask;
+  pthread_t t;
 
-	pthread_barrier_init(&bar, NULL, 2);
+  pthread_barrier_init(&bar, NULL, 2);
 
-	test_assert(0 == pthread_create(&t, NULL, thread, NULL));
+  test_assert(0 == pthread_create(&t, NULL, thread, NULL));
 
-	sigfillset(&mask);
-	pthread_sigmask(SIG_BLOCK, &mask, &old);
+  sigfillset(&mask);
+  pthread_sigmask(SIG_BLOCK, &mask, &old);
 
-	pthread_barrier_wait(&bar);
-	while (!pseudospinlock);
+  pthread_barrier_wait(&bar);
+  while (!pseudospinlock)
+    ;
 
-	pthread_sigmask(SIG_SETMASK, &old, NULL);
+  pthread_sigmask(SIG_SETMASK, &old, NULL);
 
-	pthread_join(t, NULL);
+  pthread_join(t, NULL);
 
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }

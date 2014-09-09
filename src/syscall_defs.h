@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 /**
  * Each known syscall is written as
@@ -18,7 +18,8 @@
  *   DEF[N]_DYNSIZE(name, semantics[, dynamic-size, reg...]) -> like
  *   above, except that the N pairs are (dynamic-size, register) args.
  *   An arbitrary expression of the relevant Task |t| can be used to
- *   specify the size of each argument, for example |t->regs().syscall_result() *
+ *   specify the size of each argument, for example |t->regs().syscall_result()
+ **
  *   sizeof(int)|.
  *
  *   DEF_IRREG(name, irreg_semantics) -> the syscall doesn't fit a
@@ -513,7 +514,8 @@ SYSCALL_DEF0(getpgrp, EMU)
 SYSCALL_DEF0(setsid, EMU)
 
 /**
- *  int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
+ *  int sigaction(int signum, const struct sigaction *act, struct sigaction
+ **oldact);
  *
  * The sigaction() system call is used to change the action taken by a
  * process on receipt of a specific signal.  (See signal(7) for an
@@ -623,7 +625,8 @@ SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(readdir)
 
 /**
- *  void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t pgoffset);
+ *  void *mmap2(void *addr, size_t length, int prot,int flags, int fd, off_t
+ *pgoffset);
  *
  * The mmap2() system call operates in exactly the same way as
  * mmap(2), except that the final argument specifies the offset into
@@ -731,7 +734,8 @@ SYSCALLNO_X86_64(103)
 SYSCALL_DEF_UNSUPPORTED(syslog)
 
 /**
- *  int setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value);
+ *  int setitimer(int which, const struct itimerval *new_value, struct itimerval
+ **old_value);
  *
  * The function setitimer() sets the specified timer to the value in
  * new_value.  If old_value is non-NULL, the old value of the timer is
@@ -782,7 +786,8 @@ SYSCALLNO_X86_64(99)
 SYSCALL_DEF1(sysinfo, EMU, struct sysinfo, arg1)
 
 /**
- *  int ipc(unsigned int call, int first, int second, int third, void *ptr, long fifth);
+ *  int ipc(unsigned int call, int first, int second, int third, void *ptr, long
+ *fifth);
  *
  * ipc() is a common kernel entry point for the System V IPC calls for
  * messages, semaphores, and shared memory.  call determines which IPC
@@ -816,7 +821,8 @@ SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(sigreturn, EMU)
 
 /**
- *  int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t *ptid, struct user_desc *tls, pid_t *ctid));
+ *  int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t
+ **ptid, struct user_desc *tls, pid_t *ctid));
  *
  * clone() creates a new process, in a manner similar to fork(2).  It
  * is actually a library function layered ontrace top of the
@@ -827,7 +833,8 @@ SYSCALL_DEF_IRREG(sigreturn, EMU)
  * NOTE: clone is actually implemented by sys_clone which has the
  * following signature:
  *
- *  long sys_clone(unsigned long clone_flags, unsigned long newsp, void __user *parent_tid, void __user *child_tid, struct pt_regs *regs)
+ *  long sys_clone(unsigned long clone_flags, unsigned long newsp, void __user
+ **parent_tid, void __user *child_tid, struct pt_regs *regs)
  */
 SYSCALLNO_X86_64(56)
 SYSCALL_DEF_IRREG(clone, MAY_EXEC)
@@ -925,7 +932,8 @@ SYSCALL_DEF_UNSUPPORTED(setfsuid)
 SYSCALL_DEF_UNSUPPORTED(setfsgid)
 
 /**
- *  int _llseek(unsigned int fd, unsigned long offset_high, unsigned long offset_low, loff_t *result, unsigned int whence);
+ *  int _llseek(unsigned int fd, unsigned long offset_high, unsigned long
+ *offset_low, loff_t *result, unsigned int whence);
  *
  * The _llseek() function repositions the offset of the open file
  * associated with the file descriptor fd to (off‐ set_high<<32) |
@@ -938,7 +946,8 @@ SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1(_llseek, EMU, loff_t, arg4)
 
 /**
- *  int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
+ *  int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int
+ *count);
  *
  * The system call getdents() reads several linux_dirent structures
  * from the directory referred to by the open file descriptor fd into
@@ -946,10 +955,12 @@ SYSCALL_DEF1(_llseek, EMU, loff_t, arg4)
  * size of that buffer.
  */
 SYSCALLNO_X86_64(78)
-SYSCALL_DEF1_DYNSIZE(getdents, EMU, (int)t->regs().syscall_result_signed(), arg2)
+SYSCALL_DEF1_DYNSIZE(getdents, EMU, (int)t->regs().syscall_result_signed(),
+                     arg2)
 
 /**
- *  int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
+ *  int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+ *struct timeval *timeout);
  *
  * select() and pselect() allow a program to monitor multiple file
  * descriptors, waiting until one or more of the file descriptors
@@ -959,8 +970,8 @@ SYSCALL_DEF1_DYNSIZE(getdents, EMU, (int)t->regs().syscall_result_signed(), arg2
  * blocking.
  */
 SYSCALL_UNDEFINED_X86_64()
-SYSCALL_DEF4(_newselect, EMU, fd_set, arg2, fd_set, arg3,
-	     fd_set, arg4, struct timeval, arg5)
+SYSCALL_DEF4(_newselect, EMU, fd_set, arg2, fd_set, arg3, fd_set, arg4,
+             struct timeval, arg5)
 
 SYSCALLNO_X86_64(73)
 SYSCALL_DEF_UNSUPPORTED(flock)
@@ -1045,7 +1056,8 @@ SYSCALL_DEF_UNSUPPORTED(sched_setparam)
 SYSCALL_DEF1(sched_getparam, EMU, struct sched_param, arg2)
 
 /**
- *  int sched_setscheduler(pid_t pid, int policy, const struct sched_param *param);
+ *  int sched_setscheduler(pid_t pid, int policy, const struct sched_param
+ **param);
  *
  * sched_setscheduler() sets both the scheduling policy and the
  * associated parameters for the process whose ID is specified in pid.
@@ -1107,7 +1119,8 @@ SYSCALLNO_X86_64(35)
 SYSCALL_DEF_IRREG(nanosleep, EMU)
 
 /**
- *  void *mremap(void *old_address, size_t old_size, size_t new_size, int flags, ... ( void *new_address ));
+ *  void *mremap(void *old_address, size_t old_size, size_t new_size, int flags,
+ *... ( void *new_address ));
  *
  * mremap() expands (or shrinks) an existing memory mapping,
  * potentially moving it at the same time (controlled by the flags
@@ -1165,7 +1178,8 @@ SYSCALL_DEF0(setresgid, EMU)
 SYSCALL_DEF_UNSUPPORTED(getresgid)
 
 /**
- *  int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
+ *  int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long
+ *arg4, unsigned long arg5);
  *
  * prctl() is called with a first argument describing what to do (with
  * values defined in <linux/prctl.h>), and further arguments with a
@@ -1238,7 +1252,8 @@ SYSCALL_DEF0(rt_sigsuspend, EMU)
  * offset
  */
 SYSCALLNO_X86_64(17)
-SYSCALL_DEF1_DYNSIZE(pread64, EMU, (ssize_t)t->regs().syscall_result_signed(), arg2)
+SYSCALL_DEF1_DYNSIZE(pread64, EMU, (ssize_t)t->regs().syscall_result_signed(),
+                     arg2)
 
 SYSCALL_DEF0(pwrite64, EMU)
 
@@ -1270,8 +1285,8 @@ SYSCALL_DEF_UNSUPPORTED(capset)
  * sigaction(2)) requested it.
  */
 SYSCALLNO_X86_64(131)
-SYSCALL_DEF1_DYNSIZE(sigaltstack, EMU,
-		     t->regs().arg2() ? sizeof(stack_t) : 0, arg2)
+SYSCALL_DEF1_DYNSIZE(sigaltstack, EMU, t->regs().arg2() ? sizeof(stack_t) : 0,
+                     arg2)
 
 SYSCALLNO_X86_64(40)
 SYSCALL_DEF_UNSUPPORTED(sendfile)
@@ -1393,7 +1408,8 @@ SYSCALL_DEF0(setregid32, EMU)
  */
 SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF1_DYNSIZE(getgroups32, EMU,
-	(int)t->regs().syscall_result_signed() * sizeof(gid_t), arg2)
+                     (int)t->regs().syscall_result_signed() * sizeof(gid_t),
+                     arg2)
 
 SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_UNSUPPORTED(setgroups32)
@@ -1473,7 +1489,8 @@ SYSCALL_DEF_UNSUPPORTED(mincore)
 SYSCALL_DEF0(madvise, EXEC)
 
 SYSCALLNO_X86_64(217)
-SYSCALL_DEF1_DYNSIZE(getdents64, EMU, (int)t->regs().syscall_result_signed(), arg2)
+SYSCALL_DEF1_DYNSIZE(getdents64, EMU, (int)t->regs().syscall_result_signed(),
+                     arg2)
 
 /**
  *  int fcntl(int fd, int cmd, ... ( arg ));
@@ -1546,7 +1563,8 @@ SYSCALL_DEF_UNSUPPORTED(fremovexattr)
 SYSCALL_DEF_UNSUPPORTED(tkill)
 
 /**
- * ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t __count);
+ * ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t
+ *__count);
  *
  * Send up to COUNT bytes from file associated with IN_FD starting at
  * *OFFSET to descriptor OUT_FD.  Set *OFFSET to the IN_FD's file position
@@ -1558,7 +1576,8 @@ SYSCALL_UNDEFINED_X86_64()
 SYSCALL_DEF_IRREG(sendfile64, EMU)
 
 /**
- *  int futex(int *uaddr, int op, int val, const struct timespec *timeout, int *uaddr2, int val3);
+ *  int futex(int *uaddr, int op, int val, const struct timespec *timeout, int
+ **uaddr2, int val3);
  *
  * The futex() system call provides a method for a program to wait for
  * a value at a given address to change, and a method to wake up
@@ -1665,7 +1684,8 @@ SYSCALLNO_X86_64(233)
 SYSCALL_DEF0(epoll_ctl, EMU)
 
 /**
- *  int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
+ *  int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
+ *timeout);
  *
  * The epoll_wait() system call waits for events on the epoll instance
  * referred to by the file descriptor epfd.  The memory area pointed
@@ -1917,7 +1937,8 @@ SYSCALL_DEF0(set_robust_list, EXEC)
 SYSCALL_DEF_UNSUPPORTED(get_robust_list)
 
 /**
- *  ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, size_t len, unsigned int flags);
+ *  ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out,
+ *size_t len, unsigned int flags);
  *
  * splice() moves data between two file descriptors without copying
  * between kernel address space and user address space.  It transfers
@@ -1948,7 +1969,8 @@ SYSCALLNO_X86_64(281)
 SYSCALL_DEF_UNSUPPORTED(epoll_pwait)
 
 /**
- *  int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
+ *  int utimensat(int dirfd, const char *pathname, const struct timespec
+ *times[2], int flags);
  *
  * utimensat() and futimens() update the timestamps of a file with
  * nanosecond precision.  This contrasts with the historical utime(2)
@@ -2079,7 +2101,8 @@ SYSCALL_DEF_UNSUPPORTED(fanotify_init)
 SYSCALL_DEF_UNSUPPORTED(fanotify_mark)
 
 /**
- *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
+ *  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct
+ *rlimit *old_limit);
  *
  * The Linux-specific prlimit() system call combines and extends the
  * functionality of setrlimit() and getrlimit().  It can be used to

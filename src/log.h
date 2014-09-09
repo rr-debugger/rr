@@ -1,46 +1,55 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RR_LOG_H
 #define RR_LOG_H
 
 #include <iostream>
 
-#include "replayer.h"		// emergency_debug()
+#include "replayer.h" // emergency_debug()
 #include "task.h"
 #include "util.h"
 
-enum LogLevel { LOG_fatal, LOG_error, LOG_warn, LOG_info, LOG_debug };
+enum LogLevel {
+  LOG_fatal,
+  LOG_error,
+  LOG_warn,
+  LOG_info,
+  LOG_debug
+};
 
-inline static bool logging_enabled_for(LogLevel level)
-{
-	switch (level) {
-	case LOG_fatal:
-	case LOG_error:
-		return true;
-	case LOG_warn:
-	case LOG_info:
-		return rr_flags()->verbose;
-	case LOG_debug:
-		// TODO make me dynamically-enable-able.
+inline static bool logging_enabled_for(LogLevel level) {
+  switch (level) {
+    case LOG_fatal:
+    case LOG_error:
+      return true;
+    case LOG_warn:
+    case LOG_info:
+      return rr_flags()->verbose;
+    case LOG_debug:
+// TODO make me dynamically-enable-able.
 #ifdef DEBUGTAG
-		return true;
+      return true;
 #else
-		return false;
+      return false;
 #endif
-	default:
-		return false;	// not reached
-	}
+    default:
+      return false; // not reached
+  }
 }
 
-inline static const char* log_name(LogLevel level)
-{
-	switch (level) {
-	case LOG_fatal: return "FATAL";
-	case LOG_error: return "ERROR";
-	case LOG_warn: return "WARN";
-	case LOG_info: return "INFO";
-	default: return "???";
-	}
+inline static const char* log_name(LogLevel level) {
+  switch (level) {
+    case LOG_fatal:
+      return "FATAL";
+    case LOG_error:
+      return "ERROR";
+    case LOG_warn:
+      return "WARN";
+    case LOG_info:
+      return "INFO";
+    default:
+      return "???";
+  }
 }
 
 /**
@@ -50,131 +59,124 @@ inline static const char* log_name(LogLevel level)
  * "/tmp/foo.log", to send data to that file instead of the default
  * stream (stderr).
  */
-inline static std::ostream& log_stream()
-{
+inline static std::ostream& log_stream() {
 #ifdef LOG_PATH
-	static std::ofstream log(LOG_PATH);
-	return log;
+  static std::ofstream log(LOG_PATH);
+  return log;
 #else
-	return std::cerr;
+  return std::cerr;
 #endif
 }
 
 struct NewlineTerminatingOstream {
-	NewlineTerminatingOstream(LogLevel level) : level(level) {}
-	~NewlineTerminatingOstream() {
-		log_stream() << std::endl;
-		if (rr_flags()->fatal_errors_and_warnings && level <= LOG_warn) {
-			abort();
-		}
-	}
+  NewlineTerminatingOstream(LogLevel level) : level(level) {}
+  ~NewlineTerminatingOstream() {
+    log_stream() << std::endl;
+    if (rr_flags()->fatal_errors_and_warnings && level <= LOG_warn) {
+      abort();
+    }
+  }
 
-	operator std::ostream&() { return log_stream(); }
+  operator std::ostream&() { return log_stream(); }
 
-	LogLevel level;
+  LogLevel level;
 };
-template<typename T>
+template <typename T>
 NewlineTerminatingOstream& operator<<(NewlineTerminatingOstream& stream,
-				      const T& v) {
-	log_stream() << v;
-	return stream;
+                                      const T& v) {
+  log_stream() << v;
+  return stream;
 }
 // TODO: support stream modifiers.
 
 struct FatalOstream {
-	~FatalOstream() {
-		log_stream() << std::endl;
-		abort();
-	}
+  ~FatalOstream() {
+    log_stream() << std::endl;
+    abort();
+  }
 };
-template<typename T>
+template <typename T>
 FatalOstream& operator<<(FatalOstream& stream, const T& v) {
-	log_stream() << v;
-	return stream;
+  log_stream() << v;
+  return stream;
 }
 
 struct EmergencyDebugOstream {
-	EmergencyDebugOstream(Task* t) : t(t) {}
-	~EmergencyDebugOstream() {
-		log_stream() << std::endl;
-		t->log_pending_events();
-		emergency_debug(t);
-	}
-	Task* t;
+  EmergencyDebugOstream(Task* t) : t(t) {}
+  ~EmergencyDebugOstream() {
+    log_stream() << std::endl;
+    t->log_pending_events();
+    emergency_debug(t);
+  }
+  Task* t;
 };
-template<typename T>
+template <typename T>
 EmergencyDebugOstream& operator<<(EmergencyDebugOstream& stream, const T& v) {
-	log_stream() << v;
-	return stream;
+  log_stream() << v;
+  return stream;
 }
 
-
-template<typename T>
+template <typename T>
 inline static T& prepare_log_stream(T&& stream, LogLevel level,
-				    const char* file, int line,
-				    const char* function,
-				    Task* t = nullptr,
-				    const char* pfx = nullptr)
-{
-	int err = errno;
+                                    const char* file, int line,
+                                    const char* function, Task* t = nullptr,
+                                    const char* pfx = nullptr) {
+  int err = errno;
 #ifdef DEBUGTAG
-	if (LOG_debug == level) {
-# ifdef LOG_STREAM
-		return LOG_STREAM <<"["<< DEBUGTAG <<"] ";
-# else
-		return stream <<"["<< DEBUGTAG <<"] ";
-# endif
-	}
-#endif	// DEBUGTAG
+  if (LOG_debug == level) {
+#ifdef LOG_STREAM
+    return LOG_STREAM << "[" << DEBUGTAG << "] ";
+#else
+    return stream << "[" << DEBUGTAG << "] ";
+#endif
+  }
+#endif // DEBUGTAG
 
-	stream <<"["<< log_name(level) <<" ";
-	if (level <= LOG_error) {
-		stream << file <<":"<< line <<":";
-	}
-	stream << function << "()";
-	if (level <= LOG_warn) {
-		stream <<" errno: "<< err <<" '" << strerror(err) <<"'";
-	}
-	stream <<"] ";
-	if (t) {
-		log_stream() <<"\n (task "<< t->tid <<" (rec:"<< t->rec_tid
-			     <<") at time "<< t->trace_time() <<")";
-	}
-	if (level <= LOG_error) {
-		stream << "\n -> ";
-	}
-	if (pfx) {
-		stream << pfx;
-	}
-	return stream;
+  stream << "[" << log_name(level) << " ";
+  if (level <= LOG_error) {
+    stream << file << ":" << line << ":";
+  }
+  stream << function << "()";
+  if (level <= LOG_warn) {
+    stream << " errno: " << err << " '" << strerror(err) << "'";
+  }
+  stream << "] ";
+  if (t) {
+    log_stream() << "\n (task " << t->tid << " (rec:" << t->rec_tid
+                 << ") at time " << t->trace_time() << ")";
+  }
+  if (level <= LOG_error) {
+    stream << "\n -> ";
+  }
+  if (pfx) {
+    stream << pfx;
+  }
+  return stream;
 }
 
 /**
  * Write logging output at the given level, which can be one of |{
  * error, warn, info, debug }| in decreasing order of severity.
  */
-#define LOG(_level)							\
-	if (logging_enabled_for(LOG_##_level))				\
-		prepare_log_stream(NewlineTerminatingOstream(LOG_##_level), \
-				   LOG_##_level,			\
-				   __FILE__, __LINE__, __FUNCTION__)
+#define LOG(_level)                                                            \
+  if (logging_enabled_for(LOG_##_level))                                       \
+  prepare_log_stream(NewlineTerminatingOstream(LOG_##_level), LOG_##_level,    \
+                     __FILE__, __LINE__, __FUNCTION__)
 
 /** A fatal error has occurred.  Log the error and exit. */
-#define FATAL()								\
-	prepare_log_stream(FatalOstream(), LOG_fatal,			\
-			   __FILE__, __LINE__, __FUNCTION__)
+#define FATAL()                                                                \
+  prepare_log_stream(FatalOstream(), LOG_fatal, __FILE__, __LINE__,            \
+                     __FUNCTION__)
 
 /**
  * Assert a condition related to a Task.  If the condition fails, an
  * emergency debugger for the task is launched.
  */
-#define ASSERT(_t, _cond)						\
-	if (!(_cond))							\
-		prepare_log_stream(EmergencyDebugOstream(_t),		\
-				   LOG_fatal,				\
-				   __FILE__, __LINE__, __FUNCTION__,	\
-				   (_t),				\
-				   " Assertion `" #_cond "' failed to hold. ")
+#define ASSERT(_t, _cond)                                                      \
+  if (!(_cond))                                                                \
+  prepare_log_stream(EmergencyDebugOstream(_t), LOG_fatal, __FILE__, __LINE__, \
+                     __FUNCTION__, (_t),                                       \
+                     " Assertion `" #_cond "' failed to hold. ")
 
 /**
  * Ensure that |_v| is streamed in hex format.

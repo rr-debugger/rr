@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RR_DBG_GDB_H_
 #define RR_DBG_GDB_H_
@@ -22,18 +22,18 @@ struct dbg_context;
  * namespaces).
  */
 struct dbg_threadid_t {
-	pid_t pid;
-	pid_t tid;
+  pid_t pid;
+  pid_t tid;
 
-	bool operator==(const dbg_threadid_t& o) const {
-		return pid == o.pid && tid == o.tid;
-	}
+  bool operator==(const dbg_threadid_t& o) const {
+    return pid == o.pid && tid == o.tid;
+  }
 };
 
 inline static std::ostream& operator<<(std::ostream& o,
-				       const dbg_threadid_t& t) {
-	o << t.pid <<"."<< t.tid;
-	return o;
+                                       const dbg_threadid_t& t) {
+  o << t.pid << "." << t.tid;
+  return o;
 }
 
 static const dbg_threadid_t DBG_ANY_THREAD = { 0, 0 };
@@ -46,10 +46,10 @@ static const size_t DBG_MAX_REG_SIZE = 16;
  * many bytes of |value| are valid, if any.
  */
 struct DbgRegister {
-	unsigned int name;
-	uint8_t value[DBG_MAX_REG_SIZE];
-	size_t size;
-	bool defined;
+  unsigned int name;
+  uint8_t value[DBG_MAX_REG_SIZE];
+  size_t size;
+  bool defined;
 };
 
 /**
@@ -57,80 +57,80 @@ struct DbgRegister {
  * above.
  */
 struct DbgRegfile {
-	std::vector<DbgRegister> regs;
+  std::vector<DbgRegister> regs;
 
-	DbgRegfile(size_t n_regs) : regs(n_regs) {};
+  DbgRegfile(size_t n_regs) : regs(n_regs) {};
 
-	size_t total_registers() const { return regs.size(); }
+  size_t total_registers() const { return regs.size(); }
 };
 
 enum DbgRequestType {
-	DREQ_NONE = 0,
+  DREQ_NONE = 0,
 
-	/* None of these requests have parameters. */
-	DREQ_GET_CURRENT_THREAD,
-	DREQ_GET_OFFSETS,
-	DREQ_GET_REGS,
-	DREQ_GET_STOP_REASON,
-	DREQ_GET_THREAD_LIST,
+  /* None of these requests have parameters. */
+  DREQ_GET_CURRENT_THREAD,
+  DREQ_GET_OFFSETS,
+  DREQ_GET_REGS,
+  DREQ_GET_STOP_REASON,
+  DREQ_GET_THREAD_LIST,
 
-	/* These use params.target. */
-	DREQ_GET_AUXV,
-	DREQ_GET_IS_THREAD_ALIVE,
-	DREQ_GET_THREAD_EXTRA_INFO,
-	DREQ_SET_CONTINUE_THREAD,
-	DREQ_SET_QUERY_THREAD,
+  /* These use params.target. */
+  DREQ_GET_AUXV,
+  DREQ_GET_IS_THREAD_ALIVE,
+  DREQ_GET_THREAD_EXTRA_INFO,
+  DREQ_SET_CONTINUE_THREAD,
+  DREQ_SET_QUERY_THREAD,
 
-	/* These use params.mem. */
-	DREQ_GET_MEM,
-	DREQ_SET_MEM,
-	DREQ_REMOVE_SW_BREAK,
-	DREQ_REMOVE_HW_BREAK,
-	DREQ_REMOVE_WR_WATCH,
-	DREQ_REMOVE_RD_WATCH,
-	DREQ_REMOVE_RDWR_WATCH,
-	DREQ_SET_SW_BREAK,
-	DREQ_SET_HW_BREAK,
-	DREQ_SET_WR_WATCH,
-	DREQ_SET_RD_WATCH,
-	DREQ_SET_RDWR_WATCH,
-	DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
-	DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
+  /* These use params.mem. */
+  DREQ_GET_MEM,
+  DREQ_SET_MEM,
+  DREQ_REMOVE_SW_BREAK,
+  DREQ_REMOVE_HW_BREAK,
+  DREQ_REMOVE_WR_WATCH,
+  DREQ_REMOVE_RD_WATCH,
+  DREQ_REMOVE_RDWR_WATCH,
+  DREQ_SET_SW_BREAK,
+  DREQ_SET_HW_BREAK,
+  DREQ_SET_WR_WATCH,
+  DREQ_SET_RD_WATCH,
+  DREQ_SET_RDWR_WATCH,
+  DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
+  DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
 
-	/* Use params.reg. */
-	DREQ_GET_REG,
-	DREQ_SET_REG,
+  /* Use params.reg. */
+  DREQ_GET_REG,
+  DREQ_SET_REG,
 
-	/* No parameters. */
-	DREQ_CONTINUE,
-	DREQ_INTERRUPT,
-	DREQ_STEP,
+  /* No parameters. */
+  DREQ_CONTINUE,
+  DREQ_INTERRUPT,
+  DREQ_STEP,
 
-	/* gdb host detaching from stub.  No parameters. */
-	DREQ_DETACH,
+  /* gdb host detaching from stub.  No parameters. */
+  DREQ_DETACH,
 
-	/* Uses params.restart. */
-	DREQ_RESTART,
+  /* Uses params.restart. */
+  DREQ_RESTART,
 
-	// gdb wants to read the current siginfo_t for a stopped
-	// tracee.  More importantly, this packet arrives at the very
-	// beginning of a |call foo()| experiment.
-	//
-	// Uses .mem for offset/len.
-	DREQ_READ_SIGINFO,
+  // gdb wants to read the current siginfo_t for a stopped
+  // tracee.  More importantly, this packet arrives at the very
+  // beginning of a |call foo()| experiment.
+  //
+  // Uses .mem for offset/len.
+  DREQ_READ_SIGINFO,
 
-	// gdb wants to write back siginfo_t to a tracee.  More
-	// importantly, this packet arrives before an experiment
-	// session for a |call foo()| is about to be torn down.
-	//
-	// TODO: actual interface NYI.
-	DREQ_WRITE_SIGINFO,
+  // gdb wants to write back siginfo_t to a tracee.  More
+  // importantly, this packet arrives before an experiment
+  // session for a |call foo()| is about to be torn down.
+  //
+  // TODO: actual interface NYI.
+  DREQ_WRITE_SIGINFO,
 };
 
 enum DbgRestartType {
-	RESTART_FROM_PREVIOUS,
-	RESTART_FROM_EVENT,
-	RESTART_FROM_CHECKPOINT,
+  RESTART_FROM_PREVIOUS,
+  RESTART_FROM_EVENT,
+  RESTART_FROM_CHECKPOINT,
 };
 
 /**
@@ -138,28 +138,28 @@ enum DbgRestartType {
  * by rr, the target.
  */
 struct dbg_request {
-	DbgRequestType type;
+  DbgRequestType type;
 
-	dbg_threadid_t target;
+  dbg_threadid_t target;
 
-	bool suppress_debugger_stop;
+  bool suppress_debugger_stop;
 
-	union {
-		struct {
-			void* addr;
-			size_t len;
-			// For SET_MEM requests, the stream of |len|
-			// number of raw bytes that are to be written.
-			const byte* data;
-		} mem;
+  union {
+    struct {
+      void* addr;
+      size_t len;
+      // For SET_MEM requests, the stream of |len|
+      // number of raw bytes that are to be written.
+      const byte* data;
+    } mem;
 
-		DbgRegister reg;
+    DbgRegister reg;
 
-		struct {
-			int param;
-			DbgRestartType type;
-		} restart;
-	};
+    struct {
+      int param;
+      DbgRestartType type;
+    } restart;
+  };
 };
 
 /**
@@ -167,8 +167,8 @@ struct dbg_request {
  * 0xb7fff414 }.
  */
 struct dbg_auxv_pair {
-	long key;
-	long value;
+  long key;
+  long value;
 };
 
 /**
@@ -196,14 +196,16 @@ bool dbg_is_resume_request(const struct dbg_request* req);
  * This function is infallible: either it will return a valid
  * debugging context, or it won't return.
  */
-enum { DONT_PROBE = 0, PROBE_PORT };
+enum {
+  DONT_PROBE = 0,
+  PROBE_PORT
+};
 struct dbg_context* dbg_await_client_connection(const char* addr,
-						unsigned short desired_port,
-						int probe,
-						pid_t tgid,
-						const char* exe_image = nullptr,
-						pid_t client = -1,
-						int client_params_fd = -1);
+                                                unsigned short desired_port,
+                                                int probe, pid_t tgid,
+                                                const char* exe_image = nullptr,
+                                                pid_t client = -1,
+                                                int client_params_fd = -1);
 
 /**
  * Launch a debugger using the params that were written to
@@ -218,7 +220,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros);
  * gdb or rr bug.
  */
 void dbg_notify_no_such_thread(struct dbg_context* dbg,
-			       const struct dbg_request* req);
+                               const struct dbg_request* req);
 
 /**
  * Return the current request made by the debugger host, that needs to
@@ -249,7 +251,7 @@ void dbg_notify_exit_signal(struct dbg_context* dbg, int sig);
  * that stopped execution, or 0 if execution stopped otherwise.
  */
 void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t which, int sig,
-		     void* watch_addr = nullptr);
+                     void* watch_addr = nullptr);
 
 /** Notify the debugger that a restart request failed. */
 void dbg_notify_restart_failed(struct dbg_context* dbg);
@@ -258,14 +260,14 @@ void dbg_notify_restart_failed(struct dbg_context* dbg);
  * Tell the host that |thread| is the current thread.
  */
 void dbg_reply_get_current_thread(struct dbg_context* dbg,
-				  dbg_threadid_t thread);
+                                  dbg_threadid_t thread);
 
 /**
  * Reply with the target thread's |auxv| containing |len| pairs, or
  * |len| <= 0 if there was an error reading the auxiliary vector.
  */
 void dbg_reply_get_auxv(struct dbg_context* dbg,
-			const struct dbg_auxv_pair* auxv, ssize_t len);
+                        const struct dbg_auxv_pair* auxv, ssize_t len);
 
 /**
  * |alive| is nonzero if the requested thread is alive, zero if dead.
@@ -276,8 +278,7 @@ void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive);
  * |info| is a string containing data about the request target that
  * might be relevant to the debugger user.
  */
-void dbg_reply_get_thread_extra_info(struct dbg_context* dbg,
-				     const char* info);
+void dbg_reply_get_thread_extra_info(struct dbg_context* dbg, const char* info);
 
 /**
  * |ok| is nonzero if req->target can be selected, zero otherwise.
@@ -300,7 +301,7 @@ void dbg_reply_set_mem(struct dbg_context* dbg, int ok);
 /**
  * Reply to the DREQ_GET_OFFSETS request.
  */
-void dbg_reply_get_offsets(struct dbg_context* dbg/*, TODO */);
+void dbg_reply_get_offsets(struct dbg_context* dbg /*, TODO */);
 
 /**
  * Send |value| back to the debugger host.  |value| may be undefined.
@@ -321,15 +322,15 @@ void dbg_reply_set_reg(struct dbg_context* dbg, bool ok);
 /**
  * Reply to the DREQ_GET_STOP_REASON request.
  */
-void dbg_reply_get_stop_reason(struct dbg_context* dbg,
-			       dbg_threadid_t which, int sig);
+void dbg_reply_get_stop_reason(struct dbg_context* dbg, dbg_threadid_t which,
+                               int sig);
 
 /**
  * |threads| contains the list of live threads, of which there are
  * |len|.
  */
 void dbg_reply_get_thread_list(struct dbg_context* dbg,
-			       const dbg_threadid_t* threads, ssize_t len);
+                               const dbg_threadid_t* threads, ssize_t len);
 
 /**
  * |code| is 0 if the request was successfully applied, nonzero if
@@ -351,21 +352,21 @@ void dbg_reply_detach(struct dbg_context* dbg);
  * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
  * |si_bytes = NULL|.
  */
-void dbg_reply_read_siginfo(struct dbg_context* dbg,
-			    const byte* si_bytes, ssize_t num_bytes);
+void dbg_reply_read_siginfo(struct dbg_context* dbg, const byte* si_bytes,
+                            ssize_t num_bytes);
 /**
  * Not yet implemented, but call this after a WRITE_SIGINFO request
  * anyway.
  */
-void dbg_reply_write_siginfo(struct dbg_context* dbg/*, TODO*/);
+void dbg_reply_write_siginfo(struct dbg_context* dbg /*, TODO*/);
 
 /**
  * Create a checkpoint of the given Session with the given id. Delete the
  * existing checkpoint with that id if there is one.
  */
 void dbg_created_checkpoint(struct dbg_context* dbg,
-			    ReplaySession::shr_ptr& checkpoint,
-			    int checkpoint_id);
+                            ReplaySession::shr_ptr& checkpoint,
+                            int checkpoint_id);
 
 /**
  * Delete the checkpoint with the given id. Silently fail if the checkpoint
@@ -377,7 +378,7 @@ void dbg_delete_checkpoint(struct dbg_context* dbg, int checkpoint_id);
  * Get the checkpoint with the given id. Return null if not found.
  */
 ReplaySession::shr_ptr dbg_get_checkpoint(struct dbg_context* dbg,
-		                          int checkpoint_id);
+                                          int checkpoint_id);
 
 /**
  * Destroy a gdb debugging context created by

@@ -1,18 +1,18 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
 static void* thread(void* unused) {
-	sleep(-1);
-	return NULL;
+  sleep(-1);
+  return NULL;
 }
 
-int main(int argc, char *argv[]) {
-	pthread_t t;
+int main(int argc, char* argv[]) {
+  pthread_t t;
 
-	pthread_create(&t, NULL, thread, NULL);
-	/* Don't join |t|. */
+  pthread_create(&t, NULL, thread, NULL);
+  /* Don't join |t|. */
 
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }

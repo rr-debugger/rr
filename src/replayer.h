@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RR_REPLAYER_H_
 #define RR_REPLAYER_H_
@@ -27,7 +27,7 @@ int replay(int argc, char* argv[], char** envp);
  * generic processing.
  */
 void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
-			       Task* t, const struct dbg_request& req);
+                               Task* t, const struct dbg_request& req);
 
 /**
  * Return true if |sig| is a signal that may be generated during
@@ -65,13 +65,19 @@ void start_debug_server(Task* t);
 /**
  * The state of a (dis)arm-desched-event ioctl that's being processed.
  */
-enum RepDeschedType { DESCHED_ARM, DESCHED_DISARM };
-enum RepDeschedState { DESCHED_ENTER, DESCHED_EXIT };
+enum RepDeschedType {
+  DESCHED_ARM,
+  DESCHED_DISARM
+};
+enum RepDeschedState {
+  DESCHED_ENTER,
+  DESCHED_EXIT
+};
 struct rep_desched_state {
-	/* Is this an arm or disarm request? */
-	RepDeschedType type;
-	/* What's our next step to retire the ioctl? */
-	RepDeschedState state;
+  /* Is this an arm or disarm request? */
+  RepDeschedType type;
+  /* What's our next step to retire the ioctl? */
+  RepDeschedState state;
 };
 
 /**
@@ -82,27 +88,33 @@ struct rep_desched_state {
  * interruption.  So the process of flushing the syscallbuf will
  * mutate this state in between attempts to retire the step.
  */
-enum RepFlushState { FLUSH_START, FLUSH_ARM, FLUSH_ENTER, FLUSH_EXIT,
-		     FLUSH_DISARM, FLUSH_DONE };
+enum RepFlushState {
+  FLUSH_START,
+  FLUSH_ARM,
+  FLUSH_ENTER,
+  FLUSH_EXIT,
+  FLUSH_DISARM,
+  FLUSH_DONE
+};
 /**
  * rep_flush_state is saved in Session and cloned with its Session, so it needs
  * to be simple data, i.e. not holding pointers to per-Session data.
  */
 struct rep_flush_state {
-	/* Nonzero when we need to write the syscallbuf data back to
-	 * the child. */
-	int need_buffer_restore;
-	/* After the data is restored, the number of record bytes that
-	 * still need to be flushed. */
-	size_t num_rec_bytes_remaining;
-	/* The offset of the next syscall record in both the rr and child
-	 * buffers */
-	size_t syscall_record_offset;
-	/* The next step to take. */
-	RepFlushState state;
-	/* Track the state of retiring desched arm/disarm ioctls, when
-	 * necessary. */
-	struct rep_desched_state desched;
+  /* Nonzero when we need to write the syscallbuf data back to
+   * the child. */
+  int need_buffer_restore;
+  /* After the data is restored, the number of record bytes that
+   * still need to be flushed. */
+  size_t num_rec_bytes_remaining;
+  /* The offset of the next syscall record in both the rr and child
+   * buffers */
+  size_t syscall_record_offset;
+  /* The next step to take. */
+  RepFlushState state;
+  /* Track the state of retiring desched arm/disarm ioctls, when
+   * necessary. */
+  struct rep_desched_state desched;
 };
 
 /**
@@ -110,66 +122,66 @@ struct rep_flush_state {
  * frame.
  */
 enum RepTraceStepType {
-	TSTEP_NONE,
+  TSTEP_NONE,
 
-	/* Frame has been replayed, done. */
-	TSTEP_RETIRE,
+  /* Frame has been replayed, done. */
+  TSTEP_RETIRE,
 
-	/* Enter/exit a syscall.  |syscall| describe what should be
-	 * done at entry/exit. */
-	TSTEP_ENTER_SYSCALL,
-	TSTEP_EXIT_SYSCALL,
+  /* Enter/exit a syscall.  |syscall| describe what should be
+   * done at entry/exit. */
+  TSTEP_ENTER_SYSCALL,
+  TSTEP_EXIT_SYSCALL,
 
-	/* Advance to the deterministic signal |signo|. */
-	TSTEP_DETERMINISTIC_SIGNAL,
+  /* Advance to the deterministic signal |signo|. */
+  TSTEP_DETERMINISTIC_SIGNAL,
 
-	/* Advance until |target.rcb| have been retired and then
-	 * |target.ip| is reached.  Deliver |target.signo| after that
-	 * if it's nonzero. */
-	TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,
+  /* Advance until |target.rcb| have been retired and then
+   * |target.ip| is reached.  Deliver |target.signo| after that
+   * if it's nonzero. */
+  TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,
 
-	/* Replay the upcoming buffered syscalls.  |flush| tracks the
-	 * replay state.*/
-	TSTEP_FLUSH_SYSCALLBUF,
+  /* Replay the upcoming buffered syscalls.  |flush| tracks the
+   * replay state.*/
+  TSTEP_FLUSH_SYSCALLBUF,
 
-	/* Emulate arming or disarming the desched event.  |desched|
-	 * tracks the replay state. */
-	TSTEP_DESCHED,
+  /* Emulate arming or disarming the desched event.  |desched|
+   * tracks the replay state. */
+  TSTEP_DESCHED,
 };
 /**
  * rep_trace_step is saved in Session and cloned with its Session, so it needs
  * to be simple data, i.e. not holding pointers to per-Session data.
  */
 struct rep_trace_step {
-	RepTraceStepType action;
+  RepTraceStepType action;
 
-	union {
-		struct {
-			/* The syscall number we expect to
-			 * enter/exit. */
-			int no;
-			/* Is the kernel entry and exit for this
-			 * syscall emulated, that is, not executed? */
-			int emu;
-			/* The number of outparam arguments that are
-			 * set from what was recorded. */
-			ssize_t num_emu_args;
-			/* Nonzero if the return from the syscall
-			 * should be emulated.  |emu| implies this. */
-			int emu_ret;
-		} syscall;
+  union {
+    struct {
+      /* The syscall number we expect to
+       * enter/exit. */
+      int no;
+      /* Is the kernel entry and exit for this
+       * syscall emulated, that is, not executed? */
+      int emu;
+      /* The number of outparam arguments that are
+       * set from what was recorded. */
+      ssize_t num_emu_args;
+      /* Nonzero if the return from the syscall
+       * should be emulated.  |emu| implies this. */
+      int emu_ret;
+    } syscall;
 
-		int signo;
+    int signo;
 
-		struct {
-			int64_t rcb;
-			int signo;
-		} target;
+    struct {
+      int64_t rcb;
+      int signo;
+    } target;
 
-		struct rep_flush_state flush;
+    struct rep_flush_state flush;
 
-		struct rep_desched_state desched;
-	};
+    struct rep_desched_state desched;
+  };
 };
 
 #endif /* RR_REPLAYER_H_ */

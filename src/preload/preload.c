@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 //#define DEBUGTAG "rrpreload"
 
@@ -70,12 +70,12 @@
 #include "seccomp-bpf.h"
 
 #ifdef memcpy
-# undef memcpy
+#undef memcpy
 #endif
 #define memcpy you_must_use_local_memcpy
 
 #ifdef syscall
-# undef syscall
+#undef syscall
 #endif
 #define syscall you_must_use_traced_syscall
 
@@ -84,8 +84,8 @@
  * and avoids pushing/popping all the data for calls.
  */
 struct syscall_info {
-    long no;
-    long args[6];
+  long no;
+  long args[6];
 };
 
 /* Nonzero when syscall buffering is enabled. */
@@ -142,39 +142,31 @@ static __thread int desched_counter_fd;
  * pthread_create, so need to retain this pointer to call out to the
  * libc version. There is no __pthread_create stub to call. There are
  * some explicitly-versioned stubs but let's not use those. */
-static int (*real_pthread_create)(pthread_t* thread,
-				  const pthread_attr_t* attr,
-				  void* (*start_routine) (void*), void* arg);
+static int (*real_pthread_create)(pthread_t* thread, const pthread_attr_t* attr,
+                                  void* (*start_routine)(void*), void* arg);
 
 static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
-					   const struct timespec *abstime);
+                                           const struct timespec* abstime);
 
 /**
  * Return a pointer to the buffer header, which happens to occupy the
  * initial bytes in the mapped region.
  */
-static struct syscallbuf_hdr* buffer_hdr(void)
-{
-	return (struct syscallbuf_hdr*)buffer;
+static struct syscallbuf_hdr* buffer_hdr(void) {
+  return (struct syscallbuf_hdr*)buffer;
 }
 
 /**
  * Return a pointer to the byte just after the last valid syscall record in
  * the buffer.
  */
-static byte* buffer_last(void)
-{
-	return (byte*)next_record(buffer_hdr());
-}
+static byte* buffer_last(void) { return (byte*)next_record(buffer_hdr()); }
 
 /**
  * Return a pointer to the byte just after the very end of the mapped
  * region.
  */
-static byte* buffer_end(void)
-{
-	return buffer + SYSCALLBUF_BUFFER_SIZE;
-}
+static byte* buffer_end(void) { return buffer + SYSCALLBUF_BUFFER_SIZE; }
 
 #define MEMCPY_UNROLL 4
 #define MEMCPY_WORD uintptr_t
@@ -183,143 +175,121 @@ static byte* buffer_end(void)
  * Same as libc memcpy(), but usable within syscallbuf transaction
  * critical sections.
  */
-static void local_memcpy(void* dest, const void* source, size_t n)
-{
-	char* dst = dest;
-	const char* src = source;
-	static const size_t block_size = MEMCPY_UNROLL*sizeof(MEMCPY_WORD);
-	char* dst_end = dest + n;
+static void local_memcpy(void* dest, const void* source, size_t n) {
+  char* dst = dest;
+  const char* src = source;
+  static const size_t block_size = MEMCPY_UNROLL * sizeof(MEMCPY_WORD);
+  char* dst_end = dest + n;
 
-	while (dst < dst_end) {
-		if (!((uintptr_t)dst & (block_size - 1))) {
-			// destination is aligned. Use a fast path.
-			size_t words = ((dst_end - dst)/block_size)*MEMCPY_UNROLL;
-			if (words) {
-				const MEMCPY_WORD* block_src = (const MEMCPY_WORD*)src;
-				MEMCPY_WORD* block_dst = (MEMCPY_WORD*)dst;
-				MEMCPY_WORD* block_dst_end = block_dst + words;
-				while (block_dst < block_dst_end) {
-					*block_dst++ = *block_src++;
-					*block_dst++ = *block_src++;
-					*block_dst++ = *block_src++;
-					*block_dst++ = *block_src++;
-				}
-				src = (const char*)block_src;
-				dst = (char*)block_dst;
-				continue;
-			}
-		}
-		*dst++ = *src++;
-	}
+  while (dst < dst_end) {
+    if (!((uintptr_t)dst & (block_size - 1))) {
+      // destination is aligned. Use a fast path.
+      size_t words = ((dst_end - dst) / block_size) * MEMCPY_UNROLL;
+      if (words) {
+        const MEMCPY_WORD* block_src = (const MEMCPY_WORD*)src;
+        MEMCPY_WORD* block_dst = (MEMCPY_WORD*)dst;
+        MEMCPY_WORD* block_dst_end = block_dst + words;
+        while (block_dst < block_dst_end) {
+          *block_dst++ = *block_src++;
+          *block_dst++ = *block_src++;
+          *block_dst++ = *block_src++;
+          *block_dst++ = *block_src++;
+        }
+        src = (const char*)block_src;
+        dst = (char*)block_dst;
+        continue;
+      }
+    }
+    *dst++ = *src++;
+  }
 }
 
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
-extern __attribute__((visibility("hidden"))) long
-_traced_raw_syscall(int syscallno, long a0, long a1, long a2,
-		    long a3, long a4, long a5);
+extern __attribute__((visibility("hidden"))) long _traced_raw_syscall(
+    int syscallno, long a0, long a1, long a2, long a3, long a4, long a5);
 
-static int update_errno_ret(long ret)
-{
-	/* EHWPOISON is the last known errno as of linux 3.9.5. */
-	if (0 > ret && ret >= -EHWPOISON) {
-		errno = -ret;
-		ret = -1;
-	}
-	return ret;
+static int update_errno_ret(long ret) {
+  /* EHWPOISON is the last known errno as of linux 3.9.5. */
+  if (0 > ret && ret >= -EHWPOISON) {
+    errno = -ret;
+    ret = -1;
+  }
+  return ret;
 }
 
-static int traced_syscall(int syscallno, long a0, long a1, long a2,
-			  long a3, long a4, long a5)
-{
-	long ret = _traced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
-	return update_errno_ret(ret);
+static int traced_syscall(int syscallno, long a0, long a1, long a2, long a3,
+                          long a4, long a5) {
+  long ret = _traced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
+  return update_errno_ret(ret);
 }
-#define traced_syscall6(no, a0, a1, a2, a3, a4, a5)			\
-	traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
-#define traced_syscall5(no, a0, a1, a2, a3, a4)	\
-	traced_syscall6(no, a0, a1, a2, a3, a4, 0)
-#define traced_syscall4(no, a0, a1, a2, a3)	\
-	traced_syscall5(no, a0, a1, a2, a3, 0)
-#define traced_syscall3(no, a0, a1, a2)		\
-	traced_syscall4(no, a0, a1, a2, 0)
-#define traced_syscall2(no, a0, a1)		\
-	traced_syscall3(no, a0, a1, 0)
-#define traced_syscall1(no, a0)			\
-	traced_syscall2(no, a0, 0)
-#define traced_syscall0(no)			\
-	traced_syscall1(no, 0)
+#define traced_syscall6(no, a0, a1, a2, a3, a4, a5)                            \
+  traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,              \
+                 (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+#define traced_syscall5(no, a0, a1, a2, a3, a4)                                \
+  traced_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define traced_syscall4(no, a0, a1, a2, a3)                                    \
+  traced_syscall5(no, a0, a1, a2, a3, 0)
+#define traced_syscall3(no, a0, a1, a2) traced_syscall4(no, a0, a1, a2, 0)
+#define traced_syscall2(no, a0, a1) traced_syscall3(no, a0, a1, 0)
+#define traced_syscall1(no, a0) traced_syscall2(no, a0, 0)
+#define traced_syscall0(no) traced_syscall1(no, 0)
 
 /**
  * Make a raw traced syscall using the params in |call|.  "Raw" traced
  * syscalls return the raw kernel return value, and don't transform it
  * to -1/errno per POSIX semantics.
  */
-static long traced_raw_syscall(const struct syscall_info* call)
-{
-	/* FIXME: pass |call| to avoid pushing these on the stack
-	 * again. */
-	return _traced_raw_syscall(call->no,
-				   call->args[0], call->args[1],
-				   call->args[2], call->args[3],
-				   call->args[4], call->args[5]);
+static long traced_raw_syscall(const struct syscall_info* call) {
+  /* FIXME: pass |call| to avoid pushing these on the stack
+   * again. */
+  return _traced_raw_syscall(call->no, call->args[0], call->args[1],
+                             call->args[2], call->args[3], call->args[4],
+                             call->args[5]);
 }
 
-extern __attribute__((visibility("hidden"))) void* get_traced_syscall_entry_point(void);
+extern __attribute__((
+    visibility("hidden"))) void* get_traced_syscall_entry_point(void);
 
-static int traced_fcntl(int fd, int cmd, ...)
-{
-	va_list ap;
-	void *arg;
+static int traced_fcntl(int fd, int cmd, ...) {
+  va_list ap;
+  void* arg;
 
-	va_start(ap, cmd);
-	arg = va_arg(ap, void*);
-	va_end(ap);
+  va_start(ap, cmd);
+  arg = va_arg(ap, void*);
+  va_end(ap);
 
-	return traced_syscall3(SYS_fcntl64, fd, cmd, arg);
+  return traced_syscall3(SYS_fcntl64, fd, cmd, arg);
 }
 
-static pid_t traced_getpid(void)
-{
-	return traced_syscall0(SYS_getpid);
-}
+static pid_t traced_getpid(void) { return traced_syscall0(SYS_getpid); }
 
-static pid_t traced_gettid(void)
-{
-	return traced_syscall0(SYS_gettid);
-}
+static pid_t traced_gettid(void) { return traced_syscall0(SYS_gettid); }
 
-static int traced_perf_event_open(struct perf_event_attr *attr,
-				  pid_t pid, int cpu, int group_fd,
-				  unsigned long flags)
-{
-    return traced_syscall5(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
+static int traced_perf_event_open(struct perf_event_attr* attr, pid_t pid,
+                                  int cpu, int group_fd, unsigned long flags) {
+  return traced_syscall5(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
 }
 
 static int traced_prctl(int option, unsigned long arg2, unsigned long arg3,
-		     unsigned long arg4, unsigned long arg5)
-{
-	return traced_syscall5(SYS_prctl, option, arg2, arg3, arg4, arg5);
+                        unsigned long arg4, unsigned long arg5) {
+  return traced_syscall5(SYS_prctl, option, arg2, arg3, arg4, arg5);
 }
 
-static int traced_raise(int sig)
-{
-	return traced_syscall2(SYS_kill, traced_getpid(), sig);
+static int traced_raise(int sig) {
+  return traced_syscall2(SYS_kill, traced_getpid(), sig);
 }
 
-static int traced_sigprocmask(int how, const sigset_t* set, sigset_t* oldset)
-{
-	/* Warning: expecting this to only change the mask of the
-	 * current task is a linux-ism; POSIX leaves the behavior
-	 * undefined. */
-	return traced_syscall4(SYS_rt_sigprocmask, how, set, oldset,
-			       _NSIG / 8);
+static int traced_sigprocmask(int how, const sigset_t* set, sigset_t* oldset) {
+  /* Warning: expecting this to only change the mask of the
+   * current task is a linux-ism; POSIX leaves the behavior
+   * undefined. */
+  return traced_syscall4(SYS_rt_sigprocmask, how, set, oldset, _NSIG / 8);
 }
 
-static ssize_t traced_write(int fd, const void* buf, size_t count)
-{
-	return traced_syscall3(SYS_write, fd, buf, count);
+static ssize_t traced_write(int fd, const void* buf, size_t count) {
+  return traced_syscall3(SYS_write, fd, buf, count);
 }
 
 /* We can't use the rr logging helpers because they rely on libc
@@ -327,46 +297,41 @@ static ssize_t traced_write(int fd, const void* buf, size_t count)
  *
  * XXX just use these for all logging? */
 
-__attribute__((format(printf, 1, 2)))
-static void logmsg(const char* msg, ...)
-{
-	va_list args;
-	char buf[1024];
-	int len;
+__attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
+  va_list args;
+  char buf[1024];
+  int len;
 
-	va_start(args, msg);
-	len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
-	va_end(args);
+  va_start(args, msg);
+  len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
+  va_end(args);
 
-	traced_write(STDERR_FILENO, buf, len);
+  traced_write(STDERR_FILENO, buf, len);
 }
 
 #ifndef NDEBUG
-# define assert(cond)							\
-	do {								\
-		if (!(cond)) {						\
-			logmsg("%s:%d: Assertion `" #cond "' failed.\n", \
-			       __FILE__, __LINE__);			\
-			traced_raise(SIGABRT);				\
-		}							\
-	} while (0)
+#define assert(cond)                                                           \
+  do {                                                                         \
+    if (!(cond)) {                                                             \
+      logmsg("%s:%d: Assertion `" #cond "' failed.\n", __FILE__, __LINE__);    \
+      traced_raise(SIGABRT);                                                   \
+    }                                                                          \
+  } while (0)
 #else
-# define assert(cond) ((void)0)
+#define assert(cond) ((void)0)
 #endif
 
-#define fatal(msg, ...)							\
-	do {								\
-		logmsg("[FATAL] (%s:%d: errno: %s: tid: %d) " msg "\n",	\
-		       __FILE__, __LINE__, strerror(errno),		\
-		       traced_gettid(), ##__VA_ARGS__);			\
-		traced_syscall1(SYS_exit_group, EX_OSERR);		\
-	} while (0)
+#define fatal(msg, ...)                                                        \
+  do {                                                                         \
+    logmsg("[FATAL] (%s:%d: errno: %s: tid: %d) " msg "\n", __FILE__,          \
+           __LINE__, strerror(errno), traced_gettid(), ##__VA_ARGS__);         \
+    traced_syscall1(SYS_exit_group, EX_OSERR);                                 \
+  } while (0)
 
 #ifdef DEBUGTAG
-# define debug(msg, ...)					\
-	logmsg("[" DEBUGTAG "] " msg "\n", ##__VA_ARGS__)
+#define debug(msg, ...) logmsg("[" DEBUGTAG "] " msg "\n", ##__VA_ARGS__)
 #else
-# define debug(msg, ...) ((void)0)
+#define debug(msg, ...) ((void)0)
 #endif
 
 /**
@@ -374,19 +339,17 @@ static void logmsg(const char* msg, ...)
  * Previous mask saved to |saved_mask|, which should be passed to
  * |exit_signal_critical_section()|.
  */
-static void enter_signal_critical_section(sigset_t* saved_mask)
-{
-	sigset_t mask;
-	sigfillset(&mask);
-	traced_sigprocmask(SIG_BLOCK, &mask, saved_mask);
+static void enter_signal_critical_section(sigset_t* saved_mask) {
+  sigset_t mask;
+  sigfillset(&mask);
+  traced_sigprocmask(SIG_BLOCK, &mask, saved_mask);
 }
 
 /**
  * Restore |saved_mask|, after exiting critical section.
  */
-static void exit_signal_critical_section(const sigset_t* saved_mask)
-{
-	traced_sigprocmask(SIG_SETMASK, saved_mask, NULL);
+static void exit_signal_critical_section(const sigset_t* saved_mask) {
+  traced_sigprocmask(SIG_SETMASK, saved_mask, NULL);
 }
 
 /* Helpers for invoking untraced syscalls, which do *not* generate
@@ -394,36 +357,32 @@ static void exit_signal_critical_section(const sigset_t* saved_mask)
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
 
-extern __attribute__((visibility("hidden"))) long
-_untraced_raw_syscall(int syscallno, long a0, long a1, long a2,
-		      long a3, long a4, long a5);
+extern __attribute__((visibility("hidden"))) long _untraced_raw_syscall(
+    int syscallno, long a0, long a1, long a2, long a3, long a4, long a5);
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
  * the direct kernel return value), because the vsyscall hooks have to
  * save that raw return value.
  */
-static long untraced_syscall(int syscallno, long a0, long a1, long a2,
-			    long a3, long a4, long a5)
-{
-	return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
+static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
+                             long a4, long a5) {
+  return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
 }
-#define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)			\
-	untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
-#define untraced_syscall5(no, a0, a1, a2, a3, a4)	\
-	untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
-#define untraced_syscall4(no, a0, a1, a2, a3)		\
-	untraced_syscall5(no, a0, a1, a2, a3, 0)
-#define untraced_syscall3(no, a0, a1, a2)	\
-	untraced_syscall4(no, a0, a1, a2, 0)
-#define untraced_syscall2(no, a0, a1)		\
-	untraced_syscall3(no, a0, a1, 0)
-#define untraced_syscall1(no, a0)		\
-	untraced_syscall2(no, a0, 0)
-#define untraced_syscall0(no)			\
-	untraced_syscall1(no, 0)
+#define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)                          \
+  untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,            \
+                   (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+#define untraced_syscall5(no, a0, a1, a2, a3, a4)                              \
+  untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define untraced_syscall4(no, a0, a1, a2, a3)                                  \
+  untraced_syscall5(no, a0, a1, a2, a3, 0)
+#define untraced_syscall3(no, a0, a1, a2) untraced_syscall4(no, a0, a1, a2, 0)
+#define untraced_syscall2(no, a0, a1) untraced_syscall3(no, a0, a1, 0)
+#define untraced_syscall1(no, a0) untraced_syscall2(no, a0, 0)
+#define untraced_syscall0(no) untraced_syscall1(no, 0)
 
-extern __attribute__((visibility("hidden"))) void* get_untraced_syscall_entry_point(void);
+extern __attribute__((
+    visibility("hidden"))) void* get_untraced_syscall_entry_point(void);
 
 /**
  * Make the *un*traced socketcall |call| with the given args.
@@ -432,26 +391,24 @@ extern __attribute__((visibility("hidden"))) void* get_untraced_syscall_entry_po
  * return value from the kernel.  Callers must update errno
  * themselves if necessary.
  */
-static long untraced_socketcall(int call,
-				long a0, long a1, long a2, long a3, long a4)
-{
-	unsigned long args[] = { a0, a1, a2, a3, a4 };
-	return untraced_syscall2(SYS_socketcall, call, args);
+static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
+                                long a4) {
+  unsigned long args[] = { a0, a1, a2, a3, a4 };
+  return untraced_syscall2(SYS_socketcall, call, args);
 }
-#define untraced_socketcall5(no, a0, a1, a2, a3, a4)			\
-	untraced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, (uintptr_t)a4)
-#define untraced_socketcall4(no, a0, a1, a2, a3)	\
-	untraced_socketcall5(no, a0, a1, a2, a3, 0)
-#define untraced_socketcall3(no, a0, a1, a2)	\
-	untraced_socketcall4(no, a0, a1, a2, 0)
-#define untraced_socketcall2(no, a0, a1)	\
-	untraced_socketcall3(no, a0, a1, 0)
-#define untraced_socketcall1(no, a0)		\
-	untraced_socketcall2(no, a0, 0)
-#define untraced_socketcall0(no)		\
-	untraced_socketcall1(no, 0)
+#define untraced_socketcall5(no, a0, a1, a2, a3, a4)                           \
+  untraced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,         \
+                      (uintptr_t)a3, (uintptr_t)a4)
+#define untraced_socketcall4(no, a0, a1, a2, a3)                               \
+  untraced_socketcall5(no, a0, a1, a2, a3, 0)
+#define untraced_socketcall3(no, a0, a1, a2)                                   \
+  untraced_socketcall4(no, a0, a1, a2, 0)
+#define untraced_socketcall2(no, a0, a1) untraced_socketcall3(no, a0, a1, 0)
+#define untraced_socketcall1(no, a0) untraced_socketcall2(no, a0, 0)
+#define untraced_socketcall0(no) untraced_socketcall1(no, 0)
 
-extern __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void);
+extern
+    __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void);
 
 /**
  * Do what's necessary to set up buffers for the caller.
@@ -468,186 +425,181 @@ extern __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void
  *
  * This is a "magic" syscall implemented by rr.
  */
-static void rrcall_init_buffers(struct rrcall_init_buffers_params* args)
-{
-	sigset_t mask;
-	enter_signal_critical_section(&mask);
-	traced_syscall1(SYS_rrcall_init_buffers, args);
-	exit_signal_critical_section(&mask);
+static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
+  sigset_t mask;
+  enter_signal_critical_section(&mask);
+  traced_syscall1(SYS_rrcall_init_buffers, args);
+  exit_signal_critical_section(&mask);
 }
 
 /**
  * Monkeypatch |__kernel_vsyscall()| to jump into
  * |vdso_hook_trampoline|.
  */
-static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline)
-{
-	sigset_t mask;
-	enter_signal_critical_section(&mask);
-	traced_syscall1(SYS_rrcall_monkeypatch_vdso, vdso_hook_trampoline);
-	exit_signal_critical_section(&mask);
+static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline) {
+  sigset_t mask;
+  enter_signal_critical_section(&mask);
+  traced_syscall1(SYS_rrcall_monkeypatch_vdso, vdso_hook_trampoline);
+  exit_signal_critical_section(&mask);
 }
 
 /**
  * Install the seccomp-bpf that generates trace traps for all syscalls
  * other than those made through _untraced_syscall_entry_point().
  */
-static void install_syscall_filter(void)
-{
-	void* untraced_syscall_start = get_untraced_syscall_entry_point();
-	struct sock_filter filter[] = {
-		/* Allow all system calls from our protected_call
-		 * callsite */
-		ALLOW_SYSCALLS_FROM_CALLSITE((uintptr_t)untraced_syscall_start),
-		/* All the rest are handled in rr */
-		TRACE_PROCESS,
-	};
-	struct sock_fprog prog = {
-		.len = (unsigned short)(sizeof(filter)/sizeof(filter[0])),
-		.filter = filter,
-	};
+static void install_syscall_filter(void) {
+  void* untraced_syscall_start = get_untraced_syscall_entry_point();
+  struct sock_filter filter[] = {
+    /* Allow all system calls from our protected_call
+     * callsite */
+    ALLOW_SYSCALLS_FROM_CALLSITE((uintptr_t)untraced_syscall_start),
+    /* All the rest are handled in rr */
+    TRACE_PROCESS,
+  };
+  struct sock_fprog prog = { .len = (unsigned short)(sizeof(filter) /
+                                                     sizeof(filter[0])),
+                             .filter = filter, };
 
-	debug("Initializing syscall buffer: protected_call_start = %p",
-	      untraced_syscall_start);
+  debug("Initializing syscall buffer: protected_call_start = %p",
+        untraced_syscall_start);
 
-	if (traced_prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-		fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your kernel is too old.  Use `record -n` to disable the filter.");
-	}
+  if (traced_prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+    fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
+          "kernel is too old.  Use `record -n` to disable the filter.");
+  }
 
-	/* Note: the filter is installed only for record. This call
-	 * will be emulated in the replay */
-	if (traced_prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER,
-			 (uintptr_t)&prog, 0, 0)) {
-		fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your kernel is too old.  Use `record -n` to disable the filter.");
-	}
-	/* anything that happens from this point on gets filtered! */
+  /* Note: the filter is installed only for record. This call
+   * will be emulated in the replay */
+  if (traced_prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t) & prog, 0,
+                   0)) {
+    fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your kernel "
+          "is too old.  Use `record -n` to disable the filter.");
+  }
+  /* anything that happens from this point on gets filtered! */
 }
 
 /**
  * Return a counter that generates a signal targeted at this task
  * every time the task is descheduled |nr_descheds| times.
  */
-static int open_desched_event_counter(size_t nr_descheds, pid_t tid)
-{
-	struct perf_event_attr attr;
-	int fd;
-	struct f_owner_ex own;
+static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
+  struct perf_event_attr attr;
+  int fd;
+  struct f_owner_ex own;
 
-	memset(&attr, 0, sizeof(attr));
-	attr.size = sizeof(attr);
-	attr.type = PERF_TYPE_SOFTWARE;
-	attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
-	attr.disabled = 1;
-	attr.sample_period = nr_descheds;
+  memset(&attr, 0, sizeof(attr));
+  attr.size = sizeof(attr);
+  attr.type = PERF_TYPE_SOFTWARE;
+  attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
+  attr.disabled = 1;
+  attr.sample_period = nr_descheds;
 
-	fd = traced_perf_event_open(&attr, 0/*self*/, -1/*any cpu*/, -1, 0);
-	if (0 > fd) {
-		fatal("Failed to perf_event_open(cs, period=%u)", nr_descheds);
-	}
-	if (traced_fcntl(fd, F_SETFL, O_ASYNC)) {
-		fatal("Failed to fcntl(O_ASYNC) the desched counter");
-	}
-	own.type = F_OWNER_TID;
-	own.pid = tid;
-	if (traced_fcntl(fd, F_SETOWN_EX, &own)) {
-		fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
-	}
-	if (traced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
-		fatal("Failed to fcntl(SETSIG, %d) the desched counter",
-		      SYSCALLBUF_DESCHED_SIGNAL);
-	}
+  fd = traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/, -1, 0);
+  if (0 > fd) {
+    fatal("Failed to perf_event_open(cs, period=%u)", nr_descheds);
+  }
+  if (traced_fcntl(fd, F_SETFL, O_ASYNC)) {
+    fatal("Failed to fcntl(O_ASYNC) the desched counter");
+  }
+  own.type = F_OWNER_TID;
+  own.pid = tid;
+  if (traced_fcntl(fd, F_SETOWN_EX, &own)) {
+    fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
+  }
+  if (traced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
+    fatal("Failed to fcntl(SETSIG, %d) the desched counter",
+          SYSCALLBUF_DESCHED_SIGNAL);
+  }
 
-	return fd;
+  return fd;
 }
 
-static void set_up_buffer(void)
-{
-	struct sockaddr_un addr;
-	struct msghdr msg;
-	struct iovec data;
-	int msgbuf;
-	struct cmsghdr* cmsg;
-	int* msg_fdptr;
-	int* cmsg_fdptr;
-	char cmsgbuf[CMSG_SPACE(sizeof(*cmsg_fdptr))];
-	struct socketcall_args args_vec;
-	struct rrcall_init_buffers_params args;
-	pid_t tid = traced_gettid();
+static void set_up_buffer(void) {
+  struct sockaddr_un addr;
+  struct msghdr msg;
+  struct iovec data;
+  int msgbuf;
+  struct cmsghdr* cmsg;
+  int* msg_fdptr;
+  int* cmsg_fdptr;
+  char cmsgbuf[CMSG_SPACE(sizeof(*cmsg_fdptr))];
+  struct socketcall_args args_vec;
+  struct rrcall_init_buffers_params args;
+  pid_t tid = traced_gettid();
 
-	assert(!buffer);
+  assert(!buffer);
 
-	/* NB: we want this setup emulated during replay. */
-	if (buffer_enabled) {
-		desched_counter_fd = open_desched_event_counter(1, tid);
-	}
+  /* NB: we want this setup emulated during replay. */
+  if (buffer_enabled) {
+    desched_counter_fd = open_desched_event_counter(1, tid);
+  }
 
-	/* Prepare arguments for rrcall.  We do this in the tracee
-	 * just to avoid some hairy IPC to set up the arguments
-	 * remotely from the tracer; this isn't strictly
-	 * necessary. */
-	prepare_syscallbuf_socket_addr(&addr, tid);
+  /* Prepare arguments for rrcall.  We do this in the tracee
+   * just to avoid some hairy IPC to set up the arguments
+   * remotely from the tracer; this isn't strictly
+   * necessary. */
+  prepare_syscallbuf_socket_addr(&addr, tid);
 
-	memset(&msg, 0, sizeof(msg));
-	msg_fdptr = &msgbuf;
-	data.iov_base = msg_fdptr;
-	data.iov_len = sizeof(msgbuf);
-	msg.msg_iov = &data;
-	msg.msg_iovlen = 1;
-	msg.msg_control = cmsgbuf;
-	msg.msg_controllen = sizeof(cmsgbuf);
-	cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_len = CMSG_LEN(sizeof(*cmsg_fdptr));
-	cmsg->cmsg_level = SOL_SOCKET;
-	cmsg->cmsg_type = SCM_RIGHTS;
-	cmsg_fdptr = (int*)CMSG_DATA(cmsg);
+  memset(&msg, 0, sizeof(msg));
+  msg_fdptr = &msgbuf;
+  data.iov_base = msg_fdptr;
+  data.iov_len = sizeof(msgbuf);
+  msg.msg_iov = &data;
+  msg.msg_iovlen = 1;
+  msg.msg_control = cmsgbuf;
+  msg.msg_controllen = sizeof(cmsgbuf);
+  cmsg = CMSG_FIRSTHDR(&msg);
+  cmsg->cmsg_len = CMSG_LEN(sizeof(*cmsg_fdptr));
+  cmsg->cmsg_level = SOL_SOCKET;
+  cmsg->cmsg_type = SCM_RIGHTS;
+  cmsg_fdptr = (int*)CMSG_DATA(cmsg);
 
-	/* Set the "fd parameter" in the message buffer, which we send
-	 * to let the other side know the local fd number we shared to
-	 * it. */
-	*msg_fdptr = desched_counter_fd;
-	/* Set the "fd parameter" in the cmsg buffer, which is the one
-	 * the kernel parses, dups, then sets to the fd number
-	 * allocated in the other process. */
-	*cmsg_fdptr = desched_counter_fd;
+  /* Set the "fd parameter" in the message buffer, which we send
+   * to let the other side know the local fd number we shared to
+   * it. */
+  *msg_fdptr = desched_counter_fd;
+  /* Set the "fd parameter" in the cmsg buffer, which is the one
+   * the kernel parses, dups, then sets to the fd number
+   * allocated in the other process. */
+  *cmsg_fdptr = desched_counter_fd;
 
-	args.syscallbuf_enabled = buffer_enabled;
-	args.traced_syscall_ip = get_traced_syscall_entry_point();
-	args.untraced_syscall_ip = get_untraced_syscall_entry_point();
-	args.sockaddr = &addr;
-	args.msg = &msg;
-	args.fdptr = cmsg_fdptr;
-	args.args_vec = &args_vec;
+  args.syscallbuf_enabled = buffer_enabled;
+  args.traced_syscall_ip = get_traced_syscall_entry_point();
+  args.untraced_syscall_ip = get_untraced_syscall_entry_point();
+  args.sockaddr = &addr;
+  args.msg = &msg;
+  args.fdptr = cmsg_fdptr;
+  args.args_vec = &args_vec;
 
-	/* Trap to rr: let the magic begin!  We've prepared the buffer
-	 * so that it's immediately ready to be sendmsg()'d to rr to
-	 * share the desched counter to it (under rr's control).  rr
-	 * can further use the buffer to share more fd's to us.
-	 *
-	 * If the desched signal is currently blocked, then the tracer
-	 * will clear our TCB guard and we won't be able to buffer
-	 * syscalls.  But the tracee will set the guard when (or if)
-	 * the signal is unblocked. */
-	rrcall_init_buffers(&args);
+  /* Trap to rr: let the magic begin!  We've prepared the buffer
+   * so that it's immediately ready to be sendmsg()'d to rr to
+   * share the desched counter to it (under rr's control).  rr
+   * can further use the buffer to share more fd's to us.
+   *
+   * If the desched signal is currently blocked, then the tracer
+   * will clear our TCB guard and we won't be able to buffer
+   * syscalls.  But the tracee will set the guard when (or if)
+   * the signal is unblocked. */
+  rrcall_init_buffers(&args);
 
-	/* rr initializes the buffer header. */
-	buffer = args.syscallbuf_ptr;
+  /* rr initializes the buffer header. */
+  buffer = args.syscallbuf_ptr;
 }
 
 /**
  * Initialize thread-local buffering state, if enabled.
  */
-static void init_thread(void)
-{
-	assert(process_inited);
-	assert(!thread_inited);
+static void init_thread(void) {
+  assert(process_inited);
+  assert(!thread_inited);
 
-	if (!buffer_enabled) {
-		thread_inited = 1;
-		return;
-	}
+  if (!buffer_enabled) {
+    thread_inited = 1;
+    return;
+  }
 
-	set_up_buffer();
-	thread_inited = 1;
+  set_up_buffer();
+  thread_inited = 1;
 }
 
 /**
@@ -657,44 +609,41 @@ static void init_thread(void)
  *
  * FIXME: this "leaks" the parent's old copy in our address space.
  */
-static void post_fork_child(void)
-{
-	buffer = NULL;
-	thread_inited = 0;
-	init_thread();
+static void post_fork_child(void) {
+  buffer = NULL;
+  thread_inited = 0;
+  init_thread();
 }
 
 /**
  * Initialize process-global buffering state, if enabled.
  */
-static void  __attribute__((constructor))
-init_process(void)
-{
-	assert(!process_inited);
+static void __attribute__((constructor)) init_process(void) {
+  assert(!process_inited);
 
-	if (getenv("_RR_CHECK_PRELOAD")) {
-		/* The tracer parent is just checking that we loaded.
-		 * We did, so return a success code. */
-		exit(0);
-	}
+  if (getenv("_RR_CHECK_PRELOAD")) {
+    /* The tracer parent is just checking that we loaded.
+     * We did, so return a success code. */
+    exit(0);
+  }
 
-	real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
-	real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+  real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
+  real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
 
-	buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
-	if (!buffer_enabled) {
-		debug("Syscall buffering is disabled");
-		process_inited = 1;
-		return;
-	}
+  buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
+  if (!buffer_enabled) {
+    debug("Syscall buffering is disabled");
+    process_inited = 1;
+    return;
+  }
 
-	pthread_atfork(NULL, NULL, post_fork_child);
+  pthread_atfork(NULL, NULL, post_fork_child);
 
-	install_syscall_filter();
-	rrcall_monkeypatch_vdso(&_vsyscall_hook_trampoline);
-	process_inited = 1;
+  install_syscall_filter();
+  rrcall_monkeypatch_vdso(&_vsyscall_hook_trampoline);
+  process_inited = 1;
 
-	init_thread();
+  init_thread();
 }
 
 /**
@@ -703,23 +652,22 @@ init_process(void)
  * thread function.
  */
 struct thread_func_data {
-	void* (*start_routine) (void*);
-	void* arg;
+  void* (*start_routine)(void*);
+  void* arg;
 };
 
-static void* thread_trampoline(void* arg)
-{
-	struct thread_func_data* data = arg;
-	void* ret;
+static void* thread_trampoline(void* arg) {
+  struct thread_func_data* data = arg;
+  void* ret;
 
-	init_thread();
+  init_thread();
 
-	ret = data->start_routine(data->arg);
+  ret = data->start_routine(data->arg);
 
-	/* We don't want glibc re-entering us during thread cleanup. */
-	buffer = NULL;
-	free(data);
-	return ret;
+  /* We don't want glibc re-entering us during thread cleanup. */
+  buffer = NULL;
+  free(data);
+  return ret;
 }
 
 /**
@@ -732,19 +680,18 @@ static void* thread_trampoline(void* arg)
  * syscalls, rather in order to initialize rr thread data.
  */
 int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
-		   void* (*start_routine) (void*), void* arg)
-{
-	struct thread_func_data* data = malloc(sizeof(*data));
-	void* saved_buffer = buffer;
-	int ret;
+                   void* (*start_routine)(void*), void* arg) {
+  struct thread_func_data* data = malloc(sizeof(*data));
+  void* saved_buffer = buffer;
+  int ret;
 
-	data->start_routine = start_routine;
-	data->arg = arg;
-	/* Don't let the new thread use our TLS pointer. */
-	buffer = NULL;
-	ret = real_pthread_create(thread, attr, thread_trampoline, data);
-	buffer = saved_buffer;
-	return ret;
+  data->start_routine = start_routine;
+  data->arg = arg;
+  /* Don't let the new thread use our TLS pointer. */
+  buffer = NULL;
+  ret = real_pthread_create(thread, attr, thread_trampoline, data);
+  buffer = saved_buffer;
+  return ret;
 }
 
 #define PTHREAD_MUTEX_TYPE_MASK 3
@@ -752,22 +699,21 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 #define PTHREAD_MUTEX_ELISION_NP 256
 #define PTHREAD_MUTEX_NO_ELISION_NP 512
 
-static void fix_mutex_kind(pthread_mutex_t* mutex)
-{
-	int type = mutex->__data.__kind & PTHREAD_MUTEX_TYPE_MASK;
-	/* Disable priority inheritance. */
-	mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
-	if (type != PTHREAD_MUTEX_TIMED_NP) {
-		/* Currently glibc only tries to use elision for TIMED/NORMAL
-		 * mutexes. Setting elision flag bits for other types of
-		 * mutexes triggers glibc misbehavior.
-		 */
-		return;
-	}
-	/* Cancel explicitly-set elision requests */
-	mutex->__data.__kind &= ~PTHREAD_MUTEX_ELISION_NP;
-	/* Prevent auto-enabling of elision */
-	mutex->__data.__kind |= PTHREAD_MUTEX_NO_ELISION_NP;
+static void fix_mutex_kind(pthread_mutex_t* mutex) {
+  int type = mutex->__data.__kind & PTHREAD_MUTEX_TYPE_MASK;
+  /* Disable priority inheritance. */
+  mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
+  if (type != PTHREAD_MUTEX_TIMED_NP) {
+    /* Currently glibc only tries to use elision for TIMED/NORMAL
+     * mutexes. Setting elision flag bits for other types of
+     * mutexes triggers glibc misbehavior.
+     */
+    return;
+  }
+  /* Cancel explicitly-set elision requests */
+  mutex->__data.__kind &= ~PTHREAD_MUTEX_ELISION_NP;
+  /* Prevent auto-enabling of elision */
+  mutex->__data.__kind |= PTHREAD_MUTEX_NO_ELISION_NP;
 }
 
 /*
@@ -783,27 +729,23 @@ extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
 /* Prevent use of lock elision; Haswell's TSX/RTM features used by
    lock elision increment the rbc perf counter for instructions which
    are later rolled back if the transaction fails. */
-int pthread_mutex_lock(pthread_mutex_t* mutex)
-{
-	fix_mutex_kind(mutex);
-	return __pthread_mutex_lock(mutex);
+int pthread_mutex_lock(pthread_mutex_t* mutex) {
+  fix_mutex_kind(mutex);
+  return __pthread_mutex_lock(mutex);
 }
 
 int pthread_mutex_timedlock(pthread_mutex_t* mutex,
-			    const struct timespec *abstime)
-{
-	fix_mutex_kind(mutex);
-	/* No __pthread_mutex_timedlock stub exists, so we have to use the
-	 * indirect call.
-	 */
-	return real_pthread_mutex_timedlock(mutex, abstime);
-
+                            const struct timespec* abstime) {
+  fix_mutex_kind(mutex);
+  /* No __pthread_mutex_timedlock stub exists, so we have to use the
+   * indirect call.
+   */
+  return real_pthread_mutex_timedlock(mutex, abstime);
 }
 
-int pthread_mutex_trylock(pthread_mutex_t* mutex)
-{
-	fix_mutex_kind(mutex);
-	return __pthread_mutex_trylock(mutex);
+int pthread_mutex_trylock(pthread_mutex_t* mutex) {
+  fix_mutex_kind(mutex);
+  return __pthread_mutex_trylock(mutex);
 }
 
 /**
@@ -854,49 +796,46 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex)
  * should be used to buffer outparam data.
  */
 
-static void* prep_syscall(void)
-{
-	if (!buffer) {
-		return NULL;
-	}
-	if (buffer_hdr()->locked) {
-		/* We may be reentering via a signal handler. Return
-		 * an invalid pointer. */
-		return NULL;
-	}
-	/* We don't need to worry about a race between testing
-	 * |locked| and setting it here. rr recording is responsible
-	 * for ensuring signals are not delivered during
-	 * syscall_buffer prologue and epilogue code.
-	 *
-	 * XXX except for synchronous signals generated in the syscall
-	 * buffer code, while reading/writing user pointers */
-	buffer_hdr()->locked = 1;
-	/* "Allocate" space for a new syscall record, not including
-	 * syscall outparam data. */
-	return buffer_last() + sizeof(struct syscallbuf_record);
+static void* prep_syscall(void) {
+  if (!buffer) {
+    return NULL;
+  }
+  if (buffer_hdr()->locked) {
+    /* We may be reentering via a signal handler. Return
+     * an invalid pointer. */
+    return NULL;
+  }
+  /* We don't need to worry about a race between testing
+   * |locked| and setting it here. rr recording is responsible
+   * for ensuring signals are not delivered during
+   * syscall_buffer prologue and epilogue code.
+   *
+   * XXX except for synchronous signals generated in the syscall
+   * buffer code, while reading/writing user pointers */
+  buffer_hdr()->locked = 1;
+  /* "Allocate" space for a new syscall record, not including
+   * syscall outparam data. */
+  return buffer_last() + sizeof(struct syscallbuf_record);
 }
 
-static void arm_desched_event(void)
-{
-	/* Don't trace the ioctl; doing so would trigger a flushing
-	 * ptrace trap, which is exactly what this code is trying to
-	 * avoid! :) Although we don't allocate extra space for these
-	 * ioctl's, we do record that we called them; the replayer
-	 * knows how to skip over them. */
-	if (untraced_syscall3(SYS_ioctl, desched_counter_fd,
-			      PERF_EVENT_IOC_ENABLE, 0)) {
-		fatal("Failed to ENABLE counter %d", desched_counter_fd);
-	}
+static void arm_desched_event(void) {
+  /* Don't trace the ioctl; doing so would trigger a flushing
+   * ptrace trap, which is exactly what this code is trying to
+   * avoid! :) Although we don't allocate extra space for these
+   * ioctl's, we do record that we called them; the replayer
+   * knows how to skip over them. */
+  if (untraced_syscall3(SYS_ioctl, desched_counter_fd, PERF_EVENT_IOC_ENABLE,
+                        0)) {
+    fatal("Failed to ENABLE counter %d", desched_counter_fd);
+  }
 }
 
-static void disarm_desched_event(void)
-{
-	/* See above. */
-	if (untraced_syscall3(SYS_ioctl, desched_counter_fd,
-			      PERF_EVENT_IOC_DISABLE, 0)) {
-		fatal("Failed to DISABLE counter %d", desched_counter_fd);
-	}
+static void disarm_desched_event(void) {
+  /* See above. */
+  if (untraced_syscall3(SYS_ioctl, desched_counter_fd, PERF_EVENT_IOC_DISABLE,
+                        0)) {
+    fatal("Failed to DISABLE counter %d", desched_counter_fd);
+  }
 }
 
 /**
@@ -906,72 +845,73 @@ static void disarm_desched_event(void)
  */
 /* (Negative numbers so as to not be valid syscall numbers, in case
  * the |int| arguments below are passed in the wrong order.) */
-enum { MAY_BLOCK = -1, WONT_BLOCK = -2 };
+enum {
+  MAY_BLOCK = -1,
+  WONT_BLOCK = -2
+};
 static int start_commit_buffered_syscall(int syscallno, void* record_end,
-					 int blockness)
-{
-	void* record_start;
-	void* stored_end;
-	struct syscallbuf_record* rec;
+                                         int blockness) {
+  void* record_start;
+  void* stored_end;
+  struct syscallbuf_record* rec;
 
-	if (!buffer) {
-		return 0;
-	}
-	record_start = buffer_last();
-	stored_end =
-		record_start + stored_record_size(record_end - record_start);
-	rec = record_start;
+  if (!buffer) {
+    return 0;
+  }
+  record_start = buffer_last();
+  stored_end = record_start + stored_record_size(record_end - record_start);
+  rec = record_start;
 
-	if (stored_end < record_start + sizeof(struct syscallbuf_record)) {
-		/* Either a catastrophic buffer overflow or
-		 * we failed to lock the buffer. Just bail out. */
-		return 0;
-	}
-	if (stored_end > (void*)buffer_end() - sizeof(struct syscallbuf_record)) {
-		/* Buffer overflow.
-		 * Unlock the buffer and then execute the system call
-		 * with a trap to rr.  Note that we reserve enough
-		 * space in the buffer for the next prep_syscall(). */
-		buffer_hdr()->locked = 0;
-		return 0;
-	}
-	/* Store this breadcrumb so that the tracer can find out what
-	 * syscall we're executing if our registers are in a weird
-	 * state.  If we end up aborting this syscall, no worry, this
-	 * will just be overwritten later.
-	 *
-	 * NBB: this *MUST* be set before the desched event is
-	 * armed. */
-	rec->syscallno = syscallno;
-	rec->desched = MAY_BLOCK == blockness;
-	rec->size = record_end - record_start;
-	if (rec->desched) {
-		/* NB: the ordering of the next two statements is
-		 * important.
-		 *
-		 * We set this flag to notify rr that it should pay
-		 * attention to desched signals pending for this task.
-		 * We have to set it *before* we arm the notification
-		 * because we can't set the flag atomically with
-		 * arming the event (too bad there's no ioctl() for
-		 * querying the event enabled-ness state).  That's
-		 * important because if the notification is armed,
-		 * then rr must be confident that when it disarms the
-		 * event, the tracee is at an execution point that
-		 * *must not* need the desched event.
-		 *
-		 * If we were to set the flag non-atomically after the
-		 * event was armed, then if a desched signal was
-		 * delivered right at the instruction that set the
-		 * flag, rr wouldn't know that it needed to advance
-		 * the tracee to the untraced syscall entry point.
-		 * (And if rr didn't do /that/, then the syscall might
-		 * block without rr knowing it, and the recording
-		 * session would deadlock.) */
-		buffer_hdr()->desched_signal_may_be_relevant = 1;
-		arm_desched_event();
-	}
-	return 1;
+  if (stored_end < record_start + sizeof(struct syscallbuf_record)) {
+    /* Either a catastrophic buffer overflow or
+     * we failed to lock the buffer. Just bail out. */
+    return 0;
+  }
+  if (stored_end > (void*)buffer_end() - sizeof(struct syscallbuf_record)) {
+    /* Buffer overflow.
+     * Unlock the buffer and then execute the system call
+     * with a trap to rr.  Note that we reserve enough
+     * space in the buffer for the next prep_syscall(). */
+    buffer_hdr()->locked = 0;
+    return 0;
+  }
+  /* Store this breadcrumb so that the tracer can find out what
+   * syscall we're executing if our registers are in a weird
+   * state.  If we end up aborting this syscall, no worry, this
+   * will just be overwritten later.
+   *
+   * NBB: this *MUST* be set before the desched event is
+   * armed. */
+  rec->syscallno = syscallno;
+  rec->desched = MAY_BLOCK == blockness;
+  rec->size = record_end - record_start;
+  if (rec->desched) {
+    /* NB: the ordering of the next two statements is
+     * important.
+     *
+     * We set this flag to notify rr that it should pay
+     * attention to desched signals pending for this task.
+     * We have to set it *before* we arm the notification
+     * because we can't set the flag atomically with
+     * arming the event (too bad there's no ioctl() for
+     * querying the event enabled-ness state).  That's
+     * important because if the notification is armed,
+     * then rr must be confident that when it disarms the
+     * event, the tracee is at an execution point that
+     * *must not* need the desched event.
+     *
+     * If we were to set the flag non-atomically after the
+     * event was armed, then if a desched signal was
+     * delivered right at the instruction that set the
+     * flag, rr wouldn't know that it needed to advance
+     * the tracee to the untraced syscall entry point.
+     * (And if rr didn't do /that/, then the syscall might
+     * block without rr knowing it, and the recording
+     * session would deadlock.) */
+    buffer_hdr()->desched_signal_may_be_relevant = 1;
+    arm_desched_event();
+  }
+  return 1;
 }
 
 /**
@@ -981,731 +921,709 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
  * requested space is needed.  The result of this function should be
  * returned directly by the kernel vsyscall hook.
  */
-static long commit_raw_syscall(int syscallno, void* record_end, int ret)
-{
-	void* record_start = buffer_last();
-	struct syscallbuf_record* rec = record_start;
-	struct syscallbuf_hdr* hdr = buffer_hdr();
+static long commit_raw_syscall(int syscallno, void* record_end, int ret) {
+  void* record_start = buffer_last();
+  struct syscallbuf_record* rec = record_start;
+  struct syscallbuf_hdr* hdr = buffer_hdr();
 
-	assert(buffer_hdr()->locked);
+  assert(buffer_hdr()->locked);
 
-	/* NB: the ordering of this statement with the
-	 * |disarm_desched_event()| call below is important.
-	 *
-	 * We clear this flag to notify rr that the may-block syscall
-	 * has finished, so there's no danger of blocking anymore.
-	 * (And thus the desched signal is no longer relevant.)  We
-	 * have to clear this *before* disarming the event, because if
-	 * rr sees the flag set, it has to PTRACE_SYSCALL this task to
-	 * ensure it reaches an execution point where the desched
-	 * signal is no longer relevant.  We have to use the ioctl()
-	 * that disarms the event as a safe "backstop" that can be hit
-	 * by the PTRACE_SYSCALL.
-	 *
-	 * If we were to clear the flag *after* disarming the event,
-	 * and the signal arrived at the instruction that cleared the
-	 * flag, and rr issued the PTRACE_SYSCALL, then this tracee
-	 * could fly off to any unknown execution point, including an
-	 * iloop.  So the recording session could livelock. */
-	hdr->desched_signal_may_be_relevant = 0;
+  /* NB: the ordering of this statement with the
+   * |disarm_desched_event()| call below is important.
+   *
+   * We clear this flag to notify rr that the may-block syscall
+   * has finished, so there's no danger of blocking anymore.
+   * (And thus the desched signal is no longer relevant.)  We
+   * have to clear this *before* disarming the event, because if
+   * rr sees the flag set, it has to PTRACE_SYSCALL this task to
+   * ensure it reaches an execution point where the desched
+   * signal is no longer relevant.  We have to use the ioctl()
+   * that disarms the event as a safe "backstop" that can be hit
+   * by the PTRACE_SYSCALL.
+   *
+   * If we were to clear the flag *after* disarming the event,
+   * and the signal arrived at the instruction that cleared the
+   * flag, and rr issued the PTRACE_SYSCALL, then this tracee
+   * could fly off to any unknown execution point, including an
+   * iloop.  So the recording session could livelock. */
+  hdr->desched_signal_may_be_relevant = 0;
 
-	if (rec->syscallno != syscallno) {
-		fatal("Record is for %d but trying to commit %d",
-		      rec->syscallno, syscallno);
-	}
+  if (rec->syscallno != syscallno) {
+    fatal("Record is for %d but trying to commit %d", rec->syscallno,
+          syscallno);
+  }
 
-	if (hdr->abort_commit) {
-		/* We were descheduled in the middle of a may-block
-		 * syscall, and it was recorded as a normal entry/exit
-		 * pair.  So don't record the syscall in the buffer or
-		 * replay will go haywire. */
-		hdr->abort_commit = 0;
-	} else {
-		rec->ret = ret;
-		hdr->num_rec_bytes += stored_record_size(rec->size);
-	}
+  if (hdr->abort_commit) {
+    /* We were descheduled in the middle of a may-block
+     * syscall, and it was recorded as a normal entry/exit
+     * pair.  So don't record the syscall in the buffer or
+     * replay will go haywire. */
+    hdr->abort_commit = 0;
+  } else {
+    rec->ret = ret;
+    hdr->num_rec_bytes += stored_record_size(rec->size);
+  }
 
-	if (rec->desched) {
-		disarm_desched_event();
-	}
-	/* NBB: for may-block syscalls that are descheduled, the
-	 * tracer uses the previous ioctl() as a stable point to reset
-	 * the record counter.  Therefore nothing from here on in the
-	 * current txn must touch the record counter (at least, must
-	 * not assume it's unchanged). */
+  if (rec->desched) {
+    disarm_desched_event();
+  }
+  /* NBB: for may-block syscalls that are descheduled, the
+   * tracer uses the previous ioctl() as a stable point to reset
+   * the record counter.  Therefore nothing from here on in the
+   * current txn must touch the record counter (at least, must
+   * not assume it's unchanged). */
 
-	buffer_hdr()->locked = 0;
+  buffer_hdr()->locked = 0;
 
-	return ret;
+  return ret;
 }
 
 /* Keep syscalls in alphabetical order, please. */
 
-static long sys_access(const struct syscall_info* call)
-{
-	const int syscallno = SYS_access;
-	const char* pathname = (const char*)call->args[0];
-	int mode = call->args[1];
+static long sys_access(const struct syscall_info* call) {
+  const int syscallno = SYS_access;
+  const char* pathname = (const char*)call->args[0];
+  int mode = call->args[1];
 
-	void* ptr = prep_syscall();
-	long ret;
+  void* ptr = prep_syscall();
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
- 	}
-	ret = untraced_syscall2(syscallno, pathname, mode);
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, pathname, mode);
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_clock_gettime(const struct syscall_info* call)
-{
-	const int syscallno = SYS_clock_gettime;
-	clockid_t clk_id = (clockid_t)call->args[0];
-	struct timespec* tp = (struct timespec*)call->args[1];
+static long sys_clock_gettime(const struct syscall_info* call) {
+  const int syscallno = SYS_clock_gettime;
+  clockid_t clk_id = (clockid_t)call->args[0];
+  struct timespec* tp = (struct timespec*)call->args[1];
 
-	void* ptr = prep_syscall();
-	struct timespec *tp2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  struct timespec* tp2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (tp) {
-		tp2 = ptr;
-		ptr += sizeof(*tp2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
- 	}
-	ret = untraced_syscall2(syscallno, clk_id, tp2);
-	if (tp) {
-		local_memcpy(tp, tp2, sizeof(*tp));
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (tp) {
+    tp2 = ptr;
+    ptr += sizeof(*tp2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, clk_id, tp2);
+  if (tp) {
+    local_memcpy(tp, tp2, sizeof(*tp));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_close(const struct syscall_info* call)
-{
-	const int syscallno = SYS_close;
-	int fd = call->args[0];
+static long sys_close(const struct syscall_info* call) {
+  const int syscallno = SYS_close;
+  int fd = call->args[0];
 
-	void* ptr = prep_syscall();
-	long ret;
+  void* ptr = prep_syscall();
+  long ret;
 
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
- 	}
-	ret = untraced_syscall1(syscallno, fd);
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall1(syscallno, fd);
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
 static long sys_open(const struct syscall_info* call);
-static long sys_creat(const struct syscall_info* call)
-{
-	int fd = call->args[0];
-	mode_t mode = call->args[1];
-	/* Thus sayeth the man page:
-	 *
-	 *   creat() is equivalent to open() with flags equal to
-	 *   O_CREAT|O_WRONLY|O_TRUNC. */
-	struct syscall_info open_call;
-	open_call.no = SYS_open;
-	open_call.args[0] = fd;
-	open_call.args[1] = O_CREAT | O_TRUNC | O_WRONLY;
-	open_call.args[2] = mode;
-	return sys_open(&open_call);
+static long sys_creat(const struct syscall_info* call) {
+  int fd = call->args[0];
+  mode_t mode = call->args[1];
+  /* Thus sayeth the man page:
+   *
+   *   creat() is equivalent to open() with flags equal to
+   *   O_CREAT|O_WRONLY|O_TRUNC. */
+  struct syscall_info open_call;
+  open_call.no = SYS_open;
+  open_call.args[0] = fd;
+  open_call.args[1] = O_CREAT | O_TRUNC | O_WRONLY;
+  open_call.args[2] = mode;
+  return sys_open(&open_call);
 }
 
-static int sys_fcntl64_no_outparams(const struct syscall_info* call)
-{
-	const int syscallno = SYS_fcntl64;
-	int fd = call->args[0];
-	int cmd = call->args[1];
-	long arg = call->args[2];
+static int sys_fcntl64_no_outparams(const struct syscall_info* call) {
+  const int syscallno = SYS_fcntl64;
+  int fd = call->args[0];
+  int cmd = call->args[1];
+  long arg = call->args[2];
 
-	/* None of the no-outparam fcntl's are known to be
-	 * may-block. */
-	void* ptr = prep_syscall();
-	long ret;
+  /* None of the no-outparam fcntl's are known to be
+   * may-block. */
+  void* ptr = prep_syscall();
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
-	ret = untraced_syscall3(syscallno, fd, cmd, arg);
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall3(syscallno, fd, cmd, arg);
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static int sys_fcntl64_own_ex(const struct syscall_info* call)
-{
-	const int syscallno = SYS_fcntl64;
-	int fd = call->args[0];
-	int cmd = call->args[1];
-	struct f_owner_ex* owner = (struct f_owner_ex*)call->args[2];
+static int sys_fcntl64_own_ex(const struct syscall_info* call) {
+  const int syscallno = SYS_fcntl64;
+  int fd = call->args[0];
+  int cmd = call->args[1];
+  struct f_owner_ex* owner = (struct f_owner_ex*)call->args[2];
 
-	/* The OWN_EX fcntl's aren't may-block. */
-	void* ptr = prep_syscall();
-	struct f_owner_ex* owner2 = NULL;
-	long ret;
+  /* The OWN_EX fcntl's aren't may-block. */
+  void* ptr = prep_syscall();
+  struct f_owner_ex* owner2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (owner) {
-		owner2 = ptr;
-		ptr += sizeof(*owner2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
-	if (owner2) {
-		local_memcpy(owner2, owner, sizeof(*owner2));
-	}
-	ret = untraced_syscall3(syscallno, fd, cmd, owner2);
-	if (owner2) {
-		local_memcpy(owner, owner2, sizeof(*owner));
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (owner) {
+    owner2 = ptr;
+    ptr += sizeof(*owner2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  if (owner2) {
+    local_memcpy(owner2, owner, sizeof(*owner2));
+  }
+  ret = untraced_syscall3(syscallno, fd, cmd, owner2);
+  if (owner2) {
+    local_memcpy(owner, owner2, sizeof(*owner));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static int sys_fcntl64_xlk64(const struct syscall_info* call)
-{
-	const int syscallno = SYS_fcntl64;
-	int fd = call->args[0];
-	int cmd = call->args[1];
-	struct flock64* lock = (struct flock64*)call->args[2];
+static int sys_fcntl64_xlk64(const struct syscall_info* call) {
+  const int syscallno = SYS_fcntl64;
+  int fd = call->args[0];
+  int cmd = call->args[1];
+  struct flock64* lock = (struct flock64*)call->args[2];
 
-	void* ptr = prep_syscall();
-	struct flock64* lock2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  struct flock64* lock2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (lock) {
-		lock2 = ptr;
-		ptr += sizeof(*lock2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
-	if (lock2) {
-		local_memcpy(lock2, lock, sizeof(*lock2));
-	}
-	ret = untraced_syscall3(syscallno, fd, cmd, lock2);
-	if (lock2) {
-		local_memcpy(lock, lock2, sizeof(*lock));
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (lock) {
+    lock2 = ptr;
+    ptr += sizeof(*lock2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  if (lock2) {
+    local_memcpy(lock2, lock, sizeof(*lock2));
+  }
+  ret = untraced_syscall3(syscallno, fd, cmd, lock2);
+  if (lock2) {
+    local_memcpy(lock, lock2, sizeof(*lock));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_fcntl64(const struct syscall_info* call)
-{
-	switch (call->args[1]) {
-	case F_DUPFD:
-	case F_GETFD:
-	case F_GETFL:
-	case F_GETOWN:
-	case F_SETFL:
-	case F_SETFD:
-	case F_SETOWN:
-	case F_SETSIG:
-		return sys_fcntl64_no_outparams(call);
+static long sys_fcntl64(const struct syscall_info* call) {
+  switch (call->args[1]) {
+    case F_DUPFD:
+    case F_GETFD:
+    case F_GETFL:
+    case F_GETOWN:
+    case F_SETFL:
+    case F_SETFD:
+    case F_SETOWN:
+    case F_SETSIG:
+      return sys_fcntl64_no_outparams(call);
 
-	case F_GETOWN_EX:
-	case F_SETOWN_EX:
-		return sys_fcntl64_own_ex(call);
+    case F_GETOWN_EX:
+    case F_SETOWN_EX:
+      return sys_fcntl64_own_ex(call);
 
-	case F_SETLK64:
-		return sys_fcntl64_xlk64(call);
+    case F_SETLK64:
+      return sys_fcntl64_xlk64(call);
 
-	case F_GETLK:
-	case F_SETLK:
-	case F_SETLKW:
-	case F_GETLK64:
-	case F_SETLKW64:
-		/* TODO: buffer the F_*LK API. */
-		/* fall through */
-	default:
-		return traced_raw_syscall(call);
-	}
+    case F_GETLK:
+    case F_SETLK:
+    case F_SETLKW:
+    case F_GETLK64:
+    case F_SETLKW64:
+    /* TODO: buffer the F_*LK API. */
+    /* fall through */
+    default:
+      return traced_raw_syscall(call);
+  }
 }
 
-static long sys_futex(const struct syscall_info* call)
-{
-	enum { FUTEX_USES_UADDR2 = 1 << 0, };
+static long sys_futex(const struct syscall_info* call) {
+  enum {
+    FUTEX_USES_UADDR2 = 1 << 0,
+  };
 
-	int op = call->args[1];
-	int flags = 0;
-	switch (FUTEX_CMD_MASK & op) {
-	case FUTEX_WAKE:
-		break;
-	case FUTEX_CMP_REQUEUE:
-	case FUTEX_WAKE_OP:
-		flags |= FUTEX_USES_UADDR2;
-		break;
+  int op = call->args[1];
+  int flags = 0;
+  switch (FUTEX_CMD_MASK & op) {
+    case FUTEX_WAKE:
+      break;
+    case FUTEX_CMP_REQUEUE:
+    case FUTEX_WAKE_OP:
+      flags |= FUTEX_USES_UADDR2;
+      break;
 
-	/* It turns out not to be worth buffering the FUTEX_WAIT*
-	 * calls.  When a WAIT call is made, we know almost for sure
-	 * that the tracee is going to be desched'd (otherwise the
-	 * userspace CAS would have succeeded).  This is unlike
-	 * read/write, f.e., where the vast majority of calls aren't
-	 * desched'd and the overhead is worth it.  So all that
-	 * buffering WAIT does is add the overhead of arming/disarming
-	 * desched (which is a measurable perf loss).
-	 *
-	 * NB: don't ever try to buffer FUTEX_LOCK_PI; it requires
-	 * special processing in the tracer process (in addition to
-	 * not being worth doing for perf reasons). */
-	default:
-		return traced_raw_syscall(call);
-	}
+    /* It turns out not to be worth buffering the FUTEX_WAIT*
+     * calls.  When a WAIT call is made, we know almost for sure
+     * that the tracee is going to be desched'd (otherwise the
+     * userspace CAS would have succeeded).  This is unlike
+     * read/write, f.e., where the vast majority of calls aren't
+     * desched'd and the overhead is worth it.  So all that
+     * buffering WAIT does is add the overhead of arming/disarming
+     * desched (which is a measurable perf loss).
+     *
+     * NB: don't ever try to buffer FUTEX_LOCK_PI; it requires
+     * special processing in the tracer process (in addition to
+     * not being worth doing for perf reasons). */
+    default:
+      return traced_raw_syscall(call);
+  }
 
-	const int syscallno = SYS_futex;
-	uint32_t* uaddr = (uint32_t*)call->args[0];
-	uint32_t val = call->args[2];
-	const struct timespec* timeout = (const struct timespec*)call->args[3];
-	uint32_t* uaddr2 = (uint32_t*)call->args[4];
-	uint32_t val3 = call->args[5];
+  const int syscallno = SYS_futex;
+  uint32_t* uaddr = (uint32_t*)call->args[0];
+  uint32_t val = call->args[2];
+  const struct timespec* timeout = (const struct timespec*)call->args[3];
+  uint32_t* uaddr2 = (uint32_t*)call->args[4];
+  uint32_t val3 = call->args[5];
 
-	void *ptr = prep_syscall();
-	uint32_t* saved_uaddr;
-	uint32_t* saved_uaddr2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  uint32_t* saved_uaddr;
+  uint32_t* saved_uaddr2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	/* We have to record the value of the futex at kernel exit,
-	 * but we can't substitute a scratch pointer for the uaddrs:
-	 * the futex identity is the memory cell.  There are schemes
-	 * that would allow us to use scratch futexes, but they get
-	 * complicated quickly. */
-	saved_uaddr = ptr;
-	ptr += sizeof(*saved_uaddr);
-	if (FUTEX_USES_UADDR2 & flags) {
-		saved_uaddr2 = ptr;
-		ptr += sizeof(*saved_uaddr2);
-	}
-	/* See above; it's not worth buffering may-block futex
-	 * calls. */
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  /* We have to record the value of the futex at kernel exit,
+   * but we can't substitute a scratch pointer for the uaddrs:
+   * the futex identity is the memory cell.  There are schemes
+   * that would allow us to use scratch futexes, but they get
+   * complicated quickly. */
+  saved_uaddr = ptr;
+  ptr += sizeof(*saved_uaddr);
+  if (FUTEX_USES_UADDR2 & flags) {
+    saved_uaddr2 = ptr;
+    ptr += sizeof(*saved_uaddr2);
+  }
+  /* See above; it's not worth buffering may-block futex
+   * calls. */
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_syscall6(syscallno, uaddr, op, val, timeout,
-				uaddr2, val3);
-	/* During recording, we just saved these outparams to the
-	 * buffer.  In replay, the rr tracer has already restored the
-	 * saved values directly to uaddr/uaddr2, bypassing us.  So
-	 * these stores read the same values, but don't serve any
-	 * purpose other than preventing divergence.
-	 *
-	 * The *ONLY* reason it's correct for us to read these values
-	 * so carelessly is that rr protects this syscallbuf
-	 * transaction as as a critical section.  It's OK if we get
-	 * desched'd here; we'll just abort the record commit,
-	 * throwing away the garbage values we read here. */
-	*saved_uaddr = *uaddr;
-	if (saved_uaddr2) {
-		*saved_uaddr2 = *uaddr2;
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  ret = untraced_syscall6(syscallno, uaddr, op, val, timeout, uaddr2, val3);
+  /* During recording, we just saved these outparams to the
+   * buffer.  In replay, the rr tracer has already restored the
+   * saved values directly to uaddr/uaddr2, bypassing us.  So
+   * these stores read the same values, but don't serve any
+   * purpose other than preventing divergence.
+   *
+   * The *ONLY* reason it's correct for us to read these values
+   * so carelessly is that rr protects this syscallbuf
+   * transaction as as a critical section.  It's OK if we get
+   * desched'd here; we'll just abort the record commit,
+   * throwing away the garbage values we read here. */
+  *saved_uaddr = *uaddr;
+  if (saved_uaddr2) {
+    *saved_uaddr2 = *uaddr2;
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_gettimeofday(const struct syscall_info* call)
-{
-	const int syscallno = SYS_gettimeofday;
-	struct timeval* tp = (struct timeval*)call->args[0];
-	struct timezone* tzp = (struct timezone*)call->args[1];
+static long sys_gettimeofday(const struct syscall_info* call) {
+  const int syscallno = SYS_gettimeofday;
+  struct timeval* tp = (struct timeval*)call->args[0];
+  struct timezone* tzp = (struct timezone*)call->args[1];
 
-	/* XXX it seems odd that clock_gettime() is spec'd to be
-	 * async-signal-safe while gettimeofday() isn't, but that's
-	 * what the docs say! */
-	void *ptr = prep_syscall();
-	struct timeval *tp2 = NULL;
-	struct timezone *tzp2 = NULL;
-	long ret;
+  /* XXX it seems odd that clock_gettime() is spec'd to be
+   * async-signal-safe while gettimeofday() isn't, but that's
+   * what the docs say! */
+  void* ptr = prep_syscall();
+  struct timeval* tp2 = NULL;
+  struct timezone* tzp2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (tp) {
-		tp2 = ptr;
-		ptr += sizeof(*tp2);
-	}
-	if (tzp) {
-		tzp2 = ptr;
-		ptr += sizeof(*tzp2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
-	ret = untraced_syscall2(syscallno, tp2, tzp2);
-	if (tp) {
-		local_memcpy(tp, tp2, sizeof(*tp));
-	}
-	if (tzp) {
-		local_memcpy(tzp, tzp2, sizeof(*tzp));
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (tp) {
+    tp2 = ptr;
+    ptr += sizeof(*tp2);
+  }
+  if (tzp) {
+    tzp2 = ptr;
+    ptr += sizeof(*tzp2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, tp2, tzp2);
+  if (tp) {
+    local_memcpy(tp, tp2, sizeof(*tp));
+  }
+  if (tzp) {
+    local_memcpy(tzp, tzp2, sizeof(*tzp));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys__llseek(const struct syscall_info* call)
-{
-	const int syscallno = SYS__llseek;
-	int fd = call->args[0];
-	unsigned long offset_high = call->args[1];
-	unsigned long offset_low = call->args[2];
-	loff_t* result = (loff_t*)call->args[3];
-	unsigned int whence = call->args[4];
+static long sys__llseek(const struct syscall_info* call) {
+  const int syscallno = SYS__llseek;
+  int fd = call->args[0];
+  unsigned long offset_high = call->args[1];
+  unsigned long offset_low = call->args[2];
+  loff_t* result = (loff_t*)call->args[3];
+  unsigned int whence = call->args[4];
 
-	void *ptr = prep_syscall();
-	loff_t* result2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  loff_t* result2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (result) {
-		result2 = ptr;
-		ptr += sizeof(*result2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  if (result) {
+    result2 = ptr;
+    ptr += sizeof(*result2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	if (result2) {
-		*result2 = *result;
-	}
-	ret = untraced_syscall5(syscallno, fd, offset_high, offset_low,
-				result2, whence);
-	if (result2) {
-		*result = *result2;
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (result2) {
+    *result2 = *result;
+  }
+  ret = untraced_syscall5(syscallno, fd, offset_high, offset_low, result2,
+                          whence);
+  if (result2) {
+    *result = *result2;
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_madvise(const struct syscall_info* call)
-{
-	const int syscallno = SYS_madvise;
-	void* addr = (void*)call->args[0];
-	size_t length = call->args[1];
-	int advice = call->args[2];
+static long sys_madvise(const struct syscall_info* call) {
+  const int syscallno = SYS_madvise;
+  void* addr = (void*)call->args[0];
+  size_t length = call->args[1];
+  int advice = call->args[2];
 
-	void *ptr = prep_syscall();
-	long ret;
+  void* ptr = prep_syscall();
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_syscall3(syscallno, addr, length, advice);
-	return commit_raw_syscall(syscallno, ptr, ret);
+  ret = untraced_syscall3(syscallno, addr, length, advice);
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_open(const struct syscall_info* call)
-{
-	const int syscallno = SYS_open;
-	const char* pathname = (const char*)call->args[0];
-	int flags = call->args[1];
-	mode_t mode = call->args[2];
+static long sys_open(const struct syscall_info* call) {
+  const int syscallno = SYS_open;
+  const char* pathname = (const char*)call->args[0];
+  int flags = call->args[1];
+  mode_t mode = call->args[2];
 
-	/* NB: not arming the desched event is technically correct,
-	 * since open() can't deadlock if it blocks.  However, not
-	 * allowing descheds here may cause performance issues if the
-	 * open does block for a while.  Err on the side of simplicity
-	 * until we have perf data. */
-	void* ptr;
-	long ret;
+  /* NB: not arming the desched event is technically correct,
+   * since open() can't deadlock if it blocks.  However, not
+   * allowing descheds here may cause performance issues if the
+   * open does block for a while.  Err on the side of simplicity
+   * until we have perf data. */
+  void* ptr;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	/* The strcmp() done here is OK because we're not in the
-	 * critical section yet. */
-	if (is_blacklisted_filename(pathname)) {
-		/* Would be nice to debug() here, but that would flush
-		 * the syscallbuf ...  This special bail-out case is
-		 * deterministic, so no need to save any breadcrumbs
-		 * in the syscallbuf. */
-		return -ENOENT;
-	}
+  /* The strcmp() done here is OK because we're not in the
+   * critical section yet. */
+  if (is_blacklisted_filename(pathname)) {
+    /* Would be nice to debug() here, but that would flush
+     * the syscallbuf ...  This special bail-out case is
+     * deterministic, so no need to save any breadcrumbs
+     * in the syscallbuf. */
+    return -ENOENT;
+  }
 
-	ptr = prep_syscall();
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  ptr = prep_syscall();
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_syscall3(syscallno, pathname, flags, mode);
-	return commit_raw_syscall(syscallno, ptr, ret);
+  ret = untraced_syscall3(syscallno, pathname, flags, mode);
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_poll(const struct syscall_info* call)
-{
-	const int syscallno = SYS_poll;
-	struct pollfd* fds = (struct pollfd*)call->args[0];
-	unsigned int nfds = call->args[1];
-	int timeout = call->args[2];
+static long sys_poll(const struct syscall_info* call) {
+  const int syscallno = SYS_poll;
+  struct pollfd* fds = (struct pollfd*)call->args[0];
+  unsigned int nfds = call->args[1];
+  int timeout = call->args[2];
 
-	void* ptr = prep_syscall();
-	struct pollfd* fds2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  struct pollfd* fds2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (fds && nfds > 0) {
-		fds2 = ptr;
-		ptr += nfds * sizeof(*fds2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
-	if (fds2) {
-		local_memcpy(fds2, fds, nfds * sizeof(*fds2));
-	}
+  if (fds && nfds > 0) {
+    fds2 = ptr;
+    ptr += nfds * sizeof(*fds2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  if (fds2) {
+    local_memcpy(fds2, fds, nfds * sizeof(*fds2));
+  }
 
-	ret = untraced_syscall3(syscallno, fds2, nfds, timeout);
+  ret = untraced_syscall3(syscallno, fds2, nfds, timeout);
 
-	if (fds2) {
-		/* NB: even when poll returns 0 indicating no pending
-		 * fds, it still sets each .revent outparam to 0.
-		 * (Reasonably.)  So we always need to copy on return
-		 * value >= 0.  poll() may or may not copy on errors,
-		 * but we assume those are rare enough not to merit a
-		 * special case here. */
-		local_memcpy(fds, fds2, nfds * sizeof(*fds));
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (fds2) {
+    /* NB: even when poll returns 0 indicating no pending
+     * fds, it still sets each .revent outparam to 0.
+     * (Reasonably.)  So we always need to copy on return
+     * value >= 0.  poll() may or may not copy on errors,
+     * but we assume those are rare enough not to merit a
+     * special case here. */
+    local_memcpy(fds, fds2, nfds * sizeof(*fds));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_read(const struct syscall_info* call)
-{
-	const int syscallno = SYS_read;
-	int fd = call->args[0];
-	void* buf = (void*)call->args[1];
-	size_t count = call->args[2];
+static long sys_read(const struct syscall_info* call) {
+  const int syscallno = SYS_read;
+  int fd = call->args[0];
+  void* buf = (void*)call->args[1];
+  size_t count = call->args[2];
 
-	void* ptr = prep_syscall();
-	void* buf2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  void* buf2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (buf && count > 0) {
-		buf2 = ptr;
-		ptr += count;
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  if (buf && count > 0) {
+    buf2 = ptr;
+    ptr += count;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_syscall3(syscallno, fd, buf2, count);
+  ret = untraced_syscall3(syscallno, fd, buf2, count);
 
-	if (buf2 && ret > 0) {
-		local_memcpy(buf, buf2, ret);
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (buf2 && ret > 0) {
+    local_memcpy(buf, buf2, ret);
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_readlink(const struct syscall_info* call)
-{
-	const int syscallno = SYS_readlink;
-	const char* path = (const char*)call->args[0];
-	char* buf = (char*)call->args[1];
-	int bufsiz = call->args[2];
+static long sys_readlink(const struct syscall_info* call) {
+  const int syscallno = SYS_readlink;
+  const char* path = (const char*)call->args[0];
+  char* buf = (char*)call->args[1];
+  int bufsiz = call->args[2];
 
-	void* ptr = prep_syscall();
-	char* buf2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  char* buf2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (buf && bufsiz > 0) {
-		buf2 = ptr;
-		ptr += bufsiz;
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  if (buf && bufsiz > 0) {
+    buf2 = ptr;
+    ptr += bufsiz;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_syscall3(syscallno, path, buf2, bufsiz);
-	if (buf2 && ret > 0) {
-		local_memcpy(buf, buf2, ret);
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  ret = untraced_syscall3(syscallno, path, buf2, bufsiz);
+  if (buf2 && ret > 0) {
+    local_memcpy(buf, buf2, ret);
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_recv(const struct syscall_info* call)
-{
-	const int syscallno = SYS_socketcall;
-	long* args = (long*)call->args[1];
-	int sockfd = args[0];
-	void* buf = (void*)args[1];
-	size_t len = args[2];
-	unsigned int flags = args[3];
+static long sys_recv(const struct syscall_info* call) {
+  const int syscallno = SYS_socketcall;
+  long* args = (long*)call->args[1];
+  int sockfd = args[0];
+  void* buf = (void*)args[1];
+  size_t len = args[2];
+  unsigned int flags = args[3];
 
-	void* ptr = prep_syscall();
-	void* buf2 = NULL;
-	long ret;
+  void* ptr = prep_syscall();
+  void* buf2 = NULL;
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (buf && len > 0) {
-		buf2 = ptr;
-		ptr += len;
-	}
-	if (!start_commit_buffered_syscall(SYS_socketcall, ptr, MAY_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  if (buf && len > 0) {
+    buf2 = ptr;
+    ptr += len;
+  }
+  if (!start_commit_buffered_syscall(SYS_socketcall, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
+  ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
 
-	if (buf2 && ret > 0) {
-		local_memcpy(buf, buf2, ret);
-	}
-	return commit_raw_syscall(SYS_socketcall, ptr, ret);
+  if (buf2 && ret > 0) {
+    local_memcpy(buf, buf2, ret);
+  }
+  return commit_raw_syscall(SYS_socketcall, ptr, ret);
 }
 
-static long sys_socketcall(const struct syscall_info* call)
-{
-	switch (call->args[0]) {
-	case SYS_RECV:
-		return sys_recv(call);
-	default:
-		return traced_raw_syscall(call);
-	}
+static long sys_socketcall(const struct syscall_info* call) {
+  switch (call->args[0]) {
+    case SYS_RECV:
+      return sys_recv(call);
+    default:
+      return traced_raw_syscall(call);
+  }
 }
 
-static long sys_time(const struct syscall_info* call)
-{
-	const int syscallno = SYS_time;
-	time_t* tp = (time_t*)call->args[0];
+static long sys_time(const struct syscall_info* call) {
+  const int syscallno = SYS_time;
+  time_t* tp = (time_t*)call->args[0];
 
-	void* ptr = prep_syscall();
-	long ret;
+  void* ptr = prep_syscall();
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
-	ret = untraced_syscall1(syscallno, NULL);
-	if (tp) {
-		/* No error is possible here. */
-		*tp = ret;
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall1(syscallno, NULL);
+  if (tp) {
+    /* No error is possible here. */
+    *tp = ret;
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_xstat64(const struct syscall_info* call)
-{
-	const int syscallno = call->no;
-	/* NB: this arg may be a string or an fd, but for the purposes
-	 * of this generic helper we don't care. */
-	long what = call->args[0];
-	struct stat64* buf = (struct stat64*)call->args[1];
+static long sys_xstat64(const struct syscall_info* call) {
+  const int syscallno = call->no;
+  /* NB: this arg may be a string or an fd, but for the purposes
+   * of this generic helper we don't care. */
+  long what = call->args[0];
+  struct stat64* buf = (struct stat64*)call->args[1];
 
-	/* Like open(), not arming the desched event because it's not
-	 * needed for correctness, and there are no data to suggest
-	 * whether it's a good idea perf-wise. */
-	void* ptr = prep_syscall();
-	struct stat64* buf2 = NULL;
-	long ret;
+  /* Like open(), not arming the desched event because it's not
+   * needed for correctness, and there are no data to suggest
+   * whether it's a good idea perf-wise. */
+  void* ptr = prep_syscall();
+  struct stat64* buf2 = NULL;
+  long ret;
 
-	if (buf) {
-		buf2 = ptr;
-		ptr += sizeof(*buf2);
-	}
-	if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
-	ret = untraced_syscall2(syscallno, what, buf2);
-	if (buf2) {
-		local_memcpy(buf, buf2, sizeof(*buf));
-	}
-	return commit_raw_syscall(syscallno, ptr, ret);
+  if (buf) {
+    buf2 = ptr;
+    ptr += sizeof(*buf2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, what, buf2);
+  if (buf2) {
+    local_memcpy(buf, buf2, sizeof(*buf));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_write(const struct syscall_info* call)
-{
-	const int syscallno = SYS_write;
-	int fd = call->args[0];
-	const void* buf = (const void*)call->args[1];
-	size_t count = call->args[2];
+static long sys_write(const struct syscall_info* call) {
+  const int syscallno = SYS_write;
+  int fd = call->args[0];
+  const void* buf = (const void*)call->args[1];
+  size_t count = call->args[2];
 
-	void* ptr = prep_syscall();
-	long ret;
+  void* ptr = prep_syscall();
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	/* We always have to trap for writes to the magic save-data
-	 * fd, because the rr tracer processes them specially.
-	 *
-	 * TODO: buffer them normally here. */
-	if (RR_MAGIC_SAVE_DATA_FD == fd ||
-	    !start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  /* We always have to trap for writes to the magic save-data
+   * fd, because the rr tracer processes them specially.
+   *
+   * TODO: buffer them normally here. */
+  if (RR_MAGIC_SAVE_DATA_FD == fd ||
+      !start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_syscall3(syscallno, fd, buf, count);
+  ret = untraced_syscall3(syscallno, fd, buf, count);
 
-	return commit_raw_syscall(syscallno, ptr, ret);
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_writev(const struct syscall_info* call)
-{
-	int syscallno = SYS_writev;
-	int fd = call->args[0];
-	const struct iovec* iov = (const struct iovec*)call->args[1];
-	unsigned long iovcnt = call->args[2];
+static long sys_writev(const struct syscall_info* call) {
+  int syscallno = SYS_writev;
+  int fd = call->args[0];
+  const struct iovec* iov = (const struct iovec*)call->args[1];
+  unsigned long iovcnt = call->args[2];
 
-	void* ptr = prep_syscall();
-	long ret;
+  void* ptr = prep_syscall();
+  long ret;
 
-	assert(syscallno == call->no);
+  assert(syscallno == call->no);
 
-	if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-		return traced_raw_syscall(call);
-	}
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
 
-	ret = untraced_syscall3(syscallno, fd, iov, iovcnt);
+  ret = untraced_syscall3(syscallno, fd, iov, iovcnt);
 
-	return commit_raw_syscall(syscallno, ptr, ret);
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
 /* Explicitly declare this as hidden so we can call it from
  * _vsyscall_hook_trampoline without doing all sorts of special PIC handling.
  */
-__attribute__((visibility("hidden"))) long
-vsyscall_hook(const struct syscall_info* call)
-{
-	switch (call->no) {
-#define CASE(syscallname)						\
-		case SYS_ ## syscallname: return sys_ ## syscallname(call)
-	CASE(access);
-	CASE(clock_gettime);
-	CASE(close);
-	CASE(creat);
-	CASE(fcntl64);
-	CASE(futex);
-	CASE(gettimeofday);
-	CASE(_llseek);
-	CASE(madvise);
-	CASE(open);
-	CASE(poll);
-	CASE(read);
-	CASE(readlink);
-	CASE(socketcall);
-	CASE(time);
-	CASE(write);
-	CASE(writev);
+__attribute__((visibility("hidden"))) long vsyscall_hook(
+    const struct syscall_info* call) {
+  switch (call->no) {
+#define CASE(syscallname)                                                      \
+  case SYS_##syscallname:                                                      \
+    return sys_##syscallname(call)
+    CASE(access);
+    CASE(clock_gettime);
+    CASE(close);
+    CASE(creat);
+    CASE(fcntl64);
+    CASE(futex);
+    CASE(gettimeofday);
+    CASE(_llseek);
+    CASE(madvise);
+    CASE(open);
+    CASE(poll);
+    CASE(read);
+    CASE(readlink);
+    CASE(socketcall);
+    CASE(time);
+    CASE(write);
+    CASE(writev);
 #undef CASE
-	case SYS_fstat64:
-	case SYS_lstat64:
-	case SYS_stat64:
-		return sys_xstat64(call);
-	default:
-		return traced_raw_syscall(call);
-	}
+    case SYS_fstat64:
+    case SYS_lstat64:
+    case SYS_stat64:
+      return sys_xstat64(call);
+    default:
+      return traced_raw_syscall(call);
+  }
 }
 
 /**
@@ -1723,32 +1641,22 @@ long __sysconf(int name);
  *  Pretend that only 1 processor is configured/online, because rr
  *  binds all tracees to one logical CPU.
  */
-long sysconf(int name)
-{
-	switch (name) {
-	case _SC_NPROCESSORS_ONLN:
-	case _SC_NPROCESSORS_CONF:
-		return 1;
-	}
-	return __sysconf(name);
+long sysconf(int name) {
+  switch (name) {
+    case _SC_NPROCESSORS_ONLN:
+    case _SC_NPROCESSORS_CONF:
+      return 1;
+  }
+  return __sysconf(name);
 }
 
 /** Disable XShm since rr doesn't work with it */
-int XShmQueryExtension(void* dpy)
-{
-	return 0;
-}
+int XShmQueryExtension(void* dpy) { return 0; }
 
 /** Make sure XShmCreateImage returns null in case an application doesn't do
     extension checks first. */
-void *XShmCreateImage(register void *dpy,
-	register void *visual,
-	unsigned int depth,
-	int format,
-	char *data,
-	void *shminfo,
-	unsigned int width,
-	unsigned int height)
-{
-	return 0;
+void* XShmCreateImage(register void* dpy, register void* visual,
+                      unsigned int depth, int format, char* data, void* shminfo,
+                      unsigned int width, unsigned int height) {
+  return 0;
 }

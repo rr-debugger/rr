@@ -1,19 +1,18 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
-
 static void handle_sigtrap(int sig) {
-	atomic_puts("EXIT-SUCCESS");
-	_exit(0);
+  atomic_puts("EXIT-SUCCESS");
+  _exit(0);
 }
 
-int main(int argc, char *argv[]) {
-	signal(SIGTRAP, handle_sigtrap);
+int main(int argc, char* argv[]) {
+  signal(SIGTRAP, handle_sigtrap);
 
-	atomic_puts("raising SIGTRAP ...");
+  atomic_puts("raising SIGTRAP ...");
 
-	raise(SIGTRAP);
+  raise(SIGTRAP);
 
-	return 0;
+  return 0;
 }

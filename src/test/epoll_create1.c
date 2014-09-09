@@ -1,18 +1,18 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
-int main(int argc, char *argv[]) {
-	int fd;
+int main(int argc, char* argv[]) {
+  int fd;
 
-	fd = epoll_create1(0);
-	atomic_printf("New epoll file descriptor: %d\n", fd);
+  fd = epoll_create1(0);
+  atomic_printf("New epoll file descriptor: %d\n", fd);
 
-	if (fd >= 0) {
-		atomic_puts("EXIT-SUCCESS");
-	}
+  if (fd >= 0) {
+    atomic_puts("EXIT-SUCCESS");
+  }
 
-	close(fd);
+  close(fd);
 
-	return 0;
+  return 0;
 }

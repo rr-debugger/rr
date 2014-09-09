@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
@@ -8,37 +8,36 @@
 static pthread_mutex_t lock;
 
 static void* thread(void* idp) {
-	int tid = (intptr_t)idp;
-	int i;
+  int tid = (intptr_t)idp;
+  int i;
 
-	atomic_printf("thread %d starting ...\n", tid);
-	for (i = 0; i < NUM_TRIALS; ++i) {
-		pthread_mutex_lock(&lock);
-		sched_yield();
-		pthread_mutex_unlock(&lock);
-	}
-	atomic_printf("  ... thread %d done.\n", tid);
-	return NULL;
+  atomic_printf("thread %d starting ...\n", tid);
+  for (i = 0; i < NUM_TRIALS; ++i) {
+    pthread_mutex_lock(&lock);
+    sched_yield();
+    pthread_mutex_unlock(&lock);
+  }
+  atomic_printf("  ... thread %d done.\n", tid);
+  return NULL;
 }
 
-int main(int argc, char *argv[]) {
-	pthread_mutexattr_t attr;
-	pthread_t threads[NUM_THREADS];
-	int i;
+int main(int argc, char* argv[]) {
+  pthread_mutexattr_t attr;
+  pthread_t threads[NUM_THREADS];
+  int i;
 
-	pthread_mutexattr_init(&attr);
-	test_assert(0 == pthread_mutexattr_setprotocol(&attr,
-						       PTHREAD_PRIO_INHERIT));
-	test_assert(0 == pthread_mutex_init(&lock, &attr));
+  pthread_mutexattr_init(&attr);
+  test_assert(0 == pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT));
+  test_assert(0 == pthread_mutex_init(&lock, &attr));
 
-	for (i = 0; i < NUM_THREADS; ++i) {
-		test_assert(0 == pthread_create(&threads[i], NULL,
-						thread, (void*)(intptr_t)i));
-	}
-	for (i = 0; i < NUM_THREADS; ++i) {
-		test_assert(0 == pthread_join(threads[i], NULL));
-	}
+  for (i = 0; i < NUM_THREADS; ++i) {
+    test_assert(0 ==
+                pthread_create(&threads[i], NULL, thread, (void*)(intptr_t)i));
+  }
+  for (i = 0; i < NUM_THREADS; ++i) {
+    test_assert(0 == pthread_join(threads[i], NULL));
+  }
 
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }

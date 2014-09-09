@@ -1,36 +1,35 @@
-/* -*- Mode: C; tab-width: 8; c-basic-offset: 8; indent-tabs-mode: t; -*- */
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "rrutil.h"
 
 static pthread_cond_t condvar = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t mutex;
 
-static void* start_thread(void* p)
-{
-	while (1) {
-		sched_yield();
-		pthread_mutex_lock(&mutex);
-		pthread_cond_signal(&condvar);
-		pthread_mutex_unlock(&mutex);
-	}
-	return NULL;
+static void* start_thread(void* p) {
+  while (1) {
+    sched_yield();
+    pthread_mutex_lock(&mutex);
+    pthread_cond_signal(&condvar);
+    pthread_mutex_unlock(&mutex);
+  }
+  return NULL;
 }
 
 int main(int argc, char** argv) {
-	pthread_mutexattr_t attr;
-	pthread_t thread;
+  pthread_mutexattr_t attr;
+  pthread_t thread;
 
-	pthread_mutexattr_init(&attr);
-	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-	pthread_mutex_init(&mutex, &attr);
+  pthread_mutexattr_init(&attr);
+  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(&mutex, &attr);
 
-	pthread_create(&thread, NULL, start_thread, NULL);
+  pthread_create(&thread, NULL, start_thread, NULL);
 
-	pthread_mutex_lock(&mutex);
-	pthread_cond_wait(&condvar, &mutex);
-	pthread_cond_wait(&condvar, &mutex);
-	pthread_mutex_unlock(&mutex);
+  pthread_mutex_lock(&mutex);
+  pthread_cond_wait(&condvar, &mutex);
+  pthread_cond_wait(&condvar, &mutex);
+  pthread_mutex_unlock(&mutex);
 
-	atomic_puts("EXIT-SUCCESS");
-	return 0;
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
 }
