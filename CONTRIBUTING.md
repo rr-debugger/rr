@@ -18,4 +18,8 @@ Please make sure you go through this list before submitting a patch.  The rules 
 
 - [ ] If your PR is large or includes many changesets, would it have been possible to break the changes into a series of smaller PRs?  For example, it's hard to review a big patch that, say, fixes whitespace errors in a file along with a one-line, important, bug fix.  It's much easier to review one PR that fixes whitespace (which can just be skimmed), and then review another PR that makes the one-line bug fix (which would be scrutinized more).  This approach is also better for the patch author in that it usually allows the work to land faster, and reduces the burden of continually un-bit-rotting large, trivial, changes.
 
-- [ ] Whitespace is an eternal annoyance.  For historical reasons, rr uses hard tabs with an 8-char offset (like the linux kernel).  It's just easier for everyone if you make sure your editor uses that mode.
+- [ ] Did you check your code is formatted correctly? It's easiest to run
+''''
+find src include -name '*.cc' -or -name '*.h' -or -name '*.c'|xargs clang-format -i -style=file
+''''
+on each commit.
