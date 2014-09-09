@@ -5,7 +5,7 @@ TRACE_DIR=trace_0
 function expect_replay_fail {
     replay
     if [[ $(cat replay.err) == "" ]]; then
-	echo "Test '$TESTNAME' FAILED: replay should have failed, but it succeeded."
+        echo "Test '$TESTNAME' FAILED: replay should have failed, but it succeeded."
         exit 1
     fi
     echo "  (replay failed as expected)"

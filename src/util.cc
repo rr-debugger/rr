@@ -956,7 +956,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
      * mappings, so err on the safe side.
      *
      * TODO: could get into dirty heuristics here like
-     * trying to match "cache" in the filename ...	 */
+     * trying to match "cache" in the filename ... */
     LOG(debug) << "  copying private mapping of non-system -x " << filename;
     return true;
   }

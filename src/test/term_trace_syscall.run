@@ -7,7 +7,7 @@ record $EXE 10000 &             # sleep "forever"
 
 echo "Waiting for token '$SYNC_TOKEN' from tracee ..."
 until grep -q $SYNC_TOKEN record.out; do
-        sleep 0
+    sleep 0
 done
 
 rrpid=$(parent_pid_of $(pidof $EXE-$nonce))
@@ -23,7 +23,7 @@ echo "  done."
 wait
 
 if [[ "record.out" == $(grep -l "EXIT-SUCCESS" record.out) ]]; then
-   	echo "Test '$TESTNAME' FAILED: error during recording: tracer not interrupted in time."
+    echo "Test '$TESTNAME' FAILED: error during recording: tracer not interrupted in time."
 fi
 
 echo "Replaying ..."

@@ -32,14 +32,6 @@ int main(int argc, char* argv[]) {
   test_assert(wpage1 != wpage2);
   test_assert(wpage2 - wpage1 == page_size || wpage1 - wpage2 == page_size);
 
-#if 0
-	{
-		char cmd[4096];
-		snprintf(cmd, sizeof(cmd) - 1, "cat /proc/%d/maps", getpid());
-		system(cmd);
-	}
-#endif
-
   atomic_puts("EXIT-SUCCESS");
 
   return 0;

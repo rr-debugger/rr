@@ -27,30 +27,30 @@ function delay_kill { sig=$1; delay_secs=$2; proc=$3
 
     pid=""
     for i in `seq 1 5`; do
-	live=`ps ax -o 'pid= cmd=' | awk '{print $1 " " $2}' | grep $proc`
-	num=`echo "$live" | wc -l`
-	if [[ "$num" -eq 1 ]]; then
-	    pid=`echo "$live" | awk '{print $1}'`
-	    break
-	fi
-	sleep 0.1
+        live=`ps ax -o 'pid= cmd=' | awk '{print $1 " " $2}' | grep $proc`
+        num=`echo "$live" | wc -l`
+        if [[ "$num" -eq 1 ]]; then
+            pid=`echo "$live" | awk '{print $1}'`
+            break
+        fi
+        sleep 0.1
     done
 
     if [[ "$num" -gt 1 ]]; then
-	leave_data=y
-	echo FAILED: "$num" of "'$proc'" >&2
-	exit 1
+        leave_data=y
+        echo FAILED: "$num" of "'$proc'" >&2
+        exit 1
     elif [[ -z "$pid" ]]; then
-	leave_data=y
-	echo FAILED: process "'$proc'" not located >&2
-	exit 1
+        leave_data=y
+        echo FAILED: process "'$proc'" not located >&2
+        exit 1
     fi
 
     kill -s $sig $pid
     if [[ $? != 0 ]]; then
-	leave_data=y
-	echo FAILED: signal $sig not delivered to "'$proc'" >&2
-	exit 1
+        leave_data=y
+        echo FAILED: signal $sig not delivered to "'$proc'" >&2
+        exit 1
     fi
 
     echo Successfully delivered signal $sig to "'$proc'"
@@ -64,11 +64,11 @@ function fatal { #...
 function onexit {
     cd
     if [[ "$leave_data" != "y" ]]; then
-	rm -rf $workdir
+        rm -rf $workdir
     else
-	echo Test $TESTNAME failed, leaving behind $workdir.
-	echo To replay the failed test, run
-	echo " " _RR_TRACE_DIR="$workdir" rr replay
+        echo Test $TESTNAME failed, leaving behind $workdir.
+        echo To replay the failed test, run
+        echo " " _RR_TRACE_DIR="$workdir" rr replay
     fi
 }
 
@@ -151,8 +151,8 @@ function fails { why=$1;
 # use this to prevent it from running when that's the case.
 function skip_if_no_syscall_buf {
     if [[ "-n" == "$LIB_ARG" ]]; then
-	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is disabled
-	exit 0
+        echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is disabled
+        exit 0
     fi
 }
 
@@ -160,14 +160,14 @@ function skip_if_no_syscall_buf {
 # enabled, skip it.  This better be a temporary situation!
 function skip_if_syscall_buf {
     if [[ "-b" == "$LIB_ARG" || "" == "$LIB_ARG" ]]; then
-	echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is enabled
-	exit 0
+        echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is enabled
+        exit 0
     fi
 }
 
 function just_record { exe=$1; exeargs=$2;
     _RR_TRACE_DIR="$workdir" \
-	rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
+        rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out
 }
 
 function save_exe { exe=$1;
@@ -190,7 +190,7 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 
 function replay { replayflags=$1
     _RR_TRACE_DIR="$workdir" \
-	rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
+        rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
 #  debug <exe> <expect-script-name> [replay-args]
@@ -198,12 +198,12 @@ function replay { replayflags=$1
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { exe=$1; expectscript=$2; replayargs=$3
     _RR_TRACE_DIR="$workdir" \
-	python $TESTDIR/$expectscript.py $exe-$nonce \
-	rr $GLOBAL_OPTIONS replay -x $TESTDIR/test_setup.gdb $replayargs
+        python $TESTDIR/$expectscript.py $exe-$nonce \
+        rr $GLOBAL_OPTIONS replay -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
-	passed
+        passed
     else
-	failed "debug script failed"
+        failed "debug script failed"
     fi
 }
 
@@ -221,21 +221,21 @@ function passed {
 # Otherwise the test fails.
 function check { token=$1;
     if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out ]; then
-	failed "output files not found."
+        failed "output files not found."
     elif [[ $(cat replay.err) != "" ]]; then
-	failed ": error during replay:"
-	echo "--------------------------------------------------"
-	cat replay.err
-	echo "--------------------------------------------------"
+        failed ": error during replay:"
+        echo "--------------------------------------------------"
+        cat replay.err
+        echo "--------------------------------------------------"
     elif [[ $(diff record.out replay.out) != "" ]]; then
-	failed ": output from recording different than replay"
-	echo "diff -U8 $workdir/record.out $workdir/replay.out"
-	diff -U8 record.out replay.out
+        failed ": output from recording different than replay"
+        echo "diff -U8 $workdir/record.out $workdir/replay.out"
+        diff -U8 record.out replay.out
     elif [[ "$token" != "" && "record.out" != $(grep -l "$token" record.out) ]]; then
-	failed ": token '$token' not in output:"
-	echo "--------------------------------------------------"
-	cat record.out
-	echo "--------------------------------------------------"
+        failed ": token '$token' not in output:"
+        echo "--------------------------------------------------"
+        cat record.out
+        echo "--------------------------------------------------"
     else
         passed
     fi
@@ -253,7 +253,7 @@ function compare_test { token=$1; replayflags=$2;
         test=$3
     fi
     if [[ $token == "" ]]; then
-	failed ": didn't pass an exit token"
+        failed ": didn't pass an exit token"
     fi
     record $test
     replay $replayflags

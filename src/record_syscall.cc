@@ -303,10 +303,10 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
   assert(!t->desched_rec());
 
   /* int socketcall(int call, unsigned long *args) {
-   * 		long a[6];
-   * 		copy_from_user(a,args);
-   *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
-   *  }
+   *   long a[6];
+   *   copy_from_user(a,args);
+   *   sys_recv(a0, (void __user *)a1, a[2], a[3]);
+   * }
    *
    *  (from http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
    */
@@ -1351,8 +1351,8 @@ template <typename Arch> static void process_execve(Task* t) {
    *        where the stack pointer does not point to argc. For example,
    *        it may point to &argc.
    */
-  //	long* argc = (long*)t->read_word((byte*)stack_ptr);
-  //	stack_ptr += *argc + 1;
+  // long* argc = (long*)t->read_word((byte*)stack_ptr);
+  // stack_ptr += *argc + 1;
   intptr_t argc = t->read_word(stack_ptr);
   stack_ptr += argc + 1;
 
@@ -1845,10 +1845,10 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
     /* ssize_t recv(int sockfd, void *buf, size_t len, int flags)
      * implemented by:
      * int socketcall(int call, unsigned long *args) {
-     * 		long a[6];
-     * 		copy_from_user(a,args);
-     *  	sys_recv(a0, (void __user *)a1, a[2], a[3]);
-     *  }
+     *   long a[6];
+     *   copy_from_user(a,args);
+     *   sys_recv(a0, (void __user *)a1, a[2], a[3]);
+     * }
      */
     case SYS_RECV: {
       typename Arch::recv_args args;
