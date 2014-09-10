@@ -69,7 +69,7 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
 // For instances where the system type and the rr type are named identically.
 #define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
 
-struct kernel_constants {
+struct KernelConstants {
   static const ::size_t SIGINFO_MAX_SIZE = 128;
 
   // These types are the same size everywhere.
@@ -79,7 +79,7 @@ struct kernel_constants {
   typedef uint32_t socklen_t;
 };
 
-struct wordsize32_defs : public kernel_constants {
+struct wordsize32_defs : public KernelConstants {
   static const ::size_t SIGINFO_PAD_SIZE =
       (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 3;
 
@@ -108,7 +108,7 @@ struct wordsize32_defs : public kernel_constants {
   typedef Elf32_Sym ElfSym;
 };
 
-struct wordsize64_defs : public kernel_constants {
+struct wordsize64_defs : public KernelConstants {
   static const ::size_t SIGINFO_PAD_SIZE =
       (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 4;
 
