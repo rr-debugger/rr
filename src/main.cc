@@ -146,20 +146,6 @@ static int dump(int argc, char* argv[], char** envp) {
   return 0;
 }
 
-static int start(const char* rr_exe, int argc, char* argv[], char** envp) {
-  switch (rr_flags()->option) {
-    case RECORD:
-      return record(rr_exe, argc, argv, envp);
-    case REPLAY:
-      return replay(argc, argv, envp);
-    case DUMP_EVENTS:
-      return dump(argc, argv, envp);
-    default:
-      FATAL() << "Unknown option " << rr_flags()->option;
-      return 0; // unreached
-  }
-}
-
 static void assert_prerequisites(Flags* flags) {
   struct utsname uname_buf;
   memset(&uname_buf, 0, sizeof(uname_buf));
@@ -509,7 +495,13 @@ static int parse_common_args(int argc, char** argv, Flags* flags) {
   }
 }
 
-static int parse_args(int argc, char** argv, Flags* flags) {
+enum Command {
+  RECORD,
+  REPLAY,
+  DUMP_EVENTS
+};
+
+static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
   const char* exe = argv[0];
   const char* cmd;
   int cmdi;
@@ -534,21 +526,21 @@ static int parse_args(int argc, char** argv, Flags* flags) {
 
   cmd = argv[cmdi];
   if (!strcmp("record", cmd)) {
-    flags->option = RECORD;
+    *command = RECORD;
     return parse_record_args(cmdi + 1, argc, argv, flags);
   }
   if (!strcmp("replay", cmd)) {
-    flags->option = REPLAY;
+    *command = REPLAY;
     return parse_replay_args(cmdi + 1, argc, argv, flags);
   }
   if (!strcmp("dump", cmd)) {
-    flags->option = DUMP_EVENTS;
+    *command = DUMP_EVENTS;
     return parse_dump_args(cmdi + 1, argc, argv, flags);
   }
   if (!strcmp("help", cmd) || !strcmp("-h", cmd) || !strcmp("--help", cmd)) {
     return -1;
   }
-  flags->option = RECORD;
+  *command = RECORD;
   return parse_record_args(cmdi, argc, argv, flags);
 }
 
@@ -578,7 +570,6 @@ static void init_random() {
 
 int main(int argc, char* argv[]) {
   int argi; /* index of first positional argument */
-  int wait_secs;
   Flags* flags = rr_flags_for_init();
 
   init_random();
@@ -590,12 +581,11 @@ int main(int argc, char* argv[]) {
     _exit(EX_CONFIG);
   }
 
-  if (0 > (argi = parse_args(argc, argv, flags)) ||
-      argc < argi
-          // |rr replay| is allowed to have no arguments to replay
-          // the most recently saved trace.
-      ||
-      (REPLAY != flags->option && argc <= argi)) {
+  Command command;
+  if (0 > (argi = parse_args(argc, argv, flags, &command)) || argc < argi ||
+      // |rr replay| is allowed to have no arguments to replay
+      // the most recently saved trace.
+      (REPLAY != command && argc <= argi)) {
     print_usage();
     return 1;
   }
@@ -605,7 +595,7 @@ int main(int argc, char* argv[]) {
     check_performance_settings();
   }
 
-  wait_secs = flags->wait_secs;
+  int wait_secs = flags->wait_secs;
   if (wait_secs > 0) {
     struct timespec ts;
     ts.tv_sec = wait_secs;
@@ -617,7 +607,7 @@ int main(int argc, char* argv[]) {
     LOG(info) << "... continuing.";
   }
 
-  if (RECORD == flags->option) {
+  if (RECORD == command) {
     LOG(info) << "Scheduler using max_events=" << flags->max_events
               << ", max_rbc=" << flags->max_rbc;
 
@@ -633,5 +623,19 @@ int main(int argc, char* argv[]) {
     flags->syscall_buffer_lib_path = find_syscall_buffer_library();
   }
 
-  return start(argv[0], argc - argi, argv + argi, environ);
+  const char* rr_exe = argv[0];
+  argc -= argi;
+  argv += argi;
+
+  switch (command) {
+    case RECORD:
+      return record(rr_exe, argc, argv, environ);
+    case REPLAY:
+      return replay(argc, argv, environ);
+    case DUMP_EVENTS:
+      return dump(argc, argv, environ);
+    default:
+      FATAL() << "Unknown option " << command;
+      return 0; // unreached
+  }
 }

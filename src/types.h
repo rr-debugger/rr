@@ -16,10 +16,6 @@
  * command line arguments for rr
  */
 
-#define RECORD 1
-#define REPLAY 2
-#define DUMP_EVENTS 3
-
 #define DUMP_ON_ALL 10000
 #define DUMP_ON_NONE -DUMP_ON_ALL
 
@@ -52,7 +48,6 @@ struct Flags {
   /* Whenever |ignore_sig| is pending for a tracee, decline to
    * deliver it. */
   int ignore_sig;
-  int option;
   bool redirect;
   bool use_syscall_buffer;
   std::string syscall_buffer_lib_path;
@@ -109,7 +104,6 @@ struct Flags {
       : max_rbc(0),
         max_events(0),
         ignore_sig(0),
-        option(0),
         redirect(false),
         use_syscall_buffer(false),
         syscall_buffer_lib_path(""),
