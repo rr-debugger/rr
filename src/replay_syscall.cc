@@ -74,7 +74,7 @@ struct syscall_def {
   ssize_t num_emu_args;
 };
 
-#define SYSCALL_NUM(_name) x86_arch::_name
+#define SYSCALL_NUM(_name) X86Arch::_name
 
 #define SYSCALLNO_X86(num)
 #define SYSCALLNO_X86_64(num)
@@ -113,7 +113,7 @@ static struct syscall_def syscall_defs[] = {
 
 // Reserve a final element which is guaranteed to be an undefined syscall.
 // Negative and out-of-range syscall numbers are mapped to this element.
-static struct syscall_def syscall_table[x86_arch::SYSCALL_COUNT + 1];
+static struct syscall_def syscall_table[X86Arch::SYSCALL_COUNT + 1];
 
 __attribute__((constructor)) static void init_syscall_table() {
   static_assert(ALEN(syscall_defs) <= ALEN(syscall_table), "");

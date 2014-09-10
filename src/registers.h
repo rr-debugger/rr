@@ -87,7 +87,7 @@ enum DebuggerRegister {
  * right number of register bits whether the tracee is 32-bit or 64-bit, and
  * get sign-extension right.
  */
-class Registers : public rr::x86_arch::user_regs_struct {
+class Registers : public rr::X86Arch::user_regs_struct {
 public:
   SupportedArch arch() const { return x86; }
 

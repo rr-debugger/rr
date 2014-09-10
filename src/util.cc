@@ -264,7 +264,7 @@ bool is_always_emulated_syscall(int syscallno) {
 #define SYSCALLNO_X86_64(num)
 #define SYSCALL_UNDEFINED_X86_64()
 #define CASE(_name, _type)                                                     \
-  case static_cast<int>(x86_arch::Syscalls::_name) :                           \
+  case static_cast<int>(X86Arch::Syscalls::_name) :                            \
     return _type();
 #define SYSCALL_DEF0(_name, _type) CASE(_name, _type)
 #define SYSCALL_DEF1(_name, _type, _1, _2) CASE(_name, _type)
@@ -1245,7 +1245,7 @@ static bool is_kernel_vsyscall(Task* t, void* addr) {
  * implementation in |t|'s address space.
  */
 static void* locate_and_verify_kernel_vsyscall(
-    Task* t, size_t nsymbols, const typename x86_arch::ElfSym* symbols,
+    Task* t, size_t nsymbols, const typename X86Arch::ElfSym* symbols,
     const char* symbolnames) {
   void* kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
@@ -1314,9 +1314,9 @@ static void perform_monkeypatch(Task* t, size_t nsymbols,
                                 const char* symbolnames);
 
 template <>
-void perform_monkeypatch<x86_arch>(Task* t, size_t nsymbols,
-                                   const typename x86_arch::ElfSym* symbols,
-                                   const char* symbolnames) {
+void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
+                                  const typename X86Arch::ElfSym* symbols,
+                                  const char* symbolnames) {
   void* kernel_vsyscall =
       locate_and_verify_kernel_vsyscall(t, nsymbols, symbols, symbolnames);
   if (!kernel_vsyscall) {

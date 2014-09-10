@@ -864,7 +864,7 @@ const ExtraRegisters& Task::extra_regs() {
       LOG(debug) << "  (refreshing extra-register cache using FPXREGS)";
 
       extra_registers.format_ = ExtraRegisters::FPXREGS;
-      extra_registers.data.resize(sizeof(x86_arch::user_fpxregs_struct));
+      extra_registers.data.resize(sizeof(X86Arch::user_fpxregs_struct));
       xptrace(PTRACE_GETFPXREGS, NULL, extra_registers.data.data());
     }
 

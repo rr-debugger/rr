@@ -647,7 +647,7 @@ static void validate_args(int event, int state, Task* t) {
     return;
   }
   if (rec_regs.arch() == SupportedArch::x86 &&
-      (x86_arch::pwrite64 == event || x86_arch::pread64 == event) &&
+      (X86Arch::pwrite64 == event || X86Arch::pread64 == event) &&
       STATE_SYSCALL_EXIT == state) {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
      * 12.04 has been observed to mutate $esi across

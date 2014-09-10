@@ -698,7 +698,7 @@ struct BaseArch : public wordsize {
   RR_VERIFY_TYPE(__sysctl_args);
 };
 
-struct x86_arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
+struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   static const size_t elfmachine = EM_386;
   static const size_t elfendian = ELFDATA2LSB;
 
@@ -889,7 +889,7 @@ public:
       default:                                                                 \
         assert(0 && "Unknown architecture");                                   \
       case x86:                                                                \
-        return f<x86_arch>(args);                                              \
+        return f<X86Arch>(args);                                               \
     }                                                                          \
   }
 
