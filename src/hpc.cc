@@ -3,44 +3,29 @@
 #include "hpc.h"
 
 #include <assert.h>
+#include <err.h>
 #include <fcntl.h>
 #include <linux/perf_event.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <sys/poll.h>
-#include <sys/select.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <fstream>
 #include <string>
 
 #include "log.h"
-#include "task.h"
 #include "util.h"
 
 using namespace std;
 
-struct hpc_event_t {
-  struct perf_event_attr attr;
-  int fd;
-};
-
-struct hpc_context {
-  bool started;
-  int group_leader;
-
-  hpc_event_t rbc;
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-  hpc_event_t inst;
-  hpc_event_t page_faults;
-  hpc_event_t hw_int;
-#endif
-};
+static bool attributes_initialized;
+static struct perf_event_attr ticks_attr;
+static struct perf_event_attr page_faults_attr;
+static struct perf_event_attr hw_interrupts_attr;
+static struct perf_event_attr instructions_retired_attr;
 
 /*
  * Find out the cpu model using the cpuid instruction.
@@ -70,20 +55,21 @@ struct PmuConfig {
 };
 
 // XXX please only edit this if you really know what you're doing.
-PmuConfig pmu_configs[] = { { IntelBroadwell, "Intel Broadwell", 0x5101c4,
-                              0x5100c0,       0x5301cb,          true },
-                            { IntelHaswell, "Intel Haswell", 0x5101c4,
-                              0x5100c0,     0x5301cb,        true },
-                            { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4,
-                              0x5100c0,       0x5301cb,           true },
-                            { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4,
-                              0x5100c0,         0x5301cb,             true },
-                            { IntelNehalem, "Intel Nehalem", 0x5101c4,
-                              0x5100c0,     0x50011d,        true },
-                            { IntelWestmere, "Intel Westmere", 0x5101c4,
-                              0x5100c0,      0x50011d,         true },
-                            { IntelPenryn, "Intel Penryn", 0, 0, 0, false },
-                            { IntelMerom, "Intel Merom", 0, 0, 0, false }, };
+static const PmuConfig
+pmu_configs[] = { { IntelBroadwell, "Intel Broadwell", 0x5101c4,
+                    0x5100c0,       0x5301cb,          true },
+                  { IntelHaswell, "Intel Haswell", 0x5101c4,
+                    0x5100c0,     0x5301cb,        true },
+                  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4,
+                    0x5100c0,       0x5301cb,           true },
+                  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4,
+                    0x5100c0,         0x5301cb,             true },
+                  { IntelNehalem, "Intel Nehalem", 0x5101c4,
+                    0x5100c0,     0x50011d,        true },
+                  { IntelWestmere, "Intel Westmere", 0x5101c4,
+                    0x5100c0,      0x50011d,         true },
+                  { IntelPenryn, "Intel Penryn", 0, 0, 0, false },
+                  { IntelMerom, "Intel Merom", 0, 0, 0, false }, };
 
 static string lowercase(const string& s) {
   string c = s;
@@ -157,10 +143,11 @@ static void init_perf_event_attr(struct perf_event_attr* attr,
   attr->exclude_guest = 1;
 }
 
-void init_hpc(Task* t) {
-  struct hpc_context* counters =
-      (struct hpc_context*)calloc(1, sizeof(*counters));
-  t->hpc = counters;
+static void init_attributes() {
+  if (attributes_initialized) {
+    return;
+  }
+  attributes_initialized = true;
 
   CpuMicroarch uarch = get_cpu_microarch();
   const PmuConfig* pmu = nullptr;
@@ -176,138 +163,110 @@ void init_hpc(Task* t) {
     FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
   }
 
-  init_perf_event_attr(&counters->rbc.attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-  init_perf_event_attr(&counters->inst.attr, PERF_TYPE_RAW,
+  init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
+  init_perf_event_attr(&instructions_retired_attr, PERF_TYPE_RAW,
                        pmu->rinsn_cntr_event);
-
-  init_perf_event_attr(&counters->hw_int.attr, PERF_TYPE_RAW,
+  init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
                        pmu->hw_intr_cntr_event);
   // libpfm encodes the event with this bit set, so we'll do the
   // same thing.  Unclear if necessary.
-  counters->hw_int.attr.exclude_hv = 1;
-
-  init_perf_event_attr(&counters->page_faults.attr, PERF_TYPE_SOFTWARE,
+  hw_interrupts_attr.exclude_hv = 1;
+  init_perf_event_attr(&page_faults_attr, PERF_TYPE_SOFTWARE,
                        PERF_COUNT_SW_PAGE_FAULTS);
-#endif
 }
 
-static void start_counter(Task* t, int group_fd, hpc_event_t* counter) {
-  counter->fd =
-      syscall(__NR_perf_event_open, &counter->attr, t->tid, -1, group_fd, 0);
-  if (0 > counter->fd) {
+PerfCounters::PerfCounters(pid_t tid)
+    : tid(tid),
+      fd_ticks(-1),
+      fd_page_faults(-1),
+      fd_hw_interrupts(-1),
+      fd_instructions_retired(-1),
+      started(false) {
+  init_attributes();
+}
+
+static int start_counter(pid_t tid, int group_fd,
+                         struct perf_event_attr* attr) {
+  int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, 0);
+  if (0 > fd) {
     FATAL() << "Failed to initialize counter";
   }
-  if (ioctl(counter->fd, PERF_EVENT_IOC_ENABLE, 0)) {
+  if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {
     FATAL() << "Failed to start counter";
   }
+  return fd;
 }
 
-static void stop_counter(Task* t, const hpc_event_t* counter) {
-  if (ioctl(counter->fd, PERF_EVENT_IOC_DISABLE, 0)) {
-    FATAL() << "Failed to stop counter";
-  }
-}
+void PerfCounters::reset(int64_t ticks_period) {
+  stop();
 
-static void __start_hpc(Task* t) {
-  struct hpc_context* counters = t->hpc;
-  pid_t tid = t->tid;
-
-  start_counter(t, -1, &counters->rbc);
-  counters->group_leader = counters->rbc.fd;
-
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-  start_counter(t, counters->group_leader, &counters->hw_int);
-  start_counter(t, counters->group_leader, &counters->inst);
-  start_counter(t, counters->group_leader, &counters->page_faults);
-#endif
+  struct perf_event_attr attr = ticks_attr;
+  attr.sample_period = ticks_period;
+  fd_ticks = start_counter(tid, -1, &attr);
 
   struct f_owner_ex own;
   own.type = F_OWNER_TID;
   own.pid = tid;
-  if (fcntl(counters->rbc.fd, F_SETOWN_EX, &own)) {
+  if (fcntl(fd_ticks, F_SETOWN_EX, &own)) {
     FATAL() << "Failed to SETOWN_EX rbc event fd";
   }
-  if (fcntl(counters->rbc.fd, F_SETFL, O_ASYNC) ||
-      fcntl(counters->rbc.fd, F_SETSIG, HPC_TIME_SLICE_SIGNAL)) {
+  if (fcntl(fd_ticks, F_SETFL, O_ASYNC) ||
+      fcntl(fd_ticks, F_SETSIG, PerfCounters::TIME_SLICE_SIGNAL)) {
     FATAL() << "Failed to make rbc counter ASYNC with sig"
-            << signalname(HPC_TIME_SLICE_SIGNAL);
+            << signalname(PerfCounters::TIME_SLICE_SIGNAL);
   }
 
-  counters->started = true;
+  if (extra_perf_counters_enabled()) {
+    int group_leader = fd_ticks;
+    fd_hw_interrupts = start_counter(tid, group_leader, &hw_interrupts_attr);
+    fd_instructions_retired =
+        start_counter(tid, group_leader, &instructions_retired_attr);
+    fd_page_faults = start_counter(tid, group_leader, &page_faults_attr);
+  }
+
+  started = true;
 }
 
-void stop_hpc(Task* t) {
-  struct hpc_context* counters = t->hpc;
-  if (!counters->started) {
+static void maybe_close(int* fd) {
+  if (*fd >= 0) {
+    close(*fd);
+    *fd = -1;
+  }
+}
+
+void PerfCounters::stop() {
+  if (!started) {
     return;
   }
+  started = false;
 
-  stop_counter(t, &counters->rbc);
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-  stop_counter(t, &counters->hw_int);
-  stop_counter(t, &counters->inst);
-  stop_counter(t, &counters->page_faults);
-#endif
+  maybe_close(&fd_ticks);
+  maybe_close(&fd_page_faults);
+  maybe_close(&fd_hw_interrupts);
+  maybe_close(&fd_instructions_retired);
 }
 
-static void cleanup_hpc(Task* t) {
-  struct hpc_context* counters = t->hpc;
-
-  stop_hpc(t);
-
-  close(counters->rbc.fd);
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-  close(counters->hw_int.fd);
-  close(counters->inst.fd);
-  close(counters->page_faults.fd);
-#endif
-  counters->started = false;
-}
-
-void reset_hpc(Task* t, int64_t val) {
-  if (t->hpc->started) {
-    cleanup_hpc(t);
-  }
-  t->hpc->rbc.attr.sample_period = val;
-  __start_hpc(t);
-}
-/**
- * Ultimately frees all resources that are used by hpc of the corresponding
- * t. After calling this function, counters cannot be used anymore
- */
-void destroy_hpc(Task* t) {
-  struct hpc_context* counters = t->hpc;
-  cleanup_hpc(t);
-  free(counters);
-}
-
-static int64_t read_counter(struct hpc_context* hpc, int fd) {
-  if (!hpc->started) {
-    return 0;
-  }
+static int64_t read_counter(int fd) {
   int64_t val;
   ssize_t nread = read(fd, &val, sizeof(val));
   assert(nread == sizeof(val));
   return val;
 }
 
-int64_t read_rbc(struct hpc_context* hpc) {
-  return read_counter(hpc, hpc->rbc.fd);
+int64_t PerfCounters::read_ticks() {
+  return started ? read_counter(fd_ticks) : 0;
 }
 
-int rcb_cntr_fd(struct hpc_context* hpc) { return hpc->rbc.fd; }
+PerfCounters::Extra PerfCounters::read_extra() {
+  assert(extra_perf_counters_enabled());
 
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-int64_t read_hw_int(struct hpc_context* hpc) {
-  return read_counter(hpc, hpc->hw_int.fd);
+  Extra extra;
+  if (started) {
+    extra.page_faults = read_counter(fd_page_faults);
+    extra.hw_interrupts = read_counter(fd_hw_interrupts);
+    extra.instructions_retired = read_counter(fd_instructions_retired);
+  } else {
+    memset(&extra, 0, sizeof(extra));
+  }
+  return extra;
 }
-
-int64_t read_insts(struct hpc_context* hpc) {
-  return read_counter(hpc, hpc->inst.fd);
-}
-
-int64_t read_page_faults(struct hpc_context* hpc) {
-  return read_counter(hpc, hpc->page_faults.fd);
-}
-#endif

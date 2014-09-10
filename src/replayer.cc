@@ -1059,7 +1059,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
   bool ignored_early_match = false;
   int64_t rcbs_left_at_ignored_early_match = 0;
 
-  assert(rcb_cntr_fd(t->hpc) > 0);
+  assert(t->hpc.ticks_fd() > 0);
   assert(t->child_sig == 0);
 
   /* Step 1: advance to the target rcb (minus a slack region) as
@@ -1087,7 +1087,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
                << " rcbs";
 
     continue_or_step(t, stepi, rcbs_left - SKID_SIZE);
-    if (HPC_TIME_SLICE_SIGNAL == t->child_sig ||
+    if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
         is_ignored_replay_signal(t->child_sig)) {
       t->child_sig = 0;
     }
@@ -1096,7 +1096,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
     /* TODO this assertion won't catch many spurious
      * signals; should assert that the siginfo says the
      * source is io-ready and the fd is the child's fd. */
-    if (fcntl(rcb_cntr_fd(t->hpc), F_GETOWN) != tid) {
+    if (fcntl(t->hpc.ticks_fd(), F_GETOWN) != tid) {
       FATAL() << "Scheduled task " << tid
               << " doesn't own hpc; replay divergence";
     }
@@ -1237,7 +1237,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
       continue_or_step(t, STEPI);
     }
 
-    if (HPC_TIME_SLICE_SIGNAL == t->child_sig ||
+    if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
         is_ignored_replay_signal(t->child_sig)) {
       /* We don't usually expect a time-slice signal
        * during this phase, but it's possible for an

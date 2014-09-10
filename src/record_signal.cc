@@ -40,8 +40,8 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si) {
    * target, because this signal may have become pending before
    * we reset the HPC counters.  There be a way to handle that
    * more elegantly, but bridge will be crossed in due time. */
-  ASSERT(t, (HPC_TIME_SLICE_SIGNAL == si->si_signo &&
-             si->si_fd == rcb_cntr_fd(t->hpc) && POLL_IN == si->si_code))
+  ASSERT(t, (PerfCounters::TIME_SLICE_SIGNAL == si->si_signo &&
+             si->si_fd == t->hpc.ticks_fd() && POLL_IN == si->si_code))
       << "Tracee is using SIGSTKFLT??? (code=" << si->si_code
       << ", fd=" << si->si_fd << ")";
 }
@@ -252,8 +252,8 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
     // TODO: it's theoretically possible for this to
     // happen an unbounded number of consecutive times
     // and the tracee never switched out.
-    if (SYSCALLBUF_DESCHED_SIGNAL == sig || HPC_TIME_SLICE_SIGNAL == sig ||
-        t->is_sig_ignored(sig)) {
+    if (SYSCALLBUF_DESCHED_SIGNAL == sig ||
+        PerfCounters::TIME_SLICE_SIGNAL == sig || t->is_sig_ignored(sig)) {
       LOG(debug) << "  dropping ignored " << signalname(sig);
       continue;
     }
@@ -508,7 +508,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si) {
     is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
     if (!is_syscall && !is_trace_trap(&tmp_si)) {
-      if (HPC_TIME_SLICE_SIGNAL == tmp_si.si_signo) {
+      if (PerfCounters::TIME_SLICE_SIGNAL == tmp_si.si_signo) {
         LOG(debug) << "  discarding HPC_TIME_SLICE_SIGNAL";
         continue;
       }
@@ -533,7 +533,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si) {
       // behavior. It means such signals won't be observed
       // in a debugger, but that will hardly ever be
       // important.
-      if (HPC_TIME_SLICE_SIGNAL == si->si_signo ||
+      if (PerfCounters::TIME_SLICE_SIGNAL == si->si_signo ||
           t->is_sig_ignored(si->si_signo)) {
         memcpy(si, &tmp_si, sizeof(*si));
         LOG(debug) << "  upgraded delivery of HPC_TIME_SLICE_SIGNAL to "
@@ -596,7 +596,7 @@ static void handle_siginfo(Task* t, siginfo_t* si) {
       }
       break;
 
-    case HPC_TIME_SLICE_SIGNAL:
+    case PerfCounters::TIME_SLICE_SIGNAL:
       assert_is_time_slice_interrupt(t, si);
 
       t->push_event(Event(EV_SCHED, HAS_EXEC_INFO));

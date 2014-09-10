@@ -8,6 +8,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "event.h"
+#include "hpc.h"
 #include "registers.h"
 #include "trace.h"
 #include "util.h"
@@ -1074,7 +1075,7 @@ public:
 
   /* State used during both recording and replay. */
 
-  struct hpc_context* hpc;
+  PerfCounters hpc;
 
   /* This is always the "real" tid of the tracee. */
   pid_t tid;

@@ -22,7 +22,6 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "hpc.h"
 #include "log.h"
 #include "remote_syscalls.h"
 #include "session.h"
@@ -191,7 +190,7 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
       seccomp_bpf_enabled(),
       child_sig(),
       stepped_into_syscall(),
-      hpc(),
+      hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
       traced_syscall_ip(),
@@ -226,8 +225,6 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
   }
 
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO));
-
-  init_hpc(this);
 }
 
 Task::~Task() {
@@ -248,7 +245,6 @@ Task::~Task() {
   tg->erase_task(this);
   as->erase_task(this);
 
-  destroy_hpc(this);
   destroy_local_buffers();
 
   // We need the mem_fd in detach_and_reap().
@@ -711,11 +707,11 @@ void Task::record_event(const Event& ev) {
   frame.ev = ev.encode();
   if (ev.has_exec_info()) {
     frame.rbc = rbc_count();
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-    frame.hw_interrupts = read_hw_int(hpc);
-    frame.page_faults = read_page_faults(hpc);
-    frame.insts = read_insts(hpc);
-#endif
+    if (PerfCounters::extra_perf_counters_enabled()) {
+      frame.extra_perf_values = hpc.read_extra();
+    } else {
+      memset(&frame.extra_perf_values, 0, sizeof(frame.extra_perf_values));
+    }
     frame.recorded_regs = regs();
     if (record_extra_regs(ev)) {
       frame.recorded_extra_regs = extra_regs();
@@ -736,7 +732,7 @@ void Task::flush_inconsistent_state() { rbcs = 0; }
 
 int64_t Task::rbc_count() {
   if (!rbcs_read) {
-    rbcs += read_rbc(hpc);
+    rbcs += hpc.read_ticks();
     rbcs_read = true;
   }
   return rbcs;
@@ -917,7 +913,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   // replay.
   // Accumulate any unknown stuff in rbc_count().
   rbc_count();
-  reset_hpc(this, rbc_period == 0 ? 0xffffffff : rbc_period);
+  hpc.reset(rbc_period == 0 ? 0xffffffff : rbc_period);
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   registers_known = false;
@@ -1320,10 +1316,11 @@ bool Task::wait(AllowInterrupt allow_interrupt) {
   if (sent_wait_interrupt && PTRACE_EVENT_STOP == ptrace_event() &&
       is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(wait_status))) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
-    stashed_wait_status = wait_status = (HPC_TIME_SLICE_SIGNAL << 8) | 0x7f;
+    stashed_wait_status = wait_status =
+        (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
     memset(&stashed_si, 0, sizeof(stashed_si));
-    stashed_si.si_signo = HPC_TIME_SLICE_SIGNAL;
-    stashed_si.si_fd = rcb_cntr_fd(hpc);
+    stashed_si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
+    stashed_si.si_fd = hpc.ticks_fd();
     stashed_si.si_code = POLL_IN;
     // Starve the runaway task of CPU time.  It just got
     // the equivalent of hundreds of time slices.

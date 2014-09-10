@@ -301,7 +301,7 @@ static void disarm_desched(Task* t) {
      * ... through a practically unbounded memcpy(), which
      * can be very expensive. */
     int sig = t->pending_sig();
-    if (HPC_TIME_SLICE_SIGNAL == sig) {
+    if (PerfCounters::TIME_SLICE_SIGNAL == sig) {
       continue;
     }
     if (sig && sig == old_sig) {
@@ -650,16 +650,17 @@ static bool signal_state_changed(Task* t, int by_waitpid) {
         if (!t->cont_singlestep(sig)) {
           return false;
         }
-// It's been observed that when tasks enter
-// sighandlers, the singlestep operation above
-// doesn't retire any instructions; and
-// indeed, if an instruction could be retired,
-// this code wouldn't work.  This also
-// cross-checks the sighandler information we
-// maintain in |t->sighandlers|.
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-        assert(0 == read_insts(t->hpc));
-#endif
+
+        // It's been observed that when tasks enter
+        // sighandlers, the singlestep operation above
+        // doesn't retire any instructions; and
+        // indeed, if an instruction could be retired,
+        // this code wouldn't work.  This also
+        // cross-checks the sighandler information we
+        // maintain in |t->sighandlers|.
+        assert(!PerfCounters::extra_perf_counters_enabled() ||
+               0 == t->hpc.read_extra().instructions_retired);
+
         // It's somewhat difficult engineering-wise to
         // compute the sigframe size at compile time,
         // and it can vary across kernel versions.  So

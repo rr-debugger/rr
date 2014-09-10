@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 9
+#define TRACE_VERSION 10
 
 static ssize_t sizeof_trace_frame_event_info(void) {
   return offsetof(struct trace_frame, end_event_info) -
@@ -91,30 +91,19 @@ void trace_frame::dump(FILE* out, bool raw_dump) {
   }
 
   if (raw_dump) {
-    fprintf(out, " %lld %lld %" PRId64 " %lld",
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-            hw_interrupts, page_faults, rbc, insts
-#else
-            // Don't force tools to detect our config.
-            -1LL, -1LL, rbc, -1LL
-#endif
-            );
+    fprintf(out, " %lld %lld %" PRId64 " %lld", extra_perf_values.hw_interrupts,
+            extra_perf_values.page_faults, rbc,
+            extra_perf_values.instructions_retired);
     r.print_register_file_for_trace(out, true);
     fprintf(out, "\n");
   } else {
-    fprintf(out, "\n"
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-                 "  hw_ints:%lld faults:%lld rbc:%" PRId64 " insns:%lld\n"
-#else
-                 "  rbc:%" PRId64 "\n"
-#endif
-                 "",
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-            hw_interrupts, page_faults, rbc, insts
-#else
-            rbc
-#endif
-            );
+    if (PerfCounters::extra_perf_counters_enabled()) {
+      fprintf(out, "\n  hw_ints:%lld faults:%lld rbc:%" PRId64 " insns:%lld\n",
+              extra_perf_values.hw_interrupts, extra_perf_values.page_faults,
+              rbc, extra_perf_values.instructions_retired);
+    } else {
+      fprintf(out, "\n  rbc:%" PRId64 "\n", rbc);
+    }
     r.print_register_file_for_trace(out, false);
   }
 }

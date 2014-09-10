@@ -58,11 +58,7 @@ struct trace_frame {
 
   STRUCT_DELIMITER(begin_exec_info);
   int64_t rbc;
-#ifdef HPC_ENABLE_EXTRA_PERF_COUNTERS
-  int64_t hw_interrupts;
-  int64_t page_faults;
-  int64_t insts;
-#endif
+  PerfCounters::Extra extra_perf_values;
 
   Registers recorded_regs;
   STRUCT_DELIMITER(end_exec_info);
