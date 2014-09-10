@@ -138,7 +138,7 @@ struct WordSize64Defs : public KernelConstants {
 };
 
 template <SupportedArch arch, typename wordsize>
-struct base_arch : public wordsize {
+struct BaseArch : public wordsize {
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
   typedef typename wordsize::signed_int signed_int;
   typedef typename wordsize::unsigned_int unsigned_int;
@@ -698,7 +698,7 @@ struct base_arch : public wordsize {
   RR_VERIFY_TYPE(__sysctl_args);
 };
 
-struct x86_arch : public base_arch<SupportedArch::x86, WordSize32Defs> {
+struct x86_arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   static const size_t elfmachine = EM_386;
   static const size_t elfendian = ELFDATA2LSB;
 
@@ -774,7 +774,7 @@ struct x86_arch : public base_arch<SupportedArch::x86, WordSize32Defs> {
                       user_fpxregs_struct);
 };
 
-struct x86_64_arch : public base_arch<SupportedArch::x86_64, WordSize64Defs> {
+struct x86_64_arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   static const size_t elfmachine = EM_X86_64;
   static const size_t elfendian = ELFDATA2LSB;
 
