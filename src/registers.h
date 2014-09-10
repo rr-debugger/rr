@@ -232,14 +232,14 @@ public:
   };
 
   // Set values from raw data
-  void set_to_raw_data(Format format, std::vector<byte>& consume_data) {
+  void set_to_raw_data(Format format, std::vector<uint8_t>& consume_data) {
     format_ = format;
     std::swap(data, consume_data);
   }
 
   Format format() const { return format_; }
   int data_size() const { return data.size(); }
-  const byte* data_bytes() const { return data.data(); }
+  const uint8_t* data_bytes() const { return data.data(); }
   bool empty() const { return data.empty(); }
 
   /**
@@ -252,7 +252,7 @@ private:
   friend class Task;
 
   Format format_;
-  std::vector<byte> data;
+  std::vector<uint8_t> data;
 };
 
 #endif /* RR_REGISTERS_H_ */

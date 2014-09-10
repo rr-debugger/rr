@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
    * assertion.  To fix this we'd need to dyanmically determine
    * which page is mapped just before the other and then remap
    * that page. */
-  test_assert((byte*)rpage - (byte*)wpage == num_bytes);
+  test_assert((uint8_t*)rpage - (uint8_t*)wpage == num_bytes);
 
   check_mapping(rpage, wpage, num_bytes / sizeof(*wpage));
 

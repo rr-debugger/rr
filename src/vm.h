@@ -137,7 +137,7 @@ struct Mapping {
   Mapping(void* addr, size_t num_bytes, int prot = 0, int flags = 0,
           off64_t offset = 0)
       : start(addr),
-        end((byte*)addr + ceil_page_size(num_bytes)),
+        end((uint8_t*)addr + ceil_page_size(num_bytes)),
         prot(prot),
         flags(flags & map_flags_mask),
         offset(offset) {
@@ -191,7 +191,7 @@ struct Mapping {
            (start < o.end && o.end <= end);
   }
 
-  size_t num_bytes() const { return (byte*)end - (byte*)start; }
+  size_t num_bytes() const { return (uint8_t*)end - (uint8_t*)start; }
 
   /**
    * Return the lowest-common-denominator interpretation of this
@@ -519,7 +519,7 @@ public:
   bool has_watchpoints() { return !watchpoints.empty(); }
 
   // Encoding of the |int $3| instruction.
-  static const byte breakpoint_insn = 0xCC;
+  static const uint8_t breakpoint_insn = 0xCC;
 
   int mem_fd() { return child_mem_fd; }
   void set_mem_fd(int fd) { child_mem_fd = fd; }
@@ -588,7 +588,7 @@ private:
 
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(void* start, void* end) {
-    heap = Mapping((byte*)start, (byte*)end - (byte*)start,
+    heap = Mapping((uint8_t*)start, (uint8_t*)end - (uint8_t*)start,
                    PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0);
   }
 

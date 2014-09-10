@@ -243,7 +243,7 @@ struct map_iterator_data {
   ssize_t size_bytes;
   /* Pointer to data read from the segment if requested,
    * otherwise NULL. */
-  byte* mem;
+  uint8_t* mem;
   /* Length of data read from segment.  May be less than nominal
    * segment length if an error occurs. */
   ssize_t mem_len;
@@ -336,7 +336,7 @@ void* ceil_page_size(void* addr);
  * Return true if the pointer or size is a multiple of the system
  * |page_size()|.
  */
-bool is_page_aligned(const byte* addr);
+bool is_page_aligned(const uint8_t* addr);
 bool is_page_aligned(size_t sz);
 
 /** Return the system page size. */

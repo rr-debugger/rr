@@ -7,7 +7,7 @@
 int main(int argc, char* argv[]) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   int fd = open(TEST_FILE, O_CREAT | O_EXCL | O_RDWR, 0600);
-  byte* pages;
+  uint8_t* pages;
   int ret, err;
 
   test_assert(fd >= 0);

@@ -68,11 +68,11 @@ struct dbg_context {
   int listen_fd;
   int sock_fd;
   /* XXX probably need to dynamically size these */
-  byte inbuf[32768];  /* buffered input from gdb */
-  ssize_t inlen;      /* length of valid data */
-  ssize_t insize;     /* total size of buffer */
-  ssize_t packetend;  /* index of '#' character */
-  byte outbuf[32768]; /* buffered output for gdb */
+  uint8_t inbuf[32768];  /* buffered input from gdb */
+  ssize_t inlen;         /* length of valid data */
+  ssize_t insize;        /* total size of buffer */
+  ssize_t packetend;     /* index of '#' character */
+  uint8_t outbuf[32768]; /* buffered output for gdb */
   ssize_t outlen;
   ssize_t outsize;
 };
@@ -359,7 +359,7 @@ static void write_flush(struct dbg_context* dbg) {
   dbg->outlen = 0;
 }
 
-static void write_data_raw(struct dbg_context* dbg, const byte* data,
+static void write_data_raw(struct dbg_context* dbg, const uint8_t* data,
                            ssize_t len) {
   assert("Impl dynamic alloc if this fails (or double outbuf size)" &&
          (dbg->outlen + len) < dbg->insize);
@@ -373,31 +373,31 @@ static void write_hex(struct dbg_context* dbg, unsigned long hex) {
   size_t len;
 
   len = snprintf(buf, sizeof(buf) - 1, "%02lx", hex);
-  write_data_raw(dbg, (byte*)buf, len);
+  write_data_raw(dbg, (uint8_t*)buf, len);
 }
 
-static void write_packet_bytes(struct dbg_context* dbg, const byte* data,
+static void write_packet_bytes(struct dbg_context* dbg, const uint8_t* data,
                                size_t num_bytes) {
-  byte checksum;
+  uint8_t checksum;
   size_t i;
 
-  write_data_raw(dbg, (byte*)"$", 1);
+  write_data_raw(dbg, (uint8_t*)"$", 1);
   for (i = 0, checksum = 0; i < num_bytes; ++i) {
     checksum += data[i];
   }
-  write_data_raw(dbg, (byte*)data, num_bytes);
-  write_data_raw(dbg, (byte*)"#", 1);
+  write_data_raw(dbg, (uint8_t*)data, num_bytes);
+  write_data_raw(dbg, (uint8_t*)"#", 1);
   write_hex(dbg, checksum);
 }
 
 static void write_packet(struct dbg_context* dbg, const char* data) {
-  return write_packet_bytes(dbg, (const byte*)data, strlen(data));
+  return write_packet_bytes(dbg, (const uint8_t*)data, strlen(data));
 }
 
 static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
-                                const byte* data, ssize_t num_bytes) {
+                                const uint8_t* data, ssize_t num_bytes) {
   ssize_t pfx_num_chars = strlen(pfx);
-  byte buf[2 * num_bytes + pfx_num_chars];
+  uint8_t buf[2 * num_bytes + pfx_num_chars];
   ssize_t buf_num_bytes = 0;
   int i;
 
@@ -405,7 +405,7 @@ static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
   buf_num_bytes += pfx_num_chars;
 
   for (i = 0; i < num_bytes; ++i) {
-    byte b = data[i];
+    uint8_t b = data[i];
 
     if (buf_num_bytes + 2 > ssize_t(sizeof(buf))) {
       break;
@@ -429,8 +429,8 @@ static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
   return write_packet_bytes(dbg, buf, buf_num_bytes);
 }
 
-static void write_hex_bytes_packet(struct dbg_context* dbg, const byte* bytes,
-                                   size_t len) {
+static void write_hex_bytes_packet(struct dbg_context* dbg,
+                                   const uint8_t* bytes, size_t len) {
   if (0 == len) {
     write_packet(dbg, "");
     return;
@@ -469,7 +469,7 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
  * seen, nonzero if not.
  */
 static int skip_to_packet_start(struct dbg_context* dbg) {
-  byte* p = NULL;
+  uint8_t* p = NULL;
   int i;
 
   /* XXX we want memcspn() here ... */
@@ -517,7 +517,7 @@ static int sniff_packet(struct dbg_context* dbg) {
  * packet(s).
  */
 static void read_packet(struct dbg_context* dbg) {
-  byte* p;
+  uint8_t* p;
   size_t checkedlen;
 
   /* Read and discard bytes until we see the start of a
@@ -542,7 +542,7 @@ static void read_packet(struct dbg_context* dbg) {
 
   /* Read until we see end-of-packet. */
   for (checkedlen = 0;
-       !(p = (byte*)memchr(dbg->inbuf + checkedlen, '#', dbg->inlen));
+       !(p = (uint8_t*)memchr(dbg->inbuf + checkedlen, '#', dbg->inlen));
        checkedlen = dbg->inlen) {
     read_data_once(dbg);
   }
@@ -555,16 +555,16 @@ static void read_packet(struct dbg_context* dbg) {
 
   /* Acknowledge receipt of the packet. */
   if (!dbg->no_ack) {
-    write_data_raw(dbg, (byte*)"+", 1);
+    write_data_raw(dbg, (uint8_t*)"+", 1);
     write_flush(dbg);
   }
 }
 
-static void read_binary_data(const byte* payload, ssize_t data_len,
-                             byte* data) {
+static void read_binary_data(const uint8_t* payload, ssize_t data_len,
+                             uint8_t* data) {
   ssize_t payload_idx = 0;
   for (ssize_t i = 0; i < data_len; ++i) {
-    byte b = payload[payload_idx++];
+    uint8_t b = payload[payload_idx++];
     if ('}' == b) {
       b = 0x20 ^ payload[payload_idx++];
     }
@@ -939,8 +939,9 @@ static int process_packet(struct dbg_context* dbg) {
   int ret;
 
   assert(INTERRUPT_CHAR == dbg->inbuf[0] ||
-         ('$' == dbg->inbuf[0] && (((byte*)memchr(dbg->inbuf, '#', dbg->inlen) -
-                                    dbg->inbuf) == dbg->packetend)));
+         ('$' == dbg->inbuf[0] &&
+          (((uint8_t*)memchr(dbg->inbuf, '#', dbg->inlen) - dbg->inbuf) ==
+           dbg->packetend)));
 
   if (INTERRUPT_CHAR == dbg->inbuf[0]) {
     request = INTERRUPT_CHAR;
@@ -1060,12 +1061,12 @@ static int process_packet(struct dbg_context* dbg) {
       dbg->req.mem.len = strtoul(payload, &payload, 16);
       ++payload;
       // This is freed by dbg_reply_set_mem().
-      dbg->req.mem.data = (byte*)malloc(dbg->req.mem.len);
+      dbg->req.mem.data = (uint8_t*)malloc(dbg->req.mem.len);
       // TODO: verify that the length of |payload| is as
       // expected in the presence of escaped data.  Right
       // now this call is potential-buffer-overrun-city.
-      read_binary_data((const byte*)payload, dbg->req.mem.len,
-                       (byte*)dbg->req.mem.data);
+      read_binary_data((const uint8_t*)payload, dbg->req.mem.len,
+                       (uint8_t*)dbg->req.mem.data);
 
       LOG(debug) << "gdb setting memory (addr=" << dbg->req.mem.addr
                  << ", len=" << dbg->req.mem.len << ")";
@@ -1373,7 +1374,7 @@ void dbg_reply_get_auxv(struct dbg_context* dbg,
   assert(DREQ_GET_AUXV == dbg->req.type);
 
   if (len > 0) {
-    write_binary_packet(dbg, "l", (byte*)auxv, len * sizeof(auxv[0]));
+    write_binary_packet(dbg, "l", (uint8_t*)auxv, len * sizeof(auxv[0]));
   } else {
     write_packet(dbg, "E01");
   }
@@ -1396,7 +1397,7 @@ void dbg_reply_get_thread_extra_info(struct dbg_context* dbg,
   LOG(debug) << "thread extra info: '" << info << "'";
   // XXX docs don't say whether we should send the null
   // terminator.  See what happens.
-  write_hex_bytes_packet(dbg, (const byte*)info, 1 + strlen(info));
+  write_hex_bytes_packet(dbg, (const uint8_t*)info, 1 + strlen(info));
 
   consume_request(dbg);
 }
@@ -1415,7 +1416,8 @@ void dbg_reply_select_thread(struct dbg_context* dbg, int ok) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len) {
+void dbg_reply_get_mem(struct dbg_context* dbg, const uint8_t* mem,
+                       size_t len) {
   assert(DREQ_GET_MEM == dbg->req.type);
   assert(len <= dbg->req.mem.len);
 
@@ -1428,7 +1430,7 @@ void dbg_reply_set_mem(struct dbg_context* dbg, int ok) {
   assert(DREQ_SET_MEM == dbg->req.type);
 
   write_packet(dbg, ok ? "OK" : "E01");
-  free((byte*)dbg->req.mem.data);
+  free((uint8_t*)dbg->req.mem.data);
 
   consume_request(dbg);
 }
@@ -1541,7 +1543,7 @@ void dbg_reply_detach(struct dbg_context* dbg) {
   consume_request(dbg);
 }
 
-void dbg_reply_read_siginfo(struct dbg_context* dbg, const byte* si_bytes,
+void dbg_reply_read_siginfo(struct dbg_context* dbg, const uint8_t* si_bytes,
                             ssize_t num_bytes) {
   assert(DREQ_READ_SIGINFO == dbg->req.type);
 

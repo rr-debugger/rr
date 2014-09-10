@@ -122,7 +122,7 @@ private:
  * tracee state when the data was read.
  */
 struct raw_data {
-  std::vector<byte> data;
+  std::vector<uint8_t> data;
   void* addr;
   EncodedEvent ev;
   uint32_t global_time;

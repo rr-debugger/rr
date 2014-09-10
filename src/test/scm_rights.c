@@ -10,12 +10,12 @@ static void child(int sock, int fd_minus_one) {
   struct msghdr msg = { 0 };
   union {
     int ints[2];
-    byte bytes[sizeof(int[2])];
+    uint8_t bytes[sizeof(int[2])];
   } mbuf;
   struct iovec iov;
   /* make cbuf bigger than necessary so we can test that the correct
      value is written back (the amount actually written by the kernel) */
-  byte cbuf[CMSG_SPACE(sizeof(fd)) + 77];
+  uint8_t cbuf[CMSG_SPACE(sizeof(fd)) + 77];
   const struct cmsghdr* cmsg;
   int zero = ~0;
   ssize_t nread;
@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
   struct msghdr msg = { 0 };
   int mbuf = MAGIC;
   struct iovec iov;
-  byte cbuf[CMSG_SPACE(sizeof(fd))];
+  uint8_t cbuf[CMSG_SPACE(sizeof(fd))];
   struct cmsghdr* cmsg;
   ssize_t nsent;
   int err;

@@ -53,7 +53,7 @@
 
 #include <rr/rr.h>
 
-typedef unsigned char byte;
+typedef unsigned char uint8_t;
 
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 

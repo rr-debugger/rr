@@ -433,7 +433,7 @@ public:
   bool is_entering_traced_syscall() {
     // |int $0x80| is |5d 80|, so |2| comes from
     // |sizeof(int $0x80)|.
-    void* next_ip = (byte*)ip() + 2;
+    void* next_ip = (uint8_t*)ip() + 2;
     return next_ip == traced_syscall_ip;
   }
 
@@ -574,7 +574,7 @@ public:
    * Read |N| bytes from |child_addr| into |buf|, or don't
    * return.
    */
-  template <size_t N> void read_bytes(void* child_addr, byte (&buf)[N]) {
+  template <size_t N> void read_bytes(void* child_addr, uint8_t (&buf)[N]) {
     return read_bytes_helper(child_addr, N, buf);
   }
 
@@ -646,7 +646,7 @@ public:
    */
   template <typename T> void read_mem(void* child_addr, T* val) {
     return read_bytes_helper(child_addr, sizeof(*val),
-                             reinterpret_cast<byte*>(val));
+                             reinterpret_cast<uint8_t*>(val));
   }
 
   /**
@@ -884,7 +884,8 @@ public:
    * Write |N| bytes from |buf| to |child_addr|, or don't
    * return.
    */
-  template <size_t N> void write_bytes(void* child_addr, const byte (&buf)[N]) {
+  template <size_t N>
+  void write_bytes(void* child_addr, const uint8_t (&buf)[N]) {
     return write_bytes_helper(child_addr, N, buf);
   }
 
@@ -896,7 +897,7 @@ public:
    */
   template <typename T> void write_mem(void* child_addr, const T& val) {
     return write_bytes_helper(child_addr, sizeof(val),
-                              reinterpret_cast<const byte*>(&val));
+                              reinterpret_cast<const uint8_t*>(&val));
   }
   /**
    * This is not the helper you're looking for.  See above: you
@@ -912,9 +913,9 @@ public:
    * Read/write the number of bytes that the template wrapper
    * inferred.
    */
-  ssize_t read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf);
-  void read_bytes_helper(void* addr, ssize_t buf_size, byte* buf);
-  void write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf);
+  ssize_t read_bytes_fallible(void* addr, ssize_t buf_size, uint8_t* buf);
+  void read_bytes_helper(void* addr, ssize_t buf_size, uint8_t* buf);
+  void write_bytes_helper(void* addr, ssize_t buf_size, const uint8_t* buf);
 
   /** See |pending_sig()| above. */
   int pending_sig_from_status(int status) const;
@@ -1171,13 +1172,13 @@ private:
    * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use
    * as fallback. Returns number of bytes actually read.
    */
-  ssize_t read_bytes_ptrace(void* addr, ssize_t buf_size, byte* buf);
+  ssize_t read_bytes_ptrace(void* addr, ssize_t buf_size, uint8_t* buf);
 
   /**
    * Write tracee memory using PTRACE_POKEDATA calls. Slow, only use
    * as fallback. Returns number of bytes actually written.
    */
-  ssize_t write_bytes_ptrace(void* addr, ssize_t buf_size, const byte* buf);
+  ssize_t write_bytes_ptrace(void* addr, ssize_t buf_size, const uint8_t* buf);
 
   /**
    * Map the syscallbuffer for this, shared with this process.

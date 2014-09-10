@@ -4,10 +4,10 @@
 
 int main(int argc, char* argv[]) {
   size_t page_size = sysconf(_SC_PAGESIZE);
-  byte* map1 = mmap(NULL, page_size, PROT_READ | PROT_WRITE,
-                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-  byte* map1_end = map1 + page_size;
-  byte* map2;
+  uint8_t* map1 = mmap(NULL, page_size, PROT_READ | PROT_WRITE,
+                       MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  uint8_t* map1_end = map1 + page_size;
+  uint8_t* map2;
 
   test_assert(map1 != (void*)-1);
 

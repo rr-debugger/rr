@@ -141,7 +141,7 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
         LOG(debug) << "Adding ref to diversion session";
         session->diversion_ref();
         // TODO: maybe share with replayer.cc?
-        byte si_bytes[req->mem.len];
+        uint8_t si_bytes[req->mem.len];
         memset(si_bytes, 0, sizeof(si_bytes));
         dbg_reply_read_siginfo(dbg, si_bytes, sizeof(si_bytes));
         continue;

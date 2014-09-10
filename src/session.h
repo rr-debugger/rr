@@ -253,7 +253,7 @@ public:
    */
   struct rep_trace_step& current_replay_step() { return replay_step; }
 
-  byte* syscallbuf_flush_buffer() { return syscallbuf_flush_buffer_array; }
+  uint8_t* syscallbuf_flush_buffer() { return syscallbuf_flush_buffer_array; }
   const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
     return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
   }
@@ -353,7 +353,7 @@ private:
    * record-by-record, as the tracee exits those syscalls.
    * This needs to be word-aligned.
    */
-  byte syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
+  uint8_t syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
   /**
    * True when the session has reached the state in trace_frame.
    * False when the session is working towards the state in trace_frame.

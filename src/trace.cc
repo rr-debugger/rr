@@ -200,7 +200,7 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct trace_frame& frame) {
     tif.events.read(&extra_reg_format, sizeof(extra_reg_format));
     tif.events.read((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
     if (extra_reg_bytes > 0) {
-      std::vector<byte> data;
+      std::vector<uint8_t> data;
       data.resize(extra_reg_bytes);
       tif.events.read((char*)data.data(), extra_reg_bytes);
       frame.recorded_extra_regs.set_to_raw_data(

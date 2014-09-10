@@ -54,7 +54,7 @@ static void restore_sigsegv_state(Task* t) {
   kernel_sigaction sa = t->signal_action(SIGSEGV);
   AutoRemoteSyscalls remote(t);
   {
-    AutoRestoreMem child_sa(remote, (const byte*)&sa, sizeof(sa));
+    AutoRestoreMem child_sa(remote, (const uint8_t*)&sa, sizeof(sa));
     int ret = remote.syscall(SYS_rt_sigaction, SIGSEGV,
                              static_cast<void*>(child_sa), nullptr, _NSIG / 8);
     ASSERT(t, 0 == ret) << "Failed to restore SIGSEGV handler";
@@ -67,9 +67,9 @@ static void restore_sigsegv_state(Task* t) {
 }
 
 /** Return true iff |t->ip()| points at a RDTSC instruction. */
-static const byte rdtsc_insn[] = { 0x0f, 0x31 };
+static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
 static bool is_ip_rdtsc(Task* t) {
-  byte insn[sizeof(rdtsc_insn)];
+  uint8_t insn[sizeof(rdtsc_insn)];
   if (sizeof(insn) != t->read_bytes_fallible(t->ip(), sizeof(insn), insn)) {
     return false;
   }

@@ -101,7 +101,7 @@ static __thread int thread_inited;
  * segment.  At the start of the segment is an object of type |struct
  * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
  * header. */
-static __thread byte* buffer;
+static __thread uint8_t* buffer;
 /* This is used to support the buffering of "may-block" system calls.
  * The problem that needs to be addressed can be introduced with a
  * simple example; assume that we're buffering the "read" and "write"
@@ -160,13 +160,15 @@ static struct syscallbuf_hdr* buffer_hdr(void) {
  * Return a pointer to the byte just after the last valid syscall record in
  * the buffer.
  */
-static byte* buffer_last(void) { return (byte*)next_record(buffer_hdr()); }
+static uint8_t* buffer_last(void) {
+  return (uint8_t*)next_record(buffer_hdr());
+}
 
 /**
  * Return a pointer to the byte just after the very end of the mapped
  * region.
  */
-static byte* buffer_end(void) { return buffer + SYSCALLBUF_BUFFER_SIZE; }
+static uint8_t* buffer_end(void) { return buffer + SYSCALLBUF_BUFFER_SIZE; }
 
 #define MEMCPY_UNROLL 4
 #define MEMCPY_WORD uintptr_t

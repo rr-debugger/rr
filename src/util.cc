@@ -383,8 +383,8 @@ void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
       FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
               << " and that's not supported.";
     }
-    data.info.start_addr = (byte*)start;
-    data.info.end_addr = (byte*)end;
+    data.info.start_addr = (uint8_t*)start;
+    data.info.end_addr = (uint8_t*)end;
 
     data.info.prot |= strchr(flags, 'r') ? PROT_READ : 0;
     data.info.prot |= strchr(flags, 'w') ? PROT_WRITE : 0;
@@ -396,7 +396,7 @@ void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
     if (caller_wants_segment_read(t, &data.info, filt, filt_data)) {
       void* addr = data.info.start_addr;
       ssize_t nbytes = data.size_bytes;
-      data.mem = (byte*)malloc(nbytes);
+      data.mem = (uint8_t*)malloc(nbytes);
       data.mem_len = t->read_bytes_fallible(addr, nbytes, data.mem);
       /* TODO: expose read errors, somehow. */
       data.mem_len = max(ssize_t(0), data.mem_len);
@@ -423,7 +423,7 @@ void print_process_mmap(Task* t) {
                      NULL);
 }
 
-bool is_page_aligned(const byte* addr) {
+bool is_page_aligned(const uint8_t* addr) {
   return is_page_aligned(reinterpret_cast<size_t>(addr));
 }
 
@@ -505,7 +505,8 @@ static void dump_binary_chunk(FILE* out, const char* label, const uint32_t* buf,
   fprintf(out, "%s\n", label);
   for (i = 0; i < ssize_t(buf_len); i += 1) {
     uint32_t word = buf[i];
-    fprintf(out, "0x%08x | [%p]\n", word, (byte*)start_addr + i * sizeof(*buf));
+    fprintf(out, "0x%08x | [%p]\n", word,
+            (uint8_t*)start_addr + i * sizeof(*buf));
   }
 }
 
@@ -554,7 +555,7 @@ void dump_process_memory(Task* t, int global_time, const char* tag) {
   for (auto& kv : as.memmap()) {
     const Mapping& first = kv.first;
     const MappableResource& second = kv.second;
-    vector<byte> mem;
+    vector<uint8_t> mem;
     mem.resize(first.num_bytes());
 
     ssize_t mem_len =
@@ -672,7 +673,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
     const Mapping& first = kv.first;
     const MappableResource& second = kv.second;
 
-    vector<byte> mem;
+    vector<uint8_t> mem;
     ssize_t valid_mem_len = 0;
 
     if (checksum_segment_filter(first, second)) {
@@ -1037,8 +1038,8 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
                align_size(sizeof(msg)) + align_size(sizeof(cmsgbuf)) +
                    align_size(sizeof(msgdata)));
   AutoRestoreMem remote_socketcall_args_holder(remote, nullptr, data_length);
-  byte* remote_socketcall_args =
-      static_cast<byte*>(static_cast<void*>(remote_socketcall_args_holder));
+  uint8_t* remote_socketcall_args =
+      static_cast<uint8_t*>(static_cast<void*>(remote_socketcall_args_holder));
 
   memset(&socket_addr, 0, sizeof(socket_addr));
   socket_addr.sun_family = AF_UNIX;
@@ -1064,7 +1065,7 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
     FATAL() << "Failed to create child socket";
   }
 
-  byte* remote_sockaddr =
+  uint8_t* remote_sockaddr =
       remote_socketcall_args + align_size(sizeof(struct socketcall_args));
   t->write_mem(remote_sockaddr, socket_addr);
   write_socketcall_args(t, remote_socketcall_args, child_sock,
@@ -1093,10 +1094,10 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   // call to finish, since it's likely not defined whether the
   // sendmsg() may block on our recvmsg()ing what the tracee
   // sent us (in which case we would deadlock with the tracee).
-  byte* remote_msg =
+  uint8_t* remote_msg =
       remote_socketcall_args + align_size(sizeof(struct socketcall_args));
-  byte* remote_msgdata = remote_msg + align_size(sizeof(msg));
-  byte* remote_cmsgbuf = remote_msgdata + align_size(sizeof(msgdata));
+  uint8_t* remote_msgdata = remote_msg + align_size(sizeof(msg));
+  uint8_t* remote_cmsgbuf = remote_msgdata + align_size(sizeof(msgdata));
   msgdata.iov_base = remote_msg; // doesn't matter much, we ignore the data
   msgdata.iov_len = 1;
   t->write_mem(remote_msgdata, msgdata);
@@ -1190,7 +1191,7 @@ void destroy_buffers(Task* t) {
   exit_regs.set_syscallno(SYS_exit);
   exit_regs.set_ip(exit_regs.ip() - sizeof(syscall_insn));
 
-  byte insn[sizeof(syscall_insn)];
+  uint8_t insn[sizeof(syscall_insn)];
   t->read_bytes((void*)exit_regs.ip(), insn);
   ASSERT(t, !memcmp(insn, syscall_insn, sizeof(insn)))
       << "Tracee should have entered through int $0x80.";
@@ -1203,23 +1204,23 @@ void destroy_buffers(Task* t) {
   advance_syscall(t);
 }
 
-static const byte vsyscall_impl[] = { 0x51,       /* push %ecx */
-                                      0x52,       /* push %edx */
-                                      0x55,       /* push %ebp */
-                                      0x89, 0xe5, /* mov %esp,%ebp */
-                                      0x0f, 0x34, /* sysenter */
-                                      0x90,       /* nop */
-                                      0x90,       /* nop */
-                                      0x90,       /* nop */
-                                      0x90,       /* nop */
-                                      0x90,       /* nop */
-                                      0x90,       /* nop */
-                                      0x90,       /* nop */
-                                      0xcd, 0x80, /* int $0x80 */
-                                      0x5d,       /* pop %ebp */
-                                      0x5a,       /* pop %edx */
-                                      0x59,       /* pop %ecx */
-                                      0xc3,       /* ret */
+static const uint8_t vsyscall_impl[] = { 0x51,       /* push %ecx */
+                                         0x52,       /* push %edx */
+                                         0x55,       /* push %ebp */
+                                         0x89, 0xe5, /* mov %esp,%ebp */
+                                         0x0f, 0x34, /* sysenter */
+                                         0x90,       /* nop */
+                                         0x90,       /* nop */
+                                         0x90,       /* nop */
+                                         0x90,       /* nop */
+                                         0x90,       /* nop */
+                                         0x90,       /* nop */
+                                         0x90,       /* nop */
+                                         0xcd, 0x80, /* int $0x80 */
+                                         0x5d,       /* pop %ebp */
+                                         0x5a,       /* pop %edx */
+                                         0x59,       /* pop %ecx */
+                                         0xc3,       /* ret */
 };
 
 /**
@@ -1227,7 +1228,7 @@ static const byte vsyscall_impl[] = { 0x51,       /* push %ecx */
  * implementation.
  */
 static bool is_kernel_vsyscall(Task* t, void* addr) {
-  byte impl[sizeof(vsyscall_impl)];
+  uint8_t impl[sizeof(vsyscall_impl)];
   t->read_bytes(addr, impl);
   for (size_t i = 0; i < sizeof(vsyscall_impl); ++i) {
     if (vsyscall_impl[i] != impl[i]) {
@@ -1286,7 +1287,7 @@ static void* locate_and_verify_kernel_vsyscall(
 
 // NBB: the placeholder bytes in |struct insns_template| below must be
 // kept in sync with this.
-static const byte vsyscall_monkeypatch[] = {
+static const uint8_t vsyscall_monkeypatch[] = {
   0x50,                         // push %eax
   0xb8, 0x00, 0x00, 0x00, 0x00, // mov $_vsyscall_hook_trampoline, %eax
   // The immediate param of the |mov| is filled in dynamically
@@ -1298,8 +1299,8 @@ static const byte vsyscall_monkeypatch[] = {
 struct insns_template {
   // NBB: |vsyscall_monkeypatch| must be kept in sync with these
   // placeholder bytes.
-  byte push_eax_insn;
-  byte mov_vsyscall_hook_trampoline_eax_insn;
+  uint8_t push_eax_insn;
+  uint8_t mov_vsyscall_hook_trampoline_eax_insn;
   void* vsyscall_hook_trampoline;
 } __attribute__((packed));
 
@@ -1334,7 +1335,7 @@ void perform_monkeypatch<x86_arch>(Task* t, size_t nsymbols,
   // we don't need to prepare remote syscalls here.
   void* vsyscall_hook_trampoline = (void*)t->regs().arg1();
   union {
-    byte bytes[sizeof(vsyscall_monkeypatch)];
+    uint8_t bytes[sizeof(vsyscall_monkeypatch)];
     struct insns_template insns;
   } __attribute__((packed)) patch;
 
@@ -1364,7 +1365,7 @@ static void locate_vdso_symbols(Task* t, size_t* nsymbols, void** symbols,
 
   void* sections_start = static_cast<char*>(vdso_start) + elfheader.e_shoff;
   typename Arch::ElfShdr sections[elfheader.e_shnum];
-  t->read_bytes_helper(sections_start, sizeof(sections), (byte*)sections);
+  t->read_bytes_helper(sections_start, sizeof(sections), (uint8_t*)sections);
 
   typename Arch::ElfShdr* dynsym = nullptr;
   typename Arch::ElfShdr* dynstr = nullptr;
@@ -1401,9 +1402,9 @@ template <typename Arch> static void monkeypatch_vdso_arch(Task* t) {
                             &strtabaddr);
 
   typename Arch::ElfSym symbols[nsymbols];
-  t->read_bytes_helper(symbolsaddr, sizeof(symbols), (byte*)symbols);
+  t->read_bytes_helper(symbolsaddr, sizeof(symbols), (uint8_t*)symbols);
   char strtab[strtabsize];
-  t->read_bytes_helper(strtabaddr, sizeof(strtab), (byte*)strtab);
+  t->read_bytes_helper(strtabaddr, sizeof(strtab), (uint8_t*)strtab);
 
   perform_monkeypatch<Arch>(t, nsymbols, symbols, strtab);
 }

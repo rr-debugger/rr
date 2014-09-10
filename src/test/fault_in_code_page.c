@@ -4,12 +4,12 @@
 
 typedef int (*fn_type)(void);
 static fn_type fn = NULL;
-static const byte fn_insns[] = { 0xb8, 0x2a, 0x00,
-                                 0x00, 0x00, /* movl $42, %eax */
-                                 0xc3,       /* ret */
+static const uint8_t fn_insns[] = { 0xb8, 0x2a, 0x00,
+                                    0x00, 0x00, /* movl $42, %eax */
+                                    0xc3,       /* ret */
 };
 
-static byte* code_page;
+static uint8_t* code_page;
 static size_t page_size;
 
 static int fault_count;

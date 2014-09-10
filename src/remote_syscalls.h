@@ -11,7 +11,7 @@
 class AutoRemoteSyscalls;
 class Task;
 
-static const byte syscall_insn[] = { 0xcd, 0x80 };
+static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
 
 /**
  * Helpers to make remote syscalls oh behalf of a Task.  Usage looks
@@ -35,7 +35,8 @@ public:
    * will be undone.  The address of the tmp mem space is
    * available via operator void*().
    */
-  AutoRestoreMem(AutoRemoteSyscalls& remote, const byte* mem, ssize_t num_bytes)
+  AutoRestoreMem(AutoRemoteSyscalls& remote, const uint8_t* mem,
+                 ssize_t num_bytes)
       : remote(remote) {
     init(mem, num_bytes);
   }
@@ -45,7 +46,7 @@ public:
    * the trailing '\0' byte.
    */
   AutoRestoreMem(AutoRemoteSyscalls& remote, const char* str) : remote(remote) {
-    init((const byte*)str, strlen(str) + 1 /*null byte*/);
+    init((const uint8_t*)str, strlen(str) + 1 /*null byte*/);
   }
 
   ~AutoRestoreMem();
@@ -53,13 +54,13 @@ public:
   operator void*() const { return addr; }
 
 private:
-  void init(const byte* mem, ssize_t num_bytes);
+  void init(const uint8_t* mem, ssize_t num_bytes);
 
   AutoRemoteSyscalls& remote;
   /* Address of tmp mem. */
   void* addr;
   /* Pointer to saved data. */
-  byte* data;
+  uint8_t* data;
   /* (We keep this around for error checking.) */
   void* saved_sp;
   /* Length of tmp mem. */
@@ -173,7 +174,7 @@ private:
   Registers initial_regs;
   void* initial_ip;
   int pending_syscallno;
-  byte code_buffer[sizeof(syscall_insn)];
+  uint8_t code_buffer[sizeof(syscall_insn)];
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;

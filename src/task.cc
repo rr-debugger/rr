@@ -745,7 +745,7 @@ void Task::record_local(void* addr, ssize_t num_bytes, const void* data) {
 
   struct raw_data buf;
   buf.addr = addr;
-  buf.data.assign((const byte*)data, (const byte*)data + num_bytes);
+  buf.data.assign((const uint8_t*)data, (const uint8_t*)data + num_bytes);
   buf.ev = ev().encode();
   buf.global_time = ofstream().time();
   ofstream() << buf;
@@ -787,11 +787,11 @@ string Task::read_c_str(void* child_addr) {
   while (true) {
     // We're only guaranteed that [child_addr,
     // end_of_page) is mapped.
-    void* end_of_page = ceil_page_size((byte*)child_addr + 1);
-    ssize_t nbytes = (byte*)end_of_page - (byte*)child_addr;
+    void* end_of_page = ceil_page_size((uint8_t*)child_addr + 1);
+    ssize_t nbytes = (uint8_t*)end_of_page - (uint8_t*)child_addr;
     char buf[nbytes];
 
-    read_bytes_helper(child_addr, nbytes, reinterpret_cast<byte*>(buf));
+    read_bytes_helper(child_addr, nbytes, reinterpret_cast<uint8_t*>(buf));
     for (int i = 0; i < nbytes; ++i) {
       if ('\0' == buf[i]) {
         return str;
@@ -899,7 +899,7 @@ void* Task::watchpoint_addr(size_t i) {
 
 void Task::remote_memcpy(void* dst, const void* src, size_t num_bytes) {
   // XXX this could be more efficient
-  byte buf[num_bytes];
+  uint8_t buf[num_bytes];
   read_bytes_helper((void*)src, num_bytes, buf);
   write_bytes_helper(dst, num_bytes, buf);
 }
@@ -1441,7 +1441,7 @@ Task* Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
   }
   if (stack) {
     const Mapping& m =
-        t->as->mapping_of((byte*)stack - page_size(), page_size()).first;
+        t->as->mapping_of((uint8_t*)stack - page_size(), page_size()).first;
     LOG(debug) << "mapping stack for " << new_tid << " at " << m;
     t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
                MappableResource::stack(new_tid));
@@ -1519,7 +1519,8 @@ void Task::copy_state(Task* from) {
     {
       char prname[16];
       strncpy(prname, from->name().c_str(), sizeof(prname));
-      AutoRestoreMem remote_prname(remote, (const byte*)prname, sizeof(prname));
+      AutoRestoreMem remote_prname(remote, (const uint8_t*)prname,
+                                   sizeof(prname));
       LOG(debug) << "    setting name to " << prname;
       err = remote.syscall(SYS_prctl, PR_SET_NAME,
                            static_cast<void*>(remote_prname));
@@ -1537,7 +1538,7 @@ void Task::copy_state(Task* from) {
     }
 
     if (const struct user_desc* tls = from->tls()) {
-      AutoRestoreMem remote_tls(remote, (const byte*)tls, sizeof(*tls));
+      AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
       LOG(debug) << "    setting tls " << remote_tls;
       err = remote.syscall(SYS_set_thread_area, static_cast<void*>(remote_tls));
       ASSERT(this, 0 == err);
@@ -1678,7 +1679,7 @@ void Task::open_mem_fd() {
   AutoRemoteSyscalls remote(this);
   long remote_fd;
   {
-    AutoRestoreMem remote_path(remote, (const byte*)path, sizeof(path));
+    AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
     remote_fd =
         remote.syscall(SYS_open, static_cast<void*>(remote_path), O_RDWR);
     assert(remote_fd >= 0);
@@ -1728,8 +1729,8 @@ void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
     FATAL() << "Failed to mmap shmem region";
   }
   void* child_map_addr =
-      (byte*)remote.syscall(SYS_mmap2, map_hint, num_syscallbuf_bytes, prot,
-                            flags, child_shmem_fd, offset_pages);
+      (uint8_t*)remote.syscall(SYS_mmap2, map_hint, num_syscallbuf_bytes, prot,
+                               flags, child_shmem_fd, offset_pages);
   syscallbuf_child = child_map_addr;
   syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
   // No entries to begin with.
@@ -1921,7 +1922,7 @@ static off64_t to_offset(void* addr) {
   return offset;
 }
 
-ssize_t Task::read_bytes_ptrace(void* addr, ssize_t buf_size, byte* buf) {
+ssize_t Task::read_bytes_ptrace(void* addr, ssize_t buf_size, uint8_t* buf) {
   ssize_t nread = 0;
   // ptrace operates on the word size of the host, so we really do want
   // to use sizes of host types here.
@@ -1940,7 +1941,7 @@ ssize_t Task::read_bytes_ptrace(void* addr, ssize_t buf_size, byte* buf) {
     if (errno) {
       break;
     }
-    memcpy(buf + nread, reinterpret_cast<byte*>(&v) + (start - start_word),
+    memcpy(buf + nread, reinterpret_cast<uint8_t*>(&v) + (start - start_word),
            length);
     nread += length;
   }
@@ -1949,7 +1950,7 @@ ssize_t Task::read_bytes_ptrace(void* addr, ssize_t buf_size, byte* buf) {
 }
 
 ssize_t Task::write_bytes_ptrace(void* addr, ssize_t buf_size,
-                                 const byte* buf) {
+                                 const uint8_t* buf) {
   ssize_t nwritten = 0;
   // ptrace operates on the word size of the host, so we really do want
   // to use sizes of host types here.
@@ -1971,8 +1972,8 @@ ssize_t Task::write_bytes_ptrace(void* addr, ssize_t buf_size,
         break;
       }
     }
-    memcpy(reinterpret_cast<byte*>(&v) + (start - start_word), buf + nwritten,
-           length);
+    memcpy(reinterpret_cast<uint8_t*>(&v) + (start - start_word),
+           buf + nwritten, length);
     fallible_ptrace(PTRACE_POKEDATA, reinterpret_cast<void*>(start_word),
                     reinterpret_cast<void*>(v));
     nwritten += length;
@@ -1981,7 +1982,7 @@ ssize_t Task::write_bytes_ptrace(void* addr, ssize_t buf_size,
   return nwritten;
 }
 
-ssize_t Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf) {
+ssize_t Task::read_bytes_fallible(void* addr, ssize_t buf_size, uint8_t* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
     return 0;
@@ -2007,14 +2008,15 @@ ssize_t Task::read_bytes_fallible(void* addr, ssize_t buf_size, byte* buf) {
   return nread;
 }
 
-void Task::read_bytes_helper(void* addr, ssize_t buf_size, byte* buf) {
+void Task::read_bytes_helper(void* addr, ssize_t buf_size, uint8_t* buf) {
   ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
   ASSERT(this, nread == buf_size) << "Should have read " << buf_size
                                   << " bytes from " << addr
                                   << ", but only read " << nread;
 }
 
-void Task::write_bytes_helper(void* addr, ssize_t buf_size, const byte* buf) {
+void Task::write_bytes_helper(void* addr, ssize_t buf_size,
+                              const uint8_t* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
     return;

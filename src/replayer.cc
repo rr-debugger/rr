@@ -198,8 +198,8 @@ static dbg_threadid_t get_threadid(Task* t) {
   return thread;
 }
 
-static byte* read_mem(Task* t, void* addr, size_t len, size_t* read_len) {
-  byte* buf = (byte*)malloc(len);
+static uint8_t* read_mem(Task* t, void* addr, size_t len, size_t* read_len) {
+  uint8_t* buf = (uint8_t*)malloc(len);
   ssize_t nread = t->read_bytes_fallible(addr, len, buf);
   *read_len = max(ssize_t(0), nread);
   return buf;
@@ -403,7 +403,7 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
     }
     case DREQ_GET_MEM: {
       size_t len;
-      byte* mem = read_mem(target, req.mem.addr, req.mem.len, &len);
+      uint8_t* mem = read_mem(target, req.mem.addr, req.mem.len, &len);
       dbg_reply_get_mem(dbg, mem, len);
       free(mem);
       return;
@@ -557,7 +557,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
       // send WRITE_SIGINFO.  For |call foo()|
       // frames, that means we don't know when the
       // diversion session is ending.
-      byte si_bytes[req.mem.len];
+      uint8_t si_bytes[req.mem.len];
       memset(si_bytes, 0, sizeof(si_bytes));
       dbg_reply_read_siginfo(dbg, si_bytes, sizeof(si_bytes));
 
@@ -669,10 +669,10 @@ static void validate_args(int event, int state, Task* t) {
 
 /** Return true when |t|'s $ip points at a syscall instruction. */
 static bool entering_syscall_insn(Task* t) {
-  const byte sysenter[] = { 0x0f, 0x34 };
-  const byte int_0x80[] = { 0xcd, 0x80 };
+  const uint8_t sysenter[] = { 0x0f, 0x34 };
+  const uint8_t int_0x80[] = { 0xcd, 0x80 };
   static_assert(sizeof(sysenter) == sizeof(int_0x80), "Must ==");
-  byte insn[sizeof(sysenter)];
+  uint8_t insn[sizeof(sysenter)];
 
   t->read_bytes(t->ip(), insn);
   return (!memcmp(insn, sysenter, sizeof(sysenter)) ||
@@ -1057,7 +1057,7 @@ static int get_rcb_slack(Task* t) {
 static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
                       int64_t rcb) {
   pid_t tid = t->tid;
-  byte* ip = (byte*)regs->ip();
+  uint8_t* ip = (uint8_t*)regs->ip();
   int64_t rcbs_left;
   int64_t rcb_slack = get_rcb_slack(t);
   bool did_set_internal_breakpoint = false;
@@ -1536,10 +1536,10 @@ static int flush_one_syscall(Task* t, int stepi) {
   const syscallbuf_hdr* flush_hdr =
       t->replay_session().syscallbuf_flush_buffer_hdr();
   const struct syscallbuf_record* rec_rec =
-      (const struct syscallbuf_record*)((byte*)flush_hdr->recs +
+      (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
                                         flush->syscall_record_offset);
   struct syscallbuf_record* child_rec =
-      (struct syscallbuf_record*)((byte*)t->syscallbuf_hdr->recs +
+      (struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
                                   flush->syscall_record_offset);
   int call = rec_rec->syscallno;
   int ret;
@@ -1676,7 +1676,7 @@ static int flush_syscallbuf(Task* t, int stepi) {
     assert(FLUSH_DONE == flush->state);
 
     const struct syscallbuf_record* record =
-        (const struct syscallbuf_record*)((byte*)flush_hdr->recs +
+        (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
                                           flush->syscall_record_offset);
     size_t stored_rec_size = stored_record_size(record->size);
     flush->syscall_record_offset += stored_rec_size;

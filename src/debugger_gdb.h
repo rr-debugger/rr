@@ -150,7 +150,7 @@ struct dbg_request {
       size_t len;
       // For SET_MEM requests, the stream of |len|
       // number of raw bytes that are to be written.
-      const byte* data;
+      const uint8_t* data;
     } mem;
 
     DbgRegister reg;
@@ -289,7 +289,7 @@ void dbg_reply_select_thread(struct dbg_context* dbg, int ok);
  * The first |len| bytes of the request were read into |mem|.  |len|
  * must be less than or equal to the length of the request.
  */
-void dbg_reply_get_mem(struct dbg_context* dbg, const byte* mem, size_t len);
+void dbg_reply_get_mem(struct dbg_context* dbg, const uint8_t* mem, size_t len);
 
 /**
  * |ok| is true if a SET_MEM request succeeded, false otherwise.  This
@@ -352,7 +352,7 @@ void dbg_reply_detach(struct dbg_context* dbg);
  * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
  * |si_bytes = NULL|.
  */
-void dbg_reply_read_siginfo(struct dbg_context* dbg, const byte* si_bytes,
+void dbg_reply_read_siginfo(struct dbg_context* dbg, const uint8_t* si_bytes,
                             ssize_t num_bytes);
 /**
  * Not yet implemented, but call this after a WRITE_SIGINFO request

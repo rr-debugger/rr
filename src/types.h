@@ -7,13 +7,10 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdint.h>
-
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #include <string>
-
-typedef unsigned char byte;
 
 /**
  * command line arguments for rr

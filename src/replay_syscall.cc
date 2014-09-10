@@ -245,7 +245,7 @@ static void rep_maybe_replay_stdio_write_arch(Task* t) {
   if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
     size_t len = t->regs().arg3();
     void* addr = (void*)t->regs().arg2();
-    byte buf[len];
+    uint8_t buf[len];
     // NB: |buf| may not be null-terminated.
     t->read_bytes_helper(addr, sizeof(buf), buf);
     maybe_mark_stdio_write(t, fd);
@@ -285,7 +285,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   t->ifstream() >> file;
 
   t->scratch_ptr = file.start;
-  t->scratch_size = (byte*)file.end - (byte*)file.start;
+  t->scratch_size = (uint8_t*)file.end - (uint8_t*)file.start;
   size_t sz = t->scratch_size;
   int prot = PROT_NONE;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
@@ -1167,7 +1167,7 @@ static void maybe_verify_tracee_saved_data(Task* t, const Registers* rec_regs) {
                                   << ") being replayed as write(" << rep_addr
                                   << ")";
 
-  byte rep_buf[rep_len];
+  uint8_t rep_buf[rep_len];
   t->read_bytes_helper(rep_addr, sizeof(rep_buf), rep_buf);
   if (rec.data.size() != rep_len || memcmp(rec.data.data(), rep_buf, rep_len)) {
     notify_save_data_error(t, rec.addr, rec.data.data(), rec.data.size(),

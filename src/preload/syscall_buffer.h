@@ -43,8 +43,6 @@ extern "C" {
 #define SYS_rrcall_init_buffers __NR_rrcall_init_buffers
 #define SYS_rrcall_monkeypatch_vdso __NR_rrcall_monkeypatch_vdso
 
-typedef unsigned char byte;
-
 /**
  * Packs up the inout parameters passed to |rrcall_init_buffers()|.
  * We use this struct because there are too many params to pass
@@ -106,7 +104,7 @@ struct syscallbuf_record {
    * TODO: static_assert this can repr >= buffer size */
   uint32_t size : 21;
   /* Extra recorded outparam data starts here. */
-  byte extra_data[0];
+  uint8_t extra_data[0];
 } __attribute__((__packed__));
 
 /**

@@ -14,7 +14,7 @@ using namespace std;
 
 /*static*/ ino_t MappableResource::nr_anonymous_maps;
 
-/*static*/ const byte AddressSpace::breakpoint_insn;
+/*static*/ const uint8_t AddressSpace::breakpoint_insn;
 
 dev_t FileId::dev_major() const { return is_real_device() ? MAJOR(device) : 0; }
 
@@ -123,7 +123,7 @@ struct Breakpoint {
   // data, and we can't enforce the order in which breakpoints
   // are set/removed.
   int internal_count, user_count;
-  byte overwritten_data;
+  uint8_t overwritten_data;
   static_assert(sizeof(overwritten_data) ==
                     sizeof(AddressSpace::breakpoint_insn),
                 "Must have the same size.");
@@ -249,7 +249,7 @@ void AddressSpace::dump() const {
 }
 
 TrapType AddressSpace::get_breakpoint_type_for_retired_insn(void* ip) {
-  void* addr = (byte*)ip - sizeof(breakpoint_insn);
+  void* addr = (uint8_t*)ip - sizeof(breakpoint_insn);
   return get_breakpoint_type_at_addr(addr);
 }
 
@@ -321,8 +321,9 @@ void AddressSpace::protect(void* addr, size_t num_bytes, int prot) {
     }
     // Remap the overlapping region with the new prot.
     void* new_end = min(rem.end, m.end);
-    Mapping overlap(rem.start, new_end, prot, m.flags,
-                    adjust_offset(r, m, (byte*)rem.start - (byte*)m.start));
+    Mapping overlap(
+        rem.start, new_end, prot, m.flags,
+        adjust_offset(r, m, (uint8_t*)rem.start - (uint8_t*)m.start));
     mem[overlap] = r;
     last_overlap = overlap;
 
@@ -330,8 +331,9 @@ void AddressSpace::protect(void* addr, size_t num_bytes, int prot) {
     // region, remap the overflow region with previous
     // prot.
     if (rem.end < m.end) {
-      Mapping overflow(rem.end, m.end, m.prot, m.flags,
-                       adjust_offset(r, m, (byte*)rem.end - (byte*)m.start));
+      Mapping overflow(
+          rem.end, m.end, m.prot, m.flags,
+          adjust_offset(r, m, (uint8_t*)rem.end - (uint8_t*)m.start));
       mem[overflow] = r;
     }
   };
@@ -356,8 +358,8 @@ void AddressSpace::remap(void* old_addr, size_t old_num_bytes, void* new_addr,
   }
 
   map_and_coalesce(
-      Mapping((byte*)new_addr, new_num_bytes, m.prot, m.flags,
-              adjust_offset(r, m, ((byte*)old_addr - (byte*)m.start))),
+      Mapping((uint8_t*)new_addr, new_num_bytes, m.prot, m.flags,
+              adjust_offset(r, m, ((uint8_t*)old_addr - (uint8_t*)m.start))),
       r);
 }
 
@@ -445,8 +447,9 @@ void AddressSpace::unmap(void* addr, ssize_t num_bytes) {
     // If the last segment we unmap overflows the unmap
     // region, remap the overflow region.
     if (rem.end < m.end) {
-      Mapping overflow(rem.end, m.end, m.prot, m.flags,
-                       adjust_offset(r, m, (byte*)rem.end - (byte*)m.start));
+      Mapping overflow(
+          rem.end, m.end, m.prot, m.flags,
+          adjust_offset(r, m, (uint8_t*)rem.end - (uint8_t*)m.start));
       mem[overflow] = r;
     }
   };
@@ -775,8 +778,8 @@ void AddressSpace::for_each_in_range(
                   const Mapping& rem)> f,
     int how) {
   num_bytes = ceil_page_size(num_bytes);
-  byte* last_unmapped_end = (byte*)addr;
-  byte* region_end = (byte*)addr + num_bytes;
+  uint8_t* last_unmapped_end = (uint8_t*)addr;
+  uint8_t* region_end = (uint8_t*)addr + num_bytes;
   while (last_unmapped_end < region_end) {
     // Invariant: |rem| is always exactly the region of
     // memory remaining to be examined for pages to be
@@ -806,7 +809,7 @@ void AddressSpace::for_each_in_range(
     f(m, r, rem);
 
     // Maintain the loop invariant.
-    last_unmapped_end = (byte*)m.end;
+    last_unmapped_end = (uint8_t*)m.end;
   }
 }
 
@@ -856,7 +859,7 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
     id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode);
   }
 
-  as->map(info.start_addr, (byte*)info.end_addr - (byte*)info.start_addr,
+  as->map(info.start_addr, (uint8_t*)info.end_addr - (uint8_t*)info.start_addr,
           info.prot, info.flags, info.file_offset,
           MappableResource(id, info.name));
 

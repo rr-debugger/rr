@@ -15,8 +15,8 @@ int main(int argc, char* argv[]) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   int fd = create_segment(3 * page_size);
 
-  byte* wpage1 = mmap(NULL, page_size, PROT_WRITE, MAP_SHARED, fd, 0);
-  byte* wpage2 =
+  uint8_t* wpage1 = mmap(NULL, page_size, PROT_WRITE, MAP_SHARED, fd, 0);
+  uint8_t* wpage2 =
       mmap(NULL, page_size, PROT_WRITE, MAP_SHARED, fd, 2 * page_size);
 
   test_assert(wpage1 != (void*)-1 && wpage2 != (void*)-1);
