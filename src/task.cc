@@ -817,7 +817,7 @@ size_t Task::get_reg(uint8_t* buf, GDBRegister regname, bool* defined) {
 const Registers& Task::regs() {
   if (!registers_known) {
     LOG(debug) << "  (refreshing register cache)";
-    xptrace(PTRACE_GETREGS, nullptr, &registers);
+    xptrace(PTRACE_GETREGS, nullptr, registers.ptrace_registers());
     registers_known = true;
   }
   return registers;
@@ -945,7 +945,7 @@ void Task::set_return_value_from_trace() {
 
 void Task::set_regs(const Registers& regs) {
   registers = regs;
-  ptrace_if_alive(PTRACE_SETREGS, nullptr, &registers);
+  ptrace_if_alive(PTRACE_SETREGS, nullptr, registers.ptrace_registers());
   registers_known = true;
 }
 

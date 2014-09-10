@@ -12,43 +12,49 @@
 
 void Registers::print_register_file(FILE* f) const {
   fprintf(f, "Printing register file:\n");
-  fprintf(f, "eax: %x\n", eax);
-  fprintf(f, "ebx: %x\n", ebx);
-  fprintf(f, "ecx: %x\n", ecx);
-  fprintf(f, "edx: %x\n", edx);
-  fprintf(f, "esi: %x\n", esi);
-  fprintf(f, "edi: %x\n", edi);
-  fprintf(f, "ebp: %x\n", ebp);
-  fprintf(f, "esp: %x\n", esp);
-  fprintf(f, "eip: %x\n", eip);
-  fprintf(f, "eflags %x\n", eflags);
-  fprintf(f, "orig_eax %x\n", orig_eax);
-  fprintf(f, "xcs: %x\n", xcs);
-  fprintf(f, "xds: %x\n", xds);
-  fprintf(f, "xes: %x\n", xes);
-  fprintf(f, "xfs: %x\n", xfs);
-  fprintf(f, "xgs: %x\n", xgs);
-  fprintf(f, "xss: %x\n", xss);
+  fprintf(f, "eax: %x\n", u.x86regs.eax);
+  fprintf(f, "ebx: %x\n", u.x86regs.ebx);
+  fprintf(f, "ecx: %x\n", u.x86regs.ecx);
+  fprintf(f, "edx: %x\n", u.x86regs.edx);
+  fprintf(f, "esi: %x\n", u.x86regs.esi);
+  fprintf(f, "edi: %x\n", u.x86regs.edi);
+  fprintf(f, "ebp: %x\n", u.x86regs.ebp);
+  fprintf(f, "esp: %x\n", u.x86regs.esp);
+  fprintf(f, "eip: %x\n", u.x86regs.eip);
+  fprintf(f, "eflags %x\n", u.x86regs.eflags);
+  fprintf(f, "orig_eax %x\n", u.x86regs.orig_eax);
+  fprintf(f, "xcs: %x\n", u.x86regs.xcs);
+  fprintf(f, "xds: %x\n", u.x86regs.xds);
+  fprintf(f, "xes: %x\n", u.x86regs.xes);
+  fprintf(f, "xfs: %x\n", u.x86regs.xfs);
+  fprintf(f, "xgs: %x\n", u.x86regs.xgs);
+  fprintf(f, "xss: %x\n", u.x86regs.xss);
   fprintf(f, "\n");
 }
 
 void Registers::print_register_file_compact(FILE* f) const {
   fprintf(f, "eax:%x ebx:%x ecx:%x edx:%x esi:%x edi:%x ebp:%x esp:%x eip:%x "
              "eflags:%x",
-          eax, ebx, ecx, edx, esi, edi, ebp, esp, eip, eflags);
+          u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx,
+          u.x86regs.esi, u.x86regs.edi, u.x86regs.ebp, u.x86regs.esp,
+          u.x86regs.eip, u.x86regs.eflags);
 }
 
 void Registers::print_register_file_for_trace(FILE* f, bool raw_dump) const {
   if (raw_dump) {
     fprintf(f, " %d %d %d %d %d %d %d"
                " %d %d %d %d",
-            eax, ebx, ecx, edx, esi, edi, ebp, orig_eax, esp, eip, eflags);
+            u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx,
+            u.x86regs.esi, u.x86regs.edi, u.x86regs.ebp, u.x86regs.orig_eax,
+            u.x86regs.esp, u.x86regs.eip, u.x86regs.eflags);
   } else {
     fprintf(f,
             "  eax:0x%x ebx:0x%x ecx:0x%x edx:0x%x esi:0x%x edi:0x%x ebp:0x%x\n"
             "  eip:0x%x esp:0x%x eflags:0x%x orig_eax:%d xfs:0x%x xgs:0x%x\n",
-            eax, ebx, ecx, edx, esi, edi, ebp, eip, esp, eflags, orig_eax, xfs,
-            xgs);
+            u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx,
+            u.x86regs.esi, u.x86regs.edi, u.x86regs.ebp, u.x86regs.eip,
+            u.x86regs.esp, u.x86regs.eflags, u.x86regs.orig_eax, u.x86regs.xfs,
+            u.x86regs.xgs);
   }
 }
 
@@ -80,24 +86,24 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
     }                                                                          \
   } while (0)
 
-  REGCMP(eax);
-  REGCMP(ebx);
-  REGCMP(ecx);
-  REGCMP(edx);
-  REGCMP(esi);
-  REGCMP(edi);
-  REGCMP(ebp);
-  REGCMP(eip);
-  REGCMP(xfs);
-  REGCMP(xgs);
+  REGCMP(u.x86regs.eax);
+  REGCMP(u.x86regs.ebx);
+  REGCMP(u.x86regs.ecx);
+  REGCMP(u.x86regs.edx);
+  REGCMP(u.x86regs.esi);
+  REGCMP(u.x86regs.edi);
+  REGCMP(u.x86regs.ebp);
+  REGCMP(u.x86regs.eip);
+  REGCMP(u.x86regs.xfs);
+  REGCMP(u.x86regs.xgs);
 
   /* Negative orig_eax values, observed at SCHED events and signals,
      seemingly can vary between recording and replay on some kernels
      (e.g. Linux ubuntu 3.13.0-24-generic). They probably reflect
      signals sent or something like that.
   */
-  if (reg1->orig_eax >= 0 || reg2->orig_eax >= 0) {
-    REGCMP(orig_eax);
+  if (reg1->u.x86regs.orig_eax >= 0 || reg2->u.x86regs.orig_eax >= 0) {
+    REGCMP(u.x86regs.orig_eax);
   }
 
   /* The following are eflags that have been observed to be
@@ -133,8 +139,8 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
   };
   /* check the deterministic eflags */
   const long det_mask = ~(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
-  long eflags1 = (reg1->eflags & det_mask);
-  long eflags2 = (reg2->eflags & det_mask);
+  long eflags1 = (reg1->u.x86regs.eflags & det_mask);
+  long eflags2 = (reg2->u.x86regs.eflags & det_mask);
   if (eflags1 != eflags2) {
     maybe_print_reg_mismatch(mismatch_behavior, "deterministic eflags", name1,
                              eflags1, name2, eflags2);
@@ -156,39 +162,39 @@ size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
   *defined = true;
   switch (regno) {
     case DREG_EAX:
-      return copy_register_value(buf, eax);
+      return copy_register_value(buf, u.x86regs.eax);
     case DREG_ECX:
-      return copy_register_value(buf, ecx);
+      return copy_register_value(buf, u.x86regs.ecx);
     case DREG_EDX:
-      return copy_register_value(buf, edx);
+      return copy_register_value(buf, u.x86regs.edx);
     case DREG_EBX:
-      return copy_register_value(buf, ebx);
+      return copy_register_value(buf, u.x86regs.ebx);
     case DREG_ESP:
-      return copy_register_value(buf, esp);
+      return copy_register_value(buf, u.x86regs.esp);
     case DREG_EBP:
-      return copy_register_value(buf, ebp);
+      return copy_register_value(buf, u.x86regs.ebp);
     case DREG_ESI:
-      return copy_register_value(buf, esi);
+      return copy_register_value(buf, u.x86regs.esi);
     case DREG_EDI:
-      return copy_register_value(buf, edi);
+      return copy_register_value(buf, u.x86regs.edi);
     case DREG_EIP:
-      return copy_register_value(buf, eip);
+      return copy_register_value(buf, u.x86regs.eip);
     case DREG_EFLAGS:
-      return copy_register_value(buf, eflags);
+      return copy_register_value(buf, u.x86regs.eflags);
     case DREG_CS:
-      return copy_register_value(buf, xcs);
+      return copy_register_value(buf, u.x86regs.xcs);
     case DREG_SS:
-      return copy_register_value(buf, xss);
+      return copy_register_value(buf, u.x86regs.xss);
     case DREG_DS:
-      return copy_register_value(buf, xds);
+      return copy_register_value(buf, u.x86regs.xds);
     case DREG_ES:
-      return copy_register_value(buf, xes);
+      return copy_register_value(buf, u.x86regs.xes);
     case DREG_FS:
-      return copy_register_value(buf, xfs);
+      return copy_register_value(buf, u.x86regs.xfs);
     case DREG_GS:
-      return copy_register_value(buf, xgs);
+      return copy_register_value(buf, u.x86regs.xgs);
     case DREG_ORIG_EAX:
-      return copy_register_value(buf, orig_eax);
+      return copy_register_value(buf, u.x86regs.orig_eax);
     default:
       *defined = false;
       return 0;
@@ -205,37 +211,37 @@ void Registers::write_register(GDBRegister reg_name, const uint8_t* value,
                                size_t value_size) {
   switch (reg_name) {
     case DREG_EAX:
-      return set_register_value(value, value_size, &eax);
+      return set_register_value(value, value_size, &u.x86regs.eax);
     case DREG_ECX:
-      return set_register_value(value, value_size, &ecx);
+      return set_register_value(value, value_size, &u.x86regs.ecx);
     case DREG_EDX:
-      return set_register_value(value, value_size, &edx);
+      return set_register_value(value, value_size, &u.x86regs.edx);
     case DREG_EBX:
-      return set_register_value(value, value_size, &ebx);
+      return set_register_value(value, value_size, &u.x86regs.ebx);
     case DREG_ESP:
-      return set_register_value(value, value_size, &esp);
+      return set_register_value(value, value_size, &u.x86regs.esp);
     case DREG_EBP:
-      return set_register_value(value, value_size, &ebp);
+      return set_register_value(value, value_size, &u.x86regs.ebp);
     case DREG_ESI:
-      return set_register_value(value, value_size, &esi);
+      return set_register_value(value, value_size, &u.x86regs.esi);
     case DREG_EDI:
-      return set_register_value(value, value_size, &edi);
+      return set_register_value(value, value_size, &u.x86regs.edi);
     case DREG_EIP:
-      return set_register_value(value, value_size, &eip);
+      return set_register_value(value, value_size, &u.x86regs.eip);
     case DREG_EFLAGS:
-      return set_register_value(value, value_size, &eflags);
+      return set_register_value(value, value_size, &u.x86regs.eflags);
     case DREG_CS:
-      return set_register_value(value, value_size, &xcs);
+      return set_register_value(value, value_size, &u.x86regs.xcs);
     case DREG_SS:
-      return set_register_value(value, value_size, &xss);
+      return set_register_value(value, value_size, &u.x86regs.xss);
     case DREG_DS:
-      return set_register_value(value, value_size, &xds);
+      return set_register_value(value, value_size, &u.x86regs.xds);
     case DREG_ES:
-      return set_register_value(value, value_size, &xes);
+      return set_register_value(value, value_size, &u.x86regs.xes);
     case DREG_FS:
-      return set_register_value(value, value_size, &xfs);
+      return set_register_value(value, value_size, &u.x86regs.xfs);
     case DREG_GS:
-      return set_register_value(value, value_size, &xgs);
+      return set_register_value(value, value_size, &u.x86regs.xgs);
 
     case DREG_FOSEG:
     case DREG_MXCSR:
