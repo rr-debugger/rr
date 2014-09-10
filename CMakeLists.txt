@@ -39,7 +39,8 @@ add_library(rrpreload
 
 add_executable(rr
   src/test/cpuid_loop.S
-  src/compressed_io.cc
+  src/CompressedReader.cc
+  src/CompressedWriter.cc
   src/debugger_gdb.cc
   src/diverter.cc
   src/emufs.cc

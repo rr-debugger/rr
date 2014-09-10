@@ -13,7 +13,8 @@
 #include <string>
 #include <vector>
 
-#include "compressed_io.h"
+#include "CompressedReader.h"
+#include "CompressedWriter.h"
 #include "event.h"
 #include "PerfCounters.h"
 #include "registers.h"

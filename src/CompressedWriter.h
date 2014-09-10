@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_COMPRESSED_IO_H_
-#define RR_COMPRESSED_IO_H_
+#ifndef RR_COMPRESSED_WRITER_H_
+#define RR_COMPRESSED_WRITER_H_
 
 #include <pthread.h>
 #include <stdint.h>
@@ -15,7 +15,7 @@
  * Blocks of a fixed but unspecified size (currently 1MB) are compressed.
  * Each block of compressed data is written to the file preceded by two
  * 32-bit words: the size of the compressed data (excluding block header)
- * and the size of the uncompressed data, in that order.
+ * and the size of the uncompressed data, in that order. See BlockHeader below.
  *
  * We use multiple threads to perform compression. The threads are
  * responsible for the actual data writes. The thread that creates the
@@ -36,6 +36,11 @@ public:
   void write(const void* data, size_t size);
   // Call only on producer thread
   void close();
+
+  struct BlockHeader {
+    uint32_t compressed_length;
+    uint32_t uncompressed_length;
+  };
 
 protected:
   enum WaitFlag {
@@ -79,56 +84,4 @@ protected:
   bool error;
 };
 
-/**
- * CompressedReader opens an input file written by CompressedWriter
- * and reads data from it. Currently data is decompressed by the thread that
- * calls read().
- */
-class CompressedReader {
-public:
-  CompressedReader(const std::string& filename);
-  CompressedReader(const CompressedReader& aOther);
-  ~CompressedReader();
-  bool good() const { return !error; }
-  bool at_end() const { return eof && buffer_read_pos == buffer.size(); }
-  // Returns true if successful. Otherwise there's an error and good()
-  // will be false.
-  bool read(void* data, size_t size);
-  void rewind();
-  void close();
-
-  /**
-   * Save the current position. Nested saves are not allowed.
-   */
-  void save_state();
-  /**
-   * Restore previously saved position.
-   */
-  void restore_state();
-
-  /**
-   * Gathers stats on the file stream. These are independent of what's
-   * actually been read.
-   */
-  uint64_t uncompressed_bytes() const;
-  uint64_t compressed_bytes() const;
-
-protected:
-  /* Our fd might be the dup of another fd, so we can't rely on its current file
-     position.
-     Instead track the current position in fd_offset and use pread. */
-  uint64_t fd_offset;
-  int fd;
-  bool error;
-  bool eof;
-  std::vector<uint8_t> buffer;
-  size_t buffer_read_pos;
-
-  bool have_saved_state;
-  bool have_saved_buffer;
-  uint64_t saved_fd_offset;
-  std::vector<uint8_t> saved_buffer;
-  size_t saved_buffer_read_pos;
-};
-
-#endif /* RR_COMPRESSED_IO_H_ */
+#endif /* RR_COMPRESSED_WRITER_H_ */
