@@ -43,23 +43,23 @@ const SupportedArch RR_NATIVE_ARCH = SupportedArch::x86;
 #endif
 
 template <SupportedArch a, typename system_type, typename rr_type>
-struct verifier {
+struct Verifier {
   // Optimistically say we are the same size.
   static const bool same_size = true;
 };
 
 template <typename system_type, typename rr_type>
-struct verifier<RR_NATIVE_ARCH, system_type, rr_type> {
+struct Verifier<RR_NATIVE_ARCH, system_type, rr_type> {
   static const bool same_size = sizeof(system_type) == sizeof(rr_type);
 };
 
-template <typename T> struct verifier<RR_NATIVE_ARCH, T, T> {
+template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
   // Prevent us from accidentally verifying the size of rr's structure
   // with itself or (unlikely) the system's structure with itself.
 };
 
 #define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)                     \
-  static_assert(verifier<arch_, system_type_, rr_type_>::same_size,            \
+  static_assert(Verifier<arch_, system_type_, rr_type_>::same_size,            \
                 "type " #system_type_ " not correctly defined");
 
 // For instances where the system type and the rr type are named differently.
