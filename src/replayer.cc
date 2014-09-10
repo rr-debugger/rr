@@ -646,7 +646,7 @@ static void validate_args(int event, int state, Task* t) {
   if (!t->session().can_validate()) {
     return;
   }
-  if (rec_regs.arch() == supported_arch::x86 &&
+  if (rec_regs.arch() == SupportedArch::x86 &&
       (x86_arch::pwrite64 == event || x86_arch::pread64 == event) &&
       STATE_SYSCALL_EXIT == state) {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu

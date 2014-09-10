@@ -90,7 +90,7 @@ enum DebuggerRegister {
  */
 class Registers : public rr::x86_arch::user_regs_struct {
 public:
-  supported_arch arch() const { return x86; }
+  SupportedArch arch() const { return x86; }
 
   uintptr_t ip() const { return eip; }
   void set_ip(uintptr_t addr) { eip = addr; }

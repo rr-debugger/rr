@@ -30,7 +30,7 @@
 #define CHECKSUM_SYSCALL -2
 #define CHECKSUM_ALL -1
 
-enum supported_arch {
+enum SupportedArch {
   x86,
   x86_64,
 };

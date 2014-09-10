@@ -38,5 +38,5 @@ template <typename Arch> static const char* syscallname_arch(int syscall) {
   }
 }
 
-const char* syscallname(int syscall, supported_arch arch)
+const char* syscallname(int syscall, SupportedArch arch)
     RR_ARCH_FUNCTION(syscallname_arch, arch, syscall)

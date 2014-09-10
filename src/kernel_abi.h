@@ -34,12 +34,12 @@
 namespace rr {
 
 #if defined(__i386__)
-#define RR_NATIVE_ARCH supported_arch::x86
+#define RR_NATIVE_ARCH SupportedArch::x86
 #else
-#error need to define new supported_arch enum
+#error need to define new SupportedArch enum
 #endif
 
-template <supported_arch a, typename system_type, typename rr_type>
+template <SupportedArch a, typename system_type, typename rr_type>
 struct verifier {
   // Optimistically say we are the same size.
   static const bool same_size = true;
@@ -134,7 +134,7 @@ struct wordsize64_defs : public kernel_constants {
   typedef Elf64_Sym ElfSym;
 };
 
-template <supported_arch arch, typename wordsize>
+template <SupportedArch arch, typename wordsize>
 struct base_arch : public wordsize {
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
   typedef typename wordsize::signed_int signed_int;
@@ -695,7 +695,7 @@ struct base_arch : public wordsize {
   RR_VERIFY_TYPE(__sysctl_args);
 };
 
-struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
+struct x86_arch : public base_arch<SupportedArch::x86, wordsize32_defs> {
   static const size_t elfmachine = EM_386;
   static const size_t elfendian = ELFDATA2LSB;
 
@@ -737,8 +737,7 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
     int32_t esp;
     int32_t xss;
   };
-  RR_VERIFY_TYPE_ARCH(supported_arch::x86, ::user_regs_struct,
-                      user_regs_struct);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_regs_struct, user_regs_struct);
 
   struct user_fpregs_struct {
     int32_t cwd;
@@ -750,7 +749,7 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
     int32_t fos;
     int32_t st_space[20];
   };
-  RR_VERIFY_TYPE_ARCH(supported_arch::x86, ::user_fpregs_struct,
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpregs_struct,
                       user_fpregs_struct);
 
   struct user_fpxregs_struct {
@@ -768,11 +767,11 @@ struct x86_arch : public base_arch<supported_arch::x86, wordsize32_defs> {
     int32_t xmm_space[32];
     int32_t padding[56];
   };
-  RR_VERIFY_TYPE_ARCH(supported_arch::x86, ::user_fpxregs_struct,
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpxregs_struct,
                       user_fpxregs_struct);
 };
 
-struct x86_64_arch : public base_arch<supported_arch::x86_64, wordsize64_defs> {
+struct x86_64_arch : public base_arch<SupportedArch::x86_64, wordsize64_defs> {
   static const size_t elfmachine = EM_X86_64;
   static const size_t elfendian = ELFDATA2LSB;
 
@@ -861,7 +860,7 @@ public:
     uint64_t fs;
     uint64_t gs;
   };
-  RR_VERIFY_TYPE_ARCH(supported_arch::x86_64, ::user_regs_struct,
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_regs_struct,
                       user_regs_struct);
 
   struct user_fpregs_struct {
@@ -877,7 +876,7 @@ public:
     uint32_t xmm_space[64];
     uint32_t padding[24];
   };
-  RR_VERIFY_TYPE_ARCH(supported_arch::x86_64, ::user_fpregs_struct,
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_fpregs_struct,
                       user_fpregs_struct);
 };
 

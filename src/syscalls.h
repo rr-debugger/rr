@@ -9,6 +9,6 @@
  * Return the symbolic name of |syscall|, f.e. "read", or "???syscall"
  * if unknown.
  */
-const char* syscallname(int syscall, supported_arch arch);
+const char* syscallname(int syscall, SupportedArch arch);
 
 #endif
