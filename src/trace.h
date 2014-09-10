@@ -16,8 +16,9 @@
 #include "CompressedReader.h"
 #include "CompressedWriter.h"
 #include "event.h"
+#include "ExtraRegisters.h"
 #include "PerfCounters.h"
-#include "registers.h"
+#include "Registers.h"
 
 class Task;
 

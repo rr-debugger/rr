@@ -9,7 +9,7 @@
 #include <stack>
 #include <string>
 
-#include "registers.h"
+#include "Registers.h"
 
 enum EventType {
   EV_UNASSIGNED,

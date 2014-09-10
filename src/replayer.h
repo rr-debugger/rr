@@ -3,7 +3,6 @@
 #ifndef RR_REPLAYER_H_
 #define RR_REPLAYER_H_
 
-#include "registers.h"
 #include "util.h"
 
 struct dbg_context;

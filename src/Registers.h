@@ -3,78 +3,14 @@
 #ifndef RR_REGISTERS_H_
 #define RR_REGISTERS_H_
 
-#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include <vector>
 
+#include "GDBRegister.h"
 #include "kernel_abi.h"
-
-/**
- * This is the register numbering used by GDB.
- */
-enum GDBRegister {
-  DREG_EAX,
-  DREG_ECX,
-  DREG_EDX,
-  DREG_EBX,
-  DREG_ESP,
-  DREG_EBP,
-  DREG_ESI,
-  DREG_EDI,
-  DREG_EIP,
-  DREG_EFLAGS,
-  DREG_CS,
-  DREG_SS,
-  DREG_DS,
-  DREG_ES,
-  DREG_FS,
-  DREG_GS,
-  DREG_FIRST_FXSAVE_REG,
-  DREG_ST0 = DREG_FIRST_FXSAVE_REG,
-  DREG_ST1,
-  DREG_ST2,
-  DREG_ST3,
-  DREG_ST4,
-  DREG_ST5,
-  DREG_ST6,
-  DREG_ST7,
-  // These are the names GDB gives the registers.
-  DREG_FCTRL,
-  DREG_FSTAT,
-  DREG_FTAG,
-  DREG_FISEG,
-  DREG_FIOFF,
-  DREG_FOSEG,
-  DREG_FOOFF,
-  DREG_FOP,
-  DREG_XMM0,
-  DREG_XMM1,
-  DREG_XMM2,
-  DREG_XMM3,
-  DREG_XMM4,
-  DREG_XMM5,
-  DREG_XMM6,
-  DREG_XMM7,
-  DREG_MXCSR,
-  // XXX the last fxsave reg on *x86*
-  DREG_LAST_FXSAVE_REG = DREG_MXCSR,
-  DREG_ORIG_EAX,
-  DREG_NUM_LINUX_I386,
-  DREG_YMM0H,
-  DREG_YMM1H,
-  DREG_YMM2H,
-  DREG_YMM3H,
-  DREG_YMM4H,
-  DREG_YMM5H,
-  DREG_YMM6H,
-  DREG_YMM7H,
-  // Last register we can find in user_regs_struct
-  // (except for orig_eax).
-  DREG_NUM_USER_REGS = DREG_GS + 1,
-};
 
 /**
  * A Registers object contains values for all general-purpose registers.
@@ -211,49 +147,6 @@ public:
    */
   void write_register(GDBRegister reg_name, const uint8_t* value,
                       size_t value_size);
-};
-
-/**
- * An ExtraRegisters object contains values for all user-space-visible
- * registers other than those in Registers.
- *
- * Task is responsible for creating meaningful values of this class.
- *
- * On x86, the data is either an XSAVE area or an user_fpxregs_struct.
- */
-class ExtraRegisters {
-public:
-  // Create empty (uninitialized/unknown registers) value
-  ExtraRegisters() : format_(NONE) {}
-
-  enum Format {
-    NONE,
-    XSAVE,
-    FPXREGS
-  };
-
-  // Set values from raw data
-  void set_to_raw_data(Format format, std::vector<uint8_t>& consume_data) {
-    format_ = format;
-    std::swap(data, consume_data);
-  }
-
-  Format format() const { return format_; }
-  int data_size() const { return data.size(); }
-  const uint8_t* data_bytes() const { return data.data(); }
-  bool empty() const { return data.empty(); }
-
-  /**
-   * Like |Registers::read_register()|, except attempts to read
-   * the value of an "extra register" (floating point / vector).
-   */
-  size_t read_register(uint8_t* buf, GDBRegister regno, bool* defined) const;
-
-private:
-  friend class Task;
-
-  Format format_;
-  std::vector<uint8_t> data;
 };
 
 #endif /* RR_REGISTERS_H_ */

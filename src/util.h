@@ -15,8 +15,9 @@
 
 #include <ostream>
 
+#include "ExtraRegisters.h"
 #include "kernel_abi.h"
-#include "registers.h"
+#include "Registers.h"
 
 class AutoRemoteSyscalls;
 class Task;

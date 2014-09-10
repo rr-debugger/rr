@@ -45,13 +45,14 @@ add_executable(rr
   src/diverter.cc
   src/emufs.cc
   src/event.cc
+  src/ExtraRegisters.cc
   src/main.cc
   src/PerfCounters.cc
   src/recorder.cc
   src/recorder_sched.cc
   src/record_signal.cc
   src/record_syscall.cc
-  src/registers.cc
+  src/Registers.cc
   src/remote_syscalls.cc
   src/replayer.cc
   src/replay_syscall.cc

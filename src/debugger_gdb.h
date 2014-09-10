@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "Flags.h"
-#include "registers.h"
+#include "GDBRegister.h"
 #include "session.h"
 
 #define DBG_SOCKET_READY_SIG SIGURG

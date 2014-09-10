@@ -5,7 +5,7 @@
 
 #include <string.h>
 
-#include "registers.h"
+#include "Registers.h"
 
 class AutoRemoteSyscalls;
 class Task;
