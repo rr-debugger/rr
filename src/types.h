@@ -16,9 +16,6 @@
  * command line arguments for rr
  */
 
-#define DUMP_ON_ALL 10000
-#define DUMP_ON_NONE -DUMP_ON_ALL
-
 #define CHECKSUM_NONE -3
 #define CHECKSUM_SYSCALL -2
 #define CHECKSUM_ALL -1
@@ -49,9 +46,13 @@ struct Flags {
   /* When true, echo tracee stdout/stderr writes to console. */
   bool redirect;
   bool use_syscall_buffer;
+  /* Path to librrpreload library. */
   std::string syscall_buffer_lib_path;
+  enum { DUMP_ON_ALL = 10000, DUMP_ON_NONE = -DUMP_ON_ALL };
+  /* event(s) to create memory dumps for */
   int dump_on; // event
   enum { DUMP_AT_NONE = -1 };
+  /* time at which to create memory dump */
   int dump_at; // global time
   int checksum;
   /* IP port to listen on for debug connections. */

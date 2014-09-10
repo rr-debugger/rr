@@ -540,7 +540,7 @@ int should_dump_memory(Task* t, const struct trace_frame& f) {
     return 0;
   }
 #endif
-  return (flags->dump_on == DUMP_ON_ALL ||
+  return (flags->dump_on == Flags::DUMP_ON_ALL ||
           flags->dump_at == int(f.global_time));
 }
 

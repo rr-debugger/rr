@@ -511,7 +511,7 @@ static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
   flags->checksum = CHECKSUM_NONE;
   flags->dbgport = -1;
   flags->dump_at = Flags::DUMP_AT_NONE;
-  flags->dump_on = DUMP_ON_NONE;
+  flags->dump_on = Flags::DUMP_ON_NONE;
   flags->redirect = true;
   flags->use_syscall_buffer = true;
   flags->suppress_environment_warnings = false;
