@@ -410,9 +410,6 @@ static void process_clone(Task* t, struct trace_frame* trace, int state,
   }
 
   Registers r = t->regs();
-  /* set the ebp register to the recorded value -- it should not
-   * point to data on that is used afterwards */
-  r.ebp = rec_regs.ebp;
   // Restore the saved flags, to hide the fact that we may have
   // masked out CLONE_UNTRACED.
   r.set_arg1(flags);
