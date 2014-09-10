@@ -183,7 +183,7 @@ static void debug_memory(Task* t) {
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static DbgRegister get_reg(Task* t, DebuggerRegister which) {
+static DbgRegister get_reg(Task* t, GDBRegister which) {
   DbgRegister reg;
   memset(&reg, 0, sizeof(reg));
   reg.name = which;
@@ -443,7 +443,7 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
       size_t n_regs = target->regs().total_registers();
       DbgRegfile file(n_regs);
       for (size_t i = 0; i < n_regs; ++i) {
-        file.regs[i] = get_reg(target, DebuggerRegister(i));
+        file.regs[i] = get_reg(target, GDBRegister(i));
       }
       dbg_reply_get_regs(dbg, file);
       return;

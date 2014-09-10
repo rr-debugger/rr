@@ -47,7 +47,7 @@ static const size_t DBG_MAX_REG_SIZE = 16;
  * many bytes of |value| are valid, if any.
  */
 struct DbgRegister {
-  DebuggerRegister name;
+  GDBRegister name;
   uint8_t value[DBG_MAX_REG_SIZE];
   size_t size;
   bool defined;

@@ -1019,7 +1019,7 @@ static int process_packet(struct dbg_context* dbg) {
     case 'p':
       dbg->req.type = DREQ_GET_REG;
       dbg->req.target = dbg->query_thread;
-      dbg->req.reg.name = DebuggerRegister(strtoul(payload, &payload, 16));
+      dbg->req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
       assert('\0' == *payload);
       LOG(debug) << "gdb requests register value (" << dbg->req.reg.name << ")";
       ret = 1;
@@ -1027,7 +1027,7 @@ static int process_packet(struct dbg_context* dbg) {
     case 'P':
       dbg->req.type = DREQ_SET_REG;
       dbg->req.target = dbg->query_thread;
-      dbg->req.reg.name = DebuggerRegister(strtoul(payload, &payload, 16));
+      dbg->req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
       assert('=' == *payload++);
 
       read_reg_value(&payload, &dbg->req.reg);

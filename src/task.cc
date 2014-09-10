@@ -806,7 +806,7 @@ int Task::read_int(void* child_addr) {
   return i;
 }
 
-size_t Task::get_reg(uint8_t* buf, DebuggerRegister regname, bool* defined) {
+size_t Task::get_reg(uint8_t* buf, GDBRegister regname, bool* defined) {
   size_t num_bytes = regs().read_register(buf, regname, defined);
   if (!*defined) {
     num_bytes = extra_regs().read_register(buf, regname, defined);
