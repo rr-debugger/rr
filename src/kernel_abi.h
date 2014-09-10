@@ -774,7 +774,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
                       user_fpxregs_struct);
 };
 
-struct x86_64_arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
+struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   static const size_t elfmachine = EM_X86_64;
   static const size_t elfendian = ELFDATA2LSB;
 
