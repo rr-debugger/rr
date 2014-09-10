@@ -37,7 +37,7 @@ enum SupportedArch {
 namespace rr {
 
 #if defined(__i386__)
-#define RR_NATIVE_ARCH SupportedArch::x86
+const SupportedArch RR_NATIVE_ARCH = SupportedArch::x86;
 #else
 #error need to define new SupportedArch enum
 #endif
