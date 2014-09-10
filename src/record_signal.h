@@ -6,7 +6,6 @@
 #include <signal.h>
 
 class Task;
-struct flags;
 
 /**
  * Handle the pending signal for |t|.  To force delivery/handling of a

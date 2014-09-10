@@ -115,7 +115,7 @@ static void ensure_preload_lib_will_load(const char* rr_exe,
     FATAL() << "Failed to wait for " << rr_exe << " child";
   }
   if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
-    const struct flags* flags = rr_flags();
+    const Flags* flags = rr_flags();
     fprintf(stderr, "\n"
                     "rr: error: Unable to preload the '%s' library.\n"
                     "\n",

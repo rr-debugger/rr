@@ -120,12 +120,12 @@ private:
 /**
  * Get the flags passed to rr.
  */
-const struct flags* rr_flags(void);
+const Flags* rr_flags(void);
 /**
  * Exactly once, fetch a mutable reference to the structure that
  * |rr_flags()| will return, for the purposes of initialization.
  */
-struct flags* rr_flags_for_init(void);
+Flags* rr_flags_for_init(void);
 
 /**
  * Update the |rr_flags()| execution-target parameters to |process|

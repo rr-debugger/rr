@@ -43,7 +43,7 @@ enum {
   CREATED_FORK
 };
 
-struct flags {
+struct Flags {
   /* Max counter value before the scheduler interrupts a tracee. */
   int max_rbc;
   /* Max number of trace events before the scheduler
@@ -105,7 +105,7 @@ struct flags {
   // under valgrind.
   std::string forced_uarch;
 
-  flags()
+  Flags()
       : max_rbc(0),
         max_events(0),
         ignore_sig(0),

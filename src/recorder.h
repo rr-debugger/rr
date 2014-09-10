@@ -5,7 +5,6 @@
 
 #include <string>
 
-struct flags;
 class Task;
 
 /**

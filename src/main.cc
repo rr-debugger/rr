@@ -160,7 +160,7 @@ static int start(const char* rr_exe, int argc, char* argv[], char** envp) {
   }
 }
 
-static void assert_prerequisites(struct flags* flags) {
+static void assert_prerequisites(Flags* flags) {
   struct utsname uname_buf;
   memset(&uname_buf, 0, sizeof(uname_buf));
   if (!uname(&uname_buf)) {
@@ -332,8 +332,7 @@ static void print_usage(void) {
       stderr);
 }
 
-static int parse_record_args(int cmdi, int argc, char** argv,
-                             struct flags* flags) {
+static int parse_record_args(int cmdi, int argc, char** argv, Flags* flags) {
   struct option opts[] = { { "force-syscall-buffer", no_argument, NULL, 'b' },
                            { "ignore-signal", required_argument, NULL, 'i' },
                            { "num-cpu-ticks", required_argument, NULL, 'c' },
@@ -367,8 +366,7 @@ static int parse_record_args(int cmdi, int argc, char** argv,
   }
 }
 
-static int parse_replay_args(int cmdi, int argc, char** argv,
-                             struct flags* flags) {
+static int parse_replay_args(int cmdi, int argc, char** argv, Flags* flags) {
   struct option opts[] = { { "autopilot", no_argument, NULL, 'a' },
                            { "dbgport", required_argument, NULL, 's' },
                            { "goto", required_argument, NULL, 'g' },
@@ -414,8 +412,7 @@ static int parse_replay_args(int cmdi, int argc, char** argv,
   }
 }
 
-static int parse_dump_args(int cmdi, int argc, char** argv,
-                           struct flags* flags) {
+static int parse_dump_args(int cmdi, int argc, char** argv, Flags* flags) {
   struct option opts[] = { { "syscallbuf", no_argument, NULL, 'b' },
                            { "raw", no_argument, NULL, 'r' },
                            { "statistics", no_argument, NULL, 's' },
@@ -441,7 +438,7 @@ static int parse_dump_args(int cmdi, int argc, char** argv,
   }
 }
 
-static int parse_common_args(int argc, char** argv, struct flags* flags) {
+static int parse_common_args(int argc, char** argv, Flags* flags) {
   struct option opts[] = { { "checksum", required_argument, NULL, 'c' },
                            { "check-cached-mmaps", no_argument, NULL, 'k' },
                            { "cpu-unbound", no_argument, NULL, 'u' },
@@ -512,7 +509,7 @@ static int parse_common_args(int argc, char** argv, struct flags* flags) {
   }
 }
 
-static int parse_args(int argc, char** argv, struct flags* flags) {
+static int parse_args(int argc, char** argv, Flags* flags) {
   const char* exe = argv[0];
   const char* cmd;
   int cmdi;
@@ -582,7 +579,7 @@ static void init_random() {
 int main(int argc, char* argv[]) {
   int argi; /* index of first positional argument */
   int wait_secs;
-  struct flags* flags = rr_flags_for_init();
+  Flags* flags = rr_flags_for_init();
 
   init_random();
 

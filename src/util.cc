@@ -52,7 +52,7 @@ using namespace rr;
 
 #define NUM_MAX_MAPS 1024
 
-struct flags flags;
+Flags flags;
 
 ostream& operator<<(ostream& o, const mapped_segment_info& m) {
   o << m.start_addr << "-" << m.end_addr << " " << HEX(m.prot)
@@ -60,9 +60,9 @@ ostream& operator<<(ostream& o, const mapped_segment_info& m) {
   return o;
 }
 
-const struct flags* rr_flags(void) { return &flags; }
+const Flags* rr_flags(void) { return &flags; }
 
-struct flags* rr_flags_for_init(void) {
+Flags* rr_flags_for_init(void) {
   static int initialized;
   if (!initialized) {
     initialized = 1;
@@ -527,11 +527,11 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
 }
 
 int should_dump_memory(Task* t, const struct trace_frame& f) {
-  const struct flags* flags = rr_flags();
+  const Flags* flags = rr_flags();
 
 #if defined(FIRST_INTERESTING_EVENT)
   int is_syscall_exit = event >= 0 && state == STATE_SYSCALL_EXIT;
-  if (is_syscall_exit && RECORD == flags->option &&
+  if (is_syscall_exit && RECORD == Flags->option &&
       FIRST_INTERESTING_EVENT <= global_time &&
       global_time <= LAST_INTERESTING_EVENT) {
     return 1;
