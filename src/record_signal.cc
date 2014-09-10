@@ -17,8 +17,8 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "hpc.h"
 #include "log.h"
+#include "PerfCounters.h"
 #include "recorder.h"
 #include "remote_syscalls.h"
 #include "task.h"

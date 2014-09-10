@@ -19,7 +19,6 @@
 #include "preload/syscall_buffer.h"
 
 #include "config.h"
-#include "hpc.h"
 #include "log.h"
 #include "recorder.h"
 #include "recorder_sched.h"

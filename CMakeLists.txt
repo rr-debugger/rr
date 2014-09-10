@@ -44,8 +44,8 @@ add_executable(rr
   src/diverter.cc
   src/emufs.cc
   src/event.cc
-  src/hpc.cc
   src/main.cc
+  src/PerfCounters.cc
   src/recorder.cc
   src/recorder_sched.cc
   src/record_signal.cc

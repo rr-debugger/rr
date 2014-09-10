@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "hpc.h"
+#include "PerfCounters.h"
 
 #include <assert.h>
 #include <err.h>

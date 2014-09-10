@@ -23,8 +23,8 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "hpc.h"
 #include "log.h"
+#include "PerfCounters.h"
 #include "record_signal.h"
 #include "record_syscall.h"
 #include "recorder_sched.h"

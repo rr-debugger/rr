@@ -8,7 +8,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "event.h"
-#include "hpc.h"
+#include "PerfCounters.h"
 #include "registers.h"
 #include "trace.h"
 #include "util.h"

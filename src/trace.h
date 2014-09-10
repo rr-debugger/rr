@@ -15,7 +15,7 @@
 
 #include "compressed_io.h"
 #include "event.h"
-#include "hpc.h"
+#include "PerfCounters.h"
 #include "registers.h"
 #include "types.h"
 

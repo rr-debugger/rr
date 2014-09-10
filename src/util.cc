@@ -36,7 +36,6 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "hpc.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "recorder_sched.h"
