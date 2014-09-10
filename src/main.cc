@@ -510,7 +510,7 @@ static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
   flags->max_events = DEFAULT_MAX_EVENTS;
   flags->checksum = CHECKSUM_NONE;
   flags->dbgport = -1;
-  flags->dump_at = DUMP_AT_NONE;
+  flags->dump_at = Flags::DUMP_AT_NONE;
   flags->dump_on = DUMP_ON_NONE;
   flags->redirect = true;
   flags->use_syscall_buffer = true;

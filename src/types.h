@@ -19,8 +19,6 @@
 #define DUMP_ON_ALL 10000
 #define DUMP_ON_NONE -DUMP_ON_ALL
 
-#define DUMP_AT_NONE -1
-
 #define CHECKSUM_NONE -3
 #define CHECKSUM_SYSCALL -2
 #define CHECKSUM_ALL -1
@@ -48,10 +46,12 @@ struct Flags {
   /* Whenever |ignore_sig| is pending for a tracee, decline to
    * deliver it. */
   int ignore_sig;
+  /* When true, echo tracee stdout/stderr writes to console. */
   bool redirect;
   bool use_syscall_buffer;
   std::string syscall_buffer_lib_path;
   int dump_on; // event
+  enum { DUMP_AT_NONE = -1 };
   int dump_at; // global time
   int checksum;
   /* IP port to listen on for debug connections. */
