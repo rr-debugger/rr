@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_HPC_H_
-#define RR_HPC_H_
+#ifndef RR_PERF_COUNTERS_H_
+#define RR_PERF_COUNTERS_H_
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -78,4 +78,4 @@ private:
   bool started;
 };
 
-#endif /* HPC_H_ */
+#endif /* RR_PERF_COUNTERS_H_ */
