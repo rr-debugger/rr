@@ -16,10 +16,6 @@
  * command line arguments for rr
  */
 
-#define CHECKSUM_NONE -3
-#define CHECKSUM_SYSCALL -2
-#define CHECKSUM_ALL -1
-
 // We let users specify which process should be "created" before
 // starting a debug session for it.  Problem is, "process" in this
 // context is ambiguous.  It could mean the "thread group", which is
@@ -55,14 +51,28 @@ struct Flags {
   /* Path to librrpreload library. */
   std::string syscall_buffer_lib_path;
 
-  enum { DUMP_ON_ALL = 10000, DUMP_ON_NONE = -DUMP_ON_ALL };
+  enum {
+    DUMP_ON_ALL = 10000,
+    DUMP_ON_NONE = -DUMP_ON_ALL
+  };
   /* event(s) to create memory dumps for */
   int dump_on; // event
 
-  enum { DUMP_AT_NONE = -1 };
+  enum {
+    DUMP_AT_NONE = -1
+  };
   /* time at which to create memory dump */
   int dump_at; // global time
 
+  enum {
+    CHECKSUM_NONE = -3,
+    CHECKSUM_SYSCALL = -2,
+    CHECKSUM_ALL = -1
+  };
+  /* When to generate or check memory checksums. One of CHECKSUM_NONE,
+   * CHECKSUM_SYSCALL or CHECKSUM_ALL, or a positive integer representing the
+   * event time at which to start checksumming.
+   */
   int checksum;
 
   /* IP port to listen on for debug connections. */

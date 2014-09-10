@@ -769,13 +769,13 @@ int should_checksum(Task* t, const struct trace_frame& f) {
     return 0;
   }
 #endif
-  if (CHECKSUM_NONE == checksum) {
+  if (Flags::CHECKSUM_NONE == checksum) {
     return 0;
   }
-  if (CHECKSUM_ALL == checksum) {
+  if (Flags::CHECKSUM_ALL == checksum) {
     return 1;
   }
-  if (CHECKSUM_SYSCALL == checksum) {
+  if (Flags::CHECKSUM_SYSCALL == checksum) {
     return is_syscall_exit;
   }
   /* |checksum| is a global time point. */

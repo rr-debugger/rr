@@ -450,10 +450,10 @@ static int parse_common_args(int argc, char** argv, Flags* flags) {
       case 'c':
         if (!strcmp("on-syscalls", optarg)) {
           LOG(info) << "checksumming on syscall exit";
-          flags->checksum = CHECKSUM_SYSCALL;
+          flags->checksum = Flags::CHECKSUM_SYSCALL;
         } else if (!strcmp("on-all-events", optarg)) {
           LOG(info) << "checksumming on all events";
-          flags->checksum = CHECKSUM_ALL;
+          flags->checksum = Flags::CHECKSUM_ALL;
         } else {
           flags->checksum = atoi(optarg);
           LOG(info) << "checksumming on at event " << flags->checksum;
@@ -508,7 +508,7 @@ static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
 
   flags->max_rbc = DEFAULT_MAX_RBC;
   flags->max_events = DEFAULT_MAX_EVENTS;
-  flags->checksum = CHECKSUM_NONE;
+  flags->checksum = Flags::CHECKSUM_NONE;
   flags->dbgport = -1;
   flags->dump_at = Flags::DUMP_AT_NONE;
   flags->dump_on = Flags::DUMP_ON_NONE;
