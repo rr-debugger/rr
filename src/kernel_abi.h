@@ -31,6 +31,11 @@
 
 #include "types.h"
 
+enum SupportedArch {
+  x86,
+  x86_64,
+};
+
 namespace rr {
 
 #if defined(__i386__)

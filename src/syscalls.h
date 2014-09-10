@@ -3,7 +3,7 @@
 #ifndef RR_SYSCALLS_H_
 #define RR_SYSCALLS_H_
 
-#include "types.h"
+#include "kernel_abi.h"
 
 /**
  * Return the symbolic name of |syscall|, f.e. "read", or "???syscall"

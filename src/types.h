@@ -16,7 +16,6 @@
  * command line arguments for rr
  */
 
-#define INVALID 0
 #define RECORD 1
 #define REPLAY 2
 #define DUMP_EVENTS 3
@@ -29,11 +28,6 @@
 #define CHECKSUM_NONE -3
 #define CHECKSUM_SYSCALL -2
 #define CHECKSUM_ALL -1
-
-enum SupportedArch {
-  x86,
-  x86_64,
-};
 
 // We let users specify which process should be "created" before
 // starting a debug session for it.  Problem is, "process" in this
