@@ -79,7 +79,7 @@ struct KernelConstants {
   typedef uint32_t socklen_t;
 };
 
-struct wordsize32_defs : public KernelConstants {
+struct WordSize32Defs : public KernelConstants {
   static const ::size_t SIGINFO_PAD_SIZE =
       (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 3;
 
@@ -108,7 +108,7 @@ struct wordsize32_defs : public KernelConstants {
   typedef Elf32_Sym ElfSym;
 };
 
-struct wordsize64_defs : public KernelConstants {
+struct WordSize64Defs : public KernelConstants {
   static const ::size_t SIGINFO_PAD_SIZE =
       (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 4;
 
@@ -698,7 +698,7 @@ struct base_arch : public wordsize {
   RR_VERIFY_TYPE(__sysctl_args);
 };
 
-struct x86_arch : public base_arch<SupportedArch::x86, wordsize32_defs> {
+struct x86_arch : public base_arch<SupportedArch::x86, WordSize32Defs> {
   static const size_t elfmachine = EM_386;
   static const size_t elfendian = ELFDATA2LSB;
 
@@ -774,7 +774,7 @@ struct x86_arch : public base_arch<SupportedArch::x86, wordsize32_defs> {
                       user_fpxregs_struct);
 };
 
-struct x86_64_arch : public base_arch<SupportedArch::x86_64, wordsize64_defs> {
+struct x86_64_arch : public base_arch<SupportedArch::x86_64, WordSize64Defs> {
   static const size_t elfmachine = EM_X86_64;
   static const size_t elfendian = ELFDATA2LSB;
 
