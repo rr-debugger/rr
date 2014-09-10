@@ -1312,7 +1312,7 @@ bool Task::wait(AllowInterrupt allow_interrupt) {
   LOG(debug) << "  waitpid(" << tid << ") returns " << ret << "; status "
              << HEX(wait_status);
   ASSERT(this, tid == ret) << "waitpid(" << tid << ") failed with " << ret;
-  ;
+
   // If some other ptrace-stop happened to race with our
   // PTRACE_INTERRUPT, then let the other event win.  We only
   // want to interrupt tracees stuck running in userspace.

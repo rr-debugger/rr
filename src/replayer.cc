@@ -1391,7 +1391,6 @@ static int emulate_async_signal(struct dbg_context* dbg, Task* t,
       return 1;
     }
   }
-  stop_hpc(t);
   return 0;
 }
 
