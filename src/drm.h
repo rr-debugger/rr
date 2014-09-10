@@ -7,6 +7,8 @@
 #include <linux/types.h>
 #include <stdint.h>
 
+// TODO this should all move to kernel_abi.h
+
 #ifdef __cplusplus
 extern "C" {
 #endif

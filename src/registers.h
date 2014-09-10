@@ -201,13 +201,13 @@ public:
    * Return the size of the register in bytes and set |defined| to
    * indicate whether a useful value has been written to |buf|.
    */
-  size_t read_register(uint8_t* buf, unsigned int regno, bool* defined) const;
+  size_t read_register(uint8_t* buf, DebuggerRegister regno, bool* defined) const;
 
   /**
    * Update the registe named |reg_name| to |value| with
    * |value_size| number of bytes.
    */
-  void write_register(unsigned reg_name, const uint8_t* value,
+  void write_register(DebuggerRegister reg_name, const uint8_t* value,
                       size_t value_size);
 };
 
@@ -245,7 +245,7 @@ public:
    * Like |Registers::read_register()|, except attempts to read
    * the value of an "extra register" (floating point / vector).
    */
-  size_t read_register(uint8_t* buf, unsigned int regno, bool* defined) const;
+  size_t read_register(uint8_t* buf, DebuggerRegister regno, bool* defined) const;
 
 private:
   friend class Task;

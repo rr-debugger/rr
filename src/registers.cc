@@ -194,7 +194,7 @@ template <typename T> static size_t copy_register_value(uint8_t* buf, T src) {
   return sizeof(src);
 }
 
-size_t Registers::read_register(uint8_t* buf, unsigned int regno,
+size_t Registers::read_register(uint8_t* buf, DebuggerRegister regno,
                                 bool* defined) const {
   assert(regno < total_registers());
 
@@ -234,9 +234,10 @@ size_t Registers::read_register(uint8_t* buf, unsigned int regno,
       return copy_register_value(buf, xgs);
     case DREG_ORIG_EAX:
       return copy_register_value(buf, orig_eax);
+    default:
+      *defined = false;
+      return 0;
   }
-  *defined = false;
-  return 0;
 }
 
 template <typename T>
@@ -245,7 +246,7 @@ static void set_register_value(const uint8_t* buf, size_t buf_size, T* src) {
   memcpy(src, buf, sizeof(*src));
 }
 
-void Registers::write_register(unsigned reg_name, const uint8_t* value,
+void Registers::write_register(DebuggerRegister reg_name, const uint8_t* value,
                                size_t value_size) {
   switch (reg_name) {
     case DREG_EAX:
@@ -292,7 +293,7 @@ void Registers::write_register(unsigned reg_name, const uint8_t* value,
   }
 }
 
-size_t ExtraRegisters::read_register(uint8_t* buf, unsigned int regno,
+size_t ExtraRegisters::read_register(uint8_t* buf, DebuggerRegister regno,
                                      bool* defined) const {
   assert(format_ != NONE);
   // Fortunately (though it's probably not coincidence)

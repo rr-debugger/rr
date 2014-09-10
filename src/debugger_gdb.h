@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Flags.h"
+#include "registers.h"
 #include "session.h"
 
 #define DBG_SOCKET_READY_SIG SIGURG
@@ -46,7 +47,7 @@ static const size_t DBG_MAX_REG_SIZE = 16;
  * many bytes of |value| are valid, if any.
  */
 struct DbgRegister {
-  unsigned int name;
+  DebuggerRegister name;
   uint8_t value[DBG_MAX_REG_SIZE];
   size_t size;
   bool defined;
