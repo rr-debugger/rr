@@ -373,14 +373,14 @@ static int parse_replay_args(int cmdi, int argc, char** argv, Flags* flags) {
         break;
       case 'f':
         flags->target_process = atoi(optarg);
-        flags->process_created_how = CREATED_FORK;
+        flags->process_created_how = Flags::CREATED_FORK;
         break;
       case 'g':
         flags->goto_event = atoi(optarg);
         break;
       case 'p':
         flags->target_process = atoi(optarg);
-        flags->process_created_how = CREATED_EXEC;
+        flags->process_created_how = Flags::CREATED_EXEC;
         break;
       case 'q':
         flags->redirect = false;

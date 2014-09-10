@@ -16,20 +16,6 @@
  * command line arguments for rr
  */
 
-// We let users specify which process should be "created" before
-// starting a debug session for it.  Problem is, "process" in this
-// context is ambiguous.  It could mean the "thread group", which is
-// created at fork().  Or it could mean the "address space", which is
-// created at exec() (after the fork).
-//
-// We force choosers to specify which they mean, and default to the
-// much more useful (and probably common) exec() definition.
-enum {
-  CREATED_DEFAULT = 0,
-  CREATED_EXEC,
-  CREATED_FORK
-};
-
 struct Flags {
   /* Max counter value before the scheduler interrupts a tracee. */
   int max_rbc;
@@ -116,16 +102,27 @@ struct Flags {
 
   pid_t target_process;
 
-  int process_created_how;
+  // We let users specify which process should be "created" before
+  // starting a debug session for it.  Problem is, "process" in this
+  // context is ambiguous.  It could mean the "thread group", which is
+  // created at fork().  Or it could mean the "address space", which is
+  // created at exec() (after the fork).
+  //
+  // We force choosers to specify which they mean.
+  enum {
+    CREATED_NONE,
+    CREATED_EXEC,
+    CREATED_FORK
+  } process_created_how;
 
-  // Dump trace frames in a more easily machine-parseable
+  // Let the 'dump' command dump trace frames in a more easily machine-parseable
   // format.
   bool raw_dump;
 
-  // Dump statistics about the trace
+  // Let the 'dump' command dump statistics about the trace
   bool dump_statistics;
 
-  // Dump syscallbuf contents
+  // Let the 'dump' command dump syscallbuf contents
   bool dump_syscallbuf;
 
   // Only open a debug socket, don't launch the debugger too.
@@ -157,7 +154,7 @@ struct Flags {
         check_cached_mmaps(false),
         goto_event(0),
         target_process(0),
-        process_created_how(0),
+        process_created_how(CREATED_NONE),
         raw_dump(false),
         dump_statistics(false),
         dump_syscallbuf(false),

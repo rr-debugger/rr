@@ -2128,7 +2128,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
   uint32_t event_now = next_frame.global_time;
   uint32_t goto_event = rr_flags()->goto_event;
   pid_t target_process = rr_flags()->target_process;
-  bool require_exec = (CREATED_EXEC == rr_flags()->process_created_how);
+  bool require_exec = Flags::CREATED_EXEC == rr_flags()->process_created_how;
   if (event_now < goto_event
           // NB: we'll happily attach to whichever task within the
           // group happens to be scheduled here.  We don't take
