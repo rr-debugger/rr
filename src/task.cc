@@ -169,7 +169,7 @@ TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
              << " (real tgid:" << real_tgid << ")";
 }
 
-Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
+Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
     : thread_time(1),
       switchable(),
       pseudo_blocked(),
@@ -182,9 +182,8 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
       scratch_size(),
       flushed_syscallbuf(),
       delay_syscallbuf_reset(),
-      delay_syscallbuf_flush()
+      delay_syscallbuf_flush(),
       // These will be initialized when the syscall buffer is.
-      ,
       desched_fd(-1),
       desched_fd_child(-1),
       seccomp_bpf_enabled(),
@@ -218,12 +217,8 @@ Task::Task(pid_t _tid, pid_t _rec_tid, int _priority)
       top_of_stack(),
       wait_status(),
       seen_ptrace_exit_event(false) {
-  if (RECORD != rr_flags()->option) {
-    // This flag isn't meaningful outside recording.
-    // Suppress output related to it outside recording.
-    switchable = 1;
-  }
-
+  session_record = session.as_record();
+  session_replay = session.as_replay();
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO));
 }
 
@@ -306,25 +301,22 @@ const struct syscallbuf_record* Task::desched_rec() const {
               : (EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
 }
 
-/**
- * In recording, Task is notified of a destabilizing signal event
- * *after* it's been recorded, at the next trace-event-time.  In
- * replay though we're notified at the occurrence of the signal.  So
- * to display the same event time in logging across record/replay,
- * apply this offset.
- */
-static int signal_delivery_event_offset() {
-  return RECORD == rr_flags()->option ? -1 : 0;
-}
-
 void Task::destabilize_task_group() {
   // Only print this helper warning if there's (probably) a
   // human around to see it.  This is done to avoid polluting
   // output from tests.
   if (EV_SIGNAL_DELIVERY == ev().type() && !probably_not_interactive()) {
+    /**
+     * In recording, Task is notified of a destabilizing signal event
+     * *after* it's been recorded, at the next trace-event-time.  In
+     * replay though we're notified at the occurrence of the signal.  So
+     * to display the same event time in logging across record/replay,
+     * apply this offset.
+     */
+    int signal_delivery_event_offset = session().is_recording() ? -1 : 0;
     printf(
         "[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
-        trace_time() + signal_delivery_event_offset(), rec_tid, tgid(),
+        trace_time() + signal_delivery_event_offset, rec_tid, tgid(),
         signalname(ev().Signal().no));
   }
 
@@ -334,9 +326,10 @@ void Task::destabilize_task_group() {
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s%s)<%p>\n", prname.c_str(),
-          tid, rec_tid, wait_status, switchable ? "" : " UNSWITCHABLE",
+          tid, rec_tid, wait_status,
+          (!session().is_recording() || switchable) ? "" : " UNSWITCHABLE",
           unstable ? " UNSTABLE" : "", this);
-  if (RECORD == rr_flags()->option) {
+  if (session().is_recording()) {
     // TODO pending events are currently only meaningful
     // during recording.  We should change that
     // eventually, to have more informative output.
@@ -589,9 +582,8 @@ void Task::maybe_update_vm(int syscallno, int state) {
   // We have to use the recorded_regs during replay because they
   // have the return value set in syscall_result().  We may not have
   // advanced regs() to that point yet.
-  const Registers& r = RECORD == rr_flags()->option
-                           ? regs()
-                           : current_trace_frame().recorded_regs;
+  const Registers& r =
+      session().is_recording() ? regs() : current_trace_frame().recorded_regs;
 
   if (STATE_SYSCALL_EXIT != state ||
       (SYSCALL_FAILED(r.syscall_result_signed()) &&
@@ -925,16 +917,12 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   return wait();
 }
 
-Session& Task::session() {
+Session& Task::session() const {
   if (session_record) {
     return *session_record;
   }
   return *session_replay;
 }
-
-RecordSession& Task::record_session() { return *session_record; }
-
-ReplaySession& Task::replay_session() { return *session_replay; }
 
 const struct trace_frame& Task::current_trace_frame() {
   return replay_session().current_trace_frame();
@@ -1243,7 +1231,7 @@ bool Task::wait(AllowInterrupt allow_interrupt) {
 
   // We only need this during recording.  If tracees go runaway
   // during replay, something else is at fault.
-  bool enable_wait_interrupt = (RECORD == rr_flags()->option);
+  bool enable_wait_interrupt = session().is_recording();
 
   bool sent_wait_interrupt = false;
   static const int ptrace_exit_wait_status = (PTRACE_EVENT_EXIT << 16) | 0x857f;
@@ -1414,10 +1402,8 @@ int Task::stop_sig_from_status(int status) const {
 Task* Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
                   pid_t new_tid, pid_t new_rec_tid, Session* other_session) {
   auto& sess = other_session ? *other_session : session();
-  Task* t = new Task(new_tid, new_rec_tid, priority);
+  Task* t = new Task(sess, new_tid, new_rec_tid, priority);
 
-  t->session_record = session_record;
-  t->session_replay = session_replay;
   t->syscallbuf_lib_start = syscallbuf_lib_start;
   t->syscallbuf_lib_end = syscallbuf_lib_end;
   t->blocked_sigs = blocked_sigs;
@@ -2168,7 +2154,7 @@ bool Task::clone_syscall_is_complete() {
   sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
   sigaction(SIGALRM, &sa, NULL);
 
-  Task* t = new Task(tid, rec_tid, 0);
+  Task* t = new Task(session, tid, rec_tid, 0);
   // The very first task we fork inherits the signal
   // dispositions of the current OS process (which should all be
   // default at this point, but ...).  From there on, new tasks

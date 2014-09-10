@@ -137,6 +137,8 @@ public:
   virtual RecordSession* as_record() { return nullptr; }
   virtual ReplaySession* as_replay() { return nullptr; }
 
+  bool is_recording() { return as_record() != nullptr; }
+
 protected:
   Session();
   ~Session();

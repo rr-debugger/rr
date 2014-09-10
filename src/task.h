@@ -690,10 +690,10 @@ public:
                         int64_t rbc_period = 0);
 
   /** Return the session this is part of. */
-  Session& session();
-  RecordSession& record_session();
-  ReplaySession& replay_session();
-  ReplaySession* replay_session_ptr() { return session_replay; }
+  Session& session() const;
+  RecordSession& record_session() const { return *session_record; }
+  ReplaySession& replay_session() const { return *session_replay; }
+  ReplaySession* replay_session_ptr() const { return session_replay; }
 
   const struct trace_frame& current_trace_frame();
 
@@ -1107,7 +1107,7 @@ public:
   uintptr_t exec_saved_arg1;
 
 private:
-  Task(pid_t tid, pid_t rec_tid, int priority);
+  Task(Session& session, pid_t tid, pid_t rec_tid, int priority);
 
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of
