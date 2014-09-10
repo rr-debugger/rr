@@ -28,7 +28,6 @@
 
 #include "log.h"
 #include "session.h"
-#include "types.h"
 
 #define INTERRUPT_CHAR '\x03'
 

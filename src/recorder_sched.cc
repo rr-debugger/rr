@@ -17,6 +17,7 @@
 #include <algorithm>
 
 #include "config.h"
+#include "Flags.h"
 #include "log.h"
 #include "recorder.h"
 #include "session.h"

@@ -18,7 +18,6 @@
 #include "event.h"
 #include "PerfCounters.h"
 #include "registers.h"
-#include "types.h"
 
 class Task;
 

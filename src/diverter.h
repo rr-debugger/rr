@@ -3,7 +3,7 @@
 #ifndef RR_DIVERTER_H_
 #define RR_DIVERTER_H_
 
-#include "types.h"
+#include <unistd.h>
 
 /**
  * rr's "diverter" mode implements a third type of execution

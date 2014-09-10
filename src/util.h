@@ -17,10 +17,10 @@
 
 #include "kernel_abi.h"
 #include "registers.h"
-#include "types.h"
 
 class AutoRemoteSyscalls;
 class Task;
+struct Flags;
 struct trace_frame;
 
 #define PTRACE_EVENT_NONE 0

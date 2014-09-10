@@ -29,8 +29,6 @@
 
 #include <assert.h>
 
-#include "types.h"
-
 enum SupportedArch {
   x86,
   x86_64,

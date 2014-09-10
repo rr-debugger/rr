@@ -10,7 +10,6 @@
 #include <memory>
 #include <set>
 
-#include "types.h"
 #include "util.h"
 
 class Session;

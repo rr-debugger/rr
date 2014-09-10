@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "kernel_abi.h"
-#include "types.h"
 
 // Various things the GDB stub needs to know about.
 enum DebuggerRegister {

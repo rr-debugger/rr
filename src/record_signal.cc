@@ -17,6 +17,7 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "Flags.h"
 #include "log.h"
 #include "PerfCounters.h"
 #include "recorder.h"

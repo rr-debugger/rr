@@ -1,21 +1,16 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_TYPES_H_
-#define RR_TYPES_H_
+#ifndef RR_FLAGS_H_
+#define RR_FLAGS_H_
 
-#include <linux/limits.h>
-#include <stddef.h>
-#include <stdio.h>
 #include <stdint.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <unistd.h>
 
 #include <string>
 
 /**
- * command line arguments for rr
+ * Command line arguments for rr
  */
-
 struct Flags {
   /* Max counter value before the scheduler interrupts a tracee. */
   int max_rbc;
@@ -161,4 +156,4 @@ struct Flags {
         dont_launch_debugger(false) {}
 };
 
-#endif /* RR_TYPES_H_ */
+#endif /* RR_FLAGS_H_ */

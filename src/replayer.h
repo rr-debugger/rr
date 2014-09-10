@@ -4,7 +4,6 @@
 #define RR_REPLAYER_H_
 
 #include "registers.h"
-#include "types.h"
 #include "util.h"
 
 struct dbg_context;

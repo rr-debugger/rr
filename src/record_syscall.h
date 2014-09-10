@@ -3,9 +3,6 @@
 #ifndef RR_PROCESS_SYSCALL_H_
 #define RR_PROCESS_SYSCALL_H_
 
-#include "types.h"
-#include "util.h"
-
 class Task;
 
 /**

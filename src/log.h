@@ -5,6 +5,7 @@
 
 #include <iostream>
 
+#include "Flags.h"
 #include "replayer.h" // emergency_debug()
 #include "task.h"
 #include "util.h"

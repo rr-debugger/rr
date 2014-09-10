@@ -23,6 +23,7 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "Flags.h"
 #include "log.h"
 #include "PerfCounters.h"
 #include "record_signal.h"

@@ -46,6 +46,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "drm.h"
+#include "Flags.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "recorder.h" // for terminate_recording()

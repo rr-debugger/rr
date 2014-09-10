@@ -36,6 +36,7 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "Flags.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "recorder_sched.h"
@@ -45,7 +46,6 @@
 #include "syscalls.h"
 #include "task.h"
 #include "trace.h"
-#include "types.h"
 
 using namespace std;
 using namespace rr;

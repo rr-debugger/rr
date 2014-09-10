@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "registers.h"
-#include "types.h"
 
 class AutoRemoteSyscalls;
 class Task;

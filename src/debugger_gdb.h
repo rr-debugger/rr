@@ -9,8 +9,8 @@
 #include <ostream>
 #include <vector>
 
+#include "Flags.h"
 #include "session.h"
-#include "types.h"
 
 #define DBG_SOCKET_READY_SIG SIGURG
 
