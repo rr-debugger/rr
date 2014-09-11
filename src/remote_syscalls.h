@@ -17,7 +17,7 @@ static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
  * like
  *
  *    AutoRemoteSyscalls remote(t); // prepare remote syscalls
- *    remote.syscall(SYS_open, ...); // make syscalls
+ *    remote.syscall(open_syscall_number(remote.arch()), ...); // make syscalls
  *    ...
  *    // when |remote| goes out of scope, remote syscalls are finished
  */
@@ -143,6 +143,12 @@ public:
 
   /** The Task in the context of which we're making syscalls. */
   Task* task() const { return t; }
+
+  /**
+   * A small helper to get at the Task's arch.
+   * Out-of-line to avoid including task.h here.
+   */
+  SupportedArch arch() const;
 
   /**
    * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
