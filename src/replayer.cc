@@ -170,13 +170,13 @@ static uint64_t instruction_trace_at_event_last = 0;
 
 static void debug_memory(Task* t) {
   if (should_dump_memory(t, t->current_trace_frame())) {
-    dump_process_memory(t, t->current_trace_frame().global_time, "rep");
+    dump_process_memory(t, t->current_trace_frame().time(), "rep");
   }
   if (t->session().can_validate() &&
       should_checksum(t, t->current_trace_frame())) {
     /* Validate the checksum we computed during the
      * recording phase. */
-    validate_process_memory(t, t->current_trace_frame().global_time);
+    validate_process_memory(t, t->current_trace_frame().time());
   }
 }
 
@@ -624,13 +624,13 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
       session.current_trace_frame().ev.type == EV_SCHED) {
     TraceFrame next_trace = session.ifstream().peek_frame();
     while (EV_SCHED == next_trace.ev.type && next_trace.tid == t->rec_tid &&
-           Flags::get().goto_event != next_trace.global_time &&
-           !trace_instructions_up_to_event(next_trace.global_time)) {
+           Flags::get().goto_event != next_trace.time() &&
+           !trace_instructions_up_to_event(next_trace.time())) {
       session.ifstream() >> session.current_trace_frame();
       next_trace = session.ifstream().peek_frame();
     }
   }
-  assert(t->trace_time() == session.current_trace_frame().global_time);
+  assert(t->trace_time() == session.current_trace_frame().time());
   return t;
 }
 
@@ -2125,7 +2125,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
   if (!t) {
     return nullptr;
   }
-  uint32_t event_now = next_frame.global_time;
+  uint32_t event_now = next_frame.time();
   uint32_t goto_event = Flags::get().goto_event;
   pid_t target_process = Flags::get().target_process;
   bool require_exec = Flags::CREATED_EXEC == Flags::get().process_created_how;

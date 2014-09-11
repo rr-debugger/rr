@@ -879,9 +879,8 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
       struct mmapped_file file;
       t->ifstream() >> file;
 
-      ASSERT(t, file.time == trace->global_time) << "mmap time " << file.time
-                                                 << " should equal "
-                                                 << trace->global_time;
+      ASSERT(t, file.time == trace->time())
+          << "mmap time " << file.time << " should equal " << trace->time();
       if (!file.copied) {
         mapped_addr = finish_direct_mmap<Arch>(remote, trace, prot, flags,
                                                offset_pages, &file);
@@ -1115,7 +1114,7 @@ static void notify_save_data_error(Task* t, void* addr, const void* rec_buf,
                                    size_t rep_buf_len) {
   char rec_dump[PATH_MAX];
   char rep_dump[PATH_MAX];
-  int global_time = t->current_trace_frame().global_time;
+  int global_time = t->current_trace_frame().time();
 
   dump_path_data(t, global_time, "rec_save_data", rec_dump, sizeof(rec_dump),
                  rec_buf, rec_buf_len, addr);

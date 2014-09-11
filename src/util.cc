@@ -518,7 +518,7 @@ int should_dump_memory(Task* t, const TraceFrame& f) {
   }
 #endif
   return (flags->dump_on == Flags::DUMP_ON_ALL ||
-          flags->dump_at == int(f.global_time));
+          flags->dump_at == int(f.time()));
 }
 
 void dump_process_memory(Task* t, int global_time, const char* tag) {
@@ -755,7 +755,7 @@ int should_checksum(Task* t, const TraceFrame& f) {
     return is_syscall_exit;
   }
   /* |checksum| is a global time point. */
-  return checksum <= int(f.global_time);
+  return checksum <= int(f.time());
 }
 
 void checksum_process_memory(Task* t, int global_time) {

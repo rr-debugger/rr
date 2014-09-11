@@ -42,6 +42,10 @@ struct TraceFrame {
       : global_time(global_time), tid(tid), ev(ev), rbc(0) {}
   TraceFrame() : global_time(0), tid(0), rbc(0) { ev.encoded = 0; }
 
+  typedef uint32_t Time;
+
+  Time time() const { return global_time; }
+
   /**
    * Log a human-readable representation of this to |out|
    * (defaulting to stdout), including a newline character.  An
@@ -53,7 +57,7 @@ struct TraceFrame {
   void dump(FILE* out = nullptr, bool raw_dump = false);
 
   STRUCT_DELIMITER(begin_event_info);
-  uint32_t global_time;
+  Time global_time;
   pid_t tid;
   EncodedEvent ev;
   STRUCT_DELIMITER(end_event_info);

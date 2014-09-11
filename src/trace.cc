@@ -78,10 +78,10 @@ void TraceFrame::dump(FILE* out, bool raw_dump) {
   const Registers& r = recorded_regs;
 
   if (raw_dump) {
-    fprintf(out, " %d %d %d", global_time, tid, ev.encoded);
+    fprintf(out, " %d %d %d", time(), tid, ev.encoded);
   } else {
-    fprintf(out, "{\n  global_time:%u, event:`%s' (state:%d), tid:%d",
-            global_time, Event(ev).str().c_str(), ev.state, tid);
+    fprintf(out, "{\n  global_time:%u, event:`%s' (state:%d), tid:%d", time(),
+            Event(ev).str().c_str(), ev.state, tid);
   }
   if (!ev.has_exec_info) {
     fprintf(out, "\n");
@@ -212,7 +212,7 @@ TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame) {
     frame.recorded_extra_regs = ExtraRegisters();
   }
   tif.tick_time();
-  assert(tif.time() == frame.global_time);
+  assert(tif.time() == frame.time());
   return tif;
 }
 
@@ -336,12 +336,12 @@ bool TraceIfstream::read_raw_data_for_frame(const TraceFrame& frame,
     data_header.save_state();
     data_header >> global_time >> ev.encoded;
     data_header.restore_state();
-    if (global_time == frame.global_time) {
+    if (global_time == frame.time()) {
       assert(ev == frame.ev);
       *this >> d;
       return true;
     }
-    if (global_time > frame.global_time) {
+    if (global_time > frame.time()) {
       return false;
     }
   }

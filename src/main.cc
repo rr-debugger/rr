@@ -38,7 +38,7 @@ static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
   }
   struct raw_data buf;
   trace >> buf;
-  if (buf.global_time != frame.global_time || buf.ev != frame.ev) {
+  if (buf.global_time != frame.time() || buf.ev != frame.ev) {
     fprintf(stderr, "Malformed trace file (time+event mismatch)\n");
     abort();
   }
@@ -92,10 +92,10 @@ static void dump_events_matching(TraceIfstream& trace, FILE* out,
   while (!trace.at_end()) {
     TraceFrame frame;
     trace >> frame;
-    if (end < frame.global_time) {
+    if (end < frame.time()) {
       return;
     }
-    if (start <= frame.global_time && frame.global_time <= end) {
+    if (start <= frame.time() && frame.time() <= end) {
       frame.dump(out, Flags::get().raw_dump);
       if (Flags::get().dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);

@@ -706,10 +706,10 @@ void Task::record_event(const Event& ev) {
   }
 
   if (should_dump_memory(this, frame)) {
-    dump_process_memory(this, frame.global_time, "rec");
+    dump_process_memory(this, frame.time(), "rec");
   }
   if (should_checksum(this, frame)) {
-    checksum_process_memory(this, frame.global_time);
+    checksum_process_memory(this, frame.time());
   }
 
   ofstream() << frame;
