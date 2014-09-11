@@ -1303,7 +1303,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   // reason. So we saved those cleared values, and now we restore that
   // state so they're cleared during replay.
   if (trace->event().type == EV_SIGNAL_HANDLER) {
-    t->set_extra_regs(trace->recorded_extra_regs);
+    t->set_extra_regs(trace->extra_regs());
   }
 
   /* Restore the signal-hander frame data, if there was one. */

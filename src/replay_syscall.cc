@@ -1551,7 +1551,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       }
       t->finish_emulated_syscall();
       t->set_regs(trace->regs());
-      t->set_extra_regs(trace->recorded_extra_regs);
+      t->set_extra_regs(trace->extra_regs());
       step->action = TSTEP_RETIRE;
       return;
 

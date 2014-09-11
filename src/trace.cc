@@ -176,8 +176,8 @@ TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
   }
 
   if (frame.event().has_exec_info) {
-    int extra_reg_bytes = frame.recorded_extra_regs.data_size();
-    char extra_reg_format = (char)frame.recorded_extra_regs.format();
+    int extra_reg_bytes = frame.extra_regs().data_size();
+    char extra_reg_format = (char)frame.extra_regs().format();
     tof.events.write(&extra_reg_format, sizeof(extra_reg_format));
     tof.events.write((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
     if (!tof.events.good()) {
@@ -186,7 +186,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
               << " bytes to the trace, but failed";
     }
     if (extra_reg_bytes > 0) {
-      tof.events.write((const char*)frame.recorded_extra_regs.data_bytes(),
+      tof.events.write((const char*)frame.extra_regs().data_bytes(),
                        extra_reg_bytes);
       if (!tof.events.good()) {
         FATAL() << "Tried to save " << extra_reg_bytes

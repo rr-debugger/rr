@@ -54,6 +54,7 @@ struct TraceFrame {
   EncodedEvent event() const { return ev; }
   Ticks ticks() const { return ticks_; }
   const Registers& regs() const { return recorded_regs; }
+  const ExtraRegisters& extra_regs() const { return recorded_extra_regs; }
 
   /**
    * Log a human-readable representation of this to |out|
