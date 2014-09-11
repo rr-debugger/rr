@@ -1243,7 +1243,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   AutoGc maybe_gc(t->replay_session(), syscall, state);
 
   LOG(debug) << "processing " << t->syscallname(syscall) << " ("
-             << statename(state) << ")";
+             << state_name(state) << ")";
 
   if (STATE_SYSCALL_EXIT == state &&
       SYSCALL_MAY_RESTART(rec_regs->syscall_result_signed())) {

@@ -1781,7 +1781,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
 
   LOG(debug) << "[line " << t->trace_time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
-             << statename(t->current_trace_frame().ev.state);
+             << state_name(t->current_trace_frame().ev.state);
   if (t->syscallbuf_hdr) {
     LOG(debug) << "    (syscllbufsz:" << t->syscallbuf_hdr->num_rec_bytes
                << ", abrtcmt:" << t->syscallbuf_hdr->abort_commit

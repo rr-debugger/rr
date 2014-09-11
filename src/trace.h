@@ -4,10 +4,10 @@
 #define RR_TRACE_H_
 
 #include <linux/limits.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <stdio.h>
 
 #include <memory>
 #include <string>

@@ -408,6 +408,6 @@ inline static std::ostream& operator<<(std::ostream& o,
 /**
  * Return the symbolic name of |state|, or "???state" if unknown.
  */
-const char* statename(int state);
+const char* state_name(int state);
 
 #endif // EVENT_H_

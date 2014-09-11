@@ -331,7 +331,7 @@ std::string Event::type_name() const {
   }
 }
 
-const char* statename(int state) {
+const char* state_name(int state) {
   switch (state) {
 #define CASE(_id)                                                              \
   case _id:                                                                    \
