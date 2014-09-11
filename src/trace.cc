@@ -27,6 +27,20 @@ using namespace std;
 //
 #define TRACE_VERSION 12
 
+void TraceFrame::set_exec_info(Ticks ticks, const Registers& regs,
+                               const PerfCounters::Extra* extra_perf_values,
+                               const ExtraRegisters* extra_regs) {
+  assert(ev.has_exec_info == HAS_EXEC_INFO);
+  rbc = ticks;
+  recorded_regs = regs;
+  if (extra_perf_values) {
+    this->extra_perf_values = *extra_perf_values;
+  }
+  if (extra_regs) {
+    recorded_extra_regs = *extra_regs;
+  }
+}
+
 static ssize_t sizeof_trace_frame_event_info(void) {
   return offsetof(TraceFrame, end_event_info) -
          offsetof(TraceFrame, begin_event_info);

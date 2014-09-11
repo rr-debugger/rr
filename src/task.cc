@@ -692,17 +692,16 @@ void Task::record_event(const Event& ev) {
   maybe_flush_syscallbuf();
 
   TraceFrame frame(ofstream().time(), tid, ev.encode());
-  if (ev.has_exec_info()) {
-    frame.rbc = rbc_count();
+  if (ev.has_exec_info() == HAS_EXEC_INFO) {
+    PerfCounters::Extra extra_perf_values;
     if (PerfCounters::extra_perf_counters_enabled()) {
-      frame.extra_perf_values = hpc.read_extra();
-    } else {
-      memset(&frame.extra_perf_values, 0, sizeof(frame.extra_perf_values));
+      extra_perf_values = hpc.read_extra();
     }
-    frame.recorded_regs = regs();
-    if (record_extra_regs(ev)) {
-      frame.recorded_extra_regs = extra_regs();
-    }
+    frame.set_exec_info(rbc_count(), regs(),
+                        PerfCounters::extra_perf_counters_enabled()
+                            ? &extra_perf_values
+                            : nullptr,
+                        record_extra_regs(ev) ? &extra_regs() : nullptr);
   }
 
   if (should_dump_memory(this, frame)) {

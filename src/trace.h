@@ -19,6 +19,7 @@
 #include "ExtraRegisters.h"
 #include "PerfCounters.h"
 #include "Registers.h"
+#include "Ticks.h"
 
 typedef std::vector<char*> CharpVector;
 
@@ -41,6 +42,10 @@ struct TraceFrame {
   TraceFrame(uint32_t global_time, pid_t tid, EncodedEvent event)
       : global_time(global_time), tid_(tid), ev(event), rbc(0) {}
   TraceFrame() : global_time(0), tid_(0), rbc(0) { ev.encoded = 0; }
+
+  void set_exec_info(Ticks ticks, const Registers& regs,
+                     const PerfCounters::Extra* extra_perf_values,
+                     const ExtraRegisters* extra_regs);
 
   typedef uint32_t Time;
 
