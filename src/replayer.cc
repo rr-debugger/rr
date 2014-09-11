@@ -1340,11 +1340,11 @@ static void check_rcb_consistency(Task* t, const Event& ev) {
 
   int64_t rcb_slack = get_rcb_slack(t);
   int64_t rcb_now = t->rbc_count();
-  int64_t trace_rcb = t->current_trace_frame().rbc;
+  int64_t trace_rcb = t->current_trace_frame().ticks();
 
   ASSERT(t, llabs(rcb_now - trace_rcb) <= rcb_slack)
       << "rcb mismatch for '" << ev << "'; expected "
-      << t->current_trace_frame().rbc << ", got " << rcb_now << "";
+      << t->current_trace_frame().ticks() << ", got " << rcb_now << "";
   // Sync task rcb with trace rcb so we don't keep accumulating errors
   t->set_rbc_count(trace_rcb);
 }
@@ -1861,7 +1861,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
       break;
     case EV_SCHED:
       step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-      step.target.rcb = t->current_trace_frame().rbc;
+      step.target.rcb = t->current_trace_frame().ticks();
       step.target.signo = 0;
       break;
     case EV_SEGV_RDTSC:
@@ -1885,7 +1885,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
                                      : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
       if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
         step.target.signo = step.signo;
-        step.target.rcb = t->current_trace_frame().rbc;
+        step.target.rcb = t->current_trace_frame().ticks();
       }
       break;
     case EV_SYSCALL:

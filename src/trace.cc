@@ -31,7 +31,7 @@ void TraceFrame::set_exec_info(Ticks ticks, const Registers& regs,
                                const PerfCounters::Extra* extra_perf_values,
                                const ExtraRegisters* extra_regs) {
   assert(ev.has_exec_info == HAS_EXEC_INFO);
-  rbc = ticks;
+  ticks_ = ticks;
   recorded_regs = regs;
   if (extra_perf_values) {
     this->extra_perf_values = *extra_perf_values;
@@ -104,7 +104,7 @@ void TraceFrame::dump(FILE* out, bool raw_dump) {
 
   if (raw_dump) {
     fprintf(out, " %lld %lld %" PRId64 " %lld", extra_perf_values.hw_interrupts,
-            extra_perf_values.page_faults, rbc,
+            extra_perf_values.page_faults, ticks(),
             extra_perf_values.instructions_retired);
     r.print_register_file_for_trace(out, true);
     fprintf(out, "\n");
@@ -112,9 +112,9 @@ void TraceFrame::dump(FILE* out, bool raw_dump) {
     if (PerfCounters::extra_perf_counters_enabled()) {
       fprintf(out, "\n  hw_ints:%lld faults:%lld rbc:%" PRId64 " insns:%lld\n",
               extra_perf_values.hw_interrupts, extra_perf_values.page_faults,
-              rbc, extra_perf_values.instructions_retired);
+              ticks(), extra_perf_values.instructions_retired);
     } else {
-      fprintf(out, "\n  rbc:%" PRId64 "\n", rbc);
+      fprintf(out, "\n  rbc:%" PRId64 "\n", ticks());
     }
     r.print_register_file_for_trace(out, false);
   }

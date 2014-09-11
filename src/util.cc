@@ -454,7 +454,7 @@ bool compare_register_files(Task* t, const char* name1, const Registers* reg1,
 
   ASSERT(t, !bail_error || match) << "Fatal register mismatch (rbc/rec:"
                                   << t->rbc_count() << "/"
-                                  << t->current_trace_frame().rbc << ")";
+                                  << t->current_trace_frame().ticks() << ")";
 
   if (match && mismatch_behavior == LOG_MISMATCHES) {
     LOG(info) << "(register files are the same for " << name1 << " and "
@@ -1441,7 +1441,7 @@ void EnvironmentBugDetector::notify_reached_syscall_during_replay(Task* t) {
   if (ev.Syscall().number != SYS_geteuid32) {
     return;
   }
-  uint64_t trace_rbc_count = t->current_trace_frame().rbc;
+  uint64_t trace_rbc_count = t->current_trace_frame().ticks();
   uint64_t actual_rbc_count = t->rbc_count();
   if (trace_rbc_count_at_last_geteuid32 > 0 && !detected_cpuid_bug) {
     if (!rbc_counts_ok(trace_rbc_count_at_last_geteuid32, trace_rbc_count,

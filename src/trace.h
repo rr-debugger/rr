@@ -40,8 +40,8 @@ typedef std::vector<char*> CharpVector;
  */
 struct TraceFrame {
   TraceFrame(uint32_t global_time, pid_t tid, EncodedEvent event)
-      : global_time(global_time), tid_(tid), ev(event), rbc(0) {}
-  TraceFrame() : global_time(0), tid_(0), rbc(0) { ev.encoded = 0; }
+      : global_time(global_time), tid_(tid), ev(event), ticks_(0) {}
+  TraceFrame() : global_time(0), tid_(0), ticks_(0) { ev.encoded = 0; }
 
   void set_exec_info(Ticks ticks, const Registers& regs,
                      const PerfCounters::Extra* extra_perf_values,
@@ -52,6 +52,7 @@ struct TraceFrame {
   Time time() const { return global_time; }
   pid_t tid() const { return tid_; }
   EncodedEvent event() const { return ev; }
+  Ticks ticks() const { return ticks_; }
 
   /**
    * Log a human-readable representation of this to |out|
@@ -70,7 +71,7 @@ struct TraceFrame {
   STRUCT_DELIMITER(end_event_info);
 
   STRUCT_DELIMITER(begin_exec_info);
-  int64_t rbc;
+  int64_t ticks_;
   PerfCounters::Extra extra_perf_values;
   Registers recorded_regs;
   STRUCT_DELIMITER(end_exec_info);
