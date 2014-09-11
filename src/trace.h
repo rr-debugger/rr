@@ -15,7 +15,7 @@
 
 #include "CompressedReader.h"
 #include "CompressedWriter.h"
-#include "event.h"
+#include "Event.h"
 #include "ExtraRegisters.h"
 #include "PerfCounters.h"
 #include "Registers.h"

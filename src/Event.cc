@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "Event"
 
-#include "event.h"
+#include "Event.h"
 
 #include <syscall.h>
 

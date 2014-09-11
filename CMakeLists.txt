@@ -44,7 +44,7 @@ add_executable(rr
   src/debugger_gdb.cc
   src/diverter.cc
   src/emufs.cc
-  src/event.cc
+  src/Event.cc
   src/ExtraRegisters.cc
   src/Flags.cc
   src/main.cc
