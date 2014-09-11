@@ -40,7 +40,8 @@ static void execute_syscall(Task* t) {
   remote.regs().set_syscall_result(t->regs().syscall_result());
 }
 
-static void process_syscall(Task* t, int syscallno) {
+template<typename Arch>
+static void process_syscall_arch(Task* t, int syscallno) {
   LOG(debug) << "Processing " << t->syscallname(syscallno);
 
   switch (syscallno) {
@@ -48,7 +49,7 @@ static void process_syscall(Task* t, int syscallno) {
     // However, because the rr preload library expects these
     // syscalls to succeed and aborts if they don't, we fudge a
     // "0" return value.
-    case SYS_ioctl:
+    case Arch::ioctl:
       if (!t->is_desched_event_syscall()) {
         break;
       }
@@ -74,16 +75,21 @@ static void process_syscall(Task* t, int syscallno) {
     // to the file the tracee expects.  However, the only real fds
     // that leak into tracees are the stdio fds, and there's not
     // much harm that can be caused by accidental writes to them.
-    case SYS_ipc:
-    case SYS_kill:
-    case SYS_rt_sigqueueinfo:
-    case SYS_rt_tgsigqueueinfo:
-    case SYS_tgkill:
-    case SYS_tkill:
+    case Arch::ipc:
+    case Arch::kill:
+    case Arch::rt_sigqueueinfo:
+    case Arch::rt_tgsigqueueinfo:
+    case Arch::tgkill:
+    case Arch::tkill:
       return;
   }
 
   return execute_syscall(t);
+}
+
+static void process_syscall(Task* t, int syscallno)
+{
+  RR_ARCH_FUNCTION(process_syscall_arch, t->arch(), t, syscallno)
 }
 
 /**
