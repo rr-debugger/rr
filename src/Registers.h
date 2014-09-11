@@ -33,31 +33,30 @@ public:
   // Return a pointer that can be passed to ptrace's PTRACE_GETREGS et al.
   void* ptrace_registers() {
     switch (arch()) {
-    case x86:
-      return &u.x86regs;
-    case x86_64:
-      return &u.x64regs;
-    default:
-      assert(0 && "unknown architecture");
+      case x86:
+        return &u.x86regs;
+      case x86_64:
+        return &u.x64regs;
+      default:
+        assert(0 && "unknown architecture");
     }
   }
 
-#define RR_GET_REG(x86case, x64case)            \
-  (arch() == x86                                \
-    ? u.x86regs.x86case                         \
-    : arch() == x86_64                          \
-    ? u.x64regs.x64case                         \
-    : (assert(0 && "unknown architecture"), uintptr_t(-1)))
-#define RR_SET_REG(x86case, x64case, value)     \
-  switch (arch()) {                             \
-    case x86:                                   \
-      u.x86regs.x86case = (value);              \
-      break;                                    \
-    case x86_64:                                \
-      u.x64regs.x64case = (value);              \
-      break;                                    \
-    default:                                    \
-      assert(0 && "unknown architecture");      \
+#define RR_GET_REG(x86case, x64case)                                           \
+  (arch() == x86 ? u.x86regs.x86case                                           \
+                 : arch() == x86_64                                            \
+                       ? u.x64regs.x64case                                     \
+                       : (assert(0 && "unknown architecture"), uintptr_t(-1)))
+#define RR_SET_REG(x86case, x64case, value)                                    \
+  switch (arch()) {                                                            \
+    case x86:                                                                  \
+      u.x86regs.x86case = (value);                                             \
+      break;                                                                   \
+    case x86_64:                                                               \
+      u.x64regs.x64case = (value);                                             \
+      break;                                                                   \
+    default:                                                                   \
+      assert(0 && "unknown architecture");                                     \
   }
 
   uintptr_t ip() const { return RR_GET_REG(eip, rip); }
@@ -73,7 +72,9 @@ public:
 
   uintptr_t syscall_result() const { return RR_GET_REG(eax, rax); }
   intptr_t syscall_result_signed() const { return RR_GET_REG(eax, rax); }
-  void set_syscall_result(uintptr_t syscall_result) { RR_SET_REG(eax, rax, syscall_result); }
+  void set_syscall_result(uintptr_t syscall_result) {
+    RR_SET_REG(eax, rax, syscall_result);
+  }
 
   /**
    * This pseudo-register holds the system-call number when we get ptrace
@@ -82,7 +83,9 @@ public:
    * event.
    */
   intptr_t original_syscallno() const { return RR_GET_REG(orig_eax, orig_rax); }
-  void set_original_syscallno(intptr_t syscallno) { RR_SET_REG(orig_eax, orig_rax, syscallno); }
+  void set_original_syscallno(intptr_t syscallno) {
+    RR_SET_REG(orig_eax, orig_rax, syscallno);
+  }
 
   uintptr_t arg1() const { return RR_GET_REG(ebx, rdi); }
   intptr_t arg1_signed() const { return RR_GET_REG(ebx, rdi); }
