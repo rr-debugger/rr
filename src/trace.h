@@ -53,6 +53,7 @@ struct TraceFrame {
   pid_t tid() const { return tid_; }
   EncodedEvent event() const { return ev; }
   Ticks ticks() const { return ticks_; }
+  const Registers& regs() const { return recorded_regs; }
 
   /**
    * Log a human-readable representation of this to |out|

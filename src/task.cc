@@ -579,11 +579,11 @@ bool Task::may_be_blocked() const {
 }
 
 void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
-  // We have to use the recorded_regs during replay because they
+  // We have to use the regs() during replay because they
   // have the return value set in syscall_result().  We may not have
   // advanced regs() to that point yet.
   const Registers& r =
-      session().is_recording() ? regs() : current_trace_frame().recorded_regs;
+      session().is_recording() ? regs() : current_trace_frame().regs();
 
   if (SYSCALL_EXIT != state || (SYSCALL_FAILED(r.syscall_result_signed()) &&
                                 SYS_mprotect != syscallno)) {
@@ -933,7 +933,7 @@ ssize_t Task::set_data_from_trace() {
 
 void Task::set_return_value_from_trace() {
   Registers r = regs();
-  r.set_syscall_result(current_trace_frame().recorded_regs.syscall_result());
+  r.set_syscall_result(current_trace_frame().regs().syscall_result());
   set_regs(r);
 }
 

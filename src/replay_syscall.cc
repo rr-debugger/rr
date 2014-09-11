@@ -166,7 +166,7 @@ static void validate_args(int syscall, Task* t) {
   if (!t->session().can_validate()) {
     return;
   }
-  assert_child_regs_are(t, &t->current_trace_frame().recorded_regs);
+  assert_child_regs_are(t, &t->current_trace_frame().regs());
 }
 
 /**
@@ -189,8 +189,7 @@ static void goto_next_syscall_emu(Task* t) {
 
   /* check if we are synchronized with the trace -- should never
    * fail */
-  const int rec_syscall =
-      t->current_trace_frame().recorded_regs.original_syscallno();
+  const int rec_syscall = t->current_trace_frame().regs().original_syscallno();
   const int current_syscall = t->regs().original_syscallno();
 
   if (current_syscall != rec_syscall) {
@@ -225,7 +224,7 @@ static void __ptrace_cont(Task* t) {
   t->child_sig = 0;
 
   /* check if we are synchronized with the trace -- should never fail */
-  int rec_syscall = t->current_trace_frame().recorded_regs.original_syscallno();
+  int rec_syscall = t->current_trace_frame().regs().original_syscallno();
   int current_syscall = t->regs().original_syscallno();
   ASSERT(t, current_syscall == rec_syscall)
       << "Should be at " << t->syscallname(rec_syscall) << ", but instead at "
@@ -336,7 +335,7 @@ static bool is_failed_syscall(Task* t, const TraceFrame* frame) {
         t->ifstream().peek_to(t->rec_tid, frame->event().type, SYSCALL_EXIT);
     frame = &next_frame;
   }
-  return SYSCALL_FAILED(frame->recorded_regs.syscall_result_signed());
+  return SYSCALL_FAILED(frame->regs().syscall_result_signed());
 }
 
 static RepTraceStepType syscall_action(SyscallEntryOrExit state) {
@@ -359,7 +358,7 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
     return;
   }
 
-  Registers rec_regs = trace->recorded_regs;
+  Registers rec_regs = trace->regs();
   unsigned long flags = rec_regs.arg1();
 
   if (flags & CLONE_UNTRACED) {
@@ -596,7 +595,7 @@ void process_ipc(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   }
 
   step->action = TSTEP_EXIT_SYSCALL;
-  unsigned int call = trace->recorded_regs.arg1();
+  unsigned int call = trace->regs().arg1();
   LOG(debug) << "ipc call: " << call;
   switch (call) {
     case MSGCTL:
@@ -624,7 +623,7 @@ static void* finish_anonymous_mmap(AutoRemoteSyscalls& remote,
                                    TraceFrame* trace, int prot, int flags,
                                    off64_t offset_pages,
                                    int note_task_map = NOTE_TASK_MAP) {
-  const Registers* rec_regs = &trace->recorded_regs;
+  const Registers* rec_regs = &trace->regs();
   /* *Must* map the segment at the recorded address, regardless
      of what the recorded tracee passed as the |addr| hint. */
   void* rec_addr = (void*)rec_regs->syscall_result();
@@ -690,7 +689,7 @@ static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   LOG(debug) << "  finishing private mmap of " << file->filename;
 
   Task* t = remote.task();
-  const Registers& rec_regs = trace->recorded_regs;
+  const Registers& rec_regs = trace->regs();
   size_t num_bytes = rec_regs.arg2();
   void* mapped_addr =
       finish_anonymous_mmap<Arch>(remote, trace, prot,
@@ -754,9 +753,9 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                                 int verify = VERIFY_BACKING_FILE,
                                 int note_task_map = NOTE_TASK_MAP) {
   Task* t = remote.task();
-  Registers* rec_regs = &trace->recorded_regs;
-  void* rec_addr = (void*)rec_regs->syscall_result();
-  size_t length = rec_regs->arg2();
+  auto& rec_regs = trace->regs();
+  void* rec_addr = (void*)rec_regs.syscall_result();
+  size_t length = rec_regs.arg2();
   int fd;
   void* mapped_addr;
 
@@ -808,8 +807,7 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                                 int prot, int flags, off64_t offset_pages,
                                 const struct mmapped_file* file) {
   Task* t = remote.task();
-  const Registers& rec_regs = trace->recorded_regs;
-  size_t rec_num_bytes = ceil_page_size(rec_regs.arg2());
+  size_t rec_num_bytes = ceil_page_size(trace->regs().arg2());
 
   // Ensure there's a virtual file for the file that was mapped
   // during recording.
@@ -857,7 +855,7 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
                          struct rep_trace_step* step) {
   void* mapped_addr;
 
-  if (SYSCALL_FAILED(trace->recorded_regs.syscall_result_signed())) {
+  if (SYSCALL_FAILED(trace->regs().syscall_result_signed())) {
     /* Failed maps are fully emulated too; nothing
      * interesting to do. */
     step->action = TSTEP_EXIT_SYSCALL;
@@ -1024,7 +1022,7 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
       // We manually restore the msg buffer.
       step->syscall.num_emu_args = 0;
 
-      void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
+      void* base_addr = (void*)t->current_trace_frame().regs().arg2();
       typename Arch::recvmsg_args args;
       t->read_mem(base_addr, &args);
 
@@ -1035,19 +1033,19 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
     case SYS_RECVMMSG: {
       step->syscall.num_emu_args = 0;
 
-      void* base_addr = (void*)t->current_trace_frame().recorded_regs.arg2();
+      void* base_addr = (void*)t->current_trace_frame().regs().arg2();
       typename Arch::recvmmsg_args args;
       t->read_mem(base_addr, &args);
 
       restore_msgvec<Arch>(
-          t, t->current_trace_frame().recorded_regs.syscall_result_signed(),
+          t, t->current_trace_frame().regs().syscall_result_signed(),
           args.msgvec);
       return;
     }
 
     case SYS_SENDMMSG: {
       restore_msglen_for_msgvec(
-          t, t->current_trace_frame().recorded_regs.syscall_result_signed());
+          t, t->current_trace_frame().regs().syscall_result_signed());
       return;
     }
 
@@ -1074,8 +1072,7 @@ static void process_init_buffers(Task* t, SyscallEntryOrExit state,
 
   /* Proceed to syscall exit so we can run our own syscalls. */
   t->finish_emulated_syscall();
-  rec_child_map_addr =
-      (void*)t->current_trace_frame().recorded_regs.syscall_result();
+  rec_child_map_addr = (void*)t->current_trace_frame().regs().syscall_result();
 
   /* We don't want the desched event fd during replay, because
    * we already know where they were.  (The perf_event fd is
@@ -1180,8 +1177,7 @@ static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
       return;
 
     case Arch::write:
-      maybe_verify_tracee_saved_data(t,
-                                     &t->current_trace_frame().recorded_regs);
+      maybe_verify_tracee_saved_data(t, &t->current_trace_frame().regs());
       return;
 
     default:
@@ -1216,7 +1212,7 @@ static void before_syscall_exit(Task* t, int syscallno) {
       // Use registers saved in the current trace frame since the
       // syscall result hasn't been updated to the
       // post-syscall-exit state yet.
-      t->update_sigaction(t->current_trace_frame().recorded_regs);
+      t->update_sigaction(t->current_trace_frame().regs());
       return;
 
     case Arch::sigprocmask:
@@ -1224,7 +1220,7 @@ static void before_syscall_exit(Task* t, int syscallno) {
       // Use registers saved in the current trace frame since the
       // syscall result hasn't been updated to the
       // post-syscall-exit state yet.
-      t->update_sigmask(t->current_trace_frame().recorded_regs);
+      t->update_sigmask(t->current_trace_frame().regs());
       return;
 
     default:
@@ -1234,12 +1230,12 @@ static void before_syscall_exit(Task* t, int syscallno) {
 
 template <typename Arch>
 static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
-  int syscall =
-      t->current_trace_frame().event().data; /* FIXME: don't shadow syscall() */
+  /* FIXME: don't shadow syscall() */
+  int syscall = t->current_trace_frame().event().data;
   const struct syscall_def* def;
   TraceFrame* trace = &t->replay_session().current_trace_frame();
   SyscallEntryOrExit state = trace->event().state;
-  const Registers* rec_regs = &trace->recorded_regs;
+  const Registers* rec_regs = &trace->regs();
   AutoGc maybe_gc(t->replay_session(), syscall, state);
 
   LOG(debug) << "processing " << t->syscallname(syscall) << " ("
@@ -1456,14 +1452,14 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
         step->syscall.emu = 1;
         return;
       }
-      return process_mmap<Arch>(t, trace, state, trace->recorded_regs.arg3(),
-                                trace->recorded_regs.arg4(),
-                                trace->recorded_regs.arg6(), step);
+      return process_mmap<Arch>(t, trace, state, trace->regs().arg3(),
+                                trace->regs().arg4(), trace->regs().arg6(),
+                                step);
 
     case Arch::nanosleep:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = (trace->recorded_regs.arg2() != 0) ? 1 : 0;
+      step->syscall.num_emu_args = (trace->regs().arg2() != 0) ? 1 : 0;
       step->action = syscall_action(state);
       return;
 
@@ -1476,8 +1472,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       return;
 
     case Arch::prctl: {
-      int option = trace->recorded_regs.arg1_signed();
-      void* arg2 = (void*)trace->recorded_regs.arg2();
+      int option = trace->regs().arg1_signed();
+      void* arg2 = (void*)trace->regs().arg2();
       if (PR_SET_NAME == option || PR_GET_NAME == option) {
         step->syscall.num_emu_args = 1;
         // We actually execute these.
@@ -1554,7 +1550,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
         return;
       }
       t->finish_emulated_syscall();
-      t->set_regs(trace->recorded_regs);
+      t->set_regs(trace->regs());
       t->set_extra_regs(trace->recorded_extra_regs);
       step->action = TSTEP_RETIRE;
       return;

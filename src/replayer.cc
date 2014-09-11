@@ -641,7 +641,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
  * If syscallno is 0, this is a signal delivery, not a syscall.
  */
 static void validate_args(int syscallno, SyscallEntryOrExit state, Task* t) {
-  Registers rec_regs = t->current_trace_frame().recorded_regs;
+  Registers rec_regs = t->current_trace_frame().regs();
 
   /* don't validate anything before execve is done as the actual
    * process did not start prior to this point */
@@ -1324,7 +1324,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   /* If this signal had a user handler, and we just set up the
    * callframe, and we need to restore the $sp for continued
    * execution. */
-  t->set_regs(trace->recorded_regs);
+  t->set_regs(trace->regs());
   /* Delivered the signal. */
   t->child_sig = 0;
 
@@ -1373,7 +1373,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
   check_rcb_consistency(t, ev);
 
   if (EV_SEGV_RDTSC == ev.type()) {
-    t->set_regs(t->current_trace_frame().recorded_regs);
+    t->set_regs(t->current_trace_frame().regs());
     /* We just "delivered" this pseudosignal. */
     t->child_sig = 0;
     return 0;
@@ -1710,9 +1710,9 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
     case TSTEP_DETERMINISTIC_SIGNAL:
       return emulate_deterministic_signal(dbg, t, step->signo, stepi, req);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(
-          dbg, t, &t->current_trace_frame().recorded_regs, step->target.signo,
-          stepi, step->target.rcb, req);
+      return emulate_async_signal(dbg, t, &t->current_trace_frame().regs(),
+                                  step->target.signo, stepi, step->target.rcb,
+                                  req);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, stepi);
     case TSTEP_DESCHED:
