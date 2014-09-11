@@ -15,6 +15,7 @@
 #include "task.h"
 #include "util.h"
 
+using namespace rr;
 using namespace std;
 
 Session::Session() : tracees_consistent(false) {
@@ -181,7 +182,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
                               ReplaySession& session, const Mapping& m,
                               const MappableResource& r) {
   LOG(debug) << "    remapping shared region at " << m.start << "-" << m.end;
-  remote.syscall(SYS_munmap, m.start, m.num_bytes());
+  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start, m.num_bytes());
   // NB: we don't have to unmap then re-map |t->vm()|'s idea of
   // the emulated file mapping.  Though we'll be remapping the
   // *real* OS mapping in |t| to a different file, that new
@@ -198,7 +199,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
     int oflags =
         (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ? O_RDWR : O_RDONLY;
     remote_fd =
-        remote.syscall(SYS_open, static_cast<void*>(child_path), oflags);
+      remote.syscall(syscall_number_for_open(remote.arch()), static_cast<void*>(child_path), oflags);
     if (0 > remote_fd) {
       FATAL() << "Couldn't open " << path << " in tracee";
     }
@@ -212,7 +213,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
                                      m.offset / page_size());
   ASSERT(remote.task(), addr == m.start);
 
-  remote.syscall(SYS_close, remote_fd);
+  remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
 
 ReplaySession::~ReplaySession() {

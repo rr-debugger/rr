@@ -26,6 +26,8 @@
 #include "trace.h"
 #include "util.h"
 
+using namespace rr;
+
 static void handle_siginfo(Task* t, siginfo_t* si);
 
 static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
@@ -56,7 +58,7 @@ static void restore_sigsegv_state(Task* t) {
   AutoRemoteSyscalls remote(t);
   {
     AutoRestoreMem child_sa(remote, (const uint8_t*)&sa, sizeof(sa));
-    int ret = remote.syscall(SYS_rt_sigaction, SIGSEGV,
+    int ret = remote.syscall(syscall_number_for_rt_sigaction(remote.arch()), SIGSEGV,
                              static_cast<void*>(child_sa), nullptr, _NSIG / 8);
     ASSERT(t, 0 == ret) << "Failed to restore SIGSEGV handler";
   }

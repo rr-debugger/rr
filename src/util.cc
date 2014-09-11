@@ -1117,7 +1117,7 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
     FATAL() << "Failed to sendmsg() in tracee";
   }
 
-  remote.syscall(SYS_close, child_sock);
+  remote.syscall(syscall_number_for_close(remote.arch()), child_sock);
   close(sock);
 
   return our_fd;
@@ -1142,7 +1142,7 @@ void destroy_buffers(Task* t) {
   // preload lib.
 
   Registers exit_regs = t->regs();
-  ASSERT(t, SYS_exit == exit_regs.original_syscallno())
+  ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
       << "Tracee should have been at exit, but instead at "
       << t->syscallname(exit_regs.original_syscallno());
 
@@ -1155,7 +1155,7 @@ void destroy_buffers(Task* t) {
   // So hijack this SYS_exit call and rewrite it into a harmless
   // one that we can exit successfully, SYS_gettid here (though
   // that choice is arbitrary).
-  exit_regs.set_original_syscallno(SYS_gettid);
+  exit_regs.set_original_syscallno(syscall_number_for_gettid(t->arch()));
   t->set_regs(exit_regs);
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
@@ -1165,7 +1165,7 @@ void destroy_buffers(Task* t) {
   // the tracee trapped at SYS_exit.  When we've finished
   // cleanup, we'll restart the SYS_exit call.
   exit_regs.set_original_syscallno(-1);
-  exit_regs.set_syscallno(SYS_exit);
+  exit_regs.set_syscallno(syscall_number_for_exit(t->arch()));
   exit_regs.set_ip(exit_regs.ip() - sizeof(syscall_insn));
 
   uint8_t insn[sizeof(syscall_insn)];
@@ -1438,7 +1438,8 @@ void EnvironmentBugDetector::notify_reached_syscall_during_replay(Task* t) {
     return;
   }
   Event ev(t->current_trace_frame().event());
-  if (ev.Syscall().number != SYS_geteuid32) {
+  if (!is_geteuid32_syscall(ev.Syscall().number, t->arch()) &&
+      !is_geteuid_syscall(ev.Syscall().number, t->arch())) {
     return;
   }
   uint64_t trace_rbc_count = t->current_trace_frame().ticks();

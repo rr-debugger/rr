@@ -22,6 +22,7 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "kernel_abi.h"
 #include "log.h"
 #include "remote_syscalls.h"
 #include "session.h"
@@ -230,8 +231,8 @@ Task::~Task() {
   if (EV_SENTINEL != ev().type() &&
       (pending_events.size() > 2 ||
        !(ev().type() == EV_SYSCALL &&
-         (SYS_exit == ev().Syscall().number ||
-          SYS_exit_group == ev().Syscall().number)))) {
+         (is_exit_syscall(ev().Syscall().number, arch()) ||
+          is_exit_group_syscall(ev().Syscall().number, arch()))))) {
     LOG(warn) << tid << " still has pending events.  From top down:";
     log_pending_events();
   }
@@ -444,13 +445,13 @@ void* Task::init_buffers(void* map_hint, int share_desched_fd) {
 void Task::destroy_buffers(int which) {
   AutoRemoteSyscalls remote(this);
   if (DESTROY_SCRATCH & which) {
-    remote.syscall(SYS_munmap, scratch_ptr, scratch_size);
+    remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr, scratch_size);
     vm()->unmap(scratch_ptr, scratch_size);
   }
   if ((DESTROY_SYSCALLBUF & which) && syscallbuf_child) {
-    remote.syscall(SYS_munmap, syscallbuf_child, num_syscallbuf_bytes);
+    remote.syscall(syscall_number_for_munmap(arch()), syscallbuf_child, num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
-    remote.syscall(SYS_close, desched_fd_child);
+    remote.syscall(syscall_number_for_close(arch()), desched_fd_child);
   }
 }
 
@@ -459,7 +460,7 @@ bool Task::is_arm_desched_event_syscall() {
 }
 
 bool Task::is_desched_event_syscall() {
-  return (SYS_ioctl == regs().original_syscallno() &&
+  return (is_ioctl_syscall(regs().original_syscallno(), arch()) &&
           (desched_fd_child == (int)regs().arg1_signed() ||
            desched_fd_child == REPLAY_DESCHED_EVENT_FD));
 }
@@ -499,7 +500,7 @@ bool Task::is_sig_ignored(int sig) const {
 
 bool Task::is_syscall_restart() {
   int syscallno = regs().original_syscallno();
-  bool must_restart = (SYS_restart_syscall == syscallno);
+  bool must_restart = is_restart_syscall_syscall(syscallno, arch());
   bool is_restart = false;
   const Registers* old_regs;
 
@@ -526,7 +527,7 @@ bool Task::is_syscall_restart() {
    * TODO: it's possible for arg structures to be mutated
    * between the original call and restarted call in such a way
    * that it might change the scratch allocation decisions. */
-  if (SYS_restart_syscall == syscallno) {
+  if (is_restart_syscall_syscall(syscallno, arch())) {
     must_restart = true;
     syscallno = ev().Syscall().number;
     LOG(debug) << "  (SYS_restart_syscall)";
@@ -586,7 +587,7 @@ void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
       session().is_recording() ? regs() : current_trace_frame().regs();
 
   if (SYSCALL_EXIT != state || (SYSCALL_FAILED(r.syscall_result_signed()) &&
-                                SYS_mprotect != syscallno)) {
+                                !is_mprotect_syscall(syscallno, arch()))) {
     return;
   }
   switch (syscallno) {
@@ -676,8 +677,9 @@ static bool record_extra_regs(const Event& ev) {
   switch (ev.type()) {
     case EV_SYSCALL:
       // sigreturn/rt_sigreturn restores register state
-      return (ev.Syscall().number == SYS_rt_sigreturn ||
-              ev.Syscall().number == SYS_sigreturn) &&
+      // XXX x86 hard-coded, no good arch-from-event interface available
+      return (is_rt_sigreturn_syscall(ev.Syscall().number, x86) ||
+              is_sigreturn_syscall(ev.Syscall().number, x86)) &&
              ev.Syscall().state == EXITING_SYSCALL;
     case EV_SIGNAL_HANDLER:
       // entering a signal handler seems to clear FP/SSE regs,
@@ -1502,7 +1504,7 @@ void Task::copy_state(Task* from) {
       AutoRestoreMem remote_prname(remote, (const uint8_t*)prname,
                                    sizeof(prname));
       LOG(debug) << "    setting name to " << prname;
-      err = remote.syscall(SYS_prctl, PR_SET_NAME,
+      err = remote.syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
                            static_cast<void*>(remote_prname));
       ASSERT(this, 0 == err);
       update_prname(remote_prname);
@@ -1512,7 +1514,7 @@ void Task::copy_state(Task* from) {
       set_robust_list(from->robust_list(), from->robust_list_len());
       LOG(debug) << "    setting robust-list " << this->robust_list()
                  << " (size " << this->robust_list_len() << ")";
-      err = remote.syscall(SYS_set_robust_list, this->robust_list(),
+      err = remote.syscall(syscall_number_for_set_robust_list(arch()), this->robust_list(),
                            this->robust_list_len());
       ASSERT(this, 0 == err);
     }
@@ -1520,13 +1522,13 @@ void Task::copy_state(Task* from) {
     if (const struct user_desc* tls = from->tls()) {
       AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
       LOG(debug) << "    setting tls " << remote_tls;
-      err = remote.syscall(SYS_set_thread_area, static_cast<void*>(remote_tls));
+      err = remote.syscall(syscall_number_for_set_thread_area(arch()), static_cast<void*>(remote_tls));
       ASSERT(this, 0 == err);
       set_thread_area(remote_tls);
     }
 
     if (void* ctid = from->tid_addr()) {
-      err = remote.syscall(SYS_set_tid_address, ctid);
+      err = remote.syscall(syscall_number_for_set_tid_address(arch()), ctid);
       ASSERT(this, tid == err);
     }
 
@@ -1661,14 +1663,14 @@ void Task::open_mem_fd() {
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
     remote_fd =
-        remote.syscall(SYS_open, static_cast<void*>(remote_path), O_RDWR);
+      remote.syscall(syscall_number_for_open(arch()), static_cast<void*>(remote_path), O_RDWR);
     assert(remote_fd >= 0);
   }
 
   as->set_mem_fd(retrieve_fd(remote, remote_fd));
   assert(as->mem_fd() >= 0);
 
-  long err = remote.syscall(SYS_close, remote_fd);
+  long err = remote.syscall(syscall_number_for_close(arch()), remote_fd);
   assert(!err);
 }
 
@@ -1691,7 +1693,7 @@ void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
              shmem_fd);
     AutoRestoreMem child_path(remote, proc_path);
     child_shmem_fd =
-        remote.syscall(SYS_open, static_cast<void*>(child_path), O_RDWR, 0600);
+        remote.syscall(syscall_number_for_open(arch()), static_cast<void*>(child_path), O_RDWR, 0600);
     if (0 > child_shmem_fd) {
       errno = -child_shmem_fd;
       FATAL() << "Failed to open(" << proc_path << ") in tracee";
@@ -1721,7 +1723,7 @@ void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
             MappableResource::syscallbuf(rec_tid, shmem_fd, shmem_name));
 
   close(shmem_fd);
-  remote.syscall(SYS_close, child_shmem_fd);
+  remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);
 
   return child_map_addr;
 }
@@ -1846,7 +1848,7 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
   // Socket magic is now done.
   close(listen_sock);
   close(sock);
-  remote.syscall(SYS_close, child_sock);
+  remote.syscall(syscall_number_for_close(arch()), child_sock);
 }
 
 bool Task::is_desched_sig_blocked() {
@@ -2080,7 +2082,7 @@ bool Task::clone_syscall_is_complete() {
   // NB: reference the glibc i386 clone.S implementation for
   // placement of clone syscall args.  The man page is incorrect
   // and the linux source is confusing.
-  remote.syscall(SYS_clone, base_flags, stack, ptid, tls, ctid);
+  remote.syscall(syscall_number_for_clone(parent->arch()), base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
     parent->cont_syscall();
   }

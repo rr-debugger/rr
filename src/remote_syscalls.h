@@ -17,7 +17,7 @@ static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
  * like
  *
  *    AutoRemoteSyscalls remote(t); // prepare remote syscalls
- *    remote.syscall(open_syscall_number(remote.arch()), ...); // make syscalls
+ *    remote.syscall(syscall_number_for_open(remote.arch()), ...); // make syscalls
  *    ...
  *    // when |remote| goes out of scope, remote syscalls are finished
  */

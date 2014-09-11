@@ -1620,13 +1620,10 @@ static int flush_one_syscall(Task* t, int stepi) {
         t->finish_emulated_syscall();
       }
 
-      switch (call) {
-        case SYS_futex:
-          restore_futex_words(t, rec_rec);
-          break;
-        case SYS_write:
-          rep_maybe_replay_stdio_write(t);
-          break;
+      if (is_futex_syscall(call, t->arch())) {
+        restore_futex_words(t, rec_rec);
+      } else if (is_write_syscall(call, t->arch())) {
+        rep_maybe_replay_stdio_write(t);
       }
 
       if (!rec_rec->desched) {
@@ -2059,7 +2056,7 @@ static bool will_checkpoint() { return !Flags::get().dont_launch_debugger; }
  */
 static bool is_atomic_syscall(Task* t) {
   return (t->is_probably_replaying_syscall() &&
-          (SYS_execve == t->regs().original_syscallno() ||
+          (is_execve_syscall(t->regs().original_syscallno(), t->arch()) ||
            (-ENOSYS == t->regs().syscall_result_signed() &&
             !is_always_emulated_syscall(t->regs().original_syscallno()))));
 }

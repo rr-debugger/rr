@@ -24,6 +24,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "Flags.h"
+#include "kernel_abi.h"
 #include "log.h"
 #include "PerfCounters.h"
 #include "record_signal.h"
@@ -34,6 +35,7 @@
 #include "trace.h"
 #include "util.h"
 
+using namespace rr;
 using namespace std;
 
 // Global state of this recording session.
@@ -150,7 +152,7 @@ static void handle_ptrace_event(Task** tp) {
       // fork and can never share these resources, only
       // copy, so the flags here aren't meaningful for it.
       unsigned long flags_arg =
-          (SYS_clone == t->regs().original_syscallno()) ? t->regs().arg1() : 0;
+        is_clone_syscall(t->regs().original_syscallno(), t->arch()) ? t->regs().arg1() : 0;
       t->session().clone(t, clone_flags_to_task_flags(flags_arg), stack, tls,
                          ctid, new_tid);
       // Skip past the ptrace event.
@@ -165,7 +167,7 @@ static void handle_ptrace_event(Task** tp) {
        * space, so we can unblock signals. */
       can_deliver_signals = 1;
 
-      t->push_event(SyscallEvent(SYS_execve));
+      t->push_event(SyscallEvent(syscall_number_for_execve(t->arch())));
       t->ev().Syscall().state = ENTERING_SYSCALL;
       t->record_current_event();
       t->pop_syscall();
@@ -379,7 +381,7 @@ static void syscall_not_restarted(Task* t) {
  * restarted.
  */
 static int maybe_restart_syscall(Task* t) {
-  if (SYS_restart_syscall == t->regs().original_syscallno()) {
+  if (is_restart_syscall_syscall(t->regs().original_syscallno(), t->arch())) {
     LOG(debug) << "  " << t->tid << ": SYS_restart_syscall'ing " << t->ev();
   }
   if (t->is_syscall_restart()) {
@@ -478,7 +480,8 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
       // preparing the tracee for a restart-syscall.  So we
       // take this opportunity to possibly pop an
       // interrupted-syscall event.
-      if (SYS_sigreturn == syscallno || SYS_rt_sigreturn == syscallno) {
+      if (is_sigreturn_syscall(syscallno, t->arch()) ||
+          is_rt_sigreturn_syscall(syscallno, t->arch())) {
         assert(t->regs().original_syscallno() == -1);
         t->record_current_event();
         t->pop_syscall();
@@ -497,8 +500,10 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
       ASSERT(t, (-ENOSYS != retval ||
                  (0 > syscallno || SYS_rrcall_init_buffers == syscallno ||
                   SYS_rrcall_monkeypatch_vdso == syscallno ||
-                  SYS_clone == syscallno || SYS_exit_group == syscallno ||
-                  SYS_exit == syscallno || SYS__sysctl == syscallno)))
+                  is_clone_syscall(syscallno, t->arch()) ||
+                  is_exit_group_syscall(syscallno, t->arch()) ||
+                  is_exit_syscall(syscallno, t->arch()) ||
+                  is__sysctl_syscall(syscallno, t->arch()))))
           << "Exiting syscall " << t->syscallname(syscallno)
           << " but retval is -ENOSYS, usually only seen at entry";
 
@@ -514,11 +519,11 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
 
       /* TODO: is there any reason a restart_syscall can't
        * be interrupted by a signal and itself restarted? */
-      may_restart = (syscallno != SYS_restart_syscall
+      may_restart = (!is_restart_syscall_syscall(syscallno, t->arch())
                          // SYS_pause is either interrupted or
                          // never returns.  It doesn't restart.
                      &&
-                     syscallno != SYS_pause && SYSCALL_MAY_RESTART(retval));
+                     !is_pause_syscall(syscallno, t->arch()) && SYSCALL_MAY_RESTART(retval));
       /* no need to process the syscall in case its
        * restarted this will be done in the exit from the
        * restart_syscall */
@@ -585,7 +590,7 @@ static void maybe_reset_syscallbuf(Task* t) {
 
 /** If the rbc seems to be working return, otherwise don't return. */
 static void check_rbc(Task* t) {
-  if (can_deliver_signals || SYS_write != t->ev().Syscall().number) {
+  if (can_deliver_signals || !is_write_syscall(t->ev().Syscall().number, t->arch())) {
     return;
   }
   int fd = t->regs().arg1_signed();
