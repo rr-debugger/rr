@@ -55,17 +55,13 @@ public:
 
   /**
    * Log a human-readable representation of this to |out|
-   * (defaulting to stdout), including a newline character.
-   * A human-friendly format is used. Does not emit a trailing '}'
-   * (so the caller can add more fields to the record).
-   */
-  void dump(FILE* out = nullptr);
-  /**
-   * Log a human-readable representation of this to |out|
    * (defaulting to stdout), including a newline character.  An
-   * easily machine-parseable format is dumped.
+   * easily machine-parseable format is dumped when |raw_dump|
+   * is true, otherwise a human-friendly format is used.
+   * Does not emit a trailing '}' (so the caller can add more fields
+   * to the record.
    */
-  void dump_raw(FILE* out = nullptr);
+  void dump(FILE* out = nullptr, bool raw_dump = false);
 
   friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
   friend TraceOfstream& operator<<(TraceOfstream& tif, const TraceFrame& frame);
