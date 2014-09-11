@@ -1705,14 +1705,19 @@ void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
   num_syscallbuf_bytes = SYSCALLBUF_BUFFER_SIZE;
   int prot = PROT_READ | PROT_WRITE;
   int flags = MAP_SHARED;
+  // NB: we don't need to adjust this in the remote syscall below because
+  // 0 == (0 >> PAGE_SIZE).
   off64_t offset_pages = 0;
   if ((void*)-1 == (map_addr = mmap(nullptr, num_syscallbuf_bytes, prot, flags,
                                     shmem_fd, offset_pages))) {
     FATAL() << "Failed to mmap shmem region";
   }
   void* child_map_addr =
-      (uint8_t*)remote.syscall(SYS_mmap2, map_hint, num_syscallbuf_bytes, prot,
-                               flags, child_shmem_fd, offset_pages);
+    (uint8_t*)remote.syscall(has_mmap2_syscall(remote.arch())
+                             ? syscall_number_for_mmap2(remote.arch())
+                             : syscall_number_for_mmap(remote.arch()),
+                             map_hint, num_syscallbuf_bytes, prot,
+                             flags, child_shmem_fd, offset_pages);
   syscallbuf_child = child_map_addr;
   syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
   // No entries to begin with.
