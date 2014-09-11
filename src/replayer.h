@@ -162,7 +162,8 @@ struct rep_trace_step {
        * syscall emulated, that is, not executed? */
       int emu;
       /* The number of outparam arguments that are
-       * set from what was recorded. */
+       * set from what was recorded.
+       * Only used when action is TSTEP_EXIT_SYSCALL. */
       ssize_t num_emu_args;
       /* Nonzero if the return from the syscall
        * should be emulated.  |emu| implies this. */

@@ -1366,13 +1366,6 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::clone:
       return process_clone<Arch>(t, trace, state, step);
 
-    case Arch::epoll_wait:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = 1;
-      step->action = syscall_action(state);
-      return;
-
     case Arch::execve:
       return process_execve<Arch>(t, trace, state, rec_regs, step);
 
@@ -1425,9 +1418,17 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::futex:
       return process_futex(t, state, step, rec_regs);
 
+    case Arch::epoll_wait:
     case Arch::getxattr:
     case Arch::lgetxattr:
     case Arch::fgetxattr:
+    case Arch::poll:
+    case Arch::ppoll:
+    case Arch::read:
+    case Arch::rt_sigtimedwait:
+    case Arch::sendfile64:
+    case Arch::waitid:
+    case Arch::waitpid:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
@@ -1466,23 +1467,15 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::nanosleep:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
+      step->syscall.num_emu_args = (trace->recorded_regs.arg2() != 0) ? 1 : 0;
       step->action = syscall_action(state);
-      if (SYSCALL_EXIT == state) {
-        step->syscall.num_emu_args = (trace->recorded_regs.arg2() != 0) ? 1 : 0;
-      }
       return;
 
     case Arch::open:
+    case Arch::sched_setaffinity:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::poll:
-    case Arch::ppoll:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = 1;
+      step->syscall.num_emu_args = 0;
       step->action = syscall_action(state);
       return;
 
@@ -1502,9 +1495,6 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
       step->action = syscall_action(state);
-      if (SYSCALL_EXIT == state) {
-        step->syscall.num_emu_args = 1;
-      }
       return;
     }
     case Arch::ptrace:
@@ -1540,15 +1530,6 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       }
       return;
 
-    case Arch::read:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->action = syscall_action(state);
-      if (SYSCALL_EXIT == state) {
-        step->syscall.num_emu_args = 1;
-      }
-      return;
-
     case Arch::recvmmsg: {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
@@ -1559,19 +1540,6 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       }
       return;
     }
-    case Arch::rt_sigtimedwait:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = 1;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::sendfile64:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = 1;
-      step->action = syscall_action(state);
-      return;
 
     case Arch::sendmmsg: {
       step->syscall.emu = 1;
@@ -1599,25 +1567,11 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       return process_socketcall<Arch>(t, state, step);
 
     case Arch::splice:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = 2;
-      step->action = syscall_action(state);
-      return;
-
     case Arch::_sysctl:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = 2;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::waitid:
-    case Arch::waitpid:
     case Arch::wait4:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = Arch::wait4 == syscall ? 2 : 1;
+      step->syscall.num_emu_args = 2;
       step->action = syscall_action(state);
       return;
 
@@ -1637,13 +1591,6 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
          * desched. */
         maybe_noop_restore_syscallbuf_scratch(t);
       }
-      return;
-
-    case Arch::sched_setaffinity:
-      step->syscall.emu = 1;
-      step->syscall.emu_ret = 1;
-      step->syscall.num_emu_args = 0;
-      step->action = syscall_action(state);
       return;
 
     case SYS_rrcall_init_buffers:
