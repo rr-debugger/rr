@@ -154,6 +154,31 @@ struct Flags {
         dump_statistics(false),
         dump_syscallbuf(false),
         dont_launch_debugger(false) {}
+
+  static const Flags& get() { return singleton; }
+
+  /**
+   * Get a reference that can be used to initialize the global Flags.
+   * Can only be called once.
+   */
+  static Flags& get_for_init();
+
+  /**
+   * Update the execution-target parameters to |process|
+   * and |event|.  Either parameter can be < 0 to mean "don't update
+   * this flag".
+   */
+  static void update_replay_target(pid_t process, int event) {
+    if (process > 0) {
+      singleton.target_process = process;
+    }
+    if (event > 0) {
+      singleton.goto_event = event;
+    }
+  }
+
+private:
+  static Flags singleton;
 };
 
 #endif /* RR_FLAGS_H_ */

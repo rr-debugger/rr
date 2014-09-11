@@ -46,6 +46,7 @@ add_executable(rr
   src/emufs.cc
   src/event.cc
   src/ExtraRegisters.cc
+  src/Flags.cc
   src/main.cc
   src/PerfCounters.cc
   src/recorder.cc

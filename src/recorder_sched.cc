@@ -143,7 +143,7 @@ static Task* find_next_runnable_task(Session& session, int* by_waitpid) {
 
 Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
                                   int* by_waitpid) {
-  int max_events = rr_flags()->max_events;
+  int max_events = Flags::get().max_events;
 
   LOG(debug) << "Scheduling next task";
 

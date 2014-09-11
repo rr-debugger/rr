@@ -116,11 +116,10 @@ static void ensure_preload_lib_will_load(const char* rr_exe,
     FATAL() << "Failed to wait for " << rr_exe << " child";
   }
   if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
-    const Flags* flags = rr_flags();
     fprintf(stderr, "\n"
                     "rr: error: Unable to preload the '%s' library.\n"
                     "\n",
-            flags->syscall_buffer_lib_path.c_str());
+            Flags::get().syscall_buffer_lib_path.c_str());
     exit(EX_CONFIG);
   }
 }
@@ -227,7 +226,7 @@ static void task_continue(Task* t, int force_cont, int sig) {
      * syscall_buffer lib in the child, therefore we must
      * record in the traditional way (with PTRACE_SYSCALL)
      * until it is installed. */
-    t->cont_syscall_nonblocking(sig, rr_flags()->max_rbc);
+    t->cont_syscall_nonblocking(sig, Flags::get().max_rbc);
   } else {
     /* When the seccomp filter is on, instead of capturing
      * syscalls by using PTRACE_SYSCALL, the filter will
@@ -239,7 +238,7 @@ static void task_continue(Task* t, int force_cont, int sig) {
      * process to continue to the actual entry point of
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
-    t->cont_nonblocking(sig, rr_flags()->max_rbc);
+    t->cont_nonblocking(sig, Flags::get().max_rbc);
   }
 }
 
@@ -525,7 +524,7 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
        * restart_syscall */
       if (!may_restart) {
         rec_process_syscall(t);
-        if (t->session().can_validate() && rr_flags()->check_cached_mmaps) {
+        if (t->session().can_validate() && Flags::get().check_cached_mmaps) {
           t->vm()->verify(t);
         }
       } else {
@@ -590,7 +589,7 @@ static void check_rbc(Task* t) {
     return;
   }
   int fd = t->regs().arg1_signed();
-  if (-1 != fd && rr_flags()->force_things) {
+  if (-1 != fd && Flags::get().force_things) {
     LOG(warn) << "Unexpected write(" << fd << ") call";
     return;
   }
@@ -860,7 +859,7 @@ static void maybe_process_term_request(Task* t) {
  * in which case we return -1.
  */
 static int choose_cpu() {
-  if (rr_flags()->cpu_unbound) {
+  if (Flags::get().cpu_unbound) {
     return -1;
   }
 
@@ -891,13 +890,13 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
 
   ae = args_env(argc, argv, envp, cwd, bind_to_cpu);
   // LD_PRELOAD the syscall interception lib
-  if (!rr_flags()->syscall_buffer_lib_path.empty()) {
+  if (!Flags::get().syscall_buffer_lib_path.empty()) {
     // Remove the trailing nullptr.  We'll put it back
     // after injecting the preload lib into the envp.
     ae.envp.pop_back();
     string ld_preload = "LD_PRELOAD=";
     // Our preload lib *must* come first
-    ld_preload += rr_flags()->syscall_buffer_lib_path;
+    ld_preload += Flags::get().syscall_buffer_lib_path;
     auto it = ae.envp.begin();
     for (; it != ae.envp.end(); ++it) {
       if (*it != strstr(*it, "LD_PRELOAD=")) {

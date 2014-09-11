@@ -119,23 +119,6 @@ private:
 };
 
 /**
- * Get the flags passed to rr.
- */
-const Flags* rr_flags(void);
-/**
- * Exactly once, fetch a mutable reference to the structure that
- * |rr_flags()| will return, for the purposes of initialization.
- */
-Flags* rr_flags_for_init(void);
-
-/**
- * Update the |rr_flags()| execution-target parameters to |process|
- * and |event|.  Either parameter can be < 0 to mean "don't update
- * this flag".
- */
-void update_replay_target(pid_t process, int event);
-
-/**
  * Return true if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
  * indicates that the caller is using this as a general register
  * compare and nothing special should be done if the register files

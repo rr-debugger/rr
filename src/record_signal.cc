@@ -350,7 +350,7 @@ static void record_signal(Task* t, const siginfo_t* si) {
   t->set_siginfo(*si);
 
   int sig = si->si_signo;
-  if (sig == rr_flags()->ignore_sig) {
+  if (sig == Flags::get().ignore_sig) {
     LOG(info) << "Declining to deliver " << signalname(sig)
               << " by user request";
     t->push_event(Event::noop());

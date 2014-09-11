@@ -264,7 +264,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros) {
   args.push_back("-l");
   args.push_back("-1");
   args.push_back(params.exe_image);
-  const string& gdb_command_file_path = rr_flags()->gdb_command_file_path;
+  const string& gdb_command_file_path = Flags::get().gdb_command_file_path;
   if (gdb_command_file_path.length() > 0) {
     args.push_back("-x");
     args.push_back(gdb_command_file_path.c_str());

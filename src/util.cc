@@ -52,33 +52,10 @@ using namespace rr;
 
 #define NUM_MAX_MAPS 1024
 
-Flags flags;
-
 ostream& operator<<(ostream& o, const mapped_segment_info& m) {
   o << m.start_addr << "-" << m.end_addr << " " << HEX(m.prot)
     << " f:" << HEX(m.flags);
   return o;
-}
-
-const Flags* rr_flags(void) { return &flags; }
-
-Flags* rr_flags_for_init(void) {
-  static int initialized;
-  if (!initialized) {
-    initialized = 1;
-    return &flags;
-  }
-  FATAL() << "Multiple initialization of flags.";
-  return NULL; /* not reached */
-}
-
-void update_replay_target(pid_t process, int event) {
-  if (process > 0) {
-    flags.target_process = process;
-  }
-  if (event > 0) {
-    flags.goto_event = event;
-  }
 }
 
 // FIXME this function assumes that there's only one address space.
@@ -124,7 +101,7 @@ void maybe_mark_stdio_write(Task* t, int fd) {
   char buf[256];
   ssize_t len;
 
-  if (!rr_flags()->mark_stdio ||
+  if (!Flags::get().mark_stdio ||
       !(STDOUT_FILENO == fd || STDERR_FILENO == fd)) {
     return;
   }
@@ -527,7 +504,7 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
 }
 
 int should_dump_memory(Task* t, const struct trace_frame& f) {
-  const Flags* flags = rr_flags();
+  const Flags* flags = &Flags::get();
 
 #if defined(FIRST_INTERESTING_EVENT)
   int is_syscall_exit = event >= 0 && state == STATE_SYSCALL_EXIT;
@@ -756,7 +733,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
 }
 
 int should_checksum(Task* t, const struct trace_frame& f) {
-  int checksum = rr_flags()->checksum;
+  int checksum = Flags::get().checksum;
   int is_syscall_exit =
       (EV_SYSCALL == f.ev.type && STATE_SYSCALL_EXIT == f.ev.state);
 
@@ -1437,7 +1414,7 @@ static bool rbc_counts_ok(uint64_t prev, uint64_t current, const char* source) {
   if (current - prev == 2) {
     return true;
   }
-  if (!rr_flags()->suppress_environment_warnings) {
+  if (!Flags::get().suppress_environment_warnings) {
     fprintf(
         stderr,
         "\n"

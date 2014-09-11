@@ -579,7 +579,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
       // If the user requested restarting to a
       // different event, ensure that we change that
       // param for the next replay session.
-      update_replay_target(-1, req.restart.param);
+      Flags::update_replay_target(-1, req.restart.param);
       return req;
     }
 
@@ -624,7 +624,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
       session.current_trace_frame().ev.type == EV_SCHED) {
     struct trace_frame next_trace = session.ifstream().peek_frame();
     while (EV_SCHED == next_trace.ev.type && next_trace.tid == t->rec_tid &&
-           rr_flags()->goto_event != next_trace.global_time &&
+           Flags::get().goto_event != next_trace.global_time &&
            !trace_instructions_up_to_event(next_trace.global_time)) {
       session.ifstream() >> session.current_trace_frame();
       next_trace = session.ifstream().peek_frame();
@@ -2029,7 +2029,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
   }
   if (t->session().can_validate() &&
       STATE_SYSCALL_EXIT == t->current_trace_frame().ev.state &&
-      rr_flags()->check_cached_mmaps) {
+      Flags::get().check_cached_mmaps) {
     t->vm()->verify(t);
   }
 
@@ -2050,7 +2050,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
  * Return true if a side effect of creating the debugger interface
  * will be checkpointing the replay session.
  */
-static bool will_checkpoint() { return !rr_flags()->dont_launch_debugger; }
+static bool will_checkpoint() { return !Flags::get().dont_launch_debugger; }
 
 /**
  * Return true if |t| appears to have entered but not exited an atomic
@@ -2126,9 +2126,9 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
     return nullptr;
   }
   uint32_t event_now = next_frame.global_time;
-  uint32_t goto_event = rr_flags()->goto_event;
-  pid_t target_process = rr_flags()->target_process;
-  bool require_exec = Flags::CREATED_EXEC == rr_flags()->process_created_how;
+  uint32_t goto_event = Flags::get().goto_event;
+  pid_t target_process = Flags::get().target_process;
+  bool require_exec = Flags::CREATED_EXEC == Flags::get().process_created_how;
   if (event_now < goto_event
           // NB: we'll happily attach to whichever task within the
           // group happens to be scheduled here.  We don't take
@@ -2169,7 +2169,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
   // for the next replay session, if we end up restarting.  This
   // allows us to determine if a later session has reached this
   // target without necessarily replaying up to this point.
-  update_replay_target(t->tgid(), event_now);
+  Flags::update_replay_target(t->tgid(), event_now);
 
   if (stashed_dbg) {
     dbg = stashed_dbg;
@@ -2177,15 +2177,16 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
     return dbg;
   }
   unsigned short port =
-      (rr_flags()->dbgport > 0) ? rr_flags()->dbgport : getpid();
+      (Flags::get().dbgport > 0) ? Flags::get().dbgport : getpid();
   // Don't probe if the user specified a port.  Explicitly
   // selecting a port is usually done by scripts, which would
   // presumably break if a different port were to be selected by
   // rr (otherwise why would they specify a port in the first
   // place).  So fail with a clearer error message.
-  int probe = (rr_flags()->dbgport > 0) ? DONT_PROBE : PROBE_PORT;
-  const char* exe =
-      rr_flags()->dont_launch_debugger ? nullptr : t->vm()->exe_image().c_str();
+  int probe = (Flags::get().dbgport > 0) ? DONT_PROBE : PROBE_PORT;
+  const char* exe = Flags::get().dont_launch_debugger
+                        ? nullptr
+                        : t->vm()->exe_image().c_str();
   return dbg_await_client_connection("127.0.0.1", port, probe, t->tgid(), exe,
                                      parent, debugger_params_pipe[1]);
 }
@@ -2258,7 +2259,7 @@ static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
 
   stashed_dbg = dbg;
 
-  if (session->ifstream().time() > rr_flags()->goto_event) {
+  if (session->ifstream().time() > Flags::get().goto_event) {
     // We weren't able to reuse the stashed session, so
     // just discard it and create a fresh one that's back
     // at beginning-of-trace.
@@ -2343,7 +2344,7 @@ int replay(int argc, char* argv[], char** envp) {
   // If we're not going to autolaunch the debugger, don't go
   // through the rigamarole to set that up.  All it does is
   // complicate the process tree and confuse users.
-  if (rr_flags()->dont_launch_debugger) {
+  if (Flags::get().dont_launch_debugger) {
     return serve_replay(argc, argv, envp);
   }
 
@@ -2423,7 +2424,7 @@ void emergency_debug(Task* t) {
     record_session->ofstream().close();
   }
 
-  if (probably_not_interactive() && !rr_flags()->force_things) {
+  if (probably_not_interactive() && !Flags::get().force_things) {
     errno = 0;
     FATAL()
         << "(session doesn't look interactive, aborting emergency debugging)";

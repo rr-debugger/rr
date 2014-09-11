@@ -407,10 +407,10 @@ void* Task::init_buffers(void* map_hint, int share_desched_fd) {
   struct rrcall_init_buffers_params args;
   read_mem(child_args, &args);
 
-  ASSERT(this, rr_flags()->use_syscall_buffer == !!args.syscallbuf_enabled)
+  ASSERT(this, Flags::get().use_syscall_buffer == !!args.syscallbuf_enabled)
       << "Tracee things syscallbuf is "
       << (args.syscallbuf_enabled ? "en" : "dis") << "abled, but tracer thinks "
-      << (rr_flags()->use_syscall_buffer ? "en" : "dis") << "abled";
+      << (Flags::get().use_syscall_buffer ? "en" : "dis") << "abled";
 
   void* child_map_addr = nullptr;
   if (args.syscallbuf_enabled) {

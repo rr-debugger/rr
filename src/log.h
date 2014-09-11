@@ -25,7 +25,7 @@ inline static bool logging_enabled_for(LogLevel level) {
       return true;
     case LOG_warn:
     case LOG_info:
-      return rr_flags()->verbose;
+      return Flags::get().verbose;
     case LOG_debug:
 // TODO make me dynamically-enable-able.
 #ifdef DEBUGTAG
@@ -73,7 +73,7 @@ struct NewlineTerminatingOstream {
   NewlineTerminatingOstream(LogLevel level) : level(level) {}
   ~NewlineTerminatingOstream() {
     log_stream() << std::endl;
-    if (rr_flags()->fatal_errors_and_warnings && level <= LOG_warn) {
+    if (Flags::get().fatal_errors_and_warnings && level <= LOG_warn) {
       abort();
     }
   }

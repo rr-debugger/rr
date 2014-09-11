@@ -89,7 +89,7 @@ static void dump_events_matching(TraceIfstream& trace, FILE* out,
     start = end = atoi(spec);
   }
 
-  bool dump_raw_data = rr_flags()->dump_syscallbuf;
+  bool dump_raw_data = Flags::get().dump_syscallbuf;
   while (!trace.at_end()) {
     struct trace_frame frame;
     trace >> frame;
@@ -97,11 +97,11 @@ static void dump_events_matching(TraceIfstream& trace, FILE* out,
       return;
     }
     if (start <= frame.global_time && frame.global_time <= end) {
-      frame.dump(out, rr_flags()->raw_dump);
-      if (rr_flags()->dump_syscallbuf) {
+      frame.dump(out, Flags::get().raw_dump);
+      if (Flags::get().dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
       }
-      if (!rr_flags()->raw_dump) {
+      if (!Flags::get().raw_dump) {
         fprintf(out, "}\n");
       }
     }
@@ -124,7 +124,7 @@ static int dump(int argc, char* argv[], char** envp) {
   FILE* out = stdout;
   auto trace = TraceIfstream::open(argc, argv);
 
-  if (rr_flags()->raw_dump) {
+  if (Flags::get().raw_dump) {
     fprintf(out, "global_time thread_time tid reason "
                  "hw_interrupts page_faults adapted_rbc instructions "
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
@@ -139,7 +139,7 @@ static int dump(int argc, char* argv[], char** envp) {
     }
   }
 
-  if (rr_flags()->dump_statistics) {
+  if (Flags::get().dump_statistics) {
     dump_statistics(*trace, stdout);
   }
 
@@ -570,7 +570,7 @@ static void init_random() {
 
 int main(int argc, char* argv[]) {
   int argi; /* index of first positional argument */
-  Flags* flags = rr_flags_for_init();
+  Flags* flags = &Flags::get_for_init();
 
   init_random();
 

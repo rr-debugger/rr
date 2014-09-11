@@ -82,7 +82,7 @@ static string lowercase(const string& s) {
  * return; i.e. never return UnknownCpu.
  */
 static CpuMicroarch get_cpu_microarch() {
-  string forced_uarch = lowercase(rr_flags()->forced_uarch);
+  string forced_uarch = lowercase(Flags::get().forced_uarch);
   if (!forced_uarch.empty()) {
     for (size_t i = 0; i < ALEN(pmu_configs); ++i) {
       const PmuConfig& pmu = pmu_configs[i];
@@ -92,7 +92,7 @@ static CpuMicroarch get_cpu_microarch() {
         return pmu.uarch;
       }
     }
-    FATAL() << "Forced uarch " << rr_flags()->forced_uarch << " isn't known.";
+    FATAL() << "Forced uarch " << Flags::get().forced_uarch << " isn't known.";
   }
 
   unsigned int cpu_type, eax, ecx, edx;
