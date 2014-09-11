@@ -18,7 +18,6 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "config.h"
 #include "log.h"
 #include "recorder.h"
 #include "recorder_sched.h"
@@ -506,8 +505,8 @@ static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
   const char* cmd;
   int cmdi;
 
-  flags->max_rbc = DEFAULT_MAX_RBC;
-  flags->max_events = DEFAULT_MAX_EVENTS;
+  flags->max_rbc = Flags::DEFAULT_MAX_RBC;
+  flags->max_events = Flags::DEFAULT_MAX_EVENTS;
   flags->checksum = Flags::CHECKSUM_NONE;
   flags->dbgport = -1;
   flags->dump_at = Flags::DUMP_AT_NONE;

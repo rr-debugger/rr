@@ -16,7 +16,6 @@
 #include <sys/wait.h>
 #include <algorithm>
 
-#include "config.h"
 #include "Flags.h"
 #include "log.h"
 #include "recorder.h"
