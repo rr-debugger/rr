@@ -39,12 +39,13 @@ typedef std::vector<char*> CharpVector;
  */
 struct TraceFrame {
   TraceFrame(uint32_t global_time, pid_t tid, EncodedEvent ev)
-      : global_time(global_time), tid(tid), ev(ev), rbc(0) {}
-  TraceFrame() : global_time(0), tid(0), rbc(0) { ev.encoded = 0; }
+      : global_time(global_time), tid_(tid), ev(ev), rbc(0) {}
+  TraceFrame() : global_time(0), tid_(0), rbc(0) { ev.encoded = 0; }
 
   typedef uint32_t Time;
 
   Time time() const { return global_time; }
+  pid_t tid() const { return tid_; }
 
   /**
    * Log a human-readable representation of this to |out|
@@ -58,7 +59,7 @@ struct TraceFrame {
 
   STRUCT_DELIMITER(begin_event_info);
   Time global_time;
-  pid_t tid;
+  pid_t tid_;
   EncodedEvent ev;
   STRUCT_DELIMITER(end_event_info);
 

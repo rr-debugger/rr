@@ -78,10 +78,10 @@ void TraceFrame::dump(FILE* out, bool raw_dump) {
   const Registers& r = recorded_regs;
 
   if (raw_dump) {
-    fprintf(out, " %d %d %d", time(), tid, ev.encoded);
+    fprintf(out, " %d %d %d", time(), tid(), ev.encoded);
   } else {
     fprintf(out, "{\n  global_time:%u, event:`%s' (state:%d), tid:%d", time(),
-            Event(ev).str().c_str(), ev.state, tid);
+            Event(ev).str().c_str(), ev.state, tid());
   }
   if (!ev.has_exec_info) {
     fprintf(out, "\n");
@@ -426,7 +426,8 @@ TraceFrame TraceIfstream::peek_to(pid_t pid, EventType type,
   auto saved_time = global_time;
   while (good() && !at_end()) {
     *this >> frame;
-    if (frame.tid == pid && frame.ev.type == type && frame.ev.state == state) {
+    if (frame.tid() == pid && frame.ev.type == type &&
+        frame.ev.state == state) {
       events.restore_state();
       global_time = saved_time;
       return frame;

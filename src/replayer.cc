@@ -606,7 +606,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
     assert(!session.reached_trace_frame());
   }
 
-  Task* t = session.find_task(session.current_trace_frame().tid);
+  Task* t = session.find_task(session.current_trace_frame().tid());
   assert(t != NULL);
   ASSERT(t, &session == &t->replay_session());
 
@@ -623,7 +623,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
   if (USE_TIMESLICE_COALESCING &&
       session.current_trace_frame().ev.type == EV_SCHED) {
     TraceFrame next_trace = session.ifstream().peek_frame();
-    while (EV_SCHED == next_trace.ev.type && next_trace.tid == t->rec_tid &&
+    while (EV_SCHED == next_trace.ev.type && next_trace.tid() == t->rec_tid &&
            Flags::get().goto_event != next_trace.time() &&
            !trace_instructions_up_to_event(next_trace.time())) {
       session.ifstream() >> session.current_trace_frame();
@@ -2121,7 +2121,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
   // frame we're *about to* replay, without modifying the
   // TraceIfstream.
   TraceFrame next_frame = session->ifstream().peek_frame();
-  Task* t = session->find_task(next_frame.tid);
+  Task* t = session->find_task(next_frame.tid());
   if (!t) {
     return nullptr;
   }
@@ -2226,7 +2226,7 @@ ReplaySession::shr_ptr create_session_from_cmdline() {
       putenv(strdup(*it));
     }
   }
-  session->create_task(ae, session, session->ifstream().peek_frame().tid);
+  session->create_task(ae, session, session->ifstream().peek_frame().tid());
   return session;
 }
 
