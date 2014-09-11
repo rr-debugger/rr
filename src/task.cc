@@ -170,8 +170,7 @@ TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
 }
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
-    : thread_time(1),
-      switchable(),
+    : switchable(),
       pseudo_blocked(),
       succ_event_counter(),
       unstable(),
@@ -694,7 +693,6 @@ void Task::record_event(const Event& ev) {
 
   struct trace_frame frame;
   frame.global_time = ofstream().time();
-  frame.thread_time = thread_time++;
   frame.tid = tid;
   frame.ev = ev.encode();
   if (ev.has_exec_info()) {

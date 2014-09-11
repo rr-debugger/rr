@@ -828,7 +828,6 @@ public:
    * only.
    */
   uint32_t trace_time() const;
-  uint32_t task_time() const { return thread_time; }
 
   /**
    * Call this after the tracee successfully makes a
@@ -954,10 +953,6 @@ public:
   const char* syscallname(int syscallno) const;
 
   /* State only used during recording. */
-
-  /* The running count of events that have been recorded for
-   * this task.  Starts at "1" to match with "global_time". */
-  int thread_time;
 
   /* Whether switching away from this task is allowed in its
    * current state.  Some operations must be completed

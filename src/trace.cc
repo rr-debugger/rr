@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 11
+#define TRACE_VERSION 12
 
 static ssize_t sizeof_trace_frame_event_info(void) {
   return offsetof(struct trace_frame, end_event_info) -
@@ -78,12 +78,12 @@ void trace_frame::dump(FILE* out, bool raw_dump) {
   const Registers& r = recorded_regs;
 
   if (raw_dump) {
-    fprintf(out, " %d %d %d %d", global_time, thread_time, tid, ev.encoded);
+    fprintf(out, " %d %d %d", global_time, tid, ev.encoded);
   } else {
     fprintf(
         out,
-        "{\n  global_time:%u, event:`%s' (state:%d), tid:%d, thread_time:%u",
-        global_time, Event(ev).str().c_str(), ev.state, tid, thread_time);
+        "{\n  global_time:%u, event:`%s' (state:%d), tid:%d",
+        global_time, Event(ev).str().c_str(), ev.state, tid);
   }
   if (!ev.has_exec_info) {
     fprintf(out, "\n");

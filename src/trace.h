@@ -20,8 +20,6 @@
 #include "PerfCounters.h"
 #include "Registers.h"
 
-class Task;
-
 typedef std::vector<char*> CharpVector;
 
 // Use this helper to declare a struct member that doesn't occupy
@@ -52,7 +50,6 @@ struct trace_frame {
 
   STRUCT_DELIMITER(begin_event_info);
   uint32_t global_time;
-  uint32_t thread_time;
   pid_t tid;
   EncodedEvent ev;
   STRUCT_DELIMITER(end_event_info);
