@@ -71,7 +71,7 @@ struct TraceFrame {
   STRUCT_DELIMITER(end_event_info);
 
   STRUCT_DELIMITER(begin_exec_info);
-  int64_t ticks_;
+  Ticks ticks_;
   PerfCounters::Extra extra_perf_values;
   Registers recorded_regs;
   STRUCT_DELIMITER(end_exec_info);
