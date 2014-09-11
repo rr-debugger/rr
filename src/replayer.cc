@@ -622,7 +622,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
   // tremendous win.
   if (USE_TIMESLICE_COALESCING &&
       session.current_trace_frame().ev.type == EV_SCHED) {
-    struct trace_frame next_trace = session.ifstream().peek_frame();
+    TraceFrame next_trace = session.ifstream().peek_frame();
     while (EV_SCHED == next_trace.ev.type && next_trace.tid == t->rec_tid &&
            Flags::get().goto_event != next_trace.global_time &&
            !trace_instructions_up_to_event(next_trace.global_time)) {
@@ -1292,7 +1292,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
     return 1;
   }
   ASSERT(oldtask, t == oldtask) << "emulate_signal_delivery changed task";
-  const struct trace_frame* trace = &t->current_trace_frame();
+  const TraceFrame* trace = &t->current_trace_frame();
 
   ASSERT(t, trace->ev.type == EV_SIGNAL_DELIVERY ||
                 trace->ev.type == EV_SIGNAL_HANDLER)
@@ -2067,7 +2067,7 @@ static bool is_atomic_syscall(Task* t) {
  * Return true if it's possible/meaningful to make a checkpoint at the
  * |frame| that |t| will replay.
  */
-static bool can_checkpoint_at(Task* t, const struct trace_frame& frame) {
+static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
   Event ev(frame.ev);
   if (is_atomic_syscall(t)) {
     return false;
@@ -2120,7 +2120,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
   // So we make the decision to create the debugger based on the
   // frame we're *about to* replay, without modifying the
   // TraceIfstream.
-  struct trace_frame next_frame = session->ifstream().peek_frame();
+  TraceFrame next_frame = session->ifstream().peek_frame();
   Task* t = session->find_task(next_frame.tid);
   if (!t) {
     return nullptr;

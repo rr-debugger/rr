@@ -28,13 +28,13 @@ using namespace std;
 #define TRACE_VERSION 12
 
 static ssize_t sizeof_trace_frame_event_info(void) {
-  return offsetof(struct trace_frame, end_event_info) -
-         offsetof(struct trace_frame, begin_event_info);
+  return offsetof(TraceFrame, end_event_info) -
+         offsetof(TraceFrame, begin_event_info);
 }
 
 static ssize_t sizeof_trace_frame_exec_info(void) {
-  return offsetof(struct trace_frame, end_exec_info) -
-         offsetof(struct trace_frame, begin_exec_info);
+  return offsetof(TraceFrame, end_exec_info) -
+         offsetof(TraceFrame, begin_exec_info);
 }
 
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
@@ -73,17 +73,15 @@ static void ensure_default_rr_trace_dir() {
   }
 }
 
-void trace_frame::dump(FILE* out, bool raw_dump) {
+void TraceFrame::dump(FILE* out, bool raw_dump) {
   out = out ? out : stdout;
   const Registers& r = recorded_regs;
 
   if (raw_dump) {
     fprintf(out, " %d %d %d", global_time, tid, ev.encoded);
   } else {
-    fprintf(
-        out,
-        "{\n  global_time:%u, event:`%s' (state:%d), tid:%d",
-        global_time, Event(ev).str().c_str(), ev.state, tid);
+    fprintf(out, "{\n  global_time:%u, event:`%s' (state:%d), tid:%d",
+            global_time, Event(ev).str().c_str(), ev.state, tid);
   }
   if (!ev.has_exec_info) {
     fprintf(out, "\n");
@@ -149,7 +147,7 @@ bool TraceIfstream::good() const {
   return events.good() && data.good() && data_header.good() && mmaps.good();
 }
 
-TraceOfstream& operator<<(TraceOfstream& tof, const struct trace_frame& frame) {
+TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
   const char* begin_data = (const char*)&frame.begin_event_info;
   ssize_t nbytes = sizeof_trace_frame_event_info();
 
@@ -187,7 +185,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const struct trace_frame& frame) {
   return tof;
 }
 
-TraceIfstream& operator>>(TraceIfstream& tif, struct trace_frame& frame) {
+TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame) {
   // Read the common event info first, to see if we also have
   // exec info to read.
   tif.events.read((char*)&frame.begin_event_info,
@@ -330,7 +328,7 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d) {
   return tif;
 }
 
-bool TraceIfstream::read_raw_data_for_frame(const struct trace_frame& frame,
+bool TraceIfstream::read_raw_data_for_frame(const TraceFrame& frame,
                                             struct raw_data& d) {
   while (!data_header.at_end()) {
     uint32_t global_time;
@@ -411,8 +409,8 @@ TraceIfstream::shr_ptr TraceIfstream::clone() {
   return stream;
 }
 
-struct trace_frame TraceIfstream::peek_frame() {
-  struct trace_frame frame;
+TraceFrame TraceIfstream::peek_frame() {
+  TraceFrame frame;
   events.save_state();
   auto saved_time = global_time;
   *this >> frame;
@@ -421,9 +419,9 @@ struct trace_frame TraceIfstream::peek_frame() {
   return frame;
 }
 
-struct trace_frame TraceIfstream::peek_to(pid_t pid, EventType type,
-                                          SyscallEntryOrExit state) {
-  struct trace_frame frame;
+TraceFrame TraceIfstream::peek_to(pid_t pid, EventType type,
+                                  SyscallEntryOrExit state) {
+  TraceFrame frame;
   events.save_state();
   auto saved_time = global_time;
   while (good() && !at_end()) {

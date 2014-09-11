@@ -691,7 +691,7 @@ static bool record_extra_regs(const Event& ev) {
 void Task::record_event(const Event& ev) {
   maybe_flush_syscallbuf();
 
-  struct trace_frame frame;
+  TraceFrame frame;
   frame.global_time = ofstream().time();
   frame.tid = tid;
   frame.ev = ev.encode();
@@ -922,7 +922,7 @@ Session& Task::session() const {
   return *session_replay;
 }
 
-const struct trace_frame& Task::current_trace_frame() {
+const TraceFrame& Task::current_trace_frame() {
   return replay_session().current_trace_frame();
 }
 

@@ -696,7 +696,7 @@ public:
   ReplaySession& replay_session() const { return *session_replay; }
   ReplaySession* replay_session_ptr() const { return session_replay; }
 
-  const struct trace_frame& current_trace_frame();
+  const TraceFrame& current_trace_frame();
 
   /** Restore the next chunk of saved data from the trace to this. */
   ssize_t set_data_from_trace();

@@ -329,8 +329,8 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
  * Return true iff the syscall represented by |frame| (either entry to
  * or exit from) failed.
  */
-static bool is_failed_syscall(Task* t, const struct trace_frame* frame) {
-  struct trace_frame next_frame;
+static bool is_failed_syscall(Task* t, const TraceFrame* frame) {
+  TraceFrame next_frame;
   if (SYSCALL_ENTRY == frame->ev.state) {
     next_frame =
         t->ifstream().peek_to(t->rec_tid, frame->ev.type, SYSCALL_EXIT);
@@ -344,8 +344,7 @@ static RepTraceStepType syscall_action(SyscallEntryOrExit state) {
 }
 
 template <typename Arch>
-static void process_clone(Task* t, struct trace_frame* trace,
-                          SyscallEntryOrExit state,
+static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
                           struct rep_trace_step* step) {
   int syscallno = Arch::clone;
   if (is_failed_syscall(t, trace)) {
@@ -429,8 +428,8 @@ static void process_clone(Task* t, struct trace_frame* trace,
 }
 
 template <typename Arch>
-static void process_execve(Task* t, struct trace_frame* trace,
-                           SyscallEntryOrExit state, const Registers* rec_regs,
+static void process_execve(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
+                           const Registers* rec_regs,
                            struct rep_trace_step* step) {
   const int syscallno = Arch::execve;
 
@@ -587,7 +586,7 @@ static void process_ioctl(Task* t, SyscallEntryOrExit state,
   }
 }
 
-void process_ipc(Task* t, struct trace_frame* trace, SyscallEntryOrExit state,
+void process_ipc(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
                  struct rep_trace_step* step) {
   step->syscall.emu = 1;
   step->syscall.emu_ret = 1;
@@ -622,8 +621,8 @@ enum {
 
 template <typename Arch>
 static void* finish_anonymous_mmap(AutoRemoteSyscalls& remote,
-                                   struct trace_frame* trace, int prot,
-                                   int flags, off64_t offset_pages,
+                                   TraceFrame* trace, int prot, int flags,
+                                   off64_t offset_pages,
                                    int note_task_map = NOTE_TASK_MAP) {
   const Registers* rec_regs = &trace->recorded_regs;
   /* *Must* map the segment at the recorded address, regardless
@@ -685,9 +684,8 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 }
 
 template <typename Arch>
-static void* finish_private_mmap(AutoRemoteSyscalls& remote,
-                                 struct trace_frame* trace, int prot, int flags,
-                                 off64_t offset_pages,
+static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
+                                 int prot, int flags, off64_t offset_pages,
                                  const struct mmapped_file* file) {
   LOG(debug) << "  finishing private mmap of " << file->filename;
 
@@ -750,9 +748,8 @@ enum {
 };
 
 template <typename Arch>
-static void* finish_direct_mmap(AutoRemoteSyscalls& remote,
-                                struct trace_frame* trace, int prot, int flags,
-                                off64_t offset_pages,
+static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
+                                int prot, int flags, off64_t offset_pages,
                                 const struct mmapped_file* file,
                                 int verify = VERIFY_BACKING_FILE,
                                 int note_task_map = NOTE_TASK_MAP) {
@@ -807,9 +804,8 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote,
 }
 
 template <typename Arch>
-static void* finish_shared_mmap(AutoRemoteSyscalls& remote,
-                                struct trace_frame* trace, int prot, int flags,
-                                off64_t offset_pages,
+static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
+                                int prot, int flags, off64_t offset_pages,
                                 const struct mmapped_file* file) {
   Task* t = remote.task();
   const Registers& rec_regs = trace->recorded_regs;
@@ -856,9 +852,9 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote,
 }
 
 template <typename Arch>
-static void process_mmap(Task* t, struct trace_frame* trace,
-                         SyscallEntryOrExit state, int prot, int flags,
-                         off64_t offset_pages, struct rep_trace_step* step) {
+static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
+                         int prot, int flags, off64_t offset_pages,
+                         struct rep_trace_step* step) {
   void* mapped_addr;
 
   if (SYSCALL_FAILED(trace->recorded_regs.syscall_result_signed())) {
@@ -1242,7 +1238,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   int syscall =
       t->current_trace_frame().ev.data; /* FIXME: don't shadow syscall() */
   const struct syscall_def* def;
-  struct trace_frame* trace = &t->replay_session().current_trace_frame();
+  TraceFrame* trace = &t->replay_session().current_trace_frame();
   SyscallEntryOrExit state = trace->ev.state;
   const Registers* rec_regs = &trace->recorded_regs;
   AutoGc maybe_gc(t->replay_session(), syscall, state);

@@ -32,7 +32,7 @@ using namespace std;
 extern char** environ;
 
 static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
-                                 const struct trace_frame& frame) {
+                                 const TraceFrame& frame) {
   if (frame.ev.type != EV_SYSCALLBUF_FLUSH) {
     return;
   }
@@ -90,7 +90,7 @@ static void dump_events_matching(TraceIfstream& trace, FILE* out,
 
   bool dump_raw_data = Flags::get().dump_syscallbuf;
   while (!trace.at_end()) {
-    struct trace_frame frame;
+    TraceFrame frame;
     trace >> frame;
     if (end < frame.global_time) {
       return;

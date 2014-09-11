@@ -1014,7 +1014,7 @@ void terminate_recording(Task* t, int status) {
   LOG(info) << "Processing termination request ...";
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 
-  struct trace_frame frame;
+  TraceFrame frame;
   memset(&frame, 0, sizeof(frame));
   frame.tid = t ? t->tid : 0;
   frame.global_time = session->ofstream().time();

@@ -37,7 +37,7 @@ typedef std::vector<char*> CharpVector;
  * into, and the information recorded in the frame dictates the nature
  * of the transition.
  */
-struct trace_frame {
+struct TraceFrame {
   /**
    * Log a human-readable representation of this to |out|
    * (defaulting to stdout), including a newline character.  An
@@ -57,7 +57,6 @@ struct trace_frame {
   STRUCT_DELIMITER(begin_exec_info);
   int64_t rbc;
   PerfCounters::Extra extra_perf_values;
-
   Registers recorded_regs;
   STRUCT_DELIMITER(end_exec_info);
 
@@ -187,8 +186,7 @@ public:
    * NB: recording a trace frame has the side effect of ticking
    * the global time.
    */
-  friend TraceOfstream& operator<<(TraceOfstream& tif,
-                                   const struct trace_frame& frame);
+  friend TraceOfstream& operator<<(TraceOfstream& tif, const TraceFrame& frame);
   friend TraceOfstream& operator<<(TraceOfstream& tif,
                                    const struct mmapped_file& map);
   friend TraceOfstream& operator<<(TraceOfstream& tif,
@@ -250,15 +248,13 @@ public:
    * the global time to match the time recorded in the trace
    * frame.
    */
-  friend TraceIfstream& operator>>(TraceIfstream& tif,
-                                   struct trace_frame& frame);
+  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
   friend TraceIfstream& operator>>(TraceIfstream& tif,
                                    struct mmapped_file& map);
   friend TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae);
   friend TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d);
 
-  bool read_raw_data_for_frame(const struct trace_frame& frame,
-                               struct raw_data& d);
+  bool read_raw_data_for_frame(const TraceFrame& frame, struct raw_data& d);
 
   /**
    * Return true iff all trace files are "good".
@@ -282,15 +278,14 @@ public:
    * Return the next trace frame, without mutating any stream
    * state.
    */
-  struct trace_frame peek_frame();
+  TraceFrame peek_frame();
 
   /**
    * Peek ahead in the stream to find the next trace frame that
    * matches the requested parameters. Returns the frame if one
    * was found, and issues a fatal error if not.
    */
-  struct trace_frame peek_to(pid_t pid, EventType type,
-                             SyscallEntryOrExit state);
+  TraceFrame peek_to(pid_t pid, EventType type, SyscallEntryOrExit state);
 
   /**
    * Restore the state of this to what it was just after

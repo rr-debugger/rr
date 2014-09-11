@@ -248,7 +248,7 @@ public:
    * The trace record that we are working on --- the next event
    * for replay to reach.
    */
-  struct trace_frame& current_trace_frame() { return trace_frame; }
+  TraceFrame& current_trace_frame() { return trace_frame; }
   /**
    * State of the replay as we advance towards the event given by
    * current_trace_frame().
@@ -344,7 +344,7 @@ private:
   Task* last_debugged_task;
   pid_t tgid_debugged;
   std::shared_ptr<TraceIfstream> trace_ifstream;
-  struct trace_frame trace_frame;
+  TraceFrame trace_frame;
   struct rep_trace_step replay_step;
   EnvironmentBugDetector environment_bug_detector;
   /**

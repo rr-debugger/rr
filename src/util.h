@@ -22,7 +22,7 @@
 class AutoRemoteSyscalls;
 class Task;
 struct Flags;
-struct trace_frame;
+struct TraceFrame;
 
 #define PTRACE_EVENT_NONE 0
 #define PTRACE_EVENT_STOP 128
@@ -168,7 +168,7 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
  * Return nonzero if the user requested memory be dumped for |t| at
  * |event| at |global_time|.
  */
-int should_dump_memory(Task* t, const struct trace_frame& f);
+int should_dump_memory(Task* t, const TraceFrame& f);
 /**
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
@@ -179,7 +179,7 @@ void dump_process_memory(Task* t, int global_time, const char* tag);
  * Return nonzero if the user has requested |t|'s memory be
  * checksummed at |event| at |global_time|.
  */
-int should_checksum(Task* t, const struct trace_frame& f);
+int should_checksum(Task* t, const TraceFrame& f);
 /**
  * Write a checksum of each mapped region in |t|'s address space to a
  * special log, where it can be read by |validate_process_memory()|
