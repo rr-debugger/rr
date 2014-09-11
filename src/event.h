@@ -199,7 +199,7 @@ struct SyscallEvent : public BaseEvent {
         tmp_data_ptr(nullptr),
         tmp_data_num_bytes(-1),
         state(NO_SYSCALL),
-        no(syscallno),
+        number(syscallno),
         is_restart(false) {}
   // The original (before scratch is set up) arguments to the
   // syscall passed by the tracee.  These are used to detect
@@ -261,7 +261,7 @@ struct SyscallEvent : public BaseEvent {
   ssize_t tmp_data_num_bytes;
   SyscallState state;
   // Syscall number.
-  int no;
+  int number;
   // Nonzero when this syscall was restarted after a signal
   // interruption.
   bool is_restart;

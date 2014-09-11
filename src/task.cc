@@ -230,8 +230,9 @@ Task::~Task() {
   // exit_group(), so it's not helpful to warn about that.
   if (EV_SENTINEL != ev().type() &&
       (pending_events.size() > 2 ||
-       !(ev().type() == EV_SYSCALL && (SYS_exit == ev().Syscall().no ||
-                                       SYS_exit_group == ev().Syscall().no)))) {
+       !(ev().type() == EV_SYSCALL &&
+         (SYS_exit == ev().Syscall().number ||
+          SYS_exit_group == ev().Syscall().number)))) {
     LOG(warn) << tid << " still has pending events.  From top down:";
     log_pending_events();
   }
@@ -528,10 +529,10 @@ bool Task::is_syscall_restart() {
    * that it might change the scratch allocation decisions. */
   if (SYS_restart_syscall == syscallno) {
     must_restart = true;
-    syscallno = ev().Syscall().no;
+    syscallno = ev().Syscall().number;
     LOG(debug) << "  (SYS_restart_syscall)";
   }
-  if (ev().Syscall().no != syscallno) {
+  if (ev().Syscall().number != syscallno) {
     LOG(debug) << "  interrupted %s" << ev()
                << " != " << syscallname(syscallno);
     goto done;
@@ -676,8 +677,8 @@ static bool record_extra_regs(const Event& ev) {
   switch (ev.type()) {
     case EV_SYSCALL:
       // sigreturn/rt_sigreturn restores register state
-      return (ev.Syscall().no == SYS_rt_sigreturn ||
-              ev.Syscall().no == SYS_sigreturn) &&
+      return (ev.Syscall().number == SYS_rt_sigreturn ||
+              ev.Syscall().number == SYS_sigreturn) &&
              ev.Syscall().state == EXITING_SYSCALL;
     case EV_SIGNAL_HANDLER:
       // entering a signal handler seems to clear FP/SSE regs,

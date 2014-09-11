@@ -1437,7 +1437,7 @@ void EnvironmentBugDetector::notify_reached_syscall_during_replay(Task* t) {
     return;
   }
   Event ev(t->current_trace_frame().ev);
-  if (ev.Syscall().no != SYS_geteuid32) {
+  if (ev.Syscall().number != SYS_geteuid32) {
     return;
   }
   uint64_t trace_rbc_count = t->current_trace_frame().rbc;

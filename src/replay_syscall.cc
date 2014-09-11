@@ -444,7 +444,8 @@ static void process_execve(Task* t, struct trace_frame* trace,
 
   if (SYSCALL_ENTRY == state) {
     Event next_ev(t->ifstream().peek_frame().ev);
-    if (EV_SYSCALL == next_ev.type() && Arch::execve == next_ev.Syscall().no &&
+    if (EV_SYSCALL == next_ev.type() &&
+        Arch::execve == next_ev.Syscall().number &&
         EXITING_SYSCALL == next_ev.Syscall().state) {
       // The first entering-exec event, when the
       // tracee is /about to/ enter execve(),
@@ -1256,7 +1257,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     // restart a syscall.  We have to look at the previous
     // event to see which syscall we're trying to restart.
     if (interrupted_restart) {
-      syscall = t->ev().Syscall().no;
+      syscall = t->ev().Syscall().number;
       LOG(debug) << "  interrupted " << t->syscallname(syscall)
                  << " interrupted again";
     }
@@ -1304,7 +1305,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
         << "Must have interrupted syscall to restart";
 
-    syscall = t->ev().Syscall().no;
+    syscall = t->ev().Syscall().number;
     if (SYSCALL_ENTRY == state) {
       void* intr_ip = (void*)t->ev().Syscall().regs.ip();
       void* cur_ip = (void*)t->ip();

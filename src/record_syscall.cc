@@ -623,7 +623,7 @@ static bool exec_file_supported(const string& filename) {
 }
 
 template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
-  int syscallno = t->ev().Syscall().no;
+  int syscallno = t->ev().Syscall().number;
   /* If we are called again due to a restart_syscall, we musn't
    * redirect to scratch again as we will lose the original
    * addresses values. */
@@ -1144,7 +1144,7 @@ int rec_prepare_syscall(Task* t)
 }
 
 template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
-  int syscallno = t->ev().Syscall().no;
+  int syscallno = t->ev().Syscall().number;
   switch (syscallno) {
     case Arch::nanosleep: {
       /* Hopefully uniquely among syscalls, nanosleep()
@@ -2126,14 +2126,14 @@ static void check_syscall_rejected(Task* t) {
   // syscall, but we don't.
   if (t->regs().syscall_result_signed() != -ENOSYS) {
     print_register_file_tid(t);
-    int syscallno = t->ev().Syscall().no;
+    int syscallno = t->ev().Syscall().number;
     FATAL() << "Unhandled syscall " << t->syscallname(syscallno) << "("
             << syscallno << ") returned " << t->regs().syscall_result_signed();
   }
 }
 
 template <typename Arch> static void rec_process_syscall_arch(Task* t) {
-  int syscallno = t->ev().Syscall().no;
+  int syscallno = t->ev().Syscall().number;
 
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();

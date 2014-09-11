@@ -411,7 +411,7 @@ static void maybe_discard_syscall_interruption(Task* t, int ret) {
     return;
   }
 
-  syscallno = t->ev().Syscall().no;
+  syscallno = t->ev().Syscall().number;
   if (0 > ret) {
     syscall_not_restarted(t);
   } else if (0 < ret) {
@@ -462,7 +462,7 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
       return;
 
     case EXITING_SYSCALL: {
-      int syscallno = t->ev().Syscall().no;
+      int syscallno = t->ev().Syscall().number;
       int may_restart;
       int retval;
 
@@ -585,7 +585,7 @@ static void maybe_reset_syscallbuf(Task* t) {
 
 /** If the rbc seems to be working return, otherwise don't return. */
 static void check_rbc(Task* t) {
-  if (can_deliver_signals || SYS_write != t->ev().Syscall().no) {
+  if (can_deliver_signals || SYS_write != t->ev().Syscall().number) {
     return;
   }
   int fd = t->regs().arg1_signed();
@@ -801,7 +801,7 @@ static void runnable_state_changed(Task* t) {
       // We just entered a syscall.
       if (!maybe_restart_syscall(t)) {
         t->push_event(SyscallEvent(t->regs().original_syscallno()));
-        rec_before_record_syscall_entry(t, t->ev().Syscall().no);
+        rec_before_record_syscall_entry(t, t->ev().Syscall().number);
       }
       ASSERT(t, EV_SYSCALL == t->ev().type());
       check_rbc(t);

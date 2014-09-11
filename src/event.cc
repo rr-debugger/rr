@@ -186,7 +186,7 @@ EncodedEvent Event::encode() const {
       // should never attempt to record.
       assert(Syscall().state != PROCESSING_SYSCALL);
       set_encoded_event_data(&e, Syscall().is_restart ? SYS_restart_syscall
-                                                      : Syscall().no);
+                                                      : Syscall().number);
       e.state =
           Syscall().state == ENTERING_SYSCALL ? SYSCALL_ENTRY : SYSCALL_EXIT;
       return e;
@@ -271,7 +271,7 @@ string Event::str() const {
       break;
     case EV_SYSCALL:
     case EV_SYSCALL_INTERRUPTION:
-      ss << ": " << syscall_name(Syscall().no, Syscall().regs.arch());
+      ss << ": " << syscall_name(Syscall().number, Syscall().regs.arch());
       break;
     default:
       // No auxiliary information.
