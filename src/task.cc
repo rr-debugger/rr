@@ -691,10 +691,7 @@ static bool record_extra_regs(const Event& ev) {
 void Task::record_event(const Event& ev) {
   maybe_flush_syscallbuf();
 
-  TraceFrame frame;
-  frame.global_time = ofstream().time();
-  frame.tid = tid;
-  frame.ev = ev.encode();
+  TraceFrame frame(ofstream().time(), tid, ev.encode());
   if (ev.has_exec_info()) {
     frame.rbc = rbc_count();
     if (PerfCounters::extra_perf_counters_enabled()) {

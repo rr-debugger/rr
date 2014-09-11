@@ -61,6 +61,8 @@ public:
   };
 
   struct Extra {
+    Extra() : page_faults(0), hw_interrupts(0), instructions_retired(0) {}
+
     int64_t page_faults;
     int64_t hw_interrupts;
     int64_t instructions_retired;

@@ -38,6 +38,10 @@ typedef std::vector<char*> CharpVector;
  * of the transition.
  */
 struct TraceFrame {
+  TraceFrame(uint32_t global_time, pid_t tid, EncodedEvent ev)
+      : global_time(global_time), tid(tid), ev(ev), rbc(0) {}
+  TraceFrame() : global_time(0), tid(0), rbc(0) { ev.encoded = 0; }
+
   /**
    * Log a human-readable representation of this to |out|
    * (defaulting to stdout), including a newline character.  An

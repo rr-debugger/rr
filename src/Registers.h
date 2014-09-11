@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <vector>
 
@@ -28,6 +29,8 @@
  */
 class Registers {
 public:
+  Registers() { memset(&u, 0, sizeof(u)); }
+
   SupportedArch arch() const { return x86; }
 
   // Return a pointer that can be passed to ptrace's PTRACE_GETREGS et al.

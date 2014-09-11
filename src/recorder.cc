@@ -1014,11 +1014,9 @@ void terminate_recording(Task* t, int status) {
   LOG(info) << "Processing termination request ...";
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 
-  TraceFrame frame;
-  memset(&frame, 0, sizeof(frame));
-  frame.tid = t ? t->tid : 0;
-  frame.global_time = session->ofstream().time();
-  frame.ev = Event(EV_TRACE_TERMINATION, BaseEvent(NO_EXEC_INFO)).encode();
+  TraceFrame frame(
+      session->ofstream().time(), t ? t->tid : 0,
+      Event(EV_TRACE_TERMINATION, BaseEvent(NO_EXEC_INFO)).encode());
   session->ofstream() << frame;
   session->ofstream().close();
 
