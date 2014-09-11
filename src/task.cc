@@ -579,7 +579,8 @@ bool Task::may_be_blocked() const {
          (EV_SIGNAL_DELIVERY == ev().type() && ev().Signal().delivered);
 }
 
-void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
+template<typename Arch>
+void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
   // We have to use the regs() during replay because they
   // have the return value set in syscall_result().  We may not have
   // advanced regs() to that point yet.
@@ -591,7 +592,7 @@ void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
     return;
   }
   switch (syscallno) {
-    case SYS_brk: {
+    case Arch::brk: {
       void* addr = reinterpret_cast<void*>(r.arg1());
       if (!addr) {
         // A brk() update of NULL is observed with
@@ -603,17 +604,17 @@ void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
       }
       return vm()->brk(addr);
     }
-    case SYS_mmap2: {
+    case Arch::mmap2: {
       LOG(debug) << "(mmap2 will receive / has received direct processing)";
       return;
     }
-    case SYS_mprotect: {
+    case Arch::mprotect: {
       void* addr = reinterpret_cast<void*>(r.arg1());
       size_t num_bytes = r.arg2();
       int prot = r.arg3_signed();
       return vm()->protect(addr, num_bytes, prot);
     }
-    case SYS_mremap: {
+    case Arch::mremap: {
       if (SYSCALL_FAILED(r.syscall_result_signed()) &&
           -ENOMEM != r.syscall_result_signed()) {
         return;
@@ -624,12 +625,17 @@ void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
       size_t new_num_bytes = r.arg3();
       return vm()->remap(old_addr, old_num_bytes, new_addr, new_num_bytes);
     }
-    case SYS_munmap: {
+    case Arch::munmap: {
       void* addr = reinterpret_cast<void*>(r.arg1());
       size_t num_bytes = r.arg2();
       return vm()->unmap(addr, num_bytes);
     }
   }
+}
+
+void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state)
+{
+  RR_ARCH_FUNCTION(maybe_update_vm_arch, arch(), syscallno, state)
 }
 
 void Task::move_ip_before_breakpoint() {

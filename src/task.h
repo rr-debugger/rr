@@ -1105,6 +1105,10 @@ public:
 private:
   Task(Session& session, pid_t tid, pid_t rec_tid, int priority);
 
+  /** Helper function for maybe_update_vm. */
+  template<typename Arch>
+  void maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state);
+
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of
    * CloneFlags (see above) that determine which resources are
