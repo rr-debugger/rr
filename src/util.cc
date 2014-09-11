@@ -262,7 +262,7 @@ bool is_always_emulated_syscall(int syscallno) {
 #undef MAY_EXEC
 #undef CASE
 
-    case SYS_restart_syscall:
+    case X86Arch::Syscalls::restart_syscall:
       return false;
     default:
       FATAL() << "Unknown syscall " << syscallno;
