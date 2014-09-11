@@ -317,7 +317,7 @@ void Task::destabilize_task_group() {
     printf(
         "[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
         trace_time() + signal_delivery_event_offset, rec_tid, tgid(),
-        signalname(ev().Signal().no));
+        signalname(ev().Signal().number));
   }
 
   tg->destabilize();

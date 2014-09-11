@@ -1789,7 +1789,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
   }
 
   if (t->child_sig != 0) {
-    assert(EV_SIGNAL == ev.type() && t->child_sig == ev.Signal().no);
+    assert(EV_SIGNAL == ev.type() && t->child_sig == ev.Signal().number);
     t->child_sig = 0;
   }
 
@@ -1877,7 +1877,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
       step.action = TSTEP_RETIRE;
       break;
     case EV_SIGNAL:
-      step.signo = ev.Signal().no;
+      step.signo = ev.Signal().number;
       step.action =
           (ev.Signal().deterministic ? TSTEP_DETERMINISTIC_SIGNAL
                                      : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);

@@ -153,11 +153,11 @@ struct SignalEvent : public BaseEvent {
    */
   SignalEvent(int signo, bool deterministic)
       : BaseEvent(HAS_EXEC_INFO),
-        no(signo),
+        number(signo),
         deterministic(deterministic),
         delivered(false) {}
   // Signal number.
-  int no;
+  int number;
   // True if this signal will be deterministically raised as the
   // side effect of retiring an instruction during replay, for
   // example |load $r 0x0| deterministically raises SIGSEGV.

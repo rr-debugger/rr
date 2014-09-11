@@ -632,7 +632,7 @@ enum {
   BY_WAITPID
 };
 static bool signal_state_changed(Task* t, int by_waitpid) {
-  int sig = t->ev().Signal().no;
+  int sig = t->ev().Signal().number;
 
   switch (t->ev().type()) {
     case EV_SIGNAL: {
