@@ -188,9 +188,9 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
   }
 }
 
-AutoGc::AutoGc(ReplaySession& session, int syscallno, int state)
+AutoGc::AutoGc(ReplaySession& session, int syscallno, SyscallEntryOrExit state)
     : session(session),
-      is_gc_point(session.emufs().size() > 0 && STATE_SYSCALL_EXIT == state &&
+      is_gc_point(session.emufs().size() > 0 && SYSCALL_EXIT == state &&
                   (SYS_close == syscallno || SYS_munmap == syscallno)) {
   if (is_gc_point) {
     assert(SYS_close == syscallno || SYS_munmap == syscallno);

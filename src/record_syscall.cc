@@ -2069,7 +2069,7 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
 
 template <typename Arch>
 static void before_syscall_exit(Task* t, int syscallno) {
-  t->maybe_update_vm(syscallno, STATE_SYSCALL_EXIT);
+  t->maybe_update_vm(syscallno, SYSCALL_EXIT);
 
   switch (syscallno) {
     case Arch::setpriority: {

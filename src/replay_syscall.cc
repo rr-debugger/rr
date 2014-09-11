@@ -160,7 +160,7 @@ __attribute__((constructor)) static void init_syscall_table() {
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
  */
-static void validate_args(int syscall, int state, Task* t) {
+static void validate_args(int syscall, Task* t) {
   /* don't validate anything before execve is done as the actual
    * process did not start prior to this point */
   if (!t->session().can_validate()) {
@@ -259,7 +259,7 @@ void rep_maybe_replay_stdio_write(Task* t)
     RR_ARCH_FUNCTION(rep_maybe_replay_stdio_write_arch, t->arch(),
                      t) static void exit_syscall_emu_ret(Task* t, int syscall) {
   t->set_return_value_from_trace();
-  validate_args(syscall, STATE_SYSCALL_EXIT, t);
+  validate_args(syscall, t);
   t->finish_emulated_syscall();
 }
 
@@ -331,27 +331,31 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
  */
 static bool is_failed_syscall(Task* t, const struct trace_frame* frame) {
   struct trace_frame next_frame;
-  if (STATE_SYSCALL_ENTRY == frame->ev.state) {
-    next_frame = t->ifstream().peek_to(t->rec_tid, EventType(frame->ev.type),
-                                       STATE_SYSCALL_EXIT);
+  if (SYSCALL_ENTRY == frame->ev.state) {
+    next_frame =
+        t->ifstream().peek_to(t->rec_tid, frame->ev.type, SYSCALL_EXIT);
     frame = &next_frame;
   }
   return SYSCALL_FAILED(frame->recorded_regs.syscall_result_signed());
 }
 
+static RepTraceStepType syscall_action(SyscallEntryOrExit state) {
+  return state == SYSCALL_ENTRY ? TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+}
+
 template <typename Arch>
-static void process_clone(Task* t, struct trace_frame* trace, int state,
+static void process_clone(Task* t, struct trace_frame* trace,
+                          SyscallEntryOrExit state,
                           struct rep_trace_step* step) {
   int syscallno = Arch::clone;
   if (is_failed_syscall(t, trace)) {
     /* creation failed, emulate it */
     step->syscall.emu = 1;
     step->syscall.emu_ret = 1;
-    step->action = (state == STATE_SYSCALL_ENTRY) ? TSTEP_ENTER_SYSCALL
-                                                  : TSTEP_EXIT_SYSCALL;
+    step->action = syscall_action(state);
     return;
   }
-  if (state == STATE_SYSCALL_ENTRY) {
+  if (state == SYSCALL_ENTRY) {
     step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
@@ -415,7 +419,7 @@ static void process_clone(Task* t, struct trace_frame* trace, int state,
   r.set_arg1(flags);
   t->set_regs(r);
   t->set_return_value_from_trace();
-  validate_args(syscallno, state, t);
+  validate_args(syscallno, t);
 
   init_scratch_memory<Arch>(new_task);
 
@@ -425,8 +429,8 @@ static void process_clone(Task* t, struct trace_frame* trace, int state,
 }
 
 template <typename Arch>
-static void process_execve(Task* t, struct trace_frame* trace, int state,
-                           const Registers* rec_regs,
+static void process_execve(Task* t, struct trace_frame* trace,
+                           SyscallEntryOrExit state, const Registers* rec_regs,
                            struct rep_trace_step* step) {
   const int syscallno = Arch::execve;
 
@@ -434,12 +438,11 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
     /* exec failed, emulate it */
     step->syscall.emu = 1;
     step->syscall.emu_ret = 1;
-    step->action = (state == STATE_SYSCALL_ENTRY) ? TSTEP_ENTER_SYSCALL
-                                                  : TSTEP_EXIT_SYSCALL;
+    step->action = syscall_action(state);
     return;
   }
 
-  if (STATE_SYSCALL_ENTRY == state) {
+  if (SYSCALL_ENTRY == state) {
     Event next_ev(t->ifstream().peek_frame().ev);
     if (EV_SYSCALL == next_ev.type() && Arch::execve == next_ev.Syscall().no &&
         EXITING_SYSCALL == next_ev.Syscall().state) {
@@ -484,18 +487,18 @@ static void process_execve(Task* t, struct trace_frame* trace, int state,
   t->post_exec();
 
   t->set_return_value_from_trace();
-  validate_args(syscallno, state, t);
+  validate_args(syscallno, t);
 }
 
-static void process_futex(Task* t, int state, struct rep_trace_step* step,
-                          const Registers* regs) {
+static void process_futex(Task* t, SyscallEntryOrExit state,
+                          struct rep_trace_step* step, const Registers* regs) {
   int op = (int)regs->arg2_signed() & FUTEX_CMD_MASK;
   void* futex = (void*)regs->arg1();
 
   step->syscall.emu = 1;
   step->syscall.emu_ret = 1;
 
-  if (state == STATE_SYSCALL_ENTRY) {
+  if (state == SYSCALL_ENTRY) {
     if (FUTEX_LOCK_PI == op) {
       uint32_t next_val;
       if (is_now_contended_pi_futex(t, futex, &next_val)) {
@@ -531,11 +534,12 @@ static void process_futex(Task* t, int state, struct rep_trace_step* step,
   }
 }
 
-static void process_ioctl(Task* t, int state, struct rep_trace_step* step) {
+static void process_ioctl(Task* t, SyscallEntryOrExit state,
+                          struct rep_trace_step* step) {
   step->syscall.emu = 1;
   step->syscall.emu_ret = 1;
 
-  if (state == STATE_SYSCALL_ENTRY) {
+  if (state == SYSCALL_ENTRY) {
     step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
@@ -582,11 +586,11 @@ static void process_ioctl(Task* t, int state, struct rep_trace_step* step) {
   }
 }
 
-void process_ipc(Task* t, struct trace_frame* trace, int state,
+void process_ipc(Task* t, struct trace_frame* trace, SyscallEntryOrExit state,
                  struct rep_trace_step* step) {
   step->syscall.emu = 1;
   step->syscall.emu_ret = 1;
-  if (STATE_SYSCALL_ENTRY == state) {
+  if (SYSCALL_ENTRY == state) {
     step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
@@ -851,9 +855,9 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote,
 }
 
 template <typename Arch>
-static void process_mmap(Task* t, struct trace_frame* trace, int exec_state,
-                         int prot, int flags, off64_t offset_pages,
-                         struct rep_trace_step* step) {
+static void process_mmap(Task* t, struct trace_frame* trace,
+                         SyscallEntryOrExit state, int prot, int flags,
+                         off64_t offset_pages, struct rep_trace_step* step) {
   void* mapped_addr;
 
   if (SYSCALL_FAILED(trace->recorded_regs.syscall_result_signed())) {
@@ -895,7 +899,7 @@ static void process_mmap(Task* t, struct trace_frame* trace, int exec_state,
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result((uintptr_t)mapped_addr);
   }
-  validate_args(Arch::mmap2, exec_state, t);
+  validate_args(Arch::mmap2, t);
 
   step->action = TSTEP_RETIRE;
 }
@@ -955,14 +959,14 @@ static void restore_msglen_for_msgvec(Task* t, int nmmsgs) {
  * that needs to be processed specially.
  */
 template <typename Arch>
-static void process_socketcall(Task* t, int state,
+static void process_socketcall(Task* t, SyscallEntryOrExit state,
                                struct rep_trace_step* step) {
   unsigned int call;
 
   step->syscall.emu = 1;
   step->syscall.emu_ret = 1;
 
-  if (state == STATE_SYSCALL_ENTRY) {
+  if (state == SYSCALL_ENTRY) {
     step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
@@ -1056,7 +1060,7 @@ static void process_socketcall(Task* t, int state,
   }
 }
 
-static void process_init_buffers(Task* t, int exec_state,
+static void process_init_buffers(Task* t, SyscallEntryOrExit state,
                                  struct rep_trace_step* step) {
   void* rec_child_map_addr;
   void* child_map_addr;
@@ -1065,7 +1069,7 @@ static void process_init_buffers(Task* t, int exec_state,
   step->syscall.emu = 1;
   step->syscall.emu_ret = 1;
 
-  if (STATE_SYSCALL_ENTRY == exec_state) {
+  if (SYSCALL_ENTRY == state) {
     step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
@@ -1086,7 +1090,7 @@ static void process_init_buffers(Task* t, int exec_state,
   ASSERT(t, child_map_addr == rec_child_map_addr)
       << "Should have mapped syscallbuf at " << rec_child_map_addr
       << ", but it's at " << child_map_addr;
-  validate_args(SYS_rrcall_init_buffers, STATE_SYSCALL_EXIT, t);
+  validate_args(SYS_rrcall_init_buffers, t);
 }
 
 template <typename Arch>
@@ -1238,14 +1242,14 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       t->current_trace_frame().ev.data; /* FIXME: don't shadow syscall() */
   const struct syscall_def* def;
   struct trace_frame* trace = &t->replay_session().current_trace_frame();
-  int state = trace->ev.state;
+  SyscallEntryOrExit state = trace->ev.state;
   const Registers* rec_regs = &trace->recorded_regs;
   AutoGc maybe_gc(t->replay_session(), syscall, state);
 
   LOG(debug) << "processing " << t->syscallname(syscall) << " ("
              << state_name(state) << ")";
 
-  if (STATE_SYSCALL_EXIT == state &&
+  if (SYSCALL_EXIT == state &&
       SYSCALL_MAY_RESTART(rec_regs->syscall_result_signed())) {
     bool interrupted_restart = (EV_SYSCALL_INTERRUPTION == t->ev().type());
     // The tracee was interrupted while attempting to
@@ -1301,7 +1305,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
         << "Must have interrupted syscall to restart";
 
     syscall = t->ev().Syscall().no;
-    if (STATE_SYSCALL_ENTRY == state) {
+    if (SYSCALL_ENTRY == state) {
       void* intr_ip = (void*)t->ev().Syscall().regs.ip();
       void* cur_ip = (void*)t->ip();
 
@@ -1340,8 +1344,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
 
   if (rep_IRREGULAR != def->type) {
     step->syscall.num_emu_args = def->num_emu_args;
-    step->action =
-        STATE_SYSCALL_ENTRY == state ? TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
+    step->action = syscall_action(state);
     step->syscall.emu = rep_EMU == def->type;
     step->syscall.emu_ret =
         rep_EMU == def->type || rep_EXEC_RET_EMU == def->type;
@@ -1367,8 +1370,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::execve:
@@ -1377,19 +1379,17 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::exit:
     case Arch::exit_group:
       step->syscall.emu = 0;
-      assert(state == STATE_SYSCALL_ENTRY);
+      assert(state == SYSCALL_ENTRY);
       step->action = TSTEP_ENTER_SYSCALL;
       return;
 
     case Arch::fcntl64:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-      } else {
-        int cmd = t->regs().arg2_signed();
+      step->action = syscall_action(state);
 
-        step->action = TSTEP_EXIT_SYSCALL;
+      if (SYSCALL_EXIT == state) {
+        auto cmd = t->regs().arg2_signed();
         switch (cmd) {
           case F_DUPFD:
           case F_GETFD:
@@ -1431,8 +1431,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::ioctl:
@@ -1442,7 +1441,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       return process_ipc(t, trace, state, step);
 
     case Arch::mmap: {
-      if (STATE_SYSCALL_ENTRY == state) {
+      if (SYSCALL_ENTRY == state) {
         step->action = TSTEP_ENTER_SYSCALL;
         step->syscall.emu = 1;
         return;
@@ -1453,7 +1452,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
                                 args.offset / 4096, step);
     }
     case Arch::mmap2:
-      if (STATE_SYSCALL_ENTRY == state) {
+      if (SYSCALL_ENTRY == state) {
         /* We emulate entry for all types of mmap calls,
          * successful and not. */
         step->action = TSTEP_ENTER_SYSCALL;
@@ -1467,10 +1466,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::nanosleep:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-      } else {
-        step->action = TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
+      if (SYSCALL_EXIT == state) {
         step->syscall.num_emu_args = (trace->recorded_regs.arg2() != 0) ? 1 : 0;
       }
       return;
@@ -1478,8 +1475,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::open:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::poll:
@@ -1487,8 +1483,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::prctl: {
@@ -1497,8 +1492,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       if (PR_SET_NAME == option || PR_GET_NAME == option) {
         step->syscall.num_emu_args = 1;
         // We actually execute these.
-        step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                      : TSTEP_EXIT_SYSCALL;
+        step->action = syscall_action(state);
         if (TSTEP_EXIT_SYSCALL == step->action && PR_SET_NAME == option) {
           t->update_prname(arg2);
         }
@@ -1507,17 +1501,15 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-        return;
+      step->action = syscall_action(state);
+      if (SYSCALL_EXIT == state) {
+        step->syscall.num_emu_args = 1;
       }
-      step->action = TSTEP_EXIT_SYSCALL;
-      step->syscall.num_emu_args = 1;
       return;
     }
     case Arch::ptrace:
       step->syscall.emu = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
+      if (SYSCALL_ENTRY == state) {
         step->action = TSTEP_ENTER_SYSCALL;
         return;
       }
@@ -1533,12 +1525,9 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::quotactl:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (state == STATE_SYSCALL_ENTRY) {
-        step->action = TSTEP_ENTER_SYSCALL;
-      } else {
-        int cmd = t->regs().arg1_signed();
-
-        step->action = TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
+      if (state == SYSCALL_EXIT) {
+        auto cmd = t->regs().arg1_signed();
         switch (cmd & SUBCMDMASK) {
           case Q_GETQUOTA:
           case Q_GETINFO:
@@ -1554,10 +1543,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::read:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-      } else {
-        step->action = TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
+      if (SYSCALL_EXIT == state) {
         step->syscall.num_emu_args = 1;
       }
       return;
@@ -1565,45 +1552,39 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::recvmmsg: {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-        return;
+      step->action = syscall_action(state);
+      if (SYSCALL_EXIT == state) {
+        restore_msgvec<Arch>(t, rec_regs->syscall_result_signed(),
+                             (typename Arch::mmsghdr*)rec_regs->arg2());
       }
-      restore_msgvec<Arch>(t, rec_regs->syscall_result_signed(),
-                           (typename Arch::mmsghdr*)rec_regs->arg2());
-      step->action = TSTEP_EXIT_SYSCALL;
       return;
     }
     case Arch::rt_sigtimedwait:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::sendfile64:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 1;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::sendmmsg: {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-        return;
+      step->action = syscall_action(state);
+      if (SYSCALL_EXIT == state) {
+        restore_msglen_for_msgvec(t, rec_regs->syscall_result_signed());
       }
-      restore_msglen_for_msgvec(t, rec_regs->syscall_result_signed());
-      step->action = TSTEP_EXIT_SYSCALL;
       return;
     }
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
-      if (state == STATE_SYSCALL_ENTRY) {
+      if (state == SYSCALL_ENTRY) {
         step->syscall.emu = 1;
         step->action = TSTEP_ENTER_SYSCALL;
         return;
@@ -1621,16 +1602,14 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 2;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::_sysctl:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 2;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::waitid:
@@ -1639,8 +1618,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = Arch::wait4 == syscall ? 2 : 1;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case Arch::write:
@@ -1648,28 +1626,24 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.num_emu_args = 0;
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (state == STATE_SYSCALL_ENTRY) {
-        step->action = TSTEP_ENTER_SYSCALL;
-        return;
+      step->action = syscall_action(state);
+      if (state == SYSCALL_EXIT) {
+        /* XXX technically this will print the output before
+         * we reach the interrupt.  That could maybe cause
+         * issues in the future. */
+        rep_maybe_replay_stdio_write_arch<Arch>(t);
+        /* write*() can be desched'd, but don't use scratch,
+         * so we might have saved 0 bytes of scratch after a
+         * desched. */
+        maybe_noop_restore_syscallbuf_scratch(t);
       }
-
-      step->action = TSTEP_EXIT_SYSCALL;
-      /* XXX technically this will print the output before
-       * we reach the interrupt.  That could maybe cause
-       * issues in the future. */
-      rep_maybe_replay_stdio_write_arch<Arch>(t);
-      /* write*() can be desched'd, but don't use scratch,
-       * so we might have saved 0 bytes of scratch after a
-       * desched. */
-      maybe_noop_restore_syscallbuf_scratch(t);
       return;
 
     case Arch::sched_setaffinity:
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
       step->syscall.num_emu_args = 0;
-      step->action = (STATE_SYSCALL_ENTRY == state) ? TSTEP_ENTER_SYSCALL
-                                                    : TSTEP_EXIT_SYSCALL;
+      step->action = syscall_action(state);
       return;
 
     case SYS_rrcall_init_buffers:
@@ -1679,7 +1653,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->syscall.num_emu_args = 0;
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
-      if (STATE_SYSCALL_ENTRY == state) {
+      if (SYSCALL_ENTRY == state) {
         step->action = TSTEP_ENTER_SYSCALL;
         return;
       }
@@ -1691,15 +1665,14 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
 
     default:
       // Emulate, assuming it was an invalid syscall.
-      if (STATE_SYSCALL_EXIT == state) {
+      if (SYSCALL_EXIT == state) {
         ASSERT(t, rec_regs->syscall_result_signed() == -ENOSYS)
             << "Unknown syscall should have returned -ENOSYS";
       }
       step->syscall.num_emu_args = 0;
-      step->action = STATE_SYSCALL_ENTRY == state ? TSTEP_ENTER_SYSCALL
-                                                  : TSTEP_EXIT_SYSCALL;
       step->syscall.emu = 1;
       step->syscall.emu_ret = 1;
+      step->action = syscall_action(state);
       return;
   }
 }

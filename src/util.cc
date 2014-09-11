@@ -734,8 +734,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
 
 int should_checksum(Task* t, const struct trace_frame& f) {
   int checksum = Flags::get().checksum;
-  int is_syscall_exit =
-      (EV_SYSCALL == f.ev.type && STATE_SYSCALL_EXIT == f.ev.state);
+  int is_syscall_exit = EV_SYSCALL == f.ev.type && SYSCALL_EXIT == f.ev.state;
 
 #if defined(FIRST_INTERESTING_EVENT)
   if (is_syscall_exit && FIRST_INTERESTING_EVENT <= global_time &&

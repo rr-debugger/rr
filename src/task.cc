@@ -578,16 +578,15 @@ bool Task::may_be_blocked() const {
          (EV_SIGNAL_DELIVERY == ev().type() && ev().Signal().delivered);
 }
 
-void Task::maybe_update_vm(int syscallno, int state) {
+void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
   // We have to use the recorded_regs during replay because they
   // have the return value set in syscall_result().  We may not have
   // advanced regs() to that point yet.
   const Registers& r =
       session().is_recording() ? regs() : current_trace_frame().recorded_regs;
 
-  if (STATE_SYSCALL_EXIT != state ||
-      (SYSCALL_FAILED(r.syscall_result_signed()) &&
-       SYS_mprotect != syscallno)) {
+  if (SYSCALL_EXIT != state || (SYSCALL_FAILED(r.syscall_result_signed()) &&
+                                SYS_mprotect != syscallno)) {
     return;
   }
   switch (syscallno) {

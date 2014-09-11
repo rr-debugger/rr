@@ -637,8 +637,9 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
 /**
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
+ * If syscallno is 0, this is a signal delivery, not a syscall.
  */
-static void validate_args(int event, int state, Task* t) {
+static void validate_args(int syscallno, SyscallEntryOrExit state, Task* t) {
   Registers rec_regs = t->current_trace_frame().recorded_regs;
 
   /* don't validate anything before execve is done as the actual
@@ -647,8 +648,8 @@ static void validate_args(int event, int state, Task* t) {
     return;
   }
   if (rec_regs.arch() == SupportedArch::x86 &&
-      (X86Arch::pwrite64 == event || X86Arch::pread64 == event) &&
-      STATE_SYSCALL_EXIT == state) {
+      (X86Arch::pwrite64 == syscallno || X86Arch::pread64 == syscallno) &&
+      SYSCALL_EXIT == state) {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
      * 12.04 has been observed to mutate $esi across
      * syscall entry/exit.  (This has been verified
@@ -691,8 +692,7 @@ enum {
   EMU = 1
 };
 static int cont_syscall_boundary(Task* t, int emu, int stepi) {
-  bool is_syscall_entry =
-      STATE_SYSCALL_ENTRY == t->current_trace_frame().ev.state;
+  bool is_syscall_entry = SYSCALL_ENTRY == t->current_trace_frame().ev.state;
   if (is_syscall_entry) {
     t->stepped_into_syscall = false;
   }
@@ -755,7 +755,7 @@ static int enter_syscall(Task* t, const struct rep_trace_step* step,
   if ((ret = cont_syscall_boundary(t, step->syscall.emu, stepi))) {
     return ret;
   }
-  validate_args(step->syscall.no, STATE_SYSCALL_ENTRY, t);
+  validate_args(step->syscall.no, SYSCALL_ENTRY, t);
   return ret;
 }
 
@@ -779,7 +779,7 @@ static int exit_syscall(Task* t, const struct rep_trace_step* step, int stepi) {
   if (step->syscall.emu_ret) {
     t->set_return_value_from_trace();
   }
-  validate_args(step->syscall.no, STATE_SYSCALL_EXIT, t);
+  validate_args(step->syscall.no, SYSCALL_EXIT, t);
 
   if (emu) {
     t->finish_emulated_syscall();
@@ -1326,13 +1326,13 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   /* Delivered the signal. */
   t->child_sig = 0;
 
-  validate_args(trace->ev.type, -1, t);
+  validate_args(0, SYSCALL_ENTRY, t);
   return 0;
 }
 
 static void check_rcb_consistency(Task* t, const Event& ev) {
   if (!t->session().can_validate() ||
-      !t->current_trace_frame().ev.has_exec_info) {
+      t->current_trace_frame().ev.has_exec_info == NO_EXEC_INFO) {
     return;
   }
 
@@ -2028,7 +2028,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
     t->replay_session().bug_detector().notify_reached_syscall_during_replay(t);
   }
   if (t->session().can_validate() &&
-      STATE_SYSCALL_EXIT == t->current_trace_frame().ev.state &&
+      SYSCALL_EXIT == t->current_trace_frame().ev.state &&
       Flags::get().check_cached_mmaps) {
     t->vm()->verify(t);
   }

@@ -55,14 +55,14 @@ enum EventType {
   EV_LAST
 };
 
-enum {
-  STATE_SYSCALL_ENTRY = 0,
-  STATE_SYSCALL_EXIT = 1
+enum SyscallEntryOrExit {
+  SYSCALL_ENTRY,
+  SYSCALL_EXIT
 };
 
-// Deterministic signals are encoded as (signum | DET_SIGNAL_BIT).
-enum {
-  DET_SIGNAL_BIT = 0x80
+enum HasExecInfo {
+  NO_EXEC_INFO,
+  HAS_EXEC_INFO
 };
 
 /**
@@ -71,14 +71,10 @@ enum {
  */
 union EncodedEvent {
   struct {
-    int type : 6;
-    int data : 22;
-    // We allocate 2 bits for these so that they can have
-    // a positive nonzero value.  It's awkward to use an
-    // unsigned int for storage because |data| may have a
-    // negative value.
-    int state : 2;
-    int has_exec_info : 2;
+    EventType type : 5;
+    SyscallEntryOrExit state : 1;
+    HasExecInfo has_exec_info : 1;
+    int data : 25;
   };
   int encoded;
 
@@ -92,13 +88,7 @@ union EncodedEvent {
 };
 
 static_assert(sizeof(int) == sizeof(EncodedEvent), "Bit fields are messed up");
-static_assert(EV_LAST < (1 << 5),
-              "Allocate more bits to the |event_type| field");
-
-enum {
-  NO_EXEC_INFO = 0,
-  HAS_EXEC_INFO
-};
+static_assert(EV_LAST < (1 << 5), "Allocate more bits to the |type| field");
 
 /**
  * Events are interesting occurrences during tracee execution which
@@ -111,14 +101,14 @@ struct BaseEvent {
    * Pass |HAS_EXEC_INFO| if the event is at a stable execution
    * point that we'll reach during replay too.
    */
-  BaseEvent(bool has_exec_info) : has_exec_info(has_exec_info) {}
+  BaseEvent(HasExecInfo has_exec_info) : has_exec_info(has_exec_info) {}
   // When replaying an event is expected to leave the tracee in
   // the same execution state as during replay, the event has
   // meaningful execution info, and it should be recorded for
   // checking.  But some pseudosigs aren't recorded in the same
   // tracee state they'll be replayed, so the tracee exeuction
   // state isn't meaningful.
-  bool has_exec_info;
+  HasExecInfo has_exec_info;
 };
 
 /**
@@ -336,6 +326,11 @@ struct Event {
     return syscall;
   }
 
+  // Deterministic signals are encoded as (signum | DET_SIGNAL_BIT).
+  enum {
+    DET_SIGNAL_BIT = 0x80
+  };
+
   /**
    * Return an encoding of this event that can be cheaply
    * serialized.  The encoding is lossy.
@@ -348,7 +343,7 @@ struct Event {
    * "Meaningful" means that the same state will be seen when
    * reaching this event during replay.
    */
-  bool has_exec_info() const;
+  HasExecInfo has_exec_info() const;
 
   /**
    * See long comment at |Task::maybe_save_rbc_slop()|.
@@ -408,6 +403,6 @@ inline static std::ostream& operator<<(std::ostream& o,
 /**
  * Return the symbolic name of |state|, or "???state" if unknown.
  */
-const char* state_name(int state);
+const char* state_name(SyscallEntryOrExit state);
 
 #endif // EVENT_H_

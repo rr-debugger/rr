@@ -514,7 +514,7 @@ public:
    * calls: they're complicated enough to be handled separately.
    * Client code should call |t->vm()->map(...)| directly.
    */
-  void maybe_update_vm(int syscallno, int state);
+  void maybe_update_vm(int syscallno, SyscallEntryOrExit state);
 
   /**
    * Assuming ip() is just past a breakpoint instruction, adjust

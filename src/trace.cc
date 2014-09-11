@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 10
+#define TRACE_VERSION 11
 
 static ssize_t sizeof_trace_frame_event_info(void) {
   return offsetof(struct trace_frame, end_event_info) -
@@ -422,7 +422,7 @@ struct trace_frame TraceIfstream::peek_frame() {
 }
 
 struct trace_frame TraceIfstream::peek_to(pid_t pid, EventType type,
-                                          int state) {
+                                          SyscallEntryOrExit state) {
   struct trace_frame frame;
   events.save_state();
   auto saved_time = global_time;

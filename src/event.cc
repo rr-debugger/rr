@@ -33,7 +33,7 @@ static const char* desched_state_name(DeschedState state) {
 }
 
 Event::Event(EncodedEvent e) {
-  switch ((event_type = EventType(e.type))) {
+  switch (event_type = e.type) {
     case EV_SEGV_RDTSC:
     case EV_EXIT:
     case EV_SCHED:
@@ -64,7 +64,7 @@ Event::Event(EncodedEvent e) {
     case EV_SYSCALL:
       new (&Syscall()) SyscallEvent(e.data);
       Syscall().state =
-          STATE_SYSCALL_ENTRY == e.state ? ENTERING_SYSCALL : EXITING_SYSCALL;
+          SYSCALL_ENTRY == e.state ? ENTERING_SYSCALL : EXITING_SYSCALL;
       return;
 
     default:
@@ -147,7 +147,7 @@ EncodedEvent Event::encode() const {
   // Arbitrarily designate events for which this isn't
   // meaningful as being at "entry".  The events for which this
   // is meaningful set it below.
-  e.state = STATE_SYSCALL_ENTRY;
+  e.state = SYSCALL_ENTRY;
 
   switch (event_type) {
     case EV_SEGV_RDTSC:
@@ -187,8 +187,8 @@ EncodedEvent Event::encode() const {
       assert(Syscall().state != PROCESSING_SYSCALL);
       set_encoded_event_data(&e, Syscall().is_restart ? SYS_restart_syscall
                                                       : Syscall().no);
-      e.state = (Syscall().state == ENTERING_SYSCALL) ? STATE_SYSCALL_ENTRY
-                                                      : STATE_SYSCALL_EXIT;
+      e.state =
+          Syscall().state == ENTERING_SYSCALL ? SYSCALL_ENTRY : SYSCALL_EXIT;
       return e;
     }
 
@@ -198,14 +198,14 @@ EncodedEvent Event::encode() const {
   }
 }
 
-bool Event::has_exec_info() const {
+HasExecInfo Event::has_exec_info() const {
   switch (event_type) {
     case EV_DESCHED: {
       // By the time the tracee is in the buffered syscall,
       // it's by definition already armed the desched event.
       // So we're recording that event ex post facto, and
       // there's no meaningful execution information.
-      return IN_SYSCALL != Desched().state;
+      return IN_SYSCALL != Desched().state ? HAS_EXEC_INFO : NO_EXEC_INFO;
     }
     default:
       return Base().has_exec_info;
@@ -331,15 +331,14 @@ std::string Event::type_name() const {
   }
 }
 
-const char* state_name(int state) {
+const char* state_name(SyscallEntryOrExit state) {
   switch (state) {
 #define CASE(_id)                                                              \
   case _id:                                                                    \
     return #_id
-    CASE(STATE_SYSCALL_ENTRY);
-    CASE(STATE_SYSCALL_EXIT);
+    CASE(SYSCALL_ENTRY);
+    CASE(SYSCALL_EXIT);
 #undef CASE
-
     default:
       return "???state";
   }

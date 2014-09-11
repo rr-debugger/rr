@@ -184,7 +184,8 @@ private:
  * syscall may have dropped the last reference to an emulated file.
  */
 struct AutoGc {
-  AutoGc(ReplaySession& session, int syscallno, int state = STATE_SYSCALL_EXIT);
+  AutoGc(ReplaySession& session, int syscallno,
+         SyscallEntryOrExit state = SYSCALL_EXIT);
   ~AutoGc();
 
 private:
