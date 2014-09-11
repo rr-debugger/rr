@@ -40,22 +40,21 @@ void Registers::print_register_file_compact(FILE* f) const {
           u.x86regs.eip, u.x86regs.eflags);
 }
 
-void Registers::print_register_file_for_trace(FILE* f, bool raw_dump) const {
-  if (raw_dump) {
-    fprintf(f, " %d %d %d %d %d %d %d"
-               " %d %d %d %d",
-            u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx,
-            u.x86regs.esi, u.x86regs.edi, u.x86regs.ebp, u.x86regs.orig_eax,
-            u.x86regs.esp, u.x86regs.eip, u.x86regs.eflags);
-  } else {
-    fprintf(f,
-            "  eax:0x%x ebx:0x%x ecx:0x%x edx:0x%x esi:0x%x edi:0x%x ebp:0x%x\n"
-            "  eip:0x%x esp:0x%x eflags:0x%x orig_eax:%d xfs:0x%x xgs:0x%x\n",
-            u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx,
-            u.x86regs.esi, u.x86regs.edi, u.x86regs.ebp, u.x86regs.eip,
-            u.x86regs.esp, u.x86regs.eflags, u.x86regs.orig_eax, u.x86regs.xfs,
-            u.x86regs.xgs);
-  }
+void Registers::print_register_file_for_trace(FILE* f) const {
+  fprintf(
+      f, "  eax:0x%x ebx:0x%x ecx:0x%x edx:0x%x esi:0x%x edi:0x%x ebp:0x%x\n"
+         "  eip:0x%x esp:0x%x eflags:0x%x orig_eax:%d xfs:0x%x xgs:0x%x\n",
+      u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx, u.x86regs.esi,
+      u.x86regs.edi, u.x86regs.ebp, u.x86regs.eip, u.x86regs.esp,
+      u.x86regs.eflags, u.x86regs.orig_eax, u.x86regs.xfs, u.x86regs.xgs);
+}
+
+void Registers::print_register_file_for_trace_raw(FILE* f) const {
+  fprintf(f, " %d %d %d %d %d %d %d"
+             " %d %d %d %d",
+          u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx,
+          u.x86regs.esi, u.x86regs.edi, u.x86regs.ebp, u.x86regs.orig_eax,
+          u.x86regs.esp, u.x86regs.eip, u.x86regs.eflags);
 }
 
 static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,

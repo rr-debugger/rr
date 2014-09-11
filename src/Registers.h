@@ -150,7 +150,8 @@ public:
 
   void print_register_file(FILE* f) const;
   void print_register_file_compact(FILE* f) const;
-  void print_register_file_for_trace(FILE*, bool raw_dump) const;
+  void print_register_file_for_trace(FILE* f) const;
+  void print_register_file_for_trace_raw(FILE* f) const;
 
   /**
    * Return true if |reg1| matches |reg2|.  If |mismatch_behavior|

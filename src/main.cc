@@ -96,7 +96,11 @@ static void dump_events_matching(TraceIfstream& trace, FILE* out,
       return;
     }
     if (start <= frame.time() && frame.time() <= end) {
-      frame.dump(out, Flags::get().raw_dump);
+      if (Flags::get().raw_dump) {
+        frame.dump_raw(out);
+      } else {
+        frame.dump(out);
+      }
       if (Flags::get().dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
       }
