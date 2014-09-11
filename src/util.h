@@ -21,8 +21,8 @@
 
 class AutoRemoteSyscalls;
 class Task;
+class TraceFrame;
 struct Flags;
-struct TraceFrame;
 
 #define PTRACE_EVENT_NONE 0
 #define PTRACE_EVENT_STOP 128

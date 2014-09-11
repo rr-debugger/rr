@@ -30,25 +30,15 @@ using namespace std;
 void TraceFrame::set_exec_info(Ticks ticks, const Registers& regs,
                                const PerfCounters::Extra* extra_perf_values,
                                const ExtraRegisters* extra_regs) {
-  assert(ev.has_exec_info == HAS_EXEC_INFO);
-  ticks_ = ticks;
-  recorded_regs = regs;
+  assert(event().has_exec_info == HAS_EXEC_INFO);
+  exec_info.ticks = ticks;
+  exec_info.recorded_regs = regs;
   if (extra_perf_values) {
-    this->extra_perf_values = *extra_perf_values;
+    exec_info.extra_perf_values = *extra_perf_values;
   }
   if (extra_regs) {
     recorded_extra_regs = *extra_regs;
   }
-}
-
-static ssize_t sizeof_trace_frame_event_info(void) {
-  return offsetof(TraceFrame, end_event_info) -
-         offsetof(TraceFrame, begin_event_info);
-}
-
-static ssize_t sizeof_trace_frame_exec_info(void) {
-  return offsetof(TraceFrame, end_exec_info) -
-         offsetof(TraceFrame, begin_exec_info);
 }
 
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
@@ -89,13 +79,13 @@ static void ensure_default_rr_trace_dir() {
 
 void TraceFrame::dump(FILE* out, bool raw_dump) {
   out = out ? out : stdout;
-  const Registers& r = recorded_regs;
+  const Registers& r = regs();
 
   if (raw_dump) {
     fprintf(out, " %d %d %d", time(), tid(), event().encoded);
   } else {
     fprintf(out, "{\n  global_time:%u, event:`%s' (state:%d), tid:%d", time(),
-            Event(event()).str().c_str(), ev.state, tid());
+            Event(event()).str().c_str(), event().state, tid());
   }
   if (!event().has_exec_info) {
     fprintf(out, "\n");
@@ -103,16 +93,18 @@ void TraceFrame::dump(FILE* out, bool raw_dump) {
   }
 
   if (raw_dump) {
-    fprintf(out, " %lld %lld %" PRId64 " %lld", extra_perf_values.hw_interrupts,
-            extra_perf_values.page_faults, ticks(),
-            extra_perf_values.instructions_retired);
+    fprintf(out, " %lld %lld %" PRId64 " %lld",
+            exec_info.extra_perf_values.hw_interrupts,
+            exec_info.extra_perf_values.page_faults, ticks(),
+            exec_info.extra_perf_values.instructions_retired);
     r.print_register_file_for_trace(out, true);
     fprintf(out, "\n");
   } else {
     if (PerfCounters::extra_perf_counters_enabled()) {
       fprintf(out, "\n  hw_ints:%lld faults:%lld rbc:%" PRId64 " insns:%lld\n",
-              extra_perf_values.hw_interrupts, extra_perf_values.page_faults,
-              ticks(), extra_perf_values.instructions_retired);
+              exec_info.extra_perf_values.hw_interrupts,
+              exec_info.extra_perf_values.page_faults, ticks(),
+              exec_info.extra_perf_values.instructions_retired);
     } else {
       fprintf(out, "\n  rbc:%" PRId64 "\n", ticks());
     }
@@ -162,20 +154,20 @@ bool TraceIfstream::good() const {
 }
 
 TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
-  const char* begin_data = (const char*)&frame.begin_event_info;
-  ssize_t nbytes = sizeof_trace_frame_event_info();
-
+  tof.events.write(&frame.basic_info, sizeof(frame.basic_info));
+  if (!tof.events.good()) {
+    FATAL() << "Tried to save " << sizeof(frame.basic_info)
+            << " bytes to the trace, but failed";
+  }
   // TODO: only store exec info for non-async-sig events when
   // debugging assertions are enabled.
-  if (frame.event().has_exec_info) {
-    nbytes += sizeof_trace_frame_exec_info();
-  }
-  tof.events.write(begin_data, nbytes);
-  if (!tof.events.good()) {
-    FATAL() << "Tried to save " << nbytes << " bytes to the trace, but failed";
-  }
+  if (frame.event().has_exec_info == HAS_EXEC_INFO) {
+    tof.events.write(&frame.exec_info, sizeof(frame.exec_info));
+    if (!tof.events.good()) {
+      FATAL() << "Tried to save " << sizeof(frame.exec_info)
+              << " bytes to the trace, but failed";
+    }
 
-  if (frame.event().has_exec_info) {
     int extra_reg_bytes = frame.extra_regs().data_size();
     char extra_reg_format = (char)frame.extra_regs().format();
     tof.events.write(&extra_reg_format, sizeof(extra_reg_format));
@@ -202,11 +194,10 @@ TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
 TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame) {
   // Read the common event info first, to see if we also have
   // exec info to read.
-  tif.events.read((char*)&frame.begin_event_info,
-                  sizeof_trace_frame_event_info());
+  tif.events.read(&frame.basic_info, sizeof(frame.basic_info));
   if (frame.event().has_exec_info) {
-    tif.events.read((char*)&frame.begin_exec_info,
-                    sizeof_trace_frame_exec_info());
+    tif.events.read(&frame.exec_info, sizeof(frame.exec_info));
+
     int extra_reg_bytes;
     char extra_reg_format;
     tif.events.read(&extra_reg_format, sizeof(extra_reg_format));
@@ -221,10 +212,8 @@ TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame) {
       assert(extra_reg_format == ExtraRegisters::NONE);
       frame.recorded_extra_regs = ExtraRegisters();
     }
-  } else {
-    memset(&frame.begin_exec_info, 0, sizeof_trace_frame_exec_info());
-    frame.recorded_extra_regs = ExtraRegisters();
   }
+
   tif.tick_time();
   assert(tif.time() == frame.time());
   return tif;
@@ -440,7 +429,7 @@ TraceFrame TraceIfstream::peek_to(pid_t pid, EventType type,
   auto saved_time = global_time;
   while (good() && !at_end()) {
     *this >> frame;
-    if (frame.tid() == pid && frame.ev.type == type &&
+    if (frame.tid() == pid && frame.event().type == type &&
         frame.event().state == state) {
       events.restore_state();
       global_time = saved_time;

@@ -23,12 +23,8 @@
 
 typedef std::vector<char*> CharpVector;
 
-// Use this helper to declare a struct member that doesn't occupy
-// space, but the address of which can be taken.  Useful for
-// delimiting continugous chunks of fields without having to hard-code
-// the name of first last fields in the chunk.  (Nested structs
-// achieve the same, but at the expense of unnecessary verbosity.)
-#define STRUCT_DELIMITER(_name) char _name[0]
+class TraceIfstream;
+class TraceOfstream;
 
 /**
  * A trace_frame is one "trace event" from a complete trace.  During
@@ -38,22 +34,33 @@ typedef std::vector<char*> CharpVector;
  * into, and the information recorded in the frame dictates the nature
  * of the transition.
  */
-struct TraceFrame {
-  TraceFrame(uint32_t global_time, pid_t tid, EncodedEvent event)
-      : global_time(global_time), tid_(tid), ev(event), ticks_(0) {}
-  TraceFrame() : global_time(0), tid_(0), ticks_(0) { ev.encoded = 0; }
+class TraceFrame {
+public:
+  typedef uint32_t Time;
+
+  TraceFrame(Time global_time, pid_t tid, EncodedEvent event) {
+    basic_info.global_time = global_time;
+    basic_info.tid = tid;
+    basic_info.ev = event;
+    exec_info.ticks = 0;
+  }
+  TraceFrame() {
+    basic_info.global_time = 0;
+    basic_info.tid = 0;
+    basic_info.ev.encoded = 0;
+    exec_info.ticks = 0;
+  }
 
   void set_exec_info(Ticks ticks, const Registers& regs,
                      const PerfCounters::Extra* extra_perf_values,
                      const ExtraRegisters* extra_regs);
 
-  typedef uint32_t Time;
+  Time time() const { return basic_info.global_time; }
+  pid_t tid() const { return basic_info.tid; }
+  EncodedEvent event() const { return basic_info.ev; }
 
-  Time time() const { return global_time; }
-  pid_t tid() const { return tid_; }
-  EncodedEvent event() const { return ev; }
-  Ticks ticks() const { return ticks_; }
-  const Registers& regs() const { return recorded_regs; }
+  Ticks ticks() const { return exec_info.ticks; }
+  const Registers& regs() const { return exec_info.recorded_regs; }
   const ExtraRegisters& extra_regs() const { return recorded_extra_regs; }
 
   /**
@@ -66,17 +73,21 @@ struct TraceFrame {
    */
   void dump(FILE* out = nullptr, bool raw_dump = false);
 
-  STRUCT_DELIMITER(begin_event_info);
-  Time global_time;
-  pid_t tid_;
-  EncodedEvent ev;
-  STRUCT_DELIMITER(end_event_info);
+  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
+  friend TraceOfstream& operator<<(TraceOfstream& tif, const TraceFrame& frame);
 
-  STRUCT_DELIMITER(begin_exec_info);
-  Ticks ticks_;
-  PerfCounters::Extra extra_perf_values;
-  Registers recorded_regs;
-  STRUCT_DELIMITER(end_exec_info);
+private:
+  struct {
+    Time global_time;
+    pid_t tid;
+    EncodedEvent ev;
+  } basic_info;
+
+  struct {
+    Ticks ticks;
+    PerfCounters::Extra extra_perf_values;
+    Registers recorded_regs;
+  } exec_info;
 
   // Only used when has_exec_info, but variable length (and usually not
   // present) so we don't want to stuff it into exec_info

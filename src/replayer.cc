@@ -235,8 +235,7 @@ static bool trace_instructions_up_to_event(uint64_t event) {
 }
 
 static void maybe_singlestep_for_event(Task* t, struct dbg_request* req) {
-  if (trace_instructions_up_to_event(
-          session->current_trace_frame().global_time)) {
+  if (trace_instructions_up_to_event(session->current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
     print_register_file_compact(stderr, &t->regs());
     fprintf(stderr, " rbc:%" PRId64 "\n", t->rbc_count());
