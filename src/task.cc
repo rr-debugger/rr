@@ -2207,5 +2207,5 @@ bool Task::clone_syscall_is_complete() {
 }
 
 const char* Task::syscallname(int syscall) const {
-  return ::syscallname(syscall, x86);
+  return ::syscall_name(syscall, x86);
 }

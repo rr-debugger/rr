@@ -55,7 +55,7 @@ static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
   while (record_ptr < end_ptr) {
     auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);
     fprintf(out, "  { syscall:'%s', ret:0x%lx }\n",
-            syscallname(record->syscallno, frame.ev.arch()), record->ret);
+            syscall_name(record->syscallno, frame.ev.arch()), record->ret);
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
       abort();

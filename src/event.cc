@@ -271,7 +271,7 @@ string Event::str() const {
       break;
     case EV_SYSCALL:
     case EV_SYSCALL_INTERRUPTION:
-      ss << ": " << syscallname(Syscall().no, Syscall().regs.arch());
+      ss << ": " << syscall_name(Syscall().no, Syscall().regs.arch());
       break;
     default:
       // No auxiliary information.
