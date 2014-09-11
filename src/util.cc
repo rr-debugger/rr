@@ -566,7 +566,7 @@ static void notify_checksum_error(Task* t, int global_time, unsigned checksum,
                        sizeof(cur_dump));
   format_dump_filename(t, global_time, "rec", rec_dump, sizeof(rec_dump));
 
-  Event ev(t->current_trace_frame().ev);
+  Event ev(t->current_trace_frame().event());
   ASSERT(t, checksum == rec_checksum)
       << "Divergence in contents of memory segment after '" << ev << "':\n"
                                                                      "\n"
@@ -734,7 +734,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
 
 int should_checksum(Task* t, const TraceFrame& f) {
   int checksum = Flags::get().checksum;
-  int is_syscall_exit = EV_SYSCALL == f.ev.type && SYSCALL_EXIT == f.ev.state;
+  int is_syscall_exit =
+      EV_SYSCALL == f.event().type && SYSCALL_EXIT == f.event().state;
 
 #if defined(FIRST_INTERESTING_EVENT)
   if (is_syscall_exit && FIRST_INTERESTING_EVENT <= global_time &&
@@ -1436,7 +1437,7 @@ void EnvironmentBugDetector::notify_reached_syscall_during_replay(Task* t) {
   if (t->session().can_validate()) {
     return;
   }
-  Event ev(t->current_trace_frame().ev);
+  Event ev(t->current_trace_frame().event());
   if (ev.Syscall().number != SYS_geteuid32) {
     return;
   }

@@ -33,12 +33,12 @@ extern char** environ;
 
 static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
                                  const TraceFrame& frame) {
-  if (frame.ev.type != EV_SYSCALLBUF_FLUSH) {
+  if (frame.event().type != EV_SYSCALLBUF_FLUSH) {
     return;
   }
   struct raw_data buf;
   trace >> buf;
-  if (buf.global_time != frame.time() || buf.ev != frame.ev) {
+  if (buf.global_time != frame.time() || buf.ev != frame.event()) {
     fprintf(stderr, "Malformed trace file (time+event mismatch)\n");
     abort();
   }
@@ -55,7 +55,7 @@ static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
   while (record_ptr < end_ptr) {
     auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);
     fprintf(out, "  { syscall:'%s', ret:0x%lx }\n",
-            syscall_name(record->syscallno, frame.ev.arch()), record->ret);
+            syscall_name(record->syscallno, frame.event().arch()), record->ret);
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
       abort();

@@ -78,12 +78,12 @@ void TraceFrame::dump(FILE* out, bool raw_dump) {
   const Registers& r = recorded_regs;
 
   if (raw_dump) {
-    fprintf(out, " %d %d %d", time(), tid(), ev.encoded);
+    fprintf(out, " %d %d %d", time(), tid(), event().encoded);
   } else {
     fprintf(out, "{\n  global_time:%u, event:`%s' (state:%d), tid:%d", time(),
-            Event(ev).str().c_str(), ev.state, tid());
+            Event(event()).str().c_str(), ev.state, tid());
   }
-  if (!ev.has_exec_info) {
+  if (!event().has_exec_info) {
     fprintf(out, "\n");
     return;
   }
@@ -153,7 +153,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
 
   // TODO: only store exec info for non-async-sig events when
   // debugging assertions are enabled.
-  if (frame.ev.has_exec_info) {
+  if (frame.event().has_exec_info) {
     nbytes += sizeof_trace_frame_exec_info();
   }
   tof.events.write(begin_data, nbytes);
@@ -161,7 +161,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
     FATAL() << "Tried to save " << nbytes << " bytes to the trace, but failed";
   }
 
-  if (frame.ev.has_exec_info) {
+  if (frame.event().has_exec_info) {
     int extra_reg_bytes = frame.recorded_extra_regs.data_size();
     char extra_reg_format = (char)frame.recorded_extra_regs.format();
     tof.events.write(&extra_reg_format, sizeof(extra_reg_format));
@@ -190,7 +190,7 @@ TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame) {
   // exec info to read.
   tif.events.read((char*)&frame.begin_event_info,
                   sizeof_trace_frame_event_info());
-  if (frame.ev.has_exec_info) {
+  if (frame.event().has_exec_info) {
     tif.events.read((char*)&frame.begin_exec_info,
                     sizeof_trace_frame_exec_info());
     int extra_reg_bytes;
@@ -337,7 +337,7 @@ bool TraceIfstream::read_raw_data_for_frame(const TraceFrame& frame,
     data_header >> global_time >> ev.encoded;
     data_header.restore_state();
     if (global_time == frame.time()) {
-      assert(ev == frame.ev);
+      assert(ev == frame.event());
       *this >> d;
       return true;
     }
@@ -427,7 +427,7 @@ TraceFrame TraceIfstream::peek_to(pid_t pid, EventType type,
   while (good() && !at_end()) {
     *this >> frame;
     if (frame.tid() == pid && frame.ev.type == type &&
-        frame.ev.state == state) {
+        frame.event().state == state) {
       events.restore_state();
       global_time = saved_time;
       return frame;

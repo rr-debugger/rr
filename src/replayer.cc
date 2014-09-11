@@ -610,7 +610,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
   assert(t != NULL);
   ASSERT(t, &session == &t->replay_session());
 
-  if (EV_TRACE_TERMINATION == session.current_trace_frame().ev.type) {
+  if (EV_TRACE_TERMINATION == session.current_trace_frame().event().type) {
     if (intr_t) {
       *intr_t = t;
     }
@@ -621,9 +621,10 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
   // combined to a single event.  This meliorization is a
   // tremendous win.
   if (USE_TIMESLICE_COALESCING &&
-      session.current_trace_frame().ev.type == EV_SCHED) {
+      session.current_trace_frame().event().type == EV_SCHED) {
     TraceFrame next_trace = session.ifstream().peek_frame();
-    while (EV_SCHED == next_trace.ev.type && next_trace.tid() == t->rec_tid &&
+    while (EV_SCHED == next_trace.event().type &&
+           next_trace.tid() == t->rec_tid &&
            Flags::get().goto_event != next_trace.time() &&
            !trace_instructions_up_to_event(next_trace.time())) {
       session.ifstream() >> session.current_trace_frame();
@@ -692,7 +693,8 @@ enum {
   EMU = 1
 };
 static int cont_syscall_boundary(Task* t, int emu, int stepi) {
-  bool is_syscall_entry = SYSCALL_ENTRY == t->current_trace_frame().ev.state;
+  bool is_syscall_entry =
+      SYSCALL_ENTRY == t->current_trace_frame().event().state;
   if (is_syscall_entry) {
     t->stepped_into_syscall = false;
   }
@@ -819,7 +821,7 @@ static void continue_or_step(Task* t, int stepi, int64_t rbc_period = 0) {
     return;
   }
   ASSERT(t, child_sig_gt_zero)
-      << "Replaying `" << Event(t->current_trace_frame().ev)
+      << "Replaying `" << Event(t->current_trace_frame().event())
       << "': expecting tracee signal or trap, but instead at `"
       << t->syscallname(t->regs().original_syscallno())
       << "' (rcb: " << t->rbc_count() << ")";
@@ -1294,13 +1296,13 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   ASSERT(oldtask, t == oldtask) << "emulate_signal_delivery changed task";
   const TraceFrame* trace = &t->current_trace_frame();
 
-  ASSERT(t, trace->ev.type == EV_SIGNAL_DELIVERY ||
-                trace->ev.type == EV_SIGNAL_HANDLER)
+  ASSERT(t, trace->event().type == EV_SIGNAL_DELIVERY ||
+                trace->event().type == EV_SIGNAL_HANDLER)
       << "Unexpected signal disposition";
   // Entering a signal handler seems to clear FP/SSE registers for some
   // reason. So we saved those cleared values, and now we restore that
   // state so they're cleared during replay.
-  if (trace->ev.type == EV_SIGNAL_HANDLER) {
+  if (trace->event().type == EV_SIGNAL_HANDLER) {
     t->set_extra_regs(trace->recorded_extra_regs);
   }
 
@@ -1332,7 +1334,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
 
 static void check_rcb_consistency(Task* t, const Event& ev) {
   if (!t->session().can_validate() ||
-      t->current_trace_frame().ev.has_exec_info == NO_EXEC_INFO) {
+      t->current_trace_frame().event().has_exec_info == NO_EXEC_INFO) {
     return;
   }
 
@@ -1355,7 +1357,7 @@ static void check_rcb_consistency(Task* t, const Event& ev) {
 static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
                                         int sig, int stepi,
                                         struct dbg_request* req) {
-  Event ev(t->current_trace_frame().ev);
+  Event ev(t->current_trace_frame().event());
 
   continue_or_step(t, stepi);
   if (is_ignored_replay_signal(t->child_sig)) {
@@ -1777,11 +1779,11 @@ static bool has_deterministic_rbc(const Event& ev,
  * modified.
  */
 static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
-  Event ev(t->current_trace_frame().ev);
+  Event ev(t->current_trace_frame().event());
 
   LOG(debug) << "[line " << t->trace_time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
-             << state_name(t->current_trace_frame().ev.state);
+             << state_name(t->current_trace_frame().event().state);
   if (t->syscallbuf_hdr) {
     LOG(debug) << "    (syscllbufsz:" << t->syscallbuf_hdr->num_rec_bytes
                << ", abrtcmt:" << t->syscallbuf_hdr->abort_commit
@@ -1932,7 +1934,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
 
   /* Advance until |step| has been fulfilled. */
   while (try_one_trace_step(dbg, t, &step, &req)) {
-    if (EV_TRACE_TERMINATION == t->current_trace_frame().ev.type) {
+    if (EV_TRACE_TERMINATION == t->current_trace_frame().event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
       // early-termination marker.  Otherwise we
@@ -2028,12 +2030,12 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
     t->replay_session().bug_detector().notify_reached_syscall_during_replay(t);
   }
   if (t->session().can_validate() &&
-      SYSCALL_EXIT == t->current_trace_frame().ev.state &&
+      SYSCALL_EXIT == t->current_trace_frame().event().state &&
       Flags::get().check_cached_mmaps) {
     t->vm()->verify(t);
   }
 
-  Event ev(t->current_trace_frame().ev);
+  Event ev(t->current_trace_frame().event());
   if (has_deterministic_rbc(ev, step)) {
     check_rcb_consistency(t, ev);
   }
@@ -2068,7 +2070,7 @@ static bool is_atomic_syscall(Task* t) {
  * |frame| that |t| will replay.
  */
 static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
-  Event ev(frame.ev);
+  Event ev(frame.event());
   if (is_atomic_syscall(t)) {
     return false;
   }

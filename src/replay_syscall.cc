@@ -331,9 +331,9 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
  */
 static bool is_failed_syscall(Task* t, const TraceFrame* frame) {
   TraceFrame next_frame;
-  if (SYSCALL_ENTRY == frame->ev.state) {
+  if (SYSCALL_ENTRY == frame->event().state) {
     next_frame =
-        t->ifstream().peek_to(t->rec_tid, frame->ev.type, SYSCALL_EXIT);
+        t->ifstream().peek_to(t->rec_tid, frame->event().type, SYSCALL_EXIT);
     frame = &next_frame;
   }
   return SYSCALL_FAILED(frame->recorded_regs.syscall_result_signed());
@@ -442,7 +442,7 @@ static void process_execve(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   }
 
   if (SYSCALL_ENTRY == state) {
-    Event next_ev(t->ifstream().peek_frame().ev);
+    Event next_ev(t->ifstream().peek_frame().event());
     if (EV_SYSCALL == next_ev.type() &&
         Arch::execve == next_ev.Syscall().number &&
         EXITING_SYSCALL == next_ev.Syscall().state) {
@@ -1235,10 +1235,10 @@ static void before_syscall_exit(Task* t, int syscallno) {
 template <typename Arch>
 static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   int syscall =
-      t->current_trace_frame().ev.data; /* FIXME: don't shadow syscall() */
+      t->current_trace_frame().event().data; /* FIXME: don't shadow syscall() */
   const struct syscall_def* def;
   TraceFrame* trace = &t->replay_session().current_trace_frame();
-  SyscallEntryOrExit state = trace->ev.state;
+  SyscallEntryOrExit state = trace->event().state;
   const Registers* rec_regs = &trace->recorded_regs;
   AutoGc maybe_gc(t->replay_session(), syscall, state);
 
