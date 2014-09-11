@@ -197,7 +197,7 @@ static int start_counter(pid_t tid, int group_fd,
   return fd;
 }
 
-void PerfCounters::reset(int64_t ticks_period) {
+void PerfCounters::reset(Ticks ticks_period) {
   stop();
 
   struct perf_event_attr attr = ticks_attr;
@@ -253,7 +253,7 @@ static int64_t read_counter(int fd) {
   return val;
 }
 
-int64_t PerfCounters::read_ticks() {
+Ticks PerfCounters::read_ticks() {
   return started ? read_counter(fd_ticks) : 0;
 }
 

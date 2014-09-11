@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "Ticks.h"
+
 /**
  * A class encapsulating the performance counters we use to monitor
  * each task during recording and replay.
@@ -42,12 +44,12 @@ public:
    * This must be called while the task is stopped, and it must be called
    * before the task is allowed to run again.
    */
-  void reset(int64_t ticks_period);
+  void reset(Ticks ticks_period);
 
   /**
    * Read the current value of the ticks counter.
    */
-  int64_t read_ticks();
+  Ticks read_ticks();
 
   /**
    * Return the fd we are using to monitor the ticks counter.
