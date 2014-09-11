@@ -888,7 +888,7 @@ public:
     default:                                                                   \
       assert(0 && "Unknown architecture");                                     \
     case x86:                                                                  \
-      return f<X86Arch>(args);                                                 \
+      return f<rr::X86Arch>(args);                                             \
   }
 
 // Define a bunch of helper functions:
