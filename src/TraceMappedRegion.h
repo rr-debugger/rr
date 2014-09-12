@@ -12,19 +12,18 @@
 #include "TraceFrame.h"
 
 struct TraceMappedRegion {
-  TraceMappedRegion(pid_t tid, const char* filename, const struct stat& stat,
+  TraceMappedRegion(const char* filename, const struct stat& stat,
                     remote_ptr<void> start, remote_ptr<void> end,
                     bool copied = false)
-      : tid(tid), copied(copied), stat(stat), start(start), end(end) {
+      : copied(copied), stat(stat), start(start), end(end) {
     strncpy(this->filename, filename, sizeof(this->filename));
     this->filename[sizeof(this->filename) - 1] = 0;
   }
-  TraceMappedRegion() : tid(0), copied(false), start(nullptr), end(nullptr) {
+  TraceMappedRegion() : copied(false), start(nullptr), end(nullptr) {
     memset(filename, 0, sizeof(filename));
     memset(&stat, 0, sizeof(stat));
   }
 
-  pid_t tid;
   /* Did we save a copy of the mapped region in the trace
    * data? */
   bool copied;
