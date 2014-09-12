@@ -1204,12 +1204,13 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   r.set_syscall_result((uintptr_t)t->scratch_ptr);
   t->set_regs(r);
 
-  TraceMappedRegion file = { 0 };
-  file.time = t->trace_time();
-  file.tid = t->tid;
-  file.start = t->scratch_ptr;
-  file.end = (uint8_t*)t->scratch_ptr + scratch_size;
-  sprintf(file.filename, "scratch for thread %d", t->tid);
+  char filename[PATH_MAX];
+  sprintf(filename, "scratch for thread %d", t->tid);
+  struct stat stat;
+  memset(&stat, 0, sizeof(stat));
+  TraceMappedRegion file(t->trace_time(), t->tid, filename, stat,
+                         t->scratch_ptr,
+                         (uint8_t*)t->scratch_ptr + scratch_size);
   t->ofstream() << file;
 
   r.set_syscall_result(saved_result);
@@ -1645,31 +1646,31 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   ASSERT(t, fd >= 0) << "Valid fd required for file mapping";
   assert(!(flags & MAP_GROWSDOWN));
 
-  TraceMappedRegion file;
   // TODO: save a reflink copy of the resource to the
   // trace directory as |fs/[st_dev].[st_inode]|.  Then
   // we wouldn't have to care about looking up a name
   // for the resource.
-  file.time = t->trace_time();
-  file.tid = t->tid;
-  if (!t->fdstat(fd, &file.stat, file.filename, sizeof(file.filename))) {
+  char filename[PATH_MAX];
+  struct stat stat;
+  if (!t->fdstat(fd, &stat, filename, sizeof(filename))) {
     FATAL() << "Failed to fdstat " << fd;
   }
-  file.start = addr;
-  file.end = (uint8_t*)addr + size;
+  bool copied =
+      should_copy_mmap_region(filename, &stat, prot, flags, WARN_DEFAULT);
 
-  if (strstr(file.filename, SYSCALLBUF_LIB_FILENAME) && (prot & PROT_EXEC)) {
+  if (copied) {
+    off64_t end = (off64_t)stat.st_size - offset;
+    t->record_remote(addr, min(end, (off64_t)size));
+  }
+
+  TraceMappedRegion file(t->trace_time(), t->tid, filename, stat, addr,
+                         (uint8_t*)addr + size, copied);
+  t->ofstream() << file;
+
+  if (strstr(filename, SYSCALLBUF_LIB_FILENAME) && (prot & PROT_EXEC)) {
     t->syscallbuf_lib_start = file.start;
     t->syscallbuf_lib_end = file.end;
   }
-
-  file.copied = should_copy_mmap_region(file.filename, &file.stat, prot, flags,
-                                        WARN_DEFAULT);
-  if (file.copied) {
-    off64_t end = (off64_t)file.stat.st_size - offset;
-    t->record_remote(addr, min(end, (off64_t)size));
-  }
-  t->ofstream() << file;
 
   t->vm()->map(addr, size, prot, flags, offset,
                MappableResource(FileId(file.stat), file.filename));
