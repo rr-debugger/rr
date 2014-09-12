@@ -13,6 +13,7 @@ public:
   remote_ptr() : ptr(0) {}
   remote_ptr(T* ptr) : ptr(reinterpret_cast<uintptr_t>(ptr)) {}
   operator T*() const { return reinterpret_cast<T*>(ptr); }
+  uintptr_t as_int() const { return ptr; }
 
 private:
   uintptr_t ptr;

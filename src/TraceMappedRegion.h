@@ -27,8 +27,7 @@ struct TraceMappedRegion {
   bool copied() const { return copied_; }
 
   size_t size() {
-    int64_t s = static_cast<uint8_t*>(static_cast<void*>(end)) -
-                static_cast<uint8_t*>(static_cast<void*>(start));
+    int64_t s = end.as_int() - start.as_int();
     assert(s >= 0);
     return s;
   }
