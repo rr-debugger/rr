@@ -28,11 +28,11 @@ typedef std::vector<char*> CharpVector;
  * not mapping entire files, necessarily. */
 struct mmapped_file {
   /* Global trace time when this region was mapped. */
-  uint32_t time;
-  int tid;
+  TraceFrame::Time time;
+  pid_t tid;
   /* Did we save a copy of the mapped region in the trace
    * data? */
-  int copied;
+  bool copied;
 
   char filename[PATH_MAX];
   struct stat stat;
