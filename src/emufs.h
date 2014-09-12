@@ -141,7 +141,7 @@ public:
    * Return a real file path that refers to an emulated file
    * representing the recorded file underlying |mf|.
    */
-  EmuFile::shr_ptr get_or_create(const struct mmapped_file& mf);
+  EmuFile::shr_ptr get_or_create(const TraceMappedRegion& mf);
 
   /**
    * Dump information about this emufs to the "error" log.

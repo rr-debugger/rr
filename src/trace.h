@@ -28,7 +28,7 @@ typedef std::vector<char*> CharpVector;
 
 /* XXX/pedant more accurately called a "mapped /region/", since we're
  * not mapping entire files, necessarily. */
-struct mmapped_file {
+struct TraceMappedRegion {
   /* Global trace time when this region was mapped. */
   TraceFrame::Time time;
   pid_t tid;
@@ -155,7 +155,7 @@ public:
    */
   friend TraceOfstream& operator<<(TraceOfstream& tif, const TraceFrame& frame);
   friend TraceOfstream& operator<<(TraceOfstream& tif,
-                                   const struct mmapped_file& map);
+                                   const TraceMappedRegion& map);
   friend TraceOfstream& operator<<(TraceOfstream& tif,
                                    const struct args_env& ae);
   friend TraceOfstream& operator<<(TraceOfstream& tif,
@@ -217,7 +217,7 @@ public:
    */
   friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
   friend TraceIfstream& operator>>(TraceIfstream& tif,
-                                   struct mmapped_file& map);
+                                   TraceMappedRegion& map);
   friend TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae);
   friend TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d);
 

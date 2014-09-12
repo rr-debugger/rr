@@ -64,7 +64,7 @@ ostream& operator<<(ostream& o, const Mapping& m) {
 }
 
 /*static*/ MappableResource MappableResource::shared_mmap_file(
-    const struct mmapped_file& file) {
+    const TraceMappedRegion& file) {
   return MappableResource(FileId(file.stat, PSEUDODEVICE_SHARED_MMAP_FILE),
                           file.filename);
 }

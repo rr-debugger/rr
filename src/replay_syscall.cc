@@ -278,7 +278,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
    * process, if it were to be probed by madvise or some other
    * means. But we make it PROT_NONE so that rogue reads/writes
    * to the scratch memory are caught. */
-  struct mmapped_file file;
+  TraceMappedRegion file;
   void* map_addr;
 
   t->ifstream() >> file;
@@ -685,7 +685,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 template <typename Arch>
 static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                                  int prot, int flags, off64_t offset_pages,
-                                 const struct mmapped_file* file) {
+                                 const TraceMappedRegion* file) {
   LOG(debug) << "  finishing private mmap of " << file->filename;
 
   Task* t = remote.task();
@@ -717,7 +717,7 @@ static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   return mapped_addr;
 }
 
-static void verify_backing_file(const struct mmapped_file* file, int prot,
+static void verify_backing_file(const TraceMappedRegion* file, int prot,
                                 int flags) {
   struct stat metadata;
   if (stat(file->filename, &metadata)) {
@@ -749,7 +749,7 @@ enum {
 template <typename Arch>
 static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                                 int prot, int flags, off64_t offset_pages,
-                                const struct mmapped_file* file,
+                                const TraceMappedRegion* file,
                                 int verify = VERIFY_BACKING_FILE,
                                 int note_task_map = NOTE_TASK_MAP) {
   Task* t = remote.task();
@@ -805,7 +805,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
 template <typename Arch>
 static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                                 int prot, int flags, off64_t offset_pages,
-                                const struct mmapped_file* file) {
+                                const TraceMappedRegion* file) {
   Task* t = remote.task();
   size_t rec_num_bytes = ceil_page_size(trace->regs().arg2());
 
@@ -817,7 +817,7 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   // NB: the tracee will map the procfs link to our fd; there's
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
-  struct mmapped_file vfile = *file;
+  TraceMappedRegion vfile = *file;
   strncpy(vfile.filename, emufile->proc_path().c_str(), sizeof(vfile.filename));
   void* mapped_addr =
       finish_direct_mmap<Arch>(remote, trace, prot, flags, offset_pages, &vfile,
@@ -874,7 +874,7 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
       mapped_addr =
           finish_anonymous_mmap<Arch>(remote, trace, prot, flags, offset_pages);
     } else {
-      struct mmapped_file file;
+      TraceMappedRegion file;
       t->ifstream() >> file;
 
       ASSERT(t, file.time == trace->time())

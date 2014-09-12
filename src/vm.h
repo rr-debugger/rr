@@ -10,6 +10,7 @@
 #include <memory>
 #include <set>
 
+#include "trace.h"
 #include "util.h"
 
 class Session;
@@ -296,7 +297,7 @@ struct MappableResource {
     return MappableResource(
         FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_SCRATCH), "[scratch]");
   }
-  static MappableResource shared_mmap_file(const struct mmapped_file& file);
+  static MappableResource shared_mmap_file(const TraceMappedRegion& file);
   static MappableResource stack(pid_t tid) {
     return MappableResource(FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_STACK),
                             "[stack]");

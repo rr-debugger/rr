@@ -140,7 +140,7 @@ void EmuFs::gc(const Session& session) {
   }
 }
 
-EmuFile::shr_ptr EmuFs::get_or_create(const struct mmapped_file& mf) {
+EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
   FileId id(mf.stat, PSEUDODEVICE_SHARED_MMAP_FILE);
   auto it = files.find(id);
   if (it != files.end()) {

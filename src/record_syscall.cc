@@ -1203,7 +1203,7 @@ static void init_scratch_memory(Task* t) {
   r.set_syscall_result((uintptr_t)t->scratch_ptr);
   t->set_regs(r);
 
-  struct mmapped_file file = { 0 };
+  TraceMappedRegion file = { 0 };
   file.time = t->trace_time();
   file.tid = t->tid;
   file.start = t->scratch_ptr;
@@ -1644,7 +1644,7 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   ASSERT(t, fd >= 0) << "Valid fd required for file mapping";
   assert(!(flags & MAP_GROWSDOWN));
 
-  struct mmapped_file file;
+  TraceMappedRegion file;
   // TODO: save a reflink copy of the resource to the
   // trace directory as |fs/[st_dev].[st_inode]|.  Then
   // we wouldn't have to care about looking up a name
