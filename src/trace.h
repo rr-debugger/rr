@@ -99,7 +99,6 @@ struct raw_data {
  */
 class TraceStream {
 protected:
-  typedef std::fstream fstream;
   typedef std::string string;
 
 public:
