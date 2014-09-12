@@ -1208,8 +1208,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   sprintf(filename, "scratch for thread %d", t->tid);
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
-  TraceMappedRegion file(t->trace_time(), t->tid, filename, stat,
-                         t->scratch_ptr,
+  TraceMappedRegion file(t->tid, filename, stat, t->scratch_ptr,
                          (uint8_t*)t->scratch_ptr + scratch_size);
   t->ofstream() << file;
 
@@ -1663,8 +1662,8 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
     t->record_remote(addr, min(end, (off64_t)size));
   }
 
-  TraceMappedRegion file(t->trace_time(), t->tid, filename, stat, addr,
-                         (uint8_t*)addr + size, copied);
+  TraceMappedRegion file(t->tid, filename, stat, addr, (uint8_t*)addr + size,
+                         copied);
   t->ofstream() << file;
 
   if (strstr(filename, SYSCALLBUF_LIB_FILENAME) && (prot & PROT_EXEC)) {

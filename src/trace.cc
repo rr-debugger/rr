@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 13
+#define TRACE_VERSION 14
 
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
 
@@ -201,14 +201,14 @@ template <int N> static void read_string(CompressedReader& in, char (&str)[N]) {
 }
 
 TraceOfstream& operator<<(TraceOfstream& tof, const TraceMappedRegion& map) {
-  tof.mmaps << map.time << map.tid << map.copied;
+  tof.mmaps << map.tid << map.copied;
   write_string(tof.mmaps, map.filename);
   tof.mmaps << map.stat << map.start << map.end;
   return tof;
 }
 
 TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map) {
-  tif.mmaps >> map.time >> map.tid >> map.copied;
+  tif.mmaps >> map.tid >> map.copied;
   read_string(tif.mmaps, map.filename);
   tif.mmaps >> map.stat >> map.start >> map.end;
   return tif;

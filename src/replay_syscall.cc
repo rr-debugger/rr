@@ -879,8 +879,6 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
       TraceMappedRegion file;
       t->ifstream() >> file;
 
-      ASSERT(t, file.time == trace->time())
-          << "mmap time " << file.time << " should equal " << trace->time();
       if (!file.copied) {
         mapped_addr = finish_direct_mmap<Arch>(remote, trace, prot, flags,
                                                offset_pages, &file);
