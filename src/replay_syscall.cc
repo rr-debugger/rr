@@ -726,13 +726,13 @@ static void verify_backing_file(const TraceMappedRegion* file, int prot,
     FATAL() << "Failed to stat " << file->file_name()
             << ": replay is impossible";
   }
-  if (metadata.st_ino != file->stat.st_ino ||
-      metadata.st_mode != file->stat.st_mode ||
-      metadata.st_uid != file->stat.st_uid ||
-      metadata.st_gid != file->stat.st_gid ||
-      metadata.st_size != file->stat.st_size ||
-      metadata.st_mtime != file->stat.st_mtime ||
-      metadata.st_ctime != file->stat.st_ctime) {
+  if (metadata.st_ino != file->stat().st_ino ||
+      metadata.st_mode != file->stat().st_mode ||
+      metadata.st_uid != file->stat().st_uid ||
+      metadata.st_gid != file->stat().st_gid ||
+      metadata.st_size != file->stat().st_size ||
+      metadata.st_mtime != file->stat().st_mtime ||
+      metadata.st_ctime != file->stat().st_ctime) {
     LOG(error)
         << "Metadata of " << file->file_name()
         << " changed: replay divergence likely, but continuing anyway ...";
@@ -799,7 +799,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
 
   if (note_task_map) {
     t->vm()->map(mapped_addr, length, prot, flags, page_size() * offset_pages,
-                 MappableResource(FileId(file->stat), file->file_name()));
+                 MappableResource(FileId(file->stat()), file->file_name()));
   }
 
   return mapped_addr;
@@ -820,8 +820,8 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   // NB: the tracee will map the procfs link to our fd; there's
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
-  TraceMappedRegion vfile(emufile->proc_path().c_str(), file->stat, file->start,
-                          file->end);
+  TraceMappedRegion vfile(emufile->proc_path().c_str(), file->stat(),
+                          file->start, file->end);
   void* mapped_addr =
       finish_direct_mmap<Arch>(remote, trace, prot, flags, offset_pages, &vfile,
                                DONT_VERIFY, DONT_NOTE_TASK_MAP);

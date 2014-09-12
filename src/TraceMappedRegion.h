@@ -15,17 +15,18 @@ struct TraceMappedRegion {
   TraceMappedRegion(const char* filename, const struct stat& stat,
                     remote_ptr<void> start, remote_ptr<void> end,
                     bool copied = false)
-      : stat(stat), start(start), end(end), copied_(copied) {
+      : stat_(stat), start(start), end(end), copied_(copied) {
     strncpy(this->filename, filename, sizeof(this->filename));
     this->filename[sizeof(this->filename) - 1] = 0;
   }
   TraceMappedRegion() : start(nullptr), end(nullptr), copied_(false) {
-    memset(filename, 0, sizeof(filename));
-    memset(&stat, 0, sizeof(stat));
+    filename[0] = 0;
+    memset(&stat_, 0, sizeof(stat_));
   }
 
   bool copied() const { return copied_; }
   const char* file_name() const { return filename; }
+  const struct stat& stat() const { return stat_; }
 
   size_t size() {
     int64_t s = end.as_int() - start.as_int();
@@ -36,7 +37,7 @@ struct TraceMappedRegion {
   friend TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map);
 
   char filename[PATH_MAX];
-  struct stat stat;
+  struct stat stat_;
 
   /* Bounds of mapped region. */
   remote_ptr<void> start;
