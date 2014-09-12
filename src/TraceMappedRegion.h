@@ -4,6 +4,7 @@
 #define RR_TRACE_MAPPED_REGION_H_
 
 #include <stdint.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -11,7 +12,8 @@
 #include "remote_ptr.h"
 #include "TraceFrame.h"
 
-struct TraceMappedRegion {
+class TraceMappedRegion {
+public:
   TraceMappedRegion(const char* filename, const struct stat& stat,
                     remote_ptr<void> start, remote_ptr<void> end,
                     bool copied = false)
@@ -24,11 +26,11 @@ struct TraceMappedRegion {
     memset(&stat_, 0, sizeof(stat_));
   }
 
-  bool copied() const { return copied_; }
   const char* file_name() const { return filename; }
   const struct stat& stat() const { return stat_; }
   remote_ptr<void> start() const { return start_; }
   remote_ptr<void> end() const { return end_; }
+  bool copied() const { return copied_; }
 
   size_t size() {
     int64_t s = end().as_int() - start().as_int();
@@ -36,6 +38,7 @@ struct TraceMappedRegion {
     return s;
   }
 
+private:
   friend TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map);
 
   char filename[PATH_MAX];
