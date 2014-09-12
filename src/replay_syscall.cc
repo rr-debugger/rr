@@ -254,9 +254,11 @@ static void rep_maybe_replay_stdio_write_arch(Task* t) {
   }
 }
 
-void rep_maybe_replay_stdio_write(Task* t)
-    RR_ARCH_FUNCTION(rep_maybe_replay_stdio_write_arch, t->arch(),
-                     t) static void exit_syscall_emu_ret(Task* t, int syscall) {
+void rep_maybe_replay_stdio_write(Task* t) {
+  RR_ARCH_FUNCTION(rep_maybe_replay_stdio_write_arch, t->arch(), t)
+}
+
+static void exit_syscall_emu_ret(Task* t, int syscall) {
   t->set_return_value_from_trace();
   validate_args(syscall, t);
   t->finish_emulated_syscall();
@@ -1185,14 +1187,15 @@ static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
   }
 }
 
-void rep_after_enter_syscall(Task* t, int syscallno)
-    RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
+void rep_after_enter_syscall(Task* t, int syscallno) {
+  RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
+}
 
-    /**
-     * Call this hook just before exiting a syscall.  Often Task
-     * attributes need to be updated based on the finishing syscall.
-     */
-    template <typename Arch>
+/**
+ * Call this hook just before exiting a syscall.  Often Task
+ * attributes need to be updated based on the finishing syscall.
+ */
+template <typename Arch>
 static void before_syscall_exit(Task* t, int syscallno) {
   switch (syscallno) {
     case Arch::set_robust_list:
@@ -1616,5 +1619,6 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   }
 }
 
-void rep_process_syscall(Task* t, struct rep_trace_step* step)
-    RR_ARCH_FUNCTION(rep_process_syscall_arch, t->arch(), t, step)
+void rep_process_syscall(Task* t, struct rep_trace_step* step) {
+  RR_ARCH_FUNCTION(rep_process_syscall_arch, t->arch(), t, step)
+}

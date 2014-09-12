@@ -78,16 +78,17 @@ static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
   t->record_remote(buf, len);
 }
 
-void rec_before_record_syscall_entry(Task* t, int syscallno)
-    RR_ARCH_FUNCTION(rec_before_record_syscall_entry_arch, t->arch(), t,
-                     syscallno)
+void rec_before_record_syscall_entry(Task* t, int syscallno) {
+  RR_ARCH_FUNCTION(rec_before_record_syscall_entry_arch, t->arch(), t,
+                   syscallno)
+}
 
-    /**
-     * Read the socketcall args pushed by |t| as part of the syscall in
-     * |regs| into the |args| outparam.  Also store the address of the
-     * socketcall args into |*argsp|.
-     */
-    template <typename T>
+/**
+ * Read the socketcall args pushed by |t| as part of the syscall in
+ * |regs| into the |args| outparam.  Also store the address of the
+ * socketcall args into |*argsp|.
+ */
+template <typename T>
 void read_socketcall_args(Task* t, long** argsp, T* args) {
   void* p = (void*)t->regs().arg2();
   t->read_mem(p, args);
@@ -1131,17 +1132,16 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
   }
 }
 
-int rec_prepare_syscall(Task* t)
-    RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t)
-
-    /**
-     * Write a trace data record that when replayed will be a no-op.  This
-     * is used to avoid having special cases in replay code for failed
-     * syscalls, e.g.
-     */
-    static void record_noop_data(Task* t) {
-  t->record_local(nullptr, 0, nullptr);
+int rec_prepare_syscall(Task* t) {
+  RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t)
 }
+
+/**
+ * Write a trace data record that when replayed will be a no-op.  This
+ * is used to avoid having special cases in replay code for failed
+ * syscalls, e.g.
+ */
+static void record_noop_data(Task* t) { t->record_local(nullptr, 0, nullptr); }
 
 template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
@@ -1176,10 +1176,11 @@ template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
   }
 }
 
-void rec_prepare_restart_syscall(Task* t)
-    RR_ARCH_FUNCTION(rec_prepare_restart_syscall_arch, t->arch(),
-                     t) template <typename Arch>
-static void init_scratch_memory(Task* t) {
+void rec_prepare_restart_syscall(Task* t) {
+  RR_ARCH_FUNCTION(rec_prepare_restart_syscall_arch, t->arch(), t)
+}
+
+template <typename Arch> static void init_scratch_memory(Task* t) {
   const int scratch_size = 512 * page_size();
   size_t sz = scratch_size;
   // The PROT_EXEC looks scary, and it is, but it's to prevent
@@ -2690,5 +2691,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   }
 }
 
-void rec_process_syscall(Task* t)
-    RR_ARCH_FUNCTION(rec_process_syscall_arch, t->arch(), t)
+void rec_process_syscall(Task* t) {
+  RR_ARCH_FUNCTION(rec_process_syscall_arch, t->arch(), t)
+}

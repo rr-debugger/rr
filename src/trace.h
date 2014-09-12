@@ -192,8 +192,7 @@ public:
    * frame.
    */
   friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
-  friend TraceIfstream& operator>>(TraceIfstream& tif,
-                                   TraceMappedRegion& map);
+  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map);
   friend TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae);
   friend TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d);
 

@@ -1393,7 +1393,7 @@ void monkeypatch_vdso(Task* t) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
-  RR_ARCH_FUNCTION(monkeypatch_vdso_arch, t->arch(), t);
+  RR_ARCH_FUNCTION(monkeypatch_vdso_arch, t->arch(), t)
 
   Registers r = t->regs();
   r.set_syscall_result(0);

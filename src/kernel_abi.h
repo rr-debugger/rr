@@ -884,13 +884,11 @@ public:
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \
-  {                                                                            \
-    switch (arch) {                                                            \
-      default:                                                                 \
-        assert(0 && "Unknown architecture");                                   \
-      case x86:                                                                \
-        return f<X86Arch>(args);                                               \
-    }                                                                          \
+  switch (arch) {                                                              \
+    default:                                                                   \
+      assert(0 && "Unknown architecture");                                     \
+    case x86:                                                                  \
+      return f<X86Arch>(args);                                                 \
   }
 
 } // namespace rr
