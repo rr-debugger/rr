@@ -40,7 +40,7 @@ static void execute_syscall(Task* t) {
   remote.regs().set_syscall_result(t->regs().syscall_result());
 }
 
-template<typename Arch>
+template <typename Arch>
 static void process_syscall_arch(Task* t, int syscallno) {
   LOG(debug) << "Processing " << t->syscallname(syscallno);
 
@@ -87,8 +87,7 @@ static void process_syscall_arch(Task* t, int syscallno) {
   return execute_syscall(t);
 }
 
-static void process_syscall(Task* t, int syscallno)
-{
+static void process_syscall(Task* t, int syscallno) {
   RR_ARCH_FUNCTION(process_syscall_arch, t->arch(), t, syscallno)
 }
 

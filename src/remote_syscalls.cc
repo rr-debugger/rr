@@ -96,6 +96,4 @@ long AutoRemoteSyscalls::wait_syscall(int syscallno) {
   return t->regs().syscall_result_signed();
 }
 
-SupportedArch AutoRemoteSyscalls::arch() const {
-  return t->arch();
-}
+SupportedArch AutoRemoteSyscalls::arch() const { return t->arch(); }

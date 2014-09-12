@@ -445,11 +445,13 @@ void* Task::init_buffers(void* map_hint, int share_desched_fd) {
 void Task::destroy_buffers(int which) {
   AutoRemoteSyscalls remote(this);
   if (DESTROY_SCRATCH & which) {
-    remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr, scratch_size);
+    remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr,
+                   scratch_size);
     vm()->unmap(scratch_ptr, scratch_size);
   }
   if ((DESTROY_SYSCALLBUF & which) && syscallbuf_child) {
-    remote.syscall(syscall_number_for_munmap(arch()), syscallbuf_child, num_syscallbuf_bytes);
+    remote.syscall(syscall_number_for_munmap(arch()), syscallbuf_child,
+                   num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
     remote.syscall(syscall_number_for_close(arch()), desched_fd_child);
   }
@@ -579,7 +581,7 @@ bool Task::may_be_blocked() const {
          (EV_SIGNAL_DELIVERY == ev().type() && ev().Signal().delivered);
 }
 
-template<typename Arch>
+template <typename Arch>
 void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
   // We have to use the regs() during replay because they
   // have the return value set in syscall_result().  We may not have
@@ -633,8 +635,7 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
   }
 }
 
-void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state)
-{
+void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
   RR_ARCH_FUNCTION(maybe_update_vm_arch, arch(), syscallno, state)
 }
 
@@ -1520,15 +1521,16 @@ void Task::copy_state(Task* from) {
       set_robust_list(from->robust_list(), from->robust_list_len());
       LOG(debug) << "    setting robust-list " << this->robust_list()
                  << " (size " << this->robust_list_len() << ")";
-      err = remote.syscall(syscall_number_for_set_robust_list(arch()), this->robust_list(),
-                           this->robust_list_len());
+      err = remote.syscall(syscall_number_for_set_robust_list(arch()),
+                           this->robust_list(), this->robust_list_len());
       ASSERT(this, 0 == err);
     }
 
     if (const struct user_desc* tls = from->tls()) {
       AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
       LOG(debug) << "    setting tls " << remote_tls;
-      err = remote.syscall(syscall_number_for_set_thread_area(arch()), static_cast<void*>(remote_tls));
+      err = remote.syscall(syscall_number_for_set_thread_area(arch()),
+                           static_cast<void*>(remote_tls));
       ASSERT(this, 0 == err);
       set_thread_area(remote_tls);
     }
@@ -1668,8 +1670,8 @@ void Task::open_mem_fd() {
   long remote_fd;
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
-    remote_fd =
-      remote.syscall(syscall_number_for_open(arch()), static_cast<void*>(remote_path), O_RDWR);
+    remote_fd = remote.syscall(syscall_number_for_open(arch()),
+                               static_cast<void*>(remote_path), O_RDWR);
     assert(remote_fd >= 0);
   }
 
@@ -1699,7 +1701,8 @@ void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
              shmem_fd);
     AutoRestoreMem child_path(remote, proc_path);
     child_shmem_fd =
-        remote.syscall(syscall_number_for_open(arch()), static_cast<void*>(child_path), O_RDWR, 0600);
+        remote.syscall(syscall_number_for_open(arch()),
+                       static_cast<void*>(child_path), O_RDWR, 0600);
     if (0 > child_shmem_fd) {
       errno = -child_shmem_fd;
       FATAL() << "Failed to open(" << proc_path << ") in tracee";
@@ -1718,12 +1721,11 @@ void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
                                     shmem_fd, offset_pages))) {
     FATAL() << "Failed to mmap shmem region";
   }
-  void* child_map_addr =
-    (uint8_t*)remote.syscall(has_mmap2_syscall(remote.arch())
-                             ? syscall_number_for_mmap2(remote.arch())
-                             : syscall_number_for_mmap(remote.arch()),
-                             map_hint, num_syscallbuf_bytes, prot,
-                             flags, child_shmem_fd, offset_pages);
+  void* child_map_addr = (uint8_t*)remote.syscall(
+      has_mmap2_syscall(remote.arch()) ? syscall_number_for_mmap2(remote.arch())
+                                       : syscall_number_for_mmap(remote.arch()),
+      map_hint, num_syscallbuf_bytes, prot, flags, child_shmem_fd,
+      offset_pages);
   syscallbuf_child = child_map_addr;
   syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
   // No entries to begin with.
@@ -2093,7 +2095,8 @@ bool Task::clone_syscall_is_complete() {
   // NB: reference the glibc i386 clone.S implementation for
   // placement of clone syscall args.  The man page is incorrect
   // and the linux source is confusing.
-  remote.syscall(syscall_number_for_clone(parent->arch()), base_flags, stack, ptid, tls, ctid);
+  remote.syscall(syscall_number_for_clone(parent->arch()), base_flags, stack,
+                 ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
     parent->cont_syscall();
   }

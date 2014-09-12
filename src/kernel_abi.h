@@ -898,17 +898,16 @@ public:
 // - syscall_number_for_${SYSCALL} to get a syscall's number by name.  Note that
 //   ${SYSCALL} must exist on the given architecture.
 
-#define HAS_SYSCALL(_name)                      \
-  inline bool has_ ## _name ## _syscall(SupportedArch arch) \
-  {                                             \
-  switch (arch) {                               \
-  case x86:                                     \
-    return X86Arch::_name >= 0;                 \
-  case x86_64:                                  \
-    return X64Arch::_name >= 0;                 \
-  default:                                      \
-    assert(0 && "unsupported architecture");    \
-  }                                             \
+#define HAS_SYSCALL(_name)                                                     \
+  inline bool has_##_name##_syscall(SupportedArch arch) {                      \
+    switch (arch) {                                                            \
+      case x86:                                                                \
+        return X86Arch::_name >= 0;                                            \
+      case x86_64:                                                             \
+        return X64Arch::_name >= 0;                                            \
+      default:                                                                 \
+        assert(0 && "unsupported architecture");                               \
+    }                                                                          \
   }
 #define SYSCALLNO_X86_64(num)
 #define SYSCALLNO_X86(num)
@@ -919,7 +918,8 @@ public:
 #define SYSCALL_DEF1_STR(_name, _type, _1) HAS_SYSCALL(_name)
 #define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4) HAS_SYSCALL(_name)
 #define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6) HAS_SYSCALL(_name)
-#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8) HAS_SYSCALL(_name)
+#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)             \
+  HAS_SYSCALL(_name)
 #define SYSCALL_DEF_IRREG(_name, _type) HAS_SYSCALL(_name)
 #define SYSCALL_DEF_UNSUPPORTED(_name) HAS_SYSCALL(_name)
 #include "syscall_defs.h"
@@ -927,17 +927,16 @@ HAS_SYSCALL(restart_syscall)
 
 #undef HAS_SYSCALL
 
-#define IS_SYSCALL(_name)                       \
-  inline bool is_ ## _name ## _syscall(int syscallno, SupportedArch arch)      \
-  {                                             \
-  switch (arch) {                               \
-  case x86:                                     \
-    return syscallno >= 0 && syscallno == X86Arch::_name;     \
-  case x86_64:                                  \
-    return syscallno >= 0 && syscallno == X64Arch::_name;    \
-  default:                                      \
-    assert(0 && "unsupported architecture");    \
-  }                                             \
+#define IS_SYSCALL(_name)                                                      \
+  inline bool is_##_name##_syscall(int syscallno, SupportedArch arch) {        \
+    switch (arch) {                                                            \
+      case x86:                                                                \
+        return syscallno >= 0 && syscallno == X86Arch::_name;                  \
+      case x86_64:                                                             \
+        return syscallno >= 0 && syscallno == X64Arch::_name;                  \
+      default:                                                                 \
+        assert(0 && "unsupported architecture");                               \
+    }                                                                          \
   }
 #define SYSCALLNO_X86_64(num)
 #define SYSCALLNO_X86(num)
@@ -948,7 +947,8 @@ HAS_SYSCALL(restart_syscall)
 #define SYSCALL_DEF1_STR(_name, _type, _1) IS_SYSCALL(_name)
 #define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4) IS_SYSCALL(_name)
 #define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6) IS_SYSCALL(_name)
-#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8) IS_SYSCALL(_name)
+#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)             \
+  IS_SYSCALL(_name)
 #define SYSCALL_DEF_IRREG(_name, _type) IS_SYSCALL(_name)
 #define SYSCALL_DEF_UNSUPPORTED(_name) IS_SYSCALL(_name)
 #include "syscall_defs.h"
@@ -956,19 +956,18 @@ IS_SYSCALL(restart_syscall)
 
 #undef IS_SYSCALL
 
-#define SYSCALL_NUMBER(_name)                       \
-  inline int syscall_number_for_ ## _name(SupportedArch arch)       \
-  {                                             \
-  switch (arch) {                               \
-  case x86:                                     \
-    assert(X86Arch::_name >= 0);                \
-    return X86Arch::_name;                      \
-  case x86_64:                                  \
-    assert(X64Arch::_name >= 0);                \
-    return X64Arch::_name;                      \
-  default:                                      \
-    assert(0 && "unsupported architecture");    \
-  }                                             \
+#define SYSCALL_NUMBER(_name)                                                  \
+  inline int syscall_number_for_##_name(SupportedArch arch) {                  \
+    switch (arch) {                                                            \
+      case x86:                                                                \
+        assert(X86Arch::_name >= 0);                                           \
+        return X86Arch::_name;                                                 \
+      case x86_64:                                                             \
+        assert(X64Arch::_name >= 0);                                           \
+        return X64Arch::_name;                                                 \
+      default:                                                                 \
+        assert(0 && "unsupported architecture");                               \
+    }                                                                          \
   }
 #define SYSCALLNO_X86_64(num)
 #define SYSCALLNO_X86(num)
@@ -979,7 +978,8 @@ IS_SYSCALL(restart_syscall)
 #define SYSCALL_DEF1_STR(_name, _type, _1) SYSCALL_NUMBER(_name)
 #define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4) SYSCALL_NUMBER(_name)
 #define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6) SYSCALL_NUMBER(_name)
-#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8) SYSCALL_NUMBER(_name)
+#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)             \
+  SYSCALL_NUMBER(_name)
 #define SYSCALL_DEF_IRREG(_name, _type) SYSCALL_NUMBER(_name)
 #define SYSCALL_DEF_UNSUPPORTED(_name) SYSCALL_NUMBER(_name)
 #include "syscall_defs.h"

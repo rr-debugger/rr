@@ -58,8 +58,9 @@ static void restore_sigsegv_state(Task* t) {
   AutoRemoteSyscalls remote(t);
   {
     AutoRestoreMem child_sa(remote, (const uint8_t*)&sa, sizeof(sa));
-    int ret = remote.syscall(syscall_number_for_rt_sigaction(remote.arch()), SIGSEGV,
-                             static_cast<void*>(child_sa), nullptr, _NSIG / 8);
+    int ret =
+        remote.syscall(syscall_number_for_rt_sigaction(remote.arch()), SIGSEGV,
+                       static_cast<void*>(child_sa), nullptr, _NSIG / 8);
     ASSERT(t, 0 == ret) << "Failed to restore SIGSEGV handler";
   }
   // NB: we would normally want to restore the SIG_BLOCK for

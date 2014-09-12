@@ -182,7 +182,8 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
                               ReplaySession& session, const Mapping& m,
                               const MappableResource& r) {
   LOG(debug) << "    remapping shared region at " << m.start << "-" << m.end;
-  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start, m.num_bytes());
+  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start,
+                 m.num_bytes());
   // NB: we don't have to unmap then re-map |t->vm()|'s idea of
   // the emulated file mapping.  Though we'll be remapping the
   // *real* OS mapping in |t| to a different file, that new
@@ -198,27 +199,24 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
     AutoRestoreMem child_path(remote, path.c_str());
     int oflags =
         (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ? O_RDWR : O_RDONLY;
-    remote_fd =
-      remote.syscall(syscall_number_for_open(remote.arch()), static_cast<void*>(child_path), oflags);
+    remote_fd = remote.syscall(syscall_number_for_open(remote.arch()),
+                               static_cast<void*>(child_path), oflags);
     if (0 > remote_fd) {
       FATAL() << "Couldn't open " << path << " in tracee";
     }
   }
   // XXX this condition is x86/x64-specific, I imagine.
   bool page_offset_mmap_in_use = has_mmap2_syscall(remote.arch());
-  void* addr= 
-    (void*)remote.syscall(page_offset_mmap_in_use
-                          ? syscall_number_for_mmap2(remote.arch())
-                          : syscall_number_for_mmap(remote.arch()),
-                          m.start, m.num_bytes(), m.prot,
-                          // The remapped segment *must* be
-                          // remapped at the same address,
-                          // or else many things will go
-                          // haywire.
-                          m.flags | MAP_FIXED, remote_fd,
-                          page_offset_mmap_in_use
-                          ? m.offset / page_size()
-                          : m.offset);
+  void* addr = (void*)remote.syscall(
+      page_offset_mmap_in_use ? syscall_number_for_mmap2(remote.arch())
+                              : syscall_number_for_mmap(remote.arch()),
+      m.start, m.num_bytes(), m.prot,
+      // The remapped segment *must* be
+      // remapped at the same address,
+      // or else many things will go
+      // haywire.
+      m.flags | MAP_FIXED, remote_fd,
+      page_offset_mmap_in_use ? m.offset / page_size() : m.offset);
   ASSERT(remote.task(), addr == m.start);
 
   remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);

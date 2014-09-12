@@ -152,7 +152,9 @@ static void handle_ptrace_event(Task** tp) {
       // fork and can never share these resources, only
       // copy, so the flags here aren't meaningful for it.
       unsigned long flags_arg =
-        is_clone_syscall(t->regs().original_syscallno(), t->arch()) ? t->regs().arg1() : 0;
+          is_clone_syscall(t->regs().original_syscallno(), t->arch())
+              ? t->regs().arg1()
+              : 0;
       t->session().clone(t, clone_flags_to_task_flags(flags_arg), stack, tls,
                          ctid, new_tid);
       // Skip past the ptrace event.
@@ -520,10 +522,11 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
       /* TODO: is there any reason a restart_syscall can't
        * be interrupted by a signal and itself restarted? */
       may_restart = (!is_restart_syscall_syscall(syscallno, t->arch())
-                         // SYS_pause is either interrupted or
-                         // never returns.  It doesn't restart.
+                     // SYS_pause is either interrupted or
+                     // never returns.  It doesn't restart.
                      &&
-                     !is_pause_syscall(syscallno, t->arch()) && SYSCALL_MAY_RESTART(retval));
+                     !is_pause_syscall(syscallno, t->arch()) &&
+                     SYSCALL_MAY_RESTART(retval));
       /* no need to process the syscall in case its
        * restarted this will be done in the exit from the
        * restart_syscall */
@@ -590,7 +593,8 @@ static void maybe_reset_syscallbuf(Task* t) {
 
 /** If the rbc seems to be working return, otherwise don't return. */
 static void check_rbc(Task* t) {
-  if (can_deliver_signals || !is_write_syscall(t->ev().Syscall().number, t->arch())) {
+  if (can_deliver_signals ||
+      !is_write_syscall(t->ev().Syscall().number, t->arch())) {
     return;
   }
   int fd = t->regs().arg1_signed();
