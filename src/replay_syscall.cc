@@ -284,7 +284,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   t->ifstream() >> file;
 
   t->scratch_ptr = file.start;
-  t->scratch_size = (uint8_t*)file.end - (uint8_t*)file.start;
+  t->scratch_size = file.size();
   size_t sz = t->scratch_size;
   int prot = PROT_NONE;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;

@@ -3,6 +3,7 @@
 #ifndef RR_TRACE_H_
 #define RR_TRACE_H_
 
+#include <assert.h>
 #include <linux/limits.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -19,6 +20,7 @@
 #include "ExtraRegisters.h"
 #include "PerfCounters.h"
 #include "Registers.h"
+#include "remote_ptr.h"
 #include "Ticks.h"
 #include "TraceFrame.h"
 
@@ -38,8 +40,15 @@ struct mmapped_file {
   struct stat stat;
 
   /* Bounds of mapped region. */
-  void* start;
-  void* end;
+  remote_ptr<void> start;
+  remote_ptr<void> end;
+
+  size_t size() {
+    int64_t s = static_cast<uint8_t*>(static_cast<void*>(end)) -
+                static_cast<uint8_t*>(static_cast<void*>(start));
+    assert(s >= 0);
+    return s;
+  }
 };
 
 /**
