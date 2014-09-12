@@ -2019,14 +2019,14 @@ void Task::write_bytes_helper(void* addr, ssize_t buf_size,
                                      << ", but only wrote " << nwritten;
 }
 
-TraceFstream& Task::trace_fstream() {
+TraceStream& Task::trace_fstream() {
   if (session_record) {
     return session_record->ofstream();
   }
   return session_replay->ifstream();
 }
 
-const TraceFstream& Task::trace_fstream() const {
+const TraceStream& Task::trace_fstream() const {
   if (session_record) {
     return session_record->ofstream();
   }

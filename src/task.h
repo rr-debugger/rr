@@ -1227,8 +1227,8 @@ private:
    * Return the trace fstream that we're using, whether in
    * recording or replay.
    */
-  TraceFstream& trace_fstream();
-  const TraceFstream& trace_fstream() const;
+  TraceStream& trace_fstream();
+  const TraceStream& trace_fstream() const;
 
   /**
    * Make the OS-level calls to clone |parent| into |session|

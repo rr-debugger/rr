@@ -97,7 +97,7 @@ struct raw_data {
  * replay.  TraceOfstream deals with recording-specific logic, and
  * TraceIfstream handles replay-specific details.
  */
-class TraceFstream {
+class TraceStream {
 protected:
   typedef std::fstream fstream;
   typedef std::string string;
@@ -113,7 +113,7 @@ public:
   uint32_t time() const { return global_time; }
 
 protected:
-  TraceFstream(const string& trace_dir, uint32_t initial_time)
+  TraceStream(const string& trace_dir, uint32_t initial_time)
       : trace_dir(trace_dir), global_time(initial_time) {}
 
   string events_path() const { return trace_dir + "/events"; }
@@ -144,7 +144,7 @@ protected:
   uint32_t global_time;
 };
 
-class TraceOfstream : public TraceFstream {
+class TraceOfstream : public TraceStream {
 public:
   typedef std::shared_ptr<TraceOfstream> shr_ptr;
 
@@ -183,10 +183,10 @@ public:
 
 private:
   TraceOfstream(const string& trace_dir)
-      : TraceFstream(trace_dir,
-                     // Somewhat arbitrarily start the
-                     // global time from 1.
-                     1),
+      : TraceStream(trace_dir,
+                    // Somewhat arbitrarily start the
+                    // global time from 1.
+                    1),
         events(events_path(), 1024 * 1024, 1),
         data(data_path(), 8 * 1024 * 1024, 3),
         data_header(data_header_path(), 1024 * 1024, 1),
@@ -203,7 +203,7 @@ private:
   CompressedWriter mmaps;
 };
 
-class TraceIfstream : public TraceFstream {
+class TraceIfstream : public TraceStream {
   friend struct AutoRestoreState;
 
 public:
@@ -273,19 +273,19 @@ public:
 
 private:
   TraceIfstream(const string& trace_dir)
-      : TraceFstream(trace_dir,
-                     // Initialize the global time at 0, so
-                     // that when we tick it when reading
-                     // the first trace, it matches the
-                     // initial global time at recording, 1.
-                     0),
+      : TraceStream(trace_dir,
+                    // Initialize the global time at 0, so
+                    // that when we tick it when reading
+                    // the first trace, it matches the
+                    // initial global time at recording, 1.
+                    0),
         events(events_path()),
         data(data_path()),
         data_header(data_header_path()),
         mmaps(mmaps_path()) {}
 
   TraceIfstream(const TraceIfstream& other)
-      : TraceFstream(other.dir(), other.time()),
+      : TraceStream(other.dir(), other.time()),
         events(other.events),
         data(other.data),
         data_header(other.data_header),
