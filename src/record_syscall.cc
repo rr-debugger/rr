@@ -1671,7 +1671,7 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   }
 
   t->vm()->map(addr, size, prot, flags, offset,
-               MappableResource(FileId(file.stat), file.filename));
+               MappableResource(FileId(stat), filename));
 }
 
 /*

@@ -25,6 +25,7 @@ struct TraceMappedRegion {
   }
 
   bool copied() const { return copied_; }
+  const char* file_name() const { return filename; }
 
   size_t size() {
     int64_t s = end.as_int() - start.as_int();

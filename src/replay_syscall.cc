@@ -688,7 +688,7 @@ template <typename Arch>
 static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                                  int prot, int flags, off64_t offset_pages,
                                  const TraceMappedRegion* file) {
-  LOG(debug) << "  finishing private mmap of " << file->filename;
+  LOG(debug) << "  finishing private mmap of " << file->file_name();
 
   Task* t = remote.task();
   const Registers& rec_regs = trace->regs();
@@ -714,7 +714,7 @@ static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                // device/inode info for this anonymous mapping.
                // Preserve the mapping name though, so
                // AddressSpace::dump() shows something useful.
-               MappableResource(FileId(), file->filename));
+               MappableResource(FileId(), file->file_name()));
 
   return mapped_addr;
 }
@@ -722,8 +722,9 @@ static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
 static void verify_backing_file(const TraceMappedRegion* file, int prot,
                                 int flags) {
   struct stat metadata;
-  if (stat(file->filename, &metadata)) {
-    FATAL() << "Failed to stat " << file->filename << ": replay is impossible";
+  if (stat(file->file_name(), &metadata)) {
+    FATAL() << "Failed to stat " << file->file_name()
+            << ": replay is impossible";
   }
   if (metadata.st_ino != file->stat.st_ino ||
       metadata.st_mode != file->stat.st_mode ||
@@ -733,12 +734,12 @@ static void verify_backing_file(const TraceMappedRegion* file, int prot,
       metadata.st_mtime != file->stat.st_mtime ||
       metadata.st_ctime != file->stat.st_ctime) {
     LOG(error)
-        << "Metadata of " << file->filename
+        << "Metadata of " << file->file_name()
         << " changed: replay divergence likely, but continuing anyway ...";
   }
-  if (should_copy_mmap_region(file->filename, &metadata, prot, flags,
+  if (should_copy_mmap_region(file->file_name(), &metadata, prot, flags,
                               WARN_DEFAULT)) {
-    LOG(error) << file->filename
+    LOG(error) << file->file_name()
                << " wasn't copied during recording, but now it should be?";
   }
 }
@@ -761,8 +762,8 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   int fd;
   void* mapped_addr;
 
-  LOG(debug) << "directly mmap'ing " << length << " bytes of " << file->filename
-             << " at page offset " << HEX(offset_pages);
+  LOG(debug) << "directly mmap'ing " << length << " bytes of "
+             << file->file_name() << " at page offset " << HEX(offset_pages);
 
   if (verify) {
     verify_backing_file(file, prot, flags);
@@ -771,7 +772,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   /* Open in the tracee the file that was mapped during
    * recording. */
   {
-    AutoRestoreMem child_str(remote, file->filename);
+    AutoRestoreMem child_str(remote, file->file_name());
     /* We only need RDWR for shared writeable mappings.
      * Private mappings will happily COW from the mapped
      * RDONLY file.
@@ -782,7 +783,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
     /* TODO: unclear if O_NOATIME is relevant for mmaps */
     fd = remote.syscall(Arch::open, static_cast<void*>(child_str), oflags);
     if (0 > fd) {
-      FATAL() << "Couldn't open " << file->filename << " to mmap in tracee";
+      FATAL() << "Couldn't open " << file->file_name() << " to mmap in tracee";
     }
   }
   /* And mmap that file. */
@@ -798,7 +799,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
 
   if (note_task_map) {
     t->vm()->map(mapped_addr, length, prot, flags, page_size() * offset_pages,
-                 MappableResource(FileId(file->stat), file->filename));
+                 MappableResource(FileId(file->stat), file->file_name()));
   }
 
   return mapped_addr;
@@ -819,8 +820,8 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   // NB: the tracee will map the procfs link to our fd; there's
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
-  TraceMappedRegion vfile = *file;
-  strncpy(vfile.filename, emufile->proc_path().c_str(), sizeof(vfile.filename));
+  TraceMappedRegion vfile(emufile->proc_path().c_str(), file->stat, file->start,
+                          file->end);
   void* mapped_addr =
       finish_direct_mmap<Arch>(remote, trace, prot, flags, offset_pages, &vfile,
                                DONT_VERIFY, DONT_NOTE_TASK_MAP);
@@ -840,10 +841,10 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   if (ssize_t(buf.data.size()) !=
       pwrite64(emufile->fd(), buf.data.data(), buf.data.size(), offset_bytes)) {
     FATAL() << "Failed to write " << buf.data.size() << " bytes at "
-            << HEX(offset_bytes) << " to " << vfile.filename;
+            << HEX(offset_bytes) << " to " << vfile.file_name();
   }
   LOG(debug) << "  restored " << buf.data.size() << " bytes at "
-             << HEX(offset_bytes) << " to " << vfile.filename;
+             << HEX(offset_bytes) << " to " << vfile.file_name();
 
   t->vm()->map(mapped_addr, buf.data.size(), prot, flags, offset_bytes,
                MappableResource::shared_mmap_file(*file));
