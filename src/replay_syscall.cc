@@ -285,7 +285,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
 
   t->ifstream() >> file;
 
-  t->scratch_ptr = file.start;
+  t->scratch_ptr = file.start();
   t->scratch_size = file.size();
   size_t sz = t->scratch_size;
   int prot = PROT_NONE;
@@ -297,7 +297,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
     map_addr = (void*)remote.syscall(Arch::mmap2, t->scratch_ptr, sz, prot,
                                      flags, fd, offset);
   }
-  ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped " << file.start
+  ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped " << file.start()
                                         << " during recording, but " << map_addr
                                         << " in replay";
 
@@ -821,7 +821,7 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
   TraceMappedRegion vfile(emufile->proc_path().c_str(), file->stat(),
-                          file->start, file->end);
+                          file->start(), file->end());
   void* mapped_addr =
       finish_direct_mmap<Arch>(remote, trace, prot, flags, offset_pages, &vfile,
                                DONT_VERIFY, DONT_NOTE_TASK_MAP);

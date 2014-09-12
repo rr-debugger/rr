@@ -203,14 +203,14 @@ template <int N> static void read_string(CompressedReader& in, char (&str)[N]) {
 TraceOfstream& operator<<(TraceOfstream& tof, const TraceMappedRegion& map) {
   tof.mmaps << map.copied();
   write_string(tof.mmaps, map.file_name());
-  tof.mmaps << map.stat() << map.start << map.end;
+  tof.mmaps << map.stat() << map.start() << map.end();
   return tof;
 }
 
 TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map) {
   tif.mmaps >> map.copied_;
   read_string(tif.mmaps, map.filename);
-  tif.mmaps >> map.stat_ >> map.start >> map.end;
+  tif.mmaps >> map.stat_ >> map.start_ >> map.end_;
   return tif;
 }
 

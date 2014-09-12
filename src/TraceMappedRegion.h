@@ -15,11 +15,11 @@ struct TraceMappedRegion {
   TraceMappedRegion(const char* filename, const struct stat& stat,
                     remote_ptr<void> start, remote_ptr<void> end,
                     bool copied = false)
-      : stat_(stat), start(start), end(end), copied_(copied) {
+      : stat_(stat), start_(start), end_(end), copied_(copied) {
     strncpy(this->filename, filename, sizeof(this->filename));
     this->filename[sizeof(this->filename) - 1] = 0;
   }
-  TraceMappedRegion() : start(nullptr), end(nullptr), copied_(false) {
+  TraceMappedRegion() : start_(nullptr), end_(nullptr), copied_(false) {
     filename[0] = 0;
     memset(&stat_, 0, sizeof(stat_));
   }
@@ -27,9 +27,11 @@ struct TraceMappedRegion {
   bool copied() const { return copied_; }
   const char* file_name() const { return filename; }
   const struct stat& stat() const { return stat_; }
+  remote_ptr<void> start() const { return start_; }
+  remote_ptr<void> end() const { return end_; }
 
   size_t size() {
-    int64_t s = end.as_int() - start.as_int();
+    int64_t s = end().as_int() - start().as_int();
     assert(s >= 0);
     return s;
   }
@@ -40,8 +42,8 @@ struct TraceMappedRegion {
   struct stat stat_;
 
   /* Bounds of mapped region. */
-  remote_ptr<void> start;
-  remote_ptr<void> end;
+  remote_ptr<void> start_;
+  remote_ptr<void> end_;
 
   /* Did we save a copy of the mapped region in the trace
    * data? */

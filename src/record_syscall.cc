@@ -1666,8 +1666,8 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   t->ofstream() << file;
 
   if (strstr(filename, SYSCALLBUF_LIB_FILENAME) && (prot & PROT_EXEC)) {
-    t->syscallbuf_lib_start = file.start;
-    t->syscallbuf_lib_end = file.end;
+    t->syscallbuf_lib_start = file.start();
+    t->syscallbuf_lib_end = file.end();
   }
 
   t->vm()->map(addr, size, prot, flags, offset,
