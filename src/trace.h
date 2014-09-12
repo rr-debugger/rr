@@ -23,33 +23,9 @@
 #include "remote_ptr.h"
 #include "Ticks.h"
 #include "TraceFrame.h"
+#include "TraceMappedRegion.h"
 
 typedef std::vector<char*> CharpVector;
-
-/* XXX/pedant more accurately called a "mapped /region/", since we're
- * not mapping entire files, necessarily. */
-struct TraceMappedRegion {
-  /* Global trace time when this region was mapped. */
-  TraceFrame::Time time;
-  pid_t tid;
-  /* Did we save a copy of the mapped region in the trace
-   * data? */
-  bool copied;
-
-  char filename[PATH_MAX];
-  struct stat stat;
-
-  /* Bounds of mapped region. */
-  remote_ptr<void> start;
-  remote_ptr<void> end;
-
-  size_t size() {
-    int64_t s = static_cast<uint8_t*>(static_cast<void*>(end)) -
-                static_cast<uint8_t*>(static_cast<void*>(start));
-    assert(s >= 0);
-    return s;
-  }
-};
 
 /**
  * Records data needed to supply the arguments for the |execve()| call that
