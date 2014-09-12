@@ -15,18 +15,25 @@ struct TraceMappedRegion {
   TraceMappedRegion(const char* filename, const struct stat& stat,
                     remote_ptr<void> start, remote_ptr<void> end,
                     bool copied = false)
-      : copied(copied), stat(stat), start(start), end(end) {
+      : stat(stat), start(start), end(end), copied_(copied) {
     strncpy(this->filename, filename, sizeof(this->filename));
     this->filename[sizeof(this->filename) - 1] = 0;
   }
-  TraceMappedRegion() : copied(false), start(nullptr), end(nullptr) {
+  TraceMappedRegion() : start(nullptr), end(nullptr), copied_(false) {
     memset(filename, 0, sizeof(filename));
     memset(&stat, 0, sizeof(stat));
   }
 
-  /* Did we save a copy of the mapped region in the trace
-   * data? */
-  bool copied;
+  bool copied() const { return copied_; }
+
+  size_t size() {
+    int64_t s = static_cast<uint8_t*>(static_cast<void*>(end)) -
+                static_cast<uint8_t*>(static_cast<void*>(start));
+    assert(s >= 0);
+    return s;
+  }
+
+  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map);
 
   char filename[PATH_MAX];
   struct stat stat;
@@ -35,12 +42,9 @@ struct TraceMappedRegion {
   remote_ptr<void> start;
   remote_ptr<void> end;
 
-  size_t size() {
-    int64_t s = static_cast<uint8_t*>(static_cast<void*>(end)) -
-                static_cast<uint8_t*>(static_cast<void*>(start));
-    assert(s >= 0);
-    return s;
-  }
+  /* Did we save a copy of the mapped region in the trace
+   * data? */
+  bool copied_;
 };
 
 #endif /* RR_TRACE_MAPPED_REGION_H_ */

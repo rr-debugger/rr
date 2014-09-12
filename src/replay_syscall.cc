@@ -879,7 +879,7 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
       TraceMappedRegion file;
       t->ifstream() >> file;
 
-      if (!file.copied) {
+      if (!file.copied()) {
         mapped_addr = finish_direct_mmap<Arch>(remote, trace, prot, flags,
                                                offset_pages, &file);
       } else if (!(MAP_SHARED & flags)) {
