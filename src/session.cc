@@ -172,11 +172,15 @@ Task* RecordSession::create_task() {
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const std::vector<std::string>& argv, const std::vector<std::string>& envp,
-    char* cwd, int bind_to_cpu) {
-  shr_ptr session(new RecordSession());
-  session->trace_ofstream = TraceOfstream::create(argv, envp, cwd, bind_to_cpu);
+    const string& cwd, int bind_to_cpu) {
+  shr_ptr session(new RecordSession(argv, envp, cwd, bind_to_cpu));
   return session;
 }
+
+RecordSession::RecordSession(const std::vector<std::string>& argv,
+                             const std::vector<std::string>& envp,
+                             const string& cwd, int bind_to_cpu)
+    : trace_ofstream(argv, envp, cwd, bind_to_cpu) {}
 
 static void remap_shared_mmap(AutoRemoteSyscalls& remote,
                               ReplaySession& session, const Mapping& m,

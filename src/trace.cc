@@ -242,11 +242,7 @@ void TraceOfstream::close() {
   mmaps.close();
 }
 
-/*static*/ TraceOfstream::shr_ptr TraceOfstream::create(
-    const std::vector<std::string>& argv, const std::vector<std::string>& envp,
-    const string& cwd, int bind_to_cpu) {
-  const string& exe_path = argv[0];
-
+static string make_trace_dir(const string& exe_path) {
   ensure_default_rr_trace_dir();
 
   // Find a unique trace directory name.
@@ -265,45 +261,56 @@ void TraceOfstream::close() {
     FATAL() << "Unable to create trace directory `" << dir << "'";
   }
 
-  shr_ptr trace(new TraceOfstream(dir));
-  trace->argv = argv;
-  trace->envp = envp;
-  trace->cwd = cwd;
-  trace->bind_to_cpu = bind_to_cpu;
+  return dir;
+}
 
-  string version_path = trace->version_path();
-  fstream version(version_path.c_str(), fstream::out);
+TraceOfstream::TraceOfstream(const std::vector<std::string>& argv,
+                             const std::vector<std::string>& envp,
+                             const string& cwd, int bind_to_cpu)
+    : TraceStream(make_trace_dir(argv[0]),
+                  // Somewhat arbitrarily start the
+                  // global time from 1.
+                  1),
+      events(events_path(), 1024 * 1024, 1),
+      data(data_path(), 8 * 1024 * 1024, 3),
+      data_header(data_header_path(), 1024 * 1024, 1),
+      mmaps(mmaps_path(), 64 * 1024, 1) {
+  this->argv = argv;
+  this->envp = envp;
+  this->cwd = cwd;
+  this->bind_to_cpu = bind_to_cpu;
+
+  string ver_path = version_path();
+  fstream version(ver_path.c_str(), fstream::out);
   if (!version.good()) {
-    FATAL() << "Unable to create " << version_path;
+    FATAL() << "Unable to create " << ver_path;
   }
   version << TRACE_VERSION << endl;
 
   string link_name = latest_trace_symlink();
-  // Try to update the symlink to |trace|.  We only try attempt
+  // Try to update the symlink to |this|.  We only try attempt
   // to set the symlink once.  If the link is re-created after
   // we |unlink()| it, then another rr process is racing with us
   // and it "won".  The link is then valid and points at some
   // very-recent trace, so that's good enough.
   unlink(link_name.c_str());
-  ret = symlink(trace->trace_dir.c_str(), link_name.c_str());
+  int ret = symlink(trace_dir.c_str(), link_name.c_str());
   if (ret < 0 && errno != EEXIST) {
     FATAL() << "Failed to update symlink `" << link_name << "' to `"
-            << trace->trace_dir << "'.";
+            << trace_dir << "'.";
   }
 
   if (!probably_not_interactive(STDOUT_FILENO)) {
     printf("rr: Saving the execution of `%s' to trace directory `%s'.\n",
-           exe_path.c_str(), trace->trace_dir.c_str());
+           argv[0].c_str(), trace_dir.c_str());
   }
 
-  ofstream out(trace->args_env_path());
-  out << trace->cwd << '\0';
-  out << trace->argv;
-  out << trace->envp;
-  out << trace->bind_to_cpu;
+  ofstream out(args_env_path());
+  out << cwd << '\0';
+  out << argv;
+  out << envp;
+  out << bind_to_cpu;
   assert(out.good());
-
-  return trace;
 }
 
 TraceIfstream::shr_ptr TraceIfstream::clone() {

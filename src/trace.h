@@ -104,8 +104,6 @@ protected:
 
 class TraceOfstream : public TraceStream {
 public:
-  typedef std::shared_ptr<TraceOfstream> shr_ptr;
-
   /**
    * Write relevant data to the trace.
    *
@@ -131,27 +129,17 @@ public:
   void close();
 
   /**
-   * Create and return a trace that will record the initial exe
+   * Create a trace that will record the initial exe
    * image |argv[0]| with initial args |argv|, initial environment |envp|,
    * current working directory |cwd| and bound to cpu |bind_to_cpu|. This
    * data is recored in the trace.
    * The trace name is determined by the global rr args and environment.
    */
-  static shr_ptr create(const std::vector<std::string>& argv,
-                        const std::vector<std::string>& envp, const string& cwd,
-                        int bind_to_cpu);
+  TraceOfstream(const std::vector<std::string>& argv,
+                const std::vector<std::string>& envp, const string& cwd,
+                int bind_to_cpu);
 
 private:
-  TraceOfstream(const string& trace_dir)
-      : TraceStream(trace_dir,
-                    // Somewhat arbitrarily start the
-                    // global time from 1.
-                    1),
-        events(events_path(), 1024 * 1024, 1),
-        data(data_path(), 8 * 1024 * 1024, 3),
-        data_header(data_header_path(), 1024 * 1024, 1),
-        mmaps(mmaps_path(), 64 * 1024, 1) {}
-
   // File that stores events (trace frames).
   CompressedWriter events;
   // Files that store raw data saved from tracees (|data|), and

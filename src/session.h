@@ -177,7 +177,7 @@ public:
    */
   Task* create_task();
 
-  TraceOfstream& ofstream() { return *trace_ofstream; }
+  TraceOfstream& ofstream() { return trace_ofstream; }
 
   /**
    * Create a recording session for the initial exe image
@@ -185,15 +185,19 @@ public:
    * directory.)
    */
   static shr_ptr create(const std::vector<std::string>& argv,
-                        const std::vector<std::string>& envp, char* cwd,
-                        int bind_to_cpu);
+                        const std::vector<std::string>& envp,
+                        const std::string& cwd, int bind_to_cpu);
 
   virtual RecordSession* as_record() { return this; }
 
-  virtual TraceStream& trace() { return *trace_ofstream; }
+  virtual TraceStream& trace() { return trace_ofstream; }
 
 private:
-  std::shared_ptr<TraceOfstream> trace_ofstream;
+  RecordSession(const std::vector<std::string>& argv,
+                const std::vector<std::string>& envp, const std::string& cwd,
+                int bind_to_cpu);
+
+  TraceOfstream trace_ofstream;
 };
 
 /** Encapsulates additional session state related to replay. */
