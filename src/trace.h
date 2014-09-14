@@ -34,7 +34,7 @@ struct raw_data {
   std::vector<uint8_t> data;
   void* addr;
   EncodedEvent ev;
-  uint32_t global_time;
+  TraceFrame::Time global_time;
 };
 
 /**
@@ -60,10 +60,10 @@ public:
    * Return the current "global time" (event count) for this
    * trace.
    */
-  uint32_t time() const { return global_time; }
+  TraceFrame::Time time() const { return global_time; }
 
 protected:
-  TraceStream(const string& trace_dir, uint32_t initial_time)
+  TraceStream(const string& trace_dir, TraceFrame::Time initial_time)
       : trace_dir(trace_dir), global_time(initial_time) {}
 
   string events_path() const { return trace_dir + "/events"; }
@@ -85,7 +85,7 @@ protected:
   /**
    * Increment the global time and return the incremented value.
    */
-  uint32_t tick_time() { return ++global_time; }
+  void tick_time() { ++global_time; }
 
   // Directory into which we're saving the trace files.
   string trace_dir;
@@ -99,7 +99,7 @@ protected:
 
   // Arbitrary notion of trace time, ticked on the recording of
   // each event (trace frame).
-  uint32_t global_time;
+  TraceFrame::Time global_time;
 };
 
 class TraceOfstream : public TraceStream {
