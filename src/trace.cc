@@ -430,6 +430,10 @@ void TraceIfstream::rewind() {
             path.c_str(), version, TRACE_VERSION, path.c_str(), path.c_str());
     exit(EX_DATAERR);
   }
+
+  struct args_env ae;
+  *trace >> ae;
+
   return trace;
 }
 

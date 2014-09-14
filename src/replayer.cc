@@ -2208,8 +2208,6 @@ static void set_sig_blockedness(int sig, int blockedness) {
 ReplaySession::shr_ptr create_session_from_cmdline() {
   auto session = ReplaySession::create(cmdline_argc, cmdline_argv);
 
-  struct args_env ae;
-  session->ifstream() >> ae;
   // Because we execvpe() the tracee, we must ensure that $PATH
   // is the same as in recording so that libc searches paths in
   // the same order.  So copy that over now.
@@ -2218,7 +2216,7 @@ ReplaySession::shr_ptr create_session_from_cmdline() {
   // with a fresh environment guaranteed to be the same as in
   // replay, so we don't have to worry about any mutation here
   // affecting post-exec execution.
-  for (auto& e : ae.envp) {
+  for (auto& e : session->trace().initial_envp()) {
     if (e.find("PATH=") == 0) {
       // NB: intentionally leaking this string.
       putenv(strdup(e.c_str()));
