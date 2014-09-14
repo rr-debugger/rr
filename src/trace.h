@@ -32,7 +32,8 @@
  */
 struct args_env {
   args_env() {}
-  args_env(int argc, char* argv[], char** envp, char* cwd, int bind_to_cpu);
+  args_env(const std::vector<std::string>& argv,
+           const std::vector<std::string>& envp, char* cwd, int bind_to_cpu);
 
   args_env& operator=(args_env&& o);
 
@@ -55,9 +56,8 @@ struct args_env {
       }
       array.push_back(nullptr);
     }
-    char** get() {
-      return array.data();
-    }
+    char** get() { return array.data(); }
+
   private:
     std::vector<char*> array;
   };

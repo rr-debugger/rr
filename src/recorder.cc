@@ -889,12 +889,21 @@ static int choose_cpu() {
 int record(const char* rr_exe, int argc, char* argv[], char** envp) {
   LOG(info) << "Start recording...";
 
+  vector<string> args;
+  for (int i = 0; i < argc; ++i) {
+    args.push_back(argv[i]);
+  }
+  vector<string> env;
+  for (; *envp; ++envp) {
+    env.push_back(*envp);
+  }
+
   int bind_to_cpu = choose_cpu();
 
   char cwd[PATH_MAX] = "";
   getcwd(cwd, sizeof(cwd));
 
-  ae = args_env(argc, argv, envp, cwd, bind_to_cpu);
+  ae = args_env(args, env, cwd, bind_to_cpu);
   // LD_PRELOAD the syscall interception lib
   if (!Flags::get().syscall_buffer_lib_path.empty()) {
     string ld_preload = "LD_PRELOAD=";

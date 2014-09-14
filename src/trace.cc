@@ -63,16 +63,14 @@ static void ensure_default_rr_trace_dir() {
   }
 }
 
-args_env::args_env(int argc, char* arg_v[], char** env_p, char* cwd,
+args_env::args_env(const std::vector<std::string>& argv,
+                   const std::vector<std::string>& envp, char* cwd,
                    int bind_to_cpu)
-    : exe_image(arg_v[0]), cwd(cwd), bind_to_cpu(bind_to_cpu) {
-  for (int i = 0; i < argc; ++i) {
-    argv.push_back(arg_v[i]);
-  }
-  for (; *env_p; ++env_p) {
-    envp.push_back(*env_p);
-  }
-}
+    : exe_image(argv[0]),
+      cwd(cwd),
+      argv(argv),
+      envp(envp),
+      bind_to_cpu(bind_to_cpu) {}
 
 args_env& args_env::operator=(args_env&& o) {
   swap(exe_image, o.exe_image);
