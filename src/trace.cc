@@ -64,7 +64,7 @@ static void ensure_default_rr_trace_dir() {
 }
 
 args_env::args_env(const std::vector<std::string>& argv,
-                   const std::vector<std::string>& envp, char* cwd,
+                   const std::vector<std::string>& envp, const string& cwd,
                    int bind_to_cpu)
     : exe_image(argv[0]),
       cwd(cwd),
@@ -238,15 +238,18 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae) {
 
   char buf[PATH_MAX];
   in.getline(buf, sizeof(buf), '\0');
-  ae.cwd = buf;
+  ae.cwd = tif.cwd = buf;
 
-  in >> ae.argv;
+  in >> tif.argv;
+  ae.argv = tif.argv;
 
   assert(in.good());
 
   ae.exe_image = ae.argv[0];
-  in >> ae.envp;
-  in >> ae.bind_to_cpu;
+  in >> tif.envp;
+  ae.envp = tif.envp;
+  in >> tif.bind_to_cpu;
+  ae.bind_to_cpu = tif.bind_to_cpu;
   return tif;
 }
 
@@ -293,7 +296,7 @@ void TraceOfstream::close() {
 
 /*static*/ TraceOfstream::shr_ptr TraceOfstream::create(
     const std::vector<std::string>& argv, const std::vector<std::string>& envp,
-    char* cwd, int bind_to_cpu) {
+    const string& cwd, int bind_to_cpu) {
   const string& exe_path = argv[0];
 
   ensure_default_rr_trace_dir();
@@ -315,6 +318,10 @@ void TraceOfstream::close() {
   }
 
   shr_ptr trace(new TraceOfstream(dir));
+  trace->argv = argv;
+  trace->envp = envp;
+  trace->cwd = cwd;
+  trace->bind_to_cpu = bind_to_cpu;
 
   string version_path = trace->version_path();
   fstream version(version_path.c_str(), fstream::out);

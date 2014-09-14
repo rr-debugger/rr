@@ -33,7 +33,8 @@
 struct args_env {
   args_env() {}
   args_env(const std::vector<std::string>& argv,
-           const std::vector<std::string>& envp, char* cwd, int bind_to_cpu);
+           const std::vector<std::string>& envp, const std::string& cwd,
+           int bind_to_cpu);
 
   args_env& operator=(args_env&& o);
 
@@ -92,6 +93,12 @@ public:
   /** Return the directory storing this trace's files. */
   const string& dir() const { return trace_dir; }
 
+  const string& initial_exe() const { return argv[0]; }
+  const std::vector<string>& initial_argv() const { return argv; }
+  const std::vector<string>& initial_envp() const { return envp; }
+  const string& initial_cwd() const { return cwd; }
+  int bound_to_cpu() const { return bind_to_cpu; }
+
   /**
    * Return the current "global time" (event count) for this
    * trace.
@@ -125,6 +132,14 @@ protected:
 
   // Directory into which we're saving the trace files.
   string trace_dir;
+  // The initial argv and envp for a tracee.
+  std::vector<string> argv;
+  std::vector<string> envp;
+  // Current working directory at start of record/replay.
+  string cwd;
+  // CPU core# that the tracees are bound to
+  int bind_to_cpu;
+
   // Arbitrary notion of trace time, ticked on the recording of
   // each event (trace frame).
   uint32_t global_time;
@@ -168,7 +183,7 @@ public:
    * The trace name is determined by the global rr args and environment.
    */
   static shr_ptr create(const std::vector<std::string>& argv,
-                        const std::vector<std::string>& envp, char* cwd,
+                        const std::vector<std::string>& envp, const string& cwd,
                         int bind_to_cpu);
 
 private:
