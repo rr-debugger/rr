@@ -2112,17 +2112,17 @@ bool Task::clone_syscall_is_complete() {
   return child;
 }
 
-/*static*/ Task* Task::spawn(const struct args_env& ae, Session& session,
-                             pid_t rec_tid) {
+/*static*/ Task* Task::spawn(Session& session, pid_t rec_tid) {
   assert(session.tasks().size() == 0);
 
-  if (ae.bind_to_cpu >= 0) {
+  TraceStream& trace = session.trace();
+  if (trace.bound_to_cpu() >= 0) {
     // Set CPU affinity now, after we've created any helper threads
     // (so they aren't affected), but before we create any
     // tracees (so they are all affected).
     // Note that we're binding rr itself to the same CPU as the
     // tracees, since this seems to help performance.
-    set_cpu_affinity(ae.bind_to_cpu);
+    set_cpu_affinity(trace.bound_to_cpu());
   }
 
   pid_t tid = fork();
@@ -2130,7 +2130,7 @@ bool Task::clone_syscall_is_complete() {
     // Set current working directory to the cwd used during
     // recording. The main effect of this is to resolve relative
     // paths in the following execvpe correctly during replay.
-    chdir(ae.cwd.c_str());
+    chdir(trace.initial_cwd().c_str());
     set_up_process();
     // The preceding code must run before sending SIGSTOP here,
     // since after SIGSTOP replay emulates almost all syscalls, but
@@ -2154,9 +2154,10 @@ bool Task::clone_syscall_is_complete() {
 
     EnvironmentBugDetector::run_detection_code();
 
-    execvpe(ae.exe_image.c_str(), args_env::CharArray(ae.argv).get(),
-            args_env::CharArray(ae.envp).get());
-    FATAL() << "Failed to exec '" << ae.exe_image.c_str() << "'";
+    execvpe(trace.initial_exe().c_str(),
+            args_env::CharArray(trace.initial_argv()).get(),
+            args_env::CharArray(trace.initial_envp()).get());
+    FATAL() << "Failed to exec '" << trace.initial_exe().c_str() << "'";
   }
 
   struct sigaction sa;
@@ -2181,7 +2182,7 @@ bool Task::clone_syscall_is_complete() {
   }
   auto g = session.create_tg(t);
   t->tg.swap(g);
-  auto as = session.create_vm(t, ae.exe_image);
+  auto as = session.create_vm(t, trace.initial_exe());
   t->as.swap(as);
 
   // Sync with the child process.

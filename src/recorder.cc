@@ -40,8 +40,6 @@ using namespace std;
 
 // Global state of this recording session.
 static RecordSession::shr_ptr session;
-// Args/env for the initial tracee.
-struct args_env ae;
 
 /* Nonzero when it's safe to deliver signals, namely, when the initial
  * tracee has exec()'d the tracee image.  Before then, the address
@@ -608,7 +606,7 @@ static void check_rbc(Task* t) {
             "exist, or\n"
             "  isn't in your $PATH.  Terminating recording.\n"
             "\n",
-            fd, ae.exe_image.c_str());
+            fd, t->record_session().ofstream().initial_exe().c_str());
     terminate_recording(t);
   }
 
@@ -934,12 +932,11 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
 
   ensure_preload_lib_will_load(rr_exe, env);
 
-  ae = args_env(args, env, cwd, bind_to_cpu);
   session = RecordSession::create(args, env, cwd, bind_to_cpu);
 
   install_termsig_handlers();
 
-  Task* t = session->create_task(ae, session);
+  Task* t = session->create_task();
   TaskGroup::shr_ptr initial_task_group = t->task_group();
 
   while (session->tasks().size() > 0) {

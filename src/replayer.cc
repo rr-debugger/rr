@@ -2224,7 +2224,7 @@ ReplaySession::shr_ptr create_session_from_cmdline() {
       putenv(strdup(e.c_str()));
     }
   }
-  session->create_task(ae, session, session->ifstream().peek_frame().tid());
+  session->create_task(session->ifstream().peek_frame().tid());
   return session;
 }
 

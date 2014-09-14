@@ -139,6 +139,8 @@ public:
 
   bool is_recording() { return as_record() != nullptr; }
 
+  virtual TraceStream& trace() = 0;
+
 protected:
   Session();
   ~Session();
@@ -171,10 +173,9 @@ public:
   typedef std::shared_ptr<RecordSession> shr_ptr;
 
   /**
-   * Fork and exec the initial tracee task to run |ae|.  Return
-   * that Task.
+   * Fork and exec the initial tracee task, and return it.
    */
-  Task* create_task(const struct args_env& ae, shr_ptr self);
+  Task* create_task();
 
   TraceOfstream& ofstream() { return *trace_ofstream; }
 
@@ -188,6 +189,8 @@ public:
                         int bind_to_cpu);
 
   virtual RecordSession* as_record() { return this; }
+
+  virtual TraceStream& trace() { return *trace_ofstream; }
 
 private:
   std::shared_ptr<TraceOfstream> trace_ofstream;
@@ -223,7 +226,7 @@ public:
    * recorded events from |trace|.  |rec_tid| is the recorded
    * tid of the initial tracee task.  Return that Task.
    */
-  Task* create_task(const struct args_env& ae, shr_ptr self, pid_t rec_tid);
+  Task* create_task(pid_t rec_tid);
 
   EmuFs& emufs() { return *emu_fs; }
 
@@ -323,6 +326,8 @@ public:
   EnvironmentBugDetector& bug_detector() { return environment_bug_detector; }
 
   virtual ReplaySession* as_replay() { return this; }
+
+  virtual TraceStream& trace() { return *trace_ifstream; }
 
 private:
   ReplaySession()

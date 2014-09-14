@@ -164,9 +164,8 @@ void Session::remove_round_robin_task() {
   }
 }
 
-Task* RecordSession::create_task(const struct args_env& ae, shr_ptr self) {
-  assert(self.get() == this);
-  Task* t = Task::spawn(ae, *this);
+Task* RecordSession::create_task() {
+  Task* t = Task::spawn(*this);
   track(t);
   return t;
 }
@@ -312,10 +311,8 @@ ReplaySession::shr_ptr ReplaySession::clone_diversion() {
   return session;
 }
 
-Task* ReplaySession::create_task(const struct args_env& ae, shr_ptr self,
-                                 pid_t rec_tid) {
-  assert(self.get() == this);
-  Task* t = Task::spawn(ae, *this, rec_tid);
+Task* ReplaySession::create_task(pid_t rec_tid) {
+  Task* t = Task::spawn(*this, rec_tid);
   track(t);
   return t;
 }
