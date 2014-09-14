@@ -31,6 +31,7 @@
 #include "record_syscall.h"
 #include "recorder_sched.h"
 #include "session.h"
+#include "StringVectorToCharArray.h"
 #include "task.h"
 #include "trace.h"
 #include "util.h"
@@ -104,7 +105,7 @@ static void ensure_preload_lib_will_load(const char* rr_exe,
 
   pid_t child = fork();
   if (0 == child) {
-    execvpe(rr_exe, argv, args_env::CharArray(ep).get());
+    execvpe(rr_exe, argv, StringVectorToCharArray(ep).get());
     FATAL() << "Failed to exec " << rr_exe;
   }
   int status;

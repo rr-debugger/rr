@@ -26,6 +26,7 @@
 #include "log.h"
 #include "remote_syscalls.h"
 #include "session.h"
+#include "StringVectorToCharArray.h"
 #include "syscalls.h"
 #include "util.h"
 
@@ -2155,8 +2156,8 @@ bool Task::clone_syscall_is_complete() {
     EnvironmentBugDetector::run_detection_code();
 
     execvpe(trace.initial_exe().c_str(),
-            args_env::CharArray(trace.initial_argv()).get(),
-            args_env::CharArray(trace.initial_envp()).get());
+            StringVectorToCharArray(trace.initial_argv()).get(),
+            StringVectorToCharArray(trace.initial_envp()).get());
     FATAL() << "Failed to exec '" << trace.initial_exe().c_str() << "'";
   }
 

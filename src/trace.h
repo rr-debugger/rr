@@ -45,24 +45,6 @@ struct args_env {
   std::vector<std::string> envp;
   int bind_to_cpu;
 
-  /**
-   * Converts a vector of strings to a POSIX-style array of char*s terminated
-   * by a nullptr.
-   */
-  class CharArray {
-  public:
-    CharArray(const std::vector<std::string>& vs) {
-      for (auto& v : vs) {
-        array.push_back(const_cast<char*>(v.c_str()));
-      }
-      array.push_back(nullptr);
-    }
-    char** get() { return array.data(); }
-
-  private:
-    std::vector<char*> array;
-  };
-
 private:
   args_env(const args_env&) = delete;
   args_env& operator=(const args_env&) = delete;
