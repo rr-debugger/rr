@@ -292,7 +292,10 @@ void TraceOfstream::close() {
 }
 
 /*static*/ TraceOfstream::shr_ptr TraceOfstream::create(
-    const string& exe_path) {
+    const std::vector<std::string>& argv, const std::vector<std::string>& envp,
+    char* cwd, int bind_to_cpu) {
+  const string& exe_path = argv[0];
+
   ensure_default_rr_trace_dir();
 
   // Find a unique trace directory name.
@@ -337,6 +340,9 @@ void TraceOfstream::close() {
     printf("rr: Saving the execution of `%s' to trace directory `%s'.\n",
            exe_path.c_str(), trace->trace_dir.c_str());
   }
+
+  *trace << args_env(argv, envp, cwd, bind_to_cpu);
+
   return trace;
 }
 

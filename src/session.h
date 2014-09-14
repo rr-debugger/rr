@@ -183,7 +183,9 @@ public:
    * |exe_path|.  (That argument is used to name the trace
    * directory.)
    */
-  static shr_ptr create(const std::string& exe_path);
+  static shr_ptr create(const std::vector<std::string>& argv,
+                        const std::vector<std::string>& envp, char* cwd,
+                        int bind_to_cpu);
 
   virtual RecordSession* as_record() { return this; }
 

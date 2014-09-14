@@ -903,14 +903,13 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
   char cwd[PATH_MAX] = "";
   getcwd(cwd, sizeof(cwd));
 
-  ae = args_env(args, env, cwd, bind_to_cpu);
   // LD_PRELOAD the syscall interception lib
   if (!Flags::get().syscall_buffer_lib_path.empty()) {
     string ld_preload = "LD_PRELOAD=";
     // Our preload lib *must* come first
     ld_preload += Flags::get().syscall_buffer_lib_path;
-    auto it = ae.envp.begin();
-    for (; it != ae.envp.end(); ++it) {
+    auto it = env.begin();
+    for (; it != env.end(); ++it) {
       if (it->find("LD_PRELOAD=") != 0) {
         continue;
       }
@@ -921,8 +920,8 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
       ld_preload += it->substr(it->find("=") + 1);
       break;
     }
-    if (it == ae.envp.end()) {
-      ae.envp.push_back(ld_preload);
+    if (it == env.end()) {
+      env.push_back(ld_preload);
     } else {
       *it = ld_preload;
     }
@@ -930,13 +929,13 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
 
   string env_pair = create_pulseaudio_config();
   if (!env_pair.empty()) {
-    ae.envp.push_back(env_pair);
+    env.push_back(env_pair);
   }
 
-  ensure_preload_lib_will_load(rr_exe, ae.envp);
-  session = RecordSession::create(argv[0]);
+  ensure_preload_lib_will_load(rr_exe, env);
 
-  session->ofstream() << ae;
+  ae = args_env(args, env, cwd, bind_to_cpu);
+  session = RecordSession::create(args, env, cwd, bind_to_cpu);
 
   install_termsig_handlers();
 

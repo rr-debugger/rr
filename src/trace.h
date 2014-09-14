@@ -162,10 +162,14 @@ public:
 
   /**
    * Create and return a trace that will record the initial exe
-   * image |exe_path|.  The trace name is determined by the
-   * global rr args and environment.
+   * image |argv[0]| with initial args |argv|, initial environment |envp|,
+   * current working directory |cwd| and bound to cpu |bind_to_cpu|. This
+   * data is recored in the trace.
+   * The trace name is determined by the global rr args and environment.
    */
-  static shr_ptr create(const string& exe_path);
+  static shr_ptr create(const std::vector<std::string>& argv,
+                        const std::vector<std::string>& envp, char* cwd,
+                        int bind_to_cpu);
 
 private:
   TraceOfstream(const string& trace_dir)

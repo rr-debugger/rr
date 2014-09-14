@@ -172,9 +172,10 @@ Task* RecordSession::create_task(const struct args_env& ae, shr_ptr self) {
 }
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
-    const string& exe_path) {
+    const std::vector<std::string>& argv, const std::vector<std::string>& envp,
+    char* cwd, int bind_to_cpu) {
   shr_ptr session(new RecordSession());
-  session->trace_ofstream = TraceOfstream::create(exe_path);
+  session->trace_ofstream = TraceOfstream::create(argv, envp, cwd, bind_to_cpu);
   return session;
 }
 
