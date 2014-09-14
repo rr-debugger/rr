@@ -26,31 +26,6 @@
 #include "TraceMappedRegion.h"
 
 /**
- * Records data needed to supply the arguments for the |execve()| call that
- * initiates the recorded process group.
- * Also includes the current working directory at the time of the exec.
- */
-struct args_env {
-  args_env() {}
-  args_env(const std::vector<std::string>& argv,
-           const std::vector<std::string>& envp, const std::string& cwd,
-           int bind_to_cpu);
-
-  args_env& operator=(args_env&& o);
-
-  std::string exe_image;
-  std::string cwd;
-  // The initial argv and envp for a tracee.
-  std::vector<std::string> argv;
-  std::vector<std::string> envp;
-  int bind_to_cpu;
-
-private:
-  args_env(const args_env&) = delete;
-  args_env& operator=(const args_env&) = delete;
-};
-
-/**
  * A parcel of recorded tracee data.  |data| contains the data read
  * from |addr| in the tracee, and |ev| and |global_time| represent the
  * tracee state when the data was read.
@@ -141,8 +116,6 @@ public:
   friend TraceOfstream& operator<<(TraceOfstream& tif,
                                    const TraceMappedRegion& map);
   friend TraceOfstream& operator<<(TraceOfstream& tif,
-                                   const struct args_env& ae);
-  friend TraceOfstream& operator<<(TraceOfstream& tif,
                                    const struct raw_data& d);
 
   /**
@@ -205,7 +178,6 @@ public:
    */
   friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
   friend TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map);
-  friend TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae);
   friend TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d);
 
   bool read_raw_data_for_frame(const TraceFrame& frame, struct raw_data& d);

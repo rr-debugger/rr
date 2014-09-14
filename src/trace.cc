@@ -63,24 +63,6 @@ static void ensure_default_rr_trace_dir() {
   }
 }
 
-args_env::args_env(const std::vector<std::string>& argv,
-                   const std::vector<std::string>& envp, const string& cwd,
-                   int bind_to_cpu)
-    : exe_image(argv[0]),
-      cwd(cwd),
-      argv(argv),
-      envp(envp),
-      bind_to_cpu(bind_to_cpu) {}
-
-args_env& args_env::operator=(args_env&& o) {
-  swap(exe_image, o.exe_image);
-  swap(argv, o.argv);
-  swap(envp, o.envp);
-  swap(cwd, o.cwd);
-  swap(bind_to_cpu, o.bind_to_cpu);
-  return *this;
-}
-
 bool TraceOfstream::good() const {
   return events.good() && data.good() && data_header.good() && mmaps.good();
 }
@@ -219,40 +201,6 @@ static istream& operator>>(istream& in, vector<string>& vs) {
   return in;
 }
 
-TraceOfstream& operator<<(TraceOfstream& tof, const struct args_env& ae) {
-  ofstream out(tof.args_env_path());
-
-  assert(out.good());
-
-  out << ae.cwd << '\0';
-  out << ae.argv;
-  out << ae.envp;
-  out << ae.bind_to_cpu;
-  return tof;
-}
-
-TraceIfstream& operator>>(TraceIfstream& tif, struct args_env& ae) {
-  ifstream in(tif.args_env_path());
-
-  assert(in.good());
-
-  char buf[PATH_MAX];
-  in.getline(buf, sizeof(buf), '\0');
-  ae.cwd = tif.cwd = buf;
-
-  in >> tif.argv;
-  ae.argv = tif.argv;
-
-  assert(in.good());
-
-  ae.exe_image = ae.argv[0];
-  in >> tif.envp;
-  ae.envp = tif.envp;
-  in >> tif.bind_to_cpu;
-  ae.bind_to_cpu = tif.bind_to_cpu;
-  return tif;
-}
-
 TraceOfstream& operator<<(TraceOfstream& tof, const struct raw_data& d) {
   tof.data_header << d.global_time << d.ev.encoded << d.addr << d.data.size();
   tof.data.write((const char*)d.data.data(), d.data.size());
@@ -348,7 +296,12 @@ void TraceOfstream::close() {
            exe_path.c_str(), trace->trace_dir.c_str());
   }
 
-  *trace << args_env(argv, envp, cwd, bind_to_cpu);
+  ofstream out(trace->args_env_path());
+  out << trace->cwd << '\0';
+  out << trace->argv;
+  out << trace->envp;
+  out << trace->bind_to_cpu;
+  assert(out.good());
 
   return trace;
 }
@@ -431,8 +384,14 @@ void TraceIfstream::rewind() {
     exit(EX_DATAERR);
   }
 
-  struct args_env ae;
-  *trace >> ae;
+  ifstream in(trace->args_env_path());
+  assert(in.good());
+  char buf[PATH_MAX];
+  in.getline(buf, sizeof(buf), '\0');
+  trace->cwd = buf;
+  in >> trace->argv;
+  in >> trace->envp;
+  in >> trace->bind_to_cpu;
 
   return trace;
 }
