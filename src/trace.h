@@ -152,11 +152,7 @@ private:
 };
 
 class TraceIfstream : public TraceStream {
-  friend struct AutoRestoreState;
-
 public:
-  typedef std::shared_ptr<TraceIfstream> shr_ptr;
-
   /**
    * Read relevant data from the trace.
    *
@@ -182,13 +178,6 @@ public:
   bool at_end() const { return events.at_end(); }
 
   /**
-   * Return a copy of this stream that has exactly the same
-   * state as this, but for which mutations of the returned
-   * clone won't affect the state of this (and vice versa).
-   */
-  shr_ptr clone();
-
-  /**
    * Return the next trace frame, without mutating any stream
    * state.
    */
@@ -207,36 +196,33 @@ public:
    */
   void rewind();
 
-  /**
-   * Open and return the trace specified by the command line
-   * spec |argc| / |argv|.  These are just the portion of the
-   * args that specify the trace, not the entire command line.
-   */
-  static shr_ptr open(int argc, char** argv);
-
   uint64_t uncompressed_bytes() const;
   uint64_t compressed_bytes() const;
 
-private:
-  TraceIfstream(const string& trace_dir)
-      : TraceStream(trace_dir,
-                    // Initialize the global time at 0, so
-                    // that when we tick it when reading
-                    // the first trace, it matches the
-                    // initial global time at recording, 1.
-                    0),
-        events(events_path()),
-        data(data_path()),
-        data_header(data_header_path()),
-        mmaps(mmaps_path()) {}
+  /**
+   * Open the trace in 'dir'. When 'dir' is the empty string, open the
+   * latest trace.
+   */
+  TraceIfstream(const string& dir = string());
 
+  /**
+   * Create a copy of this stream that has exactly the same
+   * state as 'other', but for which mutations of this
+   * clone won't affect the state of 'other' (and vice versa).
+   */
   TraceIfstream(const TraceIfstream& other)
       : TraceStream(other.dir(), other.time()),
         events(other.events),
         data(other.data),
         data_header(other.data_header),
-        mmaps(other.mmaps) {}
+        mmaps(other.mmaps) {
+    argv = other.argv;
+    envp = other.envp;
+    cwd = other.cwd;
+    bind_to_cpu = other.bind_to_cpu;
+  }
 
+private:
   // File that stores events (trace frames).
   CompressedReader events;
   // Files that store raw data saved from tracees (|data|), and

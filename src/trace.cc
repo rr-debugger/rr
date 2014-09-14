@@ -313,11 +313,6 @@ TraceOfstream::TraceOfstream(const std::vector<std::string>& argv,
   assert(out.good());
 }
 
-TraceIfstream::shr_ptr TraceIfstream::clone() {
-  shr_ptr stream(new TraceIfstream(*this));
-  return stream;
-}
-
 TraceFrame TraceIfstream::peek_frame() {
   TraceFrame frame;
   events.save_state();
@@ -356,10 +351,18 @@ void TraceIfstream::rewind() {
   assert(good());
 }
 
-/*static*/ TraceIfstream::shr_ptr TraceIfstream::open(int argc, char** argv) {
-  shr_ptr trace(
-      new TraceIfstream(0 == argc ? latest_trace_symlink() : argv[0]));
-  string path = trace->version_path();
+TraceIfstream::TraceIfstream(const string& dir)
+    : TraceStream(dir.empty() ? latest_trace_symlink() : dir,
+                  // Initialize the global time at 0, so
+                  // that when we tick it when reading
+                  // the first trace, it matches the
+                  // initial global time at recording, 1.
+                  0),
+      events(events_path()),
+      data(data_path()),
+      data_header(data_header_path()),
+      mmaps(mmaps_path()) {
+  string path = version_path();
   fstream vfile(path.c_str(), fstream::in);
   if (!vfile.good()) {
     fprintf(
@@ -391,16 +394,14 @@ void TraceIfstream::rewind() {
     exit(EX_DATAERR);
   }
 
-  ifstream in(trace->args_env_path());
+  ifstream in(args_env_path());
   assert(in.good());
   char buf[PATH_MAX];
   in.getline(buf, sizeof(buf), '\0');
-  trace->cwd = buf;
-  in >> trace->argv;
-  in >> trace->envp;
-  in >> trace->bind_to_cpu;
-
-  return trace;
+  cwd = buf;
+  in >> argv;
+  in >> envp;
+  in >> bind_to_cpu;
 }
 
 uint64_t TraceIfstream::uncompressed_bytes() const {

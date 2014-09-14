@@ -125,7 +125,7 @@ static void dump_statistics(const TraceIfstream& trace, FILE* out) {
 
 static int dump(int argc, char* argv[], char** envp) {
   FILE* out = stdout;
-  auto trace = TraceIfstream::open(argc, argv);
+  TraceIfstream trace(argc > 0 ? argv[0] : "");
 
   if (Flags::get().raw_dump) {
     fprintf(out, "global_time tid reason "
@@ -135,15 +135,15 @@ static int dump(int argc, char* argv[], char** envp) {
 
   if (1 == argc) {
     // No specs => dump all events.
-    dump_events_matching(*trace, stdout, nullptr /*all events*/);
+    dump_events_matching(trace, stdout, nullptr /*all events*/);
   } else {
     for (int i = 1; i < argc; ++i) {
-      dump_events_matching(*trace, stdout, argv[i]);
+      dump_events_matching(trace, stdout, argv[i]);
     }
   }
 
   if (Flags::get().dump_statistics) {
-    dump_statistics(*trace, stdout);
+    dump_statistics(trace, stdout);
   }
 
   return 0;

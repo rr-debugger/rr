@@ -240,13 +240,12 @@ ReplaySession::~ReplaySession() {
 ReplaySession::shr_ptr ReplaySession::clone() {
   LOG(debug) << "Deepforking ReplaySession " << this << " ...";
 
-  shr_ptr session(new ReplaySession());
+  shr_ptr session(new ReplaySession(*this));
   LOG(debug) << "  deepfork session is " << session.get();
   session->tracees_consistent = tracees_consistent;
   session->emu_fs = emu_fs->clone();
   assert(!last_debugged_task);
   session->tgid_debugged = tgid_debugged;
-  session->trace_ifstream = trace_ifstream->clone();
   session->trace_frame = trace_frame;
   session->replay_step = replay_step;
   session->trace_frame_reached = trace_frame_reached;
@@ -325,8 +324,7 @@ void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
 
 /*static*/ ReplaySession::shr_ptr ReplaySession::create(int argc,
                                                         char* argv[]) {
-  shr_ptr session(new ReplaySession());
+  shr_ptr session(new ReplaySession(argc > 0 ? argv[0] : ""));
   session->emu_fs = EmuFs::create();
-  session->trace_ifstream = TraceIfstream::open(argc, argv);
   return session;
 }

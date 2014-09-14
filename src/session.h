@@ -237,7 +237,7 @@ public:
   /** Collect garbage files from this session's emufs. */
   void gc_emufs();
 
-  TraceIfstream& ifstream() { return *trace_ifstream; }
+  TraceIfstream& ifstream() { return trace_ifstream; }
 
   /**
    * True when this diversion is dying, as determined by
@@ -331,14 +331,25 @@ public:
 
   virtual ReplaySession* as_replay() { return this; }
 
-  virtual TraceStream& trace() { return *trace_ifstream; }
+  virtual TraceStream& trace() { return trace_ifstream; }
 
 private:
-  ReplaySession()
+  ReplaySession(const std::string& dir)
       : diversion_refcount(0),
         is_diversion(false),
         last_debugged_task(nullptr),
         tgid_debugged(0),
+        trace_ifstream(dir),
+        trace_frame(),
+        replay_step(),
+        trace_frame_reached(false) {}
+
+  ReplaySession(const ReplaySession& other)
+      : diversion_refcount(0),
+        is_diversion(false),
+        last_debugged_task(nullptr),
+        tgid_debugged(0),
+        trace_ifstream(other.trace_ifstream),
         trace_frame(),
         replay_step(),
         trace_frame_reached(false) {}
@@ -354,7 +365,7 @@ private:
   bool is_diversion;
   Task* last_debugged_task;
   pid_t tgid_debugged;
-  std::shared_ptr<TraceIfstream> trace_ifstream;
+  TraceIfstream trace_ifstream;
   TraceFrame trace_frame;
   struct rep_trace_step replay_step;
   EnvironmentBugDetector environment_bug_detector;
