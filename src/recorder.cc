@@ -97,19 +97,16 @@ static string create_pulseaudio_config() {
  * the preload lib for correctness.
  */
 static void ensure_preload_lib_will_load(const char* rr_exe,
-                                         const CharpVector& envp) {
-  char exe[PATH_MAX];
-  strcpy(exe, rr_exe);
-  char cmd[] = "check-preload-lib";
-  char* argv[] = { exe, cmd, nullptr };
-  CharpVector ep = envp;
-  char magic_envpair[] = "_RR_CHECK_PRELOAD=1";
-  ep[ep.size() - 1] = magic_envpair;
-  ep.push_back(nullptr);
+                                         const vector<string>& envp) {
+  static const char cmd[] = "check-preload-lib";
+  char* argv[] = { const_cast<char*>(rr_exe), const_cast<char*>(cmd), nullptr };
+  vector<string> ep = envp;
+  static const char magic_envpair[] = "_RR_CHECK_PRELOAD=1";
+  ep.push_back(magic_envpair);
 
   pid_t child = fork();
   if (0 == child) {
-    execvpe(rr_exe, argv, ep.data());
+    execvpe(rr_exe, argv, args_env::CharArray(ep).get());
     FATAL() << "Failed to exec " << rr_exe;
   }
   int status;
@@ -900,44 +897,31 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
   ae = args_env(argc, argv, envp, cwd, bind_to_cpu);
   // LD_PRELOAD the syscall interception lib
   if (!Flags::get().syscall_buffer_lib_path.empty()) {
-    // Remove the trailing nullptr.  We'll put it back
-    // after injecting the preload lib into the envp.
-    ae.envp.pop_back();
     string ld_preload = "LD_PRELOAD=";
     // Our preload lib *must* come first
     ld_preload += Flags::get().syscall_buffer_lib_path;
     auto it = ae.envp.begin();
     for (; it != ae.envp.end(); ++it) {
-      if (*it != strstr(*it, "LD_PRELOAD=")) {
+      if (it->find("LD_PRELOAD=") != 0) {
         continue;
       }
-      const char* old_preload = strchr(*it, '=') + 1;
-      assert(old_preload);
       // Honor old preloads too.  This may cause
       // problems, but only in those libs, and
       // that's the user's problem.
       ld_preload += ":";
-      ld_preload += old_preload;
+      ld_preload += it->substr(it->find("=") + 1);
       break;
     }
-    // The envp vector takes over ownership of this
-    // string.
-    char* new_preload = strdup(ld_preload.c_str());
     if (it == ae.envp.end()) {
-      ae.envp.push_back(new_preload);
+      ae.envp.push_back(ld_preload);
     } else {
-      free(*it);
-      *it = new_preload;
+      *it = ld_preload;
     }
-    ae.envp.push_back(nullptr);
   }
 
   string env_pair = create_pulseaudio_config();
   if (!env_pair.empty()) {
-    // The envp vector takes over ownership of this
-    // string.
-    ae.envp.back() = strdup(env_pair.c_str());
-    ae.envp.push_back(nullptr);
+    ae.envp.push_back(env_pair);
   }
 
   ensure_preload_lib_will_load(rr_exe, ae.envp);

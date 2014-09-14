@@ -67,16 +67,12 @@ args_env::args_env(int argc, char* arg_v[], char** env_p, char* cwd,
                    int bind_to_cpu)
     : exe_image(arg_v[0]), cwd(cwd), bind_to_cpu(bind_to_cpu) {
   for (int i = 0; i < argc; ++i) {
-    argv.push_back(strdup(arg_v[i]));
+    argv.push_back(arg_v[i]);
   }
-  argv.push_back(nullptr);
   for (; *env_p; ++env_p) {
-    envp.push_back(strdup(*env_p));
+    envp.push_back(*env_p);
   }
-  envp.push_back(nullptr);
 }
-
-args_env::~args_env() { destroy(); }
 
 args_env& args_env::operator=(args_env&& o) {
   swap(exe_image, o.exe_image);
@@ -85,15 +81,6 @@ args_env& args_env::operator=(args_env&& o) {
   swap(cwd, o.cwd);
   swap(bind_to_cpu, o.bind_to_cpu);
   return *this;
-}
-
-void args_env::destroy() {
-  for (size_t i = 0; i < argv.size(); ++i) {
-    free(argv[i]);
-  }
-  for (size_t i = 0; i < envp.size(); ++i) {
-    free(envp[i]);
-  }
 }
 
 bool TraceOfstream::good() const {
@@ -214,26 +201,23 @@ TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map) {
   return tif;
 }
 
-static ostream& operator<<(ostream& out, const CharpVector& v) {
-  assert(!v.back());
-  out << v.size() - 1 << endl;
-  for (auto it = v.begin(); *it && it != v.end(); ++it) {
-    out << *it << '\0';
+static ostream& operator<<(ostream& out, const vector<string>& vs) {
+  out << vs.size() << endl;
+  for (auto& v : vs) {
+    out << v << '\0';
   }
   return out;
 }
 
-static istream& operator>>(istream& in, CharpVector& v) {
+static istream& operator>>(istream& in, vector<string>& vs) {
   size_t len;
   in >> len;
   in.ignore(1);
-  v.reserve(len + 1);
   for (size_t i = 0; i < len; ++i) {
     char buf[PATH_MAX];
     in.getline(buf, sizeof(buf), '\0');
-    v.push_back(strdup(buf));
+    vs.push_back(buf);
   }
-  v.push_back(nullptr);
   return in;
 }
 

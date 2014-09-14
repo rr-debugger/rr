@@ -25,8 +25,6 @@
 #include "TraceFrame.h"
 #include "TraceMappedRegion.h"
 
-typedef std::vector<char*> CharpVector;
-
 /**
  * Records data needed to supply the arguments for the |execve()| call that
  * initiates the recorded process group.
@@ -35,23 +33,36 @@ typedef std::vector<char*> CharpVector;
 struct args_env {
   args_env() {}
   args_env(int argc, char* argv[], char** envp, char* cwd, int bind_to_cpu);
-  ~args_env();
 
   args_env& operator=(args_env&& o);
 
   std::string exe_image;
   std::string cwd;
-  // The initial argv and envp for a tracee.  We store these as
-  // the relatively complicated array of naked |char*| strings
-  // so that calling |.data()| on both vectors returns a
-  // |char**| that can be passed to POSIX APIs like |execve()|.
-  CharpVector argv;
-  CharpVector envp;
+  // The initial argv and envp for a tracee.
+  std::vector<std::string> argv;
+  std::vector<std::string> envp;
   int bind_to_cpu;
 
-private:
-  void destroy();
+  /**
+   * Converts a vector of strings to a POSIX-style array of char*s terminated
+   * by a nullptr.
+   */
+  class CharArray {
+  public:
+    CharArray(const std::vector<std::string>& vs) {
+      for (auto& v : vs) {
+        array.push_back(const_cast<char*>(v.c_str()));
+      }
+      array.push_back(nullptr);
+    }
+    char** get() {
+      return array.data();
+    }
+  private:
+    std::vector<char*> array;
+  };
 
+private:
   args_env(const args_env&) = delete;
   args_env& operator=(const args_env&) = delete;
 };

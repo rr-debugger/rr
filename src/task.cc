@@ -2154,7 +2154,8 @@ bool Task::clone_syscall_is_complete() {
 
     EnvironmentBugDetector::run_detection_code();
 
-    execvpe(ae.exe_image.c_str(), ae.argv.data(), ae.envp.data());
+    execvpe(ae.exe_image.c_str(), args_env::CharArray(ae.argv).get(),
+            args_env::CharArray(ae.envp).get());
     FATAL() << "Failed to exec '" << ae.exe_image.c_str() << "'";
   }
 

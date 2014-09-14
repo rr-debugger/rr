@@ -2218,10 +2218,10 @@ ReplaySession::shr_ptr create_session_from_cmdline() {
   // with a fresh environment guaranteed to be the same as in
   // replay, so we don't have to worry about any mutation here
   // affecting post-exec execution.
-  for (auto it = ae.envp.begin(); *it && it != ae.envp.end(); ++it) {
-    if (!strncmp(*it, "PATH=", sizeof("PATH=") - 1)) {
+  for (auto& e : ae.envp) {
+    if (e.find("PATH=") == 0) {
       // NB: intentionally leaking this string.
-      putenv(strdup(*it));
+      putenv(strdup(e.c_str()));
     }
   }
   session->create_task(ae, session, session->ifstream().peek_frame().tid());
