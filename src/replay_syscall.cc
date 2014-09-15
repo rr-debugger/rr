@@ -714,7 +714,7 @@ static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
                // device/inode info for this anonymous mapping.
                // Preserve the mapping name though, so
                // AddressSpace::dump() shows something useful.
-               MappableResource(FileId(), file->file_name()));
+               MappableResource(FileId(), file->file_name().c_str()));
 
   return mapped_addr;
 }
@@ -722,7 +722,7 @@ static void* finish_private_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
 static void verify_backing_file(const TraceMappedRegion* file, int prot,
                                 int flags) {
   struct stat metadata;
-  if (stat(file->file_name(), &metadata)) {
+  if (stat(file->file_name().c_str(), &metadata)) {
     FATAL() << "Failed to stat " << file->file_name()
             << ": replay is impossible";
   }
@@ -737,7 +737,7 @@ static void verify_backing_file(const TraceMappedRegion* file, int prot,
         << "Metadata of " << file->file_name()
         << " changed: replay divergence likely, but continuing anyway ...";
   }
-  if (should_copy_mmap_region(file->file_name(), &metadata, prot, flags,
+  if (should_copy_mmap_region(file->file_name().c_str(), &metadata, prot, flags,
                               WARN_DEFAULT)) {
     LOG(error) << file->file_name()
                << " wasn't copied during recording, but now it should be?";
@@ -772,7 +772,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   /* Open in the tracee the file that was mapped during
    * recording. */
   {
-    AutoRestoreMem child_str(remote, file->file_name());
+    AutoRestoreMem child_str(remote, file->file_name().c_str());
     /* We only need RDWR for shared writeable mappings.
      * Private mappings will happily COW from the mapped
      * RDONLY file.
@@ -798,8 +798,9 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   remote.syscall(Arch::close, fd);
 
   if (note_task_map) {
-    t->vm()->map(mapped_addr, length, prot, flags, page_size() * offset_pages,
-                 MappableResource(FileId(file->stat()), file->file_name()));
+    t->vm()->map(
+        mapped_addr, length, prot, flags, page_size() * offset_pages,
+        MappableResource(FileId(file->stat()), file->file_name().c_str()));
   }
 
   return mapped_addr;

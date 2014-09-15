@@ -143,8 +143,10 @@ static CompressedWriter& operator<<(CompressedWriter& out, const T& value) {
   return out;
 }
 
-static void write_string(CompressedWriter& out, const char* str) {
-  out.write(str, strlen(str) + 1);
+static CompressedWriter& operator<<(CompressedWriter& out,
+                                    const string& value) {
+  out.write(value.c_str(), value.size() + 1);
+  return out;
 }
 
 template <typename T>
@@ -153,31 +155,28 @@ static CompressedReader& operator>>(CompressedReader& in, T& value) {
   return in;
 }
 
-template <int N> static void read_string(CompressedReader& in, char (&str)[N]) {
-  int size = N;
-  char* s = str;
-  while (size > 0) {
-    in.read(s, 1);
-    if (*s == 0) {
-      return;
+static CompressedReader& operator>>(CompressedReader& in, string& value) {
+  value.empty();
+  while (true) {
+    char ch;
+    in.read(&ch, 1);
+    if (ch == 0) {
+      break;
     }
-    ++s;
-    --size;
+    value.append(1, ch);
   }
-  abort();
+  return in;
 }
 
 TraceWriter& operator<<(TraceWriter& tof, const TraceMappedRegion& map) {
-  tof.mmaps << map.copied();
-  write_string(tof.mmaps, map.file_name());
-  tof.mmaps << map.stat() << map.start() << map.end();
+  tof.mmaps << map.copied() << map.file_name() << map.stat() << map.start()
+            << map.end();
   return tof;
 }
 
 TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map) {
-  tif.mmaps >> map.copied_;
-  read_string(tif.mmaps, map.filename);
-  tif.mmaps >> map.stat_ >> map.start_ >> map.end_;
+  tif.mmaps >> map.copied_ >> map.filename >> map.stat_ >> map.start_ >>
+      map.end_;
   return tif;
 }
 

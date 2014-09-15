@@ -1208,7 +1208,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   sprintf(filename, "scratch for thread %d", t->tid);
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
-  TraceMappedRegion file(filename, stat, t->scratch_ptr,
+  TraceMappedRegion file(string(filename), stat, t->scratch_ptr,
                          (uint8_t*)t->scratch_ptr + scratch_size);
   t->ofstream() << file;
 

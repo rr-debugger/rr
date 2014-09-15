@@ -147,7 +147,7 @@ EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
     it->second->update(mf.stat());
     return it->second;
   }
-  auto vf = EmuFile::create(tag, mf.file_name(), mf.stat());
+  auto vf = EmuFile::create(tag, mf.file_name().c_str(), mf.stat());
   files[id] = vf;
   return vf;
 }

@@ -10,24 +10,26 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <string>
+
 #include "remote_ptr.h"
 #include "TraceFrame.h"
 
 class TraceMappedRegion {
 public:
-  TraceMappedRegion(const char* filename, const struct stat& stat,
+  TraceMappedRegion(const std::string& filename, const struct stat& stat,
                     remote_ptr<void> start, remote_ptr<void> end,
                     bool copied = false)
-      : stat_(stat), start_(start), end_(end), copied_(copied) {
-    strncpy(this->filename, filename, sizeof(this->filename));
-    this->filename[sizeof(this->filename) - 1] = 0;
-  }
+      : filename(filename),
+        stat_(stat),
+        start_(start),
+        end_(end),
+        copied_(copied) {}
   TraceMappedRegion() : start_(nullptr), end_(nullptr), copied_(false) {
-    filename[0] = 0;
     memset(&stat_, 0, sizeof(stat_));
   }
 
-  const char* file_name() const { return filename; }
+  const std::string& file_name() const { return filename; }
   const struct stat& stat() const { return stat_; }
   remote_ptr<void> start() const { return start_; }
   remote_ptr<void> end() const { return end_; }
@@ -42,7 +44,7 @@ public:
 private:
   friend TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map);
 
-  char filename[PATH_MAX];
+  std::string filename;
   struct stat stat_;
 
   /* Bounds of mapped region. */
