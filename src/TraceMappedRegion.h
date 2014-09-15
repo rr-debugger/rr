@@ -3,6 +3,7 @@
 #ifndef RR_TRACE_MAPPED_REGION_H_
 #define RR_TRACE_MAPPED_REGION_H_
 
+#include <linux/limits.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>

@@ -3,11 +3,6 @@
 #ifndef RR_TRACE_H_
 #define RR_TRACE_H_
 
-#include <assert.h>
-#include <linux/limits.h>
-#include <stdio.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include <memory>
@@ -17,11 +12,7 @@
 #include "CompressedReader.h"
 #include "CompressedWriter.h"
 #include "Event.h"
-#include "ExtraRegisters.h"
-#include "PerfCounters.h"
-#include "Registers.h"
 #include "remote_ptr.h"
-#include "Ticks.h"
 #include "TraceFrame.h"
 #include "TraceMappedRegion.h"
 
