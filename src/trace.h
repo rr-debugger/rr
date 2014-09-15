@@ -32,7 +32,7 @@
  */
 struct raw_data {
   std::vector<uint8_t> data;
-  void* addr;
+  remote_ptr<void> addr;
 };
 
 /**
