@@ -17,9 +17,12 @@
 #include "TraceMappedRegion.h"
 
 /**
- * TraceFstream stores all the data common to both recording and
- * replay.  TraceOfstream deals with recording-specific logic, and
- * TraceIfstream handles replay-specific details.
+ * TraceStream stores all the data common to both recording and
+ * replay.  TraceWriter deals with recording-specific logic, and
+ * TraceReader handles replay-specific details.
+ *
+ * These classes are all in the same .h/.cc file to keep trace reading and
+ * writing code together for easier coordination.
  */
 class TraceStream {
 protected:
