@@ -596,6 +596,7 @@ public:
    * variants record data that's already been read from this,
    * and the |record_remote*()| variants read the data and then
    * record it.
+   * If 'addr' is null then num_bytes is treated as zero.
    */
   void record_local(void* addr, ssize_t num_bytes, const void* buf);
   void record_remote(void* addr, ssize_t num_bytes);

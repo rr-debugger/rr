@@ -201,10 +201,9 @@ static istream& operator>>(istream& in, vector<string>& vs) {
   return in;
 }
 
-TraceWriter& operator<<(TraceWriter& tof, const struct raw_data& d) {
-  tof.data_header << global_time << d.addr << d.data.size();
-  tof.data.write((const char*)d.data.data(), d.data.size());
-  return tof;
+void TraceWriter::write_raw(const void* d, size_t len, remote_ptr<void> addr) {
+  data_header << global_time << addr.as_int() << len;
+  data.write(d, len);
 }
 
 TraceReader& operator>>(TraceReader& tif, struct raw_data& d) {

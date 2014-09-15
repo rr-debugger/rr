@@ -105,13 +105,19 @@ public:
   /**
    * Write relevant data to the trace.
    *
-   * NB: recording a trace frame has the side effect of ticking
+   * Recording a trace frame has the side effect of ticking
    * the global time.
    */
   friend TraceWriter& operator<<(TraceWriter& tif, const TraceFrame& frame);
   friend TraceWriter& operator<<(TraceWriter& tif,
                                  const TraceMappedRegion& map);
-  friend TraceWriter& operator<<(TraceWriter& tif, const struct raw_data& d);
+
+  /**
+   * Write a raw-data record to the trace.
+   * 'addr' is the address in the tracee where the data came from/will be
+   * restored to.
+   */
+  void write_raw(const void* data, size_t len, remote_ptr<void> addr);
 
   /**
    * Return true iff all trace files are "good".
@@ -161,6 +167,11 @@ public:
   friend TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map);
   friend TraceReader& operator>>(TraceReader& tif, struct raw_data& d);
 
+  /**
+   * Reads the next raw data record for 'frame' from the current point in
+   * the trace. If there are no more raw data records for 'frame', returns
+   * false.
+   */
   bool read_raw_data_for_frame(const TraceFrame& frame, struct raw_data& d);
 
   /**

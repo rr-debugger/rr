@@ -739,10 +739,14 @@ void Task::set_rbc_count(int64_t count) { rbcs = count; }
 void Task::record_local(void* addr, ssize_t num_bytes, const void* data) {
   maybe_flush_syscallbuf();
 
-  struct raw_data buf;
-  buf.addr = addr;
-  buf.data.assign((const uint8_t*)data, (const uint8_t*)data + num_bytes);
-  ofstream() << buf;
+  assert(num_bytes >= 0);
+
+  if (!addr) {
+    ofstream().write_raw(nullptr, 0, addr);
+    return;
+  }
+
+  ofstream().write_raw(data, num_bytes, addr);
 }
 
 void Task::record_remote(void* addr, ssize_t num_bytes) {
@@ -751,24 +755,30 @@ void Task::record_remote(void* addr, ssize_t num_bytes) {
 
   maybe_flush_syscallbuf();
 
-  struct raw_data buf;
-  buf.addr = addr;
-  if (addr && num_bytes > 0) {
-    buf.data.resize(num_bytes);
-    read_bytes_helper(addr, buf.data.size(), buf.data.data());
+  assert(num_bytes >= 0);
+
+  if (!addr) {
+    ofstream().write_raw(nullptr, 0, addr);
+    return;
   }
-  ofstream() << buf;
+
+  vector<uint8_t> buf;
+  buf.resize(num_bytes);
+  read_bytes_helper(addr, num_bytes, buf.data());
+  ofstream().write_raw(buf.data(), num_bytes, addr);
 }
 
 void Task::record_remote_str(void* str) {
   maybe_flush_syscallbuf();
 
+  if (!str) {
+    ofstream().write_raw(nullptr, 0, str);
+    return;
+  }
+
   string s = read_c_str(str);
-  struct raw_data buf;
-  buf.addr = str;
   // Record the \0 byte.
-  buf.data.assign(s.c_str(), s.c_str() + s.size() + 1);
-  ofstream() << buf;
+  ofstream().write_raw(s.c_str(), s.size() + 1, str);
 }
 
 string Task::read_c_str(void* child_addr) {
