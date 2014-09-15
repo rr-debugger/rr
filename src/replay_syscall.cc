@@ -280,7 +280,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
    * process, if it were to be probed by madvise or some other
    * means. But we make it PROT_NONE so that rogue reads/writes
    * to the scratch memory are caught. */
-  auto file = t->ifstream().read_mapped_region();
+  auto file = t->trace_reader().read_mapped_region();
 
   t->scratch_ptr = file.start();
   t->scratch_size = file.size();
@@ -331,8 +331,8 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
 static bool is_failed_syscall(Task* t, const TraceFrame* frame) {
   TraceFrame next_frame;
   if (SYSCALL_ENTRY == frame->event().state) {
-    next_frame =
-        t->ifstream().peek_to(t->rec_tid, frame->event().type, SYSCALL_EXIT);
+    next_frame = t->trace_reader().peek_to(t->rec_tid, frame->event().type,
+                                           SYSCALL_EXIT);
     frame = &next_frame;
   }
   return SYSCALL_FAILED(frame->regs().syscall_result_signed());
@@ -441,7 +441,7 @@ static void process_execve(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   }
 
   if (SYSCALL_ENTRY == state) {
-    Event next_ev(t->ifstream().peek_frame().event());
+    Event next_ev(t->trace_reader().peek_frame().event());
     if (EV_SYSCALL == next_ev.type() &&
         Arch::execve == next_ev.Syscall().number &&
         EXITING_SYSCALL == next_ev.Syscall().state) {
@@ -831,7 +831,7 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   // TODO: this is a poor man's shared segment synchronization.
   // For full generality, we also need to emulate direct file
   // modifications through write/splice/etc.
-  auto buf = t->ifstream().read_raw_data();
+  auto buf = t->trace_reader().read_raw_data();
   assert(mapped_addr == buf.addr &&
          rec_num_bytes == ceil_page_size(buf.data.size()));
 
@@ -875,7 +875,7 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
       mapped_addr =
           finish_anonymous_mmap<Arch>(remote, trace, prot, flags, offset_pages);
     } else {
-      auto file = t->ifstream().read_mapped_region();
+      auto file = t->trace_reader().read_mapped_region();
 
       if (!file.copied()) {
         mapped_addr = finish_direct_mmap<Arch>(remote, trace, prot, flags,
@@ -1150,7 +1150,7 @@ static void maybe_verify_tracee_saved_data(Task* t, const Registers* rec_regs) {
     return;
   }
 
-  auto rec = t->ifstream().read_raw_data();
+  auto rec = t->trace_reader().read_raw_data();
 
   // If the data address changed, something disastrous happened
   // and the buffers aren't comparable.  Just bail.

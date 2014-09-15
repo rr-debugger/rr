@@ -1210,7 +1210,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   memset(&stat, 0, sizeof(stat));
   TraceMappedRegion file(string(filename), stat, t->scratch_ptr,
                          (uint8_t*)t->scratch_ptr + scratch_size);
-  t->ofstream().write_mapped_region(file);
+  t->trace_writer().write_mapped_region(file);
 
   r.set_syscall_result(saved_result);
   t->set_regs(r);
@@ -1663,7 +1663,7 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   }
 
   TraceMappedRegion file(filename, stat, addr, (uint8_t*)addr + size, copied);
-  t->ofstream().write_mapped_region(file);
+  t->trace_writer().write_mapped_region(file);
 
   if (strstr(filename, SYSCALLBUF_LIB_FILENAME) && (prot & PROT_EXEC)) {
     t->syscallbuf_lib_start = file.start();

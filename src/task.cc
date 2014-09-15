@@ -394,9 +394,9 @@ void Task::set_siginfo(const siginfo_t& si) {
   ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 
-TraceReader& Task::ifstream() { return session_replay->ifstream(); }
+TraceReader& Task::trace_reader() { return session_replay->trace_reader(); }
 
-TraceWriter& Task::ofstream() { return session_record->ofstream(); }
+TraceWriter& Task::trace_writer() { return session_record->trace_writer(); }
 
 void* Task::init_buffers(void* map_hint, int share_desched_fd) {
   // NB: the tracee can't be interrupted with a signal while
@@ -701,7 +701,7 @@ static bool record_extra_regs(const Event& ev) {
 void Task::record_event(const Event& ev) {
   maybe_flush_syscallbuf();
 
-  TraceFrame frame(ofstream().time(), tid, ev.encode());
+  TraceFrame frame(trace_writer().time(), tid, ev.encode());
   if (ev.has_exec_info() == HAS_EXEC_INFO) {
     PerfCounters::Extra extra_perf_values;
     if (PerfCounters::extra_perf_counters_enabled()) {
@@ -721,7 +721,7 @@ void Task::record_event(const Event& ev) {
     checksum_process_memory(this, frame.time());
   }
 
-  ofstream().write_frame(frame);
+  trace_writer().write_frame(frame);
 }
 
 void Task::flush_inconsistent_state() { rbcs = 0; }
@@ -742,11 +742,11 @@ void Task::record_local(void* addr, ssize_t num_bytes, const void* data) {
   assert(num_bytes >= 0);
 
   if (!addr) {
-    ofstream().write_raw(nullptr, 0, addr);
+    trace_writer().write_raw(nullptr, 0, addr);
     return;
   }
 
-  ofstream().write_raw(data, num_bytes, addr);
+  trace_writer().write_raw(data, num_bytes, addr);
 }
 
 void Task::record_remote(void* addr, ssize_t num_bytes) {
@@ -758,27 +758,27 @@ void Task::record_remote(void* addr, ssize_t num_bytes) {
   assert(num_bytes >= 0);
 
   if (!addr) {
-    ofstream().write_raw(nullptr, 0, addr);
+    trace_writer().write_raw(nullptr, 0, addr);
     return;
   }
 
   vector<uint8_t> buf;
   buf.resize(num_bytes);
   read_bytes_helper(addr, num_bytes, buf.data());
-  ofstream().write_raw(buf.data(), num_bytes, addr);
+  trace_writer().write_raw(buf.data(), num_bytes, addr);
 }
 
 void Task::record_remote_str(void* str) {
   maybe_flush_syscallbuf();
 
   if (!str) {
-    ofstream().write_raw(nullptr, 0, str);
+    trace_writer().write_raw(nullptr, 0, str);
     return;
   }
 
   string s = read_c_str(str);
   // Record the \0 byte.
-  ofstream().write_raw(s.c_str(), s.size() + 1, str);
+  trace_writer().write_raw(s.c_str(), s.size() + 1, str);
 }
 
 string Task::read_c_str(void* child_addr) {
@@ -937,7 +937,7 @@ const TraceFrame& Task::current_trace_frame() {
 }
 
 ssize_t Task::set_data_from_trace() {
-  auto buf = ifstream().read_raw_data();
+  auto buf = trace_reader().read_raw_data();
   if (buf.addr && buf.data.size() > 0) {
     write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
   }
@@ -2040,16 +2040,16 @@ void Task::write_bytes_helper(void* addr, ssize_t buf_size,
 
 TraceStream& Task::trace_fstream() {
   if (session_record) {
-    return session_record->ofstream();
+    return session_record->trace_writer();
   }
-  return session_replay->ifstream();
+  return session_replay->trace_reader();
 }
 
 const TraceStream& Task::trace_fstream() const {
   if (session_record) {
-    return session_record->ofstream();
+    return session_record->trace_writer();
   }
-  return session_replay->ifstream();
+  return session_replay->trace_reader();
 }
 
 void Task::xptrace(int request, void* addr, void* data) {

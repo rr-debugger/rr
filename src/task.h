@@ -380,11 +380,11 @@ public:
   void set_siginfo(const siginfo_t& si);
 
   /**
-   * Return the trace we're either recording to (|ofstream()|)
-   * or replaying from (|ifstream()|).
+   * Return the trace we're either recording to (|trace_reader()|)
+   * or replaying from (|trace_writer()|).
    */
-  TraceReader& ifstream();
-  TraceWriter& ofstream();
+  TraceReader& trace_reader();
+  TraceWriter& trace_writer();
 
   /**
    * Initialize tracee buffers in this, i.e., implement

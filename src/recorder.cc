@@ -607,7 +607,7 @@ static void check_rbc(Task* t) {
             "exist, or\n"
             "  isn't in your $PATH.  Terminating recording.\n"
             "\n",
-            fd, t->record_session().ofstream().initial_exe().c_str());
+            fd, t->record_session().trace_writer().initial_exe().c_str());
     terminate_recording(t);
   }
 
@@ -1014,10 +1014,10 @@ void terminate_recording(Task* t, int status) {
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 
   TraceFrame frame(
-      session->ofstream().time(), t ? t->tid : 0,
+      session->trace_writer().time(), t ? t->tid : 0,
       Event(EV_TRACE_TERMINATION, BaseEvent(NO_EXEC_INFO)).encode());
-  session->ofstream().write_frame(frame);
-  session->ofstream().close();
+  session->trace_writer().write_frame(frame);
+  session->trace_writer().close();
 
   // TODO: Task::killall() here?
 

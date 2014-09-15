@@ -596,7 +596,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 static Task* schedule_task(ReplaySession& session, Task** intr_t,
                            bool advance_to_next_trace_frame) {
   if (advance_to_next_trace_frame) {
-    session.current_trace_frame() = session.ifstream().read_frame();
+    session.current_trace_frame() = session.trace_reader().read_frame();
     session.reached_trace_frame() = false;
   } else {
     /* We shouldn't be scheduling a task which has already reached
@@ -621,13 +621,13 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
   // tremendous win.
   if (USE_TIMESLICE_COALESCING &&
       session.current_trace_frame().event().type == EV_SCHED) {
-    TraceFrame next_trace = session.ifstream().peek_frame();
+    TraceFrame next_trace = session.trace_reader().peek_frame();
     while (EV_SCHED == next_trace.event().type &&
            next_trace.tid() == t->rec_tid &&
            Flags::get().goto_event != next_trace.time() &&
            !trace_instructions_up_to_event(next_trace.time())) {
-      session.current_trace_frame() = session.ifstream().read_frame();
-      next_trace = session.ifstream().peek_frame();
+      session.current_trace_frame() = session.trace_reader().read_frame();
+      next_trace = session.trace_reader().peek_frame();
     }
   }
   assert(t->trace_time() == session.current_trace_frame().time());
@@ -1451,7 +1451,7 @@ static void prepare_syscallbuf_records(Task* t) {
 
   // Read the recorded syscall buffer back into the buffer
   // region.
-  auto buf = t->ifstream().read_raw_data();
+  auto buf = t->trace_reader().read_raw_data();
   flush->num_rec_bytes_remaining = buf.data.size();
 
   assert(flush->num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);
@@ -2117,7 +2117,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
   // So we make the decision to create the debugger based on the
   // frame we're *about to* replay, without modifying the
   // TraceIfstream.
-  TraceFrame next_frame = session->ifstream().peek_frame();
+  TraceFrame next_frame = session->trace_reader().peek_frame();
   Task* t = session->find_task(next_frame.tid());
   if (!t) {
     return nullptr;
@@ -2221,7 +2221,7 @@ ReplaySession::shr_ptr create_session_from_cmdline() {
       putenv(strdup(e.c_str()));
     }
   }
-  session->create_task(session->ifstream().peek_frame().tid());
+  session->create_task(session->trace_reader().peek_frame().tid());
   return session;
 }
 
@@ -2254,7 +2254,7 @@ static dbg_context* restart_session(dbg_context* dbg, dbg_request* req,
 
   stashed_dbg = dbg;
 
-  if (session->ifstream().time() > Flags::get().goto_event) {
+  if (session->trace_reader().time() > Flags::get().goto_event) {
     // We weren't able to reuse the stashed session, so
     // just discard it and create a fresh one that's back
     // at beginning-of-trace.
@@ -2416,7 +2416,7 @@ int replay(int argc, char* argv[], char** envp) {
 void emergency_debug(Task* t) {
   RecordSession* record_session = t->session().as_record();
   if (record_session) {
-    record_session->ofstream().close();
+    record_session->trace_writer().close();
   }
 
   if (probably_not_interactive() && !Flags::get().force_things) {

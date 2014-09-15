@@ -27,12 +27,11 @@ class ReplaySession;
 /**
  * Sessions track the global state of a set of tracees corresponding
  * to an rr recorder or replayer.  During recording, the tracked
- * tracees will all write to the same TraceOfstream, and during
+ * tracees will all write to the same TraceWriter, and during
  * replay, the tracees that will be tracked will all be created based
- * on the same TraceIfstream.
+ * on the same TraceReader.
  *
- * Sessions exist in order to allow multiple
- * TraceOfstream/TraceIfstreams to coexist in the same process.  This
+ * Multiple sessions can coexist in the same process.  This
  * is required when using replay checkpoints, for example.
  */
 class Session {
@@ -177,7 +176,7 @@ public:
    */
   Task* create_task();
 
-  TraceWriter& ofstream() { return trace_ofstream; }
+  TraceWriter& trace_writer() { return trace_ofstream; }
 
   /**
    * Create a recording session for the initial exe image
@@ -237,7 +236,7 @@ public:
   /** Collect garbage files from this session's emufs. */
   void gc_emufs();
 
-  TraceReader& ifstream() { return trace_ifstream; }
+  TraceReader& trace_reader() { return trace_ifstream; }
 
   /**
    * True when this diversion is dying, as determined by
