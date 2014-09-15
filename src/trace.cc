@@ -71,7 +71,7 @@ bool TraceReader::good() const {
   return events.good() && data.good() && data_header.good() && mmaps.good();
 }
 
-void TraceWriter::write_trace_frame(const TraceFrame& frame) {
+void TraceWriter::write_frame(const TraceFrame& frame) {
   events.write(&frame.basic_info, sizeof(frame.basic_info));
   if (!events.good()) {
     FATAL() << "Tried to save " << sizeof(frame.basic_info)
@@ -108,7 +108,7 @@ void TraceWriter::write_trace_frame(const TraceFrame& frame) {
   tick_time();
 }
 
-TraceFrame TraceReader::read_trace_frame() {
+TraceFrame TraceReader::read_frame() {
   // Read the common event info first, to see if we also have
   // exec info to read.
   TraceFrame frame;
@@ -313,7 +313,7 @@ TraceWriter::TraceWriter(const std::vector<std::string>& argv,
 TraceFrame TraceReader::peek_frame() {
   events.save_state();
   auto saved_time = global_time;
-  auto frame = read_trace_frame();
+  auto frame = read_frame();
   events.restore_state();
   global_time = saved_time;
   return frame;
@@ -325,7 +325,7 @@ TraceFrame TraceReader::peek_to(pid_t pid, EventType type,
   events.save_state();
   auto saved_time = global_time;
   while (good() && !at_end()) {
-    frame = read_trace_frame();
+    frame = read_frame();
     if (frame.tid() == pid && frame.event().type == type &&
         frame.event().state == state) {
       events.restore_state();

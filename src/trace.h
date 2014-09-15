@@ -89,7 +89,7 @@ public:
    * Recording a trace frame has the side effect of ticking
    * the global time.
    */
-  void write_trace_frame(const TraceFrame& frame);
+  void write_frame(const TraceFrame& frame);
 
   /**
    * Write TraceMappedRegion record to the trace.
@@ -156,7 +156,7 @@ public:
    * the global time to match the time recorded in the trace
    * frame.
    */
-  TraceFrame read_trace_frame();
+  TraceFrame read_frame();
 
   /**
    * Read the next mapped region descriptor and return it.
