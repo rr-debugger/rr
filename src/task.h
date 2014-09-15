@@ -383,8 +383,8 @@ public:
    * Return the trace we're either recording to (|ofstream()|)
    * or replaying from (|ifstream()|).
    */
-  TraceIfstream& ifstream();
-  TraceOfstream& ofstream();
+  TraceReader& ifstream();
+  TraceWriter& ofstream();
 
   /**
    * Initialize tracee buffers in this, i.e., implement

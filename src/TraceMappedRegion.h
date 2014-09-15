@@ -39,7 +39,7 @@ public:
   }
 
 private:
-  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map);
+  friend TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map);
 
   char filename[PATH_MAX];
   struct stat stat_;

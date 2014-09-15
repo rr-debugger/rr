@@ -394,9 +394,9 @@ void Task::set_siginfo(const siginfo_t& si) {
   ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 
-TraceIfstream& Task::ifstream() { return session_replay->ifstream(); }
+TraceReader& Task::ifstream() { return session_replay->ifstream(); }
 
-TraceOfstream& Task::ofstream() { return session_record->ofstream(); }
+TraceWriter& Task::ofstream() { return session_record->ofstream(); }
 
 void* Task::init_buffers(void* map_hint, int share_desched_fd) {
   // NB: the tracee can't be interrupted with a signal while

@@ -13,8 +13,8 @@
 #include "Registers.h"
 #include "Ticks.h"
 
-class TraceIfstream;
-class TraceOfstream;
+class TraceReader;
+class TraceWriter;
 
 /**
  * A trace_frame is one "trace event" from a complete trace.  During
@@ -67,8 +67,8 @@ public:
    */
   void dump_raw(FILE* out = nullptr) const;
 
-  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
-  friend TraceOfstream& operator<<(TraceOfstream& tif, const TraceFrame& frame);
+  friend TraceReader& operator>>(TraceReader& tif, TraceFrame& frame);
+  friend TraceWriter& operator<<(TraceWriter& tif, const TraceFrame& frame);
 
 private:
   struct {

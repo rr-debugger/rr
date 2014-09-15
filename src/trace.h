@@ -100,7 +100,7 @@ protected:
   TraceFrame::Time global_time;
 };
 
-class TraceOfstream : public TraceStream {
+class TraceWriter : public TraceStream {
 public:
   /**
    * Write relevant data to the trace.
@@ -108,11 +108,10 @@ public:
    * NB: recording a trace frame has the side effect of ticking
    * the global time.
    */
-  friend TraceOfstream& operator<<(TraceOfstream& tif, const TraceFrame& frame);
-  friend TraceOfstream& operator<<(TraceOfstream& tif,
-                                   const TraceMappedRegion& map);
-  friend TraceOfstream& operator<<(TraceOfstream& tif,
-                                   const struct raw_data& d);
+  friend TraceWriter& operator<<(TraceWriter& tif, const TraceFrame& frame);
+  friend TraceWriter& operator<<(TraceWriter& tif,
+                                 const TraceMappedRegion& map);
+  friend TraceWriter& operator<<(TraceWriter& tif, const struct raw_data& d);
 
   /**
    * Return true iff all trace files are "good".
@@ -133,9 +132,9 @@ public:
    * data is recored in the trace.
    * The trace name is determined by the global rr args and environment.
    */
-  TraceOfstream(const std::vector<std::string>& argv,
-                const std::vector<std::string>& envp, const string& cwd,
-                int bind_to_cpu);
+  TraceWriter(const std::vector<std::string>& argv,
+              const std::vector<std::string>& envp, const string& cwd,
+              int bind_to_cpu);
 
 private:
   // File that stores events (trace frames).
@@ -149,7 +148,7 @@ private:
   CompressedWriter mmaps;
 };
 
-class TraceIfstream : public TraceStream {
+class TraceReader : public TraceStream {
 public:
   /**
    * Read relevant data from the trace.
@@ -158,9 +157,9 @@ public:
    * the global time to match the time recorded in the trace
    * frame.
    */
-  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame);
-  friend TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map);
-  friend TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d);
+  friend TraceReader& operator>>(TraceReader& tif, TraceFrame& frame);
+  friend TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map);
+  friend TraceReader& operator>>(TraceReader& tif, struct raw_data& d);
 
   bool read_raw_data_for_frame(const TraceFrame& frame, struct raw_data& d);
 
@@ -201,14 +200,14 @@ public:
    * Open the trace in 'dir'. When 'dir' is the empty string, open the
    * latest trace.
    */
-  TraceIfstream(const string& dir = string());
+  TraceReader(const string& dir = string());
 
   /**
    * Create a copy of this stream that has exactly the same
    * state as 'other', but for which mutations of this
    * clone won't affect the state of 'other' (and vice versa).
    */
-  TraceIfstream(const TraceIfstream& other)
+  TraceReader(const TraceReader& other)
       : TraceStream(other.dir(), other.time()),
         events(other.events),
         data(other.data),

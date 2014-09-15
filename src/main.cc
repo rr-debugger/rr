@@ -31,7 +31,7 @@ using namespace std;
 
 extern char** environ;
 
-static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
+static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
                                  const TraceFrame& frame) {
   if (frame.event().type != EV_SYSCALLBUF_FLUSH) {
     return;
@@ -72,7 +72,7 @@ static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
  * is, they should comprise disjoint and monotonically increasing
  * event sets.  No attempt is made to enforce this or normalize specs.
  */
-static void dump_events_matching(TraceIfstream& trace, FILE* out,
+static void dump_events_matching(TraceReader& trace, FILE* out,
                                  const char* spec) {
 
   uint32_t start = 0, end = numeric_limits<uint32_t>::max();
@@ -111,7 +111,7 @@ static void dump_events_matching(TraceIfstream& trace, FILE* out,
   }
 }
 
-static void dump_statistics(const TraceIfstream& trace, FILE* out) {
+static void dump_statistics(const TraceReader& trace, FILE* out) {
   uint64_t uncompressed = trace.uncompressed_bytes();
   uint64_t compressed = trace.compressed_bytes();
   fprintf(stdout, "// Uncompressed bytes %" PRIu64 ", compressed bytes %" PRIu64
@@ -121,7 +121,7 @@ static void dump_statistics(const TraceIfstream& trace, FILE* out) {
 
 static int dump(int argc, char* argv[], char** envp) {
   FILE* out = stdout;
-  TraceIfstream trace(argc > 0 ? argv[0] : "");
+  TraceReader trace(argc > 0 ? argv[0] : "");
 
   if (Flags::get().raw_dump) {
     fprintf(out, "global_time tid reason "

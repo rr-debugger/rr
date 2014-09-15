@@ -63,15 +63,15 @@ static void ensure_default_rr_trace_dir() {
   }
 }
 
-bool TraceOfstream::good() const {
+bool TraceWriter::good() const {
   return events.good() && data.good() && data_header.good() && mmaps.good();
 }
 
-bool TraceIfstream::good() const {
+bool TraceReader::good() const {
   return events.good() && data.good() && data_header.good() && mmaps.good();
 }
 
-TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
+TraceWriter& operator<<(TraceWriter& tof, const TraceFrame& frame) {
   tof.events.write(&frame.basic_info, sizeof(frame.basic_info));
   if (!tof.events.good()) {
     FATAL() << "Tried to save " << sizeof(frame.basic_info)
@@ -109,7 +109,7 @@ TraceOfstream& operator<<(TraceOfstream& tof, const TraceFrame& frame) {
   return tof;
 }
 
-TraceIfstream& operator>>(TraceIfstream& tif, TraceFrame& frame) {
+TraceReader& operator>>(TraceReader& tif, TraceFrame& frame) {
   // Read the common event info first, to see if we also have
   // exec info to read.
   tif.events.read(&frame.basic_info, sizeof(frame.basic_info));
@@ -167,14 +167,14 @@ template <int N> static void read_string(CompressedReader& in, char (&str)[N]) {
   abort();
 }
 
-TraceOfstream& operator<<(TraceOfstream& tof, const TraceMappedRegion& map) {
+TraceWriter& operator<<(TraceWriter& tof, const TraceMappedRegion& map) {
   tof.mmaps << map.copied();
   write_string(tof.mmaps, map.file_name());
   tof.mmaps << map.stat() << map.start() << map.end();
   return tof;
 }
 
-TraceIfstream& operator>>(TraceIfstream& tif, TraceMappedRegion& map) {
+TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map) {
   tif.mmaps >> map.copied_;
   read_string(tif.mmaps, map.filename);
   tif.mmaps >> map.stat_ >> map.start_ >> map.end_;
@@ -201,13 +201,13 @@ static istream& operator>>(istream& in, vector<string>& vs) {
   return in;
 }
 
-TraceOfstream& operator<<(TraceOfstream& tof, const struct raw_data& d) {
+TraceWriter& operator<<(TraceWriter& tof, const struct raw_data& d) {
   tof.data_header << global_time << d.addr << d.data.size();
   tof.data.write((const char*)d.data.data(), d.data.size());
   return tof;
 }
 
-TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d) {
+TraceReader& operator>>(TraceReader& tif, struct raw_data& d) {
   size_t num_bytes;
   TraceFrame::Time time;
   tif.data_header >> time >> d.addr >> num_bytes;
@@ -217,8 +217,8 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d) {
   return tif;
 }
 
-bool TraceIfstream::read_raw_data_for_frame(const TraceFrame& frame,
-                                            struct raw_data& d) {
+bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame,
+                                          struct raw_data& d) {
   while (!data_header.at_end()) {
     TraceFrame::Time time;
     data_header.save_state();
@@ -235,7 +235,7 @@ bool TraceIfstream::read_raw_data_for_frame(const TraceFrame& frame,
   return false;
 }
 
-void TraceOfstream::close() {
+void TraceWriter::close() {
   events.close();
   data.close();
   data_header.close();
@@ -264,9 +264,9 @@ static string make_trace_dir(const string& exe_path) {
   return dir;
 }
 
-TraceOfstream::TraceOfstream(const std::vector<std::string>& argv,
-                             const std::vector<std::string>& envp,
-                             const string& cwd, int bind_to_cpu)
+TraceWriter::TraceWriter(const std::vector<std::string>& argv,
+                         const std::vector<std::string>& envp,
+                         const string& cwd, int bind_to_cpu)
     : TraceStream(make_trace_dir(argv[0]),
                   // Somewhat arbitrarily start the
                   // global time from 1.
@@ -313,7 +313,7 @@ TraceOfstream::TraceOfstream(const std::vector<std::string>& argv,
   assert(out.good());
 }
 
-TraceFrame TraceIfstream::peek_frame() {
+TraceFrame TraceReader::peek_frame() {
   TraceFrame frame;
   events.save_state();
   auto saved_time = global_time;
@@ -323,8 +323,8 @@ TraceFrame TraceIfstream::peek_frame() {
   return frame;
 }
 
-TraceFrame TraceIfstream::peek_to(pid_t pid, EventType type,
-                                  SyscallEntryOrExit state) {
+TraceFrame TraceReader::peek_to(pid_t pid, EventType type,
+                                SyscallEntryOrExit state) {
   TraceFrame frame;
   events.save_state();
   auto saved_time = global_time;
@@ -342,7 +342,7 @@ TraceFrame TraceIfstream::peek_to(pid_t pid, EventType type,
   return frame;
 }
 
-void TraceIfstream::rewind() {
+void TraceReader::rewind() {
   events.rewind();
   data.rewind();
   data_header.rewind();
@@ -351,7 +351,7 @@ void TraceIfstream::rewind() {
   assert(good());
 }
 
-TraceIfstream::TraceIfstream(const string& dir)
+TraceReader::TraceReader(const string& dir)
     : TraceStream(dir.empty() ? latest_trace_symlink() : dir,
                   // Initialize the global time at 0, so
                   // that when we tick it when reading
@@ -404,12 +404,12 @@ TraceIfstream::TraceIfstream(const string& dir)
   in >> bind_to_cpu;
 }
 
-uint64_t TraceIfstream::uncompressed_bytes() const {
+uint64_t TraceReader::uncompressed_bytes() const {
   return events.uncompressed_bytes() + data.uncompressed_bytes() +
          data_header.uncompressed_bytes() + mmaps.uncompressed_bytes();
 }
 
-uint64_t TraceIfstream::compressed_bytes() const {
+uint64_t TraceReader::compressed_bytes() const {
   return events.compressed_bytes() + data.compressed_bytes() +
          data_header.compressed_bytes() + mmaps.compressed_bytes();
 }

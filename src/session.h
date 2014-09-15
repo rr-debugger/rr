@@ -19,8 +19,8 @@ struct current_state_buffer;
 class EmuFs;
 class Task;
 struct TaskGroup;
-class TraceIfstream;
-class TraceOfstream;
+class TraceReader;
+class TraceWriter;
 class RecordSession;
 class ReplaySession;
 
@@ -177,7 +177,7 @@ public:
    */
   Task* create_task();
 
-  TraceOfstream& ofstream() { return trace_ofstream; }
+  TraceWriter& ofstream() { return trace_ofstream; }
 
   /**
    * Create a recording session for the initial exe image
@@ -197,7 +197,7 @@ private:
                 const std::vector<std::string>& envp, const std::string& cwd,
                 int bind_to_cpu);
 
-  TraceOfstream trace_ofstream;
+  TraceWriter trace_ofstream;
 };
 
 /** Encapsulates additional session state related to replay. */
@@ -237,7 +237,7 @@ public:
   /** Collect garbage files from this session's emufs. */
   void gc_emufs();
 
-  TraceIfstream& ifstream() { return trace_ifstream; }
+  TraceReader& ifstream() { return trace_ifstream; }
 
   /**
    * True when this diversion is dying, as determined by
@@ -365,7 +365,7 @@ private:
   bool is_diversion;
   Task* last_debugged_task;
   pid_t tgid_debugged;
-  TraceIfstream trace_ifstream;
+  TraceReader trace_ifstream;
   TraceFrame trace_frame;
   struct rep_trace_step replay_step;
   EnvironmentBugDetector environment_bug_detector;
