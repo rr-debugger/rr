@@ -36,8 +36,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   if (frame.event().type != EV_SYSCALLBUF_FLUSH) {
     return;
   }
-  struct raw_data buf;
-  trace >> buf;
+  auto buf = trace.read_raw_data();
   size_t bytes_remaining =
       buf.data.size() - sizeof(sizeof(struct syscallbuf_hdr));
   auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
@@ -104,7 +103,7 @@ static void dump_events_matching(TraceReader& trace, FILE* out,
         fprintf(out, "}\n");
       }
     }
-    struct raw_data data;
+    TraceReader::RawData data;
     while (dump_raw_data && trace.read_raw_data_for_frame(frame, data)) {
       // Skip raw data for this frame
     }

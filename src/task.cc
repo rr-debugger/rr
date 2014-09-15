@@ -937,8 +937,7 @@ const TraceFrame& Task::current_trace_frame() {
 }
 
 ssize_t Task::set_data_from_trace() {
-  struct raw_data buf;
-  ifstream() >> buf;
+  auto buf = ifstream().read_raw_data();
   if (buf.addr && buf.data.size() > 0) {
     write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
   }

@@ -832,8 +832,7 @@ static void* finish_shared_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
   // TODO: this is a poor man's shared segment synchronization.
   // For full generality, we also need to emulate direct file
   // modifications through write/splice/etc.
-  struct raw_data buf;
-  t->ifstream() >> buf;
+  auto buf = t->ifstream().read_raw_data();
   assert(mapped_addr == buf.addr &&
          rec_num_bytes == ceil_page_size(buf.data.size()));
 
@@ -1153,8 +1152,7 @@ static void maybe_verify_tracee_saved_data(Task* t, const Registers* rec_regs) {
     return;
   }
 
-  struct raw_data rec;
-  t->ifstream() >> rec;
+  auto rec = t->ifstream().read_raw_data();
 
   // If the data address changed, something disastrous happened
   // and the buffers aren't comparable.  Just bail.

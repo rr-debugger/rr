@@ -26,16 +26,6 @@
 #include "TraceMappedRegion.h"
 
 /**
- * A parcel of recorded tracee data.  |data| contains the data read
- * from |addr| in the tracee, and |ev| and |global_time| represent the
- * tracee state when the data was read.
- */
-struct raw_data {
-  std::vector<uint8_t> data;
-  remote_ptr<void> addr;
-};
-
-/**
  * TraceFstream stores all the data common to both recording and
  * replay.  TraceOfstream deals with recording-specific logic, and
  * TraceIfstream handles replay-specific details.
@@ -157,6 +147,15 @@ private:
 class TraceReader : public TraceStream {
 public:
   /**
+   * A parcel of recorded tracee data.  |data| contains the data read
+   * from |addr| in the tracee.
+   */
+  struct RawData {
+    std::vector<uint8_t> data;
+    remote_ptr<void> addr;
+  };
+
+  /**
    * Read relevant data from the trace.
    *
    * NB: reading a trace frame has the side effect of ticking
@@ -165,14 +164,15 @@ public:
    */
   friend TraceReader& operator>>(TraceReader& tif, TraceFrame& frame);
   friend TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map);
-  friend TraceReader& operator>>(TraceReader& tif, struct raw_data& d);
+
+  RawData read_raw_data();
 
   /**
    * Reads the next raw data record for 'frame' from the current point in
    * the trace. If there are no more raw data records for 'frame', returns
    * false.
    */
-  bool read_raw_data_for_frame(const TraceFrame& frame, struct raw_data& d);
+  bool read_raw_data_for_frame(const TraceFrame& frame, RawData& d);
 
   /**
    * Return true iff all trace files are "good".

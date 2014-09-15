@@ -1451,8 +1451,7 @@ static void prepare_syscallbuf_records(Task* t) {
 
   // Read the recorded syscall buffer back into the buffer
   // region.
-  struct raw_data buf;
-  t->ifstream() >> buf;
+  auto buf = t->ifstream().read_raw_data();
   flush->num_rec_bytes_remaining = buf.data.size();
 
   assert(flush->num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);

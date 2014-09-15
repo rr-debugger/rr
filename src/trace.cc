@@ -206,25 +206,25 @@ void TraceWriter::write_raw(const void* d, size_t len, remote_ptr<void> addr) {
   data.write(d, len);
 }
 
-TraceReader& operator>>(TraceReader& tif, struct raw_data& d) {
-  size_t num_bytes;
+TraceReader::RawData TraceReader::read_raw_data() {
   TraceFrame::Time time;
-  tif.data_header >> time >> d.addr >> num_bytes;
-  assert(time == tif.global_time);
+  RawData d;
+  size_t num_bytes;
+  data_header >> time >> d.addr >> num_bytes;
+  assert(time == global_time);
   d.data.resize(num_bytes);
-  tif.data.read((char*)d.data.data(), num_bytes);
-  return tif;
+  data.read((char*)d.data.data(), num_bytes);
+  return d;
 }
 
-bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame,
-                                          struct raw_data& d) {
+bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame, RawData& d) {
   while (!data_header.at_end()) {
     TraceFrame::Time time;
     data_header.save_state();
     data_header >> time;
     data_header.restore_state();
     if (time == frame.time()) {
-      *this >> d;
+      d = read_raw_data();
       return true;
     }
     if (time > frame.time()) {
