@@ -67,10 +67,11 @@ public:
    */
   void dump_raw(FILE* out = nullptr) const;
 
-  friend TraceReader& operator>>(TraceReader& tif, TraceFrame& frame);
   friend TraceWriter& operator<<(TraceWriter& tif, const TraceFrame& frame);
 
 private:
+  friend class TraceReader;
+
   struct {
     Time global_time;
     pid_t tid;

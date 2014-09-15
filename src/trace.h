@@ -153,7 +153,7 @@ public:
    * the global time to match the time recorded in the trace
    * frame.
    */
-  friend TraceReader& operator>>(TraceReader& tif, TraceFrame& frame);
+  TraceFrame read_trace_frame();
 
   /**
    * Read the next mapped region descriptor and return it.

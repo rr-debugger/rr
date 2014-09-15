@@ -109,21 +109,22 @@ TraceWriter& operator<<(TraceWriter& tof, const TraceFrame& frame) {
   return tof;
 }
 
-TraceReader& operator>>(TraceReader& tif, TraceFrame& frame) {
+TraceFrame TraceReader::read_trace_frame() {
   // Read the common event info first, to see if we also have
   // exec info to read.
-  tif.events.read(&frame.basic_info, sizeof(frame.basic_info));
+  TraceFrame frame;
+  events.read(&frame.basic_info, sizeof(frame.basic_info));
   if (frame.event().has_exec_info) {
-    tif.events.read(&frame.exec_info, sizeof(frame.exec_info));
+    events.read(&frame.exec_info, sizeof(frame.exec_info));
 
     int extra_reg_bytes;
     char extra_reg_format;
-    tif.events.read(&extra_reg_format, sizeof(extra_reg_format));
-    tif.events.read((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
+    events.read(&extra_reg_format, sizeof(extra_reg_format));
+    events.read((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
     if (extra_reg_bytes > 0) {
       std::vector<uint8_t> data;
       data.resize(extra_reg_bytes);
-      tif.events.read((char*)data.data(), extra_reg_bytes);
+      events.read((char*)data.data(), extra_reg_bytes);
       frame.recorded_extra_regs.set_to_raw_data(
           (ExtraRegisters::Format)extra_reg_format, data);
     } else {
@@ -132,9 +133,9 @@ TraceReader& operator>>(TraceReader& tif, TraceFrame& frame) {
     }
   }
 
-  tif.tick_time();
-  assert(tif.time() == frame.time());
-  return tif;
+  tick_time();
+  assert(time() == frame.time());
+  return frame;
 }
 
 template <typename T>
@@ -312,10 +313,9 @@ TraceWriter::TraceWriter(const std::vector<std::string>& argv,
 }
 
 TraceFrame TraceReader::peek_frame() {
-  TraceFrame frame;
   events.save_state();
   auto saved_time = global_time;
-  *this >> frame;
+  auto frame = read_trace_frame();
   events.restore_state();
   global_time = saved_time;
   return frame;
@@ -327,7 +327,7 @@ TraceFrame TraceReader::peek_to(pid_t pid, EventType type,
   events.save_state();
   auto saved_time = global_time;
   while (good() && !at_end()) {
-    *this >> frame;
+    frame = read_trace_frame();
     if (frame.tid() == pid && frame.event().type == type &&
         frame.event().state == state) {
       events.restore_state();

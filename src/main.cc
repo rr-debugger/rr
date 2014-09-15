@@ -85,8 +85,7 @@ static void dump_events_matching(TraceReader& trace, FILE* out,
 
   bool dump_raw_data = Flags::get().dump_syscallbuf;
   while (!trace.at_end()) {
-    TraceFrame frame;
-    trace >> frame;
+    auto frame = trace.read_trace_frame();
     if (end < frame.time()) {
       return;
     }

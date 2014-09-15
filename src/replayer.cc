@@ -596,7 +596,7 @@ static struct dbg_request process_debugger_requests(struct dbg_context* dbg,
 static Task* schedule_task(ReplaySession& session, Task** intr_t,
                            bool advance_to_next_trace_frame) {
   if (advance_to_next_trace_frame) {
-    session.ifstream() >> session.current_trace_frame();
+    session.current_trace_frame() = session.ifstream().read_trace_frame();
     session.reached_trace_frame() = false;
   } else {
     /* We shouldn't be scheduling a task which has already reached
@@ -626,7 +626,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
            next_trace.tid() == t->rec_tid &&
            Flags::get().goto_event != next_trace.time() &&
            !trace_instructions_up_to_event(next_trace.time())) {
-      session.ifstream() >> session.current_trace_frame();
+      session.current_trace_frame() = session.ifstream().read_trace_frame();
       next_trace = session.ifstream().peek_frame();
     }
   }
