@@ -11,7 +11,7 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "trace.h"
+#include "TraceStream.h"
 #include "replayer.h"
 
 class AddressSpace;

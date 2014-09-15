@@ -48,7 +48,7 @@
 #include "session.h"
 #include "syscalls.h"
 #include "task.h"
-#include "trace.h"
+#include "TraceStream.h"
 #include "util.h"
 
 /* Uncomment this to check syscall names and numbers defined in syscall_defs.h

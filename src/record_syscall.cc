@@ -55,7 +55,7 @@
 #include "session.h"
 #include "syscalls.h"
 #include "task.h"
-#include "trace.h"
+#include "TraceStream.h"
 #include "util.h"
 
 using namespace std;

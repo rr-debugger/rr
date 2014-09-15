@@ -10,7 +10,7 @@
 #include <memory>
 #include <set>
 
-#include "trace.h"
+#include "TraceStream.h"
 #include "util.h"
 
 class Session;

@@ -23,7 +23,7 @@
 #include "recorder.h"
 #include "remote_syscalls.h"
 #include "task.h"
-#include "trace.h"
+#include "TraceStream.h"
 #include "util.h"
 
 using namespace rr;

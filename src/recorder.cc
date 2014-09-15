@@ -33,7 +33,7 @@
 #include "session.h"
 #include "StringVectorToCharArray.h"
 #include "task.h"
-#include "trace.h"
+#include "TraceStream.h"
 #include "util.h"
 
 using namespace rr;

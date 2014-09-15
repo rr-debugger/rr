@@ -60,8 +60,8 @@ add_executable(rr
   src/session.cc
   src/syscalls.cc
   src/task.cc
-  src/trace.cc
   src/TraceFrame.cc
+  src/TraceStream.cc
   src/util.cc
   src/vm.cc
 )

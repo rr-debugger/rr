@@ -11,7 +11,7 @@
 #include "ExtraRegisters.h"
 #include "PerfCounters.h"
 #include "Registers.h"
-#include "trace.h"
+#include "TraceStream.h"
 #include "util.h"
 #include "vm.h"
 

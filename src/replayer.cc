@@ -44,7 +44,7 @@
 #include "replay_syscall.h"
 #include "session.h"
 #include "task.h"
-#include "trace.h"
+#include "TraceStream.h"
 #include "util.h"
 
 using namespace rr;

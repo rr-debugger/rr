@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "Trace"
 
-#include "trace.h"
+#include "TraceStream.h"
 
 #include <inttypes.h>
 #include <sysexits.h>
