@@ -174,10 +174,10 @@ TraceWriter& operator<<(TraceWriter& tof, const TraceMappedRegion& map) {
   return tof;
 }
 
-TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map) {
-  tif.mmaps >> map.copied_ >> map.filename >> map.stat_ >> map.start_ >>
-      map.end_;
-  return tif;
+TraceMappedRegion TraceReader::read_mapped_region() {
+  TraceMappedRegion map;
+  mmaps >> map.copied_ >> map.filename >> map.stat_ >> map.start_ >> map.end_;
+  return map;
 }
 
 static ostream& operator<<(ostream& out, const vector<string>& vs) {

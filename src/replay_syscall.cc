@@ -280,10 +280,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
    * process, if it were to be probed by madvise or some other
    * means. But we make it PROT_NONE so that rogue reads/writes
    * to the scratch memory are caught. */
-  TraceMappedRegion file;
-  void* map_addr;
-
-  t->ifstream() >> file;
+  auto file = t->ifstream().read_mapped_region();
 
   t->scratch_ptr = file.start();
   t->scratch_size = file.size();
@@ -292,6 +289,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
   int fd = -1;
   off_t offset = 0;
+  void* map_addr;
   {
     AutoRemoteSyscalls remote(t);
     map_addr = (void*)remote.syscall(Arch::mmap2, t->scratch_ptr, sz, prot,
@@ -877,8 +875,7 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
       mapped_addr =
           finish_anonymous_mmap<Arch>(remote, trace, prot, flags, offset_pages);
     } else {
-      TraceMappedRegion file;
-      t->ifstream() >> file;
+      auto file = t->ifstream().read_mapped_region();
 
       if (!file.copied()) {
         mapped_addr = finish_direct_mmap<Arch>(remote, trace, prot, flags,

@@ -15,6 +15,8 @@
 #include "remote_ptr.h"
 #include "TraceFrame.h"
 
+class TraceReader;
+
 class TraceMappedRegion {
 public:
   TraceMappedRegion(const std::string& filename, const struct stat& stat,
@@ -25,9 +27,6 @@ public:
         start_(start),
         end_(end),
         copied_(copied) {}
-  TraceMappedRegion() : start_(nullptr), end_(nullptr), copied_(false) {
-    memset(&stat_, 0, sizeof(stat_));
-  }
 
   const std::string& file_name() const { return filename; }
   const struct stat& stat() const { return stat_; }
@@ -42,7 +41,13 @@ public:
   }
 
 private:
-  friend TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map);
+  friend class TraceReader;
+
+  /**
+   * TraceReader calls this and fills it in, so we don't need to initialize
+   * anything.
+   */
+  TraceMappedRegion() {}
 
   std::string filename;
   struct stat stat_;

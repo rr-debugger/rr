@@ -154,8 +154,15 @@ public:
    * frame.
    */
   friend TraceReader& operator>>(TraceReader& tif, TraceFrame& frame);
-  friend TraceReader& operator>>(TraceReader& tif, TraceMappedRegion& map);
 
+  /**
+   * Read the next mapped region descriptor and return it.
+   */
+  TraceMappedRegion read_mapped_region();
+
+  /**
+   * Read the next raw data record and return it.
+   */
   RawData read_raw_data();
 
   /**
