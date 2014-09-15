@@ -742,8 +742,6 @@ void Task::record_local(void* addr, ssize_t num_bytes, const void* data) {
   struct raw_data buf;
   buf.addr = addr;
   buf.data.assign((const uint8_t*)data, (const uint8_t*)data + num_bytes);
-  buf.ev = ev().encode();
-  buf.global_time = ofstream().time();
   ofstream() << buf;
 }
 
@@ -755,8 +753,6 @@ void Task::record_remote(void* addr, ssize_t num_bytes) {
 
   struct raw_data buf;
   buf.addr = addr;
-  buf.ev = ev().encode();
-  buf.global_time = ofstream().time();
   if (addr && num_bytes > 0) {
     buf.data.resize(num_bytes);
     read_bytes_helper(addr, buf.data.size(), buf.data.data());
@@ -772,8 +768,6 @@ void Task::record_remote_str(void* str) {
   buf.addr = str;
   // Record the \0 byte.
   buf.data.assign(s.c_str(), s.c_str() + s.size() + 1);
-  buf.ev = ev().encode();
-  buf.global_time = ofstream().time();
   ofstream() << buf;
 }
 

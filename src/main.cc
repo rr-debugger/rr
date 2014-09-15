@@ -38,10 +38,6 @@ static void dump_syscallbuf_data(TraceIfstream& trace, FILE* out,
   }
   struct raw_data buf;
   trace >> buf;
-  if (buf.global_time != frame.time() || buf.ev != frame.event()) {
-    fprintf(stderr, "Malformed trace file (time+event mismatch)\n");
-    abort();
-  }
   size_t bytes_remaining =
       buf.data.size() - sizeof(sizeof(struct syscallbuf_hdr));
   auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());

@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 15
+#define TRACE_VERSION 16
 
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
 
@@ -202,14 +202,16 @@ static istream& operator>>(istream& in, vector<string>& vs) {
 }
 
 TraceOfstream& operator<<(TraceOfstream& tof, const struct raw_data& d) {
-  tof.data_header << d.global_time << d.ev.encoded << d.addr << d.data.size();
+  tof.data_header << global_time << d.addr << d.data.size();
   tof.data.write((const char*)d.data.data(), d.data.size());
   return tof;
 }
 
 TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d) {
   size_t num_bytes;
-  tif.data_header >> d.global_time >> d.ev.encoded >> d.addr >> num_bytes;
+  TraceFrame::Time time;
+  tif.data_header >> time >> d.addr >> num_bytes;
+  assert(time == tif.global_time);
   d.data.resize(num_bytes);
   tif.data.read((char*)d.data.data(), num_bytes);
   return tif;
@@ -218,17 +220,15 @@ TraceIfstream& operator>>(TraceIfstream& tif, struct raw_data& d) {
 bool TraceIfstream::read_raw_data_for_frame(const TraceFrame& frame,
                                             struct raw_data& d) {
   while (!data_header.at_end()) {
-    uint32_t global_time;
-    EncodedEvent ev;
+    TraceFrame::Time time;
     data_header.save_state();
-    data_header >> global_time >> ev.encoded;
+    data_header >> time;
     data_header.restore_state();
-    if (global_time == frame.time()) {
-      assert(ev == frame.event());
+    if (time == frame.time()) {
       *this >> d;
       return true;
     }
-    if (global_time > frame.time()) {
+    if (time > frame.time()) {
       return false;
     }
   }

@@ -33,8 +33,6 @@
 struct raw_data {
   std::vector<uint8_t> data;
   void* addr;
-  EncodedEvent ev;
-  TraceFrame::Time global_time;
 };
 
 /**
