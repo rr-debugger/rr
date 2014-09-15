@@ -84,14 +84,17 @@ protected:
 class TraceWriter : public TraceStream {
 public:
   /**
-   * Write relevant data to the trace.
+   * Write trace frame to the trace.
    *
    * Recording a trace frame has the side effect of ticking
    * the global time.
    */
-  friend TraceWriter& operator<<(TraceWriter& tif, const TraceFrame& frame);
-  friend TraceWriter& operator<<(TraceWriter& tif,
-                                 const TraceMappedRegion& map);
+  void write_trace_frame(const TraceFrame& frame);
+
+  /**
+   * Write TraceMappedRegion record to the trace.
+   */
+  void write_mapped_region(const TraceMappedRegion& map);
 
   /**
    * Write a raw-data record to the trace.

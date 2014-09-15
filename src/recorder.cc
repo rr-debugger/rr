@@ -1016,7 +1016,7 @@ void terminate_recording(Task* t, int status) {
   TraceFrame frame(
       session->ofstream().time(), t ? t->tid : 0,
       Event(EV_TRACE_TERMINATION, BaseEvent(NO_EXEC_INFO)).encode());
-  session->ofstream() << frame;
+  session->ofstream().write_trace_frame(frame);
   session->ofstream().close();
 
   // TODO: Task::killall() here?

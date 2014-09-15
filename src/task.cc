@@ -721,7 +721,7 @@ void Task::record_event(const Event& ev) {
     checksum_process_memory(this, frame.time());
   }
 
-  ofstream() << frame;
+  ofstream().write_trace_frame(frame);
 }
 
 void Task::flush_inconsistent_state() { rbcs = 0; }

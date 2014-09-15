@@ -71,42 +71,41 @@ bool TraceReader::good() const {
   return events.good() && data.good() && data_header.good() && mmaps.good();
 }
 
-TraceWriter& operator<<(TraceWriter& tof, const TraceFrame& frame) {
-  tof.events.write(&frame.basic_info, sizeof(frame.basic_info));
-  if (!tof.events.good()) {
+void TraceWriter::write_trace_frame(const TraceFrame& frame) {
+  events.write(&frame.basic_info, sizeof(frame.basic_info));
+  if (!events.good()) {
     FATAL() << "Tried to save " << sizeof(frame.basic_info)
             << " bytes to the trace, but failed";
   }
   // TODO: only store exec info for non-async-sig events when
   // debugging assertions are enabled.
   if (frame.event().has_exec_info == HAS_EXEC_INFO) {
-    tof.events.write(&frame.exec_info, sizeof(frame.exec_info));
-    if (!tof.events.good()) {
+    events.write(&frame.exec_info, sizeof(frame.exec_info));
+    if (!events.good()) {
       FATAL() << "Tried to save " << sizeof(frame.exec_info)
               << " bytes to the trace, but failed";
     }
 
     int extra_reg_bytes = frame.extra_regs().data_size();
     char extra_reg_format = (char)frame.extra_regs().format();
-    tof.events.write(&extra_reg_format, sizeof(extra_reg_format));
-    tof.events.write((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
-    if (!tof.events.good()) {
+    events.write(&extra_reg_format, sizeof(extra_reg_format));
+    events.write((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
+    if (!events.good()) {
       FATAL() << "Tried to save "
               << sizeof(extra_reg_bytes) + sizeof(extra_reg_format)
               << " bytes to the trace, but failed";
     }
     if (extra_reg_bytes > 0) {
-      tof.events.write((const char*)frame.extra_regs().data_bytes(),
-                       extra_reg_bytes);
-      if (!tof.events.good()) {
+      events.write((const char*)frame.extra_regs().data_bytes(),
+                   extra_reg_bytes);
+      if (!events.good()) {
         FATAL() << "Tried to save " << extra_reg_bytes
                 << " bytes to the trace, but failed";
       }
     }
   }
 
-  tof.tick_time();
-  return tof;
+  tick_time();
 }
 
 TraceFrame TraceReader::read_trace_frame() {
@@ -169,10 +168,9 @@ static CompressedReader& operator>>(CompressedReader& in, string& value) {
   return in;
 }
 
-TraceWriter& operator<<(TraceWriter& tof, const TraceMappedRegion& map) {
-  tof.mmaps << map.copied() << map.file_name() << map.stat() << map.start()
-            << map.end();
-  return tof;
+void TraceWriter::write_mapped_region(const TraceMappedRegion& map) {
+  mmaps << map.copied() << map.file_name() << map.stat() << map.start()
+        << map.end();
 }
 
 TraceMappedRegion TraceReader::read_mapped_region() {
