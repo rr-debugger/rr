@@ -176,7 +176,7 @@ public:
    */
   Task* create_task();
 
-  TraceWriter& trace_writer() { return trace_ofstream; }
+  TraceWriter& trace_writer() { return trace_out; }
 
   /**
    * Create a recording session for the initial exe image
@@ -189,14 +189,14 @@ public:
 
   virtual RecordSession* as_record() { return this; }
 
-  virtual TraceStream& trace() { return trace_ofstream; }
+  virtual TraceStream& trace() { return trace_out; }
 
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
                 int bind_to_cpu);
 
-  TraceWriter trace_ofstream;
+  TraceWriter trace_out;
 };
 
 /** Encapsulates additional session state related to replay. */
@@ -236,7 +236,7 @@ public:
   /** Collect garbage files from this session's emufs. */
   void gc_emufs();
 
-  TraceReader& trace_reader() { return trace_ifstream; }
+  TraceReader& trace_reader() { return trace_in; }
 
   /**
    * True when this diversion is dying, as determined by
@@ -330,7 +330,7 @@ public:
 
   virtual ReplaySession* as_replay() { return this; }
 
-  virtual TraceStream& trace() { return trace_ifstream; }
+  virtual TraceStream& trace() { return trace_in; }
 
 private:
   ReplaySession(const std::string& dir)
@@ -338,7 +338,7 @@ private:
         is_diversion(false),
         last_debugged_task(nullptr),
         tgid_debugged(0),
-        trace_ifstream(dir),
+        trace_in(dir),
         trace_frame(),
         replay_step(),
         trace_frame_reached(false) {}
@@ -348,7 +348,7 @@ private:
         is_diversion(false),
         last_debugged_task(nullptr),
         tgid_debugged(0),
-        trace_ifstream(other.trace_ifstream),
+        trace_in(other.trace_in),
         trace_frame(),
         replay_step(),
         trace_frame_reached(false) {}
@@ -364,7 +364,7 @@ private:
   bool is_diversion;
   Task* last_debugged_task;
   pid_t tgid_debugged;
-  TraceReader trace_ifstream;
+  TraceReader trace_in;
   TraceFrame trace_frame;
   struct rep_trace_step replay_step;
   EnvironmentBugDetector environment_bug_detector;

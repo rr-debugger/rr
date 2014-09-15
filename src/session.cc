@@ -180,7 +180,7 @@ Task* RecordSession::create_task() {
 RecordSession::RecordSession(const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              const string& cwd, int bind_to_cpu)
-    : trace_ofstream(argv, envp, cwd, bind_to_cpu) {}
+    : trace_out(argv, envp, cwd, bind_to_cpu) {}
 
 static void remap_shared_mmap(AutoRemoteSyscalls& remote,
                               ReplaySession& session, const Mapping& m,
