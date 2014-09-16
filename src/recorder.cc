@@ -25,6 +25,7 @@
 
 #include "Flags.h"
 #include "kernel_abi.h"
+#include "kernel_supplement.h"
 #include "log.h"
 #include "PerfCounters.h"
 #include "record_signal.h"

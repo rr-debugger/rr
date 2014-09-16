@@ -9,6 +9,7 @@
 
 #include "Event.h"
 #include "ExtraRegisters.h"
+#include "kernel_supplement.h"
 #include "PerfCounters.h"
 #include "Registers.h"
 #include "TraceStream.h"
