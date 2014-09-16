@@ -230,45 +230,7 @@ const char* signalname(int sig) {
   }
 }
 
-bool is_always_emulated_syscall(int syscallno) {
-  switch (syscallno) {
-#define EMU() true
-#define EXEC() false
-#define EXEC_RET_EMU() false
-#define MAY_EXEC() false
-
-#define SYSCALLNO_X86(num)
-#define SYSCALLNO_X86_64(num)
-#define SYSCALL_UNDEFINED_X86_64()
-#define CASE(_name, _type)                                                     \
-  case static_cast<int>(X86Arch::Syscalls::_name) :                            \
-    return _type();
-#define SYSCALL_DEF0(_name, _type) CASE(_name, _type)
-#define SYSCALL_DEF1(_name, _type, _1, _2) CASE(_name, _type)
-#define SYSCALL_DEF1_DYNSIZE(_name, _type, _1, _2) CASE(_name, _type)
-#define SYSCALL_DEF1_STR(_name, _type, _1) CASE(_name, _type)
-#define SYSCALL_DEF2(_name, _type, _1, _2, _3, _4) CASE(_name, _type)
-#define SYSCALL_DEF3(_name, _type, _1, _2, _3, _4, _5, _6) CASE(_name, _type)
-#define SYSCALL_DEF4(_name, _type, _1, _2, _3, _4, _5, _6, _7, _8)             \
-  CASE(_name, _type)
-#define SYSCALL_DEF_IRREG(_name, _type) CASE(_name, _type)
-#define SYSCALL_DEF_UNSUPPORTED(_name) CASE(_name, EXEC)
-
-#include "syscall_defs.h"
-
-#undef EMU
-#undef EXEC
-#undef EXEC_EMU_RET
-#undef MAY_EXEC
-#undef CASE
-
-    case X86Arch::Syscalls::restart_syscall:
-      return false;
-    default:
-      FATAL() << "Unknown syscall " << syscallno;
-      return "<unknown-syscall>";
-  }
-}
+#include "IsAlwaysEmulatedSyscall.generated"
 
 int clone_flags_to_task_flags(int flags_arg) {
   int flags = CLONE_SHARE_NOTHING;

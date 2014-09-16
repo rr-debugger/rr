@@ -51,7 +51,7 @@
 #include "TraceStream.h"
 #include "util.h"
 
-/* Uncomment this to check syscall names and numbers defined in syscall_defs.h
+/* Uncomment this to check syscall names and numbers defined in syscalls.py
    against the definitions in unistd.h. This may cause the build to fail
    if unistd.h is slightly out of date, so it's not turned on by default. */
 //#define CHECK_SYSCALL_NUMBERS
@@ -68,48 +68,13 @@ enum SyscallDefType {
 };
 struct syscall_def {
   int no;
-  /* See syscall_defs.h for documentation on these values. */
+  /* See syscalls.py for documentation on these values. */
   SyscallDefType type;
   /* Not meaningful for rep_IRREGULAR. */
   ssize_t num_emu_args;
 };
 
-#define SYSCALL_NUM(_name) X86Arch::_name
-
-#define SYSCALLNO_X86(num)
-#define SYSCALLNO_X86_64(num)
-#define SYSCALL_UNDEFINED_X86_64()
-#define SYSCALL_DEF0(_name, _type)                                             \
-  { SYSCALL_NUM(_name), rep_##_type, 0 }                                       \
-  ,
-#define SYSCALL_DEF1(_name, _type, _, _1)                                      \
-  { SYSCALL_NUM(_name), rep_##_type, 1 }                                       \
-  ,
-#define SYSCALL_DEF1_DYNSIZE(_name, _type, _, _1)                              \
-  { SYSCALL_NUM(_name), rep_##_type, 1 }                                       \
-  ,
-#define SYSCALL_DEF1_STR(_name, _type, _)                                      \
-  { SYSCALL_NUM(_name), rep_##_type, 1 }                                       \
-  ,
-#define SYSCALL_DEF2(_name, _type, _, _1, _2, _3)                              \
-  { SYSCALL_NUM(_name), rep_##_type, 2 }                                       \
-  ,
-#define SYSCALL_DEF3(_name, _type, _, _1, _2, _3, _4, _5)                      \
-  { SYSCALL_NUM(_name), rep_##_type, 3 }                                       \
-  ,
-#define SYSCALL_DEF4(_name, _type, _, _1, _2, _3, _4, _5, _6, _7)              \
-  { SYSCALL_NUM(_name), rep_##_type, 4 }                                       \
-  ,
-#define SYSCALL_DEF_IRREG(_name, _type)                                        \
-  { SYSCALL_NUM(_name), rep_IRREGULAR, -1 }                                    \
-  ,
-#define SYSCALL_DEF_UNSUPPORTED(_name)
-
-static struct syscall_def syscall_defs[] = {
-/* Not-yet-defined syscalls will end up being type
- * rep_UNDEFINED. */
-#include "syscall_defs.h"
-};
+#include "SyscallDefsTable.generated"
 
 // Reserve a final element which is guaranteed to be an undefined syscall.
 // Negative and out-of-range syscall numbers are mapped to this element.
@@ -129,27 +94,7 @@ __attribute__((constructor)) static void init_syscall_table() {
 // Hack because our 'break' syscall is called '_break'
 #define SYS__break SYS_break
 
-#define SYSCALLNO_X86(num)
-#define SYSCALLNO_X86_64(num)
-#define SYSCALL_UNDEFINED_X86_64()
-#define CHECK_SYSCALL_NUM(_name)                                               \
-  static_assert(SYSCALL_NUM(_name) == SYS_##_name,                             \
-                "Incorrect syscall number for " #_name);
-#define SYSCALL_DEF0(_name, _type) CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF1(_name, _type, _, _1) CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF1_DYNSIZE(_name, _type, _, _1) CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF1_STR(_name, _type, _) CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF2(_name, _type, _, _1, _2, _3) CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF3(_name, _type, _, _1, _2, _3, _4, _5)                      \
-  CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF4(_name, _type, _, _1, _2, _3, _4, _5, _6, _7)              \
-  CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF_IRREG(_name, _type) CHECK_SYSCALL_NUM(_name)
-#define SYSCALL_DEF_UNSUPPORTED(_name) CHECK_SYSCALL_NUM(_name)
-
-#include "syscall_defs.h"
-
-#undef CHECK_SYSCALL_NUM
+#include "CheckSyscallNumbers.generated"
 
 #endif // CHECK_SYSCALL_NUMBERS
 }

@@ -29,6 +29,8 @@ string(REGEX REPLACE "-fPIC" ""
   CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
+# We need to know where our generated files are.
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(rrpreload
   src/preload/preload.c
@@ -37,7 +39,32 @@ add_library(rrpreload
   src/preload/vsyscall_hook.S
 )
 
+# Ensure that CMake knows about our generated files.
+#
+# Alphabetical, please.
+set(GENERATED_FILES
+  CheckSyscallNumbers.generated
+  IsAlwaysEmulatedSyscall.generated
+  SyscallDefsTable.generated
+  SyscallEnumsX64.generated
+  SyscallEnumsX86.generated
+  SyscallHelperFunctions.generated
+  SyscallnameArch.generated
+  SyscallRecordCase.generated
+)
+
+foreach(generated_file ${GENERATED_FILES})
+  set_source_files_properties(${generated_file}
+                              PROPERTIES GENERATED HEADER_FILE_ONLY)
+  add_custom_command(OUTPUT ${generated_file}
+                     COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
+		               "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
+		     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
+		       "${CMAKE_CURRENT_SOURCE_DIR}/src/syscalls.py")
+endforeach(generated_file)
+
 add_executable(rr
+  ${GENERATED_FILES}
   src/test/cpuid_loop.S
   src/CompressedReader.cc
   src/CompressedWriter.cc

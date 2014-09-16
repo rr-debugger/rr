@@ -2155,50 +2155,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   }
 
   switch (syscallno) {
-// These macros are used to generate code that
-// processes the "regular" syscalls.  Irregular
-// syscalls are implemented by hand-written case
-// statements below.
-#define SYSCALLNO_X86(num)
-#define SYSCALLNO_X86_64(num)
-#define SYSCALL_UNDEFINED_X86_64()
-#define SYSCALL_DEF0(_call, _)                                                 \
-  case Arch::_call:                                                            \
-    break;
-#define SYSCALL_DEF1(_call, _, _t0, _r0)                                       \
-  case Arch::_call:                                                            \
-    t->record_remote((void*)t->regs()._r0(), sizeof(_t0));                     \
-    break;
-#define SYSCALL_DEF1_DYNSIZE(_call, _, _s0, _r0)                               \
-  case Arch::_call:                                                            \
-    t->record_remote((void*)t->regs()._r0(), _s0);                             \
-    break;
-#define SYSCALL_DEF1_STR(_call, _, _r0)                                        \
-  case Arch::_call:                                                            \
-    t->record_remote_str((void*)t->regs()._r0());                              \
-    break;
-#define SYSCALL_DEF2(_call, _, _t0, _r0, _t1, _r1)                             \
-  case Arch::_call:                                                            \
-    t->record_remote((void*)t->regs()._r0(), sizeof(_t0));                     \
-    t->record_remote((void*)t->regs()._r1(), sizeof(_t1));                     \
-    break;
-#define SYSCALL_DEF3(_call, _, _t0, _r0, _t1, _r1, _t2, _r2)                   \
-  case Arch::_call:                                                            \
-    t->record_remote((void*)t->regs()._r0(), sizeof(_t0));                     \
-    t->record_remote((void*)t->regs()._r1(), sizeof(_t1));                     \
-    t->record_remote((void*)t->regs()._r2(), sizeof(_t2));                     \
-    break;
-#define SYSCALL_DEF4(_call, _, _t0, _r0, _t1, _r1, _t2, _r2, _t3, _r3)         \
-  case Arch::_call:                                                            \
-    t->record_remote((void*)t->regs()._r0(), sizeof(_t0));                     \
-    t->record_remote((void*)t->regs()._r1(), sizeof(_t1));                     \
-    t->record_remote((void*)t->regs()._r2(), sizeof(_t2));                     \
-    t->record_remote((void*)t->regs()._r3(), sizeof(_t3));                     \
-    break;
-#define SYSCALL_DEF_IRREG(_call, _) // manually implemented below
-#define SYSCALL_DEF_UNSUPPORTED(_call)
 
-#include "syscall_defs.h"
+// All the regular syscalls are handled here.
+#include "SyscallRecordCase.generated"
 
     case Arch::clone: {
       long new_tid = t->regs().syscall_result_signed();
