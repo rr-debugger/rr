@@ -238,8 +238,9 @@ Task::~Task() {
   if (EV_SENTINEL != ev().type() &&
       (pending_events.size() > 2 ||
        !(ev().type() == EV_SYSCALL &&
-         (is_exit_syscall(ev().Syscall().number, arch()) ||
-          is_exit_group_syscall(ev().Syscall().number, arch()))))) {
+         (is_exit_syscall(ev().Syscall().number, ev().Syscall().regs.arch()) ||
+          is_exit_group_syscall(ev().Syscall().number,
+                                ev().Syscall().regs.arch()))))) {
     LOG(warn) << tid << " still has pending events.  From top down:";
     log_pending_events();
   }
