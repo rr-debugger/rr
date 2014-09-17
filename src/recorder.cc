@@ -518,12 +518,12 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
 
       /* TODO: is there any reason a restart_syscall can't
        * be interrupted by a signal and itself restarted? */
-      may_restart = (!is_restart_syscall_syscall(syscallno, t->arch())
-                     // SYS_pause is either interrupted or
-                     // never returns.  It doesn't restart.
-                     &&
-                     !is_pause_syscall(syscallno, t->arch()) &&
-                     SYSCALL_MAY_RESTART(retval));
+      may_restart = !is_restart_syscall_syscall(syscallno, t->arch())
+                    // SYS_pause is either interrupted or
+                    // never returns.  It doesn't restart.
+                    &&
+                    !is_pause_syscall(syscallno, t->arch()) &&
+                    t->regs().syscall_may_restart();
       /* no need to process the syscall in case its
        * restarted this will be done in the exit from the
        * restart_syscall */

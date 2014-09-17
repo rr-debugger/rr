@@ -280,7 +280,7 @@ static bool is_failed_syscall(Task* t, const TraceFrame* frame) {
                                            SYSCALL_EXIT);
     frame = &next_frame;
   }
-  return SYSCALL_FAILED(frame->regs().syscall_result_signed());
+  return frame->regs().syscall_failed();
 }
 
 static RepTraceStepType syscall_action(SyscallEntryOrExit state) {
@@ -801,7 +801,7 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
                          struct rep_trace_step* step) {
   void* mapped_addr;
 
-  if (SYSCALL_FAILED(trace->regs().syscall_result_signed())) {
+  if (trace->regs().syscall_failed()) {
     /* Failed maps are fully emulated too; nothing
      * interesting to do. */
     step->action = TSTEP_EXIT_SYSCALL;
@@ -1184,8 +1184,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   LOG(debug) << "processing " << t->syscallname(syscall) << " ("
              << state_name(state) << ")";
 
-  if (SYSCALL_EXIT == state &&
-      SYSCALL_MAY_RESTART(rec_regs->syscall_result_signed())) {
+  if (SYSCALL_EXIT == state && rec_regs->syscall_may_restart()) {
     bool interrupted_restart = (EV_SYSCALL_INTERRUPTION == t->ev().type());
     // The tracee was interrupted while attempting to
     // restart a syscall.  We have to look at the previous

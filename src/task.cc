@@ -590,8 +590,8 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
   const Registers& r =
       session().is_recording() ? regs() : current_trace_frame().regs();
 
-  if (SYSCALL_EXIT != state || (SYSCALL_FAILED(r.syscall_result_signed()) &&
-                                !is_mprotect_syscall(syscallno, arch()))) {
+  if (SYSCALL_EXIT != state ||
+      (r.syscall_failed() && !is_mprotect_syscall(syscallno, arch()))) {
     return;
   }
   switch (syscallno) {
@@ -618,8 +618,7 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
       return vm()->protect(addr, num_bytes, prot);
     }
     case Arch::mremap: {
-      if (SYSCALL_FAILED(r.syscall_result_signed()) &&
-          -ENOMEM != r.syscall_result_signed()) {
+      if (r.syscall_failed() && -ENOMEM != r.syscall_result_signed()) {
         return;
       }
       void* old_addr = reinterpret_cast<void*>(r.arg1());
@@ -1145,7 +1144,7 @@ void Task::update_sigmask(const Registers& regs) {
   int how = regs.arg1_signed();
   void* setp = (void*)regs.arg2();
 
-  if (SYSCALL_FAILED(regs.syscall_result_signed()) || !setp) {
+  if (regs.syscall_failed() || !setp) {
     return;
   }
 
@@ -2086,7 +2085,7 @@ bool Task::clone_syscall_is_complete() {
   // XXX why would ENOSYS happen here?
   intptr_t result = regs().syscall_result_signed();
   ASSERT(this,
-         SYSCALL_MAY_RESTART(result) || -ENOSYS == result || -EAGAIN == result)
+         regs().syscall_may_restart() || -ENOSYS == result || -EAGAIN == result)
       << "Unexpected task status " << HEX(status())
       << " (syscall result:" << regs().syscall_result_signed() << ")";
   return false;

@@ -1327,7 +1327,7 @@ static void finish_restoring_some_scratch(Task* t, uint8_t* iter, void** data) {
 
 template <typename Arch> static void process_execve(Task* t) {
   Registers r = t->regs();
-  if (SYSCALL_FAILED(r.syscall_result_signed())) {
+  if (r.syscall_failed()) {
     if (r.arg1() != t->exec_saved_arg1) {
       LOG(warn)
           << "Blocked attempt to execve 64-bit image (not yet supported by rr)";
@@ -1627,7 +1627,7 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   size_t size = ceil_page_size(length);
   off64_t offset = offset_pages * 4096;
 
-  if (SYSCALL_FAILED(t->regs().syscall_result_signed())) {
+  if (t->regs().syscall_failed()) {
     // We purely emulate failed mmaps.
     return;
   }

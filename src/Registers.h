@@ -4,6 +4,7 @@
 #define RR_REGISTERS_H_
 
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -13,6 +14,7 @@
 
 #include "GDBRegister.h"
 #include "kernel_abi.h"
+#include "kernel_supplement.h"
 
 /**
  * A Registers object contains values for all general-purpose registers.
@@ -77,6 +79,28 @@ public:
   intptr_t syscall_result_signed() const { return RR_GET_REG(eax, rax); }
   void set_syscall_result(uintptr_t syscall_result) {
     RR_SET_REG(eax, rax, syscall_result);
+  }
+
+  /**
+   * Returns true if syscall_result() indicates failure.
+   */
+  bool syscall_failed() const {
+    auto result = syscall_result_signed();
+    return -ERANGE <= result && result < 0;
+  }
+  /**
+   * Returns true if syscall_result() indicates a syscall restart.
+   */
+  bool syscall_may_restart() const {
+    switch (-syscall_result_signed()) {
+      case ERESTART_RESTARTBLOCK:
+      case ERESTARTNOINTR:
+      case ERESTARTNOHAND:
+      case ERESTARTSYS:
+        return true;
+      default:
+        return false;
+    }
   }
 
   /**
