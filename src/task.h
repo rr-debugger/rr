@@ -1099,7 +1099,7 @@ public:
   struct syscallbuf_hdr* syscallbuf_hdr;
   size_t num_syscallbuf_bytes;
   /* Points at the tracee's mapping of the buffer. */
-  void* syscallbuf_child;
+  remote_ptr<void> syscallbuf_child;
 
   /* The value of arg1 passed to the last execve syscall in this task. */
   uintptr_t exec_saved_arg1;

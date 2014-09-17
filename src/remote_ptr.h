@@ -11,12 +11,29 @@
 template <typename T> class remote_ptr {
 public:
   remote_ptr() : ptr(0) {}
+  remote_ptr(uintptr_t ptr) : ptr(ptr) {}
   remote_ptr(T* ptr) : ptr(reinterpret_cast<uintptr_t>(ptr)) {}
   operator T*() const { return reinterpret_cast<T*>(ptr); }
   uintptr_t as_int() const { return ptr; }
 
+  bool operator<(const remote_ptr<T>& other) const { return ptr < other.ptr; }
+  bool operator==(const remote_ptr<T>& other) const { return ptr == other.ptr; }
+
 private:
   uintptr_t ptr;
 };
+
+inline remote_ptr<void> operator+(const remote_ptr<void>& p, intptr_t bytes) {
+  return remote_ptr<void>(p.as_int() + bytes);
+}
+
+inline remote_ptr<void> operator-(const remote_ptr<void>& p, intptr_t bytes) {
+  return remote_ptr<void>(p.as_int() - bytes);
+}
+
+inline intptr_t operator-(const remote_ptr<void>& p1,
+                          const remote_ptr<void>& p2) {
+  return p1.as_int() - p2.as_int();
+}
 
 #endif /* RR_REMOTE_PTR_H_ */

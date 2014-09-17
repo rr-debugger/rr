@@ -226,7 +226,7 @@ AddressSpace::~AddressSpace() {
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
-void AddressSpace::brk(void* addr) {
+void AddressSpace::brk(remote_ptr<void> addr) {
   LOG(debug) << "brk(" << addr << ")";
 
   assert(heap.start <= addr);
@@ -240,7 +240,8 @@ void AddressSpace::brk(void* addr) {
 }
 
 void AddressSpace::dump() const {
-  fprintf(stderr, "  (heap: %p-%p)\n", heap.start, heap.end);
+  fprintf(stderr, "  (heap: %p-%p)\n", (void*)heap.start.as_int(),
+          (void*)heap.end.as_int());
   for (auto it = mem.begin(); it != mem.end(); ++it) {
     const Mapping& m = it->first;
     const MappableResource& r = it->second;
@@ -248,18 +249,20 @@ void AddressSpace::dump() const {
   }
 }
 
-TrapType AddressSpace::get_breakpoint_type_for_retired_insn(void* ip) {
-  void* addr = (uint8_t*)ip - sizeof(breakpoint_insn);
+TrapType AddressSpace::get_breakpoint_type_for_retired_insn(
+    remote_ptr<void> ip) {
+  remote_ptr<void> addr = ip - sizeof(breakpoint_insn);
   return get_breakpoint_type_at_addr(addr);
 }
 
-TrapType AddressSpace::get_breakpoint_type_at_addr(void* addr) {
+TrapType AddressSpace::get_breakpoint_type_at_addr(remote_ptr<void> addr) {
   auto it = breakpoints.find(addr);
   return it == breakpoints.end() ? TRAP_NONE : it->second->type();
 }
 
-void AddressSpace::map(void* addr, size_t num_bytes, int prot, int flags,
-                       off64_t offset_bytes, const MappableResource& res) {
+void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
+                       int flags, off64_t offset_bytes,
+                       const MappableResource& res) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
 
@@ -280,7 +283,7 @@ void AddressSpace::map(void* addr, size_t num_bytes, int prot, int flags,
 }
 
 typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
-MappingResourcePair AddressSpace::mapping_of(void* addr,
+MappingResourcePair AddressSpace::mapping_of(remote_ptr<void> addr,
                                              size_t num_bytes) const {
   auto it = mem.find(Mapping(addr, num_bytes));
   assert(it != mem.end());
@@ -300,7 +303,7 @@ static off64_t adjust_offset(const MappableResource& r, const Mapping& m,
   return r.id.is_real_device() ? m.offset + delta : 0;
 }
 
-void AddressSpace::protect(void* addr, size_t num_bytes, int prot) {
+void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
   LOG(debug) << "mprotect(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ")";
 
@@ -320,10 +323,9 @@ void AddressSpace::protect(void* addr, size_t num_bytes, int prot) {
       mem[underflow] = r;
     }
     // Remap the overlapping region with the new prot.
-    void* new_end = min(rem.end, m.end);
-    Mapping overlap(
-        rem.start, new_end, prot, m.flags,
-        adjust_offset(r, m, (uint8_t*)rem.start - (uint8_t*)m.start));
+    remote_ptr<void> new_end = min(rem.end, m.end);
+    Mapping overlap(rem.start, new_end, prot, m.flags,
+                    adjust_offset(r, m, rem.start - m.start));
     mem[overlap] = r;
     last_overlap = overlap;
 
@@ -331,9 +333,8 @@ void AddressSpace::protect(void* addr, size_t num_bytes, int prot) {
     // region, remap the overflow region with previous
     // prot.
     if (rem.end < m.end) {
-      Mapping overflow(
-          rem.end, m.end, m.prot, m.flags,
-          adjust_offset(r, m, (uint8_t*)rem.end - (uint8_t*)m.start));
+      Mapping overflow(rem.end, m.end, m.prot, m.flags,
+                       adjust_offset(r, m, rem.end - m.start));
       mem[overflow] = r;
     }
   };
@@ -343,8 +344,8 @@ void AddressSpace::protect(void* addr, size_t num_bytes, int prot) {
   coalesce_around(mem.find(last_overlap));
 }
 
-void AddressSpace::remap(void* old_addr, size_t old_num_bytes, void* new_addr,
-                         size_t new_num_bytes) {
+void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
+                         remote_ptr<void> new_addr, size_t new_num_bytes) {
   LOG(debug) << "mremap(" << old_addr << ", " << old_num_bytes << ", "
              << new_addr << ", " << new_num_bytes << ")";
 
@@ -357,13 +358,12 @@ void AddressSpace::remap(void* old_addr, size_t old_num_bytes, void* new_addr,
     return;
   }
 
-  map_and_coalesce(
-      Mapping((uint8_t*)new_addr, new_num_bytes, m.prot, m.flags,
-              adjust_offset(r, m, ((uint8_t*)old_addr - (uint8_t*)m.start))),
-      r);
+  map_and_coalesce(Mapping(new_addr, new_num_bytes, m.prot, m.flags,
+                           adjust_offset(r, m, old_addr - m.start)),
+                   r);
 }
 
-void AddressSpace::remove_breakpoint(void* addr, TrapType type) {
+void AddressSpace::remove_breakpoint(remote_ptr<void> addr, TrapType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end() || !it->second || it->second->unref(type) > 0) {
     return;
@@ -371,7 +371,7 @@ void AddressSpace::remove_breakpoint(void* addr, TrapType type) {
   destroy_breakpoint(it);
 }
 
-bool AddressSpace::set_breakpoint(void* addr, TrapType type) {
+bool AddressSpace::set_breakpoint(remote_ptr<void> addr, TrapType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end()) {
     auto bp = Breakpoint::create();
@@ -399,7 +399,7 @@ void AddressSpace::destroy_all_breakpoints() {
   }
 }
 
-void AddressSpace::remove_watchpoint(void* addr, size_t num_bytes,
+void AddressSpace::remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                                      WatchType type) {
   auto it = watchpoints.find(MemoryRange(addr, num_bytes));
   if (it != watchpoints.end() &&
@@ -409,7 +409,7 @@ void AddressSpace::remove_watchpoint(void* addr, size_t num_bytes,
   allocate_watchpoints();
 }
 
-bool AddressSpace::set_watchpoint(void* addr, size_t num_bytes,
+bool AddressSpace::set_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                                   WatchType type) {
   MemoryRange key(addr, num_bytes);
   auto it = watchpoints.find(key);
@@ -428,7 +428,7 @@ void AddressSpace::destroy_all_watchpoints() {
   allocate_watchpoints();
 }
 
-void AddressSpace::unmap(void* addr, ssize_t num_bytes) {
+void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
   auto unmapper = [this](const Mapping& m, const MappableResource& r,
@@ -447,9 +447,8 @@ void AddressSpace::unmap(void* addr, ssize_t num_bytes) {
     // If the last segment we unmap overflows the unmap
     // region, remap the overflow region.
     if (rem.end < m.end) {
-      Mapping overflow(
-          rem.end, m.end, m.prot, m.flags,
-          adjust_offset(r, m, (uint8_t*)rem.end - (uint8_t*)m.start));
+      Mapping overflow(rem.end, m.end, m.prot, m.flags,
+                       adjust_offset(r, m, rem.end - m.start));
       mem[overflow] = r;
     }
   };
@@ -773,13 +772,13 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
 }
 
 void AddressSpace::for_each_in_range(
-    void* addr, ssize_t num_bytes,
+    remote_ptr<void> addr, ssize_t num_bytes,
     function<void(const Mapping& m, const MappableResource& r,
                   const Mapping& rem)> f,
     int how) {
   num_bytes = ceil_page_size(num_bytes);
-  uint8_t* last_unmapped_end = (uint8_t*)addr;
-  uint8_t* region_end = (uint8_t*)addr + num_bytes;
+  remote_ptr<void> last_unmapped_end = addr;
+  remote_ptr<void> region_end = addr + num_bytes;
   while (last_unmapped_end < region_end) {
     // Invariant: |rem| is always exactly the region of
     // memory remaining to be examined for pages to be
@@ -809,7 +808,7 @@ void AddressSpace::for_each_in_range(
     f(m, r, rem);
 
     // Maintain the loop invariant.
-    last_unmapped_end = (uint8_t*)m.end;
+    last_unmapped_end = m.end;
   }
 }
 
@@ -859,9 +858,8 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
     id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode);
   }
 
-  as->map(info.start_addr, (uint8_t*)info.end_addr - (uint8_t*)info.start_addr,
-          info.prot, info.flags, info.file_offset,
-          MappableResource(id, info.name));
+  as->map(info.start_addr, info.end_addr - info.start_addr, info.prot,
+          info.flags, info.file_offset, MappableResource(id, info.name));
 
   return CONTINUE_ITERATING;
 }

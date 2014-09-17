@@ -587,8 +587,7 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
 
   reset_scratch_pointers(t);
   t->ev().Syscall().tmp_data_ptr =
-      (uint8_t*)t->syscallbuf_child +
-      (rec->extra_data - (uint8_t*)t->syscallbuf_hdr);
+      t->syscallbuf_child + (rec->extra_data - (uint8_t*)t->syscallbuf_hdr);
   /* |rec->size| is the entire record including extra data; we
    * just care about the extra data here. */
   t->ev().Syscall().tmp_data_num_bytes = rec->size - sizeof(*rec);

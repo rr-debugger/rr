@@ -330,8 +330,7 @@ void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
     data.info.prot |= strchr(flags, 'x') ? PROT_EXEC : 0;
     data.info.flags |= strchr(flags, 'p') ? MAP_PRIVATE : 0;
     data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
-    data.size_bytes =
-        ((intptr_t)data.info.end_addr - (intptr_t)data.info.start_addr);
+    data.size_bytes = data.info.end_addr - data.info.start_addr;
     if (caller_wants_segment_read(t, &data.info, filt, filt_data)) {
       void* addr = data.info.start_addr;
       ssize_t nbytes = data.size_bytes;

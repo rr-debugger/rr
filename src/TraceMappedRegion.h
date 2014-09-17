@@ -35,7 +35,7 @@ public:
   bool copied() const { return copied_; }
 
   size_t size() {
-    int64_t s = end().as_int() - start().as_int();
+    intptr_t s = end() - start();
     assert(s >= 0);
     return s;
   }

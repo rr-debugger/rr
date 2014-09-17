@@ -51,8 +51,8 @@ struct mapped_segment_info {
    * anywhere. */
   char name[PATH_MAX]; /* technically PATH_MAX + "deleted",
                         * but let's not go there. */
-  void* start_addr;
-  void* end_addr;
+  remote_ptr<void> start_addr;
+  remote_ptr<void> end_addr;
   int prot;
   int flags;
   int64_t file_offset;

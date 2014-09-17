@@ -141,18 +141,18 @@ struct Mapping {
       (MAP_ANONYMOUS | MAP_NORESERVE | MAP_PRIVATE | MAP_SHARED | MAP_STACK);
   static const int checkable_flags_mask = (MAP_PRIVATE | MAP_SHARED);
 
-  Mapping() : start(nullptr), end(nullptr), prot(0), flags(0), offset(0) {}
-  Mapping(void* addr, size_t num_bytes, int prot = 0, int flags = 0,
+  Mapping() : prot(0), flags(0), offset(0) {}
+  Mapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0, int flags = 0,
           off64_t offset = 0)
       : start(addr),
-        end((uint8_t*)addr + ceil_page_size(num_bytes)),
+        end(addr + ceil_page_size(num_bytes)),
         prot(prot),
         flags(flags & map_flags_mask),
         offset(offset) {
     assert_valid();
   }
-  Mapping(void* start, void* end, int prot = 0, int flags = 0,
-          off64_t offset = 0)
+  Mapping(remote_ptr<void> start, remote_ptr<void> end, int prot = 0,
+          int flags = 0, off64_t offset = 0)
       : start(start),
         end(end),
         prot(prot),
@@ -199,7 +199,11 @@ struct Mapping {
            (start < o.end && o.end <= end);
   }
 
-  size_t num_bytes() const { return (uint8_t*)end - (uint8_t*)start; }
+  size_t num_bytes() const {
+    ssize_t s = end - start;
+    assert(s >= 0);
+    return s;
+  }
 
   /**
    * Return the lowest-common-denominator interpretation of this
@@ -216,16 +220,15 @@ struct Mapping {
   */
   std::string str() const {
     char str[200];
-    sprintf(str, "%08lx-%08lx %c%c%c%c %08" PRIx64,
-            reinterpret_cast<long>(start), reinterpret_cast<long>(end),
-            (PROT_READ & prot) ? 'r' : '-', (PROT_WRITE & prot) ? 'w' : '-',
-            (PROT_EXEC & prot) ? 'x' : '-', (MAP_SHARED & flags) ? 's' : 'p',
-            offset);
+    sprintf(str, "%8p-%8p %c%c%c%c %08" PRIx64, (void*)start.as_int(),
+            (void*)end.as_int(), (PROT_READ & prot) ? 'r' : '-',
+            (PROT_WRITE & prot) ? 'w' : '-', (PROT_EXEC & prot) ? 'x' : '-',
+            (MAP_SHARED & flags) ? 's' : 'p', offset);
     return str;
   }
 
-  void* const start;
-  void* const end;
+  const remote_ptr<void> start;
+  const remote_ptr<void> end;
   const int prot;
   const int flags;
   const off64_t offset;
@@ -360,7 +363,7 @@ enum DebugStatus {
  * Range of memory addresses that can be used as a std::map key.
  */
 struct MemoryRange {
-  MemoryRange(void* addr, size_t num_bytes)
+  MemoryRange(remote_ptr<void> addr, size_t num_bytes)
       : addr(addr), num_bytes(num_bytes) {}
   MemoryRange(const MemoryRange&) = default;
   MemoryRange& operator=(const MemoryRange&) = default;
@@ -372,7 +375,7 @@ struct MemoryRange {
     return addr != o.addr ? addr < o.addr : num_bytes < o.num_bytes;
   }
 
-  void* addr;
+  remote_ptr<void> addr;
   size_t num_bytes;
 };
 
@@ -381,9 +384,9 @@ struct MemoryRange {
  * program a single x86 debug register.
  */
 struct WatchConfig {
-  WatchConfig(void* addr, size_t num_bytes, WatchType type)
+  WatchConfig(remote_ptr<void> addr, size_t num_bytes, WatchType type)
       : addr(addr), num_bytes(num_bytes), type(type) {}
-  void* addr;
+  remote_ptr<void> addr;
   size_t num_bytes;
   WatchType type;
 };
@@ -397,7 +400,8 @@ class AddressSpace : public HasTaskSet {
   friend struct VerifyAddressSpace;
 
 public:
-  typedef std::map<void*, std::shared_ptr<Breakpoint> > BreakpointMap;
+  typedef std::map<remote_ptr<void>, std::shared_ptr<Breakpoint> >
+  BreakpointMap;
   typedef std::map<Mapping, MappableResource, MappingComparator> MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
   typedef std::map<MemoryRange, std::shared_ptr<Watchpoint> > WatchpointMap;
@@ -414,7 +418,7 @@ public:
    * Change the program data break of this address space to
    * |addr|.
    */
-  void brk(void* addr);
+  void brk(remote_ptr<void> addr);
 
   /**
    * Dump a representation of |this| to stderr in a format
@@ -441,27 +445,28 @@ public:
    * of breakpoint set at |ip() - sizeof(breakpoint_insn)|, if
    * one exists.  Otherwise return TRAP_NONE.
    */
-  TrapType get_breakpoint_type_for_retired_insn(void* ip);
+  TrapType get_breakpoint_type_for_retired_insn(remote_ptr<void> ip);
 
   /**
    * Return the type of breakpoint that's been registered for
    * |addr|.
    */
-  TrapType get_breakpoint_type_at_addr(void* addr);
+  TrapType get_breakpoint_type_at_addr(remote_ptr<void> addr);
 
   /**
    * Map |num_bytes| into this address space at |addr|, with
    * |prot| protection and |flags|.  The pages are (possibly
    * initially) backed starting at |offset| of |res|.
    */
-  void map(void* addr, size_t num_bytes, int prot, int flags,
+  void map(remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
            off64_t offset_bytes, const MappableResource& res);
 
   /**
    * Return the mapping and mapped resource that underly [addr,
    * addr + num_bytes).  There must be exactly one such mapping.
    */
-  MemoryMap::value_type mapping_of(void* addr, size_t num_bytes) const;
+  MemoryMap::value_type mapping_of(remote_ptr<void> addr,
+                                   size_t num_bytes) const;
 
   /**
    * Return the memory map.
@@ -472,24 +477,24 @@ public:
    * Change the protection bits of [addr, addr + num_bytes) to
    * |prot|.
    */
-  void protect(void* addr, size_t num_bytes, int prot);
+  void protect(remote_ptr<void> addr, size_t num_bytes, int prot);
 
   /**
    * Move the mapping [old_addr, old_addr + old_num_bytes) to
    * [new_addr, old_addr + new_num_bytes), preserving metadata.
    */
-  void remap(void* old_addr, size_t old_num_bytes, void* new_addr,
-             size_t new_num_bytes);
+  void remap(remote_ptr<void> old_addr, size_t old_num_bytes,
+             remote_ptr<void> new_addr, size_t new_num_bytes);
 
   /**
    * Remove a |type| reference to the breakpoint at |addr|.  If
    * the removed reference was the last, the breakpoint is
    * destroyed.
    */
-  void remove_breakpoint(void* addr, TrapType type);
+  void remove_breakpoint(remote_ptr<void> addr, TrapType type);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
-  bool set_breakpoint(void* addr, TrapType type);
+  bool set_breakpoint(remote_ptr<void> addr, TrapType type);
 
   /**
    * Destroy all breakpoints in this VM, regardless of their
@@ -502,15 +507,16 @@ public:
    * methods above, except that watchpoints can be set for an
    * address range.
    */
-  void remove_watchpoint(void* addr, size_t num_bytes, WatchType type);
-  bool set_watchpoint(void* addr, size_t num_bytes, WatchType type);
+  void remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
+                         WatchType type);
+  bool set_watchpoint(remote_ptr<void> addr, size_t num_bytes, WatchType type);
   void destroy_all_watchpoints();
 
   /**
    * Make [addr, addr + num_bytes) inaccesible within this
    * address space.
    */
-  void unmap(void* addr, ssize_t num_bytes);
+  void unmap(remote_ptr<void> addr, ssize_t num_bytes);
 
   /** Return the vdso mapping of this. */
   Mapping vdso() const;
@@ -581,7 +587,7 @@ private:
     ITERATE_CONTIGUOUS
   };
   void for_each_in_range(
-      void* addr, ssize_t num_bytes,
+      remote_ptr<void> addr, ssize_t num_bytes,
       std::function<void(const Mapping& m, const MappableResource& r,
                          const Mapping& rem)> f,
       int how = ITERATE_DEFAULT);
@@ -593,9 +599,9 @@ private:
   void map_and_coalesce(const Mapping& m, const MappableResource& r);
 
   /** Set the dynamic heap segment to |[start, end)| */
-  void update_heap(void* start, void* end) {
-    heap = Mapping((uint8_t*)start, (uint8_t*)end - (uint8_t*)start,
-                   PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0);
+  void update_heap(remote_ptr<void> start, remote_ptr<void> end) {
+    heap = Mapping(start, end, PROT_READ | PROT_WRITE,
+                   MAP_ANONYMOUS | MAP_PRIVATE, 0);
   }
 
   // All breakpoints set in this VM.
@@ -614,7 +620,7 @@ private:
   // we can notify it when we die.
   Session* session;
   /* First mapped byte of the vdso. */
-  void* vdso_start_addr;
+  remote_ptr<void> vdso_start_addr;
   // The watchpoints set for tasks in this VM.  Watchpoints are
   // programmed per Task, but we track them per address space on
   // behalf of debuggers that assume that model.

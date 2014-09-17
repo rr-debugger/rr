@@ -1088,7 +1088,7 @@ static void notify_save_data_error(Task* t, void* addr, const void* rec_buf,
  */
 static void maybe_verify_tracee_saved_data(Task* t, const Registers* rec_regs) {
   int fd = rec_regs->arg1_signed();
-  void* rep_addr = (void*)rec_regs->arg2();
+  remote_ptr<void> rep_addr = rec_regs->arg2();
   size_t rep_len = rec_regs->arg3();
 
   if (RR_MAGIC_SAVE_DATA_FD != fd) {

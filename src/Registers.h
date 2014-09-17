@@ -15,6 +15,7 @@
 #include "GDBRegister.h"
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
+#include "remote_ptr.h"
 
 /**
  * A Registers object contains values for all general-purpose registers.
@@ -152,6 +153,10 @@ public:
    */
   template <int Index, typename T> void set_arg(T value) {
     set_arg<Index>(uintptr_t(value));
+  }
+
+  template <int Index, typename T> void set_arg(remote_ptr<T> value) {
+    set_arg<Index>(value.as_int());
   }
 
   template <int Index> void set_arg(uintptr_t value) {
