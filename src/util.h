@@ -34,11 +34,6 @@ struct Flags;
 #define SYSCALLBUF_SHMEM_NAME_PREFIX "rr-tracee-shmem-"
 #define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
 
-/* For linux x86, as of 3.11.
- *
- * TODO: better system for this ...  */
-#define MAX_SYSCALLNO 350
-
 #define STOPSIG_SYSCALL (0x80 | SIGTRAP)
 
 #define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))

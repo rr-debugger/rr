@@ -1553,7 +1553,6 @@ static int flush_one_syscall(Task* t, int stepi) {
       ASSERT(t, 0 == ((uintptr_t)child_rec & (sizeof(int) - 1)))
           << "Replaying record must be int-aligned, but instead is %p"
           << child_rec;
-      ASSERT(t, MAX_SYSCALLNO >= call) << "Replaying unknown syscall " << call;
       ASSERT(t, 0 == rec_rec->desched || 1 == rec_rec->desched)
           << "Recorded record is corrupted: rec->desched is "
           << rec_rec->desched;
