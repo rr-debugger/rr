@@ -36,9 +36,6 @@ struct Flags;
 
 #define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))
 
-#define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
-#define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
-
 /* The tracee doesn't open the desched event fd during replay, so it
  * can't be shared to this process.  We pretend that the tracee shared
  * this magic fd number with us and then give it a free pass for fd

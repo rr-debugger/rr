@@ -332,13 +332,13 @@ static int parse_record_args(int cmdi, int argc, char** argv, Flags* flags) {
         flags->use_syscall_buffer = true;
         break;
       case 'c':
-        flags->max_rbc = MAX(1, atoi(optarg));
+        flags->max_rbc = max(1, atoi(optarg));
         break;
       case 'e':
-        flags->max_events = MAX(1, atoi(optarg));
+        flags->max_events = max(1, atoi(optarg));
         break;
       case 'i':
-        flags->ignore_sig = MIN(_NSIG - 1, MAX(1, atoi(optarg)));
+        flags->ignore_sig = min(_NSIG - 1, max(1, atoi(optarg)));
         break;
       case 'n':
         flags->use_syscall_buffer = false;
