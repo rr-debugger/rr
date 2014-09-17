@@ -134,8 +134,8 @@ void EmuFs::gc(const Session& session) {
     it->second->unmark();
   }
   for (auto it = garbage.begin(); it != garbage.end(); ++it) {
-    LOG(debug) << "  emufs gc reclaiming einode:" << it->inode << "; fs name `"
-               << files[*it]->emu_path() << "'";
+    LOG(debug) << "  emufs gc reclaiming einode:" << it->disp_inode()
+               << "; fs name `" << files[*it]->emu_path() << "'";
     files.erase(*it);
   }
 }
@@ -178,7 +178,7 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
     auto ef = id_ef->second;
     if (!ef->marked()) {
       ef->mark();
-      LOG(debug) << "    marked einode:" << r.id.inode;
+      LOG(debug) << "    marked einode:" << r.id.disp_inode();
       ++*nr_marked_files;
       if (files.size() == *nr_marked_files) {
         LOG(debug) << "  (marked all files, bailing)";

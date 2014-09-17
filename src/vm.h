@@ -16,6 +16,9 @@
 class Session;
 class Task;
 
+/**
+ * Base class for classes that manage a set of Tasks.
+ */
 class HasTaskSet {
 public:
   typedef std::set<Task*> TaskSet;
@@ -49,11 +52,13 @@ enum PseudoDevice {
  * FileIds uniquely identify a file at a point in time (when the file
  * is stat'd).
  */
-struct FileId {
+class FileId {
+public:
   static const dev_t NO_DEVICE = 0;
   static const ino_t NO_INODE = 0;
 
-  FileId() : device(NO_DEVICE), inode(NO_INODE), psdev(PSEUDODEVICE_NONE) {}
+  FileId(PseudoDevice psdev = PSEUDODEVICE_NONE)
+      : device(NO_DEVICE), inode(NO_INODE), psdev(psdev) {}
   FileId(const struct stat& st, PseudoDevice psdev = PSEUDODEVICE_NONE)
       : device(st.st_dev), inode(st.st_ino), psdev(psdev) {}
   FileId(dev_t dev, ino_t ino, PseudoDevice psdev = PSEUDODEVICE_NONE)
@@ -69,10 +74,12 @@ struct FileId {
   dev_t dev_major() const;
   dev_t dev_minor() const;
   /**
-   * Return a displayabale "real" inode.  If |is_real_device()|
+   * Return a displayable "real" inode.  If |is_real_device()|
    * is false, return 0 (NO_INODE).
    */
   ino_t disp_inode() const;
+  PseudoDevice psuedodevice() const { return psdev; }
+
   /**
    * Return true iff |this| and |o| are the same "real device"
    * (i.e., same device and inode), or |this| and |o| are
@@ -110,6 +117,7 @@ struct FileId {
                                                     : inode < o.inode;
   }
 
+private:
   dev_t device;
   ino_t inode;
   PseudoDevice psdev;
@@ -254,11 +262,11 @@ struct MappableResource {
     return id.equivalent_to(o.id);
   }
   bool operator!=(const MappableResource& o) const { return !(*this == o); }
-  bool is_scratch() const { return PSEUDODEVICE_SCRATCH == id.psdev; }
+  bool is_scratch() const { return PSEUDODEVICE_SCRATCH == id.psuedodevice(); }
   bool is_shared_mmap_file() const {
-    return PSEUDODEVICE_SHARED_MMAP_FILE == id.psdev;
+    return PSEUDODEVICE_SHARED_MMAP_FILE == id.psuedodevice();
   }
-  bool is_stack() const { return PSEUDODEVICE_STACK == id.psdev; }
+  bool is_stack() const { return PSEUDODEVICE_STACK == id.psuedodevice(); }
 
   /**
    * Return a representation of this resource that would be
@@ -277,10 +285,8 @@ struct MappableResource {
   */
   std::string str() const {
     char str[200];
-    sprintf(str,
-            "%02" PRIx64 ":%02" PRIx64 " %-10ld %s %s (d:0x%" PRIx64 " i:%ld)",
-            id.dev_major(), id.dev_minor(), id.disp_inode(), fsname.c_str(),
-            id.special_name(), id.device, id.inode);
+    sprintf(str, "%02" PRIx64 ":%02" PRIx64 " %-10ld %s %s", id.dev_major(),
+            id.dev_minor(), id.disp_inode(), fsname.c_str(), id.special_name());
     return str;
   }
 

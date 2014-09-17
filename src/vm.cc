@@ -847,14 +847,14 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
 
   FileId id;
   if (is_dynamic_heap) {
-    id.psdev = PSEUDODEVICE_HEAP;
+    id = FileId(PSEUDODEVICE_HEAP);
     as->update_heap(as->heap.start, info.end_addr);
   } else if (!strcmp("[stack]", info.name)) {
-    id.psdev = PSEUDODEVICE_STACK;
+    id = FileId(PSEUDODEVICE_STACK);
   } else if (!strcmp("[vdso]", info.name)) {
     assert(!as->vdso_start_addr);
     as->vdso_start_addr = info.start_addr;
-    id.psdev = PSEUDODEVICE_VDSO;
+    id = FileId(PSEUDODEVICE_VDSO);
   } else {
     id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode);
   }
