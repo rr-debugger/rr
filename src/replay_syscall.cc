@@ -81,10 +81,10 @@ struct syscall_def {
 static struct syscall_def syscall_table[X86Arch::SYSCALL_COUNT + 1];
 
 __attribute__((constructor)) static void init_syscall_table() {
-  static_assert(ALEN(syscall_defs) <= ALEN(syscall_table), "");
-  for (size_t i = 0; i < ALEN(syscall_defs); ++i) {
+  static_assert(array_length(syscall_defs) <= array_length(syscall_table), "");
+  for (size_t i = 0; i < array_length(syscall_defs); ++i) {
     const struct syscall_def& def = syscall_defs[i];
-    assert(def.no < (int)ALEN(syscall_table));
+    assert(def.no < (int)array_length(syscall_table));
     assert(def.no == 0 || def.type != rep_UNDEFINED);
     syscall_table[def.no] = def;
   }
@@ -1261,9 +1261,9 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     }
   }
 
-  if (syscall < 0 || syscall >= int(ALEN(syscall_table))) {
+  if (syscall < 0 || syscall >= int(array_length(syscall_table))) {
     // map to an invalid syscall.
-    syscall = ALEN(syscall_table) - 1;
+    syscall = array_length(syscall_table) - 1;
     // we ensure this when we construct the table
     assert(syscall_table[syscall].type == rep_UNDEFINED);
   }

@@ -120,7 +120,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
   assert(num_bytes > 0);
   assert(regno >= DREG_FIRST_FXSAVE_REG);
   size_t fxsave_idx = regno - DREG_FIRST_FXSAVE_REG;
-  assert(fxsave_idx < ALEN(fxsave_reg_offset));
+  assert(fxsave_idx < array_length(fxsave_reg_offset));
 
   if (empty()) {
     *defined = false;

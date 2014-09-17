@@ -25,6 +25,10 @@ class Task;
 class TraceFrame;
 struct Flags;
 
+template <typename T, size_t N> constexpr size_t array_length(T (&array)[N]) {
+  return N;
+}
+
 #define SHMEM_FS "/dev/shm"
 #define SHMEM_FS2 "/run/shm"
 
@@ -33,8 +37,6 @@ struct Flags;
  * anonymously. */
 #define SYSCALLBUF_SHMEM_NAME_PREFIX "rr-tracee-shmem-"
 #define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
-
-#define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))
 
 #define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
 

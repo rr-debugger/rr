@@ -84,7 +84,7 @@ static string lowercase(const string& s) {
 static CpuMicroarch get_cpu_microarch() {
   string forced_uarch = lowercase(Flags::get().forced_uarch);
   if (!forced_uarch.empty()) {
-    for (size_t i = 0; i < ALEN(pmu_configs); ++i) {
+    for (size_t i = 0; i < array_length(pmu_configs); ++i) {
       const PmuConfig& pmu = pmu_configs[i];
       string name = lowercase(pmu.name);
       if (name.npos != name.find(forced_uarch)) {
@@ -151,7 +151,7 @@ static void init_attributes() {
 
   CpuMicroarch uarch = get_cpu_microarch();
   const PmuConfig* pmu = nullptr;
-  for (size_t i = 0; i < ALEN(pmu_configs); ++i) {
+  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
     if (uarch == pmu_configs[i].uarch) {
       pmu = &pmu_configs[i];
       break;

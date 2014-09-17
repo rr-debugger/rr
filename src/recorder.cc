@@ -844,7 +844,7 @@ static void handle_termsig(int sig) {
 
 static void install_termsig_handlers(void) {
   int termsigs[] = { SIGINT, SIGTERM };
-  for (size_t i = 0; i < ALEN(termsigs); ++i) {
+  for (size_t i = 0; i < array_length(termsigs); ++i) {
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = handle_termsig;

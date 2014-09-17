@@ -107,7 +107,7 @@ struct Sighandlers {
   }
 
   void init_from_current_process() {
-    for (int i = 1; i < ssize_t(ALEN(handlers)); ++i) {
+    for (int i = 1; i < ssize_t(array_length(handlers)); ++i) {
       Sighandler& h = handlers[i];
       struct sigaction act;
       if (-1 == sigaction(i, NULL, &act)) {
@@ -137,7 +137,7 @@ struct Sighandlers {
    * table copy.)
    */
   void reset_user_handlers() {
-    for (int i = 0; i < ssize_t(ALEN(handlers)); ++i) {
+    for (int i = 0; i < ssize_t(array_length(handlers)); ++i) {
       Sighandler& h = handlers[i];
       // If the handler was a user handler, reset to
       // default.  If it was SIG_IGN or SIG_DFL,
@@ -148,8 +148,8 @@ struct Sighandlers {
     }
   }
 
-  static void assert_valid(int sig) {
-    assert(0 < sig && sig < ssize_t(ALEN(handlers)));
+  void assert_valid(int sig) const {
+    assert(0 < sig && sig < ssize_t(array_length(handlers)));
   }
 
   static shr_ptr create() { return shr_ptr(new Sighandlers()); }

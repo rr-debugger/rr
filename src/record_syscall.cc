@@ -1325,6 +1325,14 @@ static void finish_restoring_some_scratch(Task* t, uint8_t* iter, void** data) {
   return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
 }
 
+static const unsigned int elf_aux[] = {
+  AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
+  AT_PHENT,   AT_PHNUM,        AT_BASE,  AT_FLAGS,  AT_ENTRY,  AT_UID,
+  AT_EUID,    AT_GID,          AT_EGID,  AT_SECURE
+};
+// work around gcc bug
+static const size_t elf_aux_length = array_length(elf_aux);
+
 template <typename Arch> static void process_execve(Task* t) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
@@ -1370,26 +1378,20 @@ template <typename Arch> static void process_execve(Task* t) {
     stack_ptr++;
   }
   stack_ptr++;
-
   /* should now point to ELF Auxiliary Table */
-  static const unsigned int elf_aux[] = {
-    AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
-    AT_PHENT,   AT_PHNUM,        AT_BASE,  AT_FLAGS,  AT_ENTRY,  AT_UID,
-    AT_EUID,    AT_GID,          AT_EGID,  AT_SECURE
-  };
 
   struct ElfEntry {
     typename Arch::unsigned_word key;
     typename Arch::unsigned_word value;
   };
   union {
-    ElfEntry entries[ALEN(elf_aux)];
+    ElfEntry entries[elf_aux_length];
     uint8_t bytes[sizeof(entries)];
   } table;
   t->read_bytes(stack_ptr, table.bytes);
-  stack_ptr += 2 * ALEN(elf_aux);
+  stack_ptr += 2 * array_length(elf_aux);
 
-  for (int i = 0; i < ssize_t(ALEN(elf_aux)); ++i) {
+  for (int i = 0; i < ssize_t(array_length(elf_aux)); ++i) {
     auto expected_field = elf_aux[i];
     const ElfEntry& entry = table.entries[i];
     ASSERT(t, expected_field == entry.key)
