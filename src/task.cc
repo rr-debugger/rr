@@ -22,6 +22,7 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "CPUIDBugDetector.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "remote_syscalls.h"
@@ -2162,7 +2163,7 @@ bool Task::clone_syscall_is_complete() {
     }
     syscall(SYS_write, -1, &sum, sizeof(sum));
 
-    EnvironmentBugDetector::run_detection_code();
+    CPUIDBugDetector::run_detection_code();
 
     execvpe(trace.initial_exe().c_str(),
             StringVectorToCharArray(trace.initial_argv()).get(),

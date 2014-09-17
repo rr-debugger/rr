@@ -11,6 +11,7 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "CPUIDBugDetector.h"
 #include "TraceStream.h"
 #include "replayer.h"
 
@@ -326,7 +327,7 @@ public:
    */
   static shr_ptr create(int argc, char* argv[]);
 
-  EnvironmentBugDetector& bug_detector() { return environment_bug_detector; }
+  CPUIDBugDetector& bug_detector() { return cpuid_bug_detector; }
 
   virtual ReplaySession* as_replay() { return this; }
 
@@ -367,7 +368,7 @@ private:
   TraceReader trace_in;
   TraceFrame trace_frame;
   struct rep_trace_step replay_step;
-  EnvironmentBugDetector environment_bug_detector;
+  CPUIDBugDetector cpuid_bug_detector;
   /**
    * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
    * must be replayed sequentially, so we can use one buffer for all

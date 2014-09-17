@@ -372,36 +372,6 @@ void destroy_buffers(Task* t);
  */
 void monkeypatch_vdso(Task* t);
 
-/**
- * Helper to detect when the "CPUID can cause rbcs to be lost"  bug is present.
- */
-class EnvironmentBugDetector {
-public:
-  EnvironmentBugDetector()
-      : trace_rbc_count_at_last_geteuid32(0),
-        actual_rbc_count_at_last_geteuid32(0),
-        detected_cpuid_bug(false) {}
-  /**
-   * Call this in the context of the first spawned process to run the
-   * code that triggers the bug.
-   */
-  static void run_detection_code();
-  /**
-   * Call this when task t enters a traced syscall during replay.
-   */
-  void notify_reached_syscall_during_replay(Task* t);
-  /**
-   * Returns true when the "CPUID can cause rbcs to be lost" bug has
-   * been detected.
-   */
-  bool is_cpuid_bug_detected() { return detected_cpuid_bug; }
-
-private:
-  uint64_t trace_rbc_count_at_last_geteuid32;
-  uint64_t actual_rbc_count_at_last_geteuid32;
-  bool detected_cpuid_bug;
-};
-
 enum cpuid_requests {
   CPUID_GETVENDORSTRING,
   CPUID_GETFEATURES,

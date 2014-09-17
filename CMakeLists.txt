@@ -68,6 +68,7 @@ add_executable(rr
   src/test/cpuid_loop.S
   src/CompressedReader.cc
   src/CompressedWriter.cc
+  src/CPUIDBugDetector.cc
   src/debugger_gdb.cc
   src/diverter.cc
   src/emufs.cc
