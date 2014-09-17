@@ -34,8 +34,6 @@ struct Flags;
 #define SYSCALLBUF_SHMEM_NAME_PREFIX "rr-tracee-shmem-"
 #define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
 
-#define STOPSIG_SYSCALL (0x80 | SIGTRAP)
-
 #define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))
 
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))

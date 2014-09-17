@@ -32,6 +32,8 @@ static void handle_siginfo(Task* t, siginfo_t* si);
 
 static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
 
+static const int STOPSIG_SYSCALL = 0x80 | SIGTRAP;
+
 /**
  * Doesn't return if |si| wasn't triggered by a time-slice interrupt.
  */
