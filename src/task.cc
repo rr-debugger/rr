@@ -30,6 +30,12 @@
 #include "syscalls.h"
 #include "util.h"
 
+/* The tracee doesn't open the desched event fd during replay, so it
+ * can't be shared to this process.  We pretend that the tracee shared
+ * this magic fd number with us and then give it a free pass for fd
+ * checks that include this fd. */
+static const int REPLAY_DESCHED_EVENT_FD = -123;
+
 #define NUM_X86_DEBUG_REGS 8
 #define NUM_X86_WATCHPOINTS 4
 

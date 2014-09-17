@@ -36,12 +36,6 @@ struct Flags;
 
 #define ALEN(_arr) (sizeof(_arr) / (sizeof(_arr[0])))
 
-/* The tracee doesn't open the desched event fd during replay, so it
- * can't be shared to this process.  We pretend that the tracee shared
- * this magic fd number with us and then give it a free pass for fd
- * checks that include this fd. */
-#define REPLAY_DESCHED_EVENT_FD -123
-
 #define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
 
 class Task;
