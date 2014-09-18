@@ -128,11 +128,13 @@ install(TARGETS rr rrpreload
 set(BASIC_TESTS
   64bit_child
   accept
+  async_segv_ignored
   at_threadexit
   bad_ip
   barrier
   big_buffers
   block
+  blocked_sigsegv
   chew_cpu
   clock
   clone
@@ -153,6 +155,7 @@ set(BASIC_TESTS
   grandchild_threads_main_running
   grandchild_threads_thread_running
   grandchild_threads_parent_alive
+  ignored_sigsegv
   int3
   intr_futex_wait_restart
   intr_poll

@@ -326,8 +326,8 @@ struct Event {
     return syscall;
   }
 
-  // Deterministic signals are encoded as (signum | DET_SIGNAL_BIT).
   enum {
+    // Deterministic signals are encoded as (signum | DET_SIGNAL_BIT).
     DET_SIGNAL_BIT = 0x80
   };
 

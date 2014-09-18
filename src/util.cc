@@ -805,12 +805,25 @@ signal_action default_action(int sig) {
   }
 }
 
-bool possibly_destabilizing_signal(Task* t, int sig) {
-  sig_handler_t disp = t->signal_disposition(sig);
+bool possibly_destabilizing_signal(Task* t, int sig, bool deterministic) {
   signal_action action = default_action(sig);
-  // If the diposition is IGN or user handler, then the signal
-  // won't be fatal.  So we only need to check for DFL.
-  return SIG_DFL == disp && (DUMP_CORE == action || TERMINATE == action);
+  if (action != DUMP_CORE && action != TERMINATE) {
+    // If the default action doesn't kill the process, it won't die.
+    return false;
+  }
+
+  sig_handler_t disp = t->signal_disposition(sig);
+  if (disp == SIG_DFL) {
+    // The default action is going to happen: killing the process.
+    return true;
+  }
+  if (disp == SIG_IGN) {
+    // Deterministic fatal signals can't be ignored.
+    return deterministic;
+  }
+  // If the signal's blocked, user handlers aren't going to run and the process
+  // will die.
+  return t->is_sig_blocked(sig);
 }
 
 static bool has_fs_name(const char* path) {

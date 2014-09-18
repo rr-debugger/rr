@@ -648,8 +648,10 @@ static bool signal_state_changed(Task* t, int by_waitpid) {
       // the point of signal delivery.
       t->record_current_event();
       t->ev().transform(EV_SIGNAL_DELIVERY);
-      ssize_t sigframe_size;
-      if (t->signal_has_user_handler(sig)) {
+      ssize_t sigframe_size = 0;
+      // If a signal is blocked but is still delivered (e.g. a synchronous
+      // terminating signal such as SIGSEGV), user handlers do not run.
+      if (t->signal_has_user_handler(sig) && !t->is_sig_blocked(sig)) {
         LOG(debug) << "  " << t->tid << ": " << signalname(sig)
                    << " has user handler";
 
@@ -693,7 +695,6 @@ static bool signal_state_changed(Task* t, int by_waitpid) {
       } else {
         LOG(debug) << "  " << t->tid << ": no user handler for "
                    << signalname(sig);
-        sigframe_size = 0;
       }
 
       // We record this data regardless to simplify replay.
@@ -719,7 +720,8 @@ static bool signal_state_changed(Task* t, int by_waitpid) {
     case EV_SIGNAL_DELIVERY:
       if (!t->ev().Signal().delivered) {
         task_continue(t, DEFAULT_CONT, sig);
-        if (possibly_destabilizing_signal(t, sig)) {
+        if (possibly_destabilizing_signal(t, sig,
+                                          t->ev().Signal().deterministic)) {
           LOG(warn) << "Delivered core-dumping signal; may misrecord "
                        "CLONE_CHILD_CLEARTID memory race";
           t->destabilize_task_group();

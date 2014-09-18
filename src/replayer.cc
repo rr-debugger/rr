@@ -1284,7 +1284,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   }
 
   // We are now at the exact point in the child where the signal
-  // was recorded, emulate it using the next trace line (records
+  // was recorded, emulate it using the next trace frame (records
   // the state at sighandler entry).
   Task* t = schedule_task(oldtask->replay_session(), nullptr, true);
   if (!t) {
@@ -1312,7 +1312,8 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
     t->push_event(SignalEvent(sig, sigtype));
     t->ev().transform(EV_SIGNAL_DELIVERY);
     t->ev().transform(EV_SIGNAL_HANDLER);
-  } else if (possibly_destabilizing_signal(t, sig)) {
+  } else if (possibly_destabilizing_signal(
+                 t, sig, Event(trace->event()).Signal().deterministic)) {
     t->push_event(SignalEvent(sig, sigtype));
     t->ev().transform(EV_SIGNAL_DELIVERY);
 
