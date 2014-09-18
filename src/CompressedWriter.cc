@@ -15,13 +15,15 @@
 #include <unistd.h>
 #include <zlib.h>
 
+using namespace std;
+
 void* CompressedWriter::compression_thread_callback(void* p) {
   static_cast<CompressedWriter*>(p)->compression_thread();
   return NULL;
 }
 
-CompressedWriter::CompressedWriter(const std::string& filename,
-                                   size_t block_size, uint32_t num_threads) {
+CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
+                                   uint32_t num_threads) {
   this->block_size = block_size;
   threads.resize(num_threads);
   thread_pos.resize(num_threads);
@@ -53,6 +55,12 @@ CompressedWriter::CompressedWriter(const std::string& filename,
   pthread_mutex_lock(&mutex);
   for (uint32_t i = 0; i < num_threads; ++i) {
     pthread_create(&threads[i], NULL, compression_thread_callback, this);
+    size_t last_slash = filename.rfind('/');
+    string thread_name =
+        string("compress ") + (last_slash == string::npos
+                                   ? filename
+                                   : filename.substr(last_slash + 1));
+    pthread_setname_np(threads[i], thread_name.substr(0, 15).c_str());
   }
   pthread_mutex_unlock(&mutex);
 }
@@ -72,9 +80,8 @@ void CompressedWriter::write(const void* data, size_t size) {
       continue;
     }
     size_t buf_offset = (size_t)(producer_reserved_write_pos % buffer.size());
-    size_t amount =
-        std::min(buffer.size() - buf_offset,
-                 (size_t)std::min<uint64_t>(reservation_size, size));
+    size_t amount = min(buffer.size() - buf_offset,
+                        (size_t)min<uint64_t>(reservation_size, size));
     memcpy(&buffer[buf_offset], data, amount);
     producer_reserved_write_pos += amount;
     data = static_cast<const char*>(data) + amount;
@@ -104,7 +111,7 @@ void CompressedWriter::update_reservation(WaitFlag wait_flag) {
 
     uint64_t completed_pos = next_thread_pos;
     for (uint32_t i = 0; i < thread_pos.size(); ++i) {
-      completed_pos = std::min(completed_pos, thread_pos[i]);
+      completed_pos = min(completed_pos, thread_pos[i]);
     }
     producer_reserved_upto_pos = completed_pos + buffer.size();
     if (producer_reserved_pos < producer_reserved_upto_pos ||
@@ -127,7 +134,7 @@ void CompressedWriter::compression_thread() {
   }
 
   // Add slop for incompressible data
-  std::vector<uint8_t> outputbuf;
+  vector<uint8_t> outputbuf;
   outputbuf.resize((size_t)(block_size * 1.1) + sizeof(BlockHeader));
   BlockHeader* header = reinterpret_cast<BlockHeader*>(&outputbuf[0]);
 
@@ -135,8 +142,7 @@ void CompressedWriter::compression_thread() {
     if (!write_error && next_thread_pos < next_thread_end_pos &&
         (closing || next_thread_pos + block_size <= next_thread_end_pos)) {
       thread_pos[thread_index] = next_thread_pos;
-      next_thread_pos =
-          std::min(next_thread_end_pos, next_thread_pos + block_size);
+      next_thread_pos = min(next_thread_end_pos, next_thread_pos + block_size);
       // header->uncompressed_length must be <= block_size,
       // therefore fits in a size_t.
       header->uncompressed_length =
@@ -228,7 +234,7 @@ size_t CompressedWriter::do_compress(uint64_t offset, size_t length,
   while (length > 0 || stream.avail_in > 0) {
     if (stream.avail_in == 0) {
       size_t buf_offset = (size_t)(offset % buffer.size());
-      size_t amount = std::min(length, buffer.size() - buf_offset);
+      size_t amount = min(length, buffer.size() - buf_offset);
       stream.next_in = &buffer[buf_offset];
       stream.avail_in = amount;
       length -= amount;
