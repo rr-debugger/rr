@@ -31,4 +31,26 @@
 #define ERESTARTNOHAND 514
 #define ERESTART_RESTARTBLOCK 516
 
+/* (There are various GNU and BSD extensions that define this, but
+ * it's not worth the bother to sort those out.) */
+typedef void (*sig_handler_t)(int);
+
+/* We need to complement sigsets in order to update the Task blocked
+ * set, but POSIX doesn't appear to define a convenient helper.  So we
+ * define our own linux-compatible sig_set_t and use bit operators to
+ * manipulate sigsets. */
+typedef uint64_t sig_set_t;
+static_assert(_NSIG / 8 == sizeof(sig_set_t), "Update sig_set_t for _NSIG.");
+
+/**
+ * The kernel SYS_sigaction ABI is different from the libc API; this
+ * is the kernel layout.  We see these at SYS_sigaction traps.
+ */
+struct kernel_sigaction {
+  sig_handler_t k_sa_handler;
+  unsigned long sa_flags;
+  void (*sa_restorer)(void);
+  sigset_t sa_mask;
+};
+
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */
