@@ -588,8 +588,8 @@ static void maybe_reset_syscallbuf(Task* t) {
   t->flushed_syscallbuf = 0;
 }
 
-/** If the rbc seems to be working return, otherwise don't return. */
-static void check_rbc(Task* t) {
+/** If the perf counters seem to be working return, otherwise don't return. */
+static void check_perf_counters_working(Task* t) {
   if (can_deliver_signals ||
       !is_write_syscall(t->ev().Syscall().number, t->arch())) {
     return;
@@ -812,7 +812,7 @@ static void runnable_state_changed(Task* t) {
         rec_before_record_syscall_entry(t, t->ev().Syscall().number);
       }
       ASSERT(t, EV_SYSCALL == t->ev().type());
-      check_rbc(t);
+      check_perf_counters_working(t);
       t->ev().Syscall().state = ENTERING_SYSCALL;
       t->record_current_event();
       break;
