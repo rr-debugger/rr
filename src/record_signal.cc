@@ -250,7 +250,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
     //
     // Also ignore time-slice signals.  If the tracee ends
     // up at the disarm-desched ioctl, we'll reschedule it
-    // with the rbc interrupt still programmed.  At worst,
+    // with the ticks interrupt still programmed.  At worst,
     // the tracee will get an extra time-slice out of
     // this, on average, so we don't worry too much about
     // it.

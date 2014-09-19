@@ -32,12 +32,12 @@ void TraceFrame::dump(FILE* out) const {
   }
 
   if (PerfCounters::extra_perf_counters_enabled()) {
-    fprintf(out, "\n  hw_ints:%lld faults:%lld rbc:%" PRId64 " insns:%lld\n",
+    fprintf(out, "\n  hw_ints:%lld faults:%lld ticks:%" PRId64 " insns:%lld\n",
             exec_info.extra_perf_values.hw_interrupts,
             exec_info.extra_perf_values.page_faults, ticks(),
             exec_info.extra_perf_values.instructions_retired);
   } else {
-    fprintf(out, "\n  rbc:%" PRId64 "\n", ticks());
+    fprintf(out, "\n  ticks:%" PRId64 "\n", ticks());
   }
   regs().print_register_file_for_trace(out);
 }

@@ -912,13 +912,13 @@ void Task::remote_memcpy(void* dst, const void* src, size_t num_bytes) {
 }
 
 bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
-                            int64_t tick_period) {
+                            Ticks tick_period) {
   // Treat a 0 tick_period as a very large but finite number.
   // Always resetting here, and always to a nonzero number, improves
   // consistency between recording and replay and hopefully
   // makes counting bugs behave similarly between recording and
   // replay.
-  // Accumulate any unknown stuff in rbc_count().
+  // Accumulate any unknown stuff in tick_count().
   tick_count();
   hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
@@ -2151,8 +2151,8 @@ bool Task::clone_syscall_is_complete() {
     ::kill(getpid(), SIGSTOP);
 
     // We do a small amount of dummy work here to retire
-    // some branches in order to ensure that the rbc is
-    // non-zero.  The tracer can then check the rbc value
+    // some branches in order to ensure that the ticks value is
+    // non-zero.  The tracer can then check the ticks value
     // at the first ptrace-trap to see if it seems to be
     // working.
     int start = rand() % 5;

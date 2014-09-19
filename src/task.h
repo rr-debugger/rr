@@ -151,7 +151,7 @@ public:
    * interrupted.  Don't wait for status change in the
    * "_nonblocking()" variants.
    */
-  void cont_nonblocking(int sig = 0, int64_t tick_period = 0) {
+  void cont_nonblocking(int sig = 0, Ticks tick_period = 0) {
     resume_execution(RESUME_CONT, RESUME_NONBLOCKING, sig, tick_period);
   }
   bool cont_singlestep(int sig = 0) {
@@ -160,7 +160,7 @@ public:
   bool cont_syscall(int sig = 0) {
     return resume_execution(RESUME_SYSCALL, RESUME_WAIT);
   }
-  void cont_syscall_nonblocking(int sig = 0, int64_t tick_period = 0) {
+  void cont_syscall_nonblocking(int sig = 0, Ticks tick_period = 0) {
     resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, sig, tick_period);
   }
   bool cont_sysemu(int sig = 0) {
@@ -273,14 +273,14 @@ public:
   void flush_inconsistent_state();
 
   /**
-   * Return total number of rbcs ever executed by this task.
-   * Updates rbc count from the current performance counter values if
+   * Return total number of ticks ever executed by this task.
+   * Updates tick count from the current performance counter values if
    * necessary.
    */
   Ticks tick_count();
 
   /**
-   * Set rbc count to 'count'.
+   * Set tick count to 'count'.
    */
   void set_tick_count(Ticks count);
 
@@ -658,14 +658,14 @@ public:
   /**
    * Resume execution |how|, deliverying |sig| if nonzero.
    * After resuming, |wait_how|. In replay, reset hpcs and
-   * request an rbc period of tick_period. The default value
+   * request a tick period of tick_period. The default value
    * of tick_period is 0, which means effectively infinite.
    *
    * You probably want to use one of the cont*() helpers above,
    * and not this.
    */
   bool resume_execution(ResumeRequest how, WaitRequest wait_how, int sig = 0,
-                        int64_t tick_period = 0);
+                        Ticks tick_period = 0);
 
   /** Return the session this is part of. */
   Session& session() const;
@@ -1242,10 +1242,10 @@ private:
   std::deque<Event> pending_events;
   // Task's OS name.
   std::string prname;
-  // Count of all rbcs seen by this task since tracees became
+  // Count of all ticks seen by this task since tracees became
   // consistent.
-  int64_t ticks;
-  // True if rbc hpc values have been read since the last task-resume.
+  Ticks ticks;
+  // True if ticks hpc value has been read since the last task-resume.
   bool ticks_read;
   // When |registers_known|, these are our child registers.
   // When execution is resumed, we no longer know what the child
