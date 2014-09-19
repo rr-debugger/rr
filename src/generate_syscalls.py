@@ -127,14 +127,18 @@ def write_syscall_helper_functions(f):
 
 def write_syscall_defs_table(f):
     f.write("static struct syscall_def syscall_defs[] = {\n")
-    for name, obj in syscalls.all():
+    # XXX hard-coded to x86 currently.
+    arch = "X86Arch"
+    x86_only_syscalls = sorted([(name, obj) for name, obj in syscalls.all() if obj.x86],
+                               key=lambda x: x[1].x86)
+    for name, obj in x86_only_syscalls:
         if isinstance(obj, syscalls.RegularSyscall):
             recorded_args = [arg for arg in syscalls.RegularSyscall.ARGUMENT_SLOTS
                              if getattr(obj, arg, None) is not None]
-            f.write("  { X86Arch::%s, rep_%s, %d },\n"
-                    % (name, obj.semantics, len(recorded_args)))
+            f.write("  { %s::%s, rep_%s, %d },\n"
+                    % (arch, name, obj.semantics, len(recorded_args)))
         elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
-            f.write("  { X86Arch::%s, rep_IRREGULAR, -1 },\n" % name)
+            f.write("  { %s::%s, rep_IRREGULAR, -1 },\n" % (arch, name))
         elif isinstance(obj, syscalls.UnsupportedSyscall):
             pass
     f.write("};\n")
