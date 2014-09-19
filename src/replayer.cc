@@ -238,7 +238,7 @@ static void maybe_singlestep_for_event(Task* t, struct dbg_request* req) {
   if (trace_instructions_up_to_event(session->current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
     print_register_file_compact(stderr, &t->regs());
-    fprintf(stderr, " rbc:%" PRId64 "\n", t->rbc_count());
+    fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     req->type = DREQ_STEP;
     req->target = get_threadid(t);
     req->suppress_debugger_stop = true;
@@ -823,7 +823,7 @@ static void continue_or_step(Task* t, int stepi, int64_t tick_period = 0) {
       << "Replaying `" << Event(t->current_trace_frame().event())
       << "': expecting tracee signal or trap, but instead at `"
       << t->syscallname(t->regs().original_syscallno())
-      << "' (rcb: " << t->rbc_count() << ")";
+      << "' (ticks: " << t->tick_count() << ")";
 }
 
 /**
@@ -1070,7 +1070,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
 
   /* Step 1: advance to the target rcb (minus a slack region) as
    * quickly as possible by programming the hpc. */
-  rcbs_left = rcb - t->rbc_count();
+  rcbs_left = rcb - t->tick_count();
 
   LOG(debug) << "advancing " << rcbs_left << " rcbs to reach " << rcb << "/"
              << ip;
@@ -1107,7 +1107,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
               << " doesn't own hpc; replay divergence";
     }
 
-    rcbs_left = rcb - t->rbc_count();
+    rcbs_left = rcb - t->tick_count();
   }
   guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack, ignored_early_match,
                   rcbs_left_at_ignored_early_match);
@@ -1208,7 +1208,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
     if (at_target) {
       // Adjust dynamic rcb count to match trace, in case
       // there was slack.
-      t->set_rbc_count(rcb);
+      t->set_tick_count(rcb);
       /* Case (2) above: done. */
       return 0;
     }
@@ -1262,7 +1262,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
 
     /* Maintain the "'rcbs_left'-is-up-to-date"
      * invariant. */
-    rcbs_left = rcb - t->rbc_count();
+    rcbs_left = rcb - t->tick_count();
     guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack, ignored_early_match,
                     rcbs_left_at_ignored_early_match);
   }
@@ -1339,14 +1339,14 @@ static void check_rcb_consistency(Task* t, const Event& ev) {
   }
 
   int64_t rcb_slack = get_rcb_slack(t);
-  int64_t rcb_now = t->rbc_count();
+  int64_t rcb_now = t->tick_count();
   int64_t trace_rcb = t->current_trace_frame().ticks();
 
   ASSERT(t, llabs(rcb_now - trace_rcb) <= rcb_slack)
       << "rcb mismatch for '" << ev << "'; expected "
       << t->current_trace_frame().ticks() << ", got " << rcb_now << "";
   // Sync task rcb with trace rcb so we don't keep accumulating errors
-  t->set_rbc_count(trace_rcb);
+  t->set_tick_count(trace_rcb);
 }
 
 /**

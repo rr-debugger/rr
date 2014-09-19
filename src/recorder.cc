@@ -612,12 +612,12 @@ static void check_rbc(Task* t) {
     terminate_recording(t);
   }
 
-  int64_t rbc = t->rbc_count();
-  LOG(debug) << "rbc on entry to dummy write: " << rbc;
-  if (!(rbc > 0)) {
+  Ticks ticks = t->tick_count();
+  LOG(debug) << "ticks on entry to dummy write: " << ticks;
+  if (ticks == 0) {
     fprintf(stderr, "\n"
                     "rr: internal recorder error:\n"
-                    "  Retired-branch counter doesn't seem to be working.  Are "
+                    "  Performance counter doesn't seem to be working.  Are "
                     "you perhaps\n"
                     "  running rr in a VM but didn't enable perf-counter "
                     "virtualization?\n");

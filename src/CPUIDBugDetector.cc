@@ -52,7 +52,7 @@ void CPUIDBugDetector::notify_reached_syscall_during_replay(Task* t) {
     return;
   }
   uint64_t trace_rbc_count = t->current_trace_frame().ticks();
-  uint64_t actual_rbc_count = t->rbc_count();
+  uint64_t actual_rbc_count = t->tick_count();
   if (trace_rbc_count_at_last_geteuid32 > 0 && !detected_cpuid_bug) {
     if (!rbc_counts_ok(trace_rbc_count_at_last_geteuid32, trace_rbc_count,
                        "trace") ||

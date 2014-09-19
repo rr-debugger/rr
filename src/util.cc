@@ -413,8 +413,8 @@ bool compare_register_files(Task* t, const char* name1, const Registers* reg1,
   bool match = Registers::compare_register_files(name1, reg1, name2, reg2,
                                                  mismatch_behavior);
 
-  ASSERT(t, !bail_error || match) << "Fatal register mismatch (rbc/rec:"
-                                  << t->rbc_count() << "/"
+  ASSERT(t, !bail_error || match) << "Fatal register mismatch (ticks/rec:"
+                                  << t->tick_count() << "/"
                                   << t->current_trace_frame().ticks() << ")";
 
   if (match && mismatch_behavior == LOG_MISMATCHES) {

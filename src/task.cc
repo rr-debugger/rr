@@ -209,8 +209,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       syscallbuf_child(),
       blocked_sigs(),
       prname("???"),
-      rbcs(0),
-      rbcs_read(false),
+      ticks(0),
+      ticks_read(false),
       registers_known(false),
       extra_registers_known(false),
       robust_futex_list(),
@@ -714,7 +714,7 @@ void Task::record_event(const Event& ev) {
     if (PerfCounters::extra_perf_counters_enabled()) {
       extra_perf_values = hpc.read_extra();
     }
-    frame.set_exec_info(rbc_count(), regs(),
+    frame.set_exec_info(tick_count(), regs(),
                         PerfCounters::extra_perf_counters_enabled()
                             ? &extra_perf_values
                             : nullptr,
@@ -731,17 +731,17 @@ void Task::record_event(const Event& ev) {
   trace_writer().write_frame(frame);
 }
 
-void Task::flush_inconsistent_state() { rbcs = 0; }
+void Task::flush_inconsistent_state() { ticks = 0; }
 
-int64_t Task::rbc_count() {
-  if (!rbcs_read) {
-    rbcs += hpc.read_ticks();
-    rbcs_read = true;
+int64_t Task::tick_count() {
+  if (!ticks_read) {
+    ticks += hpc.read_ticks();
+    ticks_read = true;
   }
-  return rbcs;
+  return ticks;
 }
 
-void Task::set_rbc_count(int64_t count) { rbcs = count; }
+void Task::set_tick_count(Ticks count) { ticks = count; }
 
 void Task::record_local(void* addr, ssize_t num_bytes, const void* data) {
   maybe_flush_syscallbuf();
@@ -919,13 +919,13 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   // makes counting bugs behave similarly between recording and
   // replay.
   // Accumulate any unknown stuff in rbc_count().
-  rbc_count();
+  tick_count();
   hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   registers_known = false;
   extra_registers_known = false;
-  rbcs_read = false;
+  ticks_read = false;
   if (RESUME_NONBLOCKING == wait_how) {
     return true;
   }
@@ -1590,8 +1590,8 @@ void Task::copy_state(Task* from) {
   blocked_sigs = from->blocked_sigs;
   pending_events = from->pending_events;
 
-  rbcs = from->rbc_count();
-  rbcs_read = true;
+  ticks = from->tick_count();
+  ticks_read = true;
   tid_futex = from->tid_futex;
 }
 

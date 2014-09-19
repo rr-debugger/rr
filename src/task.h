@@ -277,12 +277,12 @@ public:
    * Updates rbc count from the current performance counter values if
    * necessary.
    */
-  int64_t rbc_count();
+  Ticks tick_count();
 
   /**
    * Set rbc count to 'count'.
    */
-  void set_rbc_count(int64_t count);
+  void set_tick_count(Ticks count);
 
   /**
    * Return the exe path passed to the most recent (successful)
@@ -1244,9 +1244,9 @@ private:
   std::string prname;
   // Count of all rbcs seen by this task since tracees became
   // consistent.
-  int64_t rbcs;
+  int64_t ticks;
   // True if rbc hpc values have been read since the last task-resume.
-  bool rbcs_read;
+  bool ticks_read;
   // When |registers_known|, these are our child registers.
   // When execution is resumed, we no longer know what the child
   // registers are so the flag is unset.  The next time the
