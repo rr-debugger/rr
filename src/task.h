@@ -24,9 +24,6 @@ struct Sighandlers;
 class Task;
 struct TaskGroup;
 
-/** Add the signal |_sig| to |_set|. */
-#define SIGSET_ADD(_set, _sig) ((_set) | (1 << ((_sig) - 1)))
-
 struct syscallbuf_hdr;
 struct syscallbuf_record;
 
