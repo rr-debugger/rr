@@ -212,7 +212,7 @@ HasExecInfo Event::has_exec_info() const {
   }
 }
 
-bool Event::has_rbc_slop() const {
+bool Event::has_ticks_slop() const {
   switch (type()) {
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_FLUSH:
