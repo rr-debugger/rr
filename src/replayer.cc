@@ -797,7 +797,7 @@ enum {
   DONT_STEPI = 0,
   STEPI
 };
-static void continue_or_step(Task* t, int stepi, int64_t rbc_period = 0) {
+static void continue_or_step(Task* t, int stepi, int64_t tick_period = 0) {
   int child_sig_gt_zero;
 
   ResumeRequest resume_how;
@@ -812,7 +812,7 @@ static void continue_or_step(Task* t, int stepi, int64_t rbc_period = 0) {
      * should be neglible. */
     resume_how = RESUME_SYSCALL;
   }
-  t->resume_execution(resume_how, RESUME_WAIT, 0, rbc_period);
+  t->resume_execution(resume_how, RESUME_WAIT, 0, tick_period);
 
   t->child_sig = t->pending_sig();
   child_sig_gt_zero = (0 < t->child_sig);

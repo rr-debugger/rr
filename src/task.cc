@@ -912,15 +912,15 @@ void Task::remote_memcpy(void* dst, const void* src, size_t num_bytes) {
 }
 
 bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
-                            int64_t rbc_period) {
-  // Treat a 0 rbc_period as a very large but finite number.
+                            int64_t tick_period) {
+  // Treat a 0 tick_period as a very large but finite number.
   // Always resetting here, and always to a nonzero number, improves
   // consistency between recording and replay and hopefully
   // makes counting bugs behave similarly between recording and
   // replay.
   // Accumulate any unknown stuff in rbc_count().
   rbc_count();
-  hpc.reset(rbc_period == 0 ? 0xffffffff : rbc_period);
+  hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   registers_known = false;
