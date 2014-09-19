@@ -65,15 +65,15 @@ using namespace rr;
  * observed during replay.  Running with DEBUGLOG enabled (see above),
  * a sequence of log messages like the following will appear
  *
- * 1. programming interrupt for [target - SKID_SIZE] rcbs
+ * 1. programming interrupt for [target - SKID_SIZE] ticks
  * 2. Error: Replay diverged.  Dumping register comparison.
  * 3. Error: [list of divergent registers; arbitrary]
- * 4. Error: overshot target rcb=[target] by [i]
+ * 4. Error: overshot target ticks=[target] by [i]
  *
  * The key is that no other replayer log messages occur between (1)
  * and (2).  This spew means that the replayer programmed an interrupt
- * for rcb=[target-SKID_SIZE], but the tracee was actually interrupted
- * at rcb=[target+i].  And that in turn means that the kernel/HW
+ * for ticks=[target-SKID_SIZE], but the tracee was actually interrupted
+ * at ticks=[target+i].  And that in turn means that the kernel/HW
  * skidded too far past the programmed target for rr to handle it.
  *
  * If that occurs, the SKID_SIZE needs to be increased by at least
@@ -84,7 +84,7 @@ using namespace rr;
  * perhaps pipeline depth and things of that nature are involved.  But
  * those reasons if they exit are currently not understood.
  */
-#define SKID_SIZE 70
+static const int SKID_SIZE = 70;
 
 /**
  * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
@@ -946,10 +946,10 @@ static int is_debugger_trap(Task* t, int target_sig, SigDeliveryType delivery,
 }
 
 static void guard_overshoot(Task* t, const Registers* target_regs,
-                            int64_t target_rcb, int64_t remaining_rcbs,
-                            int64_t rcb_slack, bool ignored_early_match,
-                            int64_t rcb_left_at_ignored_early_match) {
-  if (remaining_rcbs < -rcb_slack) {
+                            Ticks target_ticks, Ticks remaining_ticks,
+                            Ticks ticks_slack, bool ignored_early_match,
+                            Ticks ticks_left_at_ignored_early_match) {
+  if (remaining_ticks < -ticks_slack) {
     uintptr_t target_ip = target_regs->ip();
 
     LOG(error) << "Replay diverged.  Dumping register comparison.";
@@ -964,12 +964,12 @@ static void guard_overshoot(Task* t, const Registers* target_regs,
     compare_register_files(t, "rep overshoot", &t->regs(), "rec", target_regs,
                            LOG_MISMATCHES);
     if (ignored_early_match) {
-      ASSERT(t, false) << "overshot target rcb=" << target_rcb << " by "
-                       << -remaining_rcbs << "; ignored early match with "
-                       << rcb_left_at_ignored_early_match << " rcbs left";
+      ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
+                       << -remaining_ticks << "; ignored early match with "
+                       << ticks_left_at_ignored_early_match << " ticks left";
     } else {
-      ASSERT(t, false) << "overshot target rcb=" << target_rcb << " by "
-                       << -remaining_rcbs;
+      ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
+                       << -remaining_ticks;
     }
   }
 }
