@@ -503,7 +503,7 @@ static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
   const char* cmd;
   int cmdi;
 
-  flags->max_ticks = Flags::DEFAULT_MAX_RBC;
+  flags->max_ticks = Flags::DEFAULT_MAX_TICKS;
   flags->max_events = Flags::DEFAULT_MAX_EVENTS;
   flags->checksum = Flags::CHECKSUM_NONE;
   flags->dbgport = -1;

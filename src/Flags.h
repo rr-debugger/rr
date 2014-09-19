@@ -26,7 +26,7 @@ struct Flags {
    *  0. Find a task A with a pending event.
    *  1. If A was the last task scheduled, decrease its "max-event"
    *     counter.
-   *  2. Program an HPC interrupt for A that will fire after "max-rbc"
+   *  2. Program an HPC interrupt for A that will fire after "max-ticks"
    *     retired conditional branches (or so, it may not be precise).
    *  3. Resume the execution of A.
    *
@@ -40,12 +40,12 @@ struct Flags {
    * And then we make another scheduling decision.
    *
    * Like in most task schedulers, there are conflicting goals to
-   * balance.  Lower max-rbc / max-events generally makes the
+   * balance.  Lower max-ticks / max-events generally makes the
    * application more "interactive", generally speaking lower latency.
    * (And wrt catching bugs, this setting generally creates more
    * opportunity for bugs to arise in multi-threaded/process
    * applications.)  This comes at the cost of more overhead from
-   * scheduling and context switching.  Higher max-rbc / max-events
+   * scheduling and context switching.  Higher max-ticks / max-events
    * generally gives the application higher throughput.
    *
    * The rr scheduler is relatively dumb compared to modern OS
@@ -76,7 +76,7 @@ struct Flags {
    *   50ms * (500000rcb / 10ms) / 10event = 250000 rbc / event
    */
   enum {
-    DEFAULT_MAX_RBC = 250000
+    DEFAULT_MAX_TICKS = 250000
   };
   enum {
     DEFAULT_MAX_EVENTS = 10
