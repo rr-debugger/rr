@@ -131,17 +131,17 @@ def write_syscall_defs_table(f):
         if isinstance(obj, syscalls.RegularSyscall):
             recorded_args = [arg for arg in syscalls.RegularSyscall.ARGUMENT_SLOTS
                              if getattr(obj, arg, None) is not None]
-            f.write("  { X86Arch::%s, rep_%s, %d },"
+            f.write("  { X86Arch::%s, rep_%s, %d },\n"
                     % (name, obj.semantics, len(recorded_args)))
         elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
-            f.write("  { X86Arch::%s, rep_IRREGULAR, -1 }," % name)
+            f.write("  { X86Arch::%s, rep_IRREGULAR, -1 },\n" % name)
         elif isinstance(obj, syscalls.UnsupportedSyscall):
             pass
     f.write("};\n")
 
 def write_check_syscall_numbers(f):
     for name, obj in syscalls.all():
-        f.write("""static_assert(X86Arch::%s == SYS_%s, "Incorrect syscall number for %s");"""
+        f.write("""static_assert(X86Arch::%s == SYS_%s, "Incorrect syscall number for %s");\n"""
                 % (name, name, name))
 
 generators_for = {
