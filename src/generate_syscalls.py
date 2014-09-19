@@ -145,6 +145,9 @@ def write_syscall_defs_table(f):
 
 def write_check_syscall_numbers(f):
     for name, obj in syscalls.all():
+        # XXX hard-coded to x86 currently
+        if not obj.x86:
+            continue
         f.write("""static_assert(X86Arch::%s == SYS_%s, "Incorrect syscall number for %s");\n"""
                 % (name, name, name))
 
