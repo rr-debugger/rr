@@ -13,7 +13,7 @@
  */
 struct Flags {
   /* Max counter value before the scheduler interrupts a tracee. */
-  int max_rbc;
+  int max_ticks;
 
   /* Max number of trace events before the scheduler
    * de-schedules a tracee. */
@@ -194,7 +194,7 @@ struct Flags {
   std::string forced_uarch;
 
   Flags()
-      : max_rbc(0),
+      : max_ticks(0),
         max_events(0),
         ignore_sig(0),
         redirect(false),

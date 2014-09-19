@@ -227,7 +227,7 @@ static void task_continue(Task* t, int force_cont, int sig) {
      * syscall_buffer lib in the child, therefore we must
      * record in the traditional way (with PTRACE_SYSCALL)
      * until it is installed. */
-    t->cont_syscall_nonblocking(sig, Flags::get().max_rbc);
+    t->cont_syscall_nonblocking(sig, Flags::get().max_ticks);
   } else {
     /* When the seccomp filter is on, instead of capturing
      * syscalls by using PTRACE_SYSCALL, the filter will
@@ -239,7 +239,7 @@ static void task_continue(Task* t, int force_cont, int sig) {
      * process to continue to the actual entry point of
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
-    t->cont_nonblocking(sig, Flags::get().max_rbc);
+    t->cont_nonblocking(sig, Flags::get().max_ticks);
   }
 }
 

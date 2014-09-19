@@ -332,7 +332,7 @@ static int parse_record_args(int cmdi, int argc, char** argv, Flags* flags) {
         flags->use_syscall_buffer = true;
         break;
       case 'c':
-        flags->max_rbc = max(1, atoi(optarg));
+        flags->max_ticks = max(1, atoi(optarg));
         break;
       case 'e':
         flags->max_events = max(1, atoi(optarg));
@@ -503,7 +503,7 @@ static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
   const char* cmd;
   int cmdi;
 
-  flags->max_rbc = Flags::DEFAULT_MAX_RBC;
+  flags->max_ticks = Flags::DEFAULT_MAX_RBC;
   flags->max_events = Flags::DEFAULT_MAX_EVENTS;
   flags->checksum = Flags::CHECKSUM_NONE;
   flags->dbgport = -1;
@@ -606,7 +606,7 @@ int main(int argc, char* argv[]) {
 
   if (RECORD == command) {
     LOG(info) << "Scheduler using max_events=" << flags->max_events
-              << ", max_rbc=" << flags->max_rbc;
+              << ", max_rbc=" << flags->max_ticks;
 
     // The syscallbuf library interposes some critical
     // external symbols like XShmQueryExtension(), so we
