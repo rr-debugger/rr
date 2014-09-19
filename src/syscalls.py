@@ -1688,8 +1688,6 @@ socketpair = IrregularEmulatedSyscall(x64=53)
 setsockopt = ExecutedSyscall(x64=54)
 getsockopt = IrregularEmulatedSyscall(x64=55)
 accept4 = IrregularEmulatedSyscall(x64=288)
-recvmmsg = IrregularEmulatedSyscall(x64=299)
-sendmmsg = IrregularEmulatedSyscall(x64=307)
 
 # These syscalls are subsumed under ipc on x86.
 msgget = ExecutedSyscall(x64=68)
