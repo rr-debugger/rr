@@ -994,9 +994,9 @@ static void guard_unexpected_signal(Task* t) {
 }
 
 static int is_same_execution_point(Task* t, const Registers* rec_regs,
-                                   int64_t rcbs_left, int64_t rcb_slack,
+                                   Ticks ticks_left, Ticks ticks_slack,
                                    bool* ignoring_early_match,
-                                   int64_t* rcbs_left_at_ignored_early_match) {
+                                   Ticks* ticks_left_at_ignored_early_match) {
   int behavior =
 #ifdef DEBUGTAG
       LOG_MISMATCHES
@@ -1004,24 +1004,24 @@ static int is_same_execution_point(Task* t, const Registers* rec_regs,
       EXPECT_MISMATCHES
 #endif
       ;
-  if (rcbs_left > 0) {
-    if (rcbs_left <= rcb_slack &&
+  if (ticks_left > 0) {
+    if (ticks_left <= ticks_slack &&
         compare_register_files(t, "(rep)", &t->regs(), "(rec)", rec_regs,
                                EXPECT_MISMATCHES)) {
       *ignoring_early_match = true;
-      *rcbs_left_at_ignored_early_match = rcbs_left;
+      *ticks_left_at_ignored_early_match = ticks_left;
     }
-    LOG(debug) << "  not same execution point: " << rcbs_left << " rcbs left (@"
-               << HEX(rec_regs->ip()) << ")";
+    LOG(debug) << "  not same execution point: " << ticks_left
+               << " ticks left (@" << HEX(rec_regs->ip()) << ")";
 #ifdef DEBUGTAG
     compare_register_files(t, "(rep)", &t->regs(),
                            "(rec)", rec_regs, LOG_MISMATCHES));
 #endif
     return 0;
   }
-  if (rcbs_left < -rcb_slack) {
-    LOG(debug) << "  not same execution point: " << rcbs_left << " rcbs left (@"
-               << HEX(rec_regs->ip()) << ")";
+  if (ticks_left < -ticks_slack) {
+    LOG(debug) << "  not same execution point: " << ticks_left
+               << " ticks left (@" << HEX(rec_regs->ip()) << ")";
 #ifdef DEBUGTAG
     compare_register_files(t, "(rep)", &t->regs(), "(rec)", rec_regs,
                            LOG_MISMATCHES);
@@ -1038,7 +1038,7 @@ static int is_same_execution_point(Task* t, const Registers* rec_regs,
   return 1;
 }
 
-static int get_rcb_slack(Task* t) {
+static Ticks get_ticks_slack(Task* t) {
   if (t->replay_session().bug_detector().is_cpuid_bug_detected()) {
     // Somewhat arbitrary guess
     return 6;
@@ -1047,7 +1047,7 @@ static int get_rcb_slack(Task* t) {
 }
 
 /**
- * Run execution forwards for |t| until |*rcb| is reached, and the $ip
+ * Run execution forwards for |t| until |ticks| is reached, and the $ip
  * reaches the recorded $ip.  Return 0 if successful or 1 if an
  * unhandled interrupt occurred.  |sig| is the pending signal to be
  * delivered; it's only used to distinguish debugger-related traps
@@ -1056,27 +1056,27 @@ static int get_rcb_slack(Task* t) {
  * step.
  */
 static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
-                      int64_t rcb) {
+                      Ticks ticks) {
   pid_t tid = t->tid;
   uint8_t* ip = (uint8_t*)regs->ip();
-  int64_t rcbs_left;
-  int64_t rcb_slack = get_rcb_slack(t);
+  Ticks ticks_left;
+  Ticks ticks_slack = get_ticks_slack(t);
   bool did_set_internal_breakpoint = false;
   bool ignored_early_match = false;
-  int64_t rcbs_left_at_ignored_early_match = 0;
+  Ticks ticks_left_at_ignored_early_match = 0;
 
   assert(t->hpc.ticks_fd() > 0);
   assert(t->child_sig == 0);
 
-  /* Step 1: advance to the target rcb (minus a slack region) as
+  /* Step 1: advance to the target ticks (minus a slack region) as
    * quickly as possible by programming the hpc. */
-  rcbs_left = rcb - t->tick_count();
+  ticks_left = ticks - t->tick_count();
 
-  LOG(debug) << "advancing " << rcbs_left << " rcbs to reach " << rcb << "/"
+  LOG(debug) << "advancing " << ticks_left << " ticks to reach " << ticks << "/"
              << ip;
 
-  /* XXX should we only do this if (rcb > 10000)? */
-  while (rcbs_left - SKID_SIZE > SKID_SIZE) {
+  /* XXX should we only do this if (ticks > 10000)? */
+  while (ticks_left - SKID_SIZE > SKID_SIZE) {
     if (SIGTRAP == t->child_sig) {
       /* We proved we're not at the execution
        * target, and we haven't set any internal
@@ -1089,10 +1089,10 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
     }
     t->child_sig = 0;
 
-    LOG(debug) << "  programming interrupt for " << (rcbs_left - SKID_SIZE)
-               << " rcbs";
+    LOG(debug) << "  programming interrupt for " << (ticks_left - SKID_SIZE)
+               << " ticks";
 
-    continue_or_step(t, stepi, rcbs_left - SKID_SIZE);
+    continue_or_step(t, stepi, ticks_left - SKID_SIZE);
     if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
         is_ignored_replay_signal(t->child_sig)) {
       t->child_sig = 0;
@@ -1107,17 +1107,17 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
               << " doesn't own hpc; replay divergence";
     }
 
-    rcbs_left = rcb - t->tick_count();
+    ticks_left = ticks - t->tick_count();
   }
-  guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack, ignored_early_match,
-                  rcbs_left_at_ignored_early_match);
+  guard_overshoot(t, regs, ticks, ticks_left, ticks_slack, ignored_early_match,
+                  ticks_left_at_ignored_early_match);
 
-  /* Step 2: more slowly, find our way to the target rcb and
+  /* Step 2: more slowly, find our way to the target ticks and
    * execution point.  We set an internal breakpoint on the
    * target $ip and then resume execution.  When that *internal*
    * breakpoint is hit (i.e., not one incidentally also set on
    * that $ip by the debugger), we check again if we're at the
-   * target rcb and execution point.  If not, we temporarily
+   * target ticks and execution point.  If not, we temporarily
    * remove the breakpoint, single-step over the insn, and
    * repeat.
    *
@@ -1126,8 +1126,8 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
    * cruft. */
   while (true) {
     /* Invariants here are
-     *  o rcbs_left is up-to-date
-     *  o rcbs_left >= -rcb_slack
+     *  o ticks_left is up-to-date
+     *  o ticks_left >= -ticks_slack
      *
      * Possible state of the execution of |t|
      *  0. at a debugger trap (breakpoint or stepi)
@@ -1144,9 +1144,9 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
      * registers. */
     int at_target;
 
-    at_target = is_same_execution_point(t, regs, rcbs_left, rcb_slack,
+    at_target = is_same_execution_point(t, regs, ticks_left, ticks_slack,
                                         &ignored_early_match,
-                                        &rcbs_left_at_ignored_early_match);
+                                        &ticks_left_at_ignored_early_match);
     if (SIGTRAP == t->child_sig) {
       TrapType trap_type = compute_trap_type(
           t, sig, ASYNC, at_target ? AT_TARGET : NOT_AT_TARGET, stepi);
@@ -1178,7 +1178,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
            * rewound it over an |int $3|
            * instruction, which couldn't have
            * retired a branch.  So we don't need
-           * to adjust |rcb_now|. */
+           * to adjust |ticks_count()|. */
           continue;
         }
         case TRAP_NONE:
@@ -1206,9 +1206,9 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
     }
 
     if (at_target) {
-      // Adjust dynamic rcb count to match trace, in case
+      // Adjust dynamic ticks count to match trace, in case
       // there was slack.
-      t->set_tick_count(rcb);
+      t->set_tick_count(ticks);
       /* Case (2) above: done. */
       return 0;
     }
@@ -1260,11 +1260,11 @@ static int advance_to(Task* t, const Registers* regs, int sig, int stepi,
     }
     guard_unexpected_signal(t);
 
-    /* Maintain the "'rcbs_left'-is-up-to-date"
+    /* Maintain the "'ticks_left'-is-up-to-date"
      * invariant. */
-    rcbs_left = rcb - t->tick_count();
-    guard_overshoot(t, regs, rcb, rcbs_left, rcb_slack, ignored_early_match,
-                    rcbs_left_at_ignored_early_match);
+    ticks_left = ticks - t->tick_count();
+    guard_overshoot(t, regs, ticks, ticks_left, ticks_slack,
+                    ignored_early_match, ticks_left_at_ignored_early_match);
   }
 }
 
@@ -1338,7 +1338,7 @@ static void check_rcb_consistency(Task* t, const Event& ev) {
     return;
   }
 
-  int64_t rcb_slack = get_rcb_slack(t);
+  int64_t rcb_slack = get_ticks_slack(t);
   int64_t rcb_now = t->tick_count();
   int64_t trace_rcb = t->current_trace_frame().ticks();
 
