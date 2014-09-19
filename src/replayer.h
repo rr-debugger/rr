@@ -3,6 +3,7 @@
 #ifndef RR_REPLAYER_H_
 #define RR_REPLAYER_H_
 
+#include "Ticks.h"
 #include "util.h"
 
 struct dbg_context;
@@ -173,7 +174,7 @@ struct rep_trace_step {
     int signo;
 
     struct {
-      int64_t rcb;
+      Ticks ticks;
       int signo;
     } target;
 

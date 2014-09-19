@@ -1345,7 +1345,7 @@ static void check_ticks_consistency(Task* t, const Event& ev) {
   ASSERT(t, llabs(ticks_now - trace_ticks) <= ticks_slack)
       << "ticks mismatch for '" << ev << "'; expected " << trace_ticks
       << ", got " << ticks_now << "";
-  // Sync task rcb with trace rcb so we don't keep accumulating errors
+  // Sync task ticks with trace ticks so we don't keep accumulating errors
   t->set_tick_count(trace_ticks);
 }
 
@@ -1706,7 +1706,7 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
       return emulate_deterministic_signal(dbg, t, step->signo, stepi, req);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
       return emulate_async_signal(dbg, t, &t->current_trace_frame().regs(),
-                                  step->target.signo, stepi, step->target.rcb,
+                                  step->target.signo, stepi, step->target.ticks,
                                   req);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, stepi);
@@ -1856,7 +1856,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
       break;
     case EV_SCHED:
       step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-      step.target.rcb = t->current_trace_frame().ticks();
+      step.target.ticks = t->current_trace_frame().ticks();
       step.target.signo = 0;
       break;
     case EV_SEGV_RDTSC:
@@ -1880,7 +1880,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
                                      : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
       if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
         step.target.signo = step.signo;
-        step.target.rcb = t->current_trace_frame().ticks();
+        step.target.ticks = t->current_trace_frame().ticks();
       }
       break;
     case EV_SYSCALL:
