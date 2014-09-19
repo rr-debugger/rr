@@ -134,7 +134,7 @@ enum RepTraceStepType {
   /* Advance to the deterministic signal |signo|. */
   TSTEP_DETERMINISTIC_SIGNAL,
 
-  /* Advance until |target.rcb| have been retired and then
+  /* Advance until |target.ticks| have been retired and then
    * |target.ip| is reached.  Deliver |target.signo| after that
    * if it's nonzero. */
   TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,

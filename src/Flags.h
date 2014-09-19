@@ -73,7 +73,7 @@ struct Flags {
    * are heavyweight), we'll give each task a relatively large 50ms
    * timeslice.  This works out to
    *
-   *   50ms * (500000rcb / 10ms) / 10event = 250000 rbc / event
+   *   50ms * (500000rcb / 10ms) / 10event = 250000 rcb / event
    */
   enum {
     DEFAULT_MAX_TICKS = 250000

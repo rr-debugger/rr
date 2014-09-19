@@ -208,11 +208,11 @@ void PerfCounters::reset(Ticks ticks_period) {
   own.type = F_OWNER_TID;
   own.pid = tid;
   if (fcntl(fd_ticks, F_SETOWN_EX, &own)) {
-    FATAL() << "Failed to SETOWN_EX rbc event fd";
+    FATAL() << "Failed to SETOWN_EX ticks event fd";
   }
   if (fcntl(fd_ticks, F_SETFL, O_ASYNC) ||
       fcntl(fd_ticks, F_SETSIG, PerfCounters::TIME_SLICE_SIGNAL)) {
-    FATAL() << "Failed to make rbc counter ASYNC with sig"
+    FATAL() << "Failed to make ticks counter ASYNC with sig"
             << signalname(PerfCounters::TIME_SLICE_SIGNAL);
   }
 

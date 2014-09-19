@@ -41,7 +41,7 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si) {
   /* This implementation will of course fall over if rr tries to
    * record itself.
    *
-   * NB: we can't check that the rcb is >= the programmed
+   * NB: we can't check that the ticks is >= the programmed
    * target, because this signal may have become pending before
    * we reset the HPC counters.  There be a way to handle that
    * more elegantly, but bridge will be crossed in due time. */

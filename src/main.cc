@@ -123,7 +123,7 @@ static int dump(int argc, char* argv[], char** envp) {
 
   if (Flags::get().raw_dump) {
     fprintf(out, "global_time tid reason "
-                 "hw_interrupts page_faults adapted_rbc instructions "
+                 "hw_interrupts page_faults adapted_ticks instructions "
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
   }
 
@@ -606,7 +606,7 @@ int main(int argc, char* argv[]) {
 
   if (RECORD == command) {
     LOG(info) << "Scheduler using max_events=" << flags->max_events
-              << ", max_rbc=" << flags->max_ticks;
+              << ", max_ticks=" << flags->max_ticks;
 
     // The syscallbuf library interposes some critical
     // external symbols like XShmQueryExtension(), so we

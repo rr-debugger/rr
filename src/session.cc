@@ -32,7 +32,7 @@ void Session::after_exec() {
     return;
   }
   tracees_consistent = true;
-  // Reset rbcs for all Tasks (there should only be one).
+  // Reset ticks for all Tasks (there should only be one).
   for (auto task = tasks().begin(); task != tasks().end(); ++task) {
     task->second->flush_inconsistent_state();
   }

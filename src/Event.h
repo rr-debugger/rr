@@ -345,9 +345,6 @@ struct Event {
    */
   HasExecInfo has_exec_info() const;
 
-  /**
-   * See long comment at |Task::maybe_save_rbc_slop()|.
-   */
   bool has_ticks_slop() const;
 
   /**
