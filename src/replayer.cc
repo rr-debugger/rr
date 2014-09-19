@@ -1051,7 +1051,7 @@ static Ticks get_ticks_slack(Task* t) {
  * reaches the recorded $ip.  Return 0 if successful or 1 if an
  * unhandled interrupt occurred.  |sig| is the pending signal to be
  * delivered; it's only used to distinguish debugger-related traps
- * from traps related to replaying execution.  |rcb| is an inout param
+ * from traps related to replaying execution.  |ticks| is an inout param
  * that will be decremented by branches retired during this attempted
  * step.
  */
@@ -1332,21 +1332,21 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   return 0;
 }
 
-static void check_rcb_consistency(Task* t, const Event& ev) {
+static void check_ticks_consistency(Task* t, const Event& ev) {
   if (!t->session().can_validate() ||
       t->current_trace_frame().event().has_exec_info == NO_EXEC_INFO) {
     return;
   }
 
-  int64_t rcb_slack = get_ticks_slack(t);
-  int64_t rcb_now = t->tick_count();
-  int64_t trace_rcb = t->current_trace_frame().ticks();
+  Ticks ticks_slack = get_ticks_slack(t);
+  Ticks ticks_now = t->tick_count();
+  Ticks trace_ticks = t->current_trace_frame().ticks();
 
-  ASSERT(t, llabs(rcb_now - trace_rcb) <= rcb_slack)
-      << "rcb mismatch for '" << ev << "'; expected "
-      << t->current_trace_frame().ticks() << ", got " << rcb_now << "";
+  ASSERT(t, llabs(ticks_now - trace_ticks) <= ticks_slack)
+      << "ticks mismatch for '" << ev << "'; expected " << trace_ticks
+      << ", got " << ticks_now << "";
   // Sync task rcb with trace rcb so we don't keep accumulating errors
-  t->set_tick_count(trace_rcb);
+  t->set_tick_count(trace_ticks);
 }
 
 /**
@@ -1370,7 +1370,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
   ASSERT(t, t->child_sig == sig) << "Replay got unrecorded signal "
                                  << t->child_sig << " (expecting " << sig
                                  << ")";
-  check_rcb_consistency(t, ev);
+  check_ticks_consistency(t, ev);
 
   if (EV_SEGV_RDTSC == ev.type()) {
     t->set_regs(t->current_trace_frame().regs());
@@ -1389,8 +1389,8 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
  */
 static int emulate_async_signal(struct dbg_context* dbg, Task* t,
                                 const Registers* regs, int sig, int stepi,
-                                int64_t rcb, struct dbg_request* req) {
-  if (advance_to(t, regs, 0, stepi, rcb)) {
+                                Ticks ticks, struct dbg_request* req) {
+  if (advance_to(t, regs, 0, stepi, ticks)) {
     return 1;
   }
   if (sig) {
@@ -2032,7 +2032,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
 
   Event ev(t->current_trace_frame().event());
   if (has_deterministic_rbc(ev, step)) {
-    check_rcb_consistency(t, ev);
+    check_ticks_consistency(t, ev);
   }
 
   debug_memory(t);
