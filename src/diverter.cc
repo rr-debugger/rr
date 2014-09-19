@@ -194,7 +194,7 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 
 void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
             struct dbg_request* req) {
-  LOG(debug) << "Starting debugging diversion for " << HEX(&replay);
+  LOG(debug) << "Starting debugging diversion for " << &replay;
 
   session = replay.clone_diversion();
   Task* t = session->find_task(task);

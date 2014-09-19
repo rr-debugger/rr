@@ -184,6 +184,6 @@ inline static T& prepare_log_stream(T&& stream, LogLevel level,
  *
  * TODO: support types larger than void*.
  */
-#define HEX(_v) ((void*)(uintptr_t)_v)
+inline void* HEX(uintptr_t v) { return reinterpret_cast<void*>(v); }
 
 #endif // RR_LOG_H

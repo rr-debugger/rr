@@ -153,7 +153,7 @@ EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
 }
 
 void EmuFs::log() const {
-  LOG(error) << "EmuFs " << HEX(this) << " with " << files.size() << " files:";
+  LOG(error) << "EmuFs " << this << " with " << files.size() << " files:";
   for (auto& kv : files) {
     auto file = kv.second;
     LOG(error) << "  " << file->emu_path();
