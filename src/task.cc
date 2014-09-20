@@ -406,7 +406,7 @@ TraceReader& Task::trace_reader() { return session_replay->trace_reader(); }
 
 TraceWriter& Task::trace_writer() { return session_record->trace_writer(); }
 
-void* Task::init_buffers(void* map_hint, int share_desched_fd) {
+void* Task::init_buffers(void* map_hint, ShareDeschedEventFd share_desched_fd) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.

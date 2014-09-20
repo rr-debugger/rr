@@ -99,7 +99,7 @@ enum WaitRequest {
   RESUME_NONBLOCKING
 };
 
-enum {
+enum ShareDeschedEventFd {
   SHARE_DESCHED_EVENT_FD = 1,
   DONT_SHARE_DESCHED_EVENT_FD = 0
 };
@@ -372,7 +372,7 @@ public:
    *
    * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
    */
-  void* init_buffers(void* map_hint, int share_desched_fd);
+  void* init_buffers(void* map_hint, ShareDeschedEventFd share_desched_fd);
 
   /**
    * Destroy in the tracee task the buffer(s) specified by the
