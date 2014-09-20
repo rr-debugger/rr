@@ -1327,6 +1327,81 @@ void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
              << vsyscall_hook_trampoline;
 }
 
+// x86-64 doesn't have a convenient vsyscall-esque function in the VDSO;
+// syscalls happen directly with the |syscall| instruction and manual
+// syscall restarting if necessary.  Its VDSO is filled with overhead
+// critical functions related to getting the time and current CPU.  We
+// need to ensure that these syscalls get redirected into actual
+// trap-into-the-kernel syscalls so rr can intercept them.
+
+static const uint8_t x64_vsyscall_monkeypatch[] = {
+  // The immediate operand of the |mov| is filled in dynamically
+  // by the |perform_monkeypatch| function below.
+  0xb8, 0x00, 0x00, 0x00, 0x00, // mov $syscall, %eax
+  0x0f, 0x05,                   // syscall
+  0xc3,                         // retq
+};
+
+struct x64_insns_template {
+  uint8_t mov_insn_byte;
+  uint32_t syscall_number;
+} __attribute__((packed));
+
+struct named_syscall {
+  const char* name;
+  int syscall_number;
+};
+
+#define S(n) { #n, X64Arch::n }
+static const named_syscall syscalls_to_monkeypatch[] = {
+  S(clock_gettime),
+  S(gettimeofday),
+  S(time),
+  // getcpu isn't supported by rr, so any changes to this monkeypatching
+  // scheme for efficiency's sake will have to ensure that getcpu gets
+  // converted to an actual syscall so rr will complain appropriately.
+  S(getcpu),
+};
+#undef S
+
+template <>
+void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
+                                  const typename X64Arch::ElfSym* symbols,
+                                  const char* symbolnames) {
+  uintptr_t vdso_start = t->vm()->vdso().start.as_int();
+
+  for (size_t i = 0; i < nsymbols; ++i) {
+    auto sym = &symbols[i];
+    const char* symname = &symbolnames[sym->st_name];
+    for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
+      if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
+        union {
+          uint8_t bytes[sizeof(x64_vsyscall_monkeypatch)];
+          struct x64_insns_template insns;
+        } __attribute__((packed)) patch;
+
+        memcpy(patch.bytes, x64_vsyscall_monkeypatch, sizeof(patch.bytes));
+        assert(0 == patch.insns.syscall_number);
+        patch.insns.syscall_number = syscalls_to_monkeypatch[j].syscall_number;
+
+        // Absolutely-addressed symbols in the VDSO claim to start here.
+        const uintptr_t base = uintptr_t(0xffffffffff700700);
+        uintptr_t sym_address = uintptr_t(sym->st_value);
+        // The symbol values can be absolute or relative addresses.
+        // The first part of the assertion is for absolute
+        // addresses, and the second part is for relative.
+        assert((sym_address & ~uintptr_t(0xfff)) == base ||
+               (sym_address & ~uintptr_t(0xfff)) == 0);
+        uintptr_t sym_offset = sym_address & uintptr_t(0xfff);
+        t->write_bytes(reinterpret_cast<void*>(vdso_start + sym_offset),
+                       patch.bytes);
+        LOG(debug) << "monkeypatched " << symname << " to syscall "
+                   << syscalls_to_monkeypatch[j].syscall_number;
+      }
+    }
+  }
+}
+  
 template <typename Arch>
 static void locate_vdso_symbols(Task* t, size_t* nsymbols, void** symbols,
                                 size_t* strtabsize, void** strtab) {
