@@ -687,11 +687,7 @@ static bool entering_syscall_insn(Task* t) {
  * boundary is reached, or nonzero if advancing to the boundary was
  * interrupted by an unknown trap.
  */
-enum {
-  EXEC = 0,
-  EMU = 1
-};
-static int cont_syscall_boundary(Task* t, int emu, int stepi) {
+static int cont_syscall_boundary(Task* t, ExecOrEmulate emu, int stepi) {
   bool is_syscall_entry =
       SYSCALL_ENTRY == t->current_trace_frame().event().state;
   if (is_syscall_entry) {
@@ -699,9 +695,9 @@ static int cont_syscall_boundary(Task* t, int emu, int stepi) {
   }
 
   ResumeRequest resume_how;
-  if (emu && stepi) {
+  if (emu == EMULATE && stepi) {
     resume_how = RESUME_SYSEMU_SINGLESTEP;
-  } else if (emu) {
+  } else if (emu == EMULATE) {
     resume_how = RESUME_SYSEMU;
   } else if (stepi) {
     resume_how = RESUME_SINGLESTEP;
@@ -765,9 +761,10 @@ static int enter_syscall(Task* t, const struct rep_trace_step* step,
  * Return 0 if successful, or nonzero if an unhandled trap occurred.
  */
 static int exit_syscall(Task* t, const struct rep_trace_step* step, int stepi) {
-  int i, emu = step->syscall.emu;
+  int i;
+  ExecOrEmulate emu = step->syscall.emu;
 
-  if (!emu) {
+  if (emu == EXEC) {
     int ret = cont_syscall_boundary(t, emu, stepi);
     if (ret) {
       return ret;
@@ -782,7 +779,7 @@ static int exit_syscall(Task* t, const struct rep_trace_step* step, int stepi) {
   }
   validate_args(step->syscall.no, SYSCALL_EXIT, t);
 
-  if (emu) {
+  if (emu == EMULATE) {
     t->finish_emulated_syscall();
   }
   return 0;
@@ -1413,7 +1410,7 @@ static int skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
 
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&
-      (ret = cont_syscall_boundary(t, EMU, stepi))) {
+      (ret = cont_syscall_boundary(t, EMULATE, stepi))) {
     return ret;
   }
   ds->state = DESCHED_EXIT;
@@ -1545,7 +1542,7 @@ static int flush_one_syscall(Task* t, int stepi) {
   int call = rec_rec->syscallno;
   int ret;
   // TODO: use syscall_defs table information to determine this.
-  int emu = (SYS_madvise == call) ? EXEC : EMU;
+  ExecOrEmulate emu = (SYS_madvise == call) ? EXEC : EMULATE;
 
   switch (flush->state) {
     case FLUSH_START:
@@ -1605,7 +1602,7 @@ static int flush_one_syscall(Task* t, int stepi) {
 
       // Restore return value.
       // TODO: try to share more code with cont_syscall_boundary()
-      if (!emu) {
+      if (emu == EXEC) {
         int ret = cont_syscall_boundary(t, emu, stepi);
         if (ret) {
           return ret;
@@ -1615,7 +1612,7 @@ static int flush_one_syscall(Task* t, int stepi) {
       Registers r = t->regs();
       r.set_syscall_result(rec_rec->ret);
       t->set_regs(r);
-      if (emu) {
+      if (emu == EMULATE) {
         t->finish_emulated_syscall();
       }
 

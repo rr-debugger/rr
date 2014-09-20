@@ -147,6 +147,12 @@ enum RepTraceStepType {
    * tracks the replay state. */
   TSTEP_DESCHED,
 };
+
+enum ExecOrEmulate {
+  EXEC = 0,
+  EMULATE = 1
+};
+
 /**
  * rep_trace_step is saved in Session and cloned with its Session, so it needs
  * to be simple data, i.e. not holding pointers to per-Session data.
@@ -161,7 +167,7 @@ struct rep_trace_step {
       int no;
       /* Is the kernel entry and exit for this
        * syscall emulated, that is, not executed? */
-      int emu;
+      ExecOrEmulate emu;
       /* The number of outparam arguments that are
        * set from what was recorded.
        * Only used when action is TSTEP_EXIT_SYSCALL. */
