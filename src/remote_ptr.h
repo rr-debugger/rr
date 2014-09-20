@@ -16,6 +16,9 @@ public:
   remote_ptr(uintptr_t ptr) : ptr(ptr) {}
   remote_ptr(std::nullptr_t null) : ptr(0) {}
   remote_ptr(T* ptr) : ptr(reinterpret_cast<uintptr_t>(ptr)) {}
+  template <typename U> remote_ptr(remote_ptr<U> p) : ptr(p.as_int()) {
+    consume_dummy(static_cast<U*>(nullptr));
+  }
   operator T*() const { return reinterpret_cast<T*>(ptr); }
   uintptr_t as_int() const { return ptr; }
 
@@ -23,6 +26,8 @@ public:
   bool operator==(const remote_ptr<T>& other) const { return ptr == other.ptr; }
 
 private:
+  void consume_dummy(T*) {}
+
   uintptr_t ptr;
 };
 

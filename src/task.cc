@@ -1953,13 +1953,8 @@ void Task::maybe_flush_syscallbuf() {
   flushed_syscallbuf = 1;
 }
 
-static off64_t to_offset(void* addr) {
-  off64_t offset = (uintptr_t)addr;
-  assert(offset <= off64_t(numeric_limits<unsigned long>::max()));
-  return offset;
-}
-
-ssize_t Task::read_bytes_ptrace(void* addr, ssize_t buf_size, uint8_t* buf) {
+ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
+                                uint8_t* buf) {
   ssize_t nread = 0;
   // ptrace operates on the word size of the host, so we really do want
   // to use sizes of host types here.
@@ -1968,7 +1963,7 @@ ssize_t Task::read_bytes_ptrace(void* addr, ssize_t buf_size, uint8_t* buf) {
   // Only read aligned words. This ensures we can always read the last
   // byte before an unmapped region.
   while (nread < buf_size) {
-    uintptr_t start = uintptr_t(addr) + nread;
+    uintptr_t start = addr.as_int() + nread;
     uintptr_t start_word = start & ~(word_size - 1);
     uintptr_t end_word = start_word + word_size;
     uintptr_t length = std::min(end_word - start, uintptr_t(buf_size - nread));
@@ -1986,7 +1981,7 @@ ssize_t Task::read_bytes_ptrace(void* addr, ssize_t buf_size, uint8_t* buf) {
   return nread;
 }
 
-ssize_t Task::write_bytes_ptrace(void* addr, ssize_t buf_size,
+ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
                                  const uint8_t* buf) {
   ssize_t nwritten = 0;
   // ptrace operates on the word size of the host, so we really do want
@@ -1996,7 +1991,7 @@ ssize_t Task::write_bytes_ptrace(void* addr, ssize_t buf_size,
   // Only write aligned words. This ensures we can always write the last
   // byte before an unmapped region.
   while (nwritten < buf_size) {
-    uintptr_t start = uintptr_t(addr) + nwritten;
+    uintptr_t start = addr.as_int() + nwritten;
     uintptr_t start_word = start & ~(word_size - 1);
     uintptr_t end_word = start_word + word_size;
     uintptr_t length =
@@ -2019,7 +2014,8 @@ ssize_t Task::write_bytes_ptrace(void* addr, ssize_t buf_size,
   return nwritten;
 }
 
-ssize_t Task::read_bytes_fallible(void* addr, ssize_t buf_size, uint8_t* buf) {
+ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
+                                  uint8_t* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
     return 0;
@@ -2030,7 +2026,7 @@ ssize_t Task::read_bytes_fallible(void* addr, ssize_t buf_size, uint8_t* buf) {
   }
 
   errno = 0;
-  ssize_t nread = pread64(as->mem_fd(), buf, buf_size, to_offset(addr));
+  ssize_t nread = pread64(as->mem_fd(), buf, buf_size, addr.as_int());
   // We open the mem_fd just after being notified of
   // exec(), when the Task is created.  Trying to read from that
   // fd seems to return 0 with errno 0.  Reopening the mem fd
@@ -2045,14 +2041,15 @@ ssize_t Task::read_bytes_fallible(void* addr, ssize_t buf_size, uint8_t* buf) {
   return nread;
 }
 
-void Task::read_bytes_helper(void* addr, ssize_t buf_size, uint8_t* buf) {
+void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
+                             uint8_t* buf) {
   ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
   ASSERT(this, nread == buf_size) << "Should have read " << buf_size
                                   << " bytes from " << addr
                                   << ", but only read " << nread;
 }
 
-void Task::write_bytes_helper(void* addr, ssize_t buf_size,
+void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                               const uint8_t* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
@@ -2065,7 +2062,7 @@ void Task::write_bytes_helper(void* addr, ssize_t buf_size,
   }
 
   errno = 0;
-  ssize_t nwritten = pwrite64(as->mem_fd(), buf, buf_size, to_offset(addr));
+  ssize_t nwritten = pwrite64(as->mem_fd(), buf, buf_size, addr.as_int());
   // See comment in read_bytes_helper().
   if (0 == nwritten && 0 == errno) {
     open_mem_fd();

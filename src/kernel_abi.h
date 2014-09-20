@@ -29,6 +29,8 @@
 
 #include <assert.h>
 
+#include "remote_ptr.h"
+
 enum SupportedArch {
   x86,
   x86_64,
@@ -166,6 +168,9 @@ struct BaseArch : public wordsize {
 
   template <typename T> struct ptr {
     unsigned_word val;
+    template <typename U> operator remote_ptr<U>() const {
+      return remote_ptr<T>(val);
+    }
     operator T*() const {
       return reinterpret_cast<T*>(val);
     };

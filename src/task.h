@@ -891,9 +891,11 @@ public:
    * Read/write the number of bytes that the template wrapper
    * inferred.
    */
-  ssize_t read_bytes_fallible(void* addr, ssize_t buf_size, uint8_t* buf);
-  void read_bytes_helper(void* addr, ssize_t buf_size, uint8_t* buf);
-  void write_bytes_helper(void* addr, ssize_t buf_size, const uint8_t* buf);
+  ssize_t read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
+                              uint8_t* buf);
+  void read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, uint8_t* buf);
+  void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
+                          const uint8_t* buf);
 
   /** See |pending_sig()| above. */
   int pending_sig_from_status(int status) const;
@@ -1150,13 +1152,15 @@ private:
    * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use
    * as fallback. Returns number of bytes actually read.
    */
-  ssize_t read_bytes_ptrace(void* addr, ssize_t buf_size, uint8_t* buf);
+  ssize_t read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
+                            uint8_t* buf);
 
   /**
    * Write tracee memory using PTRACE_POKEDATA calls. Slow, only use
    * as fallback. Returns number of bytes actually written.
    */
-  ssize_t write_bytes_ptrace(void* addr, ssize_t buf_size, const uint8_t* buf);
+  ssize_t write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
+                             const uint8_t* buf);
 
   /**
    * Map the syscallbuffer for this, shared with this process.
