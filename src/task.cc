@@ -406,14 +406,16 @@ TraceReader& Task::trace_reader() { return session_replay->trace_reader(); }
 
 TraceWriter& Task::trace_writer() { return session_record->trace_writer(); }
 
-void* Task::init_buffers(void* map_hint, ShareDeschedEventFd share_desched_fd) {
+remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
+                                    ShareDeschedEventFd share_desched_fd) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
   AutoRemoteSyscalls remote(this);
 
   // Arguments to the rrcall.
-  void* child_args = (void*)remote.regs().arg1();
+  remote_ptr<struct rrcall_init_buffers_params> child_args =
+      remote.regs().arg1();
   struct rrcall_init_buffers_params args;
   read_mem(child_args, &args);
 
@@ -422,7 +424,7 @@ void* Task::init_buffers(void* map_hint, ShareDeschedEventFd share_desched_fd) {
       << (args.syscallbuf_enabled ? "en" : "dis") << "abled, but tracer thinks "
       << (Flags::get().use_syscall_buffer ? "en" : "dis") << "abled";
 
-  void* child_map_addr = nullptr;
+  remote_ptr<void> child_map_addr = nullptr;
   if (args.syscallbuf_enabled) {
     traced_syscall_ip = args.traced_syscall_ip;
     untraced_syscall_ip = args.untraced_syscall_ip;
@@ -445,7 +447,7 @@ void* Task::init_buffers(void* map_hint, ShareDeschedEventFd share_desched_fd) {
   // already written to the inout |args| param, but we stash it
   // away in the return value slot so that we can easily check
   // that we map the segment at the same addr during replay.
-  remote.regs().set_syscall_result((uintptr_t)child_map_addr);
+  remote.regs().set_syscall_result(child_map_addr);
   syscallbuf_hdr->locked = is_desched_sig_blocked();
 
   return child_map_addr;
@@ -1699,7 +1701,8 @@ void Task::open_mem_fd_if_needed() {
   }
 }
 
-void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
+remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
+                                           remote_ptr<void> map_hint) {
   // Create the segment we'll share with the tracee.
   char shmem_name[PATH_MAX];
   format_syscallbuf_shmem_path(tid, shmem_name);
@@ -1732,7 +1735,7 @@ void* Task::init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint) {
                                     shmem_fd, offset_pages))) {
     FATAL() << "Failed to mmap shmem region";
   }
-  void* child_map_addr = (uint8_t*)remote.syscall(
+  remote_ptr<void> child_map_addr = remote.syscall(
       has_mmap2_syscall(remote.arch()) ? syscall_number_for_mmap2(remote.arch())
                                        : syscall_number_for_mmap(remote.arch()),
       map_hint, num_syscallbuf_bytes, prot, flags, child_shmem_fd,

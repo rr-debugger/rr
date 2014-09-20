@@ -81,6 +81,9 @@ public:
   void set_syscall_result(uintptr_t syscall_result) {
     RR_SET_REG(eax, rax, syscall_result);
   }
+  template <typename T> void set_syscall_result(remote_ptr<T> syscall_result) {
+    RR_SET_REG(eax, rax, syscall_result.as_int());
+  }
 
   /**
    * Returns true if syscall_result() indicates failure.

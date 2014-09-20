@@ -372,7 +372,8 @@ public:
    *
    * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
    */
-  void* init_buffers(void* map_hint, ShareDeschedEventFd share_desched_fd);
+  remote_ptr<void> init_buffers(remote_ptr<void> map_hint,
+                                ShareDeschedEventFd share_desched_fd);
 
   /**
    * Destroy in the tracee task the buffer(s) specified by the
@@ -1163,7 +1164,8 @@ private:
    * to be mapped --- and this is asserted --- or nullptr if
    * there are no expectations.
    */
-  void* init_syscall_buffer(AutoRemoteSyscalls& remote, void* map_hint);
+  remote_ptr<void> init_syscall_buffer(AutoRemoteSyscalls& remote,
+                                       remote_ptr<void> map_hint);
 
   /**
    * Share the desched-event fd that this task has already
