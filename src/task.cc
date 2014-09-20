@@ -55,6 +55,7 @@ void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N]) {
   snprintf(path, N - 1, SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d", tid, nonce++);
 }
 
+#if defined(SYS_socketcall)
 // TODO: merge other dups of this function.
 static void write_socketcall_args(Task* t,
                                   struct socketcall_args* child_args_vec,
@@ -62,6 +63,7 @@ static void write_socketcall_args(Task* t,
   struct socketcall_args args = { { arg1, arg2, arg3 } };
   t->write_mem(child_args_vec, args);
 }
+#endif
 
 /**
  * Stores the table of signal dispositions and metadata for an
@@ -1806,6 +1808,8 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
     return;
   }
 
+  bool using_socketcall = has_socketcall_syscall(remote.arch());
+
   // NB: the sockaddr prepared by the child uses the recorded
   // tid, so always must here. */
   struct sockaddr_un addr;
@@ -1822,20 +1826,36 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
 
   // Initiate tracee connect(), but don't wait for it to
   // finish.
-  write_socketcall_args(this, args->args_vec, AF_UNIX, SOCK_STREAM, 0);
-  int child_sock = remote.syscall(SYS_socketcall, SYS_SOCKET, args->args_vec);
+  int child_sock;
+  if (using_socketcall) {
+    write_socketcall_args(this, args->args_vec, AF_UNIX, SOCK_STREAM, 0);
+    child_sock = remote.syscall(syscall_number_for_socketcall(remote.arch()),
+                                SYS_SOCKET, args->args_vec);
+  } else {
+    child_sock = remote.syscall(syscall_number_for_socket(remote.arch()),
+                                AF_UNIX, SOCK_STREAM, 0);
+  }
   if (0 > child_sock) {
     errno = -child_sock;
     FATAL() << "Failed to create child socket";
   }
-  write_socketcall_args(this, args->args_vec, child_sock,
-                        (uintptr_t)args->sockaddr, sizeof(*args->sockaddr));
 
   Registers callregs = remote.regs();
-  callregs.set_arg1(SYS_CONNECT);
-  callregs.set_arg2((uintptr_t)args->args_vec);
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, SYS_socketcall,
-                        callregs);
+  int remote_syscall;
+  if (using_socketcall) {
+    write_socketcall_args(this, args->args_vec, child_sock,
+                          (uintptr_t)args->sockaddr, sizeof(*args->sockaddr));
+    callregs.set_arg1(SYS_CONNECT);
+    callregs.set_arg2((uintptr_t)args->args_vec);
+    remote_syscall = syscall_number_for_socketcall(remote.arch());
+  } else {
+    callregs.set_arg1(child_sock);
+    callregs.set_arg2((uintptr_t)args->sockaddr);
+    callregs.set_arg3(sizeof(*args->sockaddr));
+    remote_syscall = syscall_number_for_connect(remote.arch());
+  }
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
+                        remote_syscall, callregs);
   // Now the child is waiting for us to accept it.
 
   // Accept the child's connection and finish its syscall.
@@ -1844,7 +1864,7 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
   // connecting endpoint ...
   int sock = accept(listen_sock, NULL, NULL);
   int child_ret;
-  if ((child_ret = remote.wait_syscall(SYS_socketcall))) {
+  if ((child_ret = remote.wait_syscall(remote_syscall))) {
     errno = -child_ret;
     FATAL() << "Failed to connect() in tracee";
   }
@@ -1856,18 +1876,26 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
   // call to finish, since it's likely not defined whether the
   // sendmsg() may block on our recvmsg()ing what the tracee
   // sent us (in which case we would deadlock with the tracee).
-  write_socketcall_args(this, args->args_vec, child_sock, (uintptr_t)args->msg,
-                        0);
   callregs = remote.regs();
-  callregs.set_arg1(SYS_SENDMSG);
-  callregs.set_arg2((uintptr_t)args->args_vec);
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, SYS_socketcall,
-                        callregs);
+  if (using_socketcall) {
+    write_socketcall_args(this, args->args_vec, child_sock, (uintptr_t)args->msg,
+                          0);
+    callregs.set_arg1(SYS_SENDMSG);
+    callregs.set_arg2((uintptr_t)args->args_vec);
+    remote_syscall = syscall_number_for_socketcall(remote.arch());
+  } else {
+    callregs.set_arg1(child_sock);
+    callregs.set_arg2((uintptr_t)args->msg);
+    callregs.set_arg3(0);
+    remote_syscall = syscall_number_for_sendmsg(remote.arch());
+  }
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
+                        remote_syscall, callregs);
   // Child may be waiting on our recvmsg().
 
   // Read the shared fd and finish the child's syscall.
   desched_fd = recv_fd(sock, &desched_fd_child);
-  if (0 >= remote.wait_syscall(SYS_socketcall)) {
+  if (0 >= remote.wait_syscall(remote_syscall)) {
     errno = -child_ret;
     FATAL() << "Failed to sendmsg() in tracee";
   }

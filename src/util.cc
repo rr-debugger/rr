@@ -991,6 +991,7 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   AutoRestoreMem remote_socketcall_args_holder(remote, nullptr, data_length);
   uint8_t* remote_socketcall_args =
       static_cast<uint8_t*>(static_cast<void*>(remote_socketcall_args_holder));
+  bool using_socketcall = has_socketcall_syscall(remote.arch());
 
   memset(&socket_addr, 0, sizeof(socket_addr));
   socket_addr.sun_family = AF_UNIX;
@@ -1009,9 +1010,15 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
     FATAL() << "Failed to mark listening for listen socket";
   }
 
-  write_socketcall_args(t, remote_socketcall_args, AF_UNIX, SOCK_STREAM, 0);
-  int child_sock =
-      remote.syscall(SYS_socketcall, SYS_SOCKET, remote_socketcall_args);
+  int child_sock;
+  if (using_socketcall) {
+    write_socketcall_args(t, remote_socketcall_args, AF_UNIX, SOCK_STREAM, 0);
+    child_sock = remote.syscall(syscall_number_for_socketcall(remote.arch()),
+                                SYS_SOCKET, remote_socketcall_args);
+  } else {
+    child_sock = remote.syscall(syscall_number_for_socket(remote.arch()),
+                                AF_UNIX, SOCK_STREAM, 0);
+  }
   if (child_sock < 0) {
     FATAL() << "Failed to create child socket";
   }
@@ -1019,20 +1026,29 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   uint8_t* remote_sockaddr =
       remote_socketcall_args + align_size(sizeof(struct socketcall_args));
   t->write_mem(remote_sockaddr, socket_addr);
-  write_socketcall_args(t, remote_socketcall_args, child_sock,
-                        uintptr_t(remote_sockaddr), sizeof(socket_addr));
   Registers callregs = remote.regs();
-  callregs.set_arg1(SYS_CONNECT);
-  callregs.set_arg2(uintptr_t(remote_socketcall_args));
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, SYS_socketcall,
-                        callregs);
+  int remote_syscall;
+  if (using_socketcall) {
+    write_socketcall_args(t, remote_socketcall_args, child_sock,
+                          uintptr_t(remote_sockaddr), sizeof(socket_addr));
+    callregs.set_arg1(SYS_CONNECT);
+    callregs.set_arg2(uintptr_t(remote_socketcall_args));
+    remote_syscall = syscall_number_for_socketcall(remote.arch());
+  } else {
+    callregs.set_arg1(child_sock);
+    callregs.set_arg2(uintptr_t(remote_sockaddr));
+    callregs.set_arg3(sizeof(socket_addr));
+    remote_syscall = syscall_number_for_connect(remote.arch());
+  }
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
+                        remote_syscall, callregs);
   // Now the child is waiting for us to accept it.
 
   int sock = accept(listen_sock, NULL, NULL);
   if (sock < 0) {
     FATAL() << "Failed to create parent socket";
   }
-  int child_ret = remote.wait_syscall(SYS_socketcall);
+  int child_ret = remote.wait_syscall(remote_syscall);
   if (child_ret) {
     FATAL() << "Failed to connect() in tracee";
   }
@@ -1065,13 +1081,21 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   t->write_mem(remote_cmsgbuf, cmsgbuf);
   msg.msg_control = remote_cmsgbuf;
   t->write_mem(remote_msg, msg);
-  write_socketcall_args(t, remote_socketcall_args, child_sock,
-                        uintptr_t(remote_msg), 0);
   callregs = remote.regs();
-  callregs.set_arg1(SYS_SENDMSG);
-  callregs.set_arg2(uintptr_t(remote_socketcall_args));
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, SYS_socketcall,
-                        callregs);
+  if (using_socketcall) {
+    write_socketcall_args(t, remote_socketcall_args, child_sock,
+                          uintptr_t(remote_msg), 0);
+    callregs.set_arg1(SYS_SENDMSG);
+    callregs.set_arg2(uintptr_t(remote_socketcall_args));
+    remote_syscall = syscall_number_for_socketcall(remote.arch());
+  } else {
+    callregs.set_arg1(child_sock);
+    callregs.set_arg2(uintptr_t(remote_msg));
+    callregs.set_arg3(0);
+    remote_syscall = syscall_number_for_sendmsg(remote.arch());
+  }
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
+                        remote_syscall, callregs);
   // Child may be waiting on our recvmsg().
 
   // Our 'msg' struct is mostly already OK.
@@ -1087,7 +1111,7 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   int our_fd = *(int*)CMSG_DATA(cmsg);
   assert(our_fd >= 0);
 
-  if (0 >= remote.wait_syscall(SYS_socketcall)) {
+  if (0 >= remote.wait_syscall(remote_syscall)) {
     FATAL() << "Failed to sendmsg() in tracee";
   }
 
