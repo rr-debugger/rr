@@ -752,7 +752,7 @@ static int enter_syscall(Task* t, const struct rep_trace_step* step,
   if ((ret = cont_syscall_boundary(t, step->syscall.emu, stepi))) {
     return ret;
   }
-  validate_args(step->syscall.no, SYSCALL_ENTRY, t);
+  validate_args(step->syscall.number, SYSCALL_ENTRY, t);
   return ret;
 }
 
@@ -777,7 +777,7 @@ static int exit_syscall(Task* t, const struct rep_trace_step* step, int stepi) {
   if (step->syscall.emu_ret) {
     t->set_return_value_from_trace();
   }
-  validate_args(step->syscall.no, SYSCALL_EXIT, t);
+  validate_args(step->syscall.number, SYSCALL_EXIT, t);
 
   if (emu == EMULATE) {
     t->finish_emulated_syscall();
@@ -2018,7 +2018,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
   }
 
   if (TSTEP_ENTER_SYSCALL == step.action) {
-    rep_after_enter_syscall(t, step.syscall.no);
+    rep_after_enter_syscall(t, step.syscall.number);
     t->replay_session().bug_detector().notify_reached_syscall_during_replay(t);
   }
   if (t->session().can_validate() &&

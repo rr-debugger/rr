@@ -164,7 +164,7 @@ struct rep_trace_step {
     struct {
       /* The syscall number we expect to
        * enter/exit. */
-      int no;
+      int number;
       /* Is the kernel entry and exit for this
        * syscall emulated, that is, not executed? */
       ExecOrEmulate emu;

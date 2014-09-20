@@ -1272,7 +1272,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   ASSERT(t, rep_UNDEFINED != def->type) << "Valid but unhandled syscallno "
                                         << syscall;
 
-  step->syscall.no = syscall;
+  step->syscall.number = syscall;
 
   t->maybe_update_vm(syscall, state);
 
