@@ -153,6 +153,11 @@ enum ExecOrEmulate {
   EMULATE = 1
 };
 
+enum ExecOrEmulateReturn {
+  EXEC_RETURN = 0,
+  EMULATE_RETURN = 1
+};
+
 /**
  * rep_trace_step is saved in Session and cloned with its Session, so it needs
  * to be simple data, i.e. not holding pointers to per-Session data.
@@ -174,7 +179,7 @@ struct rep_trace_step {
       ssize_t num_emu_args;
       /* Nonzero if the return from the syscall
        * should be emulated.  |emu| implies this. */
-      int emu_ret;
+      ExecOrEmulateReturn emu_ret;
     } syscall;
 
     int signo;
