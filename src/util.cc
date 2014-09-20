@@ -1262,7 +1262,7 @@ static void* locate_and_verify_kernel_vsyscall(
 
 // NBB: the placeholder bytes in |struct insns_template| below must be
 // kept in sync with this.
-static const uint8_t vsyscall_monkeypatch[] = {
+static const uint8_t x86_vsyscall_monkeypatch[] = {
   0x50,                         // push %eax
   0xb8, 0x00, 0x00, 0x00, 0x00, // mov $_vsyscall_hook_trampoline, %eax
   // The immediate param of the |mov| is filled in dynamically
@@ -1271,8 +1271,8 @@ static const uint8_t vsyscall_monkeypatch[] = {
   0xff, 0xe0, // jmp *%eax
 };
 
-struct insns_template {
-  // NBB: |vsyscall_monkeypatch| must be kept in sync with these
+struct x86_insns_template {
+  // NBB: |x86_vsyscall_monkeypatch| must be kept in sync with these
   // placeholder bytes.
   uint8_t push_eax_insn;
   uint8_t mov_vsyscall_hook_trampoline_eax_insn;
@@ -1310,13 +1310,13 @@ void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
   // we don't need to prepare remote syscalls here.
   void* vsyscall_hook_trampoline = (void*)t->regs().arg1();
   union {
-    uint8_t bytes[sizeof(vsyscall_monkeypatch)];
-    struct insns_template insns;
+    uint8_t bytes[sizeof(x86_vsyscall_monkeypatch)];
+    struct x86_insns_template insns;
   } __attribute__((packed)) patch;
 
   // Write the basic monkeypatch onto to the template, except
   // for the (dynamic) $vsyscall_hook_trampoline address.
-  memcpy(patch.bytes, vsyscall_monkeypatch, sizeof(patch.bytes));
+  memcpy(patch.bytes, x86_vsyscall_monkeypatch, sizeof(patch.bytes));
   // (Try to catch out-of-sync |vsyscall_monkeypatch| and
   // |struct insns_template|.)
   assert(nullptr == patch.insns.vsyscall_hook_trampoline);
