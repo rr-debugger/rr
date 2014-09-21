@@ -552,7 +552,8 @@ public:
    * Read |N| bytes from |child_addr| into |buf|, or don't
    * return.
    */
-  template <size_t N> void read_bytes(void* child_addr, uint8_t (&buf)[N]) {
+  template <size_t N>
+  void read_bytes(remote_ptr<void> child_addr, uint8_t (&buf)[N]) {
     return read_bytes_helper(child_addr, N, buf);
   }
 
