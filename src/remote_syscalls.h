@@ -178,7 +178,7 @@ private:
 
   Task* t;
   Registers initial_regs;
-  void* initial_ip;
+  remote_ptr<void> initial_ip;
   int pending_syscallno;
   uint8_t code_buffer[sizeof(syscall_insn)];
 
