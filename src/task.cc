@@ -802,7 +802,7 @@ string Task::read_c_str(void* child_addr) {
     ssize_t nbytes = (uint8_t*)end_of_page - (uint8_t*)child_addr;
     char buf[nbytes];
 
-    read_bytes_helper(child_addr, nbytes, reinterpret_cast<uint8_t*>(buf));
+    read_bytes_helper(child_addr, nbytes, buf);
     for (int i = 0; i < nbytes; ++i) {
       if ('\0' == buf[i]) {
         return str;
@@ -1954,7 +1954,7 @@ void Task::maybe_flush_syscallbuf() {
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
-                                uint8_t* buf) {
+                                void* buf) {
   ssize_t nread = 0;
   // ptrace operates on the word size of the host, so we really do want
   // to use sizes of host types here.
@@ -1973,8 +1973,8 @@ ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
     if (errno) {
       break;
     }
-    memcpy(buf + nread, reinterpret_cast<uint8_t*>(&v) + (start - start_word),
-           length);
+    memcpy(static_cast<uint8_t*>(buf) + nread,
+           reinterpret_cast<uint8_t*>(&v) + (start - start_word), length);
     nread += length;
   }
 
@@ -1982,7 +1982,7 @@ ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
 }
 
 ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
-                                 const uint8_t* buf) {
+                                 const void* buf) {
   ssize_t nwritten = 0;
   // ptrace operates on the word size of the host, so we really do want
   // to use sizes of host types here.
@@ -2005,7 +2005,7 @@ ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
       }
     }
     memcpy(reinterpret_cast<uint8_t*>(&v) + (start - start_word),
-           buf + nwritten, length);
+           static_cast<const uint8_t*>(buf) + nwritten, length);
     fallible_ptrace(PTRACE_POKEDATA, reinterpret_cast<void*>(start_word),
                     reinterpret_cast<void*>(v));
     nwritten += length;
@@ -2015,7 +2015,7 @@ ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
 }
 
 ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
-                                  uint8_t* buf) {
+                                  void* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
     return 0;
@@ -2042,7 +2042,7 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
 }
 
 void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
-                             uint8_t* buf) {
+                             void* buf) {
   ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
   ASSERT(this, nread == buf_size) << "Should have read " << buf_size
                                   << " bytes from " << addr
@@ -2050,7 +2050,7 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
 }
 
 void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
-                              const uint8_t* buf) {
+                              const void* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
     return;
