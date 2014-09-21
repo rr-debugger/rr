@@ -384,7 +384,7 @@ public:
   void destroy_buffers(int which);
 
   /** Return the current $ip of this. */
-  void* ip() { return (void*)regs().ip(); }
+  remote_ptr<void> ip() { return regs().ip(); }
 
   /**
    * Return true if this is at an arm-desched-event syscall.
@@ -411,7 +411,7 @@ public:
   bool is_entering_traced_syscall() {
     // |int $0x80| is |5d 80|, so |2| comes from
     // |sizeof(int $0x80)|.
-    void* next_ip = (uint8_t*)ip() + 2;
+    remote_ptr<void> next_ip = ip() + 2;
     return next_ip == traced_syscall_ip;
   }
 
@@ -1064,16 +1064,16 @@ public:
 
   /* The instruction pointer from which traced syscalls made by
    * the syscallbuf will originate. */
-  void* traced_syscall_ip;
+  remote_ptr<void> traced_syscall_ip;
   /* The instruction pointer from which untraced syscalls will
    * originate, used to determine whether a syscall is being
    * made by the syscallbuf wrappers or not. */
-  void* untraced_syscall_ip;
+  remote_ptr<void> untraced_syscall_ip;
   /* Start and end of the mapping of the syscallbuf code
    * section, used to determine whether a tracee's $ip is in the
    * lib. */
-  void* syscallbuf_lib_start;
-  void* syscallbuf_lib_end;
+  remote_ptr<void> syscallbuf_lib_start;
+  remote_ptr<void> syscallbuf_lib_end;
   /* Points at rr's mapping of the (shared) syscall buffer. */
   struct syscallbuf_hdr* syscallbuf_hdr;
   size_t num_syscallbuf_bytes;
