@@ -616,7 +616,7 @@ public:
    * Return the address of the watchpoint programmed at slot
    * |i|.
    */
-  void* watchpoint_addr(size_t i);
+  remote_ptr<void> watchpoint_addr(size_t i);
 
   /** Return the current $sp of this. */
   void* sp() { return (void*)regs().sp(); }

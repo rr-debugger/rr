@@ -903,10 +903,10 @@ uintptr_t Task::debug_status() {
                          nullptr);
 }
 
-void* Task::watchpoint_addr(size_t i) {
+remote_ptr<void> Task::watchpoint_addr(size_t i) {
   assert(i < NUM_X86_WATCHPOINTS);
-  return (void*)fallible_ptrace(PTRACE_PEEKUSER, (void*)dr_user_word_offset(i),
-                                nullptr);
+  return fallible_ptrace(PTRACE_PEEKUSER, (void*)dr_user_word_offset(i),
+                         nullptr);
 }
 
 void Task::remote_memcpy(void* dst, const void* src, size_t num_bytes) {

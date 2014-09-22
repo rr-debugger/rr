@@ -1951,7 +1951,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
     // breakpoints/watchpoints/singlesteps are fired
     // simultaneously.  These cases will be addressed as
     // they arise in practice.
-    void* watch_addr = nullptr;
+    remote_ptr<void> watch_addr = nullptr;
     if (SIGTRAP != t->child_sig) {
       assert(TRAP_BKPT_USER == pending_bp);
       LOG(debug) << "hit debugger breakpoint BEFORE ip " << t->ip() << " for "
