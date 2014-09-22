@@ -257,7 +257,7 @@ struct SyscallEvent : public BaseEvent {
   // attempt to copy-back syscallbuf tmp data to the "original"
   // buffers.  The syscallbuf code will do that itself.)
   ArgsStack saved_args;
-  void* tmp_data_ptr;
+  remote_ptr<void> tmp_data_ptr;
   ssize_t tmp_data_num_bytes;
   SyscallState state;
   // Syscall number.

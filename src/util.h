@@ -276,7 +276,7 @@ int get_ipc_command(int raw_cmd);
  * system |page_size()|.
  */
 size_t ceil_page_size(size_t sz);
-void* ceil_page_size(void* addr);
+remote_ptr<void> ceil_page_size(remote_ptr<void> addr);
 
 /**
  * Return true if the pointer or size is a multiple of the system

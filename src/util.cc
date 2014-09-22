@@ -374,9 +374,8 @@ size_t ceil_page_size(size_t sz) {
   return (sz + page_size() - 1) & page_mask;
 }
 
-void* ceil_page_size(void* addr) {
-  uintptr_t ceil = ceil_page_size((uintptr_t)addr);
-  return (void*)ceil;
+remote_ptr<void> ceil_page_size(remote_ptr<void> addr) {
+  return remote_ptr<void>(ceil_page_size(addr.as_int()));
 }
 
 void print_process_state(pid_t tid) {

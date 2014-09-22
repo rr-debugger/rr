@@ -19,8 +19,11 @@ public:
   template <typename U> remote_ptr(remote_ptr<U> p) : ptr(p.as_int()) {
     consume_dummy(static_cast<U*>(nullptr));
   }
+
   operator T*() const { return reinterpret_cast<T*>(ptr); }
   uintptr_t as_int() const { return ptr; }
+
+  template <typename U> remote_ptr<U> cast() { return remote_ptr<U>(ptr); }
 
   bool operator<(const remote_ptr<T>& other) const { return ptr < other.ptr; }
   bool operator==(const remote_ptr<T>& other) const { return ptr == other.ptr; }
@@ -33,6 +36,11 @@ private:
 
 inline remote_ptr<void> operator+(const remote_ptr<void>& p, intptr_t bytes) {
   return remote_ptr<void>(p.as_int() + bytes);
+}
+
+inline remote_ptr<void>& operator+=(remote_ptr<void>& p, intptr_t bytes) {
+  p = p + bytes;
+  return p;
 }
 
 inline remote_ptr<void> operator-(const remote_ptr<void>& p, intptr_t bytes) {

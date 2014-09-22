@@ -576,9 +576,9 @@ public:
    * record it.
    * If 'addr' is null then num_bytes is treated as zero.
    */
-  void record_local(void* addr, ssize_t num_bytes, const void* buf);
-  void record_remote(void* addr, ssize_t num_bytes);
-  void record_remote_str(void* str);
+  void record_local(remote_ptr<void> addr, ssize_t num_bytes, const void* buf);
+  void record_remote(remote_ptr<void> addr, ssize_t num_bytes);
+  void record_remote_str(remote_ptr<void> str);
 
   /**
    * Attempt to find the value of |regname| (a DebuggerRegister
@@ -633,7 +633,7 @@ public:
    * Read and return the C string located at |child_addr| in
    * this address space.
    */
-  std::string read_c_str(void* child_addr);
+  std::string read_c_str(remote_ptr<void> child_addr);
 
   /**
    * Return the word at |child_addr| in this address space.
@@ -1008,7 +1008,7 @@ public:
    *
    * |scratch_ptr| points at the mapped address in the child,
    * and |size| is the total available space. */
-  void* scratch_ptr;
+  remote_ptr<void> scratch_ptr;
   ssize_t scratch_size;
 
   /* Nonzero after the trace recorder has flushed the

@@ -147,14 +147,14 @@ static int abort_scratch(Task* t, const char* event) {
  * Return nonzero if the scratch state initialized for |t| fits
  * within the allocated region (and didn't overflow), zero otherwise.
  */
-static int can_use_scratch(Task* t, uint8_t* scratch_end) {
-  uint8_t* scratch_start = (uint8_t*)t->scratch_ptr;
+static int can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
+  remote_ptr<void> scratch_start = t->scratch_ptr;
 
   assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
 
-  t->ev().Syscall().tmp_data_num_bytes = (scratch_end - scratch_start);
-  return (0 <= t->ev().Syscall().tmp_data_num_bytes &&
-          t->ev().Syscall().tmp_data_num_bytes <= t->scratch_size);
+  t->ev().Syscall().tmp_data_num_bytes = scratch_end - scratch_start;
+  return 0 <= t->ev().Syscall().tmp_data_num_bytes &&
+         t->ev().Syscall().tmp_data_num_bytes <= t->scratch_size;
 }
 
 /**
@@ -164,8 +164,8 @@ static int can_use_scratch(Task* t, uint8_t* scratch_end) {
 template <typename Arch>
 static int prepare_ipc(Task* t, int would_need_scratch) {
   int call = t->regs().arg1_signed();
-  uint8_t* scratch =
-      would_need_scratch ? (uint8_t*)t->ev().Syscall().tmp_data_ptr : nullptr;
+  remote_ptr<void> scratch =
+      would_need_scratch ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
 
   assert(!t->desched_rec());
 
@@ -213,10 +213,10 @@ static ssize_t read_iovs(Task* t, const typename Arch::msghdr& msg,
  */
 template <typename Arch>
 static bool reserve_scratch_for_msghdr(Task* t, typename Arch::msghdr* msg,
-                                       uint8_t** scratch) {
+                                       remote_ptr<void>* scratch) {
   auto tmpmsg = *msg;
   // reserve space
-  uint8_t* scratch_tmp = *scratch;
+  remote_ptr<void> scratch_tmp = *scratch;
   if (msg->msg_name) {
     tmpmsg.msg_name = scratch_tmp;
     scratch_tmp += msg->msg_namelen;
@@ -224,7 +224,7 @@ static bool reserve_scratch_for_msghdr(Task* t, typename Arch::msghdr* msg,
 
   typename Arch::iovec iovs[msg->msg_iovlen];
   ssize_t num_iov_bytes = read_iovs<Arch>(t, *msg, iovs);
-  tmpmsg.msg_iov = (typename Arch::iovec*)scratch_tmp;
+  tmpmsg.msg_iov = scratch_tmp.cast<typename Arch::iovec>();
   scratch_tmp += num_iov_bytes;
 
   typename Arch::iovec tmpiovs[msg->msg_iovlen];
@@ -269,12 +269,12 @@ static bool reserve_scratch_for_msghdr(Task* t, typename Arch::msghdr* msg,
 template <typename Arch>
 static bool reserve_scratch_for_msgvec(Task* t, unsigned int vlen,
                                        typename Arch::mmsghdr* pmsgvec,
-                                       uint8_t** scratch) {
+                                       remote_ptr<void>* scratch) {
   typename Arch::mmsghdr msgvec[vlen];
-  t->read_bytes_helper(pmsgvec, sizeof(msgvec), (uint8_t*)msgvec);
+  t->read_bytes_helper(pmsgvec, sizeof(msgvec), msgvec);
 
   // Reserve scratch for struct mmsghdr *msgvec
-  auto tmpmsgvec = (typename Arch::mmsghdr*)*scratch;
+  auto tmpmsgvec = scratch->cast<typename Arch::mmsghdr>();
   *scratch += sizeof(msgvec);
 
   // Reserve scratch for child pointers of struct msghdr
@@ -285,7 +285,7 @@ static bool reserve_scratch_for_msgvec(Task* t, unsigned int vlen,
   }
 
   // Write back the modified msgvec
-  t->write_bytes_helper(tmpmsgvec, sizeof(msgvec), (uint8_t*)msgvec);
+  t->write_bytes_helper(tmpmsgvec, sizeof(msgvec), msgvec);
   return true;
 }
 
@@ -296,10 +296,10 @@ static bool reserve_scratch_for_msgvec(Task* t, unsigned int vlen,
  */
 template <typename Arch>
 static int prepare_socketcall(Task* t, int would_need_scratch) {
-  uint8_t* scratch =
-      would_need_scratch ? (uint8_t*)t->ev().Syscall().tmp_data_ptr : nullptr;
+  remote_ptr<void> scratch =
+      would_need_scratch ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
   long* argsp;
-  void* tmpargsp;
+  remote_ptr<void> tmpargsp;
   Registers r = t->regs();
 
   assert(!t->desched_rec());
@@ -333,7 +333,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
        * scratch pointer to the kernel. */
       /* The socketcall arg pointer. */
       push_arg_ptr(t, argsp);
-      r.set_arg2((uintptr_t)(tmpargsp = scratch));
+      r.set_arg2((tmpargsp = scratch));
       scratch += sizeof(args);
       /* The |buf| pointer. */
       push_arg_ptr(t, (void*)args.buf);
@@ -383,11 +383,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
       scratch += (SYS_ACCEPT == call) ? sizeof(args._) : sizeof(args);
 
       push_arg_ptr(t, args._.addrlen);
-      args._.addrlen = (typename Arch::socklen_t*)scratch;
+      args._.addrlen = scratch.cast<typename Arch::socklen_t>();
       scratch += sizeof(*args._.addrlen);
 
       push_arg_ptr(t, args._.addr);
-      args._.addr = (typename Arch::sockaddr*)scratch;
+      args._.addr = scratch.cast<typename Arch::sockaddr>();
       scratch += addrlen;
       if (!can_use_scratch(t, scratch)) {
         return abort_scratch(t, "accept");
@@ -413,8 +413,8 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve space for scratch socketcall args.
       push_arg_ptr(t, argsp);
-      void* tmpargsp = scratch;
-      r.set_arg2((uintptr_t)tmpargsp);
+      remote_ptr<void> tmpargsp = scratch;
+      r.set_arg2(tmpargsp);
       scratch += sizeof(args);
 
       push_arg_ptr(t, args.buf);
@@ -426,11 +426,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
         t->read_mem(args.addrlen, &addrlen);
 
         push_arg_ptr(t, args.addrlen);
-        args.addrlen = (typename Arch::socklen_t*)scratch;
+        args.addrlen = scratch.cast<typename Arch::socklen_t>();
         scratch += sizeof(*args.addrlen);
 
         push_arg_ptr(t, args.src_addr);
-        args.src_addr = (typename Arch::sockaddr*)scratch;
+        args.src_addr = scratch.cast<typename Arch::sockaddr>();
         scratch += addrlen;
       } else {
         push_arg_ptr(t, nullptr);
@@ -463,12 +463,12 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve scratch for the arg
       push_arg_ptr(t, argsp);
-      void* tmpargsp = scratch;
+      remote_ptr<void> tmpargsp = scratch;
       scratch += sizeof(args);
-      r.set_arg2((uintptr_t)tmpargsp);
+      r.set_arg2(tmpargsp);
 
       // Reserve scratch for the struct msghdr
-      uint8_t* scratch_msg = scratch;
+      remote_ptr<void> scratch_msg = scratch;
       scratch += sizeof(msg);
 
       // Reserve scratch for the child pointers of struct msghdr
@@ -478,7 +478,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
         return 0;
       }
 
-      args.msg = (typename Arch::msghdr*)scratch_msg;
+      args.msg = scratch_msg.cast<typename Arch::msghdr>();
       t->write_mem(tmpargsp, args);
       t->set_regs(r);
 
@@ -513,13 +513,13 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve scratch for the arg
       push_arg_ptr(t, argsp);
-      void* tmpargsp = scratch;
+      remote_ptr<void> tmpargsp = scratch;
       scratch += sizeof(args);
-      r.set_arg2((uintptr_t)tmpargsp);
+      r.set_arg2(tmpargsp);
 
       // Update msgvec pointer of tmp arg
       typename Arch::mmsghdr* poldmsgvec = args.msgvec;
-      args.msgvec = (typename Arch::mmsghdr*)scratch;
+      args.msgvec = scratch.cast<typename Arch::mmsghdr>();
       t->write_mem(tmpargsp, args);
 
       if (reserve_scratch_for_msgvec<Arch>(t, args.vlen, poldmsgvec,
@@ -629,7 +629,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
    * addresses values. */
   bool restart = (syscallno == Arch::restart_syscall);
   int would_need_scratch;
-  uint8_t* scratch = NULL;
+  uint8_t* scratch = nullptr;
 
   if (t->desched_rec()) {
     return set_up_scratch_for_syscallbuf<Arch>(t, syscallno);
@@ -648,7 +648,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
      * TODO: but, we'll stomp if we reenter through a
      * signal handler ... */
     reset_scratch_pointers(t);
-    scratch = (uint8_t*)t->ev().Syscall().tmp_data_ptr;
+    scratch = (uint8_t*)t->ev().Syscall().tmp_data_ptr.as_int();
   }
 
   if (syscallno < 0) {
@@ -1080,11 +1080,16 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       push_arg_ptr(t, (void*)r.arg2());
       r.set_arg2((uintptr_t)scratch);
 
-      if (reserve_scratch_for_msgvec<Arch>(t, r.arg3(), poldmsgvec, &scratch)) {
+      remote_ptr<void> tmpscratch = scratch;
+      if (reserve_scratch_for_msgvec<Arch>(t, r.arg3(), poldmsgvec,
+                                           &tmpscratch)) {
         t->set_regs(r);
+        scratch = (uint8_t*)tmpscratch.as_int();
         return 1;
-      } else
+      } else {
+        scratch = (uint8_t*)tmpscratch.as_int();
         return 0;
+      }
     }
     case Arch::rt_sigtimedwait: {
       if (!would_need_scratch) {
@@ -1200,7 +1205,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   // record this mmap for the replay
   Registers r = t->regs();
   uintptr_t saved_result = r.syscall_result();
-  r.set_syscall_result((uintptr_t)t->scratch_ptr);
+  r.set_syscall_result(t->scratch_ptr);
   t->set_regs(r);
 
   char filename[PATH_MAX];
@@ -1208,7 +1213,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
   TraceMappedRegion file(string(filename), stat, t->scratch_ptr,
-                         (uint8_t*)t->scratch_ptr + scratch_size);
+                         t->scratch_ptr + scratch_size);
   t->trace_writer().write_mapped_region(file);
 
   r.set_syscall_result(saved_result);

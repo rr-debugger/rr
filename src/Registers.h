@@ -121,26 +121,44 @@ public:
   uintptr_t arg1() const { return RR_GET_REG(ebx, rdi); }
   intptr_t arg1_signed() const { return RR_GET_REG(ebx, rdi); }
   void set_arg1(uintptr_t value) { RR_SET_REG(ebx, rdi, value); }
+  template <typename T> void set_arg1(remote_ptr<T> value) {
+    RR_SET_REG(ebx, rdi, value.as_int());
+  }
 
   uintptr_t arg2() const { return RR_GET_REG(ecx, rsi); }
   intptr_t arg2_signed() const { return RR_GET_REG(ecx, rsi); }
   void set_arg2(uintptr_t value) { RR_SET_REG(ecx, rsi, value); }
+  template <typename T> void set_arg2(remote_ptr<T> value) {
+    RR_SET_REG(ecx, rsi, value.as_int());
+  }
 
   uintptr_t arg3() const { return RR_GET_REG(edx, rdx); }
   intptr_t arg3_signed() const { return RR_GET_REG(edx, rdx); }
   void set_arg3(uintptr_t value) { RR_SET_REG(edx, rdx, value); }
+  template <typename T> void set_arg3(remote_ptr<T> value) {
+    RR_SET_REG(edx, rdx, value.as_int());
+  }
 
   uintptr_t arg4() const { return RR_GET_REG(esi, r10); }
   intptr_t arg4_signed() const { return RR_GET_REG(esi, r10); }
   void set_arg4(uintptr_t value) { RR_SET_REG(esi, r10, value); }
+  template <typename T> void set_arg4(remote_ptr<T> value) {
+    RR_SET_REG(esi, r10, value.as_int());
+  }
 
   uintptr_t arg5() const { return RR_GET_REG(edi, r8); }
   intptr_t arg5_signed() const { return RR_GET_REG(edi, r8); }
   void set_arg5(uintptr_t value) { RR_SET_REG(edi, r8, value); }
+  template <typename T> void set_arg5(remote_ptr<T> value) {
+    RR_SET_REG(edi, r8, value.as_int());
+  }
 
   uintptr_t arg6() const { return RR_GET_REG(ebp, r9); }
   intptr_t arg6_signed() const { return RR_GET_REG(ebp, r9); }
   void set_arg6(uintptr_t value) { RR_SET_REG(ebp, r9, value); }
+  template <typename T> void set_arg6(remote_ptr<T> value) {
+    RR_SET_REG(ebp, r9, value.as_int());
+  }
 
   /**
    * Set the output registers of the |rdtsc| instruction.

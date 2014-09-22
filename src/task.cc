@@ -747,7 +747,8 @@ int64_t Task::tick_count() {
 
 void Task::set_tick_count(Ticks count) { ticks = count; }
 
-void Task::record_local(void* addr, ssize_t num_bytes, const void* data) {
+void Task::record_local(remote_ptr<void> addr, ssize_t num_bytes,
+                        const void* data) {
   maybe_flush_syscallbuf();
 
   assert(num_bytes >= 0);
@@ -760,7 +761,7 @@ void Task::record_local(void* addr, ssize_t num_bytes, const void* data) {
   trace_writer().write_raw(data, num_bytes, addr);
 }
 
-void Task::record_remote(void* addr, ssize_t num_bytes) {
+void Task::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   // We shouldn't be recording a scratch address.
   ASSERT(this, !addr || addr != scratch_ptr);
 
@@ -779,7 +780,7 @@ void Task::record_remote(void* addr, ssize_t num_bytes) {
   trace_writer().write_raw(buf.data(), num_bytes, addr);
 }
 
-void Task::record_remote_str(void* str) {
+void Task::record_remote_str(remote_ptr<void> str) {
   maybe_flush_syscallbuf();
 
   if (!str) {
@@ -792,14 +793,14 @@ void Task::record_remote_str(void* str) {
   trace_writer().write_raw(s.c_str(), s.size() + 1, str);
 }
 
-string Task::read_c_str(void* child_addr) {
+string Task::read_c_str(remote_ptr<void> child_addr) {
   // XXX handle invalid C strings
   string str;
   while (true) {
     // We're only guaranteed that [child_addr,
     // end_of_page) is mapped.
-    void* end_of_page = ceil_page_size((uint8_t*)child_addr + 1);
-    ssize_t nbytes = (uint8_t*)end_of_page - (uint8_t*)child_addr;
+    remote_ptr<void> end_of_page = ceil_page_size(child_addr + 1);
+    ssize_t nbytes = end_of_page - child_addr;
     char buf[nbytes];
 
     read_bytes_helper(child_addr, nbytes, buf);

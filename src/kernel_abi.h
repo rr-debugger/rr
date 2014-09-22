@@ -171,6 +171,12 @@ struct BaseArch : public wordsize {
     template <typename U> operator remote_ptr<U>() const {
       return remote_ptr<T>(val);
     }
+    template <typename U> ptr<T> operator=(remote_ptr<U> p) {
+      remote_ptr<T> pt = p;
+      val = pt.as_int();
+      assert(val == pt.as_int());
+      return *this;
+    }
     operator T*() const {
       return reinterpret_cast<T*>(val);
     };
