@@ -301,7 +301,7 @@ void copy_syscall_arg_regs(Registers* to, const Registers* from);
  * value.)  The new value of the futex after the kernel updates it is
  * returned in |next_val|.
  */
-bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val);
+bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex, int* next_val);
 
 /** Return the default action of |sig|. */
 enum signal_action {

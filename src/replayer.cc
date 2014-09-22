@@ -96,7 +96,7 @@ enum Stepping {
  * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
  * rr commands
  */
-static const void* DBG_COMMAND_MAGIC_ADDRESS = (void*)29298; // 'rr'
+static const uintptr_t DBG_COMMAND_MAGIC_ADDRESS = 29298; // 'rr'
 
 /**
  * The high-order byte of the 32-bit value indicates the specific command
@@ -202,7 +202,8 @@ static dbg_threadid_t get_threadid(Task* t) {
   return thread;
 }
 
-static uint8_t* read_mem(Task* t, void* addr, size_t len, size_t* read_len) {
+static uint8_t* read_mem(Task* t, remote_ptr<void> addr, size_t len,
+                         size_t* read_len) {
   uint8_t* buf = (uint8_t*)malloc(len);
   ssize_t nread = t->read_bytes_fallible(addr, len, buf);
   *read_len = max(ssize_t(0), nread);
@@ -948,15 +949,16 @@ static void guard_overshoot(Task* t, const Registers* target_regs,
                             Ticks ticks_slack, bool ignored_early_match,
                             Ticks ticks_left_at_ignored_early_match) {
   if (remaining_ticks < -ticks_slack) {
-    uintptr_t target_ip = target_regs->ip();
+    remote_ptr<uint8_t> target_ip = target_regs->ip();
 
     LOG(error) << "Replay diverged.  Dumping register comparison.";
     /* Cover up the internal breakpoint that we may have
      * set, and restore the tracee's $ip to what it would
      * have been had it not hit the breakpoint (if it did
      * hit the breakpoint).*/
-    t->vm()->remove_breakpoint((void*)target_ip, TRAP_BKPT_INTERNAL);
-    if (t->regs().ip() == target_ip + sizeof(AddressSpace::breakpoint_insn)) {
+    t->vm()->remove_breakpoint(target_ip, TRAP_BKPT_INTERNAL);
+    if (remote_ptr<uint8_t>(t->regs().ip()) ==
+        target_ip + sizeof(AddressSpace::breakpoint_insn)) {
       t->move_ip_before_breakpoint();
     }
     compare_register_files(t, "rep overshoot", &t->regs(), "rec", target_regs,
@@ -1512,14 +1514,14 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
       << "Futex should have saved 4 or 8 bytes, but instead saved "
       << extra_data_size;
 
-  void* child_uaddr = (void*)t->regs().arg1();
-  uint32_t rec_uaddr = *reinterpret_cast<const uint32_t*>(rec->extra_data);
+  remote_ptr<int> child_uaddr = t->regs().arg1();
+  auto rec_uaddr = *reinterpret_cast<const int*>(rec->extra_data);
   t->write_mem(child_uaddr, rec_uaddr);
 
   if (saved_uaddr2) {
-    void* child_uaddr2 = (void*)t->regs().arg5();
-    uint32_t rec_uaddr2 =
-        *reinterpret_cast<const uint32_t*>(rec->extra_data + sizeof(uint32_t));
+    remote_ptr<int> child_uaddr2 = t->regs().arg5();
+    auto rec_uaddr2 =
+        *reinterpret_cast<const int*>(rec->extra_data + sizeof(int));
     t->write_mem(child_uaddr2, rec_uaddr2);
   }
 }

@@ -51,18 +51,18 @@ public:
 
   ~AutoRestoreMem();
 
-  operator void*() const { return addr; }
+  remote_ptr<void> get() const { return addr; }
 
 private:
   void init(const uint8_t* mem, ssize_t num_bytes);
 
   AutoRemoteSyscalls& remote;
   /* Address of tmp mem. */
-  void* addr;
+  remote_ptr<void> addr;
   /* Pointer to saved data. */
   uint8_t* data;
   /* (We keep this around for error checking.) */
-  void* saved_sp;
+  remote_ptr<void> saved_sp;
   /* Length of tmp mem. */
   size_t len;
 
@@ -178,7 +178,7 @@ private:
 
   Task* t;
   Registers initial_regs;
-  remote_ptr<void> initial_ip;
+  remote_ptr<uint8_t> initial_ip;
   int pending_syscallno;
   uint8_t code_buffer[sizeof(syscall_insn)];
 

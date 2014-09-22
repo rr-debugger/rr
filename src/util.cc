@@ -61,7 +61,7 @@ ostream& operator<<(ostream& o, const mapped_segment_info& m) {
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.
-static bool is_start_of_scratch_region(Task* t, void* start_addr) {
+static bool is_start_of_scratch_region(Task* t, remote_ptr<void> start_addr) {
   for (auto& kv : t->session().tasks()) {
     Task* c = kv.second;
     if (start_addr == c->scratch_ptr) {
@@ -637,9 +637,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
       *
       * So here, we set things up so that we only checksum
       * the deterministic region. */
-      void* child_hdr = first.start;
-      struct syscallbuf_hdr hdr;
-      t->read_mem(child_hdr, &hdr);
+      auto child_hdr = first.start.cast<struct syscallbuf_hdr>();
+      auto hdr = t->read_mem(child_hdr);
       valid_mem_len = !buf ? 0 : sizeof(hdr) + hdr.num_rec_bytes +
                                      sizeof(struct syscallbuf_record);
     }
@@ -659,16 +658,18 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
     } else {
       char line[1024];
       unsigned rec_checksum;
-      void* rec_start_addr;
-      void* rec_end_addr;
+      unsigned long rec_start;
+      unsigned long rec_end;
       int nparsed;
 
       fgets(line, sizeof(line), c.checksums_file);
-      nparsed = sscanf(line, "(%x) %p-%p", &rec_checksum, &rec_start_addr,
-                       &rec_end_addr);
+      nparsed =
+          sscanf(line, "(%x) %lx-%lx", &rec_checksum, &rec_start, &rec_end);
+      remote_ptr<void> rec_start_addr = rec_start;
+      remote_ptr<void> rec_end_addr = rec_end;
       ASSERT(t, 3 == nparsed) << "Only parsed " << nparsed << " items";
 
-      ASSERT(t, (rec_start_addr == first.start && rec_end_addr == first.end))
+      ASSERT(t, rec_start_addr == first.start && rec_end_addr == first.end)
           << "Segment " << rec_start_addr << "-" << rec_end_addr
           << " changed to " << first << "??";
 
@@ -738,10 +739,8 @@ void copy_syscall_arg_regs(Registers* to, const Registers* from) {
   to->set_arg6(from->arg6());
 }
 
-bool is_now_contended_pi_futex(Task* t, void* futex, uint32_t* next_val) {
-  static_assert(sizeof(uint32_t) == sizeof(long),
-                "Sorry, need to add Task::read_int()");
-  uint32_t val = t->read_word(futex);
+bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex, int* next_val) {
+  int val = t->read_mem(futex);
   pid_t owner_tid = (val & FUTEX_TID_MASK);
   bool now_contended =
       (owner_tid != 0 && owner_tid != t->rec_tid && !(val & FUTEX_WAITERS));
@@ -962,8 +961,9 @@ void resize_shmem_segment(int fd, size_t num_bytes) {
   }
 }
 
-static void write_socketcall_args(Task* t, void* remote_mem, long arg1,
-                                  long arg2, long arg3) {
+static void write_socketcall_args(Task* t,
+                                  remote_ptr<struct socketcall_args> remote_mem,
+                                  long arg1, long arg2, long arg3) {
   struct socketcall_args sc_args = { { arg1, arg2, arg3 } };
   t->write_mem(remote_mem, sc_args);
 }
@@ -988,8 +988,7 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
                align_size(sizeof(msg)) + align_size(sizeof(cmsgbuf)) +
                    align_size(sizeof(msgdata)));
   AutoRestoreMem remote_socketcall_args_holder(remote, nullptr, data_length);
-  uint8_t* remote_socketcall_args =
-      static_cast<uint8_t*>(static_cast<void*>(remote_socketcall_args_holder));
+  auto remote_socketcall_args = remote_socketcall_args_holder.get();
   bool using_socketcall = has_socketcall_syscall(remote.arch());
 
   memset(&socket_addr, 0, sizeof(socket_addr));
@@ -1011,7 +1010,9 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
 
   int child_sock;
   if (using_socketcall) {
-    write_socketcall_args(t, remote_socketcall_args, AF_UNIX, SOCK_STREAM, 0);
+    write_socketcall_args(t,
+                          remote_socketcall_args.cast<struct socketcall_args>(),
+                          AF_UNIX, SOCK_STREAM, 0);
     child_sock = remote.syscall(syscall_number_for_socketcall(remote.arch()),
                                 SYS_SOCKET, remote_socketcall_args);
   } else {
@@ -1022,25 +1023,27 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
     FATAL() << "Failed to create child socket";
   }
 
-  uint8_t* remote_sockaddr =
-      remote_socketcall_args + align_size(sizeof(struct socketcall_args));
+  auto remote_sockaddr =
+      (remote_socketcall_args + align_size(sizeof(struct socketcall_args)))
+          .cast<struct sockaddr_un>();
   t->write_mem(remote_sockaddr, socket_addr);
   Registers callregs = remote.regs();
   int remote_syscall;
   if (using_socketcall) {
-    write_socketcall_args(t, remote_socketcall_args, child_sock,
-                          uintptr_t(remote_sockaddr), sizeof(socket_addr));
+    write_socketcall_args(
+        t, remote_socketcall_args.cast<struct socketcall_args>(), child_sock,
+        remote_sockaddr.as_int(), sizeof(socket_addr));
     callregs.set_arg1(SYS_CONNECT);
-    callregs.set_arg2(uintptr_t(remote_socketcall_args));
+    callregs.set_arg2(remote_socketcall_args);
     remote_syscall = syscall_number_for_socketcall(remote.arch());
   } else {
     callregs.set_arg1(child_sock);
-    callregs.set_arg2(uintptr_t(remote_sockaddr));
+    callregs.set_arg2(remote_sockaddr);
     callregs.set_arg3(sizeof(socket_addr));
     remote_syscall = syscall_number_for_connect(remote.arch());
   }
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
-                        remote_syscall, callregs);
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
+                        callregs);
   // Now the child is waiting for us to accept it.
 
   int sock = accept(listen_sock, NULL, NULL);
@@ -1060,41 +1063,42 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   // call to finish, since it's likely not defined whether the
   // sendmsg() may block on our recvmsg()ing what the tracee
   // sent us (in which case we would deadlock with the tracee).
-  uint8_t* remote_msg =
+  auto remote_msg =
       remote_socketcall_args + align_size(sizeof(struct socketcall_args));
-  uint8_t* remote_msgdata = remote_msg + align_size(sizeof(msg));
-  uint8_t* remote_cmsgbuf = remote_msgdata + align_size(sizeof(msgdata));
+  auto remote_msgdata = remote_msg + align_size(sizeof(msg));
+  auto remote_cmsgbuf = remote_msgdata + align_size(sizeof(msgdata));
   msgdata.iov_base = remote_msg; // doesn't matter much, we ignore the data
   msgdata.iov_len = 1;
-  t->write_mem(remote_msgdata, msgdata);
+  t->write_mem(remote_msgdata.cast<struct iovec>(), msgdata);
   memset(&msg, 0, sizeof(msg));
   msg.msg_control = cmsgbuf;
   msg.msg_controllen = sizeof(cmsgbuf);
-  msg.msg_iov = reinterpret_cast<struct iovec*>(remote_msgdata);
+  msg.msg_iov = reinterpret_cast<struct iovec*>(remote_msgdata.as_int());
   msg.msg_iovlen = 1;
   struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
   cmsg->cmsg_len = CMSG_LEN(sizeof(fd));
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
   *(int*)CMSG_DATA(cmsg) = fd;
-  t->write_mem(remote_cmsgbuf, cmsgbuf);
+  t->write_bytes_helper(remote_cmsgbuf, sizeof(cmsgbuf), &cmsgbuf);
   msg.msg_control = remote_cmsgbuf;
-  t->write_mem(remote_msg, msg);
+  t->write_mem(remote_msg.cast<struct msghdr>(), msg);
   callregs = remote.regs();
   if (using_socketcall) {
-    write_socketcall_args(t, remote_socketcall_args, child_sock,
-                          uintptr_t(remote_msg), 0);
+    write_socketcall_args(t,
+                          remote_socketcall_args.cast<struct socketcall_args>(),
+                          child_sock, remote_msg.as_int(), 0);
     callregs.set_arg1(SYS_SENDMSG);
-    callregs.set_arg2(uintptr_t(remote_socketcall_args));
+    callregs.set_arg2(remote_socketcall_args);
     remote_syscall = syscall_number_for_socketcall(remote.arch());
   } else {
     callregs.set_arg1(child_sock);
-    callregs.set_arg2(uintptr_t(remote_msg));
+    callregs.set_arg2(remote_msg);
     callregs.set_arg3(0);
     remote_syscall = syscall_number_for_sendmsg(remote.arch());
   }
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
-                        remote_syscall, callregs);
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
+                        callregs);
   // Child may be waiting on our recvmsg().
 
   // Our 'msg' struct is mostly already OK.
@@ -1166,7 +1170,7 @@ void destroy_buffers(Task* t) {
   exit_regs.set_ip(exit_regs.ip() - sizeof(syscall_insn));
 
   uint8_t insn[sizeof(syscall_insn)];
-  t->read_bytes((void*)exit_regs.ip(), insn);
+  t->read_bytes(remote_ptr<void>(exit_regs.ip()), insn);
   ASSERT(t, !memcmp(insn, syscall_insn, sizeof(insn)))
       << "Tracee should have entered through int $0x80.";
 
@@ -1201,7 +1205,7 @@ static const uint8_t vsyscall_impl[] = { 0x51,       /* push %ecx */
  * Return true iff |addr| points to a known |__kernel_vsyscall()|
  * implementation.
  */
-static bool is_kernel_vsyscall(Task* t, void* addr) {
+static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
   uint8_t impl[sizeof(vsyscall_impl)];
   t->read_bytes(addr, impl);
   for (size_t i = 0; i < sizeof(vsyscall_impl); ++i) {
@@ -1218,10 +1222,10 @@ static bool is_kernel_vsyscall(Task* t, void* addr) {
  * Return the address of a recognized |__kernel_vsyscall()|
  * implementation in |t|'s address space.
  */
-static void* locate_and_verify_kernel_vsyscall(
+static remote_ptr<void> locate_and_verify_kernel_vsyscall(
     Task* t, size_t nsymbols, const typename X86Arch::ElfSym* symbols,
     const char* symbolnames) {
-  void* kernel_vsyscall = nullptr;
+  remote_ptr<void> kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
   // symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
   // catch that case, because only one of the versioned symbols will
@@ -1240,15 +1244,15 @@ static void* locate_and_verify_kernel_vsyscall(
       // is always loaded at a particular address.  The kernel,
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
-      void* vdso_start = t->vm()->vdso().start;
-      void* candidate = reinterpret_cast<void*>(sym->st_value);
+      auto vdso_start = t->vm()->vdso().start;
+      remote_ptr<void> candidate = sym->st_value;
       // The symbol values can be absolute or relative addresses.
       // The first part of the assertion is for absolute
       // addresses, and the second part is for relative.
-      assert((uintptr_t(candidate) & ~uintptr_t(0xfff)) == 0xffffe000 ||
-             (uintptr_t(candidate) & ~uintptr_t(0xfff)) == 0);
-      uintptr_t candidate_offset = uintptr_t(candidate) & uintptr_t(0xfff);
-      candidate = static_cast<char*>(vdso_start) + candidate_offset;
+      assert((candidate.as_int() & ~uintptr_t(0xfff)) == 0xffffe000 ||
+             (candidate.as_int() & ~uintptr_t(0xfff)) == 0);
+      uintptr_t candidate_offset = candidate.as_int() & uintptr_t(0xfff);
+      candidate = vdso_start + candidate_offset;
 
       if (is_kernel_vsyscall(t, candidate)) {
         kernel_vsyscall = candidate;
@@ -1275,7 +1279,7 @@ struct x86_insns_template {
   // placeholder bytes.
   uint8_t push_eax_insn;
   uint8_t mov_vsyscall_hook_trampoline_eax_insn;
-  void* vsyscall_hook_trampoline;
+  uint32_t vsyscall_hook_trampoline;
 } __attribute__((packed));
 
 /**
@@ -1291,7 +1295,7 @@ template <>
 void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
                                   const typename X86Arch::ElfSym* symbols,
                                   const char* symbolnames) {
-  void* kernel_vsyscall =
+  auto kernel_vsyscall =
       locate_and_verify_kernel_vsyscall(t, nsymbols, symbols, symbolnames);
   if (!kernel_vsyscall) {
     FATAL() << "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't "
@@ -1307,7 +1311,7 @@ void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
   // Luckily, linux is happy for us to scribble directly over
   // the vdso mapping's bytes without mprotecting the region, so
   // we don't need to prepare remote syscalls here.
-  void* vsyscall_hook_trampoline = (void*)t->regs().arg1();
+  remote_ptr<void> vsyscall_hook_trampoline = t->regs().arg1();
   union {
     uint8_t bytes[sizeof(x86_vsyscall_monkeypatch)];
     struct x86_insns_template insns;
@@ -1318,8 +1322,8 @@ void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
   memcpy(patch.bytes, x86_vsyscall_monkeypatch, sizeof(patch.bytes));
   // (Try to catch out-of-sync |vsyscall_monkeypatch| and
   // |struct insns_template|.)
-  assert(nullptr == patch.insns.vsyscall_hook_trampoline);
-  patch.insns.vsyscall_hook_trampoline = vsyscall_hook_trampoline;
+  assert(0 == patch.insns.vsyscall_hook_trampoline);
+  patch.insns.vsyscall_hook_trampoline = vsyscall_hook_trampoline.as_int();
 
   t->write_bytes(kernel_vsyscall, patch.bytes);
   LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
@@ -1402,19 +1406,19 @@ void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
 }
   
 template <typename Arch>
-static void locate_vdso_symbols(Task* t, size_t* nsymbols, void** symbols,
-                                size_t* strtabsize, void** strtab) {
-  void* vdso_start = t->vm()->vdso().start;
-  typename Arch::ElfEhdr elfheader;
-  t->read_mem(vdso_start, &elfheader);
+static void locate_vdso_symbols(Task* t, size_t* nsymbols,
+                                remote_ptr<void>* symbols, size_t* strtabsize,
+                                remote_ptr<void>* strtab) {
+  auto vdso_start = t->vm()->vdso().start;
+  auto elfheader = t->read_mem(vdso_start.cast<typename Arch::ElfEhdr>());
   assert(elfheader.e_ident[EI_CLASS] == Arch::elfclass);
   assert(elfheader.e_ident[EI_DATA] == Arch::elfendian);
   assert(elfheader.e_machine == Arch::elfmachine);
   assert(elfheader.e_shentsize == sizeof(typename Arch::ElfShdr));
 
-  void* sections_start = static_cast<char*>(vdso_start) + elfheader.e_shoff;
+  auto sections_start = vdso_start + elfheader.e_shoff;
   typename Arch::ElfShdr sections[elfheader.e_shnum];
-  t->read_bytes_helper(sections_start, sizeof(sections), (uint8_t*)sections);
+  t->read_bytes_helper(sections_start, sizeof(sections), sections);
 
   typename Arch::ElfShdr* dynsym = nullptr;
   typename Arch::ElfShdr* dynstr = nullptr;
@@ -1436,24 +1440,24 @@ static void locate_vdso_symbols(Task* t, size_t* nsymbols, void** symbols,
 
   assert(dynsym->sh_entsize == sizeof(typename Arch::ElfSym));
   *nsymbols = dynsym->sh_size / dynsym->sh_entsize;
-  *symbols = static_cast<char*>(vdso_start) + dynsym->sh_offset;
+  *symbols = vdso_start + dynsym->sh_offset;
   *strtabsize = dynstr->sh_size;
-  *strtab = static_cast<char*>(vdso_start) + dynstr->sh_offset;
+  *strtab = vdso_start + dynstr->sh_offset;
 }
 
 template <typename Arch> static void monkeypatch_vdso_arch(Task* t) {
   size_t nsymbols = 0;
-  void* symbolsaddr = nullptr;
+  remote_ptr<void> symbolsaddr = nullptr;
   size_t strtabsize = 0;
-  void* strtabaddr = nullptr;
+  remote_ptr<void> strtabaddr = nullptr;
 
   locate_vdso_symbols<Arch>(t, &nsymbols, &symbolsaddr, &strtabsize,
                             &strtabaddr);
 
   typename Arch::ElfSym symbols[nsymbols];
-  t->read_bytes_helper(symbolsaddr, sizeof(symbols), (uint8_t*)symbols);
+  t->read_bytes_helper(symbolsaddr, sizeof(symbols), symbols);
   char strtab[strtabsize];
-  t->read_bytes_helper(strtabaddr, sizeof(strtab), (uint8_t*)strtab);
+  t->read_bytes_helper(strtabaddr, sizeof(strtab), strtab);
 
   perform_monkeypatch<Arch>(t, nsymbols, symbols, strtab);
 }

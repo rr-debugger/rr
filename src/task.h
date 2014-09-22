@@ -333,7 +333,7 @@ public:
    * change.  This must only be used in contexts where the futex
    * will change "soon".
    */
-  void futex_wait(void* futex, uint32_t val);
+  void futex_wait(remote_ptr<int> futex, int val);
 
   /**
    * Return the ptrace message pid associated with the current ptrace
@@ -384,7 +384,7 @@ public:
   void destroy_buffers(int which);
 
   /** Return the current $ip of this. */
-  remote_ptr<void> ip() { return regs().ip(); }
+  remote_ptr<uint8_t> ip() { return regs().ip(); }
 
   /**
    * Return true if this is at an arm-desched-event syscall.
@@ -411,7 +411,7 @@ public:
   bool is_entering_traced_syscall() {
     // |int $0x80| is |5d 80|, so |2| comes from
     // |sizeof(int $0x80)|.
-    remote_ptr<void> next_ip = ip() + 2;
+    remote_ptr<uint8_t> next_ip = ip() + 2;
     return next_ip == traced_syscall_ip;
   }
 
@@ -421,7 +421,8 @@ public:
    * below.
    */
   bool is_in_syscallbuf() {
-    return (syscallbuf_lib_start <= ip() && ip() < syscallbuf_lib_end);
+    remote_ptr<void> p = ip();
+    return (syscallbuf_lib_start <= p && p < syscallbuf_lib_end);
   }
 
   /**
@@ -577,7 +578,15 @@ public:
    * If 'addr' is null then num_bytes is treated as zero.
    */
   void record_local(remote_ptr<void> addr, ssize_t num_bytes, const void* buf);
+  template <typename T> void record_local(remote_ptr<T> addr, const T* buf) {
+    record_local(addr, sizeof(T), buf);
+  }
+
   void record_remote(remote_ptr<void> addr, ssize_t num_bytes);
+  template <typename T> void record_remote(remote_ptr<T> addr) {
+    record_remote(addr, sizeof(T));
+  }
+
   void record_remote_str(remote_ptr<void> str);
 
   /**
@@ -624,9 +633,10 @@ public:
   /**
    * Read |val| from |child_addr|.
    */
-  template <typename T> void read_mem(void* child_addr, T* val) {
-    return read_bytes_helper(child_addr, sizeof(*val),
-                             reinterpret_cast<uint8_t*>(val));
+  template <typename T> T read_mem(remote_ptr<T> child_addr) {
+    T val;
+    read_bytes_helper(child_addr, sizeof(val), &val);
+    return val;
   }
 
   /**
@@ -636,26 +646,16 @@ public:
   std::string read_c_str(remote_ptr<void> child_addr);
 
   /**
-   * Return the word at |child_addr| in this address space.
-   *
-   * NB: doesn't use the ptrace API, so safe to use even when
-   * the tracee isn't at a trace-stop.
-   */
-  intptr_t read_word(void* child_addr);
-
-  /**
-   * Return the int at |child_addr| in this address space.
-   *
-   * NB: doesn't use the ptrace API, so safe to use even when
-   * the tracee isn't at a trace-stop.
-   */
-  int read_int(void* child_addr);
-
-  /**
    * Copy |num_bytes| from |src| to |dst| in the address space
    * of this.
    */
-  void remote_memcpy(void* dst, const void* src, size_t num_bytes);
+  void remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
+                     size_t num_bytes);
+
+  template <typename T>
+  void remote_memcpy(remote_ptr<T> dst, remote_ptr<T> src) {
+    remote_memcpy(dst, src, sizeof(T));
+  }
 
   /**
    * Resume execution |how|, deliverying |sig| if nonzero.
@@ -707,20 +707,20 @@ public:
    * Update the futex robust list head pointer to |list| (which
    * is of size |len|).
    */
-  void set_robust_list(void* list, size_t len) {
+  void set_robust_list(remote_ptr<void> list, size_t len) {
     robust_futex_list = list;
     robust_futex_list_len = len;
   }
-  void* robust_list() const { return robust_futex_list; }
+  remote_ptr<void> robust_list() const { return robust_futex_list; }
   size_t robust_list_len() const { return robust_futex_list_len; }
 
   /** Update the thread area to |addr|. */
-  void set_thread_area(void* tls);
+  void set_thread_area(remote_ptr<struct user_desc> tls);
   const struct user_desc* tls() const;
 
   /** Update the clear-tid futex to |tid_addr|. */
-  void set_tid_addr(void* tid_addr);
-  void* tid_addr() const { return tid_futex; }
+  void set_tid_addr(remote_ptr<int> tid_addr);
+  remote_ptr<int> tid_addr() const { return tid_futex; }
 
   /**
    * Call this after |sig| is delivered to this task.  Emulate
@@ -814,7 +814,7 @@ public:
    * string pointed at in the tracee's address space by
    * |child_addr|.
    */
-  void update_prname(void* child_addr);
+  void update_prname(remote_ptr<void> child_addr);
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.
@@ -874,16 +874,17 @@ public:
    * NB: doesn't use the ptrace API, so safe to use even when
    * the tracee isn't at a trace-stop.
    */
-  template <typename T> void write_mem(void* child_addr, const T& val) {
+  template <typename T> void write_mem(remote_ptr<T> child_addr, const T& val) {
     return write_bytes_helper(child_addr, sizeof(val),
-                              reinterpret_cast<const uint8_t*>(&val));
+                              reinterpret_cast<const void*>(&val));
   }
   /**
    * This is not the helper you're looking for.  See above: you
    * probably accidentally wrote |write_mem(addr, &foo)| when
    * you meant |write_mem(addr, foo)|.
    */
-  template <typename T> void write_mem(void* child_addr, const T* val) = delete;
+  template <typename T>
+  void write_mem(remote_ptr<T> child_addr, const T* val) = delete;
 
   /**
    * Don't use these helpers directly; use the safer and more
@@ -1064,11 +1065,11 @@ public:
 
   /* The instruction pointer from which traced syscalls made by
    * the syscallbuf will originate. */
-  remote_ptr<void> traced_syscall_ip;
+  remote_ptr<uint8_t> traced_syscall_ip;
   /* The instruction pointer from which untraced syscalls will
    * originate, used to determine whether a syscall is being
    * made by the syscallbuf wrappers or not. */
-  remote_ptr<void> untraced_syscall_ip;
+  remote_ptr<uint8_t> untraced_syscall_ip;
   /* Start and end of the mapping of the syscallbuf code
    * section, used to determine whether a tracee's $ip is in the
    * lib. */
@@ -1098,7 +1099,8 @@ private:
    * only relevant to replay, and is the pid that was assigned
    * to the task during recording.
    */
-  Task* clone(int flags, void* stack, void* tls, void* cleartid_addr,
+  Task* clone(int flags, remote_ptr<void> stack,
+              remote_ptr<struct user_desc> tls, remote_ptr<int> cleartid_addr,
               pid_t new_tid, pid_t new_rec_tid = -1,
               Session* other_session = nullptr);
 
@@ -1228,9 +1230,10 @@ private:
    */
   static Task* os_clone(Task* parent, Session* session,
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
-                        unsigned base_flags, void* stack = nullptr,
-                        void* ptid = nullptr, void* tls = nullptr,
-                        void* ctid = nullptr);
+                        unsigned base_flags, remote_ptr<void> stack = nullptr,
+                        remote_ptr<int> ptid = nullptr,
+                        remote_ptr<struct user_desc> tls = nullptr,
+                        remote_ptr<int> ctid = nullptr);
 
   /** Fork and exec a task to run |ae|, with |rec_tid|. */
   static Task* spawn(Session& session, pid_t rec_tid = -1);
@@ -1269,7 +1272,7 @@ private:
   // strong type for this list head and read it if we wanted to,
   // but for now we only need to remember its address / size at
   // the time of the most recent set_robust_list() call.
-  void* robust_futex_list;
+  remote_ptr<void> robust_futex_list;
   size_t robust_futex_list_len;
   // The record or replay session we're part of.
   RecordSession* session_record;
@@ -1297,10 +1300,10 @@ private:
   bool thread_area_valid;
   // The memory cell the kernel will clear and notify on exit,
   // if our clone parent requested it.
-  void* tid_futex;
+  remote_ptr<int> tid_futex;
   // The |stack| argument passed to |clone()|, which for
   // "threads" is the top of the user-allocated stack.
-  void* top_of_stack;
+  remote_ptr<void> top_of_stack;
   // The most recent status of this task as returned by
   // waitpid().
   int wait_status;

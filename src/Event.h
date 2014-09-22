@@ -188,7 +188,7 @@ enum SyscallState {
   EXITING_SYSCALL
 };
 struct SyscallEvent : public BaseEvent {
-  typedef std::stack<void*> ArgsStack;
+  typedef std::stack<remote_ptr<void> > ArgsStack;
 
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno)

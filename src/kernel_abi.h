@@ -168,10 +168,13 @@ struct BaseArch : public wordsize {
 
   template <typename T> struct ptr {
     unsigned_word val;
-    template <typename U> operator remote_ptr<U>() const {
-      return remote_ptr<T>(val);
-    }
-    template <typename U> ptr<T> operator=(remote_ptr<U> p) {
+    template <typename U> operator remote_ptr<U>() const { return rptr(); }
+    /**
+     * Sometimes you need to call rptr() directly to resolve ambiguous
+     * overloading.
+     */
+    remote_ptr<T> rptr() const { return remote_ptr<T>(val); }
+    template <typename U> ptr<T>& operator=(remote_ptr<U> p) {
       remote_ptr<T> pt = p;
       val = pt.as_int();
       assert(val == pt.as_int());

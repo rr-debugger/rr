@@ -143,9 +143,9 @@ static void handle_ptrace_event(Task** tp) {
     case PTRACE_EVENT_CLONE:
     case PTRACE_EVENT_FORK: {
       int new_tid = t->get_ptrace_eventmsg_pid();
-      void* stack = (void*)t->regs().arg2();
-      void* tls = (void*)t->regs().arg4();
-      void* ctid = (void*)t->regs().arg5();
+      remote_ptr<void> stack = t->regs().arg2();
+      remote_ptr<struct user_desc> tls = t->regs().arg4();
+      remote_ptr<int> ctid = t->regs().arg5();
       // fork and can never share these resources, only
       // copy, so the flags here aren't meaningful for it.
       unsigned long flags_arg =

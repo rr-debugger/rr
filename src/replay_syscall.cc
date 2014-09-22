@@ -330,9 +330,9 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   long rec_tid = rec_regs.syscall_result_signed();
   pid_t new_tid = t->get_ptrace_eventmsg_pid();
 
-  void* stack = (void*)t->regs().arg2();
-  void* tls = (void*)t->regs().arg4();
-  void* ctid = (void*)t->regs().arg5();
+  remote_ptr<void> stack = t->regs().arg2();
+  remote_ptr<struct user_desc> tls = t->regs().arg4();
+  remote_ptr<int> ctid = t->regs().arg5();
   unsigned long flags_arg =
       (Arch::clone == t->regs().original_syscallno()) ? t->regs().arg1() : 0;
 
@@ -437,14 +437,14 @@ static void process_execve(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
 static void process_futex(Task* t, SyscallEntryOrExit state,
                           struct rep_trace_step* step, const Registers* regs) {
   int op = (int)regs->arg2_signed() & FUTEX_CMD_MASK;
-  void* futex = (void*)regs->arg1();
+  remote_ptr<int> futex = regs->arg1();
 
   step->syscall.emu = EMULATE;
   step->syscall.emu_ret = EMULATE_RETURN;
 
   if (state == SYSCALL_ENTRY) {
     if (FUTEX_LOCK_PI == op) {
-      uint32_t next_val;
+      int next_val;
       if (is_now_contended_pi_futex(t, futex, &next_val)) {
         // During recording, we waited for the
         // kernel to update the futex, but
@@ -592,7 +592,7 @@ static void* finish_anonymous_mmap(AutoRemoteSyscalls& remote,
    cause a SIGBUS, as for accesses beyond the end of an mmaped file. */
 template <typename Arch>
 static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
-                                 void* start, size_t length) {
+                                 remote_ptr<void> start, size_t length) {
   if (length == 0) {
     return;
   }
@@ -606,8 +606,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   int child_fd;
   {
     AutoRestoreMem child_str(remote, filename);
-    child_fd =
-        remote.syscall(Arch::open, static_cast<void*>(child_str), O_RDONLY);
+    child_fd = remote.syscall(Arch::open, child_str.get(), O_RDONLY);
     if (0 > child_fd) {
       FATAL() << "Couldn't open " << filename << " to mmap in tracee";
     }
@@ -724,7 +723,7 @@ static void* finish_direct_mmap(AutoRemoteSyscalls& remote, TraceFrame* trace,
     int oflags =
         (MAP_SHARED & flags) && (PROT_WRITE & prot) ? O_RDWR : O_RDONLY;
     /* TODO: unclear if O_NOATIME is relevant for mmaps */
-    fd = remote.syscall(Arch::open, static_cast<void*>(child_str), oflags);
+    fd = remote.syscall(Arch::open, child_str.get().as_int(), oflags);
     if (0 > fd) {
       FATAL() << "Couldn't open " << file->file_name() << " to mmap in tracee";
     }
@@ -846,9 +845,9 @@ static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
  * |child_msghdr|.
  */
 template <typename Arch>
-void restore_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr) {
-  typename Arch::msghdr msg;
-  t->read_mem(child_msghdr, &msg);
+static void restore_struct_msghdr(
+    Task* t, remote_ptr<typename Arch::msghdr> child_msghdr) {
+  auto msg = t->read_mem(child_msghdr);
 
   // Restore msg itself.
   t->set_data_from_trace();
@@ -865,8 +864,11 @@ void restore_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr) {
 
 /** Like restore_struct_msghdr(), but for mmsghdr. */
 template <typename Arch>
-void restore_struct_mmsghdr(Task* t, typename Arch::mmsghdr* child_mmsghdr) {
-  restore_struct_msghdr<Arch>(t, (typename Arch::msghdr*)child_mmsghdr);
+static void restore_struct_mmsghdr(
+    Task* t, remote_ptr<typename Arch::mmsghdr> child_mmsghdr) {
+  remote_ptr<void> tmp = child_mmsghdr;
+  auto child_msghdr = tmp.cast<typename Arch::msghdr>();
+  restore_struct_msghdr<Arch>(t, child_msghdr);
   t->set_data_from_trace();
 }
 
@@ -965,9 +967,9 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
       // We manually restore the msg buffer.
       step->syscall.num_emu_args = 0;
 
-      void* base_addr = (void*)t->current_trace_frame().regs().arg2();
-      typename Arch::recvmsg_args args;
-      t->read_mem(base_addr, &args);
+      remote_ptr<typename Arch::recvmsg_args> base_addr =
+          t->current_trace_frame().regs().arg2();
+      auto args = t->read_mem(base_addr);
 
       restore_struct_msghdr<Arch>(t, args.msg);
       return;
@@ -976,9 +978,9 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
     case SYS_RECVMMSG: {
       step->syscall.num_emu_args = 0;
 
-      void* base_addr = (void*)t->current_trace_frame().regs().arg2();
-      typename Arch::recvmmsg_args args;
-      t->read_mem(base_addr, &args);
+      remote_ptr<typename Arch::recvmmsg_args> base_addr =
+          t->current_trace_frame().regs().arg2();
+      auto args = t->read_mem(base_addr);
 
       restore_msgvec<Arch>(
           t, t->current_trace_frame().regs().syscall_result_signed(),
@@ -1139,15 +1141,15 @@ template <typename Arch>
 static void before_syscall_exit(Task* t, int syscallno) {
   switch (syscallno) {
     case Arch::set_robust_list:
-      t->set_robust_list((void*)t->regs().arg1(), t->regs().arg2());
+      t->set_robust_list(t->regs().arg1(), t->regs().arg2());
       return;
 
     case Arch::set_thread_area:
-      t->set_thread_area((void*)t->regs().arg1());
+      t->set_thread_area(t->regs().arg1());
       return;
 
     case Arch::set_tid_address:
-      t->set_tid_addr((void*)t->regs().arg1());
+      t->set_tid_addr(t->regs().arg1());
       return;
 
     case Arch::sigaction:
@@ -1240,8 +1242,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
 
     syscall = t->ev().Syscall().number;
     if (SYSCALL_ENTRY == state) {
-      void* intr_ip = (void*)t->ev().Syscall().regs.ip();
-      void* cur_ip = (void*)t->ip();
+      remote_ptr<uint8_t> intr_ip = t->ev().Syscall().regs.ip();
+      auto cur_ip = t->ip();
 
       LOG(debug) << "'restarting' " << t->syscallname(syscall)
                  << " interrupted by "
@@ -1382,8 +1384,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
         step->syscall.emu = EMULATE;
         return;
       }
-      typename Arch::mmap_args args;
-      t->read_mem((void*)t->regs().arg1(), &args);
+      auto args =
+          t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
       return process_mmap<Arch>(t, trace, state, args.prot, args.flags,
                                 args.offset / 4096, step);
     }

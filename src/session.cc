@@ -52,8 +52,10 @@ AddressSpace::shr_ptr Session::clone(AddressSpace::shr_ptr vm) {
   return as;
 }
 
-Task* Session::clone(Task* p, int flags, void* stack, void* tls,
-                     void* cleartid_addr, pid_t new_tid, pid_t new_rec_tid) {
+Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
+                     remote_ptr<struct user_desc> tls,
+                     remote_ptr<int> cleartid_addr, pid_t new_tid,
+                     pid_t new_rec_tid) {
   Task* c = p->clone(flags, stack, tls, cleartid_addr, new_tid, new_rec_tid);
   track(c);
   return c;
@@ -204,7 +206,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
     int oflags =
         (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ? O_RDWR : O_RDONLY;
     remote_fd = remote.syscall(syscall_number_for_open(remote.arch()),
-                               static_cast<void*>(child_path), oflags);
+                               child_path.get().as_int(), oflags);
     if (0 > remote_fd) {
       FATAL() << "Couldn't open " << path << " in tracee";
     }

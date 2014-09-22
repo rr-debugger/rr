@@ -10,11 +10,11 @@
 
 void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
   len = num_bytes;
-  saved_sp = (void*)remote.regs().sp();
+  saved_sp = remote.regs().sp();
 
   remote.regs().set_sp(remote.regs().sp() - len);
   remote.task()->set_regs(remote.regs());
-  addr = (void*)remote.regs().sp();
+  addr = remote.regs().sp();
 
   data = (uint8_t*)malloc(len);
   remote.task()->read_bytes_helper(addr, len, data);
@@ -25,7 +25,7 @@ void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
 }
 
 AutoRestoreMem::~AutoRestoreMem() {
-  assert(saved_sp == (uint8_t*)remote.regs().sp() + len);
+  assert(saved_sp.as_int() == remote.regs().sp() + len);
 
   remote.task()->write_bytes_helper(addr, len, data);
   free(data);

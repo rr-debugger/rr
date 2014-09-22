@@ -89,10 +89,11 @@ void rec_before_record_syscall_entry(Task* t, int syscallno) {
  * socketcall args into |*argsp|.
  */
 template <typename T>
-void read_socketcall_args(Task* t, long** argsp, T* args) {
-  void* p = (void*)t->regs().arg2();
-  t->read_mem(p, args);
-  *argsp = (long*)p;
+static T read_socketcall_args(Task* t, remote_ptr<void>* argsp) {
+  remote_ptr<T> p = t->regs().arg2();
+  T args = t->read_mem(p);
+  *argsp = p;
+  return args;
 }
 
 /**
@@ -116,7 +117,7 @@ static void reset_scratch_pointers(Task* t) {
  * during processing syscall results, and in reverse order of calls to
  * |push*()|.
  */
-static void push_arg_ptr(Task* t, void* argp) {
+static void push_arg_ptr(Task* t, remote_ptr<void> argp) {
   t->ev().Syscall().saved_args.push(argp);
 }
 
@@ -175,9 +176,9 @@ static int prepare_ipc(Task* t, int would_need_scratch) {
         return 1;
       }
       size_t msgsize = t->regs().arg3();
-      typename Arch::ipc_kludge_args kludge;
-      void* child_kludge = (void*)t->regs().arg5();
-      t->read_mem(child_kludge, &kludge);
+      remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
+          t->regs().arg5();
+      auto kludge = t->read_mem(child_kludge);
 
       push_arg_ptr(t, kludge.msgbuf);
       kludge.msgbuf = scratch;
@@ -267,9 +268,9 @@ static bool reserve_scratch_for_msghdr(Task* t, typename Arch::msghdr* msg,
  * Return TRUE if there's no scratch overflow.
  */
 template <typename Arch>
-static bool reserve_scratch_for_msgvec(Task* t, unsigned int vlen,
-                                       typename Arch::mmsghdr* pmsgvec,
-                                       remote_ptr<void>* scratch) {
+static bool reserve_scratch_for_msgvec(
+    Task* t, unsigned int vlen, remote_ptr<typename Arch::mmsghdr> pmsgvec,
+    remote_ptr<void>* scratch) {
   typename Arch::mmsghdr msgvec[vlen];
   t->read_bytes_helper(pmsgvec, sizeof(msgvec), msgvec);
 
@@ -298,8 +299,6 @@ template <typename Arch>
 static int prepare_socketcall(Task* t, int would_need_scratch) {
   remote_ptr<void> scratch =
       would_need_scratch ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
-  long* argsp;
-  remote_ptr<void> tmpargsp;
   Registers r = t->regs();
 
   assert(!t->desched_rec());
@@ -312,16 +311,14 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
    *
    *  (from http://lxr.linux.no/#linux+v3.6.3/net/socket.c#L2354)
    */
-  int call = r.arg1_signed();
-  switch (call) {
+  switch (r.arg1_signed()) {
     /* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
     case SYS_RECV: {
-      typename Arch::recv_args args;
-
       if (!would_need_scratch) {
         return 1;
       }
-      read_socketcall_args(t, &argsp, &args);
+      remote_ptr<void> argsp;
+      auto args = read_socketcall_args<typename Arch::recv_args>(t, &argsp);
       /* The socketcall args are passed on the stack and
        * pointed at by arg2.  We need to set up scratch
        * buffer space for |buf|, but we also have to
@@ -333,10 +330,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
        * scratch pointer to the kernel. */
       /* The socketcall arg pointer. */
       push_arg_ptr(t, argsp);
-      r.set_arg2((tmpargsp = scratch));
+      auto tmpargsp = scratch.cast<typename Arch::recv_args>();
+      r.set_arg2(tmpargsp);
       scratch += sizeof(args);
       /* The |buf| pointer. */
-      push_arg_ptr(t, (void*)args.buf);
+      push_arg_ptr(t, args.buf);
       args.buf = scratch;
       scratch += args.len;
       if (!can_use_scratch(t, scratch)) {
@@ -349,24 +347,13 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
     }
 
     /* int accept([int sockfd, struct sockaddr *addr, socklen_t *addrlen]) */
-    /* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int
-     * flags]) */
-    case SYS_ACCEPT:
-    case SYS_ACCEPT4: {
+    case SYS_ACCEPT: {
       if (!would_need_scratch) {
         return 1;
       }
-      Registers r = t->regs();
-      void* argsp = (void*)r.arg2();
-      typename Arch::accept4_args args;
-      if (SYS_ACCEPT == call) {
-        t->read_mem(argsp, &args._);
-      } else {
-        t->read_mem(argsp, &args);
-      }
-
-      typename Arch::socklen_t addrlen;
-      t->read_mem(args._.addrlen, &addrlen);
+      remote_ptr<typename Arch::accept_args> argsp = r.arg2();
+      auto args = t->read_mem(argsp);
+      auto addrlen = t->read_mem(args.addrlen.rptr());
 
       // We use the same basic scheme here as for RECV
       // above.  For accept() though, there are two
@@ -378,9 +365,50 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve space for scratch socketcall args.
       push_arg_ptr(t, argsp);
-      void* tmpargsp = scratch;
-      r.set_arg2((uintptr_t)tmpargsp);
-      scratch += (SYS_ACCEPT == call) ? sizeof(args._) : sizeof(args);
+      auto tmpargsp = scratch.cast<typename Arch::accept_args>();
+      r.set_arg2(tmpargsp);
+      scratch += sizeof(args);
+
+      push_arg_ptr(t, args.addrlen);
+      args.addrlen = scratch.cast<typename Arch::socklen_t>();
+      scratch += sizeof(*args.addrlen);
+
+      push_arg_ptr(t, args.addr);
+      args.addr = scratch.cast<typename Arch::sockaddr>();
+      scratch += addrlen;
+      if (!can_use_scratch(t, scratch)) {
+        return abort_scratch(t, "accept");
+      }
+
+      t->write_mem(tmpargsp, args);
+      t->write_mem(args.addrlen.rptr(), addrlen);
+      t->set_regs(r);
+      return 1;
+    }
+
+    /* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int
+     * flags]) */
+    case SYS_ACCEPT4: {
+      if (!would_need_scratch) {
+        return 1;
+      }
+      remote_ptr<typename Arch::accept4_args> argsp = r.arg2();
+      auto args = t->read_mem(argsp);
+      auto addrlen = t->read_mem(args._.addrlen.rptr());
+
+      // We use the same basic scheme here as for RECV
+      // above.  For accept() though, there are two
+      // (in)outparams: |addr| and |addrlen|.  |*addrlen| is
+      // the total size of |addr|, so we reserve that much
+      // space for it.  |*addrlen| is set to the size of the
+      // returned sockaddr, so we reserve space for
+      // |addrlen| too.
+
+      // Reserve space for scratch socketcall args.
+      push_arg_ptr(t, argsp);
+      auto tmpargsp = scratch.cast<typename Arch::accept4_args>();
+      r.set_arg2(tmpargsp);
+      scratch += sizeof(args);
 
       push_arg_ptr(t, args._.addrlen);
       args._.addrlen = scratch.cast<typename Arch::socklen_t>();
@@ -393,27 +421,22 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
         return abort_scratch(t, "accept");
       }
 
-      if (SYS_ACCEPT == call) {
-        t->write_mem(tmpargsp, args._);
-      } else {
-        t->write_mem(tmpargsp, args);
-      }
-      t->write_mem(args._.addrlen, addrlen);
+      t->write_mem(tmpargsp, args);
+      t->write_mem(args._.addrlen.rptr(), addrlen);
       t->set_regs(r);
       return 1;
     }
+
     case SYS_RECVFROM: {
       if (!would_need_scratch) {
         return 1;
       }
-      Registers r = t->regs();
-      void* argsp = (void*)r.arg2();
-      typename Arch::recvfrom_args args;
-      t->read_mem(argsp, &args);
+      remote_ptr<typename Arch::recvfrom_args> argsp = r.arg2();
+      auto args = t->read_mem(argsp);
 
       // Reserve space for scratch socketcall args.
       push_arg_ptr(t, argsp);
-      remote_ptr<void> tmpargsp = scratch;
+      auto tmpargsp = scratch.cast<typename Arch::recvfrom_args>();
       r.set_arg2(tmpargsp);
       scratch += sizeof(args);
 
@@ -423,7 +446,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       typename Arch::socklen_t addrlen;
       if (args.src_addr) {
-        t->read_mem(args.addrlen, &addrlen);
+        addrlen = t->read_mem(args.addrlen.rptr());
 
         push_arg_ptr(t, args.addrlen);
         args.addrlen = scratch.cast<typename Arch::socklen_t>();
@@ -442,33 +465,30 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       t->write_mem(tmpargsp, args);
       if (args.addrlen) {
-        t->write_mem(args.addrlen, addrlen);
+        t->write_mem(args.addrlen.rptr(), addrlen);
       }
       t->set_regs(r);
       return 1;
     }
     case SYS_RECVMSG: {
-      Registers r = t->regs();
-      void* argsp = (void*)r.arg2();
-      typename Arch::recvmsg_args args;
-      t->read_mem(argsp, &args);
+      remote_ptr<typename Arch::recvmsg_args> argsp = r.arg2();
+      auto args = t->read_mem(argsp);
       if (args.flags & MSG_DONTWAIT) {
         return 0;
       }
       if (!would_need_scratch) {
         return 1;
       }
-      typename Arch::msghdr msg;
-      t->read_mem(args.msg, &msg);
+      auto msg = t->read_mem(args.msg.rptr());
 
       // Reserve scratch for the arg
       push_arg_ptr(t, argsp);
-      remote_ptr<void> tmpargsp = scratch;
+      auto tmpargsp = scratch.cast<typename Arch::recvmsg_args>();
       scratch += sizeof(args);
       r.set_arg2(tmpargsp);
 
       // Reserve scratch for the struct msghdr
-      remote_ptr<void> scratch_msg = scratch;
+      auto scratch_msg = scratch.cast<typename Arch::msghdr>();
       scratch += sizeof(msg);
 
       // Reserve scratch for the child pointers of struct msghdr
@@ -478,31 +498,25 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
         return 0;
       }
 
-      args.msg = scratch_msg.cast<typename Arch::msghdr>();
+      args.msg = scratch_msg;
       t->write_mem(tmpargsp, args);
       t->set_regs(r);
 
       return 1;
     }
     case SYS_SENDMSG: {
-      Registers r = t->regs();
-      void* argsp = (void*)r.arg2();
-      typename Arch::recvmsg_args args;
-      t->read_mem(argsp, &args);
+      remote_ptr<typename Arch::recvmsg_args> argsp = r.arg2();
+      auto args = t->read_mem(argsp);
       return !(args.flags & MSG_DONTWAIT);
     }
     case SYS_SENDMMSG: {
-      Registers r = t->regs();
-      void* argsp = (void*)r.arg2();
-      typename Arch::sendmmsg_args args;
-      t->read_mem(argsp, &args);
+      remote_ptr<typename Arch::sendmmsg_args> argsp = r.arg2();
+      auto args = t->read_mem(argsp);
       return !(args.flags & MSG_DONTWAIT);
     }
     case SYS_RECVMMSG: {
-      Registers r = t->regs();
-      void* argsp = (void*)r.arg2();
-      typename Arch::recvmmsg_args args;
-      t->read_mem(argsp, &args);
+      remote_ptr<typename Arch::recvmmsg_args> argsp = r.arg2();
+      auto args = t->read_mem(argsp);
 
       if (args.flags & MSG_DONTWAIT) {
         return 0;
@@ -513,12 +527,12 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve scratch for the arg
       push_arg_ptr(t, argsp);
-      remote_ptr<void> tmpargsp = scratch;
+      auto tmpargsp = scratch.cast<typename Arch::recvmmsg_args>();
       scratch += sizeof(args);
       r.set_arg2(tmpargsp);
 
       // Update msgvec pointer of tmp arg
-      typename Arch::mmsghdr* poldmsgvec = args.msgvec;
+      auto poldmsgvec = args.msgvec.rptr();
       args.msgvec = scratch.cast<typename Arch::mmsghdr>();
       t->write_mem(tmpargsp, args);
 
@@ -971,10 +985,8 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
     }
 
     case Arch::_sysctl: {
-      typename Arch::__sysctl_args sysctl_args;
-      void* args_ptr = (void*)t->regs().arg1();
-      t->read_mem(args_ptr, &sysctl_args);
-
+      auto sysctl_args = t->read_mem(
+          remote_ptr<typename Arch::__sysctl_args>(t->regs().arg1()));
       push_arg_ptr(t, sysctl_args.oldval);
       push_arg_ptr(t, sysctl_args.oldlenp);
       return 0;
@@ -1162,12 +1174,13 @@ template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
        * that, we do what the kernel does, and update the
        * outparam at the -ERESTART_RESTART interruption
        * regardless. */
-      auto rem = (typename Arch::timespec*)t->ev().Syscall().saved_args.top();
-      auto rem2 = (typename Arch::timespec*)t->regs().arg2();
+      auto rem =
+          t->ev().Syscall().saved_args.top().cast<typename Arch::timespec>();
+      remote_ptr<typename Arch::timespec> rem2 = t->regs().arg2();
 
       if (rem) {
-        t->remote_memcpy(rem, rem2, sizeof(*rem));
-        t->record_remote(rem, sizeof(*rem));
+        t->remote_memcpy(rem, rem2);
+        t->record_remote(rem);
       } else {
         record_noop_data(t);
       }
@@ -1198,8 +1211,8 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   {
     /* initialize the scratchpad for blocking system calls */
     AutoRemoteSyscalls remote(t);
-    t->scratch_ptr = (void*)remote.syscall(Arch::mmap2, 0, sz, prot, flags, fd,
-                                           offset_pages);
+    t->scratch_ptr =
+        remote.syscall(Arch::mmap2, 0, sz, prot, flags, fd, offset_pages);
     t->scratch_size = scratch_size;
   }
   // record this mmap for the replay
@@ -1233,7 +1246,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
  */
 static void* start_restoring_scratch(Task* t, uint8_t** iter) {
   // TODO: manage this in Task.
-  void* scratch = t->ev().Syscall().tmp_data_ptr;
+  remote_ptr<void> scratch = t->ev().Syscall().tmp_data_ptr;
   ssize_t num_bytes = t->ev().Syscall().tmp_data_num_bytes;
 
   assert(num_bytes >= 0);
@@ -1255,11 +1268,11 @@ static int has_saved_arg_ptrs(Task* t) {
  * Return the replaced tracee argument pointer saved by the matching
  * call to |push_arg_ptr()|.
  */
-template <typename T> static T* pop_arg_ptr(Task* t) {
+template <typename T> static remote_ptr<T> pop_arg_ptr(Task* t) {
   assert(!t->ev().Syscall().saved_args.empty());
-  void* arg = t->ev().Syscall().saved_args.top();
+  auto arg = t->ev().Syscall().saved_args.top();
   t->ev().Syscall().saved_args.pop();
-  return static_cast<T*>(arg);
+  return arg.cast<T>();
 }
 
 /**
@@ -1268,7 +1281,7 @@ template <typename T> static T* pop_arg_ptr(Task* t) {
  * |syscallno|.
  */
 static void restore_and_record_arg_buf(Task* t, size_t num_bytes,
-                                       void* child_addr,
+                                       remote_ptr<void> child_addr,
                                        uint8_t** parent_data_iter) {
   // TODO: move scratch-arg tracking into Task
   uint8_t* parent_data = *parent_data_iter;
@@ -1278,10 +1291,9 @@ static void restore_and_record_arg_buf(Task* t, size_t num_bytes,
 }
 
 template <typename T>
-static void restore_and_record_arg(Task* t, T* child_arg,
+static void restore_and_record_arg(Task* t, remote_ptr<T> child_arg,
                                    uint8_t** parent_data_iter) {
-  return restore_and_record_arg_buf(t, sizeof(*child_arg), child_arg,
-                                    parent_data_iter);
+  return restore_and_record_arg_buf(t, sizeof(T), child_arg, parent_data_iter);
 }
 
 /**
@@ -1358,7 +1370,7 @@ template <typename Arch> static void process_execve(Task* t) {
   t->session().after_exec();
   t->post_exec();
 
-  long* stack_ptr = (long*)t->regs().sp();
+  remote_ptr<intptr_t> stack_ptr = t->regs().sp();
 
   /* start_stack points to argc - iterate over argv pointers */
 
@@ -1368,17 +1380,17 @@ template <typename Arch> static void process_execve(Task* t) {
    */
   // long* argc = (long*)t->read_word((uint8_t*)stack_ptr);
   // stack_ptr += *argc + 1;
-  intptr_t argc = t->read_word(stack_ptr);
+  intptr_t argc = t->read_mem(stack_ptr);
   stack_ptr += argc + 1;
 
   // unsigned long* null_ptr = read_child_data(t, sizeof(void*), stack_ptr);
   // assert(*null_ptr == 0);
-  intptr_t null_ptr = t->read_word(stack_ptr);
+  intptr_t null_ptr = t->read_mem(stack_ptr);
   assert(null_ptr == 0);
   stack_ptr++;
 
   /* should now point to envp (pointer to environment strings) */
-  while (0 != t->read_word(stack_ptr)) {
+  while (0 != t->read_mem(stack_ptr)) {
     stack_ptr++;
   }
   stack_ptr++;
@@ -1403,12 +1415,12 @@ template <typename Arch> static void process_execve(Task* t) {
         << ", but is " << HEX(entry.key);
   }
 
-  intptr_t at_random = t->read_word(stack_ptr);
+  intptr_t at_random = t->read_mem(stack_ptr);
   stack_ptr++;
   ASSERT(t, AT_RANDOM == at_random) << "ELF item should be " << HEX(AT_RANDOM)
                                     << ", but is " << HEX(at_random);
 
-  void* rand_addr = (void*)t->read_word(stack_ptr);
+  remote_ptr<void> rand_addr = t->read_mem(stack_ptr);
   // XXX where does the magic number come from?
   t->record_remote(rand_addr, 16);
 
@@ -1416,7 +1428,7 @@ template <typename Arch> static void process_execve(Task* t) {
 }
 
 static void record_ioctl_data(Task* t, ssize_t num_bytes) {
-  void* param = (void*)t->regs().arg3();
+  remote_ptr<void> param = t->regs().arg3();
   t->record_remote(param, num_bytes);
 }
 
@@ -1435,7 +1447,7 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
   int nr = _IOC_NR(request);
   int dir = _IOC_DIR(request);
   int size = _IOC_SIZE(request);
-  void* param = (void*)t->regs().arg3();
+  remote_ptr<void> param = t->regs().arg3();
 
   LOG(debug) << "handling ioctl(" << HEX(request) << "): type:" << HEX(type)
              << " nr:" << HEX(nr) << " dir:" << HEX(dir) << " size:" << size;
@@ -1447,8 +1459,7 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
    * conventions.  Special case them here. */
   switch (request) {
     case SIOCETHTOOL: {
-      typename Arch::ifreq ifr;
-      t->read_mem(param, &ifr);
+      auto ifr = t->read_mem(param.cast<typename Arch::ifreq>());
 
       record_scratch_stack_page(t);
       t->record_remote(ifr.ifr_ifru.ifru_data,
@@ -1456,8 +1467,7 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
       return;
     }
     case SIOCGIFCONF: {
-      typename Arch::ifconf ifconf;
-      t->read_mem(param, &ifconf);
+      auto ifconf = t->read_mem(param.cast<typename Arch::ifconf>());
 
       record_scratch_stack_page(t);
       t->record_local(param, sizeof(ifconf), &ifconf);
@@ -1604,18 +1614,17 @@ template <typename Arch> static void process_ipc(Task* t, int call) {
       // payload; there's also a |msgtype| tag set just
       // before the payload.
       size_t buf_size = sizeof(long) + t->regs().arg3();
-      typename Arch::ipc_kludge_args kludge;
-      void* child_kludge = (void*)t->regs().arg5();
-
-      t->read_mem(child_kludge, &kludge);
+      remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
+          t->regs().arg5();
+      auto kludge = t->read_mem(child_kludge);
       if (has_saved_arg_ptrs(t)) {
-        void* src = kludge.msgbuf;
-        void* dst = pop_arg_ptr<void>(t);
+        remote_ptr<void> src = kludge.msgbuf;
+        remote_ptr<void> dst = pop_arg_ptr<void>(t);
 
         kludge.msgbuf = dst;
         t->write_mem(child_kludge, kludge);
 
-        t->remote_memcpy((uint8_t*)dst, (uint8_t*)src, buf_size);
+        t->remote_memcpy(dst, src, buf_size);
       }
       t->record_remote(kludge.msgbuf, buf_size);
       return;
@@ -1637,7 +1646,7 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
     // We purely emulate failed mmaps.
     return;
   }
-  void* addr = (void*)t->regs().syscall_result();
+  remote_ptr<void> addr = t->regs().syscall_result();
   if (flags & MAP_ANONYMOUS) {
     // Anonymous mappings are by definition not
     // backed by any file-like object, and are
@@ -1668,7 +1677,7 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
     t->record_remote(addr, min(end, (off64_t)size));
   }
 
-  TraceMappedRegion file(filename, stat, addr, (uint8_t*)addr + size, copied);
+  TraceMappedRegion file(filename, stat, addr, addr + size, copied);
   t->trace_writer().write_mapped_region(file);
 
   if (strstr(filename, SYSCALLBUF_LIB_FILENAME) && (prot & PROT_EXEC)) {
@@ -1685,17 +1694,17 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
  * record child memory where the pointer members point for replay
  */
 template <typename Arch>
-static void record_and_restore_msghdr(Task* t, typename Arch::msghdr* dst,
-                                      typename Arch::msghdr* src) {
-  typename Arch::msghdr msg, tmpmsg;
-  t->read_mem(dst, &msg);
-  t->read_mem(src, &tmpmsg);
+static void record_and_restore_msghdr(Task* t,
+                                      remote_ptr<typename Arch::msghdr> dst,
+                                      remote_ptr<typename Arch::msghdr> src) {
+  auto msg = t->read_mem(dst);
+  auto tmpmsg = t->read_mem(src);
 
   msg.msg_namelen = tmpmsg.msg_namelen;
   msg.msg_flags = tmpmsg.msg_flags;
   msg.msg_controllen = tmpmsg.msg_controllen;
   t->write_mem(dst, msg);
-  t->record_local(dst, sizeof(msg), &msg);
+  t->record_local(dst, &msg);
 
   if (msg.msg_name) {
     t->remote_memcpy(msg.msg_name, tmpmsg.msg_name, tmpmsg.msg_namelen);
@@ -1729,37 +1738,37 @@ static void record_and_restore_msghdr(Task* t, typename Arch::msghdr* dst,
  * at in |t|'s address space by |child_msghdr|.
  */
 template <typename Arch>
-static void record_struct_msghdr(Task* t, typename Arch::msghdr* child_msghdr) {
-  typename Arch::msghdr msg;
-  t->read_mem(child_msghdr, &msg);
+static void record_struct_msghdr(
+    Task* t, remote_ptr<typename Arch::msghdr> child_msghdr) {
+  auto msg = t->read_mem(child_msghdr);
 
   // Record the entire struct, because some of the direct fields
   // are written as inoutparams.
-  t->record_local(child_msghdr, sizeof(msg), &msg);
+  t->record_local(child_msghdr, &msg);
   t->record_remote(msg.msg_name, msg.msg_namelen);
 
   // Read all the inout iovecs in one shot.
   typename Arch::iovec iovs[msg.msg_iovlen];
-  t->read_bytes_helper(msg.msg_iov, msg.msg_iovlen * sizeof(iovs[0]),
+  t->read_bytes_helper(msg.msg_iov.rptr(), msg.msg_iovlen * sizeof(iovs[0]),
                        (uint8_t*)iovs);
   for (size_t i = 0; i < msg.msg_iovlen; ++i) {
     auto iov = &iovs[i];
-    t->record_remote(iov->iov_base, iov->iov_len);
+    t->record_remote(iov->iov_base.rptr(), iov->iov_len);
   }
 
-  t->record_remote(msg.msg_control, msg.msg_controllen);
+  t->record_remote(msg.msg_control.rptr(), msg.msg_controllen);
 }
 
 /** Like record_struct_msghdr(), but records mmsghdr. */
 template <typename Arch>
-static void record_struct_mmsghdr(Task* t,
-                                  typename Arch::mmsghdr* child_mmsghdr) {
+static void record_struct_mmsghdr(
+    Task* t, remote_ptr<typename Arch::mmsghdr> child_mmsghdr) {
   /* struct mmsghdr has an inline struct msghdr as its first
    * field, so it's OK to make this "cast". */
-  record_struct_msghdr<Arch>(t, (typename Arch::msghdr*)child_mmsghdr);
+  record_struct_msghdr<Arch>(t, REMOTE_PTR_FIELD(child_mmsghdr, msg_hdr));
   /* We additionally have to record the outparam number of
    * received bytes. */
-  t->record_remote(&child_mmsghdr->msg_len, sizeof(child_mmsghdr->msg_len));
+  t->record_remote(REMOTE_PTR_FIELD(child_mmsghdr, msg_len));
 }
 
 /*
@@ -1767,10 +1776,10 @@ static void record_struct_mmsghdr(Task* t,
  * record child memory where the pointer members point for replay
  */
 template <typename Arch>
-static void record_and_restore_msgvec(Task* t, bool has_saved_arg_ptrs,
-                                      int nmmsgs,
-                                      typename Arch::mmsghdr* pnewmsg,
-                                      typename Arch::mmsghdr* poldmsg) {
+static void record_and_restore_msgvec(
+    Task* t, bool has_saved_arg_ptrs, int nmmsgs,
+    remote_ptr<typename Arch::mmsghdr> pnewmsg,
+    remote_ptr<typename Arch::mmsghdr> poldmsg) {
   if (!has_saved_arg_ptrs) {
     for (int i = 0; i < nmmsgs; ++i) {
       record_struct_mmsghdr<Arch>(t, pnewmsg + i);
@@ -1778,21 +1787,18 @@ static void record_and_restore_msgvec(Task* t, bool has_saved_arg_ptrs,
     return;
   }
 
-  typename Arch::mmsghdr old;
-  typename Arch::mmsghdr tmp;
   for (int i = 0; i < nmmsgs; ++i) {
-    t->read_mem(poldmsg + i, &old);
-    t->read_mem(pnewmsg + i, &tmp);
+    auto old = t->read_mem(poldmsg + i);
+    auto tmp = t->read_mem(pnewmsg + i);
 
     old.msg_len = tmp.msg_len;
     t->write_mem(poldmsg + i, old);
 
     // record the msghdr part of mmsghdr
-    record_and_restore_msghdr<Arch>(t, (typename Arch::msghdr*)(poldmsg + i),
-                                    (typename Arch::msghdr*)(pnewmsg + i));
+    record_and_restore_msghdr<Arch>(t, REMOTE_PTR_FIELD(poldmsg + i, msg_hdr),
+                                    REMOTE_PTR_FIELD(pnewmsg + i, msg_hdr));
     // record mmsghdr.msg_len
-    t->record_local(&((poldmsg + i)->msg_len), sizeof(old.msg_len),
-                    &old.msg_len);
+    t->record_local(REMOTE_PTR_FIELD(poldmsg + i, msg_len), &old.msg_len);
   }
 }
 
@@ -1801,15 +1807,15 @@ static void record_and_restore_msgvec(Task* t, bool has_saved_arg_ptrs,
  * */
 template <typename Arch>
 static void record_each_msglen(Task* t, int nmmsgs,
-                               typename Arch::mmsghdr* msgvec) {
+                               remote_ptr<typename Arch::mmsghdr> msgvec) {
   /* Record the outparam msg_len fields. */
   for (int i = 0; i < nmmsgs; ++i, ++msgvec) {
-    t->record_remote(&msgvec->msg_len, sizeof(msgvec->msg_len));
+    t->record_remote(REMOTE_PTR_FIELD(msgvec, msg_len));
   }
 }
 
 template <typename Arch>
-static void process_socketcall(Task* t, int call, void* base_addr) {
+static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
   LOG(debug) << "socket call: " << call;
 
   switch (call) {
@@ -1842,10 +1848,10 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
     /* int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
      */
     case SYS_GETSOCKNAME: {
-      typename Arch::getsockname_args args;
-      t->read_mem(base_addr, &args);
-      typename Arch::socklen_t len = t->read_word(args.addrlen);
-      t->record_remote(args.addrlen, sizeof(*args.addrlen));
+      auto args =
+          t->read_mem(base_addr.cast<typename Arch::getsockname_args>());
+      auto len = t->read_mem(args.addrlen.rptr());
+      t->record_remote(args.addrlen.rptr());
       t->record_remote(args.addr, len);
       return;
     }
@@ -1860,8 +1866,8 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
      */
     case SYS_RECV: {
       typename Arch::recv_args args;
-      void* buf;
-      void* argsp;
+      remote_ptr<void> buf;
+      remote_ptr<void> argsp;
       uint8_t* iter;
       void* data = NULL;
       ssize_t nrecvd = t->regs().syscall_result_signed();
@@ -1875,9 +1881,9 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
         memcpy(&args, iter, sizeof(args));
         iter += sizeof(args);
       } else {
-        long* argsp;
-        read_socketcall_args(t, &argsp, &args);
-        buf = (void*)args.buf;
+        remote_ptr<void> argsp;
+        args = read_socketcall_args<typename Arch::recv_args>(t, &argsp);
+        buf = args.buf;
       }
 
       /* Restore |buf| contents. */
@@ -1894,22 +1900,21 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
       if (data) {
         Registers r = t->regs();
         /* Restore the pointer to the original args. */
-        r.set_arg2((uintptr_t)argsp);
+        r.set_arg2(argsp);
         t->set_regs(r);
         finish_restoring_some_scratch(t, iter, &data);
       }
       return;
     }
     case SYS_RECVFROM: {
-      typename Arch::recvfrom_args args;
-      t->read_mem(base_addr, &args);
+      auto args = t->read_mem(base_addr.cast<typename Arch::recvfrom_args>());
 
       ssize_t recvdlen = t->regs().syscall_result_signed();
       if (has_saved_arg_ptrs(t)) {
-        uint8_t* src_addrp = pop_arg_ptr<uint8_t>(t);
-        void* addrlenp = pop_arg_ptr<void>(t);
-        uint8_t* buf = pop_arg_ptr<uint8_t>(t);
-        uint8_t* argsp = pop_arg_ptr<uint8_t>(t);
+        auto src_addrp = pop_arg_ptr<typename Arch::sockaddr>(t);
+        auto addrlenp = pop_arg_ptr<typename Arch::socklen_t>(t);
+        auto buf = pop_arg_ptr<void>(t);
+        auto argsp = pop_arg_ptr<void>(t);
 
         if (recvdlen > 0) {
           t->remote_memcpy(buf, args.buf, recvdlen);
@@ -1917,15 +1922,14 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
         args.buf = buf;
 
         if (src_addrp) {
-          typename Arch::socklen_t addrlen;
-          t->read_mem(args.addrlen, &addrlen);
+          auto addrlen = t->read_mem(args.addrlen.rptr());
           t->remote_memcpy(src_addrp, args.src_addr, addrlen);
           t->write_mem(addrlenp, addrlen);
-          args.src_addr = (typename Arch::sockaddr*)src_addrp;
-          args.addrlen = (typename Arch::socklen_t*)addrlenp;
+          args.src_addr = src_addrp;
+          args.addrlen = addrlenp;
         }
         Registers r = t->regs();
-        r.set_arg2((uintptr_t)argsp);
+        r.set_arg2(argsp);
         t->set_regs(r);
       }
 
@@ -1935,11 +1939,9 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
         record_noop_data(t);
       }
       if (args.src_addr) {
-        typename Arch::socklen_t addrlen;
-        t->read_mem(args.addrlen, &addrlen);
-
-        t->record_remote(args.addrlen, sizeof(*args.addrlen));
-        t->record_remote(args.src_addr, addrlen);
+        auto addrlen = t->read_mem(args.addrlen.rptr());
+        t->record_remote(args.addrlen.rptr());
+        t->record_remote(args.src_addr.rptr(), addrlen);
       } else {
         record_noop_data(t);
         record_noop_data(t);
@@ -1949,20 +1951,18 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
     /* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
     case SYS_RECVMSG: {
       Registers r = t->regs();
-      auto tmpargsp = (typename Arch::recvmsg_args*)r.arg2();
-      typename Arch::recvmsg_args tmpargs;
-      t->read_mem(tmpargsp, &tmpargs);
+      remote_ptr<typename Arch::recvmsg_args> tmpargsp = r.arg2();
+      auto tmpargs = t->read_mem(tmpargsp);
       if (!has_saved_arg_ptrs(t)) {
         return record_struct_msghdr<Arch>(t, tmpargs.msg);
       }
 
-      uint8_t* argsp = pop_arg_ptr<uint8_t>(t);
-      typename Arch::recvmsg_args args;
-      t->read_mem(argsp, &args);
+      auto argsp = pop_arg_ptr<typename Arch::recvmsg_args>(t);
+      auto args = t->read_mem(argsp);
 
       record_and_restore_msghdr<Arch>(t, args.msg, tmpargs.msg);
 
-      r.set_arg2((uintptr_t)argsp);
+      r.set_arg2(argsp);
       t->set_regs(r);
       return;
     }
@@ -1972,10 +1972,9 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
      * socklen_t* optlen);
      */
     case SYS_GETSOCKOPT: {
-      typename Arch::getsockopt_args args;
-      t->read_mem(base_addr, &args);
-      typename Arch::socklen_t optlen = t->read_word(args.optlen);
-      t->record_remote(args.optlen, sizeof(*args.optlen));
+      auto args = t->read_mem(base_addr.cast<typename Arch::getsockopt_args>());
+      auto optlen = t->read_mem(args.optlen.rptr());
+      t->record_remote(args.optlen.rptr());
       t->record_remote(args.optval, optlen);
       return;
     }
@@ -1998,7 +1997,7 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
       Registers r = t->regs();
       auto addrp = pop_arg_ptr<typename Arch::sockaddr>(t);
       auto addrlenp = pop_arg_ptr<typename Arch::socklen_t>(t);
-      uint8_t* orig_argsp = pop_arg_ptr<uint8_t>(t);
+      auto orig_argsp = pop_arg_ptr<void>(t);
 
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
@@ -2009,11 +2008,11 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
         iter += sizeof(typename Arch::accept4_args);
       }
       auto addrlen = *(typename Arch::socklen_t*)iter;
-      restore_and_record_arg_buf(t, sizeof(addrlen), (uint8_t*)addrlenp, &iter);
-      restore_and_record_arg_buf(t, addrlen, (uint8_t*)addrp, &iter);
+      restore_and_record_arg_buf(t, sizeof(addrlen), addrlenp, &iter);
+      restore_and_record_arg_buf(t, addrlen, addrp, &iter);
 
       /* Restore the pointer to the original args. */
-      r.set_arg2((uintptr_t)orig_argsp);
+      r.set_arg2(orig_argsp);
       t->set_regs(r);
 
       finish_restoring_some_scratch(t, iter, &data);
@@ -2025,8 +2024,7 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
      * values returned in sv
      */
     case SYS_SOCKETPAIR: {
-      typename Arch::socketpair_args args;
-      t->read_mem(base_addr, &args);
+      auto args = t->read_mem(base_addr.cast<typename Arch::socketpair_args>());
       t->record_remote(args.sv, 2 * sizeof(*args.sv));
       return;
     }
@@ -2037,17 +2035,15 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
       Registers r = t->regs();
       int nmmsgs = r.syscall_result_signed();
 
-      auto tmpargsp = (typename Arch::recvmmsg_args*)r.arg2();
-      typename Arch::recvmmsg_args tmpargs;
-      t->read_mem(tmpargsp, &tmpargs);
+      remote_ptr<typename Arch::recvmmsg_args> tmpargsp = r.arg2();
+      auto tmpargs = t->read_mem(tmpargsp);
 
       typename Arch::recvmmsg_args args;
-      uint8_t* argsp = NULL;
       bool has_saved_ptr = has_saved_arg_ptrs(t);
       if (has_saved_ptr) {
-        argsp = pop_arg_ptr<uint8_t>(t);
-        t->read_mem(argsp, &args);
-        r.set_arg2((uintptr_t)argsp);
+        auto argsp = pop_arg_ptr<typename Arch::recvmmsg_args>(t);
+        args = t->read_mem(argsp);
+        r.set_arg2(argsp);
         t->set_regs(r);
       }
 
@@ -2059,10 +2055,8 @@ static void process_socketcall(Task* t, int call, void* base_addr) {
     /* int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
     *              unsigned int flags);*/
     case SYS_SENDMMSG: {
-      auto argsp = (typename Arch::sendmmsg_args*)t->regs().arg2();
-      typename Arch::sendmmsg_args args;
-      t->read_mem(argsp, &args);
-
+      remote_ptr<typename Arch::sendmmsg_args> argsp = t->regs().arg2();
+      auto args = t->read_mem(argsp);
       record_each_msglen<Arch>(t, t->regs().syscall_result_signed(),
                                args.msgvec);
       return;
@@ -2100,15 +2094,15 @@ static void before_syscall_exit(Task* t, int syscallno) {
       return;
     }
     case Arch::set_robust_list:
-      t->set_robust_list((void*)t->regs().arg1(), (size_t)t->regs().arg2());
+      t->set_robust_list(t->regs().arg1(), (size_t)t->regs().arg2());
       return;
 
     case Arch::set_thread_area:
-      t->set_thread_area((void*)t->regs().arg1());
+      t->set_thread_area(t->regs().arg1());
       return;
 
     case Arch::set_tid_address:
-      t->set_tid_addr((void*)t->regs().arg1());
+      t->set_tid_addr(t->regs().arg1());
       return;
 
     case Arch::sigaction:
@@ -2168,7 +2162,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::clone: {
       long new_tid = t->regs().syscall_result_signed();
       Task* new_task = t->session().find_task(new_tid);
-      unsigned long flags = (uintptr_t)pop_arg_ptr<void>(t);
+      uintptr_t flags = pop_arg_ptr<void>(t).as_int();
 
       if (flags & CLONE_UNTRACED) {
         Registers r = t->regs();
@@ -2182,14 +2176,17 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       new_task->push_event(SyscallEvent(syscallno));
 
       /* record child id here */
-      int pid_size = sizeof(typename Arch::pid_t);
-      new_task->record_remote((void*)t->regs().arg3(), pid_size);
-      new_task->record_remote((void*)t->regs().arg4(), pid_size);
+      new_task->record_remote(
+          remote_ptr<typename Arch::pid_t>(t->regs().arg3()));
+      new_task->record_remote(
+          remote_ptr<typename Arch::pid_t>(t->regs().arg4()));
 
-      new_task->record_remote((void*)new_task->regs().arg5(),
-                              sizeof(typename Arch::user_desc));
-      new_task->record_remote((void*)new_task->regs().arg3(), pid_size);
-      new_task->record_remote((void*)new_task->regs().arg4(), pid_size);
+      new_task->record_remote(
+          remote_ptr<typename Arch::user_desc>(new_task->regs().arg5()));
+      new_task->record_remote(
+          remote_ptr<typename Arch::pid_t>(new_task->regs().arg3()));
+      new_task->record_remote(
+          remote_ptr<typename Arch::pid_t>(new_task->regs().arg4()));
 
       new_task->pop_syscall();
 
@@ -2207,10 +2204,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       auto events = pop_arg_ptr<typename Arch::epoll_event>(t);
       int maxevents = t->regs().arg3_signed();
       if (events) {
-        restore_and_record_arg_buf(t, maxevents * sizeof(*events),
-                                   (uint8_t*)events, &iter);
+        restore_and_record_arg_buf(t, maxevents * sizeof(*events), events,
+                                   &iter);
         Registers r = t->regs();
-        r.set_arg2((uintptr_t)events);
+        r.set_arg2(events);
         t->set_regs(r);
       } else {
         record_noop_data(t);
@@ -2236,8 +2233,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           break;
 
         case F_GETLK:
-          t->record_remote((void*)t->regs().arg3(),
-                           sizeof(typename Arch::flock));
+          t->record_remote(remote_ptr<typename Arch::flock>(t->regs().arg3()));
           break;
 
         case F_SETLK:
@@ -2249,8 +2245,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           static_assert(
               sizeof(typename Arch::flock) < sizeof(typename Arch::flock64),
               "struct flock64 not declared differently from struct flock");
-          t->record_remote((void*)t->regs().arg3(),
-                           sizeof(typename Arch::flock64));
+          t->record_remote(
+              remote_ptr<typename Arch::flock64>(t->regs().arg3()));
           break;
 #endif
 
@@ -2263,8 +2259,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           break;
 
         case F_GETOWN_EX:
-          t->record_remote((void*)t->regs().arg3(),
-                           sizeof(typename Arch::f_owner_ex));
+          t->record_remote(
+              remote_ptr<typename Arch::f_owner_ex>(t->regs().arg3()));
           break;
 
         default:
@@ -2273,7 +2269,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::futex: {
-      t->record_remote((void*)t->regs().arg1(), sizeof(int));
+      t->record_remote(remote_ptr<int>(t->regs().arg1()));
       int op = (int)t->regs().arg2_signed() & FUTEX_CMD_MASK;
 
       switch (op) {
@@ -2285,7 +2281,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
         case FUTEX_CMP_REQUEUE:
         case FUTEX_WAKE_OP:
-          t->record_remote((void*)t->regs().arg5(), sizeof(int));
+          t->record_remote(remote_ptr<int>(t->regs().arg5()));
           break;
 
         default:
@@ -2298,9 +2294,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::lgetxattr:
     case Arch::fgetxattr: {
       ssize_t len = t->regs().syscall_result_signed();
-      void* value = (void*)t->regs().arg3();
-
       if (len > 0) {
+        remote_ptr<void> value = t->regs().arg3();
         t->record_remote(value, len);
       } else {
         record_noop_data(t);
@@ -2316,8 +2311,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case Arch::mmap: {
-      typename Arch::mmap_args args;
-      t->read_mem((void*)t->regs().arg1(), &args);
+      auto args =
+          t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
       process_mmap(t, syscallno, args.len, args.prot, args.flags, args.fd,
                    args.offset / 4096);
       break;
@@ -2349,7 +2344,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
            * by a user-handled signal. */
           restore_and_record_arg(t, rem, &iter);
         }
-        r.set_arg2((uintptr_t)rem);
+        r.set_arg2(rem);
         t->set_regs(r);
       }
 
@@ -2357,7 +2352,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::open: {
-      string pathname = t->read_c_str((void*)t->regs().arg1());
+      string pathname = t->read_c_str(remote_ptr<void>(t->regs().arg1()));
       if (is_blacklisted_filename(pathname.c_str())) {
         /* NB: the file will still be open in the
          * process's file table, but let's hope this
@@ -2377,9 +2372,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       auto fds = pop_arg_ptr<typename Arch::pollfd>(t);
       size_t nfds = t->regs().arg2();
 
-      restore_and_record_arg_buf(t, nfds * sizeof(*fds), (uint8_t*)fds, &iter);
+      restore_and_record_arg_buf(t, nfds * sizeof(*fds), fds, &iter);
       Registers r = t->regs();
-      r.set_arg1((uintptr_t)fds);
+      r.set_arg1(fds);
       t->set_regs(r);
       finish_restoring_scratch(t, iter, &data);
       break;
@@ -2399,7 +2394,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           break;
 
         case PR_SET_NAME:
-          t->update_prname((void*)t->regs().arg2());
+          t->update_prname(t->regs().arg2());
         // fall through
         case PR_GET_NAME:
           // We actually execute these during replay, so
@@ -2414,11 +2409,11 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       if (size > 0) {
         uint8_t* iter;
         void* data = start_restoring_scratch(t, &iter);
-        uint8_t* arg = pop_arg_ptr<uint8_t>(t);
+        auto arg = pop_arg_ptr<void>(t);
 
         restore_and_record_arg_buf(t, size, arg, &iter);
         Registers r = t->regs();
-        r.set_arg2((uintptr_t)arg);
+        r.set_arg2(arg);
         t->set_regs(r);
 
         finish_restoring_scratch(t, iter, &data);
@@ -2429,13 +2424,13 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     }
     case Arch::quotactl: {
       int cmd = (int)t->regs().arg1_signed() & SUBCMDMASK;
-      void* addr = (void*)t->regs().arg4();
+      remote_ptr<void> addr = t->regs().arg4();
       switch (cmd) {
         case Q_GETQUOTA:
-          t->record_remote(addr, sizeof(typename Arch::dqblk));
+          t->record_remote(addr.cast<typename Arch::dqblk>());
           break;
         case Q_GETINFO:
-          t->record_remote(addr, sizeof(typename Arch::dqinfo));
+          t->record_remote(addr.cast<typename Arch::dqinfo>());
           break;
         case Q_GETFMT:
           t->record_remote(addr, 4 /*FIXME: magic number*/);
@@ -2452,7 +2447,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::read: {
-      void* buf;
+      remote_ptr<void> buf;
       uint8_t* iter;
       void* data = nullptr;
 
@@ -2461,7 +2456,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         buf = pop_arg_ptr<void>(t);
         data = start_restoring_scratch(t, &iter);
       } else {
-        buf = (void*)t->regs().arg2();
+        buf = t->regs().arg2();
       }
 
       if (nread > 0) {
@@ -2476,7 +2471,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
       if (data) {
         Registers r = t->regs();
-        r.set_arg2((uintptr_t)buf);
+        r.set_arg2(buf);
         t->set_regs(r);
         finish_restoring_some_scratch(t, iter, &data);
       }
@@ -2486,13 +2481,13 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       Registers r = t->regs();
       int nmmsgs = r.syscall_result_signed();
 
-      auto msg = (typename Arch::mmsghdr*)r.arg2();
-      typename Arch::mmsghdr* oldmsg = NULL;
+      remote_ptr<typename Arch::mmsghdr> msg = r.arg2();
+      remote_ptr<typename Arch::mmsghdr> oldmsg = nullptr;
 
       bool has_saved_ptr = has_saved_arg_ptrs(t);
       if (has_saved_ptr) {
         oldmsg = pop_arg_ptr<typename Arch::mmsghdr>(t);
-        r.set_arg2((uintptr_t)oldmsg);
+        r.set_arg2(oldmsg);
         t->set_regs(r);
       }
 
@@ -2502,21 +2497,21 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::rt_sigtimedwait: {
       Registers r = t->regs();
       if (t->ev().Syscall().saved_args.empty()) {
-        siginfo_t* info = (siginfo_t*)r.arg2();
+        remote_ptr<siginfo_t> info = r.arg2();
         if (info) {
-          t->record_remote(info, sizeof(*info));
+          t->record_remote(info);
         } else {
           record_noop_data(t);
         }
         break;
       }
-      siginfo_t* info = pop_arg_ptr<siginfo_t>(t);
+      auto info = pop_arg_ptr<siginfo_t>(t);
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
 
       if (info) {
         restore_and_record_arg(t, info, &iter);
-        r.set_arg2((uintptr_t)info);
+        r.set_arg2(info);
       } else {
         record_noop_data(t);
       }
@@ -2525,14 +2520,14 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::sendfile64: {
-      loff_t* offset = pop_arg_ptr<loff_t>(t);
+      auto offset = pop_arg_ptr<loff_t>(t);
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
       if (offset) {
         restore_and_record_arg(t, offset, &iter);
-        r.set_arg3((uintptr_t)offset);
+        r.set_arg3(offset);
       } else {
         record_noop_data(t);
       }
@@ -2542,32 +2537,31 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::sendmmsg: {
-      auto msg = (typename Arch::mmsghdr*)t->regs().arg2();
-
+      remote_ptr<typename Arch::mmsghdr> msg = t->regs().arg2();
       record_each_msglen<Arch>(t, t->regs().syscall_result_signed(), msg);
       break;
     }
     case Arch::socketcall:
       process_socketcall<Arch>(t, (int)t->regs().arg1_signed(),
-                               (void*)t->regs().arg2());
+                               t->regs().arg2());
       break;
 
     case Arch::splice: {
-      loff_t* off_out = pop_arg_ptr<loff_t>(t);
-      loff_t* off_in = pop_arg_ptr<loff_t>(t);
+      auto off_out = pop_arg_ptr<loff_t>(t);
+      auto off_in = pop_arg_ptr<loff_t>(t);
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
       if (off_in) {
         restore_and_record_arg(t, off_in, &iter);
-        r.set_arg2((uintptr_t)off_in);
+        r.set_arg2(off_in);
       } else {
         record_noop_data(t);
       }
       if (off_out) {
         restore_and_record_arg(t, off_out, &iter);
-        r.set_arg4((uintptr_t)off_out);
+        r.set_arg4(off_out);
       } else {
         record_noop_data(t);
       }
@@ -2577,12 +2571,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::_sysctl: {
-      size_t* oldlenp = pop_arg_ptr<size_t>(t);
-      void* oldval = pop_arg_ptr<void>(t);
-      size_t oldlen;
-      t->read_mem(oldlenp, &oldlen);
-
-      t->record_remote(oldlenp, sizeof(size_t));
+      auto oldlenp = pop_arg_ptr<size_t>(t);
+      auto oldval = pop_arg_ptr<void>(t);
+      size_t oldlen = t->read_mem(oldlenp);
+      t->record_remote(oldlenp);
       t->record_remote(oldval, oldlen);
       break;
     }
@@ -2594,7 +2586,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       Registers r = t->regs();
       if (infop) {
         restore_and_record_arg(t, infop, &iter);
-        r.set_arg3((uintptr_t)infop);
+        r.set_arg3(infop);
       } else {
         record_noop_data(t);
       }
@@ -2606,20 +2598,20 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::waitpid:
     case Arch::wait4: {
       auto rusage = pop_arg_ptr<typename Arch::rusage>(t);
-      int* status = pop_arg_ptr<int>(t);
+      auto status = pop_arg_ptr<int>(t);
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
       if (status) {
         restore_and_record_arg(t, status, &iter);
-        r.set_arg2((uintptr_t)status);
+        r.set_arg2(status);
       } else {
         record_noop_data(t);
       }
       if (rusage) {
         restore_and_record_arg(t, rusage, &iter);
-        r.set_arg4((uintptr_t)rusage);
+        r.set_arg4(rusage);
       } else if (Arch::wait4 == syscallno) {
         record_noop_data(t);
       }
@@ -2634,7 +2626,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::sched_setaffinity: {
       // Restore the register that we altered.
       Registers r = t->regs();
-      r.set_arg1(reinterpret_cast<uintptr_t>(pop_arg_ptr<void>(t)));
+      r.set_arg1(pop_arg_ptr<void>(t));
       // Pretend the syscall succeeded.
       r.set_syscall_result(0);
       t->set_regs(r);

@@ -57,9 +57,9 @@ void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N]) {
 
 #if defined(SYS_socketcall)
 // TODO: merge other dups of this function.
-static void write_socketcall_args(Task* t,
-                                  struct socketcall_args* child_args_vec,
-                                  long arg1, long arg2, long arg3) {
+static void write_socketcall_args(
+    Task* t, remote_ptr<struct socketcall_args> child_args_vec, long arg1,
+    long arg2, long arg3) {
   struct socketcall_args args = { { arg1, arg2, arg3 } };
   t->write_mem(child_args_vec, args);
 }
@@ -271,7 +271,7 @@ bool Task::at_may_restart_syscall() const {
 void Task::finish_emulated_syscall() {
   // XXX verify that this can't be interrupted by a breakpoint trap
   Registers r = regs();
-  void* ip = (void*)r.ip();
+  remote_ptr<uint8_t> ip = r.ip();
   bool known_idempotent_insn_after_syscall =
       (is_traced_syscall() || is_untraced_syscall());
 
@@ -372,14 +372,13 @@ bool Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes) {
   return 0 == fstat(backing_fd, st);
 }
 
-void Task::futex_wait(void* futex, uint32_t val) {
-  static_assert(sizeof(val) == sizeof(int), "need to make read_int smarter");
+void Task::futex_wait(remote_ptr<int> futex, int val) {
   // Wait for *sync_addr == sync_val.  This implementation isn't
   // pretty, but it's pretty much the best we can do with
   // available kernel tools.
   //
   // TODO: find clever way to avoid busy-waiting.
-  while (val != uint32_t(read_int(futex))) {
+  while (val != read_mem(futex)) {
     // Try to give our scheduling slot to the kernel
     // thread that's going to write sync_addr.
     sched_yield();
@@ -418,8 +417,7 @@ remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
   // Arguments to the rrcall.
   remote_ptr<struct rrcall_init_buffers_params> child_args =
       remote.regs().arg1();
-  struct rrcall_init_buffers_params args;
-  read_mem(child_args, &args);
+  auto args = read_mem(child_args);
 
   ASSERT(this, Flags::get().use_syscall_buffer == !!args.syscallbuf_enabled)
       << "Tracee things syscallbuf is "
@@ -428,16 +426,17 @@ remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
 
   remote_ptr<void> child_map_addr = nullptr;
   if (args.syscallbuf_enabled) {
-    traced_syscall_ip = args.traced_syscall_ip;
-    untraced_syscall_ip = args.untraced_syscall_ip;
+    traced_syscall_ip = reinterpret_cast<uintptr_t>(args.traced_syscall_ip);
+    untraced_syscall_ip = reinterpret_cast<uintptr_t>(args.untraced_syscall_ip);
     args.syscallbuf_ptr = child_map_addr =
         init_syscall_buffer(remote, map_hint);
     init_desched_fd(remote, &args, share_desched_fd);
     // Zero out the child buffers we may have used here.
     // They may contain "real" fds, which in general will
     // not be the same across record/replay.
-    write_socketcall_args(this, args.args_vec, 0, 0, 0);
-    write_mem(args.fdptr, 0);
+    write_socketcall_args(this, reinterpret_cast<uintptr_t>(args.args_vec), 0,
+                          0, 0);
+    write_mem(remote_ptr<int>(reinterpret_cast<uintptr_t>(args.fdptr)), 0);
   } else {
     args.syscallbuf_ptr = nullptr;
   }
@@ -814,18 +813,6 @@ string Task::read_c_str(remote_ptr<void> child_addr) {
   }
 }
 
-intptr_t Task::read_word(void* child_addr) {
-  long word;
-  read_mem(child_addr, &word);
-  return word;
-}
-
-int Task::read_int(void* child_addr) {
-  int i;
-  read_mem(child_addr, &i);
-  return i;
-}
-
 size_t Task::get_reg(uint8_t* buf, GDBRegister regname, bool* defined) {
   size_t num_bytes = regs().read_register(buf, regname, defined);
   if (!*defined) {
@@ -909,10 +896,11 @@ remote_ptr<void> Task::watchpoint_addr(size_t i) {
                          nullptr);
 }
 
-void Task::remote_memcpy(void* dst, const void* src, size_t num_bytes) {
+void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
+                         size_t num_bytes) {
   // XXX this could be more efficient
   uint8_t buf[num_bytes];
-  read_bytes_helper((void*)src, num_bytes, buf);
+  read_bytes_helper(src, num_bytes, buf);
   write_bytes_helper(dst, num_bytes, buf);
 }
 
@@ -1075,8 +1063,8 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
                               (void*)dr7.packed());
 }
 
-void Task::set_thread_area(void* tls) {
-  read_mem(tls, &thread_area);
+void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
+  thread_area = read_mem(tls);
   thread_area_valid = true;
 }
 
@@ -1084,7 +1072,7 @@ const struct user_desc* Task::tls() const {
   return thread_area_valid ? &thread_area : nullptr;
 }
 
-void Task::set_tid_addr(void* tid_addr) {
+void Task::set_tid_addr(remote_ptr<int> tid_addr) {
   LOG(debug) << "updating cleartid futex to " << tid_addr;
   tid_futex = tid_addr;
 }
@@ -1130,32 +1118,31 @@ const string& Task::trace_dir() const { return trace_fstream().dir(); }
 
 uint32_t Task::trace_time() const { return trace_fstream().time(); }
 
-void Task::update_prname(void* child_addr) {
-  struct {
+void Task::update_prname(remote_ptr<void> child_addr) {
+  struct prname_buf {
     char chars[16];
-  } name;
-  read_mem(child_addr, &name);
+  };
+  auto name = read_mem(child_addr.cast<prname_buf>());
   name.chars[sizeof(name.chars) - 1] = '\0';
   prname = name.chars;
 }
 
 void Task::update_sigaction(const Registers& regs) {
   int sig = regs.arg1_signed();
-  void* new_sigaction = (void*)regs.arg2();
+  remote_ptr<struct kernel_sigaction> new_sigaction = regs.arg2();
   if (0 == regs.syscall_result() && new_sigaction) {
     // A new sighandler was installed.  Update our
     // sighandler table.
     // TODO: discard attempts to handle or ignore signals
     // that can't be by POSIX
-    struct kernel_sigaction sa;
-    read_mem(new_sigaction, &sa);
+    auto sa = read_mem(new_sigaction);
     sighandlers->get(sig) = Sighandler(sa);
   }
 }
 
 void Task::update_sigmask(const Registers& regs) {
   int how = regs.arg1_signed();
-  void* setp = (void*)regs.arg2();
+  remote_ptr<sig_set_t> setp = regs.arg2();
 
   if (regs.syscall_failed() || !setp) {
     return;
@@ -1165,8 +1152,7 @@ void Task::update_sigmask(const Registers& regs) {
                 is_desched_sig_blocked()))
       << "syscallbuf is locked but SIGSYS isn't blocked";
 
-  sig_set_t set;
-  read_mem(setp, &set);
+  auto set = read_mem(setp);
 
   // Update the blocked signals per |how|.
   switch (how) {
@@ -1418,8 +1404,10 @@ int Task::stop_sig_from_status(int status) const {
   return WSTOPSIG(status);
 }
 
-Task* Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
-                  pid_t new_tid, pid_t new_rec_tid, Session* other_session) {
+Task* Task::clone(int flags, remote_ptr<void> stack,
+                  remote_ptr<struct user_desc> tls,
+                  remote_ptr<int> cleartid_addr, pid_t new_tid,
+                  pid_t new_rec_tid, Session* other_session) {
   auto& sess = other_session ? *other_session : session();
   Task* t = new Task(sess, new_tid, new_rec_tid, priority);
 
@@ -1446,7 +1434,7 @@ Task* Task::clone(int flags, void* stack, void* tls, void* cleartid_addr,
   }
   if (stack) {
     const Mapping& m =
-        t->as->mapping_of((uint8_t*)stack - page_size(), page_size()).first;
+        t->as->mapping_of(stack - page_size(), page_size()).first;
     LOG(debug) << "mapping stack for " << new_tid << " at " << m;
     t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
                MappableResource::stack(new_tid));
@@ -1528,9 +1516,9 @@ void Task::copy_state(Task* from) {
                                    sizeof(prname));
       LOG(debug) << "    setting name to " << prname;
       err = remote.syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
-                           static_cast<void*>(remote_prname));
+                           remote_prname.get().as_int());
       ASSERT(this, 0 == err);
-      update_prname(remote_prname);
+      update_prname(remote_prname.get());
     }
 
     if (from->robust_list()) {
@@ -1544,11 +1532,11 @@ void Task::copy_state(Task* from) {
 
     if (const struct user_desc* tls = from->tls()) {
       AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
-      LOG(debug) << "    setting tls " << remote_tls;
+      LOG(debug) << "    setting tls " << remote_tls.get();
       err = remote.syscall(syscall_number_for_set_thread_area(arch()),
-                           static_cast<void*>(remote_tls));
+                           remote_tls.get().as_int());
       ASSERT(this, 0 == err);
-      set_thread_area(remote_tls);
+      set_thread_area(remote_tls.get().cast<struct user_desc>());
     }
 
     if (void* ctid = from->tid_addr()) {
@@ -1568,7 +1556,7 @@ void Task::copy_state(Task* from) {
       // segment between rr and the tracee.  So we
       // have to unmap it, create a copy, and then
       // re-map the copy in rr and the tracee.
-      void* map_hint = from->syscallbuf_child;
+      remote_ptr<void> map_hint = from->syscallbuf_child;
       destroy_buffers(DESTROY_SYSCALLBUF);
       destroy_local_buffers();
 
@@ -1687,7 +1675,7 @@ void Task::open_mem_fd() {
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
     remote_fd = remote.syscall(syscall_number_for_open(arch()),
-                               static_cast<void*>(remote_path), O_RDWR);
+                               remote_path.get().as_int(), O_RDWR);
     assert(remote_fd >= 0);
   }
 
@@ -1717,9 +1705,8 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
     snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", getpid(),
              shmem_fd);
     AutoRestoreMem child_path(remote, proc_path);
-    child_shmem_fd =
-        remote.syscall(syscall_number_for_open(arch()),
-                       static_cast<void*>(child_path), O_RDWR, 0600);
+    child_shmem_fd = remote.syscall(syscall_number_for_open(arch()),
+                                    child_path.get().as_int(), O_RDWR, 0600);
     if (0 > child_shmem_fd) {
       errno = -child_shmem_fd;
       FATAL() << "Failed to open(" << proc_path << ") in tracee";
@@ -1855,8 +1842,8 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
     callregs.set_arg3(sizeof(*args->sockaddr));
     remote_syscall = syscall_number_for_connect(remote.arch());
   }
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
-                        remote_syscall, callregs);
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
+                        callregs);
   // Now the child is waiting for us to accept it.
 
   // Accept the child's connection and finish its syscall.
@@ -1879,8 +1866,8 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
   // sent us (in which case we would deadlock with the tracee).
   callregs = remote.regs();
   if (using_socketcall) {
-    write_socketcall_args(this, args->args_vec, child_sock, (uintptr_t)args->msg,
-                          0);
+    write_socketcall_args(this, args->args_vec, child_sock,
+                          (uintptr_t)args->msg, 0);
     callregs.set_arg1(SYS_SENDMSG);
     callregs.set_arg2((uintptr_t)args->args_vec);
     remote_syscall = syscall_number_for_socketcall(remote.arch());
@@ -1890,8 +1877,8 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
     callregs.set_arg3(0);
     remote_syscall = syscall_number_for_sendmsg(remote.arch());
   }
-  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT,
-                        remote_syscall, callregs);
+  remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
+                        callregs);
   // Child may be waiting on our recvmsg().
 
   // Read the shared fd and finish the child's syscall.
@@ -2130,13 +2117,15 @@ bool Task::clone_syscall_is_complete() {
 
 /*static*/ Task* Task::os_clone(Task* parent, Session* session,
                                 AutoRemoteSyscalls& remote, pid_t rec_child_tid,
-                                unsigned base_flags, void* stack, void* ptid,
-                                void* tls, void* ctid) {
+                                unsigned base_flags, remote_ptr<void> stack,
+                                remote_ptr<int> ptid,
+                                remote_ptr<struct user_desc> tls,
+                                remote_ptr<int> ctid) {
   // NB: reference the glibc i386 clone.S implementation for
   // placement of clone syscall args.  The man page is incorrect
   // and the linux source is confusing.
   remote.syscall(syscall_number_for_clone(parent->arch()), base_flags, stack,
-                 ptid, tls, ctid);
+                 ptid.as_int(), tls.as_int(), ctid.as_int());
   while (!parent->clone_syscall_is_complete()) {
     parent->cont_syscall();
   }

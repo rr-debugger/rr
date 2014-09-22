@@ -400,7 +400,7 @@ class AddressSpace : public HasTaskSet {
   friend struct VerifyAddressSpace;
 
 public:
-  typedef std::map<remote_ptr<void>, std::shared_ptr<Breakpoint> >
+  typedef std::map<remote_ptr<uint8_t>, std::shared_ptr<Breakpoint> >
   BreakpointMap;
   typedef std::map<Mapping, MappableResource, MappingComparator> MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
@@ -445,13 +445,13 @@ public:
    * of breakpoint set at |ip() - sizeof(breakpoint_insn)|, if
    * one exists.  Otherwise return TRAP_NONE.
    */
-  TrapType get_breakpoint_type_for_retired_insn(remote_ptr<void> ip);
+  TrapType get_breakpoint_type_for_retired_insn(remote_ptr<uint8_t> ip);
 
   /**
    * Return the type of breakpoint that's been registered for
    * |addr|.
    */
-  TrapType get_breakpoint_type_at_addr(remote_ptr<void> addr);
+  TrapType get_breakpoint_type_at_addr(remote_ptr<uint8_t> addr);
 
   /**
    * Map |num_bytes| into this address space at |addr|, with
@@ -491,10 +491,10 @@ public:
    * the removed reference was the last, the breakpoint is
    * destroyed.
    */
-  void remove_breakpoint(remote_ptr<void> addr, TrapType type);
+  void remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
-  bool set_breakpoint(remote_ptr<void> addr, TrapType type);
+  bool set_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
 
   /**
    * Destroy all breakpoints in this VM, regardless of their

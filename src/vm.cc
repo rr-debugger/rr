@@ -250,12 +250,12 @@ void AddressSpace::dump() const {
 }
 
 TrapType AddressSpace::get_breakpoint_type_for_retired_insn(
-    remote_ptr<void> ip) {
-  remote_ptr<void> addr = ip - sizeof(breakpoint_insn);
+    remote_ptr<uint8_t> ip) {
+  remote_ptr<uint8_t> addr = ip - sizeof(breakpoint_insn);
   return get_breakpoint_type_at_addr(addr);
 }
 
-TrapType AddressSpace::get_breakpoint_type_at_addr(remote_ptr<void> addr) {
+TrapType AddressSpace::get_breakpoint_type_at_addr(remote_ptr<uint8_t> addr) {
   auto it = breakpoints.find(addr);
   return it == breakpoints.end() ? TRAP_NONE : it->second->type();
 }
@@ -363,7 +363,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
                    r);
 }
 
-void AddressSpace::remove_breakpoint(remote_ptr<void> addr, TrapType type) {
+void AddressSpace::remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end() || !it->second || it->second->unref(type) > 0) {
     return;
@@ -371,7 +371,7 @@ void AddressSpace::remove_breakpoint(remote_ptr<void> addr, TrapType type) {
   destroy_breakpoint(it);
 }
 
-bool AddressSpace::set_breakpoint(remote_ptr<void> addr, TrapType type) {
+bool AddressSpace::set_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end()) {
     auto bp = Breakpoint::create();

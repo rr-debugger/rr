@@ -616,7 +616,7 @@ static int xfer(struct dbg_context* dbg, const char* name, char* args) {
       assert(':' == *args++);
       assert(':' == *args++);
 
-      dbg->req.mem.addr = (void*)strtoul(args, &args, 16);
+      dbg->req.mem.addr = strtoul(args, &args, 16);
       assert(',' == *args++);
 
       dbg->req.mem.len = strtoul(args, &args, 16);
@@ -998,7 +998,7 @@ static int process_packet(struct dbg_context* dbg) {
     case 'm':
       dbg->req.type = DREQ_GET_MEM;
       dbg->req.target = dbg->query_thread;
-      dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
+      dbg->req.mem.addr = strtoul(payload, &payload, 16);
       ++payload;
       dbg->req.mem.len = strtoul(payload, &payload, 16);
       assert('\0' == *payload);
@@ -1055,7 +1055,7 @@ static int process_packet(struct dbg_context* dbg) {
     case 'X': {
       dbg->req.type = DREQ_SET_MEM;
       dbg->req.target = dbg->query_thread;
-      dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
+      dbg->req.mem.addr = strtoul(payload, &payload, 16);
       ++payload;
       dbg->req.mem.len = strtoul(payload, &payload, 16);
       ++payload;
@@ -1085,7 +1085,7 @@ static int process_packet(struct dbg_context* dbg) {
       }
       dbg->req.type = DbgRequestType(
           type + (request == 'Z' ? DREQ_SET_SW_BREAK : DREQ_REMOVE_SW_BREAK));
-      dbg->req.mem.addr = (void*)strtoul(payload, &payload, 16);
+      dbg->req.mem.addr = strtoul(payload, &payload, 16);
       assert(',' == *payload++);
       dbg->req.mem.len = strtoul(payload, &payload, 16);
       assert('\0' == *payload);

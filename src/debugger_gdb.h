@@ -147,7 +147,7 @@ struct dbg_request {
 
   union {
     struct {
-      void* addr;
+      uintptr_t addr;
       size_t len;
       // For SET_MEM requests, the stream of |len|
       // number of raw bytes that are to be written.
