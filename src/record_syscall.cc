@@ -1427,7 +1427,7 @@ static void record_ioctl_data(Task* t, ssize_t num_bytes) {
  * for now is try to record the scratch data.
  */
 static void record_scratch_stack_page(Task* t) {
-  t->record_remote((uint8_t*)t->sp() - page_size(), page_size());
+  t->record_remote(t->sp() - page_size(), page_size());
 }
 
 template <typename Arch> static void process_ioctl(Task* t, int request) {

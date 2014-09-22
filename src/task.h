@@ -619,7 +619,7 @@ public:
   remote_ptr<void> watchpoint_addr(size_t i);
 
   /** Return the current $sp of this. */
-  void* sp() { return (void*)regs().sp(); }
+  remote_ptr<void> sp() { return regs().sp(); }
 
   /**
    * Read |val| from |child_addr|.
