@@ -149,106 +149,96 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
   return match;
 }
 
-template <typename T> static size_t copy_register_value(uint8_t* buf, T src) {
-  memcpy(buf, &src, sizeof(src));
-  return sizeof(src);
+struct RegisterValue {
+  // The offsetof the register in user_regs_struct.
+  size_t offset;
+  // The size of the register.  0 means we cannot read it.
+  size_t nbytes;
+
+  // Returns a pointer to the register in |regs| represented by |offset|.
+  template<typename T>
+  void* pointer_into(T* regs) {
+    return reinterpret_cast<char*>(regs) + offset;
+  }
+
+  template<typename T>
+  const void* pointer_into(const T* regs) {
+    return reinterpret_cast<const char*>(regs) + offset;
+  }
+};
+
+// You might think, "why can't we use designated initializers here?"  Doing so
+// would be most convenient, except that designated initializers are not a part
+// of C++11 and while they are sort-of-supported as a GNU extension in GCC
+// (despite claims to the contrary in the manual), they are only supported so
+// long as the index of your designated initializer corresponds to the index of
+// the array you are initializing.  That is, they are useful for documentation
+// purposes, but they are not useful for initializing a sparse array, as we
+// have here.
+static struct RegisterValue x86_registers[DREG_NUM_LINUX_I386];
+
+static void initialize_x86_registers() {
+  static bool initialized = false;
+
+  if (initialized) {
+    return;
+  }
+
+#define RV(gdb_suffix, name)                                            \
+  x86_registers[DREG_##gdb_suffix] = { offsetof(rr::X86Arch::user_regs_struct, name), \
+                                       sizeof(((rr::X86Arch::user_regs_struct*)0)->name) }
+  initialized = true;
+  RV(EAX, eax);
+  RV(ECX, ecx);
+  RV(EDX, edx);
+  RV(EBX, ebx);
+  RV(ESP, esp);
+  RV(EBP, ebp);
+  RV(ESI, esi);
+  RV(EDI, edi);
+  RV(EIP, eip);
+  RV(EFLAGS, eflags);
+  RV(CS, xcs);
+  RV(SS, xss);
+  RV(DS, xds);
+  RV(ES, xes);
+  RV(FS, xfs);
+  RV(GS, xgs);
+  RV(ORIG_EAX, orig_eax);
+#undef RV
 }
 
 size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
                                 bool* defined) const {
   assert(regno < total_registers());
+  // Make sure these two definitions don't get out of sync.
+  assert(array_length(x86_registers) == total_registers());
 
-  *defined = true;
-  switch (regno) {
-    case DREG_EAX:
-      return copy_register_value(buf, u.x86regs.eax);
-    case DREG_ECX:
-      return copy_register_value(buf, u.x86regs.ecx);
-    case DREG_EDX:
-      return copy_register_value(buf, u.x86regs.edx);
-    case DREG_EBX:
-      return copy_register_value(buf, u.x86regs.ebx);
-    case DREG_ESP:
-      return copy_register_value(buf, u.x86regs.esp);
-    case DREG_EBP:
-      return copy_register_value(buf, u.x86regs.ebp);
-    case DREG_ESI:
-      return copy_register_value(buf, u.x86regs.esi);
-    case DREG_EDI:
-      return copy_register_value(buf, u.x86regs.edi);
-    case DREG_EIP:
-      return copy_register_value(buf, u.x86regs.eip);
-    case DREG_EFLAGS:
-      return copy_register_value(buf, u.x86regs.eflags);
-    case DREG_CS:
-      return copy_register_value(buf, u.x86regs.xcs);
-    case DREG_SS:
-      return copy_register_value(buf, u.x86regs.xss);
-    case DREG_DS:
-      return copy_register_value(buf, u.x86regs.xds);
-    case DREG_ES:
-      return copy_register_value(buf, u.x86regs.xes);
-    case DREG_FS:
-      return copy_register_value(buf, u.x86regs.xfs);
-    case DREG_GS:
-      return copy_register_value(buf, u.x86regs.xgs);
-    case DREG_ORIG_EAX:
-      return copy_register_value(buf, u.x86regs.orig_eax);
-    default:
-      *defined = false;
-      return 0;
+  initialize_x86_registers();
+  RegisterValue& rv = x86_registers[regno];
+  if (rv.nbytes == 0) {
+    *defined = false;
+  } else {
+    *defined = true;
+    memcpy(buf, rv.pointer_into(&u.x86regs), rv.nbytes);
   }
-}
 
-template <typename T>
-static void set_register_value(const uint8_t* buf, size_t buf_size, T* src) {
-  assert(sizeof(*src) == buf_size);
-  memcpy(src, buf, sizeof(*src));
+  return rv.nbytes;
 }
 
 void Registers::write_register(GDBRegister reg_name, const uint8_t* value,
                                size_t value_size) {
-  switch (reg_name) {
-    case DREG_EAX:
-      return set_register_value(value, value_size, &u.x86regs.eax);
-    case DREG_ECX:
-      return set_register_value(value, value_size, &u.x86regs.ecx);
-    case DREG_EDX:
-      return set_register_value(value, value_size, &u.x86regs.edx);
-    case DREG_EBX:
-      return set_register_value(value, value_size, &u.x86regs.ebx);
-    case DREG_ESP:
-      return set_register_value(value, value_size, &u.x86regs.esp);
-    case DREG_EBP:
-      return set_register_value(value, value_size, &u.x86regs.ebp);
-    case DREG_ESI:
-      return set_register_value(value, value_size, &u.x86regs.esi);
-    case DREG_EDI:
-      return set_register_value(value, value_size, &u.x86regs.edi);
-    case DREG_EIP:
-      return set_register_value(value, value_size, &u.x86regs.eip);
-    case DREG_EFLAGS:
-      return set_register_value(value, value_size, &u.x86regs.eflags);
-    case DREG_CS:
-      return set_register_value(value, value_size, &u.x86regs.xcs);
-    case DREG_SS:
-      return set_register_value(value, value_size, &u.x86regs.xss);
-    case DREG_DS:
-      return set_register_value(value, value_size, &u.x86regs.xds);
-    case DREG_ES:
-      return set_register_value(value, value_size, &u.x86regs.xes);
-    case DREG_FS:
-      return set_register_value(value, value_size, &u.x86regs.xfs);
-    case DREG_GS:
-      return set_register_value(value, value_size, &u.x86regs.xgs);
+  initialize_x86_registers();
+  RegisterValue& rv = x86_registers[reg_name];
 
-    case DREG_FOSEG:
-    case DREG_MXCSR:
-      // TODO: can we get away with not writing these?
+  if (rv.nbytes == 0) {
+    // TODO: can we get away with not writing these?
+    if (reg_name == DREG_FOSEG || reg_name == DREG_MXCSR) {
       return;
-
-    // TODO remainder of register set
-    default:
-      LOG(warn) << "Unhandled register name " << reg_name;
+    }
+    LOG(warn) << "Unhandled register name " << reg_name;
+  } else {
+    assert(value_size == rv.nbytes);
+    memcpy(rv.pointer_into(&u.x86regs), value, value_size);
   }
 }
