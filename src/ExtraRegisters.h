@@ -26,7 +26,8 @@ public:
   enum Format {
     NONE,
     XSAVE,
-    FPXREGS
+    FPXREGS,
+    XSAVE64,
   };
 
   // Set values from raw data

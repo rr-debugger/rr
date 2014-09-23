@@ -859,7 +859,9 @@ const ExtraRegisters& Task::extra_regs() {
     if (xsave_area_size) {
       LOG(debug) << "  (refreshing extra-register cache using XSAVE)";
 
-      extra_registers.format_ = ExtraRegisters::XSAVE;
+      extra_registers.format_ = (arch() == x86
+                                 ? ExtraRegisters::XSAVE
+                                 : ExtraRegisters::XSAVE64);
       extra_registers.data.resize(xsave_area_size);
       struct iovec vec = { extra_registers.data.data(),
                            extra_registers.data.size() };
@@ -868,6 +870,7 @@ const ExtraRegisters& Task::extra_regs() {
           << "Didn't get enough register data; expected " << xsave_area_size
           << " but got " << vec.iov_len;
     } else {
+      assert(arch() == x86);
       LOG(debug) << "  (refreshing extra-register cache using FPXREGS)";
 
       extra_registers.format_ = ExtraRegisters::FPXREGS;
