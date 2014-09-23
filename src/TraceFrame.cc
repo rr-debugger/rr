@@ -32,7 +32,7 @@ void TraceFrame::dump(FILE* out) const {
   }
 
   if (PerfCounters::extra_perf_counters_enabled()) {
-    fprintf(out, "\n  hw_ints:%lld faults:%lld ticks:%" PRId64 " insns:%lld\n",
+    fprintf(out, "\n  hw_ints:%" PRId64 " faults:%" PRId64 " ticks:%" PRId64 " insns:%" PRId64 "\n",
             exec_info.extra_perf_values.hw_interrupts,
             exec_info.extra_perf_values.page_faults, ticks(),
             exec_info.extra_perf_values.instructions_retired);
@@ -51,7 +51,7 @@ void TraceFrame::dump_raw(FILE* out) const {
     return;
   }
 
-  fprintf(out, " %lld %lld %" PRId64 " %lld",
+  fprintf(out, " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
           exec_info.extra_perf_values.hw_interrupts,
           exec_info.extra_perf_values.page_faults, ticks(),
           exec_info.extra_perf_values.instructions_retired);
