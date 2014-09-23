@@ -12,41 +12,81 @@ struct reg_ops {
 static struct reg_ops xmm_ops[8];
 static struct reg_ops st_ops[8];
 
-static void init(void) {
-/* Assembly functions to get/set particular registers.
-   They all read/write to/from buffers.
-   All defined in sigreturn_helper.S.
+/* The assignments to uint32_t* in the inline assembly statements below
+   are because if we used *p in the asm constraints, GCC would think we
+   were dereferencing a void pointer (!).
 */
+#define DEFINE_XMM_HELPERS(i)                                           \
+  void set_xmm##i(const void* p) {                                      \
+    const uint32_t* x = p;                                              \
+    asm("movaps %[ptr], %%xmm" #i : /* no outputs */ : [ptr] "m" (*x)); \
+  }                                                                     \
+  void get_xmm##i(void* p) {                                            \
+    uint32_t* x = p;                                                    \
+    asm("movaps %%xmm" #i ", %[ptr]" : [ptr] "=m" (*x) : /* no inputs */); \
+  }
 
-#define DEFINE_XMM_HELPERS(i)                                                  \
-  extern void set_xmm##i(const void* p);                                       \
-  extern void get_xmm##i(void* p);                                             \
-  xmm_ops[i].set = set_xmm##i;                                                 \
-  xmm_ops[i].get = get_xmm##i;
+DEFINE_XMM_HELPERS(0)
+DEFINE_XMM_HELPERS(1)
+DEFINE_XMM_HELPERS(2)
+DEFINE_XMM_HELPERS(3)
+DEFINE_XMM_HELPERS(4)
+DEFINE_XMM_HELPERS(5)
+DEFINE_XMM_HELPERS(6)
+DEFINE_XMM_HELPERS(7)
 
-  DEFINE_XMM_HELPERS(0)
-  DEFINE_XMM_HELPERS(1)
-  DEFINE_XMM_HELPERS(2)
-  DEFINE_XMM_HELPERS(3)
-  DEFINE_XMM_HELPERS(4)
-  DEFINE_XMM_HELPERS(5)
-  DEFINE_XMM_HELPERS(6)
-  DEFINE_XMM_HELPERS(7)
+void set_st7(const void* p) {
+  const uint32_t* x = p;
+  asm("\tfinit\n"
+      "\tfldt %[ptr]\n"
+      "\tfst %%st(7)\n"
+      : /* no outputs */ : [ptr] "m" (*x));
+}
+void get_st7(void* p) {
+  uint32_t* x = p;
+  asm("\tfdecstp\n"
+      "\tfstpt %[ptr]\n"
+      : [ptr] "=m" (*x) : /* no inputs */);
+}
 
-#define DEFINE_ST_HELPERS(i)                                                   \
-  extern void set_st##i(const void* p);                                        \
-  extern void get_st##i(void* p);                                              \
-  st_ops[i].set = set_st##i;                                                   \
+#define DEFINE_ST_HELPERS(i)                    \
+    void set_st##i(const void* p) {             \
+      const uint32_t* x = p;                    \
+      asm("\tfinit\n"                           \
+        "\tfldt %[ptr]\n"                       \
+        "\tfst %%st(" #i ")\n"                  \
+          : /* no outputs */ : [ptr] "m" (*x)); \
+    }                                           \
+    void get_st##i(void* p) {                   \
+      uint32_t* x = p;                          \
+      asm("\tfld %%st(" #i ")\n"                \
+        "\tfstpt %[ptr]\n"                      \
+          : [ptr] "=m" (*x) : /* no inputs */); \
+    }
+
+DEFINE_ST_HELPERS(0)
+DEFINE_ST_HELPERS(1)
+DEFINE_ST_HELPERS(2)
+DEFINE_ST_HELPERS(3)
+DEFINE_ST_HELPERS(4)
+DEFINE_ST_HELPERS(5)
+DEFINE_ST_HELPERS(6)
+
+static void init(void) {
+#define INIT(i)                                 \
+  xmm_ops[i].set = set_xmm##i;                  \
+  xmm_ops[i].get = get_xmm##i;                  \
+  st_ops[i].set = set_st##i;                    \
   st_ops[i].get = get_st##i;
 
-  DEFINE_ST_HELPERS(0)
-  DEFINE_ST_HELPERS(1)
-  DEFINE_ST_HELPERS(2)
-  DEFINE_ST_HELPERS(3)
-  DEFINE_ST_HELPERS(4)
-  DEFINE_ST_HELPERS(5)
-  DEFINE_ST_HELPERS(6)
-  DEFINE_ST_HELPERS(7)
+  INIT(0)
+  INIT(1)
+  INIT(2)
+  INIT(3)
+  INIT(4)
+  INIT(5)
+  INIT(6)
+  INIT(7)
 }
 
 #define GOOD 0x12345678

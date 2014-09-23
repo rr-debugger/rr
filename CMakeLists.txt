@@ -200,6 +200,7 @@ set(BASIC_TESTS
   sigchld_interrupt_signal
   sigprocmask
   sigqueueinfo
+  sigreturn
   sigrt
   sigtrap
   simple
@@ -336,17 +337,6 @@ set(TESTS_WITHOUT_PROGRAM
   term_trace_syscall
 )
 
-# An "other test" is a test which doesn't have its own driver script but
-# needs its own rules for building an executable so can't be in BASIC_TESTS.
-#
-# NB: you must update this variable when adding a new test source
-# file.  The list is not generated automatically.
-#
-# Alphabetical, please.
-set(OTHER_TESTS
-  sigreturn
-)
-
 foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
   target_link_libraries(${test} -lrt)
@@ -355,10 +345,6 @@ endforeach(test)
 # cpuid test needs to link with cpuid_loop.S
 add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
 target_link_libraries(cpuid -lrt)
-
-# sigreturn test needs to link with sigreturn_helper.S
-add_executable(sigreturn src/test/sigreturn.c src/test/sigreturn_helper.S)
-target_link_libraries(sigreturn -lrt)
 
 foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
   add_test(${test}
