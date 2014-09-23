@@ -180,15 +180,8 @@ struct BaseArch : public wordsize {
       assert(val == pt.as_int());
       return *this;
     }
-    operator T*() const {
-      return reinterpret_cast<T*>(val);
-    };
-    T* operator=(T* p) {
-      val = reinterpret_cast<uintptr_t>(p);
-      // check that val is wide enough to hold the value of p
-      assert(val == reinterpret_cast<uintptr_t>(p));
-      return p;
-    }
+    operator bool() const { return val; }
+    size_t referent_size() const { return sizeof(T); }
   };
 
   union sigval_t {

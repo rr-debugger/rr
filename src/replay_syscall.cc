@@ -877,7 +877,7 @@ static void restore_struct_mmsghdr(
  */
 template <typename Arch>
 static void restore_msgvec(Task* t, int nmmsgs,
-                           typename Arch::mmsghdr* pmsgvec) {
+                           remote_ptr<typename Arch::mmsghdr> pmsgvec) {
   for (int i = 0; i < nmmsgs; ++i, ++pmsgvec) {
     restore_struct_mmsghdr<Arch>(t, pmsgvec);
   }

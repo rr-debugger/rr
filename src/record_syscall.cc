@@ -371,7 +371,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       push_arg_ptr(t, args.addrlen);
       args.addrlen = scratch.cast<typename Arch::socklen_t>();
-      scratch += sizeof(*args.addrlen);
+      scratch += args.addrlen.referent_size();
 
       push_arg_ptr(t, args.addr);
       args.addr = scratch.cast<typename Arch::sockaddr>();
@@ -412,7 +412,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       push_arg_ptr(t, args._.addrlen);
       args._.addrlen = scratch.cast<typename Arch::socklen_t>();
-      scratch += sizeof(*args._.addrlen);
+      scratch += args._.addrlen.referent_size();
 
       push_arg_ptr(t, args._.addr);
       args._.addr = scratch.cast<typename Arch::sockaddr>();
@@ -450,7 +450,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
         push_arg_ptr(t, args.addrlen);
         args.addrlen = scratch.cast<typename Arch::socklen_t>();
-        scratch += sizeof(*args.addrlen);
+        scratch += args.addrlen.referent_size();
 
         push_arg_ptr(t, args.src_addr);
         args.src_addr = scratch.cast<typename Arch::sockaddr>();
@@ -2025,7 +2025,7 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
      */
     case SYS_SOCKETPAIR: {
       auto args = t->read_mem(base_addr.cast<typename Arch::socketpair_args>());
-      t->record_remote(args.sv, 2 * sizeof(*args.sv));
+      t->record_remote(args.sv, 2 * args.sv.referent_size());
       return;
     }
 
