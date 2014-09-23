@@ -243,8 +243,8 @@ void Registers::print_register_file_for_trace_raw(FILE* f) const {
 }
 
 static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
-                                     const char* label1, long val1,
-                                     const char* label2, long val2) {
+                                     const char* label1, uint64_t val1,
+                                     const char* label2, uint64_t val2) {
   if (mismatch_behavior >= BAIL_ON_MISMATCH) {
     LOG(error) << regname << " " << HEX(val1) << " != " << HEX(val2) << " ("
                << label1 << " vs. " << label2 << ")";
@@ -254,13 +254,43 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
   }
 }
 
-/*static*/ bool Registers::compare_register_files(const char* name1,
-                                                  const Registers* reg1,
-                                                  const char* name2,
-                                                  const Registers* reg2,
-                                                  int mismatch_behavior) {
+template<typename Arch>
+static bool compare_registers_core(const char* name1,
+                                   const Registers* reg1,
+                                   const char* name2,
+                                   const Registers* reg2,
+                                   int mismatch_behavior) {
+  initialize_register_tables();
   bool match = true;
 
+  for (auto& rv : RegisterInfo<Arch>::registers) {
+    if (rv.nbytes == 0) {
+      continue;
+    }
+
+    // Disregard registers that will trivially compare equal.
+    if (rv.comparison_mask == 0) {
+      continue;
+    }
+
+    // XXX correct but oddly displayed for big-endian processors.
+    uint64_t val1 = 0, val2 = 0;
+    memcpy(&val1, rv.pointer_into(reg1->ptrace_registers()), rv.nbytes);
+    memcpy(&val2, rv.pointer_into(reg2->ptrace_registers()), rv.nbytes);
+    val1 &= rv.comparison_mask;
+    val2 &= rv.comparison_mask;
+
+    if (val1 != val2) {
+      maybe_print_reg_mismatch(mismatch_behavior, rv.name,
+                               name1, val1, name2, val2);
+      match = false;
+    }
+  }
+
+  return match;
+}
+
+// A handy macro for compare_registers_arch specializations.
 #define REGCMP(_reg)                                                           \
   do {                                                                         \
     if (reg1->_reg != reg2->_reg) {                                            \
@@ -270,17 +300,29 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
     }                                                                          \
   } while (0)
 
-  REGCMP(u.x86regs.eax);
-  REGCMP(u.x86regs.ebx);
-  REGCMP(u.x86regs.ecx);
-  REGCMP(u.x86regs.edx);
-  REGCMP(u.x86regs.esi);
-  REGCMP(u.x86regs.edi);
-  REGCMP(u.x86regs.ebp);
-  REGCMP(u.x86regs.eip);
-  REGCMP(u.x86regs.xfs);
-  REGCMP(u.x86regs.xgs);
+// A wrapper around compare_registers_core so registers requiring special
+// processing can be handled via template specialization.
+template<typename Arch>
+/* static */ bool
+Registers::compare_registers_arch(const char* name1,
+                                  const Registers* reg1,
+                                  const char* name2,
+                                  const Registers* reg2,
+                                  int mismatch_behavior) {
+  // Default behavior.
+  return compare_registers_core<Arch>(name1, reg1, name2, reg2,
+                                      mismatch_behavior);
+}
 
+template<>
+/* static */ bool
+Registers::compare_registers_arch<rr::X86Arch>(const char* name1,
+                                               const Registers* reg1,
+                                               const char* name2,
+                                               const Registers* reg2,
+                                               int mismatch_behavior) {
+  bool match = compare_registers_core<rr::X86Arch>(name1, reg1, name2, reg2,
+                                                   mismatch_behavior);
   /* Negative orig_eax values, observed at SCHED events and signals,
      seemingly can vary between recording and replay on some kernels
      (e.g. Linux ubuntu 3.13.0-24-generic). They probably reflect
@@ -289,49 +331,34 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
   if (reg1->u.x86regs.orig_eax >= 0 || reg2->u.x86regs.orig_eax >= 0) {
     REGCMP(u.x86regs.orig_eax);
   }
-
-  /* The following are eflags that have been observed to be
-   * nondeterministic in practice.  We need to mask them off in
-   * this comparison to prevent replay from diverging. */
-  enum {
-    /* The linux kernel has been observed to report this
-     * as zero in some states during system calls. It
-     * always seems to be 1 during user-space execution so
-     * we should be able to ignore it. */
-    RESERVED_FLAG_1 = 1 << 1,
-    /* According to www.logix.cz/michal/doc/i386/chp04-01.htm
-     *
-     *   The RF flag temporarily disables debug exceptions
-     *   so that an instruction can be restarted after a
-     *   debug exception without immediately causing
-     *   another debug exception. Refer to Chapter 12 for
-     *   details.
-     *
-     * Chapter 12 isn't particularly clear on the point,
-     * but the flag appears to be set by |int3|
-     * exceptions.
-     *
-     * This divergence has been observed when continuing a
-     * tracee to an execution target by setting an |int3|
-     * breakpoint, which isn't used during recording.  No
-     * single-stepping was used during the recording
-     * either.
-     */
-    RESUME_FLAG = 1 << 16,
-    /* It's no longer known why this bit is ignored. */
-    CPUID_ENABLED_FLAG = 1 << 21,
-  };
-  /* check the deterministic eflags */
-  const long det_mask = ~(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
-  long eflags1 = (reg1->u.x86regs.eflags & det_mask);
-  long eflags2 = (reg2->u.x86regs.eflags & det_mask);
-  if (eflags1 != eflags2) {
-    maybe_print_reg_mismatch(mismatch_behavior, "deterministic eflags", name1,
-                             eflags1, name2, eflags2);
-    match = false;
-  }
-
   return match;
+}
+
+template<>
+/* static */ bool
+Registers::compare_registers_arch<rr::X64Arch>(const char* name1,
+                                               const Registers* reg1,
+                                               const char* name2,
+                                               const Registers* reg2,
+                                               int mismatch_behavior) {
+  bool match = compare_registers_core<rr::X64Arch>(name1, reg1, name2, reg2,
+                                                   mismatch_behavior);
+  // XXX haven't actually observed this to be true on x86-64 yet, but
+  // assuming that it follows the x86 behavior.
+  if (reg1->u.x64regs.orig_rax >= 0 || reg2->u.x64regs.orig_rax >= 0) {
+    REGCMP(u.x64regs.orig_rax);
+  }
+  return match;
+}
+
+/*static*/ bool Registers::compare_register_files(const char* name1,
+                                                  const Registers* reg1,
+                                                  const char* name2,
+                                                  const Registers* reg2,
+                                                  int mismatch_behavior) {
+  assert(reg1->arch() == reg2->arch());
+  RR_ARCH_FUNCTION(compare_registers_arch, reg1->arch(),
+                   name1, reg1, name2, reg2, mismatch_behavior);
 }
 
 template<typename Arch>
