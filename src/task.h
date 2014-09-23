@@ -955,10 +955,10 @@ public:
    * it's processed in succession.  The scheduler maintains this
    * state and uses it to make scheduling decisions. */
   int succ_event_counter;
-  /* Nonzero when any assumptions made about the status of this
+  /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. */
-  int unstable;
+  bool unstable;
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
   bool stable_exit;

@@ -1788,7 +1788,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
 
   switch (ev.type()) {
     case EV_UNSTABLE_EXIT:
-      t->unstable = 1;
+      t->unstable = true;
     /* fall through */
     case EV_EXIT: {
       if (is_last_interesting_task(t)) {

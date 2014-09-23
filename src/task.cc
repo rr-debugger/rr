@@ -184,7 +184,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
     : switchable(),
       pseudo_blocked(false),
       succ_event_counter(),
-      unstable(),
+      unstable(false),
       stable_exit(false),
       priority(_priority),
       in_round_robin_queue(false),
