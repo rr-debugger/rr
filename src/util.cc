@@ -1358,11 +1358,10 @@ struct named_syscall {
   int syscall_number;
 };
 
-#define S(n) { #n, X64Arch::n }
+#define S(n)                                                                   \
+  { #n, X64Arch::n }
 static const named_syscall syscalls_to_monkeypatch[] = {
-  S(clock_gettime),
-  S(gettimeofday),
-  S(time),
+  S(clock_gettime), S(gettimeofday), S(time),
   // getcpu isn't supported by rr, so any changes to this monkeypatching
   // scheme for efficiency's sake will have to ensure that getcpu gets
   // converted to an actual syscall so rr will complain appropriately.
@@ -1399,15 +1398,14 @@ void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
         assert((sym_address & ~uintptr_t(0xfff)) == base ||
                (sym_address & ~uintptr_t(0xfff)) == 0);
         uintptr_t sym_offset = sym_address & uintptr_t(0xfff);
-        t->write_bytes(vdso_start + sym_offset,
-                       patch.bytes);
+        t->write_bytes(vdso_start + sym_offset, patch.bytes);
         LOG(debug) << "monkeypatched " << symname << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
       }
     }
   }
 }
-  
+
 template <typename Arch>
 static void locate_vdso_symbols(Task* t, size_t* nsymbols,
                                 remote_ptr<void>* symbols, size_t* strtabsize,

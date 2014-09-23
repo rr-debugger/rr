@@ -158,6 +158,13 @@ static int can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
          t->ev().Syscall().tmp_data_num_bytes <= t->scratch_size;
 }
 
+template <typename T>
+static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch) {
+  remote_ptr<T> p = scratch->cast<T>();
+  *scratch = p + 1;
+  return p;
+}
+
 /**
  * Return nonzero if it's OK to context-switch away from |t| for its
  * ipc call.  If so, prepare any required scratch buffers for |t|.
@@ -330,9 +337,8 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
        * scratch pointer to the kernel. */
       /* The socketcall arg pointer. */
       push_arg_ptr(t, argsp);
-      auto tmpargsp = scratch.cast<typename Arch::recv_args>();
+      auto tmpargsp = allocate_scratch<typename Arch::recv_args>(&scratch);
       r.set_arg2(tmpargsp);
-      scratch += sizeof(args);
       /* The |buf| pointer. */
       push_arg_ptr(t, args.buf);
       args.buf = scratch;
@@ -365,13 +371,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve space for scratch socketcall args.
       push_arg_ptr(t, argsp);
-      auto tmpargsp = scratch.cast<typename Arch::accept_args>();
+      auto tmpargsp = allocate_scratch<typename Arch::accept_args>(&scratch);
       r.set_arg2(tmpargsp);
-      scratch += sizeof(args);
 
       push_arg_ptr(t, args.addrlen);
-      args.addrlen = scratch.cast<typename Arch::socklen_t>();
-      scratch += args.addrlen.referent_size();
+      args.addrlen = allocate_scratch<typename Arch::socklen_t>(&scratch);
 
       push_arg_ptr(t, args.addr);
       args.addr = scratch.cast<typename Arch::sockaddr>();
@@ -406,17 +410,15 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve space for scratch socketcall args.
       push_arg_ptr(t, argsp);
-      auto tmpargsp = scratch.cast<typename Arch::accept4_args>();
+      auto tmpargsp = allocate_scratch<typename Arch::accept4_args>(&scratch);
       r.set_arg2(tmpargsp);
-      scratch += sizeof(args);
 
       push_arg_ptr(t, args._.addrlen);
-      args._.addrlen = scratch.cast<typename Arch::socklen_t>();
-      scratch += args._.addrlen.referent_size();
+      args._.addrlen = allocate_scratch<typename Arch::socklen_t>(&scratch);
 
       push_arg_ptr(t, args._.addr);
-      args._.addr = scratch.cast<typename Arch::sockaddr>();
-      scratch += addrlen;
+      args._.addr = allocate_scratch<typename Arch::sockaddr>(&scratch);
+
       if (!can_use_scratch(t, scratch)) {
         return abort_scratch(t, "accept");
       }
@@ -436,9 +438,8 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve space for scratch socketcall args.
       push_arg_ptr(t, argsp);
-      auto tmpargsp = scratch.cast<typename Arch::recvfrom_args>();
+      auto tmpargsp = allocate_scratch<typename Arch::recvfrom_args>(&scratch);
       r.set_arg2(tmpargsp);
-      scratch += sizeof(args);
 
       push_arg_ptr(t, args.buf);
       args.buf = scratch;
@@ -449,8 +450,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
         addrlen = t->read_mem(args.addrlen.rptr());
 
         push_arg_ptr(t, args.addrlen);
-        args.addrlen = scratch.cast<typename Arch::socklen_t>();
-        scratch += args.addrlen.referent_size();
+        args.addrlen = allocate_scratch<typename Arch::socklen_t>(&scratch);
 
         push_arg_ptr(t, args.src_addr);
         args.src_addr = scratch.cast<typename Arch::sockaddr>();
@@ -483,13 +483,11 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve scratch for the arg
       push_arg_ptr(t, argsp);
-      auto tmpargsp = scratch.cast<typename Arch::recvmsg_args>();
-      scratch += sizeof(args);
+      auto tmpargsp = allocate_scratch<typename Arch::recvmsg_args>(&scratch);
       r.set_arg2(tmpargsp);
 
       // Reserve scratch for the struct msghdr
-      auto scratch_msg = scratch.cast<typename Arch::msghdr>();
-      scratch += sizeof(msg);
+      auto scratch_msg = allocate_scratch<typename Arch::msghdr>(&scratch);
 
       // Reserve scratch for the child pointers of struct msghdr
       if (reserve_scratch_for_msghdr<Arch>(t, &msg, &scratch)) {
@@ -527,8 +525,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
       // Reserve scratch for the arg
       push_arg_ptr(t, argsp);
-      auto tmpargsp = scratch.cast<typename Arch::recvmmsg_args>();
-      scratch += sizeof(args);
+      auto tmpargsp = allocate_scratch<typename Arch::recvmmsg_args>(&scratch);
       r.set_arg2(tmpargsp);
 
       // Update msgvec pointer of tmp arg
@@ -683,15 +680,13 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
 
       push_arg_ptr(t, off_in);
       if (!off_in.is_null()) {
-        auto off_in2 = scratch.cast<loff_t>();
-        scratch += off_in2.referent_size();
+        auto off_in2 = allocate_scratch<loff_t>(&scratch);
         t->remote_memcpy(off_in2, off_in);
         r.set_arg2(off_in2);
       }
       push_arg_ptr(t, off_out);
       if (!off_out.is_null()) {
-        auto off_out2 = scratch.cast<loff_t>();
-        scratch += off_out2.referent_size();
+        auto off_out2 = allocate_scratch<loff_t>(&scratch);
         t->remote_memcpy(off_out2, off_out);
         r.set_arg4(off_out2);
       }
@@ -713,8 +708,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
 
       push_arg_ptr(t, offset);
       if (!offset.is_null()) {
-        auto offset2 = scratch.cast<loff_t>();
-        scratch += offset2.referent_size();
+        auto offset2 = allocate_scratch<loff_t>(&scratch);
         t->remote_memcpy(offset2, offset);
         r.set_arg3(offset2);
       }
