@@ -760,8 +760,10 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     int32_t xmm_space[32];
     int32_t padding[56];
   };
+#if defined(__i386)
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpxregs_struct,
                       user_fpxregs_struct);
+#endif
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
