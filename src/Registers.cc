@@ -96,19 +96,54 @@ static void initialize_register_tables() {
     return;
   }
 
-#define RV_ARCH(gdb_suffix, name, arch)         \
+#define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)        \
   do {                                          \
     size_t offset = offsetof(arch::user_regs_struct, name);     \
     size_t nbytes = sizeof(((arch::user_regs_struct*)0)->name); \
     RegisterInfo<arch>::registers[DREG_##gdb_suffix] =          \
-      RegisterValue(#name, offset, nbytes);                     \
+      RegisterValue(#name, offset, nbytes extra_ctor_args);     \
   } while(0)
 #define RV_X86(gdb_suffix, name)                \
-  RV_ARCH(gdb_suffix, name, rr::X86Arch)
+  RV_ARCH(gdb_suffix, name, rr::X86Arch, /* empty */)
 #define RV_X64(gdb_suffix, name)                \
-  RV_ARCH(gdb_suffix, name, rr::X64Arch)
-
+  RV_ARCH(gdb_suffix, name, rr::X64Arch, /* empty */)
+#define COMMA ,
+#define RV_X86_WITH_MASK(gdb_suffix, name, comparison_mask)     \
+  RV_ARCH(gdb_suffix, name, rr::X86Arch, COMMA comparison_mask)
+#define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask)     \
+  RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask)
+  
   initialized = true;
+
+  /* The following are eflags that have been observed to be non-deterministic
+     in practice.  We need to mask them off when comparing registers to
+     prevent replay from diverging.  */
+  enum {
+    /* The linux kernel has been observed to report this as zero in some
+       states during system calls.  It always seems to be 1 during user-space
+       execution so we should be able to ignore it.  */
+    RESERVED_FLAG_1 = 1 << 1,
+    /* According to http://www.logix.cz/michal/doc/i386/chp04-01.htm:
+
+         The RF flag temporarily disables debug exceptions so that an 
+         instruction can be restarted after a debug exception without
+         immediately causing another debug exception.  Refer to Chapter 12
+         for details.
+
+       Chapter 12 isn't particularly clear on the point, but the flag appears
+       to be set by |int3| exceptions.
+
+       This divergence has been observed when continuing a tracee to an
+       execution target by setting an |int3| breakpoint, which isn't used
+       during recording.  No single-stepping was used during the recording
+       either.  */
+    RESUME_FLAG = 1 << 16,
+    /* It is no longer knonw why this bit is ignored.  */
+    CPUID_ENABLED_FLAG = 1 << 21,
+  };
+  const uint64_t deterministic_eflags_mask =
+    ~uint32_t(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
+
   RV_X86(EAX, eax);
   RV_X86(ECX, ecx);
   RV_X86(EDX, edx);
@@ -118,20 +153,21 @@ static void initialize_register_tables() {
   RV_X86(ESI, esi);
   RV_X86(EDI, edi);
   RV_X86(EIP, eip);
-  RV_X86(EFLAGS, eflags);
-  RV_X86(CS, xcs);
-  RV_X86(SS, xss);
-  RV_X86(DS, xds);
-  RV_X86(ES, xes);
+  RV_X86_WITH_MASK(EFLAGS, eflags, deterministic_eflags_mask);
+  RV_X86_WITH_MASK(CS, xcs, 0);
+  RV_X86_WITH_MASK(SS, xss, 0);
+  RV_X86_WITH_MASK(DS, xds, 0);
+  RV_X86_WITH_MASK(ES, xes, 0);
   RV_X86(FS, xfs);
   RV_X86(GS, xgs);
-  RV_X86(ORIG_EAX, orig_eax);
+  // Handled specially elsewhere.
+  RV_X86_WITH_MASK(ORIG_EAX, orig_eax, 0);
 
   RV_X64(RAX, rax);
   RV_X64(RCX, rcx);
   RV_X64(RDX, rdx);
   RV_X64(RBX, rbx);
-  RV_X64(RSP, rsp);
+  RV_X64_WITH_MASK(RSP, rsp, 0);
   RV_X64(RBP, rbp);
   RV_X64(RSI, rsi);
   RV_X64(RDI, rdi);
@@ -144,14 +180,15 @@ static void initialize_register_tables() {
   RV_X64(R14, r14);
   RV_X64(R15, r15);
   RV_X64(RIP, rip);
-  RV_X64(64_EFLAGS, eflags);
-  RV_X64(64_CS, cs);
-  RV_X64(64_SS, ss);
-  RV_X64(64_DS, ds);
-  RV_X64(64_ES, es);
+  RV_X64_WITH_MASK(64_EFLAGS, eflags, deterministic_eflags_mask);
+  RV_X64_WITH_MASK(64_CS, cs, 0);
+  RV_X64_WITH_MASK(64_SS, ss, 0);
+  RV_X64_WITH_MASK(64_DS, ds, 0);
+  RV_X64_WITH_MASK(64_ES, es, 0);
   RV_X64(64_FS, fs);
   RV_X64(64_GS, gs);
-  RV_X64(ORIG_RAX, orig_rax);
+  // Handled specially elsewhere.
+  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0);
 
 #undef RV_X64
 #undef RV_X86
