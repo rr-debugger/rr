@@ -196,43 +196,104 @@ static void initialize_register_tables() {
 #undef RV_ARCH
 }
 
-void Registers::print_register_file(FILE* f) const {
+// 32-bit format, 64-bit format for all of these.
+// format_index in RegisterPrinting depends on the ordering here.
+static const char* hex_format[] = { "%" PRIx32, "%" PRIx64 };
+static const char* hex_format_leading_0x[] = { "0x%" PRIx32, "0x%" PRIx64 };
+//static const char* decimal_format[] = { "%" PRId32, "%" PRId64 };
+
+template<size_t nbytes>
+struct RegisterPrinting;
+
+template<>
+struct RegisterPrinting<4> {
+  typedef uint32_t type;
+  static const size_t format_index = 0;
+};
+
+template<>
+struct RegisterPrinting<8> {
+  typedef uint64_t type;
+  static const size_t format_index = 1;
+};
+
+template<size_t nbytes>
+void print_single_register(FILE* f, const char* name,
+                           const void* register_ptr,
+                           const char* formats[]) {
+  typename RegisterPrinting<nbytes>::type val;
+  memcpy(&val, register_ptr, nbytes);
+  if (name) {
+    fprintf(f, "%s:", name);
+  } else {
+    fprintf(f, " ");
+  }
+  fprintf(f, formats[RegisterPrinting<nbytes>::format_index], val);
+}
+
+template<typename Arch>
+void Registers::print_register_file_arch(FILE* f, const char* formats[]) const {
+  initialize_register_tables();
   fprintf(f, "Printing register file:\n");
-  fprintf(f, "eax: %x\n", u.x86regs.eax);
-  fprintf(f, "ebx: %x\n", u.x86regs.ebx);
-  fprintf(f, "ecx: %x\n", u.x86regs.ecx);
-  fprintf(f, "edx: %x\n", u.x86regs.edx);
-  fprintf(f, "esi: %x\n", u.x86regs.esi);
-  fprintf(f, "edi: %x\n", u.x86regs.edi);
-  fprintf(f, "ebp: %x\n", u.x86regs.ebp);
-  fprintf(f, "esp: %x\n", u.x86regs.esp);
-  fprintf(f, "eip: %x\n", u.x86regs.eip);
-  fprintf(f, "eflags %x\n", u.x86regs.eflags);
-  fprintf(f, "orig_eax %x\n", u.x86regs.orig_eax);
-  fprintf(f, "xcs: %x\n", u.x86regs.xcs);
-  fprintf(f, "xds: %x\n", u.x86regs.xds);
-  fprintf(f, "xes: %x\n", u.x86regs.xes);
-  fprintf(f, "xfs: %x\n", u.x86regs.xfs);
-  fprintf(f, "xgs: %x\n", u.x86regs.xgs);
-  fprintf(f, "xss: %x\n", u.x86regs.xss);
+  const void* user_regs = ptrace_registers();
+  for (auto& rv : RegisterInfo<Arch>::registers) {
+    if (rv.nbytes == 0) {
+      continue;
+    }
+    switch (rv.nbytes) {
+    case 8:
+      print_single_register<8>(f, rv.name, rv.pointer_into(user_regs), formats);
+      break;
+    case 4:
+      print_single_register<4>(f, rv.name, rv.pointer_into(user_regs), formats);
+      break;
+    default:
+      assert(0 && "bad register size");
+    }
+    fprintf(f, "\n");
+  }
+  fprintf(f, "\n");
+}
+
+void Registers::print_register_file(FILE* f) const {
+  RR_ARCH_FUNCTION(print_register_file_arch, arch(), f, hex_format);
+}
+
+template<typename Arch>
+void Registers::print_register_file_for_trace_arch(FILE* f, TraceStyle style,
+                                                   const char* formats[]) const {
+  initialize_register_tables();
+  const void* user_regs = ptrace_registers();
+  for (auto& rv : RegisterInfo<Arch>::registers) {
+    if (rv.nbytes == 0) {
+      continue;
+    }
+
+    fprintf(f, " ");
+    const char* name = (style == Annotated ? rv.name : nullptr);
+
+    switch (rv.nbytes) {
+    case 8:
+      print_single_register<8>(f, name, rv.pointer_into(user_regs), formats);
+      break;
+    case 4:
+      print_single_register<4>(f, name, rv.pointer_into(user_regs), formats);
+      break;
+    default:
+      assert(0 && "bad register size");
+    }
+  }
   fprintf(f, "\n");
 }
 
 void Registers::print_register_file_compact(FILE* f) const {
-  fprintf(f, "eax:%x ebx:%x ecx:%x edx:%x esi:%x edi:%x ebp:%x esp:%x eip:%x "
-             "eflags:%x",
-          u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx,
-          u.x86regs.esi, u.x86regs.edi, u.x86regs.ebp, u.x86regs.esp,
-          u.x86regs.eip, u.x86regs.eflags);
+  RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(),
+                   f, Annotated, hex_format);
 }
 
 void Registers::print_register_file_for_trace(FILE* f) const {
-  fprintf(
-      f, "  eax:0x%x ebx:0x%x ecx:0x%x edx:0x%x esi:0x%x edi:0x%x ebp:0x%x\n"
-         "  eip:0x%x esp:0x%x eflags:0x%x orig_eax:%d xfs:0x%x xgs:0x%x\n",
-      u.x86regs.eax, u.x86regs.ebx, u.x86regs.ecx, u.x86regs.edx, u.x86regs.esi,
-      u.x86regs.edi, u.x86regs.ebp, u.x86regs.eip, u.x86regs.esp,
-      u.x86regs.eflags, u.x86regs.orig_eax, u.x86regs.xfs, u.x86regs.xgs);
+  RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(),
+                   f, Annotated, hex_format_leading_0x);
 }
 
 void Registers::print_register_file_for_trace_raw(FILE* f) const {
