@@ -156,28 +156,47 @@ struct RegisterValue {
   size_t nbytes;
 
   // Returns a pointer to the register in |regs| represented by |offset|.
-  template<typename T>
-  void* pointer_into(T* regs) {
-    return reinterpret_cast<char*>(regs) + offset;
+  // |regs| is assumed to be a pointer to the user_struct_regs for the
+  // appropriate architecture.
+  void* pointer_into(void* regs) {
+    return static_cast<char*>(regs) + offset;
   }
 
-  template<typename T>
-  const void* pointer_into(const T* regs) {
-    return reinterpret_cast<const char*>(regs) + offset;
+  const void* pointer_into(const void* regs) {
+    return static_cast<const char*>(regs) + offset;
   }
 };
 
+template<typename T>
+struct RegisterInfo;
+
+template<>
+struct RegisterInfo<rr::X86Arch> {
+  static bool ignore_undefined_register(GDBRegister regno) {
+    return regno == DREG_FOSEG || regno == DREG_MXCSR;
+  }
+  static struct RegisterValue registers[DREG_NUM_LINUX_I386];
+};
+
+template<>
+struct RegisterInfo<rr::X64Arch> {
+  static bool ignore_undefined_register(GDBRegister regno) {
+    return regno == DREG_64_FOSEG || regno == DREG_64_MXCSR;
+  }
+  static struct RegisterValue registers[DREG_NUM_LINUX_X86_64];
+};
+
+struct RegisterValue RegisterInfo<rr::X86Arch>::registers[DREG_NUM_LINUX_I386];
+struct RegisterValue RegisterInfo<rr::X64Arch>::registers[DREG_NUM_LINUX_X86_64];
+
 // You might think, "why can't we use designated initializers here?"  Doing so
 // would be most convenient, except that designated initializers are not a part
-// of C++11 and while they are sort-of-supported as a GNU extension in GCC
+// of C++11.  While they are sort-of-supported as a GNU extension in GCC
 // (despite claims to the contrary in the manual), they are only supported so
 // long as the index of your designated initializer corresponds to the index of
 // the array you are initializing.  That is, they are useful for documentation
 // purposes, but they are not useful for initializing a sparse array, as we
 // have here.
-static struct RegisterValue x86_registers[DREG_NUM_LINUX_I386];
-static struct RegisterValue x64_registers[DREG_NUM_LINUX_X86_64];
-
 static void initialize_register_tables() {
   static bool initialized = false;
 
@@ -185,13 +204,13 @@ static void initialize_register_tables() {
     return;
   }
 
-#define RV_ARCH(gdb_suffix, name, regtable, arch)                       \
-  regtable[DREG_##gdb_suffix] = { offsetof(rr::arch::user_regs_struct, name), \
-                                  sizeof(((rr::arch::user_regs_struct*)0)->name) }
-#define RV_X86(gdb_suffix, name)                        \
-  RV_ARCH(gdb_suffix, name, x86_registers, X86Arch)
+#define RV_ARCH(gdb_suffix, name, arch)                       \
+  RegisterInfo<arch>::registers[DREG_##gdb_suffix] = { offsetof(arch::user_regs_struct, name), \
+                                                        sizeof(((arch::user_regs_struct*)0)->name) }
+#define RV_X86(gdb_suffix, name)                \
+  RV_ARCH(gdb_suffix, name, rr::X86Arch)
 #define RV_X64(gdb_suffix, name)                \
-  RV_ARCH(gdb_suffix, name, x64_registers, X64Arch)
+  RV_ARCH(gdb_suffix, name, rr::X64Arch)
 
   initialized = true;
   RV_X86(EAX, eax);
@@ -243,37 +262,49 @@ static void initialize_register_tables() {
 #undef RV_ARCH
 }
 
-size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
-                                bool* defined) const {
+template<typename Arch>
+size_t Registers::read_register_arch(uint8_t* buf, GDBRegister regno,
+                                     bool* defined) const {
   assert(regno < total_registers());
   // Make sure these two definitions don't get out of sync.
-  assert(array_length(x86_registers) == total_registers());
+  assert(array_length(RegisterInfo<Arch>::registers) == total_registers());
 
   initialize_register_tables();
-  RegisterValue& rv = x86_registers[regno];
+  RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
   if (rv.nbytes == 0) {
     *defined = false;
   } else {
     *defined = true;
-    memcpy(buf, rv.pointer_into(&u.x86regs), rv.nbytes);
+    memcpy(buf, rv.pointer_into(ptrace_registers()), rv.nbytes);
   }
 
   return rv.nbytes;
 }
 
-void Registers::write_register(GDBRegister reg_name, const uint8_t* value,
-                               size_t value_size) {
+size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
+                                bool* defined) const {
+  RR_ARCH_FUNCTION(read_register_arch, arch(), buf, regno, defined);
+}
+
+template<typename Arch>
+void Registers::write_register_arch(GDBRegister regno, const uint8_t* value,
+                                    size_t value_size) {
   initialize_register_tables();
-  RegisterValue& rv = x86_registers[reg_name];
+  RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
 
   if (rv.nbytes == 0) {
     // TODO: can we get away with not writing these?
-    if (reg_name == DREG_FOSEG || reg_name == DREG_MXCSR) {
+    if (RegisterInfo<Arch>::ignore_undefined_register(regno)) {
       return;
     }
-    LOG(warn) << "Unhandled register name " << reg_name;
+    LOG(warn) << "Unhandled register name " << regno;
   } else {
     assert(value_size == rv.nbytes);
-    memcpy(rv.pointer_into(&u.x86regs), value, value_size);
+    memcpy(rv.pointer_into(ptrace_registers()), value, value_size);
   }
+}
+
+void Registers::write_register(GDBRegister regno, const uint8_t* value,
+                               size_t value_size) {
+  RR_ARCH_FUNCTION(write_register_arch, arch(), regno, value, value_size);
 }
