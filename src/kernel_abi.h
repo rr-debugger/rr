@@ -40,6 +40,8 @@ namespace rr {
 
 #if defined(__i386__)
 const SupportedArch RR_NATIVE_ARCH = SupportedArch::x86;
+#elif defined(__x86_64__)
+const SupportedArch RR_NATIVE_ARCH = SupportedArch::x86_64;
 #else
 #error need to define new SupportedArch enum
 #endif
@@ -827,6 +829,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
       assert(0 && "Unknown architecture");                                     \
     case x86:                                                                  \
       return f<rr::X86Arch>(args);                                             \
+    case x86_64:                                                               \
+      return f<rr::X64Arch>(args);                                             \
   }
 
 #include "SyscallHelperFunctions.generated"
