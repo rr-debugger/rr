@@ -616,6 +616,7 @@ static Switchable set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
 }
 
 static bool exec_file_supported(const string& filename) {
+#if defined(__i386__)
   /* All this function does is reject 64-bit ELF binaries. Everything
      else we (optimistically) indicate support for. Missing or corrupt
      files will cause execve to fail normally. When we support 64-bit,
@@ -634,6 +635,12 @@ static bool exec_file_supported(const string& filename) {
   }
   close(fd);
   return ok;
+#elif defined(__x86_64__)
+  // We support 32-bit and 64-bit binaries.
+  return true;
+#else
+#error unknown architecture
+#endif
 }
 
 template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
