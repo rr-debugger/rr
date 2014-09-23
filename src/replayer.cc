@@ -829,7 +829,7 @@ static void continue_or_step(Task* t, Stepping stepi, int64_t tick_period = 0) {
  * Return nonzero if |t| was stopped for a breakpoint trap (int3),
  * as opposed to a trace trap.  Return zero in the latter case.
  */
-static int is_breakpoint_trap(Task* t) {
+static bool is_breakpoint_trap(Task* t) {
   siginfo_t si;
 
   assert(SIGTRAP == t->child_sig);
@@ -993,10 +993,10 @@ static void guard_unexpected_signal(Task* t) {
                                           << ev << " while awaiting signal";
 }
 
-static int is_same_execution_point(Task* t, const Registers* rec_regs,
-                                   Ticks ticks_left, Ticks ticks_slack,
-                                   bool* ignoring_early_match,
-                                   Ticks* ticks_left_at_ignored_early_match) {
+static bool is_same_execution_point(Task* t, const Registers* rec_regs,
+                                    Ticks ticks_left, Ticks ticks_slack,
+                                    bool* ignoring_early_match,
+                                    Ticks* ticks_left_at_ignored_early_match) {
   int behavior =
 #ifdef DEBUGTAG
       LOG_MISMATCHES
@@ -1017,7 +1017,7 @@ static int is_same_execution_point(Task* t, const Registers* rec_regs,
     compare_register_files(t, "(rep)", &t->regs(),
                            "(rec)", rec_regs, LOG_MISMATCHES));
 #endif
-    return 0;
+    return false;
   }
   if (ticks_left < -ticks_slack) {
     LOG(debug) << "  not same execution point: " << ticks_left
@@ -1026,16 +1026,16 @@ static int is_same_execution_point(Task* t, const Registers* rec_regs,
     compare_register_files(t, "(rep)", &t->regs(), "(rec)", rec_regs,
                            LOG_MISMATCHES);
 #endif
-    return 0;
+    return false;
   }
   if (!compare_register_files(t, "rep", &t->regs(), "rec", rec_regs,
                               behavior)) {
     LOG(debug) << "  not same execution point: regs differ (@"
                << HEX(rec_regs->ip()) << ")";
-    return 0;
+    return false;
   }
   LOG(debug) << "  same execution point";
-  return 1;
+  return true;
 }
 
 static Ticks get_ticks_slack(Task* t) {
