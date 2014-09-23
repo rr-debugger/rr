@@ -1666,7 +1666,7 @@ kcmp = UnsupportedSyscall(x86=349, x64=312)
 finit_module = UnsupportedSyscall(x86=350, x64=313)
 
 # restart_syscall is a little special.
-restart_syscall = RestartSyscall(x86=0, x64=218)
+restart_syscall = RestartSyscall(x86=0, x64=219)
 
 rrcall_init_buffers = IrregularEmulatedSyscall(x86=442, x64=442)
 rrcall_monkeypatch_vdso = IrregularEmulatedSyscall(x86=443, x64=443)
