@@ -249,6 +249,18 @@ public:
 
 private:
   template<typename Arch>
+  void print_register_file_arch(FILE* f, const char* formats[]) const;
+
+  enum TraceStyle {
+    Annotated,
+    Raw,
+  };
+
+  template<typename Arch>
+  void print_register_file_for_trace_arch(FILE* f, TraceStyle style,
+                                          const char* formats[]) const;
+
+  template<typename Arch>
   static bool compare_registers_arch(const char* name1,
                                      const Registers* reg1,
                                      const char* name2,
