@@ -170,16 +170,16 @@ static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch) {
  * ipc call.  If so, prepare any required scratch buffers for |t|.
  */
 template <typename Arch>
-static int prepare_ipc(Task* t, int would_need_scratch) {
+static int prepare_ipc(Task* t, bool need_scratch_setup) {
   int call = t->regs().arg1_signed();
   remote_ptr<void> scratch =
-      would_need_scratch ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
+      need_scratch_setup ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
 
   assert(!t->desched_rec());
 
   switch (call) {
     case MSGRCV: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       size_t msgsize = t->regs().arg3();
@@ -303,9 +303,9 @@ static bool reserve_scratch_for_msgvec(
  * scratch memory if necessary.
  */
 template <typename Arch>
-static int prepare_socketcall(Task* t, int would_need_scratch) {
+static int prepare_socketcall(Task* t, bool need_scratch_setup) {
   remote_ptr<void> scratch =
-      would_need_scratch ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
+      need_scratch_setup ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
   Registers r = t->regs();
 
   assert(!t->desched_rec());
@@ -321,7 +321,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
   switch (r.arg1_signed()) {
     /* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
     case SYS_RECV: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       remote_ptr<void> argsp;
@@ -354,7 +354,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
 
     /* int accept([int sockfd, struct sockaddr *addr, socklen_t *addrlen]) */
     case SYS_ACCEPT: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       remote_ptr<typename Arch::accept_args> argsp = r.arg2();
@@ -393,7 +393,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
     /* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int
      * flags]) */
     case SYS_ACCEPT4: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       remote_ptr<typename Arch::accept4_args> argsp = r.arg2();
@@ -430,7 +430,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
     }
 
     case SYS_RECVFROM: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       remote_ptr<typename Arch::recvfrom_args> argsp = r.arg2();
@@ -476,7 +476,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
       if (args.flags & MSG_DONTWAIT) {
         return 0;
       }
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       auto msg = t->read_mem(args.msg.rptr());
@@ -519,7 +519,7 @@ static int prepare_socketcall(Task* t, int would_need_scratch) {
       if (args.flags & MSG_DONTWAIT) {
         return 0;
       }
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
 
@@ -639,7 +639,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
    * redirect to scratch again as we will lose the original
    * addresses values. */
   bool restart = (syscallno == Arch::restart_syscall);
-  int would_need_scratch;
+  bool need_scratch_setup;
   remote_ptr<void> scratch = nullptr;
 
   if (t->desched_rec()) {
@@ -647,12 +647,12 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
   }
 
   /* For syscall params that may need scratch memory, they
-   * *will* need scratch memory if |would_need_scratch| is
-   * nonzero.  They *don't* need scratch memory if we're
+   * *will* need scratch memory if |need_scratch_setup| is
+   * false.  They *don't* need scratch memory if we're
    * restarting a syscall, since if that's the case we've
    * already set it up. */
-  would_need_scratch = !restart;
-  if (would_need_scratch) {
+  need_scratch_setup = !restart;
+  if (need_scratch_setup) {
     /* Don't stomp scratch pointers that were set up for
      * the restarted syscall.
      *
@@ -674,7 +674,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       remote_ptr<loff_t> off_in = r.arg2();
       remote_ptr<loff_t> off_out = r.arg4();
 
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
 
@@ -702,7 +702,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       Registers r = t->regs();
       remote_ptr<loff_t> offset = r.arg3();
 
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
 
@@ -796,17 +796,17 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
     case Arch::ipc:
-      return prepare_ipc<Arch>(t, would_need_scratch);
+      return prepare_ipc<Arch>(t, need_scratch_setup);
 
     case Arch::socketcall:
-      return prepare_socketcall<Arch>(t, would_need_scratch);
+      return prepare_socketcall<Arch>(t, need_scratch_setup);
 
     case Arch::_newselect:
       return 1;
 
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       Registers r = t->regs();
@@ -863,7 +863,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       remote_ptr<typename Arch::rusage> rusage =
           (Arch::wait4 == syscallno) ? r.arg4() : (uintptr_t)0;
 
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       push_arg_ptr(t, status);
@@ -886,7 +886,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
     }
 
     case Arch::waitid: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
 
@@ -920,7 +920,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       auto fds2 = scratch.cast<typename Arch::pollfd>();
       nfds_t nfds = r.arg2();
 
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       /* XXX fds can be NULL, right? */
@@ -942,7 +942,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
      * long arg4, unsigned long arg5); */
     case Arch::prctl: {
       /* TODO: many of these prctls are not blocking. */
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       Registers r = t->regs();
@@ -989,7 +989,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
      * timeout); */
     case Arch::epoll_wait: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
 
@@ -1037,7 +1037,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
 
     /* int nanosleep(const struct timespec *req, struct timespec *rem); */
     case Arch::nanosleep: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
 
@@ -1078,7 +1078,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       if ((unsigned int)r.arg4() & MSG_DONTWAIT) {
         return 0;
       }
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
 
@@ -1094,7 +1094,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
     }
     case Arch::rt_sigtimedwait: {
-      if (!would_need_scratch) {
+      if (!need_scratch_setup) {
         return 1;
       }
       Registers r = t->regs();

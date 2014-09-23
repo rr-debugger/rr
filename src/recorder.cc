@@ -373,13 +373,13 @@ static void syscall_not_restarted(Task* t) {
 
 /**
  * "Thaw" a frozen interrupted syscall if |t| is restarting it.
- * Return nonzero if a syscall is indeed restarted.
+ * Return true if a syscall is indeed restarted.
  *
  * A postcondition of this function is that |t->ev| is no longer a
  * syscall interruption, whether or whether not a syscall was
  * restarted.
  */
-static int maybe_restart_syscall(Task* t) {
+static bool maybe_restart_syscall(Task* t) {
   if (is_restart_syscall_syscall(t->regs().original_syscallno(), t->arch())) {
     LOG(debug) << "  " << t->tid << ": SYS_restart_syscall'ing " << t->ev();
   }
@@ -388,12 +388,12 @@ static int maybe_restart_syscall(Task* t) {
     Registers regs = t->regs();
     regs.set_original_syscallno(t->ev().Syscall().regs.original_syscallno());
     t->set_regs(regs);
-    return 1;
+    return true;
   }
   if (EV_SYSCALL_INTERRUPTION == t->ev().type()) {
     syscall_not_restarted(t);
   }
-  return 0;
+  return false;
 }
 
 /**

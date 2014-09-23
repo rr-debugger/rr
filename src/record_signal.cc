@@ -83,15 +83,15 @@ static bool is_ip_rdtsc(Task* t) {
 }
 
 /**
- * Return nonzero if |t| was stopped because of a SIGSEGV resulting
- * from a rdtsc and |t| was updated appropriately, zero otherwise.
+ * Return true if |t| was stopped because of a SIGSEGV resulting
+ * from a rdtsc and |t| was updated appropriately, false otherwise.
  */
-static int try_handle_rdtsc(Task* t) {
+static bool try_handle_rdtsc(Task* t) {
   int sig = t->pending_sig();
   assert(sig != SIGTRAP);
 
   if (sig <= 0 || sig != SIGSEGV || !is_ip_rdtsc(t)) {
-    return 0;
+    return false;
   }
 
   unsigned long long current_time = rdtsc();
@@ -123,7 +123,7 @@ static int try_handle_rdtsc(Task* t) {
 
   t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO));
   LOG(debug) << "  trapped for rdtsc: returning " << current_time;
-  return 1;
+  return true;
 }
 
 static void arm_desched_event(Task* t) {
@@ -322,7 +322,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
              << t->syscallname(call) << "'";
 }
 
-static int is_deterministic_signal(const siginfo_t* si) {
+static bool is_deterministic_signal(const siginfo_t* si) {
   switch (si->si_signo) {
     /* These signals may be delivered deterministically;
      * we'll check for sure below. */
@@ -344,7 +344,7 @@ static int is_deterministic_signal(const siginfo_t* si) {
       /* All other signals can never be delivered
        * deterministically (to the approximation required by
        * rr). */
-      return 0;
+      return false;
   }
 }
 

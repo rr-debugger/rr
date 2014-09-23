@@ -13,8 +13,8 @@ class Task;
 void rec_before_record_syscall_entry(Task* t, int syscallno);
 
 /**
- * Prepare |t| to enter its current syscall event.  Return nonzero if
- * a context-switch is allowed for |t|, 0 if not.
+ * Prepare |t| to enter its current syscall event.  Return ALLOW_SWITCH if
+ * a context-switch is allowed for |t|, PREVENT_SWITCH if not.
  *
  * Set |*kernel_sync_addr| to non-NULL to force waiting on that memory
  * cell in the child's address space to become |sync_val|.  This is an
@@ -22,11 +22,13 @@ void rec_before_record_syscall_entry(Task* t, int syscallno);
  * not FUTEX_LOCK_PI, you probably shouldn't be using this.
  */
 int rec_prepare_syscall(Task* t);
+
 /**
  * Prepare |t| for its current syscall event to be interrupted and
  * possibly restarted.
  */
 void rec_prepare_restart_syscall(Task* t);
+
 /**
  * Restore any argument registers fudged for |t|'s current syscall and
  * store any nondeterministic outparam data.
