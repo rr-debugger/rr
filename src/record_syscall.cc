@@ -2241,9 +2241,11 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
 #if F_GETLK != F_GETLK64
         case F_GETLK64:
-          static_assert(
-              sizeof(typename Arch::flock) < sizeof(typename Arch::flock64),
-              "struct flock64 not declared differently from struct flock");
+          // flock and flock64 better be different on 32-bit architectures, but
+          // on 64-bit architectures, it's OK if they're the same.
+          static_assert(sizeof(typename Arch::flock) < sizeof(typename Arch::flock64) ||
+                        Arch::elfclass == ELFCLASS64,
+                        "struct flock64 not declared differently from struct flock");
           t->record_remote(
               remote_ptr<typename Arch::flock64>(t->regs().arg3()));
           break;
