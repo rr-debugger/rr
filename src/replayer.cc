@@ -678,11 +678,6 @@ static bool entering_syscall_insn(Task* t) {
           !memcmp(insn, int_0x80, sizeof(int_0x80)));
 }
 
-enum Completion {
-  COMPLETE,
-  INCOMPLETE
-};
-
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when

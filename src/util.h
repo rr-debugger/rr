@@ -42,6 +42,11 @@ template <typename T, size_t N> constexpr size_t array_length(T (&array)[N]) {
 
 class Task;
 
+enum Completion {
+  COMPLETE,
+  INCOMPLETE
+};
+
 /**
  * Collecion of data describing a mapped memory segment, as parsed
  * from /proc/[tid]/maps on linux.

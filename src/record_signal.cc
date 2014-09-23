@@ -365,7 +365,7 @@ static void record_signal(Task* t, const siginfo_t* si) {
   t->push_event(SignalEvent(sig, is_deterministic_signal(si)));
 }
 
-static int is_trace_trap(const siginfo_t* si) {
+static bool is_trace_trap(const siginfo_t* si) {
   return SIGTRAP == si->si_signo && TRAP_TRACE == si->si_code;
 }
 
@@ -379,17 +379,17 @@ static int is_trace_trap(const siginfo_t* si) {
  * What /does/ seem to be delivered is SIGTRAP/code=BRKPT, as opposed
  * to SIGTRAP/code=TRACE for stepping normal instructions.
  */
-static int seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si) {
+static bool seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si) {
   return (STOPSIG_SYSCALL == si->si_signo ||
           (SIGTRAP == si->si_signo && TRAP_BRKPT == si->si_code));
 }
 
 /**
  * Take |t| to a place where it's OK to deliver a signal.  |si| must
- * be the current state of |t|.  Return zero if stepping completed
- * successfully, or -1 if it was interrupted by another signal.
+ * be the current state of |t|.  Return COMPLETE if stepping completed
+ * successfully, or INCOMPLETE if it was interrupted by another signal.
  */
-static int go_to_a_happy_place(Task* t, siginfo_t* si) {
+static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
   /* If we deliver the signal at the tracee's current execution
    * point, it will result in a syscall-buffer-flush event being
    * recorded if there are any buffered syscalls.  The
@@ -446,7 +446,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si) {
    * single-stepping loop here.. */
 
   initial_hdr = *hdr;
-  while (1) {
+  while (true) {
     siginfo_t tmp_si;
     int is_syscall;
 
@@ -545,7 +545,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si) {
         LOG(debug) << "  upgraded delivery of HPC_TIME_SLICE_SIGNAL to "
                    << signalname(si->si_signo);
         handle_siginfo(t, si);
-        return -1;
+        return INCOMPLETE;
       }
       // In another desperate effort to avoid dying, discard
       // the new signal if it's ignored.
@@ -572,7 +572,7 @@ static int go_to_a_happy_place(Task* t, siginfo_t* si) {
 
 happy_place:
   /* TODO: restore previous tracee signal mask. */
-  return 0;
+  return COMPLETE;
 }
 
 static void handle_siginfo(Task* t, siginfo_t* si) {
@@ -584,10 +584,11 @@ static void handle_siginfo(Task* t, siginfo_t* si) {
    * step the tracee out of the syscallbuf code before
    * attempting to deliver the signal. */
   if (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo) {
-    return handle_desched_event(t, si);
+    handle_desched_event(t, si);
+    return;
   }
 
-  if (go_to_a_happy_place(t, si)) {
+  if (go_to_a_happy_place(t, si) == INCOMPLETE) {
     /* While stepping, another signal arrived that we
      * "upgraded" to. */
     return;
@@ -625,5 +626,5 @@ void handle_signal(Task* t, siginfo_t* si) {
     }
     si = &local_si;
   }
-  return handle_siginfo(t, si);
+  handle_siginfo(t, si);
 }
