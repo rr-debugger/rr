@@ -598,9 +598,7 @@ int main(int argc, char* argv[]) {
     ts.tv_sec = wait_secs;
     ts.tv_nsec = 0;
     LOG(info) << "Waiting " << wait_secs << " seconds before continuing ...";
-    if (nanosleep_nointr(&ts)) {
-      FATAL() << "Failed to wait requested duration";
-    }
+    nanosleep_nointr(&ts);
     LOG(info) << "... continuing.";
   }
 

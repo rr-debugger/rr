@@ -77,19 +77,19 @@ double now_sec(void) {
   return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
 }
 
-int nanosleep_nointr(const struct timespec* ts) {
+void nanosleep_nointr(const struct timespec* ts) {
   struct timespec req = *ts;
-  while (1) {
+  while (true) {
     struct timespec rem;
     int err = nanosleep(&req, &rem);
     if (0 == err || EINTR != errno) {
-      return err;
+      FATAL() << "Failed to wait requested duration";
     }
     req = rem;
   }
 }
 
-int probably_not_interactive(int fd) {
+bool probably_not_interactive(int fd) {
   /* Eminently tunable heuristic, but this is guaranteed to be
    * true during rr unit tests, where we care most about this
    * check (to a first degree).  A failing test shouldn't
@@ -464,7 +464,7 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
            t->rec_tid, global_time, tag);
 }
 
-int should_dump_memory(Task* t, const TraceFrame& f) {
+bool should_dump_memory(Task* t, const TraceFrame& f) {
   const Flags* flags = &Flags::get();
 
 #if defined(FIRST_INTERESTING_EVENT)
@@ -563,8 +563,8 @@ struct checksum_iterator_data {
   int global_time;
 };
 
-static int checksum_segment_filter(const Mapping& m,
-                                   const MappableResource& r) {
+static bool checksum_segment_filter(const Mapping& m,
+                                    const MappableResource& r) {
   struct stat st;
   int may_diverge;
 
@@ -572,7 +572,7 @@ static int checksum_segment_filter(const Mapping& m,
     /* If there's no persistent resource backing this
      * mapping, we should expect it to change. */
     LOG(debug) << "CHECKSUMMING unlinked '" << r.fsname << "'";
-    return 1;
+    return true;
   }
   /* If we're pretty sure the backing resource is effectively
    * immutable, skip checksumming, it's a waste of time.  Except
@@ -694,25 +694,25 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
   fclose(c.checksums_file);
 }
 
-int should_checksum(Task* t, const TraceFrame& f) {
+bool should_checksum(Task* t, const TraceFrame& f) {
   int checksum = Flags::get().checksum;
-  int is_syscall_exit =
+  bool is_syscall_exit =
       EV_SYSCALL == f.event().type && SYSCALL_EXIT == f.event().state;
 
 #if defined(FIRST_INTERESTING_EVENT)
   if (is_syscall_exit && FIRST_INTERESTING_EVENT <= global_time &&
       global_time <= LAST_INTERESTING_EVENT) {
-    return 1;
+    return true;
   }
   if (global_time > LAST_INTERESTING_EVENT) {
-    return 0;
+    return false;
   }
 #endif
   if (Flags::CHECKSUM_NONE == checksum) {
-    return 0;
+    return false;
   }
   if (Flags::CHECKSUM_ALL == checksum) {
-    return 1;
+    return true;
   }
   if (Flags::CHECKSUM_SYSCALL == checksum) {
     return is_syscall_exit;

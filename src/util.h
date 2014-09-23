@@ -128,10 +128,10 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
                           char* filename, size_t filename_size);
 
 /**
- * Return nonzero if the user requested memory be dumped for |t| at
+ * Return true if the user requested memory be dumped for |t| at
  * |event| at |global_time|.
  */
-int should_dump_memory(Task* t, const TraceFrame& f);
+bool should_dump_memory(Task* t, const TraceFrame& f);
 /**
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
@@ -139,10 +139,10 @@ int should_dump_memory(Task* t, const TraceFrame& f);
 void dump_process_memory(Task* t, int global_time, const char* tag);
 
 /**
- * Return nonzero if the user has requested |t|'s memory be
+ * Return true if the user has requested |t|'s memory be
  * checksummed at |event| at |global_time|.
  */
-int should_checksum(Task* t, const TraceFrame& f);
+bool should_checksum(Task* t, const TraceFrame& f);
 /**
  * Write a checksum of each mapped region in |t|'s address space to a
  * special log, where it can be read by |validate_process_memory()|
@@ -219,14 +219,14 @@ double now_sec(void);
  * sleeping until |ts| has elapsed, even if a signal is received.  If
  * an error occurs, -1 is returned and errno is set appropriately.
  */
-int nanosleep_nointr(const struct timespec* ts);
+void nanosleep_nointr(const struct timespec* ts);
 
 /**
  * Return nonzero if the rr session is probably not interactive (that
  * is, there's probably no user watching or interacting with rr), and
  * so asking for user input or other actions is probably pointless.
  */
-int probably_not_interactive(int fd = STDERR_FILENO);
+bool probably_not_interactive(int fd = STDERR_FILENO);
 
 /**
  * If |child_fd| is a stdio fd and stdio-marking is enabled, prepend
