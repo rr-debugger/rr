@@ -10,6 +10,119 @@
 #include "log.h"
 #include "util.h"
 
+struct RegisterValue {
+  // The offsetof the register in user_regs_struct.
+  size_t offset;
+  // The size of the register.  0 means we cannot read it.
+  size_t nbytes;
+
+  // Returns a pointer to the register in |regs| represented by |offset|.
+  // |regs| is assumed to be a pointer to the user_struct_regs for the
+  // appropriate architecture.
+  void* pointer_into(void* regs) {
+    return static_cast<char*>(regs) + offset;
+  }
+
+  const void* pointer_into(const void* regs) {
+    return static_cast<const char*>(regs) + offset;
+  }
+};
+
+template<typename T>
+struct RegisterInfo;
+
+template<>
+struct RegisterInfo<rr::X86Arch> {
+  static bool ignore_undefined_register(GDBRegister regno) {
+    return regno == DREG_FOSEG || regno == DREG_MXCSR;
+  }
+  static struct RegisterValue registers[DREG_NUM_LINUX_I386];
+};
+
+template<>
+struct RegisterInfo<rr::X64Arch> {
+  static bool ignore_undefined_register(GDBRegister regno) {
+    return regno == DREG_64_FOSEG || regno == DREG_64_MXCSR;
+  }
+  static struct RegisterValue registers[DREG_NUM_LINUX_X86_64];
+};
+
+struct RegisterValue RegisterInfo<rr::X86Arch>::registers[DREG_NUM_LINUX_I386];
+struct RegisterValue RegisterInfo<rr::X64Arch>::registers[DREG_NUM_LINUX_X86_64];
+
+// You might think, "why can't we use designated initializers here?"  Doing so
+// would be most convenient, except that designated initializers are not a part
+// of C++11.  While they are sort-of-supported as a GNU extension in GCC
+// (despite claims to the contrary in the manual), they are only supported so
+// long as the index of your designated initializer corresponds to the index of
+// the array you are initializing.  That is, they are useful for documentation
+// purposes, but they are not useful for initializing a sparse array, as we
+// have here.
+static void initialize_register_tables() {
+  static bool initialized = false;
+
+  if (initialized) {
+    return;
+  }
+
+#define RV_ARCH(gdb_suffix, name, arch)                       \
+  RegisterInfo<arch>::registers[DREG_##gdb_suffix] = { offsetof(arch::user_regs_struct, name), \
+                                                        sizeof(((arch::user_regs_struct*)0)->name) }
+#define RV_X86(gdb_suffix, name)                \
+  RV_ARCH(gdb_suffix, name, rr::X86Arch)
+#define RV_X64(gdb_suffix, name)                \
+  RV_ARCH(gdb_suffix, name, rr::X64Arch)
+
+  initialized = true;
+  RV_X86(EAX, eax);
+  RV_X86(ECX, ecx);
+  RV_X86(EDX, edx);
+  RV_X86(EBX, ebx);
+  RV_X86(ESP, esp);
+  RV_X86(EBP, ebp);
+  RV_X86(ESI, esi);
+  RV_X86(EDI, edi);
+  RV_X86(EIP, eip);
+  RV_X86(EFLAGS, eflags);
+  RV_X86(CS, xcs);
+  RV_X86(SS, xss);
+  RV_X86(DS, xds);
+  RV_X86(ES, xes);
+  RV_X86(FS, xfs);
+  RV_X86(GS, xgs);
+  RV_X86(ORIG_EAX, orig_eax);
+
+  RV_X64(RAX, rax);
+  RV_X64(RCX, rcx);
+  RV_X64(RDX, rdx);
+  RV_X64(RBX, rbx);
+  RV_X64(RSP, rsp);
+  RV_X64(RBP, rbp);
+  RV_X64(RSI, rsi);
+  RV_X64(RDI, rdi);
+  RV_X64(R8, r8);
+  RV_X64(R9, r9);
+  RV_X64(R10, r10);
+  RV_X64(R11, r11);
+  RV_X64(R12, r12);
+  RV_X64(R13, r13);
+  RV_X64(R14, r14);
+  RV_X64(R15, r15);
+  RV_X64(RIP, rip);
+  RV_X64(64_EFLAGS, eflags);
+  RV_X64(64_CS, cs);
+  RV_X64(64_SS, ss);
+  RV_X64(64_DS, ds);
+  RV_X64(64_ES, es);
+  RV_X64(64_FS, fs);
+  RV_X64(64_GS, gs);
+  RV_X64(ORIG_RAX, orig_rax);
+
+#undef RV_X64
+#undef RV_X86
+#undef RV_ARCH
+}
+
 void Registers::print_register_file(FILE* f) const {
   fprintf(f, "Printing register file:\n");
   fprintf(f, "eax: %x\n", u.x86regs.eax);
@@ -147,119 +260,6 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
   }
 
   return match;
-}
-
-struct RegisterValue {
-  // The offsetof the register in user_regs_struct.
-  size_t offset;
-  // The size of the register.  0 means we cannot read it.
-  size_t nbytes;
-
-  // Returns a pointer to the register in |regs| represented by |offset|.
-  // |regs| is assumed to be a pointer to the user_struct_regs for the
-  // appropriate architecture.
-  void* pointer_into(void* regs) {
-    return static_cast<char*>(regs) + offset;
-  }
-
-  const void* pointer_into(const void* regs) {
-    return static_cast<const char*>(regs) + offset;
-  }
-};
-
-template<typename T>
-struct RegisterInfo;
-
-template<>
-struct RegisterInfo<rr::X86Arch> {
-  static bool ignore_undefined_register(GDBRegister regno) {
-    return regno == DREG_FOSEG || regno == DREG_MXCSR;
-  }
-  static struct RegisterValue registers[DREG_NUM_LINUX_I386];
-};
-
-template<>
-struct RegisterInfo<rr::X64Arch> {
-  static bool ignore_undefined_register(GDBRegister regno) {
-    return regno == DREG_64_FOSEG || regno == DREG_64_MXCSR;
-  }
-  static struct RegisterValue registers[DREG_NUM_LINUX_X86_64];
-};
-
-struct RegisterValue RegisterInfo<rr::X86Arch>::registers[DREG_NUM_LINUX_I386];
-struct RegisterValue RegisterInfo<rr::X64Arch>::registers[DREG_NUM_LINUX_X86_64];
-
-// You might think, "why can't we use designated initializers here?"  Doing so
-// would be most convenient, except that designated initializers are not a part
-// of C++11.  While they are sort-of-supported as a GNU extension in GCC
-// (despite claims to the contrary in the manual), they are only supported so
-// long as the index of your designated initializer corresponds to the index of
-// the array you are initializing.  That is, they are useful for documentation
-// purposes, but they are not useful for initializing a sparse array, as we
-// have here.
-static void initialize_register_tables() {
-  static bool initialized = false;
-
-  if (initialized) {
-    return;
-  }
-
-#define RV_ARCH(gdb_suffix, name, arch)                       \
-  RegisterInfo<arch>::registers[DREG_##gdb_suffix] = { offsetof(arch::user_regs_struct, name), \
-                                                        sizeof(((arch::user_regs_struct*)0)->name) }
-#define RV_X86(gdb_suffix, name)                \
-  RV_ARCH(gdb_suffix, name, rr::X86Arch)
-#define RV_X64(gdb_suffix, name)                \
-  RV_ARCH(gdb_suffix, name, rr::X64Arch)
-
-  initialized = true;
-  RV_X86(EAX, eax);
-  RV_X86(ECX, ecx);
-  RV_X86(EDX, edx);
-  RV_X86(EBX, ebx);
-  RV_X86(ESP, esp);
-  RV_X86(EBP, ebp);
-  RV_X86(ESI, esi);
-  RV_X86(EDI, edi);
-  RV_X86(EIP, eip);
-  RV_X86(EFLAGS, eflags);
-  RV_X86(CS, xcs);
-  RV_X86(SS, xss);
-  RV_X86(DS, xds);
-  RV_X86(ES, xes);
-  RV_X86(FS, xfs);
-  RV_X86(GS, xgs);
-  RV_X86(ORIG_EAX, orig_eax);
-
-  RV_X64(RAX, rax);
-  RV_X64(RCX, rcx);
-  RV_X64(RDX, rdx);
-  RV_X64(RBX, rbx);
-  RV_X64(RSP, rsp);
-  RV_X64(RBP, rbp);
-  RV_X64(RSI, rsi);
-  RV_X64(RDI, rdi);
-  RV_X64(R8, r8);
-  RV_X64(R9, r9);
-  RV_X64(R10, r10);
-  RV_X64(R11, r11);
-  RV_X64(R12, r12);
-  RV_X64(R13, r13);
-  RV_X64(R14, r14);
-  RV_X64(R15, r15);
-  RV_X64(RIP, rip);
-  RV_X64(64_EFLAGS, eflags);
-  RV_X64(64_CS, cs);
-  RV_X64(64_SS, ss);
-  RV_X64(64_DS, ds);
-  RV_X64(64_ES, es);
-  RV_X64(64_FS, fs);
-  RV_X64(64_GS, gs);
-  RV_X64(ORIG_RAX, orig_rax);
-
-#undef RV_X64
-#undef RV_X86
-#undef RV_ARCH
 }
 
 template<typename Arch>
