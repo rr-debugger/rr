@@ -1098,7 +1098,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         return 1;
       }
       Registers r = t->regs();
-      remote_ptr<siginfo_t> info = r.arg2();
+      remote_ptr<typename Arch::siginfo_t> info = r.arg2();
       push_arg_ptr(t, info);
       if (!info.is_null()) {
         r.set_arg2(scratch);
@@ -2487,7 +2487,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::rt_sigtimedwait: {
       Registers r = t->regs();
       if (t->ev().Syscall().saved_args.empty()) {
-        remote_ptr<siginfo_t> info = r.arg2();
+        remote_ptr<typename Arch::siginfo_t> info = r.arg2();
         if (!info.is_null()) {
           t->record_remote(info);
         } else {
@@ -2495,7 +2495,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         }
         break;
       }
-      auto info = pop_arg_ptr<siginfo_t>(t);
+      auto info = pop_arg_ptr<typename Arch::siginfo_t>(t);
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
 
