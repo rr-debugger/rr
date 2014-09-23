@@ -57,7 +57,7 @@ static Task* get_next_task_with_same_priority(Task* t) {
  * Returns true if we should return t as the runnable task. Otherwise we
  * should check the next task.
  */
-static bool is_task_runnable(Task* t, int* by_waitpid) {
+static bool is_task_runnable(Task* t, bool* by_waitpid) {
   if (t->unstable) {
     LOG(debug) << "  " << t->tid << " is unstable, doing waitpid(-1)";
     return true;
@@ -71,8 +71,8 @@ static bool is_task_runnable(Task* t, int* by_waitpid) {
   LOG(debug) << "  " << t->tid << " is blocked on " << t->ev()
              << "; checking status ...";
   if ((t->pseudo_blocked && t->wait()) || t->try_wait()) {
-    t->pseudo_blocked = 0;
-    *by_waitpid = 1;
+    t->pseudo_blocked = false;
+    *by_waitpid = true;
     LOG(debug) << "  ready with status " << HEX(t->status());
     return true;
   }
@@ -89,8 +89,8 @@ static bool is_task_runnable(Task* t, int* by_waitpid) {
  * Sets 'by_waitpid' to true if we determined the task was runnable by
  * calling waitpid on it and observing a state change.
  */
-static Task* find_next_runnable_task(Session& session, int* by_waitpid) {
-  *by_waitpid = 0;
+static Task* find_next_runnable_task(Session& session, bool* by_waitpid) {
+  *by_waitpid = false;
 
   while (true) {
     Task* t = session.get_next_round_robin_task();
@@ -141,12 +141,12 @@ static Task* find_next_runnable_task(Session& session, int* by_waitpid) {
 }
 
 Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
-                                  int* by_waitpid) {
+                                  bool* by_waitpid) {
   int max_events = Flags::get().max_events;
 
   LOG(debug) << "Scheduling next task";
 
-  *by_waitpid = 0;
+  *by_waitpid = false;
 
   if (!current) {
     current = t;
@@ -176,7 +176,7 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
                  strevent(current->event), 1000.0 * wait_duration);
       }
 #endif
-      *by_waitpid = 1;
+      *by_waitpid = true;
       LOG(debug) << "  new status is " << HEX(current->status());
     }
     return current;
@@ -224,7 +224,7 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
     ASSERT(next, next->unstable || next->may_be_blocked())
         << "Scheduled task should have been blocked or unstable";
     next->force_status(status);
-    *by_waitpid = 1;
+    *by_waitpid = true;
   }
 
   note_switch(current, next, max_events);

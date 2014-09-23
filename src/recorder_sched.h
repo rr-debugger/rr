@@ -34,7 +34,7 @@ class Task;
  * to run.
  */
 Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
-                                  int* by_waitpid);
+                                  bool* by_waitpid);
 
 void rec_sched_deregister_thread(Task** t);
 

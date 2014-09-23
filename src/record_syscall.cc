@@ -1070,7 +1070,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // We're just pretending that t is blocked.  The next
       // time its scheduling slot opens up, it's OK to
       // blocking-waitpid on t to see its status change.
-      t->pseudo_blocked = 1;
+      t->pseudo_blocked = true;
       t->session().schedule_one_round_robin(t);
       return ALLOW_SWITCH;
 

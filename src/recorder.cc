@@ -423,7 +423,7 @@ static void maybe_discard_syscall_interruption(Task* t, int ret) {
   }
 }
 
-static void syscall_state_changed(Task* t, int by_waitpid) {
+static void syscall_state_changed(Task* t, bool by_waitpid) {
   switch (t->ev().Syscall().state) {
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
@@ -627,17 +627,13 @@ static void check_perf_counters_working(Task* t) {
 
 /**
  * |t| is being delivered a signal, and its state changed.
- * |by_waitpid| is nonzero if the status change was observed by a
+ * |by_waitpid| is true if the status change was observed by a
  * waitpid() call.
  *
  * Return true if execution was incidentally resumed to a new event,
  * false otherwise.
  */
-enum {
-  NOT_BY_WAITPID = 0,
-  BY_WAITPID
-};
-static bool signal_state_changed(Task* t, int by_waitpid) {
+static bool signal_state_changed(Task* t, bool by_waitpid) {
   int sig = t->ev().Signal().number;
 
   switch (t->ev().type()) {
@@ -801,7 +797,7 @@ static void runnable_state_changed(Task* t) {
       t->switchable = ALLOW_SWITCH;
       break;
     case EV_SIGNAL:
-      signal_state_changed(t, NOT_BY_WAITPID);
+      signal_state_changed(t, false);
       break;
 
     case EV_SENTINEL:
@@ -945,7 +941,7 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
   TaskGroup::shr_ptr initial_task_group = t->task_group();
 
   while (session->tasks().size() > 0) {
-    int by_waitpid;
+    bool by_waitpid;
 
     maybe_process_term_request(t);
 

@@ -182,7 +182,7 @@ TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
     : switchable(),
-      pseudo_blocked(),
+      pseudo_blocked(false),
       succ_event_counter(),
       unstable(),
       stable_exit(false),
