@@ -11,10 +11,18 @@
 #include "util.h"
 
 struct RegisterValue {
+  // The name of this register.
+  const char* name;
   // The offsetof the register in user_regs_struct.
   size_t offset;
   // The size of the register.  0 means we cannot read it.
   size_t nbytes;
+
+  constexpr RegisterValue() : name(nullptr), offset(0), nbytes(0) {}
+
+  RegisterValue(const char* name_, size_t offset_, size_t nbytes_)
+    : name(name_), offset(offset_), nbytes(nbytes_)
+  {}
 
   // Returns a pointer to the register in |regs| represented by |offset|.
   // |regs| is assumed to be a pointer to the user_struct_regs for the
@@ -65,9 +73,13 @@ static void initialize_register_tables() {
     return;
   }
 
-#define RV_ARCH(gdb_suffix, name, arch)                       \
-  RegisterInfo<arch>::registers[DREG_##gdb_suffix] = { offsetof(arch::user_regs_struct, name), \
-                                                        sizeof(((arch::user_regs_struct*)0)->name) }
+#define RV_ARCH(gdb_suffix, name, arch)         \
+  do {                                          \
+    size_t offset = offsetof(arch::user_regs_struct, name);     \
+    size_t nbytes = sizeof(((arch::user_regs_struct*)0)->name); \
+    RegisterInfo<arch>::registers[DREG_##gdb_suffix] =          \
+      RegisterValue(#name, offset, nbytes);                     \
+  } while(0)
 #define RV_X86(gdb_suffix, name)                \
   RV_ARCH(gdb_suffix, name, rr::X86Arch)
 #define RV_X64(gdb_suffix, name)                \
