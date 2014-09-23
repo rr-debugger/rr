@@ -352,7 +352,7 @@ static void desched_state_changed(Task* t) {
       // We were just descheduled for potentially a long
       // time, and may have just had a signal become
       // pending.  Ensure we get another chance to run.
-      t->switchable = 0;
+      t->switchable = PREVENT_SWITCH;
       return;
     }
     default:
@@ -459,7 +459,7 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
                                    << " pending while in syscall???";
 
       t->ev().Syscall().state = EXITING_SYSCALL;
-      t->switchable = 0;
+      t->switchable = PREVENT_SWITCH;
       return;
 
     case EXITING_SYSCALL: {
@@ -492,7 +492,7 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
         maybe_discard_syscall_interruption(t, retval);
         // XXX probably not necessary to make the
         // tracee unswitchable
-        t->switchable = 0;
+        t->switchable = PREVENT_SWITCH;
         return;
       }
 
@@ -564,7 +564,7 @@ static void syscall_state_changed(Task* t, int by_waitpid) {
         t->ev().Syscall().is_restart = 1;
       }
 
-      t->switchable = 1;
+      t->switchable = ALLOW_SWITCH;
       return;
     }
 
@@ -714,7 +714,8 @@ static bool signal_state_changed(Task* t, int by_waitpid) {
       // But right after this, we may have to process some
       // syscallbuf state, so we can't let the tracee race
       // with us.
-      t->switchable = t->ev().Signal().delivered;
+      t->switchable =
+          t->ev().Signal().delivered ? ALLOW_SWITCH : PREVENT_SWITCH;
       return false;
     }
     case EV_SIGNAL_DELIVERY:
@@ -725,7 +726,7 @@ static bool signal_state_changed(Task* t, int by_waitpid) {
           LOG(warn) << "Delivered core-dumping signal; may misrecord "
                        "CLONE_CHILD_CLEARTID memory race";
           t->destabilize_task_group();
-          t->switchable = 1;
+          t->switchable = ALLOW_SWITCH;
         }
         t->signal_delivered(sig);
         t->ev().Signal().delivered = 1;
@@ -754,7 +755,7 @@ static bool signal_state_changed(Task* t, int by_waitpid) {
 static void runnable_state_changed(Task* t) {
   // Have to disable context-switching until we know it's safe
   // to allow switching the context.
-  t->switchable = 0;
+  t->switchable = PREVENT_SWITCH;
 
   if (t->ptrace_event()) {
     // A ptrace event arrived. The steps below are irrelevant
@@ -797,7 +798,7 @@ static void runnable_state_changed(Task* t) {
     case EV_SCHED:
       t->record_current_event();
       t->pop_event(t->ev().type());
-      t->switchable = 1;
+      t->switchable = ALLOW_SWITCH;
       break;
     case EV_SIGNAL:
       signal_state_changed(t, NOT_BY_WAITPID);

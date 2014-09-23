@@ -109,6 +109,11 @@ enum DestroyBufferFlags {
   DESTROY_SYSCALLBUF = 1 << 1,
 };
 
+enum Switchable {
+  PREVENT_SWITCH,
+  ALLOW_SWITCH
+};
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -939,7 +944,7 @@ public:
   /* Whether switching away from this task is allowed in its
    * current state.  Some operations must be completed
    * atomically and aren't switchable. */
-  int switchable;
+  Switchable switchable;
   /* Nonzero when this is switchable for semantic purposes, but
    * definitely isn't blocked on ony resource.  In that case,
    * it's safe for the scheduler to do a blocking waitpid on

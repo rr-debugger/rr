@@ -125,7 +125,7 @@ static void push_arg_ptr(Task* t, remote_ptr<void> argp) {
  * Reset scratch state for |t|, because scratch can't be used for
  * |event|.  Log a warning as well.
  */
-static int abort_scratch(Task* t, const char* event) {
+static Switchable abort_scratch(Task* t, const char* event) {
   int num_bytes = t->ev().Syscall().tmp_data_num_bytes;
 
   assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
@@ -141,7 +141,7 @@ static int abort_scratch(Task* t, const char* event) {
         << " was available.  Disabling context switching: deadlock may follow.";
   }
   reset_scratch_pointers(t);
-  return 0; /* don't allow context-switching */
+  return PREVENT_SWITCH; /* don't allow context-switching */
 }
 
 /**
@@ -166,11 +166,11 @@ static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch) {
 }
 
 /**
- * Return nonzero if it's OK to context-switch away from |t| for its
+ * Return ALLOW_SWITCH if it's OK to context-switch away from |t| for its
  * ipc call.  If so, prepare any required scratch buffers for |t|.
  */
 template <typename Arch>
-static int prepare_ipc(Task* t, bool need_scratch_setup) {
+static Switchable prepare_ipc(Task* t, bool need_scratch_setup) {
   int call = t->regs().arg1_signed();
   remote_ptr<void> scratch =
       need_scratch_setup ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
@@ -180,7 +180,7 @@ static int prepare_ipc(Task* t, bool need_scratch_setup) {
   switch (call) {
     case MSGRCV: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       size_t msgsize = t->regs().arg3();
       remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
@@ -194,12 +194,12 @@ static int prepare_ipc(Task* t, bool need_scratch_setup) {
         return abort_scratch(t, "msgrcv");
       }
       t->write_mem(child_kludge, kludge);
-      return 1;
+      return ALLOW_SWITCH;
     }
     case MSGSND:
-      return 1;
+      return ALLOW_SWITCH;
     default:
-      return 0;
+      return PREVENT_SWITCH;
   }
 }
 
@@ -303,7 +303,7 @@ static bool reserve_scratch_for_msgvec(
  * scratch memory if necessary.
  */
 template <typename Arch>
-static int prepare_socketcall(Task* t, bool need_scratch_setup) {
+static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
   remote_ptr<void> scratch =
       need_scratch_setup ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
   Registers r = t->regs();
@@ -322,7 +322,7 @@ static int prepare_socketcall(Task* t, bool need_scratch_setup) {
     /* ssize_t recv([int sockfd, void *buf, size_t len, int flags]) */
     case SYS_RECV: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       remote_ptr<void> argsp;
       auto args = read_socketcall_args<typename Arch::recv_args>(t, &argsp);
@@ -349,13 +349,13 @@ static int prepare_socketcall(Task* t, bool need_scratch_setup) {
 
       t->write_mem(tmpargsp, args);
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     /* int accept([int sockfd, struct sockaddr *addr, socklen_t *addrlen]) */
     case SYS_ACCEPT: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       remote_ptr<typename Arch::accept_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
@@ -387,14 +387,14 @@ static int prepare_socketcall(Task* t, bool need_scratch_setup) {
       t->write_mem(tmpargsp, args);
       t->write_mem(args.addrlen.rptr(), addrlen);
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     /* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int
      * flags]) */
     case SYS_ACCEPT4: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       remote_ptr<typename Arch::accept4_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
@@ -426,12 +426,12 @@ static int prepare_socketcall(Task* t, bool need_scratch_setup) {
       t->write_mem(tmpargsp, args);
       t->write_mem(args._.addrlen.rptr(), addrlen);
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case SYS_RECVFROM: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       remote_ptr<typename Arch::recvfrom_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
@@ -468,16 +468,16 @@ static int prepare_socketcall(Task* t, bool need_scratch_setup) {
         t->write_mem(args.addrlen.rptr(), addrlen);
       }
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
     case SYS_RECVMSG: {
       remote_ptr<typename Arch::recvmsg_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
       if (args.flags & MSG_DONTWAIT) {
-        return 0;
+        return PREVENT_SWITCH;
       }
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       auto msg = t->read_mem(args.msg.rptr());
 
@@ -493,34 +493,34 @@ static int prepare_socketcall(Task* t, bool need_scratch_setup) {
       if (reserve_scratch_for_msghdr<Arch>(t, &msg, &scratch)) {
         t->write_mem(scratch_msg, msg);
       } else {
-        return 0;
+        return PREVENT_SWITCH;
       }
 
       args.msg = scratch_msg;
       t->write_mem(tmpargsp, args);
       t->set_regs(r);
 
-      return 1;
+      return ALLOW_SWITCH;
     }
     case SYS_SENDMSG: {
       remote_ptr<typename Arch::recvmsg_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
-      return !(args.flags & MSG_DONTWAIT);
+      return (args.flags & MSG_DONTWAIT) ? PREVENT_SWITCH : ALLOW_SWITCH;
     }
     case SYS_SENDMMSG: {
       remote_ptr<typename Arch::sendmmsg_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
-      return !(args.flags & MSG_DONTWAIT);
+      return (args.flags & MSG_DONTWAIT) ? PREVENT_SWITCH : ALLOW_SWITCH;
     }
     case SYS_RECVMMSG: {
       remote_ptr<typename Arch::recvmmsg_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
 
       if (args.flags & MSG_DONTWAIT) {
-        return 0;
+        return PREVENT_SWITCH;
       }
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
 
       // Reserve scratch for the arg
@@ -536,16 +536,17 @@ static int prepare_socketcall(Task* t, bool need_scratch_setup) {
       if (reserve_scratch_for_msgvec<Arch>(t, args.vlen, poldmsgvec,
                                            &scratch)) {
         t->set_regs(r);
-        return 1;
-      } else
-        return 0;
+        return ALLOW_SWITCH;
+      } else {
+        return PREVENT_SWITCH;
+      }
     }
     default:
-      return 0;
+      return PREVENT_SWITCH;
   }
 }
 
-#define RR_KCMP_FILE 0
+static const int RR_KCMP_FILE = 0;
 
 template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
   int pid = getpid();
@@ -584,10 +585,11 @@ template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
  * function sets things up so that the *syscallbuf* memory that |t|
  * is using as ~scratch will be recorded, so that it can be replayed.
  *
- * Returns 1 if the syscall should be interruptible, 0 otherwise.
+ * Returns ALLOW_SWITCH if the syscall should be interruptible, PREVENT_SWITCH
+ *otherwise.
  */
 template <typename Arch>
-static int set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
+static Switchable set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
   const struct syscallbuf_record* rec = t->desched_rec();
 
   assert(rec);
@@ -606,10 +608,11 @@ static int set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
   switch (syscallno) {
     case Arch::write:
     case Arch::writev:
-      return !is_stdio_fd<Arch>(t, (int)t->regs().arg1_signed());
+      return is_stdio_fd<Arch>(t, (int)t->regs().arg1_signed()) ? PREVENT_SWITCH
+                                                                : ALLOW_SWITCH;
+    default:
+      return ALLOW_SWITCH;
   }
-
-  return 1;
 }
 
 static bool exec_file_supported(const string& filename) {
@@ -633,13 +636,12 @@ static bool exec_file_supported(const string& filename) {
   return ok;
 }
 
-template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
+template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
   /* If we are called again due to a restart_syscall, we musn't
    * redirect to scratch again as we will lose the original
    * addresses values. */
   bool restart = (syscallno == Arch::restart_syscall);
-  bool need_scratch_setup;
   remote_ptr<void> scratch = nullptr;
 
   if (t->desched_rec()) {
@@ -651,7 +653,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
    * false.  They *don't* need scratch memory if we're
    * restarting a syscall, since if that's the case we've
    * already set it up. */
-  need_scratch_setup = !restart;
+  bool need_scratch_setup = !restart;
   if (need_scratch_setup) {
     /* Don't stomp scratch pointers that were set up for
      * the restarted syscall.
@@ -665,7 +667,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
   if (syscallno < 0) {
     // Invalid syscall. Don't let it accidentally match a
     // syscall number below that's for an undefined syscall.
-    return 0;
+    return PREVENT_SWITCH;
   }
 
   switch (syscallno) {
@@ -675,7 +677,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       remote_ptr<loff_t> off_out = r.arg4();
 
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
 
       push_arg_ptr(t, off_in);
@@ -695,7 +697,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case Arch::sendfile64: {
@@ -703,7 +705,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       remote_ptr<loff_t> offset = r.arg3();
 
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
 
       push_arg_ptr(t, offset);
@@ -717,7 +719,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case Arch::clone: {
@@ -733,7 +735,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         r.set_arg1(flags & ~CLONE_UNTRACED);
         t->set_regs(r);
       }
-      return 0;
+      return PREVENT_SWITCH;
     }
 
     case Arch::exit:
@@ -742,14 +744,14 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         t->task_group()->exit_code = (int)t->regs().arg1();
       }
       destroy_buffers(t);
-      return 0;
+      return PREVENT_SWITCH;
 
     case Arch::exit_group:
       if (t->task_group()->task_set().size() == 1) {
         t->stable_exit = true;
       }
       t->task_group()->exit_code = (int)t->regs().arg1();
-      return 0;
+      return PREVENT_SWITCH;
 
     case Arch::execve: {
       t->pre_exec();
@@ -767,7 +769,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         r.set_arg1(end);
         t->set_regs(r);
       }
-      return 0;
+      return PREVENT_SWITCH;
     }
 
     case Arch::fcntl64:
@@ -779,9 +781,9 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
           // SETLKW blocks, but doesn't write any
           // outparam data to the |struct flock|
           // argument, so no need for scratch.
-          return 1;
+          return ALLOW_SWITCH;
         default:
-          return 0;
+          return PREVENT_SWITCH;
       }
 
     /* int futex(int *uaddr, int op, int val, const struct timespec *timeout,
@@ -790,9 +792,9 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       switch ((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) {
         case FUTEX_WAIT:
         case FUTEX_WAIT_BITSET:
-          return 1;
+          return ALLOW_SWITCH;
         default:
-          return 0;
+          return PREVENT_SWITCH;
       }
 
     case Arch::ipc:
@@ -802,12 +804,12 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       return prepare_socketcall<Arch>(t, need_scratch_setup);
 
     case Arch::_newselect:
-      return 1;
+      return ALLOW_SWITCH;
 
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       Registers r = t->regs();
 
@@ -820,7 +822,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case Arch::write:
@@ -840,7 +842,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       // introduces the possibility of deadlock between rr's
       // tracee and some external program reading rr's output
       // via a pipe ... but that seems unlikely to bite in practice.
-      return !is_stdio_fd<Arch>(t, fd);
+      return is_stdio_fd<Arch>(t, fd) ? PREVENT_SWITCH : ALLOW_SWITCH;
       // Note that the determination of whether fd maps to rr's
       // stdout/stderr is exact, using kcmp, whereas our decision
       // to echo is currently based on the simple heuristic of
@@ -864,7 +866,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
           (Arch::wait4 == syscallno) ? r.arg4() : (uintptr_t)0;
 
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       push_arg_ptr(t, status);
       if (!status.is_null()) {
@@ -882,12 +884,12 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case Arch::waitid: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
 
       Registers r = t->regs();
@@ -903,11 +905,11 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case Arch::pause:
-      return 1;
+      return ALLOW_SWITCH;
 
     /* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
     /* int ppoll(struct pollfd *fds, nfds_t nfds,
@@ -921,7 +923,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       nfds_t nfds = r.arg2();
 
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       /* XXX fds can be NULL, right? */
       push_arg_ptr(t, fds);
@@ -935,7 +937,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
        * the source data. */
       t->remote_memcpy(fds2, fds, nfds * fds.referent_size());
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     /* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned
@@ -943,7 +945,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
     case Arch::prctl: {
       /* TODO: many of these prctls are not blocking. */
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       Registers r = t->regs();
       switch ((int)r.arg1_signed()) {
@@ -964,16 +966,16 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
           }
 
           t->set_regs(r);
-          return 1;
+          return ALLOW_SWITCH;
         }
         case PR_GET_NAME:
         case PR_SET_NAME:
-          return 0;
+          return PREVENT_SWITCH;
 
         default:
           /* TODO: there are many more prctls with
            * outparams ... */
-          return 1;
+          return ALLOW_SWITCH;
       }
       FATAL() << "Not reached";
     }
@@ -983,14 +985,14 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
           remote_ptr<typename Arch::__sysctl_args>(t->regs().arg1()));
       push_arg_ptr(t, sysctl_args.oldval);
       push_arg_ptr(t, sysctl_args.oldlenp);
-      return 0;
+      return PREVENT_SWITCH;
     }
 
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
      * timeout); */
     case Arch::epoll_wait: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
 
       Registers r = t->regs();
@@ -1008,7 +1010,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       /* (Unlike poll(), the |events| param is a pure
        * outparam, no copy-over needed.) */
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case Arch::ptrace:
@@ -1022,11 +1024,11 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
           "  this process exits.\n");
       terminate_recording(t);
       FATAL() << "Not reached";
-      return 0;
+      return PREVENT_SWITCH;
 
     case Arch::epoll_pwait:
       FATAL() << "Unhandled syscall " << t->syscallname(syscallno);
-      return 1;
+      return ALLOW_SWITCH;
 
     /* The following two syscalls enable context switching not for
      * liveness/correctness reasons, but rather because if we
@@ -1038,7 +1040,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
     /* int nanosleep(const struct timespec *req, struct timespec *rem); */
     case Arch::nanosleep: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
 
       Registers r = t->regs();
@@ -1054,7 +1056,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
 
     case Arch::sched_yield:
@@ -1070,16 +1072,16 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       // blocking-waitpid on t to see its status change.
       t->pseudo_blocked = 1;
       t->session().schedule_one_round_robin(t);
-      return 1;
+      return ALLOW_SWITCH;
 
     case Arch::recvmmsg: {
       Registers r = t->regs();
 
       if ((unsigned int)r.arg4() & MSG_DONTWAIT) {
-        return 0;
+        return PREVENT_SWITCH;
       }
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
 
       remote_ptr<typename Arch::mmsghdr> poldmsgvec = r.arg2();
@@ -1088,14 +1090,14 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
 
       if (reserve_scratch_for_msgvec<Arch>(t, r.arg3(), poldmsgvec, &scratch)) {
         t->set_regs(r);
-        return 1;
+        return ALLOW_SWITCH;
       } else {
-        return 0;
+        return PREVENT_SWITCH;
       }
     }
     case Arch::rt_sigtimedwait: {
       if (!need_scratch_setup) {
-        return 1;
+        return ALLOW_SWITCH;
       }
       Registers r = t->regs();
       remote_ptr<typename Arch::siginfo_t> info = r.arg2();
@@ -1110,16 +1112,16 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         return abort_scratch(t, t->syscallname(syscallno));
       }
       t->set_regs(r);
-      return 1;
+      return ALLOW_SWITCH;
     }
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
-      return 1;
+      return ALLOW_SWITCH;
 
     case Arch::sendmmsg: {
       Registers r = t->regs();
       unsigned flags = (unsigned int)r.arg4();
-      return !(flags & MSG_DONTWAIT);
+      return (flags & MSG_DONTWAIT) ? PREVENT_SWITCH : ALLOW_SWITCH;
     }
 
     case Arch::sched_setaffinity: {
@@ -1130,15 +1132,15 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       // Set arg1 to an invalid PID to ensure this syscall is ignored.
       r.set_arg1(-1);
       t->set_regs(r);
-      return 0;
+      return PREVENT_SWITCH;
     }
 
     default:
-      return 0;
+      return PREVENT_SWITCH;
   }
 }
 
-int rec_prepare_syscall(Task* t) {
+Switchable rec_prepare_syscall(Task* t) {
   RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t)
 }
 
@@ -1250,7 +1252,7 @@ static void* start_restoring_scratch(Task* t, uint8_t** iter) {
  * Return nonzero if tracee pointers were saved while preparing for
  * the syscall |t->ev|.
  */
-static int has_saved_arg_ptrs(Task* t) {
+static bool has_saved_arg_ptrs(Task* t) {
   return !t->ev().Syscall().saved_args.empty();
 }
 
@@ -2184,7 +2186,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       // The new tracee just "finished" a clone that was
       // started by its parent.  It has no pending events,
       // so it can be context-switched out.
-      new_task->switchable = 1;
+      new_task->switchable = ALLOW_SWITCH;
 
       break;
     }

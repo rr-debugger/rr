@@ -3,7 +3,7 @@
 #ifndef RR_PROCESS_SYSCALL_H_
 #define RR_PROCESS_SYSCALL_H_
 
-class Task;
+#include "task.h"
 
 /**
  * Call this just before the recorder is going to store a
@@ -21,7 +21,7 @@ void rec_before_record_syscall_entry(Task* t, int syscallno);
  * overly general mechanism that's used for FUTEX_LOCK_PI.  If you're
  * not FUTEX_LOCK_PI, you probably shouldn't be using this.
  */
-int rec_prepare_syscall(Task* t);
+Switchable rec_prepare_syscall(Task* t);
 
 /**
  * Prepare |t| for its current syscall event to be interrupted and
