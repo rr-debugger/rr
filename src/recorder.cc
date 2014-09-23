@@ -346,8 +346,8 @@ static void desched_state_changed(Task* t) {
        * during this (aborted) transaction again.  So now is
        * a good time for us to reset the record counter. */
       t->syscallbuf_hdr->num_rec_bytes = 0;
-      t->delay_syscallbuf_reset = 0;
-      t->delay_syscallbuf_flush = 0;
+      t->delay_syscallbuf_reset = false;
+      t->delay_syscallbuf_flush = false;
       t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
       // We were just descheduled for potentially a long
       // time, and may have just had a signal become
@@ -585,7 +585,7 @@ static void maybe_reset_syscallbuf(Task* t) {
   /* Any code that sets |delay_syscallbuf_reset| is responsible
    * for recording its own SYSCALLBUF_RESET event at a
    * convenient time. */
-  t->flushed_syscallbuf = 0;
+  t->flushed_syscallbuf = false;
 }
 
 /** If the perf counters seem to be working return, otherwise don't return. */

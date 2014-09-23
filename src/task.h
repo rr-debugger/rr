@@ -1022,18 +1022,18 @@ public:
    * "reset" of the buffer, to zero the record count, at the
    * next available slow (taking |desched| into
    * consideration). */
-  int flushed_syscallbuf;
+  bool flushed_syscallbuf;
   /* This bit is set when code wants to prevent the syscall
    * record buffer from being reset when it normally would be.
    * Currently, the desched'd syscall code uses this. */
-  int delay_syscallbuf_reset;
+  bool delay_syscallbuf_reset;
   /* This bit is set when code wants the syscallbuf to be
    * "synthetically empty": even if the record counter is
    * nonzero, it should not be flushed.  Currently, the
    * desched'd syscall code uses this along with
    * |delay_syscallbuf_reset| above to keep the syscallbuf
    * intact during possibly many "reentrant" events. */
-  int delay_syscallbuf_flush;
+  bool delay_syscallbuf_flush;
 
   /* The child's desched counter event fd number, and our local
    * dup. */
@@ -1047,7 +1047,7 @@ public:
    * NB: there must always be at least one traced syscall before
    * any untraced ones; that's the magic "rrcall" the tracee
    * uses to initialize its syscallbuf. */
-  int seccomp_bpf_enabled;
+  bool seccomp_bpf_enabled;
 
   /* State used only during replay. */
 

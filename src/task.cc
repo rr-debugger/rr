@@ -190,15 +190,15 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       in_round_robin_queue(false),
       scratch_ptr(),
       scratch_size(),
-      flushed_syscallbuf(),
-      delay_syscallbuf_reset(),
-      delay_syscallbuf_flush(),
+      flushed_syscallbuf(false),
+      delay_syscallbuf_reset(false),
+      delay_syscallbuf_flush(false),
       // These will be initialized when the syscall buffer is.
       desched_fd(-1),
       desched_fd_child(-1),
-      seccomp_bpf_enabled(),
+      seccomp_bpf_enabled(false),
       child_sig(),
-      stepped_into_syscall(),
+      stepped_into_syscall(false),
       hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
@@ -1938,7 +1938,7 @@ void Task::maybe_flush_syscallbuf() {
   if (!delay_syscallbuf_reset) {
     syscallbuf_hdr->num_rec_bytes = 0;
   }
-  flushed_syscallbuf = 1;
+  flushed_syscallbuf = true;
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,

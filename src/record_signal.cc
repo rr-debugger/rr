@@ -279,7 +279,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
    * reset until we've finished guiding the tracee through this
    * interrupted call.  We use the record counter for
    * assertions. */
-  t->delay_syscallbuf_reset = 1;
+  t->delay_syscallbuf_reset = true;
 
   /* The tracee is (re-)entering the buffered syscall.  Stash
    * away this breadcrumb so that we can figure out what syscall
@@ -298,7 +298,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
    * record counter will stay intact for a bit, we need to also
    * prevent later events from flushing the syscallbuf until
    * we've unblocked the reset. */
-  t->delay_syscallbuf_flush = 1;
+  t->delay_syscallbuf_flush = true;
 
   /* The descheduled syscall was interrupted by a signal, like
    * all other may-restart syscalls, with the exception that
