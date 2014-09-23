@@ -202,14 +202,6 @@ static dbg_threadid_t get_threadid(Task* t) {
   return thread;
 }
 
-static uint8_t* read_mem(Task* t, remote_ptr<void> addr, size_t len,
-                         size_t* read_len) {
-  uint8_t* buf = (uint8_t*)malloc(len);
-  ssize_t nread = t->read_bytes_fallible(addr, len, buf);
-  *read_len = max(ssize_t(0), nread);
-  return buf;
-}
-
 static WatchType watchpoint_type(DbgRequestType req) {
   switch (req) {
     case DREQ_SET_HW_BREAK:
@@ -406,10 +398,10 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
       return;
     }
     case DREQ_GET_MEM: {
-      size_t len;
-      uint8_t* mem = read_mem(target, req.mem.addr, req.mem.len, &len);
+      uint8_t mem[req.mem.len];
+      ssize_t nread = target->read_bytes_fallible(req.mem.addr, req.mem.len, mem);
+      size_t len = max(ssize_t(0), nread);
       dbg_reply_get_mem(dbg, mem, len);
-      free(mem);
       return;
     }
     case DREQ_SET_MEM: {
