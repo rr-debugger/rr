@@ -249,6 +249,13 @@ public:
 
 private:
   template<typename Arch>
+  static bool compare_registers_arch(const char* name1,
+                                     const Registers* reg1,
+                                     const char* name2,
+                                     const Registers* reg2,
+                                     int mismatch_behavior);
+
+  template<typename Arch>
   size_t read_register_arch(uint8_t* buf, GDBRegister regno, bool* defined) const;
 
   template<typename Arch>
