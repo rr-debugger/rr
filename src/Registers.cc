@@ -176,36 +176,71 @@ struct RegisterValue {
 // purposes, but they are not useful for initializing a sparse array, as we
 // have here.
 static struct RegisterValue x86_registers[DREG_NUM_LINUX_I386];
+static struct RegisterValue x64_registers[DREG_NUM_LINUX_X86_64];
 
-static void initialize_x86_registers() {
+static void initialize_register_tables() {
   static bool initialized = false;
 
   if (initialized) {
     return;
   }
 
-#define RV(gdb_suffix, name)                                            \
-  x86_registers[DREG_##gdb_suffix] = { offsetof(rr::X86Arch::user_regs_struct, name), \
-                                       sizeof(((rr::X86Arch::user_regs_struct*)0)->name) }
+#define RV_ARCH(gdb_suffix, name, regtable, arch)                       \
+  regtable[DREG_##gdb_suffix] = { offsetof(rr::arch::user_regs_struct, name), \
+                                  sizeof(((rr::arch::user_regs_struct*)0)->name) }
+#define RV_X86(gdb_suffix, name)                        \
+  RV_ARCH(gdb_suffix, name, x86_registers, X86Arch)
+#define RV_X64(gdb_suffix, name)                \
+  RV_ARCH(gdb_suffix, name, x64_registers, X64Arch)
+
   initialized = true;
-  RV(EAX, eax);
-  RV(ECX, ecx);
-  RV(EDX, edx);
-  RV(EBX, ebx);
-  RV(ESP, esp);
-  RV(EBP, ebp);
-  RV(ESI, esi);
-  RV(EDI, edi);
-  RV(EIP, eip);
-  RV(EFLAGS, eflags);
-  RV(CS, xcs);
-  RV(SS, xss);
-  RV(DS, xds);
-  RV(ES, xes);
-  RV(FS, xfs);
-  RV(GS, xgs);
-  RV(ORIG_EAX, orig_eax);
-#undef RV
+  RV_X86(EAX, eax);
+  RV_X86(ECX, ecx);
+  RV_X86(EDX, edx);
+  RV_X86(EBX, ebx);
+  RV_X86(ESP, esp);
+  RV_X86(EBP, ebp);
+  RV_X86(ESI, esi);
+  RV_X86(EDI, edi);
+  RV_X86(EIP, eip);
+  RV_X86(EFLAGS, eflags);
+  RV_X86(CS, xcs);
+  RV_X86(SS, xss);
+  RV_X86(DS, xds);
+  RV_X86(ES, xes);
+  RV_X86(FS, xfs);
+  RV_X86(GS, xgs);
+  RV_X86(ORIG_EAX, orig_eax);
+
+  RV_X64(RAX, rax);
+  RV_X64(RCX, rcx);
+  RV_X64(RDX, rdx);
+  RV_X64(RBX, rbx);
+  RV_X64(RSP, rsp);
+  RV_X64(RBP, rbp);
+  RV_X64(RSI, rsi);
+  RV_X64(RDI, rdi);
+  RV_X64(R8, r8);
+  RV_X64(R9, r9);
+  RV_X64(R10, r10);
+  RV_X64(R11, r11);
+  RV_X64(R12, r12);
+  RV_X64(R13, r13);
+  RV_X64(R14, r14);
+  RV_X64(R15, r15);
+  RV_X64(RIP, rip);
+  RV_X64(64_EFLAGS, eflags);
+  RV_X64(64_CS, cs);
+  RV_X64(64_SS, ss);
+  RV_X64(64_DS, ds);
+  RV_X64(64_ES, es);
+  RV_X64(64_FS, fs);
+  RV_X64(64_GS, gs);
+  RV_X64(ORIG_RAX, orig_rax);
+
+#undef RV_X64
+#undef RV_X86
+#undef RV_ARCH
 }
 
 size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
@@ -214,7 +249,7 @@ size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
   // Make sure these two definitions don't get out of sync.
   assert(array_length(x86_registers) == total_registers());
 
-  initialize_x86_registers();
+  initialize_register_tables();
   RegisterValue& rv = x86_registers[regno];
   if (rv.nbytes == 0) {
     *defined = false;
@@ -228,7 +263,7 @@ size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
 
 void Registers::write_register(GDBRegister reg_name, const uint8_t* value,
                                size_t value_size) {
-  initialize_x86_registers();
+  initialize_register_tables();
   RegisterValue& rv = x86_registers[reg_name];
 
   if (rv.nbytes == 0) {
