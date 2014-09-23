@@ -752,12 +752,11 @@ static Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
  */
 static Completion enter_syscall(Task* t, const struct rep_trace_step* step,
                                 Stepping stepi) {
-  Completion ret;
-  if ((ret = cont_syscall_boundary(t, step->syscall.emu, stepi))) {
-    return ret;
+  if (cont_syscall_boundary(t, step->syscall.emu, stepi) == INCOMPLETE) {
+    return INCOMPLETE;
   }
   validate_args(step->syscall.number, SYSCALL_ENTRY, t);
-  return ret;
+  return COMPLETE;
 }
 
 /**
@@ -769,9 +768,8 @@ static Completion exit_syscall(Task* t, const struct rep_trace_step* step,
   ExecOrEmulate emu = step->syscall.emu;
 
   if (emu == EXEC) {
-    Completion ret = cont_syscall_boundary(t, emu, stepi);
-    if (ret == INCOMPLETE) {
-      return ret;
+    if (cont_syscall_boundary(t, emu, stepi) == INCOMPLETE) {
+      return INCOMPLETE;
     }
   }
 
