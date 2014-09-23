@@ -399,7 +399,8 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
     }
     case DREQ_GET_MEM: {
       uint8_t mem[req.mem.len];
-      ssize_t nread = target->read_bytes_fallible(req.mem.addr, req.mem.len, mem);
+      ssize_t nread =
+          target->read_bytes_fallible(req.mem.addr, req.mem.len, mem);
       size_t len = max(ssize_t(0), nread);
       dbg_reply_get_mem(dbg, mem, len);
       return;
@@ -677,14 +678,20 @@ static bool entering_syscall_insn(Task* t) {
           !memcmp(insn, int_0x80, sizeof(int_0x80)));
 }
 
+enum Completion {
+  COMPLETE,
+  INCOMPLETE
+};
+
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when
- * we're emulating the syscall.  Return 0 when the next syscall
- * boundary is reached, or nonzero if advancing to the boundary was
+ * we're emulating the syscall.  Return COMPLETE when the next syscall
+ * boundary is reached, or INCOMPLETE if advancing to the boundary was
  * interrupted by an unknown trap.
  */
-static int cont_syscall_boundary(Task* t, ExecOrEmulate emu, Stepping stepi) {
+static Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
+                                        Stepping stepi) {
   bool is_syscall_entry =
       SYSCALL_ENTRY == t->current_trace_frame().event().state;
   if (is_syscall_entry) {
@@ -728,24 +735,24 @@ static int cont_syscall_boundary(Task* t, ExecOrEmulate emu, Stepping stepi) {
     return cont_syscall_boundary(t, emu, stepi);
   }
   if (SIGTRAP == t->child_sig) {
-    return 1;
+    return INCOMPLETE;
   } else if (t->child_sig) {
     ASSERT(t, false) << "Replay got unrecorded signal " << t->child_sig;
   }
 
   assert(t->child_sig == 0);
 
-  return 0;
+  return COMPLETE;
 }
 
 /**
  * Advance to the next syscall entry (or virtual entry) according to
- * |step|.  Return 0 if successful, or nonzero if an unhandled trap
+ * |step|.  Return COMPLETE if successful, or INCOMPLETE if an unhandled trap
  * occurred.
  */
-static int enter_syscall(Task* t, const struct rep_trace_step* step,
-                         Stepping stepi) {
-  int ret;
+static Completion enter_syscall(Task* t, const struct rep_trace_step* step,
+                                Stepping stepi) {
+  Completion ret;
   if ((ret = cont_syscall_boundary(t, step->syscall.emu, stepi))) {
     return ret;
   }
@@ -755,21 +762,20 @@ static int enter_syscall(Task* t, const struct rep_trace_step* step,
 
 /**
  * Advance past the reti (or virtual reti) according to |step|.
- * Return 0 if successful, or nonzero if an unhandled trap occurred.
+ * Return COMPLETE if successful, or INCOMPLETE if an unhandled trap occurred.
  */
-static int exit_syscall(Task* t, const struct rep_trace_step* step,
-                        Stepping stepi) {
-  int i;
+static Completion exit_syscall(Task* t, const struct rep_trace_step* step,
+                               Stepping stepi) {
   ExecOrEmulate emu = step->syscall.emu;
 
   if (emu == EXEC) {
-    int ret = cont_syscall_boundary(t, emu, stepi);
-    if (ret) {
+    Completion ret = cont_syscall_boundary(t, emu, stepi);
+    if (ret == INCOMPLETE) {
       return ret;
     }
   }
 
-  for (i = 0; i < step->syscall.num_emu_args; ++i) {
+  for (int i = 0; i < step->syscall.num_emu_args; ++i) {
     t->set_data_from_trace();
   }
   if (step->syscall.emu_ret) {
@@ -780,7 +786,7 @@ static int exit_syscall(Task* t, const struct rep_trace_step* step,
   if (emu == EMULATE) {
     t->finish_emulated_syscall();
   }
-  return 0;
+  return COMPLETE;
 }
 
 /**
@@ -929,8 +935,8 @@ static TrapType compute_trap_type(Task* t, int target_sig,
  * Shortcut for callers that don't care about internal breakpoints.
  * Return nonzero if |t|'s trap is for the debugger, zero otherwise.
  */
-static int is_debugger_trap(Task* t, int target_sig, SigDeliveryType delivery,
-                            ExecStateType exec_state, Stepping stepi) {
+static bool is_debugger_trap(Task* t, int target_sig, SigDeliveryType delivery,
+                             ExecStateType exec_state, Stepping stepi) {
   TrapType type = compute_trap_type(t, target_sig, delivery, exec_state, stepi);
   assert(TRAP_BKPT_INTERNAL != type);
   return TRAP_NONE != type;
@@ -1040,15 +1046,15 @@ static Ticks get_ticks_slack(Task* t) {
 
 /**
  * Run execution forwards for |t| until |ticks| is reached, and the $ip
- * reaches the recorded $ip.  Return 0 if successful or 1 if an
+ * reaches the recorded $ip.  Return COMPLETE if successful or INCOMPLETE if an
  * unhandled interrupt occurred.  |sig| is the pending signal to be
  * delivered; it's only used to distinguish debugger-related traps
  * from traps related to replaying execution.  |ticks| is an inout param
  * that will be decremented by branches retired during this attempted
  * step.
  */
-static int advance_to(Task* t, const Registers* regs, int sig, Stepping stepi,
-                      Ticks ticks) {
+static Completion advance_to(Task* t, const Registers* regs, int sig,
+                             Stepping stepi, Ticks ticks) {
   pid_t tid = t->tid;
   remote_ptr<uint8_t> ip = regs->ip();
   Ticks ticks_left;
@@ -1077,7 +1083,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, Stepping stepi,
        * hit a debugger breakpoint or the debugger
        * was single-stepping the tracee.  (The
        * debugging code will verify that.) */
-      return 1;
+      return INCOMPLETE;
     }
     t->child_sig = 0;
 
@@ -1134,11 +1140,9 @@ static int advance_to(Task* t, const Registers* regs, int sig, Stepping stepi,
      * to |compute_debugger_trap()|.  The rest can be
      * straightforwardly computed with ticks value and
      * registers. */
-    int at_target;
-
-    at_target = is_same_execution_point(t, regs, ticks_left, ticks_slack,
-                                        &ignored_early_match,
-                                        &ticks_left_at_ignored_early_match);
+    bool at_target = is_same_execution_point(
+        t, regs, ticks_left, ticks_slack, &ignored_early_match,
+        &ticks_left_at_ignored_early_match);
     if (SIGTRAP == t->child_sig) {
       TrapType trap_type = compute_trap_type(
           t, sig, ASYNC, at_target ? AT_TARGET : NOT_AT_TARGET, stepi);
@@ -1152,7 +1156,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, Stepping stepi,
             t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
             did_set_internal_breakpoint = false;
           }
-          return 1;
+          return INCOMPLETE;
         case TRAP_BKPT_INTERNAL: {
           /* Case (1) above: cover the tracks of
            * our internal breakpoint, and go
@@ -1202,7 +1206,7 @@ static int advance_to(Task* t, const Registers* regs, int sig, Stepping stepi,
       // there was slack.
       t->set_tick_count(ticks);
       /* Case (2) above: done. */
-      return 0;
+      return COMPLETE;
     }
 
     /* At this point, we've proven that we're not at the
@@ -1261,12 +1265,12 @@ static int advance_to(Task* t, const Registers* regs, int sig, Stepping stepi,
 }
 
 /**
- * Emulates delivery of |sig| to |oldtask|.  Returns nonzero if
- * emulation was interrupted, zero if completed.
+ * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
+ * emulation was interrupted, COMPLETE if completed.
  */
-static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
-                                   int sig, int sigtype,
-                                   struct dbg_request* req) {
+static Completion emulate_signal_delivery(struct dbg_context* dbg,
+                                          Task* oldtask, int sig, int sigtype,
+                                          struct dbg_request* req) {
   // Notify the debugger of the signal at the instruction where
   // it became pending, not in the sighandler frame (if there is
   // one).
@@ -1282,7 +1286,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
     // that knows what to do.
-    return 1;
+    return INCOMPLETE;
   }
   ASSERT(oldtask, t == oldtask) << "emulate_signal_delivery changed task";
   const TraceFrame* trace = &t->current_trace_frame();
@@ -1321,7 +1325,7 @@ static int emulate_signal_delivery(struct dbg_context* dbg, Task* oldtask,
   t->child_sig = 0;
 
   validate_args(0, SYSCALL_ENTRY, t);
-  return 0;
+  return COMPLETE;
 }
 
 static void check_ticks_consistency(Task* t, const Event& ev) {
@@ -1343,12 +1347,12 @@ static void check_ticks_consistency(Task* t, const Event& ev) {
 
 /**
  * Advance to the delivery of the deterministic signal |sig| and
- * update registers to what was recorded.  Return 0 if successful or 1
- * if an unhandled interrupt occurred.
+ * update registers to what was recorded.  Return COMPLETE if successful or
+ * INCOMPLETE  if an unhandled interrupt occurred.
  */
-static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
-                                        int sig, Stepping stepi,
-                                        struct dbg_request* req) {
+static Completion emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
+                                               int sig, Stepping stepi,
+                                               struct dbg_request* req) {
   Event ev(t->current_trace_frame().event());
 
   continue_or_step(t, stepi);
@@ -1357,7 +1361,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
     return emulate_deterministic_signal(dbg, t, sig, stepi, req);
   } else if (SIGTRAP == t->child_sig &&
              is_debugger_trap(t, sig, DETERMINISTIC, UNKNOWN, stepi)) {
-    return 1;
+    return INCOMPLETE;
   }
   ASSERT(t, t->child_sig == sig) << "Replay got unrecorded signal "
                                  << t->child_sig << " (expecting " << sig
@@ -1368,7 +1372,7 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
     t->set_regs(t->current_trace_frame().regs());
     /* We just "delivered" this pseudosignal. */
     t->child_sig = 0;
-    return 0;
+    return COMPLETE;
   }
   return emulate_signal_delivery(dbg, t, sig, DETERMINISTIC_SIG, req);
 }
@@ -1376,41 +1380,39 @@ static int emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
 /**
  * Run execution forwards for |t| until |t->trace.ticks| is reached,
  * and the $ip reaches the recorded $ip.  After that, deliver |sig| if
- * nonzero.  Return 0 if successful or 1 if an unhandled interrupt
- * occurred.
+ * nonzero.  Return COMPLETE if successful or INCOMPLETE if an unhandled
+ * interrupt occurred.
  */
-static int emulate_async_signal(struct dbg_context* dbg, Task* t,
-                                const Registers* regs, int sig, Stepping stepi,
-                                Ticks ticks, struct dbg_request* req) {
-  if (advance_to(t, regs, 0, stepi, ticks)) {
-    return 1;
+static Completion emulate_async_signal(struct dbg_context* dbg, Task* t,
+                                       const Registers* regs, int sig,
+                                       Stepping stepi, Ticks ticks,
+                                       struct dbg_request* req) {
+  if (advance_to(t, regs, 0, stepi, ticks) == INCOMPLETE) {
+    return INCOMPLETE;
   }
-  if (sig) {
-    if (emulate_signal_delivery(dbg, t, sig, NONDETERMINISTIC_SIG, req)) {
-      return 1;
-    }
+  if (sig && emulate_signal_delivery(dbg, t, sig, NONDETERMINISTIC_SIG, req) ==
+                 INCOMPLETE) {
+    return INCOMPLETE;
   }
-  return 0;
+  return COMPLETE;
 }
 
 /**
  * Skip over the entry/exit of either an arm-desched-event or
- * disarm-desched-event ioctl(), as described by |ds|.  Return nonzero
- * if an unhandled interrupt occurred, zero if the ioctl() was
+ * disarm-desched-event ioctl(), as described by |ds|.  Return INCOMPLETE
+ * if an unhandled interrupt occurred, COMPLETE if the ioctl() was
  * successfully skipped over.
  */
-static int skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
-                              Stepping stepi) {
-  int ret, is_desched_syscall;
-
+static Completion skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
+                                     Stepping stepi) {
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&
-      (ret = cont_syscall_boundary(t, EMULATE, stepi))) {
-    return ret;
+      cont_syscall_boundary(t, EMULATE, stepi) == INCOMPLETE) {
+    return INCOMPLETE;
   }
   ds->state = DESCHED_EXIT;
 
-  is_desched_syscall =
+  bool is_desched_syscall =
       (DESCHED_ARM == ds->type ? t->is_arm_desched_event_syscall()
                                : t->is_disarm_desched_event_syscall());
   ASSERT(t, is_desched_syscall) << "Failed to reach desched ioctl; at "
@@ -1426,7 +1428,7 @@ static int skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
   r.set_syscall_result(0);
   t->set_regs(r);
   t->finish_emulated_syscall();
-  return 0;
+  return COMPLETE;
 }
 
 /**
@@ -1520,10 +1522,10 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
 
 /**
  * Try to flush one buffered syscall as described by |flush|.  Return
- * nonzero if an unhandled interrupt occurred, and zero if the syscall
+ * INCOMPLETE if an unhandled interrupt occurred, and COMPLETE if the syscall
  * was flushed (in which case |flush->state == DONE|).
  */
-static int flush_one_syscall(Task* t, Stepping stepi) {
+static Completion flush_one_syscall(Task* t, Stepping stepi) {
   struct rep_flush_state* flush =
       &t->replay_session().current_replay_step().flush;
   const syscallbuf_hdr* flush_hdr =
@@ -1535,7 +1537,6 @@ static int flush_one_syscall(Task* t, Stepping stepi) {
       (struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
                                   flush->syscall_record_offset);
   int call = rec_rec->syscallno;
-  int ret;
   // TODO: use syscall_defs table information to determine this.
   ExecOrEmulate emu = (SYS_madvise == call) ? EXEC : EMULATE;
 
@@ -1569,16 +1570,16 @@ static int flush_one_syscall(Task* t, Stepping stepi) {
       /* Skip past the ioctl that armed the desched
        * notification. */
       LOG(debug) << "  skipping over arm-desched ioctl";
-      if ((ret = skip_desched_ioctl(t, &flush->desched, stepi))) {
-        return ret;
+      if (skip_desched_ioctl(t, &flush->desched, stepi) == INCOMPLETE) {
+        return INCOMPLETE;
       }
       flush->state = FLUSH_ENTER;
       return flush_one_syscall(t, stepi);
 
     case FLUSH_ENTER:
       LOG(debug) << "  advancing to buffered syscall entry";
-      if ((ret = cont_syscall_boundary(t, emu, stepi))) {
-        return ret;
+      if (cont_syscall_boundary(t, emu, stepi) == INCOMPLETE) {
+        return INCOMPLETE;
       }
       assert_at_buffered_syscall(t, call);
       assert_same_rec(t, rec_rec, child_rec);
@@ -1598,9 +1599,8 @@ static int flush_one_syscall(Task* t, Stepping stepi) {
       // Restore return value.
       // TODO: try to share more code with cont_syscall_boundary()
       if (emu == EXEC) {
-        int ret = cont_syscall_boundary(t, emu, stepi);
-        if (ret) {
-          return ret;
+        if (cont_syscall_boundary(t, emu, stepi) == INCOMPLETE) {
+          return INCOMPLETE;
         }
         assert_at_buffered_syscall(t, call);
       }
@@ -1619,7 +1619,7 @@ static int flush_one_syscall(Task* t, Stepping stepi) {
 
       if (!rec_rec->desched) {
         flush->state = FLUSH_DONE;
-        return 0;
+        return COMPLETE;
       }
       flush->state = FLUSH_DISARM;
       flush->desched.type = DESCHED_DISARM;
@@ -1630,25 +1630,25 @@ static int flush_one_syscall(Task* t, Stepping stepi) {
       /* And skip past the ioctl that disarmed the desched
        * notification. */
       LOG(debug) << "  skipping over disarm-desched ioctl";
-      if ((ret = skip_desched_ioctl(t, &flush->desched, stepi))) {
-        return ret;
+      if (skip_desched_ioctl(t, &flush->desched, stepi) == INCOMPLETE) {
+        return INCOMPLETE;
       }
       flush->state = FLUSH_DONE;
-      return 0;
+      return COMPLETE;
 
     default:
       FATAL() << "Unknown buffer-flush state " << flush->state;
-      return 0; /* unreached */
+      return COMPLETE; /* unreached */
   }
 }
 
 /**
  * Replay all the syscalls recorded in the interval between |t|'s
  * current execution point and the next non-syscallbuf event (the one
- * that flushed the buffer).  Return 0 if successful or 1 if an
+ * that flushed the buffer).  Return COMPLETE if successful or INCOMPLETE if an
  * unhandled interrupt occurred.
  */
-static int flush_syscallbuf(Task* t, Stepping stepi) {
+static Completion flush_syscallbuf(Task* t, Stepping stepi) {
   prepare_syscallbuf_records(t);
 
   struct rep_flush_state* flush =
@@ -1657,9 +1657,8 @@ static int flush_syscallbuf(Task* t, Stepping stepi) {
       t->replay_session().syscallbuf_flush_buffer_hdr();
 
   while (flush->num_rec_bytes_remaining > 0) {
-    int ret;
-    if ((ret = flush_one_syscall(t, stepi))) {
-      return ret;
+    if (flush_one_syscall(t, stepi) == INCOMPLETE) {
+      return INCOMPLETE;
     }
 
     assert(FLUSH_DONE == flush->state);
@@ -1675,23 +1674,23 @@ static int flush_syscallbuf(Task* t, Stepping stepi) {
     LOG(debug) << "  " << flush->num_rec_bytes_remaining
                << " bytes remain to flush";
   }
-  return 0;
+  return COMPLETE;
 }
 
 /**
- * Try to execute |step|, adjusting for |req| if needed.  Return 0 if
- * |step| was made, or nonzero if there was a trap or |step| needs
+ * Try to execute |step|, adjusting for |req| if needed.  Return COMPLETE if
+ * |step| was made, or INCOMPLETE if there was a trap or |step| needs
  * more work.
  */
-static int try_one_trace_step(struct dbg_context* dbg, Task* t,
-                              struct rep_trace_step* step,
-                              struct dbg_request* req) {
+static Completion try_one_trace_step(struct dbg_context* dbg, Task* t,
+                                     struct rep_trace_step* step,
+                                     struct dbg_request* req) {
   Stepping stepi = (DREQ_STEP == req->type && get_threadid(t) == req->target)
                        ? SINGLESTEP
                        : RUN;
   switch (step->action) {
     case TSTEP_RETIRE:
-      return 0;
+      return COMPLETE;
     case TSTEP_ENTER_SYSCALL:
       return enter_syscall(t, step, stepi);
     case TSTEP_EXIT_SYSCALL:
@@ -1708,7 +1707,7 @@ static int try_one_trace_step(struct dbg_context* dbg, Task* t,
       return skip_desched_ioctl(t, &step->desched, stepi);
     default:
       FATAL() << "Unhandled step type " << step->action;
-      return 0;
+      return COMPLETE;
   }
 }
 
@@ -2298,7 +2297,7 @@ static void replay_trace_frames(void) {
   }
 }
 
-static int serve_replay(int argc, char* argv[], char** envp) {
+static void serve_replay(int argc, char* argv[], char** envp) {
   cmdline_argc = argc;
   cmdline_argv = argv;
   session = create_session_from_cmdline();
@@ -2307,7 +2306,6 @@ static int serve_replay(int argc, char* argv[], char** envp) {
 
   session = nullptr;
   LOG(debug) << "debugger server exiting ...";
-  return 0;
 }
 
 static bool launch_debugger;
@@ -2335,7 +2333,8 @@ int replay(int argc, char* argv[], char** envp) {
   // through the rigamarole to set that up.  All it does is
   // complicate the process tree and confuse users.
   if (Flags::get().dont_launch_debugger) {
-    return serve_replay(argc, argv, envp);
+    serve_replay(argc, argv, envp);
+    return 0;
   }
 
   parent = getpid();
@@ -2357,7 +2356,8 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    return serve_replay(argc, argv, envp);
+    serve_replay(argc, argv, envp);
+    return 0;
   }
   LOG(debug) << parent << ": forked debugger server " << child;
 
