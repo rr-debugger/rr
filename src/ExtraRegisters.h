@@ -48,6 +48,8 @@ public:
   size_t read_register(uint8_t* buf, GDBRegister regno, bool* defined) const;
 
 private:
+  size_t register_size(GDBRegister regno, bool* can_read) const;
+
   friend class Task;
 
   Format format_;

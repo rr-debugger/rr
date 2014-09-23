@@ -55,13 +55,14 @@ static const int fxsave_reg_offset[] = {
   24,
 };
 
-size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
-                                     bool* defined) const {
+// Return the size of the register |regno|.  If |*can_read| is set to false,
+// then we don't know how to read this register.
+size_t ExtraRegisters::register_size(GDBRegister regno, bool* can_read) const {
   assert(format_ != NONE);
+
   // Fortunately (though it's probably not coincidence)
   // user_fpxregs_struct has the same layout as the XSAVE area.
 
-  size_t num_bytes;
   switch (regno) {
     case DREG_ST0:
     case DREG_ST1:
@@ -71,8 +72,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
     case DREG_ST5:
     case DREG_ST6:
     case DREG_ST7:
-      num_bytes = 10;
-      break;
+      return 10;
     case DREG_FCTRL:
     case DREG_FSTAT:
     case DREG_FTAG:
@@ -83,12 +83,10 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
       // the (f)xsave region, but gdb's default x86 target
       // config expects us to send back 4 bytes of data for
       // each.
-      num_bytes = 4;
-      break;
+      return 4;
     case DREG_FIOFF:
     case DREG_FOOFF:
-      num_bytes = 4;
-      break;
+      return 4;
     case DREG_XMM0:
     case DREG_XMM1:
     case DREG_XMM2:
@@ -97,11 +95,9 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
     case DREG_XMM5:
     case DREG_XMM6:
     case DREG_XMM7:
-      num_bytes = 16;
-      break;
+      return 16;
     case DREG_MXCSR:
-      num_bytes = 4;
-      break;
+      return 4;
     case DREG_YMM0H:
     case DREG_YMM1H:
     case DREG_YMM2H:
@@ -111,12 +107,25 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
     case DREG_YMM6H:
     case DREG_YMM7H:
       // TODO: support AVX registers
-      *defined = false;
+      *can_read = false;
       return 16;
     default:
-      *defined = false;
+      *can_read = false;
       return 0;
   }
+}
+
+size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
+                                     bool* defined) const {
+  assert(format_ != NONE);
+
+  bool can_read = true;
+  size_t num_bytes = register_size(regno, &can_read);
+  if (!can_read) {
+    *defined = false;
+    return num_bytes;
+  }
+
   assert(num_bytes > 0);
   assert(regno >= DREG_FIRST_FXSAVE_REG);
   size_t fxsave_idx = regno - DREG_FIRST_FXSAVE_REG;
