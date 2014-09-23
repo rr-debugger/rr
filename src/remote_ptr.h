@@ -4,6 +4,7 @@
 #define RR_REMOTE_PTR_H_
 
 #include <cstddef>
+#include <iostream>
 
 /**
  * Number of bytes to use as the element size when doing pointer arithmetic
@@ -23,12 +24,10 @@ public:
   remote_ptr() : ptr(0) {}
   remote_ptr(uintptr_t ptr) : ptr(ptr) {}
   remote_ptr(std::nullptr_t null) : ptr(0) {}
-  remote_ptr(T* ptr) : ptr(reinterpret_cast<uintptr_t>(ptr)) {}
   template <typename U> remote_ptr(remote_ptr<U> p) : ptr(p.as_int()) {
     consume_dummy(static_cast<U*>(nullptr));
   }
 
-  operator T*() const { return reinterpret_cast<T*>(ptr); }
   uintptr_t as_int() const { return ptr; }
 
   remote_ptr<T> operator+(intptr_t delta) const {
@@ -62,13 +61,22 @@ public:
     return remote_ptr<U>(ptr);
   }
 
+  bool operator!() const { return !ptr; }
   bool operator<(const remote_ptr<T>& other) const { return ptr < other.ptr; }
+  bool operator<=(const remote_ptr<T>& other) const { return ptr <= other.ptr; }
   bool operator==(const remote_ptr<T>& other) const { return ptr == other.ptr; }
+  bool operator!=(const remote_ptr<T>& other) const { return ptr != other.ptr; }
+  bool operator>(const remote_ptr<T>& other) const { return ptr > other.ptr; }
+  bool operator>=(const remote_ptr<T>& other) const { return ptr >= other.ptr; }
+
+  bool is_null() const { return !ptr; }
 
   template <typename U> remote_ptr<U> field(U& dummy) {
     return remote_ptr<U>(ptr + reinterpret_cast<uintptr_t>(&dummy));
   }
   T* dummy() { return nullptr; }
+
+  size_t referent_size() { return sizeof(T); }
 
 private:
   static void consume_dummy(T*) {}
@@ -78,5 +86,11 @@ private:
 };
 
 #define REMOTE_PTR_FIELD(p, f) (p).field((p).dummy()->f)
+
+template <typename T>
+std::ostream& operator<<(std::ostream& stream, remote_ptr<T> p) {
+  stream << (void*)p.as_int();
+  return stream;
+}
 
 #endif /* RR_REMOTE_PTR_H_ */

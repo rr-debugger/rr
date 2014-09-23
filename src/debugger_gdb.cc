@@ -1305,15 +1305,14 @@ static int to_gdb_signum(int sig) {
 
 static void send_stop_reply_packet(struct dbg_context* dbg,
                                    dbg_threadid_t thread, int sig,
-                                   void* watch_addr = nullptr) {
+                                   uintptr_t watch_addr = 0) {
   if (sig < 0) {
     write_packet(dbg, "E01");
     return;
   }
   char watch[1024];
   if (watch_addr) {
-    snprintf(watch, sizeof(watch) - 1, "watch:%" PRIxPTR ";",
-             uintptr_t(watch_addr));
+    snprintf(watch, sizeof(watch) - 1, "watch:%" PRIxPTR ";", watch_addr);
   } else {
     watch[0] = '\0';
   }
@@ -1324,7 +1323,7 @@ static void send_stop_reply_packet(struct dbg_context* dbg,
 }
 
 void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig,
-                     void* watch_addr) {
+                     uintptr_t watch_addr) {
   assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
 
   if (dbg->tgid != thread.pid) {

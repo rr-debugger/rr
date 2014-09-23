@@ -56,13 +56,13 @@ def write_syscall_record_cases(f):
         if arg_descriptor is None:
             return
         if isinstance(arg_descriptor, str):
-            f.write("    t->record_remote((void*)t->regs().%s(), sizeof(%s));\n"
-                    % (arg, arg_descriptor))
+            f.write("    t->record_remote(remote_ptr<%s>(t->regs().%s()));\n"
+                    % (arg_descriptor, arg))
         elif isinstance(arg_descriptor, syscalls.DynamicSize):
-            f.write("    t->record_remote((void*)t->regs().%s(), %s);\n"
+            f.write("    t->record_remote(remote_ptr<void>(t->regs().%s()), %s);\n"
                     % (arg, arg_descriptor.size_expr))
         elif isinstance(arg_descriptor, syscalls.NullTerminatedString):
-            f.write("    t->record_remote_str((void*)t->regs().%s());\n" % arg)
+            f.write("    t->record_remote_str(remote_ptr<void>(t->regs().%s()));\n" % arg)
         else:
             # Not reached
             assert None

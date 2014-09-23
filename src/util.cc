@@ -322,8 +322,8 @@ void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
       FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
               << " and that's not supported.";
     }
-    data.info.start_addr = (uint8_t*)start;
-    data.info.end_addr = (uint8_t*)end;
+    data.info.start_addr = start;
+    data.info.end_addr = end;
 
     data.info.prot |= strchr(flags, 'r') ? PROT_READ : 0;
     data.info.prot |= strchr(flags, 'w') ? PROT_WRITE : 0;
@@ -332,7 +332,7 @@ void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
     data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
     data.size_bytes = data.info.end_addr - data.info.start_addr;
     if (caller_wants_segment_read(t, &data.info, filt, filt_data)) {
-      void* addr = data.info.start_addr;
+      remote_ptr<void> addr = data.info.start_addr;
       ssize_t nbytes = data.size_bytes;
       data.mem = (uint8_t*)malloc(nbytes);
       data.mem_len = t->read_bytes_fallible(addr, nbytes, data.mem);
@@ -436,19 +436,20 @@ void assert_child_regs_are(Task* t, const Registers* regs) {
  * the remaining parameters.
  */
 static void dump_binary_chunk(FILE* out, const char* label, const uint32_t* buf,
-                              size_t buf_len, void* start_addr) {
+                              size_t buf_len, remote_ptr<void> start_addr) {
   int i;
 
   fprintf(out, "%s\n", label);
   for (i = 0; i < ssize_t(buf_len); i += 1) {
     uint32_t word = buf[i];
     fprintf(out, "0x%08x | [%p]\n", word,
-            (uint8_t*)start_addr + i * sizeof(*buf));
+            (void*)(start_addr.as_int() + i * sizeof(*buf)));
   }
 }
 
 void dump_binary_data(const char* filename, const char* label,
-                      const uint32_t* buf, size_t buf_len, void* start_addr) {
+                      const uint32_t* buf, size_t buf_len,
+                      remote_ptr<void> start_addr) {
   FILE* out = fopen64(filename, "w");
   if (!out) {
     return;
@@ -1067,7 +1068,9 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
       remote_socketcall_args + align_size(sizeof(struct socketcall_args));
   auto remote_msgdata = remote_msg + align_size(sizeof(msg));
   auto remote_cmsgbuf = remote_msgdata + align_size(sizeof(msgdata));
-  msgdata.iov_base = remote_msg; // doesn't matter much, we ignore the data
+  // XXX should be using Arch::iovec
+  msgdata.iov_base =
+      (void*)remote_msg.as_int(); // doesn't matter much, we ignore the data
   msgdata.iov_len = 1;
   t->write_mem(remote_msgdata.cast<struct iovec>(), msgdata);
   memset(&msg, 0, sizeof(msg));
@@ -1081,7 +1084,7 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   cmsg->cmsg_type = SCM_RIGHTS;
   *(int*)CMSG_DATA(cmsg) = fd;
   t->write_bytes_helper(remote_cmsgbuf, sizeof(cmsgbuf), &cmsgbuf);
-  msg.msg_control = remote_cmsgbuf;
+  msg.msg_control = (void*)remote_cmsgbuf.as_int();
   t->write_mem(remote_msg.cast<struct msghdr>(), msg);
   callregs = remote.regs();
   if (using_socketcall) {
@@ -1371,7 +1374,7 @@ template <>
 void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
                                   const typename X64Arch::ElfSym* symbols,
                                   const char* symbolnames) {
-  uintptr_t vdso_start = t->vm()->vdso().start.as_int();
+  auto vdso_start = t->vm()->vdso().start;
 
   for (size_t i = 0; i < nsymbols; ++i) {
     auto sym = &symbols[i];
@@ -1396,7 +1399,7 @@ void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
         assert((sym_address & ~uintptr_t(0xfff)) == base ||
                (sym_address & ~uintptr_t(0xfff)) == 0);
         uintptr_t sym_offset = sym_address & uintptr_t(0xfff);
-        t->write_bytes(reinterpret_cast<void*>(vdso_start + sym_offset),
+        t->write_bytes(vdso_start + sym_offset,
                        patch.bytes);
         LOG(debug) << "monkeypatched " << symname << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;

@@ -751,7 +751,7 @@ public:
    * This IS NOT the stack pointer.  Call |sp()| if you want
    * that.
    */
-  void* stack() const { return top_of_stack; }
+  remote_ptr<void> stack() const { return top_of_stack; }
 
   /**
    * Stashed-signal API: if a signal becomes pending at an
@@ -864,7 +864,7 @@ public:
    * return.
    */
   template <size_t N>
-  void write_bytes(void* child_addr, const uint8_t (&buf)[N]) {
+  void write_bytes(remote_ptr<void> child_addr, const uint8_t (&buf)[N]) {
     return write_bytes_helper(child_addr, N, buf);
   }
 
@@ -1135,7 +1135,7 @@ private:
    * Make the ptrace |request| with |addr| and |data|, return
    * the ptrace return value.
    */
-  long fallible_ptrace(int request, void* addr, void* data);
+  long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
   /**
    * Like |fallible_ptrace()| but infallible for most purposes.
@@ -1143,13 +1143,13 @@ private:
    * we got ESRCH. This can happen any time during recording when the
    * task gets a SIGKILL from outside.
    */
-  bool ptrace_if_alive(int request, void* addr, void* data);
+  bool ptrace_if_alive(int request, remote_ptr<void> addr, void* data);
 
   /**
    * Like |fallible_ptrace()| but completely infallible.
    * All errors are treated as fatal.
    */
-  void xptrace(int request, void* addr, void* data);
+  void xptrace(int request, remote_ptr<void> addr, void* data);
 
   /**
    * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use

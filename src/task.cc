@@ -428,8 +428,8 @@ remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
   if (args.syscallbuf_enabled) {
     traced_syscall_ip = reinterpret_cast<uintptr_t>(args.traced_syscall_ip);
     untraced_syscall_ip = reinterpret_cast<uintptr_t>(args.untraced_syscall_ip);
-    args.syscallbuf_ptr = child_map_addr =
-        init_syscall_buffer(remote, map_hint);
+    child_map_addr = init_syscall_buffer(remote, map_hint);
+    args.syscallbuf_ptr = (void*)child_map_addr.as_int();
     init_desched_fd(remote, &args, share_desched_fd);
     // Zero out the child buffers we may have used here.
     // They may contain "real" fds, which in general will
@@ -461,7 +461,7 @@ void Task::destroy_buffers(int which) {
                    scratch_size);
     vm()->unmap(scratch_ptr, scratch_size);
   }
-  if ((DESTROY_SYSCALLBUF & which) && syscallbuf_child) {
+  if ((DESTROY_SYSCALLBUF & which) && !syscallbuf_child.is_null()) {
     remote.syscall(syscall_number_for_munmap(arch()), syscallbuf_child,
                    num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
@@ -607,7 +607,7 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
   }
   switch (syscallno) {
     case Arch::brk: {
-      void* addr = reinterpret_cast<void*>(r.arg1());
+      remote_ptr<void> addr = r.arg1();
       if (!addr) {
         // A brk() update of NULL is observed with
         // libc, which apparently is its means of
@@ -623,7 +623,7 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
       return;
     }
     case Arch::mprotect: {
-      void* addr = reinterpret_cast<void*>(r.arg1());
+      remote_ptr<void> addr = r.arg1();
       size_t num_bytes = r.arg2();
       int prot = r.arg3_signed();
       return vm()->protect(addr, num_bytes, prot);
@@ -632,14 +632,14 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
       if (r.syscall_failed() && -ENOMEM != r.syscall_result_signed()) {
         return;
       }
-      void* old_addr = reinterpret_cast<void*>(r.arg1());
+      remote_ptr<void> old_addr = r.arg1();
       size_t old_num_bytes = r.arg2();
-      void* new_addr = reinterpret_cast<void*>(r.syscall_result());
+      remote_ptr<void> new_addr = r.syscall_result();
       size_t new_num_bytes = r.arg3();
       return vm()->remap(old_addr, old_num_bytes, new_addr, new_num_bytes);
     }
     case Arch::munmap: {
-      void* addr = reinterpret_cast<void*>(r.arg1());
+      remote_ptr<void> addr = r.arg1();
       size_t num_bytes = r.arg2();
       return vm()->unmap(addr, num_bytes);
     }
@@ -664,7 +664,7 @@ static string prname_from_exe_image(const string& e) {
 }
 
 void Task::pre_exec() {
-  execve_file = read_c_str((void*)regs().arg1());
+  execve_file = read_c_str(regs().arg1());
   if (execve_file[0] != '/') {
     char buf[PATH_MAX];
     snprintf(buf, sizeof(buf), "/proc/%d/cwd/%s", real_tgid(),
@@ -863,7 +863,7 @@ const ExtraRegisters& Task::extra_regs() {
       extra_registers.data.resize(xsave_area_size);
       struct iovec vec = { extra_registers.data.data(),
                            extra_registers.data.size() };
-      xptrace(PTRACE_GETREGSET, (void*)NT_X86_XSTATE, &vec);
+      xptrace(PTRACE_GETREGSET, NT_X86_XSTATE, &vec);
       ASSERT(this, vec.iov_len == xsave_area_size)
           << "Didn't get enough register data; expected " << xsave_area_size
           << " but got " << vec.iov_len;
@@ -872,7 +872,7 @@ const ExtraRegisters& Task::extra_regs() {
 
       extra_registers.format_ = ExtraRegisters::FPXREGS;
       extra_registers.data.resize(sizeof(X86Arch::user_fpxregs_struct));
-      xptrace(PTRACE_GETFPXREGS, NULL, extra_registers.data.data());
+      xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data.data());
     }
 
     extra_registers_known = true;
@@ -886,14 +886,12 @@ static ssize_t dr_user_word_offset(size_t i) {
 }
 
 uintptr_t Task::debug_status() {
-  return fallible_ptrace(PTRACE_PEEKUSER, (void*)dr_user_word_offset(6),
-                         nullptr);
+  return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(6), nullptr);
 }
 
 remote_ptr<void> Task::watchpoint_addr(size_t i) {
   assert(i < NUM_X86_WATCHPOINTS);
-  return fallible_ptrace(PTRACE_PEEKUSER, (void*)dr_user_word_offset(i),
-                         nullptr);
+  return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(i), nullptr);
 }
 
 void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
@@ -938,7 +936,7 @@ const TraceFrame& Task::current_trace_frame() {
 
 ssize_t Task::set_data_from_trace() {
   auto buf = trace_reader().read_raw_data();
-  if (buf.addr && buf.data.size() > 0) {
+  if (!buf.addr.is_null() && buf.data.size() > 0) {
     write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
   }
   return buf.data.size();
@@ -965,11 +963,11 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
     case ExtraRegisters::XSAVE: {
       struct iovec vec = { extra_registers.data.data(),
                            extra_registers.data.size() };
-      ptrace_if_alive(PTRACE_SETREGSET, (void*)NT_X86_XSTATE, &vec);
+      ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
       break;
     }
     case ExtraRegisters::FPXREGS: {
-      ptrace_if_alive(PTRACE_SETFPXREGS, NULL, extra_registers.data.data());
+      ptrace_if_alive(PTRACE_SETFPXREGS, nullptr, extra_registers.data.data());
       break;
     }
     default:
@@ -1028,19 +1026,19 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
 
   // Reset the debug status since we're about to change the set
   // of programmed watchpoints.
-  ptrace_if_alive(PTRACE_POKEUSER, (void*)dr_user_word_offset(6), 0);
+  ptrace_if_alive(PTRACE_POKEUSER, dr_user_word_offset(6), 0);
   // Ensure that we clear the programmed watchpoints in case
   // enabling one of them fails.  We guarantee atomicity to the
   // caller.
-  ptrace_if_alive(PTRACE_POKEUSER, (void*)dr_user_word_offset(7), 0);
+  ptrace_if_alive(PTRACE_POKEUSER, dr_user_word_offset(7), 0);
   if (regs.size() > NUM_X86_WATCHPOINTS) {
     return false;
   }
 
   size_t dr = 0;
   for (auto reg : regs) {
-    if (fallible_ptrace(PTRACE_POKEUSER, (void*)dr_user_word_offset(dr),
-                        reg.addr)) {
+    if (fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(dr),
+                        (void*)reg.addr.as_int())) {
       return false;
     }
     switch (dr++) {
@@ -1059,7 +1057,7 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
         FATAL() << "There's no debug register " << dr;
     }
   }
-  return 0 == fallible_ptrace(PTRACE_POKEUSER, (void*)dr_user_word_offset(7),
+  return 0 == fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(7),
                               (void*)dr7.packed());
 }
 
@@ -1130,7 +1128,7 @@ void Task::update_prname(remote_ptr<void> child_addr) {
 void Task::update_sigaction(const Registers& regs) {
   int sig = regs.arg1_signed();
   remote_ptr<struct kernel_sigaction> new_sigaction = regs.arg2();
-  if (0 == regs.syscall_result() && new_sigaction) {
+  if (0 == regs.syscall_result() && !new_sigaction.is_null()) {
     // A new sighandler was installed.  Update our
     // sighandler table.
     // TODO: discard attempts to handle or ignore signals
@@ -1432,7 +1430,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack,
   } else {
     t->as = sess.clone(as);
   }
-  if (stack) {
+  if (!stack.is_null()) {
     const Mapping& m =
         t->as->mapping_of(stack - page_size(), page_size()).first;
     LOG(debug) << "mapping stack for " << new_tid << " at " << m;
@@ -1445,7 +1443,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack,
   t->prname = prname;
   if (CLONE_CLEARTID & flags) {
     LOG(debug) << "cleartid futex is " << cleartid_addr;
-    assert(cleartid_addr);
+    assert(!cleartid_addr.is_null());
     t->tid_futex = cleartid_addr;
   } else {
     LOG(debug) << "(clone child not enabling CLEARTID)";
@@ -1521,7 +1519,7 @@ void Task::copy_state(Task* from) {
       update_prname(remote_prname.get());
     }
 
-    if (from->robust_list()) {
+    if (!from->robust_list().is_null()) {
       set_robust_list(from->robust_list(), from->robust_list_len());
       LOG(debug) << "    setting robust-list " << this->robust_list()
                  << " (size " << this->robust_list_len() << ")";
@@ -1539,12 +1537,13 @@ void Task::copy_state(Task* from) {
       set_thread_area(remote_tls.get().cast<struct user_desc>());
     }
 
-    if (void* ctid = from->tid_addr()) {
+    auto ctid = from->tid_addr();
+    if (!ctid.is_null()) {
       err = remote.syscall(syscall_number_for_set_tid_address(arch()), ctid);
       ASSERT(this, tid == err);
     }
 
-    if (from->syscallbuf_child) {
+    if (!from->syscallbuf_child.is_null()) {
       // All these fields are preserved by the fork.
       traced_syscall_ip = from->traced_syscall_ip;
       untraced_syscall_ip = from->untraced_syscall_ip;
@@ -1635,7 +1634,7 @@ void Task::detach_and_reap() {
     // and retry
   }
 
-  if (tid_futex && as->task_set().size() > 0) {
+  if (!tid_futex.is_null() && as->task_set().size() > 0) {
     // clone()'d tasks can have a pid_t* |ctid| argument
     // that's written with the new task's pid.  That
     // pointer can also be used as a futex: when the task
@@ -1646,7 +1645,7 @@ void Task::detach_and_reap() {
     LOG(debug) << "  waiting for tid futex " << tid_futex
                << " to be cleared ...";
     futex_wait(tid_futex, 0);
-  } else if (tid_futex) {
+  } else if (!tid_futex.is_null()) {
     // There are no other live tasks in this address
     // space, which means the address space just died
     // along with our exit.  So we can't read the futex.
@@ -1654,7 +1653,7 @@ void Task::detach_and_reap() {
   }
 }
 
-long Task::fallible_ptrace(int request, void* addr, void* data) {
+long Task::fallible_ptrace(int request, remote_ptr<void> addr, void* data) {
   return ptrace(__ptrace_request(request), tid, addr, data);
 }
 
@@ -1816,7 +1815,8 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
   // finish.
   int child_sock;
   if (using_socketcall) {
-    write_socketcall_args(this, args->args_vec, AF_UNIX, SOCK_STREAM, 0);
+    write_socketcall_args(this, (uintptr_t)args->args_vec, AF_UNIX, SOCK_STREAM,
+                          0);
     child_sock = remote.syscall(syscall_number_for_socketcall(remote.arch()),
                                 SYS_SOCKET, args->args_vec);
   } else {
@@ -1831,7 +1831,7 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
   Registers callregs = remote.regs();
   int remote_syscall;
   if (using_socketcall) {
-    write_socketcall_args(this, args->args_vec, child_sock,
+    write_socketcall_args(this, (uintptr_t)args->args_vec, child_sock,
                           (uintptr_t)args->sockaddr, sizeof(*args->sockaddr));
     callregs.set_arg1(SYS_CONNECT);
     callregs.set_arg2((uintptr_t)args->args_vec);
@@ -1866,7 +1866,7 @@ void Task::init_desched_fd(AutoRemoteSyscalls& remote,
   // sent us (in which case we would deadlock with the tracee).
   callregs = remote.regs();
   if (using_socketcall) {
-    write_socketcall_args(this, args->args_vec, child_sock,
+    write_socketcall_args(this, (uintptr_t)args->args_vec, child_sock,
                           (uintptr_t)args->msg, 0);
     callregs.set_arg1(SYS_SENDMSG);
     callregs.set_arg2((uintptr_t)args->args_vec);
@@ -1956,8 +1956,7 @@ ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
     uintptr_t end_word = start_word + word_size;
     uintptr_t length = std::min(end_word - start, uintptr_t(buf_size - nread));
 
-    long v = fallible_ptrace(PTRACE_PEEKDATA,
-                             reinterpret_cast<void*>(start_word), NULL);
+    long v = fallible_ptrace(PTRACE_PEEKDATA, start_word, NULL);
     if (errno) {
       break;
     }
@@ -1987,15 +1986,14 @@ ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
 
     long v;
     if (length < word_size) {
-      v = fallible_ptrace(PTRACE_PEEKDATA, (void*)start_word, NULL);
+      v = fallible_ptrace(PTRACE_PEEKDATA, start_word, NULL);
       if (errno) {
         break;
       }
     }
     memcpy(reinterpret_cast<uint8_t*>(&v) + (start - start_word),
            static_cast<const uint8_t*>(buf) + nwritten, length);
-    fallible_ptrace(PTRACE_POKEDATA, reinterpret_cast<void*>(start_word),
-                    reinterpret_cast<void*>(v));
+    fallible_ptrace(PTRACE_POKEDATA, start_word, reinterpret_cast<void*>(v));
     nwritten += length;
   }
 
@@ -2075,7 +2073,7 @@ const TraceStream& Task::trace_fstream() const {
   return session_replay->trace_reader();
 }
 
-void Task::xptrace(int request, void* addr, void* data) {
+void Task::xptrace(int request, remote_ptr<void> addr, void* data) {
   errno = 0;
   fallible_ptrace(request, addr, data);
   ASSERT(this, !errno) << "ptrace(" << ptrace_req_name(request) << ", " << tid
@@ -2083,7 +2081,7 @@ void Task::xptrace(int request, void* addr, void* data) {
                        << ") failed with errno " << errno;
 }
 
-bool Task::ptrace_if_alive(int request, void* addr, void* data) {
+bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
   errno = 0;
   fallible_ptrace(request, addr, data);
   if (errno == ESRCH) {

@@ -70,7 +70,7 @@ static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
   if (RR_MAGIC_SAVE_DATA_FD != fd) {
     return;
   }
-  void* buf = (void*)t->regs().arg2();
+  remote_ptr<void> buf = t->regs().arg2();
   size_t len = t->regs().arg3();
 
   ASSERT(t, buf) << "Can't save a null buffer";
@@ -643,7 +643,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
    * addresses values. */
   bool restart = (syscallno == Arch::restart_syscall);
   int would_need_scratch;
-  uint8_t* scratch = nullptr;
+  remote_ptr<void> scratch = nullptr;
 
   if (t->desched_rec()) {
     return set_up_scratch_for_syscallbuf<Arch>(t, syscallno);
@@ -662,7 +662,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
      * TODO: but, we'll stomp if we reenter through a
      * signal handler ... */
     reset_scratch_pointers(t);
-    scratch = (uint8_t*)t->ev().Syscall().tmp_data_ptr.as_int();
+    scratch = t->ev().Syscall().tmp_data_ptr;
   }
 
   if (syscallno < 0) {
@@ -674,26 +674,26 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
   switch (syscallno) {
     case Arch::splice: {
       Registers r = t->regs();
-      loff_t* off_in = (loff_t*)r.arg2();
-      loff_t* off_out = (loff_t*)r.arg4();
+      remote_ptr<loff_t> off_in = r.arg2();
+      remote_ptr<loff_t> off_out = r.arg4();
 
       if (!would_need_scratch) {
         return 1;
       }
 
       push_arg_ptr(t, off_in);
-      if (off_in) {
-        loff_t* off_in2 = (loff_t*)scratch;
-        scratch += sizeof(*off_in2);
-        t->remote_memcpy(off_in2, off_in, sizeof(*off_in2));
-        r.set_arg2((uintptr_t)off_in2);
+      if (!off_in.is_null()) {
+        auto off_in2 = scratch.cast<loff_t>();
+        scratch += off_in2.referent_size();
+        t->remote_memcpy(off_in2, off_in);
+        r.set_arg2(off_in2);
       }
       push_arg_ptr(t, off_out);
-      if (off_out) {
-        loff_t* off_out2 = (loff_t*)scratch;
-        scratch += sizeof(*off_out2);
-        t->remote_memcpy(off_out2, off_out, sizeof(*off_out2));
-        r.set_arg4((uintptr_t)off_out2);
+      if (!off_out.is_null()) {
+        auto off_out2 = scratch.cast<loff_t>();
+        scratch += off_out2.referent_size();
+        t->remote_memcpy(off_out2, off_out);
+        r.set_arg4(off_out2);
       }
       if (!can_use_scratch(t, scratch)) {
         return abort_scratch(t, t->syscallname(syscallno));
@@ -705,18 +705,18 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
 
     case Arch::sendfile64: {
       Registers r = t->regs();
-      loff_t* offset = (loff_t*)r.arg3();
+      remote_ptr<loff_t> offset = r.arg3();
 
       if (!would_need_scratch) {
         return 1;
       }
 
       push_arg_ptr(t, offset);
-      if (offset) {
-        loff_t* offset2 = (loff_t*)scratch;
-        scratch += sizeof(*offset2);
-        t->remote_memcpy(offset2, offset, sizeof(*offset2));
-        r.set_arg3((uintptr_t)offset2);
+      if (!offset.is_null()) {
+        auto offset2 = scratch.cast<loff_t>();
+        scratch += offset2.referent_size();
+        t->remote_memcpy(offset2, offset);
+        r.set_arg3(offset2);
       }
       if (!can_use_scratch(t, scratch)) {
         return abort_scratch(t, t->syscallname(syscallno));
@@ -728,7 +728,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
 
     case Arch::clone: {
       unsigned long flags = t->regs().arg1();
-      push_arg_ptr(t, (void*)(uintptr_t)flags);
+      push_arg_ptr(t, flags);
       if (flags & CLONE_UNTRACED) {
         Registers r = t->regs();
         // We can't let tracees clone untraced tasks,
@@ -761,7 +761,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       t->pre_exec();
 
       Registers r = t->regs();
-      string raw_filename = t->read_c_str((void*)r.arg1());
+      string raw_filename = t->read_c_str(r.arg1());
       // We can't use push_arg_ptr/pop_arg_ptr to save and restore
       // arg1 because execs get special ptrace events that clobber
       // the trace event for this system call.
@@ -817,8 +817,8 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
       Registers r = t->regs();
 
-      push_arg_ptr(t, (void*)r.arg2());
-      r.set_arg2((uintptr_t)scratch);
+      push_arg_ptr(t, r.arg2());
+      r.set_arg2(scratch);
       scratch += (size_t)r.arg3();
 
       if (!can_use_scratch(t, scratch)) {
@@ -865,22 +865,22 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
     case Arch::waitpid:
     case Arch::wait4: {
       Registers r = t->regs();
-      int* status = (int*)r.arg2();
-      typename Arch::rusage* rusage =
-          (Arch::wait4 == syscallno) ? (typename Arch::rusage*)r.arg4() : NULL;
+      remote_ptr<int> status = r.arg2();
+      remote_ptr<typename Arch::rusage> rusage =
+          (Arch::wait4 == syscallno) ? r.arg4() : (uintptr_t)0;
 
       if (!would_need_scratch) {
         return 1;
       }
       push_arg_ptr(t, status);
-      if (status) {
-        r.set_arg2((uintptr_t)scratch);
-        scratch += sizeof(*status);
+      if (!status.is_null()) {
+        r.set_arg2(scratch);
+        scratch += status.referent_size();
       }
       push_arg_ptr(t, rusage);
-      if (rusage) {
-        r.set_arg4((uintptr_t)scratch);
-        scratch += sizeof(*rusage);
+      if (!rusage.is_null()) {
+        r.set_arg4(scratch);
+        scratch += rusage.referent_size();
       }
 
       if (!can_use_scratch(t, scratch)) {
@@ -897,11 +897,11 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       Registers r = t->regs();
-      auto infop = (typename Arch::siginfo_t*)r.arg3();
+      remote_ptr<typename Arch::siginfo_t> infop = r.arg3();
       push_arg_ptr(t, infop);
-      if (infop) {
-        r.set_arg3((uintptr_t)scratch);
-        scratch += sizeof(*infop);
+      if (!infop.is_null()) {
+        r.set_arg3(scratch);
+        scratch += infop.referent_size();
       }
 
       if (!can_use_scratch(t, scratch)) {
@@ -922,8 +922,8 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
     case Arch::poll:
     case Arch::ppoll: {
       Registers r = t->regs();
-      auto fds = (typename Arch::pollfd*)r.arg1();
-      auto fds2 = (typename Arch::pollfd*)scratch;
+      remote_ptr<typename Arch::pollfd> fds = r.arg1();
+      auto fds2 = scratch.cast<typename Arch::pollfd>();
       nfds_t nfds = r.arg2();
 
       if (!would_need_scratch) {
@@ -931,15 +931,15 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
       /* XXX fds can be NULL, right? */
       push_arg_ptr(t, fds);
-      r.set_arg1((uintptr_t)fds2);
-      scratch += nfds * sizeof(*fds);
+      r.set_arg1(fds2);
+      scratch += nfds * fds.referent_size();
 
       if (!can_use_scratch(t, scratch)) {
         return abort_scratch(t, t->syscallname(syscallno));
       }
       /* |fds| is an inout param, so we need to copy over
        * the source data. */
-      t->remote_memcpy(fds2, fds, nfds * sizeof(*fds));
+      t->remote_memcpy(fds2, fds, nfds * fds.referent_size());
       t->set_regs(r);
       return 1;
     }
@@ -959,11 +959,11 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         case PR_GET_PDEATHSIG:
         case PR_GET_TSC:
         case PR_GET_UNALIGN: {
-          int* outparam = (int*)r.arg2();
+          remote_ptr<int> outparam = r.arg2();
 
           push_arg_ptr(t, outparam);
-          r.set_arg2((uintptr_t)scratch);
-          scratch += sizeof(*outparam);
+          r.set_arg2(scratch);
+          scratch += outparam.referent_size();
 
           if (!can_use_scratch(t, scratch)) {
             return abort_scratch(t, t->syscallname(syscallno));
@@ -1000,12 +1000,12 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       Registers r = t->regs();
-      auto events = (typename Arch::epoll_event*)r.arg2();
+      remote_ptr<typename Arch::epoll_event> events = r.arg2();
       int maxevents = r.arg3_signed();
 
       push_arg_ptr(t, events);
-      r.set_arg2((uintptr_t)scratch);
-      scratch += maxevents * sizeof(*events);
+      r.set_arg2(scratch);
+      scratch += maxevents * events.referent_size();
 
       if (!can_use_scratch(t, scratch)) {
         return abort_scratch(t, t->syscallname(syscallno));
@@ -1048,11 +1048,11 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       }
 
       Registers r = t->regs();
-      auto rem = (typename Arch::timespec*)r.arg2();
+      remote_ptr<typename Arch::timespec> rem = r.arg2();
       push_arg_ptr(t, rem);
-      if (rem) {
-        r.set_arg2((uintptr_t)scratch);
-        scratch += sizeof(*rem);
+      if (!rem.is_null()) {
+        r.set_arg2(scratch);
+        scratch += rem.referent_size();
       }
 
       if (!can_use_scratch(t, scratch)) {
@@ -1088,18 +1088,14 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         return 1;
       }
 
-      auto poldmsgvec = (typename Arch::mmsghdr*)r.arg2();
-      push_arg_ptr(t, (void*)r.arg2());
-      r.set_arg2((uintptr_t)scratch);
+      remote_ptr<typename Arch::mmsghdr> poldmsgvec = r.arg2();
+      push_arg_ptr(t, r.arg2());
+      r.set_arg2(scratch);
 
-      remote_ptr<void> tmpscratch = scratch;
-      if (reserve_scratch_for_msgvec<Arch>(t, r.arg3(), poldmsgvec,
-                                           &tmpscratch)) {
+      if (reserve_scratch_for_msgvec<Arch>(t, r.arg3(), poldmsgvec, &scratch)) {
         t->set_regs(r);
-        scratch = (uint8_t*)tmpscratch.as_int();
         return 1;
       } else {
-        scratch = (uint8_t*)tmpscratch.as_int();
         return 0;
       }
     }
@@ -1108,12 +1104,12 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
         return 1;
       }
       Registers r = t->regs();
-      siginfo_t* info = (siginfo_t*)r.arg2();
+      remote_ptr<siginfo_t> info = r.arg2();
       push_arg_ptr(t, info);
-      if (info) {
-        r.set_arg2((uintptr_t)scratch);
+      if (!info.is_null()) {
+        r.set_arg2(scratch);
         // TODO: is this size arch-dependent?
-        scratch += sizeof(*info);
+        scratch += info.referent_size();
       }
 
       if (!can_use_scratch(t, scratch)) {
@@ -1136,7 +1132,7 @@ template <typename Arch> static int rec_prepare_syscall_arch(Task* t) {
       // Ignore all sched_setaffinity syscalls. They might interfere
       // with our own affinity settings.
       Registers r = t->regs();
-      push_arg_ptr(t, reinterpret_cast<void*>(r.arg1()));
+      push_arg_ptr(t, r.arg1());
       // Set arg1 to an invalid PID to ensure this syscall is ignored.
       r.set_arg1(-1);
       t->set_regs(r);
@@ -1178,7 +1174,7 @@ template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
           t->ev().Syscall().saved_args.top().cast<typename Arch::timespec>();
       remote_ptr<typename Arch::timespec> rem2 = t->regs().arg2();
 
-      if (rem) {
+      if (!rem.is_null()) {
         t->remote_memcpy(rem, rem2);
         t->record_remote(rem);
       } else {
@@ -1592,7 +1588,7 @@ template <typename Arch> static void process_ipc(Task* t, int call) {
   switch (call) {
     case MSGCTL: {
       int cmd = get_ipc_command((int)t->regs().arg3_signed());
-      void* buf = (void*)t->regs().arg5();
+      remote_ptr<void> buf = t->regs().arg5();
       ssize_t buf_size;
       switch (cmd) {
         case IPC_STAT:
@@ -1921,7 +1917,7 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
         }
         args.buf = buf;
 
-        if (src_addrp) {
+        if (!src_addrp.is_null()) {
           auto addrlen = t->read_mem(args.addrlen.rptr());
           t->remote_memcpy(src_addrp, args.src_addr, addrlen);
           t->write_mem(addrlenp, addrlen);
@@ -2203,9 +2199,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       void* data = start_restoring_scratch(t, &iter);
       auto events = pop_arg_ptr<typename Arch::epoll_event>(t);
       int maxevents = t->regs().arg3_signed();
-      if (events) {
-        restore_and_record_arg_buf(t, maxevents * sizeof(*events), events,
-                                   &iter);
+      if (!events.is_null()) {
+        restore_and_record_arg_buf(t, maxevents * events.referent_size(),
+                                   events, &iter);
         Registers r = t->regs();
         r.set_arg2(events);
         t->set_regs(r);
@@ -2329,7 +2325,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
 
-      if (rem) {
+      if (!rem.is_null()) {
         Registers r = t->regs();
         /* If the sleep completes, the kernel doesn't
          * write back to the remaining-time
@@ -2372,7 +2368,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       auto fds = pop_arg_ptr<typename Arch::pollfd>(t);
       size_t nfds = t->regs().arg2();
 
-      restore_and_record_arg_buf(t, nfds * sizeof(*fds), fds, &iter);
+      restore_and_record_arg_buf(t, nfds * fds.referent_size(), fds, &iter);
       Registers r = t->regs();
       r.set_arg1(fds);
       t->set_regs(r);
@@ -2498,7 +2494,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       Registers r = t->regs();
       if (t->ev().Syscall().saved_args.empty()) {
         remote_ptr<siginfo_t> info = r.arg2();
-        if (info) {
+        if (!info.is_null()) {
           t->record_remote(info);
         } else {
           record_noop_data(t);
@@ -2509,7 +2505,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       uint8_t* iter;
       void* data = start_restoring_scratch(t, &iter);
 
-      if (info) {
+      if (!info.is_null()) {
         restore_and_record_arg(t, info, &iter);
         r.set_arg2(info);
       } else {
@@ -2525,7 +2521,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
-      if (offset) {
+      if (!offset.is_null()) {
         restore_and_record_arg(t, offset, &iter);
         r.set_arg3(offset);
       } else {
@@ -2553,13 +2549,13 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
-      if (off_in) {
+      if (!off_in.is_null()) {
         restore_and_record_arg(t, off_in, &iter);
         r.set_arg2(off_in);
       } else {
         record_noop_data(t);
       }
-      if (off_out) {
+      if (!off_out.is_null()) {
         restore_and_record_arg(t, off_out, &iter);
         r.set_arg4(off_out);
       } else {
@@ -2584,7 +2580,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
-      if (infop) {
+      if (!infop.is_null()) {
         restore_and_record_arg(t, infop, &iter);
         r.set_arg3(infop);
       } else {
@@ -2603,13 +2599,13 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
-      if (status) {
+      if (!status.is_null()) {
         restore_and_record_arg(t, status, &iter);
         r.set_arg2(status);
       } else {
         record_noop_data(t);
       }
-      if (rusage) {
+      if (!rusage.is_null()) {
         restore_and_record_arg(t, rusage, &iter);
         r.set_arg4(rusage);
       } else if (Arch::wait4 == syscallno) {

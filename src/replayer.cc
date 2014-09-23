@@ -1058,7 +1058,7 @@ static Ticks get_ticks_slack(Task* t) {
 static int advance_to(Task* t, const Registers* regs, int sig, Stepping stepi,
                       Ticks ticks) {
   pid_t tid = t->tid;
-  uint8_t* ip = (uint8_t*)regs->ip();
+  remote_ptr<uint8_t> ip = regs->ip();
   Ticks ticks_left;
   Ticks ticks_slack = get_ticks_slack(t);
   bool did_set_internal_breakpoint = false;
@@ -2012,7 +2012,8 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
     if (!req.suppress_debugger_stop) {
       /* Notify the debugger and process any new requests
        * that might have triggered before resuming. */
-      dbg_notify_stop(dbg, get_threadid(t), 0x05 /*gdb mandate*/, watch_addr);
+      dbg_notify_stop(dbg, get_threadid(t), 0x05 /*gdb mandate*/,
+                      watch_addr.as_int());
     }
     req = process_debugger_requests(dbg, t);
     if (DREQ_RESTART == req.type) {

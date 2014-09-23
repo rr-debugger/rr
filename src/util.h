@@ -112,7 +112,8 @@ void print_register_file_compact(FILE* file, const Registers* regs);
  * look like "0xValue | [0xAddr]".
  */
 void dump_binary_data(const char* filename, const char* label,
-                      const uint32_t* buf, size_t buf_len, void* start_addr);
+                      const uint32_t* buf, size_t buf_len,
+                      remote_ptr<void> start_addr);
 
 /**
  * Format a suitable filename within the trace directory for dumping

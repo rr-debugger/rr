@@ -658,7 +658,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
 }
 
 Mapping AddressSpace::vdso() const {
-  assert(vdso_start_addr);
+  assert(!vdso_start_addr.is_null());
   return mapping_of(vdso_start_addr, 1).first;
 }
 
@@ -683,7 +683,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
   if (session.can_validate()) {
     iterate_memory_map(t, populate_address_space, this, kNeverReadSegment,
                        NULL);
-    assert(vdso_start_addr);
+    assert(!vdso_start_addr.is_null());
   }
 }
 

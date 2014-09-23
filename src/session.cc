@@ -213,7 +213,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
   }
   // XXX this condition is x86/x64-specific, I imagine.
   bool page_offset_mmap_in_use = has_mmap2_syscall(remote.arch());
-  void* addr = (void*)remote.syscall(
+  remote_ptr<void> addr = remote.syscall(
       page_offset_mmap_in_use ? syscall_number_for_mmap2(remote.arch())
                               : syscall_number_for_mmap(remote.arch()),
       m.start, m.num_bytes(), m.prot,
