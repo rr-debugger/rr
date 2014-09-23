@@ -472,14 +472,14 @@ bool should_dump_memory(Task* t, const TraceFrame& f) {
   if (is_syscall_exit && RECORD == Flags->option &&
       FIRST_INTERESTING_EVENT <= global_time &&
       global_time <= LAST_INTERESTING_EVENT) {
-    return 1;
+    return true;
   }
   if (global_time > LAST_INTERESTING_EVENT) {
-    return 0;
+    return false;
   }
 #endif
-  return (flags->dump_on == Flags::DUMP_ON_ALL ||
-          flags->dump_at == int(f.time()));
+  return flags->dump_on == Flags::DUMP_ON_ALL ||
+         flags->dump_at == int(f.time());
 }
 
 void dump_process_memory(Task* t, int global_time, const char* tag) {
