@@ -48,6 +48,17 @@ public:
     }
   }
 
+  const void* ptrace_registers() const {
+    switch (arch()) {
+      case x86:
+        return &u.x86regs;
+      case x86_64:
+        return &u.x64regs;
+      default:
+        assert(0 && "unknown architecture");
+    }
+  }
+
 #define RR_GET_REG(x86case, x64case)                                           \
   (arch() == x86 ? u.x86regs.x86case                                           \
                  : arch() == x86_64                                            \
@@ -237,6 +248,32 @@ public:
                       size_t value_size);
 
 private:
+  template<typename Arch>
+  void print_register_file_arch(FILE* f, const char* formats[]) const;
+
+  enum TraceStyle {
+    Annotated,
+    Raw,
+  };
+
+  template<typename Arch>
+  void print_register_file_for_trace_arch(FILE* f, TraceStyle style,
+                                          const char* formats[]) const;
+
+  template<typename Arch>
+  static bool compare_registers_arch(const char* name1,
+                                     const Registers* reg1,
+                                     const char* name2,
+                                     const Registers* reg2,
+                                     int mismatch_behavior);
+
+  template<typename Arch>
+  size_t read_register_arch(uint8_t* buf, GDBRegister regno, bool* defined) const;
+
+  template<typename Arch>
+  void write_register_arch(GDBRegister regno, const uint8_t* value,
+                           size_t value_size);
+
   union AllRegisters {
     rr::X86Arch::user_regs_struct x86regs;
     rr::X64Arch::user_regs_struct x64regs;
