@@ -1709,8 +1709,7 @@ static Completion try_one_trace_step(struct dbg_context* dbg, Task* t,
  * All we can do is notify the debugger, process its final requests,
  * and then die.
  */
-static void handle_interrupted_trace(struct dbg_context* dbg,
-                                     Task* t) {
+static void handle_interrupted_trace(struct dbg_context* dbg, Task* t) {
   if (!probably_not_interactive()) {
     fprintf(
         stderr,

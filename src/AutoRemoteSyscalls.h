@@ -5,6 +5,8 @@
 
 #include <string.h>
 
+#include <vector>
+
 #include "Registers.h"
 
 class AutoRemoteSyscalls;
@@ -58,7 +60,7 @@ private:
   /* Address of tmp mem. */
   remote_ptr<void> addr;
   /* Pointer to saved data. */
-  uint8_t* data;
+  std::vector<uint8_t> data;
   /* (We keep this around for error checking.) */
   remote_ptr<void> saved_sp;
   /* Length of tmp mem. */
