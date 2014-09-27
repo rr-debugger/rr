@@ -63,10 +63,10 @@ static const int fxsave_reg_offset[] = {
 //
 static const int fxsave_64_reg_offset[] = {
   // DREG_64_ST0-DREG_64_ST7
-  st_regs_offset + st_reg_space * 0,   st_regs_offset + st_reg_space * 1,
-  st_regs_offset + st_reg_space * 2,   st_regs_offset + st_reg_space * 3,
-  st_regs_offset + st_reg_space * 4,   st_regs_offset + st_reg_space * 5,
-  st_regs_offset + st_reg_space * 6,   st_regs_offset + st_reg_space * 7,
+  st_regs_offset + st_reg_space * 0,    st_regs_offset + st_reg_space * 1,
+  st_regs_offset + st_reg_space * 2,    st_regs_offset + st_reg_space * 3,
+  st_regs_offset + st_reg_space * 4,    st_regs_offset + st_reg_space * 5,
+  st_regs_offset + st_reg_space * 6,    st_regs_offset + st_reg_space * 7,
   // The Intel documentation says that the following layout is only valid in
   // 32-bit mode, or when fxsave is executed in 64-bit mode without an
   // appropriate REX prefix.  The kernel seems to only use fxsave with the
@@ -82,11 +82,11 @@ static const int fxsave_64_reg_offset[] = {
   6,  // DREG_64_FOP
 
   // DREG_64_XMM0-DREG_64_XMM15
-  xmm_regs_offset + xmm_reg_space * 0, xmm_regs_offset + xmm_reg_space * 1,
-  xmm_regs_offset + xmm_reg_space * 2, xmm_regs_offset + xmm_reg_space * 3,
-  xmm_regs_offset + xmm_reg_space * 4, xmm_regs_offset + xmm_reg_space * 5,
-  xmm_regs_offset + xmm_reg_space * 6, xmm_regs_offset + xmm_reg_space * 7,
-  xmm_regs_offset + xmm_reg_space * 8, xmm_regs_offset + xmm_reg_space * 9,
+  xmm_regs_offset + xmm_reg_space * 0,  xmm_regs_offset + xmm_reg_space * 1,
+  xmm_regs_offset + xmm_reg_space * 2,  xmm_regs_offset + xmm_reg_space * 3,
+  xmm_regs_offset + xmm_reg_space * 4,  xmm_regs_offset + xmm_reg_space * 5,
+  xmm_regs_offset + xmm_reg_space * 6,  xmm_regs_offset + xmm_reg_space * 7,
+  xmm_regs_offset + xmm_reg_space * 8,  xmm_regs_offset + xmm_reg_space * 9,
   xmm_regs_offset + xmm_reg_space * 10, xmm_regs_offset + xmm_reg_space * 11,
   xmm_regs_offset + xmm_reg_space * 12, xmm_regs_offset + xmm_reg_space * 13,
   xmm_regs_offset + xmm_reg_space * 14, xmm_regs_offset + xmm_reg_space * 15,

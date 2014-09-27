@@ -248,7 +248,7 @@ public:
                       size_t value_size);
 
 private:
-  template<typename Arch>
+  template <typename Arch>
   void print_register_file_arch(FILE* f, const char* formats[]) const;
 
   enum TraceStyle {
@@ -256,21 +256,20 @@ private:
     Raw,
   };
 
-  template<typename Arch>
+  template <typename Arch>
   void print_register_file_for_trace_arch(FILE* f, TraceStyle style,
                                           const char* formats[]) const;
 
-  template<typename Arch>
-  static bool compare_registers_arch(const char* name1,
-                                     const Registers* reg1,
-                                     const char* name2,
-                                     const Registers* reg2,
+  template <typename Arch>
+  static bool compare_registers_arch(const char* name1, const Registers* reg1,
+                                     const char* name2, const Registers* reg2,
                                      int mismatch_behavior);
 
-  template<typename Arch>
-  size_t read_register_arch(uint8_t* buf, GDBRegister regno, bool* defined) const;
+  template <typename Arch>
+  size_t read_register_arch(uint8_t* buf, GDBRegister regno,
+                            bool* defined) const;
 
-  template<typename Arch>
+  template <typename Arch>
   void write_register_arch(GDBRegister regno, const uint8_t* value,
                            size_t value_size);
 

@@ -23,29 +23,26 @@ struct RegisterValue {
   uint64_t comparison_mask;
 
   constexpr RegisterValue()
-    : name(nullptr), offset(0), nbytes(0), comparison_mask(0)
-  {}
+      : name(nullptr), offset(0), nbytes(0), comparison_mask(0) {}
 
   RegisterValue(const char* name_, size_t offset_, size_t nbytes_)
-    : name(name_), offset(offset_), nbytes(nbytes_)
-  {
+      : name(name_), offset(offset_), nbytes(nbytes_) {
     comparison_mask = mask_for_nbytes(nbytes_);
   }
 
   RegisterValue(const char* name_, size_t offset_, size_t nbytes_,
                 uint64_t comparison_mask_)
-    : name(name_), offset(offset_), nbytes(nbytes_)
-    , comparison_mask(comparison_mask_)
-  {
+      : name(name_),
+        offset(offset_),
+        nbytes(nbytes_),
+        comparison_mask(comparison_mask_) {
     // Ensure no bits are set outside of the register's bitwidth.
     assert((comparison_mask_ & ~mask_for_nbytes(nbytes_)) == 0);
   }
   // Returns a pointer to the register in |regs| represented by |offset|.
   // |regs| is assumed to be a pointer to the user_struct_regs for the
   // appropriate architecture.
-  void* pointer_into(void* regs) {
-    return static_cast<char*>(regs) + offset;
-  }
+  void* pointer_into(void* regs) { return static_cast<char*>(regs) + offset; }
 
   const void* pointer_into(const void* regs) {
     return static_cast<const char*>(regs) + offset;
@@ -60,19 +57,16 @@ private:
   }
 };
 
-template<typename T>
-struct RegisterInfo;
+template <typename T> struct RegisterInfo;
 
-template<>
-struct RegisterInfo<rr::X86Arch> {
+template <> struct RegisterInfo<rr::X86Arch> {
   static bool ignore_undefined_register(GDBRegister regno) {
     return regno == DREG_FOSEG || regno == DREG_MXCSR;
   }
   static struct RegisterValue registers[DREG_NUM_LINUX_I386];
 };
 
-template<>
-struct RegisterInfo<rr::X64Arch> {
+template <> struct RegisterInfo<rr::X64Arch> {
   static bool ignore_undefined_register(GDBRegister regno) {
     return regno == DREG_64_FOSEG || regno == DREG_64_MXCSR;
   }
@@ -80,7 +74,8 @@ struct RegisterInfo<rr::X64Arch> {
 };
 
 struct RegisterValue RegisterInfo<rr::X86Arch>::registers[DREG_NUM_LINUX_I386];
-struct RegisterValue RegisterInfo<rr::X64Arch>::registers[DREG_NUM_LINUX_X86_64];
+struct RegisterValue RegisterInfo<rr::X64Arch>::registers
+    [DREG_NUM_LINUX_X86_64];
 
 // You might think, "why can't we use designated initializers here?"  Doing so
 // would be most convenient, except that designated initializers are not a part
@@ -97,23 +92,23 @@ static void initialize_register_tables() {
     return;
   }
 
-#define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)        \
-  do {                                          \
-    size_t offset = offsetof(arch::user_regs_struct, name);     \
-    size_t nbytes = sizeof(((arch::user_regs_struct*)0)->name); \
-    RegisterInfo<arch>::registers[DREG_##gdb_suffix] =          \
-      RegisterValue(#name, offset, nbytes extra_ctor_args);     \
-  } while(0)
-#define RV_X86(gdb_suffix, name)                \
+#define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)                       \
+  do {                                                                         \
+    size_t offset = offsetof(arch::user_regs_struct, name);                    \
+    size_t nbytes = sizeof(((arch::user_regs_struct*)0)->name);                \
+    RegisterInfo<arch>::registers[DREG_##gdb_suffix] =                         \
+        RegisterValue(#name, offset, nbytes extra_ctor_args);                  \
+  } while (0)
+#define RV_X86(gdb_suffix, name)                                               \
   RV_ARCH(gdb_suffix, name, rr::X86Arch, /* empty */)
-#define RV_X64(gdb_suffix, name)                \
+#define RV_X64(gdb_suffix, name)                                               \
   RV_ARCH(gdb_suffix, name, rr::X64Arch, /* empty */)
 #define COMMA ,
-#define RV_X86_WITH_MASK(gdb_suffix, name, comparison_mask)     \
+#define RV_X86_WITH_MASK(gdb_suffix, name, comparison_mask)                    \
   RV_ARCH(gdb_suffix, name, rr::X86Arch, COMMA comparison_mask)
-#define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask)     \
+#define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask)                    \
   RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask)
-  
+
   initialized = true;
 
   /* The following are eflags that have been observed to be non-deterministic
@@ -126,7 +121,7 @@ static void initialize_register_tables() {
     RESERVED_FLAG_1 = 1 << 1,
     /* According to http://www.logix.cz/michal/doc/i386/chp04-01.htm:
 
-         The RF flag temporarily disables debug exceptions so that an 
+         The RF flag temporarily disables debug exceptions so that an
          instruction can be restarted after a debug exception without
          immediately causing another debug exception.  Refer to Chapter 12
          for details.
@@ -143,7 +138,7 @@ static void initialize_register_tables() {
     CPUID_ENABLED_FLAG = 1 << 21,
   };
   const uint64_t deterministic_eflags_mask =
-    ~uint32_t(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
+      ~uint32_t(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
 
   RV_X86(EAX, eax);
   RV_X86(ECX, ecx);
@@ -200,26 +195,22 @@ static void initialize_register_tables() {
 // format_index in RegisterPrinting depends on the ordering here.
 static const char* hex_format[] = { "%" PRIx32, "%" PRIx64 };
 static const char* hex_format_leading_0x[] = { "0x%" PRIx32, "0x%" PRIx64 };
-//static const char* decimal_format[] = { "%" PRId32, "%" PRId64 };
+// static const char* decimal_format[] = { "%" PRId32, "%" PRId64 };
 
-template<size_t nbytes>
-struct RegisterPrinting;
+template <size_t nbytes> struct RegisterPrinting;
 
-template<>
-struct RegisterPrinting<4> {
+template <> struct RegisterPrinting<4> {
   typedef uint32_t type;
   static const size_t format_index = 0;
 };
 
-template<>
-struct RegisterPrinting<8> {
+template <> struct RegisterPrinting<8> {
   typedef uint64_t type;
   static const size_t format_index = 1;
 };
 
-template<size_t nbytes>
-void print_single_register(FILE* f, const char* name,
-                           const void* register_ptr,
+template <size_t nbytes>
+void print_single_register(FILE* f, const char* name, const void* register_ptr,
                            const char* formats[]) {
   typename RegisterPrinting<nbytes>::type val;
   memcpy(&val, register_ptr, nbytes);
@@ -231,7 +222,7 @@ void print_single_register(FILE* f, const char* name,
   fprintf(f, formats[RegisterPrinting<nbytes>::format_index], val);
 }
 
-template<typename Arch>
+template <typename Arch>
 void Registers::print_register_file_arch(FILE* f, const char* formats[]) const {
   initialize_register_tables();
   fprintf(f, "Printing register file:\n");
@@ -241,14 +232,16 @@ void Registers::print_register_file_arch(FILE* f, const char* formats[]) const {
       continue;
     }
     switch (rv.nbytes) {
-    case 8:
-      print_single_register<8>(f, rv.name, rv.pointer_into(user_regs), formats);
-      break;
-    case 4:
-      print_single_register<4>(f, rv.name, rv.pointer_into(user_regs), formats);
-      break;
-    default:
-      assert(0 && "bad register size");
+      case 8:
+        print_single_register<8>(f, rv.name, rv.pointer_into(user_regs),
+                                 formats);
+        break;
+      case 4:
+        print_single_register<4>(f, rv.name, rv.pointer_into(user_regs),
+                                 formats);
+        break;
+      default:
+        assert(0 && "bad register size");
     }
     fprintf(f, "\n");
   }
@@ -259,9 +252,9 @@ void Registers::print_register_file(FILE* f) const {
   RR_ARCH_FUNCTION(print_register_file_arch, arch(), f, hex_format);
 }
 
-template<typename Arch>
-void Registers::print_register_file_for_trace_arch(FILE* f, TraceStyle style,
-                                                   const char* formats[]) const {
+template <typename Arch>
+void Registers::print_register_file_for_trace_arch(
+    FILE* f, TraceStyle style, const char* formats[]) const {
   initialize_register_tables();
   const void* user_regs = ptrace_registers();
   for (auto& rv : RegisterInfo<Arch>::registers) {
@@ -273,27 +266,27 @@ void Registers::print_register_file_for_trace_arch(FILE* f, TraceStyle style,
     const char* name = (style == Annotated ? rv.name : nullptr);
 
     switch (rv.nbytes) {
-    case 8:
-      print_single_register<8>(f, name, rv.pointer_into(user_regs), formats);
-      break;
-    case 4:
-      print_single_register<4>(f, name, rv.pointer_into(user_regs), formats);
-      break;
-    default:
-      assert(0 && "bad register size");
+      case 8:
+        print_single_register<8>(f, name, rv.pointer_into(user_regs), formats);
+        break;
+      case 4:
+        print_single_register<4>(f, name, rv.pointer_into(user_regs), formats);
+        break;
+      default:
+        assert(0 && "bad register size");
     }
   }
   fprintf(f, "\n");
 }
 
 void Registers::print_register_file_compact(FILE* f) const {
-  RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(),
-                   f, Annotated, hex_format);
+  RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(), f, Annotated,
+                   hex_format);
 }
 
 void Registers::print_register_file_for_trace(FILE* f) const {
-  RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(),
-                   f, Annotated, hex_format_leading_0x);
+  RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(), f, Annotated,
+                   hex_format_leading_0x);
 }
 
 void Registers::print_register_file_for_trace_raw(FILE* f) const {
@@ -316,11 +309,9 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
   }
 }
 
-template<typename Arch>
-static bool compare_registers_core(const char* name1,
-                                   const Registers* reg1,
-                                   const char* name2,
-                                   const Registers* reg2,
+template <typename Arch>
+static bool compare_registers_core(const char* name1, const Registers* reg1,
+                                   const char* name2, const Registers* reg2,
                                    int mismatch_behavior) {
   initialize_register_tables();
   bool match = true;
@@ -343,8 +334,8 @@ static bool compare_registers_core(const char* name1,
     val2 &= rv.comparison_mask;
 
     if (val1 != val2) {
-      maybe_print_reg_mismatch(mismatch_behavior, rv.name,
-                               name1, val1, name2, val2);
+      maybe_print_reg_mismatch(mismatch_behavior, rv.name, name1, val1, name2,
+                               val2);
       match = false;
     }
   }
@@ -364,25 +355,21 @@ static bool compare_registers_core(const char* name1,
 
 // A wrapper around compare_registers_core so registers requiring special
 // processing can be handled via template specialization.
-template<typename Arch>
-/* static */ bool
-Registers::compare_registers_arch(const char* name1,
-                                  const Registers* reg1,
-                                  const char* name2,
-                                  const Registers* reg2,
-                                  int mismatch_behavior) {
+template <typename Arch>
+/* static */ bool Registers::compare_registers_arch(const char* name1,
+                                                    const Registers* reg1,
+                                                    const char* name2,
+                                                    const Registers* reg2,
+                                                    int mismatch_behavior) {
   // Default behavior.
   return compare_registers_core<Arch>(name1, reg1, name2, reg2,
                                       mismatch_behavior);
 }
 
-template<>
-/* static */ bool
-Registers::compare_registers_arch<rr::X86Arch>(const char* name1,
-                                               const Registers* reg1,
-                                               const char* name2,
-                                               const Registers* reg2,
-                                               int mismatch_behavior) {
+template <>
+/* static */ bool Registers::compare_registers_arch<rr::X86Arch>(
+    const char* name1, const Registers* reg1, const char* name2,
+    const Registers* reg2, int mismatch_behavior) {
   bool match = compare_registers_core<rr::X86Arch>(name1, reg1, name2, reg2,
                                                    mismatch_behavior);
   /* Negative orig_eax values, observed at SCHED events and signals,
@@ -396,13 +383,10 @@ Registers::compare_registers_arch<rr::X86Arch>(const char* name1,
   return match;
 }
 
-template<>
-/* static */ bool
-Registers::compare_registers_arch<rr::X64Arch>(const char* name1,
-                                               const Registers* reg1,
-                                               const char* name2,
-                                               const Registers* reg2,
-                                               int mismatch_behavior) {
+template <>
+/* static */ bool Registers::compare_registers_arch<rr::X64Arch>(
+    const char* name1, const Registers* reg1, const char* name2,
+    const Registers* reg2, int mismatch_behavior) {
   bool match = compare_registers_core<rr::X64Arch>(name1, reg1, name2, reg2,
                                                    mismatch_behavior);
   // XXX haven't actually observed this to be true on x86-64 yet, but
@@ -419,11 +403,11 @@ Registers::compare_registers_arch<rr::X64Arch>(const char* name1,
                                                   const Registers* reg2,
                                                   int mismatch_behavior) {
   assert(reg1->arch() == reg2->arch());
-  RR_ARCH_FUNCTION(compare_registers_arch, reg1->arch(),
-                   name1, reg1, name2, reg2, mismatch_behavior);
+  RR_ARCH_FUNCTION(compare_registers_arch, reg1->arch(), name1, reg1, name2,
+                   reg2, mismatch_behavior);
 }
 
-template<typename Arch>
+template <typename Arch>
 size_t Registers::read_register_arch(uint8_t* buf, GDBRegister regno,
                                      bool* defined) const {
   assert(regno < total_registers());
@@ -447,7 +431,7 @@ size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
   RR_ARCH_FUNCTION(read_register_arch, arch(), buf, regno, defined);
 }
 
-template<typename Arch>
+template <typename Arch>
 void Registers::write_register_arch(GDBRegister regno, const uint8_t* value,
                                     size_t value_size) {
   initialize_register_tables();
