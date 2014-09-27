@@ -8,7 +8,7 @@
 
 #include "debugger_gdb.h"
 #include "log.h"
-#include "remote_syscalls.h"
+#include "AutoRemoteSyscalls.h"
 #include "replayer.h"
 #include "session.h"
 #include "task.h"

@@ -51,7 +51,7 @@
 #include "log.h"
 #include "recorder.h" // for terminate_recording()
 #include "recorder_sched.h"
-#include "remote_syscalls.h"
+#include "AutoRemoteSyscalls.h"
 #include "session.h"
 #include "syscalls.h"
 #include "task.h"

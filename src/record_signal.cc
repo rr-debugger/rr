@@ -21,7 +21,7 @@
 #include "log.h"
 #include "PerfCounters.h"
 #include "recorder.h"
-#include "remote_syscalls.h"
+#include "AutoRemoteSyscalls.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"

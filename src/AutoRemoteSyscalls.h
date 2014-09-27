@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_REMOTE_SYSCALLS_H_
-#define RR_REMOTE_SYSCALLS_H_
+#ifndef RR_AUTO_REMOTE_SYSCALLS_H_
+#define RR_AUTO_REMOTE_SYSCALLS_H_
 
 #include <string.h>
 
@@ -187,4 +187,4 @@ private:
   void operator delete(void*) = delete;
 };
 
-#endif // RR_REMOTE_SYSCALLS_H_
+#endif // RR_AUTO_REMOTE_SYSCALLS_H_

@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "RemoteSyscalls"
 
-#include "remote_syscalls.h"
+#include "AutoRemoteSyscalls.h"
 
 #include "log.h"
 #include "task.h"

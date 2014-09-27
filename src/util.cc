@@ -40,7 +40,7 @@
 #include "kernel_abi.h"
 #include "log.h"
 #include "recorder_sched.h"
-#include "remote_syscalls.h"
+#include "AutoRemoteSyscalls.h"
 #include "replayer.h"
 #include "session.h"
 #include "syscalls.h"

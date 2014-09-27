@@ -11,7 +11,7 @@
 
 #include "emufs.h"
 #include "log.h"
-#include "remote_syscalls.h"
+#include "AutoRemoteSyscalls.h"
 #include "task.h"
 #include "util.h"
 
