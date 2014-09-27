@@ -8,6 +8,8 @@
 #include "task.h"
 #include "util.h"
 
+const uint8_t AutoRemoteSyscalls::syscall_insn[] = { 0xcd, 0x80 };
+
 void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
   len = num_bytes;
   saved_sp = remote.regs().sp();

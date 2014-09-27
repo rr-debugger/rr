@@ -10,10 +10,8 @@
 class AutoRemoteSyscalls;
 class Task;
 
-static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
-
 /**
- * Helpers to make remote syscalls oh behalf of a Task.  Usage looks
+ * Helpers to make remote syscalls on behalf of a Task.  Usage looks
  * like
  *
  *    AutoRemoteSyscalls remote(t); // prepare remote syscalls
@@ -180,6 +178,7 @@ private:
   Registers initial_regs;
   remote_ptr<uint8_t> initial_ip;
   int pending_syscallno;
+  static const uint8_t syscall_insn[2];
   uint8_t code_buffer[sizeof(syscall_insn)];
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
