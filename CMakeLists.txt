@@ -268,6 +268,7 @@ set(TESTS_WITH_PROGRAM
   priority
   ptrace
   read_big_struct
+  restart_abnormal_exit
   segfault
   sigill
   step_thread

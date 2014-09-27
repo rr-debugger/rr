@@ -1710,20 +1710,13 @@ static Completion try_one_trace_step(struct dbg_context* dbg, Task* t,
  * and then die.
  */
 static void handle_interrupted_trace(struct dbg_context* dbg,
-                                     Task* t = nullptr) {
+                                     Task* t) {
   if (!probably_not_interactive()) {
     fprintf(
         stderr,
         "\nrr: (Trace terminated early at this point during recording.)\n\n");
   }
-  if (dbg) {
-    dbg_notify_stop(dbg, t ? get_threadid(t) : DBG_ALL_THREADS, 0x05);
-    LOG(info) << ("Processing last round of debugger requests.");
-    process_debugger_requests(dbg, t);
-    dbg_destroy_context(&dbg);
-  }
-  LOG(info) << ("Exiting.");
-  exit(0);
+  session->set_last_task(t);
 }
 
 /** Return true when replaying/debugging should cease after |t| exits. */
@@ -1922,7 +1915,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
       // would have seen the marker at
       // |schedule_task()|.
       handle_interrupted_trace(dbg, t);
-      return true; // not reached
+      return true;
     }
 
     TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
@@ -2261,7 +2254,8 @@ static void replay_trace_frames(void) {
       Task* intr_t;
       Task* t = schedule_task(*session, &intr_t, advance_to_next_trace_frame);
       if (!t) {
-        return handle_interrupted_trace(dbg, intr_t);
+        handle_interrupted_trace(dbg, intr_t);
+        break;
       }
       struct dbg_request restart_request;
       if (replay_one_trace_frame(dbg, t, &restart_request)) {
