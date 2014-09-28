@@ -666,7 +666,7 @@ void AddressSpace::verify(Task* t) const {
   assert(task_set().end() != task_set().find(t));
 
   VerifyAddressSpace vas(this);
-  iterate_memory_map(t, check_segment_iterator, &vas, kNeverReadSegment, NULL);
+  iterate_memory_map(t, check_segment_iterator, &vas);
 
   assert(vas.MERGING_KERNEL == vas.phase);
   vas.assert_segments_match(t);
@@ -681,8 +681,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
   if (session.can_validate()) {
-    iterate_memory_map(t, populate_address_space, this, kNeverReadSegment,
-                       NULL);
+    iterate_memory_map(t, populate_address_space, this);
     assert(!vdso_start_addr.is_null());
   }
 }

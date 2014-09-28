@@ -17,7 +17,6 @@
 #include <linux/ipc.h>
 #include <linux/magic.h>
 #include <linux/net.h>
-#include <malloc.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -266,21 +265,7 @@ static void trim_leading_blanks(char* str) {
   memmove(str, trimmed, strlen(trimmed) + 1 /*\0 byte*/);
 }
 
-static bool caller_wants_segment_read(Task* t,
-                                      const struct mapped_segment_info* info,
-                                      read_segment_filter_t filt,
-                                      void* filt_data) {
-  if (kNeverReadSegment == filt) {
-    return false;
-  }
-  if (kAlwaysReadSegment == filt) {
-    return true;
-  }
-  return filt(filt_data, t, info);
-}
-
-void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
-                        read_segment_filter_t filt, void* filt_data) {
+void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data) {
   FILE* maps_file;
   char line[PATH_MAX];
   {
@@ -331,17 +316,8 @@ void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
     data.info.flags |= strchr(flags, 'p') ? MAP_PRIVATE : 0;
     data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
     data.size_bytes = data.info.end_addr - data.info.start_addr;
-    if (caller_wants_segment_read(t, &data.info, filt, filt_data)) {
-      remote_ptr<void> addr = data.info.start_addr;
-      ssize_t nbytes = data.size_bytes;
-      data.mem = (uint8_t*)malloc(nbytes);
-      data.mem_len = t->read_bytes_fallible(addr, nbytes, data.mem);
-      /* TODO: expose read errors, somehow. */
-      data.mem_len = max(ssize_t(0), data.mem_len);
-    }
 
     iterator_action next_action = it(it_data, t, &data);
-    free(data.mem);
 
     if (STOP_ITERATING == next_action) {
       break;
@@ -357,8 +333,7 @@ static iterator_action print_process_mmap_iterator(
 }
 
 void print_process_mmap(Task* t) {
-  iterate_memory_map(t, print_process_mmap_iterator, NULL, kNeverReadSegment,
-                     NULL);
+  iterate_memory_map(t, print_process_mmap_iterator, NULL);
 }
 
 bool is_page_aligned(const uint8_t* addr) {

@@ -193,25 +193,12 @@ struct map_iterator_data {
   struct mapped_segment_info info;
   /* The nominal size of the data segment. */
   ssize_t size_bytes;
-  /* Pointer to data read from the segment if requested,
-   * otherwise NULL. */
-  uint8_t* mem;
-  /* Length of data read from segment.  May be less than nominal
-   * segment length if an error occurs. */
-  ssize_t mem_len;
   const char* raw_map_line;
 };
 typedef iterator_action (*memory_map_iterator_t)(
     void* it_data, Task* t, const struct map_iterator_data* data);
 
-typedef bool (*read_segment_filter_t)(void* filt_data, Task* t,
-                                      const struct mapped_segment_info* info);
-static const read_segment_filter_t kNeverReadSegment = (read_segment_filter_t)0;
-static const read_segment_filter_t kAlwaysReadSegment =
-    (read_segment_filter_t)1;
-
-void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data,
-                        read_segment_filter_t filt, void* filt_data);
+void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data);
 
 /**
  * Get the current time from the preferred monotonic clock in units of
