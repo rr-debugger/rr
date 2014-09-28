@@ -42,7 +42,7 @@
 #include "log.h"
 #include "PerfCounters.h"
 #include "replay_syscall.h"
-#include "session.h"
+#include "ReplaySession.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -2392,22 +2392,6 @@ int replay(int argc, char* argv[], char** envp) {
   }
 
   return 0;
-}
-
-void emergency_debug(Task* t) {
-  RecordSession* record_session = t->session().as_record();
-  if (record_session) {
-    record_session->trace_writer().close();
-  }
-
-  if (probably_not_interactive() && !Flags::get().force_things) {
-    errno = 0;
-    FATAL()
-        << "(session doesn't look interactive, aborting emergency debugging)";
-  }
-
-  start_debug_server(t);
-  FATAL() << "Can't resume execution from invalid state";
 }
 
 void start_debug_server(Task* t) {

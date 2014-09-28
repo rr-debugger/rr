@@ -10,7 +10,7 @@
 #include "log.h"
 #include "AutoRemoteSyscalls.h"
 #include "replayer.h"
-#include "session.h"
+#include "ReplaySession.h"
 #include "task.h"
 
 // The global diversion session, of which there can only be one at a

@@ -40,17 +40,6 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
 bool is_ignored_replay_signal(int sig);
 
 /**
- * Open a temporary debugging connection for |t| and service requests
- * until the user quits or requests execution to resume.
- *
- * You probably don't want to use this directly; instead, use
- * |assert_exec()| from dbg.h.
- *
- * This function does not return.
- */
-void emergency_debug(Task* t);
-
-/**
  * Start a debugging connection for |t| and return when there are no
  * more requests to process (usually because the debugger detaches).
  *

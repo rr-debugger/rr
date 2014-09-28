@@ -31,7 +31,7 @@
 #include "record_signal.h"
 #include "record_syscall.h"
 #include "recorder_sched.h"
-#include "session.h"
+#include "RecordSession.h"
 #include "StringVectorToCharArray.h"
 #include "task.h"
 #include "TraceStream.h"

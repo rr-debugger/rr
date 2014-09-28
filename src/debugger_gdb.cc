@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "log.h"
-#include "session.h"
+#include "ReplaySession.h"
 
 #define INTERRUPT_CHAR '\x03'
 

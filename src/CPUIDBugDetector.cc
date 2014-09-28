@@ -4,7 +4,7 @@
 #include "Event.h"
 #include "Flags.h"
 #include "kernel_abi.h"
-#include "session.h"
+#include "Session.h"
 #include "task.h"
 
 using namespace rr;

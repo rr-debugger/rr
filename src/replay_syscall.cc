@@ -45,7 +45,7 @@
 #include "log.h"
 #include "AutoRemoteSyscalls.h"
 #include "replayer.h"
-#include "session.h"
+#include "ReplaySession.h"
 #include "syscalls.h"
 #include "task.h"
 #include "TraceStream.h"

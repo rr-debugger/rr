@@ -11,7 +11,7 @@
 
 #include "Flags.h"
 #include "GDBRegister.h"
-#include "session.h"
+#include "ReplaySession.h"
 
 #define DBG_SOCKET_READY_SIG SIGURG
 

@@ -11,7 +11,7 @@
 #include <string>
 
 #include "log.h"
-#include "session.h"
+#include "ReplaySession.h"
 
 using namespace std;
 

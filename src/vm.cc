@@ -7,7 +7,7 @@
 #include <linux/kdev_t.h>
 
 #include "log.h"
-#include "session.h"
+#include "Session.h"
 #include "task.h"
 
 using namespace std;

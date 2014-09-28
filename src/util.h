@@ -207,6 +207,17 @@ typedef iterator_action (*memory_map_iterator_t)(
 void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data);
 
 /**
+ * Open a temporary debugging connection for |t| and service requests
+ * until the user quits or requests execution to resume.
+ *
+ * You probably don't want to use this directly; instead, use
+ * |assert_exec()| from dbg.h.
+ *
+ * This function does not return.
+ */
+void emergency_debug(Task* t);
+
+/**
  * Get the current time from the preferred monotonic clock in units of
  * seconds, relative to an unspecific point in the past.
  */

@@ -18,8 +18,7 @@
 
 #include "Flags.h"
 #include "log.h"
-#include "recorder.h"
-#include "session.h"
+#include "RecordSession.h"
 #include "task.h"
 
 using namespace std;

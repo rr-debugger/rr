@@ -83,9 +83,11 @@ add_executable(rr
   src/record_syscall.cc
   src/Registers.cc
   src/AutoRemoteSyscalls.cc
+  src/RecordSession.cc
+  src/ReplaySession.cc
   src/replayer.cc
   src/replay_syscall.cc
-  src/session.cc
+  src/Session.cc
   src/syscalls.cc
   src/task.cc
   src/TraceFrame.cc

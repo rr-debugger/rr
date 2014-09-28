@@ -45,14 +45,14 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "drm.h"
 #include "Flags.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "recorder.h" // for terminate_recording()
 #include "recorder_sched.h"
-#include "AutoRemoteSyscalls.h"
-#include "session.h"
+#include "RecordSession.h"
 #include "syscalls.h"
 #include "task.h"
 #include "TraceStream.h"
