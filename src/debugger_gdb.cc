@@ -435,13 +435,12 @@ static void write_hex_bytes_packet(struct dbg_context* dbg,
     return;
   }
 
-  char* buf = (char*)malloc(2 * len + 1);
+  char buf[2 * len + 1];
   for (size_t i = 0; i < len; ++i) {
     unsigned long b = bytes[i];
     snprintf(&buf[2 * i], 3, "%02lx", b);
   }
   write_packet(dbg, buf);
-  free(buf);
 }
 
 /**
