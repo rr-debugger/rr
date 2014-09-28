@@ -1236,26 +1236,6 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
 }
 
 /**
- * Read the scratch data written by the kernel in the syscall and
- * return an opaque handle to it.  The outparam |iter| can be used to
- * copy the read memory.
- *
- * The returned opaque handle must be passed to
- * |finish_restoring_scratch()|.
- */
-static void* start_restoring_scratch(Task* t, uint8_t** iter) {
-  // TODO: manage this in Task.
-  remote_ptr<void> scratch = t->ev().Syscall().tmp_data_ptr;
-  ssize_t num_bytes = t->ev().Syscall().tmp_data_num_bytes;
-
-  assert(num_bytes >= 0);
-
-  uint8_t* data = (uint8_t*)malloc(num_bytes);
-  t->read_bytes_helper(scratch, num_bytes, data);
-  return *iter = data;
-}
-
-/**
  * Return nonzero if tracee pointers were saved while preparing for
  * the syscall |t->ev|.
  */
@@ -1274,71 +1254,98 @@ template <typename T> static remote_ptr<T> pop_arg_ptr(Task* t) {
   return arg.cast<T>();
 }
 
-/**
- * Write |num_bytes| of data from |parent_data_iter| to |child_addr|.
- * Record the written data so that it can be restored during replay of
- * |syscallno|.
- */
-static void restore_and_record_arg_buf(Task* t, size_t num_bytes,
-                                       remote_ptr<void> child_addr,
-                                       uint8_t** parent_data_iter) {
-  // TODO: move scratch-arg tracking into Task
-  uint8_t* parent_data = *parent_data_iter;
-  t->write_bytes_helper(child_addr, num_bytes, parent_data);
-  t->record_local(child_addr, num_bytes, parent_data);
-  *parent_data_iter += num_bytes;
-}
-
-template <typename T>
-static void restore_and_record_arg(Task* t, remote_ptr<T> child_arg,
-                                   uint8_t** parent_data_iter) {
-  return restore_and_record_arg_buf(t, sizeof(T), child_arg, parent_data_iter);
-}
-
-/**
- * Finish the sequence of operations begun by the most recent
- * |start_restoring_scratch()| and check that no mistakes were made.
- * |*data| must be the opaque handle returned by |start_*()|.
- *
- * Don't call this directly; use one of the helpers below.
- */
-enum {
+enum AllowSlack {
+  /**
+   * Require that all saved scratch data was consumed.
+   */
   NO_SLACK = 0,
+  /**
+   * Allow some saved scratch data to remain unconsumed,
+   * for example if a buffer wasn't filled entirely.
+   */
   ALLOW_SLACK = 1
 };
-static void finish_restoring_scratch_slack(Task* t, uint8_t* iter, void** datap,
-                                           int slack) {
-  uint8_t* data = (uint8_t*)*datap;
-  ssize_t consumed = (iter - data);
-  ssize_t diff = t->ev().Syscall().tmp_data_num_bytes - consumed;
 
-  assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
-  ASSERT(t, !diff || (slack && diff > 0))
-      << "Saved " << t->ev().Syscall().tmp_data_num_bytes
-      << " bytes of scratch memory but consumed " << consumed;
-  if (slack) {
-    LOG(debug) << "Left " << diff << " bytes unconsumed in scratch";
+/**
+ * Read the scratch data written by the kernel in the syscall and
+ * provide an iterator to read through it.
+ */
+class AutoRestoreScratch {
+public:
+  AutoRestoreScratch(Task* t, AllowSlack slack = NO_SLACK)
+      : t(t), iter(nullptr), slack(slack) {
+    remote_ptr<void> scratch = t->ev().Syscall().tmp_data_ptr;
+    ssize_t num_bytes = t->ev().Syscall().tmp_data_num_bytes;
+    if (num_bytes < 0) {
+      // Scratch was not used
+      return;
+    }
+
+    data.resize(num_bytes);
+    t->read_bytes_helper(scratch, num_bytes, data.data());
+    iter = data.data();
   }
-  ASSERT(t, t->ev().Syscall().saved_args.empty())
-      << "Under-consumed saved arg pointers";
+  /**
+   * Finish the sequence of operations and check that no mistakes were made.
+   */
+  ~AutoRestoreScratch() {
+    if (!iter) {
+      return;
+    }
 
-  free(data);
-}
+    ssize_t consumed = iter - data.data();
+    ssize_t diff = t->ev().Syscall().tmp_data_num_bytes - consumed;
 
-/**
- * Like above, but require that all saved scratch data was consumed.
- */
-static void finish_restoring_scratch(Task* t, uint8_t* iter, void** data) {
-  return finish_restoring_scratch_slack(t, iter, data, NO_SLACK);
-}
+    assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
+    ASSERT(t, !diff || (slack && diff > 0))
+        << "Saved " << t->ev().Syscall().tmp_data_num_bytes
+        << " bytes of scratch memory but consumed " << consumed;
+    if (slack) {
+      LOG(debug) << "Left " << diff << " bytes unconsumed in scratch";
+    }
+    ASSERT(t, t->ev().Syscall().saved_args.empty())
+        << "Under-consumed saved arg pointers";
+  }
 
-/**
- * Like above, but allow some saved scratch data to remain unconsumed,
- * for example if a buffer wasn't filled entirely.
- */
-static void finish_restoring_some_scratch(Task* t, uint8_t* iter, void** data) {
-  return finish_restoring_scratch_slack(t, iter, data, ALLOW_SLACK);
-}
+  bool scratch_used() { return iter; }
+
+  /**
+   * Write |count| values of type T to |child_addr|.
+   * Record the written data so that it can be restored during replay.
+   */
+  template <typename T>
+  void restore_and_record_args(remote_ptr<T> child_addr, size_t count) {
+    ASSERT(t, scratch_used());
+    size_t num_bytes = count * sizeof(T);
+    t->write_bytes_helper(child_addr, num_bytes, iter);
+    t->record_local(child_addr, num_bytes, iter);
+    iter += num_bytes;
+  }
+
+  void restore_and_record_arg_buf(remote_ptr<void> child_addr, size_t bytes) {
+    restore_and_record_args(child_addr.cast<uint8_t>(), bytes);
+  }
+
+  template <typename T>
+  void restore_and_record_arg(remote_ptr<T> child_addr, T* value = nullptr) {
+    if (value) {
+      memcpy(value, iter, sizeof(T));
+    }
+    restore_and_record_args(child_addr, 1);
+  }
+
+  template <typename T> void read_arg(T* value) {
+    ASSERT(t, scratch_used());
+    memcpy(value, iter, sizeof(T));
+    iter += sizeof(T);
+  }
+
+private:
+  Task* t;
+  vector<uint8_t> data;
+  uint8_t* iter;
+  AllowSlack slack;
+};
 
 static const unsigned int elf_aux[] = {
   AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
@@ -1864,21 +1871,18 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
      * }
      */
     case SYS_RECV: {
-      typename Arch::recv_args args;
+      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
       remote_ptr<void> buf;
       remote_ptr<void> argsp;
-      uint8_t* iter;
-      void* data = NULL;
+      typename Arch::recv_args args;
       ssize_t nrecvd = t->regs().syscall_result_signed();
       if (has_saved_arg_ptrs(t)) {
         buf = pop_arg_ptr<void>(t);
         argsp = pop_arg_ptr<void>(t);
-        data = start_restoring_scratch(t, &iter);
         /* We don't need to record the fudging of the
          * socketcall arguments, because we won't
          * replay that. */
-        memcpy(&args, iter, sizeof(args));
-        iter += sizeof(args);
+        restore_scratch.read_arg(&args);
       } else {
         remote_ptr<void> argsp;
         args = read_socketcall_args<typename Arch::recv_args>(t, &argsp);
@@ -1887,8 +1891,8 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
 
       /* Restore |buf| contents. */
       if (0 < nrecvd) {
-        if (data) {
-          restore_and_record_arg_buf(t, nrecvd, buf, &iter);
+        if (restore_scratch.scratch_used()) {
+          restore_scratch.restore_and_record_arg_buf(buf, nrecvd);
         } else {
           t->record_remote(buf, nrecvd);
         }
@@ -1896,12 +1900,11 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
         record_noop_data(t);
       }
 
-      if (data) {
+      if (restore_scratch.scratch_used()) {
         Registers r = t->regs();
         /* Restore the pointer to the original args. */
         r.set_arg2(argsp);
         t->set_regs(r);
-        finish_restoring_some_scratch(t, iter, &data);
       }
       return;
     }
@@ -1998,23 +2001,22 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
       auto addrlenp = pop_arg_ptr<typename Arch::socklen_t>(t);
       auto orig_argsp = pop_arg_ptr<void>(t);
 
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
+      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
       // Consume the scratch args.
       if (SYS_ACCEPT == call) {
-        iter += sizeof(typename Arch::accept_args);
+        typename Arch::accept_args args;
+        restore_scratch.read_arg(&args);
       } else {
-        iter += sizeof(typename Arch::accept4_args);
+        typename Arch::accept4_args args;
+        restore_scratch.read_arg(&args);
       }
-      auto addrlen = *(typename Arch::socklen_t*)iter;
-      restore_and_record_arg_buf(t, sizeof(addrlen), addrlenp, &iter);
-      restore_and_record_arg_buf(t, addrlen, addrp, &iter);
+      typename Arch::socklen_t addrlen;
+      restore_scratch.restore_and_record_arg(addrlenp, &addrlen);
+      restore_scratch.restore_and_record_arg_buf(addrp, addrlen);
 
       /* Restore the pointer to the original args. */
       r.set_arg2(orig_argsp);
       t->set_regs(r);
-
-      finish_restoring_some_scratch(t, iter, &data);
       return;
     }
 
@@ -2198,20 +2200,17 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::epoll_wait: {
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
+      AutoRestoreScratch restore_scratch(t);
       auto events = pop_arg_ptr<typename Arch::epoll_event>(t);
       int maxevents = t->regs().arg3_signed();
       if (!events.is_null()) {
-        restore_and_record_arg_buf(t, maxevents * events.referent_size(),
-                                   events, &iter);
+        restore_scratch.restore_and_record_args(events, maxevents);
         Registers r = t->regs();
         r.set_arg2(events);
         t->set_regs(r);
       } else {
         record_noop_data(t);
       }
-      finish_restoring_scratch(t, iter, &data);
       break;
     }
     case Arch::execve:
@@ -2327,9 +2326,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case Arch::nanosleep: {
+      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
       auto rem = pop_arg_ptr<typename Arch::timespec>(t);
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
 
       if (!rem.is_null()) {
         Registers r = t->regs();
@@ -2344,13 +2342,11 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
            * see an EINTR return from
            * nanosleep() when it's interrupted
            * by a user-handled signal. */
-          restore_and_record_arg(t, rem, &iter);
+          restore_scratch.restore_and_record_arg(rem);
         }
         r.set_arg2(rem);
         t->set_regs(r);
       }
-
-      finish_restoring_some_scratch(t, iter, &data);
       break;
     }
     case Arch::open: {
@@ -2369,16 +2365,14 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     }
     case Arch::poll:
     case Arch::ppoll: {
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
+      AutoRestoreScratch restore_scratch(t);
       auto fds = pop_arg_ptr<typename Arch::pollfd>(t);
       size_t nfds = t->regs().arg2();
 
-      restore_and_record_arg_buf(t, nfds * fds.referent_size(), fds, &iter);
+      restore_scratch.restore_and_record_args(fds, nfds);
       Registers r = t->regs();
       r.set_arg1(fds);
       t->set_regs(r);
-      finish_restoring_scratch(t, iter, &data);
       break;
     }
     case Arch::prctl: {
@@ -2409,16 +2403,13 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           break;
       }
       if (size > 0) {
-        uint8_t* iter;
-        void* data = start_restoring_scratch(t, &iter);
+        AutoRestoreScratch restore_scratch(t);
         auto arg = pop_arg_ptr<void>(t);
 
-        restore_and_record_arg_buf(t, size, arg, &iter);
+        restore_scratch.restore_and_record_arg_buf(arg, size);
         Registers r = t->regs();
         r.set_arg2(arg);
         t->set_regs(r);
-
-        finish_restoring_scratch(t, iter, &data);
       } else {
         record_noop_data(t);
       }
@@ -2449,21 +2440,19 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::read: {
+      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
       remote_ptr<void> buf;
-      uint8_t* iter;
-      void* data = nullptr;
 
       ssize_t nread = t->regs().syscall_result_signed();
       if (has_saved_arg_ptrs(t)) {
         buf = pop_arg_ptr<void>(t);
-        data = start_restoring_scratch(t, &iter);
       } else {
         buf = t->regs().arg2();
       }
 
       if (nread > 0) {
-        if (data) {
-          restore_and_record_arg_buf(t, nread, buf, &iter);
+        if (restore_scratch.scratch_used()) {
+          restore_scratch.restore_and_record_arg_buf(buf, nread);
         } else {
           t->record_remote(buf, nread);
         }
@@ -2471,11 +2460,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         record_noop_data(t);
       }
 
-      if (data) {
+      if (restore_scratch.scratch_used()) {
         Registers r = t->regs();
         r.set_arg2(buf);
         t->set_regs(r);
-        finish_restoring_some_scratch(t, iter, &data);
       }
       break;
     }
@@ -2507,35 +2495,31 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         }
         break;
       }
-      auto info = pop_arg_ptr<typename Arch::siginfo_t>(t);
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
 
+      AutoRestoreScratch restore_scratch(t);
+      auto info = pop_arg_ptr<typename Arch::siginfo_t>(t);
       if (!info.is_null()) {
-        restore_and_record_arg(t, info, &iter);
+        restore_scratch.restore_and_record_arg(info);
         r.set_arg2(info);
       } else {
         record_noop_data(t);
       }
       t->set_regs(r);
-      finish_restoring_scratch(t, iter, &data);
       break;
     }
     case Arch::sendfile64: {
+      AutoRestoreScratch restore_scratch(t);
       auto offset = pop_arg_ptr<loff_t>(t);
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
       if (!offset.is_null()) {
-        restore_and_record_arg(t, offset, &iter);
+        restore_scratch.restore_and_record_arg(offset);
         r.set_arg3(offset);
       } else {
         record_noop_data(t);
       }
 
       t->set_regs(r);
-      finish_restoring_scratch(t, iter, &data);
       break;
     }
     case Arch::sendmmsg: {
@@ -2549,27 +2533,25 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case Arch::splice: {
+      AutoRestoreScratch restore_scratch(t);
       auto off_out = pop_arg_ptr<loff_t>(t);
       auto off_in = pop_arg_ptr<loff_t>(t);
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
       if (!off_in.is_null()) {
-        restore_and_record_arg(t, off_in, &iter);
+        restore_scratch.restore_and_record_arg(off_in);
         r.set_arg2(off_in);
       } else {
         record_noop_data(t);
       }
       if (!off_out.is_null()) {
-        restore_and_record_arg(t, off_out, &iter);
+        restore_scratch.restore_and_record_arg(off_out);
         r.set_arg4(off_out);
       } else {
         record_noop_data(t);
       }
 
       t->set_regs(r);
-      finish_restoring_scratch(t, iter, &data);
       break;
     }
     case Arch::_sysctl: {
@@ -2581,45 +2563,39 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::waitid: {
+      AutoRestoreScratch restore_scratch(t);
       auto infop = pop_arg_ptr<typename Arch::siginfo_t>(t);
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
       if (!infop.is_null()) {
-        restore_and_record_arg(t, infop, &iter);
+        restore_scratch.restore_and_record_arg(infop);
         r.set_arg3(infop);
       } else {
         record_noop_data(t);
       }
       t->set_regs(r);
-
-      finish_restoring_scratch(t, iter, &data);
       break;
     }
     case Arch::waitpid:
     case Arch::wait4: {
+      AutoRestoreScratch restore_scratch(t);
       auto rusage = pop_arg_ptr<typename Arch::rusage>(t);
       auto status = pop_arg_ptr<int>(t);
-      uint8_t* iter;
-      void* data = start_restoring_scratch(t, &iter);
 
       Registers r = t->regs();
       if (!status.is_null()) {
-        restore_and_record_arg(t, status, &iter);
+        restore_scratch.restore_and_record_arg(status);
         r.set_arg2(status);
       } else {
         record_noop_data(t);
       }
       if (!rusage.is_null()) {
-        restore_and_record_arg(t, rusage, &iter);
+        restore_scratch.restore_and_record_arg(rusage);
         r.set_arg4(rusage);
       } else if (Arch::wait4 == syscallno) {
         record_noop_data(t);
       }
       t->set_regs(r);
-
-      finish_restoring_scratch(t, iter, &data);
       break;
     }
     case Arch::write:
