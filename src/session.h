@@ -16,7 +16,6 @@
 #include "replayer.h"
 
 class AddressSpace;
-struct current_state_buffer;
 class EmuFs;
 class Task;
 struct TaskGroup;

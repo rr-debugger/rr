@@ -704,8 +704,6 @@ void validate_process_memory(Task* t, int global_time) {
   iterate_checksums(t, VALIDATE_CHECKSUMS, global_time);
 }
 
-void cleanup_code_injection(struct current_state_buffer* buf) { free(buf); }
-
 void copy_syscall_arg_regs(Registers* to, const Registers* from) {
   to->set_arg1(from->arg1());
   to->set_arg2(from->arg2());
