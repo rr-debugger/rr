@@ -254,6 +254,12 @@ static long traced_raw_syscall(const struct syscall_info* call) {
 extern __attribute__((
     visibility("hidden"))) void* get_traced_syscall_entry_point(void);
 
+#if defined(SYS_fcntl64)
+#define RR_FCNTL_SYSCALL SYS_fcntl64
+#else
+#define RR_FCNTL_SYSCALL SYS_fcntl
+#endif
+
 static int traced_fcntl(int fd, int cmd, ...) {
   va_list ap;
   void* arg;
@@ -262,7 +268,7 @@ static int traced_fcntl(int fd, int cmd, ...) {
   arg = va_arg(ap, void*);
   va_end(ap);
 
-  return traced_syscall3(SYS_fcntl64, fd, cmd, arg);
+  return traced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
 }
 
 static pid_t traced_getpid(void) { return traced_syscall0(SYS_getpid); }
@@ -393,6 +399,7 @@ extern __attribute__((
  * return value from the kernel.  Callers must update errno
  * themselves if necessary.
  */
+#if defined(SYS_socketcall)
 static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
                                 long a4) {
   unsigned long args[] = { a0, a1, a2, a3, a4 };
@@ -408,6 +415,7 @@ static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
 #define untraced_socketcall2(no, a0, a1) untraced_socketcall3(no, a0, a1, 0)
 #define untraced_socketcall1(no, a0) untraced_socketcall2(no, a0, 0)
 #define untraced_socketcall0(no) untraced_socketcall1(no, 0)
+#endif
 
 extern
     __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void);
@@ -1055,7 +1063,7 @@ static long sys_creat(const struct syscall_info* call) {
 }
 
 static int sys_fcntl64_no_outparams(const struct syscall_info* call) {
-  const int syscallno = SYS_fcntl64;
+  const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
   long arg = call->args[2];
@@ -1075,7 +1083,7 @@ static int sys_fcntl64_no_outparams(const struct syscall_info* call) {
 }
 
 static int sys_fcntl64_own_ex(const struct syscall_info* call) {
-  const int syscallno = SYS_fcntl64;
+  const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
   struct f_owner_ex* owner = (struct f_owner_ex*)call->args[2];
@@ -1105,7 +1113,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
 }
 
 static int sys_fcntl64_xlk64(const struct syscall_info* call) {
-  const int syscallno = SYS_fcntl64;
+  const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
   struct flock64* lock = (struct flock64*)call->args[2];
@@ -1133,7 +1141,12 @@ static int sys_fcntl64_xlk64(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_fcntl64(const struct syscall_info* call) {
+#if defined(SYS_fcntl64)
+static long sys_fcntl64(const struct syscall_info* call)
+#else
+static long sys_fcntl(const struct syscall_info* call)
+#endif
+{
   switch (call->args[1]) {
     case F_DUPFD:
     case F_GETFD:
@@ -1149,14 +1162,24 @@ static long sys_fcntl64(const struct syscall_info* call) {
     case F_SETOWN_EX:
       return sys_fcntl64_own_ex(call);
 
+#if F_SETLK != F_SETLK64
     case F_SETLK64:
+#else
+    case F_SETLK:
+#endif
       return sys_fcntl64_xlk64(call);
 
     case F_GETLK:
+#if F_SETLK != F_SETLK64
     case F_SETLK:
+#endif
     case F_SETLKW:
+#if F_GETLK != F_GETLK64
     case F_GETLK64:
+#endif
+#if F_SETLKW != F_SETLKW64
     case F_SETLKW64:
+#endif
     /* TODO: buffer the F_*LK API. */
     /* fall through */
     default:
@@ -1281,6 +1304,7 @@ static long sys_gettimeofday(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+#if defined(SYS__llseek)
 static long sys__llseek(const struct syscall_info* call) {
   const int syscallno = SYS__llseek;
   int fd = call->args[0];
@@ -1313,6 +1337,27 @@ static long sys__llseek(const struct syscall_info* call) {
   }
   return commit_raw_syscall(syscallno, ptr, ret);
 }
+#else
+static long sys_lseek(const struct syscall_info* call) {
+  const int syscallno = SYS_lseek;
+  int fd = call->args[0];
+  off_t off = call->args[1];
+  int whence = call->args[2];
+
+  void* ptr = prep_syscall();
+  off_t ret = NULL;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(syscallno, fd, off, whence);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
 
 static long sys_madvise(const struct syscall_info* call) {
   const int syscallno = SYS_madvise;
@@ -1460,8 +1505,13 @@ static long sys_readlink(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+#if defined(SYS_socketcall)
 static long sys_recv(const struct syscall_info* call) {
+#if defined(SYS_socketcall)
   const int syscallno = SYS_socketcall;
+#else
+  const int syscallno = SYS_recvfrom;
+#endif
   long* args = (long*)call->args[1];
   int sockfd = args[0];
   void* buf = (void*)args[1];
@@ -1478,6 +1528,7 @@ static long sys_recv(const struct syscall_info* call) {
     buf2 = ptr;
     ptr += len;
   }
+#if defined(SYS_socketcall)
   if (!start_commit_buffered_syscall(SYS_socketcall, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
   }
@@ -1488,6 +1539,18 @@ static long sys_recv(const struct syscall_info* call) {
     local_memcpy(buf, buf2, ret);
   }
   return commit_raw_syscall(SYS_socketcall, ptr, ret);
+#else
+  if (!start_commit_buffered_syscall(SYS_recvfrom, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall6(SYS_recvfrom, sockfd, buf2, len, flags, 0, 0);
+
+  if (buf2 && ret > 0) {
+    local_memcpy(buf, buf2, ret);
+  }
+  return commit_raw_syscall(SYS_recvfrom, ptr, ret);
+#endif
 }
 
 static long sys_socketcall(const struct syscall_info* call) {
@@ -1498,6 +1561,7 @@ static long sys_socketcall(const struct syscall_info* call) {
       return traced_raw_syscall(call);
   }
 }
+#endif
 
 static long sys_time(const struct syscall_info* call) {
   const int syscallno = SYS_time;
@@ -1605,23 +1669,45 @@ __attribute__((visibility("hidden"))) long vsyscall_hook(
     CASE(clock_gettime);
     CASE(close);
     CASE(creat);
+#if defined(SYS_fcntl64)
     CASE(fcntl64);
+#else
+    CASE(fcntl);
+#endif
     CASE(futex);
     CASE(gettimeofday);
+#if defined(SYS__llseek)
     CASE(_llseek);
+#else
+    CASE(lseek);
+#endif
     CASE(madvise);
     CASE(open);
     CASE(poll);
     CASE(read);
     CASE(readlink);
+#if defined(SYS_socketcall)
     CASE(socketcall);
+#endif
     CASE(time);
     CASE(write);
     CASE(writev);
 #undef CASE
+#if defined(SYS_fstat64)
     case SYS_fstat64:
+#else
+    case SYS_fstat:
+#endif
+#if defined(SYS_lstat64)
     case SYS_lstat64:
+#else
+    case SYS_lstat:
+#endif
+#if defined(SYS_stat64)
     case SYS_stat64:
+#else
+    case SYS_stat:
+#endif
       return sys_xstat64(call);
     default:
       return traced_raw_syscall(call);
