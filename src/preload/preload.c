@@ -506,7 +506,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
 
   fd = traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/, -1, 0);
   if (0 > fd) {
-    fatal("Failed to perf_event_open(cs, period=%u)", nr_descheds);
+    fatal("Failed to perf_event_open(cs, period=%zu)", nr_descheds);
   }
   if (traced_fcntl(fd, F_SETFL, O_ASYNC)) {
     fatal("Failed to fcntl(O_ASYNC) the desched counter");
