@@ -444,3 +444,12 @@ void Registers::write_register(GDBRegister regno, const uint8_t* value,
                                size_t value_size) {
   RR_ARCH_FUNCTION(write_register_arch, arch(), regno, value, value_size);
 }
+
+template <typename Arch>
+size_t Registers::total_registers_arch() const {
+  return RegisterInfo<Arch>::num_registers;
+}
+
+size_t Registers::total_registers() const {
+  RR_ARCH_FUNCTION(total_registers_arch, arch());
+}
