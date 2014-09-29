@@ -4,6 +4,10 @@
 
 #include "Registers.h"
 
+#include <array>
+#include <initializer_list>
+#include <utility>
+
 #include <assert.h>
 #include <string.h>
 
@@ -57,48 +61,42 @@ private:
   }
 };
 
+typedef std::pair<size_t, RegisterValue> RegisterInit;
+
+template<size_t N>
+struct RegisterTable : std::array<RegisterValue, N> {
+  RegisterTable(std::initializer_list<RegisterInit> list) {
+    for (auto& ri : list) {
+      (*this)[ri.first] = ri.second;
+    }
+  }
+};
+
 template <typename T> struct RegisterInfo;
 
 template <> struct RegisterInfo<rr::X86Arch> {
   static bool ignore_undefined_register(GDBRegister regno) {
     return regno == DREG_FOSEG || regno == DREG_MXCSR;
   }
-  static struct RegisterValue registers[DREG_NUM_LINUX_I386];
+  static const size_t num_registers = DREG_NUM_LINUX_I386;
+  typedef RegisterTable<num_registers> Table;
+  static Table registers;
 };
 
 template <> struct RegisterInfo<rr::X64Arch> {
   static bool ignore_undefined_register(GDBRegister regno) {
     return regno == DREG_64_FOSEG || regno == DREG_64_MXCSR;
   }
-  static struct RegisterValue registers[DREG_NUM_LINUX_X86_64];
+  static const size_t num_registers = DREG_NUM_LINUX_X86_64;
+  typedef RegisterTable<num_registers> Table;
+  static Table registers;
 };
 
-struct RegisterValue RegisterInfo<rr::X86Arch>::registers[DREG_NUM_LINUX_I386];
-struct RegisterValue RegisterInfo<rr::X64Arch>::registers
-    [DREG_NUM_LINUX_X86_64];
-
-// You might think, "why can't we use designated initializers here?"  Doing so
-// would be most convenient, except that designated initializers are not a part
-// of C++11.  While they are sort-of-supported as a GNU extension in GCC
-// (despite claims to the contrary in the manual), they are only supported so
-// long as the index of your designated initializer corresponds to the index of
-// the array you are initializing.  That is, they are useful for documentation
-// purposes, but they are not useful for initializing a sparse array, as we
-// have here.
-static void initialize_register_tables() {
-  static bool initialized = false;
-
-  if (initialized) {
-    return;
-  }
-
-#define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)                       \
-  do {                                                                         \
-    size_t offset = offsetof(arch::user_regs_struct, name);                    \
-    size_t nbytes = sizeof(((arch::user_regs_struct*)0)->name);                \
-    RegisterInfo<arch>::registers[DREG_##gdb_suffix] =                         \
-        RegisterValue(#name, offset, nbytes extra_ctor_args);                  \
-  } while (0)
+#define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)                \
+  RegisterInit(DREG_##gdb_suffix,                                       \
+               RegisterValue(#name,                                     \
+                             offsetof(arch::user_regs_struct, name),    \
+                             sizeof(((arch::user_regs_struct*)0)->name) extra_ctor_args))
 #define RV_X86(gdb_suffix, name)                                               \
   RV_ARCH(gdb_suffix, name, rr::X86Arch, /* empty */)
 #define RV_X64(gdb_suffix, name)                                               \
@@ -109,87 +107,85 @@ static void initialize_register_tables() {
 #define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask)                    \
   RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask)
 
-  initialized = true;
+/* The following are eflags that have been observed to be non-deterministic
+   in practice.  We need to mask them off when comparing registers to
+   prevent replay from diverging.  */
+enum {
+  /* The linux kernel has been observed to report this as zero in some
+     states during system calls.  It always seems to be 1 during user-space
+     execution so we should be able to ignore it.  */
+  RESERVED_FLAG_1 = 1 << 1,
+  /* According to http://www.logix.cz/michal/doc/i386/chp04-01.htm:
+        The RF flag temporarily disables debug exceptions so that an
+       instruction can be restarted after a debug exception without
+       immediately causing another debug exception.  Refer to Chapter 12
+       for details.
+      Chapter 12 isn't particularly clear on the point, but the flag appears
+     to be set by |int3| exceptions.
+      This divergence has been observed when continuing a tracee to an
+     execution target by setting an |int3| breakpoint, which isn't used
+     during recording.  No single-stepping was used during the recording
+     either.  */
+  RESUME_FLAG = 1 << 16,
+  /* It is no longer known why this bit is ignored.  */
+  CPUID_ENABLED_FLAG = 1 << 21,
+};
+const uint64_t deterministic_eflags_mask =
+  ~uint32_t(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
 
-  /* The following are eflags that have been observed to be non-deterministic
-     in practice.  We need to mask them off when comparing registers to
-     prevent replay from diverging.  */
-  enum {
-    /* The linux kernel has been observed to report this as zero in some
-       states during system calls.  It always seems to be 1 during user-space
-       execution so we should be able to ignore it.  */
-    RESERVED_FLAG_1 = 1 << 1,
-    /* According to http://www.logix.cz/michal/doc/i386/chp04-01.htm:
+RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
+  RV_X86(EAX, eax),
+  RV_X86(ECX, ecx),
+  RV_X86(EDX, edx),
+  RV_X86(EBX, ebx),
+  RV_X86(ESP, esp),
+  RV_X86(EBP, ebp),
+  RV_X86(ESI, esi),
+  RV_X86(EDI, edi),
+  RV_X86(EIP, eip),
+  RV_X86_WITH_MASK(EFLAGS, eflags, deterministic_eflags_mask),
+  RV_X86_WITH_MASK(CS, xcs, 0),
+  RV_X86_WITH_MASK(SS, xss, 0),
+  RV_X86_WITH_MASK(DS, xds, 0),
+  RV_X86_WITH_MASK(ES, xes, 0),
+  RV_X86(FS, xfs),
+  RV_X86(GS, xgs),
+  // The comparison for this is handled specially elsewhere.
+  RV_X86_WITH_MASK(ORIG_EAX, orig_eax, 0),
+};
 
-         The RF flag temporarily disables debug exceptions so that an
-         instruction can be restarted after a debug exception without
-         immediately causing another debug exception.  Refer to Chapter 12
-         for details.
-
-       Chapter 12 isn't particularly clear on the point, but the flag appears
-       to be set by |int3| exceptions.
-
-       This divergence has been observed when continuing a tracee to an
-       execution target by setting an |int3| breakpoint, which isn't used
-       during recording.  No single-stepping was used during the recording
-       either.  */
-    RESUME_FLAG = 1 << 16,
-    /* It is no longer knonw why this bit is ignored.  */
-    CPUID_ENABLED_FLAG = 1 << 21,
-  };
-  const uint64_t deterministic_eflags_mask =
-      ~uint32_t(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
-
-  RV_X86(EAX, eax);
-  RV_X86(ECX, ecx);
-  RV_X86(EDX, edx);
-  RV_X86(EBX, ebx);
-  RV_X86(ESP, esp);
-  RV_X86(EBP, ebp);
-  RV_X86(ESI, esi);
-  RV_X86(EDI, edi);
-  RV_X86(EIP, eip);
-  RV_X86_WITH_MASK(EFLAGS, eflags, deterministic_eflags_mask);
-  RV_X86_WITH_MASK(CS, xcs, 0);
-  RV_X86_WITH_MASK(SS, xss, 0);
-  RV_X86_WITH_MASK(DS, xds, 0);
-  RV_X86_WITH_MASK(ES, xes, 0);
-  RV_X86(FS, xfs);
-  RV_X86(GS, xgs);
-  // Handled specially elsewhere.
-  RV_X86_WITH_MASK(ORIG_EAX, orig_eax, 0);
-
-  RV_X64(RAX, rax);
-  RV_X64(RCX, rcx);
-  RV_X64(RDX, rdx);
-  RV_X64(RBX, rbx);
-  RV_X64_WITH_MASK(RSP, rsp, 0);
-  RV_X64(RBP, rbp);
-  RV_X64(RSI, rsi);
-  RV_X64(RDI, rdi);
-  RV_X64(R8, r8);
-  RV_X64(R9, r9);
-  RV_X64(R10, r10);
-  RV_X64(R11, r11);
-  RV_X64(R12, r12);
-  RV_X64(R13, r13);
-  RV_X64(R14, r14);
-  RV_X64(R15, r15);
-  RV_X64(RIP, rip);
-  RV_X64_WITH_MASK(64_EFLAGS, eflags, deterministic_eflags_mask);
-  RV_X64_WITH_MASK(64_CS, cs, 0);
-  RV_X64_WITH_MASK(64_SS, ss, 0);
-  RV_X64_WITH_MASK(64_DS, ds, 0);
-  RV_X64_WITH_MASK(64_ES, es, 0);
-  RV_X64(64_FS, fs);
-  RV_X64(64_GS, gs);
-  // Handled specially elsewhere.
-  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0);
+RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
+  RV_X64(RAX, rax),
+  RV_X64(RCX, rcx),
+  RV_X64(RDX, rdx),
+  RV_X64(RBX, rbx),
+  RV_X64_WITH_MASK(RSP, rsp, 0),
+  RV_X64(RBP, rbp),
+  RV_X64(RSI, rsi),
+  RV_X64(RDI, rdi),
+  RV_X64(R8, r8),
+  RV_X64(R9, r9),
+  RV_X64(R10, r10),
+  RV_X64(R11, r11),
+  RV_X64(R12, r12),
+  RV_X64(R13, r13),
+  RV_X64(R14, r14),
+  RV_X64(R15, r15),
+  RV_X64(RIP, rip),
+  RV_X64_WITH_MASK(64_EFLAGS, eflags, deterministic_eflags_mask),
+  RV_X64_WITH_MASK(64_CS, cs, 0),
+  RV_X64_WITH_MASK(64_SS, ss, 0),
+  RV_X64_WITH_MASK(64_DS, ds, 0),
+  RV_X64_WITH_MASK(64_ES, es, 0),
+  RV_X64(64_FS, fs),
+  RV_X64(64_GS, gs),
+  // The comparison for this is handled specially elsewhere.
+  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0),
+};
 
 #undef RV_X64
 #undef RV_X86
 #undef RV_ARCH
-}
 
 // 32-bit format, 64-bit format for all of these.
 // format_index in RegisterPrinting depends on the ordering here.
@@ -224,7 +220,6 @@ void print_single_register(FILE* f, const char* name, const void* register_ptr,
 
 template <typename Arch>
 void Registers::print_register_file_arch(FILE* f, const char* formats[]) const {
-  initialize_register_tables();
   fprintf(f, "Printing register file:\n");
   const void* user_regs = ptrace_registers();
   for (auto& rv : RegisterInfo<Arch>::registers) {
@@ -255,7 +250,6 @@ void Registers::print_register_file(FILE* f) const {
 template <typename Arch>
 void Registers::print_register_file_for_trace_arch(
     FILE* f, TraceStyle style, const char* formats[]) const {
-  initialize_register_tables();
   const void* user_regs = ptrace_registers();
   for (auto& rv : RegisterInfo<Arch>::registers) {
     if (rv.nbytes == 0) {
@@ -313,7 +307,6 @@ template <typename Arch>
 static bool compare_registers_core(const char* name1, const Registers* reg1,
                                    const char* name2, const Registers* reg2,
                                    int mismatch_behavior) {
-  initialize_register_tables();
   bool match = true;
 
   for (auto& rv : RegisterInfo<Arch>::registers) {
@@ -414,7 +407,6 @@ size_t Registers::read_register_arch(uint8_t* buf, GDBRegister regno,
   // Make sure these two definitions don't get out of sync.
   assert(array_length(RegisterInfo<Arch>::registers) == total_registers());
 
-  initialize_register_tables();
   RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
   if (rv.nbytes == 0) {
     *defined = false;
@@ -434,7 +426,6 @@ size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
 template <typename Arch>
 void Registers::write_register_arch(GDBRegister regno, const uint8_t* value,
                                     size_t value_size) {
-  initialize_register_tables();
   RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
 
   if (rv.nbytes == 0) {
