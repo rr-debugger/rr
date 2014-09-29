@@ -55,7 +55,6 @@ void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N]) {
   snprintf(path, N - 1, SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d", tid, nonce++);
 }
 
-#if defined(SYS_socketcall)
 // TODO: merge other dups of this function.
 static void write_socketcall_args(
     Task* t, remote_ptr<struct socketcall_args> child_args_vec, long arg1,
@@ -63,7 +62,6 @@ static void write_socketcall_args(
   struct socketcall_args args = { { arg1, arg2, arg3 } };
   t->write_mem(child_args_vec, args);
 }
-#endif
 
 /**
  * Stores the table of signal dispositions and metadata for an
