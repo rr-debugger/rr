@@ -1,3 +1,4 @@
+#if defined(__i386__)
 /**
  * Call this hook from |__kernel_vsyscall()|, to buffer syscalls that
  * we otherwise couldn't wrap through LD_PRELOAD helpers.  Return the
@@ -92,5 +93,6 @@ _vsyscall_hook_trampoline:
         ret
         .cfi_endproc
         .size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline
+#endif /* __i386__ */
 
         .section .note.GNU-stack,"",@progbits

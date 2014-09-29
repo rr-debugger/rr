@@ -79,6 +79,15 @@
 #endif
 #define syscall you_must_use_traced_syscall
 
+/* x86 is the only architecture whose syscalls all come through a pinch point
+   that we can monkeypatch.  There are ways to handle other architectures, but
+   for now, we can't filter on any architecture but x86.  */
+#if defined(__i386__)
+#define RR_SYSCALL_FILTERING 1
+#else
+#define RR_SYSCALL_FILTERING 0
+#endif
+
 /**
  * Represents syscall params.  Makes it simpler to pass them around,
  * and avoids pushing/popping all the data for calls.
@@ -417,8 +426,14 @@ static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
 #define untraced_socketcall0(no) untraced_socketcall1(no, 0)
 #endif
 
+#if RR_SYSCALL_FILTERING
 extern
     __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void);
+#else
+static void _vsyscall_hook_trampoline(void)
+{
+}
+#endif
 
 /**
  * Do what's necessary to set up buffers for the caller.
