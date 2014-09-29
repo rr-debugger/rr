@@ -1005,8 +1005,8 @@ static bool is_same_execution_point(Task* t, const Registers* rec_regs,
     LOG(debug) << "  not same execution point: " << ticks_left
                << " ticks left (@" << HEX(rec_regs->ip()) << ")";
 #ifdef DEBUGTAG
-    compare_register_files(t, "(rep)", &t->regs(),
-                           "(rec)", rec_regs, LOG_MISMATCHES);
+    compare_register_files(t, "(rep)", &t->regs(), "(rec)", rec_regs,
+                           LOG_MISMATCHES);
 #endif
     return false;
   }
