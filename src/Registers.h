@@ -227,7 +227,7 @@ public:
   /**
    * Return the total number of registers for this target.
    */
-  size_t total_registers() const { return DREG_NUM_LINUX_I386; }
+  size_t total_registers() const;
 
   // TODO: refactor me to use the DbgRegister helper from
   // debugger_gdb.h.
@@ -272,6 +272,9 @@ private:
   template <typename Arch>
   void write_register_arch(GDBRegister regno, const uint8_t* value,
                            size_t value_size);
+
+  template <typename Arch>
+  size_t total_registers_arch() const;
 
   union AllRegisters {
     rr::X86Arch::user_regs_struct x86regs;

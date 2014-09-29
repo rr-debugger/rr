@@ -13,6 +13,7 @@
 #include <sys/ptrace.h>
 #include <unistd.h>
 
+#include <array>
 #include <ostream>
 
 #include "ExtraRegisters.h"
@@ -26,6 +27,10 @@ class TraceFrame;
 struct Flags;
 
 template <typename T, size_t N> constexpr size_t array_length(T (&array)[N]) {
+  return N;
+}
+
+template <typename T, size_t N> constexpr size_t array_length(std::array<T, N>& array) {
   return N;
 }
 
