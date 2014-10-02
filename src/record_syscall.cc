@@ -2329,13 +2329,23 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_ipc<Arch>(t, (unsigned int)t->regs().arg1());
       break;
 
-    case Arch::mmap: {
-      auto args =
-          t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
-      process_mmap(t, syscallno, args.len, args.prot, args.flags, args.fd,
-                   args.offset / 4096);
+    case Arch::mmap:
+      switch (Arch::mmap_semantics) {
+        case Arch::StructArguments: {
+          auto args =
+            t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
+          process_mmap(t, syscallno, args.len, args.prot, args.flags, args.fd,
+                       args.offset / 4096);
+          break;
+        }
+        case Arch::RegisterArguments:
+          process_mmap(t, syscallno, (size_t)t->regs().arg2(),
+                       (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),
+                       (int)t->regs().arg5_signed(),
+                       (off_t)t->regs().arg6_signed());
+          break;
+      }
       break;
-    }
     case Arch::mmap2:
       process_mmap(t, syscallno, (size_t)t->regs().arg2(),
                    (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),

@@ -1392,10 +1392,18 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
         step->syscall.emu = EMULATE;
         return;
       }
-      auto args =
-          t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
-      return process_mmap<Arch>(t, trace, state, args.prot, args.flags,
-                                args.offset / 4096, step);
+      switch (Arch::mmap_semantics) {
+        case Arch::StructArguments: {
+          auto args =
+            t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
+          return process_mmap<Arch>(t, trace, state, args.prot, args.flags,
+                                    args.offset / 4096, step);
+        }
+        case Arch::RegisterArguments:
+          return process_mmap<Arch>(t, trace, state, trace->regs().arg3(),
+                                    trace->regs().arg4(), trace->regs().arg6(),
+                                    step);
+      }
     }
     case Arch::mmap2:
       if (SYSCALL_ENTRY == state) {
