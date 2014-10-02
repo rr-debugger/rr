@@ -1110,7 +1110,7 @@ void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
         patch.insns.syscall_number = syscalls_to_monkeypatch[j].syscall_number;
 
         // Absolutely-addressed symbols in the VDSO claim to start here.
-        const uintptr_t base = uintptr_t(0xffffffffff700700);
+        const uintptr_t base = uintptr_t(0xffffffffff700000);
         uintptr_t sym_address = uintptr_t(sym->st_value);
         // The symbol values can be absolute or relative addresses.
         // The first part of the assertion is for absolute
