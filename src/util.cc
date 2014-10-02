@@ -222,6 +222,10 @@ const char* signalname(int sig) {
 
 #include "IsAlwaysEmulatedSyscall.generated"
 
+bool is_always_emulated_syscall(int syscall, SupportedArch arch) {
+  RR_ARCH_FUNCTION(is_always_emulated_syscall_arch, arch, syscall);
+}
+
 int clone_flags_to_task_flags(int flags_arg) {
   int flags = CLONE_SHARE_NOTHING;
   // See task.h for description of the flags.

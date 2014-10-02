@@ -181,11 +181,11 @@ const char* ptrace_req_name(int request);
 const char* signalname(int sig);
 
 /**
- * Return true iff replaying |syscallno| will never ever require
- * actually executing it, i.e. replay of |syscallno| is always
+ * Return true iff replaying |syscall| will never ever require
+ * actually executing it, i.e. replay of |syscall| is always
  * emulated.
  */
-bool is_always_emulated_syscall(int syscallno);
+bool is_always_emulated_syscall(int syscall, SupportedArch arch);
 
 /**
  * Convert the flags passed to the clone() syscall, |flags_arg|, into
