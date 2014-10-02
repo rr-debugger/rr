@@ -233,8 +233,6 @@ int clone_flags_to_task_flags(int flags_arg) {
   return flags;
 }
 
-int get_ipc_command(int raw_cmd) { return raw_cmd & ~IPC_64; }
-
 bool is_page_aligned(const uint8_t* addr) {
   return is_page_aligned(reinterpret_cast<size_t>(addr));
 }

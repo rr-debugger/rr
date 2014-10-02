@@ -1592,6 +1592,8 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
   }
 }
 
+static int get_ipc_command(int raw_cmd) { return raw_cmd & ~IPC_64; }
+
 template <typename Arch> static void process_ipc(Task* t, int call) {
   LOG(debug) << "ipc call: " << call;
 

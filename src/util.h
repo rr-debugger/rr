@@ -211,12 +211,6 @@ bool is_always_emulated_syscall(int syscallno);
 int clone_flags_to_task_flags(int flags_arg);
 
 /**
- * Return the SYS_ipc sub-command (to an ipc operation) encoded in
- * |raw_cmd|.
- */
-int get_ipc_command(int raw_cmd);
-
-/**
  * Return the argument rounded up to the nearest multiple of the
  * system |page_size()|.
  */
