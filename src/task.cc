@@ -28,6 +28,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "RecordSession.h"
 #include "ReplaySession.h"
+#include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
 #include "syscalls.h"
 #include "util.h"
@@ -359,7 +360,7 @@ void Task::set_priority(int value) {
 bool Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
-  ScopedOpen backing_fd(path, O_RDONLY);
+  ScopedFd backing_fd(path, O_RDONLY);
   if (0 > backing_fd) {
     return false;
   }

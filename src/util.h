@@ -54,24 +54,6 @@ enum Completion {
 };
 
 /**
- * RAII helper to open a file and then close the fd when the helper
- * goes out of scope.
- */
-class ScopedOpen {
-public:
-  ScopedOpen(int fd) : fd(fd) {}
-  ScopedOpen(const char* pathname, int flags, mode_t mode = 0)
-      : fd(open(pathname, flags, mode)) {}
-  ~ScopedOpen() { close(fd); }
-
-  operator int() const { return get(); }
-  int get() const { return fd; }
-
-private:
-  int fd;
-};
-
-/**
  * Return true if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
  * indicates that the caller is using this as a general register
  * compare and nothing special should be done if the register files

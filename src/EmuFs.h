@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "ScopedFd.h"
 #include "task.h"
-#include "util.h"
 
 class Session;
 class Task;
@@ -108,7 +108,7 @@ private:
 
   struct stat est;
   std::string orig_path;
-  ScopedOpen file;
+  ScopedFd file;
   bool is_marked;
 
   EmuFile(const EmuFile&) = delete;
