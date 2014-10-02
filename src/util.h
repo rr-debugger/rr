@@ -272,12 +272,6 @@ ScopedFd create_shmem_segment(const char* name, size_t num_bytes);
 void resize_shmem_segment(ScopedFd& fd, size_t num_bytes);
 
 /**
- * Arranges for 'fd' to be transmitted to this process and returns
- * our opened version of it.
- */
-ScopedFd retrieve_fd(AutoRemoteSyscalls& remote, int fd);
-
-/**
  * At thread exit time, undo the work that init_buffers() did.
  *
  * Call this when the tracee has already entered SYS_exit. The

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Registers.h"
+#include "ScopedFd.h"
 
 class AutoRemoteSyscalls;
 class Task;
@@ -156,6 +157,12 @@ public:
    * |remote_syscall()| to finish, returning the result.
    */
   long wait_syscall(int syscallno);
+
+  /**
+   * Arranges for 'fd' to be transmitted to this process and returns
+   * our opened version of it.
+   */
+  ScopedFd retrieve_fd(int fd);
 
 private:
   /**

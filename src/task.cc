@@ -1677,7 +1677,7 @@ void Task::open_mem_fd() {
     assert(remote_fd >= 0);
   }
 
-  as->set_mem_fd(retrieve_fd(remote, remote_fd));
+  as->set_mem_fd(remote.retrieve_fd(remote_fd));
   assert(as->mem_fd().is_open());
 
   long err = remote.syscall(syscall_number_for_close(arch()), remote_fd);
