@@ -1184,7 +1184,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   TraceFrame* trace = &t->replay_session().current_trace_frame();
   SyscallEntryOrExit state = trace->event().state;
   const Registers* rec_regs = &trace->regs();
-  AutoGc maybe_gc(t->replay_session(), syscall, state);
+  EmuFs::AutoGc maybe_gc(t->replay_session(), syscall, state);
 
   LOG(debug) << "processing " << t->syscallname(syscall) << " ("
              << state_name(state) << ")";

@@ -153,6 +153,20 @@ public:
   /** Create and return a new emufs. */
   static shr_ptr create();
 
+  /**
+   * RAII helper that schedules an EmuFs GC when the exit of a given
+   * syscall may have dropped the last reference to an emulated file.
+   */
+  struct AutoGc {
+    AutoGc(ReplaySession& session, int syscallno,
+           SyscallEntryOrExit state = SYSCALL_EXIT);
+    ~AutoGc();
+
+  private:
+    ReplaySession& session;
+    const bool is_gc_point;
+  };
+
 private:
   EmuFs();
 
@@ -177,20 +191,6 @@ private:
 
   EmuFs(const EmuFs&) = delete;
   EmuFs& operator=(const EmuFs&) = delete;
-};
-
-/**
- * RAII helper that schedules an EmuFs GC when the exit of a given
- * syscall may have dropped the last reference to an emulated file.
- */
-struct AutoGc {
-  AutoGc(ReplaySession& session, int syscallno,
-         SyscallEntryOrExit state = SYSCALL_EXIT);
-  ~AutoGc();
-
-private:
-  ReplaySession& session;
-  const bool is_gc_point;
 };
 
 #endif // RR_EMUFS_H

@@ -1582,7 +1582,7 @@ static Completion flush_one_syscall(Task* t, Stepping stepi) {
     case FLUSH_EXIT: {
       LOG(debug) << "  advancing to buffered syscall exit";
 
-      AutoGc gc(t->replay_session(), call);
+      EmuFs::AutoGc gc(t->replay_session(), call);
 
       assert_at_buffered_syscall(t, call);
 

@@ -29,6 +29,7 @@ enum EventType {
   // different parts of the recorder code that should be
   // refactored to not have to do that.
   EV_NOOP,
+  // Scheduling signal interrupted the trace.
   EV_SCHED,
   EV_SEGV_RDTSC,
   EV_SYSCALLBUF_FLUSH,
