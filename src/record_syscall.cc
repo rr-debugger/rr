@@ -1375,7 +1375,7 @@ template <typename Arch> static void process_execve(Task* t) {
   t->session().after_exec();
   t->post_exec();
 
-  remote_ptr<intptr_t> stack_ptr = t->regs().sp();
+  remote_ptr<typename Arch::signed_word> stack_ptr = t->regs().sp();
 
   /* start_stack points to argc - iterate over argv pointers */
 
@@ -1385,12 +1385,12 @@ template <typename Arch> static void process_execve(Task* t) {
    */
   // long* argc = (long*)t->read_word((uint8_t*)stack_ptr);
   // stack_ptr += *argc + 1;
-  intptr_t argc = t->read_mem(stack_ptr);
+  auto argc = t->read_mem(stack_ptr);
   stack_ptr += argc + 1;
 
   // unsigned long* null_ptr = read_child_data(t, sizeof(void*), stack_ptr);
   // assert(*null_ptr == 0);
-  intptr_t null_ptr = t->read_mem(stack_ptr);
+  auto null_ptr = t->read_mem(stack_ptr);
   assert(null_ptr == 0);
   stack_ptr++;
 
@@ -1420,7 +1420,7 @@ template <typename Arch> static void process_execve(Task* t) {
         << ", but is " << HEX(entry.key);
   }
 
-  intptr_t at_random = t->read_mem(stack_ptr);
+  auto at_random = t->read_mem(stack_ptr);
   stack_ptr++;
   ASSERT(t, AT_RANDOM == at_random) << "ELF item should be " << HEX(AT_RANDOM)
                                     << ", but is " << HEX(at_random);
