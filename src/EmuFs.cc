@@ -38,7 +38,7 @@ EmuFile::shr_ptr EmuFile::clone() {
 
 string EmuFile::proc_path() const {
   stringstream ss;
-  ss << "/proc/" << getpid() << "/fd/" << fd();
+  ss << "/proc/" << getpid() << "/fd/" << fd().get();
   return ss.str();
 }
 

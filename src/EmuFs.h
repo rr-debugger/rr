@@ -68,7 +68,7 @@ public:
   /**
    * Return the fd of the real file backing this.
    */
-  int fd() const { return file; }
+  const ScopedFd& fd() const { return file; }
 
   /**
    * Return the path of the original file from recording, the
