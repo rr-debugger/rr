@@ -234,7 +234,7 @@ static bool trace_instructions_up_to_event(uint64_t event) {
 static void maybe_singlestep_for_event(Task* t, struct dbg_request* req) {
   if (trace_instructions_up_to_event(session->current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
-    print_register_file_compact(stderr, &t->regs());
+    t->regs().print_register_file_compact(stderr);
     fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     req->type = DREQ_STEP;
     req->target = get_threadid(t);

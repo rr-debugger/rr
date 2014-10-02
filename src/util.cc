@@ -235,16 +235,6 @@ int clone_flags_to_task_flags(int flags_arg) {
 
 int get_ipc_command(int raw_cmd) { return raw_cmd & ~IPC_64; }
 
-void print_register_file_tid(Task* t) { print_register_file(&t->regs()); }
-
-void print_register_file(const Registers* regs) {
-  regs->print_register_file(stderr);
-}
-
-void print_register_file_compact(FILE* file, const Registers* regs) {
-  regs->print_register_file_compact(file);
-}
-
 bool is_page_aligned(const uint8_t* addr) {
   return is_page_aligned(reinterpret_cast<size_t>(addr));
 }

@@ -1584,7 +1584,7 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
       break; /* not reached */
 
     default:
-      print_register_file_tid(t);
+      t->regs().print_register_file(stderr);
       ASSERT(t, false) << "Unknown ioctl(" << HEX(request)
                        << "): type:" << HEX(type) << " nr:" << HEX(nr)
                        << " dir:" << HEX(dir) << " size:" << size
@@ -2126,7 +2126,7 @@ static void check_syscall_rejected(Task* t) {
   // Other results mean we probably need to understand this
   // syscall, but we don't.
   if (t->regs().syscall_result_signed() != -ENOSYS) {
-    print_register_file_tid(t);
+    t->regs().print_register_file(stderr);
     int syscallno = t->ev().Syscall().number;
     FATAL() << "Unhandled syscall " << t->syscallname(syscallno) << "("
             << syscallno << ") returned " << t->regs().syscall_result_signed();
