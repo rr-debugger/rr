@@ -271,8 +271,6 @@ ostream& operator<<(ostream& o, const mapped_segment_info& m) {
  */
 struct map_iterator_data {
   struct mapped_segment_info info;
-  /* The nominal size of the data segment. */
-  ssize_t size_bytes;
   const char* raw_map_line;
 };
 typedef void (*memory_map_iterator_t)(void* it_data, Task* t,
@@ -329,7 +327,6 @@ static void iterate_memory_map(Task* t, memory_map_iterator_t it,
     data.info.prot |= strchr(flags, 'x') ? PROT_EXEC : 0;
     data.info.flags |= strchr(flags, 'p') ? MAP_PRIVATE : 0;
     data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
-    data.size_bytes = data.info.end_addr - data.info.start_addr;
 
     it(it_data, t, &data);
   }
