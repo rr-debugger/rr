@@ -167,8 +167,8 @@ static void assert_prerequisites(Flags* flags) {
 static void check_performance_settings() {
   // NB: we hard-code "cpu0" here because rr pins itself and all
   // tracees to cpu 0.  We don't care about the other CPUs.
-  int fd =
-      open("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", O_RDONLY);
+  ScopedFd fd("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
+              O_RDONLY);
   if (0 > fd) {
     // If the file doesn't exist, the system probably
     // doesn't have the ability to frequency-scale, for
@@ -209,7 +209,6 @@ static void check_performance_settings() {
     // clever to enable the 'performance' just for rr, but
     // that seems too hard at the moment.
   }
-  close(fd);
 }
 
 static void print_usage(void) {
