@@ -10,7 +10,8 @@
 
 using namespace rr;
 
-const uint8_t AutoRemoteSyscalls::syscall_insn[] = { 0xcd, 0x80 };
+const uint8_t AutoRemoteSyscalls::x86_syscall_insn[] = { 0xcd, 0x80 };
+const uint8_t AutoRemoteSyscalls::x64_syscall_insn[] = { 0x0f, 0x05 };
 
 void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
   len = num_bytes;
@@ -45,7 +46,12 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
   // Inject syscall instruction, saving previous insn (fragment)
   // at $ip.
   t->read_bytes(initial_ip, code_buffer);
-  t->write_bytes(initial_ip, syscall_insn);
+  if (t->arch() == x86) {
+    t->write_bytes(initial_ip, x86_syscall_insn);
+  } else {
+    assert(t->arch() == x86_64);
+    t->write_bytes(initial_ip, x64_syscall_insn);
+  }
 }
 
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
