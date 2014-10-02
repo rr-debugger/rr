@@ -621,7 +621,7 @@ static bool exec_file_supported(const string& filename) {
      else we (optimistically) indicate support for. Missing or corrupt
      files will cause execve to fail normally. When we support 64-bit,
      this entire function can be removed. */
-  int fd = open(filename.c_str(), O_RDONLY);
+  ScopedFd fd(filename.c_str(), O_RDONLY);
   if (fd < 0) {
     return true;
   }
@@ -633,7 +633,6 @@ static bool exec_file_supported(const string& filename) {
       ok = false;
     }
   }
-  close(fd);
   return ok;
 #elif defined(__x86_64__)
   // We support 32-bit and 64-bit binaries.
