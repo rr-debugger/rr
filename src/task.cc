@@ -1784,12 +1784,12 @@ static ScopedFd recv_fd(int sock, int* remote_fdno) {
 
 void Task::init_desched_fd(AutoRemoteSyscalls& remote,
                            struct rrcall_init_buffers_params* args,
-                           int share_desched_fd) {
+                           ShareDeschedEventFd share_desched_fd) {
   // NB: this implementation could be vastly simplfied if we
   // were able to share the tracee's desched fd through its
   // /proc/fd entry.  However, as of linux 3.13.9, this doesn't
   // work.  So instead we do the SCM_RIGHTS dance.
-  if (!share_desched_fd) {
+  if (share_desched_fd == DONT_SHARE_DESCHED_EVENT_FD) {
     desched_fd_child = REPLAY_DESCHED_EVENT_FD;
     return;
   }

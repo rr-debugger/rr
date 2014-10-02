@@ -1185,7 +1185,7 @@ private:
    */
   void init_desched_fd(AutoRemoteSyscalls& remote,
                        struct rrcall_init_buffers_params* args,
-                       int share_desched_fd);
+                       ShareDeschedEventFd share_desched_fd);
 
   /**
    * True if this has blocked delivery of the desched signal.
