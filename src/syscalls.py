@@ -482,7 +482,7 @@ sethostname = UnsupportedSyscall(x86=74, x64=170)
 # getrlimit() and setrlimit()):
 #
 # NOTE: We should execute this system call, since this system call
-# sets a limit on a resource (e.g., the stack size) This bahavior
+# sets a limit on a resource (e.g., the stack size). This behavior
 # must be the same in the replay as in the recording phase.
 setrlimit = ExecutedSyscall(x86=75, x64=160, arg2="struct rlimit")
 
