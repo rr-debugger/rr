@@ -17,8 +17,8 @@
 
 #include "CompressedWriter.h"
 
-CompressedReader::CompressedReader(const std::string& filename) {
-  fd = open(filename.c_str(), O_CLOEXEC | O_RDONLY | O_LARGEFILE);
+CompressedReader::CompressedReader(const std::string& filename)
+    : fd(new ScopedFd(filename.c_str(), O_CLOEXEC | O_RDONLY | O_LARGEFILE)) {
   fd_offset = 0;
   error = fd < 0;
   eof = false;
@@ -27,7 +27,7 @@ CompressedReader::CompressedReader(const std::string& filename) {
 }
 
 CompressedReader::CompressedReader(const CompressedReader& other) {
-  fd = other.fd < 0 ? other.fd : dup(other.fd);
+  fd = other.fd;
   fd_offset = other.fd_offset;
   error = other.error;
   eof = other.eof;
@@ -39,7 +39,8 @@ CompressedReader::CompressedReader(const CompressedReader& other) {
 
 CompressedReader::~CompressedReader() { close(); }
 
-static bool read_all(int fd, size_t size, void* data, uint64_t* offset) {
+static bool read_all(const ScopedFd& fd, size_t size, void* data,
+                     uint64_t* offset) {
   while (size > 0) {
     ssize_t result = pread(fd, data, size, *offset);
     if (result <= 0) {
@@ -102,20 +103,20 @@ bool CompressedReader::read(void* data, size_t size) {
     }
 
     CompressedWriter::BlockHeader header;
-    if (!read_all(fd, sizeof(header), &header, &fd_offset)) {
+    if (!read_all(*fd, sizeof(header), &header, &fd_offset)) {
       error = true;
       return false;
     }
 
     std::vector<uint8_t> compressed_buf;
     compressed_buf.resize(header.compressed_length);
-    if (!read_all(fd, compressed_buf.size(), &compressed_buf[0], &fd_offset)) {
+    if (!read_all(*fd, compressed_buf.size(), &compressed_buf[0], &fd_offset)) {
       error = true;
       return false;
     }
 
     char ch;
-    if (pread(fd, &ch, 1, fd_offset) == 0) {
+    if (pread(*fd, &ch, 1, fd_offset) == 0) {
       eof = true;
     }
 
@@ -137,13 +138,7 @@ void CompressedReader::rewind() {
   eof = false;
 }
 
-void CompressedReader::close() {
-  if (fd < 0) {
-    return;
-  }
-  ::close(fd);
-  fd = -1;
-}
+void CompressedReader::close() { fd = nullptr; }
 
 void CompressedReader::save_state() {
   assert(!have_saved_state);
@@ -171,7 +166,7 @@ uint64_t CompressedReader::uncompressed_bytes() const {
   uint64_t offset = 0;
   uint64_t uncompressed_bytes = 0;
   CompressedWriter::BlockHeader header;
-  while (read_all(fd, sizeof(header), &header, &offset)) {
+  while (read_all(*fd, sizeof(header), &header, &offset)) {
     uncompressed_bytes += header.uncompressed_length;
     offset += header.compressed_length;
   }
@@ -179,5 +174,5 @@ uint64_t CompressedReader::uncompressed_bytes() const {
 }
 
 uint64_t CompressedReader::compressed_bytes() const {
-  return lseek(fd, 0, SEEK_END);
+  return lseek(*fd, 0, SEEK_END);
 }

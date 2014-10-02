@@ -10,6 +10,8 @@
 #include <vector>
 #include <string>
 
+#include "ScopedFd.h"
+
 /**
  * CompressedReader opens an input file written by CompressedWriter
  * and reads data from it. Currently data is decompressed by the thread that
@@ -49,7 +51,7 @@ protected:
      position.
      Instead track the current position in fd_offset and use pread. */
   uint64_t fd_offset;
-  int fd;
+  std::shared_ptr<ScopedFd> fd;
   bool error;
   bool eof;
   std::vector<uint8_t> buffer;
