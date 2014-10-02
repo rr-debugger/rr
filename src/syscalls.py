@@ -1695,6 +1695,8 @@ msgsnd = ExecutedSyscall(x64=69)
 msgrcv = IrregularEmulatedSyscall(x64=70)
 msgctl = IrregularEmulatedSyscall(x64=71)
 
+arch_prctl = ExecutedSyscall(x64=158)
+
 def _syscalls():
     for name, obj in globals().iteritems():
         if isinstance(obj, BaseSyscall):
