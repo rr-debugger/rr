@@ -614,7 +614,7 @@ public:
   const ExtraRegisters& extra_regs();
 
   /** Return the current arch of this. This can change due to exec(). */
-  SupportedArch arch() { return regs().arch(); }
+  SupportedArch arch() const { return regs().arch(); }
 
   /**
    * Return the debug status, which is a bitfield comprising
