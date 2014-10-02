@@ -1205,12 +1205,15 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS;
   int fd = -1;
+  // NB: we don't need to adjust this in the remote syscall below because
+  // 0 == (0 >> PAGE_SIZE).
   off64_t offset_pages = 0;
   {
     /* initialize the scratchpad for blocking system calls */
     AutoRemoteSyscalls remote(t);
-    t->scratch_ptr =
-        remote.syscall(Arch::mmap2, 0, sz, prot, flags, fd, offset_pages);
+    t->scratch_ptr = remote.syscall(
+        has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
+        0, sz, prot, flags, fd, offset_pages);
     t->scratch_size = scratch_size;
   }
   // record this mmap for the replay
