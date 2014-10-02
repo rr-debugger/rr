@@ -26,17 +26,20 @@ def write_is_always_emulated_syscall(f):
                             syscalls.ReplaySemantics.EXEC_RET_EMU: 'false',
                             syscalls.ReplaySemantics.MAY_EXEC: 'false' }
 
-    f.write("bool is_always_emulated_syscall(int syscallno) {\n")
-    f.write("  switch (syscallno) {\n")
-    for name, obj in syscalls.all():
-        f.write("    case X86Arch::%s: return %s;\n"
-                % (name, semantics_to_retval[obj.semantics]))
-    f.write("    default:\n")
-    f.write("      FATAL() << \"Unknown syscall \" << syscallno;\n")
-    f.write("      return true;\n")
-    f.write("  }\n")
-    f.write("}\n")
-    f.write("\n")
+    f.write("template <typename Arch> static bool is_always_emulated_syscall_arch(int syscall);\n");
+    f.write("\n");
+    for specializer, arch in [("X86Arch", "x86"), ("X64Arch", "x64")]:
+        f.write("template<> bool is_always_emulated_syscall_arch<%s>(int syscallno) {\n" % specializer)
+        f.write("  switch (syscallno) {\n")
+        for name, obj in syscalls.all():
+            f.write("    case %s::%s: return %s;\n"
+                    % (specializer, name, semantics_to_retval[obj.semantics]))
+        f.write("    default:\n")
+        f.write("      FATAL() << \"Unknown syscall \" << syscallno;\n")
+        f.write("      return true;\n")
+        f.write("  }\n")
+        f.write("}\n")
+        f.write("\n")
 
 def write_syscallname_arch(f):
     f.write("template <typename Arch> static const char* syscallname_arch(int syscall);\n")

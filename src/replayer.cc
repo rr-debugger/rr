@@ -2036,7 +2036,8 @@ static bool is_atomic_syscall(Task* t) {
   return (t->is_probably_replaying_syscall() &&
           (is_execve_syscall(t->regs().original_syscallno(), t->arch()) ||
            (-ENOSYS == t->regs().syscall_result_signed() &&
-            !is_always_emulated_syscall(t->regs().original_syscallno()))));
+            !is_always_emulated_syscall(t->regs().original_syscallno(),
+                                        t->arch()))));
 }
 
 /**
