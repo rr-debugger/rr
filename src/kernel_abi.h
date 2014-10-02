@@ -776,6 +776,12 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 
 #include "SyscallEnumsX64.generated"
 
+  // The kernel defines the segment registers and eflags as 64-bit quantities,
+  // even though the segment registers are really 16-bit and eflags is
+  // architecturally defined as 32-bit.  GDB wants the segment registers and
+  // eflags to appear as 32-bit quantities.  From the perspective of providing
+  // registers to GDB, it's easier if we define these registers as uint32_t
+  // with extra padding.
   struct user_regs_struct {
     uint64_t r15;
     uint64_t r14;
@@ -794,16 +800,25 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     uint64_t rdi;
     uint64_t orig_rax;
     uint64_t rip;
-    uint64_t cs;
-    uint64_t eflags;
+    uint32_t cs;
+    uint32_t cs_upper;
+    uint32_t eflags;
+    uint32_t eflags_upper;
     uint64_t rsp;
-    uint64_t ss;
+    uint32_t ss;
+    uint32_t ss_upper;
+    // These _base registers are architecturally defined MSRs and really do
+    // need to be 64-bit.
     uint64_t fs_base;
     uint64_t gs_base;
-    uint64_t ds;
-    uint64_t es;
-    uint64_t fs;
-    uint64_t gs;
+    uint32_t ds;
+    uint32_t ds_upper;
+    uint32_t es;
+    uint32_t es_upper;
+    uint32_t fs;
+    uint32_t fs_upper;
+    uint32_t gs;
+    uint32_t gs_upper;
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_regs_struct,
                       user_regs_struct);

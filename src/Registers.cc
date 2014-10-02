@@ -381,6 +381,15 @@ template <>
   if (reg1->u.x64regs.orig_rax >= 0 || reg2->u.x64regs.orig_rax >= 0) {
     X64_REGCMP(orig_rax);
   }
+  // Check the _upper bits of various registers we defined more conveniently
+  // for our gdb support.
+  X64_REGCMP(cs_upper);
+  X64_REGCMP(ds_upper);
+  X64_REGCMP(es_upper);
+  X64_REGCMP(fs_upper);
+  X64_REGCMP(gs_upper);
+  X64_REGCMP(ss_upper);
+  X64_REGCMP(eflags_upper);
   return match;
 }
 
