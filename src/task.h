@@ -1037,7 +1037,8 @@ public:
 
   /* The child's desched counter event fd number, and our local
    * dup. */
-  int desched_fd, desched_fd_child;
+  ScopedFd desched_fd;
+  int desched_fd_child;
   /* True when the tracee has started using the syscallbuf, and
    * the tracer will start receiving PTRACE_SECCOMP events for
    * traced syscalls.  We don't make any attempt to guess at the

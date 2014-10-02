@@ -1590,7 +1590,7 @@ void Task::copy_state(Task* from) {
 }
 
 void Task::destroy_local_buffers() {
-  close(desched_fd);
+  desched_fd.close();
   munmap(syscallbuf_hdr, num_syscallbuf_bytes);
 }
 
@@ -1750,7 +1750,7 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
  *
  * XXX replace this with receive_fd().
  */
-static int recv_fd(int sock, int* remote_fdno) {
+static ScopedFd recv_fd(int sock, int* remote_fdno) {
   struct msghdr msg;
   int fd, remote_fd;
   struct iovec data;
