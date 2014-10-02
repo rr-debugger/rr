@@ -58,17 +58,8 @@ struct rrcall_init_buffers_params {
   void* traced_syscall_ip;
   /* Where our untraced syscalls will originate. */
   void* untraced_syscall_ip;
-  /* Address of the control socket the child expects to connect
-   * to. */
-  struct sockaddr_un* sockaddr;
-  /* Pre-prepared IPC that can be used to share fds; |fdptr| is
-   * a pointer to the control-message data buffer where the fd
-   * number being shared will be stored. */
-  struct msghdr* msg;
-  int* fdptr;
-  /* Preallocated space the tracer can use to make socketcall
-   * syscalls. */
-  struct socketcall_args* args_vec;
+  /* The fd we're using to track desched events. */
+  int desched_counter_fd;
 
   /* "Out" params. */
   /* Returned pointer to and size of the shared syscallbuf
@@ -161,18 +152,6 @@ inline static struct syscallbuf_record* next_record(
 inline static int stored_record_size(size_t length) {
   /* Round up to a whole number of 32-bit words. */
   return (length + sizeof(int) - 1) & ~(sizeof(int) - 1);
-}
-
-/**
- * Write the socket name that |tid| will use into |buf|, which is of
- * size |len|.
- */
-inline static void prepare_syscallbuf_socket_addr(struct sockaddr_un* addr,
-                                                  pid_t tid) {
-  memset(addr, 0, sizeof(*addr));
-  addr->sun_family = AF_UNIX;
-  snprintf(addr->sun_path, sizeof(addr->sun_path) - 1,
-           "/tmp/rr-tracee-ctrlsock-%d", tid);
 }
 
 /**

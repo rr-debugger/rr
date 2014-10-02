@@ -538,66 +538,21 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
 }
 
 static void set_up_buffer(void) {
-  struct sockaddr_un addr;
-  struct msghdr msg;
-  struct iovec data;
-  int msgbuf;
-  struct cmsghdr* cmsg;
-  int* msg_fdptr;
-  int* cmsg_fdptr;
-  char cmsgbuf[CMSG_SPACE(sizeof(*cmsg_fdptr))];
-  struct socketcall_args args_vec;
   struct rrcall_init_buffers_params args;
-  pid_t tid = traced_gettid();
-
-  assert(!buffer);
 
   /* NB: we want this setup emulated during replay. */
   if (buffer_enabled) {
-    desched_counter_fd = open_desched_event_counter(1, tid);
+    desched_counter_fd = open_desched_event_counter(1, traced_gettid());
+  } else {
+    desched_counter_fd = -1;
   }
-
-  /* Prepare arguments for rrcall.  We do this in the tracee
-   * just to avoid some hairy IPC to set up the arguments
-   * remotely from the tracer; this isn't strictly
-   * necessary. */
-  prepare_syscallbuf_socket_addr(&addr, tid);
-
-  memset(&msg, 0, sizeof(msg));
-  msg_fdptr = &msgbuf;
-  data.iov_base = msg_fdptr;
-  data.iov_len = sizeof(msgbuf);
-  msg.msg_iov = &data;
-  msg.msg_iovlen = 1;
-  msg.msg_control = cmsgbuf;
-  msg.msg_controllen = sizeof(cmsgbuf);
-  cmsg = CMSG_FIRSTHDR(&msg);
-  cmsg->cmsg_len = CMSG_LEN(sizeof(*cmsg_fdptr));
-  cmsg->cmsg_level = SOL_SOCKET;
-  cmsg->cmsg_type = SCM_RIGHTS;
-  cmsg_fdptr = (int*)CMSG_DATA(cmsg);
-
-  /* Set the "fd parameter" in the message buffer, which we send
-   * to let the other side know the local fd number we shared to
-   * it. */
-  *msg_fdptr = desched_counter_fd;
-  /* Set the "fd parameter" in the cmsg buffer, which is the one
-   * the kernel parses, dups, then sets to the fd number
-   * allocated in the other process. */
-  *cmsg_fdptr = desched_counter_fd;
 
   args.syscallbuf_enabled = buffer_enabled;
   args.traced_syscall_ip = get_traced_syscall_entry_point();
   args.untraced_syscall_ip = get_untraced_syscall_entry_point();
-  args.sockaddr = &addr;
-  args.msg = &msg;
-  args.fdptr = cmsg_fdptr;
-  args.args_vec = &args_vec;
+  args.desched_counter_fd = desched_counter_fd;
 
-  /* Trap to rr: let the magic begin!  We've prepared the buffer
-   * so that it's immediately ready to be sendmsg()'d to rr to
-   * share the desched counter to it (under rr's control).  rr
-   * can further use the buffer to share more fd's to us.
+  /* Trap to rr: let the magic begin!
    *
    * If the desched signal is currently blocked, then the tracer
    * will clear our TCB guard and we won't be able to buffer

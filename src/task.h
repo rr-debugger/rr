@@ -1180,14 +1180,6 @@ private:
                                        remote_ptr<void> map_hint);
 
   /**
-   * Share the desched-event fd that this task has already
-   * opened to this process when |share_desched_fd|.
-   */
-  void init_desched_fd(AutoRemoteSyscalls& remote,
-                       struct rrcall_init_buffers_params* args,
-                       ShareDeschedEventFd share_desched_fd);
-
-  /**
    * True if this has blocked delivery of the desched signal.
    */
   bool is_desched_sig_blocked();
