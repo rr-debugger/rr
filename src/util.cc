@@ -318,19 +318,14 @@ void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data) {
     data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
     data.size_bytes = data.info.end_addr - data.info.start_addr;
 
-    iterator_action next_action = it(it_data, t, &data);
-
-    if (STOP_ITERATING == next_action) {
-      break;
-    }
+    it(it_data, t, &data);
   }
   fclose(maps_file);
 }
 
-static iterator_action print_process_mmap_iterator(
+static void print_process_mmap_iterator(
     void* unused, Task* t, const struct map_iterator_data* data) {
   fputs(data->raw_map_line, stderr);
-  return CONTINUE_ITERATING;
 }
 
 void print_process_mmap(Task* t) {

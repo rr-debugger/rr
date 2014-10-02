@@ -594,7 +594,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
  *
  * TODO: replace iterate_memory_map()
  */
-/*static*/ iterator_action AddressSpace::check_segment_iterator(
+/*static*/ void AddressSpace::check_segment_iterator(
     void* pvas, Task* t, const struct map_iterator_data* data) {
   VerifyAddressSpace* vas = static_cast<VerifyAddressSpace*>(pvas);
   const AddressSpace* as = vas->as;
@@ -642,11 +642,11 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
            string::npos != kr.fsname.find(SHMEM_FS2 "/rr-emufs"));
     vas->km = km;
     vas->phase = vas->MERGING_KERNEL;
-    return CONTINUE_ITERATING;
+    return;
   }
   if (vas->MERGING_KERNEL == vas->phase &&
       try_merge_adjacent(&vas->km, vas->r, km, kr)) {
-    return CONTINUE_ITERATING;
+    return;
   }
 
   // Merged as much as we can ... now the mappings must be
@@ -654,7 +654,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
   vas->assert_segments_match(t);
 
   vas->phase = vas->NO_PHASE;
-  return check_segment_iterator(pvas, t, data);
+  check_segment_iterator(pvas, t, data);
 }
 
 Mapping AddressSpace::vdso() const {
@@ -820,7 +820,7 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   coalesce_around(ins.first);
 }
 
-/*static*/ iterator_action AddressSpace::populate_address_space(
+/*static*/ void AddressSpace::populate_address_space(
     void* asp, Task* t, const struct map_iterator_data* data) {
   AddressSpace* as = static_cast<AddressSpace*>(asp);
   const struct mapped_segment_info& info = data->info;
@@ -859,6 +859,4 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
 
   as->map(info.start_addr, info.end_addr - info.start_addr, info.prot,
           info.flags, info.file_offset, MappableResource(id, info.name));
-
-  return CONTINUE_ITERATING;
 }

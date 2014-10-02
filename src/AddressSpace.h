@@ -641,14 +641,14 @@ private:
    * using adjancent-map-merging heuristics that are as lenient
    * as possible given the data available from /proc/maps.
    */
-  static iterator_action check_segment_iterator(
+  static void check_segment_iterator(
       void* vasp, Task* t, const struct map_iterator_data* data);
 
   /**
    * After an exec, populate the new address space of |t| with
    * the existing mappings we find in /proc/maps.
    */
-  static iterator_action populate_address_space(
+  static void populate_address_space(
       void* asp, Task* t, const struct map_iterator_data* data);
 
   AddressSpace operator=(const AddressSpace&) = delete;

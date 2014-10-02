@@ -174,34 +174,24 @@ void print_process_mmap(Task* t);
 /**
  * The following helpers are used to iterate over a tracee's memory
  * maps.  Clients call |iterate_memory_map()|, passing an iterator
- * function that's invoked for each mapping until either the iterator
- * stops iteration by not returning CONTINUE_ITERATING, or until the
- * last mapping has been iterated over.
+ * function that's invoked for each mapping.
  *
  * For each map, a |struct map_iterator_data| object is provided which
  * contains segment info, the size of the mapping, and the raw
  * /proc/maps line the data was parsed from.
- *
- * Additionally, if clients pass the ITERATE_READ_MEMORY flag, the
- * contents of each segment are read and passed through the |mem|
- * field in the |struct map_iterator_data|.
  *
  * Any pointers passed transitively to the iterator function are
  * *owned by |iterate_memory_map()||*.  Iterator functions must copy
  * the data they wish to save beyond the scope of the iterator
  * function invocation.
  */
-enum iterator_action {
-  CONTINUE_ITERATING,
-  STOP_ITERATING
-};
 struct map_iterator_data {
   struct mapped_segment_info info;
   /* The nominal size of the data segment. */
   ssize_t size_bytes;
   const char* raw_map_line;
 };
-typedef iterator_action (*memory_map_iterator_t)(
+typedef void (*memory_map_iterator_t)(
     void* it_data, Task* t, const struct map_iterator_data* data);
 
 void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data);
