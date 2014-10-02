@@ -68,7 +68,7 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
 
 // For instances where the system type and the rr type are named differently.
 #define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)                        \
-  RR_VERIFY_TYPE_ARCH(arch, system_type_, rr_type_)
+  RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)
 
 // For instances where the system type and the rr type are named identically.
 #define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
@@ -141,8 +141,10 @@ struct WordSize64Defs : public KernelConstants {
   typedef Elf64_Sym ElfSym;
 };
 
-template <SupportedArch arch, typename wordsize>
+template <SupportedArch arch_, typename wordsize>
 struct BaseArch : public wordsize {
+  static SupportedArch arch() { return arch_; }
+
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
   typedef typename wordsize::signed_int signed_int;
   typedef typename wordsize::unsigned_int unsigned_int;
