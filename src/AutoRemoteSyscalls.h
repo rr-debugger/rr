@@ -126,6 +126,22 @@ public:
     return syscall_helper<1>(syscallno, callregs, args...);
   }
 
+  /** The Task in the context of which we're making syscalls. */
+  Task* task() const { return t; }
+
+  /**
+   * A small helper to get at the Task's arch.
+   * Out-of-line to avoid including task.h here.
+   */
+  SupportedArch arch() const;
+
+  /**
+   * Arranges for 'fd' to be transmitted to this process and returns
+   * our opened version of it.
+   */
+  ScopedFd retrieve_fd(int fd);
+
+private:
   /**
    * Remotely invoke in |t| the specified syscall with the given
    * arguments.  The arguments must of course be valid in |t|,
@@ -143,28 +159,12 @@ public:
   };
   long syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
 
-  /** The Task in the context of which we're making syscalls. */
-  Task* task() const { return t; }
-
-  /**
-   * A small helper to get at the Task's arch.
-   * Out-of-line to avoid including task.h here.
-   */
-  SupportedArch arch() const;
-
   /**
    * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
    * |remote_syscall()| to finish, returning the result.
    */
   long wait_syscall(int syscallno);
 
-  /**
-   * Arranges for 'fd' to be transmitted to this process and returns
-   * our opened version of it.
-   */
-  ScopedFd retrieve_fd(int fd);
-
-private:
   /**
    * "Recursively" build the set of syscall registers in
    * |callregs|.  |Index| is the syscall arg that will be set to
