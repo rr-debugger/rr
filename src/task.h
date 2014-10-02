@@ -7,6 +7,7 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "AddressSpace.h"
 #include "Event.h"
 #include "ExtraRegisters.h"
 #include "kernel_supplement.h"
@@ -14,7 +15,6 @@
 #include "Registers.h"
 #include "TraceStream.h"
 #include "util.h"
-#include "vm.h"
 
 class AutoRemoteSyscalls;
 class Session;

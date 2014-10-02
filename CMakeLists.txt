@@ -66,6 +66,7 @@ endforeach(generated_file)
 add_executable(rr
   ${GENERATED_FILES}
   src/test/cpuid_loop.S
+  src/AddressSpace.cc
   src/CompressedReader.cc
   src/CompressedWriter.cc
   src/CPUIDBugDetector.cc
@@ -93,7 +94,6 @@ add_executable(rr
   src/TraceFrame.cc
   src/TraceStream.cc
   src/util.cc
-  src/vm.cc
 )
 
 target_link_libraries(rr

@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_VM_H_
-#define RR_VM_H_
+#ifndef RR_ADDRESS_SPACE_H_
+#define RR_ADDRESS_SPACE_H_
 
 #include <inttypes.h>
 #include <sys/mman.h>
@@ -654,4 +654,4 @@ private:
   AddressSpace operator=(const AddressSpace&) = delete;
 };
 
-#endif /* RR_VM_H_ */
+#endif /* RR_ADDRESS_SPACE_H_ */
