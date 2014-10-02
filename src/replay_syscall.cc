@@ -600,9 +600,11 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 
   /* Open an empty file in the tracee */
   char filename[] = PREFIX_FOR_EMPTY_MMAPED_REGIONS "XXXXXX";
-  int fd = mkstemp(filename);
-  /* Close our side immediately */
-  close(fd);
+
+  {
+    /* Close our side immediately */
+    ScopedFd fd(mkstemp(filename));
+  }
 
   int child_fd;
   {
@@ -624,7 +626,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
                  child_fd, 0);
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
-  remote.syscall(Arch::close, fd);
+  remote.syscall(Arch::close, child_fd);
 }
 
 template <typename Arch>
