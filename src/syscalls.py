@@ -1702,3 +1702,8 @@ def _syscalls():
 
 def all():
     return list(_syscalls())
+
+def for_arch(arch):
+    for name, obj in all():
+        if getattr(obj, arch) is not None:
+            yield name, obj
