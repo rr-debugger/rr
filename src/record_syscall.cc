@@ -1346,13 +1346,27 @@ private:
   AllowSlack slack;
 };
 
-static const unsigned int elf_aux[] = {
+// We have |keys_length| instead of using array_length(keys) to work
+// around a gcc bug.
+template <typename Arch>
+struct elf_auxv_ordering {
+  static const unsigned int keys[];
+  static const size_t keys_length;
+};
+
+template<> const unsigned int elf_auxv_ordering<X86Arch>::keys[] = {
   AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
   AT_PHENT,   AT_PHNUM,        AT_BASE,  AT_FLAGS,  AT_ENTRY,  AT_UID,
   AT_EUID,    AT_GID,          AT_EGID,  AT_SECURE
 };
-// work around gcc bug
-static const size_t elf_aux_length = array_length(elf_aux);
+template<> const size_t elf_auxv_ordering<X86Arch>::keys_length = array_length(keys);
+
+template<> const unsigned int elf_auxv_ordering<X64Arch>::keys[] = {
+  AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
+  AT_PHENT,        AT_PHNUM, AT_BASE,   AT_FLAGS,  AT_ENTRY,
+  AT_UID,          AT_EUID,  AT_GID,    AT_EGID,   AT_SECURE,
+};
+template<> const size_t elf_auxv_ordering<X64Arch>::keys_length = array_length(keys);
 
 template <typename Arch> static void process_execve(Task* t) {
   Registers r = t->regs();
@@ -1406,14 +1420,14 @@ template <typename Arch> static void process_execve(Task* t) {
     typename Arch::unsigned_word value;
   };
   union {
-    ElfEntry entries[elf_aux_length];
+    ElfEntry entries[elf_auxv_ordering<Arch>::keys_length];
     uint8_t bytes[sizeof(entries)];
   } table;
   t->read_bytes(stack_ptr, table.bytes);
-  stack_ptr += 2 * array_length(elf_aux);
+  stack_ptr += 2 * array_length(elf_auxv_ordering<Arch>::keys);
 
-  for (int i = 0; i < ssize_t(array_length(elf_aux)); ++i) {
-    auto expected_field = elf_aux[i];
+  for (size_t i = 0; i < array_length(elf_auxv_ordering<Arch>::keys); ++i) {
+    auto expected_field = elf_auxv_ordering<Arch>::keys[i];
     const ElfEntry& entry = table.entries[i];
     ASSERT(t, expected_field == entry.key)
         << "Elf aux entry " << i << " should be " << HEX(expected_field)
