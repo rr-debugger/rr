@@ -48,8 +48,6 @@
 using namespace std;
 using namespace rr;
 
-#define NUM_MAX_MAPS 1024
-
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.
