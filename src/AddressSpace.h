@@ -258,7 +258,7 @@ struct MappingComparator {
 struct MappableResource {
   MappableResource() : id(FileId()) {}
   MappableResource(const FileId& id) : id(id) {}
-  MappableResource(const FileId& id, const char* fsname)
+  MappableResource(const FileId& id, const std::string& fsname)
       : id(id), fsname(fsname) {}
 
   bool operator==(const MappableResource& o) const {

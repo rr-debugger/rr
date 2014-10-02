@@ -220,14 +220,14 @@ private:
 };
 
 /**
- * Remove leading blank characters from |str| in-place.  |str| must be
- * a valid string.
+ * Advance *str to skip leading blank characters.
  */
-static void trim_leading_blanks(char* str) {
-  char* trimmed = str;
-  while (isblank(*trimmed))
+static const char* trim_leading_blanks(const char* str) {
+  const char* trimmed = str;
+  while (isblank(*trimmed)) {
     ++trimmed;
-  memmove(str, trimmed, strlen(trimmed) + 1 /*\0 byte*/);
+  }
+  return trimmed;
 }
 
 /**
@@ -235,10 +235,16 @@ static void trim_leading_blanks(char* str) {
  * from /proc/[tid]/maps on linux.
  */
 struct mapped_segment_info {
+  mapped_segment_info()
+      : prot(0),
+        flags(0),
+        file_offset(0),
+        inode(0),
+        dev_major(0),
+        dev_minor(0) {}
   /* Name of the segment, which isn't necessarily an fs entry
    * anywhere. */
-  char name[PATH_MAX]; /* technically PATH_MAX + "deleted",
-                        * but let's not go there. */
+  std::string name;
   remote_ptr<void> start_addr;
   remote_ptr<void> end_addr;
   int prot;
@@ -270,6 +276,7 @@ ostream& operator<<(ostream& o, const mapped_segment_info& m) {
  * function invocation.
  */
 struct map_iterator_data {
+  map_iterator_data() : raw_map_line(nullptr) {}
   struct mapped_segment_info info;
   const char* raw_map_line;
 };
@@ -279,7 +286,7 @@ typedef void (*memory_map_iterator_t)(void* it_data, Task* t,
 static void iterate_memory_map(Task* t, memory_map_iterator_t it,
                                void* it_data) {
   FILE* maps_file;
-  char line[PATH_MAX];
+  char line[PATH_MAX * 2];
   {
     char maps_path[PATH_MAX];
     snprintf(maps_path, sizeof(maps_path) - 1, "/proc/%d/maps", t->tid);
@@ -287,27 +294,29 @@ static void iterate_memory_map(Task* t, memory_map_iterator_t it,
                                                    << maps_path;
   }
   while (fgets(line, sizeof(line), maps_file)) {
-    uint64_t start, end;
     struct map_iterator_data data;
-    char flags[32];
-    int nparsed;
-
-    memset(&data, 0, sizeof(data));
     data.raw_map_line = line;
-
-    nparsed = sscanf(
-        line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64 " %x:%x %" SCNu64 " %s",
+    uint64_t start, end;
+    char flags[32];
+    int chars_scanned;
+    int nparsed = sscanf(
+        line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64 " %x:%x %" SCNu64 " %n",
         &start, &end, flags, &data.info.file_offset, &data.info.dev_major,
-        &data.info.dev_minor, &data.info.inode, data.info.name);
+        &data.info.dev_minor, &data.info.inode, &chars_scanned);
     ASSERT(t, (8 /*number of info fields*/ == nparsed ||
                7 /*num fields if name is blank*/ == nparsed))
         << "Only parsed " << nparsed << " fields of segment info from\n"
         << data.raw_map_line;
 
-    trim_leading_blanks(data.info.name);
+    // trim trailing newline, if any
+    int last_char = strlen(line) - 1;
+    if (line[last_char] == '\n') {
+      line[last_char] = 0;
+    }
+    data.info.name = trim_leading_blanks(line + chars_scanned);
     if (start > numeric_limits<uint32_t>::max() ||
         end > numeric_limits<uint32_t>::max() ||
-        !strcmp(data.info.name, "[vsyscall]")) {
+        data.info.name == "[vsyscall]") {
       // We manually read the exe link here because
       // this helper is used to set
       // |t->vm()->exe_image()|, so we can't rely on
@@ -960,7 +969,7 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
                << " (end of text segment)";
   }
 
-  bool is_dynamic_heap = !strcmp("[heap]", info.name);
+  bool is_dynamic_heap = "[heap]" == info.name;
   // This segment is adjacent to our previous guess at the start
   // of the dynamic heap, but it's still not an explicit heap
   // segment.  Update the guess.
@@ -975,9 +984,9 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   if (is_dynamic_heap) {
     id = FileId(PSEUDODEVICE_HEAP);
     as->update_heap(as->heap.start, info.end_addr);
-  } else if (!strcmp("[stack]", info.name)) {
+  } else if ("[stack]" == info.name) {
     id = FileId(PSEUDODEVICE_STACK);
-  } else if (!strcmp("[vdso]", info.name)) {
+  } else if ("[vdso]" == info.name) {
     assert(!as->vdso_start_addr);
     as->vdso_start_addr = info.start_addr;
     id = FileId(PSEUDODEVICE_VDSO);
