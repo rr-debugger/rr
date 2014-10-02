@@ -486,7 +486,7 @@ sethostname = UnsupportedSyscall(x86=74, x64=170)
 # must be the same in the replay as in the recording phase.
 setrlimit = ExecutedSyscall(x86=75, x64=160, arg2="struct rlimit")
 
-getrlimit = UnsupportedSyscall(x86=76, x64=97)
+getrlimit = EmulatedSyscall(x64=97, arg2="struct rlimit")
 
 #  int getrusage(int who, struct rusage *usage)
 #
