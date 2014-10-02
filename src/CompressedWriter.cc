@@ -66,6 +66,7 @@ CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
 }
 
 CompressedWriter::~CompressedWriter() {
+  close();
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&cond);
 }
