@@ -23,15 +23,15 @@ void* CompressedWriter::compression_thread_callback(void* p) {
 }
 
 CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
-                                   uint32_t num_threads) {
+                                   uint32_t num_threads)
+    : fd(filename.c_str(),
+         O_CLOEXEC | O_WRONLY | O_CREAT | O_EXCL | O_LARGEFILE, 0400) {
   this->block_size = block_size;
   threads.resize(num_threads);
   thread_pos.resize(num_threads);
   buffer.resize(block_size * (num_threads + 2));
   pthread_mutex_init(&mutex, NULL);
   pthread_cond_init(&cond, NULL);
-  fd = open(filename.c_str(),
-            O_CLOEXEC | O_WRONLY | O_CREAT | O_EXCL | O_LARGEFILE, 0400);
 
   for (uint32_t i = 0; i < num_threads; ++i) {
     thread_pos[i] = UINT64_MAX;
@@ -66,7 +66,6 @@ CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
 }
 
 CompressedWriter::~CompressedWriter() {
-  close();
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&cond);
 }
@@ -199,7 +198,7 @@ void CompressedWriter::compression_thread() {
 }
 
 void CompressedWriter::close() {
-  if (fd < 0) {
+  if (!fd.is_open()) {
     return;
   }
 
@@ -214,8 +213,7 @@ void CompressedWriter::close() {
     pthread_join(*i, NULL);
   }
 
-  ::close(fd);
-  fd = -1;
+  fd.close();
 }
 
 size_t CompressedWriter::do_compress(uint64_t offset, size_t length,

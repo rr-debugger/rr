@@ -23,6 +23,7 @@ public:
   operator int() const { return get(); }
   int get() const { return fd; }
 
+  bool is_open() { return fd >= 0; }
   void close() {
     if (fd >= 0) {
       ::close(fd);

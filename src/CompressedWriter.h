@@ -10,6 +10,8 @@
 #include <vector>
 #include <string>
 
+#include "ScopedFd.h"
+
 /**
  * CompressedWriter opens an output file and writes compressed blocks to it.
  * Blocks of a fixed but unspecified size (currently 1MB) are compressed.
@@ -55,7 +57,7 @@ protected:
                      size_t outputbuf_len);
 
   // Immutable while threads are running
-  int fd;
+  ScopedFd fd;
   int block_size;
   pthread_mutex_t mutex;
   pthread_cond_t cond;
