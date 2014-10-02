@@ -39,17 +39,21 @@ def write_is_always_emulated_syscall(f):
     f.write("\n")
 
 def write_syscallname_arch(f):
-    f.write("template <typename Arch> static const char* syscallname_arch(int syscall) {\n")
-    f.write("  switch (syscall) {\n");
-    def write_case(name):
-        f.write("    case Arch::%(syscall)s: return \"%(syscall)s\";\n" % { 'syscall': name })
-    for name, obj in syscalls.all():
-        write_case(name)
-    f.write("    default: return \"<unknown-syscall>\";\n")
-    f.write("  }\n")
-    f.write("}\n")
-    f.write("\n")
-        
+    f.write("template <typename Arch> static const char* syscallname_arch(int syscall);\n")
+    f.write("\n");
+    for specializer, arch in [("X86Arch", "x86"), ("X64Arch", "x64")]:
+        f.write("template <> const char* syscallname_arch<%s>(int syscall) {\n" % specializer)
+        f.write("  switch (syscall) {\n");
+        def write_case(name):
+            f.write("    case %(specializer)s::%(syscall)s: return \"%(syscall)s\";\n"
+                    % { 'specializer': specializer, 'syscall': name })
+        for name, _ in syscalls.for_arch(arch):
+            write_case(name)
+        f.write("    default: return \"<unknown-syscall>\";\n")
+        f.write("  }\n")
+        f.write("}\n")
+        f.write("\n")
+
 def write_syscall_record_cases(f):
     def write_recorder_for_arg(syscall, arg):
         arg_descriptor = getattr(syscall, arg, None)
