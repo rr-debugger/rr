@@ -43,6 +43,7 @@
 #include "PerfCounters.h"
 #include "replay_syscall.h"
 #include "ReplaySession.h"
+#include "ScopedFd.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -374,13 +375,12 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
   switch (req.type) {
     case DREQ_GET_AUXV: {
       char filename[] = "/proc/01234567890/auxv";
-      int fd;
       struct dbg_auxv_pair auxv[4096];
       ssize_t len;
 
       snprintf(filename, sizeof(filename) - 1, "/proc/%d/auxv",
                target->real_tgid());
-      fd = open(filename, O_RDONLY);
+      ScopedFd fd(filename, O_RDONLY);
       if (0 > fd) {
         dbg_reply_get_auxv(dbg, NULL, -1);
         return;
