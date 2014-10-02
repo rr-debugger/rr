@@ -4,7 +4,7 @@
 #define RR_REPLAY_SESSION_H_
 
 #include "CPUIDBugDetector.h"
-#include "emufs.h"
+#include "EmuFs.h"
 #include "replayer.h"
 #include "Session.h"
 

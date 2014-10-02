@@ -37,7 +37,7 @@
 
 #include "debugger_gdb.h"
 #include "diverter.h"
-#include "emufs.h"
+#include "EmuFs.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "PerfCounters.h"

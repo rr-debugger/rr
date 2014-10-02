@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "EmuFs"
 
-#include "emufs.h"
+#include "EmuFs.h"
 
 #include <syscall.h>
 

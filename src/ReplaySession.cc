@@ -10,7 +10,6 @@
 #include <algorithm>
 
 #include "AutoRemoteSyscalls.h"
-#include "emufs.h"
 #include "log.h"
 #include "task.h"
 #include "util.h"

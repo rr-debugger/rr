@@ -40,7 +40,7 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "emufs.h"
+#include "EmuFs.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "AutoRemoteSyscalls.h"

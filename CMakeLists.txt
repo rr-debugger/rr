@@ -71,7 +71,7 @@ add_executable(rr
   src/CPUIDBugDetector.cc
   src/debugger_gdb.cc
   src/diverter.cc
-  src/emufs.cc
+  src/EmuFs.cc
   src/Event.cc
   src/ExtraRegisters.cc
   src/Flags.cc
