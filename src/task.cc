@@ -1597,7 +1597,7 @@ void Task::destroy_local_buffers() {
 void Task::detach_and_reap() {
   // child_mem_fd needs to be valid since we won't be able to open
   // it for futex_wait below after we've detached.
-  ASSERT(this, as->mem_fd() >= 0);
+  ASSERT(this, as->mem_fd().is_open());
 
   if (unstable) {
     fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
@@ -1660,11 +1660,8 @@ long Task::fallible_ptrace(int request, remote_ptr<void> addr, void* data) {
 }
 
 void Task::open_mem_fd() {
-  if (as->mem_fd() >= 0) {
-    close(as->mem_fd());
-    // Use ptrace to read/write during open_mem_fd
-    as->set_mem_fd(-1);
-  }
+  // Use ptrace to read/write during open_mem_fd
+  as->set_mem_fd(ScopedFd());
 
   // We could try opening /proc/<pid>/mem directly first and
   // only do this dance if that fails. But it's simpler to
@@ -1681,14 +1678,14 @@ void Task::open_mem_fd() {
   }
 
   as->set_mem_fd(retrieve_fd(remote, remote_fd));
-  assert(as->mem_fd() >= 0);
+  assert(as->mem_fd().is_open());
 
   long err = remote.syscall(syscall_number_for_close(arch()), remote_fd);
   assert(!err);
 }
 
 void Task::open_mem_fd_if_needed() {
-  if (as->mem_fd() < 0) {
+  if (!as->mem_fd().is_open()) {
     open_mem_fd();
   }
 }
@@ -2009,7 +2006,7 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
     return 0;
   }
 
-  if (as->mem_fd() < 0) {
+  if (!as->mem_fd().is_open()) {
     return read_bytes_ptrace(addr, buf_size, buf);
   }
 
@@ -2044,7 +2041,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
     return;
   }
 
-  if (as->mem_fd() < 0) {
+  if (!as->mem_fd().is_open()) {
     write_bytes_ptrace(addr, buf_size, buf);
     return;
   }

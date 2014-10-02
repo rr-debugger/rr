@@ -14,11 +14,18 @@
  */
 class ScopedFd {
 public:
+  ScopedFd() : fd(-1) {}
   ScopedFd(int fd) : fd(fd) {}
   ScopedFd(const char* pathname, int flags, mode_t mode = 0)
       : fd(open(pathname, flags, mode)) {}
   ScopedFd(ScopedFd&& other) : fd(other.fd) { other.fd = -1; }
   ~ScopedFd() { close(); }
+
+  ScopedFd& operator=(ScopedFd&& other) {
+    fd = other.fd;
+    other.fd = -1;
+    return *this;
+  }
 
   operator int() const { return get(); }
   int get() const { return fd; }

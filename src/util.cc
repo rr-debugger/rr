@@ -860,7 +860,7 @@ static size_t align_size(size_t size) {
   return (size + align_amount) & ~(align_amount - 1);
 }
 
-int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
+ScopedFd retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   Task* t = remote.task();
   struct sockaddr_un socket_addr;
   struct msghdr msg;
@@ -1010,7 +1010,7 @@ int retrieve_fd(AutoRemoteSyscalls& remote, int fd) {
   remote.syscall(syscall_number_for_close(remote.arch()), child_sock);
   close(sock);
 
-  return our_fd;
+  return ScopedFd(our_fd);
 }
 
 // TODO de-dup

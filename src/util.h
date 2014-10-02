@@ -275,7 +275,7 @@ void resize_shmem_segment(ScopedFd& fd, size_t num_bytes);
  * Arranges for 'fd' to be transmitted to this process and returns
  * our opened version of it.
  */
-int retrieve_fd(AutoRemoteSyscalls& remote, int fd);
+ScopedFd retrieve_fd(AutoRemoteSyscalls& remote, int fd);
 
 /**
  * At thread exit time, undo the work that init_buffers() did.

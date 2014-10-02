@@ -533,18 +533,15 @@ public:
   // Encoding of the |int $3| instruction.
   static const uint8_t breakpoint_insn = 0xCC;
 
-  int mem_fd() { return child_mem_fd; }
-  void set_mem_fd(int fd) { child_mem_fd = fd; }
+  ScopedFd& mem_fd() { return child_mem_fd; }
+  void set_mem_fd(ScopedFd&& fd) { child_mem_fd = std::move(fd); }
 
   /**
    * Call this when an exec replaces 'as' with 'this' for some process.
    */
   void is_replacing(AddressSpace& as) {
     // Take over as's child_mem_fd.
-    // Swap the fds so destroying 'as' cleans up.
-    int tmp = child_mem_fd;
-    child_mem_fd = as.child_mem_fd;
-    as.child_mem_fd = tmp;
+    child_mem_fd = std::move(as.child_mem_fd);
   }
 
 private:
@@ -633,8 +630,8 @@ private:
   // do often.
   //
   // Users of child_mem_fd should fall back to ptrace-based memory
-  // access when child_mem_fd is -1.
-  int child_mem_fd;
+  // access when child_mem_fd is not open.
+  ScopedFd child_mem_fd;
 
   /**
    * Ensure that the cached mapping of |t| matches /proc/maps,

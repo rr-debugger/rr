@@ -354,12 +354,7 @@ static void print_process_mmap(Task* t) {
   iterate_memory_map(t, print_process_mmap_iterator, NULL);
 }
 
-AddressSpace::~AddressSpace() {
-  if (child_mem_fd >= 0) {
-    close(child_mem_fd);
-  }
-  session->on_destroy(this);
-}
+AddressSpace::~AddressSpace() { session->on_destroy(this); }
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
@@ -835,8 +830,7 @@ AddressSpace::AddressSpace(const AddressSpace& o)
       is_clone(true),
       mem(o.mem),
       session(nullptr),
-      vdso_start_addr(o.vdso_start_addr),
-      child_mem_fd(-1) {
+      vdso_start_addr(o.vdso_start_addr) {
   for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
     it->second = it->second->clone();
   }
