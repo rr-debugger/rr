@@ -825,11 +825,11 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
   return true;
 }
 
-int create_shmem_segment(const char* name, size_t num_bytes, int cloexec) {
+ScopedFd create_shmem_segment(const char* name, size_t num_bytes) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "%s/%s", SHMEM_FS, name);
 
-  int fd = open(path, O_CREAT | O_EXCL | O_RDWR | cloexec, 0600);
+  ScopedFd fd = open(path, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
   if (0 > fd) {
     FATAL() << "Failed to create shmem segment " << path;
   }
@@ -842,7 +842,7 @@ int create_shmem_segment(const char* name, size_t num_bytes, int cloexec) {
   return fd;
 }
 
-void resize_shmem_segment(int fd, size_t num_bytes) {
+void resize_shmem_segment(ScopedFd& fd, size_t num_bytes) {
   if (ftruncate(fd, num_bytes)) {
     FATAL() << "Failed to resize shmem to " << num_bytes;
   }

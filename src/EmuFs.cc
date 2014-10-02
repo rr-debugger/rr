@@ -67,8 +67,8 @@ void EmuFile::update(const struct stat& st) {
   return f;
 }
 
-EmuFile::EmuFile(int fd, const struct stat& est, const char* orig_path)
-    : est(est), orig_path(orig_path), file(fd), is_marked(false) {}
+EmuFile::EmuFile(ScopedFd&& fd, const struct stat& est, const char* orig_path)
+    : est(est), orig_path(orig_path), file(std::move(fd)), is_marked(false) {}
 
 EmuFile::shr_ptr EmuFs::at(const FileId& id) const { return files.at(id); }
 

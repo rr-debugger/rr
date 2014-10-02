@@ -1698,13 +1698,13 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   // Create the segment we'll share with the tracee.
   char shmem_name[PATH_MAX];
   format_syscallbuf_shmem_path(tid, shmem_name);
-  int shmem_fd = create_shmem_segment(shmem_name, SYSCALLBUF_BUFFER_SIZE);
+  ScopedFd shmem_fd = create_shmem_segment(shmem_name, SYSCALLBUF_BUFFER_SIZE);
   // Map the shmem fd in the child.
   int child_shmem_fd;
   {
     char proc_path[PATH_MAX];
     snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", getpid(),
-             shmem_fd);
+             shmem_fd.get());
     AutoRestoreMem child_path(remote, proc_path);
     child_shmem_fd = remote.syscall(syscall_number_for_open(arch()),
                                     child_path.get().as_int(), O_RDWR, 0600);
@@ -1740,7 +1740,7 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
             page_size() * offset_pages,
             MappableResource::syscallbuf(rec_tid, shmem_fd, shmem_name));
 
-  close(shmem_fd);
+  shmem_fd.close();
   remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);
 
   return child_map_addr;

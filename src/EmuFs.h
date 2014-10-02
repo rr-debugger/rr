@@ -104,7 +104,7 @@ public:
   static shr_ptr create(const char* orig_path, const struct stat& est);
 
 private:
-  EmuFile(int fd, const struct stat& est, const char* orig_path);
+  EmuFile(ScopedFd&& fd, const struct stat& est, const char* orig_path);
 
   struct stat est;
   std::string orig_path;

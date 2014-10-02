@@ -17,10 +17,18 @@ public:
   ScopedFd(int fd) : fd(fd) {}
   ScopedFd(const char* pathname, int flags, mode_t mode = 0)
       : fd(open(pathname, flags, mode)) {}
-  ~ScopedFd() { close(fd); }
+  ScopedFd(ScopedFd&& other) : fd(other.fd) { other.fd = -1; }
+  ~ScopedFd() { close(); }
 
   operator int() const { return get(); }
   int get() const { return fd; }
+
+  void close() {
+    if (fd >= 0) {
+      ::close(fd);
+    }
+    fd = -1;
+  }
 
 private:
   int fd;
