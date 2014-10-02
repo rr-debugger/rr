@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "ScopedFd.h"
 #include "Ticks.h"
 
 /**
@@ -75,10 +76,10 @@ private:
   void stop();
 
   pid_t tid;
-  int fd_ticks;
-  int fd_page_faults;
-  int fd_hw_interrupts;
-  int fd_instructions_retired;
+  ScopedFd fd_ticks;
+  ScopedFd fd_page_faults;
+  ScopedFd fd_hw_interrupts;
+  ScopedFd fd_instructions_retired;
   bool started;
 };
 

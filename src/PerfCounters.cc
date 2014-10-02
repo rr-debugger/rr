@@ -175,18 +175,12 @@ static void init_attributes() {
                        PERF_COUNT_SW_PAGE_FAULTS);
 }
 
-PerfCounters::PerfCounters(pid_t tid)
-    : tid(tid),
-      fd_ticks(-1),
-      fd_page_faults(-1),
-      fd_hw_interrupts(-1),
-      fd_instructions_retired(-1),
-      started(false) {
+PerfCounters::PerfCounters(pid_t tid) : tid(tid), started(false) {
   init_attributes();
 }
 
-static int start_counter(pid_t tid, int group_fd,
-                         struct perf_event_attr* attr) {
+static ScopedFd start_counter(pid_t tid, int group_fd,
+                              struct perf_event_attr* attr) {
   int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, 0);
   if (0 > fd) {
     FATAL() << "Failed to initialize counter";
@@ -227,26 +221,19 @@ void PerfCounters::reset(Ticks ticks_period) {
   started = true;
 }
 
-static void maybe_close(int* fd) {
-  if (*fd >= 0) {
-    close(*fd);
-    *fd = -1;
-  }
-}
-
 void PerfCounters::stop() {
   if (!started) {
     return;
   }
   started = false;
 
-  maybe_close(&fd_ticks);
-  maybe_close(&fd_page_faults);
-  maybe_close(&fd_hw_interrupts);
-  maybe_close(&fd_instructions_retired);
+  fd_ticks.close();
+  fd_page_faults.close();
+  fd_hw_interrupts.close();
+  fd_instructions_retired.close();
 }
 
-static int64_t read_counter(int fd) {
+static int64_t read_counter(ScopedFd& fd) {
   int64_t val;
   ssize_t nread = read(fd, &val, sizeof(val));
   assert(nread == sizeof(val));
