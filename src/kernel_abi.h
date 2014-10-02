@@ -679,6 +679,15 @@ struct BaseArch : public wordsize {
     ptr<signed_int> sv; // int sv[2]
   };
 
+  // All architectures have an mmap syscall, but it has architecture-specific
+  // calling semantics. We describe those here, and specializations need to
+  // indicate which semantics they use.
+  enum MmapCallingSemantics {
+    StructArguments,           // x86-ish, packaged into mmap_args, below
+    RegisterArguments,         // arguments passed in registers, the offset
+                               // is assumed to be in bytes, not in pages.
+  };
+
   struct mmap_args {
     ptr<void> addr;
     size_t len;
@@ -712,6 +721,8 @@ struct BaseArch : public wordsize {
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   static const size_t elfmachine = EM_386;
   static const size_t elfendian = ELFDATA2LSB;
+
+  static const MmapCallingSemantics mmap_semantics = StructArguments;
 
 #include "SyscallEnumsX86.generated"
 
@@ -773,6 +784,8 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   static const size_t elfmachine = EM_X86_64;
   static const size_t elfendian = ELFDATA2LSB;
+
+  static const MmapCallingSemantics mmap_semantics = RegisterArguments;
 
 #include "SyscallEnumsX64.generated"
 
