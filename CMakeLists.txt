@@ -16,11 +16,22 @@ set(rr_VERSION_MAJOR 2)
 set(rr_VERSION_MINOR 0)
 set(rr_VERSION_PATCH 0)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -m32 -Wstrict-prototypes")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -Wstrict-prototypes")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -O0 -g3 -Wall -Werror -m32")
-set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3 -m32")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -O0 -g3 -Wall -Werror")
+set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
+
+option(force64bit, "Force a 64-bit build, rather than a 32-bit one")
+if(force64bit)
+  set(rr_MBITNESS_OPTION -m64)
+else()
+  set(rr_MBITNESS_OPTION -m32)
+endif()
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${rr_MBITNESS_OPTION}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${rr_MBITNESS_OPTION}")
+set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${rr_MBITNESS_OPTION}")
 
 set_source_files_properties(src/preload/preload.c PROPERTIES COMPILE_FLAGS -O2)
 
