@@ -63,7 +63,7 @@ public:
    * Return a copy of this file.  See |create()| for the meaning
    * of |fs_tag|.
    */
-  shr_ptr clone(int fs_tag);
+  shr_ptr clone();
 
   /**
    * Return the fd of the real file backing this.
@@ -101,8 +101,7 @@ public:
    * uniquely identify this file among multiple EmuFs's that
    * might exist concurrently in this tracer process.
    */
-  static shr_ptr create(int fs_tag, const char* orig_path,
-                        const struct stat& est);
+  static shr_ptr create(const char* orig_path, const struct stat& est);
 
 private:
   EmuFile(int fd, const struct stat& est, const char* orig_path);
@@ -187,7 +186,6 @@ private:
                         size_t* nr_marked_files);
 
   FileMap files;
-  int tag;
 
   EmuFs(const EmuFs&) = delete;
   EmuFs& operator=(const EmuFs&) = delete;

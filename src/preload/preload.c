@@ -430,9 +430,7 @@ static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
 extern
     __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void);
 #else
-static void _vsyscall_hook_trampoline(void)
-{
-}
+static void _vsyscall_hook_trampoline(void) {}
 #endif
 
 /**

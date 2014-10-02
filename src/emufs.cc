@@ -15,8 +15,6 @@
 
 using namespace std;
 
-static int emufs_count;
-
 static void replace_char(string& s, char c, char replacement) {
   size_t i;
   while (string::npos != (i = s.find(c))) {
@@ -28,8 +26,8 @@ EmuFile::~EmuFile() {
   LOG(debug) << "    EmuFs::~File(einode:" << est.st_ino << ")";
 }
 
-EmuFile::shr_ptr EmuFile::clone(int fs_tag) {
-  auto f = EmuFile::create(fs_tag, orig_path.c_str(), est);
+EmuFile::shr_ptr EmuFile::clone() {
+  auto f = EmuFile::create(orig_path.c_str(), est);
   // NB: this isn't the most efficient possible file copy, but
   // it's simple and not too slow.
   ifstream src(proc_path(), ifstream::binary);
@@ -52,7 +50,7 @@ void EmuFile::update(const struct stat& st) {
   est = st;
 }
 
-/*static*/ EmuFile::shr_ptr EmuFile::create(int fs_tag, const char* orig_path,
+/*static*/ EmuFile::shr_ptr EmuFile::create(const char* orig_path,
                                             const struct stat& est) {
   // Sanitize the mapped file path so that we can use it in a
   // leaf name.
@@ -60,8 +58,8 @@ void EmuFile::update(const struct stat& st) {
   replace_char(path_tag, '/', '\\');
 
   stringstream name;
-  name << "rr-emufs-" << getpid() << "-" << fs_tag << "-dev-" << est.st_dev
-       << "-inode-" << est.st_ino << "-" << path_tag;
+  name << "rr-emufs-" << getpid() << "-dev-" << est.st_dev << "-inode-"
+       << est.st_ino << "-" << path_tag;
   shr_ptr f(new EmuFile(create_shmem_segment(name.str().c_str(), est.st_size),
                         est, orig_path));
   LOG(debug) << "created emulated file for " << orig_path << " as "
@@ -78,7 +76,7 @@ EmuFs::shr_ptr EmuFs::clone() {
   shr_ptr fs(new EmuFs());
   for (auto& kv : files) {
     const FileId& id = kv.first;
-    fs->files[id] = kv.second->clone(fs->tag);
+    fs->files[id] = kv.second->clone();
   }
   return fs;
 }
@@ -147,7 +145,7 @@ EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
     it->second->update(mf.stat());
     return it->second;
   }
-  auto vf = EmuFile::create(tag, mf.file_name().c_str(), mf.stat());
+  auto vf = EmuFile::create(mf.file_name().c_str(), mf.stat());
   files[id] = vf;
   return vf;
 }
@@ -162,7 +160,7 @@ void EmuFs::log() const {
 
 /*static*/ EmuFs::shr_ptr EmuFs::create() { return shr_ptr(new EmuFs()); }
 
-EmuFs::EmuFs() : tag(emufs_count++) {}
+EmuFs::EmuFs() {}
 
 void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
                              size_t* nr_marked_files) {
@@ -188,7 +186,8 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
   }
 }
 
-EmuFs::AutoGc::AutoGc(ReplaySession& session, int syscallno, SyscallEntryOrExit state)
+EmuFs::AutoGc::AutoGc(ReplaySession& session, int syscallno,
+                      SyscallEntryOrExit state)
     : session(session),
       is_gc_point(session.emufs().size() > 0 && SYSCALL_EXIT == state &&
                   (SYS_close == syscallno || SYS_munmap == syscallno)) {
