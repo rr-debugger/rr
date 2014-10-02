@@ -233,12 +233,15 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   int prot = PROT_NONE;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
   int fd = -1;
+  // NB: we don't need to adjust this in the remote syscall below because
+  // 0 == (0 >> PAGE_SIZE).
   off_t offset = 0;
   remote_ptr<void> map_addr;
   {
     AutoRemoteSyscalls remote(t);
-    map_addr = remote.syscall(Arch::mmap2, t->scratch_ptr, sz, prot, flags, fd,
-                              offset);
+    map_addr = remote.syscall(
+        has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
+        t->scratch_ptr, sz, prot, flags, fd, offset);
   }
   ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped " << file.start()
                                         << " during recording, but " << map_addr
