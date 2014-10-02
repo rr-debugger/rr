@@ -6,6 +6,8 @@
 
 #include <linux/kdev_t.h>
 
+#include <limits>
+
 #include "log.h"
 #include "Session.h"
 #include "task.h"
@@ -216,6 +218,135 @@ private:
   // separately.
   int exec_count, read_count, write_count;
 };
+
+/**
+ * Remove leading blank characters from |str| in-place.  |str| must be
+ * a valid string.
+ */
+static void trim_leading_blanks(char* str) {
+  char* trimmed = str;
+  while (isblank(*trimmed))
+    ++trimmed;
+  memmove(str, trimmed, strlen(trimmed) + 1 /*\0 byte*/);
+}
+
+/**
+ * Collecion of data describing a mapped memory segment, as parsed
+ * from /proc/[tid]/maps on linux.
+ */
+struct mapped_segment_info {
+  /* Name of the segment, which isn't necessarily an fs entry
+   * anywhere. */
+  char name[PATH_MAX]; /* technically PATH_MAX + "deleted",
+                        * but let's not go there. */
+  remote_ptr<void> start_addr;
+  remote_ptr<void> end_addr;
+  int prot;
+  int flags;
+  int64_t file_offset;
+  int64_t inode;
+  int dev_major;
+  int dev_minor;
+};
+
+ostream& operator<<(ostream& o, const mapped_segment_info& m) {
+  o << m.start_addr << "-" << m.end_addr << " " << HEX(m.prot)
+    << " f:" << HEX(m.flags);
+  return o;
+}
+
+/**
+ * The following helpers are used to iterate over a tracee's memory
+ * maps.  Clients call |iterate_memory_map()|, passing an iterator
+ * function that's invoked for each mapping.
+ *
+ * For each map, a |struct map_iterator_data| object is provided which
+ * contains segment info, the size of the mapping, and the raw
+ * /proc/maps line the data was parsed from.
+ *
+ * Any pointers passed transitively to the iterator function are
+ * *owned by |iterate_memory_map()||*.  Iterator functions must copy
+ * the data they wish to save beyond the scope of the iterator
+ * function invocation.
+ */
+struct map_iterator_data {
+  struct mapped_segment_info info;
+  /* The nominal size of the data segment. */
+  ssize_t size_bytes;
+  const char* raw_map_line;
+};
+typedef void (*memory_map_iterator_t)(void* it_data, Task* t,
+                                      const struct map_iterator_data* data);
+
+static void iterate_memory_map(Task* t, memory_map_iterator_t it,
+                               void* it_data) {
+  FILE* maps_file;
+  char line[PATH_MAX];
+  {
+    char maps_path[PATH_MAX];
+    snprintf(maps_path, sizeof(maps_path) - 1, "/proc/%d/maps", t->tid);
+    ASSERT(t, (maps_file = fopen(maps_path, "r"))) << "Failed to open "
+                                                   << maps_path;
+  }
+  while (fgets(line, sizeof(line), maps_file)) {
+    uint64_t start, end;
+    struct map_iterator_data data;
+    char flags[32];
+    int nparsed;
+
+    memset(&data, 0, sizeof(data));
+    data.raw_map_line = line;
+
+    nparsed = sscanf(
+        line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64 " %x:%x %" SCNu64 " %s",
+        &start, &end, flags, &data.info.file_offset, &data.info.dev_major,
+        &data.info.dev_minor, &data.info.inode, data.info.name);
+    ASSERT(t, (8 /*number of info fields*/ == nparsed ||
+               7 /*num fields if name is blank*/ == nparsed))
+        << "Only parsed " << nparsed << " fields of segment info from\n"
+        << data.raw_map_line;
+
+    trim_leading_blanks(data.info.name);
+    if (start > numeric_limits<uint32_t>::max() ||
+        end > numeric_limits<uint32_t>::max() ||
+        !strcmp(data.info.name, "[vsyscall]")) {
+      // We manually read the exe link here because
+      // this helper is used to set
+      // |t->vm()->exe_image()|, so we can't rely on
+      // that being correct yet.
+      char proc_exe[PATH_MAX];
+      char exe[PATH_MAX];
+      snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
+      readlink(proc_exe, exe, sizeof(exe));
+      FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
+              << " and that's not supported.";
+    }
+    data.info.start_addr = start;
+    data.info.end_addr = end;
+
+    data.info.prot |= strchr(flags, 'r') ? PROT_READ : 0;
+    data.info.prot |= strchr(flags, 'w') ? PROT_WRITE : 0;
+    data.info.prot |= strchr(flags, 'x') ? PROT_EXEC : 0;
+    data.info.flags |= strchr(flags, 'p') ? MAP_PRIVATE : 0;
+    data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
+    data.size_bytes = data.info.end_addr - data.info.start_addr;
+
+    it(it_data, t, &data);
+  }
+  fclose(maps_file);
+}
+
+static void print_process_mmap_iterator(void* unused, Task* t,
+                                        const struct map_iterator_data* data) {
+  fputs(data->raw_map_line, stderr);
+}
+
+/**
+ * Cat the /proc/[t->tid]/maps file to stdout, line by line.
+ */
+static void print_process_mmap(Task* t) {
+  iterate_memory_map(t, print_process_mmap_iterator, NULL);
+}
 
 AddressSpace::~AddressSpace() {
   if (child_mem_fd >= 0) {

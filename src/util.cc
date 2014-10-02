@@ -31,8 +31,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <limits>
-
 #include "preload/syscall_buffer.h"
 
 #include "Flags.h"
@@ -51,12 +49,6 @@ using namespace std;
 using namespace rr;
 
 #define NUM_MAX_MAPS 1024
-
-ostream& operator<<(ostream& o, const mapped_segment_info& m) {
-  o << m.start_addr << "-" << m.end_addr << " " << HEX(m.prot)
-    << " f:" << HEX(m.flags);
-  return o;
-}
 
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
@@ -253,83 +245,6 @@ void print_register_file(const Registers* regs) {
 
 void print_register_file_compact(FILE* file, const Registers* regs) {
   regs->print_register_file_compact(file);
-}
-
-/**
- * Remove leading blank characters from |str| in-place.  |str| must be
- * a valid string.
- */
-static void trim_leading_blanks(char* str) {
-  char* trimmed = str;
-  while (isblank(*trimmed))
-    ++trimmed;
-  memmove(str, trimmed, strlen(trimmed) + 1 /*\0 byte*/);
-}
-
-void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data) {
-  FILE* maps_file;
-  char line[PATH_MAX];
-  {
-    char maps_path[PATH_MAX];
-    snprintf(maps_path, sizeof(maps_path) - 1, "/proc/%d/maps", t->tid);
-    ASSERT(t, (maps_file = fopen(maps_path, "r"))) << "Failed to open "
-                                                   << maps_path;
-  }
-  while (fgets(line, sizeof(line), maps_file)) {
-    uint64_t start, end;
-    struct map_iterator_data data;
-    char flags[32];
-    int nparsed;
-
-    memset(&data, 0, sizeof(data));
-    data.raw_map_line = line;
-
-    nparsed = sscanf(
-        line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64 " %x:%x %" SCNu64 " %s",
-        &start, &end, flags, &data.info.file_offset, &data.info.dev_major,
-        &data.info.dev_minor, &data.info.inode, data.info.name);
-    ASSERT(t, (8 /*number of info fields*/ == nparsed ||
-               7 /*num fields if name is blank*/ == nparsed))
-        << "Only parsed " << nparsed << " fields of segment info from\n"
-        << data.raw_map_line;
-
-    trim_leading_blanks(data.info.name);
-    if (start > numeric_limits<uint32_t>::max() ||
-        end > numeric_limits<uint32_t>::max() ||
-        !strcmp(data.info.name, "[vsyscall]")) {
-      // We manually read the exe link here because
-      // this helper is used to set
-      // |t->vm()->exe_image()|, so we can't rely on
-      // that being correct yet.
-      char proc_exe[PATH_MAX];
-      char exe[PATH_MAX];
-      snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
-      readlink(proc_exe, exe, sizeof(exe));
-      FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
-              << " and that's not supported.";
-    }
-    data.info.start_addr = start;
-    data.info.end_addr = end;
-
-    data.info.prot |= strchr(flags, 'r') ? PROT_READ : 0;
-    data.info.prot |= strchr(flags, 'w') ? PROT_WRITE : 0;
-    data.info.prot |= strchr(flags, 'x') ? PROT_EXEC : 0;
-    data.info.flags |= strchr(flags, 'p') ? MAP_PRIVATE : 0;
-    data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
-    data.size_bytes = data.info.end_addr - data.info.start_addr;
-
-    it(it_data, t, &data);
-  }
-  fclose(maps_file);
-}
-
-static void print_process_mmap_iterator(
-    void* unused, Task* t, const struct map_iterator_data* data) {
-  fputs(data->raw_map_line, stderr);
-}
-
-void print_process_mmap(Task* t) {
-  iterate_memory_map(t, print_process_mmap_iterator, NULL);
 }
 
 bool is_page_aligned(const uint8_t* addr) {

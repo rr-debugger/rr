@@ -54,26 +54,6 @@ enum Completion {
 };
 
 /**
- * Collecion of data describing a mapped memory segment, as parsed
- * from /proc/[tid]/maps on linux.
- */
-struct mapped_segment_info {
-  /* Name of the segment, which isn't necessarily an fs entry
-   * anywhere. */
-  char name[PATH_MAX]; /* technically PATH_MAX + "deleted",
-                        * but let's not go there. */
-  remote_ptr<void> start_addr;
-  remote_ptr<void> end_addr;
-  int prot;
-  int flags;
-  int64_t file_offset;
-  int64_t inode;
-  int dev_major;
-  int dev_minor;
-};
-std::ostream& operator<<(std::ostream& o, const mapped_segment_info& m);
-
-/**
  * RAII helper to open a file and then close the fd when the helper
  * goes out of scope.
  */
@@ -165,36 +145,6 @@ void checksum_process_memory(Task* t, int global_time);
  * during recording.
  */
 void validate_process_memory(Task* t, int global_time);
-
-/**
- * Cat the /proc/[t->tid]/maps file to stdout, line by line.
- */
-void print_process_mmap(Task* t);
-
-/**
- * The following helpers are used to iterate over a tracee's memory
- * maps.  Clients call |iterate_memory_map()|, passing an iterator
- * function that's invoked for each mapping.
- *
- * For each map, a |struct map_iterator_data| object is provided which
- * contains segment info, the size of the mapping, and the raw
- * /proc/maps line the data was parsed from.
- *
- * Any pointers passed transitively to the iterator function are
- * *owned by |iterate_memory_map()||*.  Iterator functions must copy
- * the data they wish to save beyond the scope of the iterator
- * function invocation.
- */
-struct map_iterator_data {
-  struct mapped_segment_info info;
-  /* The nominal size of the data segment. */
-  ssize_t size_bytes;
-  const char* raw_map_line;
-};
-typedef void (*memory_map_iterator_t)(
-    void* it_data, Task* t, const struct map_iterator_data* data);
-
-void iterate_memory_map(Task* t, memory_map_iterator_t it, void* it_data);
 
 /**
  * Open a temporary debugging connection for |t| and service requests
