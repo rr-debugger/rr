@@ -31,6 +31,8 @@
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 
+#include <array>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -67,28 +69,34 @@ enum SyscallDefType {
   rep_IRREGULAR
 };
 struct syscall_def {
-  int no;
   /* See syscalls.py for documentation on these values. */
   SyscallDefType type;
   /* Not meaningful for rep_IRREGULAR. */
   ssize_t num_emu_args;
 };
 
+typedef pair<size_t, syscall_def> SyscallInit;
+
+template <size_t N>
+struct SyscallTable : array<syscall_def, N> {
+  SyscallTable(initializer_list<SyscallInit> init) {
+    for (auto& i : init) {
+      (*this)[i.first] = i.second;
+    }
+  }
+};
+
+template <typename Arch>
+struct syscall_defs {
+  // Reserve a final element which is guaranteed to be an undefined syscall.
+  // Negative and out-of-range syscall numbers are mapped to this element.
+  typedef SyscallTable<Arch::SYSCALL_COUNT + 1> Table;
+  static Table table;
+};
+
 #include "SyscallDefsTable.generated"
 
-// Reserve a final element which is guaranteed to be an undefined syscall.
-// Negative and out-of-range syscall numbers are mapped to this element.
-static struct syscall_def syscall_table[X86Arch::SYSCALL_COUNT + 1];
-
-__attribute__((constructor)) static void init_syscall_table() {
-  static_assert(array_length(syscall_defs) <= array_length(syscall_table), "");
-  for (size_t i = 0; i < array_length(syscall_defs); ++i) {
-    const struct syscall_def& def = syscall_defs[i];
-    assert(def.no < (int)array_length(syscall_table));
-    assert(def.no == 0 || def.type != rep_UNDEFINED);
-    syscall_table[def.no] = def;
-  }
-
+// XXX: x86-only currently.
 #ifdef CHECK_SYSCALL_NUMBERS
 
 // Hack because our 'break' syscall is called '_break'
@@ -97,9 +105,6 @@ __attribute__((constructor)) static void init_syscall_table() {
 #include "CheckSyscallNumbers.generated"
 
 #endif // CHECK_SYSCALL_NUMBERS
-}
-
-#undef SYSCALL_NUM
 
 /**
  * Compares the register file as it appeared in the recording phase
@@ -1185,7 +1190,6 @@ template <typename Arch>
 static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   /* FIXME: don't shadow syscall() */
   int syscall = t->current_trace_frame().event().data;
-  const struct syscall_def* def;
   TraceFrame* trace = &t->replay_session().current_trace_frame();
   SyscallEntryOrExit state = trace->event().state;
   const Registers* rec_regs = &trace->regs();
@@ -1271,14 +1275,15 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     }
   }
 
-  if (syscall < 0 || syscall >= int(array_length(syscall_table))) {
+  auto& table = syscall_defs<Arch>::table;
+  if (syscall < 0 || syscall >= int(array_length(table))) {
     // map to an invalid syscall.
-    syscall = array_length(syscall_table) - 1;
+    syscall = array_length(table) - 1;
     // we ensure this when we construct the table
-    assert(syscall_table[syscall].type == rep_UNDEFINED);
+    assert(table[syscall].type == rep_UNDEFINED);
   }
 
-  def = &syscall_table[syscall];
+  const struct syscall_def* def = &table[syscall];
   ASSERT(t, rep_UNDEFINED != def->type) << "Valid but unhandled syscallno "
                                         << syscall;
 

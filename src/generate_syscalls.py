@@ -133,22 +133,22 @@ def write_syscall_helper_functions(f):
         write_helpers(name)
 
 def write_syscall_defs_table(f):
-    f.write("static struct syscall_def syscall_defs[] = {\n")
-    # XXX hard-coded to x86 currently.
-    arch = "X86Arch"
-    x86_only_syscalls = sorted([(name, obj) for name, obj in syscalls.all() if obj.x86],
-                               key=lambda x: x[1].x86)
-    for name, obj in x86_only_syscalls:
-        if isinstance(obj, syscalls.RegularSyscall):
-            recorded_args = [arg for arg in syscalls.RegularSyscall.ARGUMENT_SLOTS
-                             if getattr(obj, arg, None) is not None]
-            f.write("  { %s::%s, rep_%s, %d },\n"
-                    % (arch, name, obj.semantics, len(recorded_args)))
-        elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
-            f.write("  { %s::%s, rep_IRREGULAR, -1 },\n" % (arch, name))
-        elif isinstance(obj, syscalls.UnsupportedSyscall):
-            pass
-    f.write("};\n")
+    for specializer, arch in [("X86Arch", "x86"), ("X64Arch", "x64")]:
+        f.write("template<> syscall_defs<%s>::Table syscall_defs<%s>::table = {\n"
+                % (specializer, specializer))
+        arch_syscalls = sorted(syscalls.for_arch(arch), key=lambda x: getattr(x[1], arch))
+        for name, obj in arch_syscalls:
+            if isinstance(obj, syscalls.RegularSyscall):
+                recorded_args = [arg for arg in syscalls.RegularSyscall.ARGUMENT_SLOTS
+                                 if getattr(obj, arg, None) is not None]
+                f.write("  { %s::%s, { rep_%s, %d } },\n"
+                        % (specializer, name, obj.semantics, len(recorded_args)))
+            elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
+                f.write("  { %s::%s, { rep_IRREGULAR, -1 } },\n" % (specializer, name))
+            elif isinstance(obj, syscalls.UnsupportedSyscall):
+                pass
+        f.write("};\n")
+        f.write("\n")
 
 def write_check_syscall_numbers(f):
     for name, obj in syscalls.all():
