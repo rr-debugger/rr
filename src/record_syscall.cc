@@ -2235,6 +2235,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_execve<Arch>(t);
       break;
 
+    case Arch::fcntl:
     case Arch::fcntl64: {
       int cmd = t->regs().arg2_signed();
       switch (cmd) {

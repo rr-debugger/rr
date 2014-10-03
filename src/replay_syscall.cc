@@ -1321,6 +1321,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->action = TSTEP_ENTER_SYSCALL;
       return;
 
+    case Arch::fcntl:
     case Arch::fcntl64:
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;

@@ -398,7 +398,7 @@ lock = UnsupportedSyscall(x86=53)
 #
 ioctl = IrregularEmulatedSyscall(x86=54, x64=16)
 
-fcntl = UnsupportedSyscall(x86=55, x64=72)
+fcntl = IrregularEmulatedSyscall(x86=55, x64=72)
 mpx = UnsupportedSyscall(x86=56)
 
 #  int setpgid(pid_t pid, pid_t pgid);
