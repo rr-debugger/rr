@@ -2238,26 +2238,25 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::fcntl64: {
       int cmd = t->regs().arg2_signed();
       switch (cmd) {
-        case F_DUPFD:
-        case F_GETFD:
-        case F_GETFL:
-        case F_SETFL:
-        case F_SETFD:
-        case F_SETOWN:
-        case F_SETOWN_EX:
-        case F_SETSIG:
+        case Arch::DUPFD:
+        case Arch::GETFD:
+        case Arch::GETFL:
+        case Arch::SETFL:
+        case Arch::SETFD:
+        case Arch::SETOWN:
+        case Arch::SETOWN_EX:
+        case Arch::SETSIG:
           break;
 
-        case F_GETLK:
+        case Arch::GETLK:
           t->record_remote(remote_ptr<typename Arch::flock>(t->regs().arg3()));
           break;
 
-        case F_SETLK:
-        case F_SETLKW:
+        case Arch::SETLK:
+        case Arch::SETLKW:
           break;
 
-#if F_GETLK != F_GETLK64
-        case F_GETLK64:
+        case Arch::GETLK64:
           // flock and flock64 better be different on 32-bit architectures, but
           // on 64-bit architectures, it's OK if they're the same.
           static_assert(
@@ -2267,17 +2266,12 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           t->record_remote(
               remote_ptr<typename Arch::flock64>(t->regs().arg3()));
           break;
-#endif
 
-#if F_SETLK64 != F_SETLK
-        case F_SETLK64:
-#endif
-#if F_SETLKW64 != F_SETLKW
-        case F_SETLKW64:
-#endif
+        case Arch::SETLK64:
+        case Arch::SETLKW64:
           break;
 
-        case F_GETOWN_EX:
+        case Arch::GETOWN_EX:
           t->record_remote(
               remote_ptr<typename Arch::f_owner_ex>(t->regs().arg3()));
           break;
