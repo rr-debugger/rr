@@ -591,7 +591,8 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
                              page_size() * offset_pages,
                              MappableResource::anonymous());
   }
-  return remote.syscall(Arch::mmap2, rec_addr, length, prot,
+  return remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
+                        rec_addr, length, prot,
                         // Tell the kernel to take
                         // |rec_addr| seriously.
                         flags | MAP_FIXED, fd, offset_pages);
@@ -630,8 +631,8 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
      so that the correct signal is generated on a memory access
      (SEGV if 'prot' doesn't allow the access, BUS if 'prot' does allow
      the access). */
-  remote.syscall(Arch::mmap2, start, length, prot, MAP_FIXED | MAP_PRIVATE,
-                 child_fd, 0);
+  remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
+                 start, length, prot, MAP_FIXED | MAP_PRIVATE, child_fd, 0);
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
   remote.syscall(Arch::close, child_fd);
@@ -742,7 +743,9 @@ static remote_ptr<void> finish_direct_mmap(AutoRemoteSyscalls& remote,
     }
   }
   /* And mmap that file. */
-  mapped_addr = remote.syscall(Arch::mmap2, rec_addr, length,
+  mapped_addr = remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2
+                                                               : Arch::mmap,
+                               rec_addr, length,
                                /* (We let SHARED|WRITEABLE
                                 * mappings go through while
                                 * they're not handled properly,
