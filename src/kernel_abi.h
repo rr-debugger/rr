@@ -83,6 +83,36 @@ struct KernelConstants {
   typedef uint32_t socklen_t;
 };
 
+// These duplicate the matching F_* constants for commands for fcntl, with two
+// small differences: we unconditionally define the *64 variants to their values
+// for 32-bit systems.  This change enables us to always use our constants in
+// switch cases without worrying about duplicated case values and makes dealing
+// with 32-bit and 64-bit tracees in the same rr process simpler.
+//
+// The other small difference is that we define these constants without the F_
+// prefix, so as to not run afoul of the C preprocessor.
+struct FcntlConstants {
+  enum FcntlOperation {
+    DUPFD = 0,
+    GETFD = 1,
+    SETFD = 2,
+    GETFL = 3,
+    SETFL = 4,
+    GETLK = 5,
+    SETLK = 6,
+    SETLKW = 7,
+    SETOWN = 8,
+    GETOWN = 9,
+    SETSIG = 10,
+    GETSIG = 11,
+    GETLK64 = 12,
+    SETLK64 = 13,
+    SETLKW64 = 14,
+    SETOWN_EX = 15,
+    GETOWN_EX = 16,
+  };
+};
+
 struct WordSize32Defs : public KernelConstants {
   static const ::size_t SIGINFO_PAD_SIZE =
       (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 3;
@@ -142,7 +172,7 @@ struct WordSize64Defs : public KernelConstants {
 };
 
 template <SupportedArch arch_, typename wordsize>
-struct BaseArch : public wordsize {
+struct BaseArch : public wordsize, public FcntlConstants {
   static SupportedArch arch() { return arch_; }
 
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
