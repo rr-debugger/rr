@@ -20,7 +20,7 @@
 CompressedReader::CompressedReader(const std::string& filename)
     : fd(new ScopedFd(filename.c_str(), O_CLOEXEC | O_RDONLY | O_LARGEFILE)) {
   fd_offset = 0;
-  error = fd < 0;
+  error = (int)fd < 0;
   eof = false;
   buffer_read_pos = 0;
   have_saved_state = false;
