@@ -1329,29 +1329,23 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       if (SYSCALL_EXIT == state) {
         auto cmd = t->regs().arg2_signed();
         switch (cmd) {
-          case F_DUPFD:
-          case F_GETFD:
-          case F_GETFL:
-          case F_SETFL:
-          case F_SETFD:
-          case F_SETLK:
-#if F_SETLK64 != F_SETLK
-          case F_SETLK64:
-#endif
-          case F_SETLKW:
-#if F_SETLKW64 != F_SETLKW
-          case F_SETLKW64:
-#endif
-          case F_SETOWN:
-          case F_SETOWN_EX:
-          case F_SETSIG:
+          case Arch::DUPFD:
+          case Arch::GETFD:
+          case Arch::GETFL:
+          case Arch::SETFL:
+          case Arch::SETFD:
+          case Arch::SETLK:
+          case Arch::SETLK64:
+          case Arch::SETLKW:
+          case Arch::SETLKW64:
+          case Arch::SETOWN:
+          case Arch::SETOWN_EX:
+          case Arch::SETSIG:
             step->syscall.num_emu_args = 0;
             break;
-          case F_GETLK:
-#if F_GETLK64 != F_GETLK
-          case F_GETLK64:
-#endif
-          case F_GETOWN_EX:
+          case Arch::GETLK:
+          case Arch::GETLK64:
+          case Arch::GETOWN_EX:
             step->syscall.num_emu_args = 1;
             break;
           default:
