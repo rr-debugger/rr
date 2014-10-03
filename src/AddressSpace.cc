@@ -314,6 +314,7 @@ static void iterate_memory_map(Task* t, memory_map_iterator_t it,
       line[last_char] = 0;
     }
     data.info.name = trim_leading_blanks(line + chars_scanned);
+#if defined(__i386__)
     if (start > numeric_limits<uint32_t>::max() ||
         end > numeric_limits<uint32_t>::max() ||
         data.info.name == "[vsyscall]") {
@@ -326,8 +327,9 @@ static void iterate_memory_map(Task* t, memory_map_iterator_t it,
       snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
       readlink(proc_exe, exe, sizeof(exe));
       FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
-              << " and that's not supported.";
+              << " and that's not supported with a 32-bit rr.";
     }
+#endif
     data.info.start_addr = start;
     data.info.end_addr = end;
 
