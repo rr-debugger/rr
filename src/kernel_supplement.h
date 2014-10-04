@@ -23,6 +23,10 @@
 #define PTRACE_EVENT_SECCOMP 7          // ubuntu 12.10 and future kernels
 #endif
 
+#ifndef PTRACE_O_EXITKILL
+#define PTRACE_O_EXITKILL (1 << 20)
+#endif
+
 // These are defined by the include/linux/errno.h in the kernel tree.
 // Since userspace doesn't see these errnos in normal operation, that
 // header apparently isn't distributed with libc.

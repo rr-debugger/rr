@@ -24,6 +24,7 @@
 
 #include "CPUIDBugDetector.h"
 #include "kernel_abi.h"
+#include "kernel_supplement.h"
 #include "log.h"
 #include "AutoRemoteSyscalls.h"
 #include "RecordSession.h"
@@ -39,10 +40,8 @@
  * checks that include this fd. */
 static const int REPLAY_DESCHED_EVENT_FD = -123;
 
-#define NUM_X86_DEBUG_REGS 8
-#define NUM_X86_WATCHPOINTS 4
-
-#define RR_PTRACE_O_EXITKILL (1 << 20)
+static const int NUM_X86_DEBUG_REGS = 8;
+static const int NUM_X86_WATCHPOINTS = 4;
 
 using namespace rr;
 using namespace std;
@@ -2053,12 +2052,12 @@ bool Task::clone_syscall_is_complete() {
   intptr_t options =
       PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK |
       PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-      PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP | RR_PTRACE_O_EXITKILL;
+      PTRACE_O_TRACEEXIT | PTRACE_O_TRACESECCOMP | PTRACE_O_EXITKILL;
   long ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
     // it for more robust cleanup, so tolerate not having it.
-    options &= ~RR_PTRACE_O_EXITKILL;
+    options &= ~PTRACE_O_EXITKILL;
     ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
   }
   ASSERT(t, !ret) << "PTRACE_SEIZE failed for tid %d" << t->tid;
