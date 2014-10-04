@@ -203,7 +203,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       blocked_sigs(),
       prname("???"),
       ticks(0),
-      registers_known(false),
+      is_stopped(false),
       extra_registers_known(false),
       robust_futex_list(),
       robust_futex_list_len(),
@@ -802,12 +802,8 @@ size_t Task::get_reg(uint8_t* buf, GDBRegister regname, bool* defined) {
   return num_bytes;
 }
 
-const Registers& Task::regs() {
-  if (!registers_known) {
-    LOG(debug) << "  (refreshing register cache)";
-    xptrace(PTRACE_GETREGS, nullptr, registers.ptrace_registers());
-    registers_known = true;
-  }
+const Registers& Task::regs() const {
+  ASSERT(this, is_stopped);
   return registers;
 }
 
@@ -896,7 +892,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
-  registers_known = false;
+  is_stopped = false;
   extra_registers_known = false;
   if (RESUME_WAIT == wait_how) {
     wait();
@@ -929,9 +925,9 @@ void Task::set_return_value_from_trace() {
 }
 
 void Task::set_regs(const Registers& regs) {
+  ASSERT(this, is_stopped);
   registers = regs;
   ptrace_if_alive(PTRACE_SETREGS, nullptr, registers.ptrace_registers());
-  registers_known = true;
 }
 
 void Task::set_extra_regs(const ExtraRegisters& regs) {
@@ -1311,6 +1307,9 @@ void Task::did_waitpid(int status) {
     seen_ptrace_exit_event = true;
   }
   ticks += hpc.read_ticks();
+  LOG(debug) << "  (refreshing register cache)";
+  xptrace(PTRACE_GETREGS, nullptr, registers.ptrace_registers());
+  is_stopped = true;
 }
 
 bool Task::try_wait() {

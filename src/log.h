@@ -103,7 +103,7 @@ FatalOstream& operator<<(FatalOstream& stream, const T& v) {
 }
 
 struct EmergencyDebugOstream {
-  EmergencyDebugOstream(Task* t) : t(t) {}
+  EmergencyDebugOstream(const Task* t) : t(const_cast<Task*>(t)) {}
   ~EmergencyDebugOstream() {
     log_stream() << std::endl;
     t->log_pending_events();
@@ -120,7 +120,8 @@ EmergencyDebugOstream& operator<<(EmergencyDebugOstream& stream, const T& v) {
 template <typename T>
 inline static T& prepare_log_stream(T&& stream, LogLevel level,
                                     const char* file, int line,
-                                    const char* function, Task* t = nullptr,
+                                    const char* function,
+                                    const Task* t = nullptr,
                                     const char* pfx = nullptr) {
   int err = errno;
 #ifdef DEBUGTAG

@@ -608,7 +608,7 @@ public:
   size_t get_reg(uint8_t* buf, GDBRegister regname, bool* defined);
 
   /** Return the current regs of this. */
-  const Registers& regs();
+  const Registers& regs() const;
 
   /** Return the extra registers of this. */
   const ExtraRegisters& extra_regs();
@@ -1246,15 +1246,11 @@ private:
   // Count of all ticks seen by this task since tracees became
   // consistent and the task last wait()ed.
   Ticks ticks;
-  // When |registers_known|, these are our child registers.
-  // When execution is resumed, we no longer know what the child
-  // registers are so the flag is unset.  The next time the
-  // registers are read after a trace-stop, we actually make the
-  // ptrace call to update the cache, and set the "known" bit
-  // back to true.  Manually setting the registers also updates
-  // this cached value and set the "known" flag.
+  // When |is_stopped|, these are our child registers.
   Registers registers;
-  bool registers_known;
+  // True when we know via waitpid() that the task is stopped and we haven't
+  // resumed it.
+  bool is_stopped;
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;
