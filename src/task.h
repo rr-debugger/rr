@@ -340,7 +340,7 @@ public:
    * Return the ptrace message pid associated with the current ptrace
    * event, f.e. the new child's pid at PTRACE_EVENT_CLONE.
    */
-  int get_ptrace_eventmsg_pid();
+  pid_t get_ptrace_eventmsg_pid();
 
   /**
    * Return through |si| the siginfo at the signal-stop of this.

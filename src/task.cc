@@ -375,14 +375,14 @@ void Task::futex_wait(remote_ptr<int> futex, int val) {
   }
 }
 
-int Task::get_ptrace_eventmsg_pid() {
+pid_t Task::get_ptrace_eventmsg_pid() {
   unsigned long msg = 0;
   // in theory we could hit an assertion failure if the tracee suffers
   // a SIGKILL before we get here. But the SIGKILL would have to be
   // precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
   // SYS_clone event, and us fetching the event message here.
   xptrace(PTRACE_GETEVENTMSG, nullptr, &msg);
-  return (int)msg;
+  return (pid_t)msg;
 }
 
 bool Task::get_siginfo(siginfo_t* si) {
