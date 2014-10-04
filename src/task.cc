@@ -203,7 +203,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       blocked_sigs(),
       prname("???"),
       ticks(0),
-      ticks_read(false),
       registers_known(false),
       extra_registers_known(false),
       robust_futex_list(),
@@ -726,14 +725,6 @@ void Task::record_event(const Event& ev) {
 
 void Task::flush_inconsistent_state() { ticks = 0; }
 
-int64_t Task::tick_count() {
-  if (!ticks_read) {
-    ticks += hpc.read_ticks();
-    ticks_read = true;
-  }
-  return ticks;
-}
-
 void Task::set_tick_count(Ticks count) { ticks = count; }
 
 void Task::record_local(remote_ptr<void> addr, ssize_t num_bytes,
@@ -902,13 +893,11 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   // makes counting bugs behave similarly between recording and
   // replay.
   // Accumulate any unknown stuff in tick_count().
-  tick_count();
   hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   registers_known = false;
   extra_registers_known = false;
-  ticks_read = false;
   if (RESUME_NONBLOCKING == wait_how) {
     return true;
   }
@@ -1292,6 +1281,8 @@ bool Task::wait(AllowInterrupt allow_interrupt) {
              << HEX(wait_status);
   ASSERT(this, tid == ret) << "waitpid(" << tid << ") failed with " << ret;
 
+  ticks += hpc.read_ticks();
+
   // If some other ptrace-stop happened to race with our
   // PTRACE_INTERRUPT, then let the other event win.  We only
   // want to interrupt tracees stuck running in userspace.
@@ -1575,7 +1566,6 @@ void Task::copy_state(Task* from) {
   pending_events = from->pending_events;
 
   ticks = from->tick_count();
-  ticks_read = true;
   tid_futex = from->tid_futex;
 }
 

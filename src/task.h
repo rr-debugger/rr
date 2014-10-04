@@ -282,7 +282,7 @@ public:
    * Updates tick count from the current performance counter values if
    * necessary.
    */
-  Ticks tick_count();
+  Ticks tick_count() { return ticks; }
 
   /**
    * Set tick count to 'count'.
@@ -1250,10 +1250,8 @@ private:
   // Task's OS name.
   std::string prname;
   // Count of all ticks seen by this task since tracees became
-  // consistent.
+  // consistent and the task last wait()ed.
   Ticks ticks;
-  // True if ticks hpc value has been read since the last task-resume.
-  bool ticks_read;
   // When |registers_known|, these are our child registers.
   // When execution is resumed, we no longer know what the child
   // registers are so the flag is unset.  The next time the
