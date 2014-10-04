@@ -935,7 +935,8 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
   extra_registers_known = true;
 
   switch (extra_registers.format()) {
-    case ExtraRegisters::XSAVE: {
+    case ExtraRegisters::XSAVE:
+    case ExtraRegisters::XSAVE64: {
       struct iovec vec = { extra_registers.data.data(),
                            extra_registers.data.size() };
       ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
