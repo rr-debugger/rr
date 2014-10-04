@@ -259,10 +259,7 @@ static bool resume_execution(Task* t, int need_task_continue,
 
   if (need_task_continue) {
     task_continue(t, force_cont, /*no sig*/ 0);
-    if (!t->wait()) {
-      LOG(debug) << "  waitpid() interrupted";
-      return false;
-    }
+    t->wait();
   }
 
   if (t->is_ptrace_seccomp_event()) {
@@ -651,9 +648,7 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
         LOG(debug) << "  " << t->tid << ": " << signalname(sig)
                    << " has user handler";
 
-        if (!t->cont_singlestep(sig)) {
-          return false;
-        }
+        t->cont_singlestep(sig);
 
         // It's been observed that when tasks enter
         // sighandlers, the singlestep operation above

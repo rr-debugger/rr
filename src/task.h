@@ -159,20 +159,20 @@ public:
   void cont_nonblocking(int sig = 0, Ticks tick_period = 0) {
     resume_execution(RESUME_CONT, RESUME_NONBLOCKING, sig, tick_period);
   }
-  bool cont_singlestep(int sig = 0) {
-    return resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, sig);
+  void cont_singlestep(int sig = 0) {
+    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, sig);
   }
-  bool cont_syscall(int sig = 0) {
-    return resume_execution(RESUME_SYSCALL, RESUME_WAIT);
+  void cont_syscall(int sig = 0) {
+    resume_execution(RESUME_SYSCALL, RESUME_WAIT);
   }
   void cont_syscall_nonblocking(int sig = 0, Ticks tick_period = 0) {
     resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, sig, tick_period);
   }
-  bool cont_sysemu(int sig = 0) {
-    return resume_execution(RESUME_SYSEMU, RESUME_WAIT, sig);
+  void cont_sysemu(int sig = 0) {
+    resume_execution(RESUME_SYSEMU, RESUME_WAIT, sig);
   }
-  bool cont_sysemu_singlestep(int sig = 0) {
-    return resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT, sig);
+  void cont_sysemu_singlestep(int sig = 0) {
+    resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT, sig);
   }
 
   /**
@@ -671,7 +671,7 @@ public:
    * You probably want to use one of the cont*() helpers above,
    * and not this.
    */
-  bool resume_execution(ResumeRequest how, WaitRequest wait_how, int sig = 0,
+  void resume_execution(ResumeRequest how, WaitRequest wait_how, int sig = 0,
                         Ticks tick_period = 0);
 
   /** Return the session this is part of. */
@@ -852,12 +852,10 @@ public:
     DONT_ALLOW_INTERRUPT
   };
   /**
-   * Block until the status of this changes.  Return true if
-   * successful, false if interrupted, and don't return at all
-   * on errors. wait() expects the wait to end with the process in a
-   * stopped() state.
+   * Block until the status of this changes. wait() expects the wait to end
+   * with the process in a stopped() state.
    */
-  bool wait(AllowInterrupt allow_interrupt = ALLOW_INTERRUPT);
+  void wait(AllowInterrupt allow_interrupt = ALLOW_INTERRUPT);
   /**
    * Return true if the status of this has changed, but don't
    * block.

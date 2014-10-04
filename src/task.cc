@@ -885,7 +885,7 @@ void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
   write_bytes_helper(dst, num_bytes, buf);
 }
 
-bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
+void Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
                             Ticks tick_period) {
   // Treat a 0 tick_period as a very large but finite number.
   // Always resetting here, and always to a nonzero number, improves
@@ -898,10 +898,9 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   registers_known = false;
   extra_registers_known = false;
-  if (RESUME_NONBLOCKING == wait_how) {
-    return true;
+  if (RESUME_WAIT == wait_how) {
+    wait();
   }
-  return wait();
 }
 
 Session& Task::session() const {
@@ -1209,7 +1208,7 @@ static void handle_alarm_signal(int sig) {
   LOG(debug) << "SIGALRM fired; maybe runaway tracee";
 }
 
-bool Task::wait(AllowInterrupt allow_interrupt) {
+void Task::wait(AllowInterrupt allow_interrupt) {
   LOG(debug) << "going into blocking waitpid(" << tid << ") ...";
   ASSERT(this, !unstable) << "Don't wait for unstable tasks";
 
@@ -1303,7 +1302,6 @@ bool Task::wait(AllowInterrupt allow_interrupt) {
     LOG(warn) << "  PTRACE_INTERRUPT raced with another event "
               << HEX(wait_status);
   }
-  return true;
 }
 
 bool Task::try_wait() {

@@ -69,7 +69,14 @@ static bool is_task_runnable(Task* t, bool* by_waitpid) {
 
   LOG(debug) << "  " << t->tid << " is blocked on " << t->ev()
              << "; checking status ...";
-  if ((t->pseudo_blocked && t->wait()) || t->try_wait()) {
+  bool did_wait_for_t;
+  if (t->pseudo_blocked) {
+    t->wait();
+    did_wait_for_t = true;
+  } else {
+    did_wait_for_t = t->try_wait();
+  }
+  if (did_wait_for_t) {
     t->pseudo_blocked = false;
     *by_waitpid = true;
     LOG(debug) << "  ready with status " << HEX(t->status());
@@ -164,10 +171,7 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
 #ifdef MONITOR_UNSWITCHABLE_WAITS
       double start = now_sec(), wait_duration;
 #endif
-      if (!t->wait()) {
-        LOG(debug) << "  waitpid(" << t->tid << ") interrupted by EINTR";
-        return nullptr;
-      }
+      t->wait();
 #ifdef MONITOR_UNSWITCHABLE_WAITS
       wait_duration = now_sec() - start;
       if (wait_duration >= 0.010) {
