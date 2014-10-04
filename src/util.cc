@@ -1151,7 +1151,10 @@ static void locate_vdso_symbols(Task* t, size_t* nsymbols,
     if (header->sh_type == SHT_DYNSYM) {
       assert(!dynsym && "multiple .dynsym sections?!");
       dynsym = header;
-    } else if (header->sh_type == SHT_STRTAB && header->sh_flags & SHF_ALLOC) {
+      continue;
+    }
+    if (header->sh_type == SHT_STRTAB && (header->sh_flags & SHF_ALLOC) &&
+        i != elfheader.e_shstrndx) {
       assert(!dynstr && "multiple .dynstr sections?!");
       dynstr = header;
     }
