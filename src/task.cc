@@ -1203,6 +1203,8 @@ static void handle_alarm_signal(int sig) {
   LOG(debug) << "SIGALRM fired; maybe runaway tracee";
 }
 
+static const int ptrace_exit_wait_status = (PTRACE_EVENT_EXIT << 16) | 0x857f;
+
 void Task::wait(AllowInterrupt allow_interrupt) {
   LOG(debug) << "going into blocking waitpid(" << tid << ") ...";
   ASSERT(this, !unstable) << "Don't wait for unstable tasks";
@@ -1213,7 +1215,6 @@ void Task::wait(AllowInterrupt allow_interrupt) {
   int status;
 
   bool sent_wait_interrupt = false;
-  static const int ptrace_exit_wait_status = (PTRACE_EVENT_EXIT << 16) | 0x857f;
   pid_t ret;
   while (true) {
     if (enable_wait_interrupt) {
@@ -1301,14 +1302,17 @@ void Task::wait(AllowInterrupt allow_interrupt) {
 }
 
 void Task::did_waitpid(int status) {
+  LOG(debug) << "  (refreshing register cache)";
+  if (!ptrace_if_alive(PTRACE_GETREGS, nullptr, registers.ptrace_registers())) {
+    status = ptrace_exit_wait_status;
+  }
+
+  is_stopped = true;
   wait_status = status;
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   }
   ticks += hpc.read_ticks();
-  LOG(debug) << "  (refreshing register cache)";
-  xptrace(PTRACE_GETREGS, nullptr, registers.ptrace_registers());
-  is_stopped = true;
 }
 
 bool Task::try_wait() {
