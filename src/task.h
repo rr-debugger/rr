@@ -321,14 +321,10 @@ public:
 
   /**
    * Force the wait status of this to |status|, as if
-   * |wait()/try_wait()| had returned it.
+   * |wait()/try_wait()| had returned it. Call this whenever a waitpid
+   * returned activity for this past.
    */
-  void force_status(int status) {
-    wait_status = status;
-    if (ptrace_event() == PTRACE_EVENT_EXIT) {
-      seen_ptrace_exit_event = true;
-    }
-  }
+  void did_waitpid(int status);
 
   /**
    * Wait for |futex| in this address space to have the value

@@ -226,7 +226,7 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
     } while (!next);
     ASSERT(next, next->unstable || next->may_be_blocked())
         << "Scheduled task should have been blocked or unstable";
-    next->force_status(status);
+    next->did_waitpid(status);
     *by_waitpid = true;
   }
 

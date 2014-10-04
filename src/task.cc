@@ -294,7 +294,7 @@ void Task::finish_emulated_syscall() {
     vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
   }
   set_regs(r);
-  force_status(0);
+  wait_status = 0;
 }
 
 const struct syscallbuf_record* Task::desched_rec() const {
@@ -1087,7 +1087,7 @@ void Task::stash_sig() {
 
 const siginfo_t& Task::pop_stash_sig() {
   assert(has_stashed_sig());
-  force_status(stashed_wait_status);
+  wait_status = stashed_wait_status;
   stashed_wait_status = 0;
   return stashed_si;
 }
@@ -1215,6 +1215,7 @@ void Task::wait(AllowInterrupt allow_interrupt) {
   // We only need this during recording.  If tracees go runaway
   // during replay, something else is at fault.
   bool enable_wait_interrupt = session().is_recording();
+  int status;
 
   bool sent_wait_interrupt = false;
   static const int ptrace_exit_wait_status = (PTRACE_EVENT_EXIT << 16) | 0x857f;
@@ -1230,7 +1231,7 @@ void Task::wait(AllowInterrupt allow_interrupt) {
       // avoid it.
       alarm(3);
     }
-    ret = waitpid(tid, &wait_status, __WALL);
+    ret = waitpid(tid, &status, __WALL);
     if (enable_wait_interrupt) {
       alarm(0);
     }
@@ -1247,7 +1248,7 @@ void Task::wait(AllowInterrupt allow_interrupt) {
       // some cases it doesn't return normally at all!
 
       // Fake a PTRACE_EVENT_EXIT for this task.
-      wait_status = ptrace_exit_wait_status;
+      status = ptrace_exit_wait_status;
       ret = tid;
       // XXX could this leave unreaped zombies lying around?
       break;
@@ -1259,7 +1260,7 @@ void Task::wait(AllowInterrupt allow_interrupt) {
     }
   }
 
-  if (ret >= 0 && !stopped()) {
+  if (ret >= 0 && !stopped_from_status(status)) {
     // Unexpected non-stopping exit code returned in wait_status.
     // This shouldn't happen; a PTRACE_EXIT_EVENT for this task
     // should be observed first, and then we would kill the task
@@ -1273,23 +1274,22 @@ void Task::wait(AllowInterrupt allow_interrupt) {
                                              "forgotten";
 
     // Turn this into a PTRACE_EXIT_EVENT.
-    wait_status = ptrace_exit_wait_status;
+    status = ptrace_exit_wait_status;
   }
 
   LOG(debug) << "  waitpid(" << tid << ") returns " << ret << "; status "
-             << HEX(wait_status);
+             << HEX(status);
   ASSERT(this, tid == ret) << "waitpid(" << tid << ") failed with " << ret;
-
-  ticks += hpc.read_ticks();
 
   // If some other ptrace-stop happened to race with our
   // PTRACE_INTERRUPT, then let the other event win.  We only
   // want to interrupt tracees stuck running in userspace.
   // We convert the ptrace-stop to a reschedule signal.
-  if (sent_wait_interrupt && PTRACE_EVENT_STOP == ptrace_event() &&
-      is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(wait_status))) {
+  if (sent_wait_interrupt &&
+      PTRACE_EVENT_STOP == ptrace_event_from_status(status) &&
+      is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(status))) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
-    stashed_wait_status = wait_status =
+    stashed_wait_status = status =
         (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
     memset(&stashed_si, 0, sizeof(stashed_si));
     stashed_si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
@@ -1299,21 +1299,32 @@ void Task::wait(AllowInterrupt allow_interrupt) {
     // the equivalent of hundreds of time slices.
     succ_event_counter = numeric_limits<int>::max() / 2;
   } else if (sent_wait_interrupt) {
-    LOG(warn) << "  PTRACE_INTERRUPT raced with another event "
-              << HEX(wait_status);
+    LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << HEX(status);
   }
+
+  did_waitpid(status);
 }
 
-bool Task::try_wait() {
-  pid_t ret = waitpid(tid, &wait_status, WNOHANG | __WALL | WSTOPPED);
+void Task::did_waitpid(int status) {
+  wait_status = status;
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   }
+  ticks += hpc.read_ticks();
+}
+
+bool Task::try_wait() {
+  int status;
+  pid_t ret = waitpid(tid, &status, WNOHANG | __WALL | WSTOPPED);
   LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret << ", status "
              << HEX(wait_status);
   ASSERT(this, 0 <= ret) << "waitpid(" << tid << ", NOHANG) failed with "
                          << ret;
-  return ret == tid;
+  if (ret == tid) {
+    did_waitpid(status);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -2067,7 +2078,7 @@ bool Task::clone_syscall_is_complete() {
     }
     t->cont_nonblocking();
   }
-  t->force_status(0);
+  t->wait_status = 0;
   t->open_mem_fd();
   return t;
 }
