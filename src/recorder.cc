@@ -272,7 +272,7 @@ static bool resume_execution(Task* t, int need_task_continue,
 }
 
 /**
- * Step |t| forward utnil the desched event is disarmed.  If a signal
+ * Step |t| forward until the desched event is disarmed.  If a signal
  * becomes pending in the interim, the |waitpid()| status is returned,
  * and |si| is filled in.  This allows the caller to deliver the
  * signal after this returns and the desched event is disabled.
