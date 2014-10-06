@@ -352,7 +352,11 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   t->set_data_from_trace();
   t->set_data_from_trace();
 
-  new_task->set_data_from_trace();
+  if (Arch::clone_tls_type == Arch::UserDescPointer) {
+    new_task->set_data_from_trace();
+  } else {
+    assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
+  }
   new_task->set_data_from_trace();
   new_task->set_data_from_trace();
   if (!(CLONE_VM & flags)) {
