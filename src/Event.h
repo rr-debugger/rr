@@ -9,6 +9,7 @@
 #include <stack>
 #include <string>
 
+#include "kernel_abi.h"
 #include "Registers.h"
 
 enum EventType {
@@ -75,7 +76,8 @@ union EncodedEvent {
     EventType type : 5;
     SyscallEntryOrExit state : 1;
     HasExecInfo has_exec_info : 1;
-    int data : 25;
+    SupportedArch arch_ : 1;
+    int data : 24;
   };
   int encoded;
 
@@ -84,8 +86,7 @@ union EncodedEvent {
   }
   bool operator!=(const EncodedEvent& other) const { return !(*this == other); }
 
-  // XXX x86-64 porting hazard. We should just add 'arch' to all events.
-  SupportedArch arch() const { return x86; }
+  SupportedArch arch() const { return arch_; }
 };
 
 static_assert(sizeof(int) == sizeof(EncodedEvent), "Bit fields are messed up");
