@@ -208,8 +208,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       robust_futex_list_len(),
       session_record(nullptr),
       session_replay(nullptr),
-      stashed_si(),
-      stashed_wait_status(),
       thread_area(),
       thread_area_valid(),
       tid_futex(),
@@ -1074,18 +1072,21 @@ void Task::stash_sig() {
   assert(pending_sig());
   ASSERT(this, !has_stashed_sig()) << "Tried to stash "
                                    << signalname(pending_sig()) << " when "
-                                   << signalname(stashed_si.si_signo)
+                                   << signalname(
+                                          stashed_signals.back().si.si_signo)
                                    << " was already stashed.";
-  if (get_siginfo(&stashed_si)) {
-    stashed_wait_status = wait_status;
+  siginfo_t si;
+  if (get_siginfo(&si)) {
+    stashed_signals.push_back(StashedSignal(si, wait_status));
   }
 }
 
-const siginfo_t& Task::pop_stash_sig() {
+siginfo_t Task::pop_stash_sig() {
   assert(has_stashed_sig());
-  wait_status = stashed_wait_status;
-  stashed_wait_status = 0;
-  return stashed_si;
+  wait_status = stashed_signals.front().wait_status;
+  siginfo_t si = stashed_signals.front().si;
+  stashed_signals.pop_front();
+  return si;
 }
 
 const string& Task::trace_dir() const { return trace_fstream().dir(); }
@@ -1286,12 +1287,13 @@ void Task::wait(AllowInterrupt allow_interrupt) {
       PTRACE_EVENT_STOP == ptrace_event_from_status(status) &&
       is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(status))) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
-    stashed_wait_status = status =
-        (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
-    memset(&stashed_si, 0, sizeof(stashed_si));
-    stashed_si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
-    stashed_si.si_fd = hpc.ticks_fd();
-    stashed_si.si_code = POLL_IN;
+    status = (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
+    siginfo_t si;
+    memset(&si, 0, sizeof(si));
+    si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
+    si.si_fd = hpc.ticks_fd();
+    si.si_code = POLL_IN;
+    stashed_signals.push_back(StashedSignal(si, status));
     // Starve the runaway task of CPU time.  It just got
     // the equivalent of hundreds of time slices.
     succ_event_counter = numeric_limits<int>::max() / 2;

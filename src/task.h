@@ -775,8 +775,8 @@ public:
    * stash anything.
    */
   void stash_sig();
-  bool has_stashed_sig() const { return stashed_wait_status; }
-  const siginfo_t& pop_stash_sig();
+  bool has_stashed_sig() const { return !stashed_signals.empty(); }
+  siginfo_t pop_stash_sig();
 
   /**
    * Return the status of this as of the last successful
@@ -1276,8 +1276,13 @@ private:
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.  |stashed_si| is only meaningful when
   // |stashed_wait_status| is nonzero.
-  siginfo_t stashed_si;
-  int stashed_wait_status;
+  struct StashedSignal {
+    StashedSignal(const siginfo_t& si, int wait_status)
+        : si(si), wait_status(wait_status) {}
+    siginfo_t si;
+    int wait_status;
+  };
+  std::deque<StashedSignal> stashed_signals;
   // The task group this belongs to.
   std::shared_ptr<TaskGroup> tg;
   // Contents of the |tls| argument passed to |clone()| and
