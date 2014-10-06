@@ -233,12 +233,6 @@ int clone_flags_to_task_flags(int flags_arg) {
   return flags;
 }
 
-bool is_page_aligned(const uint8_t* addr) {
-  return is_page_aligned(reinterpret_cast<size_t>(addr));
-}
-
-bool is_page_aligned(size_t sz) { return 0 == (sz % page_size()); }
-
 size_t page_size() { return sysconf(_SC_PAGE_SIZE); }
 
 size_t ceil_page_size(size_t sz) {
