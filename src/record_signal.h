@@ -12,6 +12,6 @@ class Task;
  * particular signal, pass a pointer to the siginfo in |si|.
  * Otherwise this function determines the pending signal info.
  */
-void handle_signal(Task* t, siginfo_t* si = nullptr);
+void handle_signal(Task* t, siginfo_t* si);
 
 #endif /* RR_HANDLE_SIGNAL_H__ */
