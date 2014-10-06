@@ -1610,6 +1610,25 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
 
 static int get_ipc_command(int raw_cmd) { return raw_cmd & ~IPC_64; }
 
+template <typename Arch> static void process_msgctl(Task* t, int cmd,
+                                                    remote_ptr<void> buf) {
+  ssize_t buf_size;
+  switch(cmd) {
+    case IPC_STAT:
+    case MSG_STAT:
+      buf_size = sizeof(typename Arch::msqid64_ds);
+      break;
+    case IPC_INFO:
+    case MSG_INFO:
+      buf_size = sizeof(typename Arch::msginfo);
+      break;
+    default:
+      buf_size = 0;
+      break;
+  }
+  t->record_remote(buf, buf_size);
+}
+
 template <typename Arch> static void process_ipc(Task* t, int call) {
   LOG(debug) << "ipc call: " << call;
 
@@ -1617,20 +1636,7 @@ template <typename Arch> static void process_ipc(Task* t, int call) {
     case MSGCTL: {
       int cmd = get_ipc_command((int)t->regs().arg3_signed());
       remote_ptr<void> buf = t->regs().arg5();
-      ssize_t buf_size;
-      switch (cmd) {
-        case IPC_STAT:
-        case MSG_STAT:
-          buf_size = sizeof(typename Arch::msqid64_ds);
-          break;
-        case IPC_INFO:
-        case MSG_INFO:
-          buf_size = sizeof(typename Arch::msginfo);
-          break;
-        default:
-          buf_size = 0;
-      }
-      t->record_remote(buf, buf_size);
+      process_msgctl<Arch>(t, cmd, buf);
       return;
     }
     case MSGRCV: {
@@ -2318,6 +2324,11 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     }
     case Arch::ioctl:
       process_ioctl<Arch>(t, (int)t->regs().arg2_signed());
+      break;
+
+    case Arch::msgctl:
+      process_msgctl<Arch>(t, (int)t->regs().arg2_signed(),
+                           t->regs().arg3());
       break;
 
     case Arch::ipc:
