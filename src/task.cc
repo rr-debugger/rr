@@ -216,7 +216,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       seen_ptrace_exit_event(false) {
   session_record = session.as_record();
   session_replay = session.as_replay();
-  push_event(Event(EV_SENTINEL, NO_EXEC_INFO));
+  push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
 }
 
 Task::~Task() {
@@ -1771,7 +1771,7 @@ void Task::maybe_flush_syscallbuf() {
   }
   // Write the entire buffer in one shot without parsing it,
   // because replay will take care of that.
-  push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO));
+  push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));
   record_local(syscallbuf_child,
                // Record the header for consistency checking.
                syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr),

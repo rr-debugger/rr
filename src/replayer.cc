@@ -974,9 +974,9 @@ static void guard_unexpected_signal(Task* t) {
     return;
   }
   if (t->child_sig) {
-    ev = SignalEvent(t->child_sig, NONDETERMINISTIC_SIG);
+    ev = SignalEvent(t->child_sig, NONDETERMINISTIC_SIG, t->arch());
   } else {
-    ev = SyscallEvent(max(0L, (long)t->regs().original_syscallno()));
+    ev = SyscallEvent(max(0L, (long)t->regs().original_syscallno()), t->arch());
   }
   ASSERT(t, child_sig_is_zero_or_sigtrap) << "Replay got unrecorded event "
                                           << ev << " while awaiting signal";
@@ -1296,12 +1296,12 @@ static Completion emulate_signal_delivery(struct dbg_context* dbg,
   bool restored_sighandler_frame = 0 < t->set_data_from_trace();
   if (restored_sighandler_frame) {
     LOG(debug) << "--> restoring sighandler frame for " << signalname(sig);
-    t->push_event(SignalEvent(sig, sigtype));
+    t->push_event(SignalEvent(sig, sigtype, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
     t->ev().transform(EV_SIGNAL_HANDLER);
   } else if (possibly_destabilizing_signal(
                  t, sig, Event(trace->event()).Signal().deterministic)) {
-    t->push_event(SignalEvent(sig, sigtype));
+    t->push_event(SignalEvent(sig, sigtype, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
 
     t->destabilize_task_group();

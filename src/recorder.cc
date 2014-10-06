@@ -141,7 +141,7 @@ static bool handle_ptrace_exit_event(Task* t) {
   }
 
   EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
-  t->record_event(Event(ev, NO_EXEC_INFO));
+  t->record_event(Event(ev, NO_EXEC_INFO, t->arch()));
 
   rec_sched_deregister_thread(t);
   return true;
@@ -188,7 +188,8 @@ static void handle_ptrace_event(Task* t) {
        * space, so we can unblock signals. */
       can_deliver_signals = 1;
 
-      t->push_event(SyscallEvent(syscall_number_for_execve(t->arch())));
+      t->push_event(SyscallEvent(syscall_number_for_execve(t->arch()),
+                                 t->arch()));
       t->ev().Syscall().state = ENTERING_SYSCALL;
       t->record_current_event();
       t->pop_syscall();
@@ -337,7 +338,8 @@ static void desched_state_changed(Task* t) {
        * recorded that syscall.  The following event sets
        * the abort-commit bit. */
       t->syscallbuf_hdr->abort_commit = 1;
-      t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO));
+      t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT,
+                            NO_EXEC_INFO, t->arch()));
 
       t->ev().Desched().state = DISARMING_DESCHED_EVENT;
     /* fall through */
@@ -355,7 +357,8 @@ static void desched_state_changed(Task* t) {
       t->syscallbuf_hdr->num_rec_bytes = 0;
       t->delay_syscallbuf_reset = false;
       t->delay_syscallbuf_flush = false;
-      t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
+      t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO,
+                            t->arch()));
       // We were just descheduled for potentially a long
       // time, and may have just had a signal become
       // pending.  Ensure we get another chance to run.
@@ -375,7 +378,8 @@ static void syscall_not_restarted(Task* t) {
 #endif
   t->pop_syscall_interruption();
 
-  t->record_event(Event(EV_INTERRUPTED_SYSCALL_NOT_RESTARTED, NO_EXEC_INFO));
+  t->record_event(Event(EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
+                        NO_EXEC_INFO, t->arch()));
 }
 
 /**
@@ -494,7 +498,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
 
         // We've finished processing this signal now.
         t->pop_signal_handler();
-        t->record_event(Event(EV_EXIT_SIGHANDLER, NO_EXEC_INFO));
+        t->record_event(Event(EV_EXIT_SIGHANDLER, NO_EXEC_INFO, t->arch()));
 
         maybe_discard_syscall_interruption(t, retval);
         // XXX probably not necessary to make the
@@ -587,7 +591,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
  */
 static void maybe_reset_syscallbuf(Task* t) {
   if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
-    t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
+    t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO, t->arch()));
   }
   /* Any code that sets |delay_syscallbuf_reset| is responsible
    * for recording its own SYSCALLBUF_RESET event at a
@@ -810,7 +814,7 @@ static void runnable_state_changed(Task* t) {
     case EV_SYSCALL_INTERRUPTION:
       // We just entered a syscall.
       if (!maybe_restart_syscall(t)) {
-        t->push_event(SyscallEvent(t->regs().original_syscallno()));
+        t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
         rec_before_record_syscall_entry(t, t->ev().Syscall().number);
       }
       ASSERT(t, EV_SYSCALL == t->ev().type());
@@ -1022,7 +1026,7 @@ void terminate_recording(Task* t, int status) {
 
   TraceFrame frame(
       session->trace_writer().time(), t ? t->tid : 0,
-      Event(EV_TRACE_TERMINATION, BaseEvent(NO_EXEC_INFO)).encode());
+      Event(EV_TRACE_TERMINATION, NO_EXEC_INFO, RR_NATIVE_ARCH).encode());
   session->trace_writer().write_frame(frame);
   session->trace_writer().close();
 
