@@ -1245,7 +1245,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       // that's semantically correct, and because
       // we'll only know how to pop one interruption
       // event later.
-      t->push_event(Event(interrupted, SyscallEvent(syscall)));
+      t->push_event(Event(interrupted, SyscallEvent(syscall, t->arch())));
       t->ev().Syscall().regs = t->regs();
     }
     step->action = TSTEP_RETIRE;

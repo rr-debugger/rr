@@ -103,9 +103,9 @@ struct BaseEvent {
    * Pass |HAS_EXEC_INFO| if the event is at a stable execution
    * point that we'll reach during replay too.
    */
-  BaseEvent(HasExecInfo has_exec_info)
+  BaseEvent(HasExecInfo has_exec_info, SupportedArch arch)
     : has_exec_info(has_exec_info),
-      arch_(x86) {}
+      arch_(arch) {}
 
   SupportedArch arch() const { return arch_; }
 
@@ -134,8 +134,8 @@ enum DeschedState {
 };
 struct DeschedEvent : public BaseEvent {
   /** Desched of |rec|. */
-  DeschedEvent(const struct syscallbuf_record* rec)
-      : BaseEvent(NO_EXEC_INFO), rec(rec), state(IN_SYSCALL) {}
+  DeschedEvent(const struct syscallbuf_record* rec, SupportedArch arch)
+      : BaseEvent(NO_EXEC_INFO, arch), rec(rec), state(IN_SYSCALL) {}
   // Record of the syscall that was interrupted by a desched
   // notification.  It's legal to reference this memory /while
   // the desched is being processed only/, because |t| is in the
@@ -159,8 +159,8 @@ struct SignalEvent : public BaseEvent {
    * for deterministically-delivered signals (see
    * record_signal.cc).
    */
-  SignalEvent(int signo, bool deterministic)
-      : BaseEvent(HAS_EXEC_INFO),
+  SignalEvent(int signo, bool deterministic, SupportedArch arch)
+      : BaseEvent(HAS_EXEC_INFO, arch),
         number(signo),
         deterministic(deterministic),
         delivered(false) {}
@@ -199,8 +199,8 @@ struct SyscallEvent : public BaseEvent {
   typedef std::stack<remote_ptr<void> > ArgsStack;
 
   /** Syscall |syscallno| is the syscall number. */
-  SyscallEvent(int syscallno)
-      : BaseEvent(HAS_EXEC_INFO),
+  SyscallEvent(int syscallno, SupportedArch arch)
+      : BaseEvent(HAS_EXEC_INFO, arch),
         regs(),
         desched_rec(nullptr),
         saved_args(),
@@ -285,7 +285,8 @@ static const syscall_interruption_t interrupted;
  */
 struct Event {
   Event() : event_type(EV_UNASSIGNED) {}
-  Event(EventType type, const BaseEvent& ev) : event_type(type), base(ev) {}
+  Event(EventType type, HasExecInfo info, SupportedArch arch)
+      : event_type(type), base(info, arch) {}
   Event(const DeschedEvent& ev) : event_type(EV_DESCHED), desched(ev) {}
   Event(const SignalEvent& ev) : event_type(EV_SIGNAL), signal(ev) {}
   Event(const SyscallEvent& ev) : event_type(EV_SYSCALL), syscall(ev) {}
@@ -387,7 +388,9 @@ struct Event {
   std::string type_name() const;
 
   /** Return an event of type EV_NOOP. */
-  static Event noop() { return Event(EV_NOOP, NO_EXEC_INFO); }
+  static Event noop(SupportedArch arch) {
+    return Event(EV_NOOP, NO_EXEC_INFO, arch);
+  }
 
 private:
   EventType event_type;

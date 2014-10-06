@@ -2198,7 +2198,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       if (new_tid < 0)
         break;
 
-      new_task->push_event(SyscallEvent(syscallno));
+      new_task->push_event(SyscallEvent(syscallno, t->arch()));
 
       /* record child id here */
       new_task->record_remote(
