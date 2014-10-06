@@ -437,6 +437,19 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
   RR_VERIFY_TYPE(msginfo);
 
+  // Despite the clone(2) manpage describing the clone syscall as taking a
+  // pointer to |struct user_desc*|, the actual kernel interface treats the
+  // TLS value as a opaque cookie, which architectures are then free to do
+  // whatever they like with.  See for instance the definition of TLS_VALUE
+  // in nptl/sysdeps/pthread/createthread.c in the glibc source.  We need to
+  // describe what the architecture uses so we can record things accurately.
+  enum CloneTLSType {
+    // |struct user_desc*|
+    UserDescPointer,
+    // This is the default choice for TLS_VALUE in the glibc source.
+    PthreadStructurePointer,
+  };
+
   struct user_desc {
     unsigned_int entry_number;
     unsigned_int base_addr;
@@ -753,6 +766,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   static const size_t elfendian = ELFDATA2LSB;
 
   static const MmapCallingSemantics mmap_semantics = StructArguments;
+  static const CloneTLSType clone_tls_type = UserDescPointer;
 
 #include "SyscallEnumsX86.generated"
 
@@ -816,6 +830,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   static const size_t elfendian = ELFDATA2LSB;
 
   static const MmapCallingSemantics mmap_semantics = RegisterArguments;
+  static const CloneTLSType clone_tls_type = PthreadStructurePointer;
 
 #include "SyscallEnumsX64.generated"
 

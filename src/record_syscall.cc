@@ -2206,8 +2206,12 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       new_task->record_remote(
           remote_ptr<typename Arch::pid_t>(t->regs().arg4()));
 
-      new_task->record_remote(
-          remote_ptr<typename Arch::user_desc>(new_task->regs().arg5()));
+      if (Arch::clone_tls_type == Arch::UserDescPointer) {
+        new_task->record_remote(
+            remote_ptr<typename Arch::user_desc>(new_task->regs().arg5()));
+      } else {
+        assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
+      }
       new_task->record_remote(
           remote_ptr<typename Arch::pid_t>(new_task->regs().arg3()));
       new_task->record_remote(
