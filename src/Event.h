@@ -103,7 +103,12 @@ struct BaseEvent {
    * Pass |HAS_EXEC_INFO| if the event is at a stable execution
    * point that we'll reach during replay too.
    */
-  BaseEvent(HasExecInfo has_exec_info) : has_exec_info(has_exec_info) {}
+  BaseEvent(HasExecInfo has_exec_info)
+    : has_exec_info(has_exec_info),
+      arch_(x86) {}
+
+  SupportedArch arch() const { return arch_; }
+
   // When replaying an event is expected to leave the tracee in
   // the same execution state as during replay, the event has
   // meaningful execution info, and it should be recorded for
@@ -111,6 +116,7 @@ struct BaseEvent {
   // tracee state they'll be replayed, so the tracee exeuction
   // state isn't meaningful.
   HasExecInfo has_exec_info;
+  SupportedArch arch_;
 };
 
 /**
@@ -373,6 +379,9 @@ struct Event {
 
   /** Return the current type of this. */
   EventType type() const { return event_type; }
+
+  /** Return the architecture associated with this. */
+  SupportedArch arch() const { return base.arch(); }
 
   /** Return a string naming |ev|'s type. */
   std::string type_name() const;
