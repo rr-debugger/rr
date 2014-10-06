@@ -683,9 +683,8 @@ static bool record_extra_regs(const Event& ev) {
   switch (ev.type()) {
     case EV_SYSCALL:
       // sigreturn/rt_sigreturn restores register state
-      // XXX x86 hard-coded, no good arch-from-event interface available
-      return (is_rt_sigreturn_syscall(ev.Syscall().number, x86) ||
-              is_sigreturn_syscall(ev.Syscall().number, x86)) &&
+      return (is_rt_sigreturn_syscall(ev.Syscall().number, ev.arch()) ||
+              is_sigreturn_syscall(ev.Syscall().number, ev.arch())) &&
              ev.Syscall().state == EXITING_SYSCALL;
     case EV_SIGNAL_HANDLER:
       // entering a signal handler seems to clear FP/SSE regs,
