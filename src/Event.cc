@@ -144,7 +144,7 @@ EncodedEvent Event::encode() const {
   EncodedEvent e;
   e.type = event_type;
   e.has_exec_info = has_exec_info();
-  e.arch_ = x86;
+  e.arch_ = arch();
   // Arbitrarily designate events for which this isn't
   // meaningful as being at "entry".  The events for which this
   // is meaningful set it below.
