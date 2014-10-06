@@ -40,8 +40,8 @@
  * checks that include this fd. */
 static const int REPLAY_DESCHED_EVENT_FD = -123;
 
-static const int NUM_X86_DEBUG_REGS = 8;
-static const int NUM_X86_WATCHPOINTS = 4;
+static const unsigned int NUM_X86_DEBUG_REGS = 8;
+static const unsigned int NUM_X86_WATCHPOINTS = 4;
 
 using namespace rr;
 using namespace std;
