@@ -2064,7 +2064,7 @@ bool Task::clone_syscall_is_complete() {
     options &= ~PTRACE_O_EXITKILL;
     ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
   }
-  ASSERT(t, !ret) << "PTRACE_SEIZE failed for tid %d" << t->tid;
+  ASSERT(t, !ret) << "PTRACE_SEIZE failed for tid " << t->tid;
 
   // PTRACE_SEIZE is fundamentally racy by design.  We depend on
   // stopping the tracee at a known location, so raciness is
