@@ -328,14 +328,17 @@ static bool compare_registers_core(const char* name1, const Registers* reg1,
 }
 
 // A handy macro for compare_registers_arch specializations.
-#define REGCMP(_reg)                                                           \
-  do {                                                                         \
-    if (reg1->_reg != reg2->_reg) {                                            \
-      maybe_print_reg_mismatch(mismatch_behavior, #_reg, name1, reg1->_reg,    \
-                               name2, reg2->_reg);                             \
-      match = false;                                                           \
-    }                                                                          \
+#define REGCMP(user_regs, _reg)                                         \
+  do {                                                                  \
+    if (reg1->user_regs._reg != reg2->user_regs._reg) {                 \
+      maybe_print_reg_mismatch(mismatch_behavior, #_reg,                \
+                               name1, reg1->user_regs._reg,             \
+                               name2, reg2->user_regs._reg);            \
+      match = false;                                                    \
+    }                                                                   \
   } while (0)
+#define X86_REGCMP(_reg) REGCMP(u.x86regs, _reg)
+#define X64_REGCMP(_reg) REGCMP(u.x64regs, _reg)
 
 // A wrapper around compare_registers_core so registers requiring special
 // processing can be handled via template specialization.
@@ -362,7 +365,7 @@ template <>
      signals sent or something like that.
   */
   if (reg1->u.x86regs.orig_eax >= 0 || reg2->u.x86regs.orig_eax >= 0) {
-    REGCMP(u.x86regs.orig_eax);
+    X86_REGCMP(orig_eax);
   }
   return match;
 }
@@ -376,7 +379,7 @@ template <>
   // XXX haven't actually observed this to be true on x86-64 yet, but
   // assuming that it follows the x86 behavior.
   if (reg1->u.x64regs.orig_rax >= 0 || reg2->u.x64regs.orig_rax >= 0) {
-    REGCMP(u.x64regs.orig_rax);
+    X64_REGCMP(orig_rax);
   }
   return match;
 }
