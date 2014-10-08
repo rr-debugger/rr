@@ -343,13 +343,10 @@ public:
   pid_t get_ptrace_eventmsg_pid();
 
   /**
-   * Return through |si| the siginfo at the signal-stop of this.
+   * Return the siginfo at the signal-stop of this.
    * Not meaningful unless this is actually at a signal stop.
-   * If the task is dead we return false; this could happen anytime
-   * during recording and must be handled, though it shouldn't happen
-   * during replay.
    */
-  bool get_siginfo(siginfo_t* si);
+  const siginfo_t& get_siginfo();
 
   /**
    * Set the siginfo for the signal-stop of this.
@@ -1298,6 +1295,8 @@ private:
   // The most recent status of this task as returned by
   // waitpid().
   int wait_status;
+  // The most recent siginfo (captured when wait_status shows pending_sig())
+  siginfo_t pending_siginfo;
   // True when a PTRACE_EXIT_EVENT has been observed in the wait_status
   // for this task.
   bool seen_ptrace_exit_event;

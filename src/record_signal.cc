@@ -447,9 +447,6 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
 
   initial_hdr = *hdr;
   while (true) {
-    siginfo_t tmp_si;
-    int is_syscall;
-
     if (!t->is_in_syscallbuf()) {
       /* The tracee is outside the syscallbuf code,
        * so in most cases can't possibly affect
@@ -508,10 +505,8 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
     t->cont_singlestep();
     assert(t->stopped());
 
-    if (!t->get_siginfo(&tmp_si)) {
-      goto happy_place;
-    }
-    is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
+    siginfo_t tmp_si = t->get_siginfo();
+    bool is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
 
     if (!is_syscall && !is_trace_trap(&tmp_si)) {
       if (PerfCounters::TIME_SLICE_SIGNAL == tmp_si.si_signo) {
@@ -620,10 +615,7 @@ void handle_signal(Task* t, siginfo_t* si) {
 
   siginfo_t local_si;
   if (!si) {
-    if (!t->get_siginfo(&local_si)) {
-      // task died. Nothing to do here.
-      return;
-    }
+    local_si = t->get_siginfo();
     si = &local_si;
   }
   handle_siginfo(t, si);

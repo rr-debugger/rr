@@ -821,11 +821,9 @@ static void continue_or_step(Task* t, Stepping stepi, int64_t tick_period = 0) {
  * as opposed to a trace trap.  Return zero in the latter case.
  */
 static bool is_breakpoint_trap(Task* t) {
-  siginfo_t si;
-
   assert(SIGTRAP == t->child_sig);
 
-  t->get_siginfo(&si);
+  const siginfo_t& si = t->get_siginfo();
   assert(SIGTRAP == si.si_signo);
 
   /* XXX unable to find docs on which of these "should" be
@@ -1949,8 +1947,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
 // execution, which should raise the original
 // signal again.
 #ifdef DEBUGTAG
-      siginfo_t si;
-      t->get_siginfo(&si);
+      siginfo_t si = t->get_siginfo();
       psiginfo(&si, "  siginfo for signal-stop:\n    ");
 #endif
     } else if (TRAP_BKPT_USER == retired_bp) {

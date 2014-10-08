@@ -382,11 +382,13 @@ pid_t Task::get_ptrace_eventmsg_pid() {
   return (pid_t)msg;
 }
 
-bool Task::get_siginfo(siginfo_t* si) {
-  return ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, si);
+const siginfo_t& Task::get_siginfo() {
+  assert(pending_sig());
+  return pending_siginfo;
 }
 
 void Task::set_siginfo(const siginfo_t& si) {
+  pending_siginfo = si;
   ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 
@@ -1075,10 +1077,8 @@ void Task::stash_sig() {
                                    << signalname(
                                           stashed_signals.back().si.si_signo)
                                    << " was already stashed.";
-  siginfo_t si;
-  if (get_siginfo(&si)) {
-    stashed_signals.push_back(StashedSignal(si, wait_status));
-  }
+  const siginfo_t& si = get_siginfo();
+  stashed_signals.push_back(StashedSignal(si, wait_status));
 }
 
 siginfo_t Task::pop_stash_sig() {
@@ -1307,6 +1307,10 @@ void Task::wait(AllowInterrupt allow_interrupt) {
 void Task::did_waitpid(int status) {
   LOG(debug) << "  (refreshing register cache)";
   if (!ptrace_if_alive(PTRACE_GETREGS, nullptr, registers.ptrace_registers())) {
+    status = ptrace_exit_wait_status;
+  }
+  if (pending_sig_from_status(status) &&
+      !ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
     status = ptrace_exit_wait_status;
   }
 
