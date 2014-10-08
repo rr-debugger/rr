@@ -536,7 +536,7 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
       // important.
       if (PerfCounters::TIME_SLICE_SIGNAL == si->si_signo ||
           t->is_sig_ignored(si->si_signo)) {
-        memcpy(si, &tmp_si, sizeof(*si));
+        *si = tmp_si;
         LOG(debug) << "  upgraded delivery of HPC_TIME_SLICE_SIGNAL to "
                    << signalname(si->si_signo);
         handle_siginfo(t, si);
