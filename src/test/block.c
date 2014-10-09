@@ -127,14 +127,14 @@ static void* reader_thread(void* dontcare) {
     test_assert(msg_magic == magic);
 
     magic = ~msg_magic;
+#if defined(SYS_socketcall)
     struct recvmmsg_arg arg = { 0 };
     arg.sockfd = sock;
     arg.msgvec = &mmsg;
     arg.vlen = 1;
-#if defined(SYS_socketcall)
     check_syscall(1, syscall(SYS_socketcall, SYS_RECVMMSG, (void*)&arg));
 #elif defined(SYS_recvmmsg)
-    check_syscall(1, syscall(SYS_recvmmsg, (void*)&arg));
+    check_syscall(1, syscall(SYS_recvmmsg, sock, &mmsg, 1, 0, NULL));
 #else
 #error unable to call recvmmsg
 #endif
@@ -420,14 +420,14 @@ int main(int argc, char* argv[]) {
     atomic_printf("M: sendmmsg'ing(by socketcall) 0x%x to socket ...\n",
                   msg_magic);
 
+#if defined(SYS_socketcall)
     struct sendmmsg_arg arg = { 0 };
     arg.sockfd = sock;
     arg.msgvec = &mmsg;
     arg.vlen = 1;
-#if defined(SYS_socketcall)
     syscall(SYS_socketcall, SYS_SENDMMSG, (void*)&arg);
 #elif defined(SYS_sendmmsg)
-    syscall(SYS_sendmmsg, (void*)&arg);
+    syscall(SYS_sendmmsg, sock, &mmsg, 1, 0);
 #else
 #error unable to call sendmmsg
 #endif
