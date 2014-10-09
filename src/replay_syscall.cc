@@ -1396,6 +1396,13 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       step->action = syscall_action(state);
       return;
 
+    case Arch::recvfrom:
+      step->syscall.emu = EMULATE;
+      step->syscall.emu_ret = EMULATE_RETURN;
+      step->syscall.num_emu_args = 3;
+      step->action = syscall_action(state);
+      return;
+
     case Arch::ioctl:
       return process_ioctl(t, state, step);
 
