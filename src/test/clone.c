@@ -33,6 +33,12 @@ static int child(void* arg) {
   child_tid_copy = child_tid;
   breakpoint();
 
+  /* We cannot return normally here.  Some clone() implementations call |_exit|
+     after the clone function returns; some call SYS_exit.  For consistency
+     and correctness's sake, we need to call SYS_exit here. */
+  syscall(SYS_exit, 0);
+
+  /* NOT REACHED */
   return 0;
 }
 
