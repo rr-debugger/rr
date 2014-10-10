@@ -406,6 +406,13 @@ set(CPACK_PACKAGE_VENDOR "Mozilla Foundation")
 
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Mozilla Foundation")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+  set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "i.86")
+  set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "i386")
+elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm.*")
+  set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm")
+endif()
 
 # XXX Cmake 2.8.7 doesn't know how to avoid specifiying /usr,
 # /usr/bin, etc, as files to be installed, but distros are finicky
