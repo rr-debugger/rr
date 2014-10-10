@@ -350,9 +350,9 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   /* FIXME: what if registers are non-null and contain an
    * invalid address? */
   t->set_data_from_trace();
-  t->set_data_from_trace();
 
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
+    t->set_data_from_trace();
     new_task->set_data_from_trace();
   } else {
     assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
