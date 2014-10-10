@@ -809,6 +809,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::socketcall:
       return prepare_socketcall<Arch>(t, need_scratch_setup);
 
+    case Arch::select:
     case Arch::_newselect:
       return ALLOW_SWITCH;
 
@@ -2362,6 +2363,26 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
                    (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),
                    (int)t->regs().arg5_signed(),
                    (off_t)t->regs().arg6_signed());
+      break;
+
+    case Arch::select:
+      switch (Arch::select_semantics) {
+        case Arch::SelectStructArguments: {
+          auto args =
+            t->read_mem(remote_ptr<typename Arch::select_args>(t->regs().arg1()));
+          t->record_remote(args.read_fds.rptr());
+          t->record_remote(args.write_fds.rptr());
+          t->record_remote(args.except_fds.rptr());
+          t->record_remote(args.timeout.rptr());
+          break;
+        }
+        case Arch::SelectRegisterArguments:
+          t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg2()));
+          t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg3()));
+          t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg4()));
+          t->record_remote(remote_ptr<typename Arch::timeval>(t->regs().arg5()));
+          break;
+      }
       break;
 
     case Arch::nanosleep: {

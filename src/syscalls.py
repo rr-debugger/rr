@@ -504,7 +504,7 @@ gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="struct timeval", arg2="stru
 settimeofday = UnsupportedSyscall(x86=79, x64=164)
 getgroups = UnsupportedSyscall(x86=80, x64=115)
 setgroups = UnsupportedSyscall(x86=81, x64=116)
-select = UnsupportedSyscall(x86=82, x64=23)
+select = IrregularEmulatedSyscall(x86=82, x64=23)
 
 #  int symlink(const char *oldpath, const char *newpath)
 #
