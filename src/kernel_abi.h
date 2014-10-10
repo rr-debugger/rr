@@ -740,6 +740,32 @@ struct BaseArch : public wordsize, public FcntlConstants {
     off_t offset;
   };
 
+  // All architectures have a select syscall, but like mmap, there are two
+  // different calling styles: one that packages the args into a structure,
+  // and one that handles the args in registers.  (Architectures using the
+  // first style, like the x86, sometimes support the register-args version
+  // as a separate syscall.)
+  //
+  // (Yes, we'd like to call these StructArguments and RegisterArguments, but
+  // that would conflict with MmapCallingSemantics, above.)
+  enum SelectCallingSemantics {
+    SelectStructArguments,
+    SelectRegisterArguments,
+  };
+
+  static const size_t MAX_FDS = 1024;
+  struct fd_set {
+    unsigned_long fds_bits[MAX_FDS / (8 * sizeof(unsigned_long))];
+  };
+
+  struct select_args {
+    signed_int n_fds;
+    ptr<fd_set> read_fds;
+    ptr<fd_set> write_fds;
+    ptr<fd_set> except_fds;
+    ptr<struct timeval> timeout;
+  };
+
   /**
    *  Some ipc calls require 7 params, so two of them are stashed into
    *  one of these structs and a pointer to this is passed instead.
@@ -767,6 +793,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
 
   static const MmapCallingSemantics mmap_semantics = StructArguments;
   static const CloneTLSType clone_tls_type = UserDescPointer;
+  static const SelectCallingSemantics select_semantics = SelectStructArguments;
 
 #include "SyscallEnumsX86.generated"
 
@@ -831,6 +858,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 
   static const MmapCallingSemantics mmap_semantics = RegisterArguments;
   static const CloneTLSType clone_tls_type = PthreadStructurePointer;
+  static const SelectCallingSemantics select_semantics = SelectRegisterArguments;
 
 #include "SyscallEnumsX64.generated"
 
