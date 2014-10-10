@@ -30,6 +30,7 @@ static void run_test(void) {
   close(128);
   munmap(NULL, 0);
 
+#if defined(__i386__)
   struct mmap_arg_struct args;
   args.addr = 0;
   args.len = num_bytes;
@@ -38,6 +39,11 @@ static void run_test(void) {
   args.fd = fd;
   args.offset = 0;
   rpage = (int*)syscall(SYS_mmap, &args);
+#elif defined(__x86_64__)
+  rpage = (int*)syscall(SYS_mmap, 0, num_bytes, PROT_READ, MAP_SHARED, fd, (off_t)0);
+#else
+#error unknown architecture
+#endif
 
   test_assert(wpage != (void*)-1 && rpage != (void*)-1 && rpage != wpage);
 
