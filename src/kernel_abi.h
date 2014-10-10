@@ -437,6 +437,14 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
   RR_VERIFY_TYPE(msginfo);
 
+  // The clone(2) syscall has four (!) different calling conventions,
+  // depending on what architecture it's being compiled for.  We describe
+  // the orderings for x86oids here.
+  enum CloneParameterOrdering {
+    FlagsStackParentTLSChild,
+    FlagsStackParentChildTLS,
+  };
+
   // Despite the clone(2) manpage describing the clone syscall as taking a
   // pointer to |struct user_desc*|, the actual kernel interface treats the
   // TLS value as a opaque cookie, which architectures are then free to do
@@ -793,6 +801,8 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
 
   static const MmapCallingSemantics mmap_semantics = StructArguments;
   static const CloneTLSType clone_tls_type = UserDescPointer;
+  static const CloneParameterOrdering clone_parameter_ordering =
+      FlagsStackParentTLSChild;
   static const SelectCallingSemantics select_semantics = SelectStructArguments;
 
 #include "SyscallEnumsX86.generated"
@@ -858,6 +868,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 
   static const MmapCallingSemantics mmap_semantics = RegisterArguments;
   static const CloneTLSType clone_tls_type = PthreadStructurePointer;
+  static const CloneParameterOrdering clone_parameter_ordering =
+      FlagsStackParentChildTLS;
   static const SelectCallingSemantics select_semantics = SelectRegisterArguments;
 
 #include "SyscallEnumsX64.generated"
