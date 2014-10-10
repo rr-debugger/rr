@@ -1219,3 +1219,50 @@ int get_num_cpus() {
   int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
   return cpus > 0 ? cpus : 1;
 }
+
+template <typename Arch>
+static void extract_clone_parameters_arch(const Registers& regs,
+                                          remote_ptr<void>* stack,
+                                          remote_ptr<int>* parent_tid,
+                                          remote_ptr<struct user_desc>* tls,
+                                          remote_ptr<int>* child_tid) {
+  switch (Arch::clone_parameter_ordering) {
+    case Arch::FlagsStackParentTLSChild:
+      if (stack) {
+        *stack = regs.arg2();
+      }
+      if (parent_tid) {
+        *parent_tid = regs.arg3();
+      }
+      if (tls) {
+        *tls = regs.arg4();
+      }
+      if (child_tid) {
+        *child_tid = regs.arg5();
+      }
+      break;
+    case Arch::FlagsStackParentChildTLS:
+      if (stack) {
+        *stack = regs.arg2();
+      }
+      if (parent_tid) {
+        *parent_tid = regs.arg3();
+      }
+      if (child_tid) {
+        *child_tid = regs.arg4();
+      }
+      if (tls) {
+        *tls = regs.arg5();
+      }
+      break;
+  }
+}
+
+void extract_clone_parameters(Task* t,
+                              remote_ptr<void>* stack,
+                              remote_ptr<int>* parent_tid,
+                              remote_ptr<struct user_desc>* tls,
+                              remote_ptr<int>* child_tid) {
+  RR_ARCH_FUNCTION(extract_clone_parameters_arch, t->arch(),
+                   t->regs(), stack, parent_tid, tls, child_tid);
+}

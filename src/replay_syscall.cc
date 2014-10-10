@@ -336,9 +336,11 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   long rec_tid = rec_regs.syscall_result_signed();
   pid_t new_tid = t->get_ptrace_eventmsg_pid();
 
-  remote_ptr<void> stack = t->regs().arg2();
-  remote_ptr<struct user_desc> tls = t->regs().arg4();
-  remote_ptr<int> ctid = t->regs().arg5();
+  remote_ptr<void> stack;
+  remote_ptr<int>* ptid_not_needed = nullptr;
+  remote_ptr<struct user_desc> tls;
+  remote_ptr<int> ctid;
+  extract_clone_parameters(t, &stack, ptid_not_needed, &tls, &ctid);
   unsigned long flags_arg =
       (Arch::clone == t->regs().original_syscallno()) ? t->regs().arg1() : 0;
 

@@ -312,4 +312,14 @@ void set_cpu_affinity(int cpu);
  */
 int get_num_cpus();
 
+/**
+ * Extract various clone(2) parameters out of the given Task's registers.
+ * Each remote_ptr parameter may be nullptr.
+ */
+void extract_clone_parameters(Task* t,
+                              remote_ptr<void>* stack,
+                              remote_ptr<int>* ptid,
+                              remote_ptr<struct user_desc>* tls,
+                              remote_ptr<int>* ctid);
+
 #endif /* RR_UTIL_H_ */

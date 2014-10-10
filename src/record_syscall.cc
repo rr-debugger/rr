@@ -2204,21 +2204,30 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       new_task->push_event(SyscallEvent(syscallno, t->arch()));
 
       /* record child id here */
-      new_task->record_remote(
-          remote_ptr<typename Arch::pid_t>(t->regs().arg3()));
+      remote_ptr<void>* stack_not_needed = nullptr;
+      remote_ptr<typename Arch::pid_t> parent_tid_in_parent, parent_tid_in_child;
+      remote_ptr<struct user_desc> tls_in_parent, tls_in_child;
+      remote_ptr<typename Arch::pid_t> child_tid_in_parent, child_tid_in_child;
+      extract_clone_parameters(t,
+                               stack_not_needed,
+                               &parent_tid_in_parent,
+                               &tls_in_parent,
+                               &child_tid_in_parent);
+      extract_clone_parameters(new_task,
+                               stack_not_needed,
+                               &parent_tid_in_child,
+                               &tls_in_child,
+                               &child_tid_in_child);
+      new_task->record_remote(parent_tid_in_parent);
 
       if (Arch::clone_tls_type == Arch::UserDescPointer) {
-        new_task->record_remote(
-            remote_ptr<typename Arch::user_desc>(t->regs().arg4()));
-        new_task->record_remote(
-            remote_ptr<typename Arch::user_desc>(new_task->regs().arg4()));
+        new_task->record_remote(tls_in_parent.cast<typename Arch::user_desc>());
+        new_task->record_remote(tls_in_child.cast<typename Arch::user_desc>());
       } else {
         assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
       }
-      new_task->record_remote(
-          remote_ptr<typename Arch::pid_t>(new_task->regs().arg3()));
-      new_task->record_remote(
-          remote_ptr<typename Arch::pid_t>(new_task->regs().arg5()));
+      new_task->record_remote(parent_tid_in_child);
+      new_task->record_remote(child_tid_in_child);
 
       new_task->pop_syscall();
 
