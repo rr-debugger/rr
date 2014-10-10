@@ -859,7 +859,11 @@ void destroy_buffers(Task* t) {
   // the vdso in the future, this code can be eliminated in
   // favor of a *much* simpler vsyscall SYS_exit hook in the
   // preload lib.
+#if defined(__i386__)
   static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
+#elif defined(__x86_64__)
+  static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
+#endif
 
   Registers exit_regs = t->regs();
   ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
