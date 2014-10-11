@@ -668,8 +668,14 @@ static void validate_args(int syscallno, SyscallEntryOrExit state, Task* t) {
 
 /** Return true when |t|'s $ip points at a syscall instruction. */
 static bool entering_syscall_insn(Task* t) {
-  const uint8_t sysenter[] = { 0x0f, 0x34 };
-  const uint8_t syscall_insn[] = { 0xcd, 0x80 };
+  static const uint8_t sysenter[] = { 0x0f, 0x34 };
+#if defined(__x86_64__)
+  static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
+#elif defined(__i386__)
+  static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
+#else
+#error unknown architecture
+#endif
   static_assert(sizeof(sysenter) == sizeof(syscall_insn), "Must ==");
   uint8_t insn[sizeof(sysenter)];
 
