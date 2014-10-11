@@ -669,13 +669,13 @@ static void validate_args(int syscallno, SyscallEntryOrExit state, Task* t) {
 /** Return true when |t|'s $ip points at a syscall instruction. */
 static bool entering_syscall_insn(Task* t) {
   const uint8_t sysenter[] = { 0x0f, 0x34 };
-  const uint8_t int_0x80[] = { 0xcd, 0x80 };
-  static_assert(sizeof(sysenter) == sizeof(int_0x80), "Must ==");
+  const uint8_t syscall_insn[] = { 0xcd, 0x80 };
+  static_assert(sizeof(sysenter) == sizeof(syscall_insn), "Must ==");
   uint8_t insn[sizeof(sysenter)];
 
   t->read_bytes(t->ip(), insn);
   return (!memcmp(insn, sysenter, sizeof(sysenter)) ||
-          !memcmp(insn, int_0x80, sizeof(int_0x80)));
+          !memcmp(insn, syscall_insn, sizeof(syscall_insn)));
 }
 
 /**
