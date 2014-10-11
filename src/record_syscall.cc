@@ -1110,7 +1110,6 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       push_arg_ptr(t, info);
       if (!info.is_null()) {
         r.set_arg2(scratch);
-        // TODO: is this size arch-dependent?
         scratch += info.referent_size();
       }
 
@@ -1646,7 +1645,7 @@ template <typename Arch> static void process_ipc(Task* t, int call) {
       // The |msgsize| arg is only the size of message
       // payload; there's also a |msgtype| tag set just
       // before the payload.
-      size_t buf_size = sizeof(long) + t->regs().arg3();
+      size_t buf_size = sizeof(typename Arch::signed_long) + t->regs().arg3();
       remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
           t->regs().arg5();
       auto kludge = t->read_mem(child_kludge);
