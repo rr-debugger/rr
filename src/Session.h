@@ -64,7 +64,7 @@ public:
 
   /** See Task::clone(). */
   Task* clone(Task* p, int flags, remote_ptr<void> stack,
-              remote_ptr<struct user_desc> tls, remote_ptr<int> cleartid_addr,
+              remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
               pid_t new_tid, pid_t new_rec_tid = -1);
 
   /** Return a new task group consisting of |t|. */

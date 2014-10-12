@@ -51,7 +51,7 @@ AddressSpace::shr_ptr Session::clone(AddressSpace::shr_ptr vm) {
 }
 
 Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
-                     remote_ptr<struct user_desc> tls,
+                     remote_ptr<void> tls,
                      remote_ptr<int> cleartid_addr, pid_t new_tid,
                      pid_t new_rec_tid) {
   Task* c = p->clone(flags, stack, tls, cleartid_addr, new_tid, new_rec_tid);

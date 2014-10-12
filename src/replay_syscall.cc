@@ -338,7 +338,7 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
 
   remote_ptr<void> stack;
   remote_ptr<int>* ptid_not_needed = nullptr;
-  remote_ptr<struct user_desc> tls;
+  remote_ptr<void> tls;
   remote_ptr<int> ctid;
   extract_clone_parameters(t, &stack, ptid_not_needed, &tls, &ctid);
   unsigned long flags_arg =

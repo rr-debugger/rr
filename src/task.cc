@@ -1036,8 +1036,8 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
                               (void*)dr7.packed());
 }
 
-void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
-  thread_area = read_mem(tls);
+void Task::set_thread_area(remote_ptr<void> tls) {
+  thread_area = read_mem(tls.cast<struct user_desc>());
   thread_area_valid = true;
 }
 
@@ -1403,7 +1403,7 @@ int Task::stop_sig_from_status(int status) const {
 }
 
 Task* Task::clone(int flags, remote_ptr<void> stack,
-                  remote_ptr<struct user_desc> tls,
+                  remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
                   pid_t new_rec_tid, Session* other_session) {
   auto& sess = other_session ? *other_session : session();
@@ -1534,7 +1534,7 @@ void Task::copy_state(Task* from) {
       err = remote.syscall(syscall_number_for_set_thread_area(arch()),
                            remote_tls.get().as_int());
       ASSERT(this, 0 == err);
-      set_thread_area(remote_tls.get().cast<struct user_desc>());
+      set_thread_area(remote_tls.get());
     }
 
     auto ctid = from->tid_addr();
@@ -1963,7 +1963,7 @@ bool Task::clone_syscall_is_complete() {
                                 AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                                 unsigned base_flags, remote_ptr<void> stack,
                                 remote_ptr<int> ptid,
-                                remote_ptr<struct user_desc> tls,
+                                remote_ptr<void> tls,
                                 remote_ptr<int> ctid) {
   // NB: reference the glibc i386 clone.S implementation for
   // placement of clone syscall args.  The man page is incorrect

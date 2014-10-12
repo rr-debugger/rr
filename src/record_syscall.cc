@@ -2206,7 +2206,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       /* record child id here */
       remote_ptr<void>* stack_not_needed = nullptr;
       remote_ptr<typename Arch::pid_t> parent_tid_in_parent, parent_tid_in_child;
-      remote_ptr<struct user_desc> tls_in_parent, tls_in_child;
+      remote_ptr<void> tls_in_parent, tls_in_child;
       remote_ptr<typename Arch::pid_t> child_tid_in_parent, child_tid_in_child;
       extract_clone_parameters(t,
                                stack_not_needed,

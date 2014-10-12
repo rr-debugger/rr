@@ -713,7 +713,7 @@ public:
   size_t robust_list_len() const { return robust_futex_list_len; }
 
   /** Update the thread area to |addr|. */
-  void set_thread_area(remote_ptr<struct user_desc> tls);
+  void set_thread_area(remote_ptr<void> tls);
   const struct user_desc* tls() const;
 
   /** Update the clear-tid futex to |tid_addr|. */
@@ -1097,7 +1097,7 @@ private:
    * to the task during recording.
    */
   Task* clone(int flags, remote_ptr<void> stack,
-              remote_ptr<struct user_desc> tls, remote_ptr<int> cleartid_addr,
+              remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
               pid_t new_tid, pid_t new_rec_tid = -1,
               Session* other_session = nullptr);
 
@@ -1221,7 +1221,7 @@ private:
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                         unsigned base_flags, remote_ptr<void> stack = nullptr,
                         remote_ptr<int> ptid = nullptr,
-                        remote_ptr<struct user_desc> tls = nullptr,
+                        remote_ptr<void> tls = nullptr,
                         remote_ptr<int> ctid = nullptr);
 
   /** Fork and exec a task to run |ae|, with |rec_tid|. */

@@ -167,8 +167,7 @@ static void handle_ptrace_event(Task* t) {
       pid_t new_tid = t->get_ptrace_eventmsg_pid();
       remote_ptr<void> stack;
       remote_ptr<int>* ptid_not_needed = nullptr;
-      // XXX the type here is a lie for non-i386, but it's not hurting anything.
-      remote_ptr<struct user_desc> tls;
+      remote_ptr<void> tls;
       remote_ptr<int> ctid;
       extract_clone_parameters(t, &stack, ptid_not_needed, &tls, &ctid);
       // fork and can never share these resources, only

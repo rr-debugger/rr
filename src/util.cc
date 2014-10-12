@@ -1224,7 +1224,7 @@ template <typename Arch>
 static void extract_clone_parameters_arch(const Registers& regs,
                                           remote_ptr<void>* stack,
                                           remote_ptr<int>* parent_tid,
-                                          remote_ptr<struct user_desc>* tls,
+                                          remote_ptr<void>* tls,
                                           remote_ptr<int>* child_tid) {
   switch (Arch::clone_parameter_ordering) {
     case Arch::FlagsStackParentTLSChild:
@@ -1261,7 +1261,7 @@ static void extract_clone_parameters_arch(const Registers& regs,
 void extract_clone_parameters(Task* t,
                               remote_ptr<void>* stack,
                               remote_ptr<int>* parent_tid,
-                              remote_ptr<struct user_desc>* tls,
+                              remote_ptr<void>* tls,
                               remote_ptr<int>* child_tid) {
   RR_ARCH_FUNCTION(extract_clone_parameters_arch, t->arch(),
                    t->regs(), stack, parent_tid, tls, child_tid);
