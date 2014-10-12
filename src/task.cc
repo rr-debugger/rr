@@ -1959,17 +1959,38 @@ bool Task::clone_syscall_is_complete() {
   return false;
 }
 
+template <typename Arch>
+static void perform_remote_clone_arch(AutoRemoteSyscalls& remote,
+                                      unsigned base_flags, remote_ptr<void> stack,
+                                      remote_ptr<int> ptid, remote_ptr<void> tls,
+                                      remote_ptr<int> ctid) {
+  switch (Arch::clone_parameter_ordering) {
+    case Arch::FlagsStackParentTLSChild:
+      remote.syscall(Arch::clone, base_flags, stack,
+                     ptid.as_int(), tls.as_int(), ctid.as_int());
+      break;
+    case Arch::FlagsStackParentChildTLS:
+      remote.syscall(Arch::clone, base_flags, stack,
+                     ptid.as_int(), ctid.as_int(), tls.as_int());
+      break;
+  }
+}
+
+static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
+                                 unsigned base_flags, remote_ptr<void> stack,
+                                 remote_ptr<int> ptid, remote_ptr<void> tls,
+                                 remote_ptr<int> ctid) {
+  RR_ARCH_FUNCTION(perform_remote_clone_arch, parent->arch(),
+                   remote, base_flags, stack, ptid, tls, ctid);
+}
+
 /*static*/ Task* Task::os_clone(Task* parent, Session* session,
                                 AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                                 unsigned base_flags, remote_ptr<void> stack,
                                 remote_ptr<int> ptid,
                                 remote_ptr<void> tls,
                                 remote_ptr<int> ctid) {
-  // NB: reference the glibc i386 clone.S implementation for
-  // placement of clone syscall args.  The man page is incorrect
-  // and the linux source is confusing.
-  remote.syscall(syscall_number_for_clone(parent->arch()), base_flags, stack,
-                 ptid.as_int(), tls.as_int(), ctid.as_int());
+  perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
     parent->cont_syscall();
   }
