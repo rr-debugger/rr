@@ -104,8 +104,7 @@ struct BaseEvent {
    * point that we'll reach during replay too.
    */
   BaseEvent(HasExecInfo has_exec_info, SupportedArch arch)
-    : has_exec_info(has_exec_info),
-      arch_(arch) {}
+      : has_exec_info(has_exec_info), arch_(arch) {}
 
   SupportedArch arch() const { return arch_; }
 

@@ -57,9 +57,8 @@ Event::Event(EncodedEvent e) {
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
-      new (&Signal())
-          SignalEvent(~DET_SIGNAL_BIT & e.data,
-                      DET_SIGNAL_BIT & e.data, e.arch());
+      new (&Signal()) SignalEvent(~DET_SIGNAL_BIT & e.data,
+                                  DET_SIGNAL_BIT & e.data, e.arch());
       return;
 
     case EV_SYSCALL:
