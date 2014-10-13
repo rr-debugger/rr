@@ -36,6 +36,6 @@ class Task;
 Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
                                   bool* by_waitpid);
 
-void rec_sched_deregister_thread(Task** t);
+void rec_sched_deregister_thread(Task* t);
 
 #endif /* RR_REC_SCHED_H_ */

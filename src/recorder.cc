@@ -123,9 +123,31 @@ static void ensure_preload_lib_will_load(const char* rr_exe,
   }
 }
 
-static void handle_ptrace_event(Task** tp) {
-  Task* t = *tp;
+/**
+ * Return true if we handle a ptrace exit event for task t. When this returns
+ * true, t has been deleted and cannot be referenced again.
+ */
+static bool handle_ptrace_exit_event(Task* t) {
+  if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
+    return false;
+  }
 
+  if (t->stable_exit) {
+    LOG(debug) << "stable exit";
+  } else {
+    LOG(warn)
+        << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
+    t->destabilize_task_group();
+  }
+
+  EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
+  t->record_event(Event(ev, NO_EXEC_INFO));
+
+  rec_sched_deregister_thread(t);
+  return true;
+}
+
+static void handle_ptrace_event(Task* t) {
   /* handle events */
   int event = t->ptrace_event();
   if (event != PTRACE_EVENT_NONE) {
@@ -178,21 +200,10 @@ static void handle_ptrace_event(Task** tp) {
     }
 
     case PTRACE_EVENT_EXIT: {
-      if (t->stable_exit) {
-        LOG(debug) << "stable exit";
-      } else {
-        LOG(warn)
-            << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
-        t->destabilize_task_group();
-      }
-
-      EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
-      t->record_event(Event(ev, NO_EXEC_INFO));
-
-      rec_sched_deregister_thread(tp);
-      t = *tp;
+      FATAL() << "PTRACE_EVENT_EXIT should already have been handled";
       break;
     }
+
     case PTRACE_EVENT_VFORK:
     case PTRACE_EVENT_VFORK_DONE:
     default:
@@ -949,13 +960,15 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
 #ifdef DEBUGTAG
     t->log_pending_events();
 #endif
-    int ptrace_event = t->ptrace_event();
-    ASSERT(t, (!by_waitpid || t->may_be_blocked() || ptrace_event))
+    ASSERT(t, (!by_waitpid || t->may_be_blocked() || t->ptrace_event()))
         << "unexpectedly runnable (" << HEX(t->status()) << ") by waitpid";
-    handle_ptrace_event(&t);
-    if (!t) {
+    if (handle_ptrace_exit_event(t)) {
+      // t is dead and has been deleted.
+      t = nullptr;
       continue;
     }
+
+    handle_ptrace_event(t);
 
     if (t->unstable) {
       // Do not record non-ptrace events for tasks in

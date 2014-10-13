@@ -236,12 +236,11 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
 }
 
 /**
- * De-regsiter a thread and de-allocate all resources. This function
- * should be called when a thread exits.
+ * De-register a thread and de-allocate all resources. This function
+ * should be called when a thread exits. t is deleted so should not be
+ * referenced again.
  */
-void rec_sched_deregister_thread(Task** t_ptr) {
-  Task* t = *t_ptr;
-
+void rec_sched_deregister_thread(Task* t) {
   if (t == current) {
     current = get_next_task_with_same_priority(t);
     if (t == current) {
@@ -249,5 +248,4 @@ void rec_sched_deregister_thread(Task** t_ptr) {
     }
   }
   delete t;
-  *t_ptr = nullptr;
 }
