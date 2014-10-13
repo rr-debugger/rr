@@ -849,7 +849,6 @@ static void install_termsig_handlers(void) {
 /** If |term_request| is set, then terminate_recording(). */
 static void maybe_process_term_request(Task* t) {
   if (term_request) {
-    t->maybe_flush_syscallbuf();
     terminate_recording(t);
   }
 }
@@ -942,7 +941,7 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
 
     Task* next = rec_sched_get_active_thread(*session, t, &by_waitpid);
     if (!next) {
-      maybe_process_term_request(t);
+      terminate_recording(t);
     }
     t = next;
 
@@ -1005,6 +1004,8 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
 }
 
 void terminate_recording(Task* t, int status) {
+  t->maybe_flush_syscallbuf();
+
   LOG(info) << "Processing termination request ...";
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 
