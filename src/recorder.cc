@@ -207,11 +207,11 @@ static void debug_exec_state(const char* msg, Task* t) {
              << " pevent=" << t->ptrace_event();
 }
 
-enum {
+enum ForceSyscall {
   DEFAULT_CONT = 0,
   FORCE_SYSCALL = 1
 };
-static void task_continue(Task* t, int force_cont, int sig) {
+static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
   bool may_restart = t->at_may_restart_syscall();
 
   if (sig) {
@@ -247,12 +247,12 @@ static void task_continue(Task* t, int force_cont, int sig) {
  * Resume execution of |t| to the next notable event, such as a
  * syscall.
  */
-enum {
+enum NeedTaskContinue {
   DONT_NEED_TASK_CONTINUE = 0,
   NEED_TASK_CONTINUE
 };
-static bool resume_execution(Task* t, int need_task_continue,
-                             int force_cont = DEFAULT_CONT) {
+static void resume_execution(Task* t, NeedTaskContinue need_task_continue,
+                             ForceSyscall force_cont = DEFAULT_CONT) {
   assert(!t->may_be_blocked());
 
   debug_exec_state("EXEC_START", t);
@@ -266,9 +266,8 @@ static bool resume_execution(Task* t, int need_task_continue,
     t->seccomp_bpf_enabled = true;
     /* See long comments above. */
     LOG(debug) << "  (skipping past seccomp-bpf trap)";
-    return resume_execution(t, NEED_TASK_CONTINUE, FORCE_SYSCALL);
+    resume_execution(t, NEED_TASK_CONTINUE, FORCE_SYSCALL);
   }
-  return true;
 }
 
 /**
@@ -986,10 +985,9 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
         break;
     }
 
-    if (!t->has_stashed_sig() &&
-        !resume_execution(t, (did_initial_resume ? DONT_NEED_TASK_CONTINUE
-                                                 : NEED_TASK_CONTINUE))) {
-      maybe_process_term_request(t);
+    if (!t->has_stashed_sig()) {
+      resume_execution(t, did_initial_resume ? DONT_NEED_TASK_CONTINUE
+                                             : NEED_TASK_CONTINUE);
     }
     runnable_state_changed(t);
   }
