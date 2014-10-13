@@ -351,7 +351,7 @@ void dbg_reply_detach(struct dbg_context* dbg);
 /**
  * Pass the siginfo_t and its size (as requested by the debugger) in
  * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
- * |si_bytes = NULL|.
+ * |si_bytes = nullptr|.
  */
 void dbg_reply_read_siginfo(struct dbg_context* dbg, const uint8_t* si_bytes,
                             ssize_t num_bytes);

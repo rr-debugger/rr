@@ -382,13 +382,13 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
                target->real_tgid());
       ScopedFd fd(filename, O_RDONLY);
       if (0 > fd) {
-        dbg_reply_get_auxv(dbg, NULL, -1);
+        dbg_reply_get_auxv(dbg, nullptr, -1);
         return;
       }
 
       len = read(fd, auxv, sizeof(auxv));
       if (0 > len) {
-        dbg_reply_get_auxv(dbg, NULL, -1);
+        dbg_reply_get_auxv(dbg, nullptr, -1);
         return;
       }
 
@@ -604,7 +604,7 @@ static Task* schedule_task(ReplaySession& session, Task** intr_t,
   }
 
   Task* t = session.find_task(session.current_trace_frame().tid());
-  assert(t != NULL);
+  assert(t);
   ASSERT(t, &session == &t->replay_session());
 
   if (EV_TRACE_TERMINATION == session.current_trace_frame().event().type) {
@@ -2172,7 +2172,7 @@ static void set_sig_blockedness(int sig, int blockedness) {
   sigset_t sset;
   sigemptyset(&sset);
   sigaddset(&sset, sig);
-  if (sigprocmask(blockedness, &sset, NULL)) {
+  if (sigprocmask(blockedness, &sset, nullptr)) {
     FATAL() << "Didn't change sigmask.";
   }
 }

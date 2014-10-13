@@ -190,7 +190,7 @@ ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
   syscall_helper(DONT_WAIT, remote_syscall, callregs);
   // Now the child is waiting for us to accept it.
 
-  int sock = accept(listen_sock, NULL, NULL);
+  int sock = accept(listen_sock, nullptr, nullptr);
   if (sock < 0) {
     FATAL() << "Failed to create parent socket";
   }

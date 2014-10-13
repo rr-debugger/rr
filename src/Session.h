@@ -71,10 +71,10 @@ public:
   std::shared_ptr<TaskGroup> create_tg(Task* t);
 
   /** Call |Task::dump(out)| for all live tasks. */
-  void dump_all_tasks(FILE* out = NULL);
+  void dump_all_tasks(FILE* out = nullptr);
 
   /**
-   * Return the task created with |rec_tid|, or NULL if no such
+   * Return the task created with |rec_tid|, or nullptr if no such
    * task exists.
    */
   Task* find_task(pid_t rec_tid);

@@ -24,7 +24,7 @@
 using namespace std;
 
 /**
- * The currently scheduled task. This may be NULL if the last scheduled task
+ * The currently scheduled task. This may be nullptr if the last scheduled task
  * has been destroyed.
  */
 static Task* current;
@@ -143,7 +143,7 @@ static Task* find_next_runnable_task(Session& session, bool* by_waitpid) {
     same_priority_start = same_priority_end;
   }
 
-  return NULL;
+  return nullptr;
 }
 
 Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
@@ -245,9 +245,9 @@ void rec_sched_deregister_thread(Task** t_ptr) {
   if (t == current) {
     current = get_next_task_with_same_priority(t);
     if (t == current) {
-      current = NULL;
+      current = nullptr;
     }
   }
   delete t;
-  *t_ptr = NULL;
+  *t_ptr = nullptr;
 }

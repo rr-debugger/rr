@@ -113,7 +113,7 @@ static void reset_scratch_pointers(Task* t) {
 /**
  * Record a tracee argument pointer that (most likely) was replaced by
  * a pointer into scratch memory.  |argp| can have any value,
- * including NULL.  It must be fetched by calling |pop_arg_ptr()|
+ * including nullptr.  It must be fetched by calling |pop_arg_ptr()|
  * during processing syscall results, and in reverse order of calls to
  * |push*()|.
  */
@@ -931,7 +931,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
       }
-      /* XXX fds can be NULL, right? */
+      /* XXX fds can be nullptr, right? */
       push_arg_ptr(t, fds);
       r.set_arg1(fds2);
       scratch += nfds * fds.referent_size();

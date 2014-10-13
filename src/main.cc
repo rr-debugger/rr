@@ -315,12 +315,14 @@ static void print_usage(void) {
 }
 
 static int parse_record_args(int cmdi, int argc, char** argv, Flags* flags) {
-  struct option opts[] = { { "force-syscall-buffer", no_argument, NULL, 'b' },
-                           { "ignore-signal", required_argument, NULL, 'i' },
-                           { "num-cpu-ticks", required_argument, NULL, 'c' },
-                           { "num-events", required_argument, NULL, 'e' },
-                           { "no-syscall-buffer", no_argument, NULL, 'n' },
-                           { 0 } };
+  struct option opts[] = {
+    { "force-syscall-buffer", no_argument, nullptr, 'b' },
+    { "ignore-signal", required_argument, nullptr, 'i' },
+    { "num-cpu-ticks", required_argument, nullptr, 'c' },
+    { "num-events", required_argument, nullptr, 'e' },
+    { "no-syscall-buffer", no_argument, nullptr, 'n' },
+    { 0 }
+  };
   optind = cmdi;
   while (1) {
     int i = 0;
@@ -349,13 +351,13 @@ static int parse_record_args(int cmdi, int argc, char** argv, Flags* flags) {
 }
 
 static int parse_replay_args(int cmdi, int argc, char** argv, Flags* flags) {
-  struct option opts[] = { { "autopilot", no_argument, NULL, 'a' },
-                           { "dbgport", required_argument, NULL, 's' },
-                           { "goto", required_argument, NULL, 'g' },
-                           { "no-redirect-output", no_argument, NULL, 'q' },
-                           { "onfork", required_argument, NULL, 'f' },
-                           { "onprocess", required_argument, NULL, 'p' },
-                           { "gdb-x", required_argument, NULL, 'x' },
+  struct option opts[] = { { "autopilot", no_argument, nullptr, 'a' },
+                           { "dbgport", required_argument, nullptr, 's' },
+                           { "goto", required_argument, nullptr, 'g' },
+                           { "no-redirect-output", no_argument, nullptr, 'q' },
+                           { "onfork", required_argument, nullptr, 'f' },
+                           { "onprocess", required_argument, nullptr, 'p' },
+                           { "gdb-x", required_argument, nullptr, 'x' },
                            { 0 } };
   optind = cmdi;
   while (1) {
@@ -395,9 +397,9 @@ static int parse_replay_args(int cmdi, int argc, char** argv, Flags* flags) {
 }
 
 static int parse_dump_args(int cmdi, int argc, char** argv, Flags* flags) {
-  struct option opts[] = { { "syscallbuf", no_argument, NULL, 'b' },
-                           { "raw", no_argument, NULL, 'r' },
-                           { "statistics", no_argument, NULL, 's' },
+  struct option opts[] = { { "syscallbuf", no_argument, nullptr, 'b' },
+                           { "raw", no_argument, nullptr, 'r' },
+                           { "statistics", no_argument, nullptr, 's' },
                            { 0 } };
   optind = cmdi;
   while (1) {
@@ -421,20 +423,21 @@ static int parse_dump_args(int cmdi, int argc, char** argv, Flags* flags) {
 }
 
 static int parse_common_args(int argc, char** argv, Flags* flags) {
-  struct option opts[] = { { "checksum", required_argument, NULL, 'c' },
-                           { "check-cached-mmaps", no_argument, NULL, 'k' },
-                           { "cpu-unbound", no_argument, NULL, 'u' },
-                           { "dump-at", required_argument, NULL, 't' },
-                           { "dump-on", required_argument, NULL, 'd' },
-                           { "force-things", no_argument, NULL, 'f' },
-                           { "force-microarch", required_argument, NULL, 'a' },
-                           { "mark-stdio", no_argument, NULL, 'm' },
-                           { "suppress-environment-warnings", no_argument,
-                             NULL,                            's' },
-                           { "fatal-errors", no_argument, NULL, 'e' },
-                           { "verbose", no_argument, NULL, 'v' },
-                           { "wait-secs", required_argument, NULL, 'w' },
-                           { 0 } };
+  struct option opts[] = {
+    { "checksum", required_argument, nullptr, 'c' },
+    { "check-cached-mmaps", no_argument, nullptr, 'k' },
+    { "cpu-unbound", no_argument, nullptr, 'u' },
+    { "dump-at", required_argument, nullptr, 't' },
+    { "dump-on", required_argument, nullptr, 'd' },
+    { "force-things", no_argument, nullptr, 'f' },
+    { "force-microarch", required_argument, nullptr, 'a' },
+    { "mark-stdio", no_argument, nullptr, 'm' },
+    { "suppress-environment-warnings", no_argument, nullptr, 's' },
+    { "fatal-errors", no_argument, nullptr, 'e' },
+    { "verbose", no_argument, nullptr, 'v' },
+    { "wait-secs", required_argument, nullptr, 'w' },
+    { 0 }
+  };
   while (1) {
     int i = 0;
     switch (getopt_long(argc, argv, "+a:c:d:fkmst:uvw:", opts, &i)) {
@@ -541,7 +544,7 @@ static int parse_args(int argc, char** argv, Flags* flags, Command* command) {
 }
 
 static string find_syscall_buffer_library() {
-  char* exe_path = realpath("/proc/self/exe", NULL);
+  char* exe_path = realpath("/proc/self/exe", nullptr);
   string lib_path = exe_path;
   free(exe_path);
 
@@ -561,7 +564,7 @@ static string find_syscall_buffer_library() {
 
 static void init_random() {
   // Not very good, but good enough for our non-security-sensitive needs.
-  srandom(time(NULL) ^ getpid());
+  srandom(time(nullptr) ^ getpid());
 }
 
 int main(int argc, char* argv[]) {

@@ -255,7 +255,7 @@ void print_process_state(pid_t tid) {
   fflush(stdout);
   bzero(path, 64);
   sprintf(path, "/proc/%d/status", tid);
-  if ((file = fopen(path, "r")) == NULL) {
+  if ((file = fopen(path, "r")) == nullptr) {
     perror("error reading child memory status\n");
   }
 
@@ -514,10 +514,6 @@ static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
                                      sizeof(struct syscallbuf_record);
     }
 
-    /* If this segment was filtered, then data->mem_len will be 0
-     * to indicate nothing was read.  And data->mem will be NULL
-     * to double-check that.  In that case, the checksum will just
-     * be 0. */
     ASSERT(t, buf || valid_mem_len == 0);
     for (i = 0; i < ssize_t(valid_mem_len / sizeof(*buf)); ++i) {
       checksum += buf[i];
@@ -992,7 +988,7 @@ static const uint8_t x86_vsyscall_monkeypatch[] = {
   0x50,                         // push %eax
   0xb8, 0x00, 0x00, 0x00, 0x00, // mov $_vsyscall_hook_trampoline, %eax
   // The immediate param of the |mov| is filled in dynamically
-  // by the template mechanism below.  The NULL here is a
+  // by the template mechanism below.  The null bytes here are a
   // placeholder.
   0xff, 0xe0, // jmp *%eax
 };

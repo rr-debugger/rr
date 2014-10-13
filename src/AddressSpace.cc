@@ -353,7 +353,7 @@ static void print_process_mmap_iterator(void* unused, Task* t,
  * Cat the /proc/[t->tid]/maps file to stdout, line by line.
  */
 static void print_process_mmap(Task* t) {
-  iterate_memory_map(t, print_process_mmap_iterator, NULL);
+  iterate_memory_map(t, print_process_mmap_iterator, nullptr);
 }
 
 AddressSpace::~AddressSpace() { session->on_destroy(this); }

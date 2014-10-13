@@ -19,7 +19,7 @@ using namespace std;
 
 void* CompressedWriter::compression_thread_callback(void* p) {
   static_cast<CompressedWriter*>(p)->compression_thread();
-  return NULL;
+  return nullptr;
 }
 
 CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
@@ -30,8 +30,8 @@ CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
   threads.resize(num_threads);
   thread_pos.resize(num_threads);
   buffer.resize(block_size * (num_threads + 2));
-  pthread_mutex_init(&mutex, NULL);
-  pthread_cond_init(&cond, NULL);
+  pthread_mutex_init(&mutex, nullptr);
+  pthread_cond_init(&cond, nullptr);
 
   for (uint32_t i = 0; i < num_threads; ++i) {
     thread_pos[i] = UINT64_MAX;
@@ -54,7 +54,7 @@ CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
   // until we've finished initializing it.
   pthread_mutex_lock(&mutex);
   for (uint32_t i = 0; i < num_threads; ++i) {
-    pthread_create(&threads[i], NULL, compression_thread_callback, this);
+    pthread_create(&threads[i], nullptr, compression_thread_callback, this);
     size_t last_slash = filename.rfind('/');
     string thread_name =
         string("compress ") + (last_slash == string::npos
@@ -211,7 +211,7 @@ void CompressedWriter::close() {
   pthread_mutex_unlock(&mutex);
 
   for (auto i = threads.begin(); i != threads.end(); ++i) {
-    pthread_join(*i, NULL);
+    pthread_join(*i, nullptr);
   }
 
   fd.close();

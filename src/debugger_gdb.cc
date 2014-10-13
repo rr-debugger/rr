@@ -467,7 +467,7 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
  * seen, nonzero if not.
  */
 static int skip_to_packet_start(struct dbg_context* dbg) {
-  uint8_t* p = NULL;
+  uint8_t* p = nullptr;
   int i;
 
   /* XXX we want memcspn() here ... */
@@ -573,7 +573,7 @@ static void read_binary_data(const uint8_t* payload, ssize_t data_len,
 /**
  * Parse and return a gdb thread-id from |str|.  |endptr| points to
  * the character just after the last character in the thread-id.  It
- * may be NULL.
+ * may be nullptr.
  */
 static dbg_threadid_t parse_threadid(const char* str, char** endptr) {
   dbg_threadid_t t;
@@ -933,7 +933,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload) {
 
 static int process_packet(struct dbg_context* dbg) {
   char request;
-  char* payload = NULL;
+  char* payload = nullptr;
   int ret;
 
   assert(INTERRUPT_CHAR == dbg->inbuf[0] ||
@@ -1569,5 +1569,5 @@ void dbg_destroy_context(struct dbg_context** dbg) {
   close(d->listen_fd);
   close(d->sock_fd);
   free(d);
-  *dbg = NULL;
+  *dbg = nullptr;
 }

@@ -191,7 +191,7 @@ public:
 
   /**
    * Shortcut to the single |pending_event->desched.rec| when
-   * there's one desched event on the stack, and NULL otherwise.
+   * there's one desched event on the stack, and nullptr otherwise.
    * Exists just so that clients don't need to dig around in the
    * event stack to find this record.
    */
@@ -267,7 +267,7 @@ public:
    * Dump attributes of this process, including pending events,
    * to |out|, which defaults to LOG_FILE.
    */
-  void dump(FILE* out = NULL) const;
+  void dump(FILE* out = nullptr) const;
 
   /**
    * Called after the first exec in a session, when the session first

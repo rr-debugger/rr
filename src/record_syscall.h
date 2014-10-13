@@ -16,7 +16,7 @@ void rec_before_record_syscall_entry(Task* t, int syscallno);
  * Prepare |t| to enter its current syscall event.  Return ALLOW_SWITCH if
  * a context-switch is allowed for |t|, PREVENT_SWITCH if not.
  *
- * Set |*kernel_sync_addr| to non-NULL to force waiting on that memory
+ * Set |*kernel_sync_addr| to non-nullptr to force waiting on that memory
  * cell in the child's address space to become |sync_val|.  This is an
  * overly general mechanism that's used for FUTEX_LOCK_PI.  If you're
  * not FUTEX_LOCK_PI, you probably shouldn't be using this.

@@ -842,7 +842,7 @@ static void install_termsig_handlers(void) {
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = handle_termsig;
-    sigaction(termsigs[i], &sa, NULL);
+    sigaction(termsigs[i], &sa, nullptr);
   }
 }
 

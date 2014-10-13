@@ -104,7 +104,7 @@ struct Sighandlers {
     for (int i = 1; i < ssize_t(array_length(handlers)); ++i) {
       Sighandler& h = handlers[i];
       struct sigaction act;
-      if (-1 == sigaction(i, NULL, &act)) {
+      if (-1 == sigaction(i, nullptr, &act)) {
         /* EINVAL means we're querying an
          * unused signal number. */
         assert(EINVAL == errno);
@@ -597,7 +597,7 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
     case Arch::brk: {
       remote_ptr<void> addr = r.arg1();
       if (!addr) {
-        // A brk() update of NULL is observed with
+        // A brk() update of nullptr is observed with
         // libc, which apparently is its means of
         // finding out the initial brk().  We can
         // ignore that for the purposes of updating
@@ -1803,7 +1803,7 @@ ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
     uintptr_t end_word = start_word + word_size;
     uintptr_t length = std::min(end_word - start, uintptr_t(buf_size - nread));
 
-    long v = fallible_ptrace(PTRACE_PEEKDATA, start_word, NULL);
+    long v = fallible_ptrace(PTRACE_PEEKDATA, start_word, nullptr);
     if (errno) {
       break;
     }
@@ -1833,7 +1833,7 @@ ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
 
     long v;
     if (length < word_size) {
-      v = fallible_ptrace(PTRACE_PEEKDATA, start_word, NULL);
+      v = fallible_ptrace(PTRACE_PEEKDATA, start_word, nullptr);
       if (errno) {
         break;
       }
@@ -2038,7 +2038,7 @@ bool Task::clone_syscall_is_complete() {
   sa.sa_handler = handle_alarm_signal;
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
-  sigaction(SIGALRM, &sa, NULL);
+  sigaction(SIGALRM, &sa, nullptr);
 
   Task* t = new Task(session, tid, rec_tid, 0);
   // The very first task we fork inherits the signal
@@ -2050,7 +2050,7 @@ bool Task::clone_syscall_is_complete() {
   t->sighandlers.swap(sh);
   // Don't use the POSIX wrapper, because it doesn't necessarily
   // read the entire sigset tracked by the kernel.
-  if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, NULL, &t->blocked_sigs,
+  if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, nullptr, &t->blocked_sigs,
                 sizeof(t->blocked_sigs))) {
     FATAL() << "Failed to read blocked signals";
   }
