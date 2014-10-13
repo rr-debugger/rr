@@ -77,8 +77,7 @@ struct syscall_def {
 
 typedef pair<size_t, syscall_def> SyscallInit;
 
-template <size_t N>
-struct SyscallTable : array<syscall_def, N> {
+template <size_t N> struct SyscallTable : array<syscall_def, N> {
   SyscallTable(initializer_list<SyscallInit> init) {
     for (auto& i : init) {
       (*this)[i.first] = i.second;
@@ -86,8 +85,7 @@ struct SyscallTable : array<syscall_def, N> {
   }
 };
 
-template <typename Arch>
-struct syscall_defs {
+template <typename Arch> struct syscall_defs {
   // Reserve a final element which is guaranteed to be an undefined syscall.
   // Negative and out-of-range syscall numbers are mapped to this element.
   typedef SyscallTable<Arch::SYSCALL_COUNT + 1> Table;
@@ -244,9 +242,9 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   remote_ptr<void> map_addr;
   {
     AutoRemoteSyscalls remote(t);
-    map_addr = remote.syscall(
-        has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
-        t->scratch_ptr, sz, prot, flags, fd, offset);
+    map_addr = remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2
+                                                              : Arch::mmap,
+                              t->scratch_ptr, sz, prot, flags, fd, offset);
   }
   ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped " << file.start()
                                         << " during recording, but " << map_addr
@@ -595,7 +593,8 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
                              page_size() * offset_pages,
                              MappableResource::anonymous());
   }
-  return remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
+  return remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2
+                                                        : Arch::mmap,
                         rec_addr, length, prot,
                         // Tell the kernel to take
                         // |rec_addr| seriously.
@@ -747,14 +746,14 @@ static remote_ptr<void> finish_direct_mmap(AutoRemoteSyscalls& remote,
     }
   }
   /* And mmap that file. */
-  mapped_addr = remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2
-                                                               : Arch::mmap,
-                               rec_addr, length,
-                               /* (We let SHARED|WRITEABLE
-                                * mappings go through while
-                                * they're not handled properly,
-                                * but we shouldn't do that.) */
-                               prot, flags, fd, offset_pages);
+  mapped_addr =
+      remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
+                     rec_addr, length,
+                     /* (We let SHARED|WRITEABLE
+                      * mappings go through while
+                      * they're not handled properly,
+                      * but we shouldn't do that.) */
+                     prot, flags, fd, offset_pages);
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
   remote.syscall(Arch::close, fd);
@@ -1402,8 +1401,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
       }
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
-          auto args =
-            t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
+          auto args = t->read_mem(
+              remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
           return process_mmap<Arch>(t, trace, state, args.prot, args.flags,
                                     args.offset / 4096, step);
         }

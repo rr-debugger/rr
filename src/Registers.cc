@@ -328,14 +328,14 @@ static bool compare_registers_core(const char* name1, const Registers* reg1,
 }
 
 // A handy macro for compare_registers_arch specializations.
-#define REGCMP(user_regs, _reg)                                         \
-  do {                                                                  \
-    if (reg1->user_regs._reg != reg2->user_regs._reg) {                 \
-      maybe_print_reg_mismatch(mismatch_behavior, #_reg,                \
-                               name1, reg1->user_regs._reg,             \
-                               name2, reg2->user_regs._reg);            \
-      match = false;                                                    \
-    }                                                                   \
+#define REGCMP(user_regs, _reg)                                                \
+  do {                                                                         \
+    if (reg1->user_regs._reg != reg2->user_regs._reg) {                        \
+      maybe_print_reg_mismatch(mismatch_behavior, #_reg, name1,                \
+                               reg1->user_regs._reg, name2,                    \
+                               reg2->user_regs._reg);                          \
+      match = false;                                                           \
+    }                                                                          \
   } while (0)
 #define X86_REGCMP(_reg) REGCMP(u.x86regs, _reg)
 #define X64_REGCMP(_reg) REGCMP(u.x64regs, _reg)

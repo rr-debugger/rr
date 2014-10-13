@@ -726,9 +726,9 @@ struct BaseArch : public wordsize, public FcntlConstants {
   // calling semantics. We describe those here, and specializations need to
   // indicate which semantics they use.
   enum MmapCallingSemantics {
-    StructArguments,           // x86-ish, packaged into mmap_args, below
-    RegisterArguments,         // arguments passed in registers, the offset
-                               // is assumed to be in bytes, not in pages.
+    StructArguments,   // x86-ish, packaged into mmap_args, below
+    RegisterArguments, // arguments passed in registers, the offset
+                       // is assumed to be in bytes, not in pages.
   };
 
   struct mmap_args {

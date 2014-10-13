@@ -40,7 +40,8 @@ static void run_test(void) {
   args.offset = 0;
   rpage = (int*)syscall(SYS_mmap, &args);
 #elif defined(__x86_64__)
-  rpage = (int*)syscall(SYS_mmap, 0, num_bytes, PROT_READ, MAP_SHARED, fd, (off_t)0);
+  rpage = (int*)syscall(SYS_mmap, 0, num_bytes, PROT_READ, MAP_SHARED, fd,
+                        (off_t)0);
 #else
 #error unknown architecture
 #endif

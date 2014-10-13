@@ -1212,8 +1212,8 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
     /* initialize the scratchpad for blocking system calls */
     AutoRemoteSyscalls remote(t);
     t->scratch_ptr = remote.syscall(
-        has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
-        0, sz, prot, flags, fd, offset_pages);
+        has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap, 0, sz, prot,
+        flags, fd, offset_pages);
     t->scratch_size = scratch_size;
   }
   // record this mmap for the replay
@@ -1351,25 +1351,28 @@ private:
 
 // We have |keys_length| instead of using array_length(keys) to work
 // around a gcc bug.
-template <typename Arch>
-struct elf_auxv_ordering {
+template <typename Arch> struct elf_auxv_ordering {
   static const unsigned int keys[];
   static const size_t keys_length;
 };
 
-template<> const unsigned int elf_auxv_ordering<X86Arch>::keys[] = {
+template <>
+const unsigned int elf_auxv_ordering<X86Arch>::keys[] = {
   AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
   AT_PHENT,   AT_PHNUM,        AT_BASE,  AT_FLAGS,  AT_ENTRY,  AT_UID,
   AT_EUID,    AT_GID,          AT_EGID,  AT_SECURE
 };
-template<> const size_t elf_auxv_ordering<X86Arch>::keys_length = array_length(keys);
+template <>
+const size_t elf_auxv_ordering<X86Arch>::keys_length = array_length(keys);
 
-template<> const unsigned int elf_auxv_ordering<X64Arch>::keys[] = {
+template <>
+const unsigned int elf_auxv_ordering<X64Arch>::keys[] = {
   AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
   AT_PHENT,        AT_PHNUM, AT_BASE,   AT_FLAGS,  AT_ENTRY,
   AT_UID,          AT_EUID,  AT_GID,    AT_EGID,   AT_SECURE,
 };
-template<> const size_t elf_auxv_ordering<X64Arch>::keys_length = array_length(keys);
+template <>
+const size_t elf_auxv_ordering<X64Arch>::keys_length = array_length(keys);
 
 template <typename Arch> static void process_execve(Task* t) {
   Registers r = t->regs();
@@ -1610,10 +1613,10 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
 
 static int get_ipc_command(int raw_cmd) { return raw_cmd & ~IPC_64; }
 
-template <typename Arch> static void process_msgctl(Task* t, int cmd,
-                                                    remote_ptr<void> buf) {
+template <typename Arch>
+static void process_msgctl(Task* t, int cmd, remote_ptr<void> buf) {
   ssize_t buf_size;
-  switch(cmd) {
+  switch (cmd) {
     case IPC_STAT:
     case MSG_STAT:
       buf_size = sizeof(typename Arch::msqid64_ds);
@@ -2331,8 +2334,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case Arch::msgctl:
-      process_msgctl<Arch>(t, (int)t->regs().arg2_signed(),
-                           t->regs().arg3());
+      process_msgctl<Arch>(t, (int)t->regs().arg2_signed(), t->regs().arg3());
       break;
 
     case Arch::ipc:
@@ -2342,17 +2344,17 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::mmap:
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
-          auto args =
-            t->read_mem(remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
+          auto args = t->read_mem(
+              remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
           process_mmap(t, syscallno, args.len, args.prot, args.flags, args.fd,
                        args.offset / 4096);
           break;
         }
         case Arch::RegisterArguments:
-          process_mmap(t, syscallno, (size_t)t->regs().arg2(),
-                       (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),
-                       (int)t->regs().arg5_signed(),
-                       (off_t)t->regs().arg6_signed());
+          process_mmap(
+              t, syscallno, (size_t)t->regs().arg2(),
+              (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),
+              (int)t->regs().arg5_signed(), (off_t)t->regs().arg6_signed());
           break;
       }
       break;
