@@ -186,6 +186,7 @@ set(BASIC_TESTS
   intr_sleep
   intr_sleep_no_restart
   io
+  legacy-ugid
   madvise
   map_fixed
   mmap_discontinuous
