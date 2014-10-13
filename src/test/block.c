@@ -20,6 +20,14 @@ struct recvmmsg_arg {
   struct timespec* timeout;
 };
 
+struct select_arg {
+  int n_fds;
+  fd_set* read;
+  fd_set* write;
+  fd_set* except;
+  struct timeval* timeout;
+};
+
 static void breakpoint(void) {
   int break_here = 1;
   (void)break_here;
@@ -188,6 +196,38 @@ static void* reader_thread(void* dontcare) {
     pfd.events = POLLIN;
     gettimeofday(&ts, NULL);
     ppoll(&pfd, 1, NULL, NULL);
+    atomic_puts("r:   ... done, doing nonblocking read ...");
+    check_syscall(1, read(sock, &c, sizeof(c)));
+    atomic_printf("r:   ... read '%c'\n", c);
+    test_assert(c == token);
+    ++token;
+  }
+  {
+    fd_set fds;
+    const struct timeval infinity = { 1 << 30, 0 };
+    struct timeval tv = infinity;
+    int ret;
+
+    atomic_puts("r: select()ing socket ...");
+    FD_ZERO(&fds);
+    FD_SET(sock, &fds);
+#if defined(__i386__)
+    struct select_arg arg = { 0 };
+    arg.n_fds = sock + 1;
+    arg.read = &fds;
+    arg.write = NULL;
+    arg.except = NULL;
+    arg.timeout = &tv;
+    ret = syscall(SYS_select, &arg);
+#else
+    ret = syscall(SYS_select, sock + 1, &fds, NULL, NULL, &tv);
+#endif
+    atomic_printf("r:   ... returned %d; tv { %ld, %ld }\n", ret, tv.tv_sec,
+                  tv.tv_usec);
+    check_syscall(1, ret);
+    test_assert(FD_ISSET(sock, &fds));
+    test_assert(0 < tv.tv_sec && tv.tv_sec < infinity.tv_sec);
+
     atomic_puts("r:   ... done, doing nonblocking read ...");
     check_syscall(1, read(sock, &c, sizeof(c)));
     atomic_printf("r:   ... read '%c'\n", c);
@@ -471,7 +511,15 @@ int main(int argc, char* argv[]) {
   ++token;
   atomic_puts("M:   ... done");
 
-  /* Force a wait on select() */
+  /* Force a wait on select(), raw syscall */
+  atomic_puts("M: sleeping again ...");
+  usleep(500000);
+  atomic_printf("M: writing '%c' to socket ...\n", token);
+  write(sock, &token, sizeof(token));
+  ++token;
+  atomic_puts("M:   ... done");
+
+  /* Force a wait on select(), library call */
   atomic_puts("M: sleeping again ...");
   usleep(500000);
   atomic_printf("M: writing '%c' to socket ...\n", token);
