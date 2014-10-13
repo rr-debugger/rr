@@ -502,7 +502,7 @@ getrusage = EmulatedSyscall(x86=77, x64=98, arg2="struct rusage")
 gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="struct timeval", arg2="struct timezone")
 
 settimeofday = UnsupportedSyscall(x86=79, x64=164)
-getgroups = UnsupportedSyscall(x86=80, x64=115)
+getgroups = EmulatedSyscall(x86=80, x64=115, arg2=DynamicSize("(int)t->regs().syscall_result_signed() * LegacyUIDSyscall<Arch>::size"))
 setgroups = UnsupportedSyscall(x86=81, x64=116)
 select = IrregularEmulatedSyscall(x86=82, x64=23)
 
@@ -903,7 +903,7 @@ mremap = ExecutedSyscall(x86=163, x64=25)
 # saved set-user-ID of the calling process.
 setresuid = EmulatedSyscall(x86=164, x64=117)
 
-getresuid = UnsupportedSyscall(x86=165, x64=118)
+getresuid = EmulatedSyscall(x86=165, x64=118, arg1=DynamicSize("LegacyUIDSyscall<Arch>::size"), arg2=DynamicSize("LegacyUIDSyscall<Arch>::size"), arg3=DynamicSize("LegacyUIDSyscall<Arch>::size"))
 vm86 = UnsupportedSyscall(x86=166)
 query_module = UnsupportedSyscall(x86=167, x64=178)
 
@@ -931,7 +931,7 @@ nfsservctl = UnsupportedSyscall(x86=169, x64=180)
 # set-group-ID of the calling process.
 setresgid = EmulatedSyscall(x86=170, x64=119)
 
-getresgid = UnsupportedSyscall(x86=171, x64=120)
+getresgid = EmulatedSyscall(x86=171, x64=120, arg1=DynamicSize("LegacyUIDSyscall<Arch>::size"), arg2=DynamicSize("LegacyUIDSyscall<Arch>::size"), arg3=DynamicSize("LegacyUIDSyscall<Arch>::size"))
 
 #  int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long
 #arg4, unsigned long arg5);
