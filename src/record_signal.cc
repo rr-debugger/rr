@@ -121,7 +121,7 @@ static bool try_handle_rdtsc(Task* t) {
     restore_sigsegv_state(t);
   }
 
-  t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO));
+  t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO, t->arch()));
   LOG(debug) << "  trapped for rdtsc: returning " << current_time;
   return true;
 }
@@ -162,7 +162,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
      * has cleared the relevancy flag, but not yet
      * disarmed the event itself. */
     disarm_desched_event(t);
-    t->push_event(Event::noop());
+    t->push_event(Event::noop(t->arch()));
     return;
   }
 
@@ -271,7 +271,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
   if (t->is_disarm_desched_event_syscall()) {
     LOG(debug)
         << "  (at disarm-desched, so finished buffered syscall; resuming)";
-    t->push_event(Event::noop());
+    t->push_event(Event::noop(t->arch()));
     return;
   }
 
@@ -286,7 +286,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
    * the tracee was in, and how much "scratch" space it carved
    * off the syscallbuf, if needed. */
   const struct syscallbuf_record* desched_rec = next_record(t->syscallbuf_hdr);
-  t->push_event(DeschedEvent(desched_rec));
+  t->push_event(DeschedEvent(desched_rec, t->arch()));
   int call = t->desched_rec()->syscallno;
   /* Replay needs to be prepared to see the ioctl() that arms
    * the desched counter when it's trying to step to the entry
@@ -304,7 +304,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
    * all other may-restart syscalls, with the exception that
    * this one has already been restarted (which we'll detect
    * back in the main loop). */
-  t->push_event(Event(interrupted, SyscallEvent(call)));
+  t->push_event(Event(interrupted, SyscallEvent(call, t->arch())));
   SyscallEvent& ev = t->ev().Syscall();
   ev.desched_rec = desched_rec;
   ev.regs = t->regs();
@@ -358,11 +358,11 @@ static void record_signal(Task* t, const siginfo_t* si) {
   if (sig == Flags::get().ignore_sig) {
     LOG(info) << "Declining to deliver " << signalname(sig)
               << " by user request";
-    t->push_event(Event::noop());
+    t->push_event(Event::noop(t->arch()));
     return;
   }
 
-  t->push_event(SignalEvent(sig, is_deterministic_signal(si)));
+  t->push_event(SignalEvent(sig, is_deterministic_signal(si), t->arch()));
 }
 
 static bool is_trace_trap(const siginfo_t* si) {
@@ -601,7 +601,7 @@ static void handle_siginfo(Task* t, siginfo_t* si) {
     case PerfCounters::TIME_SLICE_SIGNAL:
       assert_is_time_slice_interrupt(t, si);
 
-      t->push_event(Event(EV_SCHED, HAS_EXEC_INFO));
+      t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
       return;
   }
 

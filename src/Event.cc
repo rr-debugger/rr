@@ -44,13 +44,13 @@ Event::Event(EncodedEvent e) {
     case EV_UNSTABLE_EXIT:
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
     case EV_EXIT_SIGHANDLER:
-      new (&Base()) BaseEvent(e.has_exec_info);
+      new (&Base()) BaseEvent(e.has_exec_info, e.arch());
       // No auxiliary data.
       assert(0 == e.data);
       return;
 
     case EV_DESCHED:
-      new (&Desched()) DeschedEvent(nullptr);
+      new (&Desched()) DeschedEvent(nullptr, e.arch());
       Desched().state = DeschedState(e.data);
       return;
 
@@ -58,11 +58,12 @@ Event::Event(EncodedEvent e) {
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
       new (&Signal())
-          SignalEvent(~DET_SIGNAL_BIT & e.data, DET_SIGNAL_BIT & e.data);
+          SignalEvent(~DET_SIGNAL_BIT & e.data,
+                      DET_SIGNAL_BIT & e.data, e.arch());
       return;
 
     case EV_SYSCALL:
-      new (&Syscall()) SyscallEvent(e.data);
+      new (&Syscall()) SyscallEvent(e.data, e.arch());
       Syscall().state =
           SYSCALL_ENTRY == e.state ? ENTERING_SYSCALL : EXITING_SYSCALL;
       return;
@@ -144,6 +145,7 @@ EncodedEvent Event::encode() const {
   EncodedEvent e;
   e.type = event_type;
   e.has_exec_info = has_exec_info();
+  e.arch_ = arch();
   // Arbitrarily designate events for which this isn't
   // meaningful as being at "entry".  The events for which this
   // is meaningful set it below.
