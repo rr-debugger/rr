@@ -1,8 +1,20 @@
 source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS
 if [[ $@ == -n ]]; then
+    bin=$(which $TESTNAME)
+    case $(file bin) in
+	*x86-64*)
+	    syscall=geteuid
+	    ;;
+	*i386*)
+	    syscall=geteuid32
+	    ;;
+	*)
+	    failed "can't determine architecture"
+	    ;;
+    esac
     rr -s dump $workdir/latest-trace | \
-        python $TESTDIR/check_syscall_perf_interval.py geteuid32 rbc 2
+        python $TESTDIR/check_syscall_perf_interval.py $syscall rbc 2
     if [[ $? != 0 ]]; then
         failed "expected 2 rbcs between each geteuid32 syscall"
     fi
