@@ -1018,6 +1018,10 @@ template <>
 void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
                                   const typename X86Arch::ElfSym* symbols,
                                   const char* symbolnames) {
+  if (!t->regs().arg2()) {
+    return;
+  }
+
   auto kernel_vsyscall =
       locate_and_verify_kernel_vsyscall(t, nsymbols, symbols, symbolnames);
   if (!kernel_vsyscall) {

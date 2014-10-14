@@ -459,10 +459,12 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
  * Monkeypatch |__kernel_vsyscall()| to jump into
  * |vdso_hook_trampoline|.
  */
-static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline) {
+static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline,
+                                    int doing_syscall_buffering) {
   sigset_t mask;
   enter_signal_critical_section(&mask);
-  traced_syscall1(SYS_rrcall_monkeypatch_vdso, vdso_hook_trampoline);
+  traced_syscall2(SYS_rrcall_monkeypatch_vdso,
+                  vdso_hook_trampoline, doing_syscall_buffering);
   exit_signal_critical_section(&mask);
 }
 
@@ -609,16 +611,17 @@ static void __attribute__((constructor)) init_process(void) {
   real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
 
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
-  if (!buffer_enabled) {
+
+  if (buffer_enabled) {
+    install_syscall_filter();
+  } else {
     debug("Syscall buffering is disabled");
-    process_inited = 1;
-    return;
   }
 
   pthread_atfork(NULL, NULL, post_fork_child);
-
-  install_syscall_filter();
-  rrcall_monkeypatch_vdso(&_vsyscall_hook_trampoline);
+  /* Always monkeypatch, since x86-64 needs vdso symbols overridden.  x86
+   * can avoid monkeypatching if we're not using the syscallbuf. */
+  rrcall_monkeypatch_vdso(&_vsyscall_hook_trampoline, buffer_enabled);
   process_inited = 1;
 
   init_thread();
