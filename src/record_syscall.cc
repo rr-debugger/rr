@@ -297,6 +297,28 @@ static bool reserve_scratch_for_msgvec(
   return true;
 }
 
+template <typename Arch>
+static bool prepare_accept(Task* t,
+                           remote_ptr<typename Arch::sockaddr>* addr,
+                           remote_ptr<typename Arch::socklen_t>* addrlen,
+                           remote_ptr<void>* scratch) {
+  auto len = t->read_mem(*addrlen);
+
+  push_arg_ptr(t, *addrlen);
+  *addrlen = allocate_scratch<typename Arch::socklen_t>(scratch);
+
+  push_arg_ptr(t, *addr);
+  *addr = scratch->cast<typename Arch::sockaddr>();
+  *scratch += len;
+
+  if (!can_use_scratch(t, *scratch)) {
+    return false;
+  }
+
+  t->write_mem(*addrlen, len);
+  return true;
+}
+
 /**
  * Initialize any necessary state to execute the socketcall that |t|
  * is stopped at, for example replacing tracee args with pointers into
@@ -359,33 +381,21 @@ static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
       }
       remote_ptr<typename Arch::accept_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
-      auto addrlen = t->read_mem(args.addrlen.rptr());
-
-      // We use the same basic scheme here as for RECV
-      // above.  For accept() though, there are two
-      // (in)outparams: |addr| and |addrlen|.  |*addrlen| is
-      // the total size of |addr|, so we reserve that much
-      // space for it.  |*addrlen| is set to the size of the
-      // returned sockaddr, so we reserve space for
-      // |addrlen| too.
+      auto addrlen_ptr = args.addrlen.rptr();
 
       // Reserve space for scratch socketcall args.
       push_arg_ptr(t, argsp);
       auto tmpargsp = allocate_scratch<typename Arch::accept_args>(&scratch);
       r.set_arg2(tmpargsp);
 
-      push_arg_ptr(t, args.addrlen);
-      args.addrlen = allocate_scratch<typename Arch::socklen_t>(&scratch);
-
-      push_arg_ptr(t, args.addr);
-      args.addr = scratch.cast<typename Arch::sockaddr>();
-      scratch += addrlen;
-      if (!can_use_scratch(t, scratch)) {
+      auto r_addr = args.addr.rptr();
+      if (!prepare_accept<Arch>(t, &r_addr, &addrlen_ptr, &scratch)) {
         return abort_scratch(t, "accept");
       }
+      args.addr = r_addr;
+      args.addrlen = addrlen_ptr;
 
       t->write_mem(tmpargsp, args);
-      t->write_mem(args.addrlen.rptr(), addrlen);
       t->set_regs(r);
       return ALLOW_SWITCH;
     }
@@ -398,7 +408,7 @@ static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
       }
       remote_ptr<typename Arch::accept4_args> argsp = r.arg2();
       auto args = t->read_mem(argsp);
-      auto addrlen = t->read_mem(args.addrlen.rptr());
+      auto addrlen_ptr = args.addrlen.rptr();
 
       // We use the same basic scheme here as for RECV
       // above.  For accept() though, there are two
@@ -413,18 +423,14 @@ static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
       auto tmpargsp = allocate_scratch<typename Arch::accept4_args>(&scratch);
       r.set_arg2(tmpargsp);
 
-      push_arg_ptr(t, args.addrlen);
-      args.addrlen = allocate_scratch<typename Arch::socklen_t>(&scratch);
-
-      push_arg_ptr(t, args.addr);
-      args.addr = allocate_scratch<typename Arch::sockaddr>(&scratch);
-
-      if (!can_use_scratch(t, scratch)) {
+      auto r_addr = args.addr.rptr();
+      if (!prepare_accept<Arch>(t, &r_addr, &addrlen_ptr, &scratch)) {
         return abort_scratch(t, "accept");
       }
+      args.addr = r_addr;
+      args.addrlen = addrlen_ptr;
 
       t->write_mem(tmpargsp, args);
-      t->write_mem(args.addrlen.rptr(), addrlen);
       t->set_regs(r);
       return ALLOW_SWITCH;
     }
