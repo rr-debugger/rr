@@ -131,6 +131,7 @@ cpuid_loop:
 1:
         call cpuid_call
 	addq %rax, %r12
+	call geteuid
 	subq $1, %rbx
 	jne 1b
 	movq %r12, %rax
