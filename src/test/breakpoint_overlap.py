@@ -1,10 +1,19 @@
+import collections
 import sys
 import re
 from rrutil import *
 
-syscall_re = re.compile("`SYSCALL: getgid32' \\(state:1\\)")
+arch = get_exe_arch()
+
+ArchInfo = collections.namedtuple('ArchInfo', ['syscall', 'ip_name'])
+regex_info = {
+    'i386': ArchInfo('getgid32', 'eip'),
+    'i386:x86-64': ArchInfo('getgid', 'rip'),
+}
+
+syscall_re = re.compile("`SYSCALL: %s' \\(state:1\\)" % regex_info[arch].syscall)
 sched_re = re.compile("`SCHED'")
-eip_re = re.compile("eip:(0x[a-f0-9]+)")
+eip_re = re.compile("%s:(0x[a-f0-9]+)" % regex_info[arch].ip_name)
 
 sched_enabled = False
 eip_enabled = False
@@ -24,7 +33,7 @@ while True:
             break
 
 if eip is None:
-    failed('eip not found')
+    failed('%s not found' % regex_info[arch].ip_name)
 
 send_gdb('b *%s\n'%eip)
 expect_gdb('Breakpoint 1')
@@ -33,7 +42,7 @@ send_gdb('c\n')
 expect_gdb('Breakpoint 1')
 expect_gdb('(gdb)')
 
-send_gdb('p/x *(char*)$eip\n')
+send_gdb('p/x *(char*)$pc\n')
 expect_gdb('0x([a-f0-9]+)')
 
 if last_match().group(1) is 'cc':
