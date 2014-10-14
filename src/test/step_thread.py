@@ -38,9 +38,19 @@ while 1:
 for bp in hit_bps.iterkeys():
     assert hit_bps[bp]
 
+arch = get_exe_arch()
+
+# The locations the threads are stopped at depends on the architecture.
+stopped_locations = {
+    'i386': ['__kernel_vsyscall', '_traced_raw_syscall'],
+    'i386:x86-64': ['__lll_lock_wait', 'pthread_barrier_wait'],
+}
+
+location_regex = '|'.join(stopped_locations[arch])
+
 send_gdb('info threads\n')
-expect_gdb(r'3\s+Thread.+?(?:_traced_raw_syscall|__kernel_vsyscall)')
-expect_gdb(r'2\s+Thread.+?(?:_traced_raw_syscall|__kernel_vsyscall)')
+expect_gdb(r'3\s+Thread.+?(?:%s)' % location_regex)
+expect_gdb(r'2\s+Thread.+?(?:%s)' % location_regex)
 expect_gdb(r'1\s+Thread.+hit_barrier')
 
 ok()
