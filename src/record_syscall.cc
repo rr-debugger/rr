@@ -838,6 +838,25 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return ALLOW_SWITCH;
     }
 
+    case Arch::accept:
+    case Arch::accept4: {
+      if (!need_scratch_setup) {
+        return ALLOW_SWITCH;
+      }
+      Registers r = t->regs();
+      remote_ptr<typename Arch::sockaddr> addr = r.arg2();
+      remote_ptr<typename Arch::socklen_t> addrlen = r.arg3();
+
+      if (!prepare_accept<Arch>(t, &addr, &addrlen, &scratch)) {
+        return abort_scratch(t, "accept");
+      }
+
+      r.set_arg2(addr);
+      r.set_arg3(addrlen);
+      t->set_regs(r);
+      return ALLOW_SWITCH;
+    }
+
     case Arch::write:
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
@@ -2669,6 +2688,24 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       t->set_regs(r);
       break;
     }
+
+    case Arch::accept:
+    case Arch::accept4: {
+      Registers r = t->regs();
+      auto addrp = pop_arg_ptr<typename Arch::sockaddr>(t);
+      auto addrlenp = pop_arg_ptr<typename Arch::socklen_t>(t);
+
+      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
+      typename Arch::socklen_t addrlen;
+      restore_scratch.restore_and_record_arg(addrlenp, &addrlen);
+      restore_scratch.restore_and_record_arg_buf(addrp, addrlen);
+
+      r.set_arg2(addrp);
+      r.set_arg3(addrlenp);
+      t->set_regs(r);
+      return;
+    }
+
     case Arch::write:
     case Arch::writev:
       break;

@@ -1538,6 +1538,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::splice:
     case Arch::_sysctl:
     case Arch::wait4:
+    case Arch::accept:
+    case Arch::accept4:
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 2;
