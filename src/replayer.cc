@@ -452,7 +452,8 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
         // restarting from an rr checkpoint inside a system
         // call, and we must not tamper with replay state), so
         // just ignore it.
-        if (req.reg.name == DREG_ORIG_EAX) {
+        if ((t->arch() == x86 && req.reg.name == DREG_ORIG_EAX) ||
+            (t->arch() == x86_64 && req.reg.name == DREG_ORIG_RAX)) {
           dbg_reply_set_reg(dbg, true);
           return;
         }
