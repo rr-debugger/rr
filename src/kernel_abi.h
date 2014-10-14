@@ -667,8 +667,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     ptr<socklen_t> addrlen;
   };
 
-  struct accept4_args {
-    accept_args _;
+  struct accept4_args : public accept_args {
     signed_long flags;
   };
 
