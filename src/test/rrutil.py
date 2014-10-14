@@ -2,7 +2,7 @@ import pexpect, re, signal, sys, time
 
 __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'send_rr', 'expect_list',
             'restart_replay', 'restart_replay_at_end', 'interrupt_gdb', 'ok',
-            'failed', 'iterlines_both', 'last_match' ]
+            'failed', 'iterlines_both', 'last_match', 'get_exe_arch' ]
 
 # Public API
 def expect_gdb(what):
@@ -86,6 +86,12 @@ def expect(prog, what):
 def get_exe():
     '''Return the image to be debugged'''
     return sys.argv[1]
+
+def get_exe_arch():
+    send_gdb('show architecture\n')
+    expect_gdb('The target architecture is set automatically \\(currently ([0-9a-z:-]+)\\)')
+    global gdb_rr
+    return gdb_rr.match.group(1)
 
 def get_rr_cmd():
     '''Return the command that should be used to invoke rr, as the tuple
