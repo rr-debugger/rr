@@ -63,9 +63,9 @@ public:
   std::shared_ptr<AddressSpace> clone(std::shared_ptr<AddressSpace> vm);
 
   /** See Task::clone(). */
-  Task* clone(Task* p, int flags, remote_ptr<void> stack,
-              remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
-              pid_t new_tid, pid_t new_rec_tid = -1);
+  Task* clone(Task* p, int flags, remote_ptr<void> stack, remote_ptr<void> tls,
+              remote_ptr<int> cleartid_addr, pid_t new_tid,
+              pid_t new_rec_tid = -1);
 
   /** Return a new task group consisting of |t|. */
   std::shared_ptr<TaskGroup> create_tg(Task* t);

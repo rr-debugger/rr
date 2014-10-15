@@ -1096,10 +1096,9 @@ private:
    * only relevant to replay, and is the pid that was assigned
    * to the task during recording.
    */
-  Task* clone(int flags, remote_ptr<void> stack,
-              remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
-              pid_t new_tid, pid_t new_rec_tid = -1,
-              Session* other_session = nullptr);
+  Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
+              remote_ptr<int> cleartid_addr, pid_t new_tid,
+              pid_t new_rec_tid = -1, Session* other_session = nullptr);
 
   /**
    * Make this task look like an identical copy of |from| in

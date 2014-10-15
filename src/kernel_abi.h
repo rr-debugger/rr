@@ -870,7 +870,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   static const CloneTLSType clone_tls_type = PthreadStructurePointer;
   static const CloneParameterOrdering clone_parameter_ordering =
       FlagsStackParentChildTLS;
-  static const SelectCallingSemantics select_semantics = SelectRegisterArguments;
+  static const SelectCallingSemantics select_semantics =
+      SelectRegisterArguments;
 
 #include "SyscallEnumsX64.generated"
 

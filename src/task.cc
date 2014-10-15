@@ -1402,8 +1402,7 @@ int Task::stop_sig_from_status(int status) const {
   return WSTOPSIG(status);
 }
 
-Task* Task::clone(int flags, remote_ptr<void> stack,
-                  remote_ptr<void> tls,
+Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
                   pid_t new_rec_tid, Session* other_session) {
   auto& sess = other_session ? *other_session : session();
@@ -1960,18 +1959,17 @@ bool Task::clone_syscall_is_complete() {
 }
 
 template <typename Arch>
-static void perform_remote_clone_arch(AutoRemoteSyscalls& remote,
-                                      unsigned base_flags, remote_ptr<void> stack,
-                                      remote_ptr<int> ptid, remote_ptr<void> tls,
-                                      remote_ptr<int> ctid) {
+static void perform_remote_clone_arch(
+    AutoRemoteSyscalls& remote, unsigned base_flags, remote_ptr<void> stack,
+    remote_ptr<int> ptid, remote_ptr<void> tls, remote_ptr<int> ctid) {
   switch (Arch::clone_parameter_ordering) {
     case Arch::FlagsStackParentTLSChild:
-      remote.syscall(Arch::clone, base_flags, stack,
-                     ptid.as_int(), tls.as_int(), ctid.as_int());
+      remote.syscall(Arch::clone, base_flags, stack, ptid.as_int(),
+                     tls.as_int(), ctid.as_int());
       break;
     case Arch::FlagsStackParentChildTLS:
-      remote.syscall(Arch::clone, base_flags, stack,
-                     ptid.as_int(), ctid.as_int(), tls.as_int());
+      remote.syscall(Arch::clone, base_flags, stack, ptid.as_int(),
+                     ctid.as_int(), tls.as_int());
       break;
   }
 }
@@ -1980,15 +1978,14 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                                  unsigned base_flags, remote_ptr<void> stack,
                                  remote_ptr<int> ptid, remote_ptr<void> tls,
                                  remote_ptr<int> ctid) {
-  RR_ARCH_FUNCTION(perform_remote_clone_arch, parent->arch(),
-                   remote, base_flags, stack, ptid, tls, ctid);
+  RR_ARCH_FUNCTION(perform_remote_clone_arch, parent->arch(), remote,
+                   base_flags, stack, ptid, tls, ctid);
 }
 
 /*static*/ Task* Task::os_clone(Task* parent, Session* session,
                                 AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                                 unsigned base_flags, remote_ptr<void> stack,
-                                remote_ptr<int> ptid,
-                                remote_ptr<void> tls,
+                                remote_ptr<int> ptid, remote_ptr<void> tls,
                                 remote_ptr<int> ctid) {
   perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {

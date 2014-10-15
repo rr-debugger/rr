@@ -2205,19 +2205,14 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
       /* record child id here */
       remote_ptr<void>* stack_not_needed = nullptr;
-      remote_ptr<typename Arch::pid_t> parent_tid_in_parent, parent_tid_in_child;
+      remote_ptr<typename Arch::pid_t> parent_tid_in_parent,
+          parent_tid_in_child;
       remote_ptr<void> tls_in_parent, tls_in_child;
       remote_ptr<typename Arch::pid_t> child_tid_in_parent, child_tid_in_child;
-      extract_clone_parameters(t,
-                               stack_not_needed,
-                               &parent_tid_in_parent,
-                               &tls_in_parent,
-                               &child_tid_in_parent);
-      extract_clone_parameters(new_task,
-                               stack_not_needed,
-                               &parent_tid_in_child,
-                               &tls_in_child,
-                               &child_tid_in_child);
+      extract_clone_parameters(t, stack_not_needed, &parent_tid_in_parent,
+                               &tls_in_parent, &child_tid_in_parent);
+      extract_clone_parameters(new_task, stack_not_needed, &parent_tid_in_child,
+                               &tls_in_child, &child_tid_in_child);
       new_task->record_remote(parent_tid_in_parent);
 
       if (Arch::clone_tls_type == Arch::UserDescPointer) {
@@ -2377,8 +2372,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::select:
       switch (Arch::select_semantics) {
         case Arch::SelectStructArguments: {
-          auto args =
-            t->read_mem(remote_ptr<typename Arch::select_args>(t->regs().arg1()));
+          auto args = t->read_mem(
+              remote_ptr<typename Arch::select_args>(t->regs().arg1()));
           t->record_remote(args.read_fds.rptr());
           t->record_remote(args.write_fds.rptr());
           t->record_remote(args.except_fds.rptr());
@@ -2389,7 +2384,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg2()));
           t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg3()));
           t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg4()));
-          t->record_remote(remote_ptr<typename Arch::timeval>(t->regs().arg5()));
+          t->record_remote(
+              remote_ptr<typename Arch::timeval>(t->regs().arg5()));
           break;
       }
       break;

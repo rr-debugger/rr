@@ -316,10 +316,8 @@ int get_num_cpus();
  * Extract various clone(2) parameters out of the given Task's registers.
  * Each remote_ptr parameter may be nullptr.
  */
-void extract_clone_parameters(Task* t,
-                              remote_ptr<void>* stack,
-                              remote_ptr<int>* ptid,
-                              remote_ptr<void>* tls,
+void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
+                              remote_ptr<int>* ptid, remote_ptr<void>* tls,
                               remote_ptr<int>* ctid);
 
 #endif /* RR_UTIL_H_ */

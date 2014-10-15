@@ -852,13 +852,13 @@ static void advance_syscall(Task* t) {
 }
 
 void destroy_buffers(Task* t) {
-  // NB: we have to pay all this complexity here because glibc
-  // makes its SYS_exit call through an inline int $0x80 insn,
-  // instead of going through the vdso.  There may be a deep
-  // reason for why it does that, but if it starts going through
-  // the vdso in the future, this code can be eliminated in
-  // favor of a *much* simpler vsyscall SYS_exit hook in the
-  // preload lib.
+// NB: we have to pay all this complexity here because glibc
+// makes its SYS_exit call through an inline int $0x80 insn,
+// instead of going through the vdso.  There may be a deep
+// reason for why it does that, but if it starts going through
+// the vdso in the future, this code can be eliminated in
+// favor of a *much* simpler vsyscall SYS_exit hook in the
+// preload lib.
 #if defined(__i386__)
   static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
 #elif defined(__x86_64__)
@@ -1262,11 +1262,10 @@ static void extract_clone_parameters_arch(const Registers& regs,
   }
 }
 
-void extract_clone_parameters(Task* t,
-                              remote_ptr<void>* stack,
+void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
                               remote_ptr<int>* parent_tid,
                               remote_ptr<void>* tls,
                               remote_ptr<int>* child_tid) {
-  RR_ARCH_FUNCTION(extract_clone_parameters_arch, t->arch(),
-                   t->regs(), stack, parent_tid, tls, child_tid);
+  RR_ARCH_FUNCTION(extract_clone_parameters_arch, t->arch(), t->regs(), stack,
+                   parent_tid, tls, child_tid);
 }
