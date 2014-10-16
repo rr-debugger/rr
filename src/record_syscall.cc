@@ -1216,8 +1216,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::sigsuspend:
       return ALLOW_SWITCH;
 
+    case Arch::sendmsg: {
+      const Registers& r = t->regs();
+      unsigned flags = (unsigned int)r.arg4();
+      return (flags & MSG_DONTWAIT) ? PREVENT_SWITCH : ALLOW_SWITCH;
+    }
+
     case Arch::sendmmsg: {
-      Registers r = t->regs();
+      const Registers& r = t->regs();
       unsigned flags = (unsigned int)r.arg4();
       return (flags & MSG_DONTWAIT) ? PREVENT_SWITCH : ALLOW_SWITCH;
     }
