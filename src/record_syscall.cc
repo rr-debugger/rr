@@ -895,6 +895,20 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::_newselect:
       return ALLOW_SWITCH;
 
+    case Arch::msgrcv: {
+      if (!need_scratch_setup) {
+        return ALLOW_SWITCH;
+      }
+      Registers r = t->regs();
+      size_t msgsize = t->regs().arg3();
+      auto msgbuf = remote_ptr<void>(t->regs().arg2());
+      if (!prepare_msgrcv<Arch>(t, msgsize, &msgbuf, &scratch)) {
+        return abort_scratch(t, "msgrcv");
+      }
+      r.set_arg2(msgbuf);
+      t->set_regs(r);
+      return ALLOW_SWITCH;
+    }
     case Arch::recvfrom: {
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
@@ -2515,6 +2529,15 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_ioctl<Arch>(t, (int)t->regs().arg2_signed());
       break;
 
+    case Arch::msgrcv: {
+      Registers r = t->regs();
+      size_t msgsize = t->regs().arg3();
+      auto msgbuf = remote_ptr<void>(t->regs().arg2());
+      process_msgrcv<Arch>(t, msgsize, &msgbuf);
+      r.set_arg2(msgbuf);
+      t->set_regs(r);
+      break;
+    }
     case Arch::msgctl:
       process_msgctl<Arch>(t, (int)t->regs().arg2_signed(), t->regs().arg3());
       break;

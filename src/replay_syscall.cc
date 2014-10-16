@@ -1383,6 +1383,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::waitid:
     case Arch::waitpid:
     case Arch::msgctl:
+    case Arch::msgrcv:
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 1;
