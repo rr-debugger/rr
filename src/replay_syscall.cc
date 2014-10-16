@@ -1379,6 +1379,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::ppoll:
     case Arch::read:
     case Arch::rt_sigtimedwait:
+    case Arch::sendfile:
     case Arch::sendfile64:
     case Arch::waitid:
     case Arch::waitpid:

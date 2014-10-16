@@ -806,6 +806,13 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return ALLOW_SWITCH;
     }
 
+    case Arch::sendfile: {
+      if (!need_scratch_setup) {
+        return ALLOW_SWITCH;
+      }
+
+      return prepare_sendfile<Arch, typename Arch::off_t>(t, &scratch);
+    }
     case Arch::sendfile64: {
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
@@ -2812,6 +2819,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         record_noop_data(t);
       }
       t->set_regs(r);
+      break;
+    }
+    case Arch::sendfile: {
+      process_sendfile<Arch, typename Arch::off_t>(t);
       break;
     }
     case Arch::sendfile64: {
