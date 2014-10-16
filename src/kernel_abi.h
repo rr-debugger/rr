@@ -966,8 +966,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 
 // Helper structure for determining the proper outparam sizes for syscalls
 // like getgroups.
-template <typename Arch>
-struct LegacyUIDSyscall {
+template <typename Arch> struct LegacyUIDSyscall {
   static const size_t size = (Arch::uid_gid_sizes == Arch::Only32Bit ? 4 : 2);
 };
 

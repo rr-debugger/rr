@@ -44,11 +44,13 @@ int main(int argc, char* argv[]) {
   union legacy_id resgid_results[3];
 
   initialize_legacy_ids(ALEN(resuid_results), resuid_results);
-  check_syscall(0, syscall(SYS_getresuid, &resuid_results[0], &resuid_results[1], &resuid_results[2]));
+  check_syscall(0, syscall(SYS_getresuid, &resuid_results[0],
+                           &resuid_results[1], &resuid_results[2]));
   verify_results(ALEN(resuid_results), resuid_results);
 
   initialize_legacy_ids(ALEN(resgid_results), resgid_results);
-  check_syscall(0, syscall(SYS_getresgid, &resgid_results[0], &resgid_results[1], &resgid_results[2]));
+  check_syscall(0, syscall(SYS_getresgid, &resgid_results[0],
+                           &resgid_results[1], &resgid_results[2]));
   verify_results(ALEN(resgid_results), resgid_results);
 
   atomic_puts("EXIT-SUCCESS");

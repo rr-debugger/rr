@@ -35,8 +35,8 @@ public:
   Registers() { memset(&u, 0, sizeof(u)); }
 
   SupportedArch arch() const {
-    // TODO: make the architecture settable, so we can exec 32-bit processes
-    // from 64-bit ones and vice-versa.
+// TODO: make the architecture settable, so we can exec 32-bit processes
+// from 64-bit ones and vice-versa.
 #if defined(__x86_64__)
     return x86_64;
 #elif defined(__i386__)
