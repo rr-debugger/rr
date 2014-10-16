@@ -1499,6 +1499,24 @@ Task* Task::os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote) {
                   stack());
 }
 
+template <typename Arch>
+void Task::copy_tls_arch(Task* from, AutoRemoteSyscalls& remote) {
+  if (Arch::clone_tls_type == Arch::UserDescPointer) {
+    if (const struct user_desc* tls = from->tls()) {
+      AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
+      LOG(debug) << "    setting tls " << remote_tls.get();
+      long err = remote.syscall(syscall_number_for_set_thread_area(arch()),
+                                remote_tls.get().as_int());
+      ASSERT(this, 0 == err);
+      set_thread_area(remote_tls.get());
+    }
+  }
+}
+
+void Task::copy_tls(Task* from, AutoRemoteSyscalls&remote) {
+  RR_ARCH_FUNCTION(copy_tls_arch, arch(), from, remote);
+}
+
 void Task::copy_state(Task* from) {
   long err;
   set_regs(from->regs());
@@ -1525,14 +1543,7 @@ void Task::copy_state(Task* from) {
       ASSERT(this, 0 == err);
     }
 
-    if (const struct user_desc* tls = from->tls()) {
-      AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
-      LOG(debug) << "    setting tls " << remote_tls.get();
-      err = remote.syscall(syscall_number_for_set_thread_area(arch()),
-                           remote_tls.get().as_int());
-      ASSERT(this, 0 == err);
-      set_thread_area(remote_tls.get());
-    }
+    copy_tls(from, remote);
 
     auto ctid = from->tid_addr();
     if (!ctid.is_null()) {

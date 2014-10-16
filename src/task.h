@@ -1093,6 +1093,10 @@ private:
               remote_ptr<int> cleartid_addr, pid_t new_tid,
               pid_t new_rec_tid = -1, Session* other_session = nullptr);
 
+  template <typename Arch>
+  void copy_tls_arch(Task* from, AutoRemoteSyscalls& remote);
+  void copy_tls(Task* from, AutoRemoteSyscalls& remote);
+  
   /**
    * Make this task look like an identical copy of |from| in
    * every way relevant to replay.  This task should have been
