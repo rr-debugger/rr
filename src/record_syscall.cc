@@ -693,6 +693,25 @@ static bool exec_file_supported(const string& filename) {
 #endif
 }
 
+template <typename Arch, typename Offset>
+static Switchable prepare_sendfile(Task* t, remote_ptr<void>* scratch) {
+  Registers r = t->regs();
+  remote_ptr<Offset> offset = r.arg3();
+
+  push_arg_ptr(t, offset);
+  if (!offset.is_null()) {
+    auto offset2 = allocate_scratch<Offset>(scratch);
+    t->remote_memcpy(offset2, offset);
+    r.set_arg3(offset2);
+  }
+  if (!can_use_scratch(t, *scratch)) {
+    return abort_scratch(t, "sendfile");
+  }
+
+  t->set_regs(r);
+  return ALLOW_SWITCH;
+}
+
 template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
   /* If we are called again due to a restart_syscall, we musn't
@@ -758,25 +777,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     }
 
     case Arch::sendfile64: {
-      Registers r = t->regs();
-      remote_ptr<loff_t> offset = r.arg3();
-
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
       }
 
-      push_arg_ptr(t, offset);
-      if (!offset.is_null()) {
-        auto offset2 = allocate_scratch<loff_t>(&scratch);
-        t->remote_memcpy(offset2, offset);
-        r.set_arg3(offset2);
-      }
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
-      }
-
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      return prepare_sendfile<Arch, typename Arch::off64_t>(t, &scratch);
     }
 
     case Arch::clone: {
@@ -2260,6 +2265,22 @@ static void check_syscall_rejected(Task* t) {
   }
 }
 
+template <typename Arch, typename Offset>
+static void process_sendfile(Task* t) {
+  AutoRestoreScratch restore_scratch(t);
+  auto offset = pop_arg_ptr<Offset>(t);
+
+  Registers r = t->regs();
+  if (!offset.is_null()) {
+    restore_scratch.restore_and_record_arg(offset);
+    r.set_arg3(offset);
+  } else {
+    record_noop_data(t);
+  }
+
+  t->set_regs(r);
+}
+
 template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
 
@@ -2683,18 +2704,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::sendfile64: {
-      AutoRestoreScratch restore_scratch(t);
-      auto offset = pop_arg_ptr<loff_t>(t);
-
-      Registers r = t->regs();
-      if (!offset.is_null()) {
-        restore_scratch.restore_and_record_arg(offset);
-        r.set_arg3(offset);
-      } else {
-        record_noop_data(t);
-      }
-
-      t->set_regs(r);
+      process_sendfile<Arch, typename Arch::off64_t>(t);
       break;
     }
     case Arch::sendmmsg: {
