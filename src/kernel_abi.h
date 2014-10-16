@@ -188,6 +188,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef syscall_slong_t time_t;
   typedef syscall_slong_t suseconds_t;
   typedef syscall_slong_t off_t;
+  typedef int64_t off64_t;
 
   typedef syscall_slong_t clock_t;
 
