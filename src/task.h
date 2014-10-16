@@ -1304,4 +1304,20 @@ private:
   Task operator=(Task&) = delete;
 };
 
+/**
+ * Invoking prepare_remote_syscalls()/finish_remote_syscalls()
+ * automatically by a constructor/destructor
+ */
+struct RemoteSyscalls {
+	RemoteSyscalls(Task* t) {
+		prepare_remote_syscalls(t);
+	}
+	
+	~RemoteSyscalls() {
+		finish_remote_syscalls();
+	}
+
+	struct current_state_buffer;
+};
+
 #endif /* RR_TASK_H_ */

@@ -24,10 +24,6 @@ set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3 -m32")
 
 set_source_files_properties(src/preload/preload.c PROPERTIES COMPILE_FLAGS -O2)
 
-# Disable PIC.
-string(REGEX REPLACE "-fPIC" ""
-  CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
-
 include_directories("${PROJECT_SOURCE_DIR}/include")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
