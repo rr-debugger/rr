@@ -165,6 +165,16 @@ static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch) {
   return p;
 }
 
+template <typename Arch>
+static bool prepare_msgrcv(Task* t, size_t msgsize,
+                           remote_ptr<void>* msgbuf,
+                           remote_ptr<void>* scratch) {
+  push_arg_ptr(t, *msgbuf);
+  *msgbuf = *scratch;
+  *scratch += msgsize;
+  return can_use_scratch(t, *scratch);
+}
+
 /**
  * Return ALLOW_SWITCH if it's OK to context-switch away from |t| for its
  * ipc call.  If so, prepare any required scratch buffers for |t|.
@@ -187,12 +197,11 @@ static Switchable prepare_ipc(Task* t, bool need_scratch_setup) {
           t->regs().arg5();
       auto kludge = t->read_mem(child_kludge);
 
-      push_arg_ptr(t, kludge.msgbuf);
-      kludge.msgbuf = scratch;
-      scratch += msgsize;
-      if (!can_use_scratch(t, scratch)) {
+      auto msgbuf = kludge.msgbuf.rptr();
+      if (!prepare_msgrcv<Arch>(t, msgsize, &msgbuf, &scratch)) {
         return abort_scratch(t, "msgrcv");
       }
+      kludge.msgbuf = msgbuf;
       t->write_mem(child_kludge, kludge);
       return ALLOW_SWITCH;
     }
@@ -1771,6 +1780,21 @@ static void process_msgctl(Task* t, int cmd, remote_ptr<void> buf) {
   t->record_remote(buf, buf_size);
 }
 
+template <typename Arch>
+static void process_msgrcv(Task* t, size_t msgsize,
+                           remote_ptr<void>* msgbuf) {
+  // The |msgsize| arg is only the size of message payload; there's also
+  // a |msgtype| tag set just before the payload.
+  size_t buf_size = sizeof(typename Arch::signed_long) + msgsize;
+  if (has_saved_arg_ptrs(t)) {
+    remote_ptr<void> orig_msgbuf = pop_arg_ptr<void>(t);
+
+    t->remote_memcpy(orig_msgbuf, *msgbuf, buf_size);
+    *msgbuf = orig_msgbuf;
+  }
+  t->record_remote(*msgbuf, buf_size);
+}
+
 template <typename Arch> static void process_ipc(Task* t, int call) {
   LOG(debug) << "ipc call: " << call;
 
@@ -1782,23 +1806,15 @@ template <typename Arch> static void process_ipc(Task* t, int call) {
       return;
     }
     case MSGRCV: {
-      // The |msgsize| arg is only the size of message
-      // payload; there's also a |msgtype| tag set just
-      // before the payload.
-      size_t buf_size = sizeof(typename Arch::signed_long) + t->regs().arg3();
+      size_t msgsize = t->regs().arg3();
       remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
           t->regs().arg5();
       auto kludge = t->read_mem(child_kludge);
-      if (has_saved_arg_ptrs(t)) {
-        remote_ptr<void> src = kludge.msgbuf;
-        remote_ptr<void> dst = pop_arg_ptr<void>(t);
 
-        kludge.msgbuf = dst;
-        t->write_mem(child_kludge, kludge);
-
-        t->remote_memcpy(dst, src, buf_size);
-      }
-      t->record_remote(kludge.msgbuf, buf_size);
+      auto msgbuf = kludge.msgbuf.rptr();
+      process_msgrcv<Arch>(t, msgsize, &msgbuf);
+      kludge.msgbuf = msgbuf;
+      t->write_mem(child_kludge, kludge);
       return;
     }
     case MSGGET:
