@@ -1013,7 +1013,7 @@ capset = UnsupportedSyscall(x86=185, x64=126)
 # sigaction(2)) requested it.
 sigaltstack = EmulatedSyscall(x86=186, x64=131, arg2=DynamicSize("t->regs().arg2() ? sizeof(stack_t) : 0"))
 
-sendfile = UnsupportedSyscall(x86=187, x64=40)
+sendfile = IrregularEmulatedSyscall(x86=187, x64=40)
 getpmsg = UnsupportedSyscall(x86=188, x64=181)
 putpmsg = UnsupportedSyscall(x86=189, x64=182)
 vfork = UnsupportedSyscall(x86=190, x64=58)
