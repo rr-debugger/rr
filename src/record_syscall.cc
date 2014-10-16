@@ -2455,10 +2455,11 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           break;
         }
         case Arch::RegisterArguments:
-          process_mmap(
-              t, syscallno, (size_t)t->regs().arg2(),
-              (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),
-              (int)t->regs().arg5_signed(), (off_t)t->regs().arg6_signed());
+          process_mmap(t, syscallno, (size_t)t->regs().arg2(),
+                       (int)t->regs().arg3_signed(),
+                       (int)t->regs().arg4_signed(),
+                       (int)t->regs().arg5_signed(),
+                       ((off_t)t->regs().arg6_signed()) / 4096);
           break;
       }
       break;
