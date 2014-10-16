@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import StringIO
 import os
 import string
 import sys
@@ -173,8 +174,20 @@ def main(argv):
     filename = argv[0]
     base, extension = os.path.splitext(os.path.basename(filename))
 
-    with open(filename, 'w') as f:
-        generators_for[base](f)
+    if os.access(filename, os.F_OK):
+        with open(filename, 'r') as f:
+            before = f.read()
+    else:
+        before = ""
+
+    stream = StringIO.StringIO()
+    generators_for[base](stream)
+    after = stream.getvalue()
+    stream.close()
+
+    if before != after:
+        with open(filename, 'w') as f:
+            f.write(after)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
