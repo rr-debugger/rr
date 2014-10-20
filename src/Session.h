@@ -39,7 +39,7 @@ public:
 
   /**
    * Call |after_exec()| after a tracee has successfully
-   * |execve()|'d.  After that, |can_validate()| return true.
+   * |execve()|'d.  After that, |can_validate()| returns true.
    *
    * Tracee state can't be validated before the first exec,
    * because the address space inside the rr process for |rr
@@ -154,6 +154,10 @@ protected:
   TaskPrioritySet task_priority_set;
   TaskQueue task_round_robin_queue;
 
+  /**
+   * True if we've done an exec so tracees are now in a state that will be
+   * consistent across record and replay.
+   */
   bool tracees_consistent;
 
   Session(const Session&) = delete;
