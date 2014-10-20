@@ -67,6 +67,18 @@ private:
   virtual void on_create(Task* t) override;
 
   TraceWriter trace_out;
+
+  /**
+   * Every task of this session is either in task_priority_set
+   * (when in_round_robin_queue is false), or in task_round_robin_queue
+   * (when in_round_robin_queue is true).
+   *
+   * task_priority_set is a set of pairs of (task->priority, task). This
+   * lets us efficiently iterate over the tasks with a given priority, or
+   * all tasks in priority order.
+   */
+  TaskPrioritySet task_priority_set;
+  TaskQueue task_round_robin_queue;
 };
 
 #endif // RR_RECORD_SESSION_H_

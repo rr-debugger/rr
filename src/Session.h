@@ -115,17 +115,6 @@ protected:
 
   AddressSpaceSet sas;
   TaskMap task_map;
-  /**
-   * Every task of this session is either in task_priority_set
-   * (when in_round_robin_queue is false), or in task_round_robin_queue
-   * (when in_round_robin_queue is true).
-   *
-   * task_priority_set is a set of pairs of (task->priority, task). This
-   * lets us efficiently iterate over the tasks with a given priority, or
-   * all tasks in priority order.
-   */
-  TaskPrioritySet task_priority_set;
-  TaskQueue task_round_robin_queue;
 
   /**
    * True if we've done an exec so tracees are now in a state that will be
