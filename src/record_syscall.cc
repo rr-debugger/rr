@@ -148,7 +148,7 @@ static Switchable abort_scratch(Task* t, const char* event) {
  * Return nonzero if the scratch state initialized for |t| fits
  * within the allocated region (and didn't overflow), zero otherwise.
  */
-static int can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
+static bool can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
   remote_ptr<void> scratch_start = t->scratch_ptr;
 
   assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
