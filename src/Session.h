@@ -33,9 +33,6 @@ class Session {
 public:
   typedef std::set<AddressSpace*> AddressSpaceSet;
   typedef std::map<pid_t, Task*> TaskMap;
-  // Tasks sorted by priority.
-  typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
-  typedef std::deque<Task*> TaskQueue;
 
   /**
    * Call |after_exec()| after a tracee has successfully

@@ -9,6 +9,9 @@
 class RecordSession : public Session {
 public:
   typedef std::shared_ptr<RecordSession> shr_ptr;
+  // Tasks sorted by priority.
+  typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
+  typedef std::deque<Task*> TaskQueue;
 
   /**
    * Fork and exec the initial tracee task, and return it.
