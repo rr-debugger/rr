@@ -482,8 +482,9 @@ sethostname = UnsupportedSyscall(x86=74, x64=170)
 # getrlimit() and setrlimit()):
 #
 # NOTE: We should execute this system call, since this system call
-# sets a limit on a resource (e.g., the stack size). This behavior
-# must be the same in the replay as in the recording phase.
+# can set a limit on the stack size that will trigger a synchronous SIGSEGV,
+# and we expect synchronous SIGSEGVs to be triggered by the kernel
+# during replay.
 setrlimit = ExecutedSyscall(x86=75, x64=160, arg2="struct rlimit")
 
 getrlimit = EmulatedSyscall(x64=97, arg2="struct rlimit")
@@ -1643,6 +1644,11 @@ fanotify_mark = UnsupportedSyscall(x86=339, x64=301)
 # The Linux-specific prlimit() system call combines and extends the
 # functionality of setrlimit() and getrlimit().  It can be used to
 # both set and get the resource limits of an arbitrary process.
+#
+# NOTE: We should execute this system call, since this system call
+# can set a limit on the stack size that will trigger a synchronous SIGSEGV,
+# and we expect synchronous SIGSEGVs to be triggered by the kernel
+# during replay.
 prlimit64 = ExecutedSyscall(x86=340, x64=302, arg4="struct rlimit64")
 
 name_to_handle_at = UnsupportedSyscall(x86=341, x64=303)
