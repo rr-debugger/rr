@@ -11,7 +11,7 @@
 #include "ScopedFd.h"
 #include "task.h"
 
-class Session;
+class ReplaySession;
 class Task;
 
 /**
@@ -175,7 +175,7 @@ private:
    * has been destroyed.  All other gc triggers are handled
    * internally.
    */
-  void gc(const Session& session);
+  void gc(const ReplaySession& session);
 
   /**
    * Mark all the files being used by the tasks in |as|, and

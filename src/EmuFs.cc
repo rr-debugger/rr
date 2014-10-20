@@ -81,7 +81,7 @@ EmuFs::shr_ptr EmuFs::clone() {
   return fs;
 }
 
-void EmuFs::gc(const Session& session) {
+void EmuFs::gc(const ReplaySession& session) {
   // XXX this implementation is unnecessarily slow.  But before
   // throwing it away for something different, give it another
   // shot once rr is caching local mmaps for all address spaces,
