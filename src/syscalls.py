@@ -789,7 +789,7 @@ flock = UnsupportedSyscall(x86=143, x64=73)
 # munmap(2) is called.  To be more precise, the part of the file that
 # corresponds to the memory area starting at addr and having length
 # length is updated.
-msync = ExecutedSyscall(x86=144, x64=26)
+msync = EmulatedSyscall(x86=144, x64=26)
 
 readv = UnsupportedSyscall(x86=145, x64=19)
 
