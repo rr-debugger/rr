@@ -1383,6 +1383,7 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
     case Arch::waitid:
     case Arch::waitpid:
     case Arch::msgctl:
+    case Arch::msgrcv:
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 1;
@@ -1505,6 +1506,20 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
         }
       }
       return;
+
+    case Arch::recvmsg: {
+      step->syscall.emu = EMULATE;
+      step->syscall.emu_ret = EMULATE_RETURN;
+      step->action = syscall_action(state);
+      if (SYSCALL_EXIT == state) {
+        // We manually restore the msg buffer.
+        step->syscall.num_emu_args = 0;
+
+        remote_ptr<typename Arch::msghdr> msg = t->current_trace_frame().regs().arg2();
+        restore_struct_msghdr<Arch>(t, msg);
+      }
+      return;
+    }
 
     case Arch::recvmmsg: {
       step->syscall.emu = EMULATE;

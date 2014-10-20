@@ -165,6 +165,16 @@ static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch) {
   return p;
 }
 
+template <typename Arch>
+static bool prepare_msgrcv(Task* t, size_t msgsize,
+                           remote_ptr<void>* msgbuf,
+                           remote_ptr<void>* scratch) {
+  push_arg_ptr(t, *msgbuf);
+  *msgbuf = *scratch;
+  *scratch += msgsize;
+  return can_use_scratch(t, *scratch);
+}
+
 /**
  * Return ALLOW_SWITCH if it's OK to context-switch away from |t| for its
  * ipc call.  If so, prepare any required scratch buffers for |t|.
@@ -187,12 +197,11 @@ static Switchable prepare_ipc(Task* t, bool need_scratch_setup) {
           t->regs().arg5();
       auto kludge = t->read_mem(child_kludge);
 
-      push_arg_ptr(t, kludge.msgbuf);
-      kludge.msgbuf = scratch;
-      scratch += msgsize;
-      if (!can_use_scratch(t, scratch)) {
+      auto msgbuf = kludge.msgbuf.rptr();
+      if (!prepare_msgrcv<Arch>(t, msgsize, &msgbuf, &scratch)) {
         return abort_scratch(t, "msgrcv");
       }
+      kludge.msgbuf = msgbuf;
       t->write_mem(child_kludge, kludge);
       return ALLOW_SWITCH;
     }
@@ -378,6 +387,34 @@ static bool prepare_recvfrom(Task* t, remote_ptr<void>* buf,
   return true;
 }
 
+// Returns false if switching should be prevented for any reason.
+template <typename Arch>
+static bool prepare_recvmsg(Task* t, unsigned flags,
+                            remote_ptr<typename Arch::msghdr>* msgbuf,
+                            remote_ptr<void>* scratch) {
+  if (flags & MSG_DONTWAIT) {
+    return false;
+  }
+  auto msg = t->read_mem(*msgbuf);
+
+  push_arg_ptr(t, *msgbuf);
+  // Reserve scratch for the struct msghdr.
+  auto scratch_msg = allocate_scratch<typename Arch::msghdr>(scratch);
+
+  // Reseve scratch for the child pointers of struct msghdr.
+  if (!reserve_scratch_for_msghdr<Arch>(t, &msg, scratch)) {
+    // Push a dummy value to indicate that preparation failed.
+    push_arg_ptr(t, remote_ptr<void>(uintptr_t(0)));
+    return false;
+  }
+  // Indicate that preparation succeeded.
+  push_arg_ptr(t, remote_ptr<void>(uintptr_t(1)));
+  t->write_mem(scratch_msg, msg);
+
+  *msgbuf = scratch_msg;
+  return true;
+}
+
 /**
  * Initialize any necessary state to execute the socketcall that |t|
  * is stopped at, for example replacing tracee args with pointers into
@@ -530,24 +567,18 @@ static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
       }
-      auto msg = t->read_mem(args.msg.rptr());
 
       // Reserve scratch for the arg
       push_arg_ptr(t, argsp);
       auto tmpargsp = allocate_scratch<typename Arch::recvmsg_args>(&scratch);
       r.set_arg2(tmpargsp);
 
-      // Reserve scratch for the struct msghdr
-      auto scratch_msg = allocate_scratch<typename Arch::msghdr>(&scratch);
-
-      // Reserve scratch for the child pointers of struct msghdr
-      if (reserve_scratch_for_msghdr<Arch>(t, &msg, &scratch)) {
-        t->write_mem(scratch_msg, msg);
-      } else {
+      auto msgbuf = args.msg.rptr();
+      if (!prepare_recvmsg<Arch>(t, args.flags, &msgbuf, &scratch)) {
         return PREVENT_SWITCH;
       }
+      args.msg = msgbuf;
 
-      args.msg = scratch_msg;
       t->write_mem(tmpargsp, args);
       t->set_regs(r);
 
@@ -864,6 +895,20 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::_newselect:
       return ALLOW_SWITCH;
 
+    case Arch::msgrcv: {
+      if (!need_scratch_setup) {
+        return ALLOW_SWITCH;
+      }
+      Registers r = t->regs();
+      size_t msgsize = t->regs().arg3();
+      auto msgbuf = remote_ptr<void>(t->regs().arg2());
+      if (!prepare_msgrcv<Arch>(t, msgsize, &msgbuf, &scratch)) {
+        return abort_scratch(t, "msgrcv");
+      }
+      r.set_arg2(msgbuf);
+      t->set_regs(r);
+      return ALLOW_SWITCH;
+    }
     case Arch::recvfrom: {
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
@@ -883,6 +928,25 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       r.set_arg6(addrlen);
       t->set_regs(r);
 
+      return ALLOW_SWITCH;
+    }
+
+    case Arch::recvmsg: {
+      Registers r = t->regs();
+      if (r.arg3() & MSG_DONTWAIT) {
+        return PREVENT_SWITCH;
+      }
+      if (!need_scratch_setup) {
+        return ALLOW_SWITCH;
+      }
+      auto msgbuf = remote_ptr<typename Arch::msghdr>(r.arg2());
+
+      if (!prepare_recvmsg<Arch>(t, r.arg3(), &msgbuf, &scratch)) {
+        return PREVENT_SWITCH;
+      }
+
+      r.set_arg2(msgbuf);
+      t->set_regs(r);
       return ALLOW_SWITCH;
     }
 
@@ -1216,8 +1280,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::sigsuspend:
       return ALLOW_SWITCH;
 
+    case Arch::sendmsg: {
+      const Registers& r = t->regs();
+      unsigned flags = (unsigned int)r.arg4();
+      return (flags & MSG_DONTWAIT) ? PREVENT_SWITCH : ALLOW_SWITCH;
+    }
+
     case Arch::sendmmsg: {
-      Registers r = t->regs();
+      const Registers& r = t->regs();
       unsigned flags = (unsigned int)r.arg4();
       return (flags & MSG_DONTWAIT) ? PREVENT_SWITCH : ALLOW_SWITCH;
     }
@@ -1724,6 +1794,21 @@ static void process_msgctl(Task* t, int cmd, remote_ptr<void> buf) {
   t->record_remote(buf, buf_size);
 }
 
+template <typename Arch>
+static void process_msgrcv(Task* t, size_t msgsize,
+                           remote_ptr<void>* msgbuf) {
+  // The |msgsize| arg is only the size of message payload; there's also
+  // a |msgtype| tag set just before the payload.
+  size_t buf_size = sizeof(typename Arch::signed_long) + msgsize;
+  if (has_saved_arg_ptrs(t)) {
+    remote_ptr<void> orig_msgbuf = pop_arg_ptr<void>(t);
+
+    t->remote_memcpy(orig_msgbuf, *msgbuf, buf_size);
+    *msgbuf = orig_msgbuf;
+  }
+  t->record_remote(*msgbuf, buf_size);
+}
+
 template <typename Arch> static void process_ipc(Task* t, int call) {
   LOG(debug) << "ipc call: " << call;
 
@@ -1735,23 +1820,15 @@ template <typename Arch> static void process_ipc(Task* t, int call) {
       return;
     }
     case MSGRCV: {
-      // The |msgsize| arg is only the size of message
-      // payload; there's also a |msgtype| tag set just
-      // before the payload.
-      size_t buf_size = sizeof(typename Arch::signed_long) + t->regs().arg3();
+      size_t msgsize = t->regs().arg3();
       remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
           t->regs().arg5();
       auto kludge = t->read_mem(child_kludge);
-      if (has_saved_arg_ptrs(t)) {
-        remote_ptr<void> src = kludge.msgbuf;
-        remote_ptr<void> dst = pop_arg_ptr<void>(t);
 
-        kludge.msgbuf = dst;
-        t->write_mem(child_kludge, kludge);
-
-        t->remote_memcpy(dst, src, buf_size);
-      }
-      t->record_remote(kludge.msgbuf, buf_size);
+      auto msgbuf = kludge.msgbuf.rptr();
+      process_msgrcv<Arch>(t, msgsize, &msgbuf);
+      kludge.msgbuf = msgbuf;
+      t->write_mem(child_kludge, kludge);
       return;
     }
     case MSGGET:
@@ -1978,6 +2055,24 @@ static void process_recvfrom(Task* t, typename Arch::recvfrom_args* argsp) {
 }
 
 template <typename Arch>
+static void process_recvmsg(Task* t, remote_ptr<typename Arch::msghdr>* msgbuf) {
+  if (has_saved_arg_ptrs(t)) {
+    // The first saved arg indicates whether we suceeded in replacing everything
+    // with scratch pointers.
+    auto scratch_msg_succeeded = pop_arg_ptr<typename Arch::msghdr>(t);
+    if (scratch_msg_succeeded.is_null()) {
+      record_struct_msghdr<Arch>(t, *msgbuf);
+    } else {
+      auto orig_msgbuf = pop_arg_ptr<typename Arch::msghdr>(t);
+      record_and_restore_msghdr<Arch>(t, orig_msgbuf, *msgbuf);
+      *msgbuf = orig_msgbuf;
+    }
+  } else {
+    record_struct_msghdr<Arch>(t, *msgbuf);
+  }
+}
+
+template <typename Arch>
 static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
   LOG(debug) << "socket call: " << call;
 
@@ -2079,20 +2174,17 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
     }
     /* ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags); */
     case SYS_RECVMSG: {
-      Registers r = t->regs();
-      remote_ptr<typename Arch::recvmsg_args> tmpargsp = r.arg2();
-      auto tmpargs = t->read_mem(tmpargsp);
-      if (!has_saved_arg_ptrs(t)) {
-        return record_struct_msghdr<Arch>(t, tmpargs.msg);
+      auto args = t->read_mem(base_addr.cast<typename Arch::recvmsg_args>());
+      auto msgbuf = args.msg.rptr();
+      process_recvmsg<Arch>(t, &msgbuf);
+
+      args.msg = msgbuf;
+      if (has_saved_arg_ptrs(t)) {
+        auto orig_argsp = pop_arg_ptr<void>(t);
+        Registers r = t->regs();
+        r.set_arg2(orig_argsp);
+        t->set_regs(r);
       }
-
-      auto argsp = pop_arg_ptr<typename Arch::recvmsg_args>(t);
-      auto args = t->read_mem(argsp);
-
-      record_and_restore_msghdr<Arch>(t, args.msg, tmpargs.msg);
-
-      r.set_arg2(argsp);
-      t->set_regs(r);
       return;
     }
 
@@ -2437,6 +2529,15 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_ioctl<Arch>(t, (int)t->regs().arg2_signed());
       break;
 
+    case Arch::msgrcv: {
+      Registers r = t->regs();
+      size_t msgsize = t->regs().arg3();
+      auto msgbuf = remote_ptr<void>(t->regs().arg2());
+      process_msgrcv<Arch>(t, msgsize, &msgbuf);
+      r.set_arg2(msgbuf);
+      t->set_regs(r);
+      break;
+    }
     case Arch::msgctl:
       process_msgctl<Arch>(t, (int)t->regs().arg2_signed(), t->regs().arg3());
       break;
@@ -2640,6 +2741,16 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_recvfrom<Arch>(t, &args);
 
       set_registers_from_recvfrom_args<Arch>(r, args);
+      t->set_regs(r);
+      break;
+    }
+    case Arch::recvmsg: {
+      Registers r = t->regs();
+      auto msgbuf = remote_ptr<typename Arch::msghdr>(r.arg2());
+
+      process_recvmsg<Arch>(t, &msgbuf);
+
+      r.set_arg2(msgbuf);
       t->set_regs(r);
       break;
     }
