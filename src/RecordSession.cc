@@ -11,7 +11,7 @@ using namespace std;
 
 Task* RecordSession::create_task() {
   Task* t = Task::spawn(*this);
-  track(t);
+  on_create(t);
   return t;
 }
 

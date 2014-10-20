@@ -111,7 +111,7 @@ protected:
   Session();
   ~Session();
 
-  void track(Task* t);
+  void on_create(Task* t);
 
   AddressSpaceSet sas;
   TaskMap task_map;

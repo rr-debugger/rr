@@ -105,7 +105,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
     }
 
     Task* clone_leader = group_leader->os_fork_into(session.get());
-    session->track(clone_leader);
+    session->on_create(clone_leader);
     LOG(debug) << "  forked new group leader " << clone_leader->tid;
 
     {
@@ -129,7 +129,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
           t->finish_emulated_syscall();
         }
         Task* t_clone = t->os_clone_into(clone_leader, remote);
-        session->track(t_clone);
+        session->on_create(t_clone);
         t_clone->copy_state(t);
       }
     }
@@ -151,7 +151,7 @@ ReplaySession::shr_ptr ReplaySession::clone_diversion() {
 
 Task* ReplaySession::create_task(pid_t rec_tid) {
   Task* t = Task::spawn(*this, rec_tid);
-  track(t);
+  on_create(t);
   return t;
 }
 

@@ -54,7 +54,7 @@ Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
                      remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                      pid_t new_tid, pid_t new_rec_tid) {
   Task* c = p->clone(flags, stack, tls, cleartid_addr, new_tid, new_rec_tid);
-  track(c);
+  on_create(c);
   return c;
 }
 
@@ -112,7 +112,7 @@ void Session::on_destroy(Task* t) {
   }
 }
 
-void Session::track(Task* t) {
+void Session::on_create(Task* t) {
   task_map[t->rec_tid] = t;
   assert(!t->in_round_robin_queue);
   task_priority_set.insert(make_pair(t->priority, t));
