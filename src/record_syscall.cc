@@ -1245,7 +1245,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // time its scheduling slot opens up, it's OK to
       // blocking-waitpid on t to see its status change.
       t->pseudo_blocked = true;
-      t->session().schedule_one_round_robin(t);
+      t->record_session().schedule_one_round_robin(t);
       return ALLOW_SWITCH;
 
     case Arch::recvmmsg: {
@@ -2319,7 +2319,8 @@ static void before_syscall_exit(Task* t, int syscallno) {
         if (target) {
           LOG(debug) << "Setting nice value for tid " << t->tid << " to "
                      << t->regs().arg3();
-          target->set_priority((int)t->regs().arg3_signed());
+          target->record_session().update_task_priority(
+              target, (int)t->regs().arg3_signed());
         }
       }
       return;

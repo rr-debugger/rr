@@ -95,33 +95,6 @@ public:
   /** Return the set of Tasks being tracekd in this session. */
   const TaskMap& tasks() const { return task_map; }
 
-  /** Get tasks organized by priority. */
-  const TaskPrioritySet& tasks_by_priority() { return task_priority_set; }
-
-  /**
-   * Set the priority of |t| to |value| and update related
-   * state.
-   */
-  void update_task_priority(Task* t, int value);
-
-  /**
-   * Do one round of round-robin scheduling if we're not already doing one.
-   * If we start round-robin scheduling now, make last_task the last
-   * task to be scheduled.
-   * If the task_round_robin_queue is empty this moves all tasks into it,
-   * putting last_task last.
-   */
-  void schedule_one_round_robin(Task* last_task);
-
-  /**
-   * Returns the first task in the round-robin queue or null if it's empty.
-   */
-  Task* get_next_round_robin_task();
-  /**
-   * Removes a task from the front of the round-robin queue.
-   */
-  void remove_round_robin_task();
-
   /**
    * Return the set of AddressSpaces being tracked in this session.
    */

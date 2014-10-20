@@ -42,7 +42,7 @@ static Task* get_next_task_with_same_priority(Task* t) {
     return nullptr;
   }
 
-  auto tasks = t->session().tasks_by_priority();
+  auto tasks = t->record_session().tasks_by_priority();
   auto it = tasks.find(make_pair(t->priority, t));
   assert(it != tasks.end());
   ++it;
@@ -95,7 +95,7 @@ static bool is_task_runnable(Task* t, bool* by_waitpid) {
  * Sets 'by_waitpid' to true if we determined the task was runnable by
  * calling waitpid on it and observing a state change.
  */
-static Task* find_next_runnable_task(Session& session, bool* by_waitpid) {
+static Task* find_next_runnable_task(RecordSession& session, bool* by_waitpid) {
   *by_waitpid = false;
 
   while (true) {

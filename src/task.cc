@@ -336,14 +336,6 @@ void Task::dump(FILE* out) const {
   }
 }
 
-void Task::set_priority(int value) {
-  if (priority == value) {
-    // don't mess with task order
-    return;
-  }
-  session().update_task_priority(this, value);
-}
-
 bool Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);

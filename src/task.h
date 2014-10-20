@@ -306,12 +306,6 @@ public:
   const Event& ev() const { return pending_events.back(); }
 
   /**
-   * Sets the priority to 'value', updating the map-by-priority.
-   * Small priority values mean higher priority.
-   */
-  void set_priority(int value);
-
-  /**
    * Stat |fd| in the context of this task's fd table, returning
    * the result in |buf|.  The name of the referent file is
    * returned in |buf|, of max size |buf_num_bytes|.  Return
