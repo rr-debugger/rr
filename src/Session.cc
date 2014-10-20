@@ -64,23 +64,6 @@ TaskGroup::shr_ptr Session::create_tg(Task* t) {
   return tg;
 }
 
-void Session::dump_all_tasks(FILE* out) {
-  out = out ? out : stderr;
-
-  for (auto as : sas) {
-    auto ts = as->task_set();
-    Task* t = *ts.begin();
-    // XXX assuming that address space == task group,
-    // which is almost certainly what the kernel enforces
-    // too.
-    fprintf(out, "\nTask group %d, image '%s':\n", t->tgid(),
-            as->exe_image().c_str());
-    for (auto tsit = ts.begin(); tsit != ts.end(); ++tsit) {
-      (*tsit)->dump(out);
-    }
-  }
-}
-
 Task* Session::find_task(pid_t rec_tid) {
   auto it = tasks().find(rec_tid);
   return tasks().end() != it ? it->second : nullptr;

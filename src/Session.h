@@ -70,9 +70,6 @@ public:
   /** Return a new task group consisting of |t|. */
   std::shared_ptr<TaskGroup> create_tg(Task* t);
 
-  /** Call |Task::dump(out)| for all live tasks. */
-  void dump_all_tasks(FILE* out = nullptr);
-
   /**
    * Return the task created with |rec_tid|, or nullptr if no such
    * task exists.
