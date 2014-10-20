@@ -298,8 +298,7 @@ static bool reserve_scratch_for_msgvec(
 }
 
 template <typename Arch>
-static bool prepare_accept(Task* t,
-                           remote_ptr<typename Arch::sockaddr>* addr,
+static bool prepare_accept(Task* t, remote_ptr<typename Arch::sockaddr>* addr,
                            remote_ptr<typename Arch::socklen_t>* addrlen,
                            remote_ptr<void>* scratch) {
   auto len = t->read_mem(*addrlen);
@@ -320,7 +319,8 @@ static bool prepare_accept(Task* t,
 }
 
 template <typename Arch>
-static typename Arch::recvfrom_args recvfrom_args_from_registers(const Registers& r) {
+static typename Arch::recvfrom_args recvfrom_args_from_registers(
+    const Registers& r) {
   typename Arch::recvfrom_args args;
   args.sockfd = r.arg1_signed();
   args.buf = remote_ptr<void>(r.arg2());
@@ -332,8 +332,8 @@ static typename Arch::recvfrom_args recvfrom_args_from_registers(const Registers
 }
 
 template <typename Arch>
-static void set_registers_from_recvfrom_args(Registers& r,
-                                             const typename Arch::recvfrom_args& args) {
+static void set_registers_from_recvfrom_args(
+    Registers& r, const typename Arch::recvfrom_args& args) {
   r.set_arg1(args.sockfd);
   r.set_arg2(args.buf.rptr());
   r.set_arg3(args.len);
@@ -343,8 +343,7 @@ static void set_registers_from_recvfrom_args(Registers& r,
 }
 
 template <typename Arch>
-static bool prepare_recvfrom(Task* t,
-                             remote_ptr<void>* buf,
+static bool prepare_recvfrom(Task* t, remote_ptr<void>* buf,
                              typename Arch::size_t buflen,
                              remote_ptr<typename Arch::sockaddr>* addr,
                              remote_ptr<typename Arch::socklen_t>* addrlen,
@@ -510,7 +509,8 @@ static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
       auto r_buf = args.buf.rptr();
       auto r_addr = args.src_addr.rptr();
       auto r_addrlen = args.addrlen.rptr();
-      if (!prepare_recvfrom<Arch>(t, &r_buf, args.len, &r_addr, &r_addrlen, &scratch)) {
+      if (!prepare_recvfrom<Arch>(t, &r_buf, args.len, &r_addr, &r_addrlen,
+                                  &scratch)) {
         return abort_scratch(t, "recvfrom");
       }
       args.buf = r_buf;
@@ -873,7 +873,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       auto addr = remote_ptr<typename Arch::sockaddr>(r.arg5());
       auto addrlen = remote_ptr<typename Arch::socklen_t>(r.arg6());
 
-      if (!prepare_recvfrom<Arch>(t, &buf, r.arg3(), &addr, &addrlen, &scratch)) {
+      if (!prepare_recvfrom<Arch>(t, &buf, r.arg3(), &addr, &addrlen,
+                                  &scratch)) {
         return abort_scratch(t, "recvfrom");
       }
 
