@@ -58,12 +58,6 @@ Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
   return c;
 }
 
-TaskGroup::shr_ptr Session::create_tg(Task* t) {
-  TaskGroup::shr_ptr tg(new TaskGroup(t->rec_tid, t->tid));
-  tg->insert_task(t);
-  return tg;
-}
-
 Task* Session::find_task(pid_t rec_tid) {
   auto it = tasks().find(rec_tid);
   return tasks().end() != it ? it->second : nullptr;
@@ -84,10 +78,6 @@ void Session::on_destroy(AddressSpace* vm) {
   sas.erase(vm);
 }
 
-void Session::on_destroy(Task* t) {
-  task_map.erase(t->rec_tid);
-}
+void Session::on_destroy(Task* t) { task_map.erase(t->rec_tid); }
 
-void Session::on_create(Task* t) {
-  task_map[t->rec_tid] = t;
-}
+void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }

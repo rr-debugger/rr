@@ -64,9 +64,6 @@ public:
               remote_ptr<int> cleartid_addr, pid_t new_tid,
               pid_t new_rec_tid = -1);
 
-  /** Return a new task group consisting of |t|. */
-  std::shared_ptr<TaskGroup> create_tg(Task* t);
-
   /**
    * Return the task created with |rec_tid|, or nullptr if no such
    * task exists.

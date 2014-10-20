@@ -33,8 +33,9 @@ struct syscallbuf_record;
  * the ancestor of all other threads in the group.  Each constituent
  * task must own a reference to this.
  */
-struct TaskGroup : public HasTaskSet {
-  friend class Session;
+class TaskGroup : public HasTaskSet {
+public:
+  TaskGroup(pid_t tgid, pid_t real_tgid);
 
   typedef std::shared_ptr<TaskGroup> shr_ptr;
 
@@ -47,8 +48,6 @@ struct TaskGroup : public HasTaskSet {
   int exit_code;
 
 private:
-  TaskGroup(pid_t tgid, pid_t real_tgid);
-
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;
 };

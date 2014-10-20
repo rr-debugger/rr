@@ -1394,6 +1394,12 @@ int Task::stop_sig_from_status(int status) const {
   return WSTOPSIG(status);
 }
 
+static TaskGroup::shr_ptr create_tg(Task* t) {
+  TaskGroup::shr_ptr tg(new TaskGroup(t->rec_tid, t->tid));
+  tg->insert_task(t);
+  return tg;
+}
+
 Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
                   pid_t new_rec_tid, Session* other_session) {
@@ -1413,7 +1419,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->tg = tg;
     tg->insert_task(t);
   } else {
-    auto g = sess.create_tg(t);
+    auto g = create_tg(t);
     t->tg.swap(g);
   }
   if (CLONE_SHARE_VM & flags) {
@@ -2063,7 +2069,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                 sizeof(t->blocked_sigs))) {
     FATAL() << "Failed to read blocked signals";
   }
-  auto g = session.create_tg(t);
+  auto g = create_tg(t);
   t->tg.swap(g);
   auto as = session.create_vm(t, trace.initial_exe());
   t->as.swap(as);
