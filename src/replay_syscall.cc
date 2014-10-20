@@ -1515,7 +1515,8 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
         // We manually restore the msg buffer.
         step->syscall.num_emu_args = 0;
 
-        remote_ptr<typename Arch::msghdr> msg = t->current_trace_frame().regs().arg2();
+        remote_ptr<typename Arch::msghdr> msg =
+            t->current_trace_frame().regs().arg2();
         restore_struct_msghdr<Arch>(t, msg);
       }
       return;

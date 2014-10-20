@@ -166,8 +166,7 @@ static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch) {
 }
 
 template <typename Arch>
-static bool prepare_msgrcv(Task* t, size_t msgsize,
-                           remote_ptr<void>* msgbuf,
+static bool prepare_msgrcv(Task* t, size_t msgsize, remote_ptr<void>* msgbuf,
                            remote_ptr<void>* scratch) {
   push_arg_ptr(t, *msgbuf);
   *msgbuf = *scratch;
@@ -1795,8 +1794,7 @@ static void process_msgctl(Task* t, int cmd, remote_ptr<void> buf) {
 }
 
 template <typename Arch>
-static void process_msgrcv(Task* t, size_t msgsize,
-                           remote_ptr<void>* msgbuf) {
+static void process_msgrcv(Task* t, size_t msgsize, remote_ptr<void>* msgbuf) {
   // The |msgsize| arg is only the size of message payload; there's also
   // a |msgtype| tag set just before the payload.
   size_t buf_size = sizeof(typename Arch::signed_long) + msgsize;
@@ -2055,7 +2053,8 @@ static void process_recvfrom(Task* t, typename Arch::recvfrom_args* argsp) {
 }
 
 template <typename Arch>
-static void process_recvmsg(Task* t, remote_ptr<typename Arch::msghdr>* msgbuf) {
+static void process_recvmsg(Task* t,
+                            remote_ptr<typename Arch::msghdr>* msgbuf) {
   if (has_saved_arg_ptrs(t)) {
     // The first saved arg indicates whether we suceeded in replacing everything
     // with scratch pointers.
