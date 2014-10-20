@@ -103,17 +103,8 @@ void Session::on_destroy(AddressSpace* vm) {
 
 void Session::on_destroy(Task* t) {
   task_map.erase(t->rec_tid);
-  if (t->in_round_robin_queue) {
-    auto iter =
-        find(task_round_robin_queue.begin(), task_round_robin_queue.end(), t);
-    task_round_robin_queue.erase(iter);
-  } else {
-    task_priority_set.erase(make_pair(t->priority, t));
-  }
 }
 
 void Session::on_create(Task* t) {
   task_map[t->rec_tid] = t;
-  assert(!t->in_round_robin_queue);
-  task_priority_set.insert(make_pair(t->priority, t));
 }

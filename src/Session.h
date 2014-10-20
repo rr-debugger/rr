@@ -90,7 +90,7 @@ public:
    * to notify this session that the objects are dying.
    */
   void on_destroy(AddressSpace* vm);
-  void on_destroy(Task* t);
+  virtual void on_destroy(Task* t);
 
   /** Return the set of Tasks being tracekd in this session. */
   const TaskMap& tasks() const { return task_map; }
@@ -111,7 +111,7 @@ protected:
   Session();
   ~Session();
 
-  void on_create(Task* t);
+  virtual void on_create(Task* t);
 
   AddressSpaceSet sas;
   TaskMap task_map;

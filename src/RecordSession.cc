@@ -4,6 +4,8 @@
 
 #include "RecordSession.h"
 
+#include <algorithm>
+
 #include "task.h"
 
 using namespace rr;
@@ -26,6 +28,23 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              const string& cwd, int bind_to_cpu)
     : trace_out(argv, envp, cwd, bind_to_cpu) {}
+
+void RecordSession::on_destroy(Task* t) {
+  if (t->in_round_robin_queue) {
+    auto iter =
+        find(task_round_robin_queue.begin(), task_round_robin_queue.end(), t);
+    task_round_robin_queue.erase(iter);
+  } else {
+    task_priority_set.erase(make_pair(t->priority, t));
+  }
+  Session::on_destroy(t);
+}
+
+void RecordSession::on_create(Task* t) {
+  Session::on_create(t);
+  assert(!t->in_round_robin_queue);
+  task_priority_set.insert(make_pair(t->priority, t));
+}
 
 void RecordSession::update_task_priority(Task* t, int value) {
   if (t->priority == value) {
