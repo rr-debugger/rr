@@ -2084,6 +2084,24 @@ static void process_recvmsg(Task* t,
 }
 
 template <typename Arch>
+static void process_getsockpeername(Task* t,
+                                    remote_ptr<typename Arch::sockaddr> addr,
+                                    remote_ptr<typename Arch::socklen_t> addrlen) {
+  auto len = t->read_mem(addrlen);
+  t->record_remote(addrlen);
+  t->record_remote(addr, len);
+}
+
+template <typename Arch>
+static void process_getsockopt(Task* t,
+                               remote_ptr<void> opt,
+                               remote_ptr<typename Arch::socklen_t> optlen) {
+  auto len = t->read_mem(optlen);
+  t->record_remote(optlen);
+  t->record_remote(opt, len);
+}
+
+template <typename Arch>
 static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
   LOG(debug) << "socket call: " << call;
 
@@ -2119,9 +2137,7 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
     case SYS_GETSOCKNAME: {
       auto args =
           t->read_mem(base_addr.cast<typename Arch::getsockname_args>());
-      auto len = t->read_mem(args.addrlen.rptr());
-      t->record_remote(args.addrlen.rptr());
-      t->record_remote(args.addr, len);
+      process_getsockpeername<Arch>(t, args.addr.rptr(), args.addrlen.rptr());
       return;
     }
 
@@ -2205,9 +2221,7 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
      */
     case SYS_GETSOCKOPT: {
       auto args = t->read_mem(base_addr.cast<typename Arch::getsockopt_args>());
-      auto optlen = t->read_mem(args.optlen.rptr());
-      t->record_remote(args.optlen.rptr());
-      t->record_remote(args.optval, optlen);
+      process_getsockopt<Arch>(t, args.optval.rptr(), args.optlen.rptr());
       return;
     }
 
@@ -2921,6 +2935,19 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       r.set_arg2(addrp);
       r.set_arg3(addrlenp);
       t->set_regs(r);
+      return;
+    }
+
+    case Arch::getsockname:
+    case Arch::getpeername: {
+      auto& r = t->regs();
+      process_getsockpeername<Arch>(t, r.arg2(), r.arg3());
+      return;
+    }
+
+    case Arch::getsockopt: {
+      auto& r = t->regs();
+      process_getsockopt<Arch>(t, r.arg4(), r.arg5());
       return;
     }
 
