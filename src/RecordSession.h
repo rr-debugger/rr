@@ -29,9 +29,9 @@ public:
                         const std::vector<std::string>& envp,
                         const std::string& cwd, int bind_to_cpu);
 
-  virtual RecordSession* as_record() override { return this; }
+  virtual RecordSession* as_record() { return this; }
 
-  virtual TraceStream& trace() override { return trace_out; }
+  virtual TraceStream& trace() { return trace_out; }
 
   /** Get tasks organized by priority. */
   const TaskPrioritySet& tasks_by_priority() { return task_priority_set; }
@@ -60,14 +60,14 @@ public:
    */
   void remove_round_robin_task();
 
-  virtual void on_destroy(Task* t) override;
+  virtual void on_destroy(Task* t);
 
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
                 int bind_to_cpu);
 
-  virtual void on_create(Task* t) override;
+  virtual void on_create(Task* t);
 
   TraceWriter trace_out;
 

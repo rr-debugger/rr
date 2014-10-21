@@ -139,9 +139,9 @@ public:
 
   CPUIDBugDetector& bug_detector() { return cpuid_bug_detector; }
 
-  virtual ReplaySession* as_replay() override { return this; }
+  virtual ReplaySession* as_replay() { return this; }
 
-  virtual TraceStream& trace() override { return trace_in; }
+  virtual TraceStream& trace() { return trace_in; }
 
 private:
   ReplaySession(const std::string& dir)
