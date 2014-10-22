@@ -1268,7 +1268,7 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
  */
 static Completion emulate_signal_delivery(struct dbg_context* dbg,
                                           Task* oldtask, int sig,
-                                          SignalDeterministic sigtype,
+                                          SignalDeterministic deterministic,
                                           struct dbg_request* req) {
   // Notify the debugger of the signal at the instruction where
   // it became pending, not in the sighandler frame (if there is
@@ -1304,12 +1304,12 @@ static Completion emulate_signal_delivery(struct dbg_context* dbg,
   bool restored_sighandler_frame = 0 < t->set_data_from_trace();
   if (restored_sighandler_frame) {
     LOG(debug) << "--> restoring sighandler frame for " << signalname(sig);
-    t->push_event(SignalEvent(sig, sigtype, t->arch()));
+    t->push_event(SignalEvent(sig, deterministic, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
     t->ev().transform(EV_SIGNAL_HANDLER);
   } else if (possibly_destabilizing_signal(
                  t, sig, Event(trace->event()).Signal().deterministic)) {
-    t->push_event(SignalEvent(sig, sigtype, t->arch()));
+    t->push_event(SignalEvent(sig, deterministic, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
 
     t->destabilize_task_group();
