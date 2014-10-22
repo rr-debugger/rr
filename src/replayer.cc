@@ -38,6 +38,7 @@
 #include "debugger_gdb.h"
 #include "diverter.h"
 #include "EmuFs.h"
+#include "Event.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "PerfCounters.h"
@@ -849,17 +850,13 @@ static bool is_breakpoint_trap(Task* t) {
  * result in bad results.  Don't call this function from there; it's
  * not necessary.
  */
-enum SigDeliveryType {
-  ASYNC,
-  DETERMINISTIC
-};
 enum ExecStateType {
   UNKNOWN,
   NOT_AT_TARGET,
   AT_TARGET
 };
 static TrapType compute_trap_type(Task* t, int target_sig,
-                                  SigDeliveryType delivery,
+                                  SignalDeterministic deterministic,
                                   ExecStateType exec_state, Stepping stepi) {
   TrapType trap_type;
 
@@ -872,7 +869,7 @@ static TrapType compute_trap_type(Task* t, int target_sig,
           /* Replay of deterministic signals never internally
            * single-steps or sets internal breakpoints. */
       &&
-      (DETERMINISTIC == delivery
+      (DETERMINISTIC_SIG == deterministic
            /* Replay of async signals will sometimes internally
             * single-step when advancing to an execution target,
             * so the trap was only clearly for the debugger if
@@ -897,11 +894,11 @@ static TrapType compute_trap_type(Task* t, int target_sig,
      * |int3|, but not one we injected.)  Not for the
      * debugger, although we'll end up notifying it
      * anyway. */
-    assert(DETERMINISTIC == delivery);
+    assert(DETERMINISTIC_SIG == deterministic);
     return TRAP_NONE;
   }
 
-  if (DETERMINISTIC == delivery) {
+  if (DETERMINISTIC_SIG == deterministic) {
     /* If the delivery of SIGTRAP is supposed to be
      * deterministic and we didn't just retire an |int 3|
      * and this wasn't a breakpoint, we must have been
@@ -933,9 +930,11 @@ static TrapType compute_trap_type(Task* t, int target_sig,
  * Shortcut for callers that don't care about internal breakpoints.
  * Return nonzero if |t|'s trap is for the debugger, zero otherwise.
  */
-static bool is_debugger_trap(Task* t, int target_sig, SigDeliveryType delivery,
+static bool is_debugger_trap(Task* t, int target_sig,
+                             SignalDeterministic deterministic,
                              ExecStateType exec_state, Stepping stepi) {
-  TrapType type = compute_trap_type(t, target_sig, delivery, exec_state, stepi);
+  TrapType type =
+      compute_trap_type(t, target_sig, deterministic, exec_state, stepi);
   assert(TRAP_BKPT_INTERNAL != type);
   return TRAP_NONE != type;
 }
@@ -1142,8 +1141,9 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
         t, regs, ticks_left, ticks_slack, &ignored_early_match,
         &ticks_left_at_ignored_early_match);
     if (SIGTRAP == t->child_sig) {
-      TrapType trap_type = compute_trap_type(
-          t, sig, ASYNC, at_target ? AT_TARGET : NOT_AT_TARGET, stepi);
+      TrapType trap_type =
+          compute_trap_type(t, sig, NONDETERMINISTIC_SIG,
+                            at_target ? AT_TARGET : NOT_AT_TARGET, stepi);
       switch (trap_type) {
         case TRAP_BKPT_USER:
         case TRAP_STEPI:
@@ -1267,7 +1267,8 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
  * emulation was interrupted, COMPLETE if completed.
  */
 static Completion emulate_signal_delivery(struct dbg_context* dbg,
-                                          Task* oldtask, int sig, int sigtype,
+                                          Task* oldtask, int sig,
+                                          SignalDeterministic sigtype,
                                           struct dbg_request* req) {
   // Notify the debugger of the signal at the instruction where
   // it became pending, not in the sighandler frame (if there is
@@ -1358,7 +1359,7 @@ static Completion emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
     t->child_sig = 0;
     return emulate_deterministic_signal(dbg, t, sig, stepi, req);
   } else if (SIGTRAP == t->child_sig &&
-             is_debugger_trap(t, sig, DETERMINISTIC, UNKNOWN, stepi)) {
+             is_debugger_trap(t, sig, DETERMINISTIC_SIG, UNKNOWN, stepi)) {
     return INCOMPLETE;
   }
   ASSERT(t, t->child_sig == sig) << "Replay got unrecorded signal "
@@ -1858,9 +1859,9 @@ static void setup_replay_one_trace_frame(Task* t) {
       break;
     case EV_SIGNAL:
       step.signo = ev.Signal().number;
-      step.action =
-          (ev.Signal().deterministic ? TSTEP_DETERMINISTIC_SIGNAL
-                                     : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT);
+      step.action = ev.Signal().deterministic == DETERMINISTIC_SIG
+                        ? TSTEP_DETERMINISTIC_SIGNAL
+                        : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
       if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
         step.target.signo = step.signo;
         step.target.ticks = t->current_trace_frame().ticks();

@@ -57,8 +57,10 @@ Event::Event(EncodedEvent e) {
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
-      new (&Signal()) SignalEvent(~DET_SIGNAL_BIT & e.data,
-                                  DET_SIGNAL_BIT & e.data, e.arch());
+      new (&Signal()) SignalEvent(
+          ~DET_SIGNAL_BIT & e.data,
+          (DET_SIGNAL_BIT & e.data) ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG,
+          e.arch());
       return;
 
     case EV_SYSCALL:
@@ -178,7 +180,9 @@ EncodedEvent Event::encode() const {
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER: {
       set_encoded_event_data(
-          &e, Signal().number | (Signal().deterministic ? DET_SIGNAL_BIT : 0));
+          &e, Signal().number |
+                  (Signal().deterministic == DETERMINISTIC_SIG ? DET_SIGNAL_BIT
+                                                               : 0));
       return e;
     }
 
@@ -268,7 +272,9 @@ string Event::str() const {
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
       ss << ": " << signalname(Signal().number) << "("
-         << (const char*)(Signal().deterministic ? "det" : "async") << ")";
+         << (const char*)(Signal().deterministic == DETERMINISTIC_SIG ? "det"
+                                                                      : "async")
+         << ")";
       break;
     case EV_SYSCALL:
     case EV_SYSCALL_INTERRUPTION:

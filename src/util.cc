@@ -683,7 +683,8 @@ signal_action default_action(int sig) {
   }
 }
 
-bool possibly_destabilizing_signal(Task* t, int sig, bool deterministic) {
+bool possibly_destabilizing_signal(Task* t, int sig,
+                                   SignalDeterministic deterministic) {
   signal_action action = default_action(sig);
   if (action != DUMP_CORE && action != TERMINATE) {
     // If the default action doesn't kill the process, it won't die.
@@ -697,7 +698,7 @@ bool possibly_destabilizing_signal(Task* t, int sig, bool deterministic) {
   }
   if (disp == SIG_IGN) {
     // Deterministic fatal signals can't be ignored.
-    return deterministic;
+    return deterministic == DETERMINISTIC_SIG;
   }
   // If the signal's blocked, user handlers aren't going to run and the process
   // will die.

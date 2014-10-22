@@ -16,6 +16,7 @@
 #include <array>
 #include <ostream>
 
+#include "Event.h"
 #include "ExtraRegisters.h"
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
@@ -235,7 +236,8 @@ signal_action default_action(int sig);
  * i.e. due to code execution as opposed to an asynchronous signal sent by some
  * process.
  */
-bool possibly_destabilizing_signal(Task* t, int sig, bool deterministic);
+bool possibly_destabilizing_signal(Task* t, int sig,
+                                   SignalDeterministic deterministic);
 
 /**
  * Return nonzero if a mapping of |filename| with metadata |stat|,

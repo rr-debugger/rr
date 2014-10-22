@@ -321,7 +321,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
              << t->syscallname(call) << "'";
 }
 
-static bool is_deterministic_signal(const siginfo_t* si) {
+static SignalDeterministic is_deterministic_signal(const siginfo_t* si) {
   switch (si->si_signo) {
     /* These signals may be delivered deterministically;
      * we'll check for sure below. */
@@ -338,12 +338,12 @@ static bool is_deterministic_signal(const siginfo_t* si) {
        * So if the signal is maybe-synchronous, and the
        * kernel delivered it, then it must have been
        * delivered deterministically. */
-      return si->si_code > 0;
+      return si->si_code > 0 ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
     default:
       /* All other signals can never be delivered
        * deterministically (to the approximation required by
        * rr). */
-      return false;
+      return NONDETERMINISTIC_SIG;
   }
 }
 
@@ -435,7 +435,8 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
     goto happy_place;
   }
 
-  ASSERT(t, !(t->is_in_syscallbuf() && is_deterministic_signal(si)))
+  ASSERT(t, !(t->is_in_syscallbuf() &&
+              is_deterministic_signal(si) == DETERMINISTIC_SIG))
       << "TODO: " << signalname(si->si_signo) << " (code:" << si->si_code
       << ") raised by syscallbuf code";
   /* TODO: when we add support for deterministic signals, we

@@ -148,7 +148,7 @@ struct DeschedEvent : public BaseEvent {
  * Signal events track signals through the delivery phase, and if the
  * signal finds a sighandler, on to the end of the handling face.
  */
-enum {
+enum SignalDeterministic {
   NONDETERMINISTIC_SIG = 0,
   DETERMINISTIC_SIG = 1
 };
@@ -158,7 +158,7 @@ struct SignalEvent : public BaseEvent {
    * for deterministically-delivered signals (see
    * record_signal.cc).
    */
-  SignalEvent(int signo, bool deterministic, SupportedArch arch)
+  SignalEvent(int signo, SignalDeterministic deterministic, SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch),
         number(signo),
         deterministic(deterministic),
@@ -168,7 +168,7 @@ struct SignalEvent : public BaseEvent {
   // True if this signal will be deterministically raised as the
   // side effect of retiring an instruction during replay, for
   // example |load $r 0x0| deterministically raises SIGSEGV.
-  bool deterministic;
+  SignalDeterministic deterministic;
   // True when this signal has been delivered by a ptrace()
   // request.
   bool delivered;
