@@ -657,20 +657,20 @@ void destroy_buffers(Task* t) {
   advance_syscall(t);
 }
 
-template <typename Arch> struct VdsoSymbols {
+template <typename Arch> struct ElfSymbols {
   vector<typename Arch::ElfSym> symbols;
   vector<char> strtab;
 };
 
-template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
-  auto vdso_start = t->vm()->vdso().start;
-  auto elfheader = t->read_mem(vdso_start.cast<typename Arch::ElfEhdr>());
+template <typename Arch>
+static ElfSymbols<Arch> read_elf_symbols (Task* t, remote_ptr<void> library_start) {
+  auto elfheader = t->read_mem(library_start.cast<typename Arch::ElfEhdr>());
   assert(elfheader.e_ident[EI_CLASS] == Arch::elfclass);
   assert(elfheader.e_ident[EI_DATA] == Arch::elfendian);
   assert(elfheader.e_machine == Arch::elfmachine);
   assert(elfheader.e_shentsize == sizeof(typename Arch::ElfShdr));
 
-  auto sections_start = vdso_start + elfheader.e_shoff;
+  auto sections_start = library_start + elfheader.e_shoff;
   typename Arch::ElfShdr sections[elfheader.e_shnum];
   t->read_bytes_helper(sections_start, sizeof(sections), sections);
 
@@ -696,14 +696,20 @@ template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
   }
 
   assert(dynsym->sh_entsize == sizeof(typename Arch::ElfSym));
-  remote_ptr<void> symbols_start = vdso_start + dynsym->sh_offset;
+  remote_ptr<void> symbols_start = library_start + dynsym->sh_offset;
   size_t nsymbols = dynsym->sh_size / dynsym->sh_entsize;
-  remote_ptr<void> strtab_start = vdso_start + dynstr->sh_offset;
-  VdsoSymbols<Arch> result;
+  remote_ptr<void> strtab_start = library_start + dynstr->sh_offset;
+  ElfSymbols<Arch> result;
   result.symbols =
       t->read_mem(symbols_start.cast<typename Arch::ElfSym>(), nsymbols);
   result.strtab = t->read_mem(strtab_start.cast<char>(), dynstr->sh_size);
   return result;
+}
+
+template <typename Arch>
+static ElfSymbols<Arch> read_vdso_symbols(Task* t) {
+  auto vdso_start = t->vm()->vdso().start;
+  return read_elf_symbols<Arch>(t, vdso_start);
 }
 
 #include "AssemblyTemplates.generated"
