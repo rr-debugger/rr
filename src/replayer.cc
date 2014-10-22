@@ -1756,7 +1756,7 @@ static bool has_deterministic_ticks(const Event& ev,
  * requested a restart. If this returns false, t's Session state was not
  * modified.
  */
-static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
+static void setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
   Event ev(t->current_trace_frame().event());
 
   LOG(debug) << "[line " << t->trace_time() << "] " << t->rec_tid
@@ -1788,7 +1788,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
                    << t->replay_session().debugged_tgid() << " is "
                    << t->rec_tid << " (" << t->tid << ")";
         t->replay_session().set_last_task(t);
-        return true;
+        return;
       }
 
       /* If the task was killed by a terminating signal,
@@ -1815,7 +1815,7 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
       if (file_table_dying) {
         sess->gc_emufs();
       }
-      return true;
+      return;
     }
     case EV_DESCHED:
       step.action = TSTEP_DESCHED;
@@ -1872,8 +1872,6 @@ static bool setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
     default:
       FATAL() << "Unexpected event " << ev;
   }
-
-  return true;
 }
 
 static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
@@ -1900,9 +1898,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
    * computed already in which case step.action will not be TSTEP_NONE.
    */
   if (step.action == TSTEP_NONE) {
-    if (!setup_replay_one_trace_frame(dbg, t)) {
-      return false;
-    }
+    setup_replay_one_trace_frame(dbg, t);
     if (step.action == TSTEP_NONE) {
       // Already at the destination event.
       t->replay_session().reached_trace_frame() = true;
