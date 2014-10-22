@@ -5,6 +5,7 @@
 #include "RecordSession.h"
 
 #include <algorithm>
+#include <sstream>
 
 #include "log.h"
 #include "record_signal.h"
@@ -14,6 +15,73 @@
 
 using namespace rr;
 using namespace std;
+
+/**
+ * Create a pulseaudio client config file with shm disabled.  That may
+ * be the cause of a mysterious divergence.  Return an envpair to set
+ * in the tracee environment.
+ */
+static string create_pulseaudio_config() {
+  // TODO let PULSE_CLIENTCONFIG env var take precedence.
+  static const char pulseaudio_config_path[] = "/etc/pulse/client.conf";
+  if (access(pulseaudio_config_path, R_OK)) {
+    // Assume pulseaudio isn't installed
+    return "";
+  }
+  char tmp[] = "/tmp/rr-pulseaudio-client-conf-XXXXXX";
+  int fd = mkstemp(tmp);
+  fcntl(fd, F_SETFD, FD_CLOEXEC);
+  unlink(tmp);
+  // The fd is deliberately leaked so that the /proc/fd link below works
+  // indefinitely. But we stop it leaking into tracee processes.
+
+  stringstream procfile;
+  procfile << "/proc/" << getpid() << "/fd/" << fd;
+  stringstream cmd;
+  cmd << "cp " << pulseaudio_config_path << " " << procfile.str();
+
+  int status = system(cmd.str().c_str());
+  if (-1 == status || !WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
+    FATAL() << "The command '" << cmd.str() << "' failed.";
+  }
+  if (-1 == lseek(fd, 0, SEEK_END)) {
+    FATAL() << "Failed to seek to end of file.";
+  }
+  char disable_shm[] = "disable-shm = true\n";
+  ssize_t nwritten = write(fd, disable_shm, sizeof(disable_shm) - 1);
+  if (nwritten != sizeof(disable_shm) - 1) {
+    FATAL() << "Failed to append '" << disable_shm << "' to " << procfile.str();
+  }
+  stringstream envpair;
+  envpair << "PULSE_CLIENTCONFIG=" << procfile.str();
+  return envpair.str();
+}
+
+/**
+ * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
+ * in which case we return -1.
+ */
+static int choose_cpu() {
+  if (Flags::get().cpu_unbound) {
+    return -1;
+  }
+
+  // Pin tracee tasks to logical CPU 0, both in
+  // recording and replay.  Tracees can see which HW
+  // thread they're running on by asking CPUID, and we
+  // don't have a way to emulate it yet.  So if a tracee
+  // happens to be scheduled on a different core in
+  // recording than replay, it can diverge.  (And
+  // indeed, has been observed to diverge in practice,
+  // in glibc.)
+  //
+  // Note that we will pin both the tracee processes *and*
+  // the tracer process.  This ends up being a tidy
+  // performance win in certain circumstances,
+  // presumably due to cheaper context switching and/or
+  // better interaction with CPU frequency scaling.
+  return random() % get_num_cpus();
+}
 
 /**
  * Return true if we handle a ptrace exit event for task t. When this returns
@@ -712,9 +780,39 @@ void RecordSession::runnable_state_changed(Task* t, StepResult* step_result) {
 }
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
-    const std::vector<std::string>& argv, const std::vector<std::string>& envp,
-    const string& cwd, int bind_to_cpu) {
-  shr_ptr session(new RecordSession(argv, envp, cwd, bind_to_cpu));
+    const vector<string>& argv, const vector<string>& envp, const string& cwd) {
+  vector<string> env = envp;
+
+  // LD_PRELOAD the syscall interception lib
+  if (!Flags::get().syscall_buffer_lib_path.empty()) {
+    string ld_preload = "LD_PRELOAD=";
+    // Our preload lib *must* come first
+    ld_preload += Flags::get().syscall_buffer_lib_path;
+    auto it = env.begin();
+    for (; it != env.end(); ++it) {
+      if (it->find("LD_PRELOAD=") != 0) {
+        continue;
+      }
+      // Honor old preloads too.  This may cause
+      // problems, but only in those libs, and
+      // that's the user's problem.
+      ld_preload += ":";
+      ld_preload += it->substr(it->find("=") + 1);
+      break;
+    }
+    if (it == env.end()) {
+      env.push_back(ld_preload);
+    } else {
+      *it = ld_preload;
+    }
+  }
+
+  string env_pair = create_pulseaudio_config();
+  if (!env_pair.empty()) {
+    env.push_back(env_pair);
+  }
+
+  shr_ptr session(new RecordSession(argv, env, cwd, choose_cpu()));
   return session;
 }
 

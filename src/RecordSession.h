@@ -22,7 +22,7 @@ public:
    */
   static shr_ptr create(const std::vector<std::string>& argv,
                         const std::vector<std::string>& envp,
-                        const std::string& cwd, int bind_to_cpu);
+                        const std::string& cwd);
 
   enum StepResultStatus {
     // Some execution was recorded. record_step() can be called again.

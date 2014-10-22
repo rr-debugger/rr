@@ -573,13 +573,6 @@ int main(int argc, char* argv[]) {
 
   init_random();
 
-  if (argc >= 2 && !strcmp("check-preload-lib", argv[1])) {
-    // If we reach here and we were checking the preload
-    // lib, then it didn't load --- its __constructor__
-    // function didn't run.
-    _exit(EX_CONFIG);
-  }
-
   Command command;
   if (0 > (argi = parse_args(argc, argv, flags, &command)) || argc < argi ||
       // |rr replay| is allowed to have no arguments to replay

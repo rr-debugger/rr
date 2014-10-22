@@ -601,12 +601,6 @@ static void post_fork_child(void) {
 static void __attribute__((constructor)) init_process(void) {
   assert(!process_inited);
 
-  if (getenv("_RR_CHECK_PRELOAD")) {
-    /* The tracer parent is just checking that we loaded.
-     * We did, so return a success code. */
-    exit(0);
-  }
-
   real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
   real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
 
