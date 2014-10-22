@@ -1,9 +1,9 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "Sched"
+//#define DEBUGTAG "Scheduler"
 //#define MONITOR_UNSWITCHABLE_WAITS
 
-#include "recorder_sched.h"
+#include "Scheduler.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -14,6 +14,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+
 #include <algorithm>
 
 #include "Flags.h"
@@ -23,12 +24,6 @@
 
 using namespace std;
 
-/**
- * The currently scheduled task. This may be nullptr if the last scheduled task
- * has been destroyed.
- */
-static Task* current;
-
 static void note_switch(Task* prev_t, Task* t, int max_events) {
   if (prev_t == t) {
     t->succ_event_counter++;
@@ -37,17 +32,16 @@ static void note_switch(Task* prev_t, Task* t, int max_events) {
   }
 }
 
-static Task* get_next_task_with_same_priority(Task* t) {
+Task* Scheduler::get_next_task_with_same_priority(Task* t) {
   if (t->in_round_robin_queue) {
     return nullptr;
   }
 
-  auto tasks = t->record_session().tasks_by_priority();
-  auto it = tasks.find(make_pair(t->priority, t));
-  assert(it != tasks.end());
+  auto it = task_priority_set.find(make_pair(t->priority, t));
+  assert(it != task_priority_set.end());
   ++it;
-  if (it == tasks.end() || it->first != t->priority) {
-    it = tasks.lower_bound(make_pair(t->priority, nullptr));
+  if (it == task_priority_set.end() || it->first != t->priority) {
+    it = task_priority_set.lower_bound(make_pair(t->priority, nullptr));
   }
   return it->second;
 }
@@ -87,19 +81,11 @@ static bool is_task_runnable(Task* t, bool* by_waitpid) {
   return false;
 }
 
-/**
- * Pull a task from the round-robin queue if available. Otherwise,
- * find the highest-priority task that is runnable. If the highest-priority
- * runnable task has the same priority as 'current', return 'current' or
- * the next runnable task after 'current' in round-robin order.
- * Sets 'by_waitpid' to true if we determined the task was runnable by
- * calling waitpid on it and observing a state change.
- */
-static Task* find_next_runnable_task(RecordSession& session, bool* by_waitpid) {
+Task* Scheduler::find_next_runnable_task(bool* by_waitpid) {
   *by_waitpid = false;
 
   while (true) {
-    Task* t = session.get_next_round_robin_task();
+    Task* t = get_next_round_robin_task();
     if (!t) {
       break;
     }
@@ -109,21 +95,20 @@ static Task* find_next_runnable_task(RecordSession& session, bool* by_waitpid) {
     }
     // This task had its chance to run but couldn't. Move to the
     // next task in the queue.
-    session.remove_round_robin_task();
+    remove_round_robin_task();
   }
 
-  auto& tasks = session.tasks_by_priority();
   // The outer loop has one iteration per unique priority value.
   // The inner loop iterates over all tasks with that priority.
-  for (auto same_priority_start = tasks.begin();
-       same_priority_start != tasks.end();) {
+  for (auto same_priority_start = task_priority_set.begin();
+       same_priority_start != task_priority_set.end();) {
     int priority = same_priority_start->first;
-    auto same_priority_end =
-        tasks.lower_bound(make_pair(same_priority_start->first + 1, nullptr));
+    auto same_priority_end = task_priority_set.lower_bound(
+        make_pair(same_priority_start->first + 1, nullptr));
 
     auto begin_at = same_priority_start;
     if (current && priority == current->priority) {
-      begin_at = tasks.find(make_pair(priority, current));
+      begin_at = task_priority_set.find(make_pair(priority, current));
     }
 
     auto task_iterator = begin_at;
@@ -146,8 +131,7 @@ static Task* find_next_runnable_task(RecordSession& session, bool* by_waitpid) {
   return nullptr;
 }
 
-Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
-                                  bool* by_waitpid) {
+Task* Scheduler::get_next_thread(Task* t, bool* by_waitpid) {
   int max_events = Flags::get().max_events;
 
   LOG(debug) << "Scheduling next task";
@@ -190,13 +174,13 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
   if (current && current->succ_event_counter > max_events) {
     LOG(debug) << "  previous task exceeded event limit, preferring next";
     current->succ_event_counter = 0;
-    if (current == session.get_next_round_robin_task()) {
-      session.remove_round_robin_task();
+    if (current == get_next_round_robin_task()) {
+      remove_round_robin_task();
     }
     current = get_next_task_with_same_priority(current);
   }
 
-  Task* next = find_next_runnable_task(session, by_waitpid);
+  Task* next = find_next_runnable_task(by_waitpid);
 
   if (next && !next->unstable) {
     LOG(debug) << "  selecting task " << next->tid;
@@ -207,7 +191,7 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
     pid_t tid;
 
     LOG(debug) << "  all tasks blocked or some unstable, waiting for runnable ("
-               << session.tasks().size() << " total)";
+               << task_priority_set.size() << " total)";
     do {
       tid = waitpid(-1, &status, __WALL | WSTOPPED | WUNTRACED);
       if (-1 == tid) {
@@ -235,17 +219,72 @@ Task* rec_sched_get_active_thread(RecordSession& session, Task* t,
   return current;
 }
 
-/**
- * De-register a thread and de-allocate all resources. This function
- * should be called when a thread exits. t is deleted so should not be
- * referenced again.
- */
-void rec_sched_deregister_thread(Task* t) {
+void Scheduler::on_create(Task* t) {
+  assert(!t->in_round_robin_queue);
+  task_priority_set.insert(make_pair(t->priority, t));
+}
+
+void Scheduler::on_destroy(Task* t) {
   if (t == current) {
     current = get_next_task_with_same_priority(t);
     if (t == current) {
       current = nullptr;
     }
   }
-  delete t;
+
+  if (t->in_round_robin_queue) {
+    auto iter =
+        find(task_round_robin_queue.begin(), task_round_robin_queue.end(), t);
+    task_round_robin_queue.erase(iter);
+  } else {
+    task_priority_set.erase(make_pair(t->priority, t));
+  }
+}
+
+void Scheduler::update_task_priority(Task* t, int value) {
+  if (t->priority == value) {
+    return;
+  }
+  if (t->in_round_robin_queue) {
+    t->priority = value;
+    return;
+  }
+  task_priority_set.erase(make_pair(t->priority, t));
+  t->priority = value;
+  task_priority_set.insert(make_pair(t->priority, t));
+}
+
+void Scheduler::schedule_one_round_robin(Task* t) {
+  if (!task_round_robin_queue.empty()) {
+    return;
+  }
+
+  for (auto iter : task_priority_set) {
+    if (iter.second != t) {
+      task_round_robin_queue.push_back(iter.second);
+      iter.second->in_round_robin_queue = true;
+    }
+  }
+  task_round_robin_queue.push_back(t);
+  t->in_round_robin_queue = true;
+  task_priority_set.clear();
+}
+
+Task* Scheduler::get_next_round_robin_task() {
+  if (task_round_robin_queue.empty()) {
+    return nullptr;
+  }
+
+  return task_round_robin_queue.front();
+}
+
+void Scheduler::remove_round_robin_task() {
+  assert(!task_round_robin_queue.empty());
+
+  Task* t = task_round_robin_queue.front();
+  task_round_robin_queue.pop_front();
+  if (t) {
+    t->in_round_robin_queue = false;
+    task_priority_set.insert(make_pair(t->priority, t));
+  }
 }

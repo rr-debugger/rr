@@ -5,15 +5,13 @@
 
 #include "Session.h"
 
+#include "Scheduler.h"
 #include "task.h"
 
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
 public:
   typedef std::shared_ptr<RecordSession> shr_ptr;
-  // Tasks sorted by priority.
-  typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
-  typedef std::deque<Task*> TaskQueue;
 
   /**
    * Create a recording session for the initial exe image
@@ -45,6 +43,8 @@ public:
    * Record some tracee execution.
    * This may block. If blocking is interrupted by a signal, will return
    * STEP_CONTINUE.
+   * Typically you'd call this in a loop until it returns something other than
+   * STEP_CONTINUE.
    */
   StepResult record_step();
 
@@ -54,40 +54,14 @@ public:
    */
   void terminate_recording();
 
-  TraceWriter& trace_writer() { return trace_out; }
-
   virtual RecordSession* as_record() { return this; }
 
   virtual TraceStream& trace() { return trace_out; }
-
-  /** Get tasks organized by priority. */
-  const TaskPrioritySet& tasks_by_priority() { return task_priority_set; }
-
-  /**
-   * Set the priority of |t| to |value| and update related
-   * state.
-   */
-  void update_task_priority(Task* t, int value);
-
-  /**
-   * Do one round of round-robin scheduling if we're not already doing one.
-   * If we start round-robin scheduling now, make last_task the last
-   * task to be scheduled.
-   * If the task_round_robin_queue is empty this moves all tasks into it,
-   * putting last_task last.
-   */
-  void schedule_one_round_robin(Task* last_task);
-
-  /**
-   * Returns the first task in the round-robin queue or null if it's empty.
-   */
-  Task* get_next_round_robin_task();
-  /**
-   * Removes a task from the front of the round-robin queue.
-   */
-  void remove_round_robin_task();
+  TraceWriter& trace_writer() { return trace_out; }
 
   virtual void on_destroy(Task* t);
+
+  Scheduler& scheduler() { return scheduler_; }
 
 private:
   RecordSession(const std::vector<std::string>& argv,
@@ -101,19 +75,7 @@ private:
   void runnable_state_changed(Task* t, StepResult* step_result);
 
   TraceWriter trace_out;
-
-  /**
-   * Every task of this session is either in task_priority_set
-   * (when in_round_robin_queue is false), or in task_round_robin_queue
-   * (when in_round_robin_queue is true).
-   *
-   * task_priority_set is a set of pairs of (task->priority, task). This
-   * lets us efficiently iterate over the tasks with a given priority, or
-   * all tasks in priority order.
-   */
-  TaskPrioritySet task_priority_set;
-  TaskQueue task_round_robin_queue;
-
+  Scheduler scheduler_;
   Task* last_recorded_task;
   TaskGroup::shr_ptr initial_task_group;
 

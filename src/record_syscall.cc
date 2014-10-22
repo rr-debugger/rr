@@ -50,9 +50,8 @@
 #include "Flags.h"
 #include "kernel_abi.h"
 #include "log.h"
-#include "recorder.h" // for terminate_recording()
-#include "recorder_sched.h"
 #include "RecordSession.h"
+#include "Scheduler.h"
 #include "syscalls.h"
 #include "task.h"
 #include "TraceStream.h"
@@ -1232,7 +1231,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // time its scheduling slot opens up, it's OK to
       // blocking-waitpid on t to see its status change.
       t->pseudo_blocked = true;
-      t->record_session().schedule_one_round_robin(t);
+      t->record_session().scheduler().schedule_one_round_robin(t);
       return ALLOW_SWITCH;
 
     case Arch::recvmmsg: {
@@ -2319,7 +2318,7 @@ static void before_syscall_exit(Task* t, int syscallno) {
         if (target) {
           LOG(debug) << "Setting nice value for tid " << t->tid << " to "
                      << t->regs().arg3();
-          target->record_session().update_task_priority(
+          target->record_session().scheduler().update_task_priority(
               target, (int)t->regs().arg3_signed());
         }
       }

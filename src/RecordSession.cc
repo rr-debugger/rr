@@ -10,7 +10,6 @@
 #include "log.h"
 #include "record_signal.h"
 #include "record_syscall.h"
-#include "recorder_sched.h"
 #include "task.h"
 
 using namespace rr;
@@ -103,7 +102,7 @@ static bool handle_ptrace_exit_event(Task* t) {
   EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
   t->record_event(Event(ev, NO_EXEC_INFO, t->arch()));
 
-  rec_sched_deregister_thread(t);
+  delete t;
   return true;
 }
 
@@ -819,7 +818,9 @@ void RecordSession::runnable_state_changed(Task* t, StepResult* step_result) {
 RecordSession::RecordSession(const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              const string& cwd, int bind_to_cpu)
-    : trace_out(argv, envp, cwd, bind_to_cpu), can_deliver_signals(false) {
+    : trace_out(argv, envp, cwd, bind_to_cpu),
+      scheduler_(*this),
+      can_deliver_signals(false) {
   last_recorded_task = Task::spawn(*this);
   initial_task_group = last_recorded_task->task_group();
   on_create(last_recorded_task);
@@ -837,7 +838,7 @@ RecordSession::StepResult RecordSession::record_step() {
   result.status = STEP_CONTINUE;
 
   bool by_waitpid;
-  Task* t = rec_sched_get_active_thread(*this, last_recorded_task, &by_waitpid);
+  Task* t = scheduler().get_next_thread(last_recorded_task, &by_waitpid);
   if (!t) {
     // The scheduler was waiting for some task to become active, but was
     // interrupted by a signal. Yield to our caller now to give the caller
@@ -916,67 +917,12 @@ void RecordSession::terminate_recording() {
   trace_out.close();
 }
 
-void RecordSession::on_destroy(Task* t) {
-  if (t->in_round_robin_queue) {
-    auto iter =
-        find(task_round_robin_queue.begin(), task_round_robin_queue.end(), t);
-    task_round_robin_queue.erase(iter);
-  } else {
-    task_priority_set.erase(make_pair(t->priority, t));
-  }
-  Session::on_destroy(t);
-}
-
 void RecordSession::on_create(Task* t) {
   Session::on_create(t);
-  assert(!t->in_round_robin_queue);
-  task_priority_set.insert(make_pair(t->priority, t));
+  scheduler().on_create(t);
 }
 
-void RecordSession::update_task_priority(Task* t, int value) {
-  if (t->priority == value) {
-    return;
-  }
-  if (t->in_round_robin_queue) {
-    t->priority = value;
-    return;
-  }
-  task_priority_set.erase(make_pair(t->priority, t));
-  t->priority = value;
-  task_priority_set.insert(make_pair(t->priority, t));
-}
-
-void RecordSession::schedule_one_round_robin(Task* t) {
-  if (!task_round_robin_queue.empty()) {
-    return;
-  }
-
-  for (auto iter : task_priority_set) {
-    if (iter.second != t) {
-      task_round_robin_queue.push_back(iter.second);
-      iter.second->in_round_robin_queue = true;
-    }
-  }
-  task_round_robin_queue.push_back(t);
-  t->in_round_robin_queue = true;
-  task_priority_set.clear();
-}
-
-Task* RecordSession::get_next_round_robin_task() {
-  if (task_round_robin_queue.empty()) {
-    return nullptr;
-  }
-
-  return task_round_robin_queue.front();
-}
-
-void RecordSession::remove_round_robin_task() {
-  assert(!task_round_robin_queue.empty());
-
-  Task* t = task_round_robin_queue.front();
-  task_round_robin_queue.pop_front();
-  if (t) {
-    t->in_round_robin_queue = false;
-    task_priority_set.insert(make_pair(t->priority, t));
-  }
+void RecordSession::on_destroy(Task* t) {
+  scheduler().on_destroy(t);
+  Session::on_destroy(t);
 }

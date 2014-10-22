@@ -20,7 +20,6 @@
 #include "Flags.h"
 #include "log.h"
 #include "PerfCounters.h"
-#include "recorder.h"
 #include "AutoRemoteSyscalls.h"
 #include "task.h"
 #include "TraceStream.h"

@@ -36,7 +36,6 @@
 #include "Flags.h"
 #include "kernel_abi.h"
 #include "log.h"
-#include "recorder_sched.h"
 #include "AutoRemoteSyscalls.h"
 #include "replayer.h"
 #include "RecordSession.h"

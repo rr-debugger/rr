@@ -87,6 +87,7 @@ add_executable(rr
   ${GENERATED_FILES}
   src/test/cpuid_loop.S
   src/AddressSpace.cc
+  src/AutoRemoteSyscalls.cc
   src/CompressedReader.cc
   src/CompressedWriter.cc
   src/CPUIDBugDetector.cc
@@ -99,15 +100,14 @@ add_executable(rr
   src/main.cc
   src/PerfCounters.cc
   src/recorder.cc
-  src/recorder_sched.cc
+  src/RecordSession.cc
   src/record_signal.cc
   src/record_syscall.cc
   src/Registers.cc
-  src/AutoRemoteSyscalls.cc
-  src/RecordSession.cc
-  src/ReplaySession.cc
   src/replayer.cc
+  src/ReplaySession.cc
   src/replay_syscall.cc
+  src/Scheduler.cc
   src/Session.cc
   src/syscalls.cc
   src/task.cc

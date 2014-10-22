@@ -20,7 +20,6 @@
 
 #include "log.h"
 #include "recorder.h"
-#include "recorder_sched.h"
 #include "replayer.h"
 #include "syscalls.h"
 #include "task.h"
