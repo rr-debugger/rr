@@ -72,14 +72,12 @@ public:
    * State of the replay as we advance towards the event given by
    * current_trace_frame().
    */
-  struct rep_trace_step& current_replay_step() { return replay_step; }
+  struct rep_trace_step& current_replay_step() { return current_step; }
 
   uint8_t* syscallbuf_flush_buffer() { return syscallbuf_flush_buffer_array; }
   const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
     return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
   }
-
-  bool& reached_trace_frame() { return trace_frame_reached; }
 
   /**
    * Set |tgid| as the one that's being debugged in this
@@ -137,6 +135,44 @@ public:
    */
   static shr_ptr create(int argc, char* argv[]);
 
+  enum StepResultStatus {
+    // Some execution was replayed. replay_step() can be called again.
+    STEP_CONTINUE,
+    // All tracees are dead. replay_step() should not be called again.
+    STEP_EXITED
+  };
+  enum StepBreakReason {
+    BREAK_NONE,
+    // A requested RUN_SINGLESTEP completed.
+    BREAK_SINGLESTEP,
+    // We hit a breakpoint.
+    BREAK_BREAKPOINT,
+    // We hit a watchpoint.
+    BREAK_WATCHPOINT,
+    // We hit a signal.
+    BREAK_SIGNAL
+  };
+  struct StepResult {
+    StepResultStatus status;
+    // When status == STEP_CONTINUE
+    StepBreakReason break_reason;
+    // When break_reason is not BREAK_NONE, the triggering Task.
+    Task* break_task;
+    // When break_reason is BREAK_SIGNAL, the signal.
+    int break_signal;
+    // When break_reason is BREAK_WATCHPOINT, the triggering watch address.
+    remote_ptr<void> break_watch_address;
+    // When status == STEP_EXITED. -1 means abnormal termination.
+    int exit_code;
+  };
+  enum StepCommand {
+    RUN_CONTINUE,
+    RUN_SINGLESTEP
+  };
+  StepResult replay_step(StepCommand command = RUN_CONTINUE);
+
+  Task* next_task() { return find_task(current_trace_frame().tid()); }
+
   CPUIDBugDetector& bug_detector() { return cpuid_bug_detector; }
 
   virtual ReplaySession* as_replay() { return this; }
@@ -151,8 +187,9 @@ private:
         tgid_debugged(0),
         trace_in(dir),
         trace_frame(),
-        replay_step(),
-        trace_frame_reached(false) {}
+        current_step() {
+    current_trace_frame() = trace_reader().read_frame();
+  }
 
   ReplaySession(const ReplaySession& other)
       : diversion_refcount(0),
@@ -161,8 +198,7 @@ private:
         tgid_debugged(0),
         trace_in(other.trace_in),
         trace_frame(),
-        replay_step(),
-        trace_frame_reached(false) {}
+        current_step() {}
 
   std::shared_ptr<EmuFs> emu_fs;
   // Number of client references to this, if it's a diversion
@@ -177,7 +213,7 @@ private:
   pid_t tgid_debugged;
   TraceReader trace_in;
   TraceFrame trace_frame;
-  struct rep_trace_step replay_step;
+  struct rep_trace_step current_step;
   CPUIDBugDetector cpuid_bug_detector;
   /**
    * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
@@ -188,11 +224,6 @@ private:
    * This needs to be word-aligned.
    */
   uint8_t syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
-  /**
-   * True when the session has reached the state in trace_frame.
-   * False when the session is working towards the state in trace_frame.
-   */
-  bool trace_frame_reached;
 };
 
 #endif // RR_REPLAY_SESSION_H_

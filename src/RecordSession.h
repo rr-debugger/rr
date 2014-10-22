@@ -3,9 +3,8 @@
 #ifndef RR_RECORD_SESSION_H_
 #define RR_RECORD_SESSION_H_
 
-#include "Session.h"
-
 #include "Scheduler.h"
+#include "Session.h"
 #include "task.h"
 
 /** Encapsulates additional session state related to recording. */
@@ -32,13 +31,11 @@ public:
     // Required performance counter features not detected.
     STEP_PERF_COUNTERS_UNAVAILABLE
   };
-
   struct StepResult {
     StepResultStatus status;
     // When status == STEP_EXITED
     int exit_code;
   };
-
   /**
    * Record some tracee execution.
    * This may block. If blocking is interrupted by a signal, will return

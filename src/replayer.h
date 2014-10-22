@@ -39,6 +39,8 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
  */
 bool is_ignored_replay_signal(int sig);
 
+bool trace_instructions_up_to_event(uint64_t event);
+
 /**
  * Start a debugging connection for |t| and return when there are no
  * more requests to process (usually because the debugger detaches).

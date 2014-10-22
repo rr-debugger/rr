@@ -313,7 +313,10 @@ TraceWriter::TraceWriter(const std::vector<std::string>& argv,
 TraceFrame TraceReader::peek_frame() {
   events.save_state();
   auto saved_time = global_time;
-  auto frame = read_frame();
+  TraceFrame frame;
+  if (!at_end()) {
+    frame = read_frame();
+  }
   events.restore_state();
   global_time = saved_time;
   return frame;
