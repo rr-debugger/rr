@@ -1756,7 +1756,7 @@ static bool has_deterministic_ticks(const Event& ev,
  * requested a restart. If this returns false, t's Session state was not
  * modified.
  */
-static void setup_replay_one_trace_frame(struct dbg_context* dbg, Task* t) {
+static void setup_replay_one_trace_frame(Task* t) {
   Event ev(t->current_trace_frame().event());
 
   LOG(debug) << "[line " << t->trace_time() << "] " << t->rec_tid
@@ -1898,7 +1898,7 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
    * computed already in which case step.action will not be TSTEP_NONE.
    */
   if (step.action == TSTEP_NONE) {
-    setup_replay_one_trace_frame(dbg, t);
+    setup_replay_one_trace_frame(t);
     if (step.action == TSTEP_NONE) {
       // Already at the destination event.
       t->replay_session().reached_trace_frame() = true;
