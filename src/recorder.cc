@@ -5,44 +5,25 @@
 #include "recorder.h"
 
 #include <assert.h>
-#include <linux/futex.h>
-#include <linux/net.h>
-#include <poll.h>
-#include <sched.h>
-#include <string.h>
-#include <sys/epoll.h>
 #include <sysexits.h>
-#include <sys/mman.h>
-#include <sys/prctl.h>
-#include <sys/resource.h>
-#include <sys/syscall.h>
-#include <sys/wait.h>
 
 #include <string>
-
-#include "preload/syscall_buffer.h"
+#include <vector>
 
 #include "Flags.h"
-#include "kernel_abi.h"
-#include "kernel_supplement.h"
 #include "log.h"
-#include "PerfCounters.h"
 #include "RecordSession.h"
-#include "StringVectorToCharArray.h"
-#include "task.h"
-#include "TraceStream.h"
-#include "util.h"
 
 using namespace rr;
 using namespace std;
+
+static bool term_request;
 
 static void terminate_recording(RecordSession& session, int status = 0) {
   session.terminate_recording();
   LOG(info) << "  exiting, goodbye.";
   exit(status);
 }
-
-static bool term_request;
 
 /**
  * A terminating signal was received.  Set the |term_request| bit to
