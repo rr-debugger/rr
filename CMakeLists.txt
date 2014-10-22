@@ -246,6 +246,7 @@ set(BASIC_TESTS
   unjoined_thread
   wait
   write_race
+  zero_length_read
 )
 
 # A "test with program" consists of a foo.c source file and a foo.run driver

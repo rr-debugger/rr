@@ -2736,10 +2736,12 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::read: {
       AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
       remote_ptr<void> buf;
+      bool restore_buf = false;
 
       ssize_t nread = t->regs().syscall_result_signed();
       if (has_saved_arg_ptrs(t)) {
         buf = pop_arg_ptr<void>(t);
+        restore_buf = true;
       } else {
         buf = t->regs().arg2();
       }
@@ -2754,7 +2756,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         record_noop_data(t);
       }
 
-      if (restore_scratch.scratch_used()) {
+      if (restore_buf) {
         Registers r = t->regs();
         r.set_arg2(buf);
         t->set_regs(r);
