@@ -1187,19 +1187,6 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return ALLOW_SWITCH;
     }
 
-    case Arch::ptrace:
-      fprintf(
-          stderr,
-          "\n"
-          "rr: internal recorder error:\n"
-          "  ptrace() is not yet supported.  We need to go deeper.\n"
-          "\n"
-          "  Your trace is being synced and will be available for replay when\n"
-          "  this process exits.\n");
-      terminate_recording(t);
-      FATAL() << "Not reached";
-      return PREVENT_SWITCH;
-
     case Arch::epoll_pwait:
       FATAL() << "Unhandled syscall " << t->syscallname(syscallno);
       return ALLOW_SWITCH;
@@ -2084,17 +2071,16 @@ static void process_recvmsg(Task* t,
 }
 
 template <typename Arch>
-static void process_getsockpeername(Task* t,
-                                    remote_ptr<typename Arch::sockaddr> addr,
-                                    remote_ptr<typename Arch::socklen_t> addrlen) {
+static void process_getsockpeername(
+    Task* t, remote_ptr<typename Arch::sockaddr> addr,
+    remote_ptr<typename Arch::socklen_t> addrlen) {
   auto len = t->read_mem(addrlen);
   t->record_remote(addrlen);
   t->record_remote(addr, len);
 }
 
 template <typename Arch>
-static void process_getsockopt(Task* t,
-                               remote_ptr<void> opt,
+static void process_getsockopt(Task* t, remote_ptr<void> opt,
                                remote_ptr<typename Arch::socklen_t> optlen) {
   auto len = t->read_mem(optlen);
   t->record_remote(optlen);

@@ -1505,8 +1505,9 @@ static void copy_tls_arch(Task* from, AutoRemoteSyscalls& remote) {
     if (const struct user_desc* tls = from->tls()) {
       AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
       LOG(debug) << "    setting tls " << remote_tls.get();
-      long err = remote.syscall(syscall_number_for_set_thread_area(remote.arch()),
-                                remote_tls.get().as_int());
+      long err =
+          remote.syscall(syscall_number_for_set_thread_area(remote.arch()),
+                         remote_tls.get().as_int());
       ASSERT(remote.task(), 0 == err);
       remote.task()->set_thread_area(remote_tls.get());
     }

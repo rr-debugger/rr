@@ -325,7 +325,6 @@ set(TESTS_WITHOUT_PROGRAM
   break_int3
   break_mmap_private
   break_msg
-  break_ptrace
   break_rdtsc
   break_sigreturn
   break_sync_signal

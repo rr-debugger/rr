@@ -16,12 +16,4 @@ class Task;
  */
 int record(const char* rr_exe, int argc, char* argv[], char** envp);
 
-/**
- * Record a trace-termination event, sync the trace files, and shut
- * down.  The |t| argument allows this to give task context to the
- * trace-termination event.  It should be the most-recently-known
- * executed task.
- */
-void terminate_recording(Task* t = nullptr, int status = 0);
-
 #endif /* RR_RECORDER_H_ */

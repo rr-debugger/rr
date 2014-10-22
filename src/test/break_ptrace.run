@@ -1,4 +1,0 @@
-source `dirname $0`/util.sh
-# This recording actually "crashes" because of unsupported ptrace.
-record ptrace
-debug ptrace break_ptrace
