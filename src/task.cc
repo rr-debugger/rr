@@ -450,13 +450,13 @@ void Task::destroy_buffers(int which) {
 }
 
 bool Task::is_arm_desched_event_syscall() {
-  return (is_desched_event_syscall() && PERF_EVENT_IOC_ENABLE == regs().arg2());
+  return is_desched_event_syscall() && PERF_EVENT_IOC_ENABLE == regs().arg2();
 }
 
 bool Task::is_desched_event_syscall() {
-  return (is_ioctl_syscall(regs().original_syscallno(), arch()) &&
-          (desched_fd_child == (int)regs().arg1_signed() ||
-           desched_fd_child == REPLAY_DESCHED_EVENT_FD));
+  return is_ioctl_syscall(regs().original_syscallno(), arch()) &&
+         (desched_fd_child == (int)regs().arg1_signed() ||
+          desched_fd_child == REPLAY_DESCHED_EVENT_FD);
 }
 
 bool Task::is_disarm_desched_event_syscall() {

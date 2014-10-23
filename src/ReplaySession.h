@@ -217,8 +217,8 @@ private:
   Completion advance_to(Task* t, const Registers& regs, int sig,
                         StepCommand stepi, Ticks ticks);
   Completion emulate_deterministic_signal(Task* t, int sig, StepCommand stepi);
-  Completion emulate_async_signal(Task* t, int sig,
-                                  StepCommand stepi, Ticks ticks);
+  Completion emulate_async_signal(Task* t, int sig, StepCommand stepi,
+                                  Ticks ticks);
   Completion skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
                                 StepCommand stepi);
   void prepare_syscallbuf_records(Task* t);
