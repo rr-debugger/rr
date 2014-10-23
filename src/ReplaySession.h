@@ -197,7 +197,7 @@ public:
    * The trace record that we are working on --- the next event
    * for replay to reach.
    */
-  TraceFrame& current_trace_frame() { return trace_frame; }
+  const TraceFrame& current_trace_frame() const { return trace_frame; }
 
   /**
    * The Task for the current trace record.
