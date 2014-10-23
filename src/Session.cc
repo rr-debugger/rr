@@ -58,7 +58,7 @@ Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
   return c;
 }
 
-Task* Session::find_task(pid_t rec_tid) {
+Task* Session::find_task(pid_t rec_tid) const {
   auto it = tasks().find(rec_tid);
   return tasks().end() != it ? it->second : nullptr;
 }

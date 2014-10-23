@@ -202,7 +202,7 @@ public:
   /**
    * The Task for the current trace record.
    */
-  Task* current_task() { return find_task(trace_frame.tid()); }
+  Task* current_task() const { return find_task(trace_frame.tid()); }
 
   /**
    * Set |tgid| as the one that's being debugged in this

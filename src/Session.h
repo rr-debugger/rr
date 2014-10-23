@@ -68,7 +68,7 @@ public:
    * Return the task created with |rec_tid|, or nullptr if no such
    * task exists.
    */
-  Task* find_task(pid_t rec_tid);
+  Task* find_task(pid_t rec_tid) const;
 
   /**
    * |tasks().size()| will be zero and all the OS tasks will be
