@@ -279,14 +279,14 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
  * Return true iff the syscall represented by |frame| (either entry to
  * or exit from) failed.
  */
-static bool is_failed_syscall(Task* t, const TraceFrame* frame) {
+static bool is_failed_syscall(Task* t, const TraceFrame& frame) {
   TraceFrame next_frame;
-  if (SYSCALL_ENTRY == frame->event().state) {
-    next_frame = t->trace_reader().peek_to(t->rec_tid, frame->event().type,
-                                           SYSCALL_EXIT);
-    frame = &next_frame;
+  if (SYSCALL_ENTRY == frame.event().state) {
+    next_frame =
+        t->trace_reader().peek_to(t->rec_tid, frame.event().type, SYSCALL_EXIT);
+    return next_frame.regs().syscall_failed();
   }
-  return frame->regs().syscall_failed();
+  return frame.regs().syscall_failed();
 }
 
 static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
@@ -294,8 +294,8 @@ static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
 }
 
 template <typename Arch>
-static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
-                          ReplayTraceStep* step) {
+static void process_clone(Task* t, const TraceFrame& trace,
+                          SyscallEntryOrExit state, ReplayTraceStep* step) {
   int syscallno = Arch::clone;
   if (is_failed_syscall(t, trace)) {
     /* creation failed, emulate it */
@@ -309,7 +309,7 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
     return;
   }
 
-  Registers rec_regs = trace->regs();
+  Registers rec_regs = trace.regs();
   unsigned long flags = rec_regs.arg1();
 
   if (flags & CLONE_UNTRACED) {
@@ -384,8 +384,9 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
 }
 
 template <typename Arch>
-static void process_execve(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
-                           const Registers* rec_regs, ReplayTraceStep* step) {
+static void process_execve(Task* t, const TraceFrame& trace,
+                           SyscallEntryOrExit state, const Registers* rec_regs,
+                           ReplayTraceStep* step) {
   const int syscallno = Arch::execve;
 
   if (is_failed_syscall(t, trace)) {
@@ -541,7 +542,7 @@ static void process_ioctl(Task* t, SyscallEntryOrExit state,
   }
 }
 
-void process_ipc(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
+void process_ipc(Task* t, const TraceFrame& trace, SyscallEntryOrExit state,
                  ReplayTraceStep* step) {
   step->syscall.emu = EMULATE;
   step->syscall.emu_ret = EMULATE_RETURN;
@@ -551,7 +552,7 @@ void process_ipc(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
   }
 
   step->action = TSTEP_EXIT_SYSCALL;
-  unsigned int call = trace->regs().arg1();
+  unsigned int call = trace.regs().arg1();
   LOG(debug) << "ipc call: " << call;
   switch (call) {
     case MSGCTL:
@@ -576,11 +577,11 @@ enum {
 
 template <typename Arch>
 static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
-                                              TraceFrame* trace, int prot,
+                                              const TraceFrame& trace, int prot,
                                               int flags, off64_t offset_pages,
                                               int note_task_map =
                                                   NOTE_TASK_MAP) {
-  const Registers* rec_regs = &trace->regs();
+  const Registers* rec_regs = &trace.regs();
   /* *Must* map the segment at the recorded address, regardless
      of what the recorded tracee passed as the |addr| hint. */
   remote_ptr<void> rec_addr = rec_regs->syscall_result();
@@ -644,13 +645,13 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 
 template <typename Arch>
 static remote_ptr<void> finish_private_mmap(AutoRemoteSyscalls& remote,
-                                            TraceFrame* trace, int prot,
+                                            const TraceFrame& trace, int prot,
                                             int flags, off64_t offset_pages,
                                             const TraceMappedRegion* file) {
   LOG(debug) << "  finishing private mmap of " << file->file_name();
 
   Task* t = remote.task();
-  const Registers& rec_regs = trace->regs();
+  const Registers& rec_regs = trace.regs();
   size_t num_bytes = rec_regs.arg2();
   remote_ptr<void> mapped_addr =
       finish_anonymous_mmap<Arch>(remote, trace, prot,
@@ -710,13 +711,13 @@ enum {
 
 template <typename Arch>
 static remote_ptr<void> finish_direct_mmap(AutoRemoteSyscalls& remote,
-                                           TraceFrame* trace, int prot,
+                                           const TraceFrame& trace, int prot,
                                            int flags, off64_t offset_pages,
                                            const TraceMappedRegion* file,
                                            int verify = VERIFY_BACKING_FILE,
                                            int note_task_map = NOTE_TASK_MAP) {
   Task* t = remote.task();
-  auto& rec_regs = trace->regs();
+  auto& rec_regs = trace.regs();
   remote_ptr<void> rec_addr = rec_regs.syscall_result();
   size_t length = rec_regs.arg2();
   int fd;
@@ -770,11 +771,11 @@ static remote_ptr<void> finish_direct_mmap(AutoRemoteSyscalls& remote,
 
 template <typename Arch>
 static remote_ptr<void> finish_shared_mmap(AutoRemoteSyscalls& remote,
-                                           TraceFrame* trace, int prot,
+                                           const TraceFrame& trace, int prot,
                                            int flags, off64_t offset_pages,
                                            const TraceMappedRegion* file) {
   Task* t = remote.task();
-  size_t rec_num_bytes = ceil_page_size(trace->regs().arg2());
+  size_t rec_num_bytes = ceil_page_size(trace.regs().arg2());
 
   // Ensure there's a virtual file for the file that was mapped
   // during recording.
@@ -816,12 +817,12 @@ static remote_ptr<void> finish_shared_mmap(AutoRemoteSyscalls& remote,
 }
 
 template <typename Arch>
-static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
-                         int prot, int flags, off64_t offset_pages,
-                         ReplayTraceStep* step) {
+static void process_mmap(Task* t, const TraceFrame& trace,
+                         SyscallEntryOrExit state, int prot, int flags,
+                         off64_t offset_pages, ReplayTraceStep* step) {
   remote_ptr<void> mapped_addr;
 
-  if (trace->regs().syscall_failed()) {
+  if (trace.regs().syscall_failed()) {
     /* Failed maps are fully emulated too; nothing
      * interesting to do. */
     step->action = TSTEP_EXIT_SYSCALL;
@@ -1197,9 +1198,9 @@ template <typename Arch>
 static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   /* FIXME: don't shadow syscall() */
   int syscall = t->current_trace_frame().event().data;
-  TraceFrame* trace = &t->replay_session().current_trace_frame();
-  SyscallEntryOrExit state = trace->event().state;
-  const Registers* rec_regs = &trace->regs();
+  const TraceFrame& trace = t->replay_session().current_trace_frame();
+  SyscallEntryOrExit state = trace.event().state;
+  const Registers* rec_regs = &trace.regs();
   EmuFs::AutoGc maybe_gc(t->replay_session(), syscall, state);
 
   LOG(debug) << "processing " << t->syscallname(syscall) << " ("
@@ -1424,8 +1425,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
                                     args.offset / 4096, step);
         }
         case Arch::RegisterArguments:
-          return process_mmap<Arch>(t, trace, state, trace->regs().arg3(),
-                                    trace->regs().arg4(), trace->regs().arg6(),
+          return process_mmap<Arch>(t, trace, state, trace.regs().arg3(),
+                                    trace.regs().arg4(), trace.regs().arg6(),
                                     step);
       }
     }
@@ -1437,14 +1438,13 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         step->syscall.emu = EMULATE;
         return;
       }
-      return process_mmap<Arch>(t, trace, state, trace->regs().arg3(),
-                                trace->regs().arg4(), trace->regs().arg6(),
-                                step);
+      return process_mmap<Arch>(t, trace, state, trace.regs().arg3(),
+                                trace.regs().arg4(), trace.regs().arg6(), step);
 
     case Arch::nanosleep:
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;
-      step->syscall.num_emu_args = (trace->regs().arg2() != 0) ? 1 : 0;
+      step->syscall.num_emu_args = (trace.regs().arg2() != 0) ? 1 : 0;
       step->action = syscall_action(state);
       return;
 
@@ -1457,8 +1457,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return;
 
     case Arch::prctl: {
-      int option = trace->regs().arg1_signed();
-      remote_ptr<void> arg2 = trace->regs().arg2();
+      int option = trace.regs().arg1_signed();
+      remote_ptr<void> arg2 = trace.regs().arg2();
       if (PR_SET_NAME == option || PR_GET_NAME == option) {
         step->syscall.num_emu_args = 1;
         // We actually execute these.
@@ -1550,8 +1550,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         return;
       }
       t->finish_emulated_syscall();
-      t->set_regs(trace->regs());
-      t->set_extra_regs(trace->extra_regs());
+      t->set_regs(trace.regs());
+      t->set_extra_regs(trace.extra_regs());
       step->action = TSTEP_RETIRE;
       return;
 
