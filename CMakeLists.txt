@@ -352,6 +352,7 @@ set(TESTS_WITHOUT_PROGRAM
   restart_diversion
   sanity
   signal_stop
+  signal_checkpoint
   step1
   step_signal
   subprocess_exit_ends_session
