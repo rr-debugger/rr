@@ -6,7 +6,7 @@
 #include "TraceStream.h"
 
 class Task;
-struct rep_trace_step;
+struct ReplayTraceStep;
 
 /**
  * Call this when |t| has just entered a syscall.  At this point, data
@@ -14,9 +14,9 @@ struct rep_trace_step;
  */
 void rep_after_enter_syscall(Task* t, int syscallno);
 
-/* |redirect_stdio| is nonzero if output written to stdout/stderr
- * during recording should be tee'd during replay, zero otherwise. */
-void rep_process_syscall(Task* t, struct rep_trace_step* step);
+/* Process pending syscall. Call this when |t| is about to enter or exit
+ * a syscall. */
+void rep_process_syscall(Task* t, ReplayTraceStep* step);
 
 /**
  * |t| is at a "write" syscall.  If the recorded write was to STDOUT

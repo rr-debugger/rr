@@ -295,7 +295,7 @@ static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
 
 template <typename Arch>
 static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
-                          struct rep_trace_step* step) {
+                          ReplayTraceStep* step) {
   int syscallno = Arch::clone;
   if (is_failed_syscall(t, trace)) {
     /* creation failed, emulate it */
@@ -385,8 +385,7 @@ static void process_clone(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
 
 template <typename Arch>
 static void process_execve(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
-                           const Registers* rec_regs,
-                           struct rep_trace_step* step) {
+                           const Registers* rec_regs, ReplayTraceStep* step) {
   const int syscallno = Arch::execve;
 
   if (is_failed_syscall(t, trace)) {
@@ -447,7 +446,7 @@ static void process_execve(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
 }
 
 static void process_futex(Task* t, SyscallEntryOrExit state,
-                          struct rep_trace_step* step, const Registers* regs) {
+                          ReplayTraceStep* step, const Registers* regs) {
   int op = (int)regs->arg2_signed() & FUTEX_CMD_MASK;
   remote_ptr<int> futex = regs->arg1();
 
@@ -491,7 +490,7 @@ static void process_futex(Task* t, SyscallEntryOrExit state,
 }
 
 static void process_ioctl(Task* t, SyscallEntryOrExit state,
-                          struct rep_trace_step* step) {
+                          ReplayTraceStep* step) {
   step->syscall.emu = EMULATE;
   step->syscall.emu_ret = EMULATE_RETURN;
 
@@ -543,7 +542,7 @@ static void process_ioctl(Task* t, SyscallEntryOrExit state,
 }
 
 void process_ipc(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
-                 struct rep_trace_step* step) {
+                 ReplayTraceStep* step) {
   step->syscall.emu = EMULATE;
   step->syscall.emu_ret = EMULATE_RETURN;
   if (SYSCALL_ENTRY == state) {
@@ -819,7 +818,7 @@ static remote_ptr<void> finish_shared_mmap(AutoRemoteSyscalls& remote,
 template <typename Arch>
 static void process_mmap(Task* t, TraceFrame* trace, SyscallEntryOrExit state,
                          int prot, int flags, off64_t offset_pages,
-                         struct rep_trace_step* step) {
+                         ReplayTraceStep* step) {
   remote_ptr<void> mapped_addr;
 
   if (trace->regs().syscall_failed()) {
@@ -921,7 +920,7 @@ static void restore_msglen_for_msgvec(Task* t, int nmmsgs) {
  */
 template <typename Arch>
 static void process_socketcall(Task* t, SyscallEntryOrExit state,
-                               struct rep_trace_step* step) {
+                               ReplayTraceStep* step) {
   unsigned int call;
 
   step->syscall.emu = EMULATE;
@@ -1022,7 +1021,7 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
 }
 
 static void process_init_buffers(Task* t, SyscallEntryOrExit state,
-                                 struct rep_trace_step* step) {
+                                 ReplayTraceStep* step) {
   /* This was a phony syscall to begin with. */
   step->syscall.emu = EMULATE;
   step->syscall.emu_ret = EMULATE_RETURN;
@@ -1195,7 +1194,7 @@ static void before_syscall_exit(Task* t, int syscallno) {
 }
 
 template <typename Arch>
-static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
+static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   /* FIXME: don't shadow syscall() */
   int syscall = t->current_trace_frame().event().data;
   TraceFrame* trace = &t->replay_session().current_trace_frame();
@@ -1622,6 +1621,6 @@ static void rep_process_syscall_arch(Task* t, struct rep_trace_step* step) {
   }
 }
 
-void rep_process_syscall(Task* t, struct rep_trace_step* step) {
+void rep_process_syscall(Task* t, ReplayTraceStep* step) {
   RR_ARCH_FUNCTION(rep_process_syscall_arch, t->arch(), t, step)
 }

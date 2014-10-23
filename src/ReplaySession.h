@@ -114,7 +114,7 @@ enum ExecOrEmulateReturn {
  * rep_trace_step is saved in Session and cloned with its Session, so it needs
  * to be simple data, i.e. not holding pointers to per-Session data.
  */
-struct rep_trace_step {
+struct ReplayTraceStep {
   ReplayTraceStepType action;
 
   union {
@@ -376,7 +376,7 @@ private:
   pid_t tgid_debugged;
   TraceReader trace_in;
   TraceFrame trace_frame;
-  struct rep_trace_step current_step;
+  ReplayTraceStep current_step;
   CPUIDBugDetector cpuid_bug_detector;
   /**
    * Buffer for recorded syscallbuf bytes.  By definition buffer flushes

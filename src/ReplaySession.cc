@@ -1290,7 +1290,7 @@ bool ReplaySession::is_last_interesting_task(Task* t) {
  * recording.
  */
 static bool has_deterministic_ticks(const Event& ev,
-                                    const struct rep_trace_step& step) {
+                                    const ReplayTraceStep& step) {
   if (ev.has_ticks_slop()) {
     return false;
   }
@@ -1298,7 +1298,7 @@ static bool has_deterministic_ticks(const Event& ev,
   // async signal, due to debugger interrupts and other
   // implementation details.  This is checked in |advance_to()|
   // anyway.
-  return (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action);
+  return TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action;
 }
 
 /**
