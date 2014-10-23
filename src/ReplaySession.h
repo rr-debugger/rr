@@ -61,13 +61,7 @@ public:
    * for replay to reach.
    */
   TraceFrame& current_trace_frame() { return trace_frame; }
-  /**
-   * State of the replay as we advance towards the event given by
-   * current_trace_frame().
-   */
-  struct rep_trace_step& current_replay_step() { return current_step; }
 
-  uint8_t* syscallbuf_flush_buffer() { return syscallbuf_flush_buffer_array; }
   const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
     return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
   }
