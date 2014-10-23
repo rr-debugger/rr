@@ -62,10 +62,6 @@ public:
    */
   TraceFrame& current_trace_frame() { return trace_frame; }
 
-  const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
-    return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
-  }
-
   /**
    * Set |tgid| as the one that's being debugged in this
    * session.
@@ -190,6 +186,10 @@ private:
   void set_last_task(Task* t) {
     assert(!last_debugged_task);
     last_debugged_task = t;
+  }
+
+  const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
+    return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
   }
 
   void setup_replay_one_trace_frame(Task* t);
