@@ -200,6 +200,8 @@ private:
         trace_frame(),
         current_step() {}
 
+  void setup_replay_one_trace_frame(Task* t);
+
   std::shared_ptr<EmuFs> emu_fs;
   // Number of client references to this, if it's a diversion
   // session.  When there are 0 refs this is considered to be

@@ -1359,12 +1359,12 @@ static Completion try_one_trace_step(Task* t, struct rep_trace_step* step,
  * requested a restart. If this returns false, t's Session state was not
  * modified.
  */
-static void setup_replay_one_trace_frame(Task* t) {
-  Event ev(t->current_trace_frame().event());
+void ReplaySession::setup_replay_one_trace_frame(Task* t) {
+  Event ev(trace_frame.event());
 
-  LOG(debug) << "[line " << t->trace_time() << "] " << t->rec_tid
+  LOG(debug) << "[line " << trace_frame.time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
-             << state_name(t->current_trace_frame().event().state);
+             << state_name(trace_frame.event().state);
   if (t->syscallbuf_hdr) {
     LOG(debug) << "    (syscllbufsz:" << t->syscallbuf_hdr->num_rec_bytes
                << ", abrtcmt:" << t->syscallbuf_hdr->abort_commit
@@ -1376,10 +1376,9 @@ static void setup_replay_one_trace_frame(Task* t) {
     t->child_sig = 0;
   }
 
-  struct rep_trace_step& step = t->replay_session().current_replay_step();
   /* Ask the trace-interpretation code what to do next in order
    * to retire the current frame. */
-  memset(&step, 0, sizeof(step));
+  memset(&current_step, 0, sizeof(current_step));
 
   switch (ev.type()) {
     case EV_UNSTABLE_EXIT:
@@ -1387,10 +1386,9 @@ static void setup_replay_one_trace_frame(Task* t) {
     /* fall through */
     case EV_EXIT: {
       if (is_last_interesting_task(t)) {
-        LOG(debug) << "last interesting task in "
-                   << t->replay_session().debugged_tgid() << " is "
+        LOG(debug) << "last interesting task in " << debugged_tgid() << " is "
                    << t->rec_tid << " (" << t->tid << ")";
-        t->replay_session().set_last_task(t);
+        set_last_task(t);
         return;
       }
 
@@ -1412,65 +1410,64 @@ static void setup_replay_one_trace_frame(Task* t) {
       syscall(SYS_tkill, t->tid, SIGABRT);
       // TODO dissociate address space from file table
       bool file_table_dying = (1 == t->vm()->task_set().size());
-      ReplaySession* sess = t->replay_session_ptr();
       delete t;
       /* Early-return because |t| is gone now. */
       if (file_table_dying) {
-        sess->gc_emufs();
+        gc_emufs();
       }
       return;
     }
     case EV_DESCHED:
-      step.action = TSTEP_DESCHED;
-      step.desched.type = ARMING_DESCHED_EVENT == ev.Desched().state
-                              ? DESCHED_ARM
-                              : DESCHED_DISARM;
-      step.desched.state = DESCHED_ENTER;
+      current_step.action = TSTEP_DESCHED;
+      current_step.desched.type = ARMING_DESCHED_EVENT == ev.Desched().state
+                                      ? DESCHED_ARM
+                                      : DESCHED_DISARM;
+      current_step.desched.state = DESCHED_ENTER;
       break;
     case EV_SYSCALLBUF_ABORT_COMMIT:
       t->syscallbuf_hdr->abort_commit = 1;
-      step.action = TSTEP_RETIRE;
+      current_step.action = TSTEP_RETIRE;
       break;
     case EV_SYSCALLBUF_FLUSH:
-      step.action = TSTEP_FLUSH_SYSCALLBUF;
-      step.flush.need_buffer_restore = 1;
-      step.flush.num_rec_bytes_remaining = 0;
+      current_step.action = TSTEP_FLUSH_SYSCALLBUF;
+      current_step.flush.need_buffer_restore = 1;
+      current_step.flush.num_rec_bytes_remaining = 0;
       break;
     case EV_SYSCALLBUF_RESET:
       t->syscallbuf_hdr->num_rec_bytes = 0;
-      step.action = TSTEP_RETIRE;
+      current_step.action = TSTEP_RETIRE;
       break;
     case EV_SCHED:
-      step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-      step.target.ticks = t->current_trace_frame().ticks();
-      step.target.signo = 0;
+      current_step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
+      current_step.target.ticks = trace_frame.ticks();
+      current_step.target.signo = 0;
       break;
     case EV_SEGV_RDTSC:
-      step.action = TSTEP_DETERMINISTIC_SIGNAL;
-      step.signo = SIGSEGV;
+      current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
+      current_step.signo = SIGSEGV;
       break;
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
       LOG(debug) << "  popping interrupted but not restarted " << t->ev();
       t->pop_syscall_interruption();
-      step.action = TSTEP_RETIRE;
+      current_step.action = TSTEP_RETIRE;
       break;
     case EV_EXIT_SIGHANDLER:
       LOG(debug) << "<-- sigreturn from " << t->ev();
       t->pop_signal_handler();
-      step.action = TSTEP_RETIRE;
+      current_step.action = TSTEP_RETIRE;
       break;
     case EV_SIGNAL:
-      step.signo = ev.Signal().number;
-      step.action = ev.Signal().deterministic == DETERMINISTIC_SIG
-                        ? TSTEP_DETERMINISTIC_SIGNAL
-                        : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-      if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == step.action) {
-        step.target.signo = step.signo;
-        step.target.ticks = t->current_trace_frame().ticks();
+      current_step.signo = ev.Signal().number;
+      current_step.action = ev.Signal().deterministic == DETERMINISTIC_SIG
+                                ? TSTEP_DETERMINISTIC_SIGNAL
+                                : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
+      if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == current_step.action) {
+        current_step.target.signo = current_step.signo;
+        current_step.target.ticks = trace_frame.ticks();
       }
       break;
     case EV_SYSCALL:
-      rep_process_syscall(t, &step);
+      rep_process_syscall(t, &current_step);
       break;
     default:
       FATAL() << "Unexpected event " << ev;
@@ -1492,27 +1489,25 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
   result.status = STEP_CONTINUE;
   result.break_reason = BREAK_NONE;
 
-  struct rep_trace_step& step = t->replay_session().current_replay_step();
-
   /* If we restored from a checkpoint, the steps might have been
    * computed already in which case step.action will not be TSTEP_NONE.
    */
-  if (step.action == TSTEP_NONE) {
+  if (current_step.action == TSTEP_NONE) {
     setup_replay_one_trace_frame(t);
-    if (step.action == TSTEP_NONE) {
+    if (current_step.action == TSTEP_NONE) {
       // Already at the destination event.
       if (!last_task()) {
-        current_trace_frame() = trace_reader().read_frame();
+        trace_frame = trace_in.read_frame();
       }
       return result;
     }
   }
 
-  /* Advance until |step| has been fulfilled. */
-  RepTraceStepType current_action = step.action;
+  /* Advance towards fulfilling |current_step|. */
+  RepTraceStepType current_action = current_step.action;
   Stepping stepi = command == RUN_SINGLESTEP ? SINGLESTEP : RUN;
-  if (try_one_trace_step(t, &step, stepi) == INCOMPLETE) {
-    if (EV_TRACE_TERMINATION == t->current_trace_frame().event().type) {
+  if (try_one_trace_step(t, &current_step, stepi) == INCOMPLETE) {
+    if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
       // early-termination marker.  Otherwise we
@@ -1527,9 +1522,10 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
     // We got INCOMPLETE because there was some kind of debugger trap.
     result.break_task = t;
 
-    if (step.action != current_action && step.action == TSTEP_DELIVER_SIGNAL) {
+    if (current_step.action != current_action &&
+        current_step.action == TSTEP_DELIVER_SIGNAL) {
       result.break_reason = BREAK_SIGNAL;
-      result.break_signal = step.signo;
+      result.break_signal = current_step.signo;
     } else {
       TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
       TrapType retired_bp =
@@ -1603,27 +1599,26 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
     return result;
   }
 
-  if (TSTEP_ENTER_SYSCALL == step.action) {
-    rep_after_enter_syscall(t, step.syscall.number);
-    t->replay_session().bug_detector().notify_reached_syscall_during_replay(t);
+  if (TSTEP_ENTER_SYSCALL == current_step.action) {
+    rep_after_enter_syscall(t, current_step.syscall.number);
+    cpuid_bug_detector.notify_reached_syscall_during_replay(t);
   }
-  if (t->session().can_validate() &&
-      SYSCALL_EXIT == t->current_trace_frame().event().state &&
+  if (can_validate() && SYSCALL_EXIT == trace_frame.event().state &&
       Flags::get().check_cached_mmaps) {
     t->vm()->verify(t);
   }
 
-  Event ev(t->current_trace_frame().event());
-  if (has_deterministic_ticks(ev, step)) {
+  Event ev(trace_frame.event());
+  if (has_deterministic_ticks(ev, current_step)) {
     check_ticks_consistency(t, ev);
   }
 
   debug_memory(t);
 
   // Record that this step completed successfully.
-  step.action = TSTEP_NONE;
+  current_step.action = TSTEP_NONE;
   if (!last_task()) {
-    current_trace_frame() = trace_reader().read_frame();
+    trace_frame = trace_in.read_frame();
   }
   return result;
 }
