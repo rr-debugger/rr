@@ -35,13 +35,6 @@ public:
    */
   shr_ptr clone_diversion();
 
-  /**
-   * Fork and exec the initial tracee task to run |ae|, and read
-   * recorded events from |trace|.  |rec_tid| is the recorded
-   * tid of the initial tracee task.  Return that Task.
-   */
-  Task* create_task(pid_t rec_tid);
-
   EmuFs& emufs() { return *emu_fs; }
 
   /** Collect garbage files from this session's emufs. */
@@ -182,7 +175,8 @@ private:
         trace_in(dir),
         trace_frame(),
         current_step() {
-    current_trace_frame() = trace_reader().read_frame();
+    trace_frame = trace_in.read_frame();
+    emu_fs = EmuFs::create();
   }
 
   ReplaySession(const ReplaySession& other)

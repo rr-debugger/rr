@@ -205,18 +205,30 @@ ReplaySession::shr_ptr ReplaySession::clone_diversion() {
   return session;
 }
 
-Task* ReplaySession::create_task(pid_t rec_tid) {
-  Task* t = Task::spawn(*this, rec_tid);
-  on_create(t);
-  return t;
-}
-
 void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
 
 /*static*/ ReplaySession::shr_ptr ReplaySession::create(int argc,
                                                         char* argv[]) {
   shr_ptr session(new ReplaySession(argc > 0 ? argv[0] : ""));
-  session->emu_fs = EmuFs::create();
+
+  // Because we execvpe() the tracee, we must ensure that $PATH
+  // is the same as in recording so that libc searches paths in
+  // the same order.  So copy that over now.
+  //
+  // And because we use execvpe(), the exec'd tracee will start
+  // with a fresh environment guaranteed to be the same as in
+  // replay, so we don't have to worry about any mutation here
+  // affecting post-exec execution.
+  for (auto& e : session->trace().initial_envp()) {
+    if (e.find("PATH=") == 0) {
+      // NB: intentionally leaking this string.
+      putenv(strdup(e.c_str()));
+    }
+  }
+
+  Task* t = Task::spawn(*session, session->trace_reader().peek_frame().tid());
+  session->on_create(t);
+
   return session;
 }
 
