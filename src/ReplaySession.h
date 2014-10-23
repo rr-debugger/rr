@@ -48,7 +48,7 @@ enum RepFlushState {
  * rep_flush_state is saved in Session and cloned with its Session, so it needs
  * to be simple data, i.e. not holding pointers to per-Session data.
  */
-struct rep_flush_state {
+struct ReplayFlushBufferedSyscallState {
   /* True when we need to write the syscallbuf data back to
    * the child. */
   bool need_buffer_restore;
@@ -140,7 +140,7 @@ struct rep_trace_step {
       int signo;
     } target;
 
-    struct rep_flush_state flush;
+    ReplayFlushBufferedSyscallState flush;
 
     ReplayDeschedState desched;
   };
