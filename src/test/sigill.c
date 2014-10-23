@@ -4,6 +4,7 @@
 
 static void sighandler(int sig) {
   atomic_printf("caught signal %d, exiting\n", sig);
+  atomic_puts("EXIT-SUCCESS");
   _exit(0);
 }
 

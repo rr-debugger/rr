@@ -221,6 +221,7 @@ set(BASIC_TESTS
   sendfile
   setsid
   sigchld_interrupt_signal
+  sigill
   sigprocmask
   sigqueueinfo
   sigreturn
@@ -294,7 +295,6 @@ set(TESTS_WITH_PROGRAM
   read_big_struct
   restart_abnormal_exit
   segfault
-  sigill
   step_thread
   target_fork
   target_process
