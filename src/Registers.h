@@ -230,8 +230,8 @@ public:
    * errors; if |mismatch_behavior| is LOG_MISMATCHES, mismatched
    * registers will be logged as informative messages.
    */
-  static bool compare_register_files(const char* name1, const Registers* reg1,
-                                     const char* name2, const Registers* reg2,
+  static bool compare_register_files(const char* name1, const Registers& reg1,
+                                     const char* name2, const Registers& reg2,
                                      int mismatch_behavior);
 
   /**
@@ -271,8 +271,8 @@ private:
                                           const char* formats[]) const;
 
   template <typename Arch>
-  static bool compare_registers_arch(const char* name1, const Registers* reg1,
-                                     const char* name2, const Registers* reg2,
+  static bool compare_registers_arch(const char* name1, const Registers& reg1,
+                                     const char* name2, const Registers& reg2,
                                      int mismatch_behavior);
 
   template <typename Arch>

@@ -266,11 +266,11 @@ void print_process_state(pid_t tid) {
   fclose(file);
 }
 
-bool compare_register_files(Task* t, const char* name1, const Registers&reg1,
+bool compare_register_files(Task* t, const char* name1, const Registers& reg1,
                             const char* name2, const Registers& reg2,
                             int mismatch_behavior) {
   bool bail_error = mismatch_behavior >= BAIL_ON_MISMATCH;
-  bool match = Registers::compare_register_files(name1, &reg1, name2, &reg2,
+  bool match = Registers::compare_register_files(name1, reg1, name2, reg2,
                                                  mismatch_behavior);
 
   ASSERT(t, !bail_error || match) << "Fatal register mismatch (ticks/rec:"

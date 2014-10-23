@@ -639,8 +639,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
 #endif
     return false;
   }
-  if (!compare_register_files(t, "rep", t->regs(), "rec", rec_regs,
-                              behavior)) {
+  if (!compare_register_files(t, "rep", t->regs(), "rec", rec_regs, behavior)) {
     LOG(debug) << "  not same execution point: regs differ (@"
                << HEX(rec_regs.ip()) << ")";
     return false;
