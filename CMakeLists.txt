@@ -63,6 +63,7 @@ add_library(rrpreload
 #
 # Alphabetical, please.
 set(GENERATED_FILES
+  AssemblyTemplates.generated
   CheckSyscallNumbers.generated
   IsAlwaysEmulatedSyscall.generated
   SyscallDefsTable.generated
@@ -80,7 +81,8 @@ foreach(generated_file ${GENERATED_FILES})
                      COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
 		               "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
 		     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
-		       "${CMAKE_CURRENT_SOURCE_DIR}/src/syscalls.py")
+		       "${CMAKE_CURRENT_SOURCE_DIR}/src/syscalls.py"
+		       "${CMAKE_CURRENT_SOURCE_DIR}/src/assembly_templates.py")
 endforeach(generated_file)
 
 add_executable(rr

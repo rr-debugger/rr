@@ -897,40 +897,16 @@ void destroy_buffers(Task* t) {
   advance_syscall(t);
 }
 
-static const uint8_t vsyscall_impl[] = { 0x51,       /* push %ecx */
-                                         0x52,       /* push %edx */
-                                         0x55,       /* push %ebp */
-                                         0x89, 0xe5, /* mov %esp,%ebp */
-                                         0x0f, 0x34, /* sysenter */
-                                         0x90,       /* nop */
-                                         0x90,       /* nop */
-                                         0x90,       /* nop */
-                                         0x90,       /* nop */
-                                         0x90,       /* nop */
-                                         0x90,       /* nop */
-                                         0x90,       /* nop */
-                                         0xcd, 0x80, /* int $0x80 */
-                                         0x5d,       /* pop %ebp */
-                                         0x5a,       /* pop %edx */
-                                         0x59,       /* pop %ecx */
-                                         0xc3,       /* ret */
-};
+#include "AssemblyTemplates.generated"
 
 /**
  * Return true iff |addr| points to a known |__kernel_vsyscall()|
  * implementation.
  */
 static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
-  uint8_t impl[sizeof(vsyscall_impl)];
+  uint8_t impl[X86VsyscallImplementation::size];
   t->read_bytes(addr, impl);
-  for (size_t i = 0; i < sizeof(vsyscall_impl); ++i) {
-    if (vsyscall_impl[i] != impl[i]) {
-      LOG(warn) << "Byte " << i << " of __kernel_vsyscall should be "
-                << HEX(vsyscall_impl[i]) << " but is " << HEX(impl[i]);
-      return false;
-    }
-  }
-  return true;
+  return X86VsyscallImplementation::match(impl);
 }
 
 /**
@@ -978,25 +954,6 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
   return kernel_vsyscall;
 }
 
-// NBB: the placeholder bytes in |struct insns_template| below must be
-// kept in sync with this.
-static const uint8_t x86_vsyscall_monkeypatch[] = {
-  0x50,                         // push %eax
-  0xb8, 0x00, 0x00, 0x00, 0x00, // mov $_vsyscall_hook_trampoline, %eax
-  // The immediate param of the |mov| is filled in dynamically
-  // by the template mechanism below.  The null bytes here are a
-  // placeholder.
-  0xff, 0xe0, // jmp *%eax
-};
-
-struct x86_insns_template {
-  // NBB: |x86_vsyscall_monkeypatch| must be kept in sync with these
-  // placeholder bytes.
-  uint8_t push_eax_insn;
-  uint8_t mov_vsyscall_hook_trampoline_eax_insn;
-  uint32_t vsyscall_hook_trampoline;
-} __attribute__((packed));
-
 /**
  * Perform any required monkeypatching on the VDSO for the given Task.
  * Abort if anything at all goes wrong.
@@ -1030,21 +987,13 @@ void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
   // Luckily, linux is happy for us to scribble directly over
   // the vdso mapping's bytes without mprotecting the region, so
   // we don't need to prepare remote syscalls here.
-  remote_ptr<void> vsyscall_hook_trampoline = t->regs().arg1();
-  union {
-    uint8_t bytes[sizeof(x86_vsyscall_monkeypatch)];
-    struct x86_insns_template insns;
-  } __attribute__((packed)) patch;
+  remote_ptr<void> vsyscall_hook_trampoline_ptr = t->regs().arg1();
+  uint32_t vsyscall_hook_trampoline = vsyscall_hook_trampoline_ptr.as_int();
 
-  // Write the basic monkeypatch onto to the template, except
-  // for the (dynamic) $vsyscall_hook_trampoline address.
-  memcpy(patch.bytes, x86_vsyscall_monkeypatch, sizeof(patch.bytes));
-  // (Try to catch out-of-sync |vsyscall_monkeypatch| and
-  // |struct insns_template|.)
-  assert(0 == patch.insns.vsyscall_hook_trampoline);
-  patch.insns.vsyscall_hook_trampoline = vsyscall_hook_trampoline.as_int();
+  uint8_t patch[X86VsyscallMonkeypatch::size];
+  X86VsyscallMonkeypatch::substitute(patch, vsyscall_hook_trampoline);
 
-  t->write_bytes(kernel_vsyscall, patch.bytes);
+  t->write_bytes(kernel_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
              << vsyscall_hook_trampoline;
 }
@@ -1055,19 +1004,6 @@ void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
 // critical functions related to getting the time and current CPU.  We
 // need to ensure that these syscalls get redirected into actual
 // trap-into-the-kernel syscalls so rr can intercept them.
-
-static const uint8_t x64_vsyscall_monkeypatch[] = {
-  // The immediate operand of the |mov| is filled in dynamically
-  // by the |perform_monkeypatch| function below.
-  0xb8, 0x00, 0x00, 0x00, 0x00, // mov $syscall, %eax
-  0x0f, 0x05,                   // syscall
-  0xc3,                         // retq
-};
-
-struct x64_insns_template {
-  uint8_t mov_insn_byte;
-  uint32_t syscall_number;
-} __attribute__((packed));
 
 struct named_syscall {
   const char* name;
@@ -1096,14 +1032,9 @@ void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
     const char* symname = &symbolnames[sym->st_name];
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
       if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
-        union {
-          uint8_t bytes[sizeof(x64_vsyscall_monkeypatch)];
-          struct x64_insns_template insns;
-        } __attribute__((packed)) patch;
-
-        memcpy(patch.bytes, x64_vsyscall_monkeypatch, sizeof(patch.bytes));
-        assert(0 == patch.insns.syscall_number);
-        patch.insns.syscall_number = syscalls_to_monkeypatch[j].syscall_number;
+        uint8_t patch[X64VsyscallMonkeypatch::size];
+        uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
+        X64VsyscallMonkeypatch::substitute(patch, syscall_number);
 
         // Absolutely-addressed symbols in the VDSO claim to start here.
         const uintptr_t base = uintptr_t(0xffffffffff700000);
@@ -1114,7 +1045,7 @@ void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
         assert((sym_address & ~uintptr_t(0xfff)) == base ||
                (sym_address & ~uintptr_t(0xfff)) == 0);
         uintptr_t sym_offset = sym_address & uintptr_t(0xfff);
-        t->write_bytes(vdso_start + sym_offset, patch.bytes);
+        t->write_bytes(vdso_start + sym_offset, patch);
         LOG(debug) << "monkeypatched " << symname << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
       }

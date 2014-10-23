@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import assembly_templates
 import StringIO
 import os
 import string
@@ -160,6 +161,7 @@ def write_check_syscall_numbers(f):
                 % (name, name, name))
 
 generators_for = {
+    'AssemblyTemplates': lambda f: assembly_templates.generate(f),
     'CheckSyscallNumbers': write_check_syscall_numbers,
     'IsAlwaysEmulatedSyscall': write_is_always_emulated_syscall,
     'SyscallDefsTable': write_syscall_defs_table,
