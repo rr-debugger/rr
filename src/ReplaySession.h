@@ -96,16 +96,10 @@ public:
   pid_t debugged_tgid() const { return tgid_debugged; }
 
   /**
-   * Set |t| as the last (debugged) task in this session.
-   *
-   * When we notify the debugger of process exit, it wants to be
-   * able to poke around at that last task.  So we store it here
-   * to allow processing debugger requests for it later.
+   * If we've finished replaying (all tracees terminated), return the last
+   * Task that ran. Sometimes debuggers need this. Returns null if replay
+   * hasn't finished yet.
    */
-  void set_last_task(Task* t) {
-    assert(!last_debugged_task);
-    last_debugged_task = t;
-  }
   Task* last_task() { return last_debugged_task; }
 
   /**
@@ -199,6 +193,18 @@ private:
         trace_in(other.trace_in),
         trace_frame(),
         current_step() {}
+
+  /**
+   * Set |t| as the last (debugged) task in this session.
+   *
+   * When we notify the debugger of process exit, it wants to be
+   * able to poke around at that last task.  So we store it here
+   * to allow processing debugger requests for it later.
+   */
+  void set_last_task(Task* t) {
+    assert(!last_debugged_task);
+    last_debugged_task = t;
+  }
 
   void setup_replay_one_trace_frame(Task* t);
 
