@@ -368,13 +368,11 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
  * |step|.  Return COMPLETE if successful, or INCOMPLETE if an unhandled trap
  * occurred.
  */
-Completion ReplaySession::enter_syscall(Task* t,
-                                        const struct rep_trace_step* step,
-                                        StepCommand stepi) {
-  if (cont_syscall_boundary(t, step->syscall.emu, stepi) == INCOMPLETE) {
+Completion ReplaySession::enter_syscall(Task* t, StepCommand stepi) {
+  if (cont_syscall_boundary(t, current_step.syscall.emu, stepi) == INCOMPLETE) {
     return INCOMPLETE;
   }
-  validate_args(step->syscall.number, SYSCALL_ENTRY, t);
+  validate_args(current_step.syscall.number, SYSCALL_ENTRY, t);
   return COMPLETE;
 }
 
@@ -382,10 +380,8 @@ Completion ReplaySession::enter_syscall(Task* t,
  * Advance past the reti (or virtual reti) according to |step|.
  * Return COMPLETE if successful, or INCOMPLETE if an unhandled trap occurred.
  */
-Completion ReplaySession::exit_syscall(Task* t,
-                                       const struct rep_trace_step* step,
-                                       StepCommand stepi) {
-  ExecOrEmulate emu = step->syscall.emu;
+Completion ReplaySession::exit_syscall(Task* t, StepCommand stepi) {
+  ExecOrEmulate emu = current_step.syscall.emu;
 
   if (emu == EXEC) {
     if (cont_syscall_boundary(t, emu, stepi) == INCOMPLETE) {
@@ -393,13 +389,13 @@ Completion ReplaySession::exit_syscall(Task* t,
     }
   }
 
-  for (int i = 0; i < step->syscall.num_emu_args; ++i) {
+  for (int i = 0; i < current_step.syscall.num_emu_args; ++i) {
     t->set_data_from_trace();
   }
-  if (step->syscall.emu_ret) {
+  if (current_step.syscall.emu_ret) {
     t->set_return_value_from_trace();
   }
-  validate_args(step->syscall.number, SYSCALL_EXIT, t);
+  validate_args(current_step.syscall.number, SYSCALL_EXIT, t);
 
   if (emu == EMULATE) {
     t->finish_emulated_syscall();
@@ -1312,29 +1308,28 @@ static bool has_deterministic_ticks(const Event& ev,
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
  * more work.
  */
-Completion ReplaySession::try_one_trace_step(Task* t,
-                                             struct rep_trace_step* step,
-                                             StepCommand stepi) {
-  switch (step->action) {
+Completion ReplaySession::try_one_trace_step(Task* t, StepCommand stepi) {
+  switch (current_step.action) {
     case TSTEP_RETIRE:
       return COMPLETE;
     case TSTEP_ENTER_SYSCALL:
-      return enter_syscall(t, step, stepi);
+      return enter_syscall(t, stepi);
     case TSTEP_EXIT_SYSCALL:
-      return exit_syscall(t, step, stepi);
+      return exit_syscall(t, stepi);
     case TSTEP_DETERMINISTIC_SIGNAL:
-      return emulate_deterministic_signal(t, step->signo, stepi);
+      return emulate_deterministic_signal(t, current_step.signo, stepi);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(t, &trace_frame.regs(), step->target.signo,
-                                  stepi, step->target.ticks);
+      return emulate_async_signal(t, &trace_frame.regs(),
+                                  current_step.target.signo, stepi,
+                                  current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(t, step->signo);
+      return emulate_signal_delivery(t, current_step.signo);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, stepi);
     case TSTEP_DESCHED:
-      return skip_desched_ioctl(t, &step->desched, stepi);
+      return skip_desched_ioctl(t, &current_step.desched, stepi);
     default:
-      FATAL() << "Unhandled step type " << step->action;
+      FATAL() << "Unhandled step type " << current_step.action;
       return COMPLETE;
   }
 }
@@ -1493,7 +1488,7 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
 
   /* Advance towards fulfilling |current_step|. */
   RepTraceStepType current_action = current_step.action;
-  if (try_one_trace_step(t, &current_step, command) == INCOMPLETE) {
+  if (try_one_trace_step(t, command) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an

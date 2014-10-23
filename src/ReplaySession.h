@@ -195,14 +195,11 @@ private:
   void setup_replay_one_trace_frame(Task* t);
   void advance_to_next_trace_frame();
   Completion emulate_signal_delivery(Task* oldtask, int sig);
-  Completion try_one_trace_step(Task* t, struct rep_trace_step* step,
-                                StepCommand stepi);
+  Completion try_one_trace_step(Task* t, StepCommand stepi);
   Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
                                    StepCommand stepi);
-  Completion enter_syscall(Task* t, const struct rep_trace_step* step,
-                           StepCommand stepi);
-  Completion exit_syscall(Task* t, const struct rep_trace_step* step,
-                          StepCommand stepi);
+  Completion enter_syscall(Task* t, StepCommand stepi);
+  Completion exit_syscall(Task* t, StepCommand stepi);
   Ticks get_ticks_slack(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
   void continue_or_step(Task* t, StepCommand stepi, int64_t tick_period = 0);
