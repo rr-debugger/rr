@@ -70,7 +70,7 @@ struct ReplayFlushBufferedSyscallState {
  * Describes the next step to be taken in order to replay a trace
  * frame.
  */
-enum RepTraceStepType {
+enum ReplayTraceStepType {
   TSTEP_NONE,
 
   /* Frame has been replayed, done. */
@@ -115,7 +115,7 @@ enum ExecOrEmulateReturn {
  * to be simple data, i.e. not holding pointers to per-Session data.
  */
 struct rep_trace_step {
-  RepTraceStepType action;
+  ReplayTraceStepType action;
 
   union {
     struct {

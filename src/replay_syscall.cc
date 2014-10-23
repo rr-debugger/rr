@@ -289,7 +289,7 @@ static bool is_failed_syscall(Task* t, const TraceFrame* frame) {
   return frame->regs().syscall_failed();
 }
 
-static RepTraceStepType syscall_action(SyscallEntryOrExit state) {
+static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
   return state == SYSCALL_ENTRY ? TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
 }
 

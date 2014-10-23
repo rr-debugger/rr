@@ -1484,7 +1484,7 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
   }
 
   /* Advance towards fulfilling |current_step|. */
-  RepTraceStepType current_action = current_step.action;
+  ReplayTraceStepType current_action = current_step.action;
   if (try_one_trace_step(t, command) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
