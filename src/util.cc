@@ -266,14 +266,6 @@ void print_process_state(pid_t tid) {
   fclose(file);
 }
 
-void print_cwd(pid_t tid, char* str) {
-  char path[64];
-  fflush(stdout);
-  bzero(path, 64);
-  sprintf(path, "/proc/%d/cwd", tid);
-  assert(readlink(path, str, 1024) != -1);
-}
-
 bool compare_register_files(Task* t, const char* name1, const Registers&reg1,
                             const char* name2, const Registers& reg2,
                             int mismatch_behavior) {
