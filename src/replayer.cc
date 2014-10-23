@@ -1266,9 +1266,7 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
  * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
  * emulation was interrupted, COMPLETE if completed.
  */
-static Completion emulate_signal_delivery(struct dbg_context* dbg,
-                                          Task* oldtask, int sig,
-                                          struct dbg_request* req) {
+static Completion emulate_signal_delivery(Task* oldtask, int sig) {
   // We are now at the exact point in the child where the signal
   // was recorded, emulate it using the next trace frame (records
   // the state at sighandler entry).
@@ -1339,15 +1337,14 @@ static void check_ticks_consistency(Task* t, const Event& ev) {
  * update registers to what was recorded.  Return COMPLETE if successful or
  * INCOMPLETE  if an unhandled interrupt occurred.
  */
-static Completion emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
-                                               int sig, Stepping stepi,
-                                               struct dbg_request* req) {
+static Completion emulate_deterministic_signal(Task* t, int sig,
+                                               Stepping stepi) {
   Event ev(t->current_trace_frame().event());
 
   continue_or_step(t, stepi);
   if (is_ignored_replay_signal(t->child_sig)) {
     t->child_sig = 0;
-    return emulate_deterministic_signal(dbg, t, sig, stepi, req);
+    return emulate_deterministic_signal(t, sig, stepi);
   } else if (SIGTRAP == t->child_sig &&
              is_debugger_trap(t, sig, DETERMINISTIC_SIG, UNKNOWN, stepi)) {
     return INCOMPLETE;
@@ -1375,10 +1372,8 @@ static Completion emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
  * nonzero.  Return COMPLETE if successful or INCOMPLETE if an unhandled
  * interrupt occurred.
  */
-static Completion emulate_async_signal(struct dbg_context* dbg, Task* t,
-                                       const Registers* regs, int sig,
-                                       Stepping stepi, Ticks ticks,
-                                       struct dbg_request* req) {
+static Completion emulate_async_signal(Task* t, const Registers* regs, int sig,
+                                       Stepping stepi, Ticks ticks) {
   if (advance_to(t, regs, 0, stepi, ticks) == INCOMPLETE) {
     return INCOMPLETE;
   }
@@ -1676,8 +1671,7 @@ static Completion flush_syscallbuf(Task* t, Stepping stepi) {
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
  * more work.
  */
-static Completion try_one_trace_step(struct dbg_context* dbg, Task* t,
-                                     struct rep_trace_step* step,
+static Completion try_one_trace_step(Task* t, struct rep_trace_step* step,
                                      struct dbg_request* req) {
   Stepping stepi = (DREQ_STEP == req->type && get_threadid(t) == req->target)
                        ? SINGLESTEP
@@ -1690,13 +1684,13 @@ static Completion try_one_trace_step(struct dbg_context* dbg, Task* t,
     case TSTEP_EXIT_SYSCALL:
       return exit_syscall(t, step, stepi);
     case TSTEP_DETERMINISTIC_SIGNAL:
-      return emulate_deterministic_signal(dbg, t, step->signo, stepi, req);
+      return emulate_deterministic_signal(t, step->signo, stepi);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(dbg, t, &t->current_trace_frame().regs(),
-                                  step->target.signo, stepi, step->target.ticks,
-                                  req);
+      return emulate_async_signal(t, &t->current_trace_frame().regs(),
+                                  step->target.signo, stepi,
+                                  step->target.ticks);
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(dbg, t, step->signo, req);
+      return emulate_signal_delivery(t, step->signo);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, stepi);
     case TSTEP_DESCHED:
@@ -1712,7 +1706,7 @@ static Completion try_one_trace_step(struct dbg_context* dbg, Task* t,
  * All we can do is notify the debugger, process its final requests,
  * and then die.
  */
-static void handle_interrupted_trace(struct dbg_context* dbg, Task* t) {
+static void handle_interrupted_trace(Task* t) {
   if (!probably_not_interactive()) {
     fprintf(
         stderr,
@@ -1906,14 +1900,14 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
 
   /* Advance until |step| has been fulfilled. */
   RepTraceStepType current_action = step.action;
-  while (try_one_trace_step(dbg, t, &step, &req) == INCOMPLETE) {
+  while (try_one_trace_step(t, &step, &req) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == t->current_trace_frame().event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
       // early-termination marker.  Otherwise we
       // would have seen the marker at
       // |schedule_task()|.
-      handle_interrupted_trace(dbg, t);
+      handle_interrupted_trace(t);
       return true;
     }
 
@@ -2261,7 +2255,7 @@ static void replay_trace_frames(void) {
       Task* intr_t;
       Task* t = schedule_task(*session, &intr_t, advance_to_next_trace_frame);
       if (!t) {
-        handle_interrupted_trace(dbg, intr_t);
+        handle_interrupted_trace(intr_t);
         break;
       }
       struct dbg_request restart_request;
