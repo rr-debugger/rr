@@ -1006,7 +1006,7 @@ Completion ReplaySession::emulate_async_signal(Task* t, int sig,
  * successfully skipped over.
  */
 Completion ReplaySession::skip_desched_ioctl(Task* t,
-                                             struct rep_desched_state* ds,
+                                             ReplayDeschedState* ds,
                                              StepCommand stepi) {
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&

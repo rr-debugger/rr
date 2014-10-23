@@ -21,7 +21,7 @@ enum RepDeschedState {
   DESCHED_ENTER,
   DESCHED_EXIT
 };
-struct rep_desched_state {
+struct ReplayDeschedState {
   /* Is this an arm or disarm request? */
   RepDeschedType type;
   /* What's our next step to retire the ioctl? */
@@ -62,7 +62,7 @@ struct rep_flush_state {
   RepFlushState state;
   /* Track the state of retiring desched arm/disarm ioctls, when
    * necessary. */
-  struct rep_desched_state desched;
+  ReplayDeschedState desched;
 };
 
 /**
@@ -142,7 +142,7 @@ struct rep_trace_step {
 
     struct rep_flush_state flush;
 
-    struct rep_desched_state desched;
+    ReplayDeschedState desched;
   };
 };
 
@@ -355,7 +355,7 @@ private:
   Completion emulate_deterministic_signal(Task* t, int sig, StepCommand stepi);
   Completion emulate_async_signal(Task* t, int sig, StepCommand stepi,
                                   Ticks ticks);
-  Completion skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
+  Completion skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
                                 StepCommand stepi);
   void prepare_syscallbuf_records(Task* t);
   Completion flush_one_syscall(Task* t, StepCommand stepi);
