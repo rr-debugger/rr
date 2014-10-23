@@ -175,7 +175,7 @@ private:
         trace_in(dir),
         trace_frame(),
         current_step() {
-    trace_frame = trace_in.read_frame();
+    advance_to_next_trace_frame();
     emu_fs = EmuFs::create();
   }
 
@@ -201,6 +201,39 @@ private:
   }
 
   void setup_replay_one_trace_frame(Task* t);
+  void advance_to_next_trace_frame();
+  Completion emulate_signal_delivery(Task* oldtask, int sig);
+  Completion try_one_trace_step(Task* t, struct rep_trace_step* step,
+                                StepCommand stepi);
+  Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
+                                   StepCommand stepi);
+  Completion enter_syscall(Task* t, const struct rep_trace_step* step,
+                           StepCommand stepi);
+  Completion exit_syscall(Task* t, const struct rep_trace_step* step,
+                          StepCommand stepi);
+  void continue_or_step(Task* t, StepCommand stepi, int64_t tick_period = 0);
+  enum ExecStateType {
+    UNKNOWN,
+    NOT_AT_TARGET,
+    AT_TARGET
+  };
+  TrapType compute_trap_type(Task* t, int target_sig,
+                             SignalDeterministic deterministic,
+                             ExecStateType exec_state, StepCommand stepi);
+  bool is_debugger_trap(Task* t, int target_sig,
+                        SignalDeterministic deterministic,
+                        ExecStateType exec_state, StepCommand stepi);
+  Completion advance_to(Task* t, const Registers* regs, int sig,
+                        StepCommand stepi, Ticks ticks);
+  Completion emulate_deterministic_signal(Task* t, int sig, StepCommand stepi);
+  Completion emulate_async_signal(Task* t, const Registers* regs, int sig,
+                                  StepCommand stepi, Ticks ticks);
+  Completion skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
+                                StepCommand stepi);
+  void prepare_syscallbuf_records(Task* t);
+  Completion flush_one_syscall(Task* t, StepCommand stepi);
+  Completion flush_syscallbuf(Task* t, StepCommand stepi);
+  bool is_last_interesting_task(Task* t);
 
   std::shared_ptr<EmuFs> emu_fs;
   // Number of client references to this, if it's a diversion

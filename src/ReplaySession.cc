@@ -57,11 +57,6 @@ using namespace std;
  */
 static const int SKID_SIZE = 70;
 
-enum Stepping {
-  RUN,
-  SINGLESTEP
-};
-
 static void debug_memory(Task* t) {
   if (should_dump_memory(t, t->current_trace_frame())) {
     dump_process_memory(t, t->current_trace_frame().time(), "rep");
@@ -232,44 +227,27 @@ void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
   return session;
 }
 
-/**
- * Return the task that was recorded running the next event in the
- * trace, and should be replayed now.  Return nullptr if the trace was
- * interrupted at this point in recording.  If so, |*intr_t| is set to
- * the task recorded along with that event, if there was one.
- * |intr_t| may be nullptr.
- */
-static Task* schedule_task(ReplaySession& session, Task** intr_t) {
-  /* We shouldn't be scheduling a task which has already reached
-   * its current_trace_frame().
-   */
-  Task* t = session.find_task(session.current_trace_frame().tid());
-  assert(t);
-  ASSERT(t, &session == &t->replay_session());
-
-  if (EV_TRACE_TERMINATION == session.current_trace_frame().event().type) {
-    if (intr_t) {
-      *intr_t = t;
-    }
-    return nullptr;
+void ReplaySession::advance_to_next_trace_frame() {
+  if (last_task()) {
+    // Already finished replay; no need to advance (and in fact, we can't).
+    return;
   }
+
+  trace_frame = trace_in.read_frame();
 
   // Subsequent reschedule-events of the same thread can be
   // combined to a single event.  This meliorization is a
   // tremendous win.
-  if (USE_TIMESLICE_COALESCING &&
-      session.current_trace_frame().event().type == EV_SCHED) {
-    TraceFrame next_trace = session.trace_reader().peek_frame();
-    while (EV_SCHED == next_trace.event().type &&
-           next_trace.tid() == t->rec_tid &&
-           Flags::get().goto_event != next_trace.time() &&
-           !trace_instructions_up_to_event(next_trace.time())) {
-      session.current_trace_frame() = session.trace_reader().read_frame();
-      next_trace = session.trace_reader().peek_frame();
+  if (USE_TIMESLICE_COALESCING && trace_frame.event().type == EV_SCHED) {
+    TraceFrame next_frame = trace_in.peek_frame();
+    while (EV_SCHED == next_frame.event().type &&
+           next_frame.tid() == trace_frame.tid() &&
+           Flags::get().goto_event != next_frame.time() &&
+           !trace_instructions_up_to_event(next_frame.time())) {
+      trace_frame = trace_in.read_frame();
+      next_frame = trace_in.peek_frame();
     }
   }
-  assert(t->trace_time() == session.current_trace_frame().time());
-  return t;
 }
 
 /**
@@ -331,8 +309,8 @@ static bool entering_syscall_insn(Task* t) {
  * boundary is reached, or INCOMPLETE if advancing to the boundary was
  * interrupted by an unknown trap.
  */
-static Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
-                                        Stepping stepi) {
+Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
+                                                StepCommand stepi) {
   bool is_syscall_entry =
       SYSCALL_ENTRY == t->current_trace_frame().event().state;
   if (is_syscall_entry) {
@@ -340,11 +318,11 @@ static Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   }
 
   ResumeRequest resume_how;
-  if (emu == EMULATE && stepi == SINGLESTEP) {
+  if (emu == EMULATE && stepi == RUN_SINGLESTEP) {
     resume_how = RESUME_SYSEMU_SINGLESTEP;
   } else if (emu == EMULATE) {
     resume_how = RESUME_SYSEMU;
-  } else if (stepi == SINGLESTEP) {
+  } else if (stepi == RUN_SINGLESTEP) {
     resume_how = RESUME_SINGLESTEP;
     // Annoyingly, PTRACE_SINGLESTEP doesn't raise
     // PTRACE_O_SYSGOOD traps.  (Unlike
@@ -391,8 +369,9 @@ static Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
  * |step|.  Return COMPLETE if successful, or INCOMPLETE if an unhandled trap
  * occurred.
  */
-static Completion enter_syscall(Task* t, const struct rep_trace_step* step,
-                                Stepping stepi) {
+Completion ReplaySession::enter_syscall(Task* t,
+                                        const struct rep_trace_step* step,
+                                        StepCommand stepi) {
   if (cont_syscall_boundary(t, step->syscall.emu, stepi) == INCOMPLETE) {
     return INCOMPLETE;
   }
@@ -404,8 +383,9 @@ static Completion enter_syscall(Task* t, const struct rep_trace_step* step,
  * Advance past the reti (or virtual reti) according to |step|.
  * Return COMPLETE if successful, or INCOMPLETE if an unhandled trap occurred.
  */
-static Completion exit_syscall(Task* t, const struct rep_trace_step* step,
-                               Stepping stepi) {
+Completion ReplaySession::exit_syscall(Task* t,
+                                       const struct rep_trace_step* step,
+                                       StepCommand stepi) {
   ExecOrEmulate emu = step->syscall.emu;
 
   if (emu == EXEC) {
@@ -433,11 +413,12 @@ static Completion exit_syscall(Task* t, const struct rep_trace_step* step,
  * then execution resumes by single-stepping.  Otherwise it continues
  * normally.  The delivered signal is recorded in |t->child_sig|.
  */
-static void continue_or_step(Task* t, Stepping stepi, int64_t tick_period = 0) {
+void ReplaySession::continue_or_step(Task* t, StepCommand stepi,
+                                     int64_t tick_period) {
   int child_sig_gt_zero;
 
   ResumeRequest resume_how;
-  if (stepi == SINGLESTEP) {
+  if (stepi == RUN_SINGLESTEP) {
     resume_how = RESUME_SINGLESTEP;
   } else {
     /* We continue with RESUME_SYSCALL for error checking:
@@ -493,9 +474,10 @@ enum ExecStateType {
   NOT_AT_TARGET,
   AT_TARGET
 };
-static TrapType compute_trap_type(Task* t, int target_sig,
-                                  SignalDeterministic deterministic,
-                                  ExecStateType exec_state, Stepping stepi) {
+TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
+                                          SignalDeterministic deterministic,
+                                          ExecStateType exec_state,
+                                          StepCommand stepi) {
   TrapType trap_type;
 
   assert(SIGTRAP == t->child_sig);
@@ -513,8 +495,8 @@ static TrapType compute_trap_type(Task* t, int target_sig,
             * so the trap was only clearly for the debugger if
             * the debugger was requesting single-stepping. */
        ||
-       (stepi == SINGLESTEP && NOT_AT_TARGET == exec_state))) {
-    return stepi == SINGLESTEP ? TRAP_STEPI : TRAP_BKPT_USER;
+       (stepi == RUN_SINGLESTEP && NOT_AT_TARGET == exec_state))) {
+    return stepi == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_BKPT_USER;
   }
 
   /* We're trying to replay a deterministic SIGTRAP, or we're
@@ -542,7 +524,7 @@ static TrapType compute_trap_type(Task* t, int target_sig,
      * and this wasn't a breakpoint, we must have been
      * single stepping.  So definitely for the
      * debugger. */
-    assert(stepi == SINGLESTEP);
+    assert(stepi == RUN_SINGLESTEP);
     return TRAP_STEPI;
   }
 
@@ -561,16 +543,17 @@ static TrapType compute_trap_type(Task* t, int target_sig,
    * if it was also requesting single-stepping.  The debugger
    * won't care about the rr-internal trap if it wasn't
    * requesting single-stepping. */
-  return stepi == SINGLESTEP ? TRAP_STEPI : TRAP_NONE;
+  return stepi == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_NONE;
 }
 
 /**
  * Shortcut for callers that don't care about internal breakpoints.
  * Return nonzero if |t|'s trap is for the debugger, zero otherwise.
  */
-static bool is_debugger_trap(Task* t, int target_sig,
-                             SignalDeterministic deterministic,
-                             ExecStateType exec_state, Stepping stepi) {
+bool ReplaySession::is_debugger_trap(Task* t, int target_sig,
+                                     SignalDeterministic deterministic,
+                                     ExecStateType exec_state,
+                                     StepCommand stepi) {
   TrapType type =
       compute_trap_type(t, target_sig, deterministic, exec_state, stepi);
   assert(TRAP_BKPT_INTERNAL != type);
@@ -688,8 +671,8 @@ static Ticks get_ticks_slack(Task* t) {
  * that will be decremented by branches retired during this attempted
  * step.
  */
-static Completion advance_to(Task* t, const Registers* regs, int sig,
-                             Stepping stepi, Ticks ticks) {
+Completion ReplaySession::advance_to(Task* t, const Registers* regs, int sig,
+                                     StepCommand stepi, Ticks ticks) {
   pid_t tid = t->tid;
   remote_ptr<uint8_t> ip = regs->ip();
   Ticks ticks_left;
@@ -821,7 +804,7 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
            * awkward to assert that here, so we
            * don't yet.  TODO. */
           LOG(debug) << "    (SIGTRAP; stepi'd target $ip)";
-          assert(stepi == RUN);
+          assert(stepi == RUN_CONTINUE);
           t->child_sig = 0;
           break;
       }
@@ -872,7 +855,7 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
        * would just trap and we'd be back where we
        * started.  Single-step past it. */
       LOG(debug) << "    (single-stepping over target $ip)";
-      continue_or_step(t, SINGLESTEP);
+      continue_or_step(t, RUN_SINGLESTEP);
     }
 
     if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
@@ -904,34 +887,32 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
  * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
  * emulation was interrupted, COMPLETE if completed.
  */
-static Completion emulate_signal_delivery(Task* oldtask, int sig) {
+Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
   // We are now at the exact point in the child where the signal
   // was recorded, emulate it using the next trace frame (records
   // the state at sighandler entry).
-  ReplaySession& session = oldtask->replay_session();
-  session.current_trace_frame() = session.trace_reader().read_frame();
-  Task* t = session.find_task(session.current_trace_frame().tid());
+  advance_to_next_trace_frame();
+  Task* t = next_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
     // that knows what to do.
     return INCOMPLETE;
   }
   ASSERT(oldtask, t == oldtask) << "emulate_signal_delivery changed task";
-  const TraceFrame* trace = &t->current_trace_frame();
 
-  ASSERT(t, trace->event().type == EV_SIGNAL_DELIVERY ||
-                trace->event().type == EV_SIGNAL_HANDLER)
+  ASSERT(t, trace_frame.event().type == EV_SIGNAL_DELIVERY ||
+                trace_frame.event().type == EV_SIGNAL_HANDLER)
       << "Unexpected signal disposition";
   // Entering a signal handler seems to clear FP/SSE registers for some
   // reason. So we saved those cleared values, and now we restore that
   // state so they're cleared during replay.
-  if (trace->event().type == EV_SIGNAL_HANDLER) {
-    t->set_extra_regs(trace->extra_regs());
+  if (trace_frame.event().type == EV_SIGNAL_HANDLER) {
+    t->set_extra_regs(trace_frame.extra_regs());
   }
 
   /* Restore the signal-hander frame data, if there was one. */
   SignalDeterministic deterministic =
-      Event(trace->event()).Signal().deterministic;
+      Event(trace_frame.event()).Signal().deterministic;
   bool restored_sighandler_frame = 0 < t->set_data_from_trace();
   if (restored_sighandler_frame) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));
@@ -947,7 +928,7 @@ static Completion emulate_signal_delivery(Task* oldtask, int sig) {
   /* If this signal had a user handler, and we just set up the
    * callframe, and we need to restore the $sp for continued
    * execution. */
-  t->set_regs(trace->regs());
+  t->set_regs(trace_frame.regs());
   /* Delivered the signal. */
   t->child_sig = 0;
 
@@ -977,8 +958,8 @@ static void check_ticks_consistency(Task* t, const Event& ev) {
  * update registers to what was recorded.  Return COMPLETE if successful or
  * INCOMPLETE  if an unhandled interrupt occurred.
  */
-static Completion emulate_deterministic_signal(Task* t, int sig,
-                                               Stepping stepi) {
+Completion ReplaySession::emulate_deterministic_signal(Task* t, int sig,
+                                                       StepCommand stepi) {
   Event ev(t->current_trace_frame().event());
 
   continue_or_step(t, stepi);
@@ -1012,8 +993,9 @@ static Completion emulate_deterministic_signal(Task* t, int sig,
  * nonzero.  Return COMPLETE if successful or INCOMPLETE if an unhandled
  * interrupt occurred.
  */
-static Completion emulate_async_signal(Task* t, const Registers* regs, int sig,
-                                       Stepping stepi, Ticks ticks) {
+Completion ReplaySession::emulate_async_signal(Task* t, const Registers* regs,
+                                               int sig, StepCommand stepi,
+                                               Ticks ticks) {
   if (advance_to(t, regs, 0, stepi, ticks) == INCOMPLETE) {
     return INCOMPLETE;
   }
@@ -1032,8 +1014,9 @@ static Completion emulate_async_signal(Task* t, const Registers* regs, int sig,
  * if an unhandled interrupt occurred, COMPLETE if the ioctl() was
  * successfully skipped over.
  */
-static Completion skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
-                                     Stepping stepi) {
+Completion ReplaySession::skip_desched_ioctl(Task* t,
+                                             struct rep_desched_state* ds,
+                                             StepCommand stepi) {
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&
       cont_syscall_boundary(t, EMULATE, stepi) == INCOMPLETE) {
@@ -1065,7 +1048,7 @@ static Completion skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
  * tracee for replaying the records.  Return the number of record
  * bytes and a pointer to the first record through outparams.
  */
-static void prepare_syscallbuf_records(Task* t) {
+void ReplaySession::prepare_syscallbuf_records(Task* t) {
   struct rep_flush_state* flush =
       &t->replay_session().current_replay_step().flush;
   if (!flush->need_buffer_restore) {
@@ -1154,7 +1137,7 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
  * INCOMPLETE if an unhandled interrupt occurred, and COMPLETE if the syscall
  * was flushed (in which case |flush->state == DONE|).
  */
-static Completion flush_one_syscall(Task* t, Stepping stepi) {
+Completion ReplaySession::flush_one_syscall(Task* t, StepCommand stepi) {
   struct rep_flush_state* flush =
       &t->replay_session().current_replay_step().flush;
   const syscallbuf_hdr* flush_hdr =
@@ -1277,7 +1260,7 @@ static Completion flush_one_syscall(Task* t, Stepping stepi) {
  * that flushed the buffer).  Return COMPLETE if successful or INCOMPLETE if an
  * unhandled interrupt occurred.
  */
-static Completion flush_syscallbuf(Task* t, Stepping stepi) {
+Completion ReplaySession::flush_syscallbuf(Task* t, StepCommand stepi) {
   prepare_syscallbuf_records(t);
 
   struct rep_flush_state* flush =
@@ -1307,7 +1290,7 @@ static Completion flush_syscallbuf(Task* t, Stepping stepi) {
 }
 
 /** Return true when replaying/debugging should cease after |t| exits. */
-static bool is_last_interesting_task(Task* t) {
+bool ReplaySession::is_last_interesting_task(Task* t) {
   return (0 == t->replay_session().debugged_tgid() &&
           t->session().tasks().size() == 1) ||
          (t->tgid() == t->replay_session().debugged_tgid() &&
@@ -1336,8 +1319,9 @@ static bool has_deterministic_ticks(const Event& ev,
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
  * more work.
  */
-static Completion try_one_trace_step(Task* t, struct rep_trace_step* step,
-                                     Stepping stepi) {
+Completion ReplaySession::try_one_trace_step(Task* t,
+                                             struct rep_trace_step* step,
+                                             StepCommand stepi) {
   switch (step->action) {
     case TSTEP_RETIRE:
       return COMPLETE;
@@ -1489,10 +1473,10 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
   StepResult result;
 
-  Task* intr_t;
-  Task* t = schedule_task(*this, &intr_t);
-  if (!t) {
-    set_last_task(intr_t);
+  Task* t = next_task();
+
+  if (EV_TRACE_TERMINATION == trace_frame.event().type) {
+    set_last_task(t);
     result.status = STEP_EXITED;
     result.exit_code = -1;
     return result;
@@ -1509,7 +1493,7 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
     if (current_step.action == TSTEP_NONE) {
       // Already at the destination event.
       if (!last_task()) {
-        trace_frame = trace_in.read_frame();
+        advance_to_next_trace_frame();
       }
       return result;
     }
@@ -1517,8 +1501,7 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
 
   /* Advance towards fulfilling |current_step|. */
   RepTraceStepType current_action = current_step.action;
-  Stepping stepi = command == RUN_SINGLESTEP ? SINGLESTEP : RUN;
-  if (try_one_trace_step(t, &current_step, stepi) == INCOMPLETE) {
+  if (try_one_trace_step(t, &current_step, command) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
@@ -1629,8 +1612,6 @@ ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
 
   // Record that this step completed successfully.
   current_step.action = TSTEP_NONE;
-  if (!last_task()) {
-    trace_frame = trace_in.read_frame();
-  }
+  advance_to_next_trace_frame();
   return result;
 }
