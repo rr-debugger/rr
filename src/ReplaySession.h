@@ -13,19 +13,19 @@ struct syscallbuf_hdr;
 /**
  * The state of a (dis)arm-desched-event ioctl that's being processed.
  */
-enum RepDeschedType {
+enum ReplayDeschedType {
   DESCHED_ARM,
   DESCHED_DISARM
 };
-enum RepDeschedState {
+enum ReplayDeschedEnterExit {
   DESCHED_ENTER,
   DESCHED_EXIT
 };
 struct ReplayDeschedState {
   /* Is this an arm or disarm request? */
-  RepDeschedType type;
+  ReplayDeschedType type;
   /* What's our next step to retire the ioctl? */
-  RepDeschedState state;
+  ReplayDeschedEnterExit state;
 };
 
 /**
