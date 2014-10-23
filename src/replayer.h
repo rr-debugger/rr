@@ -124,9 +124,11 @@ enum RepTraceStepType {
   TSTEP_DETERMINISTIC_SIGNAL,
 
   /* Advance until |target.ticks| have been retired and then
-   * |target.ip| is reached.  Deliver |target.signo| after that
-   * if it's nonzero. */
+   * |target.ip| is reached. */
   TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT,
+
+  /* Deliver signal |signo|. */
+  TSTEP_DELIVER_SIGNAL,
 
   /* Replay the upcoming buffered syscalls.  |flush| tracks the
    * replay state.*/

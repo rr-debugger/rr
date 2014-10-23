@@ -1268,16 +1268,7 @@ static Completion advance_to(Task* t, const Registers* regs, int sig,
  */
 static Completion emulate_signal_delivery(struct dbg_context* dbg,
                                           Task* oldtask, int sig,
-                                          SignalDeterministic deterministic,
                                           struct dbg_request* req) {
-  // Notify the debugger of the signal at the instruction where
-  // it became pending, not in the sighandler frame (if there is
-  // one).
-  if (dbg) {
-    dbg_notify_stop(dbg, get_threadid(oldtask), sig);
-    *req = process_debugger_requests(dbg, oldtask);
-  }
-
   // We are now at the exact point in the child where the signal
   // was recorded, emulate it using the next trace frame (records
   // the state at sighandler entry).
@@ -1301,19 +1292,18 @@ static Completion emulate_signal_delivery(struct dbg_context* dbg,
   }
 
   /* Restore the signal-hander frame data, if there was one. */
+  SignalDeterministic deterministic =
+      Event(trace->event()).Signal().deterministic;
   bool restored_sighandler_frame = 0 < t->set_data_from_trace();
   if (restored_sighandler_frame) {
+    t->push_event(SignalEvent(sig, deterministic, t->arch()));
+    t->ev().transform(EV_SIGNAL_DELIVERY);
     LOG(debug) << "--> restoring sighandler frame for " << signalname(sig);
-    t->push_event(SignalEvent(sig, deterministic, t->arch()));
-    t->ev().transform(EV_SIGNAL_DELIVERY);
     t->ev().transform(EV_SIGNAL_HANDLER);
-  } else if (possibly_destabilizing_signal(
-                 t, sig, Event(trace->event()).Signal().deterministic)) {
+  } else if (possibly_destabilizing_signal(t, sig, deterministic)) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
-
     t->destabilize_task_group();
-
     t->pop_signal_delivery();
   }
   /* If this signal had a user handler, and we just set up the
@@ -1373,7 +1363,10 @@ static Completion emulate_deterministic_signal(struct dbg_context* dbg, Task* t,
     t->child_sig = 0;
     return COMPLETE;
   }
-  return emulate_signal_delivery(dbg, t, sig, DETERMINISTIC_SIG, req);
+
+  struct rep_trace_step& step = t->replay_session().current_replay_step();
+  step.action = TSTEP_DELIVER_SIGNAL;
+  return INCOMPLETE;
 }
 
 /**
@@ -1389,8 +1382,10 @@ static Completion emulate_async_signal(struct dbg_context* dbg, Task* t,
   if (advance_to(t, regs, 0, stepi, ticks) == INCOMPLETE) {
     return INCOMPLETE;
   }
-  if (sig && emulate_signal_delivery(dbg, t, sig, NONDETERMINISTIC_SIG, req) ==
-                 INCOMPLETE) {
+  if (sig) {
+    struct rep_trace_step& step = t->replay_session().current_replay_step();
+    step.action = TSTEP_DELIVER_SIGNAL;
+    step.signo = sig;
     return INCOMPLETE;
   }
   return COMPLETE;
@@ -1700,6 +1695,8 @@ static Completion try_one_trace_step(struct dbg_context* dbg, Task* t,
       return emulate_async_signal(dbg, t, &t->current_trace_frame().regs(),
                                   step->target.signo, stepi, step->target.ticks,
                                   req);
+    case TSTEP_DELIVER_SIGNAL:
+      return emulate_signal_delivery(dbg, t, step->signo, req);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, stepi);
     case TSTEP_DESCHED:
@@ -1908,7 +1905,8 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
   }
 
   /* Advance until |step| has been fulfilled. */
-  while (try_one_trace_step(dbg, t, &step, &req)) {
+  RepTraceStepType current_action = step.action;
+  while (try_one_trace_step(dbg, t, &step, &req) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == t->current_trace_frame().event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
@@ -1919,78 +1917,86 @@ static bool replay_one_trace_frame(struct dbg_context* dbg, Task* t,
       return true;
     }
 
-    TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
-    TrapType retired_bp =
-        t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
-    ASSERT(t, (SIGTRAP == t->child_sig || TRAP_BKPT_USER == pending_bp))
-        << "Expected either SIGTRAP at $ip " << t->ip()
-        << " or USER breakpoint just before it";
-
-    // NBB: very little effort has been made to handle
-    // corner cases where multiple
-    // breakpoints/watchpoints/singlesteps are fired
-    // simultaneously.  These cases will be addressed as
-    // they arise in practice.
     remote_ptr<void> watch_addr = nullptr;
-    if (SIGTRAP != t->child_sig) {
-      assert(TRAP_BKPT_USER == pending_bp);
-      LOG(debug) << "hit debugger breakpoint BEFORE ip " << t->ip() << " for "
-                 << signalname(t->child_sig);
-// A signal was raised /just/ before a trap
-// instruction for a SW breakpoint.  This is
-// observed when debuggers write trap
-// instructions into no-exec memory, for
-// example the stack.
-//
-// We report the breakpoint before any signal
-// that might have been raised in order to let
-// the debugger do something at the breakpoint
-// insn; possibly clearing the breakpoint and
-// changing the $ip.  Otherwise, we expect the
-// debugger to clear the breakpoint and resume
-// execution, which should raise the original
-// signal again.
-#ifdef DEBUGTAG
-      siginfo_t si = t->get_siginfo();
-      psiginfo(&si, "  siginfo for signal-stop:\n    ");
-#endif
-    } else if (TRAP_BKPT_USER == retired_bp) {
-      LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
-      // SW breakpoint: $ip is just past the
-      // breakpoint instruction.  Move $ip back
-      // right before it.
-      t->move_ip_before_breakpoint();
-    } else if (DS_SINGLESTEP & t->debug_status()) {
-      LOG(debug) << "  finished debugger stepi";
-      /* Successful stepi.  Nothing else to do. */
-      assert(DREQ_STEP == req.type && req.target == get_threadid(t));
-    }
+    int will_deliver_signal =
+        step.action != current_action && step.action == TSTEP_DELIVER_SIGNAL
+            ? step.signo
+            : 0;
+    if (!will_deliver_signal) {
+      TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
+      TrapType retired_bp =
+          t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
+      ASSERT(t, will_deliver_signal || SIGTRAP == t->child_sig ||
+                    TRAP_BKPT_USER == pending_bp)
+          << "Expected either SIGTRAP at $ip " << t->ip()
+          << " or USER breakpoint just before it";
 
-    if (DS_WATCHPOINT_ANY & t->debug_status()) {
-      LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
-                 << "): hit debugger watchpoint.";
-      // XXX it's possible for multiple watchpoints
-      // to be triggered simultaneously.  No attempt
-      // to prioritize them is made here; we just
-      // choose the first one that fired.
-      size_t dr = DS_WATCHPOINT0 & t->debug_status()
-                      ? 0
-                      : DS_WATCHPOINT1 & t->debug_status()
-                            ? 1
-                            : DS_WATCHPOINT2 & t->debug_status()
-                                  ? 2
-                                  : DS_WATCHPOINT3 & t->debug_status() ? 3 : -1;
-      watch_addr = t->watchpoint_addr(dr);
+      // NBB: very little effort has been made to handle
+      // corner cases where multiple
+      // breakpoints/watchpoints/singlesteps are fired
+      // simultaneously.  These cases will be addressed as
+      // they arise in practice.
+      if (SIGTRAP != t->child_sig) {
+        assert(TRAP_BKPT_USER == pending_bp);
+        // A signal was raised /just/ before a trap
+        // instruction for a SW breakpoint.  This is
+        // observed when debuggers write trap
+        // instructions into no-exec memory, for
+        // example the stack.
+        //
+        // We report the breakpoint before any signal
+        // that might have been raised in order to let
+        // the debugger do something at the breakpoint
+        // insn; possibly clearing the breakpoint and
+        // changing the $ip.  Otherwise, we expect the
+        // debugger to clear the breakpoint and resume
+        // execution, which should raise the original
+        // signal again.
+        LOG(debug) << "hit debugger breakpoint BEFORE ip " << t->ip() << " for "
+                   << signalname(t->child_sig);
+#ifdef DEBUGTAG
+        siginfo_t si = t->get_siginfo();
+        psiginfo(&si, "  siginfo for signal-stop:\n    ");
+#endif
+      } else if (TRAP_BKPT_USER == retired_bp) {
+        LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
+        // SW breakpoint: $ip is just past the
+        // breakpoint instruction.  Move $ip back
+        // right before it.
+        t->move_ip_before_breakpoint();
+      } else if (DS_SINGLESTEP & t->debug_status()) {
+        LOG(debug) << "  finished debugger stepi";
+        /* Successful stepi.  Nothing else to do. */
+        assert(DREQ_STEP == req.type && req.target == get_threadid(t));
+      }
+
+      if (DS_WATCHPOINT_ANY & t->debug_status()) {
+        LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
+                   << "): hit debugger watchpoint.";
+        // XXX it's possible for multiple watchpoints
+        // to be triggered simultaneously.  No attempt
+        // to prioritize them is made here; we just
+        // choose the first one that fired.
+        size_t dr =
+            DS_WATCHPOINT0 & t->debug_status()
+                ? 0
+                : DS_WATCHPOINT1 & t->debug_status()
+                      ? 1
+                      : DS_WATCHPOINT2 & t->debug_status()
+                            ? 2
+                            : DS_WATCHPOINT3 & t->debug_status() ? 3 : -1;
+        watch_addr = t->watchpoint_addr(dr);
+      }
     }
 
     /* Don't restart with SIGTRAP anywhere. */
     t->child_sig = 0;
 
-    if (!req.suppress_debugger_stop) {
+    if (dbg && !req.suppress_debugger_stop) {
+      int sig = will_deliver_signal ? will_deliver_signal : SIGTRAP;
       /* Notify the debugger and process any new requests
        * that might have triggered before resuming. */
-      dbg_notify_stop(dbg, get_threadid(t), 0x05 /*gdb mandate*/,
-                      watch_addr.as_int());
+      dbg_notify_stop(dbg, get_threadid(t), sig, watch_addr.as_int());
     }
     req = process_debugger_requests(dbg, t);
     if (DREQ_RESTART == req.type) {
