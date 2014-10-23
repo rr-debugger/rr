@@ -514,7 +514,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
          * because scratch doesn't exist in replay.
          * So cover our tracks here. */
         Registers r = t->regs();
-        copy_syscall_arg_regs(&r, &t->ev().Syscall().regs);
+        copy_syscall_arg_regs(&r, t->ev().Syscall().regs);
         t->set_regs(r);
       }
       t->record_current_event();

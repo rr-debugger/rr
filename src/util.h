@@ -208,7 +208,7 @@ size_t page_size();
  * Copy the registers used for syscall arguments (not including
  * syscall number) from |from| to |to|.
  */
-void copy_syscall_arg_regs(Registers* to, const Registers* from);
+void copy_syscall_arg_regs(Registers* to, const Registers& from);
 
 /**
  * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|

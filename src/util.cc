@@ -602,13 +602,13 @@ void emergency_debug(Task* t) {
   FATAL() << "Can't resume execution from invalid state";
 }
 
-void copy_syscall_arg_regs(Registers* to, const Registers* from) {
-  to->set_arg1(from->arg1());
-  to->set_arg2(from->arg2());
-  to->set_arg3(from->arg3());
-  to->set_arg4(from->arg4());
-  to->set_arg5(from->arg5());
-  to->set_arg6(from->arg6());
+void copy_syscall_arg_regs(Registers* to, const Registers& from) {
+  to->set_arg1(from.arg1());
+  to->set_arg2(from.arg2());
+  to->set_arg3(from.arg3());
+  to->set_arg4(from.arg4());
+  to->set_arg5(from.arg5());
+  to->set_arg6(from.arg6());
 }
 
 bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex, int* next_val) {
