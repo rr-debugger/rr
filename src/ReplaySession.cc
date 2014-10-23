@@ -653,8 +653,8 @@ static bool is_same_execution_point(Task* t, const Registers* rec_regs,
   return true;
 }
 
-static Ticks get_ticks_slack(Task* t) {
-  if (t->replay_session().bug_detector().is_cpuid_bug_detected()) {
+Ticks ReplaySession::get_ticks_slack(Task* t) {
+  if (cpuid_bug_detector.is_cpuid_bug_detected()) {
     // Somewhat arbitrary guess
     return 6;
   }
@@ -935,15 +935,14 @@ Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
   return COMPLETE;
 }
 
-static void check_ticks_consistency(Task* t, const Event& ev) {
-  if (!t->session().can_validate() ||
-      t->current_trace_frame().event().has_exec_info == NO_EXEC_INFO) {
+void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
+  if (!can_validate() || trace_frame.event().has_exec_info == NO_EXEC_INFO) {
     return;
   }
 
   Ticks ticks_slack = get_ticks_slack(t);
   Ticks ticks_now = t->tick_count();
-  Ticks trace_ticks = t->current_trace_frame().ticks();
+  Ticks trace_ticks = trace_frame.ticks();
 
   ASSERT(t, llabs(ticks_now - trace_ticks) <= ticks_slack)
       << "ticks mismatch for '" << ev << "'; expected " << trace_ticks

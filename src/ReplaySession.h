@@ -154,8 +154,6 @@ public:
 
   Task* next_task() { return find_task(trace_frame.tid()); }
 
-  CPUIDBugDetector& bug_detector() { return cpuid_bug_detector; }
-
   virtual ReplaySession* as_replay() { return this; }
 
   virtual TraceStream& trace() { return trace_in; }
@@ -205,6 +203,8 @@ private:
                            StepCommand stepi);
   Completion exit_syscall(Task* t, const struct rep_trace_step* step,
                           StepCommand stepi);
+  Ticks get_ticks_slack(Task* t);
+  void check_ticks_consistency(Task* t, const Event& ev);
   void continue_or_step(Task* t, StepCommand stepi, int64_t tick_period = 0);
   enum ExecStateType {
     UNKNOWN,
