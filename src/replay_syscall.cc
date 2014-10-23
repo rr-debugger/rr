@@ -1107,10 +1107,10 @@ static void notify_save_data_error(Task* t, remote_ptr<void> addr,
  * read and check the replay buffer against the one saved during
  * recording.
  */
-static void maybe_verify_tracee_saved_data(Task* t, const Registers* rec_regs) {
-  int fd = rec_regs->arg1_signed();
-  remote_ptr<void> rep_addr = rec_regs->arg2();
-  size_t rep_len = rec_regs->arg3();
+static void maybe_verify_tracee_saved_data(Task* t, const Registers& rec_regs) {
+  int fd = rec_regs.arg1_signed();
+  remote_ptr<void> rep_addr = rec_regs.arg2();
+  size_t rep_len = rec_regs.arg3();
 
   if (RR_MAGIC_SAVE_DATA_FD != fd) {
     return;
@@ -1140,7 +1140,7 @@ static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
       return;
 
     case Arch::write:
-      maybe_verify_tracee_saved_data(t, &t->current_trace_frame().regs());
+      maybe_verify_tracee_saved_data(t, t->current_trace_frame().regs());
       return;
 
     default:
