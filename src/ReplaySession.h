@@ -152,7 +152,7 @@ public:
   };
   StepResult replay_step(StepCommand command = RUN_CONTINUE);
 
-  Task* next_task() { return find_task(current_trace_frame().tid()); }
+  Task* next_task() { return find_task(trace_frame.tid()); }
 
   CPUIDBugDetector& bug_detector() { return cpuid_bug_detector; }
 
