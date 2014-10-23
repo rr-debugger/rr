@@ -1005,8 +1005,7 @@ Completion ReplaySession::emulate_async_signal(Task* t, int sig,
  * if an unhandled interrupt occurred, COMPLETE if the ioctl() was
  * successfully skipped over.
  */
-Completion ReplaySession::skip_desched_ioctl(Task* t,
-                                             ReplayDeschedState* ds,
+Completion ReplaySession::skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
                                              StepCommand stepi) {
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&

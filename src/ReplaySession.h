@@ -36,7 +36,7 @@ struct ReplayDeschedState {
  * interruption.  So the process of flushing the syscallbuf will
  * mutate this state in between attempts to retire the step.
  */
-enum RepFlushState {
+enum ReplayFlushBufferedSyscallStep {
   FLUSH_START,
   FLUSH_ARM,
   FLUSH_ENTER,
@@ -45,8 +45,9 @@ enum RepFlushState {
   FLUSH_DONE
 };
 /**
- * rep_flush_state is saved in Session and cloned with its Session, so it needs
- * to be simple data, i.e. not holding pointers to per-Session data.
+ * ReplayFlushBufferedSyscallState is saved in Session and cloned with its
+ * Session, so it needs to be simple data, i.e. not holding pointers to
+ * per-Session data.
  */
 struct ReplayFlushBufferedSyscallState {
   /* True when we need to write the syscallbuf data back to
@@ -59,7 +60,7 @@ struct ReplayFlushBufferedSyscallState {
    * buffers */
   size_t syscall_record_offset;
   /* The next step to take. */
-  RepFlushState state;
+  ReplayFlushBufferedSyscallStep state;
   /* Track the state of retiring desched arm/disarm ioctls, when
    * necessary. */
   ReplayDeschedState desched;
