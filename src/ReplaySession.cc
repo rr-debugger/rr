@@ -555,12 +555,12 @@ bool ReplaySession::is_debugger_trap(Task* t, int target_sig,
   return TRAP_NONE != type;
 }
 
-static void guard_overshoot(Task* t, const Registers* target_regs,
+static void guard_overshoot(Task* t, const Registers& target_regs,
                             Ticks target_ticks, Ticks remaining_ticks,
                             Ticks ticks_slack, bool ignored_early_match,
                             Ticks ticks_left_at_ignored_early_match) {
   if (remaining_ticks < -ticks_slack) {
-    remote_ptr<uint8_t> target_ip = target_regs->ip();
+    remote_ptr<uint8_t> target_ip = target_regs.ip();
 
     LOG(error) << "Replay diverged.  Dumping register comparison.";
     /* Cover up the internal breakpoint that we may have
@@ -572,7 +572,7 @@ static void guard_overshoot(Task* t, const Registers* target_regs,
         target_ip + sizeof(AddressSpace::breakpoint_insn)) {
       t->move_ip_before_breakpoint();
     }
-    compare_register_files(t, "rep overshoot", &t->regs(), "rec", target_regs,
+    compare_register_files(t, "rep overshoot", &t->regs(), "rec", &target_regs,
                            LOG_MISMATCHES);
     if (ignored_early_match) {
       ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
@@ -604,7 +604,7 @@ static void guard_unexpected_signal(Task* t) {
                                           << ev << " while awaiting signal";
 }
 
-static bool is_same_execution_point(Task* t, const Registers* rec_regs,
+static bool is_same_execution_point(Task* t, const Registers& rec_regs,
                                     Ticks ticks_left, Ticks ticks_slack,
                                     bool* ignoring_early_match,
                                     Ticks* ticks_left_at_ignored_early_match) {
@@ -617,32 +617,32 @@ static bool is_same_execution_point(Task* t, const Registers* rec_regs,
       ;
   if (ticks_left > 0) {
     if (ticks_left <= ticks_slack &&
-        compare_register_files(t, "(rep)", &t->regs(), "(rec)", rec_regs,
+        compare_register_files(t, "(rep)", &t->regs(), "(rec)", &rec_regs,
                                EXPECT_MISMATCHES)) {
       *ignoring_early_match = true;
       *ticks_left_at_ignored_early_match = ticks_left;
     }
     LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << HEX(rec_regs->ip()) << ")";
+               << " ticks left (@" << HEX(rec_regs.ip()) << ")";
 #ifdef DEBUGTAG
-    compare_register_files(t, "(rep)", &t->regs(), "(rec)", rec_regs,
+    compare_register_files(t, "(rep)", &t->regs(), "(rec)", &rec_regs,
                            LOG_MISMATCHES);
 #endif
     return false;
   }
   if (ticks_left < -ticks_slack) {
     LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << HEX(rec_regs->ip()) << ")";
+               << " ticks left (@" << HEX(rec_regs.ip()) << ")";
 #ifdef DEBUGTAG
-    compare_register_files(t, "(rep)", &t->regs(), "(rec)", rec_regs,
+    compare_register_files(t, "(rep)", &t->regs(), "(rec)", &rec_regs,
                            LOG_MISMATCHES);
 #endif
     return false;
   }
-  if (!compare_register_files(t, "rep", &t->regs(), "rec", rec_regs,
+  if (!compare_register_files(t, "rep", &t->regs(), "rec", &rec_regs,
                               behavior)) {
     LOG(debug) << "  not same execution point: regs differ (@"
-               << HEX(rec_regs->ip()) << ")";
+               << HEX(rec_regs.ip()) << ")";
     return false;
   }
   LOG(debug) << "  same execution point";
@@ -666,10 +666,10 @@ Ticks ReplaySession::get_ticks_slack(Task* t) {
  * that will be decremented by branches retired during this attempted
  * step.
  */
-Completion ReplaySession::advance_to(Task* t, const Registers* regs, int sig,
+Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
                                      StepCommand stepi, Ticks ticks) {
   pid_t tid = t->tid;
-  remote_ptr<uint8_t> ip = regs->ip();
+  remote_ptr<uint8_t> ip = regs.ip();
   Ticks ticks_left;
   Ticks ticks_slack = get_ticks_slack(t);
   bool did_set_internal_breakpoint = false;
@@ -826,7 +826,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers* regs, int sig,
     /* At this point, we've proven that we're not at the
      * target execution point, and we've ensured the
      * internal breakpoint is unset. */
-    if (USE_BREAKPOINT_TARGET && regs->ip() != t->regs().ip()) {
+    if (USE_BREAKPOINT_TARGET && regs.ip() != t->regs().ip()) {
       /* Case (4) above: set a breakpoint on the
        * target $ip and PTRACE_CONT in an attempt to
        * execute as many non-trapped insns as we
@@ -986,10 +986,9 @@ Completion ReplaySession::emulate_deterministic_signal(Task* t, int sig,
  * nonzero.  Return COMPLETE if successful or INCOMPLETE if an unhandled
  * interrupt occurred.
  */
-Completion ReplaySession::emulate_async_signal(Task* t, const Registers* regs,
-                                               int sig, StepCommand stepi,
-                                               Ticks ticks) {
-  if (advance_to(t, regs, 0, stepi, ticks) == INCOMPLETE) {
+Completion ReplaySession::emulate_async_signal(Task* t, int sig,
+                                               StepCommand stepi, Ticks ticks) {
+  if (advance_to(t, trace_frame.regs(), 0, stepi, ticks) == INCOMPLETE) {
     return INCOMPLETE;
   }
   if (sig) {
@@ -1319,8 +1318,7 @@ Completion ReplaySession::try_one_trace_step(Task* t, StepCommand stepi) {
     case TSTEP_DETERMINISTIC_SIGNAL:
       return emulate_deterministic_signal(t, current_step.signo, stepi);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(t, &trace_frame.regs(),
-                                  current_step.target.signo, stepi,
+      return emulate_async_signal(t, current_step.target.signo, stepi,
                                   current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
       return emulate_signal_delivery(t, current_step.signo);

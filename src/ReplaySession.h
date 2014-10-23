@@ -214,10 +214,10 @@ private:
   bool is_debugger_trap(Task* t, int target_sig,
                         SignalDeterministic deterministic,
                         ExecStateType exec_state, StepCommand stepi);
-  Completion advance_to(Task* t, const Registers* regs, int sig,
+  Completion advance_to(Task* t, const Registers& regs, int sig,
                         StepCommand stepi, Ticks ticks);
   Completion emulate_deterministic_signal(Task* t, int sig, StepCommand stepi);
-  Completion emulate_async_signal(Task* t, const Registers* regs, int sig,
+  Completion emulate_async_signal(Task* t, int sig,
                                   StepCommand stepi, Ticks ticks);
   Completion skip_desched_ioctl(Task* t, struct rep_desched_state* ds,
                                 StepCommand stepi);
