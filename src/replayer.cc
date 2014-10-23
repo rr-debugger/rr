@@ -5,45 +5,23 @@
 #include "replayer.h"
 
 #include <assert.h>
-#include <err.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <netinet/in.h>
-#include <sched.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/personality.h>
-#include <sys/poll.h>
-#include <asm/ptrace-abi.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/syscall.h>
-#include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <map>
-#include <sstream>
 #include <string>
 #include <vector>
 
-#include "preload/syscall_buffer.h"
-
 #include "debugger_gdb.h"
 #include "diverter.h"
-#include "EmuFs.h"
 #include "Event.h"
 #include "kernel_abi.h"
 #include "log.h"
-#include "PerfCounters.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "task.h"
-#include "TraceStream.h"
 #include "util.h"
 
 using namespace rr;
@@ -92,7 +70,7 @@ static ReplaySession::shr_ptr debugger_restart_checkpoint;
 static struct dbg_context* stashed_dbg;
 
 // Checkpoints, indexed by checkpoint ID
-std::map<int, ReplaySession::shr_ptr> checkpoints;
+map<int, ReplaySession::shr_ptr> checkpoints;
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
