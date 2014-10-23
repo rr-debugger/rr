@@ -496,7 +496,6 @@ bool Task::is_syscall_restart() {
   int syscallno = regs().original_syscallno();
   bool must_restart = is_restart_syscall_syscall(syscallno, arch());
   bool is_restart = false;
-  const Registers* old_regs;
 
   LOG(debug) << "  is syscall interruption of recorded " << ev() << "? (now "
              << syscallname(syscallno) << ")";
@@ -505,7 +504,6 @@ bool Task::is_syscall_restart() {
     goto done;
   }
 
-  old_regs = &ev().Syscall().regs;
   /* It's possible for the tracee to resume after a sighandler
    * with a fresh syscall that happens to be the same as the one
    * that was interrupted.  So we check here if the args are the
@@ -531,15 +529,17 @@ bool Task::is_syscall_restart() {
                << " != " << syscallname(syscallno);
     goto done;
   }
-  if (!(old_regs->arg1() == regs().arg1() &&
-        old_regs->arg2() == regs().arg2() &&
-        old_regs->arg3() == regs().arg3() &&
-        old_regs->arg4() == regs().arg4() &&
-        old_regs->arg5() == regs().arg5() &&
-        old_regs->arg6() == regs().arg6())) {
-    LOG(debug) << "  regs different at interrupted " << syscallname(syscallno);
-    goto done;
+
+  {
+    const Registers& old_regs = ev().Syscall().regs;
+    if (!(old_regs.arg1() == regs().arg1() && old_regs.arg2() == regs().arg2() &&
+          old_regs.arg3() == regs().arg3() && old_regs.arg4() == regs().arg4() &&
+          old_regs.arg5() == regs().arg5() && old_regs.arg6() == regs().arg6())) {
+      LOG(debug) << "  regs different at interrupted " << syscallname(syscallno);
+      goto done;
+    }
   }
+
   is_restart = true;
 
 done:
