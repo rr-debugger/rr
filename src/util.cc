@@ -274,11 +274,11 @@ void print_cwd(pid_t tid, char* str) {
   assert(readlink(path, str, 1024) != -1);
 }
 
-bool compare_register_files(Task* t, const char* name1, const Registers* reg1,
-                            const char* name2, const Registers* reg2,
+bool compare_register_files(Task* t, const char* name1, const Registers&reg1,
+                            const char* name2, const Registers& reg2,
                             int mismatch_behavior) {
-  int bail_error = (mismatch_behavior >= BAIL_ON_MISMATCH);
-  bool match = Registers::compare_register_files(name1, reg1, name2, reg2,
+  bool bail_error = mismatch_behavior >= BAIL_ON_MISMATCH;
+  bool match = Registers::compare_register_files(name1, &reg1, name2, &reg2,
                                                  mismatch_behavior);
 
   ASSERT(t, !bail_error || match) << "Fatal register mismatch (ticks/rec:"
@@ -293,8 +293,8 @@ bool compare_register_files(Task* t, const char* name1, const Registers* reg1,
   return match;
 }
 
-void assert_child_regs_are(Task* t, const Registers* regs) {
-  compare_register_files(t, "replaying", &t->regs(), "recorded", regs,
+void assert_child_regs_are(Task* t, const Registers& regs) {
+  compare_register_files(t, "replaying", t->regs(), "recorded", regs,
                          BAIL_ON_MISMATCH);
   /* TODO: add perf counter validations (hw int, page faults, insts) */
 }

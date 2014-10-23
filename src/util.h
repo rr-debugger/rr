@@ -68,11 +68,11 @@ enum {
   LOG_MISMATCHES,
   BAIL_ON_MISMATCH
 };
-bool compare_register_files(Task* t, const char* name1, const Registers* reg1,
-                            const char* name2, const Registers* reg2,
+bool compare_register_files(Task* t, const char* name1, const Registers& reg1,
+                            const char* name2, const Registers& reg2,
                             int mismatch_behavior);
 
-void assert_child_regs_are(Task* t, const Registers* regs);
+void assert_child_regs_are(Task* t, const Registers& regs);
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to

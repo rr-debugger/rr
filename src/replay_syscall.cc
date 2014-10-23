@@ -114,7 +114,7 @@ static void validate_args(int syscall, Task* t) {
   if (!t->session().can_validate()) {
     return;
   }
-  assert_child_regs_are(t, &t->current_trace_frame().regs());
+  assert_child_regs_are(t, t->current_trace_frame().regs());
 }
 
 /**

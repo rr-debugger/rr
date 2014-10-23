@@ -281,7 +281,7 @@ static void validate_args(int syscallno, SyscallEntryOrExit state, Task* t) {
       rec_regs.set_arg4(t->regs().arg4());
     }
   }
-  assert_child_regs_are(t, &rec_regs);
+  assert_child_regs_are(t, rec_regs);
 }
 
 /** Return true when |t|'s $ip points at a syscall instruction. */
@@ -572,7 +572,7 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
         target_ip + sizeof(AddressSpace::breakpoint_insn)) {
       t->move_ip_before_breakpoint();
     }
-    compare_register_files(t, "rep overshoot", &t->regs(), "rec", &target_regs,
+    compare_register_files(t, "rep overshoot", t->regs(), "rec", target_regs,
                            LOG_MISMATCHES);
     if (ignored_early_match) {
       ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
@@ -617,7 +617,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
       ;
   if (ticks_left > 0) {
     if (ticks_left <= ticks_slack &&
-        compare_register_files(t, "(rep)", &t->regs(), "(rec)", &rec_regs,
+        compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
                                EXPECT_MISMATCHES)) {
       *ignoring_early_match = true;
       *ticks_left_at_ignored_early_match = ticks_left;
@@ -625,7 +625,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
     LOG(debug) << "  not same execution point: " << ticks_left
                << " ticks left (@" << HEX(rec_regs.ip()) << ")";
 #ifdef DEBUGTAG
-    compare_register_files(t, "(rep)", &t->regs(), "(rec)", &rec_regs,
+    compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
                            LOG_MISMATCHES);
 #endif
     return false;
@@ -634,12 +634,12 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
     LOG(debug) << "  not same execution point: " << ticks_left
                << " ticks left (@" << HEX(rec_regs.ip()) << ")";
 #ifdef DEBUGTAG
-    compare_register_files(t, "(rep)", &t->regs(), "(rec)", &rec_regs,
+    compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
                            LOG_MISMATCHES);
 #endif
     return false;
   }
-  if (!compare_register_files(t, "rep", &t->regs(), "rec", &rec_regs,
+  if (!compare_register_files(t, "rep", t->regs(), "rec", rec_regs,
                               behavior)) {
     LOG(debug) << "  not same execution point: regs differ (@"
                << HEX(rec_regs.ip()) << ")";
