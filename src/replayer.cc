@@ -512,7 +512,7 @@ static bool replay_one_step(ReplaySession& session, struct dbg_context* dbg,
   struct dbg_request req;
   req.type = DREQ_NONE;
 
-  Task* t = session.next_task();
+  Task* t = session.current_task();
 
   /* Advance the trace until we've exec()'d the tracee before
    * processing debugger requests.  Otherwise the debugger host
@@ -645,7 +645,7 @@ struct dbg_context* maybe_create_debugger(struct dbg_context* dbg) {
   // frame we're *about to* replay, without modifying the
   // TraceIfstream.
   TraceFrame next_frame = session->current_trace_frame();
-  Task* t = session->next_task();
+  Task* t = session->current_task();
   if (!t) {
     return nullptr;
   }

@@ -887,7 +887,7 @@ Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
   // was recorded, emulate it using the next trace frame (records
   // the state at sighandler entry).
   advance_to_next_trace_frame();
-  Task* t = next_task();
+  Task* t = current_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
     // that knows what to do.
@@ -1457,7 +1457,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 ReplaySession::StepResult ReplaySession::replay_step(StepCommand command) {
   StepResult result;
 
-  Task* t = next_task();
+  Task* t = current_task();
 
   if (EV_TRACE_TERMINATION == trace_frame.event().type) {
     set_last_task(t);

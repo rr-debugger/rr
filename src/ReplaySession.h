@@ -200,6 +200,11 @@ public:
   TraceFrame& current_trace_frame() { return trace_frame; }
 
   /**
+   * The Task for the current trace record.
+   */
+  Task* current_task() { return find_task(trace_frame.tid()); }
+
+  /**
    * Set |tgid| as the one that's being debugged in this
    * session.
    *
@@ -284,8 +289,6 @@ public:
     RUN_SINGLESTEP
   };
   StepResult replay_step(StepCommand command = RUN_CONTINUE);
-
-  Task* next_task() { return find_task(trace_frame.tid()); }
 
   virtual ReplaySession* as_replay() { return this; }
 
