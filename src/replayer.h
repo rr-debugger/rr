@@ -91,9 +91,9 @@ enum RepFlushState {
  * to be simple data, i.e. not holding pointers to per-Session data.
  */
 struct rep_flush_state {
-  /* Nonzero when we need to write the syscallbuf data back to
+  /* True when we need to write the syscallbuf data back to
    * the child. */
-  int need_buffer_restore;
+  bool need_buffer_restore;
   /* After the data is restored, the number of record bytes that
    * still need to be flushed. */
   size_t num_rec_bytes_remaining;

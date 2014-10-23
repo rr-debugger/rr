@@ -311,8 +311,7 @@ static bool entering_syscall_insn(Task* t) {
  */
 Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
                                                 StepCommand stepi) {
-  bool is_syscall_entry =
-      SYSCALL_ENTRY == t->current_trace_frame().event().state;
+  bool is_syscall_entry = SYSCALL_ENTRY == trace_frame.event().state;
   if (is_syscall_entry) {
     t->stepped_into_syscall = false;
   }
@@ -437,7 +436,7 @@ void ReplaySession::continue_or_step(Task* t, StepCommand stepi,
     return;
   }
   ASSERT(t, child_sig_gt_zero)
-      << "Replaying `" << Event(t->current_trace_frame().event())
+      << "Replaying `" << Event(trace_frame.event())
       << "': expecting tracee signal or trap, but instead at `"
       << t->syscallname(t->regs().original_syscallno())
       << "' (ticks: " << t->tick_count() << ")";
@@ -960,7 +959,7 @@ static void check_ticks_consistency(Task* t, const Event& ev) {
  */
 Completion ReplaySession::emulate_deterministic_signal(Task* t, int sig,
                                                        StepCommand stepi) {
-  Event ev(t->current_trace_frame().event());
+  Event ev(trace_frame.event());
 
   continue_or_step(t, stepi);
   if (is_ignored_replay_signal(t->child_sig)) {
@@ -976,14 +975,13 @@ Completion ReplaySession::emulate_deterministic_signal(Task* t, int sig,
   check_ticks_consistency(t, ev);
 
   if (EV_SEGV_RDTSC == ev.type()) {
-    t->set_regs(t->current_trace_frame().regs());
+    t->set_regs(trace_frame.regs());
     /* We just "delivered" this pseudosignal. */
     t->child_sig = 0;
     return COMPLETE;
   }
 
-  struct rep_trace_step& step = t->replay_session().current_replay_step();
-  step.action = TSTEP_DELIVER_SIGNAL;
+  current_step.action = TSTEP_DELIVER_SIGNAL;
   return INCOMPLETE;
 }
 
@@ -1000,9 +998,8 @@ Completion ReplaySession::emulate_async_signal(Task* t, const Registers* regs,
     return INCOMPLETE;
   }
   if (sig) {
-    struct rep_trace_step& step = t->replay_session().current_replay_step();
-    step.action = TSTEP_DELIVER_SIGNAL;
-    step.signo = sig;
+    current_step.action = TSTEP_DELIVER_SIGNAL;
+    current_step.signo = sig;
     return INCOMPLETE;
   }
   return COMPLETE;
@@ -1049,33 +1046,32 @@ Completion ReplaySession::skip_desched_ioctl(Task* t,
  * bytes and a pointer to the first record through outparams.
  */
 void ReplaySession::prepare_syscallbuf_records(Task* t) {
-  struct rep_flush_state* flush =
-      &t->replay_session().current_replay_step().flush;
-  if (!flush->need_buffer_restore) {
+  if (!current_step.flush.need_buffer_restore) {
     return;
   }
-  flush->need_buffer_restore = 0;
+  current_step.flush.need_buffer_restore = false;
 
   // Read the recorded syscall buffer back into the buffer
   // region.
   auto buf = t->trace_reader().read_raw_data();
-  flush->num_rec_bytes_remaining = buf.data.size();
+  current_step.flush.num_rec_bytes_remaining = buf.data.size();
 
-  assert(flush->num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);
-  memcpy(t->replay_session().syscallbuf_flush_buffer(), buf.data.data(),
-         flush->num_rec_bytes_remaining);
+  assert(current_step.flush.num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);
+  memcpy(syscallbuf_flush_buffer_array, buf.data.data(),
+         current_step.flush.num_rec_bytes_remaining);
 
   // The stored num_rec_bytes in the header doesn't include the
   // header bytes, but the stored trace data does.
-  flush->num_rec_bytes_remaining -= sizeof(sizeof(struct syscallbuf_hdr));
+  current_step.flush.num_rec_bytes_remaining -=
+      sizeof(sizeof(struct syscallbuf_hdr));
   assert(buf.addr == t->syscallbuf_child);
-  const syscallbuf_hdr* flush_hdr =
-      t->replay_session().syscallbuf_flush_buffer_hdr();
-  assert(flush_hdr->num_rec_bytes == flush->num_rec_bytes_remaining);
+  const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
+  assert(flush_hdr->num_rec_bytes ==
+         current_step.flush.num_rec_bytes_remaining);
 
-  flush->syscall_record_offset = 0;
+  current_step.flush.syscall_record_offset = 0;
 
-  LOG(debug) << "Prepared " << flush->num_rec_bytes_remaining
+  LOG(debug) << "Prepared " << current_step.flush.num_rec_bytes_remaining
              << " bytes of syscall records";
 }
 
@@ -1138,21 +1134,19 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
  * was flushed (in which case |flush->state == DONE|).
  */
 Completion ReplaySession::flush_one_syscall(Task* t, StepCommand stepi) {
-  struct rep_flush_state* flush =
-      &t->replay_session().current_replay_step().flush;
-  const syscallbuf_hdr* flush_hdr =
-      t->replay_session().syscallbuf_flush_buffer_hdr();
+  const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
   const struct syscallbuf_record* rec_rec =
       (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
-                                        flush->syscall_record_offset);
+                                        current_step.flush
+                                            .syscall_record_offset);
   struct syscallbuf_record* child_rec =
       (struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
-                                  flush->syscall_record_offset);
+                                  current_step.flush.syscall_record_offset);
   int call = rec_rec->syscallno;
   // TODO: use syscall_defs table information to determine this.
   ExecOrEmulate emu = (SYS_madvise == call) ? EXEC : EMULATE;
 
-  switch (flush->state) {
+  switch (current_step.flush.state) {
     case FLUSH_START:
       ASSERT(t, 0 == ((uintptr_t)rec_rec & (sizeof(int) - 1)))
           << "Recorded record must be int-aligned, but instead is " << rec_rec;
@@ -1170,11 +1164,11 @@ Completion ReplaySession::flush_one_syscall(Task* t, StepCommand stepi) {
                  << (!rec_rec->desched ? " not" : "") << " use desched event";
 
       if (!rec_rec->desched) {
-        flush->state = FLUSH_ENTER;
+        current_step.flush.state = FLUSH_ENTER;
       } else {
-        flush->state = FLUSH_ARM;
-        flush->desched.type = DESCHED_ARM;
-        flush->desched.state = DESCHED_ENTER;
+        current_step.flush.state = FLUSH_ARM;
+        current_step.flush.desched.type = DESCHED_ARM;
+        current_step.flush.desched.state = DESCHED_ENTER;
       }
       return flush_one_syscall(t, stepi);
 
@@ -1182,10 +1176,11 @@ Completion ReplaySession::flush_one_syscall(Task* t, StepCommand stepi) {
       /* Skip past the ioctl that armed the desched
        * notification. */
       LOG(debug) << "  skipping over arm-desched ioctl";
-      if (skip_desched_ioctl(t, &flush->desched, stepi) == INCOMPLETE) {
+      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi) ==
+          INCOMPLETE) {
         return INCOMPLETE;
       }
-      flush->state = FLUSH_ENTER;
+      current_step.flush.state = FLUSH_ENTER;
       return flush_one_syscall(t, stepi);
 
     case FLUSH_ENTER:
@@ -1195,13 +1190,13 @@ Completion ReplaySession::flush_one_syscall(Task* t, StepCommand stepi) {
       }
       assert_at_buffered_syscall(t, call);
       assert_same_rec(t, rec_rec, child_rec);
-      flush->state = FLUSH_EXIT;
+      current_step.flush.state = FLUSH_EXIT;
       return flush_one_syscall(t, stepi);
 
     case FLUSH_EXIT: {
       LOG(debug) << "  advancing to buffered syscall exit";
 
-      EmuFs::AutoGc gc(t->replay_session(), call);
+      EmuFs::AutoGc gc(*this, call);
 
       assert_at_buffered_syscall(t, call);
 
@@ -1230,26 +1225,27 @@ Completion ReplaySession::flush_one_syscall(Task* t, StepCommand stepi) {
       }
 
       if (!rec_rec->desched) {
-        flush->state = FLUSH_DONE;
+        current_step.flush.state = FLUSH_DONE;
         return COMPLETE;
       }
-      flush->state = FLUSH_DISARM;
-      flush->desched.type = DESCHED_DISARM;
-      flush->desched.state = DESCHED_ENTER;
+      current_step.flush.state = FLUSH_DISARM;
+      current_step.flush.desched.type = DESCHED_DISARM;
+      current_step.flush.desched.state = DESCHED_ENTER;
       return flush_one_syscall(t, stepi);
     }
     case FLUSH_DISARM:
       /* And skip past the ioctl that disarmed the desched
        * notification. */
       LOG(debug) << "  skipping over disarm-desched ioctl";
-      if (skip_desched_ioctl(t, &flush->desched, stepi) == INCOMPLETE) {
+      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi) ==
+          INCOMPLETE) {
         return INCOMPLETE;
       }
-      flush->state = FLUSH_DONE;
+      current_step.flush.state = FLUSH_DONE;
       return COMPLETE;
 
     default:
-      FATAL() << "Unknown buffer-flush state " << flush->state;
+      FATAL() << "Unknown buffer-flush state " << current_step.flush.state;
       return COMPLETE; /* unreached */
   }
 }
@@ -1263,27 +1259,26 @@ Completion ReplaySession::flush_one_syscall(Task* t, StepCommand stepi) {
 Completion ReplaySession::flush_syscallbuf(Task* t, StepCommand stepi) {
   prepare_syscallbuf_records(t);
 
-  struct rep_flush_state* flush =
-      &t->replay_session().current_replay_step().flush;
   const syscallbuf_hdr* flush_hdr =
       t->replay_session().syscallbuf_flush_buffer_hdr();
 
-  while (flush->num_rec_bytes_remaining > 0) {
+  while (current_step.flush.num_rec_bytes_remaining > 0) {
     if (flush_one_syscall(t, stepi) == INCOMPLETE) {
       return INCOMPLETE;
     }
 
-    assert(FLUSH_DONE == flush->state);
+    assert(FLUSH_DONE == current_step.flush.state);
 
     const struct syscallbuf_record* record =
         (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
-                                          flush->syscall_record_offset);
+                                          current_step.flush
+                                              .syscall_record_offset);
     size_t stored_rec_size = stored_record_size(record->size);
-    flush->syscall_record_offset += stored_rec_size;
-    flush->num_rec_bytes_remaining -= stored_rec_size;
-    flush->state = FLUSH_START;
+    current_step.flush.syscall_record_offset += stored_rec_size;
+    current_step.flush.num_rec_bytes_remaining -= stored_rec_size;
+    current_step.flush.state = FLUSH_START;
 
-    LOG(debug) << "  " << flush->num_rec_bytes_remaining
+    LOG(debug) << "  " << current_step.flush.num_rec_bytes_remaining
                << " bytes remain to flush";
   }
   return COMPLETE;
@@ -1291,9 +1286,8 @@ Completion ReplaySession::flush_syscallbuf(Task* t, StepCommand stepi) {
 
 /** Return true when replaying/debugging should cease after |t| exits. */
 bool ReplaySession::is_last_interesting_task(Task* t) {
-  return (0 == t->replay_session().debugged_tgid() &&
-          t->session().tasks().size() == 1) ||
-         (t->tgid() == t->replay_session().debugged_tgid() &&
+  return (0 == debugged_tgid() && tasks().size() == 1) ||
+         (t->tgid() == debugged_tgid() &&
           t->task_group()->task_set().size() == 1);
 }
 
@@ -1332,9 +1326,8 @@ Completion ReplaySession::try_one_trace_step(Task* t,
     case TSTEP_DETERMINISTIC_SIGNAL:
       return emulate_deterministic_signal(t, step->signo, stepi);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(t, &t->current_trace_frame().regs(),
-                                  step->target.signo, stepi,
-                                  step->target.ticks);
+      return emulate_async_signal(t, &trace_frame.regs(), step->target.signo,
+                                  stepi, step->target.ticks);
     case TSTEP_DELIVER_SIGNAL:
       return emulate_signal_delivery(t, step->signo);
     case TSTEP_FLUSH_SYSCALLBUF:
@@ -1426,7 +1419,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       break;
     case EV_SYSCALLBUF_FLUSH:
       current_step.action = TSTEP_FLUSH_SYSCALLBUF;
-      current_step.flush.need_buffer_restore = 1;
+      current_step.flush.need_buffer_restore = true;
       current_step.flush.num_rec_bytes_remaining = 0;
       break;
     case EV_SYSCALLBUF_RESET:
