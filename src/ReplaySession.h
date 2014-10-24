@@ -228,36 +228,12 @@ public:
     // All tracees are dead. replay_step() should not be called again.
     REPLAY_EXITED
   };
-  enum BreakReason {
-    BREAK_NONE,
-    // A requested RUN_SINGLESTEP completed.
-    BREAK_SINGLESTEP,
-    // We hit a breakpoint.
-    BREAK_BREAKPOINT,
-    // We hit a watchpoint.
-    BREAK_WATCHPOINT,
-    // We hit a signal.
-    BREAK_SIGNAL
-  };
-  struct BreakStatus {
-    BreakReason reason;
-    // When break_reason is not BREAK_NONE, the triggering Task.
-    Task* task;
-    // When break_reason is BREAK_SIGNAL, the signal.
-    int signal;
-    // When break_reason is BREAK_WATCHPOINT, the triggering watch address.
-    remote_ptr<void> watch_address;
-  };
   struct ReplayResult {
     ReplayStatus status;
     // When status == STEP_CONTINUE
     BreakStatus break_status;
     // When status == STEP_EXITED. -1 means abnormal termination.
     int exit_code;
-  };
-  enum RunCommand {
-    RUN_CONTINUE,
-    RUN_SINGLESTEP
   };
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE);
 
