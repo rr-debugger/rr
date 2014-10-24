@@ -220,7 +220,7 @@ static bool maybe_process_magic_command(Task* t, struct dbg_context* dbg,
   return true;
 }
 
-void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
+void dispatch_debugger_request(Session& session, struct dbg_context* dbg,
                                Task* t, const struct dbg_request& req) {
   assert(!dbg_is_resume_request(&req));
 
@@ -342,7 +342,7 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
       // memory will be written to an diversion session.
       // Arbitrary writes to replay sessions cause
       // divergence.
-      if (!session.diversion()) {
+      if (!session.is_diversion()) {
         LOG(error) << "Attempt to write memory outside diversion session";
         dbg_reply_set_mem(dbg, false);
         return;
@@ -368,7 +368,7 @@ void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
       return;
     }
     case DREQ_SET_REG: {
-      if (!session.diversion()) {
+      if (!session.is_diversion()) {
         // gdb sets orig_eax to -1 during a restart. For a
         // replay session this is not correct (we might be
         // restarting from an rr checkpoint inside a system

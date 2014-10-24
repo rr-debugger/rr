@@ -12,6 +12,7 @@
 #include "task.h"
 
 class ReplaySession;
+class Session;
 class Task;
 
 /**
@@ -116,7 +117,6 @@ private:
 };
 
 class EmuFs {
-  friend class ReplaySession;
   typedef std::map<FileId, EmuFile::shr_ptr> FileMap;
 
 public:
@@ -166,16 +166,16 @@ public:
     const bool is_gc_point;
   };
 
-private:
-  EmuFs();
-
   /**
    * Collect emulated files that aren't referenced by tracees.
    * Call this only when a tracee's (possibly shared) file table
    * has been destroyed.  All other gc triggers are handled
    * internally.
    */
-  void gc(const ReplaySession& session);
+  void gc(const Session& session);
+
+private:
+  EmuFs();
 
   /**
    * Mark all the files being used by the tasks in |as|, and

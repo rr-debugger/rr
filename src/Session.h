@@ -12,10 +12,11 @@
 #include "TraceStream.h"
 
 class AddressSpace;
-class Task;
-struct TaskGroup;
+class DiversionSession;
 class RecordSession;
 class ReplaySession;
+class Task;
+struct TaskGroup;
 
 /**
  * Sessions track the global state of a set of tracees corresponding
@@ -93,8 +94,11 @@ public:
 
   virtual RecordSession* as_record() { return nullptr; }
   virtual ReplaySession* as_replay() { return nullptr; }
+  virtual DiversionSession* as_diversion() { return nullptr; }
 
   bool is_recording() { return as_record() != nullptr; }
+  bool is_replaying() { return as_replay() != nullptr; }
+  bool is_diversion() { return as_diversion() != nullptr; }
 
   // The following types are used by step() APIs in Session subclasses.
 

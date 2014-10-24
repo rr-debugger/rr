@@ -69,9 +69,8 @@ static void debug_memory(Task* t) {
   }
 }
 
-static void remap_shared_mmap(AutoRemoteSyscalls& remote,
-                              ReplaySession& session, const Mapping& m,
-                              const MappableResource& r) {
+static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
+                              const Mapping& m, const MappableResource& r) {
   LOG(debug) << "    remapping shared region at " << m.start << "-" << m.end;
   remote.syscall(syscall_number_for_munmap(remote.arch()), m.start,
                  m.num_bytes());
@@ -81,7 +80,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote,
   // mapping still refers to the same *emulated* file, with the
   // same emulated metadata.
 
-  auto emufile = session.emufs().at(r.id);
+  auto emufile = dest_emu_fs.at(r.id);
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
   int remote_fd;
@@ -124,21 +123,7 @@ ReplaySession::~ReplaySession() {
   assert(emufs().size() == 0);
 }
 
-ReplaySession::shr_ptr ReplaySession::clone() {
-  LOG(debug) << "Deepforking ReplaySession " << this << " ...";
-
-  shr_ptr session(new ReplaySession(*this));
-  LOG(debug) << "  deepfork session is " << session.get();
-  session->tracees_consistent = tracees_consistent;
-  session->emu_fs = emu_fs->clone();
-  assert(!last_debugged_task);
-  session->tgid_debugged = tgid_debugged;
-  session->trace_frame = trace_frame;
-  session->current_step = current_step;
-  session->cpuid_bug_detector = cpuid_bug_detector;
-  memcpy(session->syscallbuf_flush_buffer_array, syscallbuf_flush_buffer_array,
-         sizeof(syscallbuf_flush_buffer_array));
-
+void ReplaySession::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
   for (auto vm : sas) {
     // Creating a checkpoint of a session with active breakpoints
     // or watchpoints is not supported.
@@ -155,8 +140,8 @@ ReplaySession::shr_ptr ReplaySession::clone() {
       group_leader->finish_emulated_syscall();
     }
 
-    Task* clone_leader = group_leader->os_fork_into(session.get());
-    session->on_create(clone_leader);
+    Task* clone_leader = group_leader->os_fork_into(&dest);
+    dest.on_create(clone_leader);
     LOG(debug) << "  forked new group leader " << clone_leader->tid;
 
     {
@@ -167,7 +152,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
         if (!r.is_shared_mmap_file()) {
           continue;
         }
-        remap_shared_mmap(remote, *session, m, r);
+        remap_shared_mmap(remote, dest_emu_fs, m, r);
       }
 
       for (auto t : group_leader->task_group()->task_set()) {
@@ -180,22 +165,39 @@ ReplaySession::shr_ptr ReplaySession::clone() {
           t->finish_emulated_syscall();
         }
         Task* t_clone = t->os_clone_into(clone_leader, remote);
-        session->on_create(t_clone);
+        dest.on_create(t_clone);
         t_clone->copy_state(t);
       }
     }
     LOG(debug) << "  restoring group-leader state ...";
     clone_leader->copy_state(group_leader);
   }
-  assert(session->vms().size() > 0);
+  assert(dest.vms().size() > 0);
+}
+
+ReplaySession::shr_ptr ReplaySession::clone() {
+  LOG(debug) << "Deepforking ReplaySession " << this << " ...";
+
+  shr_ptr session(new ReplaySession(*this));
+  LOG(debug) << "  deepfork session is " << session.get();
+  session->tracees_consistent = tracees_consistent;
+  memcpy(session->syscallbuf_flush_buffer_array, syscallbuf_flush_buffer_array,
+         sizeof(syscallbuf_flush_buffer_array));
+
+  copy_state_to(*session, session->emufs());
 
   return session;
 }
 
-ReplaySession::shr_ptr ReplaySession::clone_diversion() {
-  auto session = clone();
-  session->is_diversion = true;
-  LOG(debug) << "Cloned experiment session " << session.get();
+DiversionSession::shr_ptr ReplaySession::clone_diversion() {
+  LOG(debug) << "Deepforking ReplaySession " << this
+             << " to DiversionSession...";
+
+  DiversionSession::shr_ptr session(new DiversionSession(*this));
+  LOG(debug) << "  deepfork session is " << session.get();
+
+  copy_state_to(*session, session->emufs());
+
   return session;
 }
 

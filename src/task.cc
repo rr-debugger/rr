@@ -206,16 +206,13 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       extra_registers_known(false),
       robust_futex_list(),
       robust_futex_list_len(),
-      session_record(nullptr),
-      session_replay(nullptr),
+      session_(&session),
       thread_area(),
       thread_area_valid(),
       tid_futex(),
       top_of_stack(),
       wait_status(),
       seen_ptrace_exit_event(false) {
-  session_record = session.as_record();
-  session_replay = session.as_replay();
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
 }
 
@@ -384,9 +381,12 @@ void Task::set_siginfo(const siginfo_t& si) {
   ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 
-TraceReader& Task::trace_reader() { return session_replay->trace_reader(); }
+TraceReader& Task::trace_reader() { return replay_session().trace_reader(); }
 
-TraceWriter& Task::trace_writer() { return session_record->trace_writer(); }
+TraceWriter& Task::trace_writer() { return record_session().trace_writer(); }
+
+RecordSession& Task::record_session() const { return *session().as_record(); }
+ReplaySession& Task::replay_session() const { return *session().as_replay(); }
 
 remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
                                     ShareDeschedEventFd share_desched_fd) {
@@ -465,7 +465,7 @@ bool Task::is_disarm_desched_event_syscall() {
 }
 
 bool Task::is_probably_replaying_syscall() {
-  assert(session_replay);
+  assert(session().is_replaying());
   // If the tracee is at our syscall entry points, we know for
   // sure it's entering/exiting/just-exited a syscall.
   return (is_traced_syscall() || is_untraced_syscall()
@@ -891,13 +891,6 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   if (RESUME_WAIT == wait_how) {
     wait();
   }
-}
-
-Session& Task::session() const {
-  if (session_record) {
-    return *session_record;
-  }
-  return *session_replay;
 }
 
 const TraceFrame& Task::current_trace_frame() {
@@ -1926,11 +1919,11 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
 }
 
 const TraceStream* Task::trace_stream() const {
-  if (session_record) {
-    return &session_record->trace_writer();
+  if (session().as_record()) {
+    return &record_session().trace_writer();
   }
-  if (session_replay) {
-    return &session_replay->trace_reader();
+  if (session().as_replay()) {
+    return &replay_session().trace_reader();
   }
   return nullptr;
 }

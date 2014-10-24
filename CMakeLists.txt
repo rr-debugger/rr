@@ -94,6 +94,7 @@ add_executable(rr
   src/CompressedWriter.cc
   src/CPUIDBugDetector.cc
   src/debugger_gdb.cc
+  src/DiversionSession.cc
   src/diverter.cc
   src/EmuFs.cc
   src/Event.cc

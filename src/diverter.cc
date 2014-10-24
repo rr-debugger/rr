@@ -15,7 +15,7 @@
 
 // The global diversion session, of which there can only be one at a
 // time currently.  See long comment at the top of diverter.h.
-static ReplaySession::shr_ptr session;
+static DiversionSession::shr_ptr session;
 // Number of client references to this, if it's a diversion
 // session.  When there are 0 refs this is considered to be
 // dying.

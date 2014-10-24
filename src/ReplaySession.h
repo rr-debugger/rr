@@ -4,6 +4,7 @@
 #define RR_REPLAY_SESSION_H_
 
 #include "CPUIDBugDetector.h"
+#include "DiversionSession.h"
 #include "EmuFs.h"
 #include "Session.h"
 
@@ -166,21 +167,16 @@ public:
 
   /**
    * Like |clone()|, but return a session in "diversion" mode,
-   * which allows free execution.  See diverter.h.
+   * which allows free execution.
    */
-  shr_ptr clone_diversion();
+  DiversionSession::shr_ptr clone_diversion();
 
-  EmuFs& emufs() { return *emu_fs; }
+  EmuFs& emufs() const { return *emu_fs; }
 
   /** Collect garbage files from this session's emufs. */
   void gc_emufs();
 
   TraceReader& trace_reader() { return trace_in; }
-
-  /**
-   * True when this is an diversion session; see diversioner.h.
-   */
-  bool diversion() const { return is_diversion; }
 
   /**
    * The trace record that we are working on --- the next event
@@ -241,23 +237,25 @@ public:
 
 private:
   ReplaySession(const std::string& dir)
-      : is_diversion(false),
+      : emu_fs(EmuFs::create()),
         last_debugged_task(nullptr),
         tgid_debugged(0),
         trace_in(dir),
         trace_frame(),
         current_step() {
     advance_to_next_trace_frame();
-    emu_fs = EmuFs::create();
   }
 
   ReplaySession(const ReplaySession& other)
-      : is_diversion(false),
+      : emu_fs(other.emu_fs->clone()),
         last_debugged_task(nullptr),
-        tgid_debugged(0),
+        tgid_debugged(other.tgid_debugged),
         trace_in(other.trace_in),
-        trace_frame(),
-        current_step() {}
+        trace_frame(other.trace_frame),
+        current_step(other.current_step),
+        cpuid_bug_detector(other.cpuid_bug_detector) {
+    assert(!other.last_debugged_task);
+  }
 
   /**
    * Set |t| as the last (debugged) task in this session.
@@ -270,6 +268,8 @@ private:
     assert(!last_debugged_task);
     last_debugged_task = t;
   }
+
+  void copy_state_to(Session& dest, EmuFs& dest_emu_fs);
 
   const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
     return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
@@ -310,10 +310,6 @@ private:
   bool is_last_interesting_task(Task* t);
 
   std::shared_ptr<EmuFs> emu_fs;
-  // True when this is an "diversion" session; see
-  // diversioner.h.  In the future, this will be a separate
-  // DiversionSession class.
-  bool is_diversion;
   Task* last_debugged_task;
   pid_t tgid_debugged;
   TraceReader trace_in;

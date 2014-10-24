@@ -9,6 +9,7 @@
 struct dbg_context;
 struct dbg_request;
 class ReplaySession;
+class Session;
 
 /**
  * Replay the trace.  argc, argv, and envp are this process's
@@ -25,7 +26,7 @@ int replay(int argc, char* argv[], char** envp);
  * particular debugger requests before calling this helper, to do
  * generic processing.
  */
-void dispatch_debugger_request(ReplaySession& session, struct dbg_context* dbg,
+void dispatch_debugger_request(Session& session, struct dbg_context* dbg,
                                Task* t, const struct dbg_request& req);
 
 /**

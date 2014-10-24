@@ -661,10 +661,9 @@ public:
                         Ticks tick_period = 0);
 
   /** Return the session this is part of. */
-  Session& session() const;
-  RecordSession& record_session() const { return *session_record; }
-  ReplaySession& replay_session() const { return *session_replay; }
-  ReplaySession* replay_session_ptr() const { return session_replay; }
+  Session& session() const { return *session_; }
+  RecordSession& record_session() const;
+  ReplaySession& replay_session() const;
 
   const TraceFrame& current_trace_frame();
 
@@ -1249,9 +1248,8 @@ private:
   // the time of the most recent set_robust_list() call.
   remote_ptr<void> robust_futex_list;
   size_t robust_futex_list_len;
-  // The record or replay session we're part of.
-  RecordSession* session_record;
-  ReplaySession* session_replay;
+  // The session we're part of.
+  Session* session_;
   // Points to the signal-hander table of this task.  If this
   // task is a non-fork clone child, then the table will be
   // shared with all its "thread" siblings.  Any updates made to
