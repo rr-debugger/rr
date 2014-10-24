@@ -53,7 +53,6 @@ public:
 
   virtual RecordSession* as_record() { return this; }
 
-  virtual TraceStream& trace() { return trace_out; }
   TraceWriter& trace_writer() { return trace_out; }
 
   virtual void on_destroy(Task* t);

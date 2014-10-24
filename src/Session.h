@@ -96,8 +96,6 @@ public:
 
   bool is_recording() { return as_record() != nullptr; }
 
-  virtual TraceStream& trace() = 0;
-
   // The following types are used by step() APIs in Session subclasses.
 
   enum BreakReason {

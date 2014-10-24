@@ -239,8 +239,6 @@ public:
 
   virtual ReplaySession* as_replay() { return this; }
 
-  virtual TraceStream& trace() { return trace_in; }
-
 private:
   ReplaySession(const std::string& dir)
       : is_diversion(false),
