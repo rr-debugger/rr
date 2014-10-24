@@ -1046,8 +1046,7 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
 
   // The stored num_rec_bytes in the header doesn't include the
   // header bytes, but the stored trace data does.
-  current_step.flush.num_rec_bytes_remaining -=
-      sizeof(sizeof(struct syscallbuf_hdr));
+  current_step.flush.num_rec_bytes_remaining -= sizeof(struct syscallbuf_hdr);
   assert(buf.addr == t->syscallbuf_child);
   const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
   assert(flush_hdr->num_rec_bytes ==
