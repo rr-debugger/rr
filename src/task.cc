@@ -1918,13 +1918,6 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                                      << ", but only wrote " << nwritten;
 }
 
-TraceStream& Task::trace_fstream() {
-  if (session_record) {
-    return session_record->trace_writer();
-  }
-  return session_replay->trace_reader();
-}
-
 const TraceStream& Task::trace_fstream() const {
   if (session_record) {
     return session_record->trace_writer();

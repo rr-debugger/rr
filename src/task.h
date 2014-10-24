@@ -1197,7 +1197,6 @@ private:
    * Return the trace fstream that we're using, whether in
    * recording or replay.
    */
-  TraceStream& trace_fstream();
   const TraceStream& trace_fstream() const;
 
   /**
