@@ -88,6 +88,8 @@
 #define RR_SYSCALL_FILTERING 0
 #endif
 
+#define RR_HIDDEN __attribute__((visibility("hidden")))
+
 /**
  * Represents syscall params.  Makes it simpler to pass them around,
  * and avoids pushing/popping all the data for calls.
@@ -226,8 +228,8 @@ static void local_memcpy(void* dest, const void* source, size_t n) {
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps. */
 
-extern __attribute__((visibility("hidden"))) long _traced_raw_syscall(
-    int syscallno, long a0, long a1, long a2, long a3, long a4, long a5);
+extern RR_HIDDEN long _traced_raw_syscall(int syscallno, long a0, long a1,
+                                          long a2, long a3, long a4, long a5);
 
 static int update_errno_ret(long ret) {
   /* EHWPOISON is the last known errno as of linux 3.9.5. */
@@ -268,8 +270,7 @@ static long traced_raw_syscall(const struct syscall_info* call) {
                              call->args[5]);
 }
 
-extern __attribute__((
-    visibility("hidden"))) void* get_traced_syscall_entry_point(void);
+extern RR_HIDDEN void* get_traced_syscall_entry_point(void);
 
 #if defined(SYS_fcntl64)
 #define RR_FCNTL_SYSCALL SYS_fcntl64
@@ -382,8 +383,8 @@ static void exit_signal_critical_section(const sigset_t* saved_mask) {
  *
  * XXX make a nice assembly helper like libc's |syscall()|? */
 
-extern __attribute__((visibility("hidden"))) long _untraced_raw_syscall(
-    int syscallno, long a0, long a1, long a2, long a3, long a4, long a5);
+extern RR_HIDDEN long _untraced_raw_syscall(int syscallno, long a0, long a1,
+                                            long a2, long a3, long a4, long a5);
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
@@ -406,8 +407,7 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
 #define untraced_syscall1(no, a0) untraced_syscall2(no, a0, 0)
 #define untraced_syscall0(no) untraced_syscall1(no, 0)
 
-extern __attribute__((
-    visibility("hidden"))) void* get_untraced_syscall_entry_point(void);
+extern RR_HIDDEN void* get_untraced_syscall_entry_point(void);
 
 /**
  * Make the *un*traced socketcall |call| with the given args.
@@ -435,8 +435,7 @@ static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
 #endif
 
 #if RR_SYSCALL_FILTERING
-extern
-    __attribute__((visibility("hidden"))) void _vsyscall_hook_trampoline(void);
+extern RR_HIDDEN void _vsyscall_hook_trampoline(void);
 #else
 static void _vsyscall_hook_trampoline(void) {}
 #endif
@@ -1632,8 +1631,7 @@ static long sys_writev(const struct syscall_info* call) {
 /* Explicitly declare this as hidden so we can call it from
  * _vsyscall_hook_trampoline without doing all sorts of special PIC handling.
  */
-__attribute__((visibility("hidden"))) long vsyscall_hook(
-    const struct syscall_info* call) {
+RR_HIDDEN long vsyscall_hook(const struct syscall_info* call) {
   switch (call->no) {
 #define CASE(syscallname)                                                      \
   case SYS_##syscallname:                                                      \
