@@ -811,19 +811,29 @@ template <> void monkeypatch_vdso_after_preload_init_arch<X86Arch>(Task* t) {
 // need to ensure that these syscalls get redirected into actual
 // trap-into-the-kernel syscalls so rr can intercept them.
 
+enum SyscallBuffering {
+  Supported,
+  NotSupported,
+};
+
 struct named_syscall {
   const char* name;
   int syscall_number;
+  // Indicates whether the syscall is supported by our LD_PRELOAD syscall
+  // buffering library.
+  SyscallBuffering syscall_buffering;
 };
 
-#define S(n)                                                                   \
-  { #n, X64Arch::n }
+#define S(n, buffering)                         \
+  { #n, X64Arch::n, buffering }
 static const named_syscall syscalls_to_monkeypatch[] = {
-  S(clock_gettime), S(gettimeofday), S(time),
+  S(clock_gettime, Supported),
+  S(gettimeofday, Supported),
+  S(time, Supported),
   // getcpu isn't supported by rr, so any changes to this monkeypatching
   // scheme for efficiency's sake will have to ensure that getcpu gets
   // converted to an actual syscall so rr will complain appropriately.
-  S(getcpu),
+  S(getcpu, NotSupported),
 };
 #undef S
 
