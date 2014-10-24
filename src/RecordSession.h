@@ -21,7 +21,7 @@ public:
                         const std::vector<std::string>& envp,
                         const std::string& cwd);
 
-  enum StepResultStatus {
+  enum RecordStatus {
     // Some execution was recorded. record_step() can be called again.
     STEP_CONTINUE,
     // All tracees are dead. record_step() should not be called again.
@@ -31,8 +31,8 @@ public:
     // Required performance counter features not detected.
     STEP_PERF_COUNTERS_UNAVAILABLE
   };
-  struct StepResult {
-    StepResultStatus status;
+  struct RecordResult {
+    RecordStatus status;
     // When status == STEP_EXITED
     int exit_code;
   };
@@ -43,7 +43,7 @@ public:
    * Typically you'd call this in a loop until it returns something other than
    * STEP_CONTINUE.
    */
-  StepResult record_step();
+  RecordResult record_step();
 
   /**
    * Flush buffers and write a termination record to the trace. Don't call
@@ -67,9 +67,9 @@ private:
 
   virtual void on_create(Task* t);
 
-  void check_perf_counters_working(Task* t, StepResult* step_result);
+  void check_perf_counters_working(Task* t, RecordResult* step_result);
   void handle_ptrace_event(Task* t);
-  void runnable_state_changed(Task* t, StepResult* step_result);
+  void runnable_state_changed(Task* t, RecordResult* step_result);
 
   TraceWriter trace_out;
   Scheduler scheduler_;

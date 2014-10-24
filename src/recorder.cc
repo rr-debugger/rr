@@ -78,7 +78,7 @@ int record(const char* rr_exe, int argc, char* argv[], char** envp) {
 
   auto session = RecordSession::create(args, env, cwd);
 
-  RecordSession::StepResult step_result;
+  RecordSession::RecordResult step_result;
   while ((step_result = session->record_step()).status ==
          RecordSession::STEP_CONTINUE) {
     maybe_process_term_request(*session);

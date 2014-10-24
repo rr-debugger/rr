@@ -560,7 +560,7 @@ static void maybe_reset_syscallbuf(Task* t) {
 
 /** If the perf counters seem to be working return, otherwise don't return. */
 void RecordSession::check_perf_counters_working(Task* t,
-                                                StepResult* step_result) {
+                                                RecordResult* step_result) {
   if (can_deliver_signals ||
       !is_write_syscall(t->ev().Syscall().number, t->arch())) {
     return;
@@ -704,7 +704,7 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
  * a new event that needs to be processed.  Prepare that new event.
  * Pass |si| to force-override signal status.
  */
-void RecordSession::runnable_state_changed(Task* t, StepResult* step_result) {
+void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
   // Have to disable context-switching until we know it's safe
   // to allow switching the context.
   t->switchable = PREVENT_SWITCH;
@@ -826,8 +826,8 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
   on_create(last_recorded_task);
 }
 
-RecordSession::StepResult RecordSession::record_step() {
-  StepResult result;
+RecordSession::RecordResult RecordSession::record_step() {
+  RecordResult result;
 
   if (tasks().empty()) {
     result.status = STEP_EXITED;
