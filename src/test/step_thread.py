@@ -21,6 +21,7 @@ hit_bps = { 'A': 0, 'B': 0, 'C': 0 }
 
 events = [ re.compile(r'Breakpoint 1, hit_barrier'),
            re.compile(r'Breakpoint \d, ([ABC])'),
+           re.compile(r'Remote connection closed'),
            re.compile(r'\(gdb\)') ]
 while 1:
     send_gdb('s\n')
@@ -28,6 +29,8 @@ while 1:
     if 0 == i:
         break
     if 2 == i:
+        assert False, 'Program stopped unexpectedly, review gdb_rr.log'
+    if 3 == i:
         continue
 
     bp = last_match().group(1)
