@@ -108,8 +108,8 @@ def generate_match_method(byte_array, template):
     for chunk in template.chunks:
         if isinstance(chunk, Field):
             field_name = chunk.name
-            s.write('    memcpy(%s, &%s[%d], sizeof(*%s));\n'
-                    % (field_name, byte_array, offset, field_name))
+            s.write('    memcpy(%s, &buffer[%d], sizeof(*%s));\n'
+                    % (field_name, offset, field_name))
         else:
             s.write('    if (memcmp(&buffer[%d], &%s[%d], %d) != 0) { return false; }\n'
                     % (offset, byte_array, offset, len(chunk)))
