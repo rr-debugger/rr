@@ -821,7 +821,7 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
     : trace_out(argv, envp, cwd, bind_to_cpu),
       scheduler_(*this),
       can_deliver_signals(false) {
-  last_recorded_task = Task::spawn(*this);
+  last_recorded_task = Task::spawn(*this, trace_out);
   initial_task_group = last_recorded_task->task_group();
   on_create(last_recorded_task);
 }

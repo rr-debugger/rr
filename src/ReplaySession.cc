@@ -213,14 +213,15 @@ void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
   // with a fresh environment guaranteed to be the same as in
   // replay, so we don't have to worry about any mutation here
   // affecting post-exec execution.
-  for (auto& e : session->trace().initial_envp()) {
+  for (auto& e : session->trace_in.initial_envp()) {
     if (e.find("PATH=") == 0) {
       // NB: intentionally leaking this string.
       putenv(strdup(e.c_str()));
     }
   }
 
-  Task* t = Task::spawn(*session, session->trace_reader().peek_frame().tid());
+  Task* t = Task::spawn(*session, session->trace_in,
+                        session->trace_reader().peek_frame().tid());
   session->on_create(t);
 
   return session;

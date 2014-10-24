@@ -2017,10 +2017,10 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   return child;
 }
 
-/*static*/ Task* Task::spawn(Session& session, pid_t rec_tid) {
+/*static*/ Task* Task::spawn(Session& session, const TraceStream& trace,
+                             pid_t rec_tid) {
   assert(session.tasks().size() == 0);
 
-  TraceStream& trace = session.trace();
   if (trace.bound_to_cpu() >= 0) {
     // Set CPU affinity now, after we've created any helper threads
     // (so they aren't affected), but before we create any

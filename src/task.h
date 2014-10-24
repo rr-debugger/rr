@@ -1217,7 +1217,8 @@ private:
                         remote_ptr<int> ctid = nullptr);
 
   /** Fork and exec a task to run |ae|, with |rec_tid|. */
-  static Task* spawn(Session& session, pid_t rec_tid = -1);
+  static Task* spawn(Session& session, const TraceStream& trace,
+                     pid_t rec_tid = -1);
 
   // The address space of this task.
   std::shared_ptr<AddressSpace> as;
