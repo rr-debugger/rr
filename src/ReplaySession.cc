@@ -195,7 +195,6 @@ ReplaySession::shr_ptr ReplaySession::clone() {
 ReplaySession::shr_ptr ReplaySession::clone_diversion() {
   auto session = clone();
   session->is_diversion = true;
-  session->diversion_ref();
   LOG(debug) << "Cloned experiment session " << session.get();
   return session;
 }

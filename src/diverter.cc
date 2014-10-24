@@ -16,6 +16,10 @@
 // The global diversion session, of which there can only be one at a
 // time currently.  See long comment at the top of diverter.h.
 static ReplaySession::shr_ptr session;
+// Number of client references to this, if it's a diversion
+// session.  When there are 0 refs this is considered to be
+// dying.
+static int diversion_refcount;
 
 static void finish_emulated_syscall_with_ret(Task* t, long ret) {
   Registers r = t->regs();
@@ -132,7 +136,7 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
     *req = dbg_get_request(dbg);
 
     if (dbg_is_resume_request(req)) {
-      if (session->diversion_dying()) {
+      if (diversion_refcount == 0) {
         return nullptr;
       }
       return t;
@@ -144,7 +148,7 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 
       case DREQ_READ_SIGINFO: {
         LOG(debug) << "Adding ref to diversion session";
-        session->diversion_ref();
+        ++diversion_refcount;
         // TODO: maybe share with replayer.cc?
         uint8_t si_bytes[req->mem.len];
         memset(si_bytes, 0, sizeof(si_bytes));
@@ -158,8 +162,9 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
       }
       case DREQ_WRITE_SIGINFO:
         LOG(debug) << "Removing reference to diversion session ...";
-        session->diversion_unref();
-        if (session->diversion_dying()) {
+        assert(diversion_refcount > 0);
+        --diversion_refcount;
+        if (diversion_refcount == 0) {
           LOG(debug) << "  ... dying at next continue request";
         }
         dbg_reply_write_siginfo(dbg);
@@ -178,7 +183,7 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
         // Setting breakpoints in a dying diversion is assumed
         // to be a user action intended for the replay
         // session, so return to it now.
-        if (session->diversion_dying()) {
+        if (diversion_refcount == 0) {
           return nullptr;
         }
         break;
@@ -195,8 +200,11 @@ static Task* process_debugger_requests(struct dbg_context* dbg, Task* t,
 void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
             struct dbg_request* req) {
   LOG(debug) << "Starting debugging diversion for " << &replay;
+  assert(!session && diversion_refcount == 0);
 
   session = replay.clone_diversion();
+  diversion_refcount = 1;
+
   Task* t = session->find_task(task);
   while (true) {
     if (!(t = process_debugger_requests(dbg, t, req))) {
@@ -221,7 +229,7 @@ void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
   }
 
   LOG(debug) << "... ending debugging diversion";
-  assert(session->diversion_dying());
+  assert(diversion_refcount == 0);
   session->kill_all_tasks();
   session = nullptr;
 }
