@@ -104,7 +104,9 @@ _vsyscall_hook_trampoline:
 syscall_raw_trampoline:
         .cfi_startproc
         /* Build a |struct syscall_info| on the stack by pushing the arguments
-           and syscall number.  */
+           and syscall number.  Pushing seven items onto the stack also has the
+           pleasant side-effect of ensuring that the stack is properly aligned
+           for the call to vsyscall_hook.  */
         pushq %r9
         .cfi_adjust_cfa_offset 8
 	.cfi_rel_offset %r9, 0
@@ -128,35 +130,40 @@ syscall_raw_trampoline:
 	.cfi_rel_offset %rax, 0
 
         /* Call our hook.  */
-        mov %rsp, %rdi
+        movq %rsp, %rdi
         callq vsyscall_hook
 
-        /* On entrance, we pushed the %rax, the syscall number.  But we don't
+        /* On entrance, we pushed %rax, the syscall number.  But we don't
            want to |pop %rax|, as that will overwrite our return value.  Pop
            into %r11 instead. */
-        pop %r11
+        popq %r11
         .cfi_adjust_cfa_offset -8
 
         /* We don't really *need* to restore these, since the kernel could have
            trashed them all anyway.  But it seems reasonable to do so.  */
-        pop %rdi
+        popq %rdi
         .cfi_adjust_cfa_offset -8
 	.cfi_restore %rdi
-        pop %rsi
+        popq %rsi
         .cfi_adjust_cfa_offset -8
 	.cfi_restore %rsi
-        pop %rdx
+        popq %rdx
         .cfi_adjust_cfa_offset -8
 	.cfi_restore %rdx
-        pop %r10
+        popq %r10
         .cfi_adjust_cfa_offset -8
 	.cfi_restore %r10
-        pop %r8
+        popq %r8
         .cfi_adjust_cfa_offset -8
 	.cfi_restore %r8
-        pop %r9
+        popq %r9
         .cfi_adjust_cfa_offset -8
 	.cfi_restore %r9
+
+        /* Our monkeypatch edited out the |cmp $-4095, %rax| needed to properly
+           set errno on the way out of the function.  Set the flags here so
+           the subsequent |jae| instruction has something to go on.  */
+        cmpq $-4095, %rax
 
         /* ...and we're done.  */
         ret

@@ -108,6 +108,41 @@ templates = {
         RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),         # jmpq *trampoline_address(%rip)
         Field('trampoline_address', 8),
     ),
+    'X64NotCancellationPointSyscall': AssemblyTemplate(
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x01),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+    ),
+    'X64NotCancellationPointSyscall4Arg': AssemblyTemplate(
+        RawBytes(0x49, 0x89, 0xca), # mov %rcx, %r10
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x01),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+    ),
+    'X64NotCancellationPointMonkeypatch': AssemblyTemplate(
+        RawBytes(0xe8),         # call syscall_trampoline
+        Field('syscall_trampoline', 4),
+        RawBytes(0x90, 0x90, 0x90), # nop nop nop
+                                    # The flags for the jae below are set by
+                                    # the trampoline.
+    ),
+    'X64NotCancellationPoint4ArgMonkeypatch': AssemblyTemplate(
+        RawBytes(0xe8),         # call syscall_trampoline
+        Field('syscall_trampoline', 4),
+        RawBytes(0x90, 0x90, 0x90), # nop nop nop
+                                    # The flags for the jae below are set by
+                                    # the trampoline.
+    ),
 }
 
 def byte_array_name(name):
