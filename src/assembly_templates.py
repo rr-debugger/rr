@@ -151,6 +151,18 @@ def generate_size_member(byte_array):
     s.write('static const size_t size = sizeof(%s);' % byte_array)
     return s.getvalue()
 
+def generate_field_offsets(template):
+    s = StringIO.StringIO()
+    offset = 0
+    for chunk in template.chunks:
+        if isinstance(chunk, Field):
+            s.write('  static constexpr size_t %s_start() { return %d; }\n'
+                    % (chunk.name, offset))
+            s.write('  static constexpr size_t %s_end() { return %d + %d; }\n'
+                    % (chunk.name, offset, len(chunk)))
+        offset += len(chunk)
+    return s.getvalue()
+
 def generate(f):
     # Raw bytes.
     for name, template in templates.iteritems():
@@ -169,9 +181,12 @@ public:
   %(substitute_method)s
 
   %(size_member)s
+
+%(field_offsets)s
 };
 """ % { 'class_name': name,
         'match_method': generate_match_method(byte_array, template),
         'substitute_method': generate_substitute_method(byte_array, template),
-        'size_member': generate_size_member(byte_array), })
+        'size_member': generate_size_member(byte_array),
+        'field_offsets': generate_field_offsets(template), })
         f.write('\n\n')
