@@ -5,7 +5,6 @@
 
 #include "CPUIDBugDetector.h"
 #include "EmuFs.h"
-#include "replayer.h"
 #include "Session.h"
 
 struct syscallbuf_hdr;
