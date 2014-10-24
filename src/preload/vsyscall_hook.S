@@ -93,6 +93,76 @@ _vsyscall_hook_trampoline:
         ret
         .cfi_endproc
         .size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline
+#elif defined(__x86_64__)
+
+        .text
+
+        .global syscall_raw_trampoline
+        .hidden syscall_raw_trampoline
+        .type syscall_raw_trampoline, @function
+	.p2align 4
+syscall_raw_trampoline:
+        .cfi_startproc
+        /* Build a |struct syscall_info| on the stack by pushing the arguments
+           and syscall number.  */
+        pushq %r9
+        .cfi_adjust_cfa_offset 8
+	.cfi_rel_offset %r9, 0
+        pushq %r8
+        .cfi_adjust_cfa_offset 8
+	.cfi_rel_offset %r8, 0
+        pushq %r10
+        .cfi_adjust_cfa_offset 8
+	.cfi_rel_offset %r10, 0
+        pushq %rdx
+        .cfi_adjust_cfa_offset 8
+	.cfi_rel_offset %rdx, 0
+        pushq %rsi
+        .cfi_adjust_cfa_offset 8
+	.cfi_rel_offset %rsi, 0
+        pushq %rdi
+        .cfi_adjust_cfa_offset 8
+	.cfi_rel_offset %rdi, 0
+        pushq %rax
+        .cfi_adjust_cfa_offset 8
+	.cfi_rel_offset %rax, 0
+
+        /* Call our hook.  */
+        mov %rsp, %rdi
+        callq vsyscall_hook
+
+        /* On entrance, we pushed the %rax, the syscall number.  But we don't
+           want to |pop %rax|, as that will overwrite our return value.  Pop
+           into %r11 instead. */
+        pop %r11
+        .cfi_adjust_cfa_offset -8
+
+        /* We don't really *need* to restore these, since the kernel could have
+           trashed them all anyway.  But it seems reasonable to do so.  */
+        pop %rdi
+        .cfi_adjust_cfa_offset -8
+	.cfi_restore %rdi
+        pop %rsi
+        .cfi_adjust_cfa_offset -8
+	.cfi_restore %rsi
+        pop %rdx
+        .cfi_adjust_cfa_offset -8
+	.cfi_restore %rdx
+        pop %r10
+        .cfi_adjust_cfa_offset -8
+	.cfi_restore %r10
+        pop %r8
+        .cfi_adjust_cfa_offset -8
+	.cfi_restore %r8
+        pop %r9
+        .cfi_adjust_cfa_offset -8
+	.cfi_restore %r9
+
+        /* ...and we're done.  */
+        ret
+        .cfi_endproc
+        .size syscall_raw_trampoline, . - syscall_raw_trampoline
+
 #endif /* __i386__ */
 
         .section .note.GNU-stack,"",@progbits

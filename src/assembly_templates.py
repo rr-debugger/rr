@@ -90,6 +90,12 @@ templates = {
         RawBytes(0x0f, 0x05),   # syscall
         RawBytes(0xc3),         # ret
     ),
+    'X64VsyscallSyscallbufMonkeypatch': AssemblyTemplate(
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),         # jmpq *trampoline_address(%rip)
+        Field('trampoline_address', 8),
+    ),
 }
 
 def byte_array_name(name):

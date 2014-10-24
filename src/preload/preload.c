@@ -79,15 +79,6 @@
 #endif
 #define syscall you_must_use_traced_syscall
 
-/* x86 is the only architecture whose syscalls all come through a pinch point
-   that we can monkeypatch.  There are ways to handle other architectures, but
-   for now, we can't filter on any architecture but x86.  */
-#if defined(__i386__)
-#define RR_SYSCALL_FILTERING 1
-#else
-#define RR_SYSCALL_FILTERING 0
-#endif
-
 #define RR_HIDDEN __attribute__((visibility("hidden")))
 
 /**
@@ -434,10 +425,12 @@ static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
 #define untraced_socketcall0(no) untraced_socketcall1(no, 0)
 #endif
 
-#if RR_SYSCALL_FILTERING
+#if defined(__i386__)
 extern RR_HIDDEN void _vsyscall_hook_trampoline(void);
+#elif defined(__x86_64__)
+extern RR_HIDDEN void syscall_raw_trampoline(void);
 #else
-static void _vsyscall_hook_trampoline(void) {}
+#error unknown architecture
 #endif
 
 /**
@@ -466,12 +459,20 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
  * Monkeypatch |__kernel_vsyscall()| to jump into
  * |vdso_hook_trampoline|.
  */
-static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline,
+static void rrcall_monkeypatch_vdso(
                                     int doing_syscall_buffering) {
   sigset_t mask;
+  int syscall_number = SYS_rrcall_monkeypatch_vdso;
   enter_signal_critical_section(&mask);
-  traced_syscall2(SYS_rrcall_monkeypatch_vdso, vdso_hook_trampoline,
+#if defined(__i386__)
+  traced_syscall2(syscall_number, &_vsyscall_hook_trampoline,
                   doing_syscall_buffering);
+#elif defined(__x86_64__)
+  traced_syscall2(syscall_number, &syscall_raw_trampoline,
+                  doing_syscall_buffering);
+#else
+#error undefined architecture
+#endif
   exit_signal_critical_section(&mask);
 }
 
@@ -622,7 +623,7 @@ static void __attribute__((constructor)) init_process(void) {
   pthread_atfork(NULL, NULL, post_fork_child);
   /* Always monkeypatch, since x86-64 needs vdso symbols overridden.  x86
    * can avoid monkeypatching if we're not using the syscallbuf. */
-  rrcall_monkeypatch_vdso(&_vsyscall_hook_trampoline, buffer_enabled);
+  rrcall_monkeypatch_vdso(buffer_enabled);
   process_inited = 1;
 
   init_thread();

@@ -875,7 +875,42 @@ template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
   }
 }
 
-template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {}
+template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {
+  remote_ptr<void> syscall_raw_trampoline = t->regs().arg1();
+  auto vdso_start = t->vm()->vdso().start;
+
+  auto syms = read_vdso_symbols<X64Arch>(t);
+
+  for (auto& sym : syms.symbols) {
+    const char* symname = &syms.strtab[sym.st_name];
+    for (auto& syscall : syscalls_to_monkeypatch) {
+      if (syscall.syscall_buffering == Supported &&
+          strcmp(symname, syscall.name) == 0) {
+          // Absolutely-addressed symbols in the VDSO claim to start here.
+          static const uint64_t vdso_static_base = 0xffffffffff700000LL;
+          static const uintptr_t vdso_max_size = 0xffffLL;
+          uintptr_t sym_address = uintptr_t(sym.st_value);
+          // The symbol values can be absolute or relative addresses.
+          // The first part of the assertion is for absolute
+          // addresses, and the second part is for relative.
+          assert((sym_address & ~vdso_max_size) == vdso_static_base ||
+                 (sym_address & ~vdso_max_size) == 0);
+          uintptr_t sym_offset = sym_address & vdso_max_size;
+          uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
+
+          uint32_t syscall_number = syscall.syscall_number;
+
+          uint8_t patch[X64VsyscallSyscallbufMonkeypatch::size];
+          X64VsyscallSyscallbufMonkeypatch::substitute(patch, syscall_number,
+                                                       syscall_raw_trampoline.as_int());
+
+          t->write_bytes(absolute_address, patch);
+          LOG(debug) << "monkeypatched " << symname << " to jump to "
+                     << "trampoline at " << HEX(syscall_raw_trampoline.as_int());
+      }
+    }
+  }
+}
 
 void monkeypatch_vdso_after_exec(Task* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())
