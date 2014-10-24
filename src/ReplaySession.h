@@ -228,7 +228,7 @@ public:
     // All tracees are dead. replay_step() should not be called again.
     REPLAY_EXITED
   };
-  enum StepBreakReason {
+  enum BreakReason {
     BREAK_NONE,
     // A requested RUN_SINGLESTEP completed.
     BREAK_SINGLESTEP,
@@ -242,7 +242,7 @@ public:
   struct ReplayResult {
     ReplayStatus status;
     // When status == STEP_CONTINUE
-    StepBreakReason break_reason;
+    BreakReason break_reason;
     // When break_reason is not BREAK_NONE, the triggering Task.
     Task* break_task;
     // When break_reason is BREAK_SIGNAL, the signal.
