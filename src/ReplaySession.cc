@@ -1465,7 +1465,7 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
   }
 
   result.status = REPLAY_CONTINUE;
-  result.break_reason = BREAK_NONE;
+  result.break_status.reason = BREAK_NONE;
 
   /* If we restored from a checkpoint, the steps might have been
    * computed already in which case step.action will not be TSTEP_NONE.
@@ -1497,12 +1497,12 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
     }
 
     // We got INCOMPLETE because there was some kind of debugger trap.
-    result.break_task = t;
+    result.break_status.task = t;
 
     if (current_step.action != current_action &&
         current_step.action == TSTEP_DELIVER_SIGNAL) {
-      result.break_reason = BREAK_SIGNAL;
-      result.break_signal = current_step.signo;
+      result.break_status.reason = BREAK_SIGNAL;
+      result.break_status.signal = current_step.signo;
     } else {
       TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
       TrapType retired_bp =
@@ -1538,19 +1538,19 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
         siginfo_t si = t->get_siginfo();
         psiginfo(&si, "  siginfo for signal-stop:\n    ");
 #endif
-        result.break_reason = BREAK_BREAKPOINT;
+        result.break_status.reason = BREAK_BREAKPOINT;
       } else if (TRAP_BKPT_USER == retired_bp) {
         LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
         // SW breakpoint: $ip is just past the
         // breakpoint instruction.  Move $ip back
         // right before it.
         t->move_ip_before_breakpoint();
-        result.break_reason = BREAK_BREAKPOINT;
+        result.break_status.reason = BREAK_BREAKPOINT;
       } else if (DS_SINGLESTEP & t->debug_status()) {
         LOG(debug) << "  finished debugger stepi";
         /* Successful stepi.  Nothing else to do. */
         assert(command == RUN_SINGLESTEP);
-        result.break_reason = BREAK_SINGLESTEP;
+        result.break_status.reason = BREAK_SINGLESTEP;
       } else if (DS_WATCHPOINT_ANY & t->debug_status()) {
         LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
                    << "): hit debugger watchpoint.";
@@ -1566,8 +1566,8 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
                       : DS_WATCHPOINT2 & t->debug_status()
                             ? 2
                             : DS_WATCHPOINT3 & t->debug_status() ? 3 : -1;
-        result.break_reason = BREAK_WATCHPOINT;
-        result.break_watch_address = t->watchpoint_addr(dr);
+        result.break_status.reason = BREAK_WATCHPOINT;
+        result.break_status.watch_address = t->watchpoint_addr(dr);
       }
     }
 

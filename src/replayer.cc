@@ -537,30 +537,30 @@ static bool replay_one_step(ReplaySession& session, struct dbg_context* dbg,
     return true;
   }
   assert(result.status == ReplaySession::REPLAY_CONTINUE);
-  if (result.break_reason == ReplaySession::BREAK_NONE) {
+  if (result.break_status.reason == ReplaySession::BREAK_NONE) {
     return true;
   }
 
   if (dbg && !req.suppress_debugger_stop) {
     int sig = SIGTRAP;
     remote_ptr<void> watch_addr = nullptr;
-    switch (result.break_reason) {
+    switch (result.break_status.reason) {
       case ReplaySession::BREAK_SIGNAL:
-        sig = result.break_signal;
+        sig = result.break_status.signal;
         break;
       case ReplaySession::BREAK_WATCHPOINT:
-        watch_addr = result.break_watch_address;
+        watch_addr = result.break_status.watch_address;
         break;
       default:
         break;
     }
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    dbg_notify_stop(dbg, get_threadid(result.break_task), sig,
+    dbg_notify_stop(dbg, get_threadid(result.break_status.task), sig,
                     watch_addr.as_int());
   }
 
-  req = process_debugger_requests(dbg, result.break_task);
+  req = process_debugger_requests(dbg, result.break_status.task);
   if (DREQ_RESTART == req.type) {
     *restart_request = req;
     return false;
