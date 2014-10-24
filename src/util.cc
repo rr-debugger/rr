@@ -841,10 +841,6 @@ template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
     const char* symname = &syms.strtab[sym.st_name];
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
       if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
-        uint8_t patch[X64VsyscallMonkeypatch::size];
-        uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
-        X64VsyscallMonkeypatch::substitute(patch, syscall_number);
-
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uintptr_t vdso_max_size = 0xffffLL;
@@ -855,7 +851,13 @@ template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
         assert((sym_address & ~vdso_max_size) == vdso_static_base ||
                (sym_address & ~vdso_max_size) == 0);
         uintptr_t sym_offset = sym_address & vdso_max_size;
-        t->write_bytes(vdso_start + sym_offset, patch);
+        uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
+
+        uint8_t patch[X64VsyscallMonkeypatch::size];
+        uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
+        X64VsyscallMonkeypatch::substitute(patch, syscall_number);
+
+        t->write_bytes(absolute_address, patch);
         LOG(debug) << "monkeypatched " << symname << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
       }
