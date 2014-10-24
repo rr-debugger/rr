@@ -1194,10 +1194,10 @@ private:
   Task* os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote);
 
   /**
-   * Return the trace fstream that we're using, whether in
-   * recording or replay.
+   * Return the TraceStream that we're using, if in recording or replay.
+   * Returns null if we're not in record or replay.
    */
-  const TraceStream& trace_fstream() const;
+  const TraceStream* trace_stream() const;
 
   /**
    * Make the OS-level calls to clone |parent| into |session|

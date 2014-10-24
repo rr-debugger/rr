@@ -1084,9 +1084,16 @@ siginfo_t Task::pop_stash_sig() {
   return si;
 }
 
-const string& Task::trace_dir() const { return trace_fstream().dir(); }
+const string& Task::trace_dir() const {
+  const TraceStream* trace = trace_stream();
+  ASSERT(this, trace) << "Trace directory not available";
+  return trace->dir();
+}
 
-uint32_t Task::trace_time() const { return trace_fstream().time(); }
+uint32_t Task::trace_time() const {
+  const TraceStream* trace = trace_stream();
+  return trace ? trace->time() : 0;
+}
 
 void Task::update_prname(remote_ptr<void> child_addr) {
   struct prname_buf {
@@ -1918,11 +1925,14 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                                      << ", but only wrote " << nwritten;
 }
 
-const TraceStream& Task::trace_fstream() const {
+const TraceStream* Task::trace_stream() const {
   if (session_record) {
-    return session_record->trace_writer();
+    return &session_record->trace_writer();
   }
-  return session_replay->trace_reader();
+  if (session_replay) {
+    return &session_replay->trace_reader();
+  }
+  return nullptr;
 }
 
 void Task::xptrace(int request, remote_ptr<void> addr, void* data) {
