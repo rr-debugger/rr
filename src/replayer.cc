@@ -527,16 +527,16 @@ static bool replay_one_step(ReplaySession& session, struct dbg_context* dbg,
     assert(dbg_is_resume_request(&req));
   }
 
-  ReplaySession::StepCommand command =
+  ReplaySession::RunCommand command =
       (DREQ_STEP == req.type && get_threadid(t) == req.target)
           ? ReplaySession::RUN_SINGLESTEP
           : ReplaySession::RUN_CONTINUE;
   auto result = session.replay_step(command);
 
-  if (result.status == ReplaySession::STEP_EXITED) {
+  if (result.status == ReplaySession::REPLAY_EXITED) {
     return true;
   }
-  assert(result.status == ReplaySession::STEP_CONTINUE);
+  assert(result.status == ReplaySession::REPLAY_CONTINUE);
   if (result.break_reason == ReplaySession::BREAK_NONE) {
     return true;
   }

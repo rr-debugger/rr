@@ -222,11 +222,11 @@ public:
    */
   static shr_ptr create(int argc, char* argv[]);
 
-  enum StepResultStatus {
+  enum ReplayStatus {
     // Some execution was replayed. replay_step() can be called again.
-    STEP_CONTINUE,
+    REPLAY_CONTINUE,
     // All tracees are dead. replay_step() should not be called again.
-    STEP_EXITED
+    REPLAY_EXITED
   };
   enum StepBreakReason {
     BREAK_NONE,
@@ -239,8 +239,8 @@ public:
     // We hit a signal.
     BREAK_SIGNAL
   };
-  struct StepResult {
-    StepResultStatus status;
+  struct ReplayResult {
+    ReplayStatus status;
     // When status == STEP_CONTINUE
     StepBreakReason break_reason;
     // When break_reason is not BREAK_NONE, the triggering Task.
@@ -252,11 +252,11 @@ public:
     // When status == STEP_EXITED. -1 means abnormal termination.
     int exit_code;
   };
-  enum StepCommand {
+  enum RunCommand {
     RUN_CONTINUE,
     RUN_SINGLESTEP
   };
-  StepResult replay_step(StepCommand command = RUN_CONTINUE);
+  ReplayResult replay_step(RunCommand command = RUN_CONTINUE);
 
   virtual ReplaySession* as_replay() { return this; }
 
@@ -301,14 +301,14 @@ private:
   void setup_replay_one_trace_frame(Task* t);
   void advance_to_next_trace_frame();
   Completion emulate_signal_delivery(Task* oldtask, int sig);
-  Completion try_one_trace_step(Task* t, StepCommand stepi);
+  Completion try_one_trace_step(Task* t, RunCommand stepi);
   Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
-                                   StepCommand stepi);
-  Completion enter_syscall(Task* t, StepCommand stepi);
-  Completion exit_syscall(Task* t, StepCommand stepi);
+                                   RunCommand stepi);
+  Completion enter_syscall(Task* t, RunCommand stepi);
+  Completion exit_syscall(Task* t, RunCommand stepi);
   Ticks get_ticks_slack(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
-  void continue_or_step(Task* t, StepCommand stepi, int64_t tick_period = 0);
+  void continue_or_step(Task* t, RunCommand stepi, int64_t tick_period = 0);
   enum ExecStateType {
     UNKNOWN,
     NOT_AT_TARGET,
@@ -316,20 +316,20 @@ private:
   };
   TrapType compute_trap_type(Task* t, int target_sig,
                              SignalDeterministic deterministic,
-                             ExecStateType exec_state, StepCommand stepi);
+                             ExecStateType exec_state, RunCommand stepi);
   bool is_debugger_trap(Task* t, int target_sig,
                         SignalDeterministic deterministic,
-                        ExecStateType exec_state, StepCommand stepi);
+                        ExecStateType exec_state, RunCommand stepi);
   Completion advance_to(Task* t, const Registers& regs, int sig,
-                        StepCommand stepi, Ticks ticks);
-  Completion emulate_deterministic_signal(Task* t, int sig, StepCommand stepi);
-  Completion emulate_async_signal(Task* t, int sig, StepCommand stepi,
+                        RunCommand stepi, Ticks ticks);
+  Completion emulate_deterministic_signal(Task* t, int sig, RunCommand stepi);
+  Completion emulate_async_signal(Task* t, int sig, RunCommand stepi,
                                   Ticks ticks);
   Completion skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
-                                StepCommand stepi);
+                                RunCommand stepi);
   void prepare_syscallbuf_records(Task* t);
-  Completion flush_one_syscall(Task* t, StepCommand stepi);
-  Completion flush_syscallbuf(Task* t, StepCommand stepi);
+  Completion flush_one_syscall(Task* t, RunCommand stepi);
+  Completion flush_syscallbuf(Task* t, RunCommand stepi);
   bool is_last_interesting_task(Task* t);
 
   std::shared_ptr<EmuFs> emu_fs;

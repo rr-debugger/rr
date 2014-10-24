@@ -532,10 +532,14 @@ bool Task::is_syscall_restart() {
 
   {
     const Registers& old_regs = ev().Syscall().regs;
-    if (!(old_regs.arg1() == regs().arg1() && old_regs.arg2() == regs().arg2() &&
-          old_regs.arg3() == regs().arg3() && old_regs.arg4() == regs().arg4() &&
-          old_regs.arg5() == regs().arg5() && old_regs.arg6() == regs().arg6())) {
-      LOG(debug) << "  regs different at interrupted " << syscallname(syscallno);
+    if (!(old_regs.arg1() == regs().arg1() &&
+          old_regs.arg2() == regs().arg2() &&
+          old_regs.arg3() == regs().arg3() &&
+          old_regs.arg4() == regs().arg4() &&
+          old_regs.arg5() == regs().arg5() &&
+          old_regs.arg6() == regs().arg6())) {
+      LOG(debug) << "  regs different at interrupted "
+                 << syscallname(syscallno);
       goto done;
     }
   }
