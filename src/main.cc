@@ -439,7 +439,7 @@ static int parse_common_args(int argc, char** argv, Flags* flags) {
   };
   while (1) {
     int i = 0;
-    switch (getopt_long(argc, argv, "+a:c:d:fkmst:uvw:", opts, &i)) {
+    switch (getopt_long(argc, argv, "+a:c:d:efkmst:uvw:", opts, &i)) {
       case -1:
         return optind;
       case 'a':
