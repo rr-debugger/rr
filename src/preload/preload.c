@@ -429,6 +429,7 @@ static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
 extern RR_HIDDEN void _vsyscall_hook_trampoline(void);
 #elif defined(__x86_64__)
 extern RR_HIDDEN void syscall_raw_trampoline(void);
+extern RR_HIDDEN void syscall_raw_cancellation_trampoline(void);
 #else
 #error unknown architecture
 #endif
@@ -468,8 +469,9 @@ static void rrcall_monkeypatch_vdso(
   traced_syscall2(syscall_number, &_vsyscall_hook_trampoline,
                   doing_syscall_buffering);
 #elif defined(__x86_64__)
-  traced_syscall2(syscall_number, &syscall_raw_trampoline,
-                  doing_syscall_buffering);
+  traced_syscall3(syscall_number, &syscall_raw_trampoline,
+                  doing_syscall_buffering,
+                  &syscall_raw_cancellation_trampoline);
 #else
 #error undefined architecture
 #endif

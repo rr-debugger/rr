@@ -143,6 +143,69 @@ templates = {
                                     # The flags for the jae below are set by
                                     # the trampoline.
     ),
+    'X64CancellationPointSyscall': AssemblyTemplate(
+        RawBytes(0x83, 0x3d),   # cmpl $0x0, threaded_program_p(%rip)
+        Field('threaded_program_p', 4),
+        RawBytes(0x00),
+        RawBytes(0x75, 0x10),   # jne do_cancellation
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('nocancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x31),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+        # do_cancellation:
+        RawBytes(0x48, 0x83, 0xec, 0x08), # subq $0x8, %rsp
+        RawBytes(0xe8),                   # callq __libc_enable_cancellation
+        Field('libc_enable_cancellation', 4),
+        RawBytes(0x48, 0x89, 0x04, 0x24), # mov %rax, (%rsp)
+        RawBytes(0xb8),                   # mov $syscall_number, %eax
+        Field('syscall_number2', 4),
+        Marker('cancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),             # syscall
+        RawBytes(0x48, 0x8b, 0x3c, 0x24), # mov (%rsp), %rdi
+        Marker('begin_disable_call'),
+        RawBytes(0x48, 0x89, 0xc2),       # mov %rax, %rdx
+        RawBytes(0xe8),                   # callq __libc_disable_cancellation
+        Field('libc_disable_cancellation', 4),
+    ),
+    'X64CancellationPointSyscall4Arg': AssemblyTemplate(
+        RawBytes(0x83, 0x3d),   # cmpl $0x0, threaded_program_p(%rip)
+        Field('threaded_program_p', 4),
+        RawBytes(0x00),
+        RawBytes(0x75, 0x13),   # jne do_cancellation
+        RawBytes(0x49, 0x89, 0xca), # mov %rcx, %r10
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('nocancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x34),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+        # do_cancellation:
+        RawBytes(0x48, 0x83, 0xec, 0x08), # subq $0x8, %rsp
+        RawBytes(0xe8),                   # callq __libc_enable_cancellation
+        Field('libc_enable_cancellation', 4),
+        RawBytes(0x48, 0x89, 0x04, 0x24), # mov %rax, (%rsp)
+        RawBytes(0x49, 0x89, 0xca), # mov %rcx, %r10
+        RawBytes(0xb8),                   # mov $syscall_number, %eax
+        Field('syscall_number2', 4),
+        Marker('cancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),             # syscall
+        RawBytes(0x48, 0x8b, 0x3c, 0x24), # mov (%rsp), %rdi
+        Marker('begin_disable_call'),
+        RawBytes(0x48, 0x89, 0xc2),       # mov %rax, %rdx
+        RawBytes(0xe8),                   # callq __libc_disable_cancellation
+        Field('libc_disable_cancellation', 4),
+    ),
+    'X64CancellationPointMonkeypatch': AssemblyTemplate(
+        RawBytes(0xe8),         # call syscall_cancellation_trampoline
+        Field('syscall_trampoline', 4),
+        RawBytes(0x90),         # nop
+    ),
 }
 
 def byte_array_name(name):

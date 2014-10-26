@@ -976,6 +976,89 @@ static void monkeypatch_non_cancellable_function(Task* t,
              << "trampoline at " << HEX(syscall_raw_trampoline.as_int());
 }
 
+template <typename AssemblyTemplate, typename MonkeypatchTemplateCancel,
+          typename MonkeypatchTemplateNoCancel>
+static void monkeypatch_cancellable_function(Task* t,
+                                             remote_ptr<void> lib_start,
+                                             const char* name,
+                                             const typename X64Arch::ElfSym* elfsym) {
+  remote_ptr<void> syscall_raw_trampoline = t->regs().arg1();
+  remote_ptr<void> syscall_raw_cancellation_trampoline = t->regs().arg3();
+
+  auto symbol_address = lib_start + elfsym->st_value;
+
+  // Verify that the assembly is what we expect to see.  Our trampoline scheme
+  // depends on the exact sequence of instructions after the syscall, so it's
+  // critical that the assembly has a particular format.
+  uint8_t original_code[elfsym->st_size];
+  t->read_bytes_helper(symbol_address, elfsym->st_size, original_code);
+
+  uint32_t syscall_number;
+  // These aren't used, but do vary with the address of the function.
+  uint32_t threaded_program_p, libc_enable_cancellation, libc_disable_cancellation;
+  if (!AssemblyTemplate::match(original_code, &threaded_program_p,
+                               &syscall_number, &libc_enable_cancellation,
+                               &syscall_number, &libc_disable_cancellation)) {
+    LOG(debug) << "Not patching " << name
+               << " because its assembly code didn't match expectations";
+    return;
+  }
+
+  // Our preloaded library (and therefore the syscall trampoline) should
+  // be loaded within 2GB of libc/libpthread, and therefore we can use
+  // a PC-relative CALL instruction to reach our trampoline.  Compute
+  // the precise offset to place in the CALL instruction.
+  remote_ptr<void> monkeypatched_call_end =
+    symbol_address + AssemblyTemplate::nocancel_monkeypatch_point_offset +
+    MonkeypatchTemplateNoCancel::syscall_trampoline_end();
+  int64_t call_distance_to_trampoline =
+    syscall_raw_trampoline - monkeypatched_call_end;
+
+  // Bail if the distance doesn't fit into +/- 2GB.  We can work
+  // around this with different monkeypatching approaches if need be,
+  // but this style of monkeypatch is much simpler.
+  if (call_distance_to_trampoline < INT32_MIN ||
+      call_distance_to_trampoline > INT32_MAX) {
+    LOG(debug) << "Not patching " << name
+               << " because the trampoline is too far away";
+    return;
+  }
+
+  // We have to do the same check for the cancellation trampoline, too.
+  remote_ptr<void> cancellation_monkeypatched_call_end =
+    symbol_address + AssemblyTemplate::cancel_monkeypatch_point_offset +
+    MonkeypatchTemplateCancel::syscall_trampoline_end();
+  int64_t call_distance_to_cancellation_trampoline =
+    syscall_raw_cancellation_trampoline - cancellation_monkeypatched_call_end;
+
+  if (call_distance_to_cancellation_trampoline < INT32_MIN ||
+      call_distance_to_cancellation_trampoline > INT32_MAX) {
+    LOG(debug) << "Not patching " << name
+               << " because the cancellation trampoline is too far away";
+    return;
+  }
+
+  // The monkeypatches are designed to be inserted at particular places in the
+  // assembly.  Verify that we're putting things in the correct place.
+  static_assert(AssemblyTemplate::nocancel_monkeypatch_point_offset + MonkeypatchTemplateNoCancel::size ==
+                AssemblyTemplate::jae_instruction_offset, "bogus nocancel monkeypatch!");
+  static_assert(AssemblyTemplate::cancel_monkeypatch_point_offset + MonkeypatchTemplateCancel::size ==
+                AssemblyTemplate::begin_disable_call_offset, "bogus cancel monkeypatch!");
+
+  // Create the patches and install.
+  uint8_t nocancel_patch[MonkeypatchTemplateNoCancel::size];
+  MonkeypatchTemplateNoCancel::substitute(nocancel_patch, call_distance_to_trampoline);
+  t->write_bytes(symbol_address + AssemblyTemplate::nocancel_monkeypatch_point_offset, nocancel_patch);
+
+  uint8_t cancel_patch[MonkeypatchTemplateCancel::size];
+  MonkeypatchTemplateCancel::substitute(cancel_patch, call_distance_to_cancellation_trampoline);
+  t->write_bytes(symbol_address + AssemblyTemplate::cancel_monkeypatch_point_offset, cancel_patch);
+
+  LOG(debug) << "monkeypatched " << name << " to jump to "
+             << "trampoline at " << HEX(syscall_raw_trampoline.as_int())
+             << " and cancel trampoline at " << HEX(syscall_raw_cancellation_trampoline.as_int());
+}
+
 template <typename Arch>
 static void monkeypatch_libc_alike(Task* t, remote_ptr<void> lib_start) {
   auto syms = read_elf_symbols<Arch>(t, lib_start);
@@ -1000,8 +1083,17 @@ static void monkeypatch_libc_alike(Task* t, remote_ptr<void> lib_start) {
 
     auto elfsym = (*sym_entry).second;
     if (patchable_symbol.is_cancellation_point == CancellationPoint) {
-      // TODO: handle cancellable syscalls.
-      LOG(debug) << "Not patching " << name << " because it is a cancellation point";
+      if (patchable_symbol.n_args == FourOrMoreArguments) {
+        monkeypatch_cancellable_function<X64CancellationPointSyscall4Arg,
+                                         X64CancellationPointMonkeypatch,
+                                         X64NotCancellationPointMonkeypatch>(t, lib_start,
+                                                                             name, elfsym);
+      } else {
+        monkeypatch_cancellable_function<X64CancellationPointSyscall,
+                                         X64CancellationPointMonkeypatch,
+                                         X64NotCancellationPointMonkeypatch>(t, lib_start,
+                                                                             name, elfsym);
+      }
       continue;
     }
 
