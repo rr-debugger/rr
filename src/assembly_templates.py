@@ -22,6 +22,16 @@ class Field(object):
         types = { 8: 'uint64_t', 4: 'uint32_t', 2: 'uint16_t', 1: 'uint8_t' }
         return types[self.byte_length]
 
+# These are essentially 0-length Fields, but it's simpler for matching and
+# substitution purposes if one doesn't have to pass dummy items for these.
+class Marker(object):
+    """A point within an assembly template."""
+    def __init__(self, name):
+        self.name = name
+
+    def __len__(self):
+        return 0
+
 class AssemblyTemplate(object):
     """A sequence of RawBytes and Field objects, which can be used to verify
     that a given sequence of assembly instructions matches the RawBytes while
@@ -33,7 +43,7 @@ class AssemblyTemplate(object):
         merged_chunks = []
         current_raw_bytes = []
         for c in chunks:
-            if isinstance(c, Field):
+            if isinstance(c, Field) or isinstance(c, Marker):
                 # Push any raw bytes before this.
                 if current_raw_bytes:
                     merged_chunks.append(RawBytes(*current_raw_bytes))
@@ -54,6 +64,8 @@ class AssemblyTemplate(object):
         for c in self.chunks:
             if isinstance(c, Field):
                 bytes.extend([0] * len(c))
+            elif isinstance(c, Marker):
+                continue
             else:
                 bytes.extend(c.bytes)
         return bytes
@@ -160,6 +172,9 @@ def generate_field_offsets(template):
                     % (chunk.name, offset))
             s.write('  static constexpr size_t %s_end() { return %d + %d; }\n'
                     % (chunk.name, offset, len(chunk)))
+        elif isinstance(chunk, Marker):
+            s.write('  static const size_t %s_offset = %d;\n'
+                    % (chunk.name, offset))
         offset += len(chunk)
     return s.getvalue()
 
