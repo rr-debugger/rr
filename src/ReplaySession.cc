@@ -1138,7 +1138,7 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
                                   current_step.flush.syscall_record_offset);
   int call = rec_rec->syscallno;
   // TODO: use syscall_defs table information to determine this.
-  ExecOrEmulate emu = (SYS_madvise == call) ? EXEC : EMULATE;
+  ExecOrEmulate emu = is_madvise_syscall(call, t->arch()) ? EXEC : EMULATE;
 
   switch (current_step.flush.state) {
     case FLUSH_START:
