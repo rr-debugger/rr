@@ -228,8 +228,6 @@ public:
     ReplayStatus status;
     // When status == STEP_CONTINUE
     BreakStatus break_status;
-    // When status == STEP_EXITED. -1 means abnormal termination.
-    int exit_code;
   };
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE);
 

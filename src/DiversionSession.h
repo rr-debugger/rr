@@ -31,8 +31,6 @@ public:
     DiversionStatus status;
     // When status == STEP_CONTINUE
     BreakStatus break_status;
-    // When status == STEP_EXITED. -1 means abnormal termination.
-    int exit_code;
   };
   /**
    * Try make progress in this diversion session. Run task t if possible.

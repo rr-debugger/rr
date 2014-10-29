@@ -1463,7 +1463,6 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
   if (EV_TRACE_TERMINATION == trace_frame.event().type) {
     set_last_task(t);
     result.status = REPLAY_EXITED;
-    result.exit_code = -1;
     return result;
   }
 
@@ -1495,7 +1494,6 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
       // |schedule_task()|.
       set_last_task(t);
       result.status = REPLAY_EXITED;
-      result.exit_code = -1;
       return result;
     }
 
