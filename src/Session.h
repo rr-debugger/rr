@@ -131,7 +131,12 @@ protected:
   Session();
   ~Session();
 
+  Session(const Session&) = delete;
+  Session& operator=(const Session&) = delete;
+
   virtual void on_create(Task* t);
+
+  BreakStatus diagnose_debugger_trap(Task* t, int stop_sig);
 
   AddressSpaceSet sas;
   TaskMap task_map;
@@ -141,9 +146,6 @@ protected:
    * consistent across record and replay.
    */
   bool tracees_consistent;
-
-  Session(const Session&) = delete;
-  Session& operator=(const Session&) = delete;
 };
 
 #endif // RR_SESSION_H_

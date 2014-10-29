@@ -23,9 +23,9 @@ public:
 
   enum DiversionStatus {
     // Some execution was done. diversion_step() can be called again.
-    STEP_CONTINUE,
+    DIVERSION_CONTINUE,
     // All tracees are dead. diversion_step() should not be called again.
-    STEP_EXITED
+    DIVERSION_EXITED
   };
   struct DiversionResult {
     DiversionStatus status;
@@ -34,7 +34,10 @@ public:
     // When status == STEP_EXITED. -1 means abnormal termination.
     int exit_code;
   };
-  DiversionResult diversion_step(RunCommand command = RUN_CONTINUE);
+  /**
+   * Try make progress in this diversion session. Run task t if possible.
+   */
+  DiversionResult diversion_step(Task* t, RunCommand command = RUN_CONTINUE);
 
   virtual DiversionSession* as_diversion() { return this; }
 

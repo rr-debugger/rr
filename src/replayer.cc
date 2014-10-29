@@ -529,15 +529,15 @@ static bool replay_one_step(ReplaySession& session, struct dbg_context* dbg,
 
   ReplaySession::RunCommand command =
       (DREQ_STEP == req.type && get_threadid(t) == req.target)
-          ? ReplaySession::RUN_SINGLESTEP
-          : ReplaySession::RUN_CONTINUE;
+          ? Session::RUN_SINGLESTEP
+          : Session::RUN_CONTINUE;
   auto result = session.replay_step(command);
 
   if (result.status == ReplaySession::REPLAY_EXITED) {
     return true;
   }
   assert(result.status == ReplaySession::REPLAY_CONTINUE);
-  if (result.break_status.reason == ReplaySession::BREAK_NONE) {
+  if (result.break_status.reason == Session::BREAK_NONE) {
     return true;
   }
 
@@ -545,10 +545,10 @@ static bool replay_one_step(ReplaySession& session, struct dbg_context* dbg,
     int sig = SIGTRAP;
     remote_ptr<void> watch_addr = nullptr;
     switch (result.break_status.reason) {
-      case ReplaySession::BREAK_SIGNAL:
+      case Session::BREAK_SIGNAL:
         sig = result.break_status.signal;
         break;
-      case ReplaySession::BREAK_WATCHPOINT:
+      case Session::BREAK_WATCHPOINT:
         watch_addr = result.break_status.watch_address;
         break;
       default:
