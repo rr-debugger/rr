@@ -334,6 +334,7 @@ set(TESTS_WITHOUT_PROGRAM
   break_sync_signal
   break_thread
   break_time_slice
+  call_exit
   checkpoint_async_signal_syscalls_1000
   checkpoint_mmap_shared
   checkpoint_prctl_name

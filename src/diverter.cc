@@ -124,8 +124,10 @@ void divert(ReplaySession& replay, struct dbg_context* dbg, pid_t task,
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
+      dbg_notify_exit_code(dbg, 0);
       break;
     }
+
     assert(result.status == DiversionSession::DIVERSION_CONTINUE);
     if (result.break_status.reason == Session::BREAK_NONE) {
       continue;

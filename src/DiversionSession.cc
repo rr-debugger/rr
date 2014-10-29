@@ -106,6 +106,12 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
     Task* t, RunCommand command) {
   DiversionResult result;
 
+  // An exit might have occurred while processing a previous syscall.
+  if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    result.status = DIVERSION_EXITED;
+    return result;
+  }
+
   switch (command) {
     case RUN_CONTINUE:
       LOG(debug) << "Continuing to next syscall";
@@ -117,6 +123,11 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
       break;
     default:
       FATAL() << "Illegal run command " << command;
+  }
+
+  if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    result.status = DIVERSION_EXITED;
+    return result;
   }
 
   result.status = DIVERSION_CONTINUE;
