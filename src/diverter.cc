@@ -4,12 +4,9 @@
 
 #include "diverter.h"
 
-#include <sys/syscall.h>
-
 #include "debugger_gdb.h"
+#include "DiversionSession.h"
 #include "log.h"
-#include "AutoRemoteSyscalls.h"
-#include "replayer.h"
 #include "ReplaySession.h"
 #include "task.h"
 
