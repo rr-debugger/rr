@@ -35,19 +35,6 @@ set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${rr_MBITNESS_OPTION}")
 
 set_source_files_properties(src/preload/preload.c PROPERTIES COMPILE_FLAGS -O2)
 
-# 32-bit rr requires its librrpreload to be compiled as position dependent code.
-# 64-bit rr seems to not care so far.
-#
-# Use a dummy header to make the macro happy.
-INCLUDE(CheckSymbolExists)
-CHECK_SYMBOL_EXISTS(__i386__ stdint.h rr_DEFAULT_32BIT)
-
-if (rr_DEFAULT_32BIT)
-  # Disable PIC.
-  string(REGEX REPLACE "-fPIC" ""
-    CMAKE_SHARED_LIBRARY_C_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
-endif()
-
 include_directories("${PROJECT_SOURCE_DIR}/include")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
