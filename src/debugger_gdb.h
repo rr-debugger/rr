@@ -180,8 +180,9 @@ public:
    * traffic regarding |tgid|, but clients don't need to and shouldn't
    * need to assume that.
    *
-   * If we're opening this connection on behalf of a known client, past
-   * its pid as |client| and its |client_params_fd|.  |exe_image| is the
+   * If we're opening this connection on behalf of a known client, pass
+   * an fd in |client_params_fd|; we'll write the allocated port and |exe_image|
+   * through the fd before waiting for a connection. |exe_image| is the
    * process that will be debugged by client, or null ptr if there isn't
    * a client.
    *
@@ -192,10 +193,12 @@ public:
     DONT_PROBE = 0,
     PROBE_PORT
   };
-  static GdbContext* await_client_connection(
-      unsigned short desired_port, ProbePort probe, pid_t tgid,
-      const std::string* exe_image = nullptr, pid_t client = -1,
-      ScopedFd* client_params_fd = nullptr);
+  static GdbContext* await_client_connection(unsigned short desired_port,
+                                             ProbePort probe, pid_t tgid,
+                                             const std::string* exe_image =
+                                                 nullptr,
+                                             ScopedFd* client_params_fd =
+                                                 nullptr);
 
   // Current request to be processed.
   GdbRequest req;

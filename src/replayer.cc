@@ -93,10 +93,9 @@ static const char gdb_rr_macros[] =
     "end\n"
     "handle SIGURG stop\n";
 
-// |parent| is the (potential) debugger client.  It waits until the
-// server, |child|, creates a debug socket.  Then the client exec()s
-// the debugger over itself.
-static pid_t parent, child;
+// The parent process waits until the server, |child|, creates a debug socket.
+// Then the parent exec()s the debugger over itself.
+static pid_t child;
 // The server writes debugger params to this pipe.
 static ScopedFd debugger_params_write_pipe;
 
@@ -709,8 +708,10 @@ GdbContext* maybe_create_debugger(GdbContext* dbg) {
                                           : GdbContext::PROBE_PORT;
   const string* exe =
       Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
-  return GdbContext::await_client_connection(
-      port, probe, t->tgid(), exe, parent, &debugger_params_write_pipe);
+  dbg = GdbContext::await_client_connection(port, probe, t->tgid(), exe,
+                                            &debugger_params_write_pipe);
+  debugger_params_write_pipe.close();
+  return dbg;
 }
 
 /**
@@ -829,8 +830,6 @@ int replay(int argc, char* argv[], char** envp) {
     return 0;
   }
 
-  parent = getpid();
-
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = handle_signal;
@@ -858,7 +857,7 @@ int replay(int argc, char* argv[], char** envp) {
   // Ensure only the child has the write end of the pipe open. Then if
   // the child dies, our reads from the pipe will return EOF.
   close(debugger_params_pipe[1]);
-  LOG(debug) << parent << ": forked debugger server " << child;
+  LOG(debug) << getpid() << ": forked debugger server " << child;
 
   dbg_launch_debugger(debugger_params_pipe[0], gdb_rr_macros);
 

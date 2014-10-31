@@ -112,34 +112,32 @@ static void await_debugger(GdbContext* dbg, ScopedFd& listen_fd) {
   // socket fd CLOEXEC.
 }
 
+static const char connection_addr[] = "127.0.0.1";
+
 struct debugger_params {
   char exe_image[PATH_MAX];
-  char socket_addr[PATH_MAX];
   short port;
 };
 
 GdbContext* GdbContext::await_client_connection(unsigned short desired_port,
                                                 ProbePort probe, pid_t tgid,
                                                 const string* exe_image,
-                                                pid_t client,
                                                 ScopedFd* client_params_fd) {
   GdbContext* dbg = new GdbContext();
   unsigned short port = desired_port;
-  static const char addr[] = "127.0.0.1";
-  ScopedFd listen_fd = open_socket(dbg, addr, &port, probe);
+  ScopedFd listen_fd = open_socket(dbg, connection_addr, &port, probe);
   if (exe_image) {
     struct debugger_params params;
     memset(&params, 0, sizeof(params));
     strcpy(params.exe_image, exe_image->c_str());
-    strcpy(params.socket_addr, addr);
     params.port = port;
 
     ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
     assert(nwritten == sizeof(params));
   } else {
     fprintf(stderr, "Attach to the rr debug server with this command:\n"
-                    "  target remote %s:%d\n",
-            !strcmp(addr, "127.0.0.1") ? "" : addr, port);
+                    "  target remote :%d\n",
+            port);
   }
   dbg->tgid = tgid;
   LOG(debug) << "limiting debugger traffic to tgid " << tgid;
@@ -175,7 +173,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros) {
   assert(nread == sizeof(params));
 
   stringstream attach_cmd;
-  attach_cmd << "target extended-remote " << params.socket_addr << ":"
+  attach_cmd << "target extended-remote " << connection_addr << ":"
              << params.port;
   LOG(debug) << "launching gdb with command '" << attach_cmd.str() << "'";
 
