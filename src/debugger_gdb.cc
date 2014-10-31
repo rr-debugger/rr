@@ -13,7 +13,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <inttypes.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -123,12 +122,10 @@ static void await_debugger(struct GdbContext* dbg, ScopedFd& listen_fd) {
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
 
-  dbg->sock_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &len);
+  dbg->sock_fd =
+      accept4(listen_fd, (struct sockaddr*)&client_addr, &len, SOCK_NONBLOCK);
   // We might restart this debugging session, so don't set the
   // socket fd CLOEXEC.
-  if (fcntl(dbg->sock_fd, F_SETFL, O_NONBLOCK)) {
-    FATAL() << "Can't make client socket NONBLOCK";
-  }
 }
 
 struct debugger_params {
