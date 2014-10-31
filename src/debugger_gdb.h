@@ -401,10 +401,10 @@ private:
   void write_hex_bytes_packet(const uint8_t* bytes, size_t len);
   /**
    * Consume bytes in the input buffer until start-of-packet ('$') or
-   * the interrupt character is seen.  Does not block.  Return zero if
-   * seen, nonzero if not.
+   * the interrupt character is seen.  Does not block.  Return true if
+   * seen, false if not.
    */
-  int skip_to_packet_start();
+  bool skip_to_packet_start();
   /**
    * Return zero if there's a new packet to be read/process (whether
    * incomplete or not), and nonzero if there isn't one.

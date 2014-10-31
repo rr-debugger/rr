@@ -389,7 +389,7 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
  * the interrupt character is seen.  Does not block.  Return zero if
  * seen, nonzero if not.
  */
-int GdbContext::skip_to_packet_start() {
+bool GdbContext::skip_to_packet_start() {
   uint8_t* p = nullptr;
   int i;
 
@@ -405,7 +405,7 @@ int GdbContext::skip_to_packet_start() {
     /* Discard all read bytes, which we don't care
      * about. */
     inlen = 0;
-    return 1;
+    return false;
   }
   /* Discard bytes up to start-of-packet. */
   memmove(inbuf, p, inlen - (p - inbuf));
@@ -413,7 +413,7 @@ int GdbContext::skip_to_packet_start() {
 
   assert(1 <= inlen);
   assert('$' == inbuf[0] || INTERRUPT_CHAR == inbuf[0]);
-  return 0;
+  return true;
 }
 
 /**
@@ -421,7 +421,7 @@ int GdbContext::skip_to_packet_start() {
  * incomplete or not), and nonzero if there isn't one.
  */
 int GdbContext::sniff_packet() {
-  if (0 == skip_to_packet_start()) {
+  if (skip_to_packet_start()) {
     /* We've already seen a (possibly partial) packet. */
     return 0;
   }
@@ -450,7 +450,7 @@ void GdbContext::read_packet() {
    * somehow magically fix our bug that led to the malformed
    * packet in the first place.
    */
-  while (skip_to_packet_start()) {
+  while (!skip_to_packet_start()) {
     read_data_once();
   }
 
