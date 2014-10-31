@@ -45,7 +45,7 @@ using namespace std;
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
  */
-struct dbg_context {
+struct GdbContext {
   // Current request to be processed.
   struct dbg_request req;
   // Thread to be resumed.
@@ -108,14 +108,14 @@ static void make_cloexec(int fd) {
   }
 }
 
-static dbg_context* new_dbg_context() {
-  struct dbg_context* dbg = new dbg_context();
+static GdbContext* new_dbg_context() {
+  struct GdbContext* dbg = new GdbContext();
   dbg->insize = sizeof(dbg->inbuf);
   dbg->outsize = sizeof(dbg->outbuf);
   return dbg;
 }
 
-static void open_socket(struct dbg_context* dbg, const char* address,
+static void open_socket(struct GdbContext* dbg, const char* address,
                         unsigned short port, int probe) {
   int reuseaddr;
   int ret;
@@ -161,7 +161,7 @@ static void open_socket(struct dbg_context* dbg, const char* address,
  * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
  * indefinitely.
  */
-static void await_debugger(struct dbg_context* dbg) {
+static void await_debugger(struct GdbContext* dbg) {
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
 
@@ -181,10 +181,10 @@ struct debugger_params {
   short port;
 };
 
-struct dbg_context* dbg_await_client_connection(
+struct GdbContext* dbg_await_client_connection(
     const char* addr, unsigned short desired_port, int probe, pid_t tgid,
     const char* exe_image, pid_t client, int client_params_fd) {
-  struct dbg_context* dbg = new_dbg_context();
+  struct GdbContext* dbg = new_dbg_context();
   open_socket(dbg, addr, desired_port, probe);
   int port = ntohs(dbg->addr.sin_port);
   if (exe_image) {
@@ -284,7 +284,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros) {
  * wait", and -1 means "wait forever".  Return zero if no data is
  * ready by the end of the timeout, and nonzero if data is ready.
  */
-static int poll_socket(const struct dbg_context* dbg, short events,
+static int poll_socket(const struct GdbContext* dbg, short events,
                        int timeoutMs) {
   struct pollfd pfd;
   int ret;
@@ -300,18 +300,18 @@ static int poll_socket(const struct dbg_context* dbg, short events,
   return ret;
 }
 
-static int poll_incoming(const struct dbg_context* dbg, int timeoutMs) {
+static int poll_incoming(const struct GdbContext* dbg, int timeoutMs) {
   return poll_socket(dbg, POLLIN /* TODO: |POLLERR */, timeoutMs);
 }
 
-static int poll_outgoing(const struct dbg_context* dbg, int timeoutMs) {
+static int poll_outgoing(const struct GdbContext* dbg, int timeoutMs) {
   return poll_socket(dbg, POLLOUT /* TODO: |POLLERR */, timeoutMs);
 }
 
 /**
  * read() incoming data exactly one time, successfully.  May block.
  */
-static void read_data_once(struct dbg_context* dbg) {
+static void read_data_once(struct GdbContext* dbg) {
   ssize_t nread;
   /* Wait until there's data, instead of busy-looping on
    * EAGAIN. */
@@ -333,7 +333,7 @@ static void read_data_once(struct dbg_context* dbg) {
 /**
  * Send all pending output to gdb.  May block.
  */
-static void write_flush(struct dbg_context* dbg) {
+static void write_flush(struct GdbContext* dbg) {
   ssize_t write_index = 0;
 
 #ifdef DEBUGTAG
@@ -354,7 +354,7 @@ static void write_flush(struct dbg_context* dbg) {
   dbg->outlen = 0;
 }
 
-static void write_data_raw(struct dbg_context* dbg, const uint8_t* data,
+static void write_data_raw(struct GdbContext* dbg, const uint8_t* data,
                            ssize_t len) {
   assert("Impl dynamic alloc if this fails (or double outbuf size)" &&
          (dbg->outlen + len) < dbg->insize);
@@ -363,7 +363,7 @@ static void write_data_raw(struct dbg_context* dbg, const uint8_t* data,
   dbg->outlen += len;
 }
 
-static void write_hex(struct dbg_context* dbg, unsigned long hex) {
+static void write_hex(struct GdbContext* dbg, unsigned long hex) {
   char buf[32];
   size_t len;
 
@@ -371,7 +371,7 @@ static void write_hex(struct dbg_context* dbg, unsigned long hex) {
   write_data_raw(dbg, (uint8_t*)buf, len);
 }
 
-static void write_packet_bytes(struct dbg_context* dbg, const uint8_t* data,
+static void write_packet_bytes(struct GdbContext* dbg, const uint8_t* data,
                                size_t num_bytes) {
   uint8_t checksum;
   size_t i;
@@ -385,11 +385,11 @@ static void write_packet_bytes(struct dbg_context* dbg, const uint8_t* data,
   write_hex(dbg, checksum);
 }
 
-static void write_packet(struct dbg_context* dbg, const char* data) {
+static void write_packet(struct GdbContext* dbg, const char* data) {
   return write_packet_bytes(dbg, (const uint8_t*)data, strlen(data));
 }
 
-static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
+static void write_binary_packet(struct GdbContext* dbg, const char* pfx,
                                 const uint8_t* data, ssize_t num_bytes) {
   ssize_t pfx_num_chars = strlen(pfx);
   uint8_t buf[2 * num_bytes + pfx_num_chars];
@@ -424,8 +424,8 @@ static void write_binary_packet(struct dbg_context* dbg, const char* pfx,
   return write_packet_bytes(dbg, buf, buf_num_bytes);
 }
 
-static void write_hex_bytes_packet(struct dbg_context* dbg,
-                                   const uint8_t* bytes, size_t len) {
+static void write_hex_bytes_packet(struct GdbContext* dbg, const uint8_t* bytes,
+                                   size_t len) {
   if (0 == len) {
     write_packet(dbg, "");
     return;
@@ -462,7 +462,7 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
  * the interrupt character is seen.  Does not block.  Return zero if
  * seen, nonzero if not.
  */
-static int skip_to_packet_start(struct dbg_context* dbg) {
+static int skip_to_packet_start(struct GdbContext* dbg) {
   uint8_t* p = nullptr;
   int i;
 
@@ -493,7 +493,7 @@ static int skip_to_packet_start(struct dbg_context* dbg) {
  * Return zero if there's a new packet to be read/process (whether
  * incomplete or not), and nonzero if there isn't one.
  */
-static int sniff_packet(struct dbg_context* dbg) {
+static int sniff_packet(struct GdbContext* dbg) {
   if (0 == skip_to_packet_start(dbg)) {
     /* We've already seen a (possibly partial) packet. */
     return 0;
@@ -510,7 +510,7 @@ static int sniff_packet(struct dbg_context* dbg) {
  * has been read from the client fd.  This is one (or more) gdb
  * packet(s).
  */
-static void read_packet(struct dbg_context* dbg) {
+static void read_packet(struct GdbContext* dbg) {
   uint8_t* p;
   size_t checkedlen;
 
@@ -594,7 +594,7 @@ static dbg_threadid_t parse_threadid(const char* str, char** endptr) {
   return t;
 }
 
-static int xfer(struct dbg_context* dbg, const char* name, char* args) {
+static int xfer(struct GdbContext* dbg, const char* name, char* args) {
   LOG(debug) << "gdb asks us to transfer " << name << "(" << args << ")";
 
   if (!strcmp(name, "auxv")) {
@@ -683,7 +683,7 @@ static void read_reg_value(char** strp, DbgRegister* reg) {
   *strp = str;
 }
 
-static int query(struct dbg_context* dbg, char* payload) {
+static int query(struct GdbContext* dbg, char* payload) {
   const char* name;
   char* args;
 
@@ -785,7 +785,7 @@ static int query(struct dbg_context* dbg, char* payload) {
   return 0;
 }
 
-static int set_var(struct dbg_context* dbg, char* payload) {
+static int set_var(struct GdbContext* dbg, char* payload) {
   const char* name;
   char* args;
 
@@ -805,12 +805,12 @@ static int set_var(struct dbg_context* dbg, char* payload) {
   return 0;
 }
 
-static void consume_request(struct dbg_context* dbg) {
+static void consume_request(struct GdbContext* dbg) {
   memset(&dbg->req, 0, sizeof(dbg->req));
   write_flush(dbg);
 }
 
-static int process_vpacket(struct dbg_context* dbg, char* payload) {
+static int process_vpacket(struct GdbContext* dbg, char* payload) {
   const char* name;
   char* args;
 
@@ -927,7 +927,7 @@ static int process_vpacket(struct dbg_context* dbg, char* payload) {
   return 0;
 }
 
-static int process_packet(struct dbg_context* dbg) {
+static int process_packet(struct GdbContext* dbg) {
   char request;
   char* payload = nullptr;
   int ret;
@@ -1118,7 +1118,7 @@ static int process_packet(struct dbg_context* dbg) {
   return ret;
 }
 
-void dbg_notify_no_such_thread(struct dbg_context* dbg,
+void dbg_notify_no_such_thread(struct GdbContext* dbg,
                                const struct dbg_request* req) {
   assert(!memcmp(&dbg->req, req, sizeof(dbg->req)));
 
@@ -1140,7 +1140,7 @@ void dbg_notify_no_such_thread(struct dbg_context* dbg,
  * Finish a DREQ_RESTART request.  Should be invoked after replay
  * restarts and prior dbg_context has been restored as |dbg|.
  */
-static void dbg_notify_restart(struct dbg_context* dbg) {
+static void dbg_notify_restart(struct GdbContext* dbg) {
   assert(DREQ_RESTART == dbg->req.type);
 
   // These threads may not exist at the first trace-stop after
@@ -1152,7 +1152,7 @@ static void dbg_notify_restart(struct dbg_context* dbg) {
   memset(&dbg->req, 0, sizeof(dbg->req));
 }
 
-struct dbg_request dbg_get_request(struct dbg_context* dbg) {
+struct dbg_request dbg_get_request(struct GdbContext* dbg) {
   if (DREQ_RESTART == dbg->req.type) {
     LOG(debug) << "consuming RESTART request";
     dbg_notify_restart(dbg);
@@ -1193,7 +1193,7 @@ struct dbg_request dbg_get_request(struct dbg_context* dbg) {
   }
 }
 
-void dbg_notify_exit_code(struct dbg_context* dbg, int code) {
+void dbg_notify_exit_code(struct GdbContext* dbg, int code) {
   char buf[64];
 
   assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
@@ -1204,7 +1204,7 @@ void dbg_notify_exit_code(struct dbg_context* dbg, int code) {
   consume_request(dbg);
 }
 
-void dbg_notify_exit_signal(struct dbg_context* dbg, int sig) {
+void dbg_notify_exit_signal(struct GdbContext* dbg, int sig) {
   char buf[64];
 
   assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
@@ -1298,7 +1298,7 @@ static int to_gdb_signum(int sig) {
   }
 }
 
-static void send_stop_reply_packet(struct dbg_context* dbg,
+static void send_stop_reply_packet(struct GdbContext* dbg,
                                    dbg_threadid_t thread, int sig,
                                    uintptr_t watch_addr = 0) {
   if (sig < 0) {
@@ -1317,7 +1317,7 @@ static void send_stop_reply_packet(struct dbg_context* dbg,
   write_packet(dbg, buf);
 }
 
-void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig,
+void dbg_notify_stop(struct GdbContext* dbg, dbg_threadid_t thread, int sig,
                      uintptr_t watch_addr) {
   assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
 
@@ -1341,7 +1341,7 @@ void dbg_notify_stop(struct dbg_context* dbg, dbg_threadid_t thread, int sig,
   consume_request(dbg);
 }
 
-void dbg_notify_restart_failed(struct dbg_context* dbg) {
+void dbg_notify_restart_failed(struct GdbContext* dbg) {
   assert(DREQ_RESTART == dbg->req.type);
 
   // TODO: it's not known by this author whether gdb knows how
@@ -1351,7 +1351,7 @@ void dbg_notify_restart_failed(struct dbg_context* dbg) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_current_thread(struct dbg_context* dbg,
+void dbg_reply_get_current_thread(struct GdbContext* dbg,
                                   dbg_threadid_t thread) {
   assert(DREQ_GET_CURRENT_THREAD == dbg->req.type);
 
@@ -1362,7 +1362,7 @@ void dbg_reply_get_current_thread(struct dbg_context* dbg,
   consume_request(dbg);
 }
 
-void dbg_reply_get_auxv(struct dbg_context* dbg,
+void dbg_reply_get_auxv(struct GdbContext* dbg,
                         const struct dbg_auxv_pair* auxv, ssize_t len) {
   assert(DREQ_GET_AUXV == dbg->req.type);
 
@@ -1375,7 +1375,7 @@ void dbg_reply_get_auxv(struct dbg_context* dbg,
   consume_request(dbg);
 }
 
-void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive) {
+void dbg_reply_get_is_thread_alive(struct GdbContext* dbg, int alive) {
   assert(DREQ_GET_IS_THREAD_ALIVE == dbg->req.type);
 
   write_packet(dbg, alive ? "OK" : "E01");
@@ -1383,8 +1383,7 @@ void dbg_reply_get_is_thread_alive(struct dbg_context* dbg, int alive) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_thread_extra_info(struct dbg_context* dbg,
-                                     const char* info) {
+void dbg_reply_get_thread_extra_info(struct GdbContext* dbg, const char* info) {
   assert(DREQ_GET_THREAD_EXTRA_INFO == dbg->req.type);
 
   LOG(debug) << "thread extra info: '" << info << "'";
@@ -1395,7 +1394,7 @@ void dbg_reply_get_thread_extra_info(struct dbg_context* dbg,
   consume_request(dbg);
 }
 
-void dbg_reply_select_thread(struct dbg_context* dbg, int ok) {
+void dbg_reply_select_thread(struct GdbContext* dbg, int ok) {
   assert(DREQ_SET_CONTINUE_THREAD == dbg->req.type ||
          DREQ_SET_QUERY_THREAD == dbg->req.type);
 
@@ -1409,8 +1408,7 @@ void dbg_reply_select_thread(struct dbg_context* dbg, int ok) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_mem(struct dbg_context* dbg, const uint8_t* mem,
-                       size_t len) {
+void dbg_reply_get_mem(struct GdbContext* dbg, const uint8_t* mem, size_t len) {
   assert(DREQ_GET_MEM == dbg->req.type);
   assert(len <= dbg->req.mem.len);
 
@@ -1419,7 +1417,7 @@ void dbg_reply_get_mem(struct dbg_context* dbg, const uint8_t* mem,
   consume_request(dbg);
 }
 
-void dbg_reply_set_mem(struct dbg_context* dbg, int ok) {
+void dbg_reply_set_mem(struct GdbContext* dbg, int ok) {
   assert(DREQ_SET_MEM == dbg->req.type);
 
   write_packet(dbg, ok ? "OK" : "E01");
@@ -1428,7 +1426,7 @@ void dbg_reply_set_mem(struct dbg_context* dbg, int ok) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_offsets(struct dbg_context* dbg /*, TODO */) {
+void dbg_reply_get_offsets(struct GdbContext* dbg /*, TODO */) {
   assert(DREQ_GET_OFFSETS == dbg->req.type);
 
   /* XXX FIXME TODO */
@@ -1437,7 +1435,7 @@ void dbg_reply_get_offsets(struct dbg_context* dbg /*, TODO */) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg) {
+void dbg_reply_get_reg(struct GdbContext* dbg, const DbgRegister& reg) {
   char buf[2 * DBG_MAX_REG_SIZE + 1];
 
   assert(DREQ_GET_REG == dbg->req.type);
@@ -1448,7 +1446,7 @@ void dbg_reply_get_reg(struct dbg_context* dbg, const DbgRegister& reg) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file) {
+void dbg_reply_get_regs(struct GdbContext* dbg, const DbgRegfile& file) {
   size_t n_regs = file.total_registers();
   char buf[n_regs * 2 * DBG_MAX_REG_SIZE + 1];
 
@@ -1463,7 +1461,7 @@ void dbg_reply_get_regs(struct dbg_context* dbg, const DbgRegfile& file) {
   consume_request(dbg);
 }
 
-void dbg_reply_set_reg(struct dbg_context* dbg, bool ok) {
+void dbg_reply_set_reg(struct GdbContext* dbg, bool ok) {
   assert(DREQ_SET_REG == dbg->req.type);
 
   // TODO: what happens if we're forced to reply to a
@@ -1479,7 +1477,7 @@ void dbg_reply_set_reg(struct dbg_context* dbg, bool ok) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_stop_reason(struct dbg_context* dbg, dbg_threadid_t which,
+void dbg_reply_get_stop_reason(struct GdbContext* dbg, dbg_threadid_t which,
                                int sig) {
   assert(DREQ_GET_STOP_REASON == dbg->req.type);
 
@@ -1488,7 +1486,7 @@ void dbg_reply_get_stop_reason(struct dbg_context* dbg, dbg_threadid_t which,
   consume_request(dbg);
 }
 
-void dbg_reply_get_thread_list(struct dbg_context* dbg,
+void dbg_reply_get_thread_list(struct GdbContext* dbg,
                                const dbg_threadid_t* threads, ssize_t len) {
   assert(DREQ_GET_THREAD_LIST == dbg->req.type);
 
@@ -1520,7 +1518,7 @@ void dbg_reply_get_thread_list(struct dbg_context* dbg,
   consume_request(dbg);
 }
 
-void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code) {
+void dbg_reply_watchpoint_request(struct GdbContext* dbg, int code) {
   assert(DREQ_WATCH_FIRST <= dbg->req.type && dbg->req.type <= DREQ_WATCH_LAST);
 
   write_packet(dbg, code ? "E01" : "OK");
@@ -1528,7 +1526,7 @@ void dbg_reply_watchpoint_request(struct dbg_context* dbg, int code) {
   consume_request(dbg);
 }
 
-void dbg_reply_detach(struct dbg_context* dbg) {
+void dbg_reply_detach(struct GdbContext* dbg) {
   assert(DREQ_DETACH <= dbg->req.type);
 
   write_packet(dbg, "OK");
@@ -1536,7 +1534,7 @@ void dbg_reply_detach(struct dbg_context* dbg) {
   consume_request(dbg);
 }
 
-void dbg_reply_read_siginfo(struct dbg_context* dbg, const uint8_t* si_bytes,
+void dbg_reply_read_siginfo(struct GdbContext* dbg, const uint8_t* si_bytes,
                             ssize_t num_bytes) {
   assert(DREQ_READ_SIGINFO == dbg->req.type);
 
@@ -1549,7 +1547,7 @@ void dbg_reply_read_siginfo(struct dbg_context* dbg, const uint8_t* si_bytes,
   consume_request(dbg);
 }
 
-void dbg_reply_write_siginfo(struct dbg_context* dbg /*, TODO*/) {
+void dbg_reply_write_siginfo(struct GdbContext* dbg /*, TODO*/) {
   assert(DREQ_WRITE_SIGINFO == dbg->req.type);
 
   write_packet(dbg, "E01");
@@ -1557,8 +1555,8 @@ void dbg_reply_write_siginfo(struct dbg_context* dbg /*, TODO*/) {
   consume_request(dbg);
 }
 
-void dbg_destroy_context(struct dbg_context** dbg) {
-  struct dbg_context* d;
+void dbg_destroy_context(struct GdbContext** dbg) {
+  struct GdbContext* d;
   if (!(d = *dbg)) {
     return;
   }
