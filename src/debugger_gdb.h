@@ -136,11 +136,8 @@ enum GdbRestartType {
  */
 struct GdbRequest {
   GdbRequestType type;
-
   GdbThreadId target;
-
   bool suppress_debugger_stop;
-
   union {
     struct {
       uintptr_t addr;
@@ -157,6 +154,14 @@ struct GdbRequest {
       GdbRestartType type;
     } restart;
   };
+
+  /**
+   * Return nonzero if this requires that program execution be resumed
+   * in some way.
+   */
+  bool is_resume_request() const {
+    return type == DREQ_CONTINUE || type == DREQ_STEP;
+  }
 };
 
 /**
@@ -197,12 +202,6 @@ struct GdbAuxvPair {
   long key;
   long value;
 };
-
-/**
- * Return nonzero if |req| requires that program execution be resumed
- * in some way.
- */
-bool dbg_is_resume_request(const GdbRequest* req);
 
 /**
  * Wait for exactly one gdb host to connect to this remote target on

@@ -30,7 +30,7 @@ static Task* process_debugger_requests(GdbContext* dbg, Task* t,
   while (true) {
     *req = dbg_get_request(dbg);
 
-    if (dbg_is_resume_request(req)) {
+    if (req->is_resume_request()) {
       if (diversion_refcount == 0) {
         return nullptr;
       }

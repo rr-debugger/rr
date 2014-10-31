@@ -222,7 +222,7 @@ static bool maybe_process_magic_command(Task* t, GdbContext* dbg,
 
 void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
                                const GdbRequest& req) {
-  assert(!dbg_is_resume_request(&req));
+  assert(!req.is_resume_request());
 
   // These requests don't require a target task.
   switch (req.type) {
@@ -485,7 +485,7 @@ static GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
       // the diversion session
     }
 
-    if (dbg_is_resume_request(&req)) {
+    if (req.is_resume_request()) {
       maybe_singlestep_for_event(t, &req);
       LOG(debug) << "  is resume request";
       return req;
@@ -523,7 +523,7 @@ static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
       *restart_request = req;
       return false;
     }
-    assert(dbg_is_resume_request(&req));
+    assert(req.is_resume_request());
   }
 
   ReplaySession::RunCommand command =
@@ -564,7 +564,7 @@ static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
     *restart_request = req;
     return false;
   }
-  assert(dbg_is_resume_request(&req));
+  assert(req.is_resume_request());
   return true;
 }
 

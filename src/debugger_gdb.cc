@@ -44,16 +44,6 @@ using namespace std;
 const GdbThreadId GdbThreadId::ANY = { 0, 0 };
 const GdbThreadId GdbThreadId::ALL = { -1, -1 };
 
-bool dbg_is_resume_request(const GdbRequest* req) {
-  switch (req->type) {
-    case DREQ_CONTINUE:
-    case DREQ_STEP:
-      return true;
-    default:
-      return false;
-  }
-}
-
 static bool request_needs_immediate_response(const GdbRequest* req) {
   switch (req->type) {
     case DREQ_NONE:
@@ -1119,7 +1109,7 @@ GdbRequest dbg_get_request(GdbContext* dbg) {
    * response. */
   assert(!request_needs_immediate_response(&dbg->req));
 
-  if (sniff_packet(dbg) && dbg_is_resume_request(&dbg->req)) {
+  if (sniff_packet(dbg) && dbg->req.is_resume_request()) {
     /* There's no new request data available and gdb has
      * already asked us to resume.  OK, do that (or keep
      * doing that) now. */
@@ -1145,7 +1135,7 @@ GdbRequest dbg_get_request(GdbContext* dbg) {
 void dbg_notify_exit_code(GdbContext* dbg, int code) {
   char buf[64];
 
-  assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
+  assert(dbg->req.is_resume_request() || dbg->req.type == DREQ_INTERRUPT);
 
   snprintf(buf, sizeof(buf) - 1, "W%02x", code);
   write_packet(dbg, buf);
@@ -1156,7 +1146,7 @@ void dbg_notify_exit_code(GdbContext* dbg, int code) {
 void dbg_notify_exit_signal(GdbContext* dbg, int sig) {
   char buf[64];
 
-  assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
+  assert(dbg->req.is_resume_request() || dbg->req.type == DREQ_INTERRUPT);
 
   snprintf(buf, sizeof(buf) - 1, "X%02x", sig);
   write_packet(dbg, buf);
@@ -1267,7 +1257,7 @@ static void send_stop_reply_packet(GdbContext* dbg, GdbThreadId thread, int sig,
 
 void dbg_notify_stop(GdbContext* dbg, GdbThreadId thread, int sig,
                      uintptr_t watch_addr) {
-  assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
+  assert(dbg->req.is_resume_request() || dbg->req.type == DREQ_INTERRUPT);
 
   if (dbg->tgid != thread.pid) {
     LOG(debug) << "ignoring stop of " << thread
