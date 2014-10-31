@@ -92,8 +92,8 @@ static Task* process_debugger_requests(struct GdbContext* dbg, Task* t,
   }
 }
 
-static dbg_threadid_t get_threadid(Task* t) {
-  dbg_threadid_t thread;
+static GdbThreadId get_threadid(Task* t) {
+  GdbThreadId thread;
   thread.pid = t->tgid();
   thread.tid = t->rec_tid;
   return thread;

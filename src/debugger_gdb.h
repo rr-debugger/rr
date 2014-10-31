@@ -18,23 +18,23 @@
  * uniquely identify any thread by its |tid| (ignoring pid
  * namespaces).
  */
-struct dbg_threadid_t {
+struct GdbThreadId {
   pid_t pid;
   pid_t tid;
 
-  bool operator==(const dbg_threadid_t& o) const {
+  bool operator==(const GdbThreadId& o) const {
     return pid == o.pid && tid == o.tid;
   }
 };
 
 inline static std::ostream& operator<<(std::ostream& o,
-                                       const dbg_threadid_t& t) {
+                                       const GdbThreadId& t) {
   o << t.pid << "." << t.tid;
   return o;
 }
 
-static const dbg_threadid_t DBG_ANY_THREAD = { 0, 0 };
-static const dbg_threadid_t DBG_ALL_THREADS = { -1, -1 };
+static const GdbThreadId DBG_ANY_THREAD = { 0, 0 };
+static const GdbThreadId DBG_ALL_THREADS = { -1, -1 };
 
 static const size_t DBG_MAX_REG_SIZE = 16;
 
@@ -137,7 +137,7 @@ enum DbgRestartType {
 struct dbg_request {
   DbgRequestType type;
 
-  dbg_threadid_t target;
+  GdbThreadId target;
 
   bool suppress_debugger_stop;
 
@@ -168,9 +168,9 @@ public:
   // Current request to be processed.
   struct dbg_request req;
   // Thread to be resumed.
-  dbg_threadid_t resume_thread;
+  GdbThreadId resume_thread;
   // Thread for get/set requests.
-  dbg_threadid_t query_thread;
+  GdbThreadId query_thread;
   // gdb and rr don't work well together in multi-process and
   // multi-exe-image debugging scenarios, so we pretend only
   // this task group exists when interfacing with gdb
@@ -283,7 +283,7 @@ void dbg_notify_exit_signal(struct GdbContext* dbg, int sig);
  * target has stopped executing for some reason.  |sig| is the signal
  * that stopped execution, or 0 if execution stopped otherwise.
  */
-void dbg_notify_stop(struct GdbContext* dbg, dbg_threadid_t which, int sig,
+void dbg_notify_stop(struct GdbContext* dbg, GdbThreadId which, int sig,
                      uintptr_t watch_addr = 0);
 
 /** Notify the debugger that a restart request failed. */
@@ -293,7 +293,7 @@ void dbg_notify_restart_failed(struct GdbContext* dbg);
  * Tell the host that |thread| is the current thread.
  */
 void dbg_reply_get_current_thread(struct GdbContext* dbg,
-                                  dbg_threadid_t thread);
+                                  GdbThreadId thread);
 
 /**
  * Reply with the target thread's |auxv| containing |len| pairs, or
@@ -355,7 +355,7 @@ void dbg_reply_set_reg(struct GdbContext* dbg, bool ok);
 /**
  * Reply to the DREQ_GET_STOP_REASON request.
  */
-void dbg_reply_get_stop_reason(struct GdbContext* dbg, dbg_threadid_t which,
+void dbg_reply_get_stop_reason(struct GdbContext* dbg, GdbThreadId which,
                                int sig);
 
 /**
@@ -363,7 +363,7 @@ void dbg_reply_get_stop_reason(struct GdbContext* dbg, dbg_threadid_t which,
  * |len|.
  */
 void dbg_reply_get_thread_list(struct GdbContext* dbg,
-                               const dbg_threadid_t* threads, ssize_t len);
+                               const GdbThreadId* threads, ssize_t len);
 
 /**
  * |code| is 0 if the request was successfully applied, nonzero if

@@ -536,8 +536,8 @@ static void read_binary_data(const uint8_t* payload, ssize_t data_len,
  * the character just after the last character in the thread-id.  It
  * may be nullptr.
  */
-static dbg_threadid_t parse_threadid(const char* str, char** endptr) {
-  dbg_threadid_t t;
+static GdbThreadId parse_threadid(const char* str, char** endptr) {
+  GdbThreadId t;
   char* endp;
 
   if ('p' == *str) {
@@ -1264,7 +1264,7 @@ static int to_gdb_signum(int sig) {
 }
 
 static void send_stop_reply_packet(struct GdbContext* dbg,
-                                   dbg_threadid_t thread, int sig,
+                                   GdbThreadId thread, int sig,
                                    uintptr_t watch_addr = 0) {
   if (sig < 0) {
     write_packet(dbg, "E01");
@@ -1282,7 +1282,7 @@ static void send_stop_reply_packet(struct GdbContext* dbg,
   write_packet(dbg, buf);
 }
 
-void dbg_notify_stop(struct GdbContext* dbg, dbg_threadid_t thread, int sig,
+void dbg_notify_stop(struct GdbContext* dbg, GdbThreadId thread, int sig,
                      uintptr_t watch_addr) {
   assert(dbg_is_resume_request(&dbg->req) || dbg->req.type == DREQ_INTERRUPT);
 
@@ -1317,7 +1317,7 @@ void dbg_notify_restart_failed(struct GdbContext* dbg) {
 }
 
 void dbg_reply_get_current_thread(struct GdbContext* dbg,
-                                  dbg_threadid_t thread) {
+                                  GdbThreadId thread) {
   assert(DREQ_GET_CURRENT_THREAD == dbg->req.type);
 
   char buf[1024];
@@ -1442,7 +1442,7 @@ void dbg_reply_set_reg(struct GdbContext* dbg, bool ok) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_stop_reason(struct GdbContext* dbg, dbg_threadid_t which,
+void dbg_reply_get_stop_reason(struct GdbContext* dbg, GdbThreadId which,
                                int sig) {
   assert(DREQ_GET_STOP_REASON == dbg->req.type);
 
@@ -1452,7 +1452,7 @@ void dbg_reply_get_stop_reason(struct GdbContext* dbg, dbg_threadid_t which,
 }
 
 void dbg_reply_get_thread_list(struct GdbContext* dbg,
-                               const dbg_threadid_t* threads, ssize_t len) {
+                               const GdbThreadId* threads, ssize_t len) {
   assert(DREQ_GET_THREAD_LIST == dbg->req.type);
 
   if (0 == len) {
@@ -1466,7 +1466,7 @@ void dbg_reply_get_thread_list(struct GdbContext* dbg,
 
     str[offset++] = 'm';
     for (int i = 0; i < len; ++i) {
-      const dbg_threadid_t& t = threads[i];
+      const GdbThreadId& t = threads[i];
       if (dbg->tgid != t.pid) {
         continue;
       }

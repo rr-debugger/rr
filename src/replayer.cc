@@ -118,8 +118,8 @@ static DbgRegister get_reg(Task* t, GDBRegister which) {
   return reg;
 }
 
-static dbg_threadid_t get_threadid(Task* t) {
-  dbg_threadid_t thread;
+static GdbThreadId get_threadid(Task* t) {
+  GdbThreadId thread;
   thread.pid = t->tgid();
   thread.tid = t->rec_tid;
   return thread;
@@ -239,7 +239,7 @@ void dispatch_debugger_request(Session& session, struct GdbContext* dbg,
     case DREQ_GET_THREAD_LIST: {
       auto tasks = t->session().tasks();
       size_t len = tasks.size();
-      vector<dbg_threadid_t> tids;
+      vector<GdbThreadId> tids;
       for (auto& kv : tasks) {
         Task* t = kv.second;
         tids.push_back(get_threadid(t));
