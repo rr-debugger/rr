@@ -299,7 +299,7 @@ public:
    * function *must* be called whenever a SET_MEM request is made,
    * regardless of success/failure or special interpretation.
    */
-  void reply_set_mem(int ok);
+  void reply_set_mem(bool ok);
 
   /**
    * Reply to the DREQ_GET_OFFSETS request.

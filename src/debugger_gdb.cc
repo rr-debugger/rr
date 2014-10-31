@@ -1331,7 +1331,7 @@ void GdbContext::reply_get_mem(const vector<uint8_t>& mem) {
   consume_request();
 }
 
-void GdbContext::reply_set_mem(int ok) {
+void GdbContext::reply_set_mem(bool ok) {
   assert(DREQ_SET_MEM == req.type);
 
   write_packet(ok ? "OK" : "E01");
