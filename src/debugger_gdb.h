@@ -423,14 +423,31 @@ private:
    */
   void read_packet();
   /**
-   * Return true if we handled the request.
+   * Return true if we need to do something in a debugger request,
+   * false if we already handled the packet internally.
    */
   bool xfer(const char* name, char* args);
+  /**
+   * Return true if we need to do something in a debugger request,
+   * false if we already handled the packet internally.
+   */
   bool query(char* payload);
+  /**
+   * Return true if we need to do something in a debugger request,
+   * false if we already handled the packet internally.
+   */
   bool set_var(char* payload);
-  void consume_request();
+  /**
+   * Return true if we need to do something in a debugger request,
+   * false if we already handled the packet internally.
+   */
   bool process_vpacket(char* payload);
+  /**
+   * Return true if we need to do something in a debugger request,
+   * false if we already handled the packet internally.
+   */
   bool process_packet();
+  void consume_request();
   void send_stop_reply_packet(GdbThreadId thread, int sig,
                               uintptr_t watch_addr = 0);
 
