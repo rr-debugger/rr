@@ -97,9 +97,8 @@ static const char gdb_rr_macros[] =
 // server, |child|, creates a debug socket.  Then the client exec()s
 // the debugger over itself.
 static pid_t parent, child;
-// The server writes debugger params to the pipe, and the clients
-// reads those params out.
-static int debugger_params_pipe[2];
+// The server writes debugger params to this pipe.
+static ScopedFd debugger_params_write_pipe;
 
 // Setting these causes us to trace instructions after
 // instruction_trace_at_event_start up to and including
@@ -710,7 +709,7 @@ GdbContext* maybe_create_debugger(GdbContext* dbg) {
   const string* exe =
       Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
   return dbg_await_client_connection(port, probe, t->tgid(), exe, parent,
-                                     debugger_params_pipe[1]);
+      &debugger_params_write_pipe);
 }
 
 /**
@@ -838,6 +837,7 @@ int replay(int argc, char* argv[], char** envp) {
     FATAL() << "Couldn't set sigaction for SIGINT.";
   }
 
+  int debugger_params_pipe[2];
   if (pipe2(debugger_params_pipe, O_CLOEXEC)) {
     FATAL() << "Couldn't open debugger params pipe.";
   }
@@ -845,6 +845,7 @@ int replay(int argc, char* argv[], char** envp) {
     // Ensure only the parent has the read end of the pipe open. Then if
     // the parent dies, our writes to the pipe will error out.
     close(debugger_params_pipe[0]);
+    debugger_params_write_pipe = ScopedFd(debugger_params_pipe[1]);
     // The parent process (gdb) must be able to receive
     // SIGINT's to interrupt non-stopped tracees.  But the
     // debugger server isn't set up to handle SIGINT.  So

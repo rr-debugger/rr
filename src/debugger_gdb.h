@@ -230,7 +230,7 @@ GdbContext* dbg_await_client_connection(unsigned short desired_port,
                                         ProbePort probe, pid_t tgid,
                                         const std::string* exe_image = nullptr,
                                         pid_t client = -1,
-                                        int client_params_fd = -1);
+                                        ScopedFd* client_params_fd = nullptr);
 
 /**
  * Launch a debugger using the params that were written to

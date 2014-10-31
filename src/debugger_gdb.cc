@@ -126,7 +126,7 @@ struct debugger_params {
 GdbContext* dbg_await_client_connection(unsigned short desired_port,
                                         ProbePort probe, pid_t tgid,
                                         const string* exe_image, pid_t client,
-                                        int client_params_fd) {
+                                        ScopedFd* client_params_fd) {
   GdbContext* dbg = new_dbg_context();
   unsigned short port = desired_port;
   static const char addr[] = "127.0.0.1";
@@ -138,7 +138,7 @@ GdbContext* dbg_await_client_connection(unsigned short desired_port,
     strcpy(params.socket_addr, addr);
     params.port = port;
 
-    ssize_t nwritten = write(client_params_fd, &params, sizeof(params));
+    ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
     assert(nwritten == sizeof(params));
   } else {
     fprintf(stderr, "Attach to the rr debug server with this command:\n"
