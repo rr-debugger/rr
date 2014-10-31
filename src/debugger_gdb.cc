@@ -56,7 +56,8 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
   }
 }
 
-GdbContext::GdbContext() : no_ack(false), inlen(0), outlen(0) {
+GdbContext::GdbContext(pid_t tgid)
+    : tgid(tgid), no_ack(false), inlen(0), outlen(0) {
   memset(&req, 0, sizeof(req));
 }
 
@@ -119,7 +120,7 @@ struct DebuggerParams {
 unique_ptr<GdbContext> GdbContext::await_client_connection(
     unsigned short desired_port, ProbePort probe, pid_t tgid,
     const string* exe_image, ScopedFd* client_params_fd) {
-  auto dbg = unique_ptr<GdbContext>(new GdbContext());
+  auto dbg = unique_ptr<GdbContext>(new GdbContext(tgid));
   unsigned short port = desired_port;
   ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
   if (exe_image) {
@@ -135,7 +136,6 @@ unique_ptr<GdbContext> GdbContext::await_client_connection(
                     "  target remote :%d\n",
             port);
   }
-  dbg->tgid = tgid;
   LOG(debug) << "limiting debugger traffic to tgid " << tgid;
   dbg->await_debugger(listen_fd);
   return dbg;

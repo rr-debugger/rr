@@ -228,7 +228,7 @@ public:
   ssize_t outlen;
 
 private:
-  GdbContext();
+  GdbContext(pid_t tgid);
 
   /**
    * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
