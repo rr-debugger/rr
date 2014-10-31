@@ -422,12 +422,15 @@ private:
    * packet(s).
    */
   void read_packet();
-  int xfer(const char* name, char* args);
-  int query(char* payload);
-  int set_var(char* payload);
+  /**
+   * Return true if we handled the request.
+   */
+  bool xfer(const char* name, char* args);
+  bool query(char* payload);
+  bool set_var(char* payload);
   void consume_request();
-  int process_vpacket(char* payload);
-  int process_packet();
+  bool process_vpacket(char* payload);
+  bool process_packet();
   void send_stop_reply_packet(GdbThreadId thread, int sig,
                               uintptr_t watch_addr = 0);
 

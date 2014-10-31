@@ -404,7 +404,7 @@ bool GdbContext::skip_to_packet_start() {
   return true;
 }
 
-int GdbContext::sniff_packet() {
+bool GdbContext::sniff_packet() {
   if (skip_to_packet_start()) {
     /* We've already seen a (possibly partial) packet. */
     return true;
@@ -496,7 +496,7 @@ static GdbThreadId parse_threadid(const char* str, char** endptr) {
   return t;
 }
 
-int GdbContext::xfer(const char* name, char* args) {
+bool GdbContext::xfer(const char* name, char* args) {
   LOG(debug) << "gdb asks us to transfer " << name << "(" << args << ")";
 
   if (!strcmp(name, "auxv")) {
@@ -504,7 +504,7 @@ int GdbContext::xfer(const char* name, char* args) {
 
     req.type = DREQ_GET_AUXV;
     req.target = query_thread;
-    return 1;
+    return true;
   }
   if (name == strstr(name, "siginfo")) {
     if (args == strstr(args, "read")) {
@@ -519,19 +519,19 @@ int GdbContext::xfer(const char* name, char* args) {
       req.mem.len = strtoul(args, &args, 16);
       assert('\0' == *args);
 
-      return 1;
+      return true;
     }
     if (args == strstr(args, "write")) {
       req.type = DREQ_WRITE_SIGINFO;
-      return 1;
+      return true;
     }
     UNHANDLED_REQ() << "Unhandled 'siginfo' request: " << args;
-    return 0;
+    return false;
   }
 
   UNHANDLED_REQ() << "Unhandled gdb xfer request: " << name << "(" << args
                   << ")";
-  return 0;
+  return false;
 }
 
 /**
@@ -585,7 +585,7 @@ static void read_reg_value(char** strp, GdbRegisterValue* reg) {
   *strp = str;
 }
 
-int GdbContext::query(char* payload) {
+bool GdbContext::query(char* payload) {
   const char* name;
   char* args;
 
@@ -598,40 +598,40 @@ int GdbContext::query(char* payload) {
   if (!strcmp(name, "C")) {
     LOG(debug) << "gdb requests current thread ID";
     req.type = DREQ_GET_CURRENT_THREAD;
-    return 1;
+    return true;
   }
   if (!strcmp(name, "Attached")) {
     LOG(debug) << "gdb asks if this is a new or existing process";
     /* Tell gdb this is an existing process; it might be
      * (see emergency_debug()). */
     write_packet("1");
-    return 0;
+    return false;
   }
   if (!strcmp(name, "fThreadInfo")) {
     LOG(debug) << "gdb asks for thread list";
     req.type = DREQ_GET_THREAD_LIST;
-    return 1;
+    return true;
   }
   if (!strcmp(name, "sThreadInfo")) {
     write_packet("l"); /* "end of list" */
-    return 0;
+    return false;
   }
   if (!strcmp(name, "GetTLSAddr")) {
     LOG(debug) << "gdb asks for TLS addr";
     /* TODO */
     write_packet("");
-    return 0;
+    return false;
   }
   if (!strcmp(name, "Offsets")) {
     LOG(debug) << "gdb asks for section offsets";
     req.type = DREQ_GET_OFFSETS;
     req.target = query_thread;
-    return 1;
+    return true;
   }
   if ('P' == name[0]) {
     /* The docs say not to use this packet ... */
     write_packet("");
-    return 0;
+    return false;
   }
   if (!strcmp(name, "Supported")) {
     char supported[1024];
@@ -645,12 +645,12 @@ int GdbContext::query(char* payload) {
              ";multiprocess+",
              sizeof(outbuf));
     write_packet(supported);
-    return 0;
+    return false;
   }
   if (!strcmp(name, "Symbol")) {
     LOG(debug) << "gdb is ready for symbol lookups";
     write_packet("OK");
-    return 0;
+    return false;
   }
   if (strstr(name, "ThreadExtraInfo") == name) {
     // ThreadExtraInfo is a special snowflake that
@@ -662,7 +662,7 @@ int GdbContext::query(char* payload) {
     req.type = DREQ_GET_THREAD_EXTRA_INFO;
     req.target = parse_threadid(args, &args);
     assert('\0' == *args);
-    return 1;
+    return true;
   }
   if (!strcmp(name, "TStatus")) {
     LOG(debug) << "gdb asks for trace status";
@@ -671,7 +671,7 @@ int GdbContext::query(char* payload) {
      * us with trace queries.  So pretend we don't know
      * what it's talking about. */
     write_packet("");
-    return 0;
+    return false;
   }
   if (!strcmp(name, "Xfer")) {
     name = args;
@@ -683,10 +683,10 @@ int GdbContext::query(char* payload) {
   }
 
   UNHANDLED_REQ() << "Unhandled gdb query: q" << name;
-  return 0;
+  return false;
 }
 
-int GdbContext::set_var(char* payload) {
+bool GdbContext::set_var(char* payload) {
   const char* name;
   char* args;
 
@@ -699,11 +699,11 @@ int GdbContext::set_var(char* payload) {
   if (!strcmp(name, "StartNoAckMode")) {
     write_packet("OK");
     no_ack = true;
-    return 0;
+    return false;
   }
 
   UNHANDLED_REQ() << "Unhandled gdb set: Q" << name;
-  return 0;
+  return false;
 }
 
 void GdbContext::consume_request() {
@@ -711,7 +711,7 @@ void GdbContext::consume_request() {
   write_flush();
 }
 
-int GdbContext::process_vpacket(char* payload) {
+bool GdbContext::process_vpacket(char* payload) {
   const char* name;
   char* args;
 
@@ -734,7 +734,7 @@ int GdbContext::process_vpacket(char* payload) {
       case 'c':
         req.type = DREQ_CONTINUE;
         req.target = resume_thread;
-        return 1;
+        return true;
       case 'S':
         LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
         args = strchr(args, ':');
@@ -755,18 +755,18 @@ int GdbContext::process_vpacket(char* payload) {
         } else {
           req.target = resume_thread;
         }
-        return 1;
+        return true;
       default:
         UNHANDLED_REQ() << "Unhandled vCont command " << cmd << "(" << args
                         << ")";
-        return 0;
+        return false;
     }
   }
 
   if (!strcmp("Cont?", name)) {
     LOG(debug) << "gdb queries which continue commands we support";
     write_packet("vCont;c;C;s;S;t;");
-    return 0;
+    return false;
   }
 
   if (!strcmp("Kill", name)) {
@@ -776,7 +776,7 @@ int GdbContext::process_vpacket(char* payload) {
     // to implement vRun, so we'll ignore this one.
     LOG(debug) << "gdb asks us to kill tracee(s); ignoring";
     write_packet("OK");
-    return 0;
+    return false;
   }
 
   if (!strcmp("Run", name)) {
@@ -784,7 +784,7 @@ int GdbContext::process_vpacket(char* payload) {
     req.restart.type = RESTART_FROM_PREVIOUS;
 
     if ('\0' == *args) {
-      return 1;
+      return true;
     }
     const char* filename = args;
     *args++ = '\0';
@@ -820,17 +820,17 @@ int GdbContext::process_vpacket(char* payload) {
         FATAL() << "Couldn't parse event string `" << event_str << "'";
       }
     }
-    return 1;
+    return true;
   }
 
   UNHANDLED_REQ() << "Unhandled gdb vpacket: v" << name;
-  return 0;
+  return false;
 }
 
-int GdbContext::process_packet() {
+bool GdbContext::process_packet() {
   char request;
   char* payload = nullptr;
-  int ret;
+  bool ret;
 
   assert(INTERRUPT_CHAR == inbuf[0] ||
          ('$' == inbuf[0] &&
@@ -850,18 +850,18 @@ int GdbContext::process_packet() {
     case INTERRUPT_CHAR:
       LOG(debug) << "gdb requests interrupt";
       req.type = DREQ_INTERRUPT;
-      ret = 1;
+      ret = true;
       break;
     case 'D':
       LOG(debug) << "gdb is detaching from us";
       req.type = DREQ_DETACH;
-      ret = 1;
+      ret = true;
       break;
     case 'g':
       req.type = DREQ_GET_REGS;
       req.target = query_thread;
       LOG(debug) << "gdb requests registers";
-      ret = 1;
+      ret = true;
       break;
     case 'G':
       /* XXX we can't let gdb spray registers in general,
@@ -869,7 +869,7 @@ int GdbContext::process_packet() {
        * writes may be OK.  Let's see how far we can get
        * with ignoring these requests. */
       write_packet("");
-      ret = 0;
+      ret = false;
       break;
     case 'H':
       if ('c' == *payload++) {
@@ -882,7 +882,7 @@ int GdbContext::process_packet() {
 
       LOG(debug) << "gdb selecting " << req.target;
 
-      ret = 1;
+      ret = true;
       break;
     case 'k':
       LOG(info) << "gdb requests kill, exiting";
@@ -899,7 +899,7 @@ int GdbContext::process_packet() {
       LOG(debug) << "gdb requests memory (addr=" << req.mem.addr
                  << ", len=" << req.mem.len << ")";
 
-      ret = 1;
+      ret = true;
       break;
     case 'M':
       /* We can't allow the debugger to write arbitrary data
@@ -907,7 +907,7 @@ int GdbContext::process_packet() {
       // TODO: parse this packet in case some oddball gdb
       // decides to send it instead of 'X'
       write_packet("");
-      ret = 0;
+      ret = false;
       break;
     case 'p':
       req.type = DREQ_GET_REG;
@@ -915,7 +915,7 @@ int GdbContext::process_packet() {
       req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
       assert('\0' == *payload);
       LOG(debug) << "gdb requests register value (" << req.reg.name << ")";
-      ret = 1;
+      ret = true;
       break;
     case 'P':
       req.type = DREQ_SET_REG;
@@ -927,7 +927,7 @@ int GdbContext::process_packet() {
 
       assert('\0' == *payload);
 
-      ret = 1;
+      ret = true;
       break;
     case 'q':
       ret = query(payload);
@@ -940,7 +940,7 @@ int GdbContext::process_packet() {
       req.target = parse_threadid(payload, &payload);
       assert('\0' == *payload);
       LOG(debug) << "gdb wants to know if " << req.target << " is alive";
-      ret = 1;
+      ret = true;
       break;
     case 'v':
       ret = process_vpacket(payload);
@@ -963,7 +963,7 @@ int GdbContext::process_packet() {
       LOG(debug) << "gdb setting memory (addr=" << req.mem.addr
                  << ", len=" << req.mem.len << ")";
 
-      ret = 1;
+      ret = true;
       break;
     }
     case 'z':
@@ -973,7 +973,7 @@ int GdbContext::process_packet() {
       if (!(0 <= type && type <= 4)) {
         LOG(warn) << "Unknown watch type " << type;
         write_packet("");
-        ret = 0;
+        ret = false;
         break;
       }
       req.type = GdbRequestType(
@@ -987,30 +987,30 @@ int GdbContext::process_packet() {
                  << "breakpoint (addr=" << req.mem.addr
                  << ", len=" << req.mem.len << ")";
 
-      ret = 1;
+      ret = true;
       break;
     }
     case '!':
       LOG(debug) << "gdb requests extended mode";
       write_packet("OK");
-      ret = 0;
+      ret = false;
       break;
     case '?':
       LOG(debug) << "gdb requests stop reason";
       req.type = DREQ_GET_STOP_REASON;
       req.target = query_thread;
-      ret = 1;
+      ret = true;
       break;
     default:
       UNHANDLED_REQ() << "Unhandled gdb request '" << inbuf[1] << "'";
-      ret = 0;
+      ret = false;
   }
   /* Erase the newly processed packet from the input buffer. */
   memmove(inbuf, inbuf + packetend, inlen - packetend);
   inlen = (inlen - packetend);
 
   /* If we processed the request internally, consume it. */
-  if (ret == 0) {
+  if (!ret) {
     consume_request();
   }
   return ret;
