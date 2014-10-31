@@ -291,8 +291,7 @@ void dbg_reply_get_current_thread(GdbContext* dbg, GdbThreadId thread);
  * Reply with the target thread's |auxv| containing |len| pairs, or
  * |len| <= 0 if there was an error reading the auxiliary vector.
  */
-void dbg_reply_get_auxv(GdbContext* dbg, const struct GdbAuxvPair* auxv,
-                        ssize_t len);
+void dbg_reply_get_auxv(GdbContext* dbg, const GdbAuxvPair* auxv, ssize_t len);
 
 /**
  * |alive| is nonzero if the requested thread is alive, zero if dead.

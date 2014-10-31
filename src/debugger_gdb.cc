@@ -1308,8 +1308,7 @@ void dbg_reply_get_current_thread(GdbContext* dbg, GdbThreadId thread) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_auxv(GdbContext* dbg, const struct GdbAuxvPair* auxv,
-                        ssize_t len) {
+void dbg_reply_get_auxv(GdbContext* dbg, const GdbAuxvPair* auxv, ssize_t len) {
   assert(DREQ_GET_AUXV == dbg->req.type);
 
   if (len > 0) {

@@ -297,7 +297,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
   switch (req.type) {
     case DREQ_GET_AUXV: {
       char filename[] = "/proc/01234567890/auxv";
-      struct GdbAuxvPair auxv[4096];
+      GdbAuxvPair auxv[4096];
       ssize_t len;
 
       snprintf(filename, sizeof(filename) - 1, "/proc/%d/auxv",
