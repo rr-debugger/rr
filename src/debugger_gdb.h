@@ -200,6 +200,13 @@ public:
                                              ScopedFd* client_params_fd =
                                                  nullptr);
 
+  /**
+   * Exec gdb using the params that were written to
+   * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
+   * of macros defined in |macros| if nonnull.
+   */
+  static void launch_gdb(ScopedFd& params_pipe_fd, const char* macros);
+
   // Current request to be processed.
   GdbRequest req;
   // Thread to be resumed.
@@ -233,13 +240,6 @@ struct GdbAuxvPair {
   uintptr_t key;
   uintptr_t value;
 };
-
-/**
- * Launch a debugger using the params that were written to
- * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
- * of macros defined in |macros| if nonnull.
- */
-void dbg_launch_debugger(ScopedFd& params_pipe_fd, const char* macros);
 
 /**
  * Call this when the target of |req| is needed to fulfill the

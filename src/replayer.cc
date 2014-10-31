@@ -861,7 +861,7 @@ int replay(int argc, char* argv[], char** envp) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    dbg_launch_debugger(params_pipe_read_fd, gdb_rr_macros);
+    GdbContext::launch_gdb(params_pipe_read_fd, gdb_rr_macros);
   }
 
   // Child must have died before we were able to get debugger parameters
