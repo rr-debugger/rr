@@ -198,7 +198,7 @@ public:
  * An item in a process's auxiliary vector, for example { AT_SYSINFO,
  * 0xb7fff414 }.
  */
-struct dbg_auxv_pair {
+struct GdbAuxvPair {
   long key;
   long value;
 };
@@ -297,8 +297,8 @@ void dbg_reply_get_current_thread(struct GdbContext* dbg, GdbThreadId thread);
  * Reply with the target thread's |auxv| containing |len| pairs, or
  * |len| <= 0 if there was an error reading the auxiliary vector.
  */
-void dbg_reply_get_auxv(struct GdbContext* dbg,
-                        const struct dbg_auxv_pair* auxv, ssize_t len);
+void dbg_reply_get_auxv(struct GdbContext* dbg, const struct GdbAuxvPair* auxv,
+                        ssize_t len);
 
 /**
  * |alive| is nonzero if the requested thread is alive, zero if dead.
