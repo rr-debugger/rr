@@ -166,7 +166,7 @@ struct GdbRequest {
 class GdbContext {
 public:
   // Current request to be processed.
-  struct GdbRequest req;
+  GdbRequest req;
   // Thread to be resumed.
   GdbThreadId resume_thread;
   // Thread for get/set requests.
@@ -175,8 +175,6 @@ public:
   // multi-exe-image debugging scenarios, so we pretend only
   // this task group exists when interfacing with gdb
   pid_t tgid;
-  // Nonzero when we can request lookups.
-  int serving_symbol_lookups;
   // nonzero when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
   int no_ack;

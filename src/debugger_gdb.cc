@@ -715,7 +715,6 @@ static int query(struct GdbContext* dbg, char* payload) {
   }
   if (!strcmp(name, "Symbol")) {
     LOG(debug) << "gdb is ready for symbol lookups";
-    dbg->serving_symbol_lookups = 1;
     write_packet(dbg, "OK");
     return 0;
   }
