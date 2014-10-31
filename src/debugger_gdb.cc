@@ -41,6 +41,9 @@
 
 using namespace std;
 
+const GdbThreadId GdbThreadId::ANY = { 0, 0 };
+const GdbThreadId GdbThreadId::ALL = { -1, -1 };
+
 bool dbg_is_resume_request(const struct GdbRequest* req) {
   switch (req->type) {
     case DREQ_CONTINUE:
@@ -1111,8 +1114,8 @@ static void dbg_notify_restart(struct GdbContext* dbg) {
   // These threads may not exist at the first trace-stop after
   // restart.  The gdb client should reset this state, but help
   // it out just in case.
-  dbg->resume_thread = DBG_ANY_THREAD;
-  dbg->query_thread = DBG_ANY_THREAD;
+  dbg->resume_thread = GdbThreadId::ANY;
+  dbg->query_thread = GdbThreadId::ANY;
 
   memset(&dbg->req, 0, sizeof(dbg->req));
 }

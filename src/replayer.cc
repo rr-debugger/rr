@@ -461,7 +461,7 @@ static struct GdbRequest process_debugger_requests(struct GdbContext* dbg,
     struct GdbRequest continue_all_tasks;
     memset(&continue_all_tasks, 0, sizeof(continue_all_tasks));
     continue_all_tasks.type = DREQ_CONTINUE;
-    continue_all_tasks.target = DBG_ALL_THREADS;
+    continue_all_tasks.target = GdbThreadId::ALL;
     maybe_singlestep_for_event(t, &continue_all_tasks);
     return continue_all_tasks;
   }

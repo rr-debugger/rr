@@ -25,15 +25,15 @@ struct GdbThreadId {
   bool operator==(const GdbThreadId& o) const {
     return pid == o.pid && tid == o.tid;
   }
+
+  static const GdbThreadId ANY;
+  static const GdbThreadId ALL;
 };
 
 inline static std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
   o << t.pid << "." << t.tid;
   return o;
 }
-
-static const GdbThreadId DBG_ANY_THREAD = { 0, 0 };
-static const GdbThreadId DBG_ALL_THREADS = { -1, -1 };
 
 static const size_t DBG_MAX_REG_SIZE = 16;
 
