@@ -253,7 +253,6 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
     case DREQ_DETACH:
       LOG(info) << ("(debugger detached from us, rr exiting)");
       dbg_reply_detach(dbg);
-      dbg_destroy_context(&dbg);
       // Don't orphan tracees: their VMs are inconsistent
       // because we've been using emulated tracing, so they
       // can't resume normal execution.  And we wouldn't
@@ -789,7 +788,7 @@ static void replay_trace_frames(void) {
       }
       FATAL() << "Received continue request after end-of-trace.";
     }
-    dbg_destroy_context(&dbg);
+    delete dbg;
     return;
   }
 }
@@ -902,5 +901,5 @@ void start_debug_server(Task* t) {
 
   process_debugger_requests(dbg, t);
 
-  dbg_destroy_context(&dbg);
+  delete dbg;
 }

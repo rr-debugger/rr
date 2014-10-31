@@ -407,11 +407,4 @@ void dbg_delete_checkpoint(GdbContext* dbg, int checkpoint_id);
  */
 ReplaySession::shr_ptr dbg_get_checkpoint(GdbContext* dbg, int checkpoint_id);
 
-/**
- * Destroy a gdb debugging context created by
- * |dbg_await_client_connection()|.  It's legal to pass a null |*dbg|.
- * The passed-in outparam is nulled on return.
- */
-void dbg_destroy_context(GdbContext** dbg);
-
 #endif /* DBG_GDB_G_ */

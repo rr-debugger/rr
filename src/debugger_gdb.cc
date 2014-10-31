@@ -253,7 +253,6 @@ static void read_data_once(GdbContext* dbg) {
                sizeof(dbg->inbuf) - dbg->inlen);
   if (0 == nread) {
     LOG(info) << "(gdb closed debugging socket, exiting)";
-    dbg_destroy_context(&dbg);
     exit(0);
   }
   if (nread <= 0) {
@@ -920,7 +919,6 @@ static int process_packet(GdbContext* dbg) {
     case 'k':
       LOG(info) << "gdb requests kill, exiting";
       write_packet(dbg, "OK");
-      dbg_destroy_context(&dbg);
       exit(0);
     case 'm':
       dbg->req.type = DREQ_GET_MEM;
@@ -1480,13 +1478,4 @@ void dbg_reply_write_siginfo(GdbContext* dbg /*, TODO*/) {
   write_packet(dbg, "E01");
 
   consume_request(dbg);
-}
-
-void dbg_destroy_context(GdbContext** dbg) {
-  GdbContext* d;
-  if (!(d = *dbg)) {
-    return;
-  }
-  delete d;
-  *dbg = nullptr;
 }
