@@ -294,26 +294,28 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
   switch (req.type) {
     case DREQ_GET_AUXV: {
       char filename[] = "/proc/01234567890/auxv";
-      GdbAuxvPair auxv[4096];
-      ssize_t len;
+      vector<GdbAuxvPair> auxv;
+      auxv.resize(4096);
 
       snprintf(filename, sizeof(filename) - 1, "/proc/%d/auxv",
                target->real_tgid());
       ScopedFd fd(filename, O_RDONLY);
       if (0 > fd) {
-        dbg->reply_get_auxv(nullptr, -1);
+        auxv.clear();
+        dbg->reply_get_auxv(auxv);
         return;
       }
 
-      len = read(fd, auxv, sizeof(auxv));
+      ssize_t len = read(fd, auxv.data(), sizeof(auxv[0]) * auxv.size());
       if (0 > len) {
-        dbg->reply_get_auxv(nullptr, -1);
+        auxv.clear();
+        dbg->reply_get_auxv(auxv);
         return;
       }
 
       assert(0 == len % sizeof(auxv[0]));
-      len /= sizeof(auxv[0]);
-      dbg->reply_get_auxv(auxv, len);
+      auxv.resize(len / sizeof(auxv[0]));
+      dbg->reply_get_auxv(auxv);
       return;
     }
     case DREQ_GET_MEM: {

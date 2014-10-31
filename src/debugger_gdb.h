@@ -267,10 +267,10 @@ public:
   void reply_get_current_thread(GdbThreadId thread);
 
   /**
-   * Reply with the target thread's |auxv| containing |len| pairs, or
-   * |len| <= 0 if there was an error reading the auxiliary vector.
+   * Reply with the target thread's |auxv| pairs. |auxv.empty()|
+   * if there was an error reading the auxiliary vector.
    */
-  void reply_get_auxv(const GdbAuxvPair* auxv, ssize_t len);
+  void reply_get_auxv(const std::vector<GdbAuxvPair>& auxv);
 
   /**
    * |alive| is true if the requested thread is alive, false if dead.

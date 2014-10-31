@@ -1277,11 +1277,12 @@ void GdbContext::reply_get_current_thread(GdbThreadId thread) {
   consume_request();
 }
 
-void GdbContext::reply_get_auxv(const GdbAuxvPair* auxv, ssize_t len) {
+void GdbContext::reply_get_auxv(const vector<GdbAuxvPair>& auxv) {
   assert(DREQ_GET_AUXV == req.type);
 
-  if (len > 0) {
-    write_binary_packet("l", (uint8_t*)auxv, len * sizeof(auxv[0]));
+  if (!auxv.empty()) {
+    write_binary_packet("l", (uint8_t*)auxv.data(),
+                        auxv.size() * sizeof(auxv[0]));
   } else {
     write_packet("E01");
   }
