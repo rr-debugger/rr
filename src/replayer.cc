@@ -360,7 +360,7 @@ void dispatch_debugger_request(Session& session, struct GdbContext* dbg,
     }
     case DREQ_GET_REGS: {
       size_t n_regs = target->regs().total_registers();
-      DbgRegfile file(n_regs);
+      GdbRegisterFile file(n_regs);
       for (size_t i = 0; i < n_regs; ++i) {
         file.regs[i] = get_reg(target, GDBRegister(i));
       }

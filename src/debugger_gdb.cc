@@ -1409,7 +1409,7 @@ void dbg_reply_get_reg(struct GdbContext* dbg, const GdbRegisterValue& reg) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_regs(struct GdbContext* dbg, const DbgRegfile& file) {
+void dbg_reply_get_regs(struct GdbContext* dbg, const GdbRegisterFile& file) {
   size_t n_regs = file.total_registers();
   char buf[n_regs * 2 * DBG_MAX_REG_SIZE + 1];
 

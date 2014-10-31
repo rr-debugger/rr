@@ -52,10 +52,10 @@ struct GdbRegisterValue {
  * Represents the register file, indexed by |DbgRegister| values
  * above.
  */
-struct DbgRegfile {
+struct GdbRegisterFile {
   std::vector<GdbRegisterValue> regs;
 
-  DbgRegfile(size_t n_regs) : regs(n_regs) {};
+  GdbRegisterFile(size_t n_regs) : regs(n_regs) {};
 
   size_t total_registers() const { return regs.size(); }
 };
@@ -343,7 +343,7 @@ void dbg_reply_get_reg(struct GdbContext* dbg, const GdbRegisterValue& value);
  * Send |file| back to the debugger host.  |file| may contain
  * undefined register values.
  */
-void dbg_reply_get_regs(struct GdbContext* dbg, const DbgRegfile& file);
+void dbg_reply_get_regs(struct GdbContext* dbg, const GdbRegisterFile& file);
 
 /**
  * Pass |ok = true| iff the requested register was successfully set.
