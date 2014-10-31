@@ -13,8 +13,6 @@
 #include "GDBRegister.h"
 #include "ReplaySession.h"
 
-struct GdbContext;
-
 /**
  * Descriptor for task within a task group.  Note: on linux, we can
  * uniquely identify any thread by its |tid| (ignoring pid
@@ -159,6 +157,42 @@ struct dbg_request {
       DbgRestartType type;
     } restart;
   };
+};
+
+/**
+ * This struct wraps up the state of the gdb protocol, so that we can
+ * offer a (mostly) stateless interface to clients.
+ */
+class GdbContext {
+public:
+  // Current request to be processed.
+  struct dbg_request req;
+  // Thread to be resumed.
+  dbg_threadid_t resume_thread;
+  // Thread for get/set requests.
+  dbg_threadid_t query_thread;
+  // gdb and rr don't work well together in multi-process and
+  // multi-exe-image debugging scenarios, so we pretend only
+  // this task group exists when interfacing with gdb
+  pid_t tgid;
+  // Nonzero when we can request lookups.
+  int serving_symbol_lookups;
+  // nonzero when "no-ack mode" enabled, in which we don't have
+  // to send ack packets back to gdb.  This is a huge perf win.
+  int no_ack;
+  // Server address we listen for a connection on.
+  struct sockaddr_in addr;
+  // Listen and client sockets created for |addr|.
+  int listen_fd;
+  int sock_fd;
+  /* XXX probably need to dynamically size these */
+  uint8_t inbuf[32768];  /* buffered input from gdb */
+  ssize_t inlen;         /* length of valid data */
+  ssize_t insize;        /* total size of buffer */
+  ssize_t packetend;     /* index of '#' character */
+  uint8_t outbuf[32768]; /* buffered output for gdb */
+  ssize_t outlen;
+  ssize_t outsize;
 };
 
 /**
