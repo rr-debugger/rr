@@ -60,8 +60,8 @@ GdbContext::GdbContext() : no_ack(false), inlen(0), outlen(0) {
   memset(&req, 0, sizeof(req));
 }
 
-static ScopedFd open_socket(GdbContext* dbg, const char* address,
-                            unsigned short* port, GdbContext::ProbePort probe) {
+static ScopedFd open_socket(const char* address, unsigned short* port,
+                            GdbContext::ProbePort probe) {
   ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
   if (!listen_fd.is_open()) {
     FATAL() << "Couldn't create socket";
@@ -121,7 +121,7 @@ unique_ptr<GdbContext> GdbContext::await_client_connection(
     const string* exe_image, ScopedFd* client_params_fd) {
   auto dbg = unique_ptr<GdbContext>(new GdbContext());
   unsigned short port = desired_port;
-  ScopedFd listen_fd = open_socket(dbg.get(), connection_addr, &port, probe);
+  ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
   if (exe_image) {
     DebuggerParams params;
     memset(&params, 0, sizeof(params));
