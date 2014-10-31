@@ -30,7 +30,7 @@ struct GdbThreadId {
   static const GdbThreadId ALL;
 };
 
-inline static std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
+inline std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
   o << t.pid << "." << t.tid;
   return o;
 }
