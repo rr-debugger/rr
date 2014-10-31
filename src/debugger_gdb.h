@@ -273,7 +273,7 @@ public:
   void reply_get_auxv(const GdbAuxvPair* auxv, ssize_t len);
 
   /**
-   * |alive| is nonzero if the requested thread is alive, zero if dead.
+   * |alive| is true if the requested thread is alive, false if dead.
    */
   void reply_get_is_thread_alive(bool alive);
 
@@ -284,9 +284,9 @@ public:
   void reply_get_thread_extra_info(const std::string& info);
 
   /**
-   * |ok| is nonzero if req->target can be selected, zero otherwise.
+   * |ok| is true if req->target can be selected, false otherwise.
    */
-  void reply_select_thread(int ok);
+  void reply_select_thread(bool ok);
 
   /**
    * The first |len| bytes of the request were read into |mem|.  |len|

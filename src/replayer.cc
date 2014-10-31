@@ -277,7 +277,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       return;
     case DREQ_SET_CONTINUE_THREAD:
     case DREQ_SET_QUERY_THREAD:
-      dbg->reply_select_thread(!!target);
+      dbg->reply_select_thread(target != nullptr);
       return;
     default:
       // fall through to next switch stmt

@@ -1308,7 +1308,7 @@ void GdbContext::reply_get_thread_extra_info(const string& info) {
   consume_request();
 }
 
-void GdbContext::reply_select_thread(int ok) {
+void GdbContext::reply_select_thread(bool ok) {
   assert(DREQ_SET_CONTINUE_THREAD == req.type ||
          DREQ_SET_QUERY_THREAD == req.type);
 
