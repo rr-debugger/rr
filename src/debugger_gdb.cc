@@ -114,7 +114,7 @@ static void await_debugger(GdbContext* dbg, ScopedFd& listen_fd) {
 
 static const char connection_addr[] = "127.0.0.1";
 
-struct debugger_params {
+struct DebuggerParams {
   char exe_image[PATH_MAX];
   short port;
 };
@@ -127,9 +127,9 @@ GdbContext* GdbContext::await_client_connection(unsigned short desired_port,
   unsigned short port = desired_port;
   ScopedFd listen_fd = open_socket(dbg, connection_addr, &port, probe);
   if (exe_image) {
-    struct debugger_params params;
+    DebuggerParams params;
     memset(&params, 0, sizeof(params));
-    strcpy(params.exe_image, exe_image->c_str());
+    strncpy(params.exe_image, exe_image->c_str(), sizeof(params.exe_image) - 1);
     params.port = port;
 
     ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
@@ -164,7 +164,7 @@ static string create_gdb_command_file(const char* macros) {
 }
 
 void GdbContext::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
-  struct debugger_params params;
+  DebuggerParams params;
   ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
   if (nread == 0) {
     // pipe was closed. Probably rr failed/died.
