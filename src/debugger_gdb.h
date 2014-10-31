@@ -334,10 +334,10 @@ public:
   void reply_get_thread_list(const GdbThreadId* threads, ssize_t len);
 
   /**
-   * |code| is 0 if the request was successfully applied, nonzero if
+   * |ok| is true if the request was successfully applied, false if
    * not.
    */
-  void reply_watchpoint_request(int code);
+  void reply_watchpoint_request(bool ok);
 
   /**
    * DREQ_DETACH was processed.

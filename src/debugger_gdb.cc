@@ -1432,10 +1432,10 @@ void GdbContext::reply_get_thread_list(const GdbThreadId* threads,
   consume_request();
 }
 
-void GdbContext::reply_watchpoint_request(int code) {
+void GdbContext::reply_watchpoint_request(bool ok) {
   assert(DREQ_WATCH_FIRST <= req.type && req.type <= DREQ_WATCH_LAST);
 
-  write_packet(code ? "E01" : "OK");
+  write_packet(ok ? "OK" : "E01");
 
   consume_request();
 }

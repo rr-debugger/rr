@@ -399,12 +399,12 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       ASSERT(target, (req.mem.len == sizeof(AddressSpace::breakpoint_insn)))
           << "Debugger setting bad breakpoint insn";
       bool ok = target->vm()->set_breakpoint(req.mem.addr, TRAP_BKPT_USER);
-      dbg->reply_watchpoint_request(ok ? 0 : 1);
+      dbg->reply_watchpoint_request(ok);
       return;
     }
     case DREQ_REMOVE_SW_BREAK:
       target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
-      dbg->reply_watchpoint_request(0);
+      dbg->reply_watchpoint_request(true);
       return;
     case DREQ_REMOVE_HW_BREAK:
     case DREQ_REMOVE_RD_WATCH:
@@ -412,7 +412,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
     case DREQ_REMOVE_RDWR_WATCH:
       target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
                                       watchpoint_type(req.type));
-      dbg->reply_watchpoint_request(0);
+      dbg->reply_watchpoint_request(true);
       return;
     case DREQ_SET_HW_BREAK:
     case DREQ_SET_RD_WATCH:
@@ -420,7 +420,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
     case DREQ_SET_RDWR_WATCH: {
       bool ok = target->vm()->set_watchpoint(req.mem.addr, req.mem.len,
                                              watchpoint_type(req.type));
-      dbg->reply_watchpoint_request(ok ? 0 : 1);
+      dbg->reply_watchpoint_request(ok);
       return;
     }
     case DREQ_READ_SIGINFO:
