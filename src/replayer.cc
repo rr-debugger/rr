@@ -317,11 +317,12 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       return;
     }
     case DREQ_GET_MEM: {
-      uint8_t mem[req.mem.len];
+      vector<uint8_t> mem;
+      mem.resize(req.mem.len);
       ssize_t nread =
-          target->read_bytes_fallible(req.mem.addr, req.mem.len, mem);
-      size_t len = max(ssize_t(0), nread);
-      dbg->reply_get_mem(mem, len);
+          target->read_bytes_fallible(req.mem.addr, req.mem.len, mem.data());
+      mem.resize(max(ssize_t(0), nread));
+      dbg->reply_get_mem(mem);
       return;
     }
     case DREQ_SET_MEM: {

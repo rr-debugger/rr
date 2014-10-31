@@ -289,10 +289,10 @@ public:
   void reply_select_thread(bool ok);
 
   /**
-   * The first |len| bytes of the request were read into |mem|.  |len|
-   * must be less than or equal to the length of the request.
+   * The first |mem.size()| bytes of the request were read into |mem|.
+   * |mem.size()| must be less than or equal to the length of the request.
    */
-  void reply_get_mem(const uint8_t* mem, size_t len);
+  void reply_get_mem(const std::vector<uint8_t>& mem);
 
   /**
    * |ok| is true if a SET_MEM request succeeded, false otherwise.  This

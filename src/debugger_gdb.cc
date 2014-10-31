@@ -1322,11 +1322,11 @@ void GdbContext::reply_select_thread(bool ok) {
   consume_request();
 }
 
-void GdbContext::reply_get_mem(const uint8_t* mem, size_t len) {
+void GdbContext::reply_get_mem(const vector<uint8_t>& mem) {
   assert(DREQ_GET_MEM == req.type);
-  assert(len <= req.mem.len);
+  assert(mem.size() <= req.mem.len);
 
-  write_hex_bytes_packet(mem, len);
+  write_hex_bytes_packet(mem.data(), mem.size());
 
   consume_request();
 }
