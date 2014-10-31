@@ -123,7 +123,7 @@ enum GdbRequestType {
   DREQ_WRITE_SIGINFO,
 };
 
-enum DbgRestartType {
+enum GdbRestartType {
   RESTART_FROM_PREVIOUS,
   RESTART_FROM_EVENT,
   RESTART_FROM_CHECKPOINT,
@@ -153,7 +153,7 @@ struct dbg_request {
 
     struct {
       int param;
-      DbgRestartType type;
+      GdbRestartType type;
     } restart;
   };
 };
