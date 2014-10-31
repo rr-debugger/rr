@@ -10,6 +10,8 @@
 #include "ReplaySession.h"
 #include "task.h"
 
+using namespace std;
+
 // The global diversion session, of which there can only be one at a
 // time currently.  See long comment at the top of diverter.h.
 static DiversionSession::shr_ptr session;
@@ -45,9 +47,10 @@ static Task* process_debugger_requests(GdbContext* dbg, Task* t,
         LOG(debug) << "Adding ref to diversion session";
         ++diversion_refcount;
         // TODO: maybe share with replayer.cc?
-        uint8_t si_bytes[req->mem.len];
-        memset(si_bytes, 0, sizeof(si_bytes));
-        dbg->reply_read_siginfo(si_bytes, sizeof(si_bytes));
+        vector<uint8_t> si_bytes;
+        si_bytes.resize(req->mem.len);
+        memset(si_bytes.data(), 0, si_bytes.size());
+        dbg->reply_read_siginfo(si_bytes);
         continue;
       }
       case DREQ_SET_QUERY_THREAD: {

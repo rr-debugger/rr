@@ -353,7 +353,7 @@ public:
    * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
    * |si_bytes = nullptr|.
    */
-  void reply_read_siginfo(const uint8_t* si_bytes, ssize_t num_bytes);
+  void reply_read_siginfo(const std::vector<uint8_t>& si_bytes);
   /**
    * Not yet implemented, but call this after a WRITE_SIGINFO request
    * anyway.

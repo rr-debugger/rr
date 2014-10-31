@@ -424,7 +424,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
     }
     case DREQ_READ_SIGINFO:
       LOG(warn) << "READ_SIGINFO request outside of diversion session";
-      dbg->reply_read_siginfo(nullptr, -1);
+      dbg->reply_read_siginfo(vector<uint8_t>());
       return;
     case DREQ_WRITE_SIGINFO:
       LOG(warn) << "WRITE_SIGINFO request outside of diversion session";
@@ -475,9 +475,10 @@ static GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
       // send WRITE_SIGINFO.  For |call foo()|
       // frames, that means we don't know when the
       // diversion session is ending.
-      uint8_t si_bytes[req.mem.len];
-      memset(si_bytes, 0, sizeof(si_bytes));
-      dbg->reply_read_siginfo(si_bytes, sizeof(si_bytes));
+      vector<uint8_t> si_bytes;
+      si_bytes.resize(req.mem.len);
+      memset(si_bytes.data(), 0, si_bytes.size());
+      dbg->reply_read_siginfo(si_bytes);
 
       divert(*session, dbg, t->rec_tid, &req);
       // Carry on to process the request that was rejected by

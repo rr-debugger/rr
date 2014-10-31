@@ -1448,14 +1448,13 @@ void GdbContext::reply_detach() {
   consume_request();
 }
 
-void GdbContext::reply_read_siginfo(const uint8_t* si_bytes,
-                                    ssize_t num_bytes) {
+void GdbContext::reply_read_siginfo(const vector<uint8_t>& si_bytes) {
   assert(DREQ_READ_SIGINFO == req.type);
 
-  if (num_bytes < 0) {
+  if (si_bytes.empty()) {
     write_packet("E01");
   } else {
-    write_binary_packet("l", si_bytes, num_bytes);
+    write_binary_packet("l", si_bytes.data(), si_bytes.size());
   }
 
   consume_request();
