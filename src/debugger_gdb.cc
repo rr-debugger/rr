@@ -28,6 +28,7 @@
 
 #include "log.h"
 #include "ReplaySession.h"
+#include "ScopedFd.h"
 
 static const char INTERRUPT_CHAR = '\x03';
 
@@ -66,16 +67,6 @@ inline static bool request_needs_immediate_response(
   }
 }
 
-static void make_cloexec(int fd) {
-  int flags = fcntl(fd, F_GETFD);
-  if (-1 == flags) {
-    FATAL() << "Can't GETFD flags";
-  }
-  if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC)) {
-    FATAL() << "Can't make client socket CLOEXEC";
-  }
-}
-
 GdbContext::GdbContext() : no_ack(false), inlen(0), outlen(0) {
   memset(&req, 0, sizeof(req));
 }
@@ -85,30 +76,26 @@ static GdbContext* new_dbg_context() {
   return dbg;
 }
 
-static void open_socket(struct GdbContext* dbg, const char* address,
-                        unsigned short* port, int probe) {
-  int reuseaddr;
-  int ret;
-  struct sockaddr_in addr;
-
-  dbg->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (dbg->listen_fd < 0) {
+static ScopedFd open_socket(struct GdbContext* dbg, const char* address,
+                            unsigned short* port, int probe) {
+  ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+  if (!listen_fd.is_open()) {
     FATAL() << "Couldn't create socket";
   }
-  make_cloexec(dbg->listen_fd);
 
+  struct sockaddr_in addr;
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = inet_addr(address);
-  reuseaddr = 1;
-  ret = setsockopt(dbg->listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
-                   sizeof(reuseaddr));
+  int reuseaddr = 1;
+  int ret = setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
+                       sizeof(reuseaddr));
   if (ret < 0) {
     FATAL() << "Couldn't set SO_REUSEADDR";
   }
 
   do {
     addr.sin_port = htons(*port);
-    ret = ::bind(dbg->listen_fd, (struct sockaddr*)&addr, sizeof(addr));
+    ret = ::bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
     if (ret && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
       continue;
     }
@@ -116,7 +103,7 @@ static void open_socket(struct GdbContext* dbg, const char* address,
       FATAL() << "Couldn't bind to port " << *port;
     }
 
-    ret = listen(dbg->listen_fd, 1 /*backlogged connection*/);
+    ret = listen(listen_fd, 1 /*backlogged connection*/);
     if (ret && EADDRINUSE == errno) {
       continue;
     }
@@ -125,24 +112,23 @@ static void open_socket(struct GdbContext* dbg, const char* address,
     }
     break;
   } while (++(*port), probe);
+  return listen_fd;
 }
 
 /**
  * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
  * indefinitely.
  */
-static void await_debugger(struct GdbContext* dbg) {
+static void await_debugger(struct GdbContext* dbg, ScopedFd& listen_fd) {
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
 
-  dbg->sock_fd = accept(dbg->listen_fd, (struct sockaddr*)&client_addr, &len);
+  dbg->sock_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &len);
   // We might restart this debugging session, so don't set the
   // socket fd CLOEXEC.
   if (fcntl(dbg->sock_fd, F_SETFL, O_NONBLOCK)) {
     FATAL() << "Can't make client socket NONBLOCK";
   }
-  close(dbg->listen_fd);
-  dbg->listen_fd = -1;
 }
 
 struct debugger_params {
@@ -156,7 +142,7 @@ struct GdbContext* dbg_await_client_connection(
     const char* exe_image, pid_t client, int client_params_fd) {
   struct GdbContext* dbg = new_dbg_context();
   unsigned short port = desired_port;
-  open_socket(dbg, addr, &port, probe);
+  ScopedFd listen_fd = open_socket(dbg, addr, &port, probe);
   if (exe_image) {
     struct debugger_params params;
     memset(&params, 0, sizeof(params));
@@ -173,7 +159,7 @@ struct GdbContext* dbg_await_client_connection(
   }
   dbg->tgid = tgid;
   LOG(debug) << "limiting debugger traffic to tgid " << tgid;
-  await_debugger(dbg);
+  await_debugger(dbg, listen_fd);
   return dbg;
 }
 
@@ -1528,7 +1514,6 @@ void dbg_destroy_context(struct GdbContext** dbg) {
   if (!(d = *dbg)) {
     return;
   }
-  close(d->listen_fd);
   close(d->sock_fd);
   free(d);
   *dbg = nullptr;

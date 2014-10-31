@@ -180,8 +180,6 @@ public:
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
   bool no_ack;
-  // Listen and client sockets created for |addr|.
-  int listen_fd;
   int sock_fd;
   /* XXX probably need to dynamically size these */
   uint8_t inbuf[32768];  /* buffered input from gdb */
