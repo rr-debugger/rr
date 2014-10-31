@@ -98,15 +98,11 @@ static ScopedFd open_socket(GdbContext* dbg, const char* address,
   return listen_fd;
 }
 
-/**
- * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
- * indefinitely.
- */
-static void await_debugger(GdbContext* dbg, ScopedFd& listen_fd) {
+void GdbContext::await_debugger(ScopedFd& listen_fd) {
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
 
-  dbg->sock_fd = ScopedFd(
+  sock_fd = ScopedFd(
       accept4(listen_fd, (struct sockaddr*)&client_addr, &len, SOCK_NONBLOCK));
   // We might restart this debugging session, so don't set the
   // socket fd CLOEXEC.
@@ -141,7 +137,7 @@ GdbContext* GdbContext::await_client_connection(unsigned short desired_port,
   }
   dbg->tgid = tgid;
   LOG(debug) << "limiting debugger traffic to tgid " << tgid;
-  await_debugger(dbg, listen_fd);
+  dbg->await_debugger(listen_fd);
   return dbg;
 }
 

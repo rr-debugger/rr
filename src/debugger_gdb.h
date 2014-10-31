@@ -230,6 +230,12 @@ public:
 
 private:
   GdbContext();
+
+  /**
+   * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
+   * indefinitely.
+   */
+  void await_debugger(ScopedFd& listen_fd);
 };
 
 /**
