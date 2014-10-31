@@ -275,13 +275,13 @@ public:
   /**
    * |alive| is nonzero if the requested thread is alive, zero if dead.
    */
-  void reply_get_is_thread_alive(int alive);
+  void reply_get_is_thread_alive(bool alive);
 
   /**
    * |info| is a string containing data about the request target that
    * might be relevant to the debugger user.
    */
-  void reply_get_thread_extra_info(const char* info);
+  void reply_get_thread_extra_info(const std::string& info);
 
   /**
    * |ok| is nonzero if req->target can be selected, zero otherwise.

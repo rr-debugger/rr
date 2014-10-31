@@ -1289,7 +1289,7 @@ void GdbContext::reply_get_auxv(const GdbAuxvPair* auxv, ssize_t len) {
   consume_request();
 }
 
-void GdbContext::reply_get_is_thread_alive(int alive) {
+void GdbContext::reply_get_is_thread_alive(bool alive) {
   assert(DREQ_GET_IS_THREAD_ALIVE == req.type);
 
   write_packet(alive ? "OK" : "E01");
@@ -1297,13 +1297,13 @@ void GdbContext::reply_get_is_thread_alive(int alive) {
   consume_request();
 }
 
-void GdbContext::reply_get_thread_extra_info(const char* info) {
+void GdbContext::reply_get_thread_extra_info(const string& info) {
   assert(DREQ_GET_THREAD_EXTRA_INFO == req.type);
 
-  LOG(debug) << "thread extra info: '" << info << "'";
+  LOG(debug) << "thread extra info: '" << info.c_str() << "'";
   // XXX docs don't say whether we should send the null
   // terminator.  See what happens.
-  write_hex_bytes_packet((const uint8_t*)info, 1 + strlen(info));
+  write_hex_bytes_packet((const uint8_t*)info.c_str(), 1 + info.length());
 
   consume_request();
 }

@@ -270,10 +270,10 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
   // target, so it's OK if the task doesn't exist.
   switch (req.type) {
     case DREQ_GET_IS_THREAD_ALIVE:
-      dbg->reply_get_is_thread_alive(!!target);
+      dbg->reply_get_is_thread_alive(target != nullptr);
       return;
     case DREQ_GET_THREAD_EXTRA_INFO:
-      dbg->reply_get_thread_extra_info(target->name().c_str());
+      dbg->reply_get_thread_extra_info(target->name());
       return;
     case DREQ_SET_CONTINUE_THREAD:
     case DREQ_SET_QUERY_THREAD:
