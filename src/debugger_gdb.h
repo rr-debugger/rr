@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+#include <memory>
 #include <ostream>
 #include <vector>
 
@@ -193,12 +194,10 @@ public:
     DONT_PROBE = 0,
     PROBE_PORT
   };
-  static GdbContext* await_client_connection(unsigned short desired_port,
-                                             ProbePort probe, pid_t tgid,
-                                             const std::string* exe_image =
-                                                 nullptr,
-                                             ScopedFd* client_params_fd =
-                                                 nullptr);
+  static std::unique_ptr<GdbContext> await_client_connection(
+      unsigned short desired_port, ProbePort probe, pid_t tgid,
+      const std::string* exe_image = nullptr,
+      ScopedFd* client_params_fd = nullptr);
 
   /**
    * Exec gdb using the params that were written to

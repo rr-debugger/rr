@@ -116,13 +116,12 @@ struct DebuggerParams {
   short port;
 };
 
-GdbContext* GdbContext::await_client_connection(unsigned short desired_port,
-                                                ProbePort probe, pid_t tgid,
-                                                const string* exe_image,
-                                                ScopedFd* client_params_fd) {
-  GdbContext* dbg = new GdbContext();
+unique_ptr<GdbContext> GdbContext::await_client_connection(
+    unsigned short desired_port, ProbePort probe, pid_t tgid,
+    const string* exe_image, ScopedFd* client_params_fd) {
+  auto dbg = unique_ptr<GdbContext>(new GdbContext());
   unsigned short port = desired_port;
-  ScopedFd listen_fd = open_socket(dbg, connection_addr, &port, probe);
+  ScopedFd listen_fd = open_socket(dbg.get(), connection_addr, &port, probe);
   if (exe_image) {
     DebuggerParams params;
     memset(&params, 0, sizeof(params));
