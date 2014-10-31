@@ -256,7 +256,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros) {
   // rr can take a very long time indeed to send the
   // stop-reply to gdb after restarting replay; the time
   // to reach a specified execution target is
-  // theoretically unbounded.  Timing our on vRun is
+  // theoretically unbounded.  Timing out on vRun is
   // technically a gdb bug, but because the rr replay and
   // the gdb reload models don't quite match up, we'll
   // work around it on the rr side by disabling the
