@@ -9,7 +9,6 @@
 #include <ostream>
 #include <vector>
 
-#include "Flags.h"
 #include "GDBRegister.h"
 #include "ReplaySession.h"
 
