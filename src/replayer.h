@@ -7,7 +7,7 @@
 #include "util.h"
 
 struct GdbContext;
-struct dbg_request;
+struct GdbRequest;
 class ReplaySession;
 class Session;
 
@@ -27,7 +27,7 @@ int replay(int argc, char* argv[], char** envp);
  * generic processing.
  */
 void dispatch_debugger_request(Session& session, struct GdbContext* dbg,
-                               Task* t, const struct dbg_request& req);
+                               Task* t, const struct GdbRequest& req);
 
 /**
  * Return true if |sig| is a signal that may be generated during

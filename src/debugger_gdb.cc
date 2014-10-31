@@ -41,7 +41,7 @@
 
 using namespace std;
 
-bool dbg_is_resume_request(const struct dbg_request* req) {
+bool dbg_is_resume_request(const struct GdbRequest* req) {
   switch (req->type) {
     case DREQ_CONTINUE:
     case DREQ_STEP:
@@ -52,7 +52,7 @@ bool dbg_is_resume_request(const struct dbg_request* req) {
 }
 
 inline static bool request_needs_immediate_response(
-    const struct dbg_request* req) {
+    const struct GdbRequest* req) {
   switch (req->type) {
     case DREQ_NONE:
     case DREQ_CONTINUE:
@@ -1084,7 +1084,7 @@ static int process_packet(struct GdbContext* dbg) {
 }
 
 void dbg_notify_no_such_thread(struct GdbContext* dbg,
-                               const struct dbg_request* req) {
+                               const struct GdbRequest* req) {
   assert(!memcmp(&dbg->req, req, sizeof(dbg->req)));
 
   /* '10' is the errno ECHILD.  We use it as a magic code to
@@ -1117,7 +1117,7 @@ static void dbg_notify_restart(struct GdbContext* dbg) {
   memset(&dbg->req, 0, sizeof(dbg->req));
 }
 
-struct dbg_request dbg_get_request(struct GdbContext* dbg) {
+struct GdbRequest dbg_get_request(struct GdbContext* dbg) {
   if (DREQ_RESTART == dbg->req.type) {
     LOG(debug) << "consuming RESTART request";
     dbg_notify_restart(dbg);

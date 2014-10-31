@@ -26,7 +26,7 @@ static int diversion_refcount;
  * The received request is returned through |req|.
  */
 static Task* process_debugger_requests(struct GdbContext* dbg, Task* t,
-                                       struct dbg_request* req) {
+                                       struct GdbRequest* req) {
   while (true) {
     *req = dbg_get_request(dbg);
 
@@ -100,7 +100,7 @@ static GdbThreadId get_threadid(Task* t) {
 }
 
 void divert(ReplaySession& replay, struct GdbContext* dbg, pid_t task,
-            struct dbg_request* req) {
+            struct GdbRequest* req) {
   LOG(debug) << "Starting debugging diversion for " << &replay;
   assert(!session && diversion_refcount == 0);
 

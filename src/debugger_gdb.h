@@ -133,7 +133,7 @@ enum GdbRestartType {
  * These requests are made by the debugger host and honored in proxy
  * by rr, the target.
  */
-struct dbg_request {
+struct GdbRequest {
   GdbRequestType type;
 
   GdbThreadId target;
@@ -165,7 +165,7 @@ struct dbg_request {
 class GdbContext {
 public:
   // Current request to be processed.
-  struct dbg_request req;
+  struct GdbRequest req;
   // Thread to be resumed.
   GdbThreadId resume_thread;
   // Thread for get/set requests.
@@ -207,7 +207,7 @@ struct dbg_auxv_pair {
  * Return nonzero if |req| requires that program execution be resumed
  * in some way.
  */
-bool dbg_is_resume_request(const struct dbg_request* req);
+bool dbg_is_resume_request(const struct GdbRequest* req);
 
 /**
  * Wait for exactly one gdb host to connect to this remote target on
@@ -252,7 +252,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros);
  * gdb or rr bug.
  */
 void dbg_notify_no_such_thread(struct GdbContext* dbg,
-                               const struct dbg_request* req);
+                               const struct GdbRequest* req);
 
 /**
  * Return the current request made by the debugger host, that needs to
@@ -265,7 +265,7 @@ void dbg_notify_no_such_thread(struct GdbContext* dbg,
  * The target should peek at the debugger request in between execution
  * steps.  A new request may need to be serviced.
  */
-struct dbg_request dbg_get_request(struct GdbContext* dbg);
+struct GdbRequest dbg_get_request(struct GdbContext* dbg);
 
 /**
  * Notify the host that this process has exited with |code|.
