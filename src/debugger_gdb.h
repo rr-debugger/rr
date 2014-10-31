@@ -406,10 +406,10 @@ private:
    */
   bool skip_to_packet_start();
   /**
-   * Return zero if there's a new packet to be read/process (whether
-   * incomplete or not), and nonzero if there isn't one.
+   * Return true if there's a new packet to be read/process (whether
+   * incomplete or not), and false if there isn't one.
    */
-  int sniff_packet();
+  bool sniff_packet();
   /**
    * Block until the sequence of bytes
    *

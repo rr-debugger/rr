@@ -416,27 +416,15 @@ bool GdbContext::skip_to_packet_start() {
   return true;
 }
 
-/**
- * Return zero if there's a new packet to be read/process (whether
- * incomplete or not), and nonzero if there isn't one.
- */
 int GdbContext::sniff_packet() {
   if (skip_to_packet_start()) {
     /* We've already seen a (possibly partial) packet. */
-    return 0;
+    return true;
   }
   assert(0 == inlen);
-  return !poll_incoming(sock_fd, 0 /*don't wait*/);
+  return poll_incoming(sock_fd, 0 /*don't wait*/);
 }
 
-/**
- * Block until the sequence of bytes
- *
- *    "[^$]*\$[^#]*#.*"
- *
- * has been read from the client fd.  This is one (or more) gdb
- * packet(s).
- */
 void GdbContext::read_packet() {
   uint8_t* p;
   size_t checkedlen;
@@ -1087,7 +1075,7 @@ GdbRequest GdbContext::get_request() {
    * response. */
   assert(!request_needs_immediate_response(&req));
 
-  if (sniff_packet() && req.is_resume_request()) {
+  if (!sniff_packet() && req.is_resume_request()) {
     /* There's no new request data available and gdb has
      * already asked us to resume.  OK, do that (or keep
      * doing that) now. */
