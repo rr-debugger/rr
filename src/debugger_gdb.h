@@ -223,13 +223,13 @@ bool dbg_is_resume_request(const GdbRequest* req);
  * This function is infallible: either it will return a valid
  * debugging context, or it won't return.
  */
-enum {
+enum ProbePort {
   DONT_PROBE = 0,
   PROBE_PORT
 };
 GdbContext* dbg_await_client_connection(const char* addr,
-                                        unsigned short desired_port, int probe,
-                                        pid_t tgid,
+                                        unsigned short desired_port,
+                                        ProbePort probe, pid_t tgid,
                                         const char* exe_image = nullptr,
                                         pid_t client = -1,
                                         int client_params_fd = -1);

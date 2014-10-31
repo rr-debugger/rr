@@ -75,7 +75,7 @@ static GdbContext* new_dbg_context() {
 }
 
 static ScopedFd open_socket(GdbContext* dbg, const char* address,
-                            unsigned short* port, int probe) {
+                            unsigned short* port, ProbePort probe) {
   ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
   if (!listen_fd.is_open()) {
     FATAL() << "Couldn't create socket";
@@ -109,7 +109,7 @@ static ScopedFd open_socket(GdbContext* dbg, const char* address,
       FATAL() << "Couldn't listen on port " << *port;
     }
     break;
-  } while (++(*port), probe);
+  } while (++(*port), probe == PROBE_PORT);
   return listen_fd;
 }
 
@@ -134,9 +134,10 @@ struct debugger_params {
 };
 
 GdbContext* dbg_await_client_connection(const char* addr,
-                                        unsigned short desired_port, int probe,
-                                        pid_t tgid, const char* exe_image,
-                                        pid_t client, int client_params_fd) {
+                                        unsigned short desired_port,
+                                        ProbePort probe, pid_t tgid,
+                                        const char* exe_image, pid_t client,
+                                        int client_params_fd) {
   GdbContext* dbg = new_dbg_context();
   unsigned short port = desired_port;
   ScopedFd listen_fd = open_socket(dbg, addr, &port, probe);

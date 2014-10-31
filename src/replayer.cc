@@ -706,7 +706,7 @@ GdbContext* maybe_create_debugger(GdbContext* dbg) {
   // presumably break if a different port were to be selected by
   // rr (otherwise why would they specify a port in the first
   // place).  So fail with a clearer error message.
-  int probe = (Flags::get().dbgport > 0) ? DONT_PROBE : PROBE_PORT;
+  ProbePort probe = (Flags::get().dbgport > 0) ? DONT_PROBE : PROBE_PORT;
   const char* exe = Flags::get().dont_launch_debugger
                         ? nullptr
                         : t->vm()->exe_image().c_str();
