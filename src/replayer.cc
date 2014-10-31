@@ -354,7 +354,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       return;
     }
     case DREQ_GET_REG: {
-      struct GdbRegisterValue reg = get_reg(target, req.reg.name);
+      GdbRegisterValue reg = get_reg(target, req.reg.name);
       dbg_reply_get_reg(dbg, reg);
       return;
     }
