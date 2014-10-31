@@ -205,7 +205,7 @@ struct GdbAuxvPair {
 
 /**
  * Wait for exactly one gdb host to connect to this remote target on
- * IP address |addr|, port |port|.  If |probe| is nonzero, a unique
+ * IP address 127.0.0.1, port |port|.  If |probe| is nonzero, a unique
  * port based on |start_port| will be searched for.  Otherwise, if
  * |port| is already bound, this function will fail.
  *
@@ -226,10 +226,9 @@ enum ProbePort {
   DONT_PROBE = 0,
   PROBE_PORT
 };
-GdbContext* dbg_await_client_connection(const char* addr,
-                                        unsigned short desired_port,
+GdbContext* dbg_await_client_connection(unsigned short desired_port,
                                         ProbePort probe, pid_t tgid,
-                                        const char* exe_image = nullptr,
+                                        const std::string* exe_image = nullptr,
                                         pid_t client = -1,
                                         int client_params_fd = -1);
 

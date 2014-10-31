@@ -707,11 +707,10 @@ GdbContext* maybe_create_debugger(GdbContext* dbg) {
   // rr (otherwise why would they specify a port in the first
   // place).  So fail with a clearer error message.
   ProbePort probe = (Flags::get().dbgport > 0) ? DONT_PROBE : PROBE_PORT;
-  const char* exe = Flags::get().dont_launch_debugger
-                        ? nullptr
-                        : t->vm()->exe_image().c_str();
-  return dbg_await_client_connection("127.0.0.1", port, probe, t->tgid(), exe,
-                                     parent, debugger_params_pipe[1]);
+  const string* exe =
+      Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
+  return dbg_await_client_connection(port, probe, t->tgid(), exe, parent,
+                                     debugger_params_pipe[1]);
 }
 
 /**
@@ -894,8 +893,7 @@ void start_debug_server(Task* t) {
   // Don't launch a debugger on fatal errors; the user is most
   // likely already in a debugger, and wouldn't be able to
   // control another session.
-  GdbContext* dbg =
-      dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT, t->tgid());
+  GdbContext* dbg = dbg_await_client_connection(t->tid, PROBE_PORT, t->tgid());
 
   process_debugger_requests(dbg, t);
 

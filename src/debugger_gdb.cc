@@ -123,18 +123,18 @@ struct debugger_params {
   short port;
 };
 
-GdbContext* dbg_await_client_connection(const char* addr,
-                                        unsigned short desired_port,
+GdbContext* dbg_await_client_connection(unsigned short desired_port,
                                         ProbePort probe, pid_t tgid,
-                                        const char* exe_image, pid_t client,
+                                        const string* exe_image, pid_t client,
                                         int client_params_fd) {
   GdbContext* dbg = new_dbg_context();
   unsigned short port = desired_port;
+  static const char addr[] = "127.0.0.1";
   ScopedFd listen_fd = open_socket(dbg, addr, &port, probe);
   if (exe_image) {
     struct debugger_params params;
     memset(&params, 0, sizeof(params));
-    strcpy(params.exe_image, exe_image);
+    strcpy(params.exe_image, exe_image->c_str());
     strcpy(params.socket_addr, addr);
     params.port = port;
 
