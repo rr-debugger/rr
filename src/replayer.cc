@@ -859,7 +859,10 @@ int replay(int argc, char* argv[], char** envp) {
   close(debugger_params_pipe[1]);
   LOG(debug) << getpid() << ": forked debugger server " << child;
 
-  dbg_launch_debugger(debugger_params_pipe[0], gdb_rr_macros);
+  {
+    ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
+    dbg_launch_debugger(params_pipe_read_fd, gdb_rr_macros);
+  }
 
   // Child must have died before we were able to get debugger parameters
   // and exec gdb. Exit with the exit status of the child.

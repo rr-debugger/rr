@@ -163,7 +163,7 @@ static string create_gdb_command_file(const char* macros) {
   return procfile.str();
 }
 
-void dbg_launch_debugger(int params_pipe_fd, const char* macros) {
+void dbg_launch_debugger(ScopedFd& params_pipe_fd, const char* macros) {
   struct debugger_params params;
   ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
   if (nread == 0) {

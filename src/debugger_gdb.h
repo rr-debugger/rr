@@ -239,7 +239,7 @@ struct GdbAuxvPair {
  * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
  * of macros defined in |macros| if nonnull.
  */
-void dbg_launch_debugger(int params_pipe_fd, const char* macros);
+void dbg_launch_debugger(ScopedFd& params_pipe_fd, const char* macros);
 
 /**
  * Call this when the target of |req| is needed to fulfill the
