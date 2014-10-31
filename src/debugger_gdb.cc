@@ -33,10 +33,10 @@
 static const char INTERRUPT_CHAR = '\x03';
 
 #ifdef DEBUGTAG
-#define UNHANDLED_REQ(_g) FATAL()
+#define UNHANDLED_REQ() FATAL()
 #else
-#define UNHANDLED_REQ(_g)                                                      \
-  write_packet(_g, "");                                                        \
+#define UNHANDLED_REQ()                                                        \
+  write_packet("");                                                            \
   LOG(info)
 #endif
 
@@ -219,10 +219,10 @@ void GdbContext::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
  * wait", and -1 means "wait forever".  Return zero if no data is
  * ready by the end of the timeout, and nonzero if data is ready.
  */
-static int poll_socket(const GdbContext* dbg, short events, int timeoutMs) {
+static int poll_socket(const ScopedFd& sock_fd, short events, int timeoutMs) {
   struct pollfd pfd;
   memset(&pfd, 0, sizeof(pfd));
-  pfd.fd = dbg->sock_fd;
+  pfd.fd = sock_fd;
   pfd.events = events;
 
   int ret = poll(&pfd, 1, timeoutMs);
@@ -232,24 +232,23 @@ static int poll_socket(const GdbContext* dbg, short events, int timeoutMs) {
   return ret;
 }
 
-static int poll_incoming(const GdbContext* dbg, int timeoutMs) {
-  return poll_socket(dbg, POLLIN /* TODO: |POLLERR */, timeoutMs);
+static int poll_incoming(const ScopedFd& sock_fd, int timeoutMs) {
+  return poll_socket(sock_fd, POLLIN /* TODO: |POLLERR */, timeoutMs);
 }
 
-static int poll_outgoing(const GdbContext* dbg, int timeoutMs) {
-  return poll_socket(dbg, POLLOUT /* TODO: |POLLERR */, timeoutMs);
+static int poll_outgoing(const ScopedFd& sock_fd, int timeoutMs) {
+  return poll_socket(sock_fd, POLLOUT /* TODO: |POLLERR */, timeoutMs);
 }
 
 /**
  * read() incoming data exactly one time, successfully.  May block.
  */
-static void read_data_once(GdbContext* dbg) {
+void GdbContext::read_data_once() {
   ssize_t nread;
   /* Wait until there's data, instead of busy-looping on
    * EAGAIN. */
-  poll_incoming(dbg, -1 /* wait forever */);
-  nread = read(dbg->sock_fd, dbg->inbuf + dbg->inlen,
-               sizeof(dbg->inbuf) - dbg->inlen);
+  poll_incoming(sock_fd, -1 /* wait forever */);
+  nread = read(sock_fd, inbuf + inlen, sizeof(inbuf) - inlen);
   if (0 == nread) {
     LOG(info) << "(gdb closed debugging socket, exiting)";
     exit(0);
@@ -257,71 +256,69 @@ static void read_data_once(GdbContext* dbg) {
   if (nread <= 0) {
     FATAL() << "Error reading from gdb";
   }
-  dbg->inlen += nread;
+  inlen += nread;
   assert("Impl dynamic alloc if this fails (or double inbuf size)" &&
-         dbg->inlen < int(sizeof(dbg->inbuf)));
+         inlen < int(sizeof(inbuf)));
 }
 
 /**
  * Send all pending output to gdb.  May block.
  */
-static void write_flush(GdbContext* dbg) {
+void GdbContext::write_flush() {
   ssize_t write_index = 0;
 
 #ifdef DEBUGTAG
-  dbg->outbuf[dbg->outlen] = '\0';
-  LOG(debug) << "write_flush: '" << dbg->outbuf << "'";
+  outbuf[outlen] = '\0';
+  LOG(debug) << "write_flush: '" << outbuf << "'";
 #endif
-  while (write_index < dbg->outlen) {
+  while (write_index < outlen) {
     ssize_t nwritten;
 
-    poll_outgoing(dbg, -1 /*wait forever*/);
-    nwritten = write(dbg->sock_fd, dbg->outbuf + write_index,
-                     dbg->outlen - write_index);
+    poll_outgoing(sock_fd, -1 /*wait forever*/);
+    nwritten = write(sock_fd, outbuf + write_index, outlen - write_index);
     if (nwritten < 0) {
       FATAL() << "Error writing to gdb";
     }
     write_index += nwritten;
   }
-  dbg->outlen = 0;
+  outlen = 0;
 }
 
-static void write_data_raw(GdbContext* dbg, const uint8_t* data, ssize_t len) {
+void GdbContext::write_data_raw(const uint8_t* data, ssize_t len) {
   assert("Impl dynamic alloc if this fails (or double outbuf size)" &&
-         (dbg->outlen + len) < int(sizeof(dbg->inbuf)));
+         (outlen + len) < int(sizeof(inbuf)));
 
-  memcpy(dbg->outbuf + dbg->outlen, data, len);
-  dbg->outlen += len;
+  memcpy(outbuf + outlen, data, len);
+  outlen += len;
 }
 
-static void write_hex(GdbContext* dbg, unsigned long hex) {
+void GdbContext::write_hex(unsigned long hex) {
   char buf[32];
   size_t len;
 
   len = snprintf(buf, sizeof(buf) - 1, "%02lx", hex);
-  write_data_raw(dbg, (uint8_t*)buf, len);
+  write_data_raw((uint8_t*)buf, len);
 }
 
-static void write_packet_bytes(GdbContext* dbg, const uint8_t* data,
-                               size_t num_bytes) {
+void GdbContext::write_packet_bytes(const uint8_t* data, size_t num_bytes) {
   uint8_t checksum;
   size_t i;
 
-  write_data_raw(dbg, (uint8_t*)"$", 1);
+  write_data_raw((uint8_t*)"$", 1);
   for (i = 0, checksum = 0; i < num_bytes; ++i) {
     checksum += data[i];
   }
-  write_data_raw(dbg, (uint8_t*)data, num_bytes);
-  write_data_raw(dbg, (uint8_t*)"#", 1);
-  write_hex(dbg, checksum);
+  write_data_raw((uint8_t*)data, num_bytes);
+  write_data_raw((uint8_t*)"#", 1);
+  write_hex(checksum);
 }
 
-static void write_packet(GdbContext* dbg, const char* data) {
-  return write_packet_bytes(dbg, (const uint8_t*)data, strlen(data));
+void GdbContext::write_packet(const char* data) {
+  return write_packet_bytes((const uint8_t*)data, strlen(data));
 }
 
-static void write_binary_packet(GdbContext* dbg, const char* pfx,
-                                const uint8_t* data, ssize_t num_bytes) {
+void GdbContext::write_binary_packet(const char* pfx, const uint8_t* data,
+                                     ssize_t num_bytes) {
   ssize_t pfx_num_chars = strlen(pfx);
   uint8_t buf[2 * num_bytes + pfx_num_chars];
   ssize_t buf_num_bytes = 0;
@@ -352,13 +349,12 @@ static void write_binary_packet(GdbContext* dbg, const char* pfx,
 
   LOG(debug) << " ***** NOTE: writing binary data, upcoming debug output may "
                 "be truncated";
-  return write_packet_bytes(dbg, buf, buf_num_bytes);
+  return write_packet_bytes(buf, buf_num_bytes);
 }
 
-static void write_hex_bytes_packet(GdbContext* dbg, const uint8_t* bytes,
-                                   size_t len) {
+void GdbContext::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
   if (0 == len) {
-    write_packet(dbg, "");
+    write_packet("");
     return;
   }
 
@@ -367,7 +363,7 @@ static void write_hex_bytes_packet(GdbContext* dbg, const uint8_t* bytes,
     unsigned long b = bytes[i];
     snprintf(&buf[2 * i], 3, "%02lx", b);
   }
-  write_packet(dbg, buf);
+  write_packet(buf);
 }
 
 /**
@@ -393,14 +389,14 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
  * the interrupt character is seen.  Does not block.  Return zero if
  * seen, nonzero if not.
  */
-static int skip_to_packet_start(GdbContext* dbg) {
+int GdbContext::skip_to_packet_start() {
   uint8_t* p = nullptr;
   int i;
 
   /* XXX we want memcspn() here ... */
-  for (i = 0; i < dbg->inlen; ++i) {
-    if (dbg->inbuf[i] == '$' || dbg->inbuf[i] == INTERRUPT_CHAR) {
-      p = &dbg->inbuf[i];
+  for (i = 0; i < inlen; ++i) {
+    if (inbuf[i] == '$' || inbuf[i] == INTERRUPT_CHAR) {
+      p = &inbuf[i];
       break;
     }
   }
@@ -408,15 +404,15 @@ static int skip_to_packet_start(GdbContext* dbg) {
   if (!p) {
     /* Discard all read bytes, which we don't care
      * about. */
-    dbg->inlen = 0;
+    inlen = 0;
     return 1;
   }
   /* Discard bytes up to start-of-packet. */
-  memmove(dbg->inbuf, p, dbg->inlen - (p - dbg->inbuf));
-  dbg->inlen -= (p - dbg->inbuf);
+  memmove(inbuf, p, inlen - (p - inbuf));
+  inlen -= (p - inbuf);
 
-  assert(1 <= dbg->inlen);
-  assert('$' == dbg->inbuf[0] || INTERRUPT_CHAR == dbg->inbuf[0]);
+  assert(1 <= inlen);
+  assert('$' == inbuf[0] || INTERRUPT_CHAR == inbuf[0]);
   return 0;
 }
 
@@ -424,13 +420,13 @@ static int skip_to_packet_start(GdbContext* dbg) {
  * Return zero if there's a new packet to be read/process (whether
  * incomplete or not), and nonzero if there isn't one.
  */
-static int sniff_packet(GdbContext* dbg) {
-  if (0 == skip_to_packet_start(dbg)) {
+int GdbContext::sniff_packet() {
+  if (0 == skip_to_packet_start()) {
     /* We've already seen a (possibly partial) packet. */
     return 0;
   }
-  assert(0 == dbg->inlen);
-  return !poll_incoming(dbg, 0 /*don't wait*/);
+  assert(0 == inlen);
+  return !poll_incoming(sock_fd, 0 /*don't wait*/);
 }
 
 /**
@@ -441,7 +437,7 @@ static int sniff_packet(GdbContext* dbg) {
  * has been read from the client fd.  This is one (or more) gdb
  * packet(s).
  */
-static void read_packet(GdbContext* dbg) {
+void GdbContext::read_packet() {
   uint8_t* p;
   size_t checkedlen;
 
@@ -454,34 +450,33 @@ static void read_packet(GdbContext* dbg) {
    * somehow magically fix our bug that led to the malformed
    * packet in the first place.
    */
-  while (skip_to_packet_start(dbg)) {
-    read_data_once(dbg);
+  while (skip_to_packet_start()) {
+    read_data_once();
   }
 
-  if (dbg->inbuf[0] == INTERRUPT_CHAR) {
+  if (inbuf[0] == INTERRUPT_CHAR) {
     /* Interrupts are kind of an ugly duckling in the gdb
      * protocol ... */
-    dbg->packetend = 1;
+    packetend = 1;
     return;
   }
 
   /* Read until we see end-of-packet. */
-  for (checkedlen = 0;
-       !(p = (uint8_t*)memchr(dbg->inbuf + checkedlen, '#', dbg->inlen));
-       checkedlen = dbg->inlen) {
-    read_data_once(dbg);
+  for (checkedlen = 0; !(p = (uint8_t*)memchr(inbuf + checkedlen, '#', inlen));
+       checkedlen = inlen) {
+    read_data_once();
   }
-  dbg->packetend = (p - dbg->inbuf);
+  packetend = (p - inbuf);
   /* NB: we're ignoring the gdb packet checksums here too.  If
    * gdb is corrupted enough to garble a checksum over TCP, it's
    * not really clear why asking for the packet again might make
    * the bug go away. */
-  assert('$' == dbg->inbuf[0] && dbg->packetend < dbg->inlen);
+  assert('$' == inbuf[0] && packetend < inlen);
 
   /* Acknowledge receipt of the packet. */
-  if (!dbg->no_ack) {
-    write_data_raw(dbg, (uint8_t*)"+", 1);
-    write_flush(dbg);
+  if (!no_ack) {
+    write_data_raw((uint8_t*)"+", 1);
+    write_flush();
   }
 }
 
@@ -525,41 +520,41 @@ static GdbThreadId parse_threadid(const char* str, char** endptr) {
   return t;
 }
 
-static int xfer(GdbContext* dbg, const char* name, char* args) {
+int GdbContext::xfer(const char* name, char* args) {
   LOG(debug) << "gdb asks us to transfer " << name << "(" << args << ")";
 
   if (!strcmp(name, "auxv")) {
     assert(!strncmp(args, "read::", sizeof("read::") - 1));
 
-    dbg->req.type = DREQ_GET_AUXV;
-    dbg->req.target = dbg->query_thread;
+    req.type = DREQ_GET_AUXV;
+    req.target = query_thread;
     return 1;
   }
   if (name == strstr(name, "siginfo")) {
     if (args == strstr(args, "read")) {
-      dbg->req.type = DREQ_READ_SIGINFO;
+      req.type = DREQ_READ_SIGINFO;
       args += strlen("read");
       assert(':' == *args++);
       assert(':' == *args++);
 
-      dbg->req.mem.addr = strtoul(args, &args, 16);
+      req.mem.addr = strtoul(args, &args, 16);
       assert(',' == *args++);
 
-      dbg->req.mem.len = strtoul(args, &args, 16);
+      req.mem.len = strtoul(args, &args, 16);
       assert('\0' == *args);
 
       return 1;
     }
     if (args == strstr(args, "write")) {
-      dbg->req.type = DREQ_WRITE_SIGINFO;
+      req.type = DREQ_WRITE_SIGINFO;
       return 1;
     }
-    UNHANDLED_REQ(dbg) << "Unhandled 'siginfo' request: " << args;
+    UNHANDLED_REQ() << "Unhandled 'siginfo' request: " << args;
     return 0;
   }
 
-  UNHANDLED_REQ(dbg) << "Unhandled gdb xfer request: " << name << "(" << args
-                     << ")";
+  UNHANDLED_REQ() << "Unhandled gdb xfer request: " << name << "(" << args
+                  << ")";
   return 0;
 }
 
@@ -614,7 +609,7 @@ static void read_reg_value(char** strp, GdbRegisterValue* reg) {
   *strp = str;
 }
 
-static int query(GdbContext* dbg, char* payload) {
+int GdbContext::query(char* payload) {
   const char* name;
   char* args;
 
@@ -626,40 +621,40 @@ static int query(GdbContext* dbg, char* payload) {
 
   if (!strcmp(name, "C")) {
     LOG(debug) << "gdb requests current thread ID";
-    dbg->req.type = DREQ_GET_CURRENT_THREAD;
+    req.type = DREQ_GET_CURRENT_THREAD;
     return 1;
   }
   if (!strcmp(name, "Attached")) {
     LOG(debug) << "gdb asks if this is a new or existing process";
     /* Tell gdb this is an existing process; it might be
      * (see emergency_debug()). */
-    write_packet(dbg, "1");
+    write_packet("1");
     return 0;
   }
   if (!strcmp(name, "fThreadInfo")) {
     LOG(debug) << "gdb asks for thread list";
-    dbg->req.type = DREQ_GET_THREAD_LIST;
+    req.type = DREQ_GET_THREAD_LIST;
     return 1;
   }
   if (!strcmp(name, "sThreadInfo")) {
-    write_packet(dbg, "l"); /* "end of list" */
+    write_packet("l"); /* "end of list" */
     return 0;
   }
   if (!strcmp(name, "GetTLSAddr")) {
     LOG(debug) << "gdb asks for TLS addr";
     /* TODO */
-    write_packet(dbg, "");
+    write_packet("");
     return 0;
   }
   if (!strcmp(name, "Offsets")) {
     LOG(debug) << "gdb asks for section offsets";
-    dbg->req.type = DREQ_GET_OFFSETS;
-    dbg->req.target = dbg->query_thread;
+    req.type = DREQ_GET_OFFSETS;
+    req.target = query_thread;
     return 1;
   }
   if ('P' == name[0]) {
     /* The docs say not to use this packet ... */
-    write_packet(dbg, "");
+    write_packet("");
     return 0;
   }
   if (!strcmp(name, "Supported")) {
@@ -672,13 +667,13 @@ static int query(GdbContext* dbg, char* payload) {
              "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
              ";qXfer:siginfo:read+;qXfer:siginfo:write+"
              ";multiprocess+",
-             sizeof(dbg->outbuf));
-    write_packet(dbg, supported);
+             sizeof(outbuf));
+    write_packet(supported);
     return 0;
   }
   if (!strcmp(name, "Symbol")) {
     LOG(debug) << "gdb is ready for symbol lookups";
-    write_packet(dbg, "OK");
+    write_packet("OK");
     return 0;
   }
   if (strstr(name, "ThreadExtraInfo") == name) {
@@ -688,8 +683,8 @@ static int query(GdbContext* dbg, char* payload) {
     args = payload;
     args = 1 + strchr(args, ',' /*sic*/);
 
-    dbg->req.type = DREQ_GET_THREAD_EXTRA_INFO;
-    dbg->req.target = parse_threadid(args, &args);
+    req.type = DREQ_GET_THREAD_EXTRA_INFO;
+    req.target = parse_threadid(args, &args);
     assert('\0' == *args);
     return 1;
   }
@@ -699,7 +694,7 @@ static int query(GdbContext* dbg, char* payload) {
      * with "T0" here.  But if we do, gdb keeps bothering
      * us with trace queries.  So pretend we don't know
      * what it's talking about. */
-    write_packet(dbg, "");
+    write_packet("");
     return 0;
   }
   if (!strcmp(name, "Xfer")) {
@@ -708,14 +703,14 @@ static int query(GdbContext* dbg, char* payload) {
     if (args) {
       *args++ = '\0';
     }
-    return xfer(dbg, name, args);
+    return xfer(name, args);
   }
 
-  UNHANDLED_REQ(dbg) << "Unhandled gdb query: q" << name;
+  UNHANDLED_REQ() << "Unhandled gdb query: q" << name;
   return 0;
 }
 
-static int set_var(GdbContext* dbg, char* payload) {
+int GdbContext::set_var(char* payload) {
   const char* name;
   char* args;
 
@@ -726,21 +721,21 @@ static int set_var(GdbContext* dbg, char* payload) {
   name = payload;
 
   if (!strcmp(name, "StartNoAckMode")) {
-    write_packet(dbg, "OK");
-    dbg->no_ack = true;
+    write_packet("OK");
+    no_ack = true;
     return 0;
   }
 
-  UNHANDLED_REQ(dbg) << "Unhandled gdb set: Q" << name;
+  UNHANDLED_REQ() << "Unhandled gdb set: Q" << name;
   return 0;
 }
 
-static void consume_request(GdbContext* dbg) {
-  memset(&dbg->req, 0, sizeof(dbg->req));
-  write_flush(dbg);
+void GdbContext::consume_request() {
+  memset(&req, 0, sizeof(req));
+  write_flush();
 }
 
-static int process_vpacket(GdbContext* dbg, char* payload) {
+int GdbContext::process_vpacket(char* payload) {
   const char* name;
   char* args;
 
@@ -761,8 +756,8 @@ static int process_vpacket(GdbContext* dbg, char* payload) {
         LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
       /* fall through */
       case 'c':
-        dbg->req.type = DREQ_CONTINUE;
-        dbg->req.target = dbg->resume_thread;
+        req.type = DREQ_CONTINUE;
+        req.target = resume_thread;
         return 1;
       case 'S':
         LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
@@ -772,9 +767,9 @@ static int process_vpacket(GdbContext* dbg, char* payload) {
         }
       /* fall through */
       case 's':
-        dbg->req.type = DREQ_STEP;
+        req.type = DREQ_STEP;
         if (args) {
-          dbg->req.target = parse_threadid(args, &args);
+          req.target = parse_threadid(args, &args);
           // If we get a step request for a
           // thread, we just assume that
           // requests for all other threads are
@@ -782,19 +777,19 @@ static int process_vpacket(GdbContext* dbg, char* payload) {
           // support anyway.
           assert('\0' == *args || args == strstr(args, ";c"));
         } else {
-          dbg->req.target = dbg->resume_thread;
+          req.target = resume_thread;
         }
         return 1;
       default:
-        UNHANDLED_REQ(dbg) << "Unhandled vCont command " << cmd << "(" << args
-                           << ")";
+        UNHANDLED_REQ() << "Unhandled vCont command " << cmd << "(" << args
+                        << ")";
         return 0;
     }
   }
 
   if (!strcmp("Cont?", name)) {
     LOG(debug) << "gdb queries which continue commands we support";
-    write_packet(dbg, "vCont;c;C;s;S;t;");
+    write_packet("vCont;c;C;s;S;t;");
     return 0;
   }
 
@@ -804,13 +799,13 @@ static int process_vpacket(GdbContext* dbg, char* payload) {
     // a "vRun" restart is coming right up.  We know how
     // to implement vRun, so we'll ignore this one.
     LOG(debug) << "gdb asks us to kill tracee(s); ignoring";
-    write_packet(dbg, "OK");
+    write_packet("OK");
     return 0;
   }
 
   if (!strcmp("Run", name)) {
-    dbg->req.type = DREQ_RESTART;
-    dbg->req.restart.type = RESTART_FROM_PREVIOUS;
+    req.type = DREQ_RESTART;
+    req.restart.type = RESTART_FROM_PREVIOUS;
 
     if ('\0' == *args) {
       return 1;
@@ -836,15 +831,14 @@ static int process_vpacket(GdbContext* dbg, char* payload) {
       // run args.
       if (event_str[0] == 'c') {
         int param = strtol(event_str.c_str() + 1, &endp, 0);
-        dbg->req.restart.type = RESTART_FROM_CHECKPOINT;
-        dbg->req.restart.param = param;
+        req.restart.type = RESTART_FROM_CHECKPOINT;
+        req.restart.param = param;
         LOG(debug) << "next replayer restarting from checkpoint "
-                   << dbg->req.restart.param;
+                   << req.restart.param;
       } else {
-        dbg->req.restart.type = RESTART_FROM_EVENT;
-        dbg->req.restart.param = strtol(event_str.c_str(), &endp, 0);
-        LOG(debug) << "next replayer advancing to event "
-                   << dbg->req.restart.param;
+        req.restart.type = RESTART_FROM_EVENT;
+        req.restart.param = strtol(event_str.c_str(), &endp, 0);
+        LOG(debug) << "next replayer advancing to event " << req.restart.param;
       }
       if (!endp || *endp != '\0') {
         FATAL() << "Couldn't parse event string `" << event_str << "'";
@@ -853,26 +847,25 @@ static int process_vpacket(GdbContext* dbg, char* payload) {
     return 1;
   }
 
-  UNHANDLED_REQ(dbg) << "Unhandled gdb vpacket: v" << name;
+  UNHANDLED_REQ() << "Unhandled gdb vpacket: v" << name;
   return 0;
 }
 
-static int process_packet(GdbContext* dbg) {
+int GdbContext::process_packet() {
   char request;
   char* payload = nullptr;
   int ret;
 
-  assert(INTERRUPT_CHAR == dbg->inbuf[0] ||
-         ('$' == dbg->inbuf[0] &&
-          (((uint8_t*)memchr(dbg->inbuf, '#', dbg->inlen) - dbg->inbuf) ==
-           dbg->packetend)));
+  assert(INTERRUPT_CHAR == inbuf[0] ||
+         ('$' == inbuf[0] &&
+          (((uint8_t*)memchr(inbuf, '#', inlen) - inbuf) == packetend)));
 
-  if (INTERRUPT_CHAR == dbg->inbuf[0]) {
+  if (INTERRUPT_CHAR == inbuf[0]) {
     request = INTERRUPT_CHAR;
   } else {
-    request = dbg->inbuf[1];
-    payload = (char*)&dbg->inbuf[2];
-    dbg->inbuf[dbg->packetend] = '\0';
+    request = inbuf[1];
+    payload = (char*)&inbuf[2];
+    inbuf[packetend] = '\0';
   }
 
   LOG(debug) << "raw request " << request << "(" << payload << ")";
@@ -880,17 +873,17 @@ static int process_packet(GdbContext* dbg) {
   switch (request) {
     case INTERRUPT_CHAR:
       LOG(debug) << "gdb requests interrupt";
-      dbg->req.type = DREQ_INTERRUPT;
+      req.type = DREQ_INTERRUPT;
       ret = 1;
       break;
     case 'D':
       LOG(debug) << "gdb is detaching from us";
-      dbg->req.type = DREQ_DETACH;
+      req.type = DREQ_DETACH;
       ret = 1;
       break;
     case 'g':
-      dbg->req.type = DREQ_GET_REGS;
-      dbg->req.target = dbg->query_thread;
+      req.type = DREQ_GET_REGS;
+      req.target = query_thread;
       LOG(debug) << "gdb requests registers";
       ret = 1;
       break;
@@ -899,36 +892,36 @@ static int process_packet(GdbContext* dbg) {
        * because it may cause replay to diverge.  But some
        * writes may be OK.  Let's see how far we can get
        * with ignoring these requests. */
-      write_packet(dbg, "");
+      write_packet("");
       ret = 0;
       break;
     case 'H':
       if ('c' == *payload++) {
-        dbg->req.type = DREQ_SET_CONTINUE_THREAD;
+        req.type = DREQ_SET_CONTINUE_THREAD;
       } else {
-        dbg->req.type = DREQ_SET_QUERY_THREAD;
+        req.type = DREQ_SET_QUERY_THREAD;
       }
-      dbg->req.target = parse_threadid(payload, &payload);
+      req.target = parse_threadid(payload, &payload);
       assert('\0' == *payload);
 
-      LOG(debug) << "gdb selecting " << dbg->req.target;
+      LOG(debug) << "gdb selecting " << req.target;
 
       ret = 1;
       break;
     case 'k':
       LOG(info) << "gdb requests kill, exiting";
-      write_packet(dbg, "OK");
+      write_packet("OK");
       exit(0);
     case 'm':
-      dbg->req.type = DREQ_GET_MEM;
-      dbg->req.target = dbg->query_thread;
-      dbg->req.mem.addr = strtoul(payload, &payload, 16);
+      req.type = DREQ_GET_MEM;
+      req.target = query_thread;
+      req.mem.addr = strtoul(payload, &payload, 16);
       ++payload;
-      dbg->req.mem.len = strtoul(payload, &payload, 16);
+      req.mem.len = strtoul(payload, &payload, 16);
       assert('\0' == *payload);
 
-      LOG(debug) << "gdb requests memory (addr=" << dbg->req.mem.addr
-                 << ", len=" << dbg->req.mem.len << ")";
+      LOG(debug) << "gdb requests memory (addr=" << req.mem.addr
+                 << ", len=" << req.mem.len << ")";
 
       ret = 1;
       break;
@@ -937,62 +930,62 @@ static int process_packet(GdbContext* dbg) {
        * to memory, or the replay may diverge. */
       // TODO: parse this packet in case some oddball gdb
       // decides to send it instead of 'X'
-      write_packet(dbg, "");
+      write_packet("");
       ret = 0;
       break;
     case 'p':
-      dbg->req.type = DREQ_GET_REG;
-      dbg->req.target = dbg->query_thread;
-      dbg->req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
+      req.type = DREQ_GET_REG;
+      req.target = query_thread;
+      req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
       assert('\0' == *payload);
-      LOG(debug) << "gdb requests register value (" << dbg->req.reg.name << ")";
+      LOG(debug) << "gdb requests register value (" << req.reg.name << ")";
       ret = 1;
       break;
     case 'P':
-      dbg->req.type = DREQ_SET_REG;
-      dbg->req.target = dbg->query_thread;
-      dbg->req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
+      req.type = DREQ_SET_REG;
+      req.target = query_thread;
+      req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
       assert('=' == *payload++);
 
-      read_reg_value(&payload, &dbg->req.reg);
+      read_reg_value(&payload, &req.reg);
 
       assert('\0' == *payload);
 
       ret = 1;
       break;
     case 'q':
-      ret = query(dbg, payload);
+      ret = query(payload);
       break;
     case 'Q':
-      ret = set_var(dbg, payload);
+      ret = set_var(payload);
       break;
     case 'T':
-      dbg->req.type = DREQ_GET_IS_THREAD_ALIVE;
-      dbg->req.target = parse_threadid(payload, &payload);
+      req.type = DREQ_GET_IS_THREAD_ALIVE;
+      req.target = parse_threadid(payload, &payload);
       assert('\0' == *payload);
-      LOG(debug) << "gdb wants to know if " << dbg->req.target << " is alive";
+      LOG(debug) << "gdb wants to know if " << req.target << " is alive";
       ret = 1;
       break;
     case 'v':
-      ret = process_vpacket(dbg, payload);
+      ret = process_vpacket(payload);
       break;
     case 'X': {
-      dbg->req.type = DREQ_SET_MEM;
-      dbg->req.target = dbg->query_thread;
-      dbg->req.mem.addr = strtoul(payload, &payload, 16);
+      req.type = DREQ_SET_MEM;
+      req.target = query_thread;
+      req.mem.addr = strtoul(payload, &payload, 16);
       ++payload;
-      dbg->req.mem.len = strtoul(payload, &payload, 16);
+      req.mem.len = strtoul(payload, &payload, 16);
       ++payload;
-      // This is freed by dbg_reply_set_mem().
-      dbg->req.mem.data = (uint8_t*)malloc(dbg->req.mem.len);
+      // This is freed by reply_set_mem().
+      req.mem.data = (uint8_t*)malloc(req.mem.len);
       // TODO: verify that the length of |payload| is as
       // expected in the presence of escaped data.  Right
       // now this call is potential-buffer-overrun-city.
-      read_binary_data((const uint8_t*)payload, dbg->req.mem.len,
-                       (uint8_t*)dbg->req.mem.data);
+      read_binary_data((const uint8_t*)payload, req.mem.len,
+                       (uint8_t*)req.mem.data);
 
-      LOG(debug) << "gdb setting memory (addr=" << dbg->req.mem.addr
-                 << ", len=" << dbg->req.mem.len << ")";
+      LOG(debug) << "gdb setting memory (addr=" << req.mem.addr
+                 << ", len=" << req.mem.len << ")";
 
       ret = 1;
       break;
@@ -1003,52 +996,52 @@ static int process_packet(GdbContext* dbg) {
       assert(',' == *payload++);
       if (!(0 <= type && type <= 4)) {
         LOG(warn) << "Unknown watch type " << type;
-        write_packet(dbg, "");
+        write_packet("");
         ret = 0;
         break;
       }
-      dbg->req.type = GdbRequestType(
+      req.type = GdbRequestType(
           type + (request == 'Z' ? DREQ_SET_SW_BREAK : DREQ_REMOVE_SW_BREAK));
-      dbg->req.mem.addr = strtoul(payload, &payload, 16);
+      req.mem.addr = strtoul(payload, &payload, 16);
       assert(',' == *payload++);
-      dbg->req.mem.len = strtoul(payload, &payload, 16);
+      req.mem.len = strtoul(payload, &payload, 16);
       assert('\0' == *payload);
 
       LOG(debug) << "gdb requests " << ('Z' == request ? "set" : "remove")
-                 << "breakpoint (addr=" << dbg->req.mem.addr
-                 << ", len=" << dbg->req.mem.len << ")";
+                 << "breakpoint (addr=" << req.mem.addr
+                 << ", len=" << req.mem.len << ")";
 
       ret = 1;
       break;
     }
     case '!':
       LOG(debug) << "gdb requests extended mode";
-      write_packet(dbg, "OK");
+      write_packet("OK");
       ret = 0;
       break;
     case '?':
       LOG(debug) << "gdb requests stop reason";
-      dbg->req.type = DREQ_GET_STOP_REASON;
-      dbg->req.target = dbg->query_thread;
+      req.type = DREQ_GET_STOP_REASON;
+      req.target = query_thread;
       ret = 1;
       break;
     default:
-      UNHANDLED_REQ(dbg) << "Unhandled gdb request '" << dbg->inbuf[1] << "'";
+      UNHANDLED_REQ() << "Unhandled gdb request '" << inbuf[1] << "'";
       ret = 0;
   }
   /* Erase the newly processed packet from the input buffer. */
-  memmove(dbg->inbuf, dbg->inbuf + dbg->packetend, dbg->inlen - dbg->packetend);
-  dbg->inlen = (dbg->inlen - dbg->packetend);
+  memmove(inbuf, inbuf + packetend, inlen - packetend);
+  inlen = (inlen - packetend);
 
   /* If we processed the request internally, consume it. */
   if (ret == 0) {
-    consume_request(dbg);
+    consume_request();
   }
   return ret;
 }
 
-void dbg_notify_no_such_thread(GdbContext* dbg, const GdbRequest* req) {
-  assert(!memcmp(&dbg->req, req, sizeof(dbg->req)));
+void GdbContext::notify_no_such_thread(const GdbRequest* req) {
+  assert(!memcmp(&req, &this->req, sizeof(this->req)));
 
   /* '10' is the errno ECHILD.  We use it as a magic code to
    * notify the user that the thread that was the target of this
@@ -1060,87 +1053,83 @@ void dbg_notify_no_such_thread(GdbContext* dbg, const GdbRequest* req) {
                 "rr bug.  Please restart your debugging session and avoid "
                 "doing whatever\n"
                 "triggered this bug.";
-  write_packet(dbg, "E10");
-  consume_request(dbg);
+  write_packet("E10");
+  consume_request();
 }
 
-/**
- * Finish a DREQ_RESTART request.  Should be invoked after replay
- * restarts and prior dbg_context has been restored as |dbg|.
- */
-static void dbg_notify_restart(GdbContext* dbg) {
-  assert(DREQ_RESTART == dbg->req.type);
+void GdbContext::notify_restart() {
+  assert(DREQ_RESTART == req.type);
 
   // These threads may not exist at the first trace-stop after
   // restart.  The gdb client should reset this state, but help
   // it out just in case.
-  dbg->resume_thread = GdbThreadId::ANY;
-  dbg->query_thread = GdbThreadId::ANY;
+  resume_thread = GdbThreadId::ANY;
+  query_thread = GdbThreadId::ANY;
 
-  memset(&dbg->req, 0, sizeof(dbg->req));
+  memset(&req, 0, sizeof(req));
 }
 
-GdbRequest dbg_get_request(GdbContext* dbg) {
-  if (DREQ_RESTART == dbg->req.type) {
+GdbRequest GdbContext::get_request() {
+  if (DREQ_RESTART == req.type) {
     LOG(debug) << "consuming RESTART request";
-    dbg_notify_restart(dbg);
+    notify_restart();
     // gdb wants to be notified with a stop packet when
     // the process "relaunches".  In rr's case, the
     // traceee may be very far away from process creation,
     // but that's OK.
-    dbg->req.type = DREQ_GET_STOP_REASON;
-    dbg->req.target = dbg->query_thread;
-    return dbg->req;
+    req.type = DREQ_GET_STOP_REASON;
+    req.target = query_thread;
+    return req;
   }
 
   /* Can't ask for the next request until you've satisfied the
    * current one, for requests that need an immediate
    * response. */
-  assert(!request_needs_immediate_response(&dbg->req));
+  assert(!request_needs_immediate_response(&req));
 
-  if (sniff_packet(dbg) && dbg->req.is_resume_request()) {
+  if (sniff_packet() && req.is_resume_request()) {
     /* There's no new request data available and gdb has
      * already asked us to resume.  OK, do that (or keep
      * doing that) now. */
-    return dbg->req;
+    return req;
   }
 
   while (1) {
     /* There's either new request data, or we have nothing
      * to do.  Either way, block until we read a complete
      * packet from gdb. */
-    read_packet(dbg);
+    read_packet();
 
-    if (process_packet(dbg)) {
+    if (process_packet()) {
       /* We couldn't process the packet internally,
        * so the target has to do something. */
-      return dbg->req;
+      return req;
     }
     /* The packet we got was "internal", gdb details.
      * Nothing for the target to do yet.  Keep waiting. */
   }
 }
 
-void dbg_notify_exit_code(GdbContext* dbg, int code) {
+void GdbContext::notify_exit_code(int code) {
   char buf[64];
 
-  assert(dbg->req.is_resume_request() || dbg->req.type == DREQ_INTERRUPT);
+  assert(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
   snprintf(buf, sizeof(buf) - 1, "W%02x", code);
-  write_packet(dbg, buf);
+  write_packet(buf);
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_notify_exit_signal(GdbContext* dbg, int sig) {
+void GdbContext::notify_exit_signal(int sig) {
   char buf[64];
 
-  assert(dbg->req.is_resume_request() || dbg->req.type == DREQ_INTERRUPT);
+  assert(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
   snprintf(buf, sizeof(buf) - 1, "X%02x", sig);
-  write_packet(dbg, buf);
+  write_packet(buf);
 
-  consume_request(dbg);
+  consume_request();
 }
 
 /**
@@ -1226,10 +1215,10 @@ static int to_gdb_signum(int sig) {
   }
 }
 
-static void send_stop_reply_packet(GdbContext* dbg, GdbThreadId thread, int sig,
-                                   uintptr_t watch_addr = 0) {
+void GdbContext::send_stop_reply_packet(GdbThreadId thread, int sig,
+                                        uintptr_t watch_addr) {
   if (sig < 0) {
-    write_packet(dbg, "E01");
+    write_packet("E01");
     return;
   }
   char watch[1024];
@@ -1241,153 +1230,153 @@ static void send_stop_reply_packet(GdbContext* dbg, GdbThreadId thread, int sig,
   char buf[PATH_MAX];
   snprintf(buf, sizeof(buf) - 1, "T%02xthread:p%02x.%02x;%s",
            to_gdb_signum(sig), thread.pid, thread.tid, watch);
-  write_packet(dbg, buf);
+  write_packet(buf);
 }
 
-void dbg_notify_stop(GdbContext* dbg, GdbThreadId thread, int sig,
-                     uintptr_t watch_addr) {
-  assert(dbg->req.is_resume_request() || dbg->req.type == DREQ_INTERRUPT);
+void GdbContext::notify_stop(GdbThreadId thread, int sig,
+                             uintptr_t watch_addr) {
+  assert(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
-  if (dbg->tgid != thread.pid) {
+  if (tgid != thread.pid) {
     LOG(debug) << "ignoring stop of " << thread
-               << " because we're debugging tgid " << dbg->tgid;
+               << " because we're debugging tgid " << tgid;
     // Re-use the existing continue request to advance to
     // the next stop we're willing to tell gdb about.
     return;
   }
-  send_stop_reply_packet(dbg, thread, sig, watch_addr);
+  send_stop_reply_packet(thread, sig, watch_addr);
 
   // This isn't documented in the gdb remote protocol, but if we
   // don't do this, gdb will sometimes continue to send requests
   // for the previously-stopped thread when it obviously intends
   // to making requests about the stopped thread.
   LOG(debug) << "forcing query/resume thread to " << thread;
-  dbg->query_thread = thread;
-  dbg->resume_thread = thread;
+  query_thread = thread;
+  resume_thread = thread;
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_notify_restart_failed(GdbContext* dbg) {
-  assert(DREQ_RESTART == dbg->req.type);
+void GdbContext::notify_restart_failed() {
+  assert(DREQ_RESTART == req.type);
 
   // TODO: it's not known by this author whether gdb knows how
   // to recover from a failed "run" request.
-  write_packet(dbg, "E01");
+  write_packet("E01");
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_current_thread(GdbContext* dbg, GdbThreadId thread) {
-  assert(DREQ_GET_CURRENT_THREAD == dbg->req.type);
+void GdbContext::reply_get_current_thread(GdbThreadId thread) {
+  assert(DREQ_GET_CURRENT_THREAD == req.type);
 
   char buf[1024];
   snprintf(buf, sizeof(buf), "QCp%02x.%02x", thread.pid, thread.tid);
-  write_packet(dbg, buf);
+  write_packet(buf);
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_auxv(GdbContext* dbg, const GdbAuxvPair* auxv, ssize_t len) {
-  assert(DREQ_GET_AUXV == dbg->req.type);
+void GdbContext::reply_get_auxv(const GdbAuxvPair* auxv, ssize_t len) {
+  assert(DREQ_GET_AUXV == req.type);
 
   if (len > 0) {
-    write_binary_packet(dbg, "l", (uint8_t*)auxv, len * sizeof(auxv[0]));
+    write_binary_packet("l", (uint8_t*)auxv, len * sizeof(auxv[0]));
   } else {
-    write_packet(dbg, "E01");
+    write_packet("E01");
   }
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_is_thread_alive(GdbContext* dbg, int alive) {
-  assert(DREQ_GET_IS_THREAD_ALIVE == dbg->req.type);
+void GdbContext::reply_get_is_thread_alive(int alive) {
+  assert(DREQ_GET_IS_THREAD_ALIVE == req.type);
 
-  write_packet(dbg, alive ? "OK" : "E01");
+  write_packet(alive ? "OK" : "E01");
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_thread_extra_info(GdbContext* dbg, const char* info) {
-  assert(DREQ_GET_THREAD_EXTRA_INFO == dbg->req.type);
+void GdbContext::reply_get_thread_extra_info(const char* info) {
+  assert(DREQ_GET_THREAD_EXTRA_INFO == req.type);
 
   LOG(debug) << "thread extra info: '" << info << "'";
   // XXX docs don't say whether we should send the null
   // terminator.  See what happens.
-  write_hex_bytes_packet(dbg, (const uint8_t*)info, 1 + strlen(info));
+  write_hex_bytes_packet((const uint8_t*)info, 1 + strlen(info));
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_select_thread(GdbContext* dbg, int ok) {
-  assert(DREQ_SET_CONTINUE_THREAD == dbg->req.type ||
-         DREQ_SET_QUERY_THREAD == dbg->req.type);
+void GdbContext::reply_select_thread(int ok) {
+  assert(DREQ_SET_CONTINUE_THREAD == req.type ||
+         DREQ_SET_QUERY_THREAD == req.type);
 
-  if (ok && DREQ_SET_CONTINUE_THREAD == dbg->req.type) {
-    dbg->resume_thread = dbg->req.target;
-  } else if (ok && DREQ_SET_QUERY_THREAD == dbg->req.type) {
-    dbg->query_thread = dbg->req.target;
+  if (ok && DREQ_SET_CONTINUE_THREAD == req.type) {
+    resume_thread = req.target;
+  } else if (ok && DREQ_SET_QUERY_THREAD == req.type) {
+    query_thread = req.target;
   }
-  write_packet(dbg, ok ? "OK" : "E01");
+  write_packet(ok ? "OK" : "E01");
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_mem(GdbContext* dbg, const uint8_t* mem, size_t len) {
-  assert(DREQ_GET_MEM == dbg->req.type);
-  assert(len <= dbg->req.mem.len);
+void GdbContext::reply_get_mem(const uint8_t* mem, size_t len) {
+  assert(DREQ_GET_MEM == req.type);
+  assert(len <= req.mem.len);
 
-  write_hex_bytes_packet(dbg, mem, len);
+  write_hex_bytes_packet(mem, len);
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_set_mem(GdbContext* dbg, int ok) {
-  assert(DREQ_SET_MEM == dbg->req.type);
+void GdbContext::reply_set_mem(int ok) {
+  assert(DREQ_SET_MEM == req.type);
 
-  write_packet(dbg, ok ? "OK" : "E01");
-  free((uint8_t*)dbg->req.mem.data);
+  write_packet(ok ? "OK" : "E01");
+  free((uint8_t*)req.mem.data);
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_offsets(GdbContext* dbg /*, TODO */) {
-  assert(DREQ_GET_OFFSETS == dbg->req.type);
+void GdbContext::reply_get_offsets(/* TODO */) {
+  assert(DREQ_GET_OFFSETS == req.type);
 
   /* XXX FIXME TODO */
-  write_packet(dbg, "");
+  write_packet("");
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_reg(GdbContext* dbg, const GdbRegisterValue& reg) {
+void GdbContext::reply_get_reg(const GdbRegisterValue& reg) {
   char buf[2 * GdbRegisterValue::MAX_SIZE + 1];
 
-  assert(DREQ_GET_REG == dbg->req.type);
+  assert(DREQ_GET_REG == req.type);
 
   print_reg_value(reg, buf);
-  write_packet(dbg, buf);
+  write_packet(buf);
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_regs(GdbContext* dbg, const GdbRegisterFile& file) {
+void GdbContext::reply_get_regs(const GdbRegisterFile& file) {
   size_t n_regs = file.total_registers();
   char buf[n_regs * 2 * GdbRegisterValue::MAX_SIZE + 1];
 
-  assert(DREQ_GET_REGS == dbg->req.type);
+  assert(DREQ_GET_REGS == req.type);
 
   size_t offset = 0;
   for (auto it = file.regs.begin(), end = file.regs.end(); it != end; ++it) {
     offset += print_reg_value(*it, &buf[offset]);
   }
-  write_packet(dbg, buf);
+  write_packet(buf);
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_set_reg(GdbContext* dbg, bool ok) {
-  assert(DREQ_SET_REG == dbg->req.type);
+void GdbContext::reply_set_reg(bool ok) {
+  assert(DREQ_SET_REG == req.type);
 
   // TODO: what happens if we're forced to reply to a
   // set-register request with |ok = false|, leading us to
@@ -1397,25 +1386,25 @@ void dbg_reply_set_reg(GdbContext* dbg, bool ok) {
   //
   // We can't reply with an error packet here because gdb thinks
   // that failed set-register requests are catastrophic.
-  write_packet(dbg, ok ? "OK" : "");
+  write_packet(ok ? "OK" : "");
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_stop_reason(GdbContext* dbg, GdbThreadId which, int sig) {
-  assert(DREQ_GET_STOP_REASON == dbg->req.type);
+void GdbContext::reply_get_stop_reason(GdbThreadId which, int sig) {
+  assert(DREQ_GET_STOP_REASON == req.type);
 
-  send_stop_reply_packet(dbg, which, sig);
+  send_stop_reply_packet(which, sig);
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_get_thread_list(GdbContext* dbg, const GdbThreadId* threads,
-                               ssize_t len) {
-  assert(DREQ_GET_THREAD_LIST == dbg->req.type);
+void GdbContext::reply_get_thread_list(const GdbThreadId* threads,
+                                       ssize_t len) {
+  assert(DREQ_GET_THREAD_LIST == req.type);
 
   if (0 == len) {
-    write_packet(dbg, "l");
+    write_packet("l");
   } else {
     ssize_t maxlen = 1 /*m char*/ +
                      len * (1 /*p*/ + 2 * sizeof(*threads) + 1 /*,*/) +
@@ -1426,7 +1415,7 @@ void dbg_reply_get_thread_list(GdbContext* dbg, const GdbThreadId* threads,
     str[offset++] = 'm';
     for (int i = 0; i < len; ++i) {
       const GdbThreadId& t = threads[i];
-      if (dbg->tgid != t.pid) {
+      if (tgid != t.pid) {
         continue;
       }
       offset +=
@@ -1435,46 +1424,46 @@ void dbg_reply_get_thread_list(GdbContext* dbg, const GdbThreadId* threads,
     /* Overwrite the trailing ',' */
     str[offset - 1] = '\0';
 
-    write_packet(dbg, str);
+    write_packet(str);
     free(str);
   }
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_watchpoint_request(GdbContext* dbg, int code) {
-  assert(DREQ_WATCH_FIRST <= dbg->req.type && dbg->req.type <= DREQ_WATCH_LAST);
+void GdbContext::reply_watchpoint_request(int code) {
+  assert(DREQ_WATCH_FIRST <= req.type && req.type <= DREQ_WATCH_LAST);
 
-  write_packet(dbg, code ? "E01" : "OK");
+  write_packet(code ? "E01" : "OK");
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_detach(GdbContext* dbg) {
-  assert(DREQ_DETACH <= dbg->req.type);
+void GdbContext::reply_detach() {
+  assert(DREQ_DETACH <= req.type);
 
-  write_packet(dbg, "OK");
+  write_packet("OK");
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_read_siginfo(GdbContext* dbg, const uint8_t* si_bytes,
-                            ssize_t num_bytes) {
-  assert(DREQ_READ_SIGINFO == dbg->req.type);
+void GdbContext::reply_read_siginfo(const uint8_t* si_bytes,
+                                    ssize_t num_bytes) {
+  assert(DREQ_READ_SIGINFO == req.type);
 
   if (num_bytes < 0) {
-    write_packet(dbg, "E01");
+    write_packet("E01");
   } else {
-    write_binary_packet(dbg, "l", si_bytes, num_bytes);
+    write_binary_packet("l", si_bytes, num_bytes);
   }
 
-  consume_request(dbg);
+  consume_request();
 }
 
-void dbg_reply_write_siginfo(GdbContext* dbg /*, TODO*/) {
-  assert(DREQ_WRITE_SIGINFO == dbg->req.type);
+void GdbContext::reply_write_siginfo(/* TODO*/) {
+  assert(DREQ_WRITE_SIGINFO == req.type);
 
-  write_packet(dbg, "E01");
+  write_packet("E01");
 
-  consume_request(dbg);
+  consume_request();
 }

@@ -28,7 +28,7 @@ static int diversion_refcount;
 static Task* process_debugger_requests(GdbContext* dbg, Task* t,
                                        GdbRequest* req) {
   while (true) {
-    *req = dbg_get_request(dbg);
+    *req = dbg->get_request();
 
     if (req->is_resume_request()) {
       if (diversion_refcount == 0) {
@@ -47,7 +47,7 @@ static Task* process_debugger_requests(GdbContext* dbg, Task* t,
         // TODO: maybe share with replayer.cc?
         uint8_t si_bytes[req->mem.len];
         memset(si_bytes, 0, sizeof(si_bytes));
-        dbg_reply_read_siginfo(dbg, si_bytes, sizeof(si_bytes));
+        dbg->reply_read_siginfo(si_bytes, sizeof(si_bytes));
         continue;
       }
       case DREQ_SET_QUERY_THREAD: {
@@ -62,7 +62,7 @@ static Task* process_debugger_requests(GdbContext* dbg, Task* t,
         if (diversion_refcount == 0) {
           LOG(debug) << "  ... dying at next continue request";
         }
-        dbg_reply_write_siginfo(dbg);
+        dbg->reply_write_siginfo();
         continue;
 
       case DREQ_REMOVE_SW_BREAK:
@@ -121,7 +121,7 @@ void divert(ReplaySession& replay, GdbContext* dbg, pid_t task,
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
-      dbg_notify_exit_code(dbg, 0);
+      dbg->notify_exit_code(0);
       break;
     }
 
@@ -144,8 +144,8 @@ void divert(ReplaySession& replay, GdbContext* dbg, pid_t task,
     }
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    dbg_notify_stop(dbg, get_threadid(result.break_status.task), sig,
-                    watch_addr.as_int());
+    dbg->notify_stop(get_threadid(result.break_status.task), sig,
+                     watch_addr.as_int());
   }
 
   LOG(debug) << "... ending debugging diversion";

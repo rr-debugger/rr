@@ -165,6 +165,15 @@ struct GdbRequest {
 };
 
 /**
+ * An item in a process's auxiliary vector, for example { AT_SYSINFO,
+ * 0xb7fff414 }.
+ */
+struct GdbAuxvPair {
+  uintptr_t key;
+  uintptr_t value;
+};
+
+/**
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
  */
@@ -206,6 +215,169 @@ public:
    */
   static void launch_gdb(ScopedFd& params_pipe_fd, const char* macros);
 
+  /**
+   * Call this when the target of |req| is needed to fulfill the
+   * request, but the target is dead.  This situation is a symptom of a
+   * gdb or rr bug.
+   */
+  void notify_no_such_thread(const GdbRequest* req);
+
+  /**
+   * Finish a DREQ_RESTART request.  Should be invoked after replay
+   * restarts and prior GdbContext has been restored.
+   */
+  void notify_restart();
+
+  /**
+   * Return the current request made by the debugger host, that needs to
+   * be satisfied.  This function will block until either there's a
+   * debugger host request that needs a response, or until a request is
+   * made to resume execution of the target.  In the latter case,
+   * calling this function multiple times will return an appropriate
+   * resume request each time (see above).
+   *
+   * The target should peek at the debugger request in between execution
+   * steps.  A new request may need to be serviced.
+   */
+  GdbRequest get_request();
+
+  /**
+   * Notify the host that this process has exited with |code|.
+   */
+  void notify_exit_code(int code);
+
+  /**
+   * Notify the host that this process has exited from |sig|.
+   */
+  void notify_exit_signal(int sig);
+
+  /**
+   * Notify the host that a resume request has "finished", i.e., the
+   * target has stopped executing for some reason.  |sig| is the signal
+   * that stopped execution, or 0 if execution stopped otherwise.
+   */
+  void notify_stop(GdbThreadId which, int sig, uintptr_t watch_addr = 0);
+
+  /** Notify the debugger that a restart request failed. */
+  void notify_restart_failed();
+
+  /**
+   * Tell the host that |thread| is the current thread.
+   */
+  void reply_get_current_thread(GdbThreadId thread);
+
+  /**
+   * Reply with the target thread's |auxv| containing |len| pairs, or
+   * |len| <= 0 if there was an error reading the auxiliary vector.
+   */
+  void reply_get_auxv(const GdbAuxvPair* auxv, ssize_t len);
+
+  /**
+   * |alive| is nonzero if the requested thread is alive, zero if dead.
+   */
+  void reply_get_is_thread_alive(int alive);
+
+  /**
+   * |info| is a string containing data about the request target that
+   * might be relevant to the debugger user.
+   */
+  void reply_get_thread_extra_info(const char* info);
+
+  /**
+   * |ok| is nonzero if req->target can be selected, zero otherwise.
+   */
+  void reply_select_thread(int ok);
+
+  /**
+   * The first |len| bytes of the request were read into |mem|.  |len|
+   * must be less than or equal to the length of the request.
+   */
+  void reply_get_mem(const uint8_t* mem, size_t len);
+
+  /**
+   * |ok| is true if a SET_MEM request succeeded, false otherwise.  This
+   * function *must* be called whenever a SET_MEM request is made,
+   * regardless of success/failure or special interpretation.
+   */
+  void reply_set_mem(int ok);
+
+  /**
+   * Reply to the DREQ_GET_OFFSETS request.
+   */
+  void reply_get_offsets(/* TODO */);
+
+  /**
+   * Send |value| back to the debugger host.  |value| may be undefined.
+   */
+  void reply_get_reg(const GdbRegisterValue& value);
+
+  /**
+   * Send |file| back to the debugger host.  |file| may contain
+   * undefined register values.
+   */
+  void reply_get_regs(const GdbRegisterFile& file);
+
+  /**
+   * Pass |ok = true| iff the requested register was successfully set.
+   */
+  void reply_set_reg(bool ok);
+
+  /**
+   * Reply to the DREQ_GET_STOP_REASON request.
+   */
+  void reply_get_stop_reason(GdbThreadId which, int sig);
+
+  /**
+   * |threads| contains the list of live threads, of which there are
+   * |len|.
+   */
+  void reply_get_thread_list(const GdbThreadId* threads, ssize_t len);
+
+  /**
+   * |code| is 0 if the request was successfully applied, nonzero if
+   * not.
+   */
+  void reply_watchpoint_request(int code);
+
+  /**
+   * DREQ_DETACH was processed.
+   *
+   * There's no functional reason to reply to the detach request.
+   * However, some versions of gdb expect a response and time out
+   * awaiting it, wasting developer time.
+   */
+  void reply_detach();
+
+  /**
+   * Pass the siginfo_t and its size (as requested by the debugger) in
+   * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
+   * |si_bytes = nullptr|.
+   */
+  void reply_read_siginfo(const uint8_t* si_bytes, ssize_t num_bytes);
+  /**
+   * Not yet implemented, but call this after a WRITE_SIGINFO request
+   * anyway.
+   */
+  void reply_write_siginfo(/* TODO*/);
+
+  /**
+   * Create a checkpoint of the given Session with the given id. Delete the
+   * existing checkpoint with that id if there is one.
+   */
+  void created_checkpoint(ReplaySession::shr_ptr& checkpoint,
+                          int checkpoint_id);
+
+  /**
+   * Delete the checkpoint with the given id. Silently fail if the checkpoint
+   * does not exist.
+   */
+  void delete_checkpoint(int checkpoint_id);
+
+  /**
+   * Get the checkpoint with the given id. Return null if not found.
+   */
+  ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
+
   // Current request to be processed.
   GdbRequest req;
   // Thread to be resumed.
@@ -235,175 +407,47 @@ private:
    * indefinitely.
    */
   void await_debugger(ScopedFd& listen_fd);
+
+  /**
+   * read() incoming data exactly one time, successfully.  May block.
+   */
+  void read_data_once();
+  void write_flush();
+  void write_data_raw(const uint8_t* data, ssize_t len);
+  void write_hex(unsigned long hex);
+  void write_packet_bytes(const uint8_t* data, size_t num_bytes);
+  void write_packet(const char* data);
+  void write_binary_packet(const char* pfx, const uint8_t* data,
+                           ssize_t num_bytes);
+  void write_hex_bytes_packet(const uint8_t* bytes, size_t len);
+  /**
+   * Consume bytes in the input buffer until start-of-packet ('$') or
+   * the interrupt character is seen.  Does not block.  Return zero if
+   * seen, nonzero if not.
+   */
+  int skip_to_packet_start();
+  /**
+   * Return zero if there's a new packet to be read/process (whether
+   * incomplete or not), and nonzero if there isn't one.
+   */
+  int sniff_packet();
+  /**
+   * Block until the sequence of bytes
+   *
+   *    "[^$]*\$[^#]*#.*"
+   *
+   * has been read from the client fd.  This is one (or more) gdb
+   * packet(s).
+   */
+  void read_packet();
+  int xfer(const char* name, char* args);
+  int query(char* payload);
+  int set_var(char* payload);
+  void consume_request();
+  int process_vpacket(char* payload);
+  int process_packet();
+  void send_stop_reply_packet(GdbThreadId thread, int sig,
+                              uintptr_t watch_addr = 0);
 };
-
-/**
- * An item in a process's auxiliary vector, for example { AT_SYSINFO,
- * 0xb7fff414 }.
- */
-struct GdbAuxvPair {
-  uintptr_t key;
-  uintptr_t value;
-};
-
-/**
- * Call this when the target of |req| is needed to fulfill the
- * request, but the target is dead.  This situation is a symptom of a
- * gdb or rr bug.
- */
-void dbg_notify_no_such_thread(GdbContext* dbg, const GdbRequest* req);
-
-/**
- * Return the current request made by the debugger host, that needs to
- * be satisfied.  This function will block until either there's a
- * debugger host request that needs a response, or until a request is
- * made to resume execution of the target.  In the latter case,
- * calling this function multiple times will return an appropriate
- * resume request each time (see above).
- *
- * The target should peek at the debugger request in between execution
- * steps.  A new request may need to be serviced.
- */
-GdbRequest dbg_get_request(GdbContext* dbg);
-
-/**
- * Notify the host that this process has exited with |code|.
- */
-void dbg_notify_exit_code(GdbContext* dbg, int code);
-
-/**
- * Notify the host that this process has exited from |sig|.
- */
-void dbg_notify_exit_signal(GdbContext* dbg, int sig);
-
-/**
- * Notify the host that a resume request has "finished", i.e., the
- * target has stopped executing for some reason.  |sig| is the signal
- * that stopped execution, or 0 if execution stopped otherwise.
- */
-void dbg_notify_stop(GdbContext* dbg, GdbThreadId which, int sig,
-                     uintptr_t watch_addr = 0);
-
-/** Notify the debugger that a restart request failed. */
-void dbg_notify_restart_failed(GdbContext* dbg);
-
-/**
- * Tell the host that |thread| is the current thread.
- */
-void dbg_reply_get_current_thread(GdbContext* dbg, GdbThreadId thread);
-
-/**
- * Reply with the target thread's |auxv| containing |len| pairs, or
- * |len| <= 0 if there was an error reading the auxiliary vector.
- */
-void dbg_reply_get_auxv(GdbContext* dbg, const GdbAuxvPair* auxv, ssize_t len);
-
-/**
- * |alive| is nonzero if the requested thread is alive, zero if dead.
- */
-void dbg_reply_get_is_thread_alive(GdbContext* dbg, int alive);
-
-/**
- * |info| is a string containing data about the request target that
- * might be relevant to the debugger user.
- */
-void dbg_reply_get_thread_extra_info(GdbContext* dbg, const char* info);
-
-/**
- * |ok| is nonzero if req->target can be selected, zero otherwise.
- */
-void dbg_reply_select_thread(GdbContext* dbg, int ok);
-
-/**
- * The first |len| bytes of the request were read into |mem|.  |len|
- * must be less than or equal to the length of the request.
- */
-void dbg_reply_get_mem(GdbContext* dbg, const uint8_t* mem, size_t len);
-
-/**
- * |ok| is true if a SET_MEM request succeeded, false otherwise.  This
- * function *must* be called whenever a SET_MEM request is made,
- * regardless of success/failure or special interpretation.
- */
-void dbg_reply_set_mem(GdbContext* dbg, int ok);
-
-/**
- * Reply to the DREQ_GET_OFFSETS request.
- */
-void dbg_reply_get_offsets(GdbContext* dbg /*, TODO */);
-
-/**
- * Send |value| back to the debugger host.  |value| may be undefined.
- */
-void dbg_reply_get_reg(GdbContext* dbg, const GdbRegisterValue& value);
-
-/**
- * Send |file| back to the debugger host.  |file| may contain
- * undefined register values.
- */
-void dbg_reply_get_regs(GdbContext* dbg, const GdbRegisterFile& file);
-
-/**
- * Pass |ok = true| iff the requested register was successfully set.
- */
-void dbg_reply_set_reg(GdbContext* dbg, bool ok);
-
-/**
- * Reply to the DREQ_GET_STOP_REASON request.
- */
-void dbg_reply_get_stop_reason(GdbContext* dbg, GdbThreadId which, int sig);
-
-/**
- * |threads| contains the list of live threads, of which there are
- * |len|.
- */
-void dbg_reply_get_thread_list(GdbContext* dbg, const GdbThreadId* threads,
-                               ssize_t len);
-
-/**
- * |code| is 0 if the request was successfully applied, nonzero if
- * not.
- */
-void dbg_reply_watchpoint_request(GdbContext* dbg, int code);
-
-/**
- * DREQ_DETACH was processed.
- *
- * There's no functional reason to reply to the detach request.
- * However, some versions of gdb expect a response and time out
- * awaiting it, wasting developer time.
- */
-void dbg_reply_detach(GdbContext* dbg);
-
-/**
- * Pass the siginfo_t and its size (as requested by the debugger) in
- * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
- * |si_bytes = nullptr|.
- */
-void dbg_reply_read_siginfo(GdbContext* dbg, const uint8_t* si_bytes,
-                            ssize_t num_bytes);
-/**
- * Not yet implemented, but call this after a WRITE_SIGINFO request
- * anyway.
- */
-void dbg_reply_write_siginfo(GdbContext* dbg /*, TODO*/);
-
-/**
- * Create a checkpoint of the given Session with the given id. Delete the
- * existing checkpoint with that id if there is one.
- */
-void dbg_created_checkpoint(GdbContext* dbg, ReplaySession::shr_ptr& checkpoint,
-                            int checkpoint_id);
-
-/**
- * Delete the checkpoint with the given id. Silently fail if the checkpoint
- * does not exist.
- */
-void dbg_delete_checkpoint(GdbContext* dbg, int checkpoint_id);
-
-/**
- * Get the checkpoint with the given id. Return null if not found.
- */
-ReplaySession::shr_ptr dbg_get_checkpoint(GdbContext* dbg, int checkpoint_id);
 
 #endif /* DBG_GDB_G_ */
