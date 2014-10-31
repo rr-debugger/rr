@@ -59,11 +59,6 @@ GdbContext::GdbContext() : no_ack(false), inlen(0), outlen(0) {
   memset(&req, 0, sizeof(req));
 }
 
-static GdbContext* new_dbg_context() {
-  GdbContext* dbg = new GdbContext();
-  return dbg;
-}
-
 static ScopedFd open_socket(GdbContext* dbg, const char* address,
                             unsigned short* port, ProbePort probe) {
   ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
@@ -127,7 +122,7 @@ GdbContext* dbg_await_client_connection(unsigned short desired_port,
                                         ProbePort probe, pid_t tgid,
                                         const string* exe_image, pid_t client,
                                         ScopedFd* client_params_fd) {
-  GdbContext* dbg = new_dbg_context();
+  GdbContext* dbg = new GdbContext();
   unsigned short port = desired_port;
   static const char addr[] = "127.0.0.1";
   ScopedFd listen_fd = open_socket(dbg, addr, &port, probe);
