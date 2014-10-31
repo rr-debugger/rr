@@ -60,7 +60,7 @@ struct GdbRegisterFile {
   size_t total_registers() const { return regs.size(); }
 };
 
-enum DbgRequestType {
+enum GdbRequestType {
   DREQ_NONE = 0,
 
   /* None of these requests have parameters. */
@@ -134,7 +134,7 @@ enum DbgRestartType {
  * by rr, the target.
  */
 struct dbg_request {
-  DbgRequestType type;
+  GdbRequestType type;
 
   GdbThreadId target;
 

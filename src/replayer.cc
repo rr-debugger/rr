@@ -125,7 +125,7 @@ static GdbThreadId get_threadid(Task* t) {
   return thread;
 }
 
-static WatchType watchpoint_type(DbgRequestType req) {
+static WatchType watchpoint_type(GdbRequestType req) {
   switch (req) {
     case DREQ_SET_HW_BREAK:
     case DREQ_REMOVE_HW_BREAK:

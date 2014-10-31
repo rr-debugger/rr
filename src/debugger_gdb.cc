@@ -1043,7 +1043,7 @@ static int process_packet(struct GdbContext* dbg) {
         ret = 0;
         break;
       }
-      dbg->req.type = DbgRequestType(
+      dbg->req.type = GdbRequestType(
           type + (request == 'Z' ? DREQ_SET_SW_BREAK : DREQ_REMOVE_SW_BREAK));
       dbg->req.mem.addr = strtoul(payload, &payload, 16);
       assert(',' == *payload++);
