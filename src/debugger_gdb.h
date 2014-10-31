@@ -378,27 +378,6 @@ public:
    */
   ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
 
-  // Current request to be processed.
-  GdbRequest req;
-  // Thread to be resumed.
-  GdbThreadId resume_thread;
-  // Thread for get/set requests.
-  GdbThreadId query_thread;
-  // gdb and rr don't work well together in multi-process and
-  // multi-exe-image debugging scenarios, so we pretend only
-  // this task group exists when interfacing with gdb
-  pid_t tgid;
-  // true when "no-ack mode" enabled, in which we don't have
-  // to send ack packets back to gdb.  This is a huge perf win.
-  bool no_ack;
-  ScopedFd sock_fd;
-  /* XXX probably need to dynamically size these */
-  uint8_t inbuf[32768];  /* buffered input from gdb */
-  ssize_t inlen;         /* length of valid data */
-  ssize_t packetend;     /* index of '#' character */
-  uint8_t outbuf[32768]; /* buffered output for gdb */
-  ssize_t outlen;
-
 private:
   GdbContext(pid_t tgid);
 
@@ -448,6 +427,27 @@ private:
   int process_packet();
   void send_stop_reply_packet(GdbThreadId thread, int sig,
                               uintptr_t watch_addr = 0);
+
+  // Current request to be processed.
+  GdbRequest req;
+  // Thread to be resumed.
+  GdbThreadId resume_thread;
+  // Thread for get/set requests.
+  GdbThreadId query_thread;
+  // gdb and rr don't work well together in multi-process and
+  // multi-exe-image debugging scenarios, so we pretend only
+  // this task group exists when interfacing with gdb
+  pid_t tgid;
+  // true when "no-ack mode" enabled, in which we don't have
+  // to send ack packets back to gdb.  This is a huge perf win.
+  bool no_ack;
+  ScopedFd sock_fd;
+  /* XXX probably need to dynamically size these */
+  uint8_t inbuf[32768];  /* buffered input from gdb */
+  ssize_t inlen;         /* length of valid data */
+  ssize_t packetend;     /* index of '#' character */
+  uint8_t outbuf[32768]; /* buffered output for gdb */
+  ssize_t outlen;
 };
 
 #endif /* DBG_GDB_G_ */
