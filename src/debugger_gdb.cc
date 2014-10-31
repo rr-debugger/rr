@@ -76,6 +76,10 @@ static void make_cloexec(int fd) {
   }
 }
 
+GdbContext::GdbContext() : no_ack(false), inlen(0), outlen(0) {
+  memset(&req, 0, sizeof(req));
+}
+
 static GdbContext* new_dbg_context() {
   struct GdbContext* dbg = new GdbContext();
   dbg->insize = sizeof(dbg->inbuf);
@@ -764,7 +768,7 @@ static int set_var(struct GdbContext* dbg, char* payload) {
 
   if (!strcmp(name, "StartNoAckMode")) {
     write_packet(dbg, "OK");
-    dbg->no_ack = 1;
+    dbg->no_ack = true;
     return 0;
   }
 

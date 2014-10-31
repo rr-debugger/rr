@@ -165,6 +165,8 @@ struct GdbRequest {
  */
 class GdbContext {
 public:
+  GdbContext();
+
   // Current request to be processed.
   GdbRequest req;
   // Thread to be resumed.
@@ -175,9 +177,9 @@ public:
   // multi-exe-image debugging scenarios, so we pretend only
   // this task group exists when interfacing with gdb
   pid_t tgid;
-  // nonzero when "no-ack mode" enabled, in which we don't have
+  // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
-  int no_ack;
+  bool no_ack;
   // Server address we listen for a connection on.
   struct sockaddr_in addr;
   // Listen and client sockets created for |addr|.
