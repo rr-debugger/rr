@@ -188,11 +188,9 @@ public:
   /* XXX probably need to dynamically size these */
   uint8_t inbuf[32768];  /* buffered input from gdb */
   ssize_t inlen;         /* length of valid data */
-  ssize_t insize;        /* total size of buffer */
   ssize_t packetend;     /* index of '#' character */
   uint8_t outbuf[32768]; /* buffered output for gdb */
   ssize_t outlen;
-  ssize_t outsize;
 };
 
 /**

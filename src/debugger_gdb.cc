@@ -82,8 +82,6 @@ GdbContext::GdbContext() : no_ack(false), inlen(0), outlen(0) {
 
 static GdbContext* new_dbg_context() {
   struct GdbContext* dbg = new GdbContext();
-  dbg->insize = sizeof(dbg->inbuf);
-  dbg->outsize = sizeof(dbg->outbuf);
   return dbg;
 }
 
@@ -288,7 +286,8 @@ static void read_data_once(struct GdbContext* dbg) {
   /* Wait until there's data, instead of busy-looping on
    * EAGAIN. */
   poll_incoming(dbg, -1 /* wait forever */);
-  nread = read(dbg->sock_fd, dbg->inbuf + dbg->inlen, dbg->insize - dbg->inlen);
+  nread = read(dbg->sock_fd, dbg->inbuf + dbg->inlen,
+               sizeof(dbg->inbuf) - dbg->inlen);
   if (0 == nread) {
     LOG(info) << "(gdb closed debugging socket, exiting)";
     dbg_destroy_context(&dbg);
@@ -299,7 +298,7 @@ static void read_data_once(struct GdbContext* dbg) {
   }
   dbg->inlen += nread;
   assert("Impl dynamic alloc if this fails (or double inbuf size)" &&
-         dbg->inlen < dbg->insize);
+         dbg->inlen < int(sizeof(dbg->inbuf)));
 }
 
 /**
@@ -329,7 +328,7 @@ static void write_flush(struct GdbContext* dbg) {
 static void write_data_raw(struct GdbContext* dbg, const uint8_t* data,
                            ssize_t len) {
   assert("Impl dynamic alloc if this fails (or double outbuf size)" &&
-         (dbg->outlen + len) < dbg->insize);
+         (dbg->outlen + len) < int(sizeof(dbg->inbuf)));
 
   memcpy(dbg->outbuf + dbg->outlen, data, len);
   dbg->outlen += len;
@@ -713,7 +712,7 @@ static int query(struct GdbContext* dbg, char* payload) {
              "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
              ";qXfer:siginfo:read+;qXfer:siginfo:write+"
              ";multiprocess+",
-             dbg->outsize);
+             sizeof(dbg->outbuf));
     write_packet(dbg, supported);
     return 0;
   }
