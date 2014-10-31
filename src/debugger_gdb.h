@@ -180,8 +180,6 @@ public:
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
   bool no_ack;
-  // Server address we listen for a connection on.
-  struct sockaddr_in addr;
   // Listen and client sockets created for |addr|.
   int listen_fd;
   int sock_fd;

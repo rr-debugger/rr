@@ -86,9 +86,10 @@ static GdbContext* new_dbg_context() {
 }
 
 static void open_socket(struct GdbContext* dbg, const char* address,
-                        unsigned short port, int probe) {
+                        unsigned short* port, int probe) {
   int reuseaddr;
   int ret;
+  struct sockaddr_in addr;
 
   dbg->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (dbg->listen_fd < 0) {
@@ -96,8 +97,8 @@ static void open_socket(struct GdbContext* dbg, const char* address,
   }
   make_cloexec(dbg->listen_fd);
 
-  dbg->addr.sin_family = AF_INET;
-  dbg->addr.sin_addr.s_addr = inet_addr(address);
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr(address);
   reuseaddr = 1;
   ret = setsockopt(dbg->listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
                    sizeof(reuseaddr));
@@ -106,14 +107,13 @@ static void open_socket(struct GdbContext* dbg, const char* address,
   }
 
   do {
-    dbg->addr.sin_port = htons(port);
-    ret =
-        ::bind(dbg->listen_fd, (struct sockaddr*)&dbg->addr, sizeof(dbg->addr));
+    addr.sin_port = htons(*port);
+    ret = ::bind(dbg->listen_fd, (struct sockaddr*)&addr, sizeof(addr));
     if (ret && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
       continue;
     }
     if (ret) {
-      FATAL() << "Couldn't bind to port " << port;
+      FATAL() << "Couldn't bind to port " << *port;
     }
 
     ret = listen(dbg->listen_fd, 1 /*backlogged connection*/);
@@ -121,10 +121,10 @@ static void open_socket(struct GdbContext* dbg, const char* address,
       continue;
     }
     if (ret) {
-      FATAL() << "Couldn't listen on port " << port;
+      FATAL() << "Couldn't listen on port " << *port;
     }
     break;
-  } while (++port, probe);
+  } while (++(*port), probe);
 }
 
 /**
@@ -155,8 +155,8 @@ struct GdbContext* dbg_await_client_connection(
     const char* addr, unsigned short desired_port, int probe, pid_t tgid,
     const char* exe_image, pid_t client, int client_params_fd) {
   struct GdbContext* dbg = new_dbg_context();
-  open_socket(dbg, addr, desired_port, probe);
-  int port = ntohs(dbg->addr.sin_port);
+  unsigned short port = desired_port;
+  open_socket(dbg, addr, &port, probe);
   if (exe_image) {
     struct debugger_params params;
     memset(&params, 0, sizeof(params));
