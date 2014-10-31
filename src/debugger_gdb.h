@@ -27,8 +27,7 @@ struct GdbThreadId {
   }
 };
 
-inline static std::ostream& operator<<(std::ostream& o,
-                                       const GdbThreadId& t) {
+inline static std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
   o << t.pid << "." << t.tid;
   return o;
 }
@@ -42,7 +41,7 @@ static const size_t DBG_MAX_REG_SIZE = 16;
  * Represents a possibly-undefined register |name|.  |size| indicates how
  * many bytes of |value| are valid, if any.
  */
-struct DbgRegister {
+struct GdbRegisterValue {
   GDBRegister name;
   uint8_t value[DBG_MAX_REG_SIZE];
   size_t size;
@@ -54,7 +53,7 @@ struct DbgRegister {
  * above.
  */
 struct DbgRegfile {
-  std::vector<DbgRegister> regs;
+  std::vector<GdbRegisterValue> regs;
 
   DbgRegfile(size_t n_regs) : regs(n_regs) {};
 
@@ -150,7 +149,7 @@ struct dbg_request {
       const uint8_t* data;
     } mem;
 
-    DbgRegister reg;
+    GdbRegisterValue reg;
 
     struct {
       int param;
@@ -292,8 +291,7 @@ void dbg_notify_restart_failed(struct GdbContext* dbg);
 /**
  * Tell the host that |thread| is the current thread.
  */
-void dbg_reply_get_current_thread(struct GdbContext* dbg,
-                                  GdbThreadId thread);
+void dbg_reply_get_current_thread(struct GdbContext* dbg, GdbThreadId thread);
 
 /**
  * Reply with the target thread's |auxv| containing |len| pairs, or
@@ -339,7 +337,7 @@ void dbg_reply_get_offsets(struct GdbContext* dbg /*, TODO */);
 /**
  * Send |value| back to the debugger host.  |value| may be undefined.
  */
-void dbg_reply_get_reg(struct GdbContext* dbg, const DbgRegister& value);
+void dbg_reply_get_reg(struct GdbContext* dbg, const GdbRegisterValue& value);
 
 /**
  * Send |file| back to the debugger host.  |file| may contain

@@ -603,7 +603,7 @@ static int xfer(struct GdbContext* dbg, const char* name, char* args) {
  * available.  Fewer bytes than that may be written, but |buf| is
  * guaranteed to be null-terminated.
  */
-static size_t print_reg_value(const DbgRegister& reg, char* buf) {
+static size_t print_reg_value(const GdbRegisterValue& reg, char* buf) {
   assert(reg.size <= DBG_MAX_REG_SIZE);
   if (reg.defined) {
     /* gdb wants the register value in native endianness.
@@ -624,7 +624,7 @@ static size_t print_reg_value(const DbgRegister& reg, char* buf) {
  * Read the encoded register value in |strp| into |reg|.  |strp| may
  * be mutated.
  */
-static void read_reg_value(char** strp, DbgRegister* reg) {
+static void read_reg_value(char** strp, GdbRegisterValue* reg) {
   char* str = *strp;
 
   if ('x' == str[0]) {
@@ -1263,9 +1263,8 @@ static int to_gdb_signum(int sig) {
   }
 }
 
-static void send_stop_reply_packet(struct GdbContext* dbg,
-                                   GdbThreadId thread, int sig,
-                                   uintptr_t watch_addr = 0) {
+static void send_stop_reply_packet(struct GdbContext* dbg, GdbThreadId thread,
+                                   int sig, uintptr_t watch_addr = 0) {
   if (sig < 0) {
     write_packet(dbg, "E01");
     return;
@@ -1316,8 +1315,7 @@ void dbg_notify_restart_failed(struct GdbContext* dbg) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_current_thread(struct GdbContext* dbg,
-                                  GdbThreadId thread) {
+void dbg_reply_get_current_thread(struct GdbContext* dbg, GdbThreadId thread) {
   assert(DREQ_GET_CURRENT_THREAD == dbg->req.type);
 
   char buf[1024];
@@ -1400,7 +1398,7 @@ void dbg_reply_get_offsets(struct GdbContext* dbg /*, TODO */) {
   consume_request(dbg);
 }
 
-void dbg_reply_get_reg(struct GdbContext* dbg, const DbgRegister& reg) {
+void dbg_reply_get_reg(struct GdbContext* dbg, const GdbRegisterValue& reg) {
   char buf[2 * DBG_MAX_REG_SIZE + 1];
 
   assert(DREQ_GET_REG == dbg->req.type);

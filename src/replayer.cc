@@ -110,8 +110,8 @@ static uint64_t instruction_trace_at_event_last = 0;
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static DbgRegister get_reg(Task* t, GDBRegister which) {
-  DbgRegister reg;
+static GdbRegisterValue get_reg(Task* t, GDBRegister which) {
+  GdbRegisterValue reg;
   memset(&reg, 0, sizeof(reg));
   reg.name = which;
   reg.size = t->get_reg(&reg.value[0], which, &reg.defined);
@@ -354,7 +354,7 @@ void dispatch_debugger_request(Session& session, struct GdbContext* dbg,
       return;
     }
     case DREQ_GET_REG: {
-      struct DbgRegister reg = get_reg(target, req.reg.name);
+      struct GdbRegisterValue reg = get_reg(target, req.reg.name);
       dbg_reply_get_reg(dbg, reg);
       return;
     }
