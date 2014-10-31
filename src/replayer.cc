@@ -67,7 +67,7 @@ static ReplaySession::shr_ptr debugger_restart_checkpoint;
 // to reuse the context after the restart, but we don't want to notify
 // the debugger about irrelevant stuff before our target
 // process/event.
-static struct GdbContext* stashed_dbg;
+static GdbContext* stashed_dbg;
 
 // Checkpoints, indexed by checkpoint ID
 map<int, ReplaySession::shr_ptr> checkpoints;
@@ -195,7 +195,7 @@ static void delete_checkpoint(int checkpoint_id) {
  * If |req| is a magic-write command, interpret it and return true.
  * Otherwise, do nothing and return false.
  */
-static bool maybe_process_magic_command(Task* t, struct GdbContext* dbg,
+static bool maybe_process_magic_command(Task* t, GdbContext* dbg,
                                         const struct GdbRequest& req) {
   if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
     return false;
@@ -220,8 +220,8 @@ static bool maybe_process_magic_command(Task* t, struct GdbContext* dbg,
   return true;
 }
 
-void dispatch_debugger_request(Session& session, struct GdbContext* dbg,
-                               Task* t, const struct GdbRequest& req) {
+void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
+                               const struct GdbRequest& req) {
   assert(!dbg_is_resume_request(&req));
 
   // These requests don't require a target task.
@@ -455,8 +455,7 @@ bool is_ignored_replay_signal(int sig) {
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
  */
-static struct GdbRequest process_debugger_requests(struct GdbContext* dbg,
-                                                   Task* t) {
+static struct GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
   if (!dbg) {
     struct GdbRequest continue_all_tasks;
     memset(&continue_all_tasks, 0, sizeof(continue_all_tasks));
@@ -507,7 +506,7 @@ static struct GdbRequest process_debugger_requests(struct GdbContext* dbg,
   }
 }
 
-static bool replay_one_step(ReplaySession& session, struct GdbContext* dbg,
+static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
                             struct GdbRequest* restart_request) {
   struct GdbRequest req;
   req.type = DREQ_NONE;
@@ -626,7 +625,7 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-struct GdbContext* maybe_create_debugger(struct GdbContext* dbg) {
+GdbContext* maybe_create_debugger(GdbContext* dbg) {
   if (dbg) {
     return dbg;
   }
@@ -767,7 +766,7 @@ static GdbContext* restart_session(GdbContext* dbg, GdbRequest* req) {
 }
 
 static void replay_trace_frames(void) {
-  struct GdbContext* dbg = nullptr;
+  GdbContext* dbg = nullptr;
   while (true) {
     while (!session->last_task()) {
       dbg = maybe_create_debugger(dbg);
@@ -896,7 +895,7 @@ void start_debug_server(Task* t) {
   // Don't launch a debugger on fatal errors; the user is most
   // likely already in a debugger, and wouldn't be able to
   // control another session.
-  struct GdbContext* dbg =
+  GdbContext* dbg =
       dbg_await_client_connection("127.0.0.1", t->tid, PROBE_PORT, t->tgid());
 
   process_debugger_requests(dbg, t);

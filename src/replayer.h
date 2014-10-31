@@ -6,7 +6,7 @@
 #include "Ticks.h"
 #include "util.h"
 
-struct GdbContext;
+class GdbContext;
 struct GdbRequest;
 class ReplaySession;
 class Session;
@@ -26,8 +26,8 @@ int replay(int argc, char* argv[], char** envp);
  * particular debugger requests before calling this helper, to do
  * generic processing.
  */
-void dispatch_debugger_request(Session& session, struct GdbContext* dbg,
-                               Task* t, const struct GdbRequest& req);
+void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
+                               const struct GdbRequest& req);
 
 /**
  * Return true if |sig| is a signal that may be generated during

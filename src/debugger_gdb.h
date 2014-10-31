@@ -227,12 +227,12 @@ enum {
   DONT_PROBE = 0,
   PROBE_PORT
 };
-struct GdbContext* dbg_await_client_connection(const char* addr,
-                                               unsigned short desired_port,
-                                               int probe, pid_t tgid,
-                                               const char* exe_image = nullptr,
-                                               pid_t client = -1,
-                                               int client_params_fd = -1);
+GdbContext* dbg_await_client_connection(const char* addr,
+                                        unsigned short desired_port, int probe,
+                                        pid_t tgid,
+                                        const char* exe_image = nullptr,
+                                        pid_t client = -1,
+                                        int client_params_fd = -1);
 
 /**
  * Launch a debugger using the params that were written to
@@ -246,8 +246,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros);
  * request, but the target is dead.  This situation is a symptom of a
  * gdb or rr bug.
  */
-void dbg_notify_no_such_thread(struct GdbContext* dbg,
-                               const struct GdbRequest* req);
+void dbg_notify_no_such_thread(GdbContext* dbg, const struct GdbRequest* req);
 
 /**
  * Return the current request made by the debugger host, that needs to
@@ -260,109 +259,108 @@ void dbg_notify_no_such_thread(struct GdbContext* dbg,
  * The target should peek at the debugger request in between execution
  * steps.  A new request may need to be serviced.
  */
-struct GdbRequest dbg_get_request(struct GdbContext* dbg);
+struct GdbRequest dbg_get_request(GdbContext* dbg);
 
 /**
  * Notify the host that this process has exited with |code|.
  */
-void dbg_notify_exit_code(struct GdbContext* dbg, int code);
+void dbg_notify_exit_code(GdbContext* dbg, int code);
 
 /**
  * Notify the host that this process has exited from |sig|.
  */
-void dbg_notify_exit_signal(struct GdbContext* dbg, int sig);
+void dbg_notify_exit_signal(GdbContext* dbg, int sig);
 
 /**
  * Notify the host that a resume request has "finished", i.e., the
  * target has stopped executing for some reason.  |sig| is the signal
  * that stopped execution, or 0 if execution stopped otherwise.
  */
-void dbg_notify_stop(struct GdbContext* dbg, GdbThreadId which, int sig,
+void dbg_notify_stop(GdbContext* dbg, GdbThreadId which, int sig,
                      uintptr_t watch_addr = 0);
 
 /** Notify the debugger that a restart request failed. */
-void dbg_notify_restart_failed(struct GdbContext* dbg);
+void dbg_notify_restart_failed(GdbContext* dbg);
 
 /**
  * Tell the host that |thread| is the current thread.
  */
-void dbg_reply_get_current_thread(struct GdbContext* dbg, GdbThreadId thread);
+void dbg_reply_get_current_thread(GdbContext* dbg, GdbThreadId thread);
 
 /**
  * Reply with the target thread's |auxv| containing |len| pairs, or
  * |len| <= 0 if there was an error reading the auxiliary vector.
  */
-void dbg_reply_get_auxv(struct GdbContext* dbg, const struct GdbAuxvPair* auxv,
+void dbg_reply_get_auxv(GdbContext* dbg, const struct GdbAuxvPair* auxv,
                         ssize_t len);
 
 /**
  * |alive| is nonzero if the requested thread is alive, zero if dead.
  */
-void dbg_reply_get_is_thread_alive(struct GdbContext* dbg, int alive);
+void dbg_reply_get_is_thread_alive(GdbContext* dbg, int alive);
 
 /**
  * |info| is a string containing data about the request target that
  * might be relevant to the debugger user.
  */
-void dbg_reply_get_thread_extra_info(struct GdbContext* dbg, const char* info);
+void dbg_reply_get_thread_extra_info(GdbContext* dbg, const char* info);
 
 /**
  * |ok| is nonzero if req->target can be selected, zero otherwise.
  */
-void dbg_reply_select_thread(struct GdbContext* dbg, int ok);
+void dbg_reply_select_thread(GdbContext* dbg, int ok);
 
 /**
  * The first |len| bytes of the request were read into |mem|.  |len|
  * must be less than or equal to the length of the request.
  */
-void dbg_reply_get_mem(struct GdbContext* dbg, const uint8_t* mem, size_t len);
+void dbg_reply_get_mem(GdbContext* dbg, const uint8_t* mem, size_t len);
 
 /**
  * |ok| is true if a SET_MEM request succeeded, false otherwise.  This
  * function *must* be called whenever a SET_MEM request is made,
  * regardless of success/failure or special interpretation.
  */
-void dbg_reply_set_mem(struct GdbContext* dbg, int ok);
+void dbg_reply_set_mem(GdbContext* dbg, int ok);
 
 /**
  * Reply to the DREQ_GET_OFFSETS request.
  */
-void dbg_reply_get_offsets(struct GdbContext* dbg /*, TODO */);
+void dbg_reply_get_offsets(GdbContext* dbg /*, TODO */);
 
 /**
  * Send |value| back to the debugger host.  |value| may be undefined.
  */
-void dbg_reply_get_reg(struct GdbContext* dbg, const GdbRegisterValue& value);
+void dbg_reply_get_reg(GdbContext* dbg, const GdbRegisterValue& value);
 
 /**
  * Send |file| back to the debugger host.  |file| may contain
  * undefined register values.
  */
-void dbg_reply_get_regs(struct GdbContext* dbg, const GdbRegisterFile& file);
+void dbg_reply_get_regs(GdbContext* dbg, const GdbRegisterFile& file);
 
 /**
  * Pass |ok = true| iff the requested register was successfully set.
  */
-void dbg_reply_set_reg(struct GdbContext* dbg, bool ok);
+void dbg_reply_set_reg(GdbContext* dbg, bool ok);
 
 /**
  * Reply to the DREQ_GET_STOP_REASON request.
  */
-void dbg_reply_get_stop_reason(struct GdbContext* dbg, GdbThreadId which,
-                               int sig);
+void dbg_reply_get_stop_reason(GdbContext* dbg, GdbThreadId which, int sig);
 
 /**
  * |threads| contains the list of live threads, of which there are
  * |len|.
  */
-void dbg_reply_get_thread_list(struct GdbContext* dbg,
-                               const GdbThreadId* threads, ssize_t len);
+void dbg_reply_get_thread_list(GdbContext* dbg, const GdbThreadId* threads,
+                               ssize_t len);
 
 /**
  * |code| is 0 if the request was successfully applied, nonzero if
  * not.
  */
-void dbg_reply_watchpoint_request(struct GdbContext* dbg, int code);
+void dbg_reply_watchpoint_request(GdbContext* dbg, int code);
 
 /**
  * DREQ_DETACH was processed.
@@ -371,46 +369,44 @@ void dbg_reply_watchpoint_request(struct GdbContext* dbg, int code);
  * However, some versions of gdb expect a response and time out
  * awaiting it, wasting developer time.
  */
-void dbg_reply_detach(struct GdbContext* dbg);
+void dbg_reply_detach(GdbContext* dbg);
 
 /**
  * Pass the siginfo_t and its size (as requested by the debugger) in
  * |si_bytes| and |num_bytes| if successfully read.  Otherwise pass
  * |si_bytes = nullptr|.
  */
-void dbg_reply_read_siginfo(struct GdbContext* dbg, const uint8_t* si_bytes,
+void dbg_reply_read_siginfo(GdbContext* dbg, const uint8_t* si_bytes,
                             ssize_t num_bytes);
 /**
  * Not yet implemented, but call this after a WRITE_SIGINFO request
  * anyway.
  */
-void dbg_reply_write_siginfo(struct GdbContext* dbg /*, TODO*/);
+void dbg_reply_write_siginfo(GdbContext* dbg /*, TODO*/);
 
 /**
  * Create a checkpoint of the given Session with the given id. Delete the
  * existing checkpoint with that id if there is one.
  */
-void dbg_created_checkpoint(struct GdbContext* dbg,
-                            ReplaySession::shr_ptr& checkpoint,
+void dbg_created_checkpoint(GdbContext* dbg, ReplaySession::shr_ptr& checkpoint,
                             int checkpoint_id);
 
 /**
  * Delete the checkpoint with the given id. Silently fail if the checkpoint
  * does not exist.
  */
-void dbg_delete_checkpoint(struct GdbContext* dbg, int checkpoint_id);
+void dbg_delete_checkpoint(GdbContext* dbg, int checkpoint_id);
 
 /**
  * Get the checkpoint with the given id. Return null if not found.
  */
-ReplaySession::shr_ptr dbg_get_checkpoint(struct GdbContext* dbg,
-                                          int checkpoint_id);
+ReplaySession::shr_ptr dbg_get_checkpoint(GdbContext* dbg, int checkpoint_id);
 
 /**
  * Destroy a gdb debugging context created by
  * |dbg_await_client_connection()|.  It's legal to pass a null |*dbg|.
  * The passed-in outparam is nulled on return.
  */
-void dbg_destroy_context(struct GdbContext** dbg);
+void dbg_destroy_context(GdbContext** dbg);
 
 #endif /* DBG_GDB_G_ */

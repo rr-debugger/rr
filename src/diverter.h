@@ -29,7 +29,7 @@
  * {recorder,replayer,diverter}.cc into those as appropriate.
  */
 
-struct GdbContext;
+class GdbContext;
 struct GdbRequest;
 class ReplaySession;
 
@@ -44,7 +44,7 @@ class ReplaySession;
  * is, the first request that should be handled by |replay| upon
  * resuming execution in that session.
  */
-void divert(ReplaySession& replay, struct GdbContext* dbg, pid_t task,
+void divert(ReplaySession& replay, GdbContext* dbg, pid_t task,
             struct GdbRequest* req);
 
 #endif // RR_DIVERTER_H_
