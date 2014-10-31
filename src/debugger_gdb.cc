@@ -261,9 +261,6 @@ void GdbContext::read_data_once() {
          inlen < int(sizeof(inbuf)));
 }
 
-/**
- * Send all pending output to gdb.  May block.
- */
 void GdbContext::write_flush() {
   ssize_t write_index = 0;
 
@@ -366,10 +363,6 @@ void GdbContext::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
   write_packet(buf);
 }
 
-/**
- * Return a string decoded from |encoded|, which contains ASCII
- * characters encoded as pairs of hex digits, f.e. '1' -> "31".
- */
 static string decode_ascii_encoded_hex_str(const char* encoded) {
   ssize_t enc_len = strlen(encoded);
   assert(enc_len % 2 == 0);
@@ -384,11 +377,6 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
   return str;
 }
 
-/**
- * Consume bytes in the input buffer until start-of-packet ('$') or
- * the interrupt character is seen.  Does not block.  Return zero if
- * seen, nonzero if not.
- */
 bool GdbContext::skip_to_packet_start() {
   uint8_t* p = nullptr;
   int i;

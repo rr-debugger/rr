@@ -391,6 +391,9 @@ private:
    * read() incoming data exactly one time, successfully.  May block.
    */
   void read_data_once();
+  /**
+   * Send all pending output to gdb.  May block.
+   */
   void write_flush();
   void write_data_raw(const uint8_t* data, ssize_t len);
   void write_hex(unsigned long hex);
