@@ -28,6 +28,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "StringVectorToCharArray.h"
 
 static const char INTERRUPT_CHAR = '\x03';
 
@@ -173,7 +174,7 @@ void GdbContext::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
              << params.port;
   LOG(debug) << "launching gdb with command '" << attach_cmd.str() << "'";
 
-  vector<const char*> args;
+  vector<string> args;
   args.push_back("gdb");
   // The gdb protocol uses the "vRun" packet to reload
   // remote targets.  The packet is specified to be like
@@ -197,19 +198,20 @@ void GdbContext::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
   const string& gdb_command_file_path = Flags::get().gdb_command_file_path;
   if (gdb_command_file_path.length() > 0) {
     args.push_back("-x");
-    args.push_back(gdb_command_file_path.c_str());
+    args.push_back(gdb_command_file_path);
   }
   args.push_back("-l");
   args.push_back("-1");
   if (macros) {
     string gdb_command_file = create_gdb_command_file(macros);
     args.push_back("-x");
-    args.push_back(gdb_command_file.c_str());
+    args.push_back(gdb_command_file);
   }
   args.push_back("-ex");
-  args.push_back(attach_cmd.str().c_str());
-  args.push_back(nullptr);
-  execvp("gdb", (char * const*)args.data());
+  args.push_back(attach_cmd.str());
+
+  StringVectorToCharArray c_args(args);
+  execvp("gdb", c_args.get());
   FATAL() << "Failed to exec gdb.";
 }
 
