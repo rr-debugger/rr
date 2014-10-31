@@ -169,7 +169,33 @@ struct GdbRequest {
  */
 class GdbContext {
 public:
-  GdbContext();
+  /**
+   * Wait for exactly one gdb host to connect to this remote target on
+   * IP address 127.0.0.1, port |port|.  If |probe| is nonzero, a unique
+   * port based on |start_port| will be searched for.  Otherwise, if
+   * |port| is already bound, this function will fail.
+   *
+   * Pass the |tgid| of the task on which this debug-connection request
+   * is being made.  The remaining debugging session will be limited to
+   * traffic regarding |tgid|, but clients don't need to and shouldn't
+   * need to assume that.
+   *
+   * If we're opening this connection on behalf of a known client, past
+   * its pid as |client| and its |client_params_fd|.  |exe_image| is the
+   * process that will be debugged by client, or null ptr if there isn't
+   * a client.
+   *
+   * This function is infallible: either it will return a valid
+   * debugging context, or it won't return.
+   */
+  enum ProbePort {
+    DONT_PROBE = 0,
+    PROBE_PORT
+  };
+  static GdbContext* await_client_connection(
+      unsigned short desired_port, ProbePort probe, pid_t tgid,
+      const std::string* exe_image = nullptr, pid_t client = -1,
+      ScopedFd* client_params_fd = nullptr);
 
   // Current request to be processed.
   GdbRequest req;
@@ -191,6 +217,9 @@ public:
   ssize_t packetend;     /* index of '#' character */
   uint8_t outbuf[32768]; /* buffered output for gdb */
   ssize_t outlen;
+
+private:
+  GdbContext();
 };
 
 /**
@@ -201,35 +230,6 @@ struct GdbAuxvPair {
   uintptr_t key;
   uintptr_t value;
 };
-
-/**
- * Wait for exactly one gdb host to connect to this remote target on
- * IP address 127.0.0.1, port |port|.  If |probe| is nonzero, a unique
- * port based on |start_port| will be searched for.  Otherwise, if
- * |port| is already bound, this function will fail.
- *
- * Pass the |tgid| of the task on which this debug-connection request
- * is being made.  The remaining debugging session will be limited to
- * traffic regarding |tgid|, but clients don't need to and shouldn't
- * need to assume that.
- *
- * If we're opening this connection on behalf of a known client, past
- * its pid as |client| and its |client_params_fd|.  |exe_image| is the
- * process that will be debugged by client, or null ptr if there isn't
- * a client.
- *
- * This function is infallible: either it will return a valid
- * debugging context, or it won't return.
- */
-enum ProbePort {
-  DONT_PROBE = 0,
-  PROBE_PORT
-};
-GdbContext* dbg_await_client_connection(unsigned short desired_port,
-                                        ProbePort probe, pid_t tgid,
-                                        const std::string* exe_image = nullptr,
-                                        pid_t client = -1,
-                                        ScopedFd* client_params_fd = nullptr);
 
 /**
  * Launch a debugger using the params that were written to
