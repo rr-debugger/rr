@@ -35,15 +35,16 @@ inline std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
   return o;
 }
 
-static const size_t DBG_MAX_REG_SIZE = 16;
-
 /**
  * Represents a possibly-undefined register |name|.  |size| indicates how
  * many bytes of |value| are valid, if any.
  */
 struct GdbRegisterValue {
+  enum {
+    MAX_SIZE = 16
+  };
   GDBRegister name;
-  uint8_t value[DBG_MAX_REG_SIZE];
+  uint8_t value[MAX_SIZE];
   size_t size;
   bool defined;
 };

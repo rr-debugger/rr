@@ -607,7 +607,7 @@ static int xfer(struct GdbContext* dbg, const char* name, char* args) {
  * guaranteed to be null-terminated.
  */
 static size_t print_reg_value(const GdbRegisterValue& reg, char* buf) {
-  assert(reg.size <= DBG_MAX_REG_SIZE);
+  assert(reg.size <= GdbRegisterValue::MAX_SIZE);
   if (reg.defined) {
     /* gdb wants the register value in native endianness.
      * reg.value read in native endianness is exactly that.
@@ -1402,7 +1402,7 @@ void dbg_reply_get_offsets(struct GdbContext* dbg /*, TODO */) {
 }
 
 void dbg_reply_get_reg(struct GdbContext* dbg, const GdbRegisterValue& reg) {
-  char buf[2 * DBG_MAX_REG_SIZE + 1];
+  char buf[2 * GdbRegisterValue::MAX_SIZE + 1];
 
   assert(DREQ_GET_REG == dbg->req.type);
 
@@ -1414,7 +1414,7 @@ void dbg_reply_get_reg(struct GdbContext* dbg, const GdbRegisterValue& reg) {
 
 void dbg_reply_get_regs(struct GdbContext* dbg, const GdbRegisterFile& file) {
   size_t n_regs = file.total_registers();
-  char buf[n_regs * 2 * DBG_MAX_REG_SIZE + 1];
+  char buf[n_regs * 2 * GdbRegisterValue::MAX_SIZE + 1];
 
   assert(DREQ_GET_REGS == dbg->req.type);
 
