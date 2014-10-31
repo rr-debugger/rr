@@ -122,8 +122,8 @@ static void await_debugger(struct GdbContext* dbg, ScopedFd& listen_fd) {
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
 
-  dbg->sock_fd =
-      accept4(listen_fd, (struct sockaddr*)&client_addr, &len, SOCK_NONBLOCK);
+  dbg->sock_fd = ScopedFd(
+      accept4(listen_fd, (struct sockaddr*)&client_addr, &len, SOCK_NONBLOCK));
   // We might restart this debugging session, so don't set the
   // socket fd CLOEXEC.
 }
@@ -240,13 +240,11 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros) {
 static int poll_socket(const struct GdbContext* dbg, short events,
                        int timeoutMs) {
   struct pollfd pfd;
-  int ret;
-
   memset(&pfd, 0, sizeof(pfd));
   pfd.fd = dbg->sock_fd;
   pfd.events = events;
 
-  ret = poll(&pfd, 1, timeoutMs);
+  int ret = poll(&pfd, 1, timeoutMs);
   if (ret < 0) {
     FATAL() << "Polling gdb socket failed";
   }
@@ -1507,11 +1505,10 @@ void dbg_reply_write_siginfo(struct GdbContext* dbg /*, TODO*/) {
 }
 
 void dbg_destroy_context(struct GdbContext** dbg) {
-  struct GdbContext* d;
+  GdbContext* d;
   if (!(d = *dbg)) {
     return;
   }
-  close(d->sock_fd);
-  free(d);
+  delete d;
   *dbg = nullptr;
 }
