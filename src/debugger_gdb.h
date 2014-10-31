@@ -331,7 +331,7 @@ public:
    * |threads| contains the list of live threads, of which there are
    * |len|.
    */
-  void reply_get_thread_list(const GdbThreadId* threads, ssize_t len);
+  void reply_get_thread_list(const std::vector<GdbThreadId>& threads);
 
   /**
    * |ok| is true if the request was successfully applied, false if

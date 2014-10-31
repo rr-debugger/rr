@@ -236,13 +236,12 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       return;
     case DREQ_GET_THREAD_LIST: {
       auto tasks = t->session().tasks();
-      size_t len = tasks.size();
       vector<GdbThreadId> tids;
       for (auto& kv : tasks) {
         Task* t = kv.second;
         tids.push_back(get_threadid(t));
       }
-      dbg->reply_get_thread_list(tids.data(), len);
+      dbg->reply_get_thread_list(tids);
       return;
     }
     case DREQ_INTERRUPT:

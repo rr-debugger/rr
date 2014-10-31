@@ -1400,21 +1400,21 @@ void GdbContext::reply_get_stop_reason(GdbThreadId which, int sig) {
   consume_request();
 }
 
-void GdbContext::reply_get_thread_list(const GdbThreadId* threads,
-                                       ssize_t len) {
+void GdbContext::reply_get_thread_list(const vector<GdbThreadId>& threads) {
   assert(DREQ_GET_THREAD_LIST == req.type);
 
-  if (0 == len) {
+  if (threads.empty()) {
     write_packet("l");
   } else {
-    ssize_t maxlen = 1 /*m char*/ +
-                     len * (1 /*p*/ + 2 * sizeof(*threads) + 1 /*,*/) +
-                     1 /*\0*/;
+    ssize_t maxlen =
+        1 /*m char*/ +
+        threads.size() * (1 /*p*/ + 2 * sizeof(threads[0]) + 1 /*,*/) +
+        1 /*\0*/;
     char* str = (char*)malloc(maxlen);
     int offset = 0;
 
     str[offset++] = 'm';
-    for (int i = 0; i < len; ++i) {
+    for (size_t i = 0; i < threads.size(); ++i) {
       const GdbThreadId& t = threads[i];
       if (tgid != t.pid) {
         continue;
