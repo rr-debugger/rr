@@ -188,14 +188,6 @@ struct dbg_context* dbg_await_client_connection(
   open_socket(dbg, addr, desired_port, probe);
   int port = ntohs(dbg->addr.sin_port);
   if (exe_image) {
-    // NB: the order of the kill() and write() is
-    // sigificant.  The client can't start reading the
-    // socket until it's awoken.  But the write() may
-    // block, and only the client can finish it by
-    // read()ing those bytes.  So the client be able to
-    // reach read() before we write().
-    kill(client, DBG_SOCKET_READY_SIG);
-
     struct debugger_params params;
     memset(&params, 0, sizeof(params));
     strcpy(params.exe_image, exe_image);
@@ -236,6 +228,10 @@ static string create_gdb_command_file(const char* macros) {
 void dbg_launch_debugger(int params_pipe_fd, const char* macros) {
   struct debugger_params params;
   ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
+  if (nread == 0) {
+    // pipe was closed. Probably rr failed/died.
+    return;
+  }
   assert(nread == sizeof(params));
 
   stringstream attach_cmd;

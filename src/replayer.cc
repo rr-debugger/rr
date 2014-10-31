@@ -807,7 +807,6 @@ static void serve_replay(int argc, char* argv[], char** envp) {
   LOG(debug) << "debugger server exiting ...";
 }
 
-static bool launch_debugger;
 static void handle_signal(int sig) {
   switch (sig) {
     case SIGINT:
@@ -818,9 +817,6 @@ static void handle_signal(int sig) {
       if (child > 0) {
         kill(child, SIGTERM);
       }
-      break;
-    case DBG_SOCKET_READY_SIG:
-      launch_debugger = true;
       break;
     default:
       FATAL() << "Unhandled signal " << signalname(sig);
@@ -841,8 +837,7 @@ int replay(int argc, char* argv[], char** envp) {
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = handle_signal;
-  if (sigaction(SIGINT, &sa, nullptr) ||
-      sigaction(DBG_SOCKET_READY_SIG, &sa, nullptr)) {
+  if (sigaction(SIGINT, &sa, nullptr)) {
     FATAL() << "Couldn't set sigaction for SIGINT.";
   }
 
@@ -850,6 +845,9 @@ int replay(int argc, char* argv[], char** envp) {
     FATAL() << "Couldn't open debugger params pipe.";
   }
   if (0 == (child = fork())) {
+    // Ensure only the parent has the read end of the pipe open. Then if
+    // the parent dies, our writes to the pipe will error out.
+    close(debugger_params_pipe[0]);
     // The parent process (gdb) must be able to receive
     // SIGINT's to interrupt non-stopped tracees.  But the
     // debugger server isn't set up to handle SIGINT.  So
@@ -858,37 +856,18 @@ int replay(int argc, char* argv[], char** envp) {
     serve_replay(argc, argv, envp);
     return 0;
   }
+  // Ensure only the child has the write end of the pipe open. Then if
+  // the child dies, our reads from the pipe will return EOF.
+  close(debugger_params_pipe[1]);
   LOG(debug) << parent << ": forked debugger server " << child;
 
-  while (true) {
-    int ret, status;
-    // NB: we're forced to use waitpid() because linux
-    // doesn't provide a way to poll waitpid.  If it did,
-    // we would poll both that and the debugger-params
-    // pipe and we wouldn't need the signal hack.
-    // Alternatively, passing a sigmask to waitpid() in
-    // the style of ppoll() would solve the problem.
-    //
-    // But as it is, there's a potential race condition
-    // betweed the params-ready signal being delivered to
-    // us and us entering waitpid().  We rely on waitpid()
-    // erroring out on signal delivery to wake us up.  If
-    // the signal arrives between the if-condition here
-    // and entry to waitpid(), then we'll deadlock with
-    // the debug server.  This sched_yield() is a
-    // poor-man's "please run the next few instructions
-    // atomically".
-    //
-    // FIXME: add pwaitpid() to linux?
-    sched_yield();
-    // BEGIN CRITICAL SECTION
-    if (launch_debugger) {
-      dbg_launch_debugger(debugger_params_pipe[0], gdb_rr_macros);
-      FATAL() << "Not reached";
-    }
-    ret = waitpid(child, &status, 0);
-    // END CRITICAL SECTION
+  dbg_launch_debugger(debugger_params_pipe[0], gdb_rr_macros);
 
+  // Child must have died before we were able to get debugger parameters
+  // and exec gdb. Exit with the exit status of the child.
+  while (true) {
+    int status;
+    int ret = waitpid(child, &status, 0);
     int err = errno;
     LOG(debug) << getpid() << ": waitpid(" << child << ") returned "
                << strerror(err) << "(" << err << "); status:" << HEX(status);

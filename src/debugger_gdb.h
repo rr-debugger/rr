@@ -13,8 +13,6 @@
 #include "GDBRegister.h"
 #include "ReplaySession.h"
 
-#define DBG_SOCKET_READY_SIG SIGURG
-
 struct dbg_context;
 
 /**
