@@ -199,8 +199,8 @@ public:
  * 0xb7fff414 }.
  */
 struct GdbAuxvPair {
-  long key;
-  long value;
+  uintptr_t key;
+  uintptr_t value;
 };
 
 /**
