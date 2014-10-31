@@ -29,7 +29,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 
-#define INTERRUPT_CHAR '\x03'
+static const char INTERRUPT_CHAR = '\x03';
 
 #ifdef DEBUGTAG
 #define UNHANDLED_REQ(_g) FATAL()
