@@ -44,7 +44,7 @@ using namespace std;
 const GdbThreadId GdbThreadId::ANY = { 0, 0 };
 const GdbThreadId GdbThreadId::ALL = { -1, -1 };
 
-bool dbg_is_resume_request(const struct GdbRequest* req) {
+bool dbg_is_resume_request(const GdbRequest* req) {
   switch (req->type) {
     case DREQ_CONTINUE:
     case DREQ_STEP:
@@ -54,8 +54,7 @@ bool dbg_is_resume_request(const struct GdbRequest* req) {
   }
 }
 
-inline static bool request_needs_immediate_response(
-    const struct GdbRequest* req) {
+static bool request_needs_immediate_response(const GdbRequest* req) {
   switch (req->type) {
     case DREQ_NONE:
     case DREQ_CONTINUE:
@@ -1068,7 +1067,7 @@ static int process_packet(GdbContext* dbg) {
   return ret;
 }
 
-void dbg_notify_no_such_thread(GdbContext* dbg, const struct GdbRequest* req) {
+void dbg_notify_no_such_thread(GdbContext* dbg, const GdbRequest* req) {
   assert(!memcmp(&dbg->req, req, sizeof(dbg->req)));
 
   /* '10' is the errno ECHILD.  We use it as a magic code to
@@ -1101,7 +1100,7 @@ static void dbg_notify_restart(GdbContext* dbg) {
   memset(&dbg->req, 0, sizeof(dbg->req));
 }
 
-struct GdbRequest dbg_get_request(GdbContext* dbg) {
+GdbRequest dbg_get_request(GdbContext* dbg) {
   if (DREQ_RESTART == dbg->req.type) {
     LOG(debug) << "consuming RESTART request";
     dbg_notify_restart(dbg);

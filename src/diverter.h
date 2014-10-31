@@ -45,6 +45,6 @@ class ReplaySession;
  * resuming execution in that session.
  */
 void divert(ReplaySession& replay, GdbContext* dbg, pid_t task,
-            struct GdbRequest* req);
+            GdbRequest* req);
 
 #endif // RR_DIVERTER_H_

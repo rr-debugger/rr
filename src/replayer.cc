@@ -154,7 +154,7 @@ bool trace_instructions_up_to_event(uint64_t event) {
          event <= instruction_trace_at_event_last;
 }
 
-static void maybe_singlestep_for_event(Task* t, struct GdbRequest* req) {
+static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
   if (trace_instructions_up_to_event(session->current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
     t->regs().print_register_file_compact(stderr);
@@ -196,7 +196,7 @@ static void delete_checkpoint(int checkpoint_id) {
  * Otherwise, do nothing and return false.
  */
 static bool maybe_process_magic_command(Task* t, GdbContext* dbg,
-                                        const struct GdbRequest& req) {
+                                        const GdbRequest& req) {
   if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
     return false;
   }
@@ -221,7 +221,7 @@ static bool maybe_process_magic_command(Task* t, GdbContext* dbg,
 }
 
 void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
-                               const struct GdbRequest& req) {
+                               const GdbRequest& req) {
   assert(!dbg_is_resume_request(&req));
 
   // These requests don't require a target task.
@@ -455,9 +455,9 @@ bool is_ignored_replay_signal(int sig) {
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
  */
-static struct GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
+static GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
   if (!dbg) {
-    struct GdbRequest continue_all_tasks;
+    GdbRequest continue_all_tasks;
     memset(&continue_all_tasks, 0, sizeof(continue_all_tasks));
     continue_all_tasks.type = DREQ_CONTINUE;
     continue_all_tasks.target = GdbThreadId::ALL;
@@ -465,7 +465,7 @@ static struct GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
     return continue_all_tasks;
   }
   while (1) {
-    struct GdbRequest req = dbg_get_request(dbg);
+    GdbRequest req = dbg_get_request(dbg);
     req.suppress_debugger_stop = false;
 
     if (req.type == DREQ_READ_SIGINFO) {
@@ -507,8 +507,8 @@ static struct GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
 }
 
 static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
-                            struct GdbRequest* restart_request) {
-  struct GdbRequest req;
+                            GdbRequest* restart_request) {
+  GdbRequest req;
   req.type = DREQ_NONE;
 
   Task* t = session.current_task();
@@ -771,7 +771,7 @@ static void replay_trace_frames(void) {
     while (!session->last_task()) {
       dbg = maybe_create_debugger(dbg);
 
-      struct GdbRequest restart_request;
+      GdbRequest restart_request;
       if (!replay_one_step(*session, dbg, &restart_request)) {
         dbg = restart_session(dbg, &restart_request);
       }
@@ -782,8 +782,7 @@ static void replay_trace_frames(void) {
     if (dbg) {
       // TODO return real exit code, if it's useful.
       dbg_notify_exit_code(dbg, 0);
-      struct GdbRequest req =
-          process_debugger_requests(dbg, session->last_task());
+      GdbRequest req = process_debugger_requests(dbg, session->last_task());
       if (DREQ_RESTART == req.type) {
         dbg = restart_session(dbg, &req);
         continue;

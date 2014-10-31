@@ -27,7 +27,7 @@ int replay(int argc, char* argv[], char** envp);
  * generic processing.
  */
 void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
-                               const struct GdbRequest& req);
+                               const GdbRequest& req);
 
 /**
  * Return true if |sig| is a signal that may be generated during

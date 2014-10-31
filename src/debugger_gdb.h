@@ -202,7 +202,7 @@ struct GdbAuxvPair {
  * Return nonzero if |req| requires that program execution be resumed
  * in some way.
  */
-bool dbg_is_resume_request(const struct GdbRequest* req);
+bool dbg_is_resume_request(const GdbRequest* req);
 
 /**
  * Wait for exactly one gdb host to connect to this remote target on
@@ -246,7 +246,7 @@ void dbg_launch_debugger(int params_pipe_fd, const char* macros);
  * request, but the target is dead.  This situation is a symptom of a
  * gdb or rr bug.
  */
-void dbg_notify_no_such_thread(GdbContext* dbg, const struct GdbRequest* req);
+void dbg_notify_no_such_thread(GdbContext* dbg, const GdbRequest* req);
 
 /**
  * Return the current request made by the debugger host, that needs to
@@ -259,7 +259,7 @@ void dbg_notify_no_such_thread(GdbContext* dbg, const struct GdbRequest* req);
  * The target should peek at the debugger request in between execution
  * steps.  A new request may need to be serviced.
  */
-struct GdbRequest dbg_get_request(GdbContext* dbg);
+GdbRequest dbg_get_request(GdbContext* dbg);
 
 /**
  * Notify the host that this process has exited with |code|.
