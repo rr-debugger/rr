@@ -1040,7 +1040,7 @@ int GdbContext::process_packet() {
   return ret;
 }
 
-void GdbContext::notify_no_such_thread(const GdbRequest* req) {
+void GdbContext::notify_no_such_thread(const GdbRequest& req) {
   assert(!memcmp(&req, &this->req, sizeof(this->req)));
 
   /* '10' is the errno ECHILD.  We use it as a magic code to

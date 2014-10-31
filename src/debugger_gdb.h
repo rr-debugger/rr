@@ -220,7 +220,7 @@ public:
    * request, but the target is dead.  This situation is a symptom of a
    * gdb or rr bug.
    */
-  void notify_no_such_thread(const GdbRequest* req);
+  void notify_no_such_thread(const GdbRequest& req);
 
   /**
    * Finish a DREQ_RESTART request.  Should be invoked after replay

@@ -288,7 +288,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
   // the debugger to use the information provided above to only
   // query valid tasks.
   if (!target) {
-    dbg->notify_no_such_thread(&req);
+    dbg->notify_no_such_thread(req);
     return;
   }
   switch (req.type) {
