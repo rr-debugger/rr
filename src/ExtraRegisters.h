@@ -8,7 +8,7 @@
 
 #include <vector>
 
-#include "GDBRegister.h"
+#include "GdbRegister.h"
 
 /**
  * An ExtraRegisters object contains values for all user-space-visible

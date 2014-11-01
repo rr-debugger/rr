@@ -12,7 +12,7 @@
 
 #include <vector>
 
-#include "GDBRegister.h"
+#include "GdbRegister.h"
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "remote_ptr.h"

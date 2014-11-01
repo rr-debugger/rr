@@ -10,7 +10,7 @@
 #include <ostream>
 #include <vector>
 
-#include "GDBRegister.h"
+#include "GdbRegister.h"
 #include "ReplaySession.h"
 
 /**
