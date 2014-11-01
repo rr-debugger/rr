@@ -595,7 +595,7 @@ public:
    *
    * TODO: nicer API.
    */
-  size_t get_reg(uint8_t* buf, GDBRegister regname, bool* defined);
+  size_t get_reg(uint8_t* buf, GdbRegister regname, bool* defined);
 
   /** Return the current regs of this. */
   const Registers& regs() const;

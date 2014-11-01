@@ -788,7 +788,7 @@ string Task::read_c_str(remote_ptr<void> child_addr) {
   }
 }
 
-size_t Task::get_reg(uint8_t* buf, GDBRegister regname, bool* defined) {
+size_t Task::get_reg(uint8_t* buf, GdbRegister regname, bool* defined) {
   size_t num_bytes = regs().read_register(buf, regname, defined);
   if (!*defined) {
     num_bytes = extra_regs().read_register(buf, regname, defined);

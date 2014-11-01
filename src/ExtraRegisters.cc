@@ -97,7 +97,7 @@ static const int fxsave_64_reg_offset[] = {
 
 // Return the size of the register |regno|.  If |*can_read| is set to false,
 // then we don't know how to read this register.
-size_t ExtraRegisters::register_size(GDBRegister regno, bool* can_read) const {
+size_t ExtraRegisters::register_size(GdbRegister regno, bool* can_read) const {
   assert(format_ != NONE);
 
   if (format_ == XSAVE || format_ == FPXREGS) {
@@ -224,7 +224,7 @@ size_t ExtraRegisters::register_size(GDBRegister regno, bool* can_read) const {
   }
 }
 
-size_t ExtraRegisters::read_register(uint8_t* buf, GDBRegister regno,
+size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
                                      bool* defined) const {
   assert(format_ != NONE);
 

@@ -74,7 +74,7 @@ template <size_t N> struct RegisterTable : std::array<RegisterValue, N> {
 template <typename T> struct RegisterInfo;
 
 template <> struct RegisterInfo<rr::X86Arch> {
-  static bool ignore_undefined_register(GDBRegister regno) {
+  static bool ignore_undefined_register(GdbRegister regno) {
     return regno == DREG_FOSEG || regno == DREG_MXCSR;
   }
   static const size_t num_registers = DREG_NUM_LINUX_I386;
@@ -83,7 +83,7 @@ template <> struct RegisterInfo<rr::X86Arch> {
 };
 
 template <> struct RegisterInfo<rr::X64Arch> {
-  static bool ignore_undefined_register(GDBRegister regno) {
+  static bool ignore_undefined_register(GdbRegister regno) {
     return regno == DREG_64_FOSEG || regno == DREG_64_MXCSR;
   }
   static const size_t num_registers = DREG_NUM_LINUX_X86_64;
@@ -404,7 +404,7 @@ template <>
 }
 
 template <typename Arch>
-size_t Registers::read_register_arch(uint8_t* buf, GDBRegister regno,
+size_t Registers::read_register_arch(uint8_t* buf, GdbRegister regno,
                                      bool* defined) const {
   assert(regno < total_registers());
   // Make sure these two definitions don't get out of sync.
@@ -421,13 +421,13 @@ size_t Registers::read_register_arch(uint8_t* buf, GDBRegister regno,
   return rv.nbytes;
 }
 
-size_t Registers::read_register(uint8_t* buf, GDBRegister regno,
+size_t Registers::read_register(uint8_t* buf, GdbRegister regno,
                                 bool* defined) const {
   RR_ARCH_FUNCTION(read_register_arch, arch(), buf, regno, defined);
 }
 
 template <typename Arch>
-void Registers::write_register_arch(GDBRegister regno, const uint8_t* value,
+void Registers::write_register_arch(GdbRegister regno, const uint8_t* value,
                                     size_t value_size) {
   RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
 
@@ -443,7 +443,7 @@ void Registers::write_register_arch(GDBRegister regno, const uint8_t* value,
   }
 }
 
-void Registers::write_register(GDBRegister regno, const uint8_t* value,
+void Registers::write_register(GdbRegister regno, const uint8_t* value,
                                size_t value_size) {
   RR_ARCH_FUNCTION(write_register_arch, arch(), regno, value, value_size);
 }

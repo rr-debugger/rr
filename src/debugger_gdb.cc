@@ -912,7 +912,7 @@ bool GdbContext::process_packet() {
     case 'p':
       req.type = DREQ_GET_REG;
       req.target = query_thread;
-      req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
+      req.reg.name = GdbRegister(strtoul(payload, &payload, 16));
       assert('\0' == *payload);
       LOG(debug) << "gdb requests register value (" << req.reg.name << ")";
       ret = true;
@@ -920,7 +920,7 @@ bool GdbContext::process_packet() {
     case 'P':
       req.type = DREQ_SET_REG;
       req.target = query_thread;
-      req.reg.name = GDBRegister(strtoul(payload, &payload, 16));
+      req.reg.name = GdbRegister(strtoul(payload, &payload, 16));
       assert('=' == *payload++);
 
       read_reg_value(&payload, &req.reg);

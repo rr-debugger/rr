@@ -108,7 +108,7 @@ static uint64_t instruction_trace_at_event_last = 0;
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static GdbRegisterValue get_reg(Task* t, GDBRegister which) {
+static GdbRegisterValue get_reg(Task* t, GdbRegister which) {
   GdbRegisterValue reg;
   memset(&reg, 0, sizeof(reg));
   reg.name = which;
@@ -361,7 +361,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       size_t n_regs = target->regs().total_registers();
       GdbRegisterFile file(n_regs);
       for (size_t i = 0; i < n_regs; ++i) {
-        file.regs[i] = get_reg(target, GDBRegister(i));
+        file.regs[i] = get_reg(target, GdbRegister(i));
       }
       dbg->reply_get_regs(file);
       return;

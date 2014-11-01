@@ -43,7 +43,7 @@ struct GdbRegisterValue {
   enum {
     MAX_SIZE = 16
   };
-  GDBRegister name;
+  GdbRegister name;
   uint8_t value[MAX_SIZE];
   size_t size;
   bool defined;

@@ -45,10 +45,10 @@ public:
    * Like |Registers::read_register()|, except attempts to read
    * the value of an "extra register" (floating point / vector).
    */
-  size_t read_register(uint8_t* buf, GDBRegister regno, bool* defined) const;
+  size_t read_register(uint8_t* buf, GdbRegister regno, bool* defined) const;
 
 private:
-  size_t register_size(GDBRegister regno, bool* can_read) const;
+  size_t register_size(GdbRegister regno, bool* can_read) const;
 
   friend class Task;
 

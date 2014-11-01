@@ -6,7 +6,7 @@
 /**
  * This is the register numbering used by GDB.
  */
-enum GDBRegister {
+enum GdbRegister {
   DREG_EAX,
   DREG_ECX,
   DREG_EDX,

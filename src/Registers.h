@@ -248,13 +248,13 @@ public:
    * Return the size of the register in bytes and set |defined| to
    * indicate whether a useful value has been written to |buf|.
    */
-  size_t read_register(uint8_t* buf, GDBRegister regno, bool* defined) const;
+  size_t read_register(uint8_t* buf, GdbRegister regno, bool* defined) const;
 
   /**
    * Update the registe named |reg_name| to |value| with
    * |value_size| number of bytes.
    */
-  void write_register(GDBRegister reg_name, const uint8_t* value,
+  void write_register(GdbRegister reg_name, const uint8_t* value,
                       size_t value_size);
 
 private:
@@ -276,11 +276,11 @@ private:
                                      int mismatch_behavior);
 
   template <typename Arch>
-  size_t read_register_arch(uint8_t* buf, GDBRegister regno,
+  size_t read_register_arch(uint8_t* buf, GdbRegister regno,
                             bool* defined) const;
 
   template <typename Arch>
-  void write_register_arch(GDBRegister regno, const uint8_t* value,
+  void write_register_arch(GdbRegister regno, const uint8_t* value,
                            size_t value_size);
 
   template <typename Arch> size_t total_registers_arch() const;
