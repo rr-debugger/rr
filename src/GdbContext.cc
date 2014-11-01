@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "gdb"
+//#define DEBUGTAG "GdbContext"
 
 /**
  * Much of this implementation is based on the documentation at
@@ -8,7 +8,7 @@
  * http://sourceware.org/gdb/onlinedocs/gdb/Packets.html
  */
 
-#include "debugger_gdb.h"
+#include "GdbContext.h"
 
 #include <arpa/inet.h>
 #include <assert.h>

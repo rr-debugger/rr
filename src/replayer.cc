@@ -14,9 +14,9 @@
 #include <string>
 #include <vector>
 
-#include "debugger_gdb.h"
 #include "diverter.h"
 #include "Event.h"
+#include "GdbContext.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "ReplaySession.h"

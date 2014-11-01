@@ -4,8 +4,8 @@
 
 #include "diverter.h"
 
-#include "debugger_gdb.h"
 #include "DiversionSession.h"
+#include "GdbContext.h"
 #include "log.h"
 #include "ReplaySession.h"
 #include "task.h"

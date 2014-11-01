@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_DBG_GDB_H_
-#define RR_DBG_GDB_H_
+#ifndef RR_GDB_CONTEXT_H_
+#define RR_GDB_CONTEXT_H_
 
 #include <stddef.h>
 #include <sys/types.h>
@@ -473,4 +473,4 @@ private:
   ssize_t outlen;
 };
 
-#endif /* DBG_GDB_G_ */
+#endif /* RR_GDB_CONTEXT_H_ */

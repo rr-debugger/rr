@@ -194,7 +194,7 @@ public:
    * session.
    *
    * Little hack: technically replayer doesn't know about the
-   * fact that debugger_gdb hides all but one tgid from the gdb
+   * fact that GdbContext hides all but one tgid from the gdb
    * client.  But to recognize the last_task below (another
    * little hack), we need to known when an exiting thread from
    * the target task group is the last.
