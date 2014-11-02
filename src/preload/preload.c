@@ -103,14 +103,22 @@ static int buffer_enabled;
  * initialized. */
 static int process_inited;
 
+/**
+ * Because this library is always loaded via LD_PRELOAD, we can use the
+ * initial-exec TLS model (see http://www.akkadia.org/drepper/tls.pdf) which
+ * lets the compiler generate better code which, crucially, does not call
+ * helper functions outside of our library.
+ */
+#define TLS_STORAGE_MODEL __attribute__((tls_model("initial-exec")))
+
 /* Nonzero when thread-local state like the syscallbuf has been
  * initialized.  */
-static __thread int thread_inited;
+static __thread int thread_inited TLS_STORAGE_MODEL;
 /* When buffering is enabled, points at the thread's mapped buffer
  * segment.  At the start of the segment is an object of type |struct
  * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
  * header. */
-static __thread uint8_t* buffer;
+static __thread uint8_t* buffer TLS_STORAGE_MODEL;
 /* This is used to support the buffering of "may-block" system calls.
  * The problem that needs to be addressed can be introduced with a
  * simple example; assume that we're buffering the "read" and "write"
@@ -145,7 +153,7 @@ static __thread uint8_t* buffer;
  * The description above is sort of an idealized view; there are
  * numerous implementation details that are documented in
  * handle_signal.c, where they're dealt with. */
-static __thread int desched_counter_fd;
+static __thread int desched_counter_fd TLS_STORAGE_MODEL;
 
 /* Points at the libc/pthread pthread_create().  We wrap
  * pthread_create, so need to retain this pointer to call out to the
