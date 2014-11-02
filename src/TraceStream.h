@@ -215,7 +215,7 @@ public:
    * Open the trace in 'dir'. When 'dir' is the empty string, open the
    * latest trace.
    */
-  TraceReader(const string& dir = string());
+  TraceReader(const string& dir);
 
   /**
    * Create a copy of this stream that has exactly the same

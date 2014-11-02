@@ -213,10 +213,10 @@ public:
   Task* last_task() { return last_debugged_task; }
 
   /**
-   * Create a replay session that will use the trace specified
-   * by the commad-line args |argc|/|argv|.  Return it.
+   * Create a replay session that will use the trace directory specified
+   * by 'dir', or the latest trace if 'dir' is not supplied.
    */
-  static shr_ptr create(int argc, char* argv[]);
+  static shr_ptr create(const std::string& dir);
 
   enum ReplayStatus {
     // Some execution was replayed. replay_step() can be called again.

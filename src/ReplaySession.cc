@@ -203,9 +203,8 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
 
 void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
 
-/*static*/ ReplaySession::shr_ptr ReplaySession::create(int argc,
-                                                        char* argv[]) {
-  shr_ptr session(new ReplaySession(argc > 0 ? argv[0] : ""));
+/*static*/ ReplaySession::shr_ptr ReplaySession::create(const string& dir) {
+  shr_ptr session(new ReplaySession(dir));
 
   // Because we execvpe() the tracee, we must ensure that $PATH
   // is the same as in recording so that libc searches paths in

@@ -51,12 +51,6 @@ static const uintptr_t DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
 static const uintptr_t DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
 static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 
-// Arguments passed to rr by the user on the command line.  Used to
-// create the initial session, and subsequently re-create that initial
-// session when we do a full restart.
-static int cmdline_argc;
-static char** cmdline_argv;
-
 // |session| is used to drive replay.
 static ReplaySession::shr_ptr session;
 // If we're being controlled by a debugger, then |last_debugger_start| is
@@ -726,14 +720,6 @@ static void set_sig_blockedness(int sig, int blockedness) {
   }
 }
 
-/**
- * Return a session created and initialized from the user-supplied
- * command line params.
- */
-ReplaySession::shr_ptr create_session_from_cmdline() {
-  return ReplaySession::create(cmdline_argc, cmdline_argv);
-}
-
 static void restart_session(unique_ptr<GdbContext>* dbg, GdbRequest* req) {
   assert(req->type == DREQ_RESTART);
 
@@ -760,7 +746,7 @@ static void restart_session(unique_ptr<GdbContext>* dbg, GdbRequest* req) {
     // We weren't able to reuse the stashed session, so
     // just discard it and create a fresh one that's back
     // at beginning-of-trace.
-    session = create_session_from_cmdline();
+    session = ReplaySession::create(session->trace_reader().dir());
   }
 }
 
@@ -793,10 +779,8 @@ static void replay_trace_frames(void) {
   }
 }
 
-static void serve_replay(int argc, char* argv[], char** envp) {
-  cmdline_argc = argc;
-  cmdline_argv = argv;
-  session = create_session_from_cmdline();
+static void serve_replay(const string& trace_dir) {
+  session = ReplaySession::create(trace_dir);
 
   replay_trace_frames();
 
@@ -821,11 +805,13 @@ static void handle_signal(int sig) {
 }
 
 int replay(int argc, char* argv[], char** envp) {
+  string trace_dir = argc > 0 ? argv[0] : "";
+
   // If we're not going to autolaunch the debugger, don't go
   // through the rigamarole to set that up.  All it does is
   // complicate the process tree and confuse users.
   if (Flags::get().dont_launch_debugger) {
-    serve_replay(argc, argv, envp);
+    serve_replay(trace_dir);
     return 0;
   }
 
@@ -850,7 +836,7 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    serve_replay(argc, argv, envp);
+    serve_replay(trace_dir);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
