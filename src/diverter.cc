@@ -27,10 +27,10 @@ static int diversion_refcount;
  *
  * The received request is returned through |req|.
  */
-static Task* process_debugger_requests(GdbContext* dbg, Task* t,
+static Task* process_debugger_requests(GdbContext& dbg, Task* t,
                                        GdbRequest* req) {
   while (true) {
-    *req = dbg->get_request();
+    *req = dbg.get_request();
 
     if (req->is_resume_request()) {
       if (diversion_refcount == 0) {
@@ -50,7 +50,7 @@ static Task* process_debugger_requests(GdbContext* dbg, Task* t,
         vector<uint8_t> si_bytes;
         si_bytes.resize(req->mem.len);
         memset(si_bytes.data(), 0, si_bytes.size());
-        dbg->reply_read_siginfo(si_bytes);
+        dbg.reply_read_siginfo(si_bytes);
         continue;
       }
       case DREQ_SET_QUERY_THREAD: {
@@ -65,7 +65,7 @@ static Task* process_debugger_requests(GdbContext* dbg, Task* t,
         if (diversion_refcount == 0) {
           LOG(debug) << "  ... dying at next continue request";
         }
-        dbg->reply_write_siginfo();
+        dbg.reply_write_siginfo();
         continue;
 
       case DREQ_REMOVE_SW_BREAK:
@@ -102,7 +102,7 @@ static GdbThreadId get_threadid(Task* t) {
   return thread;
 }
 
-void divert(ReplaySession& replay, GdbContext* dbg, pid_t task,
+void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
             GdbRequest* req) {
   LOG(debug) << "Starting debugging diversion for " << &replay;
   assert(!session && diversion_refcount == 0);
@@ -124,7 +124,7 @@ void divert(ReplaySession& replay, GdbContext* dbg, pid_t task,
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
-      dbg->notify_exit_code(0);
+      dbg.notify_exit_code(0);
       break;
     }
 
@@ -147,8 +147,8 @@ void divert(ReplaySession& replay, GdbContext* dbg, pid_t task,
     }
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    dbg->notify_stop(get_threadid(result.break_status.task), sig,
-                     watch_addr.as_int());
+    dbg.notify_stop(get_threadid(result.break_status.task), sig,
+                    watch_addr.as_int());
   }
 
   LOG(debug) << "... ending debugging diversion";

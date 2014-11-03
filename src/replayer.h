@@ -26,7 +26,7 @@ int replay(int argc, char* argv[], char** envp);
  * particular debugger requests before calling this helper, to do
  * generic processing.
  */
-void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
+void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
                                const GdbRequest& req);
 
 /**

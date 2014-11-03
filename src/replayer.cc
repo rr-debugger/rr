@@ -182,7 +182,7 @@ static void delete_checkpoint(int checkpoint_id) {
  * If |req| is a magic-write command, interpret it and return true.
  * Otherwise, do nothing and return false.
  */
-static bool maybe_process_magic_command(Task* t, GdbContext* dbg,
+static bool maybe_process_magic_command(Task* t, GdbContext& dbg,
                                         const GdbRequest& req) {
   if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
     return false;
@@ -203,11 +203,11 @@ static bool maybe_process_magic_command(Task* t, GdbContext* dbg,
     default:
       return false;
   }
-  dbg->reply_set_mem(true);
+  dbg.reply_set_mem(true);
   return true;
 }
 
-void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
+void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
                                const GdbRequest& req) {
   assert(!req.is_resume_request());
 
@@ -217,11 +217,11 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       ASSERT(t, false) << "Can't handle RESTART request from here";
       return; // unreached
     case DREQ_GET_CURRENT_THREAD:
-      dbg->reply_get_current_thread(get_threadid(t));
+      dbg.reply_get_current_thread(get_threadid(t));
       return;
     case DREQ_GET_OFFSETS:
       /* TODO */
-      dbg->reply_get_offsets();
+      dbg.reply_get_offsets();
       return;
     case DREQ_GET_THREAD_LIST: {
       auto tasks = t->session().tasks();
@@ -230,17 +230,17 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
         Task* t = kv.second;
         tids.push_back(get_threadid(t));
       }
-      dbg->reply_get_thread_list(tids);
+      dbg.reply_get_thread_list(tids);
       return;
     }
     case DREQ_INTERRUPT:
       // Tell the debugger we stopped and await further
       // instructions.
-      dbg->notify_stop(get_threadid(t), 0);
+      dbg.notify_stop(get_threadid(t), 0);
       return;
     case DREQ_DETACH:
       LOG(info) << ("(debugger detached from us, rr exiting)");
-      dbg->reply_detach();
+      dbg.reply_detach();
       // Don't orphan tracees: their VMs are inconsistent
       // because we've been using emulated tracing, so they
       // can't resume normal execution.  And we wouldn't
@@ -258,14 +258,14 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
   // target, so it's OK if the task doesn't exist.
   switch (req.type) {
     case DREQ_GET_IS_THREAD_ALIVE:
-      dbg->reply_get_is_thread_alive(target != nullptr);
+      dbg.reply_get_is_thread_alive(target != nullptr);
       return;
     case DREQ_GET_THREAD_EXTRA_INFO:
-      dbg->reply_get_thread_extra_info(target->name());
+      dbg.reply_get_thread_extra_info(target->name());
       return;
     case DREQ_SET_CONTINUE_THREAD:
     case DREQ_SET_QUERY_THREAD:
-      dbg->reply_select_thread(target != nullptr);
+      dbg.reply_select_thread(target != nullptr);
       return;
     default:
       // fall through to next switch stmt
@@ -276,7 +276,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
   // the debugger to use the information provided above to only
   // query valid tasks.
   if (!target) {
-    dbg->notify_no_such_thread(req);
+    dbg.notify_no_such_thread(req);
     return;
   }
   switch (req.type) {
@@ -290,20 +290,20 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       ScopedFd fd(filename, O_RDONLY);
       if (0 > fd) {
         auxv.clear();
-        dbg->reply_get_auxv(auxv);
+        dbg.reply_get_auxv(auxv);
         return;
       }
 
       ssize_t len = read(fd, auxv.data(), sizeof(auxv[0]) * auxv.size());
       if (0 > len) {
         auxv.clear();
-        dbg->reply_get_auxv(auxv);
+        dbg.reply_get_auxv(auxv);
         return;
       }
 
       assert(0 == len % sizeof(auxv[0]));
       auxv.resize(len / sizeof(auxv[0]));
-      dbg->reply_get_auxv(auxv);
+      dbg.reply_get_auxv(auxv);
       return;
     }
     case DREQ_GET_MEM: {
@@ -312,7 +312,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       ssize_t nread =
           target->read_bytes_fallible(req.mem.addr, req.mem.len, mem.data());
       mem.resize(max(ssize_t(0), nread));
-      dbg->reply_get_mem(mem);
+      dbg.reply_get_mem(mem);
       return;
     }
     case DREQ_SET_MEM: {
@@ -320,7 +320,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       // odd times
       // (e.g. before sending the magic write to create a checkpoint)
       if (req.mem.len == 0) {
-        dbg->reply_set_mem(true);
+        dbg.reply_set_mem(true);
         return;
       }
       if (maybe_process_magic_command(target, dbg, req)) {
@@ -332,18 +332,18 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       // divergence.
       if (!session.is_diversion()) {
         LOG(error) << "Attempt to write memory outside diversion session";
-        dbg->reply_set_mem(false);
+        dbg.reply_set_mem(false);
         return;
       }
       LOG(debug) << "Writing " << req.mem.len << " bytes to " << req.mem.addr;
       // TODO fallible
       target->write_bytes_helper(req.mem.addr, req.mem.len, req.mem.data);
-      dbg->reply_set_mem(true);
+      dbg.reply_set_mem(true);
       return;
     }
     case DREQ_GET_REG: {
       GdbRegisterValue reg = get_reg(target, req.reg.name);
-      dbg->reply_get_reg(reg);
+      dbg.reply_get_reg(reg);
       return;
     }
     case DREQ_GET_REGS: {
@@ -352,7 +352,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
       for (size_t i = 0; i < n_regs; ++i) {
         file.regs[i] = get_reg(target, GdbRegister(i));
       }
-      dbg->reply_get_regs(file);
+      dbg.reply_get_regs(file);
       return;
     }
     case DREQ_SET_REG: {
@@ -364,11 +364,11 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
         // just ignore it.
         if ((t->arch() == x86 && req.reg.name == DREG_ORIG_EAX) ||
             (t->arch() == x86_64 && req.reg.name == DREG_ORIG_RAX)) {
-          dbg->reply_set_reg(true);
+          dbg.reply_set_reg(true);
           return;
         }
         LOG(error) << "Attempt to write register outside diversion session";
-        dbg->reply_set_reg(false);
+        dbg.reply_set_reg(false);
         return;
       }
       if (req.reg.defined) {
@@ -376,23 +376,23 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
         regs.write_register(req.reg.name, req.reg.value, req.reg.size);
         target->set_regs(regs);
       }
-      dbg->reply_set_reg(true /*currently infallible*/);
+      dbg.reply_set_reg(true /*currently infallible*/);
       return;
     }
     case DREQ_GET_STOP_REASON: {
-      dbg->reply_get_stop_reason(get_threadid(target), target->child_sig);
+      dbg.reply_get_stop_reason(get_threadid(target), target->child_sig);
       return;
     }
     case DREQ_SET_SW_BREAK: {
       ASSERT(target, (req.mem.len == sizeof(AddressSpace::breakpoint_insn)))
           << "Debugger setting bad breakpoint insn";
       bool ok = target->vm()->set_breakpoint(req.mem.addr, TRAP_BKPT_USER);
-      dbg->reply_watchpoint_request(ok);
+      dbg.reply_watchpoint_request(ok);
       return;
     }
     case DREQ_REMOVE_SW_BREAK:
       target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
-      dbg->reply_watchpoint_request(true);
+      dbg.reply_watchpoint_request(true);
       return;
     case DREQ_REMOVE_HW_BREAK:
     case DREQ_REMOVE_RD_WATCH:
@@ -400,7 +400,7 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
     case DREQ_REMOVE_RDWR_WATCH:
       target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
                                       watchpoint_type(req.type));
-      dbg->reply_watchpoint_request(true);
+      dbg.reply_watchpoint_request(true);
       return;
     case DREQ_SET_HW_BREAK:
     case DREQ_SET_RD_WATCH:
@@ -408,16 +408,16 @@ void dispatch_debugger_request(Session& session, GdbContext* dbg, Task* t,
     case DREQ_SET_RDWR_WATCH: {
       bool ok = target->vm()->set_watchpoint(req.mem.addr, req.mem.len,
                                              watchpoint_type(req.type));
-      dbg->reply_watchpoint_request(ok);
+      dbg.reply_watchpoint_request(ok);
       return;
     }
     case DREQ_READ_SIGINFO:
       LOG(warn) << "READ_SIGINFO request outside of diversion session";
-      dbg->reply_read_siginfo(vector<uint8_t>());
+      dbg.reply_read_siginfo(vector<uint8_t>());
       return;
     case DREQ_WRITE_SIGINFO:
       LOG(warn) << "WRITE_SIGINFO request outside of diversion session";
-      dbg->reply_write_siginfo();
+      dbg.reply_write_siginfo();
       return;
     default:
       FATAL() << "Unknown debugger request " << req.type;
@@ -443,17 +443,9 @@ bool is_ignored_replay_signal(int sig) {
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
  */
-static GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
-  if (!dbg) {
-    GdbRequest continue_all_tasks;
-    memset(&continue_all_tasks, 0, sizeof(continue_all_tasks));
-    continue_all_tasks.type = DREQ_CONTINUE;
-    continue_all_tasks.target = GdbThreadId::ALL;
-    maybe_singlestep_for_event(t, &continue_all_tasks);
-    return continue_all_tasks;
-  }
+static GdbRequest process_debugger_requests(GdbContext& dbg, Task* t) {
   while (1) {
-    GdbRequest req = dbg->get_request();
+    GdbRequest req = dbg.get_request();
     req.suppress_debugger_stop = false;
 
     if (req.type == DREQ_READ_SIGINFO) {
@@ -467,7 +459,7 @@ static GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
       vector<uint8_t> si_bytes;
       si_bytes.resize(req.mem.len);
       memset(si_bytes.data(), 0, si_bytes.size());
-      dbg->reply_read_siginfo(si_bytes);
+      dbg.reply_read_siginfo(si_bytes);
 
       divert(*session, dbg, t->rec_tid, &req);
       // Carry on to process the request that was rejected by
@@ -500,20 +492,17 @@ static void replay_one_step(ReplaySession& session, GdbContext* dbg,
   restart_request->type = DREQ_NONE;
 
   GdbRequest req;
-  req.type = DREQ_NONE;
-
   Task* t = session.current_task();
 
-  /* Advance the trace until we've exec()'d the tracee before
-   * processing debugger requests.  Otherwise the debugger host
-   * will be confused about the initial executable image,
-   * rr's. */
-  if (session.can_validate()) {
-    req = process_debugger_requests(dbg, t);
+  if (dbg) {
+    req = process_debugger_requests(*dbg, t);
     if (DREQ_RESTART == req.type) {
       *restart_request = req;
+      return;
     }
     assert(req.is_resume_request());
+  } else {
+    req.type = DREQ_CONTINUE;
   }
 
   ReplaySession::RunCommand command =
@@ -548,12 +537,6 @@ static void replay_one_step(ReplaySession& session, GdbContext* dbg,
     dbg->notify_stop(get_threadid(result.break_status.task), sig,
                      watch_addr.as_int());
   }
-
-  req = process_debugger_requests(dbg, result.break_status.task);
-  if (DREQ_RESTART == req.type) {
-    *restart_request = req;
-  }
-  assert(req.is_resume_request());
 }
 
 /**
@@ -771,7 +754,7 @@ static void serve_replay_with_debugger(const string& trace_dir) {
 
     // TODO return real exit code, if it's useful.
     dbg->notify_exit_code(0);
-    GdbRequest req = process_debugger_requests(dbg.get(), session->last_task());
+    GdbRequest req = process_debugger_requests(*dbg, session->last_task());
     if (DREQ_RESTART == req.type) {
       restart_session(*dbg, &req, &debugger_active);
       continue;
@@ -897,5 +880,5 @@ void start_debug_server(Task* t) {
   unique_ptr<GdbContext> dbg = GdbContext::await_client_connection(
       t->tid, GdbContext::PROBE_PORT, t->tgid());
 
-  process_debugger_requests(dbg.get(), t);
+  process_debugger_requests(*dbg, t);
 }
