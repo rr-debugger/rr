@@ -766,18 +766,20 @@ static void serve_replay_with_debugger(const string& trace_dir) {
     }
     LOG(info) << ("Replayer successfully finished.");
 
-    if (dbg) {
-      // TODO return real exit code, if it's useful.
-      dbg->notify_exit_code(0);
-      GdbRequest req =
-          process_debugger_requests(dbg.get(), session->last_task());
-      if (DREQ_RESTART == req.type) {
-        restart_session(&dbg, &req);
-        continue;
-      }
-      FATAL() << "Received continue request after end-of-trace.";
+    if (!dbg) {
+      LOG(info) << "Debugger was not launched before end of trace";
+      break;
     }
-    break;
+
+    // TODO return real exit code, if it's useful.
+    dbg->notify_exit_code(0);
+    GdbRequest req =
+        process_debugger_requests(dbg.get(), session->last_task());
+    if (DREQ_RESTART == req.type) {
+      restart_session(&dbg, &req);
+      continue;
+    }
+    FATAL() << "Received continue request after end-of-trace.";
   }
 
   session = nullptr;
