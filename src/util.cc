@@ -247,25 +247,6 @@ remote_ptr<void> ceil_page_size(remote_ptr<void> addr) {
   return remote_ptr<void>(ceil_page_size(addr.as_int()));
 }
 
-void print_process_state(pid_t tid) {
-  char path[64];
-  FILE* file;
-  printf("child tid: %d\n", tid);
-  fflush(stdout);
-  bzero(path, 64);
-  sprintf(path, "/proc/%d/status", tid);
-  if ((file = fopen(path, "r")) == nullptr) {
-    perror("error reading child memory status\n");
-  }
-
-  int c = getc(file);
-  while (c != EOF) {
-    putchar(c);
-    c = getc(file);
-  }
-  fclose(file);
-}
-
 bool compare_register_files(Task* t, const char* name1, const Registers& reg1,
                             const char* name2, const Registers& reg2,
                             int mismatch_behavior) {
