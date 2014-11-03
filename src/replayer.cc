@@ -56,12 +56,6 @@ static ReplaySession::shr_ptr session;
 // If we're being controlled by a debugger, then |last_debugger_start| is
 // the saved session we forked 'session' from.
 static ReplaySession::shr_ptr debugger_restart_checkpoint;
-// When we restart a replay session, we stash the debug context here
-// so that we can find it again in |maybe_create_debugger()|.  We want
-// to reuse the context after the restart, but we don't want to notify
-// the debugger about irrelevant stuff before our target
-// process/event.
-static unique_ptr<GdbContext> stashed_dbg;
 
 // Checkpoints, indexed by checkpoint ID
 map<int, ReplaySession::shr_ptr> checkpoints;
@@ -501,8 +495,10 @@ static GdbRequest process_debugger_requests(GdbContext* dbg, Task* t) {
   }
 }
 
-static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
+static void replay_one_step(ReplaySession& session, GdbContext* dbg,
                             GdbRequest* restart_request) {
+  restart_request->type = DREQ_NONE;
+
   GdbRequest req;
   req.type = DREQ_NONE;
 
@@ -516,7 +512,6 @@ static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
     req = process_debugger_requests(dbg, t);
     if (DREQ_RESTART == req.type) {
       *restart_request = req;
-      return false;
     }
     assert(req.is_resume_request());
   }
@@ -528,11 +523,11 @@ static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
   auto result = session.replay_step(command);
 
   if (result.status == ReplaySession::REPLAY_EXITED) {
-    return true;
+    return;
   }
   assert(result.status == ReplaySession::REPLAY_CONTINUE);
   if (result.break_status.reason == Session::BREAK_NONE) {
-    return true;
+    return;
   }
 
   if (dbg && !req.suppress_debugger_stop) {
@@ -557,10 +552,8 @@ static bool replay_one_step(ReplaySession& session, GdbContext* dbg,
   req = process_debugger_requests(dbg, result.break_status.task);
   if (DREQ_RESTART == req.type) {
     *restart_request = req;
-    return false;
   }
   assert(req.is_resume_request());
-  return true;
 }
 
 /**
@@ -613,21 +606,18 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
 }
 
 /**
- * Return the previous debugger |dbg| if there was one.  Otherwise if
- * the trace has reached the event at which the user wanted a debugger
- * started, then create one and return it.  Otherwise return nullptr.
+ * If the trace has reached the event at which the user wanted a debugger
+ * started, then create one and store it in `dbg` if we don't already
+ * have one there, and return true. Otherwise return false.
  *
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-static void maybe_create_debugger(unique_ptr<GdbContext>* dbg) {
-  if (*dbg) {
-    return;
-  }
+static bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg) {
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
   if (!session->can_validate()) {
-    return;
+    return false;
   }
   // When we decide to create the debugger, we may end up
   // creating a checkpoint.  In that case, we want the
@@ -641,7 +631,7 @@ static void maybe_create_debugger(unique_ptr<GdbContext>* dbg) {
   TraceFrame next_frame = session->current_trace_frame();
   Task* t = session->current_task();
   if (!t) {
-    return;
+    return false;
   }
   uint32_t event_now = next_frame.time();
   uint32_t goto_event = Flags::get().goto_event;
@@ -656,9 +646,8 @@ static void maybe_create_debugger(unique_ptr<GdbContext>* dbg) {
       (target_process && t->tgid() != target_process) ||
       (require_exec && !t->vm()->execed()) ||
       (will_checkpoint() && !can_checkpoint_at(t, next_frame))) {
-    return;
+    return false;
   }
-  assert(!*dbg);
 
   if (goto_event > 0 || target_process) {
     fprintf(stderr, "\a\n"
@@ -689,24 +678,24 @@ static void maybe_create_debugger(unique_ptr<GdbContext>* dbg) {
   // target without necessarily replaying up to this point.
   Flags::update_replay_target(t->tgid(), event_now);
 
-  if (stashed_dbg) {
-    *dbg = move(stashed_dbg);
-    return;
+  if (!*dbg) {
+    unsigned short port =
+        (Flags::get().dbgport > 0) ? Flags::get().dbgport : getpid();
+    // Don't probe if the user specified a port.  Explicitly
+    // selecting a port is usually done by scripts, which would
+    // presumably break if a different port were to be selected by
+    // rr (otherwise why would they specify a port in the first
+    // place).  So fail with a clearer error message.
+    auto probe = (Flags::get().dbgport > 0) ? GdbContext::DONT_PROBE
+                                            : GdbContext::PROBE_PORT;
+    const string* exe =
+        Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
+    *dbg = GdbContext::await_client_connection(port, probe, t->tgid(), exe,
+                                               &debugger_params_write_pipe);
+    debugger_params_write_pipe.close();
   }
-  unsigned short port =
-      (Flags::get().dbgport > 0) ? Flags::get().dbgport : getpid();
-  // Don't probe if the user specified a port.  Explicitly
-  // selecting a port is usually done by scripts, which would
-  // presumably break if a different port were to be selected by
-  // rr (otherwise why would they specify a port in the first
-  // place).  So fail with a clearer error message.
-  auto probe = (Flags::get().dbgport > 0) ? GdbContext::DONT_PROBE
-                                          : GdbContext::PROBE_PORT;
-  const string* exe =
-      Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
-  *dbg = GdbContext::await_client_connection(port, probe, t->tgid(), exe,
-                                             &debugger_params_write_pipe);
-  debugger_params_write_pipe.close();
+
+  return true;
 }
 
 /**
@@ -721,7 +710,8 @@ static void set_sig_blockedness(int sig, int blockedness) {
   }
 }
 
-static void restart_session(unique_ptr<GdbContext>* dbg, GdbRequest* req) {
+static void restart_session(GdbContext& dbg, GdbRequest* req,
+                            bool* debugger_active) {
   assert(req->type == DREQ_RESTART);
 
   ReplaySession::shr_ptr checkpoint_to_restore;
@@ -729,7 +719,7 @@ static void restart_session(unique_ptr<GdbContext>* dbg, GdbRequest* req) {
     checkpoint_to_restore = get_checkpoint(req->restart.param);
     if (!checkpoint_to_restore) {
       LOG(info) << "Checkpoint " << req->restart.param << " not found.";
-      (*dbg)->notify_restart_failed();
+      dbg.notify_restart_failed();
       return;
     }
   } else if (req->restart.type == RESTART_FROM_PREVIOUS) {
@@ -738,13 +728,14 @@ static void restart_session(unique_ptr<GdbContext>* dbg, GdbRequest* req) {
   if (checkpoint_to_restore) {
     debugger_restart_checkpoint = checkpoint_to_restore;
     session = checkpoint_to_restore->clone();
+    *debugger_active = true;
     return;
   }
 
-  stashed_dbg = move(*dbg);
+  *debugger_active = false;
 
   if (session->trace_reader().time() > Flags::get().goto_event) {
-    // We weren't able to reuse the stashed session, so
+    // We weren't able to reuse a saved session, so
     // just discard it and create a fresh one that's back
     // at beginning-of-trace.
     session = ReplaySession::create(session->trace_reader().dir());
@@ -755,13 +746,20 @@ static void serve_replay_with_debugger(const string& trace_dir) {
   session = ReplaySession::create(trace_dir);
 
   unique_ptr<GdbContext> dbg;
+  // False while we're waiting for the session to reach some requested state
+  // before talking to gdb.
+  bool debugger_active = false;
   while (true) {
     while (!session->last_task()) {
-      maybe_create_debugger(&dbg);
+      if (!debugger_active) {
+        debugger_active = maybe_connect_debugger(&dbg);
+      }
 
       GdbRequest restart_request;
-      if (!replay_one_step(*session, dbg.get(), &restart_request)) {
-        restart_session(&dbg, &restart_request);
+      replay_one_step(*session, debugger_active ? dbg.get() : nullptr,
+                      &restart_request);
+      if (restart_request.type != DREQ_NONE) {
+        restart_session(*dbg, &restart_request, &debugger_active);
       }
     }
     LOG(info) << ("Replayer successfully finished.");
@@ -773,10 +771,9 @@ static void serve_replay_with_debugger(const string& trace_dir) {
 
     // TODO return real exit code, if it's useful.
     dbg->notify_exit_code(0);
-    GdbRequest req =
-        process_debugger_requests(dbg.get(), session->last_task());
+    GdbRequest req = process_debugger_requests(dbg.get(), session->last_task());
     if (DREQ_RESTART == req.type) {
-      restart_session(&dbg, &req);
+      restart_session(*dbg, &req, &debugger_active);
       continue;
     }
     FATAL() << "Received continue request after end-of-trace.";
