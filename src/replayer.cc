@@ -751,7 +751,9 @@ static void restart_session(unique_ptr<GdbContext>* dbg, GdbRequest* req) {
   }
 }
 
-static void replay_trace_frames(void) {
+static void serve_replay_with_debugger(const string& trace_dir) {
+  session = ReplaySession::create(trace_dir);
+
   unique_ptr<GdbContext> dbg;
   while (true) {
     while (!session->last_task()) {
@@ -776,8 +778,11 @@ static void replay_trace_frames(void) {
       }
       FATAL() << "Received continue request after end-of-trace.";
     }
-    return;
+    break;
   }
+
+  session = nullptr;
+  LOG(debug) << "debugger server exiting ...";
 }
 
 static void serve_replay(const string& trace_dir) {
@@ -795,15 +800,6 @@ static void serve_replay(const string& trace_dir) {
   }
 
   LOG(info) << ("Replayer successfully finished.");
-}
-
-static void serve_replay_with_debugger(const string& trace_dir) {
-  session = ReplaySession::create(trace_dir);
-
-  replay_trace_frames();
-
-  session = nullptr;
-  LOG(debug) << "debugger server exiting ...";
 }
 
 static void handle_signal(int sig) {
