@@ -65,6 +65,7 @@ static unique_ptr<GdbContext> stashed_dbg;
 
 // Checkpoints, indexed by checkpoint ID
 map<int, ReplaySession::shr_ptr> checkpoints;
+
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
@@ -780,6 +781,23 @@ static void replay_trace_frames(void) {
 }
 
 static void serve_replay(const string& trace_dir) {
+  ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
+
+  while (true) {
+    auto result = replay_session->replay_step(ReplaySession::RUN_CONTINUE);
+
+    if (result.status == ReplaySession::REPLAY_EXITED) {
+      break;
+    }
+    assert(result.status == ReplaySession::REPLAY_CONTINUE);
+    assert(result.break_status.reason == Session::BREAK_NONE ||
+           result.break_status.reason == Session::BREAK_SIGNAL);
+  }
+
+  LOG(info) << ("Replayer successfully finished.");
+}
+
+static void serve_replay_with_debugger(const string& trace_dir) {
   session = ReplaySession::create(trace_dir);
 
   replay_trace_frames();
@@ -836,7 +854,7 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    serve_replay(trace_dir);
+    serve_replay_with_debugger(trace_dir);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if

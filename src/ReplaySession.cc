@@ -1475,7 +1475,9 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
     setup_replay_one_trace_frame(t);
     if (current_step.action == TSTEP_NONE) {
       // Already at the destination event.
-      if (!last_task()) {
+      if (last_task()) {
+        result.status = REPLAY_EXITED;
+      } else {
         advance_to_next_trace_frame();
       }
       return result;
