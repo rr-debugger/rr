@@ -765,7 +765,6 @@ static void serve_replay_with_debugger(const string& trace_dir) {
       }
     }
     LOG(info) << ("Replayer successfully finished.");
-    fflush(stdout);
 
     if (dbg) {
       // TODO return real exit code, if it's useful.
