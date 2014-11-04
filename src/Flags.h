@@ -8,16 +8,19 @@
 
 #include <string>
 
+#include "Ticks.h"
+#include "TraceFrame.h"
+
 /**
  * Command line arguments for rr
  */
 struct Flags {
   /* Max counter value before the scheduler interrupts a tracee. */
-  int max_ticks;
+  Ticks max_ticks;
 
   /* Max number of trace events before the scheduler
    * de-schedules a tracee. */
-  int max_events;
+  TraceFrame::Time max_events;
 
   /**
    * The following parameters define the default scheduling parameters.
@@ -100,7 +103,7 @@ struct Flags {
     DUMP_ON_NONE = -DUMP_ON_ALL
   };
   /* event(s) to create memory dumps for */
-  int dump_on; // event
+  TraceFrame::Time dump_on; // event
 
   enum {
     DUMP_AT_NONE = -1
@@ -156,7 +159,7 @@ struct Flags {
   // Start a debug server for the task scheduled at the first
   // event at which reached this event AND target_process has
   // been "created".
-  uint32_t goto_event;
+  TraceFrame::Time goto_event;
 
   pid_t target_process;
 
