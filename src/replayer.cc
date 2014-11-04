@@ -771,7 +771,7 @@ static void serve_replay_with_debugger(const string& trace_dir,
   LOG(debug) << "debugger server exiting ...";
 }
 
-static void serve_replay(const string& trace_dir) {
+static void serve_replay_no_debugger(const string& trace_dir) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
 
   while (true) {
@@ -811,7 +811,7 @@ int replay(int argc, char* argv[], char** envp) {
   // through the rigamarole to set that up.  All it does is
   // complicate the process tree and confuse users.
   if (Flags::get().dont_launch_debugger) {
-    serve_replay(trace_dir);
+    serve_replay_no_debugger(trace_dir);
     return 0;
   }
 
