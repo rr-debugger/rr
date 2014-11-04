@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -811,7 +812,12 @@ int replay(int argc, char* argv[], char** envp) {
   // through the rigamarole to set that up.  All it does is
   // complicate the process tree and confuse users.
   if (Flags::get().dont_launch_debugger) {
-    serve_replay_no_debugger(trace_dir);
+    if (Flags::get().goto_event ==
+        numeric_limits<decltype(Flags::get().goto_event)>::max()) {
+      serve_replay_no_debugger(trace_dir);
+    } else {
+      serve_replay_with_debugger(trace_dir, nullptr);
+    }
     return 0;
   }
 
