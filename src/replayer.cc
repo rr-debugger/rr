@@ -82,9 +82,11 @@ static const char gdb_rr_macros[] =
     "end\n"
     "handle SIGURG stop\n";
 
-// The parent process waits until the server, |child|, creates a debug socket.
-// Then the parent exec()s the debugger over itself.
-static pid_t child;
+// The parent process waits until the server, |waiting_for_child|, creates a
+// debug socket. Then the parent exec()s the debugger over itself. While it's
+// waiting for the child, this is the child's pid.
+// This needs to be global because it's used by a signal handler.
+static pid_t waiting_for_child;
 // The server writes debugger params to this pipe.
 static ScopedFd debugger_params_write_pipe;
 
@@ -790,8 +792,8 @@ static void handle_signal(int sig) {
       // server, because it's blocking SIGINT.  We don't use
       // SIGINT for anything, so all it's meant to do is
       // kill us, and SIGTERM works just as well for that.
-      if (child > 0) {
-        kill(child, SIGTERM);
+      if (waiting_for_child > 0) {
+        kill(waiting_for_child, SIGTERM);
       }
       break;
     default:
@@ -821,7 +823,7 @@ int replay(int argc, char* argv[], char** envp) {
   if (pipe2(debugger_params_pipe, O_CLOEXEC)) {
     FATAL() << "Couldn't open debugger params pipe.";
   }
-  if (0 == (child = fork())) {
+  if (0 == (waiting_for_child = fork())) {
     // Ensure only the parent has the read end of the pipe open. Then if
     // the parent dies, our writes to the pipe will error out.
     close(debugger_params_pipe[0]);
@@ -837,7 +839,7 @@ int replay(int argc, char* argv[], char** envp) {
   // Ensure only the child has the write end of the pipe open. Then if
   // the child dies, our reads from the pipe will return EOF.
   close(debugger_params_pipe[1]);
-  LOG(debug) << getpid() << ": forked debugger server " << child;
+  LOG(debug) << getpid() << ": forked debugger server " << waiting_for_child;
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
@@ -848,15 +850,15 @@ int replay(int argc, char* argv[], char** envp) {
   // and exec gdb. Exit with the exit status of the child.
   while (true) {
     int status;
-    int ret = waitpid(child, &status, 0);
+    int ret = waitpid(waiting_for_child, &status, 0);
     int err = errno;
-    LOG(debug) << getpid() << ": waitpid(" << child << ") returned "
+    LOG(debug) << getpid() << ": waitpid(" << waiting_for_child << ") returned "
                << strerror(err) << "(" << err << "); status:" << HEX(status);
-    if (child != ret) {
+    if (waiting_for_child != ret) {
       if (EINTR == err) {
         continue;
       }
-      FATAL() << getpid() << ": waitpid(" << child << ") failed";
+      FATAL() << getpid() << ": waitpid(" << waiting_for_child << ") failed";
     }
     if (WIFEXITED(status) || WIFSIGNALED(status)) {
       LOG(info) << ("Debugger server died.  Exiting.");
