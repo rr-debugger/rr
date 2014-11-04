@@ -618,8 +618,8 @@ static bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
   if (!t) {
     return false;
   }
-  uint32_t event_now = next_frame.time();
-  uint32_t goto_event = Flags::get().goto_event;
+  TraceFrame::Time event_now = next_frame.time();
+  TraceFrame::Time goto_event = Flags::get().goto_event;
   pid_t target_process = Flags::get().target_process;
   bool require_exec = Flags::CREATED_EXEC == Flags::get().process_created_how;
   if (event_now < goto_event
