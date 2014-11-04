@@ -87,8 +87,6 @@ static const char gdb_rr_macros[] =
 // waiting for the child, this is the child's pid.
 // This needs to be global because it's used by a signal handler.
 static pid_t waiting_for_child;
-// The server writes debugger params to this pipe.
-static ScopedFd debugger_params_write_pipe;
 
 // Setting these causes us to trace instructions after
 // instruction_trace_at_event_start up to and including
@@ -598,7 +596,8 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-static bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg) {
+static bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
+                                   ScopedFd* debugger_params_write_pipe) {
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
   if (!session->can_validate()) {
@@ -676,8 +675,10 @@ static bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg) {
     const string* exe =
         Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
     *dbg = GdbContext::await_client_connection(port, probe, t->tgid(), exe,
-                                               &debugger_params_write_pipe);
-    debugger_params_write_pipe.close();
+                                               debugger_params_write_pipe);
+    if (debugger_params_write_pipe) {
+      debugger_params_write_pipe->close();
+    }
   }
 
   return true;
@@ -727,7 +728,8 @@ static void restart_session(GdbContext& dbg, GdbRequest* req,
   }
 }
 
-static void serve_replay_with_debugger(const string& trace_dir) {
+static void serve_replay_with_debugger(const string& trace_dir,
+                                       ScopedFd* debugger_params_write_pipe) {
   session = ReplaySession::create(trace_dir);
 
   unique_ptr<GdbContext> dbg;
@@ -737,7 +739,8 @@ static void serve_replay_with_debugger(const string& trace_dir) {
   while (true) {
     while (!session->last_task()) {
       if (!debugger_active) {
-        debugger_active = maybe_connect_debugger(&dbg);
+        debugger_active =
+            maybe_connect_debugger(&dbg, debugger_params_write_pipe);
       }
 
       GdbRequest restart_request;
@@ -827,13 +830,13 @@ int replay(int argc, char* argv[], char** envp) {
     // Ensure only the parent has the read end of the pipe open. Then if
     // the parent dies, our writes to the pipe will error out.
     close(debugger_params_pipe[0]);
-    debugger_params_write_pipe = ScopedFd(debugger_params_pipe[1]);
+    ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
     // The parent process (gdb) must be able to receive
     // SIGINT's to interrupt non-stopped tracees.  But the
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    serve_replay_with_debugger(trace_dir);
+    serve_replay_with_debugger(trace_dir, &debugger_params_write_pipe);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
