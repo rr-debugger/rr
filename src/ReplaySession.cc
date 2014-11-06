@@ -609,7 +609,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
                                     Ticks ticks_left, Ticks ticks_slack,
                                     bool* ignoring_early_match,
                                     Ticks* ticks_left_at_ignored_early_match) {
-  int behavior =
+  MismatchBehavior behavior =
 #ifdef DEBUGTAG
       LOG_MISMATCHES
 #else

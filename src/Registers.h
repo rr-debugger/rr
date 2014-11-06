@@ -17,6 +17,12 @@
 #include "kernel_supplement.h"
 #include "remote_ptr.h"
 
+enum MismatchBehavior {
+  EXPECT_MISMATCHES = 0,
+  LOG_MISMATCHES,
+  BAIL_ON_MISMATCH
+};
+
 /**
  * A Registers object contains values for all general-purpose registers.
  * These must include all registers used to pass syscall parameters and return
@@ -232,7 +238,7 @@ public:
    */
   static bool compare_register_files(const char* name1, const Registers& reg1,
                                      const char* name2, const Registers& reg2,
-                                     int mismatch_behavior);
+                                     MismatchBehavior mismatch_behavior);
 
   /**
    * Return the total number of registers for this target.
@@ -273,7 +279,7 @@ private:
   template <typename Arch>
   static bool compare_registers_arch(const char* name1, const Registers& reg1,
                                      const char* name2, const Registers& reg2,
-                                     int mismatch_behavior);
+                                     MismatchBehavior mismatch_behavior);
 
   template <typename Arch>
   size_t read_register_arch(uint8_t* buf, GdbRegister regno,

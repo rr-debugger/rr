@@ -63,14 +63,9 @@ enum Completion {
  * match.  Passing BAIL_ON_MISMATCH will additionally abort on
  * mismatch.
  */
-enum {
-  EXPECT_MISMATCHES = 0,
-  LOG_MISMATCHES,
-  BAIL_ON_MISMATCH
-};
 bool compare_register_files(Task* t, const char* name1, const Registers& reg1,
                             const char* name2, const Registers& reg2,
-                            int mismatch_behavior);
+                            MismatchBehavior mismatch_behavior);
 
 void assert_child_regs_are(Task* t, const Registers& regs);
 

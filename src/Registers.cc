@@ -282,9 +282,10 @@ void Registers::print_register_file_for_trace_raw(FILE* f) const {
           u.x86regs.esp, u.x86regs.eip, u.x86regs.eflags);
 }
 
-static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
-                                     const char* label1, uint64_t val1,
-                                     const char* label2, uint64_t val2) {
+static void maybe_print_reg_mismatch(MismatchBehavior mismatch_behavior,
+                                     const char* regname, const char* label1,
+                                     uint64_t val1, const char* label2,
+                                     uint64_t val2) {
   if (mismatch_behavior >= BAIL_ON_MISMATCH) {
     LOG(error) << regname << " " << HEX(val1) << " != " << HEX(val2) << " ("
                << label1 << " vs. " << label2 << ")";
@@ -297,7 +298,7 @@ static void maybe_print_reg_mismatch(int mismatch_behavior, const char* regname,
 template <typename Arch>
 static bool compare_registers_core(const char* name1, const Registers& reg1,
                                    const char* name2, const Registers& reg2,
-                                   int mismatch_behavior) {
+                                   MismatchBehavior mismatch_behavior) {
   bool match = true;
 
   for (auto& rv : RegisterInfo<Arch>::registers) {
@@ -343,11 +344,9 @@ static bool compare_registers_core(const char* name1, const Registers& reg1,
 // A wrapper around compare_registers_core so registers requiring special
 // processing can be handled via template specialization.
 template <typename Arch>
-/* static */ bool Registers::compare_registers_arch(const char* name1,
-                                                    const Registers& reg1,
-                                                    const char* name2,
-                                                    const Registers& reg2,
-                                                    int mismatch_behavior) {
+/* static */ bool Registers::compare_registers_arch(
+    const char* name1, const Registers& reg1, const char* name2,
+    const Registers& reg2, MismatchBehavior mismatch_behavior) {
   // Default behavior.
   return compare_registers_core<Arch>(name1, reg1, name2, reg2,
                                       mismatch_behavior);
@@ -356,7 +355,7 @@ template <typename Arch>
 template <>
 /* static */ bool Registers::compare_registers_arch<rr::X86Arch>(
     const char* name1, const Registers& reg1, const char* name2,
-    const Registers& reg2, int mismatch_behavior) {
+    const Registers& reg2, MismatchBehavior mismatch_behavior) {
   bool match = compare_registers_core<rr::X86Arch>(name1, reg1, name2, reg2,
                                                    mismatch_behavior);
   /* Negative orig_eax values, observed at SCHED events and signals,
@@ -373,7 +372,7 @@ template <>
 template <>
 /* static */ bool Registers::compare_registers_arch<rr::X64Arch>(
     const char* name1, const Registers& reg1, const char* name2,
-    const Registers& reg2, int mismatch_behavior) {
+    const Registers& reg2, MismatchBehavior mismatch_behavior) {
   bool match = compare_registers_core<rr::X64Arch>(name1, reg1, name2, reg2,
                                                    mismatch_behavior);
   // XXX haven't actually observed this to be true on x86-64 yet, but
@@ -393,11 +392,9 @@ template <>
   return match;
 }
 
-/*static*/ bool Registers::compare_register_files(const char* name1,
-                                                  const Registers& reg1,
-                                                  const char* name2,
-                                                  const Registers& reg2,
-                                                  int mismatch_behavior) {
+/*static*/ bool Registers::compare_register_files(
+    const char* name1, const Registers& reg1, const char* name2,
+    const Registers& reg2, MismatchBehavior mismatch_behavior) {
   assert(reg1.arch() == reg2.arch());
   RR_ARCH_FUNCTION(compare_registers_arch, reg1.arch(), name1, reg1, name2,
                    reg2, mismatch_behavior);
