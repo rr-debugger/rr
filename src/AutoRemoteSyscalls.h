@@ -187,9 +187,7 @@ private:
   Registers initial_regs;
   remote_ptr<uint8_t> initial_ip;
   int pending_syscallno;
-  static const uint8_t x86_syscall_insn[2];
-  static const uint8_t x64_syscall_insn[2];
-  uint8_t code_buffer[sizeof(x86_syscall_insn)];
+  uint8_t code_buffer[sizeof(rr::X86Arch::syscall_insn)];
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;

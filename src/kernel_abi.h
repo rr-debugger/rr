@@ -819,6 +819,8 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   static const SelectCallingSemantics select_semantics = SelectStructArguments;
   static const UserAndGroupIDSizesSupported uid_gid_sizes = Mixed16And32Bit;
 
+  static const uint8_t syscall_insn[2];
+
 #include "SyscallEnumsX86.generated"
 
   struct user_regs_struct {
@@ -887,6 +889,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   static const SelectCallingSemantics select_semantics =
       SelectRegisterArguments;
   static const UserAndGroupIDSizesSupported uid_gid_sizes = Only32Bit;
+
+  static const uint8_t syscall_insn[2];
 
 #include "SyscallEnumsX64.generated"
 
