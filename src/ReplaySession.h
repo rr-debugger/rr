@@ -73,9 +73,6 @@ struct ReplayFlushBufferedSyscallState {
 enum ReplayTraceStepType {
   TSTEP_NONE,
 
-  /* Frame has been replayed, done. */
-  TSTEP_RETIRE,
-
   /* Enter/exit a syscall.  |syscall| describe what should be
    * done at entry/exit. */
   TSTEP_ENTER_SYSCALL,
@@ -101,6 +98,9 @@ enum ReplayTraceStepType {
   /* Emulate arming or disarming the desched event.  |desched|
    * tracks the replay state. */
   TSTEP_DESCHED,
+
+  /* Frame has been replayed, done. */
+  TSTEP_RETIRE,
 };
 
 enum ExecOrEmulate {
@@ -141,6 +141,27 @@ struct ReplayTraceStep {
 
     ReplayDeschedState desched;
   };
+};
+
+/**
+ * An indicator of how much progress the ReplaySession has made within a given
+ * (TraceFrame::Time, Ticks) pair. These can only be used for comparisons, to
+ * check whether two ReplaySessions are in the same state and to help
+ * order their states temporally.
+ */
+class ReplayStepKey {
+public:
+  ReplayStepKey(ReplayTraceStepType action) : action(action) {}
+
+  bool operator==(const ReplayStepKey& other) const {
+    return action == other.action;
+  }
+  bool operator<(const ReplayStepKey& other) const {
+    return action < other.action;
+  }
+
+private:
+  ReplayTraceStepType action;
 };
 
 /** Encapsulates additional session state related to replay. */
@@ -184,6 +205,11 @@ public:
    * The Task for the current trace record.
    */
   Task* current_task() const { return find_task(trace_frame.tid()); }
+
+  /**
+   * The current ReplayStepKey.
+   */
+  const ReplayStepKey& current_step_key() { return ReplayStepKey(current_step.action); }
 
   /**
    * Set |tgid| as the one that's being debugged in this
