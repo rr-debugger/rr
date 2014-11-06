@@ -47,9 +47,6 @@
 using namespace std;
 using namespace rr;
 
-const uint8_t X86Arch::syscall_insn[2] = { 0xcd, 0x80 };
-const uint8_t X64Arch::syscall_insn[2] = { 0x0f, 0x05 };
-
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.
