@@ -10,9 +10,6 @@
 
 using namespace rr;
 
-const uint8_t AutoRemoteSyscalls::x86_syscall_insn[] = { 0xcd, 0x80 };
-const uint8_t AutoRemoteSyscalls::x64_syscall_insn[] = { 0x0f, 0x05 };
-
 void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
   len = num_bytes;
   saved_sp = remote.regs().sp();
@@ -43,14 +40,19 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
       initial_regs(t->regs()),
       initial_ip(t->ip()),
       pending_syscallno(-1) {
+  static_assert(sizeof(code_buffer) >= sizeof(X86Arch::syscall_insn),
+                "syscall_insn is too large for buffer");
+  static_assert(sizeof(code_buffer) >= sizeof(X64Arch::syscall_insn),
+                "syscall_insn is too large for buffer");
+
   // Inject syscall instruction, saving previous insn (fragment)
   // at $ip.
   t->read_bytes(initial_ip, code_buffer);
   if (t->arch() == x86) {
-    t->write_bytes(initial_ip, x86_syscall_insn);
+    t->write_bytes(initial_ip, X86Arch::syscall_insn);
   } else {
     assert(t->arch() == x86_64);
-    t->write_bytes(initial_ip, x64_syscall_insn);
+    t->write_bytes(initial_ip, X64Arch::syscall_insn);
   }
 }
 

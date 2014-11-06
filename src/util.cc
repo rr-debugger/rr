@@ -47,6 +47,9 @@
 using namespace std;
 using namespace rr;
 
+const uint8_t X86Arch::syscall_insn[2] = { 0xcd, 0x80 };
+const uint8_t X64Arch::syscall_insn[2] = { 0x0f, 0x05 };
+
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.
@@ -832,10 +835,13 @@ void destroy_buffers(Task* t) {
 // the vdso in the future, this code can be eliminated in
 // favor of a *much* simpler vsyscall SYS_exit hook in the
 // preload lib.
+  auto& syscall_insn =
 #if defined(__i386__)
-  static const uint8_t syscall_insn[] = { 0xcd, 0x80 };
+                       X86Arch::syscall_insn;
 #elif defined(__x86_64__)
-  static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
+                       X64Arch::syscall_insn;
+#else
+#error unknown architecture
 #endif
 
   Registers exit_regs = t->regs();
