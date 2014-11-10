@@ -820,7 +820,7 @@ static void advance_syscall(Task* t) {
   do {
     t->cont_syscall();
   } while (t->is_ptrace_seccomp_event() ||
-           is_ignored_replay_signal(t->pending_sig()));
+           ReplaySession::is_ignored_signal(t->pending_sig()));
   assert(t->ptrace_event() == 0);
 }
 

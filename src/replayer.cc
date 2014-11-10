@@ -45,21 +45,6 @@ bool trace_instructions_up_to_event(uint64_t event) {
          event <= instruction_trace_at_event_last;
 }
 
-bool is_ignored_replay_signal(int sig) {
-  switch (sig) {
-    // SIGCHLD can arrive after tasks die during replay.  We don't
-    // care about SIGCHLD unless it was recorded, in which case
-    // we'll emulate its delivery.
-    case SIGCHLD:
-    // SIGWINCH arrives when the user resizes the terminal window.
-    // Not relevant to replay.
-    case SIGWINCH:
-      return true;
-    default:
-      return false;
-  }
-}
-
 /**
  * Set the blocked-ness of |sig| to |blockedness|.
  */

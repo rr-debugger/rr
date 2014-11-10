@@ -18,17 +18,6 @@ class Session;
  */
 int replay(int argc, char* argv[], char** envp);
 
-/**
- * Return true if |sig| is a signal that may be generated during
- * replay but should be ignored.  For example, SIGCHLD can be
- * delivered at almost point during replay when tasks exit, but it's
- * not part of the recording and shouldn't be delivered.
- *
- * TODO: can we do some clever sigprocmask'ing to avoid pending
- * signals altogether?
- */
-bool is_ignored_replay_signal(int sig);
-
 bool trace_instructions_up_to_event(uint64_t event);
 
 /**

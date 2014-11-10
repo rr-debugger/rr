@@ -124,7 +124,7 @@ static void goto_next_syscall_emu(Task* t) {
   t->cont_sysemu();
 
   int sig = t->pending_sig();
-  if (is_ignored_replay_signal(sig)) {
+  if (ReplaySession::is_ignored_signal(sig)) {
     goto_next_syscall_emu(t);
     return;
   }
@@ -144,7 +144,7 @@ static void goto_next_syscall_emu(Task* t) {
     /* this signal is ignored and most likey delivered
      * later, or was already delivered earlier */
     /* TODO: this code is now obselete */
-    if (is_ignored_replay_signal(t->stop_sig())) {
+    if (ReplaySession::is_ignored_signal(t->stop_sig())) {
       LOG(debug) << "do we come here?\n";
       /*t->replay_sig = SIGCHLD; // remove that if
        * spec does not work anymore */
@@ -165,7 +165,7 @@ static void goto_next_syscall_emu(Task* t) {
 static void __ptrace_cont(Task* t) {
   do {
     t->cont_syscall();
-  } while (is_ignored_replay_signal(t->stop_sig()));
+  } while (ReplaySession::is_ignored_signal(t->stop_sig()));
 
   ASSERT(t, !t->pending_sig()) << "Expected no pending signal, but got "
                                << t->pending_sig();

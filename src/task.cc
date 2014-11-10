@@ -283,7 +283,7 @@ void Task::finish_emulated_syscall() {
     // The breakpoint should raise SIGTRAP, but we can also see
     // any of the host of replay-ignored signals.
     ASSERT(this, (pending_sig() == SIGTRAP ||
-                  is_ignored_replay_signal(pending_sig())))
+                  ReplaySession::is_ignored_signal(pending_sig())))
         << "PENDING SIG IS " << signalname(pending_sig());
     vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
   }

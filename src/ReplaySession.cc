@@ -251,6 +251,21 @@ void ReplaySession::advance_to_next_trace_frame() {
   }
 }
 
+bool ReplaySession::is_ignored_signal(int sig) {
+  switch (sig) {
+    // SIGCHLD can arrive after tasks die during replay.  We don't
+    // care about SIGCHLD unless it was recorded, in which case
+    // we'll emulate its delivery.
+    case SIGCHLD:
+    // SIGWINCH arrives when the user resizes the terminal window.
+    // Not relevant to replay.
+    case SIGWINCH:
+      return true;
+    default:
+      return false;
+  }
+}
+
 /**
  * Compares the register file as it appeared in the recording phase
  * with the current register file.
@@ -351,7 +366,7 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   t->resume_execution(resume_how, RESUME_WAIT);
 
   t->child_sig = t->pending_sig();
-  if (is_ignored_replay_signal(t->child_sig)) {
+  if (is_ignored_signal(t->child_sig)) {
     return cont_syscall_boundary(t, emu, stepi);
   }
   if (SIGTRAP == t->child_sig) {
@@ -706,7 +721,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
 
     continue_or_step(t, stepi, ticks_left - SKID_SIZE);
     if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
-        is_ignored_replay_signal(t->child_sig)) {
+        is_ignored_signal(t->child_sig)) {
       t->child_sig = 0;
     }
     guard_unexpected_signal(t);
@@ -855,7 +870,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
     }
 
     if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
-        is_ignored_replay_signal(t->child_sig)) {
+        is_ignored_signal(t->child_sig)) {
       /* We don't usually expect a time-slice signal
        * during this phase, but it's possible for an
        * ignored signal to interrupt the previous
@@ -958,7 +973,7 @@ Completion ReplaySession::emulate_deterministic_signal(Task* t, int sig,
   Event ev(trace_frame.event());
 
   continue_or_step(t, stepi);
-  if (is_ignored_replay_signal(t->child_sig)) {
+  if (is_ignored_signal(t->child_sig)) {
     t->child_sig = 0;
     return emulate_deterministic_signal(t, sig, stepi);
   } else if (SIGTRAP == t->child_sig &&

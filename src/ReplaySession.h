@@ -233,6 +233,17 @@ public:
 
   virtual ReplaySession* as_replay() { return this; }
 
+  /**
+   * Return true if |sig| is a signal that may be generated during
+   * replay but should be ignored.  For example, SIGCHLD can be
+   * delivered at almost point during replay when tasks exit, but it's
+   * not part of the recording and shouldn't be delivered.
+   *
+   * TODO: can we do some clever sigprocmask'ing to avoid pending
+   * signals altogether?
+   */
+  static bool is_ignored_signal(int sig);
+
 private:
   ReplaySession(const std::string& dir)
       : emu_fs(EmuFs::create()),
