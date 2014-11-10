@@ -843,3 +843,20 @@ void GdbServer::serve_replay_with_debugger(
 void GdbServer::launch_gdb(ScopedFd& params_pipe_fd) {
   GdbContext::launch_gdb(params_pipe_fd, gdb_rr_macros);
 }
+
+void GdbServer::emergency_debug(Task* t) {
+  // See the comment in |guard_overshoot()| explaining why we do
+  // this.  Unlike in that context though, we don't know if |t|
+  // overshot an internal breakpoint.  If it did, cover that
+  // breakpoint up.
+  t->vm()->destroy_all_breakpoints();
+
+  // Don't launch a debugger on fatal errors; the user is most
+  // likely already in a debugger, and wouldn't be able to
+  // control another session. Instead, launch a new GdbServer and wait for
+  // the user to connect from another window.
+  unique_ptr<GdbContext> dbg = GdbContext::await_client_connection(
+      t->tid, GdbContext::PROBE_PORT, t->tgid());
+
+  GdbServer().process_debugger_requests(*dbg, t);
+}

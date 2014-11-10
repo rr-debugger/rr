@@ -33,10 +33,11 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "GdbServer.h"
 #include "kernel_abi.h"
 #include "log.h"
-#include "AutoRemoteSyscalls.h"
 #include "replayer.h"
 #include "RecordSession.h"
 #include "ReplaySession.h"
@@ -579,7 +580,7 @@ void emergency_debug(Task* t) {
         << "(session doesn't look interactive, aborting emergency debugging)";
   }
 
-  start_debug_server(t);
+  GdbServer::emergency_debug(t);
   FATAL() << "Can't resume execution from invalid state";
 }
 
