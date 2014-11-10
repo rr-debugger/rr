@@ -55,6 +55,11 @@ class GdbServer {
 public:
   GdbServer() : diversion_refcount(0) {}
 
+  GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
+  void serve_replay_with_debugger(const string& trace_dir,
+                                  ScopedFd* debugger_params_write_pipe);
+
+private:
   void maybe_singlestep_for_event(Task* t, GdbRequest* req);
   /**
    * If |req| is a magic-write command, interpret it and return true.
@@ -72,7 +77,6 @@ public:
    */
   void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
                                  const GdbRequest& req);
-  GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
   /**
    * If the trace has reached the event at which the user wanted a debugger
    * started, then create one and store it in `dbg` if we don't already
@@ -85,8 +89,6 @@ public:
                               ScopedFd* debugger_params_write_pipe);
   void restart_session(GdbContext& dbg, GdbRequest* req, bool* debugger_active);
   void replay_one_step(GdbContext* dbg, GdbRequest* restart_request);
-  void serve_replay_with_debugger(const string& trace_dir,
-                                  ScopedFd* debugger_params_write_pipe);
 
   /**
    * Process debugger requests made through |dbg| in
