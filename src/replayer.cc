@@ -62,6 +62,16 @@ public:
    */
   bool maybe_process_magic_command(Task* t, GdbContext& dbg,
                                    const GdbRequest& req);
+  /**
+   * Process the single debugger request |req|, made by |dbg| targeting
+   * |t|, inside the session |session|.
+   *
+   * Callers should implement any special semantics they want for
+   * particular debugger requests before calling this helper, to do
+   * generic processing.
+   */
+  void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
+                                 const GdbRequest& req);
   GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
   /**
    * If the trace has reached the event at which the user wanted a debugger
@@ -73,8 +83,7 @@ public:
    */
   bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
                               ScopedFd* debugger_params_write_pipe);
-  void restart_session(GdbContext& dbg, GdbRequest* req,
-                       bool* debugger_active);
+  void restart_session(GdbContext& dbg, GdbRequest* req, bool* debugger_active);
   void serve_replay_with_debugger(const string& trace_dir,
                                   ScopedFd* debugger_params_write_pipe);
 
@@ -266,8 +275,8 @@ bool GdbServer::maybe_process_magic_command(Task* t, GdbContext& dbg,
   return true;
 }
 
-void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
-                               const GdbRequest& req) {
+void GdbServer::dispatch_debugger_request(Session& session, GdbContext& dbg,
+                                          Task* t, const GdbRequest& req) {
   assert(!req.is_resume_request());
 
   // These requests don't require a target task.
@@ -382,7 +391,7 @@ void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
         dbg.reply_set_mem(true);
         return;
       }
-      if (gdb_server.maybe_process_magic_command(target, dbg, req)) {
+      if (maybe_process_magic_command(target, dbg, req)) {
         return;
       }
       // We only allow the debugger to write memory if the
@@ -928,8 +937,8 @@ void GdbServer::restart_session(GdbContext& dbg, GdbRequest* req,
   }
 }
 
-void GdbServer::serve_replay_with_debugger(const string& trace_dir,
-                                           ScopedFd* debugger_params_write_pipe) {
+void GdbServer::serve_replay_with_debugger(
+    const string& trace_dir, ScopedFd* debugger_params_write_pipe) {
   session = ReplaySession::create(trace_dir);
 
   unique_ptr<GdbContext> dbg;
@@ -1041,7 +1050,8 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    gdb_server.serve_replay_with_debugger(trace_dir, &debugger_params_write_pipe);
+    gdb_server.serve_replay_with_debugger(trace_dir,
+                                          &debugger_params_write_pipe);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if

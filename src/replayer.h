@@ -19,17 +19,6 @@ class Session;
 int replay(int argc, char* argv[], char** envp);
 
 /**
- * Process the single debugger request |req|, made by |dbg| targeting
- * |t|, inside the session |session|.
- *
- * Callers should implement any special semantics they want for
- * particular debugger requests before calling this helper, to do
- * generic processing.
- */
-void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
-                               const GdbRequest& req);
-
-/**
  * Return true if |sig| is a signal that may be generated during
  * replay but should be ignored.  For example, SIGCHLD can be
  * delivered at almost point during replay when tasks exit, but it's
