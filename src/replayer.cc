@@ -15,7 +15,6 @@
 #include <string>
 #include <vector>
 
-#include "diverter.h"
 #include "Event.h"
 #include "GdbContext.h"
 #include "kernel_abi.h"
