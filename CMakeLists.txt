@@ -99,6 +99,7 @@ add_executable(rr
   src/ExtraRegisters.cc
   src/Flags.cc
   src/GdbContext.cc
+  src/GdbServer.cc
   src/kernel_abi.cc
   src/main.cc
   src/PerfCounters.cc
