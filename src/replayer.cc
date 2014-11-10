@@ -52,14 +52,54 @@ static const uintptr_t DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
 static const uintptr_t DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
 static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 
-// |session| is used to drive replay.
-static ReplaySession::shr_ptr session;
-// If we're being controlled by a debugger, then |last_debugger_start| is
-// the saved session we forked 'session' from.
-static ReplaySession::shr_ptr debugger_restart_checkpoint;
+class GdbServer {
+public:
+  void maybe_singlestep_for_event(Task* t, GdbRequest* req);
+  /**
+   * If |req| is a magic-write command, interpret it and return true.
+   * Otherwise, do nothing and return false.
+   */
+  bool maybe_process_magic_command(Task* t, GdbContext& dbg,
+                                   const GdbRequest& req);
+  GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
+  /**
+   * If the trace has reached the event at which the user wanted a debugger
+   * started, then create one and store it in `dbg` if we don't already
+   * have one there, and return true. Otherwise return false.
+   *
+   * This must be called before scheduling the task for the next event
+   * (and thereby mutating the TraceIfstream for that event).
+   */
+  bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
+                              ScopedFd* debugger_params_write_pipe);
+  void restart_session(GdbContext& dbg, GdbRequest* req,
+                       bool* debugger_active);
+  void serve_replay_with_debugger(const string& trace_dir,
+                                  ScopedFd* debugger_params_write_pipe);
 
-// Checkpoints, indexed by checkpoint ID
-map<int, ReplaySession::shr_ptr> checkpoints;
+  /**
+   * Return the checkpoint stored as |checkpoint_id| or nullptr if there
+   * isn't one.
+   */
+  ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
+
+  /**
+   * Delete the checkpoint stored as |checkpoint_id| if it exists, or do
+   * nothing if it doesn't exist.
+   */
+  void delete_checkpoint(int checkpoint_id);
+
+  // |session| is used to drive replay.
+  ReplaySession::shr_ptr session;
+  // If we're being controlled by a debugger, then |last_debugger_start| is
+  // the saved session we forked 'session' from.
+  ReplaySession::shr_ptr debugger_restart_checkpoint;
+
+  // Checkpoints, indexed by checkpoint ID
+  map<int, ReplaySession::shr_ptr> checkpoints;
+};
+
+static GdbServer gdb_server;
 
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
@@ -142,7 +182,7 @@ bool trace_instructions_up_to_event(uint64_t event) {
          event <= instruction_trace_at_event_last;
 }
 
-static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
+void GdbServer::maybe_singlestep_for_event(Task* t, GdbRequest* req) {
   if (trace_instructions_up_to_event(session->current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
     t->regs().print_register_file_compact(stderr);
@@ -153,11 +193,7 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
   }
 }
 
-/**
- * Return the checkpoint stored as |checkpoint_id| or nullptr if there
- * isn't one.
- */
-static ReplaySession::shr_ptr get_checkpoint(int checkpoint_id) {
+ReplaySession::shr_ptr GdbServer::get_checkpoint(int checkpoint_id) {
   auto it = checkpoints.find(checkpoint_id);
   if (it == checkpoints.end()) {
     return nullptr;
@@ -165,11 +201,7 @@ static ReplaySession::shr_ptr get_checkpoint(int checkpoint_id) {
   return it->second;
 }
 
-/**
- * Delete the checkpoint stored as |checkpoint_id| if it exists, or do
- * nothing if it doesn't exist.
- */
-static void delete_checkpoint(int checkpoint_id) {
+void GdbServer::delete_checkpoint(int checkpoint_id) {
   auto it = checkpoints.find(checkpoint_id);
   if (it == checkpoints.end()) {
     return;
@@ -179,12 +211,8 @@ static void delete_checkpoint(int checkpoint_id) {
   checkpoints.erase(it);
 }
 
-/**
- * If |req| is a magic-write command, interpret it and return true.
- * Otherwise, do nothing and return false.
- */
-static bool maybe_process_magic_command(Task* t, GdbContext& dbg,
-                                        const GdbRequest& req) {
+bool GdbServer::maybe_process_magic_command(Task* t, GdbContext& dbg,
+                                            const GdbRequest& req) {
   if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
     return false;
   }
@@ -324,7 +352,7 @@ void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
         dbg.reply_set_mem(true);
         return;
       }
-      if (maybe_process_magic_command(target, dbg, req)) {
+      if (gdb_server.maybe_process_magic_command(target, dbg, req)) {
         return;
       }
       // We only allow the debugger to write memory if the
@@ -444,7 +472,7 @@ bool is_ignored_replay_signal(int sig) {
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
  */
-static GdbRequest process_debugger_requests(GdbContext& dbg, Task* t) {
+GdbRequest GdbServer::process_debugger_requests(GdbContext& dbg, Task* t) {
   while (1) {
     GdbRequest req = dbg.get_request();
     req.suppress_debugger_stop = false;
@@ -496,7 +524,7 @@ static void replay_one_step(ReplaySession& session, GdbContext* dbg,
   Task* t = session.current_task();
 
   if (dbg) {
-    req = process_debugger_requests(*dbg, t);
+    req = gdb_server.process_debugger_requests(*dbg, t);
     if (DREQ_RESTART == req.type) {
       *restart_request = req;
       return;
@@ -597,8 +625,8 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-static bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
-                                   ScopedFd* debugger_params_write_pipe) {
+bool GdbServer::maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
+                                       ScopedFd* debugger_params_write_pipe) {
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
   if (!session->can_validate()) {
@@ -697,8 +725,8 @@ static void set_sig_blockedness(int sig, int blockedness) {
   }
 }
 
-static void restart_session(GdbContext& dbg, GdbRequest* req,
-                            bool* debugger_active) {
+void GdbServer::restart_session(GdbContext& dbg, GdbRequest* req,
+                                bool* debugger_active) {
   assert(req->type == DREQ_RESTART);
 
   ReplaySession::shr_ptr checkpoint_to_restore;
@@ -729,8 +757,8 @@ static void restart_session(GdbContext& dbg, GdbRequest* req,
   }
 }
 
-static void serve_replay_with_debugger(const string& trace_dir,
-                                       ScopedFd* debugger_params_write_pipe) {
+void GdbServer::serve_replay_with_debugger(const string& trace_dir,
+                                           ScopedFd* debugger_params_write_pipe) {
   session = ReplaySession::create(trace_dir);
 
   unique_ptr<GdbContext> dbg;
@@ -816,7 +844,7 @@ int replay(int argc, char* argv[], char** envp) {
         numeric_limits<decltype(Flags::get().goto_event)>::max()) {
       serve_replay_no_debugger(trace_dir);
     } else {
-      serve_replay_with_debugger(trace_dir, nullptr);
+      gdb_server.serve_replay_with_debugger(trace_dir, nullptr);
     }
     return 0;
   }
@@ -842,7 +870,7 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    serve_replay_with_debugger(trace_dir, &debugger_params_write_pipe);
+    gdb_server.serve_replay_with_debugger(trace_dir, &debugger_params_write_pipe);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
@@ -891,5 +919,5 @@ void start_debug_server(Task* t) {
   unique_ptr<GdbContext> dbg = GdbContext::await_client_connection(
       t->tid, GdbContext::PROBE_PORT, t->tgid());
 
-  process_debugger_requests(*dbg, t);
+  gdb_server.process_debugger_requests(*dbg, t);
 }
