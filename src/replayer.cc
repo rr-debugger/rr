@@ -5,25 +5,16 @@
 #include "replayer.h"
 
 #include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <limits>
-#include <map>
 #include <string>
-#include <vector>
 
-#include "Event.h"
-#include "GdbContext.h"
 #include "GdbServer.h"
-#include "kernel_abi.h"
 #include "log.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
-#include "task.h"
-#include "util.h"
 
 using namespace rr;
 using namespace std;
