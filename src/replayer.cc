@@ -28,28 +28,6 @@
 using namespace rr;
 using namespace std;
 
-// Special-sauce macros defined by rr when launching the gdb client,
-// which implement functionality outside of the gdb remote protocol.
-// (Don't stare at them too long or you'll go blind ;).)
-//
-// See #define's above for origin of magic values below.
-static const char gdb_rr_macros[] =
-    // TODO define `document' sections for these
-    "define checkpoint\n"
-    "  init-if-undefined $_next_checkpoint_index = 1\n"
-    /* Ensure the command echoes the checkpoint number, not the encoded message
-       */
-    "  p (*(int*)29298 = 0x01000000 | $_next_checkpoint_index), "
-    "$_next_checkpoint_index++\n"
-    "end\n"
-    "define delete checkpoint\n"
-    "  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
-    "end\n"
-    "define restart\n"
-    "  run c$arg0\n"
-    "end\n"
-    "handle SIGURG stop\n";
-
 // The parent process waits until the server, |waiting_for_child|, creates a
 // debug socket. Then the parent exec()s the debugger over itself. While it's
 // waiting for the child, this is the child's pid.
@@ -175,7 +153,7 @@ int replay(int argc, char* argv[], char** envp) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    GdbContext::launch_gdb(params_pipe_read_fd, gdb_rr_macros);
+    GdbServer::launch_gdb(params_pipe_read_fd);
   }
 
   // Child must have died before we were able to get debugger parameters

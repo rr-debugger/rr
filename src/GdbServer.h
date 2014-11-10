@@ -20,6 +20,8 @@ public:
   void serve_replay_with_debugger(const std::string& trace_dir,
                                   ScopedFd* debugger_params_write_pipe);
 
+  static void launch_gdb(ScopedFd& params_pipe_fd);
+
 private:
   void maybe_singlestep_for_event(Task* t, GdbRequest* req);
   /**

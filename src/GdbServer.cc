@@ -46,6 +46,28 @@ static const uintptr_t DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
 static const uintptr_t DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
 static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 
+// Special-sauce macros defined by rr when launching the gdb client,
+// which implement functionality outside of the gdb remote protocol.
+// (Don't stare at them too long or you'll go blind ;).)
+//
+// See #define's above for origin of magic values below.
+static const char gdb_rr_macros[] =
+    // TODO define `document' sections for these
+    "define checkpoint\n"
+    "  init-if-undefined $_next_checkpoint_index = 1\n"
+    /* Ensure the command echoes the checkpoint number, not the encoded message
+       */
+    "  p (*(int*)29298 = 0x01000000 | $_next_checkpoint_index), "
+    "$_next_checkpoint_index++\n"
+    "end\n"
+    "define delete checkpoint\n"
+    "  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
+    "end\n"
+    "define restart\n"
+    "  run c$arg0\n"
+    "end\n"
+    "handle SIGURG stop\n";
+
 /**
  * Return the register |which|, which may not have a defined value.
  */
@@ -816,4 +838,8 @@ void GdbServer::serve_replay_with_debugger(
 
   session = nullptr;
   LOG(debug) << "debugger server exiting ...";
+}
+
+void GdbServer::launch_gdb(ScopedFd& params_pipe_fd) {
+  GdbContext::launch_gdb(params_pipe_fd, gdb_rr_macros);
 }
