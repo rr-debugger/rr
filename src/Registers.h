@@ -246,7 +246,7 @@ public:
   size_t total_registers() const;
 
   // TODO: refactor me to use the GdbRegisterValue helper from
-  // GdbContext.h.
+  // GdbConnection.h.
 
   /**
    * Write the value for register |regno| into |buf|, which should

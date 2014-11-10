@@ -139,7 +139,7 @@ void GdbServer::delete_checkpoint(int checkpoint_id) {
   checkpoints.erase(it);
 }
 
-bool GdbServer::maybe_process_magic_command(Task* t, GdbContext& dbg,
+bool GdbServer::maybe_process_magic_command(Task* t, GdbConnection& dbg,
                                             const GdbRequest& req) {
   if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
     return false;
@@ -164,7 +164,7 @@ bool GdbServer::maybe_process_magic_command(Task* t, GdbContext& dbg,
   return true;
 }
 
-void GdbServer::dispatch_debugger_request(Session& session, GdbContext& dbg,
+void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
                                           Task* t, const GdbRequest& req) {
   assert(!req.is_resume_request());
 
@@ -388,7 +388,7 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbContext& dbg,
  *
  * The received request is returned through |req|.
  */
-Task* GdbServer::diverter_process_debugger_requests(GdbContext& dbg, Task* t,
+Task* GdbServer::diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
                                                     GdbRequest* req) {
   while (true) {
     *req = dbg.get_request();
@@ -467,7 +467,7 @@ Task* GdbServer::diverter_process_debugger_requests(GdbContext& dbg, Task* t,
  * is, the first request that should be handled by |replay| upon
  * resuming execution in that session.
  */
-void GdbServer::divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
+void GdbServer::divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
                        GdbRequest* req) {
   LOG(debug) << "Starting debugging diversion for " << &replay;
   assert(!diversion_session && diversion_refcount == 0);
@@ -526,7 +526,7 @@ void GdbServer::divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
  */
-GdbRequest GdbServer::process_debugger_requests(GdbContext& dbg, Task* t) {
+GdbRequest GdbServer::process_debugger_requests(GdbConnection& dbg, Task* t) {
   while (1) {
     GdbRequest req = dbg.get_request();
     req.suppress_debugger_stop = false;
@@ -570,7 +570,8 @@ GdbRequest GdbServer::process_debugger_requests(GdbContext& dbg, Task* t) {
   }
 }
 
-void GdbServer::replay_one_step(GdbContext* dbg, GdbRequest* restart_request) {
+void GdbServer::replay_one_step(GdbConnection* dbg,
+                                GdbRequest* restart_request) {
   restart_request->type = DREQ_NONE;
 
   GdbRequest req;
@@ -678,7 +679,7 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-bool GdbServer::maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
+bool GdbServer::maybe_connect_debugger(unique_ptr<GdbConnection>* dbg,
                                        ScopedFd* debugger_params_write_pipe) {
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
@@ -752,12 +753,12 @@ bool GdbServer::maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
     // presumably break if a different port were to be selected by
     // rr (otherwise why would they specify a port in the first
     // place).  So fail with a clearer error message.
-    auto probe = (Flags::get().dbgport > 0) ? GdbContext::DONT_PROBE
-                                            : GdbContext::PROBE_PORT;
+    auto probe = (Flags::get().dbgport > 0) ? GdbConnection::DONT_PROBE
+                                            : GdbConnection::PROBE_PORT;
     const string* exe =
         Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
-    *dbg = GdbContext::await_client_connection(port, probe, t->tgid(), exe,
-                                               debugger_params_write_pipe);
+    *dbg = GdbConnection::await_client_connection(port, probe, t->tgid(), exe,
+                                                  debugger_params_write_pipe);
     if (debugger_params_write_pipe) {
       debugger_params_write_pipe->close();
     }
@@ -766,7 +767,7 @@ bool GdbServer::maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
   return true;
 }
 
-void GdbServer::restart_session(GdbContext& dbg, GdbRequest* req,
+void GdbServer::restart_session(GdbConnection& dbg, GdbRequest* req,
                                 bool* debugger_active) {
   assert(req->type == DREQ_RESTART);
 
@@ -802,7 +803,7 @@ void GdbServer::serve_replay(const string& trace_dir,
                              ScopedFd* debugger_params_write_pipe) {
   session = ReplaySession::create(trace_dir);
 
-  unique_ptr<GdbContext> dbg;
+  unique_ptr<GdbConnection> dbg;
   // False while we're waiting for the session to reach some requested state
   // before talking to gdb.
   bool debugger_active = false;
@@ -841,7 +842,7 @@ void GdbServer::serve_replay(const string& trace_dir,
 }
 
 void GdbServer::launch_gdb(ScopedFd& params_pipe_fd) {
-  GdbContext::launch_gdb(params_pipe_fd, gdb_rr_macros);
+  GdbConnection::launch_gdb(params_pipe_fd, gdb_rr_macros);
 }
 
 void GdbServer::emergency_debug(Task* t) {
@@ -855,8 +856,8 @@ void GdbServer::emergency_debug(Task* t) {
   // likely already in a debugger, and wouldn't be able to
   // control another session. Instead, launch a new GdbServer and wait for
   // the user to connect from another window.
-  unique_ptr<GdbContext> dbg = GdbContext::await_client_connection(
-      t->tid, GdbContext::PROBE_PORT, t->tgid());
+  unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
+      t->tid, GdbConnection::PROBE_PORT, t->tgid());
 
   GdbServer().process_debugger_requests(*dbg, t);
 }

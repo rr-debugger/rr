@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "GdbContext"
+//#define DEBUGTAG "GdbConnection"
 
 /**
  * Much of this implementation is based on the documentation at
@@ -8,7 +8,7 @@
  * http://sourceware.org/gdb/onlinedocs/gdb/Packets.html
  */
 
-#include "GdbContext.h"
+#include "GdbConnection.h"
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -56,13 +56,13 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
   }
 }
 
-GdbContext::GdbContext(pid_t tgid)
+GdbConnection::GdbConnection(pid_t tgid)
     : tgid(tgid), no_ack(false), inlen(0), outlen(0) {
   memset(&req, 0, sizeof(req));
 }
 
 static ScopedFd open_socket(const char* address, unsigned short* port,
-                            GdbContext::ProbePort probe) {
+                            GdbConnection::ProbePort probe) {
   ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
   if (!listen_fd.is_open()) {
     FATAL() << "Couldn't create socket";
@@ -96,11 +96,11 @@ static ScopedFd open_socket(const char* address, unsigned short* port,
       FATAL() << "Couldn't listen on port " << *port;
     }
     break;
-  } while (++(*port), probe == GdbContext::PROBE_PORT);
+  } while (++(*port), probe == GdbConnection::PROBE_PORT);
   return listen_fd;
 }
 
-void GdbContext::await_debugger(ScopedFd& listen_fd) {
+void GdbConnection::await_debugger(ScopedFd& listen_fd) {
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
 
@@ -117,10 +117,10 @@ struct DebuggerParams {
   short port;
 };
 
-unique_ptr<GdbContext> GdbContext::await_client_connection(
+unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     unsigned short desired_port, ProbePort probe, pid_t tgid,
     const string* exe_image, ScopedFd* client_params_fd) {
-  auto dbg = unique_ptr<GdbContext>(new GdbContext(tgid));
+  auto dbg = unique_ptr<GdbConnection>(new GdbConnection(tgid));
   unsigned short port = desired_port;
   ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
   if (exe_image) {
@@ -159,7 +159,7 @@ static string create_gdb_command_file(const char* macros) {
   return procfile.str();
 }
 
-void GdbContext::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
+void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
   DebuggerParams params;
   ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
   if (nread == 0) {
@@ -243,7 +243,7 @@ static int poll_outgoing(const ScopedFd& sock_fd, int timeoutMs) {
 /**
  * read() incoming data exactly one time, successfully.  May block.
  */
-void GdbContext::read_data_once() {
+void GdbConnection::read_data_once() {
   ssize_t nread;
   /* Wait until there's data, instead of busy-looping on
    * EAGAIN. */
@@ -261,7 +261,7 @@ void GdbContext::read_data_once() {
          inlen < int(sizeof(inbuf)));
 }
 
-void GdbContext::write_flush() {
+void GdbConnection::write_flush() {
   ssize_t write_index = 0;
 
 #ifdef DEBUGTAG
@@ -281,7 +281,7 @@ void GdbContext::write_flush() {
   outlen = 0;
 }
 
-void GdbContext::write_data_raw(const uint8_t* data, ssize_t len) {
+void GdbConnection::write_data_raw(const uint8_t* data, ssize_t len) {
   assert("Impl dynamic alloc if this fails (or double outbuf size)" &&
          (outlen + len) < int(sizeof(inbuf)));
 
@@ -289,7 +289,7 @@ void GdbContext::write_data_raw(const uint8_t* data, ssize_t len) {
   outlen += len;
 }
 
-void GdbContext::write_hex(unsigned long hex) {
+void GdbConnection::write_hex(unsigned long hex) {
   char buf[32];
   size_t len;
 
@@ -297,7 +297,7 @@ void GdbContext::write_hex(unsigned long hex) {
   write_data_raw((uint8_t*)buf, len);
 }
 
-void GdbContext::write_packet_bytes(const uint8_t* data, size_t num_bytes) {
+void GdbConnection::write_packet_bytes(const uint8_t* data, size_t num_bytes) {
   uint8_t checksum;
   size_t i;
 
@@ -310,12 +310,12 @@ void GdbContext::write_packet_bytes(const uint8_t* data, size_t num_bytes) {
   write_hex(checksum);
 }
 
-void GdbContext::write_packet(const char* data) {
+void GdbConnection::write_packet(const char* data) {
   return write_packet_bytes((const uint8_t*)data, strlen(data));
 }
 
-void GdbContext::write_binary_packet(const char* pfx, const uint8_t* data,
-                                     ssize_t num_bytes) {
+void GdbConnection::write_binary_packet(const char* pfx, const uint8_t* data,
+                                        ssize_t num_bytes) {
   ssize_t pfx_num_chars = strlen(pfx);
   uint8_t buf[2 * num_bytes + pfx_num_chars];
   ssize_t buf_num_bytes = 0;
@@ -349,7 +349,7 @@ void GdbContext::write_binary_packet(const char* pfx, const uint8_t* data,
   return write_packet_bytes(buf, buf_num_bytes);
 }
 
-void GdbContext::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
+void GdbConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
   if (0 == len) {
     write_packet("");
     return;
@@ -377,7 +377,7 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
   return str;
 }
 
-bool GdbContext::skip_to_packet_start() {
+bool GdbConnection::skip_to_packet_start() {
   uint8_t* p = nullptr;
   int i;
 
@@ -404,7 +404,7 @@ bool GdbContext::skip_to_packet_start() {
   return true;
 }
 
-bool GdbContext::sniff_packet() {
+bool GdbConnection::sniff_packet() {
   if (skip_to_packet_start()) {
     /* We've already seen a (possibly partial) packet. */
     return true;
@@ -413,7 +413,7 @@ bool GdbContext::sniff_packet() {
   return poll_incoming(sock_fd, 0 /*don't wait*/);
 }
 
-void GdbContext::read_packet() {
+void GdbConnection::read_packet() {
   uint8_t* p;
   size_t checkedlen;
 
@@ -496,7 +496,7 @@ static GdbThreadId parse_threadid(const char* str, char** endptr) {
   return t;
 }
 
-bool GdbContext::xfer(const char* name, char* args) {
+bool GdbConnection::xfer(const char* name, char* args) {
   LOG(debug) << "gdb asks us to transfer " << name << "(" << args << ")";
 
   if (!strcmp(name, "auxv")) {
@@ -585,7 +585,7 @@ static void read_reg_value(char** strp, GdbRegisterValue* reg) {
   *strp = str;
 }
 
-bool GdbContext::query(char* payload) {
+bool GdbConnection::query(char* payload) {
   const char* name;
   char* args;
 
@@ -686,7 +686,7 @@ bool GdbContext::query(char* payload) {
   return false;
 }
 
-bool GdbContext::set_var(char* payload) {
+bool GdbConnection::set_var(char* payload) {
   const char* name;
   char* args;
 
@@ -706,12 +706,12 @@ bool GdbContext::set_var(char* payload) {
   return false;
 }
 
-void GdbContext::consume_request() {
+void GdbConnection::consume_request() {
   memset(&req, 0, sizeof(req));
   write_flush();
 }
 
-bool GdbContext::process_vpacket(char* payload) {
+bool GdbConnection::process_vpacket(char* payload) {
   const char* name;
   char* args;
 
@@ -827,7 +827,7 @@ bool GdbContext::process_vpacket(char* payload) {
   return false;
 }
 
-bool GdbContext::process_packet() {
+bool GdbConnection::process_packet() {
   char request;
   char* payload = nullptr;
   bool ret;
@@ -1016,7 +1016,7 @@ bool GdbContext::process_packet() {
   return ret;
 }
 
-void GdbContext::notify_no_such_thread(const GdbRequest& req) {
+void GdbConnection::notify_no_such_thread(const GdbRequest& req) {
   assert(!memcmp(&req, &this->req, sizeof(this->req)));
 
   /* '10' is the errno ECHILD.  We use it as a magic code to
@@ -1033,7 +1033,7 @@ void GdbContext::notify_no_such_thread(const GdbRequest& req) {
   consume_request();
 }
 
-void GdbContext::notify_restart() {
+void GdbConnection::notify_restart() {
   assert(DREQ_RESTART == req.type);
 
   // These threads may not exist at the first trace-stop after
@@ -1045,7 +1045,7 @@ void GdbContext::notify_restart() {
   memset(&req, 0, sizeof(req));
 }
 
-GdbRequest GdbContext::get_request() {
+GdbRequest GdbConnection::get_request() {
   if (DREQ_RESTART == req.type) {
     LOG(debug) << "consuming RESTART request";
     notify_restart();
@@ -1086,7 +1086,7 @@ GdbRequest GdbContext::get_request() {
   }
 }
 
-void GdbContext::notify_exit_code(int code) {
+void GdbConnection::notify_exit_code(int code) {
   char buf[64];
 
   assert(req.is_resume_request() || req.type == DREQ_INTERRUPT);
@@ -1097,7 +1097,7 @@ void GdbContext::notify_exit_code(int code) {
   consume_request();
 }
 
-void GdbContext::notify_exit_signal(int sig) {
+void GdbConnection::notify_exit_signal(int sig) {
   char buf[64];
 
   assert(req.is_resume_request() || req.type == DREQ_INTERRUPT);
@@ -1191,8 +1191,8 @@ static int to_gdb_signum(int sig) {
   }
 }
 
-void GdbContext::send_stop_reply_packet(GdbThreadId thread, int sig,
-                                        uintptr_t watch_addr) {
+void GdbConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
+                                           uintptr_t watch_addr) {
   if (sig < 0) {
     write_packet("E01");
     return;
@@ -1209,8 +1209,8 @@ void GdbContext::send_stop_reply_packet(GdbThreadId thread, int sig,
   write_packet(buf);
 }
 
-void GdbContext::notify_stop(GdbThreadId thread, int sig,
-                             uintptr_t watch_addr) {
+void GdbConnection::notify_stop(GdbThreadId thread, int sig,
+                                uintptr_t watch_addr) {
   assert(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
   if (tgid != thread.pid) {
@@ -1233,7 +1233,7 @@ void GdbContext::notify_stop(GdbThreadId thread, int sig,
   consume_request();
 }
 
-void GdbContext::notify_restart_failed() {
+void GdbConnection::notify_restart_failed() {
   assert(DREQ_RESTART == req.type);
 
   // TODO: it's not known by this author whether gdb knows how
@@ -1243,7 +1243,7 @@ void GdbContext::notify_restart_failed() {
   consume_request();
 }
 
-void GdbContext::reply_get_current_thread(GdbThreadId thread) {
+void GdbConnection::reply_get_current_thread(GdbThreadId thread) {
   assert(DREQ_GET_CURRENT_THREAD == req.type);
 
   char buf[1024];
@@ -1253,7 +1253,7 @@ void GdbContext::reply_get_current_thread(GdbThreadId thread) {
   consume_request();
 }
 
-void GdbContext::reply_get_auxv(const vector<GdbAuxvPair>& auxv) {
+void GdbConnection::reply_get_auxv(const vector<GdbAuxvPair>& auxv) {
   assert(DREQ_GET_AUXV == req.type);
 
   if (!auxv.empty()) {
@@ -1266,7 +1266,7 @@ void GdbContext::reply_get_auxv(const vector<GdbAuxvPair>& auxv) {
   consume_request();
 }
 
-void GdbContext::reply_get_is_thread_alive(bool alive) {
+void GdbConnection::reply_get_is_thread_alive(bool alive) {
   assert(DREQ_GET_IS_THREAD_ALIVE == req.type);
 
   write_packet(alive ? "OK" : "E01");
@@ -1274,7 +1274,7 @@ void GdbContext::reply_get_is_thread_alive(bool alive) {
   consume_request();
 }
 
-void GdbContext::reply_get_thread_extra_info(const string& info) {
+void GdbConnection::reply_get_thread_extra_info(const string& info) {
   assert(DREQ_GET_THREAD_EXTRA_INFO == req.type);
 
   LOG(debug) << "thread extra info: '" << info.c_str() << "'";
@@ -1285,7 +1285,7 @@ void GdbContext::reply_get_thread_extra_info(const string& info) {
   consume_request();
 }
 
-void GdbContext::reply_select_thread(bool ok) {
+void GdbConnection::reply_select_thread(bool ok) {
   assert(DREQ_SET_CONTINUE_THREAD == req.type ||
          DREQ_SET_QUERY_THREAD == req.type);
 
@@ -1299,7 +1299,7 @@ void GdbContext::reply_select_thread(bool ok) {
   consume_request();
 }
 
-void GdbContext::reply_get_mem(const vector<uint8_t>& mem) {
+void GdbConnection::reply_get_mem(const vector<uint8_t>& mem) {
   assert(DREQ_GET_MEM == req.type);
   assert(mem.size() <= req.mem.len);
 
@@ -1308,7 +1308,7 @@ void GdbContext::reply_get_mem(const vector<uint8_t>& mem) {
   consume_request();
 }
 
-void GdbContext::reply_set_mem(bool ok) {
+void GdbConnection::reply_set_mem(bool ok) {
   assert(DREQ_SET_MEM == req.type);
 
   write_packet(ok ? "OK" : "E01");
@@ -1317,7 +1317,7 @@ void GdbContext::reply_set_mem(bool ok) {
   consume_request();
 }
 
-void GdbContext::reply_get_offsets(/* TODO */) {
+void GdbConnection::reply_get_offsets(/* TODO */) {
   assert(DREQ_GET_OFFSETS == req.type);
 
   /* XXX FIXME TODO */
@@ -1326,7 +1326,7 @@ void GdbContext::reply_get_offsets(/* TODO */) {
   consume_request();
 }
 
-void GdbContext::reply_get_reg(const GdbRegisterValue& reg) {
+void GdbConnection::reply_get_reg(const GdbRegisterValue& reg) {
   char buf[2 * GdbRegisterValue::MAX_SIZE + 1];
 
   assert(DREQ_GET_REG == req.type);
@@ -1337,7 +1337,7 @@ void GdbContext::reply_get_reg(const GdbRegisterValue& reg) {
   consume_request();
 }
 
-void GdbContext::reply_get_regs(const GdbRegisterFile& file) {
+void GdbConnection::reply_get_regs(const GdbRegisterFile& file) {
   size_t n_regs = file.total_registers();
   char buf[n_regs * 2 * GdbRegisterValue::MAX_SIZE + 1];
 
@@ -1352,7 +1352,7 @@ void GdbContext::reply_get_regs(const GdbRegisterFile& file) {
   consume_request();
 }
 
-void GdbContext::reply_set_reg(bool ok) {
+void GdbConnection::reply_set_reg(bool ok) {
   assert(DREQ_SET_REG == req.type);
 
   // TODO: what happens if we're forced to reply to a
@@ -1368,7 +1368,7 @@ void GdbContext::reply_set_reg(bool ok) {
   consume_request();
 }
 
-void GdbContext::reply_get_stop_reason(GdbThreadId which, int sig) {
+void GdbConnection::reply_get_stop_reason(GdbThreadId which, int sig) {
   assert(DREQ_GET_STOP_REASON == req.type);
 
   send_stop_reply_packet(which, sig);
@@ -1376,7 +1376,7 @@ void GdbContext::reply_get_stop_reason(GdbThreadId which, int sig) {
   consume_request();
 }
 
-void GdbContext::reply_get_thread_list(const vector<GdbThreadId>& threads) {
+void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
   assert(DREQ_GET_THREAD_LIST == req.type);
 
   if (threads.empty()) {
@@ -1408,7 +1408,7 @@ void GdbContext::reply_get_thread_list(const vector<GdbThreadId>& threads) {
   consume_request();
 }
 
-void GdbContext::reply_watchpoint_request(bool ok) {
+void GdbConnection::reply_watchpoint_request(bool ok) {
   assert(DREQ_WATCH_FIRST <= req.type && req.type <= DREQ_WATCH_LAST);
 
   write_packet(ok ? "OK" : "E01");
@@ -1416,7 +1416,7 @@ void GdbContext::reply_watchpoint_request(bool ok) {
   consume_request();
 }
 
-void GdbContext::reply_detach() {
+void GdbConnection::reply_detach() {
   assert(DREQ_DETACH <= req.type);
 
   write_packet("OK");
@@ -1424,7 +1424,7 @@ void GdbContext::reply_detach() {
   consume_request();
 }
 
-void GdbContext::reply_read_siginfo(const vector<uint8_t>& si_bytes) {
+void GdbConnection::reply_read_siginfo(const vector<uint8_t>& si_bytes) {
   assert(DREQ_READ_SIGINFO == req.type);
 
   if (si_bytes.empty()) {
@@ -1436,7 +1436,7 @@ void GdbContext::reply_read_siginfo(const vector<uint8_t>& si_bytes) {
   consume_request();
 }
 
-void GdbContext::reply_write_siginfo(/* TODO*/) {
+void GdbConnection::reply_write_siginfo(/* TODO*/) {
   assert(DREQ_WRITE_SIGINFO == req.type);
 
   write_packet("E01");

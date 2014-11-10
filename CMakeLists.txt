@@ -98,7 +98,7 @@ add_executable(rr
   src/Event.cc
   src/ExtraRegisters.cc
   src/Flags.cc
-  src/GdbContext.cc
+  src/GdbConnection.cc
   src/GdbServer.cc
   src/kernel_abi.cc
   src/main.cc

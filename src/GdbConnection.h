@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_GDB_CONTEXT_H_
-#define RR_GDB_CONTEXT_H_
+#ifndef RR_GDB_CONNECTION_H_
+#define RR_GDB_CONNECTION_H_
 
 #include <stddef.h>
 #include <sys/types.h>
@@ -177,7 +177,7 @@ struct GdbAuxvPair {
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
  */
-class GdbContext {
+class GdbConnection {
 public:
   /**
    * Wait for exactly one gdb host to connect to this remote target on
@@ -203,7 +203,7 @@ public:
     DONT_PROBE = 0,
     PROBE_PORT
   };
-  static std::unique_ptr<GdbContext> await_client_connection(
+  static std::unique_ptr<GdbConnection> await_client_connection(
       unsigned short desired_port, ProbePort probe, pid_t tgid,
       const std::string* exe_image = nullptr,
       ScopedFd* client_params_fd = nullptr);
@@ -224,7 +224,7 @@ public:
 
   /**
    * Finish a DREQ_RESTART request.  Should be invoked after replay
-   * restarts and prior GdbContext has been restored.
+   * restarts and prior GdbConnection has been restored.
    */
   void notify_restart();
 
@@ -379,7 +379,7 @@ public:
   ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
 
 private:
-  GdbContext(pid_t tgid);
+  GdbConnection(pid_t tgid);
 
   /**
    * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
@@ -473,4 +473,4 @@ private:
   ssize_t outlen;
 };
 
-#endif /* RR_GDB_CONTEXT_H_ */
+#endif /* RR_GDB_CONNECTION_H_ */

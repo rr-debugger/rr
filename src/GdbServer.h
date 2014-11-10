@@ -8,7 +8,7 @@
 #include <string>
 
 #include "DiversionSession.h"
-#include "GdbContext.h"
+#include "GdbConnection.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 
@@ -50,7 +50,7 @@ private:
    * If |req| is a magic-write command, interpret it and return true.
    * Otherwise, do nothing and return false.
    */
-  bool maybe_process_magic_command(Task* t, GdbContext& dbg,
+  bool maybe_process_magic_command(Task* t, GdbConnection& dbg,
                                    const GdbRequest& req);
   /**
    * Process the single debugger request |req|, made by |dbg| targeting
@@ -60,7 +60,7 @@ private:
    * particular debugger requests before calling this helper, to do
    * generic processing.
    */
-  void dispatch_debugger_request(Session& session, GdbContext& dbg, Task* t,
+  void dispatch_debugger_request(Session& session, GdbConnection& dbg, Task* t,
                                  const GdbRequest& req);
   /**
    * If the trace has reached the event at which the user wanted a debugger
@@ -70,11 +70,12 @@ private:
    * This must be called before scheduling the task for the next event
    * (and thereby mutating the TraceIfstream for that event).
    */
-  bool maybe_connect_debugger(std::unique_ptr<GdbContext>* dbg,
+  bool maybe_connect_debugger(std::unique_ptr<GdbConnection>* dbg,
                               ScopedFd* debugger_params_write_pipe);
-  void restart_session(GdbContext& dbg, GdbRequest* req, bool* debugger_active);
-  GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
-  void replay_one_step(GdbContext* dbg, GdbRequest* restart_request);
+  void restart_session(GdbConnection& dbg, GdbRequest* req,
+                       bool* debugger_active);
+  GdbRequest process_debugger_requests(GdbConnection& dbg, Task* t);
+  void replay_one_step(GdbConnection* dbg, GdbRequest* restart_request);
   void serve_replay(const std::string& trace_dir,
                     ScopedFd* debugger_params_write_pipe);
 
@@ -86,7 +87,7 @@ private:
    *
    * The received request is returned through |req|.
    */
-  Task* diverter_process_debugger_requests(GdbContext& dbg, Task* t,
+  Task* diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
                                            GdbRequest* req);
   /**
    * Create a new diversion session using |replay| session as the
@@ -99,7 +100,7 @@ private:
    * is, the first request that should be handled by |replay| upon
    * resuming execution in that session.
    */
-  void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
+  void divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
               GdbRequest* req);
 
   /**
