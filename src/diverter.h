@@ -33,18 +33,4 @@ class GdbContext;
 struct GdbRequest;
 class ReplaySession;
 
-/**
- * Create a new diversion session using |replay| session as the
- * template.  The |replay| session isn't mutated.
- *
- * Execution begins in the new diversion session under the control of
- * |dbg| starting with initial thread target |task|.  The diversion
- * session ends at the request of |dbg|, and |req| returns the first
- * request made that wasn't handled by the diversion session.  That
- * is, the first request that should be handled by |replay| upon
- * resuming execution in that session.
- */
-void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
-            GdbRequest* req);
-
 #endif // RR_DIVERTER_H_
