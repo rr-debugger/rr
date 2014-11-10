@@ -16,10 +16,13 @@ class GdbServer {
 public:
   GdbServer() : diversion_refcount(0) {}
 
-  GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
   void serve_replay_with_debugger(const std::string& trace_dir,
                                   ScopedFd* debugger_params_write_pipe);
 
+  /**
+   * exec()'s gdb using parameters read from params_pipe_fd (and sent through
+   * the pipe passed to serve_replay_with_debugger).
+   */
   static void launch_gdb(ScopedFd& params_pipe_fd);
 
   /**
@@ -62,6 +65,7 @@ private:
   bool maybe_connect_debugger(std::unique_ptr<GdbContext>* dbg,
                               ScopedFd* debugger_params_write_pipe);
   void restart_session(GdbContext& dbg, GdbRequest* req, bool* debugger_active);
+  GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
   void replay_one_step(GdbContext* dbg, GdbRequest* restart_request);
 
   /**
