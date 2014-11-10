@@ -469,7 +469,7 @@ bool is_ignored_replay_signal(int sig) {
 
 // The global diversion session, of which there can only be one at a
 // time currently.  See long comment at the top of diverter.h.
-static DiversionSession::shr_ptr session;
+static DiversionSession::shr_ptr diversion_session;
 // Number of client references to this, if it's a diversion
 // session.  When there are 0 refs this is considered to be
 // dying.
@@ -546,7 +546,7 @@ static Task* diverter_process_debugger_requests(GdbContext& dbg, Task* t,
         break;
     }
 
-    dispatch_debugger_request(*session, dbg, t, *req);
+    dispatch_debugger_request(*diversion_session, dbg, t, *req);
   }
 }
 
@@ -564,12 +564,12 @@ static Task* diverter_process_debugger_requests(GdbContext& dbg, Task* t,
 static void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
                    GdbRequest* req) {
   LOG(debug) << "Starting debugging diversion for " << &replay;
-  assert(!session && diversion_refcount == 0);
+  assert(!diversion_session && diversion_refcount == 0);
 
-  session = replay.clone_diversion();
+  diversion_session = replay.clone_diversion();
   diversion_refcount = 1;
 
-  Task* t = session->find_task(task);
+  Task* t = diversion_session->find_task(task);
   while (true) {
     if (!(t = diverter_process_debugger_requests(dbg, t, req))) {
       break;
@@ -579,7 +579,7 @@ static void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
         (DREQ_STEP == req->type && get_threadid(t) == req->target)
             ? Session::RUN_SINGLESTEP
             : Session::RUN_CONTINUE;
-    auto result = session->diversion_step(t, command);
+    auto result = diversion_session->diversion_step(t, command);
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
@@ -612,8 +612,8 @@ static void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
 
   LOG(debug) << "... ending debugging diversion";
   assert(diversion_refcount == 0);
-  session->kill_all_tasks();
-  session = nullptr;
+  diversion_session->kill_all_tasks();
+  diversion_session = nullptr;
 }
 
 /**
