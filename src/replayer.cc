@@ -139,8 +139,6 @@ public:
   int diversion_refcount;
 };
 
-static GdbServer gdb_server;
-
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
@@ -1023,7 +1021,7 @@ int replay(int argc, char* argv[], char** envp) {
         numeric_limits<decltype(Flags::get().goto_event)>::max()) {
       serve_replay_no_debugger(trace_dir);
     } else {
-      gdb_server.serve_replay_with_debugger(trace_dir, nullptr);
+      GdbServer().serve_replay_with_debugger(trace_dir, nullptr);
     }
     return 0;
   }
@@ -1049,8 +1047,8 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    gdb_server.serve_replay_with_debugger(trace_dir,
-                                          &debugger_params_write_pipe);
+    GdbServer().serve_replay_with_debugger(trace_dir,
+                                           &debugger_params_write_pipe);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
@@ -1099,5 +1097,5 @@ void start_debug_server(Task* t) {
   unique_ptr<GdbContext> dbg = GdbContext::await_client_connection(
       t->tid, GdbContext::PROBE_PORT, t->tgid());
 
-  gdb_server.process_debugger_requests(*dbg, t);
+  GdbServer().process_debugger_requests(*dbg, t);
 }
