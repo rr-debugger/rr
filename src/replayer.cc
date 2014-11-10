@@ -84,6 +84,8 @@ public:
   bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
                               ScopedFd* debugger_params_write_pipe);
   void restart_session(GdbContext& dbg, GdbRequest* req, bool* debugger_active);
+  void replay_one_step(ReplaySession& session, GdbContext* dbg,
+                       GdbRequest* restart_request);
   void serve_replay_with_debugger(const string& trace_dir,
                                   ScopedFd* debugger_params_write_pipe);
 
@@ -696,15 +698,15 @@ GdbRequest GdbServer::process_debugger_requests(GdbContext& dbg, Task* t) {
   }
 }
 
-static void replay_one_step(ReplaySession& session, GdbContext* dbg,
-                            GdbRequest* restart_request) {
+void GdbServer::replay_one_step(ReplaySession& session, GdbContext* dbg,
+                                GdbRequest* restart_request) {
   restart_request->type = DREQ_NONE;
 
   GdbRequest req;
   Task* t = session.current_task();
 
   if (dbg) {
-    req = gdb_server.process_debugger_requests(*dbg, t);
+    req = process_debugger_requests(*dbg, t);
     if (DREQ_RESTART == req.type) {
       *restart_request = req;
       return;
