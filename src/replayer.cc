@@ -84,8 +84,7 @@ public:
   bool maybe_connect_debugger(unique_ptr<GdbContext>* dbg,
                               ScopedFd* debugger_params_write_pipe);
   void restart_session(GdbContext& dbg, GdbRequest* req, bool* debugger_active);
-  void replay_one_step(ReplaySession& session, GdbContext* dbg,
-                       GdbRequest* restart_request);
+  void replay_one_step(GdbContext* dbg, GdbRequest* restart_request);
   void serve_replay_with_debugger(const string& trace_dir,
                                   ScopedFd* debugger_params_write_pipe);
 
@@ -698,12 +697,11 @@ GdbRequest GdbServer::process_debugger_requests(GdbContext& dbg, Task* t) {
   }
 }
 
-void GdbServer::replay_one_step(ReplaySession& session, GdbContext* dbg,
-                                GdbRequest* restart_request) {
+void GdbServer::replay_one_step(GdbContext* dbg, GdbRequest* restart_request) {
   restart_request->type = DREQ_NONE;
 
   GdbRequest req;
-  Task* t = session.current_task();
+  Task* t = session->current_task();
 
   if (dbg) {
     req = process_debugger_requests(*dbg, t);
@@ -720,7 +718,7 @@ void GdbServer::replay_one_step(ReplaySession& session, GdbContext* dbg,
       (DREQ_STEP == req.type && get_threadid(t) == req.target)
           ? Session::RUN_SINGLESTEP
           : Session::RUN_CONTINUE;
-  auto result = session.replay_step(command);
+  auto result = session->replay_step(command);
 
   if (result.status == ReplaySession::REPLAY_EXITED) {
     return;
@@ -955,8 +953,7 @@ void GdbServer::serve_replay_with_debugger(
       }
 
       GdbRequest restart_request;
-      replay_one_step(*session, debugger_active ? dbg.get() : nullptr,
-                      &restart_request);
+      replay_one_step(debugger_active ? dbg.get() : nullptr, &restart_request);
       if (restart_request.type != DREQ_NONE) {
         restart_session(*dbg, &restart_request, &debugger_active);
       }
