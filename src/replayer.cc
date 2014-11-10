@@ -101,7 +101,7 @@ int replay(int argc, char* argv[], char** envp) {
         numeric_limits<decltype(Flags::get().goto_event)>::max()) {
       serve_replay_no_debugger(trace_dir);
     } else {
-      GdbServer().serve_replay_with_debugger(trace_dir, nullptr);
+      GdbServer::serve(trace_dir);
     }
     return 0;
   }
@@ -127,8 +127,7 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    GdbServer().serve_replay_with_debugger(trace_dir,
-                                           &debugger_params_write_pipe);
+    GdbServer::serve(trace_dir, &debugger_params_write_pipe);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if

@@ -798,8 +798,8 @@ void GdbServer::restart_session(GdbContext& dbg, GdbRequest* req,
   }
 }
 
-void GdbServer::serve_replay_with_debugger(
-    const string& trace_dir, ScopedFd* debugger_params_write_pipe) {
+void GdbServer::serve_replay(const string& trace_dir,
+                             ScopedFd* debugger_params_write_pipe) {
   session = ReplaySession::create(trace_dir);
 
   unique_ptr<GdbContext> dbg;

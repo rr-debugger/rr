@@ -14,10 +14,16 @@
 
 class GdbServer {
 public:
-  GdbServer() : diversion_refcount(0) {}
-
-  void serve_replay_with_debugger(const std::string& trace_dir,
-                                  ScopedFd* debugger_params_write_pipe);
+  /**
+   * Create a gdbserver serving the replay of 'trace_dir'.
+   * If debugger_params_write_pipe is non-null, write gdb launch parameters
+   * to the pipe; another process should call launch_gdb with the other end
+   * of the pipe to exec() gdb.
+   */
+  static void serve(const std::string& trace_dir,
+                    ScopedFd* debugger_params_write_pipe = nullptr) {
+    GdbServer().serve_replay(trace_dir, debugger_params_write_pipe);
+  }
 
   /**
    * exec()'s gdb using parameters read from params_pipe_fd (and sent through
@@ -37,6 +43,8 @@ public:
   static void emergency_debug(Task* t);
 
 private:
+  GdbServer() : diversion_refcount(0) {}
+
   void maybe_singlestep_for_event(Task* t, GdbRequest* req);
   /**
    * If |req| is a magic-write command, interpret it and return true.
@@ -67,6 +75,8 @@ private:
   void restart_session(GdbContext& dbg, GdbRequest* req, bool* debugger_active);
   GdbRequest process_debugger_requests(GdbContext& dbg, Task* t);
   void replay_one_step(GdbContext* dbg, GdbRequest* restart_request);
+  void serve_replay(const std::string& trace_dir,
+                    ScopedFd* debugger_params_write_pipe);
 
   /**
    * Process debugger requests made through |dbg| in
