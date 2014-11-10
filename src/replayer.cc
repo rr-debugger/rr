@@ -53,6 +53,8 @@ static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 
 class GdbServer {
 public:
+  GdbServer() : diversion_refcount(0) {}
+
   void maybe_singlestep_for_event(Task* t, GdbRequest* req);
   /**
    * If |req| is a magic-write command, interpret it and return true.
@@ -77,6 +79,30 @@ public:
                                   ScopedFd* debugger_params_write_pipe);
 
   /**
+   * Process debugger requests made through |dbg| in
+   * |diversion_session| until action needs to
+   * be taken by the caller (a resume-execution request is received).
+   * The returned Task* is the target of the resume-execution request.
+   *
+   * The received request is returned through |req|.
+   */
+  Task* diverter_process_debugger_requests(GdbContext& dbg, Task* t,
+                                           GdbRequest* req);
+  /**
+   * Create a new diversion session using |replay| session as the
+   * template.  The |replay| session isn't mutated.
+   *
+   * Execution begins in the new diversion session under the control of
+   * |dbg| starting with initial thread target |task|.  The diversion
+   * session ends at the request of |dbg|, and |req| returns the first
+   * request made that wasn't handled by the diversion session.  That
+   * is, the first request that should be handled by |replay| upon
+   * resuming execution in that session.
+   */
+  void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
+              GdbRequest* req);
+
+  /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there
    * isn't one.
    */
@@ -93,9 +119,14 @@ public:
   // If we're being controlled by a debugger, then |last_debugger_start| is
   // the saved session we forked 'session' from.
   ReplaySession::shr_ptr debugger_restart_checkpoint;
-
   // Checkpoints, indexed by checkpoint ID
   map<int, ReplaySession::shr_ptr> checkpoints;
+
+  // The diversion session.
+  DiversionSession::shr_ptr diversion_session;
+  // Number of client references to diversion_session.
+  // When there are 0 refs it is considered to be dying.
+  int diversion_refcount;
 };
 
 static GdbServer gdb_server;
@@ -467,14 +498,6 @@ bool is_ignored_replay_signal(int sig) {
   }
 }
 
-// The global diversion session, of which there can only be one at a
-// time currently.  See long comment at the top of diverter.h.
-static DiversionSession::shr_ptr diversion_session;
-// Number of client references to this, if it's a diversion
-// session.  When there are 0 refs this is considered to be
-// dying.
-static int diversion_refcount;
-
 /**
  * Process debugger requests made through |dbg| until action needs to
  * be taken by the caller (a resume-execution request is received).
@@ -482,8 +505,8 @@ static int diversion_refcount;
  *
  * The received request is returned through |req|.
  */
-static Task* diverter_process_debugger_requests(GdbContext& dbg, Task* t,
-                                                GdbRequest* req) {
+Task* GdbServer::diverter_process_debugger_requests(GdbContext& dbg, Task* t,
+                                                    GdbRequest* req) {
   while (true) {
     *req = dbg.get_request();
 
@@ -561,8 +584,8 @@ static Task* diverter_process_debugger_requests(GdbContext& dbg, Task* t,
  * is, the first request that should be handled by |replay| upon
  * resuming execution in that session.
  */
-static void divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
-                   GdbRequest* req) {
+void GdbServer::divert(ReplaySession& replay, GdbContext& dbg, pid_t task,
+                       GdbRequest* req) {
   LOG(debug) << "Starting debugging diversion for " << &replay;
   assert(!diversion_session && diversion_refcount == 0);
 
