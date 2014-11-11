@@ -429,6 +429,27 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   t->validate_regs();
 }
 
+/**
+ * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
+ * will transition the futex into the contended state.  (This results
+ * in the kernel atomically setting the FUTEX_WAITERS bit on the futex
+ * value.)  The new value of the futex after the kernel updates it is
+ * returned in |next_val|.
+ */
+static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
+                                      int* next_val) {
+  int val = t->read_mem(futex);
+  pid_t owner_tid = (val & FUTEX_TID_MASK);
+  bool now_contended =
+      (owner_tid != 0 && owner_tid != t->rec_tid && !(val & FUTEX_WAITERS));
+  if (now_contended) {
+    LOG(debug) << t->tid << ": futex " << futex << " is " << val
+               << ", so WAITERS bit will be set";
+    *next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
+  }
+  return now_contended;
+}
+
 static void process_futex(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, ReplayTraceStep* step) {
   const Registers& regs = trace_frame.regs();

@@ -180,15 +180,6 @@ size_t page_size();
  */
 void copy_syscall_arg_regs(Registers* to, const Registers& from);
 
-/**
- * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
- * will transition the futex into the contended state.  (This results
- * in the kernel atomically setting the FUTEX_WAITERS bit on the futex
- * value.)  The new value of the futex after the kernel updates it is
- * returned in |next_val|.
- */
-bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex, int* next_val);
-
 /** Return the default action of |sig|. */
 enum signal_action {
   DUMP_CORE,

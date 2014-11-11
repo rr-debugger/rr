@@ -552,19 +552,6 @@ void copy_syscall_arg_regs(Registers* to, const Registers& from) {
   to->set_arg6(from.arg6());
 }
 
-bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex, int* next_val) {
-  int val = t->read_mem(futex);
-  pid_t owner_tid = (val & FUTEX_TID_MASK);
-  bool now_contended =
-      (owner_tid != 0 && owner_tid != t->rec_tid && !(val & FUTEX_WAITERS));
-  if (now_contended) {
-    LOG(debug) << t->tid << ": futex " << futex << " is " << val
-               << ", so WAITERS bit will be set";
-    *next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
-  }
-  return now_contended;
-}
-
 signal_action default_action(int sig) {
   if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
     return TERMINATE;

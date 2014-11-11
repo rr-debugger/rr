@@ -2110,10 +2110,10 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   t->as.swap(as);
 
   // Sync with the child process.
-  intptr_t options =
-      PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK |
-      PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-      PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL;
+  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+                     PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
+                     PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
+                     PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL;
 
   if (Flags::get().use_syscall_buffer) {
     options |= PTRACE_O_TRACESECCOMP;
