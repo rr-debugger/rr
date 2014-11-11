@@ -434,7 +434,6 @@ static int parse_common_args(int argc, char** argv, Flags* flags) {
     { "suppress-environment-warnings", no_argument, nullptr, 's' },
     { "fatal-errors", no_argument, nullptr, 'e' },
     { "verbose", no_argument, nullptr, 'v' },
-    { "wait-secs", required_argument, nullptr, 'w' },
     { 0 }
   };
   while (1) {
@@ -483,9 +482,6 @@ static int parse_common_args(int argc, char** argv, Flags* flags) {
         break;
       case 'v':
         flags->verbose = true;
-        break;
-      case 'w':
-        flags->wait_secs = atoi(optarg);
         break;
       default:
         return -1;
@@ -584,16 +580,6 @@ int main(int argc, char* argv[]) {
   assert_prerequisites(flags);
   if (!flags->suppress_environment_warnings) {
     check_performance_settings();
-  }
-
-  int wait_secs = flags->wait_secs;
-  if (wait_secs > 0) {
-    struct timespec ts;
-    ts.tv_sec = wait_secs;
-    ts.tv_nsec = 0;
-    LOG(info) << "Waiting " << wait_secs << " seconds before continuing ...";
-    nanosleep_nointr(&ts);
-    LOG(info) << "... continuing.";
   }
 
   if (RECORD == command) {

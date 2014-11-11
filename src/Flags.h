@@ -125,10 +125,6 @@ struct Flags {
   /* IP port to listen on for debug connections. */
   int dbgport;
 
-  /* Number of seconds to wait after startup, before starting
-   * "real work". */
-  int wait_secs;
-
   /* True when not-absolutely-urgently-critical messages will be
    * logged. */
   bool verbose;
@@ -207,7 +203,6 @@ struct Flags {
         dump_at(0),
         checksum(0),
         dbgport(0),
-        wait_secs(0),
         verbose(false),
         cpu_unbound(false),
         force_things(false),

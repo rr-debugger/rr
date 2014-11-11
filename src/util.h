@@ -107,13 +107,6 @@ void checksum_process_memory(Task* t, int global_time);
 void validate_process_memory(Task* t, int global_time);
 
 /**
- * Sleep for the duration of time specified in |ts|.  Continue
- * sleeping until |ts| has elapsed, even if a signal is received.  If
- * an error occurs, -1 is returned and errno is set appropriately.
- */
-void nanosleep_nointr(const struct timespec* ts);
-
-/**
  * Return nonzero if the rr session is probably not interactive (that
  * is, there's probably no user watching or interacting with rr), and
  * so asking for user input or other actions is probably pointless.

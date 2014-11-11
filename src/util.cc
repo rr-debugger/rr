@@ -61,18 +61,6 @@ static bool is_start_of_scratch_region(Task* t, remote_ptr<void> start_addr) {
   return false;
 }
 
-void nanosleep_nointr(const struct timespec* ts) {
-  struct timespec req = *ts;
-  while (true) {
-    struct timespec rem;
-    int err = nanosleep(&req, &rem);
-    if (0 == err || EINTR != errno) {
-      FATAL() << "Failed to wait requested duration";
-    }
-    req = rem;
-  }
-}
-
 bool probably_not_interactive(int fd) {
   /* Eminently tunable heuristic, but this is guaranteed to be
    * true during rr unit tests, where we care most about this
