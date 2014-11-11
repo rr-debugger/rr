@@ -139,8 +139,7 @@ void GdbServer::delete_checkpoint(int checkpoint_id) {
   checkpoints.erase(it);
 }
 
-bool GdbServer::maybe_process_magic_command(Task* t, GdbConnection& dbg,
-                                            const GdbRequest& req) {
+bool GdbServer::maybe_process_magic_command(Task* t, const GdbRequest& req) {
   if (!(req.mem.addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem.len == 4)) {
     return false;
   }
@@ -160,12 +159,12 @@ bool GdbServer::maybe_process_magic_command(Task* t, GdbConnection& dbg,
     default:
       return false;
   }
-  dbg.reply_set_mem(true);
+  dbg->reply_set_mem(true);
   return true;
 }
 
-void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
-                                          Task* t, const GdbRequest& req) {
+void GdbServer::dispatch_debugger_request(Session& session, Task* t,
+                                          const GdbRequest& req) {
   assert(!req.is_resume_request());
 
   // These requests don't require a target task.
@@ -174,11 +173,11 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
       ASSERT(t, false) << "Can't handle RESTART request from here";
       return; // unreached
     case DREQ_GET_CURRENT_THREAD:
-      dbg.reply_get_current_thread(get_threadid(t));
+      dbg->reply_get_current_thread(get_threadid(t));
       return;
     case DREQ_GET_OFFSETS:
       /* TODO */
-      dbg.reply_get_offsets();
+      dbg->reply_get_offsets();
       return;
     case DREQ_GET_THREAD_LIST: {
       auto tasks = t->session().tasks();
@@ -187,17 +186,17 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
         Task* t = kv.second;
         tids.push_back(get_threadid(t));
       }
-      dbg.reply_get_thread_list(tids);
+      dbg->reply_get_thread_list(tids);
       return;
     }
     case DREQ_INTERRUPT:
       // Tell the debugger we stopped and await further
       // instructions.
-      dbg.notify_stop(get_threadid(t), 0);
+      dbg->notify_stop(get_threadid(t), 0);
       return;
     case DREQ_DETACH:
       LOG(info) << ("(debugger detached from us, rr exiting)");
-      dbg.reply_detach();
+      dbg->reply_detach();
       // Don't orphan tracees: their VMs are inconsistent
       // because we've been using emulated tracing, so they
       // can't resume normal execution.  And we wouldn't
@@ -215,14 +214,14 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
   // target, so it's OK if the task doesn't exist.
   switch (req.type) {
     case DREQ_GET_IS_THREAD_ALIVE:
-      dbg.reply_get_is_thread_alive(target != nullptr);
+      dbg->reply_get_is_thread_alive(target != nullptr);
       return;
     case DREQ_GET_THREAD_EXTRA_INFO:
-      dbg.reply_get_thread_extra_info(target->name());
+      dbg->reply_get_thread_extra_info(target->name());
       return;
     case DREQ_SET_CONTINUE_THREAD:
     case DREQ_SET_QUERY_THREAD:
-      dbg.reply_select_thread(target != nullptr);
+      dbg->reply_select_thread(target != nullptr);
       return;
     default:
       // fall through to next switch stmt
@@ -233,7 +232,7 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
   // the debugger to use the information provided above to only
   // query valid tasks.
   if (!target) {
-    dbg.notify_no_such_thread(req);
+    dbg->notify_no_such_thread(req);
     return;
   }
   switch (req.type) {
@@ -247,20 +246,20 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
       ScopedFd fd(filename, O_RDONLY);
       if (0 > fd) {
         auxv.clear();
-        dbg.reply_get_auxv(auxv);
+        dbg->reply_get_auxv(auxv);
         return;
       }
 
       ssize_t len = read(fd, auxv.data(), sizeof(auxv[0]) * auxv.size());
       if (0 > len) {
         auxv.clear();
-        dbg.reply_get_auxv(auxv);
+        dbg->reply_get_auxv(auxv);
         return;
       }
 
       assert(0 == len % sizeof(auxv[0]));
       auxv.resize(len / sizeof(auxv[0]));
-      dbg.reply_get_auxv(auxv);
+      dbg->reply_get_auxv(auxv);
       return;
     }
     case DREQ_GET_MEM: {
@@ -269,7 +268,7 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
       ssize_t nread =
           target->read_bytes_fallible(req.mem.addr, req.mem.len, mem.data());
       mem.resize(max(ssize_t(0), nread));
-      dbg.reply_get_mem(mem);
+      dbg->reply_get_mem(mem);
       return;
     }
     case DREQ_SET_MEM: {
@@ -277,10 +276,10 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
       // odd times
       // (e.g. before sending the magic write to create a checkpoint)
       if (req.mem.len == 0) {
-        dbg.reply_set_mem(true);
+        dbg->reply_set_mem(true);
         return;
       }
-      if (maybe_process_magic_command(target, dbg, req)) {
+      if (maybe_process_magic_command(target, req)) {
         return;
       }
       // We only allow the debugger to write memory if the
@@ -289,18 +288,18 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
       // divergence.
       if (!session.is_diversion()) {
         LOG(error) << "Attempt to write memory outside diversion session";
-        dbg.reply_set_mem(false);
+        dbg->reply_set_mem(false);
         return;
       }
       LOG(debug) << "Writing " << req.mem.len << " bytes to " << req.mem.addr;
       // TODO fallible
       target->write_bytes_helper(req.mem.addr, req.mem.len, req.mem.data);
-      dbg.reply_set_mem(true);
+      dbg->reply_set_mem(true);
       return;
     }
     case DREQ_GET_REG: {
       GdbRegisterValue reg = get_reg(target, req.reg.name);
-      dbg.reply_get_reg(reg);
+      dbg->reply_get_reg(reg);
       return;
     }
     case DREQ_GET_REGS: {
@@ -309,7 +308,7 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
       for (size_t i = 0; i < n_regs; ++i) {
         file.regs[i] = get_reg(target, GdbRegister(i));
       }
-      dbg.reply_get_regs(file);
+      dbg->reply_get_regs(file);
       return;
     }
     case DREQ_SET_REG: {
@@ -321,11 +320,11 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
         // just ignore it.
         if ((t->arch() == x86 && req.reg.name == DREG_ORIG_EAX) ||
             (t->arch() == x86_64 && req.reg.name == DREG_ORIG_RAX)) {
-          dbg.reply_set_reg(true);
+          dbg->reply_set_reg(true);
           return;
         }
         LOG(error) << "Attempt to write register outside diversion session";
-        dbg.reply_set_reg(false);
+        dbg->reply_set_reg(false);
         return;
       }
       if (req.reg.defined) {
@@ -333,23 +332,23 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
         regs.write_register(req.reg.name, req.reg.value, req.reg.size);
         target->set_regs(regs);
       }
-      dbg.reply_set_reg(true /*currently infallible*/);
+      dbg->reply_set_reg(true /*currently infallible*/);
       return;
     }
     case DREQ_GET_STOP_REASON: {
-      dbg.reply_get_stop_reason(get_threadid(target), target->child_sig);
+      dbg->reply_get_stop_reason(get_threadid(target), target->child_sig);
       return;
     }
     case DREQ_SET_SW_BREAK: {
       ASSERT(target, (req.mem.len == sizeof(AddressSpace::breakpoint_insn)))
           << "Debugger setting bad breakpoint insn";
       bool ok = target->vm()->set_breakpoint(req.mem.addr, TRAP_BKPT_USER);
-      dbg.reply_watchpoint_request(ok);
+      dbg->reply_watchpoint_request(ok);
       return;
     }
     case DREQ_REMOVE_SW_BREAK:
       target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
-      dbg.reply_watchpoint_request(true);
+      dbg->reply_watchpoint_request(true);
       return;
     case DREQ_REMOVE_HW_BREAK:
     case DREQ_REMOVE_RD_WATCH:
@@ -357,7 +356,7 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
     case DREQ_REMOVE_RDWR_WATCH:
       target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
                                       watchpoint_type(req.type));
-      dbg.reply_watchpoint_request(true);
+      dbg->reply_watchpoint_request(true);
       return;
     case DREQ_SET_HW_BREAK:
     case DREQ_SET_RD_WATCH:
@@ -365,16 +364,16 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
     case DREQ_SET_RDWR_WATCH: {
       bool ok = target->vm()->set_watchpoint(req.mem.addr, req.mem.len,
                                              watchpoint_type(req.type));
-      dbg.reply_watchpoint_request(ok);
+      dbg->reply_watchpoint_request(ok);
       return;
     }
     case DREQ_READ_SIGINFO:
       LOG(warn) << "READ_SIGINFO request outside of diversion session";
-      dbg.reply_read_siginfo(vector<uint8_t>());
+      dbg->reply_read_siginfo(vector<uint8_t>());
       return;
     case DREQ_WRITE_SIGINFO:
       LOG(warn) << "WRITE_SIGINFO request outside of diversion session";
-      dbg.reply_write_siginfo();
+      dbg->reply_write_siginfo();
       return;
     default:
       FATAL() << "Unknown debugger request " << req.type;
@@ -388,10 +387,9 @@ void GdbServer::dispatch_debugger_request(Session& session, GdbConnection& dbg,
  *
  * The received request is returned through |req|.
  */
-Task* GdbServer::diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
-                                                    GdbRequest* req) {
+Task* GdbServer::diverter_process_debugger_requests(Task* t, GdbRequest* req) {
   while (true) {
-    *req = dbg.get_request();
+    *req = dbg->get_request();
 
     if (req->is_resume_request()) {
       if (diversion_refcount == 0) {
@@ -411,7 +409,7 @@ Task* GdbServer::diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
         vector<uint8_t> si_bytes;
         si_bytes.resize(req->mem.len);
         memset(si_bytes.data(), 0, si_bytes.size());
-        dbg.reply_read_siginfo(si_bytes);
+        dbg->reply_read_siginfo(si_bytes);
         continue;
       }
       case DREQ_SET_QUERY_THREAD: {
@@ -426,7 +424,7 @@ Task* GdbServer::diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
         if (diversion_refcount == 0) {
           LOG(debug) << "  ... dying at next continue request";
         }
-        dbg.reply_write_siginfo();
+        dbg->reply_write_siginfo();
         continue;
 
       case DREQ_REMOVE_SW_BREAK:
@@ -452,7 +450,7 @@ Task* GdbServer::diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
         break;
     }
 
-    dispatch_debugger_request(*diversion_session, dbg, t, *req);
+    dispatch_debugger_request(*diversion_session, t, *req);
   }
 }
 
@@ -467,8 +465,7 @@ Task* GdbServer::diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
  * is, the first request that should be handled by |replay| upon
  * resuming execution in that session.
  */
-void GdbServer::divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
-                       GdbRequest* req) {
+void GdbServer::divert(ReplaySession& replay, pid_t task, GdbRequest* req) {
   LOG(debug) << "Starting debugging diversion for " << &replay;
   assert(!diversion_session && diversion_refcount == 0);
 
@@ -477,7 +474,7 @@ void GdbServer::divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
 
   Task* t = diversion_session->find_task(task);
   while (true) {
-    if (!(t = diverter_process_debugger_requests(dbg, t, req))) {
+    if (!(t = diverter_process_debugger_requests(t, req))) {
       break;
     }
 
@@ -489,7 +486,7 @@ void GdbServer::divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
-      dbg.notify_exit_code(0);
+      dbg->notify_exit_code(0);
       break;
     }
 
@@ -512,8 +509,8 @@ void GdbServer::divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
     }
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    dbg.notify_stop(get_threadid(result.break_status.task), sig,
-                    watch_addr.as_int());
+    dbg->notify_stop(get_threadid(result.break_status.task), sig,
+                     watch_addr.as_int());
   }
 
   LOG(debug) << "... ending debugging diversion";
@@ -526,9 +523,9 @@ void GdbServer::divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
  * Reply to debugger requests until the debugger asks us to resume
  * execution.
  */
-GdbRequest GdbServer::process_debugger_requests(GdbConnection& dbg, Task* t) {
+GdbRequest GdbServer::process_debugger_requests(Task* t) {
   while (1) {
-    GdbRequest req = dbg.get_request();
+    GdbRequest req = dbg->get_request();
     req.suppress_debugger_stop = false;
 
     if (req.type == DREQ_READ_SIGINFO) {
@@ -542,9 +539,9 @@ GdbRequest GdbServer::process_debugger_requests(GdbConnection& dbg, Task* t) {
       vector<uint8_t> si_bytes;
       si_bytes.resize(req.mem.len);
       memset(si_bytes.data(), 0, si_bytes.size());
-      dbg.reply_read_siginfo(si_bytes);
+      dbg->reply_read_siginfo(si_bytes);
 
-      divert(*session, dbg, t->rec_tid, &req);
+      divert(*session, t->rec_tid, &req);
       // Carry on to process the request that was rejected by
       // the diversion session
     }
@@ -566,19 +563,18 @@ GdbRequest GdbServer::process_debugger_requests(GdbConnection& dbg, Task* t) {
       return req;
     }
 
-    dispatch_debugger_request(*session, dbg, t, req);
+    dispatch_debugger_request(*session, t, req);
   }
 }
 
-void GdbServer::replay_one_step(GdbConnection* dbg,
-                                GdbRequest* restart_request) {
+void GdbServer::replay_one_step(GdbRequest* restart_request) {
   restart_request->type = DREQ_NONE;
 
   GdbRequest req;
   Task* t = session->current_task();
 
-  if (dbg) {
-    req = process_debugger_requests(*dbg, t);
+  if (debugger_active) {
+    req = process_debugger_requests(t);
     if (DREQ_RESTART == req.type) {
       *restart_request = req;
       return;
@@ -602,7 +598,7 @@ void GdbServer::replay_one_step(GdbConnection* dbg,
     return;
   }
 
-  if (dbg && !req.suppress_debugger_stop) {
+  if (debugger_active && !req.suppress_debugger_stop) {
     int sig = SIGTRAP;
     remote_ptr<void> watch_addr = nullptr;
     switch (result.break_status.reason) {
@@ -679,8 +675,7 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-bool GdbServer::maybe_connect_debugger(unique_ptr<GdbConnection>* dbg,
-                                       ScopedFd* debugger_params_write_pipe) {
+bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
   if (!session->can_validate()) {
@@ -745,7 +740,7 @@ bool GdbServer::maybe_connect_debugger(unique_ptr<GdbConnection>* dbg,
   // target without necessarily replaying up to this point.
   Flags::update_replay_target(t->tgid(), event_now);
 
-  if (!*dbg) {
+  if (!dbg) {
     unsigned short port =
         (Flags::get().dbgport > 0) ? Flags::get().dbgport : getpid();
     // Don't probe if the user specified a port.  Explicitly
@@ -757,8 +752,8 @@ bool GdbServer::maybe_connect_debugger(unique_ptr<GdbConnection>* dbg,
                                             : GdbConnection::PROBE_PORT;
     const string* exe =
         Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
-    *dbg = GdbConnection::await_client_connection(port, probe, t->tgid(), exe,
-                                                  debugger_params_write_pipe);
+    dbg = GdbConnection::await_client_connection(port, probe, t->tgid(), exe,
+                                                 debugger_params_write_pipe);
     if (debugger_params_write_pipe) {
       debugger_params_write_pipe->close();
     }
@@ -767,16 +762,16 @@ bool GdbServer::maybe_connect_debugger(unique_ptr<GdbConnection>* dbg,
   return true;
 }
 
-void GdbServer::restart_session(GdbConnection& dbg, GdbRequest* req,
-                                bool* debugger_active) {
+void GdbServer::restart_session(GdbRequest* req) {
   assert(req->type == DREQ_RESTART);
+  assert(dbg);
 
   ReplaySession::shr_ptr checkpoint_to_restore;
   if (req->restart.type == RESTART_FROM_CHECKPOINT) {
     checkpoint_to_restore = get_checkpoint(req->restart.param);
     if (!checkpoint_to_restore) {
       LOG(info) << "Checkpoint " << req->restart.param << " not found.";
-      dbg.notify_restart_failed();
+      dbg->notify_restart_failed();
       return;
     }
   } else if (req->restart.type == RESTART_FROM_PREVIOUS) {
@@ -785,11 +780,11 @@ void GdbServer::restart_session(GdbConnection& dbg, GdbRequest* req,
   if (checkpoint_to_restore) {
     debugger_restart_checkpoint = checkpoint_to_restore;
     session = checkpoint_to_restore->clone();
-    *debugger_active = true;
+    debugger_active = true;
     return;
   }
 
-  *debugger_active = false;
+  debugger_active = false;
 
   if (session->trace_reader().time() > Flags::get().goto_event) {
     // We weren't able to reuse a saved session, so
@@ -803,21 +798,16 @@ void GdbServer::serve_replay(const string& trace_dir,
                              ScopedFd* debugger_params_write_pipe) {
   session = ReplaySession::create(trace_dir);
 
-  unique_ptr<GdbConnection> dbg;
-  // False while we're waiting for the session to reach some requested state
-  // before talking to gdb.
-  bool debugger_active = false;
   while (true) {
     while (!session->last_task()) {
       if (!debugger_active) {
-        debugger_active =
-            maybe_connect_debugger(&dbg, debugger_params_write_pipe);
+        debugger_active = maybe_connect_debugger(debugger_params_write_pipe);
       }
 
       GdbRequest restart_request;
-      replay_one_step(debugger_active ? dbg.get() : nullptr, &restart_request);
+      replay_one_step(&restart_request);
       if (restart_request.type != DREQ_NONE) {
-        restart_session(*dbg, &restart_request, &debugger_active);
+        restart_session(&restart_request);
       }
     }
     LOG(info) << ("Replayer successfully finished.");
@@ -829,15 +819,14 @@ void GdbServer::serve_replay(const string& trace_dir,
 
     // TODO return real exit code, if it's useful.
     dbg->notify_exit_code(0);
-    GdbRequest req = process_debugger_requests(*dbg, session->last_task());
+    GdbRequest req = process_debugger_requests(session->last_task());
     if (DREQ_RESTART == req.type) {
-      restart_session(*dbg, &req, &debugger_active);
+      restart_session(&req);
       continue;
     }
     FATAL() << "Received continue request after end-of-trace.";
   }
 
-  session = nullptr;
   LOG(debug) << "debugger server exiting ...";
 }
 
@@ -859,5 +848,5 @@ void GdbServer::emergency_debug(Task* t) {
   unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
       t->tid, GdbConnection::PROBE_PORT, t->tgid());
 
-  GdbServer().process_debugger_requests(*dbg, t);
+  GdbServer(dbg).process_debugger_requests(t);
 }

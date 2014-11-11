@@ -43,15 +43,16 @@ public:
   static void emergency_debug(Task* t);
 
 private:
-  GdbServer() : diversion_refcount(0) {}
+  GdbServer() : debugger_active(false), diversion_refcount(0) {}
+  GdbServer(std::unique_ptr<GdbConnection>& dbg)
+      : dbg(std::move(dbg)), debugger_active(true), diversion_refcount(0) {}
 
   void maybe_singlestep_for_event(Task* t, GdbRequest* req);
   /**
    * If |req| is a magic-write command, interpret it and return true.
    * Otherwise, do nothing and return false.
    */
-  bool maybe_process_magic_command(Task* t, GdbConnection& dbg,
-                                   const GdbRequest& req);
+  bool maybe_process_magic_command(Task* t, const GdbRequest& req);
   /**
    * Process the single debugger request |req|, made by |dbg| targeting
    * |t|, inside the session |session|.
@@ -60,7 +61,7 @@ private:
    * particular debugger requests before calling this helper, to do
    * generic processing.
    */
-  void dispatch_debugger_request(Session& session, GdbConnection& dbg, Task* t,
+  void dispatch_debugger_request(Session& session, Task* t,
                                  const GdbRequest& req);
   /**
    * If the trace has reached the event at which the user wanted a debugger
@@ -70,12 +71,10 @@ private:
    * This must be called before scheduling the task for the next event
    * (and thereby mutating the TraceIfstream for that event).
    */
-  bool maybe_connect_debugger(std::unique_ptr<GdbConnection>* dbg,
-                              ScopedFd* debugger_params_write_pipe);
-  void restart_session(GdbConnection& dbg, GdbRequest* req,
-                       bool* debugger_active);
-  GdbRequest process_debugger_requests(GdbConnection& dbg, Task* t);
-  void replay_one_step(GdbConnection* dbg, GdbRequest* restart_request);
+  bool maybe_connect_debugger(ScopedFd* debugger_params_write_pipe);
+  void restart_session(GdbRequest* req);
+  GdbRequest process_debugger_requests(Task* t);
+  void replay_one_step(GdbRequest* restart_request);
   void serve_replay(const std::string& trace_dir,
                     ScopedFd* debugger_params_write_pipe);
 
@@ -87,8 +86,7 @@ private:
    *
    * The received request is returned through |req|.
    */
-  Task* diverter_process_debugger_requests(GdbConnection& dbg, Task* t,
-                                           GdbRequest* req);
+  Task* diverter_process_debugger_requests(Task* t, GdbRequest* req);
   /**
    * Create a new diversion session using |replay| session as the
    * template.  The |replay| session isn't mutated.
@@ -100,20 +98,23 @@ private:
    * is, the first request that should be handled by |replay| upon
    * resuming execution in that session.
    */
-  void divert(ReplaySession& replay, GdbConnection& dbg, pid_t task,
-              GdbRequest* req);
+  void divert(ReplaySession& replay, pid_t task, GdbRequest* req);
 
   /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there
    * isn't one.
    */
   ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
-
   /**
    * Delete the checkpoint stored as |checkpoint_id| if it exists, or do
    * nothing if it doesn't exist.
    */
   void delete_checkpoint(int checkpoint_id);
+
+  std::unique_ptr<GdbConnection> dbg;
+  // False while we're waiting for the session to reach some requested state
+  // before talking to gdb.
+  bool debugger_active;
 
   // |session| is used to drive replay.
   ReplaySession::shr_ptr session;
