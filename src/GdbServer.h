@@ -93,12 +93,12 @@ private:
    *
    * Execution begins in the new diversion session under the control of
    * |dbg| starting with initial thread target |task|.  The diversion
-   * session ends at the request of |dbg|, and |req| returns the first
+   * session ends at the request of |dbg|, and |divert| returns the first
    * request made that wasn't handled by the diversion session.  That
    * is, the first request that should be handled by |replay| upon
    * resuming execution in that session.
    */
-  void divert(ReplaySession& replay, pid_t task, GdbRequest* req);
+  GdbRequest divert(ReplaySession& replay, pid_t task);
 
   /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there

@@ -465,7 +465,8 @@ Task* GdbServer::diverter_process_debugger_requests(Task* t, GdbRequest* req) {
  * is, the first request that should be handled by |replay| upon
  * resuming execution in that session.
  */
-void GdbServer::divert(ReplaySession& replay, pid_t task, GdbRequest* req) {
+GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
+  GdbRequest req;
   LOG(debug) << "Starting debugging diversion for " << &replay;
   assert(!diversion_session && diversion_refcount == 0);
 
@@ -474,12 +475,12 @@ void GdbServer::divert(ReplaySession& replay, pid_t task, GdbRequest* req) {
 
   Task* t = diversion_session->find_task(task);
   while (true) {
-    if (!(t = diverter_process_debugger_requests(t, req))) {
+    if (!(t = diverter_process_debugger_requests(t, &req))) {
       break;
     }
 
     ReplaySession::RunCommand command =
-        (DREQ_STEP == req->type && get_threadid(t) == req->target)
+        (DREQ_STEP == req.type && get_threadid(t) == req.target)
             ? Session::RUN_SINGLESTEP
             : Session::RUN_CONTINUE;
     auto result = diversion_session->diversion_step(t, command);
@@ -517,6 +518,7 @@ void GdbServer::divert(ReplaySession& replay, pid_t task, GdbRequest* req) {
   assert(diversion_refcount == 0);
   diversion_session->kill_all_tasks();
   diversion_session = nullptr;
+  return req;
 }
 
 /**
@@ -541,7 +543,7 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
       memset(si_bytes.data(), 0, si_bytes.size());
       dbg->reply_read_siginfo(si_bytes);
 
-      divert(*session, t->rec_tid, &req);
+      req = divert(*session, t->rec_tid);
       // Carry on to process the request that was rejected by
       // the diversion session
     }
