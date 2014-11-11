@@ -84,15 +84,29 @@ static void handle_signal(int sig) {
 int replay(int argc, char* argv[], char** envp) {
   string trace_dir = argc > 0 ? argv[0] : "";
 
+  GdbServer::Target target;
+  switch (Flags::get().process_created_how) {
+    case Flags::CREATED_EXEC:
+      target.pid = Flags::get().target_process;
+      target.require_exec = true;
+      break;
+    case Flags::CREATED_FORK:
+      target.pid = Flags::get().target_process;
+      target.require_exec = false;
+      break;
+    case Flags::CREATED_NONE:
+      break;
+  }
+  target.event = Flags::get().goto_event;
+
   // If we're not going to autolaunch the debugger, don't go
   // through the rigamarole to set that up.  All it does is
   // complicate the process tree and confuse users.
   if (Flags::get().dont_launch_debugger) {
-    if (Flags::get().goto_event ==
-        numeric_limits<decltype(Flags::get().goto_event)>::max()) {
+    if (target.event == numeric_limits<decltype(target.event)>::max()) {
       serve_replay_no_debugger(trace_dir);
     } else {
-      GdbServer::serve(trace_dir);
+      GdbServer::serve(trace_dir, target);
     }
     return 0;
   }
@@ -118,7 +132,7 @@ int replay(int argc, char* argv[], char** envp) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    GdbServer::serve(trace_dir, &debugger_params_write_pipe);
+    GdbServer::serve(trace_dir, target, &debugger_params_write_pipe);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if

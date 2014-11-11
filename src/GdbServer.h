@@ -11,18 +11,29 @@
 #include "GdbConnection.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "TraceFrame.h"
 
 class GdbServer {
 public:
+  struct Target {
+    Target() : pid(0), require_exec(true), event(0) {}
+    // Target process to debug, or 0 to just debug the first process
+    pid_t pid;
+    // If true, wait for the target process to exec() before attaching debugger
+    bool require_exec;
+    // Wait until at least 'event' has elapsed before attaching
+    TraceFrame::Time event;
+  };
+
   /**
    * Create a gdbserver serving the replay of 'trace_dir'.
    * If debugger_params_write_pipe is non-null, write gdb launch parameters
    * to the pipe; another process should call launch_gdb with the other end
    * of the pipe to exec() gdb.
    */
-  static void serve(const std::string& trace_dir,
+  static void serve(const std::string& trace_dir, const Target& target,
                     ScopedFd* debugger_params_write_pipe = nullptr) {
-    GdbServer().serve_replay(trace_dir, debugger_params_write_pipe);
+    GdbServer(target).serve_replay(trace_dir, debugger_params_write_pipe);
   }
 
   /**
@@ -42,7 +53,8 @@ public:
   static void emergency_debug(Task* t);
 
 private:
-  GdbServer() : debugger_active(false), diversion_refcount(0) {}
+  GdbServer(const Target& target)
+      : target(target), debugger_active(false), diversion_refcount(0) {}
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
       : dbg(std::move(dbg)), debugger_active(true), diversion_refcount(0) {}
 
@@ -110,6 +122,7 @@ private:
    */
   void delete_checkpoint(int checkpoint_id);
 
+  Target target;
   std::unique_ptr<GdbConnection> dbg;
   // False while we're waiting for the session to reach some requested state
   // before talking to gdb.

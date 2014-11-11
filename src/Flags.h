@@ -229,20 +229,6 @@ struct Flags {
    */
   static Flags& get_for_init();
 
-  /**
-   * Update the execution-target parameters to |process|
-   * and |event|.  Either parameter can be < 0 to mean "don't update
-   * this flag".
-   */
-  static void update_replay_target(pid_t process, int event) {
-    if (process > 0) {
-      singleton.target_process = process;
-    }
-    if (event > 0) {
-      singleton.goto_event = event;
-    }
-  }
-
 private:
   static Flags singleton;
 };

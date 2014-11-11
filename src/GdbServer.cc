@@ -558,10 +558,6 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
       // Debugger client requested that we restart execution
       // from the beginning.  Restart our debug session.
       LOG(debug) << "  request to restart at event " << req.restart.param;
-      // If the user requested restarting to a
-      // different event, ensure that we change that
-      // param for the next replay session.
-      Flags::update_replay_target(-1, req.restart.param);
       return req;
     }
 
@@ -699,27 +695,24 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // TraceIfstream.
   TraceFrame next_frame = session->current_trace_frame();
   TraceFrame::Time event_now = next_frame.time();
-  TraceFrame::Time goto_event = Flags::get().goto_event;
-  pid_t target_process = Flags::get().target_process;
-  bool require_exec = Flags::CREATED_EXEC == Flags::get().process_created_how;
-  if (event_now < goto_event
+  if (event_now < target.event
           // NB: we'll happily attach to whichever task within the
           // group happens to be scheduled here.  We don't take
           // "attach to process" to mean "attach to thread-group
           // leader".
       ||
-      (target_process && t->tgid() != target_process) ||
-      (require_exec && !t->vm()->execed()) ||
+      (target.pid && t->tgid() != target.pid) ||
+      (target.pid && target.require_exec && !t->vm()->execed()) ||
       (will_checkpoint() && !can_checkpoint_at(t, next_frame))) {
     return false;
   }
 
-  if (goto_event > 0 || target_process) {
+  if (target.event > 0 || target.pid) {
     fprintf(stderr, "\a\n"
                     "--------------------------------------------------\n"
                     " ---> Reached target process %d at event %u.\n"
                     "--------------------------------------------------\n",
-            target_process, event_now);
+            target.pid, event_now);
   }
 
   // Call set_debugged_tgid now so it will be cloned into the
@@ -741,7 +734,9 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // for the next replay session, if we end up restarting.  This
   // allows us to determine if a later session has reached this
   // target without necessarily replaying up to this point.
-  Flags::update_replay_target(t->tgid(), event_now);
+  target.pid = t->tgid();
+  target.require_exec = false;
+  target.event = event_now;
 
   if (!dbg) {
     unsigned short port =
@@ -789,7 +784,11 @@ void GdbServer::restart_session(const GdbRequest& req) {
 
   debugger_active = false;
 
-  if (session->trace_reader().time() > Flags::get().goto_event) {
+  assert(req.restart.type == RESTART_FROM_EVENT);
+  // Note that we don't reset the target pid; we intentionally keep targeting
+  // the same process no matter what is running when we hit the event.
+  target.event = req.restart.param;
+  if (session->trace_reader().time() > target.event) {
     // We weren't able to reuse a saved session, so
     // just discard it and create a fresh one that's back
     // at beginning-of-trace.
@@ -808,7 +807,7 @@ void GdbServer::serve_replay(const string& trace_dir,
       }
 
       GdbRequest restart_request = replay_one_step();
-      if (restart_request.type != DREQ_NONE) {
+      if (restart_request.type == DREQ_RESTART) {
         restart_session(restart_request);
       }
     }
