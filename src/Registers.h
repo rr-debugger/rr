@@ -17,6 +17,8 @@
 #include "kernel_supplement.h"
 #include "remote_ptr.h"
 
+class Task;
+
 enum MismatchBehavior {
   EXPECT_MISMATCHES = 0,
   LOG_MISMATCHES,
@@ -231,13 +233,16 @@ public:
   void print_register_file_for_trace_raw(FILE* f) const;
 
   /**
-   * Return true if |reg1| matches |reg2|.  If |mismatch_behavior|
-   * is BAIL_ON_MISMATCH, mismatched registers will be logged as
-   * errors; if |mismatch_behavior| is LOG_MISMATCHES, mismatched
-   * registers will be logged as informative messages.
+   * Return true if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
+   * indicates that the caller is using this as a general register
+   * compare and nothing special should be done if the register files
+   * mismatch.  Passing LOG_MISMATCHES will log the registers that don't
+   * match.  Passing BAIL_ON_MISMATCH will additionally abort on
+   * mismatch.
    */
-  static bool compare_register_files(const char* name1, const Registers& reg1,
-                                     const char* name2, const Registers& reg2,
+  static bool compare_register_files(Task* t, const char* name1,
+                                     const Registers& reg1, const char* name2,
+                                     const Registers& reg2,
                                      MismatchBehavior mismatch_behavior);
 
   /**
@@ -280,6 +285,10 @@ private:
   static bool compare_registers_arch(const char* name1, const Registers& reg1,
                                      const char* name2, const Registers& reg2,
                                      MismatchBehavior mismatch_behavior);
+
+  static bool compare_register_files_internal(
+      const char* name1, const Registers& reg1, const char* name2,
+      const Registers& reg2, MismatchBehavior mismatch_behavior);
 
   template <typename Arch>
   size_t read_register_arch(uint8_t* buf, GdbRegister regno,

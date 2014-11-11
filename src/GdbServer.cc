@@ -702,8 +702,7 @@ void GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // group happens to be scheduled here.  We don't take
   // "attach to process" to mean "attach to thread-group
   // leader".
-  if (event_now < target.event ||
-      (target.pid && t->tgid() != target.pid) ||
+  if (event_now < target.event || (target.pid && t->tgid() != target.pid) ||
       (target.pid && target.require_exec && !t->vm()->execed()) ||
       (will_checkpoint() && !can_checkpoint_at(t, next_frame))) {
     return;

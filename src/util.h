@@ -55,18 +55,6 @@ enum Completion {
   INCOMPLETE
 };
 
-/**
- * Return true if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
- * indicates that the caller is using this as a general register
- * compare and nothing special should be done if the register files
- * mismatch.  Passing LOG_MISMATCHES will log the registers that don't
- * match.  Passing BAIL_ON_MISMATCH will additionally abort on
- * mismatch.
- */
-bool compare_register_files(Task* t, const char* name1, const Registers& reg1,
-                            const char* name2, const Registers& reg2,
-                            MismatchBehavior mismatch_behavior);
-
 void assert_child_regs_are(Task* t, const Registers& regs);
 
 /**

@@ -12,7 +12,7 @@
 #include <string.h>
 
 #include "log.h"
-#include "util.h"
+#include "task.h"
 
 struct RegisterValue {
   // The name of this register.
@@ -392,12 +392,31 @@ template <>
   return match;
 }
 
-/*static*/ bool Registers::compare_register_files(
+/*static*/ bool Registers::compare_register_files_internal(
     const char* name1, const Registers& reg1, const char* name2,
     const Registers& reg2, MismatchBehavior mismatch_behavior) {
   assert(reg1.arch() == reg2.arch());
   RR_ARCH_FUNCTION(compare_registers_arch, reg1.arch(), name1, reg1, name2,
                    reg2, mismatch_behavior);
+}
+
+/*static*/ bool Registers::compare_register_files(
+    Task* t, const char* name1, const Registers& reg1, const char* name2,
+    const Registers& reg2, MismatchBehavior mismatch_behavior) {
+  bool bail_error = mismatch_behavior >= BAIL_ON_MISMATCH;
+  bool match = compare_register_files_internal(name1, reg1, name2, reg2,
+                                               mismatch_behavior);
+
+  ASSERT(t, !bail_error || match) << "Fatal register mismatch (ticks/rec:"
+                                  << t->tick_count() << "/"
+                                  << t->current_trace_frame().ticks() << ")";
+
+  if (match && mismatch_behavior == LOG_MISMATCHES) {
+    LOG(info) << "(register files are the same for " << name1 << " and "
+              << name2 << ")";
+  }
+
+  return match;
 }
 
 template <typename Arch>
