@@ -673,15 +673,18 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
+void GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
+  if (debugger_active) {
+    return;
+  }
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
   if (!session->can_validate()) {
-    return false;
+    return;
   }
   Task* t = session->current_task();
   if (!t) {
-    return false;
+    return;
   }
 
   // When we decide to create the debugger, we may end up
@@ -703,7 +706,7 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
       (target.pid && t->tgid() != target.pid) ||
       (target.pid && target.require_exec && !t->vm()->execed()) ||
       (will_checkpoint() && !can_checkpoint_at(t, next_frame))) {
-    return false;
+    return;
   }
 
   if (target.event > 0 || target.pid) {
@@ -756,7 +759,7 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
     }
   }
 
-  return true;
+  debugger_active = true;
 }
 
 void GdbServer::maybe_restart_session(const GdbRequest& req) {
@@ -803,9 +806,7 @@ void GdbServer::serve_replay(const string& trace_dir,
 
   while (true) {
     while (!session->last_task()) {
-      if (!debugger_active) {
-        debugger_active = maybe_connect_debugger(debugger_params_write_pipe);
-      }
+      maybe_connect_debugger(debugger_params_write_pipe);
 
       GdbRequest restart_request = replay_one_step();
       maybe_restart_session(restart_request);

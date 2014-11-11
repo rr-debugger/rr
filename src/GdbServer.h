@@ -75,14 +75,14 @@ private:
   void dispatch_debugger_request(Session& session, Task* t,
                                  const GdbRequest& req);
   /**
-   * If the trace has reached the event at which the user wanted a debugger
-   * started, then create one and store it in `dbg` if we don't already
-   * have one there, and return true. Otherwise return false.
+   * If debugger_active is false, and the trace has reached the event at
+   * which the user wanted a debugger started, then create one and store it
+   * in `dbg` if we don't already have one there, and set debugger_active.
    *
    * This must be called before scheduling the task for the next event
    * (and thereby mutating the TraceIfstream for that event).
    */
-  bool maybe_connect_debugger(ScopedFd* debugger_params_write_pipe);
+  void maybe_connect_debugger(ScopedFd* debugger_params_write_pipe);
   void maybe_restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
   GdbRequest replay_one_step();
