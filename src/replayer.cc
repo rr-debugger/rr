@@ -28,10 +28,10 @@ static pid_t waiting_for_child;
 // Setting these causes us to trace instructions after
 // instruction_trace_at_event_start up to and including
 // instruction_trace_at_event_last
-static uint64_t instruction_trace_at_event_start = 0;
-static uint64_t instruction_trace_at_event_last = 0;
+static TraceFrame::Time instruction_trace_at_event_start = 0;
+static TraceFrame::Time instruction_trace_at_event_last = 0;
 
-bool trace_instructions_up_to_event(uint64_t event) {
+bool trace_instructions_up_to_event(TraceFrame::Time event) {
   return event > instruction_trace_at_event_start &&
          event <= instruction_trace_at_event_last;
 }
