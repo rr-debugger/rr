@@ -568,22 +568,6 @@ void validate_process_memory(Task* t, int global_time) {
   iterate_checksums(t, VALIDATE_CHECKSUMS, global_time);
 }
 
-void emergency_debug(Task* t) {
-  RecordSession* record_session = t->session().as_record();
-  if (record_session) {
-    record_session->trace_writer().close();
-  }
-
-  if (probably_not_interactive() && !Flags::get().force_things) {
-    errno = 0;
-    FATAL()
-        << "(session doesn't look interactive, aborting emergency debugging)";
-  }
-
-  GdbServer::emergency_debug(t);
-  FATAL() << "Can't resume execution from invalid state";
-}
-
 void copy_syscall_arg_regs(Registers* to, const Registers& from) {
   to->set_arg1(from.arg1());
   to->set_arg2(from.arg2());

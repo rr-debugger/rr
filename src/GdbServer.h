@@ -35,10 +35,9 @@ public:
    * Start a debugging connection for |t| and return when there are no
    * more requests to process (usually because the debugger detaches).
    *
-   * Unlike |::emergency_debug()|, this helper doesn't attempt to
-   * determine whether blocking rr on a debugger connection might be a
-   * bad idea.  It will always open the debug socket and block awaiting
-   * a connection.
+   * This helper doesn't attempt to determine whether blocking rr on a
+   * debugger connection might be a bad idea.  It will always open the debug
+   * socket and block awaiting a connection.
    */
   static void emergency_debug(Task* t);
 

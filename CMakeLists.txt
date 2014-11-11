@@ -101,6 +101,7 @@ add_executable(rr
   src/GdbConnection.cc
   src/GdbServer.cc
   src/kernel_abi.cc
+  src/log.cc
   src/main.cc
   src/PerfCounters.cc
   src/recorder.cc

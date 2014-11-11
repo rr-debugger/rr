@@ -6,9 +6,7 @@
 #include <iostream>
 
 #include "Flags.h"
-#include "replayer.h" // emergency_debug()
 #include "task.h"
-#include "util.h"
 
 enum LogLevel {
   LOG_fatal,
@@ -104,11 +102,7 @@ FatalOstream& operator<<(FatalOstream& stream, const T& v) {
 
 struct EmergencyDebugOstream {
   EmergencyDebugOstream(const Task* t) : t(const_cast<Task*>(t)) {}
-  ~EmergencyDebugOstream() {
-    log_stream() << std::endl;
-    t->log_pending_events();
-    emergency_debug(t);
-  }
+  ~EmergencyDebugOstream();
   Task* t;
 };
 template <typename T>
@@ -144,8 +138,8 @@ inline static T& prepare_log_stream(T&& stream, LogLevel level,
   }
   stream << "] ";
   if (t) {
-    log_stream() << "\n (task " << t->tid << " (rec:" << t->rec_tid
-                 << ") at time " << t->trace_time() << ")";
+    stream << "\n (task " << t->tid << " (rec:" << t->rec_tid << ") at time "
+           << t->trace_time() << ")";
   }
   if (level <= LOG_error) {
     stream << "\n -> ";
