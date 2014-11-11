@@ -61,12 +61,6 @@ static bool is_start_of_scratch_region(Task* t, remote_ptr<void> start_addr) {
   return false;
 }
 
-double now_sec(void) {
-  struct timespec tp;
-  clock_gettime(CLOCK_MONOTONIC, &tp);
-  return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
-}
-
 void nanosleep_nointr(const struct timespec* ts) {
   struct timespec req = *ts;
   while (true) {

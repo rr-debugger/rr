@@ -107,12 +107,6 @@ void checksum_process_memory(Task* t, int global_time);
 void validate_process_memory(Task* t, int global_time);
 
 /**
- * Get the current time from the preferred monotonic clock in units of
- * seconds, relative to an unspecific point in the past.
- */
-double now_sec(void);
-
-/**
  * Sleep for the duration of time specified in |ts|.  Continue
  * sleeping until |ts| has elapsed, even if a signal is received.  If
  * an error occurs, -1 is returned and errno is set appropriately.

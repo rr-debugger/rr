@@ -131,6 +131,18 @@ Task* Scheduler::find_next_runnable_task(bool* by_waitpid) {
   return nullptr;
 }
 
+#ifdef MONITOR_UNSWITCHABLE_WAITS
+/**
+ * Get the current time from the preferred monotonic clock in units of
+ * seconds, relative to an unspecific point in the past.
+ */
+static double now_sec(void) {
+  struct timespec tp;
+  clock_gettime(CLOCK_MONOTONIC, &tp);
+  return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
+}
+#endif
+
 Task* Scheduler::get_next_thread(Task* t, bool* by_waitpid) {
   int max_events = Flags::get().max_events;
 
