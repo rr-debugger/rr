@@ -695,12 +695,11 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // TraceIfstream.
   TraceFrame next_frame = session->current_trace_frame();
   TraceFrame::Time event_now = next_frame.time();
-  if (event_now < target.event
-          // NB: we'll happily attach to whichever task within the
-          // group happens to be scheduled here.  We don't take
-          // "attach to process" to mean "attach to thread-group
-          // leader".
-      ||
+  // NB: we'll happily attach to whichever task within the
+  // group happens to be scheduled here.  We don't take
+  // "attach to process" to mean "attach to thread-group
+  // leader".
+  if (event_now < target.event ||
       (target.pid && t->tgid() != target.pid) ||
       (target.pid && target.require_exec && !t->vm()->execed()) ||
       (will_checkpoint() && !can_checkpoint_at(t, next_frame))) {
@@ -760,8 +759,10 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   return true;
 }
 
-void GdbServer::restart_session(const GdbRequest& req) {
-  assert(req.type == DREQ_RESTART);
+void GdbServer::maybe_restart_session(const GdbRequest& req) {
+  if (req.type != DREQ_RESTART) {
+    return;
+  }
   assert(dbg);
 
   ReplaySession::shr_ptr checkpoint_to_restore;
@@ -807,9 +808,7 @@ void GdbServer::serve_replay(const string& trace_dir,
       }
 
       GdbRequest restart_request = replay_one_step();
-      if (restart_request.type == DREQ_RESTART) {
-        restart_session(restart_request);
-      }
+      maybe_restart_session(restart_request);
     }
     LOG(info) << ("Replayer successfully finished.");
 
@@ -822,7 +821,7 @@ void GdbServer::serve_replay(const string& trace_dir,
     dbg->notify_exit_code(0);
     GdbRequest req = process_debugger_requests(session->last_task());
     if (DREQ_RESTART == req.type) {
-      restart_session(req);
+      maybe_restart_session(req);
       continue;
     }
     FATAL() << "Received continue request after end-of-trace.";
