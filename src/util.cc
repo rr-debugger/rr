@@ -525,15 +525,6 @@ void validate_process_memory(Task* t, int global_time) {
   iterate_checksums(t, VALIDATE_CHECKSUMS, global_time);
 }
 
-void copy_syscall_arg_regs(Registers* to, const Registers& from) {
-  to->set_arg1(from.arg1());
-  to->set_arg2(from.arg2());
-  to->set_arg3(from.arg3());
-  to->set_arg4(from.arg4());
-  to->set_arg5(from.arg5());
-  to->set_arg6(from.arg6());
-}
-
 signal_action default_action(int sig) {
   if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
     return TERMINATE;

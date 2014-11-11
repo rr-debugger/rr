@@ -393,6 +393,19 @@ static void maybe_discard_syscall_interruption(Task* t, int ret) {
   }
 }
 
+/**
+ * Copy the registers used for syscall arguments (not including
+ * syscall number) from |from| to |to|.
+ */
+static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
+  to->set_arg1(from.arg1());
+  to->set_arg2(from.arg2());
+  to->set_arg3(from.arg3());
+  to->set_arg4(from.arg4());
+  to->set_arg5(from.arg5());
+  to->set_arg6(from.arg6());
+}
+
 static void syscall_state_changed(Task* t, bool by_waitpid) {
   switch (t->ev().Syscall().state) {
     case ENTERING_SYSCALL: {

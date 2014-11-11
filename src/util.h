@@ -161,12 +161,6 @@ remote_ptr<void> ceil_page_size(remote_ptr<void> addr);
 /** Return the system page size. */
 size_t page_size();
 
-/**
- * Copy the registers used for syscall arguments (not including
- * syscall number) from |from| to |to|.
- */
-void copy_syscall_arg_regs(Registers* to, const Registers& from);
-
 /** Return the default action of |sig|. */
 enum signal_action {
   DUMP_CORE,
