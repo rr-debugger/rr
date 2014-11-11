@@ -762,19 +762,19 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   return true;
 }
 
-void GdbServer::restart_session(GdbRequest* req) {
-  assert(req->type == DREQ_RESTART);
+void GdbServer::restart_session(const GdbRequest& req) {
+  assert(req.type == DREQ_RESTART);
   assert(dbg);
 
   ReplaySession::shr_ptr checkpoint_to_restore;
-  if (req->restart.type == RESTART_FROM_CHECKPOINT) {
-    checkpoint_to_restore = get_checkpoint(req->restart.param);
+  if (req.restart.type == RESTART_FROM_CHECKPOINT) {
+    checkpoint_to_restore = get_checkpoint(req.restart.param);
     if (!checkpoint_to_restore) {
-      LOG(info) << "Checkpoint " << req->restart.param << " not found.";
+      LOG(info) << "Checkpoint " << req.restart.param << " not found.";
       dbg->notify_restart_failed();
       return;
     }
-  } else if (req->restart.type == RESTART_FROM_PREVIOUS) {
+  } else if (req.restart.type == RESTART_FROM_PREVIOUS) {
     checkpoint_to_restore = debugger_restart_checkpoint;
   }
   if (checkpoint_to_restore) {
@@ -807,7 +807,7 @@ void GdbServer::serve_replay(const string& trace_dir,
       GdbRequest restart_request;
       replay_one_step(&restart_request);
       if (restart_request.type != DREQ_NONE) {
-        restart_session(&restart_request);
+        restart_session(restart_request);
       }
     }
     LOG(info) << ("Replayer successfully finished.");
@@ -821,7 +821,7 @@ void GdbServer::serve_replay(const string& trace_dir,
     dbg->notify_exit_code(0);
     GdbRequest req = process_debugger_requests(session->last_task());
     if (DREQ_RESTART == req.type) {
-      restart_session(&req);
+      restart_session(req);
       continue;
     }
     FATAL() << "Received continue request after end-of-trace.";

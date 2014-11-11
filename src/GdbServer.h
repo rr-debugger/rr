@@ -72,7 +72,7 @@ private:
    * (and thereby mutating the TraceIfstream for that event).
    */
   bool maybe_connect_debugger(ScopedFd* debugger_params_write_pipe);
-  void restart_session(GdbRequest* req);
+  void restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
   void replay_one_step(GdbRequest* restart_request);
   void serve_replay(const std::string& trace_dir,
