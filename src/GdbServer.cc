@@ -683,6 +683,11 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   if (!session->can_validate()) {
     return false;
   }
+  Task* t = session->current_task();
+  if (!t) {
+    return false;
+  }
+
   // When we decide to create the debugger, we may end up
   // creating a checkpoint.  In that case, we want the
   // checkpoint to retain the state it had *before* we started
@@ -693,10 +698,6 @@ bool GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // frame we're *about to* replay, without modifying the
   // TraceIfstream.
   TraceFrame next_frame = session->current_trace_frame();
-  Task* t = session->current_task();
-  if (!t) {
-    return false;
-  }
   TraceFrame::Time event_now = next_frame.time();
   TraceFrame::Time goto_event = Flags::get().goto_event;
   pid_t target_process = Flags::get().target_process;
