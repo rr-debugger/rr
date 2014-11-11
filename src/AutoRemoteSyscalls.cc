@@ -80,6 +80,9 @@ long AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
 
   advance_syscall(t);
 
+  ASSERT(t, t->regs().ip() - callregs.ip() == sizeof(X86Arch::syscall_insn))
+      << "Should have advanced ip by one syscall_insn";
+
   ASSERT(t, t->regs().original_syscallno() == syscallno)
       << "Should be entering " << t->syscallname(syscallno)
       << ", but instead at " << t->syscallname(t->regs().original_syscallno());
