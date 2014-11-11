@@ -105,19 +105,6 @@ template <typename Arch> struct syscall_defs {
 #endif // CHECK_SYSCALL_NUMBERS
 
 /**
- * Compares the register file as it appeared in the recording phase
- * with the current register file.
- */
-static void validate_args(int syscall, Task* t) {
-  /* don't validate anything before execve is done as the actual
-   * process did not start prior to this point */
-  if (!t->session().can_validate()) {
-    return;
-  }
-  assert_child_regs_are(t, t->current_trace_frame().regs());
-}
-
-/**
  * Proceeds until the next system call, which is not executed.
  */
 static void goto_next_syscall_emu(Task* t) {
@@ -208,7 +195,7 @@ void rep_maybe_replay_stdio_write(Task* t) {
 
 static void exit_syscall_emu_ret(Task* t, int syscall) {
   t->set_return_value_from_trace();
-  validate_args(syscall, t);
+  t->validate_regs();
   t->finish_emulated_syscall();
 }
 
@@ -296,7 +283,6 @@ static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
 template <typename Arch>
 static void process_clone(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, ReplayTraceStep* step) {
-  int syscallno = Arch::clone;
   if (is_failed_syscall(t, trace_frame)) {
     /* creation failed, emulate it */
     step->syscall.emu = EMULATE;
@@ -374,7 +360,7 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   r.set_arg1(flags);
   t->set_regs(r);
   t->set_return_value_from_trace();
-  validate_args(syscallno, t);
+  t->validate_regs();
 
   init_scratch_memory<Arch>(new_task);
 
@@ -386,8 +372,6 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
 template <typename Arch>
 static void process_execve(Task* t, const TraceFrame& trace_frame,
                            SyscallEntryOrExit state, ReplayTraceStep* step) {
-  const int syscallno = Arch::execve;
-
   if (is_failed_syscall(t, trace_frame)) {
     /* exec failed, emulate it */
     step->syscall.emu = EMULATE;
@@ -442,7 +426,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   t->post_exec();
 
   t->set_return_value_from_trace();
-  validate_args(syscallno, t);
+  t->validate_regs();
 }
 
 static void process_futex(Task* t, const TraceFrame& trace_frame,
@@ -855,7 +839,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(mapped_addr);
   }
-  validate_args(Arch::mmap2, t);
+  t->validate_regs();
 
   step->action = TSTEP_RETIRE;
 }
@@ -1046,7 +1030,7 @@ static void process_init_buffers(Task* t, SyscallEntryOrExit state,
   ASSERT(t, child_map_addr == rec_child_map_addr)
       << "Should have mapped syscallbuf at " << rec_child_map_addr
       << ", but it's at " << child_map_addr;
-  validate_args(SYS_rrcall_init_buffers, t);
+  t->validate_regs();
 }
 
 template <typename Arch>

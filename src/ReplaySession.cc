@@ -267,40 +267,6 @@ bool ReplaySession::is_ignored_signal(int sig) {
   }
 }
 
-/**
- * Compares the register file as it appeared in the recording phase
- * with the current register file.
- * If syscallno is 0, this is a signal delivery, not a syscall.
- */
-static void validate_args(int syscallno, SyscallEntryOrExit state, Task* t) {
-  Registers rec_regs = t->current_trace_frame().regs();
-
-  /* don't validate anything before execve is done as the actual
-   * process did not start prior to this point */
-  if (!t->session().can_validate()) {
-    return;
-  }
-  if (rec_regs.arch() == SupportedArch::x86 &&
-      (X86Arch::pwrite64 == syscallno || X86Arch::pread64 == syscallno) &&
-      SYSCALL_EXIT == state) {
-    /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
-     * 12.04 has been observed to mutate $esi across
-     * syscall entry/exit.  (This has been verified
-     * outside of rr as well; not an rr bug.)  It's not
-     * clear whether this is a ptrace bug or a kernel bug,
-     * but either way it's not supposed to happen.  So we
-     * fudge registers here to cover up that bug. */
-    if (t->regs().arg4() != rec_regs.arg4()) {
-      LOG(warn) << "Probably saw kernel bug mutating $esi across pread/write64 "
-                   "call: recorded:" << HEX(rec_regs.arg4())
-                << "; replaying:" << t->regs().arg4()
-                << ".  Fudging registers.";
-      rec_regs.set_arg4(t->regs().arg4());
-    }
-  }
-  assert_child_regs_are(t, rec_regs);
-}
-
 /** Return true when |t|'s $ip points at a syscall instruction. */
 static bool entering_syscall_insn(Task* t) {
   static const uint8_t sysenter[] = { 0x0f, 0x34 };
@@ -390,7 +356,7 @@ Completion ReplaySession::enter_syscall(Task* t, RunCommand stepi) {
   if (cont_syscall_boundary(t, current_step.syscall.emu, stepi) == INCOMPLETE) {
     return INCOMPLETE;
   }
-  validate_args(current_step.syscall.number, SYSCALL_ENTRY, t);
+  t->validate_regs();
   return COMPLETE;
 }
 
@@ -413,7 +379,13 @@ Completion ReplaySession::exit_syscall(Task* t, RunCommand stepi) {
   if (current_step.syscall.emu_ret) {
     t->set_return_value_from_trace();
   }
-  validate_args(current_step.syscall.number, SYSCALL_EXIT, t);
+  uint32_t flags = 0;
+  if (t->arch() == SupportedArch::x86 &&
+      (X86Arch::pwrite64 == current_step.syscall.number ||
+       X86Arch::pread64 == current_step.syscall.number)) {
+    flags |= Task::IGNORE_ESI;
+  }
+  t->validate_regs(flags);
 
   if (emu == EMULATE) {
     t->finish_emulated_syscall();
@@ -945,7 +917,7 @@ Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
   /* Delivered the signal. */
   t->child_sig = 0;
 
-  validate_args(0, SYSCALL_ENTRY, t);
+  t->validate_regs();
   return COMPLETE;
 }
 

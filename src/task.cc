@@ -853,6 +853,29 @@ const ExtraRegisters& Task::extra_regs() {
   return extra_registers;
 }
 
+void Task::validate_regs(uint32_t flags) {
+  /* don't validate anything before execve is done as the actual
+   * process did not start prior to this point */
+  if (!session().can_validate()) {
+    return;
+  }
+
+  Registers rec_regs = current_trace_frame().regs();
+
+  if (flags & IGNORE_ESI) {
+    if (regs().arg4() != rec_regs.arg4()) {
+      LOG(warn) << "Probably saw kernel bug mutating $esi across pread/write64 "
+                   "call: recorded:" << HEX(rec_regs.arg4())
+                << "; replaying:" << regs().arg4() << ".  Fudging registers.";
+      rec_regs.set_arg4(regs().arg4());
+    }
+  }
+
+  /* TODO: add perf counter validations (hw int, page faults, insts) */
+  Registers::compare_register_files(this, "replaying", regs(), "recorded",
+                                    rec_regs, BAIL_ON_MISMATCH);
+}
+
 static ssize_t dr_user_word_offset(size_t i) {
   assert(i < NUM_X86_DEBUG_REGS);
   return offsetof(struct user, u_debugreg[0]) + sizeof(void*) * i;

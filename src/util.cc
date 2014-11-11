@@ -248,12 +248,6 @@ remote_ptr<void> ceil_page_size(remote_ptr<void> addr) {
   return remote_ptr<void>(ceil_page_size(addr.as_int()));
 }
 
-void assert_child_regs_are(Task* t, const Registers& regs) {
-  Registers::compare_register_files(t, "replaying", t->regs(), "recorded", regs,
-                                    BAIL_ON_MISMATCH);
-  /* TODO: add perf counter validations (hw int, page faults, insts) */
-}
-
 /**
  * Dump |buf_len| words in |buf| to |out|, starting with a line
  * containing |label|.  See |dump_binary_data()| for a description of
