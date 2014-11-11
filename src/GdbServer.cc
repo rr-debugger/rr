@@ -567,35 +567,34 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   }
 }
 
-void GdbServer::replay_one_step(GdbRequest* restart_request) {
-  restart_request->type = DREQ_NONE;
-
-  GdbRequest req;
+GdbRequest GdbServer::replay_one_step() {
   Task* t = session->current_task();
+  ReplaySession::RunCommand command;
+  GdbRequest req;
 
   if (debugger_active) {
     req = process_debugger_requests(t);
     if (DREQ_RESTART == req.type) {
-      *restart_request = req;
-      return;
+      return req;
     }
     assert(req.is_resume_request());
+    command = (DREQ_STEP == req.type && get_threadid(t) == req.target)
+                  ? Session::RUN_SINGLESTEP
+                  : Session::RUN_CONTINUE;
   } else {
-    req.type = DREQ_CONTINUE;
+    command = Session::RUN_CONTINUE;
   }
 
-  ReplaySession::RunCommand command =
-      (DREQ_STEP == req.type && get_threadid(t) == req.target)
-          ? Session::RUN_SINGLESTEP
-          : Session::RUN_CONTINUE;
   auto result = session->replay_step(command);
 
+  GdbRequest no_restart;
+  no_restart.type = DREQ_NONE;
   if (result.status == ReplaySession::REPLAY_EXITED) {
-    return;
+    return no_restart;
   }
   assert(result.status == ReplaySession::REPLAY_CONTINUE);
   if (result.break_status.reason == Session::BREAK_NONE) {
-    return;
+    return no_restart;
   }
 
   if (debugger_active && !req.suppress_debugger_stop) {
@@ -616,6 +615,7 @@ void GdbServer::replay_one_step(GdbRequest* restart_request) {
     dbg->notify_stop(get_threadid(result.break_status.task), sig,
                      watch_addr.as_int());
   }
+  return no_restart;
 }
 
 /**
@@ -804,8 +804,7 @@ void GdbServer::serve_replay(const string& trace_dir,
         debugger_active = maybe_connect_debugger(debugger_params_write_pipe);
       }
 
-      GdbRequest restart_request;
-      replay_one_step(&restart_request);
+      GdbRequest restart_request = replay_one_step();
       if (restart_request.type != DREQ_NONE) {
         restart_session(restart_request);
       }

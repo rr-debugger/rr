@@ -74,7 +74,7 @@ private:
   bool maybe_connect_debugger(ScopedFd* debugger_params_write_pipe);
   void restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
-  void replay_one_step(GdbRequest* restart_request);
+  GdbRequest replay_one_step();
   void serve_replay(const std::string& trace_dir,
                     ScopedFd* debugger_params_write_pipe);
 
