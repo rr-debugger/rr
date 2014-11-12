@@ -232,7 +232,7 @@ chdir = EmulatedSyscall(x86=12, x64=80)
 # time() returns the time since the Epoch (00:00:00 UTC, January 1,
 # 1970), measured in seconds. If t is non-NULL, the return value is
 # also stored in the memory pointed to by t.
-time = EmulatedSyscall(x86=13, x64=201, arg1="time_t")
+time = EmulatedSyscall(x86=13, x64=201, arg1="typename Arch::time_t")
 
 mknod = UnsupportedSyscall(x86=14, x64=133)
 
@@ -1261,7 +1261,7 @@ sched_getaffinity = EmulatedSyscall(x86=242, x64=204, arg3="cpu_set_t")
 # TLS entry.  If set_thread_area() finds a free TLS entry, the  value  of
 # u_info->entry_number  is  set  upon  return  to  show  which  entry was
 # changed.
-set_thread_area = ExecutedSyscall(x86=243, x64=205, arg1="struct user_desc")
+set_thread_area = ExecutedSyscall(x86=243, x64=205, arg1="typename Arch::user_desc")
 
 get_thread_area = UnsupportedSyscall(x86=244, x64=211)
 io_setup = UnsupportedSyscall(x86=245, x64=206)
@@ -1328,7 +1328,7 @@ remap_file_pages = UnsupportedSyscall(x86=257, x64=216)
 #
 # When set_child_tid is set, the very first thing the new process
 # does is writing its PID at this address.
-set_tid_address = ExecRetEmuSyscall(x86=258, x64=218, arg1="pid_t")
+set_tid_address = ExecRetEmuSyscall(x86=258, x64=218, arg1="typename Arch::pid_t")
 
 timer_create = UnsupportedSyscall(x86=259, x64=222)
 timer_settime = UnsupportedSyscall(x86=260, x64=223)
