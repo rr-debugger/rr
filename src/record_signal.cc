@@ -27,6 +27,7 @@
 #include "util.h"
 
 using namespace rr;
+using namespace std;
 
 static void handle_siginfo(Task* t, siginfo_t* si);
 
@@ -51,18 +52,26 @@ static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si) {
       << ", fd=" << si->si_fd << ")";
 }
 
+template <typename Arch> static size_t sigaction_sigset_size_arch() {
+  return Arch::sigaction_sigset_size;
+}
+
+static size_t sigaction_sigset_size(SupportedArch arch) {
+  RR_ARCH_FUNCTION(sigaction_sigset_size_arch, arch);
+}
+
 /**
  * Restore the blocked-ness and sigaction for SIGSEGV from |t|'s local
  * copy.
  */
 static void restore_sigsegv_state(Task* t) {
-  kernel_sigaction sa = t->signal_action(SIGSEGV);
+  const vector<uint8_t>& sa = t->signal_action(SIGSEGV);
   AutoRemoteSyscalls remote(t);
   {
-    AutoRestoreMem child_sa(remote, (const uint8_t*)&sa, sizeof(sa));
-    int ret =
-        remote.syscall(syscall_number_for_rt_sigaction(remote.arch()), SIGSEGV,
-                       child_sa.get().as_int(), nullptr, _NSIG / 8);
+    AutoRestoreMem child_sa(remote, sa.data(), sa.size());
+    int ret = remote.syscall(syscall_number_for_rt_sigaction(remote.arch()),
+                             SIGSEGV, child_sa.get().as_int(), nullptr,
+                             sigaction_sigset_size(remote.arch()));
     ASSERT(t, 0 == ret) << "Failed to restore SIGSEGV handler";
   }
   // NB: we would normally want to restore the SIG_BLOCK for

@@ -62,23 +62,46 @@ void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N]) {
  * the |refcount|s while they still refer to this.
  */
 struct Sighandler {
-  Sighandler() : sa(), resethand() {}
-  Sighandler(const struct kernel_sigaction& sa)
-      : sa(sa), resethand(sa.sa_flags & SA_RESETHAND) {}
+  Sighandler() : resethand(false) {}
+
+  template <typename Arch>
+  void init_arch(const typename Arch::kernel_sigaction& ksa) {
+    k_sa_handler = ksa.k_sa_handler;
+    sa.resize(sizeof(ksa));
+    memcpy(sa.data(), &ksa, sizeof(ksa));
+    resethand = (ksa.sa_flags & SA_RESETHAND) != 0;
+  }
+
+  template <typename Arch> void reset_arch() {
+    typename Arch::kernel_sigaction ksa;
+    memset(&ksa, 0, sizeof(ksa));
+    static_assert((uintptr_t)SIG_DFL == 0, "");
+    init_arch<Arch>(ksa);
+  }
 
   bool ignored(int sig) const {
-    return (SIG_IGN == sa.k_sa_handler ||
-            (SIG_DFL == sa.k_sa_handler && IGNORE == default_action(sig)));
+    return (uintptr_t)SIG_IGN == k_sa_handler.as_int() ||
+           ((uintptr_t)SIG_DFL == k_sa_handler.as_int() &&
+            IGNORE == default_action(sig));
   }
-  bool is_default() const { return SIG_DFL == sa.k_sa_handler && !resethand; }
+  bool is_default() const {
+    return (uintptr_t)SIG_DFL == k_sa_handler.as_int() && !resethand;
+  }
   bool is_user_handler() const {
-    static_assert((void*)1 == SIG_IGN, "");
-    return (uintptr_t)sa.k_sa_handler & ~(uintptr_t)SIG_IGN;
+    static_assert(1 == (uintptr_t)SIG_IGN, "");
+    return k_sa_handler.as_int() & ~(uintptr_t)SIG_IGN;
   }
 
-  kernel_sigaction sa;
+  remote_ptr<void> k_sa_handler;
+  // Saved kernel_sigaction; used to restore handler
+  vector<uint8_t> sa;
   bool resethand;
 };
+
+static void reset_handler(Sighandler* handler, SupportedArch arch) {
+  RR_ARCH_FUNCTION(handler->reset_arch, arch);
+}
+
 struct Sighandlers {
   typedef shared_ptr<Sighandlers> shr_ptr;
 
@@ -87,7 +110,9 @@ struct Sighandlers {
     // NB: depends on the fact that Sighandler is for all
     // intents and purposes a POD type, though not
     // technically.
-    memcpy(s->handlers, handlers, sizeof(handlers));
+    for (size_t i = 0; i < array_length(handlers); ++i) {
+      s->handlers[i] = handlers[i];
+    }
     return s;
   }
 
@@ -101,22 +126,19 @@ struct Sighandlers {
   }
 
   void init_from_current_process() {
-    for (int i = 1; i < ssize_t(array_length(handlers)); ++i) {
+    for (size_t i = 0; i < array_length(handlers); ++i) {
       Sighandler& h = handlers[i];
-      struct sigaction act;
-      if (-1 == sigaction(i, nullptr, &act)) {
+
+      NativeArch::kernel_sigaction sa;
+      if (::syscall(SYS_rt_sigaction, i, nullptr, &sa, sizeof(sigset_t))) {
         /* EINVAL means we're querying an
          * unused signal number. */
         assert(EINVAL == errno);
         assert(h.is_default());
         continue;
       }
-      struct kernel_sigaction ka;
-      ka.k_sa_handler = act.sa_handler;
-      ka.sa_flags = act.sa_flags;
-      ka.sa_restorer = act.sa_restorer;
-      ka.sa_mask = act.sa_mask;
-      h = Sighandler(ka);
+
+      h.init_arch<NativeArch>(sa);
     }
   }
 
@@ -130,14 +152,14 @@ struct Sighandlers {
    * this is the operation required by POSIX to initialize that
    * table copy.)
    */
-  void reset_user_handlers() {
+  void reset_user_handlers(SupportedArch arch) {
     for (int i = 0; i < ssize_t(array_length(handlers)); ++i) {
       Sighandler& h = handlers[i];
       // If the handler was a user handler, reset to
       // default.  If it was SIG_IGN or SIG_DFL,
       // leave it alone.
       if (h.is_user_handler()) {
-        handlers[i] = Sighandler();
+        reset_handler(&h, arch);
       }
     }
   }
@@ -663,7 +685,7 @@ void Task::pre_exec() {
 
 void Task::post_exec() {
   sighandlers = sighandlers->clone();
-  sighandlers->reset_user_handlers();
+  sighandlers->reset_user_handlers(arch());
   as->erase_task(this);
   assert(execve_file.size() > 0);
   auto a = session().create_vm(this, execve_file);
@@ -1065,19 +1087,15 @@ void Task::set_tid_addr(remote_ptr<int> tid_addr) {
 void Task::signal_delivered(int sig) {
   Sighandler& h = sighandlers->get(sig);
   if (h.resethand) {
-    h = Sighandler();
+    reset_handler(&h, arch());
   }
-}
-
-sig_handler_t Task::signal_disposition(int sig) const {
-  return sighandlers->get(sig).sa.k_sa_handler;
 }
 
 bool Task::signal_has_user_handler(int sig) const {
   return sighandlers->get(sig).is_user_handler();
 }
 
-const kernel_sigaction& Task::signal_action(int sig) const {
+const vector<uint8_t>& Task::signal_action(int sig) const {
   return sighandlers->get(sig).sa;
 }
 
@@ -1120,17 +1138,27 @@ void Task::update_prname(remote_ptr<void> child_addr) {
   prname = name.chars;
 }
 
-void Task::update_sigaction(const Registers& regs) {
+template <typename Arch>
+void Task::update_sigaction_arch(const Registers& regs) {
   int sig = regs.arg1_signed();
-  remote_ptr<struct kernel_sigaction> new_sigaction = regs.arg2();
+  remote_ptr<typename Arch::kernel_sigaction> new_sigaction = regs.arg2();
   if (0 == regs.syscall_result() && !new_sigaction.is_null()) {
     // A new sighandler was installed.  Update our
     // sighandler table.
     // TODO: discard attempts to handle or ignore signals
     // that can't be by POSIX
-    auto sa = read_mem(new_sigaction);
-    sighandlers->get(sig) = Sighandler(sa);
+    typename Arch::kernel_sigaction sa;
+    size_t sigset_size = min(sizeof(typename Arch::sigset_t), regs.arg4());
+    memset(&sa, 0, sizeof(sa));
+    read_bytes_helper(
+        new_sigaction,
+        sizeof(sa) - (sizeof(typename Arch::sigset_t) - sigset_size), &sa);
+    sighandlers->get(sig).init_arch<Arch>(sa);
   }
+}
+
+void Task::update_sigaction(const Registers& regs) {
+  RR_ARCH_FUNCTION(update_sigaction_arch, regs.arch(), regs);
 }
 
 void Task::update_sigmask(const Registers& regs) {

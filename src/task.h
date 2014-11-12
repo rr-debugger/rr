@@ -736,9 +736,6 @@ public:
   /** Return true if this died because of a signal. */
   bool signaled() const { return WIFSIGNALED(wait_status); }
 
-  /** Return the disposition of |sig|. */
-  sig_handler_t signal_disposition(int sig) const;
-
   /**
    * Return true if the disposition of |sig| in |table| isn't
    * SIG_IGN or SIG_DFL, that is, if a user sighandler will be
@@ -746,8 +743,11 @@ public:
    */
   bool signal_has_user_handler(int sig) const;
 
-  /** Return |sig|'s current sigaction. */
-  const kernel_sigaction& signal_action(int sig) const;
+  /**
+   * Return |sig|'s current sigaction. Returned as raw bytes since the
+   * data is architecture-dependent.
+   */
+  const std::vector<uint8_t>& signal_action(int sig) const;
 
   /**
    * Return the |stack| argument passed to |clone()|, i.e. the
@@ -1094,6 +1094,9 @@ private:
   /** Helper function for maybe_update_vm. */
   template <typename Arch>
   void maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state);
+
+  /** Helper function for update_sigaction. */
+  template <typename Arch> void update_sigaction_arch(const Registers& regs);
 
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of

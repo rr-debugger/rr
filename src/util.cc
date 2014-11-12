@@ -441,14 +441,13 @@ bool possibly_destabilizing_signal(Task* t, int sig,
     return false;
   }
 
-  sig_handler_t disp = t->signal_disposition(sig);
-  if (disp == SIG_DFL) {
-    // The default action is going to happen: killing the process.
-    return true;
-  }
-  if (disp == SIG_IGN) {
+  if (t->is_sig_ignored(sig)) {
     // Deterministic fatal signals can't be ignored.
     return deterministic == DETERMINISTIC_SIG;
+  }
+  if (!t->signal_has_user_handler(sig)) {
+    // The default action is going to happen: killing the process.
+    return true;
   }
   // If the signal's blocked, user handlers aren't going to run and the process
   // will die.

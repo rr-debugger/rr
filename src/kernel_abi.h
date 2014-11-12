@@ -808,7 +808,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
 
   typedef struct {
-    unsigned_long __val[1024/(8*sizeof(unsigned_long))];
+    unsigned_long __val[1024 / (8 * sizeof(unsigned_long))];
   } __sigset_t;
   typedef __sigset_t sigset_t;
   RR_VERIFY_TYPE(sigset_t);
@@ -818,6 +818,13 @@ struct BaseArch : public wordsize, public FcntlConstants {
     unsigned_long sa_flags;
     ptr<void> sa_restorer;
     sigset_t sa_mask;
+  };
+
+  // The 'size' parameter to pass to rt_sigaction. Only this value works,
+  // even though sizeof(sigset_t) > 8 (it's actually 128 with kernel 3.16,
+  // as above).
+  enum {
+    sigaction_sigset_size = 8
   };
 };
 
