@@ -86,7 +86,7 @@ const char* ptrace_req_name(int request) {
   }
 }
 
-const char* signalname(int sig) {
+const char* signal_name(int sig) {
   /* strsignal() would be nice to use here, but it provides TMI. */
   if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
     static __thread char buf[] = "SIGRT00000000";

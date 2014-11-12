@@ -903,7 +903,7 @@ Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
   if (restored_sighandler_frame) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
-    LOG(debug) << "--> restoring sighandler frame for " << signalname(sig);
+    LOG(debug) << "--> restoring sighandler frame for " << signal_name(sig);
     t->ev().transform(EV_SIGNAL_HANDLER);
   } else if (possibly_destabilizing_signal(t, sig, deterministic)) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));

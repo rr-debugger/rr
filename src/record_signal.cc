@@ -260,11 +260,11 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
     // and the tracee never switched out.
     if (SYSCALLBUF_DESCHED_SIGNAL == sig ||
         PerfCounters::TIME_SLICE_SIGNAL == sig || t->is_sig_ignored(sig)) {
-      LOG(debug) << "  dropping ignored " << signalname(sig);
+      LOG(debug) << "  dropping ignored " << signal_name(sig);
       continue;
     }
 
-    LOG(debug) << "  stashing " << signalname(sig);
+    LOG(debug) << "  stashing " << signal_name(sig);
     t->stash_sig();
   }
 
@@ -356,7 +356,7 @@ static void record_signal(Task* t, const siginfo_t* si) {
 
   int sig = si->si_signo;
   if (sig == Flags::get().ignore_sig) {
-    LOG(info) << "Declining to deliver " << signalname(sig)
+    LOG(info) << "Declining to deliver " << signal_name(sig)
               << " by user request";
     t->push_event(Event::noop(t->arch()));
     return;
@@ -438,7 +438,7 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
 
   ASSERT(t, !(t->is_in_syscallbuf() &&
               is_deterministic_signal(si) == DETERMINISTIC_SIG))
-      << "TODO: " << signalname(si->si_signo) << " (code:" << si->si_code
+      << "TODO: " << signal_name(si->si_signo) << " (code:" << si->si_code
       << ") raised by syscallbuf code";
   /* TODO: when we add support for deterministic signals, we
    * should sigprocmask-off all tracee signals while we're
@@ -539,7 +539,7 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
           t->is_sig_ignored(si->si_signo)) {
         *si = tmp_si;
         LOG(debug) << "  upgraded delivery of HPC_TIME_SLICE_SIGNAL to "
-                   << signalname(si->si_signo);
+                   << signal_name(si->si_signo);
         handle_siginfo(t, si);
         return INCOMPLETE;
       }
@@ -551,10 +551,10 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
       }
 
       ASSERT(t, false) << "TODO: support multiple pending signals; received "
-                       << signalname(tmp_si.si_signo)
+                       << signal_name(tmp_si.si_signo)
                        << " (code: " << tmp_si.si_code << ") at $ip:" << t->ip()
                        << " while trying to deliver "
-                       << signalname(si->si_signo) << " (code: " << si->si_code
+                       << signal_name(si->si_signo) << " (code: " << si->si_code
                        << ")";
     }
     if (!is_syscall) {
@@ -572,7 +572,7 @@ happy_place:
 }
 
 static void handle_siginfo(Task* t, siginfo_t* si) {
-  LOG(debug) << t->tid << ": handling signal " << signalname(si->si_signo)
+  LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
              << " (pevent: " << t->ptrace_event() << ", event: " << t->ev();
 
   /* We have to check for a desched event first, because for

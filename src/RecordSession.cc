@@ -188,7 +188,7 @@ static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
   bool may_restart = t->at_may_restart_syscall();
 
   if (sig) {
-    LOG(debug) << "  delivering " << signalname(sig) << " to " << t->tid;
+    LOG(debug) << "  delivering " << signal_name(sig) << " to " << t->tid;
   }
   if (may_restart && t->seccomp_bpf_enabled) {
     LOG(debug) << "  PTRACE_SYSCALL to possibly-restarted " << t->ev();
@@ -275,11 +275,11 @@ static void disarm_desched(Task* t) {
       continue;
     }
     if (sig && sig == old_sig) {
-      LOG(debug) << "  coalescing pending " << signalname(sig);
+      LOG(debug) << "  coalescing pending " << signal_name(sig);
       continue;
     }
     if (sig) {
-      LOG(debug) << "  " << signalname(sig) << " now pending";
+      LOG(debug) << "  " << signal_name(sig) << " now pending";
       t->stash_sig();
     }
   } while (!t->is_disarm_desched_event_syscall());
@@ -439,7 +439,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
       assert(by_waitpid);
       // Linux kicks tasks out of syscalls before delivering
       // signals.
-      ASSERT(t, !t->pending_sig()) << "Signal " << signalname(t->pending_sig())
+      ASSERT(t, !t->pending_sig()) << "Signal " << signal_name(t->pending_sig())
                                    << " pending while in syscall???";
 
       t->ev().Syscall().state = EXITING_SYSCALL;
@@ -620,7 +620,7 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
       // If a signal is blocked but is still delivered (e.g. a synchronous
       // terminating signal such as SIGSEGV), user handlers do not run.
       if (t->signal_has_user_handler(sig) && !t->is_sig_blocked(sig)) {
-        LOG(debug) << "  " << t->tid << ": " << signalname(sig)
+        LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
 
         t->cont_singlestep(sig);
@@ -660,7 +660,7 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
         t->ev().Signal().delivered = 1;
       } else {
         LOG(debug) << "  " << t->tid << ": no user handler for "
-                   << signalname(sig);
+                   << signal_name(sig);
       }
 
       // We record this data regardless to simplify replay.
@@ -734,7 +734,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
   if (t->has_stashed_sig()) {
     stash = t->pop_stash_sig();
     si = &stash;
-    LOG(debug) << "pulled " << signalname(t->pending_sig()) << " out of stash";
+    LOG(debug) << "pulled " << signal_name(t->pending_sig()) << " out of stash";
   }
 
   if (t->pending_sig() && can_deliver_signals) {
@@ -749,7 +749,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
     //
     // This doesn't really occur in practice, only in
     // tests that force a degenerately low time slice.
-    LOG(warn) << "Dropping " << signalname(t->pending_sig())
+    LOG(warn) << "Dropping " << signal_name(t->pending_sig())
               << " because it can't be delivered yet";
     // No events to be recorded, so no syscallbuf updates
     // needed.

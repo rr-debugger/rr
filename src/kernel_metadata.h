@@ -27,7 +27,7 @@ const char* ptrace_req_name(int request);
  * Return the symbolic name of |sig|, f.e. "SIGILL", or "???signal" if
  * unknown.
  */
-const char* signalname(int sig);
+const char* signal_name(int sig);
 
 /**
  * Return true iff replaying |syscall| will never ever require

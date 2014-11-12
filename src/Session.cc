@@ -112,7 +112,7 @@ Session::BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
       // execution, which should raise the original
       // signal again.
       LOG(debug) << "hit debugger breakpoint BEFORE ip " << t->ip() << " for "
-                 << signalname(stop_sig);
+                 << signal_name(stop_sig);
 #ifdef DEBUGTAG
       siginfo_t si = t->get_siginfo();
       psiginfo(&si, "  siginfo for signal-stop:\n    ");

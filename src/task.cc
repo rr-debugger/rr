@@ -284,7 +284,7 @@ void Task::finish_emulated_syscall() {
     // any of the host of replay-ignored signals.
     ASSERT(this, (pending_sig() == SIGTRAP ||
                   ReplaySession::is_ignored_signal(pending_sig())))
-        << "PENDING SIG IS " << signalname(pending_sig());
+        << "PENDING SIG IS " << signal_name(pending_sig());
     vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
   }
   set_regs(r);
@@ -313,7 +313,7 @@ void Task::destabilize_task_group() {
     printf(
         "[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
         trace_time() + signal_delivery_event_offset, rec_tid, tgid(),
-        signalname(ev().Signal().number));
+        signal_name(ev().Signal().number));
   }
 
   tg->destabilize();
@@ -1084,8 +1084,8 @@ const kernel_sigaction& Task::signal_action(int sig) const {
 void Task::stash_sig() {
   assert(pending_sig());
   ASSERT(this, !has_stashed_sig()) << "Tried to stash "
-                                   << signalname(pending_sig()) << " when "
-                                   << signalname(
+                                   << signal_name(pending_sig()) << " when "
+                                   << signal_name(
                                           stashed_signals.back().si.si_signo)
                                    << " was already stashed.";
   const siginfo_t& si = get_siginfo();

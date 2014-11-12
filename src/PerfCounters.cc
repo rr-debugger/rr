@@ -208,7 +208,7 @@ void PerfCounters::reset(Ticks ticks_period) {
   if (fcntl(fd_ticks, F_SETFL, O_ASYNC) ||
       fcntl(fd_ticks, F_SETSIG, PerfCounters::TIME_SLICE_SIGNAL)) {
     FATAL() << "Failed to make ticks counter ASYNC with sig"
-            << signalname(PerfCounters::TIME_SLICE_SIGNAL);
+            << signal_name(PerfCounters::TIME_SLICE_SIGNAL);
   }
 
   if (extra_perf_counters_enabled()) {

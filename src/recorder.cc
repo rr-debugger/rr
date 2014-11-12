@@ -38,7 +38,7 @@ static void handle_termsig(int sig) {
     FATAL() << "Received termsig while an earlier one was pending.  We're "
                "probably wedged.";
   }
-  LOG(info) << "Received termsig " << signalname(sig)
+  LOG(info) << "Received termsig " << signal_name(sig)
             << ", requesting shutdown ...\n";
   term_request = true;
 }

@@ -78,7 +78,7 @@ static void handle_signal(int sig) {
       }
       break;
     default:
-      FATAL() << "Unhandled signal " << signalname(sig);
+      FATAL() << "Unhandled signal " << signal_name(sig);
   }
 }
 

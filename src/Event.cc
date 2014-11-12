@@ -271,7 +271,7 @@ string Event::str() const {
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
-      ss << ": " << signalname(Signal().number) << "("
+      ss << ": " << signal_name(Signal().number) << "("
          << (const char*)(Signal().deterministic == DETERMINISTIC_SIG ? "det"
                                                                       : "async")
          << ")";
