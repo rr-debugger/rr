@@ -361,7 +361,7 @@ pipe = EmulatedSyscall(x86=42, x64=22, arg1="int[2]")
 #
 # times() stores the current process times in the struct tms that buf
 #  points to.  The struct tms is as defined in <sys/times.h>:
-times = EmulatedSyscall(x86=43, x64=100, arg1="struct tms")
+times = EmulatedSyscall(x86=43, x64=100, arg1="typename Arch::tms")
 
 prof = UnsupportedSyscall(x86=44)
 

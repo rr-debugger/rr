@@ -24,6 +24,7 @@
 #include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/times.h>
 #include <sys/user.h>
 #include <termios.h>
 
@@ -826,6 +827,14 @@ struct BaseArch : public wordsize, public FcntlConstants {
   enum {
     sigaction_sigset_size = 8
   };
+
+  struct tms {
+    clock_t tms_utime;
+    clock_t tms_stime;
+    clock_t tms_cutime;
+    clock_t tms_cstime;
+  };
+  RR_VERIFY_TYPE(tms);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
