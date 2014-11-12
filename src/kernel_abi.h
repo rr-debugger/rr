@@ -806,6 +806,19 @@ struct BaseArch : public wordsize, public FcntlConstants {
     Mixed16And32Bit,
     Only32Bit,
   };
+
+  typedef struct {
+    unsigned_long __val[1024/(8*sizeof(unsigned_long))];
+  } __sigset_t;
+  typedef __sigset_t sigset_t;
+  RR_VERIFY_TYPE(sigset_t);
+
+  struct kernel_sigaction {
+    ptr<void> k_sa_handler;
+    unsigned_long sa_flags;
+    ptr<void> sa_restorer;
+    sigset_t sa_mask;
+  };
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
