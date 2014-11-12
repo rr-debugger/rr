@@ -989,6 +989,14 @@ template <typename Arch> struct LegacyUIDSyscall {
 
 #include "SyscallHelperFunctions.generated"
 
+#if defined(__i386__)
+typedef X86Arch NativeArch;
+#elif defined(__x86_64__)
+typedef X64Arch NativeArch;
+#else
+#error need to define new NativeArch
+#endif
+
 } // namespace rr
 
 #endif /* RR_KERNEL_ABI_H */
