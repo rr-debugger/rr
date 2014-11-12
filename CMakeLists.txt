@@ -247,6 +247,7 @@ set(BASIC_TESTS
   tgkill
   thread_stress
   timerfd
+  times
   tiocgwinsz
   truncate
   uname
