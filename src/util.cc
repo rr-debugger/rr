@@ -8,26 +8,12 @@
 #include "util.h"
 
 #include <assert.h>
-#include <ctype.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <limits.h>
-#include <linux/futex.h>
-#include <linux/ipc.h>
 #include <linux/magic.h>
-#include <linux/net.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/signal.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/syscall.h>
-#include <sys/types.h>
 #include <sys/vfs.h>
-#include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
 
 #include "preload/syscall_buffer.h"
