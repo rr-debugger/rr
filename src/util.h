@@ -3,30 +3,14 @@
 #ifndef RR_UTIL_H_
 #define RR_UTIL_H_
 
-#include <errno.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <signal.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/ptrace.h>
-#include <unistd.h>
-
 #include <array>
-#include <ostream>
 
 #include "Event.h"
-#include "ExtraRegisters.h"
-#include "kernel_abi.h"
-#include "kernel_supplement.h"
-#include "Registers.h"
+#include "remote_ptr.h"
 #include "ScopedFd.h"
 
-class AutoRemoteSyscalls;
 class Task;
 class TraceFrame;
-struct Flags;
 
 template <typename T, size_t N> constexpr size_t array_length(T (&array)[N]) {
   return N;
@@ -47,8 +31,6 @@ constexpr size_t array_length(std::array<T, N>& array) {
 #define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
 
 #define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
-
-class Task;
 
 enum Completion {
   COMPLETE,
@@ -79,8 +61,7 @@ void format_dump_filename(Task* t, int global_time, const char* tag,
                           char* filename, size_t filename_size);
 
 /**
- * Return true if the user requested memory be dumped for |t| at
- * |event| at |global_time|.
+ * Return true if the user requested memory be dumped for |t| at |f|.
  */
 bool should_dump_memory(Task* t, const TraceFrame& f);
 /**
@@ -91,7 +72,7 @@ void dump_process_memory(Task* t, int global_time, const char* tag);
 
 /**
  * Return true if the user has requested |t|'s memory be
- * checksummed at |event| at |global_time|.
+ * checksummed at |f|.
  */
 bool should_checksum(Task* t, const TraceFrame& f);
 /**
