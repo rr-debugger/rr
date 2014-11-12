@@ -225,6 +225,7 @@ set(BASIC_TESTS
   scm_rights
   sendfile
   setsid
+  sigaction_old
   sigchld_interrupt_signal
   sigill
   sigprocmask
