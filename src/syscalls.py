@@ -493,14 +493,14 @@ getrlimit = EmulatedSyscall(x64=97, arg2="struct rlimit")
 #
 # getrusage() returns resource usage measures for who, which can be
 # one of the following..
-getrusage = EmulatedSyscall(x86=77, x64=98, arg2="struct rusage")
+getrusage = EmulatedSyscall(x86=77, x64=98, arg2="typename Arch::rusage")
 
 #  int gettimeofday(struct timeval *tv, struct timezone *tz);
 #
 # The functions gettimeofday() and settimeofday() can get and set the
 # time as well as a timezone.  The tv argument is a struct timeval
 # (as specified in <sys/time.h>):
-gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="struct timeval", arg2="struct timezone")
+gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="typename Arch::timeval", arg2="struct timezone")
 
 settimeofday = UnsupportedSyscall(x86=79, x64=164)
 getgroups = EmulatedSyscall(x86=80, x64=115, arg2=DynamicSize("(int)t->regs().syscall_result_signed() * LegacyUIDSyscall<Arch>::size"))
@@ -778,7 +778,7 @@ getdents = EmulatedSyscall(x86=141, x64=78, arg2=DynamicSize("(int)t->regs().sys
 # possible).  A file descriptor is considered ready if it is possible
 # to perform the corresponding I/O operation (e.g., read(2)) without
 # blocking.
-_newselect = EmulatedSyscall(x86=142, arg2="fd_set", arg3="fd_set", arg4="fd_set", arg5="struct timeval")
+_newselect = EmulatedSyscall(x86=142, arg2="fd_set", arg3="fd_set", arg4="fd_set", arg5="typename Arch::timeval")
 
 flock = UnsupportedSyscall(x86=143, x64=73)
 
@@ -1341,7 +1341,7 @@ clock_settime = UnsupportedSyscall(x86=264, x64=227)
 #
 # The functions clock_gettime() and clock_settime() retrieve and set
 # the time of the specified clock clk_id.
-clock_gettime = EmulatedSyscall(x86=265, x64=228, arg2="struct timespec")
+clock_gettime = EmulatedSyscall(x86=265, x64=228, arg2="typename Arch::timespec")
 
 #  int clock_getres(clockid_t clk_id, struct timespec *res)
 #
@@ -1352,7 +1352,7 @@ clock_gettime = EmulatedSyscall(x86=265, x64=228, arg2="struct timespec")
 # particular process.  If the time value pointed to by the argument
 # tp of clock_settime() is not a multiple of res, then it is
 # truncated to a multiple of res.
-clock_getres = EmulatedSyscall(x86=266, x64=229, arg2="struct timespec")
+clock_getres = EmulatedSyscall(x86=266, x64=229, arg2="typename Arch::timespec")
 
 clock_nanosleep = UnsupportedSyscall(x86=267, x64=230)
 
@@ -1383,7 +1383,7 @@ tgkill = EmulatedSyscall(x86=270, x64=234)
 # of the inode specified by filename to the actime and modtime fields
 # of times respectively.
 #
-utimes = EmulatedSyscall(x86=271, x64=235, arg2=DynamicSize("2 * sizeof(struct timeval)"))
+utimes = EmulatedSyscall(x86=271, x64=235, arg2=DynamicSize("2 * sizeof(typename Arch::timeval)"))
 
 fadvise64_64 = EmulatedSyscall(x86=272)
 
