@@ -12,6 +12,7 @@
 #include <string>
 
 #include "GdbServer.h"
+#include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"

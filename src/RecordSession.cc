@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <sstream>
 
+#include "kernel_metadata.h"
 #include "log.h"
 #include "record_signal.h"
 #include "record_syscall.h"

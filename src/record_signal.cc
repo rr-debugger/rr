@@ -18,6 +18,7 @@
 #include "preload/syscall_buffer.h"
 
 #include "Flags.h"
+#include "kernel_metadata.h"
 #include "log.h"
 #include "PerfCounters.h"
 #include "AutoRemoteSyscalls.h"

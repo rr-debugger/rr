@@ -9,6 +9,7 @@
 
 #include <algorithm>
 
+#include "kernel_metadata.h"
 #include "log.h"
 #include "task.h"
 #include "util.h"

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "Flags.h"
+#include "kernel_metadata.h"
 #include "log.h"
 #include "RecordSession.h"
 
