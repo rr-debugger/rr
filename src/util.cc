@@ -33,15 +33,11 @@
 
 #include "preload/syscall_buffer.h"
 
-#include "AutoRemoteSyscalls.h"
 #include "Flags.h"
-#include "GdbServer.h"
 #include "kernel_abi.h"
+#include "kernel_metadata.h"
 #include "log.h"
-#include "replayer.h"
-#include "RecordSession.h"
 #include "ReplaySession.h"
-#include "syscalls.h"
 #include "task.h"
 #include "TraceStream.h"
 

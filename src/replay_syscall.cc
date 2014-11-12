@@ -42,13 +42,13 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
 #include "kernel_abi.h"
+#include "kernel_metadata.h"
 #include "log.h"
-#include "AutoRemoteSyscalls.h"
 #include "replayer.h"
 #include "ReplaySession.h"
-#include "syscalls.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"

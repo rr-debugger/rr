@@ -18,10 +18,10 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "kernel_metadata.h"
 #include "log.h"
 #include "recorder.h"
 #include "replayer.h"
-#include "syscalls.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"

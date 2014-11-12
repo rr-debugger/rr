@@ -101,6 +101,7 @@ add_executable(rr
   src/GdbConnection.cc
   src/GdbServer.cc
   src/kernel_abi.cc
+  src/kernel_metadata.cc
   src/log.cc
   src/main.cc
   src/PerfCounters.cc
@@ -114,7 +115,6 @@ add_executable(rr
   src/replay_syscall.cc
   src/Scheduler.cc
   src/Session.cc
-  src/syscalls.cc
   src/task.cc
   src/TraceFrame.cc
   src/TraceStream.cc

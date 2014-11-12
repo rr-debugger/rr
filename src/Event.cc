@@ -11,8 +11,8 @@
 
 #include "preload/syscall_buffer.h"
 
+#include "kernel_metadata.h"
 #include "log.h"
-#include "syscalls.h"
 
 using namespace std;
 

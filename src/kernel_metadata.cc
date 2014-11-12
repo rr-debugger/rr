@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "syscalls.h"
+#include "kernel_metadata.h"
 
 #include <assert.h>
 #include <syscall.h>

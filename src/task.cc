@@ -24,6 +24,7 @@
 
 #include "CPUIDBugDetector.h"
 #include "kernel_abi.h"
+#include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
 #include "AutoRemoteSyscalls.h"
@@ -31,7 +32,6 @@
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
-#include "syscalls.h"
 #include "util.h"
 
 /* The tracee doesn't open the desched event fd during replay, so it
