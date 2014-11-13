@@ -1815,6 +1815,12 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
                                        : syscall_number_for_mmap(remote.arch()),
       map_hint, num_syscallbuf_bytes, prot, flags, child_shmem_fd,
       offset_pages);
+  if (!map_hint.is_null()) {
+    ASSERT(this, child_map_addr == map_hint)
+      << "Tried to map syscallbuf at " << HEX(map_hint.as_int())
+      << " but got " << HEX(child_map_addr.as_int());
+  }
+
   syscallbuf_child = child_map_addr;
   syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
   // No entries to begin with.
