@@ -399,12 +399,7 @@ public:
    * code.  Callers may assume |is_in_syscallbuf()| is implied
    * by this.
    */
-  bool is_entering_traced_syscall() {
-    // |int $0x80| is |5d 80|, so |2| comes from
-    // |sizeof(int $0x80)|.
-    remote_ptr<uint8_t> next_ip = ip() + 2;
-    return next_ip == traced_syscall_ip;
-  }
+  bool is_entering_traced_syscall();
 
   /**
    * Return true if this is within the syscallbuf library.  This

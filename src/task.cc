@@ -486,6 +486,16 @@ bool Task::is_disarm_desched_event_syscall() {
           PERF_EVENT_IOC_DISABLE == regs().arg2());
 }
 
+template <typename Arch>
+static bool is_entering_traced_syscall_arch(Task* t) {
+  remote_ptr<uint8_t> next_ip = t->ip() + sizeof(Arch::syscall_insn);
+  return next_ip == t->traced_syscall_ip;
+}
+
+bool Task::is_entering_traced_syscall() {
+  RR_ARCH_FUNCTION(is_entering_traced_syscall_arch, arch(), this);
+}
+
 bool Task::is_probably_replaying_syscall() {
   assert(session().is_replaying());
   // If the tracee is at our syscall entry points, we know for
