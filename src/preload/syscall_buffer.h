@@ -149,7 +149,7 @@ inline static struct syscallbuf_record* next_record(
  * Return the amount of space that a record of |length| will occupy in
  * the buffer if committed, including padding.
  */
-inline static int stored_record_size(size_t length) {
+inline static long stored_record_size(size_t length) {
   /* Round up to a whole number of 32-bit words. */
   return (length + sizeof(int) - 1) & ~(sizeof(int) - 1);
 }

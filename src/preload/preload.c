@@ -903,7 +903,7 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
  * requested space is needed.  The result of this function should be
  * returned directly by the kernel vsyscall hook.
  */
-static long commit_raw_syscall(int syscallno, void* record_end, int ret) {
+static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   void* record_start = buffer_last();
   struct syscallbuf_record* rec = record_start;
   struct syscallbuf_hdr* hdr = buffer_hdr();
