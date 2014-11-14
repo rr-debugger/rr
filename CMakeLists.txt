@@ -205,6 +205,7 @@ set(BASIC_TESTS
   prw
   pthread_condvar_locking
   rdtsc
+  rlimit
   save_data_fd
   sched_setaffinity
   sched_yield
