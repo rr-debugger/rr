@@ -916,6 +916,13 @@ struct BaseArch : public wordsize, public FcntlConstants {
     timeval it_value;
   };
   RR_VERIFY_TYPE(itimerval);
+
+  typedef struct sigaltstack {
+    ptr<void> ss_sp;
+    int ss_flags;
+    size_t ss_size;
+  } stack_t;
+  RR_VERIFY_TYPE(stack_t);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
