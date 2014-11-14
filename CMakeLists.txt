@@ -165,6 +165,7 @@ set(BASIC_TESTS
   fxregs
   getgroups
   getsid
+  gettimeofday
   grandchild_threads
   grandchild_threads_main_running
   grandchild_threads_thread_running
