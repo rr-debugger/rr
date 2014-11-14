@@ -135,6 +135,7 @@ struct WordSize32Defs : public KernelConstants {
   // These really only exist as proper abstractions so that adding x32
   // (x86-64's ILP32 ABI) support is relatively easy.
   typedef int32_t syscall_slong_t;
+  typedef uint32_t syscall_ulong_t;
   typedef int32_t sigchld_clock_t;
 
   static const size_t elfclass = ELFCLASS32;
@@ -164,6 +165,7 @@ struct WordSize64Defs : public KernelConstants {
   // These really only exist as proper abstractions so that adding x32
   // (x86-64's ILP32 ABI) support is relatively easy.
   typedef int64_t syscall_slong_t;
+  typedef uint64_t syscall_ulong_t;
   typedef int64_t sigchld_clock_t;
 
   static const size_t elfclass = ELFCLASS64;
@@ -177,6 +179,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   static SupportedArch arch() { return arch_; }
 
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
+  typedef typename wordsize::syscall_ulong_t syscall_ulong_t;
   typedef typename wordsize::signed_int signed_int;
   typedef typename wordsize::unsigned_int unsigned_int;
   typedef typename wordsize::signed_short signed_short;
@@ -189,10 +192,12 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef syscall_slong_t time_t;
   typedef syscall_slong_t suseconds_t;
   typedef syscall_slong_t off_t;
+  typedef syscall_ulong_t rlim_t;
+
   typedef int64_t off64_t;
+  typedef uint64_t rlim64_t;
 
   typedef syscall_slong_t clock_t;
-
   typedef signed_int __kernel_key_t;
   typedef signed_int __kernel_uid32_t;
   typedef signed_int __kernel_gid32_t;
@@ -835,6 +840,18 @@ struct BaseArch : public wordsize, public FcntlConstants {
     clock_t tms_cstime;
   };
   RR_VERIFY_TYPE(tms);
+
+  struct rlimit {
+    rlim_t rlim_cur;
+    rlim_t rlim_max;
+  };
+  RR_VERIFY_TYPE(rlimit);
+
+  struct rlimit64 {
+    rlim64_t rlim_cur;
+    rlim64_t rlim_max;
+  };
+  RR_VERIFY_TYPE(rlimit64);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

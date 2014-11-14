@@ -485,9 +485,9 @@ sethostname = UnsupportedSyscall(x86=74, x64=170)
 # can set a limit on the stack size that will trigger a synchronous SIGSEGV,
 # and we expect synchronous SIGSEGVs to be triggered by the kernel
 # during replay.
-setrlimit = ExecutedSyscall(x86=75, x64=160, arg2="struct rlimit")
+setrlimit = ExecutedSyscall(x86=75, x64=160, arg2="typename Arch::rlimit")
 
-getrlimit = EmulatedSyscall(x64=97, arg2="struct rlimit")
+getrlimit = EmulatedSyscall(x64=97, arg2="typename Arch::rlimit")
 
 #  int getrusage(int who, struct rusage *usage)
 #
@@ -1025,7 +1025,7 @@ vfork = UnsupportedSyscall(x86=190, x64=58)
 # respectively.  Each resource has an associated soft and hard limit,
 # as defined by the rlimit structure (the rlim argument to both
 # getrlimit() and setrlimit()):
-ugetrlimit = EmulatedSyscall(x86=191, arg2="struct rlimit")
+ugetrlimit = EmulatedSyscall(x86=191, arg2="typename Arch::rlimit")
 
 mmap2 = IrregularMayExecSyscall(x86=192)
 
@@ -1649,7 +1649,7 @@ fanotify_mark = UnsupportedSyscall(x86=339, x64=301)
 # can set a limit on the stack size that will trigger a synchronous SIGSEGV,
 # and we expect synchronous SIGSEGVs to be triggered by the kernel
 # during replay.
-prlimit64 = ExecutedSyscall(x86=340, x64=302, arg4="struct rlimit64")
+prlimit64 = ExecutedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
 
 name_to_handle_at = UnsupportedSyscall(x86=341, x64=303)
 open_by_handle_at = UnsupportedSyscall(x86=342, x64=304)
