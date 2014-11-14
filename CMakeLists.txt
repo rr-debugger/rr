@@ -164,6 +164,7 @@ set(BASIC_TESTS
   fork_stress
   fxregs
   getgroups
+  setitimer
   getsid
   gettimeofday
   grandchild_threads
