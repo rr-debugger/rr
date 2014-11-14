@@ -24,6 +24,7 @@
 #include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/times.h>
 #include <sys/user.h>
@@ -82,8 +83,10 @@ struct KernelConstants {
   // These types are the same size everywhere.
   typedef int32_t pid_t;
   typedef uint32_t uid_t;
-
+  typedef uint32_t gid_t;
   typedef uint32_t socklen_t;
+  typedef uint64_t dev_t;
+  typedef uint32_t mode_t;
 };
 
 // These duplicate the matching F_* constants for commands for fcntl, with two
@@ -195,14 +198,18 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef typename wordsize::__statfs_word __statfs_word;
 
   typedef syscall_slong_t time_t;
-  typedef syscall_slong_t suseconds_t;
   typedef syscall_slong_t off_t;
+  typedef syscall_slong_t blkcnt_t;
+  typedef syscall_slong_t blksize_t;
   typedef syscall_ulong_t rlim_t;
   typedef syscall_ulong_t fsblkcnt_t;
   typedef syscall_ulong_t fsfilcnt_t;
+  typedef syscall_ulong_t ino_t;
+  typedef syscall_ulong_t nlink_t;
 
   typedef int64_t off64_t;
   typedef uint64_t rlim64_t;
+  typedef uint64_t ino64_t;
 
   typedef syscall_slong_t clock_t;
   typedef signed_int __kernel_key_t;
@@ -212,6 +219,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef unsigned_long __kernel_ulong_t;
   typedef signed_long __kernel_long_t;
   typedef __kernel_long_t __kernel_time_t;
+  typedef __kernel_long_t __kernel_suseconds_t;
   typedef signed_int __kernel_pid_t;
 
   template <typename T> struct ptr {
@@ -244,13 +252,13 @@ struct BaseArch : public wordsize, public FcntlConstants {
   RR_VERIFY_TYPE(sockaddr);
 
   struct timeval {
-    time_t tv_sec;
-    suseconds_t tv_usec;
+    __kernel_time_t tv_sec;
+    __kernel_suseconds_t tv_usec;
   };
   RR_VERIFY_TYPE(timeval);
 
   struct timespec {
-    time_t tv_sec;
+    __kernel_time_t tv_sec;
     syscall_slong_t tv_nsec;
   };
   RR_VERIFY_TYPE(timespec);
@@ -973,9 +981,32 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     int32_t xmm_space[32];
     int32_t padding[56];
   };
-#if defined(__i386)
+#if defined(__i386__)
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpxregs_struct,
                       user_fpxregs_struct);
+#endif
+
+  struct stat {
+    dev_t st_dev;
+    unsigned_short __pad1;
+    ino_t __st_ino;
+    mode_t st_mode;
+    nlink_t st_nlink;
+    uid_t st_uid;
+    gid_t st_gid;
+    dev_t st_rdev;
+    unsigned_short __pad2;
+    off_t st_size;
+    blksize_t st_blksize;
+    blkcnt_t st_blocks;
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
+    unsigned_long __unused4;
+    unsigned_long __unused5;
+  };
+#if defined(__i386__)
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat);
 #endif
 };
 
@@ -1057,6 +1088,27 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_fpregs_struct,
                       user_fpregs_struct);
+
+  struct stat {
+    dev_t st_dev;
+    ino_t st_ino;
+    nlink_t st_nlink;
+    mode_t st_mode;
+    uid_t st_uid;
+    gid_t st_gid;
+    int __pad0;
+    dev_t st_rdev;
+    off_t st_size;
+    blksize_t st_blksize;
+    blkcnt_t st_blocks;
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
+    __syscall_slong_t __unused[3];
+  };
+#if defined(__x86_64__)
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat, stat);
+#endif
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \
