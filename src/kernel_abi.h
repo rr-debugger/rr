@@ -955,6 +955,11 @@ struct BaseArch : public wordsize, public FcntlConstants {
     char domainname[UTSNAME_LENGTH];
   };
   RR_VERIFY_TYPE(utsname);
+
+  struct sched_param {
+    int __sched_priority;
+  };
+  RR_VERIFY_TYPE(sched_param);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

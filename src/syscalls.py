@@ -839,7 +839,7 @@ sched_setparam = UnsupportedSyscall(x86=154, x64=142)
 # sched_getparam() retrieves the scheduling parameters for the
 # process i dentified by pid.  If pid is zero, then the parameters of
 # the calling process are retrieved.
-sched_getparam = EmulatedSyscall(x86=155, x64=143, arg2="struct sched_param")
+sched_getparam = EmulatedSyscall(x86=155, x64=143, arg2="typename Arch::sched_param")
 
 #  int sched_setscheduler(pid_t pid, int policy, const struct sched_param
 #*param);
