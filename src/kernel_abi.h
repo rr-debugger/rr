@@ -874,7 +874,9 @@ struct BaseArch : public wordsize, public FcntlConstants {
     __statfs_word f_bavail;
     __statfs_word f_files;
     __statfs_word f_ffree;
-    struct { int __val[2]; } f_fsid;
+    struct {
+      int __val[2];
+    } f_fsid;
     __statfs_word f_namelen;
     __statfs_word f_frsize;
     __statfs_word f_flags;
@@ -890,7 +892,9 @@ struct BaseArch : public wordsize, public FcntlConstants {
     uint64_t f_bavail;
     uint64_t f_files;
     uint64_t f_ffree;
-    struct { int __val[2]; } f_fsid;
+    struct {
+      int __val[2];
+    } f_fsid;
     __statfs_word f_namelen;
     __statfs_word f_frsize;
     __statfs_word f_flags;

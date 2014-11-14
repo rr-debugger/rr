@@ -16,4 +16,4 @@ int main(int argc, char* argv[]) {
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
-}  
+}

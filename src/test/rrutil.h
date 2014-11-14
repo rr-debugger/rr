@@ -153,7 +153,8 @@ static uint64_t GUARD_VALUE = 0xdeadbeeff00dbaad;
  * and after the allocated block.
  */
 inline static void* allocate_guard(size_t size, char value) {
-  char* cp = (char*)malloc(size + 2*sizeof(GUARD_VALUE)) + sizeof(GUARD_VALUE);
+  char* cp =
+      (char*)malloc(size + 2 * sizeof(GUARD_VALUE)) + sizeof(GUARD_VALUE);
   memcpy(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE));
   memcpy(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE));
   memset(cp, value, size);
@@ -166,7 +167,8 @@ inline static void* allocate_guard(size_t size, char value) {
  */
 inline static void verify_guard(size_t size, void* p) {
   char* cp = (char*)p;
-  test_assert(memcmp(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
+  test_assert(
+      memcmp(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
   test_assert(memcmp(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
 }
 
