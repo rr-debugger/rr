@@ -616,7 +616,7 @@ syslog = UnsupportedSyscall(x86=103, x64=103)
 # The function setitimer() sets the specified timer to the value in
 # new_value.  If old_value is non-NULL, the old value of the timer is
 # stored there.
-setitimer = EmulatedSyscall(x86=104, x64=38, arg3="struct itimerval")
+setitimer = EmulatedSyscall(x86=104, x64=38, arg3="typename Arch::itimerval")
 
 getitimer = UnsupportedSyscall(x86=105, x64=36)
 stat = EmulatedSyscall(x86=106, x64=4, arg2="struct stat")

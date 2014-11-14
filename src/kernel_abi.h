@@ -897,6 +897,12 @@ struct BaseArch : public wordsize, public FcntlConstants {
     __statfs_word f_spare[4];
   };
   RR_VERIFY_TYPE_EXPLICIT(struct ::statfs64, statfs64);
+
+  struct itimerval {
+    timeval it_interval;
+    timeval it_value;
+  };
+  RR_VERIFY_TYPE(itimerval);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
