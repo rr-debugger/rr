@@ -3,12 +3,16 @@
 #include "rrutil.h"
 
 int main(int argc, char* argv[]) {
-  struct tms buf = { -1, -1, -1, -1 };
-  clock_t t = times(&buf);
-  test_assert(buf.tms_cutime == 0);
-  test_assert(buf.tms_utime >= 0);
+  struct tms* buf;
+  clock_t t;
 
-  atomic_printf("tms_utime = %lld\n", (long long)buf.tms_utime);
+  ALLOCATE_GUARD(buf, -1);
+  test_assert((t = times(buf)) != (clock_t)-1);
+  test_assert(buf->tms_cutime == 0);
+  test_assert(buf->tms_utime >= 0);
+  VERIFY_GUARD(buf);
+
+  atomic_printf("tms_utime = %lld\n", (long long)buf->tms_utime);
   atomic_printf("result = %lld\n", (long long)t);
 
   atomic_puts("EXIT-SUCCESS");
