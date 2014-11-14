@@ -689,7 +689,7 @@ setdomainname = UnsupportedSyscall(x86=121, x64=171)
 #
 # uname() returns system information in the structure pointed to by
 # buf. The utsname struct is defined in <sys/utsname.h>:
-uname = EmulatedSyscall(x86=122, x64=63, arg1="struct utsname")
+uname = EmulatedSyscall(x86=122, x64=63, arg1="typename Arch::utsname")
 
 modify_ldt = UnsupportedSyscall(x86=123, x64=154)
 adjtimex = UnsupportedSyscall(x86=124, x64=159)

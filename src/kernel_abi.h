@@ -28,6 +28,7 @@
 #include <sys/time.h>
 #include <sys/times.h>
 #include <sys/user.h>
+#include <sys/utsname.h>
 #include <sys/vfs.h>
 #include <sys/sysinfo.h>
 #include <termios.h>
@@ -942,6 +943,17 @@ struct BaseArch : public wordsize, public FcntlConstants {
     char _f[20 - 2 * sizeof(__kernel_ulong_t) - sizeof(uint32_t)];
   };
   RR_VERIFY_TYPE_EXPLICIT(struct ::sysinfo, sysinfo);
+
+  static const ::size_t UTSNAME_LENGTH = 65;
+  struct utsname {
+    char sysname[UTSNAME_LENGTH];
+    char nodename[UTSNAME_LENGTH];
+    char release[UTSNAME_LENGTH];
+    char version[UTSNAME_LENGTH];
+    char machine[UTSNAME_LENGTH];
+    char domainname[UTSNAME_LENGTH];
+  };
+  RR_VERIFY_TYPE(utsname);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
