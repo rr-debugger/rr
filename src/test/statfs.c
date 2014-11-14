@@ -30,17 +30,22 @@ static int same_statfs_det(const struct statfs* s1, const struct statfs* s2) {
 
 int main(void) {
   int fd;
-  struct statfs sfs1 = { 0 }, sfs2 = { 1 };
+  struct statfs* sfs1;
+  struct statfs* sfs2;
 
+  ALLOCATE_GUARD(sfs1, 0);
+  ALLOCATE_GUARD(sfs2, 1);
   fd = creat(DUMMY_FILENAME, 0600);
   test_assert(fd >= 0);
-  test_assert(0 == statfs(DUMMY_FILENAME, &sfs1));
-  test_assert(0 == fstatfs(fd, &sfs2));
+  test_assert(0 == statfs(DUMMY_FILENAME, sfs1));
+  test_assert(0 == fstatfs(fd, sfs2));
+  VERIFY_GUARD(sfs1);
+  VERIFY_GUARD(sfs2);
 
-  dump_statfs("statfs buffer", &sfs1);
-  dump_statfs("fstatfs buffer", &sfs2);
+  dump_statfs("statfs buffer", sfs1);
+  dump_statfs("fstatfs buffer", sfs2);
 
-  test_assert(same_statfs_det(&sfs1, &sfs2));
+  test_assert(same_statfs_det(sfs1, sfs2));
 
   unlink(DUMMY_FILENAME);
 
