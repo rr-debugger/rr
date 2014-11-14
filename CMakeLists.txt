@@ -206,6 +206,7 @@ set(BASIC_TESTS
   pthread_condvar_locking
   rdtsc
   rlimit
+  rusage
   save_data_fd
   sched_setaffinity
   sched_yield
