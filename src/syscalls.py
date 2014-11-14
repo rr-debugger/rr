@@ -640,7 +640,7 @@ swapoff = UnsupportedSyscall(x86=115, x64=168)
 #
 # sysinfo() provides a simple way of getting overall system
 # statistics.
-sysinfo = EmulatedSyscall(x86=116, x64=99, arg1="struct sysinfo")
+sysinfo = EmulatedSyscall(x86=116, x64=99, arg1="typename Arch::sysinfo")
 #  int ipc(unsigned int call, int first, int second, int third, void *ptr, long
 #fifth);
 #

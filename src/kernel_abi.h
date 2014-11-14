@@ -29,6 +29,7 @@
 #include <sys/times.h>
 #include <sys/user.h>
 #include <sys/vfs.h>
+#include <sys/sysinfo.h>
 #include <termios.h>
 
 #include <assert.h>
@@ -923,6 +924,24 @@ struct BaseArch : public wordsize, public FcntlConstants {
     size_t ss_size;
   } stack_t;
   RR_VERIFY_TYPE(stack_t);
+
+  struct sysinfo {
+    __kernel_long_t uptime;
+    __kernel_ulong_t loads[3];
+    __kernel_ulong_t totalram;
+    __kernel_ulong_t freeram;
+    __kernel_ulong_t sharedram;
+    __kernel_ulong_t bufferram;
+    __kernel_ulong_t totalswap;
+    __kernel_ulong_t freeswap;
+    uint16_t procs;
+    uint16_t pad;
+    __kernel_ulong_t totalhigh;
+    __kernel_ulong_t freehigh;
+    uint32_t mem_unit;
+    char _f[20 - 2 * sizeof(__kernel_ulong_t) - sizeof(uint32_t)];
+  };
+  RR_VERIFY_TYPE_EXPLICIT(struct ::sysinfo, sysinfo);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
