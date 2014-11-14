@@ -1562,14 +1562,14 @@ fallocate = EmulatedSyscall(x86=324, x64=285)
 #
 # timerfd_settime() arms (starts) or disarms (stops) the timer
 # referred to by the file descriptor fd.
-timerfd_settime = EmulatedSyscall(x86=325, x64=286, arg4="struct itimerspec")
+timerfd_settime = EmulatedSyscall(x86=325, x64=286, arg4="typename Arch::itimerspec")
 
 #  int timerfd_gettime(int fd, struct itimerspec *curr_value);
 #
 # timerfd_gettime() returns, in curr_value, an itimerspec structure
 # that contains the current setting of the timer referred to by the
 # file descriptor fd.
-timerfd_gettime = EmulatedSyscall(x86=326, x64=287, arg2="struct itimerspec")
+timerfd_gettime = EmulatedSyscall(x86=326, x64=287, arg2="typename Arch::itimerspec")
 
 signalfd4 = UnsupportedSyscall(x86=327, x64=289)
 

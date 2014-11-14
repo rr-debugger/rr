@@ -920,6 +920,12 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
   RR_VERIFY_TYPE(itimerval);
 
+  struct itimerspec {
+    struct timespec it_interval;
+    struct timespec it_value;
+  };
+  RR_VERIFY_TYPE(itimerspec);
+
   typedef struct sigaltstack {
     ptr<void> ss_sp;
     int ss_flags;
