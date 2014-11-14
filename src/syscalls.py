@@ -1034,20 +1034,20 @@ ftruncate64 = EmulatedSyscall(x86=194)
 # int stat(const char *path, struct stat *buf);
 #
 # stat() stats the file pointed to by path and fills in buf.
-stat64 = EmulatedSyscall(x86=195, arg2="struct stat64")
+stat64 = EmulatedSyscall(x86=195, arg2="typename Arch::stat64")
 
 #  int lstat(const char *path, struct stat *buf);
 #
 # lstat() is identical to stat(), except that if path is a symbolic
 # link, then the link itself is stat-ed, not the file that it refers
 # to.
-lstat64 = EmulatedSyscall(x86=196, arg2="struct stat64")
+lstat64 = EmulatedSyscall(x86=196, arg2="typename Arch::stat64")
 
 #  int fstat(int fd, struct stat *buf)
 #
 # fstat() is identical to stat(), except that the file to be stat-ed
 # is specified by the file descriptor fd.
-fstat64 = EmulatedSyscall(x86=197, arg2="struct stat64")
+fstat64 = EmulatedSyscall(x86=197, arg2="typename Arch::stat64")
 
 lchown32 = UnsupportedSyscall(x86=198)
 

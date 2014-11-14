@@ -210,6 +210,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef int64_t off64_t;
   typedef uint64_t rlim64_t;
   typedef uint64_t ino64_t;
+  typedef int64_t blkcnt64_t;
 
   typedef syscall_slong_t clock_t;
   typedef signed_int __kernel_key_t;
@@ -989,7 +990,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   struct stat {
     dev_t st_dev;
     unsigned_short __pad1;
-    ino_t __st_ino;
+    ino_t st_ino;
     mode_t st_mode;
     nlink_t st_nlink;
     uid_t st_uid;
@@ -1005,9 +1006,27 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     unsigned_long __unused4;
     unsigned_long __unused5;
   };
-#if defined(__i386__)
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat);
-#endif
+
+  struct stat64 {
+    dev_t st_dev;
+    unsigned_int __pad1;
+    ino_t __st_ino;
+    mode_t st_mode;
+    nlink_t st_nlink;
+    uid_t st_uid;
+    gid_t st_gid;
+    dev_t st_rdev;
+    unsigned_int __pad2;
+    off64_t st_size;
+    blksize_t st_blksize;
+    blkcnt64_t st_blocks;
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
+    ino64_t st_ino;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat64, struct stat64);
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
@@ -1106,9 +1125,26 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     struct timespec st_ctim;
     __syscall_slong_t __unused[3];
   };
-#if defined(__x86_64__)
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat, stat);
-#endif
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat, struct stat);
+
+  struct stat64 {
+    dev_t st_dev;
+    ino_t st_ino;
+    nlink_t st_nlink;
+    mode_t st_mode;
+    uid_t st_uid;
+    gid_t st_gid;
+    int __pad0;
+    dev_t st_rdev;
+    off_t st_size;
+    blksize_t st_blksize;
+    blkcnt_t st_blocks;
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
+    __syscall_slong_t __unused[3];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat64, struct stat64);
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \
