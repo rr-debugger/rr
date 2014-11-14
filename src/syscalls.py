@@ -711,7 +711,7 @@ mprotect = ExecutedSyscall(x86=125, x64=10)
 # calling thread.  The signal mask is the set of signals whose
 # delivery is currently blocked for the caller (see also signal(7)
 # for more details).
-sigprocmask = EmulatedSyscall(x86=126, arg3="sigset_t")
+sigprocmask = EmulatedSyscall(x86=126, arg3="typename Arch::sigset_t")
 
 create_module = UnsupportedSyscall(x86=127, x64=174)
 init_module = UnsupportedSyscall(x86=128, x64=175)
@@ -944,7 +944,7 @@ prctl = IrregularMayExecSyscall(x86=172, x64=157)
 
 rt_sigreturn = IrregularEmulatedSyscall(x86=173, x64=15)
 rt_sigaction = EmulatedSyscall(x86=174, x64=13, arg3="typename Arch::kernel_sigaction")
-rt_sigprocmask = EmulatedSyscall(x86=175, x64=14, arg3="sigset_t")
+rt_sigprocmask = EmulatedSyscall(x86=175, x64=14, arg3="typename Arch::sigset_t")
 
 #  int sigpending(sigset_t *set);
 #
