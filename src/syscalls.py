@@ -777,7 +777,7 @@ getdents = EmulatedSyscall(x86=141, x64=78, arg2=DynamicSize("(int)t->regs().sys
 # possible).  A file descriptor is considered ready if it is possible
 # to perform the corresponding I/O operation (e.g., read(2)) without
 # blocking.
-_newselect = EmulatedSyscall(x86=142, arg2="fd_set", arg3="fd_set", arg4="fd_set", arg5="typename Arch::timeval")
+_newselect = EmulatedSyscall(x86=142, arg2="typename Arch::fd_set", arg3="typename Arch::fd_set", arg4="typename Arch::fd_set", arg5="typename Arch::timeval")
 
 flock = UnsupportedSyscall(x86=143, x64=73)
 
