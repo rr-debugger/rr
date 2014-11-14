@@ -146,4 +146,32 @@ inline static void check_data(void* buf, size_t len) {
  */
 inline static uint64_t rdtsc(void) { return __rdtsc(); }
 
+static uint64_t GUARD_VALUE = 0xdeadbeeff00dbaad;
+
+/**
+ * Allocate 'size' bytes, fill with 'value', and place canary values before
+ * and after the allocated block.
+ */
+inline static void* allocate_guard(size_t size, char value) {
+  char* cp = (char*)malloc(size + 2*sizeof(GUARD_VALUE)) + sizeof(GUARD_VALUE);
+  memcpy(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE));
+  memcpy(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE));
+  memset(cp, value, size);
+  return cp;
+}
+
+/**
+ * Verify that canary values before and after the block allocated at 'p'
+ * (of size 'size') are still valid.
+ */
+inline static void verify_guard(size_t size, void* p) {
+  char* cp = (char*)p;
+  test_assert(memcmp(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
+  test_assert(memcmp(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
+}
+
+#define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
+
+#define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)
+
 #endif /* RRUTIL_H */
