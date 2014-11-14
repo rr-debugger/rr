@@ -960,6 +960,11 @@ struct BaseArch : public wordsize, public FcntlConstants {
     int __sched_priority;
   };
   RR_VERIFY_TYPE(sched_param);
+
+  typedef struct {
+    unsigned_long __bits[1024 / (8 * sizeof(unsigned_long))];
+  } cpu_set_t;
+  RR_VERIFY_TYPE(cpu_set_t);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
