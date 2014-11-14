@@ -757,7 +757,7 @@ setfsgid = UnsupportedSyscall(x86=139, x64=123)
 # position in the file, or the end of the file, depending on whether
 # whence is SEEK_SET, SEEK_CUR, or SEEK_END, respectively.  It
 # returns the resulting file position in the argument result.
-_llseek = EmulatedSyscall(x86=140, arg4="loff_t")
+_llseek = EmulatedSyscall(x86=140, arg4="typename Arch::__kernel_loff_t")
 
 #  int getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int
 #count);

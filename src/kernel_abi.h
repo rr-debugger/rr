@@ -224,6 +224,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef __kernel_long_t __kernel_time_t;
   typedef __kernel_long_t __kernel_suseconds_t;
   typedef signed_int __kernel_pid_t;
+  typedef int64_t __kernel_loff_t;
 
   template <typename T> struct ptr {
     unsigned_word val;
