@@ -1110,7 +1110,7 @@ setresuid32 = EmulatedSyscall(x86=208)
 # set- user-ID of the calling process, in the arguments ruid, euid,
 # and suid, respectively.  getresgid() performs the analogous task
 # for the process's group IDs.
-getresuid32 = EmulatedSyscall(x86=209, arg1="uid_t", arg2="uid_t", arg3="uid_t")
+getresuid32 = EmulatedSyscall(x86=209, arg1="typename Arch::uid_t", arg2="typename Arch::uid_t", arg3="typename Arch::uid_t")
 
 #  int setresgid32(gid_t rgid, gid_t egid, gid_t sgid);
 #
