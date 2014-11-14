@@ -172,8 +172,17 @@ inline static void verify_guard(size_t size, void* p) {
   test_assert(memcmp(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
 }
 
-#define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
+/**
+ * Verify that canary values before and after the block allocated at 'p'
+ * (of size 'size') are still valid, and free the block.
+ */
+inline static void free_guard(size_t size, void* p) {
+  verify_guard(size, p);
+  free((char*)p - sizeof(GUARD_VALUE));
+}
 
+#define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
 #define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)
+#define FREE_GUARD(p) free_guard(sizeof(*p), p)
 
 #endif /* RRUTIL_H */
