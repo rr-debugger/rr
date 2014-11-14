@@ -27,6 +27,7 @@
 #include <sys/time.h>
 #include <sys/times.h>
 #include <sys/user.h>
+#include <sys/vfs.h>
 #include <termios.h>
 
 #include <assert.h>
@@ -138,6 +139,7 @@ struct WordSize32Defs : public KernelConstants {
   typedef int32_t syscall_slong_t;
   typedef uint32_t syscall_ulong_t;
   typedef int32_t sigchld_clock_t;
+  typedef uint32_t __statfs_word;
 
   static const size_t elfclass = ELFCLASS32;
   typedef Elf32_Ehdr ElfEhdr;
@@ -168,6 +170,7 @@ struct WordSize64Defs : public KernelConstants {
   typedef int64_t syscall_slong_t;
   typedef uint64_t syscall_ulong_t;
   typedef int64_t sigchld_clock_t;
+  typedef signed_long __statfs_word;
 
   static const size_t elfclass = ELFCLASS64;
   typedef Elf64_Ehdr ElfEhdr;
@@ -189,11 +192,14 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef typename wordsize::unsigned_long unsigned_long;
   typedef typename wordsize::unsigned_word unsigned_word;
   typedef typename wordsize::sigchld_clock_t sigchld_clock_t;
+  typedef typename wordsize::__statfs_word __statfs_word;
 
   typedef syscall_slong_t time_t;
   typedef syscall_slong_t suseconds_t;
   typedef syscall_slong_t off_t;
   typedef syscall_ulong_t rlim_t;
+  typedef syscall_ulong_t fsblkcnt_t;
+  typedef syscall_ulong_t fsfilcnt_t;
 
   typedef int64_t off64_t;
   typedef uint64_t rlim64_t;
@@ -859,6 +865,38 @@ struct BaseArch : public wordsize, public FcntlConstants {
     int tz_dsttime;
   };
   RR_VERIFY_TYPE_EXPLICIT(struct ::timezone, timezone);
+
+  struct statfs {
+    __statfs_word f_type;
+    __statfs_word f_bsize;
+    __statfs_word f_blocks;
+    __statfs_word f_bfree;
+    __statfs_word f_bavail;
+    __statfs_word f_files;
+    __statfs_word f_ffree;
+    struct { int __val[2]; } f_fsid;
+    __statfs_word f_namelen;
+    __statfs_word f_frsize;
+    __statfs_word f_flags;
+    __statfs_word f_spare[4];
+  };
+  RR_VERIFY_TYPE_EXPLICIT(struct ::statfs, statfs);
+
+  struct statfs64 {
+    __statfs_word f_type;
+    __statfs_word f_bsize;
+    uint64_t f_blocks;
+    uint64_t f_bfree;
+    uint64_t f_bavail;
+    uint64_t f_files;
+    uint64_t f_ffree;
+    struct { int __val[2]; } f_fsid;
+    __statfs_word f_namelen;
+    __statfs_word f_frsize;
+    __statfs_word f_flags;
+    __statfs_word f_spare[4];
+  };
+  RR_VERIFY_TYPE_EXPLICIT(struct ::statfs64, statfs64);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

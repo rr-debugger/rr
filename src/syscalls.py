@@ -588,7 +588,7 @@ profil = UnsupportedSyscall(x86=98)
 # system.  path is the pathname of any file within the mounted file
 # system.  buf is a pointer to a statfs structure defined
 # approximately as follows:
-statfs = EmulatedSyscall(x86=99, x64=137, arg2="struct statfs")
+statfs = EmulatedSyscall(x86=99, x64=137, arg2="typename Arch::statfs")
 
 #  int fstatfs(int fd, struct statfs *buf)
 #
@@ -596,7 +596,7 @@ statfs = EmulatedSyscall(x86=99, x64=137, arg2="struct statfs")
 # system.  path is the pathname of any file within the
 # get_time(GET_TID(thread_id));mounted file system.  buf is a pointer
 # to a statfs structure defined approximately as follows:
-fstatfs = EmulatedSyscall(x86=100, x64=138, arg2="struct statfs")
+fstatfs = EmulatedSyscall(x86=100, x64=138, arg2="typename Arch::statfs")
 
 ioperm = UnsupportedSyscall(x86=101, x64=173)
 
@@ -1365,8 +1365,8 @@ clock_nanosleep = UnsupportedSyscall(x86=267, x64=230)
 #
 # FIXME: we use arg3() here, although according to man pages this system
 # call has only 2 paramaters. However, strace tells another story...
-statfs64 = EmulatedSyscall(x86=268, arg3="struct statfs64")
-fstatfs64 = EmulatedSyscall(x86=269, arg3="struct statfs64")
+statfs64 = EmulatedSyscall(x86=268, arg3="typename Arch::statfs64")
+fstatfs64 = EmulatedSyscall(x86=269, arg3="typename Arch::statfs64")
 
 #  int tgkill(int tgid, int tid, int sig)
 #
