@@ -24,6 +24,7 @@
 #include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/times.h>
 #include <sys/user.h>
 #include <termios.h>
@@ -852,6 +853,12 @@ struct BaseArch : public wordsize, public FcntlConstants {
     rlim64_t rlim_max;
   };
   RR_VERIFY_TYPE(rlimit64);
+
+  struct timezone {
+    int tz_minuteswest;
+    int tz_dsttime;
+  };
+  RR_VERIFY_TYPE_EXPLICIT(struct ::timezone, timezone);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

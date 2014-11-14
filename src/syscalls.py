@@ -500,7 +500,7 @@ getrusage = EmulatedSyscall(x86=77, x64=98, arg2="typename Arch::rusage")
 # The functions gettimeofday() and settimeofday() can get and set the
 # time as well as a timezone.  The tv argument is a struct timeval
 # (as specified in <sys/time.h>):
-gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="typename Arch::timeval", arg2="struct timezone")
+gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="typename Arch::timeval", arg2="typename Arch::timezone")
 
 settimeofday = UnsupportedSyscall(x86=79, x64=164)
 getgroups = EmulatedSyscall(x86=80, x64=115, arg2=DynamicSize("(int)t->regs().syscall_result_signed() * LegacyUIDSyscall<Arch>::size"))
