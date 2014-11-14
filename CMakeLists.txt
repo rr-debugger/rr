@@ -235,6 +235,7 @@ set(BASIC_TESTS
   sysconf
   sysctl
   sysemu_singlestep
+  sysinfo
   tcgets
   tgkill
   thread_stress
