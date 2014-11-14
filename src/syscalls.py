@@ -1118,7 +1118,7 @@ getresuid32 = EmulatedSyscall(x86=209, arg1="typename Arch::uid_t", arg2="typena
 # set-group-ID of the calling process.
 setresgid32 = EmulatedSyscall(x86=210)
 
-#  int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid);
+#  int getresgid(gid_t *rgid, gid_t *egid, gid_t *sgid);
 #
 # getresuid() returns the real UID, the effective UID, and the saved
 # set-user-ID of the calling process, in the arguments ruid, euid,
@@ -1126,7 +1126,7 @@ setresgid32 = EmulatedSyscall(x86=210)
 # for the process's group IDs.  @return: On success, zero is
 # returned.  On error, -1 is returned, and errno is set
 # appropriately.
-getresgid32 = EmulatedSyscall(x86=211, arg1="uid_t", arg2="uid_t", arg3="uid_t")
+getresgid32 = EmulatedSyscall(x86=211, arg1="typename Arch::gid_t", arg2="typename Arch::gid_t", arg3="typename Arch::gid_t")
 
 chown32 = UnsupportedSyscall(x86=212)
 setuid32 = UnsupportedSyscall(x86=213)
