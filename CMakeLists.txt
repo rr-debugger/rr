@@ -217,6 +217,7 @@ set(BASIC_TESTS
   sendfile
   setsid
   sigaction_old
+  sigaltstack
   sigchld_interrupt_signal
   sigill
   sigprocmask
