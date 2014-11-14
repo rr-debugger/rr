@@ -1463,7 +1463,7 @@ futimesat = UnsupportedSyscall(x86=299, x64=261)
 # The fstatat() system call operates in exactly the same way as
 # stat(2), except for the differences described in this manual
 # page....
-fstatat64 = EmulatedSyscall(x86=300, arg3="struct stat64")
+fstatat64 = EmulatedSyscall(x86=300, arg3="typename Arch::stat64")
 
 #  int unlinkat(int dirfd, const char *pathname, int flags)
 #
