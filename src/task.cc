@@ -486,8 +486,7 @@ bool Task::is_disarm_desched_event_syscall() {
           PERF_EVENT_IOC_DISABLE == regs().arg2());
 }
 
-template <typename Arch>
-static bool is_entering_traced_syscall_arch(Task* t) {
+template <typename Arch> static bool is_entering_traced_syscall_arch(Task* t) {
   remote_ptr<uint8_t> next_ip = t->ip() + sizeof(Arch::syscall_insn);
   return next_ip == t->traced_syscall_ip;
 }
@@ -914,7 +913,8 @@ void Task::validate_regs(uint32_t flags) {
     if (regs().r11() != rec_regs.r11()) {
       LOG(warn) << "Saw %r11 divergence, probably due to syscall trashing %r11 "
                    "recorded:" << HEX(rec_regs.r11())
-                << "; replaying:" << HEX(regs().r11()) << ".  Fudging registers.";
+                << "; replaying:" << HEX(regs().r11())
+                << ".  Fudging registers.";
     }
     rec_regs.set_r11(regs().r11());
   }
@@ -1817,8 +1817,8 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
       offset_pages);
   if (!map_hint.is_null()) {
     ASSERT(this, child_map_addr == map_hint)
-      << "Tried to map syscallbuf at " << HEX(map_hint.as_int())
-      << " but got " << HEX(child_map_addr.as_int());
+        << "Tried to map syscallbuf at " << HEX(map_hint.as_int())
+        << " but got " << HEX(child_map_addr.as_int());
   }
 
   syscallbuf_child = child_map_addr;

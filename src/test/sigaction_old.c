@@ -2,14 +2,11 @@
 
 #include "rrutil.h"
 
-static void handler1(int sig, siginfo_t* si, void* p) {
-}
+static void handler1(int sig, siginfo_t* si, void* p) {}
 
-static void handler2(int sig, siginfo_t* si, void* p) {
-}
+static void handler2(int sig, siginfo_t* si, void* p) {}
 
-static void handler3(int sig, siginfo_t* si, void* p) {
-}
+static void handler3(int sig, siginfo_t* si, void* p) {}
 
 int main(int argc, char* argv[]) {
   struct sigaction sa;
