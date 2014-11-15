@@ -207,6 +207,7 @@ set(BASIC_TESTS
   prw
   pthread_condvar_locking
   rdtsc
+  readv
   rlimit
   rusage
   save_data_fd

@@ -45,6 +45,7 @@
 #include <sys/times.h>
 #include <sys/timerfd.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <sys/un.h>
 #include <sys/utsname.h>
 #include <sys/vfs.h>

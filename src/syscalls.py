@@ -795,7 +795,12 @@ flock = UnsupportedSyscall(x86=143, x64=73)
 # length is updated.
 msync = EmulatedSyscall(x86=144, x64=26)
 
-readv = UnsupportedSyscall(x86=145, x64=19)
+#  ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
+#
+# The readv() system call reads iovcnt buffers from the file associated
+# with the file descriptor fd into the buffers described by iov ("scatter
+# input").
+readv = IrregularEmulatedSyscall(x86=145, x64=19)
 
 #  ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
 #

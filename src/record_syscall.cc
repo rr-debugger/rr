@@ -158,9 +158,10 @@ static bool can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
 }
 
 template <typename T>
-static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch) {
+static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch,
+                                      int count = 1) {
   remote_ptr<T> p = scratch->cast<T>();
-  *scratch = p + 1;
+  *scratch = p + count;
   return p;
 }
 
@@ -626,6 +627,37 @@ static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
   }
 }
 
+static void align_scratch(remote_ptr<void>* scratch, uintptr_t amount = 8) {
+  *scratch = (scratch->as_int() + amount - 1) & ~(amount - 1);
+}
+
+template <typename Arch>
+static bool prepare_readv(Task* t, int iovcnt,
+                          remote_ptr<typename Arch::iovec>* iov,
+                          remote_ptr<void>* scratch) {
+  auto cur_iovs = t->read_mem(*iov, iovcnt);
+  typename Arch::iovec new_iovs[iovcnt];
+
+  // Allocate new iov buffers in scratch space.
+  for (int i = 0; i < iovcnt; ++i) {
+    new_iovs[i].iov_base = *scratch;
+    new_iovs[i].iov_len = cur_iovs[i].iov_len;
+    *scratch += cur_iovs[i].iov_len;
+  }
+
+  align_scratch(scratch);
+  auto remote_iovs = allocate_scratch<typename Arch::iovec>(scratch, iovcnt);
+
+  if (!can_use_scratch(t, *scratch)) {
+    return false;
+  }
+
+  t->write_mem(remote_iovs, new_iovs, iovcnt);
+  push_arg_ptr(t, *iov);
+  *iov = remote_iovs;
+  return true;
+}
+
 static const int RR_KCMP_FILE = 0;
 
 template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
@@ -1026,6 +1058,22 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // complex. A better solution is probably for the replayer
       // to track metadata for each tracee fd, tracking whether the
       // fd points to rr's stdout/stderr.
+    }
+
+    /* ssize_t readv(int fd, const struct iovec *iov, int iovcnt); */
+    case Arch::readv: {
+      if (!need_scratch_setup) {
+        return ALLOW_SWITCH;
+      }
+      Registers r = t->regs();
+      int iovcnt = (int)r.arg3_signed();
+      auto iov = remote_ptr<typename Arch::iovec>(r.arg2());
+      if (!prepare_readv<Arch>(t, iovcnt, &iov, &scratch)) {
+        return abort_scratch(t, "readv");
+      }
+      r.set_arg2(iov);
+      t->set_regs(r);
+      return ALLOW_SWITCH;
     }
 
     /* pid_t waitpid(pid_t pid, int *status, int options); */
@@ -2379,6 +2427,28 @@ static void process_sendfile(Task* t) {
   t->set_regs(r);
 }
 
+template <typename Arch> static void process_readv(Task* t) {
+  if (!has_saved_arg_ptrs(t)) {
+    return;
+  }
+
+  AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
+  Registers r = t->regs();
+
+  int iovcnt = (int)r.arg3_signed();
+  auto old_iov = pop_arg_ptr<typename Arch::iovec>(t);
+  r.set_arg2(old_iov);
+  t->set_regs(r);
+
+  ssize_t bytes = r.syscall_result_signed();
+  auto old_iovs = t->read_mem(old_iov, iovcnt);
+  for (int i = 0; i < iovcnt; ++i) {
+    size_t vbytes = min<size_t>(bytes, old_iovs[i].iov_len);
+    restore_scratch.restore_and_record_arg_buf(old_iovs[i].iov_base, vbytes);
+    bytes -= vbytes;
+  }
+}
+
 template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
 
@@ -2941,6 +3011,12 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::write:
     case Arch::writev:
       break;
+
+    case Arch::readv: {
+      process_readv<Arch>(t);
+      break;
+    }
+
     case Arch::sched_setaffinity: {
       // Restore the register that we altered.
       Registers r = t->regs();

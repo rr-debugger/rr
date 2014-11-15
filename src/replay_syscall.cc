@@ -1591,6 +1591,13 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
       return;
 
+    case Arch::readv:
+      step->syscall.emu = EMULATE;
+      step->syscall.emu_ret = EMULATE_RETURN;
+      step->syscall.num_emu_args = (int)trace_regs.arg3_signed();
+      step->action = syscall_action(state);
+      return;
+
     case SYS_rrcall_init_buffers:
       return process_init_buffers(t, state, step);
 

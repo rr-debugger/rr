@@ -17,8 +17,8 @@ int main(void) {
   test_assert(0 == kill(getpid(), SIGURG));
   test_assert(sizeof(si) == read(fd, &si, sizeof(si)));
   test_assert(si.ssi_signo == SIGURG);
-  test_assert(si.ssi_pid == getpid());  
-  
+  test_assert(si.ssi_pid == getpid());
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

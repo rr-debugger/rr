@@ -4,6 +4,7 @@
 #define RR_TASK_H_
 
 #include <memory>
+#include <vector>
 
 #include "preload/syscall_buffer.h"
 
@@ -641,6 +642,17 @@ public:
   }
 
   /**
+   * Read |count| values from |child_addr|.
+   */
+  template <typename T>
+  std::vector<T> read_mem(remote_ptr<T> child_addr, size_t count) {
+    std::vector<T> v;
+    v.resize(count);
+    read_bytes_helper(child_addr, sizeof(T) * count, v.data());
+    return v;
+  }
+
+  /**
    * Read and return the C string located at |child_addr| in
    * this address space.
    */
@@ -863,7 +875,7 @@ public:
    */
   template <size_t N>
   void write_bytes(remote_ptr<void> child_addr, const uint8_t (&buf)[N]) {
-    return write_bytes_helper(child_addr, N, buf);
+    write_bytes_helper(child_addr, N, buf);
   }
 
   /**
@@ -873,8 +885,7 @@ public:
    * the tracee isn't at a trace-stop.
    */
   template <typename T> void write_mem(remote_ptr<T> child_addr, const T& val) {
-    return write_bytes_helper(child_addr, sizeof(val),
-                              reinterpret_cast<const void*>(&val));
+    write_bytes_helper(child_addr, sizeof(val), static_cast<const void*>(&val));
   }
   /**
    * This is not the helper you're looking for.  See above: you
@@ -883,6 +894,12 @@ public:
    */
   template <typename T>
   void write_mem(remote_ptr<T> child_addr, const T* val) = delete;
+
+  template <typename T>
+  void write_mem(remote_ptr<T> child_addr, const T* val, int count) {
+    write_bytes_helper(child_addr, sizeof(*val) * count,
+                       static_cast<const void*>(val));
+  }
 
   /**
    * Don't use these helpers directly; use the safer and more
