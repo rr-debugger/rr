@@ -1622,8 +1622,8 @@ pipe2 = EmulatedSyscall(x86=331, x64=293, arg1="int[2]")
 
 inotify_init1 = EmulatedSyscall(x86=332, x64=294)
 
-preadv = UnsupportedSyscall(x86=333, x64=295)
-pwritev = UnsupportedSyscall(x86=334, x64=296)
+preadv = IrregularEmulatedSyscall(x86=333, x64=295)
+pwritev = EmulatedSyscall(x86=334, x64=296)
 
 #  int rt_tgsigqueueinfo(pid_t tgid, pid_t tid, int sig,
 #                        siginfo_t *uinfo);

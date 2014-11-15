@@ -1061,7 +1061,10 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     }
 
     /* ssize_t readv(int fd, const struct iovec *iov, int iovcnt); */
-    case Arch::readv: {
+    case Arch::readv:
+    /* ssize_t preadv(int fd, const struct iovec *iov, int iovcnt,
+                      off_t offset); */
+    case Arch::preadv: {
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
       }
@@ -3012,10 +3015,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::writev:
       break;
 
-    case Arch::readv: {
+    case Arch::readv:
+    case Arch::preadv:
       process_readv<Arch>(t);
       break;
-    }
 
     case Arch::sched_setaffinity: {
       // Restore the register that we altered.

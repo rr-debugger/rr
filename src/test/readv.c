@@ -4,8 +4,9 @@
 
 static char data[10] = "0123456789";
 
-int main(int argc, char* argv[]) {
-  int pipe_fds[2];
+static void test(int use_preadv) {
+  char name[] = "/tmp/rr-readv-XXXXXX";
+  int fd = mkstemp(name);
   struct {
     char ch[7];
   }* part1;
@@ -14,9 +15,9 @@ int main(int argc, char* argv[]) {
   }* part2;
   struct iovec iovs[2];
 
-  test_assert(0 == pipe(pipe_fds));
-  test_assert(sizeof(data) == write(pipe_fds[1], data, sizeof(data)));
-  test_assert(0 == close(pipe_fds[1]));
+  test_assert(fd >= 0);
+  test_assert(0 == unlink(name));
+  test_assert(sizeof(data) == write(fd, data, sizeof(data)));
 
   ALLOCATE_GUARD(part1, 'x');
   ALLOCATE_GUARD(part2, 'y');
@@ -24,13 +25,23 @@ int main(int argc, char* argv[]) {
   iovs[0].iov_len = sizeof(*part1);
   iovs[1].iov_base = part2;
   iovs[1].iov_len = sizeof(*part2);
-  test_assert(sizeof(data) == readv(pipe_fds[0], iovs, 2));
+  if (use_preadv) {
+    test_assert(sizeof(data) == preadv(fd, iovs, 2, 0));
+  } else {
+    test_assert(0 == lseek(fd, 0, SEEK_SET));
+    test_assert(sizeof(data) == readv(fd, iovs, 2));
+  }
   test_assert(0 == memcmp(part1, data, sizeof(*part1)));
   test_assert(
       0 == memcmp(part2, data + sizeof(*part1), sizeof(data) - sizeof(*part1)));
   test_assert(part2->ch[sizeof(data) - sizeof(*part1)] == 'y');
   VERIFY_GUARD(part1);
   VERIFY_GUARD(part2);
+}
+
+int main(int argc, char* argv[]) {
+  test(0);
+  test(1);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
