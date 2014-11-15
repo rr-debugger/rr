@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record rdtsc
+debug rdtsc step_rdtsc

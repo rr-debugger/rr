@@ -358,6 +358,7 @@ set(TESTS_WITHOUT_PROGRAM
   signal_stop
   signal_checkpoint
   step1
+  step_rdtsc
   step_signal
   subprocess_exit_ends_session
   syscallbuf_timeslice_250
