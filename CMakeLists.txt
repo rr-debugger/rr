@@ -249,6 +249,7 @@ set(BASIC_TESTS
   unjoined_thread
   wait
   write_race
+  writev
   zero_length_read
 )
 
