@@ -220,6 +220,7 @@ set(BASIC_TESTS
   sigaltstack
   sigchld_interrupt_signal
   sigill
+  signalfd
   sigprocmask
   sigqueueinfo
   sigreturn

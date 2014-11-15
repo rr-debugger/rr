@@ -1543,7 +1543,13 @@ epoll_pwait = UnsupportedSyscall(x86=319, x64=281)
 # respectively, when setting file timestamps.
 utimensat = EmulatedSyscall(x86=320, x64=280)
 
-signalfd = UnsupportedSyscall(x86=321, x64=282)
+#  int signalfd(int fd, const sigset_t *mask, int flags);
+# There are two underlying Linux system calls: signalfd() and the more
+# recent signalfd4(). The former system call does not implement a flags
+# argument. The latter system call implements the flags values described
+# above. Starting with glibc 2.9, the signalfd() wrapper function will
+# use signalfd4() where it is available.
+signalfd = EmulatedSyscall(x86=321, x64=282)
 
 #  int timerfd_create(int clockid, int flags);
 #
@@ -1575,7 +1581,13 @@ timerfd_settime = EmulatedSyscall(x86=325, x64=286, arg4="typename Arch::itimers
 # file descriptor fd.
 timerfd_gettime = EmulatedSyscall(x86=326, x64=287, arg2="typename Arch::itimerspec")
 
-signalfd4 = UnsupportedSyscall(x86=327, x64=289)
+#  int signalfd(int fd, const sigset_t *mask, int flags);
+# There are two underlying Linux system calls: signalfd() and the more
+# recent signalfd4(). The former system call does not implement a flags
+# argument. The latter system call implements the flags values described
+# above. Starting with glibc 2.9, the signalfd() wrapper function will
+# use signalfd4() where it is available.
+signalfd4 = EmulatedSyscall(x86=327, x64=289)
 
 #  int eventfd(unsigned int initval, int flags);
 #
