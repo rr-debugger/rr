@@ -66,6 +66,10 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
       C expression stored in the DynamicSize object;
     * A NullTerminatedString object, in which case the size is determined at
       runtime in the expected fashion.
+
+    To ensure correct handling for mixed-arch process groups (e.g. a mix of 32
+    and 64-bit processes), types should be specified using Arch instead of
+    referring directly to the host system types.
     """
     ARGUMENT_SLOTS = ['arg1', 'arg2', 'arg3', 'arg4', 'arg5', 'arg6']
 
