@@ -152,6 +152,7 @@ set(BASIC_TESTS
   chew_cpu
   clock
   clone
+  constructor
   desched_blocking_poll
   epoll_create
   epoll_create1
@@ -371,6 +372,12 @@ foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
   target_link_libraries(${test} -lrt)
 endforeach(test)
+
+add_library(test_lib
+  src/test/test_lib.c
+)
+
+target_link_libraries(constructor -lrt test_lib)
 
 # cpuid test needs to link with cpuid_loop.S
 add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)

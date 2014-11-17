@@ -734,7 +734,7 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
   // this possbility.
   bool seen_kernel_vsyscall = false;
 
-  for (auto sym : syms.symbols) {
+  for (auto& sym : syms.symbols) {
     const char* name = &syms.strtab[sym.st_name];
     if (strcmp(name, "__kernel_vsyscall") == 0) {
       assert(!seen_kernel_vsyscall);
@@ -762,13 +762,17 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
   return kernel_vsyscall;
 }
 
-/**
- * Perform any required monkeypatching on the VDSO for the given Task.
- * Abort if anything at all goes wrong.
- */
 template <typename Arch>
 static void monkeypatch_vdso_after_preload_init_arch(Task* t);
 
+template <typename Arch> static void monkeypatch_vdso_after_exec_arch(Task* t);
+
+template <> void monkeypatch_vdso_after_exec_arch<X86Arch>(Task* t) {}
+
+// Monkeypatch x86 vsyscall hook only after the preload library
+// has initialized. The vsyscall hook expects to be able to use the syscallbuf.
+// Before the preload library has initialized, the regular vsyscall code
+// will trigger ptrace traps and be handled correctly by rr.
 template <> void monkeypatch_vdso_after_preload_init_arch<X86Arch>(Task* t) {
   if (!t->regs().arg2()) {
     return;
@@ -823,12 +827,17 @@ static const named_syscall syscalls_to_monkeypatch[] = {
 };
 #undef S
 
-template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {
+// Monkeypatch x86-64 vdso syscalls immediately after exec. The vdso syscalls
+// will cause replay to fail if called by the dynamic loader or some library's
+// static constructors, so we can't wait for our preload library to be
+// initialized. Fortunately we're just replacing the vdso code with real
+// syscalls so there is no dependency on the preload library at all.
+template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
   auto vdso_start = t->vm()->vdso().start;
 
   auto syms = read_vdso_symbols<X64Arch>(t);
 
-  for (auto sym : syms.symbols) {
+  for (auto& sym : syms.symbols) {
     const char* symname = &syms.strtab[sym.st_name];
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
       if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
@@ -852,6 +861,15 @@ template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {
       }
     }
   }
+}
+
+template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {}
+
+void monkeypatch_vdso_after_exec(Task* t) {
+  ASSERT(t, 1 == t->vm()->task_set().size())
+      << "Can't have multiple threads immediately after exec!";
+
+  RR_ARCH_FUNCTION(monkeypatch_vdso_after_exec_arch, t->arch(), t)
 }
 
 void monkeypatch_vdso_after_preload_init(Task* t) {
