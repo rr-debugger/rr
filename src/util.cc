@@ -657,6 +657,55 @@ void destroy_buffers(Task* t) {
   advance_syscall(t);
 }
 
+template <typename Arch> struct VdsoSymbols {
+  vector<typename Arch::ElfSym> symbols;
+  vector<char> strtab;
+};
+
+template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
+  auto vdso_start = t->vm()->vdso().start;
+  auto elfheader = t->read_mem(vdso_start.cast<typename Arch::ElfEhdr>());
+  assert(elfheader.e_ident[EI_CLASS] == Arch::elfclass);
+  assert(elfheader.e_ident[EI_DATA] == Arch::elfendian);
+  assert(elfheader.e_machine == Arch::elfmachine);
+  assert(elfheader.e_shentsize == sizeof(typename Arch::ElfShdr));
+
+  auto sections_start = vdso_start + elfheader.e_shoff;
+  typename Arch::ElfShdr sections[elfheader.e_shnum];
+  t->read_bytes_helper(sections_start, sizeof(sections), sections);
+
+  typename Arch::ElfShdr* dynsym = nullptr;
+  typename Arch::ElfShdr* dynstr = nullptr;
+
+  for (size_t i = 0; i < elfheader.e_shnum; ++i) {
+    auto header = &sections[i];
+    if (header->sh_type == SHT_DYNSYM) {
+      assert(!dynsym && "multiple .dynsym sections?!");
+      dynsym = header;
+      continue;
+    }
+    if (header->sh_type == SHT_STRTAB && (header->sh_flags & SHF_ALLOC) &&
+        i != elfheader.e_shstrndx) {
+      assert(!dynstr && "multiple .dynstr sections?!");
+      dynstr = header;
+    }
+  }
+
+  if (!dynsym || !dynstr) {
+    assert(0 && "Unable to locate vdso information");
+  }
+
+  assert(dynsym->sh_entsize == sizeof(typename Arch::ElfSym));
+  remote_ptr<void> symbols_start = vdso_start + dynsym->sh_offset;
+  size_t nsymbols = dynsym->sh_size / dynsym->sh_entsize;
+  remote_ptr<void> strtab_start = vdso_start + dynstr->sh_offset;
+  VdsoSymbols<Arch> result;
+  result.symbols =
+      t->read_mem(symbols_start.cast<typename Arch::ElfSym>(), nsymbols);
+  result.strtab = t->read_mem(strtab_start.cast<char>(), dynstr->sh_size);
+  return result;
+}
+
 #include "AssemblyTemplates.generated"
 
 /**
@@ -673,9 +722,9 @@ static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
  * Return the address of a recognized |__kernel_vsyscall()|
  * implementation in |t|'s address space.
  */
-static remote_ptr<void> locate_and_verify_kernel_vsyscall(
-    Task* t, size_t nsymbols, const typename X86Arch::ElfSym* symbols,
-    const char* symbolnames) {
+static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
+  auto syms = read_vdso_symbols<X86Arch>(t);
+
   remote_ptr<void> kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
   // symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
@@ -685,9 +734,8 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
   // this possbility.
   bool seen_kernel_vsyscall = false;
 
-  for (size_t i = 0; i < nsymbols; ++i) {
-    auto sym = &symbols[i];
-    const char* name = &symbolnames[sym->st_name];
+  for (auto sym : syms.symbols) {
+    const char* name = &syms.strtab[sym.st_name];
     if (strcmp(name, "__kernel_vsyscall") == 0) {
       assert(!seen_kernel_vsyscall);
       seen_kernel_vsyscall = true;
@@ -696,7 +744,7 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
       auto vdso_start = t->vm()->vdso().start;
-      remote_ptr<void> candidate = sym->st_value;
+      remote_ptr<void> candidate = sym.st_value;
       // The symbol values can be absolute or relative addresses.
       // The first part of the assertion is for absolute
       // addresses, and the second part is for relative.
@@ -719,20 +767,14 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
  * Abort if anything at all goes wrong.
  */
 template <typename Arch>
-static void perform_monkeypatch_after_preload_init(
-    Task* t, size_t nsymbols, const typename Arch::ElfSym* symbols,
-    const char* symbolnames);
+static void monkeypatch_vdso_after_preload_init_arch(Task* t);
 
-template <>
-void perform_monkeypatch_after_preload_init<X86Arch>(
-    Task* t, size_t nsymbols, const typename X86Arch::ElfSym* symbols,
-    const char* symbolnames) {
+template <> void monkeypatch_vdso_after_preload_init_arch<X86Arch>(Task* t) {
   if (!t->regs().arg2()) {
     return;
   }
 
-  auto kernel_vsyscall =
-      locate_and_verify_kernel_vsyscall(t, nsymbols, symbols, symbolnames);
+  auto kernel_vsyscall = locate_and_verify_kernel_vsyscall(t);
   if (!kernel_vsyscall) {
     FATAL() << "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't "
                "recognized.\n"
@@ -781,15 +823,13 @@ static const named_syscall syscalls_to_monkeypatch[] = {
 };
 #undef S
 
-template <>
-void perform_monkeypatch_after_preload_init<X64Arch>(
-    Task* t, size_t nsymbols, const typename X64Arch::ElfSym* symbols,
-    const char* symbolnames) {
+template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {
   auto vdso_start = t->vm()->vdso().start;
 
-  for (size_t i = 0; i < nsymbols; ++i) {
-    auto sym = &symbols[i];
-    const char* symname = &symbolnames[sym->st_name];
+  auto syms = read_vdso_symbols<X64Arch>(t);
+
+  for (auto sym : syms.symbols) {
+    const char* symname = &syms.strtab[sym.st_name];
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
       if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
         uint8_t patch[X64VsyscallMonkeypatch::size];
@@ -799,7 +839,7 @@ void perform_monkeypatch_after_preload_init<X64Arch>(
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uint32_t vdso_max_size = 0xffffLL;
-        uintptr_t sym_address = uintptr_t(sym->st_value);
+        uintptr_t sym_address = uintptr_t(sym.st_value);
         // The symbol values can be absolute or relative addresses.
         // The first part of the assertion is for absolute
         // addresses, and the second part is for relative.
@@ -812,67 +852,6 @@ void perform_monkeypatch_after_preload_init<X64Arch>(
       }
     }
   }
-}
-
-template <typename Arch>
-static void locate_vdso_symbols(Task* t, size_t* nsymbols,
-                                remote_ptr<void>* symbols, size_t* strtabsize,
-                                remote_ptr<void>* strtab) {
-  auto vdso_start = t->vm()->vdso().start;
-  auto elfheader = t->read_mem(vdso_start.cast<typename Arch::ElfEhdr>());
-  assert(elfheader.e_ident[EI_CLASS] == Arch::elfclass);
-  assert(elfheader.e_ident[EI_DATA] == Arch::elfendian);
-  assert(elfheader.e_machine == Arch::elfmachine);
-  assert(elfheader.e_shentsize == sizeof(typename Arch::ElfShdr));
-
-  auto sections_start = vdso_start + elfheader.e_shoff;
-  typename Arch::ElfShdr sections[elfheader.e_shnum];
-  t->read_bytes_helper(sections_start, sizeof(sections), sections);
-
-  typename Arch::ElfShdr* dynsym = nullptr;
-  typename Arch::ElfShdr* dynstr = nullptr;
-
-  for (size_t i = 0; i < elfheader.e_shnum; ++i) {
-    auto header = &sections[i];
-    if (header->sh_type == SHT_DYNSYM) {
-      assert(!dynsym && "multiple .dynsym sections?!");
-      dynsym = header;
-      continue;
-    }
-    if (header->sh_type == SHT_STRTAB && (header->sh_flags & SHF_ALLOC) &&
-        i != elfheader.e_shstrndx) {
-      assert(!dynstr && "multiple .dynstr sections?!");
-      dynstr = header;
-    }
-  }
-
-  if (!dynsym || !dynstr) {
-    assert(0 && "Unable to locate vdso information");
-  }
-
-  assert(dynsym->sh_entsize == sizeof(typename Arch::ElfSym));
-  *nsymbols = dynsym->sh_size / dynsym->sh_entsize;
-  *symbols = vdso_start + dynsym->sh_offset;
-  *strtabsize = dynstr->sh_size;
-  *strtab = vdso_start + dynstr->sh_offset;
-}
-
-template <typename Arch>
-static void monkeypatch_vdso_after_preload_init_arch(Task* t) {
-  size_t nsymbols = 0;
-  remote_ptr<void> symbolsaddr = nullptr;
-  size_t strtabsize = 0;
-  remote_ptr<void> strtabaddr = nullptr;
-
-  locate_vdso_symbols<Arch>(t, &nsymbols, &symbolsaddr, &strtabsize,
-                            &strtabaddr);
-
-  typename Arch::ElfSym symbols[nsymbols];
-  t->read_bytes_helper(symbolsaddr, sizeof(symbols), symbols);
-  char strtab[strtabsize];
-  t->read_bytes_helper(strtabaddr, sizeof(strtab), strtab);
-
-  perform_monkeypatch_after_preload_init<Arch>(t, nsymbols, symbols, strtab);
 }
 
 void monkeypatch_vdso_after_preload_init(Task* t) {
