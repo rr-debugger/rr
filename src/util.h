@@ -174,10 +174,11 @@ void resize_shmem_segment(ScopedFd& fd, size_t num_bytes);
 void destroy_buffers(Task* t);
 
 /**
- * Locate |t|'s |__kernel_vsyscall()| helper and then monkey-patch it
- * to jump to the preload lib's hook function.
+ * Perform VDSO monkeypatching after librrpreload is initialized.
+ * This monkeypatches everything not monkeypatched by
+ * monkeypatch_vdso_after_exec.
  */
-void monkeypatch_vdso(Task* t);
+void monkeypatch_vdso_after_preload_init(Task* t);
 
 enum cpuid_requests {
   CPUID_GETVENDORSTRING,

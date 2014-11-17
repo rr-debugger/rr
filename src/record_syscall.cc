@@ -3035,7 +3035,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case SYS_rrcall_monkeypatch_vdso:
-      monkeypatch_vdso(t);
+      monkeypatch_vdso_after_preload_init(t);
       break;
 
     default:

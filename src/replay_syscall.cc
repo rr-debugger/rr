@@ -1612,7 +1612,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
       /* Proceed to syscall exit so we can run our own syscalls. */
       exit_syscall_emu(t, SYS_rrcall_monkeypatch_vdso, 0);
-      monkeypatch_vdso(t);
+      monkeypatch_vdso_after_preload_init(t);
       step->action = TSTEP_RETIRE;
       return;
 

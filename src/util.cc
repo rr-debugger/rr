@@ -719,14 +719,14 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
  * Abort if anything at all goes wrong.
  */
 template <typename Arch>
-static void perform_monkeypatch(Task* t, size_t nsymbols,
-                                const typename Arch::ElfSym* symbols,
-                                const char* symbolnames);
+static void perform_monkeypatch_after_preload_init(
+    Task* t, size_t nsymbols, const typename Arch::ElfSym* symbols,
+    const char* symbolnames);
 
 template <>
-void perform_monkeypatch<X86Arch>(Task* t, size_t nsymbols,
-                                  const typename X86Arch::ElfSym* symbols,
-                                  const char* symbolnames) {
+void perform_monkeypatch_after_preload_init<X86Arch>(
+    Task* t, size_t nsymbols, const typename X86Arch::ElfSym* symbols,
+    const char* symbolnames) {
   if (!t->regs().arg2()) {
     return;
   }
@@ -782,9 +782,9 @@ static const named_syscall syscalls_to_monkeypatch[] = {
 #undef S
 
 template <>
-void perform_monkeypatch<X64Arch>(Task* t, size_t nsymbols,
-                                  const typename X64Arch::ElfSym* symbols,
-                                  const char* symbolnames) {
+void perform_monkeypatch_after_preload_init<X64Arch>(
+    Task* t, size_t nsymbols, const typename X64Arch::ElfSym* symbols,
+    const char* symbolnames) {
   auto vdso_start = t->vm()->vdso().start;
 
   for (size_t i = 0; i < nsymbols; ++i) {
@@ -857,7 +857,8 @@ static void locate_vdso_symbols(Task* t, size_t* nsymbols,
   *strtab = vdso_start + dynstr->sh_offset;
 }
 
-template <typename Arch> static void monkeypatch_vdso_arch(Task* t) {
+template <typename Arch>
+static void monkeypatch_vdso_after_preload_init_arch(Task* t) {
   size_t nsymbols = 0;
   remote_ptr<void> symbolsaddr = nullptr;
   size_t strtabsize = 0;
@@ -871,17 +872,17 @@ template <typename Arch> static void monkeypatch_vdso_arch(Task* t) {
   char strtab[strtabsize];
   t->read_bytes_helper(strtabaddr, sizeof(strtab), strtab);
 
-  perform_monkeypatch<Arch>(t, nsymbols, symbols, strtab);
+  perform_monkeypatch_after_preload_init<Arch>(t, nsymbols, symbols, strtab);
 }
 
-void monkeypatch_vdso(Task* t) {
+void monkeypatch_vdso_after_preload_init(Task* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())
       << "TODO: monkeypatch multithreaded process";
 
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
-  RR_ARCH_FUNCTION(monkeypatch_vdso_arch, t->arch(), t)
+  RR_ARCH_FUNCTION(monkeypatch_vdso_after_preload_init_arch, t->arch(), t)
 
   Registers r = t->regs();
   r.set_syscall_result(0);
