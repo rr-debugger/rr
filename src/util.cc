@@ -847,7 +847,7 @@ template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
 
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
-        static const uint32_t vdso_max_size = 0xffffLL;
+        static const uintptr_t vdso_max_size = 0xffffLL;
         uintptr_t sym_address = uintptr_t(sym.st_value);
         // The symbol values can be absolute or relative addresses.
         // The first part of the assertion is for absolute
