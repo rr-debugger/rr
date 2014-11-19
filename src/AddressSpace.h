@@ -10,6 +10,7 @@
 #include <memory>
 #include <set>
 
+#include "Monkeypatcher.h"
 #include "TraceStream.h"
 #include "util.h"
 
@@ -544,6 +545,8 @@ public:
     child_mem_fd = std::move(as.child_mem_fd);
   }
 
+  Monkeypatcher& monkeypatcher() { return monkeypatch_state; }
+
 private:
   AddressSpace(Task* t, const std::string& exe, Session& session);
   AddressSpace(const AddressSpace& o);
@@ -618,6 +621,8 @@ private:
   Session* session;
   /* First mapped byte of the vdso. */
   remote_ptr<void> vdso_start_addr;
+  // The monkeypatcher that's handling this address space.
+  Monkeypatcher monkeypatch_state;
   // The watchpoints set for tasks in this VM.  Watchpoints are
   // programmed per Task, but we track them per address space on
   // behalf of debuggers that assume that model.

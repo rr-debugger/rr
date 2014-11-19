@@ -3035,7 +3035,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case SYS_rrcall_init_preload: {
-      monkeypatch_vdso_after_preload_init(t);
+      t->vm()->monkeypatcher().patch_at_preload_init(t);
 
       Registers r = t->regs();
       r.set_syscall_result(0);

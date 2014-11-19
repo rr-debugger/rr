@@ -91,6 +91,7 @@ add_executable(rr
   src/kernel_metadata.cc
   src/log.cc
   src/main.cc
+  src/Monkeypatcher.cc
   src/PerfCounters.cc
   src/recorder.cc
   src/RecordSession.cc

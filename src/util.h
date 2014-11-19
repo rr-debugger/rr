@@ -173,20 +173,6 @@ void resize_shmem_segment(ScopedFd& fd, size_t num_bytes);
  */
 void destroy_buffers(Task* t);
 
-/**
- * Perform VDSO monkeypatching immediately after exec.
- * In this hook we monkeypatch everything that doesn't depend on librrpreload
- * being initialized.
- */
-void monkeypatch_vdso_after_exec(Task* t);
-
-/**
- * Perform VDSO monkeypatching after librrpreload is initialized.
- * This monkeypatches everything not monkeypatched by
- * monkeypatch_vdso_after_exec.
- */
-void monkeypatch_vdso_after_preload_init(Task* t);
-
 enum cpuid_requests {
   CPUID_GETVENDORSTRING,
   CPUID_GETFEATURES,
