@@ -118,18 +118,17 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
   return kernel_vsyscall;
 }
 
-template <typename Arch>
-static void monkeypatch_vdso_after_preload_init_arch(Task* t);
+template <typename Arch> static void patch_at_preload_init_arch(Task* t);
 
-template <typename Arch> static void monkeypatch_vdso_after_exec_arch(Task* t);
+template <typename Arch> static void patch_after_exec_arch(Task* t);
 
-template <> void monkeypatch_vdso_after_exec_arch<X86Arch>(Task* t) {}
+template <> void patch_after_exec_arch<X86Arch>(Task* t) {}
 
 // Monkeypatch x86 vsyscall hook only after the preload library
 // has initialized. The vsyscall hook expects to be able to use the syscallbuf.
 // Before the preload library has initialized, the regular vsyscall code
 // will trigger ptrace traps and be handled correctly by rr.
-template <> void monkeypatch_vdso_after_preload_init_arch<X86Arch>(Task* t) {
+template <> void patch_at_preload_init_arch<X86Arch>(Task* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<X86Arch> >(t->regs().arg1()));
   if (!params.syscallbuf_enabled) {
@@ -189,7 +188,7 @@ static const named_syscall syscalls_to_monkeypatch[] = {
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
+template <> void patch_after_exec_arch<X64Arch>(Task* t) {
   auto vdso_start = t->vm()->vdso().start;
 
   auto syms = read_vdso_symbols<X64Arch>(t);
@@ -222,13 +221,13 @@ template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
   }
 }
 
-template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {}
+template <> void patch_at_preload_init_arch<X64Arch>(Task* t) {}
 
 void Monkeypatcher::patch_after_exec(Task* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())
       << "Can't have multiple threads immediately after exec!";
 
-  RR_ARCH_FUNCTION(monkeypatch_vdso_after_exec_arch, t->arch(), t)
+  RR_ARCH_FUNCTION(patch_after_exec_arch, t->arch(), t)
 }
 
 void Monkeypatcher::patch_at_preload_init(Task* t) {
@@ -238,5 +237,5 @@ void Monkeypatcher::patch_at_preload_init(Task* t) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
-  RR_ARCH_FUNCTION(monkeypatch_vdso_after_preload_init_arch, t->arch(), t)
+  RR_ARCH_FUNCTION(patch_at_preload_init_arch, t->arch(), t)
 }
