@@ -183,6 +183,8 @@ private:
     return syscall_helper(WAIT, syscallno, callregs);
   }
 
+  template <typename Arch> ScopedFd retrieve_fd_arch(int fd);
+
   Task* t;
   Registers initial_regs;
   remote_ptr<uint8_t> initial_ip;

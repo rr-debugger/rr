@@ -126,7 +126,8 @@ static size_t align_size(size_t size) {
   return (size + align_amount) & ~(align_amount - 1);
 }
 
-ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
+template <typename Arch>
+ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   struct sockaddr_un socket_addr;
   struct msghdr msg;
   // Unfortunately we need to send at least one byte of data in our
@@ -274,4 +275,8 @@ ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
   close(sock);
 
   return ScopedFd(our_fd);
+}
+
+ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
+  RR_ARCH_FUNCTION(retrieve_fd_arch, arch(), fd);
 }
