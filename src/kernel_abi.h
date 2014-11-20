@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/times.h>
+#include <sys/un.h>
 #include <sys/user.h>
 #include <sys/utsname.h>
 #include <sys/vfs.h>
@@ -259,6 +260,12 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
   RR_VERIFY_TYPE(sockaddr);
 
+  struct sockaddr_un {
+    unsigned_short sun_family;
+    char sun_path[108];
+  };
+  RR_VERIFY_TYPE(sockaddr_un);
+
   struct timeval {
     __kernel_time_t tv_sec;
     __kernel_suseconds_t tv_usec;
@@ -297,6 +304,13 @@ struct BaseArch : public wordsize, public FcntlConstants {
     signed_int msg_flags;
   };
   RR_VERIFY_TYPE(msghdr);
+
+  struct cmsghdr {
+    size_t cmsg_len;
+    int cmsg_level;
+    int cmsg_type;
+  };
+  RR_VERIFY_TYPE(cmsghdr);
 
   struct mmsghdr {
     msghdr msg_hdr;
@@ -975,6 +989,17 @@ struct BaseArch : public wordsize, public FcntlConstants {
     unsigned_long __bits[1024 / (8 * sizeof(unsigned_long))];
   } cpu_set_t;
   RR_VERIFY_TYPE(cpu_set_t);
+
+  static void* cmsg_data(cmsghdr* cmsg) { return cmsg + 1; }
+  static size_t cmsg_align(size_t len) {
+    return (len + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1);
+  }
+  static size_t cmsg_space(size_t len) {
+    return cmsg_align(sizeof(cmsghdr)) + cmsg_align(len);
+  }
+  static size_t cmsg_len(size_t len) {
+    return cmsg_align(sizeof(cmsghdr)) + len;
+  }
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
