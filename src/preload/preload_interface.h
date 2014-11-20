@@ -100,8 +100,11 @@ struct rrcall_init_buffers_params {
  */
 struct syscallbuf_record {
   /* Return value from the syscall.  This can be a memory
-   * address, so must be reserved a full |long|. */
-  long ret;
+   * address, so must be as big as a memory address can be.
+   * We use 64 bits rather than make syscallbuf_record Arch-specific as that
+   * gets cumbersome.
+   */
+  int64_t ret;
   /* Syscall number.
    *
    * NB: the x86 linux ABI has 350 syscalls as of 3.9.6 and
