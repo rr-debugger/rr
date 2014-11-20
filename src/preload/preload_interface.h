@@ -156,15 +156,6 @@ struct syscallbuf_hdr {
  *                     sizeof(struct syscallbuf_hdr)) */
 
 /**
- * The ABI of the socketcall syscall is a nightmare; the first arg to
- * the kernel is the sub-operation, and the second argument is a
- * pointer to the args.  The args depend on the sub-op.
- */
-struct socketcall_args {
-  long args[3];
-} __attribute__((packed));
-
-/**
  * Return a pointer to what may be the next syscall record.
  *
  * THIS POINTER IS NOT GUARANTEED TO BE VALID!!!  Caveat emptor.

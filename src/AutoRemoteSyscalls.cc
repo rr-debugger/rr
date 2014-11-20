@@ -10,6 +10,15 @@
 
 using namespace rr;
 
+/**
+ * The ABI of the socketcall syscall is a nightmare; the first arg to
+ * the kernel is the sub-operation, and the second argument is a
+ * pointer to the args.  The args depend on the sub-op.
+ */
+struct socketcall_args {
+  long args[3];
+} __attribute__((packed));
+
 void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
   len = num_bytes;
   saved_sp = remote.regs().sp();
