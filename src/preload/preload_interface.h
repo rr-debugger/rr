@@ -3,16 +3,8 @@
 #ifndef RR_PRELOAD_INTERFACE_H_
 #define RR_PRELOAD_INTERFACE_H_
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-
-#include <signal.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/un.h>
+#include <string.h>
 
 #ifndef RR_IMPLEMENT_PRELOAD
 #include "../remote_ptr.h"

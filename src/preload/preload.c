@@ -4,6 +4,10 @@
 
 #define RR_IMPLEMENT_PRELOAD
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include "preload_interface.h"
 
 /**
@@ -55,8 +59,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <syscall.h>
-#include <sys/epoll.h>
 #include <sysexits.h>
+#include <sys/epoll.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -64,6 +68,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
