@@ -33,8 +33,9 @@ public:
   /**
    * Write |mem| into address space of the Task prepared for
    * remote syscalls in |remote|, in such a way that the write
-   * will be undone.  The address of the tmp mem space is
-   * available via operator void*().
+   * will be undone.  The address of the reserved mem space is
+   * available via |get|.
+   * If |mem| is null, data is not written, only the space is reserved.
    */
   AutoRestoreMem(AutoRemoteSyscalls& remote, const uint8_t* mem,
                  ssize_t num_bytes)
@@ -52,7 +53,15 @@ public:
 
   ~AutoRestoreMem();
 
+  /**
+   * Get a pointer to the reserved memory.
+   */
   remote_ptr<void> get() const { return addr; }
+
+  /**
+   * Return size of reserved memory buffer.
+   */
+  size_t size() const { return data.size(); }
 
 private:
   void init(const uint8_t* mem, ssize_t num_bytes);
@@ -60,7 +69,7 @@ private:
   AutoRemoteSyscalls& remote;
   /* Address of tmp mem. */
   remote_ptr<void> addr;
-  /* Pointer to saved data. */
+  /* Saved data. */
   std::vector<uint8_t> data;
   /* (We keep this around for error checking.) */
   remote_ptr<void> saved_sp;
@@ -141,7 +150,6 @@ public:
    */
   ScopedFd retrieve_fd(int fd);
 
-private:
   /**
    * Remotely invoke in |t| the specified syscall with the given
    * arguments.  The arguments must of course be valid in |t|,
@@ -159,11 +167,14 @@ private:
   };
   long syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
 
+private:
   /**
    * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
    * |remote_syscall()| to finish, returning the result.
+   * |syscallno| is only for assertion checking. If no value is passed in,
+   * everything should work without the assertion checking.
    */
-  long wait_syscall(int syscallno);
+  long wait_syscall(int syscallno = -1);
 
   /**
    * "Recursively" build the set of syscall registers in
