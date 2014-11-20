@@ -9,6 +9,7 @@
 #include "util.h"
 
 using namespace rr;
+using namespace std;
 
 /**
  * The ABI of the socketcall syscall is a nightmare; the first arg to
@@ -49,27 +50,18 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
       initial_regs(t->regs()),
       initial_ip(t->ip()),
       pending_syscallno(-1) {
-  static_assert(sizeof(code_buffer) >= sizeof(X86Arch::syscall_insn),
-                "syscall_insn is too large for buffer");
-  static_assert(sizeof(code_buffer) >= sizeof(X64Arch::syscall_insn),
-                "syscall_insn is too large for buffer");
-
   // Inject syscall instruction, saving previous insn (fragment)
   // at $ip.
-  t->read_bytes(initial_ip, code_buffer);
-  if (t->arch() == x86) {
-    t->write_bytes(initial_ip, X86Arch::syscall_insn);
-  } else {
-    assert(t->arch() == x86_64);
-    t->write_bytes(initial_ip, X64Arch::syscall_insn);
-  }
+  vector<uint8_t> syscall_insn = syscall_instruction(t->arch());
+  code_buffer = t->read_mem(initial_ip, syscall_insn.size());
+  t->write_mem(initial_ip, syscall_insn.data(), syscall_insn.size());
 }
 
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
 
 void AutoRemoteSyscalls::restore_state_to(Task* t) {
   // Restore stomped insn (fragment).
-  t->write_bytes(initial_ip, code_buffer);
+  t->write_mem(initial_ip, code_buffer.data(), code_buffer.size());
   // Restore stomped registers.
   t->set_regs(initial_regs);
 }
@@ -89,7 +81,8 @@ long AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
 
   advance_syscall(t);
 
-  ASSERT(t, t->regs().ip() - callregs.ip() == sizeof(X86Arch::syscall_insn))
+  ASSERT(t, t->regs().ip() - callregs.ip() ==
+                syscall_instruction_length(t->arch()))
       << "Should have advanced ip by one syscall_insn";
 
   ASSERT(t, t->regs().original_syscallno() == syscallno)

@@ -35,7 +35,11 @@
 
 #include <assert.h>
 
+#include <vector>
+
 #include "remote_ptr.h"
+
+class Task;
 
 enum SupportedArch {
   x86,
@@ -984,8 +988,6 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   static const SelectCallingSemantics select_semantics = SelectStructArguments;
   static const UserAndGroupIDSizesSupported uid_gid_sizes = Mixed16And32Bit;
 
-  static const uint8_t syscall_insn[2];
-
 #include "SyscallEnumsX86.generated"
 
   struct user_regs_struct {
@@ -1095,8 +1097,6 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   static const SelectCallingSemantics select_semantics =
       SelectRegisterArguments;
   static const UserAndGroupIDSizesSupported uid_gid_sizes = Only32Bit;
-
-  static const uint8_t syscall_insn[2];
 
 #include "SyscallEnumsX64.generated"
 
@@ -1219,6 +1219,23 @@ template <typename Arch> struct LegacyUIDSyscall {
 };
 
 #include "SyscallHelperFunctions.generated"
+
+/**
+ * Return true if |ptr| in task |t| points to an invoke-syscall instruction.
+ */
+bool is_at_syscall_instruction(Task* t, remote_ptr<uint8_t> ptr);
+
+/**
+ * Return the code bytes of an invoke-syscall instruction. The vector must
+ * have the length given by |syscall_instruction_length|.
+ */
+std::vector<uint8_t> syscall_instruction(SupportedArch arch);
+
+/**
+ * Return the length of all invoke-syscall instructions. Currently,
+ * they must all have the same length!
+ */
+size_t syscall_instruction_length(SupportedArch arch);
 
 #if defined(__i386__)
 typedef X86Arch NativeArch;

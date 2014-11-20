@@ -268,25 +268,6 @@ bool ReplaySession::is_ignored_signal(int sig) {
   }
 }
 
-/** Return true when |t|'s $ip points at a syscall instruction. */
-static bool entering_syscall_insn(Task* t) {
-  static const uint8_t sysenter[] = { 0x0f, 0x34 };
-  auto& syscall_insn =
-#if defined(__x86_64__)
-      X64Arch::syscall_insn;
-#elif defined(__i386__)
-      X86Arch::syscall_insn;
-#else
-#error unknown architecture
-#endif
-  static_assert(sizeof(sysenter) == sizeof(syscall_insn), "Must ==");
-  uint8_t insn[sizeof(sysenter)];
-
-  t->read_bytes(t->ip(), insn);
-  return (!memcmp(insn, sysenter, sizeof(sysenter)) ||
-          !memcmp(insn, syscall_insn, sizeof(syscall_insn)));
-}
-
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when
@@ -321,7 +302,7 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
     // work around this problem by recognizing syscall
     // insns and issuing PTRACE_SYSCALL to enter them
     // instead of PTRACE_SINGLESTEP.
-    if (entering_syscall_insn(t) || t->stepped_into_syscall) {
+    if (is_at_syscall_instruction(t, t->ip()) || t->stepped_into_syscall) {
       resume_how = RESUME_SYSCALL;
       // Leave this breadcrumb on syscall entry so
       // that we know to issue PTRACE_SYSCALL to

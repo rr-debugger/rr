@@ -2,7 +2,53 @@
 
 #include "kernel_abi.h"
 
-using namespace rr;
+#include <stdlib.h>
 
-const uint8_t X86Arch::syscall_insn[2] = { 0xcd, 0x80 };
-const uint8_t X64Arch::syscall_insn[2] = { 0x0f, 0x05 };
+#include "task.h"
+
+using namespace std;
+
+static const uint8_t int80_insn[] = { 0xcd, 0x80 };
+static const uint8_t sysenter_insn[] = { 0x0f, 0x34 };
+static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
+
+namespace rr {
+
+bool is_at_syscall_instruction(Task* t, remote_ptr<uint8_t> ptr) {
+  vector<uint8_t> code = t->read_mem(ptr, 2);
+  switch (t->arch()) {
+    case x86:
+      return memcmp(code.data(), int80_insn, sizeof(int80_insn)) == 0 ||
+             memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0;
+    case x86_64:
+      return memcmp(code.data(), syscall_insn, sizeof(syscall_insn)) ||
+             memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0;
+    default:
+      assert(0 && "Need to define syscall instructions");
+      return false;
+  }
+}
+
+vector<uint8_t> syscall_instruction(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+      return vector<uint8_t>(int80_insn, int80_insn + sizeof(int80_insn));
+    case x86_64:
+      return vector<uint8_t>(syscall_insn, syscall_insn + sizeof(syscall_insn));
+    default:
+      assert(0 && "Need to define syscall instruction");
+      return vector<uint8_t>();
+  }
+}
+
+size_t syscall_instruction_length(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+    case x86_64:
+      return 2;
+    default:
+      assert(0 && "Need to define syscall instruction length");
+      return 0;
+  }
+}
+}

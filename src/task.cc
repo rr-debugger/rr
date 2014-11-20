@@ -491,7 +491,7 @@ bool Task::is_disarm_desched_event_syscall() {
 }
 
 template <typename Arch> static bool is_entering_traced_syscall_arch(Task* t) {
-  remote_ptr<uint8_t> next_ip = t->ip() + sizeof(Arch::syscall_insn);
+  remote_ptr<uint8_t> next_ip = t->ip() + syscall_instruction_length(t->arch());
   return next_ip == t->traced_syscall_ip;
 }
 

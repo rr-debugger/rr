@@ -608,15 +608,6 @@ void destroy_buffers(Task* t) {
   // the vdso in the future, this code can be eliminated in
   // favor of a *much* simpler vsyscall SYS_exit hook in the
   // preload lib.
-  auto& syscall_insn =
-#if defined(__i386__)
-      X86Arch::syscall_insn;
-#elif defined(__x86_64__)
-      X64Arch::syscall_insn;
-#else
-#error unknown architecture
-#endif
-
   Registers exit_regs = t->regs();
   ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
       << "Tracee should have been at exit, but instead at "
@@ -642,11 +633,8 @@ void destroy_buffers(Task* t) {
   // cleanup, we'll restart the SYS_exit call.
   exit_regs.set_original_syscallno(-1);
   exit_regs.set_syscallno(syscall_number_for_exit(t->arch()));
-  exit_regs.set_ip(exit_regs.ip() - sizeof(syscall_insn));
-
-  uint8_t insn[sizeof(syscall_insn)];
-  t->read_bytes(remote_ptr<void>(exit_regs.ip()), insn);
-  ASSERT(t, !memcmp(insn, syscall_insn, sizeof(insn)))
+  exit_regs.set_ip(exit_regs.ip() - syscall_instruction_length(t->arch()));
+  ASSERT(t, is_at_syscall_instruction(t, exit_regs.ip()))
       << "Tracee should have entered through int $0x80.";
 
   // Do the actual buffer and fd cleanup.

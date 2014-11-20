@@ -186,8 +186,8 @@ private:
   Task* t;
   Registers initial_regs;
   remote_ptr<uint8_t> initial_ip;
+  std::vector<uint8_t> code_buffer;
   int pending_syscallno;
-  uint8_t code_buffer[sizeof(rr::X86Arch::syscall_insn)];
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
