@@ -20,8 +20,6 @@
 #include <limits>
 #include <set>
 
-#include "preload/syscall_buffer.h"
-
 #include "CPUIDBugDetector.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"

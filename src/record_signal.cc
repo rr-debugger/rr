@@ -15,7 +15,7 @@
 #include <sys/user.h>
 #include <x86intrin.h>
 
-#include "preload/syscall_buffer.h"
+#include "preload/preload_interface.h"
 
 #include "Flags.h"
 #include "kernel_metadata.h"

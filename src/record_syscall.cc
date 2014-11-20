@@ -43,7 +43,7 @@
 
 #include <rr/rr.h>
 
-#include "preload/syscall_buffer.h"
+#include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
 #include "drm.h"

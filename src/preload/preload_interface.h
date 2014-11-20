@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_SYSCALL_BUFFER_H_
-#define RR_SYSCALL_BUFFER_H_
+#ifndef RR_PRELOAD_INTERFACE_H_
+#define RR_PRELOAD_INTERFACE_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +18,12 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/un.h>
 
+/* This header file is included by preload.c and various rr .cc files. It
+ * defines the interface between the preload library and rr. preload.c
+ * #defines RR_IMPLEMENT_PRELOAD to let us handle situations where rr and
+ * preload.c need to see slightly different definitions of the same constructs.
+ */
+
 /* This is pretty arbitrary; SIGSYS is unused by linux, and hopefully
  * normal applications don't use it either. */
 #define SYSCALLBUF_DESCHED_SIGNAL SIGSYS
@@ -29,19 +35,24 @@ extern "C" {
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
-/* "Magic" (rr-implemented) syscall that we use to initialize the
+/* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.
  *
  * NB: magic syscalls must be positive, because with at least linux
  * 3.8.0 / eglibc 2.17, rr only gets a trap for the *entry* of invalid
  * syscalls, not the exit.  rr can't handle that yet. */
-/* TODO: static_assert(LAST_SYSCALL < FIRST_RRCALL) */
-#define FIRST_RRCALL 400
+/* TODO: static_assert(LAST_SYSCALL < SYS_rrcall_init_buffers) */
 
-#define __NR_rrcall_init_buffers 442
-#define __NR_rrcall_monkeypatch_vdso 443
-#define SYS_rrcall_init_buffers __NR_rrcall_init_buffers
-#define SYS_rrcall_monkeypatch_vdso __NR_rrcall_monkeypatch_vdso
+/**
+ * The preload library calls SYS_rrcall_monkeypatch_vdso during its
+ * initialization.
+ */
+#define SYS_rrcall_monkeypatch_vdso 443
+/**
+ * The preload library calls SYS_rrcall_init_buffers in each thread that
+ * gets created (including the initial main thread).
+ */
+#define SYS_rrcall_init_buffers 442
 
 /**
  * Packs up the inout parameters passed to |rrcall_init_buffers()|.
@@ -175,4 +186,4 @@ inline static int is_blacklisted_filename(const char* filename) {
 }
 #endif
 
-#endif /* RR_SYSCALL_BUFFER_H_ */
+#endif /* RR_PRELOAD_INTERFACE_H_ */

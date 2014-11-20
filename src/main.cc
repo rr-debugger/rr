@@ -16,7 +16,7 @@
 #include <limits>
 #include <sstream>
 
-#include "preload/syscall_buffer.h"
+#include "preload/preload_interface.h"
 
 #include "kernel_metadata.h"
 #include "log.h"

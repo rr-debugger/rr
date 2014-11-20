@@ -2,7 +2,9 @@
 
 //#define DEBUGTAG "rrpreload"
 
-#include "syscall_buffer.h"
+#define RR_IMPLEMENT_PRELOAD
+
+#include "preload_interface.h"
 
 /**
  * Buffer syscalls, so that rr can process the entire buffer with one

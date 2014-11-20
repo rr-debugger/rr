@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "preload/syscall_buffer.h"
+#include "preload/preload_interface.h"
 
 #include "AddressSpace.h"
 #include "Event.h"
