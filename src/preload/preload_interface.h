@@ -3,10 +3,6 @@
 #ifndef RR_PRELOAD_INTERFACE_H_
 #define RR_PRELOAD_INTERFACE_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
@@ -18,10 +14,18 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/un.h>
 
+#ifndef RR_IMPLEMENT_PRELOAD
+#include "../remote_ptr.h"
+#endif
+
 /* This header file is included by preload.c and various rr .cc files. It
  * defines the interface between the preload library and rr. preload.c
  * #defines RR_IMPLEMENT_PRELOAD to let us handle situations where rr and
  * preload.c need to see slightly different definitions of the same constructs.
+ *
+ * preload.c compiles this as C code. All rr modules compile this as C++ code.
+ * We do not use 'extern "C"' because we don't actually link between C and C++
+ * and 'extern "C"' is not compatible with our use of templates below.
  */
 
 /* This is pretty arbitrary; SIGSYS is unused by linux, and hopefully
@@ -54,11 +58,23 @@ extern "C" {
  */
 #define SYS_rrcall_init_buffers 442
 
+/* Define macros that let us compile a struct definition either "natively"
+ * (when included by preload.c) or as a template over Arch for use by rr.
+ */
+#ifdef RR_IMPLEMENT_PRELOAD
+#define TEMPLATE_ARCH
+#define PTR(T) T *
+#else
+#define TEMPLATE_ARCH template <typename Arch>
+#define PTR(T) remote_ptr<T>
+#endif
+
 /**
  * Packs up the inout parameters passed to |rrcall_init_buffers()|.
  * We use this struct because there are too many params to pass
  * through registers on at least x86.  (It's also a little cleaner.)
  */
+TEMPLATE_ARCH
 struct rrcall_init_buffers_params {
   /* "In" params. */
   /* The syscallbuf lib's idea of whether buffering is enabled.
@@ -66,16 +82,16 @@ struct rrcall_init_buffers_params {
    * replay the same decision that was recorded. */
   int syscallbuf_enabled;
   /* Where our traced syscalls will originate. */
-  void* traced_syscall_ip;
+  PTR(uint8_t) traced_syscall_ip;
   /* Where our untraced syscalls will originate. */
-  void* untraced_syscall_ip;
+  PTR(uint8_t) untraced_syscall_ip;
   /* The fd we're using to track desched events. */
   int desched_counter_fd;
 
   /* "Out" params. */
   /* Returned pointer to and size of the shared syscallbuf
    * segment. */
-  void* syscallbuf_ptr;
+  PTR(void) syscallbuf_ptr;
 };
 
 /**
@@ -181,9 +197,5 @@ inline static int is_blacklisted_filename(const char* filename) {
           !strcmp("/dev/nvidiactl", filename) ||
           !strcmp("/usr/share/alsa/alsa.conf", filename));
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* RR_PRELOAD_INTERFACE_H_ */

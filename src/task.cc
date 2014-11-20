@@ -408,15 +408,16 @@ TraceWriter& Task::trace_writer() { return record_session().trace_writer(); }
 RecordSession& Task::record_session() const { return *session().as_record(); }
 ReplaySession& Task::replay_session() const { return *session().as_replay(); }
 
-remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
-                                    ShareDeschedEventFd share_desched_fd) {
+template <typename Arch>
+remote_ptr<void> Task::init_buffers_arch(remote_ptr<void> map_hint,
+                                         ShareDeschedEventFd share_desched_fd) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
   AutoRemoteSyscalls remote(this);
 
   // Arguments to the rrcall.
-  remote_ptr<struct rrcall_init_buffers_params> child_args =
+  remote_ptr<rrcall_init_buffers_params<Arch> > child_args =
       remote.regs().arg1();
   auto args = read_mem(child_args);
 
@@ -427,10 +428,10 @@ remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
 
   remote_ptr<void> child_map_addr = nullptr;
   if (args.syscallbuf_enabled) {
-    traced_syscall_ip = reinterpret_cast<uintptr_t>(args.traced_syscall_ip);
-    untraced_syscall_ip = reinterpret_cast<uintptr_t>(args.untraced_syscall_ip);
+    traced_syscall_ip = args.traced_syscall_ip;
+    untraced_syscall_ip = args.untraced_syscall_ip;
     child_map_addr = init_syscall_buffer(remote, map_hint);
-    args.syscallbuf_ptr = (void*)child_map_addr.as_int();
+    args.syscallbuf_ptr = child_map_addr;
     if (share_desched_fd == SHARE_DESCHED_EVENT_FD) {
       desched_fd_child = args.desched_counter_fd;
       desched_fd = remote.retrieve_fd(desched_fd_child);
@@ -452,6 +453,11 @@ remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
   syscallbuf_hdr->locked = is_desched_sig_blocked();
 
   return child_map_addr;
+}
+
+remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
+                                    ShareDeschedEventFd share_desched_fd) {
+  RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint, share_desched_fd);
 }
 
 void Task::destroy_buffers(int which) {

@@ -272,7 +272,7 @@ static long traced_raw_syscall(const struct syscall_info* call) {
                              call->args[5]);
 }
 
-extern RR_HIDDEN void* get_traced_syscall_entry_point(void);
+extern RR_HIDDEN uint8_t* get_traced_syscall_entry_point(void);
 
 #if defined(SYS_fcntl64)
 #define RR_FCNTL_SYSCALL SYS_fcntl64
@@ -409,7 +409,7 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
 #define untraced_syscall1(no, a0) untraced_syscall2(no, a0, 0)
 #define untraced_syscall0(no) untraced_syscall1(no, 0)
 
-extern RR_HIDDEN void* get_untraced_syscall_entry_point(void);
+extern RR_HIDDEN uint8_t* get_untraced_syscall_entry_point(void);
 
 /**
  * Make the *un*traced socketcall |call| with the given args.

@@ -1110,6 +1110,11 @@ private:
   /** Helper function for update_sigaction. */
   template <typename Arch> void update_sigaction_arch(const Registers& regs);
 
+  /** Helper function for init_buffers. */
+  template <typename Arch>
+  remote_ptr<void> init_buffers_arch(remote_ptr<void> map_hint,
+                                     ShareDeschedEventFd share_desched_fd);
+
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of
    * CloneFlags (see above) that determine which resources are
