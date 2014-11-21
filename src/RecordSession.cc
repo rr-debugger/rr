@@ -482,7 +482,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
 
       ASSERT(t, (-ENOSYS != retval ||
                  (0 > syscallno || SYS_rrcall_init_buffers == syscallno ||
-                  SYS_rrcall_monkeypatch_vdso == syscallno ||
+                  SYS_rrcall_init_preload == syscallno ||
                   is_clone_syscall(syscallno, t->arch()) ||
                   is_exit_group_syscall(syscallno, t->arch()) ||
                   is_exit_syscall(syscallno, t->arch()) ||

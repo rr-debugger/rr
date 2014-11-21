@@ -477,7 +477,7 @@ static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline,
                                     int doing_syscall_buffering) {
   sigset_t mask;
   enter_signal_critical_section(&mask);
-  traced_syscall2(SYS_rrcall_monkeypatch_vdso, vdso_hook_trampoline,
+  traced_syscall2(SYS_rrcall_init_preload, vdso_hook_trampoline,
                   doing_syscall_buffering);
   exit_signal_critical_section(&mask);
 }

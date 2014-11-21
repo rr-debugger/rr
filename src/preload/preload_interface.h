@@ -40,10 +40,10 @@
 /* TODO: static_assert(LAST_SYSCALL < SYS_rrcall_init_buffers) */
 
 /**
- * The preload library calls SYS_rrcall_monkeypatch_vdso during its
+ * The preload library calls SYS_rrcall_init_preload during its
  * initialization.
  */
-#define SYS_rrcall_monkeypatch_vdso 443
+#define SYS_rrcall_init_preload 443
 /**
  * The preload library calls SYS_rrcall_init_buffers in each thread that
  * gets created (including the initial main thread).

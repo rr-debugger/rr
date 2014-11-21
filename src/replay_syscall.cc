@@ -1602,7 +1602,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case SYS_rrcall_init_buffers:
       return process_init_buffers(t, state, step);
 
-    case SYS_rrcall_monkeypatch_vdso:
+    case SYS_rrcall_init_preload:
       step->syscall.num_emu_args = 0;
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;
@@ -1611,7 +1611,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         return;
       }
       /* Proceed to syscall exit so we can run our own syscalls. */
-      exit_syscall_emu(t, SYS_rrcall_monkeypatch_vdso, 0);
+      exit_syscall_emu(t, SYS_rrcall_init_preload, 0);
       monkeypatch_vdso_after_preload_init(t);
       step->action = TSTEP_RETIRE;
       return;
