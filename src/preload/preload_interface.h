@@ -89,7 +89,7 @@ struct rrcall_init_preload_params {
    * We let the syscallbuf code decide in order to more simply
    * replay the same decision that was recorded. */
   int syscallbuf_enabled;
-  PTR(void) vsyscall_hook_trampoline;
+  PTR(void) syscall_hook_trampoline;
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
 };

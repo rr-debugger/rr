@@ -79,10 +79,8 @@ templates = {
         RawBytes(0xc3),         # ret
     ),
     'X86VsyscallMonkeypatch': AssemblyTemplate(
-        RawBytes(0x50),         # push %eax
-        RawBytes(0xb8),         # mov $_vsyscall_hook_trampoline, %eax
-        Field('vsyscall_hook_trampoline', 4),
-        RawBytes(0xff, 0xe0),   # jmp *%eax
+        RawBytes(0xe9),         # jmp $_syscall_hook_trampoline
+        Field('syscall_hook_trampoline', 4),
     ),
     'X64VsyscallMonkeypatch': AssemblyTemplate(
         RawBytes(0xb8),         # mov $syscall_number, %eax

@@ -9,33 +9,9 @@
  * us.
  */
         .text
-        .global _vsyscall_hook_trampoline
-        .hidden _vsyscall_hook_trampoline
-        .type _vsyscall_hook_trampoline, @function
-_vsyscall_hook_trampoline:
-        .cfi_startproc
-
-        /* The monkeypatch pushed $eax on the stack, but there's no
-         * CFI info for it.  Fix up the CFA offset here to account for
-         * the monkeypatch code. */
-        .cfi_adjust_cfa_offset 4
-        .cfi_rel_offset %eax, 0
-
-        /* Pull $eax back off the stack.  Now our syscall-arg
-         * registers are restored to their state on entry to
-         * __kernel_vsyscall(). */
-        popl %eax
-        .cfi_adjust_cfa_offset -4
-        .cfi_restore %eax
-
-        call _syscall_hook_trampoline
-
-        /* Return to the caller of *|__kernel_vsyscall()|*, because
-         * the monkeypatch jumped to us. */
-        ret
-        .cfi_endproc
-        .size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline
-
+        .global _syscall_hook_trampoline
+        .hidden _syscall_hook_trampoline
+        .type _syscall_hook_trampoline, @function
 _syscall_hook_trampoline:
         .cfi_startproc
 
@@ -102,6 +78,7 @@ _syscall_hook_trampoline:
 
         ret
         .cfi_endproc
+        .size _syscall_hook_trampoline, .-_syscall_hook_trampoline
 #endif /* __i386__ */
 
         .section .note.GNU-stack,"",@progbits

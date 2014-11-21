@@ -442,9 +442,9 @@ static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
 #endif
 
 #if RR_SYSCALL_FILTERING
-extern RR_HIDDEN void _vsyscall_hook_trampoline(void);
+extern RR_HIDDEN void _syscall_hook_trampoline(void);
 #else
-static void _vsyscall_hook_trampoline(void) {}
+static void _syscall_hook_trampoline(void) {}
 #endif
 
 /**
@@ -618,7 +618,7 @@ static void __attribute__((constructor)) init_process(void) {
 
   pthread_atfork(NULL, NULL, post_fork_child);
 
-  params.vsyscall_hook_trampoline = (void*)_vsyscall_hook_trampoline;
+  params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
   params.syscallbuf_enabled = buffer_enabled;
 
   enter_signal_critical_section(&mask);
@@ -1631,7 +1631,7 @@ static long sys_writev(const struct syscall_info* call) {
 }
 
 /* Explicitly declare this as hidden so we can call it from
- * _vsyscall_hook_trampoline without doing all sorts of special PIC handling.
+ * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
 RR_HIDDEN long vsyscall_hook(const struct syscall_info* call) {
   switch (call->no) {

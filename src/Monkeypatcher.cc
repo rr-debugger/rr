@@ -150,14 +150,18 @@ template <> void patch_at_preload_init_arch<X86Arch>(Task* t) {
   // Luckily, linux is happy for us to scribble directly over
   // the vdso mapping's bytes without mprotecting the region, so
   // we don't need to prepare remote syscalls here.
-  uint32_t vsyscall_hook_trampoline = params.vsyscall_hook_trampoline.as_int();
+  uint32_t syscall_hook_trampoline = params.syscall_hook_trampoline.as_int();
 
   uint8_t patch[X86VsyscallMonkeypatch::size];
-  X86VsyscallMonkeypatch::substitute(patch, vsyscall_hook_trampoline);
+  // We're patching in a relative jump, so we need to compute the offset from
+  // the end of the jump to our actual destination.
+  X86VsyscallMonkeypatch::substitute(
+      patch,
+      syscall_hook_trampoline - (kernel_vsyscall + sizeof(patch)).as_int());
 
   t->write_bytes(kernel_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
-             << vsyscall_hook_trampoline;
+             << syscall_hook_trampoline;
 }
 
 // x86-64 doesn't have a convenient vsyscall-esque function in the VDSO;
