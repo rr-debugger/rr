@@ -395,7 +395,7 @@ extern RR_HIDDEN long _untraced_raw_syscall(int syscallno, long a0, long a1,
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
- * the direct kernel return value), because the vsyscall hooks have to
+ * the direct kernel return value), because the syscall hooks have to
  * save that raw return value.
  */
 static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
@@ -733,7 +733,7 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
 }
 
 /**
- * vsyscall hooks start here.
+ * syscall hooks start here.
  *
  * !!! NBB !!!: from here on, all code that executes within the
  * critical sections of transactions *MUST KEEP $ip IN THE SYSCALLBUF
@@ -743,11 +743,11 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
  * How syscall hooks operate:
  *
  * 1. The rr tracer monkey-patches __kernel_vsyscall() to jump to
- *    _vsyscall_hook_trampoline() above.
+ *    _syscall_hook_trampoline() above.
  * 2. When a call is made to __kernel_vsyscall(), it jumps to
- *    _vsyscall_hook_trampoline(), where the syscall params are
- *    packaged up into a call to vsyscall_hook() below.
- * 3. vsyscall_hook() dispatches to a syscall processor function.
+ *    _syscall_hook_trampoline(), where the syscall params are
+ *    packaged up into a call to syscall_hook() below.
+ * 3. syscall_hook() dispatches to a syscall processor function.
  * 4. The syscall processor prepares a new record in the buffer. See
  *    struct syscallbuf_record for record fields.  If the buffer runs
  *    out of space, the processor function aborts and makes a traced
@@ -903,7 +903,7 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
  * adjusted downward from what was passed to
  * start_commit_buffered_syscall, if not all of the initially
  * requested space is needed.  The result of this function should be
- * returned directly by the kernel vsyscall hook.
+ * returned directly by the kernel syscall hook.
  */
 static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   void* record_start = buffer_last();
@@ -1633,7 +1633,7 @@ static long sys_writev(const struct syscall_info* call) {
 /* Explicitly declare this as hidden so we can call it from
  * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
-RR_HIDDEN long vsyscall_hook(const struct syscall_info* call) {
+RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
   switch (call->no) {
 #define CASE(syscallname)                                                      \
   case SYS_##syscallname:                                                      \

@@ -43,7 +43,7 @@ add_library(rrpreload
   src/preload/preload.c
   src/preload/traced_syscall.S
   src/preload/untraced_syscall.S
-  src/preload/vsyscall_hook.S
+  src/preload/syscall_hook.S
 )
 
 # Ensure that CMake knows about our generated files.
