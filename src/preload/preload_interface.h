@@ -62,6 +62,23 @@
 #endif
 
 /**
+ * To support syscall buffering, we replace syscall instructions with a "call"
+ * instruction that calls a hook in the preload library to handle the syscall.
+ * Since the call instruction takes more space than the syscall instruction,
+ * the patch replaces one or more instructions after the syscall instruction as
+ * well; those instructions are folded into the tail of the hook function
+ * and we have multiple hook functions, each one corresponding to an
+ * instruction that follows a syscall instruction.
+ * Each instance of this struct describes an instruction that can follow a
+ * syscall and a hook function to patch with.
+ */
+struct syscall_patch_hook {
+  uint8_t next_instruction_length;
+  uint8_t next_instruction_bytes[3];
+  uint64_t hook_address;
+};
+
+/**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.
  * We use this struct because it's a little cleaner.
  */
@@ -73,6 +90,8 @@ struct rrcall_init_preload_params {
    * replay the same decision that was recorded. */
   int syscallbuf_enabled;
   PTR(void) vsyscall_hook_trampoline;
+  int syscall_patch_hook_count;
+  PTR(struct syscall_patch_hook) syscall_patch_hooks;
 };
 
 /**
