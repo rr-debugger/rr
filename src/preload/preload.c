@@ -1324,7 +1324,7 @@ static long sys_lseek(const struct syscall_info* call) {
   int whence = call->args[2];
 
   void* ptr = prep_syscall();
-  off_t ret = NULL;
+  off_t ret = 0;
 
   assert(syscallno == call->no);
 
