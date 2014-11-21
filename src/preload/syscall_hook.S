@@ -1,6 +1,6 @@
 #if defined(__i386__)
 /**
- * Call this hook from |__kernel_vsyscall()|, to buffer syscalls that
+ * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
  * we otherwise couldn't wrap through LD_PRELOAD helpers.  Return the
  * *RAW* kernel return value, not the -1/errno mandated by POSIX.
  *
