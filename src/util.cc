@@ -762,7 +762,9 @@ template <> void monkeypatch_vdso_after_exec_arch<X86Arch>(Task* t) {}
 // Before the preload library has initialized, the regular vsyscall code
 // will trigger ptrace traps and be handled correctly by rr.
 template <> void monkeypatch_vdso_after_preload_init_arch<X86Arch>(Task* t) {
-  if (!t->regs().arg2()) {
+  auto params = t->read_mem(
+      remote_ptr<rrcall_init_preload_params<X86Arch> >(t->regs().arg1()));
+  if (!params.syscallbuf_enabled) {
     return;
   }
 
@@ -781,7 +783,8 @@ template <> void monkeypatch_vdso_after_preload_init_arch<X86Arch>(Task* t) {
   // Luckily, linux is happy for us to scribble directly over
   // the vdso mapping's bytes without mprotecting the region, so
   // we don't need to prepare remote syscalls here.
-  remote_ptr<void> vsyscall_hook_trampoline_ptr = t->regs().arg1();
+  remote_ptr<void> vsyscall_hook_trampoline_ptr =
+      params.vsyscall_hook_trampoline;
   uint32_t vsyscall_hook_trampoline = vsyscall_hook_trampoline_ptr.as_int();
 
   uint8_t patch[X86VsyscallMonkeypatch::size];
@@ -870,10 +873,6 @@ void monkeypatch_vdso_after_preload_init(Task* t) {
   // we're processing the rrcall, because it's masked off all
   // signals.
   RR_ARCH_FUNCTION(monkeypatch_vdso_after_preload_init_arch, t->arch(), t)
-
-  Registers r = t->regs();
-  r.set_syscall_result(0);
-  t->set_regs(r);
 }
 
 void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,

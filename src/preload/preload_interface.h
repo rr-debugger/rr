@@ -62,7 +62,21 @@
 #endif
 
 /**
- * Packs up the inout parameters passed to |rrcall_init_buffers()|.
+ * Packs up the parameters passed to |SYS_rrcall_init_preload|.
+ * We use this struct because it's a little cleaner.
+ */
+TEMPLATE_ARCH
+struct rrcall_init_preload_params {
+  /* "In" params. */
+  /* The syscallbuf lib's idea of whether buffering is enabled.
+   * We let the syscallbuf code decide in order to more simply
+   * replay the same decision that was recorded. */
+  int syscallbuf_enabled;
+  PTR(void) vsyscall_hook_trampoline;
+};
+
+/**
+ * Packs up the inout parameters passed to |SYS_rrcall_init_buffers|.
  * We use this struct because there are too many params to pass
  * through registers on at least x86.  (It's also a little cleaner.)
  */

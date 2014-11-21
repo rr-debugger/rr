@@ -3034,9 +3034,14 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       t->init_buffers(nullptr, SHARE_DESCHED_EVENT_FD);
       break;
 
-    case SYS_rrcall_init_preload:
+    case SYS_rrcall_init_preload: {
       monkeypatch_vdso_after_preload_init(t);
+
+      Registers r = t->regs();
+      r.set_syscall_result(0);
+      t->set_regs(r);
       break;
+    }
 
     default:
       check_syscall_rejected(t);

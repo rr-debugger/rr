@@ -601,6 +601,7 @@ static void post_fork_child(void) {
  */
 static void __attribute__((constructor)) init_process(void) {
   sigset_t mask;
+  struct rrcall_init_preload_params params;
 
   assert(!process_inited);
 
@@ -617,9 +618,11 @@ static void __attribute__((constructor)) init_process(void) {
 
   pthread_atfork(NULL, NULL, post_fork_child);
 
+  params.vsyscall_hook_trampoline = (void*)_vsyscall_hook_trampoline;
+  params.syscallbuf_enabled = buffer_enabled;
+
   enter_signal_critical_section(&mask);
-  traced_syscall2(SYS_rrcall_init_preload, &_vsyscall_hook_trampoline,
-                  buffer_enabled);
+  traced_syscall1(SYS_rrcall_init_preload, &params);
   exit_signal_critical_section(&mask);
 
   process_inited = 1;
