@@ -116,7 +116,9 @@ SupportedArch AutoRemoteSyscalls::arch() const { return t->arch(); }
 
 template <typename Arch>
 static void write_socketcall_args(Task* t, remote_ptr<void> remote_mem,
-                                  long arg1, long arg2, long arg3) {
+                                  typename Arch::signed_long arg1,
+                                  typename Arch::signed_long arg2,
+                                  typename Arch::signed_long arg3) {
   socketcall_args<Arch> sc_args = { { arg1, arg2, arg3 } };
   t->write_mem(remote_mem.cast<socketcall_args<Arch> >(), sc_args);
 }
