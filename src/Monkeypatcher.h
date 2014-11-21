@@ -21,11 +21,14 @@ class Task;
  * trap and record it (x86-64 only).
  *
  * 2) Patch the VDSO __kernel_vsyscall fast-system-call stub to redirect to
- * our vsyscall hook in the preload library (x86 only).
+ * our syscall hook in the preload library (x86 only).
  */
 class Monkeypatcher {
 public:
   Monkeypatcher() {}
+  Monkeypatcher(const Monkeypatcher& o) {
+    syscall_hooks = o.syscall_hooks;
+  }
 
   /**
    * Apply any necessary patching immediately after exec.

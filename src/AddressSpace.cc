@@ -832,7 +832,8 @@ AddressSpace::AddressSpace(const AddressSpace& o)
       is_clone(true),
       mem(o.mem),
       session(nullptr),
-      vdso_start_addr(o.vdso_start_addr) {
+      vdso_start_addr(o.vdso_start_addr),
+      monkeypatch_state(o.monkeypatch_state) {
   for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
     it->second = it->second->clone();
   }
