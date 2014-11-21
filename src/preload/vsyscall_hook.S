@@ -28,6 +28,17 @@ _vsyscall_hook_trampoline:
         .cfi_adjust_cfa_offset -4
         .cfi_restore %eax
 
+        call _syscall_hook_trampoline
+
+        /* Return to the caller of *|__kernel_vsyscall()|*, because
+         * the monkeypatch jumped to us. */
+        ret
+        .cfi_endproc
+        .size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline
+
+_syscall_hook_trampoline:
+        .cfi_startproc
+
         /* Build a |struct syscall_info| by pushing all the syscall
          * args and the number onto the stack. */
                           /* struct syscall_info info; */
@@ -53,7 +64,7 @@ _vsyscall_hook_trampoline:
         .cfi_adjust_cfa_offset 4
 
         /* $esp points at &info.  Push that pointer on the stack as
-         * our arg for syscall_hook(). */
+         * our arg for vsyscall_hook(). */
         movl %esp, %ecx
         pushl %ecx
         .cfi_adjust_cfa_offset 4
@@ -67,8 +78,9 @@ _vsyscall_hook_trampoline:
         addl $8, %esp
         .cfi_adjust_cfa_offset -8
 
-        /* Contract of __kernel_vsyscall() is that even callee-save
-         * registers aren't touched, so we restore everything here. */
+        /* Contract of __kernel_vsyscall() and real syscalls is that even
+         * callee-save registers aren't touched, so we restore everything
+         * here. */
         popl %ebx
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebx
@@ -88,11 +100,8 @@ _vsyscall_hook_trampoline:
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebp
 
-        /* Return to the caller of *|__kernel_vsyscall()|*, because
-         * the monkeypatch jumped to us. */
         ret
         .cfi_endproc
-        .size _vsyscall_hook_trampoline, .-_vsyscall_hook_trampoline
 #endif /* __i386__ */
 
         .section .note.GNU-stack,"",@progbits
