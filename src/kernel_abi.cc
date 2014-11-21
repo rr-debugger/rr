@@ -21,7 +21,7 @@ bool is_at_syscall_instruction(Task* t, remote_ptr<uint8_t> ptr) {
       return memcmp(code.data(), int80_insn, sizeof(int80_insn)) == 0 ||
              memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0;
     case x86_64:
-      return memcmp(code.data(), syscall_insn, sizeof(syscall_insn)) ||
+      return memcmp(code.data(), syscall_insn, sizeof(syscall_insn)) == 0 ||
              memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0;
     default:
       assert(0 && "Need to define syscall instructions");
