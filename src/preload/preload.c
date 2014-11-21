@@ -620,6 +620,19 @@ static void __attribute__((constructor)) init_process(void) {
 
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
   params.syscallbuf_enabled = buffer_enabled;
+#ifdef __i386__
+  extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
+  struct syscall_patch_hook syscall_patch_hooks[] = {
+    { 5, { 0x3d, 0x01, 0xf0, 0xff, 0xff },
+      (uintptr_t)_syscall_hook_trampoline_3d_01_f0_ff_ff }
+  };
+  params.syscall_patch_hook_count =
+      sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
+  params.syscall_patch_hooks = syscall_patch_hooks;
+#else
+  params.syscall_patch_hook_count = 0;
+  params.syscall_patch_hooks = NULL;
+#endif
 
   enter_signal_critical_section(&mask);
   traced_syscall1(SYS_rrcall_init_preload, &params);

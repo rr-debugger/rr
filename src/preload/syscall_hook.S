@@ -79,6 +79,21 @@ _syscall_hook_trampoline:
         ret
         .cfi_endproc
         .size _syscall_hook_trampoline, .-_syscall_hook_trampoline
+
+
+
+        .global _syscall_hook_trampoline_3d_01_f0_ff_ff
+        .hidden _syscall_hook_trampoline_3d_01_f0_ff_ff
+        .type _syscall_hook_trampoline_3d_01_f0_ff_ff, @function
+_syscall_hook_trampoline_3d_01_f0_ff_ff:
+        .cfi_startproc
+
+        call _syscall_hook_trampoline
+        cmpl $0xfffff001,%eax
+
+        ret
+        .cfi_endproc
+        .size _syscall_hook_trampoline_3d_01_f0_ff_ff, .-_syscall_hook_trampoline_3d_01_f0_ff_ff
 #endif /* __i386__ */
 
         .section .note.GNU-stack,"",@progbits
