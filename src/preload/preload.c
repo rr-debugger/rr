@@ -470,19 +470,6 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
 }
 
 /**
- * Monkeypatch |__kernel_vsyscall()| to jump into
- * |vdso_hook_trampoline|.
- */
-static void rrcall_monkeypatch_vdso(void* vdso_hook_trampoline,
-                                    int doing_syscall_buffering) {
-  sigset_t mask;
-  enter_signal_critical_section(&mask);
-  traced_syscall2(SYS_rrcall_init_preload, vdso_hook_trampoline,
-                  doing_syscall_buffering);
-  exit_signal_critical_section(&mask);
-}
-
-/**
  * Install the seccomp-bpf that generates trace traps for all syscalls
  * other than those made through _untraced_syscall_entry_point().
  */
@@ -613,6 +600,8 @@ static void post_fork_child(void) {
  * Initialize process-global buffering state, if enabled.
  */
 static void __attribute__((constructor)) init_process(void) {
+  sigset_t mask;
+
   assert(!process_inited);
 
   real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
@@ -627,9 +616,12 @@ static void __attribute__((constructor)) init_process(void) {
   }
 
   pthread_atfork(NULL, NULL, post_fork_child);
-  /* Always monkeypatch, since x86-64 needs vdso symbols overridden.  x86
-   * can avoid monkeypatching if we're not using the syscallbuf. */
-  rrcall_monkeypatch_vdso(&_vsyscall_hook_trampoline, buffer_enabled);
+
+  enter_signal_critical_section(&mask);
+  traced_syscall2(SYS_rrcall_init_preload, &_vsyscall_hook_trampoline,
+                  buffer_enabled);
+  exit_signal_critical_section(&mask);
+
   process_inited = 1;
 
   init_thread();
