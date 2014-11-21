@@ -3,6 +3,12 @@
 #ifndef RR_MONKEYPATCHER_H_
 #define RR_MONKEYPATCHER_H_
 
+#include <vector>
+
+#include "preload/preload_interface.h"
+
+#include "remote_ptr.h"
+
 class Task;
 
 /**
@@ -33,6 +39,12 @@ public:
    * preload library to be initialized.
    */
   void patch_at_preload_init(Task* t);
+
+  void init_dynamic_syscall_patching(
+      Task* t, int syscall_patch_hook_count,
+      remote_ptr<syscall_patch_hook> syscall_patch_hooks);
+
+  std::vector<syscall_patch_hook> syscall_hooks;
 };
 
 #endif /* RR_MONKEYPATCHER_H_ */

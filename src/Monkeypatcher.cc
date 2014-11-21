@@ -13,6 +13,14 @@
 using namespace rr;
 using namespace std;
 
+void Monkeypatcher::init_dynamic_syscall_patching(
+    Task* t, int syscall_patch_hook_count,
+    remote_ptr<struct syscall_patch_hook> syscall_patch_hooks) {
+  if (syscall_patch_hook_count) {
+    syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
+  }
+}
+
 template <typename Arch> struct VdsoSymbols {
   vector<typename Arch::ElfSym> symbols;
   vector<char> strtab;
@@ -118,7 +126,8 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
   return kernel_vsyscall;
 }
 
-template <typename Arch> static void patch_at_preload_init_arch(Task* t);
+template <typename Arch>
+static void patch_at_preload_init_arch(Task* t, Monkeypatcher& patcher);
 
 template <typename Arch> static void patch_after_exec_arch(Task* t);
 
@@ -128,7 +137,8 @@ template <> void patch_after_exec_arch<X86Arch>(Task* t) {}
 // has initialized. The vsyscall hook expects to be able to use the syscallbuf.
 // Before the preload library has initialized, the regular vsyscall code
 // will trigger ptrace traps and be handled correctly by rr.
-template <> void patch_at_preload_init_arch<X86Arch>(Task* t) {
+template <>
+void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<X86Arch> >(t->regs().arg1()));
   if (!params.syscallbuf_enabled) {
@@ -162,6 +172,9 @@ template <> void patch_at_preload_init_arch<X86Arch>(Task* t) {
   t->write_bytes(kernel_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
              << syscall_hook_trampoline;
+
+  patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
+                                        params.syscall_patch_hooks);
 }
 
 // x86-64 doesn't have a convenient vsyscall-esque function in the VDSO;
@@ -225,13 +238,23 @@ template <> void patch_after_exec_arch<X64Arch>(Task* t) {
   }
 }
 
-template <> void patch_at_preload_init_arch<X64Arch>(Task* t) {}
+template <>
+void patch_at_preload_init_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
+  auto params = t->read_mem(
+      remote_ptr<rrcall_init_preload_params<X64Arch> >(t->regs().arg1()));
+  if (!params.syscallbuf_enabled) {
+    return;
+  }
+
+  patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
+                                        params.syscall_patch_hooks);
+}
 
 void Monkeypatcher::patch_after_exec(Task* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())
       << "Can't have multiple threads immediately after exec!";
 
-  RR_ARCH_FUNCTION(patch_after_exec_arch, t->arch(), t)
+  RR_ARCH_FUNCTION(patch_after_exec_arch, t->arch(), t);
 }
 
 void Monkeypatcher::patch_at_preload_init(Task* t) {
@@ -241,5 +264,5 @@ void Monkeypatcher::patch_at_preload_init(Task* t) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
-  RR_ARCH_FUNCTION(patch_at_preload_init_arch, t->arch(), t)
+  RR_ARCH_FUNCTION(patch_at_preload_init_arch, t->arch(), t, *this);
 }
