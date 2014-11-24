@@ -90,6 +90,15 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
   if (tried_to_patch_syscall_addresses.count(t->ip().as_int())) {
     return false;
   }
+  // We could examine the current syscall number and if it's not one that
+  // we support syscall buffering for, refuse to patch the syscall instruction.
+  // This would, on the face of it, reduce overhead since patching the
+  // instruction just means a useless trip through the syscall buffering logic.
+  // However, it actually wouldn't help much since we'd still to a switch
+  // on the syscall number in this function instead, and due to context
+  // switching costs any overhead saved would be insignificant.
+  // Also, implementing that would require keeping a buffered-syscalls
+  // list in sync with the preload code, which is unnecessary complexity.
 
   tried_to_patch_syscall_addresses.insert(t->ip().as_int());
 
