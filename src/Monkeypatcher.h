@@ -61,6 +61,11 @@ public:
       remote_ptr<syscall_patch_hook> syscall_patch_hooks);
 
 private:
+  /**
+   * The list of supported syscall patches obtained from the preload
+   * library. Each one matches a specific byte signature for the instruction(s)
+   * after a syscall instruction.
+   */
   std::vector<syscall_patch_hook> syscall_hooks;
   /**
    * The addresses of the instructions following syscalls that we've tried
