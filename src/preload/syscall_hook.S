@@ -200,6 +200,19 @@ _syscall_hook_trampoline_48_8b_3c_24:
         .cfi_endproc
         .size _syscall_hook_trampoline_48_8b_3c_24, .-_syscall_hook_trampoline_48_8b_3c_24
 
-#endif /* __i386__ */
+
+
+        .global _syscall_hook_trampoline_90_90_90
+        .hidden _syscall_hook_trampoline_90_90_90
+        .type _syscall_hook_trampoline_90_90_90, @function
+_syscall_hook_trampoline_90_90_90:
+        .cfi_startproc
+
+        jmp _syscall_hook_trampoline
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_90_90_90, .-_syscall_hook_trampoline_90_90_90
+
+#endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits

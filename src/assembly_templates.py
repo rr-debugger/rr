@@ -90,6 +90,12 @@ templates = {
         RawBytes(0xb8),         # mov $syscall_number, %eax
         Field('syscall_number', 4),
         RawBytes(0x0f, 0x05),   # syscall
+        # pad with NOPs to make room to dynamically patch the syscall
+        # with a call to the preload library, once syscall buffering
+        # has been initialized.
+        RawBytes(0x90),         # nop
+        RawBytes(0x90),         # nop
+        RawBytes(0x90),         # nop
         RawBytes(0xc3),         # ret
     ),
 }
