@@ -521,6 +521,18 @@ public:
   /** Return the vdso mapping of this. */
   Mapping vdso() const;
 
+  /** Return whether we have mapped libc.so.  */
+  bool has_libc() const;
+
+  /** Return the libc mapping of this. */
+  Mapping libc() const;
+
+  /** Return whether we have mapped libpthread.so. */
+  bool has_libpthread() const;
+
+  /** Return the libpthread mapping of this.  has_libpthread() must be true. */
+  Mapping libpthread() const;
+
   /**
    * Verify that this cached address space matches what the
    * kernel thinks it should be.
@@ -618,6 +630,10 @@ private:
   Session* session;
   /* First mapped byte of the vdso. */
   remote_ptr<void> vdso_start_addr;
+  /* First mapped byte of libc's text section. */
+  remote_ptr<void> libc_start_addr;
+  /* First mapped byte of libpthread's text section.  May be null. */
+  remote_ptr<void> libpthread_start_addr;
   // The watchpoints set for tasks in this VM.  Watchpoints are
   // programmed per Task, but we track them per address space on
   // behalf of debuggers that assume that model.

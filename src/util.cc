@@ -645,20 +645,20 @@ void destroy_buffers(Task* t) {
   advance_syscall(t);
 }
 
-template <typename Arch> struct VdsoSymbols {
+template <typename Arch> struct ElfSymbols {
   vector<typename Arch::ElfSym> symbols;
   vector<char> strtab;
 };
 
-template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
-  auto vdso_start = t->vm()->vdso().start;
-  auto elfheader = t->read_mem(vdso_start.cast<typename Arch::ElfEhdr>());
+template <typename Arch>
+static ElfSymbols<Arch> read_elf_symbols (Task* t, remote_ptr<void> library_start) {
+  auto elfheader = t->read_mem(library_start.cast<typename Arch::ElfEhdr>());
   assert(elfheader.e_ident[EI_CLASS] == Arch::elfclass);
   assert(elfheader.e_ident[EI_DATA] == Arch::elfendian);
   assert(elfheader.e_machine == Arch::elfmachine);
   assert(elfheader.e_shentsize == sizeof(typename Arch::ElfShdr));
 
-  auto sections_start = vdso_start + elfheader.e_shoff;
+  auto sections_start = library_start + elfheader.e_shoff;
   typename Arch::ElfShdr sections[elfheader.e_shnum];
   t->read_bytes_helper(sections_start, sizeof(sections), sections);
 
@@ -684,14 +684,20 @@ template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
   }
 
   assert(dynsym->sh_entsize == sizeof(typename Arch::ElfSym));
-  remote_ptr<void> symbols_start = vdso_start + dynsym->sh_offset;
+  remote_ptr<void> symbols_start = library_start + dynsym->sh_offset;
   size_t nsymbols = dynsym->sh_size / dynsym->sh_entsize;
-  remote_ptr<void> strtab_start = vdso_start + dynstr->sh_offset;
-  VdsoSymbols<Arch> result;
+  remote_ptr<void> strtab_start = library_start + dynstr->sh_offset;
+  ElfSymbols<Arch> result;
   result.symbols =
       t->read_mem(symbols_start.cast<typename Arch::ElfSym>(), nsymbols);
   result.strtab = t->read_mem(strtab_start.cast<char>(), dynstr->sh_size);
   return result;
+}
+
+template <typename Arch>
+static ElfSymbols<Arch> read_vdso_symbols(Task* t) {
+  auto vdso_start = t->vm()->vdso().start;
+  return read_elf_symbols<Arch>(t, vdso_start);
 }
 
 #include "AssemblyTemplates.generated"
@@ -799,21 +805,71 @@ template <> void monkeypatch_vdso_after_preload_init_arch<X86Arch>(Task* t) {
 // need to ensure that these syscalls get redirected into actual
 // trap-into-the-kernel syscalls so rr can intercept them.
 
+enum SyscallBuffering {
+  Supported,
+  NotSupported,
+};
+
 struct named_syscall {
   const char* name;
   int syscall_number;
+  // Indicates whether the syscall is supported by our LD_PRELOAD syscall
+  // buffering library.
+  SyscallBuffering syscall_buffering;
 };
 
-#define S(n)                                                                   \
-  { #n, X64Arch::n }
+#define S(n, buffering)                         \
+  { #n, X64Arch::n, buffering }
 static const named_syscall syscalls_to_monkeypatch[] = {
-  S(clock_gettime), S(gettimeofday), S(time),
+  S(clock_gettime, Supported),
+  S(gettimeofday, Supported),
+  S(time, Supported),
   // getcpu isn't supported by rr, so any changes to this monkeypatching
   // scheme for efficiency's sake will have to ensure that getcpu gets
   // converted to an actual syscall so rr will complain appropriately.
-  S(getcpu),
+  S(getcpu, NotSupported),
 };
 #undef S
+
+enum NumSyscallArguments {
+  ThreeOrFewerArguments,
+  FourOrMoreArguments,
+};
+
+enum IsCancellationPoint {
+  CancellationPoint,
+  NotCancellationPoint,
+};
+
+struct patchable_libc_syscall {
+  const char* name;
+  NumSyscallArguments n_args;
+  IsCancellationPoint is_cancellation_point;
+};
+
+// For now, we only patch those libc syscalls which follow a regular format,
+// i.e. those generated from syscall-template.S.  So we don't catch all the
+// syscalls handled by preload.c.
+static const patchable_libc_syscall libc_syscalls_to_monkeypatch[] = {
+  { "access", ThreeOrFewerArguments, NotCancellationPoint },
+  // clock_gettime is handled by vdso monkeypatching.
+  { "close", ThreeOrFewerArguments, CancellationPoint },
+  { "creat", ThreeOrFewerArguments, CancellationPoint },
+  // fcntl is irregular.
+  // fstat is irregular.
+  // gettimeofday is handled by vdso monkeypatching.
+  { "lseek", ThreeOrFewerArguments, CancellationPoint },
+  // lstat is irregular.
+  { "madvise", ThreeOrFewerArguments, NotCancellationPoint },
+  { "open", ThreeOrFewerArguments, CancellationPoint },
+  { "poll", ThreeOrFewerArguments, CancellationPoint },
+  { "read", ThreeOrFewerArguments, CancellationPoint },
+  { "readlink", ThreeOrFewerArguments, NotCancellationPoint },
+  // stat is irregular.
+  // time is handled by vdso monkeypatching.
+  { "write", ThreeOrFewerArguments, CancellationPoint },
+  // writev is irregular.
+};
 
 // Monkeypatch x86-64 vdso syscalls immediately after exec. The vdso syscalls
 // will cause replay to fail if called by the dynamic loader or some library's
@@ -853,7 +909,237 @@ template <> void monkeypatch_vdso_after_exec_arch<X64Arch>(Task* t) {
   }
 }
 
-template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {}
+template <typename AssemblyTemplate, typename MonkeypatchTemplate>
+static void monkeypatch_non_cancellable_function(Task* t,
+                                                 remote_ptr<void> lib_start,
+                                                 const char* name,
+                                                 const typename X64Arch::ElfSym* elfsym) {
+  remote_ptr<void> syscall_raw_trampoline = t->regs().arg1();
+
+  auto symbol_address = lib_start + elfsym->st_value;
+
+  // Verify that the assembly is what we expect to see.  Our trampoline scheme
+  // depends on the exact sequence of instructions after the syscall, so it's
+  // critical that the assembly has a particular format.
+  uint8_t original_code[elfsym->st_size];
+  t->read_bytes_helper(symbol_address, elfsym->st_size, original_code);
+
+  uint32_t syscall_number;
+  if (!AssemblyTemplate::match(original_code, &syscall_number)) {
+    LOG(debug) << "Not patching " << name
+               << " because its assembly code didn't match expectations";
+    return;
+  }
+
+  // Our preloaded library (and therefore the syscall trampoline) should
+  // be loaded within 2GB of libc/libpthread, and therefore we can use
+  // a PC-relative CALL instruction to reach our trampoline.  Compute
+  // the precise offset to place in the CALL instruction.
+  remote_ptr<void> monkeypatched_call_end =
+    symbol_address + AssemblyTemplate::monkeypatch_point_offset +
+    MonkeypatchTemplate::syscall_trampoline_end();
+  int64_t call_distance_to_trampoline =
+    syscall_raw_trampoline - monkeypatched_call_end;
+
+  // Bail if the distance doesn't fit into +/- 2GB.  We can work
+  // around this with different monkeypatching approaches if need be,
+  // but this style of monkeypatch is much simpler.
+  if (call_distance_to_trampoline < INT32_MIN ||
+      call_distance_to_trampoline > INT32_MAX) {
+    LOG(debug) << "Not patching " << name
+               << " because the trampoline is too far away";
+    return;
+  }
+
+  // The monkeypatch is designed to be inserted at a particular place in the
+  // assembly.  Verify that we're putting things in the correct place.
+  static_assert(AssemblyTemplate::monkeypatch_point_offset + MonkeypatchTemplate::size ==
+                AssemblyTemplate::jae_instruction_offset, "bogus monkeypatch!");
+
+  // Create the patch and install.
+  uint8_t patch[MonkeypatchTemplate::size];
+  MonkeypatchTemplate::substitute(patch, call_distance_to_trampoline);
+  t->write_bytes(symbol_address + AssemblyTemplate::monkeypatch_point_offset, patch);
+  LOG(debug) << "monkeypatched " << name << " to jump to "
+             << "trampoline at " << HEX(syscall_raw_trampoline.as_int());
+}
+
+template <typename AssemblyTemplate, typename MonkeypatchTemplateCancel,
+          typename MonkeypatchTemplateNoCancel>
+static void monkeypatch_cancellable_function(Task* t,
+                                             remote_ptr<void> lib_start,
+                                             const char* name,
+                                             const typename X64Arch::ElfSym* elfsym) {
+  remote_ptr<void> syscall_raw_trampoline = t->regs().arg1();
+  remote_ptr<void> syscall_raw_cancellation_trampoline = t->regs().arg3();
+
+  auto symbol_address = lib_start + elfsym->st_value;
+
+  // Verify that the assembly is what we expect to see.  Our trampoline scheme
+  // depends on the exact sequence of instructions after the syscall, so it's
+  // critical that the assembly has a particular format.
+  uint8_t original_code[elfsym->st_size];
+  t->read_bytes_helper(symbol_address, elfsym->st_size, original_code);
+
+  uint32_t syscall_number;
+  // These aren't used, but do vary with the address of the function.
+  uint32_t threaded_program_p, libc_enable_cancellation, libc_disable_cancellation;
+  if (!AssemblyTemplate::match(original_code, &threaded_program_p,
+                               &syscall_number, &libc_enable_cancellation,
+                               &syscall_number, &libc_disable_cancellation)) {
+    LOG(debug) << "Not patching " << name
+               << " because its assembly code didn't match expectations";
+    return;
+  }
+
+  // Our preloaded library (and therefore the syscall trampoline) should
+  // be loaded within 2GB of libc/libpthread, and therefore we can use
+  // a PC-relative CALL instruction to reach our trampoline.  Compute
+  // the precise offset to place in the CALL instruction.
+  remote_ptr<void> monkeypatched_call_end =
+    symbol_address + AssemblyTemplate::nocancel_monkeypatch_point_offset +
+    MonkeypatchTemplateNoCancel::syscall_trampoline_end();
+  int64_t call_distance_to_trampoline =
+    syscall_raw_trampoline - monkeypatched_call_end;
+
+  // Bail if the distance doesn't fit into +/- 2GB.  We can work
+  // around this with different monkeypatching approaches if need be,
+  // but this style of monkeypatch is much simpler.
+  if (call_distance_to_trampoline < INT32_MIN ||
+      call_distance_to_trampoline > INT32_MAX) {
+    LOG(debug) << "Not patching " << name
+               << " because the trampoline is too far away";
+    return;
+  }
+
+  // We have to do the same check for the cancellation trampoline, too.
+  remote_ptr<void> cancellation_monkeypatched_call_end =
+    symbol_address + AssemblyTemplate::cancel_monkeypatch_point_offset +
+    MonkeypatchTemplateCancel::syscall_trampoline_end();
+  int64_t call_distance_to_cancellation_trampoline =
+    syscall_raw_cancellation_trampoline - cancellation_monkeypatched_call_end;
+
+  if (call_distance_to_cancellation_trampoline < INT32_MIN ||
+      call_distance_to_cancellation_trampoline > INT32_MAX) {
+    LOG(debug) << "Not patching " << name
+               << " because the cancellation trampoline is too far away";
+    return;
+  }
+
+  // The monkeypatches are designed to be inserted at particular places in the
+  // assembly.  Verify that we're putting things in the correct place.
+  static_assert(AssemblyTemplate::nocancel_monkeypatch_point_offset + MonkeypatchTemplateNoCancel::size ==
+                AssemblyTemplate::jae_instruction_offset, "bogus nocancel monkeypatch!");
+  static_assert(AssemblyTemplate::cancel_monkeypatch_point_offset + MonkeypatchTemplateCancel::size ==
+                AssemblyTemplate::begin_disable_call_offset, "bogus cancel monkeypatch!");
+
+  // Create the patches and install.
+  uint8_t nocancel_patch[MonkeypatchTemplateNoCancel::size];
+  MonkeypatchTemplateNoCancel::substitute(nocancel_patch, call_distance_to_trampoline);
+  t->write_bytes(symbol_address + AssemblyTemplate::nocancel_monkeypatch_point_offset, nocancel_patch);
+
+  uint8_t cancel_patch[MonkeypatchTemplateCancel::size];
+  MonkeypatchTemplateCancel::substitute(cancel_patch, call_distance_to_cancellation_trampoline);
+  t->write_bytes(symbol_address + AssemblyTemplate::cancel_monkeypatch_point_offset, cancel_patch);
+
+  LOG(debug) << "monkeypatched " << name << " to jump to "
+             << "trampoline at " << HEX(syscall_raw_trampoline.as_int())
+             << " and cancel trampoline at " << HEX(syscall_raw_cancellation_trampoline.as_int());
+}
+
+template <typename Arch>
+static void monkeypatch_libc_alike(Task* t, remote_ptr<void> lib_start) {
+  auto syms = read_elf_symbols<Arch>(t, lib_start);
+
+  // libc and related libraries are big enough that we're going to
+  // construct a table of sym->address for faster lookup before we start
+  // patching things.
+  map<std::string, typename Arch::ElfSym*> symbol_table;
+
+  // TODO: what about versioned symbols?
+  for (typename Arch::ElfSym& libsym : syms.symbols) {
+    symbol_table[&syms.strtab[libsym.st_name]] = &libsym;
+  }
+
+  for (auto& patchable_symbol : libc_syscalls_to_monkeypatch) {
+    auto name = patchable_symbol.name;
+    auto sym_entry = symbol_table.find(name);
+    if (sym_entry == symbol_table.end()) {
+      LOG(debug) << "Not patching " << name << " because it's not in the symbol table";
+      continue;
+    }
+
+    auto elfsym = (*sym_entry).second;
+    if (patchable_symbol.is_cancellation_point == CancellationPoint) {
+      if (patchable_symbol.n_args == FourOrMoreArguments) {
+        monkeypatch_cancellable_function<X64CancellationPointSyscall4Arg,
+                                         X64CancellationPointMonkeypatch,
+                                         X64NotCancellationPointMonkeypatch>(t, lib_start,
+                                                                             name, elfsym);
+      } else {
+        monkeypatch_cancellable_function<X64CancellationPointSyscall,
+                                         X64CancellationPointMonkeypatch,
+                                         X64NotCancellationPointMonkeypatch>(t, lib_start,
+                                                                             name, elfsym);
+      }
+      continue;
+    }
+
+    if (patchable_symbol.n_args == FourOrMoreArguments) {
+      monkeypatch_non_cancellable_function<X64NotCancellationPointSyscall4Arg,
+                                           X64NotCancellationPoint4ArgMonkeypatch>(t, lib_start,
+                                                                                   name, elfsym);
+    } else {
+      monkeypatch_non_cancellable_function<X64NotCancellationPointSyscall,
+                                           X64NotCancellationPointMonkeypatch>(t, lib_start,
+                                                                               name, elfsym);
+    }
+  }
+}
+
+template <> void monkeypatch_vdso_after_preload_init_arch<X64Arch>(Task* t) {
+  remote_ptr<void> syscall_raw_trampoline = t->regs().arg1();
+  auto vdso_start = t->vm()->vdso().start;
+
+  auto syms = read_vdso_symbols<X64Arch>(t);
+
+  for (auto& sym : syms.symbols) {
+    const char* symname = &syms.strtab[sym.st_name];
+    for (auto& syscall : syscalls_to_monkeypatch) {
+      if (syscall.syscall_buffering == Supported &&
+          strcmp(symname, syscall.name) == 0) {
+          // Absolutely-addressed symbols in the VDSO claim to start here.
+          static const uint64_t vdso_static_base = 0xffffffffff700000LL;
+          static const uintptr_t vdso_max_size = 0xffffLL;
+          uintptr_t sym_address = uintptr_t(sym.st_value);
+          // The symbol values can be absolute or relative addresses.
+          // The first part of the assertion is for absolute
+          // addresses, and the second part is for relative.
+          assert((sym_address & ~vdso_max_size) == vdso_static_base ||
+                 (sym_address & ~vdso_max_size) == 0);
+          uintptr_t sym_offset = sym_address & vdso_max_size;
+          uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
+
+          uint32_t syscall_number = syscall.syscall_number;
+
+          uint8_t patch[X64VsyscallSyscallbufMonkeypatch::size];
+          X64VsyscallSyscallbufMonkeypatch::substitute(patch, syscall_number,
+                                                       syscall_raw_trampoline.as_int());
+
+          t->write_bytes(absolute_address, patch);
+          LOG(debug) << "monkeypatched " << symname << " to jump to "
+                     << "trampoline at " << HEX(syscall_raw_trampoline.as_int());
+      }
+    }
+  }
+
+  if (t->vm()->has_libc()) {
+    monkeypatch_libc_alike<X64Arch>(t, t->vm()->libc().start);
+  }
+  if (t->vm()->has_libpthread()) {
+    monkeypatch_libc_alike<X64Arch>(t, t->vm()->libpthread().start);
+  }
+}
 
 void monkeypatch_vdso_after_exec(Task* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())

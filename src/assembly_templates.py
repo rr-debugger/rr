@@ -22,6 +22,16 @@ class Field(object):
         types = { 8: 'uint64_t', 4: 'uint32_t', 2: 'uint16_t', 1: 'uint8_t' }
         return types[self.byte_length]
 
+# These are essentially 0-length Fields, but it's simpler for matching and
+# substitution purposes if one doesn't have to pass dummy items for these.
+class Marker(object):
+    """A point within an assembly template."""
+    def __init__(self, name):
+        self.name = name
+
+    def __len__(self):
+        return 0
+
 class AssemblyTemplate(object):
     """A sequence of RawBytes and Field objects, which can be used to verify
     that a given sequence of assembly instructions matches the RawBytes while
@@ -33,7 +43,7 @@ class AssemblyTemplate(object):
         merged_chunks = []
         current_raw_bytes = []
         for c in chunks:
-            if isinstance(c, Field):
+            if isinstance(c, Field) or isinstance(c, Marker):
                 # Push any raw bytes before this.
                 if current_raw_bytes:
                     merged_chunks.append(RawBytes(*current_raw_bytes))
@@ -54,6 +64,8 @@ class AssemblyTemplate(object):
         for c in self.chunks:
             if isinstance(c, Field):
                 bytes.extend([0] * len(c))
+            elif isinstance(c, Marker):
+                continue
             else:
                 bytes.extend(c.bytes)
         return bytes
@@ -89,6 +101,110 @@ templates = {
         Field('syscall_number', 4),
         RawBytes(0x0f, 0x05),   # syscall
         RawBytes(0xc3),         # ret
+    ),
+    'X64VsyscallSyscallbufMonkeypatch': AssemblyTemplate(
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),         # jmpq *trampoline_address(%rip)
+        Field('trampoline_address', 8),
+    ),
+    'X64NotCancellationPointSyscall': AssemblyTemplate(
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x01),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+    ),
+    'X64NotCancellationPointSyscall4Arg': AssemblyTemplate(
+        RawBytes(0x49, 0x89, 0xca), # mov %rcx, %r10
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x01),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+    ),
+    'X64NotCancellationPointMonkeypatch': AssemblyTemplate(
+        RawBytes(0xe8),         # call syscall_trampoline
+        Field('syscall_trampoline', 4),
+        RawBytes(0x90, 0x90, 0x90), # nop nop nop
+                                    # The flags for the jae below are set by
+                                    # the trampoline.
+    ),
+    'X64NotCancellationPoint4ArgMonkeypatch': AssemblyTemplate(
+        RawBytes(0xe8),         # call syscall_trampoline
+        Field('syscall_trampoline', 4),
+        RawBytes(0x90, 0x90, 0x90), # nop nop nop
+                                    # The flags for the jae below are set by
+                                    # the trampoline.
+    ),
+    'X64CancellationPointSyscall': AssemblyTemplate(
+        RawBytes(0x83, 0x3d),   # cmpl $0x0, threaded_program_p(%rip)
+        Field('threaded_program_p', 4),
+        RawBytes(0x00),
+        RawBytes(0x75, 0x10),   # jne do_cancellation
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('nocancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x31),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+        # do_cancellation:
+        RawBytes(0x48, 0x83, 0xec, 0x08), # subq $0x8, %rsp
+        RawBytes(0xe8),                   # callq __libc_enable_cancellation
+        Field('libc_enable_cancellation', 4),
+        RawBytes(0x48, 0x89, 0x04, 0x24), # mov %rax, (%rsp)
+        RawBytes(0xb8),                   # mov $syscall_number, %eax
+        Field('syscall_number2', 4),
+        Marker('cancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),             # syscall
+        RawBytes(0x48, 0x8b, 0x3c, 0x24), # mov (%rsp), %rdi
+        Marker('begin_disable_call'),
+        RawBytes(0x48, 0x89, 0xc2),       # mov %rax, %rdx
+        RawBytes(0xe8),                   # callq __libc_disable_cancellation
+        Field('libc_disable_cancellation', 4),
+    ),
+    'X64CancellationPointSyscall4Arg': AssemblyTemplate(
+        RawBytes(0x83, 0x3d),   # cmpl $0x0, threaded_program_p(%rip)
+        Field('threaded_program_p', 4),
+        RawBytes(0x00),
+        RawBytes(0x75, 0x13),   # jne do_cancellation
+        RawBytes(0x49, 0x89, 0xca), # mov %rcx, %r10
+        RawBytes(0xb8),         # mov $syscall_number, %eax
+        Field('syscall_number', 4),
+        Marker('nocancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff), # cmp $-4095, %rax
+        Marker('jae_instruction'),
+        RawBytes(0x73, 0x34),                         # jae set_errno
+        RawBytes(0xc3),                               # ret
+        # do_cancellation:
+        RawBytes(0x48, 0x83, 0xec, 0x08), # subq $0x8, %rsp
+        RawBytes(0xe8),                   # callq __libc_enable_cancellation
+        Field('libc_enable_cancellation', 4),
+        RawBytes(0x48, 0x89, 0x04, 0x24), # mov %rax, (%rsp)
+        RawBytes(0x49, 0x89, 0xca), # mov %rcx, %r10
+        RawBytes(0xb8),                   # mov $syscall_number, %eax
+        Field('syscall_number2', 4),
+        Marker('cancel_monkeypatch_point'),
+        RawBytes(0x0f, 0x05),             # syscall
+        RawBytes(0x48, 0x8b, 0x3c, 0x24), # mov (%rsp), %rdi
+        Marker('begin_disable_call'),
+        RawBytes(0x48, 0x89, 0xc2),       # mov %rax, %rdx
+        RawBytes(0xe8),                   # callq __libc_disable_cancellation
+        Field('libc_disable_cancellation', 4),
+    ),
+    'X64CancellationPointMonkeypatch': AssemblyTemplate(
+        RawBytes(0xe8),         # call syscall_cancellation_trampoline
+        Field('syscall_trampoline', 4),
+        RawBytes(0x90),         # nop
     ),
 }
 
@@ -145,6 +261,21 @@ def generate_size_member(byte_array):
     s.write('static const size_t size = sizeof(%s);' % byte_array)
     return s.getvalue()
 
+def generate_field_offsets(template):
+    s = StringIO.StringIO()
+    offset = 0
+    for chunk in template.chunks:
+        if isinstance(chunk, Field):
+            s.write('  static constexpr size_t %s_start() { return %d; }\n'
+                    % (chunk.name, offset))
+            s.write('  static constexpr size_t %s_end() { return %d + %d; }\n'
+                    % (chunk.name, offset, len(chunk)))
+        elif isinstance(chunk, Marker):
+            s.write('  static const size_t %s_offset = %d;\n'
+                    % (chunk.name, offset))
+        offset += len(chunk)
+    return s.getvalue()
+
 def generate(f):
     # Raw bytes.
     for name, template in templates.iteritems():
@@ -163,9 +294,12 @@ public:
   %(substitute_method)s
 
   %(size_member)s
+
+%(field_offsets)s
 };
 """ % { 'class_name': name,
         'match_method': generate_match_method(byte_array, template),
         'substitute_method': generate_substitute_method(byte_array, template),
-        'size_member': generate_size_member(byte_array), })
+        'size_member': generate_size_member(byte_array),
+        'field_offsets': generate_field_offsets(template), })
         f.write('\n\n')

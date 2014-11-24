@@ -413,6 +413,15 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
     unmap(addr, num_bytes);
   }
 
+  // We want to know where certain libraries live in the address space
+  // for monkeypatching purposes.
+  if (prot & PROT_EXEC) {
+    if (res.fsname.find("/libc-") != string::npos) {
+      libc_start_addr = addr;
+    } else if (res.fsname.find("/libpthread-") != string::npos) {
+      libpthread_start_addr = addr;
+    }
+  }
   map_and_coalesce(m, res);
 }
 
@@ -796,6 +805,24 @@ Mapping AddressSpace::vdso() const {
   return mapping_of(vdso_start_addr, 1).first;
 }
 
+bool AddressSpace::has_libc() const {
+  return !libc_start_addr.is_null();
+}
+
+Mapping AddressSpace::libc() const {
+  assert(has_libc());
+  return mapping_of(libc_start_addr, 1).first;
+}
+
+bool AddressSpace::has_libpthread() const {
+  return !libpthread_start_addr.is_null();
+}
+
+Mapping AddressSpace::libpthread() const {
+  assert(has_libpthread());
+  return mapping_of(libpthread_start_addr, 1).first;
+}
+
 void AddressSpace::verify(Task* t) const {
   assert(task_set().end() != task_set().find(t));
 
@@ -832,7 +859,9 @@ AddressSpace::AddressSpace(const AddressSpace& o)
       is_clone(true),
       mem(o.mem),
       session(nullptr),
-      vdso_start_addr(o.vdso_start_addr) {
+      vdso_start_addr(o.vdso_start_addr),
+      libc_start_addr(o.libc_start_addr),
+      libpthread_start_addr(o.libpthread_start_addr) {
   for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
     it->second = it->second->clone();
   }
