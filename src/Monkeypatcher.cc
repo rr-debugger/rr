@@ -4,14 +4,15 @@
 
 #include "Monkeypatcher.h"
 
-#include <vector>
-
 #include "kernel_abi.h"
 #include "log.h"
+#include "ReplaySession.h"
 #include "task.h"
 
 using namespace rr;
 using namespace std;
+
+#include "AssemblyTemplates.generated"
 
 void Monkeypatcher::init_dynamic_syscall_patching(
     Task* t, int syscall_patch_hook_count,
@@ -19,6 +20,96 @@ void Monkeypatcher::init_dynamic_syscall_patching(
   if (syscall_patch_hook_count) {
     syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
   }
+}
+
+template <typename Arch>
+static bool patch_syscall_with_hook_arch(Task* t,
+                                         const syscall_patch_hook& hook);
+
+template <>
+bool patch_syscall_with_hook_arch<X86Arch>(Task* t,
+                                           const syscall_patch_hook& hook) {
+  uint8_t patch[X86CallMonkeypatch::size];
+  // We're patching in a relative jump, so we need to compute the offset from
+  // the end of the jump to our actual destination.
+  remote_ptr<uint8_t> patch_start = t->regs().ip();
+  remote_ptr<uint8_t> patch_end = patch_start + sizeof(patch);
+  X86CallMonkeypatch::substitute(patch, (uint32_t)hook.hook_address -
+                                            patch_end.as_int());
+  t->write_bytes(patch_start, patch);
+
+  // pad with NOPs to the next instruction
+  static const uint8_t NOP = 0x90;
+  uint8_t nops[syscall_instruction_length(x86) + hook.next_instruction_length -
+               sizeof(patch)];
+  memset(nops, NOP, sizeof(nops));
+  t->write_mem(patch_start + sizeof(patch), nops, sizeof(nops));
+  return true;
+}
+
+template <>
+bool patch_syscall_with_hook_arch<X64Arch>(Task* t,
+                                           const syscall_patch_hook& hook) {
+  return false;
+}
+
+static bool patch_syscall_with_hook(Task* t, const syscall_patch_hook& hook) {
+  RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), t, hook);
+}
+
+// TODO de-dup
+static void advance_syscall(Task* t) {
+  do {
+    t->cont_syscall();
+  } while (t->is_ptrace_seccomp_event() ||
+           ReplaySession::is_ignored_signal(t->pending_sig()));
+  assert(t->ptrace_event() == 0);
+}
+
+bool Monkeypatcher::try_patch_syscall(Task* t) {
+  if (!t->vm()->syscallbuf_enabled()) {
+    return false;
+  }
+  if (t->is_traced_syscall()) {
+    // Never try to patch the traced-syscall in our preload library!
+    return false;
+  }
+  if (tried_to_patch_syscall_addresses.count(t->ip().as_int())) {
+    return false;
+  }
+
+  tried_to_patch_syscall_addresses.insert(t->ip().as_int());
+
+  syscall_patch_hook dummy;
+  auto next_instruction =
+      t->read_mem(t->ip(), sizeof(dummy.next_instruction_bytes));
+  for (auto& hook : syscall_hooks) {
+    if (memcmp(next_instruction.data(), hook.next_instruction_bytes,
+               hook.next_instruction_length) == 0) {
+      // Get out of executing the current syscall before we patch it.
+
+      Registers r = t->regs();
+      intptr_t syscallno = r.original_syscallno();
+      r.set_original_syscallno(syscall_number_for_gettid(t->arch()));
+      t->set_regs(r);
+      // This exits the hijacked SYS_gettid.  Now the tracee is
+      // ready to do our bidding.
+      advance_syscall(t);
+
+      // Restore these regs to what they would have been just before
+      // the tracee trapped at the syscall.
+      r.set_original_syscallno(-1);
+      r.set_syscallno(syscallno);
+      r.set_ip(r.ip() - syscall_instruction_length(t->arch()));
+      t->set_regs(r);
+
+      patch_syscall_with_hook(t, hook);
+
+      // Return to caller, which resume normal execution.
+      return true;
+    }
+  }
+  return false;
 }
 
 template <typename Arch> struct VdsoSymbols {
@@ -69,8 +160,6 @@ template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
   result.strtab = t->read_mem(strtab_start.cast<char>(), dynstr->sh_size);
   return result;
 }
-
-#include "AssemblyTemplates.generated"
 
 /**
  * Return true iff |addr| points to a known |__kernel_vsyscall()|

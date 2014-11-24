@@ -3,6 +3,7 @@
 #ifndef RR_MONKEYPATCHER_H_
 #define RR_MONKEYPATCHER_H_
 
+#include <unordered_set>
 #include <vector>
 
 #include "preload/preload_interface.h"
@@ -22,13 +23,16 @@ class Task;
  *
  * 2) Patch the VDSO __kernel_vsyscall fast-system-call stub to redirect to
  * our syscall hook in the preload library (x86 only).
+ *
+ * 3) Patch syscall instructions whose following instructions match a known
+ * pattern to call the syscall hook.
  */
 class Monkeypatcher {
 public:
   Monkeypatcher() {}
-  Monkeypatcher(const Monkeypatcher& o) {
-    syscall_hooks = o.syscall_hooks;
-  }
+  Monkeypatcher(const Monkeypatcher& o)
+      : syscall_hooks(o.syscall_hooks),
+        tried_to_patch_syscall_addresses(o.tried_to_patch_syscall_addresses) {}
 
   /**
    * Apply any necessary patching immediately after exec.
@@ -43,11 +47,26 @@ public:
    */
   void patch_at_preload_init(Task* t);
 
+  /**
+   * Try to patch the syscall instruction that |t| just entered. If this
+   * returns false, patching failed and the syscall should be processed
+   * as normal. If this returns true, patching succeeded and the syscall
+   * was aborted; ip() has been reset to the start of the patched syscall,
+   * and execution should resume normally to execute the patched code.
+   */
+  bool try_patch_syscall(Task* t);
+
   void init_dynamic_syscall_patching(
       Task* t, int syscall_patch_hook_count,
       remote_ptr<syscall_patch_hook> syscall_patch_hooks);
 
+private:
   std::vector<syscall_patch_hook> syscall_hooks;
+  /**
+   * The addresses of the instructions following syscalls that we've tried
+   * (or are currently trying) to patch.
+   */
+  std::unordered_set<uintptr_t> tried_to_patch_syscall_addresses;
 };
 
 #endif /* RR_MONKEYPATCHER_H_ */
