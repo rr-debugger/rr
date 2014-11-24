@@ -134,16 +134,17 @@ struct syscallbuf_record {
    * even then we would have a comfortable cushion.  Still,
    *
    * TODO: static_assert this can hold largest syscall num */
-  uint32_t syscallno : 10;
+  uint16_t syscallno;
   /* Did the tracee arm/disarm the desched notification for this
    * syscall? */
-  uint32_t desched : 1;
+  uint8_t desched;
+  uint8_t _padding;
   /* Size of entire record in bytes: this struct plus extra
    * recorded data stored inline after the last field, not
    * including padding.
    *
    * TODO: static_assert this can repr >= buffer size */
-  uint32_t size : 21;
+  uint32_t size;
   /* Extra recorded outparam data starts here. */
   uint8_t extra_data[0];
 } __attribute__((__packed__));
