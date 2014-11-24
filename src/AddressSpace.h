@@ -317,8 +317,7 @@ struct MappableResource {
   FileId id;
   /**
    * Some name that this file may have on its underlying file
-   * system.  Not used for anything other than labelling mapped
-   * segments.
+   * system.
    */
   std::string fsname;
 
@@ -547,6 +546,29 @@ public:
 
   Monkeypatcher& monkeypatcher() { return monkeypatch_state; }
 
+  void at_preload_init(Task* t);
+
+  /* The instruction pointer from which traced syscalls made by
+   * the syscallbuf will originate. This is the address of the instruction
+   * after the syscall instruction. */
+  remote_ptr<uint8_t> traced_syscall_ip() const { return traced_syscall_ip_; }
+  /* The instruction pointer from which untraced syscalls will
+   * originate, used to determine whether a syscall is being
+   * made by the syscallbuf wrappers or not. This is the address of the
+   * instruction after the syscall instruction. */
+  remote_ptr<uint8_t> untraced_syscall_ip() const {
+    return untraced_syscall_ip_;
+  }
+  /* Start and end of the mapping of the syscallbuf code
+   * section, used to determine whether a tracee's $ip is in the
+   * lib. */
+  remote_ptr<void> syscallbuf_lib_start() const {
+    return syscallbuf_lib_start_;
+  }
+  remote_ptr<void> syscallbuf_lib_end() const { return syscallbuf_lib_end_; }
+
+  bool syscallbuf_enabled() const { return syscallbuf_lib_start_ != nullptr; }
+
 private:
   AddressSpace(Task* t, const std::string& exe, Session& session);
   AddressSpace(const AddressSpace& o);
@@ -604,6 +626,8 @@ private:
                    MAP_ANONYMOUS | MAP_PRIVATE, 0);
   }
 
+  template <typename Arch> void at_preload_init_arch(Task* t);
+
   // All breakpoints set in this VM.
   BreakpointMap breakpoints;
   /* Path of the executable image this address space was
@@ -637,6 +661,10 @@ private:
   // Users of child_mem_fd should fall back to ptrace-based memory
   // access when child_mem_fd is not open.
   ScopedFd child_mem_fd;
+  remote_ptr<uint8_t> traced_syscall_ip_;
+  remote_ptr<uint8_t> untraced_syscall_ip_;
+  remote_ptr<void> syscallbuf_lib_start_;
+  remote_ptr<void> syscallbuf_lib_end_;
 
   /**
    * Ensure that the cached mapping of |t| matches /proc/maps,

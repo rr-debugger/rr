@@ -550,9 +550,6 @@ static void set_up_buffer(void) {
     desched_counter_fd = -1;
   }
 
-  args.syscallbuf_enabled = buffer_enabled;
-  args.traced_syscall_ip = get_traced_syscall_entry_point();
-  args.untraced_syscall_ip = get_untraced_syscall_entry_point();
   args.desched_counter_fd = desched_counter_fd;
 
   /* Trap to rr: let the magic begin!
@@ -618,8 +615,10 @@ static void __attribute__((constructor)) init_process(void) {
 
   pthread_atfork(NULL, NULL, post_fork_child);
 
-  params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
   params.syscallbuf_enabled = buffer_enabled;
+  params.traced_syscall_ip = get_traced_syscall_entry_point();
+  params.untraced_syscall_ip = get_untraced_syscall_entry_point();
+  params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
 #ifdef __i386__
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {

@@ -89,6 +89,10 @@ struct rrcall_init_preload_params {
    * We let the syscallbuf code decide in order to more simply
    * replay the same decision that was recorded. */
   int syscallbuf_enabled;
+  /* Where our traced syscalls will originate. */
+  PTR(uint8_t) traced_syscall_ip;
+  /* Where our untraced syscalls will originate. */
+  PTR(uint8_t) untraced_syscall_ip;
   PTR(void) syscall_hook_trampoline;
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
@@ -101,15 +105,6 @@ struct rrcall_init_preload_params {
  */
 TEMPLATE_ARCH
 struct rrcall_init_buffers_params {
-  /* "In" params. */
-  /* The syscallbuf lib's idea of whether buffering is enabled.
-   * We let the syscallbuf code decide in order to more simply
-   * replay the same decision that was recorded. */
-  int syscallbuf_enabled;
-  /* Where our traced syscalls will originate. */
-  PTR(uint8_t) traced_syscall_ip;
-  /* Where our untraced syscalls will originate. */
-  PTR(uint8_t) untraced_syscall_ip;
   /* The fd we're using to track desched events. */
   int desched_counter_fd;
 

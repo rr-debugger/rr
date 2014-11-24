@@ -409,7 +409,7 @@ public:
    */
   bool is_in_syscallbuf() {
     remote_ptr<void> p = ip();
-    return (syscallbuf_lib_start <= p && p < syscallbuf_lib_end);
+    return as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end();
   }
 
   /**
@@ -417,14 +417,14 @@ public:
    * syscallbuf code.  Callers may assume |is_in_syscallbuf()|
    * is implied by this.
    */
-  bool is_traced_syscall() { return ip() == traced_syscall_ip; }
+  bool is_traced_syscall() { return ip() == as->traced_syscall_ip(); }
 
   /**
    * Return true when this is at an untraced syscall, i.e. one
    * initiated by a function in the syscallbuf.  Callers may
    * assume |is_in_syscallbuf()| is implied by this.
    */
-  bool is_untraced_syscall() { return ip() == untraced_syscall_ip; }
+  bool is_untraced_syscall() { return ip() == as->untraced_syscall_ip(); }
 
   /**
    * Return true if this task is most likely entering or exiting
@@ -1079,18 +1079,6 @@ public:
    * it's the tid that was recorded. */
   pid_t rec_tid;
 
-  /* The instruction pointer from which traced syscalls made by
-   * the syscallbuf will originate. */
-  remote_ptr<uint8_t> traced_syscall_ip;
-  /* The instruction pointer from which untraced syscalls will
-   * originate, used to determine whether a syscall is being
-   * made by the syscallbuf wrappers or not. */
-  remote_ptr<uint8_t> untraced_syscall_ip;
-  /* Start and end of the mapping of the syscallbuf code
-   * section, used to determine whether a tracee's $ip is in the
-   * lib. */
-  remote_ptr<void> syscallbuf_lib_start;
-  remote_ptr<void> syscallbuf_lib_end;
   /* Points at rr's mapping of the (shared) syscall buffer. */
   struct syscallbuf_hdr* syscallbuf_hdr;
   size_t num_syscallbuf_bytes;

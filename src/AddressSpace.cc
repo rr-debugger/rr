@@ -8,6 +8,8 @@
 
 #include <limits>
 
+#include "preload/preload_interface.h"
+
 #include "log.h"
 #include "Session.h"
 #include "task.h"
@@ -414,6 +416,40 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
   }
 
   map_and_coalesce(m, res);
+
+  if (res.fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos &&
+      (prot & PROT_EXEC)) {
+    syscallbuf_lib_start_ = addr;
+    syscallbuf_lib_end_ = addr + num_bytes;
+  }
+}
+
+template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
+  auto params = t->read_mem(
+      remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
+
+  ASSERT(t, !t->session().as_record() ||
+                Flags::get().use_syscall_buffer == !!params.syscallbuf_enabled)
+      << "Tracee thinks syscallbuf is "
+      << (params.syscallbuf_enabled ? "en" : "dis")
+      << "abled, but tracer thinks "
+      << (Flags::get().use_syscall_buffer ? "en" : "dis") << "abled";
+
+  if (!params.syscallbuf_enabled) {
+    return;
+  }
+
+  traced_syscall_ip_ = params.traced_syscall_ip;
+  untraced_syscall_ip_ = params.untraced_syscall_ip;
+
+  monkeypatch_state.patch_at_preload_init(t);
+}
+
+void AddressSpace::at_preload_init(Task* t) {
+  ASSERT(t, syscallbuf_lib_start_)
+      << "should have found preload library already";
+  ASSERT(t, !traced_syscall_ip_) << "Should not already know about syscallbuf";
+  RR_ARCH_FUNCTION(at_preload_init_arch, t->arch(), t);
 }
 
 typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
@@ -833,7 +869,11 @@ AddressSpace::AddressSpace(const AddressSpace& o)
       mem(o.mem),
       session(nullptr),
       vdso_start_addr(o.vdso_start_addr),
-      monkeypatch_state(o.monkeypatch_state) {
+      monkeypatch_state(o.monkeypatch_state),
+      traced_syscall_ip_(o.traced_syscall_ip_),
+      untraced_syscall_ip_(o.untraced_syscall_ip_),
+      syscallbuf_lib_start_(o.syscallbuf_lib_start_),
+      syscallbuf_lib_end_(o.syscallbuf_lib_end_) {
   for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
     it->second = it->second->clone();
   }

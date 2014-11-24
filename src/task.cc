@@ -212,10 +212,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
-      traced_syscall_ip(),
-      untraced_syscall_ip(),
-      syscallbuf_lib_start(),
-      syscallbuf_lib_end(),
       syscallbuf_hdr(),
       num_syscallbuf_bytes(),
       syscallbuf_child(),
@@ -421,15 +417,8 @@ remote_ptr<void> Task::init_buffers_arch(remote_ptr<void> map_hint,
       remote.regs().arg1();
   auto args = read_mem(child_args);
 
-  ASSERT(this, Flags::get().use_syscall_buffer == !!args.syscallbuf_enabled)
-      << "Tracee things syscallbuf is "
-      << (args.syscallbuf_enabled ? "en" : "dis") << "abled, but tracer thinks "
-      << (Flags::get().use_syscall_buffer ? "en" : "dis") << "abled";
-
   remote_ptr<void> child_map_addr = nullptr;
-  if (args.syscallbuf_enabled) {
-    traced_syscall_ip = args.traced_syscall_ip;
-    untraced_syscall_ip = args.untraced_syscall_ip;
+  if (as->syscallbuf_enabled()) {
     child_map_addr = init_syscall_buffer(remote, map_hint);
     args.syscallbuf_ptr = child_map_addr;
     if (share_desched_fd == SHARE_DESCHED_EVENT_FD) {
@@ -492,7 +481,7 @@ bool Task::is_disarm_desched_event_syscall() {
 
 template <typename Arch> static bool is_entering_traced_syscall_arch(Task* t) {
   remote_ptr<uint8_t> next_ip = t->ip() + syscall_instruction_length(t->arch());
-  return next_ip == t->traced_syscall_ip;
+  return next_ip == t->vm()->traced_syscall_ip();
 }
 
 bool Task::is_entering_traced_syscall() {
@@ -1492,8 +1481,6 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   auto& sess = other_session ? *other_session : session();
   Task* t = new Task(sess, new_tid, new_rec_tid, priority);
 
-  t->syscallbuf_lib_start = syscallbuf_lib_start;
-  t->syscallbuf_lib_end = syscallbuf_lib_end;
   t->blocked_sigs = blocked_sigs;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
     t->sighandlers = sighandlers;
@@ -1640,8 +1627,6 @@ void Task::copy_state(Task* from) {
 
     if (!from->syscallbuf_child.is_null()) {
       // All these fields are preserved by the fork.
-      traced_syscall_ip = from->traced_syscall_ip;
-      untraced_syscall_ip = from->untraced_syscall_ip;
       syscallbuf_child = from->syscallbuf_child;
       num_syscallbuf_bytes = from->num_syscallbuf_bytes;
       desched_fd_child = from->desched_fd_child;

@@ -1929,11 +1929,6 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   TraceMappedRegion file(filename, stat, addr, addr + size, copied);
   t->trace_writer().write_mapped_region(file);
 
-  if (strstr(filename, SYSCALLBUF_LIB_FILENAME) && (prot & PROT_EXEC)) {
-    t->syscallbuf_lib_start = file.start();
-    t->syscallbuf_lib_end = file.end();
-  }
-
   t->vm()->map(addr, size, prot, flags, offset,
                MappableResource(FileId(stat), filename));
 }
@@ -3035,7 +3030,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case SYS_rrcall_init_preload: {
-      t->vm()->monkeypatcher().patch_at_preload_init(t);
+      t->vm()->at_preload_init(t);
 
       Registers r = t->regs();
       r.set_syscall_result(0);
