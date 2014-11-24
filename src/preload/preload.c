@@ -622,6 +622,8 @@ static void __attribute__((constructor)) init_process(void) {
 #if defined(__i386__)
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {
+    /* pthread_cond_broadcast has 'int 80' followed by
+     * cmp $-4095,%eax (in glibc-2.18-16.fc20.i686) */
     { 5, { 0x3d, 0x01, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_3d_01_f0_ff_ff }
   };
@@ -633,12 +635,16 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_3c_24(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {
+    /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
+     * cmp $-4095,%rax (in glibc-2.18-16.fc20.x86_64) */
     { 6, { 0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_48_3d_01_f0_ff_ff },
+    /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
+     * mov (%rsp),%rdi (in glibc-2.18-16.fc20.x86_64) */
     { 4, { 0x48, 0x8b, 0x3c, 0x24 },
       (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 },
-    { 3, { 0x90, 0x90, 0x90 },
-      (uintptr_t)_syscall_hook_trampoline_90_90_90 }
+    /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop; nop" */
+    { 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
