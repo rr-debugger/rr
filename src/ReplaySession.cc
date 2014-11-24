@@ -1248,6 +1248,15 @@ Completion ReplaySession::flush_syscallbuf(Task* t, RunCommand stepi) {
   return COMPLETE;
 }
 
+Completion ReplaySession::patch_next_syscall(Task* t, RunCommand stepi) {
+  if (cont_syscall_boundary(t, EMULATE, stepi) == INCOMPLETE) {
+    return INCOMPLETE;
+  }
+  bool did_patch = t->vm()->monkeypatcher().try_patch_syscall(t);
+  ASSERT(t, did_patch) << "Should have patched the syscall, but did not!";
+  return COMPLETE;
+}
+
 /** Return true when replaying/debugging should cease after |t| exits. */
 bool ReplaySession::is_last_interesting_task(Task* t) {
   return (0 == debugged_tgid() && tasks().size() == 1) ||
@@ -1294,6 +1303,8 @@ Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi) {
       return emulate_signal_delivery(t, current_step.signo);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, stepi);
+    case TSTEP_PATCH_SYSCALL:
+      return patch_next_syscall(t, stepi);
     case TSTEP_DESCHED:
       return skip_desched_ioctl(t, &current_step.desched, stepi);
     default:
@@ -1387,6 +1398,9 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
     case EV_SYSCALLBUF_RESET:
       t->syscallbuf_hdr->num_rec_bytes = 0;
       current_step.action = TSTEP_RETIRE;
+      break;
+    case EV_PATCH_SYSCALL:
+      current_step.action = TSTEP_PATCH_SYSCALL;
       break;
     case EV_SCHED:
       current_step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;

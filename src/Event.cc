@@ -40,6 +40,7 @@ Event::Event(EncodedEvent e) {
     case EV_SYSCALLBUF_FLUSH:
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_RESET:
+    case EV_PATCH_SYSCALL:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
@@ -159,6 +160,7 @@ EncodedEvent Event::encode() const {
     case EV_SYSCALLBUF_FLUSH:
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_RESET:
+    case EV_PATCH_SYSCALL:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
@@ -323,6 +325,7 @@ std::string Event::type_name() const {
       CASE(SYSCALLBUF_FLUSH);
       CASE(SYSCALLBUF_ABORT_COMMIT);
       CASE(SYSCALLBUF_RESET);
+      CASE(PATCH_SYSCALL);
       CASE(UNSTABLE_EXIT);
       CASE(DESCHED);
       CASE(SIGNAL);

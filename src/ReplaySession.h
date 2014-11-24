@@ -95,6 +95,9 @@ enum ReplayTraceStepType {
    * replay state.*/
   TSTEP_FLUSH_SYSCALLBUF,
 
+  /* Replay until we enter the next syscall, then patch it. */
+  TSTEP_PATCH_SYSCALL,
+
   /* Emulate arming or disarming the desched event.  |desched|
    * tracks the replay state. */
   TSTEP_DESCHED,
@@ -316,6 +319,7 @@ private:
   void prepare_syscallbuf_records(Task* t);
   Completion flush_one_syscall(Task* t, RunCommand stepi);
   Completion flush_syscallbuf(Task* t, RunCommand stepi);
+  Completion patch_next_syscall(Task* t, RunCommand stepi);
   bool is_last_interesting_task(Task* t);
 
   std::shared_ptr<EmuFs> emu_fs;

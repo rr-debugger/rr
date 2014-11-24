@@ -36,6 +36,9 @@ enum EventType {
   EV_SYSCALLBUF_FLUSH,
   EV_SYSCALLBUF_ABORT_COMMIT,
   EV_SYSCALLBUF_RESET,
+  // Syscall was entered, the syscall instruction was patched, and the
+  // syscall was aborted. Resume execution at the patch.
+  EV_PATCH_SYSCALL,
   // The trace was terminated before all tasks exited, most
   // likely because the recorder was sent a terminating signal.
   // There are no more trace frames coming, so the best thing to

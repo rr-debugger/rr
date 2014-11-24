@@ -775,6 +775,12 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
     case EV_SYSCALL_INTERRUPTION:
       // We just entered a syscall.
       if (!maybe_restart_syscall(t)) {
+        if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
+          // Syscall was patched. Emit event and continue execution.
+          t->record_event(Event(EV_PATCH_SYSCALL, NO_EXEC_INFO, t->arch()));
+          break;
+        }
+
         t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
         rec_before_record_syscall_entry(t, t->ev().Syscall().number);
       }
