@@ -1,5 +1,9 @@
 source `dirname $0`/util.sh
-# SIGKILL, wait 2.0s
-record_async_signal 9 2.0 $TESTNAME
+# SIGKILL, wait 6.0s
+# The timeout must be greater than rr's alarm threshold of 3s, because
+# the spinning-thread may not do any conditional branches so we rely
+# on the alarm fallback to ensure there's a context switch to the main
+# thread to print EXIT-SUCCESS.
+record_async_signal 9 6.0 $TESTNAME
 replay
 check 'EXIT-SUCCESS'
