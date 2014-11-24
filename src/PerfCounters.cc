@@ -116,9 +116,9 @@ static CpuMicroarch get_cpu_microarch() {
       return IntelWestmere;
     case 0x206A0:
     case 0x206D0:
+    case 0x306e0:
       return IntelSandyBridge;
     case 0x306A0:
-    case 0x306e0:
       return IntelIvyBridge;
     case 0x306C0:
     case 0x40660:
