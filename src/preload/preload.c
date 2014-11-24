@@ -619,11 +619,23 @@ static void __attribute__((constructor)) init_process(void) {
   params.traced_syscall_ip = get_traced_syscall_entry_point();
   params.untraced_syscall_ip = get_untraced_syscall_entry_point();
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
-#ifdef __i386__
+#if defined(__i386__)
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {
     { 5, { 0x3d, 0x01, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_3d_01_f0_ff_ff }
+  };
+  params.syscall_patch_hook_count =
+      sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
+  params.syscall_patch_hooks = syscall_patch_hooks;
+#elif defined(__x86_64__)
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_3c_24(void);
+  struct syscall_patch_hook syscall_patch_hooks[] = {
+    { 6, { 0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff },
+      (uintptr_t)_syscall_hook_trampoline_48_3d_01_f0_ff_ff },
+    { 4, { 0x48, 0x8b, 0x3c, 0x24 },
+      (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 }
   };
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);

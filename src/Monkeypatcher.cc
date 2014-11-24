@@ -26,20 +26,27 @@ template <typename Arch>
 static bool patch_syscall_with_hook_arch(Task* t,
                                          const syscall_patch_hook& hook);
 
-template <>
-bool patch_syscall_with_hook_arch<X86Arch>(Task* t,
+static bool patch_syscall_with_hook_x86ish(Task* t,
                                            const syscall_patch_hook& hook) {
+  // We can use the same patch code on x86 and x86-64.
   uint8_t patch[X86CallMonkeypatch::size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
   remote_ptr<uint8_t> patch_start = t->regs().ip();
   remote_ptr<uint8_t> patch_end = patch_start + sizeof(patch);
-  X86CallMonkeypatch::substitute(patch, (uint32_t)hook.hook_address -
-                                            patch_end.as_int());
+  intptr_t offset = hook.hook_address - patch_end.as_int();
+  int32_t offset32 = (int32_t)offset;
+  if (offset32 != offset) {
+    LOG(debug) << "syscall can't be patched due to jump out of range from "
+               << HEX(patch_end.as_int()) << " to " << HEX(hook.hook_address);
+    return false;
+  }
+  X86CallMonkeypatch::substitute(patch, offset32);
   t->write_bytes(patch_start, patch);
 
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
+  assert(syscall_instruction_length(x86) == syscall_instruction_length(x86_64));
   uint8_t nops[syscall_instruction_length(x86) + hook.next_instruction_length -
                sizeof(patch)];
   memset(nops, NOP, sizeof(nops));
@@ -48,9 +55,15 @@ bool patch_syscall_with_hook_arch<X86Arch>(Task* t,
 }
 
 template <>
+bool patch_syscall_with_hook_arch<X86Arch>(Task* t,
+                                           const syscall_patch_hook& hook) {
+  return patch_syscall_with_hook_x86ish(t, hook);
+}
+
+template <>
 bool patch_syscall_with_hook_arch<X64Arch>(Task* t,
                                            const syscall_patch_hook& hook) {
-  return false;
+  return patch_syscall_with_hook_x86ish(t, hook);
 }
 
 static bool patch_syscall_with_hook(Task* t, const syscall_patch_hook& hook) {

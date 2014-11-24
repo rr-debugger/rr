@@ -90,10 +90,116 @@ _syscall_hook_trampoline_3d_01_f0_ff_ff:
 
         call _syscall_hook_trampoline
         cmpl $0xfffff001,%eax
-
         ret
+
         .cfi_endproc
         .size _syscall_hook_trampoline_3d_01_f0_ff_ff, .-_syscall_hook_trampoline_3d_01_f0_ff_ff
+
+
+
+#elif defined(__x86_64__)
+        .text
+
+        .global _syscall_hook_trampoline
+        .hidden _syscall_hook_trampoline
+        .type _syscall_hook_trampoline, @function
+        .p2align 4
+_syscall_hook_trampoline:
+        .cfi_startproc
+        /* Build a |struct syscall_info| on the stack by pushing the arguments
+           and syscall number. */
+        pushq %r9
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %r9, 0
+        pushq %r8
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %r8, 0
+        pushq %r10
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %r10, 0
+        pushq %rdx
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %rdx, 0
+        pushq %rsi
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %rsi, 0
+        pushq %rdi
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %rdi, 0
+        pushq %rax
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %rax, 0
+
+        /* Call our hook. */
+        mov %rsp, %rdi
+        callq syscall_hook
+
+        /* On entrance, we pushed the %rax, the syscall number. But we don't
+           want to |pop %rax|, as that will overwrite our return value. Pop
+           into %r11 instead. */
+        pop %r11
+        .cfi_adjust_cfa_offset -8
+
+        /* We don't really *need* to restore these, since the kernel could have
+           trashed them all anyway. But it seems reasonable to do so. */
+        pop %rdi
+        .cfi_adjust_cfa_offset -8
+        .cfi_restore %rdi
+        pop %rsi
+        .cfi_adjust_cfa_offset -8
+        .cfi_restore %rsi
+        pop %rdx
+        .cfi_adjust_cfa_offset -8
+        .cfi_restore %rdx
+        pop %r10
+        .cfi_adjust_cfa_offset -8
+        .cfi_restore %r10
+        pop %r8
+        .cfi_adjust_cfa_offset -8
+        .cfi_restore %r8
+        pop %r9
+        .cfi_adjust_cfa_offset -8
+        .cfi_restore %r9
+
+        /* ...and we're done. */
+        ret
+        .cfi_endproc
+        .size _syscall_hook_trampoline, . - _syscall_hook_trampoline
+
+
+
+        .global _syscall_hook_trampoline_48_3d_01_f0_ff_ff
+        .hidden _syscall_hook_trampoline_48_3d_01_f0_ff_ff
+        .type _syscall_hook_trampoline_48_3d_01_f0_ff_ff, @function
+_syscall_hook_trampoline_48_3d_01_f0_ff_ff:
+        .cfi_startproc
+
+        callq _syscall_hook_trampoline
+        cmpq $0xfffffffffffff001,%rax
+        ret
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_48_3d_01_f0_ff_ff, .-_syscall_hook_trampoline_48_3d_01_f0_ff_ff
+
+
+
+        .global _syscall_hook_trampoline_48_8b_3c_24
+        .hidden _syscall_hook_trampoline_48_8b_3c_24
+        .type _syscall_hook_trampoline_48_8b_3c_24, @function
+_syscall_hook_trampoline_48_8b_3c_24:
+        .cfi_startproc
+
+        callq _syscall_hook_trampoline
+        /* The original instruction after the syscall is movq (%rsp),%rdi.
+           Because we pushed a return address before reaching this point,
+           to get the equivalent behavior we need to load the next word on the
+           stack. */
+        movq 8(%rsp),%rdi
+        ret
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_48_8b_3c_24, .-_syscall_hook_trampoline_48_8b_3c_24
+
 #endif /* __i386__ */
 
         .section .note.GNU-stack,"",@progbits

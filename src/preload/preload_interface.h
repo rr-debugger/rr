@@ -74,7 +74,7 @@
  */
 struct syscall_patch_hook {
   uint8_t next_instruction_length;
-  uint8_t next_instruction_bytes[5];
+  uint8_t next_instruction_bytes[6];
   uint64_t hook_address;
 };
 
