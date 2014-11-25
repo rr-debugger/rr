@@ -8,6 +8,7 @@
 #include "util.h"
 
 #include <assert.h>
+#include <elf.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <linux/magic.h>
@@ -713,4 +714,18 @@ void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
                               remote_ptr<int>* child_tid) {
   RR_ARCH_FUNCTION(extract_clone_parameters_arch, t->arch(), t->regs(), stack,
                    parent_tid, tls, child_tid);
+}
+
+int read_elf_class(const string& filename) {
+  ScopedFd fd(filename.c_str(), O_RDONLY);
+  if (!fd.is_open()) {
+    return ELFCLASSNONE;
+  }
+  char elf_header[EI_CLASS + 1];
+  static const char magic[4] = { ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3 };
+  if (read(fd, elf_header, sizeof(elf_header)) != sizeof(elf_header) ||
+      memcmp(magic, elf_header, sizeof(magic)) != 0) {
+    return ELFCLASSNONE;
+  }
+  return elf_header[EI_CLASS];
 }

@@ -727,25 +727,13 @@ static Switchable set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
   }
 }
 
-static bool exec_file_supported(const string& filename) {
+static bool exec_file_supported(const string& file_name) {
 #if defined(__i386__)
   /* All this function does is reject 64-bit ELF binaries. Everything
      else we (optimistically) indicate support for. Missing or corrupt
      files will cause execve to fail normally. When we support 64-bit,
      this entire function can be removed. */
-  ScopedFd fd(filename.c_str(), O_RDONLY);
-  if (fd < 0) {
-    return true;
-  }
-  char header[5];
-  bool ok = true;
-  if (read(fd, header, sizeof(header)) == sizeof(header)) {
-    if (header[0] == ELFMAG0 && header[1] == ELFMAG1 && header[2] == ELFMAG2 &&
-        header[3] == ELFMAG3 && header[4] == ELFCLASS64) {
-      ok = false;
-    }
-  }
-  return ok;
+  return read_elf_class(file_name) != ELFCLASS64;
 #elif defined(__x86_64__)
   // We support 32-bit and 64-bit binaries.
   return true;

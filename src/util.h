@@ -4,6 +4,7 @@
 #define RR_UTIL_H_
 
 #include <array>
+#include <string>
 
 #include "Event.h"
 #include "remote_ptr.h"
@@ -213,5 +214,11 @@ int get_num_cpus();
 void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
                               remote_ptr<int>* ptid, remote_ptr<void>* tls,
                               remote_ptr<int>* ctid);
+
+/**
+ * Read the ELF CLASS from the given filename. If it's unable to be read,
+ * return ELFCLASSNONE.
+ */
+int read_elf_class(const std::string& filename);
 
 #endif /* RR_UTIL_H_ */
