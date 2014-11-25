@@ -1590,7 +1590,7 @@ template <typename Arch> static void process_execve(Task* t) {
     return;
   }
 
-  remote_ptr<typename Arch::signed_word> stack_ptr = t->regs().sp();
+  remote_ptr<typename Arch::unsigned_word> stack_ptr = t->regs().sp();
 
   /* start_stack points to argc - iterate over argv pointers */
 
