@@ -156,20 +156,21 @@ struct syscallbuf_record {
 struct syscallbuf_hdr {
   /* The number of valid syscallbuf_record bytes in the buffer,
    * not counting this header. */
-  uint32_t num_rec_bytes : 29;
+  uint32_t num_rec_bytes;
   /* True if the current syscall should not be committed to the
    * buffer, for whatever reason; likely interrupted by
    * desched. */
-  uint32_t abort_commit : 1;
+  uint8_t abort_commit;
   /* This tracks whether the buffer is currently in use for a
    * system call. This is helpful when a signal handler runs
    * during a wrapped system call; we don't want it to use the
    * buffer for its system calls. */
-  uint32_t locked : 1;
+  uint8_t locked;
   /* Nonzero when rr needs to worry about the desched signal.
    * When it's zero, the desched signal can safely be
    * discarded. */
-  uint32_t desched_signal_may_be_relevant : 1;
+  uint8_t desched_signal_may_be_relevant;
+  uint8_t _padding;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
