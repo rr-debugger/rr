@@ -76,6 +76,11 @@ public:
   struct user_regs_struct get_ptrace();
 
 #define RR_GET_REG(x86case, x64case)                                           \
+  (arch() == x86 ? (uint32_t)u.x86regs.x86case                                 \
+                 : arch() == x86_64                                            \
+                       ? u.x64regs.x64case                                     \
+                       : (assert(0 && "unknown architecture"), uintptr_t(-1)))
+#define RR_GET_REG_SIGNED(x86case, x64case)                                    \
   (arch() == x86 ? u.x86regs.x86case                                           \
                  : arch() == x86_64                                            \
                        ? u.x64regs.x64case                                     \
@@ -104,7 +109,7 @@ public:
   void set_syscallno(intptr_t syscallno) { RR_SET_REG(eax, rax, syscallno); }
 
   uintptr_t syscall_result() const { return RR_GET_REG(eax, rax); }
-  intptr_t syscall_result_signed() const { return RR_GET_REG(eax, rax); }
+  intptr_t syscall_result_signed() const { return RR_GET_REG_SIGNED(eax, rax); }
   void set_syscall_result(uintptr_t syscall_result) {
     RR_SET_REG(eax, rax, syscall_result);
   }
@@ -146,42 +151,42 @@ public:
   }
 
   uintptr_t arg1() const { return RR_GET_REG(ebx, rdi); }
-  intptr_t arg1_signed() const { return RR_GET_REG(ebx, rdi); }
+  intptr_t arg1_signed() const { return RR_GET_REG_SIGNED(ebx, rdi); }
   void set_arg1(uintptr_t value) { RR_SET_REG(ebx, rdi, value); }
   template <typename T> void set_arg1(remote_ptr<T> value) {
     RR_SET_REG(ebx, rdi, value.as_int());
   }
 
   uintptr_t arg2() const { return RR_GET_REG(ecx, rsi); }
-  intptr_t arg2_signed() const { return RR_GET_REG(ecx, rsi); }
+  intptr_t arg2_signed() const { return RR_GET_REG_SIGNED(ecx, rsi); }
   void set_arg2(uintptr_t value) { RR_SET_REG(ecx, rsi, value); }
   template <typename T> void set_arg2(remote_ptr<T> value) {
     RR_SET_REG(ecx, rsi, value.as_int());
   }
 
   uintptr_t arg3() const { return RR_GET_REG(edx, rdx); }
-  intptr_t arg3_signed() const { return RR_GET_REG(edx, rdx); }
+  intptr_t arg3_signed() const { return RR_GET_REG_SIGNED(edx, rdx); }
   void set_arg3(uintptr_t value) { RR_SET_REG(edx, rdx, value); }
   template <typename T> void set_arg3(remote_ptr<T> value) {
     RR_SET_REG(edx, rdx, value.as_int());
   }
 
   uintptr_t arg4() const { return RR_GET_REG(esi, r10); }
-  intptr_t arg4_signed() const { return RR_GET_REG(esi, r10); }
+  intptr_t arg4_signed() const { return RR_GET_REG_SIGNED(esi, r10); }
   void set_arg4(uintptr_t value) { RR_SET_REG(esi, r10, value); }
   template <typename T> void set_arg4(remote_ptr<T> value) {
     RR_SET_REG(esi, r10, value.as_int());
   }
 
   uintptr_t arg5() const { return RR_GET_REG(edi, r8); }
-  intptr_t arg5_signed() const { return RR_GET_REG(edi, r8); }
+  intptr_t arg5_signed() const { return RR_GET_REG_SIGNED(edi, r8); }
   void set_arg5(uintptr_t value) { RR_SET_REG(edi, r8, value); }
   template <typename T> void set_arg5(remote_ptr<T> value) {
     RR_SET_REG(edi, r8, value.as_int());
   }
 
   uintptr_t arg6() const { return RR_GET_REG(ebp, r9); }
-  intptr_t arg6_signed() const { return RR_GET_REG(ebp, r9); }
+  intptr_t arg6_signed() const { return RR_GET_REG_SIGNED(ebp, r9); }
   void set_arg6(uintptr_t value) { RR_SET_REG(ebp, r9, value); }
   template <typename T> void set_arg6(remote_ptr<T> value) {
     RR_SET_REG(ebp, r9, value.as_int());
