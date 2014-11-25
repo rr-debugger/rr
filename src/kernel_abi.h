@@ -201,6 +201,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef typename wordsize::signed_long signed_long;
   typedef typename wordsize::unsigned_long unsigned_long;
   typedef typename wordsize::unsigned_word unsigned_word;
+  typedef typename wordsize::size_t size_t;
   typedef typename wordsize::sigchld_clock_t sigchld_clock_t;
   typedef typename wordsize::__statfs_word __statfs_word;
 
