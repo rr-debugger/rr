@@ -25,6 +25,8 @@
 #define SYSCALLBUF_DESCHED_SIGNAL SIGSYS
 
 #define SYSCALLBUF_LIB_FILENAME "librrpreload.so"
+#define SYSCALLBUF_LIB_FILENAME_32 "librrpreload_32.so"
+
 /* This size counts the header along with record data. */
 #define SYSCALLBUF_BUFFER_SIZE (1 << 20)
 
