@@ -964,7 +964,8 @@ void Task::set_return_value_from_trace() {
 void Task::set_regs(const Registers& regs) {
   ASSERT(this, is_stopped);
   registers = regs;
-  ptrace_if_alive(PTRACE_SETREGS, nullptr, registers.ptrace_registers());
+  auto ptrace_regs = registers.get_ptrace();
+  ptrace_if_alive(PTRACE_SETREGS, nullptr, &ptrace_regs);
 }
 
 void Task::set_extra_regs(const ExtraRegisters& regs) {
@@ -1357,7 +1358,10 @@ void Task::wait(AllowInterrupt allow_interrupt) {
 
 void Task::did_waitpid(int status) {
   LOG(debug) << "  (refreshing register cache)";
-  if (!ptrace_if_alive(PTRACE_GETREGS, nullptr, registers.ptrace_registers())) {
+  struct user_regs_struct ptrace_regs;
+  if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
+    registers.set_from_ptrace(ptrace_regs);
+  } else {
     status = ptrace_exit_wait_status;
   }
   if (pending_sig_from_status(status) &&

@@ -14,6 +14,8 @@
 #include "log.h"
 #include "task.h"
 
+using namespace rr;
+
 struct RegisterValue {
   // The name of this register.
   const char* name;
@@ -212,7 +214,7 @@ void print_single_register(FILE* f, const char* name, const void* register_ptr,
 template <typename Arch>
 void Registers::print_register_file_arch(FILE* f, const char* formats[]) const {
   fprintf(f, "Printing register file:\n");
-  const void* user_regs = ptrace_registers();
+  const void* user_regs = &u;
   for (auto& rv : RegisterInfo<Arch>::registers) {
     if (rv.nbytes == 0) {
       continue;
@@ -241,7 +243,7 @@ void Registers::print_register_file(FILE* f) const {
 template <typename Arch>
 void Registers::print_register_file_for_trace_arch(
     FILE* f, TraceStyle style, const char* formats[]) const {
-  const void* user_regs = ptrace_registers();
+  const void* user_regs = &u;
   for (auto& rv : RegisterInfo<Arch>::registers) {
     if (rv.nbytes == 0) {
       continue;
@@ -296,9 +298,9 @@ static void maybe_print_reg_mismatch(MismatchBehavior mismatch_behavior,
 }
 
 template <typename Arch>
-static bool compare_registers_core(const char* name1, const Registers& reg1,
-                                   const char* name2, const Registers& reg2,
-                                   MismatchBehavior mismatch_behavior) {
+bool Registers::compare_registers_core(const char* name1, const Registers& reg1,
+                                       const char* name2, const Registers& reg2,
+                                       MismatchBehavior mismatch_behavior) {
   bool match = true;
 
   for (auto& rv : RegisterInfo<Arch>::registers) {
@@ -313,8 +315,8 @@ static bool compare_registers_core(const char* name1, const Registers& reg1,
 
     // XXX correct but oddly displayed for big-endian processors.
     uint64_t val1 = 0, val2 = 0;
-    memcpy(&val1, rv.pointer_into(reg1.ptrace_registers()), rv.nbytes);
-    memcpy(&val2, rv.pointer_into(reg2.ptrace_registers()), rv.nbytes);
+    memcpy(&val1, rv.pointer_into(&reg1.u), rv.nbytes);
+    memcpy(&val2, rv.pointer_into(&reg2.u), rv.nbytes);
     val1 &= rv.comparison_mask;
     val2 &= rv.comparison_mask;
 
@@ -431,7 +433,7 @@ size_t Registers::read_register_arch(uint8_t* buf, GdbRegister regno,
     *defined = false;
   } else {
     *defined = true;
-    memcpy(buf, rv.pointer_into(ptrace_registers()), rv.nbytes);
+    memcpy(buf, rv.pointer_into(&u), rv.nbytes);
   }
 
   return rv.nbytes;
@@ -455,7 +457,7 @@ void Registers::write_register_arch(GdbRegister regno, const uint8_t* value,
     LOG(warn) << "Unhandled register name " << regno;
   } else {
     assert(value_size == rv.nbytes);
-    memcpy(rv.pointer_into(ptrace_registers()), value, value_size);
+    memcpy(rv.pointer_into(&u), value, value_size);
   }
 }
 
@@ -470,4 +472,65 @@ template <typename Arch> size_t Registers::total_registers_arch() const {
 
 size_t Registers::total_registers() const {
   RR_ARCH_FUNCTION(total_registers_arch, arch());
+}
+
+typedef void (*NarrowConversion)(int32_t& r32, uint64_t& r64);
+typedef void (*SameConversion)(int32_t& r32, uint32_t& r64);
+template <NarrowConversion narrow, SameConversion same>
+void convert_x86(X86Arch::user_regs_struct& x86,
+                 X64Arch::user_regs_struct& x64) {
+  narrow(x86.eax, x64.rax);
+  narrow(x86.ebx, x64.rbx);
+  narrow(x86.ecx, x64.rcx);
+  narrow(x86.edx, x64.rdx);
+  narrow(x86.esi, x64.rsi);
+  narrow(x86.edi, x64.rdi);
+  narrow(x86.esp, x64.rsp);
+  narrow(x86.ebp, x64.rbp);
+  narrow(x86.eip, x64.rip);
+  narrow(x86.orig_eax, x64.orig_rax);
+  same(x86.eflags, x64.eflags);
+  same(x86.xcs, x64.cs);
+  same(x86.xds, x64.ds);
+  same(x86.xes, x64.es);
+  same(x86.xfs, x64.fs);
+  same(x86.xgs, x64.gs);
+  same(x86.xss, x64.ss);
+}
+
+static void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
+static void to_x86_same(int32_t& r32, uint32_t& r64) { r32 = r64; }
+static void from_x86_narrow(int32_t& r32, uint64_t& r64) { r64 = (int64_t)r32; }
+static void from_x86_same(int32_t& r32, uint32_t& r64) { r64 = r32; }
+
+void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
+  if (arch() == NativeArch::arch()) {
+    memcpy(&u, &ptrace_regs, sizeof(ptrace_regs));
+    return;
+  }
+
+  assert(arch() == x86 && NativeArch::arch() == x86_64);
+  convert_x86<to_x86_narrow, to_x86_same>(
+      u.x86regs, *reinterpret_cast<X64Arch::user_regs_struct*>(
+                      const_cast<struct user_regs_struct*>(&ptrace_regs)));
+}
+
+/**
+ * Get a user_regs_struct from these Registers. If the tracee architecture
+ * is not rr's native architecture, then it must be a 32-bit tracee with a
+ * 64-bit rr. In that case the user_regs_struct is 64-bit and we copy
+ * the 32-bit register values from u.x86regs into it.
+ */
+struct user_regs_struct Registers::get_ptrace() {
+  struct user_regs_struct result;
+  if (arch() == NativeArch::arch()) {
+    memcpy(&result, &u, sizeof(result));
+    return result;
+  }
+
+  assert(arch() == x86 && NativeArch::arch() == x86_64);
+  memset(&result, 0, sizeof(result));
+  convert_x86<from_x86_narrow, from_x86_same>(
+      u.x86regs, *reinterpret_cast<X64Arch::user_regs_struct*>(&result));
+  return result;
 }

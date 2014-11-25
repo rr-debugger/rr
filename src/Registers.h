@@ -9,8 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
-#include <vector>
+#include <sys/user.h>
 
 #include "GdbRegister.h"
 #include "kernel_abi.h"
@@ -39,6 +38,11 @@ const uintptr_t X86_TF_FLAG = 0x100;
  * _signed getter. This ensures that when building rr 64-bit we will use the
  * right number of register bits whether the tracee is 32-bit or 64-bit, and
  * get sign-extension right.
+ *
+ * We have different register sets for different architectures. To ensure a
+ * trace can be dumped/processed by an rr build on any platform, we allow
+ * Registers to contain registers for any architecture. So we store them
+ * in a union of Arch::user_regs_structs for each known Arch.
  */
 class Registers {
 public:
@@ -50,28 +54,26 @@ public:
 
   void set_arch(SupportedArch a) { arch_ = a; }
 
-  // Return a pointer that can be passed to ptrace's PTRACE_GETREGS et al.
-  void* ptrace_registers() {
-    switch (arch()) {
-      case x86:
-        return &u.x86regs;
-      case x86_64:
-        return &u.x64regs;
-      default:
-        assert(0 && "unknown architecture");
-    }
-  }
-
-  const void* ptrace_registers() const {
-    switch (arch()) {
-      case x86:
-        return &u.x86regs;
-      case x86_64:
-        return &u.x64regs;
-      default:
-        assert(0 && "unknown architecture");
-    }
-  }
+  /**
+   * Copy a user_regs_struct into these Registers. If the tracee architecture
+   * is not rr's native architecture, then it must be a 32-bit tracee with a
+   * 64-bit rr. In that case the user_regs_struct is 64-bit and we extract
+   * the 32-bit register values from it into u.x86regs.
+   * It's invalid to call this when the Registers' arch is 64-bit and the
+   * rr build is 32-bit, or when the Registers' arch is completely different
+   * to the rr build (e.g. ARM vs x86).
+   */
+  void set_from_ptrace(const struct user_regs_struct& ptrace_regs);
+  /**
+   * Get a user_regs_struct from these Registers. If the tracee architecture
+   * is not rr's native architecture, then it must be a 32-bit tracee with a
+   * 64-bit rr. In that case the user_regs_struct is 64-bit and we copy
+   * the 32-bit register values from u.x86regs into it.
+   * It's invalid to call this when the Registers' arch is 64-bit and the
+   * rr build is 32-bit, or when the Registers' arch is completely different
+   * to the rr build (e.g. ARM vs x86).
+   */
+  struct user_regs_struct get_ptrace();
 
 #define RR_GET_REG(x86case, x64case)                                           \
   (arch() == x86 ? u.x86regs.x86case                                           \
@@ -285,6 +287,11 @@ private:
   template <typename Arch>
   void print_register_file_for_trace_arch(FILE* f, TraceStyle style,
                                           const char* formats[]) const;
+
+  template <typename Arch>
+  static bool compare_registers_core(const char* name1, const Registers& reg1,
+                                     const char* name2, const Registers& reg2,
+                                     MismatchBehavior mismatch_behavior);
 
   template <typename Arch>
   static bool compare_registers_arch(const char* name1, const Registers& reg1,
