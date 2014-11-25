@@ -24,8 +24,10 @@ set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
 option(force64bit, "Force a 64-bit build, rather than a 32-bit one")
 if(force64bit)
+  set(rr_64BIT true)
   set(rr_MBITNESS_OPTION -m64)
 else()
+  set(rr_64BIT false)
   set(rr_MBITNESS_OPTION -m32)
 endif()
 
@@ -63,7 +65,7 @@ set(GENERATED_FILES
 
 foreach(generated_file ${GENERATED_FILES})
   set_source_files_properties(${generated_file}
-                              PROPERTIES GENERATED HEADER_FILE_ONLY)
+                              PROPERTIES GENERATED true HEADER_FILE_ONLY true)
   add_custom_command(OUTPUT ${generated_file}
                      COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
 		               "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
@@ -126,6 +128,43 @@ install(TARGETS rr rrpreload
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
+
+# Build 32-bit librrpreload on 64-bit builds.
+# We copy the source files into '32' subdirectories in the output
+# directory, so we can set different compile options on them.
+# This sucks but I can't find a better way to get CMake to build
+# the same source file in two different ways.
+if(rr_64BIT)
+  foreach(file preload_interface.h seccomp-bpf.h traced_syscall_shared.S)
+    set_source_files_properties(32/${file}
+                                PROPERTIES GENERATED true HEADER_FILE_ONLY true)
+    add_custom_command(OUTPUT 32/${file}
+                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}")
+  endforeach(file)
+
+  foreach(file preload.c traced_syscall.S untraced_syscall.S syscall_hook.S)
+    set_source_files_properties(32/${file}
+                                PROPERTIES GENERATED true COMPILE_FLAGS "-m32 -O2")
+    add_custom_command(OUTPUT 32/${file}
+                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                               32/seccomp-bpf.h 32/preload_interface.h 32/traced_syscall_shared.S)
+  endforeach(file)
+
+  add_library(rrpreload_32
+    32/preload.c
+    32/traced_syscall.S
+    32/untraced_syscall.S
+    32/syscall_hook.S
+  )
+  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS -m32)
+  target_link_libraries(rrpreload_32
+    -ldl
+  )
+endif()
 
 ##--------------------------------------------------
 ## Testing
@@ -398,15 +437,93 @@ endforeach(test)
 
 foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
   add_test(${test}
-    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR})
+    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}
     PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
   add_test(${test}-no-syscallbuf
-    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${PROJECT_BINARY_DIR})
+    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}-no-syscallbuf
     PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 endforeach(test)
+
+# Run 32-bit tests on 64-bit builds.
+# We copy the test files into '32' subdirectories in the output
+# directory, so we can set different compile options on them.
+# This sucks but I can't find a better way to get CMake to build
+# the same source file in two different ways.
+if(rr_64BIT)
+  set_source_files_properties(32/rrutil.h
+                              PROPERTIES GENERATED true HEADER_FILE_ONLY true)
+  add_custom_command(OUTPUT 32/rrutil.h
+                     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
+                             mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/bin/32 &&
+                             cp -f "${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h"
+                                "${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
+  	             DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h")
+
+  foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} cpuid test_lib)
+    set_source_files_properties(32/${test}.c
+                                PROPERTIES GENERATED true COMPILE_FLAGS -m32)
+    add_custom_command(OUTPUT 32/${test}.c
+                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
+                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
+	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c" 32/rrutil.h)
+  endforeach(test)
+
+  foreach(file cpuid_loop.S)
+    set_source_files_properties(32/${file}
+                                PROPERTIES GENERATED true COMPILE_FLAGS -m32)
+    add_custom_command(OUTPUT 32/${file}
+                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
+                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}")
+  endforeach(file)
+
+  foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
+    add_executable(${test}_32 32/${test}.c)
+    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS -m32)
+    target_link_libraries(${test}_32 -lrt)
+  endforeach(test)
+
+  add_library(test_lib_32
+    32/test_lib.c
+  )
+  set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS -m32)
+
+  target_link_libraries(constructor_32 -lrt test_lib_32)
+
+  # cpuid test needs to link with cpuid_loop.S
+  add_executable(cpuid_32 32/cpuid.c 32/cpuid_loop.S)
+  set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
+  target_link_libraries(cpuid_32 -lrt)
+
+  if(0)
+  foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
+    add_test(${test}-32
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${PROJECT_BINARY_DIR} ${test}_32)
+    set_tests_properties(${test}-32
+      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+
+    add_test(${test}-32-no-syscallbuf
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${PROJECT_BINARY_DIR} ${test}_32)
+    set_tests_properties(${test}-32-no-syscallbuf
+      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+  endforeach(test)
+
+  foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
+    add_test(${test}-32
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR} ${test}_32)
+    set_tests_properties(${test}-32
+      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+
+    add_test(${test}-32-no-syscallbuf
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${PROJECT_BINARY_DIR} ${test}_32)
+    set_tests_properties(${test}-32-no-syscallbuf
+      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+  endforeach(test)
+  endif()
+endif()
 
 include(ProcessorCount)
 ProcessorCount(N)
