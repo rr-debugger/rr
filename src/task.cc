@@ -430,7 +430,7 @@ remote_ptr<void> Task::init_buffers_arch(remote_ptr<void> map_hint,
       desched_fd_child = REPLAY_DESCHED_EVENT_FD;
     }
   } else {
-    args.syscallbuf_ptr = nullptr;
+    args.syscallbuf_ptr = remote_ptr<void>(nullptr);
   }
 
   // Return the mapped buffers to the child.

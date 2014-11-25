@@ -60,7 +60,7 @@
 #define PTR(T) T *
 #else
 #define TEMPLATE_ARCH template <typename Arch>
-#define PTR(T) remote_ptr<T>
+#define PTR(T) typename Arch::template ptr<T>
 #endif
 
 /**
