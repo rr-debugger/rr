@@ -329,18 +329,20 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     FATAL() << "Failed to create parent socket";
   }
   // Complete child's connect() syscall
-  if (wait_syscall()) {
-    FATAL() << "Failed to connect() in tracee";
+  int child_syscall_result = wait_syscall();
+  if (child_syscall_result) {
+    FATAL() << "Failed to connect() in tracee; err=" << child_syscall_result;
   }
   // Listening socket not needed anymore
   close(listen_sock);
   unlink(path);
   child_sendmsg(*this, remote_buf, sc_args, sc_args_end, child_sock, fd);
+  child_syscall_result = wait_syscall();
+  if (0 >= child_syscall_result) {
+    FATAL() << "Failed to sendmsg() in tracee; err=" << child_syscall_result;
+  }
   // Child may be waiting on our recvmsg().
   int our_fd = recvmsg_socket(sock);
-  if (0 >= wait_syscall()) {
-    FATAL() << "Failed to sendmsg() in tracee";
-  }
 
   syscall(syscall_number_for_close(Arch::arch()), child_sock);
   close(sock);
