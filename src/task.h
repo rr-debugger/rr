@@ -503,7 +503,7 @@ public:
    * Call this after an |execve()| syscall finishes.  Emulate
    * resource updates induced by the exec.
    */
-  void post_exec();
+  void post_exec(const Registers* replay_regs = nullptr);
 
   /**
    * Manage pending events.  |push_event()| pushes the given

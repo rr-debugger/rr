@@ -687,11 +687,44 @@ void Task::pre_exec() {
   }
 }
 
-void Task::post_exec() {
+static SupportedArch determine_arch(Task* t, const string& file_name) {
+  ASSERT(t, file_name.size() > 0);
+  switch (read_elf_class(file_name)) {
+    case ELFCLASS32:
+      return x86;
+    case ELFCLASS64:
+      ASSERT(t, NativeArch::arch() == x86_64) << "64-bit tracees not supported";
+      return x86_64;
+    default:
+      ASSERT(t, false) << "Unknown ELF class";
+      return x86;
+  }
+}
+
+void Task::post_exec(const Registers* replay_regs) {
+  as->erase_task(this);
+
+  if (replay_regs) {
+    registers = *replay_regs;
+  } else {
+    registers.set_arch(determine_arch(this, execve_file));
+    // Read registers now that the architecture is known.
+    struct user_regs_struct ptrace_regs;
+    ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
+    registers.set_from_ptrace(ptrace_regs);
+    // Change syscall number to execve *for the new arch*. If we don't do this,
+    // and the arch changes, then the syscall number for execve in the old arch/
+    // is treated as the syscall we're executing in the new arch, with hilarious
+    // results.
+    registers.set_original_syscallno(syscall_number_for_execve(arch()));
+    ev().set_arch(arch());
+    ev().Syscall().number = registers.original_syscallno();
+  }
+  set_regs(registers);
+
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
-  as->erase_task(this);
-  assert(execve_file.size() > 0);
+
   auto a = session().create_vm(this, execve_file);
   a->is_replacing(*as);
   as.swap(a);
@@ -1358,11 +1391,15 @@ void Task::wait(AllowInterrupt allow_interrupt) {
 
 void Task::did_waitpid(int status) {
   LOG(debug) << "  (refreshing register cache)";
-  struct user_regs_struct ptrace_regs;
-  if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
-    registers.set_from_ptrace(ptrace_regs);
-  } else {
-    status = ptrace_exit_wait_status;
+  // Skip reading registers immediately after a PTRACE_EVENT_EXEC, since
+  // we may not know the correct architecture.
+  if (ptrace_event() != PTRACE_EVENT_EXEC) {
+    struct user_regs_struct ptrace_regs;
+    if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
+      registers.set_from_ptrace(ptrace_regs);
+    } else {
+      status = ptrace_exit_wait_status;
+    }
   }
   if (pending_sig_from_status(status) &&
       !ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {

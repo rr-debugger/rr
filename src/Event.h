@@ -386,6 +386,9 @@ struct Event {
   /** Return the architecture associated with this. */
   SupportedArch arch() const { return base.arch(); }
 
+  /** Change the architecture for this event. */
+  void set_arch(SupportedArch a) { base.arch_ = a; }
+
   /** Return a string naming |ev|'s type. */
   std::string type_name() const;
 

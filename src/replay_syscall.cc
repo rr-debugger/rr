@@ -407,12 +407,6 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   ASSERT(t, !t->ptrace_event()) << "Expected no ptrace event, but got "
                                 << ptrace_event_name(t->ptrace_event());
 
-  /* We just saw a successful exec(), so from now on we know
-   * that the address space layout for the replay tasks will
-   * (should!) be the same as for the recorded tasks.  So we can
-   * start validating registers at events. */
-  t->session().after_exec();
-
   bool check = t->regs().arg1();
   /* if the execve comes from a vfork system call the ebx
    * register is not zero. in this case, no recorded data needs
@@ -422,8 +416,6 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   }
 
   init_scratch_memory<Arch>(t);
-
-  t->post_exec();
 
   t->set_return_value_from_trace();
   t->validate_regs();

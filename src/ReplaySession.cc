@@ -318,6 +318,16 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   if (is_ignored_signal(t->child_sig)) {
     return cont_syscall_boundary(t, emu, stepi);
   }
+
+  if (t->ptrace_event() == PTRACE_EVENT_EXEC) {
+    /* We just saw a successful exec(), so from now on we know
+     * that the address space layout for the replay tasks will
+     * (should!) be the same as for the recorded tasks.  So we can
+     * start validating registers at events. */
+    t->session().after_exec();
+    t->post_exec(&t->current_trace_frame().regs());
+  }
+
   if (SIGTRAP == t->child_sig) {
     return INCOMPLETE;
   } else if (t->child_sig) {

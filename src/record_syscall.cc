@@ -1590,9 +1590,6 @@ template <typename Arch> static void process_execve(Task* t) {
     return;
   }
 
-  t->session().after_exec();
-  t->post_exec();
-
   remote_ptr<typename Arch::signed_word> stack_ptr = t->regs().sp();
 
   /* start_stack points to argc - iterate over argv pointers */
@@ -2392,8 +2389,9 @@ static void check_syscall_rejected(Task* t) {
   if (t->regs().syscall_result_signed() != -ENOSYS) {
     t->regs().print_register_file(stderr);
     int syscallno = t->ev().Syscall().number;
-    FATAL() << "Unhandled syscall " << t->syscallname(syscallno) << "("
-            << syscallno << ") returned " << t->regs().syscall_result_signed();
+    ASSERT(t, false) << "Unhandled syscall " << t->syscallname(syscallno) << "("
+                     << syscallno << ") returned "
+                     << t->regs().syscall_result_signed();
   }
 }
 

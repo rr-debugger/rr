@@ -149,6 +149,9 @@ void RecordSession::handle_ptrace_event(Task* t) {
        * space, so we can unblock signals. */
       can_deliver_signals = true;
 
+      t->session().after_exec();
+      t->post_exec();
+
       t->push_event(
           SyscallEvent(syscall_number_for_execve(t->arch()), t->arch()));
       t->ev().Syscall().state = ENTERING_SYSCALL;
