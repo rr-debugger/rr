@@ -894,23 +894,6 @@ void Task::validate_regs(uint32_t flags) {
                 << "; replaying:" << regs().arg4() << ".  Fudging registers.";
       rec_regs.set_arg4(regs().arg4());
     }
-  } else if (arch() == SupportedArch::x86_64) {
-    /* The syscall instruction on x86-64 trashes %r11 with
-     * the value of eflags prior to the system call.  This
-     * is not usually a problem. But when we are replaying
-     * and debugging the replayee, the TF bit in the eflags
-     * register can be set to enable single-step mode in
-     * the replayee.  Then some executed system call in the
-     * replayee pops eflags into %r11, and then it's only a
-     * matter of time before comparing registers notices the
-     * (harmless) divergence. */
-    if (regs().r11() != rec_regs.r11()) {
-      LOG(warn) << "Saw %r11 divergence, probably due to syscall trashing %r11 "
-                   "recorded:" << HEX(rec_regs.r11())
-                << "; replaying:" << HEX(regs().r11())
-                << ".  Fudging registers.";
-    }
-    rec_regs.set_r11(regs().r11());
   }
 
   /* TODO: add perf counter validations (hw int, page faults, insts) */
@@ -1386,6 +1369,16 @@ void Task::did_waitpid(int status) {
     seen_ptrace_exit_event = true;
   }
   ticks += hpc.read_ticks();
+
+  if (registers.arch() == x86_64 && (syscall_stop() || is_untraced_syscall())) {
+    // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
+    // If we single-stepped into the syscall instruction, the TF flag will be
+    // set in R11. We don't want the value in R11 to depend on whether we
+    // were single-stepping during record or replay, possibly causing
+    // divergence, so we clear it here before anything is recorded or checked.
+    registers.set_r11(registers.r11() & ~X86_TF_FLAG);
+    set_regs(registers);
+  }
 }
 
 bool Task::try_wait() {
@@ -1445,7 +1438,7 @@ int Task::pending_sig_from_status(int status) const {
   }
   int sig = stop_sig_from_status(status);
   switch (sig) {
-    case(SIGTRAP | 0x80) :
+    case SIGTRAP | 0x80:
       /* We ask for PTRACE_O_TRACESYSGOOD, so this was a
        * trap for a syscall.  Pretend like it wasn't a
        * signal. */

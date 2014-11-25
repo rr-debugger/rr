@@ -25,6 +25,8 @@ enum MismatchBehavior {
   BAIL_ON_MISMATCH
 };
 
+const uintptr_t X86_TF_FLAG = 0x100;
+
 /**
  * A Registers object contains values for all general-purpose registers.
  * These must include all registers used to pass syscall parameters and return

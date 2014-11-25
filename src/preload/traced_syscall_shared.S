@@ -40,7 +40,6 @@ RAW_SYSCALL_FUNCTION:     /* syscallno = 4(%esp) */
          * the value of this label.  We need to be able to recognize
          * when the tracees are in traced syscalls. */
 ENTRY_POINT_IP:
-
         popl %ebp
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebp
@@ -89,6 +88,8 @@ RAW_SYSCALL_FUNCTION:
          * the value of this label.  We need to be able to recognize
          * when the tracees are in traced syscalls. */
 ENTRY_POINT_IP:
+        /* Clear TF bit from RFLAGS copied to R11 by syscall instruction */
+        andq $0xfffffffffffffeff, %r11
 
         ret
 	.size RAW_SYSCALL_FUNCTION, . - RAW_SYSCALL_FUNCTION

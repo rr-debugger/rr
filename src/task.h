@@ -494,13 +494,6 @@ public:
   const std::string& name() const { return prname; }
 
   /**
-   * Return the signal that's pending for this as of the last
-   * call to |wait()/try_wait()|.  The signal 0 means "no
-   * signals'.
-   */
-  int pending_sig() const { return pending_sig_from_status(wait_status); }
-
-  /**
    * Call this method when this task has entered an |execve()|
    * call.
    */
@@ -511,12 +504,6 @@ public:
    * resource updates induced by the exec.
    */
   void post_exec();
-
-  /**
-   * Return the ptrace event as of the last call to
-   * |wait()/try_wait()|.
-   */
-  int ptrace_event() const { return ptrace_event_from_status(wait_status); }
 
   /**
    * Manage pending events.  |push_event()| pushes the given
@@ -801,6 +788,24 @@ public:
    */
   bool stopped() const { return stopped_from_status(wait_status); }
   int stop_sig() const { return stop_sig_from_status(wait_status); }
+
+  /**
+   * Return the ptrace event as of the last call to
+   * |wait()/try_wait()|.
+   */
+  int ptrace_event() const { return ptrace_event_from_status(wait_status); }
+
+  /**
+   * Return the signal that's pending for this as of the last
+   * call to |wait()/try_wait()|.  The signal 0 means "no
+   * signals'.
+   */
+  int pending_sig() const { return pending_sig_from_status(wait_status); }
+
+  /**
+   * Return true if we stopped due to a syscall event.
+   */
+  bool syscall_stop() const { return stop_sig() == (SIGTRAP | 0x80); }
 
   /** Return the task group this belongs to. */
   TaskGroup::shr_ptr task_group() { return tg; }
