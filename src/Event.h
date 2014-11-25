@@ -203,7 +203,7 @@ struct SyscallEvent : public BaseEvent {
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno, SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch),
-        regs(),
+        regs(arch),
         desched_rec(nullptr),
         saved_args(),
         tmp_data_ptr(nullptr),

@@ -1094,7 +1094,8 @@ public:
   uintptr_t exec_saved_arg1;
 
 private:
-  Task(Session& session, pid_t tid, pid_t rec_tid, int priority);
+  Task(Session& session, pid_t tid, pid_t rec_tid, int priority,
+       SupportedArch a);
 
   /** Helper function for maybe_update_vm. */
   template <typename Arch>

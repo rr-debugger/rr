@@ -191,7 +191,8 @@ TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
              << " (real tgid:" << real_tgid << ")";
 }
 
-Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
+Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
+           SupportedArch a)
     : switchable(),
       pseudo_blocked(false),
       succ_event_counter(),
@@ -218,6 +219,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority)
       blocked_sigs(),
       prname("???"),
       ticks(0),
+      registers(a),
       is_stopped(false),
       extra_registers_known(false),
       robust_futex_list(),
@@ -1472,7 +1474,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
                   pid_t new_rec_tid, Session* other_session) {
   auto& sess = other_session ? *other_session : session();
-  Task* t = new Task(sess, new_tid, new_rec_tid, priority);
+  Task* t = new Task(sess, new_tid, new_rec_tid, priority, arch());
 
   t->blocked_sigs = blocked_sigs;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
@@ -2133,7 +2135,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
   sigaction(SIGALRM, &sa, nullptr);
 
-  Task* t = new Task(session, tid, rec_tid, 0);
+  Task* t = new Task(session, tid, rec_tid, 0, NativeArch::arch());
   // The very first task we fork inherits the signal
   // dispositions of the current OS process (which should all be
   // default at this point, but ...).  From there on, new tasks

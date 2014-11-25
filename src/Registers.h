@@ -42,19 +42,13 @@ const uintptr_t X86_TF_FLAG = 0x100;
  */
 class Registers {
 public:
-  Registers() { memset(&u, 0, sizeof(u)); }
-
-  SupportedArch arch() const {
-// TODO: make the architecture settable, so we can exec 32-bit processes
-// from 64-bit ones and vice-versa.
-#if defined(__x86_64__)
-    return x86_64;
-#elif defined(__i386__)
-    return x86;
-#else
-#error unknown CPU architecture
-#endif
+  Registers(SupportedArch a = SupportedArch(-1)) : arch_(a) {
+    memset(&u, 0, sizeof(u));
   }
+
+  SupportedArch arch() const { return arch_; }
+
+  void set_arch(SupportedArch a) { arch_ = a; }
 
   // Return a pointer that can be passed to ptrace's PTRACE_GETREGS et al.
   void* ptrace_registers() {
@@ -315,6 +309,7 @@ private:
     rr::X86Arch::user_regs_struct x86regs;
     rr::X64Arch::user_regs_struct x64regs;
   } u;
+  SupportedArch arch_;
 };
 
 #endif /* RR_REGISTERS_H_ */
