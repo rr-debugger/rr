@@ -417,8 +417,9 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
 
   map_and_coalesce(m, res);
 
-  if (res.fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos &&
-      (prot & PROT_EXEC)) {
+  if ((prot & PROT_EXEC) &&
+      (res.fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
+       res.fsname.find(SYSCALLBUF_LIB_FILENAME_32) != string::npos)) {
     syscallbuf_lib_start_ = addr;
     syscallbuf_lib_end_ = addr + num_bytes;
   }
