@@ -172,20 +172,41 @@ static void rep_maybe_replay_stdio_write_arch(Task* t) {
     return;
   }
 
-  assert(Arch::write == t->regs().original_syscallno() ||
-         Arch::writev == t->regs().original_syscallno());
-
-  int fd = t->regs().arg1_signed();
-  if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-    size_t len = t->regs().arg3();
-    remote_ptr<void> addr = t->regs().arg2();
-    uint8_t buf[len];
-    // NB: |buf| may not be null-terminated.
-    t->read_bytes_helper(addr, len, buf);
-    maybe_mark_stdio_write(t, fd);
-    if (len != (size_t)write(fd, buf, len)) {
-      FATAL() << "Couldn't write stdio";
+  auto& regs = t->regs();
+  switch (regs.original_syscallno()) {
+    case Arch::write: {
+      int fd = regs.arg1_signed();
+      if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+        maybe_mark_stdio_write(t, fd);
+        auto bytes =
+            t->read_mem(remote_ptr<uint8_t>(regs.arg2()), (size_t)regs.arg3());
+        if (bytes.size() != (size_t)write(fd, bytes.data(), bytes.size())) {
+          FATAL() << "Couldn't write stdio";
+        }
+      }
+      break;
     }
+
+    case Arch::writev: {
+      int fd = regs.arg1_signed();
+      if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+        maybe_mark_stdio_write(t, fd);
+        auto iovecs = t->read_mem(remote_ptr<typename Arch::iovec>(regs.arg2()),
+                                  (int)regs.arg3_signed());
+        for (size_t i = 0; i < iovecs.size(); ++i) {
+          remote_ptr<void> ptr = iovecs[i].iov_base;
+          auto bytes = t->read_mem(ptr.cast<uint8_t>(), iovecs[i].iov_len);
+          if (bytes.size() != (size_t)write(fd, bytes.data(), bytes.size())) {
+            FATAL() << "Couldn't write stdio";
+          }
+        }
+      }
+      break;
+    }
+
+    default:
+      assert(0 && "bad call to rep_maybe_replay_stdio_write_arch");
+      break;
   }
 }
 
