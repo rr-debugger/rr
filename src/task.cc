@@ -730,7 +730,6 @@ void Task::post_exec(const Registers* replay_regs) {
   as.swap(a);
   // XXX should we re-create our TaskGroup here too?
   prname = prname_from_exe_image(as->exe_image());
-  as->monkeypatcher().patch_after_exec(this);
 }
 
 void Task::record_current_event() { record_event(ev()); }

@@ -440,6 +440,8 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
   t->set_return_value_from_trace();
   t->validate_regs();
+
+  t->vm()->monkeypatcher().patch_after_exec(t);
 }
 
 /**

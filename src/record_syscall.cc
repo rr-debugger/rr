@@ -1645,6 +1645,8 @@ template <typename Arch> static void process_execve(Task* t) {
   t->record_remote(rand_addr, 16);
 
   init_scratch_memory<Arch>(t);
+
+  t->vm()->monkeypatcher().patch_after_exec(t);
 }
 
 static void record_ioctl_data(Task* t, ssize_t num_bytes) {
