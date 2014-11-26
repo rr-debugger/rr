@@ -722,6 +722,11 @@ void Task::post_exec(const Registers* replay_regs) {
   }
   set_regs(registers);
 
+  // Clear robust_list state to match kernel state. If this task is cloned
+  // soon after exec, we must not do a bogus set_robust_list syscall for
+  // the clone.
+  set_robust_list(nullptr, 0);
+
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
 
