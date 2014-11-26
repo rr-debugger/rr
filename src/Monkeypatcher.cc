@@ -14,6 +14,70 @@ using namespace std;
 
 #include "AssemblyTemplates.generated"
 
+/**
+ * RecordSession sets up an LD_PRELOAD environment variable with an entry
+ * SYSCALLBUF_LIB_FILENAME_PADDED which is big enough to hold either the
+ * 32-bit or 64-bit preload library file names. Immediately after exec we
+ * enter this function, which patches the environment variable value with
+ * the correct library name for the task's architecture.
+ *
+ * It's possible for this to fail if a tracee alters the LD_PRELOAD value
+ * and then does an exec. That's just too bad. If we ever have to handle that,
+ * we should modify the environment passed to the exec call.
+ */
+template <typename Arch> static void setup_preload_library_path(Task* t) {
+  static_assert(sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) ==
+                    sizeof(SYSCALLBUF_LIB_FILENAME_32),
+                "filename length mismatch");
+
+  const char* lib_name =
+      sizeof(typename Arch::unsigned_word) < sizeof(uintptr_t)
+          ? SYSCALLBUF_LIB_FILENAME_32
+          : SYSCALLBUF_LIB_FILENAME_PADDED;
+
+  remote_ptr<typename Arch::unsigned_word> p = t->regs().sp();
+  auto argc = t->read_mem(p);
+  p += 1 + argc + 1; // skip argc, argc parameters, and trailing NULL
+  while (true) {
+    auto envp = t->read_mem(p);
+    if (!envp) {
+      ASSERT(t, false) << "LD_PRELOAD not found";
+      return;
+    }
+    string env = t->read_c_str(envp);
+    if (env.find("LD_PRELOAD=") != 0) {
+      ++p;
+      continue;
+    }
+    size_t lib_pos = env.find(SYSCALLBUF_LIB_FILENAME_BASE);
+    if (lib_pos == string::npos) {
+      ASSERT(t, false) << SYSCALLBUF_LIB_FILENAME_BASE
+          " not found in LD_PRELOAD";
+      return;
+    }
+    size_t next_colon = env.find(':', lib_pos);
+    if (next_colon != string::npos) {
+      while (env[next_colon + 1] == ':' || env[next_colon + 1] == 0) {
+        ++next_colon;
+      }
+      if (next_colon < lib_pos + sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1) {
+        ASSERT(t, false) << "Insufficient space for " << lib_name
+                         << " in LD_PRELOAD before next ':'";
+        return;
+      }
+    }
+    if (env.length() < lib_pos + sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1) {
+      ASSERT(t, false) << "Insufficient space for " << lib_name
+                       << " in LD_PRELOAD before end of string";
+      return;
+    }
+    remote_ptr<void> dest = envp + lib_pos;
+    t->write_mem(dest.cast<char>(), lib_name,
+                 sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1);
+    return;
+  }
+}
+
 void Monkeypatcher::init_dynamic_syscall_patching(
     Task* t, int syscall_patch_hook_count,
     remote_ptr<struct syscall_patch_hook> syscall_patch_hooks) {
@@ -242,7 +306,9 @@ static void patch_at_preload_init_arch(Task* t, Monkeypatcher& patcher);
 
 template <typename Arch> static void patch_after_exec_arch(Task* t);
 
-template <> void patch_after_exec_arch<X86Arch>(Task* t) {}
+template <> void patch_after_exec_arch<X86Arch>(Task* t) {
+  setup_preload_library_path<X86Arch>(t);
+}
 
 // Monkeypatch x86 vsyscall hook only after the preload library
 // has initialized. The vsyscall hook expects to be able to use the syscallbuf.
@@ -317,6 +383,8 @@ static const named_syscall syscalls_to_monkeypatch[] = {
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
 template <> void patch_after_exec_arch<X64Arch>(Task* t) {
+  setup_preload_library_path<X64Arch>(t);
+
   auto vdso_start = t->vm()->vdso().start;
 
   auto syms = read_vdso_symbols<X64Arch>(t);

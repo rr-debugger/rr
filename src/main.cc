@@ -549,13 +549,11 @@ static string find_syscall_buffer_library() {
     --end;
   }
   lib_path.erase(end);
-  string base_lib_path = lib_path;
-  lib_path += "../lib/" SYSCALLBUF_LIB_FILENAME;
-  if (access(lib_path.c_str(), F_OK) != 0) {
+  lib_path += "../lib/";
+  string file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
+  if (access(file_name.c_str(), F_OK) != 0) {
     // File does not exist. Assume install put it in LD_LIBRARY_PATH.
-    lib_path = SYSCALLBUF_LIB_FILENAME ":" SYSCALLBUF_LIB_FILENAME_32;
-  } else {
-    lib_path += ":" + base_lib_path + "../lib/" SYSCALLBUF_LIB_FILENAME_32;
+    lib_path = "";
   }
   return lib_path;
 }

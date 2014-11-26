@@ -808,8 +808,10 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
   // LD_PRELOAD the syscall interception lib
   if (!Flags::get().syscall_buffer_lib_path.empty()) {
     string ld_preload = "LD_PRELOAD=";
-    // Our preload lib *must* come first
-    ld_preload += Flags::get().syscall_buffer_lib_path;
+    // Our preload lib *must* come first. We supply a placeholder which is
+    // then mutated to the correct filename in Monkeypatcher::patch_after_exec.
+    ld_preload +=
+        Flags::get().syscall_buffer_lib_path + SYSCALLBUF_LIB_FILENAME_PADDED;
     auto it = env.begin();
     for (; it != env.end(); ++it) {
       if (it->find("LD_PRELOAD=") != 0) {

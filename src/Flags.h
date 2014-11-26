@@ -95,8 +95,8 @@ struct Flags {
   /* When true, use syscall buffering optimization during recording. */
   bool use_syscall_buffer;
 
-  /* Path to librrpreload library. This can actually be two paths
-   * separated by ':'. */
+  /* Path to librrpreload library --- everything but the actual file name
+   * itself. */
   std::string syscall_buffer_lib_path;
 
   enum {

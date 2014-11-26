@@ -20,12 +20,14 @@
  * and 'extern "C"' is not compatible with our use of templates below.
  */
 
+#define SYSCALLBUF_LIB_FILENAME_BASE "librrpreload"
+#define SYSCALLBUF_LIB_FILENAME SYSCALLBUF_LIB_FILENAME_BASE ".so"
+#define SYSCALLBUF_LIB_FILENAME_PADDED SYSCALLBUF_LIB_FILENAME_BASE ".so:::"
+#define SYSCALLBUF_LIB_FILENAME_32 SYSCALLBUF_LIB_FILENAME_BASE "_32.so"
+
 /* This is pretty arbitrary; SIGSYS is unused by linux, and hopefully
  * normal applications don't use it either. */
 #define SYSCALLBUF_DESCHED_SIGNAL SIGSYS
-
-#define SYSCALLBUF_LIB_FILENAME "librrpreload.so"
-#define SYSCALLBUF_LIB_FILENAME_32 "librrpreload_32.so"
 
 /* This size counts the header along with record data. */
 #define SYSCALLBUF_BUFFER_SIZE (1 << 20)
