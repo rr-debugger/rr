@@ -404,7 +404,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   if (SYSCALL_ENTRY == state) {
     Event next_ev(t->trace_reader().peek_frame().event());
     if (EV_SYSCALL == next_ev.type() &&
-        Arch::execve == next_ev.Syscall().number &&
+        is_execve_syscall(next_ev.Syscall().number, next_ev.arch()) &&
         EXITING_SYSCALL == next_ev.Syscall().state) {
       // The first entering-exec event, when the
       // tracee is /about to/ enter execve(),
@@ -1644,5 +1644,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 }
 
 void rep_process_syscall(Task* t, ReplayTraceStep* step) {
-  RR_ARCH_FUNCTION(rep_process_syscall_arch, t->arch(), t, step)
+  // Use the event's arch, not the task's, because the task's arch may
+  // be out of date immediately after an exec.
+  RR_ARCH_FUNCTION(rep_process_syscall_arch,
+                   t->current_trace_frame().event().arch(), t, step)
 }
