@@ -503,8 +503,16 @@ public:
    * Call this method when this task has just performed an |execve()|
    * (so we're in the new address space), but before the system call has
    * returned.
+   * During replay replay_regs is non-null and contains the register values
+   * recorded immediately after the exec.
    */
   void post_exec(const Registers* replay_regs = nullptr);
+
+  /**
+   * Call this method when this task has exited a successful execve() syscall.
+   * At this point it is safe to make remote syscalls.
+   */
+  void post_exec_syscall();
 
   /**
    * Manage pending events.  |push_event()| pushes the given

@@ -428,6 +428,8 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   ASSERT(t, !t->ptrace_event()) << "Expected no ptrace event, but got "
                                 << ptrace_event_name(t->ptrace_event());
 
+  t->post_exec_syscall();
+
   bool check = t->regs().arg1();
   /* if the execve comes from a vfork system call the ebx
    * register is not zero. in this case, no recorded data needs
@@ -440,8 +442,6 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
   t->set_return_value_from_trace();
   t->validate_regs();
-
-  t->vm()->monkeypatcher().patch_after_exec(t);
 }
 
 /**

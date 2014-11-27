@@ -1590,6 +1590,8 @@ template <typename Arch> static void process_execve(Task* t) {
     return;
   }
 
+  t->post_exec_syscall();
+
   remote_ptr<typename Arch::unsigned_word> stack_ptr = t->regs().sp();
 
   /* start_stack points to argc - iterate over argv pointers */
@@ -1645,8 +1647,6 @@ template <typename Arch> static void process_execve(Task* t) {
   t->record_remote(rand_addr, 16);
 
   init_scratch_memory<Arch>(t);
-
-  t->vm()->monkeypatcher().patch_after_exec(t);
 }
 
 static void record_ioctl_data(Task* t, ssize_t num_bytes) {
