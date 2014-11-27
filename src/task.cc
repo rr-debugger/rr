@@ -743,9 +743,7 @@ void Task::post_exec(const Registers* replay_regs) {
   prname = prname_from_exe_image(as->exe_image());
 }
 
-void Task::post_exec_syscall() {
-  as->monkeypatcher().patch_after_exec(this);
-}
+void Task::post_exec_syscall() { as->post_exec_syscall(this); }
 
 void Task::record_current_event() { record_event(ev()); }
 

@@ -415,6 +415,12 @@ public:
   void after_clone();
 
   /**
+   * Call this after a successful execve syscall has completed. At this point
+   * it is safe to perform remote syscalls.
+   */
+  void post_exec_syscall(Task* t);
+
+  /**
    * Change the program data break of this address space to
    * |addr|.
    */

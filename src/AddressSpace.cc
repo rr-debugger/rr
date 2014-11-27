@@ -362,6 +362,10 @@ AddressSpace::~AddressSpace() { session->on_destroy(this); }
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
+void AddressSpace::post_exec_syscall(Task* t) {
+  monkeypatcher().patch_after_exec(t);
+}
+
 void AddressSpace::brk(remote_ptr<void> addr) {
   LOG(debug) << "brk(" << addr << ")";
 
