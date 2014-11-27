@@ -36,8 +36,10 @@ public:
   typedef std::map<pid_t, Task*> TaskMap;
 
   /**
-   * Call |after_exec()| after a tracee has successfully
+   * Call |post_exec()| immediately after a tracee has successfully
    * |execve()|'d.  After that, |can_validate()| returns true.
+   * This is called while we're still in the execve syscall so it's not safe
+   * to perform remote syscalls in this method.
    *
    * Tracee state can't be validated before the first exec,
    * because the address space inside the rr process for |rr
@@ -45,7 +47,8 @@ public:
    * After the first exec, we're running tracee code, and
    * everything must be the same.
    */
-  void after_exec();
+  void post_exec();
+
   bool can_validate() const { return tracees_consistent; }
 
   /**

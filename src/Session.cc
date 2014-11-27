@@ -26,7 +26,7 @@ Session::~Session() {
   LOG(debug) << "Session " << this << " destroyed";
 }
 
-void Session::after_exec() {
+void Session::post_exec() {
   if (tracees_consistent) {
     return;
   }

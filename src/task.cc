@@ -702,6 +702,12 @@ static SupportedArch determine_arch(Task* t, const string& file_name) {
 }
 
 void Task::post_exec(const Registers* replay_regs) {
+  /* We just saw a successful exec(), so from now on we know
+   * that the address space layout for the replay tasks will
+   * (should!) be the same as for the recorded tasks.  So we can
+   * start validating registers at events. */
+  session().post_exec();
+
   as->erase_task(this);
 
   if (replay_regs) {

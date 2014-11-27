@@ -495,13 +495,14 @@ public:
 
   /**
    * Call this method when this task has entered an |execve()|
-   * call.
+   * call, but before the exec has actually taken place.
    */
   void pre_exec();
 
   /**
-   * Call this after an |execve()| syscall finishes.  Emulate
-   * resource updates induced by the exec.
+   * Call this method when this task has just performed an |execve()|
+   * (so we're in the new address space), but before the system call has
+   * returned.
    */
   void post_exec(const Registers* replay_regs = nullptr);
 
