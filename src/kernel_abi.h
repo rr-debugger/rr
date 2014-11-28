@@ -45,6 +45,7 @@ class Task;
 enum SupportedArch {
   x86,
   x86_64,
+  SupportedArch_MAX = x86_64
 };
 
 namespace rr {

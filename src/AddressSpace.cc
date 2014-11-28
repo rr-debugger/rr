@@ -5,15 +5,19 @@
 #include "AddressSpace.h"
 
 #include <linux/kdev_t.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <limits>
 
 #include "preload/preload_interface.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "log.h"
 #include "Session.h"
 #include "task.h"
 
+using namespace rr;
 using namespace std;
 
 /*static*/ ino_t MappableResource::nr_anonymous_maps;
@@ -362,7 +366,135 @@ AddressSpace::~AddressSpace() { session->on_destroy(this); }
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
+struct RrVdso {
+  remote_ptr<uint8_t> start;
+  remote_ptr<uint8_t> end;
+};
+
+static void find_rr_vdso_map(void* it_data, Task* t,
+                             const struct map_iterator_data* data) {
+  if (data->info.name == "[vdso]") {
+    auto result = static_cast<RrVdso*>(it_data);
+    result->start = data->info.start_addr.cast<uint8_t>();
+    result->end = data->info.end_addr.cast<uint8_t>();
+  }
+}
+
+static remote_ptr<void> find_rr_vdso(Task* t, size_t* len) {
+  RrVdso result;
+  iterate_memory_map(t, find_rr_vdso_map, &result);
+  ASSERT(t, result.start) << "rr VDSO not found?";
+  *len = result.end - result.start;
+  ASSERT(t, uint32_t(*len) == *len) << "VDSO more than 4GB???";
+  return result.start;
+}
+
+static uint32_t find_offset_of_syscall_instruction_in(SupportedArch arch,
+                                                      uint8_t* vdso_data,
+                                                      size_t vdso_len) {
+  auto instruction = syscall_instruction(arch);
+  for (uint32_t i = 1; i < vdso_len - instruction.size(); ++i) {
+    if (memcmp(vdso_data + i, instruction.data(), instruction.size()) == 0) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+uint32_t AddressSpace::offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
+
+remote_ptr<uint8_t> AddressSpace::find_syscall_instruction(Task* t) {
+  SupportedArch arch = t->arch();
+  if (!offset_to_syscall_in_vdso[arch]) {
+    auto vdso_data =
+        t->read_mem(vdso().start.cast<uint8_t>(), vdso().num_bytes());
+    offset_to_syscall_in_vdso[arch] = find_offset_of_syscall_instruction_in(
+        arch, vdso_data.data(), vdso_data.size());
+    ASSERT(t, offset_to_syscall_in_vdso[arch])
+        << "No syscall instruction found in VDSO";
+  }
+  return vdso().start.cast<uint8_t>() + offset_to_syscall_in_vdso[arch];
+}
+
+static void write_rr_page(Task* t, ScopedFd& fd) {
+  switch (t->arch()) {
+    case x86: {
+      static const uint8_t x86_data[] = {
+        0x90, 0x90,                   // padding
+        0xcd, 0x80,                   // rr_page_untraced_syscall_ip: int 0x80
+        0xc3,                         // rr_page_ip_in_untraced_syscall: ret
+        0x90, 0x90, 0x90, 0x90, 0x90, // padding
+        0xcd, 0x80,                   // rr_page_traced_syscall_ip: int 0x80
+        0xc3                          // rr_page_ip_in_traced_syscall: ret
+      };
+      ASSERT(t, sizeof(x86_data) == write(fd, x86_data, sizeof(x86_data)));
+      break;
+    }
+    case x86_64:
+      static const uint8_t x86_64_data[] = {
+        0x90, 0x90,                   // padding
+        0x0f, 0x05,                   // rr_page_untraced_syscall_ip: syscall
+        0xc3,                         // rr_page_ip_in_untraced_syscall: ret
+        0x90, 0x90, 0x90, 0x90, 0x90, // padding
+        0x0f, 0x05,                   // rr_page_traced_syscall_ip: syscall
+        0xc3                          // rr_page_ip_in_traced_syscall: ret
+      };
+      ASSERT(t, sizeof(x86_64_data) ==
+                    write(fd, x86_64_data, sizeof(x86_64_data)));
+      break;
+  }
+}
+
+void AddressSpace::map_rr_page(Task* t) {
+  // We initialize the rr page by creating a temporary file with the data
+  // and mapping it PROT_READ | PROT_EXEC. There are simpler ways to do it,
+  // but this is the only way allowed by PaX.
+  char path[] = "/tmp/rr-page-XXXXXX";
+  ScopedFd fd(mkstemp(path));
+  ASSERT(t, fd.is_open());
+  write_rr_page(t, fd);
+
+  int prot = PROT_EXEC | PROT_READ;
+  int flags = MAP_PRIVATE | MAP_FIXED;
+
+  {
+    AutoRemoteSyscalls remote(t);
+    SupportedArch arch = t->arch();
+
+    AutoRestoreMem child_path(remote, reinterpret_cast<uint8_t*>(path),
+                              sizeof(path));
+    int child_fd = remote.syscall(syscall_number_for_open(arch),
+                                  child_path.get(), O_RDONLY);
+    ASSERT(t, child_fd >= 0);
+
+    int mmap_syscall = has_mmap2_syscall(arch) ? syscall_number_for_mmap2(arch)
+                                               : syscall_number_for_mmap(arch);
+    auto result = remote.syscall(mmap_syscall, rr_page_start(), rr_page_size(),
+                                 prot, flags, child_fd, 0);
+    ASSERT(t, uintptr_t(result) == rr_page_start().as_int());
+
+    remote.syscall(syscall_number_for_close(arch), child_fd);
+  }
+
+  unlink(path);
+
+  struct stat stat_buf;
+  ASSERT(t, fstat(fd, &stat_buf) == 0);
+  map(rr_page_start(), rr_page_size(), prot, flags, 0,
+      MappableResource(FileId(stat_buf), path));
+
+  untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());
+  traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());
+}
+
 void AddressSpace::post_exec_syscall(Task* t) {
+  // First locate a syscall instruction we can use for remote syscalls.
+  untraced_syscall_ip_ = find_syscall_instruction(t);
+  // Now remote syscalls work, we can open_mem_fd.
+  t->open_mem_fd();
+  // Now we can set up the "rr page" at its fixed address. This gives
+  // us traced and untraced syscall instructions at known, fixed addresses.
+  map_rr_page(t);
   monkeypatcher().patch_after_exec(t);
 }
 
@@ -453,7 +585,6 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
 void AddressSpace::at_preload_init(Task* t) {
   ASSERT(t, syscallbuf_lib_start_)
       << "should have found preload library already";
-  ASSERT(t, !traced_syscall_ip_) << "Should not already know about syscallbuf";
   RR_ARCH_FUNCTION(at_preload_init_arch, t->arch(), t);
 }
 
@@ -848,16 +979,27 @@ void AddressSpace::verify(Task* t) const {
 }
 
 AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
-    : exe(exe),
-      is_clone(false),
-      session(&session),
-      vdso_start_addr(),
-      child_mem_fd(-1) {
+    : exe(exe), is_clone(false), session(&session), child_mem_fd(-1) {
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
   if (session.can_validate()) {
     iterate_memory_map(t, populate_address_space, this);
     assert(!vdso_start_addr.is_null());
+  } else {
+    // Find the location of the VDSO in the just-spawned process. This will
+    // match the VDSO in rr itself since we haven't execed yet. So, speed
+    // things up by search rr's own VDSO for a syscall instruction.
+    size_t rr_vdso_len;
+    remote_ptr<void> rr_vdso = find_rr_vdso(t, &rr_vdso_len);
+    // Here we rely on the VDSO location in the spawned tracee being the same
+    // as in rr itself.
+    uint8_t* local_vdso = reinterpret_cast<uint8_t*>(rr_vdso.as_int());
+    auto offset = find_offset_of_syscall_instruction_in(
+        NativeArch::arch(), local_vdso, rr_vdso_len);
+    offset_to_syscall_in_vdso[NativeArch::arch()] = offset;
+    // Setup traced_syscall_ip_ now because we need to do AutoRemoteSyscalls
+    // (for open_mem_fd) before the first exec.
+    traced_syscall_ip_ = rr_vdso.cast<uint8_t>() + offset;
   }
 }
 

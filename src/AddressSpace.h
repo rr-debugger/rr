@@ -10,6 +10,7 @@
 #include <memory>
 #include <set>
 
+#include "kernel_abi.h"
 #include "Monkeypatcher.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -573,9 +574,58 @@ public:
 
   bool syscallbuf_enabled() const { return syscallbuf_lib_start_ != nullptr; }
 
+  /**
+   * We'll map a page of memory here into every exec'ed process for our own
+   * use.
+   */
+  static remote_ptr<void> rr_page_start() { return 0x70000000; }
+  /**
+   * This might not be the length of an actual system page, but we allocate
+   * at least this much space.
+   */
+  static uint32_t rr_page_size() { return 4096; }
+  /**
+   * ip() when we're in an untraced system call; same for all supported
+   * architectures (hence static).
+   */
+  static remote_ptr<uint8_t> rr_page_ip_in_untraced_syscall() {
+    return rr_page_start().cast<uint8_t>() + 4;
+  }
+  /**
+   * This doesn't need to be the same for all architectures, but may as well
+   * make it so.
+   */
+  static remote_ptr<uint8_t> rr_page_ip_in_traced_syscall() {
+    return rr_page_start().cast<uint8_t>() + 12;
+  }
+  /**
+   * ip() of the untraced traced system call instruction.
+   */
+  remote_ptr<uint8_t> rr_page_untraced_syscall_ip(SupportedArch arch) {
+    return rr_page_ip_in_untraced_syscall() -
+           rr::syscall_instruction_length(arch);
+  }
+  /**
+   * ip() of the traced traced system call instruction.
+   */
+  remote_ptr<uint8_t> rr_page_traced_syscall_ip(SupportedArch arch) {
+    return rr_page_ip_in_traced_syscall() -
+           rr::syscall_instruction_length(arch);
+  }
+
+  /**
+   * Locate a syscall instruction in t's VDSO.
+   * This gives us a way to execute remote syscalls without having to write
+   * a syscall instruction into executable tracee memory (which might not be
+   * possible with some kernels, e.g. PaX).
+   */
+  remote_ptr<uint8_t> find_syscall_instruction(Task* t);
+
 private:
   AddressSpace(Task* t, const std::string& exe, Session& session);
   AddressSpace(const AddressSpace& o);
+
+  void map_rr_page(Task* t);
 
   /**
    * Construct a minimal set of watchpoints to be enabled based
@@ -669,6 +719,12 @@ private:
   remote_ptr<uint8_t> untraced_syscall_ip_;
   remote_ptr<void> syscallbuf_lib_start_;
   remote_ptr<void> syscallbuf_lib_end_;
+
+  /**
+   * For each architecture, the offset of a syscall instruction with that
+   * architecture's VDSO, or 0 if not known.
+   */
+  static uint32_t offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
 
   /**
    * Ensure that the cached mapping of |t| matches /proc/maps,
