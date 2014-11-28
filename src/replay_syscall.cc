@@ -1475,8 +1475,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::prctl: {
       int option = trace_regs.arg1_signed();
-      remote_ptr<void> arg2 = trace_regs.arg2();
       if (PR_SET_NAME == option || PR_GET_NAME == option) {
+        remote_ptr<void> arg2 = trace_regs.arg2();
         step->syscall.num_emu_args = 1;
         // We actually execute these.
         step->action = syscall_action(state);

@@ -29,9 +29,9 @@ const char* ptrace_event_name(int event) {
     CASE(EXEC);
     CASE(VFORK_DONE);
     CASE(EXIT);
-/* XXX Ubuntu 12.04 defines a "PTRACE_EVENT_STOP", but that
- * has the same value as the newer EVENT_SECCOMP, so we'll
- * ignore STOP. */
+    /* XXX Ubuntu 12.04 defines a "PTRACE_EVENT_STOP", but that
+     * has the same value as the newer EVENT_SECCOMP, so we'll
+     * ignore STOP. */
     CASE(SECCOMP_OBSOLETE);
     CASE(SECCOMP);
     CASE(STOP);

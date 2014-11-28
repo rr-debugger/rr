@@ -30,7 +30,7 @@
  * syscalls.  The normal (un-buffered) syscalls generate a ptrace
  * trap, and the buffered syscalls trap directly to the kernel.  This
  * is implemented with a seccomp-bpf which examines the syscall and
- * decides how to handle it (see seccomp-bpf.h).
+ * decides how to handle it (see seccomp-bpf.h and Task::spawn).
  *
  * Because this code runs in the tracee's address space and overrides
  * system calls, the code is rather delicate.  The following rules
@@ -46,6 +46,7 @@
  * XShmQueryExtension.
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <link.h>
@@ -74,7 +75,6 @@
 
 /* NB: don't include any other local headers here. */
 #include "rr/rr.h"
-#include "seccomp-bpf.h"
 
 #ifdef memcpy
 #undef memcpy
@@ -108,8 +108,7 @@ struct syscall_info {
 
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
-/* Nonzero after process-global state like the seccomp-bpf has been
- * initialized. */
+/* Nonzero after process-global state has been initialized. */
 static int process_inited;
 
 /**
@@ -236,7 +235,8 @@ static void local_memcpy(void* dest, const void* source, size_t n) {
  * itself.  These syscalls will generate ptrace traps. */
 
 extern RR_HIDDEN long _traced_raw_syscall(int syscallno, long a0, long a1,
-                                          long a2, long a3, long a4, long a5);
+                                          long a2, long a3, long a4, long a5,
+                                          void* traced_syscall_instruction);
 
 static int update_errno_ret(long ret) {
   /* EHWPOISON is the last known errno as of linux 3.9.5. */
@@ -247,9 +247,21 @@ static int update_errno_ret(long ret) {
   return ret;
 }
 
+#if defined(__i386__) || defined(__x86_64__)
+#define SYSCALL_INSTRUCTION_LENGTH 2
+#else
+#error define syscall instruction length here
+#endif
+
+static void* traced_syscall_instruction =
+    (void*)(RR_PAGE_IN_TRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
+static void* untraced_syscall_instruction =
+    (void*)(RR_PAGE_IN_UNTRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
+
 static int traced_syscall(int syscallno, long a0, long a1, long a2, long a3,
                           long a4, long a5) {
-  long ret = _traced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
+  long ret = _traced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                                 traced_syscall_instruction);
   return update_errno_ret(ret);
 }
 #define traced_syscall6(no, a0, a1, a2, a3, a4, a5)                            \
@@ -274,10 +286,8 @@ static long traced_raw_syscall(const struct syscall_info* call) {
    * again. */
   return _traced_raw_syscall(call->no, call->args[0], call->args[1],
                              call->args[2], call->args[3], call->args[4],
-                             call->args[5]);
+                             call->args[5], traced_syscall_instruction);
 }
-
-extern RR_HIDDEN uint8_t* get_traced_syscall_entry_point(void);
 
 #if defined(SYS_fcntl64)
 #define RR_FCNTL_SYSCALL SYS_fcntl64
@@ -303,11 +313,6 @@ static pid_t traced_gettid(void) { return traced_syscall0(SYS_gettid); }
 static int traced_perf_event_open(struct perf_event_attr* attr, pid_t pid,
                                   int cpu, int group_fd, unsigned long flags) {
   return traced_syscall5(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
-}
-
-static int traced_prctl(int option, unsigned long arg2, unsigned long arg3,
-                        unsigned long arg4, unsigned long arg5) {
-  return traced_syscall5(SYS_prctl, option, arg2, arg3, arg4, arg5);
 }
 
 static int traced_raise(int sig) {
@@ -391,7 +396,8 @@ static void exit_signal_critical_section(const sigset_t* saved_mask) {
  * XXX make a nice assembly helper like libc's |syscall()|? */
 
 extern RR_HIDDEN long _untraced_raw_syscall(int syscallno, long a0, long a1,
-                                            long a2, long a3, long a4, long a5);
+                                            long a2, long a3, long a4, long a5,
+                                            void* syscall_instruction);
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
@@ -400,7 +406,8 @@ extern RR_HIDDEN long _untraced_raw_syscall(int syscallno, long a0, long a1,
  */
 static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
                              long a4, long a5) {
-  return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5);
+  return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                               untraced_syscall_instruction);
 }
 #define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)                          \
   untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,            \
@@ -413,8 +420,6 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
 #define untraced_syscall2(no, a0, a1) untraced_syscall3(no, a0, a1, 0)
 #define untraced_syscall1(no, a0) untraced_syscall2(no, a0, 0)
 #define untraced_syscall0(no) untraced_syscall1(no, 0)
-
-extern RR_HIDDEN uint8_t* get_untraced_syscall_entry_point(void);
 
 /**
  * Make the *un*traced socketcall |call| with the given args.
@@ -467,47 +472,6 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
   enter_signal_critical_section(&mask);
   traced_syscall1(SYS_rrcall_init_buffers, args);
   exit_signal_critical_section(&mask);
-}
-
-/**
- * Install the seccomp-bpf that generates trace traps for all syscalls
- * other than those made through _untraced_syscall_entry_point().
- */
-static void install_syscall_filter(void) {
-  void* in_untraced_syscall_ip = get_untraced_syscall_entry_point() +
-#if defined(__i386__) || defined(__x86_64__)
-      2;
-#else
-#error define system call length for new architecture
-#endif
-
-  struct sock_filter filter[] = {
-    /* Allow all system calls from our protected_call
-     * callsite */
-    ALLOW_SYSCALLS_FROM_CALLSITE((uintptr_t)in_untraced_syscall_ip),
-    /* All the rest are handled in rr */
-    TRACE_PROCESS,
-  };
-  struct sock_fprog prog = { .len = (unsigned short)(sizeof(filter) /
-                                                     sizeof(filter[0])),
-                             .filter = filter, };
-
-  debug("Initializing syscall buffer: protected_call_start = %p",
-        untraced_syscall_start);
-
-  if (traced_prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-    fatal("prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
-          "kernel is too old.  Use `record -n` to disable the filter.");
-  }
-
-  /* Note: the filter is installed only for record. This call
-   * will be emulated in the replay */
-  if (traced_prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t) & prog, 0,
-                   0)) {
-    fatal("prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your kernel "
-          "is too old.  Use `record -n` to disable the filter.");
-  }
-  /* anything that happens from this point on gets filtered! */
 }
 
 /**
@@ -613,17 +577,9 @@ static void __attribute__((constructor)) init_process(void) {
 
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 
-  if (buffer_enabled) {
-    install_syscall_filter();
-  } else {
-    debug("Syscall buffering is disabled");
-  }
-
   pthread_atfork(NULL, NULL, post_fork_child);
 
   params.syscallbuf_enabled = buffer_enabled;
-  params.traced_syscall_ip = get_traced_syscall_entry_point();
-  params.untraced_syscall_ip = get_untraced_syscall_entry_point();
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
 #if defined(__i386__)
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);

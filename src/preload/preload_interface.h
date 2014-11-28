@@ -35,6 +35,10 @@
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
+#define RR_PAGE_ADDR 0x70000000
+#define RR_PAGE_IN_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 4)
+#define RR_PAGE_IN_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 16)
+
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.
  *
@@ -93,11 +97,6 @@ struct rrcall_init_preload_params {
    * We let the syscallbuf code decide in order to more simply
    * replay the same decision that was recorded. */
   int syscallbuf_enabled;
-  /* Address of syscall instruction where our traced syscalls will originate. */
-  PTR(uint8_t) traced_syscall_ip;
-  /* Address of syscall instruction where our untraced syscalls will originate.
-   */
-  PTR(uint8_t) untraced_syscall_ip;
   PTR(void) syscall_hook_trampoline;
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;

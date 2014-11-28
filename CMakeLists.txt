@@ -135,7 +135,7 @@ install(TARGETS rr rrpreload
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
 if(rr_64BIT)
-  foreach(file preload_interface.h seccomp-bpf.h traced_syscall_shared.S)
+  foreach(file preload_interface.h traced_syscall_shared.S)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true HEADER_FILE_ONLY true)
     add_custom_command(OUTPUT 32/${file}
@@ -151,7 +151,7 @@ if(rr_64BIT)
                        COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
-                               32/seccomp-bpf.h 32/preload_interface.h 32/traced_syscall_shared.S)
+                               32/preload_interface.h 32/traced_syscall_shared.S)
   endforeach(file)
 
   add_library(rrpreload_32

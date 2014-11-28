@@ -1,11 +1,6 @@
 #ifndef RAW_SYSCALL_FUNCTION
 #error must define RAW_SYSCALL_FUNCTION before including this file
 #endif
-#ifndef SYSCALL_ENTRY_POINT
-#error must define SYSCALL_ENTRY_POINT before including this file
-#endif
-
-#define ENTRY_POINT_IP .L##RAW_SYSCALL_FUNCTION##entry_point_ip
 
 #if defined(__i386__)
         .text
@@ -35,10 +30,8 @@ RAW_SYSCALL_FUNCTION:     /* syscallno = 4(%esp) */
         movl 40(%esp), %edi /* %edi = a4 */
         movl 44(%esp), %ebp /* %ebp = a5 */
 
-        /* We need to be able to recognize when the tracees are in
-           traced (or untraced) syscalls. */
-ENTRY_POINT_IP:
-        int $0x80         /* syscall() */
+        call *48(%esp)
+
         popl %ebp
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebp
@@ -55,18 +48,6 @@ ENTRY_POINT_IP:
         .cfi_endproc
         .size RAW_SYSCALL_FUNCTION, . - RAW_SYSCALL_FUNCTION
 
-        .globl SYSCALL_ENTRY_POINT
-        .hidden SYSCALL_ENTRY_POINT
-        .type SYSCALL_ENTRY_POINT, @function
-SYSCALL_ENTRY_POINT:
-        call .L1
-.L1:
-        pop %eax
-        addl $(ENTRY_POINT_IP - .L1), %eax
-        ret
-        .size SYSCALL_ENTRY_POINT, . - SYSCALL_ENTRY_POINT
-
-#undef ENTRY_POINT_IP
 #elif defined(__x86_64__)
         .text
         .globl RAW_SYSCALL_FUNCTION
@@ -83,24 +64,11 @@ RAW_SYSCALL_FUNCTION:
 	movq %r9, %r8           /* fifth syscall arg */
 	movq 8(%rsp), %r9       /* sixth syscall arg */
 
-        /* We need to be able to recognize when the tracees are in
-           traced (or untraced) syscalls. */
-ENTRY_POINT_IP:
-	syscall
-        /* Clear TF bit from RFLAGS copied to R11 by syscall instruction */
-        andq $0xfffffffffffffeff, %r11
+	callq *16(%rsp)
 
         ret
 	.size RAW_SYSCALL_FUNCTION, . - RAW_SYSCALL_FUNCTION
 
-        .globl SYSCALL_ENTRY_POINT
-        .hidden SYSCALL_ENTRY_POINT
-        .type SYSCALL_ENTRY_POINT, @function
-SYSCALL_ENTRY_POINT:
-        lea ENTRY_POINT_IP(%rip), %rax
-.L1:
-        ret
-        .size SYSCALL_ENTRY_POINT, . - SYSCALL_ENTRY_POINT
 #else
 #error unknown CPU architecture
 #endif /* __i386__/__x86_64__ */

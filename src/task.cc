@@ -20,6 +20,8 @@
 #include <limits>
 #include <set>
 
+#include "preload/preload_interface.h"
+
 #include "CPUIDBugDetector.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -29,6 +31,7 @@
 #include "RecordSession.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "seccomp-bpf.h"
 #include "StringVectorToCharArray.h"
 #include "util.h"
 
@@ -1445,7 +1448,7 @@ bool Task::try_wait() {
  * preventing direct access to sources of nondeterminism, and ensuring
  * that rr bugs don't adversely affect the underlying system.
  */
-static void set_up_process(void) {
+static void set_up_process() {
   int orig_pers;
 
   /* TODO tracees can probably undo some of the setup below
@@ -1475,6 +1478,47 @@ static void set_up_process(void) {
   if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
     FATAL() << "Couldn't set parent-death signal";
   }
+
+  if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+    FATAL()
+        << "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
+           "kernel is too old. Use `record -n` to disable the filter.";
+  }
+}
+
+/**
+ * This is called (and must be called) in the tracee after rr has taken
+ * ptrace control. Otherwise, once we've installed the seccomp filter,
+ * things go wrong because we have no ptracer and the seccomp filter demands
+ * one.
+ */
+static void set_up_seccomp_filter() {
+  uintptr_t in_untraced_syscall_ip =
+      AddressSpace::rr_page_ip_in_untraced_syscall().as_int();
+  assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
+
+  struct sock_filter filter[] = {
+    /* Allow all system calls from our protected_call
+     * callsite */
+    ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
+    /* All the rest are handled in rr */
+    TRACE_PROCESS,
+  };
+  struct sock_fprog prog = { .len = (unsigned short)(sizeof(filter) /
+                                                     sizeof(filter[0])),
+                             .filter = filter, };
+
+  LOG(debug) << "Initializing seccomp filter: untraced syscall ip = "
+             << HEX(in_untraced_syscall_ip);
+
+  /* Note: the filter is installed only for record. This call
+   * will be emulated in the replay */
+  if (0 >
+      prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t) & prog, 0, 0)) {
+    FATAL() << "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
+               "kernel is too old. Use `record -n` to disable the filter.";
+  }
+  /* anything that happens from this point on gets filtered! */
 }
 
 int Task::pending_sig_from_status(int status) const {
@@ -2137,6 +2181,17 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
     set_cpu_affinity(trace.bound_to_cpu());
   }
 
+  bool will_set_up_seccomp_filter;
+  if (session.is_recording()) {
+    will_set_up_seccomp_filter = Flags::get().use_syscall_buffer;
+  } else {
+    // If the first syscall in the trace is prctl, we should take the
+    // seccomp path to stay consistent with recording.
+    will_set_up_seccomp_filter = session.as_replay()
+                                     ->current_trace_frame()
+                                     .regs()
+                                     .original_syscallno() == NativeArch::prctl;
+  }
   pid_t tid = fork();
   if (0 == tid) {
     // Set current working directory to the cwd used during
@@ -2150,6 +2205,11 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
 
     // Signal to tracer that we're configured.
     ::kill(getpid(), SIGSTOP);
+
+    // This code must run after rr has taken ptrace control.
+    if (will_set_up_seccomp_filter) {
+      set_up_seccomp_filter();
+    }
 
     // We do a small amount of dummy work here to retire
     // some branches in order to ensure that the ticks value is

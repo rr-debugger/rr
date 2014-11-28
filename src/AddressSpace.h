@@ -10,6 +10,8 @@
 #include <memory>
 #include <set>
 
+#include "preload/preload_interface.h"
+
 #include "kernel_abi.h"
 #include "Monkeypatcher.h"
 #include "TraceStream.h"
@@ -570,25 +572,28 @@ public:
    * We'll map a page of memory here into every exec'ed process for our own
    * use.
    */
-  static remote_ptr<void> rr_page_start() { return 0x70000000; }
+  static remote_ptr<void> rr_page_start() { return RR_PAGE_ADDR; }
   /**
    * This might not be the length of an actual system page, but we allocate
    * at least this much space.
    */
   static uint32_t rr_page_size() { return 4096; }
+  static remote_ptr<void> rr_page_end() {
+    return rr_page_start() + rr_page_size();
+  }
   /**
    * ip() when we're in an untraced system call; same for all supported
    * architectures (hence static).
    */
   static remote_ptr<uint8_t> rr_page_ip_in_untraced_syscall() {
-    return rr_page_start().cast<uint8_t>() + 4;
+    return RR_PAGE_IN_UNTRACED_SYSCALL_ADDR;
   }
   /**
    * This doesn't need to be the same for all architectures, but may as well
    * make it so.
    */
   static remote_ptr<uint8_t> rr_page_ip_in_traced_syscall() {
-    return rr_page_start().cast<uint8_t>() + 12;
+    return RR_PAGE_IN_TRACED_SYSCALL_ADDR;
   }
   /**
    * ip() of the untraced traced system call instruction.
