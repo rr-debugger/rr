@@ -554,14 +554,12 @@ public:
 
   void at_preload_init(Task* t);
 
-  /* The instruction pointer from which traced syscalls made by
-   * the syscallbuf will originate. This is the address of the instruction
-   * after the syscall instruction. */
+  /* The address of the syscall instruction from which traced syscalls made by
+   * the syscallbuf will originate. */
   remote_ptr<uint8_t> traced_syscall_ip() const { return traced_syscall_ip_; }
-  /* The instruction pointer from which untraced syscalls will
+  /* The address of the syscall instruction from which untraced syscalls will
    * originate, used to determine whether a syscall is being
-   * made by the syscallbuf wrappers or not. This is the address of the
-   * instruction after the syscall instruction. */
+   * made by the syscallbuf wrappers or not. */
   remote_ptr<uint8_t> untraced_syscall_ip() const {
     return untraced_syscall_ip_;
   }

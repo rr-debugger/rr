@@ -93,9 +93,10 @@ struct rrcall_init_preload_params {
    * We let the syscallbuf code decide in order to more simply
    * replay the same decision that was recorded. */
   int syscallbuf_enabled;
-  /* Where our traced syscalls will originate. */
+  /* Address of syscall instruction where our traced syscalls will originate. */
   PTR(uint8_t) traced_syscall_ip;
-  /* Where our untraced syscalls will originate. */
+  /* Address of syscall instruction where our untraced syscalls will originate.
+   */
   PTR(uint8_t) untraced_syscall_ip;
   PTR(void) syscall_hook_trampoline;
   int syscall_patch_hook_count;

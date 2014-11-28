@@ -481,11 +481,6 @@ bool Task::is_disarm_desched_event_syscall() {
           PERF_EVENT_IOC_DISABLE == regs().arg2());
 }
 
-bool Task::is_entering_traced_syscall() {
-  remote_ptr<uint8_t> next_ip = ip() + syscall_instruction_length(arch());
-  return next_ip == as->traced_syscall_ip();
-}
-
 bool Task::is_probably_replaying_syscall() {
   assert(session().is_replaying());
   // If the tracee is at our syscall entry points, we know for
@@ -1421,7 +1416,8 @@ void Task::did_waitpid(int status) {
   }
   ticks += hpc.read_ticks();
 
-  if (registers.arch() == x86_64 && (syscall_stop() || is_in_untraced_syscall())) {
+  if (registers.arch() == x86_64 &&
+      (syscall_stop() || is_in_untraced_syscall())) {
     // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
     // If we single-stepped into the syscall instruction, the TF flag will be
     // set in R11. We don't want the value in R11 to depend on whether we

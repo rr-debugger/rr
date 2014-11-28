@@ -474,11 +474,17 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
  * other than those made through _untraced_syscall_entry_point().
  */
 static void install_syscall_filter(void) {
-  void* untraced_syscall_start = get_untraced_syscall_entry_point();
+  void* in_untraced_syscall_ip = get_untraced_syscall_entry_point() +
+#if defined(__i386__) || defined(__x86_64__)
+      2;
+#else
+#error define system call length for new architecture
+#endif
+
   struct sock_filter filter[] = {
     /* Allow all system calls from our protected_call
      * callsite */
-    ALLOW_SYSCALLS_FROM_CALLSITE((uintptr_t)untraced_syscall_start),
+    ALLOW_SYSCALLS_FROM_CALLSITE((uintptr_t)in_untraced_syscall_ip),
     /* All the rest are handled in rr */
     TRACE_PROCESS,
   };

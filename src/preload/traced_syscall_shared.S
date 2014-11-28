@@ -35,11 +35,10 @@ RAW_SYSCALL_FUNCTION:     /* syscallno = 4(%esp) */
         movl 40(%esp), %edi /* %edi = a4 */
         movl 44(%esp), %ebp /* %ebp = a5 */
 
-        int $0x80         /* syscall() */
-        /* When the tracee is in the traced syscall, its $ip will be
-         * the value of this label.  We need to be able to recognize
-         * when the tracees are in traced syscalls. */
+        /* We need to be able to recognize when the tracees are in
+           traced (or untraced) syscalls. */
 ENTRY_POINT_IP:
+        int $0x80         /* syscall() */
         popl %ebp
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebp
@@ -83,11 +82,11 @@ RAW_SYSCALL_FUNCTION:
 	movq %r8, %r10          /* fourth syscall arg */
 	movq %r9, %r8           /* fifth syscall arg */
 	movq 8(%rsp), %r9       /* sixth syscall arg */
-	syscall
-        /* When the tracee is in the traced syscall, its $ip will be
-         * the value of this label.  We need to be able to recognize
-         * when the tracees are in traced syscalls. */
+
+        /* We need to be able to recognize when the tracees are in
+           traced (or untraced) syscalls. */
 ENTRY_POINT_IP:
+	syscall
         /* Clear TF bit from RFLAGS copied to R11 by syscall instruction */
         andq $0xfffffffffffffeff, %r11
 

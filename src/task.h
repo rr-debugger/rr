@@ -11,6 +11,7 @@
 #include "AddressSpace.h"
 #include "Event.h"
 #include "ExtraRegisters.h"
+#include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "PerfCounters.h"
 #include "Registers.h"
@@ -395,12 +396,12 @@ public:
   bool is_disarm_desched_event_syscall();
 
   /**
-   * return True when this is just before a syscall trap
+   * Return true when this is just before a syscall trap
    * instruction for a traced syscall made by the syscallbuf
-   * code.  Callers may assume |is_in_syscallbuf()| is implied
+   * code. Callers may assume |is_in_syscallbuf()| is implied
    * by this.
    */
-  bool is_entering_traced_syscall();
+  bool is_entering_traced_syscall() { return ip() == as->traced_syscall_ip(); }
 
   /**
    * Return true if this is within the syscallbuf library.  This
@@ -418,7 +419,10 @@ public:
    * is implied by this. Note that once we've entered the traced syscall,
    * ip() is immediately after the syscall instruction.
    */
-  bool is_in_traced_syscall() { return ip() == as->traced_syscall_ip(); }
+  bool is_in_traced_syscall() {
+    return ip() ==
+           as->traced_syscall_ip() + rr::syscall_instruction_length(arch());
+  }
 
   /**
    * Return true when this task is in an untraced syscall, i.e. one
@@ -427,7 +431,10 @@ public:
    * entered the traced syscall, ip() is immediately after the syscall
    * instruction.
    */
-  bool is_in_untraced_syscall() { return ip() == as->untraced_syscall_ip(); }
+  bool is_in_untraced_syscall() {
+    return ip() ==
+           as->untraced_syscall_ip() + rr::syscall_instruction_length(arch());
+  }
 
   /**
    * Return true if this task is most likely entering or exiting
