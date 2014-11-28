@@ -543,14 +543,6 @@ public:
   ScopedFd& mem_fd() { return child_mem_fd; }
   void set_mem_fd(ScopedFd&& fd) { child_mem_fd = std::move(fd); }
 
-  /**
-   * Call this when an exec replaces 'as' with 'this' for some process.
-   */
-  void is_replacing(AddressSpace& as) {
-    // Take over as's child_mem_fd.
-    child_mem_fd = std::move(as.child_mem_fd);
-  }
-
   Monkeypatcher& monkeypatcher() { return monkeypatch_state; }
 
   void at_preload_init(Task* t);

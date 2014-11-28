@@ -489,7 +489,7 @@ void AddressSpace::map_rr_page(Task* t) {
 
 void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
-  untraced_syscall_ip_ = find_syscall_instruction(t);
+  traced_syscall_ip_ = find_syscall_instruction(t);
   // Now remote syscalls work, we can open_mem_fd.
   t->open_mem_fd();
   // Now we can set up the "rr page" at its fixed address. This gives

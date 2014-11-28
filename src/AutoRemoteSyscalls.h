@@ -199,7 +199,6 @@ private:
   Task* t;
   Registers initial_regs;
   remote_ptr<uint8_t> initial_ip;
-  std::vector<uint8_t> code_buffer;
   int pending_syscallno;
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;

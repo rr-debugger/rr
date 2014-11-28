@@ -50,18 +50,13 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
       initial_regs(t->regs()),
       initial_ip(t->ip()),
       pending_syscallno(-1) {
-  // Inject syscall instruction, saving previous insn (fragment)
-  // at $ip.
-  vector<uint8_t> syscall_insn = syscall_instruction(t->arch());
-  code_buffer = t->read_mem(initial_ip, syscall_insn.size());
-  t->write_mem(initial_ip, syscall_insn.data(), syscall_insn.size());
+  initial_regs.set_ip(t->vm()->traced_syscall_ip());
 }
 
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
 
 void AutoRemoteSyscalls::restore_state_to(Task* t) {
-  // Restore stomped insn (fragment).
-  t->write_mem(initial_ip, code_buffer.data(), code_buffer.size());
+  initial_regs.set_ip(initial_ip);
   // Restore stomped registers.
   t->set_regs(initial_regs);
 }
@@ -71,7 +66,7 @@ static void advance_syscall(Task* t) {
   do {
     t->cont_syscall();
   } while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
-  assert(t->ptrace_event() == 0);
+  ASSERT(t, t->ptrace_event() == 0);
 }
 
 long AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,

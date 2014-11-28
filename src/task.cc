@@ -727,9 +727,7 @@ void Task::post_exec(const Registers* replay_regs) {
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
 
-  auto a = session().create_vm(this, execve_file);
-  a->is_replacing(*as);
-  as.swap(a);
+  as = session().create_vm(this, execve_file);
   // XXX should we re-create our TaskGroup here too?
   prname = prname_from_exe_image(as->exe_image());
 }

@@ -98,9 +98,9 @@ public:
   }
 
   uintptr_t ip() const { return RR_GET_REG(eip, rip); }
-  void set_ip(uintptr_t addr) { RR_SET_REG(eip, rip, addr); }
+  void set_ip(remote_ptr<void> addr) { RR_SET_REG(eip, rip, addr.as_int()); }
   uintptr_t sp() const { return RR_GET_REG(esp, rsp); }
-  void set_sp(uintptr_t addr) { RR_SET_REG(esp, rsp, addr); }
+  void set_sp(remote_ptr<void> addr) { RR_SET_REG(esp, rsp, addr.as_int()); }
 
   // Access the registers holding system-call numbers, results, and
   // parameters.
