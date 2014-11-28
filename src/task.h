@@ -413,18 +413,21 @@ public:
   }
 
   /**
-   * Return true when this at a traced syscall made by the
-   * syscallbuf code.  Callers may assume |is_in_syscallbuf()|
-   * is implied by this.
+   * Return true when this task is in a traced syscall made by the
+   * syscallbuf code. Callers may assume |is_in_syscallbuf()|
+   * is implied by this. Note that once we've entered the traced syscall,
+   * ip() is immediately after the syscall instruction.
    */
-  bool is_traced_syscall() { return ip() == as->traced_syscall_ip(); }
+  bool is_in_traced_syscall() { return ip() == as->traced_syscall_ip(); }
 
   /**
-   * Return true when this is at an untraced syscall, i.e. one
-   * initiated by a function in the syscallbuf.  Callers may
-   * assume |is_in_syscallbuf()| is implied by this.
+   * Return true when this task is in an untraced syscall, i.e. one
+   * initiated by a function in the syscallbuf. Callers may
+   * assume |is_in_syscallbuf()| is implied by this. Note that once we've
+   * entered the traced syscall, ip() is immediately after the syscall
+   * instruction.
    */
-  bool is_untraced_syscall() { return ip() == as->untraced_syscall_ip(); }
+  bool is_in_untraced_syscall() { return ip() == as->untraced_syscall_ip(); }
 
   /**
    * Return true if this task is most likely entering or exiting

@@ -1048,7 +1048,7 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
  * Bail if |t| isn't at the buffered syscall |syscallno|.
  */
 static void assert_at_buffered_syscall(Task* t, int syscallno) {
-  ASSERT(t, t->is_untraced_syscall())
+  ASSERT(t, t->is_in_untraced_syscall())
       << "Bad ip " << t->ip() << ": should have been buffered-syscall ip";
   ASSERT(t, t->regs().original_syscallno() == syscallno)
       << "At " << t->syscallname(t->regs().original_syscallno())

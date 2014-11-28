@@ -147,7 +147,7 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
   if (!t->vm()->syscallbuf_enabled()) {
     return false;
   }
-  if (t->is_traced_syscall()) {
+  if (t->is_in_traced_syscall()) {
     // Never try to patch the traced-syscall in our preload library!
     return false;
   }

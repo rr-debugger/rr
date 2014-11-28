@@ -276,7 +276,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
  * for that class of syscalls.
  */
 static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
-  if (t->is_untraced_syscall()) {
+  if (t->is_in_untraced_syscall()) {
     LOG(debug) << "  noop-restoring scratch for write-only desched'd "
                << t->syscallname(t->regs().original_syscallno());
     t->set_data_from_trace();

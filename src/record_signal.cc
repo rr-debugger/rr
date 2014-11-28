@@ -479,11 +479,11 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
       LOG(debug) << "  tracee entering traced syscallbuf syscall";
       goto happy_place;
     }
-    if (t->is_traced_syscall()) {
+    if (t->is_in_traced_syscall()) {
       LOG(debug) << "  tracee at traced syscallbuf syscall";
       goto happy_place;
     }
-    if (t->is_untraced_syscall() && t->desched_rec()) {
+    if (t->is_in_untraced_syscall() && t->desched_rec()) {
       LOG(debug) << "  tracee interrupted by desched of "
                  << t->syscallname(t->desched_rec()->syscallno);
       goto happy_place;
@@ -495,7 +495,7 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
       goto happy_place;
     }
 
-    bool should_arm_desched_event = t->is_untraced_syscall();
+    bool should_arm_desched_event = t->is_in_untraced_syscall();
     if (desched_event_maybe_armed != should_arm_desched_event) {
       if (should_arm_desched_event) {
         arm_desched_event(t);
@@ -524,7 +524,7 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
         continue;
       }
       if (SYSCALLBUF_DESCHED_SIGNAL == tmp_si.si_signo) {
-        if (!t->is_untraced_syscall()) {
+        if (!t->is_in_untraced_syscall()) {
           // The performance counter is disarmed but
           // maybe this signal could already be pending.
           // We can ignore this signal.

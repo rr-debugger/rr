@@ -275,7 +275,7 @@ void Task::finish_emulated_syscall() {
   Registers r = regs();
   remote_ptr<uint8_t> ip = r.ip();
   bool known_idempotent_insn_after_syscall =
-      (is_traced_syscall() || is_untraced_syscall());
+      (is_in_traced_syscall() || is_in_untraced_syscall());
 
   // We're about to single-step the tracee at its $ip just past
   // the syscall insn, then back up the $ip to where it started.
@@ -494,7 +494,7 @@ bool Task::is_probably_replaying_syscall() {
   assert(session().is_replaying());
   // If the tracee is at our syscall entry points, we know for
   // sure it's entering/exiting/just-exited a syscall.
-  return (is_traced_syscall() || is_untraced_syscall()
+  return (is_in_traced_syscall() || is_in_untraced_syscall()
           // Otherwise, we assume that if original_syscallno() has been
           // saved from syscallno(), then the tracee is in a syscall.
           // This seems to be the heuristic used by the linux
@@ -1425,7 +1425,7 @@ void Task::did_waitpid(int status) {
   }
   ticks += hpc.read_ticks();
 
-  if (registers.arch() == x86_64 && (syscall_stop() || is_untraced_syscall())) {
+  if (registers.arch() == x86_64 && (syscall_stop() || is_in_untraced_syscall())) {
     // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
     // If we single-stepped into the syscall instruction, the TF flag will be
     // set in R11. We don't want the value in R11 to depend on whether we
