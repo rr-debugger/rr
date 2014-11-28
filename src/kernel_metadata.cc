@@ -32,11 +32,8 @@ const char* ptrace_event_name(int event) {
 /* XXX Ubuntu 12.04 defines a "PTRACE_EVENT_STOP", but that
  * has the same value as the newer EVENT_SECCOMP, so we'll
  * ignore STOP. */
-#ifdef PTRACE_EVENT_SECCOMP_OBSOLETE
     CASE(SECCOMP_OBSOLETE);
-#else
     CASE(SECCOMP);
-#endif
     CASE(STOP);
     default:
       return "???EVENT";
