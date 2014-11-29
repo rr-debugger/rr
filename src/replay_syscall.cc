@@ -1219,7 +1219,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   const TraceFrame& trace_frame = t->replay_session().current_trace_frame();
   SyscallEntryOrExit state = trace_frame.event().state;
   const Registers& trace_regs = trace_frame.regs();
-  EmuFs::AutoGc maybe_gc(t->replay_session(), syscall, state);
+  EmuFs::AutoGc maybe_gc(t->replay_session(), t->arch(), syscall, state);
 
   LOG(debug) << "processing " << t->syscallname(syscall) << " ("
              << state_name(state) << ")";

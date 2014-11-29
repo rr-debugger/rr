@@ -10,9 +10,12 @@
 #include <sstream>
 #include <string>
 
+#include "kernel_abi.h"
+#include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
 
+using namespace rr;
 using namespace std;
 
 static void replace_char(string& s, char c, char replacement) {
@@ -186,15 +189,15 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
   }
 }
 
-EmuFs::AutoGc::AutoGc(ReplaySession& session, int syscallno,
+EmuFs::AutoGc::AutoGc(ReplaySession& session, SupportedArch arch, int syscallno,
                       SyscallEntryOrExit state)
     : session(session),
       is_gc_point(session.emufs().size() > 0 && SYSCALL_EXIT == state &&
-                  (SYS_close == syscallno || SYS_munmap == syscallno)) {
+                  (is_close_syscall(syscallno, arch) ||
+                   is_munmap_syscall(syscallno, arch))) {
   if (is_gc_point) {
-    assert(SYS_close == syscallno || SYS_munmap == syscallno);
     LOG(debug) << "emufs gc required because of syscall `"
-               << (SYS_close == syscallno ? "close" : "munmap") << "'";
+               << syscall_name(syscallno, arch) << "'";
   }
 }
 
