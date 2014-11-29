@@ -499,7 +499,6 @@ if(rr_64BIT)
   set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
   target_link_libraries(cpuid_32 -lrt)
 
-  if(0)
   foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
     add_test(${test}-32
       bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${PROJECT_BINARY_DIR} ${test}_32)
@@ -512,6 +511,7 @@ if(rr_64BIT)
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
   endforeach(test)
 
+  if(0)
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     add_test(${test}-32
       bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR} ${test}_32)
