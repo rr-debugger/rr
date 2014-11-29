@@ -11,9 +11,11 @@
 
 #include "preload/preload_interface.h"
 
+#include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
 
+using namespace rr;
 using namespace std;
 
 static const char* desched_state_name(DeschedState state) {
@@ -192,8 +194,9 @@ EncodedEvent Event::encode() const {
       // PROCESSING_SYSCALL is a transient state that we
       // should never attempt to record.
       assert(Syscall().state != PROCESSING_SYSCALL);
-      set_encoded_event_data(&e, Syscall().is_restart ? SYS_restart_syscall
-                                                      : Syscall().number);
+      set_encoded_event_data(
+          &e, Syscall().is_restart ? syscall_number_for_restart_syscall(e.arch_)
+                                   : Syscall().number);
       e.state =
           Syscall().state == ENTERING_SYSCALL ? SYSCALL_ENTRY : SYSCALL_EXIT;
       return e;
