@@ -2920,7 +2920,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::_sysctl: {
-      auto oldlenp = pop_arg_ptr<size_t>(t);
+      auto oldlenp = pop_arg_ptr<typename Arch::size_t>(t);
       auto oldval = pop_arg_ptr<void>(t);
       size_t oldlen = t->read_mem(oldlenp);
       t->record_remote(oldlenp);
