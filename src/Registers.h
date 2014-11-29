@@ -145,7 +145,9 @@ public:
    * the system-call executed when resuming after an enter-system-call
    * event.
    */
-  intptr_t original_syscallno() const { return RR_GET_REG(orig_eax, orig_rax); }
+  intptr_t original_syscallno() const {
+    return RR_GET_REG_SIGNED(orig_eax, orig_rax);
+  }
   void set_original_syscallno(intptr_t syscallno) {
     RR_SET_REG(orig_eax, orig_rax, syscallno);
   }
