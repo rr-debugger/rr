@@ -626,6 +626,9 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
                    << " has user handler";
 
         t->cont_singlestep(sig);
+        ASSERT(t, t->stop_sig() == SIGTRAP) << "Expected single-step trap,"
+                                               " got siginfo "
+                                            << t->get_siginfo();
 
         // It's been observed that when tasks enter
         // sighandlers, the singlestep operation above
