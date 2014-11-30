@@ -182,6 +182,8 @@ endif()
 set(BASIC_TESTS
   64bit_child
   accept
+  alarm
+  alarm2
   async_segv_ignored
   at_threadexit
   bad_ip
@@ -303,7 +305,6 @@ set(BASIC_TESTS
 # Alphabetical, please.
 set(TESTS_WITH_PROGRAM
   abort_nonmain
-  alarm
   args
   async_kill_with_threads
   async_kill_with_threads_main_running
