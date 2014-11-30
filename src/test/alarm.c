@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
   int counter;
 
   sigemptyset(&sact.sa_mask);
-  sact.sa_flags = 0;
+  sact.sa_flags = SA_SIGINFO;
   sact.sa_sigaction = catcher;
   sigaction(SIGALRM, &sact, NULL);
 
@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
 
   atomic_printf("\nSignal %d caught, Counter is %d\n", caught_sig, counter);
   test_assert(SIGALRM == caught_sig);
+  atomic_puts("EXIT-SUCCESS");
 
   return 0;
 }
