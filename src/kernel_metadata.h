@@ -3,6 +3,10 @@
 #ifndef RR_SYSCALLS_H_
 #define RR_SYSCALLS_H_
 
+#include <signal.h>
+
+#include <iostream>
+
 #include "kernel_abi.h"
 
 /**
@@ -35,5 +39,20 @@ const char* signal_name(int sig);
  * emulated.
  */
 bool is_always_emulated_syscall(int syscall, SupportedArch arch);
+
+/**
+ * Return the symbolic error name (e.g. "EINVAL") for errno.
+ */
+const char* errno_name(int err);
+
+/**
+ * Return the symbolic name (e.g. "SI_USER") for an si_code.
+ */
+const char* sicode_name(int code, int sig);
+
+/**
+ * Print siginfo on ostream.
+ */
+std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo);
 
 #endif
