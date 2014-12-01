@@ -217,8 +217,9 @@ void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
 
 /**
  * Read the ELF CLASS from the given filename. If it's unable to be read,
- * return ELFCLASSNONE.
+ * return ELFCLASSNONE. If it's not an ELF file, return NOT_ELF.
  */
+const int NOT_ELF = 0x10000;
 int read_elf_class(const std::string& filename);
 
 #endif /* RR_UTIL_H_ */

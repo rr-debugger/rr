@@ -689,6 +689,10 @@ static SupportedArch determine_arch(Task* t, const string& file_name) {
     case ELFCLASS64:
       ASSERT(t, NativeArch::arch() == x86_64) << "64-bit tracees not supported";
       return x86_64;
+    case NOT_ELF:
+      // Probably a script. Optimistically assume the same architecture as
+      // the rr binary.
+      return NativeArch::arch();
     default:
       ASSERT(t, false) << "Unknown ELF class";
       return x86;
