@@ -11,6 +11,7 @@ static void test(int use_pwritev) {
     char ch[50];
   }* buf;
   struct iovec iovs[2];
+  ssize_t nwritten;
 
   test_assert(fd >= 0);
   test_assert(0 == unlink(name));
@@ -20,10 +21,12 @@ static void test(int use_pwritev) {
   iovs[1].iov_base = data + iovs[0].iov_len;
   iovs[1].iov_len = sizeof(data) - iovs[0].iov_len;
   if (use_pwritev) {
-    test_assert(sizeof(data) == pwritev(fd, iovs, 2, 0));
+    /* Work around busted pwritev prototype in older libcs */
+    nwritten = syscall(SYS_pwritev, fd, iovs, 2, 0, 0);
   } else {
-    test_assert(sizeof(data) == writev(fd, iovs, 2));
+    nwritten = writev(fd, iovs, 2);
   }
+  test_assert(sizeof(data) == nwritten);
 
   ALLOCATE_GUARD(buf, 'x');
   test_assert(sizeof(data) == pread(fd, buf, sizeof(*buf), 0));

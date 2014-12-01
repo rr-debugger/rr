@@ -14,6 +14,7 @@ static void test(int use_preadv) {
     char ch[10];
   }* part2;
   struct iovec iovs[2];
+  ssize_t nread;
 
   test_assert(fd >= 0);
   test_assert(0 == unlink(name));
@@ -26,11 +27,13 @@ static void test(int use_preadv) {
   iovs[1].iov_base = part2;
   iovs[1].iov_len = sizeof(*part2);
   if (use_preadv) {
-    test_assert(sizeof(data) == preadv(fd, iovs, 2, 0));
+    /* Work around busted preadv prototype in older libcs */
+    nread = syscall(SYS_preadv, fd, iovs, 2, 0, 0);
   } else {
     test_assert(0 == lseek(fd, 0, SEEK_SET));
-    test_assert(sizeof(data) == readv(fd, iovs, 2));
+    nread = readv(fd, iovs, 2);
   }
+  test_assert(sizeof(data) == nread);
   test_assert(0 == memcmp(part1, data, sizeof(*part1)));
   test_assert(
       0 == memcmp(part2, data + sizeof(*part1), sizeof(data) - sizeof(*part1)));
