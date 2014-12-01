@@ -2,8 +2,8 @@ source `dirname $0`/util.sh
 
 fails "vfork() is not supported yet."
 
-save_exe breakpoint
-saved_simple="simple-$nonce"
+save_exe breakpoint$bitness
+saved_simple="simple$bitness-$nonce"
 
 record $TESTNAME "$saved_simple"
 replay $TESTNAME

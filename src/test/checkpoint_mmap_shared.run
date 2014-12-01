@@ -1,2 +1,2 @@
 source `dirname $0`/util.sh
-checkpoint_test mmap_shared 7 9
+checkpoint_test mmap_shared$bitness 7 9

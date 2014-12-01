@@ -1,5 +1,5 @@
 source `dirname $0`/util.sh
-record exit_status
+record exit_status$bitness
 if [[ $? != 7 ]]; then
     failed "got exit status $?, expected 7"
 else

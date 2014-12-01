@@ -6,6 +6,6 @@ GLOBAL_OPTIONS="$GLOBAL_OPTIONS_BIND_CPU"
 
 RECORD_ARGS="-c250"
 
-record syscallbuf_timeslice
+record syscallbuf_timeslice$bitness
 replay
 check 'EXIT-SUCCESS'

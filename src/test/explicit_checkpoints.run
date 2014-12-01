@@ -1,4 +1,2 @@
 source `dirname $0`/util.sh
-
-record $TESTNAME
-debug $TESTNAME explicit_checkpoints
+debug_test

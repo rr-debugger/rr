@@ -1,7 +1,7 @@
 source `dirname $0`/util.sh
 
-save_exe breakpoint
-saved_breakpoint="breakpoint-$nonce"
+save_exe breakpoint$bitness
+saved_breakpoint="breakpoint$bitness-$nonce"
 
 record $TESTNAME "$saved_breakpoint"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')

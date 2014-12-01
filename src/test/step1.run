@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
-record breakpoint
-debug breakpoint step1
+record breakpoint$bitness
+debug breakpoint$bitness step1

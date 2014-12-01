@@ -1,2 +1,2 @@
 source `dirname $0`/util.sh
-checkpoint_test simple 3 5
+checkpoint_test simple$bitness 3 5

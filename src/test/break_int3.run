@@ -2,5 +2,5 @@ source `dirname $0`/util.sh
 
 fails "gdb and rr don't yet agree what should happen when a breakpoint is set on a breakpoint instruction"
 
-record int3
-debug int3 break_int3
+record int3$bitness
+debug int3$bitness break_int3

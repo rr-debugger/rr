@@ -1,4 +1,4 @@
 source `dirname $0`/util.sh
-record args "-no --force-syscall-buffer=foo -c 1000 hello"
+record args$bitness "-no --force-syscall-buffer=foo -c 1000 hello"
 replay
 check 'EXIT-SUCCESS'

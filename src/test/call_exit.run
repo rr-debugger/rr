@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
-record simple
-debug simple call_exit
+record simple$bitness
+debug simple$bitness call_exit

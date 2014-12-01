@@ -10,7 +10,7 @@ source `dirname $0`/util.sh
 # that loop has 2^30 iterations, so 100M events per reschedule sounds good.
 RECORD_ARGS="-c100000000"
 
-EXE=chew_cpu
+EXE=chew_cpu$bitness
 SYNC_TOKEN=spinning
 WAIT_SECS=1
 

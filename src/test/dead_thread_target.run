@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
-record barrier
-debug barrier dead_thread_target
+record barrier$bitness
+debug barrier$bitness dead_thread_target

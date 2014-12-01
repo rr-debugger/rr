@@ -3,7 +3,10 @@
 # some helpers for common test operations.  A driver file foo.run
 # will want to include this file as follows
 #
-#  source util.sh foo "$@"
+#  source `dirname $0`/util.sh
+#
+# It is essential that util.sh inherit its $n parameters from the
+# driver script's parameters.
 #
 # Most tests are either "compare_test"s, which check that record and
 # replay successfully complete and the output is the same, or,
@@ -103,8 +106,14 @@ if [[ "$OBJDIR" == "" ]]; then
 fi
 TESTNAME=$3
 if [[ "$TESTNAME" == "" ]]; then
-    [[ $0 =~ ([A-Za-z0-9_]+)\.run ]] || fatal "FAILED: bad test script name"
+    [[ $0 =~ ([A-Za-z0-9_]+)\.run$ ]] || fatal "FAILED: bad test script name"
     TESTNAME=${BASH_REMATCH[1]}
+fi
+if [[ $TESTNAME =~ ([A-Za-z0-9_]+)_32$ ]]; then
+    bitness=_32
+    TESTNAME_NO_BITNESS=${BASH_REMATCH[1]}
+else
+    TESTNAME_NO_BITNESS=$TESTNAME
 fi
 
 # The temporary directory we create for this test run.
@@ -172,8 +181,9 @@ function just_record { exe=$1; exeargs=$2;
 
 function save_exe { exe=$1;
     cp ${OBJDIR}/bin/$exe $exe-$nonce
-}    
+}
 
+# Record $exe with $exeargs.
 function record { exe=$1; exeargs=$2;
     save_exe $exe
     just_record ./$exe-$nonce "$exeargs"
@@ -266,9 +276,8 @@ function compare_test { token=$1; replayflags=$2;
 # using the "expect" script $test-name.py, which is responsible for
 # computing test pass/fail.
 function debug_test {
-    test=$TESTNAME
-    record $test
-    debug $test $test
+    record $TESTNAME
+    debug $TESTNAME $TESTNAME_NO_BITNESS
 }
 
 # Return the number of events in the most recent local recording.

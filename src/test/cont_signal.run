@@ -1,7 +1,7 @@
 source `dirname $0`/util.sh
 
-recorded_exe=async_usr1
+recorded_exe=async_usr1$bitness
 
 # SIGUSR1, wait 2.0s
 record_async_signal 10 2.0 $recorded_exe
-debug $recorded_exe $TESTNAME
+debug $recorded_exe $TESTNAME_NO_BITNESS

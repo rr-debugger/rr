@@ -16,6 +16,7 @@ expect_gdb(r'raise\(i\)')
 send_gdb('n\n')
 expect_gdb('Program received signal SIG34')
 
+send_gdb('stepi\n')
 send_gdb('n\n')
 expect_gdb(r'atomic_printf\("Caught signal')
 

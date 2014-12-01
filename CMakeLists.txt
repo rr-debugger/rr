@@ -511,7 +511,6 @@ if(rr_64BIT)
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
   endforeach(test)
 
-  if(0)
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     add_test(${test}-32
       bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR} ${test}_32)
@@ -523,7 +522,6 @@ if(rr_64BIT)
     set_tests_properties(${test}-32-no-syscallbuf
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
   endforeach(test)
-  endif()
 endif()
 
 include(ProcessorCount)

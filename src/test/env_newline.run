@@ -1,4 +1,4 @@
 export BADENV='hello
 kitty'
 source `dirname $0`/util.sh
-compare_test EXIT-SUCCESS "" simple
+compare_test EXIT-SUCCESS "" simple$bitness

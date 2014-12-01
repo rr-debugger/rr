@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
-record mmap_private
-debug mmap_private break_mmap_private
+record mmap_private$bitness
+debug mmap_private$bitness break_mmap_private

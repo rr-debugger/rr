@@ -6,6 +6,6 @@ RECORD_ARGS="-c$timeslice"
 
 # 2^9 iterations is arbitrarily chosen to record and replay < 15s,
 # both with and without the syscallbuf, on a fast machine.
-record async_signal_syscalls 9
+record async_signal_syscalls$bitness 9
 replay
 check 'EXIT-SUCCESS'

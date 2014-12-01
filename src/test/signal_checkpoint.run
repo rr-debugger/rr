@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
-record sigill
-debug sigill signal_checkpoint
+record sigill$bitness
+debug sigill$bitness signal_checkpoint

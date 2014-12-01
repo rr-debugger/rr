@@ -1,8 +1,8 @@
 source `dirname $0`/util.sh
-record simple
+record simple$bitness
 for i in $(seq 15 25); do
     echo Replaying to event $i ...
-    debug simple restart_finish "-g $i"
+    debug simple$bitness restart_finish "-g $i"
     if [[ "$leave_data" == "y" ]]; then
         break
     fi

@@ -11,8 +11,8 @@ function expect_replay_fail {
     echo "  (replay failed as expected)"
 }
 
-record simple
-trace_dir="simple-$nonce-0"
+record simple$bitness
+trace_dir="simple$bitness-$nonce-0"
 
 if [ ! -f "$trace_dir/version" ]; then
     echo "Test '$TESTNAME' FAILED: version file not found in trace directory."

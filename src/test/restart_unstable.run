@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
-record exit_group
-debug exit_group restart_unstable
+record exit_group$bitness
+debug exit_group$bitness restart_unstable

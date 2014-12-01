@@ -1,5 +1,5 @@
 source `dirname $0`/util.sh
 
-record crash
+record crash$bitness
 replay
 check ''
