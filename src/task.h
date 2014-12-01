@@ -1202,6 +1202,13 @@ private:
                              const void* buf);
 
   /**
+   * Try writing 'buf' to 'addr' by replacing pages in the tracee
+   * address-space using a temporary file. This may work around PaX issues.
+   */
+  bool try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
+                         const void* buf);
+
+  /**
    * Map the syscallbuffer for this, shared with this process.
    * |map_hint| is the address where the syscallbuf is expected
    * to be mapped --- and this is asserted --- or nullptr if

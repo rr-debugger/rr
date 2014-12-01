@@ -816,9 +816,7 @@ void Task::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
     return;
   }
 
-  vector<uint8_t> buf;
-  buf.resize(num_bytes);
-  read_bytes_helper(addr, num_bytes, buf.data());
+  auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
   trace_writer().write_raw(buf.data(), num_bytes, addr);
 }
 
@@ -2053,6 +2051,62 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                                   << ", but only read " << nread;
 }
 
+bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
+                             const void* buf) {
+  // Check that there are private-mapping pages covering the destination area.
+  // The pages must all have the same prot and flags.
+  uintptr_t page_size = sysconf(_SC_PAGESIZE);
+  uintptr_t page_start = addr.as_int() & ~(page_size - 1);
+  uintptr_t page_end =
+      (addr.as_int() + buf_size + page_size - 1) & ~(page_size - 1);
+  int all_prot, all_flags;
+  for (uintptr_t p = page_start; p < page_end; p += page_size) {
+    const Mapping& m = as->mapping_of(p, page_size).first;
+    if (p > page_start) {
+      if (all_prot != m.prot || all_flags != m.flags) {
+        return false;
+      }
+    } else {
+      all_prot = m.prot;
+      all_flags = m.flags;
+    }
+  }
+  if (!(all_flags & MAP_PRIVATE)) {
+    return false;
+  }
+
+  auto cur = read_mem(remote_ptr<uint8_t>(page_start), page_end - page_start);
+
+  // XXX share this with AddressSpace.cc
+  char path[] = "/tmp/rr-replaced-pages-XXXXXX";
+  ScopedFd fd(mkstemp(path));
+  ASSERT(this, fd.is_open());
+  ssize_t nwritten = write(fd, cur.data(), cur.size());
+  ASSERT(this, nwritten == (ssize_t)cur.size());
+  nwritten = pwrite(fd, buf, buf_size, addr.as_int() - page_start);
+  ASSERT(this, nwritten == buf_size);
+
+  AutoRemoteSyscalls remote(this);
+  SupportedArch a = arch();
+  AutoRestoreMem child_path(remote, reinterpret_cast<uint8_t*>(path),
+                            sizeof(path));
+  int child_fd =
+      remote.syscall(syscall_number_for_open(a), child_path.get(), O_RDWR);
+  ASSERT(this, child_fd >= 0);
+
+  // Just map the new file right over the top of existing pages
+  int mmap_syscall = has_mmap2_syscall(a) ? syscall_number_for_mmap2(a)
+                                          : syscall_number_for_mmap(a);
+  auto result = remote.syscall(mmap_syscall, page_start, cur.size(), all_prot,
+                               all_flags | MAP_FIXED, child_fd, 0);
+  ASSERT(this, uintptr_t(result) == page_start);
+
+  remote.syscall(syscall_number_for_close(a), child_fd);
+
+  unlink(path);
+  return true;
+}
+
 void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                               const void* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
@@ -2071,6 +2125,10 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   if (0 == nwritten && 0 == errno) {
     open_mem_fd();
     return write_bytes_helper(addr, buf_size, buf);
+  }
+  if (errno == EPERM && try_replace_pages(addr, buf_size, buf)) {
+    // Maybe a PaX kernel and we're trying to write to an executable page.
+    return;
   }
   ASSERT(this, nwritten == buf_size) << "Should have written " << buf_size
                                      << " bytes to " << addr
