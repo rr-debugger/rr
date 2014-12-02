@@ -730,6 +730,7 @@ void Task::post_exec(const Registers* replay_regs) {
   // soon after exec, we must not do a bogus set_robust_list syscall for
   // the clone.
   set_robust_list(nullptr, 0);
+  syscallbuf_child = nullptr;
 
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
@@ -1709,9 +1710,10 @@ void Task::copy_state(Task* from) {
       ASSERT(this, tid == err);
     }
 
+    ASSERT(this, !syscallbuf_child)
+        << "Syscallbuf should not already be initialized in clone";
     if (!from->syscallbuf_child.is_null()) {
       // All these fields are preserved by the fork.
-      syscallbuf_child = from->syscallbuf_child;
       num_syscallbuf_bytes = from->num_syscallbuf_bytes;
       desched_fd_child = from->desched_fd_child;
 
@@ -1720,8 +1722,6 @@ void Task::copy_state(Task* from) {
       // have to unmap it, create a copy, and then
       // re-map the copy in rr and the tracee.
       remote_ptr<void> map_hint = from->syscallbuf_child;
-      destroy_buffers(DESTROY_SYSCALLBUF);
-      destroy_local_buffers();
 
       syscallbuf_child = init_syscall_buffer(remote, map_hint);
       ASSERT(this, from->syscallbuf_child == syscallbuf_child);
@@ -1884,6 +1884,9 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
                                     shmem_fd, offset_pages))) {
     FATAL() << "Failed to mmap shmem region";
   }
+  if (!map_hint.is_null()) {
+    flags |= MAP_FIXED;
+  }
   remote_ptr<void> child_map_addr = remote.syscall(
       has_mmap2_syscall(remote.arch()) ? syscall_number_for_mmap2(remote.arch())
                                        : syscall_number_for_mmap(remote.arch()),
@@ -1895,6 +1898,8 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
         << " but got " << HEX(child_map_addr.as_int());
   }
 
+  ASSERT(this, !syscallbuf_child)
+      << "Should not already have syscallbuf initialized!";
   syscallbuf_child = child_map_addr;
   syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
   // No entries to begin with.
