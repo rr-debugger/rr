@@ -986,10 +986,13 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
      * actually too small and throw an error there.
      */
     case SYS_ACCEPT:
-    case SYS_ACCEPT4:
+    case SYS_ACCEPT4: {
+      remote_ptr<typename Arch::accept_args> argsp = t->regs().arg2();
+      auto args = t->read_mem(argsp);
       /* FIXME: not quite sure about socket_addr */
-      step->syscall.num_emu_args = 2;
+      step->syscall.num_emu_args = (args.addr != 0) + (args.addrlen != 0);
       return;
+    }
 
     case SYS_SOCKETPAIR:
       step->syscall.num_emu_args = 1;
@@ -1577,14 +1580,20 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::splice:
     case Arch::_sysctl:
     case Arch::wait4:
-    case Arch::accept:
-    case Arch::accept4:
     case Arch::getsockname:
     case Arch::getpeername:
     case Arch::getsockopt:
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 2;
+      step->action = syscall_action(state);
+      return;
+
+    case Arch::accept:
+    case Arch::accept4:
+      step->syscall.emu = EMULATE;
+      step->syscall.emu_ret = EMULATE_RETURN;
+      step->syscall.num_emu_args = (trace_regs.arg2() != 0) + (trace_regs.arg3() != 0);
       step->action = syscall_action(state);
       return;
 

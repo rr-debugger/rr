@@ -23,7 +23,7 @@ static void client(const struct sockaddr_un* addr) {
   exit(0);
 }
 
-static void server(int use_accept4) {
+static void server(int use_accept4, int pass_addr) {
   struct sockaddr_un addr;
   int listenfd;
   pid_t child;
@@ -31,6 +31,9 @@ static void server(int use_accept4) {
   struct sockaddr_un peer_addr;
   socklen_t len = sizeof(peer_addr);
   int status;
+  struct sockaddr* peer_addr_ptr =
+      pass_addr ? (struct sockaddr*)&peer_addr : NULL;
+  socklen_t* len_ptr = pass_addr ? &len : NULL;
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
@@ -46,13 +49,13 @@ static void server(int use_accept4) {
   }
 
   if (use_accept4) {
-    test_assert(0 <= (servefd = accept4(listenfd, (struct sockaddr*)&peer_addr,
-                                        &len, 0)));
+    test_assert(0 <= (servefd = accept4(listenfd, peer_addr_ptr, len_ptr, 0)));
   } else {
-    test_assert(
-        0 <= (servefd = accept(listenfd, (struct sockaddr*)&peer_addr, &len)));
+    test_assert(0 <= (servefd = accept(listenfd, peer_addr_ptr, len_ptr)));
   }
-  test_assert(AF_UNIX == peer_addr.sun_family);
+  if (pass_addr) {
+    test_assert(AF_UNIX == peer_addr.sun_family);
+  }
 
   test_assert(1 == send(servefd, "!", 1, 0));
 
@@ -65,8 +68,12 @@ static void server(int use_accept4) {
 }
 
 int main(int argc, char* argv[]) {
-  server(0);
-  server(1);
+  int use_accept4, pass_addr;
+  for (use_accept4 = 0; use_accept4 <= 1; ++use_accept4) {
+    for (pass_addr = 0; pass_addr <= 1; ++pass_addr) {
+      server(use_accept4, pass_addr);
+    }
+  }
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

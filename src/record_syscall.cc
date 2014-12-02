@@ -309,20 +309,25 @@ template <typename Arch>
 static bool prepare_accept(Task* t, remote_ptr<typename Arch::sockaddr>* addr,
                            remote_ptr<typename Arch::socklen_t>* addrlen,
                            remote_ptr<void>* scratch) {
-  auto len = t->read_mem(*addrlen);
-
   push_arg_ptr(t, *addrlen);
-  *addrlen = allocate_scratch<typename Arch::socklen_t>(scratch);
-
   push_arg_ptr(t, *addr);
-  *addr = scratch->cast<typename Arch::sockaddr>();
-  *scratch += len;
+
+  typename Arch::socklen_t len = 0;
+  if (!addrlen->is_null()) {
+    len = t->read_mem(*addrlen);
+    *addrlen = allocate_scratch<typename Arch::socklen_t>(scratch);
+    t->write_mem(*addrlen, len);
+  }
+
+  if (!addr->is_null()) {
+    *addr = scratch->cast<typename Arch::sockaddr>();
+    *scratch += len;
+  }
 
   if (!can_use_scratch(t, *scratch)) {
     return false;
   }
 
-  t->write_mem(*addrlen, len);
   return true;
 }
 
@@ -2273,8 +2278,12 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
         restore_scratch.read_arg(&args);
       }
       typename Arch::socklen_t addrlen;
-      restore_scratch.restore_and_record_arg(addrlenp, &addrlen);
-      restore_scratch.restore_and_record_arg_buf(addrp, addrlen);
+      if (!addrlenp.is_null()) {
+        restore_scratch.restore_and_record_arg(addrlenp, &addrlen);
+      }
+      if (!addrp.is_null()) {
+        restore_scratch.restore_and_record_arg_buf(addrp, addrlen);
+      }
 
       /* Restore the pointer to the original args. */
       r.set_arg2(orig_argsp);
@@ -2972,8 +2981,12 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
       AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
       typename Arch::socklen_t addrlen;
-      restore_scratch.restore_and_record_arg(addrlenp, &addrlen);
-      restore_scratch.restore_and_record_arg_buf(addrp, addrlen);
+      if (!addrlenp.is_null()) {
+        restore_scratch.restore_and_record_arg(addrlenp, &addrlen);
+      }
+      if (!addrp.is_null()) {
+        restore_scratch.restore_and_record_arg_buf(addrp, addrlen);
+      }
 
       r.set_arg2(addrp);
       r.set_arg3(addrlenp);
