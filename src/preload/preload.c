@@ -570,10 +570,11 @@ static void __attribute__((constructor)) init_process(void) {
   sigset_t mask;
   struct rrcall_init_preload_params params;
 
-  assert(!process_inited);
+  if (process_inited) {
+    return;
+  }
 
   real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
-  real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
 
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 
@@ -664,6 +665,11 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
   void* saved_buffer = buffer;
   int ret;
 
+  /* Init syscallbuf now if we haven't yet (e.g. if pthread_create is called
+   * during library initialization before our preload library).
+   * This also fetches real_pthread_create which we'll need below. */
+  init_process();
+
   data->start_routine = start_routine;
   data->arg = arg;
   /* Don't let the new thread use our TLS pointer. */
@@ -719,6 +725,9 @@ int pthread_mutex_timedlock(pthread_mutex_t* mutex,
   /* No __pthread_mutex_timedlock stub exists, so we have to use the
    * indirect call.
    */
+  if (!real_pthread_mutex_timedlock) {
+    real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+  }
   return real_pthread_mutex_timedlock(mutex, abstime);
 }
 

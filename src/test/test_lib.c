@@ -2,11 +2,17 @@
 
 #include "rrutil.h"
 
+static void* start_thread(void* dontcare) { return NULL; }
+
 static void constructor(void) __attribute__((constructor));
 
 static void constructor(void) {
   struct timeval tv;
+  pthread_t t;
   gettimeofday(&tv, NULL);
+
+  pthread_create(&t, NULL, start_thread, NULL);
+  pthread_join(t, NULL);
 }
 
 void lib_exit_success(void) { atomic_puts("EXIT-SUCCESS"); }
