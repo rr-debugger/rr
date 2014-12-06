@@ -1907,7 +1907,7 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   // for the resource.
   char filename[PATH_MAX];
   struct stat stat;
-  if (!t->fdstat(fd, &stat, filename, sizeof(filename))) {
+  if (!t->fstat(fd, &stat, filename, sizeof(filename))) {
     FATAL() << "Failed to fdstat " << fd;
   }
   bool copied =

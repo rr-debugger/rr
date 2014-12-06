@@ -354,7 +354,7 @@ void Task::dump(FILE* out) const {
   }
 }
 
-bool Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes) {
+bool Task::fstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
   ScopedFd backing_fd(path, O_RDONLY);
@@ -366,7 +366,7 @@ bool Task::fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes) {
     return false;
   }
   buf[nbytes] = '\0';
-  return 0 == fstat(backing_fd, st);
+  return 0 == ::fstat(backing_fd, st);
 }
 
 void Task::futex_wait(remote_ptr<int> futex, int val) {

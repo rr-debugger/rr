@@ -312,7 +312,7 @@ public:
    * returned in |buf|, of max size |buf_num_bytes|.  Return
    * true on success, false on error.
    */
-  bool fdstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes);
+  bool fstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes);
 
   /**
    * Force the wait status of this to |status|, as if
