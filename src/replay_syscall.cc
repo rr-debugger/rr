@@ -236,10 +236,12 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
    * process, if it were to be probed by madvise or some other
    * means. But we make it PROT_NONE so that rogue reads/writes
    * to the scratch memory are caught. */
-  auto file = t->trace_reader().read_mapped_region();
+  TraceReader::MappedData data;
+  auto mapped_region = t->trace_reader().read_mapped_region(&data);
+  ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
 
-  t->scratch_ptr = file.start();
-  t->scratch_size = file.size();
+  t->scratch_ptr = mapped_region.start();
+  t->scratch_size = mapped_region.size();
   size_t sz = t->scratch_size;
   int prot = PROT_NONE;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
@@ -254,7 +256,8 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
                                                               : Arch::mmap,
                               t->scratch_ptr, sz, prot, flags, fd, offset);
   }
-  ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped " << file.start()
+  ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped "
+                                        << mapped_region.start()
                                         << " during recording, but " << map_addr
                                         << " in replay";
 
@@ -698,41 +701,12 @@ static remote_ptr<void> finish_private_mmap(AutoRemoteSyscalls& remote,
   return mapped_addr;
 }
 
-static void verify_backing_file(const TraceMappedRegion* file, int prot,
-                                int flags) {
-  struct stat metadata;
-  if (stat(file->file_name().c_str(), &metadata)) {
-    FATAL() << "Failed to stat " << file->file_name()
-            << ": replay is impossible";
-  }
-  if (metadata.st_ino != file->stat().st_ino ||
-      metadata.st_mode != file->stat().st_mode ||
-      metadata.st_uid != file->stat().st_uid ||
-      metadata.st_gid != file->stat().st_gid ||
-      metadata.st_size != file->stat().st_size ||
-      metadata.st_mtime != file->stat().st_mtime ||
-      metadata.st_ctime != file->stat().st_ctime) {
-    LOG(error)
-        << "Metadata of " << file->file_name()
-        << " changed: replay divergence likely, but continuing anyway ...";
-  }
-  if (should_copy_mmap_region(file->file_name().c_str(), &metadata, prot, flags,
-                              WARN_DEFAULT)) {
-    LOG(error) << file->file_name()
-               << " wasn't copied during recording, but now it should be?";
-  }
-}
-
-enum {
-  DONT_VERIFY = 0,
-  VERIFY_BACKING_FILE
-};
-
 template <typename Arch>
 static remote_ptr<void> finish_direct_mmap(
     AutoRemoteSyscalls& remote, const TraceFrame& trace_frame, int prot,
-    int flags, off64_t offset_pages, const TraceMappedRegion* file,
-    int verify = VERIFY_BACKING_FILE, int note_task_map = NOTE_TASK_MAP) {
+    int flags, const TraceMappedRegion& file, off64_t mmap_offset_pages,
+    const string& backing_file_name, off64_t backing_offset_pages,
+    int note_task_map = NOTE_TASK_MAP) {
   Task* t = remote.task();
   auto& rec_regs = trace_frame.regs();
   remote_ptr<void> rec_addr = rec_regs.syscall_result();
@@ -741,16 +715,13 @@ static remote_ptr<void> finish_direct_mmap(
   remote_ptr<void> mapped_addr;
 
   LOG(debug) << "directly mmap'ing " << length << " bytes of "
-             << file->file_name() << " at page offset " << HEX(offset_pages);
-
-  if (verify) {
-    verify_backing_file(file, prot, flags);
-  }
+             << backing_file_name << " at page offset "
+             << HEX(backing_offset_pages);
 
   /* Open in the tracee the file that was mapped during
    * recording. */
   {
-    AutoRestoreMem child_str(remote, file->file_name().c_str());
+    AutoRestoreMem child_str(remote, backing_file_name.c_str());
     /* We only need RDWR for shared writeable mappings.
      * Private mappings will happily COW from the mapped
      * RDONLY file.
@@ -761,7 +732,7 @@ static remote_ptr<void> finish_direct_mmap(
     /* TODO: unclear if O_NOATIME is relevant for mmaps */
     fd = remote.syscall(Arch::open, child_str.get().as_int(), oflags);
     if (0 > fd) {
-      FATAL() << "Couldn't open " << file->file_name() << " to mmap in tracee";
+      FATAL() << "Couldn't open " << backing_file_name << " to mmap in tracee";
     }
   }
   /* And mmap that file. */
@@ -772,15 +743,15 @@ static remote_ptr<void> finish_direct_mmap(
                       * mappings go through while
                       * they're not handled properly,
                       * but we shouldn't do that.) */
-                     prot, flags, fd, offset_pages);
+                     prot, flags, fd, backing_offset_pages);
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
   remote.syscall(Arch::close, fd);
 
   if (note_task_map) {
     t->vm()->map(
-        mapped_addr, length, prot, flags, page_size() * offset_pages,
-        MappableResource(FileId(file->stat()), file->file_name().c_str()));
+        mapped_addr, length, prot, flags, page_size() * mmap_offset_pages,
+        MappableResource(FileId(file.stat()), file.file_name().c_str()));
   }
 
   return mapped_addr;
@@ -803,11 +774,11 @@ static remote_ptr<void> finish_shared_mmap(AutoRemoteSyscalls& remote,
   // NB: the tracee will map the procfs link to our fd; there's
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
-  TraceMappedRegion vfile(emufile->proc_path().c_str(), file->stat(),
-                          file->start(), file->end());
-  remote_ptr<void> mapped_addr =
-      finish_direct_mmap<Arch>(remote, trace_frame, prot, flags, offset_pages,
-                               &vfile, DONT_VERIFY, DONT_NOTE_TASK_MAP);
+  TraceMappedRegion vfile(emufile->proc_path(), file->stat(), file->start(),
+                          file->end());
+  remote_ptr<void> mapped_addr = finish_direct_mmap<Arch>(
+      remote, trace_frame, prot, flags, vfile, offset_pages, vfile.file_name(),
+      offset_pages, DONT_NOTE_TASK_MAP);
   // Write back the snapshot of the segment that we recorded.
   // We have to write directly to the underlying file, because
   // the tracee may have mapped its segment read-only.
@@ -859,17 +830,22 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
       mapped_addr = finish_anonymous_mmap<Arch>(remote, trace_frame, prot,
                                                 flags, offset_pages);
     } else {
-      auto file = t->trace_reader().read_mapped_region();
+      TraceReader::MappedData data;
+      auto file = t->trace_reader().read_mapped_region(&data);
 
-      if (!file.copied()) {
-        mapped_addr = finish_direct_mmap<Arch>(remote, trace_frame, prot, flags,
-                                               offset_pages, &file);
-      } else if (!(MAP_SHARED & flags)) {
-        mapped_addr = finish_private_mmap<Arch>(remote, trace_frame, prot,
-                                                flags, offset_pages, &file);
+      if (data.source == TraceReader::SOURCE_FILE) {
+        mapped_addr = finish_direct_mmap<Arch>(
+            remote, trace_frame, prot, flags, file, offset_pages,
+            data.file_name, data.file_data_offset_pages);
       } else {
-        mapped_addr = finish_shared_mmap<Arch>(remote, trace_frame, prot, flags,
-                                               offset_pages, &file);
+        ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
+        if (!(MAP_SHARED & flags)) {
+          mapped_addr = finish_private_mmap<Arch>(remote, trace_frame, prot,
+                                                  flags, offset_pages, &file);
+        } else {
+          mapped_addr = finish_shared_mmap<Arch>(remote, trace_frame, prot,
+                                                 flags, offset_pages, &file);
+        }
       }
     }
     // Finally, we finish by emulating the return value.

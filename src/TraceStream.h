@@ -94,10 +94,17 @@ public:
    */
   void write_frame(const TraceFrame& frame);
 
+  enum RecordInTrace {
+    DONT_RECORD_IN_TRACE,
+    RECORD_IN_TRACE
+  };
   /**
    * Write TraceMappedRegion record to the trace.
+   * If this returns RECORD_IN_TRACE, then the data for the map should be
+   * recorded in the trace raw-data.
    */
-  void write_mapped_region(const TraceMappedRegion& map);
+  RecordInTrace write_mapped_region(const TraceMappedRegion& map, int prot,
+                                    int flags);
 
   /**
    * Write a raw-data record to the trace.
@@ -161,10 +168,26 @@ public:
    */
   TraceFrame read_frame();
 
+  enum MappedDataSource {
+    SOURCE_TRACE,
+    SOURCE_FILE,
+    SOURCE_ZERO
+  };
+  /**
+   * Where to obtain data for the mapped region.
+   */
+  struct MappedData {
+    MappedDataSource source;
+    /** Name of file to map the data from. */
+    string file_name;
+    /** Data offset in pages within the file. */
+    uint64_t file_data_offset_pages;
+  };
   /**
    * Read the next mapped region descriptor and return it.
+   * Also returns where to get the mapped data in 'data'.
    */
-  TraceMappedRegion read_mapped_region();
+  TraceMappedRegion read_mapped_region(MappedData* data);
 
   /**
    * Read the next raw data record and return it.

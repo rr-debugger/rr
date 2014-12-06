@@ -236,7 +236,7 @@ static bool checksum_segment_filter(const Mapping& m,
    * immutable, skip checksumming, it's a waste of time.  Except
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
-  may_diverge = (should_copy_mmap_region(r.fsname.c_str(), &st, m.prot, m.flags,
+  may_diverge = (should_copy_mmap_region(r.fsname, &st, m.prot, m.flags,
                                          DONT_WARN_SHARED_WRITEABLE) ||
                  (PROT_WRITE & m.prot));
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"

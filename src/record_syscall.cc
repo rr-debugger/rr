@@ -1431,7 +1431,9 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   memset(&stat, 0, sizeof(stat));
   TraceMappedRegion file(string(filename), stat, t->scratch_ptr,
                          t->scratch_ptr + scratch_size);
-  t->trace_writer().write_mapped_region(file);
+  auto record_in_trace =
+      t->trace_writer().write_mapped_region(file, prot, flags);
+  ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
   r.set_syscall_result(saved_result);
   t->set_regs(r);
@@ -1906,17 +1908,13 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   // we wouldn't have to care about looking up a name
   // for the resource.
   auto result = t->fstat(fd);
-  bool copied = should_copy_mmap_region(result.file_name, &result.st, prot,
-                                        flags, WARN_DEFAULT);
-
-  if (copied) {
+  TraceMappedRegion file(result.file_name, result.st, addr, addr + size,
+                         offset_pages);
+  if (t->trace_writer().write_mapped_region(file, prot, flags) ==
+      TraceWriter::RECORD_IN_TRACE) {
     off64_t end = (off64_t)result.st.st_size - offset;
     t->record_remote(addr, min(end, (off64_t)size));
   }
-
-  TraceMappedRegion file(result.file_name, result.st, addr, addr + size,
-                         copied);
-  t->trace_writer().write_mapped_region(file);
 
   t->vm()->map(addr, size, prot, flags, offset,
                MappableResource(FileId(result.st), result.file_name));

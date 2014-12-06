@@ -168,14 +168,51 @@ static CompressedReader& operator>>(CompressedReader& in, string& value) {
   return in;
 }
 
-void TraceWriter::write_mapped_region(const TraceMappedRegion& map) {
-  mmaps << map.copied() << map.file_name() << map.stat() << map.start()
-        << map.end();
+TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
+    const TraceMappedRegion& map, int prot, int flags) {
+  TraceReader::MappedDataSource source;
+  if (map.stat().st_ino == 0) {
+    source = TraceReader::SOURCE_ZERO;
+  } else {
+    source = should_copy_mmap_region(map.file_name(), &map.stat(), prot, flags,
+                                     WARN_DEFAULT)
+                 ? TraceReader::SOURCE_TRACE
+                 : TraceReader::SOURCE_FILE;
+  }
+  mmaps << source << map.file_name() << map.stat() << map.start() << map.end()
+        << map.offset_pages();
+  return source == TraceReader::SOURCE_TRACE ? RECORD_IN_TRACE
+                                             : DONT_RECORD_IN_TRACE;
 }
 
-TraceMappedRegion TraceReader::read_mapped_region() {
+static void verify_backing_file(const TraceMappedRegion& file) {
+  struct stat metadata;
+  if (stat(file.file_name().c_str(), &metadata)) {
+    FATAL() << "Failed to stat " << file.file_name()
+            << ": replay is impossible";
+  }
+  if (metadata.st_ino != file.stat().st_ino ||
+      metadata.st_mode != file.stat().st_mode ||
+      metadata.st_uid != file.stat().st_uid ||
+      metadata.st_gid != file.stat().st_gid ||
+      metadata.st_size != file.stat().st_size ||
+      metadata.st_mtime != file.stat().st_mtime ||
+      metadata.st_ctime != file.stat().st_ctime) {
+    LOG(error)
+        << "Metadata of " << file.file_name()
+        << " changed: replay divergence likely, but continuing anyway ...";
+  }
+}
+
+TraceMappedRegion TraceReader::read_mapped_region(MappedData* data) {
   TraceMappedRegion map;
-  mmaps >> map.copied_ >> map.filename >> map.stat_ >> map.start_ >> map.end_;
+  mmaps >> data->source >> map.filename >> map.stat_ >> map.start_ >>
+      map.end_ >> map.file_offset_pages;
+  if (data->source == SOURCE_FILE) {
+    data->file_name = map.filename;
+    data->file_data_offset_pages = map.file_offset_pages;
+    verify_backing_file(map);
+  }
   return map;
 }
 

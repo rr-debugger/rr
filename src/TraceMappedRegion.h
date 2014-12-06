@@ -24,18 +24,18 @@ class TraceMappedRegion {
 public:
   TraceMappedRegion(const std::string& filename, const struct stat& stat,
                     remote_ptr<void> start, remote_ptr<void> end,
-                    bool copied = false)
+                    uint64_t file_offset_pages = 0)
       : filename(filename),
         stat_(stat),
         start_(start),
         end_(end),
-        copied_(copied) {}
+        file_offset_pages(file_offset_pages) {}
 
   const std::string& file_name() const { return filename; }
   const struct stat& stat() const { return stat_; }
   remote_ptr<void> start() const { return start_; }
   remote_ptr<void> end() const { return end_; }
-  bool copied() const { return copied_; }
+  uint64_t offset_pages() const { return file_offset_pages; }
 
   size_t size() {
     intptr_t s = end() - start();
@@ -59,9 +59,7 @@ private:
   remote_ptr<void> start_;
   remote_ptr<void> end_;
 
-  /* Did we save a copy of the mapped region in the trace
-   * data? */
-  bool copied_;
+  uint64_t file_offset_pages;
 };
 
 #endif /* RR_TRACE_MAPPED_REGION_H_ */
