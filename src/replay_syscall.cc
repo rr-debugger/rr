@@ -1593,7 +1593,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::accept4:
       step->syscall.emu = EMULATE;
       step->syscall.emu_ret = EMULATE_RETURN;
-      step->syscall.num_emu_args = (trace_regs.arg2() != 0) + (trace_regs.arg3() != 0);
+      step->syscall.num_emu_args =
+          (trace_regs.arg2() != 0) + (trace_regs.arg3() != 0);
       step->action = syscall_action(state);
       return;
 

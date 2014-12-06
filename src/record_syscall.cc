@@ -1905,24 +1905,21 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
   // trace directory as |fs/[st_dev].[st_inode]|.  Then
   // we wouldn't have to care about looking up a name
   // for the resource.
-  char filename[PATH_MAX];
-  struct stat stat;
-  if (!t->fstat(fd, &stat, filename, sizeof(filename))) {
-    FATAL() << "Failed to fdstat " << fd;
-  }
-  bool copied =
-      should_copy_mmap_region(filename, &stat, prot, flags, WARN_DEFAULT);
+  auto result = t->fstat(fd);
+  bool copied = should_copy_mmap_region(result.file_name, &result.st, prot,
+                                        flags, WARN_DEFAULT);
 
   if (copied) {
-    off64_t end = (off64_t)stat.st_size - offset;
+    off64_t end = (off64_t)result.st.st_size - offset;
     t->record_remote(addr, min(end, (off64_t)size));
   }
 
-  TraceMappedRegion file(filename, stat, addr, addr + size, copied);
+  TraceMappedRegion file(result.file_name, result.st, addr, addr + size,
+                         copied);
   t->trace_writer().write_mapped_region(file);
 
   t->vm()->map(addr, size, prot, flags, offset,
-               MappableResource(FileId(stat), filename));
+               MappableResource(FileId(result.st), result.file_name));
 }
 
 /*

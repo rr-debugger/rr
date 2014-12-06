@@ -306,13 +306,17 @@ public:
   Event& ev() { return pending_events.back(); }
   const Event& ev() const { return pending_events.back(); }
 
+  struct FStatResult {
+    struct stat st;
+    std::string file_name;
+  };
   /**
    * Stat |fd| in the context of this task's fd table, returning
    * the result in |buf|.  The name of the referent file is
    * returned in |buf|, of max size |buf_num_bytes|.  Return
    * true on success, false on error.
    */
-  bool fstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes);
+  FStatResult fstat(int fd);
 
   /**
    * Force the wait status of this to |status|, as if

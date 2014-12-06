@@ -150,8 +150,9 @@ enum {
   DONT_WARN_SHARED_WRITEABLE = 0,
   WARN_DEFAULT
 };
-bool should_copy_mmap_region(const char* filename, const struct stat* stat,
-                             int prot, int flags, int warn_shared_writeable);
+bool should_copy_mmap_region(const std::string& filename,
+                             const struct stat* stat, int prot, int flags,
+                             int warn_shared_writeable);
 
 /**
  * Return an fd referring to a new shmem segment with descriptive

@@ -354,19 +354,20 @@ void Task::dump(FILE* out) const {
   }
 }
 
-bool Task::fstat(int fd, struct stat* st, char* buf, size_t buf_num_bytes) {
+Task::FStatResult Task::fstat(int fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
   ScopedFd backing_fd(path, O_RDONLY);
-  if (0 > backing_fd) {
-    return false;
-  }
-  ssize_t nbytes = readlink(path, buf, buf_num_bytes);
-  if (0 > nbytes) {
-    return false;
-  }
-  buf[nbytes] = '\0';
-  return 0 == ::fstat(backing_fd, st);
+  ASSERT(this, backing_fd.is_open());
+  ssize_t nbytes = readlink(path, path, sizeof(path) - 1);
+  ASSERT(this, nbytes >= 0);
+  path[nbytes] = '\0';
+
+  FStatResult result;
+  auto ret = ::fstat(backing_fd, &result.st);
+  ASSERT(this, ret == 0);
+  result.file_name = path;
+  return result;
 }
 
 void Task::futex_wait(remote_ptr<int> futex, int val) {

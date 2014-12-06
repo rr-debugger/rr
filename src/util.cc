@@ -455,32 +455,32 @@ bool possibly_destabilizing_signal(Task* t, int sig,
   return t->is_sig_blocked(sig);
 }
 
-static bool has_fs_name(const char* path) {
+static bool has_fs_name(const string& path) {
   struct stat dummy;
-  return 0 == stat(path, &dummy);
+  return 0 == stat(path.c_str(), &dummy);
 }
 
-static bool is_tmp_file(const char* path) {
+static bool is_tmp_file(const string& path) {
   struct statfs sfs;
-  statfs(path, &sfs);
+  statfs(path.c_str(), &sfs);
   return (TMPFS_MAGIC == sfs.f_type
                          // In observed configurations of Ubuntu 13.10, /tmp is
                          // a folder in the / fs, not a separate tmpfs.
           ||
-          path == strstr(path, "/tmp/"));
+          path.c_str() == strstr(path.c_str(), "/tmp/"));
 }
 
-bool should_copy_mmap_region(const char* filename, const struct stat* stat,
+bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
                              int prot, int flags, int warn_shared_writeable) {
   bool private_mapping = (flags & MAP_PRIVATE);
 
   // TODO: handle mmap'd files that are unlinked during
   // recording.
-  if (!has_fs_name(filename)) {
+  if (!has_fs_name(file_name)) {
     LOG(debug) << "  copying unlinked file";
     return true;
   }
-  if (is_tmp_file(filename)) {
+  if (is_tmp_file(file_name)) {
     LOG(debug) << "  copying file on tmpfs";
     return true;
   }
@@ -490,7 +490,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
      * *cough*), we're doing no worse (in theory) by being
      * optimistic about the shared libraries too, most of
      * which are system libraries. */
-    LOG(debug) << "  (no copy for +x private mapping " << filename << ")";
+    LOG(debug) << "  (no copy for +x private mapping " << file_name << ")";
     return false;
   }
   if (private_mapping && (0111 & stat->st_mode)) {
@@ -499,7 +499,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
      * Since we're already assuming those change very
      * infrequently, we can avoid copying the data
      * sections too. */
-    LOG(debug) << "  (no copy for private mapping of +x " << filename << ")";
+    LOG(debug) << "  (no copy for private mapping of +x " << file_name << ")";
     return false;
   }
 
@@ -507,7 +507,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
   // file" as an approximation of whether the tracee can write
   // the file.  If the tracee is messing around with
   // set*[gu]id(), the real answer may be different.
-  bool can_write_file = (0 == access(filename, W_OK));
+  bool can_write_file = (0 == access(file_name.c_str(), W_OK));
 
   if (!can_write_file && 0 == stat->st_uid) {
     // We would like to assert this, but on Ubuntu 13.10,
@@ -523,7 +523,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
      * frequent than even system updates.
      *
      * XXX what about the fontconfig cache files? */
-    LOG(debug) << "  (no copy for root-owned " << filename << ")";
+    LOG(debug) << "  (no copy for root-owned " << file_name << ")";
     return false;
   }
   if (private_mapping) {
@@ -537,7 +537,7 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
      *
      * TODO: could get into dirty heuristics here like
      * trying to match "cache" in the filename ... */
-    LOG(debug) << "  copying private mapping of non-system -x " << filename;
+    LOG(debug) << "  copying private mapping of non-system -x " << file_name;
     return true;
   }
   if (!(0222 & stat->st_mode)) {
@@ -551,19 +551,20 @@ bool should_copy_mmap_region(const char* filename, const struct stat* stat,
   if (!can_write_file) {
     /* mmap'ing another user's (non-system) files?  Highly
      * irregular ... */
-    FATAL() << "Unhandled mmap " << filename << "(prot:" << HEX(prot)
+    FATAL() << "Unhandled mmap " << file_name << "(prot:" << HEX(prot)
             << ((flags & MAP_SHARED) ? ";SHARED" : "")
             << "); uid:" << stat->st_uid << " mode:" << stat->st_mode;
   }
   /* Shared mapping that we can write.  Should assume that the
    * mapping is likely to change. */
-  LOG(debug) << "  copying writeable SHARED mapping " << filename;
+  LOG(debug) << "  copying writeable SHARED mapping " << file_name;
   if (PROT_WRITE | prot) {
     if (warn_shared_writeable) {
-      LOG(debug) << filename << " is SHARED|WRITEABLE; that's not handled "
-                                "correctly yet. Optimistically hoping it's not "
-                                "written by programs outside the rr tracee "
-                                "tree.";
+      LOG(debug) << file_name
+                 << " is SHARED|WRITEABLE; that's not handled "
+                    "correctly yet. Optimistically hoping it's not "
+                    "written by programs outside the rr tracee "
+                    "tree.";
     }
   }
   return true;
