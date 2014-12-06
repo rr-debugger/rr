@@ -17,6 +17,9 @@
 
 class TraceReader;
 
+/**
+ * This object records the details of an mmapped file region.
+ */
 class TraceMappedRegion {
 public:
   TraceMappedRegion(const std::string& filename, const struct stat& stat,
