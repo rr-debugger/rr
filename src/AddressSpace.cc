@@ -477,11 +477,9 @@ void AddressSpace::map_rr_page(Task* t) {
                                   child_path.get(), O_RDONLY);
     ASSERT(t, child_fd >= 0);
 
-    int mmap_syscall = has_mmap2_syscall(arch) ? syscall_number_for_mmap2(arch)
-                                               : syscall_number_for_mmap(arch);
-    auto result = remote.syscall(mmap_syscall, rr_page_start(), rr_page_size(),
-                                 prot, flags, child_fd, 0);
-    ASSERT(t, uintptr_t(result) == rr_page_start().as_int());
+    auto result = remote.mmap_syscall(rr_page_start(), rr_page_size(), prot,
+                                      flags, child_fd, 0);
+    ASSERT(t, result == rr_page_start());
 
     remote.syscall(syscall_number_for_close(arch), child_fd);
   }

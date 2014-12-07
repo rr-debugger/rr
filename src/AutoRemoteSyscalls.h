@@ -135,6 +135,13 @@ public:
     return syscall_helper<1>(syscallno, callregs, args...);
   }
 
+  /**
+   * Remote mmap syscalls are common and non-trivial due to the need to
+   * select either mmap2 or mmap.
+   */
+  remote_ptr<void> mmap_syscall(remote_ptr<void> addr, size_t length, int prot,
+                                int flags, int child_fd, uint64_t offset_pages);
+
   /** The Task in the context of which we're making syscalls. */
   Task* task() const { return t; }
 

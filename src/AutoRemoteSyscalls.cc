@@ -348,3 +348,17 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
 ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
   RR_ARCH_FUNCTION(retrieve_fd_arch, arch(), fd);
 }
+
+remote_ptr<void> AutoRemoteSyscalls::mmap_syscall(remote_ptr<void> addr,
+                                                  size_t length, int prot,
+                                                  int flags, int child_fd,
+                                                  uint64_t offset_pages) {
+  if (has_mmap2_syscall(arch())) {
+    syscall(syscall_number_for_mmap2(arch()), addr, length, prot, flags,
+            child_fd, (off_t)offset_pages);
+  } else {
+    syscall(syscall_number_for_mmap(arch()), addr, length, prot, flags, child_fd,
+            offset_pages * page_size());
+  }
+  return t->regs().syscall_result();
+}
