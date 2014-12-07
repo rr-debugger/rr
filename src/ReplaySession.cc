@@ -407,7 +407,7 @@ void ReplaySession::continue_or_step(Task* t, RunCommand stepi,
   ASSERT(t, child_sig_gt_zero)
       << "Replaying `" << Event(trace_frame.event())
       << "': expecting tracee signal or trap, but instead at `"
-      << t->syscallname(t->regs().original_syscallno())
+      << t->syscall_name(t->regs().original_syscallno())
       << "' (ticks: " << t->tick_count() << ")";
 }
 
@@ -991,7 +991,7 @@ Completion ReplaySession::skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
       (DESCHED_ARM == ds->type ? t->is_arm_desched_event_syscall()
                                : t->is_disarm_desched_event_syscall());
   ASSERT(t, is_desched_syscall) << "Failed to reach desched ioctl; at "
-                                << t->syscallname(
+                                << t->syscall_name(
                                        t->regs().original_syscallno()) << "("
                                 << t->regs().arg1() << ", " << t->regs().arg2()
                                 << ") instead";
@@ -1047,8 +1047,8 @@ static void assert_at_buffered_syscall(Task* t, int syscallno) {
   ASSERT(t, t->is_in_untraced_syscall())
       << "Bad ip " << t->ip() << ": should have been buffered-syscall ip";
   ASSERT(t, t->regs().original_syscallno() == syscallno)
-      << "At " << t->syscallname(t->regs().original_syscallno())
-      << "; should have been at " << t->syscallname(syscallno) << "("
+      << "At " << t->syscall_name(t->regs().original_syscallno())
+      << "; should have been at " << t->syscall_name(syscallno) << "("
       << syscallno << ")";
 }
 
@@ -1124,7 +1124,7 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
       // We'll check at syscall entry that the recorded and
       // replayed record values match.
 
-      LOG(debug) << "Replaying buffered `" << t->syscallname(call)
+      LOG(debug) << "Replaying buffered `" << t->syscall_name(call)
                  << "' (ret:" << rec_rec->ret << ") which does"
                  << (!rec_rec->desched ? " not" : "") << " use desched event";
 

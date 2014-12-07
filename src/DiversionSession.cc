@@ -49,7 +49,7 @@ static void execute_syscall(Task* t) {
 
 template <typename Arch>
 static void process_syscall_arch(Task* t, int syscallno) {
-  LOG(debug) << "Processing " << t->syscallname(syscallno);
+  LOG(debug) << "Processing " << t->syscall_name(syscallno);
 
   switch (syscallno) {
     // The arm/disarm-desched ioctls are emulated as no-ops.

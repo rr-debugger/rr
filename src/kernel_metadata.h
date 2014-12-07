@@ -6,6 +6,7 @@
 #include <signal.h>
 
 #include <iostream>
+#include <string>
 
 #include "kernel_abi.h"
 
@@ -13,7 +14,7 @@
  * Return the symbolic name of |syscall|, f.e. "read", or "???syscall"
  * if unknown.
  */
-const char* syscall_name(int syscall, SupportedArch arch);
+std::string syscall_name(int syscall, SupportedArch arch);
 
 /**
  * Return the symbolic name of the PTRACE_EVENT_* |event|, or

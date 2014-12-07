@@ -140,8 +140,8 @@ static void goto_next_syscall_emu(Task* t) {
     }
 
     ASSERT(t, current_syscall == rec_syscall)
-        << "Should be at `" << t->syscallname(rec_syscall) << "', instead at `"
-        << t->syscallname(current_syscall) << "'";
+        << "Should be at `" << t->syscall_name(rec_syscall) << "', instead at `"
+        << t->syscall_name(current_syscall) << "'";
   }
   t->child_sig = 0;
 }
@@ -162,8 +162,8 @@ static void __ptrace_cont(Task* t) {
   int rec_syscall = t->current_trace_frame().regs().original_syscallno();
   int current_syscall = t->regs().original_syscallno();
   ASSERT(t, current_syscall == rec_syscall)
-      << "Should be at " << t->syscallname(rec_syscall) << ", but instead at "
-      << t->syscallname(current_syscall);
+      << "Should be at " << t->syscall_name(rec_syscall) << ", but instead at "
+      << t->syscall_name(current_syscall);
 }
 
 template <typename Arch>
@@ -275,7 +275,7 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
 static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
   if (t->is_in_untraced_syscall()) {
     LOG(debug) << "  noop-restoring scratch for write-only desched'd "
-               << t->syscallname(t->regs().original_syscallno());
+               << t->syscall_name(t->regs().original_syscallno());
     t->set_data_from_trace();
   }
 }
@@ -1190,7 +1190,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   const Registers& trace_regs = trace_frame.regs();
   EmuFs::AutoGc maybe_gc(t->replay_session(), t->arch(), syscall, state);
 
-  LOG(debug) << "processing " << t->syscallname(syscall) << " ("
+  LOG(debug) << "processing " << t->syscall_name(syscall) << " ("
              << state_name(state) << ")";
 
   if (SYSCALL_EXIT == state && trace_regs.syscall_may_restart()) {
@@ -1200,7 +1200,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     // event to see which syscall we're trying to restart.
     if (interrupted_restart) {
       syscall = t->ev().Syscall().number;
-      LOG(debug) << "  interrupted " << t->syscallname(syscall)
+      LOG(debug) << "  interrupted " << t->syscall_name(syscall)
                  << " interrupted again";
     }
     // During recording, when a syscall exits with a
@@ -1237,7 +1237,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       t->ev().Syscall().regs = t->regs();
     }
     step->action = TSTEP_RETIRE;
-    LOG(debug) << "  " << t->syscallname(syscall) << " interrupted by "
+    LOG(debug) << "  " << t->syscall_name(syscall) << " interrupted by "
                << trace_regs.syscall_result() << " at "
                << (void*)trace_regs.ip() << ", may restart";
     return;
@@ -1252,7 +1252,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       remote_ptr<uint8_t> intr_ip = t->ev().Syscall().regs.ip();
       auto cur_ip = t->ip();
 
-      LOG(debug) << "'restarting' " << t->syscallname(syscall)
+      LOG(debug) << "'restarting' " << t->syscall_name(syscall)
                  << " interrupted by "
                  << t->ev().Syscall().regs.syscall_result() << " at " << intr_ip
                  << "; now at " << cur_ip;
@@ -1266,7 +1266,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
     } else {
       t->pop_syscall_interruption();
-      LOG(debug) << "exiting restarted " << t->syscallname(syscall);
+      LOG(debug) << "exiting restarted " << t->syscall_name(syscall);
     }
   }
 

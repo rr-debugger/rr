@@ -44,17 +44,21 @@ def write_is_always_emulated_syscall(f):
         f.write("\n")
 
 def write_syscallname_arch(f):
-    f.write("template <typename Arch> static const char* syscallname_arch(int syscall);\n")
+    f.write("template <typename Arch> static std::string syscallname_arch(int syscall);\n")
     f.write("\n");
     for specializer, arch in [("X86Arch", "x86"), ("X64Arch", "x64")]:
-        f.write("template <> const char* syscallname_arch<%s>(int syscall) {\n" % specializer)
+        f.write("template <> std::string syscallname_arch<%s>(int syscall) {\n" % specializer)
         f.write("  switch (syscall) {\n");
         def write_case(name):
             f.write("    case %(specializer)s::%(syscall)s: return \"%(syscall)s\";\n"
                     % { 'specializer': specializer, 'syscall': name })
         for name, _ in syscalls.for_arch(arch):
             write_case(name)
-        f.write("    default: return \"<unknown-syscall>\";\n")
+        f.write("    default: {")
+        f.write("      char buf[100];")
+        f.write("      sprintf(buf, \"<unknown-syscall-%d>\", syscall);")
+        f.write("      return buf;\n")
+        f.write("    }\n")
         f.write("  }\n")
         f.write("}\n")
         f.write("\n")

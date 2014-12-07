@@ -600,7 +600,7 @@ void destroy_buffers(Task* t) {
   Registers exit_regs = t->regs();
   ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
       << "Tracee should have been at exit, but instead at "
-      << t->syscallname(exit_regs.original_syscallno());
+      << t->syscall_name(exit_regs.original_syscallno());
 
   // The tracee is at the entry to SYS_exit, but hasn't started
   // the call yet.  We can't directly start injecting syscalls

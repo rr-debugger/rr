@@ -328,7 +328,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
   ev.state = EXITING_SYSCALL;
 
   LOG(debug) << "  resuming (and probably switching out) blocked `"
-             << t->syscallname(call) << "'";
+             << t->syscall_name(call) << "'";
 }
 
 static SignalDeterministic is_deterministic_signal(const siginfo_t* si) {
@@ -485,7 +485,7 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si) {
     }
     if (t->is_in_untraced_syscall() && t->desched_rec()) {
       LOG(debug) << "  tracee interrupted by desched of "
-                 << t->syscallname(t->desched_rec()->syscallno);
+                 << t->syscall_name(t->desched_rec()->syscallno);
       goto happy_place;
     }
     if (initial_hdr.locked && !hdr->locked) {

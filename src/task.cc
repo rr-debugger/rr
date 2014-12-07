@@ -519,7 +519,7 @@ bool Task::is_syscall_restart() {
   bool is_restart = false;
 
   LOG(debug) << "  is syscall interruption of recorded " << ev() << "? (now "
-             << syscallname(syscallno) << ")";
+             << syscall_name(syscallno) << ")";
 
   if (EV_SYSCALL_INTERRUPTION != ev().type()) {
     goto done;
@@ -547,7 +547,7 @@ bool Task::is_syscall_restart() {
   }
   if (ev().Syscall().number != syscallno) {
     LOG(debug) << "  interrupted %s" << ev()
-               << " != " << syscallname(syscallno);
+               << " != " << syscall_name(syscallno);
     goto done;
   }
 
@@ -560,7 +560,7 @@ bool Task::is_syscall_restart() {
           old_regs.arg5() == regs().arg5() &&
           old_regs.arg6() == regs().arg6())) {
       LOG(debug) << "  regs different at interrupted "
-                 << syscallname(syscallno);
+                 << syscall_name(syscallno);
       goto done;
     }
   }
@@ -569,9 +569,9 @@ bool Task::is_syscall_restart() {
 
 done:
   ASSERT(this, !must_restart || is_restart)
-      << "Must restart %s" << syscallname(syscallno) << " but won't";
+      << "Must restart %s" << syscall_name(syscallno) << " but won't";
   if (is_restart) {
-    LOG(debug) << "  restart of " << syscallname(syscallno);
+    LOG(debug) << "  restart of " << syscall_name(syscallno);
   }
   return is_restart;
 }
@@ -2354,6 +2354,6 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   return t;
 }
 
-const char* Task::syscallname(int syscall) const {
+string Task::syscall_name(int syscall) const {
   return ::syscall_name(syscall, arch());
 }

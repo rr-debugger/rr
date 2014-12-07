@@ -976,7 +976,7 @@ public:
   /**
    * Return the name of the given syscall.
    */
-  const char* syscallname(int syscallno) const;
+  std::string syscall_name(int syscallno) const;
 
   /* State only used during recording. */
 

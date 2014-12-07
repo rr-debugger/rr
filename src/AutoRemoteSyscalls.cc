@@ -81,8 +81,8 @@ long AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
       << "Should have advanced ip by one syscall_insn";
 
   ASSERT(t, t->regs().original_syscallno() == syscallno)
-      << "Should be entering " << t->syscallname(syscallno)
-      << ", but instead at " << t->syscallname(t->regs().original_syscallno());
+      << "Should be entering " << t->syscall_name(syscallno)
+      << ", but instead at " << t->syscall_name(t->regs().original_syscallno());
 
   // Start running the syscall.
   pending_syscallno = syscallno;
@@ -101,8 +101,8 @@ long AutoRemoteSyscalls::wait_syscall(int syscallno) {
   pending_syscallno = -1;
 
   ASSERT(t, t->regs().original_syscallno() == syscallno || syscallno < 0)
-      << "Should be entering " << t->syscallname(syscallno)
-      << ", but instead at " << t->syscallname(t->regs().original_syscallno());
+      << "Should be entering " << t->syscall_name(syscallno)
+      << ", but instead at " << t->syscall_name(t->regs().original_syscallno());
 
   return t->regs().syscall_result_signed();
 }

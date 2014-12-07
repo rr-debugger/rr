@@ -711,9 +711,9 @@ static Switchable set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
 
   assert(rec);
   ASSERT(t, syscallno == rec->syscallno) << "Syscallbuf records syscall "
-                                         << t->syscallname(rec->syscallno)
+                                         << t->syscall_name(rec->syscallno)
                                          << ", but expecting "
-                                         << t->syscallname(syscallno);
+                                         << t->syscall_name(syscallno);
 
   reset_scratch_pointers(t);
   t->ev().Syscall().tmp_data_ptr =
@@ -823,7 +823,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
         r.set_arg4(off_out2);
       }
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
 
       t->set_regs(r);
@@ -997,7 +997,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       scratch += (size_t)r.arg3();
 
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
 
       t->set_regs(r);
@@ -1097,7 +1097,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       }
 
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
 
       t->set_regs(r);
@@ -1118,7 +1118,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       }
 
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
 
       t->set_regs(r);
@@ -1148,7 +1148,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       scratch += nfds * fds.referent_size();
 
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
       /* |fds| is an inout param, so we need to copy over
        * the source data. */
@@ -1179,7 +1179,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           scratch += outparam.referent_size();
 
           if (!can_use_scratch(t, scratch)) {
-            return abort_scratch(t, t->syscallname(syscallno));
+            return abort_scratch(t, t->syscall_name(syscallno));
           }
 
           t->set_regs(r);
@@ -1221,7 +1221,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       scratch += maxevents * events.referent_size();
 
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
 
       /* (Unlike poll(), the |events| param is a pure
@@ -1231,7 +1231,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     }
 
     case Arch::epoll_pwait:
-      FATAL() << "Unhandled syscall " << t->syscallname(syscallno);
+      FATAL() << "Unhandled syscall " << t->syscall_name(syscallno);
       return ALLOW_SWITCH;
 
     /* The following two syscalls enable context switching not for
@@ -1256,7 +1256,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       }
 
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
 
       t->set_regs(r);
@@ -1312,7 +1312,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       }
 
       if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscallname(syscallno));
+        return abort_scratch(t, t->syscall_name(syscallno));
       }
       t->set_regs(r);
       return ALLOW_SWITCH;
@@ -2399,7 +2399,7 @@ static void check_syscall_rejected(Task* t) {
   if (t->regs().syscall_result_signed() != -ENOSYS) {
     t->regs().print_register_file(stderr);
     int syscallno = t->ev().Syscall().number;
-    ASSERT(t, false) << "Unhandled syscall " << t->syscallname(syscallno) << "("
+    ASSERT(t, false) << "Unhandled syscall " << t->syscall_name(syscallno) << "("
                      << syscallno << ") returned "
                      << t->regs().syscall_result_signed();
   }

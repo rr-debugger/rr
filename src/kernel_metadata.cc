@@ -13,10 +13,11 @@
 #include "log.h"
 
 using namespace rr;
+using namespace std;
 
 #include "SyscallnameArch.generated"
 
-const char* syscall_name(int syscall, SupportedArch arch) {
+string syscall_name(int syscall, SupportedArch arch) {
   RR_ARCH_FUNCTION(syscallname_arch, arch, syscall)
 }
 
