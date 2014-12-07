@@ -124,7 +124,7 @@ static void push_arg_ptr(Task* t, remote_ptr<void> argp) {
  * Reset scratch state for |t|, because scratch can't be used for
  * |event|.  Log a warning as well.
  */
-static Switchable abort_scratch(Task* t, const char* event) {
+static Switchable abort_scratch(Task* t, const string& event) {
   int num_bytes = t->ev().Syscall().tmp_data_num_bytes;
 
   assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
