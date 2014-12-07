@@ -1916,6 +1916,14 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
     t->record_remote(addr, min(end, (off64_t)size));
   }
 
+  if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {
+    LOG(debug) << result.file_name
+               << " is SHARED|WRITEABLE; that's not handled "
+                  "correctly yet. Optimistically hoping it's not "
+                  "written by programs outside the rr tracee "
+                  "tree.";
+  }
+
   t->vm()->map(addr, size, prot, flags, offset,
                MappableResource(FileId(result.st), result.file_name));
 }

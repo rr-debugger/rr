@@ -146,13 +146,8 @@ bool possibly_destabilizing_signal(Task* t, int sig,
  * get away/ with not copying the region.  That doesn't mean it's
  * necessarily safe to skip copying!
  */
-enum {
-  DONT_WARN_SHARED_WRITEABLE = 0,
-  WARN_DEFAULT
-};
 bool should_copy_mmap_region(const std::string& filename,
-                             const struct stat* stat, int prot, int flags,
-                             int warn_shared_writeable);
+                             const struct stat* stat, int prot, int flags);
 
 /**
  * Return an fd referring to a new shmem segment with descriptive

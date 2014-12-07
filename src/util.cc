@@ -236,9 +236,8 @@ static bool checksum_segment_filter(const Mapping& m,
    * immutable, skip checksumming, it's a waste of time.  Except
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
-  may_diverge = (should_copy_mmap_region(r.fsname, &st, m.prot, m.flags,
-                                         DONT_WARN_SHARED_WRITEABLE) ||
-                 (PROT_WRITE & m.prot));
+  may_diverge = should_copy_mmap_region(r.fsname, &st, m.prot, m.flags) ||
+                (PROT_WRITE & m.prot);
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
              << r.fsname << "'";
   return may_diverge;
@@ -471,7 +470,7 @@ static bool is_tmp_file(const string& path) {
 }
 
 bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
-                             int prot, int flags, int warn_shared_writeable) {
+                             int prot, int flags) {
   bool private_mapping = (flags & MAP_PRIVATE);
 
   // TODO: handle mmap'd files that are unlinked during
@@ -554,18 +553,6 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
     FATAL() << "Unhandled mmap " << file_name << "(prot:" << HEX(prot)
             << ((flags & MAP_SHARED) ? ";SHARED" : "")
             << "); uid:" << stat->st_uid << " mode:" << stat->st_mode;
-  }
-  /* Shared mapping that we can write.  Should assume that the
-   * mapping is likely to change. */
-  LOG(debug) << "  copying writeable SHARED mapping " << file_name;
-  if (PROT_WRITE | prot) {
-    if (warn_shared_writeable) {
-      LOG(debug) << file_name
-                 << " is SHARED|WRITEABLE; that's not handled "
-                    "correctly yet. Optimistically hoping it's not "
-                    "written by programs outside the rr tracee "
-                    "tree.";
-    }
   }
   return true;
 }

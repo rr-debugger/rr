@@ -174,8 +174,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   if (map.stat().st_ino == 0) {
     source = TraceReader::SOURCE_ZERO;
   } else {
-    source = should_copy_mmap_region(map.file_name(), &map.stat(), prot, flags,
-                                     WARN_DEFAULT)
+    source = should_copy_mmap_region(map.file_name(), &map.stat(), prot, flags)
                  ? TraceReader::SOURCE_TRACE
                  : TraceReader::SOURCE_FILE;
   }
