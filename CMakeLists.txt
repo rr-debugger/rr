@@ -394,6 +394,7 @@ set(TESTS_WITHOUT_PROGRAM
   explicit_checkpoint_clone
   fork_exec_info_thr
   get_thread_list
+  hardlink_mmapped_files
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   read_bad_mem

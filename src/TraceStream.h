@@ -137,6 +137,8 @@ public:
               int bind_to_cpu);
 
 private:
+  std::string try_hardlink_file(const std::string& file_name);
+
   // File that stores events (trace frames).
   CompressedWriter events;
   // Files that store raw data saved from tracees (|data|), and
@@ -146,6 +148,7 @@ private:
   // File that stores metadata about files mmap'd during
   // recording.
   CompressedWriter mmaps;
+  uint32_t mmap_count;
 };
 
 class TraceReader : public TraceStream {

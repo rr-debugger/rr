@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 16
+#define TRACE_VERSION 17
 
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
 
@@ -168,49 +168,81 @@ static CompressedReader& operator>>(CompressedReader& in, string& value) {
   return in;
 }
 
+string TraceWriter::try_hardlink_file(const string& file_name) {
+  char link_name[] = "mmap_XXXXXXXXX_hardlink";
+  sprintf(link_name, "mmap_%d_hardlink", mmap_count);
+
+  size_t last_slash = file_name.rfind('/');
+  string basename = (last_slash != file_name.npos)
+                        ? file_name.substr(last_slash + 1)
+                        : file_name;
+
+  string link_path = dir() + "/" + link_name + "_" + basename;
+  int ret = link(file_name.c_str(), link_path.c_str());
+  if (ret < 0) {
+    // maybe tried to link across filesystems?
+    return file_name;
+  }
+  return link_path;
+}
+
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     const TraceMappedRegion& map, int prot, int flags) {
   TraceReader::MappedDataSource source;
+  string backing_file_name;
   if (map.stat().st_ino == 0) {
     source = TraceReader::SOURCE_ZERO;
   } else {
-    source = should_copy_mmap_region(map.file_name(), &map.stat(), prot, flags)
-                 ? TraceReader::SOURCE_TRACE
-                 : TraceReader::SOURCE_FILE;
+    if (should_copy_mmap_region(map.file_name(), &map.stat(), prot, flags)) {
+      source = TraceReader::SOURCE_TRACE;
+    } else {
+      source = TraceReader::SOURCE_FILE;
+      // Try hardlinking file into the trace directory. This will avoid
+      // replay failures if the original file is deleted or replaced (but not
+      // if it is overwritten in-place). If try_hardlink_file fails it
+      // just returns the original file name.
+      // A relative backing_file_name is relative to the trace directory.
+      backing_file_name = try_hardlink_file(map.file_name());
+    }
   }
   mmaps << source << map.file_name() << map.stat() << map.start() << map.end()
-        << map.offset_pages();
+        << map.offset_pages() << backing_file_name;
+  ++mmap_count;
   return source == TraceReader::SOURCE_TRACE ? RECORD_IN_TRACE
                                              : DONT_RECORD_IN_TRACE;
 }
 
-static void verify_backing_file(const TraceMappedRegion& file) {
-  struct stat metadata;
-  if (stat(file.file_name().c_str(), &metadata)) {
-    FATAL() << "Failed to stat " << file.file_name()
+static void verify_backing_file(const TraceMappedRegion& map,
+                                const string& backing_file_name) {
+  struct stat backing_stat;
+  if (stat(backing_file_name.c_str(), &backing_stat)) {
+    FATAL() << "Failed to stat " << backing_file_name
             << ": replay is impossible";
   }
-  if (metadata.st_ino != file.stat().st_ino ||
-      metadata.st_mode != file.stat().st_mode ||
-      metadata.st_uid != file.stat().st_uid ||
-      metadata.st_gid != file.stat().st_gid ||
-      metadata.st_size != file.stat().st_size ||
-      metadata.st_mtime != file.stat().st_mtime ||
-      metadata.st_ctime != file.stat().st_ctime) {
+  if (backing_stat.st_ino != map.stat().st_ino ||
+      backing_stat.st_mode != map.stat().st_mode ||
+      backing_stat.st_uid != map.stat().st_uid ||
+      backing_stat.st_gid != map.stat().st_gid ||
+      backing_stat.st_size != map.stat().st_size ||
+      backing_stat.st_mtime != map.stat().st_mtime) {
     LOG(error)
-        << "Metadata of " << file.file_name()
+        << "Metadata of " << map.file_name()
         << " changed: replay divergence likely, but continuing anyway ...";
   }
 }
 
 TraceMappedRegion TraceReader::read_mapped_region(MappedData* data) {
   TraceMappedRegion map;
+  string backing_file_name;
   mmaps >> data->source >> map.filename >> map.stat_ >> map.start_ >>
-      map.end_ >> map.file_offset_pages;
+      map.end_ >> map.file_offset_pages >> backing_file_name;
   if (data->source == SOURCE_FILE) {
-    data->file_name = map.filename;
+    if (backing_file_name[0] != '/') {
+      backing_file_name = dir() + "/" + backing_file_name;
+    }
+    data->file_name = backing_file_name;
     data->file_data_offset_pages = map.file_offset_pages;
-    verify_backing_file(map);
+    verify_backing_file(map, backing_file_name);
   }
   return map;
 }

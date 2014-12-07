@@ -736,14 +736,15 @@ static remote_ptr<void> finish_direct_mmap(
     }
   }
   /* And mmap that file. */
-  mapped_addr =
-      remote.syscall(has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap,
-                     rec_addr, length,
-                     /* (We let SHARED|WRITEABLE
-                      * mappings go through while
-                      * they're not handled properly,
-                      * but we shouldn't do that.) */
-                     prot, flags, fd, backing_offset_pages);
+  mapped_addr = remote.syscall(
+      has_mmap2_syscall(Arch::arch()) ? Arch::mmap2 : Arch::mmap, rec_addr,
+      length,
+      /* (We let SHARED|WRITEABLE
+       * mappings go through while
+       * they're not handled properly,
+       * but we shouldn't do that.) */
+      prot, flags, fd, backing_offset_pages *
+                           (has_mmap2_syscall(Arch::arch()) ? 1 : page_size()));
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
   remote.syscall(Arch::close, fd);
@@ -1419,11 +1420,13 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
           return process_mmap<Arch>(t, trace_frame, state, args.prot,
-                                    args.flags, args.offset / 4096, step);
+                                    args.flags, args.offset / page_size(),
+                                    step);
         }
         case Arch::RegisterArguments:
           return process_mmap<Arch>(t, trace_frame, state, trace_regs.arg3(),
-                                    trace_regs.arg4(), trace_regs.arg6(), step);
+                                    trace_regs.arg4(),
+                                    trace_regs.arg6() / page_size(), step);
       }
     }
     case Arch::mmap2:
