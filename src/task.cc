@@ -1878,21 +1878,15 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   num_syscallbuf_bytes = SYSCALLBUF_BUFFER_SIZE;
   int prot = PROT_READ | PROT_WRITE;
   int flags = MAP_SHARED;
-  // NB: we don't need to adjust this in the remote syscall below because
-  // 0 == (0 >> PAGE_SIZE).
-  off64_t offset_pages = 0;
   if ((void*)-1 == (map_addr = mmap(nullptr, num_syscallbuf_bytes, prot, flags,
-                                    shmem_fd, offset_pages))) {
+                                    shmem_fd, 0))) {
     FATAL() << "Failed to mmap shmem region";
   }
   if (!map_hint.is_null()) {
     flags |= MAP_FIXED;
   }
-  remote_ptr<void> child_map_addr = remote.syscall(
-      has_mmap2_syscall(remote.arch()) ? syscall_number_for_mmap2(remote.arch())
-                                       : syscall_number_for_mmap(remote.arch()),
-      map_hint, num_syscallbuf_bytes, prot, flags, child_shmem_fd,
-      offset_pages);
+  remote_ptr<void> child_map_addr = remote.mmap_syscall(
+      map_hint, num_syscallbuf_bytes, prot, flags, child_shmem_fd, 0);
   if (!map_hint.is_null()) {
     ASSERT(this, child_map_addr == map_hint)
         << "Tried to map syscallbuf at " << HEX(map_hint.as_int())
@@ -1906,8 +1900,7 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   // No entries to begin with.
   memset(syscallbuf_hdr, 0, sizeof(*syscallbuf_hdr));
 
-  vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags,
-            page_size() * offset_pages,
+  vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0,
             MappableResource::syscallbuf(rec_tid, shmem_fd, shmem_name));
 
   shmem_fd.close();
@@ -2101,11 +2094,9 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
   ASSERT(this, child_fd >= 0);
 
   // Just map the new file right over the top of existing pages
-  int mmap_syscall = has_mmap2_syscall(a) ? syscall_number_for_mmap2(a)
-                                          : syscall_number_for_mmap(a);
-  auto result = remote.syscall(mmap_syscall, page_start, cur.size(), all_prot,
-                               all_flags | MAP_FIXED, child_fd, 0);
-  ASSERT(this, uintptr_t(result) == page_start);
+  auto result = remote.mmap_syscall(page_start, cur.size(), all_prot,
+                                    all_flags | MAP_FIXED, child_fd, 0);
+  ASSERT(this, result.as_int() == page_start);
 
   remote.syscall(syscall_number_for_close(a), child_fd);
 

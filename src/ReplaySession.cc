@@ -98,17 +98,13 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
     }
   }
   // XXX this condition is x86/x64-specific, I imagine.
-  bool page_offset_mmap_in_use = has_mmap2_syscall(remote.arch());
-  remote_ptr<void> addr = remote.syscall(
-      page_offset_mmap_in_use ? syscall_number_for_mmap2(remote.arch())
-                              : syscall_number_for_mmap(remote.arch()),
-      m.start, m.num_bytes(), m.prot,
-      // The remapped segment *must* be
-      // remapped at the same address,
-      // or else many things will go
-      // haywire.
-      m.flags | MAP_FIXED, remote_fd,
-      page_offset_mmap_in_use ? m.offset / page_size() : m.offset);
+  remote_ptr<void> addr = remote.mmap_syscall(m.start, m.num_bytes(), m.prot,
+                                              // The remapped segment *must* be
+                                              // remapped at the same address,
+                                              // or else many things will go
+                                              // haywire.
+                                              m.flags | MAP_FIXED, remote_fd,
+                                              m.offset / page_size());
   ASSERT(remote.task(), addr == m.start);
 
   remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);
