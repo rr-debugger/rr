@@ -60,13 +60,9 @@ static void maybe_process_term_request(RecordSession& session) {
   }
 }
 
-int record(const char* rr_exe, int argc, char* argv[], char** envp) {
+int record(const vector<string>& args, char** envp) {
   LOG(info) << "Start recording...";
 
-  vector<string> args;
-  for (int i = 0; i < argc; ++i) {
-    args.push_back(argv[i]);
-  }
   vector<string> env;
   for (; *envp; ++envp) {
     env.push_back(*envp);

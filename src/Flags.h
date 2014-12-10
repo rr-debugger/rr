@@ -15,6 +15,8 @@
  * Command line arguments for rr
  */
 struct Flags {
+  std::string rr_exe;
+
   /* Max counter value before the scheduler interrupts a tracee. */
   Ticks max_ticks;
 
@@ -194,21 +196,22 @@ struct Flags {
   std::string forced_uarch;
 
   Flags()
-      : max_ticks(0),
-        max_events(0),
+      : max_ticks(DEFAULT_MAX_TICKS),
+        max_events(DEFAULT_MAX_EVENTS),
         ignore_sig(0),
-        redirect(false),
-        use_syscall_buffer(false),
+        redirect(true),
+        use_syscall_buffer(true),
         syscall_buffer_lib_path(""),
-        dump_on(0),
-        dump_at(0),
-        checksum(0),
-        dbgport(0),
+        dump_on(DUMP_ON_NONE),
+        dump_at(DUMP_AT_NONE),
+        checksum(CHECKSUM_NONE),
+        dbgport(-1),
         verbose(false),
         cpu_unbound(false),
         force_things(false),
         mark_stdio(false),
         check_cached_mmaps(false),
+        suppress_environment_warnings(false),
         goto_event(0),
         target_process(0),
         process_created_how(CREATED_NONE),

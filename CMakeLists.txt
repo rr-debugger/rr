@@ -83,27 +83,32 @@ add_executable(rr
   src/test/cpuid_loop.S
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
+  src/Command.cc
   src/CompressedReader.cc
   src/CompressedWriter.cc
   src/CPUIDBugDetector.cc
   src/DiversionSession.cc
+  src/DumpCommand.cc
   src/EmuFs.cc
   src/Event.cc
   src/ExtraRegisters.cc
   src/Flags.cc
   src/GdbConnection.cc
   src/GdbServer.cc
+  src/HelpCommand.cc
   src/kernel_abi.cc
   src/kernel_metadata.cc
   src/log.cc
   src/main.cc
   src/Monkeypatcher.cc
   src/PerfCounters.cc
+  src/RecordCommand.cc
   src/recorder.cc
   src/RecordSession.cc
   src/record_signal.cc
   src/record_syscall.cc
   src/Registers.cc
+  src/ReplayCommand.cc
   src/replayer.cc
   src/ReplaySession.cc
   src/replay_syscall.cc

@@ -4,8 +4,7 @@
 #define RR_RECORDER_H_
 
 #include <string>
-
-class Task;
+#include <vector>
 
 /**
  * Record the execution of the application that will be created by
@@ -14,6 +13,6 @@ class Task;
  * Returns an exit code --- if recording terminates normally, the exit code
  * of the recorded process.
  */
-int record(const char* rr_exe, int argc, char* argv[], char** envp);
+int record(const std::vector<std::string>& args, char** envp);
 
 #endif /* RR_RECORDER_H_ */

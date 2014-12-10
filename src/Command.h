@@ -1,0 +1,59 @@
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
+#ifndef RR_COMMAND_H_
+#define RR_COMMAND_H_
+
+#include <stdio.h>
+
+#include <string>
+#include <vector>
+
+enum OptionParameters {
+  NO_PARAMETER,
+  HAS_PARAMETER
+};
+struct OptionSpec {
+  char short_name;
+  const char* long_name;
+  OptionParameters param;
+};
+struct ParsedOption {
+  char short_name;
+  std::string value;
+};
+
+bool parse_option(std::vector<std::string>& args,
+                  const OptionSpec* option_specs, size_t count,
+                  ParsedOption* out);
+
+template <size_t N>
+bool parse_option(std::vector<std::string>& args,
+                  const OptionSpec (&option_specs)[N], ParsedOption* out) {
+  return parse_option(args, option_specs, N, out);
+}
+
+bool parse_global_option(std::vector<std::string>& args);
+
+int print_usage();
+
+/**
+ * rr command-line commands. Objects of this class must be static, since
+ * they are expected to be immortal.
+ */
+class Command {
+public:
+  static Command* command_for_name(const std::string& name);
+  static void print_help_all(FILE* out);
+
+  /* Runs the command with the given parameters. Returns an exit code. */
+  virtual int run(std::vector<std::string>& args) = 0;
+  void print_help(FILE* out);
+
+protected:
+  Command(const char* name, const char* help);
+
+  const char* name;
+  const char* help;
+};
+
+#endif // RR_COMMAND_H_

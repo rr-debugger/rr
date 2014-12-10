@@ -82,8 +82,8 @@ static void handle_signal(int sig) {
   }
 }
 
-int replay(int argc, char* argv[], char** envp) {
-  string trace_dir = argc > 0 ? argv[0] : "";
+int replay(const std::vector<std::string>& args) {
+  string trace_dir = args.size() > 0 ? args[0] : "";
 
   GdbServer::Target target;
   switch (Flags::get().process_created_how) {

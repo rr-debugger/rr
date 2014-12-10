@@ -10,7 +10,7 @@
  * parameters.
  * Returns an exit code: 0 on success.
  */
-int replay(int argc, char* argv[], char** envp);
+int replay(const std::vector<std::string>& args);
 
 bool trace_instructions_up_to_event(TraceFrame::Time event);
 

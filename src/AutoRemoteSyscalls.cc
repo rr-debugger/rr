@@ -358,8 +358,8 @@ remote_ptr<void> AutoRemoteSyscalls::mmap_syscall(remote_ptr<void> addr,
     syscall(syscall_number_for_mmap2(arch()), addr, length, prot, flags,
             child_fd, (off_t)offset_pages);
   } else {
-    syscall(syscall_number_for_mmap(arch()), addr, length, prot, flags, child_fd,
-            offset_pages * page_size());
+    syscall(syscall_number_for_mmap(arch()), addr, length, prot, flags,
+            child_fd, offset_pages * page_size());
   }
   return t->regs().syscall_result();
 }

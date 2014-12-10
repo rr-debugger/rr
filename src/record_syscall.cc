@@ -2399,8 +2399,8 @@ static void check_syscall_rejected(Task* t) {
   if (t->regs().syscall_result_signed() != -ENOSYS) {
     t->regs().print_register_file(stderr);
     int syscallno = t->ev().Syscall().number;
-    ASSERT(t, false) << "Unhandled syscall " << t->syscall_name(syscallno) << "("
-                     << syscallno << ") returned "
+    ASSERT(t, false) << "Unhandled syscall " << t->syscall_name(syscallno)
+                     << "(" << syscallno << ") returned "
                      << t->regs().syscall_result_signed();
   }
 }
