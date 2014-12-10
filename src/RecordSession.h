@@ -7,6 +7,11 @@
 #include "Session.h"
 #include "task.h"
 
+enum ForceSyscall {
+  DEFAULT_CONT = 0,
+  FORCE_SYSCALL = 1
+};
+
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
 public:
@@ -67,7 +72,7 @@ private:
   virtual void on_create(Task* t);
 
   void check_perf_counters_working(Task* t, RecordResult* step_result);
-  void handle_ptrace_event(Task* t);
+  void handle_ptrace_event(Task* t, ForceSyscall* force_cont);
   void runnable_state_changed(Task* t, RecordResult* step_result);
 
   TraceWriter trace_out;

@@ -1512,9 +1512,6 @@ static void set_up_seccomp_filter() {
                                                      sizeof(filter[0])),
                              .filter = filter, };
 
-  LOG(debug) << "Initializing seccomp filter: untraced syscall ip = "
-             << HEX(in_untraced_syscall_ip);
-
   /* Note: the filter is installed only for record. This call
    * will be emulated in the replay */
   if (0 >

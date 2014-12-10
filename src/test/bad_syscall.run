@@ -1,5 +1,0 @@
-source `dirname $0`/util.sh
-
-fails "rr can't encode bad syscall numbers yet"
-
-compare_test EXIT-SUCCESS

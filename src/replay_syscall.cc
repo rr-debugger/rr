@@ -1279,12 +1279,19 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   }
 
   const struct syscall_def* def = &table[syscall];
-  ASSERT(t, rep_UNDEFINED != def->type) << "Valid but unhandled syscallno "
-                                        << syscall;
-
   step->syscall.number = syscall;
 
   t->maybe_update_vm(syscall, state);
+
+  if (def->type == rep_UNDEFINED) {
+    ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
+        << "Valid but unhandled syscallno " << syscall;
+    step->syscall.num_emu_args = 0;
+    step->action = syscall_action(state);
+    step->syscall.emu = EMULATE;
+    step->syscall.emu_ret = EMULATE_RETURN;
+    return;
+  }
 
   if (rep_IRREGULAR != def->type) {
     step->syscall.num_emu_args = def->num_emu_args;

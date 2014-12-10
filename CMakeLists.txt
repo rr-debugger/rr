@@ -191,6 +191,7 @@ set(BASIC_TESTS
   async_segv_ignored
   at_threadexit
   bad_ip
+  bad_syscall
   barrier
   big_buffers
   block
@@ -317,7 +318,6 @@ set(TESTS_WITH_PROGRAM
   async_signal_syscalls
   async_signal_syscalls_siginfo
   async_usr1
-  bad_syscall
   block_intr_sigchld
   breakpoint
   breakpoint_overlap

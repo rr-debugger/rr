@@ -107,7 +107,20 @@ static bool handle_ptrace_exit_event(Task* t) {
   return true;
 }
 
-void RecordSession::handle_ptrace_event(Task* t) {
+static void handle_seccomp_event(Task* t) {
+  if (t->regs().original_syscallno() < 0) {
+    // negative syscall numbers after a SECCOMP event
+    // are treated as "skip this syscall". There will be one syscall event
+    // recorded instead of two. So, record an enter-syscall event now
+    // and treat the other event as the exit.
+    t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
+    ASSERT(t, EV_SYSCALL == t->ev().type());
+    t->ev().Syscall().state = ENTERING_SYSCALL;
+    t->record_current_event();
+  }
+}
+
+void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
   /* handle events */
   int event = t->ptrace_event();
   if (event != PTRACE_EVENT_NONE) {
@@ -115,11 +128,16 @@ void RecordSession::handle_ptrace_event(Task* t) {
                << ": event " << t->ev();
   }
   switch (event) {
-
     case PTRACE_EVENT_NONE:
     case PTRACE_EVENT_STOP:
+      break;
+
     case PTRACE_EVENT_SECCOMP_OBSOLETE:
     case PTRACE_EVENT_SECCOMP:
+      handle_seccomp_event(t);
+      // The next resume_execution needs to be a PTRACE_SYSCALL to observe
+      // the enter-syscall event (or, for negative syscall numbers, exit).
+      *force_cont = FORCE_SYSCALL;
       break;
 
     case PTRACE_EVENT_CLONE:
@@ -182,10 +200,6 @@ static void debug_exec_state(const char* msg, Task* t) {
              << " pevent=" << t->ptrace_event();
 }
 
-enum ForceSyscall {
-  DEFAULT_CONT = 0,
-  FORCE_SYSCALL = 1
-};
 static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
   bool may_restart = t->at_may_restart_syscall();
 
@@ -239,9 +253,6 @@ static void resume_execution(Task* t, NeedTaskContinue need_task_continue,
 
   if (t->is_ptrace_seccomp_event()) {
     t->seccomp_bpf_enabled = true;
-    /* See long comments above. */
-    LOG(debug) << "  (skipping past seccomp-bpf trap)";
-    resume_execution(t, NEED_TASK_CONTINUE, FORCE_SYSCALL);
   }
 }
 
@@ -481,16 +492,6 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
         t->switchable = PREVENT_SWITCH;
         return;
       }
-
-      ASSERT(t, (-ENOSYS != retval ||
-                 (0 > syscallno || SYS_rrcall_init_buffers == syscallno ||
-                  SYS_rrcall_init_preload == syscallno ||
-                  is_clone_syscall(syscallno, t->arch()) ||
-                  is_exit_group_syscall(syscallno, t->arch()) ||
-                  is_exit_syscall(syscallno, t->arch()) ||
-                  is__sysctl_syscall(syscallno, t->arch()))))
-          << "Exiting syscall " << t->syscall_name(syscallno)
-          << " but retval is -ENOSYS, usually only seen at entry";
 
       LOG(debug) << "  original_syscallno:" << t->regs().original_syscallno()
                  << " (" << t->syscall_name(syscallno)
@@ -888,7 +889,10 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
 
-  handle_ptrace_event(t);
+  NeedTaskContinue need_task_continue = NEED_TASK_CONTINUE;
+  ForceSyscall force_cont = DEFAULT_CONT;
+
+  handle_ptrace_event(t, &force_cont);
 
   if (t->unstable) {
     // Do not record non-ptrace events for tasks in
@@ -898,7 +902,6 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
 
-  bool did_initial_resume = false;
   switch (t->ev().type()) {
     case EV_DESCHED:
       desched_state_changed(t);
@@ -907,7 +910,8 @@ RecordSession::RecordResult RecordSession::record_step() {
       syscall_state_changed(t, by_waitpid);
       return result;
     case EV_SIGNAL_DELIVERY: {
-      if ((did_initial_resume = signal_state_changed(t, by_waitpid))) {
+      if (signal_state_changed(t, by_waitpid)) {
+        need_task_continue = DONT_NEED_TASK_CONTINUE;
         break;
       }
       return result;
@@ -919,8 +923,7 @@ RecordSession::RecordResult RecordSession::record_step() {
   }
 
   if (!t->has_stashed_sig()) {
-    resume_execution(t, did_initial_resume ? DONT_NEED_TASK_CONTINUE
-                                           : NEED_TASK_CONTINUE);
+    resume_execution(t, need_task_continue, force_cont);
   }
 
   // runnable_state_changed can detect errors that
