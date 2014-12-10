@@ -150,9 +150,7 @@ static void handle_signal(int sig) {
   }
 }
 
-static int replay(const vector<string>& args) {
-  string trace_dir = args.size() > 0 ? args[0] : "";
-
+static int replay(const string& trace_dir) {
   GdbServer::Target target;
   switch (Flags::get().process_created_how) {
     case Flags::CREATED_EXEC:
@@ -241,12 +239,13 @@ int ReplayCommand::run(std::vector<std::string>& args) {
   while (parse_replay_arg(args)) {
   }
 
-  if (!verify_not_option(args)) {
+  string trace_dir;
+  if (!parse_optional_trace_dir(args, &trace_dir)) {
     return 1;
   }
 
   assert_prerequisites();
   check_performance_settings();
 
-  return replay(args);
+  return replay(trace_dir);
 }
