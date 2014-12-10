@@ -10,6 +10,7 @@
 #include "Flags.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "main.h"
 #include "RecordSession.h"
 #include "util.h"
 
@@ -199,6 +200,9 @@ int RecordCommand::run(std::vector<std::string>& args) {
     print_help(stderr);
     return 1;
   }
+
+  assert_prerequisites();
+  check_performance_settings();
 
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we

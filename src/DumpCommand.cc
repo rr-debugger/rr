@@ -1,7 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "Command.h"
-
 #include <assert.h>
 #include <inttypes.h>
 
@@ -9,8 +7,10 @@
 
 #include "preload/preload_interface.h"
 
+#include "Command.h"
 #include "Flags.h"
 #include "kernel_metadata.h"
+#include "main.h"
 #include "TraceStream.h"
 
 using namespace std;

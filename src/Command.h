@@ -25,10 +25,6 @@ struct ParsedOption {
   std::string value;
 };
 
-bool parse_global_option(std::vector<std::string>& args);
-
-int print_usage();
-
 /**
  * rr command-line commands. Objects of this class must be static, since
  * they are expected to be immortal.

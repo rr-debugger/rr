@@ -2,18 +2,18 @@
 
 //#define DEBUGTAG "ReplayCommand"
 
-#include "Command.h"
-
 #include <assert.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <limits>
 
+#include "Command.h"
 #include "Flags.h"
 #include "GdbServer.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "main.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 
@@ -244,6 +244,9 @@ int ReplayCommand::run(std::vector<std::string>& args) {
   if (!verify_not_option(args)) {
     return 1;
   }
+
+  assert_prerequisites();
+  check_performance_settings();
 
   return replay(args);
 }

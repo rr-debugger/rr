@@ -1,6 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include <assert.h>
+#include "main.h"
+
 #include <linux/version.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,7 +16,7 @@
 
 using namespace std;
 
-static void assert_prerequisites() {
+void assert_prerequisites() {
   struct utsname uname_buf;
   memset(&uname_buf, 0, sizeof(uname_buf));
   if (!uname(&uname_buf)) {
@@ -36,7 +37,11 @@ static void assert_prerequisites() {
   }
 }
 
-static void check_performance_settings() {
+void check_performance_settings() {
+  if (Flags::get().suppress_environment_warnings) {
+    return;
+  }
+
   // NB: we hard-code "cpu0" here because rr pins itself and all
   // tracees to cpu 0.  We don't care about the other CPUs.
   ScopedFd fd("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
@@ -238,11 +243,6 @@ int main(int argc, char* argv[]) {
       return print_usage();
     }
     command = RecordCommand::get();
-  }
-
-  assert_prerequisites();
-  if (!Flags::get().suppress_environment_warnings) {
-    check_performance_settings();
   }
 
   return command->run(args);

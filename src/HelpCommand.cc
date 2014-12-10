@@ -1,6 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "Command.h"
+#include "main.h"
 
 using namespace std;
 
