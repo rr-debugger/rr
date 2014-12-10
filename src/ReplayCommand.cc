@@ -95,5 +95,9 @@ int ReplayCommand::run(std::vector<std::string>& args) {
   while (parse_replay_arg(args)) {
   }
 
+  if (!verify_not_option(args)) {
+    return 1;
+  }
+
   return replay(args);
 }
