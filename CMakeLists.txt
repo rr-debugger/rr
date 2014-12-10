@@ -103,7 +103,6 @@ add_executable(rr
   src/Monkeypatcher.cc
   src/PerfCounters.cc
   src/RecordCommand.cc
-  src/recorder.cc
   src/RecordSession.cc
   src/record_signal.cc
   src/record_syscall.cc
