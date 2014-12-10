@@ -106,15 +106,15 @@ bool Command::verify_not_option(std::vector<std::string>& args) {
   return true;
 }
 
-unique_ptr<TraceReader> Command::parse_optional_trace_dir(
-    vector<string>& args) {
+bool Command::parse_optional_trace_dir(vector<string>& args, string* out) {
   if (!verify_not_option(args)) {
-    return unique_ptr<TraceReader>();
+    return false;
   }
   if (args.size() > 0) {
-    auto result = unique_ptr<TraceReader>(new TraceReader(args[0]));
+    *out = args[0];
     args.erase(args.begin());
-    return result;
+  } else {
+    *out = string();
   }
-  return unique_ptr<TraceReader>(new TraceReader(""));
+  return true;
 }

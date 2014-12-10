@@ -39,8 +39,8 @@ public:
   void print_help(FILE* out);
 
   static bool verify_not_option(std::vector<std::string>& args);
-  static std::unique_ptr<TraceReader> parse_optional_trace_dir(
-      std::vector<std::string>& args);
+  static bool parse_optional_trace_dir(std::vector<std::string>& args,
+                                       std::string* out);
   static bool parse_option(std::vector<std::string>& args,
                            const OptionSpec* option_specs, size_t count,
                            ParsedOption* out);

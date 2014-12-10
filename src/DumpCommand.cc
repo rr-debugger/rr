@@ -152,7 +152,10 @@ static void dump_statistics(const TraceReader& trace, FILE* out) {
           uncompressed, compressed, double(uncompressed) / compressed);
 }
 
-static void dump(TraceReader& trace, const vector<string>& specs, FILE* out) {
+static void dump(const string& trace_dir, const vector<string>& specs,
+                 FILE* out) {
+  TraceReader trace(trace_dir);
+
   if (Flags::get().raw_dump) {
     fprintf(out, "global_time tid reason "
                  "hw_interrupts page_faults adapted_ticks instructions "
@@ -177,11 +180,11 @@ int DumpCommand::run(std::vector<std::string>& args) {
   while (parse_dump_arg(args)) {
   }
 
-  unique_ptr<TraceReader> trace = parse_optional_trace_dir(args);
-  if (!trace) {
+  string trace_dir;
+  if (!parse_optional_trace_dir(args, &trace_dir)) {
     return 1;
   }
 
-  dump(*trace, args, stdout);
+  dump(trace_dir, args, stdout);
   return 0;
 }
