@@ -96,6 +96,10 @@ int RecordCommand::run(std::vector<std::string>& args) {
   while (parse_record_arg(args)) {
   }
 
+  if (!verify_not_option(args)) {
+    return 1;
+  }
+
   if (args.size() == 0) {
     print_help(stderr);
     return 1;
