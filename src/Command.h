@@ -25,16 +25,6 @@ struct ParsedOption {
   std::string value;
 };
 
-bool parse_option(std::vector<std::string>& args,
-                  const OptionSpec* option_specs, size_t count,
-                  ParsedOption* out);
-
-template <size_t N>
-bool parse_option(std::vector<std::string>& args,
-                  const OptionSpec (&option_specs)[N], ParsedOption* out) {
-  return parse_option(args, option_specs, N, out);
-}
-
 bool parse_global_option(std::vector<std::string>& args);
 
 int print_usage();
@@ -55,6 +45,15 @@ public:
   static bool verify_not_option(std::vector<std::string>& args);
   static std::unique_ptr<TraceReader> parse_optional_trace_dir(
       std::vector<std::string>& args);
+  static bool parse_option(std::vector<std::string>& args,
+                           const OptionSpec* option_specs, size_t count,
+                           ParsedOption* out);
+  template <size_t N>
+  static bool parse_option(std::vector<std::string>& args,
+                           const OptionSpec (&option_specs)[N],
+                           ParsedOption* out) {
+    return parse_option(args, option_specs, N, out);
+  }
 
 protected:
   Command(const char* name, const char* help);

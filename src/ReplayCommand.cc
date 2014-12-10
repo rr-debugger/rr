@@ -54,7 +54,7 @@ static bool parse_replay_arg(std::vector<std::string>& args) {
                                         { 'p', "onprocess", HAS_PARAMETER },
                                         { 'x', "gdb-x", HAS_PARAMETER } };
   ParsedOption opt;
-  if (!parse_option(args, options, &opt)) {
+  if (!Command::parse_option(args, options, &opt)) {
     return false;
   }
 

@@ -45,7 +45,7 @@ static bool parse_record_arg(std::vector<std::string>& args) {
     { 'n', "no-syscall-buffer", NO_PARAMETER }
   };
   ParsedOption opt;
-  if (!parse_option(args, options, &opt)) {
+  if (!Command::parse_option(args, options, &opt)) {
     return false;
   }
 

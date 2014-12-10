@@ -161,7 +161,7 @@ bool parse_global_option(std::vector<std::string>& args) {
   };
 
   ParsedOption opt;
-  if (!parse_option(args, options, &opt)) {
+  if (!Command::parse_option(args, options, &opt)) {
     return false;
   }
 

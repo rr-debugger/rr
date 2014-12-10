@@ -48,9 +48,9 @@ static bool consume_args(std::vector<std::string>& args, size_t count) {
   return true;
 }
 
-bool parse_option(std::vector<std::string>& args,
-                  const OptionSpec* option_specs, size_t count,
-                  ParsedOption* out) {
+bool Command::parse_option(std::vector<std::string>& args,
+                           const OptionSpec* option_specs, size_t count,
+                           ParsedOption* out) {
   if (args.size() == 0 || args[0][0] != '-') {
     return false;
   }
@@ -78,7 +78,7 @@ bool parse_option(std::vector<std::string>& args,
           assert(0 && "Unknown parameter type");
       }
     } else if (args[0][1] == '-' &&
-               args[0].c_str() + 2 == option_specs[i].long_name) {
+               strcmp(args[0].c_str() + 2, option_specs[i].long_name) == 0) {
       out->short_name = option_specs[i].short_name;
       switch (option_specs[i].param) {
         case NO_PARAMETER:

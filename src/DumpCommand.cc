@@ -152,7 +152,7 @@ static bool parse_dump_arg(std::vector<std::string>& args) {
                                         { 'r', "raw", NO_PARAMETER },
                                         { 's', "statistics", NO_PARAMETER } };
   ParsedOption opt;
-  if (!parse_option(args, options, &opt)) {
+  if (!Command::parse_option(args, options, &opt)) {
     return false;
   }
 
