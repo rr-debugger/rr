@@ -15,7 +15,6 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "replay_syscall.h"
-#include "replayer.h"
 #include "task.h"
 #include "util.h"
 

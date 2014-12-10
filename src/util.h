@@ -9,6 +9,7 @@
 #include "Event.h"
 #include "remote_ptr.h"
 #include "ScopedFd.h"
+#include "TraceFrame.h"
 
 class Task;
 class TraceFrame;
@@ -217,5 +218,7 @@ void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
  */
 const int NOT_ELF = 0x10000;
 int read_elf_class(const std::string& filename);
+
+bool trace_instructions_up_to_event(TraceFrame::Time event);
 
 #endif /* RR_UTIL_H_ */

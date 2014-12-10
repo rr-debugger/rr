@@ -109,7 +109,6 @@ add_executable(rr
   src/record_syscall.cc
   src/Registers.cc
   src/ReplayCommand.cc
-  src/replayer.cc
   src/ReplaySession.cc
   src/replay_syscall.cc
   src/Scheduler.cc

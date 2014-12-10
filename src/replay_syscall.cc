@@ -47,7 +47,6 @@
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
-#include "replayer.h"
 #include "ReplaySession.h"
 #include "task.h"
 #include "TraceStream.h"

@@ -17,7 +17,6 @@
 
 #include "kernel_metadata.h"
 #include "log.h"
-#include "replayer.h"
 #include "util.h"
 
 using namespace rr;
