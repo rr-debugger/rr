@@ -103,7 +103,7 @@ long AutoRemoteSyscalls::wait_syscall(int syscallno) {
   ASSERT(t, t->regs().original_syscallno() == syscallno || syscallno < 0)
       << "Should be entering " << t->syscall_name(syscallno)
       << ", but instead at " << t->syscall_name(t->regs().original_syscallno());
-  ASSERT(t, t->regs().syscall_result_signed() != -ENOSYS);
+  ASSERT(t, t->ptrace_event() || t->regs().syscall_result_signed() != -ENOSYS);
 
   return t->regs().syscall_result_signed();
 }
