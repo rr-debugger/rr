@@ -36,6 +36,36 @@ DumpCommand DumpCommand::singleton(
     "  -s, --statistics           dump statistics about the trace\n"
     "  -b, --syscallbuf           dump syscallbuf contents\n");
 
+static bool parse_dump_arg(std::vector<std::string>& args) {
+  if (parse_global_option(args)) {
+    return true;
+  }
+
+  static const OptionSpec options[] = { { 'b', "syscallbuf", NO_PARAMETER },
+                                        { 'r', "raw", NO_PARAMETER },
+                                        { 's', "statistics", NO_PARAMETER } };
+  ParsedOption opt;
+  if (!Command::parse_option(args, options, &opt)) {
+    return false;
+  }
+
+  Flags& flags = Flags::get_for_init();
+  switch (opt.short_name) {
+    case 'b':
+      flags.dump_syscallbuf = true;
+      break;
+    case 'r':
+      flags.raw_dump = true;
+      break;
+    case 's':
+      flags.dump_statistics = true;
+      break;
+    default:
+      assert(0 && "Unknown option");
+  }
+  return true;
+}
+
 static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
                                  const TraceFrame& frame) {
   if (frame.event().type != EV_SYSCALLBUF_FLUSH) {
@@ -141,36 +171,6 @@ static void dump(TraceReader& trace, const vector<string>& specs, FILE* out) {
   if (Flags::get().dump_statistics) {
     dump_statistics(trace, stdout);
   }
-}
-
-static bool parse_dump_arg(std::vector<std::string>& args) {
-  if (parse_global_option(args)) {
-    return true;
-  }
-
-  static const OptionSpec options[] = { { 'b', "syscallbuf", NO_PARAMETER },
-                                        { 'r', "raw", NO_PARAMETER },
-                                        { 's', "statistics", NO_PARAMETER } };
-  ParsedOption opt;
-  if (!Command::parse_option(args, options, &opt)) {
-    return false;
-  }
-
-  Flags& flags = Flags::get_for_init();
-  switch (opt.short_name) {
-    case 'b':
-      flags.dump_syscallbuf = true;
-      break;
-    case 'r':
-      flags.raw_dump = true;
-      break;
-    case 's':
-      flags.dump_statistics = true;
-      break;
-    default:
-      assert(0 && "Unknown option");
-  }
-  return true;
 }
 
 int DumpCommand::run(std::vector<std::string>& args) {
