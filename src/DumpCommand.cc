@@ -36,7 +36,16 @@ DumpCommand DumpCommand::singleton(
     "  -s, --statistics           dump statistics about the trace\n"
     "  -b, --syscallbuf           dump syscallbuf contents\n");
 
-static bool parse_dump_arg(std::vector<std::string>& args) {
+struct DumpFlags {
+  bool dump_syscallbuf;
+  bool raw_dump;
+  bool dump_statistics;
+
+  DumpFlags()
+      : dump_syscallbuf(false), raw_dump(false), dump_statistics(false) {}
+};
+
+static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
   if (parse_global_option(args)) {
     return true;
   }
@@ -49,7 +58,6 @@ static bool parse_dump_arg(std::vector<std::string>& args) {
     return false;
   }
 
-  Flags& flags = Flags::get_for_init();
   switch (opt.short_name) {
     case 'b':
       flags.dump_syscallbuf = true;
@@ -106,8 +114,8 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
  * is, they should comprise disjoint and monotonically increasing
  * event sets.  No attempt is made to enforce this or normalize specs.
  */
-static void dump_events_matching(TraceReader& trace, FILE* out,
-                                 const string* spec) {
+static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
+                                 FILE* out, const string* spec) {
 
   uint32_t start = 0, end = numeric_limits<uint32_t>::max();
 
@@ -118,22 +126,22 @@ static void dump_events_matching(TraceReader& trace, FILE* out,
     start = end = atoi(spec->c_str());
   }
 
-  bool dump_raw_data = Flags::get().dump_syscallbuf;
+  bool dump_raw_data = flags.dump_syscallbuf;
   while (!trace.at_end()) {
     auto frame = trace.read_frame();
     if (end < frame.time()) {
       return;
     }
     if (start <= frame.time() && frame.time() <= end) {
-      if (Flags::get().raw_dump) {
+      if (flags.raw_dump) {
         frame.dump_raw(out);
       } else {
         frame.dump(out);
       }
-      if (Flags::get().dump_syscallbuf) {
+      if (flags.dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
       }
-      if (!Flags::get().raw_dump) {
+      if (!flags.raw_dump) {
         fprintf(out, "}\n");
       }
     }
@@ -152,11 +160,11 @@ static void dump_statistics(const TraceReader& trace, FILE* out) {
           uncompressed, compressed, double(uncompressed) / compressed);
 }
 
-static void dump(const string& trace_dir, const vector<string>& specs,
-                 FILE* out) {
+static void dump(const string& trace_dir, const DumpFlags& flags,
+                 const vector<string>& specs, FILE* out) {
   TraceReader trace(trace_dir);
 
-  if (Flags::get().raw_dump) {
+  if (flags.raw_dump) {
     fprintf(out, "global_time tid reason "
                  "hw_interrupts page_faults adapted_ticks instructions "
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
@@ -164,20 +172,22 @@ static void dump(const string& trace_dir, const vector<string>& specs,
 
   if (specs.size() > 0) {
     for (size_t i = 0; i < specs.size(); ++i) {
-      dump_events_matching(trace, stdout, &specs[i]);
+      dump_events_matching(trace, flags, stdout, &specs[i]);
     }
   } else {
     // No specs => dump all events.
-    dump_events_matching(trace, stdout, nullptr /*all events*/);
+    dump_events_matching(trace, flags, stdout, nullptr /*all events*/);
   }
 
-  if (Flags::get().dump_statistics) {
+  if (flags.dump_statistics) {
     dump_statistics(trace, stdout);
   }
 }
 
 int DumpCommand::run(std::vector<std::string>& args) {
-  while (parse_dump_arg(args)) {
+  DumpFlags flags;
+
+  while (parse_dump_arg(args, flags)) {
   }
 
   string trace_dir;
@@ -185,6 +195,6 @@ int DumpCommand::run(std::vector<std::string>& args) {
     return 1;
   }
 
-  dump(trace_dir, args, stdout);
+  dump(trace_dir, flags, args, stdout);
   return 0;
 }

@@ -175,16 +175,6 @@ struct Flags {
     CREATED_FORK
   } process_created_how;
 
-  // Let the 'dump' command dump trace frames in a more easily machine-parseable
-  // format.
-  bool raw_dump;
-
-  // Let the 'dump' command dump statistics about the trace
-  bool dump_statistics;
-
-  // Let the 'dump' command dump syscallbuf contents
-  bool dump_syscallbuf;
-
   // Only open a debug socket, don't launch the debugger too.
   bool dont_launch_debugger;
 
@@ -215,9 +205,6 @@ struct Flags {
         goto_event(0),
         target_process(0),
         process_created_how(CREATED_NONE),
-        raw_dump(false),
-        dump_statistics(false),
-        dump_syscallbuf(false),
         dont_launch_debugger(false) {}
 
   static const Flags& get() { return singleton; }
