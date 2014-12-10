@@ -215,13 +215,13 @@ static void print_usage(void) {
       "Usage: rr [OPTION] (record|replay|dump) [OPTION]... [ARG]...\n"
       "\n"
       "Common options\n"
-      "  -a, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
+      "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
       "detection\n"
       "                             says otherwise.  NAME should be a string "
       "like\n"
       "                             'Ivy Bridge'.\n"
-      "  -c, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
+      "  -C, --checksum={on-syscalls,on-all-events}|FROM_TIME\n"
       "                             compute and store (during recording) or\n"
       "                             read and verify (during replay) checksums\n"
       "                             of each of a tracee's memory mappings "
@@ -231,36 +231,36 @@ static void print_usage(void) {
       "                             at all events (`on-all-events'), or \n"
       "                             starting from a global timepoint "
       "FROM_TIME\n"
-      "  -d, --dump-on=<SYSCALL_NUM|-SIGNAL_NUM>\n"
+      "  -D, --dump-on=<SYSCALL_NUM|-SIGNAL_NUM>\n"
       "                             dump memory at SYSCALL or SIGNAL to the\n"
       "                             file "
       "`[trace_dir]/[tid].[time]_{rec,rep}':\n"
       "                             `_rec' for dumps during recording, `_rep'\n"
       "                             for dumps during replay\n"
-      "  -f, --force-things\n       force rr to do some things that don't "
+      "  -F, --force-things\n       force rr to do some things that don't "
       "seem\n"
       "                             like good ideas, for example launching an\n"
       "                             interactive emergency debugger if stderr\n"
       "                             isn't a tty.\n"
-      "  -k, --check-cached-mmaps   verify that cached task mmaps match "
+      "  -K, --check-cached-mmaps   verify that cached task mmaps match "
       "/proc/maps\n"
-      "  -e, --fatal-errors         any warning or error that is printed is\n"
+      "  -E, --fatal-errors         any warning or error that is printed is\n"
       "                             treated as fatal\n"
-      "  -m, --mark-stdio           mark stdio writes with [rr.<EVENT-NO>],\n"
+      "  -M, --mark-stdio           mark stdio writes with [rr.<EVENT-NO>],\n"
       "                             where EVENT-NO is the global trace time "
       "at\n"
       "                             which the write occures.\n"
-      "  -s, --suppress-environment-warnings\n"
+      "  -S, --suppress-environment-warnings\n"
       "                             suppress warnings about issues in the\n"
       "                             environment that rr has no control over\n"
-      "  -t, --dump-at=TIME         dump memory at global timepoint TIME\n"
-      "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
+      "  -T, --dump-at=TIME         dump memory at global timepoint TIME\n"
+      "  -U, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
       "                             Default is to bind to CPU 0.  This option\n"
       "                             can cause replay divergence: use with\n"
       "                             caution.\n"
-      "  -v, --verbose              log messages that may not be urgently \n"
+      "  -V, --verbose              log messages that may not be urgently \n"
       "                             critical to the user\n"
-      "  -w, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
+      "  -W, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
       "                             before initiating recording or replaying\n"
       "\n"
       "Syntax for `record'\n"
@@ -423,28 +423,28 @@ static int parse_dump_args(int cmdi, int argc, char** argv, Flags* flags) {
 
 static int parse_common_args(int argc, char** argv, Flags* flags) {
   struct option opts[] = {
-    { "checksum", required_argument, nullptr, 'c' },
-    { "check-cached-mmaps", no_argument, nullptr, 'k' },
-    { "cpu-unbound", no_argument, nullptr, 'u' },
-    { "dump-at", required_argument, nullptr, 't' },
-    { "dump-on", required_argument, nullptr, 'd' },
-    { "force-things", no_argument, nullptr, 'f' },
-    { "force-microarch", required_argument, nullptr, 'a' },
-    { "mark-stdio", no_argument, nullptr, 'm' },
-    { "suppress-environment-warnings", no_argument, nullptr, 's' },
-    { "fatal-errors", no_argument, nullptr, 'e' },
-    { "verbose", no_argument, nullptr, 'v' },
+    { "checksum", required_argument, nullptr, 'C' },
+    { "check-cached-mmaps", no_argument, nullptr, 'K' },
+    { "cpu-unbound", no_argument, nullptr, 'U' },
+    { "dump-at", required_argument, nullptr, 'T' },
+    { "dump-on", required_argument, nullptr, 'D' },
+    { "force-things", no_argument, nullptr, 'F' },
+    { "force-microarch", required_argument, nullptr, 'A' },
+    { "mark-stdio", no_argument, nullptr, 'M' },
+    { "suppress-environment-warnings", no_argument, nullptr, 'S' },
+    { "fatal-errors", no_argument, nullptr, 'E' },
+    { "verbose", no_argument, nullptr, 'V' },
     { 0 }
   };
   while (1) {
     int i = 0;
-    switch (getopt_long(argc, argv, "+a:c:d:efkmst:uvw:", opts, &i)) {
+    switch (getopt_long(argc, argv, "+A:C:D:EFKMST:UVW:", opts, &i)) {
       case -1:
         return optind;
-      case 'a':
+      case 'A':
         flags->forced_uarch = optarg;
         break;
-      case 'c':
+      case 'C':
         if (!strcmp("on-syscalls", optarg)) {
           LOG(info) << "checksumming on syscall exit";
           flags->checksum = Flags::CHECKSUM_SYSCALL;
@@ -456,31 +456,31 @@ static int parse_common_args(int argc, char** argv, Flags* flags) {
           LOG(info) << "checksumming on at event " << flags->checksum;
         }
         break;
-      case 'd':
+      case 'D':
         flags->dump_on = atoi(optarg);
         break;
-      case 'e':
+      case 'E':
         flags->fatal_errors_and_warnings = true;
         break;
-      case 'f':
+      case 'F':
         flags->force_things = true;
         break;
-      case 'k':
+      case 'K':
         flags->check_cached_mmaps = true;
         break;
-      case 'm':
+      case 'M':
         flags->mark_stdio = true;
         break;
-      case 's':
+      case 'S':
         flags->suppress_environment_warnings = true;
         break;
-      case 't':
+      case 'T':
         flags->dump_at = atoi(optarg);
         break;
-      case 'u':
+      case 'U':
         flags->cpu_unbound = true;
         break;
-      case 'v':
+      case 'V':
         flags->verbose = true;
         break;
       default:
