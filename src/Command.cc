@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include "TraceStream.h"
+
 using namespace std;
 
 static vector<Command*>* command_list;
@@ -94,4 +96,25 @@ bool parse_option(std::vector<std::string>& args,
   }
 
   return false;
+}
+
+bool Command::verify_not_option(std::vector<std::string>& args) {
+  if (args.size() > 0 && args[0][0] == '-') {
+    fprintf(stderr, "Unknown option %s\n", args[0].c_str());
+    return false;
+  }
+  return true;
+}
+
+unique_ptr<TraceReader> Command::parse_optional_trace_dir(
+    vector<string>& args) {
+  if (!verify_not_option(args)) {
+    return unique_ptr<TraceReader>();
+  }
+  if (args.size() > 0) {
+    auto result = unique_ptr<TraceReader>(new TraceReader(args[0]));
+    args.erase(args.begin());
+    return result;
+  }
+  return unique_ptr<TraceReader>(new TraceReader(""));
 }

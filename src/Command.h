@@ -5,8 +5,11 @@
 
 #include <stdio.h>
 
+#include <memory>
 #include <string>
 #include <vector>
+
+class TraceReader;
 
 enum OptionParameters {
   NO_PARAMETER,
@@ -48,6 +51,10 @@ public:
   /* Runs the command with the given parameters. Returns an exit code. */
   virtual int run(std::vector<std::string>& args) = 0;
   void print_help(FILE* out);
+
+  static bool verify_not_option(std::vector<std::string>& args);
+  static std::unique_ptr<TraceReader> parse_optional_trace_dir(
+      std::vector<std::string>& args);
 
 protected:
   Command(const char* name, const char* help);

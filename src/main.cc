@@ -88,7 +88,7 @@ int print_usage(void) {
   Command::print_help_all(stderr);
   fputs(
       "\n"
-      "Common options\n"
+      "Common options:\n"
       "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
       "detection\n"
@@ -111,7 +111,7 @@ int print_usage(void) {
       "`[trace_dir]/[tid].[time]_{rec,rep}':\n"
       "                             `_rec' for dumps during recording, `_rep'\n"
       "                             for dumps during replay\n"
-      "  -F, --force-things\n       force rr to do some things that don't "
+      "  -F, --force-things         force rr to do some things that don't "
       "seem\n"
       "                             like good ideas, for example launching an\n"
       "                             interactive emergency debugger if stderr\n"
@@ -234,8 +234,7 @@ int main(int argc, char* argv[]) {
   if (command) {
     args.erase(args.begin());
   } else {
-    if (args[0][0] == '-') {
-      fprintf(stderr, "Unknown option %s\n", args[0].c_str());
+    if (!Command::verify_not_option(args)) {
       return print_usage();
     }
     command = RecordCommand::get();

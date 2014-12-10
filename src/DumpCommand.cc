@@ -122,30 +122,25 @@ static void dump_statistics(const TraceReader& trace, FILE* out) {
           uncompressed, compressed, double(uncompressed) / compressed);
 }
 
-static int dump(const vector<string>& args) {
-  FILE* out = stdout;
-  TraceReader trace(args.size() > 0 ? args[0] : "");
-
+static void dump(TraceReader& trace, const vector<string>& specs, FILE* out) {
   if (Flags::get().raw_dump) {
     fprintf(out, "global_time tid reason "
                  "hw_interrupts page_faults adapted_ticks instructions "
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
   }
 
-  if (args.size() == 1) {
+  if (specs.size() > 0) {
+    for (size_t i = 0; i < specs.size(); ++i) {
+      dump_events_matching(trace, stdout, &specs[i]);
+    }
+  } else {
     // No specs => dump all events.
     dump_events_matching(trace, stdout, nullptr /*all events*/);
-  } else {
-    for (size_t i = 1; i < args.size(); ++i) {
-      dump_events_matching(trace, stdout, &args[i]);
-    }
   }
 
   if (Flags::get().dump_statistics) {
     dump_statistics(trace, stdout);
   }
-
-  return 0;
 }
 
 static bool parse_dump_arg(std::vector<std::string>& args) {
@@ -182,5 +177,11 @@ int DumpCommand::run(std::vector<std::string>& args) {
   while (parse_dump_arg(args)) {
   }
 
-  return dump(args);
+  unique_ptr<TraceReader> trace = parse_optional_trace_dir(args);
+  if (!trace) {
+    return 1;
+  }
+
+  dump(*trace, args, stdout);
+  return 0;
 }
