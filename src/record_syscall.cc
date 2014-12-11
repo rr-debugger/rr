@@ -892,6 +892,21 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
         r.set_arg1(end);
         t->set_regs(r);
       }
+
+      vector<string> cmd_line;
+      remote_ptr<typename Arch::unsigned_word> argv = r.arg2();
+      while (true) {
+        auto p = t->read_mem(argv);
+        if (!p) {
+          break;
+        }
+        cmd_line.push_back(t->read_c_str(p));
+        argv++;
+      }
+      // Save the event. We can't record it here because the exec might fail.
+      t->exec_saved_event = unique_ptr<TraceTaskEvent>(
+          new TraceTaskEvent(t->tid, raw_filename, cmd_line));
+
       return PREVENT_SWITCH;
     }
 
@@ -1592,6 +1607,9 @@ template <typename Arch> static void process_execve(Task* t) {
   if (r.arg1() != 0) {
     return;
   }
+
+  t->record_session().trace_writer().write_task_event(*t->exec_saved_event);
+  t->exec_saved_event = nullptr;
 
   t->post_exec_syscall();
 
@@ -2508,6 +2526,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       new_task->record_remote(child_tid_in_child);
 
       new_task->pop_syscall();
+
+      t->record_session().trace_writer().write_task_event(
+          TraceTaskEvent(new_tid, t->tid, flags));
 
       init_scratch_memory<Arch>(new_task);
       // The new tracee just "finished" a clone that was

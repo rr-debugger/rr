@@ -1116,6 +1116,7 @@ public:
 
   /* The value of arg1 passed to the last execve syscall in this task. */
   uintptr_t exec_saved_arg1;
+  std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
 private:
   Task(Session& session, pid_t tid, pid_t rec_tid, int priority,

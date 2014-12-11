@@ -201,7 +201,7 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
       tasks << event.parent_pid() << event.clone_flags();
       break;
     case TraceTaskEvent::EXEC:
-      tasks << event.cmd_line();
+      tasks << event.file_name() << event.cmd_line();
       break;
     case TraceTaskEvent::NONE:
       assert(0 && "Writing NONE TraceTaskEvent");
@@ -217,7 +217,7 @@ TraceTaskEvent TraceReader::read_task_event() {
       tasks >> r.parent_pid_ >> r.clone_flags_;
       break;
     case TraceTaskEvent::EXEC:
-      tasks >> r.cmd_line_;
+      tasks >> r.file_name_ >> r.cmd_line_;
       break;
     case TraceTaskEvent::NONE:
       assert(0 && "Reading NONE TraceTaskEvent");
