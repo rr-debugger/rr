@@ -39,8 +39,9 @@ ReplayCommand ReplayCommand::singleton(
     "  -g, --goto=<EVENT-NUM>     start a debug server on reaching "
     "<EVENT-NUM>\n"
     "                             in the trace.  See -m above.\n"
-    "  -p, --onprocess=<PID>      start a debug server when <PID> has been\n"
-    "                             exec()d, AND the target event has been\n"
+    "  -p, --onprocess=<PID>|<COMMAND>\n"
+    "                             start a debug server when <PID> or <COMMAND>\n"
+    "                             has been exec()d, AND the target event has been\n"
     "                             reached.\n"
     "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
     "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
@@ -55,6 +56,8 @@ struct ReplayFlags {
   TraceFrame::Time goto_event;
 
   pid_t target_process;
+
+  string target_command;
 
   // We let users specify which process should be "created" before
   // starting a debug session for it.  Problem is, "process" in this
@@ -128,10 +131,14 @@ static bool parse_replay_arg(std::vector<std::string>& args,
       flags.goto_event = opt.int_value;
       break;
     case 'p':
-      if (!opt.verify_valid_int(1, INT32_MAX)) {
-        return false;
+      if (opt.int_value > 0) {
+        if (!opt.verify_valid_int(1, INT32_MAX)) {
+          return false;
+        }
+        flags.target_process = opt.int_value;
+      } else {
+        flags.target_command = opt.value;
       }
-      flags.target_process = opt.int_value;
       flags.process_created_how = ReplayFlags::CREATED_EXEC;
       break;
     case 'q':
@@ -151,6 +158,28 @@ static bool parse_replay_arg(std::vector<std::string>& args,
       assert(0 && "Unknown option");
   }
   return true;
+}
+
+static int find_pid_for_command(const string& trace_dir,
+                                const string& command) {
+  TraceReader trace(trace_dir);
+
+  while (trace.good()) {
+    auto e = trace.read_task_event();
+    if (e.type() != TraceTaskEvent::EXEC) {
+      continue;
+    }
+    if (e.cmd_line().empty()) {
+      continue;
+    }
+    auto& cmd = e.cmd_line()[0];
+    if (cmd == command ||
+        (cmd.size() > command.size() &&
+         cmd.substr(cmd.size() - command.size() - 1) == ('/' + command))) {
+      return e.tid();
+    }
+  }
+  return -1;
 }
 
 // The parent process waits until the server, |waiting_for_child|, creates a
@@ -314,6 +343,16 @@ int ReplayCommand::run(std::vector<std::string>& args) {
   if (!parse_optional_trace_dir(args, &trace_dir)) {
     print_help(stderr);
     return 1;
+  }
+
+  if (!flags.target_command.empty()) {
+    flags.target_process =
+        find_pid_for_command(trace_dir, flags.target_command);
+    if (flags.target_process <= 0) {
+      fprintf(stderr, "No process '%s' found. Try 'rr ps'.\n",
+              flags.target_command.c_str());
+      return 2;
+    }
   }
 
   assert_prerequisites();
