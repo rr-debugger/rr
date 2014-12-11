@@ -3,6 +3,7 @@
 #ifndef RR_COMMAND_H_
 #define RR_COMMAND_H_
 
+#include <stdint.h>
 #include <stdio.h>
 
 #include <memory>
@@ -23,6 +24,9 @@ struct OptionSpec {
 struct ParsedOption {
   char short_name;
   std::string value;
+  int64_t int_value;
+  bool verify_valid_int(int64_t min = INT64_MIN + 1,
+                        int64_t max = INT64_MAX) const;
 };
 
 /**

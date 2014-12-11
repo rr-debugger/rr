@@ -6,6 +6,7 @@
 #include "Scheduler.h"
 #include "Session.h"
 #include "task.h"
+#include "TraceFrame.h"
 
 enum ForceSyscall {
   DEFAULT_CONT = 0,
@@ -18,13 +19,18 @@ public:
   typedef std::shared_ptr<RecordSession> shr_ptr;
 
   /**
-   * Create a recording session for the initial exe image
-   * |exe_path|.  (That argument is used to name the trace
-   * directory.)
+   * Create a recording session for the initial command line |argv|.
    */
+  enum {
+    DISABLE_SYSCALL_BUF = 0x01,
+    CPU_UNBOUND = 0x02
+  };
   static shr_ptr create(const std::vector<std::string>& argv,
-                        const std::vector<std::string>& envp,
-                        const std::string& cwd);
+                        uint32_t flags = 0);
+
+  bool use_syscall_buffer() const { return use_syscall_buffer_; }
+  void set_ignore_sig(int ignore_sig) { this->ignore_sig = ignore_sig; }
+  int get_ignore_sig() const { return ignore_sig; }
 
   enum RecordStatus {
     // Some execution was recorded. record_step() can be called again.
@@ -67,7 +73,7 @@ public:
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
-                int bind_to_cpu);
+                uint32_t flags);
 
   virtual void on_create(Task* t);
 
@@ -79,6 +85,9 @@ private:
   Scheduler scheduler_;
   Task* last_recorded_task;
   TaskGroup::shr_ptr initial_task_group;
+
+  int ignore_sig;
+  bool use_syscall_buffer_;
 
   /* Nonzero when it's safe to deliver signals, namely, when the initial
    * tracee has exec()'d the tracee image.  Before then, the address

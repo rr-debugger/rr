@@ -15,91 +15,16 @@
  * Command line arguments for rr
  */
 struct Flags {
-  std::string rr_exe;
-
-  /* Max counter value before the scheduler interrupts a tracee. */
-  Ticks max_ticks;
-
-  /* Max number of trace events before the scheduler
-   * de-schedules a tracee. */
-  TraceFrame::Time max_events;
-
-  /**
-   * The following parameters define the default scheduling parameters.
-   * The recorder scheduler basically works as follows
-   *
-   *  0. Find a task A with a pending event.
-   *  1. If A was the last task scheduled, decrease its "max-event"
-   *     counter.
-   *  2. Program an HPC interrupt for A that will fire after "max-ticks"
-   *     retired conditional branches (or so, it may not be precise).
-   *  3. Resume the execution of A.
-   *
-   * The next thing that will occur is another scheduling event, after
-   * which one of two things happens
-   *
-   *  0. Task A triggers a trace event in rr, which could be a signal,
-   *     syscall entry/exit, HPC interrupt, ...
-   *  1. Some other task triggers an event.
-   *
-   * And then we make another scheduling decision.
-   *
-   * Like in most task schedulers, there are conflicting goals to
-   * balance.  Lower max-ticks / max-events generally makes the
-   * application more "interactive", generally speaking lower latency.
-   * (And wrt catching bugs, this setting generally creates more
-   * opportunity for bugs to arise in multi-threaded/process
-   * applications.)  This comes at the cost of more overhead from
-   * scheduling and context switching.  Higher max-ticks / max-events
-   * generally gives the application higher throughput.
-   *
-   * The rr scheduler is relatively dumb compared to modern OS
-   * schedulers, but the default parameters are configured to achieve
-   *
-   *  o IO-heavy tasks are relatively quickly switched, in the hope this
-   *    improves latency.
-   *  o CPU-heavy tasks are given an O(10ms) timeslice before being
-   *    switched.
-   *  o Keep max number of HPC interrupts small to avoid overhead.
-   *
-   * In addition to all the aforementioned deficiencies, using retired
-   * conditional branches to compute timeslices is quite crude, since
-   * they don't correspond to any unit of time in general.  Hopefully
-   * that can be improved, but empirical data from Firefox demonstrate,
-   * surprisingly consistently, a distribution of insns/rcb massed
-   * around 10.  Somewhat arbitrarily guessing ~4cycles/insn on average
-   * (fair amount of pointer chasing), that implies
-   *
-   *  10ms = .01s = x rcb * (10insn / rcb) * (4cycle / insn) * (1s / 2e9cycle)
-   *  x = 500000rcb / 10ms
-   *
-   * We'll arbitrarily decide to allow 10 max successive events for
-   * latency reasons.  To try to keep overhead lower (since trace traps
-   * are heavyweight), we'll give each task a relatively large 50ms
-   * timeslice.  This works out to
-   *
-   *   50ms * (500000rcb / 10ms) / 10event = 250000 rcb / event
+  enum {
+    CHECKSUM_NONE = -3,
+    CHECKSUM_SYSCALL = -2,
+    CHECKSUM_ALL = -1
+  };
+  /* When to generate or check memory checksums. One of CHECKSUM_NONE,
+   * CHECKSUM_SYSCALL or CHECKSUM_ALL, or a positive integer representing the
+   * event time at which to start checksumming.
    */
-  enum {
-    DEFAULT_MAX_TICKS = 250000
-  };
-  enum {
-    DEFAULT_MAX_EVENTS = 10
-  };
-
-  /* Whenever |ignore_sig| is pending for a tracee, decline to
-   * deliver it. */
-  int ignore_sig;
-
-  /* When true, echo tracee stdout/stderr writes to console. */
-  bool redirect;
-
-  /* When true, use syscall buffering optimization during recording. */
-  bool use_syscall_buffer;
-
-  /* Path to librrpreload library --- everything but the actual file name
-   * itself. */
-  std::string syscall_buffer_lib_path;
+  int checksum;
 
   enum {
     DUMP_ON_ALL = 10000,
@@ -114,24 +39,9 @@ struct Flags {
   /* time at which to create memory dump */
   int dump_at; // global time
 
-  enum {
-    CHECKSUM_NONE = -3,
-    CHECKSUM_SYSCALL = -2,
-    CHECKSUM_ALL = -1
-  };
-  /* When to generate or check memory checksums. One of CHECKSUM_NONE,
-   * CHECKSUM_SYSCALL or CHECKSUM_ALL, or a positive integer representing the
-   * event time at which to start checksumming.
-   */
-  int checksum;
-
   /* True when not-absolutely-urgently-critical messages will be
    * logged. */
   bool verbose;
-
-  /* True when tracee processes in record and replay are allowed
-   * to run on any logical CPU. */
-  bool cpu_unbound;
 
   // Force rr to do some things that it otherwise wouldn't, for
   // example launching an emergency debugger when the output
@@ -157,17 +67,10 @@ struct Flags {
   std::string forced_uarch;
 
   Flags()
-      : max_ticks(DEFAULT_MAX_TICKS),
-        max_events(DEFAULT_MAX_EVENTS),
-        ignore_sig(0),
-        redirect(true),
-        use_syscall_buffer(true),
-        syscall_buffer_lib_path(""),
+      : checksum(CHECKSUM_NONE),
         dump_on(DUMP_ON_NONE),
         dump_at(DUMP_AT_NONE),
-        checksum(CHECKSUM_NONE),
         verbose(false),
-        cpu_unbound(false),
         force_things(false),
         mark_stdio(false),
         check_cached_mmaps(false),

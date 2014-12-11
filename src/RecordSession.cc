@@ -16,6 +16,8 @@
 using namespace rr;
 using namespace std;
 
+extern char** environ;
+
 /**
  * Create a pulseaudio client config file with shm disabled.  That may
  * be the cause of a mysterious divergence.  Return an envpair to set
@@ -61,8 +63,8 @@ static string create_pulseaudio_config() {
  * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
  * in which case we return -1.
  */
-static int choose_cpu() {
-  if (Flags::get().cpu_unbound) {
+static int choose_cpu(uint32_t flags) {
+  if (flags & RecordSession::CPU_UNBOUND) {
     return -1;
   }
 
@@ -216,7 +218,8 @@ static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
      * syscall_buffer lib in the child, therefore we must
      * record in the traditional way (with PTRACE_SYSCALL)
      * until it is installed. */
-    t->cont_syscall_nonblocking(sig, Flags::get().max_ticks);
+    t->cont_syscall_nonblocking(sig,
+                                t->record_session().scheduler().max_ticks());
   } else {
     /* When the seccomp filter is on, instead of capturing
      * syscalls by using PTRACE_SYSCALL, the filter will
@@ -228,7 +231,7 @@ static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
      * process to continue to the actual entry point of
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
-    t->cont_nonblocking(sig, Flags::get().max_ticks);
+    t->cont_nonblocking(sig, t->record_session().scheduler().max_ticks());
   }
 }
 
@@ -804,17 +807,54 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
   maybe_reset_syscallbuf(t);
 }
 
+static string find_syscall_buffer_library() {
+  char* exe_path = realpath("/proc/self/exe", nullptr);
+  string lib_path = exe_path;
+  free(exe_path);
+
+  int end = lib_path.length();
+  // Chop off the filename
+  while (end > 0 && lib_path[end - 1] != '/') {
+    --end;
+  }
+  lib_path.erase(end);
+  lib_path += "../lib/";
+  string file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
+  if (access(file_name.c_str(), F_OK) != 0) {
+    // File does not exist. Assume install put it in LD_LIBRARY_PATH.
+    lib_path = "";
+  }
+  return lib_path;
+}
+
 /*static*/ RecordSession::shr_ptr RecordSession::create(
-    const vector<string>& argv, const vector<string>& envp, const string& cwd) {
-  vector<string> env = envp;
+    const vector<string>& argv, uint32_t flags) {
+  // The syscallbuf library interposes some critical
+  // external symbols like XShmQueryExtension(), so we
+  // preload it whether or not syscallbuf is enabled. Indicate here whether
+  // syscallbuf is enabled.
+  if (flags & DISABLE_SYSCALL_BUF) {
+    unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
+  } else {
+    setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
+  }
+
+  vector<string> env;
+  char** envp = environ;
+  for (; *envp; ++envp) {
+    env.push_back(*envp);
+  }
+
+  char cwd[PATH_MAX] = "";
+  getcwd(cwd, sizeof(cwd));
 
   // LD_PRELOAD the syscall interception lib
-  if (!Flags::get().syscall_buffer_lib_path.empty()) {
+  string syscall_buffer_lib_path = find_syscall_buffer_library();
+  if (!syscall_buffer_lib_path.empty()) {
     string ld_preload = "LD_PRELOAD=";
     // Our preload lib *must* come first. We supply a placeholder which is
     // then mutated to the correct filename in Monkeypatcher::patch_after_exec.
-    ld_preload +=
-        Flags::get().syscall_buffer_lib_path + SYSCALLBUF_LIB_FILENAME_PADDED;
+    ld_preload += syscall_buffer_lib_path + SYSCALLBUF_LIB_FILENAME_PADDED;
     auto it = env.begin();
     for (; it != env.end(); ++it) {
       if (it->find("LD_PRELOAD=") != 0) {
@@ -839,15 +879,18 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
     env.push_back(env_pair);
   }
 
-  shr_ptr session(new RecordSession(argv, env, cwd, choose_cpu()));
+  shr_ptr session(new RecordSession(argv, env, cwd, flags));
   return session;
 }
 
 RecordSession::RecordSession(const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
-                             const string& cwd, int bind_to_cpu)
-    : trace_out(argv, envp, cwd, bind_to_cpu),
+                             const string& cwd, uint32_t flags)
+    : trace_out(argv, envp, cwd, choose_cpu(flags)),
       scheduler_(*this),
+      last_recorded_task(nullptr),
+      ignore_sig(0),
+      use_syscall_buffer_(!(flags & DISABLE_SYSCALL_BUF)),
       can_deliver_signals(false) {
   last_recorded_task = Task::spawn(*this, trace_out);
   initial_task_group = last_recorded_task->task_group();

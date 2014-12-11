@@ -184,9 +184,9 @@ function save_exe { exe=$1;
 }
 
 # Record $exe with $exeargs.
-function record { exe=$1; exeargs=$2;
+function record { exe=$1;
     save_exe $exe
-    just_record ./$exe-$nonce "$exeargs"
+    just_record ./$exe-$nonce "$2 $3 $4 $5"
 }
 
 #  record_async_signal <signal> <delay-secs> <test>

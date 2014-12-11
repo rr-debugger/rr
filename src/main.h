@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-void assert_prerequisites();
+void assert_prerequisites(bool use_syscall_buffer = false);
 
 void check_performance_settings();
 

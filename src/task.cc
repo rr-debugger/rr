@@ -2239,7 +2239,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
 
   bool will_set_up_seccomp_filter;
   if (session.is_recording()) {
-    will_set_up_seccomp_filter = Flags::get().use_syscall_buffer;
+    will_set_up_seccomp_filter = session.as_record()->use_syscall_buffer();
   } else {
     // If the first syscall in the trace is prctl, we should take the
     // seccomp path to stay consistent with recording.
@@ -2319,7 +2319,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                      PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
                      PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL;
 
-  if (Flags::get().use_syscall_buffer) {
+  if (session.is_recording() && will_set_up_seccomp_filter) {
     options |= PTRACE_O_TRACESECCOMP;
   }
 

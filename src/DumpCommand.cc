@@ -192,6 +192,7 @@ int DumpCommand::run(std::vector<std::string>& args) {
 
   string trace_dir;
   if (!parse_optional_trace_dir(args, &trace_dir)) {
+    print_help(stderr);
     return 1;
   }
 

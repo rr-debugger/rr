@@ -16,8 +16,6 @@
 
 using namespace std;
 
-extern char** environ;
-
 RecordCommand RecordCommand::singleton(
     "record",
     " rr record [OPTION]... <exe> [exe-args]...\n"
@@ -35,9 +33,41 @@ RecordCommand RecordCommand::singleton(
     "                             Probably only useful for unit tests.\n"
     "  -n, --no-syscall-buffer    disable the syscall buffer preload "
     "library\n"
-    "                             even if it would otherwise be used\n");
+    "                             even if it would otherwise be used\n"
+    "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
+    "                             Default is to bind to CPU 0.  This option\n"
+    "                             can cause replay divergence: use with\n"
+    "                             caution.\n");
 
-static bool parse_record_arg(std::vector<std::string>& args) {
+struct RecordFlags {
+  /* Max counter value before the scheduler interrupts a tracee. */
+  Ticks max_ticks;
+
+  /* Max number of trace events before the scheduler
+   * de-schedules a tracee. */
+  TraceFrame::Time max_events;
+
+  /* Whenever |ignore_sig| is pending for a tracee, decline to
+   * deliver it. */
+  int ignore_sig;
+
+  /* When true, use syscall buffering optimization during recording. */
+  bool use_syscall_buffer;
+
+  /* True when tracee processes in record and replay are allowed
+   * to run on any logical CPU. */
+  bool cpu_unbound;
+
+  RecordFlags()
+      : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
+        max_events(Scheduler::DEFAULT_MAX_EVENTS),
+        ignore_sig(0),
+        use_syscall_buffer(true),
+        cpu_unbound(false) {}
+};
+
+static bool parse_record_arg(std::vector<std::string>& args,
+                             RecordFlags& flags) {
   if (parse_global_option(args)) {
     return true;
   }
@@ -47,33 +77,49 @@ static bool parse_record_arg(std::vector<std::string>& args) {
     { 'i', "ignore-signal", HAS_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'e', "num-events", HAS_PARAMETER },
-    { 'n', "no-syscall-buffer", NO_PARAMETER }
+    { 'n', "no-syscall-buffer", NO_PARAMETER },
+    { 'u', "cpu-unbound", NO_PARAMETER }
   };
   ParsedOption opt;
-  if (!Command::parse_option(args, options, &opt)) {
+  auto args_copy = args;
+  if (!Command::parse_option(args_copy, options, &opt)) {
     return false;
   }
 
-  Flags& flags = Flags::get_for_init();
   switch (opt.short_name) {
     case 'b':
       flags.use_syscall_buffer = true;
       break;
     case 'c':
-      flags.max_ticks = max(1, atoi(optarg));
+      if (!opt.verify_valid_int(1, INT64_MAX)) {
+        return false;
+      }
+      flags.max_ticks = opt.int_value;
       break;
     case 'e':
-      flags.max_events = max(1, atoi(optarg));
+      if (!opt.verify_valid_int(1, UINT32_MAX)) {
+        return false;
+      }
+      flags.max_events = opt.int_value;
+      ;
       break;
     case 'i':
-      flags.ignore_sig = min(_NSIG - 1, max(1, atoi(optarg)));
+      if (!opt.verify_valid_int(1, _NSIG - 1)) {
+        return false;
+      }
+      flags.ignore_sig = opt.int_value;
       break;
     case 'n':
       flags.use_syscall_buffer = false;
       break;
+    case 'u':
+      flags.cpu_unbound = true;
+      break;
     default:
       assert(0 && "Unknown option");
   }
+
+  args = args_copy;
   return true;
 }
 
@@ -119,20 +165,23 @@ static void maybe_process_term_request(RecordSession& session) {
   }
 }
 
-static int record(const vector<string>& args, char** envp) {
+static void setup_session_from_flags(RecordSession& session,
+                                     const RecordFlags& flags) {
+  session.scheduler().set_max_ticks(flags.max_ticks);
+  session.scheduler().set_max_events(flags.max_events);
+  session.set_ignore_sig(flags.ignore_sig);
+}
+
+static int record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
-
-  vector<string> env;
-  for (; *envp; ++envp) {
-    env.push_back(*envp);
-  }
-
-  char cwd[PATH_MAX] = "";
-  getcwd(cwd, sizeof(cwd));
 
   install_termsig_handlers();
 
-  auto session = RecordSession::create(args, env, cwd);
+  auto session = RecordSession::create(
+      args,
+      (flags.cpu_unbound ? RecordSession::CPU_UNBOUND : 0) |
+          (flags.use_syscall_buffer ? 0 : RecordSession::DISABLE_SYSCALL_BUF));
+  setup_session_from_flags(*session, flags);
 
   RecordSession::RecordResult step_result;
   while ((step_result = session->record_step()).status ==
@@ -168,51 +217,18 @@ static int record(const vector<string>& args, char** envp) {
   return step_result.exit_code;
 }
 
-static string find_syscall_buffer_library() {
-  char* exe_path = realpath("/proc/self/exe", nullptr);
-  string lib_path = exe_path;
-  free(exe_path);
-
-  int end = lib_path.length();
-  // Chop off the filename
-  while (end > 0 && lib_path[end - 1] != '/') {
-    --end;
-  }
-  lib_path.erase(end);
-  lib_path += "../lib/";
-  string file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
-  if (access(file_name.c_str(), F_OK) != 0) {
-    // File does not exist. Assume install put it in LD_LIBRARY_PATH.
-    lib_path = "";
-  }
-  return lib_path;
-}
-
 int RecordCommand::run(std::vector<std::string>& args) {
-  while (parse_record_arg(args)) {
+  RecordFlags flags;
+  while (parse_record_arg(args, flags)) {
   }
 
-  if (!verify_not_option(args)) {
-    return 1;
-  }
-
-  if (args.size() == 0) {
+  if (!verify_not_option(args) || args.size() == 0) {
     print_help(stderr);
     return 1;
   }
 
-  assert_prerequisites();
+  assert_prerequisites(flags.use_syscall_buffer);
   check_performance_settings();
 
-  // The syscallbuf library interposes some critical
-  // external symbols like XShmQueryExtension(), so we
-  // preload it whether or not syscallbuf is enabled.
-  if (Flags::get().use_syscall_buffer) {
-    setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
-  } else {
-    unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
-  }
-  Flags::get_for_init().syscall_buffer_lib_path = find_syscall_buffer_library();
-
-  return record(args, environ);
+  return record(args, flags);
 }

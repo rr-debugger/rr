@@ -17,11 +17,12 @@
 
 #include "preload/preload_interface.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "Flags.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "PerfCounters.h"
-#include "AutoRemoteSyscalls.h"
+#include "RecordSession.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -364,7 +365,7 @@ static void record_signal(Task* t, const siginfo_t* si) {
   t->set_siginfo(*si);
 
   int sig = si->si_signo;
-  if (sig == Flags::get().ignore_sig) {
+  if (sig == t->record_session().get_ignore_sig()) {
     LOG(info) << "Declining to deliver " << signal_name(sig)
               << " by user request";
     t->push_event(Event::noop(t->arch()));

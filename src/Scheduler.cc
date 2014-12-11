@@ -144,8 +144,6 @@ static double now_sec(void) {
 #endif
 
 Task* Scheduler::get_next_thread(Task* t, bool* by_waitpid) {
-  int max_events = Flags::get().max_events;
-
   LOG(debug) << "Scheduling next task";
 
   *by_waitpid = false;

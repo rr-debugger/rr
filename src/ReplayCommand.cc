@@ -115,25 +115,37 @@ static bool parse_replay_arg(std::vector<std::string>& args,
       flags.dont_launch_debugger = true;
       break;
     case 'f':
-      flags.target_process = atoi(optarg);
+      if (!opt.verify_valid_int(1, INT32_MAX)) {
+        return false;
+      }
+      flags.target_process = opt.int_value;
       flags.process_created_how = ReplayFlags::CREATED_FORK;
       break;
     case 'g':
-      flags.goto_event = atoi(optarg);
+      if (!opt.verify_valid_int(1, UINT32_MAX)) {
+        return false;
+      }
+      flags.goto_event = opt.int_value;
       break;
     case 'p':
-      flags.target_process = atoi(optarg);
+      if (!opt.verify_valid_int(1, INT32_MAX)) {
+        return false;
+      }
+      flags.target_process = opt.int_value;
       flags.process_created_how = ReplayFlags::CREATED_EXEC;
       break;
     case 'q':
       flags.redirect = false;
       break;
     case 's':
-      flags.dbg_port = atoi(optarg);
+      if (!opt.verify_valid_int(1, INT32_MAX)) {
+        return false;
+      }
+      flags.dbg_port = opt.int_value;
       flags.dont_launch_debugger = true;
       break;
     case 'x':
-      flags.gdb_command_file_path = optarg;
+      flags.gdb_command_file_path = opt.value;
       break;
     default:
       assert(0 && "Unknown option");
@@ -300,6 +312,7 @@ int ReplayCommand::run(std::vector<std::string>& args) {
 
   string trace_dir;
   if (!parse_optional_trace_dir(args, &trace_dir)) {
+    print_help(stderr);
     return 1;
   }
 

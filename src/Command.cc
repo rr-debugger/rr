@@ -1,5 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#define _BSD_SOURCE
+
 #include "Command.h"
 
 #include <assert.h>
@@ -8,6 +10,13 @@
 #include "TraceStream.h"
 
 using namespace std;
+
+bool ParsedOption::verify_valid_int(int64_t min, int64_t max) const {
+  if (int_value < min || int_value > max) {
+    return false;
+  }
+  return true;
+}
 
 static vector<Command*>* command_list;
 
@@ -48,6 +57,18 @@ static bool consume_args(std::vector<std::string>& args, size_t count) {
   return true;
 }
 
+static void assign_param(ParsedOption* opt, const char* s) {
+  opt->value = s;
+  opt->int_value = INT64_MIN;
+  if (!opt->value.empty()) {
+    char* end;
+    int64_t v = strtoll(s, &end, 10);
+    if (*end == 0) {
+      opt->int_value = v;
+    }
+  }
+}
+
 bool Command::parse_option(std::vector<std::string>& args,
                            const OptionSpec* option_specs, size_t count,
                            ParsedOption* out) {
@@ -66,11 +87,11 @@ bool Command::parse_option(std::vector<std::string>& args,
           return false;
         case HAS_PARAMETER:
           if (args[0][2] != 0) {
-            out->value = args[0].c_str() + 1;
+            assign_param(out, args[0].c_str() + 2);
             return consume_args(args, 1);
           }
           if (args.size() >= 2) {
-            out->value = args[1];
+            assign_param(out, args[1].c_str());
             return consume_args(args, 2);
           }
           return false;
@@ -85,7 +106,7 @@ bool Command::parse_option(std::vector<std::string>& args,
           return consume_args(args, 1);
         case HAS_PARAMETER:
           if (args.size() >= 2) {
-            out->value = args[1];
+            assign_param(out, args[1].c_str());
             return consume_args(args, 2);
           }
           return false;
@@ -100,7 +121,7 @@ bool Command::parse_option(std::vector<std::string>& args,
 
 bool Command::verify_not_option(std::vector<std::string>& args) {
   if (args.size() > 0 && args[0][0] == '-') {
-    fprintf(stderr, "Unknown option %s\n", args[0].c_str());
+    fprintf(stderr, "Invalid option %s\n", args[0].c_str());
     return false;
   }
   return true;

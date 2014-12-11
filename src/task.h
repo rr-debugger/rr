@@ -993,7 +993,7 @@ public:
    * which approximately corresponds to the number of events
    * it's processed in succession.  The scheduler maintains this
    * state and uses it to make scheduling decisions. */
-  int succ_event_counter;
+  uint32_t succ_event_counter;
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. */

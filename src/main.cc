@@ -16,7 +16,7 @@
 
 using namespace std;
 
-void assert_prerequisites() {
+void assert_prerequisites(bool use_syscall_buffer) {
   struct utsname uname_buf;
   memset(&uname_buf, 0, sizeof(uname_buf));
   if (!uname(&uname_buf)) {
@@ -29,7 +29,7 @@ void assert_prerequisites() {
               << "functionality; need 3.4.0 or better.";
     }
 
-    if (Flags::get().use_syscall_buffer &&
+    if (use_syscall_buffer &&
         KERNEL_VERSION(major, minor, 0) < KERNEL_VERSION(3, 5, 0)) {
       FATAL() << "Your kernel does not support syscall "
               << "filtering; please use the -n option";
@@ -133,10 +133,6 @@ int print_usage(void) {
       "                             suppress warnings about issues in the\n"
       "                             environment that rr has no control over\n"
       "  -T, --dump-at=TIME         dump memory at global timepoint TIME\n"
-      "  -U, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
-      "                             Default is to bind to CPU 0.  This option\n"
-      "                             can cause replay divergence: use with\n"
-      "                             caution.\n"
       "  -V, --verbose              log messages that may not be urgently \n"
       "                             critical to the user\n"
       "  -W, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
@@ -207,9 +203,6 @@ bool parse_global_option(std::vector<std::string>& args) {
       break;
     case 'T':
       flags.dump_at = atoi(opt.value.c_str());
-      break;
-    case 'U':
-      flags.cpu_unbound = true;
       break;
     case 'V':
       flags.verbose = true;

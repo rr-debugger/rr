@@ -14,6 +14,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "log.h"
+#include "RecordSession.h"
 #include "Session.h"
 #include "task.h"
 
@@ -574,11 +575,13 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 
   ASSERT(t, !t->session().as_record() ||
-                Flags::get().use_syscall_buffer == !!params.syscallbuf_enabled)
+                t->session().as_record()->use_syscall_buffer() ==
+                    params.syscallbuf_enabled)
       << "Tracee thinks syscallbuf is "
       << (params.syscallbuf_enabled ? "en" : "dis")
       << "abled, but tracer thinks "
-      << (Flags::get().use_syscall_buffer ? "en" : "dis") << "abled";
+      << (t->session().as_record()->use_syscall_buffer() ? "en" : "dis")
+      << "abled";
 
   if (!params.syscallbuf_enabled) {
     return;
