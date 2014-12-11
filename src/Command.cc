@@ -9,6 +9,7 @@
 
 #include <algorithm>
 
+#include "main.h"
 #include "TraceStream.h"
 
 using namespace std;
@@ -63,7 +64,13 @@ void Command::print_help_all(FILE* out) {
   }
 }
 
-void Command::print_help(FILE* out) { fputs(help, out); }
+void Command::print_help(FILE* out) {
+  if (help) {
+    fputs(help, out);
+  } else {
+    print_usage();
+  }
+}
 
 static bool consume_args(std::vector<std::string>& args, size_t count) {
   args.erase(args.begin(), args.begin() + count);
