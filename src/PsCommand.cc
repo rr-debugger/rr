@@ -30,6 +30,19 @@ static void print_exec_cmd_line(const TraceTaskEvent& event, FILE* out) {
   fprintf(out, "\n");
 }
 
+static void update_tid_to_pid_map(std::map<pid_t, pid_t>& tid_to_pid,
+                                  const TraceTaskEvent& e) {
+  if (e.type() == TraceTaskEvent::CLONE) {
+    if (e.clone_flags() & CLONE_VM) {
+      // thread clone. Record thread's pid.
+      tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
+    } else {
+      // Some kind of fork. This task is its own pid.
+      tid_to_pid[e.tid()] = e.tid();
+    }
+  }
+}
+
 static int ps(const string& trace_dir, FILE* out) {
   TraceReader trace(trace_dir);
 
@@ -53,24 +66,29 @@ static int ps(const string& trace_dir, FILE* out) {
 
   for (size_t i = 1; i < events.size(); ++i) {
     auto& e = events[i];
-    if (e.type() == TraceTaskEvent::CLONE) {
-      if (e.clone_flags() & CLONE_VM) {
-        // thread fork. Record thread's pid.
-        tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
-      } else {
-        // Some kind of fork. Find the command line.
-        tid_to_pid[e.tid()] = e.tid();
-        fprintf(out, "%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()]);
-        for (size_t j = i + 1; j < events.size(); ++j) {
-          if (events[j].tid() == e.tid()) {
-            if (events[j].type() == TraceTaskEvent::EXEC) {
-              print_exec_cmd_line(events[j], out);
-              break;
-            } else if (events[j].type() == TraceTaskEvent::EXIT) {
-              fprintf(out, "(forked without exec)\n");
-              break;
-            }
-          }
+    update_tid_to_pid_map(tid_to_pid, e);
+
+    if (e.type() == TraceTaskEvent::CLONE && !(e.clone_flags() & CLONE_VM)) {
+      fprintf(out, "%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()]);
+
+      // Look ahead for an EXEC in one of this process' threads.
+      std::map<pid_t, pid_t> tmp_tid_to_pid = tid_to_pid;
+      for (size_t j = i + 1; j < events.size(); ++j) {
+        auto& ej = events[j];
+
+        if (tmp_tid_to_pid[ej.tid()] == tmp_tid_to_pid[e.tid()] &&
+            ej.type() == TraceTaskEvent::EXEC) {
+          print_exec_cmd_line(events[j], out);
+          break;
+        }
+
+        update_tid_to_pid_map(tmp_tid_to_pid, ej);
+
+        if (ej.tid() == e.tid() && ej.type() == TraceTaskEvent::EXIT) {
+          // The main thread exited. All other threads must too, so there
+          // is no more opportunity for e's pid to exec.
+          fprintf(out, "(forked without exec)\n");
+          break;
         }
       }
     }
