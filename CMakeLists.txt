@@ -172,6 +172,11 @@ if(rr_64BIT)
   target_link_libraries(rrpreload_32
     -ldl
   )
+
+  install(TARGETS rrpreload_32
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib)
 endif()
 
 ##--------------------------------------------------
