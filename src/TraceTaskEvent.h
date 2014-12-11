@@ -26,12 +26,14 @@ public:
   TraceTaskEvent(pid_t pid, const std::string& file_name,
                  const std::vector<std::string> cmd_line)
       : type_(EXEC), pid_(pid), file_name_(file_name), cmd_line_(cmd_line) {}
+  TraceTaskEvent(pid_t pid) : type_(EXIT), pid_(pid) {}
   TraceTaskEvent() : type_(NONE) {}
 
   enum Type {
     NONE,
     CLONE,
-    EXEC
+    EXEC,
+    EXIT
   };
 
   Type type() const { return type_; }

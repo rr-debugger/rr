@@ -203,6 +203,8 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
     case TraceTaskEvent::EXEC:
       tasks << event.file_name() << event.cmd_line();
       break;
+    case TraceTaskEvent::EXIT:
+      break;
     case TraceTaskEvent::NONE:
       assert(0 && "Writing NONE TraceTaskEvent");
       break;
@@ -219,8 +221,11 @@ TraceTaskEvent TraceReader::read_task_event() {
     case TraceTaskEvent::EXEC:
       tasks >> r.file_name_ >> r.cmd_line_;
       break;
+    case TraceTaskEvent::EXIT:
+      break;
     case TraceTaskEvent::NONE:
-      assert(0 && "Reading NONE TraceTaskEvent");
+      // Should be EOF only
+      assert(!tasks.good());
       break;
   }
   return r;

@@ -8,7 +8,6 @@
 #include "preload/preload_interface.h"
 
 #include "Command.h"
-#include "Flags.h"
 #include "kernel_metadata.h"
 #include "main.h"
 #include "TraceStream.h"
@@ -27,7 +26,7 @@ protected:
 
 DumpCommand DumpCommand::singleton(
     "dump",
-    " rr dump [OPTIONS] <trace_dir> [<event-spec>...]\n"
+    " rr dump [OPTIONS] [<trace_dir>] [<event-spec>...]\n"
     "  Event specs can be either an event number like `127', or a range\n"
     "  like `1000-5000'.  By default, all events are dumped.\n"
     "  -r, --raw                  dump trace frames in a more easily\n"
