@@ -15,6 +15,7 @@
 #include "remote_ptr.h"
 #include "TraceFrame.h"
 #include "TraceMappedRegion.h"
+#include "TraceTaskEvent.h"
 
 /**
  * TraceStream stores all the data common to both recording and
@@ -115,6 +116,11 @@ public:
   void write_raw(const void* data, size_t len, remote_ptr<void> addr);
 
   /**
+   * Write a task event (clone or exec record) to the trace.
+   */
+  void write_task_event(const TraceTaskEvent& event);
+
+  /**
    * Return true iff all trace files are "good".
    */
   bool good() const;
@@ -194,6 +200,11 @@ public:
    * Also returns where to get the mapped data in 'data'.
    */
   TraceMappedRegion read_mapped_region(MappedData* data);
+
+  /**
+   * Read a task event (clone or exec record) from the trace.
+   */
+  TraceTaskEvent read_task_event();
 
   /**
    * Read the next raw data record and return it.

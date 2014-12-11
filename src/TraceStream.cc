@@ -145,16 +145,16 @@ static CompressedWriter& operator<<(CompressedWriter& out, const T& value) {
   return out;
 }
 
-static CompressedWriter& operator<<(CompressedWriter& out,
-                                    const string& value) {
-  out.write(value.c_str(), value.size() + 1);
-  return out;
-}
-
 template <typename T>
 static CompressedReader& operator>>(CompressedReader& in, T& value) {
   in.read(&value, sizeof(value));
   return in;
+}
+
+static CompressedWriter& operator<<(CompressedWriter& out,
+                                    const string& value) {
+  out.write(value.c_str(), value.size() + 1);
+  return out;
 }
 
 static CompressedReader& operator>>(CompressedReader& in, string& value) {
@@ -168,6 +168,62 @@ static CompressedReader& operator>>(CompressedReader& in, string& value) {
     value.append(1, ch);
   }
   return in;
+}
+
+template <typename T>
+static CompressedWriter& operator<<(CompressedWriter& out,
+                                    const std::vector<T>& value) {
+  out << value.size();
+  for (auto& i : value) {
+    out << i;
+  }
+  return out;
+}
+
+template <typename T>
+static CompressedReader& operator>>(CompressedReader& in,
+                                    std::vector<T>& value) {
+  size_t len;
+  in >> len;
+  value.resize(0);
+  for (size_t i = 0; i < len; ++i) {
+    T v;
+    in >> v;
+    value.push_back(v);
+  }
+  return in;
+}
+
+void TraceWriter::write_task_event(const TraceTaskEvent& event) {
+  tasks << event.type() << event.pid();
+  switch (event.type()) {
+    case TraceTaskEvent::CLONE:
+      tasks << event.parent_pid() << event.clone_flags();
+      break;
+    case TraceTaskEvent::EXEC:
+      tasks << event.cmd_line();
+      break;
+    case TraceTaskEvent::NONE:
+      assert(0 && "Writing NONE TraceTaskEvent");
+      break;
+  }
+}
+
+TraceTaskEvent TraceReader::read_task_event() {
+  TraceTaskEvent r;
+  tasks >> r.type_ >> r.pid_;
+  switch (r.type()) {
+    case TraceTaskEvent::CLONE:
+      tasks >> r.parent_pid_ >> r.clone_flags_;
+      break;
+    case TraceTaskEvent::EXEC:
+      tasks >> r.cmd_line_;
+      break;
+    case TraceTaskEvent::NONE:
+      assert(0 && "Reading NONE TraceTaskEvent");
+      break;
+  }
+  return r;
 }
 
 string TraceWriter::try_hardlink_file(const string& file_name) {
