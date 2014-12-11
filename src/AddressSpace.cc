@@ -1175,7 +1175,12 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   FileId id;
   if (is_dynamic_heap) {
     id = FileId(PSEUDODEVICE_HEAP);
-    as->update_heap(as->heap.start, info.end_addr);
+    if (!as->heap.start) {
+      // No guess for the heap start. Assume it's just the [heap] segment.
+      as->update_heap(info.start_addr, info.end_addr);
+    } else {
+      as->update_heap(as->heap.start, info.end_addr);
+    }
   } else if ("[stack]" == info.name) {
     id = FileId(PSEUDODEVICE_STACK);
   } else if ("[vdso]" == info.name) {
