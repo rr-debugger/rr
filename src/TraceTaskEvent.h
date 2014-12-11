@@ -18,15 +18,15 @@ class TraceWriter;
 
 class TraceTaskEvent {
 public:
-  TraceTaskEvent(pid_t pid, pid_t parent_pid, uint32_t clone_flags)
+  TraceTaskEvent(pid_t tid, pid_t parent_tid, uint32_t clone_flags)
       : type_(CLONE),
-        pid_(pid),
-        parent_pid_(parent_pid),
+        tid_(tid),
+        parent_tid_(parent_tid),
         clone_flags_(clone_flags) {}
-  TraceTaskEvent(pid_t pid, const std::string& file_name,
+  TraceTaskEvent(pid_t tid, const std::string& file_name,
                  const std::vector<std::string> cmd_line)
-      : type_(EXEC), pid_(pid), file_name_(file_name), cmd_line_(cmd_line) {}
-  TraceTaskEvent(pid_t pid) : type_(EXIT), pid_(pid) {}
+      : type_(EXEC), tid_(tid), file_name_(file_name), cmd_line_(cmd_line) {}
+  TraceTaskEvent(pid_t tid) : type_(EXIT), tid_(tid) {}
   TraceTaskEvent() : type_(NONE) {}
 
   enum Type {
@@ -37,10 +37,10 @@ public:
   };
 
   Type type() const { return type_; }
-  pid_t pid() const { return pid_; }
-  pid_t parent_pid() const {
+  pid_t tid() const { return tid_; }
+  pid_t parent_tid() const {
     assert(type() == CLONE);
-    return parent_pid_;
+    return parent_tid_;
   }
   uintptr_t clone_flags() const {
     assert(type() == CLONE);
@@ -60,8 +60,8 @@ private:
   friend class TraceWriter;
 
   Type type_;
-  pid_t pid_;
-  pid_t parent_pid_;                  // CLONE only
+  pid_t tid_;
+  pid_t parent_tid_;                  // CLONE only
   uintptr_t clone_flags_;             // CLONE only
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only

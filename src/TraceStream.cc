@@ -195,10 +195,10 @@ static CompressedReader& operator>>(CompressedReader& in,
 }
 
 void TraceWriter::write_task_event(const TraceTaskEvent& event) {
-  tasks << event.type() << event.pid();
+  tasks << event.type() << event.tid();
   switch (event.type()) {
     case TraceTaskEvent::CLONE:
-      tasks << event.parent_pid() << event.clone_flags();
+      tasks << event.parent_tid() << event.clone_flags();
       break;
     case TraceTaskEvent::EXEC:
       tasks << event.file_name() << event.cmd_line();
@@ -213,10 +213,10 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
 
 TraceTaskEvent TraceReader::read_task_event() {
   TraceTaskEvent r;
-  tasks >> r.type_ >> r.pid_;
+  tasks >> r.type_ >> r.tid_;
   switch (r.type()) {
     case TraceTaskEvent::CLONE:
-      tasks >> r.parent_pid_ >> r.clone_flags_;
+      tasks >> r.parent_tid_ >> r.clone_flags_;
       break;
     case TraceTaskEvent::EXEC:
       tasks >> r.file_name_ >> r.cmd_line_;

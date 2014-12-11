@@ -47,22 +47,22 @@ static int ps(const string& trace_dir, FILE* out) {
 
   std::map<pid_t, pid_t> tid_to_pid;
 
-  fprintf(out, "%d\t--\t", events[0].pid());
+  fprintf(out, "%d\t--\t", events[0].tid());
   print_exec_cmd_line(events[0], out);
-  tid_to_pid[events[0].pid()] = events[0].pid();
+  tid_to_pid[events[0].tid()] = events[0].tid();
 
   for (size_t i = 1; i < events.size(); ++i) {
     auto& e = events[i];
     if (e.type() == TraceTaskEvent::CLONE) {
       if (e.clone_flags() & CLONE_VM) {
         // thread fork. Record thread's pid.
-        tid_to_pid[e.pid()] = tid_to_pid[e.parent_pid()];
+        tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
       } else {
         // Some kind of fork. Find the command line.
-        tid_to_pid[e.pid()] = e.pid();
-        fprintf(out, "%d\t%d\t", e.pid(), tid_to_pid[e.parent_pid()]);
+        tid_to_pid[e.tid()] = e.tid();
+        fprintf(out, "%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()]);
         for (size_t j = i + 1; j < events.size(); ++j) {
-          if (events[j].pid() == e.pid()) {
+          if (events[j].tid() == e.tid()) {
             if (events[j].type() == TraceTaskEvent::EXEC) {
               print_exec_cmd_line(events[j], out);
               break;
