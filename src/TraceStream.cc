@@ -64,11 +64,13 @@ static void ensure_default_rr_trace_dir() {
 }
 
 bool TraceWriter::good() const {
-  return events.good() && data.good() && data_header.good() && mmaps.good();
+  return events.good() && data.good() && data_header.good() && mmaps.good() &&
+         tasks.good();
 }
 
 bool TraceReader::good() const {
-  return events.good() && data.good() && data_header.good() && mmaps.good();
+  return events.good() && data.good() && data_header.good() && mmaps.good() &&
+         tasks.good();
 }
 
 void TraceWriter::write_frame(const TraceFrame& frame) {
@@ -305,6 +307,7 @@ void TraceWriter::close() {
   data.close();
   data_header.close();
   mmaps.close();
+  tasks.close();
 }
 
 static string make_trace_dir(const string& exe_path) {
@@ -339,7 +342,8 @@ TraceWriter::TraceWriter(const std::vector<std::string>& argv,
       events(events_path(), 1024 * 1024, 1),
       data(data_path(), 8 * 1024 * 1024, 3),
       data_header(data_header_path(), 1024 * 1024, 1),
-      mmaps(mmaps_path(), 64 * 1024, 1) {
+      mmaps(mmaps_path(), 64 * 1024, 1),
+      tasks(tasks_path(), 64 * 1024, 1) {
   this->argv = argv;
   this->envp = envp;
   this->cwd = cwd;
@@ -414,6 +418,7 @@ void TraceReader::rewind() {
   data.rewind();
   data_header.rewind();
   mmaps.rewind();
+  tasks.rewind();
   global_time = 0;
   assert(good());
 }
@@ -428,7 +433,8 @@ TraceReader::TraceReader(const string& dir)
       events(events_path()),
       data(data_path()),
       data_header(data_header_path()),
-      mmaps(mmaps_path()) {
+      mmaps(mmaps_path()),
+      tasks(tasks_path()) {
   string path = version_path();
   fstream vfile(path.c_str(), fstream::in);
   if (!vfile.good()) {
@@ -473,10 +479,12 @@ TraceReader::TraceReader(const string& dir)
 
 uint64_t TraceReader::uncompressed_bytes() const {
   return events.uncompressed_bytes() + data.uncompressed_bytes() +
-         data_header.uncompressed_bytes() + mmaps.uncompressed_bytes();
+         data_header.uncompressed_bytes() + mmaps.uncompressed_bytes() +
+         tasks.uncompressed_bytes();
 }
 
 uint64_t TraceReader::compressed_bytes() const {
   return events.compressed_bytes() + data.compressed_bytes() +
-         data_header.compressed_bytes() + mmaps.compressed_bytes();
+         data_header.compressed_bytes() + mmaps.compressed_bytes() +
+         tasks.uncompressed_bytes();
 }

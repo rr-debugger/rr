@@ -52,6 +52,7 @@ protected:
   string data_path() const { return trace_dir + "/data"; }
   string data_header_path() const { return trace_dir + "/data_header"; }
   string mmaps_path() const { return trace_dir + "/mmaps"; }
+  string tasks_path() const { return trace_dir + "/tasks"; }
   /**
    * Return the path of the "args_env" file, into which the
    * initial tracee argv and envp are recorded.
@@ -148,6 +149,8 @@ private:
   // File that stores metadata about files mmap'd during
   // recording.
   CompressedWriter mmaps;
+  // File that stores task creation and exec events
+  CompressedWriter tasks;
   uint32_t mmap_count;
 };
 
@@ -253,7 +256,8 @@ public:
         events(other.events),
         data(other.data),
         data_header(other.data_header),
-        mmaps(other.mmaps) {
+        mmaps(other.mmaps),
+        tasks(other.tasks) {
     argv = other.argv;
     envp = other.envp;
     cwd = other.cwd;
@@ -270,6 +274,8 @@ private:
   // File that stores metadata about files mmap'd during
   // recording.
   CompressedReader mmaps;
+  // File that stores task creation and exec events
+  CompressedReader tasks;
 };
 
 #endif /* RR_TRACE_H_ */
