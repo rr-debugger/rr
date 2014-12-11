@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include <algorithm>
+
 #include "TraceStream.h"
 
 using namespace std;
@@ -36,11 +38,22 @@ Command* Command::command_for_name(const std::string& name) {
   return nullptr;
 }
 
+bool Command::less_than_by_name(Command* c1, Command* c2) {
+  return strcmp(c1->name, c2->name) < 0;
+}
+
 void Command::print_help_all(FILE* out) {
+  vector<Command*> cmds;
   for (auto& it : *command_list) {
     if (!it->help) {
       continue;
     }
+    cmds.push_back(it);
+  }
+
+  sort(cmds.begin(), cmds.end(), less_than_by_name);
+
+  for (auto& it : cmds) {
     const char* c = strchr(it->help, '\n');
     if (c) {
       fprintf(out, "%.*s\n", (int)(c - it->help), it->help);

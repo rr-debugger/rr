@@ -58,6 +58,8 @@ public:
 protected:
   Command(const char* name, const char* help);
 
+  static bool less_than_by_name(Command* c1, Command* c2);
+
   const char* name;
   const char* help;
 };
