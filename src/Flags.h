@@ -125,9 +125,6 @@ struct Flags {
    */
   int checksum;
 
-  /* IP port to listen on for debug connections. */
-  int dbgport;
-
   /* True when not-absolutely-urgently-critical messages will be
    * logged. */
   bool verbose;
@@ -155,32 +152,6 @@ struct Flags {
   // Any warning or error that would be printed is treated as fatal
   bool fatal_errors_and_warnings;
 
-  // Start a debug server for the task scheduled at the first
-  // event at which reached this event AND target_process has
-  // been "created".
-  TraceFrame::Time goto_event;
-
-  pid_t target_process;
-
-  // We let users specify which process should be "created" before
-  // starting a debug session for it.  Problem is, "process" in this
-  // context is ambiguous.  It could mean the "thread group", which is
-  // created at fork().  Or it could mean the "address space", which is
-  // created at exec() (after the fork).
-  //
-  // We force choosers to specify which they mean.
-  enum {
-    CREATED_NONE,
-    CREATED_EXEC,
-    CREATED_FORK
-  } process_created_how;
-
-  // Only open a debug socket, don't launch the debugger too.
-  bool dont_launch_debugger;
-
-  // Pass this file name to debugger with -x
-  std::string gdb_command_file_path;
-
   // User override for architecture detection, e.g. when running
   // under valgrind.
   std::string forced_uarch;
@@ -195,17 +166,12 @@ struct Flags {
         dump_on(DUMP_ON_NONE),
         dump_at(DUMP_AT_NONE),
         checksum(CHECKSUM_NONE),
-        dbgport(-1),
         verbose(false),
         cpu_unbound(false),
         force_things(false),
         mark_stdio(false),
         check_cached_mmaps(false),
-        suppress_environment_warnings(false),
-        goto_event(0),
-        target_process(0),
-        process_created_how(CREATED_NONE),
-        dont_launch_debugger(false) {}
+        suppress_environment_warnings(false) {}
 
   static const Flags& get() { return singleton; }
 

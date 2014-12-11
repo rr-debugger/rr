@@ -583,7 +583,7 @@ GdbRequest GdbServer::replay_one_step() {
     command = Session::RUN_CONTINUE;
   }
 
-  auto result = session->replay_step(command);
+  auto result = session->replay_step(command, target.event);
 
   GdbRequest no_restart;
   no_restart.type = DREQ_NONE;
@@ -615,12 +615,6 @@ GdbRequest GdbServer::replay_one_step() {
   }
   return no_restart;
 }
-
-/**
- * Return true if a side effect of creating the debugger interface
- * will be checkpointing the replay session.
- */
-static bool will_checkpoint() { return !Flags::get().dont_launch_debugger; }
 
 /**
  * Return true if |t| appears to have entered but not exited an atomic
@@ -673,7 +667,7 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
  * This must be called before scheduling the task for the next event
  * (and thereby mutating the TraceIfstream for that event).
  */
-void GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
+void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   if (debugger_active) {
     return;
   }
@@ -704,7 +698,7 @@ void GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // leader".
   if (event_now < target.event || (target.pid && t->tgid() != target.pid) ||
       (target.pid && target.require_exec && !t->vm()->execed()) ||
-      (will_checkpoint() && !can_checkpoint_at(t, next_frame))) {
+      !can_checkpoint_at(t, next_frame)) {
     return;
   }
 
@@ -720,16 +714,14 @@ void GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   // checkpoint below if one is created.
   t->replay_session().set_debugged_tgid(t->tgid());
 
-  if (will_checkpoint()) {
-    // Have the "checkpoint" be the original replay
-    // session, and then switch over to using the cloned
-    // session.  The cloned tasks will look like children
-    // of the clonees, so this scheme prevents |pstree|
-    // output from getting /too/ far out of whack.
-    debugger_restart_checkpoint = session;
-    session = session->clone();
-    t = session->find_task(t->rec_tid);
-  }
+  // Have the "checkpoint" be the original replay
+  // session, and then switch over to using the cloned
+  // session.  The cloned tasks will look like children
+  // of the clonees, so this scheme prevents |pstree|
+  // output from getting /too/ far out of whack.
+  debugger_restart_checkpoint = session;
+  session = session->clone();
+  t = session->find_task(t->rec_tid);
 
   // Store the current tgid and event as the "execution target"
   // for the next replay session, if we end up restarting.  This
@@ -740,21 +732,19 @@ void GdbServer::maybe_connect_debugger(ScopedFd* debugger_params_write_pipe) {
   target.event = event_now;
 
   if (!dbg) {
-    unsigned short port =
-        (Flags::get().dbgport > 0) ? Flags::get().dbgport : getpid();
+    unsigned short port = flags.dbg_port > 0 ? flags.dbg_port : getpid();
     // Don't probe if the user specified a port.  Explicitly
     // selecting a port is usually done by scripts, which would
     // presumably break if a different port were to be selected by
     // rr (otherwise why would they specify a port in the first
     // place).  So fail with a clearer error message.
-    auto probe = (Flags::get().dbgport > 0) ? GdbConnection::DONT_PROBE
-                                            : GdbConnection::PROBE_PORT;
-    const string* exe =
-        Flags::get().dont_launch_debugger ? nullptr : &t->vm()->exe_image();
-    dbg = GdbConnection::await_client_connection(port, probe, t->tgid(), exe,
-                                                 debugger_params_write_pipe);
-    if (debugger_params_write_pipe) {
-      debugger_params_write_pipe->close();
+    auto probe = flags.dbg_port > 0 ? GdbConnection::DONT_PROBE
+                                    : GdbConnection::PROBE_PORT;
+    dbg = GdbConnection::await_client_connection(
+        port, probe, t->tgid(), t->vm()->exe_image(),
+        flags.debugger_params_write_pipe);
+    if (flags.debugger_params_write_pipe) {
+      flags.debugger_params_write_pipe->close();
     }
   }
 
@@ -799,13 +789,10 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
   }
 }
 
-void GdbServer::serve_replay(const string& trace_dir,
-                             ScopedFd* debugger_params_write_pipe) {
-  session = ReplaySession::create(trace_dir);
-
+void GdbServer::serve_replay(const ConnectionFlags& flags) {
   while (true) {
     while (!session->last_task()) {
-      maybe_connect_debugger(debugger_params_write_pipe);
+      maybe_connect_debugger(flags);
 
       GdbRequest restart_request = replay_one_step();
       maybe_restart_session(restart_request);
@@ -830,8 +817,10 @@ void GdbServer::serve_replay(const string& trace_dir,
   LOG(debug) << "debugger server exiting ...";
 }
 
-void GdbServer::launch_gdb(ScopedFd& params_pipe_fd) {
-  GdbConnection::launch_gdb(params_pipe_fd, gdb_rr_macros);
+void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
+                           const string& gdb_command_file_path) {
+  GdbConnection::launch_gdb(params_pipe_fd, gdb_rr_macros,
+                            gdb_command_file_path);
 }
 
 void GdbServer::emergency_debug(Task* t) {
@@ -846,7 +835,7 @@ void GdbServer::emergency_debug(Task* t) {
   // control another session. Instead, launch a new GdbServer and wait for
   // the user to connect from another window.
   unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
-      t->tid, GdbConnection::PROBE_PORT, t->tgid());
+      t->tid, GdbConnection::PROBE_PORT, t->tgid(), string());
 
   GdbServer(dbg).process_debugger_requests(t);
 }

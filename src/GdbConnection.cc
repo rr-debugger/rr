@@ -119,14 +119,14 @@ struct DebuggerParams {
 
 unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     unsigned short desired_port, ProbePort probe, pid_t tgid,
-    const string* exe_image, ScopedFd* client_params_fd) {
+    const string& exe_image, ScopedFd* client_params_fd) {
   auto dbg = unique_ptr<GdbConnection>(new GdbConnection(tgid));
   unsigned short port = desired_port;
   ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
-  if (exe_image) {
+  if (client_params_fd) {
     DebuggerParams params;
     memset(&params, 0, sizeof(params));
-    strncpy(params.exe_image, exe_image->c_str(), sizeof(params.exe_image) - 1);
+    strncpy(params.exe_image, exe_image.c_str(), sizeof(params.exe_image) - 1);
     params.port = port;
 
     ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
@@ -159,7 +159,8 @@ static string create_gdb_command_file(const char* macros) {
   return procfile.str();
 }
 
-void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
+void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
+                               const string& gdb_command_file_path) {
   DebuggerParams params;
   ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
   if (nread == 0) {
@@ -194,7 +195,6 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros) {
   args.push_back("-l");
   args.push_back("-1");
   args.push_back(params.exe_image);
-  const string& gdb_command_file_path = Flags::get().gdb_command_file_path;
   if (gdb_command_file_path.length() > 0) {
     args.push_back("-x");
     args.push_back(gdb_command_file_path);

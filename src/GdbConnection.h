@@ -205,15 +205,15 @@ public:
   };
   static std::unique_ptr<GdbConnection> await_client_connection(
       unsigned short desired_port, ProbePort probe, pid_t tgid,
-      const std::string* exe_image = nullptr,
-      ScopedFd* client_params_fd = nullptr);
+      const std::string& exe_image, ScopedFd* client_params_fd = nullptr);
 
   /**
    * Exec gdb using the params that were written to
    * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
    * of macros defined in |macros| if nonnull.
    */
-  static void launch_gdb(ScopedFd& params_pipe_fd, const char* macros);
+  static void launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
+                         const std::string& gdb_command_file_path);
 
   /**
    * Call this when the target of |req| is needed to fulfill the

@@ -167,7 +167,7 @@ static void __ptrace_cont(Task* t) {
 
 template <typename Arch>
 static void rep_maybe_replay_stdio_write_arch(Task* t) {
-  if (!Flags::get().redirect) {
+  if (!t->replay_session().redirect_stdio()) {
     return;
   }
 

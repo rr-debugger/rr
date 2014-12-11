@@ -48,7 +48,50 @@ ReplayCommand ReplayCommand::singleton(
     "                             client too.\n"
     "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n");
 
-static bool parse_replay_arg(std::vector<std::string>& args) {
+struct ReplayFlags {
+  // Start a debug server for the task scheduled at the first
+  // event at which reached this event AND target_process has
+  // been "created".
+  TraceFrame::Time goto_event;
+
+  pid_t target_process;
+
+  // We let users specify which process should be "created" before
+  // starting a debug session for it.  Problem is, "process" in this
+  // context is ambiguous.  It could mean the "thread group", which is
+  // created at fork().  Or it could mean the "address space", which is
+  // created at exec() (after the fork).
+  //
+  // We force choosers to specify which they mean.
+  enum {
+    CREATED_NONE,
+    CREATED_EXEC,
+    CREATED_FORK
+  } process_created_how;
+
+  // Only open a debug socket, don't launch the debugger too.
+  bool dont_launch_debugger;
+
+  // IP port to listen on for debug connections.
+  int dbg_port;
+
+  // Pass this file name to debugger with -x
+  string gdb_command_file_path;
+
+  /* When true, echo tracee stdout/stderr writes to console. */
+  bool redirect;
+
+  ReplayFlags()
+      : goto_event(0),
+        target_process(0),
+        process_created_how(CREATED_NONE),
+        dont_launch_debugger(false),
+        dbg_port(-1),
+        redirect(true) {}
+};
+
+static bool parse_replay_arg(std::vector<std::string>& args,
+                             ReplayFlags& flags) {
   if (parse_global_option(args)) {
     return true;
   }
@@ -66,7 +109,6 @@ static bool parse_replay_arg(std::vector<std::string>& args) {
     return false;
   }
 
-  Flags& flags = Flags::get_for_init();
   switch (opt.short_name) {
     case 'a':
       flags.goto_event = numeric_limits<decltype(flags.goto_event)>::max();
@@ -74,20 +116,20 @@ static bool parse_replay_arg(std::vector<std::string>& args) {
       break;
     case 'f':
       flags.target_process = atoi(optarg);
-      flags.process_created_how = Flags::CREATED_FORK;
+      flags.process_created_how = ReplayFlags::CREATED_FORK;
       break;
     case 'g':
       flags.goto_event = atoi(optarg);
       break;
     case 'p':
       flags.target_process = atoi(optarg);
-      flags.process_created_how = Flags::CREATED_EXEC;
+      flags.process_created_how = ReplayFlags::CREATED_EXEC;
       break;
     case 'q':
       flags.redirect = false;
       break;
     case 's':
-      flags.dbgport = atoi(optarg);
+      flags.dbg_port = atoi(optarg);
       flags.dont_launch_debugger = true;
       break;
     case 'x':
@@ -117,8 +159,15 @@ static void set_sig_blockedness(int sig, int blockedness) {
   }
 }
 
-static void serve_replay_no_debugger(const string& trace_dir) {
+static void setup_session_from_flags(ReplaySession& session,
+                                     const ReplayFlags& flags) {
+  session.set_redirect_stdio(flags.redirect);
+}
+
+static void serve_replay_no_debugger(const string& trace_dir,
+                                     const ReplayFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
+  setup_session_from_flags(*replay_session, flags);
 
   while (true) {
     auto result = replay_session->replay_step(ReplaySession::RUN_CONTINUE);
@@ -150,30 +199,34 @@ static void handle_signal(int sig) {
   }
 }
 
-static int replay(const string& trace_dir) {
+static int replay(const string& trace_dir, const ReplayFlags& flags) {
   GdbServer::Target target;
-  switch (Flags::get().process_created_how) {
-    case Flags::CREATED_EXEC:
-      target.pid = Flags::get().target_process;
+  switch (flags.process_created_how) {
+    case ReplayFlags::CREATED_EXEC:
+      target.pid = flags.target_process;
       target.require_exec = true;
       break;
-    case Flags::CREATED_FORK:
-      target.pid = Flags::get().target_process;
+    case ReplayFlags::CREATED_FORK:
+      target.pid = flags.target_process;
       target.require_exec = false;
       break;
-    case Flags::CREATED_NONE:
+    case ReplayFlags::CREATED_NONE:
       break;
   }
-  target.event = Flags::get().goto_event;
+  target.event = flags.goto_event;
 
   // If we're not going to autolaunch the debugger, don't go
   // through the rigamarole to set that up.  All it does is
   // complicate the process tree and confuse users.
-  if (Flags::get().dont_launch_debugger) {
+  if (flags.dont_launch_debugger) {
     if (target.event == numeric_limits<decltype(target.event)>::max()) {
-      serve_replay_no_debugger(trace_dir);
+      serve_replay_no_debugger(trace_dir, flags);
     } else {
-      GdbServer::serve(trace_dir, target);
+      auto session = ReplaySession::create(trace_dir);
+      setup_session_from_flags(*session, flags);
+      GdbServer::ConnectionFlags conn_flags;
+      conn_flags.dbg_port = flags.dbg_port;
+      GdbServer::serve(session, target, conn_flags);
     }
     return 0;
   }
@@ -199,7 +252,12 @@ static int replay(const string& trace_dir) {
     // debugger server isn't set up to handle SIGINT.  So
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
-    GdbServer::serve(trace_dir, target, &debugger_params_write_pipe);
+    auto session = ReplaySession::create(trace_dir);
+    setup_session_from_flags(*session, flags);
+    GdbServer::ConnectionFlags conn_flags;
+    conn_flags.dbg_port = flags.dbg_port;
+    conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
+    GdbServer::serve(session, target, conn_flags);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
@@ -209,7 +267,7 @@ static int replay(const string& trace_dir) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    GdbServer::launch_gdb(params_pipe_read_fd);
+    GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_command_file_path);
   }
 
   // Child must have died before we were able to get debugger parameters
@@ -236,7 +294,8 @@ static int replay(const string& trace_dir) {
 }
 
 int ReplayCommand::run(std::vector<std::string>& args) {
-  while (parse_replay_arg(args)) {
+  ReplayFlags flags;
+  while (parse_replay_arg(args, flags)) {
   }
 
   string trace_dir;
@@ -247,5 +306,5 @@ int ReplayCommand::run(std::vector<std::string>& args) {
   assert_prerequisites();
   check_performance_settings();
 
-  return replay(trace_dir);
+  return replay(trace_dir, flags);
 }

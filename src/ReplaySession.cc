@@ -225,7 +225,7 @@ void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
   return session;
 }
 
-void ReplaySession::advance_to_next_trace_frame() {
+void ReplaySession::advance_to_next_trace_frame(TraceFrame::Time stop_at_time) {
   if (last_task()) {
     // Already finished replay; no need to advance (and in fact, we can't).
     return;
@@ -240,7 +240,7 @@ void ReplaySession::advance_to_next_trace_frame() {
     TraceFrame next_frame = trace_in.peek_frame();
     while (EV_SCHED == next_frame.event().type &&
            next_frame.tid() == trace_frame.tid() &&
-           Flags::get().goto_event != next_frame.time() &&
+           stop_at_time != next_frame.time() &&
            !trace_instructions_up_to_event(next_frame.time())) {
       trace_frame = trace_in.read_frame();
       next_frame = trace_in.peek_frame();
@@ -854,11 +854,12 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
  * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
  * emulation was interrupted, COMPLETE if completed.
  */
-Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
+Completion ReplaySession::emulate_signal_delivery(
+    Task* oldtask, int sig, TraceFrame::Time stop_at_time) {
   // We are now at the exact point in the child where the signal
   // was recorded, emulate it using the next trace frame (records
   // the state at sighandler entry).
-  advance_to_next_trace_frame();
+  advance_to_next_trace_frame(stop_at_time);
   Task* t = current_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
@@ -1286,7 +1287,8 @@ static bool has_deterministic_ticks(const Event& ev,
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
  * more work.
  */
-Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi) {
+Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi,
+                                             TraceFrame::Time stop_at_time) {
   switch (current_step.action) {
     case TSTEP_RETIRE:
       return COMPLETE;
@@ -1300,7 +1302,7 @@ Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi) {
       return emulate_async_signal(t, current_step.target.signo, stepi,
                                   current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(t, current_step.signo);
+      return emulate_signal_delivery(t, current_step.signo, stop_at_time);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, stepi);
     case TSTEP_PATCH_SYSCALL:
@@ -1439,7 +1441,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 }
 
-ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
+ReplaySession::ReplayResult ReplaySession::replay_step(
+    RunCommand command, TraceFrame::Time stop_at_time) {
   ReplayResult result;
 
   Task* t = current_task();
@@ -1463,7 +1466,7 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
       if (last_task()) {
         result.status = REPLAY_EXITED;
       } else {
-        advance_to_next_trace_frame();
+        advance_to_next_trace_frame(stop_at_time);
       }
       return result;
     }
@@ -1471,7 +1474,7 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
 
   /* Advance towards fulfilling |current_step|. */
   ReplayTraceStepType current_action = current_step.action;
-  if (try_one_trace_step(t, command) == INCOMPLETE) {
+  if (try_one_trace_step(t, command, stop_at_time) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
@@ -1526,7 +1529,7 @@ ReplaySession::ReplayResult ReplaySession::replay_step(RunCommand command) {
 
   // Record that this step completed successfully.
   current_step.action = TSTEP_NONE;
-  advance_to_next_trace_frame();
+  advance_to_next_trace_frame(stop_at_time);
 
   return result;
 }

@@ -25,22 +25,35 @@ public:
     TraceFrame::Time event;
   };
 
+  struct ConnectionFlags {
+    // -1 to let GdbServer choose the port, a positive integer to select a
+    // specific port to listen on.
+    int dbg_port;
+    // If non-null, then when the gdbserver is set up, we write its connection
+    // parameters through this pipe. GdbServer::launch_gdb is passed the
+    // other end of this pipe to exec gdb with the parameters.
+    ScopedFd* debugger_params_write_pipe;
+
+    ConnectionFlags() : dbg_port(-1), debugger_params_write_pipe(nullptr) {}
+  };
+
   /**
    * Create a gdbserver serving the replay of 'trace_dir'.
    * If debugger_params_write_pipe is non-null, write gdb launch parameters
    * to the pipe; another process should call launch_gdb with the other end
    * of the pipe to exec() gdb.
    */
-  static void serve(const std::string& trace_dir, const Target& target,
-                    ScopedFd* debugger_params_write_pipe = nullptr) {
-    GdbServer(target).serve_replay(trace_dir, debugger_params_write_pipe);
+  static void serve(std::shared_ptr<ReplaySession> session,
+                    const Target& target, const ConnectionFlags& flags) {
+    GdbServer(session, target).serve_replay(flags);
   }
 
   /**
    * exec()'s gdb using parameters read from params_pipe_fd (and sent through
    * the pipe passed to serve_replay_with_debugger).
    */
-  static void launch_gdb(ScopedFd& params_pipe_fd);
+  static void launch_gdb(ScopedFd& params_pipe_fd,
+                         const std::string& gdb_command_file_path);
 
   /**
    * Start a debugging connection for |t| and return when there are no
@@ -53,8 +66,11 @@ public:
   static void emergency_debug(Task* t);
 
 private:
-  GdbServer(const Target& target)
-      : target(target), debugger_active(false), diversion_refcount(0) {}
+  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target)
+      : target(target),
+        debugger_active(false),
+        session(session),
+        diversion_refcount(0) {}
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
       : dbg(std::move(dbg)), debugger_active(true), diversion_refcount(0) {}
 
@@ -82,12 +98,11 @@ private:
    * This must be called before scheduling the task for the next event
    * (and thereby mutating the TraceIfstream for that event).
    */
-  void maybe_connect_debugger(ScopedFd* debugger_params_write_pipe);
+  void maybe_connect_debugger(const ConnectionFlags& flags);
   void maybe_restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
   GdbRequest replay_one_step();
-  void serve_replay(const std::string& trace_dir,
-                    ScopedFd* debugger_params_write_pipe);
+  void serve_replay(const ConnectionFlags& flags);
 
   /**
    * Process debugger requests made through |dbg| in

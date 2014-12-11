@@ -232,7 +232,14 @@ public:
     // When status == STEP_CONTINUE
     BreakStatus break_status;
   };
-  ReplayResult replay_step(RunCommand command = RUN_CONTINUE);
+  /**
+   * Take a single replay step.
+   * Ensure we stop at event stop_at_time. If this is not specified,
+   * optimizations may cause a replay_step to pass straight through
+   * stop_at_time.
+   */
+  ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
+                           TraceFrame::Time stop_at_time = 0);
 
   virtual ReplaySession* as_replay() { return this; }
 
@@ -247,6 +254,10 @@ public:
    */
   static bool is_ignored_signal(int sig);
 
+  bool redirect_stdio() { return redirect_stdio_; }
+
+  void set_redirect_stdio(bool redirect) { redirect_stdio_ = redirect; }
+
 private:
   ReplaySession(const std::string& dir)
       : emu_fs(EmuFs::create()),
@@ -254,8 +265,9 @@ private:
         tgid_debugged(0),
         trace_in(dir),
         trace_frame(),
-        current_step() {
-    advance_to_next_trace_frame();
+        current_step(),
+        redirect_stdio_(false) {
+    advance_to_next_trace_frame(0);
   }
 
   ReplaySession(const ReplaySession& other)
@@ -265,7 +277,8 @@ private:
         trace_in(other.trace_in),
         trace_frame(other.trace_frame),
         current_step(other.current_step),
-        cpuid_bug_detector(other.cpuid_bug_detector) {
+        cpuid_bug_detector(other.cpuid_bug_detector),
+        redirect_stdio_(other.redirect_stdio_) {
     assert(!other.last_debugged_task);
   }
 
@@ -288,9 +301,11 @@ private:
   }
 
   void setup_replay_one_trace_frame(Task* t);
-  void advance_to_next_trace_frame();
-  Completion emulate_signal_delivery(Task* oldtask, int sig);
-  Completion try_one_trace_step(Task* t, RunCommand stepi);
+  void advance_to_next_trace_frame(TraceFrame::Time stop_at_time);
+  Completion emulate_signal_delivery(Task* oldtask, int sig,
+                                     TraceFrame::Time stop_at_time);
+  Completion try_one_trace_step(Task* t, RunCommand stepi,
+                                TraceFrame::Time stop_at_time);
   Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
                                    RunCommand stepi);
   Completion enter_syscall(Task* t, RunCommand stepi);
@@ -329,6 +344,7 @@ private:
   TraceFrame trace_frame;
   ReplayTraceStep current_step;
   CPUIDBugDetector cpuid_bug_detector;
+  bool redirect_stdio_;
   /**
    * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
    * must be replayed sequentially, so we can use one buffer for all
@@ -337,7 +353,10 @@ private:
    * record-by-record, as the tracee exits those syscalls.
    * This needs to be word-aligned.
    */
-  uint8_t syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
+  union {
+    uint8_t syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
+    uint64_t align_padding;
+  };
 };
 
 #endif // RR_REPLAY_SESSION_H_
