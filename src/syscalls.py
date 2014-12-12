@@ -245,7 +245,7 @@ mknod = UnsupportedSyscall(x86=14, x64=133)
 # The mode of the file given by path or referenced by fildes is
 # changed.
 chmod = EmulatedSyscall(x86=15, x64=90)
-lchown = UnsupportedSyscall(x86=16, x64=94)
+lchown = EmulatedSyscall(x86=16, x64=94)
 _break = UnsupportedSyscall(x86=17)
 oldstat = UnsupportedSyscall(x86=18)
 
@@ -569,7 +569,7 @@ ftruncate = EmulatedSyscall(x86=93, x64=77)
 # open file descriptor fd
 fchmod = EmulatedSyscall(x86=94, x64=91)
 
-fchown = UnsupportedSyscall(x86=95, x64=93)
+fchown = EmulatedSyscall(x86=95, x64=93)
 
 #  int getpriority(int which, int who);
 #
@@ -1000,7 +1000,7 @@ rt_sigsuspend = EmulatedSyscall(x86=179, x64=130)
 pread64 = EmulatedSyscall(x86=180, x64=17, arg2=DynamicSize("(ssize_t)t->regs().syscall_result_signed()"))
 pwrite64 = EmulatedSyscall(x86=181, x64=18)
 
-chown = UnsupportedSyscall(x86=182, x64=92)
+chown = EmulatedSyscall(x86=182, x64=92)
 
 #  char *getwd(char *buf);
 #
@@ -1058,7 +1058,7 @@ lstat64 = EmulatedSyscall(x86=196, arg2="typename Arch::stat64")
 # is specified by the file descriptor fd.
 fstat64 = EmulatedSyscall(x86=197, arg2="typename Arch::stat64")
 
-lchown32 = UnsupportedSyscall(x86=198)
+lchown32 = EmulatedSyscall(x86=198)
 
 #  uid_t getuid(void);
 #
@@ -1105,7 +1105,7 @@ setregid32 = EmulatedSyscall(x86=204)
 getgroups32 = EmulatedSyscall(x86=205, arg2=DynamicSize("(int)t->regs().syscall_result_signed() * sizeof(typename Arch::gid_t)"))
 
 setgroups32 = UnsupportedSyscall(x86=206)
-fchown32 = UnsupportedSyscall(x86=207)
+fchown32 = EmulatedSyscall(x86=207)
 
 #  int setresuid32(uid_t ruid, uid_t euid, uid_t suid);
 #
@@ -1137,7 +1137,7 @@ setresgid32 = EmulatedSyscall(x86=210)
 # appropriately.
 getresgid32 = EmulatedSyscall(x86=211, arg1="typename Arch::gid_t", arg2="typename Arch::gid_t", arg3="typename Arch::gid_t")
 
-chown32 = UnsupportedSyscall(x86=212)
+chown32 = EmulatedSyscall(x86=212)
 setuid32 = UnsupportedSyscall(x86=213)
 setgid32 = UnsupportedSyscall(x86=214)
 setfsuid32 = UnsupportedSyscall(x86=215)

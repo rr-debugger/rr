@@ -206,6 +206,7 @@ set(BASIC_TESTS
   block
   blocked_sigsegv
   chew_cpu
+  chown
   clock
   clone
   constructor
