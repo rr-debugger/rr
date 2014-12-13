@@ -354,6 +354,7 @@ static void iterate_memory_map(Task* t, memory_map_iterator_t it,
 static void print_process_mmap_iterator(void* unused, Task* t,
                                         const struct map_iterator_data* data) {
   fputs(data->raw_map_line, stderr);
+  fputc('\n', stderr);
 }
 
 /**
@@ -884,7 +885,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
     LOG(error) << "/proc/" << t->tid << "/mmaps:";
     print_process_mmap(t);
 
-    ASSERT(t, same_mapping) << "\nCached mapping " << m << "should be " << km;
+    ASSERT(t, same_mapping) << "\nCached mapping " << m << " should be " << km;
   }
 }
 
@@ -1175,11 +1176,15 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   }
 
   bool is_dynamic_heap = "[heap]" == info.name;
-  // This segment is adjacent to our previous guess at the start
-  // of the dynamic heap, but it's still not an explicit heap
-  // segment.  Update the guess.
-  if (as->heap.end == info.start_addr && !(info.prot & PROT_EXEC)) {
-    assert(as->heap.start == as->heap.end);
+  // This segment is adjacent to our previous guess at the start of
+  // the dynamic heap, but it's still not an explicit heap segment.
+  // Or, in corner cases, the segment is the final mapping of the data
+  // segment of the exe image, but is not adjacent to the prior mapped
+  // segment of the exe.  (This is seen with x86-64 bash on Fedora
+  // Core 20.)  Update the guess.
+  if (!(info.prot & PROT_EXEC)
+      && (as->heap.end == info.start_addr || as->exe == info.name)) {
+    assert(as->heap.start == as->heap.end || as->exe == info.name);
     as->update_heap(info.end_addr, info.end_addr);
     LOG(debug) << "  updating start-of-heap guess to " << as->heap.start
                << " (end of mapped-data segment)";
