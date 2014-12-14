@@ -144,7 +144,8 @@ cd $workdir
 # XXX technically the trailing -XXXXXXXXXX isn't unique, since there
 # could be "foo-123456789" and "bar-123456789", but if that happens,
 # buy me a lottery ticket.
-nonce=${workdir#/tmp/rr-test-$TESTNAME-}
+baseworkdir=$(basename ${workdir})
+nonce=${baseworkdir#rr-test-$TESTNAME-}
 
 ##--------------------------------------------------
 ## Now we come to the helpers available to test runners.  This is the
