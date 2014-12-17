@@ -865,6 +865,19 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
   assert(MERGING_KERNEL == phase);
   bool same_mapping = (m.start == km.start && m.end == km.end &&
                        m.prot == km.prot && m.flags == km.flags);
+  // When we stripped most identifying info from |r| with
+  // |to_kernel()|, we also lost its "is stack" flag.  So to check if
+  // it's a grows-down stack segment, we see if it has the special
+  // linux name for the process stack segment, "[stack]".
+  if (!same_mapping && km.start < m.start && "[stack]" == r.fsname) {
+    // TODO: the stack can grow down arbitrarily, and rr needs to be
+    // aware of the updated mapping in case the user tries to map or
+    // unmap pages near the stack.  But keeping track of expanded
+    // stack in general is somewhat difficult, because the stack grows
+    // without rr being notified.  So we just add a special early-exit
+    // case for the assert for now.
+    return;
+  }
   if (!same_mapping) {
     LOG(error) << "cached mmap:";
     as->dump();
