@@ -24,7 +24,7 @@ using namespace std;
 
 /**
  * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
- * rr commands
+ * rr commands.
  */
 static const uintptr_t DBG_COMMAND_MAGIC_ADDRESS = 29298; // 'rr'
 
@@ -44,7 +44,14 @@ static const uintptr_t DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
  * command parameter.
  */
 static const uintptr_t DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
+
 static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
+
+/**
+ * 64-bit reads from DBG_WHEN_MAGIC_ADDRESS return the current trace frame's
+ * event number (the event we're working towards).
+ */
+static const uintptr_t DBG_WHEN_MAGIC_ADDRESS = DBG_COMMAND_MAGIC_ADDRESS + 4;
 
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
@@ -65,6 +72,9 @@ static const char gdb_rr_macros[] =
     "end\n"
     "define restart\n"
     "  run c$arg0\n"
+    "end\n"
+    "define when\n"
+    "  p *(long long int*)(29298 + 4)\n"
     "end\n"
     "handle SIGURG stop\n";
 
@@ -161,6 +171,20 @@ bool GdbServer::maybe_process_magic_command(Task* t, const GdbRequest& req) {
   }
   dbg->reply_set_mem(true);
   return true;
+}
+
+bool GdbServer::maybe_process_magic_read(Task* t, const GdbRequest& req) {
+  if (req.mem.addr == DBG_WHEN_MAGIC_ADDRESS && req.mem.len == 8) {
+    vector<uint8_t> mem;
+    mem.resize(req.mem.len);
+    int64_t when = t->session().as_replay()
+                       ? int64_t(t->current_trace_frame().time())
+                       : int64_t(-1);
+    memcpy(mem.data(), &when, mem.size());
+    dbg->reply_get_mem(mem);
+    return true;
+  }
+  return false;
 }
 
 void GdbServer::dispatch_debugger_request(Session& session, Task* t,
@@ -263,6 +287,9 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       return;
     }
     case DREQ_GET_MEM: {
+      if (maybe_process_magic_read(target, req)) {
+        return;
+      }
       vector<uint8_t> mem;
       mem.resize(req.mem.len);
       ssize_t nread =

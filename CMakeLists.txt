@@ -422,6 +422,7 @@ set(TESTS_WITHOUT_PROGRAM
   trace_version
   term_trace_cpu
   term_trace_syscall
+  when
 )
 
 foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})

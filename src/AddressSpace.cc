@@ -1182,8 +1182,8 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   // segment of the exe image, but is not adjacent to the prior mapped
   // segment of the exe.  (This is seen with x86-64 bash on Fedora
   // Core 20.)  Update the guess.
-  if (!(info.prot & PROT_EXEC)
-      && (as->heap.end == info.start_addr || as->exe == info.name)) {
+  if (!(info.prot & PROT_EXEC) &&
+      (as->heap.end == info.start_addr || as->exe == info.name)) {
     assert(as->heap.start == as->heap.end || as->exe == info.name);
     as->update_heap(info.end_addr, info.end_addr);
     LOG(debug) << "  updating start-of-heap guess to " << as->heap.start

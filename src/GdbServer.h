@@ -81,6 +81,11 @@ private:
    */
   bool maybe_process_magic_command(Task* t, const GdbRequest& req);
   /**
+   * If |req| is a magic-read command, interpret it and return true.
+   * Otherwise, do nothing and return false.
+   */
+  bool maybe_process_magic_read(Task* t, const GdbRequest& req);
+  /**
    * Process the single debugger request |req|, made by |dbg| targeting
    * |t|, inside the session |session|.
    *
