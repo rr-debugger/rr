@@ -1536,9 +1536,9 @@ static void set_up_seccomp_filter() {
     /* All the rest are handled in rr */
     TRACE_PROCESS,
   };
-  struct sock_fprog prog = { .len = (unsigned short)(sizeof(filter) /
-                                                     sizeof(filter[0])),
-                             .filter = filter, };
+  struct sock_fprog prog;
+  prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
+  prog.filter = filter;
 
   /* Note: the filter is installed only for record. This call
    * will be emulated in the replay */
