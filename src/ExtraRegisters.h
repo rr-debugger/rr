@@ -15,19 +15,21 @@
  * registers other than those in Registers.
  *
  * Task is responsible for creating meaningful values of this class.
- *
- * On x86, the data is either an XSAVE area or a user_fpxregs_struct.
  */
 class ExtraRegisters {
 public:
   // Create empty (uninitialized/unknown registers) value
   ExtraRegisters() : format_(NONE) {}
 
+  /**
+   * The format records precisely how the data record was created.
+   */
   enum Format {
     NONE,
-    XSAVE,
-    FPXREGS,
-    XSAVE64,
+    XSAVE,   // PTRACE_GETREGSET NT_X86_XSTATE with x86-32 tracee
+    FPXREGS, // PTRACE_GETFPXREGS on x86-32 rr
+    XSAVE64, // PTRACE_GETREGSET NT_X86_XSTATE with x86-64 tracee
+    FPREGS,  // PTRACE_GETFPREGS on x86-64 rr
   };
 
   // Set values from raw data

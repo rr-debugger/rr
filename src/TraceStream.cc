@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 17
+#define TRACE_VERSION 18
 
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
 

@@ -908,12 +908,23 @@ const ExtraRegisters& Task::extra_regs() {
           << "Didn't get enough register data; expected " << xsave_area_size
           << " but got " << vec.iov_len;
     } else {
-      assert(arch() == x86);
+#if defined(__i386__)
       LOG(debug) << "  (refreshing extra-register cache using FPXREGS)";
 
       extra_registers.format_ = ExtraRegisters::FPXREGS;
-      extra_registers.data.resize(sizeof(X86Arch::user_fpxregs_struct));
+      extra_registers.data.resize(sizeof(user_fpxregs_struct));
       xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data.data());
+#elif defined(__x86_64__)
+      // x86-64 that doesn't support XSAVE; apparently Xeon E5620 (Westmere)
+      // is in this class.
+      LOG(debug) << "  (refreshing extra-register cache using FPREGS)";
+
+      extra_registers.format_ = ExtraRegisters::FPREGS;
+      extra_registers.data.resize(sizeof(user_fpregs_struct));
+      xptrace(PTRACE_GETFPREGS, nullptr, extra_registers.data.data());
+#else
+#error need to define new extra_regs support
+#endif
     }
 
     extra_registers_known = true;
@@ -1023,7 +1034,24 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
       break;
     }
     case ExtraRegisters::FPXREGS: {
+#if defined(__i386__)
       ptrace_if_alive(PTRACE_SETFPXREGS, nullptr, extra_registers.data.data());
+#else
+      // We could probably fix this to be replayable on an x86-64 rr build,
+      // but portability of traces from XSAVE-lacking 32-bit rr builds is
+      // not a priority.
+      ASSERT(this, false)
+          << "This operation can only be performed with an x86-32 rr build";
+#endif
+      break;
+    }
+    case ExtraRegisters::FPREGS: {
+#if defined(__x86_64__)
+      ptrace_if_alive(PTRACE_SETFPREGS, nullptr, extra_registers.data.data());
+#else
+      ASSERT(this, false)
+          << "This operation can only be performed with an x86-64 rr build";
+#endif
       break;
     }
     default:

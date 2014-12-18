@@ -102,7 +102,8 @@ size_t ExtraRegisters::register_size(GdbRegister regno, bool* can_read) const {
 
   if (format_ == XSAVE || format_ == FPXREGS) {
     // Fortunately (though it's probably not coincidence)
-    // user_fpxregs_struct has the same layout as the XSAVE area.
+    // user_fpxregs_struct has the same layout as the
+    // XSAVE area.
 
     switch (regno) {
       case DREG_ST0:
@@ -155,6 +156,10 @@ size_t ExtraRegisters::register_size(GdbRegister regno, bool* can_read) const {
         return 0;
     }
   } else {
+    // Fortunately (though it's probably not coincidence)
+    // x86-64 user_fpregs_struct has the same layout as the
+    // XSAVE64 area.
+
     switch (regno) {
       case DREG_64_ST0:
       case DREG_64_ST1:
@@ -245,7 +250,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   const int* fxsave_offsets;
   size_t fxsave_offsets_length;
 
-  if (format_ == XSAVE64) {
+  if (format_ == XSAVE64 || format_ == FPREGS) {
     assert(regno >= DREG_64_FIRST_FXSAVE_REG);
     fxsave_idx = regno - DREG_64_FIRST_FXSAVE_REG;
     fxsave_offsets = &fxsave_64_reg_offset[0];
