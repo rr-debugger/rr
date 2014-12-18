@@ -498,9 +498,9 @@ void convert_x86(X86Arch::user_regs_struct& x86,
   same(x86.xss, x64.ss);
 }
 
-static void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
-static void to_x86_same(int32_t& r32, uint32_t& r64) { r32 = r64; }
-static void from_x86_narrow(int32_t& r32, uint64_t& r64) {
+void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
+void to_x86_same(int32_t& r32, uint32_t& r64) { r32 = r64; }
+void from_x86_narrow(int32_t& r32, uint64_t& r64) {
   // We must zero-extend 32-bit register values to 64-bit values when we
   // do a PTRACE_SETREGS. Most of the time the upper 32 bits are irrelevant for
   // a 32-bit tracee, but when setting up a signal handler frame, the kernel
@@ -509,7 +509,7 @@ static void from_x86_narrow(int32_t& r32, uint64_t& r64) {
   // sign-extended to point outside the 32-bit address space.
   r64 = (uint32_t)r32;
 }
-static void from_x86_same(int32_t& r32, uint32_t& r64) { r64 = r32; }
+void from_x86_same(int32_t& r32, uint32_t& r64) { r64 = r32; }
 
 void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
   if (arch() == NativeArch::arch()) {
