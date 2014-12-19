@@ -303,7 +303,6 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   if (is_failed_syscall(t, trace_frame)) {
     /* creation failed, emulate it */
     step->syscall.emu = EMULATE;
-    step->syscall.emu_ret = EMULATE_RETURN;
     step->action = syscall_action(state);
     return;
   }
@@ -392,7 +391,6 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   if (is_failed_syscall(t, trace_frame)) {
     /* exec failed, emulate it */
     step->syscall.emu = EMULATE;
-    step->syscall.emu_ret = EMULATE_RETURN;
     step->action = syscall_action(state);
     return;
   }
@@ -468,7 +466,6 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
   remote_ptr<int> futex = regs.arg1();
 
   step->syscall.emu = EMULATE;
-  step->syscall.emu_ret = EMULATE_RETURN;
 
   if (state == SYSCALL_ENTRY) {
     if (FUTEX_LOCK_PI == op) {
@@ -509,7 +506,6 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
 static void process_ioctl(Task* t, SyscallEntryOrExit state,
                           ReplayTraceStep* step) {
   step->syscall.emu = EMULATE;
-  step->syscall.emu_ret = EMULATE_RETURN;
 
   if (state == SYSCALL_ENTRY) {
     step->action = TSTEP_ENTER_SYSCALL;
@@ -561,7 +557,6 @@ static void process_ioctl(Task* t, SyscallEntryOrExit state,
 void process_ipc(Task* t, const TraceFrame& trace_frame,
                  SyscallEntryOrExit state, ReplayTraceStep* step) {
   step->syscall.emu = EMULATE;
-  step->syscall.emu_ret = EMULATE_RETURN;
   if (SYSCALL_ENTRY == state) {
     step->action = TSTEP_ENTER_SYSCALL;
     return;
@@ -802,7 +797,6 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
      * interesting to do. */
     step->action = TSTEP_EXIT_SYSCALL;
     step->syscall.emu = EMULATE;
-    step->syscall.emu_ret = EMULATE_RETURN;
     return;
   }
   /* Successful mmap calls are much more interesting to process.
@@ -908,7 +902,6 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
   unsigned int call;
 
   step->syscall.emu = EMULATE;
-  step->syscall.emu_ret = EMULATE_RETURN;
 
   if (state == SYSCALL_ENTRY) {
     step->action = TSTEP_ENTER_SYSCALL;
@@ -1011,7 +1004,6 @@ static void process_init_buffers(Task* t, SyscallEntryOrExit state,
                                  ReplayTraceStep* step) {
   /* This was a phony syscall to begin with. */
   step->syscall.emu = EMULATE;
-  step->syscall.emu_ret = EMULATE_RETURN;
 
   if (SYSCALL_ENTRY == state) {
     step->action = TSTEP_ENTER_SYSCALL;
@@ -1288,7 +1280,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     step->syscall.num_emu_args = 0;
     step->action = syscall_action(state);
     step->syscall.emu = EMULATE;
-    step->syscall.emu_ret = EMULATE_RETURN;
     return;
   }
 
@@ -1296,9 +1287,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     step->syscall.num_emu_args = def->num_emu_args;
     step->action = syscall_action(state);
     step->syscall.emu = rep_EMU == def->type ? EMULATE : EXEC;
-    step->syscall.emu_ret =
-        (rep_EMU == def->type || rep_EXEC_RET_EMU == def->type) ? EMULATE_RETURN
-                                                                : EXEC_RETURN;
     // TODO: there are several syscalls below that aren't
     // /actually/ irregular, they just want to update some
     // state on syscall exit.  Convert them to use
@@ -1330,7 +1318,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::fcntl:
     case Arch::fcntl64:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->action = syscall_action(state);
 
       if (SYSCALL_EXIT == state) {
@@ -1379,21 +1366,18 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::msgctl:
     case Arch::msgrcv:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 1;
       step->action = syscall_action(state);
       return;
 
     case Arch::select:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 4;
       step->action = syscall_action(state);
       return;
 
     case Arch::recvfrom:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 3;
       step->action = syscall_action(state);
       return;
@@ -1440,7 +1424,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::nanosleep:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = (trace_regs.arg2() != 0) ? 1 : 0;
       step->action = syscall_action(state);
       return;
@@ -1448,7 +1431,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::open:
     case Arch::sched_setaffinity:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 0;
       step->action = syscall_action(state);
       return;
@@ -1466,7 +1448,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         return;
       }
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 1;
       step->action = syscall_action(state);
       return;
@@ -1488,7 +1469,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::quotactl:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->action = syscall_action(state);
       if (state == SYSCALL_EXIT) {
         auto cmd = t->regs().arg1_signed();
@@ -1506,7 +1486,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::recvmsg: {
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->action = syscall_action(state);
       if (SYSCALL_EXIT == state) {
         // We manually restore the msg buffer.
@@ -1520,7 +1499,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::recvmmsg: {
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->action = syscall_action(state);
       if (SYSCALL_EXIT == state) {
         restore_msgvec<Arch>(t, trace_regs.syscall_result_signed(),
@@ -1531,7 +1509,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::sendmmsg: {
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->action = syscall_action(state);
       if (SYSCALL_EXIT == state) {
         restore_msglen_for_msgvec(t, trace_regs.syscall_result_signed());
@@ -1561,7 +1538,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::getpeername:
     case Arch::getsockopt:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = 2;
       step->action = syscall_action(state);
       return;
@@ -1569,7 +1545,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::accept:
     case Arch::accept4:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args =
           (trace_regs.arg2() != 0) + (trace_regs.arg3() != 0);
       step->action = syscall_action(state);
@@ -1579,7 +1554,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::writev:
       step->syscall.num_emu_args = 0;
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->action = syscall_action(state);
       if (state == SYSCALL_EXIT) {
         /* XXX technically this will print the output before
@@ -1596,7 +1570,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::readv:
     case Arch::preadv:
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->syscall.num_emu_args = (int)trace_regs.arg3_signed();
       step->action = syscall_action(state);
       return;
@@ -1607,7 +1580,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case SYS_rrcall_init_preload:
       step->syscall.num_emu_args = 0;
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       if (SYSCALL_ENTRY == state) {
         step->action = TSTEP_ENTER_SYSCALL;
         return;
@@ -1626,7 +1598,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
       step->syscall.num_emu_args = 0;
       step->syscall.emu = EMULATE;
-      step->syscall.emu_ret = EMULATE_RETURN;
       step->action = syscall_action(state);
       return;
   }

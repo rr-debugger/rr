@@ -132,9 +132,6 @@ struct ReplayTraceStep {
        * set from what was recorded.
        * Only used when action is TSTEP_EXIT_SYSCALL. */
       ssize_t num_emu_args;
-      /* Nonzero if the return from the syscall
-       * should be emulated.  |emu| implies this. */
-      ExecOrEmulateReturn emu_ret;
     } syscall;
 
     int signo;
