@@ -822,6 +822,11 @@ bool GdbConnection::process_vpacket(char* payload) {
     }
     return true;
   }
+  
+  if (name == strstr(name, "File:")) {
+    write_packet("");
+    return false;
+  }
 
   UNHANDLED_REQ() << "Unhandled gdb vpacket: v" << name;
   return false;
@@ -896,7 +901,7 @@ bool GdbConnection::process_packet() {
       req.mem.len = strtoul(payload, &payload, 16);
       assert('\0' == *payload);
 
-      LOG(debug) << "gdb requests memory (addr=" << req.mem.addr
+      LOG(debug) << "gdb requests memory (addr=" << HEX(req.mem.addr)
                  << ", len=" << req.mem.len << ")";
 
       ret = true;
@@ -1225,7 +1230,7 @@ void GdbConnection::notify_stop(GdbThreadId thread, int sig,
   // This isn't documented in the gdb remote protocol, but if we
   // don't do this, gdb will sometimes continue to send requests
   // for the previously-stopped thread when it obviously intends
-  // to making requests about the stopped thread.
+  // to be making requests about the stopped thread.
   LOG(debug) << "forcing query/resume thread to " << thread;
   query_thread = thread;
   resume_thread = thread;
@@ -1303,7 +1308,11 @@ void GdbConnection::reply_get_mem(const vector<uint8_t>& mem) {
   assert(DREQ_GET_MEM == req.type);
   assert(mem.size() <= req.mem.len);
 
-  write_hex_bytes_packet(mem.data(), mem.size());
+  if (req.mem.len > 0 && mem.size() == 0) {
+    write_packet("E01");
+  } else {
+    write_hex_bytes_packet(mem.data(), mem.size());
+  }
 
   consume_request();
 }
