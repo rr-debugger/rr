@@ -76,6 +76,21 @@ static const char gdb_rr_macros[] =
     "define when\n"
     "  p *(long long int*)(29298 + 4)\n"
     "end\n"
+    // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
+    // issued before any user-generated resume-execution command
+    // results in gdb hanging just after the inferior hits an internal
+    // gdb breakpoint.  This happens outside of rr, with gdb
+    // controlling gdbserver, as well.  We work around that by
+    // ensuring *some* resume-execution command has been issued before
+    // restarting the session.  But, only if the inferior hasn't
+    // already finished execution ($_thread != 0).  If it has and we
+    // issue the "stepi" command, then gdb refuses to restart
+    // execution.
+    "define hook-run\n"
+    "  if $_thread != 0\n"
+    "    stepi\n"
+    "  end\n"
+    "end\n"
     "handle SIGURG stop\n";
 
 /**
