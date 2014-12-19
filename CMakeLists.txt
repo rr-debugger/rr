@@ -403,6 +403,7 @@ set(TESTS_WITHOUT_PROGRAM
   execp
   explicit_checkpoint_clone
   fork_exec_info_thr
+  gdb_invalid_memory_read
   get_thread_list
   hardlink_mmapped_files
   parent_no_break_child_bkpt
