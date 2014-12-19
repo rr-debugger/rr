@@ -1,3 +1,0 @@
-source `dirname $0`/util.sh
-record simple$bitness
-debug simple$bitness gdb_invalid_memory_read
