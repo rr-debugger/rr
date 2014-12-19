@@ -3,6 +3,10 @@
 #ifndef RR_COMMAND_H_
 #define RR_COMMAND_H_
 
+#ifndef _DEFAULT_SOURCE
+# define _DEFAULT_SOURCE 1
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 

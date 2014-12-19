@@ -4,6 +4,7 @@
 #define RRUTIL_H
 
 #define _GNU_SOURCE 1
+#define _POSIX_C_SOURCE 2
 
 #include <arpa/inet.h>
 #include <assert.h>
