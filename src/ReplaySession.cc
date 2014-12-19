@@ -1331,8 +1331,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
              << state_name(trace_frame.event().state);
   if (t->syscallbuf_hdr) {
     LOG(debug) << "    (syscllbufsz:" << t->syscallbuf_hdr->num_rec_bytes
-               << ", abrtcmt:" << t->syscallbuf_hdr->abort_commit
-               << ", locked:" << t->syscallbuf_hdr->locked << ")";
+               << ", abrtcmt:" << bool(t->syscallbuf_hdr->abort_commit)
+               << ", locked:" << bool(t->syscallbuf_hdr->locked) << ")";
   }
 
   if (t->child_sig != 0) {

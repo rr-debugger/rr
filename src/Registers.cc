@@ -15,6 +15,7 @@
 #include "task.h"
 
 using namespace rr;
+using namespace std;
 
 struct RegisterValue {
   // The name of this register.
@@ -541,4 +542,12 @@ struct user_regs_struct Registers::get_ptrace() {
   convert_x86<from_x86_narrow, from_x86_same>(
       u.x86regs, *reinterpret_cast<X64Arch::user_regs_struct*>(&result));
   return result;
+}
+
+ostream& operator<<(ostream& stream, const Registers& r) {
+  stream << "{ args:("<< HEX(r.arg1()) << "," << HEX(r.arg2()) << ","
+         << HEX(r.arg3()) << "," << HEX(r.arg4()) << ","
+         << HEX(r.arg5()) << "," << r.arg6()
+         << ") orig_syscall:" << r.original_syscallno() << " }";
+  return stream;
 }

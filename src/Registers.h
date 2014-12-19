@@ -326,4 +326,6 @@ private:
   SupportedArch arch_;
 };
 
+std::ostream& operator<<(std::ostream& stream, const Registers& r);
+
 #endif /* RR_REGISTERS_H_ */
