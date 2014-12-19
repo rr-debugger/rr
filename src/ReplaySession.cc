@@ -358,9 +358,7 @@ Completion ReplaySession::exit_syscall(Task* t, RunCommand stepi) {
   for (int i = 0; i < current_step.syscall.num_emu_args; ++i) {
     t->set_data_from_trace();
   }
-  if (current_step.syscall.emu_ret) {
-    t->set_return_value_from_trace();
-  }
+  t->set_return_value_from_trace();
   uint32_t flags = 0;
   if (t->arch() == SupportedArch::x86 &&
       (X86Arch::pwrite64 == current_step.syscall.number ||
