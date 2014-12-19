@@ -546,7 +546,7 @@ static void process_ioctl(Task* t, SyscallEntryOrExit state,
   }
   /* Now on to the "regular" ioctls. */
 
-  if (!(_IOC_WRITE & dir)) {
+  if (!(_IOC_READ & dir)) {
     /* Deterministic ioctl(), no data to restore to the
      * tracee. */
     return;

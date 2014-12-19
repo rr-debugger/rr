@@ -1740,9 +1740,9 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
       return record_ioctl_data(t, sizeof(typename Arch::winsize));
   }
 
-  /* In ioctl language, "_IOC_WRITE" means "outparam".  Both
+  /* In ioctl language, "_IOC_READ" means "outparam".  Both
    * READ and WRITE can be set for inout params. */
-  if (!(_IOC_WRITE & dir)) {
+  if (!(_IOC_READ & dir)) {
     /* If the kernel isn't going to write any data back to
      * us, we hope and pray that the result of the ioctl
      * (observable to the tracee) is deterministic. */
