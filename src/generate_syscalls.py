@@ -147,10 +147,10 @@ def write_syscall_defs_table(f):
             if isinstance(obj, syscalls.RegularSyscall):
                 recorded_args = [arg for arg in syscalls.RegularSyscall.ARGUMENT_SLOTS
                                  if getattr(obj, arg, None) is not None]
-                f.write("  { %s::%s, { rep_%s, %d } },\n"
-                        % (specializer, name, obj.semantics, len(recorded_args)))
+                f.write("  { %s::%s, { rep_%s } },\n"
+                        % (specializer, name, obj.semantics))
             elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
-                f.write("  { %s::%s, { rep_IRREGULAR, -1 } },\n" % (specializer, name))
+                f.write("  { %s::%s, { rep_IRREGULAR } },\n" % (specializer, name))
             elif isinstance(obj, syscalls.UnsupportedSyscall):
                 pass
         f.write("};\n")

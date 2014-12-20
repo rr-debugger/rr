@@ -70,8 +70,6 @@ enum SyscallDefType {
 struct syscall_def {
   /* See syscalls.py for documentation on these values. */
   SyscallDefType type;
-  /* Not meaningful for rep_IRREGULAR. */
-  ssize_t num_emu_args;
 };
 
 typedef pair<size_t, syscall_def> SyscallInit;
@@ -211,21 +209,6 @@ static void rep_maybe_replay_stdio_write_arch(Task* t) {
 
 void rep_maybe_replay_stdio_write(Task* t) {
   RR_ARCH_FUNCTION(rep_maybe_replay_stdio_write_arch, t->arch(), t)
-}
-
-static void exit_syscall_emu_ret(Task* t, int syscall) {
-  t->set_return_value_from_trace();
-  t->validate_regs();
-  t->finish_emulated_syscall();
-}
-
-static void exit_syscall_emu(Task* t, int syscall, int num_emu_args) {
-  int i;
-
-  for (i = 0; i < num_emu_args; ++i) {
-    t->set_data_from_trace();
-  }
-  exit_syscall_emu_ret(t, syscall);
 }
 
 template <typename Arch> static void init_scratch_memory(Task* t) {
@@ -1162,7 +1145,9 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         return;
       }
       /* Proceed to syscall exit so we can run our own syscalls. */
-      exit_syscall_emu(t, SYS_rrcall_init_preload, 0);
+      t->set_return_value_from_trace();
+      t->validate_regs();
+      t->finish_emulated_syscall();
       t->vm()->at_preload_init(t);
       step->action = TSTEP_RETIRE;
       return;
