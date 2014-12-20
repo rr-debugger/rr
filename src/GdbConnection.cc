@@ -822,7 +822,7 @@ bool GdbConnection::process_vpacket(char* payload) {
     }
     return true;
   }
-  
+
   if (name == strstr(name, "File:")) {
     write_packet("");
     return false;

@@ -588,8 +588,8 @@ enum {
 
 template <typename Arch>
 static remote_ptr<void> finish_anonymous_mmap(
-    AutoRemoteSyscalls& remote, const TraceFrame& trace_frame,
-    size_t length, int prot, int flags, int fd, off64_t offset_pages,
+    AutoRemoteSyscalls& remote, const TraceFrame& trace_frame, size_t length,
+    int prot, int flags, int fd, off64_t offset_pages,
     int note_task_map = NOTE_TASK_MAP) {
   const Registers& rec_regs = trace_frame.regs();
   /* *Must* map the segment at the recorded address, regardless
@@ -650,19 +650,18 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 template <typename Arch>
 static remote_ptr<void> finish_private_mmap(AutoRemoteSyscalls& remote,
                                             const TraceFrame& trace_frame,
-                                            size_t length,
-                                            int prot, int flags, int fd,
-                                            off64_t offset_pages,
+                                            size_t length, int prot, int flags,
+                                            int fd, off64_t offset_pages,
                                             const TraceMappedRegion* file) {
   LOG(debug) << "  finishing private mmap of " << file->file_name();
 
   Task* t = remote.task();
   size_t num_bytes = length;
-  remote_ptr<void> mapped_addr =
-    finish_anonymous_mmap<Arch>(remote, trace_frame, length, prot,
-                                /* The restored region won't be backed
-                                 * by file. */
-                                flags | MAP_ANONYMOUS, fd, DONT_NOTE_TASK_MAP);
+  remote_ptr<void> mapped_addr = finish_anonymous_mmap<Arch>(
+      remote, trace_frame, length, prot,
+      /* The restored region won't be backed
+       * by file. */
+      flags | MAP_ANONYMOUS, fd, DONT_NOTE_TASK_MAP);
   /* Restore the map region we copied. */
   ssize_t data_size = t->set_data_from_trace();
 
@@ -685,11 +684,10 @@ static remote_ptr<void> finish_private_mmap(AutoRemoteSyscalls& remote,
 
 template <typename Arch>
 static remote_ptr<void> finish_direct_mmap(
-    AutoRemoteSyscalls& remote, const TraceFrame& trace_frame,
-    size_t length, int prot, int flags, const TraceMappedRegion& file,
-    off64_t mmap_offset_pages,
-    const string& backing_file_name, off64_t backing_offset_pages,
-    int note_task_map = NOTE_TASK_MAP) {
+    AutoRemoteSyscalls& remote, const TraceFrame& trace_frame, size_t length,
+    int prot, int flags, const TraceMappedRegion& file,
+    off64_t mmap_offset_pages, const string& backing_file_name,
+    off64_t backing_offset_pages, int note_task_map = NOTE_TASK_MAP) {
   Task* t = remote.task();
   auto& rec_regs = trace_frame.regs();
   remote_ptr<void> rec_addr = rec_regs.syscall_result();
@@ -757,8 +755,8 @@ static remote_ptr<void> finish_shared_mmap(AutoRemoteSyscalls& remote,
   TraceMappedRegion vfile(emufile->proc_path(), file->stat(), file->start(),
                           file->end());
   remote_ptr<void> mapped_addr = finish_direct_mmap<Arch>(
-    remote, trace_frame, length, prot, flags, vfile, offset_pages,
-    vfile.file_name(), offset_pages, DONT_NOTE_TASK_MAP);
+      remote, trace_frame, length, prot, flags, vfile, offset_pages,
+      vfile.file_name(), offset_pages, DONT_NOTE_TASK_MAP);
   // Write back the snapshot of the segment that we recorded.
   // We have to write directly to the underlying file, because
   // the tracee may have mapped its segment read-only.
@@ -787,8 +785,8 @@ static remote_ptr<void> finish_shared_mmap(AutoRemoteSyscalls& remote,
 
 template <typename Arch>
 static void process_mmap(Task* t, const TraceFrame& trace_frame,
-                         SyscallEntryOrExit state, size_t length,
-                         int prot, int flags, int fd, off64_t offset_pages,
+                         SyscallEntryOrExit state, size_t length, int prot,
+                         int flags, int fd, off64_t offset_pages,
                          ReplayTraceStep* step) {
   remote_ptr<void> mapped_addr;
 
@@ -807,27 +805,25 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
     // appropriate helper.
     AutoRemoteSyscalls remote(t);
     if (flags & MAP_ANONYMOUS) {
-      mapped_addr = finish_anonymous_mmap<Arch>(remote, trace_frame,
-                                                length, prot, flags, fd,
-                                                offset_pages);
+      mapped_addr = finish_anonymous_mmap<Arch>(remote, trace_frame, length,
+                                                prot, flags, fd, offset_pages);
     } else {
       TraceReader::MappedData data;
       auto file = t->trace_reader().read_mapped_region(&data);
 
       if (data.source == TraceReader::SOURCE_FILE) {
         mapped_addr = finish_direct_mmap<Arch>(
-          remote, trace_frame, length, prot, flags, file, offset_pages,
-          data.file_name, data.file_data_offset_pages);
+            remote, trace_frame, length, prot, flags, file, offset_pages,
+            data.file_name, data.file_data_offset_pages);
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
         if (!(MAP_SHARED & flags)) {
-          mapped_addr = finish_private_mmap<Arch>(remote, trace_frame,
-                                                  length, prot, flags, fd,
-                                                  offset_pages, &file);
+          mapped_addr =
+              finish_private_mmap<Arch>(remote, trace_frame, length, prot,
+                                        flags, fd, offset_pages, &file);
         } else {
-          mapped_addr = finish_shared_mmap<Arch>(remote, trace_frame,
-                                                 length, prot, flags,
-                                                 offset_pages, &file);
+          mapped_addr = finish_shared_mmap<Arch>(
+              remote, trace_frame, length, prot, flags, offset_pages, &file);
         }
       }
     }
@@ -1382,15 +1378,14 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         case Arch::StructArguments: {
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
-          return process_mmap<Arch>(t, trace_frame, state,
-                                    args.len, args.prot, args.flags, args.fd,
-                                    args.offset / page_size(),
-                                    step);
+          return process_mmap<Arch>(t, trace_frame, state, args.len, args.prot,
+                                    args.flags, args.fd,
+                                    args.offset / page_size(), step);
         }
         case Arch::RegisterArguments:
-          return process_mmap<Arch>(t, trace_frame, state,
-                                    trace_regs.arg2(), trace_regs.arg3(),
-                                    trace_regs.arg4(), trace_regs.arg5(),
+          return process_mmap<Arch>(t, trace_frame, state, trace_regs.arg2(),
+                                    trace_regs.arg3(), trace_regs.arg4(),
+                                    trace_regs.arg5(),
                                     trace_regs.arg6() / page_size(), step);
       }
     }
