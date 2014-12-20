@@ -2325,6 +2325,10 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
     FATAL() << "Failed to exec '" << trace.initial_exe().c_str() << "'";
   }
 
+  if (0 > tid) {
+    FATAL() << "Failed to fork for '" << trace.initial_exe().c_str() << "'";
+  }
+
   struct sigaction sa;
   sa.sa_handler = handle_alarm_signal;
   sigemptyset(&sa.sa_mask);
