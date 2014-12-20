@@ -485,29 +485,6 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
   step->action = TSTEP_EXIT_SYSCALL;
 }
 
-static void process_ioctl(Task* t, SyscallEntryOrExit state,
-                          ReplayTraceStep* step) {
-  step->syscall.emu = EMULATE;
-
-  if (state == SYSCALL_ENTRY) {
-    step->action = TSTEP_ENTER_SYSCALL;
-    return;
-  }
-
-  step->action = TSTEP_EXIT_SYSCALL;
-}
-
-void process_ipc(Task* t, const TraceFrame& trace_frame,
-                 SyscallEntryOrExit state, ReplayTraceStep* step) {
-  step->syscall.emu = EMULATE;
-  if (SYSCALL_ENTRY == state) {
-    step->action = TSTEP_ENTER_SYSCALL;
-    return;
-  }
-
-  step->action = TSTEP_EXIT_SYSCALL;
-}
-
 /**
  * Pass NOTE_TASK_MAP to update |t|'s cached mmap data.  If the data
  * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
@@ -765,24 +742,6 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
   t->validate_regs();
 
   step->action = TSTEP_RETIRE;
-}
-
-/**
- * Return nonzero if this socketcall was "regular" and |step| was
- * updated appropriately, or zero if this was an irregular socketcall
- * that needs to be processed specially.
- */
-template <typename Arch>
-static void process_socketcall(Task* t, SyscallEntryOrExit state,
-                               ReplayTraceStep* step) {
-  step->syscall.emu = EMULATE;
-
-  if (state == SYSCALL_ENTRY) {
-    step->action = TSTEP_ENTER_SYSCALL;
-    return;
-  }
-
-  step->action = TSTEP_EXIT_SYSCALL;
 }
 
 static void process_init_buffers(Task* t, SyscallEntryOrExit state,
@@ -1098,48 +1057,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       step->action = TSTEP_ENTER_SYSCALL;
       return;
 
-    case Arch::fcntl:
-    case Arch::fcntl64:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
     case Arch::futex:
       return process_futex(t, trace_frame, state, step);
-
-    case Arch::epoll_wait:
-    case Arch::getxattr:
-    case Arch::lgetxattr:
-    case Arch::fgetxattr:
-    case Arch::poll:
-    case Arch::ppoll:
-    case Arch::read:
-    case Arch::rt_sigtimedwait:
-    case Arch::sendfile:
-    case Arch::sendfile64:
-    case Arch::waitid:
-    case Arch::waitpid:
-    case Arch::msgctl:
-    case Arch::msgrcv:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::select:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::recvfrom:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::ioctl:
-      return process_ioctl(t, state, step);
-
-    case Arch::ipc:
-      return process_ipc(t, trace_frame, state, step);
 
     case Arch::mmap: {
       if (SYSCALL_ENTRY == state) {
@@ -1174,17 +1093,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
                                 trace_regs.arg3(), trace_regs.arg4(),
                                 trace_regs.arg5(), trace_regs.arg6(), step);
 
-    case Arch::nanosleep:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::open:
-    case Arch::sched_setaffinity:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
     case Arch::prctl: {
       int option = trace_regs.arg1_signed();
       if (PR_SET_NAME == option || PR_GET_NAME == option) {
@@ -1215,28 +1123,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       ASSERT(t, false) << "Should have reached trace termination.";
       return; // not reached
 
-    case Arch::quotactl:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::recvmsg: {
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-    }
-
-    case Arch::recvmmsg: {
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-    }
-
-    case Arch::sendmmsg: {
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-    }
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
       if (state == SYSCALL_ENTRY) {
@@ -1248,25 +1134,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       t->set_regs(trace_regs);
       t->set_extra_regs(trace_frame.extra_regs());
       step->action = TSTEP_RETIRE;
-      return;
-
-    case Arch::socketcall:
-      return process_socketcall<Arch>(t, state, step);
-
-    case Arch::splice:
-    case Arch::_sysctl:
-    case Arch::wait4:
-    case Arch::getsockname:
-    case Arch::getpeername:
-    case Arch::getsockopt:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
-    case Arch::accept:
-    case Arch::accept4:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
       return;
 
     case Arch::write:
@@ -1285,12 +1152,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
       return;
 
-    case Arch::readv:
-    case Arch::preadv:
-      step->syscall.emu = EMULATE;
-      step->action = syscall_action(state);
-      return;
-
     case SYS_rrcall_init_buffers:
       return process_init_buffers(t, state, step);
 
@@ -1307,11 +1168,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return;
 
     default:
-      // Emulate, assuming it was an invalid syscall.
-      if (SYSCALL_EXIT == state) {
-        ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
-            << "Unknown syscall should have returned -ENOSYS";
-      }
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
       return;
