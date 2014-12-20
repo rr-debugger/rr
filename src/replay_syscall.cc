@@ -845,21 +845,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
  */
 template <typename Arch>
 static void restore_struct_msghdr(
-    Task* t, remote_ptr<typename Arch::msghdr> child_msghdr) {
-  auto msg = t->read_mem(child_msghdr);
-
-  // Restore msg itself.
-  t->set_data_from_trace();
-  // Restore msg.msg_name.
-  t->set_data_from_trace();
-  // For each iovec arg, restore its recorded data.
-  for (size_t i = 0; i < msg.msg_iovlen; ++i) {
-    // Restore iov_base buffer.
-    t->set_data_from_trace();
-  }
-  // Restore msg_control buffer.
-  t->set_data_from_trace();
-}
+    Task* t, remote_ptr<typename Arch::msghdr> child_msghdr) {}
 
 /** Like restore_struct_msghdr(), but for mmsghdr. */
 template <typename Arch>
@@ -868,7 +854,6 @@ static void restore_struct_mmsghdr(
   remote_ptr<void> tmp = child_mmsghdr;
   auto child_msghdr = tmp.cast<typename Arch::msghdr>();
   restore_struct_msghdr<Arch>(t, child_msghdr);
-  t->set_data_from_trace();
 }
 
 /**
@@ -887,7 +872,6 @@ static void restore_msgvec(Task* t, int nmmsgs,
  */
 static void restore_msglen_for_msgvec(Task* t, int nmmsgs) {
   for (int i = 0; i < nmmsgs; ++i) {
-    t->set_data_from_trace();
   }
 }
 

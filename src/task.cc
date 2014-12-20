@@ -1007,6 +1007,15 @@ ssize_t Task::set_data_from_trace() {
   return buf.data.size();
 }
 
+void Task::apply_all_data_records_from_trace() {
+  TraceReader::RawData buf;
+  while (trace_reader().read_raw_data_for_frame(current_trace_frame(), buf)) {
+    if (!buf.addr.is_null() && buf.data.size() > 0) {
+      write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
+    }
+  }
+}
+
 void Task::set_return_value_from_trace() {
   Registers r = regs();
   r.set_syscall_result(current_trace_frame().regs().syscall_result());
