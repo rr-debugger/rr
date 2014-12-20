@@ -128,10 +128,6 @@ struct ReplayTraceStep {
       /* Is the kernel entry and exit for this
        * syscall emulated, that is, not executed? */
       ExecOrEmulate emu;
-      /* The number of outparam arguments that are
-       * set from what was recorded.
-       * Only used when action is TSTEP_EXIT_SYSCALL. */
-      ssize_t num_emu_args;
     } syscall;
 
     int signo;

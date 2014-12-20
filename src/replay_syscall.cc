@@ -461,14 +461,13 @@ static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
 
 static void process_futex(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, ReplayTraceStep* step) {
-  const Registers& regs = trace_frame.regs();
-  int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
-  remote_ptr<int> futex = regs.arg1();
-
   step->syscall.emu = EMULATE;
 
   if (state == SYSCALL_ENTRY) {
+    const Registers& regs = trace_frame.regs();
+    int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
     if (FUTEX_LOCK_PI == op) {
+      remote_ptr<int> futex = regs.arg1();
       int next_val;
       if (is_now_contended_pi_futex(t, futex, &next_val)) {
         // During recording, we waited for the
@@ -484,23 +483,6 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
   }
 
   step->action = TSTEP_EXIT_SYSCALL;
-  switch (op) {
-    case FUTEX_LOCK_PI:
-    case FUTEX_WAKE:
-    case FUTEX_WAIT_BITSET:
-    case FUTEX_WAIT:
-    case FUTEX_UNLOCK_PI:
-      step->syscall.num_emu_args = 1;
-      return;
-    case FUTEX_CMP_REQUEUE:
-    case FUTEX_WAKE_OP:
-    case FUTEX_CMP_REQUEUE_PI:
-    case FUTEX_WAIT_REQUEUE_PI:
-      step->syscall.num_emu_args = 2;
-      return;
-    default:
-      FATAL() << "Unknown futex op " << op;
-  }
 }
 
 static void process_ioctl(Task* t, SyscallEntryOrExit state,
@@ -513,45 +495,6 @@ static void process_ioctl(Task* t, SyscallEntryOrExit state,
   }
 
   step->action = TSTEP_EXIT_SYSCALL;
-  int request = t->regs().arg2_signed();
-  int dir = _IOC_DIR(request);
-
-  LOG(debug) << "Processing ioctl " << HEX(request) << ": dir " << HEX(dir);
-
-  /* Process special-cased ioctls first. */
-  switch (request) {
-    case SIOCGIFCONF:
-      step->syscall.num_emu_args = 3;
-      return;
-
-    case SIOCETHTOOL:
-    case SIOCGIFADDR:
-    case SIOCGIFFLAGS:
-    case SIOCGIFINDEX:
-    case SIOCGIFMTU:
-    case SIOCGIFNAME:
-    case SIOCGIWRATE:
-      step->syscall.num_emu_args = 2;
-      return;
-
-    case TCGETS:
-    case TIOCINQ:
-    case TIOCGWINSZ:
-      step->syscall.num_emu_args = 1;
-      return;
-  }
-  /* Now on to the "regular" ioctls. */
-
-  if (!(_IOC_READ & dir)) {
-    /* Deterministic ioctl(), no data to restore to the
-     * tracee. */
-    return;
-  }
-
-  switch (request) {
-    default:
-      FATAL() << "Unknown ioctl " << HEX(request);
-  }
 }
 
 void process_ipc(Task* t, const TraceFrame& trace_frame,
@@ -563,17 +506,6 @@ void process_ipc(Task* t, const TraceFrame& trace_frame,
   }
 
   step->action = TSTEP_EXIT_SYSCALL;
-  unsigned int call = trace_frame.regs().arg1();
-  LOG(debug) << "ipc call: " << call;
-  switch (call) {
-    case MSGCTL:
-    case MSGRCV:
-      step->syscall.num_emu_args = 1;
-      return;
-    default:
-      step->syscall.num_emu_args = 0;
-      return;
-  }
 }
 
 /**
@@ -836,42 +768,6 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
 }
 
 /**
- * Restore the recorded msghdr pointed at in |t|'s address space by
- * |child_msghdr|.
- */
-template <typename Arch>
-static void restore_struct_msghdr(
-    Task* t, remote_ptr<typename Arch::msghdr> child_msghdr) {}
-
-/** Like restore_struct_msghdr(), but for mmsghdr. */
-template <typename Arch>
-static void restore_struct_mmsghdr(
-    Task* t, remote_ptr<typename Arch::mmsghdr> child_mmsghdr) {
-  remote_ptr<void> tmp = child_mmsghdr;
-  auto child_msghdr = tmp.cast<typename Arch::msghdr>();
-  restore_struct_msghdr<Arch>(t, child_msghdr);
-}
-
-/**
- * Restore saved struct mmsghdr* msgvec
- */
-template <typename Arch>
-static void restore_msgvec(Task* t, int nmmsgs,
-                           remote_ptr<typename Arch::mmsghdr> pmsgvec) {
-  for (int i = 0; i < nmmsgs; ++i, ++pmsgvec) {
-    restore_struct_mmsghdr<Arch>(t, pmsgvec);
-  }
-}
-
-/**
- * Restore saved msglen for each struct mmsghdr* of msgvec
- */
-static void restore_msglen_for_msgvec(Task* t, int nmmsgs) {
-  for (int i = 0; i < nmmsgs; ++i) {
-  }
-}
-
-/**
  * Return nonzero if this socketcall was "regular" and |step| was
  * updated appropriately, or zero if this was an irregular socketcall
  * that needs to be processed specially.
@@ -879,8 +775,6 @@ static void restore_msglen_for_msgvec(Task* t, int nmmsgs) {
 template <typename Arch>
 static void process_socketcall(Task* t, SyscallEntryOrExit state,
                                ReplayTraceStep* step) {
-  unsigned int call;
-
   step->syscall.emu = EMULATE;
 
   if (state == SYSCALL_ENTRY) {
@@ -889,95 +783,6 @@ static void process_socketcall(Task* t, SyscallEntryOrExit state,
   }
 
   step->action = TSTEP_EXIT_SYSCALL;
-  switch ((call = t->regs().arg1())) {
-    /* FIXME: define a SSOT for socketcall record and
-     * replay data, a la syscall_defs.h */
-    case SYS_SOCKET:
-    case SYS_CONNECT:
-    case SYS_BIND:
-    case SYS_LISTEN:
-    case SYS_SENDMSG:
-    case SYS_SEND:
-    case SYS_SENDTO:
-    case SYS_SETSOCKOPT:
-    case SYS_SHUTDOWN:
-      step->syscall.num_emu_args = 0;
-      return;
-    case SYS_GETPEERNAME:
-    case SYS_GETSOCKNAME:
-      step->syscall.num_emu_args = 2;
-      return;
-    case SYS_RECV:
-      step->syscall.num_emu_args = 1;
-      return;
-
-    /* int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
-     * int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int
-     *flags);
-     *
-     * Note: The returned address is truncated if the buffer
-     * provided is too small; in this case, addrlen will return a
-     * value greater than was supplied to the call.
-     *
-     * For now we record the size of bytes that is returned by the
-     * system call. We check in the replayer, if the buffer was
-     * actually too small and throw an error there.
-     */
-    case SYS_ACCEPT:
-    case SYS_ACCEPT4: {
-      remote_ptr<typename Arch::accept_args> argsp = t->regs().arg2();
-      auto args = t->read_mem(argsp);
-      /* FIXME: not quite sure about socket_addr */
-      step->syscall.num_emu_args = (args.addr != 0) + (args.addrlen != 0);
-      return;
-    }
-
-    case SYS_SOCKETPAIR:
-      step->syscall.num_emu_args = 1;
-      return;
-
-    case SYS_GETSOCKOPT:
-      step->syscall.num_emu_args = 2;
-      return;
-
-    case SYS_RECVFROM:
-      step->syscall.num_emu_args = 3;
-      return;
-
-    case SYS_RECVMSG: {
-      // We manually restore the msg buffer.
-      step->syscall.num_emu_args = 0;
-
-      remote_ptr<typename Arch::recvmsg_args> base_addr =
-          t->current_trace_frame().regs().arg2();
-      auto args = t->read_mem(base_addr);
-
-      restore_struct_msghdr<Arch>(t, args.msg);
-      return;
-    }
-
-    case SYS_RECVMMSG: {
-      step->syscall.num_emu_args = 0;
-
-      remote_ptr<typename Arch::recvmmsg_args> base_addr =
-          t->current_trace_frame().regs().arg2();
-      auto args = t->read_mem(base_addr);
-
-      restore_msgvec<Arch>(
-          t, t->current_trace_frame().regs().syscall_result_signed(),
-          args.msgvec);
-      return;
-    }
-
-    case SYS_SENDMMSG: {
-      restore_msglen_for_msgvec(
-          t, t->current_trace_frame().regs().syscall_result_signed());
-      return;
-    }
-
-    default:
-      FATAL() << "Unhandled socketcall " << call;
-  }
 }
 
 static void process_init_buffers(Task* t, SyscallEntryOrExit state,
@@ -1257,14 +1062,12 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   if (def->type == rep_UNDEFINED) {
     ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
         << "Valid but unhandled syscallno " << syscall;
-    step->syscall.num_emu_args = 0;
     step->action = syscall_action(state);
     step->syscall.emu = EMULATE;
     return;
   }
 
   if (rep_IRREGULAR != def->type) {
-    step->syscall.num_emu_args = def->num_emu_args;
     step->action = syscall_action(state);
     step->syscall.emu = rep_EMU == def->type ? EMULATE : EXEC;
     // TODO: there are several syscalls below that aren't
@@ -1299,33 +1102,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::fcntl64:
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
-
-      if (SYSCALL_EXIT == state) {
-        auto cmd = t->regs().arg2_signed();
-        switch (cmd) {
-          case Arch::DUPFD:
-          case Arch::GETFD:
-          case Arch::GETFL:
-          case Arch::SETFL:
-          case Arch::SETFD:
-          case Arch::SETLK:
-          case Arch::SETLK64:
-          case Arch::SETLKW:
-          case Arch::SETLKW64:
-          case Arch::SETOWN:
-          case Arch::SETOWN_EX:
-          case Arch::SETSIG:
-            step->syscall.num_emu_args = 0;
-            break;
-          case Arch::GETLK:
-          case Arch::GETLK64:
-          case Arch::GETOWN_EX:
-            step->syscall.num_emu_args = 1;
-            break;
-          default:
-            FATAL() << "Unknown fcntl64 command: " << cmd;
-        }
-      }
       return;
 
     case Arch::futex:
@@ -1346,19 +1122,16 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::msgctl:
     case Arch::msgrcv:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = 1;
       step->action = syscall_action(state);
       return;
 
     case Arch::select:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = 4;
       step->action = syscall_action(state);
       return;
 
     case Arch::recvfrom:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = 3;
       step->action = syscall_action(state);
       return;
 
@@ -1403,14 +1176,12 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::nanosleep:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = (trace_regs.arg2() != 0) ? 1 : 0;
       step->action = syscall_action(state);
       return;
 
     case Arch::open:
     case Arch::sched_setaffinity:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = 0;
       step->action = syscall_action(state);
       return;
 
@@ -1418,7 +1189,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       int option = trace_regs.arg1_signed();
       if (PR_SET_NAME == option || PR_GET_NAME == option) {
         remote_ptr<void> arg2 = trace_regs.arg2();
-        step->syscall.num_emu_args = 1;
         // We actually execute these.
         step->action = syscall_action(state);
         if (TSTEP_EXIT_SYSCALL == step->action && PR_SET_NAME == option) {
@@ -1427,7 +1197,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         return;
       }
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = 1;
       step->action = syscall_action(state);
       return;
     }
@@ -1449,49 +1218,23 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::quotactl:
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
-      if (state == SYSCALL_EXIT) {
-        auto cmd = t->regs().arg1_signed();
-        switch (cmd & SUBCMDMASK) {
-          case Q_GETQUOTA:
-          case Q_GETINFO:
-          case Q_GETFMT:
-            step->syscall.num_emu_args = 1;
-            break;
-          default:
-            step->syscall.num_emu_args = 0;
-        }
-      }
       return;
 
     case Arch::recvmsg: {
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
-      if (SYSCALL_EXIT == state) {
-        // We manually restore the msg buffer.
-        step->syscall.num_emu_args = 0;
-
-        remote_ptr<typename Arch::msghdr> msg = trace_regs.arg2();
-        restore_struct_msghdr<Arch>(t, msg);
-      }
       return;
     }
 
     case Arch::recvmmsg: {
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
-      if (SYSCALL_EXIT == state) {
-        restore_msgvec<Arch>(t, trace_regs.syscall_result_signed(),
-                             trace_regs.arg2());
-      }
       return;
     }
 
     case Arch::sendmmsg: {
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
-      if (SYSCALL_EXIT == state) {
-        restore_msglen_for_msgvec(t, trace_regs.syscall_result_signed());
-      }
       return;
     }
     case Arch::sigreturn:
@@ -1517,21 +1260,17 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::getpeername:
     case Arch::getsockopt:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = 2;
       step->action = syscall_action(state);
       return;
 
     case Arch::accept:
     case Arch::accept4:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args =
-          (trace_regs.arg2() != 0) + (trace_regs.arg3() != 0);
       step->action = syscall_action(state);
       return;
 
     case Arch::write:
     case Arch::writev:
-      step->syscall.num_emu_args = 0;
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
       if (state == SYSCALL_EXIT) {
@@ -1549,7 +1288,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::readv:
     case Arch::preadv:
       step->syscall.emu = EMULATE;
-      step->syscall.num_emu_args = (int)trace_regs.arg3_signed();
       step->action = syscall_action(state);
       return;
 
@@ -1557,7 +1295,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return process_init_buffers(t, state, step);
 
     case SYS_rrcall_init_preload:
-      step->syscall.num_emu_args = 0;
       step->syscall.emu = EMULATE;
       if (SYSCALL_ENTRY == state) {
         step->action = TSTEP_ENTER_SYSCALL;
@@ -1575,7 +1312,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
             << "Unknown syscall should have returned -ENOSYS";
       }
-      step->syscall.num_emu_args = 0;
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
       return;
