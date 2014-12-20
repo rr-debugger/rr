@@ -1024,7 +1024,9 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
   assert(rep_IRREGULAR == def->type);
 
-  /* Manual implementations of irregular syscalls. */
+  /* Manual implementations of irregular syscalls that need to do more during
+   * replay than just modify register and memory state.
+   */
 
   switch (syscall) {
     case Arch::clone:
