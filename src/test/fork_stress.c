@@ -8,8 +8,12 @@ int main(int argc, char* argv[]) {
   int i;
 
   for (i = 0; i < NUM_ITERATIONS; ++i) {
-    if (0 == fork()) {
+    pid_t child = fork();
+    if (0 == child) {
       return 0;
+    }
+    if (0 > child) {
+      atomic_printf("Fork failed with errno %d\n", errno);
     }
   }
 
