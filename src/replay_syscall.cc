@@ -309,7 +309,21 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   // ptrace event we're expecting.
   __ptrace_cont(t);
   while (!t->clone_syscall_is_complete()) {
-    __ptrace_cont(t);
+    if (t->regs().syscall_result_signed() == -EAGAIN) {
+      // clone() calls sometimes fail with -EAGAIN due to load issues or
+      // whatever. We need to retry the system call until it succeeds. Reset
+      // state to try the syscall again.
+      Registers r = t->regs();
+      r.set_syscallno(rec_regs.original_syscallno());
+      r.set_ip(rec_regs.ip() - syscall_instruction_length(t->arch()));
+      t->set_regs(r);
+      // reenter syscall
+      __ptrace_cont(t);
+      // continue to exit
+      __ptrace_cont(t);
+    } else {
+      __ptrace_cont(t);
+    }
   }
 
   // Now continue again to get the syscall exit event.

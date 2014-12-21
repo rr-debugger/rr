@@ -2204,10 +2204,9 @@ bool Task::clone_syscall_is_complete() {
   ASSERT(this, !event) << "Unexpected ptrace event "
                        << ptrace_event_name(event);
 
-  // EAGAIN has been observed here. Theoretically that should only
-  // happen when "too many processes are already running", but who
-  // knows...
-  // XXX why would ENOSYS happen here?
+  // EAGAIN can happen here due to fork failing under load. The caller must
+  // handle this.
+  // XXX ENOSYS shouldn't happen here.
   intptr_t result = regs().syscall_result_signed();
   ASSERT(this,
          regs().syscall_may_restart() || -ENOSYS == result || -EAGAIN == result)
@@ -2247,7 +2246,14 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                                 remote_ptr<int> ctid) {
   perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
-    parent->cont_syscall();
+    // clone syscalls can fail with EAGAIN due to temporary load issues.
+    // Just retry the system call until it succeeds.
+    if (parent->regs().syscall_result_signed() == -EAGAIN) {
+      perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
+    } else {
+      // XXX account for ReplaySession::is_ignored_signal?
+      parent->cont_syscall();
+    }
   }
 
   parent->cont_syscall();
