@@ -2291,7 +2291,14 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                                      .regs()
                                      .original_syscallno() == NativeArch::prctl;
   }
-  pid_t tid = fork();
+
+  pid_t tid;
+  do {
+    tid = fork();
+    // fork() can fail with EAGAIN due to temporary load issues. In such
+    // cases, retry the fork().
+  } while (0 > tid && errno == EAGAIN);
+
   if (0 == tid) {
     // Set current working directory to the cwd used during
     // recording. The main effect of this is to resolve relative
