@@ -64,7 +64,10 @@ enum ArgMode {
   // Syscall memory buffer is out-parameter only
   OUT,
   // Syscall memory buffer is an in-out parameter.
-  IN_OUT
+  IN_OUT,
+  // Syscall memory buffer is an in-out parameter but we must not use
+  // scratch (e.g. for futexes, we must use the actual memory word).
+  IN_OUT_NO_SCRATCH
 };
 
 struct TaskSyscallState {
@@ -294,7 +297,9 @@ void TaskSyscallState::init_record_arg(int arg, ArgMode mode) {
   rrs.num_bytes = sizeof(T);
   rrs.arg_to_restore = arg;
   rrs.mode = mode;
-  scratch += rrs.num_bytes;
+  if (mode != IN_OUT_NO_SCRATCH) {
+    scratch += rrs.num_bytes;
+  }
   restore_and_record_list.push_back(rrs);
 }
 
@@ -318,6 +323,9 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
 
   Registers r = t->regs();
   for (auto& rrs : restore_and_record_list) {
+    if (rrs.mode == IN_OUT_NO_SCRATCH) {
+      continue;
+    }
     r.set_arg(rrs.arg_to_restore, rrs.scratch.as_int());
     if (rrs.mode == IN_OUT) {
       // Initialize scratch buffer with input data
@@ -1037,9 +1045,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     }
 
     case Arch::fcntl:
-    case Arch::fcntl64: {
-      int cmd = t->regs().arg2_signed();
-      switch (cmd) {
+    case Arch::fcntl64:
+      switch ((int)t->regs().arg2_signed()) {
         case Arch::DUPFD:
         case Arch::GETFD:
         case Arch::GETFL:
@@ -1083,18 +1090,33 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           break;
       }
       return syscall_state.done_preparing(PREVENT_SWITCH);
-    }
 
     /* int futex(int *uaddr, int op, int val, const struct timespec *timeout,
-     * int *uaddr2, int val3); */
+     *           int *uaddr2, int val3);
+     * futex parameters are in-out but they can't be moved to scratch
+     * addresses. */
     case Arch::futex:
       switch ((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) {
         case FUTEX_WAIT:
         case FUTEX_WAIT_BITSET:
-          return ALLOW_SWITCH;
+          syscall_state.init_record_arg<int>(1, IN_OUT_NO_SCRATCH);
+          return syscall_state.done_preparing(ALLOW_SWITCH);
+
+        case FUTEX_CMP_REQUEUE:
+        case FUTEX_WAKE_OP:
+          syscall_state.init_record_arg<int>(1, IN_OUT_NO_SCRATCH);
+          syscall_state.init_record_arg<int>(5, IN_OUT_NO_SCRATCH);
+          break;
+
+        case FUTEX_WAKE:
+          syscall_state.init_record_arg<int>(1, IN_OUT_NO_SCRATCH);
+          break;
+
         default:
-          return PREVENT_SWITCH;
+          syscall_state.expect_errno = EINVAL;
+          break;
       }
+      return syscall_state.done_preparing(PREVENT_SWITCH);
 
     case Arch::ipc:
       return prepare_ipc<Arch>(t, need_scratch_setup);
@@ -1712,6 +1734,9 @@ void TaskSyscallState::process_syscall_results() {
     AutoRestoreScratch restore_scratch(t);
     Registers r = t->regs();
     for (auto& rrs : restore_and_record_list) {
+      if (rrs.mode == IN_OUT_NO_SCRATCH) {
+        continue;
+      }
       restore_scratch.restore_and_record_arg_buf(rrs.dest, rrs.num_bytes);
       r.set_arg(rrs.arg_to_restore, rrs.dest.as_int());
     }
@@ -2703,28 +2728,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_execve<Arch>(t, syscall_state);
       break;
 
-    case Arch::futex: {
-      t->record_remote(remote_ptr<int>(t->regs().arg1()));
-      int op = (int)t->regs().arg2_signed() & FUTEX_CMD_MASK;
-
-      switch (op) {
-
-        case FUTEX_WAKE:
-        case FUTEX_WAIT_BITSET:
-        case FUTEX_WAIT:
-          break;
-
-        case FUTEX_CMP_REQUEUE:
-        case FUTEX_WAKE_OP:
-          t->record_remote(remote_ptr<int>(t->regs().arg5()));
-          break;
-
-        default:
-          FATAL() << "Unknown futex op " << op;
-      }
-
-      break;
-    }
     case Arch::getxattr:
     case Arch::lgetxattr:
     case Arch::fgetxattr: {
@@ -3029,6 +3032,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
     case Arch::fcntl:
     case Arch::fcntl64:
+    case Arch::futex:
     case Arch::sendfile:
     case Arch::sendfile64:
     case Arch::splice:
