@@ -4,32 +4,18 @@
 
 #include "replay_syscall.h"
 
-#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/futex.h>
-#include <linux/if.h>
-#include <linux/net.h>
-#include <linux/mman.h>
-#include <linux/prctl.h>
-#include <linux/shm.h>
-#include <linux/sem.h>
-#include <linux/sockios.h>
-#include <linux/soundcard.h>
-#include <linux/wireless.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <syscall.h>
-#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
-#include <sys/quota.h>
-#include <sys/socket.h>
-#include <sys/sysctl.h>
 
 #include <array>
 #include <initializer_list>
