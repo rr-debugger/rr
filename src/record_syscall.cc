@@ -782,6 +782,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   bool restart = (syscallno == Arch::restart_syscall);
   remote_ptr<void> scratch = nullptr;
 
+  auto syscall_state = &syscall_state_property.get_or_create(t->properties());
+
   if (t->desched_rec()) {
     return set_up_scratch_for_syscallbuf<Arch>(t, syscallno);
   }
@@ -889,7 +891,6 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
       Registers r = t->regs();
       string raw_filename = t->read_c_str(r.arg1());
-      auto syscall_state = &syscall_state_property.create(t->properties());
       syscall_state->exec_saved_arg1 = r.arg1();
       uintptr_t end = r.arg1() + raw_filename.length();
       if (!exec_file_supported(t->exec_file())) {
@@ -1596,16 +1597,15 @@ const unsigned int elf_auxv_ordering<X64Arch>::keys[] = {
 template <>
 const size_t elf_auxv_ordering<X64Arch>::keys_length = array_length(keys);
 
-template <typename Arch> static void process_execve(Task* t) {
-  auto syscall_state = syscall_state_property.remove(t->properties());
-
+template <typename Arch>
+static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
-    if (r.arg1() != syscall_state->exec_saved_arg1) {
+    if (r.arg1() != syscall_state.exec_saved_arg1) {
       LOG(warn)
           << "Blocked attempt to execve 64-bit image (not yet supported by rr)";
       // Restore arg1, which we clobbered.
-      r.set_arg1(syscall_state->exec_saved_arg1);
+      r.set_arg1(syscall_state.exec_saved_arg1);
       t->set_regs(r);
     }
     return;
@@ -1617,7 +1617,7 @@ template <typename Arch> static void process_execve(Task* t) {
   }
 
   t->record_session().trace_writer().write_task_event(
-      *syscall_state->exec_saved_event);
+      *syscall_state.exec_saved_event);
 
   t->post_exec_syscall();
 
@@ -2475,6 +2475,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
 
+  auto syscall_state = syscall_state_property.remove(t->properties());
+
   before_syscall_exit<Arch>(t, syscallno);
 
   if (const struct syscallbuf_record* rec = t->desched_rec()) {
@@ -2561,7 +2563,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::execve:
-      process_execve<Arch>(t);
+      process_execve<Arch>(t, *syscall_state);
       break;
 
     case Arch::fcntl:
