@@ -216,16 +216,16 @@ public:
    * |value|.
    */
   template <int Index, typename T> void set_arg(T value) {
-    set_arg<Index>(uintptr_t(value));
+    set_arg(Index, uintptr_t(value));
   }
 
   template <int Index, typename T> void set_arg(remote_ptr<T> value) {
-    set_arg<Index>(value.as_int());
+    set_arg(Index, value.as_int());
   }
 
-  template <int Index> void set_arg(uintptr_t value) {
-    static_assert(1 <= Index && Index <= 6, "Index must be in range");
-    switch (Index) {
+  void set_arg(int index, uintptr_t value) {
+    assert(1 <= index && index <= 6 && "Index must be in range");
+    switch (index) {
       case 1:
         return set_arg1(value);
       case 2:
