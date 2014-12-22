@@ -61,6 +61,9 @@ using namespace std;
 using namespace rr;
 
 struct TaskSyscallState {
+  typedef std::stack<remote_ptr<void> > ArgsStack;
+
+  ArgsStack saved_args;
   /* The value of arg1 passed to the last execve syscall in this task. */
   uintptr_t exec_saved_arg1;
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
@@ -110,8 +113,9 @@ static T read_socketcall_args(Task* t, remote_ptr<void>* argsp) {
 static void reset_scratch_pointers(Task* t) {
   assert(t->ev().type() == EV_SYSCALL);
 
-  while (!t->ev().Syscall().saved_args.empty()) {
-    t->ev().Syscall().saved_args.pop();
+  auto& syscall_state = *syscall_state_property.get(*t);
+  while (!syscall_state.saved_args.empty()) {
+    syscall_state.saved_args.pop();
   }
   t->ev().Syscall().tmp_data_ptr = t->scratch_ptr;
   t->ev().Syscall().tmp_data_num_bytes = -1;
@@ -125,7 +129,8 @@ static void reset_scratch_pointers(Task* t) {
  * |push*()|.
  */
 static void push_arg_ptr(Task* t, remote_ptr<void> argp) {
-  t->ev().Syscall().saved_args.push(argp);
+  auto& syscall_state = *syscall_state_property.get(*t);
+  syscall_state.saved_args.push(argp);
 }
 
 /**
@@ -1397,8 +1402,8 @@ template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
        * that, we do what the kernel does, and update the
        * outparam at the -ERESTART_RESTART interruption
        * regardless. */
-      auto rem =
-          t->ev().Syscall().saved_args.top().cast<typename Arch::timespec>();
+      auto& syscall_state = *syscall_state_property.get(*t);
+      auto rem = syscall_state.saved_args.top().cast<typename Arch::timespec>();
       remote_ptr<typename Arch::timespec> rem2 = t->regs().arg2();
 
       if (!rem.is_null()) {
@@ -1465,7 +1470,8 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
  * the syscall |t->ev|.
  */
 static bool has_saved_arg_ptrs(Task* t) {
-  return !t->ev().Syscall().saved_args.empty();
+  auto& syscall_state = *syscall_state_property.get(*t);
+  return !syscall_state.saved_args.empty();
 }
 
 /**
@@ -1473,9 +1479,10 @@ static bool has_saved_arg_ptrs(Task* t) {
  * call to |push_arg_ptr()|.
  */
 template <typename T> static remote_ptr<T> pop_arg_ptr(Task* t) {
-  assert(!t->ev().Syscall().saved_args.empty());
-  auto arg = t->ev().Syscall().saved_args.top();
-  t->ev().Syscall().saved_args.pop();
+  auto& syscall_state = *syscall_state_property.get(*t);
+  assert(!syscall_state.saved_args.empty());
+  auto arg = syscall_state.saved_args.top();
+  syscall_state.saved_args.pop();
   return arg.cast<T>();
 }
 
@@ -1528,7 +1535,8 @@ public:
     if (slack) {
       LOG(debug) << "Left " << diff << " bytes unconsumed in scratch";
     }
-    ASSERT(t, t->ev().Syscall().saved_args.empty())
+    auto& syscall_state = *syscall_state_property.get(*t);
+    ASSERT(t, syscall_state.saved_args.empty())
         << "Under-consumed saved arg pointers";
   }
 
@@ -2475,7 +2483,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
 
-  auto syscall_state = syscall_state_property.remove(*t);
+  auto& syscall_state = *syscall_state_property.get(*t);
 
   before_syscall_exit<Arch>(t, syscallno);
 
@@ -2485,11 +2493,13 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     t->record_local(t->ev().Syscall().tmp_data_ptr,
                     t->ev().Syscall().tmp_data_num_bytes,
                     (uint8_t*)rec->extra_data);
+    syscall_state_property.remove(*t);
     return;
   }
 
   if (syscallno < 0) {
     check_syscall_rejected(t);
+    syscall_state_property.remove(*t);
     return;
   }
 
@@ -2563,7 +2573,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
     case Arch::execve:
-      process_execve<Arch>(t, *syscall_state);
+      process_execve<Arch>(t, syscall_state);
       break;
 
     case Arch::fcntl:
@@ -2897,7 +2907,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     }
     case Arch::rt_sigtimedwait: {
       Registers r = t->regs();
-      if (t->ev().Syscall().saved_args.empty()) {
+      if (syscall_state.saved_args.empty()) {
         remote_ptr<typename Arch::siginfo_t> info = r.arg2();
         if (!info.is_null()) {
           t->record_remote(info);
@@ -3073,6 +3083,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       check_syscall_rejected(t);
       break;
   }
+
+  syscall_state_property.remove(*t);
 }
 
 void rec_process_syscall(Task* t) {

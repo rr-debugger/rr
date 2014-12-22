@@ -198,14 +198,11 @@ enum SyscallState {
   EXITING_SYSCALL
 };
 struct SyscallEvent : public BaseEvent {
-  typedef std::stack<remote_ptr<void> > ArgsStack;
-
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno, SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch),
         regs(arch),
         desched_rec(nullptr),
-        saved_args(),
         tmp_data_ptr(nullptr),
         tmp_data_num_bytes(-1),
         state(NO_SYSCALL),
@@ -266,7 +263,6 @@ struct SyscallEvent : public BaseEvent {
   // (The recorder code has to be careful, however, not to
   // attempt to copy-back syscallbuf tmp data to the "original"
   // buffers.  The syscallbuf code will do that itself.)
-  ArgsStack saved_args;
   remote_ptr<void> tmp_data_ptr;
   ssize_t tmp_data_num_bytes;
   SyscallState state;
