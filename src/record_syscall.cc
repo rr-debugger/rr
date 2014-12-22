@@ -63,10 +63,62 @@ using namespace rr;
 struct TaskSyscallState {
   typedef std::stack<remote_ptr<void> > ArgsStack;
 
+  // When tasks enter syscalls that may block and so must be
+  // prepared for a context-switch, and the syscall params
+  // include (in)outparams that point to buffers, we need to
+  // redirect those arguments to scratch memory.  This allows rr
+  // to serialize execution of what may be multiple blocked
+  // syscalls completing "simulatenously" (from rr's
+  // perspective).  After the syscall exits, we restore the data
+  // saved in scratch memory to the original buffers.
+  //
+  // Then during replay, we simply restore the saved data to the
+  // tracee's passed-in buffer args and continue on.
+  //
+  // The array |saved_arg_ptr| stores the original callee
+  // pointers that we replaced with pointers into the
+  // syscallbuf.  |tmp_data_num_bytes| is the number of bytes
+  // we'll be saving across *all* buffer outparams.  (We can
+  // save one length value because all the tmp pointers into
+  // scratch are contiguous.)  |tmp_data_ptr| /usually/ points
+  // at |scratch_ptr|, except ...
+  //
+  // ... a fly in this ointment is may-block buffered syscalls.
+  // If a task blocks in one of those, it will look like it just
+  // entered a syscall that needs a scratch buffer.  However,
+  // it's too late at that point to fudge the syscall args,
+  // because processing of the syscall has already begun in the
+  // kernel.  But that's OK: the syscallbuf code has already
+  // swapped out the original buffer-pointers for pointers into
+  // the syscallbuf (which acts as its own scratch memory).  We
+  // just have to worry about setting things up properly for
+  // replay.
+  //
+  // The descheduled syscall will "abort" its commit into the
+  // syscallbuf, so the outparam data won't actually be saved
+  // there (and thus, won't be restored during replay).  During
+  // replay, we have to restore them like we restore the
+  // non-buffered-syscall scratch data.
+  //
+  // What we do is add another level of indirection to the
+  // "scratch pointer", through |tmp_data_ptr|.  Usually that
+  // will point at |scratch_ptr|, for unbuffered syscalls.  But
+  // for desched'd buffered ones, it will point at the region of
+  // the syscallbuf that's being used as "scratch".  We'll save
+  // that region during recording and restore it during replay
+  // without caring which scratch space it points to.
+  //
+  // (The recorder code has to be careful, however, not to
+  // attempt to copy-back syscallbuf tmp data to the "original"
+  // buffers.  The syscallbuf code will do that itself.)
   ArgsStack saved_args;
+  remote_ptr<void> tmp_data_ptr;
+  ssize_t tmp_data_num_bytes;
   /* The value of arg1 passed to the last execve syscall in this task. */
   uintptr_t exec_saved_arg1;
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
+
+  TaskSyscallState() : tmp_data_num_bytes(-1) {}
 };
 
 static const Property<TaskSyscallState, Task> syscall_state_property;
@@ -117,8 +169,8 @@ static void reset_scratch_pointers(Task* t) {
   while (!syscall_state.saved_args.empty()) {
     syscall_state.saved_args.pop();
   }
-  t->ev().Syscall().tmp_data_ptr = t->scratch_ptr;
-  t->ev().Syscall().tmp_data_num_bytes = -1;
+  syscall_state.tmp_data_ptr = t->scratch_ptr;
+  syscall_state.tmp_data_num_bytes = -1;
 }
 
 /**
@@ -138,9 +190,10 @@ static void push_arg_ptr(Task* t, remote_ptr<void> argp) {
  * |event|.  Log a warning as well.
  */
 static Switchable abort_scratch(Task* t, const string& event) {
-  int num_bytes = t->ev().Syscall().tmp_data_num_bytes;
+  auto& syscall_state = *syscall_state_property.get(*t);
+  int num_bytes = syscall_state.tmp_data_num_bytes;
 
-  assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
+  assert(syscall_state.tmp_data_ptr == t->scratch_ptr);
 
   if (0 > num_bytes) {
     LOG(warn) << "`" << event << "' requires scratch buffers, but that's not "
@@ -163,11 +216,12 @@ static Switchable abort_scratch(Task* t, const string& event) {
 static bool can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
   remote_ptr<void> scratch_start = t->scratch_ptr;
 
-  assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
+  auto& syscall_state = *syscall_state_property.get(*t);
+  assert(syscall_state.tmp_data_ptr == t->scratch_ptr);
 
-  t->ev().Syscall().tmp_data_num_bytes = scratch_end - scratch_start;
-  return 0 <= t->ev().Syscall().tmp_data_num_bytes &&
-         t->ev().Syscall().tmp_data_num_bytes <= t->scratch_size;
+  syscall_state.tmp_data_num_bytes = scratch_end - scratch_start;
+  return 0 <= syscall_state.tmp_data_num_bytes &&
+         syscall_state.tmp_data_num_bytes <= t->scratch_size;
 }
 
 template <typename T>
@@ -194,8 +248,9 @@ static bool prepare_msgrcv(Task* t, size_t msgsize, remote_ptr<void>* msgbuf,
 template <typename Arch>
 static Switchable prepare_ipc(Task* t, bool need_scratch_setup) {
   int call = t->regs().arg1_signed();
+  auto& syscall_state = *syscall_state_property.get(*t);
   remote_ptr<void> scratch =
-      need_scratch_setup ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
+      need_scratch_setup ? syscall_state.tmp_data_ptr : remote_ptr<void>();
 
   assert(!t->desched_rec());
 
@@ -439,8 +494,9 @@ static bool prepare_recvmsg(Task* t, unsigned flags,
  */
 template <typename Arch>
 static Switchable prepare_socketcall(Task* t, bool need_scratch_setup) {
+  auto& syscall_state = *syscall_state_property.get(*t);
   remote_ptr<void> scratch =
-      need_scratch_setup ? t->ev().Syscall().tmp_data_ptr : remote_ptr<void>();
+      need_scratch_setup ? syscall_state.tmp_data_ptr : remote_ptr<void>();
   Registers r = t->regs();
 
   assert(!t->desched_rec());
@@ -729,11 +785,12 @@ static Switchable set_up_scratch_for_syscallbuf(Task* t, int syscallno) {
                                          << t->syscall_name(syscallno);
 
   reset_scratch_pointers(t);
-  t->ev().Syscall().tmp_data_ptr =
+  auto& syscall_state = *syscall_state_property.get(*t);
+  syscall_state.tmp_data_ptr =
       t->syscallbuf_child + (rec->extra_data - (uint8_t*)t->syscallbuf_hdr);
   /* |rec->size| is the entire record including extra data; we
    * just care about the extra data here. */
-  t->ev().Syscall().tmp_data_num_bytes = rec->size - sizeof(*rec);
+  syscall_state.tmp_data_num_bytes = rec->size - sizeof(*rec);
 
   switch (syscallno) {
     case Arch::write:
@@ -806,7 +863,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
      * TODO: but, we'll stomp if we reenter through a
      * signal handler ... */
     reset_scratch_pointers(t);
-    scratch = t->ev().Syscall().tmp_data_ptr;
+    scratch = syscall_state.tmp_data_ptr;
   }
 
   if (syscallno < 0) {
@@ -1506,8 +1563,9 @@ class AutoRestoreScratch {
 public:
   AutoRestoreScratch(Task* t, AllowSlack slack = NO_SLACK)
       : t(t), iter(nullptr), slack(slack) {
-    remote_ptr<void> scratch = t->ev().Syscall().tmp_data_ptr;
-    ssize_t num_bytes = t->ev().Syscall().tmp_data_num_bytes;
+    auto& syscall_state = *syscall_state_property.get(*t);
+    remote_ptr<void> scratch = syscall_state.tmp_data_ptr;
+    ssize_t num_bytes = syscall_state.tmp_data_num_bytes;
     if (num_bytes < 0) {
       // Scratch was not used
       return;
@@ -1525,17 +1583,17 @@ public:
       return;
     }
 
+    auto& syscall_state = *syscall_state_property.get(*t);
     ssize_t consumed = iter - data.data();
-    ssize_t diff = t->ev().Syscall().tmp_data_num_bytes - consumed;
+    ssize_t diff = syscall_state.tmp_data_num_bytes - consumed;
 
-    assert(t->ev().Syscall().tmp_data_ptr == t->scratch_ptr);
+    assert(syscall_state.tmp_data_ptr == t->scratch_ptr);
     ASSERT(t, !diff || (slack && diff > 0))
-        << "Saved " << t->ev().Syscall().tmp_data_num_bytes
+        << "Saved " << syscall_state.tmp_data_num_bytes
         << " bytes of scratch memory but consumed " << consumed;
     if (slack) {
       LOG(debug) << "Left " << diff << " bytes unconsumed in scratch";
     }
-    auto& syscall_state = *syscall_state_property.get(*t);
     ASSERT(t, syscall_state.saved_args.empty())
         << "Under-consumed saved arg pointers";
   }
@@ -2488,10 +2546,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   before_syscall_exit<Arch>(t, syscallno);
 
   if (const struct syscallbuf_record* rec = t->desched_rec()) {
-    assert(t->ev().Syscall().tmp_data_ptr != t->scratch_ptr);
+    assert(syscall_state.tmp_data_ptr != t->scratch_ptr);
 
-    t->record_local(t->ev().Syscall().tmp_data_ptr,
-                    t->ev().Syscall().tmp_data_num_bytes,
+    t->record_local(syscall_state.tmp_data_ptr,
+                    syscall_state.tmp_data_num_bytes,
                     (uint8_t*)rec->extra_data);
     syscall_state_property.remove(*t);
     return;
