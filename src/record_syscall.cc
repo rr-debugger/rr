@@ -60,6 +60,14 @@
 using namespace std;
 using namespace rr;
 
+struct TaskSyscallState {
+  /* The value of arg1 passed to the last execve syscall in this task. */
+  uintptr_t exec_saved_arg1;
+  std::unique_ptr<TraceTaskEvent> exec_saved_event;
+};
+
+static const Property<TaskSyscallState> syscall_state_property;
+
 template <typename Arch>
 static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
   if (Arch::write != syscallno) {
@@ -881,10 +889,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
       Registers r = t->regs();
       string raw_filename = t->read_c_str(r.arg1());
-      // We can't use push_arg_ptr/pop_arg_ptr to save and restore
-      // arg1 because execs get special ptrace events that clobber
-      // the trace event for this system call.
-      t->exec_saved_arg1 = r.arg1();
+      auto syscall_state = &syscall_state_property.create(t->properties());
+      syscall_state->exec_saved_arg1 = r.arg1();
       uintptr_t end = r.arg1() + raw_filename.length();
       if (!exec_file_supported(t->exec_file())) {
         // Force exec to fail with ENOENT by advancing arg1 to
@@ -904,7 +910,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
         argv++;
       }
       // Save the event. We can't record it here because the exec might fail.
-      t->exec_saved_event = unique_ptr<TraceTaskEvent>(
+      syscall_state->exec_saved_event = unique_ptr<TraceTaskEvent>(
           new TraceTaskEvent(t->tid, raw_filename, cmd_line));
 
       return PREVENT_SWITCH;
@@ -1591,13 +1597,15 @@ template <>
 const size_t elf_auxv_ordering<X64Arch>::keys_length = array_length(keys);
 
 template <typename Arch> static void process_execve(Task* t) {
+  auto syscall_state = syscall_state_property.remove(t->properties());
+
   Registers r = t->regs();
   if (r.syscall_failed()) {
-    if (r.arg1() != t->exec_saved_arg1) {
+    if (r.arg1() != syscall_state->exec_saved_arg1) {
       LOG(warn)
           << "Blocked attempt to execve 64-bit image (not yet supported by rr)";
       // Restore arg1, which we clobbered.
-      r.set_arg1(t->exec_saved_arg1);
+      r.set_arg1(syscall_state->exec_saved_arg1);
       t->set_regs(r);
     }
     return;
@@ -1608,8 +1616,8 @@ template <typename Arch> static void process_execve(Task* t) {
     return;
   }
 
-  t->record_session().trace_writer().write_task_event(*t->exec_saved_event);
-  t->exec_saved_event = nullptr;
+  t->record_session().trace_writer().write_task_event(
+      *syscall_state->exec_saved_event);
 
   t->post_exec_syscall();
 

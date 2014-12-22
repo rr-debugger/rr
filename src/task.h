@@ -14,6 +14,7 @@
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "PerfCounters.h"
+#include "PropertyTable.h"
 #include "Registers.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -1117,9 +1118,7 @@ public:
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<void> syscallbuf_child;
 
-  /* The value of arg1 passed to the last execve syscall in this task. */
-  uintptr_t exec_saved_arg1;
-  std::unique_ptr<TraceTaskEvent> exec_saved_event;
+  PropertyTable& properties() { return properties_; }
 
 private:
   Task(Session& session, pid_t tid, pid_t rec_tid, int priority,
@@ -1354,6 +1353,8 @@ private:
   // True when a PTRACE_EXIT_EVENT has been observed in the wait_status
   // for this task.
   bool seen_ptrace_exit_event;
+
+  PropertyTable properties_;
 
   Task(Task&) = delete;
   Task operator=(Task&) = delete;
