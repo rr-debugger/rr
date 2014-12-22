@@ -8,7 +8,7 @@
 #include <memory>
 #include <unordered_map>
 
-template <typename T> class Property;
+template <typename T, typename Object> class Property;
 
 /**
  * A PropertyTable is a heterogenously-typed set of property values.
@@ -27,7 +27,7 @@ public:
   }
 
 private:
-  template <typename T> friend class Property;
+  template <typename T, typename Object> friend class Property;
 
   class PropertyBase {
   public:
@@ -39,30 +39,35 @@ private:
 
 /**
  * Create an instance of this class to declare a property name.
+ * The methods of this class call properties() on their Object parameter to
+ * get the PropertyTable.
  */
-template <typename T> class Property : protected PropertyTable::PropertyBase {
+template <typename T, typename Object>
+class Property : protected PropertyTable::PropertyBase {
 public:
-  T& create(PropertyTable& properties) const {
-    assert(!get(properties));
+  T& create(Object& o) const {
+    assert(!get(o));
     T* t = new T();
-    properties.values[this] = t;
+    o.properties().values[this] = t;
     return *t;
   }
-  T* get(PropertyTable& properties) const {
+  T* get(Object& o) const {
+    auto& properties = o.properties();
     auto e = properties.values.find(this);
     if (e != properties.values.end()) {
       return static_cast<T*>(e->second);
     }
     return nullptr;
   }
-  T& get_or_create(PropertyTable& properties) const {
-    T* t = get(properties);
+  T& get_or_create(Object& o) const {
+    T* t = get(o);
     if (t) {
       return *t;
     }
-    return create(properties);
+    return create(o);
   }
-  std::unique_ptr<T> remove(PropertyTable& properties) const {
+  std::unique_ptr<T> remove(Object& o) const {
+    auto& properties = o.properties();
     auto e = properties.values.find(this);
     std::unique_ptr<T> result;
     if (e != properties.values.end()) {

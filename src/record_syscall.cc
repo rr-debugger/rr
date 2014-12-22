@@ -66,7 +66,7 @@ struct TaskSyscallState {
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 };
 
-static const Property<TaskSyscallState> syscall_state_property;
+static const Property<TaskSyscallState, Task> syscall_state_property;
 
 template <typename Arch>
 static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
@@ -782,7 +782,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   bool restart = (syscallno == Arch::restart_syscall);
   remote_ptr<void> scratch = nullptr;
 
-  auto syscall_state = &syscall_state_property.get_or_create(t->properties());
+  auto& syscall_state = syscall_state_property.get_or_create(*t);
 
   if (t->desched_rec()) {
     return set_up_scratch_for_syscallbuf<Arch>(t, syscallno);
@@ -891,7 +891,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
       Registers r = t->regs();
       string raw_filename = t->read_c_str(r.arg1());
-      syscall_state->exec_saved_arg1 = r.arg1();
+      syscall_state.exec_saved_arg1 = r.arg1();
       uintptr_t end = r.arg1() + raw_filename.length();
       if (!exec_file_supported(t->exec_file())) {
         // Force exec to fail with ENOENT by advancing arg1 to
@@ -911,7 +911,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
         argv++;
       }
       // Save the event. We can't record it here because the exec might fail.
-      syscall_state->exec_saved_event = unique_ptr<TraceTaskEvent>(
+      syscall_state.exec_saved_event = unique_ptr<TraceTaskEvent>(
           new TraceTaskEvent(t->tid, raw_filename, cmd_line));
 
       return PREVENT_SWITCH;
@@ -2475,7 +2475,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
 
-  auto syscall_state = syscall_state_property.remove(t->properties());
+  auto syscall_state = syscall_state_property.remove(*t);
 
   before_syscall_exit<Arch>(t, syscallno);
 
