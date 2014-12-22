@@ -63,6 +63,8 @@ using namespace rr;
 struct TaskSyscallState {
   typedef std::stack<remote_ptr<void> > ArgsStack;
 
+  Task* t;
+
   // When tasks enter syscalls that may block and so must be
   // prepared for a context-switch, and the syscall params
   // include (in)outparams that point to buffers, we need to
@@ -115,11 +117,36 @@ struct TaskSyscallState {
   remote_ptr<void> tmp_data_ptr;
   ssize_t tmp_data_num_bytes;
 
+  /**
+   * Upon successful syscall completion, each RestoreAndRecordScratch record
+   * in restore_and_record_scratch consumes num_bytes from the tmp_data_ptr
+   * buffer, copying the data to remote_dest and recording the data at
+   * remote_dest. If arg_to_restore is greater than zero, updates the task's
+   * arg_to_restore register with 'remote_dest'.
+   */
+  struct RestoreAndRecordScratch {
+    remote_ptr<void> remote_dest;
+    size_t num_bytes;
+    int arg_to_restore;
+  };
+  vector<RestoreAndRecordScratch> restore_and_record_list;
+  Registers regs;
+  remote_ptr<void> scratch;
+
+  void init(Task* t) {
+    this->t = t;
+  }
+  template <typename T> void init_scratch_for_arg(int arg);
+  Switchable done_preparing(Switchable switchable);
+  void restore_and_record_scratch();
+
   /* The value of arg1 passed to the last execve syscall in this task. */
   uintptr_t exec_saved_arg1;
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
-  TaskSyscallState() : tmp_data_num_bytes(-1) {}
+  bool scratch_is_setup;
+
+  TaskSyscallState() : t(nullptr), tmp_data_num_bytes(-1), scratch_is_setup(false) {}
 };
 
 static const Property<TaskSyscallState, Task> syscall_state_property;
@@ -223,6 +250,37 @@ static bool can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
   syscall_state.tmp_data_num_bytes = scratch_end - scratch_start;
   return 0 <= syscall_state.tmp_data_num_bytes &&
          syscall_state.tmp_data_num_bytes <= t->scratch_size;
+}
+
+template <typename T> void TaskSyscallState::init_scratch_for_arg(int arg) {
+  if (!scratch) {
+    regs = t->regs();
+    scratch = tmp_data_ptr;
+  }
+  uintptr_t p = regs.arg(arg);
+  if (!p || scratch_is_setup) {
+    return;
+  }
+  RestoreAndRecordScratch rrs;
+  rrs.remote_dest = p;
+  rrs.num_bytes = sizeof(T);
+  rrs.arg_to_restore = arg;
+  regs.set_arg(arg, scratch.as_int());
+  scratch += rrs.num_bytes;
+  restore_and_record_list.push_back(rrs);
+}
+
+Switchable TaskSyscallState::done_preparing(Switchable switchable) {
+  if (scratch_is_setup) {
+    return switchable;
+  }
+
+  if (!can_use_scratch(t, scratch)) {
+    return abort_scratch(t, t->syscall_name(t->ev().Syscall().number));
+  }
+  t->set_regs(regs);
+  scratch_is_setup = true;
+  return switchable;
 }
 
 template <typename T>
@@ -846,6 +904,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   remote_ptr<void> scratch = nullptr;
 
   auto& syscall_state = syscall_state_property.get_or_create(*t);
+  syscall_state.init(t);
 
   if (t->desched_rec()) {
     return set_up_scratch_for_syscallbuf<Arch>(t, syscallno);
@@ -1162,31 +1221,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
      */
     case Arch::waitpid:
     case Arch::wait4: {
-      Registers r = t->regs();
-      remote_ptr<int> status = r.arg2();
-      remote_ptr<typename Arch::rusage> rusage =
-          (Arch::wait4 == syscallno) ? r.arg4() : (uintptr_t)0;
-
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
+      syscall_state.init_scratch_for_arg<int>(2);
+      if (syscallno == Arch::wait4) {
+        syscall_state.init_scratch_for_arg<typename Arch::rusage>(4);
       }
-      push_arg_ptr(t, status);
-      if (!status.is_null()) {
-        r.set_arg2(scratch);
-        scratch += status.referent_size();
-      }
-      push_arg_ptr(t, rusage);
-      if (!rusage.is_null()) {
-        r.set_arg4(scratch);
-        scratch += rusage.referent_size();
-      }
-
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscall_name(syscallno));
-      }
-
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     case Arch::waitid: {
@@ -1629,6 +1668,24 @@ private:
   uint8_t* iter;
   AllowSlack slack;
 };
+
+void TaskSyscallState::restore_and_record_scratch() {
+  assert(scratch_is_setup);
+
+  if (t->regs().syscall_failed()) {
+    return;
+  }
+
+  AutoRestoreScratch restore_scratch(t);
+  Registers r = t->regs();
+
+  for (auto& rrs : restore_and_record_list) {
+    restore_scratch.restore_and_record_arg_buf(rrs.remote_dest, rrs.num_bytes);
+    r.set_arg(rrs.arg_to_restore, rrs.remote_dest.as_int());
+  }
+
+  t->set_regs(r);
+}
 
 // We have |keys_length| instead of using array_length(keys) to work
 // around a gcc bug.
@@ -3013,20 +3070,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     }
     case Arch::waitpid:
     case Arch::wait4: {
-      AutoRestoreScratch restore_scratch(t);
-      auto rusage = pop_arg_ptr<typename Arch::rusage>(t);
-      auto status = pop_arg_ptr<int>(t);
-
-      Registers r = t->regs();
-      if (!status.is_null()) {
-        restore_scratch.restore_and_record_arg(status);
-        r.set_arg2(status);
-      }
-      if (!rusage.is_null()) {
-        restore_scratch.restore_and_record_arg(rusage);
-        r.set_arg4(rusage);
-      }
-      t->set_regs(r);
+      syscall_state.restore_and_record_scratch();
       break;
     }
 
