@@ -770,19 +770,6 @@ static void process_init_buffers(Task* t, SyscallEntryOrExit state,
   t->validate_regs();
 }
 
-template <typename Arch>
-static void process_restart_syscall(Task* t, int syscallno) {
-  switch (syscallno) {
-    case Arch::nanosleep:
-      /* Write the remaining-time outparam that we were
-       * forced to during recording. */
-      t->set_data_from_trace();
-
-    default:
-      return;
-  }
-}
-
 static void dump_path_data(Task* t, int global_time, const char* tag,
                            char* filename, size_t filename_size,
                            const void* buf, size_t buf_len,
@@ -952,8 +939,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     // simpler and probably more reliable to just check
     // the tracee $ip at syscall restart to determine
     // whether syscall re-entry needs to occur.
+    t->apply_all_data_records_from_trace();
     t->set_return_value_from_trace();
-    process_restart_syscall<Arch>(t, syscall);
     // Use this record to recognize the syscall if it
     // indeed restarts.  If the syscall isn't restarted,
     // we'll pop this event eventually, at the point when

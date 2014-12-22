@@ -114,6 +114,7 @@ struct TaskSyscallState {
   ArgsStack saved_args;
   remote_ptr<void> tmp_data_ptr;
   ssize_t tmp_data_num_bytes;
+
   /* The value of arg1 passed to the last execve syscall in this task. */
   uintptr_t exec_saved_arg1;
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
@@ -1437,13 +1438,6 @@ Switchable rec_prepare_syscall(Task* t) {
   RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t)
 }
 
-/**
- * Write a trace data record that when replayed will be a no-op.  This
- * is used to avoid having special cases in replay code for failed
- * syscalls, e.g.
- */
-static void record_noop_data(Task* t) { t->record_local(nullptr, 0, nullptr); }
-
 template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
   switch (syscallno) {
@@ -1466,8 +1460,6 @@ template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
       if (!rem.is_null()) {
         t->remote_memcpy(rem, rem2);
         t->record_remote(rem);
-      } else {
-        record_noop_data(t);
       }
       /* If the nanosleep does indeed restart, then we'll
        * write the outparam twice.  *yawn*. */
@@ -2166,16 +2158,11 @@ static void process_recvfrom(Task* t, typename Arch::recvfrom_args* argsp) {
 
   if (recvdlen > 0) {
     t->record_remote(args.buf, recvdlen);
-  } else {
-    record_noop_data(t);
   }
   if (args.src_addr) {
     auto addrlen = t->read_mem(args.addrlen.rptr());
     t->record_remote(args.addrlen.rptr());
     t->record_remote(args.src_addr.rptr(), addrlen);
-  } else {
-    record_noop_data(t);
-    record_noop_data(t);
   }
 }
 
@@ -2289,8 +2276,6 @@ static void process_socketcall(Task* t, int call, remote_ptr<void> base_addr) {
         } else {
           t->record_remote(buf, nrecvd);
         }
-      } else {
-        record_noop_data(t);
       }
 
       if (restore_scratch.scratch_used()) {
@@ -2506,8 +2491,6 @@ static void process_sendfile(Task* t) {
   if (!offset.is_null()) {
     restore_scratch.restore_and_record_arg(offset);
     r.set_arg3(offset);
-  } else {
-    record_noop_data(t);
   }
 
   t->set_regs(r);
@@ -2625,8 +2608,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         Registers r = t->regs();
         r.set_arg2(events);
         t->set_regs(r);
-      } else {
-        record_noop_data(t);
       }
       break;
     }
@@ -2710,8 +2691,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       if (len > 0) {
         remote_ptr<void> value = t->regs().arg3();
         t->record_remote(value, len);
-      } else {
-        record_noop_data(t);
       }
       break;
     }
@@ -2791,9 +2770,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         /* If the sleep completes, the kernel doesn't
          * write back to the remaining-time
          * argument. */
-        if (0 == (int)r.syscall_result_signed()) {
-          record_noop_data(t);
-        } else {
+        if (0 != (int)r.syscall_result_signed()) {
           /* TODO: where are we supposed to
            * write back these args?  We don't
            * see an EINTR return from
@@ -2867,8 +2844,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         Registers r = t->regs();
         r.set_arg2(arg);
         t->set_regs(r);
-      } else {
-        record_noop_data(t);
       }
       break;
     }
@@ -2915,8 +2890,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         } else {
           t->record_remote(buf, nread);
         }
-      } else {
-        record_noop_data(t);
       }
 
       if (restore_buf) {
@@ -2969,8 +2942,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         remote_ptr<typename Arch::siginfo_t> info = r.arg2();
         if (!info.is_null()) {
           t->record_remote(info);
-        } else {
-          record_noop_data(t);
         }
         break;
       }
@@ -2980,8 +2951,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       if (!info.is_null()) {
         restore_scratch.restore_and_record_arg(info);
         r.set_arg2(info);
-      } else {
-        record_noop_data(t);
       }
       t->set_regs(r);
       break;
@@ -3013,14 +2982,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       if (!off_in.is_null()) {
         restore_scratch.restore_and_record_arg(off_in);
         r.set_arg2(off_in);
-      } else {
-        record_noop_data(t);
       }
       if (!off_out.is_null()) {
         restore_scratch.restore_and_record_arg(off_out);
         r.set_arg4(off_out);
-      } else {
-        record_noop_data(t);
       }
 
       t->set_regs(r);
@@ -3042,8 +3007,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       if (!infop.is_null()) {
         restore_scratch.restore_and_record_arg(infop);
         r.set_arg3(infop);
-      } else {
-        record_noop_data(t);
       }
       t->set_regs(r);
       break;
@@ -3058,14 +3021,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       if (!status.is_null()) {
         restore_scratch.restore_and_record_arg(status);
         r.set_arg2(status);
-      } else {
-        record_noop_data(t);
       }
       if (!rusage.is_null()) {
         restore_scratch.restore_and_record_arg(rusage);
         r.set_arg4(rusage);
-      } else if (Arch::wait4 == syscallno) {
-        record_noop_data(t);
       }
       t->set_regs(r);
       break;
