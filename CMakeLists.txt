@@ -237,6 +237,7 @@ set(BASIC_TESTS
   intr_read_restart
   intr_sleep
   intr_sleep_no_restart
+  invalid_fcntl
   io
   legacy-ugid
   madvise

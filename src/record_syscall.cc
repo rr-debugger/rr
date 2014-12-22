@@ -68,7 +68,10 @@ enum ArgMode {
 };
 
 struct TaskSyscallState {
-  typedef std::stack<remote_ptr<void> > ArgsStack;
+  void init(Task* t) { this->t = t; }
+  template <typename T> void init_record_arg(int arg, ArgMode mode = OUT);
+  Switchable done_preparing(Switchable sw);
+  void process_syscall_results();
 
   Task* t;
 
@@ -120,6 +123,7 @@ struct TaskSyscallState {
   // (The recorder code has to be careful, however, not to
   // attempt to copy-back syscallbuf tmp data to the "original"
   // buffers.  The syscallbuf code will do that itself.)
+  typedef std::stack<remote_ptr<void> > ArgsStack;
   ArgsStack saved_args;
   remote_ptr<void> tmp_data_ptr;
   ssize_t tmp_data_num_bytes;
@@ -141,19 +145,33 @@ struct TaskSyscallState {
   vector<RestoreAndRecordScratch> restore_and_record_list;
   remote_ptr<void> scratch;
 
-  void init(Task* t) { this->t = t; }
-  template <typename T> void init_scratch_for_arg(int arg, ArgMode mode = OUT);
-  Switchable done_preparing(Switchable switchable);
-  void restore_and_record_scratch();
-
   /* The value of arg1 passed to the last execve syscall in this task. */
   uintptr_t exec_saved_arg1;
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
-  bool scratch_is_setup;
+  /** When true, this syscall has already been prepared and should not
+   *  be set up again.
+   */
+  bool preparation_done;
+  /** Records whether the syscall is switchable. Only valid when
+   *  preparation_done is true. */
+  Switchable switchable;
+  /** When true, the scratch area is enabled, otherwise we're letting
+   *  syscall outputs be written directly to their destinations.
+   */
+  bool scratch_enabled;
+  /** When nonzero, syscall is expected to return the given errno and we should
+   *  die if it does not. This is set when we detect an error condition during
+   *  syscall-enter preparation.
+   */
+  int expect_errno;
 
   TaskSyscallState()
-      : t(nullptr), tmp_data_num_bytes(-1), scratch_is_setup(false) {}
+      : t(nullptr),
+        tmp_data_num_bytes(-1),
+        preparation_done(false),
+        scratch_enabled(false),
+        expect_errno(0) {}
 };
 
 static const Property<TaskSyscallState, Task> syscall_state_property;
@@ -260,13 +278,13 @@ static bool can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
 }
 
 template <typename T>
-void TaskSyscallState::init_scratch_for_arg(int arg, ArgMode mode) {
+void TaskSyscallState::init_record_arg(int arg, ArgMode mode) {
   if (!scratch) {
     scratch = tmp_data_ptr;
   }
 
   uintptr_t p = t->regs().arg(arg);
-  if (!p || scratch_is_setup) {
+  if (!p || preparation_done) {
     return;
   }
 
@@ -280,14 +298,23 @@ void TaskSyscallState::init_scratch_for_arg(int arg, ArgMode mode) {
   restore_and_record_list.push_back(rrs);
 }
 
-Switchable TaskSyscallState::done_preparing(Switchable switchable) {
-  if (scratch_is_setup) {
+Switchable TaskSyscallState::done_preparing(Switchable sw) {
+  if (preparation_done) {
+    return switchable;
+  }
+  preparation_done = true;
+
+  if (sw == ALLOW_SWITCH && !can_use_scratch(t, scratch)) {
+    abort_scratch(t, t->syscall_name(t->ev().Syscall().number));
+    switchable = PREVENT_SWITCH;
+  } else {
+    switchable = sw;
+  }
+  if (switchable == PREVENT_SWITCH) {
     return switchable;
   }
 
-  if (!can_use_scratch(t, scratch)) {
-    return abort_scratch(t, t->syscall_name(t->ev().Syscall().number));
-  }
+  scratch_enabled = true;
 
   Registers r = t->regs();
   for (auto& rrs : restore_and_record_list) {
@@ -298,7 +325,6 @@ Switchable TaskSyscallState::done_preparing(Switchable switchable) {
     }
   }
   t->set_regs(r);
-  scratch_is_setup = true;
   return switchable;
 }
 
@@ -934,17 +960,17 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
   switch (syscallno) {
     case Arch::splice: {
-      syscall_state.init_scratch_for_arg<loff_t>(2, IN_OUT);
-      syscall_state.init_scratch_for_arg<loff_t>(4, IN_OUT);
+      syscall_state.init_record_arg<loff_t>(2, IN_OUT);
+      syscall_state.init_record_arg<loff_t>(4, IN_OUT);
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     case Arch::sendfile: {
-      syscall_state.init_scratch_for_arg<typename Arch::off_t>(3, IN_OUT);
+      syscall_state.init_record_arg<typename Arch::off_t>(3, IN_OUT);
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
     case Arch::sendfile64: {
-      syscall_state.init_scratch_for_arg<typename Arch::off64_t>(3, IN_OUT);
+      syscall_state.init_record_arg<typename Arch::off64_t>(3, IN_OUT);
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
@@ -1010,19 +1036,54 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return PREVENT_SWITCH;
     }
 
-    case Arch::fcntl64:
-      switch ((int)t->regs().arg2_signed()) {
-        case F_SETLKW:
-#if F_SETLKW64 != F_SETLKW
-        case F_SETLKW64:
-#endif
+    case Arch::fcntl:
+    case Arch::fcntl64: {
+      int cmd = t->regs().arg2_signed();
+      switch (cmd) {
+        case Arch::DUPFD:
+        case Arch::GETFD:
+        case Arch::GETFL:
+        case Arch::SETFL:
+        case Arch::SETFD:
+        case Arch::SETOWN:
+        case Arch::SETOWN_EX:
+        case Arch::SETSIG:
+          break;
+
+        case Arch::GETLK:
+          syscall_state.init_record_arg<typename Arch::flock>(3, IN_OUT);
+          break;
+
+        case Arch::GETLK64:
+          // flock and flock64 better be different on 32-bit architectures, but
+          // on 64-bit architectures, it's OK if they're the same.
+          static_assert(
+              sizeof(typename Arch::flock) < sizeof(typename Arch::flock64) ||
+                  Arch::elfclass == ELFCLASS64,
+              "struct flock64 not declared differently from struct flock");
+          syscall_state.init_record_arg<typename Arch::flock64>(3, IN_OUT);
+          break;
+
+        case Arch::GETOWN_EX:
+          syscall_state.init_record_arg<typename Arch::f_owner_ex>(3);
+          break;
+
+        case Arch::SETLK:
+        case Arch::SETLKW:
+        case Arch::SETLK64:
+        case Arch::SETLKW64:
           // SETLKW blocks, but doesn't write any
           // outparam data to the |struct flock|
           // argument, so no need for scratch.
-          return ALLOW_SWITCH;
+          return syscall_state.done_preparing(ALLOW_SWITCH);
+
         default:
-          return PREVENT_SWITCH;
+          // Unknown command should trigger EINVAL.
+          syscall_state.expect_errno = EINVAL;
+          break;
       }
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+    }
 
     /* int futex(int *uaddr, int op, int val, const struct timespec *timeout,
      * int *uaddr2, int val3); */
@@ -1192,9 +1253,9 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
      */
     case Arch::waitpid:
     case Arch::wait4: {
-      syscall_state.init_scratch_for_arg<int>(2);
+      syscall_state.init_record_arg<int>(2);
       if (syscallno == Arch::wait4) {
-        syscall_state.init_scratch_for_arg<typename Arch::rusage>(4);
+        syscall_state.init_record_arg<typename Arch::rusage>(4);
       }
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
@@ -1640,20 +1701,26 @@ private:
   AllowSlack slack;
 };
 
-void TaskSyscallState::restore_and_record_scratch() {
-  assert(scratch_is_setup);
+void TaskSyscallState::process_syscall_results() {
+  assert(preparation_done);
 
-  if (t->regs().syscall_failed()) {
-    return;
+  // XXX what's the best way to handle failed syscalls? Currently we just
+  // record everything as if it succeeded. That handles failed syscalls that
+  // wrote partial results, but doesn't handle syscalls that failed with
+  // EFAULT.
+  if (scratch_enabled) {
+    AutoRestoreScratch restore_scratch(t);
+    Registers r = t->regs();
+    for (auto& rrs : restore_and_record_list) {
+      restore_scratch.restore_and_record_arg_buf(rrs.dest, rrs.num_bytes);
+      r.set_arg(rrs.arg_to_restore, rrs.dest.as_int());
+    }
+    t->set_regs(r);
+  } else {
+    for (auto& rrs : restore_and_record_list) {
+      t->record_remote(rrs.dest, rrs.num_bytes);
+    }
   }
-
-  AutoRestoreScratch restore_scratch(t);
-  Registers r = t->regs();
-  for (auto& rrs : restore_and_record_list) {
-    restore_scratch.restore_and_record_arg_buf(rrs.dest, rrs.num_bytes);
-    r.set_arg(rrs.arg_to_restore, rrs.dest.as_int());
-  }
-  t->set_regs(r);
 }
 
 // We have |keys_length| instead of using array_length(keys) to work
@@ -2556,6 +2623,15 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     return;
   }
 
+  if (syscall_state.expect_errno) {
+    ASSERT(t, t->regs().syscall_result_signed() == -syscall_state.expect_errno)
+        << "Expected " << errno_name(syscall_state.expect_errno) << " for '"
+        << t->syscall_name(syscallno) << "' but got result "
+        << t->regs().syscall_result_signed();
+    syscall_state_property.remove(*t);
+    return;
+  }
+
   switch (syscallno) {
 
 // All the regular syscalls are handled here.
@@ -2627,53 +2703,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_execve<Arch>(t, syscall_state);
       break;
 
-    case Arch::fcntl:
-    case Arch::fcntl64: {
-      int cmd = t->regs().arg2_signed();
-      switch (cmd) {
-        case Arch::DUPFD:
-        case Arch::GETFD:
-        case Arch::GETFL:
-        case Arch::SETFL:
-        case Arch::SETFD:
-        case Arch::SETOWN:
-        case Arch::SETOWN_EX:
-        case Arch::SETSIG:
-          break;
-
-        case Arch::GETLK:
-          t->record_remote(remote_ptr<typename Arch::flock>(t->regs().arg3()));
-          break;
-
-        case Arch::SETLK:
-        case Arch::SETLKW:
-          break;
-
-        case Arch::GETLK64:
-          // flock and flock64 better be different on 32-bit architectures, but
-          // on 64-bit architectures, it's OK if they're the same.
-          static_assert(
-              sizeof(typename Arch::flock) < sizeof(typename Arch::flock64) ||
-                  Arch::elfclass == ELFCLASS64,
-              "struct flock64 not declared differently from struct flock");
-          t->record_remote(
-              remote_ptr<typename Arch::flock64>(t->regs().arg3()));
-          break;
-
-        case Arch::SETLK64:
-        case Arch::SETLKW64:
-          break;
-
-        case Arch::GETOWN_EX:
-          t->record_remote(
-              remote_ptr<typename Arch::f_owner_ex>(t->regs().arg3()));
-          break;
-
-        default:
-          FATAL() << "Unknown fcntl " << cmd;
-      }
-      break;
-    }
     case Arch::futex: {
       t->record_remote(remote_ptr<int>(t->regs().arg1()));
       int op = (int)t->regs().arg2_signed() & FUTEX_CMD_MASK;
@@ -2998,12 +3027,14 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
 
+    case Arch::fcntl:
+    case Arch::fcntl64:
     case Arch::sendfile:
     case Arch::sendfile64:
     case Arch::splice:
     case Arch::waitpid:
     case Arch::wait4: {
-      syscall_state.restore_and_record_scratch();
+      syscall_state.process_syscall_results();
       break;
     }
 
