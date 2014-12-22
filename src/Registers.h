@@ -211,6 +211,26 @@ public:
     u.x64regs.r11 = value;
   }
 
+  uintptr_t arg(int index) const {
+    switch (index) {
+      case 1:
+        return arg1();
+      case 2:
+        return arg2();
+      case 3:
+        return arg3();
+      case 4:
+        return arg4();
+      case 5:
+        return arg5();
+      case 6:
+        return arg6();
+      default:
+        assert(0 && "Argument index out of range");
+        return 0;
+    }
+  }
+
   /**
    * Set the register containing syscall argument |Index| to
    * |value|.
@@ -224,7 +244,6 @@ public:
   }
 
   void set_arg(int index, uintptr_t value) {
-    assert(1 <= index && index <= 6 && "Index must be in range");
     switch (index) {
       case 1:
         return set_arg1(value);
@@ -238,6 +257,8 @@ public:
         return set_arg5(value);
       case 6:
         return set_arg6(value);
+      default:
+        assert(0 && "Argument index out of range");
     }
   }
 
