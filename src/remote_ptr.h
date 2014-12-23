@@ -85,6 +85,10 @@ private:
   uintptr_t ptr;
 };
 
+/**
+ * returns a remote_ptr pointing to field f of the struct pointed to by
+ * remote_ptr p
+ */
 #define REMOTE_PTR_FIELD(p, f) (p).field((p).dummy()->f)
 
 template <typename T>

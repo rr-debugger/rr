@@ -60,20 +60,74 @@
 using namespace std;
 using namespace rr;
 
+/**
+ * Modes used to register syscall memory parameter with TaskSyscallState.
+ */
 enum ArgMode {
-  // Syscall memory buffer is out-parameter only
+  // Syscall memory parameter is an in-parameter only.
+  // This is only important when we want to move the buffer to scratch memory
+  // so we can modify it without making the modifications potentially visible
+  // to user code. Otherwise, such parameters can be ignored.
+  IN,
+  // Syscall memory parameter is out-parameter only.
   OUT,
-  // Syscall memory buffer is an in-out parameter.
+  // Syscall memory parameter is an in-out parameter.
   IN_OUT,
-  // Syscall memory buffer is an in-out parameter but we must not use
+  // Syscall memory parameter is an in-out parameter but we must not use
   // scratch (e.g. for futexes, we must use the actual memory word).
   IN_OUT_NO_SCRATCH
 };
 
 struct TaskSyscallState {
   void init(Task* t) { this->t = t; }
-  template <typename T> void init_record_arg(int arg, ArgMode mode = OUT);
+
+  /**
+   * Identify a syscall memory parameter whose address is in register 'arg'
+   * with type T.
+   * Returns a remote_ptr to the data in the child (before scratch relocation)
+   * or null if parameters have already been prepared (the syscall is
+   * resuming).
+   */
+  template <typename T>
+  remote_ptr<T> init_reg_parameter(int arg, ArgMode mode = OUT) {
+    return init_reg_parameter(arg, sizeof(T), mode).cast<T>();
+  }
+  /**
+   * Identify a syscall memory parameter whose address is in register 'arg'
+   * with size 'size'.
+   * Returns a remote_ptr to the data in the child (before scratch relocation)
+   * or null if parameters have already been prepared (the syscall is
+   * resuming).
+   */
+  remote_ptr<void> init_reg_parameter(int arg, size_t size, ArgMode mode = OUT);
+  /**
+   * Identify a syscall memory parameter whose address is in memory at
+   * location 'addr_of_buf_ptr' with size 'size'.
+   * Returns a remote_ptr to the data in the child (before scratch relocation)
+   * or null if parameters have already been prepared (the syscall is
+   * resuming).
+   * addr_of_buf_ptr must be in a buffer identified by some init_..._parameter
+   * call.
+   */
+  remote_ptr<void> init_mem_ptr_parameter(remote_ptr<void> addr_of_buf_ptr,
+                                          size_t size, ArgMode mode = OUT);
+  /**
+   * Internal method that takes 'ptr', an address within some memory parameter,
+   * and relocates it to the parameter's location in scratch memory.
+   */
+  remote_ptr<void> relocate_pointer_to_scratch(remote_ptr<void> ptr);
+  /**
+   * Called when all memory parameters have been identified. If 'sw' is
+   * ALLOW_SWITCH, sets up scratch memory and updates registers etc as
+   * necessary.
+   * If scratch can't be used for some reason, returns PREVENT_SWITCH,
+   * otherwise returns 'sw'.
+   */
   Switchable done_preparing(Switchable sw);
+  /**
+   * Called when a syscall exits to copy results from scratch memory to their
+   * original destinations, update registers, etc.
+   */
   void process_syscall_results();
 
   Task* t;
@@ -135,17 +189,20 @@ struct TaskSyscallState {
    * Upon successful syscall completion, each RestoreAndRecordScratch record
    * in restore_and_record_scratch consumes num_bytes from the tmp_data_ptr
    * buffer, copying the data to remote_dest and recording the data at
-   * remote_dest. If arg_to_restore is greater than zero, updates the task's
-   * arg_to_restore register with 'remote_dest'.
+   * remote_dest. If ptr_in_reg is greater than zero, updates the task's
+   * ptr_in_reg register with 'remote_dest'.
    */
-  struct RestoreAndRecordScratch {
+  struct MemoryParam {
+    MemoryParam() : ptr_in_reg(0) {}
+
     remote_ptr<void> dest;
     remote_ptr<void> scratch;
     size_t num_bytes;
-    int arg_to_restore;
+    remote_ptr<void> ptr_in_memory;
+    int ptr_in_reg;
     ArgMode mode;
   };
-  vector<RestoreAndRecordScratch> restore_and_record_list;
+  vector<MemoryParam> param_list;
   remote_ptr<void> scratch;
 
   /* The value of arg1 passed to the last execve syscall in this task. */
@@ -280,27 +337,96 @@ static bool can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
          syscall_state.tmp_data_num_bytes <= t->scratch_size;
 }
 
-template <typename T>
-void TaskSyscallState::init_record_arg(int arg, ArgMode mode) {
+template <typename Arch>
+static void set_remote_ptr_arch(Task* t, remote_ptr<void> addr,
+                                remote_ptr<void> value) {
+  auto typed_addr = addr.cast<typename Arch::unsigned_word>();
+  t->write_mem(typed_addr, (typename Arch::unsigned_word)value.as_int());
+}
+
+static void set_remote_ptr(Task* t, remote_ptr<void> addr,
+                           remote_ptr<void> value) {
+  RR_ARCH_FUNCTION(set_remote_ptr_arch, t->arch(), t, addr, value);
+}
+
+template <typename Arch>
+static remote_ptr<void> get_remote_ptr_arch(Task* t, remote_ptr<void> addr) {
+  auto typed_addr = addr.cast<typename Arch::unsigned_word>();
+  auto old = t->read_mem(typed_addr);
+  return remote_ptr<void>(old);
+}
+
+static remote_ptr<void> get_remote_ptr(Task* t, remote_ptr<void> addr) {
+  RR_ARCH_FUNCTION(get_remote_ptr_arch, t->arch(), t, addr);
+}
+
+remote_ptr<void> TaskSyscallState::init_reg_parameter(int arg, size_t size,
+                                                      ArgMode mode) {
   if (!scratch) {
     scratch = tmp_data_ptr;
   }
 
-  uintptr_t p = t->regs().arg(arg);
-  if (!p || preparation_done) {
-    return;
+  if (preparation_done) {
+    return remote_ptr<void>();
   }
 
-  RestoreAndRecordScratch rrs;
-  rrs.dest = p;
-  rrs.scratch = scratch;
-  rrs.num_bytes = sizeof(T);
-  rrs.arg_to_restore = arg;
-  rrs.mode = mode;
-  if (mode != IN_OUT_NO_SCRATCH) {
-    scratch += rrs.num_bytes;
+  MemoryParam param;
+  param.dest = t->regs().arg(arg);
+  if (param.dest.is_null()) {
+    return remote_ptr<void>();
   }
-  restore_and_record_list.push_back(rrs);
+  param.num_bytes = size;
+  param.mode = mode;
+  if (mode != IN_OUT_NO_SCRATCH) {
+    param.scratch = scratch;
+    scratch += param.num_bytes;
+    param.ptr_in_reg = arg;
+  }
+  param_list.push_back(param);
+  return param.dest;
+}
+
+remote_ptr<void> TaskSyscallState::init_mem_ptr_parameter(
+    remote_ptr<void> addr_of_buf_ptr, size_t size, ArgMode mode) {
+  if (!scratch) {
+    scratch = tmp_data_ptr;
+  }
+
+  if (preparation_done) {
+    return remote_ptr<void>();
+  }
+
+  MemoryParam param;
+  param.dest = get_remote_ptr(t, addr_of_buf_ptr);
+  if (param.dest.is_null()) {
+    return remote_ptr<void>();
+  }
+  param.num_bytes = size;
+  param.mode = mode;
+  if (mode != IN_OUT_NO_SCRATCH) {
+    param.scratch = scratch;
+    scratch += param.num_bytes;
+    param.ptr_in_memory = addr_of_buf_ptr;
+  }
+  param_list.push_back(param);
+  return param.dest;
+}
+
+remote_ptr<void> TaskSyscallState::relocate_pointer_to_scratch(
+    remote_ptr<void> ptr) {
+  int num_relocations = 0;
+  remote_ptr<void> result;
+  for (auto& param : param_list) {
+    if (param.dest <= ptr && ptr < param.dest + param.num_bytes) {
+      result = param.scratch + (ptr - param.dest);
+      ++num_relocations;
+    }
+  }
+  assert(num_relocations > 0 &&
+         "Pointer in non-scratch memory being updated to point to scratch?");
+  assert(num_relocations <= 1 &&
+         "Overlapping buffers containing relocated pointer?");
+  return result;
 }
 
 Switchable TaskSyscallState::done_preparing(Switchable sw) {
@@ -315,21 +441,34 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
   } else {
     switchable = sw;
   }
-  if (switchable == PREVENT_SWITCH) {
+  if (switchable == PREVENT_SWITCH || param_list.empty()) {
     return switchable;
   }
 
   scratch_enabled = true;
 
-  Registers r = t->regs();
-  for (auto& rrs : restore_and_record_list) {
-    if (rrs.mode == IN_OUT_NO_SCRATCH) {
-      continue;
-    }
-    r.set_arg(rrs.arg_to_restore, rrs.scratch.as_int());
-    if (rrs.mode == IN_OUT) {
+  // Step 1: Copy all IN/IN_OUT parameters to their scratch areas
+  for (auto& param : param_list) {
+    if (param.mode == IN_OUT || param.mode == IN) {
       // Initialize scratch buffer with input data
-      t->remote_memcpy(rrs.scratch, rrs.dest, rrs.num_bytes);
+      t->remote_memcpy(param.scratch, param.dest, param.num_bytes);
+    }
+  }
+  // Step 2: Update pointers in registers/memory to point to scratch areas
+  Registers r = t->regs();
+  for (auto& param : param_list) {
+    if (param.ptr_in_reg) {
+      r.set_arg(param.ptr_in_reg, param.scratch.as_int());
+    }
+    if (!param.ptr_in_memory.is_null()) {
+      // Pointers being relocated must themselves be in scratch memory.
+      // We don't want to modify non-scratch memory. Find the pointer's location
+      // in scratch memory.
+      auto p = relocate_pointer_to_scratch(param.ptr_in_memory);
+      // Update pointer to point to scratch.
+      // Note that this can only happen after step 1 is complete and all
+      // parameter data has been copied to scratch memory.
+      set_remote_ptr(t, p, param.scratch);
     }
   }
   t->set_regs(r);
@@ -342,53 +481,6 @@ static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch,
   remote_ptr<T> p = scratch->cast<T>();
   *scratch = p + count;
   return p;
-}
-
-template <typename Arch>
-static bool prepare_msgrcv(Task* t, size_t msgsize, remote_ptr<void>* msgbuf,
-                           remote_ptr<void>* scratch) {
-  push_arg_ptr(t, *msgbuf);
-  *msgbuf = *scratch;
-  *scratch += msgsize;
-  return can_use_scratch(t, *scratch);
-}
-
-/**
- * Return ALLOW_SWITCH if it's OK to context-switch away from |t| for its
- * ipc call.  If so, prepare any required scratch buffers for |t|.
- */
-template <typename Arch>
-static Switchable prepare_ipc(Task* t, bool need_scratch_setup) {
-  int call = t->regs().arg1_signed();
-  auto& syscall_state = *syscall_state_property.get(*t);
-  remote_ptr<void> scratch =
-      need_scratch_setup ? syscall_state.tmp_data_ptr : remote_ptr<void>();
-
-  assert(!t->desched_rec());
-
-  switch (call) {
-    case MSGRCV: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-      size_t msgsize = t->regs().arg3();
-      remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
-          t->regs().arg5();
-      auto kludge = t->read_mem(child_kludge);
-
-      auto msgbuf = kludge.msgbuf.rptr();
-      if (!prepare_msgrcv<Arch>(t, msgsize, &msgbuf, &scratch)) {
-        return abort_scratch(t, "msgrcv");
-      }
-      kludge.msgbuf = msgbuf;
-      t->write_mem(child_kludge, kludge);
-      return ALLOW_SWITCH;
-    }
-    case MSGSND:
-      return ALLOW_SWITCH;
-    default:
-      return PREVENT_SWITCH;
-  }
 }
 
 /**
@@ -844,6 +936,22 @@ static bool prepare_readv(Task* t, int iovcnt,
   return true;
 }
 
+template <typename Arch>
+static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
+                                 int cmd, int buf_ptr_reg) {
+  switch (cmd) {
+    case IPC_STAT:
+    case MSG_STAT:
+      syscall_state.init_reg_parameter<typename Arch::msqid64_ds>(buf_ptr_reg);
+      break;
+    case IPC_INFO:
+    case MSG_INFO:
+      syscall_state.init_reg_parameter<typename Arch::msginfo>(buf_ptr_reg);
+      break;
+  }
+  return syscall_state.done_preparing(PREVENT_SWITCH);
+}
+
 static const int RR_KCMP_FILE = 0;
 
 template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
@@ -968,17 +1076,17 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
   switch (syscallno) {
     case Arch::splice: {
-      syscall_state.init_record_arg<loff_t>(2, IN_OUT);
-      syscall_state.init_record_arg<loff_t>(4, IN_OUT);
+      syscall_state.init_reg_parameter<loff_t>(2, IN_OUT);
+      syscall_state.init_reg_parameter<loff_t>(4, IN_OUT);
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     case Arch::sendfile: {
-      syscall_state.init_record_arg<typename Arch::off_t>(3, IN_OUT);
+      syscall_state.init_reg_parameter<typename Arch::off_t>(3, IN_OUT);
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
     case Arch::sendfile64: {
-      syscall_state.init_record_arg<typename Arch::off64_t>(3, IN_OUT);
+      syscall_state.init_reg_parameter<typename Arch::off64_t>(3, IN_OUT);
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
@@ -1058,7 +1166,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           break;
 
         case Arch::GETLK:
-          syscall_state.init_record_arg<typename Arch::flock>(3, IN_OUT);
+          syscall_state.init_reg_parameter<typename Arch::flock>(3, IN_OUT);
           break;
 
         case Arch::GETLK64:
@@ -1068,11 +1176,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
               sizeof(typename Arch::flock) < sizeof(typename Arch::flock64) ||
                   Arch::elfclass == ELFCLASS64,
               "struct flock64 not declared differently from struct flock");
-          syscall_state.init_record_arg<typename Arch::flock64>(3, IN_OUT);
+          syscall_state.init_reg_parameter<typename Arch::flock64>(3, IN_OUT);
           break;
 
         case Arch::GETOWN_EX:
-          syscall_state.init_record_arg<typename Arch::f_owner_ex>(3);
+          syscall_state.init_reg_parameter<typename Arch::f_owner_ex>(3);
           break;
 
         case Arch::SETLK:
@@ -1099,17 +1207,17 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       switch ((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) {
         case FUTEX_WAIT:
         case FUTEX_WAIT_BITSET:
-          syscall_state.init_record_arg<int>(1, IN_OUT_NO_SCRATCH);
+          syscall_state.init_reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
           return syscall_state.done_preparing(ALLOW_SWITCH);
 
         case FUTEX_CMP_REQUEUE:
         case FUTEX_WAKE_OP:
-          syscall_state.init_record_arg<int>(1, IN_OUT_NO_SCRATCH);
-          syscall_state.init_record_arg<int>(5, IN_OUT_NO_SCRATCH);
+          syscall_state.init_reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
+          syscall_state.init_reg_parameter<int>(5, IN_OUT_NO_SCRATCH);
           break;
 
         case FUTEX_WAKE:
-          syscall_state.init_record_arg<int>(1, IN_OUT_NO_SCRATCH);
+          syscall_state.init_reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
           break;
 
         default:
@@ -1119,7 +1227,50 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
 
     case Arch::ipc:
-      return prepare_ipc<Arch>(t, need_scratch_setup);
+      assert(!t->desched_rec());
+
+      switch (t->regs().arg1_signed()) {
+        case MSGCTL: {
+          int cmd = (int)t->regs().arg3_signed() & ~IPC_64;
+          return prepare_msgctl<Arch>(t, syscall_state, cmd, 5);
+        }
+
+        case MSGGET:
+          break;
+
+        case MSGSND:
+          return syscall_state.done_preparing(ALLOW_SWITCH);
+
+        case MSGRCV: {
+          size_t msgsize = t->regs().arg3();
+          auto kluge_args =
+              syscall_state.init_reg_parameter<typename Arch::ipc_kludge_args>(
+                  5, IN);
+          syscall_state.init_mem_ptr_parameter(
+              REMOTE_PTR_FIELD(kluge_args, msgbuf),
+              sizeof(typename Arch::signed_long) + msgsize);
+          return syscall_state.done_preparing(ALLOW_SWITCH);
+        }
+
+        default:
+          syscall_state.expect_errno = EINVAL;
+          break;
+      }
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+
+    case Arch::msgctl:
+      return prepare_msgctl<Arch>(t, syscall_state,
+                                  (int)t->regs().arg2_signed(), 3);
+
+    case Arch::msgrcv: {
+      size_t msgsize = t->regs().arg3();
+      syscall_state.init_reg_parameter(2, sizeof(typename Arch::signed_long) +
+                                              msgsize);
+      return syscall_state.done_preparing(ALLOW_SWITCH);
+    }
+
+    case Arch::msgsnd:
+      return syscall_state.done_preparing(ALLOW_SWITCH);
 
     case Arch::socketcall:
       return prepare_socketcall<Arch>(t, need_scratch_setup);
@@ -1128,20 +1279,6 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::_newselect:
       return ALLOW_SWITCH;
 
-    case Arch::msgrcv: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-      Registers r = t->regs();
-      size_t msgsize = t->regs().arg3();
-      auto msgbuf = remote_ptr<void>(t->regs().arg2());
-      if (!prepare_msgrcv<Arch>(t, msgsize, &msgbuf, &scratch)) {
-        return abort_scratch(t, "msgrcv");
-      }
-      r.set_arg2(msgbuf);
-      t->set_regs(r);
-      return ALLOW_SWITCH;
-    }
     case Arch::recvfrom: {
       if (!need_scratch_setup) {
         return ALLOW_SWITCH;
@@ -1275,9 +1412,9 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
      */
     case Arch::waitpid:
     case Arch::wait4: {
-      syscall_state.init_record_arg<int>(2);
+      syscall_state.init_reg_parameter<int>(2);
       if (syscallno == Arch::wait4) {
-        syscall_state.init_record_arg<typename Arch::rusage>(4);
+        syscall_state.init_reg_parameter<typename Arch::rusage>(4);
       }
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
@@ -1733,17 +1870,23 @@ void TaskSyscallState::process_syscall_results() {
   if (scratch_enabled) {
     AutoRestoreScratch restore_scratch(t);
     Registers r = t->regs();
-    for (auto& rrs : restore_and_record_list) {
-      if (rrs.mode == IN_OUT_NO_SCRATCH) {
+    for (auto& param : param_list) {
+      if (param.mode == IN_OUT_NO_SCRATCH) {
+        t->record_remote(param.dest, param.num_bytes);
         continue;
       }
-      restore_scratch.restore_and_record_arg_buf(rrs.dest, rrs.num_bytes);
-      r.set_arg(rrs.arg_to_restore, rrs.dest.as_int());
+      restore_scratch.restore_and_record_arg_buf(param.dest, param.num_bytes);
+      if (param.ptr_in_reg) {
+        r.set_arg(param.ptr_in_reg, param.dest.as_int());
+      }
+      // Note that we don't need to undo ptr_in_memory relocations. Those
+      // changes are only allowed to happen in scratch memory, which is
+      // thrown away after the syscall.
     }
     t->set_regs(r);
   } else {
-    for (auto& rrs : restore_and_record_list) {
-      t->record_remote(rrs.dest, rrs.num_bytes);
+    for (auto& param : param_list) {
+      t->record_remote(param.dest, param.num_bytes);
     }
   }
 }
@@ -2010,71 +2153,6 @@ template <typename Arch> static void process_ioctl(Task* t, int request) {
                        << "): type:" << HEX(type) << " nr:" << HEX(nr)
                        << " dir:" << HEX(dir) << " size:" << size
                        << " addr:" << HEX(t->regs().arg3());
-  }
-}
-
-static int get_ipc_command(int raw_cmd) { return raw_cmd & ~IPC_64; }
-
-template <typename Arch>
-static void process_msgctl(Task* t, int cmd, remote_ptr<void> buf) {
-  ssize_t buf_size;
-  switch (cmd) {
-    case IPC_STAT:
-    case MSG_STAT:
-      buf_size = sizeof(typename Arch::msqid64_ds);
-      break;
-    case IPC_INFO:
-    case MSG_INFO:
-      buf_size = sizeof(typename Arch::msginfo);
-      break;
-    default:
-      buf_size = 0;
-      break;
-  }
-  t->record_remote(buf, buf_size);
-}
-
-template <typename Arch>
-static void process_msgrcv(Task* t, size_t msgsize, remote_ptr<void>* msgbuf) {
-  // The |msgsize| arg is only the size of message payload; there's also
-  // a |msgtype| tag set just before the payload.
-  size_t buf_size = sizeof(typename Arch::signed_long) + msgsize;
-  if (has_saved_arg_ptrs(t)) {
-    remote_ptr<void> orig_msgbuf = pop_arg_ptr<void>(t);
-
-    t->remote_memcpy(orig_msgbuf, *msgbuf, buf_size);
-    *msgbuf = orig_msgbuf;
-  }
-  t->record_remote(*msgbuf, buf_size);
-}
-
-template <typename Arch> static void process_ipc(Task* t, int call) {
-  LOG(debug) << "ipc call: " << call;
-
-  switch (call) {
-    case MSGCTL: {
-      int cmd = get_ipc_command((int)t->regs().arg3_signed());
-      remote_ptr<void> buf = t->regs().arg5();
-      process_msgctl<Arch>(t, cmd, buf);
-      return;
-    }
-    case MSGRCV: {
-      size_t msgsize = t->regs().arg3();
-      remote_ptr<typename Arch::ipc_kludge_args> child_kludge =
-          t->regs().arg5();
-      auto kludge = t->read_mem(child_kludge);
-
-      auto msgbuf = kludge.msgbuf.rptr();
-      process_msgrcv<Arch>(t, msgsize, &msgbuf);
-      kludge.msgbuf = msgbuf;
-      t->write_mem(child_kludge, kludge);
-      return;
-    }
-    case MSGGET:
-    case MSGSND:
-      return;
-    default:
-      FATAL() << "Unhandled IPC call " << call;
   }
 }
 
@@ -2742,23 +2820,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_ioctl<Arch>(t, (int)t->regs().arg2_signed());
       break;
 
-    case Arch::msgrcv: {
-      Registers r = t->regs();
-      size_t msgsize = t->regs().arg3();
-      auto msgbuf = remote_ptr<void>(t->regs().arg2());
-      process_msgrcv<Arch>(t, msgsize, &msgbuf);
-      r.set_arg2(msgbuf);
-      t->set_regs(r);
-      break;
-    }
-    case Arch::msgctl:
-      process_msgctl<Arch>(t, (int)t->regs().arg2_signed(), t->regs().arg3());
-      break;
-
-    case Arch::ipc:
-      process_ipc<Arch>(t, (unsigned int)t->regs().arg1());
-      break;
-
     case Arch::mmap:
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
@@ -3033,6 +3094,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::fcntl:
     case Arch::fcntl64:
     case Arch::futex:
+    case Arch::ipc:
+    case Arch::msgctl:
+    case Arch::msgrcv:
     case Arch::sendfile:
     case Arch::sendfile64:
     case Arch::splice:
