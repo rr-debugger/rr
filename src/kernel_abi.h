@@ -761,6 +761,12 @@ struct BaseArch : public wordsize, public FcntlConstants {
     ptr<timespec> timeout;
   };
 
+  struct sendmsg_args {
+    signed_int fd;
+    ptr<msghdr> msg;
+    signed_int flags;
+  };
+
   struct sendmmsg_args {
     signed_int sockfd;
     ptr<mmsghdr> msgvec;

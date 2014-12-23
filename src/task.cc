@@ -515,7 +515,6 @@ bool Task::is_sig_ignored(int sig) const {
 
 bool Task::is_syscall_restart() {
   int syscallno = regs().original_syscallno();
-  bool must_restart = is_restart_syscall_syscall(syscallno, arch());
   bool is_restart = false;
 
   LOG(debug) << "  is syscall interruption of recorded " << ev() << "? (now "
@@ -541,7 +540,7 @@ bool Task::is_syscall_restart() {
    * between the original call and restarted call in such a way
    * that it might change the scratch allocation decisions. */
   if (is_restart_syscall_syscall(syscallno, arch())) {
-    must_restart = true;
+    is_restart = true;
     syscallno = ev().Syscall().number;
     LOG(debug) << "  (SYS_restart_syscall)";
   }
@@ -568,8 +567,6 @@ bool Task::is_syscall_restart() {
   is_restart = true;
 
 done:
-  ASSERT(this, !must_restart || is_restart)
-      << "Must restart %s" << syscall_name(syscallno) << " but won't";
   if (is_restart) {
     LOG(debug) << "  restart of " << syscall_name(syscallno);
   }

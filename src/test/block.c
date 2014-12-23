@@ -109,12 +109,14 @@ static void* reader_thread(void* dontcare) {
     atomic_printf("r:  ... returned %d (%s/%d)\n", ret, strerror(err), err);
     check_syscall(-1, ret);
     test_assert(EWOULDBLOCK == err);
+    test_assert(mmsg.msg_hdr.msg_iov == &data);
 
     atomic_puts("r: recmsg'ing socket ...");
 
     test_assert(0 < recvmsg(sock, &mmsg.msg_hdr, 0));
     atomic_printf("r:   ... recvmsg'd 0x%x\n", magic);
     test_assert(msg_magic == magic);
+    test_assert(mmsg.msg_hdr.msg_iov == &data);
 
     int fd = *(int*)CMSG_DATA(cmptr);
     struct stat fs_new, fs_old;
@@ -133,6 +135,7 @@ static void* reader_thread(void* dontcare) {
     check_syscall(1, recvmmsg(sock, &mmsg, 1, 0, NULL));
     atomic_printf("r:   ... recvmmsg'd 0x%x (%u bytes)\n", magic, mmsg.msg_len);
     test_assert(msg_magic == magic);
+    test_assert(mmsg.msg_hdr.msg_iov == &data);
 
     magic = ~msg_magic;
 #if defined(SYS_socketcall)
