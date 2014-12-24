@@ -710,7 +710,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       auto args = t->read_mem(argsp);
       syscall_state.init_mem_ptr_parameter(
           REMOTE_PTR_FIELD(argsp, buf),
-          ParamSize::from_syscall_result<ssize_t>(args.len));
+          ParamSize::from_syscall_result<typename Arch::ssize_t>(args.len));
       return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
@@ -747,7 +747,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       auto args = t->read_mem(argsp);
       syscall_state.init_mem_ptr_parameter(
           REMOTE_PTR_FIELD(argsp, buf),
-          ParamSize::from_syscall_result<ssize_t>(args.len));
+          ParamSize::from_syscall_result<typename Arch::ssize_t>(args.len));
       auto addrlen_ptr =
           syscall_state.init_mem_ptr_parameter<typename Arch::socklen_t>(
               REMOTE_PTR_FIELD(argsp, addrlen), IN_OUT);
@@ -763,7 +763,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       auto msgp = syscall_state.init_mem_ptr_parameter<typename Arch::msghdr>(
           REMOTE_PTR_FIELD(argsp, msg), IN_OUT);
       prepare_recvmsg<Arch>(t, syscall_state, msgp,
-                            ParamSize::from_syscall_result<ssize_t>());
+                            ParamSize::from_syscall_result<typename Arch::ssize_t>());
 
       auto args = t->read_mem(argsp);
       if (!(args.flags & MSG_DONTWAIT)) {
@@ -815,33 +815,6 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       break;
   }
   return syscall_state.done_preparing(PREVENT_SWITCH);
-}
-
-template <typename Arch>
-static bool prepare_readv(Task* t, int iovcnt,
-                          remote_ptr<typename Arch::iovec>* iov,
-                          remote_ptr<void>* scratch) {
-  auto cur_iovs = t->read_mem(*iov, iovcnt);
-  typename Arch::iovec new_iovs[iovcnt];
-
-  // Allocate new iov buffers in scratch space.
-  for (int i = 0; i < iovcnt; ++i) {
-    new_iovs[i].iov_base = *scratch;
-    new_iovs[i].iov_len = cur_iovs[i].iov_len;
-    *scratch += cur_iovs[i].iov_len;
-  }
-
-  align_scratch(scratch);
-  auto remote_iovs = allocate_scratch<typename Arch::iovec>(scratch, iovcnt);
-
-  if (!can_use_scratch(t, *scratch)) {
-    return false;
-  }
-
-  t->write_mem(remote_iovs, new_iovs, iovcnt);
-  push_arg_ptr(t, *iov);
-  *iov = remote_iovs;
-  return true;
 }
 
 template <typename Arch>
@@ -1206,7 +1179,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     case Arch::recvfrom: {
       syscall_state.init_reg_parameter(
-          2, ParamSize::from_syscall_result<size_t>(t->regs().arg3()));
+          2, ParamSize::from_syscall_result<typename Arch::size_t>(t->regs().arg3()));
       auto addrlen_ptr =
           syscall_state.init_reg_parameter<typename Arch::socklen_t>(6, IN_OUT);
       syscall_state.init_reg_parameter(
@@ -1218,7 +1191,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       auto msgp =
           syscall_state.init_reg_parameter<typename Arch::msghdr>(2, IN_OUT);
       prepare_recvmsg<Arch>(t, syscall_state, msgp,
-                            ParamSize::from_syscall_result<ssize_t>());
+                            ParamSize::from_syscall_result<typename Arch::ssize_t>());
       if (!((int)t->regs().arg3() & MSG_DONTWAIT)) {
         return syscall_state.done_preparing(ALLOW_SWITCH);
       }
@@ -1265,7 +1238,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read:
       syscall_state.init_reg_parameter(
-          2, ParamSize::from_syscall_result<size_t>((size_t)t->regs().arg3()));
+          2, ParamSize::from_syscall_result<typename Arch::size_t>((size_t)t->regs().arg3()));
       return syscall_state.done_preparing(ALLOW_SWITCH);
 
     case Arch::accept:
@@ -1312,18 +1285,18 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     /* ssize_t preadv(int fd, const struct iovec *iov, int iovcnt,
                       off_t offset); */
     case Arch::preadv: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
+      int iovcnt = (int)t->regs().arg3_signed();
+      remote_ptr<void> iovecsp_void = syscall_state.init_reg_parameter(
+          2, sizeof(typename Arch::iovec) * iovcnt, IN);
+      auto iovecsp = iovecsp_void.cast<typename Arch::iovec>();
+      auto iovecs = t->read_mem(iovecsp, iovcnt);
+      ParamSize io_size = ParamSize::from_syscall_result<typename Arch::size_t>();
+      for (size_t i = 0; i < iovcnt; ++i) {
+        syscall_state.init_mem_ptr_parameter(
+            REMOTE_PTR_FIELD(iovecsp + i, iov_base),
+            io_size.limit_size(iovecs[i].iov_len));
       }
-      Registers r = t->regs();
-      int iovcnt = (int)r.arg3_signed();
-      auto iov = remote_ptr<typename Arch::iovec>(r.arg2());
-      if (!prepare_readv<Arch>(t, iovcnt, &iov, &scratch)) {
-        return abort_scratch(t, "readv");
-      }
-      r.set_arg2(iov);
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     /* pid_t waitpid(pid_t pid, int *status, int options); */
@@ -1628,15 +1601,6 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
 
   t->vm()->map(t->scratch_ptr, sz, prot, flags, 0,
                MappableResource::scratch(t->rec_tid));
-}
-
-/**
- * Return nonzero if tracee pointers were saved while preparing for
- * the syscall |t->ev|.
- */
-static bool has_saved_arg_ptrs(Task* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
-  return !syscall_state.saved_args.empty();
 }
 
 /**
@@ -2250,28 +2214,6 @@ static void check_syscall_rejected(Task* t) {
   }
 }
 
-template <typename Arch> static void process_readv(Task* t) {
-  if (!has_saved_arg_ptrs(t)) {
-    return;
-  }
-
-  AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
-  Registers r = t->regs();
-
-  int iovcnt = (int)r.arg3_signed();
-  auto old_iov = pop_arg_ptr<typename Arch::iovec>(t);
-  r.set_arg2(old_iov);
-  t->set_regs(r);
-
-  ssize_t bytes = r.syscall_result_signed();
-  auto old_iovs = t->read_mem(old_iov, iovcnt);
-  for (int i = 0; i < iovcnt; ++i) {
-    size_t vbytes = min<size_t>(bytes, old_iovs[i].iov_len);
-    restore_scratch.restore_and_record_arg_buf(old_iovs[i].iov_base, vbytes);
-    bytes -= vbytes;
-  }
-}
-
 template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
 
@@ -2578,7 +2520,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::ipc:
     case Arch::msgctl:
     case Arch::msgrcv:
+    case Arch::preadv:
     case Arch::read:
+    case Arch::readv:
     case Arch::recvfrom:
     case Arch::recvmsg:
     case Arch::recvmmsg:
@@ -2601,11 +2545,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
     case Arch::write:
     case Arch::writev:
-      break;
-
-    case Arch::readv:
-    case Arch::preadv:
-      process_readv<Arch>(t);
       break;
 
     case Arch::sched_setaffinity: {

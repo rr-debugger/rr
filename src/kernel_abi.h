@@ -144,6 +144,7 @@ struct WordSize32Defs : public KernelConstants {
   typedef uint32_t unsigned_word;
 
   typedef uint32_t size_t;
+  typedef int32_t ssize_t;
 
   // These really only exist as proper abstractions so that adding x32
   // (x86-64's ILP32 ABI) support is relatively easy.
@@ -175,6 +176,7 @@ struct WordSize64Defs : public KernelConstants {
   typedef uint64_t unsigned_word;
 
   typedef uint64_t size_t;
+  typedef int64_t ssize_t;
 
   // These really only exist as proper abstractions so that adding x32
   // (x86-64's ILP32 ABI) support is relatively easy.
@@ -203,6 +205,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef typename wordsize::unsigned_long unsigned_long;
   typedef typename wordsize::unsigned_word unsigned_word;
   typedef typename wordsize::size_t size_t;
+  typedef typename wordsize::ssize_t ssize_t;
   typedef typename wordsize::sigchld_clock_t sigchld_clock_t;
   typedef typename wordsize::__statfs_word __statfs_word;
 
