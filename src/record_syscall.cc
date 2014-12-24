@@ -977,7 +977,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   /* If we are called again due to a restart_syscall, we musn't
    * redirect to scratch again as we will lose the original
    * addresses values. */
-  bool restart =  (syscallno == Arch::restart_syscall);
+  bool restart = (syscallno == Arch::restart_syscall);
   remote_ptr<void> scratch = nullptr;
 
   auto& syscall_state = syscall_state_property.get_or_create(*t);
