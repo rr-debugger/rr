@@ -1210,7 +1210,25 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     case Arch::select:
     case Arch::_newselect:
-      return ALLOW_SWITCH;
+      if (syscallno == Arch::select &&
+          Arch::select_semantics == Arch::SelectStructArguments) {
+        auto argsp =
+            syscall_state.init_reg_parameter<typename Arch::select_args>(1, IN);
+        syscall_state.init_mem_ptr_parameter<typename Arch::fd_set>(
+            REMOTE_PTR_FIELD(argsp, read_fds), IN_OUT);
+        syscall_state.init_mem_ptr_parameter<typename Arch::fd_set>(
+            REMOTE_PTR_FIELD(argsp, write_fds), IN_OUT);
+        syscall_state.init_mem_ptr_parameter<typename Arch::fd_set>(
+            REMOTE_PTR_FIELD(argsp, except_fds), IN_OUT);
+        syscall_state.init_mem_ptr_parameter<typename Arch::timeval>(
+            REMOTE_PTR_FIELD(argsp, timeout), IN_OUT);
+      } else {
+        syscall_state.init_reg_parameter<typename Arch::fd_set>(2, IN_OUT);
+        syscall_state.init_reg_parameter<typename Arch::fd_set>(3, IN_OUT);
+        syscall_state.init_reg_parameter<typename Arch::fd_set>(4, IN_OUT);
+        syscall_state.init_reg_parameter<typename Arch::timeval>(5, IN_OUT);
+      }
+      return syscall_state.done_preparing(ALLOW_SWITCH);
 
     case Arch::recvfrom: {
       syscall_state.init_reg_parameter(
@@ -2449,27 +2467,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
                    (off_t)t->regs().arg6_signed());
       break;
 
-    case Arch::select:
-      switch (Arch::select_semantics) {
-        case Arch::SelectStructArguments: {
-          auto args = t->read_mem(
-              remote_ptr<typename Arch::select_args>(t->regs().arg1()));
-          t->record_remote(args.read_fds.rptr());
-          t->record_remote(args.write_fds.rptr());
-          t->record_remote(args.except_fds.rptr());
-          t->record_remote(args.timeout.rptr());
-          break;
-        }
-        case Arch::SelectRegisterArguments:
-          t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg2()));
-          t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg3()));
-          t->record_remote(remote_ptr<typename Arch::fd_set>(t->regs().arg4()));
-          t->record_remote(
-              remote_ptr<typename Arch::timeval>(t->regs().arg5()));
-          break;
-      }
-      break;
-
     case Arch::nanosleep: {
       AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
       auto rem = pop_arg_ptr<typename Arch::timespec>(t);
@@ -2648,6 +2645,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
     }
 
+    case Arch::_newselect:
     case Arch::fcntl:
     case Arch::fcntl64:
     case Arch::futex:
@@ -2659,6 +2657,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::recvfrom:
     case Arch::recvmsg:
     case Arch::recvmmsg:
+    case Arch::select:
     case Arch::sendfile:
     case Arch::sendfile64:
     case Arch::sendmmsg:
