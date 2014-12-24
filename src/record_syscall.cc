@@ -762,8 +762,9 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
           syscall_state.init_reg_parameter<typename Arch::recvmsg_args>(2, IN);
       auto msgp = syscall_state.init_mem_ptr_parameter<typename Arch::msghdr>(
           REMOTE_PTR_FIELD(argsp, msg), IN_OUT);
-      prepare_recvmsg<Arch>(t, syscall_state, msgp,
-                            ParamSize::from_syscall_result<typename Arch::ssize_t>());
+      prepare_recvmsg<Arch>(
+          t, syscall_state, msgp,
+          ParamSize::from_syscall_result<typename Arch::ssize_t>());
 
       auto args = t->read_mem(argsp);
       if (!(args.flags & MSG_DONTWAIT)) {
@@ -1179,7 +1180,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     case Arch::recvfrom: {
       syscall_state.init_reg_parameter(
-          2, ParamSize::from_syscall_result<typename Arch::size_t>(t->regs().arg3()));
+          2, ParamSize::from_syscall_result<typename Arch::size_t>(
+                 t->regs().arg3()));
       auto addrlen_ptr =
           syscall_state.init_reg_parameter<typename Arch::socklen_t>(6, IN_OUT);
       syscall_state.init_reg_parameter(
@@ -1190,8 +1192,9 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::recvmsg: {
       auto msgp =
           syscall_state.init_reg_parameter<typename Arch::msghdr>(2, IN_OUT);
-      prepare_recvmsg<Arch>(t, syscall_state, msgp,
-                            ParamSize::from_syscall_result<typename Arch::ssize_t>());
+      prepare_recvmsg<Arch>(
+          t, syscall_state, msgp,
+          ParamSize::from_syscall_result<typename Arch::ssize_t>());
       if (!((int)t->regs().arg3() & MSG_DONTWAIT)) {
         return syscall_state.done_preparing(ALLOW_SWITCH);
       }
@@ -1238,7 +1241,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read:
       syscall_state.init_reg_parameter(
-          2, ParamSize::from_syscall_result<typename Arch::size_t>((size_t)t->regs().arg3()));
+          2, ParamSize::from_syscall_result<typename Arch::size_t>(
+                 (size_t)t->regs().arg3()));
       return syscall_state.done_preparing(ALLOW_SWITCH);
 
     case Arch::accept:
@@ -1290,7 +1294,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           2, sizeof(typename Arch::iovec) * iovcnt, IN);
       auto iovecsp = iovecsp_void.cast<typename Arch::iovec>();
       auto iovecs = t->read_mem(iovecsp, iovcnt);
-      ParamSize io_size = ParamSize::from_syscall_result<typename Arch::size_t>();
+      ParamSize io_size =
+          ParamSize::from_syscall_result<typename Arch::size_t>();
       for (size_t i = 0; i < iovcnt; ++i) {
         syscall_state.init_mem_ptr_parameter(
             REMOTE_PTR_FIELD(iovecsp + i, iov_base),
@@ -1303,21 +1308,19 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     /* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
      */
     case Arch::waitpid:
-    case Arch::wait4: {
+    case Arch::wait4:
       syscall_state.init_reg_parameter<int>(2);
       if (syscallno == Arch::wait4) {
         syscall_state.init_reg_parameter<typename Arch::rusage>(4);
       }
       return syscall_state.done_preparing(ALLOW_SWITCH);
-    }
 
-    case Arch::waitid: {
+    case Arch::waitid:
       syscall_state.init_reg_parameter<typename Arch::siginfo_t>(3);
       return syscall_state.done_preparing(ALLOW_SWITCH);
-    }
 
     case Arch::pause:
-      return ALLOW_SWITCH;
+      return syscall_state.done_preparing(ALLOW_SWITCH);
 
     /* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
     /* int ppoll(struct pollfd *fds, nfds_t nfds,
@@ -1325,27 +1328,10 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
      *           const sigset_t *sigmask); */
     case Arch::poll:
     case Arch::ppoll: {
-      Registers r = t->regs();
-      remote_ptr<typename Arch::pollfd> fds = r.arg1();
-      auto fds2 = scratch.cast<typename Arch::pollfd>();
-      nfds_t nfds = r.arg2();
-
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-      /* XXX fds can be nullptr, right? */
-      push_arg_ptr(t, fds);
-      r.set_arg1(fds2);
-      scratch += nfds * fds.referent_size();
-
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscall_name(syscallno));
-      }
-      /* |fds| is an inout param, so we need to copy over
-       * the source data. */
-      t->remote_memcpy(fds2, fds, nfds * fds.referent_size());
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      auto nfds = (nfds_t)t->regs().arg2();
+      syscall_state.init_reg_parameter(1, sizeof(typename Arch::pollfd) * nfds,
+                                       IN_OUT);
+      return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     /* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned
@@ -2379,18 +2365,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-    case Arch::poll:
-    case Arch::ppoll: {
-      AutoRestoreScratch restore_scratch(t);
-      auto fds = pop_arg_ptr<typename Arch::pollfd>(t);
-      size_t nfds = t->regs().arg2();
-
-      restore_scratch.restore_and_record_args(fds, nfds);
-      Registers r = t->regs();
-      r.set_arg1(fds);
-      t->set_regs(r);
-      break;
-    }
     case Arch::prctl: {
       int size;
       switch ((int)t->regs().arg1_signed()) {
@@ -2492,6 +2466,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::ipc:
     case Arch::msgctl:
     case Arch::msgrcv:
+    case Arch::poll:
+    case Arch::ppoll:
     case Arch::preadv:
     case Arch::read:
     case Arch::readv:
