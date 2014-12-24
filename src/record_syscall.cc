@@ -1527,11 +1527,15 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
 
     case Arch::_sysctl: {
-      auto sysctl_args = t->read_mem(
-          remote_ptr<typename Arch::__sysctl_args>(t->regs().arg1()));
-      push_arg_ptr(t, sysctl_args.oldval);
-      push_arg_ptr(t, sysctl_args.oldlenp);
-      return PREVENT_SWITCH;
+      auto argsp =
+          syscall_state.init_reg_parameter<typename Arch::__sysctl_args>(1, IN);
+      auto oldlenp =
+          syscall_state.init_mem_ptr_parameter<typename Arch::size_t>(
+              REMOTE_PTR_FIELD(argsp, oldlenp), IN_OUT);
+      syscall_state.init_mem_ptr_parameter(
+          REMOTE_PTR_FIELD(argsp, oldval),
+          ParamSize::from_initialized_mem(t, oldlenp));
+      return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
@@ -2403,16 +2407,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       t->set_regs(r);
       break;
     }
-    case Arch::_sysctl: {
-      auto oldlenp = pop_arg_ptr<typename Arch::size_t>(t);
-      auto oldval = pop_arg_ptr<void>(t);
-      size_t oldlen = t->read_mem(oldlenp);
-      t->record_remote(oldlenp);
-      t->record_remote(oldval, oldlen);
-      break;
-    }
 
     case Arch::_newselect:
+    case Arch::_sysctl:
     case Arch::accept:
     case Arch::accept4:
     case Arch::fcntl:
