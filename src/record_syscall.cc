@@ -1237,12 +1237,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
-    case Arch::sendmsg: {
+    case Arch::sendmsg:
       if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {
         return syscall_state.done_preparing(ALLOW_SWITCH);
       }
       return syscall_state.done_preparing(PREVENT_SWITCH);
-    }
 
     case Arch::sendmmsg: {
       auto vlen = (unsigned int)t->regs().arg3();
@@ -1264,11 +1263,10 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     }
 
     /* ssize_t read(int fd, void *buf, size_t count); */
-    case Arch::read: {
+    case Arch::read:
       syscall_state.init_reg_parameter(
           2, ParamSize::from_syscall_result<size_t>((size_t)t->regs().arg3()));
       return syscall_state.done_preparing(ALLOW_SWITCH);
-    }
 
     case Arch::accept:
     case Arch::accept4: {
