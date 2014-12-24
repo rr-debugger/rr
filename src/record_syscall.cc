@@ -1550,28 +1550,10 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
      * timeout); */
-    case Arch::epoll_wait: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-
-      Registers r = t->regs();
-      remote_ptr<typename Arch::epoll_event> events = r.arg2();
-      int maxevents = r.arg3_signed();
-
-      push_arg_ptr(t, events);
-      r.set_arg2(scratch);
-      scratch += maxevents * events.referent_size();
-
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscall_name(syscallno));
-      }
-
-      /* (Unlike poll(), the |events| param is a pure
-       * outparam, no copy-over needed.) */
-      t->set_regs(r);
-      return ALLOW_SWITCH;
-    }
+    case Arch::epoll_wait:
+      syscall_state.init_reg_parameter(2, sizeof(typename Arch::epoll_event) *
+                                              t->regs().arg3_signed());
+      return syscall_state.done_preparing(ALLOW_SWITCH);
 
     /* The following two syscalls enable context switching not for
      * liveness/correctness reasons, but rather because if we
@@ -2286,18 +2268,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
       break;
     }
-    case Arch::epoll_wait: {
-      AutoRestoreScratch restore_scratch(t);
-      auto events = pop_arg_ptr<typename Arch::epoll_event>(t);
-      int maxevents = t->regs().arg3_signed();
-      if (!events.is_null()) {
-        restore_scratch.restore_and_record_args(events, maxevents);
-        Registers r = t->regs();
-        r.set_arg2(events);
-        t->set_regs(r);
-      }
-      break;
-    }
     case Arch::execve:
       process_execve<Arch>(t, syscall_state);
       break;
@@ -2422,6 +2392,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::_sysctl:
     case Arch::accept:
     case Arch::accept4:
+    case Arch::epoll_wait:
     case Arch::fcntl:
     case Arch::fcntl64:
     case Arch::futex:
