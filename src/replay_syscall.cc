@@ -1067,14 +1067,14 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::prctl: {
       switch ((int)trace_regs.arg1_signed()) {
-      case PR_SET_NAME:
-        // We actually execute this.
-        remote_ptr<void> arg2 = trace_regs.arg2();
-        step->action = syscall_action(state);
-        if (TSTEP_EXIT_SYSCALL == step->action) {
-          t->update_prname(arg2);
-        }
-        return;
+        case PR_SET_NAME:
+          // We actually execute this.
+          remote_ptr<void> arg2 = trace_regs.arg2();
+          step->action = syscall_action(state);
+          if (TSTEP_EXIT_SYSCALL == step->action) {
+            t->update_prname(arg2);
+          }
+          return;
       }
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);

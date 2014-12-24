@@ -308,6 +308,10 @@ struct TaskSyscallState {
    *  syscall outputs be written directly to their destinations.
    */
   bool scratch_enabled;
+  /** When true, we'll record the page of memory below the stack pointer.
+   *  Some ioctls seem to modify this for no good reason.
+   */
+  bool record_page_below_stack_ptr;
   /** When nonzero, syscall is expected to return the given errno and we should
    *  die if it does not. This is set when we detect an error condition during
    *  syscall-enter preparation.
@@ -319,6 +323,7 @@ struct TaskSyscallState {
         tmp_data_num_bytes(-1),
         preparation_done(false),
         scratch_enabled(false),
+        record_page_below_stack_ptr(false),
         expect_errno(0) {}
 };
 
@@ -832,6 +837,159 @@ static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
       break;
   }
   return syscall_state.done_preparing(PREVENT_SWITCH);
+}
+
+template <typename Arch>
+static void prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
+  int request = (int)t->regs().arg2_signed();
+  int type = _IOC_TYPE(request);
+  int nr = _IOC_NR(request);
+  int dir = _IOC_DIR(request);
+  int size = _IOC_SIZE(request);
+
+  LOG(debug) << "handling ioctl(" << HEX(request) << "): type:" << HEX(type)
+             << " nr:" << HEX(nr) << " dir:" << HEX(dir) << " size:" << size;
+
+  ASSERT(t, !t->is_desched_event_syscall())
+      << "Failed to skip past desched ioctl()";
+
+  /* Some ioctl()s are irregular and don't follow the _IOC()
+   * conventions.  Special case them here. */
+  switch (request) {
+    case SIOCETHTOOL: {
+      auto ifrp = syscall_state.init_reg_parameter<typename Arch::ifreq>(3, IN);
+      syscall_state.init_mem_ptr_parameter<typename Arch::ethtool_cmd>(
+          REMOTE_PTR_FIELD(ifrp, ifr_ifru.ifru_data));
+      syscall_state.record_page_below_stack_ptr = true;
+      return;
+    }
+
+    case SIOCGIFCONF: {
+      auto ifconfp = syscall_state.init_reg_parameter<typename Arch::ifconf>(3);
+      auto ifconf = t->read_mem(ifconfp);
+      syscall_state.init_mem_ptr_parameter(
+          REMOTE_PTR_FIELD(ifconfp, ifc_ifcu.ifcu_buf), ifconf.ifc_len);
+      syscall_state.record_page_below_stack_ptr = true;
+      return;
+    }
+
+    case SIOCGIFADDR:
+    case SIOCGIFFLAGS:
+    case SIOCGIFINDEX:
+    case SIOCGIFMTU:
+    case SIOCGIFNAME:
+      syscall_state.init_reg_parameter<typename Arch::ifreq>(3);
+      syscall_state.record_page_below_stack_ptr = true;
+      return;
+
+    case SIOCGIWRATE:
+      // SIOCGIWRATE hasn't been observed to write beyond
+      // tracees' stacks, but we record a stack page here
+      // just in case the behavior is driver-dependent.
+      syscall_state.init_reg_parameter<typename Arch::iwreq>(3);
+      syscall_state.record_page_below_stack_ptr = true;
+      return;
+
+    case TCGETS:
+      syscall_state.init_reg_parameter<typename Arch::termios>(3);
+      return;
+
+    case TIOCINQ:
+      syscall_state.init_reg_parameter<int>(3);
+      return;
+
+    case TIOCGWINSZ:
+      syscall_state.init_reg_parameter<typename Arch::winsize>(3);
+      return;
+  }
+
+  /* In ioctl language, "_IOC_READ" means "outparam".  Both
+   * READ and WRITE can be set for inout params. */
+  if (!(_IOC_READ & dir)) {
+    /* If the kernel isn't going to write any data back to
+     * us, we hope and pray that the result of the ioctl
+     * (observable to the tracee) is deterministic. */
+    LOG(debug) << "  (deterministic ioctl, nothing to do)";
+    return;
+  }
+
+  /* The following are thought to be "regular" ioctls, the
+   * processing of which is only known to (observably) write to
+   * the bytes in the structure passed to the kernel.  So all we
+   * need is to record |size| bytes.*/
+  switch (request) {
+    /* TODO: what are the 0x46 ioctls? */
+    case 0xc020462b:
+    case 0xc048464d:
+    case 0xc0204637:
+    case 0xc0304627:
+      FATAL() << "Unknown 0x46-series ioctl nr " << HEX(nr);
+      break; /* not reached */
+
+    /* The following are ioctls for the linux Direct Rendering
+     * Manager (DRM).  The ioctl "type" is 0x64 (100, or ASCII 'd'
+     * as they docs helpfully declare it :/).  The ioctl numbers
+     * are allocated as follows
+     *
+     *  [0x00, 0x40) -- generic commands
+     *  [0x40, 0xa0) -- device-specific commands
+     *  [0xa0, 0xff) -- more generic commands
+     *
+     * Chasing down unknown ioctls is somewhat annoying in this
+     * scheme, but here's an example: request "0xc0406481".  "0xc"
+     * means it's a read/write ioctl, and "0x0040" is the size of
+     * the payload.  The actual ioctl request is "0x6481".
+     *
+     * As we saw above, "0x64" is the DRM type.  So now we need to
+     * see what command "0x81" is.  It's in the
+     * device-specific-command space, so we can start by
+     * subtracting "0x40" to get a command "0x41".  Then
+     *
+     *  $ cd
+     *  $ grep -rn 0x41 *
+     *  nouveau_drm.h:200:#define DRM_NOUVEAU_GEM_PUSHBUF        0x41
+     *
+     * Well that was lucky!  So the command is
+     * DRM_NOUVEAU_GEM_PUSHBUF, and the parameters etc can be
+     * tracked down from that.
+     */
+
+    /* TODO: At least one of these ioctl()s, most likely
+     * NOUVEAU_GEM_NEW, opens a file behind rr's back on behalf of
+     * the callee.  That wreaks havoc later on in execution, so we
+     * disable the whole lot for now until rr can handle that
+     * behavior (by recording access to shmem segments). */
+    case DRM_IOCTL_VERSION:
+    case DRM_IOCTL_NOUVEAU_GEM_NEW:
+    case DRM_IOCTL_NOUVEAU_GEM_PUSHBUF:
+      FATAL() << "Intentionally unhandled DRM(0x64) ioctl nr " << HEX(nr);
+      break;
+
+    case DRM_IOCTL_GET_MAGIC:
+    case DRM_IOCTL_RADEON_INFO:
+    case DRM_IOCTL_I915_GEM_PWRITE:
+    case DRM_IOCTL_GEM_OPEN:
+    case DRM_IOCTL_I915_GEM_MMAP:
+    case DRM_IOCTL_RADEON_GEM_CREATE:
+    case DRM_IOCTL_RADEON_GEM_GET_TILING:
+      FATAL() << "Not-understood DRM(0x64) ioctl nr " << HEX(nr);
+      break; /* not reached */
+
+    case 0x4010644d:
+    case 0xc0186441:
+    case 0x80086447:
+    case 0xc0306449:
+    case 0xc030644b:
+      FATAL() << "Unknown DRM(0x64) ioctl nr " << HEX(nr);
+      break; /* not reached */
+
+    default:
+      t->regs().print_register_file(stderr);
+      ASSERT(t, false) << "Unknown ioctl(" << HEX(request)
+                       << "): type:" << HEX(type) << " nr:" << HEX(nr)
+                       << " dir:" << HEX(dir) << " size:" << size
+                       << " addr:" << HEX(t->regs().arg3());
+  }
 }
 
 static const int RR_KCMP_FILE = 0;
@@ -1364,6 +1522,10 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       }
       return syscall_state.done_preparing(PREVENT_SWITCH);
 
+    case Arch::ioctl:
+      prepare_ioctl<Arch>(t, syscall_state);
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+
     case Arch::_sysctl: {
       auto sysctl_args = t->read_mem(
           remote_ptr<typename Arch::__sysctl_args>(t->regs().arg1()));
@@ -1396,10 +1558,6 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       t->set_regs(r);
       return ALLOW_SWITCH;
     }
-
-    case Arch::epoll_pwait:
-      FATAL() << "Unhandled syscall " << t->syscall_name(syscallno);
-      return ALLOW_SWITCH;
 
     /* The following two syscalls enable context switching not for
      * liveness/correctness reasons, but rather because if we
@@ -1784,6 +1942,15 @@ void TaskSyscallState::process_syscall_results() {
       t->record_remote(param.dest, size);
     }
   }
+
+  if (record_page_below_stack_ptr) {
+    /* Record.the page above the top of |t|'s stack.  The SIOC* ioctls
+     * have been observed to write beyond the end of tracees' stacks, as
+     * if they had allocated scratch space for themselves.  All we can do
+     * for now is try to record the scratch data.
+     */
+    t->record_remote(t->regs().sp() - page_size(), page_size());
+  }
 }
 
 // We have |keys_length| instead of using array_length(keys) to work
@@ -1890,165 +2057,6 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   t->record_remote(rand_addr, 16);
 
   init_scratch_memory<Arch>(t);
-}
-
-static void record_ioctl_data(Task* t, ssize_t num_bytes) {
-  remote_ptr<void> param = t->regs().arg3();
-  t->record_remote(param, num_bytes);
-}
-
-/**
- * Record.the page above the top of |t|'s stack.  The SIOC* ioctls
- * have been observed to write beyond the end of tracees' stacks, as
- * if they had allocated scratch space for themselves.  All we can do
- * for now is try to record the scratch data.
- */
-static void record_scratch_stack_page(Task* t) {
-  t->record_remote(t->sp() - page_size(), page_size());
-}
-
-template <typename Arch> static void process_ioctl(Task* t, int request) {
-  int type = _IOC_TYPE(request);
-  int nr = _IOC_NR(request);
-  int dir = _IOC_DIR(request);
-  int size = _IOC_SIZE(request);
-  remote_ptr<void> param = t->regs().arg3();
-
-  LOG(debug) << "handling ioctl(" << HEX(request) << "): type:" << HEX(type)
-             << " nr:" << HEX(nr) << " dir:" << HEX(dir) << " size:" << size;
-
-  ASSERT(t, !t->is_desched_event_syscall())
-      << "Failed to skip past desched ioctl()";
-
-  /* Some ioctl()s are irregular and don't follow the _IOC()
-   * conventions.  Special case them here. */
-  switch (request) {
-    case SIOCETHTOOL: {
-      auto ifr = t->read_mem(param.cast<typename Arch::ifreq>());
-
-      record_scratch_stack_page(t);
-      t->record_remote(ifr.ifr_ifru.ifru_data,
-                       sizeof(typename Arch::ethtool_cmd));
-      return;
-    }
-    case SIOCGIFCONF: {
-      auto ifconf = t->read_mem(param.cast<typename Arch::ifconf>());
-
-      record_scratch_stack_page(t);
-      t->record_local(param, sizeof(ifconf), &ifconf);
-      t->record_remote(ifconf.ifc_ifcu.ifcu_buf, ifconf.ifc_len);
-      return;
-    }
-    case SIOCGIFADDR:
-    case SIOCGIFFLAGS:
-    case SIOCGIFINDEX:
-    case SIOCGIFMTU:
-    case SIOCGIFNAME:
-      record_scratch_stack_page(t);
-      return record_ioctl_data(t, sizeof(typename Arch::ifreq));
-
-    case SIOCGIWRATE:
-      // SIOCGIWRATE hasn't been observed to write beyond
-      // tracees' stacks, but we record a stack page here
-      // just in case the behavior is driver-dependent.
-      record_scratch_stack_page(t);
-      return record_ioctl_data(t, sizeof(typename Arch::iwreq));
-
-    case TCGETS:
-      return record_ioctl_data(t, sizeof(typename Arch::termios));
-    case TIOCINQ:
-      return record_ioctl_data(t, sizeof(int));
-    case TIOCGWINSZ:
-      return record_ioctl_data(t, sizeof(typename Arch::winsize));
-  }
-
-  /* In ioctl language, "_IOC_READ" means "outparam".  Both
-   * READ and WRITE can be set for inout params. */
-  if (!(_IOC_READ & dir)) {
-    /* If the kernel isn't going to write any data back to
-     * us, we hope and pray that the result of the ioctl
-     * (observable to the tracee) is deterministic. */
-    LOG(debug) << "  (deterministic ioctl, nothing to do)";
-    return;
-  }
-
-  /* The following are thought to be "regular" ioctls, the
-   * processing of which is only known to (observably) write to
-   * the bytes in the structure passed to the kernel.  So all we
-   * need is to record |size| bytes.*/
-  switch (request) {
-    /* TODO: what are the 0x46 ioctls? */
-    case 0xc020462b:
-    case 0xc048464d:
-    case 0xc0204637:
-    case 0xc0304627:
-      FATAL() << "Unknown 0x46-series ioctl nr " << HEX(nr);
-      break; /* not reached */
-
-    /* The following are ioctls for the linux Direct Rendering
-     * Manager (DRM).  The ioctl "type" is 0x64 (100, or ASCII 'd'
-     * as they docs helpfully declare it :/).  The ioctl numbers
-     * are allocated as follows
-     *
-     *  [0x00, 0x40) -- generic commands
-     *  [0x40, 0xa0) -- device-specific commands
-     *  [0xa0, 0xff) -- more generic commands
-     *
-     * Chasing down unknown ioctls is somewhat annoying in this
-     * scheme, but here's an example: request "0xc0406481".  "0xc"
-     * means it's a read/write ioctl, and "0x0040" is the size of
-     * the payload.  The actual ioctl request is "0x6481".
-     *
-     * As we saw above, "0x64" is the DRM type.  So now we need to
-     * see what command "0x81" is.  It's in the
-     * device-specific-command space, so we can start by
-     * subtracting "0x40" to get a command "0x41".  Then
-     *
-     *  $ cd
-     *  $ grep -rn 0x41 *
-     *  nouveau_drm.h:200:#define DRM_NOUVEAU_GEM_PUSHBUF        0x41
-     *
-     * Well that was lucky!  So the command is
-     * DRM_NOUVEAU_GEM_PUSHBUF, and the parameters etc can be
-     * tracked down from that.
-     */
-
-    /* TODO: At least one of these ioctl()s, most likely
-     * NOUVEAU_GEM_NEW, opens a file behind rr's back on behalf of
-     * the callee.  That wreaks havoc later on in execution, so we
-     * disable the whole lot for now until rr can handle that
-     * behavior (by recording access to shmem segments). */
-    case DRM_IOCTL_VERSION:
-    case DRM_IOCTL_NOUVEAU_GEM_NEW:
-    case DRM_IOCTL_NOUVEAU_GEM_PUSHBUF:
-      FATAL() << "Intentionally unhandled DRM(0x64) ioctl nr " << HEX(nr);
-      break;
-
-    case DRM_IOCTL_GET_MAGIC:
-    case DRM_IOCTL_RADEON_INFO:
-    case DRM_IOCTL_I915_GEM_PWRITE:
-    case DRM_IOCTL_GEM_OPEN:
-    case DRM_IOCTL_I915_GEM_MMAP:
-    case DRM_IOCTL_RADEON_GEM_CREATE:
-    case DRM_IOCTL_RADEON_GEM_GET_TILING:
-      FATAL() << "Not-understood DRM(0x64) ioctl nr " << HEX(nr);
-      break; /* not reached */
-
-    case 0x4010644d:
-    case 0xc0186441:
-    case 0x80086447:
-    case 0xc0306449:
-    case 0xc030644b:
-      FATAL() << "Unknown DRM(0x64) ioctl nr " << HEX(nr);
-      break; /* not reached */
-
-    default:
-      t->regs().print_register_file(stderr);
-      ASSERT(t, false) << "Unknown ioctl(" << HEX(request)
-                       << "): type:" << HEX(type) << " nr:" << HEX(nr)
-                       << " dir:" << HEX(dir) << " size:" << size
-                       << " addr:" << HEX(t->regs().arg3());
-  }
 }
 
 static void process_mmap(Task* t, int syscallno, size_t length, int prot,
@@ -2290,9 +2298,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-    case Arch::ioctl:
-      process_ioctl<Arch>(t, (int)t->regs().arg2_signed());
-      break;
 
     case Arch::mmap:
       switch (Arch::mmap_semantics) {
@@ -2415,6 +2420,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::futex:
     case Arch::getsockname:
     case Arch::getpeername:
+    case Arch::ioctl:
     case Arch::ipc:
     case Arch::msgctl:
     case Arch::msgrcv:
