@@ -587,32 +587,6 @@ static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch,
 }
 
 template <typename Arch>
-static bool prepare_accept(Task* t, remote_ptr<typename Arch::sockaddr>* addr,
-                           remote_ptr<typename Arch::socklen_t>* addrlen,
-                           remote_ptr<void>* scratch) {
-  push_arg_ptr(t, *addrlen);
-  push_arg_ptr(t, *addr);
-
-  typename Arch::socklen_t len = 0;
-  if (!addrlen->is_null()) {
-    len = t->read_mem(*addrlen);
-    *addrlen = allocate_scratch<typename Arch::socklen_t>(scratch);
-    t->write_mem(*addrlen, len);
-  }
-
-  if (!addr->is_null()) {
-    *addr = scratch->cast<typename Arch::sockaddr>();
-    *scratch += len;
-  }
-
-  if (!can_use_scratch(t, *scratch)) {
-    return false;
-  }
-
-  return true;
-}
-
-template <typename Arch>
 static void prepare_recvmsg(Task* t, TaskSyscallState& syscall_state,
                             remote_ptr<typename Arch::msghdr> msgp,
                             const ParamSize& io_size) {
@@ -1298,21 +1272,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     case Arch::accept:
     case Arch::accept4: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-      Registers r = t->regs();
-      remote_ptr<typename Arch::sockaddr> addr = r.arg2();
-      remote_ptr<typename Arch::socklen_t> addrlen = r.arg3();
-
-      if (!prepare_accept<Arch>(t, &addr, &addrlen, &scratch)) {
-        return abort_scratch(t, "accept");
-      }
-
-      r.set_arg2(addr);
-      r.set_arg3(addrlen);
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      auto addrlen_ptr =
+          syscall_state.init_reg_parameter<typename Arch::socklen_t>(3, IN_OUT);
+      syscall_state.init_reg_parameter(
+          2, ParamSize::from_initialized_mem(t, addrlen_ptr));
+      return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     case Arch::write:
@@ -2606,6 +2570,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     }
 
     case Arch::_newselect:
+    case Arch::accept:
+    case Arch::accept4:
     case Arch::fcntl:
     case Arch::fcntl64:
     case Arch::futex:
@@ -2628,27 +2594,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::wait4:
       syscall_state.process_syscall_results();
       break;
-
-    case Arch::accept:
-    case Arch::accept4: {
-      Registers r = t->regs();
-      auto addrp = pop_arg_ptr<typename Arch::sockaddr>(t);
-      auto addrlenp = pop_arg_ptr<typename Arch::socklen_t>(t);
-
-      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
-      typename Arch::socklen_t addrlen;
-      if (!addrlenp.is_null()) {
-        restore_scratch.restore_and_record_arg(addrlenp, &addrlen);
-      }
-      if (!addrp.is_null()) {
-        restore_scratch.restore_and_record_arg_buf(addrp, addrlen);
-      }
-
-      r.set_arg2(addrp);
-      r.set_arg3(addrlenp);
-      t->set_regs(r);
-      return;
-    }
 
     case Arch::getsockopt: {
       auto& r = t->regs();
