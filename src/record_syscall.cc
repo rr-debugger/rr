@@ -1291,21 +1291,9 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-      Registers r = t->regs();
-
-      push_arg_ptr(t, r.arg2());
-      r.set_arg2(scratch);
-      scratch += (size_t)r.arg3();
-
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscall_name(syscallno));
-      }
-
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      syscall_state.init_reg_parameter(
+          2, ParamSize::from_syscall_result<size_t>((size_t)t->regs().arg3()));
+      return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     case Arch::accept:
@@ -2577,34 +2565,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-    case Arch::read: {
-      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
-      remote_ptr<void> buf;
-      bool restore_buf = false;
-
-      ssize_t nread = t->regs().syscall_result_signed();
-      if (has_saved_arg_ptrs(t)) {
-        buf = pop_arg_ptr<void>(t);
-        restore_buf = true;
-      } else {
-        buf = t->regs().arg2();
-      }
-
-      if (nread > 0) {
-        if (restore_scratch.scratch_used()) {
-          restore_scratch.restore_and_record_arg_buf(buf, nread);
-        } else {
-          t->record_remote(buf, nread);
-        }
-      }
-
-      if (restore_buf) {
-        Registers r = t->regs();
-        r.set_arg2(buf);
-        t->set_regs(r);
-      }
-      break;
-    }
     case Arch::rt_sigtimedwait: {
       Registers r = t->regs();
       if (syscall_state.saved_args.empty()) {
@@ -2654,6 +2614,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::ipc:
     case Arch::msgctl:
     case Arch::msgrcv:
+    case Arch::read:
     case Arch::recvfrom:
     case Arch::recvmsg:
     case Arch::recvmmsg:
