@@ -1336,43 +1336,33 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     /* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned
      * long arg4, unsigned long arg5); */
-    case Arch::prctl: {
-      /* TODO: many of these prctls are not blocking. */
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-      Registers r = t->regs();
-      switch ((int)r.arg1_signed()) {
+    case Arch::prctl:
+      switch ((int)t->regs().arg1_signed()) {
         case PR_GET_ENDIAN:
         case PR_GET_FPEMU:
         case PR_GET_FPEXC:
         case PR_GET_PDEATHSIG:
         case PR_GET_TSC:
-        case PR_GET_UNALIGN: {
-          remote_ptr<int> outparam = r.arg2();
+        case PR_GET_UNALIGN:
+          syscall_state.init_reg_parameter<int>(2);
+          break;
 
-          push_arg_ptr(t, outparam);
-          r.set_arg2(scratch);
-          scratch += outparam.referent_size();
-
-          if (!can_use_scratch(t, scratch)) {
-            return abort_scratch(t, t->syscall_name(syscallno));
-          }
-
-          t->set_regs(r);
-          return ALLOW_SWITCH;
-        }
         case PR_GET_NAME:
+          syscall_state.init_reg_parameter(2, 16);
+          break;
+
         case PR_SET_NAME:
-          return PREVENT_SWITCH;
+          t->update_prname(t->regs().arg2());
+          break;
+
+        case PR_SET_SECCOMP:
+          break;
 
         default:
-          /* TODO: there are many more prctls with
-           * outparams ... */
-          return ALLOW_SWITCH;
+          syscall_state.expect_errno = EINVAL;
+          break;
       }
-      FATAL() << "Not reached";
-    }
+      return syscall_state.done_preparing(PREVENT_SWITCH);
 
     case Arch::_sysctl: {
       auto sysctl_args = t->read_mem(
@@ -2365,44 +2355,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-    case Arch::prctl: {
-      int size;
-      switch ((int)t->regs().arg1_signed()) {
-        /* See rec_prepare_syscall() for how these
-         * sizes are determined. */
-        case PR_GET_ENDIAN:
-        case PR_GET_FPEMU:
-        case PR_GET_FPEXC:
-        case PR_GET_PDEATHSIG:
-        case PR_GET_TSC:
-        case PR_GET_UNALIGN:
-          size = sizeof(int);
-          break;
-
-        case PR_SET_NAME:
-          t->update_prname(t->regs().arg2());
-        // fall through
-        case PR_GET_NAME:
-          // We actually execute these during replay, so
-          // no need to save any data.
-          size = 0;
-          break;
-
-        default:
-          size = 0;
-          break;
-      }
-      if (size > 0) {
-        AutoRestoreScratch restore_scratch(t);
-        auto arg = pop_arg_ptr<void>(t);
-
-        restore_scratch.restore_and_record_arg_buf(arg, size);
-        Registers r = t->regs();
-        r.set_arg2(arg);
-        t->set_regs(r);
-      }
-      break;
-    }
     case Arch::quotactl: {
       int cmd = (int)t->regs().arg1_signed() & SUBCMDMASK;
       remote_ptr<void> addr = t->regs().arg4();
@@ -2468,6 +2420,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::msgrcv:
     case Arch::poll:
     case Arch::ppoll:
+    case Arch::prctl:
     case Arch::preadv:
     case Arch::read:
     case Arch::readv:

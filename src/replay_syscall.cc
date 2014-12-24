@@ -1066,12 +1066,12 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
                                 trace_regs.arg5(), trace_regs.arg6(), step);
 
     case Arch::prctl: {
-      int option = trace_regs.arg1_signed();
-      if (PR_SET_NAME == option || PR_GET_NAME == option) {
+      switch ((int)trace_regs.arg1_signed()) {
+      case PR_SET_NAME:
+        // We actually execute this.
         remote_ptr<void> arg2 = trace_regs.arg2();
-        // We actually execute these.
         step->action = syscall_action(state);
-        if (TSTEP_EXIT_SYSCALL == step->action && PR_SET_NAME == option) {
+        if (TSTEP_EXIT_SYSCALL == step->action) {
           t->update_prname(arg2);
         }
         return;
