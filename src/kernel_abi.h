@@ -237,6 +237,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef int64_t __kernel_loff_t;
 
   template <typename T> struct ptr {
+    typedef T Referent;
     unsigned_word val;
     template <typename U> operator remote_ptr<U>() const { return rptr(); }
     /**
@@ -251,7 +252,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
       return *this;
     }
     operator bool() const { return val; }
-    size_t referent_size() const { return sizeof(T); }
+    static size_t referent_size() { return sizeof(T); }
   };
 
   union sigval_t {
