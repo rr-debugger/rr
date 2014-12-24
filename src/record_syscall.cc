@@ -1312,24 +1312,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     }
 
     case Arch::waitid: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-
-      Registers r = t->regs();
-      remote_ptr<typename Arch::siginfo_t> infop = r.arg3();
-      push_arg_ptr(t, infop);
-      if (!infop.is_null()) {
-        r.set_arg3(scratch);
-        scratch += infop.referent_size();
-      }
-
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscall_name(syscallno));
-      }
-
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      syscall_state.init_reg_parameter<typename Arch::siginfo_t>(3);
+      return syscall_state.done_preparing(ALLOW_SWITCH);
     }
 
     case Arch::pause:
@@ -2496,18 +2480,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       t->record_remote(oldval, oldlen);
       break;
     }
-    case Arch::waitid: {
-      AutoRestoreScratch restore_scratch(t);
-      auto infop = pop_arg_ptr<typename Arch::siginfo_t>(t);
-
-      Registers r = t->regs();
-      if (!infop.is_null()) {
-        restore_scratch.restore_and_record_arg(infop);
-        r.set_arg3(infop);
-      }
-      t->set_regs(r);
-      break;
-    }
 
     case Arch::_newselect:
     case Arch::accept:
@@ -2532,6 +2504,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::sendmmsg:
     case Arch::socketcall:
     case Arch::splice:
+    case Arch::waitid:
     case Arch::waitpid:
     case Arch::wait4:
       syscall_state.process_syscall_results();
