@@ -1579,23 +1579,10 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return ALLOW_SWITCH;
 
     case Arch::rt_sigtimedwait: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-      Registers r = t->regs();
-      remote_ptr<typename Arch::siginfo_t> info = r.arg2();
-      push_arg_ptr(t, info);
-      if (!info.is_null()) {
-        r.set_arg2(scratch);
-        scratch += info.referent_size();
-      }
-
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscall_name(syscallno));
-      }
-      t->set_regs(r);
-      return ALLOW_SWITCH;
+      syscall_state.reg_parameter<typename Arch::siginfo_t>(2);
+      return syscall_state.done_preparing(ALLOW_SWITCH);
     }
+
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
       return ALLOW_SWITCH;
@@ -2330,26 +2317,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-    case Arch::rt_sigtimedwait: {
-      Registers r = t->regs();
-      if (syscall_state.saved_args.empty()) {
-        remote_ptr<typename Arch::siginfo_t> info = r.arg2();
-        if (!info.is_null()) {
-          t->record_remote(info);
-        }
-        break;
-      }
-
-      AutoRestoreScratch restore_scratch(t);
-      auto info = pop_arg_ptr<typename Arch::siginfo_t>(t);
-      if (!info.is_null()) {
-        restore_scratch.restore_and_record_arg(info);
-        r.set_arg2(info);
-      }
-      t->set_regs(r);
-      break;
-    }
-
     case Arch::_newselect:
     case Arch::_sysctl:
     case Arch::accept:
@@ -2377,6 +2344,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::sendfile:
     case Arch::sendfile64:
     case Arch::sendmmsg:
+    case Arch::rt_sigtimedwait:
     case Arch::socketcall:
     case Arch::splice:
     case Arch::waitid:
