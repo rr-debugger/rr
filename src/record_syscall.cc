@@ -227,11 +227,16 @@ struct TaskSyscallState {
    * otherwise returns 'sw'.
    */
   Switchable done_preparing(Switchable sw);
+  enum WriteBack {
+    WRITE_BACK,
+    NO_WRITE_BACK
+  };
   /**
    * Called when a syscall exits to copy results from scratch memory to their
    * original destinations, update registers, etc.
+   * Pass NO_WRITE_BACK to indicate that the kernel did not write anything.
    */
-  void process_syscall_results();
+  void process_syscall_results(WriteBack write_back = WRITE_BACK);
 
   Task* t;
 
@@ -1554,26 +1559,9 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
      * switching and we should take the hint. */
 
     /* int nanosleep(const struct timespec *req, struct timespec *rem); */
-    case Arch::nanosleep: {
-      if (!need_scratch_setup) {
-        return ALLOW_SWITCH;
-      }
-
-      Registers r = t->regs();
-      remote_ptr<typename Arch::timespec> rem = r.arg2();
-      push_arg_ptr(t, rem);
-      if (!rem.is_null()) {
-        r.set_arg2(scratch);
-        scratch += rem.referent_size();
-      }
-
-      if (!can_use_scratch(t, scratch)) {
-        return abort_scratch(t, t->syscall_name(syscallno));
-      }
-
-      t->set_regs(r);
-      return ALLOW_SWITCH;
-    }
+    case Arch::nanosleep:
+      syscall_state.reg_parameter<typename Arch::timespec>(2);
+      return syscall_state.done_preparing(ALLOW_SWITCH);
 
     case Arch::sched_yield:
       // Force |t| to be context-switched if another thread
@@ -1634,6 +1622,7 @@ Switchable rec_prepare_syscall(Task* t) {
 
 template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
+  auto& syscall_state = *syscall_state_property.get(*t);
   switch (syscallno) {
     case Arch::nanosleep: {
       /* Hopefully uniquely among syscalls, nanosleep()
@@ -1647,16 +1636,7 @@ template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
        * that, we do what the kernel does, and update the
        * outparam at the -ERESTART_RESTART interruption
        * regardless. */
-      auto& syscall_state = *syscall_state_property.get(*t);
-      auto rem = syscall_state.saved_args.top().cast<typename Arch::timespec>();
-      remote_ptr<typename Arch::timespec> rem2 = t->regs().arg2();
-
-      if (!rem.is_null()) {
-        t->remote_memcpy(rem, rem2);
-        t->record_remote(rem);
-      }
-      /* If the nanosleep does indeed restart, then we'll
-       * write the outparam twice.  *yawn*. */
+      syscall_state.process_syscall_results();
       break;
     }
   }
@@ -1868,7 +1848,7 @@ size_t TaskSyscallState::eval_param_size(size_t i,
   return size;
 }
 
-void TaskSyscallState::process_syscall_results() {
+void TaskSyscallState::process_syscall_results(WriteBack write_back) {
   ASSERT(t, preparation_done);
 
   // XXX what's the best way to handle failed syscalls? Currently we just
@@ -1885,7 +1865,8 @@ void TaskSyscallState::process_syscall_results() {
     for (size_t i = 0; i < param_list.size(); ++i) {
       auto& param = param_list[i];
       size_t size = eval_param_size(i, actual_sizes);
-      if (param.mode == IN_OUT || param.mode == OUT) {
+      if (write_back == WRITE_BACK &&
+          (param.mode == IN_OUT || param.mode == OUT)) {
         const uint8_t* d = data.data() + (param.scratch - tmp_data_ptr);
         t->write_bytes_helper(param.dest, size, d);
       }
@@ -1902,22 +1883,24 @@ void TaskSyscallState::process_syscall_results() {
         set_remote_ptr(t, param.ptr_in_memory, param.dest);
       }
     }
-    // Step 3: record all output memory areas
-    for (size_t i = 0; i < param_list.size(); ++i) {
-      auto& param = param_list[i];
-      size_t size = actual_sizes[i];
-      if (param.mode == IN_OUT_NO_SCRATCH) {
-        t->record_remote(param.dest, size);
-      } else if (param.mode == IN_OUT || param.mode == OUT) {
-        // If pointers in memory were fixed up in step 2, then record
-        // from tracee memory to ensure we record such fixes. Otherwise we
-        // can record from our local data.
-        // XXX This optimization can be improved if necessary...
-        if (memory_cleaned_up) {
+    if (write_back == WRITE_BACK) {
+      // Step 3: record all output memory areas
+      for (size_t i = 0; i < param_list.size(); ++i) {
+        auto& param = param_list[i];
+        size_t size = actual_sizes[i];
+        if (param.mode == IN_OUT_NO_SCRATCH) {
           t->record_remote(param.dest, size);
-        } else {
-          const uint8_t* d = data.data() + (param.scratch - tmp_data_ptr);
-          t->record_local(param.dest, size, d);
+        } else if (param.mode == IN_OUT || param.mode == OUT) {
+          // If pointers in memory were fixed up in step 2, then record
+          // from tracee memory to ensure we record such fixes. Otherwise we
+          // can record from our local data.
+          // XXX This optimization can be improved if necessary...
+          if (memory_cleaned_up) {
+            t->record_remote(param.dest, size);
+          } else {
+            const uint8_t* d = data.data() + (param.scratch - tmp_data_ptr);
+            t->record_local(param.dest, size, d);
+          }
         }
       }
     }
@@ -2300,25 +2283,13 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       break;
 
     case Arch::nanosleep: {
-      AutoRestoreScratch restore_scratch(t, ALLOW_SLACK);
-      auto rem = pop_arg_ptr<typename Arch::timespec>(t);
-
-      if (!rem.is_null()) {
-        Registers r = t->regs();
-        /* If the sleep completes, the kernel doesn't
-         * write back to the remaining-time
-         * argument. */
-        if (0 != (int)r.syscall_result_signed()) {
-          /* TODO: where are we supposed to
-           * write back these args?  We don't
-           * see an EINTR return from
-           * nanosleep() when it's interrupted
-           * by a user-handled signal. */
-          restore_scratch.restore_and_record_arg(rem);
-        }
-        r.set_arg2(rem);
-        t->set_regs(r);
-      }
+      /* If the sleep completes, the kernel doesn't
+       * write back to the remaining-time
+       * argument. */
+      syscall_state.process_syscall_results(
+          0 != (int)t->regs().syscall_result_signed()
+              ? TaskSyscallState::WRITE_BACK
+              : TaskSyscallState::NO_WRITE_BACK);
       break;
     }
     case Arch::open: {
