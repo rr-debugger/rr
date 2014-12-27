@@ -183,7 +183,13 @@ struct ParamSize {
  * the relevant syscallbuf record data in rec_process_syscall_arch.
  */
 struct TaskSyscallState {
-  void init(Task* t) { this->t = t; }
+  void init(Task* t) {
+    if (preparation_done) {
+      return;
+    }
+    this->t = t;
+    scratch = t->scratch_ptr;
+  }
 
   /**
    * Identify a syscall memory parameter whose address is in register 'arg'
@@ -278,10 +284,11 @@ struct TaskSyscallState {
 
   /**
    * Upon successful syscall completion, each RestoreAndRecordScratch record
-   * in restore_and_record_scratch consumes num_bytes from the tmp_data_ptr
+   * in param_list consumes num_bytes from the t->scratch_ptr
    * buffer, copying the data to remote_dest and recording the data at
    * remote_dest. If ptr_in_reg is greater than zero, updates the task's
-   * ptr_in_reg register with 'remote_dest'.
+   * ptr_in_reg register with 'remote_dest'. If ptr_in_memory is non-null,
+   * updates the ptr_in_memory location with the value 'remote_dest'.
    */
   struct MemoryParam {
     MemoryParam() : ptr_in_reg(0) {}
@@ -296,10 +303,10 @@ struct TaskSyscallState {
 
   Task* t;
 
-  remote_ptr<void> tmp_data_ptr;
-  ssize_t tmp_data_num_bytes;
-
   vector<MemoryParam> param_list;
+  /** Tracks the position in t's scratch_ptr buffer where we should allocate
+   *  the next scratch area.
+   */
   remote_ptr<void> scratch;
 
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
@@ -334,11 +341,10 @@ struct TaskSyscallState {
 
   TaskSyscallState()
       : t(nullptr),
-        tmp_data_num_bytes(-1),
         expect_errno(0),
         preparation_done(false),
         scratch_enabled(false),
-        record_page_below_stack_ptr(false){}
+        record_page_below_stack_ptr(false) {}
 };
 
 static const Property<TaskSyscallState, Task> syscall_state_property;
@@ -363,57 +369,6 @@ static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
 void rec_before_record_syscall_entry(Task* t, int syscallno) {
   RR_ARCH_FUNCTION(rec_before_record_syscall_entry_arch, t->arch(), t,
                    syscallno)
-}
-
-/**
- * Erase any scratch pointer initialization done for |t| and leave
- * the state bits ready to be initialized again.
- */
-static void reset_scratch_pointers(Task* t) {
-  assert(t->ev().type() == EV_SYSCALL);
-
-  auto& syscall_state = *syscall_state_property.get(*t);
-  syscall_state.tmp_data_ptr = t->scratch_ptr;
-  syscall_state.tmp_data_num_bytes = -1;
-}
-
-/**
- * Reset scratch state for |t|, because scratch can't be used for
- * |event|.  Log a warning as well.
- */
-static Switchable abort_scratch(Task* t, const string& event) {
-  auto& syscall_state = *syscall_state_property.get(*t);
-  int num_bytes = syscall_state.tmp_data_num_bytes;
-
-  assert(syscall_state.tmp_data_ptr == t->scratch_ptr);
-
-  if (0 > num_bytes) {
-    LOG(warn) << "`" << event << "' requires scratch buffers, but that's not "
-                                 "implemented.  Disabling context switching: "
-                                 "deadlock may follow.";
-  } else {
-    LOG(warn)
-        << "`" << event << "' needed a scratch buffer of size " << num_bytes
-        << ", but only " << t->scratch_size
-        << " was available.  Disabling context switching: deadlock may follow.";
-  }
-  reset_scratch_pointers(t);
-  return PREVENT_SWITCH; /* don't allow context-switching */
-}
-
-/**
- * Return nonzero if the scratch state initialized for |t| fits
- * within the allocated region (and didn't overflow), zero otherwise.
- */
-static bool can_use_scratch(Task* t, remote_ptr<void> scratch_end) {
-  remote_ptr<void> scratch_start = t->scratch_ptr;
-
-  auto& syscall_state = *syscall_state_property.get(*t);
-  assert(syscall_state.tmp_data_ptr == t->scratch_ptr);
-
-  syscall_state.tmp_data_num_bytes = scratch_end - scratch_start;
-  return 0 <= syscall_state.tmp_data_num_bytes &&
-         syscall_state.tmp_data_num_bytes <= t->scratch_size;
 }
 
 template <typename Arch>
@@ -445,10 +400,6 @@ static void align_scratch(remote_ptr<void>* scratch, uintptr_t amount = 8) {
 
 remote_ptr<void> TaskSyscallState::reg_parameter(int arg, const ParamSize& size,
                                                  ArgMode mode) {
-  if (!scratch) {
-    scratch = tmp_data_ptr;
-  }
-
   if (preparation_done) {
     return remote_ptr<void>();
   }
@@ -472,10 +423,6 @@ remote_ptr<void> TaskSyscallState::reg_parameter(int arg, const ParamSize& size,
 
 remote_ptr<void> TaskSyscallState::mem_ptr_parameter(
     remote_ptr<void> addr_of_buf_ptr, const ParamSize& size, ArgMode mode) {
-  if (!scratch) {
-    scratch = tmp_data_ptr;
-  }
-
   if (preparation_done) {
     return remote_ptr<void>();
   }
@@ -520,8 +467,14 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
   }
   preparation_done = true;
 
-  if (sw == ALLOW_SWITCH && !can_use_scratch(t, scratch)) {
-    abort_scratch(t, t->syscall_name(t->ev().Syscall().number));
+  ssize_t scratch_num_bytes = scratch - t->scratch_ptr;
+  ASSERT(t, scratch_num_bytes >= 0);
+  if (sw == ALLOW_SWITCH && scratch_num_bytes > t->scratch_size) {
+    LOG(warn)
+        << "`" << t->syscall_name(t->ev().Syscall().number)
+        << "' needed a scratch buffer of size " << scratch_num_bytes
+        << ", but only " << t->scratch_size
+        << " was available.  Disabling context switching: deadlock may follow.";
     switchable = PREVENT_SWITCH;
   } else {
     switchable = sw;
@@ -530,7 +483,6 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
     return switchable;
   }
 
-  ASSERT(t, tmp_data_num_bytes >= 0);
   scratch_enabled = true;
 
   // Step 1: Copy all IN/IN_OUT parameters to their scratch areas
@@ -1001,8 +953,7 @@ template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
  * otherwise.
  */
 template <typename Arch>
-static Switchable prepare_deschedule(Task* t,
-                                     TaskSyscallState& syscall_state,
+static Switchable prepare_deschedule(Task* t, TaskSyscallState& syscall_state,
                                      int syscallno) {
   const struct syscallbuf_record* rec = t->desched_rec();
 
@@ -1039,31 +990,12 @@ static bool exec_file_supported(const string& file_name) {
 
 template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
-  /* If we are called again due to a restart_syscall, we musn't
-   * redirect to scratch again as we will lose the original
-   * addresses values. */
-  bool restart = (syscallno == Arch::restart_syscall);
 
   auto& syscall_state = syscall_state_property.get_or_create(*t);
   syscall_state.init(t);
 
   if (t->desched_rec()) {
     return prepare_deschedule<Arch>(t, syscall_state, syscallno);
-  }
-
-  /* For syscall params that may need scratch memory, they
-   * *will* need scratch memory if |need_scratch_setup| is
-   * false.  They *don't* need scratch memory if we're
-   * restarting a syscall, since if that's the case we've
-   * already set it up. */
-  bool need_scratch_setup = !restart;
-  if (need_scratch_setup) {
-    /* Don't stomp scratch pointers that were set up for
-     * the restarted syscall.
-     *
-     * TODO: but, we'll stomp if we reenter through a
-     * signal handler ... */
-    reset_scratch_pointers(t);
   }
 
   if (syscallno < 0) {
@@ -1732,8 +1664,8 @@ void TaskSyscallState::process_syscall_results(WriteBack write_back) {
   // EFAULT.
   vector<size_t> actual_sizes;
   if (scratch_enabled) {
-    remote_ptr<void> scratch = tmp_data_ptr;
-    auto data = t->read_mem(scratch.cast<uint8_t>(), tmp_data_num_bytes);
+    size_t scratch_num_bytes = scratch - t->scratch_ptr;
+    auto data = t->read_mem(t->scratch_ptr.cast<uint8_t>(), scratch_num_bytes);
     Registers r = t->regs();
     // Step 1: compute actual sizes of all buffers and copy outputs
     // from scratch back to their origin
@@ -1742,7 +1674,7 @@ void TaskSyscallState::process_syscall_results(WriteBack write_back) {
       size_t size = eval_param_size(i, actual_sizes);
       if (write_back == WRITE_BACK &&
           (param.mode == IN_OUT || param.mode == OUT)) {
-        const uint8_t* d = data.data() + (param.scratch - tmp_data_ptr);
+        const uint8_t* d = data.data() + (param.scratch - t->scratch_ptr);
         t->write_bytes_helper(param.dest, size, d);
       }
     }
@@ -1773,7 +1705,7 @@ void TaskSyscallState::process_syscall_results(WriteBack write_back) {
           if (memory_cleaned_up) {
             t->record_remote(param.dest, size);
           } else {
-            const uint8_t* d = data.data() + (param.scratch - tmp_data_ptr);
+            const uint8_t* d = data.data() + (param.scratch - t->scratch_ptr);
             t->record_local(param.dest, size, d);
           }
         }
@@ -2030,9 +1962,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   before_syscall_exit<Arch>(t, syscallno);
 
   if (const struct syscallbuf_record* rec = t->desched_rec()) {
-    t->record_local(t->syscallbuf_child + (rec->extra_data - (uint8_t*)t->syscallbuf_hdr),
-                    rec->size - sizeof(*rec),
-                    (uint8_t*)rec->extra_data);
+    t->record_local(t->syscallbuf_child +
+                        (rec->extra_data - (uint8_t*)t->syscallbuf_hdr),
+                    rec->size - sizeof(*rec), (uint8_t*)rec->extra_data);
     syscall_state_property.remove(*t);
     return;
   }
@@ -2060,7 +1992,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::clone: {
       long new_tid = t->regs().syscall_result_signed();
       Task* new_task = t->session().find_task(new_tid);
-      uintptr_t flags =  syscall_state.syscall_entry_registers->arg1();
+      uintptr_t flags = syscall_state.syscall_entry_registers->arg1();
 
       if (flags & CLONE_UNTRACED) {
         Registers r = t->regs();
