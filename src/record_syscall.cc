@@ -144,6 +144,56 @@ struct ParamSize {
   bool from_syscall;
 };
 
+/**
+ * When tasks enter syscalls that may block and so must be
+ * prepared for a context-switch, and the syscall params
+ * include (in)outparams that point to buffers, we need to
+ * redirect those arguments to scratch memory.  This allows rr
+ * to serialize execution of what may be multiple blocked
+ * syscalls completing "simulatenously" (from rr's
+ * perspective).  After the syscall exits, we restore the data
+ * saved in scratch memory to the original buffers.
+ *
+ * Then during replay, we simply restore the saved data to the
+ * tracee's passed-in buffer args and continue on.
+ *
+ * The array |saved_arg_ptr| stores the original callee
+ * pointers that we replaced with pointers into the
+ * syscallbuf.  |tmp_data_num_bytes| is the number of bytes
+ * we'll be saving across *all* buffer outparams.  (We can
+ * save one length value because all the tmp pointers into
+ * scratch are contiguous.)  |tmp_data_ptr| /usually/ points
+ * at |scratch_ptr|, except ...
+ *
+ * ... a fly in this ointment is may-block buffered syscalls.
+ * If a task blocks in one of those, it will look like it just
+ * entered a syscall that needs a scratch buffer.  However,
+ * it's too late at that point to fudge the syscall args,
+ * because processing of the syscall has already begun in the
+ * kernel.  But that's OK: the syscallbuf code has already
+ * swapped out the original buffer-pointers for pointers into
+ * the syscallbuf (which acts as its own scratch memory).  We
+ * just have to worry about setting things up properly for
+ * replay.
+ *
+ * The descheduled syscall will "abort" its commit into the
+ * syscallbuf, so the outparam data won't actually be saved
+ * there (and thus, won't be restored during replay).  During
+ * replay, we have to restore them like we restore the
+ * non-buffered-syscall scratch data.
+ *
+ * What we do is add another level of indirection to the
+ * "scratch pointer", through |tmp_data_ptr|.  Usually that
+ * will point at |scratch_ptr|, for unbuffered syscalls.  But
+ * for desched'd buffered ones, it will point at the region of
+ * the syscallbuf that's being used as "scratch".  We'll save
+ * that region during recording and restore it during replay
+ * without caring which scratch space it points to.
+ *
+ * (The recorder code has to be careful, however, not to
+ * attempt to copy-back syscallbuf tmp data to the "original"
+ * buffers.  The syscallbuf code will do that itself.)
+ */
 struct TaskSyscallState {
   void init(Task* t) { this->t = t; }
 
@@ -240,54 +290,6 @@ struct TaskSyscallState {
 
   Task* t;
 
-  // When tasks enter syscalls that may block and so must be
-  // prepared for a context-switch, and the syscall params
-  // include (in)outparams that point to buffers, we need to
-  // redirect those arguments to scratch memory.  This allows rr
-  // to serialize execution of what may be multiple blocked
-  // syscalls completing "simulatenously" (from rr's
-  // perspective).  After the syscall exits, we restore the data
-  // saved in scratch memory to the original buffers.
-  //
-  // Then during replay, we simply restore the saved data to the
-  // tracee's passed-in buffer args and continue on.
-  //
-  // The array |saved_arg_ptr| stores the original callee
-  // pointers that we replaced with pointers into the
-  // syscallbuf.  |tmp_data_num_bytes| is the number of bytes
-  // we'll be saving across *all* buffer outparams.  (We can
-  // save one length value because all the tmp pointers into
-  // scratch are contiguous.)  |tmp_data_ptr| /usually/ points
-  // at |scratch_ptr|, except ...
-  //
-  // ... a fly in this ointment is may-block buffered syscalls.
-  // If a task blocks in one of those, it will look like it just
-  // entered a syscall that needs a scratch buffer.  However,
-  // it's too late at that point to fudge the syscall args,
-  // because processing of the syscall has already begun in the
-  // kernel.  But that's OK: the syscallbuf code has already
-  // swapped out the original buffer-pointers for pointers into
-  // the syscallbuf (which acts as its own scratch memory).  We
-  // just have to worry about setting things up properly for
-  // replay.
-  //
-  // The descheduled syscall will "abort" its commit into the
-  // syscallbuf, so the outparam data won't actually be saved
-  // there (and thus, won't be restored during replay).  During
-  // replay, we have to restore them like we restore the
-  // non-buffered-syscall scratch data.
-  //
-  // What we do is add another level of indirection to the
-  // "scratch pointer", through |tmp_data_ptr|.  Usually that
-  // will point at |scratch_ptr|, for unbuffered syscalls.  But
-  // for desched'd buffered ones, it will point at the region of
-  // the syscallbuf that's being used as "scratch".  We'll save
-  // that region during recording and restore it during replay
-  // without caring which scratch space it points to.
-  //
-  // (The recorder code has to be careful, however, not to
-  // attempt to copy-back syscallbuf tmp data to the "original"
-  // buffers.  The syscallbuf code will do that itself.)
   typedef std::stack<remote_ptr<void> > ArgsStack;
   ArgsStack saved_args;
   remote_ptr<void> tmp_data_ptr;
