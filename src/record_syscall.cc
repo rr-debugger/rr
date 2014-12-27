@@ -1081,7 +1081,6 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
    * redirect to scratch again as we will lose the original
    * addresses values. */
   bool restart = (syscallno == Arch::restart_syscall);
-  remote_ptr<void> scratch = nullptr;
 
   auto& syscall_state = syscall_state_property.get_or_create(*t);
   syscall_state.init(t);
@@ -1103,7 +1102,6 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
      * TODO: but, we'll stomp if we reenter through a
      * signal handler ... */
     reset_scratch_pointers(t);
-    scratch = syscall_state.tmp_data_ptr;
   }
 
   if (syscallno < 0) {
