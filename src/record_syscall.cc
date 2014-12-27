@@ -577,14 +577,6 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
   return switchable;
 }
 
-template <typename T>
-static remote_ptr<T> allocate_scratch(remote_ptr<void>* scratch,
-                                      int count = 1) {
-  remote_ptr<T> p = scratch->cast<T>();
-  *scratch = p + count;
-  return p;
-}
-
 template <typename Arch>
 static void prepare_recvmsg(Task* t, TaskSyscallState& syscall_state,
                             remote_ptr<typename Arch::msghdr> msgp,
