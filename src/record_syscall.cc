@@ -1552,6 +1552,32 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
+    case Arch::quotactl:
+      switch ((int)t->regs().arg1_signed() & SUBCMDMASK) {
+        case Q_GETQUOTA:
+          syscall_state.reg_parameter<typename Arch::dqblk>(4);
+          break;
+        case Q_GETINFO:
+          syscall_state.reg_parameter<typename Arch::dqinfo>(4);
+          break;
+        case Q_GETFMT:
+          syscall_state.reg_parameter<int>(4);
+          break;
+        case Q_SETQUOTA:
+          FATAL() << "Trying to set disk quota usage, this may interfere with "
+                     "rr recording";
+        // not reached
+        case Q_QUOTAON:
+        case Q_QUOTAOFF:
+        case Q_SETINFO:
+        case Q_SYNC:
+          break;
+        default:
+          syscall_state.expect_errno = EINVAL;
+          break;
+      }
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
      * timeout); */
     case Arch::epoll_wait:
@@ -2289,30 +2315,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-    case Arch::quotactl: {
-      int cmd = (int)t->regs().arg1_signed() & SUBCMDMASK;
-      remote_ptr<void> addr = t->regs().arg4();
-      switch (cmd) {
-        case Q_GETQUOTA:
-          t->record_remote(addr.cast<typename Arch::dqblk>());
-          break;
-        case Q_GETINFO:
-          t->record_remote(addr.cast<typename Arch::dqinfo>());
-          break;
-        case Q_GETFMT:
-          t->record_remote(addr, 4 /*FIXME: magic number*/);
-          break;
-        case Q_SETQUOTA:
-          FATAL() << "Trying to set disk quota usage, this may interfere with "
-                     "rr recording";
-        // not reached
-        default:
-          // TODO: some of these may need to be
-          // recorded ...
-          break;
-      }
-      break;
-    }
     case Arch::_newselect:
     case Arch::_sysctl:
     case Arch::accept:
@@ -2335,16 +2337,17 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::ppoll:
     case Arch::prctl:
     case Arch::preadv:
+    case Arch::quotactl:
     case Arch::read:
     case Arch::readv:
     case Arch::recvfrom:
     case Arch::recvmsg:
     case Arch::recvmmsg:
+    case Arch::rt_sigtimedwait:
     case Arch::select:
     case Arch::sendfile:
     case Arch::sendfile64:
     case Arch::sendmmsg:
-    case Arch::rt_sigtimedwait:
     case Arch::socketcall:
     case Arch::splice:
     case Arch::waitid:
