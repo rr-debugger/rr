@@ -150,20 +150,19 @@ struct ParamSize {
  * include (in)outparams that point to buffers, we need to
  * redirect those arguments to scratch memory.  This allows rr
  * to serialize execution of what may be multiple blocked
- * syscalls completing "simulatenously" (from rr's
+ * syscalls completing "simultaneously" (from rr's
  * perspective).  After the syscall exits, we restore the data
  * saved in scratch memory to the original buffers.
  *
  * Then during replay, we simply restore the saved data to the
  * tracee's passed-in buffer args and continue on.
  *
- * The array |saved_arg_ptr| stores the original callee
- * pointers that we replaced with pointers into the
- * syscallbuf.  |tmp_data_num_bytes| is the number of bytes
- * we'll be saving across *all* buffer outparams.  (We can
- * save one length value because all the tmp pointers into
- * scratch are contiguous.)  |tmp_data_ptr| /usually/ points
- * at |scratch_ptr|, except ...
+ * This is implemented by having rec_prepare_syscall_arch set up
+ * a record in param_list for syscall in-memory  parameter (whether
+ * "in" or "out"). Then done_preparing is called, which does the actual
+ * scratch setup. process_syscall_results is called when the syscall is
+ * done, to write back scratch results to the real parameters and
+ * clean everything up.
  *
  * ... a fly in this ointment is may-block buffered syscalls.
  * If a task blocks in one of those, it will look like it just
@@ -180,19 +179,8 @@ struct ParamSize {
  * syscallbuf, so the outparam data won't actually be saved
  * there (and thus, won't be restored during replay).  During
  * replay, we have to restore them like we restore the
- * non-buffered-syscall scratch data.
- *
- * What we do is add another level of indirection to the
- * "scratch pointer", through |tmp_data_ptr|.  Usually that
- * will point at |scratch_ptr|, for unbuffered syscalls.  But
- * for desched'd buffered ones, it will point at the region of
- * the syscallbuf that's being used as "scratch".  We'll save
- * that region during recording and restore it during replay
- * without caring which scratch space it points to.
- *
- * (The recorder code has to be careful, however, not to
- * attempt to copy-back syscallbuf tmp data to the "original"
- * buffers.  The syscallbuf code will do that itself.)
+ * non-buffered-syscall scratch data. This is done by recording
+ * the relevant syscallbuf record data in rec_process_syscall_arch.
  */
 struct TaskSyscallState {
   void init(Task* t) { this->t = t; }
@@ -347,10 +335,10 @@ struct TaskSyscallState {
   TaskSyscallState()
       : t(nullptr),
         tmp_data_num_bytes(-1),
+        expect_errno(0),
         preparation_done(false),
         scratch_enabled(false),
-        record_page_below_stack_ptr(false),
-        expect_errno(0) {}
+        record_page_below_stack_ptr(false){}
 };
 
 static const Property<TaskSyscallState, Task> syscall_state_property;
@@ -1003,20 +991,19 @@ template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
 }
 
 /**
- * |t| was descheduled while in a buffered syscall.  We don't want
- * to use scratch memory for the call, because the syscallbuf itself
- * is serving that purpose.  More importantly, we *can't* set up
- * scratch for |t|, because it's already in the syscall.  So this
- * function sets things up so that the *syscallbuf* memory that |t|
- * is using as ~scratch will be recorded, so that it can be replayed.
+ * |t| was descheduled while in a buffered syscall.  We don't
+ * use scratch memory for the call, because the syscallbuf itself
+ * is serving that purpose. More importantly, we *can't* set up
+ * scratch for |t|, because it's already in the syscall. Instead, we will
+ * record the syscallbuf memory in rec_process_syscall_arch.
  *
  * Returns ALLOW_SWITCH if the syscall should be interruptible, PREVENT_SWITCH
  * otherwise.
  */
 template <typename Arch>
-static Switchable set_up_scratch_for_syscallbuf(Task* t,
-                                                TaskSyscallState& syscall_state,
-                                                int syscallno) {
+static Switchable prepare_deschedule(Task* t,
+                                     TaskSyscallState& syscall_state,
+                                     int syscallno) {
   const struct syscallbuf_record* rec = t->desched_rec();
 
   assert(rec);
@@ -1024,12 +1011,6 @@ static Switchable set_up_scratch_for_syscallbuf(Task* t,
                                          << t->syscall_name(rec->syscallno)
                                          << ", but expecting "
                                          << t->syscall_name(syscallno);
-
-  syscall_state.tmp_data_ptr =
-      t->syscallbuf_child + (rec->extra_data - (uint8_t*)t->syscallbuf_hdr);
-  /* |rec->size| is the entire record including extra data; we
-   * just care about the extra data here. */
-  syscall_state.tmp_data_num_bytes = rec->size - sizeof(*rec);
 
   switch (syscallno) {
     case Arch::write:
@@ -1067,7 +1048,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   syscall_state.init(t);
 
   if (t->desched_rec()) {
-    return set_up_scratch_for_syscallbuf<Arch>(t, syscall_state, syscallno);
+    return prepare_deschedule<Arch>(t, syscall_state, syscallno);
   }
 
   /* For syscall params that may need scratch memory, they
@@ -2049,10 +2030,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   before_syscall_exit<Arch>(t, syscallno);
 
   if (const struct syscallbuf_record* rec = t->desched_rec()) {
-    assert(syscall_state.tmp_data_ptr != t->scratch_ptr);
-
-    t->record_local(syscall_state.tmp_data_ptr,
-                    syscall_state.tmp_data_num_bytes,
+    t->record_local(t->syscallbuf_child + (rec->extra_data - (uint8_t*)t->syscallbuf_hdr),
+                    rec->size - sizeof(*rec),
                     (uint8_t*)rec->extra_data);
     syscall_state_property.remove(*t);
     return;
