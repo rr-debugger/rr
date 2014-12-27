@@ -288,6 +288,7 @@ set(BASIC_TESTS
   sigtrap
   simple
   sioc
+  sock_names_opts
   splice
   statfs
   strict_priorities

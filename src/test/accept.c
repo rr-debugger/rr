@@ -9,6 +9,7 @@ static void client(const struct sockaddr_un* addr) {
   char c;
 
   clientfd = socket(AF_UNIX, SOCK_STREAM, 0);
+  test_assert(clientfd >= 0);
   test_assert(0 == connect(clientfd, (struct sockaddr*)addr, sizeof(*addr)));
 
   memset(&a, 0, sizeof(a));

@@ -1404,6 +1404,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
+    case Arch::getsockopt: {
+      auto optlen_ptr =
+          syscall_state.reg_parameter<typename Arch::socklen_t>(5, IN_OUT);
+      syscall_state.reg_parameter(
+          4, ParamSize::from_initialized_mem(t, optlen_ptr));
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+    }
+
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read:
       syscall_state.reg_parameter(
@@ -2072,14 +2080,6 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
 }
 
 template <typename Arch>
-static void process_getsockopt(Task* t, remote_ptr<void> opt,
-                               remote_ptr<typename Arch::socklen_t> optlen) {
-  auto len = t->read_mem(optlen);
-  t->record_remote(optlen);
-  t->record_remote(opt, len);
-}
-
-template <typename Arch>
 static void before_syscall_exit(Task* t, int syscallno) {
   t->maybe_update_vm(syscallno, SYSCALL_EXIT);
 
@@ -2323,6 +2323,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::fgetxattr:
     case Arch::futex:
     case Arch::getsockname:
+    case Arch::getsockopt:
     case Arch::getpeername:
     case Arch::getxattr:
     case Arch::ioctl:
@@ -2351,12 +2352,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::wait4:
       syscall_state.process_syscall_results();
       break;
-
-    case Arch::getsockopt: {
-      auto& r = t->regs();
-      process_getsockopt<Arch>(t, r.arg4(), r.arg5());
-      return;
-    }
 
     case Arch::write:
     case Arch::writev:
