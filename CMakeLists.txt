@@ -309,6 +309,7 @@ set(BASIC_TESTS
   wait
   write_race
   writev
+  xattr
   zero_length_read
 )
 

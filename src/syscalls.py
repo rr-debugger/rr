@@ -1191,9 +1191,9 @@ gettid = EmulatedSyscall(x86=224, x64=186)
 # offset of the open file referred to by fd is left unchanged.
 readahead = EmulatedSyscall(x86=225, x64=187)
 
-setxattr = UnsupportedSyscall(x86=226, x64=188)
-lsetxattr = UnsupportedSyscall(x86=227, x64=189)
-fsetxattr = UnsupportedSyscall(x86=228, x64=190)
+setxattr = EmulatedSyscall(x86=226, x64=188)
+lsetxattr = EmulatedSyscall(x86=227, x64=189)
+fsetxattr = EmulatedSyscall(x86=228, x64=190)
 
 #  ssize_t getxattr(const char *path, const char *name,
 #                   void *value, size_t size);

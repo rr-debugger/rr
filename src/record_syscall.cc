@@ -1585,7 +1585,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
-      return ALLOW_SWITCH;
+      return syscall_state.done_preparing(ALLOW_SWITCH);
+
+    case Arch::getxattr:
+    case Arch::lgetxattr:
+    case Arch::fgetxattr:
+      syscall_state.reg_parameter(
+          3, ParamSize::from_syscall_result<size_t>(t->regs().arg4()));
+      return syscall_state.done_preparing(PREVENT_SWITCH);
 
     case Arch::sched_setaffinity: {
       // Ignore all sched_setaffinity syscalls. They might interfere
@@ -2233,17 +2240,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       process_execve<Arch>(t, syscall_state);
       break;
 
-    case Arch::getxattr:
-    case Arch::lgetxattr:
-    case Arch::fgetxattr: {
-      ssize_t len = t->regs().syscall_result_signed();
-      if (len > 0) {
-        remote_ptr<void> value = t->regs().arg3();
-        t->record_remote(value, len);
-      }
-      break;
-    }
-
     case Arch::mmap:
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
@@ -2324,11 +2320,14 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::epoll_wait:
     case Arch::fcntl:
     case Arch::fcntl64:
+    case Arch::fgetxattr:
     case Arch::futex:
     case Arch::getsockname:
     case Arch::getpeername:
+    case Arch::getxattr:
     case Arch::ioctl:
     case Arch::ipc:
+    case Arch::lgetxattr:
     case Arch::msgctl:
     case Arch::msgrcv:
     case Arch::poll:

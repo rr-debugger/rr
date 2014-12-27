@@ -7,6 +7,7 @@
 #define _POSIX_C_SOURCE 2
 
 #include <arpa/inet.h>
+#include <attr/xattr.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
