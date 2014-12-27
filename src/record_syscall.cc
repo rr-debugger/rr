@@ -317,6 +317,11 @@ struct TaskSyscallState {
   uintptr_t exec_saved_arg1;
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
+  /** Saved syscall-entry registers, used by a couple of code paths that
+   *  modify the registers temporarily.
+   */
+  std::unique_ptr<Registers> syscall_entry_registers;
+
   /** When true, this syscall has already been prepared and should not
    *  be set up again.
    */
@@ -397,18 +402,6 @@ static void reset_scratch_pointers(Task* t) {
   }
   syscall_state.tmp_data_ptr = t->scratch_ptr;
   syscall_state.tmp_data_num_bytes = -1;
-}
-
-/**
- * Record a tracee argument pointer that (most likely) was replaced by
- * a pointer into scratch memory.  |argp| can have any value,
- * including nullptr.  It must be fetched by calling |pop_arg_ptr()|
- * during processing syscall results, and in reverse order of calls to
- * |push*()|.
- */
-static void push_arg_ptr(Task* t, remote_ptr<void> argp) {
-  auto& syscall_state = *syscall_state_property.get(*t);
-  syscall_state.saved_args.push(argp);
 }
 
 /**
@@ -1141,8 +1134,9 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     }
 
     case Arch::clone: {
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
       unsigned long flags = t->regs().arg1();
-      push_arg_ptr(t, flags);
       if (flags & CLONE_UNTRACED) {
         Registers r = t->regs();
         // We can't let tracees clone untraced tasks,
@@ -1629,10 +1623,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
 
     case Arch::sched_setaffinity: {
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
       // Ignore all sched_setaffinity syscalls. They might interfere
       // with our own affinity settings.
       Registers r = t->regs();
-      push_arg_ptr(t, r.arg1());
       // Set arg1 to an invalid PID to ensure this syscall is ignored.
       r.set_arg1(-1);
       t->set_regs(r);
@@ -1714,18 +1709,6 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
 
   t->vm()->map(t->scratch_ptr, sz, prot, flags, 0,
                MappableResource::scratch(t->rec_tid));
-}
-
-/**
- * Return the replaced tracee argument pointer saved by the matching
- * call to |push_arg_ptr()|.
- */
-template <typename T> static remote_ptr<T> pop_arg_ptr(Task* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
-  assert(!syscall_state.saved_args.empty());
-  auto arg = syscall_state.saved_args.top();
-  syscall_state.saved_args.pop();
-  return arg.cast<T>();
 }
 
 enum AllowSlack {
@@ -2215,7 +2198,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::clone: {
       long new_tid = t->regs().syscall_result_signed();
       Task* new_task = t->session().find_task(new_tid);
-      uintptr_t flags = pop_arg_ptr<void>(t).as_int();
+      uintptr_t flags =  syscall_state.syscall_entry_registers->arg1();
 
       if (flags & CLONE_UNTRACED) {
         Registers r = t->regs();
@@ -2363,7 +2346,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::sched_setaffinity: {
       // Restore the register that we altered.
       Registers r = t->regs();
-      r.set_arg1(pop_arg_ptr<void>(t));
+      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       // Pretend the syscall succeeded.
       r.set_syscall_result(0);
       t->set_regs(r);
