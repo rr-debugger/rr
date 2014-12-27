@@ -288,11 +288,6 @@ struct TaskSyscallState {
    */
   void process_syscall_results(WriteBack write_back = WRITE_BACK);
 
-  Task* t;
-
-  remote_ptr<void> tmp_data_ptr;
-  ssize_t tmp_data_num_bytes;
-
   /**
    * Upon successful syscall completion, each RestoreAndRecordScratch record
    * in restore_and_record_scratch consumes num_bytes from the tmp_data_ptr
@@ -310,6 +305,12 @@ struct TaskSyscallState {
     int ptr_in_reg;
     ArgMode mode;
   };
+
+  Task* t;
+
+  remote_ptr<void> tmp_data_ptr;
+  ssize_t tmp_data_num_bytes;
+
   vector<MemoryParam> param_list;
   remote_ptr<void> scratch;
 
@@ -320,26 +321,28 @@ struct TaskSyscallState {
    */
   std::unique_ptr<Registers> syscall_entry_registers;
 
+  /** When nonzero, syscall is expected to return the given errno and we should
+   *  die if it does not. This is set when we detect an error condition during
+   *  syscall-enter preparation.
+   */
+  int expect_errno;
+
+  /** Records whether the syscall is switchable. Only valid when
+   *  preparation_done is true. */
+  Switchable switchable;
   /** When true, this syscall has already been prepared and should not
    *  be set up again.
    */
   bool preparation_done;
-  /** Records whether the syscall is switchable. Only valid when
-   *  preparation_done is true. */
-  Switchable switchable;
   /** When true, the scratch area is enabled, otherwise we're letting
    *  syscall outputs be written directly to their destinations.
+   *  Only valid when preparation_done is true.
    */
   bool scratch_enabled;
   /** When true, we'll record the page of memory below the stack pointer.
    *  Some ioctls seem to modify this for no good reason.
    */
   bool record_page_below_stack_ptr;
-  /** When nonzero, syscall is expected to return the given errno and we should
-   *  die if it does not. This is set when we detect an error condition during
-   *  syscall-enter preparation.
-   */
-  int expect_errno;
 
   TaskSyscallState()
       : t(nullptr),
