@@ -313,8 +313,6 @@ struct TaskSyscallState {
   vector<MemoryParam> param_list;
   remote_ptr<void> scratch;
 
-  /* The value of arg1 passed to the last execve syscall in this task. */
-  uintptr_t exec_saved_arg1;
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
   /** Saved syscall-entry registers, used by a couple of code paths that
@@ -1163,11 +1161,15 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return PREVENT_SWITCH;
 
     case Arch::execve: {
+      if (!syscall_state.syscall_entry_registers) {
+        syscall_state.syscall_entry_registers =
+            unique_ptr<Registers>(new Registers(t->regs()));
+      }
+
       t->pre_exec();
 
       Registers r = t->regs();
       string raw_filename = t->read_c_str(r.arg1());
-      syscall_state.exec_saved_arg1 = r.arg1();
       uintptr_t end = r.arg1() + raw_filename.length();
       if (!exec_file_supported(t->exec_file())) {
         // Force exec to fail with ENOENT by advancing arg1 to
@@ -1958,11 +1960,11 @@ template <typename Arch>
 static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
-    if (r.arg1() != syscall_state.exec_saved_arg1) {
+    if (r.arg1() != syscall_state.syscall_entry_registers->arg1()) {
       LOG(warn)
           << "Blocked attempt to execve 64-bit image (not yet supported by rr)";
       // Restore arg1, which we clobbered.
-      r.set_arg1(syscall_state.exec_saved_arg1);
+      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       t->set_regs(r);
     }
     return;
