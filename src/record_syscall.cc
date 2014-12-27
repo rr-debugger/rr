@@ -290,8 +290,6 @@ struct TaskSyscallState {
 
   Task* t;
 
-  typedef std::stack<remote_ptr<void> > ArgsStack;
-  ArgsStack saved_args;
   remote_ptr<void> tmp_data_ptr;
   ssize_t tmp_data_num_bytes;
 
@@ -399,9 +397,6 @@ static void reset_scratch_pointers(Task* t) {
   assert(t->ev().type() == EV_SYSCALL);
 
   auto& syscall_state = *syscall_state_property.get(*t);
-  while (!syscall_state.saved_args.empty()) {
-    syscall_state.saved_args.pop();
-  }
   syscall_state.tmp_data_ptr = t->scratch_ptr;
   syscall_state.tmp_data_num_bytes = -1;
 }
@@ -1764,8 +1759,6 @@ public:
     if (slack) {
       LOG(debug) << "Left " << diff << " bytes unconsumed in scratch";
     }
-    ASSERT(t, syscall_state.saved_args.empty())
-        << "Under-consumed saved arg pointers";
   }
 
   bool scratch_used() { return iter; }
