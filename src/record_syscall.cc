@@ -375,19 +375,6 @@ void rec_before_record_syscall_entry(Task* t, int syscallno) {
 }
 
 /**
- * Read the socketcall args pushed by |t| as part of the syscall in
- * |regs| into the |args| outparam.  Also store the address of the
- * socketcall args into |*argsp|.
- */
-template <typename T>
-static T read_socketcall_args(Task* t, remote_ptr<void>* argsp) {
-  remote_ptr<T> p = t->regs().arg2();
-  T args = t->read_mem(p);
-  *argsp = p;
-  return args;
-}
-
-/**
  * Erase any scratch pointer initialization done for |t| and leave
  * the state bits ready to be initialized again.
  */
