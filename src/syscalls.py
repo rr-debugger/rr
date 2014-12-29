@@ -500,7 +500,7 @@ getrusage = EmulatedSyscall(x86=77, x64=98, arg2="typename Arch::rusage")
 gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="typename Arch::timeval", arg2="typename Arch::timezone")
 
 settimeofday = UnsupportedSyscall(x86=79, x64=164)
-getgroups = EmulatedSyscall(x86=80, x64=115, arg2=DynamicSize("(int)t->regs().syscall_result_signed() * sizeof(typename Arch::legacy_gid_t)"))
+getgroups = IrregularEmulatedSyscall(x86=80, x64=115)
 setgroups = UnsupportedSyscall(x86=81, x64=116)
 select = IrregularEmulatedSyscall(x86=82, x64=23)
 
