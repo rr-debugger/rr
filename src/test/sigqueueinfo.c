@@ -9,14 +9,17 @@ static void queue_siginfo(int sig, int val) {
   si.si_pid = getpid();
   si.si_uid = geteuid();
   si.si_value.sival_int = val;
-  syscall(SYS_rt_tgsigqueueinfo, getpid(), getpid(), sig, &si);
+  syscall(SYS_rt_sigqueueinfo, getpid(), sig, &si);
 }
 
-static void* thread(void* unused) {
-  queue_siginfo(SIGUSR1, -42);
-  sleep(1);
-  queue_siginfo(SIGUSR2, 12345);
-  return NULL;
+static void queue_siginfo_tg(int sig, int val) {
+  siginfo_t si = { 0 };
+
+  si.si_code = SI_QUEUE;
+  si.si_pid = getpid();
+  si.si_uid = geteuid();
+  si.si_value.sival_int = val;
+  syscall(SYS_rt_tgsigqueueinfo, getpid(), getpid(), sig, &si);
 }
 
 static int usr1_val;
@@ -35,39 +38,20 @@ static void handle_signal(int sig, siginfo_t* si, void* ctx) {
 
 int main(int argc, char* argv[]) {
   struct sigaction sa = { { 0 } };
-  pthread_t t;
-  sigset_t mask, pending;
-  int err;
-  struct timespec ts;
-  siginfo_t si = { 0 };
 
   sa.sa_sigaction = handle_signal;
   sa.sa_flags |= SA_SIGINFO;
   sigaction(SIGUSR1, &sa, NULL);
   sigaction(SIGUSR2, &sa, NULL);
 
-  pthread_create(&t, NULL, thread, NULL);
-
-  sigemptyset(&mask);
-  sigsuspend(&mask);
-  err = errno;
-  test_assert(EINTR == err);
+  queue_siginfo(SIGUSR1, -42);
   test_assert(-42 == usr1_val);
-
-  sigpending(&pending);
-  atomic_printf("USR1 pending? %s; USR2 pending? %s\n",
-                sigismember(&pending, SIGUSR1) ? "yes" : "no",
-                sigismember(&pending, SIGUSR2) ? "yes" : "no");
-
-  sigemptyset(&pending);
-  sigaddset(&pending, SIGUSR1);
-  sigaddset(&pending, SIGUSR2);
-  ts.tv_sec = 5;
-  ts.tv_nsec = 0;
-  err = sigtimedwait(&pending, &si, &ts);
-  atomic_printf("Signal %d became pending\n", err);
-  assert(SIGUSR2 == err);
-  assert(12345 == si.si_value.sival_int);
+  queue_siginfo(SIGUSR2, 12345);
+  test_assert(12345 == usr2_val);
+  queue_siginfo_tg(SIGUSR1, -43);
+  test_assert(-43 == usr1_val);
+  queue_siginfo_tg(SIGUSR2, 123456);
+  test_assert(123456 == usr2_val);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

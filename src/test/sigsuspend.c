@@ -1,0 +1,69 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
+#include "rrutil.h"
+
+static void* thread(void* p) {
+  sigset_t mask;
+
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGUSR1);
+  sigaddset(&mask, SIGUSR2);
+  test_assert(0 == pthread_sigmask(SIG_BLOCK, &mask, NULL));
+
+  test_assert(0 == kill(getpid(), SIGUSR1));
+  test_assert(0 == kill(getpid(), SIGUSR2));
+
+  return NULL;
+}
+
+static int usr1_hit;
+static int usr2_hit;
+
+static void handle_signal(int sig, siginfo_t* si, void* ctx) {
+  if (SIGUSR1 == sig) {
+    ++usr1_hit;
+  } else if (SIGUSR2 == sig) {
+    ++usr2_hit;
+  } else {
+    assert("Unexpected signal" && 0);
+  }
+}
+
+int main(int argc, char* argv[]) {
+  struct sigaction sa = { { 0 } };
+  pthread_t t;
+  sigset_t mask;
+  int ret;
+  struct timespec ts;
+  siginfo_t si = { 0 };
+
+  sa.sa_sigaction = handle_signal;
+  sa.sa_flags |= SA_SIGINFO;
+  sigaction(SIGUSR1, &sa, NULL);
+  sigaction(SIGUSR2, &sa, NULL);
+
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGUSR1);
+  sigaddset(&mask, SIGUSR2);
+  test_assert(0 == pthread_sigmask(SIG_BLOCK, &mask, NULL));
+
+  pthread_create(&t, NULL, thread, NULL);
+
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGUSR2);
+  sigsuspend(&mask);
+
+  test_assert(usr1_hit == 1);
+  test_assert(usr2_hit == 0);
+
+  ts.tv_sec = 5;
+  ts.tv_nsec = 0;
+  ret = sigtimedwait(&mask, &si, &ts);
+  atomic_printf("Signal %d became pending\n", ret);
+  test_assert(SIGUSR2 == ret);
+  test_assert(si.si_signo == SIGUSR2);
+  test_assert(si.si_code == SI_USER);
+
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
+}

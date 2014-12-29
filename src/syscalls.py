@@ -467,7 +467,7 @@ sgetmask = UnsupportedSyscall(x86=68)
 ssetmask = UnsupportedSyscall(x86=69)
 setreuid = UnsupportedSyscall(x86=70, x64=113)
 setregid = UnsupportedSyscall(x86=71, x64=114)
-sigsuspend = UnsupportedSyscall(x86=72)
+sigsuspend = IrregularEmulatedSyscall(x86=72)
 sigpending = UnsupportedSyscall(x86=73)
 sethostname = UnsupportedSyscall(x86=74, x64=170)
 
@@ -968,21 +968,13 @@ rt_sigpending = EmulatedSyscall(x86=176, x64=127, arg1=DynamicSize("t->regs().ar
 # signal.
 rt_sigtimedwait = IrregularEmulatedSyscall(x86=177, x64=128)
 
-#  int sigpending(sigset_t *set);
-#
-# sigpending() returns the set of signals that are pending for
-# delivery to the calling thread (i.e., the signals which have been
-# raised while blocked).  The mask of pending signals is returned in
-# set.
-rt_sigqueueinfo = EmulatedSyscall(x86=178, x64=129, arg1=DynamicSize("t->regs().arg2()"))
-
 #  int sigsuspend(const sigset_t *mask);
 #
 # sigsuspend() temporarily replaces the signal mask of the calling
 # process with the mask given by mask and then suspends the process
 # until delivery of a signal whose action is to invoke a signal
 # handler or to terminate a process.
-rt_sigsuspend = EmulatedSyscall(x86=179, x64=130)
+rt_sigsuspend = IrregularEmulatedSyscall(x86=179, x64=130)
 
 #  ssize_t pread(int fd, void *buf, size_t count, off_t offset);
 #
@@ -1616,6 +1608,7 @@ inotify_init1 = EmulatedSyscall(x86=332, x64=294)
 preadv = IrregularEmulatedSyscall(x86=333, x64=295)
 pwritev = EmulatedSyscall(x86=334, x64=296)
 
+#  int rt_sigqueueinfo(pid_t tgid, int sig, siginfo_t *uinfo);
 #  int rt_tgsigqueueinfo(pid_t tgid, pid_t tid, int sig,
 #                        siginfo_t *uinfo);
 #
@@ -1624,6 +1617,7 @@ pwritev = EmulatedSyscall(x86=334, x64=296)
 # or thread.  The receiver of the signal can obtain the accompanying
 # data by establishing a signal handler with the sigaction(2)
 # SA_SIGINFO flag.
+rt_sigqueueinfo = EmulatedSyscall(x86=178, x64=129)
 rt_tgsigqueueinfo = EmulatedSyscall(x86=335, x64=297)
 
 #  int perf_event_open(struct perf_event_attr *attr,

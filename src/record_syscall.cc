@@ -1526,6 +1526,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
 
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
+      t->sigsuspend_blocked_sigs = unique_ptr<sig_set_t>(
+          new sig_set_t(t->read_mem(remote_ptr<sig_set_t>(t->regs().arg1()))));
       return syscall_state.done_preparing(ALLOW_SWITCH);
 
     case Arch::getxattr:
@@ -2163,6 +2165,11 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
     case Arch::write:
     case Arch::writev:
+      break;
+
+    case Arch::rt_sigsuspend:
+    case Arch::sigsuspend:
+      t->sigsuspend_blocked_sigs = nullptr;
       break;
 
     case Arch::sched_setaffinity: {

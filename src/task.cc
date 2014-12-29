@@ -506,6 +506,9 @@ bool Task::is_ptrace_seccomp_event() const {
 
 bool Task::is_sig_blocked(int sig) const {
   int sig_bit = sig - 1;
+  if (sigsuspend_blocked_sigs) {
+    return (*sigsuspend_blocked_sigs >> sig_bit) & 1;
+  }
   return (blocked_sigs >> sig_bit) & 1;
 }
 

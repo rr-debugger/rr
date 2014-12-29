@@ -680,6 +680,11 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
       // handler.
       t->record_current_event();
 
+      // If this is the signal delivered by a sigsuspend, then clear
+      // sigsuspend_blocked_sigs to indicate that future signals are not
+      // being delivered by sigsuspend.
+      t->sigsuspend_blocked_sigs = nullptr;
+
       // If we didn't set up the sighandler frame, we need
       // to ensure that this tracee is scheduled next so
       // that we can deliver the signal normally.  We have

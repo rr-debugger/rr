@@ -1027,6 +1027,10 @@ public:
    */
   bool in_round_robin_queue;
 
+  // The set of signals that were blocked during a sigsuspend. Only present
+  // during the first EV_SIGNAL during an interrupted sigsuspend.
+  std::unique_ptr<sig_set_t> sigsuspend_blocked_sigs;
+
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
    * task B then writes to |b|.  Then B is switched out for A.
