@@ -2149,6 +2149,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::preadv:
     case Arch::quotactl:
     case Arch::read:
+    case Arch::readlink:
     case Arch::readv:
     case Arch::recvfrom:
     case Arch::recvmsg:
