@@ -519,7 +519,7 @@ oldlstat = UnsupportedSyscall(x86=84)
 # null byte to buf.  It will truncate the contents (to a length of
 # bufsiz characters), in case the buffer is too small to hold all of
 # the contents.
-readlink = EmulatedSyscall(x86=85, x64=89, arg2=DynamicSize("(size_t)t->regs().arg3()"))
+readlink = IrregularEmulatedSyscall(x86=85, x64=89)
 
 uselib = UnsupportedSyscall(x86=86, x64=134)
 swapon = UnsupportedSyscall(x86=87, x64=167)

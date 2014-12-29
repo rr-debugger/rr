@@ -1327,6 +1327,13 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
+    case Arch::readlink: {
+      syscall_state.reg_parameter(
+          2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
+                 (size_t)t->regs().arg3()));
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+    }
+
     case Arch::write:
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
