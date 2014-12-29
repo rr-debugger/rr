@@ -1,8 +1,3 @@
-class NullTerminatedString(object):
-    """A class for indicating an argument is a null-terminated string."""
-    def __init__(self):
-        pass
-
 class DynamicSize(object):
     """A class for indicating the size of a syscall argument."""
     def __init__(self, size_expr):
@@ -64,8 +59,6 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
     * A Python string, in which case the size of the argument is sizeof(arg);
     * A DynamicSize object, in which case the size of the argument is the
       C expression stored in the DynamicSize object;
-    * A NullTerminatedString object, in which case the size is determined at
-      runtime in the expected fashion.
 
     To ensure correct handling for mixed-arch process groups (e.g. a mix of 32
     and 64-bit processes), types should be specified using Arch instead of
@@ -1008,7 +1001,7 @@ chown = EmulatedSyscall(x86=182, x64=92)
 # absolute pathname that is the current working directory of the
 # calling process.  The pathname is returned as the function result
 # and via the argument buf, if present.
-getcwd = EmulatedSyscall(x86=183, x64=79, arg1=NullTerminatedString())
+getcwd = IrregularEmulatedSyscall(x86=183, x64=79)
 
 capget = UnsupportedSyscall(x86=184, x64=125)
 capset = UnsupportedSyscall(x86=185, x64=126)
