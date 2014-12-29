@@ -988,7 +988,7 @@ rt_sigsuspend = EmulatedSyscall(x86=179, x64=130)
 #
 # pread, pwrite - read from or write to a file descriptor at a given
 # offset
-pread64 = EmulatedSyscall(x86=180, x64=17, arg2=DynamicSize("(ssize_t)t->regs().syscall_result_signed()"))
+pread64 = IrregularEmulatedSyscall(x86=180, x64=17)
 pwrite64 = EmulatedSyscall(x86=181, x64=18)
 
 chown = EmulatedSyscall(x86=182, x64=92)

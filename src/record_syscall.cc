@@ -1297,6 +1297,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
+    case Arch::pread64:
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read:
       syscall_state.reg_parameter(
@@ -2137,6 +2138,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::poll:
     case Arch::ppoll:
     case Arch::prctl:
+    case Arch::pread64:
     case Arch::preadv:
     case Arch::quotactl:
     case Arch::read:
