@@ -1011,7 +1011,7 @@ capset = UnsupportedSyscall(x86=185, x64=126)
 # stack.  An alternate signal stack is used during the execution of a
 # signal handler if the establishment of that handler (see
 # sigaction(2)) requested it.
-sigaltstack = EmulatedSyscall(x86=186, x64=131, arg2=DynamicSize("t->regs().arg2() ? sizeof(typename Arch::stack_t) : 0"))
+sigaltstack = EmulatedSyscall(x86=186, x64=131, arg2="typename Arch::stack_t")
 
 sendfile = IrregularEmulatedSyscall(x86=187, x64=40)
 getpmsg = UnsupportedSyscall(x86=188, x64=181)
