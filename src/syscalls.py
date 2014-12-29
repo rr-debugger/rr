@@ -763,7 +763,7 @@ _llseek = EmulatedSyscall(x86=140, arg4="typename Arch::__kernel_loff_t")
 # from the directory referred to by the open file descriptor fd into
 # the buffer pointed to by dirp.  The argument count specifies the
 # size of that buffer.
-getdents = EmulatedSyscall(x86=141, x64=78, arg2=DynamicSize("(int)t->regs().syscall_result_signed()"))
+getdents = IrregularEmulatedSyscall(x86=141, x64=78)
 
 #  int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 #struct timeval *timeout);
@@ -1151,7 +1151,7 @@ mincore = UnsupportedSyscall(x86=218, x64=27)
 # advice.
 madvise = ExecutedSyscall(x86=219, x64=28)
 
-getdents64 = EmulatedSyscall(x86=220, x64=217, arg2=DynamicSize("(int)t->regs().syscall_result_signed()"))
+getdents64 = IrregularEmulatedSyscall(x86=220, x64=217)
 
 #  int fcntl(int fd, int cmd, ... ( arg ));
 #

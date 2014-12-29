@@ -1320,6 +1320,13 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
+    case Arch::getdents:
+    case Arch::getdents64: {
+      syscall_state.reg_parameter(2, ParamSize::from_syscall_result<int>(
+                                         (unsigned int)t->regs().arg3()));
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+    }
+
     case Arch::write:
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
@@ -2109,6 +2116,8 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::fgetxattr:
     case Arch::futex:
     case Arch::getcwd:
+    case Arch::getdents:
+    case Arch::getdents64:
     case Arch::getsockname:
     case Arch::getsockopt:
     case Arch::getpeername:
