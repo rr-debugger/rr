@@ -50,18 +50,22 @@ int main(int argc, char* argv[]) {
   pthread_create(&t, NULL, thread, NULL);
 
   sigemptyset(&mask);
-  sigaddset(&mask, SIGUSR2);
+  sigaddset(&mask, SIGUSR1);
   sigsuspend(&mask);
 
-  test_assert(usr1_hit == 1);
-  test_assert(usr2_hit == 0);
+  test_assert(usr1_hit == 0);
+  test_assert(usr2_hit == 1);
+
+  test_assert(0 == sigpending(&mask));
+  test_assert(1 == sigismember(&mask, SIGUSR1));
+  test_assert(0 == sigismember(&mask, SIGUSR2));
 
   ts.tv_sec = 5;
   ts.tv_nsec = 0;
   ret = sigtimedwait(&mask, &si, &ts);
   atomic_printf("Signal %d became pending\n", ret);
-  test_assert(SIGUSR2 == ret);
-  test_assert(si.si_signo == SIGUSR2);
+  test_assert(SIGUSR1 == ret);
+  test_assert(si.si_signo == SIGUSR1);
   test_assert(si.si_code == SI_USER);
 
   atomic_puts("EXIT-SUCCESS");

@@ -1519,10 +1519,13 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       t->record_session().scheduler().schedule_one_round_robin(t);
       return ALLOW_SWITCH;
 
-    case Arch::rt_sigtimedwait: {
+    case Arch::rt_sigpending:
+      syscall_state.reg_parameter(1, (size_t)t->regs().arg2());
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+
+    case Arch::rt_sigtimedwait:
       syscall_state.reg_parameter<typename Arch::siginfo_t>(2);
       return syscall_state.done_preparing(ALLOW_SWITCH);
-    }
 
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
@@ -2150,6 +2153,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::recvfrom:
     case Arch::recvmsg:
     case Arch::recvmmsg:
+    case Arch::rt_sigpending:
     case Arch::rt_sigtimedwait:
     case Arch::select:
     case Arch::sendfile:

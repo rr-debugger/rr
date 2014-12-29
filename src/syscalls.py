@@ -952,7 +952,7 @@ rt_sigprocmask = EmulatedSyscall(x86=175, x64=14, arg3="typename Arch::sigset_t"
 # delivery to the calling thread (i.e., the signals which have been
 # raised while blocked).  The mask of pending signals is returned in
 # set.
-rt_sigpending = EmulatedSyscall(x86=176, x64=127, arg1=DynamicSize("t->regs().arg2()"))
+rt_sigpending = IrregularEmulatedSyscall(x86=176, x64=127)
 
 #  int sigtimedwait(const sigset_t *set, siginfo_t *info,
 #                   const struct timespec *timeout);
