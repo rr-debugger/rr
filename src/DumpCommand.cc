@@ -29,19 +29,24 @@ DumpCommand DumpCommand::singleton(
     " rr dump [OPTIONS] [<trace_dir>] [<event-spec>...]\n"
     "  Event specs can be either an event number like `127', or a range\n"
     "  like `1000-5000'.  By default, all events are dumped.\n"
+    "  -b, --syscallbuf           dump syscallbuf contents\n"
+    "  -m, --recorded-metadata    dump recorded data metadata\n"
     "  -r, --raw                  dump trace frames in a more easily\n"
     "                             machine-parseable format instead of the\n"
     "                             default human-readable format\n"
-    "  -s, --statistics           dump statistics about the trace\n"
-    "  -b, --syscallbuf           dump syscallbuf contents\n");
+    "  -s, --statistics           dump statistics about the trace\n");
 
 struct DumpFlags {
   bool dump_syscallbuf;
+  bool dump_recorded_data_metadata;
   bool raw_dump;
   bool dump_statistics;
 
   DumpFlags()
-      : dump_syscallbuf(false), raw_dump(false), dump_statistics(false) {}
+      : dump_syscallbuf(false),
+        dump_recorded_data_metadata(false),
+        raw_dump(false),
+        dump_statistics(false) {}
 };
 
 static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
@@ -50,6 +55,8 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
   }
 
   static const OptionSpec options[] = { { 'b', "syscallbuf", NO_PARAMETER },
+                                        { 'm', "recorded-metadata",
+                                          NO_PARAMETER },
                                         { 'r', "raw", NO_PARAMETER },
                                         { 's', "statistics", NO_PARAMETER } };
   ParsedOption opt;
@@ -60,6 +67,9 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
   switch (opt.short_name) {
     case 'b':
       flags.dump_syscallbuf = true;
+      break;
+    case 'm':
+      flags.dump_recorded_data_metadata = true;
       break;
     case 'r':
       flags.raw_dump = true;
@@ -125,7 +135,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
     start = end = atoi(spec->c_str());
   }
 
-  bool dump_raw_data = flags.dump_syscallbuf;
+  bool process_raw_data =
+      flags.dump_syscallbuf || flags.dump_recorded_data_metadata;
   while (!trace.at_end()) {
     auto frame = trace.read_frame();
     if (end < frame.time()) {
@@ -140,13 +151,20 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       if (flags.dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
       }
+      TraceReader::RawData data;
+      while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
+        if (flags.dump_recorded_data_metadata) {
+          fprintf(out, "  { addr:%p, length:%p }\n", (void*)data.addr.as_int(),
+                  (void*)data.data.size());
+        }
+      }
       if (!flags.raw_dump) {
         fprintf(out, "}\n");
       }
-    }
-    TraceReader::RawData data;
-    while (dump_raw_data && trace.read_raw_data_for_frame(frame, data)) {
-      // Skip raw data for this frame
+    } else {
+      TraceReader::RawData data;
+      while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
+      }
     }
   }
 }
