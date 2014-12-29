@@ -1,8 +1,3 @@
-class DynamicSize(object):
-    """A class for indicating the size of a syscall argument."""
-    def __init__(self, size_expr):
-        self.size_expr = size_expr
-
 class BaseSyscall(object):
     """A base class for syscalls.
 
@@ -54,11 +49,8 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
     The arguments required for rr to record may be specified directly
     through the arg1...arg6 keyword arguments.  The values for these
     arguments determine the size of the associated arguments to the syscall.
-    The allowed types for a given argument are:
-
-    * A Python string, in which case the size of the argument is sizeof(arg);
-    * A DynamicSize object, in which case the size of the argument is the
-      C expression stored in the DynamicSize object;
+    The only allowed type for a given argument is a Python string, in which
+    case the size of the argument is sizeof(arg).
 
     To ensure correct handling for mixed-arch process groups (e.g. a mix of 32
     and 64-bit processes), types should be specified using Arch instead of

@@ -68,15 +68,9 @@ def write_syscall_record_cases(f):
         arg_descriptor = getattr(syscall, arg, None)
         if arg_descriptor is None:
             return
-        if isinstance(arg_descriptor, str):
-            f.write("    t->record_remote(remote_ptr<%s>(t->regs().%s()));\n"
-                    % (arg_descriptor, arg))
-        elif isinstance(arg_descriptor, syscalls.DynamicSize):
-            f.write("    t->record_remote(remote_ptr<void>(t->regs().%s()), %s);\n"
-                    % (arg, arg_descriptor.size_expr))
-        else:
-            # Not reached
-            assert None
+        assert isinstance(arg_descriptor, str)
+        f.write("    t->record_remote(remote_ptr<%s>(t->regs().%s()));\n"
+                % (arg_descriptor, arg))
     for name, obj in syscalls.all():
         # Irregular syscalls will be handled by hand-written code elsewhere.
         if isinstance(obj, syscalls.RegularSyscall):
