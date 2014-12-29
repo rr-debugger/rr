@@ -1344,6 +1344,15 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return syscall_state.done_preparing(PREVENT_SWITCH);
     }
 
+    case Arch::getgroups32: {
+      // We could record a little less data by restricting the recorded data
+      // to the syscall result * sizeof(Arch::gid_t), but that would
+      // require more infrastructure and it's not worth worrying about.
+      syscall_state.reg_parameter(2, (int)t->regs().arg1_signed() *
+                                         sizeof(typename Arch::gid_t));
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+    }
+
     case Arch::write:
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
@@ -2143,6 +2152,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     case Arch::getdents:
     case Arch::getdents64:
     case Arch::getgroups:
+    case Arch::getgroups32:
     case Arch::getsockname:
     case Arch::getsockopt:
     case Arch::getpeername:

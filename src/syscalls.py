@@ -1085,7 +1085,7 @@ setregid32 = EmulatedSyscall(x86=204)
 # supplementary group IDs for the process is returned.  This allows
 # the caller to determine the size of a dynamically allocated list to
 # be used in a further call to getgroups().
-getgroups32 = EmulatedSyscall(x86=205, arg2=DynamicSize("(int)t->regs().syscall_result_signed() * sizeof(typename Arch::gid_t)"))
+getgroups32 = IrregularEmulatedSyscall(x86=205)
 
 setgroups32 = UnsupportedSyscall(x86=206)
 fchown32 = EmulatedSyscall(x86=207)
