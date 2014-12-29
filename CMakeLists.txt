@@ -267,6 +267,7 @@ set(BASIC_TESTS
   pthread_condvar_locking
   rdtsc
   readdir
+  readlink
   readv
   rlimit
   rusage

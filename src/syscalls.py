@@ -508,8 +508,6 @@ select = IrregularEmulatedSyscall(x86=82, x64=23)
 #
 # symlink() creates a symbolic link named newpath which contains the
 # string oldpath.
-#
-# FIXME: Why was this disabled?
 symlink = EmulatedSyscall(x86=83, x64=88)
 
 oldlstat = UnsupportedSyscall(x86=84)
