@@ -1001,10 +1001,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   if (syscallno < 0) {
     // Invalid syscall. Don't let it accidentally match a
     // syscall number below that's for an undefined syscall.
+    syscall_state.expect_errno = ENOSYS;
     return PREVENT_SWITCH;
   }
 
   switch (syscallno) {
+// All the regular syscalls are handled here.
+#include "SyscallRecordCase.generated"
+
     case Arch::splice: {
       syscall_state.reg_parameter<loff_t>(2, IN_OUT);
       syscall_state.reg_parameter<loff_t>(4, IN_OUT);
@@ -1535,7 +1539,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // blocking-waitpid on t to see its status change.
       t->pseudo_blocked = true;
       t->record_session().scheduler().schedule_one_round_robin(t);
-      return ALLOW_SWITCH;
+      return syscall_state.done_preparing(ALLOW_SWITCH);
 
     case Arch::rt_sigpending:
       syscall_state.reg_parameter(1, (size_t)t->regs().arg2());
@@ -1570,7 +1574,27 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       return PREVENT_SWITCH;
     }
 
+    case Arch::mmap:
+    case Arch::mmap2:
+    case Arch::open:
+    case Arch::rrcall_init_buffers:
+    case Arch::rrcall_init_preload:
+      return syscall_state.done_preparing(PREVENT_SWITCH);
+
+    case Arch::rt_sigreturn:
+    case Arch::sigreturn:
+      // There isn't going to be an exit event for this syscall, so remove
+      // syscall_state now.
+      syscall_state_property.remove(*t);
+      return PREVENT_SWITCH;
+
     default:
+      // Invalid syscalls return -ENOSYS. Assume any such
+      // result means the syscall was completely ignored by the
+      // kernel so it's OK for us to not do anything special.
+      // Other results mean we probably need to understand this
+      // syscall, but we don't.
+      syscall_state.expect_errno = ENOSYS;
       return PREVENT_SWITCH;
   }
 }
@@ -1981,21 +2005,6 @@ static void before_syscall_exit(Task* t, int syscallno) {
   }
 }
 
-static void check_syscall_rejected(Task* t) {
-  // Invalid syscalls return -ENOSYS. Assume any such
-  // result means the syscall was completely ignored by the
-  // kernel so it's OK for us to not do anything special.
-  // Other results mean we probably need to understand this
-  // syscall, but we don't.
-  if (t->regs().syscall_result_signed() != -ENOSYS) {
-    t->regs().print_register_file(stderr);
-    int syscallno = t->ev().Syscall().number;
-    ASSERT(t, false) << "Unhandled syscall " << t->syscall_name(syscallno)
-                     << "(" << syscallno << ") returned "
-                     << t->regs().syscall_result_signed();
-  }
-}
-
 template <typename Arch> static void rec_process_syscall_arch(Task* t) {
   int syscallno = t->ev().Syscall().number;
 
@@ -2014,12 +2023,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     return;
   }
 
-  if (syscallno < 0) {
-    check_syscall_rejected(t);
-    syscall_state_property.remove(*t);
-    return;
-  }
-
   if (syscall_state.expect_errno) {
     ASSERT(t, t->regs().syscall_result_signed() == -syscall_state.expect_errno)
         << "Expected " << errno_name(syscall_state.expect_errno) << " for '"
@@ -2029,11 +2032,10 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     return;
   }
 
+  // Here we handle syscalls that need work that can only happen after the
+  // syscall completes --- and that our TaskSyscallState infrastructure can't
+  // handle.
   switch (syscallno) {
-
-// All the regular syscalls are handled here.
-#include "SyscallRecordCase.generated"
-
     case Arch::clone: {
       long new_tid = t->regs().syscall_result_signed();
       Task* new_task = t->session().find_task(new_tid);
@@ -2086,6 +2088,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
 
       break;
     }
+
     case Arch::execve:
       process_execve<Arch>(t, syscall_state);
       break;
@@ -2108,6 +2111,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
           break;
       }
       break;
+
     case Arch::mmap2:
       process_mmap(t, syscallno, (size_t)t->regs().arg2(),
                    (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),
@@ -2125,6 +2129,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
               : TaskSyscallState::NO_WRITE_BACK);
       break;
     }
+
     case Arch::open: {
       string pathname = t->read_c_str(remote_ptr<void>(t->regs().arg1()));
       if (is_blacklisted_filename(pathname.c_str())) {
@@ -2139,54 +2144,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-    case Arch::_newselect:
-    case Arch::_sysctl:
-    case Arch::accept:
-    case Arch::accept4:
-    case Arch::epoll_wait:
-    case Arch::fcntl:
-    case Arch::fcntl64:
-    case Arch::fgetxattr:
-    case Arch::futex:
-    case Arch::getcwd:
-    case Arch::getdents:
-    case Arch::getdents64:
-    case Arch::getgroups:
-    case Arch::getgroups32:
-    case Arch::getsockname:
-    case Arch::getsockopt:
-    case Arch::getpeername:
-    case Arch::getxattr:
-    case Arch::ioctl:
-    case Arch::ipc:
-    case Arch::lgetxattr:
-    case Arch::msgctl:
-    case Arch::msgrcv:
-    case Arch::poll:
-    case Arch::ppoll:
-    case Arch::prctl:
-    case Arch::pread64:
-    case Arch::preadv:
-    case Arch::quotactl:
-    case Arch::read:
-    case Arch::readlink:
-    case Arch::readv:
-    case Arch::recvfrom:
-    case Arch::recvmsg:
-    case Arch::recvmmsg:
-    case Arch::rt_sigpending:
-    case Arch::rt_sigtimedwait:
-    case Arch::select:
-    case Arch::sendfile:
-    case Arch::sendfile64:
-    case Arch::sendmmsg:
-    case Arch::socketcall:
-    case Arch::splice:
-    case Arch::waitid:
-    case Arch::waitpid:
-    case Arch::wait4:
-      syscall_state.process_syscall_results();
-      break;
 
     case Arch::write:
     case Arch::writev:
@@ -2221,7 +2178,7 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     }
 
     default:
-      check_syscall_rejected(t);
+      syscall_state.process_syscall_results();
       break;
   }
 

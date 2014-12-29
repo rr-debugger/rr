@@ -56,15 +56,14 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
     and 64-bit processes), types should be specified using Arch instead of
     referring directly to the host system types.
     """
-    ARGUMENT_SLOTS = ['arg1', 'arg2', 'arg3', 'arg4', 'arg5', 'arg6']
-
     def __init__(self, semantics=None, **kwargs):
         assert semantics in [ReplaySemantics.EMU,
                              ReplaySemantics.EXEC,
                              ReplaySemantics.EXEC_RET_EMU]
         ReplaySemantics.__init__(self, semantics)
         BaseSyscall.__init__(self, **kwargs)
-        for arg in self.ARGUMENT_SLOTS:
+        for a in range(1,6):
+            arg = 'arg' + str(a)
             if arg in kwargs:
                 self.__setattr__(arg, kwargs[arg])
 
@@ -262,7 +261,7 @@ stime = UnsupportedSyscall(x86=25)
 # (the "tracee"), and examine and change the tracee's memory and
 # registers.  It is primarily used to implement breakpoint debugging
 # and system call tracing.
-ptrace = IrregularEmulatedSyscall(x86=26, x64=101)
+ptrace = UnsupportedSyscall(x86=26, x64=101)
 
 #  unsigned int alarm(unsigned int seconds)
 #
@@ -276,7 +275,7 @@ oldfstat = UnsupportedSyscall(x86=28)
 # pause() causes the calling process (or thread) to sleep until a
 # signal is delivered that either terminates the process or causes
 # the invocation of a signal-catching function.
-pause = EmulatedSyscall(x86=29, x64=34)
+pause = IrregularEmulatedSyscall(x86=29, x64=34)
 
 #  int utime(const char *filename, const struct utimbuf *times)
 #
@@ -855,7 +854,7 @@ sched_getscheduler = EmulatedSyscall(x86=157, x64=145)
 # sched_yield() causes the calling thread to relinquish the CPU.  The
 # thread is moved to the end of the queue for its static priority and
 # a new thread gets to run.
-sched_yield = EmulatedSyscall(x86=158, x64=24)
+sched_yield = IrregularEmulatedSyscall(x86=158, x64=24)
 
 #  int sched_get_priority_max(int policy)
 #
@@ -1680,7 +1679,7 @@ connect = EmulatedSyscall(x64=42)
 accept = IrregularEmulatedSyscall(x64=43)
 sendto = EmulatedSyscall(x64=44)
 recvfrom = IrregularEmulatedSyscall(x64=45)
-sendmsg = EmulatedSyscall(x64=46)
+sendmsg = IrregularEmulatedSyscall(x64=46)
 recvmsg = IrregularEmulatedSyscall(x64=47)
 shutdown = EmulatedSyscall(x64=48)
 bind = EmulatedSyscall(x64=49)
@@ -1694,7 +1693,7 @@ accept4 = IrregularEmulatedSyscall(x64=288)
 
 # These syscalls are subsumed under ipc on x86.
 msgget = EmulatedSyscall(x64=68)
-msgsnd = EmulatedSyscall(x64=69)
+msgsnd = IrregularEmulatedSyscall(x64=69)
 msgrcv = IrregularEmulatedSyscall(x64=70)
 msgctl = IrregularEmulatedSyscall(x64=71)
 

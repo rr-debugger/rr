@@ -550,7 +550,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
         }
       } else {
         t->ev().transform(EV_SYSCALL_INTERRUPTION);
-        t->ev().Syscall().is_restart = 1;
+        t->ev().Syscall().is_restart = true;
       }
 
       t->switchable = ALLOW_SWITCH;

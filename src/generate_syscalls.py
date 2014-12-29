@@ -65,19 +65,17 @@ def write_syscallname_arch(f):
 
 def write_syscall_record_cases(f):
     def write_recorder_for_arg(syscall, arg):
-        arg_descriptor = getattr(syscall, arg, None)
-        if arg_descriptor is None:
-            return
-        assert isinstance(arg_descriptor, str)
-        f.write("    t->record_remote(remote_ptr<%s>(t->regs().%s()));\n"
-                % (arg_descriptor, arg))
+        arg_descriptor = getattr(syscall, 'arg' + str(arg), None)
+        if isinstance(arg_descriptor, str):
+            f.write("    syscall_state.reg_parameter<%s>(%d);\n"
+                    % (arg_descriptor, arg))
     for name, obj in syscalls.all():
         # Irregular syscalls will be handled by hand-written code elsewhere.
         if isinstance(obj, syscalls.RegularSyscall):
             f.write("  case Arch::%s:\n" % name)
-            for arg in syscalls.RegularSyscall.ARGUMENT_SLOTS:
+            for arg in range(1,6):
                 write_recorder_for_arg(obj, arg)
-            f.write("    break;\n")
+            f.write("    return syscall_state.done_preparing(PREVENT_SWITCH);\n")
 
 has_syscall = string.Template("""inline bool
 has_${syscall}_syscall(SupportedArch arch) {
@@ -137,8 +135,6 @@ def write_syscall_defs_table(f):
         arch_syscalls = sorted(syscalls.for_arch(arch), key=lambda x: getattr(x[1], arch))
         for name, obj in arch_syscalls:
             if isinstance(obj, syscalls.RegularSyscall):
-                recorded_args = [arg for arg in syscalls.RegularSyscall.ARGUMENT_SLOTS
-                                 if getattr(obj, arg, None) is not None]
                 f.write("  { %s::%s, { rep_%s } },\n"
                         % (specializer, name, obj.semantics))
             elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
