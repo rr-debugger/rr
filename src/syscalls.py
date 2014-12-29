@@ -1384,7 +1384,7 @@ tgkill = EmulatedSyscall(x86=270, x64=234)
 # of the inode specified by filename to the actime and modtime fields
 # of times respectively.
 #
-utimes = EmulatedSyscall(x86=271, x64=235, arg2=DynamicSize("2 * sizeof(typename Arch::timeval)"))
+utimes = EmulatedSyscall(x86=271, x64=235)
 
 fadvise64_64 = EmulatedSyscall(x86=272)
 

@@ -307,6 +307,7 @@ set(BASIC_TESTS
   truncate
   uname
   unjoined_thread
+  utimes
   wait
   write_race
   writev
