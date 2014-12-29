@@ -574,7 +574,7 @@ public:
    * variants record data that's already been read from this,
    * and the |record_remote*()| variants read the data and then
    * record it.
-   * If 'addr' is null then num_bytes is treated as zero.
+   * If 'addr' is null then no record is written.
    */
   void record_local(remote_ptr<void> addr, ssize_t num_bytes, const void* buf);
   template <typename T> void record_local(remote_ptr<T> addr, const T* buf) {
@@ -584,6 +584,16 @@ public:
   void record_remote(remote_ptr<void> addr, ssize_t num_bytes);
   template <typename T> void record_remote(remote_ptr<T> addr) {
     record_remote(addr, sizeof(T));
+  }
+
+  /**
+   * Save tracee data to the trace.  |addr| is the address in
+   * the address space of this task.
+   * If 'addr' is null then a zero-length record is written.
+   */
+  void record_remote_even_if_null(remote_ptr<void> addr, ssize_t num_bytes);
+  template <typename T> void record_remote_even_if_null(remote_ptr<T> addr) {
+    record_remote_even_if_null(addr, sizeof(T));
   }
 
   void record_remote_str(remote_ptr<void> str);

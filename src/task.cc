@@ -795,7 +795,6 @@ void Task::record_local(remote_ptr<void> addr, ssize_t num_bytes,
   assert(num_bytes >= 0);
 
   if (!addr) {
-    trace_writer().write_raw(nullptr, 0, addr);
     return;
   }
 
@@ -803,6 +802,23 @@ void Task::record_local(remote_ptr<void> addr, ssize_t num_bytes,
 }
 
 void Task::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
+  // We shouldn't be recording a scratch address.
+  ASSERT(this, !addr || addr != scratch_ptr);
+
+  maybe_flush_syscallbuf();
+
+  assert(num_bytes >= 0);
+
+  if (!addr) {
+    return;
+  }
+
+  auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
+  trace_writer().write_raw(buf.data(), num_bytes, addr);
+}
+
+void Task::record_remote_even_if_null(remote_ptr<void> addr,
+                                      ssize_t num_bytes) {
   // We shouldn't be recording a scratch address.
   ASSERT(this, !addr || addr != scratch_ptr);
 
@@ -823,7 +839,6 @@ void Task::record_remote_str(remote_ptr<void> str) {
   maybe_flush_syscallbuf();
 
   if (!str) {
-    trace_writer().write_raw(nullptr, 0, str);
     return;
   }
 

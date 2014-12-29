@@ -2037,16 +2037,18 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
                                &tls_in_parent, &child_tid_in_parent);
       extract_clone_parameters(new_task, stack_not_needed, &parent_tid_in_child,
                                &tls_in_child, &child_tid_in_child);
-      new_task->record_remote(parent_tid_in_parent);
+      t->record_remote_even_if_null(parent_tid_in_parent);
 
       if (Arch::clone_tls_type == Arch::UserDescPointer) {
-        new_task->record_remote(tls_in_parent.cast<typename Arch::user_desc>());
-        new_task->record_remote(tls_in_child.cast<typename Arch::user_desc>());
+        t->record_remote_even_if_null(
+            tls_in_parent.cast<typename Arch::user_desc>());
+        new_task->record_remote_even_if_null(
+            tls_in_child.cast<typename Arch::user_desc>());
       } else {
         assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
       }
-      new_task->record_remote(parent_tid_in_child);
-      new_task->record_remote(child_tid_in_child);
+      new_task->record_remote_even_if_null(parent_tid_in_child);
+      new_task->record_remote_even_if_null(child_tid_in_child);
 
       new_task->pop_syscall();
 
