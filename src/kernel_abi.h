@@ -849,19 +849,6 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
   RR_VERIFY_TYPE(__sysctl_args);
 
-  // The getgroups syscall (as well as several others) differs between
-  // architectures depending on whether they ever supported 16-bit
-  // {U,G}IDs or not.  Architectures such as x86, which did support
-  // 16-bit {U,G}IDs, have a getgroups syscall for the 16-bit GID case
-  // and a getgroups32 syscall for the 32-bit GID case.  Architectures
-  // such as as x86-64, which support 32-bit GIDs exclusively, have only
-  // a getgroups syscall.  We need to know which one we're dealing with
-  // when recording and replaying getgroups and related syscalls.
-  enum UserAndGroupIDSizesSupported {
-    Mixed16And32Bit,
-    Only32Bit,
-  };
-
   typedef struct {
     unsigned_long __val[1024 / (8 * sizeof(unsigned_long))];
   } __sigset_t;
@@ -1023,7 +1010,17 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   static const CloneParameterOrdering clone_parameter_ordering =
       FlagsStackParentTLSChild;
   static const SelectCallingSemantics select_semantics = SelectStructArguments;
-  static const UserAndGroupIDSizesSupported uid_gid_sizes = Mixed16And32Bit;
+
+  // The getgroups syscall (as well as several others) differs between
+  // architectures depending on whether they ever supported 16-bit
+  // {U,G}IDs or not.  Architectures such as x86, which did support
+  // 16-bit {U,G}IDs, have a getgroups syscall for the 16-bit GID case
+  // and a getgroups32 syscall for the 32-bit GID case.  Architectures
+  // such as as x86-64, which support 32-bit GIDs exclusively, have only
+  // a getgroups syscall.  We need to know which one we're dealing with
+  // when recording and replaying getgroups and related syscalls.
+  typedef uint16_t legacy_uid_t;
+  typedef uint16_t legacy_gid_t;
 
 #include "SyscallEnumsX86.generated"
 
@@ -1133,7 +1130,9 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
       FlagsStackParentChildTLS;
   static const SelectCallingSemantics select_semantics =
       SelectRegisterArguments;
-  static const UserAndGroupIDSizesSupported uid_gid_sizes = Only32Bit;
+
+  typedef uint32_t legacy_uid_t;
+  typedef uint32_t legacy_gid_t;
 
 #include "SyscallEnumsX64.generated"
 
@@ -1248,12 +1247,6 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     case x86_64:                                                               \
       return f<rr::X64Arch>(args);                                             \
   }
-
-// Helper structure for determining the proper outparam sizes for syscalls
-// like getgroups.
-template <typename Arch> struct LegacyUIDSyscall {
-  static const size_t size = (Arch::uid_gid_sizes == Arch::Only32Bit ? 4 : 2);
-};
 
 #include "SyscallHelperFunctions.generated"
 
