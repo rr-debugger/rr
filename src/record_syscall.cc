@@ -309,6 +309,12 @@ struct TaskSyscallState {
    */
   remote_ptr<void> mem_ptr_parameter(remote_ptr<void> addr_of_buf_ptr,
                                      const ParamSize& size, ArgMode mode = OUT);
+
+  typedef void (*AfterSyscallAction)(Task* t);
+  void after_syscall_action(AfterSyscallAction action) {
+    after_syscall_actions.push_back(action);
+  }
+
   /**
    * Internal method that takes 'ptr', an address within some memory parameter,
    * and relocates it to the parameter's location in scratch memory.
@@ -364,6 +370,8 @@ struct TaskSyscallState {
    *  the next scratch area.
    */
   remote_ptr<void> scratch;
+
+  vector<AfterSyscallAction> after_syscall_actions;
 
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
@@ -648,6 +656,10 @@ void TaskSyscallState::process_syscall_results() {
      * for now is try to record the scratch data.
      */
     t->record_remote(t->regs().sp() - page_size(), page_size());
+  }
+
+  for (auto& action : after_syscall_actions) {
+    action(t);
   }
 }
 
