@@ -1155,6 +1155,13 @@ void AddressSpace::for_each_in_range(
   }
 }
 
+void AddressSpace::for_all_mappings(
+    std::function<void(const Mapping& m, const MappableResource& r)> f) {
+  for (auto& m : mem) {
+    f(m.first, m.second);
+  }
+}
+
 void AddressSpace::map_and_coalesce(const Mapping& m,
                                     const MappableResource& r) {
   LOG(debug) << "  mapping " << m;

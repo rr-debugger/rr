@@ -536,6 +536,9 @@ public:
    */
   void verify(Task* t) const;
 
+  void for_all_mappings(
+      std::function<void(const Mapping& m, const MappableResource& r)> f);
+
   bool has_breakpoints() { return !breakpoints.empty(); }
   bool has_watchpoints() { return !watchpoints.empty(); }
 
