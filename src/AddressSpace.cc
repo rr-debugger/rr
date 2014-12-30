@@ -969,6 +969,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
            string::npos != kr.fsname.find(SHMEM_FS "/rr-emufs") ||
            string::npos != kr.fsname.find(SHMEM_FS2 "/rr-emufs"));
     vas->km = km;
+    vas->r = kr;
     vas->phase = vas->MERGING_KERNEL;
     return;
   }
