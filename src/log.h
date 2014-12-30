@@ -176,9 +176,11 @@ inline static T& prepare_log_stream(T&& stream, LogLevel level,
 
 /**
  * Ensure that |_v| is streamed in hex format.
- *
- * TODO: support types larger than void*.
+ * We make sure that signed types are *not* sign-extended.
  */
-inline void* HEX(uintptr_t v) { return reinterpret_cast<void*>(v); }
+inline void* HEX(uint64_t v) { return reinterpret_cast<void*>(v); }
+inline void* HEX(int64_t v) { return reinterpret_cast<void*>(v); }
+inline void* HEX(uint32_t v) { return reinterpret_cast<void*>(v); }
+inline void* HEX(int32_t v) { return reinterpret_cast<void*>(uint32_t(v)); }
 
 #endif // RR_LOG_H
