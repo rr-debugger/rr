@@ -313,9 +313,7 @@ public:
   };
   /**
    * Stat |fd| in the context of this task's fd table, returning
-   * the result in |buf|.  The name of the referent file is
-   * returned in |buf|, of max size |buf_num_bytes|.  Return
-   * true on success, false on error.
+   * the result and the file name in FStatResult.
    */
   FStatResult fstat(int fd);
 
