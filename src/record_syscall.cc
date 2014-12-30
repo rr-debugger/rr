@@ -79,16 +79,21 @@ enum ArgMode {
 };
 
 /**
- * Specifies how to determine the size to record for a syscall memory
- * parameter. There is a static max_size determined before the syscall
+ * Specifies how to determine the size of a syscall memory
+ * parameter. There is usually an incoming size determined before the syscall
  * executes (which we need in order to allocate scratch memory), combined
- * with an optional dynamic size taken from the syscall result or a specific
- * memory location after the syscall has executed. The minimum of the static
- * and dynamic size (if any) is used.
+ * with an optional final size taken from the syscall result or a specific
+ * memory location after the syscall has executed. The minimum of the incoming
+ * and final sizes is used, if both are present.
  */
 struct ParamSize {
-  ParamSize(size_t max_size = size_t(-1))
-      : max_size(max_size), from_syscall(false) {}
+  ParamSize(size_t incoming_size = size_t(-1))
+      : incoming_size(incoming_size), from_syscall(false) {}
+  /**
+   * p points to a tracee location that is already initialized with a
+   * "maximum buffer size" passed in by the tracee, and which will be filled
+   * in with the size of the data by the kernel when the syscall exits.
+   */
   template <typename T>
   static ParamSize from_initialized_mem(Task* t, remote_ptr<T> p) {
     ParamSize r(p.is_null() ? size_t(0) : size_t(t->read_mem(p)));
@@ -96,22 +101,35 @@ struct ParamSize {
     r.read_size = sizeof(T);
     return r;
   }
+  /**
+   * p points to a tracee location which will be filled in with the size of
+   * the data by the kernel when the syscall exits, but the location
+   * is uninitialized before the syscall.
+   */
   template <typename T> static ParamSize from_mem(remote_ptr<T> p) {
     ParamSize r(size_t(-1));
     r.mem_ptr = p;
     r.read_size = sizeof(T);
     return r;
   }
+  /**
+   * When the syscall exits, the syscall result will be of type T and contain
+   * the size of the data. 'incoming_size', if present, is a bound on the size
+   * of the data.
+   */
   template <typename T>
-  static ParamSize from_syscall_result(size_t max_size = size_t(-1)) {
-    ParamSize r(max_size);
+  static ParamSize from_syscall_result(size_t incoming_size = size_t(-1)) {
+    ParamSize r(incoming_size);
     r.from_syscall = true;
     r.read_size = sizeof(T);
     return r;
   }
+  /**
+   * Indicate that the size will be at most 'max'.
+   */
   ParamSize limit_size(size_t max) const {
     ParamSize r(*this);
-    r.max_size = min(r.max_size, max);
+    r.incoming_size = min(r.incoming_size, max);
     return r;
   }
 
@@ -130,19 +148,58 @@ struct ParamSize {
   }
   /**
    * Compute the actual size after the syscall has executed.
-   * 'already_consumed' bytes are subtracted from the dynamic part of the size.
+   * 'already_consumed' bytes are subtracted from the syscall-result/
+   * memory-location part of the size.
    */
   size_t eval(Task* t, size_t already_consumed) const;
 
-  /** explicit size or max size if mem_ptr/from_syscall_result is specified */
-  size_t max_size;
-  /** read size from this location */
+  size_t incoming_size;
+  /** If non-null, the size is limited by the value at this location after
+   *  the syscall. */
   remote_ptr<void> mem_ptr;
-  /** number of bytes to read to get the size */
+  /** Size of the value at mem_ptr or in the syscall result register. */
   size_t read_size;
-  /** when true, read size from syscall result register */
+  /** If true, the size is limited by the value of the syscall result. */
   bool from_syscall;
 };
+
+size_t ParamSize::eval(Task* t, size_t already_consumed) const {
+  size_t s = incoming_size;
+  if (!mem_ptr.is_null()) {
+    size_t mem_size;
+    switch (read_size) {
+      case 4:
+        mem_size = t->read_mem(mem_ptr.cast<uint32_t>());
+        break;
+      case 8:
+        mem_size = t->read_mem(mem_ptr.cast<uint64_t>());
+        break;
+      default:
+        ASSERT(t, false) << "Unknown read_size";
+        return 0;
+    }
+    ASSERT(t, already_consumed <= mem_size);
+    s = min(s, mem_size - already_consumed);
+  }
+  if (from_syscall) {
+    size_t syscall_size = t->regs().syscall_result();
+    switch (read_size) {
+      case 4:
+        syscall_size = uint32_t(syscall_size);
+        break;
+      case 8:
+        syscall_size = uint64_t(syscall_size);
+        break;
+      default:
+        ASSERT(t, false) << "Unknown read_size";
+        return 0;
+    }
+    ASSERT(t, already_consumed <= syscall_size);
+    s = min(s, syscall_size - already_consumed);
+  }
+  ASSERT(t, s < size_t(-1));
+  return s;
+}
 
 /**
  * When tasks enter syscalls that may block and so must be
@@ -350,28 +407,6 @@ struct TaskSyscallState {
 static const Property<TaskSyscallState, Task> syscall_state_property;
 
 template <typename Arch>
-static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
-  if (Arch::write != syscallno) {
-    return;
-  }
-  int fd = t->regs().arg1_signed();
-  if (RR_MAGIC_SAVE_DATA_FD != fd) {
-    return;
-  }
-  remote_ptr<void> buf = t->regs().arg2();
-  size_t len = t->regs().arg3();
-
-  ASSERT(t, buf) << "Can't save a null buffer";
-
-  t->record_remote(buf, len);
-}
-
-void rec_before_record_syscall_entry(Task* t, int syscallno) {
-  RR_ARCH_FUNCTION(rec_before_record_syscall_entry_arch, t->arch(), t,
-                   syscallno)
-}
-
-template <typename Arch>
 static void set_remote_ptr_arch(Task* t, remote_ptr<void> addr,
                                 remote_ptr<void> value) {
   auto typed_addr = addr.cast<typename Arch::unsigned_word>();
@@ -413,7 +448,7 @@ remote_ptr<void> TaskSyscallState::reg_parameter(int arg, const ParamSize& size,
   param.mode = mode;
   if (mode != IN_OUT_NO_SCRATCH) {
     param.scratch = scratch;
-    scratch += param.num_bytes.max_size;
+    scratch += param.num_bytes.incoming_size;
     align_scratch(&scratch);
     param.ptr_in_reg = arg;
   }
@@ -436,7 +471,7 @@ remote_ptr<void> TaskSyscallState::mem_ptr_parameter(
   param.mode = mode;
   if (mode != IN_OUT_NO_SCRATCH) {
     param.scratch = scratch;
-    scratch += param.num_bytes.max_size;
+    scratch += param.num_bytes.incoming_size;
     align_scratch(&scratch);
     param.ptr_in_memory = addr_of_buf_ptr;
   }
@@ -449,7 +484,7 @@ remote_ptr<void> TaskSyscallState::relocate_pointer_to_scratch(
   int num_relocations = 0;
   remote_ptr<void> result;
   for (auto& param : param_list) {
-    if (param.dest <= ptr && ptr < param.dest + param.num_bytes.max_size) {
+    if (param.dest <= ptr && ptr < param.dest + param.num_bytes.incoming_size) {
       result = param.scratch + (ptr - param.dest);
       ++num_relocations;
     }
@@ -487,10 +522,10 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
 
   // Step 1: Copy all IN/IN_OUT parameters to their scratch areas
   for (auto& param : param_list) {
-    ASSERT(t, param.num_bytes.max_size < size_t(-1));
+    ASSERT(t, param.num_bytes.incoming_size < size_t(-1));
     if (param.mode == IN_OUT || param.mode == IN) {
       // Initialize scratch buffer with input data
-      t->remote_memcpy(param.scratch, param.dest, param.num_bytes.max_size);
+      t->remote_memcpy(param.scratch, param.dest, param.num_bytes.incoming_size);
     }
   }
   // Step 2: Update pointers in registers/memory to point to scratch areas
@@ -518,6 +553,118 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
   }
   t->set_regs(r);
   return switchable;
+}
+
+size_t TaskSyscallState::eval_param_size(size_t i,
+                                         vector<size_t>& actual_sizes) {
+  assert(actual_sizes.size() == i);
+
+  size_t already_consumed = 0;
+  for (size_t j = 0; j < i; ++j) {
+    if (param_list[j].num_bytes.is_same_source(param_list[i].num_bytes)) {
+      already_consumed += actual_sizes[j];
+    }
+  }
+  size_t size = param_list[i].num_bytes.eval(t, already_consumed);
+  actual_sizes.push_back(size);
+  return size;
+}
+
+void TaskSyscallState::process_syscall_results(WriteBack write_back) {
+  ASSERT(t, preparation_done);
+
+  // XXX what's the best way to handle failed syscalls? Currently we just
+  // record everything as if it succeeded. That handles failed syscalls that
+  // wrote partial results, but doesn't handle syscalls that failed with
+  // EFAULT.
+  vector<size_t> actual_sizes;
+  if (scratch_enabled) {
+    size_t scratch_num_bytes = scratch - t->scratch_ptr;
+    auto data = t->read_mem(t->scratch_ptr.cast<uint8_t>(), scratch_num_bytes);
+    Registers r = t->regs();
+    // Step 1: compute actual sizes of all buffers and copy outputs
+    // from scratch back to their origin
+    for (size_t i = 0; i < param_list.size(); ++i) {
+      auto& param = param_list[i];
+      size_t size = eval_param_size(i, actual_sizes);
+      if (write_back == WRITE_BACK &&
+          (param.mode == IN_OUT || param.mode == OUT)) {
+        const uint8_t* d = data.data() + (param.scratch - t->scratch_ptr);
+        t->write_bytes_helper(param.dest, size, d);
+      }
+    }
+    bool memory_cleaned_up = false;
+    // Step 2: restore modified in-memory pointers and registers
+    for (size_t i = 0; i < param_list.size(); ++i) {
+      auto& param = param_list[i];
+      if (param.ptr_in_reg) {
+        r.set_arg(param.ptr_in_reg, param.dest.as_int());
+      }
+      if (!param.ptr_in_memory.is_null()) {
+        memory_cleaned_up = true;
+        set_remote_ptr(t, param.ptr_in_memory, param.dest);
+      }
+    }
+    if (write_back == WRITE_BACK) {
+      // Step 3: record all output memory areas
+      for (size_t i = 0; i < param_list.size(); ++i) {
+        auto& param = param_list[i];
+        size_t size = actual_sizes[i];
+        if (param.mode == IN_OUT_NO_SCRATCH) {
+          t->record_remote(param.dest, size);
+        } else if (param.mode == IN_OUT || param.mode == OUT) {
+          // If pointers in memory were fixed up in step 2, then record
+          // from tracee memory to ensure we record such fixes. Otherwise we
+          // can record from our local data.
+          // XXX This optimization can be improved if necessary...
+          if (memory_cleaned_up) {
+            t->record_remote(param.dest, size);
+          } else {
+            const uint8_t* d = data.data() + (param.scratch - t->scratch_ptr);
+            t->record_local(param.dest, size, d);
+          }
+        }
+      }
+    }
+    t->set_regs(r);
+  } else {
+    for (size_t i = 0; i < param_list.size(); ++i) {
+      auto& param = param_list[i];
+      size_t size = eval_param_size(i, actual_sizes);
+      t->record_remote(param.dest, size);
+    }
+  }
+
+  if (record_page_below_stack_ptr) {
+    /* Record.the page above the top of |t|'s stack.  The SIOC* ioctls
+     * have been observed to write beyond the end of tracees' stacks, as
+     * if they had allocated scratch space for themselves.  All we can do
+     * for now is try to record the scratch data.
+     */
+    t->record_remote(t->regs().sp() - page_size(), page_size());
+  }
+}
+
+template <typename Arch>
+static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
+  if (Arch::write != syscallno) {
+    return;
+  }
+  int fd = t->regs().arg1_signed();
+  if (RR_MAGIC_SAVE_DATA_FD != fd) {
+    return;
+  }
+  remote_ptr<void> buf = t->regs().arg2();
+  size_t len = t->regs().arg3();
+
+  ASSERT(t, buf) << "Can't save a null buffer";
+
+  t->record_remote(buf, len);
+}
+
+void rec_before_record_syscall_entry(Task* t, int syscallno) {
+  RR_ARCH_FUNCTION(rec_before_record_syscall_entry_arch, t->arch(), t,
+                   syscallno)
 }
 
 template <typename Arch>
@@ -1680,134 +1827,6 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
 
   t->vm()->map(t->scratch_ptr, sz, prot, flags, 0,
                MappableResource::scratch(t->rec_tid));
-}
-
-size_t ParamSize::eval(Task* t, size_t already_consumed) const {
-  size_t s = max_size;
-  if (!mem_ptr.is_null()) {
-    size_t mem_size;
-    switch (read_size) {
-      case 4:
-        mem_size = t->read_mem(mem_ptr.cast<uint32_t>());
-        break;
-      case 8:
-        mem_size = t->read_mem(mem_ptr.cast<uint64_t>());
-        break;
-      default:
-        ASSERT(t, false) << "Unknown read_size";
-        return 0;
-    }
-    ASSERT(t, already_consumed <= mem_size);
-    s = min(s, mem_size - already_consumed);
-  }
-  if (from_syscall) {
-    size_t syscall_size = t->regs().syscall_result();
-    switch (read_size) {
-      case 4:
-        syscall_size = uint32_t(syscall_size);
-        break;
-      case 8:
-        syscall_size = uint64_t(syscall_size);
-        break;
-      default:
-        ASSERT(t, false) << "Unknown read_size";
-        return 0;
-    }
-    ASSERT(t, already_consumed <= syscall_size);
-    s = min(s, syscall_size - already_consumed);
-  }
-  ASSERT(t, s < size_t(-1));
-  return s;
-}
-
-size_t TaskSyscallState::eval_param_size(size_t i,
-                                         vector<size_t>& actual_sizes) {
-  assert(actual_sizes.size() == i);
-
-  size_t already_consumed = 0;
-  for (size_t j = 0; j < i; ++j) {
-    if (param_list[j].num_bytes.is_same_source(param_list[i].num_bytes)) {
-      already_consumed += actual_sizes[j];
-    }
-  }
-  size_t size = param_list[i].num_bytes.eval(t, already_consumed);
-  actual_sizes.push_back(size);
-  return size;
-}
-
-void TaskSyscallState::process_syscall_results(WriteBack write_back) {
-  ASSERT(t, preparation_done);
-
-  // XXX what's the best way to handle failed syscalls? Currently we just
-  // record everything as if it succeeded. That handles failed syscalls that
-  // wrote partial results, but doesn't handle syscalls that failed with
-  // EFAULT.
-  vector<size_t> actual_sizes;
-  if (scratch_enabled) {
-    size_t scratch_num_bytes = scratch - t->scratch_ptr;
-    auto data = t->read_mem(t->scratch_ptr.cast<uint8_t>(), scratch_num_bytes);
-    Registers r = t->regs();
-    // Step 1: compute actual sizes of all buffers and copy outputs
-    // from scratch back to their origin
-    for (size_t i = 0; i < param_list.size(); ++i) {
-      auto& param = param_list[i];
-      size_t size = eval_param_size(i, actual_sizes);
-      if (write_back == WRITE_BACK &&
-          (param.mode == IN_OUT || param.mode == OUT)) {
-        const uint8_t* d = data.data() + (param.scratch - t->scratch_ptr);
-        t->write_bytes_helper(param.dest, size, d);
-      }
-    }
-    bool memory_cleaned_up = false;
-    // Step 2: restore modified in-memory pointers and registers
-    for (size_t i = 0; i < param_list.size(); ++i) {
-      auto& param = param_list[i];
-      if (param.ptr_in_reg) {
-        r.set_arg(param.ptr_in_reg, param.dest.as_int());
-      }
-      if (!param.ptr_in_memory.is_null()) {
-        memory_cleaned_up = true;
-        set_remote_ptr(t, param.ptr_in_memory, param.dest);
-      }
-    }
-    if (write_back == WRITE_BACK) {
-      // Step 3: record all output memory areas
-      for (size_t i = 0; i < param_list.size(); ++i) {
-        auto& param = param_list[i];
-        size_t size = actual_sizes[i];
-        if (param.mode == IN_OUT_NO_SCRATCH) {
-          t->record_remote(param.dest, size);
-        } else if (param.mode == IN_OUT || param.mode == OUT) {
-          // If pointers in memory were fixed up in step 2, then record
-          // from tracee memory to ensure we record such fixes. Otherwise we
-          // can record from our local data.
-          // XXX This optimization can be improved if necessary...
-          if (memory_cleaned_up) {
-            t->record_remote(param.dest, size);
-          } else {
-            const uint8_t* d = data.data() + (param.scratch - t->scratch_ptr);
-            t->record_local(param.dest, size, d);
-          }
-        }
-      }
-    }
-    t->set_regs(r);
-  } else {
-    for (size_t i = 0; i < param_list.size(); ++i) {
-      auto& param = param_list[i];
-      size_t size = eval_param_size(i, actual_sizes);
-      t->record_remote(param.dest, size);
-    }
-  }
-
-  if (record_page_below_stack_ptr) {
-    /* Record.the page above the top of |t|'s stack.  The SIOC* ioctls
-     * have been observed to write beyond the end of tracees' stacks, as
-     * if they had allocated scratch space for themselves.  All we can do
-     * for now is try to record the scratch data.
-     */
-    t->record_remote(t->regs().sp() - page_size(), page_size());
-  }
 }
 
 // We have |keys_length| instead of using array_length(keys) to work
