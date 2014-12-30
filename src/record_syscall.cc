@@ -405,17 +405,12 @@ struct TaskSyscallState {
    *  Only valid when preparation_done is true.
    */
   bool scratch_enabled;
-  /** When true, we'll record the page of memory below the stack pointer.
-   *  Some ioctls seem to modify this for no good reason.
-   */
-  bool record_page_below_stack_ptr;
 
   TaskSyscallState()
       : t(nullptr),
         expect_errno(0),
         preparation_done(false),
-        scratch_enabled(false),
-        record_page_below_stack_ptr(false) {}
+        scratch_enabled(false) {}
 };
 
 static const Property<TaskSyscallState, Task> syscall_state_property;
@@ -649,15 +644,6 @@ void TaskSyscallState::process_syscall_results() {
       size_t size = eval_param_size(i, actual_sizes);
       t->record_remote(param.dest, size);
     }
-  }
-
-  if (record_page_below_stack_ptr) {
-    /* Record.the page above the top of |t|'s stack.  The SIOC* ioctls
-     * have been observed to write beyond the end of tracees' stacks, as
-     * if they had allocated scratch space for themselves.  All we can do
-     * for now is try to record the scratch data.
-     */
-    t->record_remote(t->regs().sp() - page_size(), page_size());
   }
 
   for (auto& action : after_syscall_actions) {
@@ -968,6 +954,15 @@ template <typename Arch> static void record_v4l2_buffer_contents(Task* t) {
   }
 }
 
+static void record_page_below_stack_ptr(Task* t) {
+  /* Record.the page above the top of |t|'s stack.  The SIOC* ioctls
+   * have been observed to write beyond the end of tracees' stacks, as
+   * if they had allocated scratch space for themselves.  All we can do
+   * for now is try to record the scratch data.
+   */
+  t->record_remote(t->regs().sp() - page_size(), page_size());
+}
+
 #define IOCTL_MASK_SIZE(v) ((v) & ~(_IOC_SIZEMASK << _IOC_SIZESHIFT))
 
 template <typename Arch>
@@ -991,7 +986,7 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
       auto ifrp = syscall_state.reg_parameter<typename Arch::ifreq>(3, IN);
       syscall_state.mem_ptr_parameter<typename Arch::ethtool_cmd>(
           REMOTE_PTR_FIELD(ifrp, ifr_ifru.ifru_data));
-      syscall_state.record_page_below_stack_ptr = true;
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
     }
 
@@ -1000,7 +995,7 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
       auto ifconf = t->read_mem(ifconfp);
       syscall_state.mem_ptr_parameter(
           REMOTE_PTR_FIELD(ifconfp, ifc_ifcu.ifcu_buf), ifconf.ifc_len);
-      syscall_state.record_page_below_stack_ptr = true;
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
     }
 
@@ -1010,7 +1005,7 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
     case SIOCGIFMTU:
     case SIOCGIFNAME:
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
-      syscall_state.record_page_below_stack_ptr = true;
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
 
     case SIOCGIWRATE:
@@ -1018,7 +1013,7 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
       // tracees' stacks, but we record a stack page here
       // just in case the behavior is driver-dependent.
       syscall_state.reg_parameter<typename Arch::iwreq>(3);
-      syscall_state.record_page_below_stack_ptr = true;
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
 
     case TCGETS:
