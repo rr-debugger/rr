@@ -311,6 +311,7 @@ set(BASIC_TESTS
   uname
   unjoined_thread
   utimes
+  video_capture
   wait
   write_race
   writev

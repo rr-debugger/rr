@@ -1,0 +1,138 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
+#include "rrutil.h"
+
+static const char device_name[] = "/dev/video0";
+
+struct buffer {
+  struct v4l2_buffer vbuf;
+  unsigned char* mmap_data;
+};
+static struct buffer buffers[4];
+static size_t buffer_count;
+
+static void no_v4l2(void) {
+  atomic_puts("EXIT-SUCCESS");
+  exit(0);
+}
+
+static int open_device(void) {
+  struct v4l2_capability cap;
+  int fd = open("/dev/video0", O_RDWR);
+  int ret;
+
+  if (fd < 0 && errno == ENOENT) {
+    atomic_printf("%s not found; aborting test\n", device_name);
+    no_v4l2();
+  }
+  test_assert(fd >= 0);
+
+  ret = ioctl(fd, VIDIOC_QUERYCAP, &cap);
+  if (ret < 0 && errno == EINVAL) {
+    atomic_printf("%s is not a V4L2 device; aborting test\n", device_name);
+    no_v4l2();
+  }
+  if (ret < 0 && errno == EACCES) {
+    atomic_printf("%s is not accessible; aborting test\n", device_name);
+    no_v4l2();
+  }
+  if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+    atomic_printf("%s is not a V4L2 capture device; aborting test\n",
+                  device_name);
+    no_v4l2();
+  }
+  if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
+    atomic_printf("%s does not support streaming; aborting test\n",
+                  device_name);
+    no_v4l2();
+  }
+
+  return fd;
+}
+
+static void init_device(int fd) {
+  struct v4l2_format fmt;
+  struct v4l2_requestbuffers req;
+  int ret;
+  size_t i;
+  enum v4l2_buf_type type;
+
+  fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  test_assert(0 == ioctl(fd, VIDIOC_G_FMT, &fmt));
+  atomic_printf("%s returning %dx%d frames\n", device_name, fmt.fmt.pix.width,
+                fmt.fmt.pix.height);
+
+  req.count = 4;
+  req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  req.memory = V4L2_MEMORY_MMAP;
+  ret = ioctl(fd, VIDIOC_REQBUFS, &req);
+  if (ret < 0 && errno == EINVAL) {
+    atomic_printf("%s does not support memory mapping; aborting test\n",
+                  device_name);
+    no_v4l2();
+  }
+  if (ret < 0 && errno == EBUSY) {
+    atomic_printf("%s is busy; aborting test\n", device_name);
+    no_v4l2();
+  }
+  test_assert(0 == ret);
+  if (req.count < 2) {
+    atomic_printf("%s only supports one buffer; aborting test\n", device_name);
+    no_v4l2();
+  }
+  buffer_count = req.count;
+
+  for (i = 0; i < buffer_count; ++i) {
+    struct buffer* buf = buffers + i;
+    buf->vbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf->vbuf.memory = V4L2_MEMORY_MMAP;
+    buf->vbuf.index = i;
+    test_assert(0 == ioctl(fd, VIDIOC_QUERYBUF, &buf->vbuf));
+    buf->mmap_data = mmap(NULL, buf->vbuf.length, PROT_READ | PROT_WRITE,
+                          MAP_SHARED, fd, buf->vbuf.m.offset);
+    test_assert(buf->mmap_data != MAP_FAILED);
+    test_assert(0 == ioctl(fd, VIDIOC_QBUF, &buf->vbuf));
+  }
+  type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  test_assert(0 == ioctl(fd, VIDIOC_STREAMON, &type));
+}
+
+static void read_frames(int fd) {
+  size_t i, j;
+
+  for (i = 0; i < buffer_count * 2; ++i) {
+    struct v4l2_buffer buf;
+    int ret;
+    size_t bytes;
+
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    ret = ioctl(fd, VIDIOC_DQBUF, &buf);
+    test_assert(ret == 0);
+    test_assert(buf.index < buffer_count);
+
+    bytes = buf.length < 16 ? buf.length : 16;
+    atomic_printf("Frame %d: buffer %d: ", (int)i, (int)buf.index);
+    for (j = 0; j < bytes; ++j) {
+      atomic_printf("%2x ", buffers[buf.index].mmap_data[j]);
+    }
+    atomic_printf("...\n");
+    test_assert(0 == ioctl(fd, VIDIOC_QBUF, &buf));
+  }
+}
+
+static void close_device(int fd) {
+  enum v4l2_buf_type type;
+
+  type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  test_assert(0 == ioctl(fd, VIDIOC_STREAMOFF, &type));
+}
+
+int main(int argc, char* argv[]) {
+  int fd = open_device();
+  init_device(fd);
+  read_frames(fd);
+  close_device(fd);
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
+}

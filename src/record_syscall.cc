@@ -20,6 +20,7 @@
 #include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/sockios.h>
+#include <linux/videodev2.h>
 #include <linux/wireless.h>
 #include <poll.h>
 #include <sched.h>
@@ -39,6 +40,7 @@
 #include <termios.h>
 
 #include <limits>
+#include <sstream>
 #include <utility>
 
 #include <rr/rr.h>
@@ -923,8 +925,53 @@ static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
   return PREVENT_SWITCH;
 }
 
+/**
+ * A change has been made to file 'fd' in task t. If the file has been mmapped
+ * somewhere in t's address space, record the changes.
+ * We check for matching files by comparing file names. This may not be
+ * reliable but hopefully it's good enough for the cases where we need this.
+ * This doesn't currently handle shared mappings very well. A file mapped
+ * shared in multiple locations will be recorded once per location.
+ * This doesn't handle mappings of the file into other address spaces.
+ */
+static void record_file_change(Task* t, int fd, uint64_t offset,
+                               uint64_t length) {
+  Task::FStatResult fd_info = t->fstat(fd);
+  string& file_name = fd_info.file_name;
+
+  auto check_mapping = [t, &file_name, offset, length](
+      const Mapping& m, const MappableResource& r) {
+    if (r.fsname == file_name) {
+      uint64_t start = max(offset, uint64_t(m.offset));
+      uint64_t end = min(offset + length, uint64_t(m.offset) + m.num_bytes());
+      if (start < end) {
+        t->record_remote(m.start + (start - m.offset), end - start);
+      }
+    }
+  };
+  t->vm()->for_all_mappings(check_mapping);
+}
+
+template <typename Arch> static void record_v4l2_buffer_contents(Task* t) {
+  remote_ptr<typename Arch::v4l2_buffer> bufp = t->regs().arg3();
+  auto buf = t->read_mem(bufp);
+
+  switch (buf.memory) {
+    case V4L2_MEMORY_MMAP:
+      record_file_change(t, (int)t->regs().arg1_signed(), buf.m.offset,
+                         buf.length);
+      return;
+
+    default:
+      ASSERT(t, false) << "Unhandled V4L2 memory type " << buf.memory;
+      return;
+  }
+}
+
+#define IOCTL_MASK_SIZE(v) ((v) & ~(_IOC_SIZEMASK << _IOC_SIZESHIFT))
+
 template <typename Arch>
-static void prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
+static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
   int request = (int)t->regs().arg2_signed();
   int type = _IOC_TYPE(request);
   int nr = _IOC_NR(request);
@@ -945,7 +992,7 @@ static void prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.mem_ptr_parameter<typename Arch::ethtool_cmd>(
           REMOTE_PTR_FIELD(ifrp, ifr_ifru.ifru_data));
       syscall_state.record_page_below_stack_ptr = true;
-      return;
+      return PREVENT_SWITCH;
     }
 
     case SIOCGIFCONF: {
@@ -954,7 +1001,7 @@ static void prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.mem_ptr_parameter(
           REMOTE_PTR_FIELD(ifconfp, ifc_ifcu.ifcu_buf), ifconf.ifc_len);
       syscall_state.record_page_below_stack_ptr = true;
-      return;
+      return PREVENT_SWITCH;
     }
 
     case SIOCGIFADDR:
@@ -964,7 +1011,7 @@ static void prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
     case SIOCGIFNAME:
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
       syscall_state.record_page_below_stack_ptr = true;
-      return;
+      return PREVENT_SWITCH;
 
     case SIOCGIWRATE:
       // SIOCGIWRATE hasn't been observed to write beyond
@@ -972,19 +1019,19 @@ static void prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
       // just in case the behavior is driver-dependent.
       syscall_state.reg_parameter<typename Arch::iwreq>(3);
       syscall_state.record_page_below_stack_ptr = true;
-      return;
+      return PREVENT_SWITCH;
 
     case TCGETS:
       syscall_state.reg_parameter<typename Arch::termios>(3);
-      return;
+      return PREVENT_SWITCH;
 
     case TIOCINQ:
       syscall_state.reg_parameter<int>(3);
-      return;
+      return PREVENT_SWITCH;
 
     case TIOCGWINSZ:
       syscall_state.reg_parameter<typename Arch::winsize>(3);
-      return;
+      return PREVENT_SWITCH;
   }
 
   /* In ioctl language, "_IOC_READ" means "outparam".  Both
@@ -992,88 +1039,56 @@ static void prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
   if (!(_IOC_READ & dir)) {
     /* If the kernel isn't going to write any data back to
      * us, we hope and pray that the result of the ioctl
-     * (observable to the tracee) is deterministic. */
+     * (observable to the tracee) is deterministic.
+     * We're also assuming it doesn't block. */
     LOG(debug) << "  (deterministic ioctl, nothing to do)";
-    return;
+    return PREVENT_SWITCH;
   }
 
   /* The following are thought to be "regular" ioctls, the
    * processing of which is only known to (observably) write to
    * the bytes in the structure passed to the kernel.  So all we
-   * need is to record |size| bytes.*/
-  switch (request) {
-    /* TODO: what are the 0x46 ioctls? */
-    case 0xc020462b:
-    case 0xc048464d:
-    case 0xc0204637:
-    case 0xc0304627:
-      FATAL() << "Unknown 0x46-series ioctl nr " << HEX(nr);
-      break; /* not reached */
-
-    /* The following are ioctls for the linux Direct Rendering
-     * Manager (DRM).  The ioctl "type" is 0x64 (100, or ASCII 'd'
-     * as they docs helpfully declare it :/).  The ioctl numbers
-     * are allocated as follows
-     *
-     *  [0x00, 0x40) -- generic commands
-     *  [0x40, 0xa0) -- device-specific commands
-     *  [0xa0, 0xff) -- more generic commands
-     *
-     * Chasing down unknown ioctls is somewhat annoying in this
-     * scheme, but here's an example: request "0xc0406481".  "0xc"
-     * means it's a read/write ioctl, and "0x0040" is the size of
-     * the payload.  The actual ioctl request is "0x6481".
-     *
-     * As we saw above, "0x64" is the DRM type.  So now we need to
-     * see what command "0x81" is.  It's in the
-     * device-specific-command space, so we can start by
-     * subtracting "0x40" to get a command "0x41".  Then
-     *
-     *  $ cd
-     *  $ grep -rn 0x41 *
-     *  nouveau_drm.h:200:#define DRM_NOUVEAU_GEM_PUSHBUF        0x41
-     *
-     * Well that was lucky!  So the command is
-     * DRM_NOUVEAU_GEM_PUSHBUF, and the parameters etc can be
-     * tracked down from that.
-     */
-
-    /* TODO: At least one of these ioctl()s, most likely
-     * NOUVEAU_GEM_NEW, opens a file behind rr's back on behalf of
-     * the callee.  That wreaks havoc later on in execution, so we
-     * disable the whole lot for now until rr can handle that
-     * behavior (by recording access to shmem segments). */
-    case DRM_IOCTL_VERSION:
-    case DRM_IOCTL_NOUVEAU_GEM_NEW:
-    case DRM_IOCTL_NOUVEAU_GEM_PUSHBUF:
-      FATAL() << "Intentionally unhandled DRM(0x64) ioctl nr " << HEX(nr);
-      break;
-
-    case DRM_IOCTL_GET_MAGIC:
-    case DRM_IOCTL_RADEON_INFO:
-    case DRM_IOCTL_I915_GEM_PWRITE:
-    case DRM_IOCTL_GEM_OPEN:
-    case DRM_IOCTL_I915_GEM_MMAP:
-    case DRM_IOCTL_RADEON_GEM_CREATE:
-    case DRM_IOCTL_RADEON_GEM_GET_TILING:
-      FATAL() << "Not-understood DRM(0x64) ioctl nr " << HEX(nr);
-      break; /* not reached */
-
-    case 0x4010644d:
-    case 0xc0186441:
-    case 0x80086447:
-    case 0xc0306449:
-    case 0xc030644b:
-      FATAL() << "Unknown DRM(0x64) ioctl nr " << HEX(nr);
-      break; /* not reached */
-
-    default:
-      t->regs().print_register_file(stderr);
-      ASSERT(t, false) << "Unknown ioctl(" << HEX(request)
-                       << "): type:" << HEX(type) << " nr:" << HEX(nr)
-                       << " dir:" << HEX(dir) << " size:" << size
-                       << " addr:" << HEX(t->regs().arg3());
+   * need is to record |size| bytes.
+   * Since the size may vary across architectures we mask it out here to check
+   * only the type + number. */
+  switch (IOCTL_MASK_SIZE(request)) {
+    case IOCTL_MASK_SIZE(VIDIOC_QUERYCAP) :
+    case IOCTL_MASK_SIZE(VIDIOC_ENUM_FMT) :
+    case IOCTL_MASK_SIZE(VIDIOC_G_FMT) :
+    case IOCTL_MASK_SIZE(VIDIOC_S_FMT) :
+    case IOCTL_MASK_SIZE(VIDIOC_TRY_FMT) :
+    case IOCTL_MASK_SIZE(VIDIOC_G_PARM) :
+    case IOCTL_MASK_SIZE(VIDIOC_S_PARM) :
+    case IOCTL_MASK_SIZE(VIDIOC_REQBUFS) :
+    case IOCTL_MASK_SIZE(VIDIOC_QUERYBUF) :
+    case IOCTL_MASK_SIZE(VIDIOC_QBUF) :
+    case IOCTL_MASK_SIZE(VIDIOC_G_CTRL) :
+    case IOCTL_MASK_SIZE(VIDIOC_S_CTRL) :
+      syscall_state.reg_parameter(3, size, IN_OUT);
+      return PREVENT_SWITCH;
   }
+
+  /* These ioctls are mostly regular but require additional recording. */
+  switch (IOCTL_MASK_SIZE(request)) {
+    case IOCTL_MASK_SIZE(VIDIOC_DQBUF) : {
+      if (size == sizeof(typename Arch::v4l2_buffer)) {
+        syscall_state.reg_parameter(3, size, IN_OUT);
+        syscall_state.after_syscall_action(record_v4l2_buffer_contents<Arch>);
+        // VIDIOC_DQBUF can block. It can't if the fd was opened O_NONBLOCK,
+        // but we don't try to determine that.
+        // Note that we're exposed to potential race conditions here because
+        // VIDIOC_DQBUF (blocking or not) assumes the driver has filled
+        // the mmapped data region at some point since the buffer was queued
+        // with VIDIOC_QBUF, and we don't/can't know exactly when that happened.
+        // Replay could fail if this thread or another thread reads the contents
+        // of mmapped contents queued with the driver.
+        return ALLOW_SWITCH;
+      }
+    }
+  }
+
+  syscall_state.expect_errno = EINVAL;
+  return PREVENT_SWITCH;
 }
 
 static const int RR_KCMP_FILE = 0;
@@ -1631,8 +1646,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
 
     case Arch::ioctl:
-      prepare_ioctl<Arch>(t, syscall_state);
-      return PREVENT_SWITCH;
+      return prepare_ioctl<Arch>(t, syscall_state);
 
     case Arch::_sysctl: {
       auto argsp =
@@ -2067,6 +2081,33 @@ static void before_syscall_exit(Task* t, int syscallno) {
 }
 
 template <typename Arch>
+static string extra_expected_errno_info(Task* t,
+                                        TaskSyscallState& syscall_state) {
+  stringstream ss;
+  switch (syscall_state.expect_errno) {
+    case ENOSYS:
+      ss << "; execution of syscall unsupported by rr";
+      break;
+    case EINVAL:
+      switch (t->regs().original_syscallno()) {
+        case Arch::ioctl: {
+          int request = (int)t->regs().arg2_signed();
+          int type = _IOC_TYPE(request);
+          int nr = _IOC_NR(request);
+          int dir = _IOC_DIR(request);
+          int size = _IOC_SIZE(request);
+          ss << "; Unknown ioctl(" << HEX(request) << "): type:" << HEX(type)
+             << " nr:" << HEX(nr) << " dir:" << HEX(dir) << " size:" << size
+             << " addr:" << HEX(t->regs().arg3());
+          break;
+        }
+      }
+      break;
+  }
+  return ss.str();
+}
+
+template <typename Arch>
 static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
 
@@ -2086,7 +2127,8 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     ASSERT(t, t->regs().syscall_result_signed() == -syscall_state.expect_errno)
         << "Expected " << errno_name(syscall_state.expect_errno) << " for '"
         << t->syscall_name(syscallno) << "' but got result "
-        << t->regs().syscall_result_signed();
+        << t->regs().syscall_result_signed()
+        << extra_expected_errno_info<Arch>(t, syscall_state);
     return;
   }
 
