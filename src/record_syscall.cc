@@ -1992,8 +1992,14 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
                          offset_pages);
   if (t->trace_writer().write_mapped_region(file, prot, flags) ==
       TraceWriter::RECORD_IN_TRACE) {
-    off64_t end = (off64_t)result.st.st_size - offset;
-    t->record_remote(addr, min(end, (off64_t)size));
+    if (result.st.st_size > 0) {
+      off64_t end = (off64_t)result.st.st_size - offset;
+      t->record_remote(addr, min(end, (off64_t)size));
+    } else {
+      // st_size is not valid. Some device files are mmappable but have zero
+      // size.
+      t->record_remote(addr, size);
+    }
   }
 
   if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {
