@@ -335,9 +335,8 @@ struct TaskSyscallState {
   /**
    * Called when a syscall exits to copy results from scratch memory to their
    * original destinations, update registers, etc.
-   * Pass NO_WRITE_BACK to indicate that the kernel did not write anything.
    */
-  void process_syscall_results(WriteBack write_back = WRITE_BACK);
+  void process_syscall_results();
 
   /**
    * Upon successful syscall completion, each RestoreAndRecordScratch record
@@ -382,6 +381,11 @@ struct TaskSyscallState {
   /** Records whether the syscall is switchable. Only valid when
    *  preparation_done is true. */
   Switchable switchable;
+
+  /** Whether we should write back the syscall results from scratch. Only
+   *  valid when preparation_done is true. */
+  WriteBack write_back;
+
   /** When true, this syscall has already been prepared and should not
    *  be set up again.
    */
@@ -501,6 +505,7 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
     return switchable;
   }
   preparation_done = true;
+  write_back = WRITE_BACK;
 
   ssize_t scratch_num_bytes = scratch - t->scratch_ptr;
   ASSERT(t, scratch_num_bytes >= 0);
@@ -525,7 +530,8 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
     ASSERT(t, param.num_bytes.incoming_size < size_t(-1));
     if (param.mode == IN_OUT || param.mode == IN) {
       // Initialize scratch buffer with input data
-      t->remote_memcpy(param.scratch, param.dest, param.num_bytes.incoming_size);
+      t->remote_memcpy(param.scratch, param.dest,
+                       param.num_bytes.incoming_size);
     }
   }
   // Step 2: Update pointers in registers/memory to point to scratch areas
@@ -570,7 +576,7 @@ size_t TaskSyscallState::eval_param_size(size_t i,
   return size;
 }
 
-void TaskSyscallState::process_syscall_results(WriteBack write_back) {
+void TaskSyscallState::process_syscall_results() {
   ASSERT(t, preparation_done);
 
   // XXX what's the best way to handle failed syscalls? Currently we just
@@ -1761,9 +1767,10 @@ Switchable rec_prepare_syscall(Task* t) {
   return syscall_state.done_preparing(s);
 }
 
-template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
+template <typename Arch>
+static void rec_prepare_restart_syscall_arch(Task* t,
+                                             TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
-  auto& syscall_state = *syscall_state_property.get(*t);
   switch (syscallno) {
     case Arch::nanosleep: {
       /* Hopefully uniquely among syscalls, nanosleep()
@@ -1781,12 +1788,18 @@ template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
       break;
     }
   }
+}
 
-  syscall_state_property.remove(*t);
+static void rec_prepare_restart_syscall_internal(
+    Task* t, TaskSyscallState& syscall_state) {
+  RR_ARCH_FUNCTION(rec_prepare_restart_syscall_arch, t->arch(), t,
+                   syscall_state);
 }
 
 void rec_prepare_restart_syscall(Task* t) {
-  RR_ARCH_FUNCTION(rec_prepare_restart_syscall_arch, t->arch(), t)
+  auto& syscall_state = *syscall_state_property.get(*t);
+  rec_prepare_restart_syscall_internal(t, syscall_state);
+  syscall_state_property.remove(*t);
 }
 
 template <typename Arch> static void init_scratch_memory(Task* t) {
@@ -2035,13 +2048,12 @@ static void before_syscall_exit(Task* t, int syscallno) {
   }
 }
 
-template <typename Arch> static void rec_process_syscall_arch(Task* t) {
+template <typename Arch>
+static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
 
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
-
-  auto& syscall_state = *syscall_state_property.get(*t);
 
   before_syscall_exit<Arch>(t, syscallno);
 
@@ -2049,7 +2061,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
     t->record_local(t->syscallbuf_child +
                         (rec->extra_data - (uint8_t*)t->syscallbuf_hdr),
                     rec->size - sizeof(*rec), (uint8_t*)rec->extra_data);
-    syscall_state_property.remove(*t);
     return;
   }
 
@@ -2058,7 +2069,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
         << "Expected " << errno_name(syscall_state.expect_errno) << " for '"
         << t->syscall_name(syscallno) << "' but got result "
         << t->regs().syscall_result_signed();
-    syscall_state_property.remove(*t);
     return;
   }
 
@@ -2153,10 +2163,9 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       /* If the sleep completes, the kernel doesn't
        * write back to the remaining-time
        * argument. */
-      syscall_state.process_syscall_results(
-          0 != (int)t->regs().syscall_result_signed()
-              ? TaskSyscallState::WRITE_BACK
-              : TaskSyscallState::NO_WRITE_BACK);
+      if (!(int)t->regs().syscall_result_signed()) {
+        syscall_state.write_back = TaskSyscallState::NO_WRITE_BACK;
+      }
       break;
     }
 
@@ -2174,10 +2183,6 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       }
       break;
     }
-
-    case Arch::write:
-    case Arch::writev:
-      break;
 
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
@@ -2206,15 +2211,17 @@ template <typename Arch> static void rec_process_syscall_arch(Task* t) {
       t->set_regs(r);
       break;
     }
-
-    default:
-      syscall_state.process_syscall_results();
-      break;
   }
+}
 
-  syscall_state_property.remove(*t);
+static void rec_process_syscall_internal(Task* t,
+                                         TaskSyscallState& syscall_state) {
+  RR_ARCH_FUNCTION(rec_process_syscall_arch, t->arch(), t, syscall_state)
 }
 
 void rec_process_syscall(Task* t) {
-  RR_ARCH_FUNCTION(rec_process_syscall_arch, t->arch(), t)
+  auto& syscall_state = *syscall_state_property.get(*t);
+  rec_process_syscall_internal(t, syscall_state);
+  syscall_state.process_syscall_results();
+  syscall_state_property.remove(*t);
 }
