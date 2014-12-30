@@ -14,6 +14,7 @@
 #include <linux/net.h>
 #include <linux/sockios.h>
 #include <linux/sysctl.h>
+#include <linux/videodev2.h>
 #include <linux/wireless.h>
 #include <poll.h>
 #include <signal.h>
@@ -999,6 +1000,39 @@ struct BaseArch : public wordsize, public FcntlConstants {
   static size_t cmsg_len(size_t len) {
     return cmsg_align(sizeof(cmsghdr)) + len;
   }
+
+  struct v4l2_timecode {
+    uint32_t type;
+    uint32_t flags;
+    uint8_t frames;
+    uint8_t seconds;
+    uint8_t minutes;
+    uint8_t hours;
+    uint8_t userbits[4];
+  };
+  RR_VERIFY_TYPE(v4l2_timecode);
+
+  struct v4l2_buffer {
+    uint32_t index;
+    uint32_t type;
+    uint32_t bytesused;
+    uint32_t flags;
+    uint32_t field;
+    struct timeval timestamp;
+    struct v4l2_timecode timecode;
+    uint32_t sequence;
+    uint32_t memory;
+    union {
+      uint32_t offset;
+      unsigned_long userptr;
+      ptr<void> planes;
+      int32_t fd;
+    } m;
+    uint32_t length;
+    uint32_t reserved2;
+    uint32_t reserved;
+  };
+  RR_VERIFY_TYPE(v4l2_buffer);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
