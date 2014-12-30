@@ -43,6 +43,16 @@ class UnsupportedSyscall(BaseSyscall, ReplaySemantics):
         BaseSyscall.__init__(self, x86=x86, x64=x64)
         ReplaySemantics.__init__(self, ReplaySemantics.EXEC)
 
+class InvalidSyscall(UnsupportedSyscall):
+    """A syscall that is unsupported by rr and unimplemented by Linux.
+
+    We distinguish syscalls unimplemented by any version of Linux supported
+    by rr from other UnsupportedSyscalls, to help us track the completeness
+    of rr's syscall support.
+    """
+    def __init__(self, x86=None, x64=None):
+        UnsupportedSyscall.__init__(self, x86=x86, x64=x64)
+
 class RegularSyscall(BaseSyscall, ReplaySemantics):
     """A syscall for which replay information may be recorded automatically.
 
@@ -230,7 +240,7 @@ mknod = UnsupportedSyscall(x86=14, x64=133)
 # changed.
 chmod = EmulatedSyscall(x86=15, x64=90)
 lchown = EmulatedSyscall(x86=16, x64=94)
-_break = UnsupportedSyscall(x86=17)
+_break = InvalidSyscall(x86=17)
 oldstat = UnsupportedSyscall(x86=18)
 
 #  off_t lseek(int fd, off_t offset, int whence)
@@ -294,8 +304,8 @@ pause = IrregularEmulatedSyscall(x86=29, x64=34)
 # FIXME: is mod_time set by the kernel?
 utime = EmulatedSyscall(x86=30, x64=132)
 
-stty = UnsupportedSyscall(x86=31)
-gtty = UnsupportedSyscall(x86=32)
+stty = InvalidSyscall(x86=31)
+gtty = InvalidSyscall(x86=32)
 
 #  int access(const char *pathname, int mode);
 #
@@ -304,7 +314,7 @@ gtty = UnsupportedSyscall(x86=32)
 access = EmulatedSyscall(x86=33, x64=21)
 
 nice = UnsupportedSyscall(x86=34)
-ftime = UnsupportedSyscall(x86=35)
+ftime = InvalidSyscall(x86=35)
 sync = UnsupportedSyscall(x86=36, x64=162)
 
 #  int kill(pid_t pid, int sig)
@@ -351,7 +361,7 @@ pipe = EmulatedSyscall(x86=42, x64=22, arg1="int[2]")
 #  points to.  The struct tms is as defined in <sys/times.h>:
 times = EmulatedSyscall(x86=43, x64=100, arg1="typename Arch::tms")
 
-prof = UnsupportedSyscall(x86=44)
+prof = InvalidSyscall(x86=44)
 
 #  int brk(void *addr)
 #
@@ -375,7 +385,7 @@ geteuid = EmulatedSyscall(x86=49, x64=107)
 getegid = EmulatedSyscall(x86=50, x64=108)
 acct = UnsupportedSyscall(x86=51, x64=163)
 umount2 = UnsupportedSyscall(x86=52, x64=166)
-lock = UnsupportedSyscall(x86=53)
+lock = InvalidSyscall(x86=53)
 
 #  int ioctl(int d, int request, ...)
 #
@@ -387,7 +397,7 @@ lock = UnsupportedSyscall(x86=53)
 ioctl = IrregularEmulatedSyscall(x86=54, x64=16)
 
 fcntl = IrregularEmulatedSyscall(x86=55, x64=72)
-mpx = UnsupportedSyscall(x86=56)
+mpx = InvalidSyscall(x86=56)
 
 #  int setpgid(pid_t pid, pid_t pgid);
 #
@@ -403,7 +413,7 @@ mpx = UnsupportedSyscall(x86=56)
 # joining process.
 setpgid = EmulatedSyscall(x86=57, x64=109)
 
-ulimit = UnsupportedSyscall(x86=58)
+ulimit = InvalidSyscall(x86=58)
 oldolduname = UnsupportedSyscall(x86=59)
 
 #  mode_t umask(mode_t mask);
@@ -566,7 +576,7 @@ getpriority = EmulatedSyscall(x86=96, x64=140)
 # and set with the setpriority() call.
 setpriority = EmulatedSyscall(x86=97, x64=141)
 
-profil = UnsupportedSyscall(x86=98)
+profil = InvalidSyscall(x86=98)
 
 #  int statfs(const char *path, struct statfs *buf)
 #
@@ -730,7 +740,7 @@ fchdir = EmulatedSyscall(x86=133, x64=81)
 bdflush = UnsupportedSyscall(x86=134)
 sysfs = UnsupportedSyscall(x86=135, x64=139)
 personality = UnsupportedSyscall(x86=136, x64=135)
-afs_syscall = UnsupportedSyscall(x86=137, x64=183)
+afs_syscall = InvalidSyscall(x86=137, x64=183)
 setfsuid = UnsupportedSyscall(x86=138, x64=122)
 setfsgid = UnsupportedSyscall(x86=139, x64=123)
 
@@ -997,8 +1007,8 @@ capset = UnsupportedSyscall(x86=185, x64=126)
 sigaltstack = EmulatedSyscall(x86=186, x64=131, arg2="typename Arch::stack_t")
 
 sendfile = IrregularEmulatedSyscall(x86=187, x64=40)
-getpmsg = UnsupportedSyscall(x86=188, x64=181)
-putpmsg = UnsupportedSyscall(x86=189, x64=182)
+getpmsg = InvalidSyscall(x86=188, x64=181)
+putpmsg = InvalidSyscall(x86=189, x64=182)
 vfork = UnsupportedSyscall(x86=190, x64=58)
 
 #  int getrlimit(int resource, struct rlimit *rlim)
@@ -1369,7 +1379,7 @@ utimes = EmulatedSyscall(x86=271, x64=235)
 
 fadvise64_64 = EmulatedSyscall(x86=272)
 
-vserver = UnsupportedSyscall(x86=273, x64=236)
+vserver = InvalidSyscall(x86=273, x64=236)
 mbind = UnsupportedSyscall(x86=274, x64=237)
 get_mempolicy = UnsupportedSyscall(x86=275, x64=239)
 set_mempolicy = UnsupportedSyscall(x86=276, x64=238)
