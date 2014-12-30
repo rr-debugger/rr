@@ -1655,7 +1655,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     case Arch::quotactl:
-      switch ((int)t->regs().arg1_signed() & SUBCMDMASK) {
+      switch (t->regs().arg1() >> SUBCMDSHIFT) {
         case Q_GETQUOTA:
           syscall_state.reg_parameter<typename Arch::dqblk>(4);
           break;
@@ -2096,6 +2096,10 @@ static string extra_expected_errno_info(Task* t,
              << " addr:" << HEX(t->regs().arg3());
           break;
         }
+        case Arch::quotactl:
+          ss << "; unknown quotactl(" << HEX(t->regs().arg1() >> SUBCMDSHIFT)
+             << ")";
+          break;
       }
       break;
   }

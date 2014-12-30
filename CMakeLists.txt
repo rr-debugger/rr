@@ -265,6 +265,7 @@ set(BASIC_TESTS
   prctl_name
   prw
   pthread_condvar_locking
+  quotactl
   rdtsc
   readdir
   readlink

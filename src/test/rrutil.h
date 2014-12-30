@@ -38,6 +38,7 @@
 #include <sys/msg.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
+#include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/select.h>
 #include <sys/sendfile.h>
