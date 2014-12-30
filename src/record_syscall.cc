@@ -638,7 +638,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.mem_ptr_parameter(
           REMOTE_PTR_FIELD(argsp, buf),
           ParamSize::from_syscall_result<typename Arch::ssize_t>(args.len));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     /* int accept([int sockfd, struct sockaddr *addr, socklen_t *addrlen]) */
@@ -650,7 +650,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.mem_ptr_parameter(
           REMOTE_PTR_FIELD(argsp, addr),
           ParamSize::from_initialized_mem(t, addrlen_ptr));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     /* int accept4([int sockfd, struct sockaddr *addr, socklen_t *addrlen, int
@@ -663,7 +663,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.mem_ptr_parameter(
           REMOTE_PTR_FIELD(argsp, addr),
           ParamSize::from_initialized_mem(t, addrlen_ptr));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     case SYS_RECVFROM: {
@@ -678,7 +678,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.mem_ptr_parameter(
           REMOTE_PTR_FIELD(argsp, src_addr),
           ParamSize::from_initialized_mem(t, addrlen_ptr));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     case SYS_RECVMSG: {
@@ -692,7 +692,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
 
       auto args = t->read_mem(argsp);
       if (!(args.flags & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
       break;
     }
@@ -707,7 +707,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       auto mmsgp = mmsgp_void.cast<typename Arch::mmsghdr>();
       prepare_recvmmsg<Arch>(t, syscall_state, mmsgp, args.vlen);
       if (!(args.flags & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
       break;
     }
@@ -717,7 +717,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       auto argsp = remote_ptr<typename Arch::sendmsg_args>(t->regs().arg2());
       auto args = t->read_mem(argsp);
       if (!(args.flags & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
       break;
     }
@@ -730,7 +730,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
           REMOTE_PTR_FIELD(argsp, msgvec),
           sizeof(typename Arch::mmsghdr) * args.vlen, IN_OUT);
       if (!(args.flags & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
       break;
     }
@@ -739,7 +739,7 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.expect_errno = EINVAL;
       break;
   }
-  return syscall_state.done_preparing(PREVENT_SWITCH);
+  return PREVENT_SWITCH;
 }
 
 template <typename Arch>
@@ -755,7 +755,7 @@ static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
       syscall_state.reg_parameter<typename Arch::msginfo>(buf_ptr_reg);
       break;
   }
-  return syscall_state.done_preparing(PREVENT_SWITCH);
+  return PREVENT_SWITCH;
 }
 
 template <typename Arch>
@@ -988,11 +988,10 @@ static bool exec_file_supported(const string& file_name) {
 #endif
 }
 
-template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
+template <typename Arch>
+static Switchable rec_prepare_syscall_arch(Task* t,
+                                           TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
-
-  auto& syscall_state = syscall_state_property.get_or_create(*t);
-  syscall_state.init(t);
 
   if (t->desched_rec()) {
     return prepare_deschedule<Arch>(t, syscall_state, syscallno);
@@ -1012,16 +1011,16 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::splice: {
       syscall_state.reg_parameter<loff_t>(2, IN_OUT);
       syscall_state.reg_parameter<loff_t>(4, IN_OUT);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     case Arch::sendfile: {
       syscall_state.reg_parameter<typename Arch::off_t>(3, IN_OUT);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
     case Arch::sendfile64: {
       syscall_state.reg_parameter<typename Arch::off64_t>(3, IN_OUT);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     case Arch::clone: {
@@ -1129,14 +1128,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           // SETLKW blocks, but doesn't write any
           // outparam data to the |struct flock|
           // argument, so no need for scratch.
-          return syscall_state.done_preparing(ALLOW_SWITCH);
+          return ALLOW_SWITCH;
 
         default:
           // Unknown command should trigger EINVAL.
           syscall_state.expect_errno = EINVAL;
           break;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     /* int futex(int *uaddr, int op, int val, const struct timespec *timeout,
      *           int *uaddr2, int val3);
@@ -1147,7 +1146,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
         case FUTEX_WAIT:
         case FUTEX_WAIT_BITSET:
           syscall_state.reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
-          return syscall_state.done_preparing(ALLOW_SWITCH);
+          return ALLOW_SWITCH;
 
         case FUTEX_CMP_REQUEUE:
         case FUTEX_WAKE_OP:
@@ -1163,7 +1162,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.expect_errno = EINVAL;
           break;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     case Arch::ipc:
       switch (t->regs().arg1_signed()) {
@@ -1176,7 +1175,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           break;
 
         case MSGSND:
-          return syscall_state.done_preparing(ALLOW_SWITCH);
+          return ALLOW_SWITCH;
 
         case MSGRCV: {
           size_t msgsize = t->regs().arg3();
@@ -1186,14 +1185,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(kluge_args, msgbuf),
                                           sizeof(typename Arch::signed_long) +
                                               msgsize);
-          return syscall_state.done_preparing(ALLOW_SWITCH);
+          return ALLOW_SWITCH;
         }
 
         default:
           syscall_state.expect_errno = EINVAL;
           break;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     case Arch::msgctl:
       return prepare_msgctl<Arch>(t, syscall_state,
@@ -1203,11 +1202,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       size_t msgsize = t->regs().arg3();
       syscall_state.reg_parameter(2,
                                   sizeof(typename Arch::signed_long) + msgsize);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     case Arch::msgsnd:
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::socketcall:
       return prepare_socketcall<Arch>(t, syscall_state);
@@ -1232,7 +1231,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
         syscall_state.reg_parameter<typename Arch::fd_set>(4, IN_OUT);
         syscall_state.reg_parameter<typename Arch::timeval>(5, IN_OUT);
       }
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::recvfrom: {
       syscall_state.reg_parameter(
@@ -1242,7 +1241,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.reg_parameter<typename Arch::socklen_t>(6, IN_OUT);
       syscall_state.reg_parameter(
           5, ParamSize::from_initialized_mem(t, addrlen_ptr));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     case Arch::recvmsg: {
@@ -1251,9 +1250,9 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           t, syscall_state, msgp,
           ParamSize::from_syscall_result<typename Arch::ssize_t>());
       if (!((int)t->regs().arg3() & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::recvmmsg: {
@@ -1263,25 +1262,25 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
                                       IN_OUT).cast<typename Arch::mmsghdr>();
       prepare_recvmmsg<Arch>(t, syscall_state, mmsgp, vlen);
       if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::sendmsg:
       if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     case Arch::sendmmsg: {
       auto vlen = (unsigned int)t->regs().arg3();
       syscall_state.reg_parameter(2, sizeof(typename Arch::mmsghdr) * vlen,
                                   IN_OUT);
       if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {
-        return syscall_state.done_preparing(ALLOW_SWITCH);
+        return ALLOW_SWITCH;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::getsockname:
@@ -1290,7 +1289,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.reg_parameter<typename Arch::socklen_t>(3, IN_OUT);
       syscall_state.reg_parameter(
           2, ParamSize::from_initialized_mem(t, addrlen_ptr));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::getsockopt: {
@@ -1298,7 +1297,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.reg_parameter<typename Arch::socklen_t>(5, IN_OUT);
       syscall_state.reg_parameter(
           4, ParamSize::from_initialized_mem(t, optlen_ptr));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::pread64:
@@ -1307,7 +1306,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<typename Arch::size_t>(
                  (size_t)t->regs().arg3()));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::accept:
     case Arch::accept4: {
@@ -1315,28 +1314,28 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.reg_parameter<typename Arch::socklen_t>(3, IN_OUT);
       syscall_state.reg_parameter(
           2, ParamSize::from_initialized_mem(t, addrlen_ptr));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     case Arch::getcwd: {
       syscall_state.reg_parameter(
           1, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  (size_t)t->regs().arg2()));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::getdents:
     case Arch::getdents64: {
       syscall_state.reg_parameter(2, ParamSize::from_syscall_result<int>(
                                          (unsigned int)t->regs().arg3()));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::readlink: {
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  (size_t)t->regs().arg3()));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::getgroups: {
@@ -1345,7 +1344,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // require more infrastructure and it's not worth worrying about.
       syscall_state.reg_parameter(2, (int)t->regs().arg1_signed() *
                                          sizeof(typename Arch::legacy_gid_t));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::getgroups32: {
@@ -1354,7 +1353,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // require more infrastructure and it's not worth worrying about.
       syscall_state.reg_parameter(2, (int)t->regs().arg1_signed() *
                                          sizeof(typename Arch::gid_t));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::write:
@@ -1403,7 +1402,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
         syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(iovecsp + i, iov_base),
                                         io_size.limit_size(iovecs[i].iov_len));
       }
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     /* pid_t waitpid(pid_t pid, int *status, int options); */
@@ -1415,14 +1414,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       if (syscallno == Arch::wait4) {
         syscall_state.reg_parameter<typename Arch::rusage>(4);
       }
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::waitid:
       syscall_state.reg_parameter<typename Arch::siginfo_t>(3);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::pause:
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     /* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
     /* int ppoll(struct pollfd *fds, nfds_t nfds,
@@ -1433,7 +1432,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       auto nfds = (nfds_t)t->regs().arg2();
       syscall_state.reg_parameter(1, sizeof(typename Arch::pollfd) * nfds,
                                   IN_OUT);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
     }
 
     /* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned
@@ -1464,11 +1463,11 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.expect_errno = EINVAL;
           break;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     case Arch::ioctl:
       prepare_ioctl<Arch>(t, syscall_state);
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     case Arch::_sysctl: {
       auto argsp =
@@ -1478,7 +1477,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       syscall_state.mem_ptr_parameter(
           REMOTE_PTR_FIELD(argsp, oldval),
           ParamSize::from_initialized_mem(t, oldlenp));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
     }
 
     case Arch::quotactl:
@@ -1505,14 +1504,14 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
           syscall_state.expect_errno = EINVAL;
           break;
       }
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
      * timeout); */
     case Arch::epoll_wait:
       syscall_state.reg_parameter(2, sizeof(typename Arch::epoll_event) *
                                          t->regs().arg3_signed());
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     /* The following two syscalls enable context switching not for
      * liveness/correctness reasons, but rather because if we
@@ -1524,7 +1523,7 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     /* int nanosleep(const struct timespec *req, struct timespec *rem); */
     case Arch::nanosleep:
       syscall_state.reg_parameter<typename Arch::timespec>(2);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::sched_yield:
       // Force |t| to be context-switched if another thread
@@ -1539,28 +1538,28 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
       // blocking-waitpid on t to see its status change.
       t->pseudo_blocked = true;
       t->record_session().scheduler().schedule_one_round_robin(t);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::rt_sigpending:
       syscall_state.reg_parameter(1, (size_t)t->regs().arg2());
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     case Arch::rt_sigtimedwait:
       syscall_state.reg_parameter<typename Arch::siginfo_t>(2);
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
       t->sigsuspend_blocked_sigs = unique_ptr<sig_set_t>(
           new sig_set_t(t->read_mem(remote_ptr<sig_set_t>(t->regs().arg1()))));
-      return syscall_state.done_preparing(ALLOW_SWITCH);
+      return ALLOW_SWITCH;
 
     case Arch::getxattr:
     case Arch::lgetxattr:
     case Arch::fgetxattr:
       syscall_state.reg_parameter(
           3, ParamSize::from_syscall_result<size_t>(t->regs().arg4()));
-      return syscall_state.done_preparing(PREVENT_SWITCH);
+      return PREVENT_SWITCH;
 
     case Arch::sched_setaffinity: {
       syscall_state.syscall_entry_registers =
@@ -1579,13 +1578,8 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
     case Arch::open:
     case Arch::rrcall_init_buffers:
     case Arch::rrcall_init_preload:
-      return syscall_state.done_preparing(PREVENT_SWITCH);
-
     case Arch::rt_sigreturn:
     case Arch::sigreturn:
-      // There isn't going to be an exit event for this syscall, so remove
-      // syscall_state now.
-      syscall_state_property.remove(*t);
       return PREVENT_SWITCH;
 
     default:
@@ -1599,8 +1593,25 @@ template <typename Arch> static Switchable rec_prepare_syscall_arch(Task* t) {
   }
 }
 
+static Switchable rec_prepare_syscall_internal(
+    Task* t, TaskSyscallState& syscall_state) {
+  RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t, syscall_state)
+}
+
 Switchable rec_prepare_syscall(Task* t) {
-  RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t)
+  auto& syscall_state = syscall_state_property.get_or_create(*t);
+  syscall_state.init(t);
+
+  Switchable s = rec_prepare_syscall_internal(t, syscall_state);
+  int syscallno = t->ev().Syscall().number;
+  if (is_sigreturn_syscall(syscallno, t->arch()) ||
+      is_rt_sigreturn_syscall(syscallno, t->arch())) {
+    // There isn't going to be an exit event for this syscall, so remove
+    // syscall_state now.
+    syscall_state_property.remove(*t);
+    return s;
+  }
+  return syscall_state.done_preparing(s);
 }
 
 template <typename Arch> static void rec_prepare_restart_syscall_arch(Task* t) {
