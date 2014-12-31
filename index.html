@@ -289,8 +289,7 @@ sudo dpkg -i rr-3.0.0-Linux-$(uname -m).deb
       <p>
         If you're using rr to debug Firefox, you may find
         <a href="https://github.com/mozilla/rr/wiki/Recording-Firefox">
-        these special setup instructions</a> helpful.  They cover how
-        to build a 32-bit Firefox on a 64-bit OS, and how to use rr to
+        these setup instructions</a> helpful. They cover how to use rr to
         record Firefox test suites.
     </div>
   </section>
@@ -408,8 +407,6 @@ sudo dpkg -i rr-3.0.0-Linux-$(uname -m).deb
         outside the recording tree. This is an inherent feature of the
         design. rr automatically disables features such as X shared
         memory for recorded processes to avoid this problem.
-      <li>currently only supports x86 32-bit processes. x86-64 support
-        is being worked on.
       <li>requires a reasonably modern x86 CPU. It depends on certain
         performance counter features that are not available in older
         CPUs, or in ARM at all currently.
