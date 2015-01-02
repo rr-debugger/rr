@@ -1573,7 +1573,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       auto iovecs = t->read_mem(iovecsp, iovcnt);
       ParamSize io_size =
           ParamSize::from_syscall_result<typename Arch::size_t>();
-      for (size_t i = 0; i < iovcnt; ++i) {
+      for (int i = 0; i < iovcnt; ++i) {
         syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(iovecsp + i, iov_base),
                                         io_size.limit_size(iovecs[i].iov_len));
       }
