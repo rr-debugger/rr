@@ -7,7 +7,6 @@
 #define _POSIX_C_SOURCE 2
 
 #include <arpa/inet.h>
-#include <attr/xattr.h>
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
@@ -31,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
+#include <sys/xattr.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/ipc.h>
