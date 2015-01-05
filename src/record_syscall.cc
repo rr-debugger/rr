@@ -317,6 +317,13 @@ struct TaskSyscallState {
     after_syscall_actions.push_back(action);
   }
 
+  void emulate_result(uint64_t result) {
+    ASSERT(t, !preparation_done);
+    ASSERT(t, !should_emulate_result);
+    should_emulate_result = true;
+    emulated_result = result;
+  }
+
   /**
    * Internal method that takes 'ptr', an address within some memory parameter,
    * and relocates it to the parameter's location in scratch memory.
@@ -388,6 +395,11 @@ struct TaskSyscallState {
    */
   int expect_errno;
 
+  /** When should_emulate_result is true, syscall result should be adjusted to
+   *  be emulated_result. */
+  bool should_emulate_result;
+  uint64_t emulated_result;
+
   /** Records whether the syscall is switchable. Only valid when
    *  preparation_done is true. */
   Switchable switchable;
@@ -409,6 +421,7 @@ struct TaskSyscallState {
   TaskSyscallState()
       : t(nullptr),
         expect_errno(0),
+        should_emulate_result(false),
         preparation_done(false),
         scratch_enabled(false) {}
 };
@@ -644,6 +657,12 @@ void TaskSyscallState::process_syscall_results() {
       size_t size = eval_param_size(i, actual_sizes);
       t->record_remote(param.dest, size);
     }
+  }
+
+  if (should_emulate_result) {
+    Registers r = t->regs();
+    r.set_syscall_result(emulated_result);
+    t->set_regs(r);
   }
 
   for (auto& action : after_syscall_actions) {
@@ -1744,6 +1763,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       // Set arg1 to an invalid PID to ensure this syscall is ignored.
       r.set_arg1(-1);
       t->set_regs(r);
+      syscall_state.emulate_result(0);
       return PREVENT_SWITCH;
     }
 
@@ -2252,8 +2272,6 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       // Restore the register that we altered.
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
-      // Pretend the syscall succeeded.
-      r.set_syscall_result(0);
       t->set_regs(r);
       break;
     }
