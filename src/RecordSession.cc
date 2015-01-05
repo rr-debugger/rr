@@ -737,8 +737,13 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
   t->switchable = PREVENT_SWITCH;
 
   if (t->ptrace_event()) {
+    if (t->ptrace_event() == PTRACE_EVENT_STOP) {
+      t->switchable = ALLOW_SWITCH;
+    }
     // A ptrace event arrived. The steps below are irrelevant
     // and potentially wrong because no ev() was pushed.
+    // We prevent switching after most ptrace events to simplify possible
+    // interactions.
     return;
   }
 
