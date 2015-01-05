@@ -211,14 +211,16 @@ Task* Scheduler::get_next_thread(Task* t, bool* by_waitpid) {
         }
         FATAL() << "Failed to waitpid()";
       }
-      LOG(debug) << "  " << tid << " changed status to " << status;
+      LOG(debug) << "  " << tid << " changed status to " << HEX(status);
 
       next = session.find_task(tid);
       if (!next) {
         LOG(debug) << "    ... but it's dead";
       }
     } while (!next);
-    ASSERT(next, next->unstable || next->may_be_blocked())
+    ASSERT(next,
+           next->unstable || next->may_be_blocked() ||
+               Task::ptrace_event_from_status(status) == PTRACE_EVENT_EXIT)
         << "Scheduled task should have been blocked or unstable";
     next->did_waitpid(status);
     *by_waitpid = true;
