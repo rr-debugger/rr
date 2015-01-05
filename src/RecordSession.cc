@@ -705,10 +705,10 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
           LOG(warn) << "Delivered core-dumping signal; may misrecord "
                        "CLONE_CHILD_CLEARTID memory race";
           t->destabilize_task_group();
-          t->switchable = ALLOW_SWITCH;
         }
         t->signal_delivered(sig);
         t->ev().Signal().delivered = 1;
+        t->switchable = ALLOW_SWITCH;
         return false;
       }
 
