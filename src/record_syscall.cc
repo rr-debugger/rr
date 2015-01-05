@@ -1198,9 +1198,23 @@ static bool maybe_emulate_wait(Task* t, TaskSyscallState& syscall_state) {
   return false;
 }
 
+static Task* verify_ptrace_target(Task* tracer, TaskSyscallState& syscall_state,
+                                  pid_t pid) {
+  Task* tracee = tracer->session().find_task(pid);
+  if (!tracee || tracee->emulated_ptracer != tracer ||
+      tracee->emulated_stop_type == NOT_STOPPED) {
+    syscall_state.emulate_result(-ESRCH);
+    return nullptr;
+  }
+  return tracee;
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
+  syscall_state.syscall_entry_registers =
+      unique_ptr<Registers>(new Registers(t->regs()));
   pid_t pid = (pid_t)t->regs().arg2_signed();
+  bool emulate = true;
   switch ((int)t->regs().arg1_signed()) {
     case PTRACE_ATTACH: {
       Task* tracee = t->session().find_task(pid);
@@ -1225,9 +1239,26 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       }
       break;
     }
-    default:
-      syscall_state.expect_errno = EINVAL;
+    case PTRACE_GETREGS: {
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto data =
+            syscall_state.reg_parameter<typename Arch::user_regs_struct>(4);
+        auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
+        t->write_bytes_helper(data, regs.size(), regs.data());
+        syscall_state.emulate_result(0);
+      }
       break;
+    }
+    default:
+      syscall_state.expect_errno = EIO;
+      emulate = false;
+      break;
+  }
+  if (emulate) {
+    Registers r = t->regs();
+    r.set_arg1((intptr_t) - 1);
+    t->set_regs(r);
   }
   return PREVENT_SWITCH;
 }
@@ -2215,6 +2246,10 @@ static string extra_expected_errno_info(Task* t,
           ss << "; unknown quotactl(" << HEX(t->regs().arg1() >> SUBCMDSHIFT)
              << ")";
           break;
+      }
+      break;
+    case EIO:
+      switch (t->regs().original_syscallno()) {
         case Arch::ptrace:
           ss << "; unsupported ptrace(" << HEX((int)t->regs().arg1()) << " ["
              << ptrace_req_name((int)t->regs().arg1_signed()) << "])";
@@ -2367,6 +2402,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       t->sigsuspend_blocked_sigs = nullptr;
       break;
 
+    case Arch::ptrace:
     case Arch::sched_setaffinity: {
       // Restore the register that we altered.
       Registers r = t->regs();
