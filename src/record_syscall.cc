@@ -1585,14 +1585,14 @@ static Switchable rec_prepare_syscall_arch(Task* t,
      */
     case Arch::waitpid:
     case Arch::wait4:
-      syscall_state.reg_parameter<int>(2);
+      syscall_state.reg_parameter<int>(2, IN_OUT);
       if (syscallno == Arch::wait4) {
         syscall_state.reg_parameter<typename Arch::rusage>(4);
       }
       return ALLOW_SWITCH;
 
     case Arch::waitid:
-      syscall_state.reg_parameter<typename Arch::siginfo_t>(3);
+      syscall_state.reg_parameter<typename Arch::siginfo_t>(3, IN_OUT);
       return ALLOW_SWITCH;
 
     case Arch::pause:
