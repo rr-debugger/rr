@@ -274,6 +274,11 @@ public:
   void destabilize_task_group();
 
   /**
+   * Emulate 'tracer' ptracing this task.
+   */
+  void set_emulated_ptracer(Task* tracer);
+
+  /**
    * Dump attributes of this process, including pending events,
    * to |out|, which defaults to LOG_FILE.
    */
@@ -1036,6 +1041,10 @@ public:
   // If not NOT_STOPPED, then the task is logically stopped and this is the type
   // of stop.
   EmulatedStopType emulated_stop_type;
+
+  // Task for which we're emulating ptrace of this task, or null
+  Task* emulated_ptracer;
+  std::set<Task*> emulated_ptrace_tracees;
 
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,

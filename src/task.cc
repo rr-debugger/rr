@@ -204,6 +204,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
       priority(_priority),
       in_round_robin_queue(false),
       emulated_stop_type(NOT_STOPPED),
+      emulated_ptracer(nullptr),
       scratch_ptr(),
       scratch_size(),
       flushed_syscallbuf(false),
@@ -240,6 +241,15 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
 
 Task::~Task() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
+
+  if (emulated_ptracer) {
+    emulated_ptracer->emulated_ptrace_tracees.erase(this);
+  }
+  for (Task* t : emulated_ptrace_tracees) {
+    // XXX emulate PTRACE_O_EXITKILL
+    ASSERT(this, t->emulated_ptracer == this);
+    t->emulated_ptracer = nullptr;
+  }
 
   assert(this == session().find_task(rec_tid));
   // We expect tasks to usually exit by a call to exit() or
@@ -339,6 +349,18 @@ void Task::destabilize_task_group() {
   }
 
   tg->destabilize();
+}
+
+void Task::set_emulated_ptracer(Task* tracer) {
+  if (tracer) {
+    ASSERT(this, !emulated_ptracer);
+    emulated_ptracer = tracer;
+    emulated_ptracer->emulated_ptrace_tracees.insert(this);
+  } else {
+    ASSERT(this, emulated_ptracer);
+    emulated_ptracer->emulated_ptrace_tracees.erase(this);
+    emulated_ptracer = nullptr;
+  }
 }
 
 void Task::dump(FILE* out) const {
