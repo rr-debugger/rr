@@ -37,6 +37,7 @@
 #include <sys/times.h>
 #include <sys/utsname.h>
 #include <sys/vfs.h>
+#include <sys/wait.h>
 #include <termios.h>
 
 #include <limits>
@@ -1603,16 +1604,45 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     /* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
      */
     case Arch::waitpid:
-    case Arch::wait4:
+    case Arch::wait4: {
       syscall_state.reg_parameter<int>(2, IN_OUT);
       if (syscallno == Arch::wait4) {
         syscall_state.reg_parameter<typename Arch::rusage>(4);
       }
+      pid_t pid = (pid_t)t->regs().arg1_signed();
+      if (pid < -1) {
+        t->in_wait_type = WAIT_TYPE_PGID;
+        t->in_wait_pid = -pid;
+      } else if (pid == -1) {
+        t->in_wait_type = WAIT_TYPE_ANY;
+      } else if (pid == 0) {
+        t->in_wait_type = WAIT_TYPE_SAME_PGID;
+      } else {
+        t->in_wait_type = WAIT_TYPE_PID;
+        t->in_wait_pid = pid;
+      }
       return ALLOW_SWITCH;
+    }
 
-    case Arch::waitid:
+    case Arch::waitid: {
       syscall_state.reg_parameter<typename Arch::siginfo_t>(3, IN_OUT);
+      t->in_wait_pid = (id_t)t->regs().arg2();
+      switch ((idtype_t)t->regs().arg1()) {
+        case P_ALL:
+          t->in_wait_type = WAIT_TYPE_ANY;
+          break;
+        case P_PID:
+          t->in_wait_type = WAIT_TYPE_PID;
+          break;
+        case P_PGID:
+          t->in_wait_type = WAIT_TYPE_PGID;
+          break;
+        default:
+          syscall_state.expect_errno = EINVAL;
+          break;
+      }
       return ALLOW_SWITCH;
+    }
 
     case Arch::pause:
       return ALLOW_SWITCH;
@@ -2275,6 +2305,12 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       t->set_regs(r);
       break;
     }
+
+    case Arch::waitpid:
+    case Arch::wait4:
+    case Arch::waitid:
+      t->in_wait_type = WAIT_TYPE_NONE;
+      break;
 
     case SYS_rrcall_init_buffers:
       t->init_buffers(nullptr, SHARE_DESCHED_EVENT_FD);

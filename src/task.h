@@ -116,6 +116,21 @@ enum Switchable {
   ALLOW_SWITCH
 };
 
+/** Different kinds of waits a task can do.
+ */
+enum WaitType {
+  // Not waiting for anything
+  WAIT_TYPE_NONE,
+  // Waiting for any child process
+  WAIT_TYPE_ANY,
+  // Waiting for any child with the same process group ID
+  WAIT_TYPE_SAME_PGID,
+  // Waiting for any child with a specific process group ID
+  WAIT_TYPE_PGID,
+  // Waiting for a specific process ID
+  WAIT_TYPE_PID
+};
+
 /** Reasons why we simulate stopping of a task (see ptrace(2) man page).
  */
 enum EmulatedStopType {
@@ -1051,6 +1066,9 @@ public:
   // Task for which we're emulating ptrace of this task, or null
   Task* emulated_ptracer;
   std::set<Task*> emulated_ptrace_tracees;
+
+  WaitType in_wait_type;
+  pid_t in_wait_pid;
 
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
