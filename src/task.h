@@ -924,6 +924,12 @@ public:
   bool try_wait();
 
   /**
+   * Currently we don't allow recording across uid changes, so we can just
+   * return rr's uid.
+   */
+  uid_t getuid() { return ::getuid(); }
+
+  /**
    * Write |N| bytes from |buf| to |child_addr|, or don't
    * return.
    */
