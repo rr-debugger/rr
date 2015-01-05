@@ -585,6 +585,8 @@ static void handle_siginfo(Task* t, siginfo_t* si) {
   LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
              << " (pevent: " << t->ptrace_event() << ", event: " << t->ev();
 
+  t->set_siginfo_for_synthetic_SIGCHLD(si);
+
   /* We have to check for a desched event first, because for
    * those we *do not* want to (and cannot, most of the time)
    * step the tracee out of the syscallbuf code before

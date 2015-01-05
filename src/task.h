@@ -294,6 +294,40 @@ public:
   void set_emulated_ptracer(Task* tracer);
 
   /**
+   * Call this when an event occurs that should stop a ptraced task.
+   * If we're emulating ptrace of the task, stop the task and wake the ptracer
+   * if it's waiting, and queue "code" as an status code to be reported to the
+   * ptracer.
+   * Returns true if the task is stopped-for-emulated-ptrace, false otherwise.
+   */
+  bool emulate_ptrace_stop(int code, EmulatedStopType stop_type);
+  /**
+   * Force the ptrace-stop state no matter what state the task is currently in.
+   */
+  void force_emulate_ptrace_stop(int code, EmulatedStopType stop_type);
+
+  /**
+   * Called when this task is able to receive a SIGCHLD (e.g. because
+   * we completed delivery of a signal already). Sends a new synthetic
+   * SIGCHLD to the task if there are still ptraced tasks that need a SIGCHLD
+   * sent for them.
+   */
+  void send_synthetic_SIGCHLD_if_necessary();
+  /**
+   * Called when we're about to deliver a signal to this task. If it's a
+   * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
+   * update the siginfo to reflect the status and note that that
+   * ptraced task has had its SIGCHLD sent.
+   */
+  void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
+
+  /**
+   * Returns true if this task is in a waitpid or similar that would return
+   * when t's status changes due to a ptrace event.
+   */
+  bool is_waiting_for_ptrace(Task* t);
+
+  /**
    * Dump attributes of this process, including pending events,
    * to |out|, which defaults to LOG_FILE.
    */
@@ -1065,6 +1099,11 @@ public:
 
   // Task for which we're emulating ptrace of this task, or null
   Task* emulated_ptracer;
+  // true if this task needs to send a SIGCHLD to its ptracer for its
+  // emulated ptrace stop
+  bool emulated_ptrace_SIGCHLD_pending;
+  // if nonzero, code to deliver to ptracer when it waits
+  int emulated_ptrace_stop_code;
   std::set<Task*> emulated_ptrace_tracees;
 
   WaitType in_wait_type;

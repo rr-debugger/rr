@@ -7,6 +7,8 @@
 
 class Task;
 
+const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
+
 /**
  * Handle the pending signal for |t|.  To force delivery/handling of a
  * particular signal, pass a pointer to the siginfo in |si|.

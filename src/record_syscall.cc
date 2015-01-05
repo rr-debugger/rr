@@ -385,6 +385,8 @@ struct TaskSyscallState {
 
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
+  Task* ptraced_tracee;
+
   /** Saved syscall-entry registers, used by a couple of code paths that
    *  modify the registers temporarily.
    */
@@ -421,6 +423,7 @@ struct TaskSyscallState {
 
   TaskSyscallState()
       : t(nullptr),
+        ptraced_tracee(nullptr),
         expect_errno(0),
         should_emulate_result(false),
         preparation_done(false),
@@ -1183,6 +1186,18 @@ static bool exec_file_supported(const string& file_name) {
 #endif
 }
 
+static bool maybe_emulate_wait(Task* t, TaskSyscallState& syscall_state) {
+  for (Task* child : t->emulated_ptrace_tracees) {
+    if (t->is_waiting_for_ptrace(child) && child->emulated_ptrace_stop_code) {
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
+      syscall_state.ptraced_tracee = child;
+      return true;
+    }
+  }
+  return false;
+}
+
 template <typename Arch>
 static Switchable rec_prepare_syscall_arch(Task* t,
                                            TaskSyscallState& syscall_state) {
@@ -1621,6 +1636,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         t->in_wait_type = WAIT_TYPE_PID;
         t->in_wait_pid = pid;
       }
+      if (maybe_emulate_wait(t, syscall_state)) {
+        Registers r = t->regs();
+        // Set options to an invalid value to force syscall to fail
+        r.set_arg3(0xffffffff);
+        t->set_regs(r);
+        return PREVENT_SWITCH;
+      }
       return ALLOW_SWITCH;
     }
 
@@ -1640,6 +1662,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         default:
           syscall_state.expect_errno = EINVAL;
           break;
+      }
+      if (maybe_emulate_wait(t, syscall_state)) {
+        Registers r = t->regs();
+        // Set options to an invalid value to force syscall to fail
+        r.set_arg4(0xffffffff);
+        t->set_regs(r);
+        return PREVENT_SWITCH;
       }
       return ALLOW_SWITCH;
     }
@@ -2150,6 +2179,10 @@ static string extra_expected_errno_info(Task* t,
           ss << "; unknown quotactl(" << HEX(t->regs().arg1() >> SUBCMDSHIFT)
              << ")";
           break;
+        case Arch::ptrace:
+          ss << "; unsupported ptrace(" << HEX((int)t->regs().arg1()) << " ["
+             << ptrace_req_name((int)t->regs().arg1_signed()) << "])";
+          break;
       }
       break;
   }
@@ -2310,6 +2343,36 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::wait4:
     case Arch::waitid:
       t->in_wait_type = WAIT_TYPE_NONE;
+      if (syscall_state.ptraced_tracee) {
+        // Finish emulation of ptrace result
+        Registers r = t->regs();
+        r.set_arg3(syscall_state.syscall_entry_registers->arg3());
+        r.set_arg4(syscall_state.syscall_entry_registers->arg4());
+        r.set_syscall_result(syscall_state.ptraced_tracee->tid);
+        t->set_regs(r);
+        if (syscallno == Arch::waitid) {
+          remote_ptr<typename Arch::siginfo_t> sip = r.arg3();
+          typename Arch::siginfo_t si;
+          memset(&si, 0, sizeof(si));
+          si.si_signo = SIGCHLD;
+          si.si_code = CLD_TRAPPED;
+          si._sifields._sigchld.si_pid_ = syscall_state.ptraced_tracee->tgid();
+          si._sifields._sigchld.si_uid_ =
+              syscall_state.ptraced_tracee->getuid();
+          si._sifields._sigchld.si_status_ =
+              syscall_state.ptraced_tracee->emulated_ptrace_stop_code;
+          t->write_mem(sip, si);
+        } else {
+          remote_ptr<int> statusp = r.arg2();
+          t->write_mem(statusp,
+                       syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
+        }
+        if (syscallno == Arch::waitid && (r.arg4() & WNOWAIT)) {
+          // Leave the child in a waitable state
+        } else {
+          syscall_state.ptraced_tracee->emulated_ptrace_stop_code = 0;
+        }
+      }
       break;
 
     case SYS_rrcall_init_buffers:
