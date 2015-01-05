@@ -729,7 +729,6 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
 /**
  * The execution of |t| has just been resumed, and it most likely has
  * a new event that needs to be processed.  Prepare that new event.
- * Pass |si| to force-override signal status.
  */
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
   // Have to disable context-switching until we know it's safe

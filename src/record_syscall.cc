@@ -1209,6 +1209,11 @@ static Task* verify_ptrace_target(Task* tracer, TaskSyscallState& syscall_state,
   return tracee;
 }
 
+static void prepare_ptrace_cont(Task* tracee, int sig) {
+  ASSERT(tracee, !sig) << "PTRACE_CONT with signal not supported yet";
+  tracee->emulated_stop_type = NOT_STOPPED;
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   syscall_state.syscall_entry_registers =
@@ -1246,6 +1251,23 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
             syscall_state.reg_parameter<typename Arch::user_regs_struct>(4);
         auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
         t->write_bytes_helper(data, regs.size(), regs.data());
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_CONT: {
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        prepare_ptrace_cont(tracee, t->regs().arg4());
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_DETACH: {
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        tracee->set_emulated_ptracer(nullptr);
+        prepare_ptrace_cont(tracee, t->regs().arg4());
         syscall_state.emulate_result(0);
       }
       break;

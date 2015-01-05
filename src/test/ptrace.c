@@ -6,9 +6,13 @@ int main(int argc, char* argv[]) {
   pid_t child;
   int status;
   struct user_regs_struct* regs;
+  int pipe_fds[2];
+
+  test_assert(0 == pipe(pipe_fds));
 
   if (0 == (child = fork())) {
-    sleep(1000000);
+    char ch;
+    read(pipe_fds[0], &ch, 1);
     return 77;
   }
 
@@ -29,7 +33,12 @@ int main(int argc, char* argv[]) {
 #endif
   VERIFY_GUARD(regs);
 
-  test_assert(0 == kill(child, SIGKILL));
+  test_assert(0 == ptrace(PTRACE_DETACH, child, NULL, NULL));
+
+  test_assert(1 == write(pipe_fds[1], "x", 1));
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(WIFEXITED(status));
+  test_assert(WEXITSTATUS(status) == 77);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
