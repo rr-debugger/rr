@@ -1255,6 +1255,22 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       }
       break;
     }
+    case PTRACE_PEEKTEXT:
+    case PTRACE_PEEKDATA: {
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual syscall returns the data via the 'data' out-parameter.
+        // The behavior of returning the data as the system call result is
+        // provided by the glibc wrapper.
+        auto data =
+            syscall_state.reg_parameter<typename Arch::unsigned_word>(4);
+        remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
+        auto v = tracee->read_mem(addr);
+        t->write_mem(data, v);
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
     case PTRACE_CONT: {
       Task* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {

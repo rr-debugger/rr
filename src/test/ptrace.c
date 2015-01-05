@@ -2,11 +2,14 @@
 
 #include "rrutil.h"
 
+static size_t static_data = 0x12345678;
+
 int main(int argc, char* argv[]) {
   pid_t child;
   int status;
   struct user_regs_struct* regs;
   int pipe_fds[2];
+  struct timespec ts = { 0, 50000000 };
 
   test_assert(0 == pipe(pipe_fds));
 
@@ -16,6 +19,7 @@ int main(int argc, char* argv[]) {
     return 77;
   }
 
+  nanosleep(&ts, NULL);
   test_assert(0 == ptrace(PTRACE_ATTACH, child, NULL, NULL));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((SIGSTOP << 8) | 0x7f));
@@ -32,6 +36,9 @@ int main(int argc, char* argv[]) {
 #error unknown architecture
 #endif
   VERIFY_GUARD(regs);
+
+  test_assert(static_data ==
+              ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
 
   test_assert(0 == ptrace(PTRACE_DETACH, child, NULL, NULL));
 
