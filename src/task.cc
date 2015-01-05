@@ -203,6 +203,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
       stable_exit(false),
       priority(_priority),
       in_round_robin_queue(false),
+      emulated_stop_type(NOT_STOPPED),
       scratch_ptr(),
       scratch_size(),
       flushed_syscallbuf(false),
@@ -1187,6 +1188,28 @@ void Task::signal_delivered(int sig) {
   Sighandler& h = sighandlers->get(sig);
   if (h.resethand) {
     reset_handler(&h, arch());
+  }
+
+  switch (sig) {
+    case SIGSTOP:
+    case SIGTSTP:
+    case SIGTTIN:
+    case SIGTTOU:
+      // All threads in the process are stopped.
+      for (Task* t : tg->task_set()) {
+        LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "
+                   << sig;
+        t->emulated_stop_type = GROUP_STOP;
+      }
+      break;
+    case SIGCONT:
+      // All threads in the process are resumed.
+      for (Task* t : tg->task_set()) {
+        LOG(debug) << "setting " << tid << " to NOT_STOPPED due to signal "
+                   << sig;
+        t->emulated_stop_type = NOT_STOPPED;
+      }
+      break;
   }
 }
 

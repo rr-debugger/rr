@@ -116,6 +116,14 @@ enum Switchable {
   ALLOW_SWITCH
 };
 
+/** Reasons why we simulate stopping of a task (see ptrace(2) man page).
+ */
+enum EmulatedStopType {
+  NOT_STOPPED,
+  GROUP_STOP,          // stopped by a signal. This applies to non-ptracees too.
+  SIGNAL_DELIVERY_STOP // Stopped before delivering a signal. ptracees only.
+};
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -1013,21 +1021,21 @@ public:
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
   bool stable_exit;
-
   /* Task 'nice' value set by setpriority(2).
      We use this to drive scheduling decisions. rr's scheduler is
      deliberately simple and unfair; a task never runs as long as there's
      another runnable task with a lower nice value. */
   int priority;
-
   /* Tasks with in_round_robin_queue set are in the session's
    * in_round_robin_queue instead of its task_priority_set.
    */
   bool in_round_robin_queue;
-
   // The set of signals that were blocked during a sigsuspend. Only present
   // during the first EV_SIGNAL during an interrupted sigsuspend.
   std::unique_ptr<sig_set_t> sigsuspend_blocked_sigs;
+  // If not NOT_STOPPED, then the task is logically stopped and this is the type
+  // of stop.
+  EmulatedStopType emulated_stop_type;
 
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,

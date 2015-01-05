@@ -288,6 +288,8 @@ set(BASIC_TESTS
   sigqueueinfo
   sigreturn
   sigrt
+  sigstop
+  sigstop2
   sigsuspend
   sigtrap
   simple

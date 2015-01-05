@@ -56,6 +56,11 @@ static bool is_task_runnable(Task* t, bool* by_waitpid) {
     return true;
   }
 
+  if (t->emulated_stop_type != NOT_STOPPED) {
+    LOG(debug) << "  " << t->tid << " is stopped by ptrace or signal";
+    return false;
+  }
+
   if (!t->may_be_blocked()) {
     LOG(debug) << "  " << t->tid << " isn't blocked";
     return true;
