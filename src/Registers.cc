@@ -530,7 +530,7 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
  * 64-bit rr. In that case the user_regs_struct is 64-bit and we copy
  * the 32-bit register values from u.x86regs into it.
  */
-struct user_regs_struct Registers::get_ptrace() {
+struct user_regs_struct Registers::get_ptrace() const {
   struct user_regs_struct result;
   if (arch() == NativeArch::arch()) {
     memcpy(&result, &u, sizeof(result));
@@ -540,7 +540,29 @@ struct user_regs_struct Registers::get_ptrace() {
   assert(arch() == x86 && NativeArch::arch() == x86_64);
   memset(&result, 0, sizeof(result));
   convert_x86<from_x86_narrow, from_x86_same>(
-      u.x86regs, *reinterpret_cast<X64Arch::user_regs_struct*>(&result));
+      const_cast<Registers*>(this)->u.x86regs,
+      *reinterpret_cast<X64Arch::user_regs_struct*>(&result));
+  return result;
+}
+
+vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
+  Registers tmp_regs(arch);
+  tmp_regs.set_from_ptrace(get_ptrace());
+
+  vector<uint8_t> result;
+  switch (arch) {
+    case x86:
+      result.resize(sizeof(u.x86regs));
+      memcpy(result.data(), &u.x86regs, result.size());
+      break;
+    case x86_64:
+      result.resize(sizeof(u.x64regs));
+      memcpy(result.data(), &u.x64regs, result.size());
+      break;
+    default:
+      assert(0 && "Unknown arch");
+      break;
+  }
   return result;
 }
 

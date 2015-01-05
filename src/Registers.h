@@ -73,7 +73,14 @@ public:
    * rr build is 32-bit, or when the Registers' arch is completely different
    * to the rr build (e.g. ARM vs x86).
    */
-  struct user_regs_struct get_ptrace();
+  struct user_regs_struct get_ptrace() const;
+  /**
+   * Get a user_regs_struct for a particular Arch from these Registers.
+   * It's invalid to call this when 'arch' is 64-bit and the
+   * rr build is 32-bit, or when the Registers' arch is completely different
+   * to the rr build (e.g. ARM vs x86).
+   */
+  std::vector<uint8_t> get_ptrace_for_arch(SupportedArch arch) const;
 
 #define RR_GET_REG(x86case, x64case)                                           \
   (arch() == x86 ? (uint32_t)u.x86regs.x86case                                 \
