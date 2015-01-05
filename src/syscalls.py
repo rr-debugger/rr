@@ -271,7 +271,7 @@ stime = UnsupportedSyscall(x86=25)
 # (the "tracee"), and examine and change the tracee's memory and
 # registers.  It is primarily used to implement breakpoint debugging
 # and system call tracing.
-ptrace = UnsupportedSyscall(x86=26, x64=101)
+ptrace = IrregularEmulatedSyscall(x86=26, x64=101)
 
 #  unsigned int alarm(unsigned int seconds)
 #

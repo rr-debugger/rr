@@ -1199,6 +1199,40 @@ static bool maybe_emulate_wait(Task* t, TaskSyscallState& syscall_state) {
 }
 
 template <typename Arch>
+static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
+  pid_t pid = (pid_t)t->regs().arg2_signed();
+  switch ((int)t->regs().arg1_signed()) {
+    case PTRACE_ATTACH: {
+      Task* tracee = t->session().find_task(pid);
+      if (!tracee) {
+        syscall_state.emulate_result(-ESRCH);
+        break;
+      }
+      if (tracee->emulated_ptracer || tracee->tgid() == t->tgid()) {
+        syscall_state.emulate_result(-EPERM);
+        break;
+      }
+      tracee->set_emulated_ptracer(t);
+      syscall_state.emulate_result(0);
+      if (tracee->emulated_stop_type == NOT_STOPPED) {
+        kill(tracee->tid, SIGSTOP);
+      } else {
+        ASSERT(tracee, tracee->emulated_stop_type == GROUP_STOP);
+        // tracee is already stopped because of a group-stop signal.
+        // Sending a SIGSTOP won't work, but we don't need to.
+        tracee->force_emulate_ptrace_stop((SIGSTOP << 8) | 0x7f,
+                                          SIGNAL_DELIVERY_STOP);
+      }
+      break;
+    }
+    default:
+      syscall_state.expect_errno = EINVAL;
+      break;
+  }
+  return PREVENT_SWITCH;
+}
+
+template <typename Arch>
 static Switchable rec_prepare_syscall_arch(Task* t,
                                            TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
@@ -1825,6 +1859,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       syscall_state.emulate_result(0);
       return PREVENT_SWITCH;
     }
+
+    case Arch::ptrace: { return prepare_ptrace<Arch>(t, syscall_state); }
 
     case Arch::mmap:
     case Arch::mmap2:

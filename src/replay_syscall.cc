@@ -1080,20 +1080,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       step->action = syscall_action(state);
       return;
     }
-    case Arch::ptrace:
-      step->syscall.emu = EMULATE;
-      if (SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-        return;
-      }
-      // ptrace isn't supported yet, but we bend over
-      // backwards to make traces that contain ptrace aborts
-      // as pleasantly debuggable as possible.  This is
-      // because several crash-monitoring systems use ptrace
-      // to generate crash reports, and those are exactly
-      // the kinds of events users will want to debug.
-      ASSERT(t, false) << "Should have reached trace termination.";
-      return; // not reached
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:

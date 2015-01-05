@@ -265,6 +265,10 @@ set(BASIC_TESTS
   prctl_name
   prw
   pthread_condvar_locking
+  ptrace
+  ptrace_attach_running
+  ptrace_attach_sleeping
+  ptrace_attach_stopped
   quotactl
   rdtsc
   readdir
@@ -361,7 +365,6 @@ set(TESTS_WITH_PROGRAM
   mutex_pi_stress
   nanosleep
   priority
-  ptrace
   read_big_struct
   restart_abnormal_exit
   segfault
