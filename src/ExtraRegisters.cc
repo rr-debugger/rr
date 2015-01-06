@@ -98,151 +98,147 @@ static const int fxsave_64_reg_offset[] = {
 // Return the size of the register |regno|.  If |*can_read| is set to false,
 // then we don't know how to read this register.
 size_t ExtraRegisters::register_size(GdbRegister regno, bool* can_read) const {
-  assert(format_ != NONE);
+  assert(format_ == XSAVE);
 
-  if (format_ == XSAVE || format_ == FPXREGS) {
-    // Fortunately (though it's probably not coincidence)
-    // user_fpxregs_struct has the same layout as the
-    // XSAVE area.
-
-    switch (regno) {
-      case DREG_ST0:
-      case DREG_ST1:
-      case DREG_ST2:
-      case DREG_ST3:
-      case DREG_ST4:
-      case DREG_ST5:
-      case DREG_ST6:
-      case DREG_ST7:
-        return 10;
-      case DREG_FCTRL:
-      case DREG_FSTAT:
-      case DREG_FTAG:
-      case DREG_FISEG:
-      case DREG_FOSEG:
-      case DREG_FOP:
-        // NB: these registers only occupy 2 bytes of space in
-        // the (f)xsave region, but gdb's default x86 target
-        // config expects us to send back 4 bytes of data for
-        // each.
-        return 4;
-      case DREG_FIOFF:
-      case DREG_FOOFF:
-        return 4;
-      case DREG_XMM0:
-      case DREG_XMM1:
-      case DREG_XMM2:
-      case DREG_XMM3:
-      case DREG_XMM4:
-      case DREG_XMM5:
-      case DREG_XMM6:
-      case DREG_XMM7:
-        return 16;
-      case DREG_MXCSR:
-        return 4;
-      case DREG_YMM0H:
-      case DREG_YMM1H:
-      case DREG_YMM2H:
-      case DREG_YMM3H:
-      case DREG_YMM4H:
-      case DREG_YMM5H:
-      case DREG_YMM6H:
-      case DREG_YMM7H:
-        // TODO: support AVX registers
-        *can_read = false;
-        return 16;
-      default:
-        *can_read = false;
-        return 0;
-    }
-  } else {
-    // Fortunately (though it's probably not coincidence)
-    // x86-64 user_fpregs_struct has the same layout as the
-    // XSAVE64 area.
-
-    switch (regno) {
-      case DREG_64_ST0:
-      case DREG_64_ST1:
-      case DREG_64_ST2:
-      case DREG_64_ST3:
-      case DREG_64_ST4:
-      case DREG_64_ST5:
-      case DREG_64_ST6:
-      case DREG_64_ST7:
-        return 10;
-      case DREG_64_FCTRL:
-      case DREG_64_FSTAT:
-      case DREG_64_FTAG:
-      case DREG_64_FISEG:
-      case DREG_64_FOSEG:
-      case DREG_64_FOP:
-        // NB: these registers only occupy 2 bytes of space in
-        // the (f)xsave region, but gdb's default x86-64 target
-        // config expects us to send back 4 bytes of data for
-        // each.
-        return 4;
-      case DREG_64_FIOFF:
-      case DREG_64_FOOFF:
-        return 4;
-      case DREG_64_XMM0:
-      case DREG_64_XMM1:
-      case DREG_64_XMM2:
-      case DREG_64_XMM3:
-      case DREG_64_XMM4:
-      case DREG_64_XMM5:
-      case DREG_64_XMM6:
-      case DREG_64_XMM7:
-      case DREG_64_XMM8:
-      case DREG_64_XMM9:
-      case DREG_64_XMM10:
-      case DREG_64_XMM11:
-      case DREG_64_XMM12:
-      case DREG_64_XMM13:
-      case DREG_64_XMM14:
-      case DREG_64_XMM15:
-        return 16;
-      case DREG_64_MXCSR:
-        return 4;
-      case DREG_64_YMM0H:
-      case DREG_64_YMM1H:
-      case DREG_64_YMM2H:
-      case DREG_64_YMM3H:
-      case DREG_64_YMM4H:
-      case DREG_64_YMM5H:
-      case DREG_64_YMM6H:
-      case DREG_64_YMM7H:
-      case DREG_64_YMM8H:
-      case DREG_64_YMM9H:
-      case DREG_64_YMM10H:
-      case DREG_64_YMM11H:
-      case DREG_64_YMM12H:
-      case DREG_64_YMM13H:
-      case DREG_64_YMM14H:
-      case DREG_64_YMM15H:
-        // TODO: support AVX registers
-        *can_read = false;
-        return 16;
-      default:
-        *can_read = false;
-        return 0;
-    }
+  switch (arch()) {
+    case x86:
+      switch (regno) {
+        case DREG_ST0:
+        case DREG_ST1:
+        case DREG_ST2:
+        case DREG_ST3:
+        case DREG_ST4:
+        case DREG_ST5:
+        case DREG_ST6:
+        case DREG_ST7:
+          return 10;
+        case DREG_FCTRL:
+        case DREG_FSTAT:
+        case DREG_FTAG:
+        case DREG_FISEG:
+        case DREG_FOSEG:
+        case DREG_FOP:
+          // NB: these registers only occupy 2 bytes of space in
+          // the (f)xsave region, but gdb's default x86 target
+          // config expects us to send back 4 bytes of data for
+          // each.
+          return 4;
+        case DREG_FIOFF:
+        case DREG_FOOFF:
+          return 4;
+        case DREG_XMM0:
+        case DREG_XMM1:
+        case DREG_XMM2:
+        case DREG_XMM3:
+        case DREG_XMM4:
+        case DREG_XMM5:
+        case DREG_XMM6:
+        case DREG_XMM7:
+          return 16;
+        case DREG_MXCSR:
+          return 4;
+        case DREG_YMM0H:
+        case DREG_YMM1H:
+        case DREG_YMM2H:
+        case DREG_YMM3H:
+        case DREG_YMM4H:
+        case DREG_YMM5H:
+        case DREG_YMM6H:
+        case DREG_YMM7H:
+          // TODO: support AVX registers
+          *can_read = false;
+          return 16;
+        default:
+          *can_read = false;
+          return 0;
+      }
+    case x86_64:
+      switch (regno) {
+        case DREG_64_ST0:
+        case DREG_64_ST1:
+        case DREG_64_ST2:
+        case DREG_64_ST3:
+        case DREG_64_ST4:
+        case DREG_64_ST5:
+        case DREG_64_ST6:
+        case DREG_64_ST7:
+          return 10;
+        case DREG_64_FCTRL:
+        case DREG_64_FSTAT:
+        case DREG_64_FTAG:
+        case DREG_64_FISEG:
+        case DREG_64_FOSEG:
+        case DREG_64_FOP:
+          // NB: these registers only occupy 2 bytes of space in
+          // the (f)xsave region, but gdb's default x86-64 target
+          // config expects us to send back 4 bytes of data for
+          // each.
+          return 4;
+        case DREG_64_FIOFF:
+        case DREG_64_FOOFF:
+          return 4;
+        case DREG_64_XMM0:
+        case DREG_64_XMM1:
+        case DREG_64_XMM2:
+        case DREG_64_XMM3:
+        case DREG_64_XMM4:
+        case DREG_64_XMM5:
+        case DREG_64_XMM6:
+        case DREG_64_XMM7:
+        case DREG_64_XMM8:
+        case DREG_64_XMM9:
+        case DREG_64_XMM10:
+        case DREG_64_XMM11:
+        case DREG_64_XMM12:
+        case DREG_64_XMM13:
+        case DREG_64_XMM14:
+        case DREG_64_XMM15:
+          return 16;
+        case DREG_64_MXCSR:
+          return 4;
+        case DREG_64_YMM0H:
+        case DREG_64_YMM1H:
+        case DREG_64_YMM2H:
+        case DREG_64_YMM3H:
+        case DREG_64_YMM4H:
+        case DREG_64_YMM5H:
+        case DREG_64_YMM6H:
+        case DREG_64_YMM7H:
+        case DREG_64_YMM8H:
+        case DREG_64_YMM9H:
+        case DREG_64_YMM10H:
+        case DREG_64_YMM11H:
+        case DREG_64_YMM12H:
+        case DREG_64_YMM13H:
+        case DREG_64_YMM14H:
+        case DREG_64_YMM15H:
+          // TODO: support AVX registers
+          *can_read = false;
+          return 16;
+        default:
+          *can_read = false;
+          return 0;
+      }
+    default:
+      assert(0 && "Unknown arch");
+      return 0;
   }
 }
 
 size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
                                      bool* defined) const {
-  assert(format_ != NONE);
+  assert(format_ == XSAVE);
+
+  *defined = false;
 
   bool can_read = true;
   size_t num_bytes = register_size(regno, &can_read);
   if (!can_read) {
-    *defined = false;
     return num_bytes;
   }
 
   assert(num_bytes > 0);
   if (empty()) {
-    *defined = false;
     return num_bytes;
   }
 
@@ -250,16 +246,22 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   const int* fxsave_offsets;
   size_t fxsave_offsets_length;
 
-  if (format_ == XSAVE64 || format_ == FPREGS) {
-    assert(regno >= DREG_64_FIRST_FXSAVE_REG);
-    fxsave_idx = regno - DREG_64_FIRST_FXSAVE_REG;
-    fxsave_offsets = &fxsave_64_reg_offset[0];
-    fxsave_offsets_length = array_length(fxsave_64_reg_offset);
-  } else {
-    assert(regno >= DREG_FIRST_FXSAVE_REG);
-    fxsave_idx = regno - DREG_FIRST_FXSAVE_REG;
-    fxsave_offsets = &fxsave_reg_offset[0];
-    fxsave_offsets_length = array_length(fxsave_reg_offset);
+  switch (arch()) {
+    case x86_64:
+      assert(regno >= DREG_64_FIRST_FXSAVE_REG);
+      fxsave_idx = regno - DREG_64_FIRST_FXSAVE_REG;
+      fxsave_offsets = &fxsave_64_reg_offset[0];
+      fxsave_offsets_length = array_length(fxsave_64_reg_offset);
+      break;
+    case x86:
+      assert(regno >= DREG_FIRST_FXSAVE_REG);
+      fxsave_idx = regno - DREG_FIRST_FXSAVE_REG;
+      fxsave_offsets = &fxsave_reg_offset[0];
+      fxsave_offsets_length = array_length(fxsave_reg_offset);
+      break;
+    default:
+      assert(0 && "Unknown arch");
+      return 0;
   }
   assert(fxsave_idx < fxsave_offsets_length);
 

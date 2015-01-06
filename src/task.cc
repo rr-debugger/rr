@@ -229,6 +229,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
       ticks(0),
       registers(a),
       is_stopped(false),
+      extra_registers(a),
       extra_registers_known(false),
       robust_futex_list(),
       robust_futex_list_len(),
@@ -858,6 +859,7 @@ void Task::post_exec(const Registers* replay_regs) {
     registers = *replay_regs;
   } else {
     registers.set_arch(determine_arch(this, execve_file));
+    extra_registers.set_arch(registers.arch());
     // Read registers now that the architecture is known.
     struct user_regs_struct ptrace_regs;
     ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
@@ -1058,8 +1060,7 @@ const ExtraRegisters& Task::extra_regs() {
     if (xsave_area_size) {
       LOG(debug) << "  (refreshing extra-register cache using XSAVE)";
 
-      extra_registers.format_ =
-          (arch() == x86 ? ExtraRegisters::XSAVE : ExtraRegisters::XSAVE64);
+      extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data.resize(xsave_area_size);
       struct iovec vec = { extra_registers.data.data(),
                            extra_registers.data.size() };
@@ -1071,7 +1072,7 @@ const ExtraRegisters& Task::extra_regs() {
 #if defined(__i386__)
       LOG(debug) << "  (refreshing extra-register cache using FPXREGS)";
 
-      extra_registers.format_ = ExtraRegisters::FPXREGS;
+      extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data.resize(sizeof(user_fpxregs_struct));
       xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data.data());
 #elif defined(__x86_64__)
@@ -1079,7 +1080,7 @@ const ExtraRegisters& Task::extra_regs() {
       // is in this class.
       LOG(debug) << "  (refreshing extra-register cache using FPREGS)";
 
-      extra_registers.format_ = ExtraRegisters::FPREGS;
+      extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data.resize(sizeof(user_fpregs_struct));
       xptrace(PTRACE_GETFPREGS, nullptr, extra_registers.data.data());
 #else
@@ -1194,33 +1195,24 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
   extra_registers = regs;
   extra_registers_known = true;
 
+  init_xsave();
+
   switch (extra_registers.format()) {
-    case ExtraRegisters::XSAVE:
-    case ExtraRegisters::XSAVE64: {
-      struct iovec vec = { extra_registers.data.data(),
-                           extra_registers.data.size() };
-      ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
-      break;
-    }
-    case ExtraRegisters::FPXREGS: {
+    case ExtraRegisters::XSAVE: {
+      if (xsave_area_size) {
+        struct iovec vec = { extra_registers.data.data(),
+                             extra_registers.data.size() };
+        ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
+      } else {
 #if defined(__i386__)
-      ptrace_if_alive(PTRACE_SETFPXREGS, nullptr, extra_registers.data.data());
+        ptrace_if_alive(PTRACE_SETFPXREGS, nullptr,
+                        extra_registers.data.data());
+#elif defined(__x86_64__)
+        ptrace_if_alive(PTRACE_SETFPREGS, nullptr, extra_registers.data.data());
 #else
-      // We could probably fix this to be replayable on an x86-64 rr build,
-      // but portability of traces from XSAVE-lacking 32-bit rr builds is
-      // not a priority.
-      ASSERT(this, false)
-          << "This operation can only be performed with an x86-32 rr build";
+#error Unsupported architecture
 #endif
-      break;
-    }
-    case ExtraRegisters::FPREGS: {
-#if defined(__x86_64__)
-      ptrace_if_alive(PTRACE_SETFPREGS, nullptr, extra_registers.data.data());
-#else
-      ASSERT(this, false)
-          << "This operation can only be performed with an x86-64 rr build";
-#endif
+      }
       break;
     }
     default:
