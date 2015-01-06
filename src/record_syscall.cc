@@ -1389,8 +1389,8 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
     case PTRACE_DETACH: {
       Task* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
-        tracee->set_emulated_ptracer(nullptr);
         prepare_ptrace_cont(tracee, t->regs().arg4());
+        tracee->set_emulated_ptracer(nullptr);
         syscall_state.emulate_result(0);
       }
       break;

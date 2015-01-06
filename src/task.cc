@@ -362,6 +362,7 @@ void Task::set_emulated_ptracer(Task* tracer) {
     emulated_ptracer->emulated_ptrace_tracees.insert(this);
   } else {
     ASSERT(this, emulated_ptracer);
+    ASSERT(this, emulated_stop_type == NOT_STOPPED || emulated_stop_type == GROUP_STOP);
     emulated_ptracer->emulated_ptrace_tracees.erase(this);
     emulated_ptracer = nullptr;
   }
