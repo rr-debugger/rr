@@ -282,6 +282,7 @@ set(BASIC_TESTS
   sched_yield_to_lower_priority
   scm_rights
   sendfile
+  set_ptracer
   setsid
   sigaction_old
   sigaltstack

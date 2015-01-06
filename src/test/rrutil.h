@@ -17,6 +17,7 @@
 #include <linux/if.h>
 #include <linux/limits.h>
 #include <linux/perf_event.h>
+#include <linux/seccomp.h>
 #include <linux/sockios.h>
 #include <linux/videodev2.h>
 #include <linux/wireless.h>

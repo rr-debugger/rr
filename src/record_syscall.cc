@@ -1901,6 +1901,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     /* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned
      * long arg4, unsigned long arg5); */
     case Arch::prctl:
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
       switch ((int)t->regs().arg1_signed()) {
         case PR_GET_ENDIAN:
         case PR_GET_FPEMU:
@@ -1920,7 +1922,21 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           break;
 
         case PR_SET_SECCOMP:
+          // Allow all PR_SET_SECCOMP calls. We must allow the PR_SET_SECCOMP
+          // that rr triggers when spawning the initial tracee. Allowing other
+          // SECCOMP calls should be safe; additional filters or restrictions
+          // will be enforced by the kernel.
           break;
+
+        case PR_SET_PTRACER: {
+          // Prevent any PR_SET_PTRACER call, but pretend it succeeded, since
+          // we don't want any interference with our ptracing.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          syscall_state.emulate_result(0);
+          break;
+        }
 
         default:
           syscall_state.expect_errno = EINVAL;
@@ -2591,6 +2607,14 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         }
       }
       break;
+
+    case Arch::prctl: {
+      // Restore arg1 in case we modified it to disable the syscall
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
+      t->set_regs(r);
+      break;
+    }
 
     case SYS_rrcall_init_buffers:
       t->init_buffers(nullptr, SHARE_DESCHED_EVENT_FD);
