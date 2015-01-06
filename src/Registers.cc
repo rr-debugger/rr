@@ -446,6 +446,27 @@ size_t Registers::read_register(uint8_t* buf, GdbRegister regno,
 }
 
 template <typename Arch>
+size_t Registers::read_register_by_user_offset_arch(uint8_t* buf,
+                                                    uintptr_t offset,
+                                                    bool* defined) const {
+  for (size_t regno = 0; regno < RegisterInfo<Arch>::num_registers; ++regno) {
+    RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
+    if (rv.offset == offset) {
+      return read_register_arch<Arch>(buf, GdbRegister(regno), defined);
+    }
+  }
+
+  *defined = false;
+  return 0;
+}
+
+size_t Registers::read_register_by_user_offset(uint8_t* buf, uintptr_t offset,
+                                               bool* defined) const {
+  RR_ARCH_FUNCTION(read_register_by_user_offset_arch, arch(), buf, offset,
+                   defined);
+}
+
+template <typename Arch>
 void Registers::write_register_arch(GdbRegister regno, const uint8_t* value,
                                     size_t value_size) {
   RegisterValue& rv = RegisterInfo<Arch>::registers[regno];

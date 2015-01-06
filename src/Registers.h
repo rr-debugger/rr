@@ -46,6 +46,10 @@ const uintptr_t X86_TF_FLAG = 0x100;
  */
 class Registers {
 public:
+  enum {
+    MAX_SIZE = 16
+  };
+
   Registers(SupportedArch a = SupportedArch(-1)) : arch_(a) {
     memset(&u, 0, sizeof(u));
   }
@@ -304,6 +308,16 @@ public:
   size_t read_register(uint8_t* buf, GdbRegister regno, bool* defined) const;
 
   /**
+   * Write the value for register |offset| into |buf|, which should
+   * be large enough to hold any register supported by the target.
+   * Return the size of the register in bytes and set |defined| to
+   * indicate whether a useful value has been written to |buf|.
+   * |offset| is the offset of the register within a user_regs_struct.
+   */
+  size_t read_register_by_user_offset(uint8_t* buf, uintptr_t offset,
+                                      bool* defined) const;
+
+  /**
    * Update the registe named |reg_name| to |value| with
    * |value_size| number of bytes.
    */
@@ -340,6 +354,10 @@ private:
   template <typename Arch>
   size_t read_register_arch(uint8_t* buf, GdbRegister regno,
                             bool* defined) const;
+
+  template <typename Arch>
+  size_t read_register_by_user_offset_arch(uint8_t* buf, uintptr_t offset,
+                                           bool* defined) const;
 
   template <typename Arch>
   void write_register_arch(GdbRegister regno, const uint8_t* value,

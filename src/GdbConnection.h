@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "GdbRegister.h"
+#include "Registers.h"
 #include "ReplaySession.h"
 
 /**
@@ -41,7 +42,7 @@ inline std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
  */
 struct GdbRegisterValue {
   enum {
-    MAX_SIZE = 16
+    MAX_SIZE = Registers::MAX_SIZE
   };
   GdbRegister name;
   uint8_t value[MAX_SIZE];
